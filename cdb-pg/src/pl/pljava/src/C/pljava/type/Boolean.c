@@ -38,9 +38,6 @@ static jvalue _booleanArray_coerceDatum(Type self, Datum arg)
 	jsize      nElems = (jsize)ArrayGetNItems(ARR_NDIM(v), ARR_DIMS(v));
 	jbooleanArray booleanArray = JNI_newBooleanArray(nElems);
 
-#if (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER < 2)
-	JNI_setBooleanArrayRegion(booleanArray, 0, nElems, (jboolean*)ARR_DATA_PTR(v));
-#else
 	if(ARR_HASNULL(v))
 	{
 		jsize idx;
@@ -59,7 +56,6 @@ static jvalue _booleanArray_coerceDatum(Type self, Datum arg)
 	}
 	else
 		JNI_setBooleanArrayRegion(booleanArray, 0, nElems, (jboolean*)ARR_DATA_PTR(v));
-#endif
 	result.l = (jobject)booleanArray;
 	return result;
 }
@@ -73,11 +69,7 @@ static Datum _booleanArray_coerceObject(Type self, jobject booleanArray)
 		return 0;
 
 	nElems = JNI_getArrayLength((jarray)booleanArray);
-#if (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER < 2)
-	v = createArrayType(nElems, sizeof(jboolean), BOOLOID);
-#else
 	v = createArrayType(nElems, sizeof(jboolean), BOOLOID, false);
-#endif
 	JNI_getBooleanArrayRegion((jbooleanArray)booleanArray, 0, nElems, (jboolean*)ARR_DATA_PTR(v));	
 
 	PG_RETURN_ARRAYTYPE_P(v);

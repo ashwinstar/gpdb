@@ -45,9 +45,6 @@ static jvalue _longArray_coerceDatum(Type self, Datum arg)
 	jsize      nElems = (jsize)ArrayGetNItems(ARR_NDIM(v), ARR_DIMS(v));
 	jlongArray longArray = JNI_newLongArray(nElems);
 
-#if (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER < 2)
-	JNI_setLongArrayRegion(longArray, 0, nElems, (jlong*)ARR_DATA_PTR(v));
-#else
 	if(ARR_HASNULL(v))
 	{
 		jsize idx;
@@ -66,7 +63,6 @@ static jvalue _longArray_coerceDatum(Type self, Datum arg)
 	}
 	else
 		JNI_setLongArrayRegion(longArray, 0, nElems, (jlong*)ARR_DATA_PTR(v));
-#endif
 	result.l = (jobject)longArray;
 	return result;
 }
@@ -80,11 +76,7 @@ static Datum _longArray_coerceObject(Type self, jobject longArray)
 		return 0;
 
 	nElems = JNI_getArrayLength((jarray)longArray);
-#if (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER < 2)
-	v = createArrayType(nElems, sizeof(jlong), INT8OID);
-#else
 	v = createArrayType(nElems, sizeof(jlong), INT8OID, false);
-#endif
 	JNI_getLongArrayRegion((jlongArray)longArray, 0, nElems, (jlong*)ARR_DATA_PTR(v));	
 
 	PG_RETURN_ARRAYTYPE_P(v);

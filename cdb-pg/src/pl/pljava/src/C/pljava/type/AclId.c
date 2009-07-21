@@ -9,9 +9,6 @@
 #include <postgres.h>
 #include <miscadmin.h>
 #include <utils/acl.h>
-#if (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER < 1)
-#include <utils/lsyscache.h>
-#endif
 #include "pljava/type/AclId.h"
 #include "pljava/type/Oid.h"
 #include "pljava/type/String.h"
@@ -142,9 +139,6 @@ Java_org_postgresql_pljava_internal_AclId__1fromName(JNIEnv* env, jclass clazz, 
 		PG_TRY();
 		{
 			char* roleName = String_createNTS(jname);
-#if (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER < 1)
-			result = AclId_create(get_usesysid(roleName));
-#else
 			HeapTuple roleTup = SearchSysCache(AUTHNAME, PointerGetDatum(roleName), 0, 0, 0);
 			if(!HeapTupleIsValid(roleTup))
 				ereport(ERROR,
@@ -153,7 +147,6 @@ Java_org_postgresql_pljava_internal_AclId__1fromName(JNIEnv* env, jclass clazz, 
 
 			result = AclId_create(HeapTupleGetOid(roleTup));
 			ReleaseSysCache(roleTup);
-#endif
 		}
 		PG_CATCH();
 		{

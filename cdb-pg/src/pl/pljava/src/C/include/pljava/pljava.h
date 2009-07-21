@@ -47,17 +47,7 @@ extern bool pljavaEntryFence(JNIEnv* env);
 extern JNIEnv* currentJNIEnv;
 extern MemoryContext JavaMemoryContext;
 
-#if (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER == 0)
-#define STACK_BASE_VARS
-#define STACK_BASE_PUSH(threadId)
-#define STACK_BASE_POP()
-#else
-
-#if (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER >= 3)
 extern PGDLLIMPORT char* stack_base_ptr;
-#else
-extern DLLIMPORT char* stack_base_ptr;
-#endif
 
 #define STACK_BASE_VARS \
 	long  saveMainThreadId = 0; \
@@ -80,8 +70,6 @@ extern DLLIMPORT char* stack_base_ptr;
 		mainThreadId = saveMainThreadId; \
 		elog(DEBUG1, "Restored stack_base_ptr to %p", saveStackBasePtr); \
 	}
-
-#endif
 
 /* NOTE!
  * When using the PG_TRY, PG_CATCH, PG_TRY_END family of macros,

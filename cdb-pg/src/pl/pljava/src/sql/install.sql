@@ -1,35 +1,35 @@
 CREATE SCHEMA sqlj;
 GRANT USAGE ON SCHEMA sqlj TO public;
 
-CREATE FUNCTION sqlj.java_call_handler()
+CREATE FUNCTION sqlj.pljava_call_handler()
   RETURNS language_handler AS 'pljava'
   LANGUAGE C;
 
-CREATE TRUSTED LANGUAGE java HANDLER sqlj.java_call_handler;
+CREATE TRUSTED LANGUAGE java HANDLER sqlj.pljava_call_handler;
 
-CREATE FUNCTION sqlj.javau_call_handler()
+CREATE FUNCTION sqlj.pljavau_call_handler()
   RETURNS language_handler AS 'pljava'
   LANGUAGE C;
 
-CREATE LANGUAGE javaU HANDLER sqlj.javau_call_handler;
+CREATE LANGUAGE javaU HANDLER sqlj.pljavau_call_handler;
 
 CREATE TABLE sqlj.jar_repository(
 	jarId		SERIAL PRIMARY KEY,
-	jarName		VARCHAR(100) UNIQUE NOT NULL,
+	jarName		VARCHAR(100) NOT NULL,   -- UNIQUE
 	jarOrigin   VARCHAR(500) NOT NULL,
 	jarOwner	NAME NOT NULL,
 	jarManifest	TEXT,
 	deploymentDesc INT
-);
+) DISTRIBUTED BY (jarId);
 GRANT SELECT ON sqlj.jar_repository TO public;
 
 CREATE TABLE sqlj.jar_entry(
 	entryId     SERIAL PRIMARY KEY,
 	entryName	VARCHAR(200) NOT NULL,
 	jarId		INT NOT NULL REFERENCES sqlj.jar_repository ON DELETE CASCADE,
-	entryImage  BYTEA NOT NULL,
-	UNIQUE(jarId, entryName)
-);
+	entryImage  BYTEA NOT NULL
+	-- , UNIQUE(jarId, entryName)
+) DISTRIBUTED BY (entryId);
 GRANT SELECT ON sqlj.jar_entry TO public;
 
 ALTER TABLE sqlj.jar_repository
@@ -40,14 +40,14 @@ CREATE TABLE sqlj.classpath_entry(
 	ordinal		INT2 NOT NULL,
 	jarId		INT NOT NULL REFERENCES sqlj.jar_repository ON DELETE CASCADE,
 	PRIMARY KEY(schemaName, ordinal)
-);
+) DISTRIBUTED BY (schemaName, ordinal);
 GRANT SELECT ON sqlj.classpath_entry TO public;
 
 CREATE TABLE sqlj.typemap_entry(
 	mapId		SERIAL PRIMARY KEY,
 	javaName	VARCHAR(200) NOT NULL,
 	sqlName		NAME NOT NULL
-);
+) DISTRIBUTED BY (mapId);
 GRANT SELECT ON sqlj.typemap_entry TO public;
 
 CREATE FUNCTION sqlj.install_jar(VARCHAR, VARCHAR, BOOLEAN) RETURNS void

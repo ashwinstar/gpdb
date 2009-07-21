@@ -48,6 +48,12 @@
 PG_MODULE_MAGIC;
 #endif
 
+extern Datum pljavau_call_handler(PG_FUNCTION_ARGS);
+extern Datum pljava_call_handler(PG_FUNCTION_ARGS);
+
+PG_FUNCTION_INFO_V1(pljava_call_handler);
+PG_FUNCTION_INFO_V1(pljavau_call_handler);
+
 #define LOCAL_REFERENCE_COUNT 128
 
 jlong mainThreadId;
@@ -668,24 +674,20 @@ static void initializeJavaVM(void)
 
 static Datum internalCallHandler(bool trusted, PG_FUNCTION_ARGS);
 
-extern Datum javau_call_handler(PG_FUNCTION_ARGS);
-PG_FUNCTION_INFO_V1(javau_call_handler);
 
 /*
  * This is the entry point for all untrusted calls.
  */
-Datum javau_call_handler(PG_FUNCTION_ARGS)
+Datum pljavau_call_handler(PG_FUNCTION_ARGS)
 {
 	return internalCallHandler(false, fcinfo);
 }
 
-extern Datum java_call_handler(PG_FUNCTION_ARGS);
-PG_FUNCTION_INFO_V1(java_call_handler);
 
 /*
  * This is the entry point for all trusted calls.
  */
-Datum java_call_handler(PG_FUNCTION_ARGS)
+Datum pljava_call_handler(PG_FUNCTION_ARGS)
 {
 	return internalCallHandler(true, fcinfo);
 }

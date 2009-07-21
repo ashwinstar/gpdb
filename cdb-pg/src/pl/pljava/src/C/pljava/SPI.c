@@ -7,7 +7,6 @@
  * @author Thomas Hallgren
  */
 #include "org_postgresql_pljava_internal_SPI.h"
-#include "pljava/backports.h"
 #include "pljava/SPI.h"
 #include "pljava/Invocation.h"
 #include "pljava/Exception.h"
@@ -199,12 +198,5 @@ void SPI_rollbackSavepoint(Savepoint* sp)
 	pfree(sp);
 }
 
-#if (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER < 1)
-char* SPI_getnspname(Relation rel)
-{
-	return get_namespace_name(RelationGetNamespace(rel));
-}
-
-#endif
 
 
