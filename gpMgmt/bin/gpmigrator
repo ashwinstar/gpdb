@@ -554,7 +554,7 @@ class GPUpgrade:
         self.segments   = []       # list of segments
         self.mirrors    = []       # list of mirrors
         self.dbup       = None
-        self.interupted = False    # SIGINT recieved
+        self.interrupted = False    # SIGINT recieved
         self.faultinjection = None
 
     #------------------------------------------------------------
@@ -578,7 +578,7 @@ class GPUpgrade:
 
         # Extract path from input master directory
         if self.cmd == 'MASTER':
-            logger.info('Beginning ugrade')
+            logger.info('Beginning upgrade')
             logger.info('Checking configuration')
 
             if not self.masterdir or len(self.masterdir) == 0:
@@ -840,7 +840,7 @@ class GPUpgrade:
         behavior.
         '''
         if self.cmd == 'MASTER':
-            logger.fatal('Fatal error occured - Recovering')
+            logger.fatal('Fatal error occurred - Recovering')
             try:
                 self.Shutdown()
             except Exception, e:
@@ -1300,7 +1300,7 @@ class GPUpgrade:
                 if os.path.exists(locked):
                     del env['PGUSER']
 
-            # Ignore interupt requests until startup is done
+            # Ignore interrupt requests until startup is done
             error = None
             retcode = None
             while retcode == None:
@@ -1308,12 +1308,12 @@ class GPUpgrade:
                     retcode = pid.wait();
 
                 except KeyboardInterrupt, e:
-                    if not self.interupted:
+                    if not self.interrupted:
                         logger.fatal('***************************************')
                         logger.fatal('SIGINT-: Upgrade Aborted')
                         logger.fatal('***************************************')
                         logger.info( 'Performing clean abort')
-                        self.interupted = True
+                        self.interrupted = True
                         error = e
                     else:
                         logger.info( 'SIGINT-: Still processing shutdown')
@@ -1335,7 +1335,7 @@ class GPUpgrade:
                 logger.fatal('***************************************')
                 raise UpgradeError('Startup failed')
 
-            # If we recieved an interupt, resignal it now that the startup is done
+            # If we recieved an interrupt, resignal it now that the startup is done
             if error: 
                 raise error
 
@@ -1394,7 +1394,7 @@ class GPUpgrade:
                 if os.path.exists(locked):
                     del env['PGUSER']
 
-            # Ignore interupt requests until shutdown is done
+            # Ignore interrupt requests until shutdown is done
             error = None
             retcode = None
             while retcode == None:
@@ -1402,12 +1402,12 @@ class GPUpgrade:
                     retcode = pid.wait();
 
                 except KeyboardInterrupt, e:
-                    if not self.interupted:
+                    if not self.interrupted:
                         logger.fatal('***************************************')
                         logger.fatal('SIGINT-: Upgrade Aborted')
                         logger.fatal('***************************************')
                         logger.info( 'Performing clean abort')
-                        self.interupted = True
+                        self.interrupted = True
                         error = e
                     else:
                         logger.info( 'SIGINT-: Still processing shutdown')
@@ -1428,7 +1428,7 @@ class GPUpgrade:
                 logger.fatal('***************************************')
                 raise UpgradeError('Shutdown failed')
 
-            # If we recieved an interupt, resignal it now that the startup is done
+            # If we recieved an interrupt, resignal it now that the startup is done
             if error: 
                 raise error
 
@@ -1580,7 +1580,7 @@ class GPUpgrade:
         logger.info('Operating System: %s %s' % (os_type, os_ver))
 
         # Log version checking
-        logger.info('Checking version compatability')
+        logger.info('Checking version compatibility')
 
         # --gp-version added in 3.2, but that doesn't help us determine
         # version information from old versions.
@@ -2922,7 +2922,7 @@ This issue must be resolved before upgrade can complete.
                                    stdout=self.logfile, 
                                    stderr=self.logfile, close_fds=True)
 
-            # Ignore interupt requests until startup is done
+            # Ignore interrupt requests until startup is done
             error = None
             retcode = None
             while retcode == None:
@@ -2930,17 +2930,17 @@ This issue must be resolved before upgrade can complete.
                     retcode = pid.wait();
 
                 except KeyboardInterrupt, e:
-                    if not self.interupted:
+                    if not self.interrupted:
                         logger.fatal('***************************************')
                         logger.fatal('SIGINT-: Upgrade Aborted')
                         logger.fatal('***************************************')
                         logger.info( 'Performing clean abort')
-                        self.interupted = True
+                        self.interrupted = True
                         error = e
                     else:
                         logger.info( 'SIGINT-: Still processing shutdown')
 
-            # If we recieved an interupt, resignal it now that the startup is done
+            # If we recieved an interrupt, resignal it now that the startup is done
             if error: 
                 raise error
 
@@ -4362,14 +4362,14 @@ if __name__ == '__main__':
                     u.CheckCatalog()
                     u.SetState('CHECKCAT')
     
-            # Whe have an extra layer of interupt handling around the --prepare
+            # Whe have an extra layer of interrupt handling around the --prepare
             # logic because we don't want to errors to cause an automatic Shutdown
             # which would occur going through the regular Cleanup logic
             except KeyboardInterrupt:
                 if shutdown:
                     u.Shutdown()
                 logger.fatal('***************************************')
-                logger.fatal('==  Upgrade interupted by user ==        <<<<< ')
+                logger.fatal('==  Upgrade interrupted by user ==        <<<<< ')
                 logger.fatal('***************************************')
                 sys.exit(1)
     
@@ -4826,7 +4826,7 @@ instructions to complete environment configuration
         except Exception, e2: 
             logger.fatal(str(e2))
         logger.fatal('***************************************')
-        logger.fatal('==  Upgrade interupted by user ==        <<<<< ')
+        logger.fatal('==  Upgrade interrupted by user ==        <<<<< ')
         logger.fatal('***************************************')
         sys.exit(1)
     
