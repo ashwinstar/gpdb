@@ -762,6 +762,8 @@ sub genpartdefs2
                             ($v1 eq $v2) && ($incex2 eq "INCLUSIVE")
                             && ($incex2 eq $incex1))
                         {
+							$pspec->{singleton_range} = 1;
+
                             if ($v2 =~ m/^\d+$/)
                             {
                                 if (1)
@@ -792,6 +794,8 @@ sub genpartdefs2
                                     $incex2 = "EXCLUSIVE";
                                     $pspec->{end}->{magic_interval_fixup} =
                                         $magic_interval_fixup;
+
+									delete $pspec->{singleton_range};
                                 }
                             }
                             elsif ($v2 =~ m/\:\:date$/)
@@ -839,7 +843,7 @@ sub genpartdefs2
                                 }
                                 if (defined($magic_interval_fixup))
                                 {
-#                                    $v2 += $magic_interval_fixup;
+
                                     my @dat2 = 
                                         ($v2 =~ m(^\'(\d\d\d\d)\-(\d\d)\-(\d\d)\'));
 
@@ -868,6 +872,8 @@ sub genpartdefs2
                                     $pspec->{end}->{inclusive} = 0;
                                     $pspec->{end}->{magic_interval_fixup} =
                                         $magic_interval_fixup;
+
+									delete $pspec->{singleton_range};
 
                                 }
 
@@ -1022,7 +1028,7 @@ sub typename_fixup_out
 # genpartdefs4: Pass 4 - build text and comments for partition by clause
 sub genpartdefs4
 {
-    my $reg_tabs = shift;
+    my ($reg_tabs, $all_cons) = @_;
 
     my $do_fixup = 1;
 
@@ -1109,12 +1115,26 @@ sub genpartdefs4
 
                     if (exists($pspec->{name}) && defined($pspec->{name}))
                     {
+                        $xch_txt .= "alter table $tname " . 
+							" no inherit $kk ; \n";
+
+						# drop all existing constraints on the table
+						if (exists($all_cons->{$tname}))
+						{
+							for my $cname (@{$all_cons->{$tname}})
+							{
+
+								$xch_txt .= "alter table $tname " . 
+									" drop CONSTRAINT $cname ; \n";
+							}
+						}
+
                         $xch_txt .= "alter table $newname " . 
                             "exchange partition " . $pspec->{name} .
                             " with table " . $tname . "; \n";
                     }
 
-                    # find oll the tables that are children of this table
+                    # find all the tables that are children of this table
                     $vv->{pby}->{children} = []
                         unless (exists($vv->{pby}->{children}));
 
@@ -1134,7 +1154,7 @@ sub genpartdefs4
                 }
 
                 $spec_txt .= "  ";
-                
+				                
                 $spec_txt .= "partition $pspec->{name} "
                     if (exists($pspec->{name}) && defined($pspec->{name}));
 
@@ -1176,7 +1196,19 @@ sub genpartdefs4
 
                        $spec_txt .= $incex2;
                     }
-                    
+
+					# comment on magic_interval_fixup status...
+					if (exists($pspec->{singleton_range}))
+					{
+						$spec_txt .= "  -- NOTE: could not fixup: START = END";
+					}
+					elsif (exists($pspec->{end}) && 
+						   exists($pspec->{end}->{original}))
+					{
+						$spec_txt .= "  -- NOTE: magic fixup - end was: ";
+						$spec_txt .= $pspec->{end}->{original}->{values}->[0];
+					}
+    
                 }
                 if ($vv->{pby}->{typ} =~ m/list/i)
                 {
@@ -2001,7 +2033,7 @@ sub classify_fn
 #		print  Data::Dumper->Dump([$partSpec]), "\n";
 
         # equality comparison indicates a LIST partition, while
-        # greater than/leass than comparison indicates a RANGE
+        # greater than/less than comparison indicates a RANGE
         # partition.
         if ($oper =~ m/^\=$/)
         {
@@ -2186,473 +2218,6 @@ sub prettydump
     }
 } # end prettydump
 
-sub cat_init_tpart
-{
-    my ($t_part, $t_pcols, $tablename, $partSpec, $partype) = @_;
-
-    my $hpart = {};
-
-    $hpart->{partype} = $partype;
-    $t_part->{$tablename} = $hpart;
-
-    my $acols = [];
-
-    if ($partSpec->{typ} eq "HASH")
-    {
-        for my $c1 (@{$partSpec->{hash_cols}})
-        {
-            push @{$acols}, $c1;
-        }
-        $hpart->{parmax} = $partSpec->{hash_max};
-    }
-    elsif ($partSpec->{typ} eq "LIST")
-    {
-        my @foo = sort(keys(%{$partSpec->{colh}}));
-        
-        for my $c1 (@foo)
-        {
-            push @{$acols}, $c1;
-        }
-    }
-    elsif ($partSpec->{typ} eq "RANGE")
-    {
-        my %bothkeys;
-
-        my @rt = qw(range_start range_end);
-        
-        for my $rtv (@rt)
-        {
-            my $pspec = $partSpec->{$rtv};
-            my @foo = sort(keys(%{$pspec->{colh}}));
-            
-            for my $cnam (@foo)
-            {
-                $bothkeys{$cnam} = 1;
-            }
-
-        }
-        my @foo = sort(keys(%bothkeys));
-                        
-        for my $c1 (@foo)
-        {
-            push @{$acols}, $c1;
-        }
-    }
-
-    $t_pcols->{$tablename} = $acols;
-    
-    $hpart->{natts} =  scalar(@{$acols});
-    
-} # end sub cat_init_tpart
-
-sub cat_boundspec 
-{
-    my ($t_bspec, $t_ritem, $childname, $partSpec, $partype, $rule_h) = @_;
-
-    my $bs_stat = [];
-
-    my $childpack = $childname;
-
-    # quurl - url quoting
-    $childpack =~ s/([^a-zA-Z0-9])/uc(sprintf("%%%02lx",  ord $1))/eg;
-
-    # unquurl - $str =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
-
-    if ($partSpec->{typ} eq "HASH")
-    {
-        my $bskey = $childpack . ",HASH";
-
-        $t_bspec->{$bskey} = {};
-
-        $t_bspec->{$bskey}->{numritems} = 1;
-        $t_bspec->{$bskey}->{bsnatts} = 1;
-
-        my $rikey = $bskey . ",1,1";
-        $t_ritem->{$rikey} = {};
-        $t_ritem->{$rikey}->{colval} = $partSpec->{hash_num};
-    }
-    elsif ($partSpec->{typ} eq "LIST")
-    {
-        my $bskey = $childpack . ",LIST";
-
-        $t_bspec->{$bskey} = {};
-
-        my @foo = sort(keys(%{$partSpec->{colh}}));
-        my $maxn = scalar(@{$partSpec->{colh}->{$foo[0]}});
-
-        $t_bspec->{$bskey}->{bsnatts} = $maxn;
-
-        my @vals;
-
-        for my $ii (0..($maxn-1))
-        {
-            for my $coln (@foo)
-            {
-                push @vals, $partSpec->{colh}->{$coln}->[$ii];
-            }
-        }
-
-        $t_bspec->{$bskey}->{numritems} = scalar(@vals)/$maxn;        
-
-
-        my $ricolpos = 1;
-        my $rinum    = 1;
-        my $rikey = $bskey . "," . $rinum . "," . $ricolpos;
-
-        for my $vv (@vals)
-        {
-            $t_ritem->{$rikey} = {};
-
-            $t_ritem->{$rikey}->{colval} = $vv;
-
-            $ricolpos++;
-
-            if ($ricolpos > $maxn)
-            {
-                $ricolpos = 1;
-                $rinum++;
-            }
-
-            $rikey = $bskey . "," . $rinum . "," . $ricolpos;
-
-        }
-
-    }
-    elsif ($partSpec->{typ} eq "RANGE")
-    {
-        my @rt = qw(range_start range_end);
-
-        for my $rtv (@rt)
-        {
-            my $pspec = $partSpec->{$rtv};
-            my @foo = sort(keys(%{$pspec->{colh}}));
-            my $maxn = scalar(@{$pspec->{colh}->{$foo[0]}});
-
-            my $bskey = $childpack;
-
-            if ($rtv =~ m/start/)
-            {
-                $bskey .= ",START";
-            }
-            else
-            {
-                $bskey .= ",END";
-            }
-        
-            my @baz;
-
-            my $ricolpos = 1;
-            my $rinum    = 1;
-            my $rikey = $bskey . "," . $rinum . "," . $ricolpos;
-
-
-            for my $cnam (@foo)
-            {
-                my $ss1 = $cnam . " " . $pspec->{colh_oper}->{$cnam}->[0]
-                    . " " . $pspec->{colh}->{$cnam}->[0];
-
-                $t_ritem->{$rikey} = {};
-
-                $t_ritem->{$rikey}->{colval} = $pspec->{colh}->{$cnam}->[0];
-                
-                $ricolpos++;
-
-                if ($ricolpos > $maxn)
-                {
-                    $ricolpos = 1;
-                    $rinum++;
-                }
-
-                $rikey = $bskey . "," . $rinum . "," . $ricolpos;
-
-                push @baz, $ss1;
-            }
-
-            push @{$bs_stat}, join(" AND ", @baz);
-        }
-        
-
-    }
-
-    return $bs_stat;
-
-
-} # end cat_boundspec 
-
-sub _stringfix
-{
-    my $str = shift;
-
-    if (defined($str))
-    {
-        my $foo = $str;
-        $foo =~ s/\'/\'\'/gm;
-
-        return '\'' . $foo . '\'';
-    }
-    else
-    {
-        return "NULL";
-    }
-
-}
-
-sub do_insert_partition_table
-{
-    my $t_part  = shift; # partition table
-
-    my @foo = sort(keys(%{$t_part}));
-
-    print "\n";
-
-    for my $kk (@foo)
-    {
-        my $vv = $t_part->{$kk};
-
-        my ($partype, $parparent, $parmax, $parnatts, $parrelname);
-        
-        $partype = _stringfix($vv->{partype}); 
-        $parparent = _stringfix($vv->{parparent}); 
-        $parmax = $vv->{parmax} || 0;
-        $parnatts = $vv->{natts};
-        $parrelname = _stringfix($kk);
-
-        print "INSERT INTO jc_partition values($parrelname, $partype, $parparent, $parmax, $parnatts);\n";
-
-    }
-} # end  do_insert_partition_table
-
-sub do_insert_part_cols
-{
-    my $t_pcols = shift; # part_cols
-
-    my @foo = sort(keys(%{$t_pcols}));
-
-    print "\n";
-
-    for my $kk (@foo)
-    {
-        my $vv = $t_pcols->{$kk};
-
-        my $colpos = 1;
-
-        for my $cname (@{$vv})
-        {
-            my $parrelname = _stringfix($kk);
-            my $colname = _stringfix($cname);
-
-            print 
-                "INSERT INTO jc_part_cols values($parrelname, $colpos, $colname);\n";
-            $colpos++;
-        }
-
-    }
-
-} # end  do_insert_part_cols
-sub do_insert_part_boundspec
-{
-    my $t_bspec = shift; # part_boundspec
-
-    my @foo = sort(keys(%{$t_bspec}));
-
-    print "\n";
-
-    for my $kk (@foo)
-    {
-        my $vv = $t_bspec->{$kk};
-        my @ggg = split(/\,/, $kk);
-        
-        my $pbschild = shift (@ggg);
-        my $pbstype  = shift (@ggg);
-        $pbschild =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
-        $pbschild = _stringfix($pbschild);
-        $pbstype  = _stringfix($pbstype);
-
-        my $pbsisinclusive = "NULL"; # XXX XXX: FIXME
-
-        my $bsnatts = $vv->{bsnatts};
-        my $numritems = $vv->{numritems};
-
-        print "INSERT INTO jc_part_boundspec values($pbschild, $pbstype, $pbsisinclusive, $bsnatts, $numritems);\n";
-
-    }
-} # end  do_insert_part_boundspec
-sub do_insert_part_rangeitem
-{
-    my $t_ritem = shift; # rangeitem
-
-    my @foo = sort(keys(%{$t_ritem}));
-
-    print "\n";
-
-    for my $kk (@foo)
-    {
-        my $vv = $t_ritem->{$kk};
-        my @ggg = split(/\,/, $kk);
-        
-        my $prichild = shift (@ggg);
-        my $pritype  = shift (@ggg);
-        my $pritemnum = shift (@ggg);
-        my $colpos    = shift (@ggg);
-
-        $prichild =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
-        $prichild = _stringfix($prichild);
-        $pritype  = _stringfix($pritype);
-
-        my $colval = $vv->{colval};
-
-        # fixup colval unless it is a number
-        $colval = _stringfix($colval)
-            unless ($colval =~ m/^-?(?:\d+(?:\.\d*)?|\.\d+)$/);
-
-        print "INSERT INTO jc_part_rangeitem values($prichild, $pritype, $pritemnum, $colpos, $colval);\n";
-
-    }
-
-} # end  do_insert_part_rangeitem
-sub do_insert_partition_rule
-{
-    my $t_prule = shift; # partition_rule
-
-    my @foo = sort(keys(%{$t_prule}));
-
-    print "\n";
-
-    for my $kk (@foo)
-    {
-        my $vv = $t_prule->{$kk};
-
-        my ($prchild, $prname, $prparent, $prrangestart, $prrangeend, $prrangeevery);
-        
-
-        $prname = _stringfix($vv->{prname}); 
-        $prparent = _stringfix($vv->{prparent}); 
-        $prrangestart = _stringfix($vv->{prrangestart}); 
-        $prrangeend = _stringfix($vv->{prrangeend}); 
-        $prrangeevery = _stringfix($vv->{prrangeevery}); 
-        $prchild = _stringfix($kk);
-
-        print "INSERT INTO jc_partition_rule values($prchild, $prname, $prparent, $prrangestart, $prrangeend, $prrangeevery);\n";
-
-    }
-
-} # end  do_insert_partition_rule
-
-sub update_catalog
-{
-    my $reg_tabs = shift;
-
-    # catalog tables
-
-    my $t_part  = {}; # partition table
-    my $t_pcols = {}; # part_cols
-    my $t_bspec = {}; # part_boundspec
-    my $t_ritem = {}; # rangeitem
-    my $t_prule = {}; # partition_rule
-
-    my @tabnames = sort(keys(%{$reg_tabs}));
-
-    for my $kk (@tabnames)
-    {
-        my $vv = $reg_tabs->{$kk};
-
-        next 
-            unless (exists($vv->{rules}));
-
-        my $tablename = $kk;
-        my $partype;
-
-        if (exists($vv->{rules}))
-        {
-            my @r1 = sort(keys(%{$vv->{rules}}));
-
-            my $rulecnt = 0;
-
-            for my $kk2 (@r1)
-            {
-                my $vv2 = $vv->{rules}->{$kk2};
-
-                next
-                    unless (exists($vv2->{parsetree})
-                            && exists($vv2->{parsetree}->{partSpec}));
-                
-                $rulecnt++;
-
-                my $childname = $vv2->{child};
-
-                my $partSpec = $vv2->{parsetree}->{partSpec};
-                
-                $partype = $partSpec->{typ};
-
-                if (exists($t_part->{$tablename}))
-                {
-
-                }
-                else
-                {
-                    cat_init_tpart (
-                                               $t_part, 
-                                               $t_pcols, $tablename, 
-                                               $partSpec, $partype);
-
-                }
-
-                my $hrule = {};
-
-                $t_prule->{$vv2->{child}} = $hrule;
-
-                my $bspec_stat = 
-                    cat_boundspec (
-                                          $t_bspec, 
-                                          $t_ritem, $vv2->{child}, 
-                                          $partSpec, $partype, $vv2);
-
-
-                $hrule->{prparent}     = $vv2->{parent};
-                $hrule->{prrangestart} = $vv2->{where};
-
-                if (($partype =~ m/range/i) && scalar(@{$bspec_stat}))
-                {
-                    $hrule->{prrangestart} = shift @{$bspec_stat};
-                    $hrule->{prrangeend}   = shift @{$bspec_stat};
-                }
-
-            }
-        }
-
-    }
-
-    local $Data::Dumper::Sortkeys = 1;
-
-#    print Data::Dumper->Dump([$t_part]);
-#    print Data::Dumper->Dump([$t_pcols]);
-#    print Data::Dumper->Dump([$t_prule]);
-#    print Data::Dumper->Dump([$t_bspec]);
-#    print Data::Dumper->Dump([$t_ritem]);
-
-    do_insert_partition_table($t_part);
-    do_insert_part_cols($t_pcols);
-    do_insert_part_boundspec($t_bspec);
-    do_insert_part_rangeitem($t_ritem);
-    do_insert_partition_rule($t_prule);
-
-
-
-} # end update_catalog
-
-if (0)
-{
-#    my $txt =" a = b or c = d or e = f";
-#    my $txt =" a = b or (c = d) or e = f";
-    my $txt =" a = b or ((c = d) or (e = f and g = h)) ";
-
-    my $biga = pw1($txt);
-
-    print Data::Dumper->Dump($biga);
-
-}
-
-
 if (1)
 {
     my $psql_str = "psql ";
@@ -2684,6 +2249,47 @@ if (1)
     }
 
 #	print Data::Dumper->Dump($rowarr),"\n";
+
+
+	# build hash of all constraints by schema.tablename.  Each element
+	# contains an array of constraint names.
+	my %all_cons; 
+
+	if (1)
+	{
+		$psql_str = "psql ";
+
+		$psql_str .= $glob_connect
+			if (defined($glob_connect));
+
+		$psql_str .= " -c \'select pcon.conname, pc.relname, pn.nspname " . 
+			"from pg_constraint pcon, pg_class pc, pg_namespace pn " .
+			"where pcon.conrelid = pc.oid and pc.relnamespace = pn.oid \' ";
+
+#    print $psql_str, "\n";
+
+		$tabdef = `$psql_str`;
+
+		$rowarr = tablelizer($tabdef);
+
+#	print Data::Dumper->Dump($rowarr),"\n";
+
+		for my $rr (@{$rowarr})
+		{
+			my $tname = $rr->{nspname} . "." . $rr->{relname};
+
+			if (exists($all_cons{$tname}))
+			{
+				push @{$all_cons{$tname}}, $rr->{conname};
+			}
+			else
+			{
+				$all_cons{$tname} = [$rr->{conname}];
+			}
+
+		}
+
+	}
 
     while (my ($kk, $vv) = each (%reg_tabs))
     {
@@ -2864,7 +2470,7 @@ if (1)
     genpartdefs(\%reg_tabs);
     genpartdefs2(\%reg_tabs);
     genpartdefs3(\%reg_tabs);
-    genpartdefs4(\%reg_tabs);
+    genpartdefs4(\%reg_tabs, \%all_cons);
     genpartdefs5(\%reg_tabs);
     
 #    print Data::Dumper->Dump([%reg_tabs]), "\n";
@@ -2873,7 +2479,6 @@ if (1)
 
     if ($glob_dosql)
     {
-#        update_catalog(\%reg_tabs);
         printpartdefs(\%reg_tabs, $glob_dosql);
     }
     else
