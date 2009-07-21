@@ -1054,38 +1054,51 @@ sub genpartdefs4
             my $xfr_txt = "";
             my $xch_txt = "";
 
-            $xfr_txt .= "insert into $newname select * from $kk;\n";
+            $xfr_txt .= "INSERT INTO $newname SELECT * FROM $kk;\n";
 
-            $cln_txt .= "alter table $kk rename to $cln_oldname;\n";
+            $cln_txt .= "ALTER TABLE $kk RENAME TO $cln_oldname;\n";
 
             if (0)
             {
-            $cln_txt .= "-- NOTE: $oldname should contain no rows\n";
-            $cln_txt .= "-- if data remains you may need to add default partitions(s) to table $kk\n";
-            $cln_txt .= "select count(*) from $oldname; \n";
+				$cln_txt .= "-- NOTE: $oldname should contain no rows\n";
+				$cln_txt .= "-- if data remains you may need to add default partitions(s) to table $kk\n";
+				$cln_txt .= "select count(*) from $oldname; \n";
 			}
 
-            $cln_txt .= "alter table $newname rename to $cln_name;\n";
+            $cln_txt .= "ALTER TABLE $newname RENAME TO $cln_name;\n";
 
-            my $ct_txt  = "create table $newname" . " (like " . $kk . ") ";
-            my $pby_txt = "partition by $vv->{pby}->{typ} " .
+            my $ct_txt  = "CREATE TABLE $newname" . " (LIKE " . $kk . ") ";
+            my $pby_txt = "PARTITION BY " . uc($vv->{pby}->{typ}) . " " .
                 "(" . join(", ", @{$vv->{pby}->{keys}}) . ")";
 
             my $spec_txt = "(\n";
 
+			# for all partition specs
             for my $psc (0..(scalar(@{$vv->{pby}->{pspec}}) - 1))
             {
                 my $pspec = $vv->{pby}->{pspec}->[$psc];
 
                 if (0 != $psc)
                 {
-                    $spec_txt .= ",\n";
+					# zero-width negative look-behind assertion: look
+					# for "-- NOTE: " that does not follow a comma,
+					# and interpose the comma betwixt the partition
+					# declaration and the comment
+					if ($spec_txt =~ m/(?<!\,)\s+\-\-\s+NOTE\:.*$/)
+					{
+						$spec_txt =~ s/(?<!\,)(\s+\-\-\s+NOTE\:.*$)/\,$1/;
+						$spec_txt .= "\n";
+					}
+					else
+					{
+						$spec_txt .= ",\n";
+					}
                 }
                 else
                 {
                     if (exists($vv->{pby}->{every}))
                     {
-                        $spec_txt .=  '  -- ' . "every $vv->{pby}->{every}" 
+                        $spec_txt .=  '  -- ' . "EVERY $vv->{pby}->{every}" 
                             . "   \n";
                     }
                 }
@@ -1115,8 +1128,8 @@ sub genpartdefs4
 
                     if (exists($pspec->{name}) && defined($pspec->{name}))
                     {
-                        $xch_txt .= "alter table $tname " . 
-							" no inherit $kk ; \n";
+                        $xch_txt .= "ALTER TABLE $tname " . 
+							" NO INHERIT $kk ; \n";
 
 						# drop all existing constraints on the table
 						if (exists($all_cons->{$tname}))
@@ -1124,14 +1137,14 @@ sub genpartdefs4
 							for my $cname (@{$all_cons->{$tname}})
 							{
 
-								$xch_txt .= "alter table $tname " . 
-									" drop CONSTRAINT $cname ; \n";
+								$xch_txt .= "ALTER TABLE $tname " . 
+									" DROP CONSTRAINT $cname ; \n";
 							}
 						}
 
-                        $xch_txt .= "alter table $newname " . 
-                            "exchange partition " . $pspec->{name} .
-                            " with table " . $tname . "; \n";
+                        $xch_txt .= "ALTER TABLE $newname " . 
+                            "EXCHANGE PARTITION " . $pspec->{name} .
+                            " WITH TABLE " . $tname . "; \n";
                     }
 
                     # find all the tables that are children of this table
@@ -1155,7 +1168,7 @@ sub genpartdefs4
 
                 $spec_txt .= "  ";
 				                
-                $spec_txt .= "partition $pspec->{name} "
+                $spec_txt .= "PARTITION $pspec->{name} "
                     if (exists($pspec->{name}) && defined($pspec->{name}));
 
 
@@ -1209,7 +1222,9 @@ sub genpartdefs4
 						$spec_txt .= $pspec->{end}->{original}->{values}->[0];
 					}
     
-                }
+                } # end if type = range
+
+
                 if ($vv->{pby}->{typ} =~ m/list/i)
                 {
                     my $numkeys = scalar(@{$vv->{pby}->{keys}});
@@ -1249,7 +1264,7 @@ sub genpartdefs4
 						}
                     }
                     
-                    $spec_txt .= "values (" . join(", ", @outi) . ")";
+                    $spec_txt .= "VALUES (" . join(", ", @outi) . ")";
                 }
 
             } # end for pspec
@@ -1298,7 +1313,7 @@ sub genpartdef_subtree_fixup
 
                 my $c1 = $child_pby_txt;
 
-                $c1 =~ s/^partition/subpartition/;
+                $c1 =~ s/^partition/subpartition/i;
 
                 # add the subpartition clause...
                 $pby->{pby_txt} .= "\n" . $c1;
@@ -1337,7 +1352,7 @@ sub genpartdef_subtree_fixup
         
         my $child_spec_txt = $reg_tabs->{$tname}->{pby}->{spec_txt};
 
-        $child_spec_txt =~ s/^(\s+)partition/$1subpartition/gm;
+        $child_spec_txt =~ s/^(\s+)partition/$1subpartition/igm;
 
         $child_spec_txt =~ s/^  /    /gm;
 
@@ -1376,9 +1391,9 @@ sub genpartdef_subtree_fixup
             print STDERR "no partition for $tname\n "
                 unless (defined($pname));
 
-            my $t1 = "table $tname"  . "_" . $magic_suffix;
-            my $t2 = "table $parent" . "_" . $magic_suffix .
-                " alter partition $pname";
+            my $t1 = "TABLE $tname"  . "_" . $magic_suffix;
+            my $t2 = "TABLE $parent" . "_" . $magic_suffix .
+                " ALTER PARTITION $pname";
          
             $child_xch_txt =~ s/$t1/$t2/gm;
 
@@ -2234,13 +2249,17 @@ if (1)
 
     my $rowarr = tablelizer($tabdef);
 
+	# build a hash by schema.tablename of all the pg_rules
+	# information.  Later, parse out specific partitioning rules,
+	# parent/child relationships, etc.
     my %reg_tabs;
 
     for my $rr (@{$rowarr})
     {
         if ($rr->{definition} =~ m/AS ON INSERT TO/i)
         {
-#            $reg_tabs{$rr->{Name}} = $rr;
+
+			# NOTE: assume no duplicate INSERT rewrite rules on same table
             $reg_tabs{ $rr->{schemaname} . "." . $rr->{tablename} } = $rr;
 
             $rr->{Schema} = $rr->{schemaname};
@@ -2250,7 +2269,7 @@ if (1)
 
 #	print Data::Dumper->Dump($rowarr),"\n";
 
-
+	# MPP-6488: need to DROP CONSTRAINTS for EXCHANGE.
 	# build hash of all constraints by schema.tablename.  Each element
 	# contains an array of constraint names.
 	my %all_cons; 
@@ -2288,9 +2307,11 @@ if (1)
 			}
 
 		}
+	} # end get all_cons
 
-	}
-
+	# for each table in pg_rules, describe it and get the rewrite
+	# rule, the WHERE clause for the partition rule/check constraint,
+	# and the child table (the target of the INSERT)
     while (my ($kk, $vv) = each (%reg_tabs))
     {
         $psql_str = "psql ";
@@ -2414,7 +2435,7 @@ if (1)
     } # end while each reg_tabs
 
 
-
+	# determine RANGE vs LIST tables
     while (my ($kk, $vv) = each (%reg_tabs))
     {
         if (exists($vv->{rules}))
