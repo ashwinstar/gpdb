@@ -226,55 +226,55 @@ apply_motion(Plan *plan, Query *query)
 					hashExpr = plan->flow->hashExpr;
 					
 					if(hashExpr)
-					foreach(exp1, hashExpr)
-					{
-						AttrNumber	n;
-						bool found_expr = false;
-						/* See if this Expr is a column of the result table */
-						
-						for(n=1;n<=list_length(plan->targetlist);n++)
+						foreach(exp1, hashExpr)
 						{
-							Var		   *new_var = NULL;
-							
-							TargetEntry *target = get_tle_by_resno(plan->targetlist, n);
-							
-							if (!target->resjunk)
-							{
-								/* If subplan expr is a Var, copy to preserve its EXPLAIN info. */
-					            if (IsA(target->expr, Var))
-					            {
-					                new_var = copyObject(target->expr);
-					                new_var->varno = OUTER;
-					                new_var->varattno = n;
-					            }
-					
-					            /*
-						         * Make a Var that references the target list entry at this offset,
-						         * using OUTER as the varno
-						         */
-					            else
-							        new_var = makeVar(OUTER,
-					                                  n,
-					                                  exprType((Node *) target->expr),
-					                                  exprTypmod((Node *) target->expr),
-					                                  0);
-					
-								if (equal(lfirst(exp1),new_var))
-								{
-									/* If it is, use it to partition the result table, to avoid
-									 * unnecessary redistibution of data */
-									targetPolicy->attrs[targetPolicy->nattrs++] = n;
-									found_expr = true;
-									break;
-									
-								}
-								
-							}
-						}
+							AttrNumber	n;
+							bool found_expr = false;
+							/* See if this Expr is a column of the result table */
 						
-						if (!found_expr)
-							break;
-					}
+							for(n=1;n<=list_length(plan->targetlist);n++)
+							{
+								Var		   *new_var = NULL;
+							
+								TargetEntry *target = get_tle_by_resno(plan->targetlist, n);
+							
+								if (!target->resjunk)
+								{
+									/* If subplan expr is a Var, copy to preserve its EXPLAIN info. */
+									if (IsA(target->expr, Var))
+									{
+										new_var = copyObject(target->expr);
+										new_var->varno = OUTER;
+										new_var->varattno = n;
+									}
+					
+									/*
+									 * Make a Var that references the target list entry at this offset,
+									 * using OUTER as the varno
+									 */
+									else
+										new_var = makeVar(OUTER,
+														  n,
+														  exprType((Node *) target->expr),
+														  exprTypmod((Node *) target->expr),
+														  0);
+					
+									if (equal(lfirst(exp1),new_var))
+									{
+										/* If it is, use it to partition the result table, to avoid
+										 * unnecessary redistibution of data */
+										targetPolicy->attrs[targetPolicy->nattrs++] = n;
+										found_expr = true;
+										break;
+									
+									}
+								
+								}
+							}
+						
+							if (!found_expr)
+								break;
+						}
 
 					/* do we know how to partition? */
 					if (targetPolicy->nattrs == 0)
@@ -355,7 +355,7 @@ apply_motion(Plan *plan, Query *query)
                 if (!repartitionPlan(plan, true, false, false, hashExpr))
                     ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
                                     errmsg("Cannot parallelize that SELECT INTO yet")
-                            ));
+								));
 
                 Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 
@@ -397,252 +397,239 @@ apply_motion(Plan *plan, Query *query)
 			break;
 
 		case CMD_INSERT:
+		{
+			switch (targetPolicyType)
 			{
-				switch (targetPolicyType)
+				case POLICYTYPE_PARTITIONED:
 				{
-					case POLICYTYPE_PARTITIONED:
-                    {
-                        List   *hashExpr = NIL;
+					List   *hashExpr = NIL;
 
-						/*
-			             * Make sure the top level flow is partitioned on the
-                         * partitioning key of the target relation.	Since this
-                         * is an INSERT command, the target list will correspond
-                         * to the attributes of the target relation in order.
-			             */
+					/*
+					 * Make sure the top level flow is partitioned on the
+					 * partitioning key of the target relation.	Since this
+					 * is an INSERT command, the target list will correspond
+					 * to the attributes of the target relation in order.
+					 */
 					
 
-						/* Is this plan an all-const insert ? */
-						if (gp_enable_fast_sri && IsA(plan, Result))
-						{
-							ListCell *cell;
-							bool	typesOK=true;
-							Var		*elem;
-							Oid		att_type;
-							PartitionNode *pn;
-							RangeTblEntry	*rte;
-					        Relation		rel;
+					/* Is this plan an all-const insert ? */
+					if (gp_enable_fast_sri && IsA(plan, Result))
+					{
+						ListCell *cell;
+						bool	typesOK=true;
+						Var		*elem;
+						Oid		att_type;
+						PartitionNode *pn;
+						RangeTblEntry	*rte;
+						Relation		rel;
 		
-					        rte = rt_fetch(query->resultRelation, query->rtable);
-        					rel = relation_open(rte->relid, NoLock);
+						rte = rt_fetch(query->resultRelation, query->rtable);
+						rel = relation_open(rte->relid, NoLock);
 
-							/* 1: See if it's partitioned */
-							pn = RelationBuildPartitionDesc(rel, false);
+						/* 1: See if it's partitioned */
+						pn = RelationBuildPartitionDesc(rel, false);
 
-							if (pn && !partition_policies_equal(targetPolicy, pn))
+						if (pn && !partition_policies_equal(targetPolicy, pn))
+						{
+							/* 2: See if partitioning columns are constant */
+							List *partatts = get_partition_attrs(pn);
+							ListCell *lc;
+							bool all_const = true;
+
+							foreach(lc, partatts)
 							{
-								/* 2: See if partitioning columns are constant */
-								List *partatts = get_partition_attrs(pn);
-								ListCell *lc;
-								bool all_const = true;
+								List *tl = plan->targetlist;
+								ListCell *cell;
+								AttrNumber attnum = lfirst_int(lc);
+								bool found = false;
+
+								foreach(cell, tl)
+								{
+									TargetEntry *tle = (TargetEntry *)lfirst(cell);
+
+									Assert(tle->expr);
+									if (tle->resno == attnum)
+									{
+										found = true;
+										if (!IsA(tle->expr, Const))
+											all_const = false;
+										break;
+									}
+								}
+								Assert(found);
+							}
+
+							/* 3: if not, mutate plan to make constant */
+							if (!all_const)
+								plan->targetlist = (List *)make_plan_constant((Node *)plan->targetlist, true);
+
+							/* better be constant now */
+							if (allConstantValuesClause(plan))
+							{
+								bool *nulls;
+								Datum *values;
+								EState *estate = CreateExecutorState();
+								Size sz;
+								ResultRelInfo *rri;
+
+								/* 4: build tuple, look up partitioning key */
+								nulls = palloc0(sizeof(bool) * rel->rd_att->natts);
+								values = palloc(sizeof(Datum) * rel->rd_att->natts);
 
 								foreach(lc, partatts)
 								{
+									AttrNumber attnum = lfirst_int(lc);
 									List *tl = plan->targetlist;
 									ListCell *cell;
-									AttrNumber attnum = lfirst_int(lc);
-									bool found = false;
 
 									foreach(cell, tl)
 									{
 										TargetEntry *tle = (TargetEntry *)lfirst(cell);
 
 										Assert(tle->expr);
+
 										if (tle->resno == attnum)
 										{
-											found = true;
-											if (!IsA(tle->expr, Const))
-												all_const = false;
-											break;
-										}
-									}
-									Assert(found);
-								}
-
-								/* 3: if not, mutate plan to make constant */
-								if (!all_const)
-									plan->targetlist = (List *)make_plan_constant((Node *)plan->targetlist, true);
-
-								/* better be constant now */
-								if (allConstantValuesClause(plan))
-								{
-									bool *nulls;
-									Datum *values;
-									EState *estate = CreateExecutorState();
-        							Size sz;
-									ResultRelInfo *rri;
-
-									/* 4: build tuple, look up partitioning key */
-									nulls = palloc0(sizeof(bool) * rel->rd_att->natts);
-									values = palloc(sizeof(Datum) * rel->rd_att->natts);
-
-									foreach(lc, partatts)
-									{
-										AttrNumber attnum = lfirst_int(lc);
-										List *tl = plan->targetlist;
-										ListCell *cell;
-
-										foreach(cell, tl)
-										{
-											TargetEntry *tle = (TargetEntry *)lfirst(cell);
-
-											Assert(tle->expr);
-
-											if (tle->resno == attnum)
-											{
-												Assert(IsA(tle->expr, Const));
+											Assert(IsA(tle->expr, Const));
 												
-												nulls[attnum - 1] = ((Const *)tle->expr)->constisnull;
-												if (!nulls[attnum - 1])
-													values[attnum - 1] = ((Const *)tle->expr)->constvalue;
-											}
+											nulls[attnum - 1] = ((Const *)tle->expr)->constisnull;
+											if (!nulls[attnum - 1])
+												values[attnum - 1] = ((Const *)tle->expr)->constvalue;
 										}
 									}
-									estate->es_result_partitions = pn;
-							        estate->es_partition_state = makeNode(PartitionState);
-
-							        sz = num_partition_levels(estate->es_result_partitions);
-							        sz *= sizeof(void *);
-							        estate->es_partition_state->amstate = palloc0(sz);
-							        estate->es_partition_state->max_partition_attr =
-						            	max_partition_attr(estate->es_result_partitions);
-							        estate->es_partition_state->result_partition_array_size = 1;
-								    rri = makeNode(ResultRelInfo);
-								    rri->ri_RangeTableIndex = 1;      /* dummy */
-								    rri->ri_RelationDesc = rel;
-
-									estate->es_result_relations = rri;
-									estate->es_num_result_relations = 1;
-									estate->es_result_relation_info = rri;
-									rri = values_get_partition(values, nulls, RelationGetDescr(rel),
-															   estate);
-
-									/* 5: get target policy for destination table */
-									targetPolicy = RelationGetPartitioningKey(rri->ri_RelationDesc);
-
-									if (targetPolicy->ptype != POLICYTYPE_PARTITIONED)
-										elog(ERROR, "policy must be partitioned");
-
-									ExecCloseIndices(rri);
-									heap_close(rri->ri_RelationDesc, NoLock);
-									FreeExecutorState(estate);
 								}
+								estate->es_result_partitions = pn;
+								estate->es_partition_state = makeNode(PartitionState);
 
-							}
-					        relation_close(rel, NoLock);
+								sz = num_partition_levels(estate->es_result_partitions);
+								sz *= sizeof(void *);
+								estate->es_partition_state->amstate = palloc0(sz);
+								estate->es_partition_state->max_partition_attr =
+									max_partition_attr(estate->es_result_partitions);
+								estate->es_partition_state->result_partition_array_size = 1;
+								rri = makeNode(ResultRelInfo);
+								rri->ri_RangeTableIndex = 1;      /* dummy */
+								rri->ri_RelationDesc = rel;
 
-				           	hashExpr = getExprListFromTargetList(plan->targetlist,
-																 targetPolicy->nattrs,
-																 targetPolicy->attrs,
-																 true);
-							/* check the types. */
-							foreach(cell, hashExpr)
-							{
-								Assert(IsA(lfirst(cell), Var));
+								estate->es_result_relations = rri;
+								estate->es_num_result_relations = 1;
+								estate->es_result_relation_info = rri;
+								rri = values_get_partition(values, nulls, RelationGetDescr(rel),
+														   estate);
 
-								elem = (Var *)lfirst(cell);
-								att_type = elem->vartype;
-								/* These are all hashable, but isGreenplumHashable() doesn't know it */
-								switch (att_type)
-								{
-									case INT2ARRAYOID:
-									case INT4ARRAYOID:
-									case INT8ARRAYOID:
-									case FLOAT4ARRAYOID:
-									case FLOAT8ARRAYOID:
-									case REGTYPEARRAYOID:
-										att_type = ANYARRAYOID;
-										/* fall through */
-									default:
-										break;
-								}
+								/* 5: get target policy for destination table */
+								targetPolicy = RelationGetPartitioningKey(rri->ri_RelationDesc);
 
-								if (!isGreenplumDbHashable(att_type))
-								{
-									typesOK=false;
-									break;
-								}
+								if (targetPolicy->ptype != POLICYTYPE_PARTITIONED)
+									elog(ERROR, "policy must be partitioned");
+
+								ExecCloseIndices(rri);
+								heap_close(rri->ri_RelationDesc, NoLock);
+								FreeExecutorState(estate);
 							}
 
-							/* all constants in values clause -- no need to repartition. */
-							if (typesOK && allConstantValuesClause(plan))
+						}
+						relation_close(rel, NoLock);
+
+						hashExpr = getExprListFromTargetList(plan->targetlist,
+															 targetPolicy->nattrs,
+															 targetPolicy->attrs,
+															 true);
+						/* check the types. */
+						foreach(cell, hashExpr)
+						{
+							Assert(IsA(lfirst(cell), Var));
+
+							elem = (Var *)lfirst(cell);
+							att_type = elem->vartype;
+
+							if (!isGreenplumDbHashable(att_type))
 							{
-								Result	*rNode = (Result *)plan;
-								List	*hList = NIL;
-								int		i;
-
-								/* 
-								 * If this table has child tables, we need to
-								 * find out distination partition and see what
-								 * the policy for that is. It might be
-								 * different!
-								 */
-
-								/* build our list */
-								for (i = 0; i < targetPolicy->nattrs; i++)
-								{
-									Assert(targetPolicy->attrs[i] > 0);
-									hList = lappend_int(hList, targetPolicy->attrs[i]);
-								}
-								rNode->hashFilter = true;
-								rNode->hashList = hList;
-
-								/* Build a partitioned flow */
-								plan->flow->flotype = FLOW_PARTITIONED;
-								plan->flow->locustype = CdbLocusType_Hashed;
-								plan->flow->hashExpr = hashExpr;
+								typesOK=false;
+								break;
 							}
 						}
 
-						/*
-						 * If mirroring is enabled, force Redistribute Motion
-						 * even if the query result is already partitioned on the
-						 * same key as the target.  Need this to make sure any
-						 * function calls in the SELECT targetlist are executed
-						 * on primaries only, and the result is then sent to
-						 * primaries and mirrors to be inserted.
-						 *
-						 * If we have a hashFilter in place, the
-						 * motion-node isn't required to preserve
-						 * mirroring.
-						 */
-						if (isFTSEnabled())
-							if (!IsA(plan, Result) || !((Result *)plan)->hashFilter)
-								plan->flow->hashExpr = NIL;
+						/* all constants in values clause -- no need to repartition. */
+						if (typesOK && allConstantValuesClause(plan))
+						{
+							Result	*rNode = (Result *)plan;
+							List	*hList = NIL;
+							int		i;
 
-						if (!hashExpr)
-				           	hashExpr = getExprListFromTargetList(plan->targetlist,
-																 targetPolicy->nattrs,
-																 targetPolicy->attrs,
-																 true);
+							/* 
+							 * If this table has child tables, we need to
+							 * find out destination partition.
+							 *
+							 * See partition check above.
+							 */
+
+
+							/* build our list */
+							for (i = 0; i < targetPolicy->nattrs; i++)
+							{
+								Assert(targetPolicy->attrs[i] > 0);
+								hList = lappend_int(hList, targetPolicy->attrs[i]);
+							}
+							rNode->hashFilter = true;
+							rNode->hashList = hList;
+
+							/* Build a partitioned flow */
+							plan->flow->flotype = FLOW_PARTITIONED;
+							plan->flow->locustype = CdbLocusType_Hashed;
+							plan->flow->hashExpr = hashExpr;
+						}
+					}
+
+					/*
+					 * If mirroring is enabled, force Redistribute Motion
+					 * even if the query result is already partitioned on the
+					 * same key as the target.  Need this to make sure any
+					 * function calls in the SELECT targetlist are executed
+					 * on primaries only, and the result is then sent to
+					 * primaries and mirrors to be inserted.
+					 *
+					 * If we have a hashFilter in place, the
+					 * motion-node isn't required to preserve
+					 * mirroring.
+					 */
+					if (isFTSEnabled())
+						if (!IsA(plan, Result) || !((Result *)plan)->hashFilter)
+							plan->flow->hashExpr = NIL;
+
+					if (!hashExpr)
+						hashExpr = getExprListFromTargetList(plan->targetlist,
+															 targetPolicy->nattrs,
+															 targetPolicy->attrs,
+															 true);
 			
-                        if (!repartitionPlan(plan, true, false, false, hashExpr))
-                            ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-                                            errmsg("Cannot parallelize that INSERT yet")));
-                        break;
-                    }
+					if (!repartitionPlan(plan, true, false, false, hashExpr))
+						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+										errmsg("Cannot parallelize that INSERT yet")));
+					break;
+				}
 
-					case POLICYTYPE_ENTRY:
-                        /* All's well if query result is already on the QD. */
-                        if (plan->flow->flotype == FLOW_SINGLETON &&
-                            plan->flow->segindex < 0)
-                            break;
-
-			            /*
-                         * Query result needs to be brought back to the QD.
-                         * Ask for motion to a single QE.  Later, apply_motion
-                         * will override that to bring it to the QD instead.
-                         */
-                        if (!focusPlan(plan, true, false, false))
-							ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								            errmsg("Cannot parallelize that INSERT yet")));
+				case POLICYTYPE_ENTRY:
+					/* All's well if query result is already on the QD. */
+					if (plan->flow->flotype == FLOW_SINGLETON &&
+						plan->flow->segindex < 0)
 						break;
 
-					default:
-						Insist(0);
-				}
+					/*
+					 * Query result needs to be brought back to the QD.
+					 * Ask for motion to a single QE.  Later, apply_motion
+					 * will override that to bring it to the QD instead.
+					 */
+					if (!focusPlan(plan, true, false, false))
+						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+										errmsg("Cannot parallelize that INSERT yet")));
+					break;
+
+				default:
+					Insist(0);
 			}
-			break;
+		}
+		break;
 
 		case CMD_UPDATE:
 		case CMD_DELETE:
@@ -654,51 +641,48 @@ apply_motion(Plan *plan, Query *query)
 			 * If the table is an entry database table, we reject the query unless the
 			 * flow is a singleton on the entry database.
 			 */
+		{
+			/* Distributed target table? */
+			if (targetPolicyType == POLICYTYPE_PARTITIONED)
 			{
-				/* Distributed target table? */
-                if (targetPolicyType == POLICYTYPE_PARTITIONED)
-                {
-					/*
-					 * Make sure we are not updating any of the partitioning columns
-					 */
-					if (query->commandType == CMD_UPDATE &&
-						doesUpdateAffectPartitionCols(plan,query))
-					{
+				/*
+				 * Make sure we are not updating any of the partitioning columns
+				 */
+				if (query->commandType == CMD_UPDATE &&
+					doesUpdateAffectPartitionCols(plan,query))
+				{
+					ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+									errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns")));
+				}
+				if (plan->flow->flotype != FLOW_PARTITIONED)
+				{
+					ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+									errmsg("Cannot parallelize that %s yet",
+										   query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
+								));
+				}
+			}
 
-						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-										errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns")
-										));
-					}
-					if (plan->flow->flotype != FLOW_PARTITIONED)
-					{
-						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								 errmsg("Cannot parallelize that %s yet",
-										query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
-										));
-					}
-                }
-
-                /* Target table is not distributed.  Must be in entry db. */
-                else
-                {
-					if (plan->flow->flotype == FLOW_PARTITIONED
-						|| plan->flow->flotype == FLOW_REPLICATED
-						|| (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1)
-						)
-					{
-						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								 errmsg("Cannot parallelize that %s yet",
-										query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
-										));
-					}
-					/*
-					* Source is, presumably, a dispatcher singleton.
-					*/
-					plan->flow->req_move = MOVEMENT_NONE;
-					break;
-                }
-            }
-			break;
+			/* Target table is not distributed.  Must be in entry db. */
+			else
+			{
+				if (plan->flow->flotype == FLOW_PARTITIONED ||
+					plan->flow->flotype == FLOW_REPLICATED ||
+					(plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1))
+				{
+					ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+									errmsg("Cannot parallelize that %s yet",
+										   query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
+								));
+				}
+				/*
+				 * Source is, presumably, a dispatcher singleton.
+				 */
+				plan->flow->req_move = MOVEMENT_NONE;
+				break;
+			}
+		}
+		break;
 
 		default:
 			Insist(0);		/* Never see non-DML in here! */
@@ -738,7 +722,7 @@ apply_motion(Plan *plan, Query *query)
                             errhint("The WHERE condition must specify equality "
                                     "between corresponding DISTRIBUTED BY columns "
                                     "of the target table and all joined tables.")
-					));
+						));
 		}
 	}
 
@@ -779,7 +763,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 		return NULL;
 	
     /* Mutate SubPlan manually cause plan_tree_mutator won't visit its plan. */
-    if ( IsA(node, SubPlan) )
+    if (IsA(node, SubPlan))
 	{
 		SubPlan *subplan = (SubPlan*)node;
 		SubPlan *newsub;
@@ -871,14 +855,14 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
         /* If top slice marked as singleton, make it a dispatcher singleton. */
 		if(motion->motionType == MOTIONTYPE_FIXED
-				&& motion->numOutputSegs == 1 
-				&& motion->outputSegIdx[0] >= 0 
-				&& context->sliceDepth == 0)
+		   && motion->numOutputSegs == 1 
+		   && motion->outputSegIdx[0] >= 0 
+		   && context->sliceDepth == 0)
 		{
 			Assert(flow->flotype == FLOW_SINGLETON &&
-					flow->segindex == motion->outputSegIdx[0]);
-					flow->segindex = -1;
-					motion->outputSegIdx[0] = -1;
+				   flow->segindex == motion->outputSegIdx[0]);
+			flow->segindex = -1;
+			motion->outputSegIdx[0] = -1;
 		}
         goto done;
     }
@@ -936,7 +920,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
                                                  sendToSecondary,
                                                  numInputSegs,
                                                  flow->hashExpr
-                                                 );
+				);
             break;
 
         case MOVEMENT_NONE:
