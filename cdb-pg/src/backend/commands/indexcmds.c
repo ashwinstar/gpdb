@@ -427,10 +427,10 @@ DefineIndex(RangeVar *heapRelation,
 			AlterTableInternal(relationId, cmds, false);
 	}
 
-	/*
-	 * Parse AM-specific options, convert to text array form, validate.
-	 */
-	reloptions = transformRelOptions((Datum) 0, options, false, false);
+  	/*
+ 	 * Parse AM-specific options, convert to text array form, validate.
+  	 */
+ 	reloptions = transformRelOptions((Datum) 0, options, false, false);
 
 	(void) index_reloptions(amoptions, reloptions, true);
 

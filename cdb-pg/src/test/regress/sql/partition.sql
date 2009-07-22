@@ -3373,3 +3373,16 @@ alter table basictest1 add partition ff start(10) end(20);
 insert into basictest1 values(10);
 drop table basictest1;
 drop domain domainvarchar, domainnumeric, domainint4, domaintext;
+
+-- Test index inheritance with partitions
+create table ti (i int primary key, j int)
+partition by range (j) 
+(start(1) end(3) every(1));
+select * from pg_indexes where schemaname = 'public' and tablename like 'ti%';
+create index ti_j_idx on ti using bitmap(j);
+select * from pg_indexes where schemaname = 'public' and tablename like 'ti%';
+alter table ti add partition p3 start(3) end(10);
+select * from pg_indexes where schemaname = 'public' and tablename like 'ti%';
+alter table ti split partition p3 at (7) into (partition pnew1, partition pnew2);
+select * from pg_indexes where schemaname = 'public' and tablename like 'ti%';
+drop table ti;

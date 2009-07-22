@@ -15694,7 +15694,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 		l1 = parse_analyze((Node *)ct, NULL, NULL, 0);
 
 		/*
-		 * Look for the first CreateStmt and and generate a GrantStmt
+		 * Look for the first CreateStmt and generate a GrantStmt
 		 * based on the RangeVar in it.
 		 */
 		foreach(lc, l1)
@@ -15777,6 +15777,19 @@ atpxPartAddList(AlteredTableInfo *tab,
 		for_each_cell(lc, lnext(lc))
 		{
 			Query *q = lfirst(lc);
+
+			/*
+			 * If the statement is an expanded index creation statement on the
+			 * master, ignore it. We get into this situation when the master has
+			 * one or more indexes on it which our new partition is inheriting.
+			 */
+			if (IsA(q->utilityStmt, IndexStmt))
+			{
+				IndexStmt *istmt = (IndexStmt *)q->utilityStmt;
+
+				if (RangeVarGetRelid(istmt->relation, true) == RelationGetRelid(rel))
+					continue;
+			}
 
 			/* XXX XXX: fix the first Alter Table Statement to have
 			 * the correct maxpartno.  Whoohoo!!
@@ -18346,6 +18359,7 @@ ATPExecPartSplit(Relation rel,
 		Relation existrel;
 		List *existstorage_opts;
 		StdRdOptions *existopts;
+		ListCell *lc;
 
 		/* Get target meta data */
 		prule = get_part_rule(rel, pid, true, true,
@@ -18530,8 +18544,9 @@ ATPExecPartSplit(Relation rel,
 		/* 1) Create temp table */
 		rv = makeRangeVar(nspname, relname);
 		inh->relation = copyObject(rv);
-        inh->options = list_make2_int(CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
-									  CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS);
+        inh->options = list_make3_int(CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
+									  CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS,
+									  CREATE_TABLE_LIKE_INCLUDING_INDEXES);
 		ct->tableElts = list_make1(inh);
 
 		/* should be unique enough */
@@ -18541,7 +18556,7 @@ ATPExecPartSplit(Relation rel,
 		ct->relKind = RELKIND_RELATION;
 		ct->ownerid = rel->rd_rel->relowner;
 		parsetrees = parse_analyze((Node *)ct, NULL, NULL, 0);
-		Assert(list_length(parsetrees) == 1);
+
 		q = (Query *)linitial(parsetrees);
 		ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
 		CommandCounterIncrement();
@@ -18626,11 +18641,19 @@ ATPExecPartSplit(Relation rel,
 
 		cmd->def = (Node *)mypc;
 		parsetrees = parse_analyze((Node *)ats, NULL, NULL, 0);
-		Assert(list_length(parsetrees) == 1);
-		q = (Query *)linitial(parsetrees);
-
 		heap_close(rel, NoLock);
-		ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+
+		/* 
+		 * Might have expanded to multiple statements if, for example, the
+		 * master table has indexes on it.
+		 */
+		foreach(lc, parsetrees)
+		{
+			q = (Query *)lfirst(lc);
+
+			ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+		}
+
 		rel = heap_open(relid, AccessExclusiveLock);
 		CommandCounterIncrement();
 
