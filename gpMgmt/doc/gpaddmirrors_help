@@ -8,9 +8,16 @@ initially configured without mirroring.
 SYNOPSIS
 *****************************************************
 
-gpaddmirrors [-d <master_data_directory>] [-p <port_offset>] [-s] 
-[-a] [-i <mirror_config_file> | -m <datadir_config_file>] 
-[-B parallel_processes] [-l <logfile_directory>] [-D] 
+gpaddmirrors [-d master_data_directory] -p port_offset 
+[-m datadir_config_file] [-s] [-a] [-B parallel_processes] 
+[-l logfile_directory] [-D]
+
+gpaddmirrors [-d master_data_directory] -m datadir_config_file 
+[-p port_offset] [-s] [-a] [-B parallel_processes] 
+[-l logfile_directory] [-D]
+
+gpaddmirrors [-d master_data_directory] -i mirror_config_file 
+[-s] [-a] [-B parallel_processes] [-l logfile_directory] [-D]
 
 gpaddmirrors -o <output_sample_mirror_config>
 
