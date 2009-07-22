@@ -3874,7 +3874,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			}
 			elog(DEBUG2,"Dispatch Agent checking dispatch results");
 
-			CdbCheckDispatchResult(dispatchThreads, false);
+			CdbCheckDispatchResult(pPrimaryResults, pMirrorResults, dispatchThreads, false);
 			
 			MemoryContextSwitchTo(MessageContext);
 			
@@ -4102,7 +4102,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				}
 
 				/* Wait for all QEs to finish.	Don't cancel. */
-				CdbCheckDispatchResult(dispatchThreads, false);
+				CdbCheckDispatchResult(primaryResults, mirrorResults, dispatchThreads, false);
 				
 				MemoryContextSwitchTo(MessageContext);
 				

@@ -58,12 +58,7 @@
 #include "libpq/libpq-be.h"
 #include "commands/vacuum.h" /* VUpdatedStats */
 #include "cdb/cdbanalyze.h"  /* cdbanalyze_get_columnstats */
-//#undef socket
-//#undef accept
-//#undef connect
-//#undef select
-//#undef recv
-//#undef send
+
 
 extern pthread_t main_tid;
 #ifndef _WIN32
@@ -81,6 +76,11 @@ static bool thread_DispatchOut(DispatchCommandParms		*pParms);
 static void thread_DispatchWait(DispatchCommandParms	*pParms);
 static void thread_DispatchWaitSingle(DispatchCommandParms		*pParms);
 
+static void
+CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
+						  struct SegmentDatabaseDescriptor   ***failedSegDB,
+                          int          *numOfFailed,
+                          bool          cancelUnfinishedWork);
 
 static bool
 shouldStillDispatchCommand(CdbDispatchResult * dispatchResult);
@@ -176,7 +176,8 @@ checkSegmentDown(const char *strCommand, int nsegdb,
 }
 
 /*
- * NOT THREAD SAFE
+ * Clear our "active" flags; so that we know that the writer gangs are busy -- and don't stomp on
+ * internal dispatcher structures. See MPP-6253 and MPP-6579.
  */
 static void
 cdbdisp_clearGangActiveFlag(CdbDispatchResults *primaryResults, CdbDispatchResults *mirrorResults)
@@ -344,7 +345,7 @@ write_log(const char *fmt,...)
 		const char *username = MyProcPort->user_name;
 		if (username == NULL || *username == '\0')
 			username = "";
-		strcat(logprefix,username); // user 
+		strcat(logprefix,username); /* user */
 	}
 	
 	strcat(logprefix,"|");
@@ -358,7 +359,7 @@ write_log(const char *fmt,...)
 	}
 	strcat(logprefix,"|");
 	sprintf(tempbuf,"%d",MyProcPid);
-	strcat(logprefix,tempbuf); // pid
+	strcat(logprefix,tempbuf); /* pid */
 	strcat(logprefix,"|");
 	sprintf(tempbuf,"con%d cmd%d",gp_session_id,gp_command_count);
 	strcat(logprefix,tempbuf);
@@ -909,9 +910,12 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
  * 'cancelOnError' true and are not yet idle will be canceled.
  */
 void
-CdbCheckDispatchResult(struct CdbDispatchCmdThreads  *dispatchThreads, bool cancelUnfinishedWork)
+CdbCheckDispatchResult(struct CdbDispatchResults *pri, struct CdbDispatchResults *mir, 
+					   struct CdbDispatchCmdThreads *dispatchThreads, bool cancelUnfinishedWork)
 {
 	CdbCheckDispatchResultInt(dispatchThreads, NULL, NULL, cancelUnfinishedWork);
+
+	cdbdisp_clearGangActiveFlag(pri, mir);
 	
 	if (log_dispatch_stats)
 		ShowUsage("DISPATCH STATISTICS");
@@ -930,7 +934,7 @@ CdbCheckDispatchResult(struct CdbDispatchCmdThreads  *dispatchThreads, bool canc
 	}
 }
 
-void
+static void
 CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 						  struct SegmentDatabaseDescriptor *** failedSegDB,
 						  int *numOfFailed,
@@ -1214,9 +1218,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 							&primaryResults, &mirrorResults, &dispatchThreads);
 
 	/* Wait for all QEs to finish.	Don't cancel. */
-	CdbCheckDispatchResult(dispatchThreads, false);
-
-	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults);
+	CdbCheckDispatchResult(primaryResults, mirrorResults, dispatchThreads, false);
 
 	resultSets = cdbdisp_returnResults(primaryResults,mirrorResults,errmsgbuf,numresults);
 	
@@ -1337,9 +1339,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	}
 
 	/* Wait for all QEs to finish.	Don't cancel. */
-	CdbCheckDispatchResult(dispatchThreads, false);
-
-	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults);
+	CdbCheckDispatchResult(primaryResults, mirrorResults, dispatchThreads, false);
 
 	if (!gangOK(primaryGang) ||
 		(dispatchToMirrors && mirrorGang && !gangOK(mirrorGang)))
@@ -1534,9 +1534,7 @@ cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
 		return;
 
 	/* Wait for all QEs to finish. Don't cancel them. */
-	CdbCheckDispatchResult(dispatchThreads, false);
-
-	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults);
+	CdbCheckDispatchResult(primaryResults, mirrorResults, dispatchThreads, false);
 
 	/* If no errors, free the CdbDispatchResults objects and return. */
 	if (primaryResults)
@@ -1619,9 +1617,7 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 	 * We need to wait for the threads to finish.  This allows for proper
 	 * cleanup of the results from the async command executions.
 	 */
-	CdbCheckDispatchResult(dispatchThreads, true);   /* cancel any QEs still running */
-
-	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults);
+	CdbCheckDispatchResult(primaryResults, mirrorResults, dispatchThreads, true);   /* cancel any QEs still running */
 
     /*
      * When a QE stops executing a command due to an error, as a
@@ -2586,8 +2582,6 @@ dispatchCommandDtxProtocol(CdbDispatchResult  *dispatchResult,
 	/*
 	 * Submit the command asynchronously.
 	 */
-
-	// UNDONE: Is it ok to use PQsendGpQuery_shared???
 	if (PQsendGpQuery_shared(conn, (char *)query_text, query_text_len) == 0)
 	{
 		char *msg = PQerrorMessage(segdbDesc->conn);
@@ -3479,7 +3473,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	if (nSlices > cdb_max_slices)
 		cdb_max_slices = nSlices;
 	
-	// must have somebody to dispatch to.
+	/* must have somebody to dispatch to. */
 	Assert(sliceTbl != NULL || pQueryParms->primary_gang_id > 0 || pQueryParms->mirror_gang_id > 0);
 	
 	if (DEBUG1 >= log_min_messages)
@@ -3691,7 +3685,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			 iSlice, nSlices);
 
 		/* Cancel any QEs still running, and wait for them to terminate. */
-		CdbCheckDispatchResult(dThreads, true);
+		CdbCheckDispatchResult(pr, mr, dThreads, true);
 
 		/*
 		 * Check and free the results of all gangs. If any QE had an

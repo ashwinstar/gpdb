@@ -1940,13 +1940,15 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		 * the dispatch results in order to tell the nodes below we no longer
 		 * need any more tuples.
 		 */
-		if(!estate->es_got_eos)
+		if (!estate->es_got_eos)
+		{
 			ExecSquelchNode(queryDesc->planstate);
+		}
 
 		/*
 		 * Wait for completion of all QEs.
 		 */
-		CdbCheckDispatchResult(dThreads, estate->cancelUnfinished);
+		CdbCheckDispatchResult(pr, mr, dThreads, estate->cancelUnfinished);
 
 		/* If top slice was delegated to QEs, get num of rows processed. */
 		if (sliceRunsOnQE(currentSlice))

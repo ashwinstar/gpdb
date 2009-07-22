@@ -1207,6 +1207,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			queryDesc->estate->primaryResults)
         {
             struct CdbDispatchResults  *pr = queryDesc->estate->primaryResults;
+            struct CdbDispatchResults  *mr = queryDesc->estate->mirrorResults;
 			struct CdbDispatchCmdThreads  *dThreads = dispatchThreads; 
 
             /* If EXPLAIN ANALYZE, collect execution stats from qExecs. */
@@ -1215,7 +1216,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
                 MemoryContext   savecxt;
 
                 /* Wait for all gangs to finish. */
-                CdbCheckDispatchResult(dThreads, false);	
+                CdbCheckDispatchResult(pr, mr, dThreads, false);	
 
                 /* Allocate buffer to pass extra message text to cdbexplain. */
                 savecxt = MemoryContextSwitchTo(gbl_queryDesc->estate->es_query_cxt);
@@ -1262,8 +1263,11 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
             cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
             if (!explainRecvStats)
             {
+				struct CdbDispatchResults  *pr = queryDesc->estate->primaryResults;
+				struct CdbDispatchResults  *mr = queryDesc->estate->mirrorResults;
+
                 /* Wait for all gangs to finish.  Cancel slowpokes. */
-                CdbCheckDispatchResult(dispatchThreads, true);
+                CdbCheckDispatchResult(pr, mr, dispatchThreads, true);
 
                 cdbexplain_recvExecStats(planstate,
                                          queryDesc->estate->primaryResults,

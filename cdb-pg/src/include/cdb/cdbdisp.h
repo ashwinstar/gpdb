@@ -212,13 +212,8 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads,
  * 'cancelOnError' true and are not yet idle will be canceled.
  */
 void
-CdbCheckDispatchResult(struct CdbDispatchCmdThreads *dispatchThreads, bool cancelUnfinishedWork);
-
-void
-CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
-						  struct SegmentDatabaseDescriptor   ***failedSegDB,
-                          int          *numOfFailed,
-                          bool          cancelUnfinishedWork);
+CdbCheckDispatchResult(struct CdbDispatchResults *pri, struct CdbDispatchResults *mir, 
+					   struct CdbDispatchCmdThreads *dispatchThreads, bool cancelUnfinishedWork);
 
 /*--------------------------------------------------------------------*/
 
