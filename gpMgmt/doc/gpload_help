@@ -194,6 +194,9 @@ GPLOAD:
     - UPDATE_CONDITION: '<boolean_condition>'
     - MAPPING:
              <target_column_name>: <source_column_name> | '<expression>'
+   SQL:
+    - BEFORE: "<sql_command>"
+    - AFTER: "<sql_command>"
 
 
 *****************************************************
@@ -412,6 +415,15 @@ MAPPING - Optional. If a mapping is specified, it overrides the default
           SELECT list of a query, such as a constant value, a column 
           reference, an operator invocation, a function call, and so on.
 
+SQL - Optional. Defines SQL commands to run before and/or after the load 
+      operation. Commands that contain spaces or special characters must 
+      be enclosed in quotes. You can specify multiple BEFORE and/or 
+      AFTER commands. List commands in the order of desired execution.
+
+BEFORE - Optional. An SQL command to run before the load operation starts.
+
+AFTER - Optional. An SQL command to run after the load operation completes.
+
 
 *****************************************************
 LOG FILE FORMAT
@@ -474,6 +486,9 @@ GPLOAD:
    OUTPUT:
     - TABLE: payables.expenses
     - MODE: INSERT
+   SQL:
+    - BEFORE: "INSERT INTO audit VALUES('start', current_timestamp)"
+    - AFTER: "INSERT INTO audit VALUES('end', current_timestamp)"
 
 
 *****************************************************
