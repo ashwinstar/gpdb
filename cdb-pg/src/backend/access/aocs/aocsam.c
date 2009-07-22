@@ -84,7 +84,6 @@ static void open_ds_for_seg(Relation rel, int32 segno,
 static int open_next_scan_seg(AOCSScanDesc scan)
 {
         int nvp = scan->aos_rel->rd_att->natts;
-        AOTupleId *aotid = (AOTupleId *) &scan->cdb_fake_ctid;
 
         while(++scan->cur_seg < scan->total_seg)
         {
@@ -96,8 +95,6 @@ static int open_next_scan_seg(AOCSScanDesc scan)
                                         scan->compType, scan->compLevel, scan->blocksz,
                                         scan->ds, nvp, scan->proj);
 
-                        AOTupleIdInit_Init(aotid);
-                        AOTupleIdInit_segmentFileNum(aotid, scan->cur_seg); 
                         scan->cur_seg_row = 0; 
 
                         for(i=0; i<nvp; ++i)
@@ -258,6 +255,8 @@ ReadNext:
                         }
                 }
 
+                AOTupleIdInit_Init((AOTupleId *) &scan->cdb_fake_ctid); 
+                AOTupleIdInit_segmentFileNum((AOTupleId*) &scan->cdb_fake_ctid, scan->cur_seg+1); 
                 AOTupleIdInit_rowNum((AOTupleId *) &scan->cdb_fake_ctid, ++scan->cur_seg_row);
 
                 /* OK, I got the tuple.  Read it out */
