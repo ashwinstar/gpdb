@@ -603,7 +603,7 @@ class SyncDataThread(Thread):
                                  self.failed_qe['hostname']))
                 
         # sychronize pool_array
-        gpmlib.log_info('Start to synchronize data between primary segment (%s:%s dbid=%s) and mirror segment (%s:%s dbid=%s)' % 
+        gpmlib.log_info('Starting synchronization of data between active segment (%s:%s dbid=%s) and failed segment (%s:%s dbid=%s)' % 
                         (self.active_qe['hostname'], self.active_qe['datadir'], self.active_qe['dbid'],
                          self.pool_array['hostname'], self.pool_array['datadir'], self.pool_array['dbid']))
 
