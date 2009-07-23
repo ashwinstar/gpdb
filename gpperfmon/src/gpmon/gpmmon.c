@@ -49,7 +49,7 @@ int verbose = 0;		  /* == opt.v */
 int very_verbose = 0;		  /* == opt.V */
 int quantum = 15;		  /* == opt.q */
 int min_query_time = 60;	  /* == opt.m */
-int min_detailed_query_time = 60; /* == opt.d */ 
+int min_detailed_query_time = 60; /* == opt.d */
 apr_status_t harvest_failure = 0;
 
 #define SET_MAXFD(fd)  if (fd < opt.max_fd) ; else opt.max_fd = fd
@@ -75,7 +75,7 @@ static void usage(const char* msg)
     fprintf(stderr, "\toptions:\n");
     fprintf(stderr, "\t-?         : print this help screen\n");
     fprintf(stderr, "\t--version  : print version information\n\n");
-    if (msg) 
+    if (msg)
 	fprintf(stderr, "%s\n\n", msg);
 
     exit(msg ? 1 : 0);
@@ -129,7 +129,7 @@ static apr_status_t recvpkt(int sock, gpmon_packet_t* pkt);
 
 /** ------------------------------------------------------------
    After we sent a 'D'ump command, gpsmon will send us packets thru
-   the TCP connection. This function gets called whenever a packet 
+   the TCP connection. This function gets called whenever a packet
    arrives.
 */
 static void recv_from_gx(SOCKET sock, short event, void* arg)
@@ -140,7 +140,7 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
     gpmon_packet_t* pkt = 0;
     gpmon_spin_t* spin = 0;
 
-    TR2(("recv_from_gx sock %d host %s (%s:%d)\n", sock, 
+    TR2(("recv_from_gx sock %d host %s (%s:%d)\n", sock,
 	 h->hostname, h->ipstr, ax.port));
 
     if (! (event & EV_READ))
@@ -164,7 +164,7 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 		}
 		p += n;
 		if (p == (char*) &pktbuf) {
-		    TR1(("at %s: connection dropped by host %s (%s:%d) [set eflag]\n", 
+		    TR1(("at %s: connection dropped by host %s (%s:%d) [set eflag]\n",
 			FLINE, h->hostname, h->ipstr, ax.port));
 		    h->eflag = 1;
 		    break;
@@ -195,7 +195,7 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 
 /** ------------------------------------------------------------
    This is where we setup events for TCP connections to gpsmon and
-   service those TCP connections, i.e. receiving qexec/qlog packets 
+   service those TCP connections, i.e. receiving qexec/qlog packets
    following a dump command. We send the dump command in gpmmon_main().
 
    Event thread:
@@ -204,9 +204,9 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 		check if we need to set up new event
 
 	On ready:
-		if error: 
+		if error:
 			close(event->ev_fd);
-		if readok: 
+		if readok:
 			read a packet
 */
 static void* event_main(apr_thread_t* thread_, void* arg_)
@@ -243,10 +243,10 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 		    if (!h->event) {
 			/* set up the event */
 			h->event = &h->_event;
-			event_set(h->event, h->sock, EV_READ | EV_PERSIST, 
+			event_set(h->event, h->sock, EV_READ | EV_PERSIST,
 				  recv_from_gx, h);
 			if (event_add(h->event, 0)) {
-			    gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), 
+			    gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
 					 "event_add failed");
 			}
 		    }
@@ -302,7 +302,7 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port)
     sa.sin_family = AF_INET;
     sa.sin_addr.s_addr = inet_addr(ipstr);
     sa.sin_port = htons(port);
-	    
+
     if (-1 == connect(sock, (void*) &sa, sizeof(sa))) {
 	e = APR_FROM_OS_ERROR(errno);
 	gpmon_warningx(FLINE, e, "connect()");
@@ -313,10 +313,10 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port)
     pkt.version = GPMON_PACKET_VERSION;
     pkt.pkttype = GPMON_PKTTYPE_HELLO;
     pkt.u.hello.signature = ax.signature;
-    if (0 != (e = sendpkt(sock, &pkt))) 
+    if (0 != (e = sendpkt(sock, &pkt)))
 	goto bail;
 
-    if (0 != (e = recvpkt(sock, &pkt))) 
+    if (0 != (e = recvpkt(sock, &pkt)))
 	goto bail;
 
     if (pkt.pkttype != GPMON_PKTTYPE_HELLO) {
@@ -332,7 +332,7 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port)
     if (sock >= 0) closesocket(sock);
     return e;
 }
-			
+
 
 /** ------------------------------------------------------------
    Connection management thread:
@@ -388,7 +388,7 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 			    h->hostname, ax.gpperfmonhome, opt.max_log_size, h->data_dir,
 			    (opt.V ? "-V" : (opt.v ? "-v" : "")),
 			    ax.port);
-                    TR0(("Connection to %s lost.  Restarting gpsmon", h->hostname));
+                    TR0(("Connection to %s lost.  Restarting gpsmon.\n", h->hostname));
 		    TR1(("%s\n", line));
 		    fp[j] = popen(line, "w");
 		    if (fp[j]) {
@@ -404,7 +404,7 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 		}
 	    }
 	}
-	
+
 	// for any broken connection, try connect
 	if (9 == (loop % 16)) {
 	    for (i = 0; i < count_broken; i++) {
@@ -413,7 +413,7 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 
 		TR1(("connecting to %s (%s:%d)\n", h->hostname, h->ipstr, ax.port));
 		if (0 != (e = conm_connect(&sock, h->ipstr, ax.port))) {
-		    gpmon_warningx(FLINE, e, "cannot connect to %s (%s:%d)", 
+		    gpmon_warningx(FLINE, e, "cannot connect to %s (%s:%d)",
 				   h->hostname, h->ipstr, ax.port);
 		    continue;
 		}
@@ -469,7 +469,7 @@ static void gpmmon_main(void)
     if (0 != (e = apr_generate_random_bytes((void*) &ax.signature, sizeof(ax.signature)))) {
 	gpmon_fatalx(FLINE, e, "apr_generate_random_bytes failed");
     }
-    if (ax.signature < 0) 
+    if (ax.signature < 0)
 	ax.signature = ~ax.signature;
 
     /* get pgpid */
@@ -541,7 +541,7 @@ static void gpmmon_main(void)
 	    oldagg = ax.agg;
 	    ax.agg = newagg;
 	    gpmon_spin_unlock(&ax.agg_spin);
-	    
+
 	    /* destroy the old agg */
 	    agg_destroy(oldagg);
 	}
@@ -570,7 +570,7 @@ static void gpmmon_main(void)
 	    TR2(("checking for configuration changes...\n"));
 	    int confchanges = getconfig();
 	    int hostchanges = checkhostlist();
-	    if (confchanges || hostchanges) 
+	    if (confchanges || hostchanges)
 		ax.restart = 1;
 	}
     }
@@ -612,7 +612,7 @@ int read_conf_file(char *conffile)
             if (apr_strnatcasecmp(p, "[gpmmon]") == 0)
                 section = section_found = 1;
             else
-                section = 0;    
+                section = 0;
         }
         else /* config param */
         {
@@ -663,7 +663,7 @@ int read_conf_file(char *conffile)
 			{
 				opt.max_log_size = apr_atoi64(pVal);
 			}
-            /* TODO: Log rotation settings 
+            /* TODO: Log rotation settings
             else if (apr_strnatcasecmp(pName, "log_rotation_age") == 0)
             {
 
@@ -691,7 +691,7 @@ int read_conf_file(char *conffile)
     if (!section_found)
         usage("Error: Failed to find [gpmmon] section in configuration file");
 
-    if (! (10 <= opt.q && opt.q <= 60)) 
+    if (! (10 <= opt.q && opt.q <= 60))
         usage("Error: quantum value must be between 10 and 60");
 
     if (opt.m < 0)
@@ -766,7 +766,7 @@ static void parse_command_line(int argc, const char* const argv[])
         case 256: print_version(); break;
         }
     }
-    
+
     if (e != APR_EOF)
         usage("Error: illegal arguments");
 
@@ -777,7 +777,7 @@ static void parse_command_line(int argc, const char* const argv[])
 }
 
 
-int main(int argc, const char* const argv[]) 
+int main(int argc, const char* const argv[])
 {
     /* save argc, argv and startup dir so we can restart */
     opt.argc = argc;
@@ -794,7 +794,7 @@ int main(int argc, const char* const argv[])
     read_conf_file(opt.conf_file);
     {
         char log_file[MAXPATHLEN + 1];
-        snprintf(log_file, MAXPATHLEN, "%s/%s", opt.log_dir, "gpmmon.log"); 
+        snprintf(log_file, MAXPATHLEN, "%s/%s", opt.log_dir, "gpmmon.log");
         freopen(log_file, "w", stderr);
         freopen(log_file, "w", stdout);
     }
@@ -845,8 +845,8 @@ int main(int argc, const char* const argv[])
                 *pdir = 0;
                 if (-1 == mkdir(work_dir, 0700) && EEXIST != errno)
                 {
-                    gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), 
-                                 "cannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);                    
+                    gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
+                                 "cannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
                 }
                 *pdir = '/';
             }
@@ -887,7 +887,7 @@ static int pgcheck(int pid)
 
     sprintf(line, "ps -p %d", pid);
     fp = popen(line, "r");
-    if (!fp) 
+    if (!fp)
 	return 0;
 
     SET_MAXFD(fileno(fp));
@@ -949,10 +949,10 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 
     hostarray = apr_array_make(pool, 4, sizeof(host_t));
     CHECKMEM(hostarray);
-    
+
     htab = apr_hash_make(pool);
     CHECKMEM(htab);
-    
+
     /* Connect to database, get segment hosts from gp_configuration */
     gpdb_get_hostlist(&host_count, &hosts, &data_dirs, ax.pool);
 
@@ -970,15 +970,15 @@ static void gethostlist(host_t** rettab, int* rettabsz)
         gpmon_fatal(FLINE, "No valid hosts in gp_configuration.");
     }
 
-    /* popen ssh hostname, put host_t entries into htab to 
+    /* popen ssh hostname, put host_t entries into htab to
        eliminate duplicate */
     for (;;) {
         host_t host[BATCH];
         FILE* fp[BATCH];
         int i;
         host_t* rec;
-       	
-	memset(fp, 0, sizeof(fp)); 
+
+	memset(fp, 0, sizeof(fp));
         memset(host, 0, sizeof(host));
         for (i = 0; i < BATCH; i++) {
             rec = apr_array_pop(hostarray);
@@ -990,31 +990,31 @@ static void gethostlist(host_t** rettab, int* rettabsz)
             fp[i] = popen(line, "r");
             if (! fp[i]) {
 		SET_MAXFD(fileno(fp[i]));
-                gpmon_warning(FLINE, "cannot ssh to %s ... skipped\n", 
+                gpmon_warning(FLINE, "cannot ssh to %s ... skipped\n",
                               host[i].hostname);
                 continue;
             }
         }
 
-        
+
         for (i = 0; i < BATCH && host[i].hostname; i++) {
             if (! fp[i]) continue;
             line[sizeof(line)-1] = 0;
             if (! fgets(line, sizeof(line), fp[i])) {
-                gpmon_warning(FLINE, "cannot read hostname of %s", 
+                gpmon_warning(FLINE, "cannot read hostname of %s",
                               host[i].hostname);
                 continue;
             }
             if (line[sizeof(line)-1]) {
                 line[sizeof(line)-1] = 0;
-                gpmon_warning(FLINE, 
+                gpmon_warning(FLINE,
                               "hostname of %s is too long\n\t%s ...",
                               host[i].hostname, line);
                 continue;
             }
-            
+
             host[i].realhostname = gpmon_trim(line);
-            rec = apr_hash_get(htab, host[i].realhostname, 
+            rec = apr_hash_get(htab, host[i].realhostname,
                                APR_HASH_KEY_STRING);
             if (rec) {
                 /* FIXME:throw a coin to determine which hostname to use */
@@ -1031,7 +1031,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
                 CHECKMEM(rec->realhostname);
 				rec->data_dir = apr_pstrdup(pool, rec->data_dir);
 				CHECKMEM(rec->data_dir);
-                apr_hash_set(htab, rec->realhostname, 
+                apr_hash_set(htab, rec->realhostname,
                              APR_HASH_KEY_STRING, rec);
             }
         }
@@ -1045,7 +1045,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 		}
 	}
 
-        if (i < BATCH) 
+        if (i < BATCH)
             break;
     }
 
@@ -1055,14 +1055,14 @@ static void gethostlist(host_t** rettab, int* rettabsz)
         int i;
         host_t* ret = malloc(sizeof(host_t) * (max+1));
         CHECKMEM(ret);
-        
+
         /* NOTE: ret and its contents are malloc-ed */
-        
-        for (i = 0, hi = apr_hash_first(pool, htab); 
+
+        for (i = 0, hi = apr_hash_first(pool, htab);
              hi; hi = apr_hash_next(hi), i++) {
             void *val;
             struct hostent *hp;
-            
+
             apr_hash_this(hi, 0, 0, &val);
             memcpy(&ret[i], val, sizeof(ret[i]));
             ret[i].hostname = strdup(ret[i].hostname);
@@ -1071,20 +1071,20 @@ static void gethostlist(host_t** rettab, int* rettabsz)
             CHECKMEM(ret[i].realhostname);
             hp = gethostbyname(ret[i].hostname);
             if (! hp) {
-                gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), 
-                             "cannot resolve host %s", 
+                gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
+                             "cannot resolve host %s",
                              ret[i].hostname);
             }
-            ret[i].ipstr = 
+            ret[i].ipstr =
                 strdup(inet_ntoa(*(struct in_addr*) hp->h_addr_list[0]));
             CHECKMEM(ret[i].ipstr);
         }
         memset(&ret[max], 0, sizeof(ret[max]));
-        
+
         *rettab = ret;
         *rettabsz = max;
     }
-    
+
     apr_pool_destroy(pool);
 }
 
@@ -1118,13 +1118,13 @@ static apr_status_t recvpkt(int sock, gpmon_packet_t* pkt)
 	int n = recv(sock, p, q - p, 0);
 	if (n == -1) {
 	    switch (errno) {
-	    case EINTR: case EAGAIN: 
+	    case EINTR: case EAGAIN:
 		continue;
 	    }
 	    return APR_FROM_OS_ERROR(errno);
 	}
 	p += n;
-	if (n == 0) 
+	if (n == 0)
 	    return APR_FROM_OS_ERROR(EINTR);
     }
 
@@ -1141,7 +1141,7 @@ static int getconfig(void)
     static apr_pool_t *pool = NULL;
 
     int port = gpdb_get_gpmon_port();
-    if (ax.port != port) 
+    if (ax.port != port)
     {
         ax.port = port;
         changed = 1;
@@ -1155,7 +1155,7 @@ static int getconfig(void)
     }
 
     gpdb_get_master_data_dir(&hostname, &master_data_directory, pool);
-    
+
     if (ax.master_data_directory == NULL)
     {
         ax.master_data_directory = strdup(master_data_directory);
@@ -1163,7 +1163,7 @@ static int getconfig(void)
     }
     else
     {
-        if (apr_strnatcmp(ax.master_data_directory, 
+        if (apr_strnatcmp(ax.master_data_directory,
                           master_data_directory) != 0)
         {
             /* for now a change to master data directory
