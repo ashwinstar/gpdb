@@ -3386,3 +3386,16 @@ select * from pg_indexes where schemaname = 'public' and tablename like 'ti%';
 alter table ti split partition p3 at (7) into (partition pnew1, partition pnew2);
 select * from pg_indexes where schemaname = 'public' and tablename like 'ti%';
 drop table ti;
+
+-- MPP-6611, make sure rename works with default partitions
+create table it (i int, j int) partition by range(i) 
+subpartition by range(j) subpartition template(start(1) end(10) every(5))
+(start(1) end(3) every(1));
+alter table it rename to newit;
+select schemaname, tablename from pg_tables where schemaname = 'public' and tablename like 'newit%';
+alter table newit add default partition def;
+select schemaname, tablename from pg_tables where schemaname = 'public' and tablename like 'newit%';
+alter table newit rename to anotherit;
+select schemaname, tablename from pg_tables where schemaname = 'public' and tablename like
+'anotherit%';
+drop table anotherit;

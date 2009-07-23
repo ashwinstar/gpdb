@@ -408,9 +408,9 @@ static char *rel_get_part_path_pretty(Oid relid,
 									  char *separator,
 									  char *lastsep);
 
-static List *
-atpxRenameList(Relation rel, PartitionNode *pNode,
-			   char *old_parentname, const char *new_parentname, int *skipped);
+static List *atpxRenameList(Relation rel, PartitionNode *pNode,
+							char *old_parentname, const char *new_parentname,
+							int *skipped);
 static RangeVar *make_temp_table_name(Relation rel, BackendId id);
 static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
 								List *opts, List **hidden_types);
@@ -17804,6 +17804,82 @@ static void atpxSkipper(PartitionNode *pNode, int *skipped)
 } /* end atpxSkipper */
 
 static List *
+build_rename_part_recurse(PartitionRule *rule, const char *old_parentname,
+						  const char *new_parentname,
+						  int *skipped)
+{
+
+	RangeVar 		*rv;
+	Relation		 rel;
+	char *relname = NULL;
+	char newRelNameBuf[(NAMEDATALEN*2)];
+	List *l1 = NIL;
+
+	rel = heap_open(rule->parchildrelid, AccessShareLock);
+
+	relname = pstrdup(RelationGetRelationName(rel));
+
+	rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
+					  relname);
+
+	/* unlock, because we have a lock on the master */
+	heap_close(rel, AccessShareLock);
+
+	/* 
+	 * The child name should contain the old parent name as a
+	 * prefix - check the length and compare to make sure.
+	 *
+	 * To build the new child name, just use the new name as a
+	 * prefix, and use the remainder of the child name (the part
+	 * after the old parent name prefix) as the suffix.
+	 */
+	if (strlen(old_parentname) > strlen(relname))
+	{
+		if (skipped)
+			*skipped += 1;
+
+		atpxSkipper(rule->children, skipped);
+	}
+	else
+	{
+		if (0 != (strncmp(old_parentname, relname, strlen(old_parentname))))
+		{
+			if (skipped)
+				*skipped += 1;
+			atpxSkipper(rule->children, skipped);
+		}
+
+		snprintf(newRelNameBuf, sizeof(newRelNameBuf), "%s%s",
+				 new_parentname, relname + strlen(old_parentname));
+
+		if (strlen(newRelNameBuf) > NAMEDATALEN)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("relation name \"%s\" for child partition "
+							"is too long",
+							newRelNameBuf)));
+	
+	
+		l1 = lappend(l1, list_make2(rv, pstrdup(newRelNameBuf)));
+	
+		/* add the child lists next (not first) */
+		{
+			List *l2 = NIL;
+	
+			if (rule->children)
+				l2 = atpxRenameList(rel, rule->children,
+									relname, newRelNameBuf, skipped);
+	
+			if (l2)
+			{
+				l1 = list_concat(l1, l2);
+			}
+		}
+	}
+	return l1;
+}
+
+static List *
 atpxRenameList(Relation rel, PartitionNode *pNode,
 			   char *old_parentname, const char *new_parentname, int *skipped)
 {
@@ -17817,6 +17893,13 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 	foreach(lc, pNode->rules)
 	{
 		PartitionRule 	*rule = lfirst(lc);
+
+		l1 = list_concat(l1,
+						 build_rename_part_recurse(rule,
+												   old_parentname,
+												   new_parentname,
+												   skipped));
+#if 0
 		RangeVar 		*rv;
 		Relation		 rel;
 		char *relname = NULL;
@@ -17894,13 +17977,20 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 
 	l_loop_skip:
 		rule = NULL; /* need a dummy place to hang the label */
-
+#endif
 	} /* end foreach */
 
 	/* and the default partition */
 	if (pNode->default_part)
 	{
 		PartitionRule 	*rule = pNode->default_part;
+
+		l1 = list_concat(l1,
+						 build_rename_part_recurse(rule,
+												   old_parentname,
+												   new_parentname,
+												   skipped));
+#if 0
 		RangeVar 		*rv;
 		Relation		 rel;
 		char *relname = NULL;
@@ -17915,7 +18005,7 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 
 		heap_close(rel, NoLock);
 
-		if (strlen(old_parentname) < strlen(relname))
+		if (strlen(old_parentname) > strlen(relname))
 		{
 			if (skipped) *skipped += 1;
 			atpxSkipper(rule->children, skipped);
@@ -17956,11 +18046,9 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 					l1 = l2;
 			}
 		}
-
+#endif
 
 	}
-
-	l_fin_rename:
 
 	return l1;
 } /* end atpxRenameList */

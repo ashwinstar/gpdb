@@ -7693,3 +7693,63 @@ select * from pg_indexes where schemaname = 'public' and tablename like 'ti%';
 (10 rows)
 
 drop table ti;
+-- MPP-6611, make sure rename works with default partitions
+create table it (i int, j int) partition by range(i) 
+subpartition by range(j) subpartition template(start(1) end(10) every(5))
+(start(1) end(3) every(1));
+NOTICE:  CREATE TABLE will create partition "it_1_prt_1" for table "it"
+NOTICE:  CREATE TABLE will create partition "it_1_prt_2" for table "it"
+NOTICE:  CREATE TABLE will create partition "it_1_prt_1_2_prt_1" for table "it_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "it_1_prt_1_2_prt_2" for table "it_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "it_1_prt_2_2_prt_1" for table "it_1_prt_2"
+NOTICE:  CREATE TABLE will create partition "it_1_prt_2_2_prt_2" for table "it_1_prt_2"
+alter table it rename to newit;
+select schemaname, tablename from pg_tables where schemaname = 'public' and tablename like 'newit%';
+ schemaname |       tablename       
+------------+-----------------------
+ public     | newit
+ public     | newit_1_prt_1
+ public     | newit_1_prt_1_2_prt_1
+ public     | newit_1_prt_1_2_prt_2
+ public     | newit_1_prt_2
+ public     | newit_1_prt_2_2_prt_1
+ public     | newit_1_prt_2_2_prt_2
+(7 rows)
+
+alter table newit add default partition def;
+NOTICE:  CREATE TABLE will create partition "newit_1_prt_def" for table "newit"
+NOTICE:  CREATE TABLE will create partition "newit_1_prt_def_2_prt_1" for table "newit_1_prt_def"
+NOTICE:  CREATE TABLE will create partition "newit_1_prt_def_2_prt_2" for table "newit_1_prt_def"
+select schemaname, tablename from pg_tables where schemaname = 'public' and tablename like 'newit%';
+ schemaname |        tablename        
+------------+-------------------------
+ public     | newit
+ public     | newit_1_prt_1
+ public     | newit_1_prt_1_2_prt_1
+ public     | newit_1_prt_1_2_prt_2
+ public     | newit_1_prt_2
+ public     | newit_1_prt_2_2_prt_1
+ public     | newit_1_prt_2_2_prt_2
+ public     | newit_1_prt_def
+ public     | newit_1_prt_def_2_prt_1
+ public     | newit_1_prt_def_2_prt_2
+(10 rows)
+
+alter table newit rename to anotherit;
+select schemaname, tablename from pg_tables where schemaname = 'public' and tablename like
+'anotherit%';
+ schemaname |          tablename          
+------------+-----------------------------
+ public     | anotherit
+ public     | anotherit_1_prt_1
+ public     | anotherit_1_prt_1_2_prt_1
+ public     | anotherit_1_prt_1_2_prt_2
+ public     | anotherit_1_prt_2
+ public     | anotherit_1_prt_2_2_prt_1
+ public     | anotherit_1_prt_2_2_prt_2
+ public     | anotherit_1_prt_def
+ public     | anotherit_1_prt_def_2_prt_1
+ public     | anotherit_1_prt_def_2_prt_2
+(10 rows)
+
+drop table anotherit;
