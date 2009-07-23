@@ -17848,31 +17848,30 @@ build_rename_part_recurse(PartitionRule *rule, const char *old_parentname,
 				*skipped += 1;
 			atpxSkipper(rule->children, skipped);
 		}
-
-		snprintf(newRelNameBuf, sizeof(newRelNameBuf), "%s%s",
-				 new_parentname, relname + strlen(old_parentname));
-
-		if (strlen(newRelNameBuf) > NAMEDATALEN)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("relation name \"%s\" for child partition "
-							"is too long",
-							newRelNameBuf)));
-	
-	
-		l1 = lappend(l1, list_make2(rv, pstrdup(newRelNameBuf)));
-	
-		/* add the child lists next (not first) */
+		else
 		{
-			List *l2 = NIL;
+			snprintf(newRelNameBuf, sizeof(newRelNameBuf), "%s%s",
+					 new_parentname, relname + strlen(old_parentname));
 	
-			if (rule->children)
-				l2 = atpxRenameList(rel, rule->children,
-									relname, newRelNameBuf, skipped);
-	
-			if (l2)
+			if (strlen(newRelNameBuf) > NAMEDATALEN)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("relation name \"%s\" for child partition "
+								"is too long",
+								newRelNameBuf)));
+		
+			l1 = lappend(l1, list_make2(rv, pstrdup(newRelNameBuf)));
+		
+			/* add the child lists next (not first) */
 			{
-				l1 = list_concat(l1, l2);
+				List *l2 = NIL;
+		
+				if (rule->children)
+					l2 = atpxRenameList(rel, rule->children,
+										relname, newRelNameBuf, skipped);
+		
+				if (l2)
+					l1 = list_concat(l1, l2);
 			}
 		}
 	}
