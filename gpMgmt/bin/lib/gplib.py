@@ -215,7 +215,11 @@ class Session(cmd.Cmd):
             for host in hostList:
                 self.hostList.append(host)
         if userName: self.userName=userName  #We have a new userName to use
-            
+
+        # MPP-6583.  Save off term type and set to nothing before creating ssh process
+        origTERM = os.getenv('TERM', None)
+        os.putenv('TERM', '')
+        
         for host in hostList:
             self.hostList.append(host)
             p = pxssh.pxssh()
@@ -223,6 +227,10 @@ class Session(cmd.Cmd):
             p.x_peer = host
             p.x_pid = p.pid
             self.pxssh.append(p)
+            
+        # Restore terminal type
+        if origTERM:
+            os.putenv('TERM', origTERM)
 
         for p in self.pxssh:
             if self.verbose: print '[INFO] login %s' % p.x_peer
