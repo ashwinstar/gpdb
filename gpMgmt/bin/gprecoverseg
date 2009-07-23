@@ -1600,7 +1600,7 @@ try:
                     for invalid_segment in failed_instance_array:
                         gpmlib.log_info('    %s:%s' % (invalid_segment['hostname'], invalid_segment['datadir']))
                     gpmlib.log_info('gp_fault_action is readonly.  Generally segments marked as invalid when in readonly')
-                    gpmlib.log_info('can be recovered by restarting the Greenplum Database instance.')
+                    gpmlib.log_info('can be recovered by running \'gpstart --recover\'.')
                     gpmlib.log_info('If you want to force recovery of these segments, please run:')
                     gpmlib.log_info('    gprecoverseg -F')
                     sys.exit(0)
@@ -1642,10 +1642,11 @@ try:
         # yes or no
         if not opt['-a']:
             if opt['-F'] and fault_action == 'readonly':
-                failed_instances_info = ''
+                gpmlib.log_info('gp_fault_action is readonly.  The following segments can most likely be')
+                gpmlib.log_info('recovered by running \'gpstart --recover\':')
                 for invalid_segment in failed_instance_array:
-                    failed_instances_info = failed_instances_info + ('    %s:%s\n' % (invalid_segment['hostname'], invalid_segment['datadir']))
-                if not yesorno('gp_fault_action is readonly.  The following segments can most likely be recovered by\nrestarting the Greenplum Database instance:\n%s\nContinue with forced recovery of these segments? [yY|nN]' % failed_instances_info, 'User aborted'):
+                    gpmlib.log_info('    %s:%s\n' % (invalid_segment['hostname'], invalid_segment['datadir']))                
+                if not yesorno('Continue with forced recovery of these segments? [yY|nN]', 'User aborted'):
                     sys.exit(1)
 
             # display parameter setting
