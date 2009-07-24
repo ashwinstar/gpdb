@@ -97,16 +97,18 @@ aix5_ppc_64_BLD_CFLAGS=-maix64
 aix5_ppc_32_BLD_CFLAGS=
 BLD_CFLAGS=$($(BLD_ARCH)_BLD_CFLAGS)
 
-aix5_ppc_64_BLD_LDFLAGS=-Wl,-bbigtoc
+aix5_ppc_64_BLD_LDFLAGS=-maix64 -Wl,-bbigtoc
 rhel5_x86_32_BLD_LDFLAGS=-m32
 BLD_LDFLAGS=$($(BLD_ARCH)_BLD_LDFLAGS)
 
 # See http://www.postgresql.org/docs/faqs.FAQ_AIX.html for an explanation of this
 ifeq "$(BLD_ARCH)" "aix5_ppc_64"
 export OBJECT_MODE=64
+export CONFIG_SHELL=/usr/bin/bash
 endif
 ifeq "$(BLD_ARCH)" "aix5_ppc_32"
 export OBJECT_MODE=32
+export CONFIG_SHELL=/usr/bin/bash
 endif
 
 BLD_BITS:=$(strip $(findstring 32,$(BLD_ARCH)) $(findstring 64,$(BLD_ARCH)))

@@ -197,9 +197,14 @@ CONFIGFLAGS+= --with-r
 endif
 endif
 
+# Configure in the extra path AIX requires for pthread support
+aix5_ppc_64_PTHREADS_LIB_DIR=/usr/lib/threads
+aix5_ppc_32_PTHREADS_LIB_DIR=/usr/lib/threads
+BLD_PTHREADS_LIB_DIR=$($(BLD_ARCH)_PTHREADS_LIB_DIR)
+
 # Configure in thirdparty libraries from the ext/ directory
 CONFIG_INCLUDES=$(BLD_THIRDPARTY_INCLUDE_DIR)
-CONFIG_LIBRARIES=$(strip $(BLD_THIRDPARTY_LIB_DIR) $(BLD_CXX_LIB_DIR))
+CONFIG_LIBRARIES=$(strip $(BLD_THIRDPARTY_LIB_DIR) $(BLD_CXX_LIB_DIR) $(BLD_PTHREADS_LIB_DIR))
 CONFIGFLAGS+= --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
 
 # Configure in "authlibs"...
@@ -225,9 +230,14 @@ CONFIGFLAGS+= $(CONFIG_ADDITIONS)
 RECONFIG :
 	rm -f $(ISCONFIG)
 
+# avoid AIX's restricted shell
+aix5_ppc_64_CONFIG_SHELL=/usr/bin/bash
+aix5_ppc_32_CONFIG_SHELL=/usr/bin/bash
+BLD_CONFIG_SHELL=$($(BLD_ARCH)_CONFIG_SHELL)
+
 $(ISCONFIG) : $(GPPGDIR)/configure $(ISCONFIG).in env.sh
 	rm -rf $(INSTLOC)
-	cd $(GPPGDIR) && CC="$(strip gcc $(BLD_CFLAGS))" CFLAGS=$(INSTCFLAGS) ./configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
+	cd $(GPPGDIR) && CC="$(strip gcc $(BLD_CFLAGS))" CFLAGS=$(INSTCFLAGS) $(BLD_CONFIG_SHELL) ./configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
 
 #---------------------------------------------------------------------
 # autoconf
@@ -290,12 +300,12 @@ endef
 
 ifeq "$(BLD_GPDB_BUILDSET)" "aix_subset"
 define BUILD_STEPS
-	@rm -rf $(INSTLOC)
-	@$(MAKE) mkgpcc
-	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
-	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
-	@$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
+	rm -rf $(INSTLOC)
+	$(MAKE) mkgpcc
+	$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
+	$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
+	$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
 
 endef
 endif
@@ -639,8 +649,8 @@ else
 ifneq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
 	# ---- (for AIX) load LIBPATH with the PostgreSQL library set and build the ODBC drivers ----
 	AUTHLIBS_HOME=`pwd`; export AUTHLIBS_HOME ; \
-	export LIBPATH=$(BLD_THIRDPARTY_DIR)/postgresql-8.3.7/lib:$(LIBPATH); \
-	  export PG_CONFIG=$(BLD_THIRDPARTY_DIR)/postgresql-8.3.7/bin/pg_config; \
+	export LIBPATH=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/lib:$(LIBPATH); \
+	  export PG_CONFIG=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/bin/pg_config; \
 	  cd $(BLD_TOP)/client/odbc/src && \
 	    $(MAKE) all
 else
