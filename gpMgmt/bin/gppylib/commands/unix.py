@@ -145,7 +145,7 @@ class SolarisPlatform(GenericPlatform):
         return 'en_US.UTF-8'
     
     def getDiskFreeCmd(self):
-        return findCmdInPath('df') + " -b"
+        return findCmdInPath('df') + " -bk"
     
     def getTarCmd(self):
         return findCmdInPath('gtar')
