@@ -1066,7 +1066,8 @@ jetpack:
 	# ---- build and install jetpack ----
 	@cd $(JETPACK) && $(MAKE)
 	mkdir -p $(INSTLOC)/lib/jetpack
-	cp -p jetpack/jetpack.sql $(INSTLOC)/lib/jetpack
+	cp -p $(JETPACK)/jetpack.sql $(INSTLOC)/lib/jetpack
+	cp -p $(JETPACK)/README_JETPACK.txt $(INSTLOC)/lib/jetpack/README
 
 HOMEDEP :
 	@#If the HOME variable isn't set, then execute the usage() path
