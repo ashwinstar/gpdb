@@ -875,6 +875,9 @@ sub genpartdefs2
 
 									delete $pspec->{singleton_range};
 
+#									print Data::Dumper->Dump([$pspec]), "\n";
+
+
                                 }
 
                             }
@@ -1145,6 +1148,11 @@ sub genpartdefs4
                         $xch_txt .= "ALTER TABLE $newname " . 
                             "EXCHANGE PARTITION " . $pspec->{name} .
                             " WITH TABLE " . $tname . "; \n";
+
+						# after the exchange, fix the inheritance
+                        $xch_txt .= "ALTER TABLE $tname " . 
+							" INHERIT $kk ; \n";
+
                     }
 
                     # find all the tables that are children of this table
@@ -1527,7 +1535,14 @@ EOF_formatfix
                 {
                     my $cln_txt = $vv->{pby}->{cleanup_txt};
 
-                    print "\n", $cln_txt;
+                    if (exists($vv->{pby}->{is_subpartition}))
+                    {
+                        print "\n-- table $kk is subpartition of $vv->{pby}->{parent}\n";
+                    }
+					else
+					{
+						print "\n", $cln_txt;
+					}
                 }
 
 
