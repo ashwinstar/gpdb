@@ -35,6 +35,7 @@ extern void DefineIndex(RangeVar *heapRelation,
 			bool skip_build,
 			bool quiet,
 			bool concurrent,
+			bool part_expanded, /* MPP */
 			IndexStmt *stmt /* MPP */);
 extern void RemoveIndex(RangeVar *relation, DropBehavior behavior);
 extern void ReindexIndex(ReindexStmt *stmt);

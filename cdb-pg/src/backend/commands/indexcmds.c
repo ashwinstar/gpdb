@@ -119,6 +119,7 @@ DefineIndex(RangeVar *heapRelation,
 			bool skip_build,
 			bool quiet,
 			bool concurrent,
+			bool part_expanded,
 			IndexStmt *stmt)
 {
 	Oid		   *classObjectId;
@@ -275,6 +276,7 @@ DefineIndex(RangeVar *heapRelation,
 												   "key",
 												   namespaceId);
 		}
+		stmt->idxname = indexRelationName;
 	}
 
 	/*
@@ -393,6 +395,7 @@ DefineIndex(RangeVar *heapRelation,
 
 					cmd->subtype = AT_SetNotNull;
 					cmd->name = key->name;
+					cmd->part_expanded = true;
 
 					cmds = lappend(cmds, cmd);
 				}

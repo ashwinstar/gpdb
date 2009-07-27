@@ -3399,3 +3399,10 @@ alter table newit rename to anotherit;
 select schemaname, tablename from pg_tables where schemaname = 'public' and tablename like
 'anotherit%';
 drop table anotherit;
+
+-- test table constraint inheritance
+create table it (i int) partition by range(i) (start(1) end(3) every(1));
+select schemaname, tablename, indexname from pg_indexes where schemaname = 'public' and tablename like 'it%';
+alter table it add primary key(i);
+select schemaname, tablename, indexname from pg_indexes where schemaname = 'public' and tablename like 'it%';
+drop table it;

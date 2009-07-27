@@ -813,6 +813,7 @@ _readAlterTableCmd(void)
 	READ_NODE_FIELD(def);
 	READ_NODE_FIELD(transform);
 	READ_ENUM_FIELD(behavior, DropBehavior);
+	READ_BOOL_FIELD(part_expanded);
 
 	READ_DONE();
 }

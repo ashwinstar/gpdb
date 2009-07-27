@@ -302,7 +302,7 @@ static void ATExecDropColumn(Relation rel, const char *colName,
 				 DropBehavior behavior,
 				 bool recurse, bool recursing);
 static void ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
-			   IndexStmt *stmt, bool is_rebuild);
+			   IndexStmt *stmt, bool is_rebuild, bool part_expanded);
 static void ATExecAddConstraint(AlteredTableInfo *tab, Relation rel,
 					Node *newConstraint);
 static void ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
@@ -3192,8 +3192,9 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_SetNotNull:		/* ALTER COLUMN SET NOT NULL */
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
+			if (!cmd->part_expanded && !recursing)
+				ATPartitionCheck(rel, cmd->subtype);
 			/* No command-specific prep needed */
 			pass = AT_PASS_ADD_CONSTR;
 			break;
@@ -3221,7 +3222,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_AddIndex:		/* ADD INDEX */
 			ATSimplePermissions(rel, false);
-			/* This command never recurses */
+			/* Any recursion for partitioning is done in ATExecAddIndex() itself */
 			/* No command-specific prep needed */
 			pass = AT_PASS_ADD_INDEX;
 			break;
@@ -4339,10 +4340,12 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			ATExecDropColumn(rel, cmd->name, cmd->behavior, true, false);
 			break;
 		case AT_AddIndex:		/* ADD INDEX */
-			ATExecAddIndex(tab, rel, (IndexStmt *) cmd->def, false);
+			ATExecAddIndex(tab, rel, (IndexStmt *) cmd->def, false,
+						   cmd->part_expanded);
 			break;
 		case AT_ReAddIndex:		/* ADD INDEX */
-			ATExecAddIndex(tab, rel, (IndexStmt *) cmd->def, true);
+			ATExecAddIndex(tab, rel, (IndexStmt *) cmd->def, true,
+						   cmd->part_expanded);
 			break;
 		case AT_AddConstraint:	/* ADD CONSTRAINT */
 			ATExecAddConstraint(tab, rel, cmd->def);
@@ -6374,7 +6377,7 @@ ATExecDropColumn(Relation rel, const char *colName,
  */
 static void
 ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
-			   IndexStmt *stmt, bool is_rebuild)
+			   IndexStmt *stmt, bool is_rebuild, bool part_expanded)
 {
 	bool		check_rights;
 	bool		skip_build;
@@ -6410,7 +6413,84 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 				skip_build,
 				quiet,
 				false,
+				part_expanded,
 				stmt);
+
+	/* 
+	 * If we're the master and this is a partitioned table, cascade index
+	 * creation for all children.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH &&
+		rel_is_partitioned(RelationGetRelid(rel)))
+	{
+		List *children = find_all_inheritors(RelationGetRelid(rel));
+		ListCell *lc;
+		bool prefix_match = false;
+		char *pname = RelationGetRelationName(rel);
+		char *iname = stmt->idxname ? stmt->idxname : "idx";
+		DestReceiver *dest = None_Receiver;
+
+		/* is the parent relation name a prefix of the index name? */
+		if (strlen(iname) > strlen(pname) &&
+			strncmp(pname, iname, strlen(pname)) == 0)
+			prefix_match = true;
+
+		foreach(lc, children)
+		{
+			Oid relid = lfirst_oid(lc);
+			Relation crel;
+			IndexStmt *istmt;
+			AlterTableStmt *ats;
+			AlterTableCmd *atc;
+			RangeVar *rv;
+			char *idxname;
+
+			if (relid == RelationGetRelid(rel))
+				continue;
+
+ 			crel = heap_open(relid, AccessShareLock);
+			istmt = copyObject(stmt);
+			istmt->idxOids = NIL;
+
+			ats = makeNode(AlterTableStmt);
+			atc = makeNode(AlterTableCmd);
+
+			rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
+							  get_rel_name(relid));
+			istmt->relation = rv;
+			if (prefix_match)
+			{
+				/* 
+				 * If the next character in the index name is '_', absorb
+				 * it, as ChooseRelationName() will add another.
+				 */
+				int off = 0;
+				if (iname[strlen(pname)] == '_')
+					off = 1;
+				idxname = ChooseRelationName(RelationGetRelationName(crel),
+											 NULL,
+											 (iname + strlen(pname) + off),
+											 RelationGetNamespace(crel));
+			}
+			else
+				idxname = ChooseRelationName(RelationGetRelationName(crel),
+											 NULL,
+											 iname,
+											 RelationGetNamespace(crel));
+			istmt->idxname = idxname;
+			atc->subtype = AT_AddIndex;
+			atc->def = (Node *)istmt;
+			atc->part_expanded = true;
+
+			ats->relation = copyObject(istmt->relation);
+			ats->cmds = list_make1(atc);
+			ats->relkind = OBJECT_TABLE;
+
+			heap_close(crel, AccessShareLock); /* already locked master */
+
+			ProcessUtility((Node *)ats, NULL, dest, NULL);
+		}
+	}
 }
 
 /*

@@ -709,6 +709,7 @@ _readAlterTableCmd(const char ** str)
 	READ_NODE_FIELD(def);
 	READ_NODE_FIELD(transform);
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
+	READ_BOOL_FIELD(part_expanded);
 	READ_DONE();
 }
 

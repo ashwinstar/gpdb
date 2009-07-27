@@ -1993,6 +1993,7 @@ _outAlterTableCmd(StringInfo str, AlterTableCmd *node)
 	WRITE_NODE_FIELD(def);
 	WRITE_NODE_FIELD(transform);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
+	WRITE_BOOL_FIELD(part_expanded);
 }
 
 static void

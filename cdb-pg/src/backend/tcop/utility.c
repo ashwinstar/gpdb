@@ -993,6 +993,7 @@ ProcessUtility(Node *parsetree,
 							false,		/* skip_build */
 							false,		/* quiet */
 							stmt->concurrent,	/* concurrent */
+							false, /* expanded from partitioning? */
 							stmt);
 			}
 			break;
