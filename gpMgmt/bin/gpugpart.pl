@@ -766,6 +766,10 @@ sub genpartdefs2
 
                             if ($v2 =~ m/^\d+$/)
                             {
+								# MPP-6662: recalculate the fixup each
+								# time to avoid daylight savings time
+								# problems for 2006-10-29, 2007-11-04
+								# (ie 25 hour days)
                                 if (1)
                                 {
                                     my $pspec2 = $vv->{pby}->{pspec}->[$psc+1];
@@ -800,7 +804,11 @@ sub genpartdefs2
                             }
                             elsif ($v2 =~ m/\:\:date$/)
                             {
-                                unless (defined($magic_interval_fixup))
+								# MPP-6662: recalculate the fixup each
+								# time to avoid daylight savings time
+								# problems for 2006-10-29, 2007-11-04
+								# (ie 25 hour days)
+								if (1)
                                 {
                                     my $pspec2 = $vv->{pby}->{pspec}->[$psc+1];
 
