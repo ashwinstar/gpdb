@@ -301,6 +301,7 @@ endef
 ifeq "$(BLD_GPDB_BUILDSET)" "aix_subset"
 define BUILD_STEPS
 	rm -rf $(INSTLOC)
+	cd $(GPPGDIR)/src/include/ && $(MAKE) install
 	$(MAKE) mkgpcc
 	$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	$(MAKE) copylibs INSTLOC=$(INSTLOC)
