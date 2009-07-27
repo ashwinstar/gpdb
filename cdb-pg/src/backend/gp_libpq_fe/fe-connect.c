@@ -40,7 +40,10 @@
 #undef near
 #endif
 #define near
+#define WIN32_LEAN_AND_MEAN
+#define Interval Interval_x
 #include <shlobj.h>
+#undef Interval
 #else
 #include <sys/socket.h>
 #include <netdb.h>
