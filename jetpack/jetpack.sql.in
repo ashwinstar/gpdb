@@ -457,43 +457,43 @@ REVOKE ALL ON TABLE %%JETPACK_PREFIX%%log_command_timings FROM public;
 
 
 --------------------------------------------------------------------------------
--- GUC specific views
+-- PARAM specific views
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 -- @type: 
---		%%JETPACK_PREFIX%%guc_setting_t
+--		%%JETPACK_PREFIX%%param_setting_t
 --
 -- @doc:
---		Record type to combine segment id, guc's name and guc's value
+--		Record type to combine segment id, param's name and param's value
 --		
 --------------------------------------------------------------------------------
-CREATE TYPE %%JETPACK_PREFIX%%guc_setting_t
+CREATE TYPE %%JETPACK_PREFIX%%param_setting_t
 AS 
 (
-	gucsegment int, 
-	gucname text, 
-	gucvalue text
+	paramsegment int, 
+	paramname text, 
+	paramvalue text
 );
 
 
 --------------------------------------------------------------------------------
 -- @function: 
---		%%JETPACK_PREFIX_AUX%%guc_local_setting
+--		%%JETPACK_PREFIX_AUX%%param_local_setting
 -- @in:
---		varchar - name of GUC
+--		varchar - name of PARAM
 -- @out:
 --		int - segment id
---		text - name of GUC
---		text - value of GUC
+--		text - name of PARAM
+--		text - value of PARAM
 --
 -- @doc:
---		Evaluate current_setting for a GUC; function is immutable and may be
+--		Evaluate current_setting for a PARAM; function is immutable and may be
 --		executed on segments;
 --		
 --------------------------------------------------------------------------------
-CREATE FUNCTION %%JETPACK_PREFIX_AUX%%guc_local_setting(varchar)
-RETURNS SETOF %%JETPACK_PREFIX%%guc_setting_t
+CREATE FUNCTION %%JETPACK_PREFIX_AUX%%param_local_setting(varchar)
+RETURNS SETOF %%JETPACK_PREFIX%%param_setting_t
 AS
 $$
 	SELECT gp_execution_segment(), $1, current_setting($1)::text;
@@ -501,52 +501,52 @@ $$
 LANGUAGE SQL
 IMMUTABLE;
 
-GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%guc_local_setting(varchar) TO public;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%param_local_setting(varchar) TO public;
 
 
 --------------------------------------------------------------------------------
 -- @function: 
---		%%JETPACK_PREFIX%%guc_setting
+--		%%JETPACK_PREFIX%%param_setting
 -- @in:
---		varchar - name of GUC
+--		varchar - name of PARAM
 -- @out:
 --		int - segment id
---		text - name of GUC
---		text - value of GUC
+--		text - name of PARAM
+--		text - value of PARAM
 --
 -- @doc:
---		Collect value of a GUC from all segments
+--		Collect value of a PARAM from all segments
 --		
 --------------------------------------------------------------------------------
-CREATE FUNCTION %%JETPACK_PREFIX%%guc_setting(varchar)
-RETURNS SETOF %%JETPACK_PREFIX%%guc_setting_t
+CREATE FUNCTION %%JETPACK_PREFIX%%param_setting(varchar)
+RETURNS SETOF %%JETPACK_PREFIX%%param_setting_t
 AS
 $$
 DECLARE
-	gucsettings %%JETPACK_PREFIX%%guc_setting_t;
-	gucdummy record;
+	paramsettings %%JETPACK_PREFIX%%param_setting_t;
+	paramdummy record;
 	
 BEGIN
-	-- attempt local execution first to validate the name of the GUC
-	SELECT %%JETPACK_PREFIX_AUX%%guc_local_setting($1) INTO gucdummy;
+	-- attempt local execution first to validate the name of the PARAM
+	SELECT %%JETPACK_PREFIX_AUX%%param_local_setting($1) INTO paramdummy;
 
-	FOR gucsettings IN
+	FOR paramsettings IN
 		SELECT gs.*
-		FROM %%JETPACK_PREFIX_AUX%%localid, %%JETPACK_PREFIX_AUX%%guc_local_setting($1) AS gs
+		FROM %%JETPACK_PREFIX_AUX%%localid, %%JETPACK_PREFIX_AUX%%param_local_setting($1) AS gs
 		
 		UNION ALL
 		
 		SELECT gs.*
-		FROM %%JETPACK_PREFIX_AUX%%masterid, %%JETPACK_PREFIX_AUX%%guc_local_setting($1) AS gs
+		FROM %%JETPACK_PREFIX_AUX%%masterid, %%JETPACK_PREFIX_AUX%%param_local_setting($1) AS gs
 		
 	LOOP
-		RETURN NEXT gucsettings;
+		RETURN NEXT paramsettings;
 	END LOOP;
 END
 $$
 LANGUAGE plpgSQL;
 
-GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX%%guc_setting(varchar) TO public;
+GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX%%param_setting(varchar) TO public;
 
 
 --------------------------------------------------------------------------------
