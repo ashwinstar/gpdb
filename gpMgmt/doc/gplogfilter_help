@@ -77,6 +77,13 @@ PATTERN MATCHING OPTIONS
 Matching of alphabetic characters is case sensitive 
 by default unless proceeded by the --case=ignore option.
 
+-C '<string>' | --columns='<string>'
+
+Selects specific columns from the log file.  Specify the
+desired columns as a comma-delimited string of column numbers
+beginning with 1, where the second column from left is 2,
+the third is 3, and so on.
+
 
 -f '<string>' | --find='<string>'
 
