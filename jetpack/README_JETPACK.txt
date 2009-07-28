@@ -283,17 +283,17 @@ described in this documentation.
 
    **************************************************************************
 
-    FUNCTION NAME: gp_guc_setting('parameter_name')
+    FUNCTION NAME: gp_param_setting('parameter_name')
 
     DESCRIPTION: When passed the name of a server configuration parameter,
                  returns a row of the following fields for each segment:
-                 * gucsegment - The segment content id (only active segments 
+                 * paramsegment - The segment content id (only active segments 
                                 are shown). The master content id is always -1.
-                 * gucname - The name of the configuration parameter.
-                 * gucvalue - The value set for that parameter.
+                 * paramname - The name of the configuration parameter.
+                 * paramvalue - The value set for that parameter.
 
    EXAMPLE: 
-            SELECT * FROM gp_guc_setting('max_connections');
+            SELECT * FROM gp_param_setting('max_connections');
 
 
    **************************************************************************
