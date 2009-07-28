@@ -2565,7 +2565,7 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
                   int stacksize, bool amsyslogger)
 {
 #ifndef WIN32
-#if (!defined(__darwin__))
+#if (!defined(__darwin__) && !defined(_AIX))
     int stack_no;
     const int SYMBOL_SIZE = 512;
     char symbol[SYMBOL_SIZE]; /* a reasonable size for a symbol */

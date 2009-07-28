@@ -29,7 +29,7 @@
  */
 #include "postgres.h"
 #ifndef WIN32
-#include <sys/fcntl.h>
+#include <fcntl.h>
 #else
 #include <io.h>
 #endif 

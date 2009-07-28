@@ -35,6 +35,10 @@
 #include "libpq/pqformat.h"
 #include "storage/ipc.h"
 
+#if defined(_AIX)
+int     getpeereid(int, uid_t *__restrict__, gid_t *__restrict__);
+#endif
+
 /*----------------------------------------------------------------
  * Global authentication functions 
  *----------------------------------------------------------------
@@ -74,7 +78,7 @@ static int  authident(hbaPort *port);
 
 static int	CheckPAMAuth(Port *port, char *user, char *password);
 
-#ifdef pg_on_solaris
+#if defined(pg_on_solaris) || (_AIX)
 static int pam_passwd_conv_proc(int num_msg, struct pam_message **msg,
                     struct pam_response **resp, void *appdata_ptr);
 #else
@@ -1874,7 +1878,7 @@ authident(hbaPort *port)
  */
 
 
-#ifdef pg_on_solaris
+#if defined(pg_on_solaris) || defined(_AIX)
 static int
 pam_passwd_conv_proc(int num_msg, struct pam_message **msg,
 					struct pam_response **resp, void *appdata_ptr)
