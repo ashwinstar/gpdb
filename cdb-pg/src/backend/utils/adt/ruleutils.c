@@ -6125,15 +6125,25 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 				}
 				else
 				{
-					write_out_rule(rule, pn, first_every_rule->parrangestart,
+					/* MPP-6297: write out the "every" rule (based
+					 * on the first one), then clear it if we are
+					 * done 
+					 */
+					write_out_rule(first_every_rule, pn, 
+								   first_every_rule->parrangestart,
 								   prev_rule->parrangeend,
 								   first_every_rule->parrangeevery,
-			   					   head, body, true, &needcomma, &first_rule, leveldone,
+			   					   head, body, true, &needcomma, &first_rule, 
+								   leveldone,
 								   first_every_rule->children);
 					if (rule->parrangeevery)
 					{
 						prev_rule = first_every_rule = rule;
 						continue;
+					}
+					else
+					{
+						first_every_rule = NULL;							
 					}
 				}
 			}
@@ -6145,7 +6155,7 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 					   rule->parrangeevery, head, body, false, &needcomma,
 					   &first_rule, leveldone,
 					   rule->children);
-	}
+	} /* end foreach */
 
 	if (first_every_rule)
 	{
