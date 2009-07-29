@@ -18,7 +18,10 @@
 
 #include "access/heapam.h"
 #include "catalog/heap.h"
+#include "catalog/pg_am.h"
+#include "catalog/pg_amop.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -2690,6 +2693,56 @@ addAllTargetsToSortList(ParseState *pstate, List *sortlist,
 }
 
 /*
+ * Is the operator specified in USING <op> a btree sorting operator
+ * (either < or >). We determine that the operator has these properties
+ * by looking up pg_amop for the operator AM properties. If the operator
+ * doesn't implement the < or > btree strategies, error out. If it does,
+ * make sure that the operator is actual in btree op class.
+ */
+static bool
+sort_op_can_sort(Oid opid)
+{
+	CatCList *catlist;
+	int i;
+
+	catlist = SearchSysCacheList(AMOPOPID, 1,
+								 ObjectIdGetDatum(opid),
+								 0, 0, 0);
+	if (catlist->n_members == 0)
+		return false;
+
+	for (i = 0; i < catlist->n_members; i++)
+	{
+		HeapTuple tuple = &catlist->members[i]->tuple;
+		Form_pg_amop amop = (Form_pg_amop)GETSTRUCT(tuple);
+		
+		if (amop->amopstrategy == BTLessStrategyNumber ||
+			amop->amopstrategy == BTGreaterStrategyNumber)
+		{
+			Form_pg_opclass opcl;
+
+			tuple = SearchSysCache(CLAOID,
+								   ObjectIdGetDatum(amop->amopclaid),
+								   0, 0, 0);
+
+			if (!HeapTupleIsValid(tuple))
+				return false;
+
+			opcl = (Form_pg_opclass)GETSTRUCT(tuple);
+			if (opcl->opcamid == BTREE_AM_OID)
+			{
+				ReleaseSysCache(tuple);
+				ReleaseSysCacheList(catlist);
+				return true;
+			}
+			ReleaseSysCache(tuple);
+		}
+	}
+	ReleaseSysCacheList(catlist);
+	return false;
+}
+
+/*
  * addTargetToSortList
  *		If the given targetlist entry isn't already in the ORDER BY list,
  *		add it to the end of the list, using the sortop with given name
@@ -2741,6 +2794,13 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 													  restype,
 													  restype,
 													  false);
+				if (!sort_op_can_sort(sortcl->sortop))
+					ereport(ERROR,
+							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					   		 errmsg("operator %s is not a valid ordering operator",
+							  		strVal(llast(sortby_opname))),
+						 			errhint("Ordering operators must be \"<\" or \">\" members of btree operator families.")));
+
 				break;
 			default:
 				elog(ERROR, "unrecognized sortby_kind: %d", sortby_kind);
