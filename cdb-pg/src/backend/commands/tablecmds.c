@@ -16025,17 +16025,11 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 	}
 
 	/* let split and exchange through */
-	if (!(atc->subtype == AT_PartExchange || atc->subtype == AT_PartSplit ||
-		  AT_SetDistributedBy) &&
+	if (!(atc->subtype == AT_PartExchange ||
+		  atc->subtype == AT_PartSplit ||
+		  atc->subtype == AT_SetDistributedBy) &&
 		Gp_role != GP_ROLE_DISPATCH)
 		return;
-/* 
-	if (!((atc->subtype == AT_PartExchange) || 
-		  (atc->subtype == AT_PartSplit) ||
-		  (atc->subtype == AT_SetDistributedBy)) &&
-		Gp_role != GP_ROLE_DISPATCH)
-		return;
-*/
 
 	switch(atc->subtype)
 	{
