@@ -1,18 +1,17 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/alter_domain.sgml,v 1.20.2.1 2007/05/11 20:17:31 tgl Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/alter_domain.sgml,v 1.24 2008/11/14 10:22:45 petere Exp $
 PostgreSQL documentation
 -->
 
 <refentry id="SQL-ALTERDOMAIN">
  <refmeta>
   <refentrytitle id="sql-alterdomain-title">ALTER DOMAIN</refentrytitle>
+  <manvolnum>7</manvolnum>
   <refmiscinfo>SQL - Language Statements</refmiscinfo>
  </refmeta>
 
  <refnamediv>
-  <refname>
-   ALTER DOMAIN
-  </refname>
+  <refname>ALTER DOMAIN</refname>
   <refpurpose>
    change the definition of a domain
   </refpurpose>
@@ -64,7 +63,7 @@ ALTER DOMAIN <replaceable class="PARAMETER">name</replaceable>
     <listitem>
      <para>
       These forms change whether a domain is marked to allow NULL
-      values or to reject NULL values.  You may only <literal>SET NOT NULL</>
+      values or to reject NULL values.  You can only <literal>SET NOT NULL</>
       when the columns using the domain contain no null values.
      </para>
     </listitem>

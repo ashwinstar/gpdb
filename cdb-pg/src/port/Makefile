@@ -65,6 +65,12 @@ libpgport_srv.a: $(LIBOBJS_SRV)
 %_srv.o: %.c
 	$(CC) $(CFLAGS) $(subst -DFRONTEND,, $(CPPFLAGS)) -c $< -o $@
 
+# Dependency is to ensure that path changes propagate
+
+path.o: path.c pg_config_paths.h
+
+path_srv.o: path.c pg_config_paths.h
+
 # No thread flags for server version
 thread_srv.o: thread.c
 	$(CC) $(CFLAGS) $(subst -DFRONTEND,, $(CPPFLAGS)) -c $< -o $@

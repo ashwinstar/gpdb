@@ -6,11 +6,11 @@ Along with this file you will find the complete source to the above Greenplum pr
 versions of all of the third-party libraries that they use.  In addition, you will need the following
 tools:
 
-autoconf	2.59 on Linux, 2.61 on Solaris
+autoconf	2.59 or later.  autoconf 2.63 preferred.
 binutils	2.15
-bison		1.875 or later
+bison		1.875 or later.  bison 2.4.1 preferred.
 diffutils	2.8.1
-flex		2.5.4
+flex		2.5.4a or later.  flex 2.5.35 preferred.
 gcc		4.1.1 on CentOS and Solaris, 4.1.2 on SuSE
 gfortran	4.1.1 on CentOS and Solaris, 4.1.2 on SuSE
 greptools	2.5.1 on Linux, 2.5 on Solaris

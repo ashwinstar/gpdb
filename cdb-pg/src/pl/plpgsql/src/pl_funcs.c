@@ -14,7 +14,6 @@
  */
 
 #include "plpgsql.h"
-#include "pl.tab.h"
 
 #include <ctype.h>
 
@@ -126,9 +125,15 @@ plpgsql_ns_init(void)
 
 
 /* ----------
- * plpgsql_ns_setlocal			Tell plpgsql_ns_lookup to or to
- *					not look into the current level
- *					only.
+ * plpgsql_ns_setlocal			Tell plpgsql_ns_lookup whether to
+ *					look into the current level only.
+ *
+ * This is a crock, but in the current design we need it because scan.l
+ * initiates name lookup, and the scanner does not know whether we are
+ * examining a name being declared in a DECLARE section.  For that case
+ * we only want to know if there is a conflicting name earlier in the
+ * same DECLARE section.  So the grammar must temporarily set local mode
+ * before scanning decl_varnames.
  * ----------
  */
 bool

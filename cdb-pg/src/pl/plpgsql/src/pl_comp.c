@@ -17,7 +17,7 @@
 
 #include <ctype.h>
 
-#include "pl.tab.h"
+#include "pl_gram.h"
 
 #include "access/heapam.h"
 #include "catalog/namespace.h"

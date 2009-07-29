@@ -17,9 +17,9 @@
 #include <ctype.h>
 
 #include "nodes/parsenodes.h"
-#include "parser/gramparse.h"	/* required before parser/parse.h! */
+#include "parser/gramparse.h"	/* required before parser/gram.h! */
 #include "parser/keywords.h"
-#include "parser/parse.h"
+#include "parser/gram.h"
 
 /* NB: This file is also used by pg_dump. */
 

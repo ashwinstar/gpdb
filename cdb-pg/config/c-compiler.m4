@@ -121,6 +121,8 @@ AC_DEFINE(HAVE_FUNCNAME__FUNCTION, 1,
 fi
 fi])# PGAC_C_FUNCNAME_SUPPORT
 
+
+
 # PGAC_PROG_CC_CFLAGS_OPT
 # -----------------------
 # Given a string, check if the compiler supports the string as a
@@ -173,3 +175,22 @@ case $ac_cv_c_inline in
   *)  AC_DEFINE_UNQUOTED(inline, $ac_cv_c_inline) ;;
 esac
 ])# AC_C_INLINE
+
+# PGAC_PROG_CC_LDFLAGS_OPT
+# ------------------------
+# Given a string, check if the compiler supports the string as a
+# command-line option. If it does, add the string to LDFLAGS.
+# For reasons you'd really rather not know about, this checks whether
+# you can link to a particular function, not just whether you can link.
+# In fact, we must actually check that the resulting program runs :-(
+AC_DEFUN([PGAC_PROG_CC_LDFLAGS_OPT],
+[AC_MSG_CHECKING([if $CC supports $1])
+pgac_save_LDFLAGS=$LDFLAGS
+LDFLAGS="$pgac_save_LDFLAGS $1"
+AC_RUN_IFELSE([AC_LANG_PROGRAM([extern void $2 (); void (*fptr) () = $2;],[])],
+              AC_MSG_RESULT(yes),
+              [LDFLAGS="$pgac_save_LDFLAGS"
+               AC_MSG_RESULT(no)],
+              [LDFLAGS="$pgac_save_LDFLAGS"
+               AC_MSG_RESULT(assuming no)])
+])# PGAC_PROG_CC_LDFLAGS_OPT

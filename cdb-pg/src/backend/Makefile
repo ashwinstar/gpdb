@@ -106,7 +106,7 @@ $(SUBSYSOBJS): $(DIRS:%=%-recursive) ;
 
 .PHONY: $(DIRS:%=%-recursive)
 # Update the commonly used headers before building the subdirectories
-$(DIRS:%=%-recursive): $(top_builddir)/src/include/parser/parse.h $(top_builddir)/src/include/utils/fmgroids.h
+$(DIRS:%=%-recursive): $(top_builddir)/src/include/parser/gram.h $(top_builddir)/src/include/utils/fmgroids.h
 	$(MAKE) -C $(subst -recursive,,$@) all
 
 
@@ -120,8 +120,8 @@ postgres.o: $(OBJS)
 # the make files in our subdirectories. Note that it's important we
 # match the dependencies shown in the subdirectory makefiles!
 
-$(srcdir)/parser/parse.h: parser/gram.y
-	$(MAKE) -C parser parse.h
+$(srcdir)/parser/gram.h: parser/gram.y
+	$(MAKE) -C parser gram.h
 
 utils/fmgroids.h: utils/Gen_fmgrtab.sh $(top_srcdir)/src/include/catalog/pg_proc.h
 	$(MAKE) -C utils fmgroids.h
@@ -130,7 +130,7 @@ utils/fmgroids.h: utils/Gen_fmgrtab.sh $(top_srcdir)/src/include/catalog/pg_proc
 # we can cut down on the -I options. Also, a symlink is automatically
 # up to date when we update the base file.
 
-$(top_builddir)/src/include/parser/parse.h: $(srcdir)/parser/parse.h
+$(top_builddir)/src/include/parser/gram.h: $(srcdir)/parser/gram.h
 	prereqdir=`cd $(dir $<) >/dev/null && pwd` && \
 	  cd $(dir $@) && rm -f $(notdir $@) && \
 	  $(LN_S) "$$prereqdir/$(notdir $<)" .
@@ -147,7 +147,7 @@ utils/probes.o: utils/probes.d $(SUBSYSOBJS)
 ##########################################################################
 
 distprep:
-	$(MAKE) -C parser	gram.c parse.h scan.c
+	$(MAKE) -C parser	gram.c gram.h scan.c
 	$(MAKE) -C bootstrap	bootparse.c bootstrap_tokens.h bootscanner.c
 	$(MAKE) -C utils/misc	guc-file.c
 
@@ -231,6 +231,7 @@ endif
 
 clean:
 	rm -f $(LOCALOBJS) postgres$(X) $(POSTGRES_IMP) \
+		$(top_srcdir)/src/include/parser/gram.h \
 		$(top_srcdir)/src/include/parser/parse.h \
 		$(top_builddir)/src/include/utils/fmgroids.h
 ifeq ($(PORTNAME), cygwin)
@@ -250,6 +251,7 @@ maintainer-clean: distclean
 	      $(srcdir)/bootstrap/bootstrap_tokens.h \
 	      $(srcdir)/parser/gram.c \
 	      $(srcdir)/parser/scan.c \
+	      $(srcdir)/parser/gram.h \
 	      $(srcdir)/parser/parse.h \
 	      $(srcdir)/utils/misc/guc-file.c
 
@@ -264,5 +266,5 @@ maintainer-clean: distclean
 quick: $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(export_dynamic) $^ $(LIBS) -o postgres
 
-depend dep: $(top_srcdir)/src/include/parser/parse.h $(top_builddir)/src/include/utils/fmgroids.h
+depend dep: $(top_srcdir)/src/include/parser/gram.h $(top_builddir)/src/include/utils/fmgroids.h
 	for i in $(DIRS); do $(MAKE) -C $$i $@; done

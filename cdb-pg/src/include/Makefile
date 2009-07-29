@@ -18,7 +18,7 @@ all: pg_config.h pg_config_os.h checkoids
 
 # Subdirectories containing headers for server-side dev
 SUBDIRS = access bootstrap catalog commands executor gpmon lib libpq mb \
-	nodes optimizer parser regex rewrite storage tcop utils \
+	nodes optimizer parser postmaster regex rewrite storage tcop utils \
 	port port/win32 port/win32/arpa port/win32/netinet port/win32/sys \
 	portability
 
@@ -38,6 +38,7 @@ install: all installdirs
 # These headers are needed for server-side development
 	$(INSTALL_DATA) pg_config.h    '$(DESTDIR)$(includedir_server)'
 	$(INSTALL_DATA) pg_config_os.h '$(DESTDIR)$(includedir_server)'
+	$(INSTALL_DATA) utils/fmgroids.h '$(DESTDIR)$(includedir_server)/utils'
 # We don't use INSTALL_DATA for performance reasons --- there are a lot of files
 	cp $(srcdir)/*.h '$(DESTDIR)$(includedir_server)'/ || exit; \
 	chmod $(INSTALL_DATA_MODE) '$(DESTDIR)$(includedir_server)'/*.h  || exit; \
@@ -68,7 +69,7 @@ checkoids:
 	(cd catalog && ./duplicate_oids) 
 
 clean:
-	rm -f utils/fmgroids.h parser/parse.h
+	rm -f utils/fmgroids.h parser/parse.h parser/gram.h utils/probes.h
 
 distclean maintainer-clean: clean
 	rm -f pg_config.h dynloader.h pg_config_os.h stamp-h

@@ -2,7 +2,7 @@
 #
 # Makefile for src/interfaces/ecpg/preproc
 #
-# Copyright (c) 1998-2006, PostgreSQL Global Development Group
+# Copyright (c) 1998-2009, PostgreSQL Global Development Group
 #
 # $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/Makefile,v 1.121 2006/08/28 16:13:11 tgl Exp $
 #
@@ -23,7 +23,7 @@ override CPPFLAGS := -I../include -I$(top_srcdir)/src/interfaces/ecpg/include \
 	 $(CPPFLAGS)
 
 ifeq ($(GCC), yes)
-override CFLAGS += -Wno-unused-label -Wno-error
+override CFLAGS +=  $(PTHREAD_CFLAGS) -Wno-unused-label -Wno-error
 endif
 override CFLAGS += $(PTHREAD_CFLAGS)
 
@@ -39,18 +39,16 @@ ecpg: $(OBJS)
 # pgc is compiled as part of preproc
 preproc.o: $(srcdir)/pgc.c
 
-$(srcdir)/preproc.c: $(srcdir)/preproc.h ;
+$(srcdir)/preproc.h: $(srcdir)/preproc.c ;
 
-$(srcdir)/preproc.h: preproc.y
-ifdef YACC
-	$(YACC) -d $(YFLAGS) $<
-	mv -f y.tab.c $(srcdir)/preproc.c
-	mv -f y.tab.h $(srcdir)/preproc.h
+$(srcdir)/preproc.c: $(srcdir)/preproc.y
+ifdef BISON
+	$(BISON) -d $(BISONFLAGS) -o $@ $<
 else
 	@$(missing) bison $< $@
 endif
 
-$(srcdir)/pgc.c: pgc.l
+$(srcdir)/pgc.c: $(srcdir)/pgc.l
 ifdef FLEX
 	$(FLEX) $(FLEXFLAGS) -o'$@' $<
 else
@@ -72,14 +70,14 @@ uninstall:
 	rm -f '$(DESTDIR)$(bindir)/ecpg$(X)'
 
 clean distclean:
-	rm -f *.o ecpg$(X)
+	rm -f kwlookup.c *.o ecpg$(X)
 # garbage from partial builds
-	@rm -f y.tab.c y.tab.h
+	@rm -f y.tab.c y.tab.h preproc.tab.c preproc.tab.y preproc.tab.h
 # garbage from development
 	@rm -f core a.out *.output *.tab.c
 
-# `make clean' does not remove preproc.c, preproc.h, or pgc.c since we
-# want to ship those files in the distribution for people with
-# inadequate tools.
+# `make distclean' must not remove preproc.y, preproc.c, preproc.h, or pgc.c
+# since we want to ship those files in the distribution for people with
+# inadequate tools.  Instead, `make maintainer-clean' will remove them.
 maintainer-clean: distclean
-	rm -f $(srcdir)/preproc.c $(srcdir)/preproc.h $(srcdir)/pgc.c
+	rm -f  $(srcdir)/preproc.c $(srcdir)/preproc.h $(srcdir)/pgc.c
