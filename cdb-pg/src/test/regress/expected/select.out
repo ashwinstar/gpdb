@@ -513,3 +513,14 @@ SELECT * FROM int8_tbl;
  4567890123456789 | -4567890123456789
 (9 rows)
 
+-- Test unsupported sorting operators
+CREATE TABLE nosort (i int);
+INSERT INTO nosort VALUES(1), (2);
+-- << is the bitwise shift left operator, it makes no sense to sort
+-- using this operator. This query should result in error.
+SELECT * FROM nosort ORDER BY i USING <<;
+ERROR:  operator << is not a valid ordering operator
+LINE 1: SELECT * FROM nosort ORDER BY i USING <<;
+                                      ^
+HINT:  Ordering operators must be "<" or ">" members of btree operator families.
+DROP TABLE nosort;

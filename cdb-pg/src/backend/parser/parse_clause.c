@@ -43,6 +43,7 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
+#include "utils/lsyscache.h"
 
 #include "cdb/cdbvars.h"
 
@@ -2696,18 +2697,21 @@ addAllTargetsToSortList(ParseState *pstate, List *sortlist,
  * Is the operator specified in USING <op> a btree sorting operator
  * (either < or >). We determine that the operator has these properties
  * by looking up pg_amop for the operator AM properties. If the operator
- * doesn't implement the < or > btree strategies, error out. If it does,
- * make sure that the operator is actual in btree op class.
+ * is not a member of a btree operator class and if it does not have < >
+ * AM strategies, it cannot be used to sort. In this case we return false. If we
+ * find a candidate, we return true.
  */
 static bool
 sort_op_can_sort(Oid opid)
 {
 	CatCList *catlist;
 	int i;
+	bool result = false;
 
 	catlist = SearchSysCacheList(AMOPOPID, 1,
 								 ObjectIdGetDatum(opid),
 								 0, 0, 0);
+	/* not associated with an AM, so can't be a match */
 	if (catlist->n_members == 0)
 		return false;
 
@@ -2716,30 +2720,21 @@ sort_op_can_sort(Oid opid)
 		HeapTuple tuple = &catlist->members[i]->tuple;
 		Form_pg_amop amop = (Form_pg_amop)GETSTRUCT(tuple);
 		
+		if (opclass_is_btree(amop->amopclaid))
+			continue;
+
+		if (amop->amopsubtype != InvalidOid)
+			continue;
+
 		if (amop->amopstrategy == BTLessStrategyNumber ||
 			amop->amopstrategy == BTGreaterStrategyNumber)
 		{
-			Form_pg_opclass opcl;
-
-			tuple = SearchSysCache(CLAOID,
-								   ObjectIdGetDatum(amop->amopclaid),
-								   0, 0, 0);
-
-			if (!HeapTupleIsValid(tuple))
-				return false;
-
-			opcl = (Form_pg_opclass)GETSTRUCT(tuple);
-			if (opcl->opcamid == BTREE_AM_OID)
-			{
-				ReleaseSysCache(tuple);
-				ReleaseSysCacheList(catlist);
-				return true;
-			}
-			ReleaseSysCache(tuple);
+			result = true;
+			break;
 		}
 	}
 	ReleaseSysCacheList(catlist);
-	return false;
+	return result;
 }
 
 /*

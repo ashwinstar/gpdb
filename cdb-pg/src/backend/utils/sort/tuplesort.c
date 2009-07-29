@@ -2675,7 +2675,6 @@ SelectSortFunction(Oid sortOperator,
 	CatCList   *catlist;
 	int			i;
 	HeapTuple	tuple;
-	Form_pg_operator optup;
 	Oid			opclass = InvalidOid;
 
 	/*
@@ -2727,27 +2726,8 @@ SelectSortFunction(Oid sortOperator,
 		return;
 	}
 
-	/*
-	 * Can't find a comparator, so use the operator as-is.  Decide whether it
-	 * is forward or reverse sort by looking at its name (grotty, but this
-	 * only matters for deciding which end NULLs should get sorted to).  XXX
-	 * possibly better idea: see whether its selectivity function is
-	 * scalargtcmp?
-	 */
-	tuple = SearchSysCache(OPEROID,
-						   ObjectIdGetDatum(sortOperator),
-						   0, 0, 0);
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "cache lookup failed for operator %u", sortOperator);
-	optup = (Form_pg_operator) GETSTRUCT(tuple);
-	if (strcmp(NameStr(optup->oprname), ">") == 0)
-		*kind = SORTFUNC_REVLT;
-	else
-		*kind = SORTFUNC_LT;
-	*sortFunction = optup->oprcode;
-	ReleaseSysCache(tuple);
-
-	Assert(RegProcedureIsValid(*sortFunction));
+	/* shouldn't get here if the parser did its job. See sort_op_can_sort() */
+	elog(ERROR, "operator %u cannot sort", sortOperator);
 }
 
 /*
