@@ -677,7 +677,7 @@ tuplesort_begin_heap(TupleDesc tupDesc,
 
 	for (i = 0; i < nkeys; i++)
 	{
-		RegProcedure sortFunction;
+		RegProcedure sortFunction = 0;
 
 		AssertArg(sortOperators[i] != 0);
 		AssertArg(attNums[i] != 0);
@@ -802,7 +802,7 @@ tuplesort_begin_datum(Oid datumType,
 {
 	Tuplesortstate *state = tuplesort_begin_common(workMem, randomAccess, true);
 	MemoryContext oldcontext;
-	RegProcedure sortFunction;
+	RegProcedure sortFunction = 0;
 	int16		typlen;
 	bool		typbyval;
 
