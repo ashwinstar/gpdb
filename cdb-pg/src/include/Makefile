@@ -19,7 +19,8 @@ all: pg_config.h pg_config_os.h checkoids
 # Subdirectories containing headers for server-side dev
 SUBDIRS = access bootstrap catalog commands executor gpmon lib libpq mb \
 	nodes optimizer parser postmaster regex rewrite storage tcop utils \
-	port port/win32 port/win32/arpa port/win32/netinet port/win32/sys \
+	port port/win32 port/win32_msvc port/win32_msvc/sys \
+	port/win32/arpa port/win32/netinet port/win32/sys \
 	portability
 
 # Install all headers
