@@ -4,3 +4,6 @@ a.out.dSYM
 confdefs.h
 conftest.c
 conftest.err
+config.status.lineno
+config.log
+
