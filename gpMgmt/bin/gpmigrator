@@ -2078,13 +2078,13 @@ Cannot downgrade a database with 3.3 column storage    <<<<<
                 x['host'] = h[x['hostname']]
                 
         master = filter(lambda(x): x['content'] < 0 and 
-                                   x['definedprimary'], gp_config);
+                                   x['definedprimary'] == 't', gp_config);
         standbymaster = filter(lambda(x): x['content'] < 0 and 
-                                      not x['definedprimary'], gp_config);
+                                          x['definedprimary'] == 'f', gp_config);
         segments = filter(lambda(x): x['content'] >= 0 and 
-                                     x['definedprimary'], gp_config);
+                                     x['definedprimary'] == 't', gp_config);
         mirrors = filter(lambda(x): x['content'] >= 0 and 
-                                 not x['definedprimary'], gp_config);
+                                    x['definedprimary'] == 'f', gp_config);
         self.segments = segments
         self.mirrors = mirrors
         
