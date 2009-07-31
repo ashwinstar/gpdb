@@ -3,7 +3,7 @@
  *		using general triggers.
  */
 
-/* Modified by BÖJTHE Zoltán, Hungary, mailto:urdesobt@axelero.hu */
+/* Modified by Bï¿½JTHE Zoltï¿½n, Hungary, mailto:urdesobt@axelero.hu */
 
 #include "executor/spi.h"		/* this is what you need to work with SPI */
 #include "commands/trigger.h"	/* -"- and triggers */
@@ -24,7 +24,7 @@ Datum		get_timetravel(PG_FUNCTION_ARGS);
 typedef struct
 {
 	char	   *ident;
-	void	   *splan;
+	SPIPlanPtr	splan;
 }	EPlan;
 
 static EPlan *Plans = NULL;		/* for UPDATE/DELETE */
@@ -115,7 +115,7 @@ timetravel(PG_FUNCTION_ARGS)
 
 	/* Should be called for ROW trigger */
 	if (TRIGGER_FIRED_FOR_STATEMENT(trigdata->tg_event))
-		elog(ERROR, "timetravel: can't process STATEMENT events");
+		elog(ERROR, "timetravel: cannot process STATEMENT events");
 
 	/* Should be called BEFORE */
 	if (TRIGGER_FIRED_AFTER(trigdata->tg_event))
@@ -261,7 +261,7 @@ timetravel(PG_FUNCTION_ARGS)
 			elog(ERROR, "timetravel (%s): %s must be NOT NULL", relname, args[a_time_off]);
 
 		if (oldtimeon != newtimeon || oldtimeoff != newtimeoff)
-			elog(ERROR, "timetravel (%s): you can't change %s and/or %s columns (use set_timetravel)",
+			elog(ERROR, "timetravel (%s): you cannot change %s and/or %s columns (use set_timetravel)",
 				 relname, args[a_time_on], args[a_time_off]);
 	}
 	if (oldtimeoff != NOEND_ABSTIME)
@@ -308,7 +308,7 @@ timetravel(PG_FUNCTION_ARGS)
 	/* if there is no plan ... */
 	if (plan->splan == NULL)
 	{
-		void	   *pplan;
+		SPIPlanPtr	pplan;
 		Oid		   *ctypes;
 		char		sql[8192];
 		char		separ = ' ';
