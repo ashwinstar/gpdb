@@ -1,7 +1,18 @@
 /*-------------------------------------------------------------------------
  *
  * analyze.c
- *	  transform the parse tree into a query tree
+ *	  transform the raw parse tree into a query tree
+ *
+ * For optimizable statements, we are careful to obtain a suitable lock on
+ * each referenced table, and other modules of the backend preserve or
+ * re-obtain these locks before depending on the results.  It is therefore
+ * okay to do significant semantic analysis of these statements.  For
+ * utility commands, no locks are obtained here (and if they were, we could
+ * not be sure we'd still have them at execution).  Hence the general rule
+ * for utility commands is to just dump them into a Query node untransformed.
+ * DECLARE CURSOR and EXPLAIN are exceptions because they contain
+ * optimizable statements.
+ *
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
