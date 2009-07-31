@@ -1124,6 +1124,11 @@ int4mod(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
+
+	/* SELECT ((-2147483648)::int4) % (-1); causes a floating point exception */
+	if (arg1 == INT_MIN && arg2 == -1)
+		PG_RETURN_INT32(0);
+
 	/* No overflow is possible */
 
 	PG_RETURN_INT32(arg1 % arg2);
@@ -1392,7 +1397,7 @@ generate_series_step_int4(PG_FUNCTION_ARGS)
 		if (step == 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("step size may not equal zero")));
+					 errmsg("step size cannot equal zero")));
 
 		/* create a function context for cross-call persistence */
 		funcctx = SRF_FIRSTCALL_INIT();
