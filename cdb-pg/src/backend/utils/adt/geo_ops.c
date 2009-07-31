@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/geo_ops.c,v 1.94 2007/01/05 22:19:40 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/geo_ops.c,v 1.99.2.2 2009/06/23 16:25:09 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -2456,11 +2456,9 @@ dist_ps_internal(Point *pt, LSEG *lseg)
 	if (lseg->p[1].x == lseg->p[0].x)
 		m = 0;
 	else if (lseg->p[1].y == lseg->p[0].y)
-	{							/* slope is infinite */
-		m = (double) DBL_MAX;
-	}
+		m = (double) DBL_MAX;	/* slope is infinite */
 	else
-		m = ((lseg->p[0].y - lseg->p[1].y) / (lseg->p[1].x - lseg->p[0].x));
+		m = (lseg->p[0].x - lseg->p[1].x) / (lseg->p[1].y - lseg->p[0].y);
 	ln = line_construct_pm(pt, m);
 
 #ifdef GEODEBUG
@@ -2469,13 +2467,14 @@ dist_ps_internal(Point *pt, LSEG *lseg)
 #endif
 
 	/*
-	 * Calculate distance to the line segment or to the endpoints of the
-	 * segment.
+	 * Calculate distance to the line segment or to the nearest endpoint of
+	 * the segment.
 	 */
 
 	/* intersection is on the line segment? */
 	if ((ip = interpt_sl(lseg, ln)) != NULL)
 	{
+		/* yes, so use distance to the intersection point */
 		result = point_dt(pt, ip);
 #ifdef GEODEBUG
 		printf("dist_ps- distance is %f to intersection point is (%f,%f)\n",
@@ -2484,7 +2483,7 @@ dist_ps_internal(Point *pt, LSEG *lseg)
 	}
 	else
 	{
-		/* intersection is not on line segment */
+		/* no, so use distance to the nearer endpoint */
 		result = point_dt(pt, &lseg->p[0]);
 		tmpdist = point_dt(pt, &lseg->p[1]);
 		if (tmpdist < result)
@@ -3790,7 +3789,7 @@ poly_contain(PG_FUNCTION_ARGS)
 		{
 			if (point_inside(&(polyb->p[i]), polya->npts, &(polya->p[0])) == 0)
 			{
-#if GEODEBUG
+#ifdef GEODEBUG
 				printf("poly_contain- point (%f,%f) not in polygon\n", polyb->p[i].x, polyb->p[i].y);
 #endif
 				result = false;
@@ -3803,7 +3802,7 @@ poly_contain(PG_FUNCTION_ARGS)
 			{
 				if (point_inside(&(polya->p[i]), polyb->npts, &(polyb->p[0])) == 1)
 				{
-#if GEODEBUG
+#ifdef GEODEBUG
 					printf("poly_contain- point (%f,%f) in polygon\n", polya->p[i].x, polya->p[i].y);
 #endif
 					result = false;
@@ -3814,7 +3813,7 @@ poly_contain(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-#if GEODEBUG
+#ifdef GEODEBUG
 		printf("poly_contain- bound box ((%f,%f),(%f,%f)) not inside ((%f,%f),(%f,%f))\n",
 			   polyb->boundbox.low.x, polyb->boundbox.low.y, polyb->boundbox.high.x, polyb->boundbox.high.y,
 			   polya->boundbox.low.x, polya->boundbox.low.y, polya->boundbox.high.x, polya->boundbox.high.y);
@@ -5065,128 +5064,127 @@ poly_circle(PG_FUNCTION_ARGS)
  ***********************************************************************/
 
 /*
- *	Test to see if the point is inside the polygon.
- *	Code adapted from integer-based routines in WN: A Server for the HTTP
+ *	Test to see if the point is inside the polygon, returns 1/0, or 2 if
+ *	the point is on the polygon.
+ *	Code adapted but not copied from integer-based routines in WN: A
+ *	Server for the HTTP
  *	version 1.15.1, file wn/image.c
- *	GPL Copyright (C) 1995 by John Franks
  *	http://hopf.math.northwestern.edu/index.html
  *	Description of algorithm:  http://www.linuxjournal.com/article/2197
+ *							   http://www.linuxjournal.com/article/2029
  */
 
-#define HIT_IT INT_MAX
+#define POINT_ON_POLYGON INT_MAX
 
 static int
 point_inside(Point *p, int npts, Point *plist)
 {
 	double		x0,
 				y0;
-	double		px,
-				py;
-	int			i;
+	double		prev_x,
+				prev_y;
+	int			i = 0;
 	double		x,
 				y;
 	int			cross,
-				crossnum;
+				total_cross = 0;
 
-/*
- * We calculate crossnum, which is twice the crossing number of a
- * ray from the origin parallel to the positive X axis.
- * A coordinate change is made to move the test point to the origin.
- * Then the function lseg_crossing() is called to calculate the crossnum of
- * one segment of the translated polygon with the ray which is the
- * positive X-axis.
- */
-
-	crossnum = 0;
-	i = 0;
 	if (npts <= 0)
 		return 0;
 
+	/* compute first polygon point relative to single point */
 	x0 = plist[0].x - p->x;
 	y0 = plist[0].y - p->y;
 
-	px = x0;
-	py = y0;
+	prev_x = x0;
+	prev_y = y0;
+	/* loop over polygon points and aggregate total_cross */
 	for (i = 1; i < npts; i++)
 	{
+		/* compute next polygon point relative to single point */
 		x = plist[i].x - p->x;
 		y = plist[i].y - p->y;
 
-		if ((cross = lseg_crossing(x, y, px, py)) == HIT_IT)
+		/* compute previous to current point crossing */
+		if ((cross = lseg_crossing(x, y, prev_x, prev_y)) == POINT_ON_POLYGON)
 			return 2;
-		crossnum += cross;
+		total_cross += cross;
 
-		px = x;
-		py = y;
+		prev_x = x;
+		prev_y = y;
 	}
-	if ((cross = lseg_crossing(x0, y0, px, py)) == HIT_IT)
+
+	/* now do the first point */
+	if ((cross = lseg_crossing(x0, y0, prev_x, prev_y)) == POINT_ON_POLYGON)
 		return 2;
-	crossnum += cross;
-	if (crossnum != 0)
+	total_cross += cross;
+
+	if (total_cross != 0)
 		return 1;
 	return 0;
 }
 
 
 /* lseg_crossing()
- * The function lseg_crossing() returns +2, or -2 if the segment from (x,y)
- * to previous (x,y) crosses the positive X-axis positively or negatively.
- * It returns +1 or -1 if one endpoint is on this ray, or 0 if both are.
- * It returns 0 if the ray and the segment don't intersect.
- * It returns HIT_IT if the segment contains (0,0)
+ * Returns +/-2 if line segment crosses the positive X-axis in a +/- direction.
+ * Returns +/-1 if one point is on the positive X-axis.
+ * Returns 0 if both points are on the positive X-axis, or there is no crossing.
+ * Returns POINT_ON_POLYGON if the segment contains (0,0).
+ * Wow, that is one confusing API, but it is used above, and when summed,
+ * can tell is if a point is in a polygon.
  */
 
 static int
-lseg_crossing(double x, double y, double px, double py)
+lseg_crossing(double x, double y, double prev_x, double prev_y)
 {
 	double		z;
-	int			sgn;
-
-	/* If (px,py) = (0,0) and not first call we have already sent HIT_IT */
+	int			y_sign;
 
 	if (FPzero(y))
-	{
-		if (FPzero(x))
-		{
-			return HIT_IT;
-
-		}
+	{							/* y == 0, on X axis */
+		if (FPzero(x))			/* (x,y) is (0,0)? */
+			return POINT_ON_POLYGON;
 		else if (FPgt(x, 0))
-		{
-			if (FPzero(py))
-				return FPgt(px, 0) ? 0 : HIT_IT;
-			return FPlt(py, 0) ? 1 : -1;
-
+		{						/* x > 0 */
+			if (FPzero(prev_y)) /* y and prev_y are zero */
+				/* prev_x > 0? */
+				return FPgt(prev_x, 0) ? 0 : POINT_ON_POLYGON;
+			return FPlt(prev_y, 0) ? 1 : -1;
 		}
 		else
-		{						/* x < 0 */
-			if (FPzero(py))
-				return FPlt(px, 0) ? 0 : HIT_IT;
+		{						/* x < 0, x not on positive X axis */
+			if (FPzero(prev_y))
+				/* prev_x < 0? */
+				return FPlt(prev_x, 0) ? 0 : POINT_ON_POLYGON;
 			return 0;
 		}
 	}
-
-	/* Now we know y != 0;	set sgn to sign of y */
-	sgn = (FPgt(y, 0) ? 1 : -1);
-	if (FPzero(py))
-		return FPlt(px, 0) ? 0 : sgn;
-
-	if (FPgt((sgn * py), 0))
-	{							/* y and py have same sign */
-		return 0;
-
-	}
 	else
-	{							/* y and py have opposite signs */
-		if (FPge(x, 0) && FPgt(px, 0))
-			return 2 * sgn;
-		if (FPlt(x, 0) && FPle(px, 0))
+	{							/* y != 0 */
+		/* compute y crossing direction from previous point */
+		y_sign = FPgt(y, 0) ? 1 : -1;
+
+		if (FPzero(prev_y))
+			/* previous point was on X axis, so new point is either off or on */
+			return FPlt(prev_x, 0) ? 0 : y_sign;
+		else if (FPgt(y_sign * prev_y, 0))
+			/* both above or below X axis */
+			return 0;			/* same sign */
+	else
+		{						/* y and prev_y cross X-axis */
+			if (FPge(x, 0) && FPgt(prev_x, 0))
+				/* both non-negative so cross positive X-axis */
+				return 2 * y_sign;
+			if (FPlt(x, 0) && FPle(prev_x, 0))
+				/* both non-positive so do not cross positive X-axis */
 			return 0;
 
-		z = (x - px) * y - (y - py) * x;
+			/* x and y cross axises, see URL above point_inside() */
+			z = (x - prev_x) * y - (y - prev_y) * x;
 		if (FPzero(z))
-			return HIT_IT;
-		return FPgt((sgn * z), 0) ? 0 : 2 * sgn;
+				return POINT_ON_POLYGON;
+			return FPgt((y_sign * z), 0) ? 0 : 2 * y_sign;
+		}
 	}
 }
 
