@@ -4,7 +4,7 @@
  * Written by Victor B. Wagner <vitus@cryptocom.ru>, Cryptocom LTD
  * This file is distributed under BSD-style license.
  *
- * $PostgreSQL: pgsql/contrib/sslinfo/sslinfo.c,v 1.8 2008/11/10 14:57:38 tgl Exp $
+ * $PostgreSQL: pgsql/contrib/sslinfo/sslinfo.c,v 1.6.2.1 2008/11/10 14:57:46 tgl Exp $
  */
 
 #include "postgres.h"
@@ -113,9 +113,9 @@ ssl_client_serial(PG_FUNCTION_ARGS)
 Datum
 ASN1_STRING_to_text(ASN1_STRING *str)
 {
-	BIO		   *membuf;
-	size_t		size;
-	char		nullterm;
+	BIO		   *membuf = NULL;
+	size_t		size,
+				outlen;
 	char	   *sp;
 	char	   *dp;
 	text	   *result;
@@ -125,15 +125,19 @@ ASN1_STRING_to_text(ASN1_STRING *str)
 	ASN1_STRING_print_ex(membuf, str,
 						 ((ASN1_STRFLGS_RFC2253 & ~ASN1_STRFLGS_ESC_MSB)
 						  | ASN1_STRFLGS_UTF8_CONVERT));
-	/* ensure null termination of the BIO's content */
-	nullterm = '\0';
-	BIO_write(membuf, &nullterm, 1);
+
+	outlen = 0;
+	BIO_write(membuf, &outlen, 1);
 	size = BIO_get_mem_data(membuf, &sp);
 	dp = (char *) pg_do_encoding_conversion((unsigned char *) sp,
 											size - 1,
 											PG_UTF8,
 											GetDatabaseEncoding());
-	result = cstring_to_text(dp);
+	outlen = strlen(dp);
+	result = palloc(VARHDRSZ + outlen);
+	memcpy(VARDATA(result), dp, outlen);
+	SET_VARSIZE(result, VARHDRSZ + outlen);
+
 	if (dp != sp)
 		pfree(dp);
 	BIO_free(membuf);
@@ -157,12 +161,21 @@ ASN1_STRING_to_text(ASN1_STRING *str)
 Datum
 X509_NAME_field_to_text(X509_NAME *name, text *fieldName)
 {
+	char	   *sp;
 	char	   *string_fieldname;
+	char	   *dp;
+	size_t		name_len = VARSIZE(fieldName) - VARHDRSZ;
 	int			nid,
-				index;
+				index,
+				i;
 	ASN1_STRING *data;
 
-	string_fieldname = text_to_cstring(fieldName);
+	string_fieldname = palloc(name_len + 1);
+	sp = VARDATA(fieldName);
+	dp = string_fieldname;
+	for (i = 0; i < name_len; i++)
+		*dp++ = *sp++;
+	*dp = '\0';
 	nid = OBJ_txt2nid(string_fieldname);
 	if (nid == NID_undef)
 		ereport(ERROR,
@@ -268,9 +281,10 @@ X509_NAME_to_text(X509_NAME *name)
 				count = X509_NAME_entry_count(name);
 	X509_NAME_ENTRY *e;
 	ASN1_STRING *v;
+
 	const char *field_name;
-	size_t		size;
-	char		nullterm;
+	size_t		size,
+				outlen;
 	char	   *sp;
 	char	   *dp;
 	text	   *result;
@@ -290,15 +304,19 @@ X509_NAME_to_text(X509_NAME *name)
 							  | ASN1_STRFLGS_UTF8_CONVERT));
 	}
 
-	/* ensure null termination of the BIO's content */
-	nullterm = '\0';
-	BIO_write(membuf, &nullterm, 1);
+	i = 0;
+	BIO_write(membuf, &i, 1);
 	size = BIO_get_mem_data(membuf, &sp);
+
 	dp = (char *) pg_do_encoding_conversion((unsigned char *) sp,
 											size - 1,
 											PG_UTF8,
 											GetDatabaseEncoding());
-	result = cstring_to_text(dp);
+	outlen = strlen(dp);
+	result = palloc(VARHDRSZ + outlen);
+	memcpy(VARDATA(result), dp, outlen);
+	SET_VARSIZE(result, VARHDRSZ + outlen);
+
 	if (dp != sp)
 		pfree(dp);
 	BIO_free(membuf);
