@@ -53,7 +53,7 @@ text2char(text *in)
 
 char
 		   *
-pnstrdup(char *in, int len)
+pnstrdup(const char *in, Size len)
 {
 	char	   *out = palloc(len + 1);
 

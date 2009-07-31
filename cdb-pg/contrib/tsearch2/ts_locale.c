@@ -37,9 +37,9 @@ wchar2char(char *to, const wchar_t *from, size_t len)
 #endif   /* WIN32 */
 
 size_t
-char2wchar(wchar_t *to, const char *from, size_t len)
+char2wchar(wchar_t *to, size_t tolen, const char *from, size_t fromlen)
 {
-	if (len == 0)
+	if (tolen == 0)
 		return 0;
 
 #ifdef WIN32
@@ -47,7 +47,7 @@ char2wchar(wchar_t *to, const char *from, size_t len)
 	{
 		int			r;
 
-		r = MultiByteToWideChar(CP_UTF8, 0, from, len, to, len);
+		r = MultiByteToWideChar(CP_UTF8, 0, from, fromlen, to, tolen);
 
 		if (!r)
 		{
@@ -58,7 +58,7 @@ char2wchar(wchar_t *to, const char *from, size_t len)
 					 errhint("The server's LC_CTYPE locale is probably incompatible with the database encoding.")));
 		}
 
-		Assert(r <= len);
+		Assert(r <= tolen);
 
 		return r;
 	}
@@ -70,10 +70,10 @@ char2wchar(wchar_t *to, const char *from, size_t len)
 		 * pg_mb2wchar_with_len always adds trailing '\0', so 
 		 * 'to' should be allocated with sufficient space 
 		 */
-		return pg_mb2wchar_with_len(from, (pg_wchar *)to, len);
+		return pg_mb2wchar_with_len(from, (pg_wchar *)to, tolen);
 	}
 
-	return mbstowcs(to, from, len);
+	return mbstowcs(to, from, tolen);
 }
 
 int
@@ -84,7 +84,7 @@ _t_isalpha(const char *ptr)
 	if (lc_ctype_is_c())
 		return isalpha(TOUCHAR(ptr));
 
-	char2wchar(character, ptr, 1);
+	char2wchar(character, 1, ptr, 1);
 
 	return iswalpha((wint_t) *character);
 }
@@ -97,7 +97,7 @@ _t_isprint(const char *ptr)
 	if (lc_ctype_is_c())
 		return isprint(TOUCHAR(ptr));
 
-	char2wchar(character, ptr, 1);
+	char2wchar(character, 1, ptr, 1);
 
 	return iswprint((wint_t) *character);
 }
@@ -139,7 +139,7 @@ lowerstr(char *str)
 		 * str SHOULD be cstring, so wlen contains number
 		 * of converted character
 		 */
-		wlen = char2wchar(wstr, str, len);
+		wlen = char2wchar(wstr, len, str, len);
 		if ( wlen < 0 )
 			ereport(ERROR,
 					(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),

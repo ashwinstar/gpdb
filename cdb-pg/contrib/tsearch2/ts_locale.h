@@ -30,11 +30,11 @@
 #define TOUCHAR(x)	(*((unsigned char*)(x)))
 
 #ifdef TS_USE_WIDE
-size_t		char2wchar(wchar_t *to, const char *from, size_t len);
+size_t char2wchar(wchar_t *to, size_t tolen, const char *from, size_t fromlen);
 
 #ifdef WIN32
 
-size_t		wchar2char(char *to, const wchar_t *from, size_t len);
+extern size_t wchar2char(char *to, const wchar_t *from, size_t tolen);
 
 #else							/* WIN32 */
 
