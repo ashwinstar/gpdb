@@ -35,6 +35,7 @@
 
 #include "fmgr.h"
 #include "parser/scansup.h"
+#include "utils/builtins.h"
 
 #include "px.h"
 #include "px-crypt.h"
