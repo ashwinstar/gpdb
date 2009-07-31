@@ -2,9 +2,9 @@
  *
  * pg_ctl --- start/stops/restarts the PostgreSQL server
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/pg_ctl/pg_ctl.c,v 1.74.2.3 2008/02/29 15:31:37 mha Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_ctl/pg_ctl.c,v 1.92.2.6 2009/01/28 11:19:40 mha Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -25,6 +25,11 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/time.h>
+#include <sys/resource.h>
+#endif
 
 #include "libpq/pqsignal.h"
 #include "getopt_long.h"
@@ -70,10 +75,11 @@ typedef enum
 	RUN_AS_SERVICE_COMMAND
 } CtlCommand;
 
+#define DEFAULT_WAIT	60
 
 static bool do_wait = false;
 static bool wait_set = false;
-static int	wait_seconds = 60;
+static int	wait_seconds = DEFAULT_WAIT;
 static bool silent_mode = false;
 static ShutdownMode shutdown_mode = SMART_MODE;
 static int	sig = SIGTERM;		/* default */
@@ -88,6 +94,7 @@ static char *register_servicename = "PostgreSQL";		/* FIXME: + version ID? */
 static char *register_username = NULL;
 static char *register_password = NULL;
 static char *argv0 = NULL;
+static bool allow_core_files = false;
 
 static void
 write_stderr(const char *fmt,...)
@@ -117,7 +124,7 @@ static void pgwin32_SetServiceStatus(DWORD);
 static void WINAPI pgwin32_ServiceHandler(DWORD);
 static void WINAPI pgwin32_ServiceMain(DWORD, LPTSTR *);
 static void pgwin32_doRunAsService(void);
-static int	CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo);
+static int	CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo, bool as_service);
 
 static SERVICE_STATUS status;
 static SERVICE_STATUS_HANDLE hStatus = (SERVICE_STATUS_HANDLE) 0;
@@ -140,6 +147,10 @@ static char def_postopts_file[MAXPGPATH];
 static char postopts_file[MAXPGPATH];
 static char pid_file[MAXPGPATH];
 static char conf_file[MAXPGPATH];
+
+#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+static void unlimit_core_size(void);
+#endif
 
 
 #if defined(WIN32) || defined(__CYGWIN__)
@@ -380,7 +391,7 @@ start_postmaster(void)
 				 SYSTEMQUOTE, postgres_path, pgdata_opt, post_opts,
 				 DEVNULL, SYSTEMQUOTE);
 
-	if (!CreateRestrictedProcess(cmd, &pi))
+	if (!CreateRestrictedProcess(cmd, &pi, false))
 		return GetLastError();
 	CloseHandle(pi.hProcess);
 	CloseHandle(pi.hThread);
@@ -435,7 +446,7 @@ test_postmaster_connection(bool do_checkpoint)
 				   !(isspace((unsigned char) *q) || *q == '\'' || *q == '"'))
 				q++;
 			/* and save the argument value */
-			StrNCpy(portstr, p, Min((q - p) + 1, sizeof(portstr)));
+			strlcpy(portstr, p, Min((q - p) + 1, sizeof(portstr)));
 			/* keep looking, maybe there is another -p */
 			p = q;
 		}
@@ -481,7 +492,7 @@ test_postmaster_connection(bool do_checkpoint)
 						 *q == '\'' || *q == '"' || *q == '#'))
 					q++;
 				/* and save the argument value */
-				StrNCpy(portstr, p, Min((q - p) + 1, sizeof(portstr)));
+				strlcpy(portstr, p, Min((q - p) + 1, sizeof(portstr)));
 				/* keep looking, maybe there is another */
 			}
 		}
@@ -489,21 +500,24 @@ test_postmaster_connection(bool do_checkpoint)
 
 	/* Check environment */
 	if (!*portstr && getenv("PGPORT") != NULL)
-		StrNCpy(portstr, getenv("PGPORT"), sizeof(portstr));
+		strlcpy(portstr, getenv("PGPORT"), sizeof(portstr));
 
 	/* Else use compiled-in default */
 	if (!*portstr)
 		snprintf(portstr, sizeof(portstr), "%d", DEF_PGPORT);
 
-	/* We need to set a connect timeout otherwise on Windows the SCM will probably timeout first */
-	snprintf(connstr, sizeof(connstr), "dbname=postgres port=%s connect_timeout=5 options=%s", portstr, backend_options);
+	/*
+	 * We need to set a connect timeout otherwise on Windows the SCM will
+	 * probably timeout first
+	 */
+	snprintf(connstr, sizeof(connstr),
+			"dbname=postgres port=%s connect_timeout=5 options=%s", portstr, backend_options);
 
 	for (i = 0; i < wait_seconds; i++)
 	{
 		if ((conn = PQconnectdb(connstr)) != NULL &&
 			(PQstatus(conn) == CONNECTION_OK ||
-			 (strcmp(PQerrorMessage(conn),
-					 PQnoPasswordSupplied) == 0)))
+			 PQconnectionNeedsPassword(conn)))
 		{
 			PQfinish(conn);
 			success = true;
@@ -517,10 +531,11 @@ test_postmaster_connection(bool do_checkpoint)
 			if (do_checkpoint)
 			{
 				/*
-				 * Increment the wait hint by 6 secs (connection timeout + sleep)
-				 * We must do this to indicate to the SCM that our startup time is
-				 * changing, otherwise it'll usually send a stop signal after 20
-				 * seconds, despite incrementing the checkpoint counter.
+				 * Increment the wait hint by 6 secs (connection timeout +
+				 * sleep) We must do this to indicate to the SCM that our
+				 * startup time is changing, otherwise it'll usually send a
+				 * stop signal after 20 seconds, despite incrementing the
+				 * checkpoint counter.
 				 */
 				status.dwWaitHint += 6000;
 				status.dwCheckPoint++;
@@ -539,6 +554,26 @@ test_postmaster_connection(bool do_checkpoint)
 }
 
 
+#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+static void
+unlimit_core_size(void)
+{
+	struct rlimit lim;
+
+	getrlimit(RLIMIT_CORE, &lim);
+	if (lim.rlim_max == 0)
+	{
+		write_stderr(_("%s: cannot set core file size limit; disallowed by hard limit\n"),
+					 progname);
+		return;
+	}
+	else if (lim.rlim_max == RLIM_INFINITY || lim.rlim_cur < lim.rlim_max)
+	{
+		lim.rlim_cur = lim.rlim_max;
+		setrlimit(RLIMIT_CORE, &lim);
+	}
+}
+#endif
 
 static void
 read_post_opts(void)
@@ -636,7 +671,7 @@ do_start(void)
 			char		full_path[MAXPGPATH];
 
 			if (find_my_exec(argv0, full_path) < 0)
-				StrNCpy(full_path, progname, MAXPGPATH);
+				strlcpy(full_path, progname, sizeof(full_path));
 
 			if (ret == -1)
 				write_stderr(_("The program \"postgres\" is needed by %s "
@@ -653,6 +688,11 @@ do_start(void)
 		}
 		postgres_path = postmaster_path;
 	}
+
+#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+	if (allow_core_files)
+		unlimit_core_size();
+#endif
 
 	exitcode = start_postmaster();
 	if (exitcode != 0)
@@ -681,7 +721,7 @@ do_start(void)
 
 		if (test_postmaster_connection(false) == false)
 		{
-			printf(_("could not start server: Failed to test postmaster connection\n"));
+			printf(_("could not start server\n"));
 			exit(1);
 		}
 		else
@@ -1022,6 +1062,10 @@ pgwin32_CommandLine(bool registration)
 	if (registration && do_wait)
 		strcat(cmdLine, " -w");
 
+	if (registration && wait_seconds != DEFAULT_WAIT)
+		/* concatenate */
+		sprintf(cmdLine + strlen(cmdLine), " -t %d", wait_seconds);
+
 	if (post_opts)
 	{
 		strcat(cmdLine, " ");
@@ -1170,7 +1214,7 @@ pgwin32_ServiceMain(DWORD argc, LPTSTR * argv)
 
 	/* Start the postmaster */
 	pgwin32_SetServiceStatus(SERVICE_START_PENDING);
-	if (!CreateRestrictedProcess(pgwin32_CommandLine(false), &pi))
+	if (!CreateRestrictedProcess(pgwin32_CommandLine(false), &pi, true))
 	{
 		pgwin32_SetServiceStatus(SERVICE_STOPPED);
 		return;
@@ -1191,7 +1235,10 @@ pgwin32_ServiceMain(DWORD argc, LPTSTR * argv)
 		write_eventlog(EVENTLOG_INFORMATION_TYPE, _("Server started and accepting connections\n"));
 	}
 
-        /* Save the checkpoint value as it might have been incremented in test_postmaster_connection */
+	/*
+	 * Save the checkpoint value as it might have been incremented in
+	 * test_postmaster_connection
+	 */
         check_point_start = status.dwCheckPoint;
 
 	pgwin32_SetServiceStatus(SERVICE_RUNNING);
@@ -1270,7 +1317,7 @@ typedef		BOOL(WINAPI * __QueryInformationJobObject) (HANDLE, JOBOBJECTINFOCLASS,
  * automatically destroyed when pg_ctl exits.
  */
 static int
-CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo)
+CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo, bool as_service)
 {
 	int			r;
 	BOOL		b;
@@ -1305,7 +1352,7 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo)
 		 * NT4 doesn't have CreateRestrictedToken, so just call ordinary
 		 * CreateProcess
 		 */
-		write_stderr("WARNING: Unable to create restricted tokens on this platform\n");
+		write_stderr("WARNING: cannot create restricted tokens on this platform\n");
 		if (Advapi32Handle != NULL)
 			FreeLibrary(Advapi32Handle);
 		return CreateProcess(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, processInfo);
@@ -1380,7 +1427,7 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo)
 			 * Log error if we can't get version, or if we're on WinXP/2003 or
 			 * newer
 			 */
-			write_stderr("WARNING: Unable to locate all job object functions in system API!\n");
+			write_stderr("WARNING: could not locate all job object functions in system API\n");
 	}
 	else
 	{
@@ -1406,6 +1453,7 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo)
 					JOBOBJECT_BASIC_LIMIT_INFORMATION basicLimit;
 					JOBOBJECT_BASIC_UI_RESTRICTIONS uiRestrictions;
 					JOBOBJECT_SECURITY_LIMIT_INFORMATION securityLimit;
+					OSVERSIONINFO osv;
 
 					ZeroMemory(&basicLimit, sizeof(basicLimit));
 					ZeroMemory(&uiRestrictions, sizeof(uiRestrictions));
@@ -1416,8 +1464,23 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo)
 					_SetInformationJobObject(job, JobObjectBasicLimitInformation, &basicLimit, sizeof(basicLimit));
 
 					uiRestrictions.UIRestrictionsClass = JOB_OBJECT_UILIMIT_DESKTOP | JOB_OBJECT_UILIMIT_DISPLAYSETTINGS |
-						JOB_OBJECT_UILIMIT_EXITWINDOWS | JOB_OBJECT_UILIMIT_HANDLES | JOB_OBJECT_UILIMIT_READCLIPBOARD |
+						JOB_OBJECT_UILIMIT_EXITWINDOWS | JOB_OBJECT_UILIMIT_READCLIPBOARD |
 						JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS | JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
+
+					if (as_service)
+					{
+						osv.dwOSVersionInfoSize = sizeof(osv);
+						if (!GetVersionEx(&osv) ||
+							osv.dwMajorVersion < 6 ||
+							(osv.dwMajorVersion == 6 && osv.dwMinorVersion == 0))
+						{
+							/*
+							 * On Windows 7 (and presumably later), JOB_OBJECT_UILIMIT_HANDLES prevents us from
+							 * starting as a service. So we only enable it on Vista and earlier (version <= 6.0)
+							 */
+							uiRestrictions.UIRestrictionsClass |= JOB_OBJECT_UILIMIT_HANDLES;
+						}
+					}
 					_SetInformationJobObject(job, JobObjectBasicUIRestrictions, &uiRestrictions, sizeof(uiRestrictions));
 
 					securityLimit.SecurityLimitFlags = JOB_OBJECT_SECURITY_NO_ADMIN | JOB_OBJECT_SECURITY_ONLY_TOKEN;
@@ -1462,21 +1525,23 @@ do_help(void)
 	printf(_("%s is a utility to start, stop, restart, reload configuration files,\n"
 			 "report the status of a PostgreSQL server, or signal a PostgreSQL process.\n\n"), progname);
 	printf(_("Usage:\n"));
-	printf(_("  %s start   [-w] [-D DATADIR] [-s] [-l FILENAME] [-o \"OPTIONS\"]\n"), progname);
-	printf(_("  %s stop    [-W] [-D DATADIR] [-s] [-m SHUTDOWN-MODE]\n"), progname);
-	printf(_("  %s restart [-w] [-D DATADIR] [-s] [-m SHUTDOWN-MODE] [-o \"OPTIONS\"]\n"), progname);
+	printf(_("  %s start   [-w] [-t SECS] [-D DATADIR] [-s] [-l FILENAME] [-o \"OPTIONS\"]\n"), progname);
+	printf(_("  %s stop    [-W] [-t SECS] [-D DATADIR] [-s] [-m SHUTDOWN-MODE]\n"), progname);
+	printf(_("  %s restart [-w] [-t SECS] [-D DATADIR] [-s] [-m SHUTDOWN-MODE]\n"
+		 "                 [-o \"OPTIONS\"]\n"), progname);
 	printf(_("  %s reload  [-D DATADIR] [-s]\n"), progname);
 	printf(_("  %s status  [-D DATADIR]\n"), progname);
 	printf(_("  %s kill    SIGNALNAME PID\n"), progname);
 #if defined(WIN32) || defined(__CYGWIN__)
 	printf(_("  %s register   [-N SERVICENAME] [-U USERNAME] [-P PASSWORD] [-D DATADIR]\n"
-			 "                    [-w] [-o \"OPTIONS\"]\n"), progname);
+		 "                    [-w] [-t SECS] [-o \"OPTIONS\"]\n"), progname);
 	printf(_("  %s unregister [-N SERVICENAME]\n"), progname);
 #endif
 
 	printf(_("\nCommon options:\n"));
 	printf(_("  -D, --pgdata DATADIR   location of the database storage area\n"));
 	printf(_("  -s, --silent           only print errors, no informational messages\n"));
+	printf(_("  -t SECS                seconds to wait when using -w option\n"));
 	printf(_("  -w                     wait until operation completes\n"));
 	printf(_("  -W                     do not wait until operation completes\n"));
 	printf(_("  --help                 show this help, then exit\n"));
@@ -1490,9 +1555,13 @@ do_help(void)
 	printf(_("  -o OPTIONS             command line options to pass to postgres\n"
 			 "                         (PostgreSQL server executable)\n"));
 	printf(_("  -p PATH-TO-POSTGRES    normally not necessary\n"));
-
+#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+	printf(_("  -c, --core-files       allow postgres to produce core files\n"));
+#else
+	printf(_("  -c, --core-files       not applicable on this platform\n"));
+#endif
 	printf(_("\nOptions for stop or restart:\n"));
-	printf(_("  -m SHUTDOWN-MODE   may be \"smart\", \"fast\", or \"immediate\"\n"));
+	printf(_("  -m SHUTDOWN-MODE   can be \"smart\", \"fast\", or \"immediate\"\n"));
 
 	printf(_("\nShutdown modes are:\n"));
 	printf(_("  smart       quit after all clients have disconnected\n"));
@@ -1586,6 +1655,8 @@ main(int argc, char **argv)
 		{"mode", required_argument, NULL, 'm'},
 		{"pgdata", required_argument, NULL, 'D'},
 		{"silent", no_argument, NULL, 's'},
+		{"timeout", required_argument, NULL, 't'},
+		{"core-files", no_argument, NULL, 'c'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -1655,7 +1726,7 @@ main(int argc, char **argv)
 	/* process command-line options */
 	while (optind < argc)
 	{
-		while ((c = getopt_long(argc, argv, "D:l:m:N:o:p:P:sU:wW", long_options, &option_index)) != -1)
+		while ((c = getopt_long(argc, argv, "cD:l:m:N:o:p:P:st:U:wW", long_options, &option_index)) != -1)
 		{
 			switch (c)
 			{
@@ -1702,6 +1773,9 @@ main(int argc, char **argv)
 				case 's':
 					silent_mode = true;
 					break;
+				case 't':
+					wait_seconds = atoi(optarg);
+					break;
 				case 'U':
 					if (strchr(optarg, '\\'))
 						register_username = xstrdup(optarg);
@@ -1725,6 +1799,9 @@ main(int argc, char **argv)
 				case 'W':
 					do_wait = false;
 					wait_set = true;
+					break;
+				case 'c':
+					allow_core_files = true;
 					break;
 				default:
 					/* getopt_long already issued a suitable error message */
