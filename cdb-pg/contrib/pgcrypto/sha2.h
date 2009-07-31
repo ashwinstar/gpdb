@@ -1,4 +1,4 @@
-/*	$PostgreSQL: pgsql/contrib/pgcrypto/sha2.h,v 1.5 2009/06/11 14:48:52 momjian Exp $ */
+/*	$PostgreSQL: pgsql/contrib/pgcrypto/sha2.h,v 1.4 2006/07/13 04:15:25 neilc Exp $ */
 /*	$OpenBSD: sha2.h,v 1.2 2004/04/28 23:11:57 millert Exp $	*/
 
 /*

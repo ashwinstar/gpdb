@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $PostgreSQL: pgsql/contrib/pgcrypto/px.h,v 1.16.4.1 2007/08/23 16:15:57 tgl Exp $
+ * $PostgreSQL: pgsql/contrib/pgcrypto/px.h,v 1.18 2007/08/23 16:15:51 tgl Exp $
  */
 
 #ifndef __PX_H
@@ -34,13 +34,6 @@
 
 #include <sys/types.h>
 #include <sys/param.h>
-#ifdef HAVE_ENDIAN_H
-#include <endian.h>
-#endif
-
-#ifndef BYTE_ORDER
-#error BYTE_ORDER must be defined as LITTLE_ENDIAN or BIG_ENDIAN
-#endif
 
 /* keep debug messages? */
 #define PX_DEBUG

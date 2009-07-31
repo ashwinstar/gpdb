@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $PostgreSQL: pgsql/contrib/pgcrypto/mbuf.h,v 1.3 2009/06/11 14:48:52 momjian Exp $
+ * $PostgreSQL: pgsql/contrib/pgcrypto/mbuf.h,v 1.2 2005/10/15 02:49:06 momjian Exp $
  */
 
 #ifndef __PX_MBUF_H

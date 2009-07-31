@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $PostgreSQL: pgsql/contrib/pgcrypto/pgp-cfb.c,v 1.4 2009/06/11 14:48:52 momjian Exp $
+ * $PostgreSQL: pgsql/contrib/pgcrypto/pgp-cfb.c,v 1.3 2005/10/15 02:49:06 momjian Exp $
  */
 
 #include "postgres.h"
