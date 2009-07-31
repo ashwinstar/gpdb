@@ -1339,7 +1339,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 			{
 				for (i = 0; i < nindexes; i++)
 				{
-					List *extra_oids = get_oids_for_bitmap(vacstmt->extra_oids, Irel[i]);
+					List *extra_oids = get_oids_for_bitmap(vacstmt->extra_oids, Irel[i], 1);
 
 					vacuum_index(&vacuum_pages, Irel[i],
 								 vacrelstats->rel_tuples, 0, updated_stats, extra_oids);
@@ -2621,7 +2621,8 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 			Assert(keep_tuples >= 0);
 			for (i = 0; i < nindexes; i++)
 			{
-				List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i]);
+				List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i],
+													   2);
 
 				vacuum_index(&Nvacpagelist, Irel[i],
 							 vacrelstats->rel_tuples, keep_tuples, updated_stats, extra_oids);
@@ -3965,24 +3966,35 @@ gen_oids_for_bitmaps(VacuumStmt *vacstmt, Relation onerel)
 	{
 		/*
 		 * If this relation is a bitmap index, we generate three OIDs
-		 * for relfilenodes needed for vacuuming a bitmap index.
+		 * for relfilenodes needed for vacuuming a bitmap index. We do this
+		 * twice to handle the two-phase nature of vacuum full: the first phase
+		 * (vacuum_index() from full_vacuum_rel) and then the second call
+		 * via repair_frag().
 		 */
-		if (Irel[index_no]->rd_rel->relam == BITMAP_AM_OID)
+		Oid indoid = RelationGetRelid(Irel[index_no]);
+		Oid tblspc = Irel[index_no]->rd_rel->reltablespace;
+		bool shared = Irel[index_no]->rd_rel->relisshared;
+		int i;
+
+		for (i = 0; i < 2; i++)
 		{
-			vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
-											  RelationGetRelid(Irel[index_no]));
-			vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
-											  GetNewRelFileNode(onerel->rd_rel->reltablespace,
-																onerel->rd_rel->relisshared,
+			if (Irel[index_no]->rd_rel->relam == BITMAP_AM_OID)
+			{
+				vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
+											  	  indoid);
+				vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
+											  GetNewRelFileNode(tblspc,
+																shared,
 																NULL));
-			vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
-											  GetNewRelFileNode(onerel->rd_rel->reltablespace,
-																onerel->rd_rel->relisshared,
-																NULL));
-			vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
-											  GetNewRelFileNode(onerel->rd_rel->reltablespace,
-																onerel->rd_rel->relisshared,
-																NULL));
+				vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
+												  GetNewRelFileNode(tblspc,
+																	shared,
+																	NULL));
+				vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
+												  GetNewRelFileNode(tblspc,
+																	shared,
+																	NULL));
+			}
 		}
 	}
 
@@ -3995,15 +4007,18 @@ gen_oids_for_bitmaps(VacuumStmt *vacstmt, Relation onerel)
  * If the given index is a bitmap index, three oids are returned. Otherwise,
  * NIL is returned.
  *
+ * occurrence determines the offset of the OIDs in the list.
+ *
  * The caller is responsible to free the space.
  */
 List *
-get_oids_for_bitmap(List *all_extra_oids, Relation Irel)
+get_oids_for_bitmap(List *all_extra_oids, Relation Irel, int occurrence)
 {
 	List *extra_oids = NIL;
 	int count = 0;
 	bool found = false;
 	ListCell *lc;
+	int stage = 1;
 
 	if (Irel->rd_rel->relam != BITMAP_AM_OID)
 		return extra_oids;
@@ -4020,7 +4035,10 @@ get_oids_for_bitmap(List *all_extra_oids, Relation Irel)
 		if (count%4 == 0 &&
 			lfirst_oid(lc) == RelationGetRelid(Irel))
 		{
-			found = true;
+			if (stage == occurrence)
+				found = true;
+			else
+				stage++;
 		}
 
 		count++;

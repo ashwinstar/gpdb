@@ -307,7 +307,8 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			/* Remove index entries */
 			for (i = 0; i < nindexes; i++)
 			{
-				List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i]);
+				List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i],
+													   1);
 				
 				lazy_vacuum_index(Irel[i],
 								  &indstats[i],
@@ -524,7 +525,8 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 		/* Remove index entries */
 		for (i = 0; i < nindexes; i++)
 		{
-			List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i]);
+			List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i],
+												   2);
 			
 			lazy_vacuum_index(Irel[i],
 							  &indstats[i],
