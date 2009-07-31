@@ -29,6 +29,7 @@
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "parser/parse_clause.h"			/* for sort_op_can_sort() */
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
@@ -677,6 +678,9 @@ op_mergejoinable(Oid opno, Oid *leftOp, Oid *rightOp)
 {
 	HeapTuple	tp;
 	bool		result = false;
+
+	if (!sort_op_can_sort(opno))
+		return result;
 
 	tp = SearchSysCache(OPEROID,
 						ObjectIdGetDatum(opno),

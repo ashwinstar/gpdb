@@ -2701,7 +2701,7 @@ addAllTargetsToSortList(ParseState *pstate, List *sortlist,
  * AM strategies, it cannot be used to sort. In this case we return false. If we
  * find a candidate, we return true.
  */
-static bool
+bool
 sort_op_can_sort(Oid opid)
 {
 	CatCList *catlist;
@@ -2713,7 +2713,10 @@ sort_op_can_sort(Oid opid)
 								 0, 0, 0);
 	/* not associated with an AM, so can't be a match */
 	if (catlist->n_members == 0)
+	{
+		ReleaseSysCacheList(catlist);
 		return false;
+	}
 
 	for (i = 0; i < catlist->n_members; i++)
 	{

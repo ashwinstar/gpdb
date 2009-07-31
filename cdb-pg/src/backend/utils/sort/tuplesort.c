@@ -2727,7 +2727,7 @@ SelectSortFunction(Oid sortOperator,
 	}
 
 	/* shouldn't get here if the parser did its job. See sort_op_can_sort() */
-	elog(ERROR, "operator %u cannot sort", sortOperator);
+	elog(ERROR, "operator %s cannot sort", get_opname(sortOperator));
 }
 
 /*

@@ -43,5 +43,5 @@ extern List *addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 					bool resolveUnknown);
 extern Index assignSortGroupRef(TargetEntry *tle, List *tlist);
 extern bool targetIsInSortGroupList(TargetEntry *tle, List *sortList);
-
+extern bool sort_op_can_sort(Oid opid);
 #endif   /* PARSE_CLAUSE_H */
