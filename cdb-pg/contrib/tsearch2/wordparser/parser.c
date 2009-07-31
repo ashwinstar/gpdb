@@ -47,7 +47,7 @@ TParserInit(char *str, int len)
 	{
 		prs->usewide = true;
 		prs->wstr = (wchar_t *) palloc(sizeof(wchar_t) * (prs->lenstr+1));
-		prs->lenwstr = char2wchar(prs->wstr, prs->str, prs->lenstr);
+		prs->lenwstr = char2wchar(prs->wstr, prs->lenstr, prs->str, prs->lenstr);
 	}
 	else
 #endif
