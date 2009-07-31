@@ -143,7 +143,7 @@ pg_read_file(PG_FUNCTION_ARGS)
 	if (bytes_to_read < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("requested length may not be negative")));
+				 errmsg("requested length cannot be negative")));
 
 	/* not sure why anyone thought that int64 length was a good idea */
 	if (bytes_to_read > (MaxAllocSize - VARHDRSZ))
@@ -226,7 +226,7 @@ pg_stat_file(PG_FUNCTION_ARGS)
 	isnull[3] = true;
 	values[4] = TimestampTzGetDatum(time_t_to_timestamptz(fst.st_ctime));
 #endif
-	values[5] = BoolGetDatum((fst.st_mode & S_IFDIR)!=0);
+	values[5] = BoolGetDatum(S_ISDIR(fst.st_mode));
 
 	tuple = heap_form_tuple(tupdesc, values, isnull);
 
