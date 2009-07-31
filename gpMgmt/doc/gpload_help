@@ -318,8 +318,8 @@ NULL_AS - Optional. Specifies the string that represents a null value. The
           from empty strings. Any source data item that matches this string 
           will be considered a null value.
 
-QUOTE - Optional. Specifies the quotation character for CSV mode. The 
-        default is double-quote (").
+QUOTE - Required when FORMAT is CSV. Specifies the quotation character 
+        for CSV mode. The default is double-quote (").
 
 HEADER - Optional. For CSV formatted data, specifies that the first 
          line in the data file(s) is a header row (contains the names 
