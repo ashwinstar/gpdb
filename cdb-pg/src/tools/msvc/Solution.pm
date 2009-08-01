@@ -269,6 +269,7 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
     {
         print "Generating preproc.y...\n";
         chdir('src\interfaces\ecpg\preproc');
+        system('chmod -r preproc.y');
         system('perl parse.pl < ..\..\..\backend\parser\gram.y > preproc.y');
         chdir('..\..\..\..');
     }

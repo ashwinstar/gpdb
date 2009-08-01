@@ -14,9 +14,10 @@ if %BV% EQU 1.875 goto bisonok
 if %BV% GEQ 2.2 goto bisonok
 goto nobison
 :bisonok
+echo on
 
 if "%1" == "src\backend\parser\gram.y" call :generate %1 src\backend\parser\gram.c src\backend\parser\gram.h
-if "%1" == "src\backend\bootstrap\bootparse.y" call :generate %1 src\backend\bootstrap\bootparse.c
+if "%1" == "src\backend\bootstrap\bootparse.y" call :generate %1 src\backend\bootstrap\bootparse.c src\backend\bootstrap\bootparse.h
 if "%1" == "src\pl\plpgsql\src\gram.y" call :generate %1 src\pl\plpgsql\src\pl_gram.c src\pl\plpgsql\src\pl_gram.h
 if "%1" == "src\interfaces\ecpg\preproc\preproc.y" call :generate %1 src\interfaces\ecpg\preproc\preproc.c src\interfaces\ecpg\preproc\preproc.h
 if "%1" == "contrib\cube\cubeparse.y" call :generate %1 contrib\cube\cubeparse.c
@@ -28,6 +29,8 @@ exit 1
 :generate
 SET fn=%1
 SET cf=%2
+attrib -r %2
+attrib -r %3
 bison.exe -d %fn% -o %cf%
 if errorlevel 1 exit 1
 SET hf=%cf:~0,-2%.h
