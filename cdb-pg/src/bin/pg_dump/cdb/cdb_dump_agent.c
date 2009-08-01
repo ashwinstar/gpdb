@@ -208,7 +208,6 @@ static const char *getAttrName(int attrnum, TableInfo *tblInfo);
 static const char *fmtCopyColumnList(const TableInfo *ti);
 
 /* MPP additions start */
-static void   forkGpCatalogDumper(void);
 static void   _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
 extern void   makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg );
 static void*  monitorThreadProc(void *arg  __attribute__((unused)));
@@ -694,11 +693,8 @@ main(int argc, char **argv)
 		* of the code will be the catalog dumper and will have g_gp_catalog_only
 		* set to true, therefore skipping this step.
 		*/
-    if (g_role == ROLE_MASTER && !g_gp_catalog_only && !dataOnly)
+    if (g_role == ROLE_MASTER && !dataOnly)
     {
-		mpp_err_msg( logInfo, progname, "Forking process to dump Greenplum Database catalog\n");
-        forkGpCatalogDumper();
-
 		mpp_err_msg( logInfo, progname, "Dumping CREATE DATABASE statement\n");
 		dumpDatabaseDefinition();
     }
@@ -761,17 +757,14 @@ main(int argc, char **argv)
 	 * schema dumper thread finished with success. This is *very unlikely* to happen. If it ever does,
 	 * we will end up with a good dump, but bad catalog dump file.
 	 */
-	if (!g_gp_catalog_only)
+	pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
+	if ( pOp == NULL )
 	{
-		pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
-		if ( pOp == NULL )
-		{
-			exit_horribly(g_fout, NULL, "could not allocate memory for gp_backup_status operation\n");
-		}
-
-		/* add status operator, to let the monitor thread see it */
-		AddToStatusOpList( g_pStatusOpList, pOp );
+		exit_horribly(g_fout, NULL, "could not allocate memory for gp_backup_status operation\n");
 	}
+
+	/* add status operator, to let the monitor thread see it */
+	AddToStatusOpList( g_pStatusOpList, pOp );
 
 	/*
 	 * And finally we can do the actual output.
@@ -6263,91 +6256,6 @@ void myHandler(int signo)
 	}
 }
 
-/*
- * forkGpCatalogDumper:
- *	  create a plpgsql function for the restore of the data in Greenplum catalog tables
- * N.B. The deletes have to happen in the order listed, so the constraints don't get violated.
- * The inserts have to happen in the reverse order from the deletes, again so the contraints
- * don't get violated.
- */
-void forkGpCatalogDumper(void)
-{
-    char* pszBackupFileName, *pszCmdLine;
-    pid_t newpid;
-    int len;
-
-    pszBackupFileName = formCatalogFilePathName( g_pszCDBOutputDirectory,
-												 g_CDBDumpKey, g_role, g_dbID );
-    newpid = fork();
-    if ( newpid < 0 )
-    {
-        mpp_err_msg( logError, progname, "failed to fork in gp_backup_agent for catalog\n");
-    }
-    else if ( newpid == 0 )
-    {
-        char port[10];
-        sprintf(port, "%d", g_SegDB.port);
-
-        /* Child Process */
-        /* launch gp_dump_agent, wait for it to finish */
-
-        len = 14 + 1 +                          /* gp_dump_agent */
-			2 + 1 + strlen(port) + 1 +          /* -p port */
-			3 + 1 +                             /* -a */
-			18 + 1 +							/* --gp-catalog-only */
-			7 + 1 + strlen(g_CDBDumpInfo) + 1 + /* --gp-k key */
-			strlen(g_SegDB.pszDBName) + 1 +     /* db name */
-			1 + 1 +                             /* > */
-			strlen(pszBackupFileName);          /* catalog file */
-
-        pszCmdLine = (char *) calloc( len+1, 1 );
-        strcpy( pszCmdLine, "gp_dump_agent -p ");
-        strcat( pszCmdLine, port);
-        strcat( pszCmdLine, " -a ");
-		strcat( pszCmdLine, " --gp-catalog-only");
-        strcat( pszCmdLine, " --gp-k ");
-        strcat( pszCmdLine, g_CDBDumpInfo);
-		strcat( pszCmdLine, " ");
-		strcat( pszCmdLine, g_SegDB.pszDBName);
-        strcat( pszCmdLine, " > " );
-        strcat( pszCmdLine, pszBackupFileName );
-
-        putenv( "PGOPTIONS=-c gp_session_role=UTILITY" );
-
-        mpp_err_msg( logInfo, progname, "Command Line: %s\n", pszCmdLine );
-
-        execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
-
-        mpp_err_msg( logError, progname, "Error in gp_backup_agent - execl of %s with Command Line %s failed",
-					 "/bin/sh", pszCmdLine );
-        exit(127);
-    }
-    else
-    {
-        int status, rc, exit_code;
-        // Parent .  Lets sleep and wake up until we see it's done
-        waitpid( newpid, &status, 0 );
-        if ( WIFEXITED(status) )
-        {
-            rc = WEXITSTATUS(status);
-            mpp_err_msg( logInfo, progname, "gp_dump finished with rc %d.\n", rc );
-            if ( rc != 0 )
-            {
-                exit_code=2;
-            }
-        }
-        else if( WIFSIGNALED(status) )
-        {
-            mpp_err_msg( logError, progname, "psql finished abnormally with signal number %d.\n", WTERMSIG(status));
-            exit_code=2;
-        }
-        else
-        {
-            mpp_err_msg( logError, progname, "psql crashed or finished badly.\n");
-            exit_code=2;
-        }
-    }
-}
 
 char* formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID )
 {
@@ -6437,6 +6345,7 @@ dumpDatabaseDefinition()
     pszBackupFileName = formCDatabaseFilePathName( g_pszCDBOutputDirectory,
 												   g_CDBDumpKey, g_role, g_dbID );
 
+
 	/* Make sure we can create this file before we spin off sh
 	 * cause we don't get a good error message from sh if we
 	 * can't write to the file
@@ -6505,14 +6414,36 @@ dumpDatabaseDefinition()
 
 	/* write the CREATE DATABASE command to the file */
 	if ( fcat != NULL )
+	{
 		fprintf(fcat, "%s", creaQry->data);
+		fclose(fcat);
+	}
+	
+	/* temporary hack for debugging. write temp contents to the catalog file */
+	/* START */
+    pszBackupFileName = formCatalogFilePathName( g_pszCDBOutputDirectory,
+												 g_CDBDumpKey, g_role, g_dbID );
 
+    fcat = fopen( pszBackupFileName, "w" );
+    free(pszBackupFileName);
+    if ( fcat == NULL )
+    {
+        mpp_err_msg( logError, progname, "Error creating cat file %s in gp_dump_agent",
+					 pszBackupFileName);
+    }
+
+	if ( fcat != NULL )
+	{
+		fprintf(fcat, "gp catalog data temporarily unavailable in Main builds (8-1-09) will be returned soon.\n");
+		fclose(fcat);
+	}
+	/* END */
+	
+	
     PQclear(res);
 	destroyPQExpBuffer(dbQry);
 	destroyPQExpBuffer(creaQry);
 
-	if ( fcat != NULL )
-		fclose(fcat);
 }
 
 
