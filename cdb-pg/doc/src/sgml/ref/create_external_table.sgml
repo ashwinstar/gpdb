@@ -30,7 +30,7 @@ CREATE EXTERNAL TABLE <replaceable class="PARAMETER">table_name</replaceable> (<
                [HEADER]
                [QUOTE [AS] '<replaceable class="PARAMETER">quote</replaceable>'] 
                [FORCE NOT NULL <replaceable class="PARAMETER">column</replaceable> [, ...] )]
-			   [FILL MISSING FIELDS]
+			   [FILL MISSING FIELDS )]
 	  [ ENCODING '<replaceable class="parameter">encoding</replaceable>' ]
 	  [ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS | PERCENT] ] ]
 
