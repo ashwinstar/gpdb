@@ -414,7 +414,7 @@ static List *atpxRenameList(Relation rel, PartitionNode *pNode,
 static RangeVar *make_temp_table_name(Relation rel, BackendId id);
 static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
 								List *opts, List **hidden_types);
-static void ATPartitionCheck(Relation rel, AlterTableType typ);
+static void ATPartitionCheck(Relation rel, AlterTableType typ, bool recursing);
 
 
 #define parkindIsHash(c)   ((c) == 'h')
@@ -3163,8 +3163,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			 * test that this is allowed for partitioning, but only if we aren't
 			 * recursing.
 			 */
-			if (!recursing)
-				ATPartitionCheck(rel, cmd->subtype);
+			ATPartitionCheck(rel, cmd->subtype, recursing);
 			/* Performs own recursion */
 			ATPrepAddColumn(wqueue, rel, recurse, cmd);
 			pass = AT_PASS_ADD_COL;
@@ -3178,14 +3177,14 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			 * rules.
 			 */
 			ATSimplePermissions(rel, true);
-			ATPartitionCheck(rel, cmd->subtype);
+			ATPartitionCheck(rel, cmd->subtype, recursing);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
 			/* No command-specific prep needed */
 			pass = cmd->def ? AT_PASS_ADD_CONSTR : AT_PASS_DROP;
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype);
+			ATPartitionCheck(rel, cmd->subtype, recursing);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
 			/* No command-specific prep needed */
 			pass = AT_PASS_DROP;
@@ -3193,8 +3192,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_SetNotNull:		/* ALTER COLUMN SET NOT NULL */
 			ATSimplePermissions(rel, false);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
-			if (!cmd->part_expanded && !recursing)
-				ATPartitionCheck(rel, cmd->subtype);
+			if (!cmd->part_expanded)
+				ATPartitionCheck(rel, cmd->subtype, recursing);
 			/* No command-specific prep needed */
 			pass = AT_PASS_ADD_CONSTR;
 			break;
@@ -3213,7 +3212,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_DropColumn:		/* DROP COLUMN */
 		case AT_DropColumnRecurse:
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype);
+			ATPartitionCheck(rel, cmd->subtype, recursing);
 			/* Recursion occurs during execution phase */
 			/* No command-specific prep needed except saving recurse flag */
 			if (recurse)
@@ -3253,7 +3252,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_AlterColumnType:		/* ALTER COLUMN TYPE */
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype);
+			ATPartitionCheck(rel, cmd->subtype, recursing);
 			/* Performs own recursion */
 			ATPrepAlterColumnType(wqueue, tab, rel, recurse, recursing, cmd);
 			pass = AT_PASS_ALTER_TYPE;
@@ -3264,8 +3263,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
-					if (!recursing)
-						ATPartitionCheck(rel, cmd->subtype);
+					ATPartitionCheck(rel, cmd->subtype, recursing);
 					if (rel_is_partitioned(RelationGetRelid(rel)))
 					{
 						do_recurse = true;
@@ -3294,7 +3292,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_DropOids:		/* SET WITHOUT OIDS */
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype);
+			ATPartitionCheck(rel, cmd->subtype, recursing);
 			/* Performs own recursion */
 			if (rel->rd_rel->relhasoids)
 			{
@@ -3414,7 +3412,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_AddInherit:		/* INHERIT / NO INHERIT */
 		case AT_DropInherit:
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype);
+			ATPartitionCheck(rel, cmd->subtype, recursing);
 			/* These commands never recurse */
 			/* No command-specific prep needed */
 			pass = AT_PASS_MISC;
@@ -3428,7 +3426,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			Relation			 newrel = NULL;
 			int					 i;
 
-			ATPartitionCheck(rel, cmd->subtype);
+			ATPartitionCheck(rel, cmd->subtype, recursing);
 			pass = AT_PASS_MISC;
 			if (Gp_role == GP_ROLE_UTILITY)
 				ereport(ERROR,
@@ -3592,7 +3590,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			List			   *source_rels = NIL;
 			Relation			target = NULL;
 
-			ATPartitionCheck(rel, cmd->subtype);
+			ATPartitionCheck(rel, cmd->subtype, recursing);
 
 			if (Gp_role == GP_ROLE_UTILITY)
 				ereport(ERROR,
@@ -3691,7 +3689,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			PgPartRule			*prule3	= NULL;
 			Relation			 target = NULL;
 
-			ATPartitionCheck(rel, cmd->subtype);
+			ATPartitionCheck(rel, cmd->subtype, recursing);
 
 			if (Gp_role == GP_ROLE_UTILITY)
 				ereport(ERROR,
@@ -4139,7 +4137,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_PartAddInternal:		/* internal partition creation */
 		case AT_PartModify:             /* Modify */
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype);
+			ATPartitionCheck(rel, cmd->subtype, recursing);
 				/* XXX XXX XXX */
 			/* This command never recurses */
 			/* No command-specific prep needed */
@@ -5194,8 +5192,11 @@ ATGetQueueEntry(List **wqueue, Relation rel)
  * If this is a child partition in a partition set, error out.
  */
 static void
-ATPartitionCheck(Relation rel, AlterTableType typ)
+ATPartitionCheck(Relation rel, AlterTableType typ, bool recursing)
 {
+	if (recursing)
+		return;
+
 	if ((typ == AT_AddInherit || typ == AT_DropInherit) &&
 		(rel_is_child_partition(RelationGetRelid(rel)) ||
 		 rel_is_partitioned(RelationGetRelid(rel))))
