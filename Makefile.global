@@ -134,6 +134,8 @@ endif
 
 # grep by platform
 GREP=grep
+aix5_ppc_64_GREP=/opt/freeware/bin/grep
+aix5_ppc_32_GREP=/opt/freeware/bin/grep
 sol10_x86_64_GREP=ggrep
 sol10_x86_32_GREP=ggrep
 sol10_sparc_64_GREP=ggrep
@@ -153,13 +155,19 @@ endif
 
 LDD_FILTER_NULL=cat
 LDD_FILTER=$(GREP) '\=>' | awk '{print $$3}' | perl -p -i -e 's,\.so.*$$,\.so,'
-osx104_x86_LDD_FILTER=awk '{print $$1}' | perl -p -i -e 's,\.[0-9\.]*\.dylib$$,\.,'
+#aix5_ppc_32_LDD_FILTER=$(GREP) -v 'needs:' | $(AWK) -F\( '{print $$1}' | $(AWK) '{print $$1}' | $(GREP) -E -v '^/unix$$' | perl -p -i -e 's,\.[0-9\.]*\.$(LDD_LIB_SUFFIX)$$,\.,'
+#aix5_ppc_64_LDD_FILTER=$(GREP) -v 'needs:' | $(AWK) -F\( '{print $$1}' | $(AWK) '{print $$1}' | $(GREP) -E -v '^/unix$$' | perl -p -i -e 's,\.[0-9\.]*\.$(LDD_LIB_SUFFIX)$$,\.,'
+aix5_ppc_32_LDD_FILTER=$(GREP) -v 'needs:' | $(AWK) -F\( '{print $$1}' | $(AWK) '{print $$1}' | $(GREP) -E -v '^/unix$$'
+aix5_ppc_64_LDD_FILTER=$(GREP) -v 'needs:' | $(AWK) -F\( '{print $$1}' | $(AWK) '{print $$1}' | $(GREP) -E -v '^/unix$$'
+osx104_x86_LDD_FILTER=awk '{print $$1}' | perl -p -i -e 's,\.[0-9\.]*\.$(LDD_LIB_SUFFIX)$$,\.,'
 osx105_x86_LDD_FILTER=$(osx104_x86_LDD_FILTER)
 ifneq "$($(BLD_ARCH)_LDD_FILTER)" ""
 LDD_FILTER=$($(BLD_ARCH)_LDD_FILTER)
 endif
 
 LDD_LIB_SUFFIX=
+#aix5_ppc_32_LDD_LIB_SUFFIX=a
+#aix5_ppc_64_LDD_LIB_SUFFIX=a
 osx104_x86_LDD_LIB_SUFFIX=dylib
 osx105_x86_LDD_LIB_SUFFIX=$(osx104_x86_LDD_LIB_SUFFIX)
 ifneq "$($(BLD_ARCH)_LDD_LIB_SUFFIX)" ""
@@ -168,6 +176,8 @@ endif
 
 # tar by platform
 TAR=tar
+aix5_ppc_32_TAR=gtar
+aix5_ppc_64_TAR=gtar
 sol10_x86_32_TAR=gtar
 sol10_x86_64_TAR=gtar
 sol10_sparc_TAR=gtar
@@ -178,7 +188,25 @@ sol8_sparc_64_TAR=gtar
 sol8_sparc_32_TAR=gtar
 sol8_sparc_TAR=gtar
 ifneq "$($(BLD_ARCH)_TAR)" ""
-    TAR=$($(BLD_ARCH)_TAR)
+TAR=$($(BLD_ARCH)_TAR)
+endif
+
+# awk by platform
+aix5_ppc_32_AWK=gawk
+aix5_ppc_64_AWK=gawk
+sol10_x86_32_AWK=nawk
+sol10_x86_64_AWK=nawk
+sol10_sparc_AWK=nawk
+sol10_sparc_32_AWK=nawk
+sol10_sparc_64_AWK=nawk
+sol9_sparc_AWK=nawk
+sol8_sparc_AWK=nawk
+sol8_sparc_64_AWK=nawk
+sol8_sparc_32_AWK=nawk
+ifneq "$($(BLD_ARCH)_AWK)" ""
+AWK=$($(BLD_ARCH)_AWK)
+else
+AWK=awk
 endif
 
 # Functions for use in this and including makefiles

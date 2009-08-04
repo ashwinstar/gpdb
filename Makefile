@@ -172,8 +172,8 @@ DEFPORT=5432
 rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu
 BLD_CONFIGFLAGS=$($(BLD_ARCH)_CONFIGFLAGS)
 
-aix5_ppc_64_ENABLE_THREAD_SAFETY=--enable-thread-safety-force
-aix5_ppc_32_ENABLE_THREAD_SAFETY=--enable-thread-safety-force
+aix5_ppc_64_ENABLE_THREAD_SAFETY=--enable-thread-safety
+aix5_ppc_32_ENABLE_THREAD_SAFETY=--enable-thread-safety
 ifneq "$($(BLD_ARCH)_ENABLE_THREAD_SAFETY)" ""
 BLD_ENABLE_THREAD_SAFETY=$($(BLD_ARCH)_ENABLE_THREAD_SAFETY)
 else
@@ -218,10 +218,12 @@ CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap $(BLD_CURL_CONFI
 endif
 # ...but do include some of the authlibs on AIX
 ifneq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
-CONFIGFLAGS+= --with-openssl --with-pam --without-krb5 --without-ldap $(BLD_CURL_CONFIG)
+CONFIGFLAGS+= --with-openssl --with-pam --without-krb5 --with-ldap $(BLD_CURL_CONFIG)
 endif
 
 # Windows-specific config flags
+aix5_ppc_64_CONFIG_ADDITIONS=LDFLAGS="-Wl,-bbigtoc -L/usr/lib/threads"
+aix5_ppc_32_CONFIG_ADDITIONS=LDFLAGS="-L/usr/lib/threads"
 win32_CONFIG_ADDITIONS=--build=x86_x64-unknown-linux-gnu --host=i686-pc-mingw32 --without-zlib --enable-debug CC=/usr/local/mingw32/bin/mingw32-gcc LDFLAGS=-L/usr/local/mingw32/mingw32/lib CPP= CPPFLAGS=-I/usr/local/mingw32/mingw32/include
 CONFIG_ADDITIONS=$($(BLD_ARCH)_CONFIG_ADDITIONS)
 
@@ -264,8 +266,8 @@ export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$(BLD_LD_LIBRARY_PATH)
 #$(warning $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE)))
 
 # how much of GPDB to build by platform (default is "full")
-aix5_ppc_64_GPDB_BUILDSET=aix_subset
-aix5_ppc_32_GPDB_BUILDSET=aix_subset
+aix5_ppc_64_GPDB_BUILDSET=partial
+aix5_ppc_32_GPDB_BUILDSET=partial
 sol10_x86_32_GPDB_BUILDSET=partial
 sol10_sparc_32_GPDB_BUILDSET=partial
 sol9_sparc_32_GPDB_BUILDSET=partial
@@ -472,6 +474,7 @@ LOADERSINSTLOC_BIN=$(LOADERSINSTLOC)/bin
 LOADERSINSTLOC_BINEXT=$(LOADERSINSTLOC)/bin/ext/
 LOADERSINSTLOC_EXT=$(LOADERSINSTLOC)/ext
 LOADERSINSTLOC_LIB=$(LOADERSINSTLOC)/lib
+LOADERSINSTLOC_LIB_PWARE=$(LOADERSINSTLOC)/lib/pware
 LOADERSINSTLOC_DOCS=$(LOADERSINSTLOC)/docs
 LOADERSINSTLOC_OPENSOURCE=$(LOADERSINSTLOC)/thirdparty
 
@@ -582,36 +585,8 @@ define tmpLOADERS_FILESET_LIB
 endef
 LOADERS_FILESET_LIB = $(strip $(tmpLOADERS_FILESET_LIB))
 
-# tar by platform
-TAR=tar
-sol10_x86_32_TAR=gtar
-sol10_x86_64_TAR=gtar
-sol10_sparc_TAR=gtar
-sol10_sparc_32_TAR=gtar
-sol10_sparc_64_TAR=gtar
-sol9_sparc_TAR=gtar
-sol8_sparc_64_TAR=gtar
-sol8_sparc_32_TAR=gtar
-sol8_sparc_TAR=gtar
-ifneq "$($(BLD_ARCH)_TAR)" ""
-TAR=$($(BLD_ARCH)_TAR)
-endif
-
-# abstract the awk tool for Solaris
-sol10_x86_32_AWK=nawk
-sol10_x86_64_AWK=nawk
-sol10_sparc_AWK=nawk
-sol10_sparc_32_AWK=nawk
-sol10_sparc_64_AWK=nawk
-sol9_sparc_AWK=nawk
-sol8_sparc_AWK=nawk
-sol8_sparc_64_AWK=nawk
-sol8_sparc_32_AWK=nawk
-ifneq "$($(BLD_ARCH)_AWK)" ""
-AWK=$($(BLD_ARCH)_AWK)
-else
-AWK=awk
-endif
+AIX_LOADERS_LIBS_PWARE=libbz2.a libiconv.a libintl.a libncurses.a libpanel.a libsqlite3.a
+LOADERS_FILESET_LIB_PWARE=$($(BLD_OS)_LOADERS_LIBS_PWARE)
 
 ifeq "$(MPP_ARCH)" ""
 sol10_x86_64_MPP_ARCH=SOL-x86_64
@@ -643,25 +618,29 @@ endif
 VERSION:=$(shell perl -pe 's, ,-,g' VERSION)
 
 connectivity :
+	@if [ ! -z "$(CONNECTIVITYINSTLOC)" ] && [ "$(CONNECTIVITYINSTLOC)" != "/" ]; then \
+	  echo "rm -rf $(CONNECTIVITYINSTLOC)"; \
+	  rm -rf $(CONNECTIVITYINSTLOC); \
+	fi
 ifeq "$(findstring connectivity,$(BLD_TARGETS))" ""
 	# ---- build and packaging of the Connectivity package is currently disabled;
 	# ---- set BLD_TARGETS="connectivity" to enable them.
 else
-ifneq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
-	# ---- (for AIX) load LIBPATH with the PostgreSQL library set and build the ODBC drivers ----
-	AUTHLIBS_HOME=`pwd`; export AUTHLIBS_HOME ; \
-	export LIBPATH=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/lib:$(LIBPATH); \
-	  export PG_CONFIG=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/bin/pg_config; \
-	  cd $(BLD_TOP)/client/odbc/src && \
-	    $(MAKE) all
-else
+#ifneq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
+#	# ---- (for AIX) load LIBPATH with the PostgreSQL library set and build the ODBC drivers ----
+#	AUTHLIBS_HOME=$(BLD_THIRDPARTY_DIR); export AUTHLIBS_HOME ; \
+#	export LIBPATH=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/lib:$(LIBPATH); \
+#	  export PG_CONFIG=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/bin/pg_config; \
+#	  cd $(BLD_TOP)/client/odbc/src && \
+#	    $(MAKE) all
+#else
 	# ---- (for the rest) load LD_LIBRARY_PATH with the GPDB library set and build the ODBC drivers ----
-	AUTHLIBS_HOME=`pwd`; export AUTHLIBS_HOME ; \
+	AUTHLIBS_HOME=$(BLD_THIRDPARTY_DIR); export AUTHLIBS_HOME ; \
 	cd $(INSTLOC)/ && \
 	  . ./greenplum_path.sh; \
 	  cd $(BLD_TOP)/client/odbc/src && \
 	    $(MAKE) all
-endif
+#endif
 	# ---- copy GPDB fileset ----
 	mkdir -p $(CONNECTIVITYINSTLOC_LIB)
 	(cd $(INSTLOC)/lib && $(TAR) cf - *) | (cd $(CONNECTIVITYINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
@@ -707,12 +686,12 @@ endif
 endif
 
 clients :
+	if [ ! -z "$(CLIENTINSTLOC)" ] && [ "$(CLIENTINSTLOC)" != "/" ]; then rm -rf $(CLIENTINSTLOC); fi
 ifeq "$(findstring clients,$(BLD_TARGETS))" ""
 	# ---- build and packaging of the Clients package is currently disabled;
 	# ---- set BLD_TARGETS="clients" to enable them.
 else
 	# ---- copy GPDB fileset ----
-	if [ ! -z "$(CLIENTINSTLOC)" ] && [ "$(CLIENTINSTLOC)" != "/" ]; then rm -rf $(CLIENTINSTLOC); fi
 	mkdir -p $(CLIENTINSTLOC_BIN)
 	(cd $(INSTLOC)/bin && $(TAR) cf - $(CLIENT_FILESET)) | (cd $(CLIENTINSTLOC_BIN)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 	mkdir -p $(CLIENTINSTLOC_INCLUDE)
@@ -750,12 +729,12 @@ endif
 endif
 
 loaders :
+	if [ ! -z "$(LOADERSINSTLOC)" ] && [ "$(LOADERSINSTLOC)" != "/" ]; then rm -rf $(LOADERSINSTLOC); fi
 ifeq "$(findstring loaders,$(BLD_TARGETS))" ""
 	# ---- build and packaging of the Loaders package is currently disabled;
 	# ---- set BLD_TARGETS="loaders" to enable them.
 else
 	# ---- copy GPDB fileset ----
-	if [ ! -z "$(LOADERSINSTLOC)" ] && [ "$(LOADERSINSTLOC)" != "/" ]; then rm -rf $(LOADERSINSTLOC); fi
 	mkdir -p $(LOADERSINSTLOC_BIN)
 	(cd $(INSTLOC)/bin/ && $(TAR) cf - $(LOADERS_FILESET_BIN)) | (cd $(LOADERSINSTLOC_BIN)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 	mkdir -p $(LOADERSINSTLOC_BINEXT)
@@ -768,9 +747,13 @@ endif
 ifneq "$(LOADERS_FILESET_LIB)" ""
 	(cd $(INSTLOC)/lib/ && $(TAR) cf - $(LOADERS_FILESET_LIB)) | (cd $(LOADERSINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 endif
-ifneq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
-	(cd /opt/freeware/lib/ && $(TAR) cf - libbz2.a libz.a) | (cd $(LOADERSINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
+ifneq "$(LOADERS_FILESET_LIB_PWARE)" ""
+	mkdir -p $(LOADERSINSTLOC_LIB_PWARE)
+	($(TAR) cf - -C /opt/pware/lib $(LOADERS_FILESET_LIB_PWARE)) | ($(TAR) xvpf - -C $(LOADERSINSTLOC_LIB_PWARE))$(check_pipe_for_errors)
 endif
+#ifneq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
+#	(cd /opt/freeware/lib/ && $(TAR) cf - libbz2.a libz.a) | (cd $(LOADERSINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
+#endif
 ifneq "$(findstring $(BLD_ARCH),sol8_sparc_32 sol9_sparc_32 sol10_sparc_32)" ""
 	(cd /usr/local/lib/ && $(TAR) cf - libiconv.so* libexpat.so*) | (cd $(LOADERSINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 	mkdir -p $(LOADERSINSTLOC_OPENSOURCE)
@@ -1008,7 +991,7 @@ copylibs : thirdparty-dist
 	        fi ; \
 	    done ; \
 	fi
-	if [ `uname -s` != 'Darwin' ] ; then \
+	if [ `uname -s` != 'Darwin' -a `uname -s` != 'AIX' ] ; then \
 	    for lib in `ldd $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|curl|readline|numa' | awk '{print $$3}' | sort -u`; do \
 	        if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then continue; fi; \
 	        if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
@@ -1017,6 +1000,12 @@ copylibs : thirdparty-dist
 	    done ; \
 	fi
 	if [ `uname -s` = 'AIX' ] ; then \
+	    for lib in `ldd $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|curl|readline|numa' | awk -F\( '{print $$1}' | sort -u`; do \
+	        if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then continue; fi; \
+	        if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
+	        echo "cp -p $$lib $(INSTLOC)/lib" ; \
+	        cp -p $$lib $(INSTLOC)/lib ; \
+	    done ; \
 	    for lib in `ldd $(INSTLOC)/bin/gpfdist | egrep 'libbz2|libz' | awk -F\( '{print $$1}' | sort -u`; do \
 	        if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then continue; fi; \
 	        if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
@@ -1024,16 +1013,18 @@ copylibs : thirdparty-dist
 	        cp -p $$lib $(INSTLOC)/lib ; \
 	    done ; \
 	fi
-	@lib_wildcards=`$(BLD_LDD) $(INSTLOC)/bin/lib/gpcheckdb | egrep 'libstdc\+\+' $(BLD_LDD_FILTER)` export lib_wildcards; \
-	if [ -z "$${lib_wildcards}" ]; then exit 0; fi; \
-	lib_list=`ls $${lib_wildcards}` export lib_list; \
-	for lib in $${lib_list}; do \
-	    echo -n "Copying $$lib to $(subst $(CURDIR)/,,$(INSTLOC)/lib)..."; \
-	    if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then echo "already there."; continue; fi; \
-	    if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
-	    (cd `dirname $$lib` && $(TAR) cf - `basename $$lib`) | (cd $(INSTLOC)/lib/ && $(TAR) xpf -)$(check_pipe_for_errors); \
-	    echo "done."; \
-	done
+	if [ `uname -s` != 'AIX' ] ; then \
+	    lib_wildcards=`$(BLD_LDD) $(INSTLOC)/bin/lib/gpcheckdb | egrep 'libstdc\+\+' $(BLD_LDD_FILTER)` export lib_wildcards; \
+	    if [ -z "$${lib_wildcards}" ]; then exit 0; fi; \
+	    lib_list=`ls $${lib_wildcards}` export lib_list; \
+	    for lib in $${lib_list}; do \
+	        echo -n "Copying $$lib to $(subst $(CURDIR)/,,$(INSTLOC)/lib)..."; \
+	        if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then echo "already there."; continue; fi; \
+	        if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
+	        (cd `dirname $$lib` && $(TAR) cf - `basename $$lib`) | (cd $(INSTLOC)/lib/ && $(TAR) xpf -)$(check_pipe_for_errors); \
+	        echo "done."; \
+	    done; \
+	fi
 	# Create the python directory to flag to build scripts that python has been handled
 	mkdir -p $(INSTLOC)/ext/python
 	@if [ ! -z "$(BLD_PYTHON)" ]; then \
