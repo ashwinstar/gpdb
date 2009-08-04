@@ -323,6 +323,7 @@ define BUILD_STEPS
 	fi
 	$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 	cd $(GPPGDIR)/src/backend/ && $(MAKE) ../../src/include/parser/gram.h
+	cd $(GPPGDIR)/src/backend/ && $(MAKE) ../../src/include/utils/fmgroids.h
 	cd $(GPPGDIR)/src/bin/scripts/ && $(MAKE) install
 	cd $(GPPGDIR)/src/bin/psql/ && $(MAKE) install
 	cd $(GPPGDIR)/src/bin/pg_config/ && $(MAKE) install
