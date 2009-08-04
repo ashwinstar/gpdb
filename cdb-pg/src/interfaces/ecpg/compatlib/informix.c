@@ -1008,6 +1008,7 @@ ECPG_informix_set_var(int number, void *pointer, int lineno)
 		sqlca->sqlerrm.sqlerrml = strlen(sqlca->sqlerrm.sqlerrmc);
 		/* free all memory we have allocated for the user */
 		ECPGfree_auto_mem();
+		(void) sqlca;  // Attempt to work around gcc 4.1.1 bug on Kite12 which gives spurious warning "computed value not used".
 	}
 	else
 	{
