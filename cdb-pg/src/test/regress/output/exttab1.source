@@ -427,6 +427,19 @@ drop external table ext_fill1;
 drop external table ext_fill2;
 drop external table ext_fill3_fnn;
 drop external table ext_fill4_fnn;
+-- MPP-6698
+create external table ext_mpp6698(a text)
+location('gpfdist://localhost:7070/mpp6698.data' )
+format 'csv' (quote '''');
+select * from ext_mpp6698 order by a; -- should ignore the quotes
+                         a                          
+----------------------------------------------------
+ first row
+ second row with embedded single quote ' here
+ third row with another embedded quote at the end '
+(3 rows)
+
+drop external table ext_mpp6698;
 -- --------------------------------------
 -- some negative tests
 -- --------------------------------------

@@ -1323,7 +1323,8 @@ strip_quotes(char *source, char quote, char escape, int encoding)
  *
  * strtokx2 is a replica of psql's strtokx (bin/psql/stringutils.c), fitted
  * to be used in the backend for the same purpose - parsing an sql string of
- * literals. Information follows (right now identical to strtokx):
+ * literals. Information follows (right now identical to strtokx, except for
+ * a small hack - see below comment about MPP-6698):
  *
  * Replacement for strtok() (a.k.a. poor man's flex)
  *
@@ -1454,6 +1455,27 @@ strtokx2(const char *s,
 		/* okay, we have a quoted token, now scan for the closer */
 		char		thisquote = *p++;
 
+		/* MPP-6698 START
+		 * unfortunately, it is possible for an external table format
+		 * string to be represented in the catalog in a way which is
+		 * problematic to parse: when using a single quote as a QUOTE 
+		 * or ESCAPE character the format string will show [quote '''].
+		 * since we do not want to change how this is stored at this point 
+		 * (as it will affect previous versions of the software already 
+		 * in production) the following code block will detect this scenario 
+		 * where 3 quote characters follow each other, with no forth one. 
+		 * in that case, we will skip the second one (the first is skipped 
+		 * just above) and the last trailing quote will be skipped below. 
+		 * the result will be the actual token (''') and after stripping 
+		 * it due to del_quotes we'll end up with ('). 
+		 * very ugly, but will do the job...
+		 */
+		char		qt = quote[0];
+		
+		if(strlen(p) >= 3 && p[0] == qt && p[1] == qt && p[2] != qt)
+			p++;
+		/* MPP-6698 END */
+		
 		for (; *p; p += pg_encoding_mblen(encoding, p))
 		{
 			if (*p == escape && p[1] != '\0')
