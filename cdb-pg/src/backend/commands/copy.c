@@ -1150,6 +1150,9 @@ DoCopy(const CopyStmt *stmt)
 						 errmsg("could not open file \"%s\" for writing: %m",
 								cstate->filename)));
 
+			// Increase buffer size to improve performance  (cmcdevitt)
+			setvbuf(cstate->copy_file, NULL, _IOFBF, 393216); // 384 Kbytes
+
 			fstat(fileno(cstate->copy_file), &st);
 			if (S_ISDIR(st.st_mode))
 			{
@@ -1434,6 +1437,9 @@ DoCopy(const CopyStmt *stmt)
 						(errcode_for_file_access(),
 						 errmsg("could not open file \"%s\" for reading: %m",
 								cstate->filename)));
+
+			// Increase buffer size to improve performance  (cmcdevitt)
+            setvbuf(cstate->copy_file, NULL, _IOFBF, 393216); // 384 Kbytes
 
 			fstat(fileno(cstate->copy_file), &st);
 			if (S_ISDIR(st.st_mode))
