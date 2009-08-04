@@ -69,6 +69,7 @@ mkgpfdist: mkext
 	cd src/gpfdist/ && \
 	  ln -sf ../../../cdb-pg/src/backend/utils/misc/fstream/*.c .
 	mkdir -p src/gpfdist/include
+	perl -p -i -e 's,^prefix=.*$$,prefix="$(BLD_THIRDPARTY_DIR)",' $(BLD_THIRDPARTY_DIR)/bin/apr-1-config
 	cd src/gpfdist/ && \
 	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(GPFDIST_CPPFLAGS) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist$(EXT_EXE) \
 	  $(GPFDISTFILES) $(APRLIBS) -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
