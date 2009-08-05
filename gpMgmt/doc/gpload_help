@@ -21,8 +21,8 @@ PREREQUISITES
 
 The client machine where gpload is executed must have the following:
 
-* Python 2.4.4 or later, pg8000 (the Python interface to PostgreSQL), 
-  and pyyaml. Note that Python 2.5.1 and the required Python libraries 
+* Python 2.5.1 or later, pg8000 (the Python interface to PostgreSQL), 
+  and pyyaml. Note that Python 2.6.2 and the required Python libraries 
   are included with the Greenplum Database server installation, so if 
   you have Greenplum Database installed on the machine where gpload 
   is running, you do not need a separate Python installation.
@@ -176,10 +176,10 @@ GPLOAD:
     - COLUMNS:
            - <field_name>: <data_type>
     - FORMAT: text | csv
-    - DELIMITER: <delimiter_character>
+    - DELIMITER: '<delimiter_character>'
     - ESCAPE: <escape_character> | 'OFF'
-    - NULL_AS: <null_string>
-    - QUOTE: <csv_quote_character>
+    - NULL_AS: '<null_string>'
+    - QUOTE: '<csv_quote_character>'
     - HEADER: true | false
     - ENCODING: <database_encoding>
     - ERROR_LIMIT: <integer>
@@ -472,7 +472,8 @@ GPLOAD:
            - etl1-3
            - etl1-4
          PORT: 8081
-         FILE: /var/load/data/*
+         FILE: 
+           - /var/load/data/*
     - COLUMNS:
            - name: text
            - amount: float4
