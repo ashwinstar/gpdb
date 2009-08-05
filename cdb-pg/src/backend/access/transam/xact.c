@@ -2179,12 +2179,12 @@ StartTransaction(void)
 								(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								 errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."),
 								 errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value "
-										   "is currently: %d/%u. Our slotindex is: %d \n"
+										   "is currently: %d/%u. Our slotindex is: %d our writer-pid %d\n"
 										   "DistributedTransactionContext = %s."
 										   "Dump of all sharedsnapshots in shmem: %s",
 										   QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync,
 										   SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
-										   SharedLocalSnapshotSlot->slotindex, 
+										   SharedLocalSnapshotSlot->slotindex, SharedLocalSnapshotSlot->pid,
 										   DtxContextToString(DistributedTransactionContext),
 										   SharedSnapshotDump())));
 					}
@@ -2195,11 +2195,11 @@ StartTransaction(void)
 						 */
 						elog(LOG,"StartTransaction did not find shared local snapshot information. "
 							 "We are waiting for the shared snapshot to have XID: %d/%u but the value "
-							 "is currently: %d/%u. Our slotindex is: %d. "
+							 "is currently: %d/%u. Our slotindex is: %d. our writer-pid %d"
 							 "DistributedTransactionContext = %s.",
 							 QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync,
 							 SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
-							 SharedLocalSnapshotSlot->slotindex,
+							 SharedLocalSnapshotSlot->slotindex, SharedLocalSnapshotSlot->pid,
 							 DtxContextToString(DistributedTransactionContext));
 						warning_sleep_time_us = 0;
 					}
