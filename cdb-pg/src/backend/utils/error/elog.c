@@ -2497,55 +2497,54 @@ gp_write_pipe_chunk(const char *buffer, int len)
 static inline void
 append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
 {
-    int len;
+    int len = 0;
 
     char *data = buffer->data + buffer->hdr.len;
     
-        if(am_syslogger)
-                return;
+    if(am_syslogger)
+        return;
 
-    if (input == NULL)
-        len = 1;
-    else
-        len = strlen(input) + 1; /* include '\0' */
+    if (input) 
+        len = strlen(input); 
 
     if (buffer->hdr.len == PIPE_MAX_PAYLOAD) 
     {
-                if(am_syslogger)
-                        return;
-
         gp_write_pipe_chunk((char *)buffer, PIPE_CHUNK_SIZE);
         buffer->hdr.len = 0;
         buffer->hdr.chunk_no++;
         data = buffer->data;
+
+        /* 
+         * If this is a really long message, it does not really
+         * make lots of sense to print them all.  Truncate it.
+         * Besides really huge, useless, slow log message, this
+         * actually fix a sever crash.  Later in this function,
+         * we will recurse, without tail call optimization, a 
+         * huge string can drive us out of stack space.
+         *
+         * MPP-6682
+         */
+        if (len > PIPE_MAX_PAYLOAD * 20)
+        {
+            /* Leave space for \0 */
+            len = PIPE_MAX_PAYLOAD-1;
+        }
     }
     
-    if (len == 1)
+    if (buffer->hdr.len + len >= PIPE_MAX_PAYLOAD)
     {
-        *data = '\0';
-        buffer->hdr.len ++;
+        int bytes = PIPE_MAX_PAYLOAD - buffer->hdr.len;
+            
+        memcpy(data, input, bytes);
+        buffer->hdr.len += bytes;
+
+        append_string_to_pipe_chunk(buffer, (input + bytes));
     }
     else
     {
-        if (buffer->hdr.len + len > PIPE_MAX_PAYLOAD)
-        {
-            int bytes = PIPE_MAX_PAYLOAD - buffer->hdr.len;
-            
-                        if(am_syslogger)
-                                return;
-
-            snprintf(data, bytes, "%s", input);
-            data += (bytes - 1);
-            *data = input[bytes - 1];
-            buffer->hdr.len += bytes;
-
-            append_string_to_pipe_chunk(buffer, (input + bytes));
-        }
-        else
-        {
-            sprintf(data, "%s", input);
-            buffer->hdr.len += len;
-        }
+        memcpy(data, input, len); 
+        data[len] = 0;
+        buffer->hdr.len += len;
     }
 }
 
