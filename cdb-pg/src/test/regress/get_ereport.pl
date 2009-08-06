@@ -1,0 +1,245 @@
+#!/usr/bin/perl
+#
+# $Header$
+#
+# copyright (c) 2009
+# Author: Jeffrey I Cohen
+#
+#
+use Pod::Usage;
+use Getopt::Long;
+use Data::Dumper;
+use File::Spec;
+use strict;
+use warnings;
+
+=head1 NAME
+
+B<get_ereport.pl> - find bug numbers in a file and invoke jira in browser
+
+=head1 SYNOPSIS
+
+B<bugout.pl> filename[#linenum] [filename...]
+
+Options:
+
+    -help            brief help message
+    -man             full documentation
+    -version         print version 
+	-quiet           be less verbose
+	-lax             be very lax
+
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<-help>
+
+    Print a brief help message and exits.
+
+=item B<-man>
+    
+    Prints the manual page and exits.
+
+=item B<-version>
+
+    Prints the get_ereport.pl version 
+
+=item B<-quiet>
+
+    Prints only messages, no line numbers or summaries.
+
+=item B<-lax>
+
+    Cleanup spaces, vertical bar (|), etc, that might effect gpdiff
+    comparison.
+
+
+=back
+
+=head1 DESCRIPTION
+
+For each supplied file, get_ereport extracts the ereport (error message) 
+entries of level ERROR, WARNING, NOTICE, or FATAL.
+
+=head1 AUTHORS
+
+Jeffrey I Cohen
+
+Copyright (c) 2009 GreenPlum.  All rights reserved.  
+
+Address bug reports and comments to: jcohen@greenplum.com
+
+
+=cut
+
+if (1)
+{
+    my $man  = 0;
+    my $help = 0;
+    my $verzion = 0;
+    my $pmsg = "";
+	my $bQuiet = 0;
+	my $bLax = 0;
+
+    # check for man or help args
+    if (scalar(@ARGV))
+    {
+		while ($ARGV[0] =~ m/^\-/)
+		{
+			if ($ARGV[0] =~ m/^\-(\-)*(v|version)$/)
+			{
+				$verzion = 1;
+				goto L_wWhile;
+			}
+			elsif ($ARGV[0] =~ m/^\-(\-)*(man|h|help|\?)$/i)
+			{
+				if ($ARGV[0] =~ m/man/i)
+				{
+					$man = 1;
+				}
+				else
+				{
+					$help = 1;
+				}
+				goto L_wWhile;
+			}
+			elsif ($ARGV[0] =~ m/^\-(\-)*quiet$/i)			
+			{
+				$bQuiet = 1;
+				goto L_wWhile;
+			}
+			elsif ($ARGV[0] =~ m/^\-(\-)*lax$/i)			
+			{
+				$bLax = 1;
+				goto L_wWhile;
+			}
+
+			last;
+			
+
+		  L_wWhile:
+			shift @ARGV;
+			next;
+        }
+    }
+    else
+    {
+        $pmsg = "missing an operand after \`get_ereport.pl\'";
+        $help = 1;
+    }
+
+    if ((1 == scalar(@ARGV)) && 
+        ($ARGV[0] =~ m/^\-(\-)*/) &&
+        (!($help || $man || $verzion)))
+    {
+        $pmsg = "unknown operand: $ARGV[0]";
+        $help = 1;
+    }
+
+    if ($verzion)
+    {
+        my $VERSION = do { my @r = (q$Revision$ =~ /\d+/g); sprintf "%d.". "%02d" x $#r, @r }; # must be all one line, for MakeMaker
+
+        print "$0 version $VERSION\n";
+        exit(1);
+    }
+
+    pod2usage(-msg => $pmsg, -exitstatus => 1) if $help;
+    pod2usage(-msg => $pmsg, -exitstatus => 0, -verbose => 2) if $man;
+
+	my $printname = 1;
+	
+	my $linecnt = 0;
+	my $msgcnt = 0;
+	my $totmsgcnt = 0;
+
+    for my $filnam (@ARGV)
+    {
+
+		my $gotmsg = 0;
+		
+		my $fh;
+
+		open ($fh, "<$filnam") or die "can't open $filnam: $!";
+
+		$linecnt = 1;
+
+		my $orig_filnam = $filnam;
+
+		for (<$fh>)
+		{
+			my $ini = $_;
+
+			if (($ini =~ m/ereport/)
+				&& ($ini =~ m/ereport\s*\(\s*(ERROR|WARNING|NOTICE|FATAL)\,/))
+			{
+				$gotmsg = 1;
+				$msgcnt++;
+				$totmsgcnt++;
+			}
+
+			if ($gotmsg)
+			{
+				if ($printname)
+				{
+					print "FILENAME: ", $filnam, "\n"
+						unless ($bQuiet);
+
+					# shorten the filename
+					if ($filnam =~ m/\//)
+					{
+						my @foo = split("/", $filnam);
+
+						$filnam = pop(@foo);
+					}
+
+					$printname = 0;
+				}
+
+				print $filnam, ":";
+				print $linecnt, ": "
+					unless ($bQuiet);
+
+				$ini =~ s/\t/ /gm
+					if ($bLax);
+				$ini =~ s/\s+/ /gm
+					if ($bLax);
+
+				$ini =~ s/\|/\*PIPE\*/gm
+					if ($bLax);
+
+				$ini .= "\n"
+					unless ($ini =~ m/\n$/);
+
+				print $ini;
+				$gotmsg = 0
+					if ($ini =~ m/\;\s*$/);
+			}
+			$linecnt++;
+		}
+
+		close $fh;
+		if ($msgcnt)
+		{
+			print "\n", $orig_filnam, ":  ", $msgcnt, " messages\n\n"
+				unless ($bQuiet);
+			$msgcnt = 0;
+		}
+
+		$printname = 1;
+
+    } # end for filnam
+
+	if ($totmsgcnt)
+	{
+		print "\n\nfound ", $totmsgcnt, " total messages\n"
+			unless ($bQuiet);
+	}
+
+
+}
+
+
+exit();
