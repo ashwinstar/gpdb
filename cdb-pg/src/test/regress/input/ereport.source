@@ -1,0 +1,38 @@
+-- --------------------------------------
+-- use get_ereport script to find all error messages in c source files
+-- --------------------------------------
+
+-- start_matchsubs
+--
+-- # create a match/subs expression remove line numbers, which can change
+--
+-- m/\:\d+\:/
+-- s/\:\d+\:/\:00\:/
+--
+-- end_matchsubs
+
+
+-- *********************************************************************
+-- *********************************************************************
+-- This script will produce diffs if you add or change an error
+-- message in the c sources.  If you want to change the results, you
+-- must make the changes in regress/output/ereport.source, not
+-- regress/results, and use gpsourcify.pl to generate a ".out" file.
+--
+-- From the regress directory invoke the command:
+--
+--    gpsourcify.pl results/ereport.out > output/ereport.source
+--
+-- *********************************************************************
+-- *********************************************************************
+
+
+CREATE EXTERNAL WEB TABLE get_ereport (x text)
+execute E'(find @abs_srcdir@/../.. -name \'*.c\'  | xargs perl @gpwhich_get_ereport.pl@ -quiet -lax )' 
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+
+-- return filename:linenumber: c source line
+select * from get_ereport order by 1;
+
+drop external table get_ereport;
