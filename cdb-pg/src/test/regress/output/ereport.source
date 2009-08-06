@@ -7,6 +7,11 @@
 --
 -- m/\:\d+\:/
 -- s/\:\d+\:/\:00\:/
+-- m/yy/i
+-- s/.*/DUMMY_YY/
+--
+-- m/\#line/
+-- s/\#line\s+\d+/\#line DUMMY_NUM/
 --
 -- end_matchsubs
 -- *********************************************************************
@@ -30,97 +35,6 @@ FORMAT 'text' (delimiter '|');
 select * from get_ereport order by 1;
                                                                                                               x                                                                                                              
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- AclId.c:00000144:  ereport(ERROR, 
- AclId.c:00000145:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- AclId.c:00000146:  errmsg("role "%s" does not exist", roleName))); 
- Backend.c:00000171:  ereport(ERROR, ( 
- Backend.c:00000172:  errcode(ERRCODE_INTERNAL_ERROR), 
- Backend.c:00000173:  errmsg("Unable to initialize java security"))); 
- Backend.c:00000254:  ereport(ERROR, ( 
- Backend.c:00000255:  errcode(ERRCODE_INVALID_NAME), 
- Backend.c:00000256:  errmsg("invalid macro name '%*s' in dynamic library path", (int)len, path))); 
- Backend.c:00000534:  ereport(ERROR, ( 
- Backend.c:00000535:  errcode(ERRCODE_INTERNAL_ERROR), 
- Backend.c:00000536:  errmsg("Unable to initialize java session"))); 
- Backend.c:00000659:  ereport(ERROR, (errmsg("Failed to create Java VM"))); 
- Composite.c:00000128:  ereport(ERROR, (errmsg("Unable to find tuple descriptor"))); 
- Composite.c:00000213:  ereport(ERROR, 
- Composite.c:00000214:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- Composite.c:00000215:  errmsg("function returning record called in context " 
- Composite.c:00000216:  "that cannot accept type record"))); 
- Exception.c:00000064:  ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR), errmsg("Exception while generating exception: %s", buf.data))); 
- Exception.c:00000106:  ereport(WARNING, (errcode(errCode), errmsg("Exception while generating exception: %s", buf))); 
- Exception.c:00000134:  ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR), errmsg("Exception while generating exception: %s", buf))); 
- Function.c:00000185:  ereport(ERROR, ( 
- Function.c:00000186:  errcode(ERRCODE_SYNTAX_ERROR), 
- Function.c:00000187:  errmsg("To many parameters - expected %d ", top))); 
- Function.c:00000228:  ereport(ERROR, ( 
- Function.c:00000229:  errcode(ERRCODE_SYNTAX_ERROR), 
- Function.c:00000230:  errmsg("To few parameters - expected %d ", top))); 
- Function.c:00000256:  ereport(ERROR, ( 
- Function.c:00000257:  errcode(ERRCODE_SYNTAX_ERROR), 
- Function.c:00000258:  errmsg("'AS' clause of Java function cannot be NULL"))); 
- Function.c:00000305:  ereport(ERROR, ( 
- Function.c:00000306:  errcode(ERRCODE_SYNTAX_ERROR), 
- Function.c:00000307:  errmsg("Missing ending ']' in UDT declaration"))); 
- Function.c:00000355:  ereport(ERROR, ( 
- Function.c:00000356:  errcode(ERRCODE_SYNTAX_ERROR), 
- Function.c:00000357:  errmsg("Unbalanced parenthesis"))); 
- Function.c:00000371:  ereport(ERROR, ( 
- Function.c:00000372:  errcode(ERRCODE_SYNTAX_ERROR), 
- Function.c:00000373:  errmsg("Did not find <fully qualified class>.<method name>"))); 
- Function.c:00000414:  ereport(ERROR, ( 
- Function.c:00000415:  errcode(ERRCODE_SYNTAX_ERROR), 
- Function.c:00000416:  errmsg("Triggers can not have a java parameter declaration"))); 
- Function.c:00000455:  ereport(ERROR, ( 
- Function.c:00000456:  errcode(ERRCODE_SYNTAX_ERROR), 
- Function.c:00000457:  errmsg("Unknown UDT function %s", info->methodName))); 
- PgObject.c:00000067:  ereport(ERROR, (errmsg("Pure virtual method called"))); 
- PgObject.c:00000095:  ereport(ERROR, ( 
- PgObject.c:00000096:  errmsg("Unable to find%s %s %s.%s with signature %s", 
- PgObject.c:00000097:  (isStatic ? " static" : ""), 
- PgObject.c:00000098:  (isMethod ? "method" : "field"), 
- PgObject.c:00000099:  PgObject_getClassName(cls), 
- PgObject.c:00000100:  memberName, 
- PgObject.c:00000101:  signature))); 
- PgObject.c:00000114:  ereport(ERROR, ( 
- PgObject.c:00000115:  errmsg("Unable to load class %s using CLASSPATH '%s'", 
- PgObject.c:00000116:  className, effectiveClassPath == 0 ? "null" : effectiveClassPath))); 
- PgObject.c:00000143:  ereport(ERROR, ( 
- PgObject.c:00000144:  errmsg("Unable to register native methods"))); 
- PgObject.c:00000185:  ereport(ERROR, (errmsg("cache lookup failed for %s %u", tupleType, tupleId))); 
- SPI.c:00000154:  ereport(ERROR, ( 
- SPI.c:00000155:  errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION), 
- SPI.c:00000156:  errmsg("Subtransaction mismatch at txlevel %d", 
- SPI.c:00000157:  GetCurrentTransactionNestLevel()))); 
- Type.c:00000221:  ereport(ERROR, ( 
- Type.c:00000222:  errmsg("Type '%s' has no corresponding java class", 
- Type.c:00000223:  PgObjectClass_getName((PgObjectClass)typeClass)))); 
- Type.c:00000441:  ereport(ERROR, ( 
- Type.c:00000442:  errcode(ERRCODE_CANNOT_COERCE), 
- Type.c:00000443:  errmsg("No java type mapping installed for "%s"", javaTypeName))); 
- Type.c:00000647:  ereport(ERROR, 
- Type.c:00000648:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- Type.c:00000649:  errmsg("Type is not associated with a record"))); 
- UDT.c:00000113:  ereport(ERROR, ( 
- UDT.c:00000114:  errcode(ERRCODE_CANNOT_COERCE), 
- UDT.c:00000115:  errmsg("UDT for Oid %d produced image with incorrect size. Expected %d, was %d", 
- UDT.c:00000116:  Type_getOid((Type)self), dataLen, buffer.len))); 
- UDT.c:00000167:  ereport(ERROR, ( 
- UDT.c:00000168:  errcode(ERRCODE_CANNOT_COERCE), 
- UDT.c:00000169:  errmsg("UDT with Oid %d is not scalar", Type_getOid((Type)udt)))); 
- UDT.c:00000191:  ereport(ERROR, ( 
- UDT.c:00000192:  errcode(ERRCODE_CANNOT_COERCE), 
- UDT.c:00000193:  errmsg("UDT with Oid %d is not scalar", Type_getOid((Type)udt)))); 
- UDT.c:00000219:  ereport(ERROR, ( 
- UDT.c:00000220:  errcode(ERRCODE_CANNOT_COERCE), 
- UDT.c:00000221:  errmsg("UDT with Oid %d is not scalar", Type_getOid((Type)udt)))); 
- UDT.c:00000241:  ereport(ERROR, ( 
- UDT.c:00000242:  errcode(ERRCODE_CANNOT_COERCE), 
- UDT.c:00000243:  errmsg("UDT with Oid %d is not scalar", Type_getOid((Type)udt)))); 
- UDT.c:00000285:  ereport(ERROR, ( 
- UDT.c:00000286:  errcode(ERRCODE_CANNOT_COERCE), 
- UDT.c:00000287:  errmsg("Attempt to register UDT with Oid %d failed. Oid appoints a non UDT type", typeId))); 
  acl.c:00000143:  ereport(ERROR, 
  acl.c:00000144:  (errcode(ERRCODE_NAME_TOO_LONG), 
  acl.c:00000145:  errmsg("identifier too long"), 
@@ -333,6 +247,9 @@ select * from get_ereport order by 1;
  aclchk.c:00002428:  ereport(ERROR, 
  aclchk.c:00002429:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  aclchk.c:00002430:  errmsg("conversion with OID %u does not exist", conv_oid))); 
+ aclid.c:00000144:  ereport(ERROR, 
+ aclid.c:00000145:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aclid.c:00000146:  errmsg("role "%s" does not exist", roleName))); 
  aggregatecmds.c:00000107:  ereport(WARNING, 
  aggregatecmds.c:00000108:  (errcode(ERRCODE_SYNTAX_ERROR), 
  aggregatecmds.c:00000109:  errmsg("aggregate attribute "%s" not recognized", 
@@ -1782,6 +1699,16 @@ select * from get_ereport order by 1;
  autovacuum.c:00001134:  (errcode(ERRCODE_UNDEFINED_TABLE), 
  autovacuum.c:00001135:  errmsg("relation with OID %u does not exist", 
  autovacuum.c:00001136:  relationOid))); 
+ backend.c:00000171:  ereport(ERROR, ( 
+ backend.c:00000172:  errcode(ERRCODE_INTERNAL_ERROR), 
+ backend.c:00000173:  errmsg("Unable to initialize java security"))); 
+ backend.c:00000254:  ereport(ERROR, ( 
+ backend.c:00000255:  errcode(ERRCODE_INVALID_NAME), 
+ backend.c:00000256:  errmsg("invalid macro name '%*s' in dynamic library path", (int)len, path))); 
+ backend.c:00000534:  ereport(ERROR, ( 
+ backend.c:00000535:  errcode(ERRCODE_INTERNAL_ERROR), 
+ backend.c:00000536:  errmsg("Unable to initialize java session"))); 
+ backend.c:00000659:  ereport(ERROR, (errmsg("Failed to create Java VM"))); 
  bayes.c:00000056:  ereport(ERROR, 
  bayes.c:00000057:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  bayes.c:00000058:  errmsg("nb_classify_accum called with %d arguments", 
@@ -3138,6 +3065,11 @@ select * from get_ereport order by 1;
  complex.c:00000058:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  complex.c:00000059:  errmsg("invalid input syntax for complex: "%s"", 
  complex.c:00000060:  str))); 
+ composite.c:00000128:  ereport(ERROR, (errmsg("Unable to find tuple descriptor"))); 
+ composite.c:00000213:  ereport(ERROR, 
+ composite.c:00000214:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ composite.c:00000215:  errmsg("function returning record called in context " 
+ composite.c:00000216:  "that cannot accept type record"))); 
  conv.c:00000503:  ereport(ERROR, 
  conv.c:00000504:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  conv.c:00000505:  errmsg("invalid encoding number: %d", encoding))); 
@@ -4109,252 +4041,255 @@ select * from get_ereport order by 1;
  encode.c:00000504:  ereport(ERROR, 
  encode.c:00000505:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  encode.c:00000506:  errmsg("invalid input syntax for type bytea"))); 
- execAmi.c:00000280:  ereport(ERROR, ( 
- execAmi.c:00000281:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- execAmi.c:00000282:  errmsg("unsupported call to mark position of Motion operator") 
- execAmi.c:00000283:  )); 
- execAmi.c:00000354:  ereport(ERROR, ( 
- execAmi.c:00000355:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- execAmi.c:00000356:  errmsg("unsupported call to restore position of Motion operator") 
- execAmi.c:00000357:  )); 
- execHHashagg.c:00000077:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),  
- execHHashagg.c:00000078:  errmsg("HashAgg: no enough memory for hashagg."))); 
- execHHashagg.c:00000079:  } while (0) 
- execHHashagg.c:00000080:  
- execHHashagg.c:00000081: #define GET_TOTAL_USED_SIZE(hashtable)  
- execHHashagg.c:00000082:  (GET_USED_BUFFER_SIZE(hashtable) + (hashtable)->mem_for_metadata) 
- execHHashagg.c:00000083:  
- execHHashagg.c:00000084: #define HAVE_FREESPACE(hashtable)  
- execHHashagg.c:00000085:  (GET_TOTAL_USED_SIZE(hashtable) < (hashtable)->max_mem) 
- execHHashagg.c:00000086:  
- execHHashagg.c:00000087: /* Methods that handle batch files */ 
- execHHashagg.c:00000088: static SpillSet *newSpillSet(unsigned branching_factor, unsigned parent_hash_bit); 
- execHHashagg.c:00000431:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- execHHashagg.c:00000432:  errmsg("HashAgg: invalid InputRecordType %d.", input_type))); 
- execHHashagg.c:00000464:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- execHHashagg.c:00000465:  errmsg("HashAgg: invalid InputRecordType."))); 
- execHHashagg.c:00000569:  ereport(ERROR, 
- execHHashagg.c:00000570:  (errcode(ERRCODE_INTERNAL_ERROR), 
- execHHashagg.c:00000571:  errmsg("HashAgg: too many passes or hash entries"))); 
- execHHashagg.c:00000826:  ereport(ERROR, 
- execHHashagg.c:00000827:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- execHHashagg.c:00000828:  errmsg("HashAgg: work_mem is too smalle to hold *one* group."))); 
- execHHashagg.c:00001442:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- execHHashagg.c:00001443:  errmsg("HashAgg: error in reading a batch file."))); 
- execHHashagg.c:00001454:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- execHHashagg.c:00001455:  errmsg("HashAgg: error in reading a batch file, requesting %d bytes, read %d bytes", 
- execHHashagg.c:00001456:  *p_input_size, read_size))); 
- execHHashagg.c:00001563:  ereport(ERROR, 
- execHHashagg.c:00001564:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- execHHashagg.c:00001565:  errmsg("HashAgg: work_mem is too smalle to hold *one* group."))); 
- execHHashagg.c:00001696:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- execHHashagg.c:00001697:  errmsg("HashAgg: no enough memory for hashagg."))); 
- execMain.c:00000527:  ereport(ERROR, 
- execMain.c:00000528:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- execMain.c:00000529:  errmsg("Unsupported Greeplum parallel execution strategy"))); 
- execMain.c:00000707:  ereport(ERROR, 
- execMain.c:00000708:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- execMain.c:00000709:  errmsg("Undefined Greenplum parallel execution strategy"))); 
- execMain.c:00001078:  ereport(ERROR, 
- execMain.c:00001079:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
- execMain.c:00001080:  errmsg("Fault tolerance system has marked array read-only"))); 
- execMain.c:00001085:  ereport(ERROR, 
- execMain.c:00001086:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
- execMain.c:00001087:  errmsg("transaction is read-only"))); 
- execMain.c:00001651:  ereport(ERROR, 
- execMain.c:00001652:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- execMain.c:00001653:  errmsg("cannot change sequence "%s"", 
- execMain.c:00001654:  RelationGetRelationName(resultRelationDesc)))); 
- execMain.c:00001657:  ereport(ERROR, 
- execMain.c:00001658:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- execMain.c:00001659:  errmsg("cannot change TOAST relation "%s"", 
- execMain.c:00001660:  RelationGetRelationName(resultRelationDesc)))); 
- execMain.c:00001663:  ereport(ERROR, 
- execMain.c:00001664:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- execMain.c:00001665:  errmsg("cannot change AO segment listing relation "%s"", 
- execMain.c:00001666:  RelationGetRelationName(resultRelationDesc)))); 
- execMain.c:00001669:  ereport(ERROR, 
- execMain.c:00001670:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- execMain.c:00001671:  errmsg("cannot change view "%s"", 
- execMain.c:00001672:  RelationGetRelationName(resultRelationDesc)))); 
- execMain.c:00001989:  ereport(ERROR, 
- execMain.c:00001990:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execMain.c:00001991:  errmsg("table row type and query-specified row type do not match"), 
- execMain.c:00001992:  errdetail("Query has too many columns."))); 
- execMain.c:00001999:  ereport(ERROR, 
- execMain.c:00002000:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execMain.c:00002001:  errmsg("table row type and query-specified row type do not match"), 
- execMain.c:00002002:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
- execMain.c:00002003:  format_type_be(attr->atttypid), 
- execMain.c:00002004:  attno, 
- execMain.c:00002005:  format_type_be(exprType((Node *) tle->expr))))); 
- execMain.c:00002016:  ereport(ERROR, 
- execMain.c:00002017:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execMain.c:00002018:  errmsg("table row type and query-specified row type do not match"), 
- execMain.c:00002019:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
- execMain.c:00002020:  attno))); 
- execMain.c:00002024:  ereport(ERROR, 
- execMain.c:00002025:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execMain.c:00002026:  errmsg("table row type and query-specified row type do not match"), 
- execMain.c:00002027:  errdetail("Query has too few columns."))); 
- execMain.c:00002222:  ereport(ERROR, 
- execMain.c:00002223:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
- execMain.c:00002224:  errmsg("could not serialize access due to concurrent update"))); 
- execMain.c:00002660:  ereport(ERROR, 
- execMain.c:00002661:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
- execMain.c:00002662:  errmsg("could not serialize access due to concurrent update"))); 
- execMain.c:00002800:  ereport(ERROR, 
- execMain.c:00002801:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
- execMain.c:00002802:  errmsg("no partition for partitioning key"))); 
- execMain.c:00002806:  ereport(ERROR, 
- execMain.c:00002807:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- execMain.c:00002808:  errmsg("moving tuple from partition "%s" to " 
- execMain.c:00002809:  "partition "%s" not supported", 
- execMain.c:00002810:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
- execMain.c:00002811:  get_rel_name(targetid)))); 
- execMain.c:00002884:  ereport(ERROR, 
- execMain.c:00002885:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
- execMain.c:00002886:  errmsg("could not serialize access due to concurrent update"))); 
- execMain.c:00003028:  ereport(ERROR, 
- execMain.c:00003029:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
- execMain.c:00003030:  errmsg("null value in column "%s" violates not-null constraint", 
- execMain.c:00003031:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)))); 
- execMain.c:00003040:  ereport(ERROR, 
- execMain.c:00003041:  (errcode(ERRCODE_CHECK_VIOLATION), 
- execMain.c:00003042:  errmsg("new row for relation "%s" violates check constraint "%s"", 
- execMain.c:00003043:  RelationGetRelationName(rel), failed))); 
- execMain.c:00003745:  ereport(ERROR, 
- execMain.c:00003746:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
- execMain.c:00003747:  errmsg("ON COMMIT can only be used on temporary tables"))); 
- execMain.c:00003774:  ereport(ERROR, 
- execMain.c:00003775:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- execMain.c:00003776:  errmsg("tablespace "%s" does not exist", 
- execMain.c:00003777:  parseTree->intoTableSpaceName))); 
- execMain.c:00004050:  ereport(ERROR, 
- execMain.c:00004051:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
- execMain.c:00004052:  errmsg("no partition for partitioning key"))); 
- execQual.c:00000283:  ereport(ERROR, 
- execQual.c:00000284:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- execQual.c:00000285:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
- execQual.c:00000286:  i, MAXDIM))); 
- execQual.c:00000296:  ereport(ERROR, 
- execQual.c:00000297:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
- execQual.c:00000298:  errmsg("array subscript in assignment must not be null"))); 
- execQual.c:00000311:  ereport(ERROR, 
- execQual.c:00000312:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- execQual.c:00000313:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
- execQual.c:00000314:  i, MAXDIM))); 
- execQual.c:00000324:  ereport(ERROR, 
- execQual.c:00000325:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
- execQual.c:00000326:  errmsg("array subscript in assignment must not be null"))); 
- execQual.c:00000628:  ereport(ERROR, 
- execQual.c:00000629:  (errmsg("attribute %d has wrong type", attnum), 
- execQual.c:00000630:  errdetail("Table has type %s, but query expects %s.", 
- execQual.c:00000631:  format_type_be(attr->atttypid), 
- execQual.c:00000632:  format_type_be(variable->vartype)))); 
- execQual.c:00000686:  ereport(ERROR, 
- execQual.c:00000687:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execQual.c:00000688:  errmsg("table row type and query-specified row type do not match"), 
- execQual.c:00000689:  errdetail("Table row contains %d attributes, but query expects %d.", 
- execQual.c:00000690:  slot_tupdesc->natts, var_tupdesc->natts))); 
- execQual.c:00000702:  ereport(ERROR, 
- execQual.c:00000703:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execQual.c:00000704:  errmsg("table row type and query-specified row type do not match"), 
- execQual.c:00000705:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
- execQual.c:00000706:  format_type_be(sattr->atttypid), 
- execQual.c:00000707:  i + 1, 
- execQual.c:00000708:  format_type_be(vattr->atttypid)))); 
- execQual.c:00000712:  ereport(ERROR, 
- execQual.c:00000713:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execQual.c:00000714:  errmsg("table row type and query-specified row type do not match"), 
- execQual.c:00000715:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
- execQual.c:00000716:  i + 1))); 
- execQual.c:00000999:  ereport(ERROR, 
- execQual.c:00001000:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- execQual.c:00001001:  errmsg("no value found for parameter %d", thisParamId))); 
- execQual.c:00001150:  ereport(ERROR, 
- execQual.c:00001151:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
- execQual.c:00001152:  errmsg("cannot pass more than %d arguments to a function", 
- execQual.c:00001153:  FUNC_MAX_ARGS))); 
- execQual.c:00001268:  ereport(ERROR, 
- execQual.c:00001269:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- execQual.c:00001270:  errmsg("functions and operators can take at most one set argument"))); 
- execQual.c:00001321:  ereport(ERROR, 
- execQual.c:00001322:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- execQual.c:00001323:  errmsg("set-valued function called in context that cannot accept a set"))); 
- execQual.c:00001364:  ereport(ERROR, 
- execQual.c:00001365:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- execQual.c:00001366:  errmsg("set-valued function called in context that cannot accept a set"))); 
- execQual.c:00001657:  ereport(ERROR, 
- execQual.c:00001658:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- execQual.c:00001659:  errmsg("set-valued function called in context that cannot accept a set"))); 
- execQual.c:00001740:  ereport(ERROR, 
- execQual.c:00001741:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
- execQual.c:00001742:  errmsg("function returning set of rows cannot return null value"))); 
- execQual.c:00001825:  ereport(ERROR, 
- execQual.c:00001826:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
- execQual.c:00001827:  errmsg("table-function protocol for materialize mode was not followed"))); 
- execQual.c:00001832:  ereport(ERROR, 
- execQual.c:00001833:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
- execQual.c:00001834:  errmsg("unrecognized table-function returnMode: %d", 
- execQual.c:00001835:  (int) rsinfo.returnMode))); 
- execQual.c:00001977:  ereport(ERROR, 
- execQual.c:00001978:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execQual.c:00001979:  errmsg("IS DISTINCT FROM does not support set arguments"))); 
- execQual.c:00002382:  ereport(ERROR, 
- execQual.c:00002383:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execQual.c:00002384:  errmsg("op ANY/ALL (array) does not support set arguments"))); 
- execQual.c:00003001:  ereport(ERROR, 
- execQual.c:00003002:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execQual.c:00003003:  errmsg("cannot merge incompatible arrays"), 
- execQual.c:00003004:  errdetail("Array with element type %s cannot be " 
- execQual.c:00003005:  "included in ARRAY construct with element type %s.", 
- execQual.c:00003006:  format_type_be(ARR_ELEMTYPE(array)), 
- execQual.c:00003007:  format_type_be(element_type)))); 
- execQual.c:00003023:  ereport(ERROR, 
- execQual.c:00003024:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- execQual.c:00003025:  errmsg("number of array dimensions (%d) exceeds "  
- execQual.c:00003026:  "the maximum allowed (%d)", ndims, MAXDIM))); 
- execQual.c:00003043:  ereport(ERROR, 
- execQual.c:00003044:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
- execQual.c:00003045:  errmsg("multidimensional arrays must have array " 
- execQual.c:00003046:  "expressions with matching dimensions"))); 
- execQual.c:00003070:  ereport(ERROR, 
- execQual.c:00003071:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
- execQual.c:00003072:  errmsg("multidimensional arrays must have array " 
- execQual.c:00003073:  "expressions with matching dimensions"))); 
- execQual.c:00003365:  ereport(ERROR, 
- execQual.c:00003366:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execQual.c:00003367:  errmsg("NULLIF does not support set arguments"))); 
- execQual.c:00003595:  ereport(ERROR, 
- execQual.c:00003596:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
- execQual.c:00003597:  errmsg("domain %s does not allow null values", 
- execQual.c:00003598:  format_type_be(ctest->resulttype)))); 
- execQual.c:00003624:  ereport(ERROR, 
- execQual.c:00003625:  (errcode(ERRCODE_CHECK_VIOLATION), 
- execQual.c:00003626:  errmsg("value for domain %s violates check constraint "%s"", 
- execQual.c:00003627:  format_type_be(ctest->resulttype), 
- execQual.c:00003628:  con->name))); 
- execQual.c:00003714:  ereport(ERROR, 
- execQual.c:00003715:  (errmsg("attribute %d has wrong type", fieldnum), 
- execQual.c:00003716:  errdetail("Table has type %s, but query expects %s.", 
- execQual.c:00003717:  format_type_be(attr->atttypid), 
- execQual.c:00003718:  format_type_be(fselect->resulttype)))); 
- execQual.c:00003959:  ereport(ERROR, 
- execQual.c:00003960:  (errcode(ERRCODE_GROUPING_ERROR), 
- execQual.c:00003961:  errmsg("aggregate function calls may not be nested"))); 
- execQual.c:00004287:  ereport(ERROR, 
- execQual.c:00004288:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- execQual.c:00004289:  errmsg("ROW() column has type %s instead of type %s", 
- execQual.c:00004290:  format_type_be(exprType((Node *) e)), 
- execQual.c:00004291:  format_type_be(attrs[i]->atttypid)))); 
- execQual.c:00004413:  ereport(ERROR, 
- execQual.c:00004414:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
- execQual.c:00004415:  errmsg("could not identify a comparison function for type %s", 
- execQual.c:00004416:  format_type_be(minmaxexpr->minmaxtype)))); 
- execQual.c:00004747:  ereport(ERROR, 
- execQual.c:00004748:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- execQual.c:00004749:  errmsg("set-valued function called in context that cannot accept a set"))); 
+ exception.c:00000064:  ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR), errmsg("Exception while generating exception: %s", buf.data))); 
+ exception.c:00000106:  ereport(WARNING, (errcode(errCode), errmsg("Exception while generating exception: %s", buf))); 
+ exception.c:00000134:  ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR), errmsg("Exception while generating exception: %s", buf))); 
+ execami.c:00000280:  ereport(ERROR, ( 
+ execami.c:00000281:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ execami.c:00000282:  errmsg("unsupported call to mark position of Motion operator") 
+ execami.c:00000283:  )); 
+ execami.c:00000354:  ereport(ERROR, ( 
+ execami.c:00000355:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ execami.c:00000356:  errmsg("unsupported call to restore position of Motion operator") 
+ execami.c:00000357:  )); 
+ exechhashagg.c:00000077:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),  
+ exechhashagg.c:00000078:  errmsg("HashAgg: no enough memory for hashagg."))); 
+ exechhashagg.c:00000079:  } while (0) 
+ exechhashagg.c:00000080:  
+ exechhashagg.c:00000081: #define GET_TOTAL_USED_SIZE(hashtable)  
+ exechhashagg.c:00000082:  (GET_USED_BUFFER_SIZE(hashtable) + (hashtable)->mem_for_metadata) 
+ exechhashagg.c:00000083:  
+ exechhashagg.c:00000084: #define HAVE_FREESPACE(hashtable)  
+ exechhashagg.c:00000085:  (GET_TOTAL_USED_SIZE(hashtable) < (hashtable)->max_mem) 
+ exechhashagg.c:00000086:  
+ exechhashagg.c:00000087: /* Methods that handle batch files */ 
+ exechhashagg.c:00000088: static SpillSet *newSpillSet(unsigned branching_factor, unsigned parent_hash_bit); 
+ exechhashagg.c:00000431:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ exechhashagg.c:00000432:  errmsg("HashAgg: invalid InputRecordType %d.", input_type))); 
+ exechhashagg.c:00000464:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ exechhashagg.c:00000465:  errmsg("HashAgg: invalid InputRecordType."))); 
+ exechhashagg.c:00000569:  ereport(ERROR, 
+ exechhashagg.c:00000570:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ exechhashagg.c:00000571:  errmsg("HashAgg: too many passes or hash entries"))); 
+ exechhashagg.c:00000826:  ereport(ERROR, 
+ exechhashagg.c:00000827:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ exechhashagg.c:00000828:  errmsg("HashAgg: work_mem is too smalle to hold *one* group."))); 
+ exechhashagg.c:00001442:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ exechhashagg.c:00001443:  errmsg("HashAgg: error in reading a batch file."))); 
+ exechhashagg.c:00001454:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ exechhashagg.c:00001455:  errmsg("HashAgg: error in reading a batch file, requesting %d bytes, read %d bytes", 
+ exechhashagg.c:00001456:  *p_input_size, read_size))); 
+ exechhashagg.c:00001563:  ereport(ERROR, 
+ exechhashagg.c:00001564:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ exechhashagg.c:00001565:  errmsg("HashAgg: work_mem is too smalle to hold *one* group."))); 
+ exechhashagg.c:00001696:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ exechhashagg.c:00001697:  errmsg("HashAgg: no enough memory for hashagg."))); 
+ execmain.c:00000527:  ereport(ERROR, 
+ execmain.c:00000528:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ execmain.c:00000529:  errmsg("Unsupported Greeplum parallel execution strategy"))); 
+ execmain.c:00000707:  ereport(ERROR, 
+ execmain.c:00000708:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ execmain.c:00000709:  errmsg("Undefined Greenplum parallel execution strategy"))); 
+ execmain.c:00001078:  ereport(ERROR, 
+ execmain.c:00001079:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+ execmain.c:00001080:  errmsg("Fault tolerance system has marked array read-only"))); 
+ execmain.c:00001085:  ereport(ERROR, 
+ execmain.c:00001086:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+ execmain.c:00001087:  errmsg("transaction is read-only"))); 
+ execmain.c:00001651:  ereport(ERROR, 
+ execmain.c:00001652:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ execmain.c:00001653:  errmsg("cannot change sequence "%s"", 
+ execmain.c:00001654:  RelationGetRelationName(resultRelationDesc)))); 
+ execmain.c:00001657:  ereport(ERROR, 
+ execmain.c:00001658:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ execmain.c:00001659:  errmsg("cannot change TOAST relation "%s"", 
+ execmain.c:00001660:  RelationGetRelationName(resultRelationDesc)))); 
+ execmain.c:00001663:  ereport(ERROR, 
+ execmain.c:00001664:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ execmain.c:00001665:  errmsg("cannot change AO segment listing relation "%s"", 
+ execmain.c:00001666:  RelationGetRelationName(resultRelationDesc)))); 
+ execmain.c:00001669:  ereport(ERROR, 
+ execmain.c:00001670:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ execmain.c:00001671:  errmsg("cannot change view "%s"", 
+ execmain.c:00001672:  RelationGetRelationName(resultRelationDesc)))); 
+ execmain.c:00001989:  ereport(ERROR, 
+ execmain.c:00001990:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execmain.c:00001991:  errmsg("table row type and query-specified row type do not match"), 
+ execmain.c:00001992:  errdetail("Query has too many columns."))); 
+ execmain.c:00001999:  ereport(ERROR, 
+ execmain.c:00002000:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execmain.c:00002001:  errmsg("table row type and query-specified row type do not match"), 
+ execmain.c:00002002:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
+ execmain.c:00002003:  format_type_be(attr->atttypid), 
+ execmain.c:00002004:  attno, 
+ execmain.c:00002005:  format_type_be(exprType((Node *) tle->expr))))); 
+ execmain.c:00002016:  ereport(ERROR, 
+ execmain.c:00002017:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execmain.c:00002018:  errmsg("table row type and query-specified row type do not match"), 
+ execmain.c:00002019:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
+ execmain.c:00002020:  attno))); 
+ execmain.c:00002024:  ereport(ERROR, 
+ execmain.c:00002025:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execmain.c:00002026:  errmsg("table row type and query-specified row type do not match"), 
+ execmain.c:00002027:  errdetail("Query has too few columns."))); 
+ execmain.c:00002222:  ereport(ERROR, 
+ execmain.c:00002223:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+ execmain.c:00002224:  errmsg("could not serialize access due to concurrent update"))); 
+ execmain.c:00002660:  ereport(ERROR, 
+ execmain.c:00002661:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+ execmain.c:00002662:  errmsg("could not serialize access due to concurrent update"))); 
+ execmain.c:00002800:  ereport(ERROR, 
+ execmain.c:00002801:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+ execmain.c:00002802:  errmsg("no partition for partitioning key"))); 
+ execmain.c:00002806:  ereport(ERROR, 
+ execmain.c:00002807:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ execmain.c:00002808:  errmsg("moving tuple from partition "%s" to " 
+ execmain.c:00002809:  "partition "%s" not supported", 
+ execmain.c:00002810:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
+ execmain.c:00002811:  get_rel_name(targetid)))); 
+ execmain.c:00002884:  ereport(ERROR, 
+ execmain.c:00002885:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+ execmain.c:00002886:  errmsg("could not serialize access due to concurrent update"))); 
+ execmain.c:00003028:  ereport(ERROR, 
+ execmain.c:00003029:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+ execmain.c:00003030:  errmsg("null value in column "%s" violates not-null constraint", 
+ execmain.c:00003031:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)))); 
+ execmain.c:00003040:  ereport(ERROR, 
+ execmain.c:00003041:  (errcode(ERRCODE_CHECK_VIOLATION), 
+ execmain.c:00003042:  errmsg("new row for relation "%s" violates check constraint "%s"", 
+ execmain.c:00003043:  RelationGetRelationName(rel), failed))); 
+ execmain.c:00003745:  ereport(ERROR, 
+ execmain.c:00003746:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+ execmain.c:00003747:  errmsg("ON COMMIT can only be used on temporary tables"))); 
+ execmain.c:00003774:  ereport(ERROR, 
+ execmain.c:00003775:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ execmain.c:00003776:  errmsg("tablespace "%s" does not exist", 
+ execmain.c:00003777:  parseTree->intoTableSpaceName))); 
+ execmain.c:00004050:  ereport(ERROR, 
+ execmain.c:00004051:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+ execmain.c:00004052:  errmsg("no partition for partitioning key"))); 
+ execqual.c:00000283:  ereport(ERROR, 
+ execqual.c:00000284:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ execqual.c:00000285:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
+ execqual.c:00000286:  i, MAXDIM))); 
+ execqual.c:00000296:  ereport(ERROR, 
+ execqual.c:00000297:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+ execqual.c:00000298:  errmsg("array subscript in assignment must not be null"))); 
+ execqual.c:00000311:  ereport(ERROR, 
+ execqual.c:00000312:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ execqual.c:00000313:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
+ execqual.c:00000314:  i, MAXDIM))); 
+ execqual.c:00000324:  ereport(ERROR, 
+ execqual.c:00000325:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+ execqual.c:00000326:  errmsg("array subscript in assignment must not be null"))); 
+ execqual.c:00000628:  ereport(ERROR, 
+ execqual.c:00000629:  (errmsg("attribute %d has wrong type", attnum), 
+ execqual.c:00000630:  errdetail("Table has type %s, but query expects %s.", 
+ execqual.c:00000631:  format_type_be(attr->atttypid), 
+ execqual.c:00000632:  format_type_be(variable->vartype)))); 
+ execqual.c:00000686:  ereport(ERROR, 
+ execqual.c:00000687:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execqual.c:00000688:  errmsg("table row type and query-specified row type do not match"), 
+ execqual.c:00000689:  errdetail("Table row contains %d attributes, but query expects %d.", 
+ execqual.c:00000690:  slot_tupdesc->natts, var_tupdesc->natts))); 
+ execqual.c:00000702:  ereport(ERROR, 
+ execqual.c:00000703:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execqual.c:00000704:  errmsg("table row type and query-specified row type do not match"), 
+ execqual.c:00000705:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
+ execqual.c:00000706:  format_type_be(sattr->atttypid), 
+ execqual.c:00000707:  i + 1, 
+ execqual.c:00000708:  format_type_be(vattr->atttypid)))); 
+ execqual.c:00000712:  ereport(ERROR, 
+ execqual.c:00000713:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execqual.c:00000714:  errmsg("table row type and query-specified row type do not match"), 
+ execqual.c:00000715:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
+ execqual.c:00000716:  i + 1))); 
+ execqual.c:00000999:  ereport(ERROR, 
+ execqual.c:00001000:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ execqual.c:00001001:  errmsg("no value found for parameter %d", thisParamId))); 
+ execqual.c:00001150:  ereport(ERROR, 
+ execqual.c:00001151:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+ execqual.c:00001152:  errmsg("cannot pass more than %d arguments to a function", 
+ execqual.c:00001153:  FUNC_MAX_ARGS))); 
+ execqual.c:00001268:  ereport(ERROR, 
+ execqual.c:00001269:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ execqual.c:00001270:  errmsg("functions and operators can take at most one set argument"))); 
+ execqual.c:00001321:  ereport(ERROR, 
+ execqual.c:00001322:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ execqual.c:00001323:  errmsg("set-valued function called in context that cannot accept a set"))); 
+ execqual.c:00001364:  ereport(ERROR, 
+ execqual.c:00001365:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ execqual.c:00001366:  errmsg("set-valued function called in context that cannot accept a set"))); 
+ execqual.c:00001657:  ereport(ERROR, 
+ execqual.c:00001658:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ execqual.c:00001659:  errmsg("set-valued function called in context that cannot accept a set"))); 
+ execqual.c:00001740:  ereport(ERROR, 
+ execqual.c:00001741:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+ execqual.c:00001742:  errmsg("function returning set of rows cannot return null value"))); 
+ execqual.c:00001825:  ereport(ERROR, 
+ execqual.c:00001826:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+ execqual.c:00001827:  errmsg("table-function protocol for materialize mode was not followed"))); 
+ execqual.c:00001832:  ereport(ERROR, 
+ execqual.c:00001833:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+ execqual.c:00001834:  errmsg("unrecognized table-function returnMode: %d", 
+ execqual.c:00001835:  (int) rsinfo.returnMode))); 
+ execqual.c:00001977:  ereport(ERROR, 
+ execqual.c:00001978:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execqual.c:00001979:  errmsg("IS DISTINCT FROM does not support set arguments"))); 
+ execqual.c:00002382:  ereport(ERROR, 
+ execqual.c:00002383:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execqual.c:00002384:  errmsg("op ANY/ALL (array) does not support set arguments"))); 
+ execqual.c:00003001:  ereport(ERROR, 
+ execqual.c:00003002:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execqual.c:00003003:  errmsg("cannot merge incompatible arrays"), 
+ execqual.c:00003004:  errdetail("Array with element type %s cannot be " 
+ execqual.c:00003005:  "included in ARRAY construct with element type %s.", 
+ execqual.c:00003006:  format_type_be(ARR_ELEMTYPE(array)), 
+ execqual.c:00003007:  format_type_be(element_type)))); 
+ execqual.c:00003023:  ereport(ERROR, 
+ execqual.c:00003024:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ execqual.c:00003025:  errmsg("number of array dimensions (%d) exceeds "  
+ execqual.c:00003026:  "the maximum allowed (%d)", ndims, MAXDIM))); 
+ execqual.c:00003043:  ereport(ERROR, 
+ execqual.c:00003044:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+ execqual.c:00003045:  errmsg("multidimensional arrays must have array " 
+ execqual.c:00003046:  "expressions with matching dimensions"))); 
+ execqual.c:00003070:  ereport(ERROR, 
+ execqual.c:00003071:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+ execqual.c:00003072:  errmsg("multidimensional arrays must have array " 
+ execqual.c:00003073:  "expressions with matching dimensions"))); 
+ execqual.c:00003365:  ereport(ERROR, 
+ execqual.c:00003366:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execqual.c:00003367:  errmsg("NULLIF does not support set arguments"))); 
+ execqual.c:00003595:  ereport(ERROR, 
+ execqual.c:00003596:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+ execqual.c:00003597:  errmsg("domain %s does not allow null values", 
+ execqual.c:00003598:  format_type_be(ctest->resulttype)))); 
+ execqual.c:00003624:  ereport(ERROR, 
+ execqual.c:00003625:  (errcode(ERRCODE_CHECK_VIOLATION), 
+ execqual.c:00003626:  errmsg("value for domain %s violates check constraint "%s"", 
+ execqual.c:00003627:  format_type_be(ctest->resulttype), 
+ execqual.c:00003628:  con->name))); 
+ execqual.c:00003714:  ereport(ERROR, 
+ execqual.c:00003715:  (errmsg("attribute %d has wrong type", fieldnum), 
+ execqual.c:00003716:  errdetail("Table has type %s, but query expects %s.", 
+ execqual.c:00003717:  format_type_be(attr->atttypid), 
+ execqual.c:00003718:  format_type_be(fselect->resulttype)))); 
+ execqual.c:00003959:  ereport(ERROR, 
+ execqual.c:00003960:  (errcode(ERRCODE_GROUPING_ERROR), 
+ execqual.c:00003961:  errmsg("aggregate function calls may not be nested"))); 
+ execqual.c:00004287:  ereport(ERROR, 
+ execqual.c:00004288:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ execqual.c:00004289:  errmsg("ROW() column has type %s instead of type %s", 
+ execqual.c:00004290:  format_type_be(exprType((Node *) e)), 
+ execqual.c:00004291:  format_type_be(attrs[i]->atttypid)))); 
+ execqual.c:00004413:  ereport(ERROR, 
+ execqual.c:00004414:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+ execqual.c:00004415:  errmsg("could not identify a comparison function for type %s", 
+ execqual.c:00004416:  format_type_be(minmaxexpr->minmaxtype)))); 
+ execqual.c:00004747:  ereport(ERROR, 
+ execqual.c:00004748:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ execqual.c:00004749:  errmsg("set-valued function called in context that cannot accept a set"))); 
  explain.c:00000300:  ereport(ERROR, 
  explain.c:00000301:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  explain.c:00000302:  errmsg("EXPLAIN FORCE expects a SELECT 'parseTree', 'planTree'.") 
@@ -4888,6 +4823,30 @@ select * from get_ereport order by 1;
  funcapi.c:00001125:  ereport(ERROR, 
  funcapi.c:00001126:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
  funcapi.c:00001127:  errmsg("could not determine row description for function returning record"))); 
+ function.c:00000185:  ereport(ERROR, ( 
+ function.c:00000186:  errcode(ERRCODE_SYNTAX_ERROR), 
+ function.c:00000187:  errmsg("To many parameters - expected %d ", top))); 
+ function.c:00000228:  ereport(ERROR, ( 
+ function.c:00000229:  errcode(ERRCODE_SYNTAX_ERROR), 
+ function.c:00000230:  errmsg("To few parameters - expected %d ", top))); 
+ function.c:00000256:  ereport(ERROR, ( 
+ function.c:00000257:  errcode(ERRCODE_SYNTAX_ERROR), 
+ function.c:00000258:  errmsg("'AS' clause of Java function cannot be NULL"))); 
+ function.c:00000305:  ereport(ERROR, ( 
+ function.c:00000306:  errcode(ERRCODE_SYNTAX_ERROR), 
+ function.c:00000307:  errmsg("Missing ending ']' in UDT declaration"))); 
+ function.c:00000355:  ereport(ERROR, ( 
+ function.c:00000356:  errcode(ERRCODE_SYNTAX_ERROR), 
+ function.c:00000357:  errmsg("Unbalanced parenthesis"))); 
+ function.c:00000371:  ereport(ERROR, ( 
+ function.c:00000372:  errcode(ERRCODE_SYNTAX_ERROR), 
+ function.c:00000373:  errmsg("Did not find <fully qualified class>.<method name>"))); 
+ function.c:00000414:  ereport(ERROR, ( 
+ function.c:00000415:  errcode(ERRCODE_SYNTAX_ERROR), 
+ function.c:00000416:  errmsg("Triggers can not have a java parameter declaration"))); 
+ function.c:00000455:  ereport(ERROR, ( 
+ function.c:00000456:  errcode(ERRCODE_SYNTAX_ERROR), 
+ function.c:00000457:  errmsg("Unknown UDT function %s", info->methodName))); 
  functioncmds.c:00000089:  ereport(ERROR, 
  functioncmds.c:00000090:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
  functioncmds.c:00000091:  errmsg("SQL function cannot return shell type %s", 
@@ -7268,141 +7227,141 @@ select * from get_ereport order by 1;
  network.c:00001474:  errmsg("result out of range"))); 
  nextstep.c:00000035:  ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY), 
  nextstep.c:00000036:  errmsg("Transer error failed: out of memory")); 
- nodeAgg.c:00001898:  ereport(ERROR, 
- nodeAgg.c:00001899:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
- nodeAgg.c:00001900:  errmsg("aggregate %u needs to have compatible input type and transition type", 
- nodeAgg.c:00001901:  aggref->aggfnoid))); 
- nodeAgg.c:00001918:  ereport(ERROR, 
- nodeAgg.c:00001919:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- nodeAgg.c:00001920:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
- nodeAgg.c:00002104:  ereport(ERROR, 
- nodeAgg.c:00002105:  (errcode(ERRCODE_INTERNAL_ERROR), 
- nodeAgg.c:00002106:  errmsg("Illegal rescan of hashagg node: invalid plan."), 
- nodeAgg.c:00002107:  errhint("likely caused by bad NL-join, try setting enable_nestloop off, or disabling hashagg"))); 
- nodeBitmapIndexscan.c:00000162:  ereport(ERROR, 
- nodeBitmapIndexscan.c:00000163:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- nodeBitmapIndexscan.c:00000164:  errmsg("the returning bitmap in nodeBitmapIndexScan is corrupted."))); 
- nodeFunctionscan.c:00000476:  ereport(ERROR, 
- nodeFunctionscan.c:00000477:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- nodeFunctionscan.c:00000478:  errmsg("function return row and query-specified return row do not match"), 
- nodeFunctionscan.c:00000479:  errdetail("Returned row contains %d attributes, but query expects %d.", 
- nodeFunctionscan.c:00000480:  src_tupdesc->natts, dst_tupdesc->natts))); 
- nodeFunctionscan.c:00000490:  ereport(ERROR, 
- nodeFunctionscan.c:00000491:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- nodeFunctionscan.c:00000492:  errmsg("function return row and query-specified return row do not match"), 
- nodeFunctionscan.c:00000493:  errdetail("Returned type %s at ordinal position %d, but query expects %s.", 
- nodeFunctionscan.c:00000494:  format_type_be(sattr->atttypid), 
- nodeFunctionscan.c:00000495:  i + 1, 
- nodeFunctionscan.c:00000496:  format_type_be(dattr->atttypid)))); 
- nodeFunctionscan.c:00000500:  ereport(ERROR, 
- nodeFunctionscan.c:00000501:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- nodeFunctionscan.c:00000502:  errmsg("function return row and query-specified return row do not match"), 
- nodeFunctionscan.c:00000503:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
- nodeFunctionscan.c:00000504:  i + 1))); 
- nodeHashjoin.c:00000888:  ereport(ERROR, (errcode_for_file_access(), 
- nodeHashjoin.c:00000889:  errmsg("Cound not rewind hash join tmp file"))); 
- nodeHashjoin.c:00000940:  ereport(ERROR, (errcode_for_file_access(), 
- nodeHashjoin.c:00000941:  errmsg("Cound not rewind hash join tmp file"))); 
- nodeHashjoin.c:00000994:  ereport(ERROR, (errcode_for_file_access(), 
- nodeHashjoin.c:00000995:  errmsg("Hashjoin write error"))); 
- nodeHashjoin.c:00000999:  ereport(ERROR, (errcode_for_file_access(), 
- nodeHashjoin.c:00001000:  errmsg("Hashjoin write error"))); 
- nodeHashjoin.c:00001055:  ereport(ERROR, 
- nodeHashjoin.c:00001056:  (errcode_for_file_access(), 
- nodeHashjoin.c:00001057:  errmsg("could not read from hash-join temporary file: %m"))); 
- nodeMergejoin.c:00001262:  ereport(ERROR, 
- nodeMergejoin.c:00001263:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- nodeMergejoin.c:00001264:  errmsg("Mergejoin: compareResult > 0, bad plan ?"))); 
- nodeMergejoin.c:00001752:  ereport(ERROR, 
- nodeMergejoin.c:00001753:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- nodeMergejoin.c:00001754:  errmsg("RIGHT JOIN is only supported with merge-joinable join conditions"))); 
- nodeMergejoin.c:00001770:  ereport(ERROR, 
- nodeMergejoin.c:00001771:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- nodeMergejoin.c:00001772:  errmsg("FULL JOIN is only supported with merge-joinable join conditions"))); 
- nodeMotion.c:00001371:  ereport(ERROR, 
- nodeMotion.c:00001372:  (errcode(ERRCODE_INTERNAL_ERROR), 
- nodeMotion.c:00001373:  errmsg("Illegal rescan of motion node: invalid plan."), 
- nodeMotion.c:00001374:  errhint("likely caused by bad NL-join, try setting enable_nestloop off"))); 
- nodeShareInputScan.c:00000662:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- nodeShareInputScan.c:00000663:  errmsg("Share input reader failed: out of memory"))); 
- nodeShareInputScan.c:00000734:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- nodeShareInputScan.c:00000735:  errmsg("Shareinput Writer failed: out of memory"))); 
- nodeSubplan.c:00000296:  ereport(ERROR, 
- nodeSubplan.c:00000297:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
- nodeSubplan.c:00000298:  errmsg("more than one row returned by a subquery used as an expression"))); 
- nodeSubplan.c:00000339:  ereport(ERROR, 
- nodeSubplan.c:00000340:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
- nodeSubplan.c:00000341:  errmsg("more than one row returned by a subquery used as an expression"))); 
- nodeSubplan.c:00001131:  ereport(ERROR, 
- nodeSubplan.c:00001132:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
- nodeSubplan.c:00001133:  errmsg("more than one row returned by a subquery used as an expression"))); 
- nodeWindow.c:00002566:  ereport(ERROR, 
- nodeWindow.c:00002567:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
- nodeWindow.c:00002568:  errmsg("aggregate %u needs to have compatible " 
- nodeWindow.c:00002569:  "input type and transition type", 
- nodeWindow.c:00002570:  winref->winfnoid))); 
- nodeWindow.c:00002697:  ereport(ERROR, 
- nodeWindow.c:00002698:  (errcode(ERRCODE_INTERNAL_ERROR), 
- nodeWindow.c:00002699:  errmsg("inappropriate use of function as window function"))); 
- nodeWindow.c:00003852:  ereport(ERROR, 
- nodeWindow.c:00003853:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
- nodeWindow.c:00003854:  errmsg("%s parameter cannot be NULL", 
- nodeWindow.c:00003855:  (is_rows ? "ROWS" : "RANGE")))); 
- nodeWindow.c:00003866:  ereport(ERROR, 
- nodeWindow.c:00003867:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
- nodeWindow.c:00003868:  errmsg("%s parameter cannot be NULL", 
- nodeWindow.c:00003869:  (is_rows ? "ROWS" : "RANGE")))); 
- nodeWindow.c:00003872:  ereport(ERROR, 
- nodeWindow.c:00003873:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
- nodeWindow.c:00003874:  errmsg("%s parameter cannot be negative", 
- nodeWindow.c:00003875:  (is_rows ? "ROWS" : "RANGE")))); 
- nodeWindow.c:00003880:  ereport(ERROR, 
- nodeWindow.c:00003881:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
- nodeWindow.c:00003882:  errmsg("%s parameter cannot be negative", 
- nodeWindow.c:00003883:  (is_rows ? "ROWS" : "RANGE")))); 
- nodeWindow.c:00005127:  ereport(ERROR, 
- nodeWindow.c:00005128:  (errcode(ERRCODE_DATA_EXCEPTION), 
- nodeWindow.c:00005129:  errmsg("can't coerce trailing frame bound to type of leading frame bound"), 
- nodeWindow.c:00005130:  errhint("specify the leading and trailing frame bounds as the same type"))); 
- nodeWindow.c:00005146:  ereport(ERROR, 
- nodeWindow.c:00005147:  (errcode(ERRCODE_DATA_EXCEPTION), 
- nodeWindow.c:00005148:  errmsg("can't coerce leading frame bound to type of trailing frame bound"), 
- nodeWindow.c:00005149:  errhint("specify the leading and trailing frame bounds as the same type"))); 
- nodeWindow.c:00005547:  ereport(ERROR, 
- nodeWindow.c:00005548:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- nodeWindow.c:00005549:  errmsg("aggregate functions with no prelimfn or " 
- nodeWindow.c:00005550:  "invprelimfn are not yet supported as window functions"))); 
- nodeWindow.c:00005743:  ereport(ERROR, 
- nodeWindow.c:00005744:  (errcode(ERRCODE_INTERNAL_ERROR), 
- nodeWindow.c:00005745:  errmsg("Illegal rescan of window node: invalid plan."))); 
- nodeWindow.c:00005758:  ereport(ERROR, 
- nodeWindow.c:00005759:  (errcode(ERRCODE_SYNTAX_ERROR), 
- nodeWindow.c:00005760:  errmsg("function %s may only be called as a window function", 
- nodeWindow.c:00005761:  format_procedure(fcinfo->flinfo->fn_oid)), 
- nodeWindow.c:00005762:  errhint("To call a function as a window function use an OVER clause.")) 
- nodeWindow.c:00005763:  ); 
- nodeWindow.c:00005861:  ereport(ERROR, 
- nodeWindow.c:00005862:  (errcode(ERRCODE_DATA_EXCEPTION), 
- nodeWindow.c:00005863:  errmsg("arguments invalid or inconsistent"), 
- nodeWindow.c:00005864:  errhint("inappropriate call to window function implementation"))); 
- nodeWindow.c:00005877:  ereport(ERROR, 
- nodeWindow.c:00005878:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- nodeWindow.c:00005879:  errmsg("value out of range: overflow"))); 
- nodeWindow.c:00005918:  ereport(ERROR, 
- nodeWindow.c:00005919:  (errcode(ERRCODE_DATA_EXCEPTION), 
- nodeWindow.c:00005920:  errmsg("arguments invalid or inconsistent"), 
- nodeWindow.c:00005921:  errhint("inappropriate call to window function implementation"))); 
- nodeWindow.c:00005934:  ereport(ERROR, 
- nodeWindow.c:00005935:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- nodeWindow.c:00005936:  errmsg("value out of range: overflow"))); 
- nodeWindow.c:00005973:  ereport(ERROR, 
- nodeWindow.c:00005974:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- nodeWindow.c:00005975:  errmsg("argument value out of range"), 
- nodeWindow.c:00005976:  errhint("NTILE expects a positive integer argument."))); 
- nodeWindow.c:00006114:  ereport(ERROR, 
- nodeWindow.c:00006115:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- nodeWindow.c:00006116:  errmsg("%s offset cannot be negative", 
- nodeWindow.c:00006117:  is_lead ? "LEAD" : "LAG"))); 
+ nodeagg.c:00001898:  ereport(ERROR, 
+ nodeagg.c:00001899:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+ nodeagg.c:00001900:  errmsg("aggregate %u needs to have compatible input type and transition type", 
+ nodeagg.c:00001901:  aggref->aggfnoid))); 
+ nodeagg.c:00001918:  ereport(ERROR, 
+ nodeagg.c:00001919:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ nodeagg.c:00001920:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
+ nodeagg.c:00002104:  ereport(ERROR, 
+ nodeagg.c:00002105:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ nodeagg.c:00002106:  errmsg("Illegal rescan of hashagg node: invalid plan."), 
+ nodeagg.c:00002107:  errhint("likely caused by bad NL-join, try setting enable_nestloop off, or disabling hashagg"))); 
+ nodebitmapindexscan.c:00000162:  ereport(ERROR, 
+ nodebitmapindexscan.c:00000163:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ nodebitmapindexscan.c:00000164:  errmsg("the returning bitmap in nodeBitmapIndexScan is corrupted."))); 
+ nodefunctionscan.c:00000476:  ereport(ERROR, 
+ nodefunctionscan.c:00000477:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ nodefunctionscan.c:00000478:  errmsg("function return row and query-specified return row do not match"), 
+ nodefunctionscan.c:00000479:  errdetail("Returned row contains %d attributes, but query expects %d.", 
+ nodefunctionscan.c:00000480:  src_tupdesc->natts, dst_tupdesc->natts))); 
+ nodefunctionscan.c:00000490:  ereport(ERROR, 
+ nodefunctionscan.c:00000491:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ nodefunctionscan.c:00000492:  errmsg("function return row and query-specified return row do not match"), 
+ nodefunctionscan.c:00000493:  errdetail("Returned type %s at ordinal position %d, but query expects %s.", 
+ nodefunctionscan.c:00000494:  format_type_be(sattr->atttypid), 
+ nodefunctionscan.c:00000495:  i + 1, 
+ nodefunctionscan.c:00000496:  format_type_be(dattr->atttypid)))); 
+ nodefunctionscan.c:00000500:  ereport(ERROR, 
+ nodefunctionscan.c:00000501:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ nodefunctionscan.c:00000502:  errmsg("function return row and query-specified return row do not match"), 
+ nodefunctionscan.c:00000503:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
+ nodefunctionscan.c:00000504:  i + 1))); 
+ nodehashjoin.c:00000888:  ereport(ERROR, (errcode_for_file_access(), 
+ nodehashjoin.c:00000889:  errmsg("Cound not rewind hash join tmp file"))); 
+ nodehashjoin.c:00000940:  ereport(ERROR, (errcode_for_file_access(), 
+ nodehashjoin.c:00000941:  errmsg("Cound not rewind hash join tmp file"))); 
+ nodehashjoin.c:00000994:  ereport(ERROR, (errcode_for_file_access(), 
+ nodehashjoin.c:00000995:  errmsg("Hashjoin write error"))); 
+ nodehashjoin.c:00000999:  ereport(ERROR, (errcode_for_file_access(), 
+ nodehashjoin.c:00001000:  errmsg("Hashjoin write error"))); 
+ nodehashjoin.c:00001055:  ereport(ERROR, 
+ nodehashjoin.c:00001056:  (errcode_for_file_access(), 
+ nodehashjoin.c:00001057:  errmsg("could not read from hash-join temporary file: %m"))); 
+ nodemergejoin.c:00001262:  ereport(ERROR, 
+ nodemergejoin.c:00001263:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ nodemergejoin.c:00001264:  errmsg("Mergejoin: compareResult > 0, bad plan ?"))); 
+ nodemergejoin.c:00001752:  ereport(ERROR, 
+ nodemergejoin.c:00001753:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ nodemergejoin.c:00001754:  errmsg("RIGHT JOIN is only supported with merge-joinable join conditions"))); 
+ nodemergejoin.c:00001770:  ereport(ERROR, 
+ nodemergejoin.c:00001771:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ nodemergejoin.c:00001772:  errmsg("FULL JOIN is only supported with merge-joinable join conditions"))); 
+ nodemotion.c:00001371:  ereport(ERROR, 
+ nodemotion.c:00001372:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ nodemotion.c:00001373:  errmsg("Illegal rescan of motion node: invalid plan."), 
+ nodemotion.c:00001374:  errhint("likely caused by bad NL-join, try setting enable_nestloop off"))); 
+ nodeshareinputscan.c:00000662:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ nodeshareinputscan.c:00000663:  errmsg("Share input reader failed: out of memory"))); 
+ nodeshareinputscan.c:00000734:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ nodeshareinputscan.c:00000735:  errmsg("Shareinput Writer failed: out of memory"))); 
+ nodesubplan.c:00000296:  ereport(ERROR, 
+ nodesubplan.c:00000297:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
+ nodesubplan.c:00000298:  errmsg("more than one row returned by a subquery used as an expression"))); 
+ nodesubplan.c:00000339:  ereport(ERROR, 
+ nodesubplan.c:00000340:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
+ nodesubplan.c:00000341:  errmsg("more than one row returned by a subquery used as an expression"))); 
+ nodesubplan.c:00001131:  ereport(ERROR, 
+ nodesubplan.c:00001132:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
+ nodesubplan.c:00001133:  errmsg("more than one row returned by a subquery used as an expression"))); 
+ nodewindow.c:00002566:  ereport(ERROR, 
+ nodewindow.c:00002567:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+ nodewindow.c:00002568:  errmsg("aggregate %u needs to have compatible " 
+ nodewindow.c:00002569:  "input type and transition type", 
+ nodewindow.c:00002570:  winref->winfnoid))); 
+ nodewindow.c:00002697:  ereport(ERROR, 
+ nodewindow.c:00002698:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ nodewindow.c:00002699:  errmsg("inappropriate use of function as window function"))); 
+ nodewindow.c:00003852:  ereport(ERROR, 
+ nodewindow.c:00003853:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+ nodewindow.c:00003854:  errmsg("%s parameter cannot be NULL", 
+ nodewindow.c:00003855:  (is_rows ? "ROWS" : "RANGE")))); 
+ nodewindow.c:00003866:  ereport(ERROR, 
+ nodewindow.c:00003867:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+ nodewindow.c:00003868:  errmsg("%s parameter cannot be NULL", 
+ nodewindow.c:00003869:  (is_rows ? "ROWS" : "RANGE")))); 
+ nodewindow.c:00003872:  ereport(ERROR, 
+ nodewindow.c:00003873:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+ nodewindow.c:00003874:  errmsg("%s parameter cannot be negative", 
+ nodewindow.c:00003875:  (is_rows ? "ROWS" : "RANGE")))); 
+ nodewindow.c:00003880:  ereport(ERROR, 
+ nodewindow.c:00003881:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+ nodewindow.c:00003882:  errmsg("%s parameter cannot be negative", 
+ nodewindow.c:00003883:  (is_rows ? "ROWS" : "RANGE")))); 
+ nodewindow.c:00005127:  ereport(ERROR, 
+ nodewindow.c:00005128:  (errcode(ERRCODE_DATA_EXCEPTION), 
+ nodewindow.c:00005129:  errmsg("can't coerce trailing frame bound to type of leading frame bound"), 
+ nodewindow.c:00005130:  errhint("specify the leading and trailing frame bounds as the same type"))); 
+ nodewindow.c:00005146:  ereport(ERROR, 
+ nodewindow.c:00005147:  (errcode(ERRCODE_DATA_EXCEPTION), 
+ nodewindow.c:00005148:  errmsg("can't coerce leading frame bound to type of trailing frame bound"), 
+ nodewindow.c:00005149:  errhint("specify the leading and trailing frame bounds as the same type"))); 
+ nodewindow.c:00005547:  ereport(ERROR, 
+ nodewindow.c:00005548:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ nodewindow.c:00005549:  errmsg("aggregate functions with no prelimfn or " 
+ nodewindow.c:00005550:  "invprelimfn are not yet supported as window functions"))); 
+ nodewindow.c:00005743:  ereport(ERROR, 
+ nodewindow.c:00005744:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ nodewindow.c:00005745:  errmsg("Illegal rescan of window node: invalid plan."))); 
+ nodewindow.c:00005758:  ereport(ERROR, 
+ nodewindow.c:00005759:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ nodewindow.c:00005760:  errmsg("function %s may only be called as a window function", 
+ nodewindow.c:00005761:  format_procedure(fcinfo->flinfo->fn_oid)), 
+ nodewindow.c:00005762:  errhint("To call a function as a window function use an OVER clause.")) 
+ nodewindow.c:00005763:  ); 
+ nodewindow.c:00005861:  ereport(ERROR, 
+ nodewindow.c:00005862:  (errcode(ERRCODE_DATA_EXCEPTION), 
+ nodewindow.c:00005863:  errmsg("arguments invalid or inconsistent"), 
+ nodewindow.c:00005864:  errhint("inappropriate call to window function implementation"))); 
+ nodewindow.c:00005877:  ereport(ERROR, 
+ nodewindow.c:00005878:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ nodewindow.c:00005879:  errmsg("value out of range: overflow"))); 
+ nodewindow.c:00005918:  ereport(ERROR, 
+ nodewindow.c:00005919:  (errcode(ERRCODE_DATA_EXCEPTION), 
+ nodewindow.c:00005920:  errmsg("arguments invalid or inconsistent"), 
+ nodewindow.c:00005921:  errhint("inappropriate call to window function implementation"))); 
+ nodewindow.c:00005934:  ereport(ERROR, 
+ nodewindow.c:00005935:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ nodewindow.c:00005936:  errmsg("value out of range: overflow"))); 
+ nodewindow.c:00005973:  ereport(ERROR, 
+ nodewindow.c:00005974:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ nodewindow.c:00005975:  errmsg("argument value out of range"), 
+ nodewindow.c:00005976:  errhint("NTILE expects a positive integer argument."))); 
+ nodewindow.c:00006114:  ereport(ERROR, 
+ nodewindow.c:00006115:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ nodewindow.c:00006116:  errmsg("%s offset cannot be negative", 
+ nodewindow.c:00006117:  is_lead ? "LEAD" : "LAG"))); 
  not_in.c:00000062:  ereport(ERROR, 
  not_in.c:00000063:  (errcode(ERRCODE_INVALID_NAME), 
  not_in.c:00000064:  errmsg("invalid name syntax"), 
@@ -9097,6 +9056,20 @@ select * from get_ereport order by 1;
  pgarch.c:00000592:  (errcode_for_file_access(), 
  pgarch.c:00000593:  errmsg("could not rename file "%s" to "%s": %m", 
  pgarch.c:00000594:  rlogready, rlogdone))); 
+ pgobject.c:00000067:  ereport(ERROR, (errmsg("Pure virtual method called"))); 
+ pgobject.c:00000095:  ereport(ERROR, ( 
+ pgobject.c:00000096:  errmsg("Unable to find%s %s %s.%s with signature %s", 
+ pgobject.c:00000097:  (isStatic ? " static" : ""), 
+ pgobject.c:00000098:  (isMethod ? "method" : "field"), 
+ pgobject.c:00000099:  PgObject_getClassName(cls), 
+ pgobject.c:00000100:  memberName, 
+ pgobject.c:00000101:  signature))); 
+ pgobject.c:00000114:  ereport(ERROR, ( 
+ pgobject.c:00000115:  errmsg("Unable to load class %s using CLASSPATH '%s'", 
+ pgobject.c:00000116:  className, effectiveClassPath == 0 ? "null" : effectiveClassPath))); 
+ pgobject.c:00000143:  ereport(ERROR, ( 
+ pgobject.c:00000144:  errmsg("Unable to register native methods"))); 
+ pgobject.c:00000185:  ereport(ERROR, (errmsg("cache lookup failed for %s %u", tupleType, tupleId))); 
  pgstat.c:00000872:  ereport(ERROR, 
  pgstat.c:00000873:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  pgstat.c:00000874:  errmsg("must be superuser to reset statistics counters"))); 
@@ -10976,173 +10949,173 @@ select * from get_ereport order by 1;
  resscheduler.c:00000889:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
  resscheduler.c:00000890:  errmsg("insufficient portal ids available"), 
  resscheduler.c:00000891:  errhint("Increase max_resource_portals_per_transaction."))); 
- rewriteDefine.c:00000104:  ereport(ERROR, 
- rewriteDefine.c:00000105:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- rewriteDefine.c:00000106:  errmsg("rule "%s" for relation "%s" already exists", 
- rewriteDefine.c:00000107:  rulname, get_rel_name(eventrel_oid)))); 
- rewriteDefine.c:00000229:  ereport(ERROR, 
- rewriteDefine.c:00000230:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteDefine.c:00000231:  errmsg("rule actions on OLD are not implemented"), 
- rewriteDefine.c:00000232:  errhint("Use views or triggers instead."))); 
- rewriteDefine.c:00000234:  ereport(ERROR, 
- rewriteDefine.c:00000235:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteDefine.c:00000236:  errmsg("rule actions on NEW are not implemented"), 
- rewriteDefine.c:00000237:  errhint("Use triggers instead."))); 
- rewriteDefine.c:00000248:  ereport(ERROR, 
- rewriteDefine.c:00000249:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteDefine.c:00000250:  errmsg("INSTEAD NOTHING rules on SELECT are not implemented"), 
- rewriteDefine.c:00000251:  errhint("Use views instead."))); 
- rewriteDefine.c:00000257:  ereport(ERROR, 
- rewriteDefine.c:00000258:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteDefine.c:00000259:  errmsg("multiple actions for rules on SELECT are not implemented"))); 
- rewriteDefine.c:00000267:  ereport(ERROR, 
- rewriteDefine.c:00000268:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteDefine.c:00000269:  errmsg("rules on SELECT must have action INSTEAD SELECT"))); 
- rewriteDefine.c:00000275:  ereport(ERROR, 
- rewriteDefine.c:00000276:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteDefine.c:00000277:  errmsg("event qualifications are not implemented for rules on SELECT"))); 
- rewriteDefine.c:00000300:  ereport(ERROR, 
- rewriteDefine.c:00000301:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- rewriteDefine.c:00000302:  errmsg(""%s" is already a view", 
- rewriteDefine.c:00000303:  RelationGetRelationName(event_relation)))); 
- rewriteDefine.c:00000324:  ereport(ERROR, 
- rewriteDefine.c:00000325:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- rewriteDefine.c:00000326:  errmsg("view rule for "%s" must be named "%s"", 
- rewriteDefine.c:00000327:  event_obj->relname, ViewSelectRuleName))); 
- rewriteDefine.c:00000344:  ereport(ERROR, 
- rewriteDefine.c:00000345:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- rewriteDefine.c:00000346:  errmsg("could not convert table "%s" to a view because it is not empty", 
- rewriteDefine.c:00000347:  event_obj->relname))); 
- rewriteDefine.c:00000351:  ereport(ERROR, 
- rewriteDefine.c:00000352:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- rewriteDefine.c:00000353:  errmsg("could not convert table "%s" to a view because it has triggers", 
- rewriteDefine.c:00000354:  event_obj->relname), 
- rewriteDefine.c:00000355:  errhint("In particular, the table may not be involved in any foreign key relationships."))); 
- rewriteDefine.c:00000358:  ereport(ERROR, 
- rewriteDefine.c:00000359:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- rewriteDefine.c:00000360:  errmsg("could not convert table "%s" to a view because it has indexes", 
- rewriteDefine.c:00000361:  event_obj->relname))); 
- rewriteDefine.c:00000364:  ereport(ERROR, 
- rewriteDefine.c:00000365:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- rewriteDefine.c:00000366:  errmsg("could not convert table "%s" to a view because it has child tables", 
- rewriteDefine.c:00000367:  event_obj->relname))); 
- rewriteDefine.c:00000391:  ereport(ERROR, 
- rewriteDefine.c:00000392:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteDefine.c:00000393:  errmsg("cannot have multiple RETURNING lists in a rule"))); 
- rewriteDefine.c:00000396:  ereport(ERROR, 
- rewriteDefine.c:00000397:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteDefine.c:00000398:  errmsg("RETURNING lists are not supported in conditional rules"))); 
- rewriteDefine.c:00000400:  ereport(ERROR, 
- rewriteDefine.c:00000401:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteDefine.c:00000402:  errmsg("RETURNING lists are not supported in non-INSTEAD rules"))); 
- rewriteDefine.c:00000482:  ereport(ERROR, 
- rewriteDefine.c:00000483:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- rewriteDefine.c:00000484:  isSelect ? 
- rewriteDefine.c:00000485:  errmsg("SELECT rule's target list has too many entries") : 
- rewriteDefine.c:00000486:  errmsg("RETURNING list has too many entries"))); 
- rewriteDefine.c:00000500:  ereport(ERROR, 
- rewriteDefine.c:00000501:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteDefine.c:00000502:  errmsg("cannot convert relation containing dropped columns to view"))); 
- rewriteDefine.c:00000505:  ereport(ERROR, 
- rewriteDefine.c:00000506:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- rewriteDefine.c:00000507:  errmsg("SELECT rule's target entry %d has different column name from "%s"", i, attname))); 
- rewriteDefine.c:00000510:  ereport(ERROR, 
- rewriteDefine.c:00000511:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- rewriteDefine.c:00000512:  isSelect ? 
- rewriteDefine.c:00000513:  errmsg("SELECT rule's target entry %d has different type from column "%s"", 
- rewriteDefine.c:00000514:  i, attname) : 
- rewriteDefine.c:00000515:  errmsg("RETURNING list's entry %d has different type from column "%s"", 
- rewriteDefine.c:00000516:  i, attname))); 
- rewriteDefine.c:00000527:  ereport(ERROR, 
- rewriteDefine.c:00000528:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- rewriteDefine.c:00000529:  isSelect ? 
- rewriteDefine.c:00000530:  errmsg("SELECT rule's target entry %d has different size from column "%s"", 
- rewriteDefine.c:00000531:  i, attname) : 
- rewriteDefine.c:00000532:  errmsg("RETURNING list's entry %d has different size from column "%s"", 
- rewriteDefine.c:00000533:  i, attname))); 
- rewriteDefine.c:00000537:  ereport(ERROR, 
- rewriteDefine.c:00000538:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- rewriteDefine.c:00000539:  isSelect ? 
- rewriteDefine.c:00000540:  errmsg("SELECT rule's target list has too few entries") : 
- rewriteDefine.c:00000541:  errmsg("RETURNING list has too few entries"))); 
- rewriteDefine.c:00000623:  ereport(ERROR, 
- rewriteDefine.c:00000624:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- rewriteDefine.c:00000625:  errmsg("rule "%s" for relation "%s" does not exist", 
- rewriteDefine.c:00000626:  oldName, get_rel_name(owningRel)))); 
- rewriteDefine.c:00000630:  ereport(ERROR, 
- rewriteDefine.c:00000631:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- rewriteDefine.c:00000632:  errmsg("rule "%s" for relation "%s" already exists", 
- rewriteDefine.c:00000633:  newName, get_rel_name(owningRel)))); 
- rewriteHandler.c:00000442:  ereport(ERROR, 
- rewriteHandler.c:00000443:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteHandler.c:00000444:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"))); 
- rewriteHandler.c:00000504:  ereport(ERROR, 
- rewriteHandler.c:00000505:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteHandler.c:00000506:  errmsg("cannot have RETURNING lists in multiple rules"))); 
- rewriteHandler.c:00000802:  ereport(ERROR, 
- rewriteHandler.c:00000803:  (errcode(ERRCODE_SYNTAX_ERROR), 
- rewriteHandler.c:00000804:  errmsg("multiple assignments to same column "%s"", 
- rewriteHandler.c:00000805:  attrName))); 
- rewriteHandler.c:00000820:  ereport(ERROR, 
- rewriteHandler.c:00000821:  (errcode(ERRCODE_SYNTAX_ERROR), 
- rewriteHandler.c:00000822:  errmsg("multiple assignments to same column "%s"", 
- rewriteHandler.c:00000823:  attrName))); 
- rewriteHandler.c:00000957:  ereport(ERROR, 
- rewriteHandler.c:00000958:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- rewriteHandler.c:00000959:  errmsg("column "%s" is of type %s" 
- rewriteHandler.c:00000960:  " but default expression is of type %s", 
- rewriteHandler.c:00000961:  NameStr(att_tup->attname), 
- rewriteHandler.c:00000962:  format_type_be(atttype), 
- rewriteHandler.c:00000963:  format_type_be(exprtype)), 
- rewriteHandler.c:00000964:  errhint("You will need to rewrite or cast the expression."))); 
- rewriteHandler.c:00001387:  ereport(ERROR, 
- rewriteHandler.c:00001388:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- rewriteHandler.c:00001389:  errmsg("infinite recursion detected in rules for relation "%s"", 
- rewriteHandler.c:00001390:  RelationGetRelationName(rel)))); 
- rewriteHandler.c:00001699:  ereport(ERROR, 
- rewriteHandler.c:00001700:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- rewriteHandler.c:00001701:  errmsg("infinite recursion detected in rules for relation "%s"", 
- rewriteHandler.c:00001702:  RelationGetRelationName(rt_entry_relation)))); 
- rewriteHandler.c:00001737:  ereport(ERROR, 
- rewriteHandler.c:00001738:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteHandler.c:00001739:  errmsg("cannot perform INSERT RETURNING on relation "%s"", 
- rewriteHandler.c:00001740:  RelationGetRelationName(rt_entry_relation)), 
- rewriteHandler.c:00001741:  errhint("You need an unconditional ON INSERT DO INSTEAD rule with a RETURNING clause."))); 
- rewriteHandler.c:00001744:  ereport(ERROR, 
- rewriteHandler.c:00001745:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteHandler.c:00001746:  errmsg("cannot perform UPDATE RETURNING on relation "%s"", 
- rewriteHandler.c:00001747:  RelationGetRelationName(rt_entry_relation)), 
- rewriteHandler.c:00001748:  errhint("You need an unconditional ON UPDATE DO INSTEAD rule with a RETURNING clause."))); 
- rewriteHandler.c:00001751:  ereport(ERROR, 
- rewriteHandler.c:00001752:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteHandler.c:00001753:  errmsg("cannot perform DELETE RETURNING on relation "%s"", 
- rewriteHandler.c:00001754:  RelationGetRelationName(rt_entry_relation)), 
- rewriteHandler.c:00001755:  errhint("You need an unconditional ON DELETE DO INSTEAD rule with a RETURNING clause."))); 
- rewriteHandler.c:00001851:  ereport(ERROR, 
- rewriteHandler.c:00001852:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteHandler.c:00001853:  errmsg("cannot insert into a view"), 
- rewriteHandler.c:00001854:  errhint("You need an unconditional ON INSERT DO INSTEAD rule."))); 
- rewriteHandler.c:00001857:  ereport(ERROR, 
- rewriteHandler.c:00001858:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteHandler.c:00001859:  errmsg("cannot update a view"), 
- rewriteHandler.c:00001860:  errhint("You need an unconditional ON UPDATE DO INSTEAD rule."))); 
- rewriteHandler.c:00001863:  ereport(ERROR, 
- rewriteHandler.c:00001864:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteHandler.c:00001865:  errmsg("cannot delete from a view"), 
- rewriteHandler.c:00001866:  errhint("You need an unconditional ON DELETE DO INSTEAD rule."))); 
- rewriteManip.c:00000747:  ereport(ERROR, 
- rewriteManip.c:00000748:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteManip.c:00000749:  errmsg("conditional utility statements are not implemented"))); 
- rewriteManip.c:00000759:  ereport(ERROR, 
- rewriteManip.c:00000760:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- rewriteManip.c:00000761:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"))); 
- rewriteRemove.c:00000058:  ereport(ERROR, 
- rewriteRemove.c:00000059:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- rewriteRemove.c:00000060:  errmsg("rule "%s" for relation "%s" does not exist", 
- rewriteRemove.c:00000061:  ruleName, get_rel_name(owningRel)))); 
- rewriteRemove.c:00000063:  ereport(NOTICE, 
- rewriteRemove.c:00000064:  (errmsg("rule "%s" for relation "%s" does not exist, skipping", 
- rewriteRemove.c:00000065:  ruleName, get_rel_name(owningRel)))); 
+ rewritedefine.c:00000104:  ereport(ERROR, 
+ rewritedefine.c:00000105:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ rewritedefine.c:00000106:  errmsg("rule "%s" for relation "%s" already exists", 
+ rewritedefine.c:00000107:  rulname, get_rel_name(eventrel_oid)))); 
+ rewritedefine.c:00000229:  ereport(ERROR, 
+ rewritedefine.c:00000230:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritedefine.c:00000231:  errmsg("rule actions on OLD are not implemented"), 
+ rewritedefine.c:00000232:  errhint("Use views or triggers instead."))); 
+ rewritedefine.c:00000234:  ereport(ERROR, 
+ rewritedefine.c:00000235:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritedefine.c:00000236:  errmsg("rule actions on NEW are not implemented"), 
+ rewritedefine.c:00000237:  errhint("Use triggers instead."))); 
+ rewritedefine.c:00000248:  ereport(ERROR, 
+ rewritedefine.c:00000249:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritedefine.c:00000250:  errmsg("INSTEAD NOTHING rules on SELECT are not implemented"), 
+ rewritedefine.c:00000251:  errhint("Use views instead."))); 
+ rewritedefine.c:00000257:  ereport(ERROR, 
+ rewritedefine.c:00000258:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritedefine.c:00000259:  errmsg("multiple actions for rules on SELECT are not implemented"))); 
+ rewritedefine.c:00000267:  ereport(ERROR, 
+ rewritedefine.c:00000268:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritedefine.c:00000269:  errmsg("rules on SELECT must have action INSTEAD SELECT"))); 
+ rewritedefine.c:00000275:  ereport(ERROR, 
+ rewritedefine.c:00000276:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritedefine.c:00000277:  errmsg("event qualifications are not implemented for rules on SELECT"))); 
+ rewritedefine.c:00000300:  ereport(ERROR, 
+ rewritedefine.c:00000301:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ rewritedefine.c:00000302:  errmsg(""%s" is already a view", 
+ rewritedefine.c:00000303:  RelationGetRelationName(event_relation)))); 
+ rewritedefine.c:00000324:  ereport(ERROR, 
+ rewritedefine.c:00000325:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ rewritedefine.c:00000326:  errmsg("view rule for "%s" must be named "%s"", 
+ rewritedefine.c:00000327:  event_obj->relname, ViewSelectRuleName))); 
+ rewritedefine.c:00000344:  ereport(ERROR, 
+ rewritedefine.c:00000345:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ rewritedefine.c:00000346:  errmsg("could not convert table "%s" to a view because it is not empty", 
+ rewritedefine.c:00000347:  event_obj->relname))); 
+ rewritedefine.c:00000351:  ereport(ERROR, 
+ rewritedefine.c:00000352:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ rewritedefine.c:00000353:  errmsg("could not convert table "%s" to a view because it has triggers", 
+ rewritedefine.c:00000354:  event_obj->relname), 
+ rewritedefine.c:00000355:  errhint("In particular, the table may not be involved in any foreign key relationships."))); 
+ rewritedefine.c:00000358:  ereport(ERROR, 
+ rewritedefine.c:00000359:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ rewritedefine.c:00000360:  errmsg("could not convert table "%s" to a view because it has indexes", 
+ rewritedefine.c:00000361:  event_obj->relname))); 
+ rewritedefine.c:00000364:  ereport(ERROR, 
+ rewritedefine.c:00000365:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ rewritedefine.c:00000366:  errmsg("could not convert table "%s" to a view because it has child tables", 
+ rewritedefine.c:00000367:  event_obj->relname))); 
+ rewritedefine.c:00000391:  ereport(ERROR, 
+ rewritedefine.c:00000392:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritedefine.c:00000393:  errmsg("cannot have multiple RETURNING lists in a rule"))); 
+ rewritedefine.c:00000396:  ereport(ERROR, 
+ rewritedefine.c:00000397:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritedefine.c:00000398:  errmsg("RETURNING lists are not supported in conditional rules"))); 
+ rewritedefine.c:00000400:  ereport(ERROR, 
+ rewritedefine.c:00000401:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritedefine.c:00000402:  errmsg("RETURNING lists are not supported in non-INSTEAD rules"))); 
+ rewritedefine.c:00000482:  ereport(ERROR, 
+ rewritedefine.c:00000483:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ rewritedefine.c:00000484:  isSelect ? 
+ rewritedefine.c:00000485:  errmsg("SELECT rule's target list has too many entries") : 
+ rewritedefine.c:00000486:  errmsg("RETURNING list has too many entries"))); 
+ rewritedefine.c:00000500:  ereport(ERROR, 
+ rewritedefine.c:00000501:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritedefine.c:00000502:  errmsg("cannot convert relation containing dropped columns to view"))); 
+ rewritedefine.c:00000505:  ereport(ERROR, 
+ rewritedefine.c:00000506:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ rewritedefine.c:00000507:  errmsg("SELECT rule's target entry %d has different column name from "%s"", i, attname))); 
+ rewritedefine.c:00000510:  ereport(ERROR, 
+ rewritedefine.c:00000511:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ rewritedefine.c:00000512:  isSelect ? 
+ rewritedefine.c:00000513:  errmsg("SELECT rule's target entry %d has different type from column "%s"", 
+ rewritedefine.c:00000514:  i, attname) : 
+ rewritedefine.c:00000515:  errmsg("RETURNING list's entry %d has different type from column "%s"", 
+ rewritedefine.c:00000516:  i, attname))); 
+ rewritedefine.c:00000527:  ereport(ERROR, 
+ rewritedefine.c:00000528:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ rewritedefine.c:00000529:  isSelect ? 
+ rewritedefine.c:00000530:  errmsg("SELECT rule's target entry %d has different size from column "%s"", 
+ rewritedefine.c:00000531:  i, attname) : 
+ rewritedefine.c:00000532:  errmsg("RETURNING list's entry %d has different size from column "%s"", 
+ rewritedefine.c:00000533:  i, attname))); 
+ rewritedefine.c:00000537:  ereport(ERROR, 
+ rewritedefine.c:00000538:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ rewritedefine.c:00000539:  isSelect ? 
+ rewritedefine.c:00000540:  errmsg("SELECT rule's target list has too few entries") : 
+ rewritedefine.c:00000541:  errmsg("RETURNING list has too few entries"))); 
+ rewritedefine.c:00000623:  ereport(ERROR, 
+ rewritedefine.c:00000624:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ rewritedefine.c:00000625:  errmsg("rule "%s" for relation "%s" does not exist", 
+ rewritedefine.c:00000626:  oldName, get_rel_name(owningRel)))); 
+ rewritedefine.c:00000630:  ereport(ERROR, 
+ rewritedefine.c:00000631:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ rewritedefine.c:00000632:  errmsg("rule "%s" for relation "%s" already exists", 
+ rewritedefine.c:00000633:  newName, get_rel_name(owningRel)))); 
+ rewritehandler.c:00000442:  ereport(ERROR, 
+ rewritehandler.c:00000443:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritehandler.c:00000444:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"))); 
+ rewritehandler.c:00000504:  ereport(ERROR, 
+ rewritehandler.c:00000505:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritehandler.c:00000506:  errmsg("cannot have RETURNING lists in multiple rules"))); 
+ rewritehandler.c:00000802:  ereport(ERROR, 
+ rewritehandler.c:00000803:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ rewritehandler.c:00000804:  errmsg("multiple assignments to same column "%s"", 
+ rewritehandler.c:00000805:  attrName))); 
+ rewritehandler.c:00000820:  ereport(ERROR, 
+ rewritehandler.c:00000821:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ rewritehandler.c:00000822:  errmsg("multiple assignments to same column "%s"", 
+ rewritehandler.c:00000823:  attrName))); 
+ rewritehandler.c:00000957:  ereport(ERROR, 
+ rewritehandler.c:00000958:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ rewritehandler.c:00000959:  errmsg("column "%s" is of type %s" 
+ rewritehandler.c:00000960:  " but default expression is of type %s", 
+ rewritehandler.c:00000961:  NameStr(att_tup->attname), 
+ rewritehandler.c:00000962:  format_type_be(atttype), 
+ rewritehandler.c:00000963:  format_type_be(exprtype)), 
+ rewritehandler.c:00000964:  errhint("You will need to rewrite or cast the expression."))); 
+ rewritehandler.c:00001387:  ereport(ERROR, 
+ rewritehandler.c:00001388:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ rewritehandler.c:00001389:  errmsg("infinite recursion detected in rules for relation "%s"", 
+ rewritehandler.c:00001390:  RelationGetRelationName(rel)))); 
+ rewritehandler.c:00001699:  ereport(ERROR, 
+ rewritehandler.c:00001700:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ rewritehandler.c:00001701:  errmsg("infinite recursion detected in rules for relation "%s"", 
+ rewritehandler.c:00001702:  RelationGetRelationName(rt_entry_relation)))); 
+ rewritehandler.c:00001737:  ereport(ERROR, 
+ rewritehandler.c:00001738:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritehandler.c:00001739:  errmsg("cannot perform INSERT RETURNING on relation "%s"", 
+ rewritehandler.c:00001740:  RelationGetRelationName(rt_entry_relation)), 
+ rewritehandler.c:00001741:  errhint("You need an unconditional ON INSERT DO INSTEAD rule with a RETURNING clause."))); 
+ rewritehandler.c:00001744:  ereport(ERROR, 
+ rewritehandler.c:00001745:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritehandler.c:00001746:  errmsg("cannot perform UPDATE RETURNING on relation "%s"", 
+ rewritehandler.c:00001747:  RelationGetRelationName(rt_entry_relation)), 
+ rewritehandler.c:00001748:  errhint("You need an unconditional ON UPDATE DO INSTEAD rule with a RETURNING clause."))); 
+ rewritehandler.c:00001751:  ereport(ERROR, 
+ rewritehandler.c:00001752:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritehandler.c:00001753:  errmsg("cannot perform DELETE RETURNING on relation "%s"", 
+ rewritehandler.c:00001754:  RelationGetRelationName(rt_entry_relation)), 
+ rewritehandler.c:00001755:  errhint("You need an unconditional ON DELETE DO INSTEAD rule with a RETURNING clause."))); 
+ rewritehandler.c:00001851:  ereport(ERROR, 
+ rewritehandler.c:00001852:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritehandler.c:00001853:  errmsg("cannot insert into a view"), 
+ rewritehandler.c:00001854:  errhint("You need an unconditional ON INSERT DO INSTEAD rule."))); 
+ rewritehandler.c:00001857:  ereport(ERROR, 
+ rewritehandler.c:00001858:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritehandler.c:00001859:  errmsg("cannot update a view"), 
+ rewritehandler.c:00001860:  errhint("You need an unconditional ON UPDATE DO INSTEAD rule."))); 
+ rewritehandler.c:00001863:  ereport(ERROR, 
+ rewritehandler.c:00001864:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritehandler.c:00001865:  errmsg("cannot delete from a view"), 
+ rewritehandler.c:00001866:  errhint("You need an unconditional ON DELETE DO INSTEAD rule."))); 
+ rewritemanip.c:00000747:  ereport(ERROR, 
+ rewritemanip.c:00000748:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritemanip.c:00000749:  errmsg("conditional utility statements are not implemented"))); 
+ rewritemanip.c:00000759:  ereport(ERROR, 
+ rewritemanip.c:00000760:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ rewritemanip.c:00000761:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"))); 
+ rewriteremove.c:00000058:  ereport(ERROR, 
+ rewriteremove.c:00000059:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ rewriteremove.c:00000060:  errmsg("rule "%s" for relation "%s" does not exist", 
+ rewriteremove.c:00000061:  ruleName, get_rel_name(owningRel)))); 
+ rewriteremove.c:00000063:  ereport(NOTICE, 
+ rewriteremove.c:00000064:  (errmsg("rule "%s" for relation "%s" does not exist, skipping", 
+ rewriteremove.c:00000065:  ruleName, get_rel_name(owningRel)))); 
  ri_triggers.c:00000304:  ereport(ERROR, 
  ri_triggers.c:00000305:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  ri_triggers.c:00000306:  errmsg("MATCH PARTIAL not yet implemented"))); 
@@ -11865,6 +11838,10 @@ select * from get_ereport order by 1;
  socket.c:00000526:  (errmsg_internal("failed to enumerate network events: %i", (int) GetLastError()))); 
  socket.c:00000603:  ereport(FATAL, 
  socket.c:00000604:  (errmsg_internal("Failed to load netmsg.dll: %i", (int) GetLastError()))); 
+ spi.c:00000154:  ereport(ERROR, ( 
+ spi.c:00000155:  errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION), 
+ spi.c:00000156:  errmsg("Subtransaction mismatch at txlevel %d", 
+ spi.c:00000157:  GetCurrentTransactionNestLevel()))); 
  spi.c:00000592:  ereport(WARNING, 
  spi.c:00000593:  (errcode(ERRCODE_WARNING), 
  spi.c:00000594:  errmsg("transaction left non-empty SPI stack"), 
@@ -14146,6 +14123,15 @@ select * from get_ereport order by 1;
  typcache.c:00000319:  ereport(ERROR, 
  typcache.c:00000320:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
  typcache.c:00000321:  errmsg("record type has not been registered"))); 
+ type.c:00000221:  ereport(ERROR, ( 
+ type.c:00000222:  errmsg("Type '%s' has no corresponding java class", 
+ type.c:00000223:  PgObjectClass_getName((PgObjectClass)typeClass)))); 
+ type.c:00000441:  ereport(ERROR, ( 
+ type.c:00000442:  errcode(ERRCODE_CANNOT_COERCE), 
+ type.c:00000443:  errmsg("No java type mapping installed for "%s"", javaTypeName))); 
+ type.c:00000647:  ereport(ERROR, 
+ type.c:00000648:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ type.c:00000649:  errmsg("Type is not associated with a record"))); 
  typecmds.c:00000135:  ereport(ERROR, 
  typecmds.c:00000136:  (errcode(ERRCODE_INVALID_NAME), 
  typecmds.c:00000137:  errmsg("type names must be %d characters or less", 
@@ -14354,6 +14340,25 @@ select * from get_ereport order by 1;
  typecmds.c:00002380:  errmsg("%s is a table's row type", 
  typecmds.c:00002381:  format_type_be(typeOid)), 
  typecmds.c:00002382:  errhint("Use ALTER TABLE SET SCHEMA instead."))); 
+ udt.c:00000113:  ereport(ERROR, ( 
+ udt.c:00000114:  errcode(ERRCODE_CANNOT_COERCE), 
+ udt.c:00000115:  errmsg("UDT for Oid %d produced image with incorrect size. Expected %d, was %d", 
+ udt.c:00000116:  Type_getOid((Type)self), dataLen, buffer.len))); 
+ udt.c:00000167:  ereport(ERROR, ( 
+ udt.c:00000168:  errcode(ERRCODE_CANNOT_COERCE), 
+ udt.c:00000169:  errmsg("UDT with Oid %d is not scalar", Type_getOid((Type)udt)))); 
+ udt.c:00000191:  ereport(ERROR, ( 
+ udt.c:00000192:  errcode(ERRCODE_CANNOT_COERCE), 
+ udt.c:00000193:  errmsg("UDT with Oid %d is not scalar", Type_getOid((Type)udt)))); 
+ udt.c:00000219:  ereport(ERROR, ( 
+ udt.c:00000220:  errcode(ERRCODE_CANNOT_COERCE), 
+ udt.c:00000221:  errmsg("UDT with Oid %d is not scalar", Type_getOid((Type)udt)))); 
+ udt.c:00000241:  ereport(ERROR, ( 
+ udt.c:00000242:  errcode(ERRCODE_CANNOT_COERCE), 
+ udt.c:00000243:  errmsg("UDT with Oid %d is not scalar", Type_getOid((Type)udt)))); 
+ udt.c:00000285:  ereport(ERROR, ( 
+ udt.c:00000286:  errcode(ERRCODE_CANNOT_COERCE), 
+ udt.c:00000287:  errmsg("Attempt to register UDT with Oid %d failed. Oid appoints a non UDT type", typeId))); 
  uriparser.c:00000058:  ereport(ERROR, 
  uriparser.c:00000059:  (errcode(ERRCODE_SYNTAX_ERROR), 
  uriparser.c:00000060:  errmsg("invalid URI '%s' : undefined protocol", uri_str))); 

@@ -168,6 +168,9 @@ if (1)
 
 		my $orig_filnam = $filnam;
 
+		$filnam = lc($filnam)
+			if ($bLax);
+
 		for (<$fh>)
 		{
 			my $ini = $_;
