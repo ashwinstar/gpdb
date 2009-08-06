@@ -15,11 +15,11 @@ use warnings;
 
 =head1 NAME
 
-B<get_ereport.pl> - find bug numbers in a file and invoke jira in browser
+B<get_ereport.pl> - find error messages in c source files
 
 =head1 SYNOPSIS
 
-B<bugout.pl> filename[#linenum] [filename...]
+B<get_ereport.pl> [-quiet] [-lax] filename [filename...]
 
 Options:
 
@@ -53,7 +53,7 @@ Options:
 =item B<-lax>
 
     Cleanup spaces, vertical bar (|), etc, that might effect gpdiff
-    comparison.
+    comparison (if invoked via a sql script)
 
 
 =back
@@ -199,8 +199,8 @@ if (1)
 				}
 
 				print $filnam, ":";
-				print $linecnt, ": "
-					unless ($bQuiet);
+				printf "%08d: ", $linecnt;
+#					unless ($bQuiet);
 
 				$ini =~ s/\t/ /gm
 					if ($bLax);
