@@ -586,6 +586,9 @@ define tmpLOADERS_FILESET_LIB
 endef
 LOADERS_FILESET_LIB = $(strip $(tmpLOADERS_FILESET_LIB))
 
+AIX_LOADERS_LIBS_PERZL=libz.a
+LOADERS_FILESET_LIB_PERZL=$($(BLD_OS)_LOADERS_LIBS_PERZL)
+
 AIX_LOADERS_LIBS_PWARE=libbz2.a libiconv.a libintl.a libncurses.a libpanel.a libsqlite3.a
 LOADERS_FILESET_LIB_PWARE=$($(BLD_OS)_LOADERS_LIBS_PWARE)
 
@@ -748,7 +751,13 @@ endif
 ifneq "$(LOADERS_FILESET_LIB)" ""
 	(cd $(INSTLOC)/lib/ && $(TAR) cf - $(LOADERS_FILESET_LIB)) | (cd $(LOADERSINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 endif
+ifneq "$(LOADERS_FILESET_LIB_PERZL)" ""
+	# include libraries from www.perzl.org needed by the pware Python-2.6.1 build
+	mkdir -p $(LOADERSINSTLOC_LIB_PWARE)
+	($(TAR) cf - -C /opt/freeware/lib $(LOADERS_FILESET_LIB_PERZL)) | ($(TAR) xvpf - -C $(LOADERSINSTLOC_LIB_PWARE))$(check_pipe_for_errors)
+endif
 ifneq "$(LOADERS_FILESET_LIB_PWARE)" ""
+	# include libraries from pware needed by the pware Python-2.6.1 build
 	mkdir -p $(LOADERSINSTLOC_LIB_PWARE)
 	($(TAR) cf - -C /opt/pware/lib $(LOADERS_FILESET_LIB_PWARE)) | ($(TAR) xvpf - -C $(LOADERSINSTLOC_LIB_PWARE))$(check_pipe_for_errors)
 endif
