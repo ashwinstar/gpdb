@@ -41,91 +41,94 @@ PostgreSQL documentation
  <refsynopsisdiv>
 
 <synopsis>
-CREATE [ [GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE <replaceable>table_name</replaceable> ( 
-       [ { <replaceable>column_name</replaceable> <replaceable>data_type</replaceable> [DEFAULT <replaceable>default_expr</replaceable>] 
-           [ <replaceable>column_constraint</replaceable> [ ... ] ]
-           | <replaceable>table_constraint</replaceable>
-           | LIKE <replaceable>parent_table</replaceable> [ {INCLUDING | EXCLUDING} {DEFAULTS | CONSTRAINTS} ] ...}
+
+CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE table_name ( 
+       [ { column_name data_type [DEFAULT default_expr] 
+           [column_constraint [ ... ]]
+           | table_constraint
+           | LIKE parent_table [{INCLUDING | EXCLUDING} 
+                                {DEFAULTS | CONSTRAINTS}] ...}
            [, ... ] ] )
-   [ INHERITS ( <replaceable>parent_table</replaceable> [, ... ] ) ]
-   [ WITH ( <replaceable>storage_parameter</replaceable>=<replaceable>value</replaceable> [, ... ] ) 
-          | WITH OIDS | WITHOUT OIDS ]
+   [ INHERITS ( parent_table [, ... ] ) ]
+   [ WITH ( storage_parameter=value [, ... ] )
    [ ON COMMIT {PRESERVE ROWS | DELETE ROWS | DROP} ]
-   [ TABLESPACE <replaceable>tablespace</replaceable> ]
-   [ DISTRIBUTED BY (<replaceable>column</replaceable>, [ ... ] ) | DISTRIBUTED RANDOMLY ]
-   [ PARTITION BY <replaceable>partition_type</replaceable> (<replaceable>column</replaceable>)
-       [ SUBPARTITION BY <replaceable>partition_type</replaceable> (<replaceable>column</replaceable>) ] 
-          [ SUBPARTITION TEMPLATE ( <replaceable>template_specification</replaceable> ) ] 
-           ( <replaceable>partition_specification</replaceable> [ ( <replaceable>subpartition_specification</replaceable> ) ] 
-             [, ... ] )
+   [ TABLESPACE tablespace ]
+   [ DISTRIBUTED BY (column, [ ... ] ) | DISTRIBUTED RANDOMLY ]
+   [ PARTITION BY partition_type (column)
+       [ SUBPARTITION BY partition_type (column) ] 
+          [ SUBPARTITION TEMPLATE ( template_spec ) ]
+       [...]
+    ( partition_spec ) 
+        | [ SUBPARTITION BY partition_type (column) ]
+          [...]
+    ( partition_spec 
+      [ ( subpartition_spec 
+           [(...)] 
+         ) ] 
+    )
 
-where <replaceable>storage_parameter</replaceable> is:
-
+where storage_parameter is:
    APPENDONLY={TRUE|FALSE}
-   [COMPRESSLEVEL={0-9}]
-   [COMPRESSTYPE={ZLIB | QUICKLZ}]
-   [FILLFACTOR={10-100}]
+   ORIENTATION={COLUMN|ROW}
+   COMPRESSLEVEL={0-9}
+   COMPRESSTYPE={ZLIB|QUICKLZ}
+   FILLFACTOR={10-100}
+   OIDS[=TRUE|FALSE]
 
-where <replaceable>column_constraint</replaceable> is:
-
-   [CONSTRAINT <replaceable>constraint_name</replaceable>]
+where column_constraint is:
+   [CONSTRAINT constraint_name]
    NOT NULL | NULL 
-   | UNIQUE [USING INDEX TABLESPACE <replaceable>tablespace</replaceable>]
-            [WITH ( FILLFACTOR = <replaceable>value</replaceable> )]
-   | PRIMARY KEY [USING INDEX TABLESPACE <replaceable>tablespace</replaceable>] 
-                 [WITH ( FILLFACTOR = <replaceable>value</replaceable> )]
-   | CHECK ( <replaceable>expression</replaceable> )
+   | UNIQUE [USING INDEX TABLESPACE tablespace]
+            [WITH ( FILLFACTOR = value )]
+   | PRIMARY KEY [USING INDEX TABLESPACE tablespace] 
+                 [WITH ( FILLFACTOR = value )]
+   | CHECK ( expression )
 
-and <replaceable>table_constraint</replaceable> is:
+and table_constraint is:
+   [CONSTRAINT constraint_name]
+   UNIQUE ( column_name [, ... ] )
+          [USING INDEX TABLESPACE tablespace] 
+          [WITH ( FILLFACTOR=value )] 
+   | PRIMARY KEY ( column_name [, ... ] ) 
+                 [USING INDEX TABLESPACE tablespace] 
+                 [WITH ( FILLFACTOR=value )] 
+   | CHECK ( expression )
 
-   [CONSTRAINT <replaceable>constraint_name</replaceable>]
-   UNIQUE ( <replaceable>column_name</replaceable> [, ... ] )
-          [USING INDEX TABLESPACE <replaceable>tablespace</replaceable>] 
-          [WITH ( FILLFACTOR=<replaceable>value</replaceable> )] 
-   | PRIMARY KEY ( <replaceable>column_name</replaceable> [, ... ] ) 
-                 [USING INDEX TABLESPACE <replaceable>tablespace</replaceable>] 
-                 [WITH ( FILLFACTOR=<replaceable>value</replaceable> )] 
-   | CHECK ( <replaceable>expression</replaceable> )
+where partition_type is:
+    LIST
+  | RANGE
 
-where <replaceable>partition_type</replaceable> is:
-
-    LIST | RANGE
-	
 where partition_specification is:
+partition_element [, ...]
 
-<replaceable>partition_element</replaceable> [, ...]
+and partition_element is:
+   DEFAULT PARTITION name
+  | [PARTITION name] VALUES (list_value [,...] )
+  | [PARTITION name] 
+     START ([datatype] 'start_value') [INCLUSIVE | EXCLUSIVE]
+     [ END ([datatype] 'end_value') [INCLUSIVE | EXCLUSIVE] ]
+     [ EVERY ([datatype] [number | INTERVAL] 'interval_value') ]
+  | [PARTITION name] 
+     END ([datatype] 'end_value') [INCLUSIVE | EXCLUSIVE]
+     [ EVERY ([datatype] [number | INTERVAL] 'interval_value') ]
+[ WITH ( partition_storage_parameter=value [, ... ] ) ]
+[ TABLESPACE tablespace ]
 
-and <replaceable>partition_element</replaceable> is:
+where subpartition_spec or template_spec is:
+subpartition_element [, ...]
 
-   DEFAULT PARTITION <replaceable>name</replaceable>
-  | [PARTITION <replaceable>name</replaceable>] VALUES (<replaceable>list_value</replaceable> [,...] )
-  | [PARTITION <replaceable>name</replaceable>] 
-     START ([<replaceable>datatype</replaceable>] '<replaceable>start_value</replaceable>') [INCLUSIVE | EXCLUSIVE]
-     [ END ([<replaceable>datatype</replaceable>] '<replaceable>end_value</replaceable>') [INCLUSIVE | EXCLUSIVE] ]
-     [ EVERY ([<replaceable>datatype</replaceable>] [<replaceable>number</replaceable> | INTERVAL] '<replaceable>interval_value</replaceable>') ]
-  | [PARTITION <replaceable>name</replaceable>] 
-     END ([<replaceable>datatype</replaceable>] '<replaceable>end_value</replaceable>') [INCLUSIVE | EXCLUSIVE]
-     [ EVERY ([<replaceable>datatype</replaceable>] [number | INTERVAL] '<replaceable>interval_value</replaceable>') ]
-[ WITH ( <replaceable>partition_storage_parameter</replaceable>=<replaceable>value</replaceable> [, ... ] ) ]
-[ TABLESPACE <replaceable>tablespace</replaceable> ]
-
-where <replaceable>subpartition_specification</replaceable> or <replaceable>template_specification</replaceable> is:
-
-<replaceable>subpartition_element</replaceable> [, ...]
-
-and <replaceable>subpartition_element</replaceable> is:
-
-   DEFAULT SUBPARTITION <replaceable>name</replaceable>
-  | [SUBPARTITION <replaceable>name</replaceable>] VALUES (<replaceable>list_value</replaceable> [,...] )
-  | [SUBPARTITION <replaceable>name</replaceable>] 
-     START ([<replaceable>datatype</replaceable>] '<replaceable>start_value</replaceable>') [INCLUSIVE | EXCLUSIVE]
-     [ END ([<replaceable>datatype</replaceable>] '<replaceable>end_value</replaceable>') [INCLUSIVE | EXCLUSIVE] ]
-     [ EVERY ([<replaceable>datatype</replaceable>] [<replaceable>number</replaceable> | INTERVAL] '<replaceable>interval_value</replaceable>') ]
-  | [SUBPARTITION <replaceable>name</replaceable>] 
-     END ([<replaceable>datatype</replaceable>] '<replaceable>end_value</replaceable>') [INCLUSIVE | EXCLUSIVE]
-     [ EVERY ([<replaceable>datatype</replaceable>] [<replaceable>number</replaceable> | INTERVAL] '<replaceable>interval_value</replaceable>') ]
-[ WITH ( <replaceable>partition_storage_parameter</replaceable>=<replaceable>value</replaceable> [, ... ] ) ]
-[ TABLESPACE <replaceable>tablespace</replaceable> ]
+and subpartition_element is:
+   DEFAULT SUBPARTITION name
+  | [SUBPARTITION name] VALUES (list_value [,...] )
+  | [SUBPARTITION name] 
+     START ([datatype] 'start_value') [INCLUSIVE | EXCLUSIVE]
+     [ END ([datatype] 'end_value') [INCLUSIVE | EXCLUSIVE] ]
+     [ EVERY ([datatype] [number | INTERVAL] 'interval_value') ]
+  | [SUBPARTITION name] 
+     END ([datatype] 'end_value') [INCLUSIVE | EXCLUSIVE]
+     [ EVERY ([datatype] [number | INTERVAL] 'interval_value') ]
+[ WITH ( partition_storage_parameter=value [, ... ] ) ]
+[ TABLESPACE tablespace ]
 
 </synopsis>
 
