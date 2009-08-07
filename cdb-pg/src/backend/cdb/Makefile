@@ -18,6 +18,8 @@ SUBDIRS := motion
 SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
 
 OBJS = cdbanalyze.o \
+       cdbappendonlystorage.o cdbappendonlystorageformat.o \
+       cdbappendonlystorageread.o cdbappendonlystoragewrite.o \
 	   cdbbackup.o cdbbufferedappend.o cdbbufferedread.o \
 	   cdbcat.o cdbcellbuf.o cdbchunkbuf.o cdbchunkpool.o cdbconn.o cdbcopy.o \
 	   cdbdisp.o cdbdispatchresult.o \

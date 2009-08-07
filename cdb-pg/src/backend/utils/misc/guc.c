@@ -219,6 +219,7 @@ bool 		Debug_appendonly_print_scan = false;
 bool 		Debug_appendonly_print_scan_tuple = false;
 bool 		Debug_appendonly_print_storage_headers = false;
 bool 		Debug_appendonly_print_verify_write_block = false;
+bool		Debug_appendonly_use_no_toast = false;
 bool 		Test_appendonly_override = false;
 bool 		gp_test_orientation_override = false;
 bool 		Test_checksum_override = false;
@@ -1954,6 +1955,16 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 		
+	{
+		{"debug_appendonly_use_no_toast", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Use no toast for an append-only table.  Store the large row inline."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_use_no_toast,
+		false, NULL, NULL
+	},
+					
 	{
 		{"test_appendonly_override", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("For testing purposes, change the default of the appendonly create table option."),

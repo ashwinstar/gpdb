@@ -24,12 +24,16 @@
 #include "storage/lmgr.h"
 #include "utils/rel.h"
 #include "utils/tqual.h"
+#include "storage/gp_compress.h"
+
 #include "cdb/cdbvarblock.h"
 #include "cdb/cdbbufferedappend.h"
 #include "cdb/cdbbufferedread.h"
 #include "cdb/cdbvarblock.h"
 
-#include "storage/gp_compress.h"
+#include "cdb/cdbappendonlystoragelayer.h"
+#include "cdb/cdbappendonlystorageread.h"
+#include "cdb/cdbappendonlystoragewrite.h"
 
 #define DEFAULT_COMPRESS_LEVEL				 0
 #define MIN_APPENDONLY_BLOCK_SIZE			 8 * 1024
@@ -54,31 +58,19 @@ typedef struct AppendOnlyInsertDescData
 	float8			insertCount;
 	float8			varblockCount;
 	BlockNumber		cur_segno;
-	BufferedAppend	bufferedAppend;
 	VarBlockMaker	varBlockMaker;
 	int64			bufferCount;
 	int64			blockFirstRowNum;
 	bool			shouldCompress;
 	bool			usingChecksum;
-	int32			headerLen;
-	uint8			*nonCompressedHeader;
-	int				compressLevel;
-	CompressorType  compressType;
+	bool			useNoToast;
+	int32			fixedHeaderLen;
 	uint8			*tempSpace;
 	uint8			*uncompressedBuffer; /* used for compression */
-
-	/* used for gp_appendonly_verify_write_block GUC */
-	uint8			*verifyWriteBuffer;
-	char			*qlzScratchDecompress;
-	int32			qlzScratchDecompressLen;
-	int32			qlzScratchDecompressGuardLen;
 
 	int32			usableBlockSize;
 	int32			maxDataLen;
 	int32			tempSpaceLen;
-	int32			maxBufferWithOverrrunLen;
-	int32			largeWriteLen;
-	int32			safefswritesize;
 	
 	/*
 	 * These serve the equivalent purpose of the uppercase constants of the same
@@ -86,14 +78,11 @@ typedef struct AppendOnlyInsertDescData
 	 */	
 	int32			toast_tuple_threshold;
 	int32			toast_tuple_target;
+	AppendOnlyStorageAttributes storageAttributes;
+	AppendOnlyStorageWrite		storageWrite;
 
-	char 			*qlzScratchCompress;
-	int32			qlzScratchCompressLen;
-	int32			qlzScratchCompressGuardLen;
+	uint8			*nonCompressedData;
 
-
-	// Debug checking variables for MPP-5775
-	int64			debugTrackWritePosition;
 } AppendOnlyInsertDescData;
 
 typedef AppendOnlyInsertDescData *AppendOnlyInsertDesc;
@@ -108,13 +97,9 @@ typedef struct AppendOnlyScanDescData
 	Index       aos_scanrelid;
 	int			aos_nkeys;			/* number of scan keys */
 	ScanKey		aos_key;			/* array of scan key descriptors */
-	bool		aos_compressed;		/* is relation stored compressed? */
-	int			aos_compresslevel;  /* the compression level used */
-	CompressorType aos_compresstype;/* the compressor type used */
-	bool		aos_checksum;		/* is relation stored with checksums? */
+	bool		aos_notoast;		/* using toast for this relation? */
 	
 	/* file segment scan state */
-	File	    aos_file;			/* the current segment file */
 	int			aos_filenamepath_maxlen;
 	char		*aos_filenamepath;
 									/* the current segment file pathname. */
@@ -124,20 +109,16 @@ typedef struct AppendOnlyScanDescData
 	bool		aos_need_new_segfile;
 	bool		aos_done_all_segfiles;
 	
-	/* buffered read context */
-	BufferedRead    bufferedRead;
 	VarBlockReader  varBlockReader;
 	MemoryContext	aoScanInitContext; /* mem context at init time */
 	char			*qlzScratch;
 	int32			qlzScratchLen;
 	int32			qlzScratchGuardLen;
 
-	int32			headerLen;
 	uint8			*uncompressedBuffer; /* for decompression */
 	int32			usableBlockSize;
 	int32			maxDataLen;
 	int32			largeReadLen;
-	int32			safefswritesize;
 
 	int64           bufferCount;
 	int64			blockFirstRowNum;
@@ -151,7 +132,6 @@ typedef struct AppendOnlyScanDescData
 	
 	/* current scan state */
 	bool		bufferDone;
-	bool		aos_bufread_inited;
 	TupleDesc	aos_tupDesc;
 	MemTupleData aos_ctup;		/* current tuple in scan, if any */
 	
@@ -160,10 +140,15 @@ typedef struct AppendOnlyScanDescData
 	MemTupleBinding *mt_bind;
 
 	PgStat_Info aos_pgstat_info; /* statistics collector hook */
-	
-	// Debug checking variables for MPP-5775
-	int64		debugTrackReadPosition;
-	int32		debugTrackAvailableLen;
+
+	bool	aos_initedNewReadStorageRoutines;
+
+	AppendOnlyStorageAttributes	aos_storageAttributes;
+	AppendOnlyStorageRead		aos_storageRead;
+
+	uint8	*aos_largeContentBuffer;
+	int32	aos_largeContentBufferLen;
+
 }	AppendOnlyScanDescData;
 
 typedef AppendOnlyScanDescData *AppendOnlyScanDesc;

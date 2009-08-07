@@ -1,13 +1,13 @@
 /*-------------------------------------------------------------------------
  *
- * appendonlystorage.h
+ * cdbappendonlystorage.h
  *
- * Copyright (c) 2007-2008, Greenplum inc
+ * Copyright (c) 2007-2009, Greenplum inc
  *
  *-------------------------------------------------------------------------
  */
-#ifndef APPENDONLYSTORAGE_H
-#define APPENDONLYSTORAGE_H
+#ifndef CDBAPPENDONLYSTORAGE_H
+#define CDBAPPENDONLYSTORAGE_H
 
 #include "c.h"
 #include "utils/pg_crc.h"
@@ -15,8 +15,20 @@
 
 #define AO_HEADER_LEN 8	// 64 bits.
 
-#define AOBlockHeader_MaxRowCount 0x3FFF   // 14 bits, or 16,383 (16k  1).
-#define AOBlockHeader_MaxLength   0x1FFFFF // 21 bits, or 2,097,151 (2 Mb  1).
+#define AOBlockHeader_MaxRowCount 0x3FFF   // 14 bits, or 16,383 (16k-1).
+										   // Maximum row count for small content.
+										   
+#define AOBlockHeader_MaxLength   0x1FFFFF // 21 bits, or 2,097,151 (2 Mb-1).
+										   // Maximum blocksize.  Does not include
+										   // Append-Only Storage Header overhead...
+
+
+#define AOLargeContentHeader_MaxLargeRowCount 0x1FFFFFF 
+										   // 25 bits, or 33,554,431, or (2^25-1)
+										   // Maximum row count for large content.
+
+#define AOLargeContentHeader_MaxLargeContentLength   0x3FFFFFFF 
+										  // 30 bits, or 1,073,741,823 (1Gb-1).
 
 #define AOStorage_RoundUp(l) ((((l)+3)/4)*4)
 
@@ -34,7 +46,8 @@
 typedef enum AoHeaderKind
 {
 	AoHeaderKind_None = 0,
-	AoHeaderKind_Block,
+	AoHeaderKind_SmallContent = 1,
+	AoHeaderKind_LargeContent = 2,
 	MaxAoHeaderKind /* must always be last */
 } AoHeaderKind;
 
@@ -46,9 +59,10 @@ typedef enum AOHeaderCheckError
 	AOHeaderCheckReservedBit0Not0,
 	AOHeaderCheckInvalidHeaderKindNone,
 	AOHeaderCheckInvalidHeaderKind,
-	AOHeaderCheckRowCountIsZero,
+	AOHeaderCheck__OBSOLETE_,
 	AOHeaderCheckInvalidCompressedLen,
 	AOHeaderCheckInvalidOverallBlockLen,
+	AOHeaderCheckLargeContentLenIsZero,
 } AOHeaderCheckError;
 
 
@@ -61,6 +75,15 @@ typedef enum AOHeaderCheckError
  * (Limit: 274 trillion (2^38) - 1), and the 10
  * rightmost bits stand for which segment file the 
  * tuple is in (Limit: 1023 (2^10 - 1))
+ *
+ *
+ * ***WARNING*** STRUCT PACKING ISSUE.
+ *
+ *       Previously, we had the uint16 first and the uint32 second.  But on some compliers
+ *       the second uint32 would get packed on a 32-bit boundary and the struct would end
+ *       up with a hole between the fields...  Arranging the uint16 second is known to work
+ *       correctly since the ItemPointerData has the same layout.  And, apparently putting
+ *       small fields after big ones is a policy in system catalog struct layouts.
  */
 typedef struct AOTupleId
 {
@@ -86,65 +109,10 @@ typedef struct AOTupleId
 #define AOTupleIdInit_rowNum(h,e)            {(h)->bytes_0_3|=((uint32)((INT64CONST(0x0000003FFFFFFFFF)&(e))>>6));\
 											  (h)->bytes_4_5|=((0x003F&((uint16)(e)))<<10);}
 
-#define AOTupleId_MaxRowNum            INT64CONST(274877906943) 		// 38 bits, or 274,877,906,943 (274 trillion  1).
+#define AOTupleId_MaxRowNum            INT64CONST(274877906943) 		// 38 bits, or 274,877,906,943 (274 million  - 1).
 #define AOTupleId_MaxRowNum_CommaStr  "274,877,906,943"
-
-
-extern int32 AppendOnlyStorage_HeaderLenNeeded(
-	bool			usingChecksum);
-
-extern void AppendOnlyStorage_MakeBlockHeader(
-	uint8			*headerPtr,
-	bool			usingChecksums,
-	int				executorKind,
-	int				rowCount,
-	int32			dataLength,
-	int32			compressedLength);
-
-extern void AppendOnlyStorage_LogBlockHeader(
-	char			*tableName,
-	int				segmentFileNum,
-	int64			headerOffsetInFile,
-	uint8			*headerPtr,
-	bool			usingChecksums);
-
-extern int errdetail_appendonly_block_header(
-	uint8	*header,
-	bool	usingChecksum);
-
-extern char *AppendOnlyStorage_GetHeaderCheckErrorStr(void);
-
-extern AOHeaderCheckError AppendOnlyStorage_GetHeaderInfo(
-	uint8			*headerPtr,
-	int				headerLen,
-	AoHeaderKind	*headerKind);
-
-extern AOHeaderCheckError AppendOnlyStorage_GetBlockHeaderInfo(
-	uint8			*headerPtr,
-	int				headerLen,
-	bool			usingChecksums,
-	int32			blockLimitLen,
-	int32			*overallBlockLen,
-	int32			*offset,
-	int32			*length,
-	int				*executorBlockKind,
-	int				*rowCount,
-	bool			*isCompressed);
-
-extern bool AppendOnlyStorage_VerifyHeaderChecksum(
-	uint8			*headerPtr,
-	pg_crc32		*storedChecksum,
-	pg_crc32		*computedChecksum);
-
-extern bool AppendOnlyStorage_VerifyBlockChecksum(
-	uint8			*headerPtr,
-	int32			overallBlockLen,
-	pg_crc32		*storedChecksum,
-	pg_crc32		*computedChecksum);
-
-extern int32 AppendOnlyStorage_GetUncompressedLen(
-	uint8			*headerPtr);
 
 extern char* AOTupleIdToString(AOTupleId * aoTupleId);
 
-#endif   /* APPENDONLYSTORAGE_H */
+
+#endif   /* CDBAPPENDONLYSTORAGE_H */

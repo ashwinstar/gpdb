@@ -13,7 +13,7 @@
 #include "postgres.h"
 
 #include "access/appendonlywriter.h"
-#include "access/appendonlystorage.h" /* AOTupleId_MaxRowNum  */
+#include "cdb/cdbappendonlystorage.h" /* AOTupleId_MaxRowNum  */
 #include "access/heapam.h"			  /* heap_open            */
 #include "access/transam.h"			  /* InvalidTransactionId */
 #include "cdb/cdbvars.h"			  /* Gp_role              */

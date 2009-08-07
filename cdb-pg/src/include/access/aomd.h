@@ -19,7 +19,18 @@ extern int
 AOSegmentFilePathNameLen(Relation rel);
 
 extern void
-OpenAOSegmentFile(Relation rel, int segno, int col, bool create, File *file, char *filepathname);
+MakeAOSegmentFileName(
+							Relation rel, 
+							int segno, 
+							int col, 
+							char *filepathname);
+
+extern void
+OpenAOSegmentFile(
+					Relation rel, 
+					char *filepathname, 
+					bool create,
+					File *file);
 
 extern void
 CloseAOSegmentFile(File file, Relation rel, BlockNumber segno);

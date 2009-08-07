@@ -41,20 +41,19 @@ AOSegmentFilePathNameLen(Relation rel)
 }
 
 /*
- * Open an Append Only relation file segment
- *
- * The fd module's PathNameOpenFile() is used to open the file, so the
- * the File* routines can be used to read, write, close, etc, the file.
+ * Make an Append Only relation file segment file name.
  *
  * The filepathname parameter assume sufficient space.
  */
 void
-OpenAOSegmentFile(Relation rel, int segno, int col, bool create,
-	File *file, char *filepathname)
+MakeAOSegmentFileName(
+							Relation rel, 
+							int segno, 
+							int col, 
+							char *filepathname)
 {
 	char	*basepath;
-	int		fileflags = O_RDWR | PG_BINARY;
-		
+	
 	/* Get base path for this relation file */
 	basepath = relpath(rel->rd_node);
 
@@ -63,18 +62,34 @@ OpenAOSegmentFile(Relation rel, int segno, int col, bool create,
 	 */
 	if (segno > 0)
 	{
-                if(col < 0)
-                {
-                        /* be sure we have enough space for the '.segno' */
-                        sprintf(filepathname, AO_FILE_PATH_FORMAT, basepath, segno);
-                }
-                else
-                        sprintf(filepathname, AOCS_FILE_PATH_FORMAT, basepath, col, segno);
+        if(col < 0)
+        {
+                /* be sure we have enough space for the '.segno' */
+                sprintf(filepathname, AO_FILE_PATH_FORMAT, basepath, segno);
+        }
+        else
+                sprintf(filepathname, AOCS_FILE_PATH_FORMAT, basepath, col, segno);
 	}
 	else
 		strcpy(filepathname, basepath);
 
 	pfree(basepath);
+}
+
+/*
+ * Open an Append Only relation file segment
+ *
+ * The fd module's PathNameOpenFile() is used to open the file, so the
+ * the File* routines can be used to read, write, close, etc, the file.
+ */
+void
+OpenAOSegmentFile(
+					Relation rel, 
+					char *filepathname, 
+					bool create,
+					File *file)
+{
+	int		fileflags = O_RDWR | PG_BINARY;
 	
 	*file = PathNameOpenFile(filepathname, fileflags, 0600);
 	

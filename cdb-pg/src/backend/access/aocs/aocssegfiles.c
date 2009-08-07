@@ -7,7 +7,7 @@
 #include "postgres.h"
 #include "postgres.h"
 
-#include "access/appendonlystorage.h"
+#include "cdb/cdbappendonlystorage.h"
 #include "access/aomd.h"
 #include "access/heapam.h"
 #include "access/genam.h"

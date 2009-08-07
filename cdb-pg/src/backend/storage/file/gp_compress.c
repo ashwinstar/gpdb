@@ -6,6 +6,7 @@
  */
 
 #include "postgres.h"
+#include "utils/guc.h"
 #include "storage/gp_compress.h"
 
 CompressorType CompressorStrToType(const char* comp_str, int comp_level)
@@ -154,4 +155,280 @@ void gp_decompress(CompressorType cmpType,
                 Assert(tmpLen == decompLen);
         }
 }
+
+
+static void
+verifyQlzScratchGuard(
+	char		*title,
+	char		*qlzScratch, 
+	int32		qlzScratchLen, 
+	int32		qlzScratchGuardLen)
+{
+	int i;
+	
+	if (qlzScratchGuardLen == 0)
+		return;
+
+	for (i = 0; i < qlzScratchGuardLen; i++)
+		if (qlzScratch[qlzScratchLen + i] != 0)
+			elog(ERROR,"Guard area after %d byte scratch buffer for '%s' is not zero at index %d",
+			     qlzScratchLen, title, i);
+}
+
+
+int gp_trycompress_new(
+	 uint8		*sourceData,
+	 int32		sourceLen,
+	 uint8		*compressedBuffer,
+	 int32		compressedBufferWithOverrrunLen,
+	 int32		maxCompressedLen,	// The largest compressed result we would like to see.
+	 int32		*compressedLen,
+	 int		compressLevel,
+	 CompressorType  compressType,
+	 char		*qlzScratch,
+	 int32		qlzScratchLen,
+	 int32		qlzScratchGuardLen)
+{
+	unsigned long 	compressedSize;
+	
+	Assert(compressLevel > 0);
+	
+	if(compressType == COMPTYPE_ZLIB)
+	{
+
+#ifndef HAVE_LIBZ
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Don't have ZLIB on the system!")));
+		*compressedLen = 0;
+		return -1;	// Never reaches here.
+#else
+		int				zlibCompressError;
+
+		/* 
+		 * On input, the 2nd 'destLen' parameter to compress2 is the maximum size
+		 * of the compression buffer.  On output, it is the resulting compressed
+		 * length.
+		 */
+		compressedSize = (unsigned long)maxCompressedLen; 
+		
+		zlibCompressError = compress2(compressedBuffer, &compressedSize, 
+									  (Bytef *)sourceData, sourceLen, 
+									  compressLevel);
+		
+		if (zlibCompressError != Z_OK)
+			return zlibCompressError;
+#endif
+	}
+	else if(compressType == COMPTYPE_QUICKLZ1)
+	{
+		Insist(compressLevel == 1);
+
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_compress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		
+		if (Debug_appendonly_rezero_quicklz_compress_scratch)
+			memset(qlzScratch, 0, qlzScratchLen);			
+
+		compressedSize = qlz1_compress((const void *)sourceData, 
+									  (char *)compressedBuffer, 
+									  (size_t)sourceLen, 
+									  qlzScratch);
+	    
+		/*
+		 * Since qlz1_compress never returns an error (unlike zlib) if there was 
+		 * not enough room in the output buffer (compressed size is larger than
+		 * uncompressed size), so return an explicit error here, so that the
+		 * caller will handle it by storing an uncompressed block. For now we
+		 * use the zlib error code Z_BUF_ERROR, but we could make up our own
+		 * instead too.
+		 */
+
+		if (compressedSize > compressedBufferWithOverrrunLen)
+			elog(FATAL, 
+			     "QuickLZ qlz1_compress overran extra buffer space (max buffer length %d, compressed length %d)",
+			     compressedBufferWithOverrrunLen, (int)compressedSize);
+		
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_compress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+			
+		if ((compressedSize > (unsigned long)maxCompressedLen) ||
+			(compressedSize > sourceLen))
+		{
+			return Z_BUF_ERROR;
+		}
+			
+	}
+	else /* COMPTYPE_QUICKLZ3 */
+	{
+		Insist(compressType == COMPTYPE_QUICKLZ3);
+		Insist(compressLevel == 3);
+		
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_compress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		
+		if (Debug_appendonly_rezero_quicklz_compress_scratch)
+			memset(qlzScratch, 0, qlzScratchLen);			
+
+		compressedSize = qlz3_compress((const void *)sourceData, 
+									  (char *)compressedBuffer, 
+									  (size_t)sourceLen, 
+									  qlzScratch);
+	    
+		/*
+		 * see comment above below qlz1_compress.
+		 */
+		if (compressedSize > compressedBufferWithOverrrunLen)
+			elog(FATAL, 
+				 "QuickLZ qlz3_compress overran extra buffer space (max buffer length %d, compressed length %d)",
+				 compressedBufferWithOverrrunLen, (int)compressedSize);
+			
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_compress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+			
+		if ((compressedSize > (unsigned long)maxCompressedLen) ||
+			(compressedSize > sourceLen))
+		{
+			return Z_BUF_ERROR;
+		}
+
+	}
+	
+	Assert(compressedSize > 0);
+	*compressedLen = (int32)compressedSize;
+
+	return Z_OK;
+}
+
+void gp_decompress_new(
+			uint8			*compressed,
+			int32			compressedLen,
+			uint8			*uncompressed,
+			int32			uncompressedLen,
+			CompressorType	compresstype,	/* the compressor type used */
+			char			*qlzScratch,
+			int32		    qlzScratchLen,
+			int32			qlzScratchGuardLen,
+			int64			bufferCount)
+{
+	unsigned long compressedSize;
+	unsigned long uncompressedSize;
+
+	int32 resultingUncompressedLen;
+	
+	compressedSize = (unsigned long)compressedLen;
+	uncompressedSize = (unsigned long)uncompressedLen;
+
+	if(compresstype == COMPTYPE_ZLIB)
+	{
+		int res;
+		
+#ifndef HAVE_LIBZ
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Don't have ZLIB on the system!")));			
+#else		
+		res = uncompress(uncompressed, &uncompressedSize, 
+						 (Bytef *)compressed, compressedSize);
+	
+		if (res != Z_OK)
+		{
+			char *detail = NULL;
+			
+			switch(res)
+			{
+				case Z_MEM_ERROR:
+					detail = "Insufficient memory";
+					break;
+				case Z_BUF_ERROR:
+					detail = "The buffer was not large enough to hold the uncompressed data";
+					break;
+				case Z_DATA_ERROR:
+					detail = "The compressed data was corrupted";
+					break;
+				default:
+					elog(ERROR,"ZLIB uncompress failed -- reason %d unknown (output buffer length %d, compressed length %d)",
+						 res, uncompressedLen, compressedLen);
+					break;
+			}
+	
+			elog(ERROR,"ZLIB uncompress failed (detail: '%s', output buffer length %d, compressed length %d, (block count " INT64_FORMAT "))",
+				 detail, uncompressedLen, compressedLen, bufferCount);
+		}	
+#endif
+	}
+	else if(compresstype == COMPTYPE_QUICKLZ1)
+	{
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz1_decompress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		
+		if (Debug_appendonly_rezero_quicklz_decompress_scratch)
+			memset(qlzScratch, 0, qlzScratchLen);		
+
+		uncompressedSize = qlz1_decompress((const char *)compressed, 
+										  uncompressed, 
+										  qlzScratch);
+		
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz1_decompress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		
+	}
+	else
+	{
+		Insist(compresstype == COMPTYPE_QUICKLZ3);
+
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_decompress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		
+		if (Debug_appendonly_rezero_quicklz_decompress_scratch)
+			memset(qlzScratch, 0, qlzScratchLen);		
+
+		uncompressedSize = qlz3_decompress((const char *)compressed, 
+										  uncompressed, 
+										  qlzScratch);
+
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_decompress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+	
+	}
+	
+	resultingUncompressedLen = (int32)uncompressedSize;
+
+	if (resultingUncompressedLen != uncompressedLen)
+		elog(ERROR, 
+			 "Uncompress returned length %d which is different than the " 
+			 "expected length %d (block count " INT64_FORMAT ")",
+			 resultingUncompressedLen,
+			 uncompressedLen,
+			 bufferCount);
+}
+
+void
+gp_issuecompresserror(
+	int				zlibCompressError,
+	int32			sourceLen)
+{
+	char *detail = NULL;
+	
+	switch(zlibCompressError)
+	{
+	case Z_MEM_ERROR:
+		detail = "Insufficient memory";
+		break;
+	case Z_BUF_ERROR:
+		detail = "The buffer was not large enough to hold the compressed data";
+		break;
+	case Z_STREAM_ERROR:
+		detail = "The level was not Z_DEFAULT_LEVEL, or was not between 0 and 9";
+		break;
+	default:
+		elog(ERROR,"ZLIB compress2 failed -- reason %d unknown (uncompressed length %d)",
+			 zlibCompressError, sourceLen);
+		break;
+	}
+
+	elog(ERROR,"ZLIB compress2 failed (detail: '%s', uncompressed length %d)",
+		 detail, sourceLen);
+}
+
 

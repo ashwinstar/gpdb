@@ -1,0 +1,1171 @@
+/*-------------------------------------------------------------------------
+ *
+ * cdbappendonlystorageread.c
+ *
+ * Copyright (c) 2007-2009, Greenplum inc
+ *
+ *-------------------------------------------------------------------------
+ */
+#include "postgres.h"
+#ifndef WIN32
+#include <sys/fcntl.h>
+#else
+#include <io.h>
+#endif 
+#include <sys/file.h>
+#include <unistd.h>
+
+#include "utils/guc.h"
+
+#include "cdb/cdbappendonlystorage.h"
+#include "cdb/cdbappendonlystoragelayer.h"
+#include "cdb/cdbappendonlystorageformat.h"
+#include "cdb/cdbappendonlystorageread.h"
+
+
+// -----------------------------------------------------------------------------
+// Initialization 
+// -----------------------------------------------------------------------------
+
+/*
+ * Initialize AppendOnlyStorageRead.
+ *
+ * The AppendOnlyStorageRead data structure is initialized 
+ * once for a read “session” and can be used to read 
+ * Append-Only Storage Blocks from 1 or more segment files.
+ *
+ * The current file to read to is opened with the
+ * AppendOnlyStorageRead_OpenFile routine.
+ */
+void AppendOnlyStorageRead_Init(
+	AppendOnlyStorageRead			*storageRead,
+				/* The data structure to initialize. */
+
+	MemoryContext 					memoryContext,
+				/*
+				 * The memory context to use for buffers and
+				 * other memory needs.  When NULL, the
+				 * current memory context is used.
+				 */
+    int32                			maxBufferLen,
+				/*
+				 * The maximum Append-Only Storage Block
+				 * length including all storage headers.
+				 */
+	char							*relationName,
+				/*
+				 * Name of the relation to use in system
+				 * logging and error messages.
+				 */
+	AppendOnlyStorageAttributes		*storageAttributes)
+				/*
+				 * The Append-Only Storage Attributes
+				 * from relation creation.
+				 */
+{
+	int		relationNameLen;
+	uint8	*memory;
+	int32	memoryLen;
+	MemoryContext	oldMemoryContext;
+	
+	Assert(storageRead != NULL);
+	
+	// UNDONE: Range check maxBufferLen
+	
+	Assert(relationName != NULL);
+	Assert(storageAttributes != NULL);
+
+	// UNDONE: Range check fields in storageAttributes
+	
+	MemSet(storageRead, 0, sizeof(AppendOnlyStorageRead));
+
+	storageRead->maxBufferLen = maxBufferLen;
+	
+	if (memoryContext == NULL)
+		storageRead->memoryContext = CurrentMemoryContext;
+	else
+		storageRead->memoryContext = memoryContext;
+
+	oldMemoryContext = MemoryContextSwitchTo(storageRead->memoryContext);
+
+	memcpy(
+		&storageRead->storageAttributes, 
+		storageAttributes, 
+		sizeof(AppendOnlyStorageAttributes));
+
+	relationNameLen = strlen(relationName);
+	storageRead->relationName = (char *) palloc(relationNameLen + 1);
+	memcpy(storageRead->relationName, relationName, relationNameLen + 1);
+
+	storageRead->headerLen = 
+		AppendOnlyStorageFormat_HeaderLenNeeded(
+									storageRead->storageAttributes.checksum);
+
+	/*
+	 * Allocate extra memory needed for decompression.
+	 */
+	if (storageRead->storageAttributes.compress)
+	{
+		/*
+		 * if QuickLZ compression used, prepare scratch space for decompression.
+		 */
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			storageRead->qlzScratchGuardLen = 1024;
+		switch(storageRead->storageAttributes.compressType)
+		{
+		case COMPTYPE_QUICKLZ1:
+			storageRead->qlzScratchLen = QLZ1_SCRATCH_DECOMPRESS;
+			storageRead->qlzScratch = (char*) palloc0(storageRead->qlzScratchLen + storageRead->qlzScratchGuardLen);
+			break;
+		case COMPTYPE_QUICKLZ3:
+			storageRead->qlzScratchLen = QLZ3_SCRATCH_DECOMPRESS;
+			storageRead->qlzScratch = (char*) palloc0(storageRead->qlzScratchLen + storageRead->qlzScratchGuardLen);
+			break;
+		case COMPTYPE_ZLIB:
+		case COMPTYPE_NONE:
+			break; /* nothing to do */
+		default:
+			Insist(false);
+		}
+		
+	}
+
+	/*
+	 * Initialize BufferedRead.
+	 */
+	storageRead->largeReadLen = 2 * storageRead->maxBufferLen;
+
+	memoryLen = 
+		BufferedReadMemoryLen(
+					storageRead->maxBufferLen,
+					storageRead->largeReadLen);
+	
+	oldMemoryContext = MemoryContextSwitchTo(storageRead->memoryContext);
+	
+	memory = (uint8*)palloc(memoryLen);
+
+	MemoryContextSwitchTo(oldMemoryContext);
+
+	BufferedReadInit(&storageRead->bufferedRead, 
+					 memory,
+					 memoryLen, 
+					 storageRead->maxBufferLen, 
+					 storageRead->largeReadLen);
+				
+	if (Debug_appendonly_print_scan)
+		elog(LOG,"Append-Only Storage Read initialize for table '%s' "
+		     "(compression = %s, compression level %d, maximum buffer length %d, large read length %d)",
+		     storageRead->relationName,
+		     (storageRead->storageAttributes.compress ? "true" : "false"),
+		     storageRead->storageAttributes.compressLevel,
+		     storageRead->maxBufferLen,
+		     storageRead->largeReadLen);
+
+	storageRead->file = -1;
+
+	MemoryContextSwitchTo(oldMemoryContext);
+	
+	storageRead->isActive = true;
+
+}
+
+/*
+ * Finish using the AppendOnlyStorageRead session created with ~Init.
+ */
+void AppendOnlyStorageRead_FinishSession(
+	AppendOnlyStorageRead			*storageRead)
+				/* The data structure to finish. */
+{
+	MemoryContext	oldMemoryContext;
+
+	if(!storageRead->isActive)
+		return;
+
+	// UNDONE: Should move this down one level?
+	oldMemoryContext = MemoryContextSwitchTo(storageRead->memoryContext);
+
+	// UNDONE: This expects the MemoryContent to be what was used for the 'memory' in ~Init
+	BufferedReadFinish(&storageRead->bufferedRead);
+
+	/* Deallocation is done.	  Go back to caller memory-context. */
+	MemoryContextSwitchTo(oldMemoryContext);
+
+	storageRead->isActive = false;
+
+}
+
+// -----------------------------------------------------------------------------
+// Open and Close
+// -----------------------------------------------------------------------------
+
+/*
+ * Open the next segment file to read.
+ *
+ * This routine is responsible for seeking to the proper
+ * read location given the logical EOF.
+ */
+void AppendOnlyStorageRead_OpenFile(
+	AppendOnlyStorageRead		*storageRead,
+
+    char				 		*filePathName,
+				/* The name of the segment file to open. */
+
+    int64                		logicalEof)
+				/*
+				 * The snapshot version of the EOF
+				 * value to use as the read end of the segment
+				 * file.
+				 */
+{
+	int		fileFlags = O_RDONLY | PG_BINARY;
+	int		fileMode = 0400;
+						/* File mode is S_IRUSR 00400 user has read permission */
+	 
+	File	file;
+	
+	int64	seekResult;
+	
+	MemoryContext	oldMemoryContext;
+	
+	int		segmentFileNameLen;
+
+	Assert(storageRead != NULL);
+	Assert(storageRead->isActive);
+	Assert(filePathName != NULL);
+	// UNDONE: Range check logicalEof
+
+	/*
+	 * Open or create the file for write.
+	 */	
+	file = PathNameOpenFile(filePathName, fileFlags, fileMode);
+	
+	if(file < 0)
+	{
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("Append-only Storage Read could not open segment file '%s' for relation '%s'", 
+						filePathName,
+						storageRead->relationName)));
+	}
+	
+	/* 
+	 * Seek to the beginning of the file.
+	 */
+	seekResult = FileSeek(file, 0, SEEK_SET);
+	if (seekResult != 0)
+	{
+		FileClose(file);
+        ereport(ERROR, 
+				(errcode(ERRCODE_IO_ERROR),
+			     errmsg("Append-only Storage Read error on segment file '%s' for relation '%s'.  FileSeek offset = 0.  Error code = %d (%s)",
+        	 		    filePathName,
+        	 		    storageRead->relationName,
+             		    (int)seekResult,
+             			strerror((int)seekResult))));
+	}
+
+	storageRead->file = file;
+
+	/*
+	 * When reading multiple segment files, we throw away the old segment file name strings.
+	 */	
+	oldMemoryContext = MemoryContextSwitchTo(storageRead->memoryContext);
+	
+	segmentFileNameLen = strlen(filePathName);
+	storageRead->segmentFileName = (char *) palloc(segmentFileNameLen + 1);
+	memcpy(storageRead->segmentFileName, filePathName, segmentFileNameLen + 1);
+
+	/* Allocation is done.	Go back to caller memory-context. */
+	MemoryContextSwitchTo(oldMemoryContext);
+
+	storageRead->logicalEof = logicalEof;
+
+	BufferedReadSetFile(
+				&storageRead->bufferedRead,
+				storageRead->file, 
+				storageRead->segmentFileName, 
+				logicalEof);
+
+}
+
+/*
+ * Close the current segment file.
+ *
+ * No error if the current is already closed.
+ */
+void AppendOnlyStorageRead_CloseFile(
+	AppendOnlyStorageRead		*storageRead)
+{
+	if(!storageRead->isActive)
+		return;
+
+	if (storageRead->file == -1)
+		return;
+	
+	FileClose(storageRead->file);
+	
+	storageRead->file = -1;
+	
+	storageRead->logicalEof = INT64CONST(0);
+
+	if(storageRead->bufferedRead.file >= 0)
+		BufferedReadCompleteFile(&storageRead->bufferedRead);
+}
+
+// -----------------------------------------------------------------------------
+// Reading Content 
+// -----------------------------------------------------------------------------
+
+/*
+ * Skip zero padding to next page boundary, if necessary.
+ *
+ * This function is called when the file system block we are scanning has
+ * no more valid data but instead is padded with zero's from the position
+ * we are currently in until the end of the block. The function will skip
+ * to the end of block if skipLen is -1 or skip skipLen bytes otherwise.
+ */
+static void
+AppendOnlyStorageRead_DoSkipPadding(
+	AppendOnlyStorageRead		*storageRead,
+	int32 						skipLen)
+{
+	int64   nextReadPosition;
+	int64   nextBoundaryPosition;
+	int32   safeWriteRemainder;
+	bool	doSkip;
+	uint8  *buffer;
+	int32	availableLen;
+	int32   safewrite = storageRead->storageAttributes.safeFSWriteSize;
+	
+	/* early exit if no pad used */
+	if(safewrite == 0)
+		return;
+	
+	nextReadPosition = BufferedReadNextBufferPosition(&storageRead->bufferedRead);
+	nextBoundaryPosition = 
+		((nextReadPosition + safewrite - 1)/safewrite)*safewrite;
+	safeWriteRemainder = (int32)(nextBoundaryPosition - nextReadPosition);
+	
+	if (safeWriteRemainder <= 0)
+		doSkip = false;
+	else if (skipLen == -1)
+	{
+		/*
+		 * Skip to end of page.
+		 */
+		doSkip = true;
+		skipLen = safeWriteRemainder;
+	}
+	else
+		doSkip = (safeWriteRemainder < skipLen);
+	
+	if (doSkip)
+	{
+		/*
+		 * Read through the remainder.
+		 */
+		buffer = BufferedReadGetNextBuffer(&storageRead->bufferedRead,
+										   safeWriteRemainder,
+										   &availableLen);
+		
+		/*
+		 * Since our file EOF should always be a multiple of the file-system
+		 * page, we do not expect a short read here.
+		 */
+		if (buffer == NULL)
+			availableLen = 0;
+		if (buffer == NULL || safeWriteRemainder != availableLen)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Unexpected end of file.  Expected to read %d bytes after position " INT64_FORMAT " but found %d bytes (bufferCount  " INT64_FORMAT ")\n", 
+							safeWriteRemainder, 
+							nextReadPosition, 
+							availableLen,
+							storageRead->bufferCount)));			
+		}
+		
+		// UNDONE: For verification purposes, we should verify the
+		// UNDONE: reminder is all zeroes.
+		
+		if (Debug_appendonly_print_scan)
+			elog(LOG,"Append-only scan skipping zero padded remainder for table '%s' (nextReadPosition = " INT64_FORMAT ", safeWriteRemainder = %d)",
+			     storageRead->relationName,
+			     nextReadPosition,
+			     safeWriteRemainder);
+	}
+}
+
+/*
+ * Skip zero padding to next page boundary, if necessary.
+ *
+ * This function is called when the file system block we are scanning has
+ * no more valid data but instead is padded with zero's from the position
+ * we are currently in until the end of the block. The function will skip
+ * to the end of block if skipLen is -1 or skip skipLen bytes otherwise.
+ */
+static bool
+AppendOnlyStorageRead_PositionToNextBlock(
+	AppendOnlyStorageRead		*storageRead,
+	int64						*headerOffsetInFile,
+	uint8						**header,
+	int32						*blockLimitLen)
+{
+	int32		availableLen;
+	int			i;
+	int64		fileRemainderLen;
+
+	Assert(storageRead != NULL);
+	Assert(header != NULL);
+	
+	/*
+	 * Peek ahead just enough so we can see the Append-Only storage
+	 * header.
+	 *
+	 * However, we need to honor the file-system page boundaries here
+	 * since we do not let the length information cross the boundary.
+	 */
+	AppendOnlyStorageRead_DoSkipPadding(storageRead, storageRead->headerLen);
+
+	*headerOffsetInFile = BufferedReadNextBufferPosition(&storageRead->bufferedRead);
+
+	*header = BufferedReadGetNextBuffer(&storageRead->bufferedRead,
+									    storageRead->headerLen,
+									    &availableLen);
+	
+	if (*header == NULL)
+	{
+		/* done reading the file */
+		return false;			
+	}
+
+	storageRead->bufferCount++;
+				
+	if (availableLen != storageRead->headerLen)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Expected %d bytes and got %d bytes in table %s "
+				        "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")\n", 
+						storageRead->headerLen, 
+						availableLen, 
+					    storageRead->relationName,
+					    storageRead->segmentFileName,
+						*headerOffsetInFile,
+						storageRead->bufferCount)));			
+
+	/*
+	 * First check for zero padded page remainder.
+	 */
+	i = 0;
+	while (true)
+	{
+		if ((*header)[i] != 0)
+			break;
+
+		i++;
+		if (i >= storageRead->headerLen)
+		{
+			/*
+			 * Skip over zero padding caused when the append command
+			 * left a partially full page.
+			 */
+			AppendOnlyStorageRead_DoSkipPadding(storageRead, /* indicated till end of page */ -1);
+
+			/*
+			 * Now try to get the peek data from the new page.
+			 */
+			*headerOffsetInFile = BufferedReadNextBufferPosition(&storageRead->bufferedRead);
+			
+			*header = BufferedReadGetNextBuffer(&storageRead->bufferedRead,
+											    storageRead->headerLen,
+											    &availableLen);
+			
+			if (*header == NULL)
+			{
+				/* done reading the file */
+				return false;			
+			}
+			
+			if (availableLen != storageRead->headerLen)
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_INTERNAL_ERROR),
+						 errmsg("Expected %d bytes and found %d bytes in table %s "
+						 		"(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")", 
+								storageRead->headerLen,
+								availableLen,
+								storageRead->relationName,
+							    storageRead->segmentFileName,
+								*headerOffsetInFile,
+								storageRead->bufferCount)));			
+			break;
+		}
+	}
+
+	/*
+	 * Determine the maximum boundary of the block.
+	 * UNDONE: When we have a block directory, we will tighten the limit down.
+	 */
+	fileRemainderLen = storageRead->bufferedRead.fileLen -
+		               *headerOffsetInFile;
+	if (storageRead->maxBufferLen > fileRemainderLen)
+		*blockLimitLen = (int32)fileRemainderLen;
+	else
+		*blockLimitLen = storageRead->maxBufferLen;
+
+	return true;
+}
+
+
+/*
+ * errcontext_appendonly_read_storage_block
+ *
+ * Add an errcontext() line showing the table, segment file, offset in file, block count of
+ * the storage block being read.
+ */
+static int
+errcontext_appendonly_read_storage_block(AppendOnlyStorageRead *storageRead)
+{
+	int64	headerOffsetInFile;
+
+	headerOffsetInFile = BufferedReadCurrentPosition(&storageRead->bufferedRead);
+	
+	errcontext( 
+		 "Append-Only table '%s', segment file '%s', block header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+		 storageRead->relationName,
+		 storageRead->segmentFileName,
+		 headerOffsetInFile,
+		 storageRead->bufferCount);
+
+	return 0;
+}
+
+/*
+ * errdetail_appendonly_read_storage_block_header
+ *
+ * Add an errdetail() line showing the Append-Only Storage header being read.
+ */
+static int
+errdetail_appendonly_read_storage_block_header(AppendOnlyStorageRead *storageRead)
+{
+	uint8	*header;
+
+	bool 	checksum;
+
+	header = BufferedReadGetCurrentBuffer(&storageRead->bufferedRead);
+
+	checksum = storageRead->storageAttributes.checksum;
+	
+	return errdetail_appendonly_storage_block_header(header, checksum);
+}
+
+/*
+ * errdetail_appendonly_read_smallcontent_header
+ *
+ * Add an errdetail() line showing the Append-Only Storage header of type SmallContent
+ * being read.
+ */
+static int
+errdetail_appendonly_read_smallcontent_header(AppendOnlyStorageRead *storageRead)
+{
+	uint8	*header;
+
+	bool 	checksum;
+
+	header = BufferedReadGetCurrentBuffer(&storageRead->bufferedRead);
+
+	checksum = storageRead->storageAttributes.checksum;
+	
+	return errdetail_appendonly_storage_smallcontent_header(header, checksum);
+}
+
+/*
+ * errdetail_appendonly_read_largecontent_header
+ *
+ * Add an errdetail() line showing the Append-Only Storage header of type LargeContentMetadata
+ * being read.
+ */
+static int
+errdetail_appendonly_read_largecontent_header(AppendOnlyStorageRead *storageRead)
+{
+	uint8	*header;
+
+	bool 	checksum;
+
+	header = BufferedReadGetCurrentBuffer(&storageRead->bufferedRead);
+
+	checksum = storageRead->storageAttributes.checksum;
+	
+	return errdetail_appendonly_storage_largecontent_header(header, checksum);
+}
+
+/*
+ * Get information on the next Append-Only Storage Block.
+ *
+ * Return true if another block was found.	Otherwise,
+ * when we have reached the end of the current segment
+ * file.
+ */
+static bool AppendOnlyStorageRead_InternalGetBlockInfo(
+	AppendOnlyStorageRead		*storageRead)
+{
+	uint8  				*header;
+	AOHeaderCheckError	checkError;
+	int32				blockLimitLen;
+	pg_crc32			storedChecksum;
+	pg_crc32			computedChecksum;
+
+	/*
+	 * Reset current* variables.
+	 */
+
+	// For efficiency, zero out.  Comment out lines that set fields to 0.
+	memset(&storageRead->current, 0, sizeof(AppendOnlyStorageReadCurrent));		
+	
+//	storageRead->current.headerOffsetInFile = 0;
+	storageRead->current.headerKind = AoHeaderKind_None;
+//	storageRead->current.contentLen = 0;
+//	storageRead->current.overallBlockLen = 0;
+//	storageRead->current.contentOffset = 0;
+//	storageRead->current.executorBlockKind = 0;
+//	storageRead->current.hasFirstRowNum = false;
+	storageRead->current.firstRowNum = INT64CONST(-1);
+//	storageRead->current.rowCount = 0;
+//	storageRead->current.isLarge = false;
+//	storageRead->current.isCompressed = false;
+//	storageRead->current.compressedLen = 0;
+
+	if (!AppendOnlyStorageRead_PositionToNextBlock(
+											storageRead,
+											&storageRead->current.headerOffsetInFile,
+											&header,
+											&blockLimitLen))
+	{
+		/* Done reading the file */
+		return false;			
+	}
+
+	/*
+	 * Proceed very carefully:
+	 * [ 1. Verify header checksum ]
+	 *   2. Examine (basic) header.
+	 *   3. Examine specific header.
+	 * [ 4. Verify the block checksum ]
+	 */	
+	if (storageRead->storageAttributes.checksum)
+	{
+		if (!AppendOnlyStorageFormat_VerifyHeaderChecksum(
+													header,
+													&storedChecksum,
+													&computedChecksum))
+			ereport(ERROR, 
+			        (errmsg("Header checksum does not match.  Expected 0x%X and found 0x%X ",
+			     		    storedChecksum,
+			        		computedChecksum),
+			         errdetail_appendonly_read_storage_block_header(storageRead),
+			         errcontext_appendonly_read_storage_block(storageRead)));
+	}
+
+	/*
+	 * Check the (basic) header information.
+	 */
+	checkError = AppendOnlyStorageFormat_GetHeaderInfo(
+												header,
+												storageRead->headerLen,
+												&storageRead->current.headerKind);
+	if (checkError != AOHeaderCheckOk)
+		ereport(ERROR, 
+		 		(errmsg("Bad append-only storage header.  Header check error %d, detail '%s'",
+						(int)checkError,
+						AppendOnlyStorageFormat_GetHeaderCheckErrorStr()),
+				 errdetail_appendonly_read_storage_block_header(storageRead),
+				 errcontext_appendonly_read_storage_block(storageRead)));
+
+
+	/*
+	 * Based on the kind of header, we either have small or large content.
+	 */
+	switch (storageRead->current.headerKind)
+	{
+	case AoHeaderKind_SmallContent:
+		/*
+		 * Check the SmallContent header information.
+		 */
+		checkError = 
+			AppendOnlyStorageFormat_GetSmallContentHeaderInfo(
+								header,
+								storageRead->headerLen,
+								storageRead->storageAttributes.checksum,
+								blockLimitLen,
+								&storageRead->current.overallBlockLen,
+								&storageRead->current.contentOffset,
+								&storageRead->current.uncompressedLen,
+								&storageRead->current.executorBlockKind,
+								&storageRead->current.hasFirstRowNum,
+								&storageRead->current.rowCount,
+								&storageRead->current.isCompressed,
+								&storageRead->current.compressedLen);
+		if (checkError != AOHeaderCheckOk)
+			ereport(ERROR, 
+					(errmsg("Bad append-only storage header of type Block. Header check error %d, detail '%s'",
+							(int)checkError,
+							AppendOnlyStorageFormat_GetHeaderCheckErrorStr()),
+					 errdetail_appendonly_read_smallcontent_header(storageRead),
+					 errcontext_appendonly_read_storage_block(storageRead)));
+		break;
+
+	case AoHeaderKind_LargeContent:
+		/*
+		 * Check the LargeContent metadata header information.
+		 */
+		checkError = AppendOnlyStorageFormat_GetLargeContentHeaderInfo(
+								header,
+								storageRead->headerLen,
+								storageRead->storageAttributes.checksum,
+								&storageRead->current.uncompressedLen,
+								&storageRead->current.executorBlockKind,
+								&storageRead->current.hasFirstRowNum,
+								&storageRead->current.rowCount);
+		if (checkError != AOHeaderCheckOk)
+			ereport(ERROR, 
+					(errmsg("Bad append-only storage header of type LargeContentMetadata. Header check error %d, detail '%s'",
+							(int)checkError,
+							AppendOnlyStorageFormat_GetHeaderCheckErrorStr()),
+					 errdetail_appendonly_read_largecontent_header(storageRead),
+					 errcontext_appendonly_read_storage_block(storageRead)));
+		storageRead->current.isLarge = true;
+		break;
+
+	default:
+		// UNDONE:
+		break;
+	}
+
+	if (Debug_appendonly_print_storage_headers)
+		AppendOnlyStorageFormat_LogBlockHeader(
+							storageRead->relationName,
+							storageRead->segmentFileName,
+							storageRead->current.headerOffsetInFile,
+							header,
+							storageRead->storageAttributes.checksum);
+	
+	if (storageRead->current.hasFirstRowNum)
+	{
+		// UNDONE: Grow buffer and read the value into firstRowNum.
+	}
+
+	if (storageRead->current.headerKind == AoHeaderKind_LargeContent)
+	{
+		// UNDONE: Finish the read for the information only header.
+	}
+
+	return true;
+}
+
+/*
+ * Get information on the next Append-Only Storage Block.
+ *
+ * Return true if another block was found.	Otherwise,
+ * when we have reached the end of the current segment
+ * file.
+ */
+bool AppendOnlyStorageRead_GetBlockInfo(
+	AppendOnlyStorageRead		*storageRead,
+
+	int32						*contentLen,
+				/* The total byte length of the content. */
+
+	int 						*executorBlockKind,
+				/*
+				 * The executor supplied value stored in the
+				 * Append-Only Storage Block header.
+				 */
+	int64						*firstRowNum,
+				/* 
+				 * When the first row number for this block
+				 * was explicitly set, that value is 
+				 * returned here.  Otherwise, INT64CONST(-1)
+				 * is returned.
+				 */
+	int 						*rowCount,
+				/* The number of rows in the content. */
+
+	bool						*isLarge,
+				/* 
+				 * When true, the content was longer than the
+				 * maxBufferLen (i.e. blocksize) minus
+				 * Append-Only Storage Block header and had
+				 * to be stored in more than one storage block.
+				 */
+	bool						*isCompressed)
+				/*
+				 * When true, the content is compressed and
+				 * cannot be looked at directly in the buffer.
+				 */
+{
+	bool	isNext;
+	
+	Assert(storageRead != NULL);
+	Assert(storageRead->isActive);
+
+	isNext = AppendOnlyStorageRead_InternalGetBlockInfo(storageRead);
+
+	/*
+	 * The current* variables have good values even when there is no next block.
+	 */
+	*contentLen = storageRead->current.uncompressedLen;
+	*executorBlockKind = storageRead->current.executorBlockKind;
+	*firstRowNum = storageRead->current.firstRowNum;
+	*rowCount = storageRead->current.rowCount;
+	*isLarge = storageRead->current.isLarge;
+	*isCompressed = storageRead->current.isCompressed;
+
+	return isNext;
+}
+
+/*
+ * Return the current Append-Only Storage Block buffer.
+ */
+uint8 *AppendOnlyStorageRead_CurrentBuffer(
+	AppendOnlyStorageRead		*storageRead)
+{
+	Assert(storageRead != NULL);
+	Assert(storageRead->isActive);
+
+	return BufferedReadGetCurrentBuffer(&storageRead->bufferedRead);
+}
+
+/*
+ * Return the file offset of the current Append-Only Storage Block.
+ */
+int64 AppendOnlyStorageRead_CurrentHeaderOffsetInFile(
+	AppendOnlyStorageRead		*storageRead)
+{
+	Assert(storageRead != NULL);
+	Assert(storageRead->isActive);
+
+	return storageRead->current.headerOffsetInFile;
+}
+
+/*
+ * Return the compressed length of the content of the current Append-Only Storage Block.
+ */
+int64 AppendOnlyStorageRead_CurrentCompressedLen(
+	AppendOnlyStorageRead		*storageRead)
+{
+	Assert(storageRead != NULL);
+	Assert(storageRead->isActive);
+
+	return storageRead->current.compressedLen;
+}
+
+/*
+ * Internal routine to grow the BufferedRead buffer to be the whole current block and 
+ * to get header and content pointers of current block.
+ *
+ * Since we are growing the BufferedRead buffer to the whole block, old pointers to
+ * the header must be abandoned.
+ *
+ * Header to current block was read and verified by AppendOnlyStorageRead_InternalGetBlockInfo.
+ */
+static void AppendOnlyStorageRead_InternalGetBuffer(
+	AppendOnlyStorageRead		*storageRead,
+	uint8						**header,
+	uint8						**content)
+{
+	int32				availableLen;
+	pg_crc32			storedChecksum;
+	pg_crc32			computedChecksum;
+	
+	/*
+	 * Verify next block is type Block.
+	 */
+	Assert(storageRead->current.headerKind == AoHeaderKind_SmallContent);
+
+	/*
+	 * Grow the buffer to the full block length to avoid any
+	 * unnecessary copying by BufferedRead.
+	 *
+	 * Since the BufferedRead module may have to copy information around,
+	 * we do not save any pointers to the prior buffer call.  This why
+	 * AppendOnlyStorageFormat_GetHeaderInfo passes back the offset to the data, 
+	 * not a pointer.
+	 */	
+	*header = BufferedReadGrowBuffer(&storageRead->bufferedRead,
+									 storageRead->current.overallBlockLen,
+									 &availableLen);
+
+	if (storageRead->current.overallBlockLen != availableLen)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Wrong buffer length.  Expected %d byte length buffer and got %d ",
+						storageRead->current.overallBlockLen,
+						availableLen),
+				 errdetail_appendonly_read_smallcontent_header(storageRead),
+				 errcontext_appendonly_read_storage_block(storageRead)));
+
+	if (storageRead->storageAttributes.checksum &&
+		gp_appendonly_verify_block_checksums)
+	{
+		/*
+		 * Now that the header has been verified, verify the block checksum
+		 * in the header with the checksum of the data portion.
+		 */
+		if (!AppendOnlyStorageFormat_VerifyBlockChecksum(
+												*header,
+												storageRead->current.overallBlockLen,
+												&storedChecksum,
+												&computedChecksum))
+			ereport(ERROR, 
+			     	(errmsg("Block checksum does not match.  Expected 0x%X and found 0x%X",
+						     storedChecksum,
+						     computedChecksum),
+					 errdetail_appendonly_read_smallcontent_header(storageRead),
+					 errcontext_appendonly_read_storage_block(storageRead)));
+	}
+
+	*content = &((*header)[storageRead->current.contentOffset]);
+}
+
+/*
+ * Get a pointer to the “small” non-compressed content.
+ *
+ * This interface provides a pointer directly into the 
+ * read buffer for efficient data use.
+ *
+ */
+uint8 *AppendOnlyStorageRead_GetBuffer(
+	AppendOnlyStorageRead		*storageRead)
+{
+	uint8  		*header;
+	uint8		*content;
+	
+	Assert(storageRead != NULL);
+	Assert(storageRead->isActive);
+
+	/*
+	 * Verify next block is a "small" non-compressed block.
+	 */
+	Assert(storageRead->current.headerKind == AoHeaderKind_SmallContent);
+	Assert(!storageRead->current.isLarge);
+	Assert(!storageRead->current.isCompressed);
+
+	/*
+	 * Fetch pointers to content.
+	 */
+	AppendOnlyStorageRead_InternalGetBuffer(
+									storageRead,
+									&header,
+									&content);
+
+	return content;
+}
+
+/*
+ * Copy the “large” and/or decompressed content out.
+ *
+ * The contentOutLen parameter value must match the contentLen
+ * from the AppendOnlyStorageReadGetBlockInfo call.
+ *
+ * Note this routine will work for small non-compressed content, too.
+ */
+void AppendOnlyStorageRead_Content(
+	AppendOnlyStorageRead		*storageRead,
+
+	uint8						*contentOut,
+			/* The memory to receive the contiguous content. */
+
+	int32						contentOutLen)
+			/* The byte length of the contentOut buffer. */
+{
+	Assert(storageRead != NULL);
+	Assert(storageRead->isActive);
+	Assert(contentOutLen == storageRead->current.uncompressedLen);
+
+	if (storageRead->current.isLarge)
+	{
+		int64		largeContentPosition;
+						// Position of the large content metadata block.
+
+		int32		largeContentLen;
+						// Total length of the large content.
+						
+		int32		remainingLargeContentLen;
+						// The remaining number of bytes to read for the large content.
+
+		uint8		*contentNext;
+						// Pointer inside the contentOut buffer to put the next byte.
+
+		int32		regularBlockReadCount;
+						// Number of regular blocks read after the metadata block.
+						
+		int32		regularContentLen;
+						// Length of the current regular block's content.
+		
+		/*
+		 * Large content.
+		 *
+		 * We have the LargeContent "metadata" AO block with the total length (already
+		 * read) followed by N SmallContent blocks with the fragments of the large content.
+		 */
+
+
+		/*
+		 * Save any values needed from the current* members since they will be modifed
+		 * as we read the regular blocks.
+		 */
+		largeContentPosition = storageRead->current.headerOffsetInFile;
+		largeContentLen = storageRead->current.uncompressedLen;
+
+		/*
+		 * Loop to read regular blocks.
+		 */
+		contentNext = contentOut;
+		remainingLargeContentLen = largeContentLen;
+		regularBlockReadCount = 0;
+		while (true)
+		{
+			/*
+			 * Read next regular block.
+			 */
+			regularBlockReadCount++;
+			if (!AppendOnlyStorageRead_InternalGetBlockInfo(storageRead))
+			{
+				/*
+				 * Unexpected end of file.
+				 */
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_INTERNAL_ERROR),
+						 errmsg("Unexpected end of file trying to read block %d of large content in segment file '%s' of table '%s'.  "
+						        "Large content metadata block is at position " INT64_FORMAT "  "
+						        "Large content length %d", 
+								regularBlockReadCount,
+								storageRead->segmentFileName,
+								storageRead->relationName,
+								largeContentPosition,
+								largeContentLen)));			
+			}
+			if (storageRead->current.headerKind != AoHeaderKind_SmallContent)
+			{
+				/*
+				 * Unexpected headerKind.
+				 */
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_INTERNAL_ERROR),
+						 errmsg("Expected header kind 'Block' for block %d of large content in segment file '%s' of table '%s'.  "
+								"Large content metadata block is at position " INT64_FORMAT "  "
+								"Large content length %d", 
+								regularBlockReadCount,
+								storageRead->segmentFileName,
+								storageRead->relationName,
+								largeContentPosition,
+								largeContentLen))); 		
+			}
+			Assert(!storageRead->current.isLarge);
+
+			regularContentLen = storageRead->current.uncompressedLen;
+		   	remainingLargeContentLen -= regularContentLen;
+			if (remainingLargeContentLen < 0)
+			{
+				/*
+				 * Too much data found???
+				 */
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_INTERNAL_ERROR),
+						 errmsg("Too much data found after reading %d blocks for large content in segment file '%s' of table '%s'.  "
+								"Large content metadata block is at position " INT64_FORMAT "  "
+								"Large content length %d; extra data length %d", 
+								regularBlockReadCount,
+								storageRead->segmentFileName,
+								storageRead->relationName,
+								largeContentPosition,
+								largeContentLen,
+								-remainingLargeContentLen))); 		
+			}
+
+			/*
+			 * We can safely recurse one level here.
+			 */
+			AppendOnlyStorageRead_Content(
+									storageRead,
+									contentNext,
+									regularContentLen);
+
+			if (remainingLargeContentLen == 0)
+				break;
+
+			/*
+			 * Advance our pointer inside the contentOut buffer to put the next bytes.
+			 */
+			contentNext += regularContentLen;
+		}	
+	}
+	else
+	{
+		uint8		*header;
+		uint8		*content;
+
+		/*
+		 * "Small" content in one regular block.
+		 */
+
+		/*
+		 * Fetch pointers to content.
+		 */
+		AppendOnlyStorageRead_InternalGetBuffer(
+										storageRead,
+										&header,
+										&content);
+		
+		if (!storageRead->current.isCompressed)
+		{
+			/*
+			 * Not compressed.
+			 */
+			memcpy(
+				contentOut,
+				content,
+				storageRead->current.uncompressedLen);
+			
+			if (Debug_appendonly_print_scan)
+				elog(LOG,
+					 "Append-only Storage Read non-compressed block for table '%s' "
+					 "(length = %d, segment file '%s', header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")",
+				     storageRead->relationName,
+				     storageRead->current.uncompressedLen,
+				     storageRead->segmentFileName,
+				     storageRead->current.headerOffsetInFile,
+				     storageRead->bufferCount);
+		}
+		else
+		{
+			/*
+			 * Compressed.
+			 */
+			gp_decompress_new(
+						content,				// Compressed data in block.
+						storageRead->current.compressedLen,
+						contentOut,
+						storageRead->current.uncompressedLen,
+						storageRead->storageAttributes.compressType,
+						storageRead->qlzScratch,
+						storageRead->qlzScratchLen,
+						storageRead->qlzScratchGuardLen,
+						storageRead->bufferCount);
+
+			if (Debug_appendonly_print_scan)
+				elog(LOG,
+				     "Append-only Storage Read decompressed block for table '%s' "
+					 "(compressed length %d, uncompressed length = %d, segment file '%s', "
+					 "header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")",
+				     storageRead->relationName,
+				     AppendOnlyStorageFormat_GetCompressedLen(header),
+				     storageRead->current.uncompressedLen,
+				     storageRead->segmentFileName,
+				     storageRead->current.headerOffsetInFile,
+				     storageRead->bufferCount);
+		}
+	}
+
+
+}
+

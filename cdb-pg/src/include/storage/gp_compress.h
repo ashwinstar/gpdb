@@ -54,4 +54,32 @@ extern int gp_trycompress(CompressorType cmptype, int cmplv,
                 char *scratch
                 );
 
+extern int gp_trycompress_new(
+		 uint8		*sourceData,
+		 int32		sourceLen,
+		 uint8		*compressedBuffer,
+		 int32		compressedBufferWithOverrrunLen,
+		 int32		maxCompressedLen,	// The largest compressed result we would like to see.
+		 int32		*compressedLen,
+		 int		compressLevel,
+		 CompressorType  compressType,
+		 char		*qlzScratch,
+		 int32		qlzScratchLen,
+		 int32		qlzScratchGuardLen);
+
+extern void gp_decompress_new(
+				uint8			*compressed,
+				int32			compressedLen,
+				uint8			*uncompressed,
+				int32			uncompressedLen,
+				CompressorType	compresstype,	/* the compressor type used */
+				char			*qlzScratch,
+				int32			qlzScratchLen,
+				int32			qlzScratchGuardLen,
+				int64			bufferCount);
+
+extern void gp_issuecompresserror(
+	int				zlibCompressError,
+	int32			sourceLen);
+
 #endif
