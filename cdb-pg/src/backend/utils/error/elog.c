@@ -410,7 +410,7 @@ errstart(int elevel, const char *filename, int lineno,
  * See elog.h for the error level definitions.
  */
 void
-errfinish(int dummy,...)
+errfinish(int dummy __attribute__((unused)),...)
 {
     ErrorData  *edata = &errordata[errordata_stack_depth];
     int			elevel = edata->elevel;
@@ -3794,7 +3794,7 @@ struct frame_info
 };
 
 static int
-get_stack_frames(uintptr_t fp, int sig, void *context)
+get_stack_frames(uintptr_t fp, int sig __attribute__((unused)), void *context)
 {
     struct frame_info *fi = (struct frame_info *)context;
     int cur = fi->frame;

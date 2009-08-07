@@ -194,7 +194,7 @@ dataLocateLeafItem(GinBtree btree, GinBtreeStack *stack)
  * offset of PostingItem
  */
 static OffsetNumber
-dataFindChildPtr(GinBtree btree, Page page, BlockNumber blkno, OffsetNumber storedOff)
+dataFindChildPtr(GinBtree btree __attribute__((unused)), Page page, BlockNumber blkno, OffsetNumber storedOff)
 {
 	OffsetNumber i,
 				maxoff = GinPageGetOpaque(page)->maxoff;
@@ -239,7 +239,7 @@ dataFindChildPtr(GinBtree btree, Page page, BlockNumber blkno, OffsetNumber stor
  * returns blkno of leftmost child
  */
 static BlockNumber
-dataGetLeftMostPage(GinBtree btree, Page page)
+dataGetLeftMostPage(GinBtree btree __attribute__((unused)), Page page)
 {
 	PostingItem *pitem;
 
@@ -554,7 +554,7 @@ dataSplitPage(GinBtree btree, Buffer lbuf, Buffer rbuf, OffsetNumber off, XLogRe
  * Also called from ginxlog, should not use btree
  */
 void
-dataFillRoot(GinBtree btree, Buffer root, Buffer lbuf, Buffer rbuf)
+dataFillRoot(GinBtree btree __attribute__((unused)), Buffer root, Buffer lbuf, Buffer rbuf)
 {
 	Page		page = BufferGetPage(root),
 				lpage = BufferGetPage(lbuf),

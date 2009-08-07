@@ -158,6 +158,8 @@ make_native_path(char *filename)
 	for (p = filename; *p; p++)
 		if (*p == '/')
 			*p = '\\';
+#else
+	UnusedArg(filename);
 #endif
 }
 

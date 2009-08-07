@@ -1216,7 +1216,7 @@ doProcessTuple(
  */
 static MemTuple
 appendonlygettup(AppendOnlyScanDesc scan,
-				 ScanDirection dir,
+				 ScanDirection dir __attribute__((unused)),
 				 int nkeys,
 				 ScanKey key,
 				 TupleTableSlot *slot)

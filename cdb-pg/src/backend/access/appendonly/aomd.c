@@ -106,7 +106,7 @@ OpenAOSegmentFile(Relation rel, int segno, int col, bool create,
  * Close an Append Only relation file segment
  */
 void
-CloseAOSegmentFile(File aosegfile, Relation rel, BlockNumber segno)
+CloseAOSegmentFile(File aosegfile, Relation rel  __attribute__((unused)), BlockNumber segno __attribute__((unused)))
 {
 	Assert(aosegfile > 0);
 	Assert(segno >= 0);

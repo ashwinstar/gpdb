@@ -601,7 +601,7 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *saf
  * Parse options for heaps (and perhaps someday toast tables).
  */
 bytea *
-heap_reloptions(char relkind, Datum reloptions, bool validate)
+heap_reloptions(char relkind __attribute__((unused)), Datum reloptions, bool validate)
 {
 	return default_reloptions(reloptions, validate,
 							  HEAP_MIN_FILLFACTOR,

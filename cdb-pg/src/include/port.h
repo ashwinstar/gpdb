@@ -361,7 +361,9 @@ extern int	getopt(int nargc, char *const * nargv, const char *ostr);
 #endif
 
 #ifndef HAVE_ISINF
+#ifndef isinf
 extern int	isinf(double x);
+#endif
 #endif
 
 #ifndef HAVE_RINT

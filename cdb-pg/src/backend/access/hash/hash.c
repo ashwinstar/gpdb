@@ -88,7 +88,7 @@ hashbuildCallback(Relation index,
 				  HeapTuple htup,
 				  Datum *values,
 				  bool *isnull,
-				  bool tupleIsAlive,
+				  bool tupleIsAlive __attribute__((unused)),
 				  void *state)
 {
 	HashBuildState *buildstate = (HashBuildState *) state;
@@ -687,12 +687,12 @@ hashvacuumcleanup(PG_FUNCTION_ARGS)
 
 
 void
-hash_redo(XLogRecPtr lsn, XLogRecord *record)
+hash_redo(XLogRecPtr lsn __attribute__((unused)), XLogRecord *record __attribute__((unused)))
 {
 	elog(PANIC, "hash_redo: unimplemented");
 }
 
 void
-hash_desc(StringInfo buf, uint8 xl_info, char *rec)
+hash_desc(StringInfo buf __attribute__((unused)), uint8 xl_info __attribute__((unused)), char *rec __attribute__((unused)))
 {
 }

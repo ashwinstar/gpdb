@@ -563,7 +563,7 @@ _hash_initbitmap(Relation rel, HashMetaPage metap, BlockNumber blkno)
  */
 void
 _hash_squeezebucket(Relation rel,
-					Bucket bucket,
+					Bucket bucket __attribute__((unused)),
 					BlockNumber bucket_blkno)
 {
 	Buffer		wbuf;

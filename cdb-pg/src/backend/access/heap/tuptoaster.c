@@ -1237,7 +1237,7 @@ toast_save_datum(Relation rel, Datum value)
  * ----------
  */
 static void
-toast_delete_datum(Relation rel, Datum value)
+toast_delete_datum(Relation rel __attribute__((unused)), Datum value)
 {
 	varattrib  *attr = (varattrib *) DatumGetPointer(value);
 	Relation	toastrel;

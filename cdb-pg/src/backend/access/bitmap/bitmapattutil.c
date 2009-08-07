@@ -250,7 +250,7 @@ _bitmap_create_lov_heapTupleDesc(Relation rel)
  */
 
 void
-_bitmap_open_lov_heapandindex(Relation rel, BMMetaPage metapage,
+_bitmap_open_lov_heapandindex(Relation rel __attribute__((unused)), BMMetaPage metapage,
 							  Relation *lovHeapP, Relation *lovIndexP,
 							  LOCKMODE lockMode)
 {
@@ -263,7 +263,7 @@ _bitmap_open_lov_heapandindex(Relation rel, BMMetaPage metapage,
  */
 void
 _bitmap_insert_lov(Relation lovHeap, Relation lovIndex, Datum *datum,
-				   bool *nulls, bool use_wal)
+				   bool *nulls, bool use_wal __attribute__((unused)))
 {
 	TupleDesc	tupDesc;
 	HeapTuple	tuple;
@@ -318,7 +318,7 @@ _bitmap_close_lov_heapandindex(Relation lovHeap, Relation lovIndex,
  */
 bool
 _bitmap_findvalue(Relation lovHeap, Relation lovIndex,
-				  ScanKey scanKey, IndexScanDesc scanDesc,
+				  ScanKey scanKey __attribute__((unused)), IndexScanDesc scanDesc,
 				  BlockNumber *lovBlock, bool *blockNull,
 				  OffsetNumber *lovOffset, bool *offsetNull)
 {

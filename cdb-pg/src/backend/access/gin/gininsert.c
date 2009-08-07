@@ -93,7 +93,7 @@ createPostingTree(Relation index, ItemPointerData *items, uint32 nitems)
  * GinFormTuple().
  */
 static IndexTuple
-addItemPointersToTuple(Relation index, GinState *ginstate, GinBtreeStack *stack,
+addItemPointersToTuple(Relation index, GinState *ginstate, GinBtreeStack *stack __attribute__((unused)),
 		  IndexTuple old, ItemPointerData *items, uint32 nitem, bool isBuild)
 {
 	bool		isnull;
@@ -224,7 +224,7 @@ ginHeapTupleBulkInsert(GinBuildState *buildstate, Datum value, ItemPointer heapp
 
 static void
 ginBuildCallback(Relation index, HeapTuple htup, Datum *values,
-				 bool *isnull, bool tupleIsAlive, void *state)
+				 bool *isnull, bool tupleIsAlive __attribute__((unused)), void *state)
 {
 
 	GinBuildState *buildstate = (GinBuildState *) state;

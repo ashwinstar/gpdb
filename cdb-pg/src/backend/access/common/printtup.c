@@ -108,7 +108,7 @@ printtup_create_DR(CommandDest dest, Portal portal)
 }
 
 static void
-printtup_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
+printtup_startup(DestReceiver *self, int operation __attribute__((unused)), TupleDesc typeinfo)
 {
 	DR_printtup *myState = (DR_printtup *) self;
 	Portal		portal = myState->portal;
@@ -701,7 +701,7 @@ printatt(unsigned attributeId,
  * ----------------
  */
 void
-debugStartup(DestReceiver *self, int operation, TupleDesc typeinfo)
+debugStartup(DestReceiver *self __attribute__((unused)), int operation __attribute__((unused)), TupleDesc typeinfo)
 {
 	int			natts = typeinfo->natts;
 	Form_pg_attribute *attinfo = typeinfo->attrs;
@@ -720,7 +720,7 @@ debugStartup(DestReceiver *self, int operation, TupleDesc typeinfo)
  * ----------------
  */
 void
-debugtup(TupleTableSlot *slot, DestReceiver *self)
+debugtup(TupleTableSlot *slot, DestReceiver *self __attribute__((unused)))
 {
 	TupleDesc	typeinfo = slot->tts_tupleDescriptor;
 	int			natts = typeinfo->natts;

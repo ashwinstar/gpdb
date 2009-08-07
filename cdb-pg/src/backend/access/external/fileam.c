@@ -683,7 +683,7 @@ static DataLineStatus parse_next_line(FileScanDesc scan)
 */
 static HeapTuple
 filegettup(FileScanDesc scan,
-		   ScanDirection dir)
+		   ScanDirection dir __attribute__((unused)))
 {
 	HeapTuple	tuple = NULL;
 	CopyState	pstate = scan->fs_pstate;
@@ -809,7 +809,7 @@ filegettup(FileScanDesc scan,
  */
 static void
 initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
-			   bool isMasterOnly, char *uri, int rejectlimit,
+			   bool isMasterOnly __attribute__((unused)), char *uri, int rejectlimit,
 			   bool islimitinrows, Oid fmterrtbl, int encoding)
 {
 	TupleDesc	tupDesc = NULL;

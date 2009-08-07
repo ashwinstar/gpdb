@@ -590,7 +590,7 @@ _bt_relandgetbuf(Relation rel, Buffer obuf, BlockNumber blkno, int access)
  * Lock and pin (refcount) are both dropped.
  */
 void
-_bt_relbuf(Relation rel, Buffer buf)
+_bt_relbuf(Relation rel __attribute__((unused)), Buffer buf)
 {
 	UnlockReleaseBuffer(buf);
 }

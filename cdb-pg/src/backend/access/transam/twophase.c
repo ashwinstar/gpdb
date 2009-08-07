@@ -206,7 +206,9 @@ TwoPhaseShmemInit(void)
 		}
 	}
 	else
+	{
 		Assert(found);
+	}
 }
 
 
@@ -494,7 +496,7 @@ RemoveGXact(GlobalTransaction gxact)
 
 	LWLockRelease(TwoPhaseStateLock);
 
-	elog(ERROR, "failed to find %p in GlobalTransaction array", gxact);
+	elog(ERROR, "failed to find %p in GlobalTransaction array", (void *)gxact);
 }
 
 /*

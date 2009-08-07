@@ -1075,7 +1075,7 @@ PLy_procedure_get(FunctionCallInfo fcinfo, Oid tgreloid)
 		elog(ERROR, "cache lookup failed for function %u", fn_oid);
 
 	rv = snprintf(key, sizeof(key), "%u_%u", fn_oid, tgreloid);
-	if (rv >= sizeof(key) || rv < 0)
+	if (rv >= (int)sizeof(key) || rv < 0)
 		elog(ERROR, "key too long");
 
 	plproc = PyDict_GetItemString(PLy_procedure_cache, key);
@@ -1151,7 +1151,7 @@ PLy_procedure_create(HeapTuple procTup, Oid tgreloid, char *key)
 					  "__plpython_procedure_%s_%u",
 					  NameStr(procStruct->proname),
 					  HeapTupleGetOid(procTup));
-	if (rv >= sizeof(procName) || rv < 0)
+	if (rv >= (int)sizeof(procName) || rv < 0)
 		elog(ERROR, "procedure name would overrun buffer");
 
 	proc = PLy_malloc(sizeof(PLyProcedure));
@@ -1356,7 +1356,7 @@ PLy_procedure_compile(PLyProcedure * proc, const char *src)
 	 * compile a call to the function
 	 */
 	clen = snprintf(call, sizeof(call), "%s()", proc->pyname);
-	if (clen < 0 || clen >= sizeof(call))
+	if (clen < 0 || clen >= (int)sizeof(call))
 		elog(ERROR, "string would overflow buffer");
 	proc->code = Py_CompileString(call, proc->proname, Py_eval_input);
 	if (proc->code == NULL || PyErr_Occurred())
@@ -1730,7 +1730,7 @@ PLyLong_FromInt64(PLyDatumToOb *arg, Datum d)
 }
 
 static PyObject *
-PLyString_FromText(PLyDatumToOb *arg, Datum d)
+PLyString_FromText(PLyDatumToOb *arg __attribute__((unused)), Datum d)
 {
 	text     *txt = DatumGetTextP(d);
 	char     *str = VARDATA(txt);
@@ -1797,8 +1797,8 @@ PLyDict_FromTuple(PLyTypeInfo * info, HeapTuple tuple, TupleDesc desc)
 }
 
 static Datum 
-PLyObject_ToVoid(PLyProcedure *proc, 
-				 PLyObToDatum *arg, 
+PLyObject_ToVoid(PLyProcedure *proc __attribute__((unused)),
+				 PLyObToDatum *arg __attribute__((unused)),
 				 PyObject *plrv, 
 				 bool *isnull)
 {
@@ -1819,8 +1819,8 @@ PLyObject_ToVoid(PLyProcedure *proc,
 }
 
 static Datum 
-PLyObject_ToBool(PLyProcedure *proc, 
-				 PLyObToDatum *arg, 
+PLyObject_ToBool(PLyProcedure *proc __attribute__((unused)),
+				 PLyObToDatum *arg __attribute__((unused)),
 				 PyObject *plrv, 
 				 bool *isnull)
 {
@@ -1840,7 +1840,7 @@ PLyObject_ToBool(PLyProcedure *proc,
 
 static Datum 
 PLyObject_ToBytea(PLyProcedure *proc, 
-				  PLyObToDatum *arg, 
+				  PLyObToDatum *arg __attribute__((unused)),
 				  PyObject *plrv, 
 				  bool *isnull)
 {
@@ -1889,7 +1889,7 @@ PLyObject_ToBytea(PLyProcedure *proc,
 
 static Datum 
 PLyObject_ToText(PLyProcedure *proc, 
-				 PLyObToDatum *arg, 
+				 PLyObToDatum *arg __attribute__((unused)),
 				 PyObject *plrv, 
 				 bool *isnull)
 {
@@ -2387,7 +2387,7 @@ PLy_plan_getattr(PyObject * self, char *name)
 }
 
 static PyObject *
-PLy_plan_status(PyObject * self, PyObject * args)
+PLy_plan_status(PyObject * self __attribute__((unused)), PyObject * args)
 {
 	if (PyArg_ParseTuple(args, ""))
 	{
@@ -2440,7 +2440,7 @@ PLy_result_getattr(PyObject * self, char *name)
 }
 
 static PyObject *
-PLy_result_nrows(PyObject * self, PyObject * args)
+PLy_result_nrows(PyObject * self, PyObject * args __attribute__((unused)))
 {
 	PLyResultObject *ob = (PLyResultObject *) self;
 
@@ -2449,7 +2449,7 @@ PLy_result_nrows(PyObject * self, PyObject * args)
 }
 
 static PyObject *
-PLy_result_status(PyObject * self, PyObject * args)
+PLy_result_status(PyObject * self, PyObject * args __attribute__((unused)))
 {
 	PLyResultObject *ob = (PLyResultObject *) self;
 
@@ -2513,7 +2513,7 @@ PLy_result_ass_slice(PyObject * arg, Py_ssize_t lidx, Py_ssize_t hidx, PyObject 
 
 /* SPI interface */
 static PyObject *
-PLy_spi_prepare(PyObject * self, PyObject * args)
+PLy_spi_prepare(PyObject * self __attribute__((unused)), PyObject * args)
 {
 	PLyPlanObject *plan;
 	PyObject   *list = NULL;
@@ -2646,7 +2646,7 @@ PLy_spi_prepare(PyObject * self, PyObject * args)
  * execute(plan=plan, values=(foo, bar), limit=5)
  */
 static PyObject *
-PLy_spi_execute(PyObject * self, PyObject * args)
+PLy_spi_execute(PyObject * self __attribute__((unused)), PyObject * args)
 {
 	char	   *query;
 	PyObject   *plan;
@@ -3060,7 +3060,7 @@ PLy_fatal(PyObject * self, PyObject * args)
 
 
 static PyObject *
-PLy_output(volatile int level, PyObject * self, PyObject * args)
+PLy_output(volatile int level, PyObject * self __attribute__((unused)), PyObject * args)
 {
 	PyObject   *so;
 	char	   *volatile sv;

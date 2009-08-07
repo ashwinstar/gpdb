@@ -1615,7 +1615,7 @@ XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct
 					  path)));
 	}
 
-	if (end == -1)
+	if ((int32)end == -1)
 	{
 		/*
 		 * Determine the end.
@@ -3829,7 +3829,7 @@ got_record:;
 			}
 			Assert(readFile >= 0);
 			actual_len = read(readFile, readBuf, XLOG_BLCKSZ);
-			if (actual_len < 0)
+			if ((int32)actual_len < 0)
 			{
 				elog(LOG,"read failed #3 offset 0x%X", readOff);
 			
@@ -3945,7 +3945,9 @@ CloseReadRecord(void)
 		readFile = -1;
 	}
 	else
+	{
 		Assert(readFile == -1);
+	}
 	
 	readId = 0;
 	readSeg = 0;
@@ -7765,7 +7767,7 @@ pg_start_backup(PG_FUNCTION_ARGS)
 
 /* Error cleanup callback for pg_start_backup */
 static void
-pg_start_backup_callback(int code, Datum arg)
+pg_start_backup_callback(int code __attribute__((unused)), Datum arg __attribute__((unused)))
 {
 	/* Turn off forcePageWrites on failure */
 	LWLockAcquire(WALInsertLock, LW_EXCLUSIVE);
@@ -8353,7 +8355,7 @@ XLogLocationToString5_Long(XLogRecPtr *loc)
  * so we need to stop what we're doing and exit.
  */
 static void
-startupproc_quickdie(SIGNAL_ARGS)
+startupproc_quickdie(SIGNAL_ARGS __attribute__((unused)))
 {
 	PG_SETMASK(&BlockSig);
 
@@ -8373,14 +8375,14 @@ startupproc_quickdie(SIGNAL_ARGS)
 
 /* SIGHUP: set flag to re-read config file at next convenient time */
 static void
-StartupProcSigHupHandler(SIGNAL_ARGS)
+StartupProcSigHupHandler(SIGNAL_ARGS __attribute__((unused)))
 {
 	got_SIGHUP = true;
 }
 
 /* SIGTERM: set flag to abort redo and exit */
 static void
-StartupProcShutdownHandler(SIGNAL_ARGS)
+StartupProcShutdownHandler(SIGNAL_ARGS __attribute__((unused)))
 {
 	if (in_restore_command)
 		proc_exit(1);

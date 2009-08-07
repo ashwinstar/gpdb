@@ -225,7 +225,9 @@ SimpleLruInit(SlruCtl ctl, const char *name, int nslots,
 		}
 	}
 	else
+	{
 		Assert(found);
+	}
 
 	/*
 	 * Initialize the unshared control struct, including directory path. We

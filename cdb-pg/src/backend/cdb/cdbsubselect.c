@@ -564,7 +564,7 @@ get_fromlist_item(Node *jtnode, int rtindx)
  * entries. We only have to check the tail since
  * resjunks (if any) can only appear in the end.
  */
-static bool inline
+inline static bool
 has_resjunk(List *tlist)
 {
 	bool		resjunk = false;
@@ -919,7 +919,7 @@ make_notin_quals(List *rtable, int j_rtindex, JoinType join_type)
  * from the subselect upstream.
  */
 static Node *
-convert_IN_to_antijoin(PlannerInfo * root, List **rtrlist_inout, SubLink * sublink)
+convert_IN_to_antijoin(PlannerInfo * root, List **rtrlist_inout __attribute__((unused)), SubLink * sublink)
 {
 	Expr	   *quals = (Expr *) sublink;
 	Query	   *parse = root->parse;

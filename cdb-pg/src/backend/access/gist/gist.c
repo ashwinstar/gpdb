@@ -174,7 +174,7 @@ gistbuildCallback(Relation index,
 				  HeapTuple htup,
 				  Datum *values,
 				  bool *isnull,
-				  bool tupleIsAlive,
+				  bool tupleIsAlive __attribute__((unused)),
 				  void *state)
 {
 	GISTBuildState *buildstate = (GISTBuildState *) state;
@@ -1068,7 +1068,7 @@ initGISTstate(GISTSTATE *giststate, Relation index)
 }
 
 void
-freeGISTstate(GISTSTATE *giststate)
+freeGISTstate(GISTSTATE *giststate __attribute__((unused)))
 {
 	/* no work */
 }

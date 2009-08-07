@@ -351,7 +351,7 @@ char *AppendOnlyStorage_GetHeaderCheckErrorStr(void)
 AOHeaderCheckError
 AppendOnlyStorage_GetHeaderInfo(
 	uint8			*headerPtr,
-	int				headerLen,
+	int				headerLen  __attribute__((unused)),
 	AoHeaderKind	*headerKind)
 {
 	AOHeader 	*header;
@@ -402,7 +402,7 @@ AppendOnlyStorage_GetHeaderInfo(
 AOHeaderCheckError
 AppendOnlyStorage_GetBlockHeaderInfo(
 	uint8			*headerPtr,
-	int				headerLen,
+	int				headerLen  __attribute__((unused)),
 	bool			usingChecksums,
 	int32			blockLimitLen,
 	int32			*overallBlockLen,

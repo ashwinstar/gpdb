@@ -127,7 +127,7 @@ _bitmap_relbuf(Buffer buf)
  * _bitmap_init_lovpage -- initialize a new LOV page.
  */
 void
-_bitmap_init_lovpage(Relation rel, Buffer buf)
+_bitmap_init_lovpage(Relation rel __attribute__((unused)), Buffer buf)
 {
 	Page			page;
 
@@ -141,7 +141,7 @@ _bitmap_init_lovpage(Relation rel, Buffer buf)
  * _bitmap_init_bitmappage() -- initialize a new page to store the bitmap.
  */
 void
-_bitmap_init_bitmappage(Relation rel, Buffer buf)
+_bitmap_init_bitmappage(Relation rel __attribute__((unused)), Buffer buf)
 {
 	Page			page;
 	BMBitmapOpaque	opaque;
@@ -418,7 +418,7 @@ _bitmap_init(Relation rel, Oid comptypeOid,
  */
 
 static uint32
-build_hash_key(const void *key, Size keysize)
+build_hash_key(const void *key, Size keysize __attribute__((unused)))
 {
 	Datum *k = (Datum *)key;
 	int i;
@@ -441,7 +441,7 @@ build_hash_key(const void *key, Size keysize)
  * in that context.
  */
 static int
-build_match_key(const void *key1, const void *key2, Size keysize)
+build_match_key(const void *key1, const void *key2, Size keysize __attribute__((unused)))
 {
 	int i;
 	MemoryContext old;

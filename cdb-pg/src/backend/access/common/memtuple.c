@@ -427,7 +427,7 @@ static inline unsigned char *memtuple_get_nullp(MemTuple mtup, MemTupleBinding *
 {
 	return mtup->PRIVATE_mt_bits + (mtbind_has_oid(pbind) ? sizeof(Oid) : 0);
 }
-static inline int memtuple_get_nullp_len(MemTuple mtup, MemTupleBinding *pbind)
+static inline int memtuple_get_nullp_len(MemTuple mtup __attribute__((unused)), MemTupleBinding *pbind)
 {
 	return (pbind->tupdesc->natts + 7) >> 3;
 }
@@ -794,7 +794,7 @@ Oid MemTupleGetOid(MemTuple mtup, MemTupleBinding *pbind)
 	return ((Oid *) mtup)[1];
 }
 
-void MemTupleSetOid(MemTuple mtup, MemTupleBinding *pbind, Oid oid)
+void MemTupleSetOid(MemTuple mtup, MemTupleBinding *pbind __attribute__((unused)), Oid oid)
 {
 	Assert(pbind && mtbind_has_oid(pbind));
 	((Oid *) mtup)[1] = oid;

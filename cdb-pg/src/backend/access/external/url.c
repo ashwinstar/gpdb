@@ -475,7 +475,7 @@ local_strstr(const char *str1, const char *str2)
 }
 
 static int
-make_url(const char *url, extvar_t *ev, char *buf)
+make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
 {
 	char *authority_start = local_strstr(url, "//");
 	char *authority_end;

@@ -379,7 +379,7 @@ gistRedoCreateIndex(XLogRecPtr lsn, XLogRecord *record)
 }
 
 static void
-gistRedoCompleteInsert(XLogRecPtr lsn, XLogRecord *record)
+gistRedoCompleteInsert(XLogRecPtr lsn __attribute__((unused)), XLogRecord *record)
 {
 	char	   *begin = XLogRecGetData(record),
 			   *ptr;

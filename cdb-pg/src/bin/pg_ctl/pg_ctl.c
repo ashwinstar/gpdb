@@ -407,7 +407,7 @@ start_postmaster(void)
  * manager checkpoint, it's got nothing to do with database checkpoints!!
  */
 static bool
-test_postmaster_connection(bool do_checkpoint)
+test_postmaster_connection(bool do_checkpoint __attribute__((unused)))
 {
 	PGconn	   *conn;
 	bool		success = false;

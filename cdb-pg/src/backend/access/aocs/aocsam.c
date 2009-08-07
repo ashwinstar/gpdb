@@ -202,7 +202,7 @@ void aocs_endscan(AOCSScanDesc scan)
         pfree(scan);
 }
 
-void aocs_getnext(AOCSScanDesc scan, ScanDirection direction, TupleTableSlot *slot)
+void aocs_getnext(AOCSScanDesc scan, ScanDirection direction __attribute__((unused)), TupleTableSlot *slot)
 {
         int nvp; 
         Datum *d = slot_get_values(slot);

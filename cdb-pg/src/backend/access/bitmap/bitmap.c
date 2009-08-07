@@ -550,7 +550,7 @@ bmvacuumcleanup(PG_FUNCTION_ARGS)
  */
 static void
 bmbuildCallback(Relation index, HeapTuple htup, Datum *attdata,
-				bool *nulls, bool tupleIsAlive,	void *state)
+				bool *nulls, bool tupleIsAlive __attribute__((unused)),	void *state)
 {
 	BMBuildState *bstate = (BMBuildState *) state;
 

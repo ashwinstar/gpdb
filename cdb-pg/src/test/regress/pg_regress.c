@@ -1228,6 +1228,8 @@ run_diff(const char *cmd, const char *filename)
 		fprintf(stderr, _("diff command not found: %s\n"), cmd);
 		exit_nicely(2);
 	}
+#else
+	UnusedArg(filename);
 #endif
 
 	return WEXITSTATUS(r);

@@ -1383,7 +1383,7 @@ dumpPgControl(char* fname)
 	printf("\n%s:\n\n", fname);
 	
 	nread = read(logFd, &ControlFile, sizeof(ControlFileData));
-	if (nread < 0)
+	if ((long)nread < 0)
 	{
 		fprintf(stderr, "Read error %d on control file data\n",
 			errno);
