@@ -206,6 +206,7 @@ if (1)
 						# non-alpha characters
 						$filnam = lc($filnam);
 						
+						$filnam =~ s/\.c$//;
 						$filnam =~ s/\W/x/g;
 						$filnam =~ s/\_/x/g;
 					}
