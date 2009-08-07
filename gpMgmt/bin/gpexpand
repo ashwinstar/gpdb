@@ -843,7 +843,6 @@ class gpexpand:
         self.old_segments = gparray.getSegDbList()
                 
         if dburl.pgdb == 'template0' or dburl.pgdb == 'template1' or dburl.pgdb == 'postgres':
-            gpexpand.get_gpdb_in_state(GPDB_STARTED)
             raise ExpansionError("Invalid database '%s' specified.  Cannot use a template database.\n"
                                  "Please set the environment variable PGDATABASE to a different "
                                  "database or use the -D option to specify a database and re-run" % dburl.pgdb)
@@ -908,7 +907,11 @@ class gpexpand:
                      GpStop.local('Stop GPDB', masterOnly=True, fast=True)
             GpStart.local('Start GPDB')
         elif state == GPDB_STOPPED:
-            GpStart.local('Start GPDB')
+            if gpdb_running:
+                if gpdb_mode != 'UTILITY':
+                    GpStop.local('Stop GPDB', fast=True)
+                else:
+                    GpStop.local('Stop GPDB', masterOnly=True, fast=True)
         elif state == GPDB_UTILITY:
             if gpdb_running:
                 if gpdb_mode == 'UTILITY':
@@ -2301,7 +2304,7 @@ except Exception,e:
             logger.info('Bringing Greenplum Database back online...')
             gpexpand.get_gpdb_in_state(GPDB_STARTED)
         else:
-            logger.error('Please run gpexpand -r to rollback to the original state.')
+            logger.error('Please run \'gpexpand -r%s\' to rollback to the original state.' % ('' if not options.database else ' -D %s' % options.database))
         gp_expand.shutdown()
     sys.exit(3)
 except KeyboardInterrupt:
