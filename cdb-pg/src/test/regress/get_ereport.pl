@@ -157,6 +157,11 @@ if (1)
 
     for my $filnam (@ARGV)
     {
+		if ($bLax)
+		{
+			next
+				if ($filnam =~ m/(^bootstrap)/);
+		}
 
 		my $gotmsg = 0;
 		
@@ -167,9 +172,6 @@ if (1)
 		$linecnt = 1;
 
 		my $orig_filnam = $filnam;
-
-		$filnam = lc($filnam)
-			if ($bLax);
 
 		for (<$fh>)
 		{
@@ -196,6 +198,16 @@ if (1)
 						my @foo = split("/", $filnam);
 
 						$filnam = pop(@foo);
+					}
+
+					if ($bLax)
+					{
+						# avoid case-sensitive sort, plus lexical ordering for
+						# non-alpha characters
+						$filnam = lc($filnam);
+						
+						$filnam =~ s/\W/x/g;
+						$filnam =~ s/\_/x/g;
 					}
 
 					$printname = 0;
