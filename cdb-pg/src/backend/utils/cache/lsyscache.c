@@ -679,7 +679,7 @@ op_mergejoinable(Oid opno, Oid *leftOp, Oid *rightOp)
 	HeapTuple	tp;
 	bool		result = false;
 
-	if (!sort_op_can_sort(opno))
+	if (!sort_op_can_sort(opno, true))
 		return result;
 
 	tp = SearchSysCache(OPEROID,

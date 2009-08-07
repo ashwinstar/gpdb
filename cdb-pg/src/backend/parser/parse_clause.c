@@ -2694,15 +2694,23 @@ addAllTargetsToSortList(ParseState *pstate, List *sortlist,
 }
 
 /*
- * Is the operator specified in USING <op> a btree sorting operator
- * (either < or >). We determine that the operator has these properties
- * by looking up pg_amop for the operator AM properties. If the operator
- * is not a member of a btree operator class and if it does not have < >
- * AM strategies, it cannot be used to sort. In this case we return false. If we
- * find a candidate, we return true.
+ * We use this function to determine whether data can be sorted using a given
+ * operator over a given data type. There are two uses for the function:
+ *
+ * Firstly, to determine if the operator specified in an ORDER BY ... USING <op> 
+ * has a btree sorting operator (either < or >)? We determine that the operator
+ * has these properties by looking up pg_amop for the operator AM properties.
+ * If the operator is not a member of a btree operator class and if it does not 
+ * have < > AM strategies, it cannot be used to sort. In this case we return false.
+ * If we find a candidate, we return true.
+ *
+ * Secondly, to determine if we support merge join using the given operator.
+ * If mergejoin is set to true, then we're looking for an equality btree
+ * strategy.
+ * 
  */
 bool
-sort_op_can_sort(Oid opid)
+sort_op_can_sort(Oid opid, bool mergejoin)
 {
 	CatCList *catlist;
 	int i;
@@ -2729,11 +2737,22 @@ sort_op_can_sort(Oid opid)
 		if (amop->amopsubtype != InvalidOid)
 			continue;
 
-		if (amop->amopstrategy == BTLessStrategyNumber ||
-			amop->amopstrategy == BTGreaterStrategyNumber)
+		if (mergejoin)
 		{
-			result = true;
-			break;
+			if (amop->amopstrategy == BTEqualStrategyNumber)
+			{
+				result = true;
+				break;
+			}
+		}
+		else
+		{
+			if (amop->amopstrategy == BTLessStrategyNumber ||
+				amop->amopstrategy == BTGreaterStrategyNumber)
+			{
+				result = true;
+				break;
+			}
 		}
 	}
 	ReleaseSysCacheList(catlist);
@@ -2792,7 +2811,7 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 													  restype,
 													  restype,
 													  false);
-				if (!sort_op_can_sort(sortcl->sortop))
+				if (!sort_op_can_sort(sortcl->sortop, false))
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					   		 errmsg("operator %s is not a valid ordering operator",
