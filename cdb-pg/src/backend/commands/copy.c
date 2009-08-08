@@ -4,7 +4,7 @@
  *		Implements the COPY utility command
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -851,7 +851,7 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 }
 
 /*
- *	 DoCopy executes the SQL COPY statement.
+ *	 DoCopy executes the SQL COPY statement
  *
  * Either unload or reload contents of table <relation>, depending on <from>.
  * (<from> = TRUE means we are inserting into the table.) In the "TO" case
@@ -5419,10 +5419,10 @@ CopyReadOidAttr(CopyState cstate, bool *isnull)
  * Send text representation of one attribute, with conversion and escaping
  */
 #define DUMPSOFAR() \
-do { \
-	if (ptr > start) \
-		CopySendData(cstate, start, ptr - start); \
-} while (0)
+	do { \
+		if (ptr > start) \
+			CopySendData(cstate, start, ptr - start); \
+	} while (0)
 
 /*
  * Send text representation of one attribute, with conversion and escaping
@@ -5441,143 +5441,143 @@ CopyAttributeOutText(CopyState cstate, char *string)
 	else
 		ptr = string;
 
+
+	if (cstate->escape_off)
+	{
+		CopySendData(cstate, ptr, strlen(ptr));
+		return;
+	}
+
 	/*
 	 * We have to grovel through the string searching for control characters
 	 * and instances of the delimiter character.  In most cases, though, these
-	 * are infrequent.  To avoid overhead from calling CopySendData once per
-	 * character, we dump out all characters between replaceable characters
-	 * in a single call.  The loop invariant is that the data from "start"
-	 * to "ptr" can be sent literally, but hasn't yet been.
+	 * are infrequent.	To avoid overhead from calling CopySendData once per
+	 * character, we dump out all characters between escaped characters in a
+	 * single call.  The loop invariant is that the data from "start" to "ptr"
+	 * can be sent literally, but hasn't yet been.
+	 *
+	 * We can skip pg_encoding_mblen() overhead when encoding is safe, because
+	 * in valid backend encodings, extra bytes of a multibyte character never
+	 * look like ASCII.  This loop is sufficiently performance-critical that
+	 * it's worth making two copies of it to get the IS_HIGHBIT_SET() test out
+	 * of the normal safe-encoding path.
 	 */
-	start = ptr;
-	while ((c = *ptr) != '\0')
+	if (cstate->encoding_embeds_ascii)
 	{
-		switch (c)
+		start = ptr;
+		while ((c = *ptr) != '\0')
 		{
-			case '\b':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\b');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 'b');
-				}
-				start = ++ptr;
-				break;
-			case '\f':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\f');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 'f');
-				}
-				start = ++ptr;
-				break;
-			case '\n':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\n');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 'n');
-				}
-				start = ++ptr;
-				break;
-			case '\r':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\r');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 'r');
-				}
-				start = ++ptr;
-				break;
-			case '\t':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\t');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 't');
-				}
-				start = ++ptr;
-				break;
-			case '\v':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\v');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 'v');
-				}
-				start = ++ptr;
-				break;
-			case '\\':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\\');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, '\\');
-				}
-				start = ++ptr;
-				break;
-			default:
-				if (c == delimc)
-				{
-					DUMPSOFAR();
-					if(!cstate->escape_off)
-						CopySendChar(cstate, escapec);
-					start = ptr; /* we include char in next run */
-				}
-
+			if ((unsigned char) c < (unsigned char) 0x20)
+			{
 				/*
-				 * We can skip pg_encoding_mblen() overhead when encoding is
-				 * safe, because in valid backend encodings, extra bytes of a
-				 * multibyte character never look like ASCII.
+				 * \r and \n must be escaped, the others are traditional. We
+				 * prefer to dump these using the C-like notation, rather than
+				 * a backslash and the literal character, because it makes the
+				 * dump file a bit more proof against Microsoftish data
+				 * mangling.
 				 */
-				if (IS_HIGHBIT_SET(c) && cstate->encoding_embeds_ascii)
-					ptr += pg_encoding_mblen(cstate->client_encoding, ptr);
-				else
-					ptr++;
-				break;
+				switch (c)
+				{
+					case '\b':
+						c = 'b';
+						break;
+					case '\f':
+						c = 'f';
+						break;
+					case '\n':
+						c = 'n';
+						break;
+					case '\r':
+						c = 'r';
+						break;
+					case '\t':
+						c = 't';
+						break;
+					case '\v':
+						c = 'v';
+						break;
+					default:
+						/* If it's the delimiter, must backslash it */
+						if (c == delimc)
+							break;
+						/* All ASCII control chars are length 1 */
+						ptr++;
+						continue;		/* fall to end of loop */
+				}
+				/* if we get here, we need to convert the control char */
+				DUMPSOFAR();
+				CopySendChar(cstate, escapec);
+				CopySendChar(cstate, c);
+				start = ++ptr;	/* do not include char in next run */
+			}
+			else if (c == escapec || c == delimc)
+			{
+				DUMPSOFAR();
+				CopySendChar(cstate, escapec);
+				start = ptr++;	/* we include char in next run */
+			}
+			else if (IS_HIGHBIT_SET(c))
+				ptr += pg_encoding_mblen(cstate->client_encoding, ptr);
+			else
+				ptr++;
+		}
+	}
+	else
+	{
+		start = ptr;
+		while ((c = *ptr) != '\0')
+		{
+			if ((unsigned char) c < (unsigned char) 0x20)
+			{
+				/*
+				 * \r and \n must be escaped, the others are traditional. We
+				 * prefer to dump these using the C-like notation, rather than
+				 * a backslash and the literal character, because it makes the
+				 * dump file a bit more proof against Microsoftish data
+				 * mangling.
+				 */
+				switch (c)
+				{
+					case '\b':
+						c = 'b';
+						break;
+					case '\f':
+						c = 'f';
+						break;
+					case '\n':
+						c = 'n';
+						break;
+					case '\r':
+						c = 'r';
+						break;
+					case '\t':
+						c = 't';
+						break;
+					case '\v':
+						c = 'v';
+						break;
+					default:
+						/* If it's the delimiter, must backslash it */
+						if (c == delimc)
+							break;
+						/* All ASCII control chars are length 1 */
+						ptr++;
+						continue;		/* fall to end of loop */
+				}
+				/* if we get here, we need to convert the control char */
+				DUMPSOFAR();
+				CopySendChar(cstate, escapec);
+				CopySendChar(cstate, c);
+				start = ++ptr;	/* do not include char in next run */
+			}
+			else if (c == escapec || c == delimc)
+			{
+				DUMPSOFAR();
+				CopySendChar(cstate, escapec);
+				start = ptr++;	/* we include char in next run */
+			}
+			else
+				ptr++;
 		}
 	}
 
@@ -5614,14 +5614,13 @@ CopyAttributeOutCSV(CopyState cstate, char *string,
 	if (!use_quote)
 	{
 		/*
-		 *	Because '\.' can be a data value, quote it if it appears
-		 *	alone on a line so it is not interpreted as the end-of-data
-		 *	marker.
+		 * Because '\.' can be a data value, quote it if it appears alone on a
+		 * line so it is not interpreted as the end-of-data marker.
 		 */
 		if (single_attr && strcmp(ptr, "\\.") == 0)
- 			use_quote = true;
- 		else
- 		{
+			use_quote = true;
+		else
+		{
 			char	   *tptr = ptr;
 
 			while ((c = *tptr) != '\0')
