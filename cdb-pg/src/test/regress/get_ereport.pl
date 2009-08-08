@@ -160,7 +160,7 @@ if (1)
 		if ($bLax)
 		{
 			next
-				if ($filnam =~ m/(^bootstrap)/);
+				if ($filnam =~ m/(\/bootstrap\.)|(\/bootscanner\.)/i);
 		}
 
 		my $gotmsg = 0;
@@ -209,6 +209,32 @@ if (1)
 						$filnam =~ s/\.c$//;
 						$filnam =~ s/\W/x/g;
 						$filnam =~ s/\_/x/g;
+
+						$filnam =~ s/1/one/g;
+						$filnam =~ s/2/two/g;
+						$filnam =~ s/3/three/g;
+						$filnam =~ s/4/four/g;
+						$filnam =~ s/5/five/g;
+						$filnam =~ s/6/six/g;
+						$filnam =~ s/7/seven/g;
+						$filnam =~ s/8/eight/g;
+						$filnam =~ s/9/nine/g;
+						$filnam =~ s/0/zero/g;
+
+						# ugh.  build a prefix which is the first char
+						# of the filename plus the encoded length, so
+						# only sort subgroups of same length (to avoid
+						# more collation sequence issues).
+						
+						my @ww = split (//, $filnam);
+						my $fprefix = $ww[0];
+
+						my $flen = sprintf( "%03d", length($filnam));
+						$flen =~ tr/0123456789/abcdefghij/;
+
+						$filnam = $fprefix . $flen . ": " . $filnam;
+						
+
 					}
 
 					$printname = 0;
