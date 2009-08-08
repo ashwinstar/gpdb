@@ -610,7 +610,7 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 {
 	uint8  				*header;
 	AOHeaderCheckError	checkError;
-	int32				blockLimitLen;
+	int32				blockLimitLen = 0;	// Shutup compiler.
 	pg_crc32			storedChecksum;
 	pg_crc32			computedChecksum;
 
