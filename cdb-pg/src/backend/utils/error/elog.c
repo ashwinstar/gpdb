@@ -2544,7 +2544,7 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
     {
         memcpy(data, input, len); 
         data[len] = 0;
-        buffer->hdr.len += len;
+        buffer->hdr.len += len+1;
     }
 }
 
