@@ -173,11 +173,14 @@ static inline void mke_set_reader(MKEntry *e, int32 r)
     i_set_flag(&e->flags, r << MKE_ReaderShift);
 }
 
-typedef int32 (*MKCompare) (MKEntry *v1, MKEntry *v2, void *ctxt);
-typedef void (*MKPrepare)(MKEntry *a, void *ctxt);
-typedef void (*MKCopyFree) (MKEntry *dst, MKEntry *src, void *ctxt); 
+struct MKContext;
+struct MKLvContext;
 
-static inline void mk_prepare_array(MKEntry *a, int i, int j, int32 lv, void *ctxt, MKPrepare prep)
+typedef int32 (*MKCompare) (MKEntry *v1, MKEntry *v2, struct MKLvContext *lvctxt);
+typedef void (*MKPrepare)(MKEntry *a, struct MKContext *mkctxt, int lv); 
+typedef void (*MKCopyFree) (MKEntry *dst, MKEntry *src, struct MKLvContext *lvctxt); 
+
+static inline void mk_prepare_array(MKEntry *a, int i, int j, int32 lv, struct MKContext *ctxt, MKPrepare prep)
 {
     MKEntry *last = a+j;
     MKEntry *cur = a+i;
@@ -185,25 +188,43 @@ static inline void mk_prepare_array(MKEntry *a, int i, int j, int32 lv, void *ct
     Assert(a && j>=0);
     do {
         if (prep)
-            (prep)(cur, ctxt);
+            (prep)(cur, ctxt, lv);
         mke_set_lv(cur, lv);
     } while (++cur <= last);
 }
 
-typedef struct MKContext_LvCommon
+typedef enum MKLvType
+{
+    MKLV_TYPE_NONE,
+    MKLV_TYPE_INT32,
+    MKLV_TYPE_CHAR,
+    MKLV_TYPE_TEXT,
+} MKLvType;
+
+typedef struct MKLvContext
 {
     bool typByVal;
     int  typLen;
-} MKContext_LvCommon;
+
+    MKLvType lvtype;
+    SortFunctionKind sortfnkind;
+    FmgrInfo fmgrinfo;
+    bool nullfirst;
+
+    int16 attno;
+    struct MKContext *mkctxt;
+} MKLvContext;
 
 typedef struct MKContext {
     int total_lv;
-    MKCompare *comp; 	/* One comparison function for each level */
-    MKPrepare *prep;    	/* One prepare function (memtuple_getattr) for each level */
+    MKLvContext *lvctxt;
 
-    MKCopyFree  cpfr;   	/* Just one refcnt function.  */
-    size_t ctxt_size;
-    void *ctxt;
+    MKCompare comp; 	
+    MKPrepare prep;   
+    MKCopyFree  cpfr; 
+
+    TupleDesc tupdesc;
+    MemTupleBinding *mt_bind;
 
     int32 limit;		/* Limit sort */
     int32 limitmask;    /* Bit trick */
@@ -211,10 +232,16 @@ typedef struct MKContext {
     bool enforceUnique;	/* enforce Unique, for index build */
 } MKContext;
 
-static inline void *mk_get_ctxt(MKContext *mk_ctxt, int n)
-{
-    return (void *) ((char *) mk_ctxt->ctxt + n * mk_ctxt->ctxt_size);
-}
+extern void tupsort_cpfr(MKEntry *dst, MKEntry *src, MKLvContext *ctxt);
+extern void tupsort_prepare_char(MKEntry *a, bool isChar);
+
+extern void create_mksort_context(
+        MKContext *mkctxt,
+        int nkeys, 
+        MKPrepare prep, TupleDesc tupdesc, bool tbyv, int tlen,
+        Oid *sortOperators, 
+        AttrNumber *attNums,
+        ScanKey sk);
 
 /* MK quicksort stuff */
 extern void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKContext *ctxt, bool seenNull);

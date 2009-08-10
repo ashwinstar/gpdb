@@ -12,20 +12,20 @@ CREATE TABLE update_test (
 INSERT INTO update_test(a,b,c) VALUES (5, 10, 'foo');
 INSERT INTO update_test(b,a) VALUES (15, 10);
 
-SELECT a,b,c FROM update_test ORDER BY a,b;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 
 UPDATE update_test SET a = DEFAULT, b = DEFAULT;
 
-SELECT a,b,c FROM update_test ORDER BY a,b;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 
 -- aliases for the UPDATE target table
 UPDATE update_test AS t SET b = 10 WHERE t.a = 10;
 
-SELECT a,b,c FROM update_test ORDER BY a,b;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 
 UPDATE update_test t SET b = t.b + 10 WHERE t.a = 10;
 
-SELECT a,b,c FROM update_test ORDER BY a,b;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 
 --
 -- Test VALUES in FROM
@@ -34,16 +34,16 @@ SELECT a,b,c FROM update_test ORDER BY a,b;
 UPDATE update_test SET a=v.i FROM (VALUES(100, 20)) AS v(i, j)
   WHERE update_test.b = v.j;
 
-SELECT a,b,c FROM update_test ORDER BY a,b;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 
 --
 -- Test multiple-set-clause syntax
 --
 
 UPDATE update_test SET (c,b,a) = ('bugle', b+11, DEFAULT) WHERE c = 'foo';
-SELECT a,b,c FROM update_test ORDER BY a,b;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 UPDATE update_test SET (c,b) = ('car', a+b), a = a + 1 WHERE a = 10;
-SELECT a,b,c FROM update_test ORDER BY a,b;
+SELECT a,b,c FROM update_test ORDER BY a,b,c;
 -- fail, multi assignment to same column:
 UPDATE update_test SET (c,b) = ('car', a+b), b = a + 1 WHERE a = 10;
 

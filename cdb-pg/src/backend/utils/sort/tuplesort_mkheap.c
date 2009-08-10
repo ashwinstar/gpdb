@@ -6,7 +6,8 @@
  */
 
 #include "postgres.h"
-#include "tuplesort_mk.h"
+#include "utils/tuplesort.h"
+#include "utils/tuplesort_mk.h"
 #include "utils/datum.h"
 
 #include "cdb/cdbvars.h"
@@ -90,8 +91,8 @@ static inline int32 mkheap_compare(MKHeap *heap, MKEntry *a, MKEntry *b)
         {
             int32 lv = mke_get_lv(a);
             Assert(lv < heap->mkctxt->total_lv);
-
-            ret = (heap->mkctxt->comp[lv])(a, b, mk_get_ctxt(heap->mkctxt, lv));
+            Assert(heap->mkctxt->comp);
+            ret = (heap->mkctxt->comp)(a, b, heap->mkctxt->lvctxt+lv); 
         }
         ret = (ret & (~limitmask)) + ((-ret) & limitmask);
     }
@@ -143,7 +144,7 @@ MKHeap *mkheap_from_array(MKEntry *entries, int alloc_sz, int cnt, MKContext *mk
     }
 #endif
 
-    mk_prepare_array(entries, 0, cnt-1, 0, mk_get_ctxt(mkctxt, 0), mkctxt->prep[0]);
+    mk_prepare_array(entries, 0, cnt-1, 0, mkctxt, mkctxt->prep); 
     mkheap_heapify(heap, true); 
     return heap;
 }
@@ -183,8 +184,12 @@ MKHeap *mkheap_from_reader(MKHeapReader *readers, int nreader, MKContext *ctxt)
     heap->count = j; 
     heap->maxentry = j; 
 
-    mk_prepare_array(heap->p, 0, j-1, 0, mk_get_ctxt(ctxt, 0), ctxt->prep[0]);
-    mkheap_heapify(heap, true); 
+    if (j>0)
+    {
+        mk_prepare_array(heap->p, 0, j-1, 0, ctxt, ctxt->prep); 
+        mkheap_heapify(heap, true); 
+    }
+
     return heap;
 }
 
@@ -255,7 +260,7 @@ static void mkheap_siftdown(MKHeap *heap, int hole, MKEntry *e)
 /* 
  * Prepare heap (expand lv) at postion cur.  Return how deep (max) into the heap we expand.
  */
-static void mkheap_prep_siftdown_lv(MKHeap *mkheap, int lv, int cur, MKPrepare prep, void *ctxt) 
+static void mkheap_prep_siftdown_lv(MKHeap *mkheap, int lv, int cur, MKContext *mkctxt) 
 {
     bool expchild = false;
 
@@ -270,7 +275,7 @@ static void mkheap_prep_siftdown_lv(MKHeap *mkheap, int lv, int cur, MKPrepare p
         c = mkheap_compare(mkheap, mkheap->p+cur, mkheap->p+RIGHT(cur));
         if(c==0)
         {
-            mkheap_prep_siftdown_lv(mkheap, lv, RIGHT(cur), prep, ctxt);
+            mkheap_prep_siftdown_lv(mkheap, lv, RIGHT(cur), mkctxt);
             expchild = true; 
         }
     }
@@ -281,13 +286,14 @@ static void mkheap_prep_siftdown_lv(MKHeap *mkheap, int lv, int cur, MKPrepare p
         c = mkheap_compare(mkheap, mkheap->p+cur, mkheap->p+LEFT(cur));
         if(c==0)
         {
-            mkheap_prep_siftdown_lv(mkheap, lv, LEFT(cur), prep, ctxt);
+            mkheap_prep_siftdown_lv(mkheap, lv, LEFT(cur), mkctxt);
             expchild = true;
         }
     }
 
     Assert(mke_get_lv(mkheap->p+cur) == lv-1);
-    (prep)(mkheap->p+cur, ctxt);
+    if (mkctxt->prep) 
+        (mkctxt->prep)(mkheap->p+cur, mkctxt, lv);
     mke_set_lv(mkheap->p+cur, lv); 
 
     if(expchild)
@@ -300,13 +306,13 @@ static void mkheap_prep_siftdown_lv(MKHeap *mkheap, int lv, int cur, MKPrepare p
 static void mkheap_save_lvtop(MKHeap *mkheap)
 {
     int lv = mke_get_lv(mkheap->p);
-    MKContext_LvCommon *ctxt = (MKContext_LvCommon *) mk_get_ctxt(mkheap->mkctxt, lv);
+    MKLvContext *lvctxt = mkheap->mkctxt->lvctxt + lv;
 
     Assert(mkheap->count > 0);
     Assert(lv < mkheap->mkctxt->total_lv);
 
     /* Free the old one and copy in the new one */
-    (*mkheap->mkctxt->cpfr)(mkheap->lvtops + lv, mkheap->p, ctxt);
+    (*mkheap->mkctxt->cpfr)(mkheap->lvtops + lv, mkheap->p, lvctxt);
 }
 
 static inline bool mkheap_need_heapify(MKHeap *mkheap)
@@ -344,13 +350,11 @@ static void mkheap_heapify(MKHeap *mkheap, bool doLv0)
     while(mke_get_lv(mkheap->p) < mkheap->mkctxt->total_lv - 1)
     {
         int nlv = mke_get_lv(mkheap->p) + 1;
-        MKPrepare prep = mkheap->mkctxt->prep[nlv];
-        void *ctxtnext = mk_get_ctxt(mkheap->mkctxt, nlv); 
 
         Assert(nlv < mkheap->mkctxt->total_lv);
 
         mkheap_save_lvtop(mkheap);
-        mkheap_prep_siftdown_lv(mkheap, nlv, 0, prep, ctxtnext);
+        mkheap_prep_siftdown_lv(mkheap, nlv, 0, mkheap->mkctxt); 
     }
 
 #ifdef USE_ASSERT_CHECKING
@@ -370,8 +374,6 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 {
     int c = 0; 
     int toplv;
-    void *ctxt; 
-    MKPrepare prep;
     MKEntry tmp;
 
     Assert(mkheap->count > 0);
@@ -388,8 +390,7 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
          */
         if(mke_get_lv(e) != 0)
         {
-            if(mkheap->mkctxt->prep[0])
-                (mkheap->mkctxt->prep[0])(e, mk_get_ctxt(mkheap->mkctxt, 0));
+            (mkheap->mkctxt->prep)(e, mkheap->mkctxt, 0); 
             mke_set_lv(e, 0);
         }
     }
@@ -402,12 +403,7 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 
         while (lv < toplv)
         {
-            prep = mkheap->mkctxt->prep[lv];
-            ctxt = mk_get_ctxt(mkheap->mkctxt, lv);
-
-            if(prep)
-                (prep)(e, ctxt);
-
+            mkheap->mkctxt->prep(e, mkheap->mkctxt, lv);
             c = mkheap_compare(mkheap, e, mkheap->lvtops+lv); 
             if(c!=0)
                 break;
@@ -423,12 +419,7 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
         Assert(mke_get_lv(e) == lv);
         if(lv == toplv)
         {
-            prep = mkheap->mkctxt->prep[lv];
-            ctxt = mk_get_ctxt(mkheap->mkctxt, lv);
-
-            if(prep)
-                (prep)(e, ctxt);
-
+            (mkheap->mkctxt->prep)(e, mkheap->mkctxt, lv);
             c = mkheap_compare(mkheap, e, mkheap->p);
             if(c < 0)
                 return -1;
@@ -448,20 +439,12 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
              */
             while(lv < mkheap->mkctxt->total_lv - 1)
             {
-                MKPrepare prep = mkheap->mkctxt->prep[lv+1];
-                void *ctxtnext = mk_get_ctxt(mkheap->mkctxt, lv+1);
+                mkheap->mkctxt->prep(mkheap->p, mkheap->mkctxt, lv+1);
+                mkheap->mkctxt->prep(e, mkheap->mkctxt, lv+1);
 
-                mkheap_save_lvtop(mkheap); 
-
-                if(prep)
-                {
-                    (prep)(mkheap->p, ctxtnext);
-                    (prep)(e, ctxtnext);
-
-                    ++lv;
-                    mke_set_lv(mkheap->p, lv);
-                    mke_set_lv(e, lv);
-                }
+                ++lv;
+                mke_set_lv(mkheap->p, lv);
+                mke_set_lv(e, lv);
 
                 c = mkheap_compare(mkheap, e, mkheap->p);
                 if(c != 0)
@@ -596,7 +579,7 @@ int mkheap_puget(MKHeap *mkheap, MKEntry *out)
 
     Assert(out);
     if(mkheap->mkctxt->cpfr)
-        (mkheap->mkctxt->cpfr)(out, NULL, mk_get_ctxt(mkheap->mkctxt, mke_get_lv(out)));
+        (mkheap->mkctxt->cpfr)(out, NULL, mkheap->mkctxt->lvctxt + mke_get_lv(out));
     return ret;
 }
 
@@ -631,8 +614,6 @@ void mkheap_verify_heap(MKHeap *heap, int top)
     /* Checking for lvtops */
     for(i=0; i<mke_get_lv(heap->p); ++i)
     {
-        MKPrepare prep = heap->mkctxt->prep[i];
-        void *ctxt = mk_get_ctxt(heap->mkctxt, i);
         int c;
 
         /* Too much trouble dealing with ref counters.  Just don't */
@@ -640,11 +621,8 @@ void mkheap_verify_heap(MKHeap *heap, int top)
            if(!mke_test_flag(heap->lvtops+i, MKE_RefCnt | MKE_Copied))
            {
          */
-        if(prep)
-        {
-            mke_set_lv(&e, i);
-            (prep) (&e, ctxt);
-        }
+        mke_set_lv(&e, i);
+        heap->mkctxt->prep(&e, heap->mkctxt, i); 
 
         c = mkheap_compare(heap, &e, heap->lvtops+i);
         Assert(c==0);

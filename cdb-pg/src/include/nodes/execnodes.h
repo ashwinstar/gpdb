@@ -1966,11 +1966,11 @@ typedef struct LimitState
 
 typedef enum MotionStateType
 {
-        MOTIONSTATE_NONE,                        /* The motion state is not decided, or non active in a slice
-                                                                 * (neither send nor recv)
-                                                                 */
-        MOTIONSTATE_SEND,                        /* The motion is sender */
-        MOTIONSTATE_RECV,                        /* The motion is recver */
+        MOTIONSTATE_NONE,           /* The motion state is not decided, or non active in a slice
+                                     * (neither send nor recv)
+                                     */
+        MOTIONSTATE_SEND,           /* The motion is sender */
+        MOTIONSTATE_RECV,           /* The motion is recver */
 } MotionStateType;
 
 /* ----------------
@@ -1979,41 +1979,43 @@ typedef enum MotionStateType
  */
 typedef struct MotionState
 {
-        PlanState        ps;                                /* its first field is NodeTag */
+        PlanState ps;               /* its first field is NodeTag */
         MotionStateType mstype;     /* Motion state type */
-        bool                stopRequested;  /* set when we want transfer to stop */
+        bool stopRequested;         /* set when we want transfer to stop */
 
         /* For motion send */
-        List                 *sliceEntries;      /* for each outgoing slices */
-        bool                sentEndOfStream;          /* set when end-of-stream has successfully been sent */
-        List                *hashExpr;                /* state struct used for evaluating the hash expressions */
-        struct CdbHash *cdbhash;                        /* hash api object */
+        List *sliceEntries;         /* for each outgoing slices */
+        bool sentEndOfStream;       /* set when end-of-stream has successfully been sent */
+        List *hashExpr;             /* state struct used for evaluating the hash expressions */
+        struct CdbHash *cdbhash;    /* hash api object */
 
         /* For Motion recv */
-        struct CdbHeap                *tupleheap;                /* data structure for match merge in sorted motion node */
-        int                                        routeIdNext;    /* for a sorted motion node, the routeId to get next (same as the routeId last returned ) */
-        bool                                tupleheapReady;        /* for a sorted motion node, false until we have a tuple from each source segindex */
+        void *tupleheap;            /* data structure for match merge in sorted motion node */
+        int routeIdNext;            /* for a sorted motion node, the routeId to get next (same as 
+                                     * the routeId last returned ) */
+        bool tupleheapReady;        /* for a sorted motion node, false until we have a tuple from 
+                                     * each source segindex */
 
         /* The following can be used for debugging, usage stats, etc.  */
-        int                        numTuplesFromChild;        /* Number of tuples received from child */
-        int                        numTuplesToAMS;                /* Number of tuples from child that were sent to AMS */
-        int                        numTuplesFromAMS;        /* Number of tuples received from AMS */
-        int                        numTuplesToParent;        /* Number of tuples either from child or AMS that were sent to parent */
-        int                        *numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
+        int numTuplesFromChild;     /* Number of tuples received from child */
+        int numTuplesToAMS;         /* Number of tuples from child that were sent to AMS */
+        int numTuplesFromAMS;       /* Number of tuples received from AMS */
+        int numTuplesToParent;      /* Number of tuples either from child or AMS that were sent to parent */
+        int *numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
         
-        struct timeval otherTime;  /* time accumulator used in sending motion node to keep track of time
-                                                                * spent getting the next tuple (not sending). this could mean time spent
-                                                                * in another motion node receiving. */
+        struct timeval otherTime;   /* time accumulator used in sending motion node to keep track of time
+                                     * spent getting the next tuple (not sending). this could mean time spent
+                                     * in another motion node receiving. */
                                                         
         struct timeval motionTime;  /* time accumulator for time spent in motion node.  For sending motion node
-                                                                 * it is just the amount of time actually sending the tuple thru the
-                                                                 * interconnect.  For receiving motion node, it is the time spent waiting
-                                                                 * and processing of the next incoming tuple.
-                                                                 */
+                                     * it is just the amount of time actually sending the tuple thru the
+                                     * interconnect.  For receiving motion node, it is the time spent waiting
+                                     * and processing of the next incoming tuple.
+                                     */
                 
-        Oid                *outputFunArray;     /* output functions for each column (debug only) */
-        Slice              *sendSlice;          /* sending slice */
-        Slice              *recvSlice;          /* receiving slice */
+        Oid *outputFunArray;        /* output functions for each column (debug only) */
+        Slice *sendSlice;           /* sending slice */
+        Slice *recvSlice;           /* receiving slice */
 } MotionState;
 
 #endif   /* EXECNODES_H */

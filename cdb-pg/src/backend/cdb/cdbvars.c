@@ -254,6 +254,7 @@ bool		gp_enable_explain_allstat = FALSE;
 bool		gp_enable_sort_limit = FALSE;
 bool		gp_enable_sort_distinct = FALSE;
 bool		gp_enable_mk_sort = true;
+bool		gp_enable_motion_mk_sort = true;
 #ifdef USE_ASSERT_CHECKING
 bool		gp_mk_sort_check = false;
 #endif

@@ -11,7 +11,8 @@
  */
 
 #include "postgres.h"
-#include "tuplesort_mk.h"
+#include "utils/tuplesort.h"
+#include "utils/tuplesort_mk.h"
 
 #include "miscadmin.h"
 
@@ -39,7 +40,7 @@ static inline int32 mkqs_comp(MKCompare comp, MKEntry *a, MKEntry *b, void *ctxt
         return ret;
 }
         
-static inline MKEntry *mkqs_med3(MKEntry *a, MKEntry *b, MKEntry *c, MKCompare comp, void *ctxt) 
+static inline MKEntry *mkqs_med3(MKEntry *a, MKEntry *b, MKEntry *c, MKCompare comp, MKLvContext *ctxt) 
 {
 	return mkqs_comp(comp, a, b, ctxt) < 0 ? 
                         (mkqs_comp(comp, b, c, ctxt) < 0 ? b : mkqs_comp(comp, a, c, ctxt) < 0 ? c : a )
@@ -48,7 +49,7 @@ static inline MKEntry *mkqs_med3(MKEntry *a, MKEntry *b, MKEntry *c, MKCompare c
                         ;
 }
 
-static inline MKEntry *mkqs_choose_pivot(MKEntry *a, int left, int right, int lv, MKCompare comp, void *ctxt)
+static inline MKEntry *mkqs_choose_pivot(MKEntry *a, int left, int right, int lv, MKCompare comp, MKLvContext *ctxt)
 {
 	int s;
 	int n = right - left + 1;
@@ -86,8 +87,8 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 
 	int c1, c2;
 	int k;
-	MKCompare comp = mkqs_ctxt->comp[lv];
-	void *ctxt = mk_get_ctxt(mkqs_ctxt, lv); 
+	MKCompare comp = mkqs_ctxt->comp; 
+    MKLvContext *lvctxt = mkqs_ctxt->lvctxt + lv;
 
 	MKEntry v = {0, };
 	MKEntry *pv;
@@ -103,12 +104,12 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 	*j = right+1; 
 
 	/* Choose a pivot */
-	pv = mkqs_choose_pivot(a, left, right, lv, comp, ctxt);
+	pv = mkqs_choose_pivot(a, left, right, lv, comp, lvctxt);
 
 	/* Save pivot in v */ 
 	/* Hacking a ref count */
 	if(mke_is_refc(pv))
-		mkqs_ctxt->cpfr(&v, pv, ctxt);
+		mkqs_ctxt->cpfr(&v, pv, lvctxt);
 	else 
 		v = *pv;
 
@@ -120,7 +121,7 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 
 		while(1)
 		{
-			while(++(*i) < (*j) && (c1 = mkqs_comp(comp, a+(*i), &v, ctxt)) < 0) 
+			while(++(*i) < (*j) && (c1 = mkqs_comp(comp, a+(*i), &v, lvctxt)) < 0) 
 			{
 				Assert(*i >= left && *i<= right);
 				Assert(*j >= left && *j<= right+1);
@@ -144,7 +145,7 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 
 		while(1)
 		{
-			while(--(*j) > tmpi && (c2 = mkqs_comp(comp, &v, a+(*j), ctxt)) < 0)
+			while(--(*j) > tmpi && (c2 = mkqs_comp(comp, &v, a+(*j), lvctxt)) < 0)
 			{
 				Assert(tmpi >= left-1 && tmpi<= right);
 				Assert(*j >= left && *j<= right);
@@ -196,7 +197,7 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 
 	/* Hack ref count */
 	if(mke_is_refc(&v))
-		mkqs_ctxt->cpfr(&v, NULL, ctxt);
+		mkqs_ctxt->cpfr(&v, NULL, lvctxt);
 
 }
 
@@ -215,7 +216,7 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 	
 	/* Prepare at level lv */
 	if(lvdown && ctxt->prep) 
-        mk_prepare_array(a, left, right, lv, mk_get_ctxt(ctxt, lv), ctxt->prep[lv]);
+        mk_prepare_array(a, left, right, lv, ctxt, ctxt->prep);
 
 	/* 
 	 * According to Bentley & McIlroy [1] (1993), using insert sort for case 

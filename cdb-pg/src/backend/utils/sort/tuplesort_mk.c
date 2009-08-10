@@ -119,8 +119,8 @@
 #include "utils/tuplesort.h"
 #include "utils/pg_locale.h"
 #include "utils/builtins.h"
+#include "utils/tuplesort_mk.h"
 
-#include "tuplesort_mk.h"
 #include "cdb/cdbvars.h"
 
 /*
@@ -174,23 +174,6 @@ struct TuplesortPos_mk
 
     LogicalTape* 		cur_work_tape;      /* current tape that I am working on */
 };
-
-/* Sort prepare/compare context info */
-typedef struct TupsortMKContext
-{
-    /* Common part */
-    MKContext_LvCommon mk_common;
-
-    /* For comp */
-    SortFunctionKind sortfnkind; 
-    bool  nullfirst;
-
-    int16 attno;
-    int16 sknum;
-
-    /* For prep */
-    Tuplesortstate_mk *tsstate;
-} TupsortMKContext;
 
 /* Merge reader (read back from runs) context for mk_heap */
 typedef struct TupsortMergeReadCtxt
@@ -450,24 +433,20 @@ static long writetup_datum(Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e
 static void readtup_datum(Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e,
         LogicalTape *lt, uint32 len);
 
-static int tupsort_compare_datum(MKEntry *v1, MKEntry *v2, void *ctxt);
-static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, void *ctxt);
-static int tupsort_compare_int32(MKEntry *v1, MKEntry *v2, void *ctxt);
+static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt);
+static int tupsort_compare_datum(MKEntry *v1, MKEntry *v2, MKLvContext *ctxt);
 
-static void tupsort_prepare_mtup(MKEntry *a, void *ctxt);
-static void tupsort_prepare_itup(MKEntry *a, void *ctxt);
-
-static void tupsort_prepare_mtup_char(MKEntry *a, void *ctxt);
-static void tupsort_prepare_mtup_text(MKEntry *a, void *ctxt);
-static void tupsort_prepare_itup_char(MKEntry *a, void *ctxt);
-static void tupsort_prepare_itup_text(MKEntry *a, void *ctxt);
+static void tupsort_prepare_mtup(MKEntry *a, MKContext *ctxt, int lv);
+static void tupsort_prepare_itup(MKEntry *a, MKContext *ctxt, int lv);
+#if 0
+static void tupsort_prepare_datum(MKEntry *a, MKContext *ctxt, int lv);
+#endif
 
 static void tuplesort_limit_insert(Tuplesortstate_mk *state, MKEntry *e);
 static void tuplesort_heap_insert(Tuplesortstate_mk *state, MKEntry *e);
 static void tuplesort_limit_sort(Tuplesortstate_mk *state);
 
 static void tupsort_refcnt(void *vp, int ref); 
-static void tupsort_cpfr(MKEntry *dst, MKEntry *src, void *ctxt);
 
 /* Declare the following as extern so that older dtrace will not complain */
 extern void inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix);
@@ -498,7 +477,7 @@ extern void mkheap_verify_heap(MKHeap *heap, int top);
  * use tuplesort_set_instrument() (q.v.) to enable statistical reporting.
  */
 
-    static Tuplesortstate_mk *
+static Tuplesortstate_mk *
 tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
 {
     Tuplesortstate_mk *state;
@@ -600,7 +579,91 @@ void tuplesort_begin_pos_mk(Tuplesortstate_mk *st, TuplesortPos_mk **pos)
     *pos = st_pos;
 }
 
-    Tuplesortstate_mk *
+void
+create_mksort_context(
+        MKContext *mkctxt,
+        int nkeys, 
+        MKPrepare prep, TupleDesc tupdesc, bool tbyv, int tlen,
+        Oid *sortOperators, 
+        AttrNumber *attNums,
+        ScanKey sk)
+{
+    int i;
+
+    Assert(mkctxt);
+    mkctxt->total_lv = nkeys;
+    mkctxt->lvctxt = (MKLvContext *) palloc0(sizeof(MKLvContext) * nkeys);
+
+    AssertEquivalent(sortOperators == NULL, sk != NULL); 
+    AssertEquivalent(prep==NULL, tupdesc==NULL); 
+
+    mkctxt->prep = prep;
+    mkctxt->tupdesc = tupdesc;
+    if (tupdesc)
+        mkctxt->mt_bind = create_memtuple_binding(tupdesc); 
+
+    mkctxt->comp = tupsort_compare_datum;
+    mkctxt->cpfr = tupsort_cpfr;
+
+    for(i=0; i<nkeys; ++i)
+    {
+        RegProcedure sortFunction;
+        MKLvContext *sinfo = mkctxt->lvctxt+i; 
+        
+        if (sortOperators)
+        {
+            Assert(sortOperators[i] != 0);
+
+            /* Select a sort function */
+            SelectSortFunction(sortOperators[i], &sortFunction, &sinfo->sortfnkind);
+            fmgr_info(sortFunction, &sinfo->fmgrinfo);
+
+            /* Hacking in null first/null last.  Untill parser implements null first/last,
+             * we will keep the old postgres behaviour.
+             */
+            if(sinfo->sortfnkind == SORTFUNC_REVLT || sinfo->sortfnkind == SORTFUNC_REVCMP)
+                sinfo->nullfirst = true;
+            else
+                sinfo->nullfirst = false;
+        }
+        else
+        {
+            sinfo->sortfnkind = SORTFUNC_CMP;
+            sinfo->nullfirst = false;
+            sinfo->fmgrinfo = sk[i].sk_func; /* structural copy */
+        }
+            
+        AssertImply(attNums, attNums[i] != 0);
+        /* Per lv context info.  Need later for prep */
+        sinfo->attno = attNums ? attNums[i] : i+1;
+
+        sinfo->lvtype = MKLV_TYPE_NONE;
+
+        if (tupdesc)
+        {
+            sinfo->typByVal = tupdesc->attrs[sinfo->attno-1]->attbyval;
+            sinfo->typLen = tupdesc->attrs[sinfo->attno-1]->attlen;
+
+            if (sinfo->fmgrinfo.fn_addr == btint4cmp)
+                sinfo->lvtype = MKLV_TYPE_INT32;
+            if (!lc_collate_is_c())
+            {
+                if(sinfo->fmgrinfo.fn_addr == bpcharcmp)
+                    sinfo->lvtype = MKLV_TYPE_CHAR;
+                else if (sinfo->fmgrinfo.fn_addr == bttextcmp)
+                    sinfo->lvtype = MKLV_TYPE_TEXT;
+            }
+        }
+        else
+        {
+            sinfo->typByVal = tbyv;
+            sinfo->typLen = tlen;
+        }
+        sinfo->mkctxt = mkctxt;
+    }
+}
+
+Tuplesortstate_mk *
 tuplesort_begin_heap_mk(TupleDesc tupDesc,
         int nkeys,
         Oid *sortOperators, AttrNumber *attNums,
@@ -608,7 +671,6 @@ tuplesort_begin_heap_mk(TupleDesc tupDesc,
 {
     Tuplesortstate_mk *state = tuplesort_begin_common(workMem, randomAccess, true);
     MemoryContext oldcontext;
-    int	i;
 
     oldcontext = MemoryContextSwitchTo(state->sortcontext);
 
@@ -624,70 +686,15 @@ tuplesort_begin_heap_mk(TupleDesc tupDesc,
 
     state->tupDesc = tupDesc;	/* assume we need not copy tupDesc */
     state->mt_bind = create_memtuple_binding(tupDesc);
-    state->cmpScanKey = palloc0(nkeys * sizeof(ScanKeyData));
+    state->cmpScanKey = NULL; 
 
-    state->mkctxt.total_lv = nkeys;
-    state->mkctxt.comp = (MKCompare *) palloc0(nkeys * sizeof(MKCompare));
-    state->mkctxt.prep = (MKPrepare *) palloc0(nkeys * sizeof(MKPrepare)); 
-
-    state->mkctxt.cpfr = tupsort_cpfr;
-
-    state->mkctxt.ctxt_size = sizeof(TupsortMKContext); 
-    state->mkctxt.ctxt = palloc0(nkeys * sizeof(TupsortMKContext)); 
-
-    for (i = 0; i < nkeys; i++)
-    {
-        RegProcedure sortFunction;
-        TupsortMKContext *sinfo = (TupsortMKContext *) mk_get_ctxt(&state->mkctxt, i);
-        ScanKey sk = state->cmpScanKey + i;
-
-        AssertArg(sortOperators[i] != 0);
-        AssertArg(attNums[i] != 0);
-
-        /* select a function that implements the sort operator */
-        SelectSortFunction(sortOperators[i], &sortFunction, &sinfo->sortfnkind);
-
-        if(sinfo->sortfnkind == SORTFUNC_REVLT || sinfo->sortfnkind == SORTFUNC_REVCMP)
-            sinfo->nullfirst = true;
-        else
-            sinfo->nullfirst = false;
-
-        /*
-         * We needn't fill in sk_strategy or sk_subtype since these scankeys
-         * will never be passed to an index.
-         */
-        ScanKeyInit(sk, 
-                attNums[i],
-                InvalidStrategy,
-                sortFunction,
-                (Datum) 0);
-
-        sinfo->attno = attNums[i];
-        sinfo->sknum = i;
-        sinfo->tsstate = state;
-        sinfo->mk_common.typByVal = tupDesc->attrs[sinfo->attno-1]->attbyval;
-        sinfo->mk_common.typLen = tupDesc->attrs[sinfo->attno-1]->attlen;
-
-        state->mkctxt.comp[i] = tupsort_compare_datum; 
-        state->mkctxt.prep[i] = tupsort_prepare_mtup;
-
-        if(sk->sk_func.fn_addr == btint4cmp)
-            state->mkctxt.comp[i] = tupsort_compare_int32;
-
-        if(!lc_collate_is_c() )
-        {
-            if(sk->sk_func.fn_addr == bpcharcmp) 
-            {
-                state->mkctxt.comp[i] = tupsort_compare_char;
-                state->mkctxt.prep[i] = tupsort_prepare_mtup_char;
-            } 
-            else if(sk->sk_func.fn_addr == bttextcmp) 
-            {
-                state->mkctxt.comp[i] = tupsort_compare_char;
-                state->mkctxt.prep[i] = tupsort_prepare_mtup_text;
-            }
-        }
-    }
+    create_mksort_context(
+            &state->mkctxt,
+            nkeys, 
+            tupsort_prepare_mtup, 
+            tupDesc, 0, 0, 
+            sortOperators, attNums,
+            NULL);
 
     MemoryContextSwitchTo(oldcontext);
 
@@ -758,7 +765,7 @@ tuplesort_begin_heap_file_readerwriter_mk(
     }
 }
 
-    Tuplesortstate_mk *
+Tuplesortstate_mk *
 tuplesort_begin_index_mk(Relation indexRel,
         bool enforceUnique,
         int workMem, bool randomAccess)
@@ -780,72 +787,28 @@ tuplesort_begin_index_mk(Relation indexRel,
     state->readtup = readtup_index;
 
     state->indexRel = indexRel;
+    state->cmpScanKey = _bt_mkscankey_nodata(indexRel);
 
-    /* see comments below about btree dependence of this code... */
-    {
-        int i;
-        int nkeys = state->nKeys;
-
-        state->cmpScanKey = _bt_mkscankey_nodata(indexRel);
-        state->mkctxt.total_lv = nkeys;
-        state->mkctxt.comp = (MKCompare *) palloc0(nkeys * sizeof(MKCompare)); 
-        state->mkctxt.prep = (MKPrepare *) palloc0(nkeys * sizeof(MKPrepare)); 
-        state->mkctxt.cpfr = tupsort_cpfr; 
-
-        state->mkctxt.ctxt_size = sizeof(TupsortMKContext); 
-        state->mkctxt.ctxt = palloc0(nkeys * sizeof(TupsortMKContext)); 
-
-        for(i=0; i<nkeys; ++i)
-        {
-            TupsortMKContext *sinfo = (TupsortMKContext *) mk_get_ctxt(&state->mkctxt, i);
-            ScanKey sk = state->cmpScanKey + i;
-
-            sinfo->sortfnkind = SORTFUNC_CMP;
-            sinfo->nullfirst = false;
-
-            sinfo->attno = i+1;
-            sinfo->sknum = i;
-            sinfo->tsstate = state;
-            sinfo->mk_common.typByVal = tupdesc->attrs[i]->attbyval;
-            sinfo->mk_common.typLen = tupdesc->attrs[i]->attlen; 
-
-            state->mkctxt.comp[i] = tupsort_compare_datum;
-            state->mkctxt.prep[i] = tupsort_prepare_itup;
-
-            if(sk->sk_func.fn_addr == btint4cmp)
-                state->mkctxt.comp[i] = tupsort_compare_int32;
-
-
-            if(!lc_collate_is_c() )
-            {
-                if(sk->sk_func.fn_addr == bpcharcmp) 
-                {
-                    state->mkctxt.comp[i] = tupsort_compare_char;
-                    state->mkctxt.prep[i] = tupsort_prepare_itup_char;
-                } 
-                else if(sk->sk_func.fn_addr == bttextcmp) 
-                {
-                    state->mkctxt.comp[i] = tupsort_compare_char;
-                    state->mkctxt.prep[i] = tupsort_prepare_itup_text;
-                }
-            }
-        }
-    }
-
+    create_mksort_context(
+            &state->mkctxt,
+            state->nKeys, 
+            tupsort_prepare_itup, 
+            tupdesc, 0, 0,
+            NULL, NULL, state->cmpScanKey);
+   
     state->mkctxt.enforceUnique = enforceUnique;
     MemoryContextSwitchTo(oldcontext);
 
     return state;
 }
 
-    Tuplesortstate_mk *
+Tuplesortstate_mk *
 tuplesort_begin_datum_mk(Oid datumType,
         Oid sortOperator,
         int workMem, bool randomAccess)
 {
     Tuplesortstate_mk *state = tuplesort_begin_common(workMem, randomAccess, true);
     MemoryContext oldcontext;
-    RegProcedure sortFunction;
     int16		typlen;
     bool		typbyval;
 
@@ -868,36 +831,13 @@ tuplesort_begin_datum_mk(Oid datumType,
     state->datumTypeByVal = typbyval;
 
     state->sortOperator = sortOperator;
-
-    state->cmpScanKey = palloc0(sizeof(ScanKeyData));
-
-    state->mkctxt.total_lv = 1;
-    state->mkctxt.comp = (MKCompare *) palloc(sizeof(MKCompare));
-    state->mkctxt.comp[0] = tupsort_compare_datum;
-    state->mkctxt.prep = (MKPrepare *) palloc0(sizeof(MKPrepare));
-
-    state->mkctxt.cpfr = tupsort_cpfr;
-
-    state->mkctxt.ctxt_size = sizeof(TupsortMKContext);
-    state->mkctxt.ctxt = palloc0(sizeof(TupsortMKContext));
-
-    {
-        TupsortMKContext *sinfo = (TupsortMKContext *) mk_get_ctxt(&state->mkctxt, 0);
-        SelectSortFunction(sortOperator, &sortFunction, &sinfo->sortfnkind);
-        fmgr_info(sortFunction, &state->cmpScanKey->sk_func); 
-
-        if(sinfo->sortfnkind == SORTFUNC_REVLT || sinfo->sortfnkind == SORTFUNC_REVCMP)
-            sinfo->nullfirst = true;
-        else
-            sinfo->nullfirst = false;
-        state->nullfirst = sinfo->nullfirst;
-
-        sinfo->mk_common.typByVal = typbyval;
-        sinfo->mk_common.typLen = typlen;
-        sinfo->attno = -1;
-        sinfo->sknum = 0;
-        sinfo->tsstate = state;
-    }
+    state->cmpScanKey = NULL; 
+    create_mksort_context(
+            &state->mkctxt, 
+            1, 
+            NULL, /* tupsort_prepare_datum, */
+            NULL, typbyval, typlen, 
+            &sortOperator, NULL, NULL); 
 
     MemoryContextSwitchTo(oldcontext);
 
@@ -939,7 +879,7 @@ tuplesort_end_mk(Tuplesortstate_mk *state)
     }
 
     /* 
-     * CDB: Report statistics to EXPLAIN ANALYZE. 
+     * CDB: Report statistics to EXPLAIN ANALYZE. /mk
      */ 
     if (state->instrument)
     {
@@ -1412,7 +1352,7 @@ tuplesort_getindextuple_mk(Tuplesortstate_mk *state, bool forward,
  * If the Datum is pass-by-ref type, the returned value is freshly palloc'd
  * and is now owned by the caller.
  */
-    bool
+bool
 tuplesort_getdatum_mk(Tuplesortstate_mk *state, bool forward,
         Datum *val, bool *isNull)
 {
@@ -2617,24 +2557,35 @@ typedef struct refcnt_locale_str_k
 } refcnt_locale_str_k;
 
 
-static int tupsort_compare_datum(MKEntry *v1, MKEntry *v2, void *ctxt)
+static int tupsort_compare_datum(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt)
 {
-    TupsortMKContext *mkctxt = (TupsortMKContext *) ctxt;
-    ScanKey sk = mkctxt->tsstate->cmpScanKey + mkctxt->sknum;
-
     Assert(!mke_is_null(v1));
     Assert(!mke_is_null(v2));
 
-    return inlineApplySortFunction(&sk->sk_func, mkctxt->sortfnkind, 
-            v1->d, false,
-            v2->d, false
-            ); 
+    switch(lvctxt->lvtype)
+    {
+        case MKLV_TYPE_NONE:
+            return inlineApplySortFunction(&lvctxt->fmgrinfo, lvctxt->sortfnkind, 
+                    v1->d, false,
+                    v2->d, false
+                    ); 
+        case MKLV_TYPE_INT32:
+            {
+                int32 i1 = DatumGetInt32(v1->d);
+                int32 i2 = DatumGetInt32(v2->d);
+                int result = (i1 < i2) ? -1 : ((i1 == i2) ? 0 : 1);
+                return (lvctxt->sortfnkind == SORTFUNC_CMP) ? result : -result;
+            }
+        default:
+            return tupsort_compare_char(v1, v2, lvctxt);
+    }
+
+    Assert(!"Never reach here");
+    return 0;
 }
 
-static void tupsort_cpfr(MKEntry *dst, MKEntry *src, void *ctxt) 
+void tupsort_cpfr(MKEntry *dst, MKEntry *src, MKLvContext *lvctxt) 
 {
-    TupsortMKContext *mkctxt = (TupsortMKContext *) ctxt;
-
     Assert(dst);
     if(mke_is_refc(dst))
     {
@@ -2659,10 +2610,10 @@ static void tupsort_cpfr(MKEntry *dst, MKEntry *src, void *ctxt)
         {
             if(mke_is_refc(src)) 
                 tupsort_refcnt(DatumGetPointer(dst->d), 1);
-            else if(!mkctxt->mk_common.typByVal)
+            else if(!lvctxt->typByVal)
             {
                 Assert(src->d != 0);
-                dst->d = datumCopy(src->d, mkctxt->mk_common.typByVal, mkctxt->mk_common.typLen);
+                dst->d = datumCopy(src->d, lvctxt->typByVal, lvctxt->typLen);
                 mke_set_copied(dst);
             }
         }
@@ -2685,26 +2636,9 @@ static void tupsort_refcnt(void *vp, int ref)
     }
 }
 
-static int tupsort_compare_int32(MKEntry *v1, MKEntry *v2, void *ctxt)
+static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt)
 {
     int result = 0;
-    TupsortMKContext *mkctxt = (TupsortMKContext *) ctxt;
-
-    int32 i1 = DatumGetInt32(v1->d);
-    int32 i2 = DatumGetInt32(v2->d);
-
-    Assert(!mke_is_null(v1));
-    Assert(!mke_is_null(v2));
-
-    result = (i1 < i2) ? -1 : ((i1 == i2) ? 0 : 1);
-
-    return (mkctxt->sortfnkind == SORTFUNC_CMP) ? result : -result;
-}
-
-static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, void *ctxt)
-{
-    int result = 0;
-    TupsortMKContext *mkctxt = (TupsortMKContext *) ctxt;
 
     refcnt_locale_str *p1 = (refcnt_locale_str *) DatumGetPointer(v1->d);
     refcnt_locale_str *p2 = (refcnt_locale_str *) DatumGetPointer(v2->d);
@@ -2713,7 +2647,7 @@ static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, void *ctxt)
     Assert(!mke_is_null(v2));
 
     Assert(!lc_collate_is_c());
-    Assert(mkctxt->sortfnkind == SORTFUNC_CMP || mkctxt->sortfnkind == SORTFUNC_REVCMP);
+    Assert(lvctxt->sortfnkind == SORTFUNC_CMP || lvctxt->sortfnkind == SORTFUNC_REVCMP);
 
     Assert(p1->ref > 0 && p2->ref > 0);
 
@@ -2751,53 +2685,75 @@ static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, void *ctxt)
         }
     }
 
-    return (mkctxt->sortfnkind == SORTFUNC_CMP) ? result : -result;
+    return (lvctxt->sortfnkind == SORTFUNC_CMP) ? result : -result;
 }
 
-static void tupsort_prepare_mtup(MKEntry *a, void *ctxt)
+static void tupsort_prepare_mtup(MKEntry *a, MKContext *mkctxt, int lv)
 {
-    TupsortMKContext *mkctxt = (TupsortMKContext *) ctxt;
+    MKLvContext *lvctxt = mkctxt->lvctxt + lv; 
     bool isnull;
 
-    Assert(is_under_sort_ctxt(mkctxt->tsstate));
-
-    tupsort_cpfr(a, NULL, mkctxt); 
+    tupsort_cpfr(a, NULL, lvctxt); 
 
     a->d = memtuple_getattr(
             (MemTuple) a->ptr, 
-            mkctxt->tsstate->mt_bind, 
-            mkctxt->attno,
+            mkctxt->mt_bind, 
+            lvctxt->attno,
             &isnull
             );
 
     if(!isnull)
         mke_set_not_null(a); 
     else 
-        mke_set_null(a, mkctxt->nullfirst);
+        mke_set_null(a, lvctxt->nullfirst);
+
+    if (lvctxt->lvtype == MKLV_TYPE_CHAR)
+        tupsort_prepare_char(a, true);
+    else if (lvctxt->lvtype == MKLV_TYPE_TEXT)
+        tupsort_prepare_char(a, false);
 }
 
-static void tupsort_prepare_itup(MKEntry *a, void *ctxt)
+static void tupsort_prepare_itup(MKEntry *a, MKContext *mkctxt, int lv)
 {
-    TupsortMKContext *mkctxt = (TupsortMKContext *) ctxt;
-    TupleDesc tupdesc = RelationGetDescr(mkctxt->tsstate->indexRel);
+    MKLvContext *lvctxt = mkctxt->lvctxt + lv; 
     bool isnull;
 
-    Assert(is_under_sort_ctxt(mkctxt->tsstate));
-
-    tupsort_cpfr(a, NULL, mkctxt); 
+    tupsort_cpfr(a, NULL, lvctxt); 
 
     a->d = index_getattr(
             (IndexTuple) a->ptr, 
-            mkctxt->attno,
-            tupdesc,
+            lvctxt->attno,
+            mkctxt->tupdesc,
             &isnull
             );
 
     if(!isnull)
         mke_set_not_null(a); 
     else 
-        mke_set_null(a, mkctxt->nullfirst);
+        mke_set_null(a, lvctxt->nullfirst);
+
+    if (lvctxt->lvtype == MKLV_TYPE_CHAR)
+        tupsort_prepare_char(a, true);
+    else if (lvctxt->lvtype == MKLV_TYPE_TEXT)
+        tupsort_prepare_char(a, false); 
 }
+
+#if 0
+static void tupsort_prepare_datum(MKEntry *a, MKContext *mkctxt, int lv)
+{
+    MKLvContext *lvctxt = mkctxt->lvctxt + lv; 
+
+    Assert(lv == 0);
+
+    tupsort_cpfr(a, NULL, lvctxt); 
+    mke_set_not_null(a); 
+
+    if (lvctxt->lvtype == MKLV_TYPE_CHAR)
+        tupsort_prepare_char(a, true);
+    else if (lvctxt->lvtype == MKLV_TYPE_TEXT)
+        tupsort_prepare_char(a, false); 
+}
+#endif
 
 /* "True" length (not counting trailing blanks) of a BpChar */
     static inline int
@@ -2813,7 +2769,7 @@ bcTruelen(char *p, int len)
     return i + 1;
 }
 
-static void tupsort_prepare_char(MKEntry *a, bool isCHAR)
+void tupsort_prepare_char(MKEntry *a, bool isCHAR)
 {
     char *p;
     void *tofree = NULL;
@@ -2886,31 +2842,6 @@ static void tupsort_prepare_char(MKEntry *a, bool isCHAR)
     mke_set_refc(a);
 }
 
-static void tupsort_prepare_mtup_char(MKEntry *a, void *ctxt)
-{
-    tupsort_prepare_mtup(a, ctxt);
-    tupsort_prepare_char(a, true);
-}
-
-static void tupsort_prepare_mtup_text(MKEntry *a, void *ctxt)
-{
-    tupsort_prepare_mtup(a, ctxt);
-    tupsort_prepare_char(a, false);
-}
-
-static void tupsort_prepare_itup_char(MKEntry *a, void *ctxt)
-{
-    tupsort_prepare_itup(a, ctxt);
-    tupsort_prepare_char(a, true);
-}
-
-static void tupsort_prepare_itup_text(MKEntry *a, void *ctxt)
-{
-    tupsort_prepare_itup(a, ctxt);
-    tupsort_prepare_char(a, false);
-}
-
-
 static void tuplesort_limit_insert(Tuplesortstate_mk *state, MKEntry *e)
 {
     int i;
@@ -2918,7 +2849,6 @@ static void tuplesort_limit_insert(Tuplesortstate_mk *state, MKEntry *e)
     Assert(state->mkctxt.limit > 0);
     Assert(is_under_sort_ctxt(state));
     Assert(!mke_is_empty(e));
-
 
     if(!state->mkheap)
     {
@@ -2954,7 +2884,7 @@ static void tuplesort_heap_insert(Tuplesortstate_mk *state, MKEntry *e)
     Assert(is_under_sort_ctxt(state));
 
     ins = mkheap_puget_run(state->mkheap, e, state->currentRun);
-    tupsort_cpfr(e, NULL, mk_get_ctxt(&state->mkctxt, mke_get_lv(e)));
+    tupsort_cpfr(e, NULL, &state->mkctxt.lvctxt[mke_get_lv(e)]);
 
     Assert(ins >= 0);
 

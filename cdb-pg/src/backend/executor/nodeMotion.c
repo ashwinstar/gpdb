@@ -27,10 +27,13 @@
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "utils/tuplesort.h"
+#include "utils/tuplesort_mk.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/memutils.h"
 #include "utils/debugbreak.h"
+
+
 
 /* #define MEASURE_MOTION_TIME */
 
@@ -104,6 +107,7 @@ CdbMergeComparator_DestroyContext(CdbMergeComparatorContext *ctx);
 static TupleTableSlot *execMotionSender(MotionState * node);
 static TupleTableSlot *execMotionUnsortedReceiver(MotionState * node);
 static TupleTableSlot *execMotionSortedReceiver(MotionState * node);
+static TupleTableSlot *execMotionSortedReceiver_mk(MotionState * node);
 
 static void execMotionSortedReceiverFirstTime(MotionState * node);
 
@@ -194,7 +198,12 @@ ExecMotion(MotionState * node)
 		}
 
 		if (motion->sendSorted)
-			tuple = execMotionSortedReceiver(node);
+        {
+            if (gp_enable_motion_mk_sort)
+                tuple = execMotionSortedReceiver_mk(node);
+            else
+                tuple = execMotionSortedReceiver(node);
+        }
 		else
 			tuple = execMotionUnsortedReceiver(node);
 
@@ -435,11 +444,162 @@ execMotionUnsortedReceiver(MotionState * node)
  * Then we again select the lowest value and return that tuple.
  *
  */
+
+/* Sorted receiver using mk heap */
+typedef struct MotionMKHeapReaderContext
+{
+    MotionState *node;
+    int srcRoute;
+} MotionMKHeapReaderContext;
+
+typedef struct MotionMKHeapContext
+{
+    MKHeapReader *readers;      /* Readers, one per sender */
+    MKHeap *heap;               /* The mkheap */
+    MKContext mkctxt;           /* compare context */
+} MotionMKHeapContext;
+    
+static bool motion_mkhp_read(void *vpctxt, MKEntry *a)
+{
+    MotionMKHeapReaderContext *ctxt = (MotionMKHeapReaderContext *) vpctxt;
+    MotionState *node = ctxt->node;
+
+    HeapTuple inputTuple = NULL;
+	Motion *motion = (Motion *) node->ps.plan;
+
+    ReceiveReturnCode recvRC;
+
+    node->routeIdNext = ctxt->srcRoute;
+
+    MemSet(a, 0, sizeof(MKEntry));
+
+    /* Receive the successor of the tuple that we returned last time. */
+    recvRC = RecvTupleFrom(node->ps.state->motionlayer_context,
+							   node->ps.state->interconnect_context,
+							   motion->motionID, 
+							   &inputTuple,
+							   node->routeIdNext);
+
+    if (recvRC == GOT_TUPLE)
+    {
+        a->ptr = inputTuple;
+        return true;
+    }
+
+    return false;
+}
+        
+static void tupsort_motion_prep(MKEntry *a, MKContext *mkctxt, int lv)
+{
+    MKLvContext *lvctxt = mkctxt->lvctxt + lv; 
+    bool isnull = false;
+
+    tupsort_cpfr(a, NULL, lvctxt);
+    if (is_heaptuple_memtuple(a->ptr))
+        a->d = memtuple_getattr((MemTuple) a->ptr, mkctxt->mt_bind, lvctxt->attno, &isnull);
+    else
+        a->d = heap_getattr((HeapTuple) a->ptr, lvctxt->attno, mkctxt->tupdesc, &isnull);
+    
+    if (!isnull)
+        mke_set_not_null(a);
+    else
+        mke_set_null(a, lvctxt->nullfirst);
+
+    if (lvctxt->lvtype == MKLV_TYPE_CHAR)
+        tupsort_prepare_char(a, true);
+    else if (lvctxt->lvtype == MKLV_TYPE_TEXT)
+        tupsort_prepare_char(a, false);
+}
+    
+static void create_motion_mk_heap(MotionState *node)
+{
+    MotionMKHeapContext *ctxt = palloc0(sizeof(MotionMKHeapContext));
+    Motion *motion = (Motion *) node->ps.plan;
+    int nreader = motion->numInputSegs;
+    int i=0;
+    
+    Assert(nreader >= 1);
+
+    create_mksort_context(
+            &ctxt->mkctxt,
+            motion->numSortCols, 
+            tupsort_motion_prep,
+            ExecGetResultType(outerPlanState(node)), false, 0, /* dummy does not matter */
+            motion->sortOperators,
+            motion->sortColIdx,
+            NULL
+            );
+
+    ctxt->readers = palloc0(sizeof(MKHeapReader) * nreader);
+
+    for(i=0; i<nreader; ++i)
+    {
+        MotionMKHeapReaderContext *hrctxt = palloc(sizeof(MotionMKHeapContext));
+        
+        hrctxt->node = node;
+        hrctxt->srcRoute = i;
+        ctxt->readers[i].reader = motion_mkhp_read;
+        ctxt->readers[i].mkhr_ctxt = hrctxt;
+    }
+
+    node->tupleheap = (void *) ctxt;
+}
+    
+static void destroy_motion_mk_heap(MotionState *node)
+{
+    /* Don't need to do anything.  Memory are allocated from
+     * query execution context.  By calling this, we are at
+     * the end of the life of a query. 
+     */
+}
+
+static TupleTableSlot *
+execMotionSortedReceiver_mk(MotionState * node)
+{
+    TupleTableSlot *slot = NULL;
+    MKEntry e;
+
+	Motion *motion = (Motion *) node->ps.plan;
+    MotionMKHeapContext *ctxt = (MotionMKHeapContext *) node->tupleheap;
+
+    Assert(motion->motionType == MOTIONTYPE_FIXED &&
+            motion->numOutputSegs <= 1 &&
+            motion->sendSorted &&
+            ctxt
+          );
+            
+    if (node->stopRequested)
+    {
+		SendStopMessage(node->ps.state->motionlayer_context,
+						node->ps.state->interconnect_context,
+						motion->motionID);
+		return NULL;
+	}
+
+    if (!node->tupleheapReady)
+    {
+        Assert(ctxt->readers); 
+        Assert(!ctxt->heap);
+        ctxt->heap = mkheap_from_reader(ctxt->readers, motion->numInputSegs, &ctxt->mkctxt);
+        node->tupleheapReady = true;
+    }
+
+    mke_set_empty(&e);
+    mkheap_puget(ctxt->heap, &e);
+    if (mke_is_empty(&e))
+        return NULL;
+
+    slot = outerPlanState(node)->ps_ResultTupleSlot;
+    slot = ExecStoreGenericTuple(e.ptr, slot, true);
+    return slot;
+}
+    
+/* Sorted receiver using CdbHeap */
 static TupleTableSlot *
 execMotionSortedReceiver(MotionState * node)
 {
 	TupleTableSlot *slot;
-    CdbHeap        *hp = node->tupleheap;
+    CdbHeap        *hp = (CdbHeap *) node->tupleheap;
 	HeapTuple	tuple,
 				inputTuple;
 	Motion	   *motion = (Motion *) node->ps.plan;
@@ -578,7 +738,7 @@ void
 execMotionSortedReceiverFirstTime(MotionState * node)
 {
 	HeapTuple	inputTuple;
-    CdbHeap    *hp = node->tupleheap;
+    CdbHeap    *hp = (CdbHeap *) node->tupleheap;
 	Motion	   *motion = (Motion *) node->ps.plan;
 	int			mySegIdx;
 	int			i;
@@ -858,20 +1018,25 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	/* Merge Receive: Set up the key comparator and priority queue. */
     if (node->sendSorted && motionstate->mstype == MOTIONSTATE_RECV) 
 	{
-        CdbMergeComparatorContext  *mcContext;
+        if (gp_enable_motion_mk_sort)
+            create_motion_mk_heap(motionstate);
+        else
+        {
+            CdbMergeComparatorContext  *mcContext;
 
-        /* Allocate context object for the key comparator. */
-        mcContext = CdbMergeComparator_CreateContext(tupDesc,
-                                                     node->numSortCols,
-                                                     node->sortColIdx,
-                                                     node->sortOperators);
+            /* Allocate context object for the key comparator. */
+            mcContext = CdbMergeComparator_CreateContext(tupDesc,
+                    node->numSortCols,
+                    node->sortColIdx,
+                    node->sortOperators);
 
-        /* Create the priority queue structure. */
-        motionstate->tupleheap = CdbHeap_Create(CdbMergeComparator,
-                                                mcContext,
-                                                node->numInputSegs,
-                                                sizeof(CdbTupleHeapInfo),
-                                                NULL);
+            /* Create the priority queue structure. */
+            motionstate->tupleheap = CdbHeap_Create(CdbMergeComparator,
+                    mcContext,
+                    node->numInputSegs,
+                    sizeof(CdbTupleHeapInfo),
+                    NULL);
+        }
 	}
 
 	/*
@@ -1007,8 +1172,14 @@ ExecEndMotion(MotionState * node)
 	/* Merge Receive: Free the priority queue and associated structures. */
     if (node->tupleheap != NULL)
 	{
-        CdbMergeComparator_DestroyContext(node->tupleheap->comparatorContext);
-        CdbHeap_Destroy(node->tupleheap);
+        if (gp_enable_motion_mk_sort)
+            destroy_motion_mk_heap(node);
+        else
+        {
+            CdbHeap *hp = (CdbHeap *) node->tupleheap;
+            CdbMergeComparator_DestroyContext(hp->comparatorContext);
+            CdbHeap_Destroy(hp);
+        }
         node->tupleheap = NULL;
 	}
 

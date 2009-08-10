@@ -1423,14 +1423,26 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_enable_mk_sort", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable duplicate removal to be performed while sorting."),
-			gettext_noop("Reduces data handling when plan calls for removing duplicates from sorted rows."),
+			gettext_noop("Enable multi-key sort."),
+			gettext_noop("A faster sort."),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 
 		},
 		&gp_enable_mk_sort,
 		true, NULL, NULL
 	},
+
+	{
+		{"gp_enable_motion_mk_sort", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable multi-key sort in sorted motion recv."), 
+			gettext_noop("A faster sort for recv motion"),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+
+		},
+		&gp_enable_motion_mk_sort,
+		true, NULL, NULL
+	},
+
 
 #ifdef USE_ASSERT_CHECKING
 	{
