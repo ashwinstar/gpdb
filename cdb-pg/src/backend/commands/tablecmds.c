@@ -16025,14 +16025,14 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 		atc = (AlterTableCmd *)pc2->arg1;
 	}
 
-	/* let split and exchange through */
+	/* let split, exchange through */
 	if (!(atc->subtype == AT_PartExchange ||
 		  atc->subtype == AT_PartSplit ||
 		  atc->subtype == AT_SetDistributedBy) &&
 		Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	switch(atc->subtype)
+	switch (atc->subtype)
 	{
 		case AT_PartAdd:				/* Add */
 		case AT_PartCoalesce:			/* Coalesce */
@@ -16147,6 +16147,7 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE && atc->subtype == AT_SetDistributedBy)
 	{
+		pid = (AlterPartitionId *)pc->partid;
 		Assert(IsA(pid->partiddef, List));
 		prule = (PgPartRule *)linitial((List *)pid->partiddef);
 		/* get the child table relid */
