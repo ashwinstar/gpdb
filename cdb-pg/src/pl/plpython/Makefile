@@ -64,7 +64,8 @@ endif
 SHLIB_LINK = $(BE_DLLLIBS) $(python_libspec) $(python_additional_libs)
 
 REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=plpythonu
-REGRESS = plpython_schema plpython_populate plpython_function plpython_test plpython_error plpython_drop
+REGRESS = plpython_schema plpython_populate plpython_function plpython_test \
+	plpython_returns plpython_error plpython_drop
 # where to find psql for running the tests
 PSQLDIR = $(bindir)
 

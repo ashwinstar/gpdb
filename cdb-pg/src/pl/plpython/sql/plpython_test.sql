@@ -51,12 +51,13 @@ INSERT INTO users (fname, lname, username) VALUES ('charles', 'darwin', 'beagle'
 
 SELECT * FROM users;
 
-
-SELECT join_sequences(sequences) FROM sequences;
-SELECT join_sequences(sequences) FROM sequences
-	WHERE join_sequences(sequences) ~* '^A';
-SELECT join_sequences(sequences) FROM sequences
-	WHERE join_sequences(sequences) ~* '^B';
+-- Greenplum doesn't support functions that execute SQL from segments
+--
+--  SELECT join_sequences(sequences) FROM sequences;
+--  SELECT join_sequences(sequences) FROM sequences
+--  	WHERE join_sequences(sequences) ~* '^A';
+--  SELECT join_sequences(sequences) FROM sequences
+--  	WHERE join_sequences(sequences) ~* '^B';
 
 -- error in trigger
 --
@@ -74,7 +75,8 @@ SELECT test_void_func1(), test_void_func1() IS NULL AS "is null";
 SELECT test_void_func2(); -- should fail
 SELECT test_return_none(), test_return_none() IS NULL AS "is null";
 
--- Test for functions with named parameters
+-- Test for functions with named and nameless parameters
+SELECT test_param_names0(2,7);
 SELECT test_param_names1(1,'text');
 SELECT test_param_names2(users) from users;
 SELECT test_param_names3(1);
@@ -143,3 +145,33 @@ SELECT * FROM test_type_record_as('obj', 'one', null, false);
 SELECT * FROM test_type_record_as('obj', null, 2, false);
 SELECT * FROM test_type_record_as('obj', 'three', 3, false);
 SELECT * FROM test_type_record_as('obj', null, null, true);
+
+SELECT * FROM test_in_out_params('test_in');
+-- this doesn't work yet :-(
+SELECT * FROM test_in_out_params_multi('test_in');
+SELECT * FROM test_inout_params('test_in');
+
+SELECT * FROM test_type_conversion_bool(true);
+SELECT * FROM test_type_conversion_bool(false);
+SELECT * FROM test_type_conversion_bool(null);
+SELECT * FROM test_type_conversion_char('a');
+SELECT * FROM test_type_conversion_char(null);
+SELECT * FROM test_type_conversion_int2(100::int2);
+SELECT * FROM test_type_conversion_int2(null);
+SELECT * FROM test_type_conversion_int4(100);
+SELECT * FROM test_type_conversion_int4(null);
+SELECT * FROM test_type_conversion_int8(100);
+SELECT * FROM test_type_conversion_int8(null);
+SELECT * FROM test_type_conversion_float4(100);
+SELECT * FROM test_type_conversion_float4(null);
+SELECT * FROM test_type_conversion_float8(100);
+SELECT * FROM test_type_conversion_float8(null);
+SELECT * FROM test_type_conversion_numeric(100);
+SELECT * FROM test_type_conversion_numeric(null);
+SELECT * FROM test_type_conversion_text('hello world');
+SELECT * FROM test_type_conversion_text(null);
+SELECT * FROM test_type_conversion_bytea('hello world');
+SELECT * FROM test_type_conversion_bytea(null);
+SELECT test_type_unmarshal(x) FROM test_type_marshal() x;
+
+
