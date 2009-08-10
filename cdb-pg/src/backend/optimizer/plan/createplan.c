@@ -4098,7 +4098,7 @@ Plan *add_agg_cost(PlannerInfo *root, Plan *plan,
 
 	if (aggstrategy == AGG_HASHED)
 	{
-		if (!calcHashAggTableSizes(1024.0 * (double)work_mem,
+		if (!calcHashAggTableSizes(global_work_mem(),
 								   numGroups,
 								   numAggs,
 								   /* The following estimate is very rough but good enough for planning. */

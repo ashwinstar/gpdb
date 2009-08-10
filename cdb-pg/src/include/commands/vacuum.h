@@ -230,6 +230,6 @@ extern void gen_oids_for_bitmaps(VacuumStmt *vacstmt, Relation onerel);
 extern List *get_oids_for_bitmap(List *all_extra_oids, Relation Irel, int occurrence);
 
 /* in commands/analyze.c */
-extern void analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_context);
-
+extern void analyzeStatement(VacuumStmt *vacstmt, List *relids);
+extern void analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *relPages);
 #endif   /* VACUUM_H */

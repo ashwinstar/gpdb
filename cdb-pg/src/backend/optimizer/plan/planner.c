@@ -2200,7 +2200,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 		/* plus the per-hash-entry overhead */
 		hashentrysize += hash_agg_entry_size(agg_counts->numAggs);
 
-		hash_ok = calcHashAggTableSizes(1024.0 * (double)work_mem,
+		hash_ok = calcHashAggTableSizes(global_work_mem(),
 								   dNumGroups,
 								   agg_counts->numAggs,
 								   /* The following estimate is very rough but good enough for planning. */

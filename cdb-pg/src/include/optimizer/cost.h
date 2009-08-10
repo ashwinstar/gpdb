@@ -137,5 +137,5 @@ extern Selectivity clause_selectivity(PlannerInfo *root,
 				   int varRelid,
 				   JoinType jointype,
 				   bool use_damping);
-
+extern double global_work_mem(void);
 #endif   /* COST_H */

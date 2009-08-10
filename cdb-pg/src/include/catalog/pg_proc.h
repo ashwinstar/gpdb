@@ -4853,6 +4853,10 @@ DESCR("convert an object name to oid.");
 DATA(insert OID = 9999 (  gp_fault_inject		   PGNSP PGUID 12 f f t f v 2 20 f "23 20" _null_ _null_ _null_ gp_fault_inject - _null_ ));
 DESCR("Greenplum fault testing only");
 
+/* Analyze related */
+DATA(insert OID = 5032 ( gp_statistics_estimate_reltuples_relpages_oid		PGNSP PGUID 12 f f t f v 1 1021 f "26" _null_ _null_ _null_ gp_statistics_estimate_reltuples_relpages_oid - _null_ ));
+DESCR("Return reltuples/relpages information for relation.");
+
 
 /*
  * Symbolic values for provolatile column: these indicate whether the result

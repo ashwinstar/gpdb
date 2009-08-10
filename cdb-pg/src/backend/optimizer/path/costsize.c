@@ -68,7 +68,7 @@
 
 #include <math.h>
 
-#include "executor/nodeHash.h"
+#include "executor/hashjoin.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
@@ -108,7 +108,6 @@ static Selectivity approx_selectivity(PlannerInfo *root, List *quals,
 static Selectivity join_in_selectivity(JoinPath *path, PlannerInfo *root);
 static double relation_byte_size(double tuples, int width);
 static double page_size(double tuples, int width);
-
 static Selectivity adjust_selectivity_for_nulltest(Selectivity selec,
 												Selectivity pselec,
 												List *pushed_quals,
@@ -116,6 +115,9 @@ static Selectivity adjust_selectivity_for_nulltest(Selectivity selec,
 												RelOptInfo *left,
 												RelOptInfo *right);
 
+static void hash_table_size(double ntuples, int tupwidth, double memory_bytes,
+						int *numbuckets,
+						int *numbatches);
 
 /* CDB: The clamp_row_est() function definition has been moved to cost.h */
 
@@ -1021,7 +1023,7 @@ cost_sort(Path *path, PlannerInfo *root,
 	Cost		startup_cost = input_cost;
 	Cost		run_cost = 0;
 	double		nbytes = relation_byte_size(tuples, width);
-	long		work_mem_bytes = work_mem * 1024L;
+	long		work_mem_bytes = (long) global_work_mem();
 
 	/*
 	 * We want to be sure the cost of a sort is never estimated as zero, even
@@ -1083,10 +1085,9 @@ cost_material(Path *path,
 	Cost		startup_cost = input_cost;
 	Cost		run_cost = 0;
 	double		nbytes = relation_byte_size(tuples, width);
-	long		work_mem_bytes = work_mem * 1024L;
 
 	/* disk costs */
-	if (nbytes > work_mem_bytes)
+	if (nbytes > global_work_mem())
 	{
 		double		npages = ceil(nbytes / BLCKSZ);
 
@@ -1196,7 +1197,7 @@ cost_agg(Path *path, PlannerInfo *root,
 			{
 				double spilled_bytes_for_batch =
 					(spilled_groups * hashentry_width) / hash_batches;
-				double partitions = spilled_bytes_for_batch / (work_mem * 1024L);
+				double partitions = spilled_bytes_for_batch / (global_work_mem());
 				double tree_depth = 1;
 				if (partitions != 0)
 					tree_depth += ceil(log(partitions) / log(gp_hashagg_default_nbatches));
@@ -1305,13 +1306,12 @@ cost_shareinputscan(Path *path, Cost sharecost, double tuples, int width)
 {
 	double nbytes = relation_byte_size(tuples, width);
 	double npages = ceil(nbytes/BLCKSZ);
-	long work_mem_bytes = work_mem * 1024L;
 
 	path->startup_cost = sharecost;
 	path->total_cost = sharecost;
 	
 	/* I/O cost */
-	if (nbytes > work_mem_bytes)
+	if (nbytes > global_work_mem())
 	{
 		path->total_cost += seq_page_cost * npages;
 	}
@@ -1684,7 +1684,7 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 	Selectivity innerbucketsize;
 	Selectivity joininfactor;
 	ListCell   *hcl;
-
+	
 	/*
 	 * Compute cost and selectivity of the hashquals and qpquals (other
 	 * restriction clauses) separately.  We use approx_selectivity here for
@@ -1721,10 +1721,11 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 	startup_cost += (cpu_operator_cost * num_hashclauses + cpu_tuple_cost)
 		* inner_path_rows;
 	run_cost += cpu_operator_cost * num_hashclauses * outer_path_rows;
-
+	
 	/* Get hash table size that executor would use for inner relation */
-	ExecChooseHashTableSize(inner_path_rows,
+	hash_table_size(inner_path_rows,
 							inner_path->parent->width,
+							global_work_mem(),
 							&numbuckets,
 							&numbatches);
 	virtualbuckets = (double) numbuckets *(double) numbatches;
@@ -2595,6 +2596,18 @@ page_size(double tuples, int width)
 	return ceil(relation_byte_size(tuples, width) / BLCKSZ);
 }
 
+/**
+ * Determines the total amount of memory available. This method is to be used
+ * during planning only. When planning in dispatch mode, it calculates total
+ * memory as sum work_mem on segments. In utility mode, it returns work_mem.
+ * Output:
+ * 	total memory in bytes.
+ */
+double global_work_mem(void)
+{
+	Assert(cdbpath_segments > 0);
+	return (double) work_mem * 1024L * cdbpath_segments;	
+}
 
 /* CDB -- The incremental cost functions below are for use outside the
  *        the usual optimizer (in the aggregation planner, etc.)  They
@@ -2630,7 +2643,7 @@ Cost incremental_hashjoin_cost(double rows, int inner_width, int outer_width, Li
 	run_cost += cpu_operator_cost * num_hashclauses * rows;
 
 	/* Get hash table size that executor would use for inner relation */
-	ExecChooseHashTableSize(rows, inner_width, &numbuckets, &numbatches);
+	hash_table_size(rows, inner_width, global_work_mem(), &numbuckets, &numbatches);
 	virtualbuckets = (double) numbuckets *(double) numbatches;
 
 	/*
@@ -2710,6 +2723,102 @@ Cost incremental_mergejoin_cost(double rows, List *mergeclauses)
 	run_cost += (cpu_tuple_cost + per_tuple_cost) * rows;
 	
 	return startup_cost + run_cost;
+}
+
+/**
+ * This method determines the number of batches and buckets
+ * required to build a hash table over a set of tuples. 
+ * NOTE: this is a clone of ExecChooseHashTableSize() in nodeHash.c. Please
+ * keep the two functions in sync.
+ * 
+ * Input:
+ * 	ntuples - number of tuples
+ * 	tupwidth - width of tuple
+ * 	memory_bytes	- total memory available, in bytes
+ * Output:
+ * 	numbuckets - number of buckets in hash table
+ * 	numbatches - number of batches needed
+ */
+static void hash_table_size(double ntuples, int tupwidth, double memory_bytes,
+						int *numbuckets,
+						int *numbatches)
+{
+	int			tupsize;
+	double		inner_rel_bytes;
+	int			nbatch;
+	int			nbuckets;
+
+	/* Force a plausible relation size if no info */
+	if (ntuples <= 0.0)
+		ntuples = 1000.0;
+
+	/*
+	 * Estimate tupsize based on footprint of tuple in hashtable... note this
+	 * does not allow for any palloc overhead.	The manipulations of spaceUsed
+	 * don't count palloc overhead either.
+	 */
+	tupsize = HJTUPLE_OVERHEAD + MAXALIGN(sizeof(MemTupleData)) +
+			MAXALIGN(tupwidth);
+	inner_rel_bytes = ntuples * tupsize;
+
+	/*
+	 * Set nbuckets to achieve an average bucket load of gp_hashjoin_tuples_per_bucket when
+	 * memory is filled.  Set nbatch to the smallest power of 2 that appears
+	 * sufficient.
+	 */
+	if (inner_rel_bytes > memory_bytes)
+	{
+		/* We'll need multiple batches */
+		long		lbuckets;
+		double		dbatch;
+		int			minbatch;
+
+		lbuckets = (memory_bytes / tupsize) / gp_hashjoin_tuples_per_bucket;
+		lbuckets = Min(lbuckets, INT_MAX / 32);
+		nbuckets = (int) lbuckets;
+
+		dbatch = ceil(inner_rel_bytes / memory_bytes);
+		dbatch = Min(dbatch, INT_MAX / 32);
+		minbatch = (int) dbatch;
+		nbatch = 2;
+		while (nbatch < minbatch)
+			nbatch <<= 1;
+	}
+	else
+	{
+		/* We expect the hashtable to fit in memory, we want to use
+		 * more buckets if we have memory to spare */
+		double		dbuckets_lower;
+		double		dbuckets_upper;
+		double		dbuckets;
+
+		/* divide our tuple row-count estimate by our the number of
+		 * tuples we'd like in a bucket: this produces a small bucket
+		 * count independent of our work_mem setting */
+		dbuckets_lower = (double)ntuples / (double)gp_hashjoin_tuples_per_bucket;
+
+		/* if we have work_mem to spare, we'd like to use it -- so
+		 * divide up our memory evenly (see the spill case above) */
+		dbuckets_upper = (double)memory_bytes / ((double)tupsize * gp_hashjoin_tuples_per_bucket);
+
+		/* we'll use our "lower" work_mem independent guess as a lower
+		 * limit; but if we've got memory to spare we'll take the mean
+		 * of the lower-limit and the upper-limit */
+		if (dbuckets_upper > dbuckets_lower)
+			dbuckets = (dbuckets_lower + dbuckets_upper)/2.0;
+		else
+			dbuckets = dbuckets_lower;
+
+		dbuckets = ceil(dbuckets);
+		dbuckets = Min(dbuckets, INT_MAX);
+
+		nbuckets = (int)dbuckets;
+
+		nbatch = 1;
+	}
+
+	*numbuckets = nbuckets;
+	*numbatches = nbatch;
 }
 
 

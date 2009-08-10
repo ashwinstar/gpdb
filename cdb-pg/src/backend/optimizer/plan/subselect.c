@@ -97,6 +97,7 @@ static Bitmapset *finalize_plan(Plan *plan, List *rtable,
 			  Bitmapset *valid_params);
 static bool finalize_primnode(Node *node, finalize_primnode_context *context);
 
+extern	double global_work_mem(void);
 
 /*
  * Generate a Param node to replace the given Var,
@@ -621,7 +622,7 @@ subplan_is_hashable(SubLink *slink, SubPlan *node)
 	 */
 	subquery_size = node->plan->plan_rows *
 		(MAXALIGN(node->plan->plan_width) + MAXALIGN(sizeof(HeapTupleHeaderData)));
-	if (subquery_size > work_mem * 1024L)
+	if (subquery_size > global_work_mem())
 		return false;
 
 	/*

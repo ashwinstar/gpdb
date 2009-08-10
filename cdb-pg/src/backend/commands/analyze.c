@@ -6,6 +6,12 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
+ * The new ANALYZE implementation uses routine query processing capabilities of GPDB
+ * to compute statistics on relations.  It differs from old ANALYZE functionally in that
+ * it computes global statistics which improves cardinalities of join/group-by operations.
+ * It uses SPI under the covers to issue queries. The main point of entry is the
+ * function analyzeStatement. This function does the heavy lifting of setting up transactions
+ * and getting locks.
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/commands/analyze.c,v 1.101 2006/11/05 22:42:08 tgl Exp $
@@ -24,6 +30,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/catalog.h"
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbaocsam.h"
 #include "commands/vacuum.h"
@@ -43,1770 +50,756 @@
 #include "utils/tuplesort.h"
 #include "utils/pg_locale.h"
 #include "utils/builtins.h"
-
+#include "utils/inval.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbanalyze.h"
 #include "cdb/cdbrelsize.h"
+#include "utils/fmgroids.h"
+#include "storage/backendid.h"
+#include "executor/spi.h"
+#include "postmaster/autovacuum.h"
+#include "cdb/cdbtm.h"
+#include "catalog/pg_namespace.h"
+#include "utils/debugbreak.h"
+#include "nodes/makefuncs.h"
+/**
+ * Statistics related parameters.
+ */
 
-/* Data structure for Algorithm S from Knuth 3.4.2 */
+int				default_statistics_target = 25;
+double			analyze_relative_error = 0.25;
+bool			gp_statistics_pullup_from_child_partition = FALSE;
+bool			gp_statistics_use_fkeys = FALSE;
+int				gp_statistics_blocks_target = 25;
+double			gp_statistics_ndistinct_scaling_ratio_threshold = 0.10;
+double			gp_statistics_sampling_threshold = 10000;
+
+/**
+ * This struct contains statistics produced during ANALYZE
+ * on a column. 
+ */
+typedef struct AttributeStatistics
+{
+	float4 		ndistinct; /* number of distinct values. If less than 0, represents fraction of values that are distinct */
+	float4 		nullFraction; /* fraction of values that are null */
+	float4 		avgWidth;	/* average width of values */
+	ArrayType  	*mcv;		/* most common values */
+	ArrayType	*freq;		/* frequencies of most common values */
+	ArrayType	*hist;		/* equi-depth histogram bounds */
+} AttributeStatistics;
+
+/**
+ * Logging level.
+ */
+static int 			elevel = -1;
+
+/* Top level functions */
+static void analyzeRelation(Relation relation, List *lAttributeNames);
+static void analyzeComputeAttributeStatistics(Oid relationOid, 
+		const char *attributeName,
+		Oid relTuples, 
+		Oid sampleTableOid, 
+		float4 sampleTableRelTuples, 
+		AttributeStatistics *stats);
+static List* analyzableRelations(void);
+static bool analyzePermitted(Oid relationOid);
+static List *analyzableAttributes(Relation candidateRelation);
+static List	*buildExplicitAttributeNames(Oid relationOid, VacuumStmt *stmt);
+
+/* Reltuples/relpages estimation functions */
+static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 *reltuples, float4 *relpages);
+static void gp_statistics_estimate_reltuples_relpages_ao_rows(Relation rel, float4 *reltuples, float4 *relpages);
+static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4 *reltuples, float4 *relpages);
+
+/* Attribute-type related functions */
+static bool hasOrderDefined(Oid relationOid, const char *attributeName);
+static bool isBoolType(Oid relationOid, const char *attributeName);
+static bool isNotNull(Oid relationOid, const char *attributeName);
+static bool	isFixedWidth(Oid relationOid, const char *attributeName, float4 *width);
+static bool hasMaxDefined(Oid relationOid, const char *attributeName);
+
+/* Sampling related */
+static float4 estimateSampleSize(Oid relationOid, const char *attributeName, float4 relTuples);
+static char* temporarySampleTableName(Oid relationOid);
+static Oid buildSampleTable(Oid relationOid, 
+		List *lAttributeNames, 
+		float4	relTuples,
+		float4 	requestedSampleSize, 
+		float4 *sampleTableRelTuples);
+static void dropSampleTable(Oid sampleTableOid);
+
+/* Attribute statistics computation */
+static int4 numberOfMCVEntries(Oid relationOid, const char *attributeName);
+static int4 numberOfHistogramEntries(Oid relationOid, const char *attributeName);
+static float4 analyzeComputeNDistinct(Oid sampleTableOid, 
+		float4 sampleTableRelTuples, 
+		const char *attributeName);
+static float4 analyzeComputeNRepeating(Oid relationOid, 
+		const char *attributeName);
+static float4 analyzeNullCount(Oid relationOid, const char *attributeName);
+static float4 analyzeComputeAverageWidth(Oid relationOid, 
+		const char *attributeName,
+		float4 relTuples);
+static void analyzeComputeMCV(Oid relationOid, 
+		const char *attributeName,
+		float4 relTuples,
+		unsigned int nEntries,
+		ArrayType **mcv,
+		ArrayType **freq);
+static void analyzeComputeHistogram(Oid relationOid,  
+		const char *attributeName,
+		float4 relTuples,
+		unsigned int nEntries,
+		ArrayType *mcv,
+		ArrayType **hist);
+#if 0
+/* TODO: enable this code once NOT-IN parsing bugs are resolved */
+static char *buildNotInString(ArrayType *mcv);
+#endif
+
+/* Catalog related */
+static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attributeName, 
+		AttributeStatistics *stats);
+static void updateReltuplesRelpagesInCatalog(Oid relationOid, float4 relTuples, float4 relPages);
+
+/* Convenience */
+static ArrayType * SPIResultToArray(int resultAttributeNumber, MemoryContext allocationContext);
+
+/* spi execution helpers */
+typedef void (*spiCallback)(void *clientDataOut);
+static void spiExecuteWithCallback(const char *src, bool read_only, long tcount,
+           spiCallback callbackFn, void *clientData);
+
 typedef struct
 {
-	BlockNumber N;				/* number of blocks, known in advance */
-	int			n;				/* desired sample size */
-	BlockNumber t;				/* current block number */
-	int			m;				/* blocks selected so far */
-} BlockSamplerData;
-typedef BlockSamplerData *BlockSampler;
+    int numColumns;
+    MemoryContext memoryContext;
+    ArrayType ** output;
+} EachResultColumnAsArraySpec;
 
-/* Per-index data for ANALYZE */
-typedef struct AnlIndexData
-{
-	IndexInfo  *indexInfo;		/* BuildIndexInfo result */
-	double		tupleFract;		/* fraction of rows for partial index */
-	VacAttrStats **vacattrstats;	/* index attrs to analyze */
-	int			attr_cnt;
-} AnlIndexData;
+static void spiCallback_getEachResultColumnAsArray(void *clientData);
+static void spiCallback_getProcessedAsFloat4(void *clientData);
+static void spiCallback_getSingleResultRowArrayAsTwoFloat4(void *clientData);
+static void spiCallback_getSingleResultRowColumnAsFloat4(void *clientData);
 
-
-/* Default statistics target (GUC parameter) */
-int			default_statistics_target = 25;
-
-/* Default target efraction */
-double	analyze_relative_error = 0.25;
-
-static int	elevel = -1;
-
-static MemoryContext anl_context = NULL;
-
-
-static void BlockSampler_Init(BlockSampler bs, BlockNumber nblocks,
-				  int samplesize);
-static bool BlockSampler_HasMore(BlockSampler bs);
-static BlockNumber BlockSampler_Next(BlockSampler bs);
-static void compute_index_stats(Relation onerel, double totalrows,
-					AnlIndexData *indexdata, int nindexes,
-					HeapTuple *rows, int numrows,
-					MemoryContext col_context);
-static VacAttrStats *examine_attribute(Relation onerel, int attnum);
-static int acquire_sample_rows(Relation onerel, HeapTuple *rows,
-					int targrows, double *totalrows, double *totaldeadrows);
-static int acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
-								  double *totalrows, double *totaldeadrows,
-								  double *totalbytes);
-static int acquire_sample_aocs_rows(Relation onerel, HeapTuple *rows, int targrows,
-								  double *totalrows, double *totaldeadrows,
-								  double *totalbytes);
-static double random_fract(void);
-static double init_selection_state(int n);
-static double get_next_S(double t, int n, double *stateptr);
-static int	compare_rows(const void *a, const void *b);
-static void update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
-							double reltuples, List *updated_stats);
-static Datum std_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
-static Datum ind_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
-
-static bool std_typanalyze(VacAttrStats *stats);
-
-
-/*
- *	analyze_rel() -- analyze one relation
+/**
+ * Extern stuff.
  */
-void
-analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_context)
-{
-	int			attr_cnt,
-				tcnt,
-				i,
-				ind;
-	Relation   *Irel;
-	int			nindexes;
-	bool		hasindex;
-	bool		analyzableindex;
-	VacAttrStats **vacattrstats;
-	AnlIndexData *indexdata;
-	int			targrows,
-				numrows;
-	double		totalrows=0.0,
-				totaldeadrows=0.0,
-				totalbytes = 0.0;
-	HeapTuple  *rows;
-	Oid			save_userid;
-	bool		save_secdefcxt;
 
-	if (vacstmt->verbose)
+extern List 		*find_all_inheritors(Oid parentrel);
+extern BlockNumber RelationGuessNumberOfBlocks(double totalbytes);
+extern Oid	LookupFuncName(List *funcname, int nargs, const Oid *argtypes, bool noError);
+
+/**
+ * This is the main entry point for analyze execution. Three possible ways of calling this method.
+ * 1. Full database ANALYZE. No relations are explicitly specified.
+ * 2. List of relations is specified (Usually by autovacuum).
+ * 3. One relation is specified (optionally, a list of columns).
+ * This method can only be called in DISPATCH or UTILITY roles.
+ * Input:
+ * 	vacstmt - Vacuum statement.
+ * 	relids  - Usually NULL except when called by autovacuum.
+ */
+void analyzeStatement(VacuumStmt *stmt, List *relids)
+{
+	List	   			  	*lRelOids = NIL;
+	MemoryContext			callerContext = NULL;
+	MemoryContext 			analyzeStatementContext = NULL;
+	MemoryContext 			analyzeRelationContext = NULL;
+	bool					bUseOwnXacts = false;
+	List 					*lExplicitAttNames = NIL;
+	ListCell				*le1 = NULL;
+
+	/**
+	 * Ensure that an ANALYZE is requested.
+	 */
+	Assert(stmt->analyze);	
+	
+	/**
+	 * Ensure that vacuum was not requested.
+	 */
+	Assert(!stmt->vacuum);
+	
+	/**
+	 * Both relids and stmt->relation cannot be non-null.
+	 */
+	Assert(!(relids != NIL && stmt->relation != NULL));
+	
+	/**
+	 * Works only in DISPATCH and UTILITY mode.
+	 */
+	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY);
+	
+	/**
+	 * Only works in normal processing mode - should not be called in bootstrapping or
+	 * init mode.
+	 */
+	Assert(IsNormalProcessingMode());
+	
+	/* If running in diagnostic mode, simply return */
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
+	{
+		return;
+	}
+	
+	
+	if (stmt->verbose)
 		elevel = INFO;
 	else
 		elevel = DEBUG2;
 
-	if (Gp_role == GP_ROLE_DISPATCH)
-		clear_relsize_cache();
-
-	if (Gp_role == GP_ROLE_DISPATCH)
-		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
-
-	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary)
-		elevel = DEBUG2; /* the mirrors usually just repeat what the primaries say */
-
-	/*
-	 * Use the current context for storing analysis info.  vacuum.c ensures
-	 * that this context will be cleared when I return, thus releasing the
-	 * memory allocated here.
+	callerContext = CurrentMemoryContext;
+	
+	/* 
+	 * This is the statement-level context. This will be cleaned up when we exit this
+	 * function.
 	 */
-	anl_context = CurrentMemoryContext;
-
-	/*
-	 * Check for user-requested abort.	Note we want this to be inside a
-	 * transaction, so xact.c doesn't issue useless WARNING.
-	 */
-	CHECK_FOR_INTERRUPTS();
-
-	/*
-	 * Check permissions --- this should match vacuum's check!
-	 */
-	if (!(pg_class_ownercheck(RelationGetRelid(onerel), GetUserId()) ||
-		  (pg_database_ownercheck(MyDatabaseId, GetUserId()) && !onerel->rd_rel->relisshared)))
-	{
-		/* No need for a WARNING if we already complained during VACUUM */
-		if (!vacstmt->vacuum)
-			if (Gp_role != GP_ROLE_EXECUTE)
-				ereport(WARNING,
-						(errmsg("skipping \"%s\" --- only table or database owner can analyze it",
-								RelationGetRelationName(onerel))));
-		relation_close(onerel, ShareUpdateExclusiveLock);
-		return;
-	}
-
-	/*
-	 * Check that it's a plain table; we used to do this in get_rel_oids() but
-	 * seems safer to check after we've locked the relation.
-	 */
-	if (onerel->rd_rel->relkind != RELKIND_RELATION || RelationIsExternal(onerel))
-	{
-		/* No need for a WARNING if we already complained during VACUUM */
-		if (!vacstmt->vacuum)
-			if (Gp_role != GP_ROLE_EXECUTE)
-			ereport(WARNING,
-					(errmsg("skipping \"%s\" --- cannot analyze indexes, views, "
-							"external tables or special system tables",
-							RelationGetRelationName(onerel))));
-		relation_close(onerel, ShareUpdateExclusiveLock);
-		return;
-	}
-
-	/*
-	 * Silently ignore tables that are temp tables of other backends ---
-	 * trying to analyze these is rather pointless, since their contents are
-	 * probably not up-to-date on disk.  (We don't throw a warning here; it
-	 * would just lead to chatter during a database-wide ANALYZE.)
-	 */
-	if (isOtherTempNamespace(RelationGetNamespace(onerel)))
-	{
-		relation_close(onerel, ShareUpdateExclusiveLock);
-		return;
-	}
-
-	/*
-	 * We can ANALYZE any table except pg_statistic. See update_attstats
-	 */
-	if (RelationGetRelid(onerel) == StatisticRelationId)
-	{
-		relation_close(onerel, ShareUpdateExclusiveLock);
-		return;
-	}
-
-	ereport(elevel,
-			(errmsg("analyzing \"%s.%s\"",
-					get_namespace_name(RelationGetNamespace(onerel)),
-					RelationGetRelationName(onerel))));
-
-	/*
-	 * Switch to the table owner's userid, so that any index functions are
-	 * run as that user.
-	 */
-	GetUserIdAndContext(&save_userid, &save_secdefcxt);
-	SetUserIdAndContext(onerel->rd_rel->relowner, true);
-
-	/*
-	 * Determine which columns to analyze
-	 *
-	 * Note that system attributes are never analyzed.
-	 */
-	if (vacstmt->va_cols != NIL)
-	{
-		ListCell   *le;
-
-		vacattrstats = (VacAttrStats **) palloc(list_length(vacstmt->va_cols) *
-												sizeof(VacAttrStats *));
-		tcnt = 0;
-		foreach(le, vacstmt->va_cols)
-		{
-			char	   *col = strVal(lfirst(le));
-
-			i = attnameAttNum(onerel, col, false);
-			if (i == InvalidAttrNumber)
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_COLUMN),
-					errmsg("column \"%s\" of relation \"%s\" does not exist",
-						   col, RelationGetRelationName(onerel))));
-			vacattrstats[tcnt] = examine_attribute(onerel, i);
-			if (vacattrstats[tcnt] != NULL)
-				tcnt++;
-		}
-		attr_cnt = tcnt;
-	}
-	else
-	{
-		attr_cnt = onerel->rd_att->natts;
-		vacattrstats = (VacAttrStats **)
-			palloc(attr_cnt * sizeof(VacAttrStats *));
-		tcnt = 0;
-		for (i = 1; i <= attr_cnt; i++)
-		{
-			vacattrstats[tcnt] = examine_attribute(onerel, i);
-			if (vacattrstats[tcnt] != NULL)
-				tcnt++;
-		}
-		attr_cnt = tcnt;
-	}
-
-	stats_context->vac_stats = vacattrstats;
-
-	/*
-	 * Open all indexes of the relation, and see if there are any analyzable
-	 * columns in the indexes.	We do not analyze index columns if there was
-	 * an explicit column list in the ANALYZE command, however.
-	 */
-	vac_open_indexes(onerel, AccessShareLock, &nindexes, &Irel);
-	hasindex = (nindexes > 0);
-	indexdata = NULL;
-	analyzableindex = false;
-	if (hasindex)
-	{
-		indexdata = (AnlIndexData *) palloc0(nindexes * sizeof(AnlIndexData));
-		for (ind = 0; ind < nindexes; ind++)
-		{
-			AnlIndexData *thisdata = &indexdata[ind];
-			IndexInfo  *indexInfo;
-
-			thisdata->indexInfo = indexInfo = BuildIndexInfo(Irel[ind]);
-			thisdata->tupleFract = 1.0; /* fix later if partial */
-			if (indexInfo->ii_Expressions != NIL && vacstmt->va_cols == NIL)
-			{
-				ListCell   *indexpr_item = list_head(indexInfo->ii_Expressions);
-
-				thisdata->vacattrstats = (VacAttrStats **)
-					palloc(indexInfo->ii_NumIndexAttrs * sizeof(VacAttrStats *));
-				tcnt = 0;
-				for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
-				{
-					int			keycol = indexInfo->ii_KeyAttrNumbers[i];
-
-					if (keycol == 0)
-					{
-						/* Found an index expression */
-						Node	   *indexkey;
-
-						if (indexpr_item == NULL)		/* shouldn't happen */
-							elog(ERROR, "too few entries in indexprs list");
-						indexkey = (Node *) lfirst(indexpr_item);
-						indexpr_item = lnext(indexpr_item);
-
-						/*
-						 * Can't analyze if the opclass uses a storage type
-						 * different from the expression result type. We'd get
-						 * confused because the type shown in pg_attribute for
-						 * the index column doesn't match what we are getting
-						 * from the expression. Perhaps this can be fixed
-						 * someday, but for now, punt.
-						 */
-						if (exprType(indexkey) !=
-							Irel[ind]->rd_att->attrs[i]->atttypid)
-							continue;
-
-						thisdata->vacattrstats[tcnt] =
-							examine_attribute(Irel[ind], i + 1);
-						if (thisdata->vacattrstats[tcnt] != NULL)
-						{
-							tcnt++;
-							analyzableindex = true;
-						}
-					}
-				}
-				thisdata->attr_cnt = tcnt;
-			}
-		}
-	}
-
-	/*
-	 * Quit if no analyzable columns
-	 */
-	if (attr_cnt <= 0 && !analyzableindex)
-	{
-		/*
-		 * We report that the table is empty; this is just so that the
-		 * autovacuum code doesn't go nuts trying to get stats about a
-		 * zero-column table.
-		 */
-		if (!vacstmt->vacuum)
-			pgstat_report_analyze(RelationGetRelid(onerel),
-								  onerel->rd_rel->relisshared,
-								  0, 0);
-
-		goto cleanup;
-	}
-
-	/*
-	 * Determine how many rows we need to sample, using the worst case from
-	 * all analyzable columns.	We use a lower bound of 100 rows to avoid
-	 * possible overflow in Vitter's algorithm.
-	 */
-	targrows = 100;
-	for (i = 0; i < attr_cnt; i++)
-	{
-		if (targrows < vacattrstats[i]->minrows)
-			targrows = vacattrstats[i]->minrows;
-	}
-	for (ind = 0; ind < nindexes; ind++)
-	{
-		AnlIndexData *thisdata = &indexdata[ind];
-
-		for (i = 0; i < thisdata->attr_cnt; i++)
-		{
-			if (targrows < thisdata->vacattrstats[i]->minrows)
-				targrows = thisdata->vacattrstats[i]->minrows;
-		}
-	}
-
-	/*
-	 * Acquire the sample rows
-	 */
-	rows = (HeapTuple *) palloc(targrows * sizeof(HeapTuple));
-	if(!RelationIsAoRows(onerel) && !RelationIsAoCols(onerel))
-		numrows = acquire_sample_rows(onerel, rows, targrows, &totalrows, &totaldeadrows);
-	else
-	{
-		if(RelationIsAoCols(onerel))
-			numrows = acquire_sample_aocs_rows(onerel, rows, targrows,
-					&totalrows, &totaldeadrows, &totalbytes);
-		else
-			numrows = acquire_sample_ao_rows(onerel, rows, targrows,
-					&totalrows, &totaldeadrows, &totalbytes);
-	}
-
-
-	/*
-	 * Compute the statistics.	Temporary results during the calculations for
-	 * each column are stored in a child context.  The calc routines are
-	 * responsible to make sure that whatever they store into the VacAttrStats
-	 * structure is allocated in anl_context.
-	 */
-	if (numrows > 0 || (Gp_role == GP_ROLE_DISPATCH && RelationGetRelid(onerel) >= FirstNormalObjectId))
-	{
-		if (numrows > 0)
-		{
-			MemoryContext col_context,
-						old_context;
-
-			col_context = AllocSetContextCreate(anl_context,
-												"Analyze Column",
-												ALLOCSET_DEFAULT_MINSIZE,
-												ALLOCSET_DEFAULT_INITSIZE,
-												ALLOCSET_DEFAULT_MAXSIZE);
-			old_context = MemoryContextSwitchTo(col_context);
-
-			for (i = 0; i < attr_cnt; i++)
-			{
-				VacAttrStats *stats = vacattrstats[i];
-
-				stats->rows = rows;
-				stats->tupDesc = onerel->rd_att;
-				(*stats->compute_stats) (stats,
-										 std_fetch_func,
-										 numrows,
-										 totalrows);
-				MemoryContextResetAndDeleteChildren(col_context);
-			}
-
-			if (hasindex)
-				compute_index_stats(onerel, totalrows,
-									indexdata, nindexes,
-									rows, numrows,
-									col_context);
-
-			MemoryContextSwitchTo(old_context);
-			MemoryContextDelete(col_context);
-		}
-
-		/*
-		 * Emit the completed stats rows into pg_statistic, replacing any
-		 * previous statistics for the target columns.	(If there are stats in
-		 * pg_statistic for columns we didn't process, we leave them alone.)
-		 */
-		update_attstats(onerel, attr_cnt, vacattrstats,
-						totalrows, stats_context->updated_stats);
-
-		for (ind = 0; ind < nindexes; ind++)
-		{
-			AnlIndexData *thisdata = &indexdata[ind];
-
-			update_attstats(Irel[ind],
-							thisdata->attr_cnt, thisdata->vacattrstats,
-							ceil(thisdata->tupleFract * totalrows),
-							stats_context->updated_stats);
-		}
-	}
-
-	/*
-	 * If we are running a standalone ANALYZE, update pages/tuples stats in
-	 * pg_class.  We know the accurate page count from the smgr, but only an
-	 * approximate number of tuples; therefore, if we are part of VACUUM
-	 * ANALYZE do *not* overwrite the accurate count already inserted by
-	 * VACUUM.	The same consideration applies to indexes.
-	 */
-	if (!vacstmt->vacuum)
-	{
-		BlockNumber numblocks = ((RelationIsAoRows(onerel) || RelationIsAoCols(onerel)) ?
-								 RelationGuessNumberOfBlocks(totalbytes) :
-								 RelationGetNumberOfBlocks(onerel));
-
-		vac_update_relstats(onerel,
-							numblocks,
-							totalrows, hasindex,
-							InvalidTransactionId,
-							stats_context->updated_stats);
-
-		for (ind = 0; ind < nindexes; ind++)
-		{
-			AnlIndexData *thisdata = &indexdata[ind];
-			double		totalindexrows;
-
-			totalindexrows = ceil(thisdata->tupleFract * totalrows);
-			vac_update_relstats(Irel[ind],
-								RelationGetNumberOfBlocks(Irel[ind]),
-								totalindexrows, false,
-								InvalidTransactionId,
-								stats_context->updated_stats);
-		}
-
-		/* report results to the stats collector, too */
-		pgstat_report_analyze(RelationGetRelid(onerel),
-							  onerel->rd_rel->relisshared,
-							  totalrows, totaldeadrows);
-	}
-
-	/* We skip to here if there were no analyzable columns */
-cleanup:
-
-	/* Done with indexes */
-	vac_close_indexes(nindexes, Irel, NoLock);
-
-	/* Restore userid */
-	SetUserIdAndContext(save_userid, save_secdefcxt);
-}
-
-/*
- * Compute statistics about indexes of a relation
- */
-static void
-compute_index_stats(Relation onerel, double totalrows,
-					AnlIndexData *indexdata, int nindexes,
-					HeapTuple *rows, int numrows,
-					MemoryContext col_context)
-{
-	MemoryContext ind_context,
-				old_context;
-	Datum		values[INDEX_MAX_KEYS];
-	bool		isnull[INDEX_MAX_KEYS];
-	int			ind,
-				i;
-
-	ind_context = AllocSetContextCreate(anl_context,
-										"Analyze Index",
+	analyzeStatementContext = AllocSetContextCreate(PortalContext,
+										"Analyze",
 										ALLOCSET_DEFAULT_MINSIZE,
 										ALLOCSET_DEFAULT_INITSIZE,
 										ALLOCSET_DEFAULT_MAXSIZE);
-	old_context = MemoryContextSwitchTo(ind_context);
 
-	for (ind = 0; ind < nindexes; ind++)
+	MemoryContextSwitchTo(analyzeStatementContext);
+	
+	
+	/*
+	 * This is a per relation context.
+	 */
+	analyzeRelationContext = AllocSetContextCreate(analyzeStatementContext,
+										"AnalyzeRel",
+										ALLOCSET_DEFAULT_MINSIZE,
+										ALLOCSET_DEFAULT_INITSIZE,
+										ALLOCSET_DEFAULT_MAXSIZE);
+
+	/**
+	 * What relations need to be ANALYZED. 
+	 */
+	if (relids == NIL && stmt->relation == NULL)
 	{
-		AnlIndexData *thisdata = &indexdata[ind];
-		IndexInfo  *indexInfo = thisdata->indexInfo;
-		int			attr_cnt = thisdata->attr_cnt;
-		TupleTableSlot *slot;
-		EState	   *estate;
-		ExprContext *econtext;
-		List	   *predicate;
-		Datum	   *exprvals;
-		bool	   *exprnulls;
-		int			numindexrows,
-					tcnt,
-					rowno;
-		double		totalindexrows;
-
-		/* Ignore index if no columns to analyze and not partial */
-		if (attr_cnt == 0 && indexInfo->ii_Predicate == NIL)
-			continue;
-
-		/*
-		 * Need an EState for evaluation of index expressions and
-		 * partial-index predicates.  Create it in the per-index context to be
-		 * sure it gets cleaned up at the bottom of the loop.
+		/**
+		 * ANALYZE entire DB.
 		 */
-		estate = CreateExecutorState();
-		econtext = GetPerTupleExprContext(estate);
-		/* Need a slot to hold the current heap tuple, too */
-		slot = MakeSingleTupleTableSlot(RelationGetDescr(onerel));
-
-		/* Arrange for econtext's scan tuple to be the tuple under test */
-		econtext->ecxt_scantuple = slot;
-
-		/* Set up execution state for predicate. */
-		predicate = (List *)
-			ExecPrepareExpr((Expr *) indexInfo->ii_Predicate,
-							estate);
-
-		/* Compute and save index expression values */
-		exprvals = (Datum *) palloc(numrows * attr_cnt * sizeof(Datum));
-		exprnulls = (bool *) palloc(numrows * attr_cnt * sizeof(bool));
-		numindexrows = 0;
-		tcnt = 0;
-		for (rowno = 0; rowno < numrows; rowno++)
-		{
-			HeapTuple	heapTuple = rows[rowno];
-
-			/* Set up for predicate or expression evaluation */
-			ExecStoreGenericTuple(heapTuple, slot, false);
-
-			/* If index is partial, check predicate */
-			if (predicate != NIL)
-			{
-				if (!ExecQual(predicate, econtext, false))
-					continue;
-			}
-			numindexrows++;
-
-			if (attr_cnt > 0)
-			{
-				/*
-				 * Evaluate the index row to compute expression values. We
-				 * could do this by hand, but FormIndexDatum is convenient.
-				 */
-				FormIndexDatum(indexInfo,
-							   slot,
-							   estate,
-							   values,
-							   isnull);
-
-				/*
-				 * Save just the columns we care about.
-				 */
-				for (i = 0; i < attr_cnt; i++)
-				{
-					VacAttrStats *stats = thisdata->vacattrstats[i];
-					int			attnum = stats->attr->attnum;
-
-					exprvals[tcnt] = values[attnum - 1];
-					exprnulls[tcnt] = isnull[attnum - 1];
-					tcnt++;
-				}
-			}
-		}
-
-		/*
-		 * Having counted the number of rows that pass the predicate in the
-		 * sample, we can estimate the total number of rows in the index.
-		 */
-		thisdata->tupleFract = (double) numindexrows / (double) numrows;
-		totalindexrows = ceil(thisdata->tupleFract * totalrows);
-
-		/*
-		 * Now we can compute the statistics for the expression columns.
-		 */
-		if (numindexrows > 0)
-		{
-			MemoryContextSwitchTo(col_context);
-			for (i = 0; i < attr_cnt; i++)
-			{
-				VacAttrStats *stats = thisdata->vacattrstats[i];
-
-				stats->exprvals = exprvals + i;
-				stats->exprnulls = exprnulls + i;
-				stats->rowstride = attr_cnt;
-				(*stats->compute_stats) (stats,
-										 ind_fetch_func,
-										 numindexrows,
-										 totalindexrows);
-				MemoryContextResetAndDeleteChildren(col_context);
-			}
-		}
-
-		/* And clean up */
-		MemoryContextSwitchTo(ind_context);
-
-		ExecDropSingleTupleTableSlot(slot);
-		FreeExecutorState(estate);
-		MemoryContextResetAndDeleteChildren(ind_context);
+		lRelOids = analyzableRelations();
 	}
-
-	MemoryContextSwitchTo(old_context);
-	MemoryContextDelete(ind_context);
-}
-
-/*
- * examine_attribute -- pre-analysis of a single column
- *
- * Determine whether the column is analyzable; if so, create and initialize
- * a VacAttrStats struct for it.  If not, return NULL.
- */
-static VacAttrStats *
-examine_attribute(Relation onerel, int attnum)
-{
-	Form_pg_attribute attr = onerel->rd_att->attrs[attnum - 1];
-	HeapTuple	typtuple;
-	VacAttrStats *stats;
-	bool		ok;
-
-	/* Never analyze dropped columns */
-	if (attr->attisdropped)
-		return NULL;
-
-	/* Don't analyze column if user has specified not to */
-	if (attr->attstattarget == 0)
-		return NULL;
-
-	/*
-	 * Create the VacAttrStats struct.
-	 */
-	stats = (VacAttrStats *) palloc0(sizeof(VacAttrStats));
-	stats->attr = (Form_pg_attribute) palloc(ATTRIBUTE_TUPLE_SIZE);
-	memcpy(stats->attr, attr, ATTRIBUTE_TUPLE_SIZE);
-	typtuple = SearchSysCache(TYPEOID,
-							  ObjectIdGetDatum(attr->atttypid),
-							  0, 0, 0);
-	if (!HeapTupleIsValid(typtuple))
-		elog(ERROR, "cache lookup failed for type %u", attr->atttypid);
-	stats->attrtype = (Form_pg_type) palloc(sizeof(FormData_pg_type));
-	memcpy(stats->attrtype, GETSTRUCT(typtuple), sizeof(FormData_pg_type));
-	ReleaseSysCache(typtuple);
-	stats->anl_context = anl_context;
-	stats->tupattnum = attnum;
-
-	/*
-	 * Call the type-specific typanalyze function.	If none is specified, use
-	 * std_typanalyze().
-	 */
-	if (OidIsValid(stats->attrtype->typanalyze))
-		ok = DatumGetBool(OidFunctionCall1(stats->attrtype->typanalyze,
-										   PointerGetDatum(stats)));
+	else if (relids != NIL)
+	{
+		/**
+		 * ANALYZE called by autovacuum.
+		 */
+		lRelOids = relids;
+	}
 	else
-		ok = std_typanalyze(stats);
-
-	if (!ok || stats->compute_stats == NULL || stats->minrows <= 0)
 	{
-		pfree(stats->attrtype);
-		pfree(stats->attr);
-		pfree(stats);
-		return NULL;
+		/**
+		 * ANALYZE one relation (optionally, a list of columns).
+		 * If this happens to be a partitioned table, we create an explicit
+		 * list of relids with all partitioned relations.
+		 * TODO: In the future, we must do away with treating partitions separately.
+		 */
+		Oid relationOid = InvalidOid;
+		Assert(relids == NIL);
+		Assert(stmt->relation != NULL);
+		relationOid = RangeVarGetRelid(stmt->relation, false);
+		if (rel_is_partitioned(relationOid))
+		{
+			PartitionNode *pn = get_parts(relationOid, 0 /*level*/ , 
+										  0 /*parent*/, false /* inctemplate */, CurrentMemoryContext);
+			Assert(pn);
+			lRelOids = all_partition_relids(pn);
+		}
+		else
+		{
+			lRelOids = list_make1_oid(relationOid);
+		}
+		
+		if (stmt->va_cols)
+			lExplicitAttNames = buildExplicitAttributeNames(relationOid, stmt);
 	}
-
-	return stats;
-}
-
-/*
- * BlockSampler_Init -- prepare for random sampling of blocknumbers
- *
- * BlockSampler is used for stage one of our new two-stage tuple
- * sampling mechanism as discussed on pgsql-hackers 2004-04-02 (subject
- * "Large DB").  It selects a random sample of samplesize blocks out of
- * the nblocks blocks in the table.  If the table has less than
- * samplesize blocks, all blocks are selected.
- *
- * Since we know the total number of blocks in advance, we can use the
- * straightforward Algorithm S from Knuth 3.4.2, rather than Vitter's
- * algorithm.
- */
-static void
-BlockSampler_Init(BlockSampler bs, BlockNumber nblocks, int samplesize)
-{
-	bs->N = nblocks;			/* measured table size */
 
 	/*
-	 * If we decide to reduce samplesize for tables that have less or not much
-	 * more than samplesize blocks, here is the place to do it.
+	 * Decide whether we need to start/commit our own transactions.
+	 * The scenarios in which we can start/commit our own transactions are:
+	 * 1. We are not in a transaction block and there are multiple relations specified (some of them may be implcit)
+	 * 2. We are in autovacuum mode
 	 */
-	bs->n = samplesize;
-	bs->t = 0;					/* blocks scanned so far */
-	bs->m = 0;					/* blocks selected so far */
-}
 
-static bool
-BlockSampler_HasMore(BlockSampler bs)
-{
-	return (bs->t < bs->N) && (bs->m < bs->n);
-}
+	if ((!IsInTransactionChain((void *) stmt) && list_length(lRelOids) > 1)
+			|| IsAutoVacuumProcess())
+		bUseOwnXacts = true;
 
-static BlockNumber
-BlockSampler_Next(BlockSampler bs)
-{
-	BlockNumber K = bs->N - bs->t;		/* remaining blocks */
-	int			k = bs->n - bs->m;		/* blocks still to sample */
-	double		p;				/* probability to skip block */
-	double		V;				/* random */
-
-	Assert(BlockSampler_HasMore(bs));	/* hence K > 0 and k > 0 */
-
-	if ((BlockNumber) k >= K)
-	{
-		/* need all the rest */
-		bs->m++;
-		return bs->t++;
-	}
-
-	/*----------
-	 * It is not obvious that this code matches Knuth's Algorithm S.
-	 * Knuth says to skip the current block with probability 1 - k/K.
-	 * If we are to skip, we should advance t (hence decrease K), and
-	 * repeat the same probabilistic test for the next block.  The naive
-	 * implementation thus requires a random_fract() call for each block
-	 * number.	But we can reduce this to one random_fract() call per
-	 * selected block, by noting that each time the while-test succeeds,
-	 * we can reinterpret V as a uniform random number in the range 0 to p.
-	 * Therefore, instead of choosing a new V, we just adjust p to be
-	 * the appropriate fraction of its former value, and our next loop
-	 * makes the appropriate probabilistic test.
-	 *
-	 * We have initially K > k > 0.  If the loop reduces K to equal k,
-	 * the next while-test must fail since p will become exactly zero
-	 * (we assume there will not be roundoff error in the division).
-	 * (Note: Knuth suggests a "<=" loop condition, but we use "<" just
-	 * to be doubly sure about roundoff error.)  Therefore K cannot become
-	 * less than k, which means that we cannot fail to select enough blocks.
-	 *----------
+	/**
+	 * Iterate through all relids in the list and issue analyze on all columns on each relation.
 	 */
-	V = random_fract();
-	p = 1.0 - (double) k / (double) K;
-	while (V < p)
+
+	if (bUseOwnXacts)
 	{
-		/* skip */
-		bs->t++;
-		K--;					/* keep K == N - t */
-
-		/* adjust p to be new cutoff point in reduced range */
-		p *= 1.0 - (double) k / (double) K;
-	}
-
-	/* select */
-	bs->m++;
-	return bs->t++;
-}
-
-/*
- * acquire_sample_rows -- acquire a random sample of rows from the table
- *
- * As of May 2004 we use a new two-stage method:  Stage one selects up
- * to targrows random blocks (or all blocks, if there aren't so many).
- * Stage two scans these blocks and uses the Vitter algorithm to create
- * a random sample of targrows rows (or less, if there are less in the
- * sample of blocks).  The two stages are executed simultaneously: each
- * block is processed as soon as stage one returns its number and while
- * the rows are read stage two controls which ones are to be inserted
- * into the sample.
- *
- * Although every row has an equal chance of ending up in the final
- * sample, this sampling method is not perfect: not every possible
- * sample has an equal chance of being selected.  For large relations
- * the number of different blocks represented by the sample tends to be
- * too small.  We can live with that for now.  Improvements are welcome.
- *
- * We also estimate the total numbers of live and dead rows in the table,
- * and return them into *totalrows and *totaldeadrows, respectively.
- *
- * An important property of this sampling method is that because we do
- * look at a statistically unbiased set of blocks, we should get
- * unbiased estimates of the average numbers of live and dead rows per
- * block.  The previous sampling method put too much credence in the row
- * density near the start of the table.
- *
- * The returned list of tuples is in order by physical position in the table.
- * (We will rely on this later to derive correlation estimates.)
- */
-static int
-acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
-					double *totalrows, double *totaldeadrows)
-{
-	int			numrows = 0;	/* # rows collected */
-	double		liverows = 0;	/* # rows seen */
-	double		deadrows = 0;	/* # dead rows seen */
-	double		rowstoskip = -1;	/* -1 means not set yet */
-	BlockNumber totalblocks;
-	BlockSamplerData bs;
-	double		rstate;
-
-	Assert(targrows > 1);
-
-	totalblocks = RelationGetNumberOfBlocks(onerel);
-
-	/* Prepare for sampling block numbers */
-	BlockSampler_Init(&bs, totalblocks, targrows);
-	/* Prepare for sampling rows */
-	rstate = init_selection_state(targrows);
-
-	/* Outer loop over blocks to sample */
-	while (BlockSampler_HasMore(&bs))
-	{
-		BlockNumber targblock = BlockSampler_Next(&bs);
-		Buffer		targbuffer;
-		Page		targpage;
-		OffsetNumber targoffset,
-					maxoffset;
-
-		vacuum_delay_point();
-
 		/*
-		 * We must maintain a pin on the target page's buffer to ensure that
-		 * the maxoffset value stays good (else concurrent VACUUM might delete
-		 * tuples out from under us).  Hence, pin the page until we are done
-		 * looking at it.  We don't maintain a lock on the page, so tuples
-		 * could get added to it, but we ignore such tuples.
+		 * We commit the transaction started in PostgresMain() here, and start
+		 * another one before exiting to match the commit waiting for us back in
+		 * PostgresMain().
 		 */
-		targbuffer = ReadBuffer(onerel, targblock);
-		LockBuffer(targbuffer, BUFFER_LOCK_SHARE);
-		targpage = BufferGetPage(targbuffer);
-		maxoffset = PageGetMaxOffsetNumber(targpage);
+		CommitTransactionCommand();
+		MemoryContextSwitchTo(analyzeStatementContext);
+	}
+		
+	foreach (le1, lRelOids)
+	{
+		Oid candidateOid = InvalidOid;
+		Relation	candidateRelation = NULL;
+		
+		Assert(analyzeStatementContext == CurrentMemoryContext);
 
-		/* Inner loop over all tuples on the selected page */
-		for (targoffset = FirstOffsetNumber; targoffset <= maxoffset; targoffset++)
+		if (bUseOwnXacts)
 		{
-			ItemId itemid;
-			HeapTupleData targtuple;
+			/**
+			 * We use a different transaction per relation so that we may release
+			 * locks on relations as soon as possible.
+			 */
+			setupRegularDtxContext();
+			StartTransactionCommand();
+			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
+			MemoryContextSwitchTo(analyzeStatementContext);
+		}
 
-			itemid = PageGetItemId(targpage, targoffset);
+		candidateOid = lfirst_oid(le1);
+		candidateRelation = try_relation_open(candidateOid, ShareUpdateExclusiveLock);
 
-			if(!ItemIdIsNormal(itemid))
-			{
-				if(ItemIdIsDead(itemid))
-					deadrows += 1;
-				continue;
-			}
-
-			ItemPointerSet(&targtuple.t_self, targblock, targoffset);
-			targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
-			targtuple.t_len = ItemIdGetLength(itemid);
-
-			if(HeapTupleSatisfiesVisibility(onerel, &targtuple, SnapshotNow, targbuffer))
+		if (candidateRelation)
+		{
+			/**
+			 * We got a lock on the relation. Good!
+			 */
+			if (analyzePermitted(RelationGetRelid(candidateRelation)))
 			{
 				/*
-				 * The first targrows live rows are simply copied into the
-				 * reservoir. Then we start replacing tuples in the sample
-				 * until we reach the end of the relation.	This algorithm is
-				 * from Jeff Vitter's paper (see full citation below). It
-				 * works by repeatedly computing the number of tuples to skip
-				 * before selecting a tuple, which replaces a randomly chosen
-				 * element of the reservoir (current set of tuples).  At all
-				 * times the reservoir is a true random sample of the tuples
-				 * we've passed over so far, so when we fall off the end of
-				 * the relation we're done.
+				 * We have permission to ANALYZE.
 				 */
-				if (numrows < targrows)
-					rows[numrows++] = heap_copytuple(&targtuple);
+				
+				if (RelationIsExternal(candidateRelation))
+				{
+					/**
+					 * We cannot ANALYZE external tables. Print warning and move on
+					 * to the next relation.
+					 */
+					ereport(WARNING,
+							(errmsg("Skipping \"%s\" --- cannot ANALYZE external tables.",
+									RelationGetRelationName(candidateRelation))));
+					relation_close(candidateRelation, ShareUpdateExclusiveLock);
+				}
 				else
 				{
+					List 		*lAttNames = NIL;
+
+					/* Switch to per relation context */
+					MemoryContextSwitchTo(analyzeRelationContext);
+
+					if (lExplicitAttNames != NIL)
+						lAttNames = lExplicitAttNames;
+					else
+						lAttNames = analyzableAttributes(candidateRelation);
+
+					analyzeRelation(candidateRelation, lAttNames);
+
+					/* Switch back to statement context and reset relation context */
+					MemoryContextSwitchTo(analyzeStatementContext);
+					MemoryContextResetAndDeleteChildren(analyzeRelationContext);
+					
 					/*
-					 * t in Vitter's paper is the number of records already
-					 * processed.  If we need to compute a new S value, we
-					 * must use the not-yet-incremented value of liverows as
-					 * t.
+					 * Close source relation now, but keep lock so that no one deletes it
+					 * before we commit.  (If someone did, they'd fail to clean up the entries
+					 * we made in pg_statistic.  Also, releasing the lock before commit would
+					 * expose us to concurrent-update failures.)
 					 */
-					if (rowstoskip < 0)
-						rowstoskip = get_next_S(liverows, targrows, &rstate);
 
-					if (rowstoskip <= 0)
-					{
-						/*
-						 * Found a suitable tuple, so save it, replacing one
-						 * old tuple at random
-						 */
-						int			k = (int) (targrows * random_fract());
-
-						Assert(k >= 0 && k < targrows);
-						heap_freetuple(rows[k]);
-						rows[k] = heap_copytuple(&targtuple);
-					}
-
-					rowstoskip -= 1;
+					relation_close(candidateRelation, NoLock);
 				}
-
-				liverows += 1;
 			}
 			else
 			{
-				/* Count dead rows, but not empty slots */
-				if (targtuple.t_data != NULL)
-					deadrows += 1;
-			}
+				/**
+				 * We don't have permissions to ANALYZE the relation. Print warning and move on
+				 * to the next relation.
+				 */
+				ereport(WARNING,
+						(errmsg("Skipping \"%s\" --- only table or database owner can analyze it",
+								RelationGetRelationName(candidateRelation))));
+				relation_close(candidateRelation, ShareUpdateExclusiveLock);
+			} /* if (analyzePermitted(RelationGetRelid(candidateRelation))) */
 		}
-
-		/* Now release the pin on the page */
-		UnlockReleaseBuffer(targbuffer);
-	}
-
-	/*
-	 * If we didn't find as many tuples as we wanted then we're done. No sort
-	 * is needed, since they're already in order.
-	 *
-	 * Otherwise we need to sort the collected tuples by position
-	 * (itempointer). It's not worth worrying about corner cases where the
-	 * tuples are already sorted.
-	 */
-	if (numrows == targrows)
-		qsort((void *) rows, numrows, sizeof(HeapTuple), compare_rows);
-
-	/*
-	 * Estimate total numbers of rows in relation.
-	 */
-	if (bs.m > 0)
-	{
-		*totalrows = floor((liverows * totalblocks) / bs.m + 0.5);
-		*totaldeadrows = floor((deadrows * totalblocks) / bs.m + 0.5);
-	}
-	else
-	{
-		*totalrows = 0.0;
-		*totaldeadrows = 0.0;
-	}
-
-	/*
-	 * Emit some interesting relation info
-	 */
-	ereport(elevel,
-			(errmsg("\"%s\": scanned %d of %u pages, "
-					"containing %.0f live rows and %.0f dead rows; "
-					"%d rows in sample, %.0f estimated total rows",
-					RelationGetRelationName(onerel),
-					bs.m, totalblocks,
-					liverows, deadrows,
-					numrows, *totalrows)));
-
-	return numrows;
-}
-
-/*
- * acquire_sample_ao_rows -- same as acquire_sample_rows but designed
- * specifically for append only tables.
- *
- * Since append only tables have a very different storage than heap tables
- * and since it can not be randomly accessed we need a separate routine for
- * append only tables column level analysis and statistics.
- *
- * In here we try to stick with Vitter's algorithms and using a reservoir
- * while calculating the number of tuples to skip as we go. The main change
- * is that we don't sample (var)block numbers. Since varblocks vary in size
- * (unlike heap table blocks) we may theoretically choose to sample varblocks
- * of size 1 tuple if such exist (idealy they won't but it's possible). But,
- * we could probably come up with a way of getting this done better/faster
- * if we see that it's slower than heap tables analysis. For now keep it simple.
- *
- */
-static int
-acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
-					   double *totalrows, double *totaldeadrows,
-					   double *totalbytes)
-{
-	int				numrows = 0;	/* # rows collected */
-	double				liverows = 0;	/* # rows seen */
-	double				deadrows = 0;	/* # dead rows seen */
-	double				rowstoskip = -1;	/* -1 means not set yet */
-	double				rstate;
-	BlockNumber			totalvarblocks;
-	FileSegTotals		*fstotal;
-	AppendOnlyScanDesc	aoscandesc = NULL;
-	TupleTableSlot		*slot;
-
-	Assert(targrows > 1);
-
-	/* early exit - no data on the QD */
-	if(Gp_role == GP_ROLE_DISPATCH)
-		return 0;
-
-	/* get table level statistics from the pg_aoseg table */
-	fstotal = GetSegFilesTotals(onerel);
-
-	totalvarblocks = (BlockNumber)fstotal->totalvarblocks;
-	*totalbytes = (double)fstotal->totalbytes;
-
-	/* Prepare for sampling rows */
-	rstate = init_selection_state(targrows);
-
-	aoscandesc = appendonly_beginscan(onerel, SnapshotNow, 0, NULL);
-
-	slot = MakeSingleTupleTableSlot(RelationGetDescr(onerel));
-
-	for(;;)
-	{
-		MemTuple targtuple = appendonly_getnext(aoscandesc, ForwardScanDirection, slot);
-
-		/* no more data. done */
-		if(targtuple == NULL)
-			break;
-
-		/* check for interrupts once in a while */
-		if((int)liverows % 400 == 0)
-			vacuum_delay_point();
-
-		/*
-		 * The first targrows live rows are simply copied into the
-		 * reservoir. Then we start replacing tuples in the sample
-		 * until we reach the end of the relation.	This algorithm is
-		 * from Jeff Vitter's paper (see full citation below). It
-		 * works by repeatedly computing the number of tuples to skip
-		 * before selecting a tuple, which replaces a randomly chosen
-		 * element of the reservoir (current set of tuples).  At all
-		 * times the reservoir is a true random sample of the tuples
-		 * we've passed over so far, so when we fall off the end of
-		 * the relation we're done.
-		 */
-		if (numrows < targrows)
-			rows[numrows++] = ExecCopySlotHeapTuple(slot);
 		else
 		{
-			/*
-			 * t in Vitter's paper is the number of records already
-			 * processed.  If we need to compute a new S value, we
-			 * must use the not-yet-incremented value of liverows as
-			 * t.
+			/* 
+			 * Relation may have been dropped out from under us.
+			 * TODO: should we print a warning here? Do we print it during 
+			 * ANALYZE DB or AutoVacuum? 
 			 */
-			if (rowstoskip < 0)
-				rowstoskip = get_next_S(liverows, targrows, &rstate);
+		} /* if (candidateRelation) */
 
-			if (rowstoskip <= 0)
-			{
-				/*
-				 * Found a suitable tuple, so save it, replacing one
-				 * old tuple at random
-				 */
-				int			k = (int) (targrows * random_fract());
-
-				Assert(k >= 0 && k < targrows);
-				heap_freetuple(rows[k]);
-				rows[k] = ExecCopySlotHeapTuple(slot);
-			}
-
-			rowstoskip -= 1;
-		}
-
-		liverows += 1;
-	}
-
-	ExecDropSingleTupleTableSlot(slot);
-
-	appendonly_endscan(aoscandesc);
-
-	/*
-	 * In the heap table version acquire_sample_rows will now sort the sample
-	 * tuples by position (itempointer). However with AO tables we can't sort
-	 * because we have no valid TIDs to use. Kurt explains why this is ok to
-	 * skip: The sort is used to give a (poor) indication of whether an index
-	 * scan, in key order, will cause base rel pages to be accessed sequentially
-	 * or randomly.  With no indexes on AO tables, it's not needed. Skip it.
-	 */
-
-	/*
-	 * Set total numbers of rows in relation.
-	 */
-	*totalrows = (double)fstotal->totaltuples;
-	*totaldeadrows = 0;
-
-	/*
-	 * Emit some interesting relation info
-	 */
-	ereport(elevel,
-			(errmsg("\"%s\": scanned %d of %u varblocks, "
-					"containing %.0f live rows and %.0f dead rows; "
-					"%d rows in sample, %.0f total rows",
-					RelationGetRelationName(onerel),
-					totalvarblocks, totalvarblocks,
-					liverows, deadrows,
-					numrows, *totalrows)));
-
-	pfree(fstotal);
-
-	return numrows;
-}
-
-/*
- * acquire_sample_aocs_rows -- same as acquire_sample_rows but designed
- * specifically for append only column store tables.
- */
-static int
-acquire_sample_aocs_rows(Relation onerel, HeapTuple *rows, int targrows,
-					   double *totalrows, double *totaldeadrows,
-					   double *totalbytes)
-{
-    int				numrows = 0;	/* # rows collected */
-    double				liverows = 0;	/* # rows seen */
-    double				deadrows = 0;	/* # dead rows seen */
-    double				rowstoskip = -1;	/* -1 means not set yet */
-
-    double				rstate;
-
-    AOCSScanDesc	        scandesc = NULL;
-    TupleTableSlot		*slot;
-
-    int nvp = onerel->rd_att->natts;
-    int totalseg;
-    AOCSFileSegInfo         **allseg;
-    bool *proj;
-
-    int i, j;
-
-    Assert(targrows > 1);
-
-    *totalbytes = 0;
-    *totalrows = 0;
-
-    /* early exit - no data on the QD */
-    if(Gp_role == GP_ROLE_DISPATCH)
-        return 0;
-
-    /* get table level statistics from the pg_aoseg table */
-    allseg = GetAllAOCSFileSegInfo(onerel, SnapshotNow, &totalseg);
-    if (!allseg)
-    {
-        /* empty ao table. */
-        return 0;
-    }
-
-    for(i = 0; i<totalseg; ++i)
-    {
-        for(j=0; j<nvp; ++j)
-        {
-            AOCSVPInfoEntry *e = getAOCSVPEntry(allseg[i], j);
-            *totalbytes += e->eof_uncompressed;
-        }
-
-        *totalrows += allseg[i]->tupcount;
-    }
-
-
-    /* Prepare for sampling rows */
-    rstate = init_selection_state(targrows);
-
-    proj = palloc(sizeof(bool) * nvp);
-    for(i=0; i<nvp; ++i)
-        proj[i] = true;
-
-    scandesc = aocs_beginscan(onerel, SnapshotNow, 0, NULL, proj);
-    slot = MakeSingleTupleTableSlot(RelationGetDescr(onerel));
-
-    for(;;)
-    {
-        aocs_getnext(scandesc, ForwardScanDirection, slot);
-
-        if(TupIsNull(slot))
-            break;
-
-        /* check for interrupts once in a while */
-        if((int)liverows % 400 == 0)
-            vacuum_delay_point();
-
-        /*
-         * The first targrows live rows are simply copied into the
-         * reservoir. Then we start replacing tuples in the sample
-         * until we reach the end of the relation.	This algorithm is
-         * from Jeff Vitter's paper (see full citation below). It
-         * works by repeatedly computing the number of tuples to skip
-         * before selecting a tuple, which replaces a randomly chosen
-         * element of the reservoir (current set of tuples).  At all
-         * times the reservoir is a true random sample of the tuples
-         * we've passed over so far, so when we fall off the end of
-         * the relation we're done.
-         */
-        if (numrows < targrows)
-            rows[numrows++] = ExecCopySlotHeapTuple(slot);
-        else
-        {
-            /*
-             * t in Vitter's paper is the number of records already
-             * processed.  If we need to compute a new S value, we
-             * must use the not-yet-incremented value of liverows as
-             * t.
-             */
-            if (rowstoskip < 0)
-                rowstoskip = get_next_S(liverows, targrows, &rstate);
-
-            if (rowstoskip <= 0)
-            {
-                /*
-                 * Found a suitable tuple, so save it, replacing one
-                 * old tuple at random
-                 */
-                int			k = (int) (targrows * random_fract());
-
-                Assert(k >= 0 && k < targrows);
-                heap_freetuple(rows[k]);
-                rows[k] = ExecCopySlotHeapTuple(slot);
-            }
-
-            rowstoskip -= 1;
-        }
-
-        liverows += 1;
-    }
-
-    ExecDropSingleTupleTableSlot(slot);
-
-    aocs_endscan(scandesc);
-
-    /*
-     * In the heap table version acquire_sample_rows will now sort the sample
-     * tuples by position (itempointer). However with AO tables we can't sort
-     * because we have no valid TIDs to use. Kurt explains why this is ok to
-     * skip: The sort is used to give a (poor) indication of whether an index
-     * scan, in key order, will cause base rel pages to be accessed sequentially
-     * or randomly.  With no indexes on AO tables, it's not needed. Skip it.
-     */
-
-    /*
-     * Set total numbers of rows in relation.
-     */
-    *totaldeadrows = 0;
-
-    /*
-     * Emit some interesting relation info
-     */
-    ereport(elevel,
-            (errmsg("\"%s\": "
-                    "containing %.0f live rows and %.0f dead rows; "
-                    "%d rows in sample, %.0f total rows",
-                    RelationGetRelationName(onerel),
-                    liverows, deadrows,
-                    numrows, *totalrows)));
-
-    pfree(proj);
-    for(i = 0; i<totalseg; ++i)
-        pfree(allseg[i]);
-    pfree(allseg);
-
-    return numrows;
-}
-
-/* Select a random value R uniformly distributed in (0 - 1) */
-static double
-random_fract(void)
-{
-	return ((double) random() + 1) / ((double) MAX_RANDOM_VALUE + 2);
-}
-
-/*
- * These two routines embody Algorithm Z from "Random sampling with a
- * reservoir" by Jeffrey S. Vitter, in ACM Trans. Math. Softw. 11, 1
- * (Mar. 1985), Pages 37-57.  Vitter describes his algorithm in terms
- * of the count S of records to skip before processing another record.
- * It is computed primarily based on t, the number of records already read.
- * The only extra state needed between calls is W, a random state variable.
- *
- * init_selection_state computes the initial W value.
- *
- * Given that we've already read t records (t >= n), get_next_S
- * determines the number of records to skip before the next record is
- * processed.
- */
-static double
-init_selection_state(int n)
-{
-	/* Initial value of W (for use when Algorithm Z is first applied) */
-	return exp(-log(random_fract()) / n);
-}
-
-static double
-get_next_S(double t, int n, double *stateptr)
-{
-	double		S;
-
-	/* The magic constant here is T from Vitter's paper */
-	if (t <= (22.0 * n))
-	{
-		/* Process records using Algorithm X until t is large enough */
-		double		V,
-					quot;
-
-		V = random_fract();		/* Generate V */
-		S = 0;
-		t += 1;
-		/* Note: "num" in Vitter's code is always equal to t - n */
-		quot = (t - (double) n) / t;
-		/* Find min S satisfying (4.1) */
-		while (quot > V)
+		if (bUseOwnXacts)
 		{
-			S += 1;
-			t += 1;
-			quot *= (t - (double) n) / t;
+			/**
+			 * We commit the transaction so that locks on the relation may be released.
+			 */
+			CommitTransactionCommand();
+			MemoryContextSwitchTo(analyzeStatementContext);
 		}
 	}
-	else
+
+	if (bUseOwnXacts)
 	{
-		/* Now apply Algorithm Z */
-		double		W = *stateptr;
-		double		term = t - (double) n + 1;
-
-		for (;;)
-		{
-			double		numer,
-						numer_lim,
-						denom;
-			double		U,
-						X,
-						lhs,
-						rhs,
-						y,
-						tmp;
-
-			/* Generate U and X */
-			U = random_fract();
-			X = t * (W - 1.0);
-			S = floor(X);		/* S is tentatively set to floor(X) */
-			/* Test if U <= h(S)/cg(X) in the manner of (6.3) */
-			tmp = (t + 1) / term;
-			lhs = exp(log(((U * tmp * tmp) * (term + S)) / (t + X)) / n);
-			rhs = (((t + X) / (term + S)) * term) / t;
-			if (lhs <= rhs)
-			{
-				W = rhs / lhs;
-				break;
-			}
-			/* Test if U <= f(S)/cg(X) */
-			y = (((U * (t + 1)) / term) * (t + S + 1)) / (t + X);
-			if ((double) n < S)
-			{
-				denom = t;
-				numer_lim = term + S;
-			}
-			else
-			{
-				denom = t - (double) n + S;
-				numer_lim = t + 1;
-			}
-			for (numer = t + S; numer >= numer_lim; numer -= 1)
-			{
-				y *= numer / denom;
-				denom -= 1;
-			}
-			W = exp(-log(random_fract()) / n);	/* Generate W in advance */
-			if (exp(log(y) / n) <= (t + X) / t)
-				break;
-		}
-		*stateptr = W;
-	}
-	return S;
-}
-
-/*
- * qsort comparator for sorting rows[] array
- */
-static int
-compare_rows(const void *a, const void *b)
-{
-	HeapTuple	ha = *(HeapTuple *) a;
-	HeapTuple	hb = *(HeapTuple *) b;
-	BlockNumber ba = ItemPointerGetBlockNumber(&ha->t_self);
-	OffsetNumber oa = ItemPointerGetOffsetNumber(&ha->t_self);
-	BlockNumber bb = ItemPointerGetBlockNumber(&hb->t_self);
-	OffsetNumber ob = ItemPointerGetOffsetNumber(&hb->t_self);
-
-	if (ba < bb)
-		return -1;
-	if (ba > bb)
-		return 1;
-	if (oa < ob)
-		return -1;
-	if (oa > ob)
-		return 1;
-	return 0;
-}
-
-
-/*
- *	update_attstats() -- update attribute statistics for one relation
- *
- *		Statistics are stored in several places: the pg_class row for the
- *		relation has stats about the whole relation, and there is a
- *		pg_statistic row for each (non-system) attribute that has ever
- *		been analyzed.	The pg_class values are updated by VACUUM, not here.
- *
- *		pg_statistic rows are just added or updated normally.  This means
- *		that pg_statistic will probably contain some deleted rows at the
- *		completion of a vacuum cycle, unless it happens to get vacuumed last.
- *
- *		To keep things simple, we punt for pg_statistic, and don't try
- *		to compute or store rows for pg_statistic itself in pg_statistic.
- *		This could possibly be made to work, but it's not worth the trouble.
- *		Note analyze_rel() has seen to it that we won't come here when
- *		vacuuming pg_statistic itself.
- *
- *		Note: there would be a race condition here if two backends could
- *		ANALYZE the same table concurrently.  Presently, we lock that out
- *		by taking a self-exclusive lock on the relation in analyze_rel().
- */
-static void
-update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
-				double reltuples, List *updated_stats)
-{
-	Relation	sd;
-	int			attno;
-	int         max_attnum = 0;
-	Oid relid = RelationGetRelid(rel);
-
-	if (natts <= 0)
-		return;					/* nothing to do */
-
-	sd = heap_open(StatisticRelationId, RowExclusiveLock);
-
-	/* Find max_attnum */
-	for(attno = 0; attno < natts; attno++)
-	{
-		if (max_attnum < vacattrstats[attno]->attr->attnum)
-			max_attnum = vacattrstats[attno]->attr->attnum;
-	}
-
-	for (attno = 0; attno < natts; attno++)
-	{
-		VacAttrStats *stats = vacattrstats[attno];
-		VPgStatisticStats *pgstat_stats;
-		PgStatistic *pgstat = &(stats->pgstat);
-
-		HeapTuple	stup,
-					oldtup;
-		int			i,
-					k,
-					n;
-		Datum		values[Natts_pg_statistic];
-		char		nulls[Natts_pg_statistic];
-		char		replaces[Natts_pg_statistic];
-
-		/*
-		 * If this is QD, use the stats collected from QE instead of the
-		 * one provided in vacattrstats[attno].
+		/**
+		 * We start a new transaction command to match the one in PostgresMain().
 		 */
-		if (Gp_role == GP_ROLE_DISPATCH && relid >= FirstNormalObjectId)
+		setupRegularDtxContext();
+		StartTransactionCommand();
+		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
+		MemoryContextSwitchTo(analyzeStatementContext);
+	}
+
+	Assert(analyzeStatementContext == CurrentMemoryContext);
+	MemoryContextSwitchTo(callerContext);
+	MemoryContextDelete(analyzeStatementContext);
+}
+
+
+/*
+ * This method extracts the explicit attributes listed in a vacuum statement. It must
+ * be called only when it is known that explicit columns have been specified in the vacuum
+ * statement. It checks if attribute exists and also if attribute has been dropped. It
+ * also silently drops attributes that have stats target set to 0.
+ * Input:
+ * 	vacstmt - vacuum statement
+ * Output:
+ * 	list of attribute names that the vacuum statement requests
+ */
+static List*	buildExplicitAttributeNames(Oid relationOid, VacuumStmt *stmt)
+{
+	List	*lExplicitAttNames = NIL;
+	ListCell *le = NULL;
+	Assert(stmt->va_cols != NULL);
+	/**
+	 * va_col contains list of attributes that need to be analyzed. 
+	 */
+	foreach (le, stmt->va_cols)
+	{
+		HeapTuple	attributeTuple;
+		char *attributeName = strVal(lfirst(le));
+		Assert(attributeName);
+
+		attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+		/* Ensure that we can actually analyze the attribute. */
+		if (HeapTupleIsValid(attributeTuple))
 		{
-			ListCell *lc = NULL;
+			Form_pg_attribute att_tup = (Form_pg_attribute) GETSTRUCT(attributeTuple);
+			/* If attribute is dropped, print an error message */
+			if (att_tup->attisdropped)
+				ereport(ERROR, 
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+								errmsg("Attribute %s has been dropped in relation %s.", 
+										attributeName, get_rel_name(relationOid))));						
 
-			foreach (lc, updated_stats)
-			{
-				VUpdatedStats *tmp_stats = (VUpdatedStats *)lfirst(lc);
-				if (tmp_stats->relid == relid &&
-					tmp_stats->type == PG_STATISTIC_STATS)
-				{
-					pgstat_stats = (VPgStatisticStats *)tmp_stats;
-
-					if (pgstat_stats->attno == stats->attr->attnum)
-					{
-						pgstat = &(pgstat_stats->pgstat);
-						break;
-					}
-				}
-			}
-
-			/* If we didn't find the stats in updated_stats, ignore this attribute. */
-			if (lc == NULL)
-				continue;
+			/* If stats target = 0, then don't analyze the attribute. However, we don't actually throw an error.. just silently skip it. */
+			if (att_tup->attstattarget != 0)
+				lExplicitAttNames = lappend(lExplicitAttNames, attributeName);
 		}
+		else
+		{
+			/* Attribute does not exist in relation. Error out */
+			ereport(ERROR, 
+					(errcode(ERRCODE_UNDEFINED_COLUMN),
+							errmsg("Relation %s does not have an attribute named %s.", 
+									get_rel_name(relationOid),attributeName)));
+		}
+	}
+	return lExplicitAttNames;
+}
 
-		/* Ignore attr if we weren't able to collect stats */
-		if (!pgstat->stats_valid)
+/**
+ * This function determines if a table can be analyzed or not. 
+ * Input:
+ * 	relationOid
+ * Output:
+ * 	true or false
+ */
+static bool analyzePermitted(Oid relationOid)
+{
+	return (pg_class_ownercheck(relationOid, GetUserId()) 
+			|| pg_database_ownercheck(MyDatabaseId, GetUserId()));
+}
+
+/**
+ * If ANALYZE is requested with no relations specified, this method is called to build
+ * the implicit list of relations from pg_class. Only those with relkind == RELKIND_RELATION
+ * are considered.
+ * 
+ * Input:
+ * 	None
+ * Output:
+ * 	List of relids
+ */
+static List* analyzableRelations(void)
+{
+	List	   		*lRelOids = NIL;
+	Relation		pgclass = NULL;
+	HeapScanDesc 	scan = NULL;
+	HeapTuple		tuple = NULL;
+	ScanKeyData 	key;
+
+	ScanKeyInit(&key,
+			Anum_pg_class_relkind,
+			BTEqualStrategyNumber, F_CHAREQ,
+			CharGetDatum(RELKIND_RELATION));
+
+	pgclass = heap_open(RelationRelationId, AccessShareLock);
+
+	scan = heap_beginscan(pgclass, SnapshotNow, 1 /* key length */, &key);
+
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Oid candidateOid = HeapTupleGetOid(tuple);
+		if (analyzePermitted(candidateOid)
+				&& candidateOid != StatisticRelationId)
+		{
+			lRelOids = lappend_oid(lRelOids, candidateOid);
+		}
+	}
+
+	heap_endscan(scan);
+	heap_close(pgclass, AccessShareLock);
+	return lRelOids;
+}
+
+/**
+ * Given a relation's Oid, generate the list of attribute names that may be analyzed.
+ * This ignores columns that have been dropped or if stattarget is set to 0 by user.
+ * Input:
+ * 	relation
+ * Output:
+ * 	List of attribute names. This will need to be free'd by the caller.
+ */
+static List *analyzableAttributes(Relation candidateRelation)
+{
+	int 	i = 0;
+	List	*lAttNames = NIL;
+	Assert(candidateRelation != NULL);
+	for (i = 0; i < candidateRelation->rd_att->natts; i++)
+	{
+		char	*attName = NULL;
+		Form_pg_attribute attr = candidateRelation->rd_att->attrs[i];
+
+		/* Never analyze dropped columns */
+		if (attr->attisdropped)
 			continue;
 
-		/*
-		 * Construct a new pg_statistic tuple
-		 */
-		for (i = 0; i < Natts_pg_statistic; ++i)
-		{
-			nulls[i] = ' ';
-			replaces[i] = 'r';
-		}
+		/* Don't analyze column if user has specified not to */
+		if (attr->attstattarget == 0)
+			continue;
 
-		i = 0;
-		values[i++] = ObjectIdGetDatum(relid);	/* starelid */
-		values[i++] = Int16GetDatum(stats->attr->attnum);		/* staattnum */
-		values[i++] = Float4GetDatum(pgstat->stanullfrac);		/* stanullfrac */
-		values[i++] = Int32GetDatum(pgstat->stawidth);	/* stawidth */
-		values[i++] = Float4GetDatum(pgstat->stadistinct);		/* stadistinct */
-
-		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
-		{
-			values[i++] = Int16GetDatum(pgstat->stakind[k]);		/* stakindN */
-		}
-		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
-		{
-			values[i++] = ObjectIdGetDatum(pgstat->staop[k]);	/* staopN */
-		}
-		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
-		{
-			int			nnum = pgstat->numnumbers[k];
-
-			if (nnum > 0)
-			{
-				Datum	   *numdatums = (Datum *) palloc(nnum * sizeof(Datum));
-				ArrayType  *arry;
-
-				for (n = 0; n < nnum; n++)
-					numdatums[n] = Float4GetDatum(pgstat->stanumbers[k][n]);
-				/* XXX knows more than it should about type float4: */
-				arry = construct_array(numdatums, nnum,
-									   FLOAT4OID,
-									   sizeof(float4), true, 'i');
-				values[i++] = PointerGetDatum(arry);	/* stanumbersN */
-			}
-			else
-			{
-				nulls[i] = 'n';
-				values[i++] = (Datum) 0;
-			}
-		}
-		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
-		{
-			if (pgstat->numvalues[k] > 0)
-			{
-				ArrayType  *arry;
-
-				arry = construct_array(pgstat->stavalues[k],
-									   pgstat->numvalues[k],
-									   stats->attr->atttypid,
-									   stats->attrtype->typlen,
-									   stats->attrtype->typbyval,
-									   stats->attrtype->typalign);
-				values[i++] = PointerGetDatum(arry);	/* stavaluesN */
-			}
-			else
-			{
-				nulls[i] = 'n';
-				values[i++] = (Datum) 0;
-			}
-		}
-
-		/* Is there already a pg_statistic tuple for this attribute? */
-		oldtup = SearchSysCache(STATRELATT,
-								ObjectIdGetDatum(relid),
-								Int16GetDatum(stats->attr->attnum),
-								0, 0);
-
-		if (HeapTupleIsValid(oldtup))
-		{
-			/* Yes, replace it */
-			stup = heap_modifytuple(oldtup,
-									RelationGetDescr(sd),
-									values,
-									nulls,
-									replaces);
-			ReleaseSysCache(oldtup);
-			simple_heap_update(sd, &stup->t_self, stup);
-		}
-		else
-		{
-			/* No, insert new tuple */
-			stup = heap_formtuple(RelationGetDescr(sd), values, nulls);
-			simple_heap_insert(sd, stup);
-		}
-
-		/* update indexes too */
-		CatalogUpdateIndexes(sd, stup);
-
-		/*
-		 * If this is in QE, send out the new stats tuple to QD so that
-		 * QD will compute the final stats for the relation.
-		 */
-		if (Gp_role == GP_ROLE_EXECUTE)
-		{
-			VUpdatedStats tmp_stats;
-			StringInfoData buf;
-
-			tmp_stats.type = PG_STATISTIC_STATS;
-			tmp_stats.relid = relid;
-
-			pq_beginmessage(&buf, 'y');
-			pq_sendstring(&buf, "ANALYZE");
-			pq_sendint(&buf,
-					   sizeof(VUpdatedStats) + sizeof(double) + sizeof(int) +
-					       sizeof(int) + heaptuple_get_size(stup),
-					   sizeof(int));
-			pq_sendbytes(&buf, (char *)(&tmp_stats), sizeof(VUpdatedStats));
-			pq_sendbytes(&buf, (char *)&reltuples, sizeof(double));
-			pq_sendbytes(&buf, (char*)&max_attnum, sizeof(int));
-			/* XXX attnum is 16-bit */
-			pq_sendbytes(&buf, (char *)&(stats->attr->attnum), sizeof(int));
-			pq_sendbytes(&buf, (char *)stup, HEAPTUPLESIZE);
-			pq_sendbytes(&buf, (char *)(stup->t_data), stup->t_len);
-			pq_endmessage(&buf);
-		}
-
-		heap_freetuple(stup);
-	}
-
-	heap_close(sd, RowExclusiveLock);
-}
-
-/*
- * Standard fetch function for use by compute_stats subroutines.
- *
- * This exists to provide some insulation between compute_stats routines
- * and the actual storage of the sample data.
- */
-static Datum
-std_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull)
-{
-	int			attnum = stats->tupattnum;
-	HeapTuple	tuple = stats->rows[rownum];
-	TupleDesc	tupDesc = stats->tupDesc;
-
-	return heap_getattr(tuple, attnum, tupDesc, isNull);
-}
-
-/*
- * Fetch function for analyzing index expressions.
- *
- * We have not bothered to construct index tuples, instead the data is
- * just in Datum arrays.
- */
-static Datum
-ind_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull)
-{
-	int			i;
-
-	/* exprvals and exprnulls are already offset for proper column */
-	i = rownum * stats->rowstride;
-	*isNull = stats->exprnulls[i];
-	return stats->exprvals[i];
+		attName = pstrdup(NameStr(attr->attname)); //needs to be pfree'd by caller
+		lAttNames = lappend(lAttNames, (void *) attName);
+	}		
+	return lAttNames;
 }
 
 
-/*==========================================================================
- *
- * Code below this point represents the "standard" type-specific statistics
- * analysis algorithms.  This code can be replaced on a per-data-type basis
- * by setting a nonzero value in pg_type.typanalyze.
- *
- *==========================================================================
+/**
+ * This method is called once all the transactions and snapshots have been set up.
+ * At a very high-level, it performs two functions:
+ * 	1. Compute and update reltuples, relages for the relation.
+ * 	2. Compute and update statistics on requested attributes.
+ * If the input relation is too large, it may create a sampled version of the relation
+ * and compute statistics.
+ * TODO: Check with Daria/Eric about messages.
+ * Input:
+ * 	relation		- relation
+ * 	lAttributeNames - list of attribute names. 
+ * Output:
+ * 	None
  */
-
-
-/*
- * To avoid consuming too much memory during analysis and/or too much space
- * in the resulting pg_statistic rows, we ignore varlena datums that are wider
- * than WIDTH_THRESHOLD (after detoasting!).  This is legitimate for MCV
- * and distinct-value calculations since a wide value is unlikely to be
- * duplicated at all, much less be a most-common value.  For the same reason,
- * ignoring wide values will not affect our estimates of histogram bin
- * boundaries very much.
- */
-#define WIDTH_THRESHOLD  1024
-
-#define swapInt(a,b)	do {int _tmp; _tmp=a; a=b; b=_tmp;} while(0)
-#define swapDatum(a,b)	do {Datum _tmp; _tmp=a; a=b; b=_tmp;} while(0)
-
-/*
- * Extra information used by the default analysis routines
- */
-typedef struct
+static void analyzeRelation(Relation relation, List *lAttributeNames)
 {
-	Oid			eqopr;			/* '=' operator for datatype, if any */
-	Oid			eqfunc;			/* and associated function */
-	Oid			ltopr;			/* '<' operator for datatype, if any */
-} StdAnalyzeData;
-
-typedef struct
-{
-	Datum		value;			/* a data value */
-	int		tupno;			/* position index for tuple it came from */
-	void 		*ptr;			/* a ptr for str sort */
-} ScalarItem;
-
-typedef struct
-{
-	int			count;			/* # of duplicates */
-	int			first;			/* values[] index of first occurrence */
-} ScalarMCVItem;
-
-typedef struct
-{
-	FmgrInfo   *cmpFn;
-	SortFunctionKind cmpFnKind;
-	int	   *tupnoLink;
-	bool       fStrCmp;
-} CompareScalarsContext;
-
-
-static void compute_minimal_stats(VacAttrStatsP stats,
-					  AnalyzeAttrFetchFunc fetchfunc,
-					  int samplerows,
-					  double totalrows);
-static void compute_scalar_stats(VacAttrStatsP stats,
-					 AnalyzeAttrFetchFunc fetchfunc,
-					 int samplerows,
-					 double totalrows);
-static int	compare_scalars(const void *a, const void *b, void *arg);
-static int	compare_mcvs(const void *a, const void *b);
-
-
-/*
- * std_typanalyze -- the default type-specific typanalyze function
- */
-static bool
-std_typanalyze(VacAttrStats *stats)
-{
-	Form_pg_attribute attr = stats->attr;
-	Operator	func_operator;
-	Oid			eqopr = InvalidOid;
-	Oid			eqfunc = InvalidOid;
-	Oid			ltopr = InvalidOid;
-	StdAnalyzeData *mystats;
-
-	double		row_target;
-
-	/* If the attstattarget column is negative, use the default value */
-	/* NB: it is okay to scribble on stats->attr since it's a copy */
-	if (attr->attstattarget < 0)
-		attr->attstattarget = default_statistics_target;
-
-	/* If column has no "=" operator, we can't do much of anything */
-	func_operator = equality_oper(attr->atttypid, true);
-	if (func_operator != NULL)
-	{
-		eqopr = oprid(func_operator);
-		eqfunc = oprfuncid(func_operator);
-		ReleaseSysCache(func_operator);
-	}
-	if (!OidIsValid(eqfunc))
-		return false;
-
-	/* Is there a "<" operator with suitable semantics? */
-	func_operator = ordering_oper(attr->atttypid, true);
-	if (func_operator != NULL)
-	{
-		ltopr = oprid(func_operator);
-		ReleaseSysCache(func_operator);
-	}
-
-	/* Save the operator info for compute_stats routines */
-	mystats = (StdAnalyzeData *) palloc(sizeof(StdAnalyzeData));
-	mystats->eqopr = eqopr;
-	mystats->eqfunc = eqfunc;
-	mystats->ltopr = ltopr;
-	stats->extra_data = mystats;
-
-	/*
-	 * Determine which standard statistics algorithm to use
+	Oid			sampleTableOid = InvalidOid;
+	float4		minSampleTableSize = 0;
+	bool		sampleTableRequired = true;
+	ListCell	*le = NULL;
+	Oid			relationOid = InvalidOid;
+	float4 estimatedRelTuples = 0.0;
+	float4 estimatedRelPages = 0.0;
+	float4 sampleTableRelTuples = 0.0;
+				
+	relationOid = RelationGetRelid(relation);
+	
+	/**
+	 * Step 1: estimate reltuples, relpages for the relation. 
 	 */
-	if (OidIsValid(ltopr))
+	analyzeEstimateReltuplesRelpages(relationOid, &estimatedRelTuples, &estimatedRelPages);
+	
+	elog(elevel, "ANALYZE estimated reltuples=%f, relpages=%f for table %s", estimatedRelTuples, estimatedRelPages, RelationGetRelationName(relation));
+	
+	/**
+	 * Step 2: update the pg_class entry.
+	 */
+	updateReltuplesRelpagesInCatalog(relationOid, estimatedRelTuples, estimatedRelPages);
+	
+	/**
+	 * Does the relation have any rows. If not, no point analyzing columns.
+	 */
+	if (estimatedRelTuples < 1.0)
 	{
-		/* Seems to be a scalar datatype */
-		stats->compute_stats = compute_scalar_stats;
-	}
-	else
-	{
-		/* Can't do much but the minimal stuff */
-		stats->compute_stats = compute_minimal_stats;
+		elog(elevel, "ANALYZE skipping computing statistics on table %s because it has no rows.", RelationGetRelationName(relation));
+		return;
 	}
 
+	/* Cannot compute statistics on pg_statistic due to locking issues */
+	if (relationOid == StatisticRelationId)
+	{
+		elog(elevel, "ANALYZE skipping computing statistics on pg_statistic.");
+		return;
+	}
+
+	/**
+	 * Determine how many rows need to be sampled.
+	 */
+	foreach (le, lAttributeNames)
+	{
+		const char *attributeName = (const char *) lfirst(le);
+		float4 minRowsForAttribute = estimateSampleSize(relationOid, attributeName, estimatedRelTuples);
+		minSampleTableSize = Max(minSampleTableSize, minRowsForAttribute);
+	}
+	
+	/**
+	 * If no statistics are needed on any attribute, then fall through quickly.
+	 */
+	if (minSampleTableSize == 0)
+	{
+		elog(elevel, "ANALYZE skipping computing statistics on table %s because no attribute needs it.", RelationGetRelationName(relation));
+		return;		
+	}
+
+	/**
+	 * Determine if a sample table needs to be created. If reltuples is very small,
+	 * then, we'd rather work off the entire table. Also, if the sample required is
+	 * the size of the table, then we'd rather work off the entire table.
+	 */
+	if (estimatedRelTuples <= gp_statistics_sampling_threshold 
+			|| minSampleTableSize >= estimatedRelTuples) /* maybe this should be K% of reltuples or something? */
+	{
+		sampleTableRequired = false;
+	}
+
+	/**
+	 * Step 3: If required, create a sample table
+	 */
+	if (sampleTableRequired)
+	{
+		elog(elevel, "ANALYZE building sample table of size %.0f on table %s because it has too many rows.", minSampleTableSize, RelationGetRelationName(relation));
+		sampleTableOid = buildSampleTable(relationOid, lAttributeNames, estimatedRelTuples, minSampleTableSize, &sampleTableRelTuples);
+	}
+	
+	/**
+	 * Step 4: ANALYZE attributes, one at a time.
+	 */
+	foreach (le, lAttributeNames)
+	{
+		AttributeStatistics	stats;
+		const char *lAttributeName = (const char *) lfirst(le);
+		elog(elevel, "ANALYZE computing statistics on attribute %s", lAttributeName);
+		if (sampleTableRequired)			
+			analyzeComputeAttributeStatistics(relationOid, lAttributeName, estimatedRelTuples, sampleTableOid, sampleTableRelTuples,  &stats);
+		else
+			analyzeComputeAttributeStatistics(relationOid, lAttributeName, estimatedRelTuples, relationOid, estimatedRelTuples, &stats);
+		updateAttributeStatisticsInCatalog(relationOid, lAttributeName, &stats);
+	}
+	
+	/**
+	 * Step 5: Cleanup. Drop the sample table.
+	 */
+	if (sampleTableRequired)
+	{
+		elog(elevel, "ANALYZE dropping sample table");
+		dropSampleTable(sampleTableOid);
+	}
+	
+	return;
+}
+
+/**
+ * Generates a table name for the auxiliary sample table that may be created during ANALYZE.
+ * This is not super random. However, this should be sufficient for our purpose.
+ * Input:
+ * 	relationOid 	- relation
+ * 	backendId	- pid of the backend.
+ * Output:
+ * 	sample table name. This must be pfree'd by the caller.
+ */
+static char* temporarySampleTableName(Oid relationOid)
+{
+	char tmpname[NAMEDATALEN];
+	snprintf(tmpname, NAMEDATALEN, "pg_analyze_%u_%i", relationOid, MyBackendId);
+	return pstrdup(tmpname);
+}
+
+/**
+ * This method determines the number of mcv entries to be computed for a particular attribute.
+ * Input:
+ * 	relationOid - Oid of relation
+ * 	attributeName - Name of attribute
+ * Output:
+ * 	number of mcv entries.
+ */
+static int4 numberOfMCVEntries(Oid relationOid, const char *attributeName)
+{
+	HeapTuple			attributeTuple = NULL;
+	Form_pg_attribute 	attribute = NULL;
+	int4	 			nMCVEntries = 0;
+	
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+	Assert(HeapTupleIsValid(attributeTuple));
+	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
+	nMCVEntries = attribute->attstattarget;
+	ReleaseSysCache(attributeTuple);
+	if (nMCVEntries < 0)
+		nMCVEntries = (int4) default_statistics_target;
+	return nMCVEntries;
+}
+
+/**
+ * This method determines the number of histogram entries to be computed for a particular attribute.
+ * Input:
+ * 	relationOid	- relation's Oid
+ * 	attributeName - Name of attribute
+ * Output:
+ * 	number of histogram entries. Currently, this is the same as the number of MCV entries.
+ */
+static int4 numberOfHistogramEntries(Oid relationOid, const char *attributeName)
+{
+	/** for now, the number of histogram entries is same as mcv_entries */
+	return numberOfMCVEntries(relationOid, attributeName);
+}
+
+/**
+ * Determine the number of tuples from relation that will need to be sampled
+ * to compute statistics on the specific attribute. This method looks up the
+ * stats target for the said attribute (if one is not found, the default_statistics_target
+ * is used) and employs a formula (explained below) to compute the number of rows
+ * needed.
+ * Input:
+ * 	relationOid 		- relation whose sample size must be determined
+ * 	attributeName 	- attribute
+ * 	relTuples			- number of tuples in relation.
+ * Output:
+ * 	sample size
+ * 
+ */
+static float4 estimateSampleSize(Oid relationOid, const char *attributeName, float4 relTuples)
+{
+	float4		sampleSize = 0.0;
+	int4		statsTarget = 0.0;
+	
+	statsTarget = Max(numberOfHistogramEntries(relationOid, attributeName), 
+						numberOfMCVEntries(relationOid, attributeName));
+	Assert(statsTarget >= 0);
 	/*--------------------
 	 * The following choice of minrows is based on the paper
 	 * "Random sampling for histogram construction: how much is enough?"
@@ -1817,961 +810,1652 @@ std_typanalyze(VacAttrStats *stats)
 	 * error fraction, and error probability gamma, the minimum
 	 * random sample size is
 	 *		r = 4 * k * ln(2*n/gamma) / error_fraction^2
-	 * Taking gamma = 0.01, n = 1 million rows, we obtain
-	 *		r = 76.45 * k/error_fraction^2
-	 *
-	 * Note: because of the log function, the dependence on n is
-	 * quite weak; even at n = 1 billion, the error fraction doesn't
-	 * increase too much. So there's no real need to scale for n,
-	 * which is a good thing because we don't necessarily know it at
-	 * this point.
+	 * We use gamma=0.01 in our calculations.
 	 *--------------------
 	 */
-	row_target = 76.45 * attr->attstattarget / (analyze_relative_error * analyze_relative_error);
-	elog(DEBUG3, "analyze row target: %f", row_target);
-	stats->minrows = ceil(row_target);
-
-	return true;
-}
-
-/*
- *	compute_minimal_stats() -- compute minimal column statistics
- *
- *	We use this when we can find only an "=" operator for the datatype.
- *
- *	We determine the fraction of non-null rows, the average width, the
- *	most common values, and the (estimated) number of distinct values.
- *
- *	The most common values are determined by brute force: we keep a list
- *	of previously seen values, ordered by number of times seen, as we scan
- *	the samples.  A newly seen value is inserted just after the last
- *	multiply-seen value, causing the bottommost (oldest) singly-seen value
- *	to drop off the list.  The accuracy of this method, and also its cost,
- *	depend mainly on the length of the list we are willing to keep.
- */
-static void
-compute_minimal_stats(VacAttrStatsP stats,
-					  AnalyzeAttrFetchFunc fetchfunc,
-					  int samplerows,
-					  double totalrows)
-{
-	int			i;
-	int			null_cnt = 0;
-	int			nonnull_cnt = 0;
-	int			toowide_cnt = 0;
-	double		total_width = 0;
-	bool		is_varlena = (!stats->attr->attbyval &&
-							  stats->attr->attlen == -1);
-	bool		is_varwidth = (!stats->attr->attbyval &&
-							   stats->attr->attlen < 0);
-	FmgrInfo	f_cmpeq;
-	typedef struct
+	Assert(relTuples > 0.0);
+	if (analyze_relative_error > 0.0)
 	{
-		Datum		value;
-		int			count;
-	} TrackItem;
-	TrackItem  *track;
-	int			track_cnt,
-				track_max;
-	int			num_mcv = stats->attr->attstattarget;
-	StdAnalyzeData *mystats = (StdAnalyzeData *) stats->extra_data;
-
-	/*
-	 * We track up to 2*n values for an n-element MCV list; but at least 10
-	 */
-	track_max = 2 * num_mcv;
-	if (track_max < 10)
-		track_max = 10;
-	track = (TrackItem *) palloc(track_max * sizeof(TrackItem));
-	track_cnt = 0;
-
-	fmgr_info(mystats->eqfunc, &f_cmpeq);
-
-	for (i = 0; i < samplerows; i++)
-	{
-		Datum		value;
-		bool		isnull;
-		bool		match;
-		int			firstcount1,
-					j;
-
-		vacuum_delay_point();
-
-		value = fetchfunc(stats, i, &isnull);
-
-		/* Check for null/nonnull */
-		if (isnull)
-		{
-			null_cnt++;
-			continue;
-		}
-		nonnull_cnt++;
-
-		/*
-		 * If it's a variable-width field, add up widths for average width
-		 * calculation.  Note that if the value is toasted, we use the toasted
-		 * width.  We don't bother with this calculation if it's a fixed-width
-		 * type.
-		 */
-		if (is_varlena)
-		{
-			total_width += VARSIZE_ANY(DatumGetPointer(value));
-
-			/*
-			 * If the value is toasted, we want to detoast it just once to
-			 * avoid repeated detoastings and resultant excess memory usage
-			 * during the comparisons.	Also, check to see if the value is
-			 * excessively wide, and if so don't detoast at all --- just
-			 * ignore the value.
-			 */
-			if (toast_raw_datum_size(value) > WIDTH_THRESHOLD)
-			{
-				toowide_cnt++;
-				continue;
-			}
-			value = PointerGetDatum(PG_DETOAST_DATUM(value));
-		}
-		else if (is_varwidth)
-		{
-			/* must be cstring */
-			total_width += strlen(DatumGetCString(value)) + 1;
-		}
-
-		/*
-		 * See if the value matches anything we're already tracking.
-		 */
-		match = false;
-		firstcount1 = track_cnt;
-		for (j = 0; j < track_cnt; j++)
-		{
-			if (DatumGetBool(FunctionCall2(&f_cmpeq, value, track[j].value)))
-			{
-				match = true;
-				break;
-			}
-			if (j < firstcount1 && track[j].count == 1)
-				firstcount1 = j;
-		}
-
-		if (match)
-		{
-			/* Found a match */
-			track[j].count++;
-			/* This value may now need to "bubble up" in the track list */
-			while (j > 0 && track[j].count > track[j - 1].count)
-			{
-				swapDatum(track[j].value, track[j - 1].value);
-				swapInt(track[j].count, track[j - 1].count);
-				j--;
-			}
-		}
-		else
-		{
-			/* No match.  Insert at head of count-1 list */
-			if (track_cnt < track_max)
-				track_cnt++;
-			for (j = track_cnt - 1; j > firstcount1; j--)
-			{
-				track[j].value = track[j - 1].value;
-				track[j].count = track[j - 1].count;
-			}
-			if (firstcount1 < track_cnt)
-			{
-				track[firstcount1].value = value;
-				track[firstcount1].count = 1;
-			}
-		}
-	}
-
-	/* We can only compute real stats if we found some non-null values. */
-	if (nonnull_cnt > 0)
-	{
-		int			nmultiple,
-					summultiple;
-
-		stats->pgstat.stats_valid = true;
-		/* Do the simple null-frac and width stats */
-		stats->pgstat.stanullfrac = (double) null_cnt / (double) samplerows;
-		if (is_varwidth)
-			stats->pgstat.stawidth = total_width / (double) nonnull_cnt;
-		else
-			stats->pgstat.stawidth = stats->attrtype->typlen;
-
-		/* Count the number of values we found multiple times */
-		summultiple = 0;
-		for (nmultiple = 0; nmultiple < track_cnt; nmultiple++)
-		{
-			if (track[nmultiple].count == 1)
-				break;
-			summultiple += track[nmultiple].count;
-		}
-
-		if (nmultiple == 0)
-		{
-			/* If we found no repeated values, assume it's a unique column */
-			stats->pgstat.stadistinct = -1.0;
-		}
-		else if (track_cnt < track_max && toowide_cnt == 0 &&
-				 nmultiple == track_cnt)
-		{
-			/*
-			 * Our track list includes every value in the sample, and every
-			 * value appeared more than once.  Assume the column has just
-			 * these values.
-			 */
-			stats->pgstat.stadistinct = track_cnt;
-		}
-		else
-		{
-			/*----------
-			 * Estimate the number of distinct values using the estimator
-			 * proposed by Haas and Stokes in IBM Research Report RJ 10025:
-			 *		n*d / (n - f1 + f1*n/N)
-			 * where f1 is the number of distinct values that occurred
-			 * exactly once in our sample of n rows (from a total of N),
-			 * and d is the total number of distinct values in the sample.
-			 * This is their Duj1 estimator; the other estimators they
-			 * recommend are considerably more complex, and are numerically
-			 * very unstable when n is much smaller than N.
-			 *
-			 * We assume (not very reliably!) that all the multiply-occurring
-			 * values are reflected in the final track[] list, and the other
-			 * nonnull values all appeared but once.  (XXX this usually
-			 * results in a drastic overestimate of ndistinct.	Can we do
-			 * any better?)
-			 *----------
-			 */
-			int			f1 = nonnull_cnt - summultiple;
-			int			d = f1 + nmultiple;
-			double		numer,
-						denom,
-						stadistinct;
-
-			numer = (double) samplerows *(double) d;
-
-			denom = (double) (samplerows - f1) +
-				(double) f1 *(double) samplerows / totalrows;
-
-			stadistinct = numer / denom;
-			/* Clamp to sane range in case of roundoff error */
-			if (stadistinct < (double) d)
-				stadistinct = (double) d;
-			if (stadistinct > totalrows)
-				stadistinct = totalrows;
-			stats->pgstat.stadistinct = floor(stadistinct + 0.5);
-		}
-
-		/*
-		 * If we estimated the number of distinct values at more than 10% of
-		 * the total row count (a very arbitrary limit), then assume that
-		 * stadistinct should scale with the row count rather than be a fixed
-		 * value.
-		 */
-		if (stats->pgstat.stadistinct > 0.1 * totalrows)
-			stats->pgstat.stadistinct = -(stats->pgstat.stadistinct / totalrows);
-
-		/*
-		 * Decide how many values are worth storing as most-common values. If
-		 * we are able to generate a complete MCV list (all the values in the
-		 * sample will fit, and we think these are all the ones in the table),
-		 * then do so.	Otherwise, store only those values that are
-		 * significantly more common than the (estimated) average. We set the
-		 * threshold rather arbitrarily at 25% more than average, with at
-		 * least 2 instances in the sample.
-		 */
-		if (track_cnt < track_max && toowide_cnt == 0 &&
-			stats->pgstat.stadistinct > 0 &&
-			track_cnt <= num_mcv)
-		{
-			/* Track list includes all values seen, and all will fit */
-			num_mcv = track_cnt;
-		}
-		else
-		{
-			double		ndistinct = stats->pgstat.stadistinct;
-			double		avgcount,
-						mincount;
-
-			if (ndistinct < 0)
-				ndistinct = -ndistinct * totalrows;
-			/* estimate # of occurrences in sample of a typical value */
-			avgcount = (double) samplerows / ndistinct;
-			/* set minimum threshold count to store a value */
-			mincount = avgcount * 1.25;
-			if (mincount < 2)
-				mincount = 2;
-			if (num_mcv > track_cnt)
-				num_mcv = track_cnt;
-			for (i = 0; i < num_mcv; i++)
-			{
-				if (track[i].count < mincount)
-				{
-					num_mcv = i;
-					break;
-				}
-			}
-		}
-
-		/* Generate MCV slot entry */
-		if (num_mcv > 0)
-		{
-			MemoryContext old_context;
-			Datum	   *mcv_values;
-			float4	   *mcv_freqs;
-
-			/* Must copy the target values into anl_context */
-			old_context = MemoryContextSwitchTo(stats->anl_context);
-			mcv_values = (Datum *) palloc(num_mcv * sizeof(Datum));
-			mcv_freqs = (float4 *) palloc(num_mcv * sizeof(float4));
-			for (i = 0; i < num_mcv; i++)
-			{
-				mcv_values[i] = datumCopy(track[i].value,
-										  stats->attr->attbyval,
-										  stats->attr->attlen);
-				mcv_freqs[i] = (double) track[i].count / (double) samplerows;
-			}
-			MemoryContextSwitchTo(old_context);
-			stats->pgstat.stakind[0] = STATISTIC_KIND_MCV;
-			stats->pgstat.staop[0] = mystats->eqopr;
-			stats->pgstat.stanumbers[0] = mcv_freqs;
-			stats->pgstat.numnumbers[0] = num_mcv;
-			stats->pgstat.stavalues[0] = mcv_values;
-			stats->pgstat.numvalues[0] = num_mcv;
-		}
-	}
-	else if (null_cnt > 0)
-	{
-		/* We found only nulls; assume the column is entirely null */
-		stats->pgstat.stats_valid = true;
-		stats->pgstat.stanullfrac = 1.0;
-		if (is_varwidth)
-			stats->pgstat.stawidth = 0;	/* "unknown" */
-		else
-			stats->pgstat.stawidth = stats->attrtype->typlen;
-		stats->pgstat.stadistinct = 0.0;		/* "unknown" */
-	}
-
-	/* We don't need to bother cleaning up any of our temporary palloc's */
-}
-
-
-/*
- *	compute_scalar_stats() -- compute column statistics
- *
- *	We use this when we can find "=" and "<" operators for the datatype.
- *
- *	We determine the fraction of non-null rows, the average width, the
- *	most common values, the (estimated) number of distinct values, the
- *	distribution histogram, and the correlation of physical to logical order.
- *
- *	The desired stats can be determined fairly easily after sorting the
- *	data values into order.
- */
-static void
-compute_scalar_stats(VacAttrStatsP stats,
-					 AnalyzeAttrFetchFunc fetchfunc,
-					 int samplerows,
-					 double totalrows)
-{
-	int			i;
-	int			null_cnt = 0;
-	int			nonnull_cnt = 0;
-	int			toowide_cnt = 0;
-	double		total_width = 0;
-	bool		is_varlena = (!stats->attr->attbyval &&
-							  stats->attr->attlen == -1);
-	bool		is_varwidth = (!stats->attr->attbyval &&
-							   stats->attr->attlen < 0);
-	double		corr_xysum;
-	RegProcedure cmpFn;
-	SortFunctionKind cmpFnKind;
-	FmgrInfo	f_cmpfn;
-	ScalarItem *values;
-	int			values_cnt = 0;
-	int		   *tupnoLink;
-	ScalarMCVItem *track;
-	int			track_cnt = 0;
-	int			num_mcv = stats->attr->attstattarget;
-	int			num_bins = stats->attr->attstattarget;
-	StdAnalyzeData *mystats = (StdAnalyzeData *) stats->extra_data;
-
-	values = (ScalarItem *) palloc(samplerows * sizeof(ScalarItem));
-	tupnoLink = (int *) palloc(samplerows * sizeof(int));
-	track = (ScalarMCVItem *) palloc(num_mcv * sizeof(ScalarMCVItem));
-
-	SelectSortFunction(mystats->ltopr, &cmpFn, &cmpFnKind);
-	fmgr_info(cmpFn, &f_cmpfn);
-
-	/* Initial scan to find sortable values */
-	for (i = 0; i < samplerows; i++)
-	{
-		Datum		value;
-		bool		isnull;
-
-		vacuum_delay_point();
-
-		value = fetchfunc(stats, i, &isnull);
-
-		/* Check for null/nonnull */
-		if (isnull)
-		{
-			null_cnt++;
-			continue;
-		}
-		nonnull_cnt++;
-
-		/*
-		 * If it's a variable-width field, add up widths for average width
-		 * calculation.  Note that if the value is toasted, we use the toasted
-		 * width.  We don't bother with this calculation if it's a fixed-width
-		 * type.
-		 */
-		if (is_varlena)
-		{
-			total_width += VARSIZE_ANY(DatumGetPointer(value));
-
-			/*
-			 * If the value is toasted, we want to detoast it just once to
-			 * avoid repeated detoastings and resultant excess memory usage
-			 * during the comparisons.	Also, check to see if the value is
-			 * excessively wide, and if so don't detoast at all --- just
-			 * ignore the value.
-			 */
-			if (toast_raw_datum_size(value) > WIDTH_THRESHOLD)
-			{
-				toowide_cnt++;
-				continue;
-			}
-			value = PointerGetDatum(PG_DETOAST_DATUM(value));
-		}
-		else if (is_varwidth)
-		{
-			/* must be cstring */
-			total_width += strlen(DatumGetCString(value)) + 1;
-		}
-
-		/* Add it to the list to be sorted */
-		values[values_cnt].value = value;
-		values[values_cnt].tupno = values_cnt;
-		tupnoLink[values_cnt] = values_cnt;
-		values_cnt++;
-	}
-
-	/* We can only compute real stats if we found some sortable values. */
-	if (values_cnt > 0)
-	{
-		int			ndistinct,	/* # distinct values in sample */
-					nmultiple,	/* # that appear multiple times */
-					num_hist,
-					dups_cnt;
-		int			slot_idx = 0;
-		CompareScalarsContext cxt;
-
-		cxt.cmpFn = &f_cmpfn;
-		cxt.cmpFnKind = cmpFnKind;
-		cxt.tupnoLink = tupnoLink;
-
-		if(!lc_collate_is_c() && (
-				f_cmpfn.fn_addr == bpcharcmp ||
-				f_cmpfn.fn_addr == bttextcmp)
-		  )
-		{
-
-			char *p = NULL;
-			void *tofree = NULL;
-			int len;
-			int llen;
-			int i;
-
-			char cbuf[512];
-			char *pbuf = cbuf;
-			int avail = 512;
-
-			cxt.fStrCmp = true;
-
-			/* Now prepare all the char ptrs */
-			for(i=0; i<values_cnt; ++i)
-			{
-				varattrib_untoast_ptr_len(values[i].value, &p, &len, &tofree);
-
-				if(f_cmpfn.fn_addr == bpcharcmp)
-				{
-					for(; len > 0 && p[len-1] == ' '; --len)
-						;
-				}
-
-				if(len > avail - 2)
-				{
-					if(pbuf != cbuf)
-						pfree(pbuf);
-
-					pbuf = palloc(len + 2);
-					avail = len + 2;
-				}
-
-				memcpy(pbuf, p, len);
-				pbuf[len] = '\0';
-
-				values[i].ptr = palloc(len * 3);
-				llen = (int) strxfrm(values[i].ptr, pbuf, len * 3);
-				if(llen >= len * 3)
-				{
-					values[i].ptr = repalloc(values[i].ptr, llen + 1);
-					len = llen + 1;
-					llen = (int) strxfrm(values[i].ptr, pbuf, len);
-					Assert(llen < len);
-				}
-
-				if(tofree)
-					pfree(tofree);
-			}
-
-			if(pbuf != cbuf)
-				pfree(pbuf);
-
-			qsort_arg((void *) values, values_cnt, sizeof(ScalarItem),
-					compare_scalars, (void *) &cxt);
-
-			for(i=0; i<values_cnt; ++i)
-			{
-				Assert(values[i].ptr);
-				pfree(values[i].ptr);
-				values[i].ptr = NULL;
-			}
-		}
-		else
-		{
-			cxt.fStrCmp = false;
-			qsort_arg((void *) values, values_cnt, sizeof(ScalarItem),
-					compare_scalars, (void *) &cxt);
-		}
-
-
-
-		/*
-		 * Now scan the values in order, find the most common ones, and also
-		 * accumulate ordering-correlation statistics.
-		 *
-		 * To determine which are most common, we first have to count the
-		 * number of duplicates of each value.	The duplicates are adjacent in
-		 * the sorted list, so a brute-force approach is to compare successive
-		 * datum values until we find two that are not equal. However, that
-		 * requires N-1 invocations of the datum comparison routine, which are
-		 * completely redundant with work that was done during the sort.  (The
-		 * sort algorithm must at some point have compared each pair of items
-		 * that are adjacent in the sorted order; otherwise it could not know
-		 * that it's ordered the pair correctly.) We exploit this by having
-		 * compare_scalars remember the highest tupno index that each
-		 * ScalarItem has been found equal to.	At the end of the sort, a
-		 * ScalarItem's tupnoLink will still point to itself if and only if it
-		 * is the last item of its group of duplicates (since the group will
-		 * be ordered by tupno).
-		 */
-		corr_xysum = 0;
-		ndistinct = 0;
-		nmultiple = 0;
-		dups_cnt = 0;
-		for (i = 0; i < values_cnt; i++)
-		{
-			int			tupno = values[i].tupno;
-
-			corr_xysum += ((double) i) * ((double) tupno);
-			dups_cnt++;
-			if (tupnoLink[tupno] == tupno)
-			{
-				/* Reached end of duplicates of this value */
-				ndistinct++;
-				if (dups_cnt > 1)
-				{
-					nmultiple++;
-					if (track_cnt < num_mcv ||
-						dups_cnt > track[track_cnt - 1].count)
-					{
-						/*
-						 * Found a new item for the mcv list; find its
-						 * position, bubbling down old items if needed. Loop
-						 * invariant is that j points at an empty/ replaceable
-						 * slot.
-						 */
-						int			j;
-
-						if (track_cnt < num_mcv)
-							track_cnt++;
-						for (j = track_cnt - 1; j > 0; j--)
-						{
-							if (dups_cnt <= track[j - 1].count)
-								break;
-							track[j].count = track[j - 1].count;
-							track[j].first = track[j - 1].first;
-						}
-						track[j].count = dups_cnt;
-						track[j].first = i + 1 - dups_cnt;
-					}
-				}
-				dups_cnt = 0;
-			}
-		}
-
-		stats->pgstat.stats_valid = true;
-		/* Do the simple null-frac and width stats */
-		stats->pgstat.stanullfrac = (double) null_cnt / (double) samplerows;
-		if (is_varwidth)
-			stats->pgstat.stawidth = total_width / (double) nonnull_cnt;
-		else
-			stats->pgstat.stawidth = stats->attrtype->typlen;
-
-		if (nmultiple == 0)
-		{
-			/* If we found no repeated values, assume it's a unique column */
-			stats->pgstat.stadistinct = -1.0;
-		}
-		else if (toowide_cnt == 0 && nmultiple == ndistinct)
-		{
-			/*
-			 * Every value in the sample appeared more than once.  Assume the
-			 * column has just these values.
-			 */
-			stats->pgstat.stadistinct = ndistinct;
-		}
-		else
-		{
-			/*----------
-			 * Estimate the number of distinct values using the estimator
-			 * proposed by Haas and Stokes in IBM Research Report RJ 10025:
-			 *		n*d / (n - f1 + f1*n/N)
-			 * where f1 is the number of distinct values that occurred
-			 * exactly once in our sample of n rows (from a total of N),
-			 * and d is the total number of distinct values in the sample.
-			 * This is their Duj1 estimator; the other estimators they
-			 * recommend are considerably more complex, and are numerically
-			 * very unstable when n is much smaller than N.
-			 *
-			 * Overwidth values are assumed to have been distinct.
-			 *----------
-			 */
-			int			f1 = ndistinct - nmultiple + toowide_cnt;
-			int			d = f1 + nmultiple;
-			double		numer,
-						denom,
-						stadistinct;
-
-			numer = (double) samplerows *(double) d;
-
-			denom = (double) (samplerows - f1) +
-				(double) f1 *(double) samplerows / totalrows;
-
-			stadistinct = numer / denom;
-			/* Clamp to sane range in case of roundoff error */
-			if (stadistinct < (double) d)
-				stadistinct = (double) d;
-			if (stadistinct > totalrows)
-				stadistinct = totalrows;
-			stats->pgstat.stadistinct = floor(stadistinct + 0.5);
-		}
-
-		/*
-		 * If we estimated the number of distinct values at more than 10% of
-		 * the total row count (a very arbitrary limit), then assume that
-		 * stadistinct should scale with the row count rather than be a fixed
-		 * value.
-		 */
-		if (stats->pgstat.stadistinct > 0.1 * totalrows)
-			stats->pgstat.stadistinct = -(stats->pgstat.stadistinct / totalrows);
-
-		/*
-		 * Decide how many values are worth storing as most-common values. If
-		 * we are able to generate a complete MCV list (all the values in the
-		 * sample will fit, and we think these are all the ones in the table),
-		 * then do so.	Otherwise, store only those values that are
-		 * significantly more common than the (estimated) average. We set the
-		 * threshold rather arbitrarily at 25% more than average, with at
-		 * least 2 instances in the sample.  Also, we won't suppress values
-		 * that have a frequency of at least 1/K where K is the intended
-		 * number of histogram bins; such values might otherwise cause us to
-		 * emit duplicate histogram bin boundaries.
-		 */
-		if (track_cnt == ndistinct && toowide_cnt == 0 &&
-			stats->pgstat.stadistinct > 0 &&
-			track_cnt <= num_mcv)
-		{
-			/* Track list includes all values seen, and all will fit */
-			num_mcv = track_cnt;
-		}
-		else
-		{
-			double		ndistinct = stats->pgstat.stadistinct;
-			double		avgcount,
-						mincount,
-						maxmincount;
-
-			if (ndistinct < 0)
-				ndistinct = -ndistinct * totalrows;
-			/* estimate # of occurrences in sample of a typical value */
-			avgcount = (double) samplerows / ndistinct;
-			/* set minimum threshold count to store a value */
-			mincount = avgcount * 1.25;
-			if (mincount < 2)
-				mincount = 2;
-			/* don't let threshold exceed 1/K, however */
-			maxmincount = (double) samplerows / (double) num_bins;
-			if (mincount > maxmincount)
-				mincount = maxmincount;
-			if (num_mcv > track_cnt)
-				num_mcv = track_cnt;
-			for (i = 0; i < num_mcv; i++)
-			{
-				if (track[i].count < mincount)
-				{
-					num_mcv = i;
-					break;
-				}
-			}
-		}
-
-		/* Generate MCV slot entry */
-		if (num_mcv > 0)
-		{
-			MemoryContext old_context;
-			Datum	   *mcv_values;
-			float4	   *mcv_freqs;
-
-			/* Must copy the target values into anl_context */
-			old_context = MemoryContextSwitchTo(stats->anl_context);
-			mcv_values = (Datum *) palloc(num_mcv * sizeof(Datum));
-			mcv_freqs = (float4 *) palloc(num_mcv * sizeof(float4));
-			for (i = 0; i < num_mcv; i++)
-			{
-				mcv_values[i] = datumCopy(values[track[i].first].value,
-										  stats->attr->attbyval,
-										  stats->attr->attlen);
-				mcv_freqs[i] = (double) track[i].count / (double) samplerows;
-			}
-			MemoryContextSwitchTo(old_context);
-
-			stats->pgstat.stakind[slot_idx] = STATISTIC_KIND_MCV;
-			stats->pgstat.staop[slot_idx] = mystats->eqopr;
-			stats->pgstat.stanumbers[slot_idx] = mcv_freqs;
-			stats->pgstat.numnumbers[slot_idx] = num_mcv;
-			stats->pgstat.stavalues[slot_idx] = mcv_values;
-			stats->pgstat.numvalues[slot_idx] = num_mcv;
-			slot_idx++;
-		}
-
-		/*
-		 * Generate a histogram slot entry if there are at least two distinct
-		 * values not accounted for in the MCV list.  (This ensures the
-		 * histogram won't collapse to empty or a singleton.)
-		 */
-		num_hist = ndistinct - num_mcv;
-		if (num_hist > num_bins)
-			num_hist = num_bins + 1;
-		if (num_hist >= 2)
-		{
-			MemoryContext old_context;
-			Datum	   *hist_values;
-			int			nvals;
-
-			/* Sort the MCV items into position order to speed next loop */
-			qsort((void *) track, num_mcv,
-				  sizeof(ScalarMCVItem), compare_mcvs);
-
-			/*
-			 * Collapse out the MCV items from the values[] array.
-			 *
-			 * Note we destroy the values[] array here... but we don't need it
-			 * for anything more.  We do, however, still need values_cnt.
-			 * nvals will be the number of remaining entries in values[].
-			 */
-			if (num_mcv > 0)
-			{
-				int			src,
-							dest;
-				int			j;
-
-				src = dest = 0;
-				j = 0;			/* index of next interesting MCV item */
-				while (src < values_cnt)
-				{
-					int			ncopy;
-
-					if (j < num_mcv)
-					{
-						int			first = track[j].first;
-
-						if (src >= first)
-						{
-							/* advance past this MCV item */
-							src = first + track[j].count;
-							j++;
-							continue;
-						}
-						ncopy = first - src;
-					}
-					else
-						ncopy = values_cnt - src;
-					memmove(&values[dest], &values[src],
-							ncopy * sizeof(ScalarItem));
-					src += ncopy;
-					dest += ncopy;
-				}
-				nvals = dest;
-			}
-			else
-				nvals = values_cnt;
-			Assert(nvals >= num_hist);
-
-			/* Must copy the target values into anl_context */
-			old_context = MemoryContextSwitchTo(stats->anl_context);
-			hist_values = (Datum *) palloc(num_hist * sizeof(Datum));
-			for (i = 0; i < num_hist; i++)
-			{
-				int			pos;
-
-				pos = (i * (nvals - 1)) / (num_hist - 1);
-				hist_values[i] = datumCopy(values[pos].value,
-										   stats->attr->attbyval,
-										   stats->attr->attlen);
-			}
-			MemoryContextSwitchTo(old_context);
-
-			stats->pgstat.stakind[slot_idx] = STATISTIC_KIND_HISTOGRAM;
-			stats->pgstat.staop[slot_idx] = mystats->ltopr;
-			stats->pgstat.stavalues[slot_idx] = hist_values;
-			stats->pgstat.numvalues[slot_idx] = num_hist;
-			slot_idx++;
-		}
-
-		/* Generate a correlation entry if there are multiple values */
-		if (values_cnt > 1)
-		{
-			MemoryContext old_context;
-			float4	   *corrs;
-			double		corr_xsum,
-						corr_x2sum;
-
-			/* Must copy the target values into anl_context */
-			old_context = MemoryContextSwitchTo(stats->anl_context);
-			corrs = (float4 *) palloc(sizeof(float4));
-			MemoryContextSwitchTo(old_context);
-
-			/*----------
-			 * Since we know the x and y value sets are both
-			 *		0, 1, ..., values_cnt-1
-			 * we have sum(x) = sum(y) =
-			 *		(values_cnt-1)*values_cnt / 2
-			 * and sum(x^2) = sum(y^2) =
-			 *		(values_cnt-1)*values_cnt*(2*values_cnt-1) / 6.
-			 *----------
-			 */
-			corr_xsum = ((double) (values_cnt - 1)) *
-				((double) values_cnt) / 2.0;
-			corr_x2sum = ((double) (values_cnt - 1)) *
-				((double) values_cnt) * (double) (2 * values_cnt - 1) / 6.0;
-
-			/* And the correlation coefficient reduces to */
-			corrs[0] = (values_cnt * corr_xysum - corr_xsum * corr_xsum) /
-				(values_cnt * corr_x2sum - corr_xsum * corr_xsum);
-
-			stats->pgstat.stakind[slot_idx] = STATISTIC_KIND_CORRELATION;
-			stats->pgstat.staop[slot_idx] = mystats->ltopr;
-			stats->pgstat.stanumbers[slot_idx] = corrs;
-			stats->pgstat.numnumbers[slot_idx] = 1;
-			slot_idx++;
-		}
-	}
-	else if (nonnull_cnt == 0 && null_cnt > 0)
-	{
-		/* We found only nulls; assume the column is entirely null */
-		stats->pgstat.stats_valid = true;
-		stats->pgstat.stanullfrac = 1.0;
-		if (is_varwidth)
-			stats->pgstat.stawidth = 0;	/* "unknown" */
-		else
-			stats->pgstat.stawidth = stats->attrtype->typlen;
-		stats->pgstat.stadistinct = 0.0;		/* "unknown" */
-	}
-
-	/* We don't need to bother cleaning up any of our temporary palloc's */
-}
-
-/*
- * qsort_arg comparator for sorting ScalarItems
- *
- * Aside from sorting the items, we update the tupnoLink[] array
- * whenever two ScalarItems are found to contain equal datums.	The array
- * is indexed by tupno; for each ScalarItem, it contains the highest
- * tupno that that item's datum has been found to be equal to.  This allows
- * us to avoid additional comparisons in compute_scalar_stats().
- */
-static int
-compare_scalars(const void *a, const void *b, void *arg)
-{
-	Datum		da = ((ScalarItem *) a)->value;
-	int			ta = ((ScalarItem *) a)->tupno;
-	Datum		db = ((ScalarItem *) b)->value;
-	int			tb = ((ScalarItem *) b)->tupno;
-	CompareScalarsContext *cxt = (CompareScalarsContext *) arg;
-	int32		compare;
-
-	if(cxt->fStrCmp)
-	{
-		/* Compare two str.  First we do the strcmp of the collate converted str.
-		 * if they are equal, we break tie by byte compare original datum.
-		 *
-		 * See varstr_cmp.
-		 */
-		compare = strcmp(((ScalarItem *) a)->ptr, ((ScalarItem *) b)->ptr);
-		if(compare == 0)
-		{
-			char *p0; void *tofree0; int len0;
-			char *p1; void *tofree1; int len1;
-
-			varattrib_untoast_ptr_len(da, &p0, &len0, &tofree0);
-			varattrib_untoast_ptr_len(db, &p1, &len1, &tofree1);
-
-			if(cxt->cmpFn->fn_addr == bpcharcmp)
-			{
-				for(; len0 > 0 && p0[len0-1] == ' '; --len0);
-				for(; len1 > 0 && p1[len1-1] == ' '; --len1);
-			}
-
-			compare = strncmp(p0, p1, Min(len0, len1));
-			if ((compare == 0) && (len0 != len1))
-				compare = (len0 < len1) ? -1 : 1;
-
-			if(tofree0)
-				pfree(tofree0);
-			if(tofree1)
-				pfree(tofree1);
-		}
+		sampleSize = (float4) 4 * statsTarget * log(2 * relTuples / 0.01) / (analyze_relative_error * analyze_relative_error);
 	}
 	else
-		compare = ApplySortFunction(cxt->cmpFn, cxt->cmpFnKind, da, false, db, false);
-	if (compare != 0)
-		return compare;
-
-	/*
-	 * The two datums are equal, so update cxt->tupnoLink[].
-	 */
-	if (cxt->tupnoLink[ta] < tb)
-		cxt->tupnoLink[ta] = tb;
-	if (cxt->tupnoLink[tb] < ta)
-		cxt->tupnoLink[tb] = ta;
-
-	/*
-	 * For equal datums, sort by tupno
-	 */
-	return ta - tb;
+	{
+		sampleSize = relTuples;
+	}
+	
+	sampleSize = Max(sampleSize, 0.0);	/* Sanity check for low relTuples */
+	sampleSize = Min(sampleSize, relTuples);	/* Bound sample size to table size */
+	
+	return sampleSize;
 }
 
-/*
- * qsort comparator for sorting ScalarMCVItems by position
+/**
+ * This is a helper method that executes a SQL statement using the SPI interface.
+ * It optionally calls a callback function with result pointer.
+ * Input:
+ * 	src - SQL string
+ * 	read_only - is it a read-only call?
+ * 	tcount - execution tuple-count limit, or 0 for none
+ * 	callbackFn - callback function to be executed once SPI is done.
+ * 	clientData - argument to call back function (usually pointer to data-structure 
+ * 				that the callback function populates).
+ * 
  */
-static int
-compare_mcvs(const void *a, const void *b)
+static void spiExecuteWithCallback(
+		const char *src,
+		bool read_only,
+		long tcount,
+		spiCallback callbackFn,
+		void *clientData)
 {
-	int			da = ((ScalarMCVItem *) a)->first;
-	int			db = ((ScalarMCVItem *) b)->first;
+	bool connected = false;
+	int ret = 0;
 
-	return da - db;
+	PG_TRY();
+	{
+		if (SPI_OK_CONNECT != SPI_connect())
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("Unable to connect to execute internal query.")));
+		}
+		connected = true;
+
+		/* Do the query. */
+		ret = SPI_execute(src, read_only, tcount);
+		Assert(ret > 0);
+
+		if (callbackFn)
+		{
+			callbackFn(clientData);
+		}
+		connected = false;
+		SPI_finish();
+	}
+	/* Clean up in case of error. */
+	PG_CATCH();
+	{
+		if (connected)
+			SPI_finish();
+
+		/* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 }
+
+/**
+ * A callback function for use with spiExecuteWithCallback.  Asserts that exactly one row was returned.
+ *  Gets the row's first column as a float, using 0.0 if the value is null
+ */
+static void spiCallback_getSingleResultRowColumnAsFloat4(void *clientData)
+{
+	Datum datum_f;
+	bool isnull = false;
+	float4 *out = (float4*) clientData;
+
+    Assert(SPI_tuptable != NULL); // must have result
+    Assert(SPI_processed == 1); //we expect only one tuple.
+	Assert(SPI_tuptable->tupdesc->attrs[0]->atttypid == FLOAT4OID); // must be float4
+
+	datum_f = heap_getattr(SPI_tuptable->vals[0], 1, SPI_tuptable->tupdesc, &isnull);
+
+	if (isnull)
+	{
+		*out = 0.0;
+	}
+	else
+	{
+		*out = DatumGetFloat4(datum_f);
+	}
+}
+
+/**
+ * A callback function for use with spiExecuteWithCallback.  Asserts that exactly one row was returned.
+ *  Gets the row's first column as an array of float4 values and returns the two values from the array,
+ *   after asserting that the array has exactly two elements
+ *
+ */
+static void spiCallback_getSingleResultRowArrayAsTwoFloat4(void *clientData)
+{
+    float4 *out;
+    Datum arrayDatum;
+    bool isNull;
+    Datum *values = NULL;
+    int valuesLength, i;
+    const int requiredArraySize = 2;
+
+    Assert(SPI_tuptable != NULL);
+    Assert(SPI_processed == 1);
+
+    arrayDatum = heap_getattr(SPI_tuptable->vals[0], 1, SPI_tuptable->tupdesc, &isNull);
+    Assert(!isNull);
+
+    deconstruct_array(DatumGetArrayTypeP(arrayDatum),
+            FLOAT4OID,
+            sizeof(float4),
+            true,
+            'i',
+            &values, NULL, &valuesLength);
+    Assert(valuesLength == requiredArraySize);
+
+    out = (float4*) clientData;
+    for ( i = 0; i < requiredArraySize; i++)
+        *out++ 	= DatumGetFloat4(values[i]);
+    pfree(values);
+}
+
+/**
+ * A callback function for use with spiExecuteWithCallback.  Copies the SPI_processed value into
+ *    *clientDataOut, treating it as a float4 pointer.
+ */
+static void spiCallback_getProcessedAsFloat4(void *clientData)
+{
+    float4 *out = (float4*) clientData;
+    *out = (float4)SPI_processed;
+}
+
+/**
+ * A callback function for use with spiExecuteWithCallback.  Reads each column of output into an array
+ *   The number of arrays, the memory context for them, and the output location are determined by
+ *   treating *clientData as a EachResultColumnAsArraySpec and using the values there
+ */
+static void spiCallback_getEachResultColumnAsArray(void *clientData)
+{
+    EachResultColumnAsArraySpec * spec = (EachResultColumnAsArraySpec*) clientData;
+    int i;
+    ArrayType ** out = spec->output;
+
+    Assert(SPI_tuptable != NULL);
+    Assert(SPI_tuptable->tupdesc);
+
+    for ( i = 1; i <= spec->numColumns; i++ )
+    {
+        *out = SPIResultToArray(i, spec->memoryContext);
+        Assert(*out);
+        out++;
+    }
+}
+
+/**
+ * This method builds a sampled version of the given relation. The sampled
+ * version is created in a temp namespace. Note that ANALYZE can be
+ * executed only by the database owner. It is safe to assume that the database
+ * owner has permissions to create temp tables. The sampling is done by
+ * using the random() built-in function. 
+ * 
+ * TODO: Once tablesample becomes available, rewrite this function to utilize tablesample.
+ * 
+ * Input:
+ * 	relationOid 	- relation to be sampled
+ * 	lAttributeNames - attributes to be included in the sample
+ * 	relTuples		- estimated size of relation
+ * 	requestedSampleSize - as determined by attribute statistics requirements.
+ * 	sampleLimit		- limit on size of the sample.
+ * Output:
+ * 	sampleTableRelTuples - number of tuples in the sample table created.
+ */
+static Oid buildSampleTable(Oid relationOid, 
+		List *lAttributeNames, 
+		float4	relTuples,
+		float4 	requestedSampleSize, 
+		float4 *sampleTableRelTuples)
+{
+	int nAttributes = -1;
+	StringInfoData str;
+	int i = 0;
+	ListCell *le = NULL;
+	const char *schemaName = NULL;
+	const char *tableName = NULL;
+	char	*sampleSchemaName = pstrdup("pg_temp"); 
+	char 	*sampleTableName = NULL;
+	Oid			sampleTableOid = InvalidOid;
+	float4		randomThreshold = 0.0;
+	RangeVar 	*rangeVar = NULL;
+	
+	Assert(requestedSampleSize > 0.0);
+	Assert(relTuples > 0.0);
+	
+	randomThreshold = requestedSampleSize / relTuples;
+	
+	schemaName = get_namespace_name(get_rel_namespace(relationOid)); //must be pfreed
+	tableName = get_rel_name(relationOid); //must be pfreed
+	sampleTableName = temporarySampleTableName(relationOid); // must be pfreed 
+
+	initStringInfo(&str);
+	appendStringInfo(&str, "create table %s.%s as (select ", 
+			quote_identifier(sampleSchemaName), quote_identifier(sampleTableName)); 
+	
+	nAttributes = list_length(lAttributeNames);
+
+	foreach_with_count(le, lAttributeNames, i)
+	{
+		appendStringInfo(&str, "Ta.%s", quote_identifier((const char *) lfirst(le)));
+		if (i < nAttributes - 1)
+		{
+			appendStringInfo(&str, ", ");
+		}
+		else
+		{
+			appendStringInfo(&str, " ");			
+		}
+	}
+	
+	appendStringInfo(&str, "from only %s.%s as Ta where random() < %f limit %lu) distributed randomly", 
+			quote_identifier(schemaName), 
+			quote_identifier(tableName), randomThreshold, (unsigned long) requestedSampleSize);
+
+	spiExecuteWithCallback(str.data, false /*readonly*/, 0 /*tcount */, 
+	                        spiCallback_getProcessedAsFloat4, sampleTableRelTuples);
+
+	pfree(str.data);
+	elog(elevel, "Created sample table %s.%s with nrows=%.0f", 
+			quote_identifier(sampleSchemaName), 
+			quote_identifier(sampleTableName), 
+			*sampleTableRelTuples);
+
+	rangeVar = makeRangeVar(sampleSchemaName, sampleTableName);
+	sampleTableOid = RangeVarGetRelid(rangeVar, true);
+	
+	Assert(sampleTableOid != InvalidOid);
+	pfree((void *) rangeVar);
+	pfree((void *) sampleTableName);
+	pfree((void *) tableName);
+	pfree((void *) schemaName);
+	pfree((void *) sampleSchemaName);
+	return sampleTableOid;
+}
+
+/**
+ * Drops the sample table created during ANALYZE.
+ */
+static void dropSampleTable(Oid sampleTableOid)
+{
+	StringInfoData str;
+	const char *sampleSchemaName = NULL;
+	const char *sampleTableName = NULL;
+
+	sampleSchemaName = get_namespace_name(get_rel_namespace(sampleTableOid)); //must be pfreed
+	sampleTableName = get_rel_name(sampleTableOid); // must be pfreed 	
+
+	initStringInfo(&str);
+	appendStringInfo(&str, "drop table %s.%s", 
+			quote_identifier(sampleSchemaName), 
+			quote_identifier(sampleTableName));
+	
+	spiExecuteWithCallback(str.data, false /*readonly*/, 0 /*tcount */, 
+	                        NULL, NULL);
+
+	pfree(str.data);
+	pfree((void *)sampleSchemaName);
+	pfree((void *)sampleTableName);
+}
+
+
+/**
+ * This method estimates reltuples/relpages for a relation. To do this, it employs
+ * the built-in function 'gp_statistics_estimate_reltuples_relpages'. If the table to be
+ * analyzed is a system table, then it calculates statistics only using the master.
+ * Input:
+ * 	relationOid - relation's Oid
+ * Output:
+ * 	relTuples - estimated number of tuples
+ * 	relPages  - estimated number of pages
+ */
+void analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *relPages)
+{	
+	StringInfoData 	sqlstmt;
+	bool			localOnly = false;
+	Oid				schemaOid = InvalidOid;
+	float4          spiResult[2];
+	
+	*relPages = 0.0;		
+	*relTuples = 0.0;			
+		
+	initStringInfo(&sqlstmt);
+	
+	schemaOid = get_rel_namespace(relationOid);
+	
+	localOnly = (Gp_role == GP_ROLE_UTILITY || 
+			IsSystemNamespace(schemaOid) ||
+			IsToastNamespace(schemaOid) ||
+			IsAoSegmentNamespace(schemaOid));
+	
+	if (localOnly)
+	{
+		appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
+				"from pg_class c where c.oid=%d", relationOid);		
+	}
+	else
+	{
+		appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
+				"from gp_dist_random('pg_class') c where c.oid=%d", relationOid);
+	}
+
+    spiExecuteWithCallback(sqlstmt.data, false /*readonly*/, 0 /*tcount */,
+        	                        spiCallback_getSingleResultRowArrayAsTwoFloat4, spiResult);
+    *relTuples = spiResult[0];
+    *relPages = spiResult[1];
+
+	pfree(sqlstmt.data);
+	return;
+}
+
+/**
+ * This method updates reltuples, relpages in the pg_class entry
+ * for the specified table.
+ * Input:
+ * 	relationOid - relation whose entry must be changed
+ * 	reltuples 	- number of tuples as estimated during ANALYZE
+ * 	relpages	- number of pages as estimated during ANALYZE
+ */
+static void updateReltuplesRelpagesInCatalog(Oid relationOid, float4 relTuples, float4 relPages)
+{
+	Relation	pgclass = NULL;
+	HeapTuple	tuple = NULL;
+	Form_pg_class pgcform = NULL;
+	bool		dirty = false;
+
+	Assert(relationOid != InvalidOid);
+
+	/*
+	 * update number of tuples and number of pages in pg_class
+	 */
+	pgclass = heap_open(RelationRelationId, RowExclusiveLock);
+
+	/* Fetch a copy of the tuple to scribble on */
+	tuple = SearchSysCacheCopy(RELOID,
+							  ObjectIdGetDatum(relationOid),
+							  0, 0, 0);
+	/* We have locked the relation. We should not have trouble finding pg_class tuple */
+	Assert(HeapTupleIsValid(tuple));
+	pgcform = (Form_pg_class) GETSTRUCT(tuple);
+
+	/* Apply required updates, if any, to copied tuple */
+
+	if (pgcform->relpages != (int32) relPages)
+	{
+		pgcform->relpages = (int32) relPages;
+		dirty = true;
+	}
+	if (pgcform->reltuples != (float4) relTuples)
+	{
+		pgcform->reltuples = (float4) relTuples;
+		dirty = true;
+	}
+
+	elog(DEBUG3, "ANALYZE oid=%u pages=%d tuples=%f",
+		 relationOid, pgcform->relpages, pgcform->reltuples);
+	
+	/*
+	 * If anything changed, write out the tuple.  
+	 */
+	if (dirty)
+	{
+		heap_inplace_update(pgclass, tuple);
+		/* the above sends a cache inval message */
+	}
+
+	heap_close(pgclass, RowExclusiveLock);
+}
+
+/**
+ * Does this attribute have a total ordering defined i.e. does it have "<", "="
+ * operators? We can consider building only if these operators are defined.
+ * Input:
+ * 	relationOid - relation's Oid
+ * 	attributeName - attribute in question
+ * Output:
+ * 	true if operators are defined, false otherwise. 
+ */
+static bool hasOrderDefined(Oid relationOid, const char *attributeName)
+{
+	HeapTuple	attributeTuple = NULL;
+	Form_pg_attribute attribute = NULL;
+	Operator	equalityOperator = NULL;
+	Operator	ltOperator = NULL;
+	bool		result = true;
+	
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+	Assert(HeapTupleIsValid(attributeTuple));	
+	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);	
+
+	/* Does type have "=" operator */
+	equalityOperator = equality_oper(attribute->atttypid, true);
+	if (!equalityOperator)
+		result = false;
+	else
+		ReleaseSysCache(equalityOperator);
+
+	/* Does type have "<" operator */
+	ltOperator = ordering_oper(attribute->atttypid, true);
+	if (!ltOperator)
+		result = false;
+	else
+		ReleaseSysCache(ltOperator);
+		
+	ReleaseSysCache(attributeTuple);
+	
+	return result;
+}
+/**
+ * Does attribute have "max" aggregate function defined? We can compute histogram
+ * only if this function is defined.
+ * Input:
+ * 	relationOid - relation's Oid
+ * 	attributeName - attribute in question
+ * Output:
+ * 	true if "max" function is defined, false otherwise. 
+ */
+static bool hasMaxDefined(Oid relationOid, const char *attributeName)
+{
+	HeapTuple	attributeTuple = NULL;
+	Form_pg_attribute attribute = NULL;
+	Oid			maxAggregateFunction = InvalidOid;
+	bool		result = true;
+	List		*funcNames = NIL;
+	
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+	Assert(HeapTupleIsValid(attributeTuple));	
+	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);	
+	
+	/* Does type have "max" operator */
+	funcNames = list_make1(makeString("max"));
+	maxAggregateFunction = LookupFuncName(funcNames, 1 /* nargs to function */, 
+										&attribute->atttypid, true);
+	if (maxAggregateFunction == InvalidOid)
+	{
+		result = false;
+	}
+	
+	ReleaseSysCache(attributeTuple);	
+	return result;
+}
+
+
+/**
+ * Is the attribute of type boolean? 
+ * Input:
+ * 	relationOid - relation's Oid
+ * 	attributeName - attribute in question
+ * Output:
+ * 	true or false
+ */
+static bool isBoolType(Oid relationOid, const char *attributeName)
+{
+	HeapTuple	attributeTuple = NULL;
+	Form_pg_attribute attribute = NULL;
+	bool		isBool = false;
+	
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+	Assert(HeapTupleIsValid(attributeTuple));
+	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
+	isBool = (attribute->atttypid == BOOLOID);
+	ReleaseSysCache(attributeTuple);
+	return isBool;
+}
+
+/**
+ * Compute absolute number of distinct values in the sample table. This method constructs
+ * a SQL string using the sampleTableOid and issues an SPI query.
+ * Input:
+ * 	sampleTableOid - sample table's oid
+ * 	sampleTableRelTuples - number of tuples in the sample table (this may be estimated or actual)
+ * 	attributeName - attribute in question
+ * Output:
+ * 	number of distinct values of attribute
+ */
+static float4 analyzeComputeNDistinct(Oid sampleTableOid, 
+										float4 sampleTableRelTuples, 
+										const char *attributeName)
+{
+
+	StringInfoData str;
+	float4	ndistinct = -1.0;
+
+	const char *sampleSchemaName = NULL;
+	const char *sampleTableName = NULL;
+	
+	sampleSchemaName = get_namespace_name(get_rel_namespace(sampleTableOid)); //must be pfreed
+	sampleTableName = get_rel_name(sampleTableOid); // must be pfreed 	
+
+	initStringInfo(&str);
+	appendStringInfo(&str, "select count(distinct(Ta.%s))::float4 from only %s.%s as Ta where Ta.%s is not null", 
+			quote_identifier(attributeName), 
+			quote_identifier(sampleSchemaName), 
+			quote_identifier(sampleTableName),
+			quote_identifier(attributeName));
+
+    spiExecuteWithCallback(str.data, false /*readonly*/, 0 /*tcount */,
+    	                        spiCallback_getSingleResultRowColumnAsFloat4, &ndistinct);
+
+	pfree(str.data);
+	pfree((void *) sampleTableName);
+	pfree((void *) sampleSchemaName);
+
+	elog(elevel, "count(ndistinct()) gives %f values.", ndistinct);
+	
+	return ndistinct;
+}
+
+/**
+ * Compute the number of repeating values in a relation.
+ * Input:
+ * 	relationOid - relation's oid
+ * 	attributeName - attribute
+ * Output:
+ * 	number of values that repeat i.e. their frequency is greater than 1.
+ * 
+ * TODO: this query is very similar to MCV query. Can we do some optimization here?
+ */
+static float4 analyzeComputeNRepeating(Oid relationOid, 
+									  const char *attributeName)
+{
+	StringInfoData str;
+	float4	nRepeating = -1.0;
+	
+	const char *sampleSchemaName = NULL;
+	const char *sampleTableName = NULL;
+	
+	sampleSchemaName = get_namespace_name(get_rel_namespace(relationOid)); //must be pfreed
+	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
+
+	initStringInfo(&str);
+	appendStringInfo(&str, "select count(v)::float4 from (select Ta.%s as v, count(Ta.%s) as f from only %s.%s as Ta group by Ta.%s) as foo where f > 1", 
+			quote_identifier(attributeName), 
+			quote_identifier(attributeName),
+			quote_identifier(sampleSchemaName), 
+			quote_identifier(sampleTableName),
+			quote_identifier(attributeName));
+
+    spiExecuteWithCallback(str.data, false /*readonly*/, 0 /*tcount */,
+    	                        spiCallback_getSingleResultRowColumnAsFloat4, &nRepeating);
+
+	pfree(str.data);
+	pfree((void *) sampleTableName);
+	pfree((void *) sampleSchemaName);
+
+	return nRepeating;
+}
+
+/**
+ * This routine creates an array from one of the result attributes after an SPI call.
+ * It allocates this array in the specified context. Note that, in general, the allocation 
+ * context must not the SPI context because that is likely to get cleaned out soon. 
+ * 
+ * Input:
+ * 	resultAttributeNumber - attribute to flatten into an array (1 based)
+ * Output:
+ * 	array of attribute type
+ */
+static ArrayType * SPIResultToArray(int resultAttributeNumber, MemoryContext allocationContext)
+{
+	ArrayType *result = NULL;
+	int i = 0;
+	Oid typOutput = InvalidOid;
+	bool isVarLena = false;
+	MemoryContext 	callerContext;
+	Form_pg_attribute attribute = SPI_tuptable->tupdesc->attrs[resultAttributeNumber - 1];
+
+	Assert(attribute);
+
+	callerContext = MemoryContextSwitchTo(allocationContext);	
+	result = construct_empty_array(attribute->atttypid);
+	
+	/**
+	 * We should not need to detoast the type.
+	 */
+	getTypeOutputInfo(attribute->atttypid, &typOutput, &isVarLena);
+	
+	for (i=0;i<SPI_processed;i++)
+	{
+		Datum			dValue = 0;
+		bool			isnull = false;
+		int				index = 0;
+		Datum			deToastedValue = 0;
+		
+		dValue = heap_getattr(SPI_tuptable->vals[i], resultAttributeNumber, SPI_tuptable->tupdesc, &isnull);
+
+		if (!isnull)
+		{
+			if (isVarLena)
+			{
+				deToastedValue = PointerGetDatum(PG_DETOAST_DATUM(dValue));
+			}
+			else
+			{
+				deToastedValue = dValue;
+			}
+
+			/**
+			 * Add this value to the result array.
+			 */
+			index = i+1; /* array indices are 1 based */
+			result = array_set(result, 1 /* nSubscripts */, &index, deToastedValue, isnull,
+					-1 /* arraytyplen */, 
+					attribute->attlen, 
+					attribute->attbyval, 
+					attribute->attalign);
+
+			if (deToastedValue != dValue)
+			{
+				pfree(DatumGetPointer(deToastedValue));
+			}
+		}
+	}
+	MemoryContextSwitchTo(callerContext);
+	return result;
+}
+
+/**
+ * This method determines if a particular attribute has the "not null" property.
+ * Input:
+ * 	relationOid - relation's oid
+ * 	attributeName
+ * Output:
+ * 	true if attribute is not-null. false otherwise.
+ */
+
+static bool isNotNull(Oid relationOid, const char *attributeName)
+{
+	HeapTuple	attributeTuple = NULL;
+	Form_pg_attribute attribute = NULL;
+	bool		nonNull = false;
+	
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+	Assert(HeapTupleIsValid(attributeTuple));
+	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
+	nonNull = attribute->attnotnull;
+	ReleaseSysCache(attributeTuple);
+	if (nonNull)
+		return true;
+	else
+		return false;
+}
+
+/**
+ * Computes the absolute number of NULLs in the sample table.
+ * Input:
+ * 	relationOid - table to query
+ * 	attributeName  - attribute in question
+ * Output:
+ * 	Number of NULLs
+ */
+static float4 analyzeNullCount(Oid relationOid, const char *attributeName)
+{
+	StringInfoData str;
+	float4	nullcount = 0.0;
+	const char *sampleSchemaName = NULL;
+	const char *sampleTableName = NULL;
+	
+	sampleSchemaName = get_namespace_name(get_rel_namespace(relationOid)); //must be pfreed
+	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
+
+	initStringInfo(&str);
+	appendStringInfo(&str, "select count(*)::float4 from only %s.%s as Ta where Ta.%s is null", 
+			quote_identifier(sampleSchemaName), 
+			quote_identifier(sampleTableName), 
+			quote_identifier(attributeName));
+
+    spiExecuteWithCallback(str.data, false /*readonly*/, 0 /*tcount */,
+    	                        spiCallback_getSingleResultRowColumnAsFloat4, &nullcount);
+
+	pfree(str.data);
+	pfree((void *) sampleTableName);
+	pfree((void *) sampleSchemaName);
+
+	return nullcount;
+}
+
+/**
+ * Is the attribute fixed-width? If so, this method extracts the width of the attribute.
+ * Input:
+ * 	relationOid	- relation's oid
+ * 	attributeName - name of attribute
+ * Output:
+ * 	returns true if fixed width
+ * 	width - must be non-null. sets width if it returns true.
+ */
+
+static bool	isFixedWidth(Oid relationOid, const char *attributeName, float4 *width)
+{
+	HeapTuple	attributeTuple = NULL;
+	Form_pg_attribute attribute = NULL;
+	float4	avgwidth = 0.0;
+	Assert(width);
+	
+	attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+	Assert(HeapTupleIsValid(attributeTuple));
+	attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
+	avgwidth = get_typlen(attribute->atttypid);
+	ReleaseSysCache(attributeTuple);
+	
+	if (avgwidth > 0)
+	{
+		*width = avgwidth;
+		return true;
+	}
+	else 
+	{
+		return false;
+	}
+}
+
+/**
+ * Computes average width of an attribute. This uses the built-in pg_column_size.
+ * Input:
+ * 	sampleTableOid - relation on which to compute average width.
+ * 	attributeName - name of attribute
+ * 	sampleTableRelTuples - size of relation
+ * Output:
+ * 	Average width of attribute.
+ */
+static float4 analyzeComputeAverageWidth(Oid relationOid, 
+										const char *attributeName,
+										float4 relTuples)
+{
+	StringInfoData str;
+	float4	avgwidth = 0.0;
+	
+	const char *sampleSchemaName = NULL;
+	const char *sampleTableName = NULL;
+		
+	sampleSchemaName = get_namespace_name(get_rel_namespace(relationOid)); //must be pfreed
+	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
+	
+	initStringInfo(&str);
+	appendStringInfo(&str, "select avg(pg_column_size(Ta.%s))::float4 from only %s.%s as Ta where Ta.%s is not null", 
+			quote_identifier(attributeName), 
+			quote_identifier(sampleSchemaName), 
+			quote_identifier(sampleTableName), 
+			quote_identifier(attributeName));
+
+    spiExecuteWithCallback(str.data, false /*readonly*/, 0 /*tcount */,
+    	                        spiCallback_getSingleResultRowColumnAsFloat4, &avgwidth);
+
+	pfree(str.data);
+	pfree((void *) sampleTableName);
+	pfree((void *) sampleSchemaName);
+
+	return avgwidth;
+}
+
+/**
+ * Computes the most common values and their frequencies for relation.
+ * Input:
+ * 	relationOid - relation's oid
+ * 	attributeName - attribute in question
+ * 	relTuples - number of rows in relation
+ * 	nEntries  - number of MCV entries
+ * Output:
+ * 	mcv - array of most common values (type is the same as attribute type)
+ * 	freq - array of float4's
+ */
+static void analyzeComputeMCV(Oid relationOid, 
+		const char *attributeName,
+		float4 relTuples,
+		unsigned int nEntries,
+		ArrayType **mcv,
+		ArrayType **freq)
+{
+	StringInfoData str;
+	const char *sampleSchemaName = NULL;
+	const char *sampleTableName = NULL;
+    ArrayType *spiResult[2];
+	EachResultColumnAsArraySpec spec;
+
+	Assert(relTuples > 0.0);
+	Assert(nEntries > 0);
+	
+	sampleSchemaName = get_namespace_name(get_rel_namespace(relationOid)); //must be pfreed
+	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
+	
+	initStringInfo(&str);
+	appendStringInfo(&str, "select Ta.%s as v, count(Ta.%s)::float4/%f::float4 as f from only %s.%s as Ta "
+			"where Ta.%s is not null group by (Ta.%s) order by f desc limit %u", 
+			quote_identifier(attributeName), 
+			quote_identifier(attributeName), 
+			relTuples,
+			quote_identifier(sampleSchemaName), 
+			quote_identifier(sampleTableName), 
+			quote_identifier(attributeName), 
+			quote_identifier(attributeName),
+			nEntries);
+
+
+    spec.numColumns = 2;
+    spec.output = spiResult;
+    spec.memoryContext = CurrentMemoryContext;
+    spiExecuteWithCallback(str.data, false /*readonly*/, 0 /*tcount */,
+    	                        spiCallback_getEachResultColumnAsArray, &spec);
+
+    *mcv = spiResult[0]; /* first attribute of result are mcvs */
+    *freq = spiResult[1]; /* second attribute of result are freqs */
+
+	pfree(str.data);
+	pfree((void *) sampleTableName);
+	pfree((void *) sampleSchemaName);
+
+	return;
+}
+
+#if 0
+/**
+ * TODO: currently, there seem to be many problems with not-in subqueries.
+ * 		 will enable and test this code once MPP-6672 is resolved.
+ * 
+ * Helper method used by analyzeComputeHistogram to build in a NOT IN clause
+ * to eliminate most common values during histogram calculation.
+ * Input:
+ * 	mcv - most common values. should be non-null
+ * Output:
+ * 	NOT IN ('v1','v2',...). Caller is responsible for pfree'ing the result.
+ */
+static char *buildNotInString(ArrayType *mcv)
+{
+	Oid				elementType = InvalidOid;
+	StringInfoData	notInBuf;
+	HeapTuple		typeTuple = NULL;
+	Form_pg_type	typeStruct = NULL;
+	Oid				typeOutputOid = InvalidOid;
+	Datum			*values = NULL;
+	int				valuesLength = 0;
+	int				i = 0;
+
+	elementType = ARR_ELEMTYPE(mcv);
+	typeTuple = SearchSysCache(TYPEOID,
+			ObjectIdGetDatum(elementType),
+			0, 0, 0);
+	if (!HeapTupleIsValid(typeTuple))
+		elog(ERROR, "cache lookup failed for type %u", elementType);
+	typeStruct = (Form_pg_type) GETSTRUCT(typeTuple);
+
+	deconstruct_array(mcv,
+			elementType,
+			typeStruct->typlen, 
+			typeStruct->typbyval, 
+			typeStruct->typalign,
+			&values, NULL, &valuesLength);
+	Assert(valuesLength > 0);
+	Assert(typeStruct->typoutput != InvalidOid);
+	Assert(typeStruct->typinput != InvalidOid);
+	typeOutputOid = typeStruct->typoutput;
+	ReleaseSysCache(typeTuple);
+	
+	initStringInfo(&notInBuf);
+	appendStringInfo(&notInBuf, "not in (");
+
+	for (i = 0; i < valuesLength; i++)
+	{
+		const char *valueStr = NULL;
+		valueStr = DatumGetCString(OidFunctionCall1(typeOutputOid, values[i]));
+		Assert(valueStr);
+		appendStringInfo(&notInBuf, "%s", quote_literal_internal(valueStr));
+		if (i != valuesLength - 1)
+		{
+			appendStringInfo(&notInBuf, ",");
+		}
+	}
+	
+	appendStringInfo(&notInBuf, ")");
+	return notInBuf.data;
+}
+#endif
+
+/**
+ * Compute histogram entries for relation.
+ * Input:
+ * 	relationOid - relation
+ * 	attributeName - attribute
+ * 	relTuples 	 - estimated number of tuples in relation
+ * 	nEntries	 - number of histogram entries requested
+ * 	mcv			 - most common values calculated. these must be excluded before calculating
+ * 				   histogram. this may be null.
+ * Output:
+ * 	hist - array of values representing a histogram. This histogram contains no repeating values.
+ */
+static void analyzeComputeHistogram(Oid relationOid,  
+		const char *attributeName,
+		float4 relTuples,
+		unsigned int nEntries,
+		ArrayType *mcv,
+		ArrayType **hist)
+{
+	StringInfoData str;
+	unsigned int bucketSize = 0;
+	EachResultColumnAsArraySpec spec;
+	StringInfoData whereClause;
+	
+	const char *sampleSchemaName = NULL;
+	const char *sampleTableName = NULL;
+
+	Assert(relTuples > 0.0);
+	Assert(nEntries > 0);
+	
+	sampleSchemaName = get_namespace_name(get_rel_namespace(relationOid)); //must be pfreed
+	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
+
+	bucketSize = relTuples / nEntries;
+	
+	if (bucketSize < 1) /* Any self-respecting histogram bucket must have at least 1 entry. */
+		bucketSize = 1;
+	
+	initStringInfo(&str);
+	initStringInfo(&whereClause);
+	
+	/**
+	 * Build the not-in clause using the mcv values.
+	 */
+#if 0
+	/* TODO: enable this code once NOT-IN bugs are resolved */
+	if (mcv)
+	{
+		const char *notIn = buildNotInString(mcv);
+		Assert(notIn);
+		appendStringInfo(&whereClause, "%s %s and ", quote_identifier(attributeName), notIn);
+	}
+#endif
+	appendStringInfo(&whereClause, "%s is not null", quote_identifier(attributeName));
+	
+	/**
+	 * This query orders the table by rank on the value and chooses values that occur every
+	 * 'bucketSize' interval. It also chooses the maximum value from the relation. It then
+	 * removes duplicate values and orders the values in ascending order. This corresponds to
+	 * the histogram.
+	 */
+	
+	appendStringInfo(&str, "select v from ("
+			"select Ta.%s as v, row_number() over (order by Ta.%s) as r from only %s.%s as Ta where %s "
+			"union select max(Tb.%s) as v, 1 as r from only %s.%s as Tb where %s) as foo "
+			"where r %% %u = 1 group by v order by v", 
+			quote_identifier(attributeName), 
+			quote_identifier(attributeName), 
+			quote_identifier(sampleSchemaName), 
+			quote_identifier(sampleTableName), 
+			whereClause.data,
+			quote_identifier(attributeName), 
+			quote_identifier(sampleSchemaName), 
+			quote_identifier(sampleTableName), 
+			whereClause.data,
+			bucketSize);
+
+    spec.numColumns = 1;
+    spec.output = hist;
+    spec.memoryContext = CurrentMemoryContext;
+
+    spiExecuteWithCallback(str.data, false /*readonly*/, 0 /*tcount */,
+    	                        spiCallback_getEachResultColumnAsArray, &spec);
+	pfree(str.data);
+	pfree((void *) sampleTableName);
+	pfree((void *) sampleSchemaName);
+	return;
+}
+
+
+/**
+ * Responsible for computing statistics on relationOid. 
+ * Input:
+ * 	relationOid - original relation on which statistics must be computed.
+ * 	attributeName - name of attribute
+ * 	relTuples   - expected number of tuples in relation
+ * 	sampleTableOid - Oid of the sampled version of the table. It is possible that sampleTableOid == relationOid.
+ * 	sampleTableRelTuples - number of tuples in sampled version
+ * Output:
+ * 	stats - structure containing nullfrac, avgwidth, ndistinct, mcv, hist
+ */
+static void analyzeComputeAttributeStatistics(Oid relationOid, 
+		const char *attributeName,
+		Oid relTuples, 
+		Oid sampleTableOid, 
+		float4 sampleTableRelTuples, 
+		AttributeStatistics *stats)
+{
+	bool computeWidth = true;
+	bool computeDistinct = true;
+	bool computeMCV = true;
+	bool computeHist = true;
+	
+	Assert(stats != NULL);
+	
+	/* Default values */
+	stats->ndistinct = -1.0;
+	stats->nullFraction = 0.0;
+	stats->avgWidth = 0.0;
+	stats->mcv = NULL;
+	stats->freq = NULL;
+	stats->hist = NULL;
+		
+	if (isNotNull(relationOid, attributeName))
+	{
+		stats->nullFraction = 0.0;
+	}
+	else
+	{
+		float4 nullCount = analyzeNullCount(sampleTableOid, attributeName);
+		if (ceil(nullCount) >= ceil(sampleTableRelTuples))
+		{
+			/**
+			 * All values are null. no point computing other statistics.
+			 */
+			computeWidth = false;
+			computeDistinct = false;
+			computeMCV = false;
+			computeHist = false;
+		}
+		stats->nullFraction = nullCount / sampleTableRelTuples;
+	}
+	elog(elevel, "nullfrac = %f", stats->nullFraction);		
+	
+	if (computeWidth && !isFixedWidth(relationOid, attributeName, &stats->avgWidth))
+	{
+		stats->avgWidth = analyzeComputeAverageWidth(sampleTableOid, attributeName, sampleTableRelTuples);
+	}
+	
+	elog(elevel, "avgwidth = %f", stats->avgWidth);		
+	
+	if (!hasOrderDefined(relationOid, attributeName))
+	{
+		computeDistinct = false;
+		computeMCV = false;
+		computeHist = false;
+	}
+	
+	if (!hasMaxDefined(relationOid, attributeName))
+	{
+		computeHist = false;
+	}
+
+	if (isBoolType(relationOid, attributeName))
+	{
+		stats->ndistinct = 2;
+		computeDistinct = false;
+		computeHist = false;
+	}
+	
+	/**
+	 * TODO: maybe avoid ndistinct, mcv, hist computations for too-wide columns?
+	 */
+	
+	if (computeDistinct)
+	{
+		float4 	nDistinctAbsolute = analyzeComputeNDistinct(sampleTableOid, sampleTableRelTuples, attributeName);
+
+		if (nDistinctAbsolute < 1.0)
+		{
+			/*
+			 * This can happen if no sample table was employed and all values happen
+			 * to be null and we did not estimate relTuples accurately.
+			 */
+			Assert(sampleTableOid == relationOid);
+			stats->ndistinct = 0.0; 
+			computeMCV = false;
+			computeHist = false;
+		}
+		else if (ceil(sampleTableRelTuples) == ceil(nDistinctAbsolute))
+		{
+			/**
+			 * Since all values are distinct, we assume that all values in the original
+			 * relation are distinct.
+			 */
+			stats->ndistinct = -1.0;
+			
+			/* 
+			 * If there are many more distinct values than mcv buckets,
+			 * we can ignore computing mcv values.
+			 */
+			if (nDistinctAbsolute > numberOfMCVEntries(relationOid, attributeName))
+				computeMCV = false;
+		}
+		else
+		{
+			/**
+			 * Some values repeated - the number of repeating values is used
+			 * to determine the total number of distinct values in the original relation.
+			 */
+			float4 nRepeatingAbsolute = analyzeComputeNRepeating(sampleTableOid, attributeName);		
+			Assert(nRepeatingAbsolute <= nDistinctAbsolute);
+			if (ceil(nRepeatingAbsolute) == ceil(nDistinctAbsolute))
+			{
+				/* All distinct values are in the sample. Assumption is that there exist no distinct values outside this world. */					
+				stats->ndistinct = nDistinctAbsolute;
+			}
+			else
+			{
+				/*----------
+				 * Estimate the number of distinct values using the estimator
+				 * proposed by Haas and Stokes in IBM Research Report RJ 10025:
+				 *		n*d / (n - f1 + f1*n/N)
+				 * where f1 is the number of distinct values that occurred
+				 * exactly once in our sample of n rows (from a total of N),
+				 * and d is the total number of distinct values in the sample.
+				 * This is their Duj1 estimator; the other estimators they
+				 * recommend are considerably more complex, and are numerically
+				 * very unstable when n is much smaller than N.
+				 */
+				double onceInSample = nDistinctAbsolute - nRepeatingAbsolute;				
+				double numer = sampleTableRelTuples * nDistinctAbsolute;
+				double denom = sampleTableRelTuples - onceInSample + onceInSample * (sampleTableRelTuples / relTuples);
+				stats->ndistinct = (float4) numer / denom;
+
+				/* clamp range */
+				if (stats->ndistinct < nDistinctAbsolute)
+					stats->ndistinct = nDistinctAbsolute;
+				if (stats->ndistinct > relTuples)
+					stats->ndistinct = relTuples;
+			}
+			
+			/**
+			 * Does ndistinct scale with reltuples?
+			 */
+			if (stats->ndistinct > relTuples * gp_statistics_ndistinct_scaling_ratio_threshold) 
+			{
+				stats->ndistinct = -1.0 * stats->ndistinct / relTuples;
+			}			
+		}
+	}
+	elog(elevel, "ndistinct = %f", stats->ndistinct);
+	
+	if (computeMCV)
+	{
+		unsigned int nMCVEntries = numberOfMCVEntries(relationOid, attributeName);
+		analyzeComputeMCV(sampleTableOid, attributeName, sampleTableRelTuples, 
+				nMCVEntries, &stats->mcv, &stats->freq);
+		if (stats->mcv)
+			elog(elevel, "mcv=%s", OidOutputFunctionCall(751,PointerGetDatum(stats->mcv)));
+		if (stats->freq)
+			elog(elevel, "freq=%s", OidOutputFunctionCall(751,PointerGetDatum(stats->freq)));
+	}	
+	
+	if (computeHist)	
+	{
+		unsigned int nHistEntries = numberOfHistogramEntries(relationOid, attributeName);
+		analyzeComputeHistogram(sampleTableOid, attributeName, sampleTableRelTuples, 
+				nHistEntries, stats->mcv, &stats->hist);
+		if (stats->hist)
+			elog(elevel, "hist=%s", OidOutputFunctionCall(751,PointerGetDatum(stats->hist)));
+	}
+}
+
+/**
+ * This method updates the pg_statistic tuple for the specific attribute. It populates
+ * it with the statistics computed by ANALYZE.
+ * Input:
+ * 	relationOid - relation
+ * 	attributeName - name of the attribute
+ *  stats		- struct containing all the computed statistics
+ *  
+ */
+static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attributeName, AttributeStatistics *stats)
+{
+	Datum		values[Natts_pg_statistic];
+	char		nulls[Natts_pg_statistic];
+	char		replaces[Natts_pg_statistic];
+	int2		attNum = -1;	
+	int 		i = 0;
+	Oid			equalityOid = InvalidOid;
+	Oid			ltOid = InvalidOid;
+	
+	Assert(stats);
+
+	{
+		/**
+		 * For some reason, pg_statistic stores the "<" and "=" operator associated
+		 * with the attribute. 
+		 */
+		HeapTuple	attributeTuple;
+		Form_pg_attribute attribute;
+		Operator	equalityOperator;
+		Operator	ltOperator;
+
+		attributeTuple = SearchSysCacheAttName(relationOid, attributeName);
+		Assert(HeapTupleIsValid(attributeTuple));
+		attribute = (Form_pg_attribute) GETSTRUCT(attributeTuple);
+		attNum = attribute->attnum;
+		equalityOperator = equality_oper(attribute->atttypid, true);
+		
+		if (equalityOperator)
+		{
+			equalityOid = oprid(equalityOperator);
+			ReleaseSysCache(equalityOperator);
+		}
+		
+		ltOperator = ordering_oper(attribute->atttypid, true);
+		
+		if (ltOperator)
+		{
+			ltOid = oprid(ltOperator);
+			ReleaseSysCache(ltOperator);
+		}
+		ReleaseSysCache(attributeTuple);
+	}
+
+	for (i = 0; i < Natts_pg_statistic; ++i)
+	{
+		nulls[i] = ' ';
+		replaces[i] = 'r';
+	}
+
+	values[Anum_pg_statistic_starelid - 1] = ObjectIdGetDatum(relationOid);	/* starelid */
+	values[Anum_pg_statistic_staattnum - 1] = Int16GetDatum(attNum);		/* staattnum */
+	values[Anum_pg_statistic_stanullfrac - 1] = Float4GetDatum(stats->nullFraction);		/* stanullfrac */
+	values[Anum_pg_statistic_stawidth - 1] = Int32GetDatum((int32) stats->avgWidth);	/* stawidth */
+	values[Anum_pg_statistic_stadistinct - 1] = Float4GetDatum(stats->ndistinct);		/* stadistinct */
+
+
+	/* We will always put MCV in slot 1 and histogram in slot 2 */
+	
+	if (stats->mcv)
+	{
+		values[Anum_pg_statistic_stakind1 - 1] = Int16GetDatum(STATISTIC_KIND_MCV);
+	}
+	else 
+	{
+		values[Anum_pg_statistic_stakind1 - 1] = Int16GetDatum((int2) 0); /* no mcv */
+	}
+	
+	if (stats->hist)
+	{
+		values[Anum_pg_statistic_stakind2 - 1] = Int16GetDatum(STATISTIC_KIND_HISTOGRAM);
+	}
+	else
+	{
+		values[Anum_pg_statistic_stakind2 - 1] = Int16GetDatum((int2) 0);		
+	}
+	
+	/* correlation */
+	values[Anum_pg_statistic_stakind3 - 1] = Int16GetDatum((int2) 0); /* we do not compute correlation anymore */
+	
+	/* an extra slot */
+	values[Anum_pg_statistic_stakind4 - 1] = Int16GetDatum((int2) 0);
+	
+	/* staops .. which correspond to operators. Sigh.. */
+	if (stats->mcv)
+	{
+		values[Anum_pg_statistic_staop1 - 1] = ObjectIdGetDatum(equalityOid);
+	}
+	else
+	{
+		values[Anum_pg_statistic_staop1 - 1] = 0;
+	}
+
+	if (stats->hist)
+	{
+		values[Anum_pg_statistic_staop2 - 1] = ObjectIdGetDatum(ltOid);
+	}
+	else
+	{
+		values[Anum_pg_statistic_staop2 - 1] = 0;
+	}
+	
+	/* dummy fields */
+	values[Anum_pg_statistic_staop3 - 1] = 0;
+	values[Anum_pg_statistic_staop4 - 1] = 0;
+	
+	/* Now working on stanumbers */
+	if (stats->freq)
+	{
+		values[Anum_pg_statistic_stanumbers1 - 1] = PointerGetDatum(stats->freq);
+	}
+	else
+	{
+		nulls[Anum_pg_statistic_stanumbers1 - 1] = 'n';
+		values[Anum_pg_statistic_stanumbers1 - 1] = 0;
+	}
+
+	/* dummy fields */
+	nulls[Anum_pg_statistic_stanumbers2 - 1] = 'n';
+	values[Anum_pg_statistic_stanumbers2 - 1] = 0;
+	nulls[Anum_pg_statistic_stanumbers3 - 1] = 'n';
+	values[Anum_pg_statistic_stanumbers3 - 1] = 0;
+	nulls[Anum_pg_statistic_stanumbers4 - 1] = 'n';
+	values[Anum_pg_statistic_stanumbers4 - 1] = 0;
+
+	/* Now working on stavalues */
+	if (stats->mcv)
+	{
+		values[Anum_pg_statistic_stavalues1 - 1] = PointerGetDatum(stats->mcv);
+	}
+	else
+	{
+		nulls[Anum_pg_statistic_stavalues1 - 1] = 'n';
+		values[Anum_pg_statistic_stavalues1 - 1] = 0;
+	}
+	
+	if (stats->hist)
+	{
+		values[Anum_pg_statistic_stavalues2 - 1] = PointerGetDatum(stats->hist);
+	}
+	else
+	{
+		nulls[Anum_pg_statistic_stavalues2 - 1] = 'n';
+		values[Anum_pg_statistic_stavalues2 - 1] = 0;
+	}
+	
+	/* dummy values */
+	nulls[Anum_pg_statistic_stavalues3 - 1] = 'n';
+	values[Anum_pg_statistic_stavalues3 - 1] = 0;
+	nulls[Anum_pg_statistic_stavalues4 - 1] = 'n';
+	values[Anum_pg_statistic_stavalues4 - 1] = 0;
+
+	/* Now work on pg_statistic */
+	{
+		HeapTuple oldStatisticsTuple;
+		Relation	pgstatisticRel;
+
+		pgstatisticRel = heap_open(StatisticRelationId, RowExclusiveLock);
+		oldStatisticsTuple = SearchSysCache(STATRELATT, 
+											ObjectIdGetDatum(relationOid),
+											Int16GetDatum(attNum),
+											0,0);
+
+		if (HeapTupleIsValid(oldStatisticsTuple))
+		{
+			/* pg_statistic tuple exists. */
+			HeapTuple stup = heap_modifytuple(oldStatisticsTuple,
+					RelationGetDescr(pgstatisticRel),
+					values,
+					nulls,
+					replaces);
+			ReleaseSysCache(oldStatisticsTuple);
+			simple_heap_update(pgstatisticRel, &stup->t_self, stup);
+			CatalogUpdateIndexes(pgstatisticRel, stup);
+			heap_freetuple(stup);
+		}
+		else
+		{
+			/* insert new tuple into pg_statistic. we are guaranteed no-one else
+			 * will overwrite this row because of ShareUpdateExclusiveLock on the relation. */
+			HeapTuple stup = heap_formtuple(RelationGetDescr(pgstatisticRel), values, nulls);
+			simple_heap_insert(pgstatisticRel, stup);
+			CatalogUpdateIndexes(pgstatisticRel, stup);
+			heap_freetuple(stup);
+		}
+
+		heap_close(pgstatisticRel, RowExclusiveLock);	
+	}
+
+}
+
+
+/**
+ * This method estimates the number of tuples and pages in a heaptable relation. Getting the number of blocks is straightforward.
+ * Estimating the number of tuples is a little trickier. There are two factors that complicate this:
+ * 	1. Tuples may be of variable length.
+ * 	2. There may be dead tuples lying around.
+ * To do this, it chooses a certain number of blocks (as determined by a guc) randomly. The process of choosing is not strictly
+ * uniformly random since we have a target number of blocks in mind. We start processing blocks in order and choose an block 
+ * with a probability p determined by the ratio of target to total blocks. It is possible that we get really unlucky and reject
+ * a large number of blocks up front. We compensate for this by increasing p dynamically. Thus, we are guaranteed to choose the target number
+ * of blocks. We read all heaptuples from these blocks and keep count of number of live tuples. We scale up this count to
+ * estimate reltuples. Relpages is an exact value.
+ * 
+ * Input:
+ * 	rel - Relation. Must be a heaptable. 
+ * 
+ * Output:
+ * 	reltuples - estimated number of tuples in relation.
+ * 	relpages  - exact number of pages.
+ */
+static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 *reltuples, float4 *relpages)
+{
+	float4		nrowsseen = 0;	/* # rows seen */
+	float4		nrowsdead = 0;	/* # rows seen */
+	BlockNumber nblockstotal = 0;	/* nblocks in relation */
+	BlockNumber nblockstarget = (BlockNumber) gp_statistics_blocks_target; 
+	BlockNumber nblocksseen = 0;
+	int			j = 0; /* counter */
+	
+	/**
+	 * Ensure that the right kind of relation with the right kind of storage is passed to us.
+	 */
+	Assert(rel->rd_rel->relkind == RELKIND_RELATION);
+	Assert(RelationIsHeap(rel));
+					
+	nblockstotal = RelationGetNumberOfBlocks(rel);
+
+	if (nblockstotal == 0 || nblockstarget == 0)
+	{		
+		/**
+		 * If there are no blocks, there cannot be tuples.
+		 */
+		*reltuples = 0.0;
+		*relpages = 0.0;
+		return;
+	}
+		
+	for (j=0 ; j<nblockstotal; j++)
+	{
+		/**
+		 * Threshold is dynamically adjusted based on how many blocks we need to examine and how many blocks
+		 * are left.
+		 */
+		double threshold = (nblockstarget - nblocksseen)/(nblockstotal - j);
+		
+		/**
+		 * Random dice thrown to determine if current block is chosen.
+		 */
+		double diceValue = ((double) random()) / ((double) MAX_RANDOM_VALUE);
+		
+		if (threshold >= 1.0 || diceValue <= threshold)
+		{
+			/**
+			 * Block j shall be examined!
+			 */
+			BlockNumber targblock = j;
+			Buffer		targbuffer;
+			Page		targpage;
+			OffsetNumber targoffset,
+						maxoffset;
+
+			/**
+			 * Check for cancellations.
+			 */
+			CHECK_FOR_INTERRUPTS();
+
+			/*
+			 * We must maintain a pin on the target page's buffer to ensure that
+			 * the maxoffset value stays good (else concurrent VACUUM might delete
+			 * tuples out from under us).  Hence, pin the page until we are done
+			 * looking at it.  We don't maintain a lock on the page, so tuples
+			 * could get added to it, but we ignore such tuples.
+			 */
+			targbuffer = ReadBuffer(rel, targblock);
+			LockBuffer(targbuffer, BUFFER_LOCK_SHARE);
+			targpage = BufferGetPage(targbuffer);
+			maxoffset = PageGetMaxOffsetNumber(targpage);
+
+			/* Inner loop over all tuples on the selected block. */
+			for (targoffset = FirstOffsetNumber; targoffset <= maxoffset; targoffset++)
+			{
+				ItemId itemid;
+				itemid = PageGetItemId(targpage, targoffset);
+				nrowsseen++;
+				if(!ItemIdIsNormal(itemid))
+				{
+					nrowsdead += 1;
+				}
+				else
+				{
+					HeapTupleData targtuple;
+					ItemPointerSet(&targtuple.t_self, targblock, targoffset);
+					targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
+					targtuple.t_len = ItemIdGetLength(itemid);
+
+					if(!HeapTupleSatisfiesVisibility(rel, &targtuple, SnapshotNow, targbuffer))
+					{
+						nrowsdead += 1;
+					}
+				}
+			}
+
+			/* Now release the pin on the page */
+			UnlockReleaseBuffer(targbuffer);
+			nblocksseen++;
+		}		
+	}
+
+	Assert(nblocksseen > 0);
+	/**
+	 * To calculate reltuples, scale up the number of live rows per block seen to the total number
+	 * of blocks. 
+	 */
+	*reltuples = ceil((nrowsseen - nrowsdead) * nblockstotal / nblocksseen);
+	*relpages = nblockstotal;
+	return;
+}
+
+/**
+ * This method estimates the number of tuples and pages in an vertical oriented append-only relation. 
+ * Require access to segment catalogs to determine reltuples.
+ * Relpages is obtained by fudging AO block sizes.
+ * 
+ * Input:
+ * 	rel - Relation. Must be an AO CS table.
+ * 
+ * Output:
+ * 	reltuples - estimated number of tuples in relation.
+ * 	relpages  - exact number of pages.
+ */
+
+static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4 *reltuples, float4 *relpages)
+{
+    AOCSFileSegInfo	**aocsInfo = NULL;
+    int				nsegs = 0;
+    double			totalBytes = 0;
+	/**
+	 * Ensure that the right kind of relation with the right type of storage is passed to us.
+	 */
+	Assert(rel->rd_rel->relkind == RELKIND_RELATION);
+	Assert(RelationIsAoCols(rel));
+	
+	*reltuples = 0.0;
+	*relpages = 0.0;
+	
+    /* get table level statistics from the pg_aoseg table */
+    aocsInfo = GetAllAOCSFileSegInfo(rel, SnapshotNow, &nsegs);
+    if (aocsInfo)
+    {
+    	int i = 0;
+    	int j = 0;
+    	for(i = 0; i < nsegs; i++)
+    	{
+    		for(j = 0; j < RelationGetNumberOfAttributes(rel); j++)
+    		{
+    			AOCSVPInfoEntry *e = getAOCSVPEntry(aocsInfo[i], j);
+    			Assert(e);
+    			totalBytes += e->eof_uncompressed;
+    		}
+
+    		*reltuples += aocsInfo[i]->tupcount;
+    	}
+    	/**
+    	 * The planner doesn't understand AO's blocks, so need this method to try to fudge up a number for
+    	 * the planner. 
+    	 */
+    	*relpages = RelationGuessNumberOfBlocks(totalBytes);
+    }
+	  
+	return;
+}
+/**
+ * This method estimates the number of tuples and pages in an append-only relation. AO tables maintain accurate
+ * tuple counts in the catalog. Therefore, we will only require access to segment catalogs to determine reltuples.
+ * Relpages is obtained by fudging AO block sizes.
+ * 
+ * Input:
+ * 	rel - Relation. Must be an AO table.
+ * 
+ * Output:
+ * 	reltuples - estimated number of tuples in relation.
+ * 	relpages  - exact number of pages.
+ */
+
+static void gp_statistics_estimate_reltuples_relpages_ao_rows(Relation rel, float4 *reltuples, float4 *relpages)
+{
+	FileSegTotals		*fstotal;
+	
+	/**
+	 * Ensure that the right kind of relation with the right type of storage is passed to us.
+	 */
+	Assert(rel->rd_rel->relkind == RELKIND_RELATION);
+	Assert(RelationIsAoRows(rel));
+	
+	fstotal = GetSegFilesTotals(rel);
+	Assert(fstotal);
+	/**
+	 * The planner doesn't understand AO's blocks, so need this method to try to fudge up a number for
+	 * the planner. 
+	 */
+	*relpages = RelationGuessNumberOfBlocks((double)fstotal->totalbytes);
+	/**
+	 * The number of tuples in AO table is known accurately. Therefore, we just utilize this value.
+	 */
+	*reltuples = (double)fstotal->totaltuples;
+	pfree(fstotal);
+	
+	return;
+}
+
+/**
+ * Given the oid of a relation, this method calculates reltuples, relpages. This only looks up
+ * local information (on master or segments). It produces meaningful values for AO and
+ * heap tables and returns [0.0,0.0] for all other relations.
+ * Input: 
+ * 	relationoid
+ * Output:
+ * 	array of two values [reltuples,relpages]
+ */
+Datum
+gp_statistics_estimate_reltuples_relpages_oid(PG_FUNCTION_ARGS)
+{
+	
+	float4		relpages = 0.0;		
+	float4		reltuples = 0.0;			
+	Oid			relOid = PG_GETARG_OID(0);
+	Datum		values[2];
+	ArrayType   *result;
+	
+	Relation rel = try_relation_open(relOid, AccessShareLock);
+	
+	if (rel != NULL)
+	{
+		if (rel->rd_rel->relkind == RELKIND_RELATION)
+		{
+			if (RelationIsHeap(rel))
+			{
+				gp_statistics_estimate_reltuples_relpages_heap(rel, &reltuples, &relpages);	
+			}
+			else if (RelationIsAoRows(rel))
+			{
+				gp_statistics_estimate_reltuples_relpages_ao_rows(rel, &reltuples, &relpages);					
+			}
+			else if	(RelationIsAoCols(rel))
+			{
+				gp_statistics_estimate_reltuples_relpages_ao_cs(rel, &reltuples, &relpages);					
+			}	
+		}
+		else
+		{
+			/**
+			 * Should we silently return [0.0,0.0] or error out? Currently, we choose option 1.
+			 */
+		}
+		relation_close(rel, AccessShareLock);
+	}
+	else
+	{
+		/**
+		 * Should we silently return [0.0,0.0] or error out? Currently, we choose option 1.
+		 */
+	}
+	
+	values[0] = Float4GetDatum(reltuples);
+	values[1] = Float4GetDatum(relpages);
+
+	result = construct_array(values, 2,
+					FLOAT4OID,
+					sizeof(float4), true, 'i');
+
+	PG_RETURN_ARRAYTYPE_P(result);
+}
+
+

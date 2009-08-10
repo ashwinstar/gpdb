@@ -1125,9 +1125,6 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
 	Form_pg_class rd_rel;
 	bool		dirty;
 
-	if (Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode())
-		if (rel->rd_id > 15000)
-			cdbanalyze_get_relstats(rel, &relpages, &reltuples);
 
 	/*
 	 * We always update the pg_class row using a non-transactional,
@@ -1232,17 +1229,23 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
 			dirty = true;
 		}
 	}
-	if (rd_rel->reltuples != (float4) reltuples)
-	{
-		rd_rel->reltuples = (float4) reltuples;
-		dirty = true;
-	}
-	if (rd_rel->relpages != (int32) relpages)
-	{
-		rd_rel->relpages = (int32) relpages;
-		dirty = true;
-	}
 
+	if (Gp_role != GP_ROLE_DISPATCH)
+	{
+		/**
+		 * Do not overwrite relpages, reltuples in QD.
+		 */
+		if (rd_rel->reltuples != (float4) reltuples)
+		{
+			rd_rel->reltuples = (float4) reltuples;
+			dirty = true;
+		}
+		if (rd_rel->relpages != (int32) relpages)
+		{
+			rd_rel->relpages = (int32) relpages;
+			dirty = true;
+		}
+	}
 	/*
 	 * If anything changed, write out the tuple
 	 */

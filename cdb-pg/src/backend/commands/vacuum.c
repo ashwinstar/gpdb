@@ -4,7 +4,7 @@
  *	  The postgres vacuum cleaner.
  *
  * This file includes the "full" version of VACUUM, as well as control code
- * used by all three of full VACUUM, lazy VACUUM, and ANALYZE.	See
+ * used by full VACUUM and lazy VACUUM.	See
  * vacuumlazy.c and analyze.c for the rest of the code for the latter two.
  *
  *
@@ -64,7 +64,6 @@
 #include "pgstat.h"
 #include "access/distributedlog.h"
 #include "nodes/makefuncs.h"     /* makeRangeVar */
-
 
 /*
  * GUC parameters
@@ -224,18 +223,56 @@ static void dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx);
 static Relation open_relation_and_check_permission(VacuumStmt *vacstmt,
 												   Oid relid,
 												   char expected_relkind);
-
+static void vacuumStatement(VacuumStmt *vacstmt, List *relids);
 
 /****************************************************************************
  *																			*
- *			Code common to all flavors of VACUUM and ANALYZE				*
+ *			Code common to all flavors of VACUUM.				*
  *																			*
  ****************************************************************************
  */
 
+/**
+ * Primary entry points for VACUUM, VACUUM FULL and ANALYZE commands.
+ * It calls subroutines vacuumStatement and analyzeStatement depending
+ * on the intent of vacstmt. Not both of vacstmt and relids can be non-null.
+ * Input:
+ * 	vacstmt - vacuum statement.
+ * 	relids  - list of relations (used by autovacuum)
+ */
+void vacuum(VacuumStmt *vacstmt, List *relids)
+{
+	bool doAnalyze = vacstmt->analyze;
+	bool doVacuum = vacstmt->vacuum;
+	
+	Assert(!(vacstmt != NULL && relids != NULL));
+	
+	if (doVacuum)
+	{
+		/**
+		 * Perform vacuum.
+		 */
+		vacstmt->analyze = false;
+		vacstmt->vacuum = true;
+		vacuumStatement(vacstmt, NIL);
+	}
+	
+	if (doAnalyze)
+	{
+		/**
+		 * Perform ANALYZE.
+		 */
+		vacstmt->analyze = true;
+		vacstmt->vacuum = false;
+		analyzeStatement(vacstmt, NIL);
+	}
+	
+	vacstmt->analyze = doAnalyze;
+	vacstmt->vacuum = doVacuum;
+}
 
 /*
- * Primary entry point for VACUUM and ANALYZE commands.
+ * Primary entry point for VACUUM (incl FULL) commands.
  *
  * relids is normally NIL; if it is not, then it provides the list of
  * relation OIDs to be processed, and vacstmt->relation is ignored.
@@ -245,18 +282,24 @@ static Relation open_relation_and_check_permission(VacuumStmt *vacstmt,
  * (if given) be allocated in a memory context that won't disappear
  * at transaction commit.  In fact this context must be QueryContext
  * to avoid complaints from PreventTransactionChain.
+ * 
+ * vacuum() has been changed so that it is an entry point only for vacuum
+ * commands. ANALYZE is now handled by analyzeStatement() in analyze.c.
  */
-void
-vacuum(VacuumStmt *vacstmt, List *relids)
+static void
+vacuumStatement(VacuumStmt *vacstmt, List *relids)
 {
-	const char *stmttype = vacstmt->vacuum ? "VACUUM" : "ANALYZE";
-	volatile MemoryContext anl_context = NULL;
-	volatile bool all_rels,
-				in_outer_xact,
-				use_own_xacts;
-	List	   *relations;
+	const char *stmttype = "VACUUM";
+	volatile bool all_rels = false;
+	List	   *relations = NIL;
 	bool		expanded = false;
 	VacuumStatsContext stats_context;
+
+	/**
+	 * Handles only vacuum (incl FULL). Does not handle ANALYZE.
+	 */
+	Assert(vacstmt->vacuum);
+	Assert(!vacstmt->analyze);
 
 	if (vacstmt->verbose)
 		elevel = INFO;
@@ -267,7 +310,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		clear_relsize_cache();
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
+		elevel = DEBUG2; /* vacuum messages aren't interesting from the QD */
 
 	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary)
 		elevel = DEBUG2; /* the mirrors usually just repeat what the primaries say */
@@ -283,38 +326,32 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 	 * block, but we choose to disallow that case because we'd rather commit
 	 * as soon as possible after finishing the vacuum.	This is mainly so that
 	 * we can let go the AccessExclusiveLock that we may be holding.)
-	 *
-	 * ANALYZE (without VACUUM) can run either way.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && vacstmt->vacuum)
+
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		PreventTransactionChain((void *) vacstmt, stmttype);
-		in_outer_xact = false;
 	}
-	else
-		in_outer_xact = IsInTransactionChain((void *) vacstmt);
-
-
 
 	/*
-     * Greenplum Database: send a scary warning message about vacuum full. its not safe
+	 * Greenplum Database: send a scary warning message about vacuum full. its not safe
 	 *		for large tables.
 	 */
-	if (vacstmt->vacuum && vacstmt->full)
+	if (vacstmt->full)
 	{
 		if (Gp_role == GP_ROLE_DISPATCH)
-		ereport(NOTICE,
-				(errcode(ERRCODE_WARNING),
-				 errmsg("'VACUUM FULL' is not safe for large tables and has "
-				 		"been known to yield unpredictable runtimes."),
-				 errhint("Use 'VACUUM' instead.")));
+			ereport(NOTICE,
+					(errcode(ERRCODE_WARNING),
+							errmsg("'VACUUM FULL' is not safe for large tables and has "
+									"been known to yield unpredictable runtimes."),
+									errhint("Use 'VACUUM' instead.")));
 	}
 
 	/*
 	 * Send info about dead objects to the statistics collector, unless we are
 	 * in autovacuum --- autovacuum.c does this for itself.
 	 */
-	if (vacstmt->vacuum && !IsAutoVacuumProcess())
+	if (!IsAutoVacuumProcess())
 		pgstat_vacuum_tabstat();
 
 	/*
@@ -324,10 +361,10 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 	 * if we suffer an error; there's no need for special abort cleanup logic.
 	 */
 	vac_context = AllocSetContextCreate(PortalContext,
-										"Vacuum",
-										ALLOCSET_DEFAULT_MINSIZE,
-										ALLOCSET_DEFAULT_INITSIZE,
-										ALLOCSET_DEFAULT_MAXSIZE);
+			"Vacuum",
+			ALLOCSET_DEFAULT_MINSIZE,
+			ALLOCSET_DEFAULT_INITSIZE,
+			ALLOCSET_DEFAULT_MAXSIZE);
 
 	/* Remember whether we are processing everything in the DB */
 	all_rels = (relids == NIL && vacstmt->relation == NULL);
@@ -339,46 +376,6 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 	relations = get_rel_oids(relids, vacstmt->relation, stmttype, &expanded);
 
 	/*
-	 * Decide whether we need to start/commit our own transactions.
-	 *
-	 * For VACUUM (with or without ANALYZE): always do so, so that we can
-	 * release locks as soon as possible.  (We could possibly use the outer
-	 * transaction for a one-table VACUUM, but handling TOAST tables would be
-	 * problematic.)
-	 *
-	 * For ANALYZE (no VACUUM): if inside a transaction block, we cannot
-	 * start/commit our own transactions.  Also, there's no need to do so if
-	 * only processing one relation.  For multiple relations when not within a
-	 * transaction block, and also in an autovacuum worker, use own
-	 * transactions so we can release locks sooner.
-	 */
-	if (vacstmt->vacuum)
-		use_own_xacts = true;
-	else
-	{
-		Assert(vacstmt->analyze);
-		if (IsAutoVacuumProcess())
-			use_own_xacts = true;
-		else if (in_outer_xact)
-			use_own_xacts = false;
-		else if (list_length(relations) > 1)
-			use_own_xacts = true;
-		else
-			use_own_xacts = false;
-	}
-
-	/*
-	 * If we are running ANALYZE without per-table transactions, we'll need a
-	 * memory context with table lifetime.
-	 */
-	if (!use_own_xacts)
-		anl_context = AllocSetContextCreate(PortalContext,
-											"Analyze",
-											ALLOCSET_DEFAULT_MINSIZE,
-											ALLOCSET_DEFAULT_INITSIZE,
-											ALLOCSET_DEFAULT_MAXSIZE);
-
-	/*
 	 * vacuum_rel expects to be entered with no transaction active; it will
 	 * start and commit its own transaction.  But we are called by an SQL
 	 * command, and so we are executing inside a transaction already. We
@@ -386,11 +383,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 	 * another one before exiting to match the commit waiting for us back in
 	 * PostgresMain().
 	 */
-	if (use_own_xacts)
-	{
-		/* matches the StartTransaction in PostgresMain() */
-		CommitTransactionCommand();
-	}
+	CommitTransactionCommand();
 
 	PG_TRY();
 	{
@@ -409,22 +402,28 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			Relation    onerel;
 			LOCKMODE    lmode = NoLock;
 			LockRelId	onerelid;
-
-			if (use_own_xacts)
+			MemoryContext oldctx;
+			
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				if (Gp_role == GP_ROLE_DISPATCH)
-				{
-					/* Set up the distributed transaction context. */
-					setupRegularDtxContext();
-				}
-
-				StartTransactionCommand();
-				/*
-				 * Functions in indexes may want a snapshot set. Also, setting
-				 * a snapshot ensures that RecentGlobalXmin is kept truly recent.
-				 */
-				ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
+				/* Set up the distributed transaction context. */
+				setupRegularDtxContext();
 			}
+			/*
+			 * Decide whether we need to start/commit our own transactions.
+			 *
+			 * For VACUUM, we always start/commit our own transactions, so that we can
+			 * release locks as soon as possible.  (We could possibly use the outer
+			 * transaction for a one-table VACUUM, but handling TOAST tables would be
+			 * problematic.)
+			 */
+
+			StartTransactionCommand();
+			/*
+			 * Functions in indexes may want a snapshot set. Also, setting
+			 * a snapshot ensures that RecentGlobalXmin is kept truly recent.
+			 */
+			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 
 			/*
 			 * Open the relation with an appropriate lock, and check the permission.
@@ -433,9 +432,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 
 			if (onerel == NULL)
 			{
-				if (use_own_xacts)
-					CommitTransactionCommand();
-
+				CommitTransactionCommand();
 				continue;
 			}
 
@@ -472,11 +469,9 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			 * XXX: Have to allocate the space inside ToMemoryContext, since it is required
 			 * during commit.
 			 */
-			if (vacstmt->vacuum) {
-				MemoryContext oldctx = MemoryContextSwitchTo(TopMemoryContext);
-				AppendRelToVacuumRels(onerel);
-				MemoryContextSwitchTo(oldctx);
-			}
+			oldctx = MemoryContextSwitchTo(TopMemoryContext);
+			AppendRelToVacuumRels(onerel);
+			MemoryContextSwitchTo(oldctx);
 
 			/*
 			 * If we are in the dispatch mode, dispatch this modified vacuum statement
@@ -484,10 +479,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			 */
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				if (anl_context)
-					stats_context.ctx = anl_context;
-				else
-					stats_context.ctx = vac_context;
+				stats_context.ctx = vac_context;
 				stats_context.onerel = onerel;
 				stats_context.updated_stats = NIL;
 				stats_context.vac_stats = NULL;
@@ -508,55 +500,21 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 
 			onerelid = onerel->rd_lockInfo.lockRelId;
 
-			if (vacstmt->vacuum)
-			{
-				lmode = vacstmt->full ? AccessExclusiveLock : ShareUpdateExclusiveLock;
+			lmode = vacstmt->full ? AccessExclusiveLock : ShareUpdateExclusiveLock;
 
-				/*
-				 * Get a session-level lock too. This will protect our access to the
-				 * relation across multiple transactions, so that we can vacuum the
-				 * relation's TOAST table (if any) secure in the knowledge that no one is
-				 * deleting the parent relation.
-				 *
-				 * NOTE: this cannot block, even if someone else is waiting for access,
-				 * because the lock manager knows that both lock requests are from the
-				 * same process.
-				 */
-				LockRelationIdForSession(&onerelid, lmode);
+			/*
+			 * Get a session-level lock too. This will protect our access to the
+			 * relation across multiple transactions, so that we can vacuum the
+			 * relation's TOAST table (if any) secure in the knowledge that no one is
+			 * deleting the parent relation.
+			 *
+			 * NOTE: this cannot block, even if someone else is waiting for access,
+			 * because the lock manager knows that both lock requests are from the
+			 * same process.
+			 */
+			LockRelationIdForSession(&onerelid, lmode);
 
-				vacuum_rel(onerel, vacstmt, lmode, stats_context.updated_stats);
-			}
-
-			if (vacstmt->analyze)
-			{
-				MemoryContext old_context = NULL;
-
-				/*
-				 * If not using separate xacts, we can use the outer
-				 * transaction, but we still need to call analyze_rel
-				 * in a memory context that will be cleaned up on
-				 * return (else we leak memory while processing
-				 * multiple tables).
-				 */
-				if (!use_own_xacts)
-					old_context = MemoryContextSwitchTo(anl_context);
-
-				/*
-				 * Tell the buffer replacement strategy that vacuum is causing
-				 * the IO
-				 */
-				StrategyHintVacuum(true);
-
-				analyze_rel(onerel, vacstmt, &stats_context);
-
-				StrategyHintVacuum(false);
-
-				if (!use_own_xacts)
-				{
-					MemoryContextSwitchTo(old_context);
-					MemoryContextResetAndDeleteChildren(anl_context);
-				}
-			}
+			vacuum_rel(onerel, vacstmt, lmode, stats_context.updated_stats);
 
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
@@ -582,18 +540,12 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 				vacstmt->relation = NULL;
 			}
 
-			if (use_own_xacts)
-			{
-				CommitTransactionCommand();
-			}
+			CommitTransactionCommand();
 
-			if (vacstmt->vacuum)
-			{
-				/*
-				 * Now release the session-level lock on the master table.
-				 */
-				UnlockRelationIdForSession(&onerelid, lmode);
-			}
+			/*
+			 * Now release the session-level lock on the master table.
+			 */
+			UnlockRelationIdForSession(&onerelid, lmode);
 		}
 	}
 	PG_CATCH();
@@ -611,28 +563,21 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 
 	/*
 	 * Finish up processing.
+	 * This matches the CommitTransaction waiting for us in
+	 * PostgresMain().
 	 */
-	if (use_own_xacts)
-	{
-		/* here, we are not in a transaction */
+	StartTransactionCommand();
 
-		/*
-		 * This matches the CommitTransaction waiting for us in
-		 * PostgresMain().
-		 */
-		StartTransactionCommand();
+	/*
+	 * Re-establish the transaction snapshot.  This is wasted effort when
+	 * we are called as a normal utility command, because the new
+	 * transaction will be dropped immediately by PostgresMain(); but it's
+	 * necessary if we are called from autovacuum because autovacuum might
+	 * continue on to do an ANALYZE-only call.
+	 */
+	ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 
-		/*
-		 * Re-establish the transaction snapshot.  This is wasted effort when
-		 * we are called as a normal utility command, because the new
-		 * transaction will be dropped immediately by PostgresMain(); but it's
-		 * necessary if we are called from autovacuum because autovacuum might
-		 * continue on to do an ANALYZE-only call.
-		 */
-		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-	}
-
-	if (vacstmt->vacuum && !IsAutoVacuumProcess())
+	if (!IsAutoVacuumProcess())
 	{
 		/*
 		 * Update pg_database.datfrozenxid, and truncate pg_clog if possible.
@@ -654,11 +599,10 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 	 * StartTransactionCommand, else we might be trying to delete the active
 	 * context!
 	 */
+	Assert(CurrentMemoryContext != vac_context);
 	MemoryContextDelete(vac_context);
 	vac_context = NULL;
 
-	if (anl_context)
-		MemoryContextDelete(anl_context);
 }
 
 /*
@@ -831,8 +775,7 @@ vacuum_set_xid_limits(VacuumStmt *vacstmt, bool sharedRel,
  *		MPP: 8.2 introduced XLOG entries for "inplace" stats updates so we
  *		no longer need the out-of-place hack.
  *
- *		This routine is shared by full VACUUM, lazy VACUUM, and stand-alone
- *		ANALYZE.
+ *		This routine is shared by full VACUUM and lazy VACUUM.
  */
 void
 vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
@@ -853,6 +796,8 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		ListCell *lc;
+		num_pages = 0;
+		num_tuples = 0;
 		foreach (lc, updated_stats)
 		{
 			VUpdatedStats *stats = (VUpdatedStats*) lfirst(lc);
@@ -860,8 +805,8 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 			{
 				VPgClassStats *pgclass_stats = (VPgClassStats *)stats;
 
-				num_pages = pgclass_stats->rel_pages;
-				num_tuples = pgclass_stats->rel_tuples;
+				num_pages += pgclass_stats->rel_pages;
+				num_tuples += pgclass_stats->rel_tuples;
 
 				break;
 			}
@@ -922,7 +867,7 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 		dirty = true;
 	}
 
-	elog(DEBUG2, "ANALYZE oid=%u pages=%d tuples=%f",
+	elog(DEBUG2, "Vacuum oid=%u pages=%d tuples=%f",
 		 relid, pgcform->relpages, pgcform->reltuples);
 	/*
 	 * If we have discovered that there are no indexes, then there's no
@@ -3700,148 +3645,68 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	CdbDispatchCmdThreads *dispatchThreads;
 	char	   *pszVacuum;
 	int			pszVacuum_len;
-	bool needTwoPhase = vacstmt->vacuum;
+	Query	   *q = NULL;
 
-	Query	   *q;
-
-	Assert(Gp_role == GP_ROLE_DISPATCH);
+	Assert(Gp_role == GP_ROLE_DISPATCH); //Maybe dispatch agent? 	
+	Assert(vacstmt);
+	Assert(vacstmt->vacuum);
+	Assert(!vacstmt->analyze);
 
 	/*
 	 * Serialize the stmt tree, and create the sql statement....
 	 */
 	q = makeNode(Query);
 
-
+	Assert(q);
+	
 	q->commandType = CMD_UTILITY;
 	q->utilityStmt = (Node *) vacstmt;
 	q->querySource = QSRC_ORIGINAL;
 	q->canSetTag = true;	/* ? */
 
 	pszVacuum = serializeNode((Node *) q, &pszVacuum_len);
-	Assert(pszVacuum != NULL);
+	Assert(pszVacuum);
 
 	/*
-	 * Our rule is that VACUUM gets dispatched to primaries and mirrors
-	 * while ANALYZE should get dispatched only to the primaries. Therefore,
-	 * if our vacstmt includes both a VACUUM and an ANALYZE clauses we
-	 * dispatch it to the primaries only and create an identical statement
-	 * without the ANALYZE clause to dispatch to the mirrors.
-	 *
-	 * For example: "VACUUM FULL ANALYZE" - the original statement will get
-	 * dispatched to the primaries while "VACUUM FULL" will get dispatched
-	 * to the mirrors.
+	 * VACUUM gets dispatched to primaries and mirrors.
+	 * Mpp-895 stagger vacuum dispatch to primaries first, then mirrors, 
+	 * to avoid i/o contention.
 	 */
-	if((vacstmt->vacuum && !vacstmt->analyze) || (!vacstmt->vacuum && vacstmt->analyze))
-	{
-		/* statement is either VACUUM with no ANALYZE, or ANALYZE with no VACUUM */
+	
+	/* mark the dtx as dirty */
+	setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
 
-		bool dispatchToMirrors = vacstmt->vacuum;
+	cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
+			true /* cancelOnError */, true /* needTwoPhase */,
+			true /* withSnapshot */, false /* mirrors */, true /* primaries */,
+			&primaryResults, &mirrorResults, &dispatchThreads);
 
-		if (needTwoPhase)
-		{
-			/* mark the dtx as dirty */
-			setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
-		}
+	elog(DEBUG2, "Sent %s command to primary QEs",  "vacuum" );
 
-		/* Mpp-895 stagger vacuum dispatch to primaries first, then mirrors, to avoid i/o contention */
-		cdbdisp_dispatchCommand((vacstmt->vacuum ? "vacuum" : "analyze"), pszVacuum, pszVacuum_len,
-								true /* cancelOnError */, needTwoPhase /* needTwoPhase */,
-								true /* withSnapshot */, false /* mirrors */, true /* primaries */,
-								&primaryResults, &mirrorResults, &dispatchThreads);
+	/*
+	 * Wait for all QEs to finish. If not all of our QEs were successful,
+	 * report the error and throw up.
+	 *
+	 * NOTE: this has the side-effect of calling pfree() on
+	 * pszVacuum! (we re-serialize for our mirrors below).
+	 */
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads,
+			NULL, ctx);
 
-		elog(DEBUG2, "Sent %s command to primary QEs", (vacstmt->vacuum ? "vacuum" : "analyze"));
+	pszVacuum = serializeNode((Node *) q, &pszVacuum_len);
+	Assert(pszVacuum != NULL);
 
-		/*
-		 * Wait for all QEs to finish. If not all of our QEs were successful,
-		 * report the error and throw up.
-		 *
-		 * NOTE: this has the side-effect of calling pfree() on
-		 * pszVacuum! (we re-serialize for our mirrors below).
-		 */
-		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads,
-							  &cdbanalyze_combine_stats, ctx);
+	/* mark the dtx as dirty */
+	setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
 
-		if (dispatchToMirrors)
-		{
-			pszVacuum = serializeNode((Node *) q, &pszVacuum_len);
-			Assert(pszVacuum != NULL);
+	cdbdisp_dispatchCommand("vacuum", pszVacuum, pszVacuum_len,
+			true /* cancelOnError */, true /* needTwoPhase */,
+			true /* withSnapshot */, true /* mirrors */, false /* primaries */,
+			&primaryResults, &mirrorResults, &dispatchThreads);
 
-			if (needTwoPhase)
-			{
-				/* mark the dtx as dirty */
-				setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
-			}
-
-			cdbdisp_dispatchCommand((vacstmt->vacuum ? "vacuum" : "analyze"), pszVacuum, pszVacuum_len,
-									true /* cancelOnError */, needTwoPhase /* needTwoPhase */,
-									true /* withSnapshot */, true /* mirrors */, false /* primaries */,
-									&primaryResults, &mirrorResults, &dispatchThreads);
-
-			elog(DEBUG2, "Sent %s command to mirror QEs", (vacstmt->vacuum ? "vacuum" : "analyze"));
-			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads,
-								  &cdbanalyze_combine_stats, ctx);
-		}
-	}
-	else
-	{
-		/* the statement is VACUUM [OPTIONS] ANALYZE */
-		char	   *pszVacuumNoAnalyze;
-		int			pszVacuumNoAnalyze_len;
-
-		if (needTwoPhase)
-		{
-			/* mark the dtx as dirty */
-			setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
-		}
-
-		/*
-		 * dispatch the full statement to primaries only
-		 */
-		cdbdisp_dispatchCommand("vacuum analyze", pszVacuum, pszVacuum_len,
-								true /* cancelOnError */, needTwoPhase /* needTwoPhase */,
-								true /* withSnapshot */, false /* mirrors */, true /* primaries */,
-								&primaryResults, &mirrorResults, &dispatchThreads);
-
-		elog(DEBUG2, "Sent vacuum analyze command to primary QEs");
-
-		/*
-		 * Wait for all QEs to finish. If not all of our QEs were successful,
-		 * report the error and throw up.
-		 */
-		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads,
-							  &cdbanalyze_combine_stats, ctx);
-
-		Assert(((VacuumStmt *)q->utilityStmt)->analyze);
-
-		/* strip off ANALYZE from statement */
-		((VacuumStmt *)q->utilityStmt)->analyze = false;
-
-		pszVacuumNoAnalyze = serializeNode((Node *) q, &pszVacuumNoAnalyze_len);
-
-		Assert(pszVacuumNoAnalyze != NULL);
-
-		if (needTwoPhase)
-		{
-			/* mark the dtx as dirty */
-			setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
-		}
-
-		/*
-		 * dispatch analyze-stripped vacuum statement to mirrors only
-		 */
-		cdbdisp_dispatchCommand("vacuum", pszVacuumNoAnalyze, pszVacuumNoAnalyze_len,
-								true /* cancelOnError */, needTwoPhase /* needTwoPhase */,
-								/* withSnapshot */true, true /* mirrors */, false /* primaries */,
-								&primaryResults, &mirrorResults, &dispatchThreads);
-
-		elog(DEBUG2, "Sent vacuum command to mirror QEs");
-
-		/* must reset to original value since it's a pointer to vacstmt. We'll need it later */
-		((VacuumStmt *)q->utilityStmt)->analyze = true;
-
-		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads,
-							  &cdbanalyze_combine_stats, ctx);
-	}
+	elog(DEBUG2, "Sent %s command to mirror QEs",  "vacuum" );
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads,
+			NULL, ctx);
 
 	pfree(q);
 
@@ -3885,7 +3750,7 @@ open_relation_and_check_permission(VacuumStmt *vacstmt,
 	/*
 	 * Check permissions.
 	 *
-	 * We allow the user to vacuum (analyze) a table if he is superuser, the table
+	 * We allow the user to vacuum a table if he is superuser, the table
 	 * owner, or the database owner (but in the latter case, only if it's not
 	 * a shared relation).	pg_class_ownercheck includes the superuser case.
 	 *

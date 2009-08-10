@@ -38,6 +38,8 @@
 #include "cdb/cdbexplain.h"             /* cdbexplain_recvExecStats */
 #include "cdb/cdblink.h"                /* getgpsegmentCount() */
 #include "cdb/cdbpullup.h"              /* cdbpullup_targetlist() */
+#include "cdb/cdbvars.h"
+#include "cdb/cdbpathlocus.h"
 
 typedef struct ExplainState
 {
@@ -782,7 +784,30 @@ explain_outNode(StringInfo str,
 	int			i;
 	bool		skip_outer=false;
 	char       *skip_outer_msg = NULL;
-
+	float		scaleFactor = 1.0; /* we will divide planner estimates by this factor to produce
+									  per-segment estimates */
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		/**
+		 * Estimates will have to be scaled down to be per-segment (except in a few cases).
+		 */
+		scaleFactor = getgpsegmentCount();
+		
+		if (plan->flow != NULL) 
+		{
+			/**
+			 * Data is unified in one place (singleQE or QD). We scale up
+			 * estimates to make it global.
+			 */
+			if (CdbPathLocus_IsEntry(*(plan->flow))
+					|| CdbPathLocus_IsSingleQE(*(plan->flow)))
+				scaleFactor = 1.0;
+		}
+	}
+	
+	Assert(scaleFactor > 0.0);
+	
 	if (plan == NULL)
 	{
 		appendStringInfoChar(str, '\n');
@@ -1145,7 +1170,7 @@ explain_outNode(StringInfo str,
 
 	appendStringInfo(str, "  (cost=%.2f..%.2f rows=%.0f width=%d)",
 					 plan->startup_cost, plan->total_cost,
-					 plan->plan_rows, plan->plan_width);
+					 plan->plan_rows / scaleFactor, plan->plan_width);
     appendStringInfoChar(str, '\n');
 
 #ifdef DEBUG_EXPLAIN

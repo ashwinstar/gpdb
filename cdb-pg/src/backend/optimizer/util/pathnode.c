@@ -1718,7 +1718,7 @@ create_unique_path(PlannerInfo *root,
         /*
          * CDB TODO: Hybrid hashed aggregation is not limited by work_mem.
          */
-        if (hashentrysize * pathnode->rows <= work_mem * 1024L)
+        if (hashentrysize * pathnode->rows <= global_work_mem())
 		{
 			cost_agg(&agg_path, root,
 					 AGG_HASHED, 0,

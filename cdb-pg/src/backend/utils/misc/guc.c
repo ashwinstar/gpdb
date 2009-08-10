@@ -2131,7 +2131,6 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_statistics_use_fkeys,
 		false, NULL, NULL
 	},
-
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -3319,6 +3318,14 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_dbg_flags,
 		0, 0, INT_MAX, NULL, NULL
 	},
+	{
+		{"gp_statistics_blocks_target", PGC_USERSET, STATS_ANALYZE,
+			gettext_noop("The number of blocks to be sampled to estimate reltuples/relpages for heap tables."),
+			NULL
+		},
+		&gp_statistics_blocks_target,
+		25, 1, 1000, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -3492,7 +3499,26 @@ static struct config_real ConfigureNamesReal[] =
 		1.0, 1.0, DBL_MAX, NULL, NULL
 	},
 
-    /* End-of-list marker */
+	{
+		{"gp_statistics_ndistinct_scaling_ratio_threshold", PGC_USERSET, STATS_ANALYZE,
+			gettext_noop("If the ratio of number of distinct values of an attribute to the number of rows is greater than this value, it is assumed that ndistinct will scale with table size."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+  		},
+		&gp_statistics_ndistinct_scaling_ratio_threshold,
+		0.10, 0.001, 1.0, NULL, NULL
+	},
+	{
+		{"gp_statistics_sampling_threshold", PGC_USERSET, STATS_ANALYZE,
+			gettext_noop("Only tables larger than this size will be sampled."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+  		},
+		&gp_statistics_sampling_threshold,
+		20000.0, 0.0, DBL_MAX, NULL, NULL
+	},
+
+/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL
 	}

@@ -266,8 +266,6 @@ bool		gp_enable_hash_partitioned_tables = FALSE;
 
 bool		gp_enable_tablespaces = FALSE;
 bool		gp_enable_tablespace_auto_mkdir = FALSE;
-bool		gp_statistics_pullup_from_child_partition = FALSE;
-bool		gp_statistics_use_fkeys = FALSE;
 
 /* Disable setting of tuple hints while reading */
 bool		gp_disable_tuple_hints = false;

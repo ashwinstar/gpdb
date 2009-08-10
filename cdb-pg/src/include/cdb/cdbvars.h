@@ -860,10 +860,15 @@ extern int gp_hashagg_spillbatch_max;
 extern int gp_hashjoin_bloomfilter;
 
 /* Get statistics for partitioned parent from a child */
-extern bool gp_statistics_pullup_from_child_partition;
+extern bool 	gp_statistics_pullup_from_child_partition;
 
 /* Extract numdistinct from foreign key relationship */
 extern bool		gp_statistics_use_fkeys;
+
+/* Analyze related gucs */
+extern int 		gp_statistics_blocks_target;
+extern double	gp_statistics_ndistinct_scaling_ratio_threshold;
+extern double	gp_statistics_sampling_threshold;
 
 /* Analyze tools */
 extern int gp_motion_slice_noop;
