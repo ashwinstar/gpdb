@@ -6120,8 +6120,6 @@ void* monitorThreadProc(void *arg  __attribute__((unused)))
 	int PID;
 	struct timeval tv;
 	PGnotify* notify;
-	int nNotifies;
-	bool bFromOtherProcess;
 	StatusOp* pOp;
 	char* pszMsg;
 
@@ -6165,32 +6163,28 @@ void* monitorThreadProc(void *arg  __attribute__((unused)))
 		}
 
 		PQconsumeInput( g_conn_status );
-		nNotifies = 0;
-		bFromOtherProcess = false;
+
 		while ( NULL != (notify = PQnotifies(g_conn_status)))
 		{
-			nNotifies++;
 
 			/* Need to make sure that the notify is from another process, since this processes
 			* also issues notifies that aren't cancel requests.
 			*/
 			if ( notify->be_pid !=  PID )
-				bFromOtherProcess = true;
-
+			{
+				mpp_err_msg( logInfo, progname, "Notification received that we need to cancel for backup key %s\n",
+							 g_CDBDumpKey, g_dbID);
+				bGotCancelRequest = true;
+			}
+				
 			PQfreemem( notify );
 		}
 
-		if ( nNotifies > 0 && bFromOtherProcess )
-			bGotCancelRequest = true;
-
 		if ( bGotCancelRequest )
 		{
-			mpp_err_msg( logInfo, progname, "Notification received that we need to cancel for backup key %s, seg with dbid %d failed\n",
-						 g_CDBDumpKey, g_dbID);
-
+			mpp_err_msg( logInfo, progname, "Canceling seg with dbid %d\n", g_CDBDumpKey, g_dbID);
 			pthread_kill( g_main_tid, SIGINT );
 		}
-
 
 		/*
 		 * Now deal with any insert requests, where we need to notify of status update
@@ -6252,7 +6246,7 @@ void myHandler(int signo)
 	}
 	else
 	{
-		mpp_err_msg( logInfo, progname, "in my_handler not in active transaction\n" );
+		mpp_err_msg( logInfo, progname, "in my_handler not in active transaction. transaction status %d\n", PQtransactionStatus( g_conn ));
 	}
 }
 
@@ -6504,6 +6498,8 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
 	StatusOp* pOp;
     char* pszSuffix;
 
+    mpp_err_msg( logInfo, progname, "About to end the monitor thread\n");
+    
 	if ( g_monitor_tid )
 	{
 		if ( TaskRC == TASK_RC_SUCCESS )
@@ -6525,6 +6521,10 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
 			AddToStatusOpList( g_pStatusOpList, pOp );
 
 		pthread_join( g_monitor_tid, NULL );
+	}
+	else
+	{
+		mpp_err_msg( logInfo, progname, "monitor thread has already ended\n");
 	}
 }
 
