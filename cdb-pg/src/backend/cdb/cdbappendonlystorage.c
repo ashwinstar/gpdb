@@ -26,3 +26,19 @@ char* AOTupleIdToString(AOTupleId * aoTupleId)
 	return AOTupleIdBuffer;
 }
 
+int32 AppendOnlyStorage_GetUsableBlockSize(int32 configBlockSize)
+{
+	int32 result;
+
+	if (configBlockSize > AOBlockHeader_MaxLength)
+		result = AOBlockHeader_MaxLength;
+	else
+		result = configBlockSize;
+
+	/*
+	 * Round down to 32-bit boundary.
+	 */
+	result = (result / sizeof(uint32)) * sizeof(uint32);
+	
+	return result;
+}

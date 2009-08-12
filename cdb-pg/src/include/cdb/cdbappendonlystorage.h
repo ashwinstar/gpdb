@@ -114,5 +114,7 @@ typedef struct AOTupleId
 
 extern char* AOTupleIdToString(AOTupleId * aoTupleId);
 
+extern int32 AppendOnlyStorage_GetUsableBlockSize(
+	int32 configBlockSize);
 
 #endif   /* CDBAPPENDONLYSTORAGE_H */

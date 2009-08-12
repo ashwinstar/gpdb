@@ -82,8 +82,6 @@ typedef enum AoExecutorBlockKind
 	MaxAoExecutorBlockKind /* must always be last */
 } AoExecutorBlockKind;
 
-static int32 getUsableBlockSize(int32 configBlockSize);
-
 /*
  * errcontext_appendonly_scan_block
  *
@@ -1075,7 +1073,7 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	scan->aos_filenamepath_maxlen = AOSegmentFilePathNameLen(relation) + 1;
 	scan->aos_filenamepath = (char*)palloc(scan->aos_filenamepath_maxlen);
 	scan->aos_filenamepath[0] = '\0';
-	scan->usableBlockSize = getUsableBlockSize(aoentry->blocksize);
+	scan->usableBlockSize = AppendOnlyStorage_GetUsableBlockSize(aoentry->blocksize);
 	scan->aos_rd = relation;
 	scan->aos_nkeys = nkeys;
 	scan->aoScanInitContext = CurrentMemoryContext;
@@ -1279,7 +1277,7 @@ appendonly_insert_init(Relation rel, int segno)
 //	aoInsertDesc->useNoToast = aoentry->notoast;
 	aoInsertDesc->useNoToast = Debug_appendonly_use_no_toast;
 
-	aoInsertDesc->usableBlockSize = getUsableBlockSize(aoentry->blocksize);
+	aoInsertDesc->usableBlockSize = AppendOnlyStorage_GetUsableBlockSize(aoentry->blocksize);
 
 	attr = &aoInsertDesc->storageAttributes;
 	
@@ -1604,25 +1602,4 @@ RelationGuessNumberOfBlocks(double totalbytes)
 {
 	/* for now it's very simple */
 	return (BlockNumber)(totalbytes/BLCKSZ) + 1;
-}
-
-int32 
-getUsableBlockSize(int32 configBlockSize)
-{
-	int32 result;
-
-	/*
-	 * UNDONE: Need to fix parser to use new lower blocksize limit.
-	 */
-	if (configBlockSize > AOBlockHeader_MaxLength)
-		result = AOBlockHeader_MaxLength;
-	else
-		result = configBlockSize;
-
-	/*
-	 * Round down to 32-bit boundary.
-	 */
-	result = (result / sizeof(uint32)) * sizeof(uint32);
-	
-	return result;
 }
