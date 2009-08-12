@@ -502,6 +502,8 @@ static List*	buildExplicitAttributeNames(Oid relationOid, VacuumStmt *stmt)
 			/* If stats target = 0, then don't analyze the attribute. However, we don't actually throw an error.. just silently skip it. */
 			if (att_tup->attstattarget != 0)
 				lExplicitAttNames = lappend(lExplicitAttNames, attributeName);
+			
+			ReleaseSysCache(attributeTuple);
 		}
 		else
 		{
