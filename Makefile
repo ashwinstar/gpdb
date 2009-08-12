@@ -218,7 +218,7 @@ CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap $(BLD_CURL_CONFI
 endif
 # ...but do include some of the authlibs on AIX
 ifneq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
-CONFIGFLAGS+= --with-openssl --with-pam --without-krb5 --with-ldap $(BLD_CURL_CONFIG)
+CONFIGFLAGS+= --with-openssl --with-pam --without-krb5 --without-ldap $(BLD_CURL_CONFIG)
 endif
 
 # Windows-specific config flags
@@ -630,21 +630,21 @@ ifeq "$(findstring connectivity,$(BLD_TARGETS))" ""
 	# ---- build and packaging of the Connectivity package is currently disabled;
 	# ---- set BLD_TARGETS="connectivity" to enable them.
 else
-#ifneq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
-#	# ---- (for AIX) load LIBPATH with the PostgreSQL library set and build the ODBC drivers ----
-#	AUTHLIBS_HOME=$(BLD_THIRDPARTY_DIR); export AUTHLIBS_HOME ; \
-#	export LIBPATH=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/lib:$(LIBPATH); \
-#	  export PG_CONFIG=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/bin/pg_config; \
-#	  cd $(BLD_TOP)/client/odbc/src && \
-#	    $(MAKE) all
-#else
+ifneq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
+	# ---- (for AIX) load LIBPATH with the PostgreSQL library set and build the ODBC drivers ----
+	AUTHLIBS_HOME=$(BLD_THIRDPARTY_DIR); export AUTHLIBS_HOME ; \
+	export LIBPATH=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/lib:$(LIBPATH); \
+	  export PG_CONFIG=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/bin/pg_config; \
+	  cd $(BLD_TOP)/client/odbc/src && \
+	    $(MAKE) all
+else
 	# ---- (for the rest) load LD_LIBRARY_PATH with the GPDB library set and build the ODBC drivers ----
 	AUTHLIBS_HOME=$(BLD_THIRDPARTY_DIR); export AUTHLIBS_HOME ; \
 	cd $(INSTLOC)/ && \
 	  . ./greenplum_path.sh; \
 	  cd $(BLD_TOP)/client/odbc/src && \
 	    $(MAKE) all
-#endif
+endif
 	# ---- copy GPDB fileset ----
 	mkdir -p $(CONNECTIVITYINSTLOC_LIB)
 	(cd $(INSTLOC)/lib && $(TAR) cf - *) | (cd $(CONNECTIVITYINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
