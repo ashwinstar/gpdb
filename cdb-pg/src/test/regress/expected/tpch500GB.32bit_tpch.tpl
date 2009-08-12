@@ -137,9 +137,6 @@ CREATE TABLE supplier (
     s_acctbal numeric(15,2) NOT NULL,
     s_comment character varying(101) NOT NULL
 ) distributed by (s_suppkey);
---
--- Greenplum Database database dump complete
---
 -- 
 -- Table: customer, Attribute: c_custkey
 -- 
@@ -149,20 +146,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	4::integer,
 	-1::real,
+	0::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
 	0::smallint,
 	0::oid,
-	0::oid,
+	97::oid,
 	0::oid,
 	0::oid,
 	NULL::real[],
-	'{1}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{2760,2945054,6011527,9060392,12127239,15130636,18115629,20965936,23837989,26810261,29946728,32990075,36064800,39101345,42175069,45251547,48278194,51373837,54536725,57520465,60426176,63358487,66267515,69220550,72200435,74998946}'::int4[],
+	NULL::real[],
 	NULL::int4[],
+	'{804,2921948,5863959,8787979,11802789,14784434,17816642,20845138,23890922,26778640,29746505,32749801,35795334,38741386,41761423,44846847,47954678,51000547,53971082,56912203,59868521,62836009,65897832,68906877,72003218,74983822,74997699}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -174,8 +171,8 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	19::integer,
 	-1::real,
-	2::smallint,
-	3::smallint,
+	0::smallint,
+	0::smallint,
 	0::smallint,
 	0::smallint,
 	0::oid,
@@ -183,10 +180,10 @@ INSERT INTO pg_statistic VALUES (
 	0::oid,
 	0::oid,
 	NULL::real[],
-	'{1}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{Customer#000002760,Customer#002945054,Customer#006011527,Customer#009060392,Customer#012127239,Customer#015130636,Customer#018115629,Customer#020965936,Customer#023837989,Customer#026810261,Customer#029946728,Customer#032990075,Customer#036064800,Customer#039101345,Customer#042175069,Customer#045251547,Customer#048278194,Customer#051373837,Customer#054536725,Customer#057520465,Customer#060426176,Customer#063358487,Customer#066267515,Customer#069220550,Customer#072200435,Customer#074998946}'::varchar[],
+	NULL::real[],
+	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
@@ -197,10 +194,10 @@ INSERT INTO pg_statistic VALUES (
 	'tpch500gb.customer'::regclass,
 	3::smallint,
 	0::real,
-	25::integer,
+	26::integer,
 	-1::real,
-	2::smallint,
-	3::smallint,
+	0::smallint,
+	0::smallint,
 	0::smallint,
 	0::smallint,
 	0::oid,
@@ -208,10 +205,10 @@ INSERT INTO pg_statistic VALUES (
 	0::oid,
 	0::oid,
 	NULL::real[],
-	'{0.00246784}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{000PrtNXGPu6AD1mL3C7rF8byZnUf,",2LBGg1tjdLDMEKrL1F3n3fOhXFSQA",52RUgseqs6Hx1Gek1,7GhQZTTfPoLEvT0tS80P48qog,"9vTfJ5gUVcY E",BAk5WMgqxNeoDSzx7IcBcRfsizD,"cJ4NubdXQKgv lZmvaxi","DP,sdo9hXUVINV1GnMsRC9,DYXrPvm7hh3Zi1 ","eWMZ4twPD2NxPPIcHiea,kgeK,9Rx8","g5TLLcaDnOqWaO1fEPV BFSmjh2f",hFL7bTEEWywQNSufvX,ilnVMM9j5mTcDD9jj9lciQBY4,jSWGSydRQNrYoKq1MD3jqxu6wqMlU4BEv4,"l1xd7,UvqJkGOLLXMNixh1lleuMY23f08H,",MDrbzstG6ftXWZy,"NKfkHN7aOTIc1C2v,HGkJ9gPw4fCYULjy",oqcNeFKwpvJW1B,PxB3xdvTVT,"RAcK3ic jvB4i5bBFNcoxfed7jG8nxr8vC2yHqwf","SJ3vn6n3dtix Iezl",tQkbZEbvcgCm,"UY43lDGndrB6Z5k5bPSGM 8Bed",wA0coxxPIUekdXKB7TcHfwfAEalpaOtn02KSteJS,"xINctJIdpa4tvwzH76 Ev2a360 g1CL8t WbH vy",yS0FN3zP9Sojt6PeGaUbEZpyhnudk,zZZFzevq0IhGUG7Q9fSp4KsHTaM8JwDQx0}'::varchar[],
+	NULL::real[],
+	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
@@ -225,19 +222,19 @@ INSERT INTO pg_statistic VALUES (
 	4::integer,
 	25::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.0419882,0.0412688,0.0410399,0.0410072,0.0409745,0.0409418,0.0408437,0.040811,0.0404186,0.0402878,0.0402551,0.0399935,0.0398954,0.0398627,0.0397646,0.0397646,0.0397319,0.0395356,0.0394702,0.039274,0.0390451,0.0390451,0.03862,0.0384565,0.0377044}'::real[],
-	'{0.0426999}'::real[],
+	'{0.0428491,0.0427156,0.0423152,0.0421283,0.0414876,0.0410337,0.0409002,0.0406066,0.0406066,0.0398857,0.0396989,0.0396722,0.0396722,0.0396188,0.0393251,0.0393251,0.0391916,0.0391916,0.0390314,0.0388712,0.0386844,0.038631,0.0382038,0.0382038,0.0381504}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{21,5,15,4,17,23,13,20,12,18,7,6,9,8,11,22,24,2,1,14,3,10,16,19,0}'::int4[],
-	NULL::int4[],
+	NULL::real[],
+	'{23,2,15,19,11,8,9,18,13,24,22,1,12,4,3,7,21,16,10,5,17,14,6,0,20}'::int4[],
+	'{0,1,2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,21,22,23,24}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -248,21 +245,21 @@ INSERT INTO pg_statistic VALUES (
 	5::smallint,
 	0::real,
 	16::integer,
-	-0.997547::real,
-	1::smallint,
+	-1::real,
+	0::smallint,
 	2::smallint,
-	3::smallint,
+	0::smallint,
 	0::smallint,
 	0::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	'{6.54022e-05}'::real[],
 	NULL::real[],
-	'{0.0027482}'::real[],
 	NULL::real[],
-	'{27-299-964-7166}'::bpchar[],
-	'{10-100-654-9201,11-152-700-2185,12-170-250-8992,13-178-565-3823,14-183-851-4728,15-174-550-1265,16-149-503-8812,17-143-109-8176,18-141-448-3137,19-145-703-8058,20-144-608-1076,21-163-370-8699,22-171-967-2302,23-168-927-9879,24-156-331-7970,25-157-764-3206,26-146-942-2576,27-163-172-2742,28-145-479-8630,29-138-410-3301,30-171-857-5391,31-148-188-8380,32-109-937-9756,33-122-842-6192,33-992-235-7081,34-998-912-4164}'::bpchar[],
+	NULL::real[],
+	NULL::real[],
+	NULL::bpchar[],
+	'{10-100-191-7266,11-141-431-6620,12-146-228-8482,12-989-498-7126,14-102-488-8228,15-110-736-8802,16-134-382-8692,17-180-990-4687,18-179-696-6251,19-168-563-7001,20-156-810-2884,21-169-585-7571,22-134-156-5368,23-142-180-9482,24-124-668-5127,25-146-190-8013,26-105-145-1566,27-125-452-1979,28-158-715-8691,29-138-317-9725,29-986-797-4558,31-131-791-7114,32-156-414-9083,33-147-732-1957,33-991-436-9035,34-994-434-4065,34-997-979-7892}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -273,21 +270,21 @@ INSERT INTO pg_statistic VALUES (
 	6::smallint,
 	0::real,
 	8::integer,
-	-0.106222::real,
+	1.02349e+06::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	1752::oid,
+	1754::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{9.81033e-05,9.81033e-05,9.81033e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{0.000106789,8.00918e-05,8.00918e-05,8.00918e-05,8.00918e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05,5.33946e-05}'::real[],
 	NULL::real[],
-	'{-0.00315596}'::real[],
 	NULL::real[],
-	'{422.87,5428.98,7655.56,-981.26,-930.14,-886.88,-880.30,-840.89,-823.44,-815.97,-814.52,-807.14,-800.51,-777.54,-724.42,-724.00,-711.43,-699.81,-681.00,-663.98,-644.37,-580.80,-567.29,-557.09,-518.66}'::numeric[],
-	'{-999.48,-562.86,-101.69,361.76,802.33,1243.28,1676.83,2134.63,2565.07,2985.87,3415.98,3860.11,4312.80,4742.20,5185.75,5641.98,6084.42,6532.69,6972.31,7406.22,7849.66,8284.99,8714.67,9149.30,9556.33,9999.94}'::numeric[],
+	NULL::real[],
+	'{1326.23,6331.71,7152.66,8601.76,6948.19,8351.64,5258.77,8026.44,3748.38,3272.33,9381.39,6373.51,6483.41,7139.38,8439.24,2742.33,7603.02,24.43,3497.27,6354.67,2552.85,592.58,9742.41,8182.96,9651.53}'::numeric[],
+	'{-999.66,-528.82,-82.74,363.12,801.53,1249.85,1674.72,2111.78,2532.23,2966.11,3412.64,3850.63,4281.29,4720.86,5170.36,5625.04,6066.04,6511.02,6960.76,7389.45,7820.73,8247.92,8669.04,9108.46,9560.62,9998.53,9999.71}'::numeric[],
 	NULL::numeric[],
 	NULL::numeric[]);
 -- 
@@ -300,19 +297,19 @@ INSERT INTO pg_statistic VALUES (
 	11::integer,
 	5::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.20242,0.200916,0.199804,0.198888,0.197973}'::real[],
-	'{0.199686}'::real[],
+	'{0.201458,0.200203,0.199776,0.199455,0.199108}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"BUILDING  ","HOUSEHOLD ","FURNITURE ","MACHINERY ",AUTOMOBILE}'::bpchar[],
-	NULL::bpchar[],
+	NULL::real[],
+	'{"HOUSEHOLD ","BUILDING  ","FURNITURE ","MACHINERY ",AUTOMOBILE}'::bpchar[],
+	'{AUTOMOBILE,"BUILDING  ","FURNITURE ","HOUSEHOLD ","MACHINERY "}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -323,21 +320,21 @@ INSERT INTO pg_statistic VALUES (
 	8::smallint,
 	0::real,
 	73::integer,
-	-0.973481::real,
+	-0.760944::real,
 	1::smallint,
-	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	0::smallint,
+	98::oid,
 	0::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	'{6.54022e-05}'::real[],
+	'{5.33946e-05,5.33946e-05,5.33946e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05,2.66973e-05}'::real[],
 	NULL::real[],
-	'{-0.00225504}'::real[],
 	NULL::real[],
-	'{"ithely across the permanently"}'::varchar[],
-	'{" about the accounts. always even deposits haggle blithely bold deposits.","al deposits wake slyly special, silent accounts. slyly express foxes sleep alongside of the ironic packages. "," beans. requests haggle furiously furiously unusual plate","carefully unusual sheaves doze blithely. quickly pending requests against the ironic package","deposits boost evenly fluffy foxes. doggedly ironic packages sleep never above the ","efully even requests haggle carefully. furiously ironic forges boost furiously ruthlessly stealthy instruction","eposits was carefully slyly bold theodolites. furiously ironic foxes alongside of the carefully fina","even requests. boldly special deposits int","fully final packages sleep blithely. fluffily thin foxe","haggle blithely around the quickly final accounts. carefully bo","ilent accounts. regular, pending foxes promise; blithely special deposits dazzle furiously. pending deposits de"," ironic theodolites are furiously. r","le furiously according to the car","ly final pinto beans. packages wake final, regular courts. quickly special pinto beans are b","ngside of the even accounts. regular, final excuses affix carefu","ole alongside of the slyly even theodolites. even braids sleep carefully. final epitaphs could have to w"," packages along the furiously express theodolites haggle slyly fluffily ironic pinto beans. thin, ex","quickly final ideas about the ruthlessly eve","rhorses are fluffily bold excuses. carefully regular instructions across the blithely even pa","s. final, regular deposits wake blithely busy theodolites. carefully"," special, ironic theodolites. fluffily "," the blithely ironic instructions sleep thinly around the ideas. ironic, even asy","ts cajole at the carefully express requests. slyly ironic instructions hang according to the final theodol","unts according to the unusual, bold accounts ca","xes solve carefully among the quickly pe","zzle regular accounts: bold packages cajole furiously alongside of the theodo"}'::varchar[],
+	NULL::real[],
+	'{"uests. carefully ironic asymptotes wake carefully across the courts. special, furious requests sleep. si"," ironic orbits. slyly express requests haggle across the final dependencies! unusual,","ets haggle slyly carefully bold requests. ironic theodolites wake quickly. carefully final pi"," requests cajole against the ironic pinto beans. slyly regular packages cajole furiously. blithely e"," use furiously according to the ","nst the sly, silent deposits boost ironic, bold requests. quickly regular theodolites integrate blithely quickly fi","lly special instructions. ironic, final requests nag alongside","ently regular accounts cajole carefully silent theodolites. final, regular foxes nag blithely regular request","s cajole blithely carefully regular warthogs. furio","ackages. pending courts wake. furiously u","ly final deposits wake slyly among th"," silent grouches. instructions sleep? furiously special deposits sleep b"," pinto beans lose fluffily. slyly silent theodolites cajole fluffily according to ","regular accounts eat blithely. theodolites according to the express pinto","r accounts are furiously. quickly enticing braids are about th"," escapades. blithely regular pinto beans detect carefully carefully permanent tithes. fluffi","ing packages are slyly across the blithely ironic accounts. regular pl","ackages. slyly special deposits sleep slyly alongside of the quickly e","ourts haggle quickly blithely express packages. carefully final requests haggle quickly blithely ironic ideas."," accounts. unusual accounts nag fluffi","lent theodolites kindle slyly ","ites use! blithely special packa","quickly across the packages. final ins","the regular deposits. fluffily special accoun","eposits. slyly quiet deposits use blithely pending, unusual ideas. furiously bold excu"}'::varchar[],
+	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
 -- 
@@ -348,21 +345,21 @@ INSERT INTO pg_statistic VALUES (
 	1::smallint,
 	0::real,
 	8::integer,
-	1.51038e+06::real,
+	2.83108e+08::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	410::oid,
+	412::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{9.81033e-05,9.81033e-05,9.81033e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{4.61276e-05,4.61276e-05,4.61276e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05}'::real[],
 	NULL::real[],
-	'{1}'::real[],
 	NULL::real[],
-	'{4179463,881445987,2962849606,5701541,10170112,22614212,22751876,46360803,60191969,75968416,76845987,108103845,116328161,117470528,122215206,170967363,189143555,189589639,199817094,206086401,216050503,218893280,226045191,230156099,231007654}'::int8[],
-	'{257378,127538502,249665444,372152864,498015904,606438274,723059264,842039520,954102753,1073122116,1190333057,1312125350,1436023396,1552490503,1665862306,1785420610,1912523104,2036041376,2151790470,2270244934,2390748865,2515629825,2634774885,2752993505,2881395106,2999929955}'::int8[],
+	NULL::real[],
+	'{684660003,2498724164,2601169125,665000674,966822981,70399204,2970597478,2001386055,291876741,1402120835,2416267206,1493869799,873810726,247996930,2143385415,1485096743,2140300835,2048646853,639228836,1250075495,210992546,1999492995,678628385,2045559744,395294948}'::int8[],
+	'{63270,122175974,245661766,368423714,481598659,603820005,715990439,832983360,955418464,1078067687,1197146500,1315714816,1434740995,1556093057,1675966246,1797661605,1918969792,2041767175,2162361312,2279143781,2398070019,2510123811,2635543239,2757323586,2881136101,2999710886,2999977856}'::int8[],
 	NULL::int8[],
 	NULL::int8[]);
 -- 
@@ -373,21 +370,21 @@ INSERT INTO pg_statistic VALUES (
 	2::smallint,
 	0::real,
 	4::integer,
-	-0.18676::real,
+	5.42498e+07::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05,2.30638e-05}'::real[],
 	NULL::real[],
-	'{0.00205893}'::real[],
 	NULL::real[],
-	'{10485043,34678418,34818586,71936778,86724326,98612016,99821045}'::int4[],
-	'{1025,3915152,7979591,12003964,16213070,20252426,24305267,28233865,32237899,36274771,40266435,44196081,48219329,52402386,56599376,60535939,64497129,68644684,72573578,76612708,80619158,84426070,88319084,92226041,96048052,99998727}'::int4[],
+	NULL::real[],
+	'{74816973,99986397,35934058,83893509,24494308,38058554,64215895,71106066,94717702,2166665,33238873,76663389,89934431,41370087,38358229,62637654,79148976,44613095,88856810,94549934,29688330,14757870,81756903,81285545,52654208}'::int4[],
+	'{3514,3778791,7623228,11814393,15941479,20062466,24081414,28064591,32197294,36158321,39989279,43964528,48004896,52096756,56105946,60253290,64325207,68313587,72237369,76164467,80046212,83991569,87905531,91954431,95975224,99985038,99996317}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -398,21 +395,21 @@ INSERT INTO pg_statistic VALUES (
 	3::smallint,
 	0::real,
 	4::integer,
-	5.02283e+06::real,
+	5.07803e+06::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05}'::real[],
 	NULL::real[],
-	'{-0.000392946}'::real[],
 	NULL::real[],
-	'{58896,97303,240385,261996,271316,356699,397337,422246,474378,505037,540293,593262,618959,660138,679459,802625,835089,905882,958564,968057,1077093,1144432,1151965,1239477,1254999}'::int4[],
-	'{116,207592,395468,592116,798217,1003478,1205752,1411909,1609425,1810780,2011000,2212397,2421930,2622802,2825386,3026020,3225675,3422656,3619036,3830614,4031631,4219989,4422712,4620940,4808444,4999810}'::int4[],
+	NULL::real[],
+	'{571170,342194,4232105,2317002,1649152,449904,790709,2556241,460723,2261648,225307,2522688,3140446,29637,1236417,796525,4361999,1871637,4087599,4459098,2658631,2278367,3121922,57515,2428966}'::int4[],
+	'{254,199905,397439,595963,789527,987880,1192416,1393289,1594098,1792035,1997828,2198858,2397260,2595017,2789066,2991306,3190760,3387653,3581070,3778384,3982147,4182247,4389723,4592954,4799542,4999295,4999864}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -425,19 +422,19 @@ INSERT INTO pg_statistic VALUES (
 	4::integer,
 	7::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.252289,0.215991,0.179071,0.145618,0.104022,0.067724,0.0352845}'::real[],
-	'{0.175633}'::real[],
+	'{0.250081,0.213156,0.178814,0.14258,0.1075,0.0717515,0.0361179}'::real[],
+	NULL::real[],
 	NULL::real[],
 	NULL::real[],
 	'{1,2,3,4,5,6,7}'::int4[],
-	NULL::int4[],
+	'{1,2,3,4,5,6,7}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -449,20 +446,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	7::integer,
 	50::real,
+	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
 	0::smallint,
+	1752::oid,
+	1754::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
+	'{0.0212418,0.0211726,0.0210342,0.0210111,0.0209881,0.0209419,0.0208266,0.0207574,0.0207344,0.0206421,0.020596,0.0205729,0.0204345,0.0203884,0.0203423,0.0203192,0.0202961,0.0202961,0.0202269,0.0202039,0.0202039,0.0202039,0.0201808,0.0201578,0.0200886}'::real[],
 	NULL::real[],
-	'{0.0209242}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{1.00,2.00,4.00,6.00,8.00,10.00,12.00,15.00,17.00,18.00,21.00,22.00,24.00,26.00,28.00,30.00,32.00,35.00,36.00,38.00,41.00,42.00,44.00,47.00,48.00,50.00}'::numeric[],
-	NULL::numeric[],
+	'{1.00,5.00,6.00,4.00,23.00,11.00,31.00,36.00,28.00,12.00,42.00,2.00,50.00,7.00,29.00,32.00,17.00,22.00,45.00,43.00,15.00,48.00,41.00,44.00,47.00}'::numeric[],
+	'{1.00,2.00,4.00,6.00,8.00,10.00,12.00,14.00,16.00,18.00,20.00,22.00,24.00,26.00,28.00,30.00,32.00,34.00,36.00,38.00,41.00,42.00,44.00,46.00,48.00,50.00}'::numeric[],
 	NULL::numeric[],
 	NULL::numeric[]);
 -- 
@@ -473,21 +470,21 @@ INSERT INTO pg_statistic VALUES (
 	6::smallint,
 	0::real,
 	10::integer,
-	2.53851e+06::real,
+	2.69251e+06::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	1752::oid,
+	1754::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05,4.61276e-05}'::real[],
 	NULL::real[],
-	'{0.000138415}'::real[],
 	NULL::real[],
-	'{1145.20,1211.18,3240.00,3651.30,4501.32,5087.28,5108.34,5476.92,5501.16,5680.08,6197.10,6367.20,7180.64,7595.55,7719.20,7940.70,8792.35,9656.24,9702.35,11024.73,11144.32,11548.50,13155.03,13549.20,14404.91}'::numeric[],
-	'{911.28,3562.64,6395.10,9387.36,12300.30,15182.97,18059.02,20988.60,23914.80,26616.48,29473.58,32471.63,35334.20,38281.32,41209.35,44158.53,46816.88,49702.48,52694.22,55953.97,59714.68,63666.85,68447.00,73931.47,81866.25,103165.00}'::numeric[],
+	NULL::real[],
+	'{1585.12,54070.70,36389.10,29623.92,70271.12,28700.28,19146.40,55276.36,53105.76,8911.28,50629.60,23917.60,66085.44,34047.43,45696.96,22102.08,38978.10,25021.44,39818.16,72407.16,60931.20,44936.00,36705.20,46454.52,55112.40}'::numeric[],
+	'{910.92,3461.73,6301.72,9103.08,11906.10,14773.44,17681.70,20503.04,23425.87,26367.39,29258.19,32097.88,35049.00,37955.84,40728.45,43636.62,46445.00,49474.18,52516.82,55719.30,59404.64,63507.36,68282.28,73785.77,82066.50,102182.00,103239.50}'::numeric[],
 	NULL::numeric[],
 	NULL::numeric[]);
 -- 
@@ -500,19 +497,19 @@ INSERT INTO pg_statistic VALUES (
 	6::integer,
 	11::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	1752::oid,
+	1754::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.093656,0.0928058,0.0923806,0.0922171,0.0921517,0.0911707,0.0906802,0.0894375,0.0893067,0.088293,0.0879006}'::real[],
-	'{0.0879589}'::real[],
+	'{0.0941695,0.0934314,0.0923936,0.0914249,0.0913557,0.0910328,0.0905254,0.0901794,0.0892338,0.0886342,0.0876194}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{0.02,0.00,0.09,0.03,0.07,0.06,0.05,0.08,0.10,0.04,0.01}'::numeric[],
-	NULL::numeric[],
+	NULL::real[],
+	'{0.03,0.10,0.08,0.09,0.01,0.04,0.00,0.06,0.05,0.07,0.02}'::numeric[],
+	'{0.00,0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.10}'::numeric[],
 	NULL::numeric[],
 	NULL::numeric[]);
 -- 
@@ -525,19 +522,19 @@ INSERT INTO pg_statistic VALUES (
 	6::integer,
 	9::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	1752::oid,
+	1754::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.113604,0.113277,0.11259,0.112198,0.111576,0.110007,0.109908,0.108829,0.108012}'::real[],
-	'{0.112964}'::real[],
+	'{0.113197,0.112597,0.112367,0.112021,0.11179,0.111191,0.109853,0.108515,0.108469}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{0.08,0.06,0.04,0.02,0.07,0.01,0.05,0.03,0.00}'::numeric[],
-	NULL::numeric[],
+	NULL::real[],
+	'{0.01,0.06,0.07,0.08,0.05,0.02,0.04,0.03,0.00}'::numeric[],
+	'{0.00,0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08}'::numeric[],
 	NULL::numeric[],
 	NULL::numeric[]);
 -- 
@@ -550,19 +547,19 @@ INSERT INTO pg_statistic VALUES (
 	2::integer,
 	3::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.507423,0.246828,0.245749}'::real[],
-	'{0.376786}'::real[],
+	'{0.508072,0.247082,0.244845}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{N,R,A}'::bpchar[],
-	NULL::bpchar[],
+	NULL::real[],
+	'{N,A,R}'::bpchar[],
+	'{A,N,R}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -575,19 +572,19 @@ INSERT INTO pg_statistic VALUES (
 	2::integer,
 	2::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.501177,0.498823}'::real[],
-	'{0.502906}'::real[],
+	'{0.501707,0.498293}'::real[],
+	NULL::real[],
 	NULL::real[],
 	NULL::real[],
 	'{O,F}'::bpchar[],
-	NULL::bpchar[],
+	'{F,O}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -598,21 +595,21 @@ INSERT INTO pg_statistic VALUES (
 	11::smallint,
 	0::real,
 	4::integer,
-	2510.88::real,
+	2515.75::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	1093::oid,
+	1095::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.000981033,0.000817528,0.000817528,0.000817528,0.000784827,0.000784827,0.000752126,0.000752126,0.000752126,0.000752126,0.000752126,0.000752126,0.000752126,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000686723}'::real[],
+	'{0.000761105,0.000761105,0.000738041,0.000738041,0.000714978,0.000714978,0.000714978,0.000714978,0.000714978,0.000691914,0.000691914,0.000691914,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.000645786,0.000645786,0.000645786,0.000645786}'::real[],
 	NULL::real[],
-	'{0.0029223}'::real[],
 	NULL::real[],
-	'{1997-03-04,1996-05-16,1997-05-05,1998-03-18,1995-05-04,1997-08-25,1992-12-04,1993-05-09,1993-07-20,1994-02-20,1995-02-23,1997-07-17,1998-05-22,1993-02-23,1993-11-21,1994-04-04,1995-07-25,1996-01-11,1997-01-22,1997-03-18,1997-05-14,1998-01-20,1998-04-22,1998-05-16,1992-04-27}'::date[],
-	'{1992-01-03,1992-06-03,1992-09-07,1992-12-17,1993-03-23,1993-06-24,1993-09-27,1994-01-01,1994-04-09,1994-07-14,1994-10-20,1995-01-24,1995-04-29,1995-08-06,1995-11-08,1996-02-11,1996-05-13,1996-08-14,1996-11-21,1997-02-27,1997-06-02,1997-09-08,1997-12-14,1998-03-22,1998-06-27,1998-11-29}'::date[],
+	NULL::real[],
+	'{1992-04-25,1998-07-20,1994-12-05,1998-07-10,1996-01-06,1997-06-18,1996-02-25,1996-07-10,1998-07-09,1996-11-25,1995-09-01,1994-02-12,1997-07-26,1998-06-22,1996-05-30,1997-12-22,1998-05-07,1992-08-29,1993-09-08,1996-09-24,1994-06-22,1995-09-10,1995-05-05,1995-03-04,1996-01-23}'::date[],
+	'{1992-01-05,1992-06-03,1992-09-04,1992-12-13,1993-03-20,1993-06-28,1993-10-05,1994-01-09,1994-04-15,1994-07-19,1994-10-23,1995-01-27,1995-05-04,1995-08-11,1995-11-16,1996-02-21,1996-05-29,1996-08-31,1996-12-04,1997-03-12,1997-06-18,1997-09-21,1997-12-25,1998-03-29,1998-06-30,1998-11-23,1998-11-30}'::date[],
 	NULL::date[],
 	NULL::date[]);
 -- 
@@ -623,21 +620,21 @@ INSERT INTO pg_statistic VALUES (
 	12::smallint,
 	0::real,
 	4::integer,
-	2458.88::real,
+	2462.34::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	1093::oid,
+	1095::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.000817528,0.000784827,0.000784827,0.000784827,0.000752126,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000686723,0.000686723,0.000686723,0.000686723,0.000686723}'::real[],
+	'{0.000738041,0.000738041,0.000738041,0.000714978,0.000714978,0.000714978,0.000714978,0.000691914,0.000691914,0.000691914,0.000691914,0.000691914,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.00066885,0.000645786,0.000645786}'::real[],
 	NULL::real[],
-	'{0.00314841}'::real[],
 	NULL::real[],
-	'{1993-10-05,1995-04-30,1997-06-24,1998-05-03,1994-10-01,1992-06-20,1992-10-22,1993-01-09,1993-01-28,1993-05-09,1993-09-22,1993-10-30,1994-01-15,1994-07-14,1994-12-04,1995-11-06,1995-12-04,1996-01-05,1996-05-18,1996-05-28,1992-10-18,1993-04-20,1993-07-08,1993-08-14,1993-09-04}'::date[],
-	'{1992-01-31,1992-06-01,1992-09-07,1992-12-18,1993-03-25,1993-07-01,1993-10-09,1994-01-11,1994-04-18,1994-07-27,1994-11-01,1995-02-06,1995-05-12,1995-08-17,1995-11-22,1996-02-25,1996-05-29,1996-09-01,1996-12-10,1997-03-14,1997-06-13,1997-09-15,1997-12-17,1998-03-24,1998-06-27,1998-10-30}'::date[],
+	NULL::real[],
+	'{1995-05-14,1992-06-23,1998-01-31,1992-08-03,1993-01-12,1993-04-05,1996-05-08,1995-09-10,1995-01-25,1996-01-26,1994-07-17,1992-08-14,1994-10-30,1996-01-22,1995-10-12,1998-01-16,1992-05-04,1994-12-27,1996-08-27,1998-05-10,1994-06-02,1997-07-26,1993-03-16,1996-03-23,1993-11-24}'::date[],
+	'{1992-02-02,1992-06-04,1992-09-03,1992-12-12,1993-03-20,1993-06-25,1993-10-04,1994-01-09,1994-04-14,1994-07-19,1994-10-22,1995-01-27,1995-05-03,1995-08-10,1995-11-13,1996-02-19,1996-05-29,1996-08-28,1996-12-03,1997-03-11,1997-06-17,1997-09-20,1997-12-26,1998-03-29,1998-06-30,1998-10-25,1998-10-31}'::date[],
 	NULL::date[],
 	NULL::date[]);
 -- 
@@ -648,21 +645,21 @@ INSERT INTO pg_statistic VALUES (
 	13::smallint,
 	0::real,
 	4::integer,
-	2518::real,
+	2521.81::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	1093::oid,
+	1095::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.000850229,0.000850229,0.000850229,0.000817528,0.000784827,0.000784827,0.000784827,0.000784827,0.000784827,0.000752126,0.000752126,0.000752126,0.000752126,0.000752126,0.000752126,0.000752126,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000686723}'::real[],
+	'{0.000830297,0.000784169,0.000784169,0.000761105,0.000761105,0.000738041,0.000738041,0.000738041,0.000738041,0.000738041,0.000738041,0.000738041,0.000714978,0.000714978,0.000714978,0.000691914,0.000691914,0.000691914,0.000691914,0.000691914,0.000691914,0.000691914,0.00066885,0.00066885,0.00066885}'::real[],
 	NULL::real[],
-	'{0.0029204}'::real[],
 	NULL::real[],
-	'{1993-05-25,1993-12-30,1997-06-16,1994-12-07,1992-05-17,1992-10-05,1993-12-05,1997-06-17,1998-01-02,1992-12-23,1993-02-07,1993-05-22,1994-11-27,1995-04-15,1997-04-24,1998-06-02,1992-09-25,1993-09-28,1994-04-23,1996-01-08,1996-04-21,1996-06-03,1996-09-21,1996-12-13,1992-08-11}'::date[],
-	'{1992-01-06,1992-06-18,1992-09-27,1993-01-07,1993-04-13,1993-07-17,1993-10-20,1994-01-26,1994-05-02,1994-08-07,1994-11-12,1995-02-22,1995-05-25,1995-08-28,1995-12-02,1996-03-05,1996-06-07,1996-09-10,1996-12-19,1997-03-25,1997-06-27,1997-09-30,1998-01-06,1998-04-10,1998-07-12,1998-12-23}'::date[],
+	NULL::real[],
+	'{1996-06-27,1995-04-20,1997-10-21,1997-04-18,1996-12-24,1994-07-15,1992-08-19,1995-06-21,1998-05-27,1994-06-16,1994-10-15,1997-12-24,1994-06-01,1992-09-09,1997-06-17,1992-05-30,1997-07-24,1998-05-14,1995-01-09,1998-08-21,1994-03-24,1994-09-30,1998-01-13,1997-02-17,1998-01-31}'::date[],
+	'{1992-01-18,1992-06-18,1992-09-20,1992-12-28,1993-04-05,1993-07-13,1993-10-21,1994-01-25,1994-05-01,1994-08-03,1994-11-07,1995-02-13,1995-05-20,1995-08-27,1995-12-01,1996-03-07,1996-06-14,1996-09-15,1996-12-19,1997-03-27,1997-07-04,1997-10-05,1998-01-10,1998-04-13,1998-07-15,1998-12-15,1998-12-18}'::date[],
 	NULL::date[],
 	NULL::date[]);
 -- 
@@ -675,19 +672,19 @@ INSERT INTO pg_statistic VALUES (
 	26::integer,
 	4::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.252681,0.251014,0.249902,0.246403}'::real[],
-	'{0.253223}'::real[],
+	'{0.252848,0.252687,0.248097,0.246367}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"TAKE BACK RETURN         ","DELIVER IN PERSON        ","COLLECT COD              ","NONE                     "}'::bpchar[],
-	NULL::bpchar[],
+	NULL::real[],
+	'{"TAKE BACK RETURN         ","NONE                     ","COLLECT COD              ","DELIVER IN PERSON        "}'::bpchar[],
+	'{"COLLECT COD              ","DELIVER IN PERSON        ","NONE                     ","TAKE BACK RETURN         "}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -700,19 +697,19 @@ INSERT INTO pg_statistic VALUES (
 	11::integer,
 	7::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.146599,0.14467,0.143296,0.143296,0.142675,0.141857,0.137606}'::real[],
-	'{0.14049}'::real[],
+	'{0.146086,0.145256,0.143734,0.142165,0.141704,0.141358,0.139697}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"MAIL      ","AIR       ","RAIL      ","TRUCK     ","SHIP      ","FOB       ","REG AIR   "}'::bpchar[],
-	NULL::bpchar[],
+	NULL::real[],
+	'{"FOB       ","AIR       ","MAIL      ","TRUCK     ","REG AIR   ","SHIP      ","RAIL      "}'::bpchar[],
+	'{"AIR       ","FOB       ","MAIL      ","RAIL      ","REG AIR   ","SHIP      ","TRUCK     "}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -723,21 +720,21 @@ INSERT INTO pg_statistic VALUES (
 	16::smallint,
 	0::real,
 	27::integer,
-	1.06815e+06::real,
+	1.23854e+06::real,
 	1::smallint,
-	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	0::smallint,
+	98::oid,
 	0::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	'{0.000228908,0.000196207,0.000196207,0.000163506,0.000163506,0.000163506,0.000163506,0.000163506,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05}'::real[],
+	'{0.000230638,0.00018451,0.000161447,0.000161447,0.000161447,0.000161447,0.000138383,0.000138383,0.000115319,0.000115319,0.000115319,0.000115319,0.000115319,0.000115319,0.000115319,0.000115319,0.000115319,0.000115319,0.000115319,9.22552e-05,9.22552e-05,9.22552e-05,9.22552e-05,9.22552e-05,9.22552e-05}'::real[],
 	NULL::real[],
-	'{-0.0035911}'::real[],
 	NULL::real[],
-	'{" furiously "," carefully","ly regular ",". carefull"," carefully ","furiously ","ly express",theodolite," accounts "," dependencie"," deposits "," furiously"," furiously final","ly pending ","ly regular"," the careful"," the carefully ","ular package"," accounts a","alongside o","along the ","al request","arefully ironi"," blithely ",". blithely"}'::varchar[],
-	'{"about the accoun","al deposits use ","beans lose. carefully special th"," carefully slyly furious instructions"," deposits.","efully final foxes. ironic","equests bo",". even pinto beans impress; slyly r","fully. furiously ironic pinto ","haggle alongside of the qu","ies. excuses nag slyly. foxes ",", ironic t","le. fluffily final reques","ly final asympt","ngside of the final foxes. express de","olites. unusual re","packages are furiously a"," quickly final deposits. r","r ideas wake slyly. platelets solve qu","s. furiously p","special packages use slyly. regular ","the blithely express ","ts about the special, special ","unts affix blithely: slyly bold foxes boos","xcuses. sile","zzle slyly! blithely dogge"}'::varchar[],
+	NULL::real[],
+	'{"furiously "," carefully ","deposits. ","y regular "," furiously"," theodolit",structions," instructio"," furiously ","ly regular ","ly regular","e carefull","s. regular","e furiousl"," instructi",". furiousl"," packages ","carefully ","ly ironic "," regular request",dependencie," final packages",". furiously"," carefully"," deposits. "}'::varchar[],
+	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
 -- 
@@ -749,20 +746,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	4::integer,
 	-1::real,
+	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
 	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
+	'{0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04}'::real[],
 	NULL::real[],
-	'{1}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{2,10,18}'::int4[],
-	NULL::int4[],
+	'{7,17,12,3,8,19,14,4,11,2,13,6,9,0,24,5,16,21,22,23,20,18,15,1,10}'::int4[],
+	'{}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -774,20 +771,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	26::integer,
 	-1::real,
+	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
 	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
+	'{0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04}'::real[],
 	NULL::real[],
-	'{0.9375}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"BRAZIL                   ","CHINA                    ","IRAN                     "}'::bpchar[],
-	NULL::bpchar[],
+	'{"GERMANY                  ","FRANCE                   ","RUSSIA                   ","KENYA                    ","UNITED KINGDOM           ","ARGENTINA                ","INDONESIA                ","IRAN                     ","BRAZIL                   ","MOROCCO                  ","CHINA                    ","INDIA                    ","VIETNAM                  ","JAPAN                    ","JORDAN                   ","PERU                     ","ROMANIA                  ","MOZAMBIQUE               ","CANADA                   ","IRAQ                     ","UNITED STATES            ","EGYPT                    ","ETHIOPIA                 ","ALGERIA                  ","SAUDI ARABIA             "}'::bpchar[],
+	'{}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -798,21 +795,21 @@ INSERT INTO pg_statistic VALUES (
 	3::smallint,
 	0::real,
 	4::integer,
-	-0.802083::real,
+	-0.2::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.5}'::real[],
+	'{0.2,0.2,0.2,0.2,0.2}'::real[],
 	NULL::real[],
-	'{0.4875}'::real[],
 	NULL::real[],
-	'{0}'::int4[],
-	'{1,2,4}'::int4[],
+	NULL::real[],
+	'{3,4,2,0,1}'::int4[],
+	'{}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -824,19 +821,19 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	75::integer,
 	-1::real,
-	2::smallint,
-	3::smallint,
+	1::smallint,
 	0::smallint,
 	0::smallint,
+	0::smallint,
+	98::oid,
 	0::oid,
 	0::oid,
 	0::oid,
-	0::oid,
+	'{0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04,0.04}'::real[],
 	NULL::real[],
-	'{-0.025}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"c dependencies. furiously express notornis sleep slyly regular accounts. ideas sleep. depos","efully alongside of the slyly final dependencies. ","y alongside of the pending deposits. carefully special packages are about the ironic forges. slyly special "}'::varchar[],
+	'{" pending excuses haggle furiously deposits. pending, express pinto beans wake fluffily past t"," haggle. carefully final deposits detect slyly agai","platelets. blithely pending dependencies use fluffily across the even pinto beans. carefully silent accoun","y alongside of the pending deposits. carefully special packages are about the ironic forges. slyly special ","rns. blithely bold courts among the closely regular packages use furiously bold platelets?","refully final requests. regular, ironi","eans boost carefully special requests. accounts are. carefull","y final packages. slow foxes cajole quickly. quickly silent platelets breach ironic accounts. unusual pinto be","ic deposits are blithely about the carefully regular pa","ular asymptotes are about the furious multipliers. express dependencies nag above the ironically ironic account","al foxes promise slyly according to the regular accounts. bold requests alon","efully alongside of the slyly final dependencies. ","ss excuses cajole slyly across the packages. deposits print aroun","ts. silent requests haggle. closely express packages sleep across the blithely"," slyly express asymptotes. regular deposits haggle slyly. carefully ironic hockey players sleep blithely. carefull"," requests against the platelets use never according to the quickly regular pint","s. ironic, unusual asymptotes wake blithely r","y above the carefully unusual theodolites. final dugouts are quickly across the furiously regular d","eas hang ironic, silent packages. slyly regular packages are furiously over the tithes. fluffily bold","hely enticingly express accounts. even, final ","l platelets. regular accounts x-ray: unusual, regular acco","nic deposits boost atop the quickly final requests? quickly regula","ously. final, express gifts cajole a","c dependencies. furiously express notornis sleep slyly regular accounts. ideas sleep. depos","ven packages wake quickly. regu"}'::varchar[],
 	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
@@ -849,20 +846,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	8::integer,
 	-1::real,
+	0::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
 	0::smallint,
 	0::oid,
-	0::oid,
+	412::oid,
 	0::oid,
 	0::oid,
 	NULL::real[],
-	'{1}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{135842,125830560,254495872,369371105,492624005,603852548,717054784,833980225,954132775,1070058564,1187525569,1310870084,1435700294,1552567651,1666974470,1788841922,1908328864,2019913088,2150803584,2267912039,2389854948,2517943655,2640203783,2753003488,2881133573,2999659940}'::int8[],
+	NULL::real[],
 	NULL::int8[],
+	'{61892,119652261,243055783,365757188,486140609,604643847,727829185,844894951,963745156,1080925607,1204339687,1320041447,1435639654,1554755745,1684670886,1808222915,1926850179,2047859874,2168544097,2289931588,2405096417,2522349095,2641814116,2761700166,2880131844,2998909952,2999943650}'::int8[],
 	NULL::int8[],
 	NULL::int8[]);
 -- 
@@ -873,21 +870,21 @@ INSERT INTO pg_statistic VALUES (
 	2::smallint,
 	0::real,
 	4::integer,
-	-0.330924::real,
+	5.58477e+07::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05}'::real[],
 	NULL::real[],
-	'{-0.00224339}'::real[],
 	NULL::real[],
-	'{803971,2570255,2865043,21367789,23937334,25923748,29462047,46477165,46797262,55436575,68295988}'::int4[],
-	'{3556,3062281,6026218,9013847,12170441,15269131,18215608,21129634,24060460,27111226,30226390,33116704,36119890,39256591,42120659,45205612,48134675,51044593,54061187,56984572,60021268,62880848,65877919,68888008,71934134,74995108}'::int4[],
+	NULL::real[],
+	'{39105769,63807202,72410635,18846655,62315263,70525174,14436991,23197640,59424196,57096607,43924048,5033527,59821054,35895631,66929311,38935051,67681264,1100941,74896732,10194644,5643805,23958109,32067908,5807269,11897753}'::int4[],
+	'{1453,2973184,5965483,9029530,12087334,15028252,18069238,21116027,24112660,27070826,30064510,32947372,36016186,39153244,42008777,44991388,47992295,51063148,54016762,56970046,59948365,62894089,65982722,68987845,72089479,74983168,74999722}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -900,19 +897,19 @@ INSERT INTO pg_statistic VALUES (
 	2::integer,
 	3::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.489536,0.484205,0.026259}'::real[],
-	'{0.476401}'::real[],
+	'{0.487203,0.486596,0.0262013}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{O,F,P}'::bpchar[],
-	NULL::bpchar[],
+	NULL::real[],
+	'{F,O,P}'::bpchar[],
+	'{F,O,P}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -923,21 +920,21 @@ INSERT INTO pg_statistic VALUES (
 	4::smallint,
 	0::real,
 	10::integer,
-	-0.26316::real,
+	4.19851e+07::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	1752::oid,
+	1754::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05}'::real[],
 	NULL::real[],
-	'{-0.00300164}'::real[],
 	NULL::real[],
-	'{56565.25,65644.26,69889.06,73534.82,75290.93,77703.87,82745.90,106163.32,113323.76,115164.53,120515.80,151751.92,167621.38,169238.67,182924.39,202112.80,205801.62,219773.41,275045.04,275489.57}'::numeric[],
-	'{891.43,18372.38,32782.42,44606.06,54820.18,65747.83,75916.31,86050.36,96224.14,107229.85,117765.27,128022.62,138656.20,149755.26,160957.53,171384.43,182980.32,194682.96,206550.55,219096.50,232151.05,247014.85,264672.42,284967.60,314064.87,478313.80}'::numeric[],
+	NULL::real[],
+	'{51720.84,336372.40,253417.01,153220.96,33107.69,117940.45,198176.51,183294.55,74513.29,82571.35,259080.20,170610.02,260342.50,130267.63,187183.44,58940.35,176680.48,84023.62,59491.86,249518.04,159130.57,262426.61,186030.55,108733.56,236015.03}'::numeric[],
+	'{887.99,18823.19,32959.30,45056.42,55345.18,65221.12,75531.97,85832.71,96300.81,107620.82,118015.57,128845.57,139675.31,150230.96,160829.22,172131.44,183414.41,194926.94,207069.97,219616.63,233419.72,247929.48,265036.75,285932.07,315923.62,437564.16,517486.23}'::numeric[],
 	NULL::numeric[],
 	NULL::numeric[]);
 -- 
@@ -951,18 +948,18 @@ INSERT INTO pg_statistic VALUES (
 	2406::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	1093::oid,
+	1095::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.000948332,0.000850229,0.000817528,0.000817528,0.000784827,0.000784827,0.000784827,0.000784827,0.000784827,0.000752126,0.000752126,0.000752126,0.000752126,0.000752126,0.000752126,0.000752126,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424,0.000719424}'::real[],
+	'{0.000874997,0.000802081,0.000777775,0.000777775,0.00075347,0.00075347,0.00075347,0.00075347,0.000729164,0.000729164,0.000704859,0.000704859,0.000704859,0.000704859,0.000680553,0.000680553,0.000680553,0.000680553,0.000656248,0.000656248,0.000656248,0.000656248,0.000656248,0.000656248,0.000656248}'::real[],
 	NULL::real[],
-	'{0.00167432}'::real[],
 	NULL::real[],
-	'{1993-09-22,1992-08-22,1994-11-01,1997-04-24,1992-01-21,1992-06-23,1994-07-03,1997-01-27,1997-02-13,1993-01-26,1996-02-25,1996-09-05,1997-05-08,1997-05-28,1997-06-29,1997-07-07,1992-10-31,1993-05-09,1993-12-19,1995-05-07,1995-09-19,1996-06-04,1996-06-26,1997-09-13,1997-09-26}'::date[],
-	'{1992-01-01,1992-04-13,1992-07-21,1992-10-25,1993-01-31,1993-05-08,1993-08-12,1993-11-12,1994-02-13,1994-05-18,1994-08-24,1994-11-29,1995-03-05,1995-06-07,1995-09-10,1995-12-14,1996-03-14,1996-06-17,1996-09-24,1996-12-29,1997-04-04,1997-07-17,1997-10-17,1998-01-18,1998-04-25,1998-08-02}'::date[],
+	NULL::real[],
+	'{1997-09-22,1995-02-19,1996-08-13,1997-06-19,1996-12-31,1995-05-09,1993-10-18,1996-05-06,1994-12-08,1992-05-06,1995-09-08,1992-11-10,1995-10-20,1996-02-10,1996-03-26,1993-05-02,1997-08-31,1992-10-24,1992-09-25,1992-07-21,1993-02-04,1993-02-12,1995-08-20,1992-10-15,1995-04-02}'::date[],
+	'{1992-01-01,1992-04-07,1992-07-09,1992-10-11,1993-01-13,1993-04-20,1993-07-25,1993-10-29,1994-02-04,1994-05-11,1994-08-21,1994-11-25,1995-02-28,1995-06-04,1995-09-08,1995-12-15,1996-03-22,1996-06-25,1996-10-02,1997-01-06,1997-04-13,1997-07-18,1997-10-20,1998-01-21,1998-04-25,1998-08-02}'::date[],
 	NULL::date[],
 	NULL::date[]);
 -- 
@@ -975,19 +972,19 @@ INSERT INTO pg_statistic VALUES (
 	16::integer,
 	5::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.203303,0.20157,0.201373,0.200458,0.193296}'::real[],
-	'{0.197264}'::real[],
+	'{0.200787,0.200472,0.200253,0.199281,0.199208}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"2-HIGH         ","5-LOW          ","1-URGENT       ","3-MEDIUM       ","4-NOT SPECIFIED"}'::bpchar[],
-	NULL::bpchar[],
+	NULL::real[],
+	'{"4-NOT SPECIFIED","2-HIGH         ","1-URGENT       ","3-MEDIUM       ","5-LOW          "}'::bpchar[],
+	'{"1-URGENT       ","2-HIGH         ","3-MEDIUM       ","4-NOT SPECIFIED","5-LOW          "}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -998,21 +995,21 @@ INSERT INTO pg_statistic VALUES (
 	7::smallint,
 	0::real,
 	16::integer,
-	493057::real,
+	488990::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{9.72219e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05,7.29164e-05}'::real[],
 	NULL::real[],
-	'{0.000784734}'::real[],
 	NULL::real[],
-	'{Clerk#000016630,Clerk#000030432,Clerk#000085909,Clerk#000113201,Clerk#000113345,Clerk#000118072,Clerk#000131280,Clerk#000149090,Clerk#000157847,Clerk#000234455,Clerk#000314809,Clerk#000338736,Clerk#000399991,Clerk#000487719,Clerk#000000770,Clerk#000002379,Clerk#000003678,Clerk#000003967,Clerk#000004123,Clerk#000004505,Clerk#000004511,Clerk#000004598,Clerk#000004940,Clerk#000005937,Clerk#000006101}'::bpchar[],
-	'{Clerk#000000024,Clerk#000020411,Clerk#000040622,Clerk#000060909,Clerk#000079988,Clerk#000099554,Clerk#000120040,Clerk#000139870,Clerk#000160802,Clerk#000180384,Clerk#000201092,Clerk#000221847,Clerk#000241518,Clerk#000260835,Clerk#000281358,Clerk#000302063,Clerk#000320865,Clerk#000341341,Clerk#000361327,Clerk#000381445,Clerk#000402205,Clerk#000422065,Clerk#000441873,Clerk#000461301,Clerk#000481429,Clerk#000499997}'::bpchar[],
+	NULL::real[],
+	'{Clerk#000208581,Clerk#000292245,Clerk#000088870,Clerk#000097719,Clerk#000105522,Clerk#000387151,Clerk#000275998,Clerk#000018085,Clerk#000126515,Clerk#000161705,Clerk#000172216,Clerk#000235515,Clerk#000489479,Clerk#000279130,Clerk#000045535,Clerk#000150794,Clerk#000395144,Clerk#000420523,Clerk#000486717,Clerk#000197312,Clerk#000402389,Clerk#000304725,Clerk#000294622,Clerk#000002206,Clerk#000468131}'::bpchar[],
+	'{Clerk#000000011,Clerk#000020130,Clerk#000040407,Clerk#000060196,Clerk#000080283,Clerk#000100917,Clerk#000120280,Clerk#000140140,Clerk#000159663,Clerk#000180207,Clerk#000199184,Clerk#000219792,Clerk#000239685,Clerk#000259956,Clerk#000279872,Clerk#000300064,Clerk#000319923,Clerk#000339438,Clerk#000359262,Clerk#000379550,Clerk#000399768,Clerk#000420258,Clerk#000439369,Clerk#000459093,Clerk#000479016,Clerk#000499839,Clerk#000499998}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -1025,19 +1022,19 @@ INSERT INTO pg_statistic VALUES (
 	4::integer,
 	1::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
-	0::oid,
-	0::oid,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
 	'{1}'::real[],
-	'{1}'::real[],
+	NULL::real[],
 	NULL::real[],
 	NULL::real[],
 	'{0}'::int4[],
-	NULL::int4[],
+	'{0}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -1048,21 +1045,21 @@ INSERT INTO pg_statistic VALUES (
 	9::smallint,
 	0::real,
 	49::integer,
-	-0.343534::real,
+	3.81924e+07::real,
 	1::smallint,
-	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	0::smallint,
+	98::oid,
 	0::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	'{6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,4.86109e-05,2.43055e-05,2.43055e-05,2.43055e-05,2.43055e-05}'::real[],
 	NULL::real[],
-	'{-0.00203013}'::real[],
 	NULL::real[],
-	'{" carefully regular ","e carefully regular ","e slyly above the furi","ests. furiously unusual "," fluffily. carefully ","ly regular accounts"," quickly regular pack","refully even requests ","refully regular instructi","thely final accounts"}'::varchar[],
-	'{" about the blithely even pa","al dolphins wake closely final "," beans wake quickly pending courts. slyly","ccording to the regular sauternes","deposits doze above the regular packag","efully final foxes unwind evenly. furiousl","equests! carefully regular ideas cajole fl"," excuses. furiously ironi","furious deposits. accounts nag blithely final pinto beans. reque","haggle slyly among the deposits. ironic asymptotes mainta","imes express packages. furiously final theodolites about the regula","ithely final requests. silent, express notornis wake daringly blithely even ac","l instructions nag furiously pending accou","ly ironic packages: blithely bold dependencies after the slyly ironic p","nic epitaphs use final, final instructions. fluffily","onic deposits across the always regular","packages! slyly idle pinto beans after the furious","quickly unusual deposits haggle fur","riously along the even, bold instructions. blithely ","s. furiously final accounts boost furiously after th","special deposits haggle regular pinto beans. special asymptotes","tes. pinto beans haggle carefull","ts affix furiously after the regular excuses! regular theod","unts are quickly pending packa","xes boost carefully. bold excuses integrat","zzle idly. regular platelets sleep special, even packages. express pains "}'::varchar[],
+	NULL::real[],
+	'{"ly final accounts. ","carefully regular d"," ironic deposits cajole again","regular instructions","e furiously regular reque","ously regular accounts","nding courts use slyly after the even, final asy","instructions haggle","ironic pinto beans. ","y regular pinto bean","ts haggle furiously","ing theodolites. sl"," the furiously even","above the fluffily regular","express deposits. e"," furiously regular ","unts. furiously pending ","the quickly regular requests","equests. slyly iron"," regular pinto bean"," regular requests across the fluffily unusual asymptotes shall have to sl","packages haggle among the pending deposits. special, f"," packages. slyly ironic deposits grow furiously. regularly ironic","usly blithely bold pearls. carefully pending accounts detect car","side of the final requests cajole quickly after the i"}'::varchar[],
+	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
 -- 
@@ -1074,20 +1071,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	4::integer,
 	-1::real,
+	0::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
 	0::smallint,
 	0::oid,
-	0::oid,
+	97::oid,
 	0::oid,
 	0::oid,
 	NULL::real[],
-	'{1}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{6250,4000819,7809731,11966397,16105639,20014459,23985244,27837027,31746767,35760273,40118719,44164819,48163631,52078894,56092394,60189315,64200952,68180273,72249368,76254401,80180787,84231746,88055285,92056593,95862943,99997434}'::int4[],
+	NULL::real[],
 	NULL::int4[],
+	'{2184,4034646,8033425,12028701,15957541,19878421,23863338,27932589,31819643,35915302,39819845,43873091,47925930,51821011,55820315,59832091,63933931,67992462,72090902,76191246,80167793,84131791,88015771,91885736,95986573,99955210,99999134}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -1098,21 +1095,21 @@ INSERT INTO pg_statistic VALUES (
 	2::smallint,
 	0::real,
 	34::integer,
-	-0.996749::real,
-	1::smallint,
-	2::smallint,
-	3::smallint,
+	-1::real,
+	0::smallint,
+	0::smallint,
+	0::smallint,
 	0::smallint,
 	0::oid,
 	0::oid,
 	0::oid,
 	0::oid,
-	'{6.54022e-05}'::real[],
 	NULL::real[],
-	'{-0.00221096}'::real[],
 	NULL::real[],
-	'{"cornsilk lemon pink sienna chocolate"}'::varchar[],
-	'{"almond antique aquamarine slate powder","aquamarine white peach goldenrod floral","bisque pink frosted sky peru","blue moccasin black ivory azure","burlywood indian rose grey sky","chiffon grey blanched hot salmon","cornflower forest dark lavender goldenrod","cyan honeydew firebrick floral smoke","dim magenta coral khaki chocolate","firebrick sienna rosy almond olive","gainsboro coral papaya burnished yellow","green peach chocolate sienna magenta","indian brown red gainsboro cornsilk","lace navy beige peru saddle","light gainsboro wheat antique orchid","maroon chartreuse lemon mint peru","midnight tomato cornsilk navajo medium","navajo violet lavender blush medium","orchid tan midnight lemon deep","pink blue ivory sienna turquoise","purple deep misty papaya thistle","royal magenta lemon black drab","sienna chartreuse royal lemon lace","snow violet plum thistle deep","turquoise azure black goldenrod lavender","yellow white moccasin olive lace"}'::varchar[],
+	NULL::real[],
+	NULL::real[],
+	NULL::varchar[],
+	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
 -- 
@@ -1125,19 +1122,19 @@ INSERT INTO pg_statistic VALUES (
 	26::integer,
 	5::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.20363,0.201864,0.201635,0.197482,0.195389}'::real[],
-	'{0.201775}'::real[],
+	'{0.202716,0.20029,0.199842,0.199604,0.197547}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"Manufacturer#1           ","Manufacturer#3           ","Manufacturer#2           ","Manufacturer#5           ","Manufacturer#4           "}'::bpchar[],
-	NULL::bpchar[],
+	NULL::real[],
+	'{"Manufacturer#4           ","Manufacturer#5           ","Manufacturer#2           ","Manufacturer#1           ","Manufacturer#3           "}'::bpchar[],
+	'{"Manufacturer#1           ","Manufacturer#2           ","Manufacturer#3           ","Manufacturer#4           ","Manufacturer#5           "}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -1150,19 +1147,19 @@ INSERT INTO pg_statistic VALUES (
 	11::integer,
 	25::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.0423152,0.0421517,0.0421517,0.0410726,0.0410399,0.0408764,0.0408764,0.0405821,0.0402551,0.040157,0.0400589,0.0399935,0.0399608,0.0399281,0.0399281,0.0398954,0.0397973,0.0396337,0.0394702,0.0393721,0.0386854,0.0386854,0.0386854,0.0375082,0.0369196}'::real[],
-	'{0.0417735}'::real[],
+	'{0.0433281,0.0431698,0.0417985,0.041192,0.0410338,0.0408228,0.0407964,0.0407173,0.0403217,0.0401899,0.0399789,0.0399789,0.0399262,0.0398998,0.0397416,0.0396888,0.0394515,0.0394251,0.0392141,0.0389504,0.0388449,0.038634,0.0384494,0.0375264,0.0369198}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"Brand#35  ","Brand#23  ","Brand#34  ","Brand#13  ","Brand#12  ","Brand#15  ","Brand#21  ","Brand#14  ","Brand#32  ","Brand#55  ","Brand#11  ","Brand#25  ","Brand#43  ","Brand#24  ","Brand#42  ","Brand#44  ","Brand#53  ","Brand#33  ","Brand#52  ","Brand#54  ","Brand#22  ","Brand#41  ","Brand#51  ","Brand#31  ","Brand#45  "}'::bpchar[],
-	NULL::bpchar[],
+	NULL::real[],
+	'{"Brand#42  ","Brand#15  ","Brand#25  ","Brand#43  ","Brand#13  ","Brand#21  ","Brand#55  ","Brand#44  ","Brand#22  ","Brand#32  ","Brand#51  ","Brand#23  ","Brand#54  ","Brand#52  ","Brand#31  ","Brand#53  ","Brand#33  ","Brand#12  ","Brand#35  ","Brand#34  ","Brand#45  ","Brand#41  ","Brand#14  ","Brand#11  ","Brand#24  "}'::bpchar[],
+	'{"Brand#11  ","Brand#12  ","Brand#13  ","Brand#14  ","Brand#15  ","Brand#21  ","Brand#22  ","Brand#23  ","Brand#25  ","Brand#31  ","Brand#32  ","Brand#33  ","Brand#34  ","Brand#35  ","Brand#41  ","Brand#42  ","Brand#43  ","Brand#44  ","Brand#45  ","Brand#51  ","Brand#52  ","Brand#54  ","Brand#55  "}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -1174,19 +1171,19 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	21::integer,
 	150::real,
-	2::smallint,
-	3::smallint,
+	1::smallint,
 	0::smallint,
 	0::smallint,
+	0::smallint,
+	98::oid,
 	0::oid,
 	0::oid,
 	0::oid,
-	0::oid,
+	'{0.00785865,0.00783228,0.00767405,0.00751582,0.00743671,0.00738397,0.0073576,0.00733122,0.00733122,0.00733122,0.00727848,0.00725211,0.00725211,0.00722574,0.00722574,0.007173,0.007173,0.007173,0.007173,0.00714662,0.00714662,0.00712025,0.00709388,0.00709388,0.00706751}'::real[],
 	NULL::real[],
-	'{0.00566047}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"ECONOMY ANODIZED BRASS","ECONOMY BRUSHED BRASS","ECONOMY BURNISHED NICKEL","ECONOMY PLATED STEEL","ECONOMY POLISHED TIN","LARGE ANODIZED TIN","LARGE BURNISHED BRASS","LARGE PLATED COPPER","LARGE POLISHED NICKEL","MEDIUM ANODIZED STEEL","MEDIUM BRUSHED TIN","MEDIUM PLATED BRASS","MEDIUM POLISHED COPPER","PROMO ANODIZED NICKEL","PROMO BRUSHED STEEL","PROMO BURNISHED TIN","PROMO POLISHED BRASS","SMALL ANODIZED COPPER","SMALL BRUSHED NICKEL","SMALL BURNISHED STEEL","SMALL PLATED TIN","STANDARD ANODIZED BRASS","STANDARD BRUSHED COPPER","STANDARD BURNISHED NICKEL","STANDARD PLATED TIN","STANDARD POLISHED TIN"}'::varchar[],
+	'{"ECONOMY PLATED STEEL","ECONOMY POLISHED BRASS","ECONOMY BRUSHED TIN","ECONOMY PLATED COPPER","STANDARD POLISHED BRASS","SMALL PLATED COPPER","ECONOMY ANODIZED STEEL","ECONOMY BRUSHED NICKEL","ECONOMY PLATED TIN","ECONOMY BURNISHED NICKEL","LARGE BURNISHED BRASS","LARGE PLATED BRASS","MEDIUM ANODIZED COPPER","SMALL ANODIZED TIN","LARGE PLATED STEEL","PROMO POLISHED TIN","MEDIUM POLISHED NICKEL","MEDIUM BURNISHED BRASS","SMALL BURNISHED STEEL","ECONOMY POLISHED STEEL","MEDIUM ANODIZED STEEL","PROMO PLATED NICKEL","LARGE BURNISHED NICKEL","MEDIUM BRUSHED STEEL","ECONOMY BURNISHED BRASS"}'::varchar[],
 	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
@@ -1199,20 +1196,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	4::integer,
 	50::real,
+	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
 	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
+	'{0.0216245,0.0212816,0.0212553,0.0212289,0.0210443,0.0210443,0.0210179,0.0209388,0.0207542,0.0207015,0.0207015,0.0206487,0.020596,0.0205432,0.0204641,0.0203059,0.0202532,0.0202004,0.0202004,0.0201477,0.0201477,0.0200949,0.0200422,0.0200158,0.0199631}'::real[],
 	NULL::real[],
-	'{0.0176015}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{1,2,4,6,8,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,46,49,50}'::int4[],
-	NULL::int4[],
+	'{27,40,34,32,50,21,45,26,48,46,25,44,42,11,4,8,9,36,31,13,5,3,29,15,20}'::int4[],
+	'{1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,46,48,50}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -1224,20 +1221,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	11::integer,
 	40::real,
+	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
 	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
+	'{0.0262395,0.0262131,0.0261076,0.0260285,0.025923,0.0258966,0.0258703,0.0258175,0.025712,0.0256593,0.0256593,0.0256329,0.0254483,0.0253692,0.0253428,0.0252901,0.0252901,0.0251846,0.0250791,0.0249736,0.0248945,0.0248154,0.024789,0.0247363,0.0247363}'::real[],
 	NULL::real[],
-	'{0.0244857}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"JUMBO BAG ","JUMBO BOX ","JUMBO CASE","JUMBO DRUM","JUMBO PACK","JUMBO PKG ","LG BOX    ","LG CAN    ","LG DRUM   ","LG PACK   ","LG PKG    ","MED BOX   ","MED CASE  ","MED DRUM  ","MED PACK  ","MED PKG   ","SM BOX    ","SM CASE   ","SM DRUM   ","SM PACK   ","SM PKG    ","WRAP BOX  ","WRAP CASE ","WRAP DRUM ","WRAP PACK ","WRAP PKG  "}'::bpchar[],
-	NULL::bpchar[],
+	'{"WRAP BAG  ","MED PKG   ","WRAP PKG  ","JUMBO BOX ","JUMBO CASE","WRAP DRUM ","LG CAN    ","JUMBO JAR ","JUMBO PACK","JUMBO BAG ","SM CAN    ","SM DRUM   ","SM JAR    ","LG PACK   ","MED CAN   ","LG DRUM   ","WRAP CASE ","SM CASE   ","JUMBO DRUM","LG BAG    ","SM BAG    ","LG JAR    ","WRAP JAR  ","LG CASE   ","SM PACK   "}'::bpchar[],
+	'{"JUMBO BAG ","JUMBO BOX ","JUMBO CASE","JUMBO DRUM","JUMBO PACK","JUMBO PKG ","LG BOX    ","LG CASE   ","LG DRUM   ","LG PACK   ","LG PKG    ","MED BOX   ","MED CASE  ","MED DRUM  ","MED PACK  ","SM BAG    ","SM BOX    ","SM CASE   ","SM DRUM   ","SM PACK   ","WRAP BAG  ","WRAP BOX  ","WRAP CASE ","WRAP DRUM ","WRAP PACK ","WRAP PKG  "}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -1248,21 +1245,21 @@ INSERT INTO pg_statistic VALUES (
 	8::smallint,
 	0::real,
 	8::integer,
-	108231::real,
+	107651::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	1752::oid,
+	1754::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,9.81033e-05,9.81033e-05,9.81033e-05}'::real[],
+	'{0.000131857,0.000131857,0.000131857,0.000131857,0.000131857,0.000131857,0.000131857,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485,0.000105485}'::real[],
 	NULL::real[],
-	'{-0.00236066}'::real[],
 	NULL::real[],
-	'{1101.64,1108.72,1163.49,1205.57,1211.49,1223.15,1244.61,1279.51,1288.61,1343.46,1390.37,1399.48,1402.78,1442.21,1522.65,1578.83,1596.00,1614.27,1640.13,1703.24,1871.39,1893.13,962.63,995.43,998.12}'::numeric[],
-	'{901.69,1025.18,1079.57,1121.71,1161.21,1201.87,1240.51,1280.17,1322.24,1363.07,1402.55,1441.56,1480.65,1519.58,1559.51,1600.45,1640.16,1680.82,1721.64,1761.54,1800.69,1840.97,1880.56,1923.57,1974.88,2097.12}'::numeric[],
+	NULL::real[],
+	'{1701.00,1135.47,1184.41,1383.89,1865.31,1202.43,1243.40,1757.91,1911.54,1630.79,1438.70,1571.20,1738.70,1348.58,1671.72,1516.98,1823.17,1961.74,1305.92,1091.32,1620.74,1941.17,1661.08,1358.44,1753.02}'::numeric[],
+	'{900.03,1020.96,1074.29,1116.61,1156.85,1197.79,1238.08,1277.78,1317.59,1358.91,1397.27,1437.00,1477.94,1519.24,1560.33,1599.55,1640.29,1681.02,1719.61,1759.89,1800.78,1841.23,1881.69,1922.11,1973.22,2083.39,2094.18}'::numeric[],
 	NULL::numeric[],
 	NULL::numeric[]);
 -- 
@@ -1273,21 +1270,21 @@ INSERT INTO pg_statistic VALUES (
 	9::smallint,
 	0::real,
 	14::integer,
-	107088::real,
+	121849::real,
 	1::smallint,
-	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	0::smallint,
+	98::oid,
 	0::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	'{0.000555919,0.000523218,0.000523218,0.000490517,0.000490517,0.000490517,0.000457816,0.000457816,0.000457816,0.000457816,0.000425114,0.000425114,0.000425114,0.000425114,0.000425114,0.000425114,0.000392413,0.000392413,0.000392413,0.000392413,0.000392413,0.000392413,0.000392413,0.000392413,0.000392413}'::real[],
+	'{0.000501055,0.000474684,0.000448312,0.000448312,0.000421941,0.000421941,0.000421941,0.000421941,0.000421941,0.000421941,0.00039557,0.00039557,0.00039557,0.00039557,0.00039557,0.000369198,0.000369198,0.000369198,0.000369198,0.000369198,0.000369198,0.000369198,0.000369198,0.000342827,0.000342827}'::real[],
 	NULL::real[],
-	'{-0.000241861}'::real[],
 	NULL::real[],
-	'{arefu,"slyly "," the ","gular ","ously ",regula,arefully,final," furiou"," furiously",carefull,"iously "," regular",riously,"ular ","usly ",accou,carefu," carefull",carefully,egula,"fully ",iousl,regul," regular "}'::varchar[],
-	'{" abou","al deposits. blithe","beans against the","ccording to the ","deposits. carefully","efully sile","equests must slee"," excuses wake. ca",furious,"he even platele","inal pla","its affix blit","lites. furiously bo","lyly regular",nments,"onic pinto bean"," pearls d",rding,"rls. bold ideas caj","silent theodol","ss deposits. car"," the fina","ts. even acco","unts. regular i","xes! slyly iro","zzle fluffily "}'::varchar[],
+	NULL::real[],
+	'{" care",uriou,iously,"lyly ",egula,furio,arefully,refully," packa"," final "," slyl",fully,"ronic "," deposi",furiousl," regu",lithely,"arefully ",arefu,packages,caref,riousl,regular," acco",uriously}'::varchar[],
+	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
 -- 
@@ -1298,21 +1295,21 @@ INSERT INTO pg_statistic VALUES (
 	1::smallint,
 	0::real,
 	4::integer,
-	1.82026e+06::real,
+	-0.20436::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05}'::real[],
 	NULL::real[],
-	'{1}'::real[],
 	NULL::real[],
-	'{690507,715354,942077,1097818,1509826,1557227,1772223,2070199,2383643,2594463,2627268,3472458,4587189,4698277,4811698,4860845,4926970,5685774,5701717,5990983,6759553,6764637,7471778,7632253,7737436}'::int4[],
-	'{10394,4192244,8254089,12476628,16454636,20383946,24544532,28430751,32276497,36007599,40066263,44099760,48138505,51864278,56153785,60233322,64130261,68243362,72176000,76281262,80063671,84349540,88262217,92034382,96077321,99999282}'::int4[],
+	NULL::real[],
+	'{45103944,90376746,29576586,98082786,69829133,28227832,41329757,10852676,72493567,9766328,87820714,30995304,21438586,58827416,80241615,4814718,8752986,39556982,75633063,30374373,40349610,23971462,80473032,59725828,13992782}'::int4[],
+	'{1353,3810511,7883465,11871349,15839722,19831885,23772438,27894006,31807139,35802350,39601411,43485366,47544279,51433702,55739695,59790643,63788168,67761612,71789861,75848464,79869092,83944519,87947251,91927837,95998197,99980787,99996634}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -1323,21 +1320,21 @@ INSERT INTO pg_statistic VALUES (
 	2::smallint,
 	0::real,
 	4::integer,
-	-3.77952e+29::real,
+	5.53321e+06::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05,4.98318e-05}'::real[],
 	NULL::real[],
-	'{0.00637007}'::real[],
 	NULL::real[],
-	'{127740,183850,267099,303567,446268,475347,535210,571547,672188,699903,700066,704858,776949,800789,931268,1027677,1030631,1032942,1159299,1282535,1369957,1378699,1405642,1410632,1478959}'::int4[],
-	'{72,201790,408268,608919,812281,1005496,1210488,1413622,1605971,1811285,2008372,2208839,2414904,2612056,2813837,3013848,3214308,3407922,3604458,3798315,3997473,4195663,4383864,4585279,4787755,4999955}'::int4[],
+	NULL::real[],
+	'{2504243,2698290,515527,1189017,4069774,3745950,2087453,779459,4989047,2487265,2182961,2779653,189788,2811164,2243101,627303,3788784,4549789,4583609,3855610,3086600,1658041,3585719,1500550,1288256}'::int4[],
+	'{124,201570,404602,600433,790524,991895,1202777,1393680,1587079,1781735,1984692,2193781,2405959,2607920,2794278,2988335,3180103,3379907,3590409,3793786,3992046,4189129,4388420,4587739,4794408,4998460,4999773}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -1348,21 +1345,21 @@ INSERT INTO pg_statistic VALUES (
 	3::smallint,
 	0::real,
 	4::integer,
-	9991::real,
+	10000.4::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.000359712,0.000359712,0.000359712,0.000359712,0.000359712,0.000327011,0.000327011,0.000327011,0.000327011,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431,0.00029431}'::real[],
+	'{0.000323907,0.000323907,0.000323907,0.000298991,0.000298991,0.000298991,0.000298991,0.000298991,0.000298991,0.000298991,0.000298991,0.000298991,0.000298991,0.000298991,0.000298991,0.000274075,0.000274075,0.000274075,0.000274075,0.000274075,0.000274075,0.000274075,0.000274075,0.000274075,0.000274075}'::real[],
 	NULL::real[],
-	'{0.00147852}'::real[],
 	NULL::real[],
-	'{1240,4112,4413,5082,6546,3041,3944,5517,7119,178,237,877,1072,1102,2893,3405,3448,3612,4084,4339,4484,4818,4833,4872,5063}'::int4[],
-	'{1,400,804,1193,1579,1981,2398,2791,3191,3607,3994,4375,4787,5192,5595,5999,6381,6794,7184,7614,8010,8407,8806,9204,9603,9999}'::int4[],
+	NULL::real[],
+	'{9228,6888,7938,4581,9064,2417,4233,5575,307,2588,8331,9577,3091,3163,8735,6016,1107,7725,3552,7206,8645,4454,3845,4806,2399}'::int4[],
+	'{1,397,794,1196,1601,1993,2399,2821,3208,3621,4014,4409,4812,5214,5609,6014,6395,6800,7205,7574,7979,8378,8777,9177,9583,9997,9999}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -1373,21 +1370,21 @@ INSERT INTO pg_statistic VALUES (
 	4::smallint,
 	0::real,
 	8::integer,
-	100036::real,
+	98854.1::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	1752::oid,
+	1754::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804,0.000130804}'::real[],
+	'{0.00012458,0.00012458,0.00012458,0.00012458,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05,9.96636e-05}'::real[],
 	NULL::real[],
-	'{0.000799782}'::real[],
 	NULL::real[],
-	'{36.32,63.19,64.53,84.78,143.31,158.50,172.27,193.92,262.13,402.73,403.95,520.33,534.64,541.75,593.60,629.54,650.24,663.13,704.38,759.75,759.86,812.28,827.68,828.04,840.97}'::numeric[],
-	'{1.02,43.26,82.85,122.13,162.19,201.33,244.02,283.83,323.13,362.65,404.25,443.79,484.65,525.39,563.92,603.22,643.99,682.46,722.92,763.04,802.08,842.82,881.82,920.80,960.81,1000.00}'::numeric[],
+	NULL::real[],
+	'{949.57,39.48,684.21,595.27,409.50,655.77,398.88,797.76,357.96,689.40,35.87,170.59,528.30,650.23,650.71,33.73,321.64,292.88,228.39,185.92,38.38,648.17,661.42,229.34,630.37}'::numeric[],
+	'{1.01,39.05,79.11,118.88,160.40,200.41,241.42,281.84,321.02,359.21,399.82,437.80,479.63,517.55,558.10,600.56,641.25,680.98,720.20,759.01,800.10,840.53,878.79,918.81,959.67,999.71,999.93}'::numeric[],
 	NULL::numeric[],
 	NULL::numeric[]);
 -- 
@@ -1397,22 +1394,22 @@ INSERT INTO pg_statistic VALUES (
 	'tpch500gb.partsupp'::regclass,
 	5::smallint,
 	0::real,
-	125::integer,
-	-0.856298::real,
+	126::integer,
+	-0.506794::real,
 	1::smallint,
-	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	0::smallint,
+	98::oid,
 	0::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	'{6.54022e-05,6.54022e-05}'::real[],
+	'{4.98318e-05,4.98318e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05,2.49159e-05}'::real[],
 	NULL::real[],
-	'{-0.00105641}'::real[],
 	NULL::real[],
-	'{" silent deposits haggle furiously. carefully even requests haggle blithely blithely express pac","ular accounts according to the blithely final sheaves use "}'::varchar[],
-	'{"about the accounts. furiously unusual foxes according to the ironic instructions haggle quickly across the blithely regular accounts. bold, unusual pin","al, final foxes. slyly unusual theodolites are according to the regular forges. bold accounts according to the regular dependencies are furiously bold braids; slyly pending requests hag"," beans. unusual foxes haggle about the furiously final dolphins. quickly final ideas cajole deposits. ironic,","ccording to the even, ironic requests. carefully even warhorses boost quickly across the pac","deposits. furiously ironic attainments believe furiously regular accounts. fu","efully regular ideas nag slyly blithely final platelets. fluffily special courts above the pinto beans detect slyly ironic pinto beans. blithely final deposits cajole. fluffily ","equests sleep quickly. blithely regular theodolites boost quic","express accounts. carefully regular deposits use carefully. fluffily ironic platelets cajole. thinly unusual ideas are slyly. slyly special packag","furiously even accounts. ironic packages cajole fluffily special excuses. final pinto beans wake fluffily along the bold, unusual requests. ironic accounts cajole slyly. slyly bold foxes aft","he bold pinto beans. ironic, thin pinto beans haggle furiously packages. blithely quick packages above the accounts haggle around the express, iron","inal braids. quickly slow frets against the even accounts haggle carefully along the blithely re","ithely. quickly ironic accounts around the instructions affix fluffily after the s","l, ironic deposits are carefully regular packages. ironic instructions wake furiously across the furi","lyly careful depths use according to the furiously pending packages. boldly silent pains affix. regular theodolites cajole express, bold somas. furious","nic pinto beans. theodolites are even asymptotes. ironic, pending ideas use quickly. dogged pains maintain ironic dinos. theodolites play along the bold, express accounts. unusual pinto beans s","onic foxes sleep carefully pinto beans. waters across the theodolites nag idly express, final asymptotes. ideas are slyly. r","packages wake slyly. even requests sleep. slyly pending instructions sleep across the","r accounts detect quietly furiously special deposits. even frets boost according to the ironic accounts. finally ironic frets integrate blithely ev","riously final instructions; silent instructions at the enticingly pending realms cajole express theodolites. carefully even requ","s haggle slyly carefully regular ideas. furiously unusual pinto beans across the r","special requests use carefully unusual ideas. carefully even instructions use carefully pending pinto beans. regularly bold packages aga","the carefully final accounts. carefully final asymptotes hag","ts. carefully ironic requests are packages. ironically pending dependencies doze according to the packages: i","ultipliers. regular accounts boost slyly about the blithely unusual pinto beans. carefully regular deposits above the quickly regular foxes boost regular ","xes. blithely sly instructions wake furiously among the fluffily final i","zzle slyly. carefully pending accounts integrate furiously above the carefully pending requests. carefully final accounts wake special deposits. express, express accounts haggle "}'::varchar[],
+	NULL::real[],
+	'{"the fluffily ironic deposits. carefully ironic dependencies are slyly according to the slyly final depths. bold accounts wake silent, express asymptotes. ","es across the slyly express instructions poach carefully ironic packages. furiously regular notornis sleep quickly regular platelets. regular deco","yly final requests integrate furiously. express, ironic ideas boost slyly regular pinto beans. pending packages sleep quickly after the quickly ironic dinos; blithely speci","cajole carefully. carefully regular deposits wake carefully. blithely bold packages cajole furiously. carefully ironic packages boost fluffily final accounts: qu","ng the special platelets. carefully careful sauternes nag furiously even requests. blithely final ideas haggle above the special packages. ironic"," blithely fluffily regular packages. quickly final asymptotes cajole carefully special deposits. slyly ironic forges wake slyly according to the slyly bold requests. even, ironic ","aggle during the furiously regular theodolites. dependencies cajole carefully. ironic, ironic foxes use furiously ironic platelets. fluffily regular packages affix blit","ctions boost pending dolphins. slowly slow pinto beans use among the carefully unusual pains. bold accounts across the f","ions wake furiously across the regular, final foxes. regular packages doze fluffily pending, regular she","ual requests wake. even asymptotes wake carefully ironic accounts. deposits hinder blithely permanently regular packages. express, pending packages against the quickly bol","ets sleep against the even theodolites. even theodolites cajole ironic sheaves. final, silent instructions integrate slyl","iously ironic requests. quickly final requests cajole quickly along the regular notornis. even deposits among the b","ely silent pinto beans; slyly even packages among the carefully final deposits wake furiously regular ideas. slyly final deposits wake slyly across the ",". blithely fluffy requests sleep carefully. pinto beans haggle carefully ironic ideas. brave accounts play. slyly even request","leep at the quickly even packages. quickly even packages are. careful deposits are carefully after the requests. carefully special ins","ess theodolites hang carefully. fluffily idle platelets according to the quickly unusual patterns detect slyly unusual tithes! accounts k","e carefully silent escapades cajole furiously after the slyly careful pinto beans. furiously regular packages print blithely even pinto beans. pending, regular packages promise carefully dogged","rding to the pinto beans. regular packages engage carefully finally special packages. furiously bold deposits haggle. even escapades nag fluffily. special, unusual foxes are ironic, bold pac","ithely furiously express packages. carefully regular ideas nag. quickly stealthy foxes wake. regular dolphins cajole slyly fluffily unusual deposits. furiously special dependencies haggle","en instructions. even excuses around the ironic courts thrash blithely blithe accounts. blithely special foxes bo","s. furiously bold requests wake quickly at the slyly regular foxes. carefully final accounts affix. ironic deposits maintain special multipliers. regular depths x-ray fl",". quickly final gifts wake furiously. carefully special accounts about the enticingly regular theodolit","ngage alongside of the carefully ironic deposits. slyly even accounts sleep blith","ix quickly final, even instructions. blithely unusual requests sleep according to the slyly even deposits. slyly express requests are across the re"," special theodolites. furious, stealthy deposits are carefully. carefully regular pinto beans haggle furiously along the final, bold theodolit"}'::varchar[],
+	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
 -- 
@@ -1424,20 +1421,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	4::integer,
 	-1::real,
+	1::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
-	0::smallint,
-	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
+	'{0.2,0.2,0.2,0.2,0.2}'::real[],
 	NULL::real[],
 	NULL::real[],
 	NULL::real[],
-	NULL::real[],
-	NULL::int4[],
-	NULL::int4[],
+	'{3,4,2,0,1}'::int4[],
+	'{}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -1449,20 +1446,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	26::integer,
 	-1::real,
+	1::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
-	0::smallint,
-	0::smallint,
+	1054::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
+	'{0.2,0.2,0.2,0.2,0.2}'::real[],
 	NULL::real[],
 	NULL::real[],
 	NULL::real[],
-	NULL::real[],
-	NULL::bpchar[],
-	NULL::bpchar[],
+	'{"AFRICA                   ","ASIA                     ","MIDDLE EAST              ","EUROPE                   ","AMERICA                  "}'::bpchar[],
+	'{}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -1474,19 +1471,19 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	67::integer,
 	-1::real,
+	1::smallint,
 	0::smallint,
 	0::smallint,
 	0::smallint,
-	0::smallint,
+	98::oid,
 	0::oid,
 	0::oid,
 	0::oid,
-	0::oid,
+	'{0.2,0.2,0.2,0.2,0.2}'::real[],
 	NULL::real[],
 	NULL::real[],
 	NULL::real[],
-	NULL::real[],
-	NULL::varchar[],
+	'{"uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl","hs use ironic, even requests. s","ly final courts cajole furiously final excuse","lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to ","ges. thinly even pinto beans ca"}'::varchar[],
 	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
@@ -1499,20 +1496,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	4::integer,
 	-1::real,
+	0::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
 	0::smallint,
 	0::oid,
-	0::oid,
+	97::oid,
 	0::oid,
 	0::oid,
 	NULL::real[],
-	'{1}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{10,205652,402150,600898,807062,1015479,1211703,1409071,1609511,1801722,1994605,2184849,2378177,2572987,2772271,2965322,3181104,3389360,3589264,3791035,3987227,4189112,4400530,4601227,4802715,4999999}'::int4[],
+	NULL::real[],
 	NULL::int4[],
+	'{75,198009,403469,595318,795815,995854,1187745,1392906,1588223,1785531,1976849,2182915,2386482,2575972,2776861,2979720,3190512,3390881,3591012,3782111,3980788,4185809,4395823,4597173,4796910,4998851,4999799}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -1524,20 +1521,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	26::integer,
 	-1::real,
+	0::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
 	0::smallint,
 	0::oid,
-	0::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
 	NULL::real[],
-	'{1}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"Supplier#000000010       ","Supplier#000205652       ","Supplier#000402150       ","Supplier#000600898       ","Supplier#000807062       ","Supplier#001015479       ","Supplier#001211703       ","Supplier#001409071       ","Supplier#001609511       ","Supplier#001801722       ","Supplier#001994605       ","Supplier#002184849       ","Supplier#002378177       ","Supplier#002572987       ","Supplier#002772271       ","Supplier#002965322       ","Supplier#003181104       ","Supplier#003389360       ","Supplier#003589264       ","Supplier#003791035       ","Supplier#003987227       ","Supplier#004189112       ","Supplier#004400530       ","Supplier#004601227       ","Supplier#004802715       ","Supplier#004999999       "}'::bpchar[],
+	NULL::real[],
 	NULL::bpchar[],
+	'{"Supplier#000000075       ","Supplier#000198009       ","Supplier#000403469       ","Supplier#000595318       ","Supplier#000795815       ","Supplier#000995854       ","Supplier#001187745       ","Supplier#001392906       ","Supplier#001588223       ","Supplier#001785531       ","Supplier#001976849       ","Supplier#002182915       ","Supplier#002386482       ","Supplier#002575972       ","Supplier#002776861       ","Supplier#002979720       ","Supplier#003190512       ","Supplier#003390881       ","Supplier#003591012       ","Supplier#003782111       ","Supplier#003980788       ","Supplier#004185809       ","Supplier#004395823       ","Supplier#004597173       ","Supplier#004796910       ","Supplier#004998851       ","Supplier#004999799       "}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -1549,8 +1546,8 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	25::integer,
 	-1::real,
-	2::smallint,
-	3::smallint,
+	0::smallint,
+	0::smallint,
 	0::smallint,
 	0::smallint,
 	0::oid,
@@ -1558,10 +1555,10 @@ INSERT INTO pg_statistic VALUES (
 	0::oid,
 	0::oid,
 	NULL::real[],
-	'{0.000266612}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{"001xxu1BdA2O8XkARdFXp QrNq5CgHm6X7Z","2lNmwj,KV,rmngtT1ZzPnZrRhmGjHJBSo",51GkBojCHZFY,7LbWMpx6bIC5FtZD1C,9yNET7nxlBDVVGtGkRXTLpJtOfKE4,"baQx0vc0fPM8eXfZls f8B","Cj2NhY7FWFFQbOoTkPEE,cjH 4UO","DraOUFosTFiieBce8vM9,xzAyLCJ"," EwbMfb0G5vo4W",g8eDxtznm9gxr3hsgSKrHuXnR5xu,HGnnE5ZecTK,iNVuAAuEvqjRp5INg17B32rsYBsRZNaxcc,"jX5N LEsRuXP",L5W2B1byG9T0Sq7LV2Aupbfx,"MfjKTZYgCdrY,o2LWm4OJv yY0 5","NmRd82NmYHS0FE 7L4oSi",oT9VzHELTXsrjLtw,q3aiJdU1eyy,"RDkdX9QMBeRARCE0qbMwXQnFig,hrQMER",sL7plmJY3T83l6p5qB1dbG6dv8fLjF5ehwEBh,TU7oLNYH3fMIgll2,V2IePdQln1,"wckjsZqrsk8O3AQdx 8nN58Jbey eZB3ks DS","XkOuuwgXTFUkeof,weqyH3Splr0D9","ySH tOSC2h","Z ZYzistXDo8Gnticx,O2KtAItgEz9GXrCKBupst"}'::varchar[],
+	NULL::real[],
+	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
@@ -1575,19 +1572,19 @@ INSERT INTO pg_statistic VALUES (
 	4::integer,
 	25::real,
 	1::smallint,
-	3::smallint,
+	2::smallint,
 	0::smallint,
 	0::smallint,
+	96::oid,
+	97::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{0.0417266,0.0413996,0.041138,0.0408764,0.0406802,0.0406148,0.0406148,0.0406148,0.0405167,0.040484,0.0403859,0.0401243,0.0399608,0.0399281,0.0399281,0.0397973,0.0394375,0.0393721,0.0393067,0.0392413,0.0389797,0.0389797,0.0388489,0.0387508,0.038293}'::real[],
-	'{0.0409596}'::real[],
+	'{0.0433444,0.0422578,0.041805,0.0415032,0.0413522,0.0413221,0.041141,0.0407184,0.0405976,0.0404769,0.0400241,0.0398732,0.039843,0.0396921,0.0396318,0.0395714,0.0395714,0.0390884,0.0389677,0.0389073,0.0388772,0.0385753,0.0378509,0.0377603,0.0372472}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{6,15,17,9,12,14,19,24,1,8,18,10,5,22,23,0,3,7,13,20,2,16,11,21,4}'::int4[],
-	NULL::int4[],
+	NULL::real[],
+	'{4,0,8,1,10,5,19,2,22,3,16,9,18,12,6,17,7,14,11,24,20,23,21,13,15}'::int4[],
+	'{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24}'::int4[],
 	NULL::int4[],
 	NULL::int4[]);
 -- 
@@ -1599,20 +1596,20 @@ INSERT INTO pg_statistic VALUES (
 	0::real,
 	16::integer,
 	-1::real,
+	0::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
 	0::smallint,
 	0::oid,
-	0::oid,
+	1058::oid,
 	0::oid,
 	0::oid,
 	NULL::real[],
-	'{0.000825367}'::real[],
 	NULL::real[],
 	NULL::real[],
-	'{10-102-743-1474,11-104-701-8188,11-994-693-2477,13-115-462-2414,14-124-416-6291,15-159-880-6008,16-164-963-3093,17-137-258-3438,18-143-110-5353,19-132-851-7767,20-112-274-9248,21-110-149-6268,22-140-339-4888,23-115-258-4068,24-133-761-3909,25-120-560-7381,25-995-595-7556,27-110-175-9581,27-979-467-7147,28-981-151-1176,29-972-816-4106,30-980-456-1875,32-107-866-9510,33-112-415-3142,34-108-265-6279,34-995-770-2457}'::bpchar[],
+	NULL::real[],
 	NULL::bpchar[],
+	'{10-100-736-4380,10-950-210-5611,11-921-425-5389,12-907-335-2223,13-887-266-8935,14-814-568-2290,15-794-243-4488,16-783-625-5753,17-799-138-1484,18-758-245-4627,19-756-483-8004,20-726-611-7907,21-763-871-1204,22-757-408-4955,23-797-612-2644,24-820-694-4723,25-881-963-2940,26-896-992-4679,27-907-181-9303,28-910-466-3208,29-877-770-4908,30-894-451-5759,31-951-589-8870,32-940-205-3055,33-968-179-8702,34-994-363-7909,34-999-182-8076}'::bpchar[],
 	NULL::bpchar[],
 	NULL::bpchar[]);
 -- 
@@ -1623,21 +1620,21 @@ INSERT INTO pg_statistic VALUES (
 	6::smallint,
 	0::real,
 	8::integer,
-	-0.647033::real,
+	-0.18404::real,
 	1::smallint,
 	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	1752::oid,
+	1754::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	0::oid,
-	'{9.81033e-05,9.81033e-05,9.81033e-05,9.81033e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{9.05524e-05,9.05524e-05,9.05524e-05,9.05524e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05,6.03682e-05}'::real[],
 	NULL::real[],
-	'{0.00372881}'::real[],
 	NULL::real[],
-	'{899.59,5672.67,6980.79,9140.75,-989.17,-985.86,-936.90,-887.82,-883.72,-839.83,-838.09,-823.73,-790.22,-768.74,-730.83,-706.27,-675.41,-673.62,-670.56,-664.67,-643.31,-580.80,-555.74,-552.79,-549.02}'::numeric[],
-	'{-999.92,-552.62,-88.05,337.41,789.48,1230.13,1665.57,2091.68,2523.05,2949.87,3392.00,3829.08,4279.92,4716.57,5164.06,5628.24,6060.58,6476.44,6918.70,7357.09,7803.14,8220.78,8670.21,9105.56,9565.76,9999.98}'::numeric[],
+	NULL::real[],
+	'{9440.09,7515.32,-58.99,4065.42,4946.64,3195.76,3934.64,7389.49,-491.31,3994.96,9371.25,8072.80,8289.40,3524.95,8447.05,4552.66,1924.19,5767.39,8679.12,1076.73,-431.52,7108.51,7372.22,2718.32,2864.92}'::numeric[],
+	'{-999.49,-571.36,-115.69,306.52,727.36,1186.43,1609.38,2045.63,2493.49,2914.18,3360.65,3810.07,4243.84,4670.28,5112.98,5561.66,5978.06,6430.82,6873.89,7320.80,7758.15,8217.33,8659.01,9125.49,9556.99,9998.20,9999.51}'::numeric[],
 	NULL::numeric[],
 	NULL::numeric[]);
 -- 
@@ -1648,99 +1645,91 @@ INSERT INTO pg_statistic VALUES (
 	7::smallint,
 	0::real,
 	63::integer,
-	-0.996915::real,
+	-0.982448::real,
 	1::smallint,
-	2::smallint,
-	3::smallint,
 	0::smallint,
+	0::smallint,
+	0::smallint,
+	98::oid,
 	0::oid,
 	0::oid,
 	0::oid,
-	0::oid,
-	'{6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05,6.54022e-05}'::real[],
+	'{6.03682e-05,6.03682e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05,3.01841e-05}'::real[],
 	NULL::real[],
-	'{-0.00180453}'::real[],
 	NULL::real[],
-	'{"ar notornis above the furiously even platelet"," ironic theodolites. carefully regular pinto","ly regular deposits. furiou","refully ironic ideas. carefully special deposits integrate b","uickly against the pending requests. furiously pending ideas hinder a"}'::varchar[],
-	'{" about the accounts? quickly final ideas","al dugouts after the slyly unusual accounts kindle blithely after the furiously unusual deposits."," beans sleep ironic foxes. final packages wake about the ironic instructions? bravely special t","ccounts. accounts integrate since the platelets. regular pinto bea"," deposits nag among the quickly regular accounts? idly final exc","efully final instructions. blithe","equests haggle furiously slyly speci"," excuses engage carefully requests? accounts sleep furiously. deposits will na"," furious deposits haggle furiously regular accounts. blithely final deposits sleep among the even, ","he accounts. blithely pendi","inal excuses sleep furiously final dolphins. ","its above the blithely special","lites. unusual packages hang fluffily express theodolites. slyl","lyly pending accounts are blithely after t","nic requests nag slyly after the quickly final requests. packag","onic platelets. sheaves along the regular deposits boost quic","p blithely close platelets. blithely ironic foxes detect slyly a","r dolphins are furiously. even requests across the furiously speci","ronic accounts! furiously pend","s integrate slyly pending deposits. slyly dogged platelets above the blithely ironic pinto beans sle","ss accounts sleep. slyly express instructions cajole blithely after the slyly ironic "," the carefully express depths. special, unusual pinto beans haggle slyly blithe accounts","ts. asymptotes solve fluffily slyly ironic decoys. slyly even theodolites among the regular ","unts after the fluffily ironic accounts engage slyly throughout ","xes. blithely regular ideas wake. unusual packages detect busily: slyly bold th","zzle slyly. platelets are fluffily. bold pinto b"}'::varchar[],
+	NULL::real[],
+	'{"arefully regular accounts","inal warthogs wake carefully above the ideas. e","the regular, regular deposits. regular deposits ","e platelets. quickly bold sheav","ithely silent courts. silent ideas engage carefully slyly ironic foxes. blithel","ously unusual excuses haggle carefully alongside of the quickly bold ","uests. theodolites integrate fluffily bold ideas. slyly even foxes nag! fluffily ","ess asymptotes. sometimes special instructions are around the u","es. fluffily even dolphins against the blithely daring packages haggle carefully silent, ironic pac","uses integrate. quickly dogge","e the special excuses. slyly express dolphins kindle caref","silent packages. express accounts sleep. final, ironic ideas am","tructions haggle slyly. even requests nag? slyly pending requests are."," the furiously express dugouts. fluffily ironic ","ily careful accounts. pending instruction","ctions wake slyly carefully regular dependenci","ironic, regular deposits nag about the carefully express accounts. carefully final","lithely bold theodolites haggle fluff","l foxes. final theodolites engage blithely after the excuses. blithely final deposits a","ey players are furiously according to ","ts about the furiously even accounts sleep abou","ly bold requests. furiously ironic frays integrate furiously. regular, regular request","endencies sleep. slyly regular realms are quickly final deposits. silent dolphins haggle carefull","sly even packages. blithely final instructions boost. furiously ironic request","ould boost. thin dolphins affix. furiously fina"}'::varchar[],
+	NULL::varchar[],
 	NULL::varchar[],
 	NULL::varchar[]);
+-- 
+-- Greenplum Database Statistics Dump complete
+-- 
 -- set pages and tuple counts
 -- 
 -- Table: nation
 -- 
 UPDATE pg_class
 SET
-	relpages = 1::int,
-	reltuples = 4::int
+	relpages = 24::int,
+	reltuples = 25::int
 WHERE relname = 'nation' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'tpch500gb');
 -- 
 -- Table: region
 -- 
 UPDATE pg_class
 SET
-	relpages = 1::int,
-	reltuples = 1::int
+	relpages = 5::int,
+	reltuples = 5::int
 WHERE relname = 'region' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'tpch500gb');
 -- 
 -- Table: part
 -- 
 UPDATE pg_class
 SET
-	relpages = 64362::int,
-	reltuples = 1.25003e+07::int
+	relpages = 514920::int,
+	reltuples = 9.81335e+07::int
 WHERE relname = 'part' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'tpch500gb');
 -- 
 -- Table: supplier
 -- 
 UPDATE pg_class
 SET
-	relpages = 3474::int,
-	reltuples = 625001::int
+	relpages = 27809::int,
+	reltuples = 4.91852e+06::int
 WHERE relname = 'supplier' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'tpch500gb');
 -- 
 -- Table: partsupp
 -- 
 UPDATE pg_class
 SET
-	relpages = 275403::int,
-	reltuples = 5.00039e+07::int
+	relpages = 2203275::int,
+	reltuples = 3.91908e+08::int
 WHERE relname = 'partsupp' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'tpch500gb');
 -- 
 -- Table: customer
 -- 
 UPDATE pg_class
 SET
-	relpages = 56110::int,
-	reltuples = 9.37546e+06::int
+	relpages = 448938::int,
+	reltuples = 7.34745e+07::int
 WHERE relname = 'customer' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'tpch500gb');
 -- 
 -- Table: orders
 -- 
 UPDATE pg_class
 SET
-	relpages = 427353::int,
-	reltuples = 9.37548e+07::int
+	relpages = 3418818::int,
+	reltuples = 7.35569e+08::int
 WHERE relname = 'orders' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'tpch500gb');
 -- 
 -- Table: lineitem
 -- 
 UPDATE pg_class
 SET
-	relpages = 1880625::int,
-	reltuples = 3.75023e+08::int
+	relpages = 15044639::int,
+	reltuples = 2.93783e+09::real
 WHERE relname = 'lineitem' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'tpch500gb');
--- 
--- Table: revenue0
--- 
-UPDATE pg_class
-SET
-	relpages = 0::int,
-	reltuples = 0::int
-WHERE relname = 'revenue0' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'tpch500gb');
--- 
--- Greenplum Database Statistics Dump complete
--- 
 set gp_segments_for_planner = 16;
 --
 --
@@ -1777,17 +1766,17 @@ order by
 	l_linestatus;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2)  (cost=15697108.00..15697108.01 rows=6 width=33)
+ Gather Motion 2:1  (slice2)  (cost=120573745.63..120573745.64 rows=6 width=33)
    Merge Key: partial_aggregation.l_returnflag, partial_aggregation.l_linestatus
-   ->  Sort  (cost=15697108.00..15697108.01 rows=3 width=33)
+   ->  Sort  (cost=120573745.63..120573745.64 rows=3 width=33)
          Sort Key: partial_aggregation.l_returnflag, partial_aggregation.l_linestatus
-         ->  HashAggregate  (cost=15697107.74..15697107.92 rows=3 width=33)
+         ->  HashAggregate  (cost=120573745.37..120573745.55 rows=3 width=33)
                Group By: lineitem.l_returnflag, lineitem.l_linestatus
-               ->  Redistribute Motion 2:2  (slice1)  (cost=15697107.32..15697107.53 rows=3 width=33)
+               ->  Redistribute Motion 2:2  (slice1)  (cost=120573744.95..120573745.16 rows=3 width=33)
                      Hash Key: lineitem.l_returnflag, lineitem.l_linestatus
-                     ->  HashAggregate  (cost=15697107.32..15697107.41 rows=3 width=33)
+                     ->  HashAggregate  (cost=120573744.95..120573745.04 rows=3 width=33)
                            Group By: lineitem.l_returnflag, lineitem.l_linestatus
-                           ->  Seq Scan on lineitem  (cost=0.00..6568412.60 rows=182573894 width=33)
+                           ->  Seq Scan on lineitem  (cost=0.00..51767512.60 rows=1376124647 width=33)
                                  Filter: l_shipdate <= 'Mon Aug 17 00:00:00 1998'::timestamp without time zone
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (13 rows)
@@ -1851,64 +1840,63 @@ order by
 LIMIT 100;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=2322903.14..2322903.51 rows=16 width=194)
-   ->  Gather Motion 2:1  (slice7)  (cost=2322903.14..2322903.51 rows=16 width=194)
+ Limit  (cost=26927135.19..26927135.63 rows=19 width=194)
+   ->  Gather Motion 2:1  (slice7)  (cost=26927135.19..26927135.63 rows=19 width=194)
          Merge Key: s.s_acctbal, n.n_name, s.s_name, p.p_partkey
-         ->  Limit  (cost=2322903.14..2322903.18 rows=8 width=194)
-               ->  Sort  (cost=2322903.14..2322903.18 rows=8 width=194)
+         ->  Limit  (cost=26927135.19..26927135.24 rows=10 width=194)
+               ->  Sort  (cost=26927135.19..26927135.24 rows=10 width=194)
                      Sort Key (Limit): s.s_acctbal, n.n_name, s.s_name, p.p_partkey
-                     ->  Hash Join  (cost=1416616.57..2322902.81 rows=8 width=194)
+                     ->  Hash Join  (cost=24788261.17..26927134.78 rows=10 width=194)
                            Hash Cond: ps.ps_suppkey = s.s_suppkey
-                           ->  Redistribute Motion 2:2  (slice4)  (cost=1401254.49..2307540.53 rows=8 width=34)
+                           ->  Redistribute Motion 2:2  (slice4)  (cost=24637457.33..26776330.67 rows=12 width=34)
                                  Hash Key: ps.ps_suppkey
-                                 ->  Hash Join  (cost=1401254.49..2307540.20 rows=8 width=34)
-                                       Hash Cond: ps.ps_supplycost = g.min_ps_cost AND ps.ps_partkey = g.p_partkey
-                                       ->  Hash Join  (cost=252908.19..1157526.93 rows=166680 width=46)
-                                             Hash Cond: ps.ps_partkey = p.p_partkey
-                                             ->  Seq Scan on partsupp ps  (cost=0.00..775442.00 rows=25001950 width=16)
-                                             ->  Hash  (cost=251866.50..251866.50 rows=41668 width=30)
-                                                   ->  Seq Scan on part p  (cost=0.00..251866.50 rows=41668 width=30)
-                                                         Filter: p_size = 36 AND p_type::text ~~ '%COPPER'::text
-                                       ->  Hash  (cost=1148346.26..1148346.26 rows=2 width=36)
-                                             ->  HashAggregate  (cost=1148346.19..1148346.23 rows=2 width=12)
-                                                   Group By: part.p_partkey
-                                                   ->  Hash Join  (cost=927730.38..1148346.17 rows=2 width=12)
-                                                         Hash Cond: part.p_partkey = partsupp.ps_partkey
-                                                         ->  Seq Scan on part  (cost=0.00..189365.00 rows=6250150 width=4)
-                                                         ->  Hash  (cost=927730.34..927730.34 rows=2 width=12)
-                                                               ->  Hash Join  (cost=27278.55..927730.34 rows=2 width=12)
-                                                                     Hash Cond: partsupp.ps_suppkey = supplier.s_suppkey
-                                                                     ->  Seq Scan on partsupp  (cost=0.00..775442.00 rows=25001950 width=16)
-                                                                     ->  Hash  (cost=20611.88..20611.88 rows=266667 width=4)
-                                                                           ->  Broadcast Motion 2:2  (slice3)  (cost=3.42..20611.88 rows=266667 width=4)
-                                                                                 ->  Hash Join  (cost=3.42..14945.20 rows=16667 width=4)
-                                                                                       Hash Cond: supplier.s_nationkey = nation.n_nationkey
-                                                                                       ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=312500 width=8)
-                                                                                       ->  Hash  (cost=2.76..2.76 rows=27 width=4)
-                                                                                             ->  Broadcast Motion 2:2  (slice2)  (cost=1.02..2.76 rows=27 width=4)
-                                                                                                   ->  Hash Join  (cost=1.02..2.19 rows=2 width=4)
-                                                                                                         Hash Cond: nation.n_regionkey = region.r_regionkey
-                                                                                                         ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..1.12 rows=2 width=8)
-                                                                                                               Hash Key: nation.n_regionkey
-                                                                                                               ->  Seq Scan on nation  (cost=0.00..1.04 rows=2 width=8)
-                                                                                                         ->  Hash  (cost=1.01..1.01 rows=0 width=4)
-                                                                                                               ->  Seq Scan on region  (cost=0.00..1.01 rows=0 width=4)
+                                 ->  Hash Join  (cost=24637457.33..26776330.18 rows=12 width=34)
+                                       Hash Cond: g.min_ps_cost = ps.ps_supplycost AND g.p_partkey = ps.ps_partkey
+                                       ->  HashAggregate  (cost=15463758.79..16557519.74 rows=34837052 width=12)
+                                             Group By: part.p_partkey
+                                             ->  Hash Join  (cost=12035781.52..14892553.62 rows=34837052 width=12)
+                                                   Hash Cond: part.p_partkey = partsupp.ps_partkey
+                                                   ->  Seq Scan on part  (cost=0.00..1496255.04 rows=49066752 width=4)
+                                                   ->  Hash  (cost=11088308.22..11088308.22 rows=34837052 width=12)
+                                                         ->  Hash Join  (cost=502478.00..11088308.22 rows=34837052 width=12)
+                                                               Hash Cond: partsupp.ps_suppkey = supplier.s_suppkey
+                                                               ->  Seq Scan on partsupp  (cost=0.00..6122355.01 rows=195954000 width=16)
+                                                               ->  Hash  (cost=305737.21..305737.21 rows=7869632 width=4)
+                                                                     ->  Broadcast Motion 2:2  (slice3)  (cost=31.85..305737.21 rows=7869632 width=4)
+                                                                           ->  Hash Join  (cost=31.85..138507.54 rows=491852 width=4)
+                                                                                 Hash Cond: supplier.s_nationkey = nation.n_nationkey
+                                                                                 ->  Seq Scan on supplier  (cost=0.00..76994.20 rows=2459260 width=8)
+                                                                                 ->  Hash  (cost=30.85..30.85 rows=40 width=4)
+                                                                                       ->  Broadcast Motion 2:2  (slice2)  (cost=5.43..30.85 rows=40 width=4)
+                                                                                             ->  Hash Join  (cost=5.43..30.00 rows=3 width=4)
+                                                                                                   Hash Cond: nation.n_regionkey = region.r_regionkey
+                                                                                                   ->  Seq Scan on nation  (cost=0.00..24.25 rows=12 width=8)
+                                                                                                   ->  Hash  (cost=5.23..5.23 rows=8 width=4)
+                                                                                                         ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..5.23 rows=8 width=4)
+                                                                                                               ->  Seq Scan on region  (cost=0.00..5.06 rows=1 width=4)
                                                                                                                      Filter: r_name = 'EUROPE'::bpchar
-                           ->  Hash  (cost=14945.41..14945.41 rows=16667 width=168)
-                                 ->  Hash Join  (cost=3.63..14945.41 rows=16667 width=168)
+                                       ->  Hash  (cost=9132243.60..9132243.60 rows=1381831 width=46)
+                                             ->  Hash Join  (cost=1995572.80..9132243.60 rows=1381831 width=46)
+                                                   Hash Cond: ps.ps_partkey = p.p_partkey
+                                                   ->  Seq Scan on partsupp ps  (cost=0.00..6122355.01 rows=195954000 width=16)
+                                                   ->  Hash  (cost=1986922.56..1986922.56 rows=346010 width=30)
+                                                         ->  Seq Scan on part p  (cost=0.00..1986922.56 rows=346010 width=30)
+                                                               Filter: p_size = 36 AND p_type::text ~~ '%COPPER'::text
+                           ->  Hash  (cost=138507.54..138507.54 rows=491852 width=168)
+                                 ->  Hash Join  (cost=31.85..138507.54 rows=491852 width=168)
                                        Hash Cond: s.s_nationkey = n.n_nationkey
-                                       ->  Seq Scan on supplier s  (cost=0.00..9724.01 rows=312500 width=146)
-                                       ->  Hash  (cost=2.96..2.96 rows=27 width=30)
-                                             ->  Broadcast Motion 2:2  (slice6)  (cost=1.09..2.96 rows=27 width=30)
-                                                   ->  Hash Join  (cost=1.09..2.40 rows=2 width=30)
-                                                         Hash Cond: r.r_regionkey = n.n_regionkey
-                                                         ->  Broadcast Motion 2:2  (slice5)  (cost=0.00..1.18 rows=8 width=4)
-                                                               ->  Seq Scan on region r  (cost=0.00..1.01 rows=0 width=4)
-                                                                     Filter: r_name = 'EUROPE'::bpchar
-                                                         ->  Hash  (cost=1.04..1.04 rows=2 width=34)
-                                                               ->  Seq Scan on nation n  (cost=0.00..1.04 rows=2 width=34)
+                                       ->  Seq Scan on supplier s  (cost=0.00..76994.20 rows=2459260 width=146)
+                                       ->  Hash  (cost=30.85..30.85 rows=40 width=30)
+                                             ->  Broadcast Motion 2:2  (slice6)  (cost=5.43..30.85 rows=40 width=30)
+                                                   ->  Hash Join  (cost=5.43..30.00 rows=3 width=30)
+                                                         Hash Cond: n.n_regionkey = r.r_regionkey
+                                                         ->  Seq Scan on nation n  (cost=0.00..24.25 rows=12 width=34)
+                                                         ->  Hash  (cost=5.23..5.23 rows=8 width=4)
+                                                               ->  Broadcast Motion 2:2  (slice5)  (cost=0.00..5.23 rows=8 width=4)
+                                                                     ->  Seq Scan on region r  (cost=0.00..5.06 rows=1 width=4)
+                                                                           Filter: r_name = 'EUROPE'::bpchar
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(57 rows)
+(56 rows)
 
 --
 --
@@ -1947,26 +1935,26 @@ order by
 LIMIT 10;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=10933963.40..10933963.63 rows=10 width=32)
-   ->  Gather Motion 2:1  (slice2)  (cost=10933963.40..10933963.63 rows=10 width=32)
+ Limit  (cost=131912120.99..131912121.22 rows=10 width=32)
+   ->  Gather Motion 2:1  (slice2)  (cost=131912120.99..131912121.22 rows=10 width=32)
          Merge Key: revenue, orders.o_orderdate
-         ->  Limit  (cost=10933963.40..10933963.43 rows=5 width=32)
-               ->  Sort  (cost=10933963.40..10948627.12 rows=2932743 width=32)
+         ->  Limit  (cost=131912120.99..131912121.02 rows=5 width=32)
+               ->  Sort  (cost=131912120.99..132311222.38 rows=79820278 width=32)
                      Sort Key (Limit): revenue, orders.o_orderdate
-                     ->  HashAggregate  (cost=10146721.50..10274570.77 rows=2932743 width=32)
+                     ->  HashAggregate  (cost=91944837.53..96110458.26 rows=79820278 width=32)
                            Group By: lineitem.l_orderkey, orders.o_orderdate, orders.o_shippriority
-                           ->  Hash Join  (cost=2916586.20..10062863.38 rows=2932743 width=32)
+                           ->  Hash Join  (cost=26219811.80..88976520.96 rows=79820278 width=32)
                                  Hash Cond: lineitem.l_orderkey = orders.o_orderkey
-                                 ->  Seq Scan on lineitem  (cost=0.00..6568412.60 rows=100909199 width=24)
+                                 ->  Seq Scan on lineitem  (cost=0.00..51767512.60 rows=820148525 width=24)
                                        Filter: l_shipdate > '03-22-1995'::date
-                                 ->  Hash  (cost=2882526.03..2882526.03 rows=1362407 width=16)
-                                       ->  Hash Join  (cost=885432.78..2882526.03 rows=1362407 width=16)
+                                 ->  Hash  (cost=25237564.70..25237564.70 rows=35794324 width=16)
+                                       ->  Hash Join  (cost=6980243.51..25237564.70 rows=35794324 width=16)
                                              Hash Cond: orders.o_custkey = customer.c_custkey
-                                             ->  Seq Scan on orders  (cost=0.00..1599288.00 rows=22773514 width=20)
+                                             ->  Seq Scan on orders  (cost=0.00..12613430.80 rows=179773404 width=20)
                                                    Filter: o_orderdate < '03-22-1995'::date
-                                             ->  Hash  (cost=488838.20..488838.20 rows=14848703 width=4)
-                                                   ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..488838.20 rows=14848703 width=4)
-                                                         ->  Seq Scan on customer  (cost=0.00..173303.25 rows=928044 width=4)
+                                             ->  Hash  (cost=3854360.45..3854360.45 rows=117034882 width=4)
+                                                   ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..3854360.45 rows=117034882 width=4)
+                                                         ->  Seq Scan on customer  (cost=0.00..1367369.20 rows=7314680 width=4)
                                                                Filter: c_mktsegment = 'AUTOMOBILE'::bpchar
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (22 rows)
@@ -2006,27 +1994,30 @@ order by
         o_orderpriority;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2)  (cost=8898206.80..8898206.80 rows=1 width=22)
+ Gather Motion 2:1  (slice2)  (cost=79166496.69..79166496.69 rows=1 width=22)
    Merge Key: partial_aggregation.o_orderpriority
-   ->  Sort  (cost=8898206.80..8898206.80 rows=0 width=22)
+   ->  Sort  (cost=79166496.69..79166496.69 rows=0 width=22)
          Sort Key: partial_aggregation.o_orderpriority
-         ->  HashAggregate  (cost=8898206.78..8898206.79 rows=0 width=22)
+         ->  HashAggregate  (cost=79166496.66..79166496.68 rows=0 width=22)
                Group By: orders.o_orderpriority
-               ->  Redistribute Motion 2:2  (slice1)  (cost=8898206.74..8898206.76 rows=0 width=22)
+               ->  Redistribute Motion 2:2  (slice1)  (cost=79166496.63..79166496.65 rows=0 width=22)
                      Hash Key: orders.o_orderpriority
-                     ->  HashAggregate  (cost=8898206.74..8898206.74 rows=0 width=22)
+                     ->  HashAggregate  (cost=79166496.63..79166496.63 rows=0 width=22)
                            Group By: orders.o_orderpriority
-                           ->  HashAggregate  (cost=8828263.73..8874892.40 rows=2331434 width=22)
-                                 Group By: orders.ctid::bigint
-                                 ->  Hash Join  (cost=1877388.94..8816606.56 rows=2331434 width=22)
-                                       Hash Cond: lineitem.l_orderkey = orders.o_orderkey
-                                       ->  Seq Scan on lineitem  (cost=0.00..6568412.60 rows=62503835 width=8)
-                                             Filter: l_commitdate < l_receiptdate
-                                       ->  Hash  (cost=1833675.00..1833675.00 rows=1748558 width=30)
-                                             ->  Seq Scan on orders  (cost=0.00..1833675.00 rows=1748558 width=30)
-                                                   Filter: o_orderdate >= '07-01-1996'::date AND o_orderdate < 'Tue Oct 01 00:00:00 1996'::timestamp without time zone
+                           ->  Result  (cost=78801360.21..78983928.42 rows=18256821 width=22)
+                                 ->  Unique  (cost=78801360.21..78983928.42 rows=18256821 width=22)
+                                       Group By: orders.ctid
+                                       ->  Sort  (cost=78801360.21..78892644.32 rows=18256821 width=22)
+                                             Sort Key (Distinct): orders.ctid
+                                             ->  Hash Join  (cost=14835362.82..71460313.52 rows=18256821 width=22)
+                                                   Hash Cond: lineitem.l_orderkey = orders.o_orderkey
+                                                   ->  Seq Scan on lineitem  (cost=0.00..51767512.60 rows=489638315 width=8)
+                                                         Filter: l_commitdate < l_receiptdate
+                                                   ->  Hash  (cost=14452353.36..14452353.36 rows=13713339 width=30)
+                                                         ->  Seq Scan on orders  (cost=0.00..14452353.36 rows=13713339 width=30)
+                                                               Filter: o_orderdate >= '07-01-1996'::date AND o_orderdate < 'Tue Oct 01 00:00:00 1996'::timestamp without time zone
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(20 rows)
+(23 rows)
 
 --
 --
@@ -2068,40 +2059,41 @@ where
 ;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=8919932.58..8919932.59 rows=1 width=0)
-   ->  Gather Motion 2:1  (slice5)  (cost=8919932.38..8919932.56 rows=1 width=0)
-         ->  Aggregate  (cost=8919932.38..8919932.39 rows=0 width=0)
-               ->  Hash Join  (cost=2316544.97..8919920.80 rows=2316 width=0)
+ Aggregate  (cost=82836950.11..82836950.12 rows=1 width=0)
+   ->  Gather Motion 2:1  (slice6)  (cost=82836949.91..82836950.09 rows=1 width=0)
+         ->  Aggregate  (cost=82836949.91..82836949.92 rows=0 width=0)
+               ->  Hash Join  (cost=22440953.76..82828342.64 rows=1721454 width=0)
                      Hash Cond: customer.c_nationkey = supplier.s_nationkey AND lineitem.l_suppkey = supplier.s_suppkey
-                     ->  Redistribute Motion 2:2  (slice4)  (cost=2297445.94..8896099.81 rows=465250 width=12)
-                           Hash Key: lineitem.l_suppkey
-                           ->  Hash Join  (cost=2297445.94..8877489.80 rows=465250 width=12)
-                                 Hash Cond: lineitem.l_orderkey = orders.o_orderkey
-                                 ->  Seq Scan on lineitem  (cost=0.00..5630855.08 rows=187511504 width=12)
-                                 ->  Hash  (cost=2294538.16..2294538.16 rows=116311 width=16)
-                                       ->  Hash Join  (cost=413147.36..2294538.16 rows=116311 width=16)
+                     ->  Hash Join  (cost=20270514.36..79631456.28 rows=44442733 width=12)
+                           Hash Cond: lineitem.l_orderkey = orders.o_orderkey
+                           ->  Seq Scan on lineitem  (cost=0.00..44422937.88 rows=1468914944 width=12)
+                           ->  Hash  (cost=19965159.90..19965159.90 rows=11127498 width=16)
+                                 ->  Redistribute Motion 2:2  (slice4)  (cost=2285832.40..19965159.90 rows=11127498 width=16)
+                                       Hash Key: orders.o_orderkey
+                                       ->  Hash Join  (cost=2285832.40..19520059.96 rows=11127498 width=16)
                                              Hash Cond: orders.o_custkey = customer.c_custkey
-                                             ->  Seq Scan on orders  (cost=0.00..1833675.00 rows=7216932 width=12)
-                                                   Filter: o_orderdate >= '01-01-1993'::date AND o_orderdate < 'Sat Jan 01 00:00:00 1994'::timestamp without time zone
-                                             ->  Hash  (cost=313142.45..313142.45 rows=4000196 width=12)
-                                                   ->  Broadcast Motion 2:2  (slice3)  (cost=3.42..313142.45 rows=4000196 width=12)
-                                                         ->  Hash Join  (cost=3.42..228138.28 rows=250012 width=12)
-                                                               Hash Cond: customer.c_nationkey = nation.n_nationkey
-                                                               ->  Seq Scan on customer  (cost=0.00..149864.60 rows=4687730 width=8)
-                                                               ->  Hash  (cost=2.76..2.76 rows=27 width=4)
-                                                                     ->  Broadcast Motion 2:2  (slice2)  (cost=1.02..2.76 rows=27 width=4)
-                                                                           ->  Hash Join  (cost=1.02..2.19 rows=2 width=4)
-                                                                                 Hash Cond: nation.n_regionkey = region.r_regionkey
-                                                                                 ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..1.12 rows=2 width=8)
-                                                                                       Hash Key: nation.n_regionkey
-                                                                                       ->  Seq Scan on nation  (cost=0.00..1.04 rows=2 width=8)
-                                                                                 ->  Hash  (cost=1.01..1.01 rows=0 width=4)
-                                                                                       ->  Seq Scan on region  (cost=0.00..1.01 rows=0 width=4)
+                                             ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..16677852.68 rows=55637483 width=12)
+                                                   Hash Key: orders.o_custkey
+                                                   ->  Seq Scan on orders  (cost=0.00..14452353.36 rows=55637483 width=12)
+                                                         Filter: o_orderdate >= '01-01-1993'::date AND o_orderdate < 'Sat Jan 01 00:00:00 1994'::timestamp without time zone
+                                             ->  Hash  (cost=2102146.13..2102146.13 rows=7347451 width=12)
+                                                   ->  Hash Join  (cost=31.85..2102146.13 rows=7347451 width=12)
+                                                         Hash Cond: customer.c_nationkey = nation.n_nationkey
+                                                         ->  Seq Scan on customer  (cost=0.00..1183682.96 rows=36737248 width=8)
+                                                         ->  Hash  (cost=30.85..30.85 rows=40 width=4)
+                                                               ->  Broadcast Motion 2:2  (slice3)  (cost=5.43..30.85 rows=40 width=4)
+                                                                     ->  Hash Join  (cost=5.43..30.00 rows=3 width=4)
+                                                                           Hash Cond: nation.n_regionkey = region.r_regionkey
+                                                                           ->  Seq Scan on nation  (cost=0.00..24.25 rows=12 width=8)
+                                                                           ->  Hash  (cost=5.23..5.23 rows=8 width=4)
+                                                                                 ->  Broadcast Motion 2:2  (slice2)  (cost=0.00..5.23 rows=8 width=4)
+                                                                                       ->  Seq Scan on region  (cost=0.00..5.06 rows=1 width=4)
                                                                                              Filter: r_name = 'ASIA'::bpchar
-                     ->  Hash  (cost=9724.01..9724.01 rows=312500 width=8)
-                           ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=312500 width=8)
+                     ->  Hash  (cost=913142.60..913142.60 rows=39348160 width=8)
+                           ->  Broadcast Motion 2:2  (slice5)  (cost=0.00..913142.60 rows=39348160 width=8)
+                                 ->  Seq Scan on supplier  (cost=0.00..76994.20 rows=2459260 width=8)
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(33 rows)
+(34 rows)
 
 --
 --
@@ -2126,10 +2118,10 @@ where
 	and l_quantity < 25;
                                                                                                     QUERY PLAN                                                                                                    
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=10338380.45..10338380.46 rows=1 width=16)
-   ->  Gather Motion 2:1  (slice1)  (cost=10338380.25..10338380.43 rows=1 width=16)
-         ->  Aggregate  (cost=10338380.25..10338380.26 rows=0 width=16)
-               ->  Seq Scan on lineitem  (cost=0.00..10318642.68 rows=3947513 width=16)
+ Aggregate  (cost=81285244.19..81285244.20 rows=1 width=16)
+   ->  Gather Motion 2:1  (slice1)  (cost=81285243.99..81285244.18 rows=1 width=16)
+         ->  Aggregate  (cost=81285243.99..81285244.01 rows=0 width=16)
+               ->  Seq Scan on lineitem  (cost=0.00..81145811.48 rows=27886502 width=16)
                      Filter: l_shipdate >= '01-01-1993'::date AND l_shipdate < 'Sat Jan 01 00:00:00 1994'::timestamp without time zone AND l_discount >= 0.01 AND l_discount <= 0.03 AND l_quantity < 25::numeric
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (6 rows)
@@ -2187,43 +2179,43 @@ order by
 	l_year;
                                                                                                                    QUERY PLAN                                                                                                                    
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice6)  (cost=9825642.18..9825672.71 rows=12211 width=72)
+ Gather Motion 2:1  (slice6)  (cost=85867195.23..85868345.74 rows=460204 width=72)
    Merge Key: partial_aggregation.supp_nation, partial_aggregation.cust_nation, partial_aggregation.unnamed_attr_3
-   ->  Sort  (cost=9825642.18..9825672.71 rows=6106 width=72)
+   ->  Sort  (cost=85867195.23..85868345.74 rows=230102 width=72)
          Sort Key: partial_aggregation.supp_nation, partial_aggregation.cust_nation, partial_aggregation.unnamed_attr_3
-         ->  HashAggregate  (cost=9824660.66..9824813.30 rows=6106 width=72)
+         ->  HashAggregate  (cost=85818156.09..85823908.64 rows=230102 width=72)
                Group By: n1.n_name, n2.n_name, "?column3?"
-               ->  Redistribute Motion 2:2  (slice5)  (cost=9824050.11..9824416.44 rows=6106 width=72)
+               ->  Redistribute Motion 2:2  (slice5)  (cost=85795145.89..85808952.01 rows=230102 width=72)
                      Hash Key: n1.n_name, n2.n_name, unnamed_attr_3
-                     ->  HashAggregate  (cost=9824050.11..9824172.22 rows=6106 width=72)
+                     ->  HashAggregate  (cost=85795145.89..85799747.93 rows=230102 width=72)
                            Group By: n1.n_name, n2.n_name, date_part('year'::text, lineitem.l_shipdate::timestamp without time zone)
-                           ->  Hash Join  (cost=8183144.45..9823917.25 rows=6643 width=72)
+                           ->  Hash Join  (cost=68275249.57..85768515.92 rows=1331499 width=72)
                                  Hash Cond: n2.n_nationkey = customer.c_nationkey AND orders.o_custkey = customer.c_custkey
-                                 ->  Redistribute Motion 2:2  (slice4)  (cost=7892647.95..9527659.15 rows=549588 width=80)
+                                 ->  Redistribute Motion 2:2  (slice4)  (cost=65917696.17..82530478.96 rows=33287461 width=80)
                                        Hash Key: orders.o_custkey
-                                       ->  Hash Join  (cost=7892647.95..9505675.64 rows=549588 width=80)
+                                       ->  Hash Join  (cost=65917696.17..81198980.50 rows=33287461 width=80)
                                              Hash Cond: orders.o_orderkey = lineitem.l_orderkey
-                                             ->  Seq Scan on orders  (cost=0.00..1364901.00 rows=46877400 width=12)
-                                             ->  Hash  (cost=7878908.26..7878908.26 rows=549588 width=84)
-                                                   ->  Hash Join  (cost=33026.46..7878908.26 rows=549588 width=84)
+                                             ->  Seq Scan on orders  (cost=0.00..10774508.24 rows=367784512 width=12)
+                                             ->  Hash  (cost=64866084.63..64866084.63 rows=33287461 width=84)
+                                                   ->  Hash Join  (cost=275594.17..64866084.63 rows=33287461 width=84)
                                                          Hash Cond: lineitem.l_suppkey = supplier.s_suppkey
-                                                         ->  Seq Scan on lineitem  (cost=0.00..7505970.12 rows=56990582 width=32)
+                                                         ->  Seq Scan on lineitem  (cost=0.00..59112087.32 rows=429931399 width=32)
                                                                Filter: l_shipdate >= '01-01-1995'::date AND l_shipdate <= '12-31-1996'::date
-                                                         ->  Hash  (cost=23338.94..23338.94 rows=387501 width=60)
-                                                               ->  Broadcast Motion 2:2  (slice3)  (cost=11.73..23338.94 rows=387501 width=60)
-                                                                     ->  Hash Join  (cost=11.73..15104.55 rows=24219 width=60)
+                                                         ->  Hash  (cost=196960.82..196960.82 rows=3145334 width=60)
+                                                               ->  Broadcast Motion 2:2  (slice3)  (cost=354.87..196960.82 rows=3145334 width=60)
+                                                                     ->  Hash Join  (cost=354.87..130122.47 rows=196583 width=60)
                                                                            Hash Cond: supplier.s_nationkey = n1.n_nationkey
-                                                                           ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=312500 width=8)
-                                                                           ->  Hash  (cost=11.07..11.07 rows=27 width=60)
-                                                                                 ->  Broadcast Motion 2:2  (slice2)  (cost=1.78..11.07 rows=27 width=60)
-                                                                                       ->  Nested Loop  (cost=1.78..10.50 rows=2 width=60)
+                                                                           ->  Seq Scan on supplier  (cost=0.00..76994.20 rows=2459260 width=8)
+                                                                           ->  Hash  (cost=353.94..353.94 rows=37 width=60)
+                                                                                 ->  Broadcast Motion 2:2  (slice2)  (cost=28.90..353.94 rows=37 width=60)
+                                                                                       ->  Nested Loop  (cost=28.90..353.15 rows=2 width=60)
                                                                                              Join Filter: (n1.n_name = 'ALGERIA'::bpchar AND n2.n_name = 'ROMANIA'::bpchar) OR (n1.n_name = 'ROMANIA'::bpchar AND n2.n_name = 'ALGERIA'::bpchar)
-                                                                                             ->  Seq Scan on nation n1  (cost=0.00..1.04 rows=2 width=30)
-                                                                                             ->  Materialize  (cost=1.78..2.42 rows=32 width=30)
-                                                                                                   ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..1.72 rows=32 width=30)
-                                                                                                         ->  Seq Scan on nation n2  (cost=0.00..1.04 rows=2 width=30)
-                                 ->  Hash  (cost=149864.60..149864.60 rows=4687730 width=8)
-                                       ->  Seq Scan on customer  (cost=0.00..149864.60 rows=4687730 width=8)
+                                                                                             ->  Seq Scan on nation n1  (cost=0.00..24.25 rows=12 width=30)
+                                                                                             ->  Materialize  (cost=28.90..32.90 rows=200 width=30)
+                                                                                                   ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..28.50 rows=200 width=30)
+                                                                                                         ->  Seq Scan on nation n2  (cost=0.00..24.25 rows=12 width=30)
+                                 ->  Hash  (cost=1183682.96..1183682.96 rows=36737248 width=8)
+                                       ->  Seq Scan on customer  (cost=0.00..1183682.96 rows=36737248 width=8)
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (38 rows)
 
@@ -2279,61 +2271,58 @@ order by
 	o_year;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice8)  (cost=9009837.90..9009839.51 rows=43 width=46)
+ Gather Motion 2:1  (slice8)  (cost=72596753.00..72596754.83 rows=733 width=46)
    Merge Key: partial_aggregation.unnamed_attr_1
-   ->  GroupAggregate  (cost=9009837.90..9009839.51 rows=22 width=46)
-         Group By: "?column1?"
-         ->  Sort  (cost=9009837.90..9009838.00 rows=22 width=46)
-               Sort Key: unnamed_attr_1
-               ->  Redistribute Motion 2:2  (slice7)  (cost=9009834.03..9009836.73 rows=22 width=46)
-                     Hash Key: "?column1?"
-                     ->  GroupAggregate  (cost=9009834.03..9009835.87 rows=22 width=46)
-                           Group By: "?column5?"
-                           ->  Sort  (cost=9009834.03..9009834.14 rows=22 width=46)
-                                 Sort Key: "?column5?"
-                                 ->  Hash Join  (cost=7099678.57..9009832.84 rows=22 width=46)
+   ->  Sort  (cost=72596753.00..72596754.83 rows=366 width=46)
+         Sort Key: partial_aggregation.unnamed_attr_1
+         ->  HashAggregate  (cost=72596705.29..72596718.11 rows=366 width=46)
+               Group By: "?column1?"
+               ->  Redistribute Motion 2:2  (slice7)  (cost=72596664.97..72596692.46 rows=366 width=46)
+                     Hash Key: unnamed_attr_1
+                     ->  HashAggregate  (cost=72596664.97..72596677.80 rows=366 width=46)
+                           Group By: date_part('year'::text, orders.o_orderdate::timestamp without time zone)
+                           ->  Hash Join  (cost=70968934.45..72588166.93 rows=566536 width=46)
+                                 Hash Cond: supplier.s_nationkey = n2.n_nationkey
+                                 ->  Hash Join  (cost=70968900.95..72522981.77 rows=566536 width=24)
                                        Hash Cond: lineitem.l_suppkey = supplier.s_suppkey
-                                       ->  Redistribute Motion 2:2  (slice5)  (cost=7082139.52..8992287.54 rows=1099 width=24)
+                                       ->  Redistribute Motion 2:2  (slice5)  (cost=70830425.25..72367418.12 rows=584909 width=24)
                                              Hash Key: lineitem.l_suppkey
-                                             ->  Hash Join  (cost=7082139.52..8992243.58 rows=1099 width=24)
-                                                   Hash Cond: orders.o_custkey = customer.c_custkey
-                                                   ->  Redistribute Motion 2:2  (slice2)  (cost=6847750.94..8757486.61 rows=68182 width=28)
-                                                         Hash Key: orders.o_custkey
-                                                         ->  Hash Join  (cost=6847750.94..8754759.33 rows=68182 width=28)
-                                                               Hash Cond: orders.o_orderkey = lineitem.l_orderkey
-                                                               ->  Seq Scan on orders  (cost=0.00..1833675.00 rows=14325770 width=16)
-                                                                     Filter: o_orderdate >= '01-01-1995'::date AND o_orderdate <= '12-31-1996'::date
-                                                               ->  Hash  (cost=6842173.23..6842173.23 rows=223108 width=28)
-                                                                     ->  Hash Join  (cost=251449.82..6842173.23 rows=223108 width=28)
-                                                                           Hash Cond: lineitem.l_partkey = part.p_partkey
-                                                                           ->  Seq Scan on lineitem  (cost=0.00..5630855.08 rows=187511504 width=32)
-                                                                           ->  Hash  (cost=234782.76..234782.76 rows=666683 width=4)
-                                                                                 ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..234782.76 rows=666683 width=4)
-                                                                                       ->  Seq Scan on part  (cost=0.00..220615.75 rows=41668 width=4)
-                                                                                             Filter: p_type::text = 'ECONOMY BRUSHED COPPER'::text
-                                                   ->  Hash  (cost=228138.28..228138.28 rows=250012 width=4)
-                                                         ->  Hash Join  (cost=3.42..228138.28 rows=250012 width=4)
-                                                               Hash Cond: customer.c_nationkey = n1.n_nationkey
-                                                               ->  Seq Scan on customer  (cost=0.00..149864.60 rows=4687730 width=8)
-                                                               ->  Hash  (cost=2.76..2.76 rows=27 width=4)
-                                                                     ->  Broadcast Motion 2:2  (slice4)  (cost=1.02..2.76 rows=27 width=4)
-                                                                           ->  Hash Join  (cost=1.02..2.19 rows=2 width=4)
-                                                                                 Hash Cond: n1.n_regionkey = region.r_regionkey
-                                                                                 ->  Redistribute Motion 2:2  (slice3)  (cost=0.00..1.12 rows=2 width=8)
-                                                                                       Hash Key: n1.n_regionkey
-                                                                                       ->  Seq Scan on nation n1  (cost=0.00..1.04 rows=2 width=8)
-                                                                                 ->  Hash  (cost=1.01..1.01 rows=0 width=4)
-                                                                                       ->  Seq Scan on region  (cost=0.00..1.01 rows=0 width=4)
-                                                                                             Filter: r_name = 'EUROPE'::bpchar
-                                       ->  Hash  (cost=16289.04..16289.04 rows=50000 width=30)
-                                             ->  Hash Join  (cost=2.52..16289.04 rows=50000 width=30)
-                                                   Hash Cond: supplier.s_nationkey = n2.n_nationkey
-                                                   ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=312500 width=8)
-                                                   ->  Hash  (cost=1.72..1.72 rows=32 width=30)
-                                                         ->  Broadcast Motion 2:2  (slice6)  (cost=0.00..1.72 rows=32 width=30)
-                                                               ->  Seq Scan on nation n2  (cost=0.00..1.04 rows=2 width=30)
+                                             ->  Hash Join  (cost=70830425.25..72344021.75 rows=584909 width=24)
+                                                   Hash Cond: customer.c_nationkey = n1.n_nationkey
+                                                   ->  Hash Join  (cost=70830393.41..72270876.25 rows=2924546 width=28)
+                                                         Hash Cond: customer.c_custkey = orders.o_custkey
+                                                         ->  Seq Scan on customer  (cost=0.00..1183682.96 rows=36737248 width=8)
+                                                         ->  Hash  (cost=70757279.76..70757279.76 rows=2924546 width=28)
+                                                               ->  Redistribute Motion 2:2  (slice2)  (cost=54977627.99..70757279.76 rows=2924546 width=28)
+                                                                     Hash Key: orders.o_custkey
+                                                                     ->  Hash Join  (cost=54977627.99..70640297.93 rows=2924546 width=28)
+                                                                           Hash Cond: orders.o_orderkey = lineitem.l_orderkey
+                                                                           ->  Seq Scan on orders  (cost=0.00..14452353.36 rows=111983987 width=16)
+                                                                                 Filter: o_orderdate >= '01-01-1995'::date AND o_orderdate <= '12-31-1996'::date
+                                                                           ->  Hash  (cost=54707018.79..54707018.79 rows=9604968 width=28)
+                                                                                 ->  Hash Join  (cost=1979009.36..54707018.79 rows=9604968 width=28)
+                                                                                       Hash Cond: lineitem.l_partkey = part.p_partkey
+                                                                                       ->  Seq Scan on lineitem  (cost=0.00..44422937.88 rows=1468914944 width=32)
+                                                                                       ->  Hash  (cost=1850673.92..1850673.92 rows=5133417 width=4)
+                                                                                             ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..1850673.92 rows=5133417 width=4)
+                                                                                                   ->  Seq Scan on part  (cost=0.00..1741588.80 rows=320839 width=4)
+                                                                                                         Filter: p_type::text = 'ECONOMY BRUSHED COPPER'::text
+                                                   ->  Hash  (cost=30.85..30.85 rows=40 width=4)
+                                                         ->  Broadcast Motion 2:2  (slice4)  (cost=5.43..30.85 rows=40 width=4)
+                                                               ->  Hash Join  (cost=5.43..30.00 rows=3 width=4)
+                                                                     Hash Cond: n1.n_regionkey = region.r_regionkey
+                                                                     ->  Seq Scan on nation n1  (cost=0.00..24.25 rows=12 width=8)
+                                                                     ->  Hash  (cost=5.23..5.23 rows=8 width=4)
+                                                                           ->  Broadcast Motion 2:2  (slice3)  (cost=0.00..5.23 rows=8 width=4)
+                                                                                 ->  Seq Scan on region  (cost=0.00..5.06 rows=1 width=4)
+                                                                                       Filter: r_name = 'EUROPE'::bpchar
+                                       ->  Hash  (cost=76994.20..76994.20 rows=2459260 width=8)
+                                             ->  Seq Scan on supplier  (cost=0.00..76994.20 rows=2459260 width=8)
+                                 ->  Hash  (cost=28.50..28.50 rows=200 width=30)
+                                       ->  Broadcast Motion 2:2  (slice6)  (cost=0.00..28.50 rows=200 width=30)
+                                             ->  Seq Scan on nation n2  (cost=0.00..24.25 rows=12 width=30)
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(54 rows)
+(51 rows)
 
 --set enable_nestloop=on;
 --
@@ -2380,48 +2369,53 @@ group by
 order by
 	nation,
 	o_year desc;
-                                                                                       QUERY PLAN                                                                                       
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice6)  (cost=9359862.52..9359862.65 rows=4 width=61)
+                                                                                        QUERY PLAN                                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice7)  (cost=74955700.97..74955701.85 rows=27 width=61)
    Merge Key: partial_aggregation.nation, partial_aggregation.unnamed_attr_2
-   ->  GroupAggregate  (cost=9359862.52..9359862.65 rows=2 width=61)
+   ->  GroupAggregate  (cost=74955700.97..74955701.85 rows=14 width=61)
          Group By: nation.n_name, "?column2?"
-         ->  Sort  (cost=9359862.52..9359862.53 rows=2 width=61)
+         ->  Sort  (cost=74955700.97..74955701.04 rows=14 width=61)
                Sort Key: nation.n_name, unnamed_attr_2
-               ->  Redistribute Motion 2:2  (slice5)  (cost=9359862.24..9359862.48 rows=2 width=61)
+               ->  Redistribute Motion 2:2  (slice6)  (cost=74955698.77..74955700.33 rows=14 width=61)
                      Hash Key: nation.n_name, "?column2?"
-                     ->  GroupAggregate  (cost=9359862.24..9359862.40 rows=2 width=61)
+                     ->  GroupAggregate  (cost=74955698.77..74955699.79 rows=14 width=61)
                            Group By: nation.n_name, "?column7?"
-                           ->  Sort  (cost=9359862.24..9359862.25 rows=2 width=61)
+                           ->  Sort  (cost=74955698.77..74955698.84 rows=14 width=61)
                                  Sort Key: nation.n_name, "?column7?"
-                                 ->  Hash Join  (cost=7760574.12..9359862.20 rows=2 width=61)
+                                 ->  Hash Join  (cost=62342266.81..74955698.10 rows=14 width=61)
                                        Hash Cond: orders.o_orderkey = lineitem.l_orderkey
-                                       ->  Seq Scan on orders  (cost=0.00..1364901.00 rows=46877400 width=12)
-                                       ->  Hash  (cost=7760574.07..7760574.07 rows=2 width=65)
-                                             ->  Hash Join  (cost=1184275.32..7760574.07 rows=2 width=65)
-                                                   Hash Cond: part.p_partkey = partsupp.ps_partkey AND lineitem.l_suppkey = supplier.s_suppkey
-                                                   ->  Hash Join  (cost=230523.73..6806105.51 rows=71692 width=43)
-                                                         Hash Cond: lineitem.l_partkey = part.p_partkey
-                                                         ->  Seq Scan on lineitem  (cost=0.00..5630855.08 rows=187511504 width=39)
-                                                         ->  Hash  (cost=225168.07..225168.07 rows=214227 width=4)
-                                                               ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..225168.07 rows=214227 width=4)
-                                                                     ->  Seq Scan on part  (cost=0.00..220615.75 rows=13389 width=4)
-                                                                           Filter: p_name::text ~~ '%seashell%'::text
-                                                   ->  Hash  (cost=953745.46..953745.46 rows=205 width=46)
-                                                         ->  Broadcast Motion 2:2  (slice4)  (cost=53289.10..953745.46 rows=205 width=46)
-                                                               ->  Hash Join  (cost=53289.10..953741.11 rows=13 width=46)
+                                       ->  Seq Scan on orders  (cost=0.00..10774508.24 rows=367784512 width=12)
+                                       ->  Hash  (cost=62342266.46..62342266.46 rows=14 width=65)
+                                             ->  Redistribute Motion 2:2  (slice5)  (cost=54260368.51..62342266.46 rows=14 width=65)
+                                                   Hash Key: lineitem.l_orderkey
+                                                   ->  Hash Join  (cost=54260368.51..62342265.90 rows=14 width=65)
+                                                         Hash Cond: supplier.s_nationkey = nation.n_nationkey
+                                                         ->  Redistribute Motion 2:2  (slice4)  (cost=54260343.95..62342240.92 rows=14 width=43)
+                                                               Hash Key: supplier.s_nationkey
+                                                               ->  Hash Join  (cost=54260343.95..62342240.36 rows=14 width=43)
                                                                      Hash Cond: partsupp.ps_suppkey = supplier.s_suppkey
-                                                                     ->  Seq Scan on partsupp  (cost=0.00..775442.00 rows=25001950 width=16)
-                                                                     ->  Hash  (cost=33289.07..33289.07 rows=800001 width=30)
-                                                                           ->  Broadcast Motion 2:2  (slice3)  (cost=2.52..33289.07 rows=800001 width=30)
-                                                                                 ->  Hash Join  (cost=2.52..16289.04 rows=50000 width=30)
-                                                                                       Hash Cond: supplier.s_nationkey = nation.n_nationkey
-                                                                                       ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=312500 width=8)
-                                                                                       ->  Hash  (cost=1.72..1.72 rows=32 width=30)
-                                                                                             ->  Broadcast Motion 2:2  (slice2)  (cost=0.00..1.72 rows=32 width=30)
-                                                                                                   ->  Seq Scan on nation  (cost=0.00..1.04 rows=2 width=30)
+                                                                     ->  Redistribute Motion 2:2  (slice3)  (cost=54121868.25..62203764.23 rows=16 width=47)
+                                                                           Hash Key: lineitem.l_suppkey
+                                                                           ->  Hash Join  (cost=54121868.25..62203763.60 rows=16 width=47)
+                                                                                 Hash Cond: partsupp.ps_partkey = part.p_partkey AND partsupp.ps_suppkey = lineitem.l_suppkey
+                                                                                 ->  Seq Scan on partsupp  (cost=0.00..6122355.01 rows=195954000 width=16)
+                                                                                 ->  Hash  (cost=54027460.15..54027460.15 rows=3146937 width=43)
+                                                                                       ->  Redistribute Motion 2:2  (slice2)  (cost=1819376.40..54027460.15 rows=3146937 width=43)
+                                                                                             Hash Key: lineitem.l_partkey
+                                                                                             ->  Hash Join  (cost=1819376.40..53901582.68 rows=3146937 width=43)
+                                                                                                   Hash Cond: lineitem.l_partkey = part.p_partkey
+                                                                                                   ->  Seq Scan on lineitem  (cost=0.00..44422937.88 rows=1468914944 width=39)
+                                                                                                   ->  Hash  (cost=1777329.05..1777329.05 rows=1681894 width=4)
+                                                                                                         ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..1777329.05 rows=1681894 width=4)
+                                                                                                               ->  Seq Scan on part  (cost=0.00..1741588.80 rows=105118 width=4)
+                                                                                                                     Filter: p_name::text ~~ '%seashell%'::text
+                                                                     ->  Hash  (cost=76994.20..76994.20 rows=2459260 width=8)
+                                                                           ->  Seq Scan on supplier  (cost=0.00..76994.20 rows=2459260 width=8)
+                                                         ->  Hash  (cost=24.25..24.25 rows=12 width=30)
+                                                               ->  Seq Scan on nation  (cost=0.00..24.25 rows=12 width=30)
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(39 rows)
+(44 rows)
 
 --
 --
@@ -2467,42 +2461,36 @@ group by
 order by
 	revenue desc
 LIMIT 20;
-                                                                                                QUERY PLAN                                                                                                 
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=8984533.66..8984534.11 rows=20 width=187)
-   ->  Gather Motion 2:1  (slice5)  (cost=8984533.66..8984534.11 rows=20 width=187)
+                                                                                       QUERY PLAN                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=90077794.41..90077794.86 rows=20 width=188)
+   ->  Gather Motion 2:1  (slice3)  (cost=90077794.41..90077794.86 rows=20 width=188)
          Merge Key: revenue
-         ->  Limit  (cost=8984533.66..8984533.71 rows=10 width=187)
-               ->  Sort  (cost=8984533.66..8984958.35 rows=84938 width=187)
+         ->  Limit  (cost=90077794.41..90077794.46 rows=10 width=188)
+               ->  Sort  (cost=90077794.41..90145498.77 rows=13540872 width=188)
                      Sort Key (Limit): revenue
-                     ->  HashAggregate  (cost=8967653.08..8969776.52 rows=84938 width=187)
+                     ->  HashAggregate  (cost=76991797.69..77711024.31 rows=13540872 width=188)
                            Group By: customer.c_custkey, customer.c_name, customer.c_acctbal, customer.c_phone, nation.n_name, customer.c_address, customer.c_comment
-                           ->  Redistribute Motion 2:2  (slice4)  (cost=8958309.96..8962556.83 rows=84938 width=187)
-                                 Hash Key: customer.c_custkey, customer.c_name, customer.c_acctbal, customer.c_phone, nation.n_name, customer.c_address, customer.c_comment
-                                 ->  HashAggregate  (cost=8958309.96..8959159.33 rows=84938 width=187)
-                                       Group By: customer.c_custkey, customer.c_name, customer.c_acctbal, customer.c_phone, nation.n_name, customer.c_address, customer.c_comment
-                                       ->  Hash Join  (cost=2152960.95..8954912.44 rows=84938 width=187)
-                                             Hash Cond: lineitem.l_orderkey = orders.o_orderkey
-                                             ->  Seq Scan on lineitem  (cost=0.00..6568412.60 rows=46283090 width=24)
-                                                   Filter: l_returnflag = 'R'::bpchar
-                                             ->  Hash  (cost=2150810.23..2150810.23 rows=86028 width=179)
-                                                   ->  Redistribute Motion 2:2  (slice3)  (cost=1949332.65..2150810.23 rows=86028 width=179)
-                                                         Hash Key: orders.o_orderkey
-                                                         ->  Hash Join  (cost=1949332.65..2147369.09 rows=86028 width=179)
-                                                               Hash Cond: customer.c_nationkey = nation.n_nationkey
-                                                               ->  Hash Join  (cost=1949330.13..2136075.33 rows=537678 width=157)
-                                                                     Hash Cond: customer.c_custkey = orders.o_custkey
-                                                                     ->  Seq Scan on customer  (cost=0.00..149864.60 rows=4687730 width=149)
-                                                                     ->  Hash  (cost=1904847.39..1904847.39 rows=1779310 width=12)
-                                                                           ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..1904847.39 rows=1779310 width=12)
-                                                                                 Hash Key: orders.o_custkey
-                                                                                 ->  Seq Scan on orders  (cost=0.00..1833675.00 rows=1779310 width=12)
-                                                                                       Filter: o_orderdate >= '06-01-1993'::date AND o_orderdate < 'Wed Sep 01 00:00:00 1993'::timestamp without time zone
-                                                               ->  Hash  (cost=1.72..1.72 rows=32 width=30)
-                                                                     ->  Broadcast Motion 2:2  (slice2)  (cost=0.00..1.72 rows=32 width=30)
-                                                                           ->  Seq Scan on nation  (cost=0.00..1.04 rows=2 width=30)
+                           ->  Hash Join  (cost=17325738.21..76204866.69 rows=13540873 width=188)
+                                 Hash Cond: customer.c_nationkey = nation.n_nationkey
+                                 ->  Hash Join  (cost=17325704.71..74783041.55 rows=13540872 width=166)
+                                       Hash Cond: orders.o_custkey = customer.c_custkey
+                                       ->  Redistribute Motion 2:2  (slice1)  (cost=14828951.55..71412693.23 rows=13540872 width=20)
+                                             Hash Key: orders.o_custkey
+                                             ->  Hash Join  (cost=14828951.55..70871058.36 rows=13540872 width=20)
+                                                   Hash Cond: lineitem.l_orderkey = orders.o_orderkey
+                                                   ->  Seq Scan on lineitem  (cost=0.00..51767512.60 rows=359656484 width=24)
+                                                         Filter: l_returnflag = 'R'::bpchar
+                                                   ->  Hash  (cost=14452353.36..14452353.36 rows=13846888 width=12)
+                                                         ->  Seq Scan on orders  (cost=0.00..14452353.36 rows=13846888 width=12)
+                                                               Filter: o_orderdate >= '06-01-1993'::date AND o_orderdate < 'Wed Sep 01 00:00:00 1993'::timestamp without time zone
+                                       ->  Hash  (cost=1183682.96..1183682.96 rows=36737248 width=150)
+                                             ->  Seq Scan on customer  (cost=0.00..1183682.96 rows=36737248 width=150)
+                                 ->  Hash  (cost=28.50..28.50 rows=200 width=30)
+                                       ->  Broadcast Motion 2:2  (slice2)  (cost=0.00..28.50 rows=200 width=30)
+                                             ->  Seq Scan on nation  (cost=0.00..24.25 rows=12 width=30)
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(33 rows)
+(27 rows)
 
 --
 --
@@ -2545,40 +2533,40 @@ order by
 	value desc;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice6)  (cost=1844479.91..1844479.92 rows=4 width=16)
+ Gather Motion 2:1  (slice6)  (cost=19144136.81..19178973.86 rows=13934819 width=16)
    Merge Key: value
-   ->  Sort  (cost=1844479.91..1844479.92 rows=2 width=16)
+   ->  Sort  (cost=19144136.81..19178973.86 rows=6967410 width=16)
          Sort Key: value
          InitPlan  (slice7)
-           ->  Aggregate  (cost=922239.96..922239.98 rows=1 width=12)
-                 ->  Gather Motion 2:1  (slice5)  (cost=922239.76..922239.95 rows=1 width=12)
-                       ->  Aggregate  (cost=922239.76..922239.78 rows=0 width=12)
-                             ->  Hash Join  (cost=21787.95..922239.75 rows=2 width=12)
+           ->  Aggregate  (cost=8005649.55..8005649.56 rows=1 width=12)
+                 ->  Gather Motion 2:1  (slice5)  (cost=8005649.35..8005649.54 rows=1 width=12)
+                       ->  Aggregate  (cost=8005649.35..8005649.37 rows=0 width=12)
+                             ->  Hash Join  (cost=171946.31..7970812.30 rows=6967410 width=12)
                                    Hash Cond: partsupp.ps_suppkey = supplier.s_suppkey
-                                   ->  Seq Scan on partsupp  (cost=0.00..775442.00 rows=25001950 width=16)
-                                   ->  Hash  (cost=16787.94..16787.94 rows=200000 width=4)
-                                         ->  Broadcast Motion 2:2  (slice4)  (cost=1.42..16787.94 rows=200000 width=4)
-                                               ->  Hash Join  (cost=1.42..12537.93 rows=12500 width=4)
+                                   ->  Seq Scan on partsupp  (cost=0.00..6122355.01 rows=195954000 width=16)
+                                   ->  Hash  (cost=132598.15..132598.15 rows=1573926 width=4)
+                                         ->  Broadcast Motion 2:2  (slice4)  (cost=24.68..132598.15 rows=1573926 width=4)
+                                               ->  Hash Join  (cost=24.68..99152.22 rows=98370 width=4)
                                                      Hash Cond: supplier.s_nationkey = nation.n_nationkey
-                                                     ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=312500 width=8)
-                                                     ->  Hash  (cost=1.22..1.22 rows=8 width=4)
-                                                           ->  Broadcast Motion 2:2  (slice3)  (cost=0.00..1.22 rows=8 width=4)
-                                                                 ->  Seq Scan on nation  (cost=0.00..1.05 rows=0 width=4)
+                                                     ->  Seq Scan on supplier  (cost=0.00..76994.20 rows=2459260 width=8)
+                                                     ->  Hash  (cost=24.48..24.48 rows=8 width=4)
+                                                           ->  Broadcast Motion 2:2  (slice3)  (cost=0.00..24.48 rows=8 width=4)
+                                                                 ->  Seq Scan on nation  (cost=0.00..24.31 rows=0 width=4)
                                                                        Filter: n_name = 'INDIA'::bpchar
-         ->  HashAggregate  (cost=922239.78..922239.89 rows=2 width=16)
+         ->  HashAggregate  (cost=8150508.87..8608901.82 rows=6967410 width=16)
                Filter: sum(partsupp.ps_supplycost * partsupp.ps_availqty::numeric) > $0
                Group By: partsupp.ps_partkey
-               ->  Hash Join  (cost=21787.95..922239.75 rows=2 width=16)
+               ->  Hash Join  (cost=171946.31..7970812.30 rows=6967410 width=16)
                      Hash Cond: partsupp.ps_suppkey = supplier.s_suppkey
-                     ->  Seq Scan on partsupp  (cost=0.00..775442.00 rows=25001950 width=20)
-                     ->  Hash  (cost=16787.94..16787.94 rows=200000 width=4)
-                           ->  Broadcast Motion 2:2  (slice2)  (cost=1.42..16787.94 rows=200000 width=4)
-                                 ->  Hash Join  (cost=1.42..12537.93 rows=12500 width=4)
+                     ->  Seq Scan on partsupp  (cost=0.00..6122355.01 rows=195954000 width=20)
+                     ->  Hash  (cost=132598.15..132598.15 rows=1573926 width=4)
+                           ->  Broadcast Motion 2:2  (slice2)  (cost=24.68..132598.15 rows=1573926 width=4)
+                                 ->  Hash Join  (cost=24.68..99152.22 rows=98370 width=4)
                                        Hash Cond: supplier.s_nationkey = nation.n_nationkey
-                                       ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=312500 width=8)
-                                       ->  Hash  (cost=1.22..1.22 rows=8 width=4)
-                                             ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..1.22 rows=8 width=4)
-                                                   ->  Seq Scan on nation  (cost=0.00..1.05 rows=0 width=4)
+                                       ->  Seq Scan on supplier  (cost=0.00..76994.20 rows=2459260 width=8)
+                                       ->  Hash  (cost=24.48..24.48 rows=8 width=4)
+                                             ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..24.48 rows=8 width=4)
+                                                   ->  Seq Scan on nation  (cost=0.00..24.31 rows=0 width=4)
                                                          Filter: n_name = 'INDIA'::bpchar
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (36 rows)
@@ -2625,21 +2613,21 @@ order by
 	l_shipmode;
                                                                                                                                      QUERY PLAN                                                                                                                                     
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2)  (cost=11973533.14..11973533.14 rows=1 width=27)
+ Gather Motion 2:1  (slice2)  (cost=94177104.73..94177104.74 rows=1 width=27)
    Merge Key: partial_aggregation.l_shipmode
-   ->  Sort  (cost=11973533.14..11973533.14 rows=0 width=27)
+   ->  Sort  (cost=94177104.73..94177104.74 rows=0 width=27)
          Sort Key: partial_aggregation.l_shipmode
-         ->  HashAggregate  (cost=11973533.11..11973533.13 rows=0 width=27)
+         ->  HashAggregate  (cost=94177104.71..94177104.72 rows=0 width=27)
                Group By: lineitem.l_shipmode
-               ->  Redistribute Motion 2:2  (slice1)  (cost=11973533.06..11973533.09 rows=0 width=27)
+               ->  Redistribute Motion 2:2  (slice1)  (cost=94177104.66..94177104.69 rows=0 width=27)
                      Hash Key: lineitem.l_shipmode
-                     ->  HashAggregate  (cost=11973533.06..11973533.07 rows=0 width=27)
+                     ->  HashAggregate  (cost=94177104.66..94177104.67 rows=0 width=27)
                            Group By: lineitem.l_shipmode
-                           ->  Hash Join  (cost=10340028.21..11960701.74 rows=855421 width=27)
+                           ->  Hash Join  (cost=81306527.78..94080674.88 rows=6428652 width=27)
                                  Hash Cond: orders.o_orderkey = lineitem.l_orderkey
-                                 ->  Seq Scan on orders  (cost=0.00..1364901.00 rows=46877400 width=24)
-                                 ->  Hash  (cost=10318642.68..10318642.68 rows=855421 width=19)
-                                       ->  Seq Scan on lineitem  (cost=0.00..10318642.68 rows=855421 width=19)
+                                 ->  Seq Scan on orders  (cost=0.00..10774508.24 rows=367784512 width=24)
+                                 ->  Hash  (cost=81145811.48..81145811.48 rows=6428652 width=19)
+                                       ->  Seq Scan on lineitem  (cost=0.00..81145811.48 rows=6428652 width=19)
                                              Filter: (l_shipmode = ANY ('{AIR,MAIL}'::bpchar[])) AND l_commitdate < l_receiptdate AND l_shipdate < l_commitdate AND l_receiptdate >= '01-01-1997'::date AND l_receiptdate < 'Thu Jan 01 00:00:00 1998'::timestamp without time zone
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (17 rows)
@@ -2678,30 +2666,30 @@ order by
 	c_count desc;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice4)  (cost=6402946.20..6402948.70 rows=1000 width=8)
+ Gather Motion 2:1  (slice4)  (cost=62485181.31..62485183.81 rows=1000 width=8)
    Merge Key: custdist, partial_aggregation.c_count
-   ->  Sort  (cost=6402946.20..6402948.70 rows=500 width=8)
+   ->  Sort  (cost=62485181.31..62485183.81 rows=500 width=8)
          Sort Key: custdist, partial_aggregation.c_count
-         ->  HashAggregate  (cost=6402883.87..6402896.37 rows=500 width=8)
+         ->  HashAggregate  (cost=62485118.98..62485131.48 rows=500 width=8)
                Group By: c_orders.c_count
-               ->  Redistribute Motion 2:2  (slice3)  (cost=6402848.87..6402868.87 rows=500 width=8)
+               ->  Redistribute Motion 2:2  (slice3)  (cost=62485083.98..62485103.98 rows=500 width=8)
                      Hash Key: c_orders.c_count
-                     ->  HashAggregate  (cost=6402848.87..6402848.87 rows=500 width=8)
+                     ->  HashAggregate  (cost=62485083.98..62485083.98 rows=500 width=8)
                            Group By: c_orders.c_count
-                           ->  Subquery Scan c_orders  (cost=6121905.52..6355971.57 rows=4687730 width=8)
-                                 ->  HashAggregate  (cost=6121905.52..6262216.97 rows=4687730 width=12)
+                           ->  Subquery Scan c_orders  (cost=60283360.43..62117711.50 rows=36737248 width=8)
+                                 ->  HashAggregate  (cost=60283360.43..61382966.54 rows=36737248 width=12)
                                        Group By: customer.c_custkey
-                                       ->  Redistribute Motion 2:2  (slice2)  (cost=5535091.14..5958155.42 rows=4687730 width=12)
+                                       ->  Redistribute Motion 2:2  (slice2)  (cost=52476943.84..59000068.09 rows=36737248 width=12)
                                              Hash Key: customer.c_custkey
-                                             ->  HashAggregate  (cost=5535091.14..5770646.22 rows=4687730 width=12)
+                                             ->  HashAggregate  (cost=52476943.84..57530578.17 rows=36737248 width=12)
                                                    Group By: customer.c_custkey
-                                                   ->  Hash Left Join  (cost=4747342.20..5393524.37 rows=14156677 width=12)
+                                                   ->  Hash Left Join  (cost=37312021.19..48801408.85 rows=367553498 width=12)
                                                          Hash Cond: customer.c_custkey = orders.o_custkey
-                                                         ->  Seq Scan on customer  (cost=0.00..149864.60 rows=4687730 width=4)
-                                                         ->  Hash  (cost=3473205.66..3473205.66 rows=46847942 width=12)
-                                                               ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..3473205.66 rows=46847942 width=12)
+                                                         ->  Seq Scan on customer  (cost=0.00..1183682.96 rows=36737248 width=4)
+                                                         ->  Hash  (cost=27315570.74..27315570.74 rows=367553498 width=12)
+                                                               ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..27315570.74 rows=367553498 width=12)
                                                                      Hash Key: orders.o_custkey
-                                                                     ->  Seq Scan on orders  (cost=0.00..1599288.00 rows=46847942 width=12)
+                                                                     ->  Seq Scan on orders  (cost=0.00..12613430.80 rows=367553498 width=12)
                                                                            Filter: o_comment::text !~~ '%unusual%deposits%'::text
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (26 rows)
@@ -2733,17 +2721,17 @@ where
 	and l_shipdate < date '1997-08-01' + interval '1 month';
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=7902920.91..7902920.92 rows=1 width=37)
-   ->  Gather Motion 2:1  (slice2)  (cost=7902920.69..7902920.89 rows=1 width=37)
-         ->  Aggregate  (cost=7902920.69..7902920.72 rows=0 width=37)
-               ->  Hash Join  (cost=7666844.55..7898503.43 rows=441725 width=37)
-                     Hash Cond: part.p_partkey = lineitem.l_partkey
-                     ->  Seq Scan on part  (cost=0.00..189365.00 rows=6250150 width=25)
-                     ->  Hash  (cost=7604969.77..7604969.77 rows=2474991 width=20)
-                           ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..7604969.77 rows=2474991 width=20)
-                                 Hash Key: lineitem.l_partkey
-                                 ->  Seq Scan on lineitem  (cost=0.00..7505970.12 rows=2474991 width=20)
-                                       Filter: l_shipdate >= '08-01-1997'::date AND l_shipdate < 'Mon Sep 01 00:00:00 1997'::timestamp without time zone
+ Aggregate  (cost=63693203.44..63693203.46 rows=1 width=37)
+   ->  Gather Motion 2:1  (slice2)  (cost=63693203.23..63693203.42 rows=1 width=37)
+         ->  Aggregate  (cost=63693203.23..63693203.25 rows=0 width=37)
+               ->  Hash Join  (cost=2878653.84..63512025.97 rows=18117726 width=37)
+                     Hash Cond: lineitem.l_partkey = part.p_partkey
+                     ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..59836796.35 rows=18117726 width=20)
+                           Hash Key: lineitem.l_partkey
+                           ->  Seq Scan on lineitem  (cost=0.00..59112087.32 rows=18117726 width=20)
+                                 Filter: l_shipdate >= '08-01-1997'::date AND l_shipdate < 'Mon Sep 01 00:00:00 1997'::timestamp without time zone
+                     ->  Hash  (cost=1496255.04..1496255.04 rows=49066752 width=25)
+                           ->  Seq Scan on part  (cost=0.00..1496255.04 rows=49066752 width=25)
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (12 rows)
 
@@ -2792,36 +2780,36 @@ order by
 	s_suppkey;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice4)  (cost=15244075.34..15244547.87 rows=189012 width=103)
+ Gather Motion 2:1  (slice4)  (cost=119637823.73..119638267.17 rows=177376 width=103)
    Merge Key: supplier.s_suppkey
-   ->  Sort  (cost=15244075.34..15244547.87 rows=94506 width=103)
+   ->  Sort  (cost=119637823.73..119638267.17 rows=88688 width=103)
          Sort Key: supplier.s_suppkey
          InitPlan  (slice5)
-           ->  Aggregate  (cost=7586455.05..7586455.06 rows=1 width=32)
-                 ->  Gather Motion 2:1  (slice3)  (cost=7586454.85..7586455.03 rows=1 width=32)
-                       ->  Aggregate  (cost=7586454.85..7586454.86 rows=0 width=32)
-                             ->  Subquery Scan revenue0  (cost=7584092.19..7586454.85 rows=0 width=32)
-                                   ->  HashAggregate  (cost=7584092.19..7586454.84 rows=94506 width=20)
+           ->  Aggregate  (cost=59634492.32..59634492.33 rows=1 width=32)
+                 ->  Gather Motion 2:1  (slice3)  (cost=59634492.12..59634492.30 rows=1 width=32)
+                       ->  Aggregate  (cost=59634492.12..59634492.13 rows=0 width=32)
+                             ->  Subquery Scan revenue0  (cost=59632274.91..59634492.12 rows=0 width=32)
+                                   ->  HashAggregate  (cost=59632274.91..59634492.11 rows=88688 width=20)
                                          Group By: lineitem.l_suppkey
-                                         ->  Redistribute Motion 2:2  (slice2)  (cost=7576531.71..7581257.01 rows=94506 width=20)
+                                         ->  Redistribute Motion 2:2  (slice2)  (cost=59625179.87..59629614.27 rows=88688 width=20)
                                                Hash Key: lineitem.l_suppkey
-                                               ->  HashAggregate  (cost=7576531.71..7577476.77 rows=94506 width=20)
+                                               ->  HashAggregate  (cost=59625179.87..59626066.75 rows=88688 width=20)
                                                      Group By: lineitem.l_suppkey
-                                                     ->  Seq Scan on lineitem  (cost=0.00..7505970.12 rows=7056159 width=20)
+                                                     ->  Seq Scan on lineitem  (cost=0.00..59112087.32 rows=51309255 width=20)
                                                            Filter: l_shipdate >= '01-01-1993'::date AND l_shipdate < 'Thu Apr 01 00:00:00 1993'::timestamp without time zone
-         ->  Hash Join  (cost=7627405.99..7641055.16 rows=94506 width=103)
+         ->  Hash Join  (cost=59896359.66..59987867.36 rows=88688 width=103)
                Hash Cond: supplier.s_suppkey = revenue0.supplier_no
-               ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=312500 width=71)
-               ->  Hash  (cost=7625043.34..7625043.34 rows=94506 width=36)
-                     ->  Subquery Scan revenue0  (cost=7619845.51..7625043.34 rows=94506 width=36)
-                           ->  HashAggregate  (cost=7619845.51..7623153.22 rows=94506 width=20)
+               ->  Seq Scan on supplier  (cost=0.00..76994.20 rows=2459260 width=71)
+               ->  Hash  (cost=59894142.46..59894142.46 rows=88688 width=36)
+                     ->  Subquery Scan revenue0  (cost=59889264.62..59894142.46 rows=88688 width=36)
+                           ->  HashAggregate  (cost=59889264.62..59892368.70 rows=88688 width=20)
                                  Filter: sum(partial_aggregation.unnamed_attr_2) = $0
                                  Group By: lineitem.l_suppkey
-                                 ->  Redistribute Motion 2:2  (slice1)  (cost=7611812.50..7616537.80 rows=94506 width=20)
+                                 ->  Redistribute Motion 2:2  (slice1)  (cost=59881726.14..59886160.54 rows=88688 width=20)
                                        Hash Key: lineitem.l_suppkey
-                                       ->  HashAggregate  (cost=7611812.50..7612757.56 rows=94506 width=20)
+                                       ->  HashAggregate  (cost=59881726.14..59882613.02 rows=88688 width=20)
                                              Group By: lineitem.l_suppkey
-                                             ->  Seq Scan on lineitem  (cost=0.00..7505970.12 rows=7056159 width=20)
+                                             ->  Seq Scan on lineitem  (cost=0.00..59112087.32 rows=51309255 width=20)
                                                    Filter: l_shipdate >= '01-01-1993'::date AND l_shipdate < 'Thu Apr 01 00:00:00 1993'::timestamp without time zone
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (32 rows)
@@ -2864,30 +2852,30 @@ order by
 	p_size;
                                                                                              QUERY PLAN                                                                                             
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice3)  (cost=2191131.90..2191194.52 rows=25049 width=40)
+ Gather Motion 2:1  (slice3)  (cost=18064932.63..18064995.51 rows=25150 width=40)
    Merge Key: supplier_cnt, partial_aggregation.p_brand, partial_aggregation.p_type, partial_aggregation.p_size
-   ->  Sort  (cost=2191131.90..2191194.52 rows=12524 width=40)
+   ->  Sort  (cost=18064932.63..18064995.51 rows=12575 width=40)
          Sort Key: supplier_cnt, partial_aggregation.p_brand, partial_aggregation.p_type, partial_aggregation.p_size
-         ->  HashAggregate  (cost=2188988.64..2189301.76 rows=12524 width=40)
+         ->  HashAggregate  (cost=18062780.01..18063094.39 rows=12575 width=40)
                Group By: partial_aggregation.p_brand, partial_aggregation.p_type, partial_aggregation.p_size
-               ->  HashAggregate  (cost=1949700.58..2055383.96 rows=3340117 width=40)
+               ->  HashAggregate  (cost=16179838.97..17011454.15 rows=26283146 width=40)
                      Group By: part.p_brand, part.p_type, part.p_size, partsupp.ps_suppkey
-                     ->  Redistribute Motion 2:2  (slice2)  (cost=1560107.24..1777214.85 rows=3340117 width=40)
+                     ->  Redistribute Motion 2:2  (slice2)  (cost=13114156.33..14822560.86 rows=26283146 width=40)
                            Hash Key: part.p_brand, part.p_type, part.p_size
-                           ->  HashAggregate  (cost=1560107.24..1643610.17 rows=3340117 width=40)
+                           ->  HashAggregate  (cost=13114156.33..13771235.00 rows=26283146 width=40)
                                  Group By: part.p_brand, part.p_type, part.p_size, partsupp.ps_suppkey
-                                 ->  Hash Left Join  (cost=409146.71..1476604.32 rows=3340117 width=40)
+                                 ->  Hash Left Join  (cost=3248702.36..12457077.66 rows=26283147 width=40)
                                        Hash Cond: partsupp.ps_suppkey = supplier.s_suppkey
                                        Filter: supplier.s_suppkey IS NULL
-                                       ->  Hash Join  (cost=397744.10..1381698.78 rows=3340117 width=40)
+                                       ->  Hash Join  (cost=3158498.68..11708857.42 rows=26283149 width=40)
                                              Hash Cond: partsupp.ps_partkey = part.p_partkey
-                                             ->  Seq Scan on partsupp  (cost=0.00..775442.00 rows=25001950 width=8)
-                                             ->  Hash  (cost=376869.50..376869.50 rows=834984 width=40)
-                                                   ->  Seq Scan on part  (cost=0.00..376869.50 rows=834984 width=40)
+                                             ->  Seq Scan on partsupp  (cost=0.00..6122355.01 rows=195954000 width=8)
+                                             ->  Hash  (cost=2968257.60..2968257.60 rows=6581283 width=40)
+                                                   ->  Seq Scan on part  (cost=0.00..2968257.60 rows=6581283 width=40)
                                                          Filter: p_brand <> 'Brand#15'::bpchar AND p_type::text !~~ 'LARGE BRUSHED%'::text AND (p_size = ANY ('{4,41,17,9,15,2,25,34}'::integer[]))
-                                       ->  Hash  (cost=11339.85..11339.85 rows=2510 width=4)
-                                             ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..11339.85 rows=2510 width=4)
-                                                   ->  Seq Scan on supplier  (cost=0.00..11286.51 rows=157 width=4)
+                                       ->  Hash  (cost=89710.07..89710.07 rows=19745 width=4)
+                                             ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..89710.07 rows=19745 width=4)
+                                                   ->  Seq Scan on supplier  (cost=0.00..89290.50 rows=1234 width=4)
                                                          Filter: s_comment::text ~~ '%Customer%Complaints%'::text
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (26 rows)
@@ -2927,27 +2915,27 @@ where
 and l_quantity < x_avg_20;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=13397484.32..13397484.33 rows=1 width=10)
-   ->  Gather Motion 2:1  (slice4)  (cost=13397484.12..13397484.30 rows=1 width=10)
-         ->  Aggregate  (cost=13397484.12..13397484.13 rows=0 width=10)
-               ->  Hash Join  (cost=6829070.74..13397484.05 rows=14 width=10)
+ Aggregate  (cost=105729713.93..105729713.94 rows=1 width=10)
+   ->  Gather Motion 2:1  (slice4)  (cost=105729713.74..105729713.92 rows=1 width=10)
+         ->  Aggregate  (cost=105729713.74..105729713.75 rows=0 width=10)
+               ->  Hash Join  (cost=53962196.41..105729713.66 rows=16 width=10)
                      Hash Cond: tpch500gb.lineitem.l_partkey = x.x_partkey
                      Join Filter: tpch500gb.lineitem.l_quantity < x.x_avg_20
-                     ->  Seq Scan on lineitem  (cost=0.00..5630855.08 rows=187511504 width=21)
-                     ->  Hash  (cost=6829070.54..6829070.54 rows=8 width=36)
-                           ->  Broadcast Motion 2:2  (slice3)  (cost=6828885.78..6829070.54 rows=8 width=36)
-                                 ->  HashAggregate  (cost=6828885.78..6829070.36 rows=6152 width=11)
+                     ->  Seq Scan on lineitem  (cost=0.00..44422937.88 rows=1468914944 width=21)
+                     ->  Hash  (cost=53962196.21..53962196.21 rows=8 width=36)
+                           ->  Broadcast Motion 2:2  (slice3)  (cost=53960687.99..53962196.21 rows=8 width=36)
+                                 ->  HashAggregate  (cost=53960687.99..53962196.03 rows=50268 width=11)
                                        Group By: part.p_partkey
-                                       ->  Redistribute Motion 2:2  (slice2)  (cost=6828455.11..6828701.21 rows=6152 width=11)
+                                       ->  Redistribute Motion 2:2  (slice2)  (cost=53957169.23..53959179.95 rows=50268 width=11)
                                              Hash Key: part.p_partkey
-                                             ->  HashAggregate  (cost=6828455.11..6828455.11 rows=6152 width=11)
+                                             ->  HashAggregate  (cost=53957169.23..53957169.23 rows=50268 width=11)
                                                    Group By: part.p_partkey
-                                                   ->  Hash Join  (cost=256419.01..6828125.70 rows=32941 width=11)
+                                                   ->  Hash Join  (cost=2024120.75..53942120.51 rows=1504872 width=11)
                                                          Hash Cond: tpch500gb.lineitem.l_partkey = part.p_partkey
-                                                         ->  Seq Scan on lineitem  (cost=0.00..5630855.08 rows=187511504 width=11)
-                                                         ->  Hash  (cost=253958.19..253958.19 rows=98433 width=4)
-                                                               ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..253958.19 rows=98433 width=4)
-                                                                     ->  Seq Scan on part  (cost=0.00..251866.50 rows=6152 width=4)
+                                                         ->  Seq Scan on lineitem  (cost=0.00..44422937.88 rows=1468914944 width=11)
+                                                         ->  Hash  (cost=2004013.62..2004013.62 rows=804285 width=4)
+                                                               ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..2004013.62 rows=804285 width=4)
+                                                                     ->  Seq Scan on part  (cost=0.00..1986922.56 rows=50268 width=4)
                                                                            Filter: p_brand = 'Brand#54'::bpchar AND p_container = 'SM CAN'::bpchar
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (23 rows)
@@ -2999,34 +2987,34 @@ order by
 LIMIT 100;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=16283459.72..16283464.72 rows=100 width=52)
-   ->  Gather Motion 2:1  (slice3)  (cost=16283459.72..16283464.72 rows=100 width=52)
+ Limit  (cost=511970870.17..511970875.17 rows=100 width=52)
+   ->  Gather Motion 2:1  (slice3)  (cost=511970870.17..511970875.17 rows=100 width=52)
          Merge Key: orders.o_totalprice, orders.o_orderdate, customer.c_name, customer.c_custkey, orders.o_orderkey
-         ->  Limit  (cost=16283459.72..16283462.72 rows=50 width=52)
-               ->  GroupAggregate  (cost=16283459.72..16338229.71 rows=912833 width=52)
+         ->  Limit  (cost=511970870.17..511970873.17 rows=50 width=52)
+               ->  GroupAggregate  (cost=511970870.17..545892492.08 rows=565360365 width=52)
                      Group By: orders.o_totalprice, orders.o_orderdate, customer.c_name, customer.c_custkey, orders.o_orderkey
-                     ->  Sort  (cost=16283459.72..16288023.89 rows=912833 width=52)
+                     ->  Sort  (cost=511970870.17..514797672.00 rows=565360365 width=52)
                            Sort Key: orders.o_totalprice, orders.o_orderdate, customer.c_name, customer.c_custkey, orders.o_orderkey
-                           ->  Hash Join  (cost=9502357.06..16093590.49 rows=912833 width=52)
+                           ->  Hash Join  (cost=133116002.50..206881144.22 rows=565360365 width=52)
                                  Hash Cond: tpch500gb.lineitem.l_orderkey = orders.o_orderkey
-                                 ->  Seq Scan on lineitem  (cost=0.00..5630855.08 rows=187511504 width=15)
-                                 ->  Hash  (cost=9496651.91..9496651.91 rows=228206 width=53)
-                                       ->  Redistribute Motion 2:2  (slice2)  (cost=7829667.22..9496651.91 rows=228206 width=53)
+                                 ->  Seq Scan on lineitem  (cost=0.00..44422937.88 rows=1468914944 width=15)
+                                 ->  Hash  (cost=128885970.50..128885970.50 rows=141554000 width=53)
+                                       ->  Redistribute Motion 2:2  (slice2)  (cost=93407303.70..128885970.50 rows=141554000 width=53)
                                              Hash Key: orders.o_orderkey
-                                             ->  Hash Join  (cost=7829667.22..9487523.67 rows=228206 width=53)
+                                             ->  Hash Join  (cost=93407303.70..123223810.50 rows=141554000 width=53)
                                                    Hash Cond: orders.o_custkey = customer.c_custkey
-                                                   ->  Redistribute Motion 2:2  (slice1)  (cost=7562609.37..9210984.72 rows=755190 width=34)
+                                                   ->  Redistribute Motion 2:2  (slice1)  (cost=91197560.54..115623044.34 rows=141554000 width=34)
                                                          Hash Key: orders.o_custkey
-                                                         ->  Hash Join  (cost=7562609.37..9180777.12 rows=755190 width=34)
+                                                         ->  Hash Join  (cost=91197560.54..109960884.34 rows=141554000 width=34)
                                                                Hash Cond: orders.o_orderkey = "IN_subquery".l_orderkey
-                                                               ->  Seq Scan on orders  (cost=0.00..1364901.00 rows=46877400 width=26)
-                                                               ->  Hash  (cost=7543729.62..7543729.62 rows=755190 width=8)
-                                                                     ->  HashAggregate  (cost=7505970.12..7528625.82 rows=755190 width=15)
+                                                               ->  Seq Scan on orders  (cost=0.00..10774508.24 rows=367784512 width=26)
+                                                               ->  Hash  (cost=87382237.54..87382237.54 rows=141554000 width=8)
+                                                                     ->  HashAggregate  (cost=69708312.43..84551157.54 rows=141554000 width=15)
                                                                            Filter: sum(tpch500gb.lineitem.l_quantity) > 314::numeric
                                                                            Group By: tpch500gb.lineitem.l_orderkey
-                                                                           ->  Seq Scan on lineitem  (cost=0.00..5630855.08 rows=187511504 width=15)
-                                                   ->  Hash  (cost=149864.60..149864.60 rows=4687730 width=23)
-                                                         ->  Seq Scan on customer  (cost=0.00..149864.60 rows=4687730 width=23)
+                                                                           ->  Seq Scan on lineitem  (cost=0.00..44422937.88 rows=1468914944 width=15)
+                                                   ->  Hash  (cost=1183682.96..1183682.96 rows=36737248 width=23)
+                                                         ->  Seq Scan on customer  (cost=0.00..1183682.96 rows=36737248 width=23)
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (29 rows)
 
@@ -3079,18 +3067,18 @@ where
 	);
                                                                                                                                                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                                                                                                                                                        
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=8390647.46..8390647.47 rows=1 width=16)
-   ->  Gather Motion 2:1  (slice2)  (cost=8390647.26..8390647.45 rows=1 width=16)
-         ->  Aggregate  (cost=8390647.26..8390647.28 rows=0 width=16)
-               ->  Hash Join  (cost=398214.87..8390644.64 rows=525 width=16)
+ Aggregate  (cost=70109084.82..70109084.83 rows=1 width=16)
+   ->  Gather Motion 2:1  (slice2)  (cost=70109084.62..70109084.81 rows=1 width=16)
+         ->  Aggregate  (cost=70109084.62..70109084.64 rows=0 width=16)
+               ->  Hash Join  (cost=3135899.13..70108968.54 rows=23215 width=16)
                      Hash Cond: lineitem.l_partkey = part.p_partkey
                      Join Filter: (part.p_brand = 'Brand#11'::bpchar AND (part.p_container = ANY ('{"SM CASE","SM BOX","SM PACK","SM PKG"}'::bpchar[])) AND lineitem.l_quantity >= 9::numeric AND lineitem.l_quantity <= 19::numeric AND part.p_size <= 5) OR (part.p_brand = 'Brand#51'::bpchar AND (part.p_container = ANY ('{"MED BAG","MED BOX","MED PKG","MED PACK"}'::bpchar[])) AND lineitem.l_quantity >= 10::numeric AND lineitem.l_quantity <= 20::numeric AND part.p_size <= 10) OR (part.p_brand = 'Brand#23'::bpchar AND (part.p_container = ANY ('{"LG CASE","LG BOX","LG PACK","LG PKG"}'::bpchar[])) AND lineitem.l_quantity >= 22::numeric AND lineitem.l_quantity <= 32::numeric AND part.p_size <= 15)
-                     ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..7778344.91 rows=6809370 width=27)
+                     ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..61214767.57 rows=52567006 width=27)
                            Hash Key: lineitem.l_partkey
-                           ->  Seq Scan on lineitem  (cost=0.00..7505970.12 rows=6809370 width=27)
+                           ->  Seq Scan on lineitem  (cost=0.00..59112087.32 rows=52567006 width=27)
                                  Filter: (l_shipmode = ANY ('{AIR,"AIR REG"}'::bpchar[])) AND l_shipinstruct = 'DELIVER IN PERSON'::bpchar
-                     ->  Hash  (cost=220615.75..220615.75 rows=6249525 width=30)
-                           ->  Seq Scan on part  (cost=0.00..220615.75 rows=6249525 width=30)
+                     ->  Hash  (cost=1741588.80..1741588.80 rows=49064373 width=30)
+                           ->  Seq Scan on part  (cost=0.00..1741588.80 rows=49064373 width=30)
                                  Filter: p_size >= 1
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (14 rows)
@@ -3140,52 +3128,49 @@ order by
 	s_name;
                                                                                          QUERY PLAN                                                                                          
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice7)  (cost=10282076.06..10282076.07 rows=5 width=71)
+ Gather Motion 2:1  (slice6)  (cost=77400805.96..77400805.97 rows=5 width=71)
    Merge Key: supplier.s_name
-   ->  Sort  (cost=10282076.06..10282076.07 rows=2 width=71)
+   ->  Sort  (cost=77400805.96..77400805.97 rows=2 width=71)
          Sort Key: supplier.s_name
-         ->  HashAggregate  (cost=10282075.97..10282076.01 rows=2 width=71)
+         ->  HashAggregate  (cost=77400805.86..77400805.90 rows=2 width=71)
                Group By: supplier.ctid::bigint, nation.ctid::bigint, supplier.gp_segment_id, nation.gp_segment_id
-               ->  Result  (cost=9381623.85..10282075.92 rows=2 width=71)
-                     ->  Redistribute Motion 2:2  (slice6)  (cost=9381623.85..10282075.92 rows=2 width=71)
+               ->  Result  (cost=70225197.90..77400805.82 rows=2 width=71)
+                     ->  Redistribute Motion 2:2  (slice5)  (cost=70225197.90..77400805.82 rows=2 width=71)
                            Hash Key: supplier.ctid, nation.ctid
-                           ->  Hash EXISTS Join  (cost=9381623.85..10282075.83 rows=2 width=71)
-                                 Hash Cond: partsupp.ps_partkey = g.l_partkey AND partsupp.ps_suppkey = g.l_suppkey
+                           ->  Hash Join  (cost=70225197.90..77400805.72 rows=2 width=71)
+                                 Hash Cond: partsupp.ps_suppkey = supplier.s_suppkey AND partsupp.ps_partkey = g.l_partkey
                                  Join Filter: partsupp.ps_availqty::numeric > (0.5 * g.qty_sum)
-                                 ->  Redistribute Motion 2:2  (slice3)  (cost=21787.95..922239.84 rows=2 width=87)
-                                       Hash Key: partsupp.ps_partkey, supplier.s_suppkey
-                                       ->  Hash Join  (cost=21787.95..922239.75 rows=2 width=87)
-                                             Hash Cond: partsupp.ps_suppkey = supplier.s_suppkey
-                                             ->  Seq Scan on partsupp  (cost=0.00..775442.00 rows=25001950 width=12)
-                                             ->  Hash  (cost=16787.94..16787.94 rows=200000 width=75)
-                                                   ->  Broadcast Motion 2:2  (slice2)  (cost=1.42..16787.94 rows=200000 width=75)
-                                                         ->  Hash Join  (cost=1.42..12537.93 rows=12500 width=75)
-                                                               Hash Cond: supplier.s_nationkey = nation.n_nationkey
-                                                               ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=312500 width=69)
-                                                               ->  Hash  (cost=1.22..1.22 rows=8 width=14)
-                                                                     ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..1.22 rows=8 width=14)
-                                                                           ->  Seq Scan on nation  (cost=0.00..1.05 rows=0 width=14)
-                                                                                 Filter: n_name = 'ALGERIA'::bpchar
-                                 ->  Hash  (cost=9353395.61..9353395.61 rows=214676 width=44)
-                                       ->  Hash Join  (cost=9044351.42..9353395.61 rows=214676 width=44)
-                                             Hash Cond: g.l_partkey = part.p_partkey
-                                             ->  Subquery Scan g  (cost=8801236.60..9078077.60 rows=5367258 width=40)
-                                                   ->  HashAggregate  (cost=8801236.60..8970732.43 rows=5367258 width=15)
+                                 ->  Redistribute Motion 2:2  (slice1)  (cost=1747722.14..8913532.21 rows=979770 width=16)
+                                       Hash Key: partsupp.ps_partkey, partsupp.ps_suppkey
+                                       ->  Hash Join  (cost=1747722.14..8874341.41 rows=979770 width=16)
+                                             Hash Cond: partsupp.ps_partkey = part.p_partkey
+                                             ->  Seq Scan on partsupp  (cost=0.00..6122355.01 rows=195954000 width=12)
+                                             ->  Hash  (cost=1741588.80..1741588.80 rows=245334 width=4)
+                                                   ->  Seq Scan on part  (cost=0.00..1741588.80 rows=245334 width=4)
+                                                         Filter: p_name::text ~~ 'burnished%'::text
+                                 ->  Hash  (cost=68451870.80..68451870.80 rows=853498 width=115)
+                                       ->  Hash Join  (cost=67159255.99..68451870.80 rows=853498 width=115)
+                                             Hash Cond: g.l_suppkey = supplier.s_suppkey
+                                             ->  Subquery Scan g  (cost=66987309.69..68087887.33 rows=21337464 width=40)
+                                                   ->  HashAggregate  (cost=66987309.69..67661138.05 rows=21337464 width=15)
                                                          Group By: lineitem.l_partkey, lineitem.l_suppkey
-                                                         ->  Redistribute Motion 2:2  (slice4)  (cost=7937052.12..8578068.20 rows=5367258 width=15)
+                                                         ->  Redistribute Motion 2:2  (slice2)  (cost=62312706.87..66100106.68 rows=21337464 width=15)
                                                                Hash Key: lineitem.l_partkey, lineitem.l_suppkey
-                                                               ->  HashAggregate  (cost=7937052.12..8363377.86 rows=5367258 width=15)
+                                                               ->  HashAggregate  (cost=62312706.87..65246608.12 rows=21337464 width=15)
                                                                      Group By: lineitem.l_partkey, lineitem.l_suppkey
-                                                                     ->  Seq Scan on lineitem  (cost=0.00..7505970.12 rows=28738800 width=15)
+                                                                     ->  Seq Scan on lineitem  (cost=0.00..59112087.32 rows=213374637 width=15)
                                                                            Filter: l_shipdate >= '01-01-1997'::date AND l_shipdate < 'Thu Jan 01 00:00:00 1998'::timestamp without time zone
-                                             ->  Hash  (cost=236865.08..236865.08 rows=249990 width=4)
-                                                   ->  Broadcast Motion 2:2  (slice5)  (cost=221865.70..236865.08 rows=249990 width=4)
-                                                         ->  HashAggregate  (cost=221865.70..226865.49 rows=249990 width=4)
-                                                               Group By: part.p_partkey
-                                                               ->  Seq Scan on part  (cost=0.00..220615.75 rows=249990 width=4)
-                                                                     Filter: p_name::text ~~ 'burnished%'::text
+                                             ->  Hash  (cost=132598.15..132598.15 rows=1573926 width=75)
+                                                   ->  Broadcast Motion 2:2  (slice4)  (cost=24.68..132598.15 rows=1573926 width=75)
+                                                         ->  Hash Join  (cost=24.68..99152.22 rows=98370 width=75)
+                                                               Hash Cond: supplier.s_nationkey = nation.n_nationkey
+                                                               ->  Seq Scan on supplier  (cost=0.00..76994.20 rows=2459260 width=69)
+                                                               ->  Hash  (cost=24.48..24.48 rows=8 width=14)
+                                                                     ->  Broadcast Motion 2:2  (slice3)  (cost=0.00..24.48 rows=8 width=14)
+                                                                           ->  Seq Scan on nation  (cost=0.00..24.31 rows=0 width=14)
+                                                                                 Filter: n_name = 'ALGERIA'::bpchar
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(45 rows)
+(42 rows)
 
 --
 --
@@ -3235,56 +3220,53 @@ order by
 LIMIT 100;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=463790642.70..463790644.95 rows=100 width=38)
-   ->  Gather Motion 2:1  (slice4)  (cost=463790642.70..463790644.95 rows=100 width=38)
+ Limit  (cost=1231311769.40..1231311771.65 rows=100 width=38)
+   ->  Gather Motion 2:1  (slice4)  (cost=1231311769.40..1231311771.65 rows=100 width=38)
          Merge Key: numwait, partial_aggregation.s_name
-         ->  Limit  (cost=463790642.70..463790642.95 rows=50 width=38)
-               ->  Sort  (cost=463790642.70..463792205.20 rows=312500 width=38)
+         ->  Limit  (cost=1231311769.40..1231311769.65 rows=50 width=38)
+               ->  Sort  (cost=1231311769.40..1231324065.70 rows=2459260 width=38)
                      Sort Key (Limit): numwait, partial_aggregation.s_name
-                     ->  HashAggregate  (cost=463722662.90..463730475.42 rows=312500 width=38)
+                     ->  HashAggregate  (cost=1230703599.50..1230765081.00 rows=2459260 width=38)
                            Group By: partial_aggregation.s_name
-                           ->  HashAggregate  (cost=390668373.02..431510408.20 rows=1073741824 width=38)
+                           ->  HashAggregate  (cost=1157649309.62..1198491344.80 rows=1073741824 width=38)
                                  Group By: supplier.s_name, "?column2?"
-                                 ->  Redistribute Motion 2:2  (slice3)  (cost=212522056.29..339088919.60 rows=1073741824 width=38)
+                                 ->  Redistribute Motion 2:2  (slice3)  (cost=878325052.44..1106069856.20 rows=1073741824 width=38)
                                        Hash Key: supplier.s_name
-                                       ->  HashAggregate  (cost=212522056.29..296139246.66 rows=1073741824 width=38)
+                                       ->  HashAggregate  (cost=878325052.44..1063120183.26 rows=1073741824 width=38)
                                              Group By: supplier.s_name, l1.l_orderkey::text || l1.l_linenumber::text
-                                             ->  Merge Join  (cost=80021361.48..147614908.02 rows=4327143218 width=38)
-                                                   Merge Cond: l1.l_orderkey = orders.o_orderkey
+                                             ->  Hash Join  (cost=163890284.11..692004375.64 rows=12421378454 width=38)
+                                                   Hash Cond: orders.o_orderkey = l1.l_orderkey
                                                    Join Filter: l2.l_suppkey <> l1.l_suppkey
-                                                   ->  Sort  (cost=30635984.35..30788194.89 rows=30442108 width=42)
-                                                         Sort Key: l1.l_orderkey
-                                                         ->  Hash Left Join  (cost=8290134.42..16256917.07 rows=30442108 width=42)
+                                                   ->  Hash Join  (cost=17443046.76..93907220.62 rows=715659770 width=20)
+                                                         Hash Cond: l2.l_orderkey = orders.o_orderkey
+                                                         ->  Seq Scan on lineitem l2  (cost=0.00..44422937.88 rows=1468914944 width=12)
+                                                               Filter: l_orderkey IS NOT NULL
+                                                         ->  Hash  (cost=12613430.80..12613430.80 rows=179185718 width=8)
+                                                               ->  Seq Scan on orders  (cost=0.00..12613430.80 rows=179185718 width=8)
+                                                                     Filter: o_orderstatus = 'F'::bpchar AND o_orderkey IS NOT NULL
+                                                   ->  Hash  (cost=134742789.15..134742789.15 rows=401519408 width=42)
+                                                         ->  Hash Left Join  (cost=65256282.77..134742789.15 rows=401519408 width=42)
                                                                Hash Cond: l1.l_orderkey = l3.l_orderkey
                                                                Join Filter: l3.l_suppkey <> l1.l_suppkey
                                                                Filter: l3.l_orderkey IS NULL
-                                                               ->  Hash Join  (cost=21787.95..6933829.64 rows=311099 width=42)
+                                                               ->  Hash Join  (cost=171946.31..56284681.82 rows=18970313 width=42)
                                                                      Hash Cond: l1.l_suppkey = supplier.s_suppkey
-                                                                     ->  Seq Scan on lineitem l1  (cost=0.00..6568412.60 rows=62503835 width=16)
+                                                                     ->  Seq Scan on lineitem l1  (cost=0.00..51767512.60 rows=489638315 width=16)
                                                                            Filter: l_receiptdate > l_commitdate AND l_orderkey IS NOT NULL
-                                                                     ->  Hash  (cost=16787.94..16787.94 rows=200000 width=30)
-                                                                           ->  Broadcast Motion 2:2  (slice2)  (cost=1.42..16787.94 rows=200000 width=30)
-                                                                                 ->  Hash Join  (cost=1.42..12537.93 rows=12500 width=30)
+                                                                     ->  Hash  (cost=132598.15..132598.15 rows=1573926 width=30)
+                                                                           ->  Broadcast Motion 2:2  (slice2)  (cost=24.68..132598.15 rows=1573926 width=30)
+                                                                                 ->  Hash Join  (cost=24.68..99152.22 rows=98370 width=30)
                                                                                        Hash Cond: supplier.s_nationkey = nation.n_nationkey
-                                                                                       ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=312500 width=34)
-                                                                                       ->  Hash  (cost=1.22..1.22 rows=8 width=4)
-                                                                                             ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..1.22 rows=8 width=4)
-                                                                                                   ->  Seq Scan on nation  (cost=0.00..1.05 rows=0 width=4)
+                                                                                       ->  Seq Scan on supplier  (cost=0.00..76994.20 rows=2459260 width=34)
+                                                                                       ->  Hash  (cost=24.48..24.48 rows=8 width=4)
+                                                                                             ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..24.48 rows=8 width=4)
+                                                                                                   ->  Seq Scan on nation  (cost=0.00..24.31 rows=0 width=4)
                                                                                                          Filter: n_name = 'SAUDI ARABIA'::bpchar
-                                                               ->  Hash  (cost=6568412.60..6568412.60 rows=62503835 width=12)
-                                                                     ->  Seq Scan on lineitem l3  (cost=0.00..6568412.60 rows=62503835 width=12)
+                                                               ->  Hash  (cost=51767512.60..51767512.60 rows=489638315 width=12)
+                                                                     ->  Seq Scan on lineitem l3  (cost=0.00..51767512.60 rows=489638315 width=12)
                                                                            Filter: l_receiptdate > l_commitdate
-                                                   ->  Sort  (cost=49385377.13..49839347.18 rows=90794009 width=20)
-                                                         Sort Key: l2.l_orderkey
-                                                         ->  Hash Join  (cost=2211077.80..11917699.63 rows=90794009 width=20)
-                                                               Hash Cond: l2.l_orderkey = orders.o_orderkey
-                                                               ->  Seq Scan on lineitem l2  (cost=0.00..5630855.08 rows=187511504 width=12)
-                                                                     Filter: l_orderkey IS NOT NULL
-                                                               ->  Hash  (cost=1599288.00..1599288.00 rows=22698272 width=8)
-                                                                     ->  Seq Scan on orders  (cost=0.00..1599288.00 rows=22698272 width=8)
-                                                                           Filter: o_orderstatus = 'F'::bpchar AND o_orderkey IS NOT NULL
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(49 rows)
+(46 rows)
 
 --
 --
@@ -3331,31 +3313,31 @@ order by
 	cntrycode;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice4)  (cost=5181329.60..5181384.00 rows=21758 width=24)
+ Gather Motion 2:1  (slice4)  (cost=40762474.71..40762902.03 rows=170928 width=24)
    Merge Key: partial_aggregation.unnamed_attr_1
-   ->  Sort  (cost=5181329.60..5181384.00 rows=10879 width=24)
+   ->  Sort  (cost=40762474.71..40762902.03 rows=85464 width=24)
          Sort Key: partial_aggregation.unnamed_attr_1
          InitPlan  (slice5)
-           ->  Aggregate  (cost=302364.87..302364.88 rows=1 width=8)
-                 ->  Gather Motion 2:1  (slice3)  (cost=302364.67..302364.85 rows=1 width=8)
-                       ->  Aggregate  (cost=302364.67..302364.68 rows=0 width=8)
-                             ->  Seq Scan on customer  (cost=0.00..302215.83 rows=29769 width=8)
+           ->  Aggregate  (cost=2378818.07..2378818.08 rows=1 width=8)
+                 ->  Gather Motion 2:1  (slice3)  (cost=2378817.87..2378818.05 rows=1 width=8)
+                       ->  Aggregate  (cost=2378817.87..2378817.88 rows=0 width=8)
+                             ->  Seq Scan on customer  (cost=0.00..2377643.52 rows=234870 width=8)
                                    Filter: c_acctbal > 0.00 AND ("substring"(c_phone::text, 1, 2) = ANY ('{10,28,11,15,18,16,19}'::text[]))
-         ->  HashAggregate  (cost=4877070.77..4877397.14 rows=10879 width=24)
+         ->  HashAggregate  (cost=38366236.48..38368800.40 rows=85464 width=24)
                Group By: "?column1?"
-               ->  Redistribute Motion 2:2  (slice2)  (cost=4876146.05..4876690.00 rows=10879 width=24)
+               ->  Redistribute Motion 2:2  (slice2)  (cost=38358972.04..38363245.24 rows=85464 width=24)
                      Hash Key: unnamed_attr_1
-                     ->  HashAggregate  (cost=4876146.05..4876254.84 rows=10879 width=24)
+                     ->  HashAggregate  (cost=38358972.04..38359826.68 rows=85464 width=24)
                            Group By: "substring"(customer.c_phone::text, 1, 2)
-                           ->  Hash Left Join  (cost=4492045.00..4875651.74 rows=32954 width=24)
+                           ->  Hash Left Join  (cost=35309039.52..38346138.14 rows=855594 width=24)
                                  Hash Cond: customer.c_custkey = orders.o_custkey
                                  Filter: orders.o_custkey IS NULL
-                                 ->  Seq Scan on customer  (cost=0.00..302215.83 rows=10905 width=28)
+                                 ->  Seq Scan on customer  (cost=0.00..2377643.52 rows=85464 width=28)
                                        Filter: ("substring"(c_phone::text, 1, 2) = ANY ('{10,28,11,15,18,16,19}'::text[])) AND c_acctbal > $0
-                                 ->  Hash  (cost=3239997.00..3239997.00 rows=46877400 width=4)
-                                       ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..3239997.00 rows=46877400 width=4)
+                                 ->  Hash  (cost=25485888.72..25485888.72 rows=367784512 width=4)
+                                       ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..25485888.72 rows=367784512 width=4)
                                              Hash Key: orders.o_custkey
-                                             ->  Seq Scan on orders  (cost=0.00..1364901.00 rows=46877400 width=4)
+                                             ->  Seq Scan on orders  (cost=0.00..10774508.24 rows=367784512 width=4)
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
 (26 rows)
 
