@@ -492,7 +492,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	{
 		PGresult   *result;
 		int			i,
-					j;
+			j;
 		int			whichagent = 0;
 		GpSegmentConnectionResponse *gresp;
 		GpSegmentConnectionInfoSet *conninfo;
@@ -587,7 +587,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			{
 				elog(LOG, "DA %d: Gang_id %d Result %d MotionListener %d/%d  pid %d", whichagent, gang_id, i,
 					 (gresp[i].motionListener & 0x0ffff),
-				  ((gresp[i].motionListener >> 16) & 0x0ffff), gresp[i].pid);
+					 ((gresp[i].motionListener >> 16) & 0x0ffff), gresp[i].pid);
 			}
 
 			/*
@@ -829,12 +829,18 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		 */
 		if (!segdbDesc->conn)
 		{
+			if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE)
+			{
+				if (segdbDesc->whoami)
+					elog(LOG, "Failed connection to %s", segdbDesc->whoami);
+			}
+
 			/*
 			 * Log failed connections.	Complete failures
 			 * are taken care of later.
 			 */
 			ereport(LOG, (errcode(segdbDesc->errcode),
-					  errmsg("Warning: %s", segdbDesc->error_message.data)));
+						  errmsg("Warning: %s", segdbDesc->error_message.data)));
 			ereport(WARNING, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
 							  errmsg("%s", segdbDesc->error_message.data)));
 			if (segdbDesc->errcode == 0 && segdbDesc->error_message.len == 0)
@@ -886,25 +892,25 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 * loop from the preceding one to make sure all error messages were
 	 * palloced before potentially calling ereport.
 	 */
-	if (successful_connections != newGangDefinition->size &&
-		((type != GANGTYPE_MIRROR_WRITER && mirroringNotConfigured) ||
-		 !isFTSEnabled()))
+	if (successful_connections != newGangDefinition->size)
 	{
-		for (i = 0; i < segdb_count; i++)
+		if ((type != GANGTYPE_MIRROR_WRITER && mirroringNotConfigured) || !isFTSEnabled())
 		{
-			segdbDesc = &newGangDefinition->db_descriptors[i];
+			for (i = 0; i < segdb_count; i++)
+			{
+				segdbDesc = &newGangDefinition->db_descriptors[i];
 
-			if (segdbDesc->conn != NULL)
-				continue;
+				if (segdbDesc->conn != NULL)
+					continue;
 
-			/* clean the gang before error out */
-			disconnectAndDestroyGang(newGangDefinition);
+				/* clean the gang before error out */
+				disconnectAndDestroyGang(newGangDefinition);
 
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("All segment databases are unavailable")));
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("All segment databases are unavailable")));
+			}
 		}
 	}
-
 
 	MemoryContextSwitchTo(oldContext);
 
@@ -915,26 +921,21 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		if (type == GANGTYPE_MIRROR_WRITER)
 		{
 			/*
-			 * In the presence of failures a mirror-writer will
-			 * *always* have fewer than the requested number of
-			 * segments.
+			 * MPP-6588: This is a partially created mirror gang. We
+			 * attempted to connect to some number of mirror segments
+			 * and some failed. This may mean that we've detected a
+			 * failure ahead of the FtsProber.
+			 *
+			 * But there isn't anything specific to mirrors to do
+			 * here.
 			 */
-			if (successful_connections == 0)
-			{
-				mirroringNotConfigured = true;
-				newGangDefinition = NULL;
-			}
-
-			return newGangDefinition;
 		}
 
 		errorOut = FtsHandleGangConnectionFailure(newGangDefinition->db_descriptors, newGangDefinition->size);
 
 		/*
-		 * don't error out if our DTM isn't started yet. See
-		 * MPP-5764: ideally this would be fixed in
-		 * FtsHandleGangConnectionFailure.
-		 *
+		 * don't error out if our DTM isn't started yet. See MPP-5764:
+		 * ideally this would be fixed in FtsHandleGangConnectionFailure.
 		 */
 		if (shmDtmStarted != NULL && !*shmDtmStarted)
 			errorOut = false;
@@ -4165,8 +4166,6 @@ reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
 	 *
 	 */
 	disconnectAndDestroyAllReaderGangs(true);
-
-
 
 	return true;
 }
