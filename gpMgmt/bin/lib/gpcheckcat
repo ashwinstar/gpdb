@@ -11,6 +11,7 @@ Usage: gpcheckcat <option> [dbname]
 	-o         : check OID consistency
 	-U uname   : DB User Name
 	-v         : verbose
+    -T dir     : use <dir> as a temporary working directory
 
 '''
 import sys, os, subprocess, tempfile, stat
@@ -53,6 +54,7 @@ class Global():
 
     opt['-g'] = 'gpcheckcat.repair.' + strftime('%Y-%m-%d.%H.%M.%S', localtime())
     opt['-B'] = parallelism
+    opt['-T'] = None
     cfg       = None
     dbname    = None
     db        = {}
@@ -105,13 +107,13 @@ def getversion():
 ###############################
 def parseCommandLine():
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vog:t')
+        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vog:tT:')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?':	  usage(0)
-        elif switch[1] in 'hpBPUg': GV.opt[switch] = val
+        elif switch[1] in 'hpBPUgT': GV.opt[switch] = val
         elif switch[1] in 'vot':   GV.opt[switch] = True
 
     def setdef(x, v):
@@ -723,6 +725,7 @@ class sysCatThread(Thread):
         cmd += ' psql -A -F , -o %s -h %s -p %s -U %s -c "%s" "%s"' % \
             (outfile, host, port, GV.opt['-U'], catalog, GV.dbname)
     
+        logger.debug('outfile = %s' % outfile)
         subprocess.call(cmd, shell=True, close_fds=True)
     
 
@@ -1093,7 +1096,17 @@ if __name__ == '__main__':
         GV.opt['-o'] = True
 
     try:
-        GV.tmpdir = tempfile.mkdtemp()
+        if GV.opt['-T']:
+            GV.tmpdir = os.path.abspath(GV.opt['-T'])
+            if not os.path.exists(GV.tmpdir):
+                try:
+                    os.mkdir(GV.tmpdir)
+                except Exception, e:
+                    logger.fatal('cannot create directory %s: %s' %
+                                 (GV.tmpdir, str(e)))
+                    sys.exit(1)
+        else:
+            GV.tmpdir = tempfile.mkdtemp()
         logger.debug('Created temporary working directory %s' % GV.tmpdir)
     except Exception, e:
         logger.info('[ERROR] ' + str(e))
