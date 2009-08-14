@@ -1776,6 +1776,9 @@ class gpload:
                    (build_safe_table_name(self.pg8000, a[0]), a[1]), from_cols)
 
         sql += "(%s)" % ','.join(cols)
+        # make sure we set the correct distribution policy
+        distcols = set(self.getconfig('gpload:output:match_columns', list))
+        sql += " distributed by (%s)" % ', '.join(distcols)
 
         self.log(self.LOG, sql)
 
