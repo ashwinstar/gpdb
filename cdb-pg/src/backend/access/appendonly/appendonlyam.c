@@ -82,54 +82,11 @@ typedef enum AoExecutorBlockKind
 	MaxAoExecutorBlockKind /* must always be last */
 } AoExecutorBlockKind;
 
-/*
- * errcontext_appendonly_scan_block
- *
- * Add an errcontext() line showing the table, segment file, offset in file, block count of the block being scanned.
- */
-static int
-errcontext_appendonly_scan_block(AppendOnlyScanDesc scan)
-{
-	char	*relationName = NameStr(scan->aos_rd->rd_rel->relname);
-	int		segmentFileNum = SCANNED_SEGNO;
-	int64	headerOffsetInFile;
-	int64	blockFirstRowNum = scan->blockFirstRowNum;
-	int64	bufferCount = scan->bufferCount;
-
-	headerOffsetInFile = 
-			AppendOnlyStorageRead_CurrentHeaderOffsetInFile(
-												&scan->aos_storageRead);
-
-	errcontext( 
-		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
-		 "block first row number " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
-		 relationName,
-		 segmentFileNum,
-		 headerOffsetInFile,
-		 blockFirstRowNum,
-		 bufferCount);
-
-	return 0;
-}
-
-/*
- * errdetail_appendonly_scan_block_header
- *
- * Add an errdetail() line showing the Append-Only Storage block header for the block being scanned.
- */
-static int
-errdetail_appendonly_scan_block_header(AppendOnlyScanDesc scan)
-{
-	uint8	*header;
-
-	bool 	usingChecksum;
-
-	header = AppendOnlyStorageRead_CurrentBuffer(&scan->aos_storageRead);
-
-	usingChecksum = scan->aos_storageAttributes.checksum;
-
-	return errdetail_appendonly_storage_block_header(header, usingChecksum);
-}
+static void
+initExecutorBlockRead(
+	AppendOnlyExecutorReadBlock		*executorReadBlock,
+	MemoryContext					memoryContext,
+	int32							usableBlockSize);
 
 /* ----------------
  *		initscan - scan code common to appendonly_beginscan and appendonly_rescan
@@ -171,7 +128,6 @@ static bool
 SetNextFileSegForRead(AppendOnlyScanDesc scan)
 {
 	Relation		reln = scan->aos_rd;
-	MemoryContext	oldcontext;
 	int				segno = -1;
 	int64			eof = 0;
 	bool			finished_all_files = true; /* assume */
@@ -182,10 +138,6 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 
 	if (!scan->aos_initedNewReadStorageRoutines)
 	{
-		oldcontext = MemoryContextSwitchTo(scan->aoScanInitContext);
-		scan->uncompressedBuffer = (uint8 *) palloc(scan->usableBlockSize * sizeof(uint8));
-		MemoryContextSwitchTo(oldcontext);
-		
 		AppendOnlyStorageRead_Init(
 							&scan->aos_storageRead,
 							scan->aoScanInitContext,
@@ -193,6 +145,10 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 							NameStr(scan->aos_rd->rd_rel->relname),
 							&scan->aos_storageAttributes);
 
+		initExecutorBlockRead(
+			&scan->executorReadBlock,
+			scan->aoScanInitContext,
+			scan->usableBlockSize);
 		
 		scan->bufferDone = true; /* so we read a new buffer right away */
 
@@ -417,59 +373,31 @@ CloseWritableFileSeg(AppendOnlyInsertDesc aoInsertDesc)
 		     
 }
 
-static bool
-getNextStorageBlockInFile(
-	AppendOnlyScanDesc 	scan,
-	int64				*headerOffsetInFile,
-	uint8				**dataBuffer,
-	int32				*dataLen,
-	int					*executorBlockKind,
-	int					*rowCount)
+static void
+readExecutorBlockContent(
+	AppendOnlyStorageRead			*storageRead,
+	AppendOnlyExecutorReadBlock		*executorReadBlock)
 {
-	int64	blockFirstRowNum;
-	bool	isLarge;
-	bool	isCompressed;
-	
-	if (!AppendOnlyStorageRead_GetBlockInfo(
-									&scan->aos_storageRead,
-									dataLen,
-									executorBlockKind,
-									&blockFirstRowNum,
-									rowCount,
-									&isLarge,
-									&isCompressed))
+	VarBlockCheckError varBlockCheckError;
+
+	if (!executorReadBlock->isCompressed)
 	{
-		/* done reading the file */
-		CloseScannedFileSeg(scan);
-		return false;			
-	}
-	
-	*headerOffsetInFile = 
-		AppendOnlyStorageRead_CurrentHeaderOffsetInFile(
-											&scan->aos_storageRead);
-	scan->bufferCount++;
-	scan->blockFirstRowNum = scan->rowNumberInSegmentFile + 1;
-	
-	// UNDONE: Check blockFirstRowNum
-	
-	if (!isCompressed)
-	{
-		if (!isLarge)
+		if (!executorReadBlock->isLarge)
 		{
 			/*
 			 * Small content.
 			 */
-			*dataBuffer = AppendOnlyStorageRead_GetBuffer(&scan->aos_storageRead);
+			executorReadBlock->dataBuffer = 
+					AppendOnlyStorageRead_GetBuffer(storageRead);
 			
 			if (Debug_appendonly_print_scan)
 				elog(LOG,
-					 "Append-only scan read non-compressed block for table '%s' "
-					 "(length = %d, segment file #%d, header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")",
-					 NameStr(scan->aos_rd->rd_rel->relname),
-					 *dataLen,
-					 SCANNED_SEGNO,
-					 *headerOffsetInFile,
-					 scan->bufferCount);
+					 "Append-only scan read small non-compressed block for table '%s' "
+					 "(length = %d, segment file '%s', block offset in file = " INT64_FORMAT ")",
+					 AppendOnlyStorageRead_RelationName(storageRead),
+					 executorReadBlock->dataLen,
+					 AppendOnlyStorageRead_SegmentFileName(storageRead),
+					 executorReadBlock->headerOffsetInFile);
 		}
 		else
 		{
@@ -478,17 +406,15 @@ getNextStorageBlockInFile(
 			 */
 
 			// UNDONE: Error out if NOTOAST isn't ON.
-			Assert(scan->aos_notoast);
-
 
 			// UNDONE: Error out if it is not a single row
-			Assert(*executorBlockKind == AoExecutorBlockKind_SingleRow);
+			Assert(executorReadBlock->executorBlockKind == AoExecutorBlockKind_SingleRow);
 
 			/*
 			 * Enough room in our private buffer?
 			 * UNDONE: Is there a way to avoid the 2nd copy later doProcessTuple?
 			 */
-			if (scan->aos_largeContentBufferLen < *dataLen)
+			if (executorReadBlock->largeContentBufferLen < executorReadBlock->dataLen)
 			{
 				MemoryContext	oldMemoryContext;
 				
@@ -496,116 +422,72 @@ getNextStorageBlockInFile(
 				 * Buffer too small.
 				 */
 				oldMemoryContext = 
-							MemoryContextSwitchTo(scan->aoScanInitContext);
+							MemoryContextSwitchTo(executorReadBlock->memoryContext);
 
-				if (scan->aos_largeContentBuffer != NULL)
+				if (executorReadBlock->largeContentBuffer != NULL)
 				{
 					/*
 					 * Make sure we set the our pointer to NULL here in case
 					 * the subsequent allocation fails.  Otherwise cleanup will
 					 * get confused.
 					 */
-					pfree(scan->aos_largeContentBuffer);
-					scan->aos_largeContentBuffer = NULL;
+					pfree(executorReadBlock->largeContentBuffer);
+					executorReadBlock->largeContentBuffer = NULL;
 				}
 				
-				scan->aos_largeContentBuffer = (uint8*)palloc(*dataLen);
-				scan->aos_largeContentBufferLen = *dataLen;
+				executorReadBlock->largeContentBuffer = (uint8*)palloc(executorReadBlock->dataLen);
+				executorReadBlock->largeContentBufferLen = executorReadBlock->dataLen;
 
 				/* Deallocation and allocation done.  Go back to caller memory-context. */
 				MemoryContextSwitchTo(oldMemoryContext);
 			}
 
-			*dataBuffer = scan->aos_largeContentBuffer;
+			executorReadBlock->dataBuffer = executorReadBlock->largeContentBuffer;
 			
 			AppendOnlyStorageRead_Content(
-									&scan->aos_storageRead,
-									*dataBuffer,
-									*dataLen);
+									storageRead,
+									executorReadBlock->dataBuffer,
+									executorReadBlock->dataLen);
 			
 			if (Debug_appendonly_print_scan)
 				elog(LOG,
 					 "Append-only scan read large row for table '%s' "
-					 "(length = %d, segment file #%d, "
-					 "header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")",
-					 NameStr(scan->aos_rd->rd_rel->relname),
-					 *dataLen,
-					 SCANNED_SEGNO,
-					 *headerOffsetInFile,
-					 scan->bufferCount);
+					 "(length = %d, segment file '%s', "
+					 "block offset in file = " INT64_FORMAT ")",
+					 AppendOnlyStorageRead_RelationName(storageRead),
+					 executorReadBlock->dataLen,
+					 AppendOnlyStorageRead_SegmentFileName(storageRead),
+					 executorReadBlock->headerOffsetInFile);
 		}
 	}
 	else
 	{
 		int32 compressedLen = 
-			AppendOnlyStorageRead_CurrentCompressedLen(
-												&scan->aos_storageRead);
+			AppendOnlyStorageRead_CurrentCompressedLen(storageRead);
 
 		// AppendOnlyStorageWrite does not report compressed for large content metadata.
-		Assert(!isLarge);	
+		Assert(!executorReadBlock->isLarge);	
 		
 		/*
 		 * Decompress into our temporary buffer.
 		 */
-		*dataBuffer = scan->uncompressedBuffer;
+		executorReadBlock->dataBuffer = executorReadBlock->uncompressedBuffer;
 
 		AppendOnlyStorageRead_Content(
-								&scan->aos_storageRead,
-								*dataBuffer,
-								*dataLen);
+								storageRead,
+								executorReadBlock->dataBuffer,
+								executorReadBlock->dataLen);
 		
 		if (Debug_appendonly_print_scan)
 			elog(LOG,
 				 "Append-only scan read decompressed block for table '%s' "
-				 "(compressed length %d, length = %d, segment file #%d, "
-				 "header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")",
-				 NameStr(scan->aos_rd->rd_rel->relname),
+				 "(compressed length %d, length = %d, segment file '%s', "
+				 "block offset in file = " INT64_FORMAT ")",
+				 AppendOnlyStorageRead_RelationName(storageRead),
 				 compressedLen,
-				 *dataLen,
-				 SCANNED_SEGNO,
-				 *headerOffsetInFile,
-				 scan->bufferCount);
-	}
-
-	return true;
-}
-
-/*
- * You can think of this routine as get next "executor" AO block.
- *
- * It calls up on getNextStorageBlockInFile to get the next AO storage block
- * and returns pointers to the data inside, which is owned by the executor.
- */
-static bool
-getNextBlock(
-	AppendOnlyScanDesc 	scan,
-	int					*executorBlockKind)
-{
-	int64	headerOffsetInFile;
-	uint8  	*buffer = NULL;
-	int32	bufferLen = 0;
-	int		rowCount;
-
-	VarBlockCheckError varBlockCheckError;
-
-	
-	if (scan->aos_need_new_segfile)
-	{
-		/* need to open a new segment file */
-		if(!SetNextFileSegForRead(scan))
-			return false; 
-	}
-
-	if (!getNextStorageBlockInFile(
-								scan,
-								&headerOffsetInFile,
-								&buffer,
-								&bufferLen,
-								executorBlockKind,
-								&rowCount))
-	{
-		/* done reading the file */
-		return false;			
+				 executorReadBlock->dataLen,
+				 AppendOnlyStorageRead_SegmentFileName(storageRead),
+				 executorReadBlock->headerOffsetInFile);
 	}
 
 	/*
@@ -614,10 +496,10 @@ getNextBlock(
 	 * Storage header.  We interpret it here.
 	 */
 
-	switch (*executorBlockKind)
+	switch (executorReadBlock->executorBlockKind)
 	{
 	case AoExecutorBlockKind_VarBlock:
-		varBlockCheckError = VarBlockIsValid(buffer, bufferLen);
+		varBlockCheckError = VarBlockIsValid(executorReadBlock->dataBuffer, executorReadBlock->dataLen);
 		if (varBlockCheckError != VarBlockCheckOk)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
@@ -625,65 +507,138 @@ getNextBlock(
 					        "Valid block check error %d, detail '%s'",
 							varBlockCheckError,
 							VarBlockGetCheckErrorStr()),
-					 errdetail_appendonly_scan_block_header(scan),
-					 errcontext_appendonly_scan_block(scan)));
+					 errdetail_appendonly_read_storage_block_header(storageRead),
+					 errcontext_appendonly_read_storage_block(storageRead)));
 		
 		/*
 		 * Now use the VarBlock module to extract the items out.
 		 */
-		VarBlockReaderInit(&scan->varBlockReader, 
-						   buffer, 
-						   bufferLen);
+		VarBlockReaderInit(&executorReadBlock->varBlockReader, 
+						   executorReadBlock->dataBuffer, 
+						   executorReadBlock->dataLen);
 		
-		scan->currentItemCount = 0;
-		scan->readerItemCount = VarBlockReaderItemCount(&scan->varBlockReader);	
+		executorReadBlock->readerItemCount = VarBlockReaderItemCount(&executorReadBlock->varBlockReader);	
 
-		if (rowCount != scan->readerItemCount)
+		if (executorReadBlock->rowCount != executorReadBlock->readerItemCount)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Row count %d in append-only storage header does not match VarBlock item count %d",
-							rowCount,
-							scan->readerItemCount),
-					 errdetail_appendonly_scan_block_header(scan),
-					 errcontext_appendonly_scan_block(scan)));
+							executorReadBlock->rowCount,
+							executorReadBlock->readerItemCount),
+					 errdetail_appendonly_read_storage_block_header(storageRead),
+					 errcontext_appendonly_read_storage_block(storageRead)));
 		}
 
 		if (Debug_appendonly_print_scan)
 		{
-			elog(LOG,"Append-only scan read VarBlock for table '%s' with %d items (block count " INT64_FORMAT ")",
-			     NameStr(scan->aos_rd->rd_rel->relname),
-			     scan->readerItemCount,
-			     scan->bufferCount);
+			elog(LOG,"Append-only scan read VarBlock for table '%s' with %d items (block offset in file = " INT64_FORMAT ")",
+			     AppendOnlyStorageRead_RelationName(storageRead),
+			     executorReadBlock->readerItemCount,
+			     executorReadBlock->headerOffsetInFile);
 		}
 		break;
 
 	case AoExecutorBlockKind_SingleRow:
-		if (rowCount != 1)
+		if (executorReadBlock->rowCount != 1)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Row count %d in append-only storage header is not 1 for single row",
-							rowCount),
-					 errdetail_appendonly_scan_block_header(scan),
-					 errcontext_appendonly_scan_block(scan)));
+							executorReadBlock->rowCount),
+					 errdetail_appendonly_read_storage_block_header(storageRead),
+					 errcontext_appendonly_read_storage_block(storageRead)));
 		}
-		scan->singleRow = buffer;
-		scan->singleRowLen = bufferLen;
+		executorReadBlock->singleRow = executorReadBlock->dataBuffer;
+		executorReadBlock->singleRowLen = executorReadBlock->dataLen;
 		if (Debug_appendonly_print_scan)
 		{
-			elog(LOG,"Append-only scan read single row for table '%s' with length %d (block count " INT64_FORMAT ")",
-			     NameStr(scan->aos_rd->rd_rel->relname),
-			     scan->singleRowLen,
-			     scan->bufferCount);
+			elog(LOG,"Append-only scan read single row for table '%s' with length %d (block offset in file = " INT64_FORMAT ")",
+			     AppendOnlyStorageRead_RelationName(storageRead),
+			     executorReadBlock->singleRowLen,
+			     executorReadBlock->headerOffsetInFile);
 		}
 		break;
 		
 	default:
 		elog(ERROR, "Unrecognized append-only executor block kind: %d",
-			*executorBlockKind);
+			executorReadBlock->executorBlockKind);
 		break;
 	}	
+}
+
+static bool
+readExecutorBlockInfo(
+	AppendOnlyStorageRead			*storageRead,
+	AppendOnlyExecutorReadBlock		*executorReadBlock)
+{
+	if (!AppendOnlyStorageRead_GetBlockInfo(
+									storageRead,
+									&executorReadBlock->dataLen,
+									&executorReadBlock->executorBlockKind,
+									&executorReadBlock->blockFirstRowNum,
+									&executorReadBlock->rowCount,
+									&executorReadBlock->isLarge,
+									&executorReadBlock->isCompressed))
+	{
+		return false;			
+	}
+	
+	executorReadBlock->headerOffsetInFile = 
+		AppendOnlyStorageRead_CurrentHeaderOffsetInFile(storageRead);
+
+	// UNDONE: Check blockFirstRowNum
+
+	return true;
+}
+
+static void
+initExecutorBlockRead(
+	AppendOnlyExecutorReadBlock		*executorReadBlock,
+	MemoryContext					memoryContext,
+	int32							usableBlockSize)
+{
+	MemoryContext	oldcontext;
+	
+	oldcontext = MemoryContextSwitchTo(memoryContext);
+	executorReadBlock->uncompressedBuffer = (uint8 *) palloc(usableBlockSize * sizeof(uint8));
+	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
+ * You can think of this scan routine as get next "executor" AO block.
+ */
+static bool
+getNextBlock(
+	AppendOnlyScanDesc 	scan,
+	int					*executorBlockKind)
+{
+	if (scan->aos_need_new_segfile)
+	{
+		/* need to open a new segment file */
+		if(!SetNextFileSegForRead(scan))
+			return false; 
+	}
+
+	if (!readExecutorBlockInfo(
+							&scan->aos_storageRead,
+							&scan->executorReadBlock))
+	{
+		/* done reading the file */
+		CloseScannedFileSeg(scan);
+		return false;			
+	}
+	
+	scan->bufferCount++;
+	scan->blockFirstRowNum = scan->rowNumberInSegmentFile + 1;
+
+	readExecutorBlockContent(
+					&scan->aos_storageRead,
+					&scan->executorReadBlock);
+
+	scan->currentItemCount = 0;
+
+	*executorBlockKind = scan->executorReadBlock.executorBlockKind;
 
 	return true;
 }
@@ -794,7 +749,7 @@ appendonlygettup(AppendOnlyScanDesc scan,
 				int		itemLen = 0;
 				uint8  *itemPtr;
 				
-				itemPtr = VarBlockReaderGetNextItemPtr(&scan->varBlockReader,&itemLen);
+				itemPtr = VarBlockReaderGetNextItemPtr(&scan->executorReadBlock.varBlockReader,&itemLen);
 							
 				if (itemPtr == NULL)
 				{
@@ -827,9 +782,9 @@ appendonlygettup(AppendOnlyScanDesc scan,
 			}
 			
 			/* varblock sanity check */
-			if (scan->readerItemCount != scan->currentItemCount)
+			if (scan->executorReadBlock.readerItemCount != scan->currentItemCount)
 				elog(NOTICE, "Varblock mismatch: Reader count %d, found %d items\n",
-							scan->readerItemCount,
+							scan->executorReadBlock.readerItemCount,
 							scan->currentItemCount);
 			break;
 		
@@ -837,19 +792,19 @@ appendonlygettup(AppendOnlyScanDesc scan,
 			{
 				int32 singleRowLen;
 				
-				Assert(scan->singleRow != NULL);
-				Assert(scan->singleRowLen != 0);
+				Assert(scan->executorReadBlock.singleRow != NULL);
+				Assert(scan->executorReadBlock.singleRowLen != 0);
 				
 				if(tuple == NULL)
 					ereport(ERROR,
 							(errcode(ERRCODE_GP_INTERNAL_ERROR),
 							 errmsg("Invalid tuple format in appendonlygettup")));			
 					
-				tuple = (MemTuple) scan->singleRow;
-				singleRowLen = scan->singleRowLen;
+				tuple = (MemTuple) scan->executorReadBlock.singleRow;
+				singleRowLen = scan->executorReadBlock.singleRowLen;
 				
-				scan->singleRow = NULL;
-				scan->singleRowLen = 0;
+				scan->executorReadBlock.singleRow = NULL;
+				scan->executorReadBlock.singleRowLen = 0;
 				scan->bufferDone = true;
 				
 				if (doProcessTuple(
@@ -1108,9 +1063,6 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	scan->maxDataLen = 
 					scan->usableBlockSize -
 	 				AppendOnlyStorageFormat_HeaderLenNeeded(scan->aos_storageAttributes.checksum);
-	scan->uncompressedBuffer = NULL;
-	scan->singleRow = NULL;
-	scan->singleRowLen = 0;
 
 	scan->mt_bind = create_memtuple_binding(RelationGetDescr(relation));
 
@@ -1156,10 +1108,10 @@ appendonly_rescan(AppendOnlyScanDesc scan,
 	
 	scan->aos_initedNewReadStorageRoutines = false;
 
-	if(scan->uncompressedBuffer)
+	if(scan->executorReadBlock.uncompressedBuffer)
 	{
-		pfree(scan->uncompressedBuffer);
-		scan->uncompressedBuffer = NULL;
+		pfree(scan->executorReadBlock.uncompressedBuffer);
+		scan->executorReadBlock.uncompressedBuffer = NULL;
 	}
 	
 	scan->aos_need_new_segfile = true;
@@ -1189,10 +1141,10 @@ appendonly_endscan(AppendOnlyScanDesc scan)
 	
 	scan->aos_initedNewReadStorageRoutines = false;
 
-	if(scan->uncompressedBuffer)
+	if(scan->executorReadBlock.uncompressedBuffer)
 	{
-		pfree(scan->uncompressedBuffer);
-		scan->uncompressedBuffer = NULL;
+		pfree(scan->executorReadBlock.uncompressedBuffer);
+		scan->executorReadBlock.uncompressedBuffer = NULL;
 	}
 
 	pfree(scan->aos_filenamepath);

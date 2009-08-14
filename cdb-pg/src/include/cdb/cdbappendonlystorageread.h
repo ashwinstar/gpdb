@@ -213,6 +213,18 @@ extern void AppendOnlyStorageRead_Init(
 				 */
 
 /*
+ * Return (read-only) pointer to relation name.
+ */
+extern char* AppendOnlyStorageRead_RelationName(
+	AppendOnlyStorageRead			*storageRead);
+
+/*
+ * Return (read-only) pointer to relation name.
+ */
+extern char* AppendOnlyStorageRead_SegmentFileName(
+	AppendOnlyStorageRead			*storageRead);
+
+/*
  * Finish using the AppendOnlyStorageRead session created with ~Init.
  */
 extern void AppendOnlyStorageRead_FinishSession(
@@ -353,5 +365,8 @@ extern void AppendOnlyStorageRead_Content(
 	int32						contentLen);
 			/* The byte length of the content. */
 
+extern int errcontext_appendonly_read_storage_block(AppendOnlyStorageRead *storageRead);
+
+extern int errdetail_appendonly_read_storage_block_header(AppendOnlyStorageRead *storageRead);
 
 #endif   /* APPENDONLYSTORAGELAYER_H */

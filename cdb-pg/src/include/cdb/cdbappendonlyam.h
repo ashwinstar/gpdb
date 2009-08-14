@@ -87,6 +87,32 @@ typedef struct AppendOnlyInsertDescData
 
 typedef AppendOnlyInsertDescData *AppendOnlyInsertDesc;
 
+typedef struct AppendOnlyExecutorReadBlock
+{
+	MemoryContext	memoryContext;
+
+	int64			headerOffsetInFile;
+	uint8			*dataBuffer;
+	int32			dataLen;
+	int 			executorBlockKind;
+	int64			blockFirstRowNum;
+	int 			rowCount;
+	bool			isLarge;
+	bool			isCompressed;
+
+	uint8			*uncompressedBuffer; /* for decompression */
+
+	uint8			*largeContentBuffer;
+	int32			largeContentBufferLen;
+
+	VarBlockReader  varBlockReader;
+	int				readerItemCount;
+	
+	uint8			*singleRow;
+	int32			singleRowLen;
+
+} AppendOnlyExecutorReadBlock;
+
 /*
  * used for scan of append only relations using BufferedRead and VarBlocks
  */
@@ -109,26 +135,23 @@ typedef struct AppendOnlyScanDescData
 	bool		aos_need_new_segfile;
 	bool		aos_done_all_segfiles;
 	
-	VarBlockReader  varBlockReader;
 	MemoryContext	aoScanInitContext; /* mem context at init time */
 	char			*qlzScratch;
 	int32			qlzScratchLen;
 	int32			qlzScratchGuardLen;
 
-	uint8			*uncompressedBuffer; /* for decompression */
 	int32			usableBlockSize;
 	int32			maxDataLen;
 	int32			largeReadLen;
 
 	int64           bufferCount;
 	int64			blockFirstRowNum;
-	int				readerItemCount;
-	int				currentItemCount;
 	int64			rowNumber;
 	int64			rowNumberInSegmentFile;
 
-	uint8			*singleRow;
-	int32			singleRowLen;
+	AppendOnlyExecutorReadBlock	executorReadBlock;
+
+	int				currentItemCount;
 	
 	/* current scan state */
 	bool		bufferDone;
@@ -145,9 +168,6 @@ typedef struct AppendOnlyScanDescData
 
 	AppendOnlyStorageAttributes	aos_storageAttributes;
 	AppendOnlyStorageRead		aos_storageRead;
-
-	uint8	*aos_largeContentBuffer;
-	int32	aos_largeContentBufferLen;
 
 }	AppendOnlyScanDescData;
 

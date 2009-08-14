@@ -170,6 +170,30 @@ void AppendOnlyStorageRead_Init(
 }
 
 /*
+ * Return (read-only) pointer to relation name.
+ */
+char *AppendOnlyStorageRead_RelationName(
+	AppendOnlyStorageRead			*storageRead)
+{
+	Assert(storageRead != NULL);
+	Assert(storageRead->isActive);
+
+	return storageRead->relationName;
+}
+
+/*
+ * Return (read-only) pointer to relation name.
+ */
+char *AppendOnlyStorageRead_SegmentFileName(
+	AppendOnlyStorageRead			*storageRead)
+{
+	Assert(storageRead != NULL);
+	Assert(storageRead->isActive);
+
+	return storageRead->segmentFileName;
+}
+
+/*
  * Finish using the AppendOnlyStorageRead session created with ~Init.
  */
 void AppendOnlyStorageRead_FinishSession(
@@ -522,7 +546,7 @@ AppendOnlyStorageRead_PositionToNextBlock(
  * Add an errcontext() line showing the table, segment file, offset in file, block count of
  * the storage block being read.
  */
-static int
+int
 errcontext_appendonly_read_storage_block(AppendOnlyStorageRead *storageRead)
 {
 	int64	headerOffsetInFile;
@@ -544,7 +568,7 @@ errcontext_appendonly_read_storage_block(AppendOnlyStorageRead *storageRead)
  *
  * Add an errdetail() line showing the Append-Only Storage header being read.
  */
-static int
+int
 errdetail_appendonly_read_storage_block_header(AppendOnlyStorageRead *storageRead)
 {
 	uint8	*header;
