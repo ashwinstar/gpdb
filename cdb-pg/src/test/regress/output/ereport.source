@@ -1398,51 +1398,45 @@ select * from get_ereport order by 1;
  aabc: aocssegfiles:00000507:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  aabc: aocssegfiles:00000508:  errmsg("invalid entry for decoding aocsvpinfo") 
  aabc: aocssegfiles:00000509:  )); 
- aabc: appendonlyam:00000504:  ereport(ERROR, 
- aabc: appendonlyam:00000505:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000506:  errmsg("VarBlock is not valid. " 
- aabc: appendonlyam:00000507:  "Valid block check error %d, detail '%s'", 
- aabc: appendonlyam:00000508:  varBlockCheckError, 
- aabc: appendonlyam:00000509:  VarBlockGetCheckErrorStr()), 
- aabc: appendonlyam:00000510:  errdetail_appendonly_read_storage_block_header(storageRead), 
- aabc: appendonlyam:00000511:  errcontext_appendonly_read_storage_block(storageRead))); 
- aabc: appendonlyam:00000524:  ereport(ERROR, 
- aabc: appendonlyam:00000525:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000526:  errmsg("Row count %d in append-only storage header does not match VarBlock item count %d", 
- aabc: appendonlyam:00000527:  executorReadBlock->rowCount, 
- aabc: appendonlyam:00000528:  executorReadBlock->readerItemCount), 
- aabc: appendonlyam:00000529:  errdetail_appendonly_read_storage_block_header(storageRead), 
- aabc: appendonlyam:00000530:  errcontext_appendonly_read_storage_block(storageRead))); 
+ aabc: appendonlyam:00000523:  ereport(ERROR, 
+ aabc: appendonlyam:00000524:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aabc: appendonlyam:00000525:  errmsg("VarBlock is not valid. " 
+ aabc: appendonlyam:00000526:  "Valid block check error %d, detail '%s'", 
+ aabc: appendonlyam:00000527:  varBlockCheckError, 
+ aabc: appendonlyam:00000528:  VarBlockGetCheckErrorStr()), 
+ aabc: appendonlyam:00000529:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+ aabc: appendonlyam:00000530:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
  aabc: appendonlyam:00000545:  ereport(ERROR, 
  aabc: appendonlyam:00000546:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000547:  errmsg("Row count %d in append-only storage header is not 1 for single row", 
- aabc: appendonlyam:00000548:  executorReadBlock->rowCount), 
- aabc: appendonlyam:00000549:  errdetail_appendonly_read_storage_block_header(storageRead), 
- aabc: appendonlyam:00000550:  errcontext_appendonly_read_storage_block(storageRead))); 
- aabc: appendonlyam:00000766:  ereport(ERROR, 
- aabc: appendonlyam:00000767:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000768:  errmsg("Invalid tuple format in appendonlygettup"))); 
- aabc: appendonlyam:00000799:  ereport(ERROR, 
- aabc: appendonlyam:00000800:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000801:  errmsg("Invalid tuple format in appendonlygettup"))); 
- aabc: appendonlyam:00000960:  ereport(ERROR, 
- aabc: appendonlyam:00000961:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000962:  errmsg("Verify block during write found VarBlock is not valid. " 
- aabc: appendonlyam:00000963:  "Valid block check error %d, detail '%s'", 
- aabc: appendonlyam:00000964:  varBlockCheckError, 
- aabc: appendonlyam:00000965:  VarBlockGetCheckErrorStr()), 
- aabc: appendonlyam:00000966:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
- aabc: appendonlyam:00000967:  errcontext_appendonly_insert_block(aoInsertDesc))); 
- aabc: appendonlyam:00001398:  ereport(ERROR, 
- aabc: appendonlyam:00001399:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- aabc: appendonlyam:00001400:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
- aabc: appendonlyam:00001401:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
- aabc: appendonlyam:00001402:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
- aabc: appendonlyam:00001440:  ereport(ERROR, 
- aabc: appendonlyam:00001441:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- aabc: appendonlyam:00001442:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
- aabc: appendonlyam:00001443:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
- aabc: appendonlyam:00001444:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+ aabc: appendonlyam:00000547:  errmsg("Row count %d in append-only storage header does not match VarBlock item count %d", 
+ aabc: appendonlyam:00000548:  executorReadBlock->rowCount, 
+ aabc: appendonlyam:00000549:  executorReadBlock->readerItemCount), 
+ aabc: appendonlyam:00000550:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+ aabc: appendonlyam:00000551:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
+ aabc: appendonlyam:00000566:  ereport(ERROR, 
+ aabc: appendonlyam:00000567:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aabc: appendonlyam:00000568:  errmsg("Row count %d in append-only storage header is not 1 for single row", 
+ aabc: appendonlyam:00000569:  executorReadBlock->rowCount), 
+ aabc: appendonlyam:00000570:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+ aabc: appendonlyam:00000571:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
+ aabc: appendonlyam:00001135:  ereport(ERROR, 
+ aabc: appendonlyam:00001136:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aabc: appendonlyam:00001137:  errmsg("Verify block during write found VarBlock is not valid. " 
+ aabc: appendonlyam:00001138:  "Valid block check error %d, detail '%s'", 
+ aabc: appendonlyam:00001139:  varBlockCheckError, 
+ aabc: appendonlyam:00001140:  VarBlockGetCheckErrorStr()), 
+ aabc: appendonlyam:00001141:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
+ aabc: appendonlyam:00001142:  errcontext_appendonly_insert_block(aoInsertDesc))); 
+ aabc: appendonlyam:00001572:  ereport(ERROR, 
+ aabc: appendonlyam:00001573:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ aabc: appendonlyam:00001574:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
+ aabc: appendonlyam:00001575:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+ aabc: appendonlyam:00001576:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+ aabc: appendonlyam:00001614:  ereport(ERROR, 
+ aabc: appendonlyam:00001615:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ aabc: appendonlyam:00001616:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
+ aabc: appendonlyam:00001617:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+ aabc: appendonlyam:00001618:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
  aabd: aggregatecmds:00000107:  ereport(WARNING, 
  aabd: aggregatecmds:00000108:  (errcode(ERRCODE_SYNTAX_ERROR), 
  aabd: aggregatecmds:00000109:  errmsg("aggregate attribute "%s" not recognized", 
@@ -15462,6 +15456,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15402 rows)
+(15396 rows)
 
 drop external table get_ereport;

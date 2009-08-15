@@ -91,11 +91,17 @@ typedef struct AppendOnlyExecutorReadBlock
 {
 	MemoryContext	memoryContext;
 
+	AppendOnlyStorageRead	*storageRead;
+
+	int				segmentFileNum;
+
+	int64			totalRowsScannned;
+
+	int64			blockFirstRowNum;
 	int64			headerOffsetInFile;
 	uint8			*dataBuffer;
 	int32			dataLen;
 	int 			executorBlockKind;
-	int64			blockFirstRowNum;
 	int 			rowCount;
 	bool			isLarge;
 	bool			isCompressed;
@@ -107,10 +113,14 @@ typedef struct AppendOnlyExecutorReadBlock
 
 	VarBlockReader  varBlockReader;
 	int				readerItemCount;
+	int				currentItemCount;
 	
 	uint8			*singleRow;
 	int32			singleRowLen;
 
+	/* synthetic system attributes */
+	ItemPointerData cdb_fake_ctid;
+	MemTupleBinding *mt_bind;
 } AppendOnlyExecutorReadBlock;
 
 /*
@@ -136,38 +146,21 @@ typedef struct AppendOnlyScanDescData
 	bool		aos_done_all_segfiles;
 	
 	MemoryContext	aoScanInitContext; /* mem context at init time */
-	char			*qlzScratch;
-	int32			qlzScratchLen;
-	int32			qlzScratchGuardLen;
 
 	int32			usableBlockSize;
 	int32			maxDataLen;
-	int32			largeReadLen;
-
-	int64           bufferCount;
-	int64			blockFirstRowNum;
-	int64			rowNumber;
-	int64			rowNumberInSegmentFile;
 
 	AppendOnlyExecutorReadBlock	executorReadBlock;
 
-	int				currentItemCount;
-	
 	/* current scan state */
 	bool		bufferDone;
-	TupleDesc	aos_tupDesc;
-	MemTupleData aos_ctup;		/* current tuple in scan, if any */
-	
-	/* synthetic system attributes */
-	ItemPointerData cdb_fake_ctid;
-	MemTupleBinding *mt_bind;
 
 	PgStat_Info aos_pgstat_info; /* statistics collector hook */
 
-	bool	aos_initedNewReadStorageRoutines;
+	bool	initedStorageRoutines;
 
-	AppendOnlyStorageAttributes	aos_storageAttributes;
-	AppendOnlyStorageRead		aos_storageRead;
+	AppendOnlyStorageAttributes	storageAttributes;
+	AppendOnlyStorageRead		storageRead;
 
 }	AppendOnlyScanDescData;
 
