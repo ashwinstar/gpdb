@@ -22,22 +22,37 @@ typedef struct BufferedRead
 	 * Large-read memory level members.
 	 */
     int32      			 maxBufferLen;
-    int32      			 largeReadLen;
+    int32      			 maxLargeReadLen;
 	
 	uint8                *memory;
     int32                memoryLen;
 
     uint8                *beforeBufferMemory;
+							/*
+							 * We allocate maxBufferLen bytes before largeReadMemory
+							 * to support buffers that cross large read boundaries.
+							 */
+
     uint8                *largeReadMemory;
 
-	int64				 position;
-    int32                readLen;
+	int64				 largeReadPosition;
+    int32                largeReadLen;
+							/*
+							 * The position within the current file of the current read
+							 * and the number of bytes read into in largeReadMemory.
+							 */
 	
 	/*
 	 * Buffer level members.
 	 */	
 	int32                bufferOffset;
 	int32                bufferLen;
+							/*
+							 * The buffer offset and length within the largeReadMemory.
+							 *
+							 * NOTE: The currently buffer may actually start in
+							 * beforeBufferMemory if bufferOffset is negative.
+							 */
 
 	/*
 	 * File level members.
@@ -54,7 +69,7 @@ typedef struct BufferedRead
  */
 extern int32 BufferedReadMemoryLen(
     int32                maxBufferLen,
-    int32                largeReadLen);
+    int32                maxLargeReadLen);
 
 /*
  * Initialize BufferedRead.
@@ -67,7 +82,7 @@ extern void BufferedReadInit(
     uint8                *memory,
     int32                memoryLen,
     int32                maxBufferLen,
-    int32                largeReadLen);
+    int32                maxLargeReadLen);
 
 /*
  * Takes an open file handle for the next file.

@@ -22,13 +22,13 @@ static void BufferedAppendWrite(
  */
 int32 BufferedAppendMemoryLen(
     int32                maxBufferLen,
-    int32                largeWriteLen)
+    int32                maxLargeWriteLen)
 {
 	Assert(maxBufferLen > 0);
-	Assert(largeWriteLen >= maxBufferLen);
+	Assert(maxLargeWriteLen >= maxBufferLen);
 
 	// Large write memory areas plus adjacent extra memory for 1 buffer.
-	return (largeWriteLen + maxBufferLen);
+	return (maxLargeWriteLen + maxBufferLen);
 }
 
 /*
@@ -42,13 +42,13 @@ void BufferedAppendInit(
     uint8                *memory,
     int32                memoryLen,
     int32                maxBufferLen,
-    int32                largeWriteLen)
+    int32                maxLargeWriteLen)
 {
 	Assert(bufferedAppend != NULL);
 	Assert(memory != NULL);
 	Assert(maxBufferLen > 0);
-	Assert(largeWriteLen >= maxBufferLen);
-	Assert(memoryLen >= BufferedAppendMemoryLen(maxBufferLen, largeWriteLen));
+	Assert(maxLargeWriteLen >= maxBufferLen);
+	Assert(memoryLen >= BufferedAppendMemoryLen(maxBufferLen, maxLargeWriteLen));
 	
 	memset(bufferedAppend, 0, sizeof(BufferedAppend));
 
@@ -56,17 +56,17 @@ void BufferedAppendInit(
 	 * Large-read memory level members.
 	 */
     bufferedAppend->maxBufferLen = maxBufferLen;
-    bufferedAppend->largeWriteLen = largeWriteLen;
+    bufferedAppend->maxLargeWriteLen = maxLargeWriteLen;
 
 	bufferedAppend->memory = memory;
     bufferedAppend->memoryLen = memoryLen;
 	
 	bufferedAppend->largeWriteMemory = memory;
     bufferedAppend->afterBufferMemory = 
-						&memory[largeWriteLen];
+						&memory[maxLargeWriteLen];
 
-	bufferedAppend->position = 0;
-	bufferedAppend->len = 0;
+	bufferedAppend->largeWritePosition = 0;
+	bufferedAppend->largeWriteLen = 0;
 
 	/*
 	 * Buffer level members.
@@ -96,8 +96,8 @@ void BufferedAppendSetFile(
 	int64				 eof_uncompressed)
 {
 	Assert(bufferedAppend != NULL);
-    Assert(bufferedAppend->position == 0);
-    Assert(bufferedAppend->len == 0);
+    Assert(bufferedAppend->largeWritePosition == 0);
+    Assert(bufferedAppend->largeWriteLen == 0);
     Assert(bufferedAppend->bufferLen == 0);
 	Assert(bufferedAppend->file == -1);
 	Assert(bufferedAppend->fileLen == 0);
@@ -107,7 +107,7 @@ void BufferedAppendSetFile(
 	Assert(file >= 0);
 	Assert(eof >= 0);
 
-	bufferedAppend->position = eof;
+	bufferedAppend->largeWritePosition = eof;
 	bufferedAppend->file = file;
 	bufferedAppend->filePathName = filePathName;
 	bufferedAppend->fileLen = eof;
@@ -126,8 +126,8 @@ static void BufferedAppendWrite(
 	int32 writeLen;
 	uint8 *largeWriteMemory;
 
-	writeLen = bufferedAppend->len;
-	Assert(bufferedAppend->len > 0);
+	writeLen = bufferedAppend->largeWriteLen;
+	Assert(bufferedAppend->largeWriteLen > 0);
 	largeWriteMemory = bufferedAppend->largeWriteMemory;
 
 #ifdef USE_ASSERT_CHECKING
@@ -141,11 +141,11 @@ static void BufferedAppendWrite(
 							       bufferedAppend->filePathName,
 								   errno)));
 
-		if (currentWritePosition != bufferedAppend->position)
+		if (currentWritePosition != bufferedAppend->largeWritePosition)
 			ereport(ERROR, (errcode_for_file_access(),
 							errmsg("Current position mismatch actual "
 								   INT64_FORMAT ", expected " INT64_FORMAT " in file \"%s\"",
-								   currentWritePosition, bufferedAppend->position,
+								   currentWritePosition, bufferedAppend->largeWritePosition,
 								   bufferedAppend->filePathName)));
 	}
 #endif	
@@ -170,8 +170,8 @@ static void BufferedAppendWrite(
 		largeWriteMemory += actualLen;
 	}
 	
-	bufferedAppend->position += bufferedAppend->len;
-	bufferedAppend->len = 0;
+	bufferedAppend->largeWritePosition += bufferedAppend->largeWriteLen;
+	bufferedAppend->largeWriteLen = 0;
 
 }
 
@@ -184,7 +184,7 @@ int64 BufferedAppendCurrentBufferPosition(
 	Assert(bufferedAppend != NULL);
 	Assert(bufferedAppend->file >= 0);
 	
-	return bufferedAppend->position;
+	return bufferedAppend->largeWritePosition;
 }
 
 /*
@@ -196,8 +196,8 @@ int64 BufferedAppendNextBufferPosition(
 	Assert(bufferedAppend != NULL);
 	Assert(bufferedAppend->file >= 0);
 	
-	return bufferedAppend->position +
-		   bufferedAppend->len;
+	return bufferedAppend->largeWritePosition +
+		   bufferedAppend->largeWriteLen;
 }
 
 /*
@@ -217,15 +217,15 @@ uint8 *BufferedAppendGetBuffer(
 	if (bufferLen > bufferedAppend->maxBufferLen)
 		elog(ERROR,
 		     "bufferLen %d greater than maxBufferLen %d at position " INT64_FORMAT,
-		     bufferLen, bufferedAppend->maxBufferLen, bufferedAppend->position);
+		     bufferLen, bufferedAppend->maxBufferLen, bufferedAppend->largeWritePosition);
 
 	/*
 	 * Let next buffer carry-over into the extra buffer space after
 	 * the large write buffer.
 	 */
-	currentLargeWriteLen = bufferedAppend->len;
+	currentLargeWriteLen = bufferedAppend->largeWriteLen;
 	Assert (currentLargeWriteLen + bufferLen <=
-										bufferedAppend->largeWriteLen +
+										bufferedAppend->maxLargeWriteLen +
 						                bufferedAppend->maxBufferLen);
 
 	bufferedAppend->bufferLen = bufferLen;
@@ -242,7 +242,7 @@ uint8 *BufferedAppendGetCurrentBuffer(
 	Assert(bufferedAppend != NULL);
 	Assert(bufferedAppend->file >= 0);
 
-	return &bufferedAppend->largeWriteMemory[bufferedAppend->len];
+	return &bufferedAppend->largeWriteMemory[bufferedAppend->largeWriteLen];
 }
 
 /*
@@ -286,21 +286,21 @@ void BufferedAppendFinishBuffer(
 	if (usedLen > bufferedAppend->bufferLen)
 		elog(ERROR,
 		     "Used length %d greater than bufferLen %d at position " INT64_FORMAT,
-		     usedLen, bufferedAppend->bufferLen, bufferedAppend->position);
+		     usedLen, bufferedAppend->bufferLen, bufferedAppend->largeWritePosition);
 		     
 
-	newLen = bufferedAppend->len + usedLen;
-	Assert (newLen <= bufferedAppend->largeWriteLen +
+	newLen = bufferedAppend->largeWriteLen + usedLen;
+	Assert (newLen <= bufferedAppend->maxLargeWriteLen +
 		              bufferedAppend->maxBufferLen);
-	if (newLen >= bufferedAppend->largeWriteLen)
+	if (newLen >= bufferedAppend->maxLargeWriteLen)
 	{
 		/*
 		 * Current large-write memory is full.
 		 */
-		bufferedAppend->len = bufferedAppend->largeWriteLen;
+		bufferedAppend->largeWriteLen = bufferedAppend->maxLargeWriteLen;
 		BufferedAppendWrite(bufferedAppend);
 		
-		if (newLen > bufferedAppend->largeWriteLen)
+		if (newLen > bufferedAppend->maxLargeWriteLen)
 		{
 			int32 excessLen;
 			
@@ -308,23 +308,23 @@ void BufferedAppendFinishBuffer(
 			 * We have carry-over in the extra buffer.  Write and then 
 			 * copy the extra to the front of the large write buffer.
 			 */
-			excessLen = newLen - bufferedAppend->largeWriteLen;
+			excessLen = newLen - bufferedAppend->maxLargeWriteLen;
 			
-			bufferedAppend->len = bufferedAppend->largeWriteLen;
+			bufferedAppend->largeWriteLen = bufferedAppend->maxLargeWriteLen;
 			
 			memcpy(bufferedAppend->largeWriteMemory,
 				   bufferedAppend->afterBufferMemory,
 				   excessLen);
 
-			bufferedAppend->len = excessLen;
+			bufferedAppend->largeWriteLen = excessLen;
 		}
 		else
 		{
 			/*
 			 * Exactly fits.
 			 */
-			Assert(newLen == bufferedAppend->largeWriteLen);
-			Assert(bufferedAppend->len == 0);
+			Assert(newLen == bufferedAppend->maxLargeWriteLen);
+			Assert(bufferedAppend->largeWriteLen == 0);
 		}
 	}
 	else
@@ -332,7 +332,7 @@ void BufferedAppendFinishBuffer(
 		/*
 		 * Normal case -- added more data to current buffer.
 		 */
-		bufferedAppend->len = newLen;
+		bufferedAppend->largeWriteLen = newLen;
 	}
 
 	bufferedAppend->fileLen += usedLen;
@@ -390,14 +390,14 @@ void BufferedAppendCompleteFile(
 	Assert(bufferedAppend != NULL);
 	Assert(bufferedAppend->file >= 0);
 
-	if (bufferedAppend->len > 0)
+	if (bufferedAppend->largeWriteLen > 0)
 		BufferedAppendWrite(bufferedAppend);
 
 	*fileLen = bufferedAppend->fileLen;
 	*fileLen_uncompressed = bufferedAppend->fileLen_uncompressed;
 
-	bufferedAppend->position = 0;
-	bufferedAppend->len = 0;
+	bufferedAppend->largeWritePosition = 0;
+	bufferedAppend->largeWriteLen = 0;
 	
 	bufferedAppend->bufferLen = 0;
 	

@@ -22,21 +22,39 @@ typedef struct BufferedAppend
 	 * Large-write memory level members.
 	 */
     int32      			 maxBufferLen;
-    int32      			 largeWriteLen;
+    int32      			 maxLargeWriteLen;
 
 	uint8                *memory;
     int32                memoryLen;
 
     uint8                *largeWriteMemory;
+
     uint8                *afterBufferMemory;
+							/*
+							 * We allocate maxBufferLen bytes after largeWriteMemory
+							 * to support buffers that cross large write boundaries.
+							 */
 	
-	int64				 position;
-    int32                len;
+	int64				 largeWritePosition;
+    int32                largeWriteLen;
+							/*
+							 * The position within the current file for the next write
+							 * and the number of bytes buffered up in largeWriteMemory
+							 * for the next write.
+							 *
+							 * NOTE: The currently allocated buffer (see bufferLen)
+							 * may spill across into afterBufferMemory.
+							 */
 	
 	/*
 	 * Buffer level members.
 	 */	
     int32                bufferLen;
+							/*
+							 * The buffer within largeWriteMemory given to the caller to
+							 * fill in.  It starts after largeWriteLen bytes (i.e. the
+							 * offset) and is bufferLen bytes long.
+							 */
 
 	/*
 	 * File level members.
@@ -56,7 +74,7 @@ typedef struct BufferedAppend
  */
 extern int32 BufferedAppendMemoryLen(
     int32                maxBufferLen,
-    int32                largeWriteLen);
+    int32                maxLargeWriteLen);
 
 /*
  * Initialize BufferedAppend.
@@ -69,7 +87,7 @@ extern void BufferedAppendInit(
     uint8                *memory,
     int32                memoryLen,
     int32                maxBufferLen,
-    int32                largeWriteLen);
+    int32                maxLargeWriteLen);
 
 /*
  * Takes an open file handle for the next file.

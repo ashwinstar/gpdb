@@ -3268,7 +3268,7 @@ select * from get_ereport order by 1;
  cabf: cdbbufferedread:00000155:  ereport(ERROR, (errcode_for_file_access(), 
  cabf: cdbbufferedread:00000156:  errmsg("Current position mismatch actual " 
  cabf: cdbbufferedread:00000157:  INT64_FORMAT ", expected " INT64_FORMAT " in file "%s"", 
- cabf: cdbbufferedread:00000158:  currentReadPosition, bufferedRead->position, 
+ cabf: cdbbufferedread:00000158:  currentReadPosition, bufferedRead->largeReadPosition, 
  cabf: cdbbufferedread:00000159:  bufferedRead->filePathName))); 
  cabf: cdbbufferedread:00000172:  ereport(ERROR, (errcode_for_file_access(), 
  cabf: cdbbufferedread:00000173:  errmsg("read beyond eof in file "%s"", 
@@ -3284,7 +3284,7 @@ select * from get_ereport order by 1;
  cabh: cdbbufferedappend:00000145:  ereport(ERROR, (errcode_for_file_access(), 
  cabh: cdbbufferedappend:00000146:  errmsg("Current position mismatch actual " 
  cabh: cdbbufferedappend:00000147:  INT64_FORMAT ", expected " INT64_FORMAT " in file "%s"", 
- cabh: cdbbufferedappend:00000148:  currentWritePosition, bufferedAppend->position, 
+ cabh: cdbbufferedappend:00000148:  currentWritePosition, bufferedAppend->largeWritePosition, 
  cabh: cdbbufferedappend:00000149:  bufferedAppend->filePathName))); 
  cabh: cdbbufferedappend:00000161:  ereport(ERROR, (errcode_for_file_access(), 
  cabh: cdbbufferedappend:00000162:  errmsg("no disk space for file "%s"", 
