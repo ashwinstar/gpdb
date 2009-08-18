@@ -376,15 +376,19 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 				 * We have permission to ANALYZE.
 				 */
 				
-				if (RelationIsExternal(candidateRelation))
+				if (candidateRelation->rd_rel->relkind != RELKIND_RELATION)
 				{
 					/**
-					 * We cannot ANALYZE external tables. Print warning and move on
-					 * to the next relation.
+					 * Is the relation the right kind?
 					 */
 					ereport(WARNING,
-							(errmsg("Skipping \"%s\" --- cannot ANALYZE external tables.",
+							(errmsg("skipping \"%s\" --- cannot analyze indexes, views, external tables or special system tables",
 									RelationGetRelationName(candidateRelation))));
+					relation_close(candidateRelation, ShareUpdateExclusiveLock);
+				}
+				else if (isOtherTempNamespace(RelationGetNamespace(candidateRelation)))
+				{
+					/* Silently ignore tables that are temp tables of other backends. */
 					relation_close(candidateRelation, ShareUpdateExclusiveLock);
 				}
 				else

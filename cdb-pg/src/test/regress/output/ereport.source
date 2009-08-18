@@ -327,20 +327,20 @@ select * from get_ereport order by 1;
  aaag: aocsam:00000313:  errmsg("AOCS IO Error on %s, seek offset " INT64_FORMAT " errno %d", 
  aaag: aocsam:00000314:  desc->ds[i]->path, desc->ds[i]->eof, errno 
  aaag: aocsam:00000315:  ))); 
- aaah: analyze:00000385:  ereport(WARNING, 
- aaah: analyze:00000386:  (errmsg("Skipping "%s" --- cannot ANALYZE external tables.", 
- aaah: analyze:00000387:  RelationGetRelationName(candidateRelation)))); 
- aaah: analyze:00000424:  ereport(WARNING, 
- aaah: analyze:00000425:  (errmsg("Skipping "%s" --- only table or database owner can analyze it", 
- aaah: analyze:00000426:  RelationGetRelationName(candidateRelation)))); 
- aaah: analyze:00000497:  ereport(ERROR, 
- aaah: analyze:00000498:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- aaah: analyze:00000499:  errmsg("Attribute %s has been dropped in relation %s.", 
- aaah: analyze:00000500:  attributeName, get_rel_name(relationOid)))); 
- aaah: analyze:00000511:  ereport(ERROR, 
- aaah: analyze:00000512:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- aaah: analyze:00000513:  errmsg("Relation %s does not have an attribute named %s.", 
- aaah: analyze:00000514:  get_rel_name(relationOid),attributeName))); 
+ aaah: analyze:00000384:  ereport(WARNING, 
+ aaah: analyze:00000385:  (errmsg("skipping "%s" --- cannot analyze indexes, views, external tables or special system tables", 
+ aaah: analyze:00000386:  RelationGetRelationName(candidateRelation)))); 
+ aaah: analyze:00000428:  ereport(WARNING, 
+ aaah: analyze:00000429:  (errmsg("Skipping "%s" --- only table or database owner can analyze it", 
+ aaah: analyze:00000430:  RelationGetRelationName(candidateRelation)))); 
+ aaah: analyze:00000501:  ereport(ERROR, 
+ aaah: analyze:00000502:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ aaah: analyze:00000503:  errmsg("Attribute %s has been dropped in relation %s.", 
+ aaah: analyze:00000504:  attributeName, get_rel_name(relationOid)))); 
+ aaah: analyze:00000515:  ereport(ERROR, 
+ aaah: analyze:00000516:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ aaah: analyze:00000517:  errmsg("Relation %s does not have an attribute named %s.", 
+ aaah: analyze:00000518:  get_rel_name(relationOid),attributeName))); 
  aaah: analyze:00000748:  ereport(ERROR, 
  aaah: analyze:00000749:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
  aaah: analyze:00000750:  errmsg("target lists can have at most %d entries", 
@@ -349,8 +349,8 @@ select * from get_ereport order by 1;
  aaah: analyze:00000846:  (errcode(ERRCODE_SYNTAX_ERROR), 
  aaah: analyze:00000847:  errmsg("CREATE VIEW specifies more column " 
  aaah: analyze:00000848:  "names than columns"))); 
- aaah: analyze:00000860:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaah: analyze:00000861:  errmsg("Unable to connect to execute internal query."))); 
+ aaah: analyze:00000864:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaah: analyze:00000865:  errmsg("Unable to connect to execute internal query."))); 
  aaah: analyze:00000892:  ereport(ERROR, 
  aaah: analyze:00000893:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  aaah: analyze:00000894:  errmsg("The RETURNING clause of the DELETE statement is not " 
@@ -5181,287 +5181,287 @@ select * from get_ereport order by 1;
  gaad: guc:00008797:  ereport(ERROR, 
  gaad: guc:00008798:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  gaad: guc:00008799:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
- gaae: gram:00016927:  ereport(ERROR, 
- gaae: gram:00016928:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00016929:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
- gaae: gram:00016941:  ereport(ERROR, 
- gaae: gram:00016942:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00016943:  errmsg("INTERVAL(%d) precision must not be negative", 
- gaae: gram:00016944:  (yyvsp[-3].ival)))); 
- gaae: gram:00016947:  ereport(WARNING, 
- gaae: gram:00016948:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00016949:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00016950:  (yyvsp[-3].ival), MAX_INTERVAL_PRECISION))); 
- gaae: gram:00016956:  ereport(ERROR, 
- gaae: gram:00016957:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00016958:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
- gaae: gram:00017612:  ereport(ERROR, 
- gaae: gram:00017613:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00017614:  errmsg("Cannot specify a name, rank, " 
- gaae: gram:00017615:  "or value for a DEFAULT partition " 
- gaae: gram:00017616:  "in this context"))); 
- gaae: gram:00017680:  ereport(ERROR, 
- gaae: gram:00017681:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00017682:  errmsg("Can only ADD a partition by name"))); 
- gaae: gram:00017720:  ereport(ERROR, 
- gaae: gram:00017721:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00017722:  errmsg("Can only ADD a partition by name"))); 
- gaae: gram:00017799:  ereport(ERROR, 
- gaae: gram:00017800:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00017801:  errmsg("Can only COALESCE a partition by name"))); 
- gaae: gram:00018065:  ereport(ERROR, 
- gaae: gram:00018066:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00018067:  errmsg("template cannot contain " 
- gaae: gram:00018068:  "specification for child " 
- gaae: gram:00018069:  "partition"))); 
- gaae: gram:00019011:  ereport(ERROR, 
- gaae: gram:00019012:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00019013:  errmsg("MATCH PARTIAL not yet implemented"))); 
- gaae: gram:00019195:  ereport(ERROR, 
- gaae: gram:00019196:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00019197:  errmsg("TABLESPACE not supported"))); 
- gaae: gram:00019216:  ereport(ERROR, 
- gaae: gram:00019217:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00019218:  errmsg("TABLESPACE not supported"))); 
- gaae: gram:00019237:  ereport(ERROR, 
- gaae: gram:00019238:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00019239:  errmsg("TABLESPACE not supported"))); 
- gaae: gram:00019735:  ereport(ERROR, 
- gaae: gram:00019736:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019737:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
- gaae: gram:00019783:  ereport(ERROR, 
- gaae: gram:00019784:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019785:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
- gaae: gram:00019787:  ereport(ERROR, 
- gaae: gram:00019788:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019789:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
- gaae: gram:00019845:  ereport(ERROR, 
- gaae: gram:00019846:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019847:  errmsg("template cannot contain " 
- gaae: gram:00019848:  "specification for child " 
- gaae: gram:00019849:  "partition"))); 
- gaae: gram:00019942:  ereport(ERROR, 
- gaae: gram:00019943:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019944:  errmsg("CREATE TABLE AS may not specify INTO"))); 
- gaae: gram:00019954:  ereport(ERROR, 
- gaae: gram:00019955:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00019956:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
- gaae: gram:00019957:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"))); 
- gaae: gram:00020015:  ereport(ERROR, 
- gaae: gram:00020016:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00020017:  errmsg("EXECUTE may not be used with a regular external table"), 
- gaae: gram:00020018:  errhint("Use CREATE EXTERNAL WEB TABLE instead"))); 
- gaae: gram:00020253:  ereport(ERROR, 
- gaae: gram:00020254:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00020255:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
- gaae: gram:00020259:  ereport(ERROR, 
- gaae: gram:00020260:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00020261:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
- gaae: gram:00020589:  ereport(ERROR, 
- gaae: gram:00020590:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020591:  errmsg("CREATE TABLESPACE not supported"))); 
- gaae: gram:00020843:  ereport(ERROR, 
- gaae: gram:00020844:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00020845:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
- gaae: gram:00020864:  ereport(ERROR, 
- gaae: gram:00020865:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00020866:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
- gaae: gram:00020932:  ereport(ERROR, 
- gaae: gram:00020933:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020934:  errmsg("CREATE ASSERTION is not yet implemented"))); 
- gaae: gram:00020948:  ereport(ERROR, 
- gaae: gram:00020949:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020950:  errmsg("DROP ASSERTION is not yet implemented"))); 
- gaae: gram:00021051:  ereport(ERROR, 
- gaae: gram:00021052:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021053:  errmsg("improper qualified name (too many dotted names): %s", 
- gaae: gram:00021054:  NameListToString((yyvsp[-4].list))))); 
- gaae: gram:00022680:  ereport(ERROR, 
- gaae: gram:00022681:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00022682:  errmsg("missing argument"), 
- gaae: gram:00022683:  errhint("Use NONE to denote the missing argument of a unary operator."))); 
- gaae: gram:00023585:  ereport(ERROR, 
- gaae: gram:00023586:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00023587:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00023594:  ereport(ERROR, 
- gaae: gram:00023595:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00023596:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00023603:  ereport(ERROR, 
- gaae: gram:00023604:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00023605:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00024058:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00024059:  errmsg("cannot use force with explain statement") 
- gaae: gram:00024060:  )); 
- gaae: gram:00024070:  ereport(ERROR, 
- gaae: gram:00024071:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00024072:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
- gaae: gram:00024073:  "clause"))); 
- gaae: gram:00024141:  ereport(ERROR, 
- gaae: gram:00024142:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00024143:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
- gaae: gram:00024408:  ereport(ERROR, 
- gaae: gram:00024409:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00024410:  errmsg("number of columns does not match number of values"))); 
- gaae: gram:00024800:  ereport(ERROR, 
- gaae: gram:00024801:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00024802:  errmsg("LIMIT #,# syntax is not supported"), 
- gaae: gram:00024803:  errhint("Use separate LIMIT and OFFSET clauses."))); 
- gaae: gram:00025328:  ereport(ERROR, 
- gaae: gram:00025329:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00025330:  errmsg("VALUES in FROM must have an alias"), 
- gaae: gram:00025331:  errhint("For example, FROM (VALUES ...) [AS] foo."))); 
- gaae: gram:00025333:  ereport(ERROR, 
- gaae: gram:00025334:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00025335:  errmsg("subquery in FROM must have an alias"), 
- gaae: gram:00025336:  errhint("For example, FROM (SELECT ...) [AS] foo."))); 
- gaae: gram:00025722:  ereport(ERROR, 
- gaae: gram:00025723:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00025724:  errmsg("INTERVAL(%d) precision must not be negative", 
- gaae: gram:00025725:  (yyvsp[-2].ival)))); 
- gaae: gram:00025728:  ereport(WARNING, 
- gaae: gram:00025729:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00025730:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00025731:  (yyvsp[-2].ival), MAX_INTERVAL_PRECISION))); 
- gaae: gram:00025865:  ereport(ERROR, 
- gaae: gram:00025866:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00025867:  errmsg("precision for type float must be at least 1 bit"))); 
- gaae: gram:00025873:  ereport(ERROR, 
- gaae: gram:00025874:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00025875:  errmsg("precision for type float must be less than 54 bits"))); 
- gaae: gram:00025890:  ereport(ERROR, 
- gaae: gram:00025891:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00025892:  errmsg("NUMERIC precision %d must be between 1 and %d", 
- gaae: gram:00025893:  (yyvsp[-3].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00025895:  ereport(ERROR, 
- gaae: gram:00025896:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00025897:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
- gaae: gram:00025898:  (yyvsp[-1].ival), (yyvsp[-3].ival)))); 
- gaae: gram:00025908:  ereport(ERROR, 
- gaae: gram:00025909:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00025910:  errmsg("NUMERIC precision %d must be between 1 and %d", 
- gaae: gram:00025911:  (yyvsp[-1].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00025929:  ereport(ERROR, 
- gaae: gram:00025930:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00025931:  errmsg("DECIMAL precision %d must be between 1 and %d", 
- gaae: gram:00025932:  (yyvsp[-3].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00025934:  ereport(ERROR, 
- gaae: gram:00025935:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00025936:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
- gaae: gram:00025937:  (yyvsp[-1].ival), (yyvsp[-3].ival)))); 
- gaae: gram:00025947:  ereport(ERROR, 
- gaae: gram:00025948:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00025949:  errmsg("DECIMAL precision %d must be between 1 and %d", 
- gaae: gram:00025950:  (yyvsp[-1].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00026001:  ereport(ERROR, 
- gaae: gram:00026002:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026003:  errmsg("length for type %s must be at least 1", 
- gaae: gram:00026004:  typname))); 
- gaae: gram:00026006:  ereport(ERROR, 
- gaae: gram:00026007:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026008:  errmsg("length for type %s cannot exceed %d", 
- gaae: gram:00026009:  typname, MaxAttrSize * BITS_PER_BYTE))); 
- gaae: gram:00026083:  ereport(ERROR, 
- gaae: gram:00026084:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026085:  errmsg("length for type %s must be at least 1", 
- gaae: gram:00026086:  (yyvsp[-4].str)))); 
- gaae: gram:00026088:  ereport(ERROR, 
- gaae: gram:00026089:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026090:  errmsg("length for type %s cannot exceed %d", 
- gaae: gram:00026091:  (yyvsp[-4].str), MaxAttrSize))); 
- gaae: gram:00026188:  ereport(ERROR, 
- gaae: gram:00026189:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026190:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
- gaae: gram:00026191:  (yyvsp[-2].ival), ((yyvsp[0].boolean) ? " WITH TIME ZONE": "")))); 
- gaae: gram:00026194:  ereport(WARNING, 
- gaae: gram:00026195:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026196:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
- gaae: gram:00026197:  (yyvsp[-2].ival), ((yyvsp[0].boolean) ? " WITH TIME ZONE": ""), 
- gaae: gram:00026198:  MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00026227:  ereport(ERROR, 
- gaae: gram:00026228:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026229:  errmsg("TIME(%d)%s precision must not be negative", 
- gaae: gram:00026230:  (yyvsp[-2].ival), ((yyvsp[0].boolean) ? " WITH TIME ZONE": "")))); 
- gaae: gram:00026233:  ereport(WARNING, 
- gaae: gram:00026234:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026235:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
- gaae: gram:00026236:  (yyvsp[-2].ival), ((yyvsp[0].boolean) ? " WITH TIME ZONE": ""), 
- gaae: gram:00026237:  MAX_TIME_PRECISION))); 
- gaae: gram:00026864:  ereport(ERROR, 
- gaae: gram:00026865:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00026866:  errmsg("UNIQUE predicate is not yet implemented"))); 
- gaae: gram:00026994:  ereport(ERROR, 
- gaae: gram:00026995:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00026996:  errmsg("window OVER clause can only be used " 
- gaae: gram:00026997:  "with an aggregate"))); 
- gaae: gram:00027279:  ereport(ERROR, 
- gaae: gram:00027280:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027281:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
- gaae: gram:00027282:  (yyvsp[-1].ival)))); 
- gaae: gram:00027285:  ereport(WARNING, 
- gaae: gram:00027286:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027287:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00027288:  (yyvsp[-1].ival), MAX_TIME_PRECISION))); 
- gaae: gram:00027331:  ereport(ERROR, 
- gaae: gram:00027332:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027333:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
- gaae: gram:00027334:  (yyvsp[-1].ival)))); 
- gaae: gram:00027337:  ereport(WARNING, 
- gaae: gram:00027338:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027339:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00027340:  (yyvsp[-1].ival), MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00027384:  ereport(ERROR, 
- gaae: gram:00027385:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027386:  errmsg("LOCALTIME(%d) precision must not be negative", 
- gaae: gram:00027387:  (yyvsp[-1].ival)))); 
- gaae: gram:00027390:  ereport(WARNING, 
- gaae: gram:00027391:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027392:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00027393:  (yyvsp[-1].ival), MAX_TIME_PRECISION))); 
- gaae: gram:00027438:  ereport(ERROR, 
- gaae: gram:00027439:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027440:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
- gaae: gram:00027441:  (yyvsp[-1].ival)))); 
- gaae: gram:00027444:  ereport(WARNING, 
- gaae: gram:00027445:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027446:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00027447:  (yyvsp[-1].ival), MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00028380:  ereport(ERROR, 
- gaae: gram:00028381:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00028382:  errmsg("improper qualified name (too many dotted names): %s", 
- gaae: gram:00028383:  NameListToString(lcons(makeString((yyvsp[-1].str)), (yyvsp[0].list)))))); 
- gaae: gram:00028537:  ereport(ERROR, 
- gaae: gram:00028538:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028539:  errmsg("INTERVAL(%d) precision must not be negative", 
- gaae: gram:00028540:  (yyvsp[-3].ival)))); 
- gaae: gram:00028543:  ereport(WARNING, 
- gaae: gram:00028544:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028545:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00028546:  (yyvsp[-3].ival), MAX_INTERVAL_PRECISION))); 
- gaae: gram:00028694:  ereport(ERROR, 
- gaae: gram:00028695:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00028696:  errmsg("OLD used in query that is not in a rule"))); 
- gaae: gram:00028706:  ereport(ERROR, 
- gaae: gram:00028707:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00028708:  errmsg("NEW used in query that is not in a rule"))); 
- gaae: gram:00029154:  ereport(ERROR, 
- gaae: gram:00029155:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029156:  errmsg("wrong number of parameters on left side of OVERLAPS expression"))); 
- gaae: gram:00029160:  ereport(ERROR, 
- gaae: gram:00029161:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029162:  errmsg("wrong number of parameters on right side of OVERLAPS expression"))); 
- gaae: gram:00029262:  ereport(ERROR, 
- gaae: gram:00029263:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029264:  errmsg("multiple ORDER BY clauses not allowed"))); 
- gaae: gram:00029272:  ereport(ERROR, 
- gaae: gram:00029273:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029274:  errmsg("multiple OFFSET clauses not allowed"))); 
- gaae: gram:00029280:  ereport(ERROR, 
- gaae: gram:00029281:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029282:  errmsg("multiple LIMIT clauses not allowed"))); 
- gaae: gram:00029419:  ereport(ERROR, 
- gaae: gram:00029420:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029421:  errmsg("OUT and INOUT arguments aren't allowed in " 
- gaae: gram:00029422:  "TABLE functions"))); 
+ gaae: gram:00017236:  ereport(ERROR, 
+ gaae: gram:00017237:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00017238:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
+ gaae: gram:00017250:  ereport(ERROR, 
+ gaae: gram:00017251:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00017252:  errmsg("INTERVAL(%d) precision must not be negative", 
+ gaae: gram:00017253:  (yyvsp[(3) - (6)].ival)))); 
+ gaae: gram:00017256:  ereport(WARNING, 
+ gaae: gram:00017257:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00017258:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00017259:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+ gaae: gram:00017265:  ereport(ERROR, 
+ gaae: gram:00017266:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00017267:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
+ gaae: gram:00017921:  ereport(ERROR, 
+ gaae: gram:00017922:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00017923:  errmsg("Cannot specify a name, rank, " 
+ gaae: gram:00017924:  "or value for a DEFAULT partition " 
+ gaae: gram:00017925:  "in this context"))); 
+ gaae: gram:00017989:  ereport(ERROR, 
+ gaae: gram:00017990:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00017991:  errmsg("Can only ADD a partition by name"))); 
+ gaae: gram:00018029:  ereport(ERROR, 
+ gaae: gram:00018030:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00018031:  errmsg("Can only ADD a partition by name"))); 
+ gaae: gram:00018108:  ereport(ERROR, 
+ gaae: gram:00018109:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00018110:  errmsg("Can only COALESCE a partition by name"))); 
+ gaae: gram:00018374:  ereport(ERROR, 
+ gaae: gram:00018375:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00018376:  errmsg("template cannot contain " 
+ gaae: gram:00018377:  "specification for child " 
+ gaae: gram:00018378:  "partition"))); 
+ gaae: gram:00019320:  ereport(ERROR, 
+ gaae: gram:00019321:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00019322:  errmsg("MATCH PARTIAL not yet implemented"))); 
+ gaae: gram:00019504:  ereport(ERROR, 
+ gaae: gram:00019505:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00019506:  errmsg("TABLESPACE not supported"))); 
+ gaae: gram:00019525:  ereport(ERROR, 
+ gaae: gram:00019526:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00019527:  errmsg("TABLESPACE not supported"))); 
+ gaae: gram:00019546:  ereport(ERROR, 
+ gaae: gram:00019547:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00019548:  errmsg("TABLESPACE not supported"))); 
+ gaae: gram:00020044:  ereport(ERROR, 
+ gaae: gram:00020045:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020046:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
+ gaae: gram:00020092:  ereport(ERROR, 
+ gaae: gram:00020093:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020094:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
+ gaae: gram:00020096:  ereport(ERROR, 
+ gaae: gram:00020097:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020098:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
+ gaae: gram:00020154:  ereport(ERROR, 
+ gaae: gram:00020155:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020156:  errmsg("template cannot contain " 
+ gaae: gram:00020157:  "specification for child " 
+ gaae: gram:00020158:  "partition"))); 
+ gaae: gram:00020251:  ereport(ERROR, 
+ gaae: gram:00020252:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020253:  errmsg("CREATE TABLE AS may not specify INTO"))); 
+ gaae: gram:00020263:  ereport(ERROR, 
+ gaae: gram:00020264:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00020265:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
+ gaae: gram:00020266:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"))); 
+ gaae: gram:00020324:  ereport(ERROR, 
+ gaae: gram:00020325:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020326:  errmsg("EXECUTE may not be used with a regular external table"), 
+ gaae: gram:00020327:  errhint("Use CREATE EXTERNAL WEB TABLE instead"))); 
+ gaae: gram:00020562:  ereport(ERROR, 
+ gaae: gram:00020563:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00020564:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
+ gaae: gram:00020568:  ereport(ERROR, 
+ gaae: gram:00020569:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00020570:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
+ gaae: gram:00020898:  ereport(ERROR, 
+ gaae: gram:00020899:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00020900:  errmsg("CREATE TABLESPACE not supported"))); 
+ gaae: gram:00021152:  ereport(ERROR, 
+ gaae: gram:00021153:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021154:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+ gaae: gram:00021173:  ereport(ERROR, 
+ gaae: gram:00021174:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021175:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+ gaae: gram:00021241:  ereport(ERROR, 
+ gaae: gram:00021242:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00021243:  errmsg("CREATE ASSERTION is not yet implemented"))); 
+ gaae: gram:00021257:  ereport(ERROR, 
+ gaae: gram:00021258:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00021259:  errmsg("DROP ASSERTION is not yet implemented"))); 
+ gaae: gram:00021360:  ereport(ERROR, 
+ gaae: gram:00021361:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021362:  errmsg("improper qualified name (too many dotted names): %s", 
+ gaae: gram:00021363:  NameListToString((yyvsp[(3) - (7)].list))))); 
+ gaae: gram:00022989:  ereport(ERROR, 
+ gaae: gram:00022990:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00022991:  errmsg("missing argument"), 
+ gaae: gram:00022992:  errhint("Use NONE to denote the missing argument of a unary operator."))); 
+ gaae: gram:00023894:  ereport(ERROR, 
+ gaae: gram:00023895:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00023896:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00023903:  ereport(ERROR, 
+ gaae: gram:00023904:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00023905:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00023912:  ereport(ERROR, 
+ gaae: gram:00023913:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00023914:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00024367:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00024368:  errmsg("cannot use force with explain statement") 
+ gaae: gram:00024369:  )); 
+ gaae: gram:00024379:  ereport(ERROR, 
+ gaae: gram:00024380:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00024381:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
+ gaae: gram:00024382:  "clause"))); 
+ gaae: gram:00024450:  ereport(ERROR, 
+ gaae: gram:00024451:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00024452:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
+ gaae: gram:00024717:  ereport(ERROR, 
+ gaae: gram:00024718:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00024719:  errmsg("number of columns does not match number of values"))); 
+ gaae: gram:00025109:  ereport(ERROR, 
+ gaae: gram:00025110:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00025111:  errmsg("LIMIT #,# syntax is not supported"), 
+ gaae: gram:00025112:  errhint("Use separate LIMIT and OFFSET clauses."))); 
+ gaae: gram:00025637:  ereport(ERROR, 
+ gaae: gram:00025638:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00025639:  errmsg("VALUES in FROM must have an alias"), 
+ gaae: gram:00025640:  errhint("For example, FROM (VALUES ...) [AS] foo."))); 
+ gaae: gram:00025642:  ereport(ERROR, 
+ gaae: gram:00025643:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00025644:  errmsg("subquery in FROM must have an alias"), 
+ gaae: gram:00025645:  errhint("For example, FROM (SELECT ...) [AS] foo."))); 
+ gaae: gram:00026031:  ereport(ERROR, 
+ gaae: gram:00026032:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026033:  errmsg("INTERVAL(%d) precision must not be negative", 
+ gaae: gram:00026034:  (yyvsp[(3) - (5)].ival)))); 
+ gaae: gram:00026037:  ereport(WARNING, 
+ gaae: gram:00026038:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026039:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00026040:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION))); 
+ gaae: gram:00026174:  ereport(ERROR, 
+ gaae: gram:00026175:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026176:  errmsg("precision for type float must be at least 1 bit"))); 
+ gaae: gram:00026182:  ereport(ERROR, 
+ gaae: gram:00026183:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026184:  errmsg("precision for type float must be less than 54 bits"))); 
+ gaae: gram:00026199:  ereport(ERROR, 
+ gaae: gram:00026200:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026201:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+ gaae: gram:00026202:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00026204:  ereport(ERROR, 
+ gaae: gram:00026205:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026206:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
+ gaae: gram:00026207:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+ gaae: gram:00026217:  ereport(ERROR, 
+ gaae: gram:00026218:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026219:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+ gaae: gram:00026220:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00026238:  ereport(ERROR, 
+ gaae: gram:00026239:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026240:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+ gaae: gram:00026241:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00026243:  ereport(ERROR, 
+ gaae: gram:00026244:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026245:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
+ gaae: gram:00026246:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+ gaae: gram:00026256:  ereport(ERROR, 
+ gaae: gram:00026257:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026258:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+ gaae: gram:00026259:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00026310:  ereport(ERROR, 
+ gaae: gram:00026311:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026312:  errmsg("length for type %s must be at least 1", 
+ gaae: gram:00026313:  typname))); 
+ gaae: gram:00026315:  ereport(ERROR, 
+ gaae: gram:00026316:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026317:  errmsg("length for type %s cannot exceed %d", 
+ gaae: gram:00026318:  typname, MaxAttrSize * BITS_PER_BYTE))); 
+ gaae: gram:00026392:  ereport(ERROR, 
+ gaae: gram:00026393:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026394:  errmsg("length for type %s must be at least 1", 
+ gaae: gram:00026395:  (yyvsp[(1) - (5)].str)))); 
+ gaae: gram:00026397:  ereport(ERROR, 
+ gaae: gram:00026398:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026399:  errmsg("length for type %s cannot exceed %d", 
+ gaae: gram:00026400:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
+ gaae: gram:00026497:  ereport(ERROR, 
+ gaae: gram:00026498:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026499:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
+ gaae: gram:00026500:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+ gaae: gram:00026503:  ereport(WARNING, 
+ gaae: gram:00026504:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026505:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
+ gaae: gram:00026506:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+ gaae: gram:00026507:  MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00026536:  ereport(ERROR, 
+ gaae: gram:00026537:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026538:  errmsg("TIME(%d)%s precision must not be negative", 
+ gaae: gram:00026539:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+ gaae: gram:00026542:  ereport(WARNING, 
+ gaae: gram:00026543:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026544:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
+ gaae: gram:00026545:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+ gaae: gram:00026546:  MAX_TIME_PRECISION))); 
+ gaae: gram:00027173:  ereport(ERROR, 
+ gaae: gram:00027174:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00027175:  errmsg("UNIQUE predicate is not yet implemented"))); 
+ gaae: gram:00027303:  ereport(ERROR, 
+ gaae: gram:00027304:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00027305:  errmsg("window OVER clause can only be used " 
+ gaae: gram:00027306:  "with an aggregate"))); 
+ gaae: gram:00027588:  ereport(ERROR, 
+ gaae: gram:00027589:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027590:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
+ gaae: gram:00027591:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00027594:  ereport(WARNING, 
+ gaae: gram:00027595:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027596:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00027597:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+ gaae: gram:00027640:  ereport(ERROR, 
+ gaae: gram:00027641:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027642:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
+ gaae: gram:00027643:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00027646:  ereport(WARNING, 
+ gaae: gram:00027647:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027648:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00027649:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00027693:  ereport(ERROR, 
+ gaae: gram:00027694:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027695:  errmsg("LOCALTIME(%d) precision must not be negative", 
+ gaae: gram:00027696:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00027699:  ereport(WARNING, 
+ gaae: gram:00027700:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027701:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00027702:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+ gaae: gram:00027747:  ereport(ERROR, 
+ gaae: gram:00027748:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027749:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
+ gaae: gram:00027750:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00027753:  ereport(WARNING, 
+ gaae: gram:00027754:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027755:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00027756:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00028689:  ereport(ERROR, 
+ gaae: gram:00028690:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00028691:  errmsg("improper qualified name (too many dotted names): %s", 
+ gaae: gram:00028692:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
+ gaae: gram:00028846:  ereport(ERROR, 
+ gaae: gram:00028847:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028848:  errmsg("INTERVAL(%d) precision must not be negative", 
+ gaae: gram:00028849:  (yyvsp[(3) - (6)].ival)))); 
+ gaae: gram:00028852:  ereport(WARNING, 
+ gaae: gram:00028853:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028854:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00028855:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+ gaae: gram:00029003:  ereport(ERROR, 
+ gaae: gram:00029004:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029005:  errmsg("OLD used in query that is not in a rule"))); 
+ gaae: gram:00029015:  ereport(ERROR, 
+ gaae: gram:00029016:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029017:  errmsg("NEW used in query that is not in a rule"))); 
+ gaae: gram:00029446:  ereport(ERROR, 
+ gaae: gram:00029447:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029448:  errmsg("wrong number of parameters on left side of OVERLAPS expression"))); 
+ gaae: gram:00029452:  ereport(ERROR, 
+ gaae: gram:00029453:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029454:  errmsg("wrong number of parameters on right side of OVERLAPS expression"))); 
+ gaae: gram:00029554:  ereport(ERROR, 
+ gaae: gram:00029555:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029556:  errmsg("multiple ORDER BY clauses not allowed"))); 
+ gaae: gram:00029564:  ereport(ERROR, 
+ gaae: gram:00029565:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029566:  errmsg("multiple OFFSET clauses not allowed"))); 
+ gaae: gram:00029572:  ereport(ERROR, 
+ gaae: gram:00029573:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029574:  errmsg("multiple LIMIT clauses not allowed"))); 
+ gaae: gram:00029711:  ereport(ERROR, 
+ gaae: gram:00029712:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029713:  errmsg("OUT and INOUT arguments aren't allowed in " 
+ gaae: gram:00029714:  "TABLE functions"))); 
  gaah: genfile:00000072:  ereport(ERROR, 
  gaah: genfile:00000073:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  gaah: genfile:00000074:  (errmsg("reference to parent directory ("..") not allowed")))); 
@@ -8425,104 +8425,104 @@ select * from get_ereport order by 1;
  paah: plxexec:00003997:  ereport(ERROR, 
  paah: plxexec:00003998:  (errcode(ERRCODE_SYNTAX_ERROR), 
  paah: plxexec:00003999:  errmsg("query "%s" is not a SELECT", expr->query))); 
- paah: plxgram:00001625:  ereport(ERROR, 
- paah: plxgram:00001626:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paah: plxgram:00001627:  errmsg("row or record variable cannot be CONSTANT"))); 
- paah: plxgram:00001634:  ereport(ERROR, 
- paah: plxgram:00001635:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paah: plxgram:00001636:  errmsg("row or record variable cannot be NOT NULL"))); 
- paah: plxgram:00001643:  ereport(ERROR, 
- paah: plxgram:00001644:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paah: plxgram:00001645:  errmsg("default value for row or record variable is not supported"))); 
- paah: plxgram:00001806:  ereport(ERROR, 
- paah: plxgram:00001807:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
- paah: plxgram:00001808:  errmsg("function has no parameter "%s"", 
- paah: plxgram:00001809:  name))); 
- paah: plxgram:00002394:  ereport(ERROR, 
- paah: plxgram:00002395:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00002396:  errmsg("integer FOR loop must have just one target variable"))); 
- paah: plxgram:00002504:  ereport(ERROR, 
- paah: plxgram:00002505:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00002506:  errmsg(""%s" is not a scalar variable", 
- paah: plxgram:00002507:  (yyval.forvariable).name))); 
- paah: plxgram:00002755:  ereport(ERROR, 
- paah: plxgram:00002756:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00002757:  errmsg("syntax error at "%s"", 
- paah: plxgram:00002758:  yytext), 
- paah: plxgram:00002759:  errdetail("Expected FOR to open a reference cursor."))); 
- paah: plxgram:00002783:  ereport(ERROR, 
- paah: plxgram:00002784:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00002785:  errmsg("cursor "%s" has arguments", 
- paah: plxgram:00002786:  (yyvsp[0].var)->refname))); 
- paah: plxgram:00002835:  ereport(ERROR, 
- paah: plxgram:00002836:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00002837:  errmsg("cursor "%s" has no arguments", 
- paah: plxgram:00002838:  (yyvsp[0].var)->refname))); 
- paah: plxgram:00002844:  ereport(ERROR, 
- paah: plxgram:00002845:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00002846:  errmsg("syntax error at "%s"", 
- paah: plxgram:00002847:  yytext))); 
- paah: plxgram:00002894:  ereport(ERROR, 
- paah: plxgram:00002895:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxgram:00002896:  errmsg(""%s" must be of type cursor or refcursor", 
- paah: plxgram:00002897:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
- paah: plxgram:00002912:  ereport(ERROR, 
- paah: plxgram:00002913:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxgram:00002914:  errmsg(""%s" must be of type refcursor", 
- paah: plxgram:00002915:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
- paah: plxgram:00003361:  ereport(ERROR, 
- paah: plxgram:00003362:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- paah: plxgram:00003363:  errmsg("too many variables specified in SQL statement"))); 
- paah: plxgram:00003431:  ereport(ERROR, 
- paah: plxgram:00003432:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003433:  errmsg("mismatched parentheses"))); 
- paah: plxgram:00003444:  ereport(ERROR, 
- paah: plxgram:00003445:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003446:  errmsg("mismatched parentheses"))); 
- paah: plxgram:00003448:  ereport(ERROR, 
- paah: plxgram:00003449:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003450:  errmsg("missing "%s" at end of SQL expression", 
- paah: plxgram:00003451:  expected))); 
- paah: plxgram:00003453:  ereport(ERROR, 
- paah: plxgram:00003454:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003455:  errmsg("missing "%s" at end of SQL statement", 
- paah: plxgram:00003456:  expected))); 
- paah: plxgram:00003538:  ereport(ERROR, 
- paah: plxgram:00003539:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003540:  errmsg("mismatched parentheses"))); 
- paah: plxgram:00003541:  ereport(ERROR, 
- paah: plxgram:00003542:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003543:  errmsg("incomplete datatype declaration"))); 
- paah: plxgram:00003615:  ereport(ERROR, 
- paah: plxgram:00003616:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003617:  errmsg("unexpected end of function definition"))); 
- paah: plxgram:00003625:  ereport(ERROR, 
- paah: plxgram:00003626:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003627:  errmsg("INTO specified more than once"))); 
- paah: plxgram:00003834:  ereport(ERROR, 
- paah: plxgram:00003835:  (errcode(ERRCODE_ERROR_IN_ASSIGNMENT), 
- paah: plxgram:00003836:  errmsg(""%s" is declared CONSTANT", 
- paah: plxgram:00003837:  ((PLpgSQL_var *) datum)->refname))); 
- paah: plxgram:00003901:  ereport(ERROR, 
- paah: plxgram:00003902:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003903:  errmsg("syntax error at "%s"", yytext), 
- paah: plxgram:00003904:  errdetail("Expected record variable, row variable, " 
- paah: plxgram:00003905:  "or list of scalar variables following INTO."))); 
- paah: plxgram:00003936:  ereport(ERROR, 
- paah: plxgram:00003937:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- paah: plxgram:00003938:  errmsg("too many INTO variables specified"))); 
- paah: plxgram:00003952:  ereport(ERROR, 
- paah: plxgram:00003953:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003954:  errmsg(""%s" is not a scalar variable", 
- paah: plxgram:00003955:  yytext))); 
- paah: plxgram:00004087:  ereport(ERROR, 
- paah: plxgram:00004088:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00004089:  errmsg("end label "%s" specified for unlabelled block", 
- paah: plxgram:00004090:  end_label))); 
- paah: plxgram:00004096:  ereport(ERROR, 
- paah: plxgram:00004097:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00004098:  errmsg("end label "%s" differs from block's label "%s"", 
- paah: plxgram:00004099:  end_label, start_label))); 
+ paah: plxgram:00001933:  ereport(ERROR, 
+ paah: plxgram:00001934:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paah: plxgram:00001935:  errmsg("row or record variable cannot be CONSTANT"))); 
+ paah: plxgram:00001942:  ereport(ERROR, 
+ paah: plxgram:00001943:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paah: plxgram:00001944:  errmsg("row or record variable cannot be NOT NULL"))); 
+ paah: plxgram:00001951:  ereport(ERROR, 
+ paah: plxgram:00001952:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paah: plxgram:00001953:  errmsg("default value for row or record variable is not supported"))); 
+ paah: plxgram:00002114:  ereport(ERROR, 
+ paah: plxgram:00002115:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
+ paah: plxgram:00002116:  errmsg("function has no parameter "%s"", 
+ paah: plxgram:00002117:  name))); 
+ paah: plxgram:00002702:  ereport(ERROR, 
+ paah: plxgram:00002703:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002704:  errmsg("integer FOR loop must have just one target variable"))); 
+ paah: plxgram:00002812:  ereport(ERROR, 
+ paah: plxgram:00002813:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002814:  errmsg(""%s" is not a scalar variable", 
+ paah: plxgram:00002815:  (yyval.forvariable).name))); 
+ paah: plxgram:00003063:  ereport(ERROR, 
+ paah: plxgram:00003064:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003065:  errmsg("syntax error at "%s"", 
+ paah: plxgram:00003066:  yytext), 
+ paah: plxgram:00003067:  errdetail("Expected FOR to open a reference cursor."))); 
+ paah: plxgram:00003091:  ereport(ERROR, 
+ paah: plxgram:00003092:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003093:  errmsg("cursor "%s" has arguments", 
+ paah: plxgram:00003094:  (yyvsp[(3) - (3)].var)->refname))); 
+ paah: plxgram:00003143:  ereport(ERROR, 
+ paah: plxgram:00003144:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003145:  errmsg("cursor "%s" has no arguments", 
+ paah: plxgram:00003146:  (yyvsp[(3) - (3)].var)->refname))); 
+ paah: plxgram:00003152:  ereport(ERROR, 
+ paah: plxgram:00003153:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003154:  errmsg("syntax error at "%s"", 
+ paah: plxgram:00003155:  yytext))); 
+ paah: plxgram:00003202:  ereport(ERROR, 
+ paah: plxgram:00003203:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxgram:00003204:  errmsg(""%s" must be of type cursor or refcursor", 
+ paah: plxgram:00003205:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
+ paah: plxgram:00003220:  ereport(ERROR, 
+ paah: plxgram:00003221:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxgram:00003222:  errmsg(""%s" must be of type refcursor", 
+ paah: plxgram:00003223:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
+ paah: plxgram:00003653:  ereport(ERROR, 
+ paah: plxgram:00003654:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ paah: plxgram:00003655:  errmsg("too many variables specified in SQL statement"))); 
+ paah: plxgram:00003723:  ereport(ERROR, 
+ paah: plxgram:00003724:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003725:  errmsg("mismatched parentheses"))); 
+ paah: plxgram:00003736:  ereport(ERROR, 
+ paah: plxgram:00003737:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003738:  errmsg("mismatched parentheses"))); 
+ paah: plxgram:00003740:  ereport(ERROR, 
+ paah: plxgram:00003741:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003742:  errmsg("missing "%s" at end of SQL expression", 
+ paah: plxgram:00003743:  expected))); 
+ paah: plxgram:00003745:  ereport(ERROR, 
+ paah: plxgram:00003746:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003747:  errmsg("missing "%s" at end of SQL statement", 
+ paah: plxgram:00003748:  expected))); 
+ paah: plxgram:00003830:  ereport(ERROR, 
+ paah: plxgram:00003831:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003832:  errmsg("mismatched parentheses"))); 
+ paah: plxgram:00003833:  ereport(ERROR, 
+ paah: plxgram:00003834:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003835:  errmsg("incomplete datatype declaration"))); 
+ paah: plxgram:00003907:  ereport(ERROR, 
+ paah: plxgram:00003908:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003909:  errmsg("unexpected end of function definition"))); 
+ paah: plxgram:00003917:  ereport(ERROR, 
+ paah: plxgram:00003918:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003919:  errmsg("INTO specified more than once"))); 
+ paah: plxgram:00004126:  ereport(ERROR, 
+ paah: plxgram:00004127:  (errcode(ERRCODE_ERROR_IN_ASSIGNMENT), 
+ paah: plxgram:00004128:  errmsg(""%s" is declared CONSTANT", 
+ paah: plxgram:00004129:  ((PLpgSQL_var *) datum)->refname))); 
+ paah: plxgram:00004193:  ereport(ERROR, 
+ paah: plxgram:00004194:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00004195:  errmsg("syntax error at "%s"", yytext), 
+ paah: plxgram:00004196:  errdetail("Expected record variable, row variable, " 
+ paah: plxgram:00004197:  "or list of scalar variables following INTO."))); 
+ paah: plxgram:00004228:  ereport(ERROR, 
+ paah: plxgram:00004229:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ paah: plxgram:00004230:  errmsg("too many INTO variables specified"))); 
+ paah: plxgram:00004244:  ereport(ERROR, 
+ paah: plxgram:00004245:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00004246:  errmsg(""%s" is not a scalar variable", 
+ paah: plxgram:00004247:  yytext))); 
+ paah: plxgram:00004379:  ereport(ERROR, 
+ paah: plxgram:00004380:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00004381:  errmsg("end label "%s" specified for unlabelled block", 
+ paah: plxgram:00004382:  end_label))); 
+ paah: plxgram:00004388:  ereport(ERROR, 
+ paah: plxgram:00004389:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00004390:  errmsg("end label "%s" differs from block's label "%s"", 
+ paah: plxgram:00004391:  end_label, start_label))); 
  paah: plxscan:00000858: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
  paah: plxscan:00000859:  
  paah: plxscan:00000860: int plpgsql_base_yyget_lineno (void); 
