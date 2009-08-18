@@ -30,16 +30,21 @@
 #include <stdio.h>
 #include <time.h>
 #include <ctype.h>
+#include <sys/stat.h>
 
 #include "postgres.h"
+#include "pg_config_manual.h"
+
 #include "storage/bufpage.h"
 #include "access/hash.h"
+#include "access/heapam.h"
 #include "access/gin.h"
 #include "access/gist.h"
 #include "access/nbtree.h"
 #include "access/itup.h"
 #include "access/htup.h"
 #include "catalog/pg_control.h"
+#include "utils/builtins.h"
 
 // Options for Block formatting operations
 static unsigned int blockOptions = 0;
@@ -63,7 +68,8 @@ typedef enum
 {
   ITEM_DETAIL = 0x00000001,	// -i: Display interpreted items    
   ITEM_HEAP = 0x00000002,	// -x: Blocks contain heap items
-  ITEM_INDEX = 0x00000004	// -y: Blocks contain heap items
+  ITEM_INDEX = 0x00000004,	// -y: Blocks contain heap items
+  DEPARSE_HEAP = 0x00000008 // -p: deparse block
 }
 itemSwitches;
 
@@ -118,3 +124,9 @@ optionReturnCodes;
 #define SEQUENCE_MAGIC 0x1717	// PostgreSQL defined magic number
 #define EOF_ENCOUNTERED (-1)	// Indicator for partial read
 #define BYTES_PER_LINE 16	// Format the binary 16 bytes per line
+
+Datum
+toast_flatten_tuple_attribute(Datum value,
+	                          Oid typeId, int32 typeMod);
+
+int Gp_segment = -2;

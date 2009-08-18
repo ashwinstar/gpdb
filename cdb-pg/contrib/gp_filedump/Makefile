@@ -1,5 +1,5 @@
 PROGRAM = gp_filedump
-OBJS	= gp_filedump.o pg_crc.o 
+OBJS	= gp_filedump.o pg_crc.o numutils.o heaptuple.o
 
 EXTRA_CLEAN = pg_crc.c 
 
@@ -16,4 +16,13 @@ include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
 pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
+	rm -f $@ && $(LN_S) $< .
+
+assert.c: $(top_srcdir)/src/backend/utils/error/assert.c
+	rm -f $@ && $(LN_S) $< .
+
+numutils.c: $(top_srcdir)/src/backend/utils/adt/numutils.c
+	rm -f $@ && $(LN_S) $< .
+
+heaptuple.c: $(top_srcdir)/src/backend/access/common/heaptuple.c
 	rm -f $@ && $(LN_S) $< .
