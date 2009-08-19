@@ -280,8 +280,10 @@ def chk_mirror_dir(qes, mirrors):
             gpmlib.error('Cannot create file under directory %s on segment host %s' % (dir, mirror_host))
 
         # check access from primary host to mirror host
-        (ok, out) = gpmlib.run_warn('%s \'%s ls /tmp\'' % (gplib.ssh_prefix(host=pri_host),
-                                                           gplib.ssh_prefix(host=mirror_host)))
+        (ok, out) = gpmlib.run_warn('%s \'%s %s /tmp/gpaddmirrors_check.$$ && %s -f /tmp/gpaddmirrors_check.$$\'' % (
+                                                            gplib.ssh_prefix(host=pri_host),
+                                                            gplib.ssh_prefix(host=mirror_host),
+                                                            ENV.TOUCH, ENV.RM))
         if not ok:
             gpmlib.error('Check inter host ssh access from %s to %s failed' % (pri_host, mirror_host))
 
