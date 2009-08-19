@@ -1284,8 +1284,10 @@ def test_access(failed_instance_array, active_instance_array):
 
 
         # check access from active segment host to failed segment host
-        (ok, out) = gpmlib.run_warn('%s \'%s ls /tmp\'' % (gplib.ssh_prefix(host=active_qe['hostname']),
-                                                           gplib.ssh_prefix(host=failed_qe['hostname'])))
+        (ok, out) = gpmlib.run_warn('%s \'%s %s /tmp/gprecoverseg_check.$$ && %s -f /tmp/gprecoverseg_check.$$\'' % (
+                                                                            gplib.ssh_prefix(host=active_qe['hostname']),
+                                                                            gplib.ssh_prefix(host=failed_qe['hostname']),
+                                                                            ENV.TOUCH, ENV.RM))
         if not ok:
             gpmlib.error('Check inter host ssh access from %s to %s failed' % (active_qe['hostname'], failed_qe['hostname']))
 
@@ -1664,6 +1666,8 @@ try:
             # to be started by gpstart.
             for qe in failed_instance_array:                
                 db.begin()
+                history_message = "'GPRECOVERSEG: marking segment as invalid due to forced recovery while in read-only mode.'"
+                db.execute("insert into gp_configuration_history values(now(), $1, $2)", qe['dbid'], history_message)
                 db.execute("UPDATE gp_configuration SET valid = 'f' where dbid = CAST(%d AS smallint)" % qe['dbid'])
                 db.commit()
             
