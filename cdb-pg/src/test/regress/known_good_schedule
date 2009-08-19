@@ -138,3 +138,4 @@ test: upg2
 test: alter_distribution_policy
 test: ereport
 ignore: gp_delete_as_trunc
+test: gp_numeric_agg
