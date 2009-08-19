@@ -3271,8 +3271,7 @@ ic_rx_thread_func(void *arg)
 					 */
 					if (gp_interconnect_full_crc)
 					{
-						int64 rx_crc;
-						pg_crc32 local_crc;
+						pg_crc32 rx_crc, local_crc;
 
 						rx_crc = pkt->crc;
 						pkt->crc = 0;
