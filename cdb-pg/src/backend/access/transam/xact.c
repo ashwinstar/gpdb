@@ -2184,7 +2184,7 @@ StartTransaction(void)
 										   "Dump of all sharedsnapshots in shmem: %s",
 										   QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync,
 										   SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
-										   SharedLocalSnapshotSlot->slotindex, SharedLocalSnapshotSlot->pid,
+										   SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid,
 										   DtxContextToString(DistributedTransactionContext),
 										   SharedSnapshotDump())));
 					}
@@ -2199,7 +2199,7 @@ StartTransaction(void)
 							 "DistributedTransactionContext = %s.",
 							 QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync,
 							 SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
-							 SharedLocalSnapshotSlot->slotindex, SharedLocalSnapshotSlot->pid,
+							 SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid,
 							 DtxContextToString(DistributedTransactionContext));
 						warning_sleep_time_us = 0;
 					}

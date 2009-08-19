@@ -283,7 +283,7 @@ combocid_limit_debug(const char *str)
 		{
 			elog(LOG, "SharedSnapshotSlot: writer pid %d slotid %d xid %d cid %d QDxid %d QDcid %d %s "
 				 "segmate-sync %d subcnt %d combocnt %d",
-				 ss->pid, ss->slotid, ss->xid, ss->cid, ss->QDxid, ss->QDcid, ss->ready ? "ready" : "NOT ready", 
+				 (int)ss->pid, ss->slotid, ss->xid, ss->cid, ss->QDxid, ss->QDcid, ss->ready ? "ready" : "NOT ready", 
 				 ss->segmateSync, ss->subcnt, ss->combocidcnt);
 			elog(LOG, "QEDtxContextInfo: cid %d segmate-sync %d", QEDtxContextInfo.curcid, QEDtxContextInfo.segmateSync);
 		}

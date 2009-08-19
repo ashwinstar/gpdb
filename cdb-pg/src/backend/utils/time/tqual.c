@@ -241,7 +241,7 @@ SharedSnapshotDump(void)
 		if (testSlot->slotid != -1)
 		{
 			appendStringInfo(&str, "(SLOT index: %d slotid: %d QDxid: %u QDcid: %u pid: %u)", 
-							 testSlot->slotindex, testSlot->slotid, testSlot->QDxid, testSlot->QDcid, testSlot->pid);
+							 testSlot->slotindex, testSlot->slotid, testSlot->QDxid, testSlot->QDcid, (int)testSlot->pid);
 		}
 		
 	}
@@ -292,7 +292,7 @@ retry:
 
 	if (slot != NULL)
 	{
-		elog(LOG, "SharedSnapshotAdd: found existing entry for our session-id. id %d retry %d pid %u", slotId, retryCount, slot->pid);
+		elog(LOG, "SharedSnapshotAdd: found existing entry for our session-id. id %d retry %d pid %u", slotId, retryCount, (int)slot->pid);
 		LWLockRelease(SharedSnapshotLock);
 
 		if (retryCount > 0)
