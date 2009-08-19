@@ -707,7 +707,7 @@ def update_gp_conf(mirrors):
 
         # update Greenplum database configuration
         for m in mirrors:
-            history_message = "'GPRECOVERSEG: content %d, dbid %d, hostname %s, port %s, datadir %s'" % (m['content'], m['dbid'], m['hostname'], m['port'], m['datadir'])
+            history_message = "GPRECOVERSEG: content %d, dbid %d, hostname %s, port %s, datadir %s" % (m['content'], m['dbid'], m['hostname'], m['port'], m['datadir'])
             db.execute("insert into gp_configuration_history values(now(), $1, $2)", m['dbid'], history_message)
             db.execute("insert into gp_configuration values($1, $2, $3, $4, $5, $6, $7, $8)",
                        m['content'], False, m['dbid'], False, True, 
@@ -1346,7 +1346,7 @@ def stop_database(failed_instance_array):
 ################                                      
 def pool_catalog_update(db, update_sql):
     for sql in update_sql:                                                                                                            
-        history_message = "'GPRECOVERSEG: set hostname %s port %d datadir %s where dbid %d'" % (sql[0], sql[2], sql[1], sql[3])
+        history_message = "GPRECOVERSEG: set hostname %s port %d datadir %s where dbid %d" % (sql[0], sql[2], sql[1], sql[3])
         db.execute("insert into gp_configuration_history values (now(), $1, $2", sql[3], history_message)
         db.execute("update gp_configuration set hostname=$1, datadir=$2, port=$3 where dbid=$4", sql[0], sql[1], sql[2], sql[3])
 
@@ -1666,7 +1666,7 @@ try:
             # to be started by gpstart.
             for qe in failed_instance_array:                
                 db.begin()
-                history_message = "'GPRECOVERSEG: marking segment as invalid due to forced recovery while in read-only mode.'"
+                history_message = "GPRECOVERSEG: marking segment as invalid due to forced recovery while in read-only mode."
                 db.execute("insert into gp_configuration_history values(now(), $1, $2)", qe['dbid'], history_message)
                 db.execute("UPDATE gp_configuration SET valid = 'f' where dbid = CAST(%d AS smallint)" % qe['dbid'])
                 db.commit()

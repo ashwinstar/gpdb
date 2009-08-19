@@ -397,7 +397,7 @@ def update_gp_conf(db, mirrors):
 
     # update Greenplum database configuration
     for m in mirrors:
-        history_message = "'GPADDMIRRORS: content %d, dbid %d, hostname %s, port %s, datadir %s'" % (m['content'], m['dbid'], m['hostname'], m['port'], m['datadir'])
+        history_message = "GPADDMIRRORS: content %d, dbid %d, hostname %s, port %s, datadir %s" % (m['content'], m['dbid'], m['hostname'], m['port'], m['datadir'])
         db.execute("insert into gp_configuration_history values(now(), $1, $2)", m['dbid'], history_message)
         db.execute("insert into gp_configuration values($1, $2, $3, $4, $5, $6, $7, $8)",
                    m['content'], False, m['dbid'], False, True, 
