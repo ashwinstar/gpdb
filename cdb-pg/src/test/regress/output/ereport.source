@@ -15002,7 +15002,7 @@ select * from get_ereport order by 1;
  xaae: xact:00002184:  "Dump of all sharedsnapshots in shmem: %s", 
  xaae: xact:00002185:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
  xaae: xact:00002186:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
- xaae: xact:00002187:  SharedLocalSnapshotSlot->slotindex, SharedLocalSnapshotSlot->pid, 
+ xaae: xact:00002187:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
  xaae: xact:00002188:  DtxContextToString(DistributedTransactionContext), 
  xaae: xact:00002189:  SharedSnapshotDump()))); 
  xaae: xact:00003644:  ereport(ERROR, 
