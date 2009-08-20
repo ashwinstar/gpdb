@@ -26,11 +26,17 @@
 #endif
 #endif
 
+#define list_head sys_list_head
+#define list_tail sys_list_tail
+
 /* required for perl API */
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSUB.h"
 #include "ppport.h"
+
+#undef list_head
+#undef list_tail
 
 /* just in case these symbols aren't provided */
 #ifndef pTHX_
