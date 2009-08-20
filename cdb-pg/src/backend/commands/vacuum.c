@@ -3640,12 +3640,16 @@ vacuum_delay_point()
 static void
 dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 {
-	struct CdbDispatchResults *primaryResults;
-	struct CdbDispatchResults *mirrorResults;
-	CdbDispatchCmdThreads *dispatchThreads;
-	char	   *pszVacuum;
+	char	   *pszVacuum=NULL;
 	int			pszVacuum_len;
 	Query	   *q = NULL;
+
+	/* should these be marked volatile ? */
+	struct CdbDispatchResults *primaryResults=NULL;
+	struct CdbDispatchResults *mirrorResults=NULL;
+	CdbDispatchCmdThreads *dispatchThreads=NULL;
+
+	volatile int disp_phase=0;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH); //Maybe dispatch agent? 	
 	Assert(vacstmt);
@@ -3668,48 +3672,102 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	Assert(pszVacuum);
 
 	/*
-	 * VACUUM gets dispatched to primaries and mirrors.
-	 * Mpp-895 stagger vacuum dispatch to primaries first, then mirrors, 
-	 * to avoid i/o contention.
+	 * VACUUM gets dispatched to primaries and mirrors.  Mpp-895
+	 * stagger vacuum dispatch to primaries first, then mirrors, to
+	 * avoid i/o contention.
 	 */
-	
-	/* mark the dtx as dirty */
-	setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
-
-	cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
-			true /* cancelOnError */, true /* needTwoPhase */,
-			true /* withSnapshot */, false /* mirrors */, true /* primaries */,
-			&primaryResults, &mirrorResults, &dispatchThreads);
-
-	elog(DEBUG2, "Sent %s command to primary QEs",  "vacuum" );
 
 	/*
-	 * Wait for all QEs to finish. If not all of our QEs were successful,
-	 * report the error and throw up.
+	 * MPP-6796/MPP-6801:
 	 *
-	 * NOTE: this has the side-effect of calling pfree() on
-	 * pszVacuum! (we re-serialize for our mirrors below).
+	 * I'm not exactly sure about the way this code uses
+	 * setCurrentDtxTwoPhase(). We call it twice, which may make sense
+	 * if we're going to be using separate transactions. Calling it
+	 * multiple times does no harm, but I find it confusing (are these
+	 * vacuum calls auto-committed ?).
+	 *
+	 * We need to handle the dispatcher-cleanup *here* otherwise the
+	 * rest of the cleanup will be trying to do further dispatcher
+	 * work on our gangs -- and those operations *expect* the gangs to
+	 * be clean.
 	 */
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads,
-			NULL, ctx);
+	PG_TRY();
+	{
+		/* mark the dtx as dirty */
+		setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
 
-	pszVacuum = serializeNode((Node *) q, &pszVacuum_len);
-	Assert(pszVacuum != NULL);
+		cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
+								 true /* cancelOnError */, true /* needTwoPhase */,
+								 true /* withSnapshot */, false /* mirrors */, true /* primaries */,
+								 &primaryResults, &mirrorResults, &dispatchThreads);
 
-	/* mark the dtx as dirty */
-	setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
+		disp_phase = 1;
 
-	cdbdisp_dispatchCommand("vacuum", pszVacuum, pszVacuum_len,
-			true /* cancelOnError */, true /* needTwoPhase */,
-			true /* withSnapshot */, true /* mirrors */, false /* primaries */,
-			&primaryResults, &mirrorResults, &dispatchThreads);
+		elog(DEBUG2, "Sent %s command to primary QEs",  "vacuum" );
 
-	elog(DEBUG2, "Sent %s command to mirror QEs",  "vacuum" );
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads,
-			NULL, ctx);
+		/*
+		 * Wait for all QEs to finish. If not all of our QEs were successful,
+		 * report the error and throw up.
+		 *
+		 * NOTE: this has the side-effect of calling pfree() on
+		 * pszVacuum! (we re-serialize for our mirrors below).
+		 */
+		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, ctx);
+
+		disp_phase = 2;
+
+		pszVacuum = serializeNode((Node *) q, &pszVacuum_len);
+		Assert(pszVacuum != NULL);
+
+		/* mark the dtx as dirty */
+		setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
+
+		cdbdisp_dispatchCommand("vacuum", pszVacuum, pszVacuum_len,
+								true /* cancelOnError */, true /* needTwoPhase */,
+								true /* withSnapshot */, true /* mirrors */, false /* primaries */,
+								&primaryResults, &mirrorResults, &dispatchThreads);
+		disp_phase = 3;
+
+		elog(DEBUG2, "Sent %s command to mirror QEs",  "vacuum" );
+
+		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, ctx);
+	}
+	PG_CATCH();
+	{
+		char *disp_msg;
+
+		switch(disp_phase)
+		{
+			case 0:
+				disp_msg = "primary dispatch";
+				break;
+			case 1:
+				disp_msg = "primary completion";
+				break;
+			case 2:
+				disp_msg = "mirror dispatch";
+				break;
+			case 3:
+				disp_msg = "mirror completion";
+				break;
+			default:
+				disp_msg = "unknown";
+				break;
+		}
+
+		elog(LOG, "Caught error during dispatchVacuum(): %s", disp_msg);
+
+		/*
+		 * Handle errors/cancels here: we may catch *either* of the
+		 * two dispatch operations above.
+		 */
+		cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	pfree(q);
-
 }
 
 /*
