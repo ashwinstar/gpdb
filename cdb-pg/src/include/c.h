@@ -62,7 +62,6 @@ extern "C" {
 #include "pg_config_os.h"		/* must be before any system header files */
 #endif
 #include "postgres_ext.h"
-#include "pg_trace.h"
 
 #if _MSC_VER >= 1400
 #define errcode __msvc_errcode

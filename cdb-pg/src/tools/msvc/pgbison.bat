@@ -14,7 +14,6 @@ if %BV% EQU 1.875 goto bisonok
 if %BV% GEQ 2.2 goto bisonok
 goto nobison
 :bisonok
-echo on
 
 if "%1" == "src\backend\parser\gram.y" call :generate %1 src\backend\parser\gram.c src\backend\parser\gram.h
 if "%1" == "src\backend\bootstrap\bootparse.y" call :generate %1 src\backend\bootstrap\bootparse.c src\backend\bootstrap\bootparse.h
