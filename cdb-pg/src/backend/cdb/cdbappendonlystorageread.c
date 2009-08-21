@@ -31,7 +31,7 @@
  * Initialize AppendOnlyStorageRead.
  *
  * The AppendOnlyStorageRead data structure is initialized 
- * once for a read “session” and can be used to read 
+ * once for a read ï¿½sessionï¿½ and can be used to read 
  * Append-Only Storage Blocks from 1 or more segment files.
  *
  * The current file to read to is opened with the
@@ -951,7 +951,7 @@ static void AppendOnlyStorageRead_InternalGetBuffer(
 }
 
 /*
- * Get a pointer to the “small” non-compressed content.
+ * Get a pointer to the ï¿½smallï¿½ non-compressed content.
  *
  * This interface provides a pointer directly into the 
  * read buffer for efficient data use.
@@ -985,7 +985,7 @@ uint8 *AppendOnlyStorageRead_GetBuffer(
 }
 
 /*
- * Copy the “large” and/or decompressed content out.
+ * Copy the ï¿½largeï¿½ and/or decompressed content out.
  *
  * The contentOutLen parameter value must match the contentLen
  * from the AppendOnlyStorageReadGetBlockInfo call.

@@ -30,7 +30,7 @@
  * Initialize AppendOnlyStorageWrite.
  *
  * The AppendOnlyStorageWrite data structure is initialized 
- * once for a append “session” and can be used to add 
+ * once for a append ï¿½sessionï¿½ and can be used to add 
  * Append-Only Storage Blocks to 1 or more segment files.
  *
  * The current file to write to is opened with the
@@ -267,7 +267,7 @@ void AppendOnlyStorageWrite_OpenFile(
 
     int64				 		logicalEof,
 				/*
-				 * The last committed write transaction’s EOF
+				 * The last committed write transactionï¿½s EOF
 				 * value to use as the end of the segment
 				 * file.
 				 *
@@ -603,18 +603,18 @@ errdetail_appendonly_write_storage_block_header(AppendOnlyStorageWrite *storageW
 
 
 // -----------------------------------------------------------------------------
-// Writing “Short” Content Efficiently that is not being Bulk Compressed 
+// Writing ï¿½Shortï¿½ Content Efficiently that is not being Bulk Compressed 
 // -----------------------------------------------------------------------------
 
 /*
  * Get a pointer to next maximum length buffer space for
- * appending “small” content.
+ * appending ï¿½smallï¿½ content.
  *
  * You must decide whether you are supplying the optional first row number BEFORE 
  * calling this routine!
  *
  * NOTE: The maximum length buffer space =
- *				maxBufferLen –
+ *				maxBufferLen ï¿½
  *				AppendOnlyStorageWrite_CompleteHeaderLen(...)
  *
  * When compression is not being used, this interface provides a pointer directly into the 
