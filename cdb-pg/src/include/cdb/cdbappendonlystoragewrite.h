@@ -159,7 +159,7 @@ typedef struct AppendOnlyStorageWrite
  * Initialize AppendOnlyStorageWrite.
  *
  * The AppendOnlyStorageWrite data structure is initialized 
- * once for a append “session” and can be used to add 
+ * once for a append ï¿½sessionï¿½ and can be used to add 
  * Append-Only Storage Blocks to 1 or more segment files.
  *
  * The current file to write to is opened with the
@@ -216,7 +216,7 @@ extern void AppendOnlyStorageWrite_OpenFile(
 
     int64				 		logicalEof,
 				/*
-				 * The last committed write transaction’s EOF
+				 * The last committed write transactionï¿½s EOF
 				 * value to use as the end of the segment
 				 * file.
 				 *
@@ -245,11 +245,11 @@ extern void AppendOnlyStorageWrite_FlushAndCloseFile(
 // -----------------------------------------------------------------------------
 
 /*
- *    When writing “short” content intended to stay within the maxBufferLen (also known as
+ *    When writing ï¿½shortï¿½ content intended to stay within the maxBufferLen (also known as
  *    blocksize), some of the buffer will be used for the Append-Only Block Header.  This 
  *    function returns that overhead length.
  *
- *    Isn’t the length of the Append-Only Storage Block constant? NO.
+ *    Isnï¿½t the length of the Append-Only Storage Block constant? NO.
  *
  *    Currently, there are two things that can make it longer.  When checksums are configured,
  *    we add checksum data to the header.  And there is optional header data
@@ -279,7 +279,7 @@ extern int32 AppendOnlyStorageWrite_CompleteHeaderLen(
 
 
 // -----------------------------------------------------------------------------
-// Writing “Short” Content Efficiently that is not being Bulk Compressed 
+// Writing ï¿½Shortï¿½ Content Efficiently that is not being Bulk Compressed 
 // -----------------------------------------------------------------------------
 
 /*
@@ -293,10 +293,10 @@ extern int32 AppendOnlyStorageWrite_CompleteHeaderLen(
 
 /*
  * Get a pointer to next maximum length buffer space for
- * appending “small” content.
+ * appending ï¿½smallï¿½ content.
  *
  * NOTE: The maximum length buffer space =
- *				maxBufferLen –
+ *				maxBufferLen ï¿½
  *				AppendOnlyStorageWrite_HeaderLen(...)
  *
  * When compression is not being used, this interface provides a pointer directly into the 
