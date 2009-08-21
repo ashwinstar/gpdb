@@ -2,8 +2,7 @@
 #
 # Makefile for the postgres backend
 #
-# Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
-# Portions Copyright (c) 1994, Regents of the University of California
+# Copyright (c) 1994, Regents of the University of California
 #
 # $PostgreSQL: pgsql/src/backend/Makefile,v 1.120 2006/10/08 17:15:33 tgl Exp $
 #
@@ -14,19 +13,17 @@ subdir = src/backend
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-SUBDIRS = access bootstrap catalog parser commands executor lib libpq gp_libpq_fe \
+DIRS := access bootstrap catalog parser commands executor lib libpq gp_libpq_fe \
 	main nodes optimizer port postmaster regex rewrite \
 	storage tcop utils $(top_builddir)/src/timezone cdb
 
-include $(srcdir)/common.mk
+SUBSYSOBJS := $(DIRS:%=%/SUBSYS.o)
 
-ifeq ($(PORTNAME), solaris)
 ifeq ($(enable_dtrace), yes)
 LOCALOBJS += utils/probes.o
 endif
-endif
 
-OBJS = $(SUBDIROBJS) $(LOCALOBJS) $(top_builddir)/src/port/libpgport_srv.a
+OBJS = $(SUBSYSOBJS) $(LOCALOBJS) $(top_builddir)/src/port/libpgport_srv.a
 
 # We put libpgport into OBJS, so remove it from LIBS; also add libldap
 LIBS := $(filter-out -lpgport, $(LIBS)) $(LDAP_LIBS_BE) -lcurl -lbz2 
@@ -43,7 +40,7 @@ ifneq ($(PORTNAME), win32)
 ifneq ($(PORTNAME), aix)
 
 postgres: $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(export_dynamic) $(call expand_subsys,$^) $(LIBS) -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(export_dynamic) $^ $(LIBS) $(PTHREAD_LIBS) -o $@
 
 endif
 endif
@@ -53,13 +50,13 @@ ifeq ($(PORTNAME), cygwin)
 
 postgres: $(OBJS) postgres.def libpostgres.a
 	$(DLLTOOL) --dllname $@$(X) --output-exp $@.exp --def postgres.def
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@$(X) -Wl,--base-file,$@.base $@.exp $(call expand_subsys,$(OBJS)) $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@$(X) -Wl,--base-file,$@.base $@.exp $(OBJS) $(LIBS)
 	$(DLLTOOL) --dllname $@$(X) --base-file $@.base --output-exp $@.exp --def postgres.def
-	$(CC) $(CFLAGS) $(LDFLAGS) -Wl,--stack,$(WIN32_STACK_RLIMIT) -o $@$(X) $@.exp $(call expand_subsys,$(OBJS)) $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -Wl,--stack,$(WIN32_STACK_RLIMIT) -o $@$(X) $@.exp $(OBJS) $(LIBS)
 	rm -f $@.exp $@.base
 
 postgres.def: $(OBJS)
-	$(DLLTOOL) --export-all --output-def $@ $(call expand_subsys,$^)
+	$(DLLTOOL) --export-all --output-def $@ $^
 
 libpostgres.a: postgres.def
 	$(DLLTOOL) --dllname postgres.exe --def postgres.def --output-lib $@
@@ -71,13 +68,13 @@ LIBS += -lsecur32
 
 postgres: $(OBJS) postgres.def libpostgres.a $(WIN32RES)
 	$(DLLTOOL) --dllname $@$(X) --output-exp $@.exp --def postgres.def
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@$(X) -Wl,--base-file,$@.base $@.exp $(call expand_subsys,$(OBJS)) $(WIN32RES) $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@$(X) -Wl,--base-file,$@.base $@.exp $(OBJS) $(WIN32RES) $(LIBS)
 	$(DLLTOOL) --dllname $@$(X) --base-file $@.base --output-exp $@.exp --def postgres.def
-	$(CC) $(CFLAGS) $(LDFLAGS) -Wl,--stack=$(WIN32_STACK_RLIMIT) -o $@$(X) $@.exp $(call expand_subsys,$(OBJS)) $(WIN32RES) $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -Wl,--stack=$(WIN32_STACK_RLIMIT) -o $@$(X) $@.exp $(OBJS) $(WIN32RES) $(LIBS)
 	rm -f $@.exp $@.base
 
 postgres.def: $(OBJS)
-	$(DLLTOOL) --export-all --output-def $@ $(call expand_subsys,$^)
+	$(DLLTOOL) --export-all --output-def $@ $^
 
 libpostgres.a: postgres.def
 	$(DLLTOOL) --dllname postgres.exe --def postgres.def --output-lib $@
@@ -87,10 +84,10 @@ endif # win32
 ifeq ($(PORTNAME), aix)
 
 postgres: $(POSTGRES_IMP)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(call expand_subsys,$(OBJS)) -Wl,-bE:$(top_builddir)/src/backend/$(POSTGRES_IMP) $(LIBS) -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -Wl,-bE:$(top_builddir)/src/backend/$(POSTGRES_IMP) $(LIBS) -o $@
 
 $(POSTGRES_IMP): $(OBJS)
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(call expand_subsys,$^)
+	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $^
 ifeq ($(host_os), aix3.2.5)
 	$(MKLDEXPORT) SUBSYS.o $(bindir)/postgres > $@
 else
@@ -104,14 +101,19 @@ endif
 
 endif # aix
 
+# Parallel make trickery
+$(SUBSYSOBJS): $(DIRS:%=%-recursive) ;
+
+.PHONY: $(DIRS:%=%-recursive)
 # Update the commonly used headers before building the subdirectories
-$(SUBDIRS:%=%-recursive): $(top_builddir)/src/include/parser/gram.h $(top_builddir)/src/include/utils/fmgroids.h $(top_builddir)/src/include/utils/probes.h
+$(DIRS:%=%-recursive): $(top_builddir)/src/include/parser/gram.h $(top_builddir)/src/include/utils/fmgroids.h
+	$(MAKE) -C $(subst -recursive,,$@) all
 
 
 # The postgres.o target is needed by the rule in Makefile.global that
 # creates the exports file when MAKE_EXPORTS = true.
 postgres.o: $(OBJS)
-	$(CC) $(LDREL) $(LDFLAGS) $(call expand_subsys,$^) $(LIBS) -o $@
+	$(CC) $(LDREL) $(LDFLAGS) $^ $(LIBS) -o $@
 
 
 # The following targets are specified in make commands that appear in
@@ -123,9 +125,6 @@ $(srcdir)/parser/gram.h: parser/gram.y
 
 utils/fmgroids.h: utils/Gen_fmgrtab.sh $(top_srcdir)/src/include/catalog/pg_proc.h
 	$(MAKE) -C utils fmgroids.h
-
-utils/probes.h: utils/probes.d
-	$(MAKE) -C utils probes.h
 
 # Make symlinks for these headers in the include directory. That way
 # we can cut down on the -I options. Also, a symlink is automatically
@@ -140,16 +139,9 @@ $(top_builddir)/src/include/utils/fmgroids.h: utils/fmgroids.h
 	cd $(dir $@) && rm -f $(notdir $@) && \
 	    $(LN_S) ../../../$(subdir)/utils/fmgroids.h .
 
-$(top_builddir)/src/include/utils/probes.h: utils/probes.h
-	cd $(dir $@) && rm -f $(notdir $@) && \
-	    $(LN_S) ../../../$(subdir)/utils/probes.h .
 
-
-ifeq ($(PORTNAME), solaris)
-utils/probes.o: utils/probes.d $(SUBDIROBJS)
-	$(DTRACE) $(DTRACEFLAGS) -C -G -s $(call expand_subsys,$^) -o $@
-endif
-
+utils/probes.o: utils/probes.d $(SUBSYSOBJS)
+	$(DTRACE) $(DTRACEFLAGS) -C -G -s $^ -o $@
 
 
 ##########################################################################
@@ -272,4 +264,7 @@ maintainer-clean: distclean
 # are up to date.  It saves the time of doing all the submakes.
 .PHONY: quick
 quick: $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(export_dynamic) $(call expand_subsys,$^) $(LIBS) -o postgres
+	$(CC) $(CFLAGS) $(LDFLAGS) $(export_dynamic) $^ $(LIBS) -o postgres
+
+depend dep: $(top_srcdir)/src/include/parser/gram.h $(top_builddir)/src/include/utils/fmgroids.h
+	for i in $(DIRS); do $(MAKE) -C $$i $@; done
