@@ -670,8 +670,11 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 		{
 			/* We aren't in a cursor, the writer appears to have raced
 			 * ahead for some unknown reason ? */
-			elog(ERROR, "qExec Reader: writer gang raced ahead, snapshot slot xid is %u distXid %u/%u (toptrans is %u)",
-				 SharedLocalSnapshotSlot->xid, SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
+			elog(ERROR, "qExec Reader: writer gang raced ahead, snapshot slot xid is %u distXid %u/%u cid %u/%u sync %u (toptrans is %u)",
+				 SharedLocalSnapshotSlot->xid,
+				 SharedLocalSnapshotSlot->QDxid, QEDtxContextInfo.distributedXid,
+				 SharedLocalSnapshotSlot->QDcid, QEDtxContextInfo.curcid,
+				 SharedLocalSnapshotSlot->segmateSync,
 				 TopTransactionStateData.transactionId);
 		}
 			
