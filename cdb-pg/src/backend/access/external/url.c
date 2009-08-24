@@ -20,6 +20,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "pgstat.h"
+#include "port.h"
 #include "postmaster/postmaster.h"  /* postmaster port*/
 #include "utils/relcache.h"
 #include "utils/lsyscache.h"
@@ -58,6 +59,8 @@
 
 static char *interpretExitCode(int exitCode, char *buf, size_t buflen);
 static const char *getSignalNameFromCode(int signo);
+static int popen_with_stderr(int *rwepipe, const char *exe);
+static int pclose_with_stderr(int pid, int *rwepipe);
 
 /* we use a global one for convenience */
 CURLM *multi_handle = 0;
@@ -622,7 +625,9 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		 */
 		save_SIGPIPE = pqsignal(SIGPIPE, SIG_DFL);
 
-		file->u.exec.fp = popen(shexec, "r");
+		//file->u.exec.fp = popen(shexec, "r");
+		file->u.exec.pid = popen_with_stderr(file->u.exec.pipes, shexec);
+
 		save_errno = errno;
 
 		/* Restore the SIGPIPE handler */
@@ -631,7 +636,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		/* Restore process interval timers */
 		restoreTimers(&savetimers);
 
-		if (file->u.exec.fp == NULL)
+		if (file->u.exec.pid == -1)
 		{
 			errno = save_errno;
 			free(file);
@@ -850,8 +855,10 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 	enum fcurl_type_e type = file->type;
     int ret=0;/* default is good return */
 
-	char *url = pstrdup(file->url);
-
+	char* url = pstrdup(file->url);
+	char  err[256];
+	int	  nread = 0;
+	
     switch (type)
     {
 		case CFTYPE_FILE:
@@ -860,7 +867,11 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 			break;
 
 		case CFTYPE_EXEC:
-			ret = pclose(file->u.exec.fp);
+			
+			nread = piperead(file->u.exec.pipes[EXEC_ERR_P], err, 256); /* read from stderr */
+			err[nread] = 0;
+						
+			ret = pclose_with_stderr(file->u.exec.pid, file->u.exec.pipes);
 			if (ret == 0)
 			{
 				/* pclose() ended successfully; no errors to reflect */
@@ -886,9 +897,10 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 				if (failOnError) free(file);
 				ereport( (failOnError ? ERROR : LOG),
 						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-								errmsg("external table \'%s\' command ended with error: %s",
+								errmsg("external table \'%s\' command ended with %s. error msg: %s",
 										relname,
-										interpretExitCode(ret, buf, sizeof(buf)/sizeof(char))),
+										interpretExitCode(ret, buf, sizeof(buf)/sizeof(char)),
+										err),
 								errdetail("Command: %s", url)));
 			}
 			break;
@@ -935,7 +947,7 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 }
 
 int
-url_feof(URL_FILE *file)
+url_feof(URL_FILE *file, int bytesread)
 {
     int ret = 0;
 
@@ -946,7 +958,7 @@ url_feof(URL_FILE *file)
 			break;
 
 		case CFTYPE_EXEC:
-			ret = feof(file->u.exec.fp);
+			ret = (bytesread == 0 ? 1 : 0);
 			break;
 
 		case CFTYPE_CURL:
@@ -962,7 +974,7 @@ url_feof(URL_FILE *file)
 }
 
 
-int url_ferror(URL_FILE *file)
+int url_ferror(URL_FILE *file, int bytesread)
 {
 	int ret = 0;
 
@@ -973,7 +985,7 @@ int url_ferror(URL_FILE *file)
 			break;
 
 		case CFTYPE_EXEC:
-			ret = ferror(file->u.exec.fp);
+			ret = (bytesread == -1 ? 1 : 0);
 			break;
 
 		case CFTYPE_CURL:
@@ -1293,7 +1305,7 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate
 			break;
 		}
 		case CFTYPE_EXEC:
-			want = fread(ptr, size, nmemb, file->u.exec.fp);
+			want = piperead(file->u.exec.pipes[EXEC_DATA_P], ptr, nmemb * size);
 			break;
 
 		case CFTYPE_CURL:
@@ -1531,3 +1543,101 @@ getSignalNameFromCode(int signo)
 
 	return "UNRECOGNIZED";
 }
+
+/*
+ * popen_with_stderr
+ * 
+ * standard popen doesn't redirect stderr from the child process.
+ * we need stderr in order to display the error that child process
+ * encountered and show it to the user. This is, therefore, a wrapper
+ * around a set of file descriptor redirections and a fork.
+ * 
+ * NOTE: the data pipe is currently only child to parent (child stdout)
+ * but the ability to go the other direction will be added as well for
+ * writable external tables soon.
+ */
+static int popen_with_stderr(int *pipes, const char *exe)
+{
+	int data[2];	/* pipe to send data child <--> parent */
+	int err[2];		/* pipe to send errors child --> parent */
+	int pid;
+	
+	const int READ = 0;
+	const int WRITE = 1;
+
+	if (pgpipe(data) < 0)
+		return -1;
+
+	if (pgpipe(err) < 0)
+	{
+		close(data[READ]);
+		close(data[WRITE]);
+		return -1;
+	}
+
+	pid = fork();
+	
+	if (pid > 0) /* parent */
+	{ 
+		/* close writes on data and err pipes */
+		close(data[WRITE]);
+		close(err[WRITE]);
+		
+		/* assign reads on data and err pipes */
+		pipes[EXEC_DATA_P] = data[READ];
+		pipes[EXEC_ERR_P] = err[READ];
+		
+		return pid;
+	} 
+	else if (pid == 0) /* child */
+	{		
+		/* close reads on data and err pipes */
+		close(data[READ]);
+		close(err[READ]);
+
+		/* close existing stdout and stderr */
+		close(STDOUT_FILENO);
+		close(STDERR_FILENO);
+		
+		/* assign pipes to parent to stdout and stderr */
+		dup2(data[WRITE], STDOUT_FILENO);
+		dup2(err[WRITE], STDERR_FILENO);
+		
+		close(data[WRITE]);
+		close(err[WRITE]);
+		
+		/* go ahead and execute the user command */
+		execl("/bin/sh", "sh", "-c", exe, NULL);
+
+		/* if we're here an error occurred */
+		exit(1);
+	} 
+	else
+	{
+		close(err[READ]);
+		close(err[WRITE]);
+		close(data[READ]);
+		close(data[WRITE]);
+		return -1;		
+	}
+
+	return pid;
+}
+
+/*
+ * pclose_with_stderr
+ * 
+ * see popen_with_stderr() above for details.
+ */
+static int pclose_with_stderr(int pid, int *pipes)
+{
+	int status;
+	
+	close(pipes[EXEC_DATA_P]);
+	close(pipes[EXEC_ERR_P]);
+	
+	waitpid(pid, &status, 0);
+	
+	return status;
+}
+

@@ -1118,16 +1118,16 @@ file_getdata(URL_FILE *extfile, CopyState pstate, int maxread)
  		- failing to do so will result in skipping the last line.
  	*/
 
-	bytesread = url_fread((void *) pstate->raw_buf, 1, maxread, extfile,pstate);
+	bytesread = url_fread((void *) pstate->raw_buf, 1, maxread, extfile, pstate);
 
- 	if (url_feof(extfile))
+ 	if (url_feof(extfile, bytesread))
  	{
   		pstate->fe_eof = true;
  	}
 
  	if (bytesread <= 0)
  	{
- 		if (url_ferror(extfile))
+ 		if (url_ferror(extfile, bytesread))
  			ereport(ERROR,
  					(errcode_for_file_access(),
  					 errmsg("could not read from external file: %m")));

@@ -60,6 +60,9 @@ typedef struct curlctl_t {
 	} block;
 } curlctl_t;
 
+#define EXEC_DATA_P 0 /* index to data pipe */
+#define EXEC_ERR_P 1 /* index to error pipe  */
+
 typedef struct URL_FILE
 {
     enum fcurl_type_e type;     /* type of handle */
@@ -73,8 +76,9 @@ typedef struct URL_FILE
 		curlctl_t curl;
 
 		struct {
-			FILE* fp;
-			char *shexec;
+			int 	pid;
+			int 	pipes[2]; /* only out and err needed */
+			char*	shexec;
 		} exec;
 	} u;
 } URL_FILE;
@@ -102,8 +106,8 @@ typedef struct extvar_t
 /* exported functions */
 extern URL_FILE *url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int *response_code, const char **response_string);
 extern int url_fclose(URL_FILE *file, bool failOnError, const char *relname);
-extern int url_feof(URL_FILE *file);
-extern int url_ferror(URL_FILE *file);
+extern int url_feof(URL_FILE *file, int bytesread);
+extern int url_ferror(URL_FILE *file, int bytesread);
 extern size_t url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate);
 extern void url_rewind(URL_FILE *file, const char *relname);
 

@@ -444,6 +444,19 @@ drop external table ext_mpp6698;
 -- some negative tests
 -- --------------------------------------
 --
+-- test for exec child process stderr showing in error message
+--
+create external web table ext_stderr1(a text) execute 'nosuchcommand' format 'text';
+create external web table ext_stderr2(a text) execute 'cat nosuchfile.txt' format 'text';
+select * from ext_stderr1;
+ERROR:  external table 'ext_stderr1' command ended with EXITED; rc=127 [raw=0x7f00]. error msg: sh: nosuchcommand: command not found  (seg1 slice1 localhost:11002 pid=90145)
+DETAIL:  Command: execute:nosuchcommand
+select * from ext_stderr2;
+ERROR:  external table 'ext_stderr2' command ended with EXITED; rc=1 [raw=0x100]. error msg: cat: nosuchfile.txt: No such file or directory  (seg0 slice1 localhost:11001 pid=90144)
+DETAIL:  Command: execute:cat nosuchfile.txt
+drop external web table ext_stderr1;
+drop external web table ext_stderr2;
+--
 -- bad csv (quote must be a single char)
 --
 create external table bad_whois (

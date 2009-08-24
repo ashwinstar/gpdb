@@ -254,6 +254,16 @@ drop external table ext_mpp6698;
 -- --------------------------------------
 
 --
+-- test for exec child process stderr showing in error message
+--
+create external web table ext_stderr1(a text) execute 'nosuchcommand' format 'text';
+create external web table ext_stderr2(a text) execute 'cat nosuchfile.txt' format 'text';
+select * from ext_stderr1;
+select * from ext_stderr2;
+drop external web table ext_stderr1;
+drop external web table ext_stderr2;
+
+--
 -- bad csv (quote must be a single char)
 --
 create external table bad_whois (
