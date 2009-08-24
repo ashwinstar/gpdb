@@ -10,17 +10,19 @@
 	
 <mx:Script>
     <![CDATA[
+    	import model.Resources;
       import model.GPPerfMonModelLocator;
   			
   	  [Bindable]
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
 	  
-	  function initApp():void {
+ 	  //Modified by vasu- june 30, 2009
+	  //to load the version number
+	  private function initApp():void {
 	  	var test:Boolean = false;
 	  	if (test)
 	  	{
-	    	mdl.session.setDatabaseConnection("http","10.254.0.171","28080",
-	    		"testServer");	  		  		
+	    	mdl.session.setDatabaseConnection("http", "10.81.17.6", "28080", "vmgplum1");	  		  		
 	  	}
 	  	else
 	  	{
@@ -29,6 +31,8 @@
 				Application.application.parameters.serverHost,
 				Application.application.parameters.serverPort,
 			    Application.application.parameters.serverName);
+			    trace(Application.application.parameters.gpPerfMonVersion);
+			Resources.instance.version = Application.application.parameters.gpPerfMonVersion;
 	  	}
 	  }	
     ]]>

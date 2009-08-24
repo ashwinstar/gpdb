@@ -31,6 +31,7 @@ MAX_QUERIES_PER_SEARCH = 250
 remote = False
 allow_trust_logon = False
 displayed_server_name = ''
+gpperfmon_version = '2.0.0.3'
 
 urls = ('/', 'index',
         '/api', 'api',
@@ -103,12 +104,12 @@ class index:
         web.header('Cache-Control', 'no-store')
         host_and_port = web.ctx.host.split(':',1)
         if DEBUG:
-            sys.stderr.write("host=%s, port=%s, server_name=%s\n" % (host_and_port[0], host_and_port[1], displayed_server_name))
-        return render.index(web.ctx.protocol, host_and_port[0], host_and_port[1], displayed_server_name)
+            sys.stderr.write("host=%s, port=%s, server_name=%s gpPerfMonVersion=%s\n" % (host_and_port[0], host_and_port[1], displayed_server_name, gpperfmon_version))
+        return render.index(web.ctx.protocol, host_and_port[0], host_and_port[1], displayed_server_name, gpperfmon_version)
 
 class api:
     def __init__(self):
-        self.version = '2.0.0.0'
+        self.version = gpperfmon_version
 
     def GET(self):
         web.header('Content-Type', 'text/xml')

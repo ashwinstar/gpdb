@@ -46,7 +46,7 @@
 		<mx:Image source="{Resources.gp_logo_med}" scaleContent="false"/>
 		<mx:Spacer height="20"/>
 		<mx:Label styleName="mainTitle" text="Greenplum Performance Monitor"/>
-		<mx:Label text="{Resources.version}"/>
+		<mx:Label text="{Resources.instance.versionString}"/>
 		<mx:Label styleName="footerText" text="{Resources.copyright}"/>
 		<mx:Spacer height="100"/>
 	</mx:VBox>

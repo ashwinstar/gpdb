@@ -23,13 +23,71 @@ package model
 
  		[Embed(source='assets/img/spyglass_cursor.png')]
    		public static var spyglassCursor:Class;
+   		
+   		public static var flexBuildNumber:String = "2.0.1";
    		  				
-   		public static var version:String = "Version 2.0.0.0b";
-		
 		public static var copyright:String = "Copyright (c) 2008 Greenplum, Inc. All Rights Reserved";
 
 		public static var copyrightShort:String = "(c) 2008 Greenplum, Inc.";
 		
 		public static var copyright2:String = "Copyright (c) 2008 Greenplum, Inc.\nAll Rights Reserved";
+		
+		private var __version:String;// = "Version 2.0.0.0b";
+		
+		//this has the label "Version" prefixed to the version number
+		private var __versionString:String;
+		
+		//holds the singleton instance of the class
+		private static var __instance:Resources;
+		
+		/**
+		 * Constructor 
+		 */		
+		public function Resources(){
+			if(__instance == null){
+				__instance = this;
+			}
+		}
+		
+		//--------------------------
+		//PROPERTIES
+		//--------------------------
+		/**
+		 * Returns the Singleton instance of Resources
+		 */
+		public static function get instance():Resources{
+			if (__instance == null){
+				__instance = new Resources();
+			}
+			return __instance;
+		}		
+		
+		/**
+		 * Sets/Gets the version of the server 
+		 * @param val
+		 */		
+		public function set version(val:String):void{
+			__version = val;
+			
+			//set the version string
+			this.versionString = "Version " + val;
+		}	
+		
+		public function get version():String{
+			return __version;
+		} 
+		
+		/**
+		 * Sets/Gets the version of the server 
+		 * @param val
+		 */		
+		public function get versionString():String{
+			return __versionString;
+		}		
+		
+		public function set versionString(val:String):void{
+			__versionString = val;
+		}
+		
 	}
 }
