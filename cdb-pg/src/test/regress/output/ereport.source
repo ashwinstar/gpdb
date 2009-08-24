@@ -323,10 +323,6 @@ select * from get_ereport order by 1;
  aaag: aclchk:00002428:  ereport(ERROR, 
  aaag: aclchk:00002429:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  aaag: aclchk:00002430:  errmsg("conversion with OID %u does not exist", conv_oid))); 
- aaag: aocsam:00000312:  ereport(ERROR, (errcode(ERRCODE_IO_ERROR), 
- aaag: aocsam:00000313:  errmsg("AOCS IO Error on %s, seek offset " INT64_FORMAT " errno %d", 
- aaag: aocsam:00000314:  desc->ds[i]->path, desc->ds[i]->eof, errno 
- aaag: aocsam:00000315:  ))); 
  aaah: analyze:00000384:  ereport(WARNING, 
  aaah: analyze:00000385:  (errmsg("skipping "%s" --- cannot analyze indexes, views, external tables or special system tables", 
  aaah: analyze:00000386:  RelationGetRelationName(candidateRelation)))); 
@@ -1381,23 +1377,23 @@ select * from get_ereport order by 1;
  aaba: autovacuum:00001134:  (errcode(ERRCODE_UNDEFINED_TABLE), 
  aaba: autovacuum:00001135:  errmsg("relation with OID %u does not exist", 
  aaba: autovacuum:00001136:  relationOid))); 
- aabc: aocssegfiles:00000169:  ereport(ERROR, 
- aabc: aocssegfiles:00000170:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
- aabc: aocssegfiles:00000171:  errmsg("could not serialize access due to concurrent update"))); 
- aabc: aocssegfiles:00000385:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aabc: aocssegfiles:00000386:  errmsg("AOCS table "%s" file segment "%d" does not exist", 
- aabc: aocssegfiles:00000387:  RelationGetRelationName(prel), idesc->cur_segno) 
- aabc: aocssegfiles:00000388:  )); 
- aabc: aocssegfiles:00000459:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aabc: aocssegfiles:00000460:  errmsg("AOCS table "%s" file segment "%d" does not exist", 
- aabc: aocssegfiles:00000461:  RelationGetRelationName(prel), segno) 
- aabc: aocssegfiles:00000462:  )); 
- aabc: aocssegfiles:00000502:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aabc: aocssegfiles:00000503:  errmsg("invalid entry for decoding aocsvpinfo") 
- aabc: aocssegfiles:00000504:  )); 
- aabc: aocssegfiles:00000507:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aabc: aocssegfiles:00000508:  errmsg("invalid entry for decoding aocsvpinfo") 
- aabc: aocssegfiles:00000509:  )); 
+ aabc: aocssegfiles:00000171:  ereport(ERROR, 
+ aabc: aocssegfiles:00000172:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+ aabc: aocssegfiles:00000173:  errmsg("could not serialize access due to concurrent update"))); 
+ aabc: aocssegfiles:00000387:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aabc: aocssegfiles:00000388:  errmsg("AOCS table "%s" file segment "%d" does not exist", 
+ aabc: aocssegfiles:00000389:  RelationGetRelationName(prel), idesc->cur_segno) 
+ aabc: aocssegfiles:00000390:  )); 
+ aabc: aocssegfiles:00000461:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aabc: aocssegfiles:00000462:  errmsg("AOCS table "%s" file segment "%d" does not exist", 
+ aabc: aocssegfiles:00000463:  RelationGetRelationName(prel), segno) 
+ aabc: aocssegfiles:00000464:  )); 
+ aabc: aocssegfiles:00000504:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aabc: aocssegfiles:00000505:  errmsg("invalid entry for decoding aocsvpinfo") 
+ aabc: aocssegfiles:00000506:  )); 
+ aabc: aocssegfiles:00000509:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aabc: aocssegfiles:00000510:  errmsg("invalid entry for decoding aocsvpinfo") 
+ aabc: aocssegfiles:00000511:  )); 
  aabc: appendonlyam:00000523:  ereport(ERROR, 
  aabc: appendonlyam:00000524:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  aabc: appendonlyam:00000525:  errmsg("VarBlock is not valid. " 
@@ -3988,8 +3984,6 @@ select * from get_ereport order by 1;
  daba: dependency:00000912:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
  daba: dependency:00000913:  errmsg("cannot drop %s because it is required by the database system", 
  daba: dependency:00000914:  objDescription))); 
- dabb: datumstream:00000259:  ereport(ERROR, (errcode_for_file_access(), 
- dabb: datumstream:00000260:  errmsg("AOCS cannot open file %s", fn))); 
  eaae: elog:00000147:  ereport(ERROR, (errmsg_internal("errstart was not called")));  
  eaae: elog:00000148:  }  
  eaae: elog:00000149:  } while (0) 
@@ -5687,19 +5681,19 @@ select * from get_ereport order by 1;
  gaai: gistutil:00000598:  RelationGetRelationName(rel), 
  gaai: gistutil:00000599:  BufferGetBlockNumber(buf)), 
  gaai: gistutil:00000600:  errhint("Please REINDEX it."))); 
- gaai: gucxfile:00000539: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- gaai: gucxfile:00000540:  
- gaai: gucxfile:00000541: enum { 
- gaai: gucxfile:00000542:  GUC_ID = 1, 
- gaai: gucxfile:00000543:  GUC_STRING = 2, 
- gaai: gucxfile:00000544:  GUC_INTEGER = 3, 
- gaai: gucxfile:00000545:  GUC_REAL = 4, 
- gaai: gucxfile:00000546:  GUC_EQUALS = 5, 
- gaai: gucxfile:00000547:  GUC_UNQUOTED_STRING = 6, 
- gaai: gucxfile:00000548:  GUC_QUALIFIED_ID = 7, 
- gaai: gucxfile:00000549:  GUC_EOL = 99, 
- gaai: gucxfile:00000550:  GUC_ERROR = 100 
- gaai: gucxfile:00000551: }; 
+ gaai: gucxfile:00000475: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ gaai: gucxfile:00000476:  
+ gaai: gucxfile:00000477: enum { 
+ gaai: gucxfile:00000478:  GUC_ID = 1, 
+ gaai: gucxfile:00000479:  GUC_STRING = 2, 
+ gaai: gucxfile:00000480:  GUC_INTEGER = 3, 
+ gaai: gucxfile:00000481:  GUC_REAL = 4, 
+ gaai: gucxfile:00000482:  GUC_EQUALS = 5, 
+ gaai: gucxfile:00000483:  GUC_UNQUOTED_STRING = 6, 
+ gaai: gucxfile:00000484:  GUC_QUALIFIED_ID = 7, 
+ gaai: gucxfile:00000485:  GUC_EOL = 99, 
+ gaai: gucxfile:00000486:  GUC_ERROR = 100 
+ gaai: gucxfile:00000487: }; 
  gaba: gistvacuum:00000569:  ereport(NOTICE, 
  gaba: gistvacuum:00000570:  (errmsg("index "%s" needs VACUUM FULL or REINDEX to finish crash recovery", 
  gaba: gistvacuum:00000571:  RelationGetRelationName(rel)))); 
@@ -8523,33 +8517,33 @@ select * from get_ereport order by 1;
  paah: plxgram:00004389:  (errcode(ERRCODE_SYNTAX_ERROR), 
  paah: plxgram:00004390:  errmsg("end label "%s" differs from block's label "%s"", 
  paah: plxgram:00004391:  end_label, start_label))); 
- paah: plxscan:00000858: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- paah: plxscan:00000859:  
- paah: plxscan:00000860: int plpgsql_base_yyget_lineno (void); 
- paah: plxscan:00001584:  ereport(ERROR, 
- paah: plxscan:00001585:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001586:  errmsg("unterminated quoted identifier"))); 
- paah: plxscan:00001635:  ereport(ERROR, 
- paah: plxscan:00001636:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001637:  errmsg("unterminated comment"))); 
- paah: plxscan:00001705:  ereport(ERROR, 
- paah: plxscan:00001706:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001707:  errmsg("unterminated string"))); 
- paah: plxscan:00001761:  ereport(ERROR, 
- paah: plxscan:00001762:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001763:  errmsg("unterminated dollar-quoted string"))); 
- paah: plxscan:00002781:  ereport(ERROR, 
- paah: plxscan:00002782:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002783:  /* translator: %s is typically "syntax error" */ 
- paah: plxscan:00002784:  errmsg("%s at end of input", message), 
- paah: plxscan:00002785:  internalerrposition(cursorpos), 
- paah: plxscan:00002786:  internalerrquery(scanstr))); 
- paah: plxscan:00002790:  ereport(ERROR, 
- paah: plxscan:00002791:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002792:  /* translator: first %s is typically "syntax error" */ 
- paah: plxscan:00002793:  errmsg("%s at or near "%s"", message, loc), 
- paah: plxscan:00002794:  internalerrposition(cursorpos), 
- paah: plxscan:00002795:  internalerrquery(scanstr))); 
+ paah: plxscan:00000794: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ paah: plxscan:00000795:  
+ paah: plxscan:00000796: int plpgsql_base_yyget_lineno (void); 
+ paah: plxscan:00001511:  ereport(ERROR, 
+ paah: plxscan:00001512:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001513:  errmsg("unterminated quoted identifier"))); 
+ paah: plxscan:00001560:  ereport(ERROR, 
+ paah: plxscan:00001561:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001562:  errmsg("unterminated comment"))); 
+ paah: plxscan:00001629:  ereport(ERROR, 
+ paah: plxscan:00001630:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001631:  errmsg("unterminated string"))); 
+ paah: plxscan:00001684:  ereport(ERROR, 
+ paah: plxscan:00001685:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001686:  errmsg("unterminated dollar-quoted string"))); 
+ paah: plxscan:00002638:  ereport(ERROR, 
+ paah: plxscan:00002639:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00002640:  /* translator: %s is typically "syntax error" */ 
+ paah: plxscan:00002641:  errmsg("%s at end of input", message), 
+ paah: plxscan:00002642:  internalerrposition(cursorpos), 
+ paah: plxscan:00002643:  internalerrquery(scanstr))); 
+ paah: plxscan:00002647:  ereport(ERROR, 
+ paah: plxscan:00002648:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00002649:  /* translator: first %s is typically "syntax error" */ 
+ paah: plxscan:00002650:  errmsg("%s at or near "%s"", message, loc), 
+ paah: plxscan:00002651:  internalerrposition(cursorpos), 
+ paah: plxscan:00002652:  internalerrquery(scanstr))); 
  paah: prepare:00000070:  ereport(ERROR, 
  paah: prepare:00000071:  (errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION), 
  paah: prepare:00000072:  errmsg("invalid statement name: must not be empty"))); 
@@ -11407,44 +11401,44 @@ select * from get_ereport order by 1;
  saad: spi:00002984:  (errcode(ERRCODE_WARNING), 
  saad: spi:00002985:  errmsg("A stable or volatile function is used as if it is immutable"), 
  saad: spi:00002986:  errhint("The function should be declared as stable or volatile in create function statement."))); 
- saae: scan:00005273: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- saae: scan:00005274:  
- saae: scan:00005275: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
- saae: scan:00005276: static char *dolqstart; /* current $foo$ quote start string */ 
- saae: scan:00005277:  
- saae: scan:00005278: /* 
- saae: scan:00005279:  * GUC variables. This is a DIRECT violation of the warning given at the 
- saae: scan:00005280:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
- saae: scan:00005934:  ereport(ERROR, 
- saae: scan:00005935:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00005936:  errmsg("unsafe use of \' in a string literal"), 
- saae: scan:00005937:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
- saae: scan:00005938:  lexer_errposition())); 
- saae: scan:00007291:  ereport(ERROR, 
- saae: scan:00007292:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00007293:  /* translator: %s is typically "syntax error" */ 
- saae: scan:00007294:  errmsg("%s at end of input", _(message)), 
- saae: scan:00007295:  lexer_errposition())); 
- saae: scan:00007299:  ereport(ERROR, 
- saae: scan:00007300:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00007301:  /* translator: first %s is typically "syntax error" */ 
- saae: scan:00007302:  errmsg("%s at or near "%s"", _(message), loc), 
- saae: scan:00007303:  lexer_errposition())); 
- saae: scan:00007434:  ereport(WARNING, 
- saae: scan:00007435:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00007436:  errmsg("nonstandard use of \' in a string literal"), 
- saae: scan:00007437:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
- saae: scan:00007438:  lexer_errposition())); 
- saae: scan:00007444:  ereport(WARNING, 
- saae: scan:00007445:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00007446:  errmsg("nonstandard use of \\ in a string literal"), 
- saae: scan:00007447:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
- saae: scan:00007448:  lexer_errposition())); 
- saae: scan:00007459:  ereport(WARNING, 
- saae: scan:00007460:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00007461:  errmsg("nonstandard use of escape in a string literal"), 
- saae: scan:00007462:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
- saae: scan:00007463:  lexer_errposition())); 
+ saae: scan:00005217: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ saae: scan:00005218:  
+ saae: scan:00005219: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
+ saae: scan:00005220: static char *dolqstart; /* current $foo$ quote start string */ 
+ saae: scan:00005221:  
+ saae: scan:00005222: /* 
+ saae: scan:00005223:  * GUC variables. This is a DIRECT violation of the warning given at the 
+ saae: scan:00005224:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
+ saae: scan:00005865:  ereport(ERROR, 
+ saae: scan:00005866:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00005867:  errmsg("unsafe use of \' in a string literal"), 
+ saae: scan:00005868:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
+ saae: scan:00005869:  lexer_errposition())); 
+ saae: scan:00007155:  ereport(ERROR, 
+ saae: scan:00007156:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00007157:  /* translator: %s is typically "syntax error" */ 
+ saae: scan:00007158:  errmsg("%s at end of input", _(message)), 
+ saae: scan:00007159:  lexer_errposition())); 
+ saae: scan:00007163:  ereport(ERROR, 
+ saae: scan:00007164:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00007165:  /* translator: first %s is typically "syntax error" */ 
+ saae: scan:00007166:  errmsg("%s at or near "%s"", _(message), loc), 
+ saae: scan:00007167:  lexer_errposition())); 
+ saae: scan:00007298:  ereport(WARNING, 
+ saae: scan:00007299:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00007300:  errmsg("nonstandard use of \' in a string literal"), 
+ saae: scan:00007301:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
+ saae: scan:00007302:  lexer_errposition())); 
+ saae: scan:00007308:  ereport(WARNING, 
+ saae: scan:00007309:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00007310:  errmsg("nonstandard use of \\ in a string literal"), 
+ saae: scan:00007311:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
+ saae: scan:00007312:  lexer_errposition())); 
+ saae: scan:00007323:  ereport(WARNING, 
+ saae: scan:00007324:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00007325:  errmsg("nonstandard use of escape in a string literal"), 
+ saae: scan:00007326:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
+ saae: scan:00007327:  lexer_errposition())); 
  saae: slru:00000755:  ereport(ERROR, 
  saae: slru:00000756:  (errcode_for_file_access(), 
  saae: slru:00000757:  errmsg("could not access status of transaction %u", xid), 
@@ -14370,13 +14364,13 @@ select * from get_ereport order by 1;
  uaad: udt:00000285:  ereport(ERROR, ( 
  uaad: udt:00000286:  errcode(ERRCODE_CANNOT_COERCE), 
  uaad: udt:00000287:  errmsg("Attempt to register UDT with Oid %d failed. Oid appoints a non UDT type", typeId))); 
- uaad: url:00000638:  ereport(ERROR, 
- uaad: url:00000639:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
- uaad: url:00000640:  errmsg("cannot start external table command: %m"), 
- uaad: url:00000641:  errdetail("Command: %s", url))); 
- uaad: url:00000926:  ereport(ERROR, 
- uaad: url:00000927:  (errcode(ERRCODE_INTERNAL_ERROR), 
- uaad: url:00000928:  errmsg_internal("external table type not implemented: %d", type))); 
+ uaad: url:00000643:  ereport(ERROR, 
+ uaad: url:00000644:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+ uaad: url:00000645:  errmsg("cannot start external table command: %m"), 
+ uaad: url:00000646:  errdetail("Command: %s", url))); 
+ uaad: url:00000938:  ereport(ERROR, 
+ uaad: url:00000939:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ uaad: url:00000940:  errmsg_internal("external table type not implemented: %d", type))); 
  uaae: user:00000139:  ereport(ERROR, 
  uaae: user:00000140:  (errcode(ERRCODE_SYNTAX_ERROR), 
  uaae: user:00000141:  errmsg("conflicting or redundant options"))); 
@@ -14711,12 +14705,12 @@ select * from get_ereport order by 1;
  vaag: vacuum:00003242:  RelationGetRelationName(indrel), 
  vaag: vacuum:00003243:  stats->num_index_tuples, num_tuples + keep_tuples), 
  vaag: vacuum:00003244:  errhint("Rebuild the index with REINDEX."))); 
- vaag: vacuum:00003764:  ereport(WARNING, 
- vaag: vacuum:00003765:  (errmsg("skipping "%s" --- only table or database owner can vacuum it", 
- vaag: vacuum:00003766:  RelationGetRelationName(onerel)))); 
- vaag: vacuum:00003777:  ereport(WARNING, 
- vaag: vacuum:00003778:  (errmsg("skipping "%s" --- cannot vacuum indexes, views, external tables, or special system tables", 
- vaag: vacuum:00003779:  RelationGetRelationName(onerel)))); 
+ vaag: vacuum:00003822:  ereport(WARNING, 
+ vaag: vacuum:00003823:  (errmsg("skipping "%s" --- only table or database owner can vacuum it", 
+ vaag: vacuum:00003824:  RelationGetRelationName(onerel)))); 
+ vaag: vacuum:00003835:  ereport(WARNING, 
+ vaag: vacuum:00003836:  (errmsg("skipping "%s" --- cannot vacuum indexes, views, external tables, or special system tables", 
+ vaag: vacuum:00003837:  RelationGetRelationName(onerel)))); 
  vaag: varbit:00000103:  ereport(ERROR, 
  vaag: varbit:00000104:  (errcode(ERRCODE_STRING_DATA_LENGTH_MISMATCH), 
  vaag: varbit:00000105:  errmsg("bit string length %d does not match type bit(%d)", 
@@ -14982,81 +14976,81 @@ select * from get_ereport order by 1;
  wabh: winthreetwoxshmem:00000213:  ereport(FATAL, 
  wabh: winthreetwoxshmem:00000214:  (errmsg("could not create shared memory segment: %lu", GetLastError()), 
  wabh: winthreetwoxshmem:00000215:  errdetail("Failed system call was MapViewOfFileEx."))); 
- xaae: xact:00000733:  ereport(ERROR, 
- xaae: xact:00000734:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- xaae: xact:00000735:  errmsg("cannot have more than 2^32-1 commands in a transaction"))); 
- xaae: xact:00000953:  ereport(ERROR, 
- xaae: xact:00000954:  (errmsg("Reader qExec had local changes to commit! (MyXactMadeXLogEntry = %s, MyXactMadeTempRelUpdate = %s, nrels = %d)", 
- xaae: xact:00000955:  (MyXactMadeXLogEntry ? "true" : "false"), (MyXactMadeTempRelUpdate ? "true" : "false"), nrels), 
- xaae: xact:00000956:  errdetail("A Reader qExec tried to commit local changes. " 
- xaae: xact:00000957:  "Only the single Writer qExec can do so. "), 
- xaae: xact:00000958:  errhint("This is most likely the result of a feature being turned " 
- xaae: xact:00000959:  "on that violates the single WRITER principle"))); 
- xaae: xact:00002178:  ereport(ERROR, 
- xaae: xact:00002179:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- xaae: xact:00002180:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
- xaae: xact:00002181:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
- xaae: xact:00002182:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d
+ xaae: xact:00000736:  ereport(ERROR, 
+ xaae: xact:00000737:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ xaae: xact:00000738:  errmsg("cannot have more than 2^32-1 commands in a transaction"))); 
+ xaae: xact:00000956:  ereport(ERROR, 
+ xaae: xact:00000957:  (errmsg("Reader qExec had local changes to commit! (MyXactMadeXLogEntry = %s, MyXactMadeTempRelUpdate = %s, nrels = %d)", 
+ xaae: xact:00000958:  (MyXactMadeXLogEntry ? "true" : "false"), (MyXactMadeTempRelUpdate ? "true" : "false"), nrels), 
+ xaae: xact:00000959:  errdetail("A Reader qExec tried to commit local changes. " 
+ xaae: xact:00000960:  "Only the single Writer qExec can do so. "), 
+ xaae: xact:00000961:  errhint("This is most likely the result of a feature being turned " 
+ xaae: xact:00000962:  "on that violates the single WRITER principle"))); 
+ xaae: xact:00002181:  ereport(ERROR, 
+ xaae: xact:00002182:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ xaae: xact:00002183:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
+ xaae: xact:00002184:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
+ xaae: xact:00002185:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d
  " 
- xaae: xact:00002183:  "DistributedTransactionContext = %s." 
- xaae: xact:00002184:  "Dump of all sharedsnapshots in shmem: %s", 
- xaae: xact:00002185:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
- xaae: xact:00002186:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
- xaae: xact:00002187:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
- xaae: xact:00002188:  DtxContextToString(DistributedTransactionContext), 
- xaae: xact:00002189:  SharedSnapshotDump()))); 
- xaae: xact:00003644:  ereport(ERROR, 
- xaae: xact:00003645:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003646:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003647:  errmsg("%s cannot run inside a transaction block", 
- xaae: xact:00003648:  stmtType))); 
- xaae: xact:00003654:  ereport(ERROR, 
- xaae: xact:00003655:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003656:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003657:  errmsg("%s cannot run inside a subtransaction", 
- xaae: xact:00003658:  stmtType))); 
- xaae: xact:00003666:  ereport(ERROR, 
- xaae: xact:00003667:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003668:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003669:  errmsg("%s cannot be executed from a function", stmtType))); 
- xaae: xact:00003717:  ereport(ERROR, 
- xaae: xact:00003718:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003719:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003720:  errmsg("%s may only be used in transaction blocks", 
- xaae: xact:00003721:  stmtType))); 
- xaae: xact:00003957:  ereport(WARNING, 
- xaae: xact:00003958:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003959:  errmsg("there is already a transaction in progress"))); 
- xaae: xact:00004131:  ereport(WARNING, 
- xaae: xact:00004132:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004133:  errmsg("there is no transaction in progress"))); 
- xaae: xact:00004230:  ereport(WARNING, 
- xaae: xact:00004231:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004232:  errmsg("there is no transaction in progress"))); 
- xaae: xact:00004359:  ereport(ERROR, 
- xaae: xact:00004360:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004361:  errmsg("no such savepoint"))); 
- xaae: xact:00004442:  ereport(ERROR, 
- xaae: xact:00004443:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004444:  errmsg("no such savepoint"))); 
- xaae: xact:00004448:  ereport(ERROR, 
- xaae: xact:00004449:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004450:  errmsg("no such savepoint"))); 
- xaae: xact:00004492:  ereport(ERROR, 
- xaae: xact:00004493:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004494:  errmsg("no such savepoint"))); 
- xaae: xact:00004540:  ereport(ERROR, 
- xaae: xact:00004541:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004542:  errmsg("no such savepoint"))); 
- xaae: xact:00004546:  ereport(ERROR, 
- xaae: xact:00004547:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004548:  errmsg("no such savepoint"))); 
- xaae: xact:00005261:  ereport(ERROR, 
- xaae: xact:00005262:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
- xaae: xact:00005263:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
- xaae: xact:00005280:  ereport(ERROR, 
- xaae: xact:00005281:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- xaae: xact:00005282:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
+ xaae: xact:00002186:  "DistributedTransactionContext = %s." 
+ xaae: xact:00002187:  "Dump of all sharedsnapshots in shmem: %s", 
+ xaae: xact:00002188:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
+ xaae: xact:00002189:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
+ xaae: xact:00002190:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
+ xaae: xact:00002191:  DtxContextToString(DistributedTransactionContext), 
+ xaae: xact:00002192:  SharedSnapshotDump()))); 
+ xaae: xact:00003647:  ereport(ERROR, 
+ xaae: xact:00003648:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003649:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003650:  errmsg("%s cannot run inside a transaction block", 
+ xaae: xact:00003651:  stmtType))); 
+ xaae: xact:00003657:  ereport(ERROR, 
+ xaae: xact:00003658:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003659:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003660:  errmsg("%s cannot run inside a subtransaction", 
+ xaae: xact:00003661:  stmtType))); 
+ xaae: xact:00003669:  ereport(ERROR, 
+ xaae: xact:00003670:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003671:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003672:  errmsg("%s cannot be executed from a function", stmtType))); 
+ xaae: xact:00003720:  ereport(ERROR, 
+ xaae: xact:00003721:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003722:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003723:  errmsg("%s may only be used in transaction blocks", 
+ xaae: xact:00003724:  stmtType))); 
+ xaae: xact:00003960:  ereport(WARNING, 
+ xaae: xact:00003961:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003962:  errmsg("there is already a transaction in progress"))); 
+ xaae: xact:00004134:  ereport(WARNING, 
+ xaae: xact:00004135:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004136:  errmsg("there is no transaction in progress"))); 
+ xaae: xact:00004233:  ereport(WARNING, 
+ xaae: xact:00004234:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004235:  errmsg("there is no transaction in progress"))); 
+ xaae: xact:00004362:  ereport(ERROR, 
+ xaae: xact:00004363:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004364:  errmsg("no such savepoint"))); 
+ xaae: xact:00004445:  ereport(ERROR, 
+ xaae: xact:00004446:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004447:  errmsg("no such savepoint"))); 
+ xaae: xact:00004451:  ereport(ERROR, 
+ xaae: xact:00004452:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004453:  errmsg("no such savepoint"))); 
+ xaae: xact:00004495:  ereport(ERROR, 
+ xaae: xact:00004496:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004497:  errmsg("no such savepoint"))); 
+ xaae: xact:00004543:  ereport(ERROR, 
+ xaae: xact:00004544:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004545:  errmsg("no such savepoint"))); 
+ xaae: xact:00004549:  ereport(ERROR, 
+ xaae: xact:00004550:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004551:  errmsg("no such savepoint"))); 
+ xaae: xact:00005264:  ereport(ERROR, 
+ xaae: xact:00005265:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
+ xaae: xact:00005266:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
+ xaae: xact:00005283:  ereport(ERROR, 
+ xaae: xact:00005284:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ xaae: xact:00005285:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
  xaae: xlog:00000652:  ereport(ERROR, 
  xaae: xlog:00000653:  (errmsg("Reader qExec had local changes to commit! (rmid = %u)", 
  xaae: xlog:00000654:  rmid), 
@@ -15456,6 +15450,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15396 rows)
+(15390 rows)
 
 drop external table get_ereport;

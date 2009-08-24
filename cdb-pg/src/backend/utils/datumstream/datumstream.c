@@ -13,7 +13,17 @@
 #include <fcntl.h>
 
 #include "access/tupmacs.h"
+#include "cdb/cdbappendonlystorageread.h"
+#include "cdb/cdbappendonlystoragewrite.h"
 #include "utils/datumstream.h"
+
+typedef enum AOCSBK
+{
+	AOCSBK_None = 0, 
+    AOCSBK_BLOCK,
+    AOCSBK_BLOB,
+} AOCSBK; 
+
 
 int datumstream_get(DatumStream *acc, Datum *datum, bool *null)
 {
@@ -62,15 +72,15 @@ extern int datumstream_advance(DatumStream *acc)
 
     Assert(acc);
     Assert(acc->is_reader);
-    Assert(acc->nth <= acc->block.ndatum);
+    AssertImply(acc->block, acc->nth <= acc->block->ndatum);
 
     ++acc->nth;
-    /* Advance out of bound */
-    if(acc->nth >= acc->block.ndatum)
-        return 0;
-
-    if(acc->nth == 0)
+    if (acc->nth == 0)
         return 1;
+
+    /* Advance out of bound */
+    if(!acc->block || acc->nth >= acc->block->ndatum)
+        return 0;
 
     if(acc->has_null)
     {
@@ -124,17 +134,25 @@ static inline void incr_acc_n(DatumStream *acc)
     ++acc->nth;
 }
 
+static bool datumstream_has_space(DatumStream *ds, bool null, int32 sz) 
+{
+    int32 dssz = (ds->datump - ds->dpbuf);
+
+    if(ds->nth >= MAXDATUM_PER_AOCS_BLOCK)
+        return false;
+
+    if(null || ds->has_null)
+        dssz += (ds->nullp - ds->npbuf);
+
+    return dssz + sz < ds->maxdatasz;
+}
 
 int datumstream_put(DatumStream *acc, Datum d, bool null)
 {
     Assert(acc && !acc->is_reader);
+    Assert(acc->maxdatasz > 0 && acc->maxdatasz < acc->maxsz);
 
-    /* 
-     * npbuf is allocated according to maxsz.  If we reach
-     * here, we must have seen tons of nulls.  If we continue,
-     * we will overrun the nullp buffer.
-     */
-    if (acc->nth >= acc->maxsz || acc->nth >= MAXDATUM_PER_AOCS_BLOCK)
+    if (!datumstream_has_space(acc, null, 0))
         return -1;
 
     if(null)
@@ -148,7 +166,10 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
     /* Varlen */
     if(acc->datumlen < 0)
     {
-        int32 sz;
+        int32 sz = 0;
+        char *p = NULL;
+        char c1 = 0;
+        int32 wsz = 0;
 
         Assert(acc->datumlen == -1);
         Assert(!VARATT_IS_EXTERNAL_D(d));
@@ -160,44 +181,41 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
         else if(VARATT_IS_SHORT_D(d))
         {
             sz = VARSIZE_SHORT(DatumGetPointer(d));
-            Assert(sz > 0 && sz < 128);
-            if(acc->datump - acc->dpbuf + sz > acc->dpbufsz)
-                return -sz;
-
-            memcpy(acc->datump, DatumGetPointer(d), sz);
-            acc->datump += sz;
-            incr_acc_n(acc);
-            return sz;
+            p = DatumGetPointer(d);
+            wsz = sz;
         }
         else if(value_type_could_short(d, acc->typid))
         {
             sz = VARSIZE_D(d) - VARHDRSZ + VARHDRSZ_SHORT;
-            Assert(sz > 0 && sz < 128);
-            if(acc->datump - acc->dpbuf + sz > acc->dpbufsz)
-                return -sz;
-            *(acc->datump) = VARSIZE_TO_SHORT_D(d);
-            memcpy(acc->datump+1, VARDATA_D(d), sz-1);
-            acc->datump += sz;
-            incr_acc_n(acc);
-            return sz;
+            c1 = VARSIZE_TO_SHORT_D(d);
+            p = VARDATA_D(d);
+            wsz = sz-1;
         }
         else
         {
             sz = VARSIZE(DatumGetPointer(d));
-
-            if(MAXALIGN(acc->datump - acc->dpbuf) + sz > acc->dpbufsz)
-                return -sz;
-
             acc->datump = att_align_zero(acc->datump, acc->align);
-            memcpy(acc->datump, DatumGetPointer(d), sz);
-            acc->datump += sz;
-            incr_acc_n(acc);
-            return sz;
+            p = DatumGetPointer(d);
+            wsz = sz;
         }
+
+        if (!datumstream_has_space(acc, false, sz))
+            return -sz;
+
+        if (c1 != 0)
+        {
+            *(acc->datump) = c1;
+            acc->datump += 1;
+        }
+        
+        memcpy(acc->datump, p, wsz);
+        acc->datump += wsz;
+        incr_acc_n(acc);
+        return sz;
     }
 
     /* Fixed len */
-    if(acc->datump - acc->dpbuf + acc->datumlen > acc->dpbufsz)
+    if (!datumstream_has_space(acc, false, acc->datumlen))
         return -acc->datumlen;
 
     switch(acc->datumlen)
@@ -231,8 +249,8 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
     return acc->datumlen;
 }
 
-DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 maxsz, 
-        Form_pg_attribute attr, char *fn, bool isreader) 
+DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 maxsz,  
+        Form_pg_attribute attr, char *relname, bool isreader) 
 {
     DatumStream *acc = palloc0(sizeof(DatumStream));
 
@@ -241,54 +259,37 @@ DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 
     acc->typid = attr->atttypid;
     acc->align = attr->attalign;
 
-    acc->maxsz = maxsz;
-
-    acc->compType = compType;
-    acc->compLevel = compLevel;
-
-    /* For now, let's set comp_opt to 0, no data type specific compression. */
+    /* Data type sepcific compression NYI */
     acc->compress_option = 0;
 
+    acc->maxsz = maxsz;
     acc->is_reader = isreader;
-    if(acc->is_reader)
-        acc->f = PathNameOpenFile(fn, O_RDONLY | PG_BINARY, 0600);
-    else
-        acc->f = PathNameOpenFile(fn, O_RDWR | PG_BINARY | O_CREAT, 0600);
 
-    if(acc->f < 0)
-        ereport(ERROR, (errcode_for_file_access(),
-                    errmsg("AOCS cannot open file %s", fn)));
+    acc->ao_attr.compress = (compLevel > 0);
+    acc->ao_attr.compressType = compType;
+    acc->ao_attr.compressLevel = compLevel;
 
-    /* Set up buffers */
-    acc->npbufsz = MAXALIGN(
-            ((acc->maxsz > MAXDATUM_PER_AOCS_BLOCK ? MAXDATUM_PER_AOCS_BLOCK : acc->maxsz)
-               +7) >> 3);
-    acc->npbuf = palloc0(acc->npbufsz);
-    acc->dpbufsz = MAXALIGN(maxsz);
-    acc->dpbuf = palloc(acc->dpbufsz);
-
-    if(acc->compType != COMPTYPE_NONE)
+    if (acc->is_reader)
     {
-        /* NOTE: quick lz need a MAX_OVERRUN_QUICKLZ bytes overhead for compress, and
-         * need a scratch area. 
-         */
-        int overheadsz = (acc->compType == COMPTYPE_ZLIB ? 0 : MAX_OVERRUN_QUICKLZ);
-        acc->npzbufsz = acc->npbufsz + overheadsz;
-        acc->npzbuf = palloc0(acc->npzbufsz);
-        acc->dpzbufsz = acc->dpbufsz + overheadsz;
-        acc->dpzbuf = palloc(acc->dpzbufsz);
-
-        if(acc->compType == COMPTYPE_QUICKLZ1)
-        {
-            acc->qlz_scratchsz = QLZ1_SCRATCH_COMPRESS;
-            acc->qlz_scratch = palloc(acc->qlz_scratchsz);
-        }
-        else if (acc->compType == COMPTYPE_QUICKLZ3)
-        {
-            acc->qlz_scratchsz = QLZ3_SCRATCH_COMPRESS;
-            acc->qlz_scratch = palloc(acc->qlz_scratchsz);
-        }
+        acc->ao_read = palloc0(sizeof(AppendOnlyStorageRead));
+        AppendOnlyStorageRead_Init(acc->ao_read, NULL, maxsz, relname, &acc->ao_attr);
     }
+    else
+    {
+        acc->ao_write = palloc0(sizeof(AppendOnlyStorageWrite));
+        AppendOnlyStorageWrite_Init(acc->ao_write, NULL, maxsz, relname, &acc->ao_attr);
+
+        acc->npbufsz = MAXDATUM_PER_AOCS_BLOCK / 8;
+        acc->npbuf = palloc0(acc->npbufsz);
+
+        acc->dpbufsz = acc->maxsz;
+        acc->dpbuf = palloc0(acc->dpbufsz);
+
+        acc->lobbufsz = 0;
+        acc->lobbuf = NULL;
+    }
+
+    acc->memctxt = CurrentMemoryContext;
 
     /* Set up current position */
     acc->nth = 0;
@@ -302,146 +303,117 @@ DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 
 
 void destroy_datumstream(DatumStream *ds)
 {
-    if(ds->f >= 0)
-        FileClose(ds->f);
-
-    if(ds->npbuf)
+    if (ds->npbuf)
         pfree(ds->npbuf);
-
-    if(ds->dpbuf)
+    if (ds->dpbuf)
         pfree(ds->dpbuf);
+    if (ds->lobbuf)
+        pfree(ds->lobbuf);
 
-    if(ds->npzbuf)
-        pfree(ds->npzbuf);
+    if (ds->ao_read)
+    {
+        Assert(ds->is_reader);
+        Assert(!ds->ao_write);
+        AppendOnlyStorageRead_FinishSession(ds->ao_read);
+        pfree(ds->ao_read);
+    }
 
-    if(ds->dpzbuf)
-        pfree(ds->dpzbuf);
-
-    if(ds->qlz_scratch)
-        pfree(ds->qlz_scratch);
+    if (ds->ao_write)
+    {
+        Assert(!ds->is_reader);
+        Assert(!ds->ao_read);
+        AppendOnlyStorageWrite_FinishSession(ds->ao_write);
+        pfree(ds->ao_write);
+    }
 
     pfree(ds);
 }
 
-static void ec_write(DatumStream *ds, char *buf, int wsz, int uncomp_sz)
+void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncompressed)
 {
-    int wsize = 0;
+    ds->eof = eof;
+    ds->eofUncompress = eofUncompressed;
 
-    /* Compression NYI. */
-    ds->eof += wsz;
-    ds->eof_uncompressed += uncomp_sz;
-
-    while(wsz > 0)
+    if (ds->is_reader)
     {
-        wsize = FileWrite(ds->f, buf, wsz);
-        if(wsize < 0)
-            elog(ERROR, "Datum stream write failed");
-        wsz -= wsize;
+        Assert(ds->ao_read && !ds->ao_write);
+        AppendOnlyStorageRead_OpenFile(ds->ao_read, fn, ds->eof);
+    }
+    else
+    {
+        Assert(ds->ao_write && !ds->ao_read);
+        AppendOnlyStorageWrite_OpenFile(ds->ao_write, fn, eof, eofUncompressed);
+        ds->maxdatasz = ds->maxsz - AppendOnlyStorageWrite_CompleteHeaderLen(ds->ao_write) - sizeof(DatumStreamBlock);
     }
 }
 
+void datumstream_close_file(DatumStream *ds)
+{
+    if (ds->is_reader)
+    {
+        Assert(ds->ao_read && !ds->ao_write);
+        AppendOnlyStorageRead_CloseFile(ds->ao_read);
+    }
+    else
+    {
+        Assert(ds->ao_write && !ds->ao_read);
+        AppendOnlyStorageWrite_FlushAndCloseFile(ds->ao_write,
+            &ds->eof,
+            &ds->eofUncompress
+            );
+    }
+}
+    
 int64 datumstream_write_block(DatumStream *acc)
 {
     int64 wsize = 0;
-    Assert(acc);
+    char *buffer = NULL;
+    char *p = NULL;
+    DatumStreamBlock block;
+
+    Assert(acc && !acc->is_reader && !acc->ao_read && acc->ao_write);
 
     /* compression NYI */
     Assert(acc->compress_option == 0);
 
     /* Nothing to write, this is just no op */
-    Assert(acc->nth > 0);
+    if (acc->nth == 0)
+        return 0;
 
     /* Has to got something to write */
     /* First fill in header info */
-    acc->block.version = 0;
-    acc->block.flags = acc->has_null ? DSB_HAS_NULLBITMAP : 0;
-    acc->block.ndatum = acc->nth;
+    buffer = (char *) AppendOnlyStorageWrite_GetBuffer(acc->ao_write);
+    p = buffer;
+
+    /* First write header */
+    block.version = 0;
+    block.flags = acc->has_null ? DSB_HAS_NULLBITMAP : 0;
+    block.ndatum = acc->nth;
 
     /* compress null bitmaps */
     if(!acc->has_null)
-    {
-        acc->block.nullsz = 0;
-        acc->block.nullsz2 = 0;
-    }
+        block.nullsz = 0;
     else
-    {
-        acc->block.nullsz = MAXALIGN((acc->nth+7) >> 3); 
+        block.nullsz = MAXALIGN((acc->nth+7) >> 3); 
+    block.sz = acc->datump - acc->dpbuf;
 
-        if(acc->compType == COMPTYPE_NONE)
-            acc->block.nullsz2 = acc->block.nullsz;
-        else
-        {
-            int err;
+    memcpy(p, &block, sizeof(DatumStreamBlock));
+    p += sizeof(DatumStreamBlock);
 
-            acc->block.nullsz2 = acc->npzbufsz;
-            err = gp_trycompress(acc->compType, acc->compLevel, 
-                    acc->npbuf, acc->block.nullsz, 
-                    acc->npzbuf, &acc->block.nullsz2,
-                    acc->qlz_scratch
-                    );
+    /* Next write the null bitmap */
+    memcpy(p, acc->npbuf, block.nullsz);
+    p += block.nullsz;
 
-            /* Do not compress this */
-            if(err != Z_OK || acc->block.nullsz2 > acc->block.nullsz)
-                acc->block.nullsz2 = acc->block.nullsz;
-        }
-    }
+    /* Next write data */
+    memcpy(p, acc->dpbuf, block.sz);
+    p += block.sz;
 
-    /* compress data */
-    acc->block.sz = acc->datump - acc->dpbuf;
-    if(acc->compType == COMPTYPE_NONE)
-        acc->block.sz2 = acc->block.sz;
-    else
-    {
-        int err;
-
-        acc->block.sz2 = acc->dpzbufsz; 
-        err = gp_trycompress(acc->compType, acc->compLevel, 
-                acc->dpbuf, acc->block.sz, 
-                acc->dpzbuf, &acc->block.sz2,
-                acc->qlz_scratch
-                );
-
-        /* Do not compress this */
-        if(err != Z_OK || acc->block.sz2 > acc->block.sz)
-            acc->block.sz2 = acc->block.sz;
-    }
-
-    /* First write header */
-    Assert(acc->block.nullsz2 <= acc->block.nullsz);
-    Assert(acc->block.sz2 <= acc->block.sz);
-    Assert(acc->block.nullsz > 0 || acc->block.sz > 0);
-
-    ec_write(acc, (char *) &acc->block, sizeof(DatumStreamBlock), sizeof(DatumStreamBlock));
-    wsize = sizeof(DatumStreamBlock);
-
-    /* If has null bit map, write nullbit map */
-    if(acc->has_null)
-    {
-        if(acc->block.nullsz == acc->block.nullsz2)
-        {
-            ec_write(acc, acc->npbuf, acc->block.nullsz2, acc->block.nullsz);
-            wsize += acc->block.nullsz;
-        }
-        else
-        {
-            ec_write(acc, acc->npzbuf, acc->block.nullsz2, acc->block.nullsz);
-            wsize += acc->block.nullsz2;
-        }
-    }
-
-    if(acc->block.sz > 0)
-    {
-        if(acc->block.sz == acc->block.sz2)
-        {
-            ec_write(acc, acc->dpbuf, acc->block.sz2, acc->block.sz);
-            wsize += acc->block.sz;
-        }
-        else
-        {
-            ec_write(acc, acc->dpzbuf, acc->block.sz2, acc->block.sz);
-            wsize += acc->block.sz2;
-        }
-    }
+    /* Write it out */
+    AppendOnlyStorageWrite_FinishBuffer(acc->ao_write,
+            p-buffer,
+            AOCSBK_BLOCK,
+            block.ndatum
+            );
 
     /* Reset acc after write */
     acc->nth = 0;
@@ -457,149 +429,122 @@ int64 datumstream_write_block(DatumStream *acc)
 int64 datumstream_write_lob(DatumStream *acc, Datum d)
 {
     struct varlena *va = (struct varlena *) DatumGetPointer(d);
-    int64 wsize = 0;
 
-    /* compression NYI */
-    Assert(acc->compress_option == 0);
+    Assert(acc && !acc->is_reader && !acc->ao_read && acc->ao_write);
 
-    /* First fill in header info */
-    acc->block.version = 0;
-    acc->block.flags = 0;
-    acc->block.ndatum = 1;
-    acc->block.nullsz = 0;
-    acc->block.nullsz2 = 0;
+    AppendOnlyStorageWrite_Content(acc->ao_write,
+        (uint8 *) va,
+        VARSIZE_ANY(va),
+        AOCSBK_BLOB,
+        1
+        );
 
-    /* Compression NYI.  Everything is simple for now */
-    acc->block.sz = VARSIZE_ANY(va);
-    acc->block.sz2 = acc->block.sz;
+    Assert(acc->nth == 0);
+    Assert(acc->has_null == false);
+    Assert(acc->nullp == acc->npbuf);
+    Assert(acc->datump == acc->dpbuf);
 
-    /* Write header */
-    ec_write(acc, (char *) &acc->block, sizeof(DatumStreamBlock), sizeof(DatumStreamBlock));
-    wsize += sizeof(DatumStreamBlock);
-
-    /* Write data */
-    ec_write(acc, (char *) va, acc->block.sz, acc->block.sz); 
-    wsize += acc->block.sz; 
-
-    /* Reset acc after write */
-    acc->nth = 0;
-    acc->has_null = false;
-    acc->nullp = acc->npbuf;
-    memset(acc->npbuf, 0, acc->npbufsz);
-    acc->nullbit = 1;
-    acc->datump = acc->dpbuf;
-
-    return wsize; 
-}
-
-static int ec_read(DatumStream *ds, char *buf, int sz)
-{
-    int rsize;
-
-    Assert(ds->reof <= ds->eof);
-    if(ds->reof == ds->eof)
-        return -1;
-
-    if(ds->reof + sz > ds->eof)
-        elog(ERROR, "Datum stream read out of bound");
-
-    ds->reof += sz;
-
-    while(sz > 0)
-    {
-        rsize = FileRead(ds->f, buf, sz);
-        Assert(rsize >= 0); 
-        sz -= rsize;
-    }
-    return 0;
+    return VARSIZE_ANY(va); 
 }
 
 int datumstream_read_block(DatumStream *acc)
 {
-    int err;
-    Assert(acc);
+    int32 contentLen = 0;
+    int execBlockKind = 0;
+    int64 firstRow = 0;
+    int rowCnt = 0;
+    bool isLarge = 0;
+    bool isCompressed = 0;
+    char *buffer = NULL;
 
-    /* First readin the header */
-    err = ec_read(acc, (char *) &acc->block, sizeof(DatumStreamBlock));
-    if(err < 0)
+    bool readOK = false;
+    
+    Assert(acc && acc->is_reader && acc->ao_read && !acc->ao_write);
+    
+    readOK = AppendOnlyStorageRead_GetBlockInfo(acc->ao_read,
+            &contentLen,
+            &execBlockKind,
+            &firstRow,
+            &rowCnt,
+            &isLarge,
+            &isCompressed
+            );
+
+    if (!readOK)
         return -1;
 
-    /* Then the null bitmap */
-    if (acc->block.flags & DSB_HAS_NULLBITMAP)
+    if (execBlockKind == AOCSBK_BLOCK) 
     {
-        Assert(acc->block.nullsz2 > 0);
-        Assert(acc->block.nullsz >= acc->block.nullsz2);
-        Assert(acc->block.nullsz <= acc->npbufsz);
+        Assert(!isLarge);
 
-        if (acc->block.nullsz == acc->block.nullsz2)
+        if (isCompressed)
         {
-            /* not compressed */
-            err = ec_read(acc, acc->npbuf, acc->block.nullsz);
-            Assert(err >= 0);
-        }
-        else
-        {
-            Assert(acc->compType != COMPTYPE_NONE);
-            err = ec_read(acc, acc->npzbuf, acc->block.nullsz2);
-            Assert(err >= 0);
-            gp_decompress(acc->compType, 
-                    acc->npzbuf, acc->block.nullsz2,
-                    acc->npbuf, acc->block.nullsz,
-                    acc->qlz_scratch
-                    );
-        }
-    }
-
-    if(acc->block.sz > 0)
-    {
-        /* 
-         * First make sure our buffer is big enough.  We may run into this
-         * for blobs
-         */
-        if (acc->block.sz > acc->dpbufsz)
-        {
-            char *tmp;
-            acc->dpbufsz = acc->block.sz * 1.1;
-            tmp = palloc(acc->dpbufsz);
-            pfree(acc->dpbuf);
-            acc->dpbuf = tmp;
-        }
-
-
-        if (acc->block.sz2 == acc->block.sz)
-        {
-            err = ec_read(acc, acc->dpbuf, acc->block.sz);
-            Assert(err >= 0);
-        }
-        else
-        {
-            Assert(acc->compType != COMPTYPE_NONE);
-
-            if (acc->block.sz2 > acc->dpzbufsz)
+            /* Compressed, need to decompress to our own buffer.  */
+            if (acc->lobbufsz < contentLen)
             {
-                char *tmp;
-                acc->dpzbufsz = acc->block.sz2 * 1.1;
-                tmp = palloc(acc->dpzbufsz);
-                pfree(acc->dpzbuf);
-                acc->dpzbuf = tmp;
+                MemoryContext oldCtxt;
+                oldCtxt = MemoryContextSwitchTo(acc->memctxt);
+
+                if (acc->lobbuf)
+                    pfree(acc->lobbuf);
+
+                acc->lobbufsz = contentLen;
+                acc->lobbuf = palloc(contentLen);
+                MemoryContextSwitchTo(oldCtxt);
             }
 
-            err = ec_read(acc, acc->dpzbuf, acc->block.sz2);
-            Assert(err >= 0);
-            gp_decompress(acc->compType, 
-                    acc->dpzbuf, acc->block.sz2,
-                    acc->dpbuf, acc->block.sz,
-                    acc->qlz_scratch
+            AppendOnlyStorageRead_Content(acc->ao_read,
+                    (uint8 *) acc->lobbuf,
+                    contentLen
                     );
-        }
-    }
 
-    /* Set up acc */
-    acc->nth = -1; /* put it before first entry.  Caller will advance */ 
-    acc->has_null = acc->block.flags & DSB_HAS_NULLBITMAP;
-    acc->nullp = acc->npbuf;
-    acc->nullbit = 1;
-    acc->datump = acc->dpbuf;
+            buffer = (char *) acc->lobbuf;
+        }
+        else
+            buffer = (char *) AppendOnlyStorageRead_GetBuffer(acc->ao_read);
+
+        acc->block = (DatumStreamBlock *) buffer;
+        buffer += sizeof(DatumStreamBlock);
+
+        /* Set up acc */
+        acc->nth = -1; /* put it before first entry.  Caller will advance */ 
+        acc->has_null = acc->block->flags & DSB_HAS_NULLBITMAP;
+        acc->nullp = buffer; 
+        acc->nullbit = 1;
+        acc->datump = buffer + acc->block->nullsz; 
+    }
+    else
+    {
+        Assert(execBlockKind == AOCSBK_BLOB); 
+        Assert(isLarge);
+        Assert(rowCnt == 1);
+
+        acc->block = NULL;
+
+        if (acc->lobbufsz < contentLen)
+        {
+            MemoryContext oldCtxt;
+            oldCtxt = MemoryContextSwitchTo(acc->memctxt);
+            
+            if (acc->lobbuf)
+                pfree(acc->lobbuf);
+
+            acc->lobbufsz = contentLen;
+            acc->lobbuf = palloc(contentLen);
+            MemoryContextSwitchTo(oldCtxt);
+        }
+
+
+        AppendOnlyStorageRead_Content(acc->ao_read,
+                (uint8 *) acc->lobbuf,
+                contentLen
+                );
+
+        acc->nth = -1;
+        acc->has_null = false;
+        acc->datump = acc->lobbuf;
+    }
 
     return 0;
 }
+
