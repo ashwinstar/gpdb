@@ -92,6 +92,7 @@ valid_tokens = {
     "update_condition": {'parse_children': True, 'parent': "output"}, 
     "mapping": {'parse_children': False, 'parent': "output"},
     "sql": {'parse_children': True, 'parent': 'gpload'},
+    "truncate": {'parse_children': False, 'parent': 'sql'},
     "before": {'parse_children': False, 'parent': 'sql'},
     "after": {'parse_children': False, 'parent': 'sql'}}
 
@@ -1822,11 +1823,23 @@ class gpload:
     def do_method(self):
         # sql pre or post processing?
         sql = self.getconfig('gpload:sql', list, default=None)
-        before = None
-        after = None
+        truncate = False
+        before   = None
+        after    = None
         if sql:
-            before = self.getconfig('gpload:sql:before', unicode, default=None)
-            after = self.getconfig('gpload:sql:after', unicode, default=None)
+            truncate = self.getconfig('gpload:sql:truncate',bool,False)
+            before   = self.getconfig('gpload:sql:before', unicode, default=None)
+            after    = self.getconfig('gpload:sql:after', unicode, default=None)
+
+        if truncate == True:
+            self.log(self.LOG, "Truncate table")
+            if not self.options.D:
+                try:
+                    truncateSQLtext = "truncate %s" % self.table_quoted
+                    self.pg8000.execute(truncateSQLtext.encode('utf-8'))
+                except pg8000.ProgrammingError, p:
+                    print p
+                    self.log(self.ERROR, 'could not execute truncate target %s: %s' % (self.table_quoted, str(p)))
 
         if before:
             self.log(self.LOG, "Pre-SQL from user: %s" % before)
