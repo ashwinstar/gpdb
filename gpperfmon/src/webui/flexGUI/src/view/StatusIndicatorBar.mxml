@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" width="110" height="14" creationComplete="initComp()">
+	<mx:Script>
+		<![CDATA[
+			import mx.graphics.GradientBase;
+			import mx.graphics.GradientEntry;
+			
+			/**
+			 * @author vasu@divami.com
+			 * <p>The StatusIndicatorBar component is used by the Tree nodes in QueryDetailPlan to display the CPU % bar</p>
+			 * <p> The component is extended from the Canvas class. By default it takes a value of 80 for width and 14 for height if not explicitly set  
+			 * </p>
+			 *  <p>
+			 *  Usage
+			 *  <pre>
+			 *  &ltStatusIndicatorBar
+			 *    <strong>Properties</strong>
+			 *    value="0"
+			 *    &gt;
+			 *    ...
+			 *      <i>child tags</i>
+			 *    ...
+			 *  &lt;/StatusIndicatorBar&gt;
+			 *  </pre>
+			 *  </p>* 
+			 */
+			private var __value:Number = 0;
+			
+			//gets triggered once the component's Visual creation is complete
+			private function initComp():void{
+				paintBar();
+			}
+			
+			/**
+			 * @private
+			 * Fills the background color of the box and positions the separator accordingly
+			 */
+			private function paintBar():void{
+				//[vasu@divami.com] - instead of filling from ActionScript, we can achieve the same using gradient fill in MXML code. 
+				//The reason for avoiding that approach is to make the code flexible enough to take multiple sets of 
+				//fill colors. (In case we need to change fill color based on the value) 
+				var g:Graphics = barFill.graphics;
+				var barFillColors:Array = [0xb3ff70, 0x51bb00]; 
+				var barFillRatios:Array = [65, 255];
+				var barFillAlphas:Array = [1, 1];
+				var m:Matrix =  new Matrix();
+				var r:Number = (Math.PI/180) * 90;
+				var val:Number = (isNaN(__value) || __value < 0)? 0 : ((__value > 100)?100:__value);
+				g.clear();
+				
+				var barW:Number = ((borderBox.width)/100) * val;
+				
+				//position the separator
+				separator.x = barW;
+				
+				//fill the background of the bar
+				m.createGradientBox(barW, barFill.height, r);
+				g.beginGradientFill(GradientType.LINEAR, barFillColors, barFillAlphas, barFillRatios, m);
+				g.drawRect(0, 0, barW, barFill.height);
+				g.endFill();
+				
+				//set the value
+				valueLbl.text = nformat2.format(__value);
+			}//end of paintBar
+			
+			/**
+			 * Sets/Gets the value of the control 
+			 */
+			[Inspectable]
+			public function set value(val:Number):void{
+				__value = val;
+				
+				if(barFill){
+					paintBar();
+				}
+			}
+			
+			public function get value():Number{
+				return __value;
+			}
+		]]>
+	</mx:Script>
+	<mx:NumberFormatter id="nformat2" precision="2"/>
+	<mx:Box id="borderBox" x="0" y="1" width="{width - 60}" height="{height - 2}" borderStyle="solid" borderColor="#6A6A6A" borderThickness="1" backgroundColor="#FFFFFF">
+		<mx:Box id="barFill" width="0" height="100%"/>
+	</mx:Box>
+	<mx:Box id="separator" width="1" height="100%" backgroundColor="#C9C9C9" borderStyle="solid" borderColor="#6A6A6A"/>
+	<mx:Label id="valueLbl" x="{borderBox.width + 2}" y="{height/2 - 7}" height="14" paddingTop="-1"/>
+</mx:Canvas>
