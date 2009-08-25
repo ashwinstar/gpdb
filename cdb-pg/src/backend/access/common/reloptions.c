@@ -302,14 +302,14 @@ default_reloptions(Datum reloptions, bool validate,
 	};
 
 	char	   *values[ARRAY_SIZE(default_keywords)];
-	int32		fillfactor;
-	int32		blocksize;
-	bool		appendonly;
-	bool		checksum;
+	int32		fillfactor = defaultFillfactor;
+	int32		blocksize = DEFAULT_APPENDONLY_BLOCK_SIZE;
+	bool		appendonly = false;
+	bool		checksum = false;
 	char*		compresstype = NULL;
-	int32		compresslevel;
+	int32		compresslevel;  /* Not set yet.  Need to derive from compresstype */
 	char*		defaultCompressor = "zlib"; /* don't precede with 'const' */
-	bool 		columnstore;
+	bool 		columnstore = false;
 	int			j = 0;
 
 	StdRdOptions *result;
@@ -332,10 +332,6 @@ default_reloptions(Datum reloptions, bool validate,
 			fillfactor = defaultFillfactor;
 		}
 	}
-	else
-	{
-		fillfactor = defaultFillfactor;
-	}
 
 	/* appendonly */
 	if(values[1] != NULL)
@@ -350,8 +346,6 @@ default_reloptions(Datum reloptions, bool validate,
 		}
 		appendonly = (pg_strcasecmp(values[1], "true") == 0 ? true : false);
 	}
-	else
-		appendonly = false; /* default */
 
 	/* blocksize */
 	if(values[2] != NULL)
@@ -378,8 +372,6 @@ default_reloptions(Datum reloptions, bool validate,
 		}
 
 	}
-	else
-		blocksize = DEFAULT_APPENDONLY_BLOCK_SIZE;
 
 	/* compression type */
 	if(values[3] != NULL)
@@ -398,17 +390,13 @@ default_reloptions(Datum reloptions, bool validate,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("invalid compresstype \"%s\". currently supported: "
 								 "\"zlib\" ", compresstype)));
-*/
+         */
 		if ((pg_strcasecmp(compresstype, "zlib") != 0) &&
 			(pg_strcasecmp(compresstype, "quicklz") != 0))
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid compresstype \'%s\'. valid values are "
 							"\'zlib\' and \'quicklz\'", compresstype)));
-	}
-	else
-	{
-		compresstype = NULL; /* by default no compression */
 	}
 
 	/* compression level */
@@ -483,10 +471,6 @@ default_reloptions(Datum reloptions, bool validate,
 		}
 		checksum = (pg_strcasecmp(values[5], "true") == 0 ? true : false);
 	}
-	else
-	{
-		checksum = false; /* default */
-	}
 
 	/* columnstore */
 	if(values[6] != NULL)
@@ -507,13 +491,6 @@ default_reloptions(Datum reloptions, bool validate,
 		}
 
 		columnstore = (pg_strcasecmp(values[6], "column") == 0 ? true : false);
-	}
-	else
-	{
-        if (appendonly && gp_test_orientation_override)
-            columnstore = true;
-        else
-            columnstore = false; /* default */
 	}
 
 	result = (StdRdOptions *) palloc(sizeof(StdRdOptions));
@@ -594,7 +571,13 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *saf
 		*safewrite = Test_safefswritesize_override;
 	}
 
-
+    /* 
+     * Testing for columnstore override 
+     */
+    if (gp_test_orientation_override)
+    {
+        stdRdOptions->columnstore = true;
+    }
 }
 
 /*

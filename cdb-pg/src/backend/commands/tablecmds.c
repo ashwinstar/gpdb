@@ -9621,6 +9621,11 @@ stdoptions_to_list(Relation rel, StdRdOptions *opts)
 			if (opts->checksum)
 				wo = lappend(wo, makeDefElem("checksum",
 											 (Node *)makeString("true")));
+
+            if (opts->columnstore)
+                wo = lappend(wo, makeDefElem("orientation", (Node *) makeString("column")));
+            else
+                wo = lappend(wo, makeDefElem("orientation", (Node *) makeString("row")));
 		}
 	}
 	return wo;
@@ -10276,6 +10281,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	Datum		newOptions = PointerGetDatum(NULL);
 	bool		change_policy = false;
 	bool		is_ao = false;
+    bool        is_aocs = false;
     char        relstorage = RELSTORAGE_HEAP;
 	List	   *hidden_types = NIL; /* types we need to build for dropped columns */
 
@@ -10343,15 +10349,11 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
                     if (pg_strcasecmp(def->defname, "orientation") == 0)
                     {
-                        if (!is_ao)
-                            ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("specify orientation requires appendonly")));
-
-                        Assert(relstorage == RELSTORAGE_AOROWS);
-
 						if (pg_strcasecmp(strVal(def->arg), "column") == 0)
+                        {
+                            is_aocs = true;
                             relstorage = RELSTORAGE_AOCOLS;
+                        }
                         else
                         {
                             if (pg_strcasecmp(strVal(def->arg), "row") != 0)
@@ -10389,6 +10391,14 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 					}
 				}
 			}
+
+            if (is_aocs && !is_ao)
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                         errmsg("specify orientation requires appendonly")));
+            }
+
 			lwith = nlist;
 
 			/* AO doesn't support indexes */
@@ -10693,10 +10703,16 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		if (list_length(lprime) == 3)
 		{
 			Value *v = lthird(lprime);
-			if (intVal(v))
+			if (intVal(v) == 1)
             {
 				is_ao = true;
                 relstorage = RELSTORAGE_AOROWS;
+            }
+            else if (intVal(v) == 2)
+            {
+                is_ao = true;
+                is_aocs = true;
+                relstorage = RELSTORAGE_AOCOLS;
             }
 			else
             {
@@ -10842,7 +10858,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			qe_data = lappend(qe_data, hidden_types);
 		linitial(lprime) = lwith;
 		lsecond(lprime) = qe_data;
-		lprime = lappend(lprime, makeInteger(is_ao ? 1 : 0));
+		lprime = lappend(lprime, makeInteger(is_ao ? (is_aocs ? 2 : 1) : 0));
 	}
 
 	/* Step (h) Drop the table */
