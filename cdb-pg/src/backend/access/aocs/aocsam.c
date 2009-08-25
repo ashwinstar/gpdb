@@ -76,10 +76,7 @@ static void open_ds(Relation rel, CompressorType compType, int32 compLv, int32 b
     /* open datum streams.  It will open segment file underneath */
     for(i=0; i<nvp; ++i)
     {
-        int tmp;
         Form_pg_attribute attr = tupdesc->attrs[i];
-
-        Assert(tmp < MAXPGPATH);
 
         if(proj)
         {
