@@ -625,7 +625,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		 */
 		save_SIGPIPE = pqsignal(SIGPIPE, SIG_DFL);
 
-		//file->u.exec.fp = popen(shexec, "r");
+		/* execute the user command */
 		file->u.exec.pid = popen_with_stderr(file->u.exec.pipes, shexec);
 
 		save_errno = errno;
@@ -869,8 +869,12 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 		case CFTYPE_EXEC:
 			
 			nread = piperead(file->u.exec.pipes[EXEC_ERR_P], err, 256); /* read from stderr */
-			err[nread] = 0;
-						
+			
+			if(nread != -1)
+				err[nread] = 0;
+			else
+				strcpy(err,"error string unavailable due to read error");
+									
 			ret = pclose_with_stderr(file->u.exec.pid, file->u.exec.pipes);
 			if (ret == 0)
 			{
@@ -942,31 +946,32 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
     }
 
     free(file);
-
+    pfree(url);
+    
     return ret;
 }
 
-int
+bool
 url_feof(URL_FILE *file, int bytesread)
 {
-    int ret = 0;
+    bool ret = false;
 
     switch (file->type)
     {
 		case CFTYPE_FILE:
-			ret = fstream_eof(file->u.file.fp);
+			ret = (fstream_eof(file->u.file.fp) != 0);
 			break;
 
 		case CFTYPE_EXEC:
-			ret = (bytesread == 0 ? 1 : 0);
+			ret = (bytesread == 0);
 			break;
 
 		case CFTYPE_CURL:
-			ret = file->u.curl.eof;
+			ret = (file->u.curl.eof != 0);
 			break;
 
 		default: /* unknown or supported type - oh dear */
-			ret = -1;
+			ret = true;
 			errno = EBADF;
 			break;
     }
@@ -974,26 +979,26 @@ url_feof(URL_FILE *file, int bytesread)
 }
 
 
-int url_ferror(URL_FILE *file, int bytesread)
+bool url_ferror(URL_FILE *file, int bytesread)
 {
-	int ret = 0;
+	bool ret = 0;
 
 	switch (file->type)
 	{
 		case CFTYPE_FILE:
-			ret = fstream_get_error(file->u.file.fp)!=0;
+			ret = fstream_get_error(file->u.file.fp) != 0;
 			break;
 
 		case CFTYPE_EXEC:
-			ret = (bytesread == -1 ? 1 : 0);
+			ret = (bytesread == -1);
 			break;
 
 		case CFTYPE_CURL:
-			ret = file->u.curl.error ? -1 : 0;
+			ret = (file->u.curl.error != 0);
 			break;
 
 		default: /* unknown or supported type - oh dear */
-			ret = -1;
+			ret = true;
 			errno = EBADF;
 			break;
 	}
@@ -1600,8 +1605,18 @@ static int popen_with_stderr(int *pipes, const char *exe)
 		close(STDERR_FILENO);
 		
 		/* assign pipes to parent to stdout and stderr */
-		dup2(data[WRITE], STDOUT_FILENO);
-		dup2(err[WRITE], STDERR_FILENO);
+		if(dup2(data[WRITE], STDOUT_FILENO) < 0)
+		{
+			perror("dup2 error");
+			exit(EXIT_FAILURE);
+		}
+
+		if(dup2(err[WRITE], STDERR_FILENO) < 0)
+		{
+			close(data[WRITE]); /* clean prev dup2 */
+			perror("dup2 error");
+			exit(EXIT_FAILURE);			
+		}
 		
 		close(data[WRITE]);
 		close(err[WRITE]);
@@ -1610,7 +1625,7 @@ static int popen_with_stderr(int *pipes, const char *exe)
 		execl("/bin/sh", "sh", "-c", exe, NULL);
 
 		/* if we're here an error occurred */
-		exit(1);
+		exit(EXIT_FAILURE);
 	} 
 	else
 	{

@@ -106,8 +106,8 @@ typedef struct extvar_t
 /* exported functions */
 extern URL_FILE *url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int *response_code, const char **response_string);
 extern int url_fclose(URL_FILE *file, bool failOnError, const char *relname);
-extern int url_feof(URL_FILE *file, int bytesread);
-extern int url_ferror(URL_FILE *file, int bytesread);
+extern bool url_feof(URL_FILE *file, int bytesread);
+extern bool url_ferror(URL_FILE *file, int bytesread);
 extern size_t url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate);
 extern void url_rewind(URL_FILE *file, const char *relname);
 
