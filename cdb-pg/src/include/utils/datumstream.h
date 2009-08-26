@@ -55,6 +55,7 @@ typedef struct DatumStream
     bool is_reader;	
 
     /* AO Storage */
+    bool need_close_file;
     AppendOnlyStorageAttributes ao_attr;
     AppendOnlyStorageRead *ao_read;
     AppendOnlyStorageWrite *ao_write;

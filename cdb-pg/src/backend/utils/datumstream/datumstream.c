@@ -13,6 +13,7 @@
 #include <fcntl.h>
 
 #include "access/tupmacs.h"
+#include "access/tuptoaster.h"
 #include "cdb/cdbappendonlystorageread.h"
 #include "cdb/cdbappendonlystoragewrite.h"
 #include "utils/datumstream.h"
@@ -41,7 +42,7 @@ int datumstream_get(DatumStream *acc, Datum *datum, bool *null)
     if (!acc->byval) 
     {
         *datum = PointerGetDatum(acc->datump);
-        AssertImply(acc->datumlen < 0, VARATT_IS_SHORT_D(*datum) || !VARATT_IS_EXTENDED_D(*datum));
+        AssertImply(acc->datumlen < 0, VARATT_IS_SHORT_D(*datum) || !VARATT_IS_EXTERNAL_D(*datum));
     }
     else 
     {
@@ -176,13 +177,16 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
         int32 wsz = 0;
 
         Assert(acc->datumlen == -1);
-        Assert(!VARATT_IS_EXTERNAL_D(d));
 
+        /* 
+         * XXX Huh?  Repace d?  Who owns the memory?  
+         * Hate this, but this is what memtuple and lots of other place do 
+         * ...
+         */
         if(VARATT_IS_EXTERNAL_D(d))
-        {
-            Assert(!"AOCS NYI");
-        }
-        else if(VARATT_IS_SHORT_D(d))
+            d = PointerGetDatum(heap_tuple_fetch_attr(DatumGetPointer(d)));
+
+        if(VARATT_IS_SHORT_D(d))
         {
             sz = VARSIZE_SHORT(DatumGetPointer(d));
             p = DatumGetPointer(d);
@@ -346,6 +350,9 @@ void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncomp
     ds->eof = eof;
     ds->eofUncompress = eofUncompressed;
 
+    if (ds->need_close_file)
+        datumstream_close_file(ds);
+
     if (ds->is_reader)
     {
         Assert(ds->ao_read && !ds->ao_write);
@@ -357,6 +364,8 @@ void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncomp
         AppendOnlyStorageWrite_OpenFile(ds->ao_write, fn, eof, eofUncompressed);
         ds->maxdatasz = ds->maxsz - AppendOnlyStorageWrite_CompleteHeaderLen(ds->ao_write) - sizeof(DatumStreamBlock);
     }
+
+    ds->need_close_file = true;
 }
 
 void datumstream_close_file(DatumStream *ds)
@@ -374,6 +383,8 @@ void datumstream_close_file(DatumStream *ds)
             &ds->eofUncompress
             );
     }
+
+    ds->need_close_file = false;
 }
     
 int64 datumstream_write_block(DatumStream *acc)
