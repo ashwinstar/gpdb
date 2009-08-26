@@ -492,6 +492,7 @@ void BufferedReadCompleteFile(
 	bufferedRead->bufferLen = 0;
 
 	bufferedRead->largeReadPosition = 0;
+	bufferedRead->largeReadLen = 0;
 }
 
 
