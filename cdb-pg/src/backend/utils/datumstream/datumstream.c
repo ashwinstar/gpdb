@@ -109,7 +109,6 @@ extern int datumstream_advance(DatumStream *acc)
         if(*acc->datump == 0)
             acc->datump = (char *) att_align(acc->datump, acc->align);
 
-        Assert(acc->datump <= acc->dpbuf + acc->dpbufsz);
         Assert((acc->has_null && (*acc->nullp & acc->nullbit))
                 || VARATT_IS_SHORT_D(PointerGetDatum(acc->datump)) 
                 || !VARATT_IS_EXTENDED_D(PointerGetDatum(acc->datump)) 
