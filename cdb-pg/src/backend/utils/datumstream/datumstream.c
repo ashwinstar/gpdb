@@ -38,30 +38,35 @@ int datumstream_get(DatumStream *acc, Datum *datum, bool *null)
     else 
         *null = false;
 
-    if (acc->datumlen < 0)
+    if (!acc->byval) 
     {
         *datum = PointerGetDatum(acc->datump);
-        Assert(VARATT_IS_SHORT_D(*datum) || !VARATT_IS_EXTENDED_D(*datum)); 
+        AssertImply(acc->datumlen < 0, VARATT_IS_SHORT_D(*datum) || !VARATT_IS_EXTENDED_D(*datum));
     }
-    else if(acc->datumlen == 1)
-        *datum = *(uint8 *) acc->datump;
-    else if(acc->datumlen == 2)
+    else 
     {
-        Assert(IsAligned(acc->datump, 2)); 
-        *datum = *(uint16 *) acc->datump;
+        if(acc->datumlen == 1)
+            *datum = *(uint8 *) acc->datump;
+        else if(acc->datumlen == 2)
+        {
+            Assert(IsAligned(acc->datump, 2)); 
+            *datum = *(uint16 *) acc->datump;
+        }
+        else if(acc->datumlen == 4)
+        {
+            Assert(IsAligned(acc->datump, 4)); 
+            *datum = *(uint32 *) acc->datump;
+        }
+        else if(acc->datumlen == 8)
+        {
+            Assert(IsAligned(acc->datump, 8)); 
+            *datum = *(Datum *) acc->datump;
+        }
+        else
+        {
+            Assert(!"A byval type has strange datumlen");
+        }
     }
-    else if(acc->datumlen == 4)
-    {
-        Assert(IsAligned(acc->datump, 4)); 
-        *datum = *(uint32 *) acc->datump;
-    }
-    else if(acc->datumlen == 8)
-    {
-        Assert(IsAligned(acc->datump, 8)); 
-        *datum = *(Datum *) acc->datump;
-    }
-    else
-        *datum = PointerGetDatum(acc->datump);
 
     return 0;
 }
@@ -217,31 +222,38 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
     if (!datumstream_has_space(acc, false, acc->datumlen))
         return -acc->datumlen;
 
-    switch(acc->datumlen)
+    if (!acc->byval)
     {
-        case 1:
-            *(acc->datump) = DatumGetChar(d);
-            ++acc->datump;
-            break;
-        case 2:
-            Assert(IsAligned(acc->datump, 2));
-            *(uint16 *) (acc->datump) = DatumGetUInt16(d);
-            acc->datump += 2;
-            break;
-        case 4:
-            Assert(IsAligned(acc->datump, 4));
-            *(uint32 *) (acc->datump) = DatumGetUInt32(d);
-            acc->datump += 4;
-            break;
-        case 8:
-            Assert(IsAligned(acc->datump, 8));
-            *(Datum *) (acc->datump) = d;
-            acc->datump += 8;
-            break;
-        default:
-            memcpy(acc->datump, DatumGetPointer(d), acc->datumlen);
-            acc->datump += acc->datumlen;
-            break;
+        memcpy(acc->datump, DatumGetPointer(d), acc->datumlen);
+        acc->datump += acc->datumlen;
+    }
+    else
+    {
+        switch(acc->datumlen)
+        {
+            case 1:
+                *(acc->datump) = DatumGetChar(d);
+                ++acc->datump;
+                break;
+            case 2:
+                Assert(IsAligned(acc->datump, 2));
+                *(uint16 *) (acc->datump) = DatumGetUInt16(d);
+                acc->datump += 2;
+                break;
+            case 4:
+                Assert(IsAligned(acc->datump, 4));
+                *(uint32 *) (acc->datump) = DatumGetUInt32(d);
+                acc->datump += 4;
+                break;
+            case 8:
+                Assert(IsAligned(acc->datump, 8));
+                *(Datum *) (acc->datump) = d;
+                acc->datump += 8;
+                break;
+            default:
+                Assert(!"Byval len type has strange length");
+                break;
+        }
     }
 
     incr_acc_n(acc);
@@ -257,6 +269,7 @@ DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 
     acc->datumlen = attr->attlen;
     acc->typid = attr->atttypid;
     acc->align = attr->attalign;
+    acc->byval = attr->attbyval;
 
     /* Data type sepcific compression NYI */
     acc->compress_option = 0;

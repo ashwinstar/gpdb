@@ -43,6 +43,8 @@ typedef struct DatumStream
     int32 datumlen;		    /* Datum length */
     int32 typid;            /* type id */
     char  align;		    /* Align */
+    bool  byval;            /* if it is a by value type */ 
+
     int32 compress_option; /* Data type specific compression */
 
     /* Acc max limit */
