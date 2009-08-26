@@ -834,6 +834,18 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 		pq_endmessage(&buf);
 	}
 
+	/* 
+	 * We need a way to distinguish these 2 cases:
+	 * a) ANALYZEd/VACUUMed table is empty
+	 * b) Table has never been ANALYZEd/VACUUMed
+	 * To do this, in case (a), we set relPages = 1. For case (b), relPages = 0.
+	 */
+	if (num_pages < 1.0)
+	{
+		Assert(num_tuples < 1.0);
+		num_pages = 1.0;
+	}
+
 	/*
 	 * update number of tuples and number of pages in pg_class
 	 */

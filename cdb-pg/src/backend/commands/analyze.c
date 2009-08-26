@@ -307,16 +307,18 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 										  0 /*parent*/, false /* inctemplate */, CurrentMemoryContext);
 			Assert(pn);
 			lRelOids = all_partition_relids(pn);
+			lRelOids = lappend_oid(lRelOids, relationOid);
 		}
 		else
 		{
 			lRelOids = list_make1_oid(relationOid);
 		}
-		
 		if (stmt->va_cols)
 			lExplicitAttNames = buildExplicitAttributeNames(relationOid, stmt);
 	}
 
+	Assert(lRelOids);
+	
 	/*
 	 * Decide whether we need to start/commit our own transactions.
 	 * The scenarios in which we can start/commit our own transactions are:
@@ -1162,6 +1164,20 @@ static void updateReltuplesRelpagesInCatalog(Oid relationOid, float4 relTuples, 
 	bool		dirty = false;
 
 	Assert(relationOid != InvalidOid);
+	Assert(relTuples > -1.0);
+	Assert(relPages > -1.0);
+	
+	/* 
+	 * We need a way to distinguish these 2 cases:
+	 * a) ANALYZEd table is empty
+	 * b) Table has never been ANALYZEd
+	 * To do this, in case (a), we set relPages = 1. For case (b), relPages = 0.
+	 */
+	if (relPages < 1.0)
+	{
+		Assert(relTuples < 1.0);
+		relPages = 1.0;
+	}
 
 	/*
 	 * update number of tuples and number of pages in pg_class
