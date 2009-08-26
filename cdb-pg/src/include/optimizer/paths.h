@@ -158,15 +158,15 @@ extern List *build_join_pathkeys(PlannerInfo *root,
 					JoinType jointype,
 					List *outer_pathkeys);
 
+extern PathKeyItem*
+cdb_make_pathkey_for_expr_non_canonical(PlannerInfo    *root,
+					      Node     *expr,
+                          List     *eqopname);
+
 List *
 cdb_make_pathkey_for_expr(PlannerInfo  *root,
                           Node     *expr,
                           List     *eqopname);
-List *
-cdb_build_distribution_pathkeys(PlannerInfo      *root,
-                                RelOptInfo *rel,
-                                int         nattrs,
-                                AttrNumber *attrs);
 List *
 cdb_pull_up_pathkey(PlannerInfo    *root,
                     List           *pathkey,

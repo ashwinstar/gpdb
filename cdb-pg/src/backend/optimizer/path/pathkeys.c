@@ -1651,6 +1651,64 @@ build_join_pathkeys(PlannerInfo *root,
  ****************************************************************************/
 
 /*
+ * cdb_make_pathkey_for_expr_non_canonical
+ *	  Returns a a non canonicalized pathkey item.
+ *
+ *    The caller specifies the name of the equality operator thus:
+ *          list_make1(makeString("="))
+ *
+ *    The 'sortop' field of the expr's PathKeyItem node is filled
+ *    with the Oid of the sort operator that would be used for a
+ *    merge join with another expr of the same data type, using the
+ *    equality operator whose name is given.  Partitioning doesn't
+ *    itself use the sort operator, but its Oid is needed to
+ *    associate the PathKeyItem with the same equivalence class
+ *    (canonical pathkey) as any other expressions to which
+ *    our expr is constrained by compatible merge-joinable
+ *    equality operators.  (We assume, in what may be a temporary
+ *    excess of optimism, that our hashed partitioning function
+ *    implements the same notion of equality as these operators.)
+ */
+
+PathKeyItem*
+cdb_make_pathkey_for_expr_non_canonical(PlannerInfo    *root,
+					      Node     *expr,
+                          List     *eqopname)
+{
+    Oid             typeoid = InvalidOid;
+    Oid	            eqopoid = InvalidOid;
+    Oid             leftsortop = InvalidOid;
+    Oid             rightsortop = InvalidOid;
+    PathKeyItem    *item = NULL;
+
+    /* Get the expr's data type. */
+    typeoid = exprType(expr);
+
+    /* Get oid of the equality operator applied to two values of that type. */
+    eqopoid = compatible_oper_opid(eqopname, typeoid, typeoid, true);
+
+    /* Get oid of the sort operator that would be used for a
+     * sort-merge equijoin on a pair of exprs of the same type.
+     */
+    if (eqopoid != InvalidOid &&
+    		op_mergejoinable(eqopoid, &leftsortop, &rightsortop))
+    {
+    	item = makePathKeyItem((Node *)expr, leftsortop, true);
+    }
+    else
+    {
+    	/* Don't balk if caller wants to repartition on an expr whose type has no
+    	 * mergejoinable "=" operator.  Hope the executor knows how to hash it.
+    	 * E.g., cdbpath_dedup_fixup_unique() repartitions on CTID without
+    	 * bothering to insert a coercion to INT8.
+    	 */
+    	item = makePathKeyItem((Node *)expr, InvalidOid, false);
+    }
+    Assert(item);
+    return item;
+}                               /* cdb_make_pathkey_for_expr */
+
+/*
  * cdb_make_pathkey_for_expr
  *	  Returns a canonicalized pathkey (a List of PathKeyItem)
  *    which represents an equivalence class of expressions
@@ -1676,76 +1734,13 @@ cdb_make_pathkey_for_expr(PlannerInfo    *root,
 					      Node     *expr,
                           List     *eqopname)
 {
-    Oid             typeoid;
-    Oid	            eqopoid;
-    Oid             leftsortop;
-    Oid             rightsortop;
-    PathKeyItem    *item;
-
-    /* Get the expr's data type. */
-    typeoid = exprType(expr);
-
-    /* Get oid of the equality operator applied to two values of that type. */
-    eqopoid = compatible_oper_opid(eqopname, typeoid, typeoid, true);
-
-    /* Get oid of the sort operator that would be used for a
-     * sort-merge equijoin on a pair of exprs of the same type.
-     * Then find or create canonical pathkey for this expr.
-     */
-    if (eqopoid != InvalidOid &&
-        op_mergejoinable(eqopoid, &leftsortop, &rightsortop))
-        item = makePathKeyItem((Node *)expr, leftsortop, true);
-
-    /* Don't balk if caller wants to repartition on an expr whose type has no
-     * mergejoinable "=" operator.  Hope the executor knows how to hash it.
-     * E.g., cdbpath_dedup_fixup_unique() repartitions on CTID without
-     * bothering to insert a coercion to INT8.
-     */
-    else
-        item = makePathKeyItem((Node *)expr, InvalidOid, false);
-
-    return make_canonical_pathkey(root, item);
+	List *pathkeyList = NIL;
+    PathKeyItem    *item = cdb_make_pathkey_for_expr_non_canonical(root, expr, eqopname);
+    Assert(item);
+    pathkeyList = make_canonical_pathkey(root, item);
+    Assert(pathkeyList);
+    return pathkeyList;
 }                               /* cdb_make_pathkey_for_expr */
-
-
-/*
- * cdb_build_distribution_pathkeys
- *	  Build canonicalized pathkeys list for given columns of rel.
- *
- *    Returns a List, of length 'nattrs': each of its members is
- *    a List of one or more PathKeyItem nodes.  The returned List
- *    might contain duplicate entries: this occurs when the
- *    corresponding columns are constrained to be equal.
- *
- *    The caller receives ownership of the returned List, freshly
- *    palloc'ed in the caller's context.  The members of the returned
- *    List are shared and might belong to the caller's context or
- *    other contexts.
- */
-List *
-cdb_build_distribution_pathkeys(PlannerInfo      *root,
-					            RelOptInfo *rel,
-                                int         nattrs,
-                                AttrNumber *attrs)
-{
-	List   *retval = NIL;
-    List   *eq = list_make1(makeString("="));
-    int     i;
-    for (i = 0; i < nattrs; ++i)
-    {
-        /* Find or create a Var node that references the specified column. */
-        Var    *expr = find_indexkey_var(root, rel, attrs[i]);
-
-        /* Find or create canonical pathkey. */
-        List   *cpathkey = cdb_make_pathkey_for_expr(root, (Node *)expr, eq);
-
-        /* Append to list of pathkeys. */
-        retval = lappend(retval, cpathkey);
-    }
-    list_free_deep(eq);
-	return retval;
-}                               /* cdb_build_distribution_pathkeys */
-
 
 /*
  * cdb_pull_up_pathkey

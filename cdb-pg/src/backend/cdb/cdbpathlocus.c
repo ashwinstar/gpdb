@@ -32,6 +32,12 @@ extern "C" {
 }   /* extern "C" */
 #endif
 
+static List *
+cdb_build_distribution_pathkeys(PlannerInfo      *root,
+					            RelOptInfo *rel,
+                                int         nattrs,
+                                AttrNumber *attrs);
+
 
 /*
  * This flag controls the policy type returned from
@@ -172,6 +178,87 @@ cdbpathlocus_compare(CdbPathLocus_Comparison    op,
     return false;
 }                               /* cdbpathlocus_compare */
 
+/*
+ * cdb_build_distribution_pathkeys
+ *	  Build canonicalized pathkeys list for given columns of rel.
+ *
+ *    Returns a List, of length 'nattrs': each of its members is
+ *    a List of one or more PathKeyItem nodes.  The returned List
+ *    might contain duplicate entries: this occurs when the
+ *    corresponding columns are constrained to be equal.
+ *
+ *    The caller receives ownership of the returned List, freshly
+ *    palloc'ed in the caller's context.  The members of the returned
+ *    List are shared and might belong to the caller's context or
+ *    other contexts.
+ */
+static List *
+cdb_build_distribution_pathkeys(PlannerInfo      *root,
+					            RelOptInfo *rel,
+                                int         nattrs,
+                                AttrNumber *attrs)
+{
+	List   *retval = NIL;
+    List   *eq = list_make1(makeString("="));
+    int     i;
+    bool	isAppendChildRelation = false;
+    
+    isAppendChildRelation = (rel->reloptkind == RELOPT_OTHER_MEMBER_REL);
+    
+    for (i = 0; i < nattrs; ++i)
+    {
+    	List   *cpathkey = NIL;
+    	
+        /* Find or create a Var node that references the specified column. */
+        Var    *expr = find_indexkey_var(root, rel, attrs[i]);
+        Assert(expr);
+
+        /* 
+         * Find or create a pathkey. We distinguish two cases for performance reasons:
+         * 1) If the relation in question is a child relation under an append node, we don't care
+         * about ensuring that we return a canonicalized version of its pathkey item. 
+         * Co-location of joins/group-bys happens at the append relation level.
+         * In create_append_path(), the call to cdbpathlocus_pull_above_projection() ensures
+         * that canonicalized pathkeys are created at the append relation level.
+         * (see MPP-3536).
+         * 
+         * 2) For regular relations, we create a canonical pathkey so that we may identify 
+         * co-location for joins/group-bys.
+         */
+        if (isAppendChildRelation)
+        {
+        	/**
+        	 * Append child relation.
+        	 */
+        	PathKeyItem *item = NULL;
+#ifdef DISTRIBUTION_PATHKEYS_DEBUG
+        	List   *canonicalPathKeyList = NIL;
+            canonicalPathKeyList = cdb_make_pathkey_for_expr(root, (Node *)expr, eq);
+            /* 
+             * This assert ensures that we should not really find any equivalent keys
+             * during canonicalization for append child relations.
+             */
+            Assert(list_length(canonicalPathKeyList) == 1);
+#endif
+            item = cdb_make_pathkey_for_expr_non_canonical(root, (Node *)expr, eq);
+            Assert(item);
+            cpathkey = list_make1(item);
+        }
+        else
+        {
+        	/**
+        	 * Regular relation. 
+        	 */
+            cpathkey = cdb_make_pathkey_for_expr(root, (Node *)expr, eq);        	
+        }
+        Assert(cpathkey);
+
+        /* Append to list of pathkeys. */
+        retval = lappend(retval, cpathkey);
+    }
+    list_free_deep(eq);
+	return retval;
+}                               /* cdb_build_distribution_pathkeys */
 
 /*
  * cdbpathlocus_from_baserel
