@@ -38,6 +38,7 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/portal.h"
+#include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "executor/execdefs.h"
 
@@ -58,7 +59,7 @@ typedef struct _SPI_plan *SPIPlanPtr;
 #define SPI_ERROR_COPY			(-2)
 #define SPI_ERROR_OPUNKNOWN		(-3)
 #define SPI_ERROR_UNCONNECTED	(-4)
-#define SPI_ERROR_CURSOR		(-5)
+#define SPI_ERROR_CURSOR		(-5)	/* not used anymore */
 #define SPI_ERROR_ARGUMENT		(-6)
 #define SPI_ERROR_PARAM			(-7)
 #define SPI_ERROR_TRANSACTION	(-8)
@@ -79,6 +80,7 @@ typedef struct _SPI_plan *SPIPlanPtr;
 #define SPI_OK_INSERT_RETURNING 11
 #define SPI_OK_DELETE_RETURNING 12
 #define SPI_OK_UPDATE_RETURNING 13
+#define SPI_OK_REWRITTEN		14
 
 extern PGDLLIMPORT uint32 SPI_processed;
 extern PGDLLIMPORT uint64 SPI_processed64;
@@ -94,23 +96,23 @@ extern bool SPI_push_conditional(void);
 extern void SPI_pop_conditional(bool pushed);
 extern void SPI_restore_connection(void);
 extern int	SPI_execute(const char *src, bool read_only, long tcount);
-extern int SPI_execute_plan(void *plan, Datum *Values, const char *Nulls,
+extern int SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				 bool read_only, long tcount);
 extern int	SPI_exec(const char *src, long tcount);
-extern int SPI_execp(void *plan, Datum *Values, const char *Nulls,
+extern int SPI_execp(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 		  long tcount);
-extern int SPI_execute_snapshot(void *plan,
+extern int SPI_execute_snapshot(SPIPlanPtr plan,
 					 Datum *Values, const char *Nulls,
 					 Snapshot snapshot,
 					 Snapshot crosscheck_snapshot,
 					 bool read_only, bool fire_triggers, long tcount);
-extern void *SPI_prepare(const char *src, int nargs, Oid *argtypes);
-extern void *SPI_saveplan(void *plan);
-extern int	SPI_freeplan(void *plan);
+extern SPIPlanPtr SPI_prepare(const char *src, int nargs, Oid *argtypes);
+extern SPIPlanPtr SPI_saveplan(SPIPlanPtr plan);
+extern int	SPI_freeplan(SPIPlanPtr plan);
 
-extern Oid	SPI_getargtypeid(void *plan, int argIndex);
-extern int	SPI_getargcount(void *plan);
-extern bool SPI_is_cursor_plan(void *plan);
+extern Oid	SPI_getargtypeid(SPIPlanPtr plan, int argIndex);
+extern int	SPI_getargcount(SPIPlanPtr plan);
+extern bool SPI_is_cursor_plan(SPIPlanPtr plan);
 extern const char *SPI_result_code_string(int code);
 
 extern HeapTuple SPI_copytuple(HeapTuple tuple);
@@ -131,7 +133,7 @@ extern void SPI_pfree(void *pointer);
 extern void SPI_freetuple(HeapTuple pointer);
 extern void SPI_freetuptable(SPITupleTable *tuptable);
 
-extern Portal SPI_cursor_open(const char *name, void *plan,
+extern Portal SPI_cursor_open(const char *name, SPIPlanPtr plan,
 				Datum *Values, const char *Nulls, bool read_only);
 extern Portal SPI_cursor_find(const char *name);
 extern void SPI_cursor_fetch(Portal portal, bool forward, long count);

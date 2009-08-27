@@ -3,7 +3,7 @@
  * spi.c
  *				Server Programming Interface
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -18,6 +18,8 @@
 #include "postgres.h"
 
 #include "access/printtup.h"
+#include "access/sysattr.h"
+#include "access/xact.h"
 #include "catalog/heap.h"
 #include "commands/trigger.h"
 #include "executor/spi_priv.h"
@@ -67,12 +69,16 @@ static int	_SPI_curid = -1;
 static PGconn *_QD_conn = NULL; /* To call back to the QD for SQL execution */
 static char *_QD_currently_prepared_stmt = NULL;
 
-static void _SPI_prepare_plan(const char *src, _SPI_plan * plan);
+static void _SPI_prepare_plan(const char *src, SPIPlanPtr plan);
 
-static int _SPI_execute_plan(_SPI_plan * plan,
+static int _SPI_execute_plan(SPIPlanPtr plan,
 				  Datum *Values, const char *Nulls,
 				  Snapshot snapshot, Snapshot crosscheck_snapshot,
 				  bool read_only, bool fire_triggers, long tcount);
+
+static ParamListInfo _SPI_convert_params(int nargs, Oid *argtypes,
+					Datum *Values, const char *Nulls,
+					int pflags);
 
 static int	_SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount);
 
@@ -81,7 +87,7 @@ static void _SPI_error_callback(void *arg);
 static void _SPI_cursor_operation(Portal portal, bool forward, long count,
 					  DestReceiver *dest);
 
-static _SPI_plan *_SPI_copy_plan(_SPI_plan * plan, int location);
+static SPIPlanPtr _SPI_copy_plan(SPIPlanPtr plan, int location);
 
 static int	_SPI_begin_call(bool execmem);
 static int	_SPI_end_call(bool procmem);
@@ -783,6 +789,9 @@ SPI_execute(const char *src, bool read_only, long tcount)
 	if (res < 0)
 		return res;
 
+	memset(&plan, 0, sizeof(_SPI_plan));
+	plan.magic = _SPI_PLAN_MAGIC;
+	plan.cursor_options = 0;
 	plan.plancxt = NULL;		/* doesn't have own context */
 	plan.query = src;
 	plan.nargs = 0;
@@ -807,7 +816,7 @@ SPI_exec(const char *src, long tcount)
 
 /* Execute a previously prepared plan */
 int
-SPI_execute_plan(void *plan, Datum *Values, const char *Nulls,
+SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				 bool read_only, long tcount)
 {
 	int			res;
@@ -815,14 +824,14 @@ SPI_execute_plan(void *plan, Datum *Values, const char *Nulls,
 	if (plan == NULL || tcount < 0)
 		return SPI_ERROR_ARGUMENT;
 
-	if (((_SPI_plan *) plan)->nargs > 0 && Values == NULL)
+	if (plan->nargs > 0 && Values == NULL)
 		return SPI_ERROR_PARAM;
 
 	res = _SPI_begin_call(true);
 	if (res < 0)
 		return res;
 
-	res = _SPI_execute_plan((_SPI_plan *) plan,
+	res = _SPI_execute_plan(plan,
 							Values, Nulls,
 							InvalidSnapshot, InvalidSnapshot,
 							read_only, true, tcount);
@@ -833,16 +842,17 @@ SPI_execute_plan(void *plan, Datum *Values, const char *Nulls,
 
 /* Obsolete version of SPI_execute_plan */
 int
-SPI_execp(void *plan, Datum *Values, const char *Nulls, long tcount)
+SPI_execp(SPIPlanPtr plan, Datum *Values, const char *Nulls, long tcount)
 {
 	return SPI_execute_plan(plan, Values, Nulls, false, tcount);
 }
 
 /*
  * SPI_execute_snapshot -- identical to SPI_execute_plan, except that we allow
- * the caller to specify exactly which snapshots to use.  Also, the caller
- * may specify that AFTER triggers should be queued as part of the outer
- * query rather than being fired immediately at the end of the command.
+ * the caller to specify exactly which snapshots to use, which will be
+ * registered here.  Also, the caller may specify that AFTER triggers should be
+ * queued as part of the outer query rather than being fired immediately at the
+ * end of the command.
  *
  * This is currently not documented in spi.sgml because it is only intended
  * for use by RI triggers.
@@ -851,7 +861,7 @@ SPI_execp(void *plan, Datum *Values, const char *Nulls, long tcount)
  * fetching a new snapshot for each query.
  */
 int
-SPI_execute_snapshot(void *plan,
+SPI_execute_snapshot(SPIPlanPtr plan,
 					 Datum *Values, const char *Nulls,
 					 Snapshot snapshot, Snapshot crosscheck_snapshot,
 					 bool read_only, bool fire_triggers, long tcount)
@@ -861,14 +871,14 @@ SPI_execute_snapshot(void *plan,
 	if (plan == NULL || tcount < 0)
 		return SPI_ERROR_ARGUMENT;
 
-	if (((_SPI_plan *) plan)->nargs > 0 && Values == NULL)
+	if (plan->nargs > 0 && Values == NULL)
 		return SPI_ERROR_PARAM;
 
 	res = _SPI_begin_call(true);
 	if (res < 0)
 		return res;
 
-	res = _SPI_execute_plan((_SPI_plan *) plan,
+	res = _SPI_execute_plan(plan,
 							Values, Nulls,
 							snapshot, crosscheck_snapshot,
 							read_only, fire_triggers, tcount);
@@ -877,7 +887,7 @@ SPI_execute_snapshot(void *plan,
 	return res;
 }
 
-void *
+SPIPlanPtr
 SPI_prepare(const char *src, int nargs, Oid *argtypes)
 {
 	_SPI_plan	plan;
@@ -893,6 +903,9 @@ SPI_prepare(const char *src, int nargs, Oid *argtypes)
 	if (SPI_result < 0)
 		return NULL;
 
+	memset(&plan, 0, sizeof(_SPI_plan));
+	plan.magic = _SPI_PLAN_MAGIC;
+	//plan.cursor_options = cursorOptions;
 	plan.plancxt = NULL;		/* doesn't have own context */
 	plan.query = src;
 	plan.nargs = nargs;
@@ -905,13 +918,13 @@ SPI_prepare(const char *src, int nargs, Oid *argtypes)
 
 	_SPI_end_call(true);
 
-	return (void *) result;
+	return result;
 }
 
-void *
-SPI_saveplan(void *plan)
+SPIPlanPtr
+SPI_saveplan(SPIPlanPtr plan)
 {
-	_SPI_plan  *newplan;
+	SPIPlanPtr	newplan;
 
 	if (plan == NULL)
 	{
@@ -923,23 +936,21 @@ SPI_saveplan(void *plan)
 	if (SPI_result < 0)
 		return NULL;
 
-	newplan = _SPI_copy_plan((_SPI_plan *) plan, _SPI_CPLAN_TOPCXT);
+	newplan = _SPI_copy_plan(plan, _SPI_CPLAN_TOPCXT);
 
 	_SPI_curid--;
 	SPI_result = 0;
 
-	return (void *) newplan;
+	return newplan;
 }
 
 int
-SPI_freeplan(void *plan)
+SPI_freeplan(SPIPlanPtr plan)
 {
-	_SPI_plan  *spiplan = (_SPI_plan *) plan;
-
 	if (plan == NULL)
 		return SPI_ERROR_ARGUMENT;
 
-	MemoryContextDelete(spiplan->plancxt);
+	MemoryContextDelete(plan->plancxt);
 	return 0;
 }
 
@@ -1176,7 +1187,7 @@ SPI_getbinval(HeapTuple tuple, TupleDesc tupdesc, int fnumber, bool * isnull)
 	{
 		SPI_result = SPI_ERROR_NOATTRIBUTE;
 		*isnull = true;
-		return 0;
+		return (Datum) NULL;
 	}
 
 	return heap_getattr(tuple, fnumber, tupdesc, isnull);
@@ -1298,14 +1309,13 @@ SPI_freetuptable(SPITupleTable * tuptable)
 }
 
 
-
 /*
  * SPI_cursor_open()
  *
  *	Open a prepared SPI plan as a portal
  */
 Portal
-SPI_cursor_open(const char *name, void *plan,
+SPI_cursor_open(const char *name, SPIPlanPtr plan,
 				Datum *Values, const char *Nulls,
 				bool read_only)
 {
@@ -1764,28 +1774,28 @@ SPI_cursor_close(Portal portal)
  * parameter is at index zero.
  */
 Oid
-SPI_getargtypeid(void *plan, int argIndex)
+SPI_getargtypeid(SPIPlanPtr plan, int argIndex)
 {
 	if (plan == NULL || argIndex < 0 || argIndex >= ((_SPI_plan *) plan)->nargs)
 	{
 		SPI_result = SPI_ERROR_ARGUMENT;
 		return InvalidOid;
 	}
-	return ((_SPI_plan *) plan)->argtypes[argIndex];
+	return plan->argtypes[argIndex];
 }
 
 /*
  * Returns the number of arguments for the prepared plan.
  */
 int
-SPI_getargcount(void *plan)
+SPI_getargcount(SPIPlanPtr plan)
 {
 	if (plan == NULL)
 	{
 		SPI_result = SPI_ERROR_ARGUMENT;
 		return -1;
 	}
-	return ((_SPI_plan *) plan)->nargs;
+	return plan->nargs;
 }
 
 /*
@@ -1798,7 +1808,7 @@ SPI_getargcount(void *plan)
  *	  plan: A plan previously prepared using SPI_prepare
  */
 bool
-SPI_is_cursor_plan(void *plan)
+SPI_is_cursor_plan(SPIPlanPtr plan)
 {
 	_SPI_plan  *spiplan = (_SPI_plan *) plan;
 
@@ -1993,12 +2003,18 @@ spi_printtup(TupleTableSlot * slot, DestReceiver *self)
 /*
  * Parse and plan a querystring.
  *
- * At entry, plan->argtypes and plan->nargs must be valid.
+ * At entry, plan->argtypes, plan->nargs, and plan->cursor_options must be
+ * valid.  If boundParams isn't NULL then it represents parameter values
+ * that are made available to the planner (as either estimates or hard values
+ * depending on their PARAM_FLAG_CONST marking).  The boundParams had better
+ * match the param types embedded in the plan!
  *
- * Query and plan lists are stored into *plan.
+ * Results are stored into *plan (specifically, plan->plancache_list).
+ * Note however that the result trees are all in CurrentMemoryContext
+ * and need to be copied somewhere to survive.
  */
 static void
-_SPI_prepare_plan(const char *src, _SPI_plan * plan)
+_SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 {
 	List	   *raw_parsetree_list;
 	List	   *query_list_list;
@@ -2927,6 +2943,42 @@ fail:
 	return my_res;
 }
 
+#if 0
+/*
+ * Convert query parameters to form wanted by planner and executor
+ */
+static ParamListInfo
+_SPI_convert_params(int nargs, Oid *argtypes,
+					Datum *Values, const char *Nulls,
+					int pflags)
+{
+	ParamListInfo paramLI;
+
+	if (nargs > 0)
+	{
+		int			i;
+
+		/* sizeof(ParamListInfoData) includes the first array element */
+		paramLI = (ParamListInfo) palloc(sizeof(ParamListInfoData) +
+									   (nargs - 1) *sizeof(ParamExternData));
+		paramLI->numParams = nargs;
+
+		for (i = 0; i < nargs; i++)
+		{
+			ParamExternData *prm = &paramLI->params[i];
+
+			prm->value = Values[i];
+			prm->isnull = (Nulls && Nulls[i] == 'n');
+			prm->pflags = pflags;
+			prm->ptype = argtypes[i];
+		}
+	}
+	else
+		paramLI = NULL;
+	return paramLI;
+}
+#endif
+
 static int
 _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 {
@@ -3213,10 +3265,10 @@ _SPI_checktuples(void)
 	return failed;
 }
 
-static _SPI_plan *
-_SPI_copy_plan(_SPI_plan * plan, int location)
+static SPIPlanPtr
+_SPI_copy_plan(SPIPlanPtr plan, int location)
 {
-	_SPI_plan  *newplan;
+	SPIPlanPtr  newplan;
 	MemoryContext oldcxt;
 	MemoryContext plancxt;
 	MemoryContext parentcxt;
@@ -3244,7 +3296,7 @@ _SPI_copy_plan(_SPI_plan * plan, int location)
 	oldcxt = MemoryContextSwitchTo(plancxt);
 
 	/* Copy the SPI plan into its own context */
-	newplan = (_SPI_plan *) palloc(sizeof(_SPI_plan));
+	newplan = (SPIPlanPtr) palloc(sizeof(_SPI_plan));
 	newplan->plancxt = plancxt;
 	newplan->query = pstrdup(plan->query);
 	newplan->qtlist = (List *) copyObject(plan->qtlist);

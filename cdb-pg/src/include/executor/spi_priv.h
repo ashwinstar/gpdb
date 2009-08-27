@@ -16,6 +16,8 @@
 #include "executor/spi.h"
 
 
+#define _SPI_PLAN_MAGIC		569278163
+
 typedef struct
 {
 	/* current results */
@@ -25,14 +27,17 @@ typedef struct
 
 	MemoryContext procCxt;		/* procedure context */
 	MemoryContext execCxt;		/* executor context */
-	MemoryContext savedcxt;
+	MemoryContext savedcxt;		/* context of SPI_connect's caller */
 	SubTransactionId connectSubid;		/* ID of connecting subtransaction */
 } _SPI_connection;
 
 typedef struct _SPI_plan
 {
+	int			magic;			/* should equal _SPI_PLAN_MAGIC */
+	bool		saved;			/* saved or unsaved plan? */
 	/* Context containing _SPI_plan itself as well as subsidiary data */
 	MemoryContext plancxt;
+	int			cursor_options; /* Cursor options used for planning */
 	/* Original query string (used for error reporting) */
 	const char *query;
 	/* List of List of querytrees; one sublist per original parsetree */
@@ -40,8 +45,8 @@ typedef struct _SPI_plan
 	/* List of plan trees --- length == # of querytrees, but flat list */
 	List	   *ptlist;
 	/* Argument types, if a prepared plan */
-	int			nargs;
-	Oid		   *argtypes;
+	int			nargs;			/* number of plan arguments */
+	Oid		   *argtypes;		/* Argument types (NULL if nargs is 0) */
 	
 	bool		run_via_callback_to_qd;
 } _SPI_plan;
