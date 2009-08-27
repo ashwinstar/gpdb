@@ -217,6 +217,7 @@ static char*  formCDatabaseFilePathName( char* pszBackupDirectory, char* pszBack
 static char*  formGenericFilePathName( char *keyword, char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
 static void   dumpMain(bool oids, const char* dumpencoding, int outputBlobs, int plainText, RestoreOptions *ropt);
 static void   dumpDatabaseDefinition(void);
+static void   dumpGreenplumCatalog(bool oids, const char* dumpencoding, int outputBlobs, int plainText, RestoreOptions *ropt);
 static void   installSignalHandlers(void);
 extern void   reset(void);
 /* MPP additions end */
@@ -233,7 +234,6 @@ main(int argc, char **argv)
 	const char *pgport = NULL;
 	const char *username = NULL;
 	const char *dumpencoding = NULL;
-	//const char *std_strings;
 	bool		oids = false;
 	bool		force_password = false;
 	int			compressLevel = -1;
@@ -290,7 +290,6 @@ main(int argc, char **argv)
 	/* mpp additions */
 	{"gp-k", required_argument, NULL, 1},
 	{"gp-d", required_argument, NULL, 2},
-	{"gp-catalog-only", no_argument, NULL, 3},
 	/* end mpp additions */
 
 	/*
@@ -485,10 +484,6 @@ main(int argc, char **argv)
 				g_pszCDBOutputDirectory = strdup(optarg);
 				break;
 
-			case 3:			/* --gp-schema-only */
-				g_gp_catalog_only = true;
-				break;
-
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
@@ -579,7 +574,6 @@ main(int argc, char **argv)
 
 	/* Let the archiver know how noisy to be */
 	g_fout->verbose = g_verbose;
-
 	g_fout->minRemoteVersion = 80200;	/* we can handle back to 8.2 */
 	g_fout->maxRemoteVersion = parse_version(PG_VERSION);
 	if (g_fout->maxRemoteVersion < 0)
@@ -600,10 +594,10 @@ main(int argc, char **argv)
     g_SegDB.pszDBPswd   = NULL;
 
 	/*
-		* If there is a password associated with the login, it will come through
-		* as a base64 encoded string as part of the g_CDBDumpInfo that was parsed above.
-		* So we must decode it to get the true password,
-		*/
+	 * If there is a password associated with the login, it will come through
+	 * as a base64 encoded string as part of the g_CDBDumpInfo that was parsed above.
+	 * So we must decode it to get the true password,
+	 */
     if ( g_CDBPassThroughCredentials != NULL && *g_CDBPassThroughCredentials != '\0' )
     {
         pszDBPswd = Base64ToData( g_CDBPassThroughCredentials, &nBytes );
@@ -683,22 +677,6 @@ main(int argc, char **argv)
         AddToStatusOpList( g_pStatusOpList, pOp );
     }
 
-	/* Dump catalog and create db functions if:
-		* 1 - This is the master node
-		* 2 - Data only option is not set
-		* 3 - The agent process to dump mpp catalog only was not yet forked
-		*     (it's not this current process).
-		*
-		* The next master dump process that will come around to this part
-		* of the code will be the catalog dumper and will have g_gp_catalog_only
-		* set to true, therefore skipping this step.
-		*/
-    if (g_role == ROLE_MASTER && !dataOnly)
-    {
-		mpp_err_msg( logInfo, progname, "Dumping CREATE DATABASE statement\n");
-		dumpDatabaseDefinition();
-    }
-
 	/*
 	 * Start serializable transaction to dump consistent data.
 	 */
@@ -743,19 +721,8 @@ main(int argc, char **argv)
 	PQclear(res);
 
 	/*
-		* If we got here it means we successfully set transaction isolation level to serializable.
-	 * Create a status operator that describes our new status.
-	 *
-	 * In the special case that we are the catalog dumper thread, we don't report success, we
-	 * only report a failure. Reason is that there are 2 threads doing dump work on the master -
-	 * the main agent thread that dumps the schema, and the catalog dumper that was forked. if
-	 * both report success, but the second one failed, gp_dump will not know it since it had already
-	 * got a success operator. Therefore we let the catalog dumper only report errors, but not
-	 * success so we don't report success prematurely. Only the main agent thread may report success.
-	 * TODO: This is a hack, and should be done more cleanly. The good news is that only case scenario which
-	 * this hack doesn't cover is if the catalog dumper thread finished with an error after the main
-	 * schema dumper thread finished with success. This is *very unlikely* to happen. If it ever does,
-	 * we will end up with a good dump, but bad catalog dump file.
+	 * If we got here it means we successfully set transaction isolation level to serializable.
+	 * Create a status operator that describes our new status. The monitor thread will consume it.
 	 */
 	pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
 	if ( pOp == NULL )
@@ -766,9 +733,6 @@ main(int argc, char **argv)
 	/* add status operator, to let the monitor thread see it */
 	AddToStatusOpList( g_pStatusOpList, pOp );
 
-	/*
-	 * And finally we can do the actual output.
-	 */
 	if (plainText)
 	{
 		ropt = NewRestoreOptions();
@@ -788,89 +752,39 @@ main(int argc, char **argv)
 			ropt->compression = compressLevel;
 
 		ropt->suppressDumpWarnings = true;		/* We've already shown them */
-
-		/*RestoreArchive(g_fout, ropt);*/
 	}
 	else
 		ropt = NULL; /* silence compiler */
 
+	/*
+	 * do the database main dump, and write contents into the dump file
+	 */
+	mpp_err_msg( logInfo, progname, "Dumping database \"%s\"...\n" , g_conn->dbName);
+	dumpMain(oids, dumpencoding, outputBlobs, plainText, ropt);
 
-	/* is this the catalog dumper that was forked earlier? */
-	if (g_gp_catalog_only && g_role == ROLE_MASTER)
-	{
-		/* dumping mpp catalog */
-		mpp_err_msg( logInfo, progname, "Dumping Greenplum Database catalog from \"%s\"...\n" , g_conn->dbName);
-		dumpMain(oids, dumpencoding, outputBlobs, plainText, ropt);
-	}
-	else
-	{
-		Archive    *fout_temp;
+	reset();
 
-		mpp_err_msg( logInfo, progname, "Dumping database \"%s\"...\n" , g_conn->dbName);
+	/* cleanup */
+	CloseArchive(g_fout);
 
-		dumpMain(oids, dumpencoding, outputBlobs, plainText, ropt);
+	/* 
+	 * Dump catalog and create db functions into 2 new separate dump
+	 * files IFF this is the master node and data-only option is not set.
+	 */
+    if (g_role == ROLE_MASTER && !dataOnly)
+    {
+		mpp_err_msg( logInfo, progname, "Dumping CREATE DATABASE statement for database \"%s\"\n", g_conn->dbName);
+		dumpDatabaseDefinition();
+		mpp_err_msg( logInfo, progname, "Dumping Greenplum Database catalog for database \"%s\"\n", g_conn->dbName);
+        dumpGreenplumCatalog(oids, dumpencoding, outputBlobs, plainText, ropt);
+        mpp_err_msg( logInfo, progname, "Additional master dumps completed\n");
+    }
 
-		reset();
-
-		/* cleanup */
-		CloseArchive(g_fout);
-		fout_temp = g_fout;
-
-		/* open the output file */
-		switch (format[0])
-		{
-			case 'c':
-			case 'C':
-				g_fout = CreateArchive(filename, archCustom, compressLevel);
-				break;
-
-			case 'f':
-			case 'F':
-				g_fout = CreateArchive(filename, archFiles, compressLevel);
-				break;
-
-			case 'p':
-			case 'P':
-				plainText = 1;
-				g_fout = CreateArchive(filename, archNull, 0);
-				break;
-
-			case 't':
-			case 'T':
-				g_fout = CreateArchive(filename, archTar, compressLevel);
-				break;
-
-			default:
-				mpp_err_msg(logInfo, progname, "invalid output format \"%s\" specified\n", format);
-				exit(1);
-		}
-
-		/*g_fout = openOutputFile(format, filename, compressLevel);*/
-
-		/* check for version mismatch */
-		AH = (ArchiveHandle *)g_fout;
-		AH->connection = g_conn;
-
-		/* Let the archiver know how noisy to be */
-		g_fout->verbose = fout_temp->verbose;
-		g_fout->minRemoteVersion = fout_temp->minRemoteVersion;
-		g_fout->maxRemoteVersion = fout_temp->maxRemoteVersion;
-		g_fout->remoteVersion = fout_temp->remoteVersion;
-		g_fout->exit_on_error = fout_temp->exit_on_error;
-		g_fout->n_errors = fout_temp->n_errors;
-	}
 
 	/*
-	 * Make sure to report that we are done. The only exception is if we are
-	 * the catalog dumper. It never reports success, but instead lets the main
-	 * master agent thread to do so when it is done (See comment above next to
-	 * CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS... )
+	 * Make sure to report that we are done.
 	 */
-	if (!g_gp_catalog_only)
-	{
-		makeSureMonitorThreadEnds( TASK_RC_SUCCESS, TASK_MSG_SUCCESS );
-	}
-
+	makeSureMonitorThreadEnds( TASK_RC_SUCCESS, TASK_MSG_SUCCESS );
 	DestroyStatusOpList( g_pStatusOpList );
 
 	if ( g_pszCDBOutputDirectory != NULL )
@@ -885,7 +799,7 @@ main(int argc, char **argv)
 
 	PQfinish(g_conn);
 
-	mpp_err_msg(logInfo, progname, (g_gp_catalog_only ? "Finished Greenplum Database catalog dump successfully\n":"Finished successfully\n"));
+	mpp_err_msg(logInfo, progname, "Finished successfully\n");
 
 	exit(0);
 }
@@ -6166,8 +6080,7 @@ void* monitorThreadProc(void *arg  __attribute__((unused)))
 
 		while ( NULL != (notify = PQnotifies(g_conn_status)))
 		{
-
-			/* Need to make sure that the notify is from another process, since this processes
+		   /* Need to make sure that the notify is from another process, since this processes
 			* also issues notifies that aren't cancel requests.
 			*/
 			if ( notify->be_pid !=  PID )
@@ -6246,7 +6159,7 @@ void myHandler(int signo)
 	}
 	else
 	{
-		mpp_err_msg( logInfo, progname, "in my_handler not in active transaction. transaction status %d\n", PQtransactionStatus( g_conn ));
+		mpp_err_msg( logInfo, progname, "in my_handler not in active transaction\n" );
 	}
 }
 
@@ -6339,7 +6252,6 @@ dumpDatabaseDefinition()
     pszBackupFileName = formCDatabaseFilePathName( g_pszCDBOutputDirectory,
 												   g_CDBDumpKey, g_role, g_dbID );
 
-
 	/* Make sure we can create this file before we spin off sh
 	 * cause we don't get a good error message from sh if we
 	 * can't write to the file
@@ -6412,31 +6324,68 @@ dumpDatabaseDefinition()
 		fprintf(fcat, "%s", creaQry->data);
 		fclose(fcat);
 	}
-	
-	/* temporary hack for debugging. write temp contents to the catalog file */
-	/* START */
-    pszBackupFileName = formCatalogFilePathName( g_pszCDBOutputDirectory,
-												 g_CDBDumpKey, g_role, g_dbID );
 
-    fcat = fopen( pszBackupFileName, "w" );
-    free(pszBackupFileName);
-    if ( fcat == NULL )
-    {
-        mpp_err_msg( logError, progname, "Error creating cat file %s in gp_dump_agent",
-					 pszBackupFileName);
-    }
-
-	if ( fcat != NULL )
-	{
-		fprintf(fcat, "gp catalog data temporarily unavailable in Main builds (8-1-09) will be returned soon.\n");
-		fclose(fcat);
-	}
-	/* END */
-	
-	
     PQclear(res);
 	destroyPQExpBuffer(dbQry);
 	destroyPQExpBuffer(creaQry);
+}
+
+/*
+ * dumpGreenplumCatalog
+ * 
+ * this function dumps the greenplum catalog tables into a file named gp_catalog_<key>.
+ */
+void dumpGreenplumCatalog(bool oids, const char* dumpencoding, int outputBlobs, int plainText, RestoreOptions *ropt)
+{
+    char* 	backupFileName;
+    bool	save_schemaOnly = schemaOnly;
+    char*	save_ropt_filename = (ropt->filename ? ropt->filename : NULL);
+    
+    backupFileName = formCatalogFilePathName(g_pszCDBOutputDirectory,
+											 g_CDBDumpKey, 
+											 g_role, 
+											 g_dbID);
+
+    /*
+     * We temporarily modify these globals to fit the specifics of
+     * the catalog dump. We will revert to the original values after
+     * dumping, although not strictly necessary.
+     */
+    schemaOnly = false;
+    dataOnly = true;
+    g_gp_catalog_only = true;
+	ropt->filename = backupFileName;
+	
+	/* set the new filename as the new archive target */
+	g_fout = CreateArchive(backupFileName, archNull, 0);
+	
+	if (!g_fout)
+	{
+		mpp_err_msg(logError, progname, "could not open gp_catalog output file \"%s\" for writing\n", backupFileName);
+		exit_nicely();
+	}
+
+	/* Let the archiver know how noisy to be */
+	g_fout->verbose = g_verbose;
+	g_fout->minRemoteVersion = 80200;	/* we can handle back to 8.2 */
+	g_fout->maxRemoteVersion = parse_version(PG_VERSION);
+	if (g_fout->maxRemoteVersion < 0)
+	{
+		mpp_err_msg(logError, progname, "could not parse version string \"%s\"\n", PG_VERSION);
+		exit_nicely();
+	}
+	
+	dumpMain(oids, dumpencoding, outputBlobs, plainText, ropt);
+
+	reset();
+
+	/* cleanup */
+	CloseArchive(g_fout);
+	
+	/* revert to original values of globals, for sake of cleanness */
+    schemaOnly = save_schemaOnly;
+    dataOnly = false;
+    ropt->filename = (save_ropt_filename ? save_ropt_filename : NULL);
 
 }
 
@@ -6498,8 +6447,6 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
 	StatusOp* pOp;
     char* pszSuffix;
 
-    mpp_err_msg( logInfo, progname, "About to end the monitor thread\n");
-    
 	if ( g_monitor_tid )
 	{
 		if ( TaskRC == TASK_RC_SUCCESS )
@@ -6521,10 +6468,6 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
 			AddToStatusOpList( g_pStatusOpList, pOp );
 
 		pthread_join( g_monitor_tid, NULL );
-	}
-	else
-	{
-		mpp_err_msg( logInfo, progname, "monitor thread has already ended\n");
 	}
 }
 
