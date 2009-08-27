@@ -515,3 +515,56 @@ from sale, product where sale.pn = product.pn group by rollup(sale.pn); --mvd 1-
 
 SELECT group_id(), sale.pn, sale.qty, sale.cn, sale.prc, STDDEV(sale.prc*sale.cn),MIN(DISTINCT sale.prc*sale.vn) from sale
 GROUP BY ROLLUP((sale.qty,sale.cn),(sale.qty,sale.pn),(sale.vn),(sale.prc)),ROLLUP((sale.dt,sale.pn,sale.qty)); --mvd 2,3,4,5->6
+
+-- MPP-6756
+drop table r6756 cascade; --ignore
+drop table s6756 cascade; --ignore
+
+create table r6756 ( a int, b int, x int, y int ) 
+    distributed randomly
+    partition by list(a) (
+        values (0), 
+        values (1)
+        );
+
+create table s6756 ( c int, d int, e int ) 
+    distributed randomly;
+
+insert into s6756 values 
+    (0,0,0),(0,0,1),(0,1,0),(0,1,1),(1,0,0),(1,0,1),(1,1,0),(1,1,1);
+
+insert into r6756 values
+    (0, 0, 1, 1),
+    (0, 1, 2, 2),
+    (0, 1, 2, 2),
+    (1, 0, 3, 3),
+    (1, 0, 3, 3),
+    (1, 0, 3, 3),
+    (1, 1, 4, 4),
+    (1, 1, 4, 4),
+    (1, 1, 4, 4),
+    (1, 1, 4, 4);
+
+--start_equiv
+select a, b, count(distinct x), count(distinct y)
+from r6756 r, s6756 c, s6756 d, s6756 e
+where r.a = c.c and r.a = d.d and r.a = e.e
+group by a, b
+union all
+select a, null, count(distinct x), count(distinct y)
+from r6756 r, s6756 c, s6756 d, s6756 e
+where r.a = c.c and r.a = d.d and r.a = e.e
+group by a
+union all
+select null, null, count(distinct x), count(distinct y)
+from r6756 r, s6756 c, s6756 d, s6756 e
+where r.a = c.c and r.a = d.d and r.a = e.e;
+
+select a, b, count(distinct x), count(distinct y)
+from r6756 r, s6756 c, s6756 d, s6756 e
+where r.a = c.c and r.a = d.d and r.a = e.e
+group by rollup (a,b);
+--end_equiv
+
+drop table r6756 cascade; --ignore
+drop table s6756 cascade; --ignore

@@ -5889,3 +5889,74 @@ GROUP BY ROLLUP((sale.qty,sale.cn),(sale.qty,sale.pn),(sale.vn),(sale.prc)),ROLL
         0 |     | 1100 |  2 |      |                  | 96000
 (102 rows)
 
+-- MPP-6756
+drop table r6756 cascade; --ignore
+ERROR:  table "r6756" does not exist
+drop table s6756 cascade; --ignore
+ERROR:  table "s6756" does not exist
+create table r6756 ( a int, b int, x int, y int ) 
+    distributed randomly
+    partition by list(a) (
+        values (0), 
+        values (1)
+        );
+NOTICE:  CREATE TABLE will create partition "r6756_1_prt_1" for table "r6756"
+NOTICE:  CREATE TABLE will create partition "r6756_1_prt_2" for table "r6756"
+create table s6756 ( c int, d int, e int ) 
+    distributed randomly;
+insert into s6756 values 
+    (0,0,0),(0,0,1),(0,1,0),(0,1,1),(1,0,0),(1,0,1),(1,1,0),(1,1,1);
+insert into r6756 values
+    (0, 0, 1, 1),
+    (0, 1, 2, 2),
+    (0, 1, 2, 2),
+    (1, 0, 3, 3),
+    (1, 0, 3, 3),
+    (1, 0, 3, 3),
+    (1, 1, 4, 4),
+    (1, 1, 4, 4),
+    (1, 1, 4, 4),
+    (1, 1, 4, 4);
+--start_equiv
+select a, b, count(distinct x), count(distinct y)
+from r6756 r, s6756 c, s6756 d, s6756 e
+where r.a = c.c and r.a = d.d and r.a = e.e
+group by a, b
+union all
+select a, null, count(distinct x), count(distinct y)
+from r6756 r, s6756 c, s6756 d, s6756 e
+where r.a = c.c and r.a = d.d and r.a = e.e
+group by a
+union all
+select null, null, count(distinct x), count(distinct y)
+from r6756 r, s6756 c, s6756 d, s6756 e
+where r.a = c.c and r.a = d.d and r.a = e.e;
+ a | b | count | count 
+---+---+-------+-------
+ 0 | 1 |     1 |     1
+ 1 | 0 |     1 |     1
+ 1 |   |     2 |     2
+ 0 | 0 |     1 |     1
+ 1 | 1 |     1 |     1
+ 0 |   |     2 |     2
+   |   |     4 |     4
+(7 rows)
+
+select a, b, count(distinct x), count(distinct y)
+from r6756 r, s6756 c, s6756 d, s6756 e
+where r.a = c.c and r.a = d.d and r.a = e.e
+group by rollup (a,b);
+ a | b | count | count 
+---+---+-------+-------
+ 0 | 0 |     1 |     1
+ 0 | 1 |     1 |     1
+ 1 | 0 |     1 |     1
+ 1 | 1 |     1 |     1
+ 0 |   |     2 |     2
+ 1 |   |     2 |     2
+   |   |     4 |     4
+(7 rows)
+
+--end_equiv
+drop table r6756 cascade; --ignore
+drop table s6756 cascade; --ignore

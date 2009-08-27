@@ -1330,6 +1330,8 @@ plan_append_aggs_with_rewrite(PlannerInfo *root,
 	int group_no;
 	List *subplans = NIL;
 	Query *orig_query = root->parse;
+	struct RelOptInfo **orig_rel_array = root->simple_rel_array;
+	int orig_rel_array_size = root->simple_rel_array_size;
 	Query *final_query = NULL;
 	uint64 grouping = 0;
 	int num_subplans = 0;
@@ -1382,7 +1384,26 @@ plan_append_aggs_with_rewrite(PlannerInfo *root,
 		if (*context->p_dNumGroups == 0)
 			*context->p_dNumGroups = 1;
 
+		/* Install a replica of the original query and simple_rel_array
+		 * cache.  This addresses failure of calls to generate_dqa_plan() 
+		 * after the first as reported in MPP-6756.  Early calls "mess up"
+		 * the query and rel array.  Later calls trip over the mess.  (Note 
+		 * that they remain "messed up" following the final call.  I don't 
+		 * think this will cause a problem.)  - Brian
+		 */
 		root->parse = copyObject(orig_query);
+		if ( orig_rel_array && orig_rel_array_size )
+		{
+			size_t sz = orig_rel_array_size * sizeof(RelOptInfo *);
+			root->simple_rel_array_size = orig_rel_array_size;
+			root->simple_rel_array = (RelOptInfo **)palloc0(sz);
+			memcpy(root->simple_rel_array, orig_rel_array, sz);
+		}
+		else
+		{
+			root->simple_rel_array = orig_rel_array;
+			root->simple_rel_array_size = orig_rel_array_size;
+		}
 
 		agg_plan = generate_dqa_plan(root, context, group_no, grouping, subplans, subplan_no);
 		subplan_no++;
@@ -1447,6 +1468,8 @@ plan_append_aggs_with_rewrite(PlannerInfo *root,
 
 	/* Update the original Query node */
 	root->parse = orig_query;
+	root->simple_rel_array = orig_rel_array;
+	root->simple_rel_array_size = orig_rel_array_size;
 	memcpy(root->parse, final_query, sizeof(Query));
 
 	result_plan = add_append_node(agg_plans, context);
