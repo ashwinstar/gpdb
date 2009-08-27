@@ -253,7 +253,6 @@ def connect2run(qry, col):
         for row in curs.dictresult():
             c = db.x_cfgrec
             err.append([c, col, row])
-        db.commit()
 
     return err
 
