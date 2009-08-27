@@ -13,9 +13,6 @@
  *
  *-------------------------------------------------------------------------
  */
-#ifndef  FRONTEND
-#define  FRONTEND 1
-#endif 
 
 #include "postgres.h"
 
@@ -25,6 +22,7 @@
 
 #include "access/clog.h"
 #include "access/htup.h"
+#include "access/gist_private.h"
 #include "access/tupmacs.h"
 #include "access/multixact.h"
 #include "access/nbtree.h"
@@ -43,7 +41,7 @@ static uint32		logId;		/* current log file id */
 static uint32		logSeg;		/* current log file segment */
 static int32		logPageOff;	/* offset of current page in file */
 static int		logRecOff;	/* offset of next record in page */
-static char		pageBuffer[BLCKSZ];	/* current page */
+static char		pageBuffer[XLOG_BLCKSZ];	/* current page */
 static XLogRecPtr	curRecPtr;	/* logical address of current record */
 static XLogRecPtr	prevRecPtr;	/* logical address of previous record */
 static char		*readRecordBuf = NULL; /* ReadRecord result area */
@@ -62,7 +60,6 @@ static char 		rmname[5] = "ALL  "; /* name of the operation we want to filter on
 const char 		*pghost = NULL; /* connection host */
 const char 		*pgport = NULL; /* connection port */
 const char 		*username = NULL; /* connection username */
-static bool		showPgControl = false;	/* show pg_control file instead */
 
 /* Oids used for checking if we need to search for an objects name or if we can use the last one */
 static Oid 		lastDbOid;
@@ -78,15 +75,22 @@ static char 		relName[NAMEDATALEN]  = "";
 /* struct to aggregate transactions */
 transInfoPtr 		transactionsInfo = NULL;
 
+/* prototypes */
+void exit_gracefuly(int status);
+PGconn * DBConnect(const char *host, const char *port, char *database, const char *user);
+static void dumpXLogRecord(XLogRecord *record, bool header_only);
+static void dumpGIST(XLogRecord *record);
+void dump_xlog_btree_insert_meta(XLogRecord *record);
+
 /* Read another page, if possible */
 static bool
 readXLogPage(void)
 {
-	size_t nread = read(logFd, pageBuffer, BLCKSZ);
+	size_t nread = read(logFd, pageBuffer, XLOG_BLCKSZ);
 
-	if (nread == BLCKSZ)
+	if (nread == XLOG_BLCKSZ)
 	{
-		logPageOff += BLCKSZ;
+		logPageOff += XLOG_BLCKSZ;
 		if (((XLogPageHeader) pageBuffer)->xlp_magic != XLOG_PAGE_MAGIC)
 		{
 			printf("Bogus page magic number %04X at offset %X\n",
@@ -105,7 +109,7 @@ readXLogPage(void)
 /* 
  * Exit closing active database connections
  */
-static void
+void
 exit_gracefuly(int status)
 {
 	destroyPQExpBuffer(dbQry);
@@ -121,7 +125,7 @@ exit_gracefuly(int status)
 /*
  * Open a database connection
  */
-static PGconn *
+PGconn *
 DBConnect(const char *host, const char *port, char *database, const char *user)
 {
 	char	*password = NULL;
@@ -207,12 +211,17 @@ RecordIsValid(XLogRecord *record, XLogRecPtr recptr)
 		blk += blen;
 	}
 
-	/* Check that xl_tot_len agrees with our calculation */
-	if (blk != (char *) record + record->xl_tot_len)
+	/* skip total xl_tot_len check if physical log has been removed. */
+	if (!(record->xl_info & XLR_BKP_REMOVABLE) ||
+		record->xl_info & XLR_BKP_BLOCK_MASK)
 	{
-		printf("incorrect total length in record at %X/%X\n",
-			   recptr.xlogid, recptr.xrecoff);
-		return false;
+		/* Check that xl_tot_len agrees with our calculation */
+		if (blk != (char *) record + record->xl_tot_len)
+		{
+			printf("incorrect total length in record at %X/%X\n",
+				   recptr.xlogid, recptr.xrecoff);
+			return false;
+		}
 	}
 
 	/* Finally include the record header */
@@ -244,7 +253,7 @@ ReadRecord(void)
 	int			retries = 0;
 
 restart:
-	while (logRecOff <= 0 || logRecOff > BLCKSZ - SizeOfXLogRecord)
+	while (logRecOff <= 0 || logRecOff > XLOG_BLCKSZ - SizeOfXLogRecord)
 	{
 		/* Need to advance to new page */
 		if (! readXLogPage())
@@ -271,8 +280,16 @@ restart:
 
 	if (record->xl_len == 0)
 	{
-		printf("ReadRecord: record with zero len at %X/%X\n",
-			   curRecPtr.xlogid, curRecPtr.xrecoff);
+		/* Stop if XLOG_SWITCH was found. */
+		if (record->xl_rmid == RM_XLOG_ID && record->xl_info == XLOG_SWITCH)
+		{
+			dumpXLogRecord(record, false);
+			return false;
+		}
+
+		printf("ReadRecord: record with zero len at %u/%08X\n",
+		   curRecPtr.xlogid, curRecPtr.xrecoff);
+
 		/* Attempt to recover on new page, but give up after a few... */
 		logRecOff = 0;
 		if (++retries > 4)
@@ -283,7 +300,11 @@ restart:
 		record->xl_tot_len > SizeOfXLogRecord + record->xl_len +
 		XLR_MAX_BKP_BLOCKS * (sizeof(BkpBlock) + BLCKSZ))
 	{
-		printf("invalid record length at %X/%X",
+		printf("invalid record length(expected %lu ~ %lu, actual %d) at %X/%X\n",
+				SizeOfXLogRecord + record->xl_len,
+				SizeOfXLogRecord + record->xl_len +
+					XLR_MAX_BKP_BLOCKS * (sizeof(BkpBlock) + BLCKSZ),
+				record->xl_tot_len,
 			   curRecPtr.xlogid, curRecPtr.xrecoff);
 		return false;
 	}
@@ -291,7 +312,7 @@ restart:
 
 	/*
 	 * Allocate or enlarge readRecordBuf as needed.  To avoid useless
-	 * small increases, round its size to a multiple of BLCKSZ, and make
+	 * small increases, round its size to a multiple of XLOG_BLCKSZ, and make
 	 * sure it's at least 4*BLCKSZ to start with.  (That is enough for all
 	 * "normal" records, but very large commit or abort records might need
 	 * more space.)
@@ -300,8 +321,8 @@ restart:
 	{
 		uint32		newSize = total_len;
 
-		newSize += BLCKSZ - (newSize % BLCKSZ);
-		newSize = Max(newSize, 4 * BLCKSZ);
+		newSize += XLOG_BLCKSZ - (newSize % XLOG_BLCKSZ);
+		newSize = Max(newSize, 4 * XLOG_BLCKSZ);
 		if (readRecordBuf)
 			free(readRecordBuf);
 		readRecordBuf = (char *) malloc(newSize);
@@ -317,7 +338,7 @@ restart:
 	}
 
 	buffer = readRecordBuf;
-	len = BLCKSZ - curRecPtr.xrecoff % BLCKSZ; /* available in block */
+	len = XLOG_BLCKSZ - curRecPtr.xrecoff % XLOG_BLCKSZ; /* available in block */
 	if (total_len > len)
 	{
 		/* Need to reassemble record */
@@ -334,6 +355,7 @@ restart:
 			{
 				/* XXX ought to be able to advance to new input file! */
 				fprintf(stderr, "Unable to read continuation page?\n");
+				dumpXLogRecord(record, true);
 				return false;
 			}
 			if (!(((XLogPageHeader) pageBuffer)->xlp_info & XLP_FIRST_IS_CONTRECORD))
@@ -351,7 +373,7 @@ restart:
 					   contrecord->xl_rem_len, logId, logSeg, logPageOff);
 				return false;
 			}
-			len = BLCKSZ - pageHeaderSize - SizeOfXLogContRecord;
+			len = XLOG_BLCKSZ - pageHeaderSize - SizeOfXLogContRecord;
 			if (contrecord->xl_rem_len > len)
 			{
 				memcpy(buffer, (char *)contrecord + SizeOfXLogContRecord, len);
@@ -584,15 +606,15 @@ printField(char *data, int offset, int type, uint32 maxFieldLen)
 static void
 printUpdate(xl_heap_update *xlrecord, uint32 datalen)
 {
-	char data[MaxTupleSize];
+	char data[MaxHeapTupleSize];
 	xl_heap_header hhead;
 	int offset;
 	bits8 nullBitMap[MaxNullBitmapLen];
 
-	MemSet((char *) data, 0, MaxTupleSize * sizeof(char));
+	MemSet((char *) data, 0, MaxHeapTupleSize * sizeof(char));
 	MemSet(nullBitMap, 0, MaxNullBitmapLen);
 	
-	if(datalen > MaxTupleSize)
+	if(datalen > MaxHeapTupleSize)
 		return;
 
 	/* Copy the heap header into hhead, 
@@ -652,15 +674,15 @@ printUpdate(xl_heap_update *xlrecord, uint32 datalen)
 static void
 printInsert(xl_heap_insert *xlrecord, uint32 datalen)
 {
-	char data[MaxTupleSize];
+	char data[MaxHeapTupleSize];
 	xl_heap_header hhead;
 	int offset;
 	bits8 nullBitMap[MaxNullBitmapLen];
 
-	MemSet((char *) data, 0, MaxTupleSize * sizeof(char));
+	MemSet((char *) data, 0, MaxHeapTupleSize * sizeof(char));
 	MemSet(nullBitMap, 0, MaxNullBitmapLen);
 	
-	if(datalen > MaxTupleSize)
+	if(datalen > MaxHeapTupleSize)
 		return;
 
 	/* Copy the heap header into hhead, 
@@ -721,17 +743,17 @@ printInsert(xl_heap_insert *xlrecord, uint32 datalen)
 }
 
 static void
-dumpXLogRecord(XLogRecord *record)
+dumpXLogRecord(XLogRecord *record, bool header_only)
 {
 	int	i;
 	char   	*blk;
 	uint8	info = record->xl_info & ~XLR_INFO_MASK;
 
 	/* check if the user wants a specific rmid */
-	if(strcmp("ALL  ", rmname) && pg_strcasecmp(RM_names[record->xl_rmid], rmname))
+	if(strcmp("ALL  ", rmname) && strcasecmp(RM_names[record->xl_rmid], rmname))
 		return;
 
-	printf("%X/%X: prv %X/%X",
+	printf("%u/%08X: prv %u/%08X",
 		   curRecPtr.xlogid, curRecPtr.xrecoff,
 		   record->xl_prev.xlogid, record->xl_prev.xrecoff);
 
@@ -748,6 +770,12 @@ dumpXLogRecord(XLogRecord *record)
 	printf(" info %02X len %u tot_len %u\n", record->xl_info,
 		   record->xl_len, record->xl_tot_len);
 
+	if (header_only)
+	{
+		printf(" ** maybe continues to next segment **\n");
+		return;
+	}
+
 	blk = (char*)XLogRecGetData(record) + record->xl_len;
 	for (i = 0; i < XLR_MAX_BKP_BLOCKS; i++)
 	{
@@ -762,7 +790,7 @@ dumpXLogRecord(XLogRecord *record)
 		printf("bkpblock %d: ts %s db %s rel %s block %u hole %u len %u\n", 
 				i+1, spaceName, dbName, relName,
 			   	bkb.block, bkb.hole_offset, bkb.hole_length);
-		blk += sizeof(BkpBlock) + BLCKSZ;
+		blk += sizeof(BkpBlock) + (BLCKSZ - bkb.hole_length);
 	}
 
 	switch (record->xl_rmid)
@@ -773,10 +801,9 @@ dumpXLogRecord(XLogRecord *record)
 			{
 				CheckPoint	*checkpoint = (CheckPoint*) XLogRecGetData(record);
 				if(!hideTimestamps)
-					printf("checkpoint: redo %X/%X; undo %X/%X; tli %u; nextxid %u;\n"
+					printf("checkpoint: redo %u/%08X; tli %u; nextxid %u;\n"
 						   "  nextoid %u; nextmulti %u; nextoffset %u; %s at %s\n",
 						   checkpoint->redo.xlogid, checkpoint->redo.xrecoff,
-						   checkpoint->undo.xlogid, checkpoint->undo.xrecoff,
 						   checkpoint->ThisTimeLineID, checkpoint->nextXid, 
 						   checkpoint->nextOid,
 						   checkpoint->nextMulti,
@@ -785,10 +812,9 @@ dumpXLogRecord(XLogRecord *record)
 						   "shutdown" : "online",
 						   str_time(checkpoint->time));
 				else
-					printf("checkpoint: redo %X/%X; undo %X/%X; tli %u; nextxid %u;\n"
+					printf("checkpoint: redo %u/%08X; tli %u; nextxid %u;\n"
 						   "  nextoid %u; nextmulti %u; nextoffset %u; %s\n",
 						   checkpoint->redo.xlogid, checkpoint->redo.xrecoff,
-						   checkpoint->undo.xlogid, checkpoint->undo.xrecoff,
 						   checkpoint->ThisTimeLineID, checkpoint->nextXid, 
 						   checkpoint->nextOid,
 						   checkpoint->nextMulti,
@@ -804,6 +830,14 @@ dumpXLogRecord(XLogRecord *record)
 				memcpy(&nextOid, XLogRecGetData(record), sizeof(Oid));
 				printf("nextOid: %u\n", nextOid);
 			}
+			else if (info == XLOG_SWITCH)
+			{
+				printf("switch:\n");
+			}
+			else if (info == XLOG_NOOP)
+			{
+				printf("noop:\n");
+			}
 			break;
 		case RM_XACT_ID:
 			if (info == XLOG_XACT_COMMIT)
@@ -813,7 +847,7 @@ dumpXLogRecord(XLogRecord *record)
 				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
 				if(!hideTimestamps)
 					printf("commit: %u at %s\n", record->xl_xid,
-						   str_time(xlrec.xtime));
+						   str_time(xlrec.xact_time));
 				else
 					printf("commit: %u\n", record->xl_xid);
 			}
@@ -824,42 +858,9 @@ dumpXLogRecord(XLogRecord *record)
 				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
 				if(!hideTimestamps)
 					printf("abort: %u at %s\n", record->xl_xid,
-						   str_time(xlrec.xtime));
+						   str_time(xlrec.xact_time));
 				else
 					printf("abort: %u\n", record->xl_xid);
-			}
-			else if (info == XLOG_XACT_PREPARE)
-			{
- 				printf("prepare\n");
-			}
-			else if (info == XLOG_XACT_COMMIT_PREPARED)
-			{
-				xl_xact_commit_prepared	xlrec;
-
-				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-				printf("commit-prepared: %u\n", record->xl_xid);
-			}
-			else if (info == XLOG_XACT_ABORT_PREPARED)
-			{
-				xl_xact_abort_prepared	xlrec;
-
-				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-				printf("abort-prepared: %u\n", record->xl_xid);
-			}
-			else if (info == XLOG_XACT_DISTRIBUTED_COMMIT)
-			{
-				xl_xact_commit	xlrec;
-
-				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-				printf("distributed-commit: %u\n", record->xl_xid);
-			}
-			else if (info == XLOG_XACT_DISTRIBUTED_FORGET)
-			{
-				xl_xact_distributed_forget	xlrec;
-
-				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-				printf("distributed-forget: %u, gid = %s, gxid = %u\n", record->xl_xid,
-					       xlrec.gxact_log.gid, xlrec.gxact_log.gxid);
 			}
 			break;
 		case RM_SMGR_ID:
@@ -927,6 +928,45 @@ dumpXLogRecord(XLogRecord *record)
 				}
 			}
 			break;
+		case RM_HEAP2_ID:
+			switch (info)
+			{
+				case XLOG_HEAP2_FREEZE:
+				{
+					xl_heap_freeze xlrec;
+					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+					printf("freeze: ts %d db %d rel %d block %d cutoff_xid %d\n",
+						xlrec.node.spcNode,
+						xlrec.node.dbNode,
+						xlrec.node.relNode,
+						xlrec.block, xlrec.cutoff_xid
+					);
+				}
+				break;
+				case XLOG_HEAP2_CLEAN:
+				case XLOG_HEAP2_CLEAN_MOVE:
+				{
+					xl_heap_clean xlrec;
+					int total_off;
+					int nunused = 0;
+
+					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+					getSpaceName(xlrec.node.spcNode);
+					getDbName(xlrec.node.dbNode);
+					getRelName(xlrec.node.relNode);
+					total_off = (record->xl_len - SizeOfHeapClean) / sizeof(OffsetNumber);
+					if (total_off > xlrec.nredirected + xlrec.ndead)
+						nunused = total_off - (xlrec.nredirected + xlrec.ndead);
+					printf("clean%s: ts %s db %s rel %s block %u redirected %d dead %d unused %d\n",
+						info == XLOG_HEAP2_CLEAN_MOVE ? "_move" : "",
+						spaceName, dbName, relName,
+						xlrec.block,
+						xlrec.nredirected, xlrec.ndead, nunused);
+					break;
+				}
+				break;
+			}
+			break;
 		case RM_HEAP_ID:
 			switch (info & XLOG_HEAP_OPMASK)
 			{
@@ -944,10 +984,23 @@ dumpXLogRecord(XLogRecord *record)
 						printInsert((xl_heap_insert *) XLogRecGetData(record), record->xl_len - SizeOfHeapInsert - SizeOfHeapHeader);
 
 					printf("insert%s: ts %s db %s rel %s block %u off %u\n",
-						   (info & XLOG_HEAP_INIT_PAGE) ? "+INIT" : "",
+						   (info & XLOG_HEAP_INIT_PAGE) ? "(init)" : "",
 						   spaceName, dbName, relName,
 						   ItemPointerGetBlockNumber(&xlrec.target.tid),
 						   ItemPointerGetOffsetNumber(&xlrec.target.tid));
+					/* If backup block doesn't exist, dump rmgr data. */
+					if (!(record->xl_info & XLR_BKP_BLOCK_MASK))
+					{
+						xl_heap_header *header = (xl_heap_header *)
+							(XLogRecGetData(record) + SizeOfHeapInsert);
+						printf("header: t_infomask2 %d t_infomask %d t_hoff %d\n",
+							header->t_infomask2,
+							header->t_infomask,
+							header->t_hoff);
+					}
+					else
+						printf("header: none\n");
+
 					break;
 				}
 				case XLOG_HEAP_DELETE:
@@ -963,13 +1016,14 @@ dumpXLogRecord(XLogRecord *record)
 						printf("DELETE FROM %s WHERE ...", relName);
 					
 					printf("delete%s: ts %s db %s rel %s block %u off %u\n",
-						   (info & XLOG_HEAP_INIT_PAGE) ? "+INIT" : "",
+						   (info & XLOG_HEAP_INIT_PAGE) ? "(init)" : "",
 						   spaceName, dbName, relName,
 						   ItemPointerGetBlockNumber(&xlrec.target.tid),
 						   ItemPointerGetOffsetNumber(&xlrec.target.tid));
 					break;
 				}
 				case XLOG_HEAP_UPDATE:
+				case XLOG_HEAP_HOT_UPDATE:
 				{
 					xl_heap_update xlrec;
 
@@ -981,8 +1035,9 @@ dumpXLogRecord(XLogRecord *record)
 					if(statements)
 						printUpdate((xl_heap_update *) XLogRecGetData(record), record->xl_len - SizeOfHeapUpdate - SizeOfHeapHeader);
 
-					printf("update%s: ts %s db %s rel %s block %u off %u to block %u off %u\n",
-						   (info & XLOG_HEAP_INIT_PAGE) ? "+INIT" : "",
+					printf("%supdate%s: ts %s db %s rel %s block %u off %u to block %u off %u\n",
+						   (info & XLOG_HEAP_HOT_UPDATE) ? "hot_" : "",
+						   (info & XLOG_HEAP_INIT_PAGE) ? "(init)" : "",
 						   spaceName, dbName, relName,
 						   ItemPointerGetBlockNumber(&xlrec.target.tid),
 						   ItemPointerGetOffsetNumber(&xlrec.target.tid),
@@ -999,26 +1054,12 @@ dumpXLogRecord(XLogRecord *record)
 					getDbName(xlrec.target.node.dbNode);
 					getRelName(xlrec.target.node.relNode);
 					printf("move%s: ts %s db %s rel %s block %u off %u to block %u off %u\n",
-						   (info & XLOG_HEAP_INIT_PAGE) ? "+INIT" : "",
+						   (info & XLOG_HEAP_INIT_PAGE) ? "(init)" : "",
 						   spaceName, dbName, relName,
 						   ItemPointerGetBlockNumber(&xlrec.target.tid),
 						   ItemPointerGetOffsetNumber(&xlrec.target.tid),
 						   ItemPointerGetBlockNumber(&xlrec.newtid),
 						   ItemPointerGetOffsetNumber(&xlrec.newtid));
-					break;
-				}
-				case XLOG_HEAP_CLEAN:
-				{
-					xl_heap_clean xlrec;
-
-					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-					getSpaceName(xlrec.node.spcNode);
-					getDbName(xlrec.node.dbNode);
-					getRelName(xlrec.node.relNode);
-					printf("clean%s: ts %s db %s rel %s block %u\n",
-						   (info & XLOG_HEAP_INIT_PAGE) ? "+INIT" : "",
-						   spaceName, dbName, relName,
-						   xlrec.block);
 					break;
 				}
 				case XLOG_HEAP_NEWPAGE:
@@ -1068,8 +1109,7 @@ dumpXLogRecord(XLogRecord *record)
 			}
 			break;
 		case RM_BTREE_ID:
-			/* XXX not complete dump of info ... */
-			switch (info & XLOG_HEAP_OPMASK)
+			switch (info)
 			{
 				case XLOG_BTREE_INSERT_LEAF:
 				{
@@ -1102,82 +1142,65 @@ dumpXLogRecord(XLogRecord *record)
 					break;
 				}
 				case XLOG_BTREE_INSERT_META:
-				{
-					xl_btree_insert xlrec;
-
-					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-					getSpaceName(xlrec.target.node.spcNode);
-					getDbName(xlrec.target.node.dbNode);
-					getRelName(xlrec.target.node.relNode);
-
-					printf("insert_meta: index %s/%s/%s tid %u/%u\n", 
-							spaceName, dbName, relName,
-						   	BlockIdGetBlockNumber(&xlrec.target.tid.ip_blkid),
-						   	xlrec.target.tid.ip_posid);
+					dump_xlog_btree_insert_meta(record);
 					break;
-				}
 				case XLOG_BTREE_SPLIT_L:
+				case XLOG_BTREE_SPLIT_L_ROOT:
 				{
+					char *datapos = XLogRecGetData(record);
 					xl_btree_split xlrec;
+					OffsetNumber newitemoff;
 
 					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-					getSpaceName(xlrec.target.node.spcNode);
-					getDbName(xlrec.target.node.dbNode);
-					getRelName(xlrec.target.node.relNode);
+					datapos += SizeOfBtreeSplit;
+					getSpaceName(xlrec.node.spcNode);
+					getDbName(xlrec.node.dbNode);
+					getRelName(xlrec.node.relNode);
 
-					printf("split_l: index %s/%s/%s tid %u/%u otherblk %u\n", 
-							spaceName, dbName, relName,
-						   	BlockIdGetBlockNumber(&xlrec.target.tid.ip_blkid),
-						   	xlrec.target.tid.ip_posid,
-						   	xlrec.otherblk);
+					printf("split_l%s: index %s/%s/%s rightsib %u\n",
+							info == XLOG_BTREE_SPLIT_L_ROOT ? "_root" : "",
+							spaceName, dbName, relName, xlrec.rightsib);
+					printf(" lsib %u rsib %u rnext %u level %u firstright %u\n",
+						xlrec.leftsib, xlrec.rightsib,
+						xlrec.rnext, xlrec.level, xlrec.firstright
+					);
+					/* downlinks */
+					if (xlrec.level > 0)
+					{
+						BlockIdData downlink;
+						memcpy(&downlink, XLogRecGetData(record) + SizeOfBtreeSplit, sizeof(downlink));
+						datapos += sizeof(downlink);
+						printf("downlink: %u\n",
+							BlockIdGetBlockNumber(&downlink));
+					}
+					/* newitemoff */
+					memcpy(&newitemoff, datapos, sizeof(OffsetNumber));
+					datapos += sizeof(OffsetNumber);
+					printf("newitemoff: %u\n", newitemoff);
+					/* newitem (only when bkpblock1 is not recorded) */
+					if (!(record->xl_info & XLR_BKP_BLOCK_1))
+					{
+						IndexTuple newitem = (IndexTuple)datapos;
+						printf("newitem: { block %u pos 0x%x }\n",
+							BlockIdGetBlockNumber(&newitem->t_tid.ip_blkid),
+							newitem->t_tid.ip_posid);
+					}
+					/* items in right page should be here */
 					break;
 				}
 				case XLOG_BTREE_SPLIT_R:
-				{
-					xl_btree_split xlrec;
-
-					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-					getSpaceName(xlrec.target.node.spcNode);
-					getDbName(xlrec.target.node.dbNode);
-					getRelName(xlrec.target.node.relNode);
-
-					printf("split_r: index %s/%s/%s tid %u/%u otherblk %u\n", 
-							spaceName, dbName, relName,
-						   	BlockIdGetBlockNumber(&xlrec.target.tid.ip_blkid),
-						   	xlrec.target.tid.ip_posid,
-						   	xlrec.otherblk);
-					break;
-				}
-				case XLOG_BTREE_SPLIT_L_ROOT:
-				{
-					xl_btree_split xlrec;
-
-					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-					getSpaceName(xlrec.target.node.spcNode);
-					getDbName(xlrec.target.node.dbNode);
-					getRelName(xlrec.target.node.relNode);
-
-					printf("split_l_root: index %s/%s/%s tid %u/%u otherblk %u\n", 
-							spaceName, dbName, relName,
-						   	BlockIdGetBlockNumber(&xlrec.target.tid.ip_blkid),
-						   	xlrec.target.tid.ip_posid,
-						   	xlrec.otherblk);
-					break;
-				}
 				case XLOG_BTREE_SPLIT_R_ROOT:
 				{
 					xl_btree_split xlrec;
 
 					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-					getSpaceName(xlrec.target.node.spcNode);
-					getDbName(xlrec.target.node.dbNode);
-					getRelName(xlrec.target.node.relNode);
+					getSpaceName(xlrec.node.spcNode);
+					getDbName(xlrec.node.dbNode);
+					getRelName(xlrec.node.relNode);
 
-					printf("split_r_root: index %s/%s/%s tid %u/%u otherblk %u\n", 
-							spaceName, dbName, relName,
-						   	BlockIdGetBlockNumber(&xlrec.target.tid.ip_blkid),
-						   	xlrec.target.tid.ip_posid,
-						   	xlrec.otherblk);
+					printf("split_r%s: index %s/%s/%s leftsib %u\n", 
+							info == XLOG_BTREE_SPLIT_R_ROOT ? "_root" : "",
+							spaceName, dbName, relName, xlrec.leftsib);
 					break;
 				}
 				case XLOG_BTREE_DELETE:
@@ -1212,17 +1235,22 @@ dumpXLogRecord(XLogRecord *record)
 				case XLOG_BTREE_DELETE_PAGE_META:
 				{
 					xl_btree_delete_page xlrec;
+					xl_btree_metadata md;
 
 					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
 					getSpaceName(xlrec.target.node.spcNode);
 					getDbName(xlrec.target.node.dbNode);
 					getRelName(xlrec.target.node.relNode);
 
-					printf("delete_page_meta: index %s/%s/%s tid %u/%u deadblk %u\n", 
+					memcpy(&md, XLogRecGetData(record) + sizeof(xlrec),
+						sizeof(xl_btree_metadata));
+
+					printf("delete_page_meta: index %s/%s/%s tid %u/%u deadblk %u root %u/%u froot %u/%u\n", 
 							spaceName, dbName, relName,
 						   	BlockIdGetBlockNumber(&xlrec.target.tid.ip_blkid),
 						   	xlrec.target.tid.ip_posid,
-						   	xlrec.deadblk);
+						   	xlrec.deadblk,
+							md.root, md.level, md.fastroot, md.fastlevel);
 					break;
 				}
 				case XLOG_BTREE_NEWROOT:
@@ -1239,11 +1267,28 @@ dumpXLogRecord(XLogRecord *record)
 						   	xlrec.rootblk, xlrec.level);
 					break;
 				}
+				case XLOG_BTREE_DELETE_PAGE_HALF:
+				{
+					xl_btree_delete_page xlrec;
+
+					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+					getSpaceName(xlrec.target.node.spcNode);
+					getDbName(xlrec.target.node.dbNode);
+					getRelName(xlrec.target.node.relNode);
+
+					printf("delete_page_half: index %s/%s/%s tid %u/%u deadblk %u\n",
+							spaceName, dbName, relName,
+						   	BlockIdGetBlockNumber(&xlrec.target.tid.ip_blkid),
+						   	xlrec.target.tid.ip_posid,
+						   	xlrec.deadblk);
+					break;
+				}
 			}
 			break;
 		case RM_HASH_ID:
 			break;
 		case RM_GIST_ID:
+			dumpGIST(record);
 			break;
 		case RM_SEQ_ID:
 			break;
@@ -1336,12 +1381,12 @@ dumpXLog(char* fname)
 		fprintf(stderr, "Can't recognize logfile name '%s'\n", fnamebase);
 		logTLI = logId = logSeg = 0;
 	}
-	logPageOff = -BLCKSZ;		/* so 1st increment in readXLogPage gives 0 */
+	logPageOff = -XLOG_BLCKSZ;		/* so 1st increment in readXLogPage gives 0 */
 	logRecOff = 0;
 	while (ReadRecord())
 	{
 		if(!transactions)
-			dumpXLogRecord((XLogRecord *) readRecordBuf);
+			dumpXLogRecord((XLogRecord *) readRecordBuf, false);
 		else
 			addTransaction((XLogRecord *) readRecordBuf);
 
@@ -1349,138 +1394,6 @@ dumpXLog(char* fname)
 	}
 	if(transactions)
 		dumpTransactions();
-}
-
-static const char *
-dbState(DBState state)
-{
-	switch (state)
-	{
-		case DB_STARTUP:
-			return _("starting up");
-		case DB_SHUTDOWNED:
-			return _("shut down");
-		case DB_SHUTDOWNING:
-			return _("shutting down");
-		case DB_IN_CRASH_RECOVERY:
-			return _("in crash recovery");
-		case DB_IN_ARCHIVE_RECOVERY:
-			return _("in archive recovery");
-		case DB_IN_PRODUCTION:
-			return _("in production");
-	}
-	return _("unrecognized status code");
-}
-
-static void
-dumpPgControl(char* fname)
-{
-	ControlFileData ControlFile;		/* pg_control values */
-	pg_crc32	crc;
-	char		sysident_str[32];
-	size_t 		nread;
-
-	printf("\n%s:\n\n", fname);
-	
-	nread = read(logFd, &ControlFile, sizeof(ControlFileData));
-	if ((long)nread < 0)
-	{
-		fprintf(stderr, "Read error %d on control file data\n",
-			errno);
-		exit(1);
-	}
-	else if (nread != sizeof(ControlFileData))
-	{
-		fprintf(stderr, "Read %d bytes of control file data and was expecting %d\n",
-			(int) nread, (int) sizeof(ControlFileData));
-		exit(1);
-	}
-
-	/* Check the CRC. */
-	INIT_CRC32(crc);
-	COMP_CRC32(crc,
-			   (char *) &ControlFile,
-			   offsetof(ControlFileData, crc));
-	FIN_CRC32(crc);
-
-	if (!EQ_CRC32(crc, ControlFile.crc))
-		printf("WARNING: Calculated CRC checksum does not match value stored in file.\n"
-				 "Either the file is corrupt, or it has a different layout than this program\n"
-				 "is expecting.  The results below are untrustworthy.\n\n");
-
-	/*
-	 * Format system_identifier separately to keep platform-dependent format
-	 * code out of the translatable message string.
-	 */
-	snprintf(sysident_str, sizeof(sysident_str), UINT64_FORMAT,
-			 ControlFile.system_identifier);
-
-	printf(_("pg_control version number:            %u\n"),
-		   ControlFile.pg_control_version);
-	printf(_("Catalog version number:               %u\n"),
-		   ControlFile.catalog_version_no);
-	printf(_("Database system identifier:           %s\n"),
-		   sysident_str);
-	printf(_("Database cluster state:               %s\n"),
-		   dbState(ControlFile.state));
-	printf(_("pg_control last modified:             %s\n"),
-		   str_time(ControlFile.time));
-	printf(_("Current log file ID:                  %u\n"),
-		   ControlFile.logId);
-	printf(_("Next log file segment:                %u\n"),
-		   ControlFile.logSeg);
-	printf(_("Latest checkpoint location:           %X/%X\n"),
-		   ControlFile.checkPoint.xlogid,
-		   ControlFile.checkPoint.xrecoff);
-	printf(_("Prior checkpoint location:            %X/%X\n"),
-		   ControlFile.prevCheckPoint.xlogid,
-		   ControlFile.prevCheckPoint.xrecoff);
-	printf(_("Latest checkpoint's REDO location:    %X/%X\n"),
-		   ControlFile.checkPointCopy.redo.xlogid,
-		   ControlFile.checkPointCopy.redo.xrecoff);
-	printf(_("Latest checkpoint's UNDO location:    %X/%X\n"),
-		   ControlFile.checkPointCopy.undo.xlogid,
-		   ControlFile.checkPointCopy.undo.xrecoff);
-	printf(_("Latest checkpoint's TimeLineID:       %u\n"),
-		   ControlFile.checkPointCopy.ThisTimeLineID);
-	printf(_("Latest checkpoint's NextXID:          %u/%u\n"),
-		   ControlFile.checkPointCopy.nextXidEpoch,
-		   ControlFile.checkPointCopy.nextXid);
-	printf(_("Latest checkpoint's NextOID:          %u\n"),
-		   ControlFile.checkPointCopy.nextOid);
-	printf(_("Latest checkpoint's NextMultiXactId:  %u\n"),
-		   ControlFile.checkPointCopy.nextMulti);
-	printf(_("Latest checkpoint's NextMultiOffset:  %u\n"),
-		   ControlFile.checkPointCopy.nextMultiOffset);
-	printf(_("Time of latest checkpoint:            %s\n"),
-		   str_time(ControlFile.checkPointCopy.time));
-	printf(_("Minimum recovery ending location:     %X/%X\n"),
-		   ControlFile.minRecoveryPoint.xlogid,
-		   ControlFile.minRecoveryPoint.xrecoff);
-	printf(_("Maximum data alignment:               %u\n"),
-		   ControlFile.maxAlign);
-	/* we don't print floatFormat since can't say much useful about it */
-	printf(_("Database block size:                  %u\n"),
-		   ControlFile.blcksz);
-	printf(_("Blocks per segment of large relation: %u\n"),
-		   ControlFile.relseg_size);
-	printf(_("WAL block size:                       %u\n"),
-		   ControlFile.xlog_blcksz);
-	printf(_("Bytes per WAL segment:                %u\n"),
-		   ControlFile.xlog_seg_size);
-	printf(_("Maximum length of identifiers:        %u\n"),
-		   ControlFile.nameDataLen);
-	printf(_("Maximum columns in an index:          %u\n"),
-		   ControlFile.indexMaxKeys);
-	printf(_("Date/time type storage:               %s\n"),
-		   (ControlFile.enableIntTimes ? _("64-bit integers") : _("floating-point numbers")));
-	printf(_("Maximum length of locale name:        %u\n"),
-		   ControlFile.localeBuflen);
-	printf(_("LC_COLLATE:                           %s\n"),
-		   ControlFile.lc_collate);
-	printf(_("LC_CTYPE:                             %s\n"),
-		   ControlFile.lc_ctype);
-	
 }
 
 static void
@@ -1517,7 +1430,6 @@ main(int argc, char** argv)
 		{"host", required_argument, NULL, 'h'},
 		{"port", required_argument, NULL, 'p'},
 		{"username", required_argument, NULL, 'U'},
-		{"pg_control", no_argument, NULL, 'c'},
 		{"help", no_argument, NULL, '?'},
 		{NULL, 0, NULL, 0}
 	};
@@ -1553,35 +1465,10 @@ main(int argc, char** argv)
 			case 'U':			/* username for translating oids */
 				username = optarg;
 				break;
-			case 'c':			
-				showPgControl = true;	/* display file as pg_control */
-				break;
 			default:
 				fprintf(stderr, "Try \"xlogdump --help\" for more information.\n");
 				exit(1);
 		}
-	}
-	
-	if (showPgControl)
-	{
-		char *fname;
-		
-		if (optind >= argc)
-		{
-			fprintf(stderr, "Missing pg_control specification.\n");
-			exit(1);
-		}
-		
-		fname = argv[optind];
-		logFd = open(fname, O_RDONLY | PG_BINARY, 0);
-
-		if (logFd < 0)
-		{
-			perror(fname);
-			exit(1);
-		}
-		dumpPgControl(fname);
-		exit_gracefuly(0);
 	}
 
 	if (statements && transactions)
@@ -1626,13 +1513,12 @@ main(int argc, char** argv)
  */
 #ifndef assert_enabled
 bool		assert_enabled = true;
-#endif
 
 int
 ExceptionalCondition(const char *conditionName,
 					 const char *errorType,
 					 const char *fileName,
-					 int         lineNumber)
+					 int lineNumber)
 {
 	fprintf(stderr, "TRAP: %s(\"%s\", File: \"%s\", Line: %d)\n",
 			errorType, conditionName,
@@ -1640,4 +1526,217 @@ ExceptionalCondition(const char *conditionName,
 
 	abort();
 	return 0;
+}
+#endif
+
+typedef struct
+{
+    gistxlogPageUpdate *data;
+    int         len;
+    IndexTuple *itup;
+    OffsetNumber *todelete;
+} PageUpdateRecord;
+
+/* copied from backend/access/gist/gistxlog.c */
+static void
+decodePageUpdateRecord(PageUpdateRecord *decoded, XLogRecord *record)
+{
+	char	   *begin = XLogRecGetData(record),
+			   *ptr;
+	int			i = 0,
+				addpath = 0;
+
+	decoded->data = (gistxlogPageUpdate *) begin;
+
+	if (decoded->data->ntodelete)
+	{
+		decoded->todelete = (OffsetNumber *) (begin + sizeof(gistxlogPageUpdate) + addpath);
+		addpath = MAXALIGN(sizeof(OffsetNumber) * decoded->data->ntodelete);
+	}
+	else
+		decoded->todelete = NULL;
+
+	decoded->len = 0;
+	ptr = begin + sizeof(gistxlogPageUpdate) + addpath;
+	while (ptr - begin < record->xl_len)
+	{
+		decoded->len++;
+		ptr += IndexTupleSize((IndexTuple) ptr);
+	}
+
+	decoded->itup = (IndexTuple *) malloc(sizeof(IndexTuple) * decoded->len);
+
+	ptr = begin + sizeof(gistxlogPageUpdate) + addpath;
+	while (ptr - begin < record->xl_len)
+	{
+		decoded->itup[i] = (IndexTuple) ptr;
+		ptr += IndexTupleSize(decoded->itup[i]);
+		i++;
+	}
+}
+
+/* copied from backend/access/gist/gistxlog.c */
+typedef struct
+{
+    gistxlogPage *header;
+    IndexTuple *itup;
+} NewPage;
+
+/* copied from backend/access/gist/gistxlog.c */
+typedef struct
+{
+    gistxlogPageSplit *data;
+    NewPage    *page;
+} PageSplitRecord;
+
+/* copied from backend/access/gist/gistxlog.c */
+static void
+decodePageSplitRecord(PageSplitRecord *decoded, XLogRecord *record)
+{
+	char	   *begin = XLogRecGetData(record),
+			   *ptr;
+	int			j,
+				i = 0;
+
+	decoded->data = (gistxlogPageSplit *) begin;
+	decoded->page = (NewPage *) malloc(sizeof(NewPage) * decoded->data->npage);
+
+	ptr = begin + sizeof(gistxlogPageSplit);
+	for (i = 0; i < decoded->data->npage; i++)
+	{
+		Assert(ptr - begin < record->xl_len);
+		decoded->page[i].header = (gistxlogPage *) ptr;
+		ptr += sizeof(gistxlogPage);
+
+		decoded->page[i].itup = (IndexTuple *)
+			malloc(sizeof(IndexTuple) * decoded->page[i].header->num);
+		j = 0;
+		while (j < decoded->page[i].header->num)
+		{
+			Assert(ptr - begin < record->xl_len);
+			decoded->page[i].itup[j] = (IndexTuple) ptr;
+			ptr += IndexTupleSize((IndexTuple) ptr);
+			j++;
+		}
+	}
+}
+
+void
+dumpGIST(XLogRecord *record)
+{
+	int info = record->xl_info & ~XLR_INFO_MASK;
+	switch (info)
+	{
+		case XLOG_GIST_PAGE_UPDATE:
+		case XLOG_GIST_NEW_ROOT:
+			{
+				int i;
+				PageUpdateRecord rec;
+				decodePageUpdateRecord(&rec, record);
+
+				printf("%s: rel=(%u/%u/%u) blk=%u key=(%d,%d) add=%d ntodelete=%d\n",
+					info == XLOG_GIST_PAGE_UPDATE ? "page_update" : "new_root",
+					rec.data->node.spcNode, rec.data->node.dbNode,
+					rec.data->node.relNode,
+					rec.data->blkno,
+					ItemPointerGetBlockNumber(&rec.data->key),
+					rec.data->key.ip_posid,
+					rec.len,
+					rec.data->ntodelete
+				);
+				for (i = 0; i < rec.len; i++)
+				{
+					printf("  itup[%d] points (%d, %d)\n",
+						i,
+						ItemPointerGetBlockNumber(&rec.itup[i]->t_tid),
+						rec.itup[i]->t_tid.ip_posid
+					);
+				}
+				for (i = 0; i < rec.data->ntodelete; i++)
+				{
+					printf("  todelete[%d] offset %d\n", i, rec.todelete[i]);
+				}
+				free(rec.itup);
+			}
+			break;
+		case XLOG_GIST_PAGE_SPLIT:
+			{
+				int i;
+				PageSplitRecord rec;
+
+				decodePageSplitRecord(&rec, record);
+				printf("page_split: orig %u key (%d,%d)\n",
+					rec.data->origblkno,
+					ItemPointerGetBlockNumber(&rec.data->key),
+					rec.data->key.ip_posid
+				);
+				for (i = 0; i < rec.data->npage; i++)
+				{
+					printf("  page[%d] block %u tuples %d\n",
+						i,
+						rec.page[i].header->blkno,
+						rec.page[i].header->num
+					);
+#if 0
+					for (int j = 0; j < rec.page[i].header->num; j++)
+					{
+						NewPage *newpage = rec.page + i;
+						printf("   itup[%d] points (%d,%d)\n",
+							j,
+							BlockIdGetBlockNumber(&newpage->itup[j]->t_tid.ip_blkid),
+							newpage->itup[j]->t_tid.ip_posid
+						);
+					}
+#endif
+					free(rec.page[i].itup);
+				}
+			}
+			break;
+		case XLOG_GIST_INSERT_COMPLETE:
+			{
+				printf("insert_complete: \n");
+			}
+			break;
+		case XLOG_GIST_CREATE_INDEX:
+			printf("create_index: \n");
+			break;
+		case XLOG_GIST_PAGE_DELETE:
+			printf("page_delete: \n");
+			break;
+	}
+}
+
+void dump_xlog_btree_insert_meta(XLogRecord *record)
+{
+	xl_btree_insert *xlrec = (xl_btree_insert *) XLogRecGetData(record);
+	char *datapos;
+	int datalen;
+	xl_btree_metadata md;
+	BlockNumber downlink;
+
+	/* copied from btree_xlog_insert(nbtxlog.c:191) */
+	datapos = (char *) xlrec + SizeOfBtreeInsert;
+	datalen = record->xl_len - SizeOfBtreeInsert;
+
+	getSpaceName(xlrec->target.node.spcNode);
+	getDbName(xlrec->target.node.dbNode);
+	getRelName(xlrec->target.node.relNode);
+
+	/* downlink */
+	memcpy(&downlink, datapos, sizeof(BlockNumber));
+	datapos += sizeof(BlockNumber);
+	datalen -= sizeof(BlockNumber);
+
+	/* xl_insert_meta */
+	memcpy(&md, datapos, sizeof(xl_btree_metadata));
+	datapos += sizeof(xl_btree_metadata);
+	datalen -= sizeof(xl_btree_metadata);
+
+	printf("insert_meta: index %s/%s/%s tid %u/%u downlink %u froot %u/%u\n", 
+		spaceName, dbName, relName,
+		BlockIdGetBlockNumber(&xlrec->target.tid.ip_blkid),
+		xlrec->target.tid.ip_posid,
+		downlink,
+		md.fastroot, md.fastlevel
+	);
 }

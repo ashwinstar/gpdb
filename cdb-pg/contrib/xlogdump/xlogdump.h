@@ -34,11 +34,11 @@ static const char * const RM_names[RM_MAX_ID+1] = {
 	"MXACT",					/* 6 */
 	"RM  7",					/* 7 */
 	"RM  8",					/* 8 */
-	"RM  9",					/* 9 */
+	"HEAP2",					/* 9 */
 	"HEAP ",					/* 10 */
 	"BTREE",					/* 11 */
 	"HASH ",					/* 12 */
-	"RTREE",					/* 13 */
+	"GIN",						/* 13 */
 	"GIST ",					/* 14 */
 	"SEQ  "						/* 15 */
 };
