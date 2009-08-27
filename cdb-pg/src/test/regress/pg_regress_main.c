@@ -39,7 +39,16 @@ psql_start_test(const char *testname,
 	if (strcmp(testname, "upg2") == 0)
 		use_utility_mode = 1;
 
+	/*
+	 * Look for files in the output dir first, consistent with a vpath search.
+	 * This is mainly to create more reasonable error messages if the file is
+	 * not found.  It also allows local test overrides when running pg_regress
+	 * outside of the source tree.
+	 */
 	snprintf(infile, sizeof(infile), "%s/sql/%s.sql",
+			 outputdir, testname);
+	if (!file_exists(infile))
+		snprintf(infile, sizeof(infile), "%s/sql/%s.sql",
 			 inputdir, testname);
 	snprintf(outfile, sizeof(outfile), "%s/results/%s.out",
 			 outputdir, testname);

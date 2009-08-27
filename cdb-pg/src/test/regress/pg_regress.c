@@ -1143,7 +1143,7 @@ file_line_count(const char *file)
 	return l;
 }
 
-static bool
+bool
 file_exists(const char *file)
 {
 	FILE	   *f = fopen(file, "r");
