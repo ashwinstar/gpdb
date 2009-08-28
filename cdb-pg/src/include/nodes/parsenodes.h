@@ -3,6 +3,12 @@
  * parsenodes.h
  *	  definitions for parse tree nodes
  *
+ * Many of the node types used in parsetrees include a "location" field.
+ * This is a byte (not character) offset in the original source text, to be
+ * used for positioning an error cursor when there is an error related to
+ * the node.  Access to the original source text is needed to make use of
+ * the location.
+ *
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
@@ -19,6 +25,7 @@
 #ifndef PARSENODES_H
 #define PARSENODES_H
 
+#include "nodes/bitmapset.h"
 #include "nodes/primnodes.h"
 #include "nodes/value.h"
 
@@ -49,15 +56,6 @@ typedef struct TableOidInfo
 
 } TableOidInfo;
 
-/* What to do at commit time for temporary relations */
-typedef enum OnCommitAction
-{
-	ONCOMMIT_NOOP,				/* No ON COMMIT clause (do nothing) */
-	ONCOMMIT_PRESERVE_ROWS,		/* ON COMMIT PRESERVE ROWS (do nothing) */
-	ONCOMMIT_DELETE_ROWS,		/* ON COMMIT DELETE ROWS */
-	ONCOMMIT_DROP				/* ON COMMIT DROP */
-} OnCommitAction;
-
 
 /*
  * Grantable rights are encoded so that we can OR them together in a bitmask.
@@ -72,11 +70,12 @@ typedef uint32 AclMode;			/* a bitmask of privilege bits */
 #define ACL_SELECT		(1<<1)
 #define ACL_UPDATE		(1<<2)
 #define ACL_DELETE		(1<<3)
-/* #define ACL_RULE		(1<<4)	unused, available */
+#define ACL_TRUNCATE	(1<<4)
 #define ACL_REFERENCES	(1<<5)
 #define ACL_TRIGGER		(1<<6)
 #define ACL_EXECUTE		(1<<7)	/* for functions */
-#define ACL_USAGE		(1<<8)	/* for languages and namespaces */
+#define ACL_USAGE		(1<<8)	/* for languages, namespaces, FDWs, and
+								 * servers */
 #define ACL_CREATE		(1<<9)	/* for namespaces and databases */
 #define ACL_CREATE_TEMP (1<<10) /* for databases */
 #define ACL_CONNECT		(1<<11) /* for databases */
@@ -92,8 +91,8 @@ typedef uint32 AclMode;			/* a bitmask of privilege bits */
 
 /*
  * Query -
- *	  all statements are turned into a Query tree (via transformStmt)
- *	  for further processing by the optimizer
+ *	  Parse analysis turns all statements into a Query tree (via transformStmt)
+ *	  for further processing by the rewriter and planner.
  *
  *	  utility statements (i.e. non-optimizable statements) have the
  *	  utilityStmt field set, and the Query itself is mostly dummy.
@@ -233,8 +232,10 @@ typedef struct TypeName
 /*
  * ColumnRef - specifies a reference to a column, or possibly a whole tuple
  *
- *		The "fields" list must be nonempty; its last component may be "*"
- *		instead of a regular field name.
+ * The "fields" list must be nonempty.	It can contain string Value nodes
+ * (representing names) and A_Star nodes (representing occurrence of a '*').
+ * Currently, A_Star must appear only as the last list element --- the grammar
+ * is responsible for enforcing this!
  *
  * Note: any array subscripting or selection of fields from composite columns
  * is represented by an A_Indirection node above the ColumnRef.  However,
@@ -244,7 +245,7 @@ typedef struct TypeName
 typedef struct ColumnRef
 {
 	NodeTag		type;
-	List	   *fields;			/* field names (list of Value strings) */
+	List	   *fields;			/* field names (Value strings) or A_Star */
 	int			location;		/* token location, or -1 if unknown */
 } ColumnRef;
 
@@ -255,7 +256,7 @@ typedef struct ParamRef
 {
 	NodeTag		type;
 	int			number;			/* the number of the parameter */
-	int			location;		/* CDB: token location, or -1 if unknown */
+	int			location;		/* token location, or -1 if unknown */
 } ParamRef;
 
 /*
@@ -286,14 +287,14 @@ typedef struct A_Expr
 } A_Expr;
 
 /*
- * A_Const - a constant expression
+ * A_Const - a literal constant
  */
 typedef struct A_Const
 {
 	NodeTag		type;
-	Value		val;			/* the value (with the tag) */
+	Value		val;			/* value (includes type info, see value.h) */
 	TypeName   *typname;		/* typecast, or NULL if none */
-	int			location;		/* CDB: token location, or -1 if unknown */
+	int			location;		/* token location, or -1 if unknown */
 } A_Const;
 
 /*
@@ -310,6 +311,7 @@ typedef struct TypeCast
 	NodeTag		type;
 	Node	   *arg;			/* the expression being casted */
 	TypeName   *typname;		/* the target type */
+	int			location;		/* token location, or -1 if unknown */
 } TypeCast;
 
 /*
@@ -338,7 +340,7 @@ typedef struct FuncCall
 typedef struct A_Indices
 {
 	NodeTag		type;
-	Node	   *lidx;			/* could be NULL */
+	Node	   *lidx;			/* NULL if it's a single subscript */
 	Node	   *uidx;
 } A_Indices;
 
@@ -601,7 +603,7 @@ typedef struct RangeTblEntry
 	/*
 	 * XXX the fields applicable to only some rte kinds should be merged into
 	 * a union.  I didn't do this yet because the diffs would impact a lot of
-	 * code that is being actively worked on.  FIXME later.
+	 * code that is being actively worked on.  FIXME someday.
 	 */
 
 	/*
@@ -1198,7 +1200,10 @@ typedef struct PrivTarget
 /* ----------------------
  *		Grant/Revoke Role Statement
  *
- * Note: the lists of roles are lists of names, as Value strings
+ * Note: because of the parsing ambiguity with the GRANT <privileges>
+ * statement, granted_roles is a list of AccessPriv; the execution code
+ * should complain if any column lists appear.	grantee_roles is a list
+ * of role names, as Value strings.
  * ----------------------
  */
 typedef struct GrantRoleStmt
@@ -1531,7 +1536,7 @@ typedef struct DropTableSpaceStmt
 {
 	NodeTag		type;
 	char	   *tablespacename;
-	bool		missing_ok;		/* skip error if a missing? */
+	bool		missing_ok;		/* skip error if missing? */
 } DropTableSpaceStmt;
 
 /* ----------------------
@@ -1764,7 +1769,7 @@ typedef struct DropPropertyStmt
 	char	   *property;		/* name of rule, trigger, etc */
 	ObjectType	removeType;		/* OBJECT_RULE or OBJECT_TRIGGER */
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
-	bool		missing_ok;		/* skip error if a missing? */
+	bool		missing_ok;		/* skip error if missing? */
 } DropPropertyStmt;
 
 /* ----------------------
@@ -1798,20 +1803,25 @@ typedef struct CommentStmt
 
 /* ----------------------
  *		Declare Cursor Statement
+ *
+ * Note: the "query" field of DeclareCursorStmt is only used in the raw grammar
+ * output.	After parse analysis it's set to null, and the Query points to the
+ * DeclareCursorStmt, not vice versa.
  * ----------------------
  */
-#define CURSOR_OPT_BINARY		0x0001
-#define CURSOR_OPT_SCROLL		0x0002
-#define CURSOR_OPT_NO_SCROLL	0x0004
-#define CURSOR_OPT_INSENSITIVE	0x0008
-#define CURSOR_OPT_HOLD			0x0010
+#define CURSOR_OPT_BINARY		0x0001	/* BINARY */
+#define CURSOR_OPT_SCROLL		0x0002	/* SCROLL explicitly given */
+#define CURSOR_OPT_NO_SCROLL	0x0004	/* NO SCROLL explicitly given */
+#define CURSOR_OPT_INSENSITIVE	0x0008	/* INSENSITIVE */
+#define CURSOR_OPT_HOLD			0x0010	/* WITH HOLD */
+#define CURSOR_OPT_FAST_PLAN	0x0020	/* prefer fast-start plan */
 
 typedef struct DeclareCursorStmt
 {
 	NodeTag		type;
 	char	   *portalname;		/* name of the portal (cursor) */
 	int			options;		/* bitmask of options (see above) */
-	Node	   *query;			/* the SELECT query */
+	Node	   *query;			/* the raw SELECT query */
 } DeclareCursorStmt;
 
 /* ----------------------
@@ -1822,6 +1832,7 @@ typedef struct ClosePortalStmt
 {
 	NodeTag		type;
 	char	   *portalname;		/* name of the portal (cursor) */
+	/* NULL means CLOSE ALL */
 } ClosePortalStmt;
 
 /* ----------------------
@@ -1897,7 +1908,8 @@ typedef enum FunctionParameterMode
 	FUNC_PARAM_IN = 'i',		/* input only */
 	FUNC_PARAM_OUT = 'o',		/* output only */
 	FUNC_PARAM_INOUT = 'b',		/* both */
-	FUNC_PARAM_TABLE = 't'      /* table function column */
+	FUNC_PARAM_VARIADIC = 'v',	/* variadic (always input) */
+	FUNC_PARAM_TABLE = 't'		/* table function output column */
 } FunctionParameterMode;
 
 typedef struct FunctionParameter
@@ -1926,7 +1938,7 @@ typedef struct RemoveFuncStmt
 	List	   *name;			/* qualified name of object to drop */
 	List	   *args;			/* types of the arguments */
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
-	bool		missing_ok;		/* skip error if a missing? */
+	bool		missing_ok;		/* skip error if missing? */
 } RemoveFuncStmt;
 
 /* ----------------------
@@ -1939,7 +1951,7 @@ typedef struct RemoveOpClassStmt
 	List	   *opclassname;	/* qualified name (list of Value strings) */
 	char	   *amname;			/* name of index AM opclass is for */
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
-	bool		missing_ok;		/* skip error if a missing? */
+	bool		missing_ok;		/* skip error if missing? */
 } RemoveOpClassStmt;
 
 /* ----------------------
@@ -2320,7 +2332,7 @@ typedef struct DropCastStmt
 	TypeName   *sourcetype;
 	TypeName   *targettype;
 	DropBehavior behavior;
-	bool		missing_ok;		/* skip error if a missing? */
+	bool		missing_ok;		/* skip error if missing? */
 } DropCastStmt;
 
 
@@ -2332,7 +2344,7 @@ typedef struct PrepareStmt
 {
 	NodeTag		type;
 	char	   *name;			/* Name of plan, arbitrary */
-	List	   *argtypes;		/* Types of parameters (TypeNames) */
+	List	   *argtypes;		/* Types of parameters (List of TypeName) */
 	List	   *argtype_oids;	/* Types of parameters (OIDs) */
 	Query	   *query;			/* The query itself */
 } PrepareStmt;
@@ -2363,9 +2375,8 @@ typedef struct DeallocateStmt
 {
 	NodeTag		type;
 	char	   *name;			/* The name of the plan to remove */
+	/* NULL means DEALLOCATE ALL */
 } DeallocateStmt;
-
-
 
 /*
  *		DROP OWNED statement

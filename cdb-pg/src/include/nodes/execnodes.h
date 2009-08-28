@@ -4,8 +4,8 @@
  *          definitions for executor state nodes
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/nodes/execnodes.h,v 1.161.2.2 2007/04/26 23:24:57 tgl Exp $
@@ -23,6 +23,9 @@
 #include <sys/time.h>
 #endif
 
+#include "access/genam.h"
+#include "access/heapam.h"
+#include "access/skey.h"
 #include "access/relscan.h"
 #include "utils/memutils.h"
 #include "fmgr.h"                       /* ExprDoneCond, SetFunctionReturnMode */
@@ -32,6 +35,7 @@
 #include "nodes/relation.h"
 #include "nodes/tidbitmap.h"
 #include "utils/hsearch.h"
+#include "utils/rel.h"
 #include "utils/tuplesort.h"
 
 #include "gpmon/gpmon.h"                /* gpmon_packet_t */
@@ -106,9 +110,12 @@ typedef struct ExprContext
         ParamExecData *ecxt_param_exec_vals;                /* for PARAM_EXEC params */
         ParamListInfo ecxt_param_list_info; /* for other param types */
 
-        /* Values to substitute for Aggref/WindowRef nodes in expression */
-        Datum           *ecxt_aggvalues; /* precomputed values for ref nodes */
-        bool           *ecxt_aggnulls;        /* null flags for ref nodes */
+	    /*
+	     * Values to substitute for Aggref nodes in the expressions of an Agg
+	     * node, or for WindowFunc nodes within a WindowAgg node.
+	     */
+	    Datum	   *ecxt_aggvalues; /* precomputed values for aggs/windowfuncs */
+	    bool	   *ecxt_aggnulls;	/* null flags for aggs/windowfuncs */
 
         /* Value to substitute for CaseTestExpr nodes in expression */
         Datum                caseValue_datum;
@@ -447,7 +454,7 @@ typedef struct EState
         ScanDirection es_direction; /* current scan direction */
         Snapshot        es_snapshot;        /* time qual to use */
         Snapshot        es_crosscheck_snapshot; /* crosscheck time qual for RI */
-        List           *es_range_table; /* List of RangeTableEntrys */
+		List	   *es_range_table; /* List of RangeTblEntry */
 
         /* Info about target table for insert/update/delete queries: */
         ResultRelInfo *es_result_relations; /* array of ResultRelInfos */
@@ -1667,6 +1674,12 @@ typedef struct HashJoinState
         bool                prefetch_inner;
         bool                hj_nonequijoin;
 } HashJoinState;
+
+
+/* ----------------------------------------------------------------
+ *				 Materialization State Information
+ * ----------------------------------------------------------------
+ */
 
 /* ----------------
  *         MaterialState information

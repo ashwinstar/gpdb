@@ -52,6 +52,15 @@ typedef enum InhOption
 	INH_DEFAULT					/* Use current SQL_inheritance option */
 } InhOption;
 
+/* What to do at commit time for temporary relations */
+typedef enum OnCommitAction
+{
+	ONCOMMIT_NOOP,				/* No ON COMMIT clause (do nothing) */
+	ONCOMMIT_PRESERVE_ROWS,		/* ON COMMIT PRESERVE ROWS (do nothing) */
+	ONCOMMIT_DELETE_ROWS,		/* ON COMMIT DELETE ROWS */
+	ONCOMMIT_DROP				/* ON COMMIT DROP */
+} OnCommitAction;
+
 /*
  * RangeVar - range variable, used in FROM clauses
  *
@@ -70,8 +79,22 @@ typedef struct RangeVar
 								 * on children? */
 	bool		istemp;			/* is this a temp relation/sequence? */
 	Alias	   *alias;			/* table alias & optional column aliases */
-	int			location;		/* CDB: token location, or -1 if unknown */
+	int			location;		/* token location, or -1 if unknown */
 } RangeVar;
+
+/*
+ * IntoClause - target information for SELECT INTO and CREATE TABLE AS
+ */
+typedef struct IntoClause
+{
+	NodeTag		type;
+
+	RangeVar   *rel;			/* target relation name */
+	List	   *colNames;		/* column names to assign, or NIL */
+	List	   *options;		/* options from WITH clause */
+	OnCommitAction onCommit;	/* what do we do at COMMIT? */
+	char	   *tableSpaceName; /* table space to use, or NULL */
+} IntoClause;
 
 
 /* ----------------------------------------------------------------
@@ -117,7 +140,7 @@ typedef struct Var
 								 * table (could also be INNER or OUTER) */
 	AttrNumber	varattno;		/* attribute number of this var, or zero for
 								 * all */
-	Oid			vartype;		/* pg_type tuple OID for the type of this var */
+	Oid			vartype;		/* pg_type OID for the type of this var */
 	int32		vartypmod;		/* pg_attribute typmod value */
 	Index		varlevelsup;
 
@@ -127,6 +150,7 @@ typedef struct Var
 	 */
 	Index		varnoold;		/* original value of varno, for debugging */
 	AttrNumber	varoattno;		/* original value of varattno */
+	int			location;		/* token location, or -1 if unknown */
 } Var;
 
 /*
@@ -144,6 +168,7 @@ typedef struct Const
 								 * If true, then all the information is stored
 								 * in the Datum. If false, then the Datum
 								 * contains a pointer to the information. */
+	int			location;		/* token location, or -1 if unknown */
 } Const;
 
 /* ----------------
@@ -179,6 +204,7 @@ typedef struct Param
 	ParamKind	paramkind;		/* kind of parameter. See above */
 	int			paramid;		/* numeric ID for parameter */
 	Oid			paramtype;		/* PG_TYPE OID of parameter's datatype */
+	int			location;		/* token location, or -1 if unknown */
 } Param;
 
 /* AggStage enumeration indicates how the executor should handle an
@@ -209,6 +235,7 @@ typedef struct Aggref
 	bool		aggstar;		/* TRUE if argument list was really '*' */
 	bool		aggdistinct;	/* TRUE if it's agg(DISTINCT ...) */
 	AggStage	aggstage;		/* MPP: 2-stage? If so, which stage */
+	int			location;		/* token location, or -1 if unknown */
 } Aggref;
 
 
@@ -375,6 +402,7 @@ typedef struct FuncExpr
 	bool		funcretset;		/* true if function returns set */
 	CoercionForm funcformat;	/* how to display this function call */
 	List	   *args;			/* arguments to the function */
+	int			location;		/* token location, or -1 if unknown */
 } FuncExpr;
 
 /*
@@ -384,7 +412,7 @@ typedef struct FuncExpr
  *
  * Note that opfuncid is not necessarily filled in immediately on creation
  * of the node.  The planner makes sure it is valid before passing the node
- * tree to the executor, but during parsing/planning opfuncid is typically 0.
+ * tree to the executor, but during parsing/planning opfuncid can be 0.
  */
 typedef struct OpExpr
 {
@@ -394,6 +422,7 @@ typedef struct OpExpr
 	Oid			opresulttype;	/* PG_TYPE OID of result value */
 	bool		opretset;		/* true if operator returns set */
 	List	   *args;			/* arguments to the operator (1 or 2) */
+	int			location;		/* token location, or -1 if unknown */
 } OpExpr;
 
 /*
@@ -425,6 +454,7 @@ typedef struct ScalarArrayOpExpr
 	Oid			opfuncid;		/* PG_PROC OID of underlying function */
 	bool		useOr;			/* true for ANY, false for ALL */
 	List	   *args;			/* the scalar and array operands */
+	int			location;		/* token location, or -1 if unknown */
 } ScalarArrayOpExpr;
 
 /*
@@ -446,6 +476,7 @@ typedef struct BoolExpr
 	Expr		xpr;
 	BoolExprType boolop;
 	List	   *args;			/* arguments to this expression */
+	int			location;		/* token location, or -1 if unknown */
 } BoolExpr;
 
 /*
@@ -504,8 +535,8 @@ typedef struct SubLink
 	SubLinkType subLinkType;	/* see above */
 	Node	   *testexpr;		/* outer-query test for ALL/ANY/ROWCOMPARE */
 	List	   *operName;		/* originally specified operator name */
-	int			location;		/* CDB: token location, or -1 if unknown */
 	Node	   *subselect;		/* subselect as Query* or parsetree */
+	int			location;		/* token location, or -1 if unknown */
 } SubLink;
 
 /*
@@ -639,6 +670,7 @@ typedef struct RelabelType
 	Oid			resulttype;		/* output type of coercion expression */
 	int32		resulttypmod;	/* output typmod (usually -1) */
 	CoercionForm relabelformat; /* how to display this node */
+	int			location;		/* token location, or -1 if unknown */
 } RelabelType;
 
 /* ----------------
@@ -660,6 +692,7 @@ typedef struct ConvertRowtypeExpr
 	Oid			resulttype;		/* output type (always a composite type) */
 	/* result typmod is not stored, but must be -1; see RowExpr comments */
 	CoercionForm convertformat; /* how to display this node */
+	int			location;		/* token location, or -1 if unknown */
 } ConvertRowtypeExpr;
 
 /*----------
@@ -691,6 +724,7 @@ typedef struct CaseExpr
 	Expr	   *arg;			/* implicit equality comparison argument */
 	List	   *args;			/* the arguments (list of WHEN clauses) */
 	Expr	   *defresult;		/* the default result (ELSE clause) */
+	int			location;		/* token location, or -1 if unknown */
 } CaseExpr;
 
 /*
@@ -701,6 +735,7 @@ typedef struct CaseWhen
 	Expr		xpr;
 	Expr	   *expr;			/* condition expression */
 	Expr	   *result;			/* substitution result */
+	int			location;		/* token location, or -1 if unknown */
 } CaseWhen;
 
 /*
@@ -733,6 +768,7 @@ typedef struct ArrayExpr
 	Oid			element_typeid; /* common type of array elements */
 	List	   *elements;		/* the array elements or sub-arrays */
 	bool		multidims;		/* true if elements are sub-arrays */
+	int			location;		/* token location, or -1 if unknown */
 } ArrayExpr;
 
 /*
@@ -761,6 +797,8 @@ typedef struct RowExpr
 	 * parsetrees.	We must assume typmod -1 for a RowExpr node.
 	 */
 	CoercionForm row_format;	/* how to display this node */
+
+	int			location;		/* token location, or -1 if unknown */
 } RowExpr;
 
 /*
@@ -806,6 +844,7 @@ typedef struct CoalesceExpr
 	Expr		xpr;
 	Oid			coalescetype;	/* type of expression result */
 	List	   *args;			/* the arguments */
+	int			location;		/* token location, or -1 if unknown */
 } CoalesceExpr;
 
 /*
@@ -823,6 +862,7 @@ typedef struct MinMaxExpr
 	Oid			minmaxtype;		/* common type of arguments and result */
 	MinMaxOp	op;				/* function to execute */
 	List	   *args;			/* the arguments */
+	int			location;		/* token location, or -1 if unknown */
 } MinMaxExpr;
 
 /*
@@ -895,6 +935,7 @@ typedef struct CoerceToDomain
 	Oid			resulttype;		/* domain type ID (result type) */
 	int32		resulttypmod;	/* output typmod (currently always -1) */
 	CoercionForm coercionformat;	/* how to display this node */
+	int			location;		/* token location, or -1 if unknown */
 } CoerceToDomain;
 
 /*
@@ -911,6 +952,7 @@ typedef struct CoerceToDomainValue
 	Expr		xpr;
 	Oid			typeId;			/* type for substituted value */
 	int32		typeMod;		/* typemod for substituted value */
+	int			location;		/* token location, or -1 if unknown */
 } CoerceToDomainValue;
 
 /*
@@ -925,6 +967,7 @@ typedef struct SetToDefault
 	Expr		xpr;
 	Oid			typeId;			/* type for substituted value */
 	int32		typeMod;		/* typemod for substituted value */
+	int			location;		/* token location, or -1 if unknown */
 } SetToDefault;
 
 /*--------------------
@@ -961,14 +1004,14 @@ typedef struct SetToDefault
  * a specific system-generated name (such as "ctid") or NULL; anything else
  * risks confusing ExecGetJunkAttribute!
  *
- * ressortgroupref is used in the representation of ORDER BY and
- * GROUP BY items.	Targetlist entries with ressortgroupref=0 are not
- * sort/group items.  If ressortgroupref>0, then this item is an ORDER BY or
- * GROUP BY value.	No two entries in a targetlist may have the same nonzero
- * ressortgroupref --- but there is no particular meaning to the nonzero
- * values, except as tags.	(For example, one must not assume that lower
- * ressortgroupref means a more significant sort key.)	The order of the
- * associated SortClause or GroupClause lists determine the semantics.
+ * ressortgroupref is used in the representation of ORDER BY, GROUP BY, and
+ * DISTINCT items.	Targetlist entries with ressortgroupref=0 are not
+ * sort/group items.  If ressortgroupref>0, then this item is an ORDER BY,
+ * GROUP BY, and/or DISTINCT target value.	No two entries in a targetlist
+ * may have the same nonzero ressortgroupref --- but there is no particular
+ * meaning to the nonzero values, except as tags.  (For example, one must
+ * not assume that lower ressortgroupref means a more significant sort key.)
+ * The order of the associated SortGroupClause lists determine the semantics.
  *
  * resorigtbl/resorigcol identify the source of the column, if it is a
  * simple reference to a column of a base table (or view).	If it is not
@@ -1057,7 +1100,9 @@ typedef struct RangeTblRef
  *
  * During parse analysis, an RTE is created for the Join, and its index
  * is filled into rtindex.	This RTE is present mainly so that Vars can
- * be created that refer to the outputs of the join.
+ * be created that refer to the outputs of the join.  The planner sometimes
+ * generates JoinExprs internally; these can have rtindex = 0 if there are
+ * no join alias variables referencing such joins.
  *
  * CDB: When the planner flattens sublinks in the JOIN...ON clause, it may
  * attach a list of RangeTblRef nodes ('subqfromlist') which are to be
