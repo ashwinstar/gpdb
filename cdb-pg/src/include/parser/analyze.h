@@ -1,6 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * analyze.h
+ *		parse analysis for optimizable statements
  *
  *
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
