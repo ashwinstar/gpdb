@@ -58,7 +58,7 @@ distclean maintainer-clean:
 
 check: all
 
-check installcheck installcheck-parallel:
+check installcheck installcheck-parallel installcheck-good:
 	$(MAKE) -C src/test $@
 
 GNUmakefile: GNUmakefile.in $(top_builddir)/config.status
@@ -118,7 +118,7 @@ distdir:
 	#cp $(distdir)/doc/src/sgml/INSTALL $(distdir)/
 	#cp $(distdir)/doc/src/sgml/regress_README $(distdir)/src/test/regress/README
 	$(MAKE) -C $(distdir) distclean
-	rm -f $(distdir)/README.CVS
+	-rm -f $(distdir)/README.CVS
 
 distcheck: $(distdir).tar.gz
 	-rm -rf $(dummy)
