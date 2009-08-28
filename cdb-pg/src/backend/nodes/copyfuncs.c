@@ -71,6 +71,10 @@
 		Size _size = (sz); \
 		memcpy(&newnode->fldname, &from->fldname, _size); \
 	} while (0)
+	
+/* Copy a parse location field (for Copy, this is same as scalar case) */
+#define COPY_LOCATION_FIELD(fldname) \
+	(newnode->fldname = from->fldname)
 
 
 /* ****************************************************************

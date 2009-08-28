@@ -13,9 +13,13 @@
  * Currently, in fact, equal() doesn't know how to compare Plan trees
  * either.	This might need to be fixed someday.
  *
+ * NOTE: it is intentional that parse location fields (in nodes that have
+ * one) are not compared.  This is because we want, for example, a variable
+ * "x" to be considered equal() to another reference to "x" in the query.
+ *
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -75,6 +79,10 @@
 		if (memcmp(a->fldname, b->fldname, (sz)) != 0) \
 			return false; \
 	} while (0)
+
+/* Compare a parse location field (this is a no-op, per note above) */
+#define COMPARE_LOCATION_FIELD(fldname) \
+	((void) 0)
 
 
 /*
