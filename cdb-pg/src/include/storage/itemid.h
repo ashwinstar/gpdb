@@ -16,6 +16,10 @@
 
 /*
  * An item pointer (also called line pointer) on a buffer page
+ *
+ * In some cases an item pointer is "in use" but does not have any associated
+ * storage on the page.  By convention, lp_len == 0 in every item pointer
+ * that does not have storage, independently of its lp_flags state.
  */
 typedef struct ItemIdData
 {								/* line pointers */
@@ -27,12 +31,13 @@ typedef struct ItemIdData
 typedef ItemIdData *ItemId;
 
 /*
- * lp_flags contains these flags:
+ * lp_flags has these possible states.	An UNUSED line pointer is available
+ * for immediate re-use, the other states are not.
  */
+#define LP_UNUSED		0		/* unused (should always have lp_len=0) */
 #define LP_USED			0x01	/* this line pointer is being used */
 #define LP_DELETE		0x02	/* item is to be deleted */
-#define LP_UNUSED  		0
-#define LP_DEAD                 3
+#define LP_DEAD			3		/* dead, may or may not have storage */
 
 #define ItemIdDeleted(itemId) \
 	(((itemId)->lp_flags & LP_DELETE) != 0)
@@ -83,7 +88,8 @@ typedef bits16 ItemIdFlags;
 
 /*
  * ItemIdIsValid
- *		True iff disk item identifier is valid.
+ *		True iff item identifier is valid.
+ *		This is a pretty weak test, probably useful only in Asserts.
  */
 #define ItemIdIsValid(itemId)	PointerIsValid(itemId)
 
