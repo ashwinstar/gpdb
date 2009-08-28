@@ -18,8 +18,8 @@
 #ifndef TUPTABLE_H
 #define TUPTABLE_H
 
-#include "access/tupdesc.h"
 #include "access/htup.h"
+#include "access/tupdesc.h"
 #include "access/heapam.h"
 #include "access/memtup.h"
 #include "storage/buf.h"

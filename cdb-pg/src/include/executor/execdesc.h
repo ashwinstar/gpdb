@@ -5,8 +5,8 @@
  *	  and related modules.
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/executor/execdesc.h,v 1.32 2006/07/11 16:35:33 momjian Exp $
@@ -29,7 +29,11 @@ struct PlanState;               /* #include "nodes/execnodes.h" */
  *		query descriptor:
  *
  *	a QueryDesc encapsulates everything that the executor
- *	needs to execute the query
+ *	needs to execute the query.
+ *
+ *	For the convenience of SQL-language functions, we also support QueryDescs
+ *	containing utility statements; these must not be passed to the executor
+ *	however.
  * ---------------------
  */
 typedef struct QueryDesc
