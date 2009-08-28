@@ -33,6 +33,7 @@
 
 #include "libpq/pqsignal.h"
 #include "getopt_long.h"
+#include "miscadmin.h"
 
 #if defined(__CYGWIN__)
 #include <sys/cygwin.h>
