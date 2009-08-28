@@ -404,6 +404,7 @@ extern void srandom(unsigned int seed);
 extern char *pqStrerror(int errnum, char *strerrbuf, size_t buflen);
 
 #if !defined(WIN32) || defined(__CYGWIN__)
+// Obsolete -- use pqGetpwuid() instead.
 extern struct passwd * get_gp_passwdptr(void);
 #endif
 
