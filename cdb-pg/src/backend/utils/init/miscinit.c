@@ -3,7 +3,7 @@
  * miscinit.c
  *	  miscellaneous initialization support stuff
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -31,6 +31,7 @@
 
 #include "catalog/pg_authid.h"
 #include "cdb/cdbvars.h"
+#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "postmaster/autovacuum.h"
 #include "storage/fd.h"
@@ -1167,6 +1168,9 @@ ValidatePgVersion(const char *path)
 char	   *shared_preload_libraries_string = NULL;
 char	   *local_preload_libraries_string = NULL;
 
+/* Flag telling that we are loading shared_preload_libraries */
+bool		process_shared_preload_libraries_in_progress = false;
+
 /*
  * load the shared libraries listed in 'libraries'
  *
@@ -1178,6 +1182,7 @@ load_libraries(const char *libraries, const char *gucname, bool restricted)
 {
 	char	   *rawstring;
 	List	   *elemlist;
+	int			elevel;
 	ListCell   *l;
 
 	if (libraries == NULL || libraries[0] == '\0')
@@ -1199,6 +1204,18 @@ load_libraries(const char *libraries, const char *gucname, bool restricted)
 		return;
 	}
 
+	/*
+	 * Choose notice level: avoid repeat messages when re-loading a library
+	 * that was preloaded into the postmaster.	(Only possible in EXEC_BACKEND
+	 * configurations)
+	 */
+#ifdef EXEC_BACKEND
+	if (IsUnderPostmaster && process_shared_preload_libraries_in_progress)
+		elevel = DEBUG2;
+	else
+#endif
+		elevel = LOG;
+
 	foreach(l, elemlist)
 	{
 		char	   *tok = (char *) lfirst(l);
@@ -1218,7 +1235,7 @@ load_libraries(const char *libraries, const char *gucname, bool restricted)
 			filename = expanded;
 		}
 		load_file(filename, restricted);
-		ereport(LOG,
+		ereport(elevel,
 				(errmsg("loaded library \"%s\"", filename)));
 		pfree(filename);
 	}
@@ -1233,9 +1250,11 @@ load_libraries(const char *libraries, const char *gucname, bool restricted)
 void
 process_shared_preload_libraries(void)
 {
+	process_shared_preload_libraries_in_progress = true;
 	load_libraries(shared_preload_libraries_string,
 				   "shared_preload_libraries",
 				   false);
+	process_shared_preload_libraries_in_progress = false;
 }
 
 /*
@@ -1247,4 +1266,18 @@ process_local_preload_libraries(void)
 	load_libraries(local_preload_libraries_string,
 				   "local_preload_libraries",
 				   true);
+}
+void
+pg_bindtextdomain(const char *domain)
+{
+#ifdef ENABLE_NLS
+	if (my_exec_path[0] != '\0')
+	{
+		char		locale_path[MAXPGPATH];
+
+		get_locale_path(my_exec_path, locale_path);
+		bindtextdomain(domain, locale_path);
+		pg_bind_textdomain_codeset(domain);
+	}
+#endif
 }
