@@ -18,7 +18,9 @@
 #include "storage/buf.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
+#include "storage/smgr.h"
 #include "storage/spin.h"
+#include "utils/relcache.h"
 #include "utils/rel.h"
 
 

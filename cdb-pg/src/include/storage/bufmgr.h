@@ -15,6 +15,9 @@
 #define BUFMGR_H
 
 #include "storage/buf.h"
+#include "storage/bufpage.h"
+#include "storage/relfilenode.h"
+#include "utils/relcache.h"
 #include "utils/rel.h"
 
 typedef void *Block;

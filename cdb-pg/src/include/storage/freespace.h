@@ -14,9 +14,12 @@
 #ifndef FREESPACE_H_
 #define FREESPACE_H_
 
-#include "storage/relfilenode.h"
+#include "storage/block.h"
+#include "storage/bufpage.h"
 #include "storage/itemptr.h"
 #include "nodes/pg_list.h"
+#include "storage/relfilenode.h"
+#include "utils/relcache.h"
 #include "utils/rel.h"
 
 
