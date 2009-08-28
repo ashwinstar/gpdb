@@ -22,7 +22,7 @@
 #
 # Meta configuration
 
-.PHONY: all install install-strip installdirs uninstall clean distclean maintainer-clean distprep check installcheck maintainer-check installcheck-good
+.PHONY: all install install-strip installdirs uninstall clean distclean maintainer-clean distprep check installcheck maintainer-check coverage installcheck-good
 .SILENT: installdirs
 
 # make `all' the default target
@@ -168,6 +168,7 @@ enable_rpath	= @enable_rpath@
 enable_nls	= @enable_nls@
 enable_debug	= @enable_debug@
 enable_dtrace	= @enable_dtrace@
+enable_coverage	= @enable_coverage@
 enable_thread_safety	= @enable_thread_safety@
 enable_largefile	= @enable_largefile@
 
@@ -221,7 +222,7 @@ CFLAGS = @CFLAGS@
 
 ifneq ($(findstring mingw32,$(CC)),mingw32)
 ifeq ($(GCC), yes)
-CFLAGS += -Werror
+ CFLAGS += -Werror
 endif # GCC
 endif
 
@@ -233,9 +234,13 @@ FLEX = @FLEX@
 FLEXFLAGS = @FLEXFLAGS@ $(LFLAGS)
 DTRACE = @DTRACE@
 DTRACEFLAGS = @DTRACEFLAGS@
+ZIC = @ZIC@
 
 # Linking
 
+AR = @AR@
+DLLTOOL = @DLLTOOL@
+DLLWRAP = @DLLWRAP@
 LIBS = @LIBS@
 LDAP_LIBS_FE = @LDAP_LIBS_FE@
 LDAP_LIBS_BE = @LDAP_LIBS_BE@
@@ -247,12 +252,17 @@ LDFLAGS_SL = @LDFLAGS_SL@
 LDREL = -r
 LDOUT = -o
 RANLIB = @RANLIB@
+WINDRES = @WINDRES@
 X = @EXEEXT@
 
 # Perl 
 
-# quoted for pathname with spaces
-PERL			= "@PERL@"
+ifneq (@PERL@,)
+    # quoted to protect pathname with spaces
+    PERL		= "@PERL@"
+else
+    PERL		= $(missing) perl
+endif
 perl_archlibexp		= @perl_archlibexp@
 perl_privlibexp		= @perl_privlibexp@
 perl_useshrplib		= @perl_useshrplib@
@@ -300,6 +310,17 @@ STRIP_SHARED_LIB = @STRIP_SHARED_LIB@
 JADE	= @JADE@
 NSGMLS	= @NSGMLS@
 SGMLSPL	= @SGMLSPL@
+
+# Code coverage
+
+GCOV = @GCOV@
+LCOV = @LCOV@
+GENHTML = @GENHTML@
+
+ifeq ($(enable_coverage),yes)
+# ccache loses .gcno files
+export CCACHE_DISABLE = 1
+endif
 
 # Feature settings
 
@@ -585,3 +606,50 @@ include $(top_srcdir)/src/nls-global.mk
 
 endif # nls.mk
 endif # enable_nls
+
+##########################################################################
+#
+# Coverage
+
+# Explanation of involved files:
+#   foo.c	source file
+#   foo.o	object file
+#   foo.gcno	gcov graph (a.k.a. "notes") file, created at compile time
+#		(by gcc -ftest-coverage)
+#   foo.gcda	gcov data file, created when the program is run (for
+#		programs compiled with gcc -fprofile-arcs)
+#   foo.c.gcov	gcov output file with coverage information, created by
+#		gcov from foo.gcda (by "make coverage")
+#   foo.c.gcov.out  stdout captured when foo.c.gcov is created, mildly
+#		interesting
+#   lcov.info	lcov tracefile, built from gcda files in one directory,
+#		later collected by "make coverage-html"
+
+ifeq ($(enable_coverage), yes)
+
+# There is a strange interaction between lcov and existing .gcov
+# output files.  Hence the rm command and the ordering dependency.
+
+gcda_files := $(wildcard *.gcda)
+
+lcov.info: $(gcda_files)
+	rm -f *.gcov
+	$(if $^,$(LCOV) -d . -c -o $@ $(LCOVFLAGS))
+
+%.c.gcov: %.gcda | lcov.info
+	$(GCOV) -b -f -p -o . $(GCOVFLAGS) $*.c >$*.c.gcov.out
+
+
+# hook for clean-up
+clean distclean maintainer-clean: clean-coverage
+
+.PHONY: clean-coverage
+clean-coverage:
+	rm -f *.gcda *.gcno lcov.info *.gcov *.gcov.out
+
+
+# User-callable target to reset counts between test runs
+coverage-clean:
+	rm -f `find . -name '*.gcda' -print`
+
+endif # enable_coverage
