@@ -76,9 +76,9 @@ static int _SPI_execute_plan(SPIPlanPtr plan,
 				  Snapshot snapshot, Snapshot crosscheck_snapshot,
 				  bool read_only, bool fire_triggers, long tcount);
 
-static ParamListInfo _SPI_convert_params(int nargs, Oid *argtypes,
+/*static ParamListInfo _SPI_convert_params(int nargs, Oid *argtypes,
 					Datum *Values, const char *Nulls,
-					int pflags);
+					int pflags); */
 
 static int	_SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount);
 
