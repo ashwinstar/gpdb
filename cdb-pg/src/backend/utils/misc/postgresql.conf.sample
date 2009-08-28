@@ -50,12 +50,9 @@
 					# (change requires restart)
 
 
-
-
-
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # CONNECTIONS AND AUTHENTICATION
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 # - Connection Settings -
 
@@ -111,9 +108,9 @@
 					# 0 selects the system default
 
 
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # RESOURCE USAGE (except WAL)
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 # - Memory -
 
@@ -149,7 +146,7 @@
 #vacuum_cost_page_dirty = 20		# 0-10000 credits
 #vacuum_cost_limit = 200		# 1-10000 credits
 
-# - Background writer -
+# - Background Writer -
 
 #bgwriter_delay = 200ms			# 10-10000ms between rounds
 #bgwriter_lru_percent = 1.0		# 0-100% of LRU buffers scanned/round
@@ -158,9 +155,9 @@
 #bgwriter_all_maxpages = 5		# 0-1000 buffers max written/round
 
 
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # WRITE AHEAD LOG
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 # - Settings -
 
@@ -191,9 +188,9 @@
 				# many seconds; 0 is off
 
 
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # QUERY TUNING
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 # - Planner Method Configuration -
 
@@ -243,9 +240,11 @@
 					# JOINs
 #gp_segments_for_planner = 0     # if 0, actual number of segments is used
 
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # ERROR REPORTING AND LOGGING
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+# - Where to Log -
 
 #gp_reraise_signal = on
 
@@ -253,24 +252,23 @@
 
 #log_filename = 'gpdb-%Y-%m-%d_%H%M%S.csv' # Log file name pattern.
 					# Can include strftime() escapes
-#log_truncate_on_rotation = off # If on, any existing log file of the same
-					# name as the new log file will be
-					# truncated rather than appended to. But
-					# such truncation only occurs on
+#log_truncate_on_rotation = off		# If on, an existing log file of the
+					# same name as the new log file will be
+					# truncated rather than appended to.
+					# But such truncation only occurs on
 					# time-driven rotation, not on restarts
-					# or size-driven rotation. Default is
+					# or size-driven rotation.  Default is
 					# off, meaning append to existing files
 					# in all cases.
 #log_rotation_age = 1d			# Automatic rotation of logfiles will
-					# happen after that time.  0 to
-					# disable.
-#log_rotation_size = 0		# Automatic rotation of logfiles will
-					# happen after that much log
-					# output.  0 to disable.
+					# happen after that time.  0 disables.
+#log_rotation_size = 10MB		# Automatic rotation of logfiles will 
+					# happen after that much log output.
+					# 0 disables.
 
 # - When to Log -
 
-#client_min_messages = notice		# Values, in order of decreasing detail:
+#client_min_messages = notice		# values in order of decreasing detail:
 					#   debug5
 					#   debug4
 					#   debug3
@@ -281,7 +279,7 @@
 					#   warning
 					#   error
 
-#log_min_messages = notice		# Values, in order of decreasing detail:
+#log_min_messages = notice		# Values in order of decreasing detail:
 					#   debug5
 					#   debug4
 					#   debug3
@@ -297,7 +295,7 @@
 
 #log_error_verbosity = default		# terse, default, or verbose messages
 
-#log_min_error_statement = error	# Values in order of increasing severity:
+#log_min_error_statement = error	# values in order of decreasing detail:
 				 	#   debug5
 					#   debug4
 					#   debug3
@@ -307,6 +305,7 @@
 					#   notice
 					#   warning
 					#   error
+					#   log
 					#   fatal
 					#   panic (effectively off)
 
@@ -344,10 +343,9 @@
                                         # logging of Greenplum interconnect 
 										# events
 
-
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # RUNTIME STATISTICS
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 # - ANALYZE Statistics on Database Contents -
 
@@ -355,7 +353,7 @@
 					# histogram bins)
 #gp_analyze_relative_error = 0.25	# range 0.0 - 1.0 (target relative
 					# error fraction)
-
+					
 # - Query/Index Statistics Collector -
 
 #stats_command_string = on
@@ -376,9 +374,9 @@
 #log_statement_stats = off
 
 
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # AUTOVACUUM PARAMETERS
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 #autovacuum = off			# enable autovacuum subprocess?
 					# 'on' requires stats_start_collector
@@ -402,19 +400,19 @@
 					# vacuum_cost_limit
 gp_autostats_mode=on_no_stats		# none, on_no_stats, on_change. see documentation for semantics.
 
-#---------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
 # CLIENT CONNECTION DEFAULTS
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 # - Statement Behavior -
 
 #search_path = '"$user",public'		# schema names
-#default_tablespace = ''		# a tablespace name, '' uses
-					# the default
+#default_tablespace = ''		# a tablespace name, '' uses the default
 #check_function_bodies = on
 #default_transaction_isolation = 'read committed'
 #default_transaction_read_only = off
-#statement_timeout = 0			# 0 is disabled
+#statement_timeout = 0			# in milliseconds, 0 is disabled
 #vacuum_freeze_min_age = 100000000
 
 # - Locale and Formatting -
@@ -449,14 +447,14 @@ gp_autostats_mode=on_no_stats		# none, on_no_stats, on_change. see documentation
 #local_preload_libraries = ''
 
 
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # LOCK MANAGEMENT
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 #deadlock_timeout = 1s
 #max_locks_per_transaction = 64		# min 10
 					# (change requires restart)
-# Note: each lock table slot uses ~270 bytes of shared memory, and there are
+# Note:  Each lock table slot uses ~270 bytes of shared memory, and there are
 # max_locks_per_transaction * (max_connections + max_prepared_transactions)
 # lock table slots.
 
@@ -483,9 +481,9 @@ gp_autostats_mode=on_no_stats		# none, on_no_stats, on_change. see documentation
 #---------------------------------------------------------------------------
 #gp_safefswritesize = 0   # minimum size for safe AO writes in a non-mature fs
 
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # VERSION/PLATFORM COMPATIBILITY
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 # - Previous PostgreSQL Versions -
 
@@ -494,9 +492,10 @@ gp_autostats_mode=on_no_stats		# none, on_no_stats, on_change. see documentation
 #backslash_quote = safe_encoding	# on, off, or safe_encoding
 #default_with_oids = off
 #escape_string_warning = on
-#standard_conforming_strings = off
 #regex_flavor = advanced		# advanced, extended, or basic
 #sql_inheritance = on
+#standard_conforming_strings = off
+
 
 # - Other Platforms and Clients -
 
@@ -531,9 +530,9 @@ gp_interconnect_type=udp
 # - Resource limits -
 gp_vmem_protect_limit = 8192  #Virtual memory limit (in MB).
 
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 #custom_variable_classes = ''		# list of custom variable class names
 
