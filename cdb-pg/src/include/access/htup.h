@@ -19,9 +19,11 @@
 #ifndef HTUP_H
 #define HTUP_H
 
+#include "access/tupdesc.h"
+#include "access/tupmacs.h"
 #include "storage/itemptr.h"
 #include "storage/relfilenode.h"
-
+#include "access/sysattr.h"
 /*
  * MaxTupleAttributeNumber limits the number of (user) columns in a tuple.
  * The key limit on this value is that the size of the fixed overhead for
@@ -361,19 +363,6 @@ do { \
  */
 #define MaxAttrSize		(10 * 1024 * 1024)
 
-
-/*
- * Attribute numbers for the system-defined attributes
- */
-#define SelfItemPointerAttributeNumber			(-1)
-#define ObjectIdAttributeNumber					(-2)
-#define MinTransactionIdAttributeNumber			(-3)
-#define MinCommandIdAttributeNumber				(-4)
-#define MaxTransactionIdAttributeNumber			(-5)
-#define MaxCommandIdAttributeNumber				(-6)
-#define TableOidAttributeNumber					(-7)
-#define GpSegmentIdAttributeNumber			    (-8)    /*CDB*/
-#define FirstLowInvalidHeapAttributeNumber		(-9)
 
 /*
  * HeapTupleData is an in-memory data structure that points to a tuple.
