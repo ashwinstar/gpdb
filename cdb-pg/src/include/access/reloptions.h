@@ -18,6 +18,7 @@
 #ifndef RELOPTIONS_H
 #define RELOPTIONS_H
 
+#include "access/htup.h"
 #include "nodes/pg_list.h"
 #include "utils/rel.h"
 
