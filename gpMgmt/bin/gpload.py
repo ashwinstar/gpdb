@@ -91,8 +91,9 @@ valid_tokens = {
     "update_columns": {'parse_children': False, 'parent': "output"},
     "update_condition": {'parse_children': True, 'parent': "output"}, 
     "mapping": {'parse_children': False, 'parent': "output"},
+    "preload": {'parse_children': True, 'parent': 'gpload'},
+    "truncate": {'parse_children': False, 'parent': 'preload'},
     "sql": {'parse_children': True, 'parent': 'gpload'},
-    "truncate": {'parse_children': False, 'parent': 'sql'},
     "before": {'parse_children': False, 'parent': 'sql'},
     "after": {'parse_children': False, 'parent': 'sql'}}
 
@@ -1821,16 +1822,11 @@ class gpload:
             self.pg8000.execute(sql.encode('utf-8'))
 
     def do_method(self):
-        # sql pre or post processing?
-        sql = self.getconfig('gpload:sql', list, default=None)
+        # Is the table to be truncated before the load?
+        preload = self.getconfig('gpload:preload', list, default=None)
         truncate = False
-        before   = None
-        after    = None
-        if sql:
-            truncate = self.getconfig('gpload:sql:truncate',bool,False)
-            before   = self.getconfig('gpload:sql:before', unicode, default=None)
-            after    = self.getconfig('gpload:sql:after', unicode, default=None)
-
+        if preload:
+              truncate = self.getconfig('gpload:preload:truncate',bool,False)
         if truncate == True:
             self.log(self.LOG, "Truncate table")
             if not self.options.D:
@@ -1841,6 +1837,13 @@ class gpload:
                     print p
                     self.log(self.ERROR, 'could not execute truncate target %s: %s' % (self.table_quoted, str(p)))
 
+        # sql pre or post processing?
+        sql = self.getconfig('gpload:sql', list, default=None)
+        before   = None
+        after    = None
+        if sql:
+             before   = self.getconfig('gpload:sql:before', unicode, default=None)
+             after    = self.getconfig('gpload:sql:after', unicode, default=None)
         if before:
             self.log(self.LOG, "Pre-SQL from user: %s" % before)
             if not self.options.D:
