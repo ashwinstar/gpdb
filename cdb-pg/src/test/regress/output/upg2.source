@@ -50,17 +50,25 @@ create table public.pg_aggregate (aggfnoid        regproc  not null,
                                   aggsortop       oid      not null,
                                   aggtranstype    oid      not null,
                                   agginitval      text) with oids;
-create table public.pg_appendonly (reloid oid,
+create table public.pg_appendonly (relid oid,
                                    blocksize integer,
                                    safefswritesize integer,
                                    compresslevel smallint,
                                    majorversion smallint,
                                    minorversion smallint,
                                    checksum boolean);
+create table public.pg_exttable (reloid oid not null,
+	   		 					 location text[],
+								 fmttype char,
+								 fmtopts text,
+								 command text,
+								 rejectlimit integer,
+								 rejectlimittype char,
+								 fmterrtbl oid,
+								 encoding integer);
 --
 -- 2. Build the 33 catalog
 --
-create table public.pg_appendonly_v33 (like pg_catalog.pg_appendonly);
 create table public.pg_attribute_v33 (like pg_catalog.pg_attribute);
 create table public.pg_class_v33 (like pg_catalog.pg_class) with oids;
 create table public.pg_type_v33 (like pg_catalog.pg_type) with oids;
@@ -74,6 +82,24 @@ create table public.pg_shdepend_v33 (like pg_catalog.pg_shdepend);
 create table public.pg_shdescription_v33(like pg_catalog.pg_shdescription);
 create table public.pg_rewrite_v33(like pg_catalog.pg_rewrite) with oids;
 create table public.pg_conversion_v33(like pg_catalog.pg_conversion);
+-- don't use LIKE, as 3.3 had a different structure
+create table public.pg_appendonly_v33 (relid oid,
+                                   blocksize integer,
+                                   safefswritesize integer,
+                                   compresslevel smallint,
+                                   majorversion smallint,
+                                   minorversion smallint,
+                                   checksum boolean,
+								   compresstype text);
+create table public.pg_exttable_v33 (reloid oid not null,
+	   		 					 	 location text[],
+								 	 fmttype char,
+								 	 fmtopts text,
+								 	 command text,
+								 	 rejectlimit integer,
+								 	 rejectlimittype char,
+								 	 fmterrtbl oid,
+								 	 encoding integer);
 --
 -- 3. Load the 32 catalog into public
 --
@@ -740,7 +766,7 @@ where c.oid = a.attrelid and a.attnum > 0
 order by attnum;
     relname    |     attname     | attnum | typname | typlen | atttypmod 
 ---------------+-----------------+--------+---------+--------+-----------
- pg_appendonly | reloid          |      1 | oid     |      4 |        -1
+ pg_appendonly | relid           |      1 | oid     |      4 |        -1
  pg_appendonly | blocksize       |      2 | int4    |      4 |        -1
  pg_appendonly | safefswritesize |      3 | int4    |      4 |        -1
  pg_appendonly | compresslevel   |      4 | int2    |      2 |        -1
@@ -962,6 +988,28 @@ select * from public.pg_rewrite_v33 where oid < 10000;
 ----------+----------+---------+---------+------------+---------+-----------
 (0 rows)
 
+-- compare old and new pg_appendonly
+select * from public.pg_appendonly where relid < 10000;
+ relid | blocksize | safefswritesize | compresslevel | majorversion | minorversion | checksum | compresstype 
+-------+-----------+-----------------+---------------+--------------+--------------+----------+--------------
+(0 rows)
+
+select * from public.pg_appendonly_v33 where relid < 10000;
+ relid | blocksize | safefswritesize | compresslevel | majorversion | minorversion | checksum | compresstype 
+-------+-----------+-----------------+---------------+--------------+--------------+----------+--------------
+(0 rows)
+
+-- compare old and new pg_exttable
+select * from public.pg_exttable where reloid < 10000;
+ reloid | location | fmttype | fmtopts | command | rejectlimit | rejectlimittype | fmterrtbl | encoding 
+--------+----------+---------+---------+---------+-------------+-----------------+-----------+----------
+(0 rows)
+
+select * from public.pg_exttable_v33 where reloid < 10000;
+ reloid | location | fmttype | fmtopts | command | rejectlimit | rejectlimittype | fmterrtbl | encoding 
+--------+----------+---------+---------+---------+-------------+-----------------+-----------+----------
+(0 rows)
+
 --
 -- 7. Run the scripts that upgrade from 33->34
 --      phase 1:  loadcat34
@@ -1054,7 +1102,7 @@ where c.oid = a.attrelid and a.attnum > 0
 order by attnum;
     relname    |     attname     | attnum | typname | typlen | atttypmod 
 ---------------+-----------------+--------+---------+--------+-----------
- pg_appendonly | reloid          |      1 | oid     |      4 |        -1
+ pg_appendonly | relid           |      1 | oid     |      4 |        -1
  pg_appendonly | blocksize       |      2 | int4    |      4 |        -1
  pg_appendonly | safefswritesize |      3 | int4    |      4 |        -1
  pg_appendonly | compresslevel   |      4 | int2    |      2 |        -1
@@ -1278,6 +1326,28 @@ select * from pg_catalog.pg_rewrite where oid < 10000;
 ----------+----------+---------+---------+------------+---------+-----------
 (0 rows)
 
+-- compare old and new pg_appendonly
+select * from public.pg_appendonly where relid < 10000;
+ relid | blocksize | safefswritesize | compresslevel | majorversion | minorversion | checksum | compresstype | columnstore 
+-------+-----------+-----------------+---------------+--------------+--------------+----------+--------------+-------------
+(0 rows)
+
+select * from pg_catalog.pg_appendonly where relid < 10000;
+ relid | blocksize | safefswritesize | compresslevel | majorversion | minorversion | checksum | compresstype | columnstore 
+-------+-----------+-----------------+---------------+--------------+--------------+----------+--------------+-------------
+(0 rows)
+
+-- compare old and new pg_exttable
+select * from public.pg_exttable where reloid < 10000;
+ reloid | location | fmttype | fmtopts | command | rejectlimit | rejectlimittype | fmterrtbl | encoding 
+--------+----------+---------+---------+---------+-------------+-----------------+-----------+----------
+(0 rows)
+
+select * from pg_catalog.pg_exttable where reloid < 10000;
+ reloid | location | fmttype | fmtopts | command | rejectlimit | rejectlimittype | fmterrtbl | encoding 
+--------+----------+---------+---------+---------+-------------+-----------------+-----------+----------
+(0 rows)
+
 --
 -- 9. Final sanity checks and cleanup
 --
@@ -1338,4 +1408,6 @@ drop table
   public.pg_shdepend_v33,
   public.pg_rewrite_v33,
   public.pg_appendonly,
-  public.pg_appendonly_v33;
+  public.pg_appendonly_v33,
+  public.pg_exttable,
+  public.pg_exttable_v33;
