@@ -5041,6 +5041,8 @@ def_elem:  ColLabel '=' def_arg
 
 /* Note: any simple identifier will be returned as a type name! */
 def_arg:	func_type						{ $$ = (Node *)$1; }
+			/* MPP-6685: allow unquoted ROW keyword as "orientation" option */
+			| ROW							{ $$ = (Node *)makeString(pstrdup("row")); }
 			| func_name_keyword				{ $$ = (Node *)makeString(pstrdup($1)); }
 			| reserved_keyword				{ $$ = (Node *)makeString(pstrdup($1)); }
 			| qual_all_Op					{ $$ = (Node *)$1; }
