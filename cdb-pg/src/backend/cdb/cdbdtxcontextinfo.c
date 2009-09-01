@@ -230,7 +230,11 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 	int i;
 	int used;
 	DistributedSnapshot *ds = &dtxContextInfo->distributedSnapshot;
-		
+
+	if (dtxContextInfo->distributedXid == FirstDistributedTransactionId)
+		elog(WARNING, "serializing FirstDistributedTransactionId: %u %u %u %u",
+			 dtxContextInfo->distributedXid, dtxContextInfo->distributedTimeStamp,
+			 dtxContextInfo->curcid, dtxContextInfo->segmateSync);
 
 	memcpy(p, &dtxContextInfo->distributedXid, sizeof(DistributedTransactionId));
 	p += sizeof(DistributedTransactionId);
@@ -248,7 +252,6 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),
 			 "DtxContextInfo_Serialize only copied InvalidDistributedTransactionId");
 	}
-
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG3),
 		 "DtxContextInfo_Serialize distributedTimeStamp %u, distributedXid = %u, curcid %d segmateSync %u",
@@ -394,23 +397,22 @@ DtxContextInfo_Deserialize(
 {			
 	int i;
 	DistributedSnapshot *ds = &dtxContextInfo->distributedSnapshot;
-		
 
 	DtxContextInfo_Reset(dtxContextInfo);
-	
+
 	if (serializedSnapshotlen > 0)
 	{			
 		int xipsize;
 		const char * p = serializedSnapshot;
 		int32 maxCount;
-						
+
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), 
 			 "DtxContextInfo_Deserialize serializedSnapshotlen = %d.",
 		     serializedSnapshotlen);
-		
+
 		memcpy(&dtxContextInfo->distributedXid, p, sizeof(DistributedTransactionId)); 	
 		p += sizeof(DistributedTransactionId);
-			
+
 		if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
 		{
 			memcpy(&dtxContextInfo->distributedTimeStamp, p, sizeof(DistributedTransactionTimeStamp)); 	
@@ -430,6 +432,11 @@ DtxContextInfo_Deserialize(
 		p += sizeof(uint32);
 		memcpy(&dtxContextInfo->haveDistributedSnapshot, p, sizeof(bool));
 		p += sizeof(bool);
+
+		if (dtxContextInfo->distributedXid == FirstDistributedTransactionId)
+			elog(WARNING, "Deserializing FirstDistributedTransactionId: %u %u %u %u",
+				 dtxContextInfo->distributedXid, dtxContextInfo->distributedTimeStamp,
+				 dtxContextInfo->curcid, dtxContextInfo->segmateSync);
 
 		elog((Debug_print_full_dtm ? LOG : DEBUG3),
 			 "DtxContextInfo_Deserialize distributedTimeStamp %u, distributedXid = %u, curcid %d segmateSync %u as %s",
@@ -491,7 +498,6 @@ DtxContextInfo_Deserialize(
 					ereport(ERROR,
 							(errcode(ERRCODE_OUT_OF_MEMORY),
 							 errmsg("out of memory")));
-
 			}
 
 			if (ds->header.count > 0)
@@ -500,7 +506,6 @@ DtxContextInfo_Deserialize(
 				memcpy(ds->inProgressXidArray,p,xipsize);
 				p += xipsize;
 			}
-
 		}
 		else
 		{
@@ -529,7 +534,7 @@ DtxContextInfo_Deserialize(
 					 ds->header.xmax,
 					 ds->header.count,
 					 ds->header.maxCount);
-				
+
 				for (i = 0; i < ds->header.count; i++)
 				{
 					elog((Debug_print_full_dtm ? LOG : DEBUG5),
@@ -544,7 +549,7 @@ DtxContextInfo_Deserialize(
 					 getDistributedTransactionId(),
 					 DtxContextToString(DistributedTransactionContext));
 			}
-			
+
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),
 				 "DtxContextInfo_Deserialize txnOptions = 0x%x", 
 				 dtxContextInfo->distributedTxnOptions);
@@ -556,4 +561,3 @@ DtxContextInfo_Deserialize(
 		Assert(dtxContextInfo->distributedTxnOptions == 0);
 	}
 }
-
