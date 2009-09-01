@@ -192,8 +192,8 @@ cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist);
  * correctly for successful lookups by list_member(), tlist_member(),
  * make_canonical_pathkey(), etc.
  */
-Var *
-cdbpullup_makeVar(Index varno, AttrNumber varattno, Expr *oldexpr);
+Expr *
+cdbpullup_make_expr(Index varno, AttrNumber varattno, Expr *oldexpr);
 
 
 /*

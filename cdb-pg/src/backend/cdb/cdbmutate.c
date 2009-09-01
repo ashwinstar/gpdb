@@ -417,8 +417,6 @@ apply_motion(Plan *plan, Query *query)
 					{
 						ListCell *cell;
 						bool	typesOK=true;
-						Var		*elem;
-						Oid		att_type;
 						PartitionNode *pn;
 						RangeTblEntry	*rte;
 						Relation		rel;
@@ -537,12 +535,12 @@ apply_motion(Plan *plan, Query *query)
 															 true);
 						/* check the types. */
 						foreach(cell, hashExpr)
-						{
-							Assert(IsA(lfirst(cell), Var));
-
-							elem = (Var *)lfirst(cell);
-							att_type = elem->vartype;
-
+						{						
+							Expr	*elem = NULL;
+							Oid		 att_type = InvalidOid;
+							elem = (Expr *)lfirst(cell);
+							att_type = exprType((Node *) elem);
+							Assert(att_type != InvalidOid);
 							if (!isGreenplumDbHashable(att_type))
 							{
 								typesOK=false;
@@ -1286,7 +1284,7 @@ getExprListFromTargetList(List         *tlist,
 
         /* After set_plan_references(), make a Var referencing subplan tlist. */
         if (useExecutorVarFormat)
-            elist = lappend(elist, cdbpullup_makeVar(OUTER, n, target->expr));
+            elist = lappend(elist, cdbpullup_make_expr(OUTER, n, target->expr));
 
         /* Before set_plan_references(), copy the subplan's result expr. */
         else

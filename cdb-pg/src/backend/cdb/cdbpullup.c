@@ -209,7 +209,7 @@ pullUpExpr_mutator(Node *node, void *context)
 
             /* Substitute a Var node referencing the targetlist entry. */
             else
-                newnode = (Node *)cdbpullup_makeVar(ctx->newvarno,
+                newnode = (Node *)cdbpullup_make_expr(ctx->newvarno,
                                     tle->resno,
                                     (Expr *)var);
         }
@@ -238,7 +238,7 @@ pullUpExpr_mutator(Node *node, void *context)
 
             /* Substitute a Var node referencing the targetlist entry. */
             else
-                newnode = (Node *)cdbpullup_makeVar(ctx->newvarno,
+                newnode = (Node *)cdbpullup_make_expr(ctx->newvarno,
                                                     targetattno,
                                                     tlistexpr);
         }
@@ -263,7 +263,7 @@ pullUpExpr_mutator(Node *node, void *context)
 
         /* Replace expr with a Var node referencing the targetlist entry. */
         else
-            newnode = (Node *)cdbpullup_makeVar(ctx->newvarno,
+            newnode = (Node *)cdbpullup_make_expr(ctx->newvarno,
                                 tle->resno,
                                 tle->expr);
 
@@ -560,25 +560,31 @@ cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist)
  * correctly for successful lookups by list_member(), tlist_member(),
  * make_canonical_pathkey(), etc.
  */
-Var *
-cdbpullup_makeVar(Index varno, AttrNumber varattno, Expr *oldexpr)
+Expr *
+cdbpullup_make_expr(Index varno, AttrNumber varattno, Expr *oldexpr)
 {
-    Var        *var;
-
     Assert(oldexpr);
-
+    
     /* If caller provided an old Var node, copy and modify it. */
     if (IsA(oldexpr, Var))
     {
-        var = (Var *)copyObject(oldexpr);
+        Var        *var = (Var *)copyObject(oldexpr);
         var->varno = varno;
         var->varattno = varattno;
         var->varlevelsup = 0;
+        return (Expr *) var;
     }
-
+    else if (IsA(oldexpr, Const))
+    {
+    	Const *constExpr = copyObject(oldexpr);
+    	return (Expr *) constExpr;
+    }
     /* Make a new Var node. */
     else
     {
+    	Var *var = NULL;
+    	Assert(!IsA(oldexpr, Const));
+    	Assert(!IsA(oldexpr, Var));
         var = makeVar(varno,
                       varattno,
                       exprType((Node *)oldexpr),
@@ -586,8 +592,8 @@ cdbpullup_makeVar(Index varno, AttrNumber varattno, Expr *oldexpr)
                       0);
         var->varnoold = 0;      /* assuming it wasn't ever a plain Var */
         var->varoattno = 0;
+        return (Expr *) var;
     }
-    return var;
 }                               /* cdbpullup_make_var */
 
 
@@ -667,9 +673,9 @@ cdbpullup_targetentry(TargetEntry  *subplan_targetentry,
         newtle = flatCopyTargetEntry(kidtle);
 
         /* Make a Var node referencing the subplan's targetlist entry. */
-        newtle->expr = (Expr *)cdbpullup_makeVar(newvarno,
-                                                 kidtle->resno,
-                                                 kidtle->expr);
+        newtle->expr = cdbpullup_make_expr(newvarno,
+        		kidtle->resno,
+        		kidtle->expr);
     }
 
     /* Until then, a Var's referent is the same anywhere in a Query. */

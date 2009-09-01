@@ -551,15 +551,15 @@ cdb_build_identity_tlist(List *newtlist, Plan *subplan, Index subvarno)
     foreach(cell, subplan->targetlist)
     {
         TargetEntry    *subtle = (TargetEntry *)lfirst(cell);
-        TargetEntry    *newtle;
-        Var            *newvar;
+        TargetEntry    *newtle = NULL;
+        Expr           *newvar = NULL;
 
         /* Make a Var node referencing the subplan's targetlist. */
-        newvar = cdbpullup_makeVar(subvarno, subtle->resno, subtle->expr);
+        newvar = cdbpullup_make_expr(subvarno, subtle->resno, subtle->expr);
 
 		/* Append new targetlist entry. */
         newtle = flatCopyTargetEntry(subtle);
-		newtle->expr = (Expr *)newvar;
+		newtle->expr = newvar;
         newtle->resno = list_length(newtlist) + 1;
         newtlist = lappend(newtlist, newtle);
     }
