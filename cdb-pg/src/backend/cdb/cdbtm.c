@@ -3175,10 +3175,7 @@ void verify_shared_snapshot_ready(void)
 {
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		char cmdbuf[35];
-		strcpy(cmdbuf, "set gp_write_shared_snapshot=true" );
-		
-		CdbDoCommand(cmdbuf, true, true, true, true);
+		CdbDoCommand("set gp_write_shared_snapshot=true", true, true, true, true);
 
 		/*
 		 * To keep our readers in sync (since they will be dispatched
@@ -3267,7 +3264,6 @@ isDtxQueryDispatcher(void)
 void
 setupRegularDtxContext(void)
 {
-
 	switch(DistributedTransactionContext)
 	{
 		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
