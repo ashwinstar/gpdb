@@ -32,7 +32,6 @@ from threading import Thread
 from Queue     import Queue
 import urllib    # for passing strings across gpssh
 import shutil    # for copying
-import glob      # for globbing
 try:
     from pygresql import pg              # Database interaction
     from gppylib.gplog import *          # Greenplum logging facility
@@ -237,12 +236,22 @@ class RemapOidWorker(Thread):
                 #
                 # Previously this just incremented until the extension wasn't 
                 # found, but this is not valid for AO tables which may have 
-                # gaps in the range [MPP-6526].  Resolved by switching to use 
-                # of a glob.
-                for fglob in glob.iglob(oldfile+'.[0-9]*'):
-                    extension = fglob.rsplit('.', 1)[1]    # get the extension 
-                    nf = '%s.%s' % (newfile, extension)
-                    os.link(fglob, nf)
+                # gaps in the range [MPP-6526].  Since AO tables have a maximum
+                # of 127 extensions we use a hybrid aproach where we always
+                # check for the first 127 extension files, and then revert
+                # to the assumption that all extensions are contiguous and
+                # continue until we fail to find a given extension.
+                #
+                # [MPP-6880] Previous attempts at fixing [MPP-6526] using
+                # globbing proved too expensive.
+                ext = 0
+                exists = True
+                while (ext < 128 or exists):
+                    exists = os.path.exists(oldfile + '.' + str(ext))
+                    if (exists):
+                        os.link('%s.%s' % (oldfile, str(ext)), 
+                                '%s.%s' % (newfile, str(ext)))
+                    ext = ext + 1
         
 class Worker(Thread):
     def __init__(self, harness):
