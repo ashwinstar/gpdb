@@ -1031,6 +1031,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		queryDesc->estate->es_cur_slice_idx = gbl_queryDesc->estate->es_cur_slice_idx;
 		queryDesc->estate->es_param_exec_vals = gbl_queryDesc->estate->es_param_exec_vals;
 		queryDesc->estate->motionlayer_context = gbl_queryDesc->estate->motionlayer_context;
+
+		queryDesc->cursor_query = gbl_queryDesc->cursor_query;
 	}
 
 	/*
@@ -1044,7 +1046,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		if (shouldDispatch)
 		{			
 			needDtxTwoPhase = isCurrentDtxTwoPhase();
-		
+
 			/*
 			 * This call returns after launching the threads that send the
              * command to the appropriate segdbs.  It does not wait for them
@@ -1065,10 +1067,30 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			ExecUpdateTransportState(planstate, queryDesc->estate->interconnect_context);
 
 			/*
-			 * We rewind the segmateSync value since the InitPlan can
-			 * share the same value with its parent plan. See MPP-4504.
+			 * MPP-6533/MPP-5805: If this is an initplan-running from
+			 * a cursor, we need to make sure that we properly
+			 * maintain the writer-gang sync (the initplans for such a
+			 * query aren't run on the writer-gang).
+			 *
+			 * However, we must *not* rewind on ordinary initplans --
+			 * since they *do* use the writer-gang. "Rewind"
+			 * essentially bypasses synchronization between reader and
+			 * writer, and isn't safe for any query which uses both
+			 * readers and writers.
+			 *
+			 * I would prefer to use verify_shared_snapshot_ready()
+			 * here, but that would introduce more latency (an extra
+			 * dispatch to the writer).
 			 */
-			DtxContextInfo_RewindSegmateSync();
+			if (queryDesc->cursor_query)
+			{
+				/*
+				 * We rewind the segmateSync value since the InitPlan can
+				 * share the same value with its parent plan. See MPP-4504.
+				 */
+
+				DtxContextInfo_RewindSegmateSync();
+			}
 		}
 
 		/*
