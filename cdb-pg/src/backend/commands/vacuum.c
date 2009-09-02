@@ -3747,17 +3747,20 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	PG_CATCH();
 	{
 		char *disp_msg;
+		bool dispatch_inflight=false;
 
 		switch(disp_phase)
 		{
 			case 0:
 				disp_msg = "primary dispatch";
+				dispatch_inflight = true;
 				break;
 			case 1:
 				disp_msg = "primary completion";
 				break;
 			case 2:
 				disp_msg = "mirror dispatch";
+				dispatch_inflight = true;
 				break;
 			case 3:
 				disp_msg = "mirror completion";
@@ -3773,7 +3776,8 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		 * Handle errors/cancels here: we may catch *either* of the
 		 * two dispatch operations above.
 		 */
-		cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
+		if (dispatch_inflight)
+			cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
 
 		PG_RE_THROW();
 	}
