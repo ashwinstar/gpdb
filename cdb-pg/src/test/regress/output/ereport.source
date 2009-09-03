@@ -323,20 +323,20 @@ select * from get_ereport order by 1;
  aaag: aclchk:00002428:  ereport(ERROR, 
  aaag: aclchk:00002429:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  aaag: aclchk:00002430:  errmsg("conversion with OID %u does not exist", conv_oid))); 
- aaah: analyze:00000384:  ereport(WARNING, 
- aaah: analyze:00000385:  (errmsg("skipping "%s" --- cannot analyze indexes, views, external tables or special system tables", 
- aaah: analyze:00000386:  RelationGetRelationName(candidateRelation)))); 
- aaah: analyze:00000428:  ereport(WARNING, 
- aaah: analyze:00000429:  (errmsg("Skipping "%s" --- only table or database owner can analyze it", 
- aaah: analyze:00000430:  RelationGetRelationName(candidateRelation)))); 
- aaah: analyze:00000501:  ereport(ERROR, 
- aaah: analyze:00000502:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- aaah: analyze:00000503:  errmsg("Attribute %s has been dropped in relation %s.", 
- aaah: analyze:00000504:  attributeName, get_rel_name(relationOid)))); 
- aaah: analyze:00000515:  ereport(ERROR, 
- aaah: analyze:00000516:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- aaah: analyze:00000517:  errmsg("Relation %s does not have an attribute named %s.", 
- aaah: analyze:00000518:  get_rel_name(relationOid),attributeName))); 
+ aaah: analyze:00000386:  ereport(WARNING, 
+ aaah: analyze:00000387:  (errmsg("skipping "%s" --- cannot analyze indexes, views, external tables or special system tables", 
+ aaah: analyze:00000388:  RelationGetRelationName(candidateRelation)))); 
+ aaah: analyze:00000430:  ereport(WARNING, 
+ aaah: analyze:00000431:  (errmsg("Skipping "%s" --- only table or database owner can analyze it", 
+ aaah: analyze:00000432:  RelationGetRelationName(candidateRelation)))); 
+ aaah: analyze:00000503:  ereport(ERROR, 
+ aaah: analyze:00000504:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ aaah: analyze:00000505:  errmsg("Attribute %s has been dropped in relation %s.", 
+ aaah: analyze:00000506:  attributeName, get_rel_name(relationOid)))); 
+ aaah: analyze:00000517:  ereport(ERROR, 
+ aaah: analyze:00000518:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ aaah: analyze:00000519:  errmsg("Relation %s does not have an attribute named %s.", 
+ aaah: analyze:00000520:  get_rel_name(relationOid),attributeName))); 
  aaah: analyze:00000748:  ereport(ERROR, 
  aaah: analyze:00000749:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
  aaah: analyze:00000750:  errmsg("target lists can have at most %d entries", 
@@ -345,8 +345,8 @@ select * from get_ereport order by 1;
  aaah: analyze:00000846:  (errcode(ERRCODE_SYNTAX_ERROR), 
  aaah: analyze:00000847:  errmsg("CREATE VIEW specifies more column " 
  aaah: analyze:00000848:  "names than columns"))); 
- aaah: analyze:00000864:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaah: analyze:00000865:  errmsg("Unable to connect to execute internal query."))); 
+ aaah: analyze:00000866:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaah: analyze:00000867:  errmsg("Unable to connect to execute internal query."))); 
  aaah: analyze:00000892:  ereport(ERROR, 
  aaah: analyze:00000893:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  aaah: analyze:00000894:  errmsg("The RETURNING clause of the DELETE statement is not " 
@@ -2133,8 +2133,8 @@ select * from get_ereport order by 1;
  caaf: cdbtm:00002968:  errdetail("%s", errmsgbuf.data))); 
  caaf: cdbtm:00003002:  ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY), 
  caaf: cdbtm:00003003:  errmsg("DTM could not allocate hash table for InDoubtDtxList."))); 
- caaf: cdbtm:00003661:  ereport(ERROR, (errmsg("Global transaction BEGIN failed failed for gid = "%s" due to error", 
- caaf: cdbtm:00003662:  currentGxact->gid))); 
+ caaf: cdbtm:00003657:  ereport(ERROR, (errmsg("Global transaction BEGIN failed failed for gid = "%s" due to error", 
+ caaf: cdbtm:00003658:  currentGxact->gid))); 
  caag: cdbcat:00000386:  ereport(ERROR, 
  caag: cdbcat:00000387:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  caag: cdbcat:00000388:  errmsg("distribution policy for relation "%d" does not exist", 
@@ -2886,32 +2886,32 @@ select * from get_ereport order by 1;
  caaj: cdbmutate:00000356:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
  caaj: cdbmutate:00000357:  errmsg("Cannot parallelize that SELECT INTO yet") 
  caaj: cdbmutate:00000358:  )); 
- caaj: cdbmutate:00000607:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000608:  errmsg("Cannot parallelize that INSERT yet"))); 
- caaj: cdbmutate:00000624:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000625:  errmsg("Cannot parallelize that INSERT yet"))); 
- caaj: cdbmutate:00000654:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000655:  errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns"))); 
- caaj: cdbmutate:00000659:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000660:  errmsg("Cannot parallelize that %s yet", 
- caaj: cdbmutate:00000661:  query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE") 
- caaj: cdbmutate:00000662:  )); 
- caaj: cdbmutate:00000673:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000674:  errmsg("Cannot parallelize that %s yet", 
- caaj: cdbmutate:00000675:  query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE") 
- caaj: cdbmutate:00000676:  )); 
- caaj: cdbmutate:00000717:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000718:  errmsg("Cannot parallelize that %s yet", cmd), 
- caaj: cdbmutate:00000719:  errdetail("Passage of data from one segment to another " 
- caaj: cdbmutate:00000720:  "is not yet supported during %s operations.", 
- caaj: cdbmutate:00000721:  cmd), 
- caaj: cdbmutate:00000722:  errhint("The WHERE condition must specify equality " 
- caaj: cdbmutate:00000723:  "between corresponding DISTRIBUTED BY columns " 
- caaj: cdbmutate:00000724:  "of the target table and all joined tables.") 
- caaj: cdbmutate:00000725:  )); 
- caaj: cdbmutate:00001089:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- caaj: cdbmutate:00001090:  errmsg("no equality operator for typid %d", 
- caaj: cdbmutate:00001091:  typeoid))); 
+ caaj: cdbmutate:00000605:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000606:  errmsg("Cannot parallelize that INSERT yet"))); 
+ caaj: cdbmutate:00000622:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000623:  errmsg("Cannot parallelize that INSERT yet"))); 
+ caaj: cdbmutate:00000652:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000653:  errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns"))); 
+ caaj: cdbmutate:00000657:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000658:  errmsg("Cannot parallelize that %s yet", 
+ caaj: cdbmutate:00000659:  query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE") 
+ caaj: cdbmutate:00000660:  )); 
+ caaj: cdbmutate:00000671:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000672:  errmsg("Cannot parallelize that %s yet", 
+ caaj: cdbmutate:00000673:  query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE") 
+ caaj: cdbmutate:00000674:  )); 
+ caaj: cdbmutate:00000715:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000716:  errmsg("Cannot parallelize that %s yet", cmd), 
+ caaj: cdbmutate:00000717:  errdetail("Passage of data from one segment to another " 
+ caaj: cdbmutate:00000718:  "is not yet supported during %s operations.", 
+ caaj: cdbmutate:00000719:  cmd), 
+ caaj: cdbmutate:00000720:  errhint("The WHERE condition must specify equality " 
+ caaj: cdbmutate:00000721:  "between corresponding DISTRIBUTED BY columns " 
+ caaj: cdbmutate:00000722:  "of the target table and all joined tables.") 
+ caaj: cdbmutate:00000723:  )); 
+ caaj: cdbmutate:00001087:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ caaj: cdbmutate:00001088:  errmsg("no equality operator for typid %d", 
+ caaj: cdbmutate:00001089:  typeoid))); 
  caaj: chklocale:00000324:  ereport(WARNING, 
  caaj: chklocale:00000325:  (errmsg("could not determine encoding for locale "%s": codeset is "%s"", 
  caaj: chklocale:00000326:  ctype, sys), 
@@ -3293,9 +3293,9 @@ select * from get_ereport order by 1;
  cabh: cdbdtxcontextinfo:00000073:  ereport(ERROR, 
  cabh: cdbdtxcontextinfo:00000074:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cabh: cdbdtxcontextinfo:00000075:  errmsg("out of memory"))); 
- cabh: cdbdtxcontextinfo:00000491:  ereport(ERROR, 
- cabh: cdbdtxcontextinfo:00000492:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cabh: cdbdtxcontextinfo:00000493:  errmsg("out of memory"))); 
+ cabh: cdbdtxcontextinfo:00000498:  ereport(ERROR, 
+ cabh: cdbdtxcontextinfo:00000499:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabh: cdbdtxcontextinfo:00000500:  errmsg("out of memory"))); 
  cacc: cdbdistributedsnapshot:00000298:  ereport(ERROR, 
  cacc: cdbdistributedsnapshot:00000299:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacc: cdbdistributedsnapshot:00000300:  errmsg("out of memory"))); 
@@ -5175,287 +5175,287 @@ select * from get_ereport order by 1;
  gaad: guc:00008797:  ereport(ERROR, 
  gaad: guc:00008798:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  gaad: guc:00008799:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
- gaae: gram:00017236:  ereport(ERROR, 
- gaae: gram:00017237:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00017238:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
- gaae: gram:00017250:  ereport(ERROR, 
- gaae: gram:00017251:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00017252:  errmsg("INTERVAL(%d) precision must not be negative", 
- gaae: gram:00017253:  (yyvsp[(3) - (6)].ival)))); 
- gaae: gram:00017256:  ereport(WARNING, 
- gaae: gram:00017257:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00017258:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00017259:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
- gaae: gram:00017265:  ereport(ERROR, 
- gaae: gram:00017266:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00017267:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
- gaae: gram:00017921:  ereport(ERROR, 
- gaae: gram:00017922:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00017923:  errmsg("Cannot specify a name, rank, " 
- gaae: gram:00017924:  "or value for a DEFAULT partition " 
- gaae: gram:00017925:  "in this context"))); 
- gaae: gram:00017989:  ereport(ERROR, 
- gaae: gram:00017990:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00017991:  errmsg("Can only ADD a partition by name"))); 
- gaae: gram:00018029:  ereport(ERROR, 
- gaae: gram:00018030:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00018031:  errmsg("Can only ADD a partition by name"))); 
- gaae: gram:00018108:  ereport(ERROR, 
- gaae: gram:00018109:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00018110:  errmsg("Can only COALESCE a partition by name"))); 
- gaae: gram:00018374:  ereport(ERROR, 
- gaae: gram:00018375:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00018376:  errmsg("template cannot contain " 
- gaae: gram:00018377:  "specification for child " 
- gaae: gram:00018378:  "partition"))); 
- gaae: gram:00019320:  ereport(ERROR, 
- gaae: gram:00019321:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00019322:  errmsg("MATCH PARTIAL not yet implemented"))); 
- gaae: gram:00019504:  ereport(ERROR, 
- gaae: gram:00019505:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00019506:  errmsg("TABLESPACE not supported"))); 
- gaae: gram:00019525:  ereport(ERROR, 
- gaae: gram:00019526:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00019527:  errmsg("TABLESPACE not supported"))); 
- gaae: gram:00019546:  ereport(ERROR, 
- gaae: gram:00019547:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00019548:  errmsg("TABLESPACE not supported"))); 
- gaae: gram:00020044:  ereport(ERROR, 
- gaae: gram:00020045:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00020046:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
- gaae: gram:00020092:  ereport(ERROR, 
- gaae: gram:00020093:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00020094:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
- gaae: gram:00020096:  ereport(ERROR, 
- gaae: gram:00020097:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00020098:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
- gaae: gram:00020154:  ereport(ERROR, 
- gaae: gram:00020155:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00020156:  errmsg("template cannot contain " 
- gaae: gram:00020157:  "specification for child " 
- gaae: gram:00020158:  "partition"))); 
- gaae: gram:00020251:  ereport(ERROR, 
- gaae: gram:00020252:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00020253:  errmsg("CREATE TABLE AS may not specify INTO"))); 
- gaae: gram:00020263:  ereport(ERROR, 
- gaae: gram:00020264:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020265:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
- gaae: gram:00020266:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"))); 
- gaae: gram:00020324:  ereport(ERROR, 
- gaae: gram:00020325:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00020326:  errmsg("EXECUTE may not be used with a regular external table"), 
- gaae: gram:00020327:  errhint("Use CREATE EXTERNAL WEB TABLE instead"))); 
- gaae: gram:00020562:  ereport(ERROR, 
- gaae: gram:00020563:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00020564:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
- gaae: gram:00020568:  ereport(ERROR, 
- gaae: gram:00020569:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00020570:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
- gaae: gram:00020898:  ereport(ERROR, 
- gaae: gram:00020899:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020900:  errmsg("CREATE TABLESPACE not supported"))); 
- gaae: gram:00021152:  ereport(ERROR, 
- gaae: gram:00021153:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021154:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
- gaae: gram:00021173:  ereport(ERROR, 
- gaae: gram:00021174:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021175:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
- gaae: gram:00021241:  ereport(ERROR, 
- gaae: gram:00021242:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00021243:  errmsg("CREATE ASSERTION is not yet implemented"))); 
- gaae: gram:00021257:  ereport(ERROR, 
- gaae: gram:00021258:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00021259:  errmsg("DROP ASSERTION is not yet implemented"))); 
- gaae: gram:00021360:  ereport(ERROR, 
- gaae: gram:00021361:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021362:  errmsg("improper qualified name (too many dotted names): %s", 
- gaae: gram:00021363:  NameListToString((yyvsp[(3) - (7)].list))))); 
- gaae: gram:00022989:  ereport(ERROR, 
- gaae: gram:00022990:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00022991:  errmsg("missing argument"), 
- gaae: gram:00022992:  errhint("Use NONE to denote the missing argument of a unary operator."))); 
- gaae: gram:00023894:  ereport(ERROR, 
- gaae: gram:00023895:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00023896:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00023903:  ereport(ERROR, 
- gaae: gram:00023904:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00023905:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00023912:  ereport(ERROR, 
- gaae: gram:00023913:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00023914:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00024367:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00024368:  errmsg("cannot use force with explain statement") 
- gaae: gram:00024369:  )); 
- gaae: gram:00024379:  ereport(ERROR, 
- gaae: gram:00024380:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00024381:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
- gaae: gram:00024382:  "clause"))); 
- gaae: gram:00024450:  ereport(ERROR, 
- gaae: gram:00024451:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00024452:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
- gaae: gram:00024717:  ereport(ERROR, 
- gaae: gram:00024718:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00024719:  errmsg("number of columns does not match number of values"))); 
- gaae: gram:00025109:  ereport(ERROR, 
- gaae: gram:00025110:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00025111:  errmsg("LIMIT #,# syntax is not supported"), 
- gaae: gram:00025112:  errhint("Use separate LIMIT and OFFSET clauses."))); 
- gaae: gram:00025637:  ereport(ERROR, 
- gaae: gram:00025638:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00025639:  errmsg("VALUES in FROM must have an alias"), 
- gaae: gram:00025640:  errhint("For example, FROM (VALUES ...) [AS] foo."))); 
- gaae: gram:00025642:  ereport(ERROR, 
- gaae: gram:00025643:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00025644:  errmsg("subquery in FROM must have an alias"), 
- gaae: gram:00025645:  errhint("For example, FROM (SELECT ...) [AS] foo."))); 
- gaae: gram:00026031:  ereport(ERROR, 
- gaae: gram:00026032:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026033:  errmsg("INTERVAL(%d) precision must not be negative", 
- gaae: gram:00026034:  (yyvsp[(3) - (5)].ival)))); 
- gaae: gram:00026037:  ereport(WARNING, 
- gaae: gram:00026038:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026039:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00026040:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION))); 
- gaae: gram:00026174:  ereport(ERROR, 
- gaae: gram:00026175:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026176:  errmsg("precision for type float must be at least 1 bit"))); 
- gaae: gram:00026182:  ereport(ERROR, 
- gaae: gram:00026183:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026184:  errmsg("precision for type float must be less than 54 bits"))); 
- gaae: gram:00026199:  ereport(ERROR, 
- gaae: gram:00026200:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026201:  errmsg("NUMERIC precision %d must be between 1 and %d", 
- gaae: gram:00026202:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00026204:  ereport(ERROR, 
- gaae: gram:00026205:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026206:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
- gaae: gram:00026207:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
- gaae: gram:00026217:  ereport(ERROR, 
- gaae: gram:00026218:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026219:  errmsg("NUMERIC precision %d must be between 1 and %d", 
- gaae: gram:00026220:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00026238:  ereport(ERROR, 
- gaae: gram:00026239:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026240:  errmsg("DECIMAL precision %d must be between 1 and %d", 
- gaae: gram:00026241:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00026243:  ereport(ERROR, 
- gaae: gram:00026244:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026245:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
- gaae: gram:00026246:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
- gaae: gram:00026256:  ereport(ERROR, 
- gaae: gram:00026257:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026258:  errmsg("DECIMAL precision %d must be between 1 and %d", 
- gaae: gram:00026259:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00026310:  ereport(ERROR, 
- gaae: gram:00026311:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026312:  errmsg("length for type %s must be at least 1", 
- gaae: gram:00026313:  typname))); 
- gaae: gram:00026315:  ereport(ERROR, 
- gaae: gram:00026316:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026317:  errmsg("length for type %s cannot exceed %d", 
- gaae: gram:00026318:  typname, MaxAttrSize * BITS_PER_BYTE))); 
- gaae: gram:00026392:  ereport(ERROR, 
- gaae: gram:00026393:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026394:  errmsg("length for type %s must be at least 1", 
- gaae: gram:00026395:  (yyvsp[(1) - (5)].str)))); 
- gaae: gram:00026397:  ereport(ERROR, 
- gaae: gram:00026398:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026399:  errmsg("length for type %s cannot exceed %d", 
- gaae: gram:00026400:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
- gaae: gram:00026497:  ereport(ERROR, 
- gaae: gram:00026498:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026499:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
- gaae: gram:00026500:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
- gaae: gram:00026503:  ereport(WARNING, 
- gaae: gram:00026504:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026505:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
- gaae: gram:00026506:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
- gaae: gram:00026507:  MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00026536:  ereport(ERROR, 
- gaae: gram:00026537:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026538:  errmsg("TIME(%d)%s precision must not be negative", 
- gaae: gram:00026539:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
- gaae: gram:00026542:  ereport(WARNING, 
- gaae: gram:00026543:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00026544:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
- gaae: gram:00026545:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
- gaae: gram:00026546:  MAX_TIME_PRECISION))); 
- gaae: gram:00027173:  ereport(ERROR, 
- gaae: gram:00027174:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00027175:  errmsg("UNIQUE predicate is not yet implemented"))); 
- gaae: gram:00027303:  ereport(ERROR, 
- gaae: gram:00027304:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00027305:  errmsg("window OVER clause can only be used " 
- gaae: gram:00027306:  "with an aggregate"))); 
- gaae: gram:00027588:  ereport(ERROR, 
- gaae: gram:00027589:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027590:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
- gaae: gram:00027591:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00027594:  ereport(WARNING, 
- gaae: gram:00027595:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027596:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00027597:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
- gaae: gram:00027640:  ereport(ERROR, 
- gaae: gram:00027641:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027642:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
- gaae: gram:00027643:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00027646:  ereport(WARNING, 
- gaae: gram:00027647:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027648:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00027649:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00027693:  ereport(ERROR, 
- gaae: gram:00027694:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027695:  errmsg("LOCALTIME(%d) precision must not be negative", 
- gaae: gram:00027696:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00027699:  ereport(WARNING, 
- gaae: gram:00027700:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027701:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00027702:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
- gaae: gram:00027747:  ereport(ERROR, 
- gaae: gram:00027748:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027749:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
- gaae: gram:00027750:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00027753:  ereport(WARNING, 
- gaae: gram:00027754:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00027755:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00027756:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00028689:  ereport(ERROR, 
- gaae: gram:00028690:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00028691:  errmsg("improper qualified name (too many dotted names): %s", 
- gaae: gram:00028692:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
- gaae: gram:00028846:  ereport(ERROR, 
- gaae: gram:00028847:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028848:  errmsg("INTERVAL(%d) precision must not be negative", 
- gaae: gram:00028849:  (yyvsp[(3) - (6)].ival)))); 
- gaae: gram:00028852:  ereport(WARNING, 
- gaae: gram:00028853:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028854:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00028855:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
- gaae: gram:00029003:  ereport(ERROR, 
- gaae: gram:00029004:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029005:  errmsg("OLD used in query that is not in a rule"))); 
- gaae: gram:00029015:  ereport(ERROR, 
- gaae: gram:00029016:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029017:  errmsg("NEW used in query that is not in a rule"))); 
- gaae: gram:00029446:  ereport(ERROR, 
- gaae: gram:00029447:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029448:  errmsg("wrong number of parameters on left side of OVERLAPS expression"))); 
- gaae: gram:00029452:  ereport(ERROR, 
- gaae: gram:00029453:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029454:  errmsg("wrong number of parameters on right side of OVERLAPS expression"))); 
- gaae: gram:00029554:  ereport(ERROR, 
- gaae: gram:00029555:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029556:  errmsg("multiple ORDER BY clauses not allowed"))); 
- gaae: gram:00029564:  ereport(ERROR, 
- gaae: gram:00029565:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029566:  errmsg("multiple OFFSET clauses not allowed"))); 
- gaae: gram:00029572:  ereport(ERROR, 
- gaae: gram:00029573:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029574:  errmsg("multiple LIMIT clauses not allowed"))); 
- gaae: gram:00029711:  ereport(ERROR, 
- gaae: gram:00029712:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029713:  errmsg("OUT and INOUT arguments aren't allowed in " 
- gaae: gram:00029714:  "TABLE functions"))); 
+ gaae: gram:00017202:  ereport(ERROR, 
+ gaae: gram:00017203:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00017204:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
+ gaae: gram:00017216:  ereport(ERROR, 
+ gaae: gram:00017217:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00017218:  errmsg("INTERVAL(%d) precision must not be negative", 
+ gaae: gram:00017219:  (yyvsp[(3) - (6)].ival)))); 
+ gaae: gram:00017222:  ereport(WARNING, 
+ gaae: gram:00017223:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00017224:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00017225:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+ gaae: gram:00017231:  ereport(ERROR, 
+ gaae: gram:00017232:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00017233:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
+ gaae: gram:00017887:  ereport(ERROR, 
+ gaae: gram:00017888:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00017889:  errmsg("Cannot specify a name, rank, " 
+ gaae: gram:00017890:  "or value for a DEFAULT partition " 
+ gaae: gram:00017891:  "in this context"))); 
+ gaae: gram:00017955:  ereport(ERROR, 
+ gaae: gram:00017956:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00017957:  errmsg("Can only ADD a partition by name"))); 
+ gaae: gram:00017995:  ereport(ERROR, 
+ gaae: gram:00017996:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00017997:  errmsg("Can only ADD a partition by name"))); 
+ gaae: gram:00018074:  ereport(ERROR, 
+ gaae: gram:00018075:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00018076:  errmsg("Can only COALESCE a partition by name"))); 
+ gaae: gram:00018340:  ereport(ERROR, 
+ gaae: gram:00018341:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00018342:  errmsg("template cannot contain " 
+ gaae: gram:00018343:  "specification for child " 
+ gaae: gram:00018344:  "partition"))); 
+ gaae: gram:00019286:  ereport(ERROR, 
+ gaae: gram:00019287:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00019288:  errmsg("MATCH PARTIAL not yet implemented"))); 
+ gaae: gram:00019470:  ereport(ERROR, 
+ gaae: gram:00019471:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00019472:  errmsg("TABLESPACE not supported"))); 
+ gaae: gram:00019491:  ereport(ERROR, 
+ gaae: gram:00019492:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00019493:  errmsg("TABLESPACE not supported"))); 
+ gaae: gram:00019512:  ereport(ERROR, 
+ gaae: gram:00019513:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00019514:  errmsg("TABLESPACE not supported"))); 
+ gaae: gram:00020010:  ereport(ERROR, 
+ gaae: gram:00020011:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020012:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
+ gaae: gram:00020058:  ereport(ERROR, 
+ gaae: gram:00020059:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020060:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
+ gaae: gram:00020062:  ereport(ERROR, 
+ gaae: gram:00020063:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020064:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
+ gaae: gram:00020120:  ereport(ERROR, 
+ gaae: gram:00020121:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020122:  errmsg("template cannot contain " 
+ gaae: gram:00020123:  "specification for child " 
+ gaae: gram:00020124:  "partition"))); 
+ gaae: gram:00020217:  ereport(ERROR, 
+ gaae: gram:00020218:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020219:  errmsg("CREATE TABLE AS may not specify INTO"))); 
+ gaae: gram:00020229:  ereport(ERROR, 
+ gaae: gram:00020230:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00020231:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
+ gaae: gram:00020232:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"))); 
+ gaae: gram:00020290:  ereport(ERROR, 
+ gaae: gram:00020291:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00020292:  errmsg("EXECUTE may not be used with a regular external table"), 
+ gaae: gram:00020293:  errhint("Use CREATE EXTERNAL WEB TABLE instead"))); 
+ gaae: gram:00020528:  ereport(ERROR, 
+ gaae: gram:00020529:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00020530:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
+ gaae: gram:00020534:  ereport(ERROR, 
+ gaae: gram:00020535:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00020536:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
+ gaae: gram:00020864:  ereport(ERROR, 
+ gaae: gram:00020865:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00020866:  errmsg("CREATE TABLESPACE not supported"))); 
+ gaae: gram:00021118:  ereport(ERROR, 
+ gaae: gram:00021119:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021120:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+ gaae: gram:00021139:  ereport(ERROR, 
+ gaae: gram:00021140:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021141:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+ gaae: gram:00021207:  ereport(ERROR, 
+ gaae: gram:00021208:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00021209:  errmsg("CREATE ASSERTION is not yet implemented"))); 
+ gaae: gram:00021223:  ereport(ERROR, 
+ gaae: gram:00021224:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00021225:  errmsg("DROP ASSERTION is not yet implemented"))); 
+ gaae: gram:00021326:  ereport(ERROR, 
+ gaae: gram:00021327:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021328:  errmsg("improper qualified name (too many dotted names): %s", 
+ gaae: gram:00021329:  NameListToString((yyvsp[(3) - (7)].list))))); 
+ gaae: gram:00022960:  ereport(ERROR, 
+ gaae: gram:00022961:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00022962:  errmsg("missing argument"), 
+ gaae: gram:00022963:  errhint("Use NONE to denote the missing argument of a unary operator."))); 
+ gaae: gram:00023865:  ereport(ERROR, 
+ gaae: gram:00023866:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00023867:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00023874:  ereport(ERROR, 
+ gaae: gram:00023875:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00023876:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00023883:  ereport(ERROR, 
+ gaae: gram:00023884:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00023885:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00024338:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00024339:  errmsg("cannot use force with explain statement") 
+ gaae: gram:00024340:  )); 
+ gaae: gram:00024350:  ereport(ERROR, 
+ gaae: gram:00024351:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00024352:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
+ gaae: gram:00024353:  "clause"))); 
+ gaae: gram:00024421:  ereport(ERROR, 
+ gaae: gram:00024422:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00024423:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
+ gaae: gram:00024688:  ereport(ERROR, 
+ gaae: gram:00024689:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00024690:  errmsg("number of columns does not match number of values"))); 
+ gaae: gram:00025080:  ereport(ERROR, 
+ gaae: gram:00025081:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00025082:  errmsg("LIMIT #,# syntax is not supported"), 
+ gaae: gram:00025083:  errhint("Use separate LIMIT and OFFSET clauses."))); 
+ gaae: gram:00025608:  ereport(ERROR, 
+ gaae: gram:00025609:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00025610:  errmsg("VALUES in FROM must have an alias"), 
+ gaae: gram:00025611:  errhint("For example, FROM (VALUES ...) [AS] foo."))); 
+ gaae: gram:00025613:  ereport(ERROR, 
+ gaae: gram:00025614:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00025615:  errmsg("subquery in FROM must have an alias"), 
+ gaae: gram:00025616:  errhint("For example, FROM (SELECT ...) [AS] foo."))); 
+ gaae: gram:00026002:  ereport(ERROR, 
+ gaae: gram:00026003:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026004:  errmsg("INTERVAL(%d) precision must not be negative", 
+ gaae: gram:00026005:  (yyvsp[(3) - (5)].ival)))); 
+ gaae: gram:00026008:  ereport(WARNING, 
+ gaae: gram:00026009:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026010:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00026011:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION))); 
+ gaae: gram:00026145:  ereport(ERROR, 
+ gaae: gram:00026146:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026147:  errmsg("precision for type float must be at least 1 bit"))); 
+ gaae: gram:00026153:  ereport(ERROR, 
+ gaae: gram:00026154:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026155:  errmsg("precision for type float must be less than 54 bits"))); 
+ gaae: gram:00026170:  ereport(ERROR, 
+ gaae: gram:00026171:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026172:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+ gaae: gram:00026173:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00026175:  ereport(ERROR, 
+ gaae: gram:00026176:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026177:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
+ gaae: gram:00026178:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+ gaae: gram:00026188:  ereport(ERROR, 
+ gaae: gram:00026189:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026190:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+ gaae: gram:00026191:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00026209:  ereport(ERROR, 
+ gaae: gram:00026210:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026211:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+ gaae: gram:00026212:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00026214:  ereport(ERROR, 
+ gaae: gram:00026215:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026216:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
+ gaae: gram:00026217:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+ gaae: gram:00026227:  ereport(ERROR, 
+ gaae: gram:00026228:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026229:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+ gaae: gram:00026230:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00026281:  ereport(ERROR, 
+ gaae: gram:00026282:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026283:  errmsg("length for type %s must be at least 1", 
+ gaae: gram:00026284:  typname))); 
+ gaae: gram:00026286:  ereport(ERROR, 
+ gaae: gram:00026287:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026288:  errmsg("length for type %s cannot exceed %d", 
+ gaae: gram:00026289:  typname, MaxAttrSize * BITS_PER_BYTE))); 
+ gaae: gram:00026363:  ereport(ERROR, 
+ gaae: gram:00026364:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026365:  errmsg("length for type %s must be at least 1", 
+ gaae: gram:00026366:  (yyvsp[(1) - (5)].str)))); 
+ gaae: gram:00026368:  ereport(ERROR, 
+ gaae: gram:00026369:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026370:  errmsg("length for type %s cannot exceed %d", 
+ gaae: gram:00026371:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
+ gaae: gram:00026468:  ereport(ERROR, 
+ gaae: gram:00026469:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026470:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
+ gaae: gram:00026471:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+ gaae: gram:00026474:  ereport(WARNING, 
+ gaae: gram:00026475:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026476:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
+ gaae: gram:00026477:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+ gaae: gram:00026478:  MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00026507:  ereport(ERROR, 
+ gaae: gram:00026508:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026509:  errmsg("TIME(%d)%s precision must not be negative", 
+ gaae: gram:00026510:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+ gaae: gram:00026513:  ereport(WARNING, 
+ gaae: gram:00026514:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00026515:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
+ gaae: gram:00026516:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+ gaae: gram:00026517:  MAX_TIME_PRECISION))); 
+ gaae: gram:00027144:  ereport(ERROR, 
+ gaae: gram:00027145:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00027146:  errmsg("UNIQUE predicate is not yet implemented"))); 
+ gaae: gram:00027274:  ereport(ERROR, 
+ gaae: gram:00027275:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00027276:  errmsg("window OVER clause can only be used " 
+ gaae: gram:00027277:  "with an aggregate"))); 
+ gaae: gram:00027559:  ereport(ERROR, 
+ gaae: gram:00027560:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027561:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
+ gaae: gram:00027562:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00027565:  ereport(WARNING, 
+ gaae: gram:00027566:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027567:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00027568:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+ gaae: gram:00027611:  ereport(ERROR, 
+ gaae: gram:00027612:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027613:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
+ gaae: gram:00027614:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00027617:  ereport(WARNING, 
+ gaae: gram:00027618:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027619:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00027620:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00027664:  ereport(ERROR, 
+ gaae: gram:00027665:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027666:  errmsg("LOCALTIME(%d) precision must not be negative", 
+ gaae: gram:00027667:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00027670:  ereport(WARNING, 
+ gaae: gram:00027671:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027672:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00027673:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+ gaae: gram:00027718:  ereport(ERROR, 
+ gaae: gram:00027719:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027720:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
+ gaae: gram:00027721:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00027724:  ereport(WARNING, 
+ gaae: gram:00027725:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027726:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00027727:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00028660:  ereport(ERROR, 
+ gaae: gram:00028661:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00028662:  errmsg("improper qualified name (too many dotted names): %s", 
+ gaae: gram:00028663:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
+ gaae: gram:00028817:  ereport(ERROR, 
+ gaae: gram:00028818:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028819:  errmsg("INTERVAL(%d) precision must not be negative", 
+ gaae: gram:00028820:  (yyvsp[(3) - (6)].ival)))); 
+ gaae: gram:00028823:  ereport(WARNING, 
+ gaae: gram:00028824:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028825:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00028826:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+ gaae: gram:00028974:  ereport(ERROR, 
+ gaae: gram:00028975:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00028976:  errmsg("OLD used in query that is not in a rule"))); 
+ gaae: gram:00028986:  ereport(ERROR, 
+ gaae: gram:00028987:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00028988:  errmsg("NEW used in query that is not in a rule"))); 
+ gaae: gram:00029417:  ereport(ERROR, 
+ gaae: gram:00029418:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029419:  errmsg("wrong number of parameters on left side of OVERLAPS expression"))); 
+ gaae: gram:00029423:  ereport(ERROR, 
+ gaae: gram:00029424:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029425:  errmsg("wrong number of parameters on right side of OVERLAPS expression"))); 
+ gaae: gram:00029525:  ereport(ERROR, 
+ gaae: gram:00029526:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029527:  errmsg("multiple ORDER BY clauses not allowed"))); 
+ gaae: gram:00029535:  ereport(ERROR, 
+ gaae: gram:00029536:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029537:  errmsg("multiple OFFSET clauses not allowed"))); 
+ gaae: gram:00029543:  ereport(ERROR, 
+ gaae: gram:00029544:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029545:  errmsg("multiple LIMIT clauses not allowed"))); 
+ gaae: gram:00029682:  ereport(ERROR, 
+ gaae: gram:00029683:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029684:  errmsg("OUT and INOUT arguments aren't allowed in " 
+ gaae: gram:00029685:  "TABLE functions"))); 
  gaah: genfile:00000072:  ereport(ERROR, 
  gaah: genfile:00000073:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  gaah: genfile:00000074:  (errmsg("reference to parent directory ("..") not allowed")))); 
@@ -5681,19 +5681,19 @@ select * from get_ereport order by 1;
  gaai: gistutil:00000598:  RelationGetRelationName(rel), 
  gaai: gistutil:00000599:  BufferGetBlockNumber(buf)), 
  gaai: gistutil:00000600:  errhint("Please REINDEX it."))); 
- gaai: gucxfile:00000475: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- gaai: gucxfile:00000476:  
- gaai: gucxfile:00000477: enum { 
- gaai: gucxfile:00000478:  GUC_ID = 1, 
- gaai: gucxfile:00000479:  GUC_STRING = 2, 
- gaai: gucxfile:00000480:  GUC_INTEGER = 3, 
- gaai: gucxfile:00000481:  GUC_REAL = 4, 
- gaai: gucxfile:00000482:  GUC_EQUALS = 5, 
- gaai: gucxfile:00000483:  GUC_UNQUOTED_STRING = 6, 
- gaai: gucxfile:00000484:  GUC_QUALIFIED_ID = 7, 
- gaai: gucxfile:00000485:  GUC_EOL = 99, 
- gaai: gucxfile:00000486:  GUC_ERROR = 100 
- gaai: gucxfile:00000487: }; 
+ gaai: gucxfile:00000539: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ gaai: gucxfile:00000540:  
+ gaai: gucxfile:00000541: enum { 
+ gaai: gucxfile:00000542:  GUC_ID = 1, 
+ gaai: gucxfile:00000543:  GUC_STRING = 2, 
+ gaai: gucxfile:00000544:  GUC_INTEGER = 3, 
+ gaai: gucxfile:00000545:  GUC_REAL = 4, 
+ gaai: gucxfile:00000546:  GUC_EQUALS = 5, 
+ gaai: gucxfile:00000547:  GUC_UNQUOTED_STRING = 6, 
+ gaai: gucxfile:00000548:  GUC_QUALIFIED_ID = 7, 
+ gaai: gucxfile:00000549:  GUC_EOL = 99, 
+ gaai: gucxfile:00000550:  GUC_ERROR = 100 
+ gaai: gucxfile:00000551: }; 
  gaba: gistvacuum:00000569:  ereport(NOTICE, 
  gaba: gistvacuum:00000570:  (errmsg("index "%s" needs VACUUM FULL or REINDEX to finish crash recovery", 
  gaba: gistvacuum:00000571:  RelationGetRelationName(rel)))); 
@@ -5728,95 +5728,95 @@ select * from get_ereport order by 1;
  haad: hio:00000124:  errmsg("row is too big: size %lu, maximum size %lu", 
  haad: hio:00000125:  (unsigned long) len, 
  haad: hio:00000126:  (unsigned long) MaxTupleSize))); 
- haae: heap:00000244:  ereport(ERROR, 
- haae: heap:00000245:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- haae: heap:00000246:  errmsg("permission denied to create "%s.%s"", 
- haae: heap:00000247:  get_namespace_name(relnamespace), relname), 
- haae: heap:00000248:  errdetail("System catalog modifications are currently disallowed."))); 
- haae: heap:00000367:  ereport(ERROR, 
- haae: heap:00000368:  (errcode(ERRCODE_TOO_MANY_COLUMNS), 
- haae: heap:00000369:  errmsg("tables can have at most %d columns", 
- haae: heap:00000370:  MaxHeapAttributeNumber))); 
- haae: heap:00000384:  ereport(ERROR, 
- haae: heap:00000385:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
- haae: heap:00000386:  errmsg("column name "%s" conflicts with a system column name", 
- haae: heap:00000387:  NameStr(tupdesc->attrs[i]->attname)))); 
- haae: heap:00000400:  ereport(ERROR, 
- haae: heap:00000401:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
- haae: heap:00000402:  errmsg("column name "%s" is duplicated", 
- haae: heap:00000403:  NameStr(tupdesc->attrs[j]->attname)))); 
- haae: heap:00000439:  ereport(WARNING, 
- haae: heap:00000440:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
- haae: heap:00000441:  errmsg("column "%s" has type "unknown"", attname), 
- haae: heap:00000442:  errdetail("Proceeding with relation creation anyway."))); 
- haae: heap:00000447:  ereport(ERROR, 
- haae: heap:00000448:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
- haae: heap:00000449:  errmsg("column "%s" has pseudo-type %s", 
- haae: heap:00000450:  attname, format_type_be(atttypid)))); 
- haae: heap:00000849:  ereport(ERROR, 
- haae: heap:00000850:  (errcode(ERRCODE_DUPLICATE_TABLE), 
- haae: heap:00000851:  errmsg("relation "%s" already exists", relname))); 
- haae: heap:00001904:  ereport(ERROR, 
- haae: heap:00001905:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- haae: heap:00001906:  errmsg("only table "%s" can be referenced in check constraint", 
- haae: heap:00001907:  RelationGetRelationName(rel)))); 
- haae: heap:00001913:  ereport(ERROR, 
- haae: heap:00001914:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- haae: heap:00001915:  errmsg("cannot use subquery in check constraint"))); 
- haae: heap:00001917:  ereport(ERROR, 
- haae: heap:00001918:  (errcode(ERRCODE_GROUPING_ERROR), 
- haae: heap:00001919:  errmsg("cannot use aggregate function in check constraint"))); 
- haae: heap:00001921:  ereport(ERROR, 
- haae: heap:00001922:  (errcode(ERRCODE_SYNTAX_ERROR), 
- haae: heap:00001923:  errmsg("cannot use window function in check constraint"))); 
- haae: heap:00001939:  ereport(ERROR, 
- haae: heap:00001940:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- haae: heap:00001941:  errmsg("constraint "%s" for relation "%s" already exists", 
- haae: heap:00001942:  ccname, RelationGetRelationName(rel)))); 
- haae: heap:00001948:  ereport(ERROR, 
- haae: heap:00001949:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- haae: heap:00001950:  errmsg("check constraint "%s" already exists", 
- haae: heap:00001951:  ccname))); 
- haae: heap:00002096:  ereport(ERROR, 
- haae: heap:00002097:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- haae: heap:00002098:  errmsg("cannot use column references in default expression"))); 
- haae: heap:00002104:  ereport(ERROR, 
- haae: heap:00002105:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- haae: heap:00002106:  errmsg("default expression must not return a set"))); 
- haae: heap:00002112:  ereport(ERROR, 
- haae: heap:00002113:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- haae: heap:00002114:  errmsg("cannot use subquery in default expression"))); 
- haae: heap:00002116:  ereport(ERROR, 
- haae: heap:00002117:  (errcode(ERRCODE_GROUPING_ERROR), 
- haae: heap:00002118:  errmsg("cannot use aggregate function in default expression"))); 
- haae: heap:00002120:  ereport(ERROR, 
- haae: heap:00002121:  (errcode(ERRCODE_SYNTAX_ERROR), 
- haae: heap:00002122:  errmsg("cannot use window function in default expression"))); 
- haae: heap:00002137:  ereport(ERROR, 
- haae: heap:00002138:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- haae: heap:00002139:  errmsg("column "%s" is of type %s" 
- haae: heap:00002140:  " but default expression is of type %s", 
- haae: heap:00002141:  attname, 
- haae: heap:00002142:  format_type_be(atttypid), 
- haae: heap:00002143:  format_type_be(type_id)), 
- haae: heap:00002144:  errhint("You will need to rewrite or cast the expression."))); 
- haae: heap:00002429:  ereport(ERROR, 
- haae: heap:00002430:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- haae: heap:00002431:  errmsg("unsupported ON COMMIT and foreign key combination"), 
- haae: heap:00002432:  errdetail("Table "%s" references "%s", but they do not have the same ON COMMIT setting.", 
- haae: heap:00002433:  relname2, relname))); 
- haae: heap:00002435:  ereport(ERROR, 
- haae: heap:00002436:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- haae: heap:00002437:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
- haae: heap:00002438:  errdetail("Table "%s" references "%s".", 
- haae: heap:00002439:  relname2, relname), 
- haae: heap:00002440:  errhint("Truncate table "%s" at the same time, " 
- haae: heap:00002441:  "or use TRUNCATE ... CASCADE.", 
- haae: heap:00002442:  relname2))); 
- haae: heap:00002572:  ereport(ERROR, 
- haae: heap:00002573:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- haae: heap:00002574:  errmsg("external table object id "%d" does not exist", 
- haae: heap:00002575:  relid))); 
+ haae: heap:00000245:  ereport(ERROR, 
+ haae: heap:00000246:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ haae: heap:00000247:  errmsg("permission denied to create "%s.%s"", 
+ haae: heap:00000248:  get_namespace_name(relnamespace), relname), 
+ haae: heap:00000249:  errdetail("System catalog modifications are currently disallowed."))); 
+ haae: heap:00000368:  ereport(ERROR, 
+ haae: heap:00000369:  (errcode(ERRCODE_TOO_MANY_COLUMNS), 
+ haae: heap:00000370:  errmsg("tables can have at most %d columns", 
+ haae: heap:00000371:  MaxHeapAttributeNumber))); 
+ haae: heap:00000385:  ereport(ERROR, 
+ haae: heap:00000386:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+ haae: heap:00000387:  errmsg("column name "%s" conflicts with a system column name", 
+ haae: heap:00000388:  NameStr(tupdesc->attrs[i]->attname)))); 
+ haae: heap:00000401:  ereport(ERROR, 
+ haae: heap:00000402:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+ haae: heap:00000403:  errmsg("column name "%s" is duplicated", 
+ haae: heap:00000404:  NameStr(tupdesc->attrs[j]->attname)))); 
+ haae: heap:00000440:  ereport(WARNING, 
+ haae: heap:00000441:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+ haae: heap:00000442:  errmsg("column "%s" has type "unknown"", attname), 
+ haae: heap:00000443:  errdetail("Proceeding with relation creation anyway."))); 
+ haae: heap:00000448:  ereport(ERROR, 
+ haae: heap:00000449:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+ haae: heap:00000450:  errmsg("column "%s" has pseudo-type %s", 
+ haae: heap:00000451:  attname, format_type_be(atttypid)))); 
+ haae: heap:00000850:  ereport(ERROR, 
+ haae: heap:00000851:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+ haae: heap:00000852:  errmsg("relation "%s" already exists", relname))); 
+ haae: heap:00001905:  ereport(ERROR, 
+ haae: heap:00001906:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ haae: heap:00001907:  errmsg("only table "%s" can be referenced in check constraint", 
+ haae: heap:00001908:  RelationGetRelationName(rel)))); 
+ haae: heap:00001914:  ereport(ERROR, 
+ haae: heap:00001915:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ haae: heap:00001916:  errmsg("cannot use subquery in check constraint"))); 
+ haae: heap:00001918:  ereport(ERROR, 
+ haae: heap:00001919:  (errcode(ERRCODE_GROUPING_ERROR), 
+ haae: heap:00001920:  errmsg("cannot use aggregate function in check constraint"))); 
+ haae: heap:00001922:  ereport(ERROR, 
+ haae: heap:00001923:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ haae: heap:00001924:  errmsg("cannot use window function in check constraint"))); 
+ haae: heap:00001940:  ereport(ERROR, 
+ haae: heap:00001941:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ haae: heap:00001942:  errmsg("constraint "%s" for relation "%s" already exists", 
+ haae: heap:00001943:  ccname, RelationGetRelationName(rel)))); 
+ haae: heap:00001949:  ereport(ERROR, 
+ haae: heap:00001950:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ haae: heap:00001951:  errmsg("check constraint "%s" already exists", 
+ haae: heap:00001952:  ccname))); 
+ haae: heap:00002097:  ereport(ERROR, 
+ haae: heap:00002098:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ haae: heap:00002099:  errmsg("cannot use column references in default expression"))); 
+ haae: heap:00002105:  ereport(ERROR, 
+ haae: heap:00002106:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ haae: heap:00002107:  errmsg("default expression must not return a set"))); 
+ haae: heap:00002113:  ereport(ERROR, 
+ haae: heap:00002114:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ haae: heap:00002115:  errmsg("cannot use subquery in default expression"))); 
+ haae: heap:00002117:  ereport(ERROR, 
+ haae: heap:00002118:  (errcode(ERRCODE_GROUPING_ERROR), 
+ haae: heap:00002119:  errmsg("cannot use aggregate function in default expression"))); 
+ haae: heap:00002121:  ereport(ERROR, 
+ haae: heap:00002122:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ haae: heap:00002123:  errmsg("cannot use window function in default expression"))); 
+ haae: heap:00002138:  ereport(ERROR, 
+ haae: heap:00002139:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ haae: heap:00002140:  errmsg("column "%s" is of type %s" 
+ haae: heap:00002141:  " but default expression is of type %s", 
+ haae: heap:00002142:  attname, 
+ haae: heap:00002143:  format_type_be(atttypid), 
+ haae: heap:00002144:  format_type_be(type_id)), 
+ haae: heap:00002145:  errhint("You will need to rewrite or cast the expression."))); 
+ haae: heap:00002430:  ereport(ERROR, 
+ haae: heap:00002431:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ haae: heap:00002432:  errmsg("unsupported ON COMMIT and foreign key combination"), 
+ haae: heap:00002433:  errdetail("Table "%s" references "%s", but they do not have the same ON COMMIT setting.", 
+ haae: heap:00002434:  relname2, relname))); 
+ haae: heap:00002436:  ereport(ERROR, 
+ haae: heap:00002437:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ haae: heap:00002438:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
+ haae: heap:00002439:  errdetail("Table "%s" references "%s".", 
+ haae: heap:00002440:  relname2, relname), 
+ haae: heap:00002441:  errhint("Truncate table "%s" at the same time, " 
+ haae: heap:00002442:  "or use TRUNCATE ... CASCADE.", 
+ haae: heap:00002443:  relname2))); 
+ haae: heap:00002573:  ereport(ERROR, 
+ haae: heap:00002574:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ haae: heap:00002575:  errmsg("external table object id "%d" does not exist", 
+ haae: heap:00002576:  relid))); 
  haag: heapam:00000198:  ereport(ERROR, 
  haag: heapam:00000199:  (errcode(ERRCODE_INTERNAL_ERROR), 
  haag: heapam:00000200:  errmsg("page number mismatch, expect %d, but got %d", 
@@ -6902,112 +6902,112 @@ select * from get_ereport order by 1;
  maah: memprot:00000275:  errmsg("Failed to allocate memory under virtual memory protection"), 
  maah: memprot:00000276:  errdetail("Error %d, errno %d, %s", ec, en, strerror(en)) 
  maah: memprot:00000277:  )); 
- maai: miscinit:00000142:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- maai: miscinit:00000143:  errmsg("Set database path failed: out of memory"))); 
- maai: miscinit:00000179:  ereport(FATAL, 
- maai: miscinit:00000180:  (errcode_for_file_access(), 
- maai: miscinit:00000181:  errmsg("could not change directory to "%s": %m", 
- maai: miscinit:00000182:  DataDir))); 
- maai: miscinit:00000214:  ereport(FATAL, 
- maai: miscinit:00000215:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- maai: miscinit:00000216:  errmsg("out of memory"))); 
- maai: miscinit:00000235:  ereport(FATAL, 
- maai: miscinit:00000236:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- maai: miscinit:00000237:  errmsg("out of memory"))); 
- maai: miscinit:00000245:  ereport(FATAL, 
- maai: miscinit:00000246:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- maai: miscinit:00000247:  errmsg("out of memory"))); 
- maai: miscinit:00000432:  ereport(FATAL, 
- maai: miscinit:00000433:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
- maai: miscinit:00000434:  errmsg("role "%s" does not exist", rolename))); 
- maai: miscinit:00000462:  ereport(FATAL, 
- maai: miscinit:00000463:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
- maai: miscinit:00000464:  errmsg("role "%s" is not permitted to log in", 
- maai: miscinit:00000465:  rolename))); 
- maai: miscinit:00000484:  ereport(FATAL, 
- maai: miscinit:00000485:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
- maai: miscinit:00000486:  errmsg("too many connections for role "%s"", 
- maai: miscinit:00000487:  rolename))); 
- maai: miscinit:00000562:  ereport(ERROR, 
- maai: miscinit:00000563:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- maai: miscinit:00000564:  errmsg("permission denied to set session authorization"))); 
- maai: miscinit:00000652:  ereport(ERROR, 
- maai: miscinit:00000653:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- maai: miscinit:00000654:  errmsg("invalid role OID: %u", roleid))); 
- maai: miscinit:00000744:  ereport(FATAL, 
- maai: miscinit:00000745:  (errcode_for_file_access(), 
- maai: miscinit:00000746:  errmsg("could not create lock file "%s": %m", 
- maai: miscinit:00000747:  filename))); 
- maai: miscinit:00000758:  ereport(FATAL, 
- maai: miscinit:00000759:  (errcode_for_file_access(), 
- maai: miscinit:00000760:  errmsg("could not open lock file "%s": %m", 
- maai: miscinit:00000761:  filename))); 
- maai: miscinit:00000764:  ereport(FATAL, 
- maai: miscinit:00000765:  (errcode_for_file_access(), 
- maai: miscinit:00000766:  errmsg("could not read lock file "%s": %m", 
- maai: miscinit:00000767:  filename))); 
- maai: miscinit:00000827:  ereport(FATAL, 
- maai: miscinit:00000828:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
- maai: miscinit:00000829:  errmsg("lock file "%s" already exists", 
- maai: miscinit:00000830:  filename), 
- maai: miscinit:00000831:  isDDLock ? 
- maai: miscinit:00000832:  (encoded_pid < 0 ? 
- maai: miscinit:00000833:  errhint("Is another postgres (PID %d) running in data directory "%s"?", 
- maai: miscinit:00000834:  (int) other_pid, refName) : 
- maai: miscinit:00000835:  errhint("Is another postmaster (PID %d) running in data directory "%s"?", 
- maai: miscinit:00000836:  (int) other_pid, refName)) : 
- maai: miscinit:00000837:  (encoded_pid < 0 ? 
- maai: miscinit:00000838:  errhint("Is another postgres (PID %d) using socket file "%s"?", 
- maai: miscinit:00000839:  (int) other_pid, refName) : 
- maai: miscinit:00000840:  errhint("Is another postmaster (PID %d) using socket file "%s"?", 
- maai: miscinit:00000841:  (int) other_pid, refName)))); 
- maai: miscinit:00000866:  ereport(FATAL, 
- maai: miscinit:00000867:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
- maai: miscinit:00000868:  errmsg("pre-existing shared memory block " 
- maai: miscinit:00000869:  "(key %lu, ID %lu) is still in use", 
- maai: miscinit:00000870:  id1, id2), 
- maai: miscinit:00000871:  errhint("If you're sure there are no old " 
- maai: miscinit:00000872:  "server processes still running, remove " 
- maai: miscinit:00000873:  "the shared memory block with " 
- maai: miscinit:00000874:  "the command "ipcclean", "ipcrm", " 
- maai: miscinit:00000875:  "or just delete the file "%s".", 
- maai: miscinit:00000876:  filename))); 
- maai: miscinit:00000887:  ereport(FATAL, 
- maai: miscinit:00000888:  (errcode_for_file_access(), 
- maai: miscinit:00000889:  errmsg("could not remove old lock file "%s": %m", 
- maai: miscinit:00000890:  filename), 
- maai: miscinit:00000891:  errhint("The file seems accidentally left over, but " 
- maai: miscinit:00000892:  "it could not be removed. Please remove the file " 
- maai: miscinit:00000893:  "by hand and try again."))); 
- maai: miscinit:00000911:  ereport(FATAL, 
- maai: miscinit:00000912:  (errcode_for_file_access(), 
- maai: miscinit:00000913:  errmsg("could not write lock file "%s": %m", filename))); 
- maai: miscinit:00000921:  ereport(FATAL, 
- maai: miscinit:00000922:  (errcode_for_file_access(), 
- maai: miscinit:00000923:  errmsg("could not write lock file "%s": %m", filename))); 
- maai: miscinit:00000932:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- maai: miscinit:00000933:  errmsg("Create lock file failed: out of memory"))); 
- maai: miscinit:00001126:  ereport(FATAL, 
- maai: miscinit:00001127:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- maai: miscinit:00001128:  errmsg(""%s" is not a valid data directory", 
- maai: miscinit:00001129:  path), 
- maai: miscinit:00001130:  errdetail("File "%s" is missing.", full_path))); 
- maai: miscinit:00001132:  ereport(FATAL, 
- maai: miscinit:00001133:  (errcode_for_file_access(), 
- maai: miscinit:00001134:  errmsg("could not open file "%s": %m", full_path))); 
- maai: miscinit:00001139:  ereport(FATAL, 
- maai: miscinit:00001140:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- maai: miscinit:00001141:  errmsg(""%s" is not a valid data directory", 
- maai: miscinit:00001142:  path), 
- maai: miscinit:00001143:  errdetail("File "%s" does not contain valid data.", 
- maai: miscinit:00001144:  full_path), 
- maai: miscinit:00001145:  errhint("You may need to run gprecoversegment.sh"))); 
- maai: miscinit:00001150:  ereport(FATAL, 
- maai: miscinit:00001151:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- maai: miscinit:00001152:  errmsg("database files are incompatible with server"), 
- maai: miscinit:00001153:  errdetail("The data directory was initialized by PostgreSQL version %ld.%ld, " 
- maai: miscinit:00001154:  "which is not compatible with this version %s.", 
- maai: miscinit:00001155:  file_major, file_minor, version_string))); 
+ maai: miscinit:00000143:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ maai: miscinit:00000144:  errmsg("Set database path failed: out of memory"))); 
+ maai: miscinit:00000180:  ereport(FATAL, 
+ maai: miscinit:00000181:  (errcode_for_file_access(), 
+ maai: miscinit:00000182:  errmsg("could not change directory to "%s": %m", 
+ maai: miscinit:00000183:  DataDir))); 
+ maai: miscinit:00000215:  ereport(FATAL, 
+ maai: miscinit:00000216:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ maai: miscinit:00000217:  errmsg("out of memory"))); 
+ maai: miscinit:00000236:  ereport(FATAL, 
+ maai: miscinit:00000237:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ maai: miscinit:00000238:  errmsg("out of memory"))); 
+ maai: miscinit:00000246:  ereport(FATAL, 
+ maai: miscinit:00000247:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ maai: miscinit:00000248:  errmsg("out of memory"))); 
+ maai: miscinit:00000433:  ereport(FATAL, 
+ maai: miscinit:00000434:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+ maai: miscinit:00000435:  errmsg("role "%s" does not exist", rolename))); 
+ maai: miscinit:00000463:  ereport(FATAL, 
+ maai: miscinit:00000464:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+ maai: miscinit:00000465:  errmsg("role "%s" is not permitted to log in", 
+ maai: miscinit:00000466:  rolename))); 
+ maai: miscinit:00000485:  ereport(FATAL, 
+ maai: miscinit:00000486:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+ maai: miscinit:00000487:  errmsg("too many connections for role "%s"", 
+ maai: miscinit:00000488:  rolename))); 
+ maai: miscinit:00000563:  ereport(ERROR, 
+ maai: miscinit:00000564:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ maai: miscinit:00000565:  errmsg("permission denied to set session authorization"))); 
+ maai: miscinit:00000653:  ereport(ERROR, 
+ maai: miscinit:00000654:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ maai: miscinit:00000655:  errmsg("invalid role OID: %u", roleid))); 
+ maai: miscinit:00000745:  ereport(FATAL, 
+ maai: miscinit:00000746:  (errcode_for_file_access(), 
+ maai: miscinit:00000747:  errmsg("could not create lock file "%s": %m", 
+ maai: miscinit:00000748:  filename))); 
+ maai: miscinit:00000759:  ereport(FATAL, 
+ maai: miscinit:00000760:  (errcode_for_file_access(), 
+ maai: miscinit:00000761:  errmsg("could not open lock file "%s": %m", 
+ maai: miscinit:00000762:  filename))); 
+ maai: miscinit:00000765:  ereport(FATAL, 
+ maai: miscinit:00000766:  (errcode_for_file_access(), 
+ maai: miscinit:00000767:  errmsg("could not read lock file "%s": %m", 
+ maai: miscinit:00000768:  filename))); 
+ maai: miscinit:00000828:  ereport(FATAL, 
+ maai: miscinit:00000829:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
+ maai: miscinit:00000830:  errmsg("lock file "%s" already exists", 
+ maai: miscinit:00000831:  filename), 
+ maai: miscinit:00000832:  isDDLock ? 
+ maai: miscinit:00000833:  (encoded_pid < 0 ? 
+ maai: miscinit:00000834:  errhint("Is another postgres (PID %d) running in data directory "%s"?", 
+ maai: miscinit:00000835:  (int) other_pid, refName) : 
+ maai: miscinit:00000836:  errhint("Is another postmaster (PID %d) running in data directory "%s"?", 
+ maai: miscinit:00000837:  (int) other_pid, refName)) : 
+ maai: miscinit:00000838:  (encoded_pid < 0 ? 
+ maai: miscinit:00000839:  errhint("Is another postgres (PID %d) using socket file "%s"?", 
+ maai: miscinit:00000840:  (int) other_pid, refName) : 
+ maai: miscinit:00000841:  errhint("Is another postmaster (PID %d) using socket file "%s"?", 
+ maai: miscinit:00000842:  (int) other_pid, refName)))); 
+ maai: miscinit:00000867:  ereport(FATAL, 
+ maai: miscinit:00000868:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
+ maai: miscinit:00000869:  errmsg("pre-existing shared memory block " 
+ maai: miscinit:00000870:  "(key %lu, ID %lu) is still in use", 
+ maai: miscinit:00000871:  id1, id2), 
+ maai: miscinit:00000872:  errhint("If you're sure there are no old " 
+ maai: miscinit:00000873:  "server processes still running, remove " 
+ maai: miscinit:00000874:  "the shared memory block with " 
+ maai: miscinit:00000875:  "the command "ipcclean", "ipcrm", " 
+ maai: miscinit:00000876:  "or just delete the file "%s".", 
+ maai: miscinit:00000877:  filename))); 
+ maai: miscinit:00000888:  ereport(FATAL, 
+ maai: miscinit:00000889:  (errcode_for_file_access(), 
+ maai: miscinit:00000890:  errmsg("could not remove old lock file "%s": %m", 
+ maai: miscinit:00000891:  filename), 
+ maai: miscinit:00000892:  errhint("The file seems accidentally left over, but " 
+ maai: miscinit:00000893:  "it could not be removed. Please remove the file " 
+ maai: miscinit:00000894:  "by hand and try again."))); 
+ maai: miscinit:00000912:  ereport(FATAL, 
+ maai: miscinit:00000913:  (errcode_for_file_access(), 
+ maai: miscinit:00000914:  errmsg("could not write lock file "%s": %m", filename))); 
+ maai: miscinit:00000922:  ereport(FATAL, 
+ maai: miscinit:00000923:  (errcode_for_file_access(), 
+ maai: miscinit:00000924:  errmsg("could not write lock file "%s": %m", filename))); 
+ maai: miscinit:00000933:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ maai: miscinit:00000934:  errmsg("Create lock file failed: out of memory"))); 
+ maai: miscinit:00001127:  ereport(FATAL, 
+ maai: miscinit:00001128:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ maai: miscinit:00001129:  errmsg(""%s" is not a valid data directory", 
+ maai: miscinit:00001130:  path), 
+ maai: miscinit:00001131:  errdetail("File "%s" is missing.", full_path))); 
+ maai: miscinit:00001133:  ereport(FATAL, 
+ maai: miscinit:00001134:  (errcode_for_file_access(), 
+ maai: miscinit:00001135:  errmsg("could not open file "%s": %m", full_path))); 
+ maai: miscinit:00001140:  ereport(FATAL, 
+ maai: miscinit:00001141:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ maai: miscinit:00001142:  errmsg(""%s" is not a valid data directory", 
+ maai: miscinit:00001143:  path), 
+ maai: miscinit:00001144:  errdetail("File "%s" does not contain valid data.", 
+ maai: miscinit:00001145:  full_path), 
+ maai: miscinit:00001146:  errhint("You may need to run gprecoversegment.sh"))); 
+ maai: miscinit:00001151:  ereport(FATAL, 
+ maai: miscinit:00001152:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ maai: miscinit:00001153:  errmsg("database files are incompatible with server"), 
+ maai: miscinit:00001154:  errdetail("The data directory was initialized by PostgreSQL version %ld.%ld, " 
+ maai: miscinit:00001155:  "which is not compatible with this version %s.", 
+ maai: miscinit:00001156:  file_major, file_minor, version_string))); 
  mabb: mingwcompat:00000037:  ereport(FATAL, 
  mabb: mingwcompat:00000038:  (errmsg_internal("could not load kernel32.dll: %d", 
  mabb: mingwcompat:00000039:  (int) GetLastError()))); 
@@ -7460,9 +7460,9 @@ select * from get_ereport order by 1;
  nabb: nodesubplan:00000339:  ereport(ERROR, 
  nabb: nodesubplan:00000340:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
  nabb: nodesubplan:00000341:  errmsg("more than one row returned by a subquery used as an expression"))); 
- nabb: nodesubplan:00001131:  ereport(ERROR, 
- nabb: nodesubplan:00001132:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
- nabb: nodesubplan:00001133:  errmsg("more than one row returned by a subquery used as an expression"))); 
+ nabb: nodesubplan:00001153:  ereport(ERROR, 
+ nabb: nodesubplan:00001154:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
+ nabb: nodesubplan:00001155:  errmsg("more than one row returned by a subquery used as an expression"))); 
  nabc: nodehashjoin:00000888:  ereport(ERROR, (errcode_for_file_access(), 
  nabc: nodehashjoin:00000889:  errmsg("Cound not rewind hash join tmp file"))); 
  nabc: nodehashjoin:00000940:  ereport(ERROR, (errcode_for_file_access(), 
@@ -8517,33 +8517,33 @@ select * from get_ereport order by 1;
  paah: plxgram:00004389:  (errcode(ERRCODE_SYNTAX_ERROR), 
  paah: plxgram:00004390:  errmsg("end label "%s" differs from block's label "%s"", 
  paah: plxgram:00004391:  end_label, start_label))); 
- paah: plxscan:00000794: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- paah: plxscan:00000795:  
- paah: plxscan:00000796: int plpgsql_base_yyget_lineno (void); 
- paah: plxscan:00001511:  ereport(ERROR, 
- paah: plxscan:00001512:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001513:  errmsg("unterminated quoted identifier"))); 
- paah: plxscan:00001560:  ereport(ERROR, 
- paah: plxscan:00001561:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001562:  errmsg("unterminated comment"))); 
- paah: plxscan:00001629:  ereport(ERROR, 
- paah: plxscan:00001630:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001631:  errmsg("unterminated string"))); 
- paah: plxscan:00001684:  ereport(ERROR, 
- paah: plxscan:00001685:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001686:  errmsg("unterminated dollar-quoted string"))); 
- paah: plxscan:00002638:  ereport(ERROR, 
- paah: plxscan:00002639:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002640:  /* translator: %s is typically "syntax error" */ 
- paah: plxscan:00002641:  errmsg("%s at end of input", message), 
- paah: plxscan:00002642:  internalerrposition(cursorpos), 
- paah: plxscan:00002643:  internalerrquery(scanstr))); 
- paah: plxscan:00002647:  ereport(ERROR, 
- paah: plxscan:00002648:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002649:  /* translator: first %s is typically "syntax error" */ 
- paah: plxscan:00002650:  errmsg("%s at or near "%s"", message, loc), 
- paah: plxscan:00002651:  internalerrposition(cursorpos), 
- paah: plxscan:00002652:  internalerrquery(scanstr))); 
+ paah: plxscan:00000858: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ paah: plxscan:00000859:  
+ paah: plxscan:00000860: int plpgsql_base_yyget_lineno (void); 
+ paah: plxscan:00001584:  ereport(ERROR, 
+ paah: plxscan:00001585:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001586:  errmsg("unterminated quoted identifier"))); 
+ paah: plxscan:00001635:  ereport(ERROR, 
+ paah: plxscan:00001636:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001637:  errmsg("unterminated comment"))); 
+ paah: plxscan:00001705:  ereport(ERROR, 
+ paah: plxscan:00001706:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001707:  errmsg("unterminated string"))); 
+ paah: plxscan:00001761:  ereport(ERROR, 
+ paah: plxscan:00001762:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001763:  errmsg("unterminated dollar-quoted string"))); 
+ paah: plxscan:00002781:  ereport(ERROR, 
+ paah: plxscan:00002782:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00002783:  /* translator: %s is typically "syntax error" */ 
+ paah: plxscan:00002784:  errmsg("%s at end of input", message), 
+ paah: plxscan:00002785:  internalerrposition(cursorpos), 
+ paah: plxscan:00002786:  internalerrquery(scanstr))); 
+ paah: plxscan:00002790:  ereport(ERROR, 
+ paah: plxscan:00002791:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00002792:  /* translator: first %s is typically "syntax error" */ 
+ paah: plxscan:00002793:  errmsg("%s at or near "%s"", message, loc), 
+ paah: plxscan:00002794:  internalerrposition(cursorpos), 
+ paah: plxscan:00002795:  internalerrquery(scanstr))); 
  paah: prepare:00000070:  ereport(ERROR, 
  paah: prepare:00000071:  (errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION), 
  paah: prepare:00000072:  errmsg("invalid statement name: must not be empty"))); 
@@ -11368,77 +11368,77 @@ select * from get_ereport order by 1;
  saad: spi:00000155:  errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION), 
  saad: spi:00000156:  errmsg("Subtransaction mismatch at txlevel %d", 
  saad: spi:00000157:  GetCurrentTransactionNestLevel()))); 
- saad: spi:00000592:  ereport(WARNING, 
- saad: spi:00000593:  (errcode(ERRCODE_WARNING), 
- saad: spi:00000594:  errmsg("transaction left non-empty SPI stack"), 
- saad: spi:00000595:  errhint("Check for missing "SPI_finish" calls."))); 
- saad: spi:00000703:  ereport(WARNING, 
- saad: spi:00000704:  (errcode(ERRCODE_WARNING), 
- saad: spi:00000705:  errmsg("subtransaction left non-empty SPI stack"), 
- saad: spi:00000706:  errhint("Check for missing "SPI_finish" calls."))); 
- saad: spi:00001553:  ereport(ERROR, 
- saad: spi:00001554:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
- saad: spi:00001555:  errmsg("cannot open multi-query plan as cursor"))); 
- saad: spi:00001558:  ereport(ERROR, 
- saad: spi:00001559:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
- saad: spi:00001560:  errmsg("cannot open empty query as cursor"))); 
- saad: spi:00001561:  ereport(ERROR, 
- saad: spi:00001562:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
- saad: spi:00001563:  /* translator: %s is name of a SQL command, eg INSERT */ 
- saad: spi:00001564:  errmsg("cannot open %s query as cursor", 
- saad: spi:00001565:  CreateQueryTag(queryTree)))); 
- saad: spi:00001586:  ereport(ERROR, 
- saad: spi:00001587:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saad: spi:00001588:  /* translator: %s is a SQL statement name */ 
- saad: spi:00001589:  errmsg("%s is not allowed in a non-volatile function", 
- saad: spi:00001590:  CreateQueryTag(qry)))); 
- saad: spi:00002798:  ereport(ERROR, 
- saad: spi:00002799:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saad: spi:00002800:  /* translator: %s is a SQL statement name */ 
- saad: spi:00002801:  errmsg("%s is not allowed in a non-volatile function", 
- saad: spi:00002802:  CreateQueryTag(queryTree)))); 
- saad: spi:00002983:  ereport(WARNING, 
- saad: spi:00002984:  (errcode(ERRCODE_WARNING), 
- saad: spi:00002985:  errmsg("A stable or volatile function is used as if it is immutable"), 
- saad: spi:00002986:  errhint("The function should be declared as stable or volatile in create function statement."))); 
- saae: scan:00005217: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- saae: scan:00005218:  
- saae: scan:00005219: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
- saae: scan:00005220: static char *dolqstart; /* current $foo$ quote start string */ 
- saae: scan:00005221:  
- saae: scan:00005222: /* 
- saae: scan:00005223:  * GUC variables. This is a DIRECT violation of the warning given at the 
- saae: scan:00005224:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
- saae: scan:00005865:  ereport(ERROR, 
- saae: scan:00005866:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00005867:  errmsg("unsafe use of \' in a string literal"), 
- saae: scan:00005868:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
- saae: scan:00005869:  lexer_errposition())); 
- saae: scan:00007155:  ereport(ERROR, 
- saae: scan:00007156:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00007157:  /* translator: %s is typically "syntax error" */ 
- saae: scan:00007158:  errmsg("%s at end of input", _(message)), 
- saae: scan:00007159:  lexer_errposition())); 
- saae: scan:00007163:  ereport(ERROR, 
- saae: scan:00007164:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00007165:  /* translator: first %s is typically "syntax error" */ 
- saae: scan:00007166:  errmsg("%s at or near "%s"", _(message), loc), 
- saae: scan:00007167:  lexer_errposition())); 
- saae: scan:00007298:  ereport(WARNING, 
- saae: scan:00007299:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00007300:  errmsg("nonstandard use of \' in a string literal"), 
- saae: scan:00007301:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
- saae: scan:00007302:  lexer_errposition())); 
- saae: scan:00007308:  ereport(WARNING, 
- saae: scan:00007309:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00007310:  errmsg("nonstandard use of \\ in a string literal"), 
- saae: scan:00007311:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
- saae: scan:00007312:  lexer_errposition())); 
- saae: scan:00007323:  ereport(WARNING, 
- saae: scan:00007324:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00007325:  errmsg("nonstandard use of escape in a string literal"), 
- saae: scan:00007326:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
- saae: scan:00007327:  lexer_errposition())); 
+ saad: spi:00000598:  ereport(WARNING, 
+ saad: spi:00000599:  (errcode(ERRCODE_WARNING), 
+ saad: spi:00000600:  errmsg("transaction left non-empty SPI stack"), 
+ saad: spi:00000601:  errhint("Check for missing "SPI_finish" calls."))); 
+ saad: spi:00000709:  ereport(WARNING, 
+ saad: spi:00000710:  (errcode(ERRCODE_WARNING), 
+ saad: spi:00000711:  errmsg("subtransaction left non-empty SPI stack"), 
+ saad: spi:00000712:  errhint("Check for missing "SPI_finish" calls."))); 
+ saad: spi:00001563:  ereport(ERROR, 
+ saad: spi:00001564:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+ saad: spi:00001565:  errmsg("cannot open multi-query plan as cursor"))); 
+ saad: spi:00001568:  ereport(ERROR, 
+ saad: spi:00001569:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+ saad: spi:00001570:  errmsg("cannot open empty query as cursor"))); 
+ saad: spi:00001571:  ereport(ERROR, 
+ saad: spi:00001572:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+ saad: spi:00001573:  /* translator: %s is name of a SQL command, eg INSERT */ 
+ saad: spi:00001574:  errmsg("cannot open %s query as cursor", 
+ saad: spi:00001575:  CreateQueryTag(queryTree)))); 
+ saad: spi:00001596:  ereport(ERROR, 
+ saad: spi:00001597:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saad: spi:00001598:  /* translator: %s is a SQL statement name */ 
+ saad: spi:00001599:  errmsg("%s is not allowed in a non-volatile function", 
+ saad: spi:00001600:  CreateQueryTag(qry)))); 
+ saad: spi:00002814:  ereport(ERROR, 
+ saad: spi:00002815:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saad: spi:00002816:  /* translator: %s is a SQL statement name */ 
+ saad: spi:00002817:  errmsg("%s is not allowed in a non-volatile function", 
+ saad: spi:00002818:  CreateQueryTag(queryTree)))); 
+ saad: spi:00003035:  ereport(WARNING, 
+ saad: spi:00003036:  (errcode(ERRCODE_WARNING), 
+ saad: spi:00003037:  errmsg("A stable or volatile function is used as if it is immutable"), 
+ saad: spi:00003038:  errhint("The function should be declared as stable or volatile in create function statement."))); 
+ saae: scan:00005273: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ saae: scan:00005274:  
+ saae: scan:00005275: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
+ saae: scan:00005276: static char *dolqstart; /* current $foo$ quote start string */ 
+ saae: scan:00005277:  
+ saae: scan:00005278: /* 
+ saae: scan:00005279:  * GUC variables. This is a DIRECT violation of the warning given at the 
+ saae: scan:00005280:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
+ saae: scan:00005934:  ereport(ERROR, 
+ saae: scan:00005935:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00005936:  errmsg("unsafe use of \' in a string literal"), 
+ saae: scan:00005937:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
+ saae: scan:00005938:  lexer_errposition())); 
+ saae: scan:00007291:  ereport(ERROR, 
+ saae: scan:00007292:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00007293:  /* translator: %s is typically "syntax error" */ 
+ saae: scan:00007294:  errmsg("%s at end of input", _(message)), 
+ saae: scan:00007295:  lexer_errposition())); 
+ saae: scan:00007299:  ereport(ERROR, 
+ saae: scan:00007300:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00007301:  /* translator: first %s is typically "syntax error" */ 
+ saae: scan:00007302:  errmsg("%s at or near "%s"", _(message), loc), 
+ saae: scan:00007303:  lexer_errposition())); 
+ saae: scan:00007434:  ereport(WARNING, 
+ saae: scan:00007435:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00007436:  errmsg("nonstandard use of \' in a string literal"), 
+ saae: scan:00007437:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
+ saae: scan:00007438:  lexer_errposition())); 
+ saae: scan:00007444:  ereport(WARNING, 
+ saae: scan:00007445:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00007446:  errmsg("nonstandard use of \\ in a string literal"), 
+ saae: scan:00007447:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
+ saae: scan:00007448:  lexer_errposition())); 
+ saae: scan:00007459:  ereport(WARNING, 
+ saae: scan:00007460:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00007461:  errmsg("nonstandard use of escape in a string literal"), 
+ saae: scan:00007462:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
+ saae: scan:00007463:  lexer_errposition())); 
  saae: slru:00000755:  ereport(ERROR, 
  saae: slru:00000756:  (errcode_for_file_access(), 
  saae: slru:00000757:  errmsg("could not access status of transaction %u", xid), 
@@ -14368,9 +14368,9 @@ select * from get_ereport order by 1;
  uaad: url:00000644:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
  uaad: url:00000645:  errmsg("cannot start external table command: %m"), 
  uaad: url:00000646:  errdetail("Command: %s", url))); 
- uaad: url:00000938:  ereport(ERROR, 
- uaad: url:00000939:  (errcode(ERRCODE_INTERNAL_ERROR), 
- uaad: url:00000940:  errmsg_internal("external table type not implemented: %d", type))); 
+ uaad: url:00000942:  ereport(ERROR, 
+ uaad: url:00000943:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ uaad: url:00000944:  errmsg_internal("external table type not implemented: %d", type))); 
  uaae: user:00000139:  ereport(ERROR, 
  uaae: user:00000140:  (errcode(ERRCODE_SYNTAX_ERROR), 
  uaae: user:00000141:  errmsg("conflicting or redundant options"))); 
@@ -14587,46 +14587,54 @@ select * from get_ereport order by 1;
  uaah: utility:00000214:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  uaah: utility:00000215:  errmsg("permission denied: "%s" is a system catalog", 
  uaah: utility:00000216:  rel->relname))); 
- uaah: utility:00000250:  ereport(ERROR, 
- uaah: utility:00000251:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- uaah: utility:00000252:  errmsg("permission denied: "%s" is a system catalog", 
- uaah: utility:00000253:  rel->relname))); 
- uaah: utility:00000322:  ereport(ERROR, 
- uaah: utility:00000323:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
- uaah: utility:00000324:  errmsg("transaction is read-only"))); 
- uaah: utility:00000346:  ereport(ERROR, 
- uaah: utility:00000347:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
- uaah: utility:00000348:  errmsg("transaction is read-only"))); 
- uaah: utility:00000400:  ereport(ERROR, 
- uaah: utility:00000401:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
- uaah: utility:00000402:  errmsg("transaction is read-only"))); 
- uaah: utility:00000491:  ereport(ERROR, ( 
- uaah: utility:00000492:  errcode(ERRCODE_GP_COMMAND_ERROR), 
- uaah: utility:00000493:  errmsg("PREPARE TRANSACTION is not yet supported in Greenplum Database.") 
- uaah: utility:00000494:  )); 
- uaah: utility:00000508:  ereport(ERROR, ( 
- uaah: utility:00000509:  errcode(ERRCODE_GP_COMMAND_ERROR), 
- uaah: utility:00000510:  errmsg("COMMIT PREPARED is not yet supported in Greenplum Database.") 
- uaah: utility:00000511:  )); 
- uaah: utility:00000521:  ereport(ERROR, ( 
- uaah: utility:00000522:  errcode(ERRCODE_GP_COMMAND_ERROR), 
- uaah: utility:00000523:  errmsg("ROLLBACK PREPARED is not yet supported in Greenplum Database.") 
- uaah: utility:00000524:  )); 
- uaah: utility:00001065:  ereport(ERROR, ( 
- uaah: utility:00001066:  errcode(ERRCODE_GP_COMMAND_ERROR), 
- uaah: utility:00001067:  errmsg("Notify command cannot run in a function running on a segDB.") 
- uaah: utility:00001068:  )); 
- uaah: utility:00001079:  ereport(ERROR, ( 
- uaah: utility:00001080:  errcode(ERRCODE_GP_COMMAND_ERROR), 
- uaah: utility:00001081:  errmsg("Listen command cannot run in a function running on a segDB.") 
- uaah: utility:00001082:  )); 
- uaah: utility:00001093:  ereport(ERROR, ( 
- uaah: utility:00001094:  errcode(ERRCODE_GP_COMMAND_ERROR), 
- uaah: utility:00001095:  errmsg("Unlisten command cannot run in a function running on a segDB.") 
- uaah: utility:00001096:  )); 
- uaah: utility:00001324:  ereport(ERROR, 
- uaah: utility:00001325:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- uaah: utility:00001326:  errmsg("must be superuser to do CHECKPOINT"))); 
+ uaah: utility:00000256:  ereport(ERROR, 
+ uaah: utility:00000257:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ uaah: utility:00000258:  errmsg(""%s" is not an external table", rel->relname), 
+ uaah: utility:00000259:  errhint("Use DROP TABLE to remove a base table"))); 
+ uaah: utility:00000262:  ereport(ERROR, 
+ uaah: utility:00000263:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ uaah: utility:00000264:  errmsg(""%s" is not a base table", rel->relname), 
+ uaah: utility:00000265:  errhint("Use DROP EXTERNAL TABLE to remove an external table"))); 
+ uaah: utility:00000299:  ereport(ERROR, 
+ uaah: utility:00000300:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ uaah: utility:00000301:  errmsg("permission denied: "%s" is a system catalog", 
+ uaah: utility:00000302:  rel->relname))); 
+ uaah: utility:00000371:  ereport(ERROR, 
+ uaah: utility:00000372:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+ uaah: utility:00000373:  errmsg("transaction is read-only"))); 
+ uaah: utility:00000395:  ereport(ERROR, 
+ uaah: utility:00000396:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+ uaah: utility:00000397:  errmsg("transaction is read-only"))); 
+ uaah: utility:00000449:  ereport(ERROR, 
+ uaah: utility:00000450:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+ uaah: utility:00000451:  errmsg("transaction is read-only"))); 
+ uaah: utility:00000540:  ereport(ERROR, ( 
+ uaah: utility:00000541:  errcode(ERRCODE_GP_COMMAND_ERROR), 
+ uaah: utility:00000542:  errmsg("PREPARE TRANSACTION is not yet supported in Greenplum Database.") 
+ uaah: utility:00000543:  )); 
+ uaah: utility:00000557:  ereport(ERROR, ( 
+ uaah: utility:00000558:  errcode(ERRCODE_GP_COMMAND_ERROR), 
+ uaah: utility:00000559:  errmsg("COMMIT PREPARED is not yet supported in Greenplum Database.") 
+ uaah: utility:00000560:  )); 
+ uaah: utility:00000570:  ereport(ERROR, ( 
+ uaah: utility:00000571:  errcode(ERRCODE_GP_COMMAND_ERROR), 
+ uaah: utility:00000572:  errmsg("ROLLBACK PREPARED is not yet supported in Greenplum Database.") 
+ uaah: utility:00000573:  )); 
+ uaah: utility:00001116:  ereport(ERROR, ( 
+ uaah: utility:00001117:  errcode(ERRCODE_GP_COMMAND_ERROR), 
+ uaah: utility:00001118:  errmsg("Notify command cannot run in a function running on a segDB.") 
+ uaah: utility:00001119:  )); 
+ uaah: utility:00001130:  ereport(ERROR, ( 
+ uaah: utility:00001131:  errcode(ERRCODE_GP_COMMAND_ERROR), 
+ uaah: utility:00001132:  errmsg("Listen command cannot run in a function running on a segDB.") 
+ uaah: utility:00001133:  )); 
+ uaah: utility:00001144:  ereport(ERROR, ( 
+ uaah: utility:00001145:  errcode(ERRCODE_GP_COMMAND_ERROR), 
+ uaah: utility:00001146:  errmsg("Unlisten command cannot run in a function running on a segDB.") 
+ uaah: utility:00001147:  )); 
+ uaah: utility:00001375:  ereport(ERROR, 
+ uaah: utility:00001376:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ uaah: utility:00001377:  errmsg("must be superuser to do CHECKPOINT"))); 
  uaaj: uriparser:00000058:  ereport(ERROR, 
  uaaj: uriparser:00000059:  (errcode(ERRCODE_SYNTAX_ERROR), 
  uaaj: uriparser:00000060:  errmsg("invalid URI '%s' : undefined protocol", uri_str))); 
@@ -14683,34 +14691,34 @@ select * from get_ereport order by 1;
  vaag: vacuum:00000743:  ereport(WARNING, 
  vaag: vacuum:00000744:  (errmsg("oldest xmin is far in the past"), 
  vaag: vacuum:00000745:  errhint("Close open transactions soon to avoid wraparound problems."))); 
- vaag: vacuum:00001094:  ereport(WARNING, 
- vaag: vacuum:00001095:  (errmsg("some databases have not been vacuumed in over 2 billion transactions"), 
- vaag: vacuum:00001096:  errdetail("You may have already suffered transaction-wraparound data loss."))); 
- vaag: vacuum:00001423:  ereport(WARNING, 
- vaag: vacuum:00001424:  (errmsg("relation "%s" page %u is uninitialized --- fixing", 
- vaag: vacuum:00001425:  relname, blkno))); 
- vaag: vacuum:00001529:  ereport(NOTICE, 
- vaag: vacuum:00001530:  (errmsg("relation "%s" TID %u/%u: InsertTransactionInProgress %u --- can't shrink relation", 
- vaag: vacuum:00001531:  relname, blkno, offnum, HeapTupleHeaderGetXmin(tuple.t_data)))); 
- vaag: vacuum:00001542:  ereport(NOTICE, 
- vaag: vacuum:00001543:  (errmsg("relation "%s" TID %u/%u: DeleteTransactionInProgress %u --- can't shrink relation", 
- vaag: vacuum:00001544:  relname, blkno, offnum, HeapTupleHeaderGetXmax(tuple.t_data)))); 
- vaag: vacuum:00003168:  ereport(WARNING, 
- vaag: vacuum:00003169:  (errmsg("index "%s" contains %.0f row versions, but table contains %.0f row versions", 
- vaag: vacuum:00003170:  RelationGetRelationName(indrel), 
- vaag: vacuum:00003171:  stats->num_index_tuples, num_tuples), 
- vaag: vacuum:00003172:  errhint("Rebuild the index with REINDEX."))); 
- vaag: vacuum:00003240:  ereport(WARNING, 
- vaag: vacuum:00003241:  (errmsg("index "%s" contains %.0f row versions, but table contains %.0f row versions", 
- vaag: vacuum:00003242:  RelationGetRelationName(indrel), 
- vaag: vacuum:00003243:  stats->num_index_tuples, num_tuples + keep_tuples), 
- vaag: vacuum:00003244:  errhint("Rebuild the index with REINDEX."))); 
- vaag: vacuum:00003822:  ereport(WARNING, 
- vaag: vacuum:00003823:  (errmsg("skipping "%s" --- only table or database owner can vacuum it", 
- vaag: vacuum:00003824:  RelationGetRelationName(onerel)))); 
- vaag: vacuum:00003835:  ereport(WARNING, 
- vaag: vacuum:00003836:  (errmsg("skipping "%s" --- cannot vacuum indexes, views, external tables, or special system tables", 
- vaag: vacuum:00003837:  RelationGetRelationName(onerel)))); 
+ vaag: vacuum:00001106:  ereport(WARNING, 
+ vaag: vacuum:00001107:  (errmsg("some databases have not been vacuumed in over 2 billion transactions"), 
+ vaag: vacuum:00001108:  errdetail("You may have already suffered transaction-wraparound data loss."))); 
+ vaag: vacuum:00001435:  ereport(WARNING, 
+ vaag: vacuum:00001436:  (errmsg("relation "%s" page %u is uninitialized --- fixing", 
+ vaag: vacuum:00001437:  relname, blkno))); 
+ vaag: vacuum:00001541:  ereport(NOTICE, 
+ vaag: vacuum:00001542:  (errmsg("relation "%s" TID %u/%u: InsertTransactionInProgress %u --- can't shrink relation", 
+ vaag: vacuum:00001543:  relname, blkno, offnum, HeapTupleHeaderGetXmin(tuple.t_data)))); 
+ vaag: vacuum:00001554:  ereport(NOTICE, 
+ vaag: vacuum:00001555:  (errmsg("relation "%s" TID %u/%u: DeleteTransactionInProgress %u --- can't shrink relation", 
+ vaag: vacuum:00001556:  relname, blkno, offnum, HeapTupleHeaderGetXmax(tuple.t_data)))); 
+ vaag: vacuum:00003180:  ereport(WARNING, 
+ vaag: vacuum:00003181:  (errmsg("index "%s" contains %.0f row versions, but table contains %.0f row versions", 
+ vaag: vacuum:00003182:  RelationGetRelationName(indrel), 
+ vaag: vacuum:00003183:  stats->num_index_tuples, num_tuples), 
+ vaag: vacuum:00003184:  errhint("Rebuild the index with REINDEX."))); 
+ vaag: vacuum:00003252:  ereport(WARNING, 
+ vaag: vacuum:00003253:  (errmsg("index "%s" contains %.0f row versions, but table contains %.0f row versions", 
+ vaag: vacuum:00003254:  RelationGetRelationName(indrel), 
+ vaag: vacuum:00003255:  stats->num_index_tuples, num_tuples + keep_tuples), 
+ vaag: vacuum:00003256:  errhint("Rebuild the index with REINDEX."))); 
+ vaag: vacuum:00003838:  ereport(WARNING, 
+ vaag: vacuum:00003839:  (errmsg("skipping "%s" --- only table or database owner can vacuum it", 
+ vaag: vacuum:00003840:  RelationGetRelationName(onerel)))); 
+ vaag: vacuum:00003851:  ereport(WARNING, 
+ vaag: vacuum:00003852:  (errmsg("skipping "%s" --- cannot vacuum indexes, views, external tables, or special system tables", 
+ vaag: vacuum:00003853:  RelationGetRelationName(onerel)))); 
  vaag: varbit:00000103:  ereport(ERROR, 
  vaag: varbit:00000104:  (errcode(ERRCODE_STRING_DATA_LENGTH_MISMATCH), 
  vaag: varbit:00000105:  errmsg("bit string length %d does not match type bit(%d)", 
@@ -15450,6 +15458,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15390 rows)
+(15398 rows)
 
 drop external table get_ereport;

@@ -221,6 +221,55 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 }
 
 /*
+ * CheckDropRelStorage
+ * 
+ * since external tables have recently become a RELKIND_RELATION, it
+ * become impossible to catch a drop mismatch by looking at the relkind
+ * in CheckDropPermissions (a mismatch is using DROP TABLE for an
+ * external table, or DROP EXTERNAL TABLE for a base table). This routine
+ * is here to catch this scenario. note that we error inline and not
+ * using an error string messages array like in DropErrorMsgWrongType()
+ * because we're dealing with 2 distinct objects here and it's pretty
+ * straightforward.
+ */
+static bool
+CheckDropRelStorage(RangeVar *rel, bool externalstorage)
+{
+	Oid			relOid;
+	HeapTuple	tuple;
+	Form_pg_class classform;
+
+	relOid = RangeVarGetRelid(rel, true);
+	
+	if (!OidIsValid(relOid))
+		return false;
+
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relOid),
+						   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for relation %u", relOid);
+
+	classform = (Form_pg_class) GETSTRUCT(tuple);
+
+	if (externalstorage && classform->relstorage != RELSTORAGE_EXTERNAL)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is not an external table", rel->relname),
+				 errhint("Use DROP TABLE to remove a base table")));
+	
+	if (!externalstorage && classform->relstorage == RELSTORAGE_EXTERNAL) /* heap, ao */
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("\"%s\" is not a base table", rel->relname),
+					 errhint("Use DROP EXTERNAL TABLE to remove an external table")));
+
+	ReleaseSysCache(tuple);
+
+	return true;
+}
+
+/*
  * Verify user has ownership of specified relation, else ereport.
  *
  * If noCatalogs is true then we also deny access to system catalogs,
@@ -709,7 +758,8 @@ ProcessUtility(Node *parsetree,
 						case OBJECT_TABLE:
 							rel = makeRangeVarFromNameList(names);
 							if (CheckDropPermissions(rel, RELKIND_RELATION,
-													 stmt->missing_ok))
+													 stmt->missing_ok) &&
+								CheckDropRelStorage(rel, false))
 								RemoveRelation(rel, stmt->behavior, stmt);
 							else
 								dispatchDrop = false;
@@ -718,7 +768,8 @@ ProcessUtility(Node *parsetree,
 						case OBJECT_EXTTABLE:
 							rel = makeRangeVarFromNameList(names);
 							if (CheckDropPermissions(rel, RELKIND_RELATION,
-													 stmt->missing_ok))
+													 stmt->missing_ok) &&
+								CheckDropRelStorage(rel, true))
 								RemoveRelation(rel, stmt->behavior, stmt);
 							else
 								dispatchDrop = false;
