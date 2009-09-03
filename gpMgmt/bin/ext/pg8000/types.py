@@ -196,6 +196,12 @@ def py_value(v, description, record_field_names, **kwargs):
         raise NotSupportedError("data response format %r, type %r not supported" % (format, type_oid))
     return func(v, **kwargs)
 
+def voidrecv(data, **kwargs):
+    return None
+
+def voidsend(v, **kwargs):
+    return None
+
 def boolrecv(data, **kwargs):
     return data == "\x01"
 
@@ -676,5 +682,6 @@ pg_types = {
     1263: {"bin_in": array_recv}, # cstring[]
     1700: {"bin_in": numeric_recv},
     2275: {"bin_in": varcharin}, # cstring
+    2278: {"txt_in": voidrecv}, # void - This is to allow the code to handle the situation where a SQL function returns void
 }
 
