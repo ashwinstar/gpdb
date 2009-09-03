@@ -1436,10 +1436,10 @@ void spinOffThreads(PGconn* pConn,
 	for (i=0; i<pParmAr->count; i++)
 	{
 		ThreadParm* pParm = &pParmAr->pData[i];
-        if (pParm->thread == (pthread_t)NULL)
+        if (pParm->thread == (pthread_t)0)
             continue;
 		pthread_join( pParm->thread, NULL);
-		pParm->thread = (pthread_t)NULL;
+		pParm->thread = (pthread_t)0;
 	}
 }
 

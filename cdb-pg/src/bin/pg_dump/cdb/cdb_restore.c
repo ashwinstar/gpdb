@@ -1165,7 +1165,7 @@ bool restoreMaster( InputOptions* pInputOpts,
 					pParm);
 
 	pthread_join( pParm->thread, NULL);
-	pParm->thread = (pthread_t)NULL;
+	pParm->thread = (pthread_t)0;
 
 	if ( pParm->bSuccess )
 	{
@@ -1350,10 +1350,10 @@ void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const RestorePairAr
 	{
 		ThreadParm* pParm = &pParmAr->pData[i];
         // exclude master node and not valid node
-        if (pParm->thread == (pthread_t)NULL)
+        if (pParm->thread == (pthread_t)0)
             continue;
 		pthread_join( pParm->thread, NULL);
-		pParm->thread = (pthread_t)NULL;
+		pParm->thread = (pthread_t)0;
 	}
 }
 
