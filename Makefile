@@ -937,7 +937,10 @@ mgmtcopy :
 		$(INSTLOC)/bin/gpstart \
 		$(INSTLOC)/bin/gpstate \
 		$(INSTLOC)/bin/gpstop \
-		$(INSTLOC)/bin/gpsys1
+		$(INSTLOC)/bin/gpsys1 \
+		$(INSTLOC)/bin/gpmigrator \
+		$(INSTLOC)/bin/gpload \
+		$(INSTLOC)/bin/lib/gpcheckcat
 	# Remove unwanted files.
 	rm -rf $(INSTLOC)/bin/CVS
 	rm -rf $(INSTLOC)/doc/CVS
