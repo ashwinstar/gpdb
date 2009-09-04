@@ -3396,9 +3396,35 @@ This issue must be resolved before upgrade can complete.
                     # Also not including the workdir and contents
                     if os.path.exists(destination):
                         for file in os.listdir(destination):
-                            if file != WORKDIR:
+                            # If the file/directory also exists in the source 
+                            # then delete it in anticipation of receiving the 
+                            # replacement.
+                            if os.path.exists(os.path.join(source, file)):
                                 self.RunCmd('rm -rf ' + os.path.join(destination, file))
 
+                    # if the source contains a gpperfmon/data directory we need to
+                    # check that it hasn't grown to ridiculous sizes.  If it has
+                    # that implies that the perfmon is in a "runaway" state where
+                    # the server is creating files and nothing is consuming them.
+                    # in this case we should just delete the directory.
+                    #
+                    # Note: This is deleted in the SOURCE, it will NOT be restored
+                    # if the upgrade fails or reverts.  This is deemed acceptable
+                    # because with this many files the system was almost certainly
+                    # misconfigured to begin with.  Removing the directory will 
+                    # prevent further acrual of files.
+                    gpperfdir = os.path.join(source, 'gpperfmon', 'data')
+                    if os.path.exists(gpperfdir):
+                        nlink = os.stat(gpperfdir).st_nlink
+
+                        # We define "too large" as >10000 files
+                        if nlink > 10000:
+                            logger.info('Performance Monitor directory contains '
+                                        '%s files - removing' % nlink)
+                            self.RunCmd('rm -rf ' + gpperfdir)
+
+                    # now walk the source directory and link every file back into
+                    # the target directory.
                     for root, dirs, files in os.walk(source, topdown = True):
                         if WORKDIR in dirs:
                             dirs.remove(WORKDIR)   # don't visit the work directory
