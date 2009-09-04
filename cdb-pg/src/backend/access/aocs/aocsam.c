@@ -129,8 +129,25 @@ static int open_next_scan_seg(AOCSScanDesc scan)
     {
         if(scan->seginfo[scan->cur_seg]->tupcount > 0)
         {
-            open_rds_seg(scan, scan->seginfo[scan->cur_seg]->segno, scan->ds, nvp, scan->proj);
-            return scan->cur_seg;
+            int i = 0;
+            bool emptySeg = false;
+            for(; i<nvp; ++i)
+            {
+                if (scan->proj[i])
+                {
+                    AOCSVPInfoEntry *e = getAOCSVPEntry(scan->seginfo[scan->cur_seg], i);
+                    if (e->eof == 0)
+                        emptySeg = true;
+
+                    break;
+                }
+            }
+
+            if (!emptySeg)
+            {
+                open_rds_seg(scan, scan->seginfo[scan->cur_seg]->segno, scan->ds, nvp, scan->proj);
+                return scan->cur_seg;
+            }
         }
     }
 
