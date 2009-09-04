@@ -449,6 +449,8 @@ invoke_agg_trans_func(FmgrInfo *transfn, int numargs, Datum transValue,
 	}
 
 	*transValueIsNull = fcinfo->isnull;
+    if (!fcinfo->isnull) 
+        *noTransvalue = false;
 
 	MemoryContextSwitchTo(oldContext);
 	return newVal;
