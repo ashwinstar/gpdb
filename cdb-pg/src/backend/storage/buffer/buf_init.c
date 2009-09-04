@@ -16,7 +16,11 @@
 
 #include "storage/bufmgr.h"
 #include "storage/buf_internals.h"
+#include "sys/mman.h"
 
+#include <sys/types.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 BufferDesc *BufferDescriptors;
 char	   *BufferBlocks;
@@ -80,6 +84,7 @@ long int	LocalBufferFlushCount;
 void
 InitBufferPool(void)
 {
+    Size bufferBlocksTotalSize = mul_size((Size)NBuffers, (Size) BLCKSZ);
 	bool		foundBufs,
 				foundDescs;
 
@@ -88,8 +93,7 @@ InitBufferPool(void)
 						NBuffers * sizeof(BufferDesc), &foundDescs);
 
 	BufferBlocks = (char *)
-		ShmemInitStruct("Buffer Blocks",
-						NBuffers * (Size) BLCKSZ, &foundBufs);
+		ShmemInitStruct("Buffer Blocks", bufferBlocksTotalSize, &foundBufs);
 
 	if (foundDescs || foundBufs)
 	{
@@ -133,9 +137,17 @@ InitBufferPool(void)
 		BufferDescriptors[NBuffers - 1].freeNext = FREENEXT_END_OF_LIST;
 	}
 
+    if ( memory_protect_buffer_pool &&
+         mprotect(BufferBlocks, bufferBlocksTotalSize, PROT_NONE))
+    {
+        ereport(ERROR,
+                (errmsg("Unable to set memory level to %d, error %d, allocation size %ud, ptr %ld", PROT_NONE,
+                errno, (unsigned int) bufferBlocksTotalSize, (long int) BufferBlocks)));
+    }
+
 	/* Init other shared buffer-management stuff */
 	StrategyInitialize(!foundDescs);
-}
+ }
 
 /*
  * Initialize access to shared buffer pool

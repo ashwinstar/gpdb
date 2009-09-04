@@ -26,6 +26,7 @@ typedef void *Block;
 extern PGDLLIMPORT int NBuffers;
 
 /* in bufmgr.c */
+extern bool memory_protect_buffer_pool;
 extern bool zero_damaged_pages;
 extern double bgwriter_lru_percent;
 extern double bgwriter_all_percent;

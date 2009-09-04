@@ -730,6 +730,16 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 	{
+		{"memory_protect_buffer_pool", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enables memory protection of the buffer pool"),
+			gettext_noop("Turn on memory protection of the buffer pool "
+						 "to detect invalid accesses to the buffer pool memory."),
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&memory_protect_buffer_pool,
+		true, NULL, NULL
+	},
+	{
 		{"full_page_writes", PGC_SIGHUP, WAL_SETTINGS,
 			gettext_noop("Writes full pages to WAL when first modified after a checkpoint."),
 			gettext_noop("A page write in process during an operating system crash might be "

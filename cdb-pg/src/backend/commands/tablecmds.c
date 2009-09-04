@@ -19169,7 +19169,12 @@ ATPExecPartSplit(Relation rel,
 	while (true)
 	{
 		ExprContext *econtext = GetPerTupleExprContext(estate);
+		bool targetIsA;
+		Relation targetRelation;
+		AppendOnlyInsertDesc * targetAODescPtr;
+		AOCSInsertDesc * targetAOCSDescPtr;
 
+		/* read next tuple from temprel */
 		if (RelationIsHeap(temprel))
 		{
 			HeapTuple tuple;
@@ -19193,92 +19198,74 @@ ATPExecPartSplit(Relation rel,
 		else if (RelationIsAoCols(temprel))
 		{
             aocs_getnext(aocsscan, ForwardScanDirection, tts);
+            if (TupIsNull(tts))
+				break;
 		}
 
 		econtext->ecxt_scantuple = tts;
 
+		/* determine if we are inserting into a or b */
 		if (achk)
 		{
-			if (ExecQual((List *)achk, econtext, true))
-			{
-				/* insert into intoa */
-				if (RelationIsAoRows(intoa))
-				{
-					MemTuple mtuple = ExecFetchSlotMemTuple(tts, false);
-
-					if (!aoinsertdesc_a)
-					{
-						MemoryContextSwitchTo(oldCxt);
-						aoinsertdesc_a = appendonly_insert_init(intoa, RESERVED_SEGNO);
-						MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-					}
-
-					appendonly_insert(aoinsertdesc_a, mtuple);
-				}
-                else if (RelationIsAoCols(intoa))
-                {
-                    if (!aocsinsertdesc_a)
-                        aocsinsertdesc_a = aocs_insert_init(intoa, RESERVED_SEGNO);
-
-                    aocs_insert(aocsinsertdesc_a, tts);
-                }
-				else
-				{
-					HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
-
-                    Assert(RelationIsHeap(intoa));
-					simple_heap_insert(intoa, tuple);
-				}
-			}
-			else
-			{
-				/* belongs in intob */
-				if (RelationIsAoRows(intob))
-				{
-					MemTuple mtuple = ExecFetchSlotMemTuple(tts, false);
-
-					if (!aoinsertdesc_b)
-					{
-						MemoryContextSwitchTo(oldCxt);
-						aoinsertdesc_b = appendonly_insert_init(intob, RESERVED_SEGNO);
-						MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-					}
-
-					appendonly_insert(aoinsertdesc_b, mtuple);
-				}
-                else if (RelationIsAoCols(intob))
-                {
-                    if (!aocsinsertdesc_b)
-                        aocsinsertdesc_b = aocs_insert_init(intoa, RESERVED_SEGNO);
-                    aocs_insert(aocsinsertdesc_b, tts);
-                }
-				else
-				{
-					HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
-
-					simple_heap_insert(intob, tuple);
-				}
-			}
+			targetIsA = ExecQual((List *)achk, econtext, true);
 		}
 		else
 		{
 			Assert(PointerIsValid(bchk));
 
-			if (ExecQual((List *)bchk, econtext, true))
-			{
-				/* insert into intob */
-				HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
-
-				simple_heap_insert(intob, tuple);
-			}
-			else
-			{
-				/* belongs in intoa */
-				HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
-
-				simple_heap_insert(intoa, tuple);
-			}
+			targetIsA = ! ExecQual((List *)bchk, econtext, true);
 		}
+
+		/* load variables for the specific target */
+		if (targetIsA)
+		{
+			targetRelation = intoa;
+			targetAODescPtr = &aoinsertdesc_a;
+			targetAOCSDescPtr = &aocsinsertdesc_a;
+		}
+		else
+		{
+			targetRelation = intob;
+			targetAODescPtr = &aoinsertdesc_b;
+			targetAOCSDescPtr = &aocsinsertdesc_b;
+		}
+
+		/* insert into target */
+		if (RelationIsAoRows(targetRelation))
+		{
+			MemTuple mtuple = ExecFetchSlotMemTuple(tts, false);
+
+			if (!(*targetAODescPtr))
+			{
+				MemoryContextSwitchTo(oldCxt);
+				*targetAODescPtr = appendonly_insert_init(targetRelation, RESERVED_SEGNO);
+				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+			}
+
+			appendonly_insert(*targetAODescPtr, mtuple);
+		}
+		else if (RelationIsAoCols(targetRelation))
+		{
+			if (! *targetAOCSDescPtr)
+			{
+				MemoryContextSwitchTo(oldCxt);
+				*targetAOCSDescPtr = aocs_insert_init(targetRelation, RESERVED_SEGNO);
+				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+			}
+
+			aocs_insert(*targetAOCSDescPtr, tts);
+		}
+		else
+		{
+			HeapTuple tuple;
+			Assert(RelationIsHeap(targetRelation));
+
+			tuple = ExecFetchSlotHeapTuple(tts);
+			tuple = heap_copytuple(tuple);
+			simple_heap_insert(targetRelation, tuple);
+		}
+
+		/* done, clean up context for this pass */
 		ResetExprContext(econtext);
 	}
 

@@ -267,9 +267,13 @@ DefineSequence(CreateSeqStmt *seq)
 
 	page = (PageHeader) BufferGetPage(buf);
 
+	LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+
 	PageInit((Page) page, BufferGetPageSize(buf), sizeof(sequence_magic));
 	sm = (sequence_magic *) PageGetSpecialPointer(page);
 	sm->magic = SEQ_MAGIC;
+
+	LockBuffer(buf, BUFFER_LOCK_UNLOCK);
 
 	/* hack: ensure heap_insert will insert on the just-created page */
 	rel->rd_targblock = 0;

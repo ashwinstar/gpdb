@@ -71,6 +71,7 @@
 #include "storage/pg_shmem.h"
 #include "storage/shmem.h"
 #include "storage/spin.h"
+#include <unistd.h>
 
 
 /* shared memory global variables */
@@ -86,6 +87,7 @@ slock_t    *ShmemLock;			/* spinlock for shared memory and LWLock
 
 static HTAB *ShmemIndex = NULL; /* primary index hashtable for shmem */
 
+static int ShmemSystemPageSize = 0;   /* system's page size */
 
 /*
  *	InitShmemAccess() --- set up basic pointers to shared memory.
@@ -115,6 +117,14 @@ InitShmemAllocation(void)
 
 	Assert(shmhdr != NULL);
 
+	ShmemSystemPageSize = sysconf(_SC_PAGESIZE);
+	if ( ShmemSystemPageSize <= 1 ||
+		(ShmemSystemPageSize & ( ShmemSystemPageSize - 1)))  // checks for power of 2
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			errmsg("invalid page size %d; must be a power of two and not an error", ShmemSystemPageSize)));
+	}
 	/*
 	 * Initialize the spinlock used by ShmemAlloc.	We have to do the space
 	 * allocation the hard way, since obviously ShmemAlloc can't be called
@@ -171,7 +181,9 @@ ShmemAlloc(Size size)
 
 	/* extra alignment for large requests, since they are probably buffers */
 	if (size >= BLCKSZ)
-		newStart = BUFFERALIGN(newStart);
+	{
+		newStart =  TYPEALIGN(ShmemSystemPageSize, newStart);
+	}
 
 	newFree = newStart + size;
 	if (newFree <= shmemseghdr->totalsize)
