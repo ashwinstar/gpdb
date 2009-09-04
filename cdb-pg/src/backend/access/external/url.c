@@ -1601,17 +1601,17 @@ static int popen_with_stderr(int *pipes, const char *exe)
 		close(err[READ]);
 
 		/* close existing stdout and stderr */
-		close(STDOUT_FILENO);
-		close(STDERR_FILENO);
+		close(fileno(stdout));
+		close(fileno(stderr));
 		
 		/* assign pipes to parent to stdout and stderr */
-		if(dup2(data[WRITE], STDOUT_FILENO) < 0)
+		if(dup2(data[WRITE], fileno(stdout)) < 0)
 		{
 			perror("dup2 error");
 			exit(EXIT_FAILURE);
 		}
 
-		if(dup2(err[WRITE], STDERR_FILENO) < 0)
+		if(dup2(err[WRITE], fileno(stdout)) < 0)
 		{
 			close(data[WRITE]); /* clean prev dup2 */
 			perror("dup2 error");
