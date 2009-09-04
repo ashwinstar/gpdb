@@ -56,6 +56,9 @@ If no arguments are specified, generate sql to create new partition definitions 
 
 create new partition definitions.  The new definitions have a suffix to distinguish them from the original tables.
 
+=item B<DEFAULT> 
+
+Add default partitions to the new partitioned tables.
 
 =item B<TRANSFER> 
 
@@ -82,7 +85,20 @@ which generates a script to create the new partition definitions, exchanges the 
 
 =head1 DESCRIPTION
 
-Upgrade rule-based partition tables to 3.2 catalog tables.
+gpugpart.pl generates sql scripts which upgrade "rule-based" partition
+tables (from the gpcreatepart script, 3.1 and prior) to 3.2 enhanced
+partitioned tables, using CREATE and ALTER TABLE syntax.  The enhanced
+partitioned tables have many improvements, including catalog support,
+fast INSERT/COPY, better query plans, easier manageability, etc.  
+
+=head1 LIMITATIONS
+
+The sql scripts construct enhanced partitioned tables of identical
+schema to their "rule-based" counterparts, but they does not preserve
+additional characteristics like granted permissions, etc.  The
+generated scripts should be reviewed and modified as necessary by DBAs
+who are familiar with the existing schemas.
+
 
 =head1 AUTHORS
 
@@ -133,6 +149,7 @@ BEGIN {
             my $xfr = 0;
             my $xch = 0;
             my $cln = 0;
+            my $mdf = 0;
 
             $dosql =~ s/\s//gm;
 
@@ -140,7 +157,7 @@ BEGIN {
 
             for my $opt (@foo)
             {
-                unless ($opt =~ m/^(no)?(create|crt|xch|exchange|xfr|transfer|cln|clean)/i)
+                unless ($opt =~ m/^(no)?(create|crt|xch|exchange|default|xfr|transfer|cln|clean)/i)
                 {
                     $glob_id = "invalid sql option: $opt\n";
                     pod2usage(-msg => $glob_id, -exitstatus => 1);
@@ -163,6 +180,10 @@ BEGIN {
                 {
                     $cln = !($opt =~ m/^no/i);
                 }
+                if ($opt =~ m/^(no)?(default)/i)
+                {
+                    $mdf = !($opt =~ m/^no/i);
+                }
 
             } # end for
 
@@ -177,6 +198,7 @@ BEGIN {
             $glob_dosql = [];
 
             push @{$glob_dosql}, "CREATE" if ($crt);
+            push @{$glob_dosql}, "MDF" if ($mdf);
             push @{$glob_dosql}, "XFR" if ($xfr);
             push @{$glob_dosql}, "XCH" if ($xch);
             push @{$glob_dosql}, "CLN" if ($cln);
@@ -1065,6 +1087,10 @@ sub genpartdefs4
             my $xfr_txt = "";
             my $xch_txt = "";
 
+			# use a generic token for default partition name -- fixup
+			# to be unique in genpartdefs5
+            my $mdf_txt = "ALTER TABLE $newname ADD DEFAULT PARTITION **def** ;\n";
+
             $xfr_txt .= "INSERT INTO $newname SELECT * FROM $kk;\n";
 
             $cln_txt .= "ALTER TABLE $kk RENAME TO $cln_oldname;\n";
@@ -1079,6 +1105,7 @@ sub genpartdefs4
             $cln_txt .= "ALTER TABLE $newname RENAME TO $cln_name;\n";
 
             my $ct_txt  = "CREATE TABLE $newname" . " (LIKE " . $kk . ") ";
+
             my $pby_txt = "PARTITION BY " . uc($vv->{pby}->{typ}) . " " .
                 "(" . join(", ", @{$vv->{pby}->{keys}}) . ")";
 
@@ -1292,6 +1319,7 @@ sub genpartdefs4
             $vv->{pby}->{cleanup_txt}  =  $cln_txt ;
             $vv->{pby}->{transfer_txt} =  $xfr_txt ;
             $vv->{pby}->{exchange_txt} =  $xch_txt ;
+            $vv->{pby}->{makdeflt_txt} =  $mdf_txt ;
 
             $vv->{pby}->{pby_txt} =  $pby_txt ;
             $vv->{pby}->{spec_txt} =  $spec_txt ;
@@ -1351,6 +1379,8 @@ sub genpartdef_subtree_fixup
 
     my @foo = split(/\n/, $pby->{spec_txt});
 
+	my %h_parent_def_fixup;
+
     for my $linnum (0..(scalar(@foo)-1))
     {
         next
@@ -1386,9 +1416,11 @@ sub genpartdef_subtree_fixup
 
         if (1)
         {
-            # handle exchange in subpartitions
+            # handle exchange in subpartitions, and fixup ADD default
+            # partition
 
             my $child_xch_txt = $reg_tabs->{$tname}->{pby}->{exchange_txt};
+            my $child_mdf_txt = $reg_tabs->{$tname}->{pby}->{makdeflt_txt};
 
             my $parent = $reg_tabs->{$tname}->{pby}->{parent};
             my $pname;
@@ -1412,10 +1444,44 @@ sub genpartdef_subtree_fixup
                 " ALTER PARTITION $pname";
          
             $child_xch_txt =~ s/$t1/$t2/gm;
+            $child_mdf_txt =~ s/$t1/$t2/gm;
 
             $reg_tabs->{$tname}->{pby}->{exchange_txt} =
                 "-- table $tname is partition $pname of $parent\n" . 
                 $child_xch_txt;
+
+			$reg_tabs->{$tname}->{pby}->{makdeflt_txt} =  $child_mdf_txt;
+
+			# make the parent default partition have default subpartitions
+            my $mdf_txt = $reg_tabs->{$parent}->{pby}->{makdeflt_txt};
+
+			my @mmm;
+
+			# don't bother if already did this for parent
+			@mmm = split(/(\*\*def\*\*)/, $mdf_txt)
+				unless (exists($h_parent_def_fixup{$parent}));
+
+			$h_parent_def_fixup{$parent} = 1;
+
+			# find the last "**def**", and add a subpartition
+			if (scalar(@mmm) > 2)
+			{
+				my $last_one = $mmm[-2] . $mmm[-1];
+
+				pop @mmm; # remove the last one (**def** plus trailing bits)
+				pop @mmm;
+
+#				print "l1: $last_one\n";
+
+				$last_one =~ 
+					s/\*\*def\*\*/\*\*def\*\* (default subpartition \*\*def\*\*\)/;
+
+#				print "l2: $last_one\n";
+
+				$reg_tabs->{$parent}->{pby}->{makdeflt_txt} =
+					join ("", @mmm) . $last_one;
+			}
+
 
             unless ($pby->{exchange_txt} =~ m/^\-\-/)
             {
@@ -1436,18 +1502,59 @@ sub genpartdef_subtree_fixup
     $pby->{did_subtree_fixup} = 1;
 }
 
-# genpartdefs5: Pass 5 - hang the subpartition specs in the right places
+# genpartdefs5: Pass 5 - hang the subpartition specs in the right places,
+# and fixup default parttion names
 sub genpartdefs5
 {
     my $reg_tabs = shift;
 
     my $do_fixup = 1;
 
+	my %h_parent_def_fixup;	
+
     while (my ($kk, $vv) = each (%{$reg_tabs}))
     {
         if (exists($vv->{pby}))
         {
             genpartdef_subtree_fixup($reg_tabs, $vv->{pby});
+
+			# XXX XXX: make DEFAULT partition definitions
+            my $mdf_txt = $vv->{pby}->{makdeflt_txt};
+
+			next
+				unless ($mdf_txt =~ m/ALTER TABLE .* ADD DEFAULT PARTITION/);
+
+			my @foo = 
+				($mdf_txt =~ m/ALTER TABLE\s+(\S+)\s+(ALTER PARTITION.*)?ADD DEFAULT PARTITION/);
+
+			next 
+				unless (scalar(@foo));
+
+			my $tname = $foo[0];
+			my $defcount = 0;
+
+			if (exists($h_parent_def_fixup{$tname}))
+			{
+				$defcount =	$h_parent_def_fixup{$tname};
+			}
+			else
+			{
+				$h_parent_def_fixup{$tname} = $defcount;
+			}
+
+			# replace all of the "**def**" entries with numbered
+			# default partition names, eg "def1"
+			while ($mdf_txt =~ m/\*\*def\*\*/)
+			{
+				$defcount++;
+				my $defname = "def" . $defcount;
+
+				$mdf_txt =~ s/\*\*def\*\*/$defname/;
+			}
+			
+			$vv->{pby}->{makdeflt_txt} = $mdf_txt;
+			$h_parent_def_fixup{$tname} = $defcount;
+
         }
     }
 
@@ -1469,6 +1576,11 @@ sub printpartdefs1
         if ($ph =~ m/create/i)
         {
             print "\n-- CREATE PARTITIONED TABLES\n\n";
+        }
+        elsif ($ph =~ m/mdf/i)
+        {
+            print "\n-- CREATE DEFAULT PARTITIONS\n\n";
+
         }
         elsif ($ph =~ m/xfr/i)
         {
@@ -1519,6 +1631,15 @@ sub printpartdefs1
                         print "\n";
                         print $ct_txt . "\n" . $pby_txt . "\n" . $spec_txt . ";\n";
                     }
+                }
+                elsif ($ph =~ m/mdf/i)
+                {
+                    my $mdf_txt = $vv->{pby}->{makdeflt_txt};
+
+                    print "\n", $mdf_txt
+						;
+#                        unless (exists($vv->{pby}->{is_subpartition}));
+
                 }
                 elsif ($ph =~ m/xfr/i)
                 {
@@ -2545,10 +2666,16 @@ if (1)
 
     # generate partition definitions
 
+	# 1: generate the specs and sort the range partitions
     genpartdefs(\%reg_tabs);
+	# 2: fixup invalid partition specs, ie "point" ranges where start==end
     genpartdefs2(\%reg_tabs);
+	# 3: add subpartitions to the partition by clause
     genpartdefs3(\%reg_tabs);
+	# 4: build text and comments for partition by clause
     genpartdefs4(\%reg_tabs, \%all_cons);
+	# 5: hang the subpartition specs in the right places, 
+	# and fixup default parttion names
     genpartdefs5(\%reg_tabs);
     
 #    print Data::Dumper->Dump([%reg_tabs]), "\n";
