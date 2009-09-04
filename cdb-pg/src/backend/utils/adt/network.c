@@ -323,7 +323,7 @@ text_network(text *src, bool is_cidr)
 	memcpy(str, VARDATA(src), len);
 	str[len] = '\0';
 
-	elog(LOG,"text_network leaks %d bytes",len+1);
+	//elog(LOG,"text_network leaks %d bytes",len+1);
 	return network_in(str, is_cidr);
 }
 
