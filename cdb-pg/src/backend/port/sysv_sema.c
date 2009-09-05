@@ -4,11 +4,11 @@
  *	  Implement PGSemaphores using SysV semaphore facilities
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/sysv_sema.c,v 1.20 2006/07/14 05:28:28 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/sysv_sema.c,v 1.25 2009/06/11 14:49:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -409,10 +409,11 @@ PGSemaphoreLock(PGSemaphore sema, bool interruptOK)
 	 * from the operation prematurely because we were sent a signal.  So we
 	 * try and lock the semaphore again.
 	 *
-	 * Each time around the loop, we check for a cancel/die interrupt. We
-	 * assume that if such an interrupt comes in while we are waiting, it will
-	 * cause the semop() call to exit with errno == EINTR, so that we will be
-	 * able to service the interrupt (if not in a critical section already).
+	 * Each time around the loop, we check for a cancel/die interrupt.	On
+	 * some platforms, if such an interrupt comes in while we are waiting, it
+	 * will cause the semop() call to exit with errno == EINTR, allowing us to
+	 * service the interrupt (if not in a critical section already) during the
+	 * next loop iteration.
 	 *
 	 * Once we acquire the lock, we do NOT check for an interrupt before
 	 * returning.  The caller needs to be able to record ownership of the lock
@@ -438,8 +439,8 @@ PGSemaphoreLock(PGSemaphore sema, bool interruptOK)
 	 *
 	 * On some platforms, signals marked SA_RESTART (which is most, for us)
 	 * will not interrupt the semop(); it will just keep waiting.  Therefore
-	 * it's necessary for cancel/die interrupts to be serviced directly by
-	 * the signal handler.  On these platforms the behavior is really the same
+	 * it's necessary for cancel/die interrupts to be serviced directly by the
+	 * signal handler.	On these platforms the behavior is really the same
 	 * whether the signal arrives just before the semop() begins, or while it
 	 * is waiting.  The loop on EINTR is thus important only for other types
 	 * of interrupts.
@@ -480,6 +481,7 @@ PGSemaphoreLockInterruptable(PGSemaphore sema)
 		if (errno == EINTR)
 			return false;
 		// UNDONE: For the moment, make this an ERROR
+		// cmcdevtt: It would sure be nice to know WHY you did this, whoever did this...
 //		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 		elog(ERROR, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 	}
@@ -544,7 +546,7 @@ PGSemaphoreHandleSigAlarm(SIGNAL_ARGS)
 bool
 PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout)
 {
-	struct itimerval timeval;
+	struct itimerval itimerval_timeout;
 	int err;
 	int errStatus;
 	bool result;
@@ -562,9 +564,9 @@ PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout)
 	semLockPGSemaphoreLockTimed = sema;
 	SpinLockRelease(&spinLockPGSemaphoreLockTimed);
 	
-	MemSet(&timeval, 0, sizeof(struct itimerval));
- 	memcpy(&timeval.it_value, timeout, sizeof(timeval));
-	err = setitimer(ITIMER_REAL, &timeval, NULL);
+	MemSet(&itimerval_timeout, 0, sizeof(struct itimerval));
+ 	memcpy(&itimerval_timeout.it_value, timeout, sizeof(struct timeval));
+	err = setitimer(ITIMER_REAL, &itimerval_timeout, NULL);
 	Assert(err == 0);
 
 //	elog(LOG,"PGSemaphoreLockTimed: set interrupt timer for %d seconds, %d microseconds",
@@ -582,6 +584,7 @@ PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout)
 				break;
 			}
 			// UNDONE: For the moment, make this an ERROR
+			// cmcdevitt:  It would be really nice if it was documented WHY it was made an ERROR, and what is UNDONE about it.
 //			elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 			elog(ERROR, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 		}
@@ -595,8 +598,8 @@ PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout)
 	setPGSemaphoreLockTimed = false;
 	SpinLockRelease(&spinLockPGSemaphoreLockTimed);
 	
-	MemSet(&timeval, 0, sizeof(struct itimerval));
-	err = setitimer(ITIMER_REAL, &timeval, NULL);
+	MemSet(&itimerval_timeout, 0, sizeof(struct itimerval));
+	err = setitimer(ITIMER_REAL, &itimerval_timeout, NULL);
 	Assert(err == 0);
 
 	return result;

@@ -384,7 +384,7 @@ PGSemaphoreHandleSigAlarm(SIGNAL_ARGS)
 bool
 PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout)
 {
-	struct itimerval timeval;
+	struct itimerval itimerval_timeout;
 	int err;
 	int errStatus;
 	bool result;
@@ -397,9 +397,9 @@ PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout)
 	semLockPGSemaphoreLockTimed = sema;
 	SpinLockRelease(&spinLockPGSemaphoreLockTimed);
 	
-	MemSet(&timeval, 0, sizeof(struct itimerval));
- 	memcpy(&timeval.it_value, timeout, sizeof(timeval));
-	err = setitimer(ITIMER_REAL, &timeval, NULL);
+	MemSet(&itimerval_timeout, 0, sizeof(struct itimerval));
+ 	memcpy(&itimerval_timeout.it_value, timeout, sizeof(struct timeval));
+	err = setitimer(ITIMER_REAL, &itimerval_timeout, NULL);
 	Assert(err == 0);
 
 //	elog(LOG,"PGSemaphoreLockTimed: set interrupt timer for %d seconds, %d microseconds",
@@ -430,8 +430,8 @@ PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout)
 	setPGSemaphoreLockTimed = false;
 	SpinLockRelease(&spinLockPGSemaphoreLockTimed);
 	
-	MemSet(&timeval, 0, sizeof(struct itimerval));
-	err = setitimer(ITIMER_REAL, &timeval, NULL);
+	MemSet(&itimerval_timeout, 0, sizeof(struct itimerval));
+	err = setitimer(ITIMER_REAL, &itimerval_timeout, NULL);
 	Assert(err == 0);
 
 	return result;
