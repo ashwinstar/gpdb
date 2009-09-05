@@ -39,8 +39,8 @@ endif
 
 
 
-# bootparse.c, bootstrap_tokens.h, and bootscanner.c are in the distribution
-# tarball, so they are not cleaned here.
+# bootparse.c and bootscanner.c are in the distribution tarball, so
+# they are not cleaned here.
 clean:
 	rm -f SUBSYS.o $(OBJS)
 # And the garbage that might have been left behind by partial build:

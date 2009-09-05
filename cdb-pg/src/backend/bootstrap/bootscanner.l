@@ -36,6 +36,7 @@
 #include "storage/off.h"
 #include "utils/rel.h"
 
+#if YY_FLEX_SUBMINOR_VERSION < 35
 /* These routines aren't used, but are defined to supress warnings from gcc */
 int boot_yyget_lineno  (void);
 FILE *boot_yyget_in  (void);
@@ -48,6 +49,7 @@ void boot_yyset_out (FILE *  out_str );
 int boot_yyget_debug  (void);
 void boot_yyset_debug (int  bdebug );
 int boot_yylex_destroy  (void);
+#endif
 
 
 
