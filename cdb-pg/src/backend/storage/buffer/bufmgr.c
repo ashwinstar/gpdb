@@ -99,7 +99,7 @@ static void FlushBuffer(volatile BufferDesc *buf, SMgrRelation reln);
 static void AtProcExit_Buffers(int code, Datum arg);
 static Buffer ReadBuffer_Ex(Relation reln, BlockNumber blockNum, BufferDesc* availBufHdr);
 
-#define ShouldMemoryProtect(buf) (memory_protect_buffer_pool && ! BufferIsLocal(buf->buf_id) && ! BufferIsInvalid(buf->buf_id))
+#define ShouldMemoryProtect(buf) (memory_protect_buffer_pool && ! BufferIsLocal(buf->buf_id+1) && ! BufferIsInvalid(buf->buf_id+1))
 
 static inline void BufferMProtect(volatile BufferDesc *bufHdr, int protectionLevel)
 {
