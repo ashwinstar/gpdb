@@ -13,7 +13,12 @@
 
 BLD_THIRDPARTY:=$(BLD_TOP)/ext
 ifeq "$(BLD_ARCH)" ""
-BLD_ARCH=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
+BLD_ARCH:=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
+endif
+
+# map builds on Snow Leopard to act like builds on Leopard, for now
+ifeq "$(BLD_ARCH)" "osx106_x86"
+export BLD_ARCH=osx105_x86
 endif
 
 aix5_ppc_64_BLD_BITS=64

@@ -6,6 +6,11 @@ ifeq "$(BLD_ARCH)" ""
 export BLD_ARCH:=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
 endif
 
+# map builds on Snow Leopard to act like builds on Leopard, for now
+ifeq "$(BLD_ARCH)" "osx106_x86"
+export BLD_ARCH=osx105_x86
+endif
+
 # get current working directory with symlinks maintained
 HERE:=$(shell pwd -L)
 
@@ -19,6 +24,16 @@ sol8_sparc_64_MPP_ARCH=SOL8-sparc_64
 sol8_sparc_32_MPP_ARCH=SOL8-sparc_32
 ifneq "$($(BLD_ARCH)_MPP_ARCH)" ""
 export MPP_ARCH=$($(BLD_ARCH)_MPP_ARCH)
+endif
+
+# take over the gcc version we use
+BLD_CC=gcc
+osx106_x86_CC=gcc-4.0
+osx105_x86_CC=gcc-4.0
+osx104_x86_CC=gcc-4.0
+ifneq "$($(BLD_ARCH)_CC)" ""
+BLD_CC=$($(BLD_ARCH)_CC)
+export CC=$(BLD_CC)
 endif
 
 # take over the path
@@ -69,6 +84,18 @@ endif
 export BLD_LD_LIBRARY_PATH_FIXED=true
 ifeq "$(DISABLE_MAKE_WARNING)" ""
 $(warning $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE)))
+endif
+
+osx106_x86_MACOSX_DEPLOYMENT_TARGET=10.5
+osx105_x86_MACOSX_DEPLOYMENT_TARGET=10.5
+osx104_x86_MACOSX_DEPLOYMENT_TARGET=10.4
+osx106_x86_DEPLOYMENT_SETTING=MACOSX_DEPLOYMENT_TARGET=$(osx106_x86_MACOSX_DEPLOYMENT_SETTING)
+osx105_x86_DEPLOYMENT_SETTING=MACOSX_DEPLOYMENT_TARGET=$(osx105_x86_MACOSX_DEPLOYMENT_SETTING)
+osx104_x86_DEPLOYMENT_SETTING=MACOSX_DEPLOYMENT_TARGET=$(osx104_x86_MACOSX_DEPLOYMENT_SETTING)
+BLD_DEPLOYMENT_SETTING=$($(BLD_ARCH)_DEPLOYMENT_SETTING)
+ifneq "$(BLD_DEPLOYMENT_SETTING)" ""
+export MACOSX_DEPLOYMENT_SETTING=$($(BLD_ARCH)_MACOSX_DEPLOYMENT_SETTING)
+$(warning $(BLD_DEPLOYMENT_SETTING))
 endif
 
 # disable our gcc wrapper

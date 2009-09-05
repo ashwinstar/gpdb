@@ -88,7 +88,6 @@ endif
 # Directory paths and file names
 #---------------------------------------------------------------------
 
-BLD_ARCH_HOST=$(shell $(CURDIR)/releng/set_bld_arch.sh)
 GPPGDIR=cdb-pg
 GPMGMT=gpMgmt
 GPCC=gpcc
@@ -181,7 +180,7 @@ else
 BLD_ENABLE_THREAD_SAFETY=--enable-thread-safety
 endif
 
-CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) $(BLD_ENABLE_THREAD_SAFETY) --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG))
+CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) $(BLD_ENABLE_THREAD_SAFETY) --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG) $(BLD_DEPLOYMENT_SETTING))
 
 # PL/Python does not compile on Tiger, skipping it on AIX
 ifneq "$(findstring $(BLD_ARCH),aix5_ppc_64 aix5_ppc_32 osx104_x86)" ""
@@ -240,7 +239,7 @@ BLD_CONFIG_SHELL=$($(BLD_ARCH)_CONFIG_SHELL)
 
 $(ISCONFIG) : $(GPPGDIR)/configure $(ISCONFIG).in env.sh
 	rm -rf $(INSTLOC)
-	cd $(GPPGDIR) && CC="$(strip gcc $(BLD_CFLAGS))" CFLAGS=$(INSTCFLAGS) $(BLD_CONFIG_SHELL) ./configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
+	cd $(GPPGDIR) && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))" CFLAGS=$(INSTCFLAGS) $(BLD_CONFIG_SHELL) ./configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
 
 #---------------------------------------------------------------------
 # autoconf
@@ -377,7 +376,7 @@ test3: HOMEDEP
 env.sh:
 	echo "export BLD_ARCH=$(BLD_ARCH)" > env.sh
 	echo "export NO_M64=$(NO_M64)" >> env.sh
-	echo "export CC=\"$(strip gcc $(BLD_CFLAGS))\"" >> env.sh
+	echo "export CC=\"$(strip $(BLD_CC) $(BLD_CFLAGS))\"" >> env.sh
 	echo "export PATH=$(PATH)" >> env.sh
 	echo "export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE))" >> env.sh
 
@@ -1150,17 +1149,17 @@ version :
 
 gccVersionCheck :
 	@echo "Checking GCC version" ; \
-	gcc --version > /dev/null 2>&1 ; \
+	$(BLD_CC) --version > /dev/null 2>&1 ; \
 	if [ $$? -ne 0 ] ; then \
- 	    echo "Error running gcc --version" ; \
-	    gcc --version ; \
+ 	    echo "Error running $(BLD_CC) --version" ; \
+	    $(BLD_CC) --version ; \
 	    exit 1 ; \
 	fi
-	@gcc --version | head -n 1 | cut -d' ' -f3 | egrep '[0-3]\.[0-4]\.[0-1]' > /dev/null 2>&1 ; \
+	@$(BLD_CC) --version | head -n 1 | cut -d' ' -f3 | egrep '[0-3]\.[0-4]\.[0-1]' > /dev/null 2>&1 ; \
 	if [ $$? -eq 0 ] ; then \
 	    echo "Error: GPDB must be compiled with GCC 3.4.2 or later." ; \
 	    echo "Current GCC version:" ; \
-	    gcc --version ; \
+	    $(BLD_CC) --version ; \
 	    exit 1 ; \
 	fi
 
