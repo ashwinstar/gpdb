@@ -27,6 +27,8 @@ Options:
     -man             full documentation
     -connect         psql connect parameters
     -sql             generate sql to construct new partition definitions
+	-table           only upgrade the specified table(s)
+	-exclude-table   exclude specified table(s) from upgrade
 
 =head1 OPTIONS
 
@@ -81,6 +83,34 @@ rename the original tables with a "old" suffix and replace them with the new par
 
 which generates a script to create the new partition definitions, exchanges the contents, and renames the new partition tables to replace the originals.
 
+=item B<-table> <tablename>
+    
+Only upgrade the specified table(s).  Multiple tables may be
+specified, eg:
+
+	-table schema1.foo -table schema2.bar -table schema3.baz
+
+In addition, the SQL LIKE wildcards "%" and "_" may be used in the
+table names.  Note that if the schema name is not specified, the
+assumption is to search all schemas.  Similarly, to upgrade all of the
+tables in a particular schema, use:
+
+	-table schemaname.%
+
+=item B<-exclude-table> <tablename>
+    
+Do not upgrade the specified table(s).  Multiple tables may be
+specified, eg:
+
+	-exclude-table schema1.foo -exclude-table schema2.bar 
+
+In addition, the SQL LIKE wildcards "%" and "_" may be used in the
+table names.  Note that if the schema name is not specified, the
+assumption is to search all schemas.  Similarly, to exclude all of the
+tables in a particular schema, use:
+
+	-exclude-table schemaname.%
+
 =back
 
 =head1 DESCRIPTION
@@ -114,17 +144,70 @@ Address bug reports and comments to: jcohen@greenplum.com
 my $glob_id = "";
 my $glob_connect;
 my $glob_dosql;
+my $glob_table_include;
+my $glob_table_exclude;
+
+
+sub sql_compare_like
+{
+	# adapted from Genezzo::Havok::SQLCompare
+    my ($pattern, $escape) = @_;
+
+    return undef
+        unless (defined($pattern));
+
+	if ($pattern !~ m/\./)
+	{
+		# prefix with wildcard for schema name
+		$pattern = '%.' . $pattern;
+	}
+
+    $pattern = '^' . quotemeta($pattern) . '$';
+
+    my $wildcard = '.*';
+    my $singlechar = '.';
+
+    if (defined($escape))
+    {
+        return undef
+            unless (length($escape) > 0);
+
+        $escape = quotemeta($escape);
+
+        # zero width negative look behind -- match any occurence of
+        # "%" wildcard which does not follow the escape character (and
+        # similarly for "_")
+        $pattern =~ s/(?<!$escape)\\%/$wildcard/gm;
+        $pattern =~ s/(?<!$escape)_/$singlechar/gm;
+
+        # replace the "escaped" match expressions with their literal
+        # values
+        $pattern =~ s/(($escape)\\%)/\\%/gm;
+        $pattern =~ s/(($escape)_)/_/gm;
+    }
+    else
+    {
+        $pattern =~ s/\\%/$wildcard/gm;
+        $pattern =~ s/_/$singlechar/gm;
+    }
+
+	return ($pattern);
+}
 
 BEGIN {
     my $man  = 0;
     my $help = 0;
     my $conn;
     my $dosql;
+	my @table_only;
+	my @table_exclude;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
                "connect=s" => \$conn,
-               "sql:s" => \$dosql
+               "sql:s" => \$dosql,
+		       "table=s" => \@table_only, # t
+		       "excludetable|exclude-table=s" => \@table_exclude # T
                )
         or pod2usage(2);
 
@@ -204,7 +287,25 @@ BEGIN {
             push @{$glob_dosql}, "CLN" if ($cln);
 
         }
-    }
+
+		my (@t1, @t2);
+
+		# build perl pattern expressions for table names
+		for my $tname (@table_only)
+		{
+			push @t1, sql_compare_like($tname);
+		}
+		for my $tname (@table_exclude)
+		{
+			push @t2, sql_compare_like($tname);
+		}
+
+		$glob_table_include = \@t1
+			if (scalar(@t1));
+		$glob_table_exclude = \@t2
+			if (scalar(@t2));
+
+    } # end if dosql
 
 }
 
@@ -1514,6 +1615,60 @@ sub genpartdefs5
 
     while (my ($kk, $vv) = each (%{$reg_tabs}))
     {
+		if (!(defined($glob_table_exclude)) && 
+			!(defined($glob_table_include)))
+		{
+#			print "match0: include $kk \n";
+			$vv->{include} = 1;
+		}
+		else
+		{
+			if (defined($glob_table_include))
+			{
+			  l_match1:
+				for my $matchup (@{$glob_table_include})
+				{
+					if ($kk =~ m/$matchup/)
+					{
+#						print "match1: $kk $matchup \n";
+
+						$vv->{include} = 1;
+						last l_match1;
+					}
+				}
+				$vv->{include} = 0
+					unless(defined($vv->{include}));
+
+			}
+			if (defined($glob_table_exclude))
+			{
+			  l_match2:
+				for my $matchup (@{$glob_table_exclude})
+				{
+					if ($kk =~ m/$matchup/)
+					{
+#						print "match2: $kk $matchup \n";
+
+						if (defined($vv->{include}) &&
+							(1 == $vv->{include}))
+									
+						{
+							warn "conflict between include and exclude for $kk";						}
+						else
+						{
+							$vv->{include} = 0;
+						}
+						last l_match2;
+					}
+				}
+
+				$vv->{include} = 1
+					unless(defined($vv->{include}));
+
+			}
+		}
+
+
         if (exists($vv->{pby}))
         {
             genpartdef_subtree_fixup($reg_tabs, $vv->{pby});
@@ -1613,6 +1768,11 @@ sub printpartdefs1
         for my $kk (@foo)
         {
             my $vv = $reg_tabs->{$kk};
+
+#			print "include: $vv->{include}\n";
+
+			next
+				unless ($vv->{include});
 
             if (exists($vv->{pby}))
             {
@@ -2675,7 +2835,7 @@ if (1)
 	# 4: build text and comments for partition by clause
     genpartdefs4(\%reg_tabs, \%all_cons);
 	# 5: hang the subpartition specs in the right places, 
-	# and fixup default parttion names
+	# and fixup default partition names
     genpartdefs5(\%reg_tabs);
     
 #    print Data::Dumper->Dump([%reg_tabs]), "\n";
