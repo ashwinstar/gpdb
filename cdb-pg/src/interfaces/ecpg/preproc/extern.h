@@ -6,6 +6,9 @@
 #include "type.h"
 
 #include <errno.h>
+#ifndef CHAR_BIT
+#include <limits.h>
+#endif
 
 /* defines */
 
@@ -32,8 +35,7 @@ extern char *yytext,
 #ifdef YYDEBUG
 extern int	yydebug;
 #endif
-extern int	yylineno,
-			yyleng;
+extern int	yylineno;
 extern FILE *yyin,
 		   *yyout;
 
@@ -64,7 +66,7 @@ extern int	yylex(void);
 extern void yyerror(char *);
 extern void *mm_alloc(size_t), *mm_realloc(void *, size_t);
 extern char *mm_strdup(const char *);
-extern void mmerror(int, enum errortype, char *,...);
+extern void mmerror(int, enum errortype, const char *,...);
 extern ScanKeyword *ScanECPGKeywordLookup(char *);
 extern ScanKeyword *ScanCKeywordLookup(char *);
 extern void output_get_descr_header(char *);

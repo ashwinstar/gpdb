@@ -56,7 +56,7 @@ static struct inf_compat_val
  * Handle parsing errors and warnings
  */
 void
-mmerror(int error_code, enum errortype type, char * error, ...)
+mmerror(int error_code, enum errortype type, const char *error, ...)
 {
 	va_list ap;
 
@@ -167,11 +167,7 @@ make3_str(char *str1, char *str2, char *str3)
 static char *
 make_name(void)
 {
-	char * name = (char *)mm_alloc(yyleng + 1);
-
-	strncpy(name, yytext, yyleng);
-	name[yyleng] = '\0';
-	return(name);
+	return mm_strdup(yytext);
 }
 
 static char *
