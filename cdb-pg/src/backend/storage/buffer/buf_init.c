@@ -137,7 +137,7 @@ InitBufferPool(void)
 		BufferDescriptors[NBuffers - 1].freeNext = FREENEXT_END_OF_LIST;
 	}
 
-    if ( memory_protect_buffer_pool &&
+    if ( ShouldMemoryProtectBufferPool() &&
          mprotect(BufferBlocks, bufferBlocksTotalSize, PROT_NONE))
     {
         ereport(ERROR,

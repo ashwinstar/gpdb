@@ -26,12 +26,17 @@ typedef void *Block;
 extern PGDLLIMPORT int NBuffers;
 
 /* in bufmgr.c */
+
+/* should not be accessed directly.  Use ShouldMemoryProtectBufferPool() instead */
 extern bool memory_protect_buffer_pool;
 extern bool zero_damaged_pages;
 extern double bgwriter_lru_percent;
 extern double bgwriter_all_percent;
 extern int	bgwriter_lru_maxpages;
 extern int	bgwriter_all_maxpages;
+
+extern PGDLLIMPORT bool IsUnderPostmaster; /* from utils/init/globals.c */
+#define ShouldMemoryProtectBufferPool() (memory_protect_buffer_pool && IsUnderPostmaster)
 
 /* in buf_init.c */
 extern PGDLLIMPORT char *BufferBlocks;
