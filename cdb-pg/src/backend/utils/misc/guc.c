@@ -737,7 +737,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&memory_protect_buffer_pool,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	{
 		{"full_page_writes", PGC_SIGHUP, WAL_SETTINGS,

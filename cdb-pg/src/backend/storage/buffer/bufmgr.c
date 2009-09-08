@@ -62,7 +62,7 @@
 
 
 /* GUC variables */
-bool        memory_protect_buffer_pool = true;
+bool        memory_protect_buffer_pool = false;
 bool		zero_damaged_pages = false;
 double		bgwriter_lru_percent = 1.0;
 double		bgwriter_all_percent = 0.333;
