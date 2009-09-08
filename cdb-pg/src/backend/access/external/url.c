@@ -1611,7 +1611,7 @@ static int popen_with_stderr(int *pipes, const char *exe)
 			exit(EXIT_FAILURE);
 		}
 
-		if(dup2(err[WRITE], fileno(stdout)) < 0)
+		if(dup2(err[WRITE], fileno(stderr)) < 0)
 		{
 			close(data[WRITE]); /* clean prev dup2 */
 			perror("dup2 error");
