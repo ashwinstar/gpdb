@@ -30,7 +30,7 @@
     
    2) Do not update any files used to upgrade from 3.2:
 
-      This corresponds to (regress/data/upgrade33) - don’t edit
+      This corresponds to (regress/data/upgrade33) - don't edit
       anything in here.  The upgrade from 3.2 catalog to 3.3 catalog
       is already correct all changes should now be in terms of
       upgrading 3.3 catalog => 3.4.
@@ -93,14 +93,14 @@
      regress/input/upg2.source or regress/output/upg2.source.
 
      a) Open (regress/input/upg2.source) and find the section on
-        “Build the 32 catalog”.
+        "Build the 32 catalog".
 
         In this section we create a bunch of tables in the public
-        schema “LIKE” the ones in the catalog schema, this is the set
+        schema "LIKE" the ones in the catalog schema, this is the set
         of tables that have not had schema edits between 32 and the
         current version.  If your table is in this list then you need
-        to move it to the next section “don’t use LIKE, as 3.2 had a
-        different structure”, and create the table explicitly using
+        to move it to the next section "don't use LIKE, as 3.2 had a
+        different structure", and create the table explicitly using
         the schema of the table AS IT EXISTED IN 3.2.
 
         Repeat the above for every major release prior to the current
@@ -149,7 +149,7 @@
 
    First it creates N skeleton catalogs, one for each prior version
    that we support upgrade FROM.  For any catalog tables that have not
-   undergone schema edits we just create them “LIKE” the corresponding
+   undergone schema edits we just create them "LIKE" the corresponding
    table in pg_catalog.  For catalog tables that have changed since
    that version we instead create them with the schema that they had
    in the referenced version.
@@ -157,10 +157,10 @@
    Second we load in the reference versions of those schemas.  This is
    done with COPY statements from the dumped output of the referenced
    version.  For example the 3.2 schema is loaded from
-   (regress/data/upgrade32/pg_*32.data).  Note that these “.data”
+   (regress/data/upgrade32/pg_*32.data).  Note that these ".data"
    files are dumps from a particular version, so you should never
    update them, that would equate to making a catalog change in a
-   released version... which you can’t do.
+   released version... which you can't do.
 
    Third it begins the process of upgrading.  Here it will
    incrementally upgrade from each major version to the next running
