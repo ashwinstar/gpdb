@@ -74,6 +74,18 @@ long int	LocalBufferFlushCount;
  *		backend.
  */
 
+static void
+ProtectMemoryPoolBuffers()
+{
+	Size bufferBlocksTotalSize = mul_size((Size)NBuffers, (Size) BLCKSZ);
+	if ( ShouldMemoryProtectBufferPool() &&
+         mprotect(BufferBlocks, bufferBlocksTotalSize, PROT_NONE ))
+    {
+        ereport(ERROR,
+                (errmsg("Unable to set memory level to %d, error %d, allocation size %ud, ptr %ld", PROT_NONE,
+                errno, (unsigned int) bufferBlocksTotalSize, (long int) BufferBlocks)));
+    }
+}
 
 /*
  * Initialize shared buffer pool
@@ -137,13 +149,7 @@ InitBufferPool(void)
 		BufferDescriptors[NBuffers - 1].freeNext = FREENEXT_END_OF_LIST;
 	}
 
-    if ( ShouldMemoryProtectBufferPool() &&
-         mprotect(BufferBlocks, bufferBlocksTotalSize, PROT_NONE))
-    {
-        ereport(ERROR,
-                (errmsg("Unable to set memory level to %d, error %d, allocation size %ud, ptr %ld", PROT_NONE,
-                errno, (unsigned int) bufferBlocksTotalSize, (long int) BufferBlocks)));
-    }
+    ProtectMemoryPoolBuffers();
 
 	/* Init other shared buffer-management stuff */
 	StrategyInitialize(!foundDescs);
@@ -164,6 +170,8 @@ InitBufferPool(void)
 void
 InitBufferPoolAccess(void)
 {
+	ProtectMemoryPoolBuffers();
+	
 	/*
 	 * Allocate and zero local arrays of per-buffer info.
 	 */
