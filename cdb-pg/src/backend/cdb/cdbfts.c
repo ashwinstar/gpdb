@@ -33,6 +33,9 @@
 #include "postmaster/walsendserver.h"
 #include "utils/faultinjection.h"
 
+#include "utils/fmgroids.h"
+#include "catalog/pg_authid.h"
+
 FtsProbeInfo *ftsProbeInfo = NULL; /* Probe process updates this structure */
 volatile bool	*ftsEnabled;
 static LWLockId	ftsControlLock;
@@ -296,62 +299,46 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 static char *
 getDBSuperuserName(CdbComponentDatabaseInfo *q, const char *errPrefix)
 {
-	char cmd[200];
-	char *user = NULL;
+	char *suser = NULL;
+	Relation auth_rel;
+	HeapTuple	auth_tup;
+	HeapScanDesc auth_scan;
+	ScanKeyData key[2];
+	bool	isNull;
 
-	TupleDesc tupdesc;
+	ScanKeyInit(&key[0],
+				Anum_pg_authid_rolsuper,
+				BTEqualStrategyNumber, F_BOOLEQ,
+                BoolGetDatum(true));
 
-	Assert(errPrefix != NULL);
+	ScanKeyInit(&key[1],
+				Anum_pg_authid_rolcanlogin,
+				BTEqualStrategyNumber, F_BOOLEQ,
+                BoolGetDatum(true));
 
-	/* Get the user we're going to use for our self-connection, using SPI */
-	if (SPI_OK_CONNECT != SPI_connect())
+	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
+	auth_scan = heap_beginscan(auth_rel, SnapshotNow, 2, key);
+
+	while (HeapTupleIsValid(auth_tup = heap_getnext(auth_scan, ForwardScanDirection)))
 	{
-		SPI_finish();
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("%s: SPI_connect failed in FTS", errPrefix)));
+		Datum	attrName;
+		Datum	validuntil;
+
+		validuntil = heap_getattr(auth_tup, Anum_pg_authid_rolvaliduntil, auth_rel->rd_att, &isNull);
+		/* we actually want it to be NULL, that means always valid */
+		if (!isNull)
+			continue;
+
+		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, auth_rel->rd_att, &isNull);
+
+		Assert(!isNull);
+
+		suser = strdup(DatumGetCString(attrName));
 	}
+	heap_endscan(auth_scan);
+	heap_close(auth_rel, AccessShareLock);
 
-	/* As a final step: we need to re-connect with privileges which
-	 * allow catalog updates */
-	if (snprintf(cmd, sizeof(cmd),
-				 "select rolname from pg_catalog.pg_roles where rolcatupdate ='t' and rolsuper = 't' order by oid limit 1;") >= sizeof(cmd))
-	{
-		SPI_finish();
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("%s: could not format command string (get rolname)", errPrefix)));
-	}
-
-	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
-	{
-		SPI_finish();
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("%s: SPI_execute failed (%s)", errPrefix, cmd)));
-	}
-
-	if (SPI_processed != 1)
-	{
-		SPI_finish();
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("%s: found %d rows with limit 1!", errPrefix, SPI_processed)));
-	}
-
-	tupdesc = SPI_tuptable->tupdesc;
-	user = strdup(SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 1));
-
-	if (!user)
-	{
-		SPI_finish();
-		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg("%s: out of memory", errPrefix)));
-	}
-
-	SPI_finish();
-
-	return user;
+	return suser;
 }
 
 static void
