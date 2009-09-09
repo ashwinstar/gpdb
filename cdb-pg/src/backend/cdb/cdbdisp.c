@@ -1282,17 +1282,31 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	primaryGang = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
 
 	Assert(primaryGang);
+
+	if (primaryGang->dispatcherActive)
+	{
+		elog(LOG, "cdbdisp_dispatchDtxProtocolCommand: primary gang marked active re-marking");
+		primaryGang->dispatcherActive = false;
+	}
 	
 	dtxProtocolParms.primary_gang_id = primaryGang->gang_id;
 
 	mirrorGang = allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 
-	if (mirrorGang &&
-		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
+	if (mirrorGang)
 	{
-		elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, mirrorGang->segdb_count, mirrorGang->size);
-		elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, primaryGang->segdb_count, primaryGang->size);
-		elog(LOG, "Some segments are down.  Dispatching command %s to remaining segments only", dtxProtocolCommandLoggingStr);
+		if (mirrorGang->dispatcherActive)
+		{
+			elog(LOG, "cdbdisp_dispatchDtxProtocolCommand: mirror gang marked active re-marking");
+			mirrorGang->dispatcherActive = false;
+		}
+
+		if (mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb)
+		{
+			elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, mirrorGang->segdb_count, mirrorGang->size);
+			elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, primaryGang->segdb_count, primaryGang->size);
+			elog(LOG, "Some segments are down.  Dispatching command %s to remaining segments only", dtxProtocolCommandLoggingStr);
+		}
 	}
 	
 	if (mirrorGang && dispatchToMirrors)
