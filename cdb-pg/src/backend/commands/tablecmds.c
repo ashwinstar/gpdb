@@ -34,6 +34,7 @@
 #include "catalog/pg_appendonly.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
+#include "catalog/pg_exttable.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_operator.h"
@@ -45,7 +46,6 @@
 #include "catalog/pg_partition.h"
 #include "catalog/pg_partition_rule.h"
 #include "catalog/toasting.h"
-#include "catalog/pg_exttable.h"
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbaocsam.h"
 #include "commands/cluster.h"
@@ -387,11 +387,10 @@ static void update_ri_trigger_args(Oid relid,
 					   const char *newname,
 					   bool fk_scan,
 					   bool update_relname);
-static void StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid);
 static Datum transformLocationUris(List *locs, bool isweb);
 static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
-static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols);
+static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols, bool iswritable);
 static Oid DefineRelation_int(CreateStmt *stmt, char relkind, char relstorage,
 							  struct CdbDispatchResults **pPrimaryResults,
 							  struct CdbDispatchResults **pMirrorResults,
@@ -837,12 +836,27 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	struct CdbDispatchResults *primaryResults = NULL;
     struct CdbDispatchResults *mirrorResults = NULL;
 	CdbDispatchCmdThreads     *dispatchThreads = NULL;
-	ExtTableTypeDesc		  *exttypeDesc = NULL;
 	CreateStmt				  *createStmt = makeNode(CreateStmt);
+	ExtTableTypeDesc 		  *exttypeDesc = (ExtTableTypeDesc *)createExtStmt->exttypedesc;
+	SingleRowErrorDesc 		  *singlerowerrorDesc = NULL;
+	DefElem    				  *dencoding = NULL;
+	ListCell				  *option;
 	Oid						  reloid = 0;
+	Oid						  fmtErrTblOid = InvalidOid;
+	Datum					  formatOptStr;
+	Datum					  locationUris = 0;
+	Datum					  locationExec = 0;
+	char*					  commandString = NULL;
+	char					  rejectlimittype = '\0';
+	char					  formattype;
+	int						  rejectlimit = -1;
+	int						  encoding = -1;
+	bool					  issreh = false; /* is single row error handling requested? */
+	bool					  iswritable = createExtStmt->iswritable;
+	bool					  isweb = createExtStmt->isweb;
 	bool					  shouldDispatch = (Gp_role == GP_ROLE_DISPATCH &&
 												IsNormalProcessingMode());
-
+	
 	/*
 	 * now set the parameters for keys/inheritance etc. Most of these are
 	 * uninteresting for external relations...
@@ -854,65 +868,166 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	createStmt->options = NIL;
 	createStmt->oncommit = ONCOMMIT_NOOP;
 	createStmt->tablespacename = NULL;
+	createStmt->policy = createExtStmt->policy; /* policy was set in transform */
+	
+		
+	switch(exttypeDesc->exttabletype)
+	{
+		case EXTTBL_TYPE_LOCATION:
+
+			/* Parse and validate URI strings (LOCATION clause) */
+			locationUris = transformLocationUris(exttypeDesc->location_list,
+												 isweb);
+			break;
+
+		case EXTTBL_TYPE_EXECUTE:
+			locationExec = transformExecOnClause(exttypeDesc->on_clause);
+			commandString = exttypeDesc->command_string;
+
+			if(strlen(commandString) == 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("Invalid EXECUTE clause. Found an empty command string")));
+
+			break;
+
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Internal error: unknown external table type")));
+	}
 
 	/*
-	 * Policy for external tables is a NULL policy (randomly distributed)
+	 * check permissions to create this external table.
+	 *
+	 * - Always allow if superuser.
+	 * - Never allow EXECUTE or 'file' exttables if not superuser.
+	 * - Allow http or gpfdist tables if gp_external_grant_privileges is on.
 	 */
-	if (shouldDispatch)
-	{
-		bool	create_policy = true;
-
-		/*
-		 * We always create a random distribution policy entry *unless*
-		 * this is an EXECUTE table with ON MASTER specified, in which
-		 * case we create no policy so that the master will be accessed.
-		 *
-		 * we check for this condition in the following block:
-		 */
-		exttypeDesc = (ExtTableTypeDesc *)createExtStmt->exttypedesc;
-
+	if(!superuser() && Gp_role == GP_ROLE_DISPATCH)
+	{		
 		if(exttypeDesc->exttabletype == EXTTBL_TYPE_EXECUTE)
 		{
-			ListCell   *exec_location_opt;
-
-			foreach(exec_location_opt, exttypeDesc->on_clause)
-			{
-				DefElem    *defel = (DefElem *) lfirst(exec_location_opt);
-
-				if (strcmp(defel->defname, "master") == 0)
-				{
-					SingleRowErrorDesc *srehDesc = (SingleRowErrorDesc *)createExtStmt->sreh;
-
-					create_policy = false;
-
-					if(srehDesc && srehDesc->errtable)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-								 errmsg("External web table with ON MASTER clause "
-										"cannot use error tables.")));
-				}
-			}
-		}
-
-		if(create_policy)
-		{
-			createStmt->policy = (GpPolicy *) palloc(sizeof(GpPolicy) +
-													 sizeof(createStmt->policy->attrs[0]));
-			createStmt->policy->ptype = POLICYTYPE_PARTITIONED;
-			createStmt->policy->nattrs = 0;
-			createStmt->policy->attrs[0] = 1;
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser to create an EXECUTE external web table")));
 		}
 		else
 		{
-			createStmt->policy = NULL;
+			ListCell   *first_uri = list_head(exttypeDesc->location_list);
+			Value		*v = lfirst(first_uri);
+			char		*uri_str = pstrdup(v->val.str);
+			Uri			*uri = ParseUriString(uri_str);
+
+			Assert(exttypeDesc->exttabletype == EXTTBL_TYPE_LOCATION);
+
+			if(uri->protocol == URI_FILE)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("must be superuser to create an external table with a file protocol")));
+			}
+			else if(!gp_external_grant_privileges)
+			{
+				Assert(uri->protocol == URI_GPFDIST || uri->protocol == URI_HTTP);
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						errmsg("must be superuser to create an external table")));
+			}
+			pfree(uri);
+			pfree(uri_str);
 		}
-
-
 	}
-	else
+
+	/*
+	 * Parse and validate FORMAT clause.
+	 */
+	formattype = transformFormatType(createExtStmt->format);
+	formatOptStr = transformFormatOpts(formattype,
+									   createExtStmt->formatOpts,
+									   list_length(createExtStmt->tableElts),
+									   iswritable);
+
+	/*
+	 * Parse single row error handling info if available
+	 */
+	singlerowerrorDesc = (SingleRowErrorDesc *)createExtStmt->sreh;
+
+	if(singlerowerrorDesc)
 	{
-		createStmt->policy = NULL;
+		Assert(!iswritable);
+		
+		issreh = true;
+
+		/* get reject limit, and reject limit type */
+		rejectlimit = singlerowerrorDesc->rejectlimit;
+		rejectlimittype = (singlerowerrorDesc->is_limit_in_rows ? 'r' : 'p');
+		VerifyRejectLimit(rejectlimittype, rejectlimit);
+
+		/* KEEP only allowed for COPY */
+		if(singlerowerrorDesc->is_keep)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("KEEP is not supported in the external table definition. "
+							"Error table will be dropped when its external table is "
+							"dropped.")));
+
+		if(singlerowerrorDesc->errtable)
+			fmtErrTblOid = RangeVarGetRelid(singlerowerrorDesc->errtable, true);
+		else
+			fmtErrTblOid = InvalidOid; /* no err tbl was requested */
 	}
+
+	/*
+	 * Parse external table data encoding
+	 */
+	foreach(option, createExtStmt->encoding)
+	{
+		DefElem    *defel = (DefElem *) lfirst(option);
+
+		Assert(strcmp(defel->defname, "encoding") == 0);
+
+		if (dencoding)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("conflicting or redundant ENCODING specification")));
+		dencoding = defel;
+	}
+
+	if (dencoding && dencoding->arg)
+	{
+		const char *encoding_name;
+
+		if (IsA(dencoding->arg, Integer))
+		{
+			encoding = intVal(dencoding->arg);
+			encoding_name = pg_encoding_to_char(encoding);
+			if (strcmp(encoding_name, "") == 0 ||
+				pg_valid_client_encoding(encoding_name) < 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("%d is not a valid encoding code",
+								encoding)));
+		}
+		else if (IsA(dencoding->arg, String))
+		{
+			encoding_name = strVal(dencoding->arg);
+			if (pg_valid_client_encoding(encoding_name) < 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("%s is not a valid encoding name",
+								encoding_name)));
+			encoding = pg_char_to_encoding(encoding_name);
+		}
+		else
+			elog(ERROR, "unrecognized node type: %d",
+				 nodeTag(dencoding->arg));
+	}
+
+	/* If encoding is defaulted, use database encoding */
+	if (encoding < 0)
+		encoding = pg_get_client_encoding();
+
 
     /*
 	 * First, create the pg_class and other regular relation catalog entries.
@@ -927,7 +1042,6 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 */
     PG_TRY();
     {
-		SingleRowErrorDesc *srehDesc = (SingleRowErrorDesc *)createExtStmt->sreh;
 
 		/*
 		 * get our pg_class external rel OID. If we're the QD we just created
@@ -943,17 +1057,30 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 		/*
 		 * create a pg_exttable entry for this external table.
 		 */
-		StoreExternalRelation(createExtStmt, reloid);
-
+		InsertExtTableEntry(reloid, 
+							iswritable, 
+							isweb,
+							issreh,
+							formattype,
+							rejectlimittype,
+							commandString,
+							rejectlimit,
+							fmtErrTblOid,
+							encoding,
+							formatOptStr,
+							locationExec,
+							locationUris);
+		
 		/*
 		 * record a dependency between the external table and its error table (if one exists)
 		 */
-		if(srehDesc && srehDesc->errtable)
+		if(singlerowerrorDesc && singlerowerrorDesc->errtable)
 		{
 			ObjectAddress	myself,
 			referenced;
 			Oid		fmtErrTblOid = RangeVarGetRelid(((SingleRowErrorDesc *)createExtStmt->sreh)->errtable, true);
 
+			Assert(!createExtStmt->iswritable);
 			Assert(fmtErrTblOid != InvalidOid);
 
 			myself.classId = RelationRelationId;
@@ -969,8 +1096,8 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 		{
 
 			/* Dispatch the statement tree to all primary and mirror segdbs.
-			* Doesn't wait for the QEs to finish execution.
-			*/
+			 * Doesn't wait for the QEs to finish execution.
+			 */
 			cdbdisp_dispatchUtilityStatement((Node *)createExtStmt,
 											 true,      /* cancelOnError */
 											 true,      /* startTransaction */
@@ -998,7 +1125,6 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
 	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
-
 
 }
 
@@ -19914,263 +20040,6 @@ AtEOSubXact_on_commit_actions(bool isCommit, SubTransactionId mySubid,
 	}
 }
 
-/*
- * Adds an entry into the pg_exttable catalog table. The entry
- * includes the reloid of the external relation that was created
- * in pg_class and a text array of external location URIs.
- */
-static void
-StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
-{
-	ExtTableTypeDesc *exttypeDesc = NULL;
-	SingleRowErrorDesc *singlerowerrorDesc = NULL;
-	Datum		locationUris = 0;
-	Datum		formatOptStr;
-	Datum		locationExec = 0;
-	char		formattype;
-	char		*commandString = NULL;
-	int			rejectlimit = -1;
-	char		rejectlimittype = '\0';
-	Oid			fmtErrTblOid = InvalidOid;
-	bool		issreh = false; /* is single row error handling requested? */
-	ListCell   *option;
-	DefElem    *dencoding = NULL;
-	int			encoding = -1;
-
-	Relation	pg_exttable_rel;
-	HeapTuple	pg_exttable_tuple = NULL;
-	char		nulls[Natts_pg_exttable];
-	Datum		values[Natts_pg_exttable];
-
-	exttypeDesc = (ExtTableTypeDesc *)stmt->exttypedesc;
-
-	switch(exttypeDesc->exttabletype)
-	{
-		case EXTTBL_TYPE_LOCATION:
-
-			/* Parse and validate URI strings (LOCATION clause) */
-			locationUris = transformLocationUris(exttypeDesc->location_list,
-												 stmt->isweb);
-			break;
-
-		case EXTTBL_TYPE_EXECUTE:
-			locationExec = transformExecOnClause(exttypeDesc->on_clause);
-			commandString = exttypeDesc->command_string;
-
-			if(strlen(commandString) == 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("Invalid EXECUTE clause. Found an empty command string")));
-
-			break;
-
-		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Internal error: unknown external table type")));
-	}
-
-	/*
-	 * check permissions to create this external table.
-	 *
-	 * - Always allow if superuser.
-	 * - Never allow EXECUTE or 'file' exttables if not superuser.
-	 * - Allow http or gpfdist tables if gp_external_grant_privileges is on.
-	 *
-	 * NOTE: This check used to be done in DefineExternalRelation, which sounds
-	 * like a better place for it actually, however moved here since the
-	 * permission now depends on examining the 'location' list for the type
-	 * of external table created, and this function is a better place for it
-	 * after the location string transformation.
-	 */
-	if(!superuser() && Gp_role == GP_ROLE_DISPATCH)
-	{
-		if(exttypeDesc->exttabletype == EXTTBL_TYPE_EXECUTE)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to create an EXECUTE external web table")));
-		}
-		else
-		{
-			ListCell   *first_uri = list_head(exttypeDesc->location_list);
-			Value		*v = lfirst(first_uri);
-			char		*uri_str = pstrdup(v->val.str);
-			Uri			*uri = ParseUriString(uri_str);
-
-			Assert(exttypeDesc->exttabletype == EXTTBL_TYPE_LOCATION);
-
-			if(uri->protocol == URI_FILE)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						 errmsg("must be superuser to create an external table with a file protocol")));
-			}
-			else if(!gp_external_grant_privileges)
-			{
-				Assert(uri->protocol == URI_GPFDIST || uri->protocol == URI_HTTP);
-				ereport(ERROR,
-						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						errmsg("must be superuser to create an external table")));
-			}
-			pfree(uri);
-			pfree(uri_str);
-		}
-	}
-
-	/*
-	 * Parse and validate FORMAT clause.
-	 */
-	formattype = transformFormatType(stmt->format);
-	formatOptStr = transformFormatOpts(formattype,
-									   stmt->formatOpts,
-									   list_length(stmt->tableElts));
-
-	/*
-	 * Parse single row error handling info if available
-	 */
-	singlerowerrorDesc = (SingleRowErrorDesc *)stmt->sreh;
-
-	if(singlerowerrorDesc)
-	{
-		issreh = true;
-
-		/* get reject limit, and reject limit type */
-		rejectlimit = singlerowerrorDesc->rejectlimit;
-		rejectlimittype = (singlerowerrorDesc->is_limit_in_rows ? 'r' : 'p');
-		VerifyRejectLimit(rejectlimittype, rejectlimit);
-
-		/* KEEP only allowed for COPY */
-		if(singlerowerrorDesc->is_keep)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("KEEP is not supported in the external table definition. "
-							"Error table will be dropped when its external table is "
-							"dropped.")));
-
-		if(singlerowerrorDesc->errtable)
-			fmtErrTblOid = RangeVarGetRelid(singlerowerrorDesc->errtable, true);
-		else
-			fmtErrTblOid = InvalidOid; /* no err tbl was requested */
-	}
-
-	/*
-	 * Parse external table data encoding
-	 */
-	foreach(option, stmt->encoding)
-	{
-		DefElem    *defel = (DefElem *) lfirst(option);
-
-		Assert(strcmp(defel->defname, "encoding") == 0);
-
-		if (dencoding)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("conflicting or redundant ENCODING specification")));
-		dencoding = defel;
-	}
-
-	if (dencoding && dencoding->arg)
-	{
-		const char *encoding_name;
-
-		if (IsA(dencoding->arg, Integer))
-		{
-			encoding = intVal(dencoding->arg);
-			encoding_name = pg_encoding_to_char(encoding);
-			if (strcmp(encoding_name, "") == 0 ||
-				pg_valid_client_encoding(encoding_name) < 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("%d is not a valid encoding code",
-								encoding)));
-		}
-		else if (IsA(dencoding->arg, String))
-		{
-			encoding_name = strVal(dencoding->arg);
-			if (pg_valid_client_encoding(encoding_name) < 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("%s is not a valid encoding name",
-								encoding_name)));
-			encoding = pg_char_to_encoding(encoding_name);
-		}
-		else
-			elog(ERROR, "unrecognized node type: %d",
-				 nodeTag(dencoding->arg));
-	}
-
-	/* If encoding is defaulted, use database encoding */
-	if (encoding < 0)
-		encoding = pg_get_client_encoding();
-
-
- 	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, ' ', sizeof(nulls));
-
-    /*
-     * Open and lock the pg_exttable catalog.
-     */
-	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
-
-	values[Anum_pg_exttable_reloid - 1] = ObjectIdGetDatum(tbloid);
-	values[Anum_pg_exttable_fmtcode - 1] = CharGetDatum(formattype);
-	values[Anum_pg_exttable_fmtopts - 1] = formatOptStr;
-
-	if(commandString)
-	{
-		/* EXECUTE type table - store command and command location */
-
-		values[Anum_pg_exttable_command - 1] =
-		DirectFunctionCall1(textin, CStringGetDatum(commandString));
-		values[Anum_pg_exttable_location - 1] = locationExec;
-
-	}
-	else
-	{
-		/* LOCATION type table - store uri locations. command is NULL */
-
-		values[Anum_pg_exttable_location - 1] = locationUris;
-		values[Anum_pg_exttable_command - 1] = 0;
-		nulls[Anum_pg_exttable_command - 1] = 'n';
-	}
-
-	if(issreh)
-	{
-		values[Anum_pg_exttable_rejectlimit -1] = Int32GetDatum(rejectlimit);
-		values[Anum_pg_exttable_rejectlimittype - 1] = CharGetDatum(rejectlimittype);
-
-		/* if error table specified store its OID, otherwise put a NULL */
-		if(fmtErrTblOid != InvalidOid)
-			values[Anum_pg_exttable_fmterrtbl - 1] = ObjectIdGetDatum(fmtErrTblOid);
-		else
-			nulls[Anum_pg_exttable_fmterrtbl - 1] = 'n';
-	}
-	else
-	{
-		nulls[Anum_pg_exttable_rejectlimit -1] = 'n';
-		nulls[Anum_pg_exttable_rejectlimittype - 1] = 'n';
-		nulls[Anum_pg_exttable_fmterrtbl - 1] = 'n';
-	}
-
-	values[Anum_pg_exttable_encoding - 1] = Int32GetDatum(encoding);
-
-
-	pg_exttable_tuple = heap_formtuple(RelationGetDescr(pg_exttable_rel),
-									   values, nulls);
-
-	simple_heap_insert(pg_exttable_rel, pg_exttable_tuple);
-
-	CatalogUpdateIndexes(pg_exttable_rel, pg_exttable_tuple);
-
-	/*
-     * Close the gp_distribution_policy relcache entry without unlocking.
-     * We have updated the catalog: consequently the lock must be held until
-     * end of transaction.
-     */
-    heap_close(pg_exttable_rel, NoLock);
-
-}
 
 /*
  * Transform the URI string list into a text array (the form that is
@@ -20464,7 +20333,7 @@ static char transformFormatType(char *formatname)
  *
  * The result is a text field that includes the format string.
  */
-static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols)
+static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols, bool iswritable)
 {
 	ListCell   *option;
 	Datum		result;
@@ -20477,8 +20346,9 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols)
 	bool csv_mode;
 	bool fill_missing = false;
 	List *force_notnull = NIL;
+	List *force_quote = NIL;
 	Size len;
-	StringInfoData fnn;
+	StringInfoData fnn, fq;
 
 	Assert(formattype == 'c' || formattype == 't');
 
@@ -20535,7 +20405,17 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
+				
 			force_notnull = (List *) defel->arg;
+		}
+		else if (strcmp(defel->defname, "force_quote") == 0)
+		{
+			if (force_quote)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+				
+			force_quote = (List *) defel->arg;
 		}
 		else if (strcmp(defel->defname, "fill_missing_fields") == 0)
 		{
@@ -20592,17 +20472,39 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols)
 		}
 	}
 
+	/*
+	 * re-construct the FORCE QUOTE list string.
+	 */
+	if(force_quote)
+	{
+		ListCell   *l;
+		bool 		is_first_col = true;
+
+		initStringInfo(&fq);
+		appendStringInfo(&fq, " force quote");
+
+		foreach(l, force_quote)
+		{
+			const char	   *col_name = strVal(lfirst(l));
+
+			appendStringInfo(&fq, (is_first_col ? " %s" : ",%s"),
+							 quote_identifier(col_name));
+			is_first_col = false;
+		}
+	}
+
 	/* verify all user supplied control char combinations are legal */
 	ValidateControlChars(false,
-						 true,
+						 !iswritable,
 						 csv_mode,
 						 delim,
 						 null_print,
 						 quote,
 						 escape,
-						 NIL, /* not yet supported */
+						 force_quote,
 						 force_notnull,
 						 header_line,
+						 fill_missing,
 						 numcols);
 
 	/*
@@ -20622,6 +20524,7 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols)
 	len += header_line ? strlen(" header") : 0;
 	len += fill_missing ? strlen(" fill missing fields") : 0;
 	len += force_notnull ? strlen(fnn.data) : 0;
+	len += force_quote ? strlen(fq.data) : 0;
 
 	/* +1 leaves room for sprintf's trailing null */
 	format_str = (char *) palloc(len + 1);
@@ -20635,10 +20538,10 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols)
 			break;
 
 		case 'c':
-			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s' quote '%s'%s%s%s",
+			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s' quote '%s'%s%s%s%s",
 					delim, null_print, escape, quote, (header_line ? " header" : ""),
 					(fill_missing ? " fill missing fields":""),
-					(force_notnull ? fnn.data :""));
+					(force_notnull ? fnn.data :""), (force_quote ? fq.data :""));
 			break;
 
 		default:

@@ -62,7 +62,7 @@ ExternalNext(ExternalScanState *node)
 	/*
 	 * get the next tuple from the file access methods
 	 */
-	tuple = file_getnext(scandesc, direction);
+	tuple = external_getnext(scandesc, direction);
 
 	/*
 	 * save the tuple and the buffer returned to us by the access methods in
@@ -157,7 +157,7 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 	currentRelation = ExecOpenScanExternalRelation(estate, node->scan.scanrelid);
 
 
-	currentScanDesc = file_beginscan(currentRelation,
+	currentScanDesc = external_beginscan(currentRelation,
 									 node->scan.scanrelid,
 									 node->scancounter,
 									 node->uriList,
@@ -245,7 +245,7 @@ ExecEndExternalScan(ExternalScanState *node)
 	/*
 	 * close file scan
 	 */
-	file_endscan(fileScanDesc);
+	external_endscan(fileScanDesc);
 
 	/*
 	 * close the external relation.
@@ -276,7 +276,7 @@ ExecStopExternalScan(ExternalScanState *node)
 	/*
 	 * stop the file scan
 	 */
-	file_stopscan(fileScanDesc);
+	external_stopscan(fileScanDesc);
 }
 
 
@@ -312,5 +312,5 @@ ExecExternalReScan(ExternalScanState *node, ExprContext *exprCtxt)
      	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 	fileScan = node->ess_ScanDesc;
 
-	file_rescan(fileScan);
+	external_rescan(fileScan);
 }

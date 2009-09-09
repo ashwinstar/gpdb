@@ -91,7 +91,7 @@ static void RelationRemoveInheritance(Oid relid);
 static void StoreRelCheck(Relation rel, char *ccname, char *ccbin);
 static void StoreConstraints(Relation rel, TupleDesc tupdesc);
 static List *insert_ordered_unique_oid(List *list, Oid datum);
-static void remove_exttable_tuple(Oid relid);
+
 /* ----------------------------------------------------------------
  *				XXX UGLY HARD CODED BADNESS FOLLOWS XXX
  *
@@ -1546,7 +1546,7 @@ heap_drop_with_catalog(Oid relid)
 	 * External table? If so, delete the pg_exttable tuple.
 	 */
 	if (is_external_rel)
-		remove_exttable_tuple(relid);
+		RemoveExtTableEntry(relid);
 
 	/*
  	 * delete distribution policy if present
@@ -2540,49 +2540,3 @@ insert_ordered_unique_oid(List *list, Oid datum)
 	return list;
 }
 
-/*
- * Remove an external table entry in pg_exttable. Caller's responsibility to
- * ensure that the relation has such an entry.
- */
-static void
-remove_exttable_tuple(Oid relid)
-{
-	Relation	pg_exttable_rel;
-	TupleDesc	pg_exttable_dsc;
-	HeapTuple	tuple;
-	ScanKeyData	key;
-	SysScanDesc	extscan;
-
-	/*
-	 * now remove the pg_exttable entry
-	 */
-	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
-	pg_exttable_dsc = RelationGetDescr(pg_exttable_rel);
-
-	ScanKeyInit(&key,
-				Anum_pg_exttable_reloid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(relid));
-
-	extscan = systable_beginscan(pg_exttable_rel, ExtTableRelOidIndexId, true,
-								 SnapshotNow, 1, &key);
-
-	tuple = systable_getnext(extscan);
-	if (!HeapTupleIsValid(tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("external table object id \"%d\" does not exist",
-						relid)));
-
-	/*
-	 * Delete the external table entry from the catalog (pg_exttable).
-	 */
-	simple_heap_delete(pg_exttable_rel, &tuple->t_self);
-
-
-	/* Finish up scan and close exttable catalog. */
-	systable_endscan(extscan);
-
-	heap_close(pg_exttable_rel, NoLock);
-}

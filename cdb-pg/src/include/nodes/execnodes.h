@@ -268,6 +268,7 @@ typedef struct ResultRelInfo
 
         struct AppendOnlyInsertDescData *ri_aoInsertDesc;
         struct AOCSInsertDescData       *ri_aocsInsertDesc;
+        struct ExternalInsertDescData	*ri_extInsertDesc;   
         int                     ri_aosegno;
         uint64                  ri_aoprocessed; /* tuples processed for AO */
 } ResultRelInfo;

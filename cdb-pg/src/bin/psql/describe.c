@@ -33,6 +33,7 @@ static bool describeOneTableDetails(const char *schemaname,
 						bool verbose);
 static bool add_tablespace_footer(char relkind, Oid tablespace, char **footers,
 					  int *count, PQExpBufferData buf, bool newline);
+static int add_distributed_by_footer(const char* oid, char **footers, int *count, PQExpBufferData buf);
 
 /*----------------
  * Handlers for various slash commands displaying some sort of list
@@ -1020,7 +1021,7 @@ describeOneTableDetails(const char *schemaname,
 
 		printfPQExpBuffer(&buf,
 						  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
-						         "x.rejectlimit, x.rejectlimittype, "
+						         "x.rejectlimit, x.rejectlimittype, x.writable, "
 						         "(SELECT relname "
 						          "FROM pg_class "
 								  "WHERE Oid=x.fmterrtbl) AS errtblname, "
@@ -1044,11 +1045,16 @@ describeOneTableDetails(const char *schemaname,
 			char	   *command = PQgetvalue(result, 0, 3);
 			char	   *rejlim =  PQgetvalue(result, 0, 4);
 			char	   *rejlimtype = PQgetvalue(result, 0, 5);
-			char	   *errtblname = PQgetvalue(result, 0, 6);
-			char	   *extencoding = PQgetvalue(result, 0, 7);
+			char	   *writable = PQgetvalue(result, 0, 6);
+			char	   *errtblname = PQgetvalue(result, 0, 7);
+			char	   *extencoding = PQgetvalue(result, 0, 8);
 			int			count_footers = 0;
 
-			footers = pg_malloc_zero(8 * sizeof(*footers));
+			footers = pg_malloc_zero(10 * sizeof(*footers));
+
+			/* Writable/Readable */
+			printfPQExpBuffer(&tmpbuf, _("Type: %s"), writable[0] == 't' ? "writable" : "readable");
+			footers[count_footers++] = pg_strdup(tmpbuf.data);
 
 			/* encoding */
 			printfPQExpBuffer(&tmpbuf, _("Encoding: %s"), extencoding);
@@ -1115,7 +1121,10 @@ describeOneTableDetails(const char *schemaname,
 				}
 			}
 
-
+			if(writable[0] == 't')
+				if(add_distributed_by_footer(oid, footers, &count_footers, buf))
+					goto error_return;
+			
 			add_tablespace_footer(tableinfo.relkind, tableinfo.tablespace,
 								  footers, &count_footers, tmpbuf, true);
 			footers[count_footers] = NULL;
@@ -1184,8 +1193,6 @@ describeOneTableDetails(const char *schemaname,
 				   *result4 = NULL,
 				   *result5 = NULL,
 				   *result6 = NULL,
-				   *result7 = NULL,
-				   *result8 = NULL,
 				   *result9 = NULL;
 		int			check_count = 0,
 					index_count = 0,
@@ -1509,89 +1516,9 @@ describeOneTableDetails(const char *schemaname,
 							  (tableinfo.hasoids ? _("yes") : _("no")));
 			footers[count_footers++] = pg_strdup(buf.data);
 		}
-
-		{
-			/* mpp addition start: dump distributed by clause */
-			printfPQExpBuffer(&buf,
-					 "SELECT attrnums\n"
-							  "FROM pg_catalog.gp_distribution_policy t\n"
-							  "WHERE localoid = '%s' ",
-							  oid);
-
-			result7 = PSQLexec(buf.data, false);
-			if (!result7)
-			{
-				/* Error:  Well, so what?  Best to continue */
-			}
-			else
-			{
-				int is_distributed = PQntuples(result7);
-				if (is_distributed)
-				{
-					char *col;
-					char *dist_columns = PQgetvalue(result7, 0, 0);
-					char *dist_colname;
-					if(dist_columns && strlen(dist_columns) > 0)
-					{
-						PQExpBufferData tempbuf;
-
-						initPQExpBuffer(&tempbuf);
-						dist_columns[strlen(dist_columns)-1] = '\0'; /* remove '}' */
-						dist_columns++;  /* skip '{' */
-
-						/* Get the attname for the first distribution column.*/
-						printfPQExpBuffer(&tempbuf,
-							"SELECT attname FROM pg_attribute \n"
-							"WHERE attrelid = '%s' \n"
-							"AND attnum = '%d' ",
-							oid,
-							atoi(dist_columns));
-						result8 = PSQLexec(tempbuf.data, false);
-						if (!result8)
-							goto error_return;
-						dist_colname = PQgetvalue(result8, 0, 0);
-						if (!dist_colname)
-							goto error_return;
-						printfPQExpBuffer(&buf, "Distributed by: (%s",
-										  dist_colname);
-						PQclear(result8);
-						dist_colname = NULL;
-						col = strchr(dist_columns,',');
-
-						while(col!=NULL)
-						{
-							col++;
-							/* Get the attname for next distribution columns.*/
-							printfPQExpBuffer(&tempbuf,
-								"SELECT attname FROM pg_attribute \n"
-								"WHERE attrelid = '%s' \n"
-								"AND attnum = '%d' ",
-								oid,
-								atoi(col));
-							result8 = PSQLexec(tempbuf.data, false);
-							if (!result8)
-								goto error_return;
-							dist_colname = PQgetvalue(result8, 0, 0);
-							if (!dist_colname)
-								goto error_return;
-							appendPQExpBuffer(&buf, ", %s", dist_colname);
-							PQclear(result8);
-							col = strchr(col,',');
-						}
-						appendPQExpBuffer(&buf, ")");
-						termPQExpBuffer(&tempbuf);
-					}
-					else
-					{
-						printfPQExpBuffer(&buf, "Distributed randomly");
-					}
-
-					footers[count_footers++] = pg_strdup(buf.data);
-				}
-
-			}
-		}
-
+		
+		/* mpp addition start: dump distributed by clause */
+		add_distributed_by_footer(oid, footers, &count_footers, buf);
 
 		add_tablespace_footer(tableinfo.relkind, tableinfo.tablespace,
 							  footers, &count_footers, buf, true);
@@ -1604,7 +1531,6 @@ describeOneTableDetails(const char *schemaname,
 		PQclear(result4);
 		PQclear(result5);
 		PQclear(result6);
-		PQclear(result7);
 		PQclear(result9);
 
 	}
@@ -1648,6 +1574,95 @@ error_return:
 	return retval;
 }
 
+
+static int
+add_distributed_by_footer(const char* oid, char **footers, int *count, PQExpBufferData buf)
+{
+	PGresult   *result1 = NULL,
+			   *result2 = NULL;
+	
+	printfPQExpBuffer(&buf,
+			 "SELECT attrnums\n"
+					  "FROM pg_catalog.gp_distribution_policy t\n"
+					  "WHERE localoid = '%s' ",
+					  oid);
+
+	result1 = PSQLexec(buf.data, false);
+	if (!result1)
+	{
+		/* Error:  Well, so what?  Best to continue */
+	}
+	else
+	{
+		int is_distributed = PQntuples(result1);
+		if (is_distributed)
+		{
+			char *col;
+			char *dist_columns = PQgetvalue(result1, 0, 0);
+			char *dist_colname;
+			if(dist_columns && strlen(dist_columns) > 0)
+			{
+				PQExpBufferData tempbuf;
+
+				initPQExpBuffer(&tempbuf);
+				dist_columns[strlen(dist_columns)-1] = '\0'; /* remove '}' */
+				dist_columns++;  /* skip '{' */
+
+				/* Get the attname for the first distribution column.*/
+				printfPQExpBuffer(&tempbuf,
+					"SELECT attname FROM pg_attribute \n"
+					"WHERE attrelid = '%s' \n"
+					"AND attnum = '%d' ",
+					oid,
+					atoi(dist_columns));
+				result2 = PSQLexec(tempbuf.data, false);
+				if (!result2)
+					return 1;
+				dist_colname = PQgetvalue(result2, 0, 0);
+				if (!dist_colname)
+					return 1;
+				printfPQExpBuffer(&buf, "Distributed by: (%s",
+								  dist_colname);
+				PQclear(result2);
+				dist_colname = NULL;
+				col = strchr(dist_columns,',');
+
+				while(col!=NULL)
+				{
+					col++;
+					/* Get the attname for next distribution columns.*/
+					printfPQExpBuffer(&tempbuf,
+						"SELECT attname FROM pg_attribute \n"
+						"WHERE attrelid = '%s' \n"
+						"AND attnum = '%d' ",
+						oid,
+						atoi(col));
+					result2 = PSQLexec(tempbuf.data, false);
+					if (!result2)
+						return 1;
+					dist_colname = PQgetvalue(result2, 0, 0);
+					if (!dist_colname)
+						return 1;
+					appendPQExpBuffer(&buf, ", %s", dist_colname);
+					PQclear(result2);
+					col = strchr(col,',');
+				}
+				appendPQExpBuffer(&buf, ")");
+				termPQExpBuffer(&tempbuf);
+			}
+			else
+			{
+				printfPQExpBuffer(&buf, "Distributed randomly");
+			}
+
+			footers[(*count)++] = pg_strdup(buf.data);
+		}
+
+		PQclear(result1);
+	}
+	
+	return 0; /* success */
+}
 
 /*
  * Return true if the relation uses non default tablespace;

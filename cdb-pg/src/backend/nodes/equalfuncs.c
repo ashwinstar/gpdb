@@ -1033,8 +1033,10 @@ _equalCreateExternalStmt(CreateExternalStmt *a, CreateExternalStmt *b)
 	COMPARE_STRING_FIELD(format);
 	COMPARE_NODE_FIELD(formatOpts);
 	COMPARE_SCALAR_FIELD(isweb);
+	COMPARE_SCALAR_FIELD(iswritable);
 	COMPARE_NODE_FIELD(sreh);
 	COMPARE_NODE_FIELD(encoding);
+	COMPARE_NODE_FIELD(distributedBy);
 
 	return true;
 }

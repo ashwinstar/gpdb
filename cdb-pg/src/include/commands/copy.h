@@ -28,7 +28,8 @@ typedef enum CopyDest
 {
 	COPY_FILE,					/* to/from file */
 	COPY_OLD_FE,				/* to/from frontend (2.0 protocol) */
-	COPY_NEW_FE					/* to/from frontend (3.0 protocol) */
+	COPY_NEW_FE,				/* to/from frontend (3.0 protocol) */
+	COPY_EXTERNAL_SOURCE		/* to/from external source (RET/WET) */
 } CopyDest;
 
 /*
@@ -119,7 +120,8 @@ typedef struct CopyStateData
 	int			client_encoding;	/* remote side's character encoding */
 	bool		need_transcoding;		/* client encoding diff from server? */
 	bool		encoding_embeds_ascii;	/* ASCII can be non-first byte? */
-	FmgrInfo   *to_server_enc_proc; /* conv proc from exttbl encoding to server */
+	FmgrInfo   *enc_conversion_proc; /* conv proc from exttbl encoding to 
+										server or the other way around */
 	uint64		processed;		/* # of tuples processed */
 	size_t		bytesread;
 	bool		no_more_data;
@@ -247,7 +249,7 @@ typedef CopyStateData *CopyState;
 extern void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 								 char *null_print, char *quote, char *escape,
 								 List *force_quote, List *force_notnull,
-								 bool header_line, int numcols);
+								 bool header_line, bool fill_missing, int numcols);
 extern uint64 DoCopy(const CopyStmt *stmt);
 
 extern DestReceiver *CreateCopyDestReceiver(void);
@@ -259,9 +261,12 @@ extern void CopyReadAttributesText(CopyState cstate, char *nulls,
 			 int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr);
 extern void CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 					  int num_phys_attrs, Form_pg_attribute *attr);
+extern void CopyOneRowTo(CopyState cstate, Oid tupleOid,
+						 Datum *values, bool *nulls);
+extern void CopySendEndOfRow(CopyState cstate);
 extern void limit_printout_length(StringInfo buf);
 extern void truncateEol(StringInfo buf, EolType	eol_type);
-extern void setEncodingConversionProc(CopyState cstate, int client_encoding);
+extern void setEncodingConversionProc(CopyState cstate, int client_encoding, bool iswritable);
 
 extern uint64 DoCopyDispatchAgent(const CopyStmt *stmt);
 

@@ -2646,8 +2646,16 @@ _copyCreateExternalStmt(CreateExternalStmt *from)
 	COPY_STRING_FIELD(format);
 	COPY_NODE_FIELD(formatOpts);
 	COPY_SCALAR_FIELD(isweb);
+	COPY_SCALAR_FIELD(iswritable);
 	COPY_NODE_FIELD(sreh);
 	COPY_NODE_FIELD(encoding);
+	COPY_NODE_FIELD(distributedBy);	
+	if (from->policy)
+	{
+		COPY_POINTER_FIELD(policy,sizeof(GpPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
+	}
+	else
+		newnode->policy = NULL;
 
 	return newnode;
 }

@@ -59,8 +59,9 @@
 
 static char *interpretExitCode(int exitCode, char *buf, size_t buflen);
 static const char *getSignalNameFromCode(int signo);
-static int popen_with_stderr(int *rwepipe, const char *exe);
-static int pclose_with_stderr(int pid, int *rwepipe);
+static int popen_with_stderr(int *rwepipe, const char *exe, bool forwrite);
+static int pclose_with_stderr(int pid, int *rwepipe, char *buf, int len);
+
 
 /* we use a global one for convenience */
 CURLM *multi_handle = 0;
@@ -576,15 +577,13 @@ make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
  * popen to execute it.
  */
 URL_FILE *
-url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int *response_code, const char **response_string)
+url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *response_code, const char **response_string)
 {
 
 	/* an EXECUTE string will always be prefixed like this */
 	const char*	exec_prefix = "execute:";
 	URL_FILE*	file;
 	int 		e;
-    (void)operation;
-
 
     if (! (file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
 	{
@@ -626,7 +625,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		save_SIGPIPE = pqsignal(SIGPIPE, SIG_DFL);
 
 		/* execute the user command */
-		file->u.exec.pid = popen_with_stderr(file->u.exec.pipes, shexec);
+		file->u.exec.pid = popen_with_stderr(file->u.exec.pipes, shexec, forwrite);
 
 		save_errno = errno;
 
@@ -652,6 +651,8 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		char*	path = strchr(url + strlen(PROTOCOL_FILE), '/');
 		struct fstream_options fo;
 
+		Insist(!forwrite);
+		
 		memset(&fo, 0, sizeof fo);
 
 		if (!path)
@@ -688,6 +689,8 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
     {
 		int sz = make_url(file->url, ev, 0);
 
+		Insist(!forwrite);
+		
         file->type = CFTYPE_CURL; /* marked as URL */
 
 		if (sz < 0)
@@ -853,11 +856,10 @@ int
 url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 {
 	enum fcurl_type_e type = file->type;
-    int ret=0;/* default is good return */
-
-	char* url = pstrdup(file->url);
-	char  err[256];
-	int	  nread = 0;
+    int 	ret = 0;/* default is good return */
+    int 	errlen = 512;
+	char	err[errlen];
+    char* 	url = pstrdup(file->url);
 	
     switch (type)
     {
@@ -867,15 +869,10 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 			break;
 
 		case CFTYPE_EXEC:
+		
+			/* close the child process and related pipes */
+			ret = pclose_with_stderr(file->u.exec.pid, file->u.exec.pipes, err, errlen);
 			
-			nread = piperead(file->u.exec.pipes[EXEC_ERR_P], err, 256); /* read from stderr */
-			
-			if(nread != -1)
-				err[nread] = 0;
-			else
-				strcpy(err,"error string unavailable due to read error");
-									
-			ret = pclose_with_stderr(file->u.exec.pid, file->u.exec.pipes);
 			if (ret == 0)
 			{
 				/* pclose() ended successfully; no errors to reflect */
@@ -1333,6 +1330,34 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate
     return want;
 }
 
+size_t
+url_fwrite(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
+{
+    size_t 	want = 0;
+
+    switch (file->type)
+    {
+		case CFTYPE_FILE:
+		{
+			elog(ERROR, "CFTYPE_FILE not yet supported in url.c");
+			break;
+		}
+		case CFTYPE_EXEC:
+			want = pipewrite(file->u.exec.pipes[EXEC_DATA_P], ptr, nmemb * size);
+			break;
+
+		case CFTYPE_CURL:
+			elog(ERROR, "CFTYPE_CURL not yet supported in url.c");
+			break;
+
+		default: /* unknown or unsupported type */
+			want = 0;
+			errno = EBADF;
+			break;
+    }
+
+    return want;
+}
 
 void
 url_rewind(URL_FILE *file, const char *relname)
@@ -1350,7 +1375,7 @@ url_rewind(URL_FILE *file, const char *relname)
 			url_fclose(file, true, relname);
 
 			/* most of these are null fo us. */
-			url_fopen(url, NULL, NULL, NULL, NULL, 0);
+			url_fopen(url, false, NULL, NULL, NULL, 0);
 			break;
 
 		case CFTYPE_CURL:
@@ -1556,12 +1581,11 @@ getSignalNameFromCode(int signo)
  * we need stderr in order to display the error that child process
  * encountered and show it to the user. This is, therefore, a wrapper
  * around a set of file descriptor redirections and a fork.
- * 
- * NOTE: the data pipe is currently only child to parent (child stdout)
- * but the ability to go the other direction will be added as well for
- * writable external tables soon.
+ *
+ * if 'forwrite' is set then we set the data pipe write side on the 
+ * parent. otherwise, we set the read side on the parent.
  */
-static int popen_with_stderr(int *pipes, const char *exe)
+static int popen_with_stderr(int *pipes, const char *exe, bool forwrite)
 {
 	int data[2];	/* pipe to send data child <--> parent */
 	int err[2];		/* pipe to send errors child --> parent */
@@ -1583,44 +1607,82 @@ static int popen_with_stderr(int *pipes, const char *exe)
 	pid = fork();
 	
 	if (pid > 0) /* parent */
-	{ 
-		/* close writes on data and err pipes */
-		close(data[WRITE]);
-		close(err[WRITE]);
+	{
+
+		if (forwrite)
+		{
+			/* parent writes to child */
+			close(data[READ]);
+			pipes[EXEC_DATA_P] = data[WRITE];
+		}
+		else
+		{
+			/* parent reads from child */
+			close(data[WRITE]);
+			pipes[EXEC_DATA_P] = data[READ]; 			
+		}
 		
-		/* assign reads on data and err pipes */
-		pipes[EXEC_DATA_P] = data[READ];
+		close(err[WRITE]);
 		pipes[EXEC_ERR_P] = err[READ];
 		
 		return pid;
 	} 
 	else if (pid == 0) /* child */
 	{		
-		/* close reads on data and err pipes */
-		close(data[READ]);
-		close(err[READ]);
 
-		/* close existing stdout and stderr */
-		close(fileno(stdout));
+		/*
+		 * set up the data pipe
+		 */
+		if (forwrite)
+		{
+			close(data[WRITE]);
+			close(fileno(stdin));
+			
+			/* assign pipes to parent to stdin */
+			if (dup2(data[READ], fileno(stdin)) < 0)
+			{
+				perror("dup2 error");
+				exit(EXIT_FAILURE);
+			}
+
+			/* no longer needed after the duplication */
+			close(data[READ]);			
+		}
+		else
+		{
+			close(data[READ]);
+			close(fileno(stdout));
+			
+			/* assign pipes to parent to stdout */
+			if (dup2(data[WRITE], fileno(stdout)) < 0)
+			{
+				perror("dup2 error");
+				exit(EXIT_FAILURE);
+			}
+
+			/* no longer needed after the duplication */
+			close(data[WRITE]);
+		}
+		
+		/*
+		 * now set up the error pipe
+		 */
+		close(err[READ]);
 		close(fileno(stderr));
 		
-		/* assign pipes to parent to stdout and stderr */
-		if(dup2(data[WRITE], fileno(stdout)) < 0)
+		if (dup2(err[WRITE], fileno(stderr)) < 0)
 		{
-			perror("dup2 error");
-			exit(EXIT_FAILURE);
-		}
-
-		if(dup2(err[WRITE], fileno(stderr)) < 0)
-		{
-			close(data[WRITE]); /* clean prev dup2 */
+			if(forwrite)
+				close(data[WRITE]);
+			else
+				close(data[READ]); 
+			
 			perror("dup2 error");
 			exit(EXIT_FAILURE);			
 		}
-		
-		close(data[WRITE]);
+
 		close(err[WRITE]);
-		
+				
 		/* go ahead and execute the user command */
 		execl("/bin/sh", "sh", "-c", exe, NULL);
 
@@ -1629,10 +1691,19 @@ static int popen_with_stderr(int *pipes, const char *exe)
 	} 
 	else
 	{
+		if(forwrite)
+		{
+			close(data[WRITE]);
+			close(data[READ]);
+		}
+		else
+		{
+			close(data[READ]);
+			close(data[WRITE]);
+		}
 		close(err[READ]);
 		close(err[WRITE]);
-		close(data[READ]);
-		close(data[WRITE]);
+		
 		return -1;		
 	}
 
@@ -1642,13 +1713,24 @@ static int popen_with_stderr(int *pipes, const char *exe)
 /*
  * pclose_with_stderr
  * 
- * see popen_with_stderr() above for details.
+ * close our data and error pipes and return the child process 
+ * termination status. if child terminated with error, 'buf' will
+ * point to the error string retrieved from child's stderr.
  */
-static int pclose_with_stderr(int pid, int *pipes)
+static int pclose_with_stderr(int pid, int *pipes, char *buf, int len)
 {
-	int status;
+	int status, nread;
 	
+	/* close the data pipe. we can now read from error pipe without being blocked */
 	close(pipes[EXEC_DATA_P]);
+	
+	nread = piperead(pipes[EXEC_ERR_P], buf, len); /* read from stderr */
+	
+	if(nread != -1)
+		buf[nread] = 0;
+	else
+		strcpy(buf,"error string unavailable due to read error");
+
 	close(pipes[EXEC_ERR_P]);
 	
 	waitpid(pid, &status, 0);

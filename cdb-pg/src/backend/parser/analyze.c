@@ -192,6 +192,12 @@ static void transformColumnDefinition(ParseState *pstate,
 static void transformTableConstraint(ParseState *pstate,
 						 CreateStmtContext *cxt,
 						 Constraint *constraint);
+static void transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
+									 List *distributedBy, GpPolicy **policyp,
+									 List *likeDistributedBy,
+									 bool bQuiet,
+									 bool iswritable,
+									 bool onmaster);
 static void transformDistributedBy(ParseState *pstate,
 								   CreateStmtContext *cxt,
 								   List *distributedBy,
@@ -217,6 +223,8 @@ static bool check_parameter_resolution_walker(Node *node,
 								check_parameter_resolution_context *context);
 
 static void setQryDistributionPolicy(SelectStmt *stmt, Query *qry);
+static List *getLikeDistributionPolicy(InhRelation *e);
+
 static void transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 											SingleRowErrorDesc *sreh);
 
@@ -1392,42 +1400,12 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 					transformInhRelation(pstate, &cxt,
 										 (InhRelation *) element, false);
 
-					/*
-					 * For Greenplum Database distributed tables, default to
-					 * the same distribution as the first LIKE table, unless
-					 * we also have INHERITS
-					 */
-					if (Gp_role == GP_ROLE_DISPATCH &&
+					if (Gp_role == GP_ROLE_DISPATCH && isBeginning &&
 						stmt->distributedBy == NIL &&
-						stmt->inhRelations == NIL && isBeginning &&
+						stmt->inhRelations == NIL && 
 						stmt->policy == NULL)
 					{
-						InhRelation *e = (InhRelation *) element;
-						Oid	relId = RangeVarGetRelid(e->relation, false);
-						GpPolicy  *oldTablePolicy =
-							GpPolicyFetch(CurrentMemoryContext, relId);
-
-						if (oldTablePolicy != NULL &&
-							oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
-						{
-							int ia;
-
-							if (oldTablePolicy->nattrs > 0)
-							{
-								for (ia=0;ia<oldTablePolicy->nattrs;ia++)
-								{
-									char *attname = get_attname(relId, oldTablePolicy->attrs[ia]);
-									if (likeDistributedBy)
-										likeDistributedBy = lappend(likeDistributedBy, (Node *) makeString(attname));
-									else
-										likeDistributedBy = list_make1((Node *) makeString(attname));
-								}
-							}
-							else
-							{	/* old table is distributed randomly. */
-								likeDistributedBy = list_make1((Node *) NULL);
-							}
-						}
+						likeDistributedBy = getLikeDistributionPolicy((InhRelation *) element);
 					}
 				}
 				break;
@@ -1507,7 +1485,12 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	CreateStmtContext cxt;
 	Query	   *q;
 	ListCell   *elements;
-
+	ExtTableTypeDesc	*exttypeDesc = NULL;
+	List  	   *likeDistributedBy = NIL;
+	bool	    bQuiet = false;	/* shut up transformDistributedBy messages */
+	bool		onmaster = false;
+	bool		iswritable = stmt->iswritable;
+	
 	cxt.stmtType = "CREATE EXTERNAL TABLE";
 	cxt.relation = stmt->relation;
 	cxt.inhRelations = NIL;
@@ -1544,9 +1527,21 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 				break;
 
 			case T_InhRelation:
-				/* LIKE */
-				transformInhRelation(pstate, &cxt,
-									 (InhRelation *) element, true);
+				{
+					/* LIKE */
+					bool	isBeginning = (cxt.columns == NIL);
+	
+					transformInhRelation(pstate, &cxt,
+										 (InhRelation *) element, true);
+					
+					if (Gp_role == GP_ROLE_DISPATCH && isBeginning &&
+						stmt->distributedBy == NIL &&
+						stmt->policy == NULL &&
+						iswritable /* dont bother if readable table */ )
+					{
+						likeDistributedBy = getLikeDistributionPolicy((InhRelation *) element);
+					}
+				}
 				break;
 
 			default:
@@ -1557,6 +1552,39 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	}
 
 	/*
+	 * Check if this is an EXECUTE ON MASTER table. We'll need this information
+	 * in transformExternalDistributedBy. While at it, we also check if an error
+	 * table is attempted to be used on ON MASTER table and error if so.
+	 */
+	if(!iswritable)
+	{	
+		exttypeDesc = (ExtTableTypeDesc *)stmt->exttypedesc;
+	
+		if(exttypeDesc->exttabletype == EXTTBL_TYPE_EXECUTE)
+		{
+			ListCell   *exec_location_opt;
+	
+			foreach(exec_location_opt, exttypeDesc->on_clause)
+			{
+				DefElem    *defel = (DefElem *) lfirst(exec_location_opt);
+	
+				if (strcmp(defel->defname, "master") == 0)
+				{
+					SingleRowErrorDesc *srehDesc = (SingleRowErrorDesc *)stmt->sreh;
+	
+					onmaster = true;
+	
+					if(srehDesc && srehDesc->errtable)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("External web table with ON MASTER clause "
+										"cannot use error tables.")));
+				}
+			}
+		}
+	}
+	
+	/*
 	 * Check if we need to create an error table. If so, add it to the
 	 * before list.
 	 */
@@ -1564,6 +1592,9 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 		transformSingleRowErrorHandling(pstate, &cxt,
 										(SingleRowErrorDesc *) stmt->sreh);
 
+	transformETDistributedBy(pstate, &cxt, stmt->distributedBy, &stmt->policy,
+							 likeDistributedBy, bQuiet, iswritable, onmaster);
+	
 	Assert(cxt.ckconstraints == NIL);
 	Assert(cxt.fkconstraints == NIL);
 	Assert(cxt.ixconstraints == NIL);
@@ -1837,6 +1868,87 @@ transformTableConstraint(ParseState *pstate, CreateStmtContext *cxt,
 }
 
 
+
+/*
+ * transformETDistributedBy - transform DISTRIBUTED BY clause for 
+ * external tables. 
+ * 
+ * WET: by defult we distribute RANDOMLY. However, if DISTRIBUTED BY
+ * was specified we just call the regular transformDistributedBy and
+ * handle it like we would for non external tables.
+ * 
+ * RET: We always create a random distribution policy entry *unless* 
+ * this is an EXECUTE table with ON MASTER specified, in which case 
+ * we create no policy so that the master will be accessed.
+ */
+static void
+transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
+						 List *distributedBy, GpPolicy **policyp,
+						 List *likeDistributedBy,
+						 bool bQuiet,
+						 bool iswritable,
+						 bool onmaster)
+{
+	int			maxattrs = 200;
+	GpPolicy*	p = NULL;
+	
+	/*
+	 * utility mode creates can't have a policy.  Only the QD can have policies
+	 */
+	if (Gp_role != GP_ROLE_DISPATCH)
+	{
+		*policyp = NULL;
+		return;
+	}
+
+	if(!iswritable && distributedBy)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("Readable external tables can\'t specify a DISTRIBUTED BY clause.")));
+	
+	if(iswritable)
+	{
+		/* WET */
+		
+		if(!distributedBy)
+		{
+			/* defaults to DISTRIBUTED RANDOMLY */
+			p = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs *
+										 sizeof(p->attrs[0]));
+			p->ptype = POLICYTYPE_PARTITIONED;
+			p->nattrs = 0;
+			p->attrs[0] = 1;
+			
+			*policyp = p; 
+		}
+		else
+		{
+			/* regular DISTRIBUTED BY transformation */
+			transformDistributedBy(pstate, cxt, distributedBy, policyp,
+								   likeDistributedBy, bQuiet);
+		}
+	}
+	else
+	{
+		/* RET */
+		
+		if(onmaster)
+		{
+			p = NULL;
+		}
+		else
+		{
+			/* defaults to DISTRIBUTED RANDOMLY */
+			p = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs *
+										 sizeof(p->attrs[0]));
+			p->ptype = POLICYTYPE_PARTITIONED;
+			p->nattrs = 0;
+			p->attrs[0] = 1;
+		}
+
+		*policyp = p;
+	}
+}
 
 /****************stmt->policy*********************/
 static void
@@ -10604,6 +10716,49 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 		if (policy->nattrs > 0)
 			qry->intoPolicy = policy;
 	}
+}
+
+/*
+ * getLikeDistributionPolicy
+ * 
+ * For Greenplum Database distributed tables, default to
+ * the same distribution as the first LIKE table, unless
+ * we also have INHERITS
+ */
+static List*
+getLikeDistributionPolicy(InhRelation* e)
+{
+	List*			likeDistributedBy = NIL;
+	Oid				relId;
+	GpPolicy*		oldTablePolicy;
+
+	relId = RangeVarGetRelid(e->relation, false);
+	oldTablePolicy = GpPolicyFetch(CurrentMemoryContext, relId);
+	
+	if (oldTablePolicy != NULL &&
+		oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
+	{
+		int ia;
+
+		if (oldTablePolicy->nattrs > 0)
+		{
+			for (ia = 0 ; ia < oldTablePolicy->nattrs ; ia++)
+			{
+				char *attname = get_attname(relId, oldTablePolicy->attrs[ia]);
+				
+				if (likeDistributedBy)
+					likeDistributedBy = lappend(likeDistributedBy, (Node *) makeString(attname));
+				else
+					likeDistributedBy = list_make1((Node *) makeString(attname));
+			}
+		}
+		else
+		{	/* old table is distributed randomly. */
+			likeDistributedBy = list_make1((Node *) NULL);
+		}
+	}
+	
+	return likeDistributedBy;
 }
 
 /*

@@ -754,13 +754,6 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	}
 	PG_END_TRY();
 
-	/* External relations are read-only */
-	if (RelationIsExternal(pstate->p_target_relation) &&
-		requiredPerms != ACL_SELECT)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("External tables are read only. Operation not permitted.")));
-
 	if (pstate->p_is_insert && !pstate->p_is_update)
 		LockRelation(pstate->p_target_relation, RowExclusiveLock);
 	else

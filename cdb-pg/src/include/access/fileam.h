@@ -21,17 +21,26 @@
 #include "utils/rel.h"
 #include "utils/tqual.h"
 
-extern FileScanDesc file_beginscan(Relation relation, Index scanrelid,
-								   uint32 scancounter, List *uriList,
-								   List *fmtOpts, bool isText, bool isMasterOnly,
-								   int rejLimit, bool rejLimitInRows,
-								   Oid fmterrtbl, int encoding);
-extern void file_rescan(FileScanDesc scan);
-extern void file_endscan(FileScanDesc scan);
-extern void file_stopscan(FileScanDesc scan);
-extern HeapTuple file_getnext(FileScanDesc scan, ScanDirection direction);
-extern void AtAbort_ExtTables(void);
-char*linenumber_atoi(char buffer[20],int64 linenumber);
+/*
+ * ExternalInsertDescData is used for storing state related
+ * to inserting data into a writable external table.
+ */
+typedef struct ExternalInsertDescData
+{
+	Relation		ext_rel;
+	FILE*			ext_file;
+	char*			ext_uri;		/* "command:<cmd>" or "tablespace:<path>" */
+	bool			ext_noop;		/* no op. this segdb needs to do nothing (e.g. mirror seg) */
+	
+	TupleDesc		ext_tupDesc;
+	Datum*			ext_values;
+	bool*			ext_nulls;
+
+	struct CopyStateData *ext_pstate; 	/* data parser control chars and state */
+
+} ExternalInsertDescData;
+
+typedef ExternalInsertDescData *ExternalInsertDesc;
 
 typedef enum DataLineStatus
 {
@@ -40,5 +49,23 @@ typedef enum DataLineStatus
 	NEED_MORE_DATA,
 	END_MARKER
 } DataLineStatus;
+
+extern FileScanDesc external_beginscan(Relation relation, Index scanrelid,
+								   uint32 scancounter, List *uriList,
+								   List *fmtOpts, bool isText, bool isMasterOnly,
+								   int rejLimit, bool rejLimitInRows,
+								   Oid fmterrtbl, int encoding);
+extern void external_rescan(FileScanDesc scan);
+extern void external_endscan(FileScanDesc scan);
+extern void external_stopscan(FileScanDesc scan);
+extern HeapTuple external_getnext(FileScanDesc scan, ScanDirection direction);
+extern ExternalInsertDesc external_insert_init(Relation rel);
+extern Oid external_insert(ExternalInsertDesc extInsertDesc, HeapTuple instup);
+extern void external_insert_finish(ExternalInsertDesc extInsertDesc);
+
+extern void AtAbort_ExtTables(void);
+char*	linenumber_atoi(char buffer[20],int64 linenumber);
+
+
 
 #endif   /* FILEAM_H */

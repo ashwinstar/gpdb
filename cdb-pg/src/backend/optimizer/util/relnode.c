@@ -101,6 +101,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->fmterrtbl = InvalidOid;
 	rel->ext_encoding = -1;
 	rel->isrescannable = true;
+	rel->writable = false;
 	rel->baserestrictinfo = NIL;
 	rel->baserestrictcost.startup = 0;
 	rel->baserestrictcost.per_tuple = 0;
@@ -116,7 +117,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 
 			/* if external table - get locations and format from catalog */
 			if(get_rel_relstorage(rte->relid) == RELSTORAGE_EXTERNAL)
-				get_external_relation_info(root, rte->relid, rte->inh, rel);
+				get_external_relation_info(rte->relid, rel);
 
 			get_relation_info(root, rte->relid, rte->inh, rel);
 

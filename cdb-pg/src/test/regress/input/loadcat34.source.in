@@ -13,9 +13,16 @@ alter table @gpupgradeschemaname@.pg_appendonly add column columnstore boolean;
 update @gpupgradeschemaname@.pg_appendonly set columnstore='f';
 alter table @gpupgradeschemaname@.pg_appendonly alter column columnstore set not null;
 
+-- fix up pg_exttable
+alter table @gpupgradeschemaname@.pg_exttable add column writable boolean;
+update @gpupgradeschemaname@.pg_exttable set writable='f';
+alter table @gpupgradeschemaname@.pg_exttable alter column writable set not null;
+
 commit;
 
 reindex table @gpupgradeschemaname@.pg_appendonly;
+-- will error out in regression tests, this is expected
+reindex table @gpupgradeschemaname@.pg_exttable;
 -- will error out in regression tests, this is expected
 reindex table @gpupgradeschemaname@.gp_configuration_history;
 -- will error out in regression tests, this is expected

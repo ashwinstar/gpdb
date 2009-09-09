@@ -41,6 +41,7 @@
 #include "access/heapam.h"
 #include "access/valid.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_exttable.h"
 #include "commands/copy.h"
 #include "commands/dbcommands.h"
 #include "libpq/libpq-be.h"
@@ -62,31 +63,36 @@
 #include "cdb/cdbvars.h"
 #include "cdb/url.h"
 
-static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir);
-static void initParseState(CopyState pstate, Relation relation, List *fmtOpts,
-						   bool isText, bool isMasterOnly, char *uri, int rejectlimit,
-						   bool islimitinrows, Oid fmterrtbl, int encoding);
-static void open_external_file(FileScanDesc scan);
-static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
-static void file_scan_error_callback(void *arg);
+static HeapTuple externalgettup(FileScanDesc scan, ScanDirection dir);
+ static void initParseState(CopyState pstate, Relation relation, 
+			   Datum* values, bool* nulls, bool writable, 
+			   List *fmtOpts, bool isText,
+			   bool isMasterOnly, char *uri, int rejectlimit,
+			   bool islimitinrows, Oid fmterrtbl, int encoding);
+static void open_external_readable_source(FileScanDesc scan);
+static void open_external_writable_source(ExternalInsertDesc extInsertDesc);
+static int	external_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
+static void external_senddata(URL_FILE *extfile, CopyState pstate);
+static void external_scan_error_callback(void *arg);
 void readHeaderLine(CopyState pstate);
-static void close_external_file(FILE *dataSource, bool failOnError, const char *relname);
+static void close_external_source(FILE *dataSource, bool failOnError, const char *relname);
 static void parseFormatString(CopyState pstate, char *fmtstr);
-
+static void external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, 
+								  char* quote, bool header, uint32 scancounter);
 
 /* ----------------------------------------------------------------
-*				   file_ interface functions
+*				   external_ interface functions
 * ----------------------------------------------------------------
 */
 
 #ifdef FILEDEBUGALL
 #define FILEDEBUG_1 \
-elog(DEBUG2, "file_getnext([%s],dir=%d) called", \
+elog(DEBUG2, "external_getnext([%s],dir=%d) called", \
 	 RelationGetRelationName(scan->fs_rd), (int) direction)
 #define FILEDEBUG_2 \
-elog(DEBUG2, "file_getnext returning EOS")
+elog(DEBUG2, "external_getnext returning EOS")
 #define FILEDEBUG_3 \
-elog(DEBUG2, "file_getnext returning tuple")
+elog(DEBUG2, "external_getnext returning tuple")
 #else
 #define FILEDEBUG_1
 #define FILEDEBUG_2
@@ -102,11 +108,11 @@ static char *g_dataSourceName = NULL;
 
 
 /* ----------------
-*		file_beginscan	- begin file scan
+*		external_beginscan	- begin file scan
 * ----------------
 */
 FileScanDesc
-file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
+external_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 			   List *uriList, List *fmtOpts, bool isText, bool isMasterOnly,
 			   int rejLimit, bool rejLimitInRows, Oid fmterrtbl, int encoding)
 {
@@ -198,7 +204,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 		/* set external source (uri) */
 		scan->fs_uri = uri;
 
-		/* NOTE: we delay actually opening the data source until file_getnext() */
+		/* NOTE: we delay actually opening the data source until external_getnext() */
 	}
 	else
 	{
@@ -238,11 +244,11 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	 * Allocate and init our structure that keeps track of data parsing state
 	 */
 	scan->fs_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
-	initParseState(scan->fs_pstate, relation, fmtOpts, isText, isMasterOnly,
+	initParseState(scan->fs_pstate, relation, NULL, NULL, false, fmtOpts, isText, isMasterOnly,
 				   scan->fs_uri, rejLimit, rejLimitInRows, fmterrtbl, encoding);
 
 	/* Set up callback to identify error line number */
-	scan->errcontext.callback = file_scan_error_callback;
+	scan->errcontext.callback = external_scan_error_callback;
 	scan->errcontext.arg = (void *) scan->fs_pstate;
 	scan->errcontext.previous = error_context_stack;
 
@@ -253,18 +259,18 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 
 
 /* ----------------
-*		file_rescan  - (re)start a scan of an external file
+*		external_rescan  - (re)start a scan of an external file
 * ----------------
 */
 void
-file_rescan(FileScanDesc scan)
+external_rescan(FileScanDesc scan)
 {
 
 	if (!scan->fs_noop)
 	{
 		/* may need to open file since beginscan doens't do it for us */
 		if (!scan->fs_file)
-			open_external_file(scan);
+			open_external_readable_source(scan);
 
 		/* seek to beginning of data source so we can start over */
 		url_rewind((URL_FILE*)scan->fs_file, RelationGetRelationName(scan->fs_rd));
@@ -282,11 +288,11 @@ file_rescan(FileScanDesc scan)
 }
 
 /* ----------------
-*		file_endscan - end a scan
+*		external_endscan - end a scan
 * ----------------
 */
 void
-file_endscan(FileScanDesc scan)
+external_endscan(FileScanDesc scan)
 {
 	char *relname = pstrdup(RelationGetRelationName(scan->fs_rd));
 	
@@ -352,7 +358,7 @@ file_endscan(FileScanDesc scan)
 	 */
 	if (!scan->fs_noop && scan->fs_file)
 	{
-		close_external_file(scan->fs_file, true, (const char*)relname);
+		close_external_source(scan->fs_file, true, (const char*)relname);
 		scan->fs_file = NULL;
 	}
 
@@ -362,31 +368,31 @@ file_endscan(FileScanDesc scan)
 
 
 /* ----------------
-*		file_stopscan - closes an external resource without dismantling the scan context
+*		external_stopscan - closes an external resource without dismantling the scan context
 * ----------------
 */
 void
-file_stopscan(FileScanDesc scan)
+external_stopscan(FileScanDesc scan)
 {
 	/*
 	 * Close the external file
 	 */
 	if (!scan->fs_noop && scan->fs_file)
 	{
-		close_external_file(scan->fs_file, false, RelationGetRelationName(scan->fs_rd));
+		close_external_source(scan->fs_file, false, RelationGetRelationName(scan->fs_rd));
 		scan->fs_file = NULL;
 	}
 }
 
 
 /* ----------------------------------------------------------------
-*		file_getnext
+*		external_getnext
 *
 *		Parse a data file and return its rows in heap tuple form
 * ----------------------------------------------------------------
 */
 HeapTuple
-file_getnext(FileScanDesc scan, ScanDirection direction)
+external_getnext(FileScanDesc scan, ScanDirection direction)
 {
 	HeapTuple	tuple;
 
@@ -396,25 +402,25 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 	/*
 	 * open the external source (local file or http).
 	 *
-	 * NOTE: file_beginscan() seems like the natural place for this call. However,
+	 * NOTE: external_beginscan() seems like the natural place for this call. However,
 	 * in queries with more than one gang each gang will initialized all the nodes
 	 * of the plan (but actually executed only the nodes in it's local slice)
-	 * This means that file_beginscan() (and file_endscan() too) will get called
+	 * This means that external_beginscan() (and external_endscan() too) will get called
 	 * more than needed and we'll end up opening too many http connections when
 	 * they are not expected (see MPP-1261). Therefore we instead do it here on the
 	 * first time around only.
 	 */
 	if (!scan->fs_file)
-		open_external_file(scan);
+		open_external_readable_source(scan);
 
 	/* Note: no locking manipulations needed */
 	FILEDEBUG_1;
 
-	tuple = filegettup(scan, direction);
+	tuple = externalgettup(scan, direction);
 
 	if (tuple == NULL)
 	{
-		FILEDEBUG_2;			/* file_getnext returning EOS */
+		FILEDEBUG_2;			/* external_getnext returning EOS */
 
 		return NULL;
 	}
@@ -422,16 +428,188 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 	/*
 	 * if we get here it means we have a new current scan tuple
 	 */
-	FILEDEBUG_3;				/* file_getnext returning tuple */
+	FILEDEBUG_3;				/* external_getnext returning tuple */
 
 	pgstat_count_heap_getnext(scan->fs_rd);
 
 	return tuple;
 }
 
+/*
+ * external_insert_init
+ *
+ * before using external_insert() to insert tuples we need to call
+ * this function to initialize our various structures and state..
+ */
+ExternalInsertDesc
+external_insert_init(Relation rel)
+{
+	ExternalInsertDesc	extInsertDesc;
+	ExtTableEntry*		extentry;
+	List*				fmtopts = NIL;
+	
+	/*
+	 * Get the pg_exttable information for this table
+	 */
+	extentry = GetExtTableEntry(RelationGetRelid(rel));
+
+	if(!extentry->iswritable)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot change a readable external table \"%s\"",
+						 RelationGetRelationName(rel))));
+
+	/*
+	 * allocate and initialize the insert descriptor
+	 */	
+	extInsertDesc  = (ExternalInsertDesc) palloc0(sizeof(ExternalInsertDescData));
+	extInsertDesc->ext_rel = rel;
+	extInsertDesc->ext_noop = !Gp_is_primary || Gp_role == GP_ROLE_DISPATCH;
+	
+	if(extentry->command)
+	{
+		/* EXECUTE */
+		
+		const char*	command = extentry->command;
+		const char*	prefix = "execute:";
+		char*		prefixed_command = NULL;
+		
+		/* allocate space for "execute:<cmd>" + 1 for null in sprintf */
+		prefixed_command = (char *) palloc((strlen(prefix) + 
+											strlen(command)) * 
+											sizeof(char) + 1);
+		
+		/* build the command string - 'execute:command' */
+		sprintf((char *) prefixed_command, "%s%s", prefix, command);
+
+		extInsertDesc->ext_uri = prefixed_command;
+	}
+	else
+	{
+		/* LOCATION - tablespace */
+		
+		Uri*		uri;
+		char*		uri_str;
+		Value*		v;
+
+		Assert(list_length(extentry->locations) == 1); /* WETs have just one location entry */
+		
+		v = linitial(extentry->locations);
+		uri_str = pstrdup(v->val.str);
+		uri = ParseUriString(uri_str);
+
+		/* ... do stuff with the url ... */
+		
+		pfree(uri);
+		
+		extInsertDesc->ext_uri = uri_str;
+	}
+
+	/*
+	 * Allocate and init our structure that keeps track of data parsing state
+	 */
+	extInsertDesc->ext_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
+	extInsertDesc->ext_tupDesc = RelationGetDescr(rel);
+	extInsertDesc->ext_values = (Datum *) palloc(extInsertDesc->ext_tupDesc->natts * sizeof(Datum));
+	extInsertDesc->ext_nulls = (bool *) palloc(extInsertDesc->ext_tupDesc->natts * sizeof(bool));
+
+	fmtopts = lappend(fmtopts, makeString(pstrdup(extentry->fmtopts)));
+	initParseState(extInsertDesc->ext_pstate,
+				   rel,
+				   extInsertDesc->ext_values,
+				   extInsertDesc->ext_nulls,
+				   true,
+				   fmtopts, 
+				   (extentry->fmtcode == 't'), 
+				   false,
+				   extInsertDesc->ext_uri, 
+				   extentry->rejectlimit, 
+				   (extentry->rejectlimittype == 'r'), 
+				   extentry->fmterrtbl,
+				   extentry->encoding);
+
+	return extInsertDesc;
+}
+
+
+/*
+ * external_insert - format the tuple into text and write to the external source
+ *
+ * Note the following major differences from heap_insert
+ *
+ * - wal is always bypassed here.
+ * - transaction information is of no interest.
+ * - tuples are sent always to the destination (local file or remote target).
+ *
+ */
+Oid
+external_insert(ExternalInsertDesc extInsertDesc, HeapTuple instup)
+{
+	
+	TupleDesc 		tupDesc = extInsertDesc->ext_tupDesc;
+	Datum*			values = extInsertDesc->ext_values;
+	bool*			nulls = extInsertDesc->ext_nulls;
+	CopyStateData*  pstate = extInsertDesc->ext_pstate;
+	MemoryContext 	oldcontext = CurrentMemoryContext;
+	
+	
+	if(extInsertDesc->ext_noop)
+		return InvalidOid;
+	
+	
+	/* Open our output file or output stream if not yet open */
+	if(!extInsertDesc->ext_file && !extInsertDesc->ext_noop)
+		open_external_writable_source(extInsertDesc);
+
+	/* Deconstruct the tuple ... faster than repeated heap_getattr */
+	heap_deform_tuple(instup, tupDesc, values, nulls);
+	
+	/* Format the data into COPY OUT text representation */
+	CopyOneRowTo(pstate, HeapTupleGetOid(instup), values, nulls);
+	CopySendEndOfRow(pstate);
+	
+	/* Write the data into the external source */
+	external_senddata((URL_FILE*)extInsertDesc->ext_file, pstate);
+
+	/* Reset our buffer to start clean next round */
+	pstate->fe_msgbuf->len = 0;
+	pstate->fe_msgbuf->data[0] = '\0';
+
+	/* CopyOneRowTo() changed to our memcxt. revert to old one */
+	MemoryContextSwitchTo(oldcontext);
+
+	pstate->processed++;
+
+	return HeapTupleGetOid(instup);
+}
+
+/*
+ * external_insert_finish
+ *
+ * when done inserting all the data via external_insert() we need to call
+ * this function to flush all remaining data in the buffer into the file.
+ */
+void
+external_insert_finish(ExternalInsertDesc extInsertDesc)
+{
+	char *relname = pstrdup(RelationGetRelationName(extInsertDesc->ext_rel));
+	
+	/*
+	 * Close the external source
+	 */
+	if(extInsertDesc->ext_file)
+	{
+		close_external_source(extInsertDesc->ext_file, true, (const char*)relname);
+		extInsertDesc->ext_file = NULL;
+	}
+
+	pfree(relname);
+	pfree(extInsertDesc);
+}
+
 /* ==========================================================================
  * The follwing macros aid in major refactoring of data processing code (in
- * filegettup() ). We use macros because in some cases the code must be in
+ * externalgettup() ). We use macros because in some cases the code must be in
  * line in order to work (for example elog_dismiss() in PG_CATCH) while in
  * other cases we'd like to inline the code for performance reasons.
  *
@@ -673,7 +851,7 @@ static DataLineStatus parse_next_line(FileScanDesc scan)
 }
 
 /* ----------------
-*		filegettup  form another tuple from the data file.
+*		externalgettup  form another tuple from the data file.
 *		This is the workhorse - make sure it's fast!
 *
 *		Initialize the scan if not already done.
@@ -682,8 +860,8 @@ static DataLineStatus parse_next_line(FileScanDesc scan)
 * ----------------
 */
 static HeapTuple
-filegettup(FileScanDesc scan,
-		   ScanDirection dir __attribute__((unused)))
+externalgettup(FileScanDesc scan,
+		    ScanDirection dir __attribute__((unused)))
 {
 	HeapTuple	tuple = NULL;
 	CopyState	pstate = scan->fs_pstate;
@@ -709,7 +887,7 @@ filegettup(FileScanDesc scan,
 		/* need to fill our buffer with data? */
 		if (pstate->raw_buf_done)
 		{
-		    pstate->bytesread = file_getdata((URL_FILE*)scan->fs_file, pstate, RAW_BUF_SIZE);
+		    pstate->bytesread = external_getdata((URL_FILE*)scan->fs_file, pstate, RAW_BUF_SIZE);
 			pstate->begloc = pstate->raw_buf;
 			pstate->raw_buf_done = false;
 			pstate->raw_buf_index = 0;
@@ -808,7 +986,9 @@ filegettup(FileScanDesc scan,
  * (text, csv), encoding converstion information, etc...
  */
 static void
-initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
+initParseState(CopyState pstate, Relation relation, 
+			   Datum* values, bool* nulls, bool iswritable, 
+			   List *fmtOpts, bool isText,
 			   bool isMasterOnly __attribute__((unused)), char *uri, int rejectlimit,
 			   bool islimitinrows, Oid fmterrtbl, int encoding)
 {
@@ -832,6 +1012,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	pstate->raw_buf_index = 0;
 	pstate->processed = 0;
 	pstate->filename = uri;
+	pstate->copy_dest = COPY_EXTERNAL_SOURCE;
 
 	/*
 	 * Error handling setup
@@ -885,17 +1066,6 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 
 			if (rel->rd_createSubid != InvalidSubTransactionId)
 				curTxnCreatedErrtbl = true;
-
-#ifdef nothing
-			/* bummer... a non writer gang can't write to an error table! */
-			if (!Gp_is_writer && Gp_role != GP_ROLE_DISPATCH)
-				ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
-								errmsg("Error tables can not yet be used in queries "
-									   "with more than one table in the FROM clause. "
-									   "You can use the same query with single row "
-									   "error handling by redefining the external "
-									   "table without an error table ")));
-#endif
 		}
 
 		/* Single row error handling */
@@ -914,13 +1084,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
  		pstate->num_consec_csv_err = 0;
 	}
 
-	initStringInfo(&pstate->attribute_buf);
-	initStringInfo(&pstate->line_buf);
-
-	/* Set up data buffer to hold a chunk of data */
-	MemSet(pstate->raw_buf, ' ', RAW_BUF_SIZE * sizeof(char));
-	pstate->raw_buf[RAW_BUF_SIZE] = '\0';
-
+	
 	/*
 	 * Set up encoding conversion info.  Even if the client and server
 	 * encodings are the same, we must apply pg_client_to_server() to validate
@@ -928,13 +1092,12 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	 *
 	 * Each external table specifies the encoding of its external data. We will
 	 * therefore set a client encoding and client-to-server conversion procedure
-	 * in here and these will be used in the data conversion routines (in copy.c
-	 * CopyReadLineXXX()).
+	 * in here (server-to-client in WET) and these will be used in the data 
+	 * conversion routines (in copy.c CopyReadLineXXX(), etc).
 	 */
 	Insist(PG_VALID_ENCODING(encoding));
 	pstate->client_encoding = encoding;
-	setEncodingConversionProc(pstate, encoding);
-
+	setEncodingConversionProc(pstate, encoding, iswritable);
 	pstate->need_transcoding = (pstate->client_encoding != GetDatabaseEncoding() ||
 								pg_database_encoding_max_length() > 1);
 	pstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(pstate->client_encoding);
@@ -972,14 +1135,63 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 		}
 	}
 
+	/* finally take care of state that is WET or RET specific */
+	if(!iswritable)
+	{
+		/* RET */
+		initStringInfo(&pstate->attribute_buf);
+		initStringInfo(&pstate->line_buf);
+
+		/* Set up data buffer to hold a chunk of data */
+		MemSet(pstate->raw_buf, ' ', RAW_BUF_SIZE * sizeof(char));
+		pstate->raw_buf[RAW_BUF_SIZE] = '\0';
+
+	}
+	else
+	{
+		/* WET */
+		
+		Form_pg_attribute*	attr = tupDesc->attrs;
+		ListCell*			cur;
+		
+		pstate->null_print_client = pstate->null_print;		/* default */
+
+		/* We use fe_msgbuf as a per-row buffer */
+		pstate->fe_msgbuf = makeStringInfo();
+
+		pstate->out_functions =
+			(FmgrInfo *) palloc(tupDesc->natts * sizeof(FmgrInfo));
+		
+		/* Get info about the columns we need to process. */
+		foreach(cur, pstate->attnumlist)
+		{
+			int			attnum = lfirst_int(cur);
+			Oid			out_func_oid;
+			bool		isvarlena;
+
+			getTypeOutputInfo(attr[attnum - 1]->atttypid,
+							  &out_func_oid,
+							  &isvarlena);
+			fmgr_info(out_func_oid, &pstate->out_functions[attnum - 1]);
+		}
+		
+		/*
+		 * we need to convert null_print to client encoding, because it 
+		 * will be sent directly with CopySendString.
+		 */
+		if (pstate->need_transcoding)
+			pstate->null_print_client = pg_server_to_client(pstate->null_print,
+															pstate->null_print_len);
+	}
+
     /*
 	 * Create a temporary memory context that we can reset once per row to
 	 * recover palloc'd memory.  This avoids any problems with leaks inside
-	 * datatype input routines, and should be faster than retail pfree's
-	 * anyway.
+	 * datatype input or output routines, and should be faster than retail 
+	 * pfree's anyway.
 	 */
 	pstate->rowcontext = AllocSetContextCreate(CurrentMemoryContext,
-											   "ExternalScanMemCtxt",
+											   "ExtTableMemCtxt",
 											   ALLOCSET_DEFAULT_MINSIZE,
 											   ALLOCSET_DEFAULT_INITSIZE,
 											   ALLOCSET_DEFAULT_MAXSIZE);
@@ -987,89 +1199,45 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 
 
 /*
- * open the external source for scanning.
+ * open the external source for scanning (RET only)
  *
- * This could either be a local file or a remote source (via http).
+ * an external source is one of the following:
+ * 1) a local file (requested by 'file')
+ * 2) a remote http server
+ * 3) a remote gpfdist server
+ * 4) a command to execute
  */
 static void
-open_external_file(FileScanDesc scan)
+open_external_readable_source(FileScanDesc scan)
 {
 	extvar_t 	extvar;
-	time_t 		now = time(0);
-	struct 		tm* tm = localtime(&now);
-	char        *result = (char *) palloc(7);        /* sign, 5 digits, '\0' */
 	int 		response_code;
-	const char	*response_string;
+	const char*	response_string;
 
 	/* set up extvar */
-
 	memset(&extvar, 0, sizeof(extvar));
-	sprintf(extvar.GP_CSVOPT,
-			"m%dx%dq%dh%d",
-			scan->fs_pstate->csv_mode ? 1 : 0,
-			scan->fs_pstate->escape ? 255&*scan->fs_pstate->escape : 0,
-			scan->fs_pstate->quote ? 255&*scan->fs_pstate->quote : 0,
-			scan->fs_pstate->header_line ? 1 : 0);
-	
+	external_set_env_vars(&extvar, 
+						  scan->fs_uri, 
+						  scan->fs_pstate->csv_mode, 
+						  scan->fs_pstate->escape, 
+						  scan->fs_pstate->quote, 
+						  scan->fs_pstate->header_line,
+						  scan->fs_scancounter);
 
-	if (Gp_role != GP_ROLE_DISPATCH)
-	{
-		pg_itoa(qdPostmasterPort, result);
-		extvar.GP_MASTER_PORT = result;
-		extvar.GP_MASTER_HOST = qdHostname;
-	}
-	else
-	{
-		CdbComponentDatabases *cdb_component_dbs = getCdbComponentDatabases();
-		CdbComponentDatabaseInfo *qdinfo = &cdb_component_dbs->entry_db_info[0];
-		
+    /* actually open the external source */
+    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, 
+									  false /* for read */, 
+									  &extvar, 
+									  scan->fs_pstate, 
+									  &response_code, 
+									  &response_string);
 
-		pg_itoa(qdinfo->port, result);
-		extvar.GP_MASTER_PORT = result;
-		
-
-		if (qdinfo->hostip != NULL)
-			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostip);
-		else
-			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostname);		
-	}
-
-	if (MyProcPort)
-		extvar.GP_USER = MyProcPort->user_name;
-	else
-		extvar.GP_USER = "";
-
-	extvar.GP_DATABASE = get_database_name(MyDatabaseId);
-	extvar.GP_SEG_PG_CONF = ConfigFileName;   /*location of the segments pg_conf file*/
-	extvar.GP_SEG_DATADIR = data_directory;   /*location of the segments datadirectory*/
-   	sprintf(extvar.GP_DATE, "%04d%02d%02d",
-			1900 + tm->tm_year, 1 + tm->tm_mon, tm->tm_mday);
-	sprintf(extvar.GP_TIME, "%02d%02d%02d",
-			tm->tm_hour, tm->tm_min, tm->tm_sec);
-	if (! getDistributedTransactionIdentifier(extvar.GP_XID))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("cannot get distributed transaction identifier while %s",
-						scan->fs_uri)));
-
-	sprintf(extvar.GP_CID, "%x", QEDtxContextInfo.curcid);
-	sprintf(extvar.GP_SN, "%x", scan->fs_scancounter);
-	sprintf(extvar.GP_SEGMENT_ID, "%d", Gp_segment);
-    sprintf(extvar.GP_SEG_PORT, "%d", PostPortNumber);
-    sprintf(extvar.GP_SESSION_ID, "%d", gp_session_id);
- 	sprintf(extvar.GP_SEGMENT_COUNT, "%d", GpIdentity.numsegments);
-
-    /*
-     * Open the url with url_open().
-     */
-    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R, &extvar,scan->fs_pstate,&response_code,&response_string);
-
-	if (scan->fs_file == NULL)
+	if (!scan->fs_file)
 	{
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not open \"%s\" for reading: %d %s",
-						scan->fs_uri,response_code,response_string)));
+						scan->fs_uri, response_code, response_string)));
 	}
 	else
 	{
@@ -1084,14 +1252,65 @@ open_external_file(FileScanDesc scan)
 }
 
 /*
- * close the external file.
+ * open the external source for writing (WET only)
+ *
+ * an external source is one of the following:
+ * 1) a local file (requested by 'tablespace' protocol)
+ * 2) a command to execute
+ */
+static void
+open_external_writable_source(ExternalInsertDesc extInsertDesc)
+{
+	extvar_t 	extvar;
+	int 		response_code;
+	const char*	response_string;
+
+	/* set up extvar */
+	memset(&extvar, 0, sizeof(extvar));
+	external_set_env_vars(&extvar, 
+						  extInsertDesc->ext_uri, 
+						  extInsertDesc->ext_pstate->csv_mode, 
+						  extInsertDesc->ext_pstate->escape, 
+						  extInsertDesc->ext_pstate->quote, 
+						  extInsertDesc->ext_pstate->header_line,
+						  0);
+
+    /* actually open the external source */
+    extInsertDesc->ext_file = (FILE*) url_fopen(extInsertDesc->ext_uri, 
+												true /* forwrite */, 
+												&extvar, 
+												extInsertDesc->ext_pstate, 
+												&response_code, 
+												&response_string);
+
+	if (!extInsertDesc->ext_file)
+	{
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open \"%s\" for writing: %d %s",
+						 extInsertDesc->ext_uri, response_code, response_string)));
+	}
+	else
+	{
+		/*
+		 * Get a global reference to the file pointer, so we can free it from
+		 * AbortTransaction in the case of an error or abort. We don't use it
+		 * for anything else.
+		 */
+		g_dataSource = extInsertDesc->ext_file;
+		g_dataSourceName = extInsertDesc->ext_uri;
+	}
+}
+
+/*
+ * close the external source (for either RET or WET).
  *
  * If failOnError is true, an error closing the external file raises an ERROR.
  * If failOnError is false, an error closing the external file is written to the
  * server log.
  */
 static void
-close_external_file(FILE *dataSource, bool failOnError, const char *relname)
+close_external_source(FILE *dataSource, bool failOnError, const char *relname)
 {
 	FILE *f = dataSource;
 
@@ -1107,7 +1326,7 @@ close_external_file(FILE *dataSource, bool failOnError, const char *relname)
  * get a chunk of data from the external data file.
  */
 static int
-file_getdata(URL_FILE *extfile, CopyState pstate, int maxread)
+external_getdata(URL_FILE *extfile, CopyState pstate, int maxread)
 {
 	int			bytesread = 0;
 
@@ -1137,10 +1356,27 @@ file_getdata(URL_FILE *extfile, CopyState pstate, int maxread)
 }
 
 /*
+ * get a chunk of data from the external data file.
+ */
+static void
+external_senddata(URL_FILE *extfile, CopyState pstate)
+{
+	StringInfo	fe_msgbuf = pstate->fe_msgbuf;
+	size_t	nwrote = 0;
+	
+	nwrote = url_fwrite((void *) fe_msgbuf->data, 1, fe_msgbuf->len, extfile);
+	
+	if (url_ferror(extfile, nwrote))
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not write to external resource: %m")));
+}
+
+/*
  * error context callback for external table scan
  */
 static void
-file_scan_error_callback(void *arg)
+external_scan_error_callback(void *arg)
 {
 
 	CopyState	cstate = (CopyState) arg;
@@ -1219,7 +1455,7 @@ void readHeaderLine(CopyState pstate)
  */
 void AtAbort_ExtTables(void)
 {
-	close_external_file(g_dataSource, false, NULL);
+	close_external_source(g_dataSource, false, NULL);
 	g_dataSource = NULL;
 }
 
@@ -1726,3 +1962,61 @@ error:
 
 }
 
+static void external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header, uint32 scancounter)
+{
+	time_t 		now = time(0);
+	struct tm* 	tm = localtime(&now);
+	char*		result = (char *) palloc(7);        /* sign, 5 digits, '\0' */
+
+	sprintf(extvar->GP_CSVOPT, 
+			"m%dx%dq%dh%d",
+			csv ? 1 : 0,
+			escape ? 255 & *escape : 0,
+			quote ? 255 & *quote : 0,
+			header ? 1 : 0);
+
+	if (Gp_role != GP_ROLE_DISPATCH)
+	{
+		pg_itoa(qdPostmasterPort, result);
+		extvar->GP_MASTER_PORT = result;
+		extvar->GP_MASTER_HOST = qdHostname;
+	}
+	else
+	{
+		CdbComponentDatabases *cdb_component_dbs = getCdbComponentDatabases();
+		CdbComponentDatabaseInfo *qdinfo = &cdb_component_dbs->entry_db_info[0];
+		
+		pg_itoa(qdinfo->port, result);
+		extvar->GP_MASTER_PORT = result;
+		
+		if (qdinfo->hostip != NULL)
+			extvar->GP_MASTER_HOST = pstrdup(qdinfo->hostip);
+		else
+			extvar->GP_MASTER_HOST = pstrdup(qdinfo->hostname);		
+	}
+
+	if (MyProcPort)
+		extvar->GP_USER = MyProcPort->user_name;
+	else
+		extvar->GP_USER = "";
+
+	extvar->GP_DATABASE = get_database_name(MyDatabaseId);
+	extvar->GP_SEG_PG_CONF = ConfigFileName;   /* location of the segments pg_conf file  */
+	extvar->GP_SEG_DATADIR = data_directory;   /* location of the segments datadirectory */
+   	sprintf(extvar->GP_DATE, "%04d%02d%02d",
+			1900 + tm->tm_year, 1 + tm->tm_mon, tm->tm_mday);
+	sprintf(extvar->GP_TIME, "%02d%02d%02d",
+			tm->tm_hour, tm->tm_min, tm->tm_sec);
+	if (! getDistributedTransactionIdentifier(extvar->GP_XID))
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("cannot get distributed transaction identifier while %s", uri)));
+
+	sprintf(extvar->GP_CID, "%x", QEDtxContextInfo.curcid);
+	sprintf(extvar->GP_SN, "%x", scancounter);
+	sprintf(extvar->GP_SEGMENT_ID, "%d", Gp_segment);
+    sprintf(extvar->GP_SEG_PORT, "%d", PostPortNumber);
+    sprintf(extvar->GP_SESSION_ID, "%d", gp_session_id);
+ 	sprintf(extvar->GP_SEGMENT_COUNT, "%d", GpIdentity.numsegments);
+
+}

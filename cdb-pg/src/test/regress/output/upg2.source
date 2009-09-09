@@ -1028,17 +1028,23 @@ copy public.pg_depend from '@abs_srcdir@/data//upg2_pg_depend_toadd33.data' null
 alter table public.pg_appendonly add column columnstore boolean;
 update public.pg_appendonly set columnstore='f';
 alter table public.pg_appendonly alter column columnstore set not null;
+-- fix up pg_exttable
+alter table public.pg_exttable add column writable boolean;
+update public.pg_exttable set writable='f';
+alter table public.pg_exttable alter column writable set not null;
 commit;
 reindex table public.pg_appendonly;
 -- will error out in regression tests, this is expected
+reindex table @gpupgradeschemaname@.pg_exttable;
+-- will error out in regression tests, this is expected
 reindex table public.gp_configuration_history;
-psql:@abs_srcdir@/sql/loadcat34.sql:20: ERROR:  relation "public.gp_configuration_history" does not exist
+psql:@abs_srcdir@/sql/loadcat34.sql:27: ERROR:  relation "public.gp_configuration_history" does not exist
 -- will error out in regression tests, this is expected
 reindex table public.gp_db_interfaces;
-psql:@abs_srcdir@/sql/loadcat34.sql:22: ERROR:  relation "public.gp_db_interfaces" does not exist
+psql:@abs_srcdir@/sql/loadcat34.sql:29: ERROR:  relation "public.gp_db_interfaces" does not exist
 -- will error out in regression tests, this is expected
 reindex table public.gp_interfaces;
-psql:@abs_srcdir@/sql/loadcat34.sql:24: ERROR:  relation "public.gp_interfaces" does not exist
+psql:@abs_srcdir@/sql/loadcat34.sql:31: ERROR:  relation "public.gp_interfaces" does not exist
 --
 -- 8. Compare upgraded 33 to actual 34
 --
@@ -1087,7 +1093,8 @@ from public.pg_attribute a,
     relname    |   attname   | attnum | typname | typlen | atttypmod 
 ---------------+-------------+--------+---------+--------+-----------
  pg_appendonly | columnstore |      9 | bool    |      1 |        -1
-(1 row)
+ pg_exttable   | writable    |     10 | bool    |      1 |        -1
+(2 rows)
 
 -- The above diff occurs despite the alter table in the transform
 -- because the alter table effected the "real" catalog, not our copy.
@@ -1339,13 +1346,13 @@ select * from pg_catalog.pg_appendonly where relid < 10000;
 
 -- compare old and new pg_exttable
 select * from public.pg_exttable where reloid < 10000;
- reloid | location | fmttype | fmtopts | command | rejectlimit | rejectlimittype | fmterrtbl | encoding 
---------+----------+---------+---------+---------+-------------+-----------------+-----------+----------
+ reloid | location | fmttype | fmtopts | command | rejectlimit | rejectlimittype | fmterrtbl | encoding | writable 
+--------+----------+---------+---------+---------+-------------+-----------------+-----------+----------+---------- 
 (0 rows)
 
 select * from pg_catalog.pg_exttable where reloid < 10000;
- reloid | location | fmttype | fmtopts | command | rejectlimit | rejectlimittype | fmterrtbl | encoding 
---------+----------+---------+---------+---------+-------------+-----------------+-----------+----------
+ reloid | location | fmttype | fmtopts | command | rejectlimit | rejectlimittype | fmterrtbl | encoding | writable 
+--------+----------+---------+---------+---------+-------------+-----------------+-----------+----------+---------- 
 (0 rows)
 
 --

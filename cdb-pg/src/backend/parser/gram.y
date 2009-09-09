@@ -290,7 +290,7 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <fun_param_mode> arg_class
 %type <typnam>	func_return func_type
 
-%type <boolean>  TriggerForType OptTemp OptWeb OptSrehLimitType OptSrehKeep
+%type <boolean>  TriggerForType OptTemp OptWeb OptWritable OptSrehLimitType OptSrehKeep
 %type <oncommit> OnCommitOption
 
 %type <node>	for_locking_item
@@ -494,7 +494,7 @@ static TypeName *TableFuncTypeName(List *columns);
 
 	QUEUE QUOTE
 
-	RANDOMLY RANGE READ REAL REASSIGN RECHECK REFERENCES REINDEX REJECT_P RELATIVE_P 
+	RANDOMLY RANGE READ READABLE REAL REASSIGN RECHECK REFERENCES REINDEX REJECT_P RELATIVE_P 
 	RELEASE RENAME REPEATABLE REPLACE RESET RESOURCE RESTART RESTRICT 
 	RETURNING RETURNS REVOKE RIGHT
 	ROLE ROLLBACK ROLLUP ROW ROWS RULE
@@ -517,7 +517,7 @@ static TypeName *TableFuncTypeName(List *columns);
 	VACUUM VALID VALIDATION VALIDATOR VALUES VARCHAR VARYING
 	VERBOSE VIEW VOLATILE
 
-	WEB WHEN WHERE WINDOW WITH WITHOUT WORK WRITE
+	WEB WHEN WHERE WINDOW WITH WITHOUT WORK WRITABLE WRITE
 
 	YEAR_P
 
@@ -4197,34 +4197,65 @@ CreateAsElement:
  *
  *****************************************************************************/
 	
-CreateExternalStmt:	CREATE EXTERNAL OptWeb OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
-					ExtTypedesc FORMAT Sconst format_opt ext_opt_encoding_list OptSingleRowErrorHandling
+CreateExternalStmt:	CREATE OptWritable EXTERNAL OptWeb OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
+					ExtTypedesc FORMAT Sconst format_opt ext_opt_encoding_list OptSingleRowErrorHandling OptDistributedBy
 						{
 							CreateExternalStmt *n = makeNode(CreateExternalStmt);
-							n->isweb = $3;
-							$6->istemp = $4;
-							n->relation = $6;
-							n->tableElts = $8;
-							n->exttypedesc = $10;
-							n->format = $12;
-							n->formatOpts = $13;
-							n->encoding = $14;
-							n->sreh = $15;
+							n->iswritable = $2;
+							n->isweb = $4;
+							$7->istemp = $5;
+							n->relation = $7;
+							n->tableElts = $9;
+							n->exttypedesc = $11;
+							n->format = $13;
+							n->formatOpts = $14;
+							n->encoding = $15;
+							n->sreh = $16;
+							n->distributedBy = $17;
+							n->policy = 0;
 							
-							if(((ExtTableTypeDesc *) n->exttypedesc)->exttabletype == EXTTBL_TYPE_EXECUTE &&
-							   !(n->isweb))
+							/* various syntax checks for EXECUTE external table */
+							if(((ExtTableTypeDesc *) n->exttypedesc)->exttabletype == EXTTBL_TYPE_EXECUTE)
+							{
+								ExtTableTypeDesc *extdesc = (ExtTableTypeDesc *) n->exttypedesc;
+								
+								if(!n->isweb)
+									ereport(ERROR,
+											(errcode(ERRCODE_SYNTAX_ERROR),
+										 	 errmsg("EXECUTE may not be used with a regular external table"),
+										 	 errhint("Use CREATE EXTERNAL WEB TABLE instead")));							
+								
+								/* if no ON clause specified, default to "ON ALL" */
+								if(extdesc->on_clause == NIL)
+								{									
+									extdesc->on_clause = lappend(extdesc->on_clause, 
+										   				   		 makeDefElem("all", (Node *)makeInteger(TRUE)));
+								}
+								else if(n->iswritable)
+								{
+									ereport(ERROR,
+											(errcode(ERRCODE_SYNTAX_ERROR),
+									 		 errmsg("ON clause may not be used with a writable external table")));							
+								}
+							}
+
+							if(n->sreh && n->iswritable)
 								ereport(ERROR,
 										(errcode(ERRCODE_SYNTAX_ERROR),
-										 errmsg("EXECUTE may not be used with a regular external table"),
-										 errhint("Use CREATE EXTERNAL WEB TABLE instead")));							
+										 errmsg("Single row error handling may not be used with a writable external table")));							
 							
 							$$ = (Node *)n;							
 						}
 						;
 
+OptWritable:	WRITABLE				{ $$ = TRUE; }
+				| READABLE				{ $$ = FALSE; }
+				| /*EMPTY*/				{ $$ = FALSE; }
+				;
+
 OptWeb:		WEB						{ $$ = TRUE; }
 			| /*EMPTY*/				{ $$ = FALSE; }
-						;
+			;
 
 ExtTypedesc:
 			LOCATION '(' cdb_string_list ')'		
@@ -4243,15 +4274,8 @@ ExtTypedesc:
 				n->exttabletype = EXTTBL_TYPE_EXECUTE;
 				n->location_list = NIL; 
 				n->command_string = $2;
-				n->on_clause = $3;
-		
-				/* if no ON clause specified, default to "ON ALL" */
-				if(n->on_clause == NIL)
-				{
-					n->on_clause = lappend(n->on_clause, 
-										   makeDefElem("all", (Node *)makeInteger(TRUE)));
-				}
-				
+				n->on_clause = $3; /* default will get set later if needed */
+						
 				$$ = (Node *)n;
 			}
 			;
@@ -11274,6 +11298,7 @@ unreserved_keyword:
 			| QUOTE
 			| RANDOMLY /* gp */
 			| READ
+			| READABLE
 			| REASSIGN
 			| RECHECK
 			| REINDEX
@@ -11347,6 +11372,7 @@ unreserved_keyword:
 			| WITH
 			| WITHOUT
 			| WORK
+			| WRITABLE
 			| WRITE
 			| YEAR_P
 			| ZONE

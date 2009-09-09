@@ -1599,6 +1599,7 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_OID_FIELD(fmterrtbl);
 	WRITE_INT_FIELD(ext_encoding);
 	WRITE_BOOL_FIELD(isrescannable);
+	WRITE_BOOL_FIELD(writable);
 	WRITE_NODE_FIELD(baserestrictinfo);
 	WRITE_NODE_FIELD(joininfo);
 	WRITE_BITMAPSET_FIELD(index_outer_relids);
@@ -1809,8 +1810,10 @@ _outCreateExternalStmt(StringInfo str, CreateExternalStmt *node)
 	WRITE_STRING_FIELD(format);
 	WRITE_NODE_FIELD(formatOpts);
 	WRITE_BOOL_FIELD(isweb);
+	WRITE_BOOL_FIELD(iswritable);
 	WRITE_NODE_FIELD(sreh);
 	WRITE_NODE_FIELD(encoding);
+	WRITE_NODE_FIELD(distributedBy);
 }
 
 static void

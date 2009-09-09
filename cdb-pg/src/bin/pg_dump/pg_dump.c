@@ -6596,7 +6596,10 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		char	   *errnspname;
 		char	   *errtblname;
 		char	   *extencoding;
+		char	   *writable = NULL;
 		char	   *tmpstring = NULL;
+		bool		isweb = false;
+		bool		iswritable = false;
 
         reltypename = "TABLE";
         /*
@@ -6609,13 +6612,28 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
                           fmtId(tbinfo->dobj.name));
 
 		/* Now get required information from pg_exttable */
-		if (g_fout->remoteVersion >= 80205)
+		if (1/* TODO: if greenplum version is >= 3.4 */)
 		{
 			appendPQExpBuffer(query,
 							  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
 							  "x.rejectlimit, x.rejectlimittype, "
 					          "n.nspname AS errnspname, d.relname AS errtblname, "
-							  "pg_catalog.pg_encoding_to_char(x.encoding) "
+							  "pg_catalog.pg_encoding_to_char(x.encoding), x.writable "
+					          "FROM pg_catalog.pg_class c "
+					          "JOIN pg_catalog.pg_exttable x ON ( c.oid = x.reloid ) "
+					          "LEFT JOIN pg_catalog.pg_class d ON ( d.oid = x.fmterrtbl ) "
+					          "LEFT JOIN pg_catalog.pg_namespace n ON ( n.oid = d.relnamespace ) "
+					          "WHERE c.oid = '%u'::oid ",
+							  tbinfo->dobj.catId.oid);		
+		}
+		else if (g_fout->remoteVersion >= 80205)
+		{
+			
+			appendPQExpBuffer(query,
+							  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
+							  "x.rejectlimit, x.rejectlimittype, "
+					          "n.nspname AS errnspname, d.relname AS errtblname, "
+							  "pg_catalog.pg_encoding_to_char(x.encoding), null as writable "
 					          "FROM pg_catalog.pg_class c "
 					          "JOIN pg_catalog.pg_exttable x ON ( c.oid = x.reloid ) "
 					          "LEFT JOIN pg_catalog.pg_class d ON ( d.oid = x.fmterrtbl ) "
@@ -6630,7 +6648,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 							  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
 							  "-1 as rejectlimit, null as rejectlimittype,"
 					          "null as errnspname, null as errtblname, "
-							  "null as encoding "
+							  "null as encoding, null as writable "
 							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
 							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
 							  tbinfo->dobj.catId.oid);
@@ -6662,18 +6680,19 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		errnspname = PQgetvalue(res, 0, 6);
 		errtblname = PQgetvalue(res, 0, 7);
 		extencoding = PQgetvalue(res, 0, 8);
+		writable = PQgetvalue(res, 0, 9);
 
 		if((command && strlen(command) > 0) ||
 		   (strncmp(locations + 1, "http", strlen("http")) == 0))
-		{
-			appendPQExpBuffer(q, "CREATE EXTERNAL WEB TABLE %s (",
-							  fmtId(tbinfo->dobj.name));
-		}
-		else
-		{
-			appendPQExpBuffer(q, "CREATE EXTERNAL TABLE %s (",
-							  fmtId(tbinfo->dobj.name));
-		}
+			isweb = true;
+		
+		if(writable && writable[0] == 't')
+			iswritable = true;
+		
+		appendPQExpBuffer(q, "CREATE %sEXTERNAL %sTABLE %s (",
+						  (iswritable ? "WRITABLE " : ""),
+						  (isweb ? "WEB " : ""),
+						  fmtId(tbinfo->dobj.name));
 
         actual_atts = 0;
         for (j = 0; j < tbinfo->numatts; j++)
@@ -6718,23 +6737,25 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			free(tmpstring);
 			tmpstring = NULL;
 
-			/* add ON clause */
-			if(strncmp(on_clause, "HOST:", strlen("HOST:")) == 0)
-				appendPQExpBuffer(q, "ON HOST '%s' ", on_clause + strlen("HOST:"));
-			else if(strncmp(on_clause, "PER_HOST", strlen("PER_HOST")) == 0)
-				appendPQExpBuffer(q, "ON HOST ");
-			else if(strncmp(on_clause, "MASTER_ONLY", strlen("MASTER_ONLY")) == 0)
-				appendPQExpBuffer(q, "ON MASTER ");
-			else if(strncmp(on_clause, "SEGMENT_ID:", strlen("SEGMENT_ID:")) == 0)
-				appendPQExpBuffer(q, "ON SEGMENT %s ", on_clause + strlen("SEGMENT_ID:"));
-			else if(strncmp(on_clause, "TOTAL_SEGS:", strlen("TOTAL_SEGS:")) == 0)
-				appendPQExpBuffer(q, "ON %s ", on_clause + strlen("TOTAL_SEGS:"));
-			else if(strncmp(on_clause, "ALL_SEGMENTS", strlen("ALL_SEGMENTS")) == 0)
-				appendPQExpBuffer(q, "ON ALL ");
-			else
-				write_msg(NULL, "illegal ON clause catalog information \"%s\""
-							"for command '%s'\n", on_clause, command);
-
+			/* add ON clause (unless WRITABLE table, which doesn't allow ON) */
+			if(!iswritable)
+			{
+				if(strncmp(on_clause, "HOST:", strlen("HOST:")) == 0)
+					appendPQExpBuffer(q, "ON HOST '%s' ", on_clause + strlen("HOST:"));
+				else if(strncmp(on_clause, "PER_HOST", strlen("PER_HOST")) == 0)
+					appendPQExpBuffer(q, "ON HOST ");
+				else if(strncmp(on_clause, "MASTER_ONLY", strlen("MASTER_ONLY")) == 0)
+					appendPQExpBuffer(q, "ON MASTER ");
+				else if(strncmp(on_clause, "SEGMENT_ID:", strlen("SEGMENT_ID:")) == 0)
+					appendPQExpBuffer(q, "ON SEGMENT %s ", on_clause + strlen("SEGMENT_ID:"));
+				else if(strncmp(on_clause, "TOTAL_SEGS:", strlen("TOTAL_SEGS:")) == 0)
+					appendPQExpBuffer(q, "ON %s ", on_clause + strlen("TOTAL_SEGS:"));
+				else if(strncmp(on_clause, "ALL_SEGMENTS", strlen("ALL_SEGMENTS")) == 0)
+					appendPQExpBuffer(q, "ON ALL ");
+				else
+					write_msg(NULL, "illegal ON clause catalog information \"%s\""
+								"for command '%s'\n", on_clause, command);
+			}
 			appendPQExpBuffer(q, "\n ");
 		}
 		else

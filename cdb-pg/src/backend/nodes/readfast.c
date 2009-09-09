@@ -1887,8 +1887,10 @@ _readCreateExternalStmt(const char ** str)
 	READ_STRING_FIELD(format);
 	READ_NODE_FIELD(formatOpts);
 	READ_BOOL_FIELD(isweb);
+	READ_BOOL_FIELD(iswritable);
 	READ_NODE_FIELD(sreh);
 	READ_NODE_FIELD(encoding);
+	READ_NODE_FIELD(distributedBy);
 
 	READ_DONE();
 }

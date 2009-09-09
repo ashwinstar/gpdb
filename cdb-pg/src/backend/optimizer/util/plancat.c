@@ -307,188 +307,36 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
  * and data format) from the pg_exttable catalog.
  */
 void
-get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
-						   RelOptInfo *rel)
+get_external_relation_info(Oid relationObjectId, RelOptInfo *rel)
 {
 
-	Relation	pg_exttable_rel;
 	Relation	pg_class_rel;
-	TupleDesc	pg_exttable_dsc;
-	HeapTuple	tuple;
-	ScanKeyData	key;
-	SysScanDesc	extscan;
-	Datum		locations;
-	Datum		execcommand;
-	Datum		fmttype;
-	Datum		fmtopts;
-	Datum		rejectlimit;
-	Datum		rejectlimittype;
-	Datum		fmterrtbl;
-	Datum		encoding;
-	char	   *loc_str = NULL;
-	bool		isNull;
-	Datum	   *elems;
-	int			nelems;
-	int			i;
-
-	pg_class_rel = heap_open(relationObjectId, NoLock);
+	ExtTableEntry* extentry;
 
 	/*
-     * CDB: Get partitioning key info for distributed relation.
-	 * (in the external table case it will always be NULL entry).
+     * Get partitioning key info for distributed relation.
      */
-    rel->cdbpolicy = RelationGetPartitioningKey(pg_class_rel);
-
+	pg_class_rel = heap_open(relationObjectId, NoLock);
+	rel->cdbpolicy = RelationGetPartitioningKey(pg_class_rel);
 	heap_close(pg_class_rel, NoLock);
 
 	/*
-	 * Check the pg_exttable relation to be certain the ext table
-	 * is there.
+	 * Get the pg_exttable fields for this table
 	 */
-	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
-	pg_exttable_dsc = RelationGetDescr(pg_exttable_rel);
+	extentry = GetExtTableEntry(relationObjectId);
+	
+	rel->locationlist = extentry->locations;	
+	rel->execcommand = extentry->command;
+	rel->fmttype = extentry->fmtcode;
+	rel->fmtopts = extentry->fmtopts;
+	rel->rejectlimit = extentry->rejectlimit;
+	rel->rejectlimittype = extentry->rejectlimittype;
+	rel->fmterrtbl = extentry->fmterrtbl;
+	rel->ext_encoding = extentry->encoding;
+	rel->writable = extentry->iswritable;
 
-	ScanKeyInit(&key,
-				Anum_pg_exttable_reloid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(relationObjectId));
-
-    extscan = systable_beginscan(pg_exttable_rel,
-								 ExtTableRelOidIndexId,
-								 true,
-								 SnapshotNow,
-								 1,
-								 &key);
-
-    tuple = systable_getnext(extscan);
-	if (!HeapTupleIsValid(tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("external table object id \"%d\" does not exist",
-						relationObjectId)));
-
-	/*
-	 * get the location text array from the catalog (pg_exttable).
-	 */
-	locations = heap_getattr(tuple,
-							 Anum_pg_exttable_location,
-							 pg_exttable_rel->rd_att,
-							 &isNull);
-
-	if (isNull)
-	{
-		/* should not happen, TODO: error */
-	}
-	else
-	{
-		deconstruct_array(DatumGetArrayTypeP(locations),
-						  TEXTOID, -1, false, 'i',
-						  &elems, NULL, &nelems);
-
-		for (i = 0; i < nelems; i++)
-		{
-			loc_str = DatumGetCString(DirectFunctionCall1(textout, elems[i]));
-
-			/* append to a list of Value nodes, size nelems */
-			rel->locationlist = lappend(rel->locationlist, makeString(pstrdup(loc_str)));
-		}
-	}
-
-	/*
-	 * get the exec command string (or NULL if doesn't exist)
-	 */
-	execcommand = heap_getattr(tuple,
-							   Anum_pg_exttable_command,
-							   pg_exttable_rel->rd_att,
-							   &isNull);
-
-	if(isNull)
-		rel->execcommand = NULL; /* tell planner no EXECUTE for this ext table */
-	else
-		rel->execcommand = DatumGetCString(DirectFunctionCall1(textout, execcommand));
-
-	/*
-	 * external web tables are non rescannable, regular ext tables are
-	 */
-	if(loc_str && (IS_FILE_URI(loc_str) || IS_GPFDIST_URI(loc_str)) )
-		rel->isrescannable = true;
-	else
-		rel->isrescannable = false; /* ext web table */
-
-	/*
-	 * Now get the format type
-	 */
-	fmttype = heap_getattr(tuple,
-						   Anum_pg_exttable_fmtcode,
-						   pg_exttable_rel->rd_att,
-						   &isNull);
-
-	rel->fmttype = DatumGetChar(fmttype);
-	Assert(rel->fmttype == 'c' || rel->fmttype == 't');
-
-	/*
-	 * And the format string
-	 */
-	fmtopts = heap_getattr(tuple,
-						   Anum_pg_exttable_fmtopts,
-						   pg_exttable_rel->rd_att,
-						   &isNull);
-
-	rel->fmtopts = DatumGetCString(DirectFunctionCall1(textout, fmtopts));
-	Assert(rel->fmtopts != NULL);
-
-	/*
-	 * reject limit
-	 */
-	rejectlimit = heap_getattr(tuple,
-							   Anum_pg_exttable_rejectlimit,
-							   pg_exttable_rel->rd_att,
-							   &isNull);
-	if(!isNull)
-		rel->rejectlimit = DatumGetInt32(rejectlimit);
-	else
-		rel->rejectlimit = -1; /* mark that no SREH requested */
-
-	/*
-	 * Now get the reject limit type
-	 */
-	rejectlimittype = heap_getattr(tuple,
-								   Anum_pg_exttable_rejectlimittype,
-								   pg_exttable_rel->rd_att,
-								   &isNull);
-
-	rel->rejectlimittype = DatumGetChar(rejectlimittype);
-	if(!isNull)
-		Assert(rel->rejectlimittype == 'r' || rel->rejectlimittype == 'p');
-
-	/*
-	 * format error table
-	 */
-	fmterrtbl = heap_getattr(tuple,
-							 Anum_pg_exttable_fmterrtbl,
-							 pg_exttable_rel->rd_att,
-							 &isNull);
-	if(isNull)
-		rel->fmterrtbl = InvalidOid;
-	else
-		rel->fmterrtbl = DatumGetObjectId(fmterrtbl);
-
-	/*
-	 * data encoding
-	 */
-	encoding = heap_getattr(tuple,
-							Anum_pg_exttable_encoding,
-							pg_exttable_rel->rd_att,
-							&isNull);
-
-	rel->ext_encoding = DatumGetInt32(encoding);
-	Insist(PG_VALID_ENCODING(rel->ext_encoding));
-
-	/* Finish up scan and close exttable catalog. */
-	systable_endscan(extscan);
-
-	heap_close(pg_exttable_rel, RowExclusiveLock);
+	/* web tables are non rescannable. others are */
+	rel->isrescannable = !extentry->isweb;
 
 }
 

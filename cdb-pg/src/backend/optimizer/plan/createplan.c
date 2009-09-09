@@ -1126,6 +1126,13 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		
 	/* various validations */
 	
+	if(rel->writable)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("it is not possible to read from a WRITABLE external table."),
+				errhint("Create the table as READABLE instead")));
+
+		
 	if(rel->rejectlimit != -1)
 	{
 		/* 

@@ -78,8 +78,6 @@ typedef struct
 static void DoCopyTo(CopyState cstate);
 extern void CopyToDispatch(CopyState cstate);
 static void CopyTo(CopyState cstate);
-static void CopyOneRowTo(CopyState cstate, Oid tupleOid,
-						                         Datum *values, bool *nulls);
 extern void CopyFromDispatch(CopyState cstate);
 static void CopyFrom(CopyState cstate);
 static char *CopyReadOidAttr(CopyState cstate, bool *isnull);
@@ -97,7 +95,6 @@ static void SendCopyEnd(CopyState cstate);
 static void CopySendData(CopyState cstate, const void *databuf, int datasize);
 static void CopySendString(CopyState cstate, const char *str);
 static void CopySendChar(CopyState cstate, char c);
-static void CopySendEndOfRow(CopyState cstate);
 static int	CopyGetData(CopyState cstate, void *databuf, int datasize);
 
 /* byte scaning utils */
@@ -453,7 +450,7 @@ CopySendChar(CopyState cstate, char c)
  * our newlines already exist. We use another new method similar to
  * this one to flush the data
  */
-static void
+void
 CopySendEndOfRow(CopyState cstate)
 {
 	StringInfo	fe_msgbuf = cstate->fe_msgbuf;
@@ -494,6 +491,14 @@ CopySendEndOfRow(CopyState cstate)
 			/* Dump the accumulated row as one CopyData message */
 			(void) pq_putmessage('d', fe_msgbuf->data, fe_msgbuf->len);
 			break;
+		case COPY_EXTERNAL_SOURCE:
+			/* we don't actually do the write here, we let the caller do it */
+#ifndef WIN32
+			CopySendChar(cstate, '\n');
+#else
+			CopySendString(cstate, "\r\n");
+#endif
+			return; /* don't want to reset msgbug quite yet */
 	}
 
 	/* Reset fe_msgbuf to empty */
@@ -522,7 +527,7 @@ CopyToDispatchFlush(CopyState cstate)
 				ereport(ERROR,
 						(errcode_for_file_access(),
 						 errmsg("could not write to COPY file: %m")));
-				break;
+			break;
 		case COPY_OLD_FE:
 
 			if (pq_putbytes(fe_msgbuf->data, fe_msgbuf->len))
@@ -532,12 +537,16 @@ CopyToDispatchFlush(CopyState cstate)
 						(errcode(ERRCODE_CONNECTION_FAILURE),
 						 errmsg("connection lost during COPY to stdout")));
 			}
-				break;
+			break;
 		case COPY_NEW_FE:
 
 			/* Dump the accumulated row as one CopyData message */
 			(void) pq_putmessage('d', fe_msgbuf->data, fe_msgbuf->len);
 			break;
+		case COPY_EXTERNAL_SOURCE:
+			Insist(false); /* internal error */
+			break;
+
 	}
 
 	/* Reset fe_msgbuf to empty */
@@ -646,6 +655,10 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 				datasize -= avail;
 			}
 			break;
+		case COPY_EXTERNAL_SOURCE:
+			Insist(false); /* RET read their own data with external_senddata() */
+			break;
+
 	}
 
 	return bytesread;
@@ -668,7 +681,7 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 						char *null_print, char *quote, char *escape,
 						List *force_quote, List *force_notnull,
-						bool header_line, int num_columns)
+						bool header_line, bool fill_missing, int num_columns)
 {
 	bool	delim_off = (pg_strcasecmp(delim, "off") == 0);
 
@@ -846,7 +859,12 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 	if (force_notnull != NIL && !load)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("force not null only available for data loading, not unloading")));
+				errmsg("force not null only available for data loading, not unloading")));
+
+	if (fill_missing && !load)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("fill missing fields only available for data loading, not unloading")));
 
 }
 
@@ -1098,6 +1116,7 @@ DoCopy(const CopyStmt *stmt)
 						 force_quote,
 						 force_notnull,
 						 cstate->header_line,
+						 cstate->fill_missing,
 						 0 /* pass correct value when COPY supports no delim */);
 
 	if (!pg_strcasecmp(cstate->escape, "off"))
@@ -1363,8 +1382,8 @@ DoCopy(const CopyStmt *stmt)
 		cstate->need_transcoding = false;
 	cstate->encoding_embeds_ascii = (qe_copy_from ? false : PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding));
 	cstate->line_buf_converted = (Gp_role == GP_ROLE_EXECUTE ? true : false);
-	cstate->to_server_enc_proc = NULL; /* only used in external tables */
-	setEncodingConversionProc(cstate, pg_get_client_encoding());
+	cstate->enc_conversion_proc = NULL; /* only used in external tables */
+	setEncodingConversionProc(cstate, pg_get_client_encoding(), !is_from);
 
 	/*
 	 * some greenplum db specific vars
@@ -1406,13 +1425,6 @@ DoCopy(const CopyStmt *stmt)
 						 errmsg("cannot copy to non-table relation \"%s\"",
 								RelationGetRelationName(cstate->rel))));
 		}
-
-		if (RelationIsExternal(cstate->rel))
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("cannot copy to external relation \"%s\"",
-							RelationGetRelationName(cstate->rel))));
-
 
 		if(stmt->sreh && Gp_role != GP_ROLE_EXECUTE && !cstate->rel->rd_cdbpolicy)
 			ereport(ERROR,
@@ -2152,7 +2164,7 @@ CopyTo(CopyState cstate)
 /*
  * Emit one row during CopyTo().
  */
-static void
+void
 CopyOneRowTo(CopyState cstate, Oid tupleOid, Datum *values, bool *isnulls)
 {
 	bool		need_delim = false;
@@ -2236,11 +2248,20 @@ CopyOneRowTo(CopyState cstate, Oid tupleOid, Datum *values, bool *isnulls)
 		}
 	}
 
-	CopySendEndOfRow(cstate);
+	/*
+	 * Finish off the row: write it to the destination, and update the count.
+	 * However, if we're in the context of a writable external table, we let 
+	 * the caller do it - send the data to its local external source (see
+	 * external_insert() ).
+	 */
+	if(cstate->copy_dest != COPY_EXTERNAL_SOURCE)
+	{
+		CopySendEndOfRow(cstate);
 
-	MemoryContextSwitchTo(oldcontext);
+		MemoryContextSwitchTo(oldcontext);
 
-	cstate->processed++;
+		cstate->processed++;
+	}
 }
 
 
@@ -3962,15 +3983,19 @@ CopyFrom(CopyState cstate)
 					resultRelInfo->ri_aoInsertDesc =
 						appendonly_insert_init(resultRelInfo->ri_RelationDesc,
 											   resultRelInfo->ri_aosegno);
-
 				}
-
-				if (relstorage == RELSTORAGE_AOCOLS &&
-					resultRelInfo->ri_aocsInsertDesc == NULL)
+				else if (relstorage == RELSTORAGE_AOCOLS &&
+						 resultRelInfo->ri_aocsInsertDesc == NULL)
 				{
 					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
                     resultRelInfo->ri_aocsInsertDesc =
                         aocs_insert_init(resultRelInfo->ri_RelationDesc, resultRelInfo->ri_aosegno);
+				}
+				else if (relstorage == RELSTORAGE_EXTERNAL &&
+						 resultRelInfo->ri_extInsertDesc == NULL)
+				{
+					resultRelInfo->ri_extInsertDesc =
+						external_insert_init(resultRelInfo->ri_RelationDesc);
 				}
 
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
@@ -4060,12 +4085,15 @@ CopyFrom(CopyState cstate)
 					if (relstorage == RELSTORAGE_AOROWS)
 					{
 						/* inserting into an append only relation */
-						appendonly_insert(resultRelInfo->ri_aoInsertDesc,
-										  tuple);
+						appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple);
 					}
 					else if (relstorage == RELSTORAGE_AOCOLS)
 					{
                         aocs_insert_values(resultRelInfo->ri_aocsInsertDesc, values, nulls);
+					}
+					else if (relstorage == RELSTORAGE_EXTERNAL)
+					{
+						external_insert(resultRelInfo->ri_extInsertDesc, tuple);
 					}
 					else
 					{
@@ -4153,23 +4181,27 @@ CopyFrom(CopyState cstate)
 
 	ExecDropSingleTupleTableSlot(slot);
 
-        /*
-         * Finalise appends and close relations we opened.
-         */
-        resultRelInfo = estate->es_result_relations;
-        for (i = estate->es_num_result_relations; i > 0; i--)
-        {
-                if (resultRelInfo->ri_aoInsertDesc)
-                        appendonly_insert_finish(resultRelInfo->ri_aoInsertDesc);
+	/*
+	 * Finalize appends and close relations we opened.
+	 */
+	resultRelInfo = estate->es_result_relations;
+	for (i = estate->es_num_result_relations; i > 0; i--)
+	{
+			if (resultRelInfo->ri_aoInsertDesc)
+					appendonly_insert_finish(resultRelInfo->ri_aoInsertDesc);
 
-                if (resultRelInfo->ri_aocsInsertDesc)
-                        aocs_insert_finish(resultRelInfo->ri_aocsInsertDesc);
+			if (resultRelInfo->ri_aocsInsertDesc)
+					aocs_insert_finish(resultRelInfo->ri_aocsInsertDesc);
 
-                /* Close indices and then the relation itself */
-                ExecCloseIndices(resultRelInfo);
-                heap_close(resultRelInfo->ri_RelationDesc, NoLock);
-                resultRelInfo++;
-        }
+			if (resultRelInfo->ri_extInsertDesc)
+					external_insert_finish(resultRelInfo->ri_extInsertDesc);
+			
+			/* Close indices and then the relation itself */
+			ExecCloseIndices(resultRelInfo);
+			heap_close(resultRelInfo->ri_RelationDesc, NoLock);
+			resultRelInfo++;
+	}
+	
 	cstate->rel = NULL; /* closed above */
 	FreeExecutorState(estate);
 }
@@ -6763,20 +6795,31 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
  *
  * The code here mimics a part of SetClientEncoding() in mbutils.c
  */
-void setEncodingConversionProc(CopyState cstate, int client_encoding)
+void setEncodingConversionProc(CopyState cstate, int client_encoding, bool iswritable)
 {
-	Oid		to_server_proc = FindDefaultConversionProc(client_encoding,
-													   GetDatabaseEncoding());
-	if(OidIsValid(to_server_proc))
+	Oid		conversion_proc;
+	
+	/*
+	 * COPY FROM and RET: convert from client to server
+	 * COPY TO   and WET: convert from server to client
+	 */
+	if(iswritable)
+		conversion_proc = FindDefaultConversionProc(GetDatabaseEncoding(),
+													client_encoding);
+	else		
+		conversion_proc = FindDefaultConversionProc(client_encoding,
+												    GetDatabaseEncoding());
+	
+	if(OidIsValid(conversion_proc))
 	{
 		/* conversion proc found */
-		cstate->to_server_enc_proc = palloc(sizeof(FmgrInfo));
-		fmgr_info(to_server_proc, cstate->to_server_enc_proc);
+		cstate->enc_conversion_proc = palloc(sizeof(FmgrInfo));
+		fmgr_info(conversion_proc, cstate->enc_conversion_proc);
 	}
 	else
 	{
 		/* no conversion function (both encodings are probably the same) */
-		cstate->to_server_enc_proc = NULL;
+		cstate->enc_conversion_proc = NULL;
 	}
 }
 
@@ -6812,7 +6855,7 @@ void preProcessDataLine(CopyState cstate)
 		cvt = (char *) pg_custom_client_to_server(cstate->line_buf.data,
 												  cstate->line_buf.len,
 												  cstate->client_encoding,
-												  cstate->to_server_enc_proc);
+												  cstate->enc_conversion_proc);
 		if (cvt != cstate->line_buf.data)
 		{
 			/* transfer converted data back to line_buf */

@@ -11,6 +11,7 @@
 #ifndef PG_EXTTABLE_H
 #define PG_EXTTABLE_H
 
+#include "nodes/pg_list.h"
 
 /*
  * pg_exttable definition.
@@ -25,9 +26,10 @@ CATALOG(pg_exttable,6040) BKI_WITHOUT_OIDS
 	text		fmtopts;		/* the data format options */
 	text		command;		/* the command string to EXECUTE */
 	int4		rejectlimit;	/* error count reject limit per segment */
-	char		rejectlimittype; /* 'r' (rows) or 'p' (percent) */
+	char		rejectlimittype;/* 'r' (rows) or 'p' (percent) */
 	Oid			fmterrtbl;		/* the data format error table oid in pg_class */
 	int4		encoding;		/* character encoding of this external table */
+	bool		writable;		/* 't' if writable, 'f' if readable */
 
 } FormData_pg_exttable;
 
@@ -39,7 +41,7 @@ CATALOG(pg_exttable,6040) BKI_WITHOUT_OIDS
 */
 typedef FormData_pg_exttable *Form_pg_exttable;
 
-#define Natts_pg_exttable			9
+#define Natts_pg_exttable			10
 #define Anum_pg_exttable_reloid		1
 #define Anum_pg_exttable_location	2
 #define Anum_pg_exttable_fmtcode	3
@@ -49,7 +51,47 @@ typedef FormData_pg_exttable *Form_pg_exttable;
 #define Anum_pg_exttable_rejectlimittype 7
 #define Anum_pg_exttable_fmterrtbl 8
 #define Anum_pg_exttable_encoding 9
+#define Anum_pg_exttable_writable 10
+
+/*
+ * Descriptor of a single AO relation.
+ * For now very similar to the catalog row itself but may change in time.
+ */
+typedef struct ExtTableEntry
+{
+	List*	locations;
+	char	fmtcode;
+	char*	fmtopts;
+	char*	command;
+	int		rejectlimit;
+	char	rejectlimittype;
+	Oid		fmterrtbl;
+    int		encoding;
+    bool	iswritable;
+    bool	isweb;		/* extra state, not cataloged */
+} ExtTableEntry;
 
 /* No initial contents. */
+
+extern void
+InsertExtTableEntry(Oid 	tbloid, 
+					bool 	iswritable,
+					bool 	isweb,
+					bool	issreh,
+					char	formattype,
+					char	rejectlimittype,
+					char*	commandString,
+					int		rejectlimit,
+					Oid		fmtErrTblOid,
+					int		encoding,
+					Datum	formatOptStr,
+					Datum	locationExec,
+					Datum	locationUris);
+
+extern ExtTableEntry*
+GetExtTableEntry(Oid relid);
+
+extern void
+RemoveExtTableEntry(Oid relid);
 
 #endif /* PG_EXTTABLE_H */

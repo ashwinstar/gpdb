@@ -41,6 +41,7 @@
 #include "access/heapam.h"
 #include "access/aosegfiles.h"
 #include "access/appendonlywriter.h"
+#include "access/fileam.h"
 #include "access/reloptions.h"
 #include "access/transam.h"
 #include "access/xact.h"
@@ -1703,6 +1704,8 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	resultRelInfo->ri_junkFilter = NULL;
 	resultRelInfo->ri_projectReturning = NULL;
 	resultRelInfo->ri_aoInsertDesc = NULL;
+	resultRelInfo->ri_aocsInsertDesc = NULL;
+	resultRelInfo->ri_extInsertDesc = NULL;
 	resultRelInfo->ri_aosegno = InvalidFileSegNumber;
 
 	/*
@@ -1930,9 +1933,10 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 			heap_endinsert(estate->es_HeapInsertDesc);
 		if (resultRelInfo->ri_aoInsertDesc)
 			appendonly_insert_finish(resultRelInfo->ri_aoInsertDesc);
-                if (resultRelInfo->ri_aocsInsertDesc)
-                        aocs_insert_finish(resultRelInfo->ri_aocsInsertDesc);
-
+        if (resultRelInfo->ri_aocsInsertDesc)
+            aocs_insert_finish(resultRelInfo->ri_aocsInsertDesc);
+        if (resultRelInfo->ri_extInsertDesc)
+        	external_insert_finish(resultRelInfo->ri_extInsertDesc);
 
 		/* Close indices and then the relation itself */
 		ExecCloseIndices(resultRelInfo);
@@ -2378,7 +2382,8 @@ ExecInsert(TupleTableSlot *slot,
 
 	bool		rel_is_heap,
 				rel_is_aorows,
-				rel_is_aocols;
+				rel_is_aocols,
+				rel_is_external;
 
 	/*
 	 * get information on the (current) result relation
@@ -2402,6 +2407,7 @@ ExecInsert(TupleTableSlot *slot,
 	rel_is_heap = RelationIsHeap(resultRelationDesc);
 	rel_is_aocols = RelationIsAoCols(resultRelationDesc);
 	rel_is_aorows = RelationIsAoRows(resultRelationDesc);
+	rel_is_external = RelationIsExternal(resultRelationDesc);
 	
 	/*
 	 * get the heap tuple out of the tuple table slot, making sure we have a
@@ -2453,7 +2459,8 @@ ExecInsert(TupleTableSlot *slot,
 	}
 	else
 	{
-		Assert(RelationIsHeap(resultRelationDesc));
+		Assert(RelationIsHeap(resultRelationDesc) || 
+			   RelationIsExternal(resultRelationDesc));
 		tuple = (HeapTuple) ExecFetchSlotHeapTuple(slot);
 	}
 
@@ -2533,6 +2540,14 @@ ExecInsert(TupleTableSlot *slot,
 		}
 
 		newId = aocs_insert(resultRelInfo->ri_aocsInsertDesc, slot);
+	}
+	else if (rel_is_external)
+	{
+		/* Writable external table */
+		if (resultRelInfo->ri_extInsertDesc == NULL)
+			resultRelInfo->ri_extInsertDesc = external_insert_init(resultRelationDesc);
+
+		newId = external_insert(resultRelInfo->ri_extInsertDesc, tuple);
 	}
 	else
 	{

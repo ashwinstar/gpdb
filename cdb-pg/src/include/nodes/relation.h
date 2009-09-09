@@ -307,6 +307,7 @@ typedef struct RelOptInfo
 	Oid			fmterrtbl;
 	int32		ext_encoding;
 	bool		isrescannable; /* true for ext tables false for ext web tables */
+	bool		writable;	   /* true for writable, false for readable ext tables*/
 	
 	/* used by various scans and joins: */
 	List	   *baserestrictinfo;		/* RestrictInfo structures (if base

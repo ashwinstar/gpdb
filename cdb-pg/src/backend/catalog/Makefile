@@ -12,7 +12,7 @@ include $(top_builddir)/src/Makefile.global
 
 OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
        pg_aggregate.o pg_appendonly.o pg_constraint.o pg_conversion.o pg_depend.o \
-       pg_largeobject.o pg_namespace.o pg_operator.o pg_proc.o pg_shdepend.o \
+       pg_exttable.o pg_largeobject.o pg_namespace.o pg_operator.o pg_proc.o pg_shdepend.o \
        pg_type.o toasting.o aoseg.o
 
 BKIFILES = postgres.bki postgres.description postgres.shdescription
