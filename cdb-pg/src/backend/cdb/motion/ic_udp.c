@@ -2002,6 +2002,7 @@ checkForCancelFromInsideReceiveChunks(ChunkTransportState *pTransportStates)
 
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg(CDB_MOTION_LOST_CONTACT_STRING)));
+		/* not reached */
 	}
 }
 
@@ -2038,8 +2039,6 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 	/* we didn't have any data, so we've got to read it from the network. */
 	for (;;)
 	{
-		retries++;
-
 		/* 1. Do we have data ready */
 		if (directed && conn->pBuff)
 		{
@@ -2075,18 +2074,19 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 		}
 
 		/* every 15 or 16 wait-intervals, check to see if the dispatcher should cancel */
-		if ( Gp_role == GP_ROLE_DISPATCH &&
-		     (retries & 0x0f) == 0 )
+		if (Gp_role == GP_ROLE_DISPATCH && (retries & 0x0f) == 0)
 		{
 			checkForCancelFromInsideReceiveChunks(pTransportStates);
 		}
+
+		retries++;
 
 		/* 2. Wait for data to become ready */
 		if (wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
 			continue; /* success ! */
 
 		/* waited a long time, might as well check for cancel now */
-		if ( Gp_role == GP_ROLE_DISPATCH )
+		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			checkForCancelFromInsideReceiveChunks(pTransportStates);
 		}
