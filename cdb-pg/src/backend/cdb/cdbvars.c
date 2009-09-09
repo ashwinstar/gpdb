@@ -165,7 +165,7 @@ bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 
 bool gp_interconnect_full_crc=false; /* sanity check UDP data. */
 
-bool gp_interconnect_elide_setup=false; /* under some conditions we can eliminate the setup */
+bool gp_interconnect_elide_setup=true; /* under some conditions we can eliminate the setup */
 
 int			Gp_udp_bufsize_k; /* UPD recv buf size, in KB */
 
