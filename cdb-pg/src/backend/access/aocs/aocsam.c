@@ -241,7 +241,7 @@ void aocs_endscan(AOCSScanDesc scan)
 
 void aocs_getnext(AOCSScanDesc scan, ScanDirection direction, TupleTableSlot *slot)
 {
-    int nvp; 
+    int ncol;
     Datum *d = slot_get_values(slot);
     bool *null = slot_get_isnull(slot);
 
@@ -250,7 +250,8 @@ void aocs_getnext(AOCSScanDesc scan, ScanDirection direction, TupleTableSlot *sl
 
     Assert(ScanDirectionIsForward(direction));
 
-    nvp = scan->aos_rel->rd_att->natts;
+    ncol = slot->tts_tupleDescriptor->natts;
+    Assert(ncol <= scan->aos_rel->rd_att->natts);
 
     while(1)
     {
@@ -270,7 +271,7 @@ ReadNext:
         Assert(scan->cur_seg >= 0);
 
         /* Read from cur_seg */
-        for(i=0; i<nvp; ++i)
+        for(i=0; i<ncol; ++i)
         {
             if(scan->proj[i])
             {
@@ -298,13 +299,13 @@ ReadNext:
 
         /* OK, I got the tuple.  Read it out */
         Assert(scan->cur_seg >= 0 && scan->cur_seg < scan->total_seg);
-        for(i=0; i<nvp; ++i)
+        for(i=0; i<ncol; ++i)
         {
             if(scan->proj[i])
                 datumstream_get(scan->ds[i], &d[i], &null[i]);
         }
 
-        TupSetVirtualTupleNValid(slot, nvp);
+        TupSetVirtualTupleNValid(slot, ncol);
         slot_set_ctid(slot, &(scan->cdb_fake_ctid));
         return;
     }

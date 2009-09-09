@@ -4897,9 +4897,8 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 
 		/* Preallocate values/isnull arrays */
 		i = Max(newTupDesc->natts, oldTupDesc->natts);
-		values = (Datum *) palloc(i * sizeof(Datum));
+		values = (Datum *) palloc0(i * sizeof(Datum));
 		isnull = (bool *) palloc(i * sizeof(bool));
-		memset(values, 0, i * sizeof(Datum));
 		memset(isnull, true, i * sizeof(bool));
 
 		/*
@@ -5156,51 +5155,68 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 		}
 		else if(relstorage == RELSTORAGE_AOCOLS && Gp_role != GP_ROLE_DISPATCH)
 		{
-			int segno = RESERVED_SEGNO;
-			AOCSInsertDesc idesc = NULL;
-			AOCSScanDesc sdesc = NULL;
-			int nvp = oldrel->rd_att->natts;
-			bool *proj = palloc(sizeof(bool) * nvp);
+            int segno = RESERVED_SEGNO;
+            AOCSInsertDesc idesc = NULL;
+            AOCSScanDesc sdesc = NULL;
+            int nvp = oldrel->rd_att->natts;
+            bool *proj = palloc0(sizeof(bool) * nvp);
 
-			memset(proj, true, nvp);
+            if (oldTupDesc)
+            {
+                Assert(oldTupDesc->natts <= nvp);
+                memset(proj, true, oldTupDesc->natts); 
+            }
+            else
+                memset(proj, true, nvp);
 
-			if(newrel)
-					idesc = aocs_insert_init(newrel, segno);
+            if(newrel)
+                idesc = aocs_insert_init(newrel, segno);
 
-			sdesc = aocs_beginscan(oldrel, SnapshotNow, 0, NULL, proj);
+            sdesc = aocs_beginscan(oldrel, SnapshotNow, 0, NULL, proj);
 
+            aocs_getnext(sdesc, ForwardScanDirection, oldslot);
 
-			aocs_getnext(sdesc, ForwardScanDirection, oldslot);
+            while(!TupIsNull(oldslot))
+            {
+                oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+                econtext->ecxt_scantuple = oldslot;
 
-			while(!TupIsNull(oldslot))
-			{
-				oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-				econtext->ecxt_scantuple = oldslot;
+                if(newrel)
+                {
+                    Datum *slotvalues = slot_get_values(oldslot);
+                    bool  *slotnulls = slot_get_isnull(oldslot);
+                    Datum *newslotvalues = slot_get_values(newslot);
+                    bool *newslotnulls = slot_get_isnull(newslot);
 
-				if(newrel)
-				{
-					Datum *slotvalues = slot_get_values(oldslot);
-					bool  *slotnulls = slot_get_isnull(oldslot);
-
+                    int nv = Min(oldslot->tts_tupleDescriptor->natts, newslot->tts_tupleDescriptor->natts);
 
 					/* aocs does not do oid yet */
 					Assert(!oldTupDesc->tdhasoid);
 					Assert(!newTupDesc->tdhasoid);
 
 					/* Dropped att should be set correctly by aocs_getnext */
+                    /* transfer values from old to new slot */
+
+                    memcpy(newslotvalues, slotvalues, sizeof(Datum) * nv);
+                    memcpy(newslotnulls, slotnulls, sizeof(bool) * nv);
+                    TupSetVirtualTupleNValid(newslot, nv);
 
 					/* Process supplied expressions */
 					foreach(l, tab->newvals)
 					{
 						NewColumnValue *ex = lfirst(l);
 
-						slotvalues[ex->attnum-1] =
+						newslotvalues[ex->attnum-1] =
 								ExecEvalExpr(ex->exprstate,
 											 econtext,
-											 &slotnulls[ex->attnum-1],
+											 &newslotnulls[ex->attnum-1],
 											 NULL
 										);
+
+                        if (ex->attnum > nv)
+                            TupSetVirtualTupleNValid(newslot, ex->attnum);
 					}
+
 				}
 
 				/* Check constraints */
@@ -5229,7 +5245,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 				if(newrel)
 				{
 					MemoryContextSwitchTo(oldCxt);
-					aocs_insert(idesc, oldslot);
+					aocs_insert(idesc, newslot);
 				}
 
 				ResetExprContext(econtext);
@@ -5658,17 +5674,6 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	Form_pg_type tform;
 	Expr	   *defval;
 
-	if(RelationIsAoCols(rel))
-	{
-        ereport(ERROR,
-				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-				 errmsg("Append only column store table does not support add column yet"),
-				 errhint("Use a DEFAULT value, or use INSERT...SELECT to move "
-						 "data to a newly created table with the new column.")));
-
-
-	}
-
 	/*
 	 * Append Only tables don't support ADD COLUMN when no default value is
 	 * specified. This is because this scenario makes a schema change that
@@ -5676,7 +5681,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	 * it ok because the whole table will get re-written in phase 3. Let's
 	 * catch this now before doing any real work.
 	 */
-	if (RelationIsAoRows(rel) && !colDef->raw_default)
+	if ((RelationIsAoRows(rel) || RelationIsAoCols(rel)) && !colDef->raw_default)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),

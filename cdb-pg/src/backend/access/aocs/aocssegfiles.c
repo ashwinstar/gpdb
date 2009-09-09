@@ -313,7 +313,7 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel, Snapshot snapshot, int32 
     scan = heap_beginscan(segrel, snapshot, 0, NULL);
     while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
     {
-        seginfo = (AOCSFileSegInfo *) palloc(aocsfileseginfo_size(nvp));
+        seginfo = (AOCSFileSegInfo *) palloc0(aocsfileseginfo_size(nvp));
 
         Assert(cur_seg < *totalseg);
         allseg[cur_seg] = seginfo;
@@ -334,8 +334,13 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel, Snapshot snapshot, int32 
             struct varlena *v = (struct varlena *) DatumGetPointer(d[3]);
             struct varlena *dv = pg_detoast_datum(v);
 
-            Assert(VARSIZE(dv) == aocs_vpinfo_size(nvp));
-            memcpy(&seginfo->vpinfo, dv, aocs_vpinfo_size(nvp));
+            /* 
+             * VARSIZE(dv) may be less than aocs_vpinfo_size, in case of
+             * add column, we try to do a ctas from old table to new table.
+             */
+            Assert(VARSIZE(dv) <= aocs_vpinfo_size(nvp));
+
+            memcpy(&seginfo->vpinfo, dv, VARSIZE(dv));
             if(dv!=v)
                 pfree(dv);
         }
