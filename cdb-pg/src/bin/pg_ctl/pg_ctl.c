@@ -2,7 +2,7 @@
  *
  * pg_ctl --- start/stops/restarts the PostgreSQL server
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/bin/pg_ctl/pg_ctl.c,v 1.92.2.6 2009/01/28 11:19:40 mha Exp $
  *
@@ -365,13 +365,12 @@ start_postmaster(void)
 	 * everything to a shell to process them.
 	 */
 	if (log_file != NULL)
-		snprintf(cmd, MAXPGPATH, "%s\"%s\" %s%s < \"%s\" >> \"%s\" 2>&1 &%s",
-				 SYSTEMQUOTE, postgres_path, pgdata_opt, post_opts,
-				 DEVNULL, log_file, SYSTEMQUOTE);
+		snprintf(cmd, MAXPGPATH, SYSTEMQUOTE "\"%s\" %s%s < \"%s\" >> \"%s\" 2>&1 &" SYSTEMQUOTE,
+				 postgres_path, pgdata_opt, post_opts,
+				 DEVNULL, log_file);
 	else
-		snprintf(cmd, MAXPGPATH, "%s\"%s\" %s%s < \"%s\" 2>&1 &%s",
-				 SYSTEMQUOTE, postgres_path, pgdata_opt, post_opts,
-				 DEVNULL, SYSTEMQUOTE);
+		snprintf(cmd, MAXPGPATH, SYSTEMQUOTE "\"%s\" %s%s < \"%s\" 2>&1 &" SYSTEMQUOTE,
+				 postgres_path, pgdata_opt, post_opts, DEVNULL);
 
 	return system(cmd);
 #else							/* WIN32 */
@@ -384,13 +383,11 @@ start_postmaster(void)
 	PROCESS_INFORMATION pi;
 
 	if (log_file != NULL)
-		snprintf(cmd, MAXPGPATH, "CMD /C %s\"%s\" %s%s < \"%s\" >> \"%s\" 2>&1%s",
-				 SYSTEMQUOTE, postgres_path, pgdata_opt, post_opts,
-				 DEVNULL, log_file, SYSTEMQUOTE);
+		snprintf(cmd, MAXPGPATH, "CMD /C " SYSTEMQUOTE "\"%s\" %s%s < \"%s\" >> \"%s\" 2>&1" SYSTEMQUOTE,
+				 postgres_path, pgdata_opt, post_opts, DEVNULL, log_file);
 	else
-		snprintf(cmd, MAXPGPATH, "CMD /C %s\"%s\" %s%s < \"%s\" 2>&1%s",
-				 SYSTEMQUOTE, postgres_path, pgdata_opt, post_opts,
-				 DEVNULL, SYSTEMQUOTE);
+		snprintf(cmd, MAXPGPATH, "CMD /C " SYSTEMQUOTE "\"%s\" %s%s < \"%s\" 2>&1" SYSTEMQUOTE,
+				 postgres_path, pgdata_opt, post_opts, DEVNULL);
 
 	if (!CreateRestrictedProcess(cmd, &pi, false))
 		return GetLastError();
@@ -424,10 +421,10 @@ test_postmaster_connection(bool do_checkpoint __attribute__((unused)))
 	/*
 	 * Look in post_opts for a -p switch.
 	 *
-	 * This parsing code is not amazingly bright; it could for instance
-	 * get fooled if ' -p' occurs within a quoted argument value.  Given
-	 * that few people pass complicated settings in post_opts, it's
-	 * probably good enough.
+	 * This parsing code is not amazingly bright; it could for instance get
+	 * fooled if ' -p' occurs within a quoted argument value.  Given that few
+	 * people pass complicated settings in post_opts, it's probably good
+	 * enough.
 	 */
 	for (p = post_opts; *p;)
 	{
@@ -459,8 +456,8 @@ test_postmaster_connection(bool do_checkpoint __attribute__((unused)))
 	/*
 	 * Search config file for a 'port' option.
 	 *
-	 * This parsing code isn't amazingly bright either, but it should be
-	 * okay for valid port settings.
+	 * This parsing code isn't amazingly bright either, but it should be okay
+	 * for valid port settings.
 	 */
 	if (!*portstr)
 	{
@@ -1476,8 +1473,10 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo, bool as_se
 							(osv.dwMajorVersion == 6 && osv.dwMinorVersion == 0))
 						{
 							/*
-							 * On Windows 7 (and presumably later), JOB_OBJECT_UILIMIT_HANDLES prevents us from
-							 * starting as a service. So we only enable it on Vista and earlier (version <= 6.0)
+							 * On Windows 7 (and presumably later),
+							 * JOB_OBJECT_UILIMIT_HANDLES prevents us from
+							 * starting as a service. So we only enable it on
+							 * Vista and earlier (version <= 6.0)
 							 */
 							uiRestrictions.UIRestrictionsClass |= JOB_OBJECT_UILIMIT_HANDLES;
 						}
