@@ -17,6 +17,7 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "catalog/pg_type.h"
 #include "utils/builtins.h"
 #include "utils/inet.h"
 #include "libpq/ip.h"
@@ -37,7 +38,6 @@ extern Datum pg_stat_get_last_autoanalyze_time(PG_FUNCTION_ARGS);
 
 extern Datum pg_stat_get_backend_idset(PG_FUNCTION_ARGS);
 extern Datum pg_backend_pid(PG_FUNCTION_ARGS);
-extern Datum pg_stat_reset(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_pid(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_session_id(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_dbid(PG_FUNCTION_ARGS);
@@ -61,6 +61,12 @@ extern Datum pg_stat_get_queue_elapsed_exec(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_queue_elapsed_wait(PG_FUNCTION_ARGS);
 
 extern Datum pg_renice_session(PG_FUNCTION_ARGS);
+
+extern Datum pg_stat_clear_snapshot(PG_FUNCTION_ARGS);
+extern Datum pg_stat_reset(PG_FUNCTION_ARGS);
+
+/* Global bgwriter statistics, from bgwriter.c */
+extern PgStat_MsgBgWriter bgwriterStats;
 
 Datum
 pg_stat_get_numscans(PG_FUNCTION_ARGS)
@@ -375,9 +381,7 @@ Datum
 pg_stat_get_backend_activity(PG_FUNCTION_ARGS)
 {
 	int32		beid = PG_GETARG_INT32(0);
-	text	   *result;
 	PgBackendStatus *beentry;
-	int			len;
 	const char *activity;
 
 	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
@@ -389,12 +393,7 @@ pg_stat_get_backend_activity(PG_FUNCTION_ARGS)
 	else
 		activity = beentry->st_activity;
 
-	len = strlen(activity);
-	result = palloc(VARHDRSZ + len);
-	SET_VARSIZE(result, VARHDRSZ + len);
-	memcpy(VARDATA(result), activity, len);
-
-	PG_RETURN_TEXT_P(result);
+	PG_RETURN_TEXT_P(cstring_to_text(activity));
 }
 
 
@@ -640,6 +639,15 @@ pg_stat_get_db_blocks_hit(PG_FUNCTION_ARGS)
 		result = (int64) (dbentry->n_blocks_hit);
 
 	PG_RETURN_INT64(result);
+}
+
+/* Discard the active statistics snapshot */
+Datum
+pg_stat_clear_snapshot(PG_FUNCTION_ARGS)
+{
+	pgstat_clear_snapshot();
+
+	PG_RETURN_VOID();
 }
 
 

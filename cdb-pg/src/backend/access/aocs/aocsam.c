@@ -78,7 +78,7 @@ static void open_ds(Relation rel, CompressorType compType, int32 compLv, int32 b
     {
         Form_pg_attribute attr = tupdesc->attrs[i];
 
-        if(proj)
+         if(proj)
         {
             if(proj[i])
                 ds[i] = create_datumstream(compType, compLv, blocksz, attr, basepath, true);
@@ -118,7 +118,7 @@ static void aocs_initscan(AOCSScanDesc scan, ScanKey key)
     open_ds(scan->aos_rel, scan->compType, scan->compLevel, scan->blocksz,
             scan->ds, scan->aos_rel->rd_att->natts, scan->proj);
 
-    pgstat_count_heap_scan(&scan->aos_pgstat_info);
+    pgstat_count_heap_scan(scan->aos_rel);
 }
 
 static int open_next_scan_seg(AOCSScanDesc scan)
@@ -145,10 +145,10 @@ static int open_next_scan_seg(AOCSScanDesc scan)
 
             if (!emptySeg)
             {
-                open_rds_seg(scan, scan->seginfo[scan->cur_seg]->segno, scan->ds, nvp, scan->proj);
-                return scan->cur_seg;
-            }
+            open_rds_seg(scan, scan->seginfo[scan->cur_seg]->segno, scan->ds, nvp, scan->proj);
+            return scan->cur_seg;
         }
+    }
     }
 
     return -1;
@@ -199,7 +199,6 @@ AOCSScanDesc aocs_beginscan(Relation relation, Snapshot snapshot, int nkeys, Sca
 
     scan->ds = (DatumStream **) palloc0(sizeof(DatumStream *) * nvp);
 
-    pgstat_initstats(&scan->aos_pgstat_info, relation);
     aocs_initscan(scan, key);
 
     return scan;

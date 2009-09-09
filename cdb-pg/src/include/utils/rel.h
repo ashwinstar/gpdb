@@ -4,8 +4,8 @@
  *	  POSTGRES relation descriptor (a/k/a relcache entry) definitions.
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc.
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc.
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/utils/rel.h,v 1.92 2006/10/04 00:30:10 momjian Exp $
@@ -20,9 +20,11 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_index.h"
 #include "fmgr.h"
+#include "nodes/bitmapset.h"
 #include "rewrite/prs2lock.h"
 #include "storage/block.h"
 #include "storage/relfilenode.h"
+#include "utils/relcache.h"
 
 
 /*
@@ -70,9 +72,10 @@ typedef struct TriggerDesc
 	/*
 	 * Index data to identify which triggers are which.  Since each trigger
 	 * can appear in more than one class, for each class we provide a list of
-	 * integer indexes into the triggers array.
+	 * integer indexes into the triggers array.  The class codes are defined
+	 * by TRIGGER_EVENT_xxx macros in commands/trigger.h.
 	 */
-#define TRIGGER_NUM_EVENT_CLASSES  3
+#define TRIGGER_NUM_EVENT_CLASSES  4
 
 	uint16		n_before_statement[TRIGGER_NUM_EVENT_CLASSES];
 	uint16		n_before_row[TRIGGER_NUM_EVENT_CLASSES];
@@ -87,15 +90,6 @@ typedef struct TriggerDesc
 	Trigger    *triggers;
 	int			numtriggers;
 } TriggerDesc;
-
-
-/*
- * Same for the statistics collector data in Relation and scan data.
- */
-typedef struct PgStat_Info
-{
-	void	   *tabentry;
-} PgStat_Info;
 
 
 /*
@@ -197,22 +191,10 @@ typedef struct RelationData
 	List	   *rd_indpred;		/* index predicate tree, if any */
 	void	   *rd_amcache;		/* available for use by index AM */
 
-	/* statistics collection area */
-	PgStat_Info pgstat_info;
 
+	/* use "struct" here to avoid needing to include pgstat.h: */
+	struct PgStat_TableStatus *pgstat_info;		/* statistics collection area */
 } RelationData;
-
-typedef RelationData *Relation;
-
-
-/* ----------------
- *		RelationPtr is used in the executor to support index scans
- *		where we have to keep track of several index relations in an
- *		array.	-cim 9/10/89
- * ----------------
- */
-typedef Relation *RelationPtr;
-
 
 /*
  * StdRdOptions
@@ -222,10 +204,26 @@ typedef Relation *RelationPtr;
  * be applied to relations that use this format or a superset for
  * private options data.
  */
+ /* autovacuum-related reloptions. */
+typedef struct AutoVacOpts
+{
+	bool		enabled;
+	int			vacuum_threshold;
+	int			analyze_threshold;
+	int			vacuum_cost_delay;
+	int			vacuum_cost_limit;
+	int			freeze_min_age;
+	int			freeze_max_age;
+	int			freeze_table_age;
+	float8		vacuum_scale_factor;
+	float8		analyze_scale_factor;
+} AutoVacOpts;
+
 typedef struct StdRdOptions
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int			fillfactor;		/* page fill factor in percent (0..100) */
+	AutoVacOpts autovacuum;		/* autovacuum-related options */
 	bool		appendonly;		/* is this an appendonly relation? */
 	int			blocksize;		/* max varblock size (AO rels only) */
 	int			compresslevel;  /* compression level (AO rels only) */

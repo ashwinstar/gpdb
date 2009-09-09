@@ -4,7 +4,7 @@
  *	  POSTGRES heap access method definitions.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/access/heapam.h,v 1.117 2006/11/05 22:42:10 tgl Exp $
@@ -21,12 +21,14 @@
 #include "access/htup.h"
 #include "access/relscan.h"
 #include "access/sdir.h"
+#include "access/skey.h"
 #include "access/tupmacs.h"
 #include "access/xlogutils.h"
 #include "nodes/primnodes.h"
 #include "storage/block.h"
 #include "storage/lmgr.h"
 #include "utils/rel.h"
+#include "utils/relcache.h"
 #include "utils/tqual.h"
 
 /* in common/heaptuple.c */
@@ -187,10 +189,10 @@ extern void heap_getnextx(HeapScanDesc scan, ScanDirection direction,
 
 extern bool heap_fetch(Relation relation, Snapshot snapshot,
 		   HeapTuple tuple, Buffer *userbuf, bool keep_buf,
-		   PgStat_Info *pgstat_info);
+		   Relation stats_relation);
 extern bool heap_release_fetch(Relation relation, Snapshot snapshot,
 				   HeapTuple tuple, Buffer *userbuf, bool keep_buf,
-				   PgStat_Info *pgstat_info);
+		   		   Relation stats_relation);
 
 extern void heap_get_latest_tid(Relation relation, Snapshot snapshot,
 					ItemPointer tid);

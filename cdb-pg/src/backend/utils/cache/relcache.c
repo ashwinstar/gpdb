@@ -3,8 +3,8 @@
  * relcache.c
  *	  POSTGRES relation descriptor cache code
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc.
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc.
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -33,6 +33,7 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/reloptions.h"
+#include "access/sysattr.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
@@ -1752,6 +1753,7 @@ RelationClearRelation(Relation relation, bool rebuild)
 		Oid			save_relid = RelationGetRelid(relation);
 		int			old_refcnt = relation->rd_refcnt;
 		SubTransactionId old_createSubid = relation->rd_createSubid;
+		struct PgStat_TableStatus *old_pgstat_info = relation->pgstat_info;
 		TupleDesc	old_att = relation->rd_att;
 		RuleLock   *old_rules = relation->rd_rules;
 		MemoryContext old_rulescxt = relation->rd_rulescxt;
@@ -1770,6 +1772,7 @@ RelationClearRelation(Relation relation, bool rebuild)
 		}
 		relation->rd_refcnt = old_refcnt;
 		relation->rd_createSubid = old_createSubid;
+		relation->pgstat_info = old_pgstat_info;
 		if (equalTupleDescs(old_att, relation->rd_att, true))
 		{
 			/* needn't flush typcache here */

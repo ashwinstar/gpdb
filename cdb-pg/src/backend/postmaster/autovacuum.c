@@ -5,7 +5,7 @@
  * PostgreSQL Integrated Autovacuum Daemon
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -530,7 +530,7 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 	 * want to do this exactly once per DB-processing cycle, even if we find
 	 * nothing worth vacuuming in the database.
 	 */
-	pgstat_vacuum_tabstat();
+	pgstat_vacuum_stat();
 
 	/*
 	 * Find the pg_database entry and select the default freeze_min_age.
@@ -988,8 +988,8 @@ autovac_report_activity(VacuumStmt *vacstmt, Oid relid)
 bool
 AutoVacuumingActive(void)
 {
-	if (!autovacuum_start_daemon || !pgstat_collect_startcollector ||
-		!pgstat_collect_tuplelevel)
+	if (!autovacuum_start_daemon ||
+		!pgstat_track_counts)
 		return false;
 	return true;
 }
@@ -1006,7 +1006,7 @@ autovac_init(void)
 	if (!autovacuum_start_daemon)
 		return;
 
-	if (!pgstat_collect_startcollector || !pgstat_collect_tuplelevel)
+	if (!pgstat_track_counts)
 	{
 		ereport(WARNING,
 				(errmsg("autovacuum not started because of misconfiguration"),

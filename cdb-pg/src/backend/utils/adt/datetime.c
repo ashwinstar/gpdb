@@ -2969,17 +2969,17 @@ DecodeInterval(char **field, int *ftype, int nf, int range,
 							break;
 						case INTERVAL_MASK(HOUR):
 						case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR):
-						case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
-						case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
 							type = DTK_HOUR;
 							break;
 						case INTERVAL_MASK(MINUTE):
 						case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
+						case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
 							type = DTK_MINUTE;
 							break;
 						case INTERVAL_MASK(SECOND):
-						case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
 						case INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
+						case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
+						case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
 							type = DTK_SECOND;
 							break;
 						default:
@@ -3038,6 +3038,9 @@ DecodeInterval(char **field, int *ftype, int nf, int range,
 						break;
 
 					case DTK_MILLISEC:
+						/* avoid overflowing the fsec field */
+						tm->tm_sec += val / 1000;
+						val -= (val / 1000) * 1000;
 #ifdef HAVE_INT64_TIMESTAMP
 						*fsec += rint((val + fval) * 1000);
 #else

@@ -246,7 +246,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	scan->errcontext.arg = (void *) scan->fs_pstate;
 	scan->errcontext.previous = error_context_stack;
 
-	/* pgstat_initstats(&scan->rs_pgstat_info, relation); */
+	//pgstat_initstats(relation);
 
 	return scan;
 }
@@ -424,7 +424,7 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 	 */
 	FILEDEBUG_3;				/* file_getnext returning tuple */
 
-	/* pgstat_count_file_getnext(&scan->rs_pgstat_info); */
+	pgstat_count_heap_getnext(scan->fs_rd);
 
 	return tuple;
 }

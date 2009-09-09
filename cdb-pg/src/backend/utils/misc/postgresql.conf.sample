@@ -356,15 +356,13 @@
 					
 # - Query/Index Statistics Collector -
 
-#stats_command_string = on
+#track_activities = on
+#track_counts = off
 #update_process_title = on
+#stats_temp_directory = 'pg_stat_tmp'
 
-#stats_start_collector = on		# needed for block or row stats
-					# (change requires restart)
-#stats_block_level = off
-#stats_row_level = off
 #stats_queue_level = off
-#stats_reset_on_server_start = off	# (change requires restart)
+
 
 # - Statistics Monitoring -
 

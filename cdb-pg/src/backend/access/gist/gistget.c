@@ -157,7 +157,7 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 		stk->next = NULL;
 		stk->block = GIST_ROOT_BLKNO;
 
-		pgstat_count_index_scan(&scan->xs_pgstat_info);
+			pgstat_count_index_scan(scan->indexRelation);
 	}
 	else if (so->curbuf == InvalidBuffer)
 	{

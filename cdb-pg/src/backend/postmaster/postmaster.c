@@ -237,7 +237,7 @@ static int	SendStop = false;
 
 /* still more option variables */
 bool		EnableSSL = false;
-bool		SilentMode = false; /* silent mode (-S) */
+bool		SilentMode = false; /* silent_mode */
 
 int			PreAuthDelay = 0;
 int			AuthenticationTimeout = 60;
@@ -863,7 +863,7 @@ PostmasterMain(int argc, char *argv[])
 	}
 
 	/*
-	 * Fork away from controlling terminal, if -S specified.
+	 * Fork away from controlling terminal, if silent_mode specified.
 	 *
 	 * Must do this before we grab any interlock files, else the interlocks
 	 * will show the wrong PID.
@@ -1020,20 +1020,6 @@ PostmasterMain(int argc, char *argv[])
 	set_max_safe_fds();
 
 	/*
-	 * Load configuration files for client authentication.
-	 */
-	if (!load_hba())
-	{
-	/*
-		 * It makes no sense continue if we fail to load the HBA file, since
-		 * there is no way to connect to the database in this case.
-	 */
-		ereport(FATAL,
-				(errmsg("could not load pg_hba.conf")));
-	}
-	load_ident();
-
-	/*
 	 * Initialize the list of active backends.
 	 */
 	BackendList = DLNewList();
@@ -1123,7 +1109,7 @@ PostmasterMain(int argc, char *argv[])
 #endif
 
 	/*
-	 * Start up syslogger collection subprocess
+	 * If enabled, start up syslogger collection subprocess
 	 */
 	SysLoggerPID = SysLogger_Start();
 
@@ -1146,6 +1132,21 @@ PostmasterMain(int argc, char *argv[])
 	 * Initialize the autovacuum subsystem (again, no process start yet)
 	 */
 	autovac_init();
+
+    /*
+	 * Load configuration files for client authentication.
+	 */
+	if (!load_hba())
+	{
+	    /*
+		 * It makes no sense to continue if we fail to load the HBA file,
+		 * since there is no way to connect to the database in this case.
+	     */
+		ereport(FATAL,
+				(errmsg("could not load pg_hba.conf")));
+	}
+	load_ident();
+
 
 #if 0                   /* CDB: This code has been moved to an earlier point. */
 	/*
@@ -1329,15 +1330,46 @@ reg_reply(DNSServiceRegistrationReplyErrorType errorCode, void *context)
 
 
 /*
- * Fork away from the controlling terminal (-S option)
+ * Fork away from the controlling terminal (silent_mode option)
+ *
+ * Since this requires disconnecting from stdin/stdout/stderr (in case they're
+ * linked to the terminal), we re-point stdin to /dev/null and stdout/stderr
+ * to "postmaster.log" in the data directory, where we're already chdir'd.
  */
 static void
 pmdaemonize(void)
 {
 #ifndef WIN32
-	int			i;
+	const char *pmlogname = "postmaster.log";
+	int			dvnull;
+	int			pmlog;
 	pid_t		pid;
+	int			res;
 
+	/*
+	 * Make sure we can open the files we're going to redirect to.  If this
+	 * fails, we want to complain before disconnecting.  Mention the full path
+	 * of the logfile in the error message, even though we address it by
+	 * relative path.
+	 */
+	dvnull = open(DEVNULL, O_RDONLY, 0);
+	if (dvnull < 0)
+	{
+		write_stderr("%s: could not open file \"%s\": %s\n",
+					 progname, DEVNULL, strerror(errno));
+		ExitPostmaster(1);
+	}
+	pmlog = open(pmlogname, O_CREAT | O_WRONLY | O_APPEND, 0600);
+	if (pmlog < 0)
+	{
+		write_stderr("%s: could not open log file \"%s/%s\": %s\n",
+					 progname, DataDir, pmlogname, strerror(errno));
+		ExitPostmaster(1);
+	}
+
+	/*
+	 * Okay to fork.
+	 */
 	pid = fork_process();
 	if (pid == (pid_t) -1)
 	{
@@ -1356,8 +1388,8 @@ pmdaemonize(void)
 	MyStartTime = time(NULL);
 
 	/*
-	 * GH: If there's no setsid(), we hopefully don't need silent mode. Until
-	 * there's a better solution.
+	 * Some systems use setsid() to dissociate from the TTY's process group,
+	 * while on others it depends on stdin/stdout/stderr.  Do both if possible.
  */
 #ifdef HAVE_SETSID
 	if (setsid() < 0)
@@ -1367,14 +1399,26 @@ pmdaemonize(void)
 		ExitPostmaster(1);
 	}
 #endif
-	i = open(DEVNULL, O_RDWR, 0);
-	dup2(i, 0);
-	dup2(i, 1);
-	dup2(i, 2);
-	close(i);
+
+	/*
+	 * Reassociate stdin/stdout/stderr.  fork_process() cleared any pending
+	 * output, so this should be safe.  The only plausible error is EINTR,
+	 * which just means we should retry.
+	 */
+	do {
+		res = dup2(dvnull, 0);
+	} while (res < 0 && errno == EINTR);
+	close(dvnull);
+	do {
+		res = dup2(pmlog, 1);
+	} while (res < 0 && errno == EINTR);
+	do {
+		res = dup2(pmlog, 2);
+	} while (res < 0 && errno == EINTR);
+	close(pmlog);
 #else							/* WIN32 */
 	/* not supported */
-	elog(FATAL, "SilentMode not supported under WIN32");
+	elog(FATAL, "silent_mode is not supported under Windows");
 #endif   /* WIN32 */
 }
 
@@ -1514,7 +1558,7 @@ ServerLoop(void)
 			}
 		}
 
-		/* If we have lost the system logger, try to start a new one */
+		/* If we have lost the log collector, try to start a new one */
 		if (SysLoggerPID == 0 && Redirect_stderr)
 		{
 			SysLoggerPID = SysLogger_Start();
@@ -2194,6 +2238,8 @@ SIGHUP_handler(SIGNAL_ARGS)
 				(errmsg("received SIGHUP, reloading configuration files")));
 		ProcessConfigFile(PGC_SIGHUP);
 		SignalChildren(SIGHUP);
+		if (StartupPID != 0)
+			signal_child(StartupPID, SIGHUP);
 		if (BgWriterPID != 0)
 			signal_child(BgWriterPID, SIGHUP);
 		if (AutoVacPID != 0)
@@ -2213,7 +2259,8 @@ SIGHUP_handler(SIGNAL_ARGS)
 		}
 		if (SysLoggerPID != 0)
 			signal_child(SysLoggerPID, SIGHUP);
-		/* PgStatPID does not currently need SIGHUP */
+		if (PgStatPID != 0)
+			signal_child(PgStatPID, SIGHUP);
 
 		/* Reload authentication config files too */
 		if (!load_hba())
@@ -2991,7 +3038,8 @@ CleanupBackend(int pid,
 }
 
 /*
- * HandleChildCrash -- cleanup after failed backend, bgwriter, or autovacuum.
+ * HandleChildCrash -- cleanup after failed backend, bgwriter, 
+ * or autovacuum.
  *
  * The objectives here are to clean up our local state about the child
  * process, and to signal all other remaining children to quickdie.
@@ -3315,6 +3363,8 @@ BackendStartup(Port *port)
 	/* Pass down canAcceptConnections state */
 	port->canAcceptConnections = canAcceptConnections();
 
+    //MyPMChildSlot = AssignPostmasterChildSlot();
+
 #ifdef EXEC_BACKEND
 	pid = backend_forkexec(port);
 #else							/* !EXEC_BACKEND */
@@ -3566,8 +3616,8 @@ BackendInitialize(Port *port)
 	if (!load_hba())
 	{
 		/*
-		 * It makes no sense continue if we fail to load the HBA file, since
-		 * there is no way to connect to the database in this case.
+		 * It makes no sense to continue if we fail to load the HBA file,
+		 * since there is no way to connect to the database in this case.
 		 */
 		ereport(FATAL,
 				(errmsg("could not load pg_hba.conf")));
@@ -3999,7 +4049,7 @@ internal_forkexec(int argc, char *argv[], Port *port)
 		return -1;				/* log made by save_backend_variables */
 	}
 
-	/* Drop the shared memory that is now inherited to the backend */
+	/* Drop the parameter shared memory that is now inherited to the backend */
 	if (!UnmapViewOfFile(param))
 		elog(LOG, "could not unmap view of backend parameter file: error code %d",
 			 (int) GetLastError());
@@ -4434,17 +4484,14 @@ dummy_handler(SIGNAL_ARGS)
 static void
 RandomSalt(char *md5Salt)
 {
-	long		rand = PostmasterRandom();
+	long		rand;
 
 	/*
-	 * It's okay to reuse the first random value for one of the MD5 salt
-	 * bytes, since only one of the two salts will be sent to the client.
-	 * After that we need to compute more random bits.
-	 *
 	 * We use % 255, sacrificing one possible byte value, so as to ensure that
 	 * all bits of the random() value participate in the result. While at it,
 	 * add one to avoid generating any null bytes.
 	 */
+	rand = PostmasterRandom();
 	md5Salt[0] = (rand % 255) + 1;
 	rand = PostmasterRandom();
 	md5Salt[1] = (rand % 255) + 1;
@@ -4473,7 +4520,8 @@ PostmasterRandom(void)
 }
 
 /*
- * Count up number of child processes (regular backends only)
+ * Count up number of child processes (excluding special children and
+ * dead_end children)
  */
 static int
 CountChildren(void)
@@ -4678,6 +4726,7 @@ save_backend_variables(BackendParameters * param, Port *port,
 	memcpy(&param->ListenSocket, &ListenSocket, sizeof(ListenSocket));
 
 	param->MyCancelKey = MyCancelKey;
+	param->MyPMChildSlot = MyPMChildSlot;
 
 	param->UsedShmemSegID = UsedShmemSegID;
 	param->UsedShmemSegAddr = UsedShmemSegAddr;
@@ -4883,6 +4932,7 @@ restore_backend_variables(BackendParameters * param, Port *port)
 	memcpy(&ListenSocket, &param->ListenSocket, sizeof(ListenSocket));
 
 	MyCancelKey = param->MyCancelKey;
+	MyPMChildSlot = param->MyPMChildSlot;
 
 	UsedShmemSegID = param->UsedShmemSegID;
 	UsedShmemSegAddr = param->UsedShmemSegAddr;

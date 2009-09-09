@@ -1307,8 +1307,6 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	else
 		ProcessRecords(bufptr, xid, twophase_postabort_callbacks);
 
-	pgstat_count_xact_commit();
-
 	/*
 	 * And now we can clean up our mess.
 	 */

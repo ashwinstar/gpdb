@@ -36,9 +36,12 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/relscan.h"
+#include "access/transam.h"
 #include "executor/execdebug.h"
 #include "executor/nodeBitmapHeapscan.h"
 #include "pgstat.h"
+#include "storage/bufmgr.h"
 #include "utils/memutils.h"
 #include "miscadmin.h"
 #include "parser/parsetree.h"
@@ -216,11 +219,11 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		scan->rs_ctup.t_len = ItemIdGetLength(lp);
 		ItemPointerSet(&scan->rs_ctup.t_self, tbmres->blockno, targoffset);
 
-		pgstat_count_heap_fetch(&scan->rs_pgstat_info);
+		pgstat_count_heap_fetch(scan->rs_rd);
 
 		/*
-		 * Set up the result slot to point to this tuple. Note that the
-		 * slot acquires a pin on the buffer.
+		 * Set up the result slot to point to this tuple. Note that the slot
+		 * acquires a pin on the buffer.
 		 */
 		ExecStoreHeapTuple(&scan->rs_ctup,
 					   slot,
@@ -228,8 +231,8 @@ BitmapHeapNext(BitmapHeapScanState *node)
 					   false);
 
 		/*
-		 * If we are using lossy info, we have to recheck the qual
-		 * conditions at every tuple.
+		 * If we are using lossy info, we have to recheck the qual conditions
+		 * at every tuple.
 		 */
 		if (tbmres->ntuples < 0)
 		{
@@ -422,7 +425,7 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 	heap_rescan(node->ss.ss_currentScanDesc, NULL);
 
 	/* undo bogus "seq scan" count (see notes in ExecInitBitmapHeapScan) */
-	pgstat_discount_heap_scan(&node->ss.ss_currentScanDesc->rs_pgstat_info);
+	pgstat_discount_heap_scan(node->ss.ss_currentRelation);
 
 	if (node->tbm != NULL)
 	{
@@ -597,7 +600,7 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	 * when we actually aren't doing any such thing.  Reverse out the added
 	 * scan count.	(Eventually we may want to count bitmap scans separately.)
 	 */
-	pgstat_discount_heap_scan(&scanstate->ss.ss_currentScanDesc->rs_pgstat_info);
+	pgstat_discount_heap_scan(currentRelation);
 
 	/*
 	 * get the scan type from the relation descriptor.

@@ -128,7 +128,7 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 		AppendOnlyExecutorReadBlock_ResetCounts(
 								&scan->executorReadBlock);
 	
-	pgstat_count_heap_scan(&scan->aos_pgstat_info);
+	pgstat_count_heap_scan(scan->aos_rd);
 }
 
 /*
@@ -1254,7 +1254,7 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	else
 		scan->aos_key = NULL;
 
-	pgstat_initstats(&scan->aos_pgstat_info, relation);
+	//pgstat_initstats(relation);
 	initscan(scan, key);
 
 	pfree(aoentry);
@@ -1343,7 +1343,7 @@ appendonly_getnext(AppendOnlyScanDesc scan, ScanDirection direction, TupleTableS
 		return NULL;
 	}
 
-	pgstat_count_heap_getnext(&scan->aos_pgstat_info);
+	pgstat_count_heap_getnext(scan->aos_rd);
 
 	return tup;
 }
@@ -1664,7 +1664,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	}
 	
 	aoInsertDesc->insertCount++;
-	pgstat_count_heap_insert(&relation->pgstat_info);
+	pgstat_count_heap_insert(relation);
 
 	retOid = MemTupleGetOid(tup, aoInsertDesc->mt_bind);
 

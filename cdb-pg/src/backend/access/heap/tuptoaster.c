@@ -350,6 +350,12 @@ toast_delete(Relation rel, HeapTuple oldtup)
 	bool		toast_isnull[MaxHeapAttributeNumber];
 
 	/*
+	 * We should only ever be called for tuples of plain relations ---
+	 * recursing on a toast rel is bad news.
+	 */
+	Assert(rel->rd_rel->relkind == RELKIND_RELATION);
+	
+	/*
 	 * Get the tuple descriptor and break down the tuple into fields.
 	 *
 	 * NOTE: it's debatable whether to use heap_deformtuple() here or just

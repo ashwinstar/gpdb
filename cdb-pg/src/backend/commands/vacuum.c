@@ -4,12 +4,12 @@
  *	  The postgres vacuum cleaner.
  *
  * This file includes the "full" version of VACUUM, as well as control code
- * used by full VACUUM and lazy VACUUM.	See
+ * used by all three of full VACUUM, lazy VACUUM, and ANALYZE.	See
  * vacuumlazy.c and analyze.c for the rest of the code for the latter two.
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -169,6 +169,7 @@ ExecContext_Finish(ExecContext ec)
  *----------------------------------------------------------------------
  */
 
+/* A few variables that don't seem worth passing around as parameters */
 static MemoryContext vac_context = NULL;
 
 static int	elevel = -1;
@@ -227,7 +228,7 @@ static void vacuumStatement(VacuumStmt *vacstmt, List *relids);
 
 /****************************************************************************
  *																			*
- *			Code common to all flavors of VACUUM.				*
+ *			Code common to all flavors of VACUUM and ANALYZE				*
  *																			*
  ****************************************************************************
  */
@@ -352,7 +353,7 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 	 * in autovacuum --- autovacuum.c does this for itself.
 	 */
 	if (!IsAutoVacuumProcess())
-		pgstat_vacuum_tabstat();
+		pgstat_vacuum_stat();
 
 	/*
 	 * Create special memory context for cross-transaction storage.
@@ -1338,7 +1339,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 						FreezeLimit, updated_stats);
 
 	/* report results to the stats collector, too */
-	pgstat_report_vacuum(RelationGetRelid(onerel), onerel->rd_rel->relisshared,
+	pgstat_report_vacuum(RelationGetRelid(onerel), onerel->rd_rel->relisshared, true,
 						 vacstmt->analyze, vacrelstats->rel_tuples);
 }
 
@@ -3777,7 +3778,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		 * two dispatch operations above.
 		 */
 		if (dispatch_inflight)
-			cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
+		cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
 
 		PG_RE_THROW();
 	}

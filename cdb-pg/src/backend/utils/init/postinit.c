@@ -250,7 +250,7 @@ InitCommunication(void)
  * If you're wondering why this is separate from InitPostgres at all:
  * the critical distinction is that this stuff has to happen before we can
  * run XLOG-related initialization, which is done before InitPostgres --- in
- * fact, for cases such as checkpoint creation processes, InitPostgres may
+ * fact, for cases such as the background writer process, InitPostgres may
  * never be done at all.
  */
 void
@@ -372,6 +372,10 @@ InitPostgres(const char *dbname, const char *username)
 
 	/* Initialize portal manager */
 	EnablePortalManager();
+
+	/* Initialize stats collection --- must happen before first xact */
+	if (!bootstrap)
+		pgstat_initialize();
 
 	/*
 	 * Set up process-exit callback to do pre-shutdown cleanup.  This has to
@@ -530,7 +534,7 @@ InitPostgres(const char *dbname, const char *username)
 	/* initialize client encoding */
 	InitializeClientEncoding();
 
-	/* initialize statistics collection for this backend */
+	/* report this backend in the PgBackendStatus array */
 	if (!bootstrap)
 		pgstat_bestart();
 		

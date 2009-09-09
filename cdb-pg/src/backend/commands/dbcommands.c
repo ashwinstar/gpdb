@@ -8,8 +8,8 @@
  * stepping on each others' toes.  Formerly we used table-level locks
  * on pg_database, but that's too coarse-grained.
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,6 +21,7 @@
 #include "postgres.h"
 
 #include <fcntl.h>
+#include <locale.h>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -39,6 +40,7 @@
 #include "commands/tablespace.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "pgstat.h"
 #include "postmaster/bgwriter.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
@@ -50,6 +52,7 @@
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/pg_locale.h"
 #include "utils/syscache.h"
 
 #include "cdb/cdbdisp.h"
@@ -401,6 +404,12 @@ createdb_int(CreatedbStmt *stmt,
 			aclcheck_error(aclresult, ACL_KIND_TABLESPACE,
 						   tablespacename);
 
+		/* pg_global must never be the default tablespace */
+		if (dst_deftablespace == GLOBALTABLESPACE_OID)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				  errmsg("pg_global cannot be used as default tablespace")));
+
 		/*
 		 * If we are trying to change the default tablespace of the template,
 		 * we require that the template not have any files in the new default
@@ -673,9 +682,9 @@ createdb_failure_callback(int code, Datum arg)
 	createdb_failure_params *fparms = (createdb_failure_params *) DatumGetPointer(arg);
 
 	/*
-	 * Release lock on source database before doing recursive remove.
-	 * This is not essential but it seems desirable to release the lock
-	 * as soon as possible.
+	 * Release lock on source database before doing recursive remove. This is
+	 * not essential but it seems desirable to release the lock as soon as
+	 * possible.
 	 */
 	UnlockSharedObject(DatabaseRelationId, fparms->src_dboid, 0, ShareLock);
 
@@ -828,6 +837,11 @@ dropdb(const char *dbname, bool missing_ok)
 	DropDatabaseBuffers(db_id);
 
 	/*
+	 * Tell the stats collector to forget it immediately, too.
+	 */
+	pgstat_drop_database(db_id);
+	
+	/*
 	 * Also, clean out any entries in the shared free space map.
 	 */
 	FreeSpaceMapForgetDatabase(db_id);
@@ -839,12 +853,12 @@ dropdb(const char *dbname, bool missing_ok)
 	ForgetDatabaseFsyncRequests(db_id);
 
 	/*
-	 * On Windows, force a checkpoint so that the bgwriter doesn't hold any
-	 * open files, which would cause rmdir() to fail.
+	 * Force a checkpoint to make sure the bgwriter has received the message
+	 * sent by ForgetDatabaseFsyncRequests. On Windows, this also ensures that
+	 * the bgwriter doesn't hold any open files, which would cause rmdir() to
+	 * fail.
 	 */
-#ifdef WIN32
 	RequestCheckpoint(true, false);
-#endif
 
 	/*
 	 * Remove all tablespace subdirs belonging to the database.

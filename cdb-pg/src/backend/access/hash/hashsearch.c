@@ -15,7 +15,11 @@
 #include "postgres.h"
 
 #include "access/hash.h"
+#include "access/relscan.h"
+#include "miscadmin.h"
 #include "pgstat.h"
+#include "storage/bufmgr.h"
+#include "utils/rel.h"
 
 
 /*
@@ -71,6 +75,8 @@ _hash_readnext(Relation rel,
 	blkno = (*opaquep)->hasho_nextblkno;
 	_hash_relbuf(rel, *bufp);
 	*bufp = InvalidBuffer;
+	/* check for interrupts while we're not holding any buffer lock */
+	CHECK_FOR_INTERRUPTS();
 	if (BlockNumberIsValid(blkno))
 	{
 		*bufp = _hash_getbuf(rel, blkno, HASH_READ);
@@ -92,6 +98,8 @@ _hash_readprev(Relation rel,
 	blkno = (*opaquep)->hasho_prevblkno;
 	_hash_relbuf(rel, *bufp);
 	*bufp = InvalidBuffer;
+	/* check for interrupts while we're not holding any buffer lock */
+	CHECK_FOR_INTERRUPTS();
 	if (BlockNumberIsValid(blkno))
 	{
 		*bufp = _hash_getbuf(rel, blkno, HASH_READ);
@@ -127,7 +135,7 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 	ItemPointer current;
 	OffsetNumber offnum;
 
-	pgstat_count_index_scan(&scan->xs_pgstat_info);
+	pgstat_count_index_scan(rel);
 
 	current = &(scan->currentItemData);
 	ItemPointerSetInvalid(current);
@@ -264,7 +272,7 @@ _hash_step(IndexScanDesc scan, Buffer *bufP, ScanDirection dir)
 		offnum = InvalidOffsetNumber;
 
 	/*
-	 * 'offnum' now points to the last tuple we have seen (if any).
+	 * 'offnum' now points to the last tuple we examined (if any).
 	 *
 	 * continue to step through tuples until: 1) we get to the end of the
 	 * bucket chain or 2) we find a valid tuple.
@@ -333,6 +341,7 @@ _hash_step(IndexScanDesc scan, Buffer *bufP, ScanDirection dir)
 		/* we ran off the end of the world without finding a match */
 		if (offnum == InvalidOffsetNumber)
 		{
+			/* we ran off the end of the bucket without finding a match */
 			*bufP = so->hashso_curbuf = InvalidBuffer;
 			ItemPointerSetInvalid(current);
 			return false;

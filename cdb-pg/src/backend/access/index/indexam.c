@@ -3,7 +3,7 @@
  * indexam.c
  *	  general index access method routines
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -65,7 +65,11 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/relscan.h"
+#include "access/transam.h"
 #include "pgstat.h"
+#include "storage/bufmgr.h"
+#include "storage/lmgr.h"
 #include "utils/relcache.h"
 
 
@@ -146,8 +150,6 @@ index_open(Oid relationId, LOCKMODE lockmode)
 				 errmsg("\"%s\" is not an index",
 						RelationGetRelationName(r))));
 
-	pgstat_initstats(&r->pgstat_info, r);
-
 	return r;
 }
 
@@ -205,6 +207,8 @@ index_insert(Relation indexRelation,
 
 /*
  * index_beginscan - start a scan of an index with amgettuple
+ *
+ * Caller must be holding suitable locks on the heap and the index.
  *
  * Note: heapRelation may be NULL if there is no intention of calling
  * index_getnext on this scan; index_getnext_indexitem will not use the
@@ -436,14 +440,14 @@ index_getnext(IndexScanDesc scan, ScanDirection direction)
 			return NULL;		/* failure exit */
 		}
 
-		pgstat_count_index_tuples(&scan->xs_pgstat_info, 1);
+		pgstat_count_index_tuples(scan->indexRelation, 1);
 
 		/*
 		 * Fetch the heap tuple and see if it matches the snapshot.
 		 */
 		if (heap_release_fetch(scan->heapRelation, scan->xs_snapshot,
 							   heapTuple, &scan->xs_cbuf, true,
-							   &scan->xs_pgstat_info))
+							   scan->indexRelation))
 			break;
 
 		/* Skip if no undeleted tuple at this location */
@@ -504,8 +508,7 @@ index_getnext_indexitem(IndexScanDesc scan,
 									   PointerGetDatum(scan),
 									   Int32GetDatum(direction)));
 
-	if (found)
-		pgstat_count_index_tuples(&scan->xs_pgstat_info, 1);
+	pgstat_count_index_tuples(scan->indexRelation, 1 /*ntids*/);
 
 	return found;
 }
@@ -596,13 +599,13 @@ index_vacuum_cleanup(IndexVacuumInfo *info,
 /* ----------------
  *		index_getprocid
  *
- *		Some indexed access methods may require support routines that are
- *		not in the operator class/operator model imposed by pg_am.	These
- *		access methods may store the OIDs of registered procedures they
- *		need in pg_amproc.	These registered procedure OIDs are ordered in
- *		a way that makes sense to the access method, and used only by the
- *		access method.	The general index code doesn't know anything about
- *		the routines involved; it just builds an ordered list of them for
+ *		Index access methods typically require support routines that are
+ *		not directly the implementation of any WHERE-clause query operator
+ *		and so cannot be kept in pg_amop.  Instead, such routines are kept
+ *		in pg_amproc.  These registered procedure OIDs are assigned numbers
+ *		according to a convention established by the access method.
+ *		The general index code doesn't know anything about the routines
+ *		involved; it just builds an ordered list of them for
  *		each attribute on which an index is defined.
  *
  *		This routine returns the requested procedure OID for a particular
@@ -635,7 +638,8 @@ index_getprocid(Relation irel,
  *		index_getprocinfo
  *
  *		This routine allows index AMs to keep fmgr lookup info for
- *		support procs in the relcache.
+ *		support procs in the relcache.	As above, only the "default"
+ *		functions for any particular indexed attribute are cached.
  *
  * Note: the return value points into cached data that will be lost during
  * any relcache rebuild!  Therefore, either use the callinfo right away,

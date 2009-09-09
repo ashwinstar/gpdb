@@ -3,8 +3,8 @@
  * bufmgr.c
  *	  buffer manager interface routines
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,6 +14,8 @@
  *-------------------------------------------------------------------------
  */
 /*
+ * Principal entry points:
+ *
  * ReadBuffer() -- find or create a buffer holding the requested page,
  *		and pin it so that no one can destroy it while this process
  *		is using it.
@@ -23,13 +25,7 @@
  * MarkBufferDirty() -- mark a pinned buffer's contents as "dirty".
  *		The disk write is delayed until buffer replacement or checkpoint.
  *
- * BufferSync() -- flush all dirty buffers in the buffer pool.
- *
- * BgBufferSync() -- flush some dirty buffers in the buffer pool.
- *
- * InitBufferPool() -- Init the buffer module.
- *
- * See other files:
+ * See also these files:
  *		freelist.c -- chooses victim for buffer replacement
  *		buf_table.c -- manages the buffer lookup table
  */
@@ -39,6 +35,8 @@
 #include <unistd.h>
 
 #include "miscadmin.h"
+#include "pg_trace.h"
+#include "pgstat.h"
 #include "postmaster/bgwriter.h"
 #include "storage/buf_internals.h"
 #include "storage/bufpage.h"
@@ -46,7 +44,6 @@
 #include "storage/proc.h"
 #include "storage/smgr.h"
 #include "utils/resowner.h"
-#include "pgstat.h"
 #include "sys/mman.h"
 
 /* Note: these two macros only work on shared buffers, not local ones! */
@@ -164,7 +161,17 @@ static inline bool ConditionalAcquireContentLock( volatile BufferDesc *buf, LWLo
 }
 
 /*
- * ReadBuffer -- returns a buffer containing the requested
+ * ReadBuffer -- a shorthand for ReadBuffer_Ex 
+ */
+
+Buffer
+ReadBuffer(Relation reln, BlockNumber blockNum)
+{
+	return ReadBuffer_Ex(reln, blockNum, NULL);
+}
+
+/*
+ * ReadBuffer_Ex -- returns a buffer containing the requested
  *		block of the requested relation.  If the blknum
  *		requested is P_NEW, extend the relation file and
  *		allocate a new block.  (Caller is responsible for
@@ -175,15 +182,9 @@ static inline bool ConditionalAcquireContentLock( volatile BufferDesc *buf, LWLo
  *		the block read.  The returned buffer has been pinned.
  *		Does not return on error --- elog's instead.
  *
- * Assume when this function is called, that reln has been
- *		opened already.
+ * Assume when this function is called, that reln has been opened already.
+ * 
  */
-Buffer
-ReadBuffer(Relation reln, BlockNumber blockNum)
-{
-	return ReadBuffer_Ex(reln, blockNum, NULL);
-}
-
 static Buffer
 ReadBuffer_Ex(Relation reln, BlockNumber blockNum, BufferDesc* availBufHdr)
 {
@@ -206,7 +207,7 @@ ReadBuffer_Ex(Relation reln, BlockNumber blockNum, BufferDesc* availBufHdr)
 	if (isExtend)
 		blockNum = smgrnblocks(reln->rd_smgr);
 
-	pgstat_count_buffer_read(&reln->pgstat_info, reln);
+	pgstat_count_buffer_read(reln);
 
 	if (isLocalBuf)
 	{
@@ -236,7 +237,7 @@ ReadBuffer_Ex(Relation reln, BlockNumber blockNum, BufferDesc* availBufHdr)
 		if (!isExtend)
 		{
 			/* Just need to update stats before we exit */
-			pgstat_count_buffer_hit(&reln->pgstat_info, reln);
+			pgstat_count_buffer_hit(reln);
 
 			goto done;
 		}
@@ -245,15 +246,14 @@ ReadBuffer_Ex(Relation reln, BlockNumber blockNum, BufferDesc* availBufHdr)
 		 * We get here only in the corner case where we are trying to extend
 		 * the relation but we found a pre-existing buffer marked BM_VALID.
 		 * This can happen because mdread doesn't complain about reads beyond
-		 * EOF --- which is arguably bogus, but changing it seems tricky ---
-		 * and so a previous attempt to read a block just beyond EOF could
-		 * have left a "valid" zero-filled buffer.	Unfortunately, we have
-		 * also seen this case occurring because of buggy Linux kernels that
-		 * sometimes return an lseek(SEEK_END) result that doesn't account for
-		 * a recent write.	In that situation, the pre-existing buffer would
-		 * contain valid data that we don't want to overwrite.  Since the
-		 * legitimate cases should always have left a zero-filled buffer,
-		 * complain if not PageIsNew.
+		 * EOF (when zero_damaged_pages is ON) and so a previous attempt to
+		 * read a block beyond EOF could have left a "valid" zero-filled
+		 * buffer.	Unfortunately, we have also seen this case occurring
+		 * because of buggy Linux kernels that sometimes return an
+		 * lseek(SEEK_END) result that doesn't account for a recent write. In
+		 * that situation, the pre-existing buffer would contain valid data
+		 * that we don't want to overwrite.  Since the legitimate case should
+		 * always have left a zero-filled buffer, complain if not PageIsNew.
 		 */
 		bufBlock = isLocalBuf ? LocalBufHdrGetBlock(bufHdr) : BufHdrGetBlock(bufHdr);
 		if (!PageIsNew((PageHeader) bufBlock))
@@ -486,9 +486,9 @@ BufferAlloc(Relation reln,
 		{
 			/*
 			 * Select a victim buffer.	The buffer is returned with its header
-			 * spinlock still held!  Also the BufFreelistLock is still held, since
-			 * it would be bad to hold the spinlock while possibly waking up other
-			 * processes.
+		 	 * spinlock still held!  Also (in most cases) the BufFreelistLock is
+		     * still held, since it would be bad to hold the spinlock while
+		     * possibly waking up other processes.
 			 */
 			buf = StrategyGetBuffer();
 			unlockBufFreeList = true;
@@ -677,8 +677,8 @@ BufferAlloc(Relation reln,
 	 * Okay, it's finally safe to rename the buffer.
 	 *
 	 * Clearing BM_VALID here is necessary, clearing the dirtybits is just
-	 * paranoia.  We also clear the usage_count since any recency of use of
-	 * the old content is no longer relevant.
+	 * paranoia.  We also reset the usage_count since any recency of use of
+	 * the old content is no longer relevant.  
 	 */
 	buf->tag = newTag;
 	buf->flags &= ~(BM_VALID | BM_DIRTY | BM_JUST_DIRTIED | BM_IO_ERROR);
@@ -918,7 +918,7 @@ ReleaseAndReadBuffer(Buffer buffer,
 			UnpinBuffer(bufHdr, true, true);
 		}
 	}
- 
+
 	return ReadBuffer(relation, blockNum);
 }
 
@@ -2333,7 +2333,7 @@ AbortBufferIO(void)
 								buf->tag.rnode.spcNode,
 								buf->tag.rnode.dbNode,
 								buf->tag.rnode.relNode),
-						 errdetail("Multiple failures --- write error may be permanent.")));
+						 errdetail("Multiple failures --- write error might be permanent.")));
 			}
 		}
 		TerminateBufferIO(buf, false, BM_IO_ERROR);

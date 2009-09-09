@@ -155,8 +155,6 @@ typedef struct AppendOnlyScanDescData
 	/* current scan state */
 	bool		bufferDone;
 
-	PgStat_Info aos_pgstat_info; /* statistics collector hook */
-
 	bool	initedStorageRoutines;
 
 	AppendOnlyStorageAttributes	storageAttributes;

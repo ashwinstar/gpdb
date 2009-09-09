@@ -20,10 +20,13 @@
 #include "catalog/pg_proc.h"
 #include "executor/functions.h"
 #include "executor/spi.h"
+#include "lib/stringinfo.h"
 #include "miscadmin.h"
 #include "parser/parse_expr.h"
+#include "pgstat.h"
 #include "utils/builtins.h"
 #include "utils/fmgrtab.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
@@ -41,7 +44,8 @@
  * declare the function pointer to return int, so the compiler picks up the
  * return value from %d0. (Functions returning pointers put their value
  * *additionally* into %d0 for compatibility.) The price is that there are
- * some warnings about int->pointer conversions...
+ * some warnings about int->pointer conversions ... which we can suppress
+ * with suitably ugly casts in fmgr_oldstyle().
  */
 #if (defined(__mc68000__) || (defined(__m68k__))) && defined(__ELF__)
 typedef int32 (*func_ptr) ();
@@ -165,8 +169,7 @@ fmgr_info_cxt(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt)
 
 /*
  * This one does the actual work.  ignore_security is ordinarily false
- * but is set to true by fmgr_security_definer to avoid infinite
- * recursive lookups.
+ * but is set to true by fmgr_security_definer to avoid recursion.
  */
 static void
 fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
@@ -667,7 +670,7 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 	switch (n_arguments)
 	{
 		case 0:
-			returnValue = (*user_fn) ();
+			returnValue = (char *) (*user_fn) ();
 			break;
 		case 1:
 
@@ -676,108 +679,173 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 			 * there are other functions still out there that also rely on
 			 * this undocumented hack?
 			 */
-			returnValue = (*user_fn) (fcinfo->arg[0], &fcinfo->isnull);
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   &fcinfo->isnull);
 			break;
 		case 2:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1]);
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1]);
 			break;
 		case 3:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
 									  fcinfo->arg[2]);
 			break;
 		case 4:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3]);
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3]);
 			break;
 		case 5:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
 									  fcinfo->arg[4]);
 			break;
 		case 6:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
-									  fcinfo->arg[4], fcinfo->arg[5]);
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
+											   fcinfo->arg[4],
+											   fcinfo->arg[5]);
 			break;
 		case 7:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
-									  fcinfo->arg[4], fcinfo->arg[5],
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
+											   fcinfo->arg[4],
+											   fcinfo->arg[5],
 									  fcinfo->arg[6]);
 			break;
 		case 8:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
-									  fcinfo->arg[4], fcinfo->arg[5],
-									  fcinfo->arg[6], fcinfo->arg[7]);
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
+											   fcinfo->arg[4],
+											   fcinfo->arg[5],
+											   fcinfo->arg[6],
+											   fcinfo->arg[7]);
 			break;
 		case 9:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
-									  fcinfo->arg[4], fcinfo->arg[5],
-									  fcinfo->arg[6], fcinfo->arg[7],
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
+											   fcinfo->arg[4],
+											   fcinfo->arg[5],
+											   fcinfo->arg[6],
+											   fcinfo->arg[7],
 									  fcinfo->arg[8]);
 			break;
 		case 10:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
-									  fcinfo->arg[4], fcinfo->arg[5],
-									  fcinfo->arg[6], fcinfo->arg[7],
-									  fcinfo->arg[8], fcinfo->arg[9]);
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
+											   fcinfo->arg[4],
+											   fcinfo->arg[5],
+											   fcinfo->arg[6],
+											   fcinfo->arg[7],
+											   fcinfo->arg[8],
+											   fcinfo->arg[9]);
 			break;
 		case 11:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
-									  fcinfo->arg[4], fcinfo->arg[5],
-									  fcinfo->arg[6], fcinfo->arg[7],
-									  fcinfo->arg[8], fcinfo->arg[9],
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
+											   fcinfo->arg[4],
+											   fcinfo->arg[5],
+											   fcinfo->arg[6],
+											   fcinfo->arg[7],
+											   fcinfo->arg[8],
+											   fcinfo->arg[9],
 									  fcinfo->arg[10]);
 			break;
 		case 12:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
-									  fcinfo->arg[4], fcinfo->arg[5],
-									  fcinfo->arg[6], fcinfo->arg[7],
-									  fcinfo->arg[8], fcinfo->arg[9],
-									  fcinfo->arg[10], fcinfo->arg[11]);
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
+											   fcinfo->arg[4],
+											   fcinfo->arg[5],
+											   fcinfo->arg[6],
+											   fcinfo->arg[7],
+											   fcinfo->arg[8],
+											   fcinfo->arg[9],
+											   fcinfo->arg[10],
+											   fcinfo->arg[11]);
 			break;
 		case 13:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
-									  fcinfo->arg[4], fcinfo->arg[5],
-									  fcinfo->arg[6], fcinfo->arg[7],
-									  fcinfo->arg[8], fcinfo->arg[9],
-									  fcinfo->arg[10], fcinfo->arg[11],
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
+											   fcinfo->arg[4],
+											   fcinfo->arg[5],
+											   fcinfo->arg[6],
+											   fcinfo->arg[7],
+											   fcinfo->arg[8],
+											   fcinfo->arg[9],
+											   fcinfo->arg[10],
+											   fcinfo->arg[11],
 									  fcinfo->arg[12]);
 			break;
 		case 14:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
-									  fcinfo->arg[4], fcinfo->arg[5],
-									  fcinfo->arg[6], fcinfo->arg[7],
-									  fcinfo->arg[8], fcinfo->arg[9],
-									  fcinfo->arg[10], fcinfo->arg[11],
-									  fcinfo->arg[12], fcinfo->arg[13]);
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
+											   fcinfo->arg[4],
+											   fcinfo->arg[5],
+											   fcinfo->arg[6],
+											   fcinfo->arg[7],
+											   fcinfo->arg[8],
+											   fcinfo->arg[9],
+											   fcinfo->arg[10],
+											   fcinfo->arg[11],
+											   fcinfo->arg[12],
+											   fcinfo->arg[13]);
 			break;
 		case 15:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
-									  fcinfo->arg[4], fcinfo->arg[5],
-									  fcinfo->arg[6], fcinfo->arg[7],
-									  fcinfo->arg[8], fcinfo->arg[9],
-									  fcinfo->arg[10], fcinfo->arg[11],
-									  fcinfo->arg[12], fcinfo->arg[13],
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
+											   fcinfo->arg[4],
+											   fcinfo->arg[5],
+											   fcinfo->arg[6],
+											   fcinfo->arg[7],
+											   fcinfo->arg[8],
+											   fcinfo->arg[9],
+											   fcinfo->arg[10],
+											   fcinfo->arg[11],
+											   fcinfo->arg[12],
+											   fcinfo->arg[13],
 									  fcinfo->arg[14]);
 			break;
 		case 16:
-			returnValue = (*user_fn) (fcinfo->arg[0], fcinfo->arg[1],
-									  fcinfo->arg[2], fcinfo->arg[3],
-									  fcinfo->arg[4], fcinfo->arg[5],
-									  fcinfo->arg[6], fcinfo->arg[7],
-									  fcinfo->arg[8], fcinfo->arg[9],
-									  fcinfo->arg[10], fcinfo->arg[11],
-									  fcinfo->arg[12], fcinfo->arg[13],
-									  fcinfo->arg[14], fcinfo->arg[15]);
+			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
+											   fcinfo->arg[1],
+											   fcinfo->arg[2],
+											   fcinfo->arg[3],
+											   fcinfo->arg[4],
+											   fcinfo->arg[5],
+											   fcinfo->arg[6],
+											   fcinfo->arg[7],
+											   fcinfo->arg[8],
+											   fcinfo->arg[9],
+											   fcinfo->arg[10],
+											   fcinfo->arg[11],
+											   fcinfo->arg[12],
+											   fcinfo->arg[13],
+											   fcinfo->arg[14],
+											   fcinfo->arg[15]);
 			break;
 		default:
 
@@ -855,7 +923,7 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 	SetUserIdAndContext(fcache->userid, true);
 
 	/*
-	 * We don't need to restore the userid settings on error, because the
+	 * We don't need to restore GUC or userid settings on error, because the
 	 * ensuing xact or subxact abort will do that.  The PG_TRY block is only
 	 * needed to clean up the flinfo link.
 	 */
@@ -865,7 +933,19 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 	{
 		fcinfo->flinfo = &fcache->flinfo;
 
+		/* See notes in fmgr_info_cxt_security */
+		//pgstat_init_function_usage(fcinfo, &fcusage);
+
 		result = FunctionCallInvoke(fcinfo);
+
+		/*
+		 * We could be calling either a regular or a set-returning function,
+		 * so we have to test to see what finalize flag to use.
+		 */
+		//pgstat_end_function_usage(&fcusage,
+		//						  (fcinfo->resultinfo == NULL ||
+		//						   !IsA(fcinfo->resultinfo, ReturnSetInfo) ||
+		//						   ((ReturnSetInfo *) fcinfo->resultinfo)->isDone != ExprMultipleResult));
 	}
 	PG_CATCH();
 	{
@@ -876,7 +956,8 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 
 	fcinfo->flinfo = save_flinfo;
 
-	SetUserIdAndContext(save_userid, save_secdefcxt);
+	if (OidIsValid(fcache->userid))
+		SetUserIdAndContext(save_userid, save_secdefcxt);
 
 	return result;
 }
@@ -1972,7 +2053,7 @@ fmgr(Oid procedureId,...)
 					flinfo.fn_oid, n_arguments, FUNC_MAX_ARGS)));
 		va_start(pvar, procedureId);
 		for (i = 0; i < n_arguments; i++)
-			fcinfo.arg[i] = (Datum) va_arg(pvar, char *);
+			fcinfo.arg[i] = PointerGetDatum(va_arg(pvar, char *));
 		va_end(pvar);
 	}
 
@@ -1982,9 +2063,89 @@ fmgr(Oid procedureId,...)
 	if (fcinfo.isnull)
 		elog(ERROR, "function %u returned NULL", flinfo.fn_oid);
 
-	return (char *) result;
+	return DatumGetPointer(result);
+}
+#endif
+
+#if 0
+/*-------------------------------------------------------------------------
+ *		Support routines for standard maybe-pass-by-reference datatypes
+ *
+ * int8, float4, and float8 can be passed by value if Datum is wide enough.
+ * (For backwards-compatibility reasons, we allow pass-by-ref to be chosen
+ * at compile time even if pass-by-val is possible.)  For the float types,
+ * we need a support routine even if we are passing by value, because many
+ * machines pass int and float function parameters/results differently;
+ * so we need to play weird games with unions.
+ *
+ * Note: there is only one switch controlling the pass-by-value option for
+ * both int8 and float8; this is to avoid making things unduly complicated
+ * for the timestamp types, which might have either representation.
+ *-------------------------------------------------------------------------
+ */
+
+#ifndef USE_FLOAT8_BYVAL		/* controls int8 too */
+
+Datum
+Int64GetDatum(int64 X)
+{
+#ifndef INT64_IS_BUSTED
+	int64	   *retval = (int64 *) palloc(sizeof(int64));
+
+	*retval = X;
+	return PointerGetDatum(retval);
+#else							/* INT64_IS_BUSTED */
+
+	/*
+	 * On a machine with no 64-bit-int C datatype, sizeof(int64) will not be
+	 * 8, but we want Int64GetDatum to return an 8-byte object anyway, with
+	 * zeroes in the unused bits.  This is needed so that, for example, hash
+	 * join of int8 will behave properly.
+	 */
+	int64	   *retval = (int64 *) palloc0(Max(sizeof(int64), 8));
+
+	*retval = X;
+	return PointerGetDatum(retval);
+#endif   /* INT64_IS_BUSTED */
+}
+#endif   /* USE_FLOAT8_BYVAL */
+
+Datum
+Float4GetDatum(float4 X)
+{
+#ifdef USE_FLOAT4_BYVAL
+	union
+	{
+		float4		value;
+		int32		retval;
+	}			myunion;
+
+	myunion.value = X;
+	return SET_4_BYTES(myunion.retval);
+#else
+	float4	   *retval = (float4 *) palloc(sizeof(float4));
+
+	*retval = X;
+	return PointerGetDatum(retval);
+#endif
+}
+
+#ifdef USE_FLOAT4_BYVAL
+
+float4
+DatumGetFloat4(Datum X)
+{
+	union
+	{
+		int32		value;
+		float4		retval;
+	}			myunion;
+
+	myunion.value = GET_4_BYTES(X);
+	return myunion.retval;
 }
 #endif 
+#endif
 
 /*-------------------------------------------------------------------------
  *		Support routines for toastable datatypes
@@ -2004,7 +2165,7 @@ struct varlena *
 pg_detoast_datum_copy(struct varlena * datum)
 {
 	if (VARATT_IS_EXTENDED(datum))
-		return (struct varlena *) heap_tuple_untoast_attr((varattrib *) datum);
+		return (struct varlena *)heap_tuple_untoast_attr((varattrib *) datum);
 	else
 	{
 		/* Make a modifiable copy of the varlena object */
@@ -2020,14 +2181,14 @@ struct varlena *
 pg_detoast_datum_slice(struct varlena * datum, int32 first, int32 count)
 {
 	/* Only get the specified portion from the toast rel */
-	return (struct varlena *) heap_tuple_untoast_attr_slice((varattrib *) datum, first, count);
+	return (struct varlena *)heap_tuple_untoast_attr_slice((varattrib *) datum, first, count);
 }
 
 struct varlena *
 pg_detoast_datum_packed(struct varlena * datum)
 {
 	if (VARATT_IS_COMPRESSED(datum) || VARATT_IS_EXTERNAL(datum))
-		return  (struct varlena *) heap_tuple_untoast_attr((varattrib *) datum);
+		return (struct varlena *)heap_tuple_untoast_attr((varattrib *) datum);
 	else
 		return datum;
 }
@@ -2036,6 +2197,7 @@ pg_detoast_datum_packed(struct varlena * datum)
  *
  * These are needed by polymorphic functions, which accept multiple possible
  * input types and need help from the parser to know what they've got.
+ * Also, some functions might be interested in whether a parameter is constant.
  *-------------------------------------------------------------------------
  */
 

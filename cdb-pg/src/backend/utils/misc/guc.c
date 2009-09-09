@@ -6,14 +6,14 @@
  * See src/backend/utils/misc/README for more information.
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2005-2009, Greenplum inc
  * Copyright (c) 2000-2009, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/utils/misc/guc.c,v 1.360.2.1 2007/04/23 15:13:30 neilc Exp $
  *
- *---------------------------------------------------------------------
+ *--------------------------------------------------------------------
  */
 #include "postgres.h"
 
@@ -180,6 +180,9 @@ static const char *show_IntervalStyle(void);
 static const char *show_tcp_keepalives_idle(void);
 static const char *show_tcp_keepalives_interval(void);
 static const char *show_tcp_keepalives_count(void);
+
+static const char *assign_pgstat_temp_directory(const char *newval, bool doit, GucSource source);
+
 static const char *assign_debug_dtm_action(const char *newval,
 						bool doit, GucSource source);
 static const char *assign_debug_dtm_action_target(const char *newval,
@@ -287,6 +290,8 @@ char	   *Debug_dtm_action_sql_command_tag;
 char       *Debug_dtm_action_str;
 char       *Debug_dtm_action_target_str;
 char       *Debug_dtm_action_protocol_str;
+
+char	   *pgstat_temp_directory;
 
 int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
@@ -540,7 +545,7 @@ const char *const config_type_names[] =
  * 4. Add a record below.
  *
  * 5. Add it to src/backend/utils/misc/postgresql.conf.sample, if
- *	  appropriate
+ *	  appropriate.
  *
  * 6. Add it to src/bin/psql/tab-complete.c, if it's a USERSET option.
  *
@@ -921,36 +926,22 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
-		{"stats_start_collector", PGC_POSTMASTER, STATS_COLLECTOR,
-			gettext_noop("Starts the server statistics-collection subprocess."),
-			NULL
+		{"track_activities", PGC_SUSET, STATS_COLLECTOR,
+			gettext_noop("Collects information about executing commands."),
+			gettext_noop("Enables the collection of information on the currently "
+						 "executing command of each session, along with "
+						 "the time at which that command began execution.")
 		},
-		&pgstat_collect_startcollector,
+		&pgstat_track_activities,
 		true, NULL, NULL
 	},
 	{
-		{"stats_reset_on_server_start", PGC_POSTMASTER, STATS_COLLECTOR,
-			gettext_noop("Zeroes collected statistics on server restart."),
+		{"track_counts", PGC_SUSET, STATS_COLLECTOR,
+			gettext_noop("Collects statistics on database activity."),
 			NULL
 		},
-		&pgstat_collect_resetonpmstart,
-		false, NULL, NULL
-	},
-	{
-		{"stats_row_level", PGC_SUSET, STATS_COLLECTOR,
-			gettext_noop("Collects row-level statistics on database activity."),
-			NULL
-		},
-		&pgstat_collect_tuplelevel,
-		false, NULL, NULL
-	},
-	{
-		{"stats_block_level", PGC_SUSET, STATS_COLLECTOR,
-			gettext_noop("Collects block-level statistics on database activity."),
-			NULL
-		},
-		&pgstat_collect_blocklevel,
-		false, NULL, NULL
+		&pgstat_track_counts,
+		true, NULL, NULL
 	},
 
 	{
@@ -960,17 +951,6 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&pgstat_collect_queuelevel,
 		false, NULL, NULL
-	},
-
-	{
-		{"stats_command_string", PGC_SUSET, STATS_COLLECTOR,
-			gettext_noop("Collects information about executing commands."),
-			gettext_noop("Enables the collection of information on the currently "
-					"executing command of each session, along with the time "
-						 "at which that command began execution.")
-		},
-		&pgstat_collect_querystring,
-		true, NULL, NULL
 	},
 
 	{
@@ -3652,12 +3632,11 @@ static struct config_string ConfigureNamesString[] =
 
 	{
 		{"log_line_prefix", PGC_SIGHUP, DEFUNCT_OPTIONS,
-			gettext_noop("Defunct: controls information prefixed to each log line"),
+			gettext_noop("Defunct: Controls information prefixed to each log line"),
 		 	gettext_noop("if blank no prefix is used"),
 		 	GUC_NO_SHOW_ALL
 		},
 		&Log_line_prefix,
-//		"%m|%u|%d|%p|%I|:-", NULL, NULL
 		"%m|%u|%d|%p|%I|%X|:-", NULL, NULL
 	},
 
@@ -3885,7 +3864,7 @@ static struct config_string ConfigureNamesString[] =
 
 	{
 		{"log_destination", PGC_SIGHUP, DEFUNCT_OPTIONS,
-			gettext_noop("Defunct: sets the destination for server log output."),
+			gettext_noop("Defunct: Sets the destination for server log output."),
 			gettext_noop("Valid values are combinations of \"stderr\", \"syslog\", "
 						 "and \"eventlog\", depending on the platform."),
 			GUC_LIST_INPUT | GUC_NO_SHOW_ALL
@@ -3895,7 +3874,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 	{
 		{"log_directory", PGC_SIGHUP, DEFUNCT_OPTIONS,
-			gettext_noop("Defunct: sets the destination directory for log files."),
+			gettext_noop("Defunct: Sets the destination directory for log files."),
 			gettext_noop("May be specified as relative to the data directory "
 						 "or as absolute path."),
 			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL
@@ -4080,6 +4059,17 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&external_pid_file,
 		NULL, assign_canonical_path, NULL
+	},
+	
+	
+	{
+		{"stats_temp_directory", PGC_SIGHUP, STATS_COLLECTOR,
+			gettext_noop("Writes temporary statistics files to the specified directory."),
+			NULL,
+			GUC_SUPERUSER_ONLY
+		},
+		&pgstat_temp_directory,
+		"pg_stat_tmp", assign_pgstat_temp_directory, NULL
 	},
 
 	{
@@ -4636,7 +4626,9 @@ guc_var_compare(const void *a, const void *b)
 	return guc_name_compare(confa->name, confb->name);
 }
 
-
+/*
+ * the bare comparison function for GUC names
+ */
 static int
 guc_name_compare(const char *namea, const char *nameb)
 {
@@ -4679,8 +4671,8 @@ InitializeGUCOptions(void)
 	long		stack_rlimit;
 
 	/*
-	 * Before log_line_prefix could possibly receive a nonempty setting,
-	 * make sure that default_timezone is set.
+	 * Before log_line_prefix could possibly receive a nonempty setting, make
+	 * sure that timezone processing is minimally alive (see elog.c).
 	 */
 	pg_timezone_pre_initialize();
 
@@ -5890,14 +5882,19 @@ call_string_assign_hook(GucStringAssignHook assign_hook,
  * function is being called so it can apply the access restrictions
  * properly.
  *
- * If value is NULL, set the option to its default value. If the
- * parameter changeVal is false then don't really set the option but do all
+ * If value is NULL, set the option to its default value (normally the
+ * reset_val, but if source == PGC_S_DEFAULT we instead use the boot_val).
+ *
+ * action indicates whether to set the value globally in the session, locally
+ * to the current top transaction, or just for the duration of a function call.
+ *
+ * If changeVal is false then don't really set the option but do all
  * the checks to see if it would work.
  *
  * If there is an error (non-existing option, invalid value) then an
  * ereport(ERROR) is thrown *unless* this is called in a context where we
  * don't want to ereport (currently, startup or SIGHUP config file reread).
- * In that case we write a suitable error message via ereport(DEBUG) and
+ * In that case we write a suitable error message via ereport(LOG) and
  * return false. This is working around the deficiencies in the ereport
  * mechanism, so don't blame me.  In all other cases, the function
  * returns true, including cases where the input is valid but we chose
@@ -5920,10 +5917,10 @@ set_config_option(const char *name, const char *value,
 		 * To avoid cluttering the log, only the postmaster bleats loudly
 		 * about problems with the config file.
 		 */
-		elevel = IsUnderPostmaster ? DEBUG2 : WARNING;
+		elevel = IsUnderPostmaster ? DEBUG3 : LOG;
 	}
 	else if (source == PGC_S_DATABASE || source == PGC_S_USER)
-		elevel = INFO;
+		elevel = WARNING;
 	else
 		elevel = ERROR;
 
@@ -5958,20 +5955,27 @@ set_config_option(const char *name, const char *value,
 		case PGC_POSTMASTER:
 			if (context == PGC_SIGHUP)
 			{
+				/*
+				 * We are reading a PGC_POSTMASTER var from postgresql.conf.
+				 * We can't change the setting, so give a warning if the DBA
+				 * tries to change it.	(Throwing an error would be more
+				 * consistent, but seems overly rigid.)
+				 */
 				if (changeVal && !is_newvalue_equal(record, value))
 					ereport(elevel,
 							(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-							 errmsg("parameter \"%s\" cannot be changed after server start; configuration file change ignored",
-									name)));
-
+					   errmsg("attempted change of parameter \"%s\" ignored",
+							  name),
+							 errdetail("This parameter cannot be changed after server start.")));
 				return true;
 			}
 			if (context != PGC_POSTMASTER)
 			{
 				ereport(elevel,
 						(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-						 errmsg("parameter \"%s\" cannot be changed after server start",
-								name)));
+					   errmsg("attempted change of parameter \"%s\" ignored",
+							  name),
+						 errdetail("This parameter cannot be changed after server start.")));
 				return false;
 			}
 			break;
@@ -6045,11 +6049,14 @@ set_config_option(const char *name, const char *value,
 		return true;
 	}
 	
-	/*
+    /*
 	 * Should we set reset/stacked values?	(If so, the behavior is not
-	 * transactional.)
+	 * transactional.)	This is done either when we get a default value from
+	 * the database's/user's/client's default settings or when we reset a
+	 * value to its default.
 	 */
-	makeDefault = changeVal && (source <= PGC_S_OVERRIDE) && (value != NULL);
+	makeDefault = changeVal && (source <= PGC_S_OVERRIDE) && 
+	    (value != NULL);
 
 	/*
 	 * Ignore attempted set if overridden by previously processed setting.
@@ -8659,7 +8666,7 @@ assign_custom_variable_classes(const char *newval, bool doit, GucSource source)
 {
 	/*
 	 * Check syntax. newval must be a comma separated list of identifiers.
-	 * Whitespace is allowed but skipped.
+	 * Whitespace is allowed but removed from the result.
 	 */
 	bool		hasSpaceAfterToken = false;
 	const char *cp = newval;
@@ -8886,7 +8893,7 @@ assign_timezone_abbreviations(const char *newval, bool doit, GucSource source)
 		 * and we use WARNING message level.
 		 */
 		if (source == PGC_S_FILE)
-			elevel = IsUnderPostmaster ? DEBUG2 : LOG;
+			elevel = IsUnderPostmaster ? DEBUG3 : LOG;
 		else
 			elevel = WARNING;
 		if (!load_tzoffsets(newval, doit, elevel))
@@ -9022,6 +9029,36 @@ assign_debug_dtm_action_target(const char *newval,
 		return NULL;			/* fail */
 	return newval;				/* OK */
 }
+
+static const char *
+assign_pgstat_temp_directory(const char *newval, bool doit, GucSource source)
+{
+	if (doit)
+	{
+		char	   *canon_val = guc_strdup(ERROR, newval);
+		char	   *tname;
+		char	   *fname;
+
+		canonicalize_path(canon_val);
+
+		tname = guc_malloc(ERROR, strlen(canon_val) + 12);		/* /pgstat.tmp */
+		sprintf(tname, "%s/pgstat.tmp", canon_val);
+		fname = guc_malloc(ERROR, strlen(canon_val) + 13);		/* /pgstat.stat */
+		sprintf(fname, "%s/pgstat.stat", canon_val);
+
+		if (pgstat_stat_tmpname)
+			free(pgstat_stat_tmpname);
+		pgstat_stat_tmpname = tname;
+		if (pgstat_stat_filename)
+			free(pgstat_stat_filename);
+		pgstat_stat_filename = fname;
+
+		return canon_val;
+	}
+	else
+		return newval;
+}
+
 
 static const char *
 assign_debug_dtm_action_protocol(const char *newval,

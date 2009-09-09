@@ -5,7 +5,7 @@
  *
  * See src/backend/access/transam/README for more information.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -86,12 +86,12 @@ bool		seqXlogWrite;
  */
 typedef enum TransState
 {
-	TRANS_DEFAULT,
-	TRANS_START,
-	TRANS_INPROGRESS,
-	TRANS_COMMIT,
-	TRANS_ABORT,
-	TRANS_PREPARE
+	TRANS_DEFAULT,				/* idle */
+	TRANS_START,				/* transaction starting */
+	TRANS_INPROGRESS,			/* inside a valid transaction */
+	TRANS_COMMIT,				/* commit in progress */
+	TRANS_ABORT,				/* abort in progress */
+	TRANS_PREPARE				/* prepare in progress */
 } TransState;
 
 /*
@@ -188,11 +188,13 @@ static CommandId currentCommandId;
 /*
  * xactStartTimestamp is the value of transaction_timestamp().
  * stmtStartTimestamp is the value of statement_timestamp().
+ * xactStopTimestamp is the time at which we log a commit or abort WAL record.
  * These do not change as we enter and exit subtransactions, so we don't
  * keep them inside the TransactionState stack.
  */
 static TimestampTz xactStartTimestamp;
 static TimestampTz stmtStartTimestamp;
+static TimestampTz xactStopTimestamp;
 
 /*
  * Total number of SAVEPOINT commands executed by this transaction.
@@ -237,6 +239,7 @@ typedef struct SubXactCallbackItem
 } SubXactCallbackItem;
 
 static SubXactCallbackItem *SubXact_callbacks = NULL;
+
 
 /* local function prototypes */
 static void AssignSubTransactionId(TransactionState s);
@@ -295,8 +298,8 @@ extern void AbortTransaction(void);
 /*
  *	IsTransactionState
  *
- *	This returns true if we are currently running a query
- *	within an executing transaction.
+ *	This returns true if we are inside a valid transaction; that is,
+ *	it is safe to initiate database access, take heavyweight locks, etc.
  */
 bool
 IsTransactionState(void)
@@ -421,7 +424,7 @@ AssignSubTransactionId(TransactionState s)
 
 	/*
 	 * Acquire lock on the transaction XID.  (We assume this cannot block.) We
-	 * have to be sure that the lock is assigned to the transaction's
+	 * have to ensure that the lock is assigned to the transaction's own
 	 * ResourceOwner.
 	 */
 	currentOwner = CurrentResourceOwner;
@@ -499,6 +502,20 @@ GetCurrentStatementStartTimestamp(void)
 }
 
 /*
+ *	GetCurrentTransactionStopTimestamp
+ *
+ * We return current time if the transaction stop time hasn't been set
+ * (which can happen if we decide we don't need to log an XLOG record).
+ */
+TimestampTz
+GetCurrentTransactionStopTimestamp(void)
+{
+	if (xactStopTimestamp != 0)
+		return xactStopTimestamp;
+	return GetCurrentTimestamp();
+}
+
+/*
  *	SetCurrentStatementStartTimestamp
  */
 void
@@ -515,6 +532,15 @@ SetCurrentStatementStartTimestampToMaster(TimestampTz masterTime)
 {
 	if (masterTime != 0)
 		stmtStartTimestamp = masterTime;
+}
+
+/*
+ *	SetCurrentTransactionStopTimestamp
+ */
+static inline void
+SetCurrentTransactionStopTimestamp(void)
+{
+	xactStopTimestamp = GetCurrentTimestamp();
 }
 
 /*
@@ -778,8 +804,8 @@ AtStart_Memory(void)
 	 * If this is the first time through, create a private context for
 	 * AbortTransaction to work in.  By reserving some space now, we can
 	 * insulate AbortTransaction from out-of-memory scenarios.  Like
-	 * ErrorContext, we set it up with slow growth rate and a nonzero
-	 * minimum size, so that space will be reserved immediately.
+	 * ErrorContext, we set it up with slow growth rate and a nonzero minimum
+	 * size, so that space will be reserved immediately.
 	 */
 	if (TransactionAbortContext == NULL)
 		TransactionAbortContext =
@@ -990,6 +1016,7 @@ RecordTransactionCommit(void)
 		if (madeTCentries)
 			LWLockAcquire(CheckpointStartLock, LW_SHARED);
 
+		SetCurrentTransactionStopTimestamp();
 		/*
 		 * We only need to log the commit in XLOG if the transaction made any
 		 * transaction-controlled XLOG entries or will delete files.
@@ -1001,6 +1028,7 @@ RecordTransactionCommit(void)
 			xl_xact_commit xlrec;
 
 			xlrec.xtime = time(NULL);
+		    //xlrec.xact_time = xactStopTimestamp;
 			xlrec.nrels = nrels;
 			xlrec.nsubxacts = nchildren;
 			rdata[0].data = (char *) (&xlrec);
@@ -1173,6 +1201,7 @@ RecordDistributedForgetCommitted(TMGXACT_LOG *gxact_log)
 
 	XLogInsert(RM_XACT_ID, XLOG_XACT_DISTRIBUTED_FORGET | XLOG_NO_TRAN, rdata);
 }
+
 
 /*
  *	AtCommit_LocalCache
@@ -1386,6 +1415,7 @@ RecordTransactionAbort(void)
 	 * recording the transaction abort at all.	No one will ever care that it
 	 * aborted.  (These tests cover our whole transaction tree.)
 	 */
+	SetCurrentTransactionStopTimestamp();
 	if (MyLastRecPtr.xrecoff != 0 || MyXactMadeTempRelUpdate || nrels > 0)
 	{
 		TransactionId xid = GetCurrentTransactionId();
@@ -1419,6 +1449,14 @@ RecordTransactionAbort(void)
 			XLogRecPtr	recptr;
 
 			xlrec.xtime = time(NULL);
+			/* Write the ABORT record */
+			/*
+			if (isSubXact)
+				xlrec.xact_time = GetCurrentTimestamp();
+			else
+			{
+				xlrec.xact_time = xactStopTimestamp;
+			}*/
 			xlrec.nrels = nrels;
 			xlrec.nsubxacts = nchildren;
 			rdata[0].data = (char *) (&xlrec);
@@ -1485,9 +1523,9 @@ static void
 AtAbort_Memory(void)
 {
 	/*
-	 * Switch into TransactionAbortContext, which should have some free
-	 * space even if nothing else does.  We'll work in this context until
-	 * we've finished cleaning up.
+	 * Switch into TransactionAbortContext, which should have some free space
+	 * even if nothing else does.  We'll work in this context until we've
+	 * finished cleaning up.
 	 *
 	 * It is barely possible to get here when we've not been able to create
 	 * TransactionAbortContext yet; if so use TopMemoryContext.
@@ -2366,8 +2404,7 @@ CommitTransaction(void)
 		elog(ERROR,"Raise an error as directed by Debug_abort_after_distributed_prepared");
 	}
 
-	/* Prevent cancel/die interrupt while cleaning up, we want to hold off on processing all
-	 * signals until we're in a consistent state. */
+	/* Prevent cancel/die interrupt while cleaning up */
 	HOLD_INTERRUPTS();
 
 	/*
@@ -2546,7 +2583,9 @@ CommitTransaction(void)
 	AtEOXact_Files();
 	AtEOXact_ComboCid();
 	AtEOXact_HashTables(true);
-	pgstat_count_xact_commit();
+	AtEOXact_PgStat(true);
+	//AtEOXact_Snapshot(true);
+	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
 	ResourceOwnerDelete(TopTransactionResourceOwner);
@@ -2711,6 +2750,7 @@ PrepareTransaction(void)
 	AtPrepare_UpdateFlatFiles();
 	AtPrepare_Inval();
 	AtPrepare_Locks();
+	AtPrepare_PgStat();
 
 	/*
 	 * Here is where we really truly prepare.
@@ -2772,6 +2812,8 @@ PrepareTransaction(void)
 
 	/* notify and flatfiles don't need a postprepare call */
 
+	PostPrepare_PgStat();
+
 	PostPrepare_Inval();
 
 	PostPrepare_smgr();
@@ -2799,6 +2841,7 @@ PrepareTransaction(void)
 	AtEOXact_Files();
 	AtEOXact_ComboCid();
 	AtEOXact_HashTables(true);
+	/* don't call AtEOXact_PgStat here */
 
 	CurrentResourceOwner = NULL;
 	ResourceOwnerDelete(TopTransactionResourceOwner);
@@ -2827,7 +2870,6 @@ PrepareTransaction(void)
 	s->state = TRANS_DEFAULT;
 
 	RESUME_INTERRUPTS();
-
 }
 
 
@@ -2887,8 +2929,8 @@ AbortTransaction(void)
 	/*
 	 * Reset user ID which might have been changed transiently.  We need this
 	 * to clean up in case control escaped out of a SECURITY DEFINER function
-	 * or other local change of CurrentUserId; therefore, the prior value
-	 * of SecurityDefinerContext also needs to be restored.
+	 * or other local change of CurrentUserId; therefore, the prior value of
+	 * SecurityDefinerContext also needs to be restored.
 	 *
 	 * (Note: it is not necessary to restore session authorization or role
 	 * settings here because those can only be changed via GUC, and GUC will
@@ -3034,7 +3076,9 @@ AbortTransaction(void)
 	AtEOXact_Files();
 	AtEOXact_ComboCid();
 	AtEOXact_HashTables(false);
-	pgstat_count_xact_rollback();
+	AtEOXact_PgStat(false);
+	//AtEOXact_Snapshot(false);
+	pgstat_report_xact_timestamp(0);
 
 	/*
 	 * Do abort to all QE. NOTE: we don't process
@@ -3618,7 +3662,6 @@ AbortCurrentTransaction(void)
 			AbortCurrentTransaction();
 			break;
 	}
-	
 }
 
 /*
@@ -5084,6 +5127,7 @@ CommitSubTransaction(void)
 	AtEOSubXact_Files(true, s->subTransactionId,
 					  s->parent->subTransactionId);
 	AtEOSubXact_HashTables(true, s->nestingLevel);
+	AtEOSubXact_PgStat(true, s->nestingLevel);
 
 	/*
 	 * We need to restore the upper transaction's read-only state, in case the
@@ -5147,8 +5191,8 @@ AbortSubTransaction(void)
 	s->state = TRANS_ABORT;
 
 	/*
-	 * Reset user ID which might have been changed transiently.  (See notes
-	 * in AbortTransaction.)
+	 * Reset user ID which might have been changed transiently.  (See notes in
+	 * AbortTransaction.)
 	 */
 	SetUserIdAndContext(s->prevUser, s->prevSecDefCxt);
 
@@ -5202,6 +5246,7 @@ AbortSubTransaction(void)
 		AtEOSubXact_Files(false, s->subTransactionId,
 						  s->parent->subTransactionId);
 		AtEOSubXact_HashTables(false, s->nestingLevel);
+		AtEOSubXact_PgStat(false, s->nestingLevel);
 	}
 
 	/*
@@ -5483,9 +5528,10 @@ IsoLevelAsUpperString(int IsoLevel)
  * xactGetCommittedChildren
  *
  * Gets the list of committed children of the current transaction.	The return
- * value is the number of child transactions.  *children is set to point to a
- * palloc'd array of TransactionIds.  If there are no subxacts, *children is
- * set to NULL.
+ * value is the number of child transactions.  *ptr is set to point to an
+ * array of TransactionIds.  The array is allocated in TopTransactionContext;
+ * the caller should *not* pfree() it (this is a change from pre-8.4 code!).
+ * If there are no subxacts, *ptr is set to NULL.
  */
 int
 xactGetCommittedChildren(TransactionId **ptr)

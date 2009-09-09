@@ -4988,7 +4988,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 			}
 			else
 			{
-				pgstat_report_tabstat();
+				pgstat_report_stat(false);
 				pgstat_report_queuestat();
 
 				if (Gp_role == GP_ROLE_DISPATCHAGENT)

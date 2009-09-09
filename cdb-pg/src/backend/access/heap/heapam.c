@@ -3,7 +3,7 @@
  * heapam.c
  *	  heap access method code
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -45,6 +45,8 @@
 #include "access/heapam.h"
 #include "access/hio.h"
 #include "access/multixact.h"
+#include "access/relscan.h"
+
 #include "access/transam.h"
 #include "access/tuptoaster.h"
 #include "access/valid.h"
@@ -110,7 +112,12 @@ initscan(HeapScanDesc scan, ScanKey key)
 	if (key != NULL)
 		memcpy(scan->rs_key, key, scan->rs_nkeys * sizeof(ScanKeyData));
 
-	pgstat_count_heap_scan(&scan->rs_pgstat_info);
+	/*
+	 * Currently, we don't have a stats counter for bitmap heap scans (but the
+	 * underlying bitmap index scans will be counted).
+	 */
+	//if (!scan->rs_bitmapscan)
+		pgstat_count_heap_scan(scan->rs_rd);
 }
 
 /*
@@ -798,6 +805,8 @@ relation_open(Oid relationId, LOCKMODE lockmode)
 	if (!RelationIsValid(r))
 		elog(ERROR, "could not open relation with OID %u", relationId);
 
+	pgstat_initstats(r);
+	
 	return r;
 }
 
@@ -839,6 +848,8 @@ try_relation_open(Oid relationId, LOCKMODE lockmode)
 
 	if (!RelationIsValid(r))
 		elog(ERROR, "could not open relation with OID %u", relationId);
+
+	pgstat_initstats(r);
 
 	return r;
 }
@@ -970,8 +981,6 @@ heap_open(Oid relationId, LOCKMODE lockmode)
 				 errmsg("\"%s\" is a composite type",
 						RelationGetRelationName(r))));
 
-	pgstat_initstats(&r->pgstat_info, r);
-
 	return r;
 }
 
@@ -999,8 +1008,6 @@ heap_openrv(const RangeVar *relation, LOCKMODE lockmode)
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is a composite type",
 						RelationGetRelationName(r))));
-
-	pgstat_initstats(&r->pgstat_info, r);
 
 	return r;
 }
@@ -1048,7 +1055,6 @@ heap_beginscan(Relation relation, Snapshot snapshot,
 	else
 		scan->rs_key = NULL;
 
-	pgstat_initstats(&scan->rs_pgstat_info, relation);
 
 	initscan(scan, key);
 
@@ -1173,7 +1179,7 @@ heap_getnext(HeapScanDesc scan, ScanDirection direction)
 	 */
 	HEAPDEBUG_3;				/* heap_getnext returning tuple */
 
-	pgstat_count_heap_getnext(&scan->rs_pgstat_info);
+	pgstat_count_heap_getnext(scan->rs_rd);
 
 	return &(scan->rs_ctup);
 }
@@ -1310,12 +1316,12 @@ heap_fetch(Relation relation,
 		   HeapTuple tuple,
 		   Buffer *userbuf,
 		   bool keep_buf,
-		   PgStat_Info *pgstat_info)
+		   Relation stats_relation)
 {
 	/* Assume *userbuf is undefined on entry */
 	*userbuf = InvalidBuffer;
 	return heap_release_fetch(relation, snapshot, tuple,
-							  userbuf, keep_buf, pgstat_info);
+							  userbuf, keep_buf, stats_relation);
 }
 
 /*
@@ -1334,7 +1340,7 @@ heap_release_fetch(Relation relation,
 				   HeapTuple tuple,
 				   Buffer *userbuf,
 				   bool keep_buf,
-				   PgStat_Info *pgstat_info)
+				   Relation stats_relation)
 {
 	ItemPointer tid = &(tuple->t_self);
 	ItemId		lp;
@@ -1429,9 +1435,9 @@ heap_release_fetch(Relation relation,
 		 */
 		*userbuf = buffer;
 
-		/* Count the successful fetch in *pgstat_info, if given. */
-		if (pgstat_info != NULL)
-			pgstat_count_heap_fetch(pgstat_info);
+		/* Count the successful fetch against appropriate rel, if any */
+		if (stats_relation != NULL)
+			pgstat_count_heap_fetch(stats_relation);
 
 		return true;
 	}
@@ -2044,7 +2050,7 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 	 */
 	CacheInvalidateHeapTuple(ins->hi_rel, heaptup);
 
-	pgstat_count_heap_insert(&ins->hi_rel->pgstat_info);
+	pgstat_count_heap_insert(ins->hi_rel);
 
 	/*
 	 * If heaptup is a private copy, release it.  Don't forget to copy t_self
@@ -2166,7 +2172,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	 */
 	CacheInvalidateHeapTuple(relation, heaptup);
 
-	pgstat_count_heap_insert(&relation->pgstat_info);
+	pgstat_count_heap_insert(relation);
 
 	/*
 	 * If heaptup is a private copy, release it.  Don't forget to copy t_self
@@ -2474,7 +2480,7 @@ l1:
 	if (have_tuple_lock)
 		UnlockTuple(relation, &(tp.t_self), ExclusiveLock);
 
-	pgstat_count_heap_delete(&relation->pgstat_info);
+	pgstat_count_heap_delete(relation);
 
 	return HeapTupleMayBeUpdated;
 }
@@ -2934,7 +2940,7 @@ l2:
 	if (have_tuple_lock)
 		UnlockTuple(relation, &(oldtup.t_self), ExclusiveLock);
 
-	pgstat_count_heap_update(&relation->pgstat_info);
+	pgstat_count_heap_update(relation, false);
 
 	/*
 	 * If heaptup is a private copy, release it.  Don't forget to copy t_self
@@ -3096,7 +3102,7 @@ l3:
 		uint16		infomask;
 
 		/* must copy state data before unlocking buffer */
-		xwait = HeapTupleHeaderGetXmax(tuple->t_data);;
+		xwait = HeapTupleHeaderGetXmax(tuple->t_data);
 
 		infomask = tuple->t_data->t_infomask;
 
@@ -3274,15 +3280,15 @@ l3:
 	}
 
 	/*
-	 * We might already hold the desired lock (or stronger), possibly under
-	 * a different subtransaction of the current top transaction.  If so,
-	 * there is no need to change state or issue a WAL record.  We already
-	 * handled the case where this is true for xmax being a MultiXactId,
-	 * so now check for cases where it is a plain TransactionId.
+	 * We might already hold the desired lock (or stronger), possibly under a
+	 * different subtransaction of the current top transaction.  If so, there
+	 * is no need to change state or issue a WAL record.  We already handled
+	 * the case where this is true for xmax being a MultiXactId, so now check
+	 * for cases where it is a plain TransactionId.
 	 *
 	 * Note in particular that this covers the case where we already hold
-	 * exclusive lock on the tuple and the caller only wants shared lock.
-	 * It would certainly not do to give up the exclusive lock.
+	 * exclusive lock on the tuple and the caller only wants shared lock. It
+	 * would certainly not do to give up the exclusive lock.
 	 */
 	xmax = HeapTupleHeaderGetXmax(tuple->t_data);
 	old_infomask = tuple->t_data->t_infomask;
@@ -3359,8 +3365,8 @@ l3:
 			{
 				/*
 				 * If the XMAX is a valid TransactionId, then we need to
-				 * create a new MultiXactId that includes both the old
-				 * locker and our own TransactionId.
+				 * create a new MultiXactId that includes both the old locker
+				 * and our own TransactionId.
 				 */
 				xid = MultiXactIdCreate(xmax, xid);
 				new_infomask |= HEAP_XMAX_IS_MULTI;
@@ -3394,8 +3400,8 @@ l3:
 	/*
 	 * Store transaction information of xact locking the tuple.
 	 *
-	 * Note: Cmax is meaningless in this context, so don't set it; this
-	 * avoids possibly generating a useless combo CID.
+	 * Note: Cmax is meaningless in this context, so don't set it; this avoids
+	 * possibly generating a useless combo CID.
 	 */
 	tuple->t_data->t_infomask = new_infomask;
 	HeapTupleHeaderSetXmax(tuple->t_data, xid);
@@ -3622,8 +3628,8 @@ heap_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 	 * When we release shared lock, it's possible for someone else to change
 	 * xmax before we get the lock back, so repeat the check after acquiring
 	 * exclusive lock.  (We don't need this pushup for xmin, because only
-	 * VACUUM could be interested in changing an existing tuple's xmin,
-	 * and there's only one VACUUM allowed on a table at a time.)
+	 * VACUUM could be interested in changing an existing tuple's xmin, and
+	 * there's only one VACUUM allowed on a table at a time.)
 	 */
 recheck_xmax:
 	if (!(tuple->t_infomask & HEAP_XMAX_IS_MULTI))
@@ -3642,9 +3648,9 @@ recheck_xmax:
 			}
 			HeapTupleHeaderSetXmax(tuple, InvalidTransactionId);
 			/*
-			 * The tuple might be marked either XMAX_INVALID or
-			 * XMAX_COMMITTED + LOCKED.  Normalize to INVALID just to be
-			 * sure no one gets confused.
+			 * The tuple might be marked either XMAX_INVALID or XMAX_COMMITTED
+			 * + LOCKED.  Normalize to INVALID just to be sure no one gets
+			 * confused.
 			 */
 			tuple->t_infomask &= ~HEAP_XMAX_COMMITTED;
 			tuple->t_infomask |= HEAP_XMAX_INVALID;
@@ -3701,8 +3707,8 @@ recheck_xvac:
 			else
 				HeapTupleHeaderSetXvac(tuple, FrozenTransactionId);
 			/*
-			 * Might as well fix the hint bits too; usually XMIN_COMMITTED will
-			 * already be set here, but there's a small chance not.
+			 * Might as well fix the hint bits too; usually XMIN_COMMITTED
+			 * will already be set here, but there's a small chance not.
 			 */
 			Assert(!(tuple->t_infomask & HEAP_XMIN_INVALID));
 			tuple->t_infomask |= HEAP_XMIN_COMMITTED;
@@ -3802,6 +3808,10 @@ heap_restrpos(HeapScanDesc scan)
  *
  * Note: for historical reasons, the entries in the unused[] array should
  * be zero-based tuple indexes, not one-based.
+ * 
+ * Note: prior to Postgres 8.3, the entries in the nowunused[] array were
+ * zero-based tuple indexes.  Now they are one-based like other uses
+ * of OffsetNumber.
  */
 XLogRecPtr
 log_heap_clean(Relation reln, Buffer buffer, OffsetNumber *unused, int uncnt)

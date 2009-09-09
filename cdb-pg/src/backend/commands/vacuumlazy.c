@@ -33,7 +33,7 @@
  * the TID array, just enough to hold as many heap tuples as fit on one page.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -229,7 +229,9 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 						updated_stats);
 
 	/* report results to the stats collector, too */
-	pgstat_report_vacuum(RelationGetRelid(onerel), onerel->rd_rel->relisshared,
+	pgstat_report_vacuum(RelationGetRelid(onerel),
+						 onerel->rd_rel->relisshared,
+						 true /*vacrelstats->scanned_all*/,
 						 vacstmt->analyze, vacrelstats->rel_tuples);
 }
 
@@ -340,11 +342,10 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			 * We have to be careful here because we could be looking at a
 			 * page that someone has just added to the relation and not yet
 			 * been able to initialize (see RelationGetBufferForTuple). To
-			 * interlock against that, release the buffer read lock (which we
-			 * must do anyway) and grab the relation extension lock before
-			 * re-locking in exclusive mode.  If the page is still
-			 * uninitialized by then, it must be left over from a crashed
-			 * backend, and we can initialize it.
+			 * protect against that, release the buffer lock, grab the
+			 * relation extension lock momentarily, and re-lock the buffer. If
+			 * the page is still uninitialized by then, it must be left over
+			 * from a crashed backend, and we can initialize it.
 			 *
 			 * We don't really need the relation lock when this is a new or
 			 * temp relation, but it's probably not worth the code space to
@@ -356,7 +357,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
 			LockRelationForExtension(onerel, ExclusiveLock);
 			UnlockRelationForExtension(onerel, ExclusiveLock);
-			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);  // LockBufferForCleanup(buf)?
 			if (PageIsNew(page))
 			{
 				ereport(WARNING,
@@ -628,7 +629,7 @@ lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats)
  *	lazy_vacuum_page() -- free dead tuples on a page
  *					 and repair its fragmentation.
  *
- * Caller must hold pin and lock on the buffer.
+ * Caller must hold pin and buffer cleanup lock on the buffer.
  *
  * tupindex is the index in vacrelstats->dead_tuples of the first dead
  * tuple for this page.  We assume the rest follow sequentially.
@@ -1190,9 +1191,8 @@ count_nondeletable_pages(Relation onerel, LVRelStats *vacrelstats)
 
 		/*
 		 * We don't insert a vacuum delay point here, because we have an
-		 * exclusive lock on the table which we want to hold for as short
-		 * a time as possible.  We still need to check for interrupts
-		 * however.
+		 * exclusive lock on the table which we want to hold for as short a
+		 * time as possible.  We still need to check for interrupts however.
 		 */
 		CHECK_FOR_INTERRUPTS();
 
@@ -1308,7 +1308,7 @@ lazy_record_dead_tuple(LVRelStats *vacrelstats,
 	/*
 	 * The array shouldn't overflow under normal behavior, but perhaps it
 	 * could if we are given a really small maintenance_work_mem. In that
-	 * case, just forget the last few tuples.
+	 * case, just forget the last few tuples (we'll get 'em next time).
 	 */
 	if (vacrelstats->num_dead_tuples < vacrelstats->max_dead_tuples)
 	{

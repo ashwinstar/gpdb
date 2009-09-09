@@ -4,7 +4,7 @@
  *	  Search code for postgres btrees.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -17,7 +17,10 @@
 
 #include "access/genam.h"
 #include "access/nbtree.h"
+#include "access/relscan.h"
+#include "miscadmin.h"
 #include "pgstat.h"
+#include "storage/bufmgr.h"
 #include "utils/lsyscache.h"
 
 
@@ -449,7 +452,7 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 	int			i;
 	StrategyNumber strat_total;
 
-	pgstat_count_index_scan(&scan->xs_pgstat_info);
+	pgstat_count_index_scan(rel);
 
 	/*
 	 * Examine the scan keys and eliminate any redundant keys; also mark the
@@ -635,8 +638,8 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 			 * ">=" or "<=", and so the extra keys don't break the positioning
 			 * scheme.  But, by the same token, if we aren't able to use all
 			 * the row members, then the part of the row comparison that we
-			 * did use has to be treated as just a ">=" or "<=" condition,
-			 * and so we'd better adjust strat_total accordingly.
+			 * did use has to be treated as just a ">=" or "<=" condition, and
+			 * so we'd better adjust strat_total accordingly.
 			 */
 			if (i == keysCount - 1)
 			{
@@ -1222,7 +1225,10 @@ _bt_walk_left(Relation rel, Buffer buf)
 		obknum = BufferGetBlockNumber(buf);
 		/* step left */
 		blkno = lblkno = opaque->btpo_prev;
-		buf = _bt_relandgetbuf(rel, buf, blkno, BT_READ);
+		_bt_relbuf(rel, buf);
+		/* check for interrupts while we're not holding any buffer lock */
+		CHECK_FOR_INTERRUPTS();
+		buf = _bt_getbuf(rel, blkno, BT_READ);
 		page = BufferGetPage(buf);
 		opaque = (BTPageOpaque) PageGetSpecialPointer(page);
 

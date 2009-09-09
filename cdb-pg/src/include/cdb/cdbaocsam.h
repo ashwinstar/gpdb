@@ -73,8 +73,6 @@ typedef struct AOCSScanDescData
     int64 total_row;
     int64 cur_seg_row;
 
-    PgStat_Info aos_pgstat_info; /* statistics collector hook */
-
 }	AOCSScanDescData;
 
 typedef AOCSScanDescData *AOCSScanDesc;

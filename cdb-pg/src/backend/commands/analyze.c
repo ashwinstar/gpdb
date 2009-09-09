@@ -3,7 +3,7 @@
  * analyze.c
  *	  the Postgres statistics generator
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * The new ANALYZE implementation uses routine query processing capabilities of GPDB
@@ -649,6 +649,9 @@ static void analyzeRelation(Relation relation, List *lAttributeNames)
 	 * Step 2: update the pg_class entry.
 	 */
 	updateReltuplesRelpagesInCatalog(relationOid, estimatedRelTuples, estimatedRelPages);
+	
+	/* report results to the stats collector, too */
+	pgstat_report_analyze(relation, estimatedRelTuples, 0 /*totaldeadrows*/);
 	
 	/**
 	 * Does the relation have any rows. If not, no point analyzing columns.
