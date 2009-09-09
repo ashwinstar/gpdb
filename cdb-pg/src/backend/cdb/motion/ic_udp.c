@@ -1983,6 +1983,28 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 #endif
 }
 
+/**
+ * Should be called from receiveChunksUDP, only for the dispatcher
+ *
+ * Always called with thread mutex locked.  In case of cancel request, will error out after unlocking the mutex.
+ *    If no cancel is needed then the mutex state is unchanged.
+ */
+static inline void
+checkForCancelFromInsideReceiveChunks(ChunkTransportState *pTransportStates)
+{
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+	Assert(pTransportStates);
+	Assert(pTransportStates->estate);
+
+	if (cdbdisp_check_estate_for_cancel(pTransportStates->estate))
+	{
+		pthread_mutex_unlock(&rx_thread_mutex);
+
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg(CDB_MOTION_LOST_CONTACT_STRING)));
+	}
+}
+
 /* ALWAYS CALLED WITH THREAD MUTEX *LOCKED* BEFORE RETURNING, *MUST* UNLOCK. */
 TupleChunkListItem
 receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry *pEntry, 
@@ -2052,28 +2074,22 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 			return tcItem;
 		}
 
-		/* every 15 or 16 wait-intervals, check to see if the dispatcher*/
-		if (Gp_role == GP_ROLE_DISPATCH &&
-			(retries & 0x0f) == 0)
+		/* every 15 or 16 wait-intervals, check to see if the dispatcher should cancel */
+		if ( Gp_role == GP_ROLE_DISPATCH &&
+		     (retries & 0x0f) == 0 )
 		{
-			Assert(pTransportStates);
-			Assert(pTransportStates->estate);
-
-			if (cdbdisp_check_estate_for_cancel(pTransportStates->estate))
-			{
-				pthread_mutex_unlock(&rx_thread_mutex);
-
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg(CDB_MOTION_LOST_CONTACT_STRING)));
-
-				/* not reached */
-				return NULL;
-			}
+			checkForCancelFromInsideReceiveChunks(pTransportStates);
 		}
 
 		/* 2. Wait for data to become ready */
 		if (wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
 			continue; /* success ! */
+
+		/* waited a long time, might as well check for cancel now */
+		if ( Gp_role == GP_ROLE_DISPATCH )
+		{
+			checkForCancelFromInsideReceiveChunks(pTransportStates);
+		}
 
 		/* handle timeout, check for cancel */
 		pthread_mutex_unlock(&rx_thread_mutex);
