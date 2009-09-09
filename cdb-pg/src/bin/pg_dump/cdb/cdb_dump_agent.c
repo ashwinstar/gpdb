@@ -212,6 +212,7 @@ static void   _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
 extern void   makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg );
 static void*  monitorThreadProc(void *arg  __attribute__((unused)));
 static void   myHandler(int signo);
+static void   addDistributedBy(PQExpBuffer q, TableInfo *tbinfo, int actual_atts);
 static char*  formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
 static char*  formCDatabaseFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
 static char*  formGenericFilePathName( char *keyword, char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
@@ -4693,17 +4694,16 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			}
 		}
 
+		/* DISTRIBUTED BY clause (if WRITABLE table) */
+		if(iswritable)
+			addDistributedBy(q, tbinfo, actual_atts);
+
 		appendPQExpBuffer(q, ";\n");
 
         PQclear(res);
-
     }
 	else
 	{
-		/* MPP addition start */
-		char *policydef = NULL;
-        char *policycol = NULL;
-		/* MPP addition end */
 
 		reltypename = "TABLE";
 		numParents = tbinfo->numParents;
@@ -4802,76 +4802,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		if (tbinfo->reloptions && strlen(tbinfo->reloptions) > 0)
 			appendPQExpBuffer(q, "\nWITH (%s)", tbinfo->reloptions);
 
-		/* mpp addition start: dump distributed by clause */
-
-		appendPQExpBuffer(query,
-						  "SELECT attrnums from pg_namespace as n, pg_class as c, gp_distribution_policy as p "
-						  "WHERE c.relname = '%s' "
-						  "AND n.nspname='%s' "
-						  "AND c.relnamespace=n.oid "
-						  "AND c.oid = p.localoid",
-                          tbinfo->dobj.name, (tbinfo->dobj.namespace->dobj.name != NULL ? tbinfo->dobj.namespace->dobj.name : c_PUBLIC));
-
-		res = PQexec(g_conn, query->data);
-        check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-        if (PQntuples(res) != 1)
-        {
-			/*
-			 * There is no entry in the policy table for this table. Report
-			 * an error unless this is a zero attribute table (actual_atts == 0).
-			 */
-            if (PQntuples(res) < 1 && actual_atts > 0)
-			{
-				/* if this is a catalog table we allow dumping it, skip the error */
-				if(strncmp(tbinfo->dobj.namespace->dobj.name, "pg_", 3) != 0)
-				{
-					mpp_err_msg( logError, progname, "query to obtain distribution policy of table \"%s\" returned no data\n",
-								 tbinfo->dobj.name);
-					exit_nicely();
-				}
-			}
-
-			/*
-			 * There is more than 1 entry in the policy table for this table. Report an error.
-			 */
-			if (PQntuples(res) > 1)
-			{
-                mpp_err_msg( logError, progname, "query to obtain distribution policy of table \"%s\" returned more than one policy\n",
-							 tbinfo->dobj.name);
-				exit_nicely();
-			}
-        }
-		else
-		{
-			/*
-			 * There is exactly 1 policy entry for this table (either a concrete one or NULL).
-			 */
-			policydef = PQgetvalue(res, 0, 0);
-
-			if(strlen(policydef) > 0)
-			{
-				/* policy indicates one or more columns to distribute on */
-				policydef[strlen(policydef)-1] = '\0';
-				policydef++;
-				policycol = nextToken(&policydef, ",");
-				appendPQExpBuffer(q, " distributed by (%s",
-								  fmtId(tbinfo->attnames[atoi(policycol)-1]));
-				for (; (policycol = nextToken(&policydef, ",")) != NULL;)
-				{
-					appendPQExpBuffer(q, " ,%s",
-									  fmtId(tbinfo->attnames[atoi(policycol)-1]));
-				}
-				appendPQExpBuffer(q, ")");
-			}
-			else
-			{
-				/* policy has an empty policy - distribute randomly */
-				appendPQExpBuffer(q, " distributed randomly");
-			}
-
-		}
-		PQclear(res);
+		/* dump distributed by clause */
+		addDistributedBy(q, tbinfo, actual_atts);
 
 		/* lets see about partitioning */
 		if ( g_gp_supportsPartitioning )
@@ -6185,6 +6117,91 @@ void myHandler(int signo)
 	}
 }
 
+/*
+ *  addDistributedBy
+ *  
+ *  find the distribution policy of the passed in relation and append the
+ *  DISTRIBUTED BY clause to the passed in dump buffer (q).
+ */
+static void addDistributedBy(PQExpBuffer q, TableInfo *tbinfo, int	actual_atts)
+{
+	PQExpBuffer  query = createPQExpBuffer();
+	PGresult 	*res;
+	char 		*policydef = NULL;
+    char 		*policycol = NULL;
+
+	appendPQExpBuffer(query,
+					  "SELECT attrnums from pg_namespace as n, pg_class as c, gp_distribution_policy as p "
+					  "WHERE c.relname = '%s' "
+					  "AND n.nspname='%s' "
+					  "AND c.relnamespace=n.oid "
+					  "AND c.oid = p.localoid",
+                      tbinfo->dobj.name, (tbinfo->dobj.namespace->dobj.name != NULL ? tbinfo->dobj.namespace->dobj.name : c_PUBLIC));
+
+	res = PQexec(g_conn, query->data);
+    check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+    if (PQntuples(res) != 1)
+    {
+		/*
+		 * There is no entry in the policy table for this table. Report
+		 * an error unless this is a zero attribute table (actual_atts == 0).
+		 */
+        if (PQntuples(res) < 1 && actual_atts > 0)
+		{
+			/* if this is a catalog table we allow dumping it, skip the error */
+			if(strncmp(tbinfo->dobj.namespace->dobj.name, "pg_", 3) != 0)
+			{
+				mpp_err_msg( logError, progname, "query to obtain distribution policy of table \"%s\" returned no data\n",
+							 tbinfo->dobj.name);
+				exit_nicely();
+			}
+		}
+
+		/*
+		 * There is more than 1 entry in the policy table for this table. Report an error.
+		 */
+		if (PQntuples(res) > 1)
+		{
+            mpp_err_msg( logError, progname, "query to obtain distribution policy of table \"%s\" returned more than one policy\n",
+						 tbinfo->dobj.name);
+			exit_nicely();
+		}
+    }
+	else
+	{
+		/*
+		 * There is exactly 1 policy entry for this table (either a concrete one or NULL).
+		 */
+		policydef = PQgetvalue(res, 0, 0);
+
+		if(strlen(policydef) > 0)
+		{
+			/* policy indicates one or more columns to distribute on */
+			policydef[strlen(policydef)-1] = '\0';
+			policydef++;
+			policycol = nextToken(&policydef, ",");
+			appendPQExpBuffer(q, " DISTRIBUTED BY (%s",
+							  fmtId(tbinfo->attnames[atoi(policycol)-1]));
+			for (; (policycol = nextToken(&policydef, ",")) != NULL;)
+			{
+				appendPQExpBuffer(q, " ,%s",
+								  fmtId(tbinfo->attnames[atoi(policycol)-1]));
+			}
+			appendPQExpBuffer(q, ")");
+		}
+		else
+		{
+			/* policy has an empty policy - distribute randomly */
+			appendPQExpBuffer(q, " DISTRIBUTED RANDOMLY");
+		}
+
+	}
+    
+	PQclear(res);
+	destroyPQExpBuffer(query);
+
+}
 
 char* formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID )
 {
