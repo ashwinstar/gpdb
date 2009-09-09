@@ -2390,6 +2390,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	bool		execute_is_fetch = false;
 	bool		was_logged = false;
 	char		msec_str[32];
+	apr_int32_t tmid = 0;
 
 	/* Adjust destination to tell printtup.c what to do */
 	dest = whereToSendOutput;
@@ -2449,6 +2450,13 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	 * Report query to various monitoring facilities.
 	 */
 	debug_query_string = sourceText ? sourceText : "<EXECUTE>";
+		
+	if(gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
+	{
+		gpmon_gettmid(&tmid);
+		gpmon_record(tmid, gp_session_id, gp_command_count, 
+					 "qtext", debug_query_string);
+	}
 
 	pgstat_report_activity(debug_query_string);
 
