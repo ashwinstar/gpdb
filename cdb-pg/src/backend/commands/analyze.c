@@ -505,9 +505,12 @@ static List*	buildExplicitAttributeNames(Oid relationOid, VacuumStmt *stmt)
 								errmsg("Attribute %s has been dropped in relation %s.", 
 										attributeName, get_rel_name(relationOid))));						
 
-			/* If stats target = 0, then don't analyze the attribute. However, we don't actually throw an error.. just silently skip it. */
-			if (att_tup->attstattarget != 0)
+			/* If statstarget=0 or type is "unknown", silently skip it. */
+			if (att_tup->attstattarget != 0
+					&& att_tup->atttypid != UNKNOWNOID)
+			{
 				lExplicitAttNames = lappend(lExplicitAttNames, attributeName);
+			}
 			
 			ReleaseSysCache(attributeTuple);
 		}
@@ -593,19 +596,23 @@ static List *analyzableAttributes(Relation candidateRelation)
 	Assert(candidateRelation != NULL);
 	for (i = 0; i < candidateRelation->rd_att->natts; i++)
 	{
-		char	*attName = NULL;
 		Form_pg_attribute attr = candidateRelation->rd_att->attrs[i];
-
-		/* Never analyze dropped columns */
-		if (attr->attisdropped)
-			continue;
-
-		/* Don't analyze column if user has specified not to */
-		if (attr->attstattarget == 0)
-			continue;
-
-		attName = pstrdup(NameStr(attr->attname)); //needs to be pfree'd by caller
-		lAttNames = lappend(lAttNames, (void *) attName);
+		Assert(attr);
+		/* 
+		 * Skip if one of these conditions is true:
+		 * 1. Attribute is dropped
+		 * 2. Stats target for attribute is 0
+		 * 3. Attribute has "unknown" type.
+		 */
+		if (!(attr->attisdropped
+				|| attr->attstattarget == 0
+				|| attr->atttypid == UNKNOWNOID))
+		{
+			char	*attName = NULL;
+			attName = pstrdup(NameStr(attr->attname)); //needs to be pfree'd by caller
+			Assert(attName);
+			lAttNames = lappend(lAttNames, (void *) attName);
+		}
 	}		
 	return lAttNames;
 }
