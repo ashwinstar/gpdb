@@ -237,6 +237,7 @@ bool		Debug_appendonly_rezero_quicklz_compress_scratch = false;
 bool		Debug_appendonly_rezero_quicklz_decompress_scratch = false;
 bool		Debug_appendonly_guard_end_quicklz_scratch = false;
 bool 		gp_local_distributed_cache_stats = false;
+bool		Debug_column_store_use_new_segment_filename_format = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -2057,6 +2058,16 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
+	{
+		{"debug_column_store_use_new_segment_filename_format", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Use new column-store segment filename format."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_column_store_use_new_segment_filename_format,
+		false, NULL, NULL
+	},
+		
 
 	{
 		{"enable_partition_rules", PGC_USERSET, DEVELOPER_OPTIONS,

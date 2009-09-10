@@ -24,6 +24,12 @@
 #include <fcntl.h>
 #include <sys/file.h>
 
+#include "utils/guc.h"
+#include "cdb/cdbappendonlystorage.h"
+
+#define AO_FILE_PATH_FORMAT "%s.%u"
+#define AOCS_FILE_PATH_FORMAT "%s.%d.%d"
+
 int
 AOSegmentFilePathNameLen(Relation rel)
 {
@@ -33,11 +39,65 @@ AOSegmentFilePathNameLen(Relation rel)
 	/* Get base path for this relation file */
 	basepath = relpath(rel->rd_node);
 
+	/*
+	 * The basepath will be the RelFileNode number.  Optional part is dot "." plus 
+	 * 6 digit segment file number.
+	 */
 	len = strlen(basepath) + 8;	// Generous.
 	
 	pfree(basepath);
 
 	return len;
+}
+
+/*
+ * Formats an Append Only relation file segment file name.
+ *
+ * The filepathname parameter assume sufficient space.
+ */
+void
+FormatAOSegmentFileName(
+							char *basepath, 
+							int segno, 
+							int col, 
+							char *filepathname)
+{
+	int	pseudoSegNo;
+	
+	Assert(segno >= 0);
+	Assert(segno <= AOTupleId_MaxSegmentFileNum);
+
+	if (col < 0)
+	{
+		/*
+		 * Row oriented Append-Only.
+		 */
+		pseudoSegNo = segno;		
+	}
+	else
+	{
+		/*
+		 * Handle old Column-Store filename format HERE.
+		 */
+		if (!Debug_column_store_use_new_segment_filename_format)
+		{
+			sprintf(filepathname, AOCS_FILE_PATH_FORMAT, basepath, col, segno);
+			return;
+		}
+		
+		/*
+		 * Column oriented Append-only.
+		 */
+		pseudoSegNo = (col*AOTupleId_MultiplierSegmentFileNum) + segno;
+	}
+
+
+	if (pseudoSegNo > 0)
+	{
+		sprintf(filepathname, "%s.%u", basepath, pseudoSegNo);
+	}
+	else
+		strcpy(filepathname, basepath);
 }
 
 /*
@@ -57,21 +117,7 @@ MakeAOSegmentFileName(
 	/* Get base path for this relation file */
 	basepath = relpath(rel->rd_node);
 
-	/* 
-	 * Get the segfile extention. this code is borrowed from md.c 
-	 */
-	if (segno > 0)
-	{
-        if(col < 0)
-        {
-                /* be sure we have enough space for the '.segno' */
-                sprintf(filepathname, AO_FILE_PATH_FORMAT, basepath, segno);
-        }
-        else
-                sprintf(filepathname, AOCS_FILE_PATH_FORMAT, basepath, col, segno);
-	}
-	else
-		strcpy(filepathname, basepath);
+	FormatAOSegmentFileName(basepath, segno, col, filepathname);
 
 	pfree(basepath);
 }

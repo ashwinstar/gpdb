@@ -138,6 +138,7 @@ extern int  Test_safefswritesize_override;
 extern bool Master_mirroring_administrator_disable;
 extern int  gp_max_local_distributed_cache;
 extern bool gp_local_distributed_cache_stats;
+extern bool Debug_column_store_use_new_segment_filename_format;
 extern bool gp_appendonly_verify_block_checksums;
 extern bool gp_appendonly_verify_write_block;
 extern bool	Debug_appendonly_rezero_quicklz_compress_scratch;

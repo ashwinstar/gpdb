@@ -55,7 +55,8 @@ static void open_rds_seg(AOCSScanDesc scan, int segno, DatumStream **ds,
         {
             AOCSVPInfoEntry *e = getAOCSVPEntry(scan->seginfo[scan->cur_seg], i);
 
-            snprintf(fn, MAXPGPATH, AOCS_FILE_PATH_FORMAT, basepath, i, segno);
+			FormatAOSegmentFileName(basepath, segno, i, fn);
+            Assert(strlen(fn) + 1 <= MAXPGPATH);
 
             Assert(scan->ds[i]);
             datumstream_open_file(ds[i], fn, e->eof, e->eof_uncompressed); 
@@ -340,7 +341,9 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
     {
         AOCSVPInfoEntry *e = getAOCSVPEntry(seginfo, i);
 
-        snprintf(fn, MAXPGPATH, AOCS_FILE_PATH_FORMAT, basepath, i, seginfo->segno);
+		FormatAOSegmentFileName(basepath, seginfo->segno, i, fn);
+		Assert(strlen(fn) + 1 <= MAXPGPATH);
+
         datumstream_open_file(desc->ds[i], fn, e->eof, e->eof_uncompressed);
     }
 

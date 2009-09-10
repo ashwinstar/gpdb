@@ -112,6 +112,9 @@ typedef struct AOTupleId
 #define AOTupleId_MaxRowNum            INT64CONST(274877906943) 		// 38 bits, or 274,877,906,943 (274 million  - 1).
 #define AOTupleId_MaxRowNum_CommaStr  "274,877,906,943"
 
+#define AOTupleId_MaxSegmentFileNum    			127
+#define AOTupleId_MultiplierSegmentFileNum    	128	// Next up power of 2 as multiplier.
+
 extern char* AOTupleIdToString(AOTupleId * aoTupleId);
 
 extern int32 AppendOnlyStorage_GetUsableBlockSize(
