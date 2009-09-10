@@ -15,7 +15,8 @@
 #ifdef ENABLE_THREAD_SAFETY
 static pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_key_t actual_connection_key;
-#if pg_on_solaris
+/* The 4.1.1 compiler on Solaris 10 has a buggy PTHREAD_ONCE_INIT, but this seems to be fixed in 4.2.1 on SolarisExpress */
+#if (pg_on_solaris && __GNUC_MINOR__ < 2)
 static pthread_once_t actual_connection_key_once = { PTHREAD_ONCE_INIT };
 #else 
 static pthread_once_t actual_connection_key_once = PTHREAD_ONCE_INIT;
