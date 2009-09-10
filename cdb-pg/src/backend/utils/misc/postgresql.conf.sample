@@ -397,7 +397,8 @@
 					# autovacuum, -1 means use
 					# vacuum_cost_limit
 gp_autostats_mode=on_no_stats		# none, on_no_stats, on_change. see documentation for semantics.
-
+gp_autostats_on_change_threshold=2147483647 # [0..INT_MAX]. see documentation for semantics.
+log_autostats=off	# print additional autostats information
 
 #------------------------------------------------------------------------------
 # CLIENT CONNECTION DEFAULTS

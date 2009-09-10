@@ -2111,9 +2111,8 @@ static struct config_bool ConfigureNamesBool[] =
     {
 		{"log_autostats", PGC_SUSET, LOGGING_WHAT,
 		 gettext_noop("Logs details of auto-stats issued ANALYZEs."),
-		 NULL,
-		             GUC_GPDB_ADDOPT
-		},
+		 NULL
+		 },
 		&log_autostats,
 		true, NULL, NULL
 	},
@@ -3292,8 +3291,7 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"gp_autostats_on_change_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Threshold for number of tuples added to table by CTAS or Insert-to to trigger autostats in on_change mode. See gp_autostats_mode."),
-			NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			NULL
 		},
 		&gp_autostats_on_change_threshold,
 		INT_MAX, 0, INT_MAX, NULL, NULL
@@ -4192,8 +4190,7 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"gp_autostats_mode", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the autostats mode."),
-			gettext_noop("Valid values are NONE, ON_CHANGE, ON_NO_STATS. ON_CHANGE requires setting gp_autostats_on_change_threshold."),
-			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+			gettext_noop("Valid values are NONE, ON_CHANGE, ON_NO_STATS. ON_CHANGE requires setting gp_autostats_on_change_threshold.")
 		},
 		&gp_autostats_mode_string,
 		"none", gpvars_assign_gp_autostats_mode, gpvars_show_gp_autostats_mode
