@@ -298,6 +298,13 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 				len = (VARSIZE(num) - NUMERIC_HDRSZ);
 			}
 
+            /* 
+             * If we did a pg_detoast_datum, we need to remember to pfree, 
+             * or we will leak memory.  Because of the 1-byte varlena header stuff.
+             */
+            if (num != DatumGetPointer(datum)) 
+                tofree = num;
+
 			break;
 		
 		/*
@@ -803,7 +810,7 @@ int inet_getkey(inet *addr, unsigned char *inet_key, int key_size)
 {
 	int			addrsize;
 	
-	switch (((inet_struct *)VARDATA(addr))->family)
+	switch (((inet_struct *)VARDATA_ANY(addr))->family)
 	{
 		case PGSQL_AF_INET:
 			addrsize = 4;
@@ -816,9 +823,9 @@ int inet_getkey(inet *addr, unsigned char *inet_key, int key_size)
 	}
 	
 	Assert(addrsize + 2 <= key_size);
-	inet_key[0] = ((inet_struct *)VARDATA(addr))->family;
-	inet_key[1] = ((inet_struct *)VARDATA(addr))->bits;
-	memcpy(inet_key + 2, ((inet_struct *)VARDATA(addr))->ipaddr, addrsize);
+	inet_key[0] = ((inet_struct *)VARDATA_ANY(addr))->family;
+	inet_key[1] = ((inet_struct *)VARDATA_ANY(addr))->bits;
+	memcpy(inet_key + 2, ((inet_struct *)VARDATA_ANY(addr))->ipaddr, addrsize);
 	
 	return (addrsize + 2);
 }
