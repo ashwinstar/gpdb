@@ -1698,7 +1698,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 			elevel = DEBUG4;
 
         if (elevel)
-            ereport(LOG, (errmsg("Interconnect seg%d slice%d cleanup state: "
+            ereport(elevel, (errmsg("Interconnect seg%d slice%d cleanup state: "
                                  "%s; setup was %s",
                                  Gp_segment, mySlice->sliceIndex,
                                  forceEOS ? "force" : "normal",
