@@ -298,6 +298,17 @@ location ('bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/badt2.tbl' )
 format 'text' (delimiter '|');
 
 --
+-- TRUNCATE/UPDATE/DELETE
+--
+create external table ext (x text) 
+location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
+format 'text';
+truncate ext;
+delete from ext;
+update ext set x='1' where x='2';
+drop external table ext;
+
+--
 -- get an error for missing gpfdist
 --
 select count(*) from ext_whois;

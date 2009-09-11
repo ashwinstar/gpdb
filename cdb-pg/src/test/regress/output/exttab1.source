@@ -512,6 +512,19 @@ location ('bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/badt2.tbl' )
 format 'text' (delimiter '|');
 ERROR:  invalid URI 'bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/badt2.tbl' : undefined protocol
 --
+-- TRUNCATE/UPDATE/DELETE
+--
+create external table ext (x text) 
+location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
+format 'text';
+truncate ext;
+ERROR:  "ext" is an external relation and can't be truncated
+delete from ext;
+ERROR:  cannot update or delete from external relation "ext"
+update ext set x='1' where x='2';
+ERROR:  cannot update or delete from external relation "ext"
+drop external table ext;
+--
 -- get an error for missing gpfdist
 --
 select count(*) from ext_whois;
