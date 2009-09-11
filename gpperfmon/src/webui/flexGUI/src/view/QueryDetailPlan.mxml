@@ -29,49 +29,49 @@
 	  [Bindable]
 	  private var selectedXML:XML = new XML();
 
-	  [Embed(source="assets/img/aggregate.png")]	
+	  [Embed(source="../assets/img/aggregate.png")]	
 	  public static var ex_aggregate:Class;
-	  [Embed(source="assets/img/append.png")]	
+	  [Embed(source="../assets/img/append.png")]	
 	  public static var ex_append:Class;
-	  [Embed(source="assets/img/bitmap_heap.png")]	
+	  [Embed(source="../assets/img/bitmap_heap.png")]	
 	  public static var ex_bmp_heap:Class;		
-	  [Embed(source="assets/img/bitmap_index.png")]	
+	  [Embed(source="../assets/img/bitmap_index.png")]	
 	  public static var ex_bmp_index:Class;
-	  [Embed(source="assets/img/broadcast_motion.png")]	
+	  [Embed(source="../assets/img/broadcast_motion.png")]	
 	  public static var ex_broadcast_motion:Class;
-	  [Embed(source="assets/img/gather_motion.png")]	
+	  [Embed(source="../assets/img/gather_motion.png")]	
 	  public static var ex_gather_motion:Class;			
-	  [Embed(source="assets/img/hash.png")]	
+	  [Embed(source="../assets/img/hash.png")]	
 	  public static var ex_hash:Class;
-	  [Embed(source="assets/img/index_scan.png")]	
+	  [Embed(source="../assets/img/index_scan.png")]	
 	  public static var ex_index_scan:Class;		
-	  [Embed(source="assets/img/join.png")]	
+	  [Embed(source="../assets/img/join.png")]	
 	  public static var ex_join:Class;
-	  [Embed(source="assets/img/limit.png")]	
+	  [Embed(source="../assets/img/limit.png")]	
 	  public static var ex_limit:Class;
-	  [Embed(source="assets/img/materialize.png")]	
+	  [Embed(source="../assets/img/materialize.png")]	
 	  public static var ex_materialize:Class;	  		
-	  [Embed(source="assets/img/merge.png")]	
+	  [Embed(source="../assets/img/merge.png")]	
 	  public static var ex_merge:Class;			
-	  [Embed(source="assets/img/nested.png")]	
+	  [Embed(source="../assets/img/nested.png")]	
 	  public static var ex_nested:Class;
-	  [Embed(source="assets/img/redistribute_motion.png")]	
+	  [Embed(source="../assets/img/redistribute_motion.png")]	
 	  public static var ex_redistribute_motion:Class;
-	  [Embed(source="assets/img/result.png")]	
+	  [Embed(source="../assets/img/result.png")]	
 	  public static var ex_result:Class;		
-	  [Embed(source="assets/img/scan.png")]	
+	  [Embed(source="../assets/img/scan.png")]	
 	  public static var ex_scan:Class;
-	  [Embed(source="assets/img/seek.png")]	
+	  [Embed(source="../assets/img/seek.png")]	
 	  public static var ex_seek:Class;
-	  [Embed(source="assets/img/setop.png")]	
+	  [Embed(source="../assets/img/setop.png")]	
 	  public static var ex_setop:Class;			
-	  [Embed(source="assets/img/sort.png")]	
+	  [Embed(source="../assets/img/sort.png")]	
 	  public static var ex_sort:Class;		
-	  [Embed(source="assets/img/subplan.png")]	
+	  [Embed(source="../assets/img/subplan.png")]	
 	  public static var ex_subplan:Class;
-	  [Embed(source="assets/img/unique.png")]	
+	  [Embed(source="../assets/img/unique.png")]	
 	  public static var ex_unique:Class;			
-	  [Embed(source="assets/img/unknown.png")]	
+	  [Embed(source="../assets/img/unknown.png")]	
 	  public static var ex_unknown:Class;		
 		
 	// Called when the query plan data changes

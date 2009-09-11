@@ -13,6 +13,7 @@ webapi:
 
 flexGUI:
 	@echo flexGUI
+#	$(MAKE) -C src/webui/flexGUI/src release
 
 installer: gpsmon gpmmon
 	$(MAKE) -C installer all

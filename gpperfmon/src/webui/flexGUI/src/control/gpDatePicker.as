@@ -51,10 +51,10 @@ package control
 		private var _minDate:Date;
 		private var _maxDate:Date;
 
-		[Embed(source='assets/img/cal2.jpg')]
+		[Embed(source='../assets/img/cal2.jpg')]
    		private var calendarIcon:Class;	
    		
-		[Embed(source='assets/img/cross.png')]
+		[Embed(source='../assets/img/cross.png')]
    		private var crossIcon:Class;	
 
 	/**
