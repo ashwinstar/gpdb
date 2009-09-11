@@ -199,7 +199,7 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 
 	/**
 	 * Use the list of equijoined keys to transfer quals between relations.  For example,
-	 *   A=B AND f(A) implies A=B AND f(A) and F(B), under some restrictions on f().
+	 *   A=B AND f(A) implies A=B AND f(A) and f(B), under some restrictions on f.
 	 */
 	generate_implied_quals(root);
 
