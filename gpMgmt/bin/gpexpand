@@ -1476,7 +1476,7 @@ WHERE
                  )
     AND n.nspname != 'gpexpand'
     AND n.nspname != 'pg_bitmapindex'
-    AND c.relkind != 'x';
+    AND c.relstorage != 'x';
 
                   """ 
         self.logger.debug(sql)
