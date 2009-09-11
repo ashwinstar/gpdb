@@ -524,32 +524,7 @@ make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
 	}
 	else
 	{
-#if 0
-		char line[1024];
-		FILE* fp;
-		int a, b, c, d;
-
-		snprintf(line, sizeof(line),
-				 "python -c 'from socket import *; print gethostbyname(\"%s\") ' 2> /tmp/tt",
-				 hostname);
-		line[sizeof(line)-1] = 0;
-		if (! (fp = popen(line, "r"))) {
-			line[0] = 0;
-		}
-		else {
-			if (0 == fgets(line, sizeof(line), fp))
-				line[0] = 0;
-			pclose(fp);
-			line[sizeof(line)-1] = 0;
-		}
-		if (4 != sscanf(line, "%d.%d.%d.%d", &a, &b, &c, &d)) {
-			elog(ERROR, "unable to resolve host '%s' in url '%s'", hostname, url);
-		}
-		sprintf(hostip, "%d.%d.%d.%d", a, b, c, d);
-		/* elog(NOTICE, "IP: %s", hostip); */
-#else
-		elog(ERROR, "unable to resolve host '%s' in url '%s'", hostname, url);
-#endif
+		elog(ERROR, "unable to resolve host '%s' in url '%s'. %s", hostname, url, hstrerror(h_errno));
 	}
 
 	if (!buf)
