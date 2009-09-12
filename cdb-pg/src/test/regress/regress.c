@@ -1,15 +1,21 @@
 /*
- * $PostgreSQL: pgsql/src/test/regress/regress.c,v 1.68 2006/07/13 16:49:20 momjian Exp $
+ * $PostgreSQL: pgsql/src/test/regress/regress.c,v 1.72 2009/01/07 13:44:37 tgl Exp $
  */
 
 #include "postgres.h"
 
-#include <float.h>				/* faked on sunos */
+#include <float.h>
+#include <math.h>
 
 #include "access/transam.h"
-#include "utils/geo_decls.h"	/* includes <math.h> */
-#include "executor/executor.h"	/* For GetAttributeByName */
-#include "commands/sequence.h"	/* for nextval() */
+#include "access/xact.h"
+#include "catalog/pg_type.h"
+#include "commands/sequence.h"
+#include "commands/trigger.h"
+#include "executor/executor.h"
+#include "executor/spi.h"
+#include "utils/builtins.h"
+#include "utils/geo_decls.h"
 
 #define P_MAXDIG 12
 #define LDELIM			'('
@@ -24,7 +30,7 @@ extern void regress_lseg_construct(LSEG *lseg, Point *pt1, Point *pt2);
 extern Datum overpaid(PG_FUNCTION_ARGS);
 extern Datum boxarea(PG_FUNCTION_ARGS);
 extern char *reverse_name(char *string);
-extern Datum oldstyle_length(Datum dn, Datum dt); 
+extern int	oldstyle_length(int n, text *t);
 extern Datum int44in(PG_FUNCTION_ARGS);
 extern Datum int44out(PG_FUNCTION_ARGS);
 extern Datum gp_str2bytea(PG_FUNCTION_ARGS);
@@ -315,21 +321,17 @@ reverse_name(char *string)
  * This rather silly function is just to test that oldstyle functions
  * work correctly on toast-able inputs.
  */
-Datum
-oldstyle_length(Datum dn, Datum dt)
+int
+oldstyle_length(int n, text *t)
 {
-	int32 n = DatumGetInt32(dn); 
-    text* t = (text *) DatumGetPointer(dt);    
-    int32 len = 0;
+	int			len = 0;
 
 	if (t)
 		len = VARSIZE(t) - VARHDRSZ;
 
-	return Int32GetDatum(n + len);
+	return n + len;
 }
 
-#include "executor/spi.h"		/* this is what you need to work with SPI */
-#include "commands/trigger.h"	/* -"- and triggers */
 
 static TransactionId fd17b_xid = InvalidTransactionId;
 static TransactionId fd17a_xid = InvalidTransactionId;
@@ -454,7 +456,7 @@ extern Datum set_ttdummy(PG_FUNCTION_ARGS);
 
 #define TTDUMMY_INFINITY	999999
 
-static void *splan = NULL;
+static SPIPlanPtr splan = NULL;
 static bool ttoff = false;
 
 PG_FUNCTION_INFO_V1(ttdummy);
@@ -486,11 +488,11 @@ ttdummy(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_TRIGGER(fcinfo))
 		elog(ERROR, "ttdummy: not fired by trigger manager");
 	if (TRIGGER_FIRED_FOR_STATEMENT(trigdata->tg_event))
-		elog(ERROR, "ttdummy: can't process STATEMENT events");
+		elog(ERROR, "ttdummy: cannot process STATEMENT events");
 	if (TRIGGER_FIRED_AFTER(trigdata->tg_event))
 		elog(ERROR, "ttdummy: must be fired before event");
 	if (TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
-		elog(ERROR, "ttdummy: can't process INSERT event");
+		elog(ERROR, "ttdummy: cannot process INSERT event");
 	if (TRIGGER_FIRED_BY_UPDATE(trigdata->tg_event))
 		newtuple = trigdata->tg_newtuple;
 
@@ -544,7 +546,7 @@ ttdummy(PG_FUNCTION_ARGS)
 			elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[1]);
 
 		if (oldon != newon || oldoff != newoff)
-			elog(ERROR, "ttdummy (%s): you can't change %s and/or %s columns (use set_ttdummy)",
+			elog(ERROR, "ttdummy (%s): you cannot change %s and/or %s columns (use set_ttdummy)",
 				 relname, args[0], args[1]);
 
 		if (newoff != TTDUMMY_INFINITY)
@@ -559,16 +561,9 @@ ttdummy(PG_FUNCTION_ARGS)
 		return PointerGetDatum(NULL);
 	}
 
-	{
-		text	   *seqname = DatumGetTextP(DirectFunctionCall1(textin,
-											CStringGetDatum("ttdummy_seq")));
-
-		newoff = DirectFunctionCall1(nextval,
-									 PointerGetDatum(seqname));
+	newoff = DirectFunctionCall1(nextval, CStringGetTextDatum("ttdummy_seq"));
 		/* nextval now returns int64; coerce down to int32 */
 		newoff = Int32GetDatum((int32) DatumGetInt64(newoff));
-		pfree(seqname);
-	}
 
 	/* Connect to SPI manager */
 	if ((ret = SPI_connect()) < 0)
@@ -602,7 +597,7 @@ ttdummy(PG_FUNCTION_ARGS)
 	/* if there is no plan ... */
 	if (splan == NULL)
 	{
-		void	   *pplan;
+		SPIPlanPtr	pplan;
 		Oid		   *ctypes;
 		char	   *query;
 

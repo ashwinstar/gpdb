@@ -52,10 +52,10 @@ typedef struct _resultmap
  * this for relocatable trees as it is.  --psqldir would need to be
  * specified in those cases.
  */
-char *bindir = PGBINDIR;
-char *libdir = LIBDIR;
-char *datadir = PGSHAREDIR;
-char *host_platform = HOST_TUPLE;
+char	   *bindir = PGBINDIR;
+char	   *libdir = LIBDIR;
+char	   *datadir = PGSHAREDIR;
+char	   *host_platform = HOST_TUPLE;
 
 #ifndef WIN32_ONLY_COMPILER
 static char *makeprog = MAKEPROG;
@@ -72,9 +72,9 @@ const char *pretty_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE:
 
 /* options settable from command line */
 _stringlist *dblist = NULL;
-bool debug = false;
-char *inputdir = ".";
-char *outputdir = ".";
+bool		debug = false;
+char	   *inputdir = ".";
+char	   *outputdir = ".";
 char	   *psqldir = PGBINDIR;
 static _stringlist *loadlanguage = NULL;
 static int	max_connections = 0;
@@ -106,10 +106,8 @@ static int	success_count = 0;
 static int	fail_count = 0;
 static int	fail_ignore_count = 0;
 
-static bool
-directory_exists(const char *dir);
-static void
-make_directory(const char *dir);
+static bool directory_exists(const char *dir);
+static void make_directory(const char *dir);
 
 static int
 run_diff(const char *cmd, const char *filename);
@@ -131,7 +129,7 @@ psql_command(const char *database, const char *query,...)
 __attribute__((format(printf, 2, 3)));
 
 #ifdef WIN32
-typedef BOOL(WINAPI * __CreateRestrictedToken) (HANDLE, DWORD, DWORD, PSID_AND_ATTRIBUTES, DWORD, PLUID_AND_ATTRIBUTES, DWORD, PSID_AND_ATTRIBUTES, PHANDLE);
+typedef BOOL (WINAPI * __CreateRestrictedToken) (HANDLE, DWORD, DWORD, PSID_AND_ATTRIBUTES, DWORD, PLUID_AND_ATTRIBUTES, DWORD, PSID_AND_ATTRIBUTES, PHANDLE);
 
 /* Windows API define missing from MingW headers */
 #define DISABLE_MAX_PRIVILEGE	0x1
@@ -141,12 +139,12 @@ typedef BOOL(WINAPI * __CreateRestrictedToken) (HANDLE, DWORD, DWORD, PSID_AND_A
  * allow core files if possible.
  */
 #if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
-static void 
+static void
 unlimit_core_size(void)
 {
 	struct rlimit lim;
 
-	getrlimit(RLIMIT_CORE,&lim);
+	getrlimit(RLIMIT_CORE, &lim);
 	if (lim.rlim_max == 0)
 	{
 		fprintf(stderr,
@@ -157,8 +155,8 @@ unlimit_core_size(void)
 	else if (lim.rlim_max == RLIM_INFINITY || lim.rlim_cur < lim.rlim_max)
 	{
 		lim.rlim_cur = lim.rlim_max;
-		setrlimit(RLIMIT_CORE,&lim);
-	}	
+		setrlimit(RLIMIT_CORE, &lim);
+	}
 }
 #endif
 
@@ -188,7 +186,7 @@ add_stringlist_item(_stringlist ** listhead, const char *str)
  * Free a stringlist.
  */
 static void
-free_stringlist(_stringlist **listhead) 
+free_stringlist(_stringlist ** listhead)
 {
 	if (listhead == NULL || *listhead == NULL)
 		return;
@@ -203,10 +201,10 @@ free_stringlist(_stringlist **listhead)
  * Split a delimited string into a stringlist
  */
 static void
-split_to_stringlist(const char *s, const char *delim, _stringlist **listhead)
+split_to_stringlist(const char *s, const char *delim, _stringlist ** listhead)
 {
-	char *sc = strdup(s);
-	char *token = strtok(sc, delim);
+	char	   *sc = strdup(s);
+	char	   *token = strtok(sc, delim);
 
 	while (token)
 	{
@@ -290,7 +288,7 @@ stop_postmaster(void)
 		{
 			fprintf(stderr, _("\n%s: could not stop postmaster: exit code was %d\n"),
 					progname, r);
-			exit(2);   /* not exit_nicely(), that would be recursive */
+			exit(2);			/* not exit_nicely(), that would be recursive */
 		}
 
 		postmaster_running = false;
@@ -388,11 +386,11 @@ string_matches_pattern(const char *str, const char *pattern)
 void
 replace_string(char *string, char *replace, char *replacement)
 {
-	char *ptr;
+	char	   *ptr;
 
-	while ((ptr = strstr(string, replace)) != NULL) 
+	while ((ptr = strstr(string, replace)) != NULL)
 	{
-		char *dup = strdup(string);
+		char	   *dup = strdup(string);
 
 		strlcpy(string, dup, ptr - string + 1);
 		strcat(string, replacement);
@@ -481,12 +479,12 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 	/* finally loop on each file and do the replacement */
 	for (name = names; *name; name++)
 	{
-		char	srcfile[MAXPGPATH];
-		char	destfile[MAXPGPATH];
-		char	prefix[MAXPGPATH];
-		FILE   *infile,
-			   *outfile;
-		char	line[1024];
+		char		srcfile[MAXPGPATH];
+		char		destfile[MAXPGPATH];
+		char		prefix[MAXPGPATH];
+		FILE	   *infile,
+				   *outfile;
+		char		line[1024];
 
 		/* reject filenames not finishing in ".source" */
 		if (strlen(*name) < 8)
@@ -512,7 +510,7 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 		if (!outfile)
 		{
 			fprintf(stderr, _("%s: could not open file \"%s\" for writing: %s\n"),
-				progname, destfile, strerror(errno));
+					progname, destfile, strerror(errno));
 			exit_nicely(2);
 		}
 		while (fgets(line, sizeof(line), infile))
@@ -548,8 +546,8 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 				progname, indir);
 		exit_nicely(2);
 	}
-	
-    pgfnames_cleanup(names);
+
+	pgfnames_cleanup(names);
 }
 
 /* Create the .sql and .out files from the .source files, if any */
@@ -621,7 +619,7 @@ load_resultmap(void)
 		if (!file_type)
 		{
 			fprintf(stderr, _("incorrectly formatted resultmap entry: %s\n"),
-				buf);
+					buf);
 			exit_nicely(2);
 		}
 		*file_type++ = '\0';
@@ -670,7 +668,7 @@ static
 const char *
 get_expectfile(const char *testname, const char *file)
 {
-	char *file_type;
+	char	   *file_type;
 	_resultmap *rm;
 
 	/*
@@ -739,26 +737,26 @@ initialize_environment(void)
 
 	if (nolocale)
 	{
-	/*
-	 * Clear out any non-C locale settings
-	 */
-	unsetenv("LC_COLLATE");
-	unsetenv("LC_CTYPE");
-	unsetenv("LC_MONETARY");
-	unsetenv("LC_NUMERIC");
-	unsetenv("LC_TIME");
-	unsetenv("LANG");
-	/* On Windows the default locale cannot be English, so force it */
+		/*
+		 * Clear out any non-C locale settings
+		 */
+		unsetenv("LC_COLLATE");
+		unsetenv("LC_CTYPE");
+		unsetenv("LC_MONETARY");
+		unsetenv("LC_NUMERIC");
+		unsetenv("LC_TIME");
+		unsetenv("LANG");
+		/* On Windows the default locale cannot be English, so force it */
 #if defined(WIN32) || defined(__CYGWIN__)
-	putenv("LANG=en");
+		putenv("LANG=en");
 #endif
 	}
 
 	/*
-	 * Set translation-related settings to English; otherwise psql
-	 * will produce translated messages and produce diffs.  (XXX If we
-	 * ever support translation of pg_regress, this needs to be moved
-	 * elsewhere, where psql is actually called.)
+	 * Set translation-related settings to English; otherwise psql will
+	 * produce translated messages and produce diffs.  (XXX If we ever support
+	 * translation of pg_regress, this needs to be moved elsewhere, where psql
+	 * is actually called.)
 	 */
 	unsetenv("LANGUAGE");
 	unsetenv("LC_ALL");
@@ -779,14 +777,14 @@ initialize_environment(void)
 	putenv("PGDATESTYLE=Postgres, MDY");
 
 	/*
-	 * Likewise set intervalstyle to ensure consistent results.  This is a
-	 * bit more painful because we must use PGOPTIONS, and we want to preserve
-	 * the user's ability to set other variables through that.
+	 * Likewise set intervalstyle to ensure consistent results.  This is a bit
+	 * more painful because we must use PGOPTIONS, and we want to preserve the
+	 * user's ability to set other variables through that.
 	 */
 	{
 		const char *my_pgoptions = "-c intervalstyle=postgres_verbose";
 		const char *old_pgoptions = getenv("PGOPTIONS");
-		char   *new_pgoptions;
+		char	   *new_pgoptions;
 
 		if (!old_pgoptions)
 			old_pgoptions = "";
@@ -1001,84 +999,87 @@ spawn_process(const char *cmdline)
 	return pid;
 #else
 	char	   *cmdline2;
-	BOOL b;
+	BOOL		b;
 	STARTUPINFO si;
 	PROCESS_INFORMATION pi;
-	HANDLE origToken;
-	HANDLE restrictedToken;
+	HANDLE		origToken;
+	HANDLE		restrictedToken;
 	SID_IDENTIFIER_AUTHORITY NtAuthority = {SECURITY_NT_AUTHORITY};
 	SID_AND_ATTRIBUTES dropSids[2];
 	__CreateRestrictedToken _CreateRestrictedToken = NULL;
-	HANDLE Advapi32Handle;
+	HANDLE		Advapi32Handle;
 
 	ZeroMemory(&si, sizeof(si));
 	si.cb = sizeof(si);
-	
+
 	Advapi32Handle = LoadLibrary("ADVAPI32.DLL");
 	if (Advapi32Handle != NULL)
 	{
-      _CreateRestrictedToken = (__CreateRestrictedToken) GetProcAddress(Advapi32Handle, "CreateRestrictedToken");
-   }
-   
-   if (_CreateRestrictedToken == NULL)
-   {
-      if (Advapi32Handle != NULL)
-      	FreeLibrary(Advapi32Handle);
-      fprintf(stderr, "ERROR: cannot create restricted tokens on this platform\n");
-      exit_nicely(2);
-   }
+		_CreateRestrictedToken = (__CreateRestrictedToken) GetProcAddress(Advapi32Handle, "CreateRestrictedToken");
+	}
 
-   /* Open the current token to use as base for the restricted one */
-   if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &origToken))
-   {
-      fprintf(stderr, "could not open process token: %lu\n", GetLastError());
-      exit_nicely(2);
-   }
+	if (_CreateRestrictedToken == NULL)
+	{
+		if (Advapi32Handle != NULL)
+			FreeLibrary(Advapi32Handle);
+		fprintf(stderr, _("%s: cannot create restricted tokens on this platform\n"),
+				progname);
+		exit_nicely(2);
+	}
+
+	/* Open the current token to use as base for the restricted one */
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &origToken))
+	{
+		fprintf(stderr, _("could not open process token: %lu\n"),
+				GetLastError());
+		exit_nicely(2);
+	}
 
 	/* Allocate list of SIDs to remove */
 	ZeroMemory(&dropSids, sizeof(dropSids));
 	if (!AllocateAndInitializeSid(&NtAuthority, 2,
-			SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &dropSids[0].Sid) ||
-		 !AllocateAndInitializeSid(&NtAuthority, 2,
-		   SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_POWER_USERS, 0, 0, 0, 0, 0, 0, &dropSids[1].Sid))
-   {
-      fprintf(stderr, "could not allocate SIDs: %lu\n", GetLastError());
-      exit_nicely(2);
-   }
-	
-	b = _CreateRestrictedToken(origToken,
-          DISABLE_MAX_PRIVILEGE,
-          sizeof(dropSids)/sizeof(dropSids[0]),
-          dropSids,
-          0, NULL,
-          0, NULL,
-          &restrictedToken);
+								  SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &dropSids[0].Sid) ||
+		!AllocateAndInitializeSid(&NtAuthority, 2,
+								  SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_POWER_USERS, 0, 0, 0, 0, 0, 0, &dropSids[1].Sid))
+	{
+		fprintf(stderr, _("could not allocate SIDs: %lu\n"), GetLastError());
+		exit_nicely(2);
+	}
 
-   FreeSid(dropSids[1].Sid);
-   FreeSid(dropSids[0].Sid);
-   CloseHandle(origToken);
-   FreeLibrary(Advapi32Handle);
-   
-   if (!b)
-   {
-      fprintf(stderr, "could not create restricted token: %lu\n", GetLastError());
-      exit_nicely(2);
-   }
+	b = _CreateRestrictedToken(origToken,
+							   DISABLE_MAX_PRIVILEGE,
+							   sizeof(dropSids) / sizeof(dropSids[0]),
+							   dropSids,
+							   0, NULL,
+							   0, NULL,
+							   &restrictedToken);
+
+	FreeSid(dropSids[1].Sid);
+	FreeSid(dropSids[0].Sid);
+	CloseHandle(origToken);
+	FreeLibrary(Advapi32Handle);
+
+	if (!b)
+	{
+		fprintf(stderr, _("could not create restricted token: %lu\n"),
+				GetLastError());
+		exit_nicely(2);
+	}
 
 	cmdline2 = malloc(strlen(cmdline) + 8);
 	sprintf(cmdline2, "cmd /c %s", cmdline);
 
 	if (!CreateProcessAsUser(restrictedToken,
-						NULL,
-						cmdline2,
-						NULL,
-						NULL,
-						TRUE,
-						CREATE_SUSPENDED,
-						NULL,
-						NULL,
-						&si,
-						&pi))
+							 NULL,
+							 cmdline2,
+							 NULL,
+							 NULL,
+							 TRUE,
+							 CREATE_SUSPENDED,
+							 NULL,
+							 NULL,
+							 &si,
+							 &pi))
 	{
 		fprintf(stderr, _("could not start process for \"%s\": %lu\n"),
 				cmdline2, GetLastError());
@@ -1091,7 +1092,7 @@ spawn_process(const char *cmdline)
 
 	free(cmdline2);
 
-    ResumeThread(pi.hThread);
+	ResumeThread(pi.hThread);
 	CloseHandle(pi.hThread);
 	return pi.hProcess;
 #endif
@@ -1184,13 +1185,13 @@ make_directory(const char *dir)
 static char *
 get_alternative_expectfile(const char *expectfile, int i)
 {
-	char *last_dot;
-	int ssize = strlen(expectfile) + 2 + 1;
-	char *tmp = (char *)malloc(ssize);
-	char *s = (char *)malloc(ssize);
+	char	   *last_dot;
+	int			ssize = strlen(expectfile) + 2 + 1;
+	char	   *tmp = (char *) malloc(ssize);
+	char	   *s = (char *) malloc(ssize);
 
 	strcpy(tmp, expectfile);
-	last_dot = strrchr(tmp,'.');
+	last_dot = strrchr(tmp, '.');
 	if (!last_dot)
 	{
 		free(tmp);
@@ -1198,7 +1199,7 @@ get_alternative_expectfile(const char *expectfile, int i)
 		return NULL;
 	}
 	*last_dot = '\0';
-	snprintf(s, ssize, "%s_%d.%s", tmp, i, last_dot+1);
+	snprintf(s, ssize, "%s_%d.%s", tmp, i, last_dot + 1);
 	free(tmp);
 	return s;
 }
@@ -1261,13 +1262,13 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 	platform_expectfile = get_expectfile(testname, resultsfile);
 
 	strcpy(expectfile, default_expectfile);
-	if (platform_expectfile) 
+	if (platform_expectfile)
 	{
 		/*
 		 * Replace everything afer the last slash in expectfile with what the
 		 * platform_expectfile contains.
 		 */
-		char *p = strrchr(expectfile, '/');
+		char	   *p = strrchr(expectfile, '/');
 
 		if (p)
 			strcpy(++p, platform_expectfile);
@@ -1294,7 +1295,7 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 
 	for (i = 0; i <= 9; i++)
 	{
-		char *alt_expectfile;
+		char	   *alt_expectfile;
 
 		alt_expectfile = get_alternative_expectfile(expectfile, i);
 		if (!file_exists(alt_expectfile))
@@ -1370,14 +1371,15 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 }
 
 /*
- * Wait for specified subprocesses to finish
+ * Wait for specified subprocesses to finish, and return their exit
+ * statuses into statuses[]
  *
  * If names isn't NULL, print each subprocess's name as it finishes
  *
  * Note: it's OK to scribble on the pids array, but not on the names array
  */
 static void
-wait_for_tests(PID_TYPE * pids, char **names, int num_tests)
+wait_for_tests(PID_TYPE * pids, int *statuses, char **names, int num_tests)
 {
 	int			tests_left;
 	int			i;
@@ -1394,7 +1396,9 @@ wait_for_tests(PID_TYPE * pids, char **names, int num_tests)
 		PID_TYPE	p;
 
 #ifndef WIN32
-		p = wait(NULL);
+		int			exit_status;
+
+		p = wait(&exit_status);
 
 		if (p == INVALID_PID)
 		{
@@ -1403,6 +1407,7 @@ wait_for_tests(PID_TYPE * pids, char **names, int num_tests)
 			exit_nicely(2);
 		}
 #else
+		DWORD		exit_status;
 		int			r;
 
 		r = WaitForMultipleObjects(tests_left, active_pids, FALSE, INFINITE);
@@ -1422,9 +1427,11 @@ wait_for_tests(PID_TYPE * pids, char **names, int num_tests)
 			if (p == pids[i])
 			{
 #ifdef WIN32
+				GetExitCodeProcess(pids[i], &exit_status);
 				CloseHandle(pids[i]);
 #endif
 				pids[i] = INVALID_PID;
+				statuses[i] = (int) exit_status;
 				if (names)
 					status(" %s", names[i]);
 				tests_left--;
@@ -1439,6 +1446,35 @@ wait_for_tests(PID_TYPE * pids, char **names, int num_tests)
 }
 
 /*
+ * report nonzero exit code from a test process
+ */
+static void
+log_child_failure(int exitstatus)
+{
+	if (WIFEXITED(exitstatus))
+		status(_(" (test process exited with exit code %d)"),
+			   WEXITSTATUS(exitstatus));
+	else if (WIFSIGNALED(exitstatus))
+	{
+#if defined(WIN32)
+		status(_(" (test process was terminated by exception 0x%X)"),
+			   WTERMSIG(exitstatus));
+#elif defined(HAVE_DECL_SYS_SIGLIST) && HAVE_DECL_SYS_SIGLIST
+		status(_(" (test process was terminated by signal %d: %s)"),
+			   WTERMSIG(exitstatus),
+			   WTERMSIG(exitstatus) < NSIG ?
+			   sys_siglist[WTERMSIG(exitstatus)] : "(unknown))");
+#else
+		status(_(" (test process was terminated by signal %d)"),
+			   WTERMSIG(exitstatus));
+#endif
+	}
+	else
+		status(_(" (test process exited with unrecognized status %d)"),
+			   exitstatus);
+}
+
+/*
  * Run all the tests specified in one schedule file
  */
 static void
@@ -1450,14 +1486,15 @@ run_schedule(const char *schedule, test_function tfunc)
 	_stringlist *expectfiles[MAX_PARALLEL_TESTS];
 	_stringlist *tags[MAX_PARALLEL_TESTS];
 	PID_TYPE	pids[MAX_PARALLEL_TESTS];
+	int			statuses[MAX_PARALLEL_TESTS];
 	_stringlist *ignorelist = NULL;
 	char		scbuf[1024];
 	FILE	   *scf;
 	int			line_num = 0;
 
-	memset(resultfiles,0,sizeof(_stringlist *) * MAX_PARALLEL_TESTS);
-	memset(expectfiles,0,sizeof(_stringlist *) * MAX_PARALLEL_TESTS);
-	memset(tags,0,sizeof(_stringlist *) * MAX_PARALLEL_TESTS);
+	memset(resultfiles, 0, sizeof(_stringlist *) * MAX_PARALLEL_TESTS);
+	memset(expectfiles, 0, sizeof(_stringlist *) * MAX_PARALLEL_TESTS);
+	memset(tags, 0, sizeof(_stringlist *) * MAX_PARALLEL_TESTS);
 
 	scf = fopen(schedule, "r");
 	if (!scf)
@@ -1550,8 +1587,8 @@ run_schedule(const char *schedule, test_function tfunc)
 		if (num_tests == 1)
 		{
 			status(_("test %-20s ... "), tests[0]);
-			pids[0] = (tfunc)(tests[0], &resultfiles[0], &expectfiles[0], &tags[0]);
-			wait_for_tests(pids, NULL, 1);
+			pids[0] = (tfunc) (tests[0], &resultfiles[0], &expectfiles[0], &tags[0]);
+			wait_for_tests(pids, statuses, NULL, 1);
 			/* status line is finished below */
 		}
 		else if (max_connections > 0 && max_connections < num_tests)
@@ -1564,12 +1601,14 @@ run_schedule(const char *schedule, test_function tfunc)
 			{
 				if (i - oldest >= max_connections)
 				{
-					wait_for_tests(pids + oldest, tests + oldest, i - oldest);
+					wait_for_tests(pids + oldest, statuses + oldest,
+								   tests + oldest, i - oldest);
 					oldest = i;
 				}
-				pids[i] = (tfunc)(tests[i], &resultfiles[i], &expectfiles[i], &tags[i]);
+				pids[i] = (tfunc) (tests[i], &resultfiles[i], &expectfiles[i], &tags[i]);
 			}
-			wait_for_tests(pids + oldest, tests + oldest, i - oldest);
+			wait_for_tests(pids + oldest, statuses + oldest,
+						   tests + oldest, i - oldest);
 			status_end();
 		}
 		else
@@ -1577,17 +1616,19 @@ run_schedule(const char *schedule, test_function tfunc)
 			status(_("parallel group (%d tests): "), num_tests);
 			for (i = 0; i < num_tests; i++)
 			{
-				pids[i] = (tfunc)(tests[i], &resultfiles[i], &expectfiles[i], &tags[i]);
+				pids[i] = (tfunc) (tests[i], &resultfiles[i], &expectfiles[i], &tags[i]);
 			}
-			wait_for_tests(pids, tests, num_tests);
+			wait_for_tests(pids, statuses, tests, num_tests);
 			status_end();
 		}
 
 		/* Check results for all tests */
 		for (i = 0; i < num_tests; i++)
 		{
-			_stringlist *rl, *el, *tl;
-			bool differ = false;
+			_stringlist *rl,
+					   *el,
+					   *tl;
+			bool		differ = false;
 
 			if (num_tests > 1)
 				status(_("     %-20s ... "), tests[i]);
@@ -1595,20 +1636,22 @@ run_schedule(const char *schedule, test_function tfunc)
 			/*
 			 * Advance over all three lists simultaneously.
 			 *
-			 * Compare resultfiles[j] with expectfiles[j] always.
-			 * Tags are optional but if there are tags, the tag list has the
-			 * same length as the other two lists.
+			 * Compare resultfiles[j] with expectfiles[j] always. Tags are
+			 * optional but if there are tags, the tag list has the same
+			 * length as the other two lists.
 			 */
 			for (rl = resultfiles[i], el = expectfiles[i], tl = tags[i];
-				rl != NULL; /* rl and el have the same length */
-				rl = rl->next, el = el->next)
+				 rl != NULL;	/* rl and el have the same length */
+				 rl = rl->next, el = el->next)
 			{
-				bool newdiff;
+				bool		newdiff;
+
 				if (tl)
-					tl = tl->next; /* tl has the same lengt has rl and el if it exists */
+					tl = tl->next;		/* tl has the same length as rl and el
+										 * if it exists */
 
 				newdiff = results_differ(tests[i], rl->str, el->str);
-				if (newdiff && tl) 
+				if (newdiff && tl)
 				{
 					printf("%s ", tl->str);
 				}
@@ -1645,6 +1688,9 @@ run_schedule(const char *schedule, test_function tfunc)
 				success_count++;
 			}
 
+			if (statuses[i] != 0)
+				log_child_failure(statuses[i]);
+
 			status_end();
 		}
 	}
@@ -1659,15 +1705,18 @@ static void
 run_single_test(const char *test, test_function tfunc)
 {
 	PID_TYPE	pid;
+	int			exit_status;
 	_stringlist *resultfiles = NULL;
 	_stringlist *expectfiles = NULL;
 	_stringlist *tags = NULL;
-	_stringlist *rl, *el, *tl;
+	_stringlist *rl,
+			   *el,
+			   *tl;
 	bool		differ = false;
 
 	status(_("test %-20s ... "), test);
-	pid = (tfunc)(test, &resultfiles, &expectfiles, &tags);
-	wait_for_tests(&pid, NULL, 1);
+	pid = (tfunc) (test, &resultfiles, &expectfiles, &tags);
+	wait_for_tests(&pid, &exit_status, NULL, 1);
 
 	/*
 	 * Advance over all three lists simultaneously.
@@ -1677,15 +1726,17 @@ run_single_test(const char *test, test_function tfunc)
 	 * two lists.
 	 */
 	for (rl = resultfiles, el = expectfiles, tl = tags;
-		rl != NULL; /* rl and el have the same length */
-		rl = rl->next, el = el->next)
+		 rl != NULL;			/* rl and el have the same length */
+		 rl = rl->next, el = el->next)
 	{
-		bool newdiff;
+		bool		newdiff;
+
 		if (tl)
-			tl = tl->next; /* tl has the same lengt has rl and el if it exists */
+			tl = tl->next;		/* tl has the same length as rl and el if it
+								 * exists */
 
 		newdiff = results_differ(test, rl->str, el->str);
-		if (newdiff && tl) 
+		if (newdiff && tl)
 		{
 			printf("%s ", tl->str);
 		}
@@ -1702,6 +1753,10 @@ run_single_test(const char *test, test_function tfunc)
 		status(_("ok"));
 		success_count++;
 	}
+
+	if (exit_status != 0)
+		log_child_failure(exit_status);
+
 	status_end();
 }
 
@@ -1765,13 +1820,13 @@ create_database(const char *dbname)
 		psql_command("postgres", "CREATE DATABASE \"%s\" TEMPLATE=template0 ENCODING='%s'", dbname, encoding);
 	else
 		psql_command("postgres", "CREATE DATABASE \"%s\" TEMPLATE=template0", dbname);
-	psql_command(dbname, 
-		"ALTER DATABASE \"%s\" SET lc_messages TO 'C';"
-		"ALTER DATABASE \"%s\" SET lc_monetary TO 'C';"
-		"ALTER DATABASE \"%s\" SET lc_numeric TO 'C';"
-		"ALTER DATABASE \"%s\" SET lc_time TO 'C';"
-		"ALTER DATABASE \"%s\" SET timezone_abbreviations TO 'Default';",
-		dbname, dbname, dbname, dbname, dbname);
+	psql_command(dbname,
+				 "ALTER DATABASE \"%s\" SET lc_messages TO 'C';"
+				 "ALTER DATABASE \"%s\" SET lc_monetary TO 'C';"
+				 "ALTER DATABASE \"%s\" SET lc_numeric TO 'C';"
+				 "ALTER DATABASE \"%s\" SET lc_time TO 'C';"
+			"ALTER DATABASE \"%s\" SET timezone_abbreviations TO 'Default';",
+				 dbname, dbname, dbname, dbname, dbname);
 
 	/*
 	 * Install any requested procedural languages
@@ -1791,15 +1846,43 @@ drop_role_if_exists(const char *rolename)
 }
 
 static void
-create_role(const char *rolename, const _stringlist *granted_dbs)
+create_role(const char *rolename, const _stringlist * granted_dbs)
 {
 	header(_("creating role \"%s\""), rolename);
 	psql_command("postgres", "CREATE ROLE \"%s\" WITH LOGIN", rolename);
 	for (; granted_dbs != NULL; granted_dbs = granted_dbs->next)
 	{
 		psql_command("postgres", "GRANT ALL ON DATABASE \"%s\" TO \"%s\"",
-			granted_dbs->str, rolename);
+					 granted_dbs->str, rolename);
 	}
+}
+
+static char *
+make_absolute_path(const char *in)
+{
+	char	   *result;
+
+	if (is_absolute_path(in))
+		result = strdup(in);
+	else
+	{
+		static char cwdbuf[MAXPGPATH];
+
+		if (!cwdbuf[0])
+		{
+			if (!getcwd(cwdbuf, sizeof(cwdbuf)))
+			{
+				fprintf(stderr, _("could not get current working directory: %s\n"), strerror(errno));
+				exit_nicely(2);
+			}
+		}
+
+		result = malloc(strlen(cwdbuf) + strlen(in) + 2);
+		sprintf(result, "%s/%s", cwdbuf, in);
+	}
+
+	canonicalize_path(result);
+	return result;
 }
 
 static void
@@ -1876,7 +1959,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 	};
 
 	progname = get_progname(argv[0]);
-	set_pglocale_pgservice(argv[0], "pg_regress");
+	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_regress"));
 
 #ifndef HAVE_UNIX_SOCKETS
 	/* no unix domain sockets available, so change default */
@@ -1930,22 +2013,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 				add_stringlist_item(&schedulelist, optarg);
 				break;
 			case 9:
-				/* temp_install must be absolute path */
-				if (is_absolute_path(optarg))
-					temp_install = strdup(optarg);
-				else
-				{
-					char		cwdbuf[MAXPGPATH];
-
-					if (!getcwd(cwdbuf, sizeof(cwdbuf)))
-					{
-						fprintf(stderr, _("could not get current working directory: %s\n"), strerror(errno));
-						exit_nicely(2);
-					}
-					temp_install = malloc(strlen(cwdbuf) + strlen(optarg) + 2);
-					sprintf(temp_install, "%s/%s", cwdbuf, optarg);
-				}
-				canonicalize_path(temp_install);
+				temp_install = make_absolute_path(optarg);
 				break;
 			case 10:
 				nolocale = true;
@@ -2046,9 +2114,9 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 				 SYSTEMQUOTE "\"%s\" -C \"%s\" DESTDIR=\"%s/install\" install with_perl=no with_python=no > \"%s/log/install.log\" 2>&1" SYSTEMQUOTE,
 				 makeprog, top_builddir, temp_install, outputdir);
 #else
-	   snprintf(buf, sizeof(buf),
-	          SYSTEMQUOTE "perl \"%s/src/tools/msvc/install.pl\" \"%s/install\" >\"%s/log/install.log\" 2>&1" SYSTEMQUOTE,
-             top_builddir, temp_install, outputdir);
+		snprintf(buf, sizeof(buf),
+				 SYSTEMQUOTE "perl \"%s/src/tools/msvc/install.pl\" \"%s/install\" >\"%s/log/install.log\" 2>&1" SYSTEMQUOTE,
+				 top_builddir, temp_install, outputdir);
 #endif
 		if (system(buf))
 		{

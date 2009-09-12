@@ -8,10 +8,10 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/test/regress/pg_regress_main.c,v 1.3 2008/01/01 19:46:00 momjian Exp $
+ * $PostgreSQL: pgsql/src/test/regress/pg_regress_main.c,v 1.6 2009/06/11 14:49:15 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -24,9 +24,9 @@
  */
 static PID_TYPE
 psql_start_test(const char *testname,
-				_stringlist **resultfiles,
-				_stringlist **expectfiles,
-				_stringlist **tags)
+				_stringlist ** resultfiles,
+				_stringlist ** expectfiles,
+				_stringlist ** tags)
 {
 	PID_TYPE	pid;
 	char		infile[MAXPGPATH];
@@ -49,11 +49,16 @@ psql_start_test(const char *testname,
 			 outputdir, testname);
 	if (!file_exists(infile))
 		snprintf(infile, sizeof(infile), "%s/sql/%s.sql",
-			 inputdir, testname);
+				 inputdir, testname);
+
 	snprintf(outfile, sizeof(outfile), "%s/results/%s.out",
 			 outputdir, testname);
+
 	snprintf(expectfile, sizeof(expectfile), "%s/expected/%s.out",
-			 inputdir, testname);
+			 outputdir, testname);
+	if (!file_exists(expectfile))
+		snprintf(expectfile, sizeof(expectfile), "%s/expected/%s.out",
+				 inputdir, testname);
 
 	add_stringlist_item(resultfiles, outfile);
 	add_stringlist_item(expectfiles, expectfile);
