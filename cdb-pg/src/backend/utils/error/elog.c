@@ -334,8 +334,8 @@ errstart(int elevel, const char *filename, int lineno,
         MemoryContextReset(ErrorContext);
 
         /*
-         * Infinite error recursion might be due to something broken
-         * in a context traceback routine.	Abandon them too.  We also abandon
+		 * Infinite error recursion might be due to something broken in a
+		 * context traceback routine.  Abandon them too.  We also abandon
          * attempting to print the error statement (which, if long, could
          * itself be the source of the recursive failure).
          */
@@ -452,7 +452,7 @@ errfinish(int dummy __attribute__((unused)),...)
         {  // GP: Don't indent so we can watch this section...
         
         /*
-         * We do some minimal cleanup before longjmp'ing so that handlers can
+		 * We do some minimal cleanup before longjmp'ing so that handlers can
          * execute in a reasonably sane state.
          */
 
@@ -744,7 +744,7 @@ errcode_for_socket_access(void)
         StringInfoData	buf; \
         /* Internationalize the error format string */ \
         if (translateit && !in_error_recursion_trouble()) \
-            fmt = gettext(fmt); \
+			fmt = dgettext(edata->domain, fmt); \
         /* Expand %m in format string */ \
         fmtbuf = expand_fmt_string(fmt, edata); \
         initStringInfo(&buf); \

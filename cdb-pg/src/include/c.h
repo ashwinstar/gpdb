@@ -111,7 +111,7 @@ extern "C" {
 
 /*
  *	Use this to mark string constants as needing translation at some later
- *	time, rather than immediately.  This is useful for cases where you need
+ *	time, rather than immediately.	This is useful for cases where you need
  *	access to the original string and translated string, and for cases where
  *	immediate translation is not possible, like when initializing global
  *	variables.
@@ -431,7 +431,7 @@ typedef struct
  */
 struct varlena
 {
-	int32		vl_len_;		/* Do not touch this field directly! */
+	char		vl_len_[4];		/* Do not touch this field directly! */
 	char		vl_dat[1];
 };
 
@@ -480,16 +480,12 @@ typedef struct
 } oidvector;					/* VARIABLE LENGTH STRUCT */
 
 /*
- * We want NameData to have length NAMEDATALEN and int alignment,
- * because that's how the data type 'name' is defined in pg_type.
- * Use a union to make sure the compiler agrees.  Note that NAMEDATALEN
- * must be a multiple of sizeof(int), else sizeof(NameData) will probably
- * not come out equal to NAMEDATALEN.
+ * Representation of a Name: effectively just a C string, but null-padded to
+ * exactly NAMEDATALEN bytes.  The use of a struct is historical.
  */
-typedef union nameData
+typedef struct nameData
 {
 	char		data[NAMEDATALEN];
-	int			alignmentDummy;
 } NameData;
 typedef NameData *Name;
 
@@ -831,9 +827,9 @@ typedef NameData *Name;
 #define CppAsString2(x) CppAsString(x)
 
 #ifdef SO_MAJOR_VERSION
-# define PG_TEXTDOMAIN(domain) (domain CppAsString2(SO_MAJOR_VERSION) "-" PG_MAJORVERSION)
+#define PG_TEXTDOMAIN(domain) (domain CppAsString2(SO_MAJOR_VERSION) "-" PG_MAJORVERSION)
 #else
-# define PG_TEXTDOMAIN(domain) (domain "-" PG_MAJORVERSION)
+#define PG_TEXTDOMAIN(domain) (domain "-" PG_MAJORVERSION)
 #endif
 
 // CDB - Temp -- make PG_TEXTDOMAIN a no-op until we are ready to use it

@@ -70,7 +70,7 @@ typedef struct NumericData
 
 typedef NumericData *Numeric;
 
-#define NUMERIC_HDRSZ	(VARHDRSZ + sizeof(int16) + sizeof(uint16))
+#define NUMERIC_HDRSZ	(VARHDRSZ + sizeof(uint16) + sizeof(int16))
 
 
 /*

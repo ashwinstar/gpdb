@@ -3,12 +3,12 @@
  * geo_ops.c
  *	  2D geometric operations
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/geo_ops.c,v 1.99.2.2 2009/06/23 16:25:09 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/geo_ops.c,v 1.102 2009/06/23 16:25:02 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1795,8 +1795,8 @@ point_in(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
 	Point	   *point;
-	double		x = 0,
-				y = 0;
+	double		x,
+				y;
 	char	   *s;
 
 	if (!pair_decode(str, &x, &y, &s) || (*s != '\0'))
@@ -2449,10 +2449,10 @@ dist_ps_internal(Point *pt, LSEG *lseg)
 				tmpdist;
 	Point	   *ip;
 
-/*
- * Construct a line perpendicular to the input segment
- * and through the input point
- */
+	/*
+	 * Construct a line perpendicular to the input segment
+	 * and through the input point
+	 */
 	if (lseg->p[1].x == lseg->p[0].x)
 		m = 0;
 	else if (lseg->p[1].y == lseg->p[0].y)
@@ -5170,18 +5170,18 @@ lseg_crossing(double x, double y, double prev_x, double prev_y)
 		else if (FPgt(y_sign * prev_y, 0))
 			/* both above or below X axis */
 			return 0;			/* same sign */
-	else
+		else
 		{						/* y and prev_y cross X-axis */
 			if (FPge(x, 0) && FPgt(prev_x, 0))
 				/* both non-negative so cross positive X-axis */
 				return 2 * y_sign;
 			if (FPlt(x, 0) && FPle(prev_x, 0))
 				/* both non-positive so do not cross positive X-axis */
-			return 0;
+				return 0;
 
 			/* x and y cross axises, see URL above point_inside() */
 			z = (x - prev_x) * y - (y - prev_y) * x;
-		if (FPzero(z))
+			if (FPzero(z))
 				return POINT_ON_POLYGON;
 			return FPgt((y_sign * z), 0) ? 0 : 2 * y_sign;
 		}

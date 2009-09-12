@@ -17,6 +17,7 @@
 #include "access/heapam.h"
 #include "access/reloptions.h"
 #include "storage/freespace.h"
+#include "utils/rel.h"
 
 /*
  * static *S used for temrorary storage (saves stack and palloc() call)
@@ -26,7 +27,7 @@ static Datum attrS[INDEX_MAX_KEYS];
 static bool isnullS[INDEX_MAX_KEYS];
 
 /*
- * Write itup vector to page, has no control of free space
+ * Write itup vector to page, has no control of free space.
  */
 OffsetNumber
 gistfillbuffer(Relation r, Page page, IndexTuple *itup,
@@ -559,10 +560,10 @@ GISTInitBuffer(Buffer b, uint32 f)
 	PageInit(page, pageSize, sizeof(GISTPageOpaqueData));
 
 	opaque = GistPageGetOpaque(page);
-	opaque->flags = f;
-	opaque->rightlink = InvalidBlockNumber;
 	/* page was already zeroed by PageInit, so this is not needed: */
 	/* memset(&(opaque->nsn), 0, sizeof(GistNSN)); */
+	opaque->rightlink = InvalidBlockNumber;
+	opaque->flags = f;
 }
 
 /*

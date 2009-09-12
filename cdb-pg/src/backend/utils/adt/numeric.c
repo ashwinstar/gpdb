@@ -90,6 +90,10 @@ typedef int16 NumericDigit;
 
 
 /* ----------
+ * NumericVar is the format we use for arithmetic.	The digit-array part
+ * is the same as the NumericData storage format, but the header is more
+ * complex.
+ *
  * The value represented by a NumericVar is determined by the sign, weight,
  * ndigits, and digits[] array.
  * Note: the first digit of a NumericVar's value is assumed to be multiplied

@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/timestamp.h,v 1.79 2009/01/01 17:24:02 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/timestamp.h,v 1.80.2.1 2009/08/18 21:23:21 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -39,6 +39,8 @@
  * TimeOffset and fsec_t are convenience typedefs for temporary variables
  * that are of different types in the two cases.  Do not use fsec_t in values
  * stored on-disk, since it is not the same size in both implementations.
+ * Also, fsec_t is only meant for *fractional* seconds; beware of overflow
+ * if the value you need to store could be many seconds.
  */
 
 #ifdef HAVE_INT64_TIMESTAMP
@@ -125,7 +127,7 @@ typedef struct
 
 #define DT_NOBEGIN		(-INT64CONST(0x7fffffffffffffff) - 1)
 #define DT_NOEND		(INT64CONST(0x7fffffffffffffff))
-#else  /* !HAVE_INT64_TIMESTAMP */
+#else							/* !HAVE_INT64_TIMESTAMP */
 
 #define DatumGetTimestamp(X)  ((Timestamp) DatumGetFloat8(X))
 #define DatumGetTimestampTz(X)	((TimestampTz) DatumGetFloat8(X))

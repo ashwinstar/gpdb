@@ -1,4 +1,3 @@
-
 /*-------------------------------------------------------------------------
  *
  * fmgr.h
@@ -274,7 +273,6 @@ extern struct varlena *pg_detoast_datum_packed(struct varlena * datum);
 #define PG_GETARG_VARCHAR_P_COPY(n) DatumGetVarCharPCopy(PG_GETARG_DATUM(n))
 #define PG_GETARG_HEAPTUPLEHEADER_COPY(n)	DatumGetHeapTupleHeaderCopy(PG_GETARG_DATUM(n))
 
-
 /* And a b-byte slice from position a -also OK to write */
 #define PG_GETARG_BYTEA_P_SLICE(n,a,b) DatumGetByteaPSlice(PG_GETARG_DATUM(n),a,b)
 #define PG_GETARG_TEXT_P_SLICE(n,a,b)  DatumGetTextPSlice(PG_GETARG_DATUM(n),a,b)
@@ -489,7 +487,6 @@ extern int no_such_variable
  */
 extern Datum DirectFunctionCall1(PGFunction func, Datum arg1);
 extern Datum DirectFunctionCall2(PGFunction func, Datum arg1, Datum arg2);
-
 extern Datum DirectFunctionCall3(PGFunction func, Datum arg1, Datum arg2,
 					Datum arg3);
 extern Datum DirectFunctionCall4(PGFunction func, Datum arg1, Datum arg2,

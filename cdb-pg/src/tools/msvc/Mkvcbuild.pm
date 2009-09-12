@@ -203,7 +203,7 @@ sub mkvcbuild
     my $initdb = AddSimpleFrontend('initdb');
     $initdb->AddIncludeDir('src\interfaces\libpq');
     $initdb->AddDefine('FRONTEND');
-    $initdb->AddLibrary('wsock32.lib'); 
+    $initdb->AddLibrary('wsock32.lib');
     $initdb->AddLibrary('ws2_32.lib');
 
     my $pgconfig = AddSimpleFrontend('pg_config');
@@ -476,8 +476,10 @@ sub AddContrib
                 $mf2 =~ s{\\\s*[\r\n]+}{}mg;
                 $mf2 =~ /^SUBOBJS\s*=\s*(.*)\s*$/gm
                   || croak "Could not find objects in MODULE_big for $n, subdir $d\n";
-                foreach my $o (split /\s+/, $1)
-                {
+                $objs = $1;
+				while ($objs =~ /\b([\w-]+\.o)\b/g)
+				{
+					my $o = $1;
                     $o =~ s/\.o$/.c/;
                     $proj->AddFile('contrib\\' . $n . '\\' . $d . '\\' . $o);
                 }

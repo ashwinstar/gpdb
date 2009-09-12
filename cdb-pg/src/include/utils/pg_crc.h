@@ -5,7 +5,7 @@
  *
  * See Ross Williams' excellent introduction
  * A PAINLESS GUIDE TO CRC ERROR DETECTION ALGORITHMS, available from
- * ftp://ftp.rocksoft.com/papers/crc_v3.txt or several other net sites.
+ * http://www.ross.net/crc/ or several other net sites.
  *
  * We use a normal (not "reflected", in Williams' terms) CRC, using initial
  * all-ones register contents and a final bit inversion.
@@ -14,10 +14,10 @@
  * code for possible future use.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/pg_crc.h,v 1.15 2006/03/05 15:59:07 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/pg_crc.h,v 1.21 2009/01/01 17:24:02 momjian Exp $
  */
 #ifndef PG_CRC_H
 #define PG_CRC_H

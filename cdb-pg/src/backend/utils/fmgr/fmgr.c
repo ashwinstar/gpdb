@@ -3,7 +3,7 @@
  * fmgr.c
  *	  The Postgres function manager.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -71,7 +71,7 @@ typedef struct
 	/* fn_oid is the hash key and so must be first! */
 	Oid			fn_oid;			/* OID of an external C function */
 	TransactionId fn_xmin;		/* for checking up-to-dateness */
-	ItemPointerData	fn_tid;
+	ItemPointerData fn_tid;
 	PGFunction	user_fn;		/* the function's address */
 	const Pg_finfo_record *inforec;		/* address of its info record */
 } CFuncHashTabEntry;
@@ -200,6 +200,7 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 		finfo->fn_nargs = fbp->nargs;
 		finfo->fn_strict = fbp->strict;
 		finfo->fn_retset = fbp->retset;
+		finfo->fn_stats = TRACK_FUNC_ALL;		/* ie, never track */
 		finfo->fn_addr = fbp->func;
 		finfo->fn_oid = functionId;
 		
@@ -254,6 +255,7 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 	if (procedureStruct->prosecdef && !ignore_security)
 	{
 		finfo->fn_addr = fmgr_security_definer;
+		finfo->fn_stats = TRACK_FUNC_ALL;		/* ie, never track */
 		finfo->fn_oid = functionId;
 		ReleaseSysCache(procedureTuple);
 		return;
@@ -276,8 +278,7 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 										  Anum_pg_proc_prosrc, &isnull);
 			if (isnull)
 				elog(ERROR, "null prosrc");
-			prosrc = DatumGetCString(DirectFunctionCall1(textout,
-														 prosrcdatum));
+			prosrc = TextDatumGetCString(prosrcdatum);
 			fbp = fmgr_lookupByName(prosrc);
 			if (fbp == NULL)
 				ereport(ERROR,
@@ -287,18 +288,23 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 			pfree(prosrc);
 			/* Should we check that nargs, strict, retset match the table? */
 			finfo->fn_addr = fbp->func;
+			/* note this policy is also assumed in fast path above */
+			finfo->fn_stats = TRACK_FUNC_ALL;	/* ie, never track */
 			break;
 
 		case ClanguageId:
 			fmgr_info_C_lang(functionId, finfo, procedureTuple);
+			finfo->fn_stats = TRACK_FUNC_PL;	/* ie, track if ALL */
 			break;
 
 		case SQLlanguageId:
 			finfo->fn_addr = fmgr_sql;
+			finfo->fn_stats = TRACK_FUNC_PL;	/* ie, track if ALL */
 			break;
 
 		default:
 			fmgr_info_other_lang(functionId, finfo, procedureTuple);
+			finfo->fn_stats = TRACK_FUNC_OFF;	/* ie, track if not OFF */
 			break;
 	}
 
@@ -339,21 +345,21 @@ fmgr_info_C_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 		void	   *libraryhandle;
 
 		/*
-		 * Get prosrc and probin strings (link symbol and library filename)
+		 * Get prosrc and probin strings (link symbol and library filename).
+		 * While in general these columns might be null, that's not allowed
+		 * for C-language functions.
 		 */
 		prosrcattr = SysCacheGetAttr(PROCOID, procedureTuple,
 									 Anum_pg_proc_prosrc, &isnull);
 		if (isnull)
-			elog(ERROR, "null prosrc for function %u", functionId);
-		prosrcstring = DatumGetCString(DirectFunctionCall1(textout,
-														   prosrcattr));
+			elog(ERROR, "null prosrc for C function %u", functionId);
+		prosrcstring = TextDatumGetCString(prosrcattr);
 
 		probinattr = SysCacheGetAttr(PROCOID, procedureTuple,
 									 Anum_pg_proc_probin, &isnull);
 		if (isnull)
-			elog(ERROR, "null probin for function %u", functionId);
-		probinstring = DatumGetCString(DirectFunctionCall1(textout,
-														   probinattr));
+			elog(ERROR, "null probin for C function %u", functionId);
+		probinstring = TextDatumGetCString(probinattr);
 
 		/* Look up the function itself */
 		user_fn = load_external_function(probinstring, prosrcstring, true,
@@ -609,7 +615,7 @@ fmgr_info_copy(FmgrInfo *dstinfo, FmgrInfo *srcinfo,
 		dstinfo->fn_extra = (void *) fnextra;
 	}
 	else
-	dstinfo->fn_extra = NULL;
+		dstinfo->fn_extra = NULL;
 }
 
 
@@ -689,7 +695,7 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 		case 3:
 			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
 											   fcinfo->arg[1],
-									  fcinfo->arg[2]);
+											   fcinfo->arg[2]);
 			break;
 		case 4:
 			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
@@ -702,7 +708,7 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 											   fcinfo->arg[1],
 											   fcinfo->arg[2],
 											   fcinfo->arg[3],
-									  fcinfo->arg[4]);
+											   fcinfo->arg[4]);
 			break;
 		case 6:
 			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
@@ -719,7 +725,7 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 											   fcinfo->arg[3],
 											   fcinfo->arg[4],
 											   fcinfo->arg[5],
-									  fcinfo->arg[6]);
+											   fcinfo->arg[6]);
 			break;
 		case 8:
 			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
@@ -740,7 +746,7 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 											   fcinfo->arg[5],
 											   fcinfo->arg[6],
 											   fcinfo->arg[7],
-									  fcinfo->arg[8]);
+											   fcinfo->arg[8]);
 			break;
 		case 10:
 			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
@@ -765,7 +771,7 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 											   fcinfo->arg[7],
 											   fcinfo->arg[8],
 											   fcinfo->arg[9],
-									  fcinfo->arg[10]);
+											   fcinfo->arg[10]);
 			break;
 		case 12:
 			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
@@ -794,7 +800,7 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 											   fcinfo->arg[9],
 											   fcinfo->arg[10],
 											   fcinfo->arg[11],
-									  fcinfo->arg[12]);
+											   fcinfo->arg[12]);
 			break;
 		case 14:
 			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
@@ -827,7 +833,7 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 											   fcinfo->arg[11],
 											   fcinfo->arg[12],
 											   fcinfo->arg[13],
-									  fcinfo->arg[14]);
+											   fcinfo->arg[14]);
 			break;
 		case 16:
 			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
@@ -884,7 +890,9 @@ struct fmgr_security_definer_cache
  * look up the owner of the function and cache both the fmgr info and
  * the owner ID.  During the call we temporarily replace the flinfo
  * with the cached/looked-up one, while keeping the outer fcinfo
- * (which contains all the actual arguments, etc.) intact.
+ * (which contains all the actual arguments, etc.) 
+ * intact. 	This is not re-entrant, but then the fcinfo itself can't be used
+ * re-entrantly anyway.
  */
 static Datum
 fmgr_security_definer(PG_FUNCTION_ARGS)
@@ -895,6 +903,7 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 	Oid			save_userid;
 	bool		save_secdefcxt;
 	HeapTuple	tuple;
+	PgStat_FunctionCallUsage fcusage;
 
 	if (!fcinfo->flinfo->fn_extra)
 	{
@@ -920,11 +929,12 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 		fcache = fcinfo->flinfo->fn_extra;
 
 	GetUserIdAndContext(&save_userid, &save_secdefcxt);
-	SetUserIdAndContext(fcache->userid, true);
+	if (OidIsValid(fcache->userid))
+		SetUserIdAndContext(fcache->userid, true);
 
 	/*
 	 * We don't need to restore GUC or userid settings on error, because the
-	 * ensuing xact or subxact abort will do that.  The PG_TRY block is only
+	 * ensuing xact or subxact abort will do that.	The PG_TRY block is only
 	 * needed to clean up the flinfo link.
 	 */
 	save_flinfo = fcinfo->flinfo;
@@ -934,7 +944,7 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 		fcinfo->flinfo = &fcache->flinfo;
 
 		/* See notes in fmgr_info_cxt_security */
-		//pgstat_init_function_usage(fcinfo, &fcusage);
+		pgstat_init_function_usage(fcinfo, &fcusage);
 
 		result = FunctionCallInvoke(fcinfo);
 
@@ -942,10 +952,10 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 		 * We could be calling either a regular or a set-returning function,
 		 * so we have to test to see what finalize flag to use.
 		 */
-		//pgstat_end_function_usage(&fcusage,
-		//						  (fcinfo->resultinfo == NULL ||
-		//						   !IsA(fcinfo->resultinfo, ReturnSetInfo) ||
-		//						   ((ReturnSetInfo *) fcinfo->resultinfo)->isDone != ExprMultipleResult));
+		pgstat_end_function_usage(&fcusage,
+								  (fcinfo->resultinfo == NULL ||
+								   !IsA(fcinfo->resultinfo, ReturnSetInfo) ||
+								   ((ReturnSetInfo *) fcinfo->resultinfo)->isDone != ExprMultipleResult));
 	}
 	PG_CATCH();
 	{
@@ -967,6 +977,7 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
  *		Support routines for callers of fmgr-compatible functions
  *-------------------------------------------------------------------------
  */
+
 /*
  * These are for invocation of a specifically named function with a
  * directly-computed parameter list.  Note that neither arguments nor result
@@ -1825,7 +1836,7 @@ OidFunctionCall9(Oid functionId, Datum arg1, Datum arg2,
  *
  * One important difference from the bare function call is that we will
  * push any active SPI context, allowing SPI-using I/O functions to be
- * called from other SPI functions without extra notation.  This is a hack,
+ * called from other SPI functions without extra notation.	This is a hack,
  * but the alternative of expecting all SPI functions to do SPI_push/SPI_pop
  * around I/O calls seems worse.
  */

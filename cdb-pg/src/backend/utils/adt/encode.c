@@ -3,11 +3,11 @@
  * encode.c
  *	  Various data encoding/decoding things.
  *
- * Copyright (c) 2001-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2009, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/encode.c,v 1.20.2.1 2008/02/26 02:54:14 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/encode.c,v 1.23.2.1 2009/08/30 16:53:37 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -46,7 +46,7 @@ binary_encode(PG_FUNCTION_ARGS)
 
 	datalen = VARSIZE(data) - VARHDRSZ;
 
-	namebuf = DatumGetCString(DirectFunctionCall1(textout, name));
+	namebuf = TextDatumGetCString(name);
 
 	enc = pg_find_encoding(namebuf);
 	if (enc == NULL)
@@ -82,7 +82,7 @@ binary_decode(PG_FUNCTION_ARGS)
 
 	datalen = VARSIZE(data) - VARHDRSZ;
 
-	namebuf = DatumGetCString(DirectFunctionCall1(textout, name));
+	namebuf = TextDatumGetCString(name);
 
 	enc = pg_find_encoding(namebuf);
 	if (enc == NULL)
@@ -159,7 +159,7 @@ hex_decode(const char *src, unsigned len, char *dst)
 			   *srcend;
 	char		v1,
 				v2,
-			   *p = dst;
+			   *p;
 
 	srcend = src + len;
 	s = src;
