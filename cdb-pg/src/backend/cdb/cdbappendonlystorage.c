@@ -13,19 +13,6 @@
 #include "utils/pg_crc.h"
 #include "utils/guc.h"
 
-static char AOTupleIdBuffer[25];
-
-char* AOTupleIdToString(AOTupleId * aoTupleId)
-{
-	int segmentFileNum = AOTupleIdGet_segmentFileNum(aoTupleId);
-	int64 rowNum = AOTupleIdGet_rowNum(aoTupleId);
-
-	sprintf(AOTupleIdBuffer,"(%d," INT64_FORMAT ")",
-		    segmentFileNum, rowNum);
-
-	return AOTupleIdBuffer;
-}
-
 int32 AppendOnlyStorage_GetUsableBlockSize(int32 configBlockSize)
 {
 	int32 result;

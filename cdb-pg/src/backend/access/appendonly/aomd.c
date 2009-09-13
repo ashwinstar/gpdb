@@ -25,6 +25,7 @@
 #include <sys/file.h>
 
 #include "utils/guc.h"
+#include "access/appendonlytid.h"
 #include "cdb/cdbappendonlystorage.h"
 
 #define AO_FILE_PATH_FORMAT "%s.%u"

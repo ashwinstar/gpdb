@@ -36,6 +36,7 @@
 #include <sys/file.h>
 #include <unistd.h>
 
+#include "access/appendonlytid.h"
 #include "cdb/cdbappendonlystorage.h"
 #include "cdb/cdbappendonlystorageformat.h"
 #include "storage/gp_compress.h"
