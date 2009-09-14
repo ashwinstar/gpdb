@@ -130,12 +130,12 @@ select * from get_ereport order by 1;
  aaad: acl:00003107:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  aaad: acl:00003108:  errmsg("must be member of role "%s"", 
  aaad: acl:00003109:  GetUserNameFromId(role)))); 
- aaae: aomd:00000147:  ereport(ERROR, 
- aaae: aomd:00000148:  (errcode_for_file_access(), 
- aaae: aomd:00000149:  errmsg("could not open append only file "%s"", filepathname))); 
- aaae: aomd:00000158:  ereport(ERROR, 
- aaae: aomd:00000159:  (errcode_for_file_access(), 
- aaae: aomd:00000160:  errmsg("failed to create a new file segment: "%s"", filepathname))); 
+ aaae: aomd:00000148:  ereport(ERROR, 
+ aaae: aomd:00000149:  (errcode_for_file_access(), 
+ aaae: aomd:00000150:  errmsg("could not open append only file "%s"", filepathname))); 
+ aaae: aomd:00000159:  ereport(ERROR, 
+ aaae: aomd:00000160:  (errcode_for_file_access(), 
+ aaae: aomd:00000161:  errmsg("failed to create a new file segment: "%s"", filepathname))); 
  aaae: auth:00000267:  ereport(FATAL, 
  aaae: auth:00000268:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
  aaae: auth:00000269:  errmsg(errstr, port->user_name))); 
@@ -1401,45 +1401,45 @@ select * from get_ereport order by 1;
  aabc: aocssegfiles:00000514:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  aabc: aocssegfiles:00000515:  errmsg("invalid entry for decoding aocsvpinfo") 
  aabc: aocssegfiles:00000516:  )); 
- aabc: appendonlyam:00000523:  ereport(ERROR, 
- aabc: appendonlyam:00000524:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000525:  errmsg("VarBlock is not valid. " 
- aabc: appendonlyam:00000526:  "Valid block check error %d, detail '%s'", 
- aabc: appendonlyam:00000527:  varBlockCheckError, 
- aabc: appendonlyam:00000528:  VarBlockGetCheckErrorStr()), 
- aabc: appendonlyam:00000529:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
- aabc: appendonlyam:00000530:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
- aabc: appendonlyam:00000545:  ereport(ERROR, 
- aabc: appendonlyam:00000546:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000547:  errmsg("Row count %d in append-only storage header does not match VarBlock item count %d", 
- aabc: appendonlyam:00000548:  executorReadBlock->rowCount, 
- aabc: appendonlyam:00000549:  executorReadBlock->readerItemCount), 
- aabc: appendonlyam:00000550:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
- aabc: appendonlyam:00000551:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
- aabc: appendonlyam:00000566:  ereport(ERROR, 
- aabc: appendonlyam:00000567:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000568:  errmsg("Row count %d in append-only storage header is not 1 for single row", 
- aabc: appendonlyam:00000569:  executorReadBlock->rowCount), 
- aabc: appendonlyam:00000570:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
- aabc: appendonlyam:00000571:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
- aabc: appendonlyam:00001135:  ereport(ERROR, 
- aabc: appendonlyam:00001136:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00001137:  errmsg("Verify block during write found VarBlock is not valid. " 
- aabc: appendonlyam:00001138:  "Valid block check error %d, detail '%s'", 
- aabc: appendonlyam:00001139:  varBlockCheckError, 
- aabc: appendonlyam:00001140:  VarBlockGetCheckErrorStr()), 
- aabc: appendonlyam:00001141:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
- aabc: appendonlyam:00001142:  errcontext_appendonly_insert_block(aoInsertDesc))); 
- aabc: appendonlyam:00001572:  ereport(ERROR, 
- aabc: appendonlyam:00001573:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- aabc: appendonlyam:00001574:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
- aabc: appendonlyam:00001575:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
- aabc: appendonlyam:00001576:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
- aabc: appendonlyam:00001614:  ereport(ERROR, 
- aabc: appendonlyam:00001615:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- aabc: appendonlyam:00001616:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
- aabc: appendonlyam:00001617:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
- aabc: appendonlyam:00001618:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+ aabc: appendonlyam:00000524:  ereport(ERROR, 
+ aabc: appendonlyam:00000525:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aabc: appendonlyam:00000526:  errmsg("VarBlock is not valid. " 
+ aabc: appendonlyam:00000527:  "Valid block check error %d, detail '%s'", 
+ aabc: appendonlyam:00000528:  varBlockCheckError, 
+ aabc: appendonlyam:00000529:  VarBlockGetCheckErrorStr()), 
+ aabc: appendonlyam:00000530:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+ aabc: appendonlyam:00000531:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
+ aabc: appendonlyam:00000546:  ereport(ERROR, 
+ aabc: appendonlyam:00000547:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aabc: appendonlyam:00000548:  errmsg("Row count %d in append-only storage header does not match VarBlock item count %d", 
+ aabc: appendonlyam:00000549:  executorReadBlock->rowCount, 
+ aabc: appendonlyam:00000550:  executorReadBlock->readerItemCount), 
+ aabc: appendonlyam:00000551:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+ aabc: appendonlyam:00000552:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
+ aabc: appendonlyam:00000567:  ereport(ERROR, 
+ aabc: appendonlyam:00000568:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aabc: appendonlyam:00000569:  errmsg("Row count %d in append-only storage header is not 1 for single row", 
+ aabc: appendonlyam:00000570:  executorReadBlock->rowCount), 
+ aabc: appendonlyam:00000571:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+ aabc: appendonlyam:00000572:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
+ aabc: appendonlyam:00001136:  ereport(ERROR, 
+ aabc: appendonlyam:00001137:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aabc: appendonlyam:00001138:  errmsg("Verify block during write found VarBlock is not valid. " 
+ aabc: appendonlyam:00001139:  "Valid block check error %d, detail '%s'", 
+ aabc: appendonlyam:00001140:  varBlockCheckError, 
+ aabc: appendonlyam:00001141:  VarBlockGetCheckErrorStr()), 
+ aabc: appendonlyam:00001142:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
+ aabc: appendonlyam:00001143:  errcontext_appendonly_insert_block(aoInsertDesc))); 
+ aabc: appendonlyam:00001573:  ereport(ERROR, 
+ aabc: appendonlyam:00001574:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ aabc: appendonlyam:00001575:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
+ aabc: appendonlyam:00001576:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+ aabc: appendonlyam:00001577:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+ aabc: appendonlyam:00001615:  ereport(ERROR, 
+ aabc: appendonlyam:00001616:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ aabc: appendonlyam:00001617:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
+ aabc: appendonlyam:00001618:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+ aabc: appendonlyam:00001619:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
  aabd: aggregatecmds:00000107:  ereport(WARNING, 
  aabd: aggregatecmds:00000108:  (errcode(ERRCODE_SYNTAX_ERROR), 
  aabd: aggregatecmds:00000109:  errmsg("aggregate attribute "%s" not recognized", 
@@ -4086,66 +4086,62 @@ select * from get_ereport order by 1;
  eaai: execmain:00001671:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
  eaai: execmain:00001672:  errmsg("cannot change view "%s"", 
  eaai: execmain:00001673:  RelationGetRelationName(resultRelationDesc)))); 
- eaai: execmain:00001679:  ereport(ERROR, 
- eaai: execmain:00001680:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- eaai: execmain:00001681:  errmsg("cannot update or delete from external relation "%s"", 
- eaai: execmain:00001682:  RelationGetRelationName(resultRelationDesc)))); 
+ eaai: execmain:00001993:  ereport(ERROR, 
+ eaai: execmain:00001994:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ eaai: execmain:00001995:  errmsg("table row type and query-specified row type do not match"), 
+ eaai: execmain:00001996:  errdetail("Query has too many columns."))); 
  eaai: execmain:00002003:  ereport(ERROR, 
  eaai: execmain:00002004:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
  eaai: execmain:00002005:  errmsg("table row type and query-specified row type do not match"), 
- eaai: execmain:00002006:  errdetail("Query has too many columns."))); 
- eaai: execmain:00002013:  ereport(ERROR, 
- eaai: execmain:00002014:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- eaai: execmain:00002015:  errmsg("table row type and query-specified row type do not match"), 
- eaai: execmain:00002016:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
- eaai: execmain:00002017:  format_type_be(attr->atttypid), 
- eaai: execmain:00002018:  attno, 
- eaai: execmain:00002019:  format_type_be(exprType((Node *) tle->expr))))); 
- eaai: execmain:00002030:  ereport(ERROR, 
- eaai: execmain:00002031:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- eaai: execmain:00002032:  errmsg("table row type and query-specified row type do not match"), 
- eaai: execmain:00002033:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
- eaai: execmain:00002034:  attno))); 
- eaai: execmain:00002038:  ereport(ERROR, 
- eaai: execmain:00002039:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- eaai: execmain:00002040:  errmsg("table row type and query-specified row type do not match"), 
- eaai: execmain:00002041:  errdetail("Query has too few columns."))); 
- eaai: execmain:00002236:  ereport(ERROR, 
- eaai: execmain:00002237:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
- eaai: execmain:00002238:  errmsg("could not serialize access due to concurrent update"))); 
- eaai: execmain:00002685:  ereport(ERROR, 
- eaai: execmain:00002686:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
- eaai: execmain:00002687:  errmsg("could not serialize access due to concurrent update"))); 
- eaai: execmain:00002825:  ereport(ERROR, 
- eaai: execmain:00002826:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
- eaai: execmain:00002827:  errmsg("no partition for partitioning key"))); 
- eaai: execmain:00002831:  ereport(ERROR, 
- eaai: execmain:00002832:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- eaai: execmain:00002833:  errmsg("moving tuple from partition "%s" to " 
- eaai: execmain:00002834:  "partition "%s" not supported", 
- eaai: execmain:00002835:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
- eaai: execmain:00002836:  get_rel_name(targetid)))); 
- eaai: execmain:00002909:  ereport(ERROR, 
- eaai: execmain:00002910:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
- eaai: execmain:00002911:  errmsg("could not serialize access due to concurrent update"))); 
- eaai: execmain:00003053:  ereport(ERROR, 
- eaai: execmain:00003054:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
- eaai: execmain:00003055:  errmsg("null value in column "%s" violates not-null constraint", 
- eaai: execmain:00003056:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)))); 
- eaai: execmain:00003065:  ereport(ERROR, 
- eaai: execmain:00003066:  (errcode(ERRCODE_CHECK_VIOLATION), 
- eaai: execmain:00003067:  errmsg("new row for relation "%s" violates check constraint "%s"", 
- eaai: execmain:00003068:  RelationGetRelationName(rel), failed))); 
- eaai: execmain:00003770:  ereport(ERROR, 
- eaai: execmain:00003771:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
- eaai: execmain:00003772:  errmsg("ON COMMIT can only be used on temporary tables"))); 
- eaai: execmain:00003799:  ereport(ERROR, 
- eaai: execmain:00003800:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- eaai: execmain:00003801:  errmsg("tablespace "%s" does not exist", 
- eaai: execmain:00003802:  parseTree->intoTableSpaceName))); 
- eaai: execmain:00004075:  ereport(ERROR, 
- eaai: execmain:00004076:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
- eaai: execmain:00004077:  errmsg("no partition for partitioning key"))); 
+ eaai: execmain:00002006:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
+ eaai: execmain:00002007:  format_type_be(attr->atttypid), 
+ eaai: execmain:00002008:  attno, 
+ eaai: execmain:00002009:  format_type_be(exprType((Node *) tle->expr))))); 
+ eaai: execmain:00002020:  ereport(ERROR, 
+ eaai: execmain:00002021:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ eaai: execmain:00002022:  errmsg("table row type and query-specified row type do not match"), 
+ eaai: execmain:00002023:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
+ eaai: execmain:00002024:  attno))); 
+ eaai: execmain:00002028:  ereport(ERROR, 
+ eaai: execmain:00002029:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ eaai: execmain:00002030:  errmsg("table row type and query-specified row type do not match"), 
+ eaai: execmain:00002031:  errdetail("Query has too few columns."))); 
+ eaai: execmain:00002226:  ereport(ERROR, 
+ eaai: execmain:00002227:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+ eaai: execmain:00002228:  errmsg("could not serialize access due to concurrent update"))); 
+ eaai: execmain:00002675:  ereport(ERROR, 
+ eaai: execmain:00002676:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+ eaai: execmain:00002677:  errmsg("could not serialize access due to concurrent update"))); 
+ eaai: execmain:00002815:  ereport(ERROR, 
+ eaai: execmain:00002816:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+ eaai: execmain:00002817:  errmsg("no partition for partitioning key"))); 
+ eaai: execmain:00002821:  ereport(ERROR, 
+ eaai: execmain:00002822:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ eaai: execmain:00002823:  errmsg("moving tuple from partition "%s" to " 
+ eaai: execmain:00002824:  "partition "%s" not supported", 
+ eaai: execmain:00002825:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
+ eaai: execmain:00002826:  get_rel_name(targetid)))); 
+ eaai: execmain:00002899:  ereport(ERROR, 
+ eaai: execmain:00002900:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+ eaai: execmain:00002901:  errmsg("could not serialize access due to concurrent update"))); 
+ eaai: execmain:00003043:  ereport(ERROR, 
+ eaai: execmain:00003044:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+ eaai: execmain:00003045:  errmsg("null value in column "%s" violates not-null constraint", 
+ eaai: execmain:00003046:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)))); 
+ eaai: execmain:00003055:  ereport(ERROR, 
+ eaai: execmain:00003056:  (errcode(ERRCODE_CHECK_VIOLATION), 
+ eaai: execmain:00003057:  errmsg("new row for relation "%s" violates check constraint "%s"", 
+ eaai: execmain:00003058:  RelationGetRelationName(rel), failed))); 
+ eaai: execmain:00003760:  ereport(ERROR, 
+ eaai: execmain:00003761:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+ eaai: execmain:00003762:  errmsg("ON COMMIT can only be used on temporary tables"))); 
+ eaai: execmain:00003789:  ereport(ERROR, 
+ eaai: execmain:00003790:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ eaai: execmain:00003791:  errmsg("tablespace "%s" does not exist", 
+ eaai: execmain:00003792:  parseTree->intoTableSpaceName))); 
+ eaai: execmain:00004065:  ereport(ERROR, 
+ eaai: execmain:00004066:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+ eaai: execmain:00004067:  errmsg("no partition for partitioning key"))); 
  eaai: execqual:00000283:  ereport(ERROR, 
  eaai: execqual:00000284:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
  eaai: execqual:00000285:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
@@ -4326,25 +4322,25 @@ select * from get_ereport order by 1;
  faac: fd:00001542:  (errcode_for_file_access(), 
  faac: fd:00001543:  errmsg("could not read directory "%s": %m", 
  faac: fd:00001544:  dirname))); 
- faae: fmgr:00000283:  ereport(ERROR, 
- faae: fmgr:00000284:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
- faae: fmgr:00000285:  errmsg("internal function "%s" is not in internal lookup table", 
- faae: fmgr:00000286:  prosrc))); 
- faae: fmgr:00000480:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- faae: fmgr:00000481:  errmsg("Old style C function (API version 0) are no longer supported by Greenplum") 
- faae: fmgr:00000482:  )); 
- faae: fmgr:00000488:  ereport(ERROR, 
- faae: fmgr:00000489:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- faae: fmgr:00000490:  errmsg("unrecognized API version %d reported by info function "%s"", 
- faae: fmgr:00000491:  inforec->api_version, infofuncname))); 
- faae: fmgr:00000859:  ereport(ERROR, 
- faae: fmgr:00000860:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
- faae: fmgr:00000861:  errmsg("function %u has too many arguments (%d, maximum is %d)", 
- faae: fmgr:00000862:  fcinfo->flinfo->fn_oid, n_arguments, 16))); 
- faae: fmgr:00002050:  ereport(ERROR, 
- faae: fmgr:00002051:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
- faae: fmgr:00002052:  errmsg("function %u has too many arguments (%d, maximum is %d)", 
- faae: fmgr:00002053:  flinfo.fn_oid, n_arguments, FUNC_MAX_ARGS))); 
+ faae: fmgr:00000284:  ereport(ERROR, 
+ faae: fmgr:00000285:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+ faae: fmgr:00000286:  errmsg("internal function "%s" is not in internal lookup table", 
+ faae: fmgr:00000287:  prosrc))); 
+ faae: fmgr:00000486:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ faae: fmgr:00000487:  errmsg("Old style C function (API version 0) are no longer supported by Greenplum") 
+ faae: fmgr:00000488:  )); 
+ faae: fmgr:00000494:  ereport(ERROR, 
+ faae: fmgr:00000495:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ faae: fmgr:00000496:  errmsg("unrecognized API version %d reported by info function "%s"", 
+ faae: fmgr:00000497:  inforec->api_version, infofuncname))); 
+ faae: fmgr:00000865:  ereport(ERROR, 
+ faae: fmgr:00000866:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+ faae: fmgr:00000867:  errmsg("function %u has too many arguments (%d, maximum is %d)", 
+ faae: fmgr:00000868:  fcinfo->flinfo->fn_oid, n_arguments, 16))); 
+ faae: fmgr:00002061:  ereport(ERROR, 
+ faae: fmgr:00002062:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+ faae: fmgr:00002063:  errmsg("function %u has too many arguments (%d, maximum is %d)", 
+ faae: fmgr:00002064:  flinfo.fn_oid, n_arguments, FUNC_MAX_ARGS))); 
  faaf: float:00000228:  ereport(ERROR, 
  faaf: float:00000229:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
  faaf: float:00000230:  errmsg("type "real" value out of range: overflow"))); 
@@ -4461,60 +4457,56 @@ select * from get_ereport order by 1;
  faaf: float:00002791:  ereport(ERROR, 
  faaf: float:00002792:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
  faaf: float:00002793:  errmsg("division by zero"))); 
- faag: fileam:00000457:  ereport(ERROR, 
- faag: fileam:00000458:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- faag: fileam:00000459:  errmsg("cannot change a readable external table "%s"", 
- faag: fileam:00000460:  RelationGetRelationName(rel)))); 
- faag: fileam:00000729:  ereport(ERROR,  
- faag: fileam:00000730:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED),  
- faag: fileam:00000731:  (errmsg(finalmsg)  
- faag: fileam:00000732:  )));  
- faag: fileam:00000733: } 
- faag: fileam:00000734:  
- faag: fileam:00000735: /* 
- faag: fileam:00000736:  * parse_next_line 
- faag: fileam:00000737:  * 
- faag: fileam:00000738:  * Given a buffer of data, extract the next data line from it and parse it 
- faag: fileam:00000739:  * to attributes according to the data format specifications. 
- faag: fileam:00000740:  * 
- faag: fileam:00000741:  * Returns: 
- faag: fileam:00000742:  * LINE_OK - line parsed successfully. 
- faag: fileam:00000743:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
- faag: fileam:00000744:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
- faag: fileam:00000745:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
- faag: fileam:00000746:  */ 
- faag: fileam:00000747: static DataLineStatus parse_next_line(FileScanDesc scan) 
- faag: fileam:00000748: { 
- faag: fileam:00000749:  CopyState pstate = scan->fs_pstate; 
- faag: fileam:00001054:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
- faag: fileam:00001055:  errmsg("The specified error table for this " 
- faag: fileam:00001056:  "external table doesn't appear to " 
- faag: fileam:00001057:  "exist in the database. It may have " 
- faag: fileam:00001058:  "been dropped."), 
- faag: fileam:00001059:  errhint("Refresh your external table definition."))); 
- faag: fileam:00001237:  ereport(ERROR, 
- faag: fileam:00001238:  (errcode_for_file_access(), 
- faag: fileam:00001239:  errmsg("could not open "%s" for reading: %d %s", 
- faag: fileam:00001240:  scan->fs_uri, response_code, response_string))); 
- faag: fileam:00001288:  ereport(ERROR, 
- faag: fileam:00001289:  (errcode_for_file_access(), 
- faag: fileam:00001290:  errmsg("could not open "%s" for writing: %d %s", 
- faag: fileam:00001291:  extInsertDesc->ext_uri, response_code, response_string))); 
- faag: fileam:00001350:  ereport(ERROR, 
- faag: fileam:00001351:  (errcode_for_file_access(), 
- faag: fileam:00001352:  errmsg("could not read from external file: %m"))); 
- faag: fileam:00001370:  ereport(ERROR, 
- faag: fileam:00001371:  (errcode_for_file_access(), 
- faag: fileam:00001372:  errmsg("could not write to external resource: %m"))); 
- faag: fileam:00001955:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- faag: fileam:00001956:  errmsg("external table internal parse error at "%s"", 
- faag: fileam:00001957:  token))); 
- faag: fileam:00001959:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- faag: fileam:00001960:  errmsg("external table internal parse error at end of " 
- faag: fileam:00001961:  "line"))); 
- faag: fileam:00002011:  ereport(ERROR, 
- faag: fileam:00002012:  (errcode_for_file_access(), 
- faag: fileam:00002013:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+ faag: fileam:00000723:  ereport(ERROR,  
+ faag: fileam:00000724:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED),  
+ faag: fileam:00000725:  (errmsg(finalmsg)  
+ faag: fileam:00000726:  )));  
+ faag: fileam:00000727: } 
+ faag: fileam:00000728:  
+ faag: fileam:00000729: /* 
+ faag: fileam:00000730:  * parse_next_line 
+ faag: fileam:00000731:  * 
+ faag: fileam:00000732:  * Given a buffer of data, extract the next data line from it and parse it 
+ faag: fileam:00000733:  * to attributes according to the data format specifications. 
+ faag: fileam:00000734:  * 
+ faag: fileam:00000735:  * Returns: 
+ faag: fileam:00000736:  * LINE_OK - line parsed successfully. 
+ faag: fileam:00000737:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
+ faag: fileam:00000738:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
+ faag: fileam:00000739:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
+ faag: fileam:00000740:  */ 
+ faag: fileam:00000741: static DataLineStatus parse_next_line(FileScanDesc scan) 
+ faag: fileam:00000742: { 
+ faag: fileam:00000743:  CopyState pstate = scan->fs_pstate; 
+ faag: fileam:00001048:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+ faag: fileam:00001049:  errmsg("The specified error table for this " 
+ faag: fileam:00001050:  "external table doesn't appear to " 
+ faag: fileam:00001051:  "exist in the database. It may have " 
+ faag: fileam:00001052:  "been dropped."), 
+ faag: fileam:00001053:  errhint("Refresh your external table definition."))); 
+ faag: fileam:00001231:  ereport(ERROR, 
+ faag: fileam:00001232:  (errcode_for_file_access(), 
+ faag: fileam:00001233:  errmsg("could not open "%s" for reading: %d %s", 
+ faag: fileam:00001234:  scan->fs_uri, response_code, response_string))); 
+ faag: fileam:00001282:  ereport(ERROR, 
+ faag: fileam:00001283:  (errcode_for_file_access(), 
+ faag: fileam:00001284:  errmsg("could not open "%s" for writing: %d %s", 
+ faag: fileam:00001285:  extInsertDesc->ext_uri, response_code, response_string))); 
+ faag: fileam:00001344:  ereport(ERROR, 
+ faag: fileam:00001345:  (errcode_for_file_access(), 
+ faag: fileam:00001346:  errmsg("could not read from external file: %m"))); 
+ faag: fileam:00001364:  ereport(ERROR, 
+ faag: fileam:00001365:  (errcode_for_file_access(), 
+ faag: fileam:00001366:  errmsg("could not write to external resource: %m"))); 
+ faag: fileam:00001949:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ faag: fileam:00001950:  errmsg("external table internal parse error at "%s"", 
+ faag: fileam:00001951:  token))); 
+ faag: fileam:00001953:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ faag: fileam:00001954:  errmsg("external table internal parse error at end of " 
+ faag: fileam:00001955:  "line"))); 
+ faag: fileam:00002005:  ereport(ERROR, 
+ faag: fileam:00002006:  (errcode_for_file_access(), 
+ faag: fileam:00002007:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
  faah: funcapi:00000059:  ereport(ERROR, 
  faah: funcapi:00000060:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  faah: funcapi:00000061:  errmsg("set-valued function called in context that cannot accept a set"))); 
@@ -5689,18 +5681,18 @@ select * from get_ereport order by 1;
  gaah: ginscan:00000180:  ereport(ERROR, 
  gaah: ginscan:00000181:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  gaah: ginscan:00000182:  errmsg("GIN index does not support search with void query"))); 
- gaai: gistutil:00000583:  ereport(ERROR, 
- gaai: gistutil:00000584:  (errcode(ERRCODE_INDEX_CORRUPTED), 
- gaai: gistutil:00000585:  errmsg("index "%s" contains unexpected zero page at block %u", 
- gaai: gistutil:00000586:  RelationGetRelationName(rel), 
- gaai: gistutil:00000587:  BufferGetBlockNumber(buf)), 
- gaai: gistutil:00000588:  errhint("Please REINDEX it."))); 
- gaai: gistutil:00000595:  ereport(ERROR, 
- gaai: gistutil:00000596:  (errcode(ERRCODE_INDEX_CORRUPTED), 
- gaai: gistutil:00000597:  errmsg("index "%s" contains corrupted page at block %u", 
- gaai: gistutil:00000598:  RelationGetRelationName(rel), 
- gaai: gistutil:00000599:  BufferGetBlockNumber(buf)), 
- gaai: gistutil:00000600:  errhint("Please REINDEX it."))); 
+ gaai: gistutil:00000584:  ereport(ERROR, 
+ gaai: gistutil:00000585:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+ gaai: gistutil:00000586:  errmsg("index "%s" contains unexpected zero page at block %u", 
+ gaai: gistutil:00000587:  RelationGetRelationName(rel), 
+ gaai: gistutil:00000588:  BufferGetBlockNumber(buf)), 
+ gaai: gistutil:00000589:  errhint("Please REINDEX it."))); 
+ gaai: gistutil:00000596:  ereport(ERROR, 
+ gaai: gistutil:00000597:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+ gaai: gistutil:00000598:  errmsg("index "%s" contains corrupted page at block %u", 
+ gaai: gistutil:00000599:  RelationGetRelationName(rel), 
+ gaai: gistutil:00000600:  BufferGetBlockNumber(buf)), 
+ gaai: gistutil:00000601:  errhint("Please REINDEX it."))); 
  gaai: gucxfile:00000539: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
  gaai: gucxfile:00000540:  
  gaai: gucxfile:00000541: enum { 
@@ -5966,78 +5958,78 @@ select * from get_ereport order by 1;
  iaad: int:00000792:  ereport(ERROR, 
  iaad: int:00000793:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
  iaad: int:00000794:  errmsg("integer out of range"))); 
- iaad: int:00000805:  ereport(ERROR, 
- iaad: int:00000806:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00000807:  errmsg("integer out of range"))); 
- iaad: int:00000820:  ereport(ERROR, 
- iaad: int:00000821:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00000822:  errmsg("integer out of range"))); 
- iaad: int:00000836:  ereport(ERROR, 
- iaad: int:00000837:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00000838:  errmsg("smallint out of range"))); 
- iaad: int:00000865:  ereport(ERROR, 
- iaad: int:00000866:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00000867:  errmsg("smallint out of range"))); 
- iaad: int:00000886:  ereport(ERROR, 
- iaad: int:00000887:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00000888:  errmsg("smallint out of range"))); 
- iaad: int:00000906:  ereport(ERROR, 
- iaad: int:00000907:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00000908:  errmsg("smallint out of range"))); 
- iaad: int:00000921:  ereport(ERROR, 
- iaad: int:00000922:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
- iaad: int:00000923:  errmsg("division by zero"))); 
- iaad: int:00000933:  ereport(ERROR, 
- iaad: int:00000934:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00000935:  errmsg("smallint out of range"))); 
- iaad: int:00000954:  ereport(ERROR, 
- iaad: int:00000955:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00000956:  errmsg("integer out of range"))); 
- iaad: int:00000975:  ereport(ERROR, 
- iaad: int:00000976:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00000977:  errmsg("integer out of range"))); 
- iaad: int:00001002:  ereport(ERROR, 
- iaad: int:00001003:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00001004:  errmsg("integer out of range"))); 
- iaad: int:00001015:  ereport(ERROR, 
- iaad: int:00001016:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
- iaad: int:00001017:  errmsg("division by zero"))); 
- iaad: int:00001037:  ereport(ERROR, 
- iaad: int:00001038:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00001039:  errmsg("integer out of range"))); 
- iaad: int:00001058:  ereport(ERROR, 
- iaad: int:00001059:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00001060:  errmsg("integer out of range"))); 
- iaad: int:00001085:  ereport(ERROR, 
- iaad: int:00001086:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00001087:  errmsg("integer out of range"))); 
- iaad: int:00001099:  ereport(ERROR, 
- iaad: int:00001100:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
- iaad: int:00001101:  errmsg("division by zero"))); 
- iaad: int:00001111:  ereport(ERROR, 
- iaad: int:00001112:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00001113:  errmsg("integer out of range"))); 
- iaad: int:00001124:  ereport(ERROR, 
- iaad: int:00001125:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
- iaad: int:00001126:  errmsg("division by zero"))); 
- iaad: int:00001144:  ereport(ERROR, 
- iaad: int:00001145:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
- iaad: int:00001146:  errmsg("division by zero"))); 
- iaad: int:00001159:  ereport(ERROR, 
- iaad: int:00001160:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
- iaad: int:00001161:  errmsg("division by zero"))); 
- iaad: int:00001174:  ereport(ERROR, 
- iaad: int:00001175:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
- iaad: int:00001176:  errmsg("division by zero"))); 
- iaad: int:00001195:  ereport(ERROR, 
- iaad: int:00001196:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00001197:  errmsg("integer out of range"))); 
- iaad: int:00001210:  ereport(ERROR, 
- iaad: int:00001211:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- iaad: int:00001212:  errmsg("smallint out of range"))); 
- iaad: int:00001398:  ereport(ERROR, 
- iaad: int:00001399:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- iaad: int:00001400:  errmsg("step size cannot equal zero"))); 
+ iaad: int:00000806:  ereport(ERROR, 
+ iaad: int:00000807:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00000808:  errmsg("integer out of range"))); 
+ iaad: int:00000821:  ereport(ERROR, 
+ iaad: int:00000822:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00000823:  errmsg("integer out of range"))); 
+ iaad: int:00000837:  ereport(ERROR, 
+ iaad: int:00000838:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00000839:  errmsg("smallint out of range"))); 
+ iaad: int:00000866:  ereport(ERROR, 
+ iaad: int:00000867:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00000868:  errmsg("smallint out of range"))); 
+ iaad: int:00000887:  ereport(ERROR, 
+ iaad: int:00000888:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00000889:  errmsg("smallint out of range"))); 
+ iaad: int:00000907:  ereport(ERROR, 
+ iaad: int:00000908:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00000909:  errmsg("smallint out of range"))); 
+ iaad: int:00000922:  ereport(ERROR, 
+ iaad: int:00000923:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+ iaad: int:00000924:  errmsg("division by zero"))); 
+ iaad: int:00000935:  ereport(ERROR, 
+ iaad: int:00000936:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00000937:  errmsg("smallint out of range"))); 
+ iaad: int:00000956:  ereport(ERROR, 
+ iaad: int:00000957:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00000958:  errmsg("integer out of range"))); 
+ iaad: int:00000977:  ereport(ERROR, 
+ iaad: int:00000978:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00000979:  errmsg("integer out of range"))); 
+ iaad: int:00001004:  ereport(ERROR, 
+ iaad: int:00001005:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00001006:  errmsg("integer out of range"))); 
+ iaad: int:00001018:  ereport(ERROR, 
+ iaad: int:00001019:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+ iaad: int:00001020:  errmsg("division by zero"))); 
+ iaad: int:00001044:  ereport(ERROR, 
+ iaad: int:00001045:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00001046:  errmsg("integer out of range"))); 
+ iaad: int:00001065:  ereport(ERROR, 
+ iaad: int:00001066:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00001067:  errmsg("integer out of range"))); 
+ iaad: int:00001092:  ereport(ERROR, 
+ iaad: int:00001093:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00001094:  errmsg("integer out of range"))); 
+ iaad: int:00001106:  ereport(ERROR, 
+ iaad: int:00001107:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+ iaad: int:00001108:  errmsg("division by zero"))); 
+ iaad: int:00001119:  ereport(ERROR, 
+ iaad: int:00001120:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00001121:  errmsg("integer out of range"))); 
+ iaad: int:00001132:  ereport(ERROR, 
+ iaad: int:00001133:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+ iaad: int:00001134:  errmsg("division by zero"))); 
+ iaad: int:00001152:  ereport(ERROR, 
+ iaad: int:00001153:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+ iaad: int:00001154:  errmsg("division by zero"))); 
+ iaad: int:00001167:  ereport(ERROR, 
+ iaad: int:00001168:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+ iaad: int:00001169:  errmsg("division by zero"))); 
+ iaad: int:00001182:  ereport(ERROR, 
+ iaad: int:00001183:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+ iaad: int:00001184:  errmsg("division by zero"))); 
+ iaad: int:00001203:  ereport(ERROR, 
+ iaad: int:00001204:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00001205:  errmsg("integer out of range"))); 
+ iaad: int:00001218:  ereport(ERROR, 
+ iaad: int:00001219:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ iaad: int:00001220:  errmsg("smallint out of range"))); 
+ iaad: int:00001406:  ereport(ERROR, 
+ iaad: int:00001407:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ iaad: int:00001408:  errmsg("step size cannot equal zero"))); 
  iaad: ipc:00000151:  ereport(FATAL, 
  iaad: ipc:00000152:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
  iaad: ipc:00000153:  errmsg_internal("out of on_proc_exit slots"))); 
@@ -6749,31 +6741,31 @@ select * from get_ereport order by 1;
  maae: mcxt:00000734:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
  maae: mcxt:00000735:  errmsg("Failed to create memory context: out of memory") 
  maae: mcxt:00000736:  )); 
- maae: misc:00000081:  ereport(ERROR, 
- maae: misc:00000082:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- maae: misc:00000083:  (errmsg("must be superuser to signal other server processes")))); 
- maae: misc:00000091:  ereport(WARNING, 
- maae: misc:00000092:  (errmsg("PID %d is not a PostgreSQL server process", pid))); 
- maae: misc:00000104:  ereport(WARNING, 
- maae: misc:00000105:  (errmsg("could not send signal to process %d: %m", pid))); 
- maae: misc:00000121:  ereport(ERROR, 
- maae: misc:00000122:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- maae: misc:00000123:  (errmsg("must be superuser to signal the postmaster")))); 
- maae: misc:00000127:  ereport(WARNING, 
- maae: misc:00000128:  (errmsg("failed to send signal to postmaster: %m"))); 
- maae: misc:00000143:  ereport(ERROR, 
- maae: misc:00000144:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- maae: misc:00000145:  (errmsg("must be superuser to rotate log files")))); 
- maae: misc:00000149:  ereport(WARNING, 
- maae: misc:00000150:  (errmsg("rotation not possible because log redirection not active"))); 
- maae: misc:00000201:  ereport(WARNING, 
- maae: misc:00000202:  (errmsg("global tablespace never has databases"))); 
- maae: misc:00000217:  ereport(ERROR, 
- maae: misc:00000218:  (errcode_for_file_access(), 
- maae: misc:00000219:  errmsg("could not open directory "%s": %m", 
- maae: misc:00000220:  fctx->location))); 
- maae: misc:00000221:  ereport(WARNING, 
- maae: misc:00000222:  (errmsg("%u is not a tablespace OID", tablespaceOid))); 
+ maae: misc:00000082:  ereport(ERROR, 
+ maae: misc:00000083:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ maae: misc:00000084:  (errmsg("must be superuser to signal other server processes")))); 
+ maae: misc:00000092:  ereport(WARNING, 
+ maae: misc:00000093:  (errmsg("PID %d is not a PostgreSQL server process", pid))); 
+ maae: misc:00000105:  ereport(WARNING, 
+ maae: misc:00000106:  (errmsg("could not send signal to process %d: %m", pid))); 
+ maae: misc:00000122:  ereport(ERROR, 
+ maae: misc:00000123:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ maae: misc:00000124:  (errmsg("must be superuser to signal the postmaster")))); 
+ maae: misc:00000128:  ereport(WARNING, 
+ maae: misc:00000129:  (errmsg("failed to send signal to postmaster: %m"))); 
+ maae: misc:00000144:  ereport(ERROR, 
+ maae: misc:00000145:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ maae: misc:00000146:  (errmsg("must be superuser to rotate log files")))); 
+ maae: misc:00000150:  ereport(WARNING, 
+ maae: misc:00000151:  (errmsg("rotation not possible because log redirection not active"))); 
+ maae: misc:00000202:  ereport(WARNING, 
+ maae: misc:00000203:  (errmsg("global tablespace never has databases"))); 
+ maae: misc:00000218:  ereport(ERROR, 
+ maae: misc:00000219:  (errcode_for_file_access(), 
+ maae: misc:00000220:  errmsg("could not open directory "%s": %m", 
+ maae: misc:00000221:  fctx->location))); 
+ maae: misc:00000222:  ereport(WARNING, 
+ maae: misc:00000223:  (errmsg("%u is not a tablespace OID", tablespaceOid))); 
  maag: matrix:00000032:  ereport(ERROR, 
  maag: matrix:00000033:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  maag: matrix:00000034:  errmsg("argument must be a two dimensional array"))); 
@@ -7161,148 +7153,148 @@ select * from get_ereport order by 1;
  naah: nodeagg:00002107:  (errcode(ERRCODE_INTERNAL_ERROR), 
  naah: nodeagg:00002108:  errmsg("Illegal rescan of hashagg node: invalid plan."), 
  naah: nodeagg:00002109:  errhint("likely caused by bad NL-join, try setting enable_nestloop off, or disabling hashagg"))); 
- naah: numeric:00000467:  ereport(ERROR, 
- naah: numeric:00000468:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
- naah: numeric:00000469:  errmsg("invalid length in external "numeric" value"))); 
- naah: numeric:00000478:  ereport(ERROR, 
- naah: numeric:00000479:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
- naah: numeric:00000480:  errmsg("invalid sign in external "numeric" value"))); 
- naah: numeric:00000488:  ereport(ERROR, 
- naah: numeric:00000489:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
- naah: numeric:00000490:  errmsg("invalid digit in external "numeric" value"))); 
- naah: numeric:00000887:  ereport(ERROR, 
- naah: numeric:00000888:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION), 
- naah: numeric:00000889:  errmsg("count must be greater than zero"))); 
- naah: numeric:00000900:  ereport(ERROR, 
- naah: numeric:00000901:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION), 
- naah: numeric:00000902:  errmsg("lower bound cannot equal upper bound"))); 
- naah: numeric:00001546:  ereport(ERROR, 
- naah: numeric:00001547:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- naah: numeric:00001548:  errmsg("value overflows numeric format"))); 
- naah: numeric:00001818:  ereport(ERROR, 
- naah: numeric:00001819:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION), 
- naah: numeric:00001820:  errmsg("invalid argument for power function"))); 
- naah: numeric:00001872:  ereport(ERROR, 
- naah: numeric:00001873:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- naah: numeric:00001874:  errmsg("cannot convert NaN to integer"))); 
- naah: numeric:00001895:  ereport(ERROR, 
- naah: numeric:00001896:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- naah: numeric:00001897:  errmsg("integer out of range"))); 
- naah: numeric:00001904:  ereport(ERROR, 
- naah: numeric:00001905:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- naah: numeric:00001906:  errmsg("integer out of range"))); 
- naah: numeric:00001937:  ereport(ERROR, 
- naah: numeric:00001938:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- naah: numeric:00001939:  errmsg("cannot convert NaN to bigint"))); 
- naah: numeric:00001945:  ereport(ERROR, 
- naah: numeric:00001946:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- naah: numeric:00001947:  errmsg("bigint out of range"))); 
- naah: numeric:00001980:  ereport(ERROR, 
- naah: numeric:00001981:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- naah: numeric:00001982:  errmsg("cannot convert NaN to smallint"))); 
- naah: numeric:00001988:  ereport(ERROR, 
- naah: numeric:00001989:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- naah: numeric:00001990:  errmsg("smallint out of range"))); 
- naah: numeric:00001997:  ereport(ERROR, 
- naah: numeric:00001998:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- naah: numeric:00001999:  errmsg("smallint out of range"))); 
- naah: numeric:00003325:  ereport(ERROR, 
- naah: numeric:00003326:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
- naah: numeric:00003327:  errmsg("invalid input syntax for type numeric: "%s"", str))); 
- naah: numeric:00003351:  ereport(ERROR, 
- naah: numeric:00003352:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
- naah: numeric:00003353:  errmsg("invalid input syntax for type numeric: "%s"", 
- naah: numeric:00003354:  str))); 
- naah: numeric:00003375:  ereport(ERROR, 
- naah: numeric:00003376:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
- naah: numeric:00003377:  errmsg("invalid input syntax for type numeric: "%s"", 
- naah: numeric:00003378:  str))); 
- naah: numeric:00003382:  ereport(ERROR, 
- naah: numeric:00003383:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
- naah: numeric:00003384:  errmsg("invalid input syntax for type numeric: "%s"", 
- naah: numeric:00003385:  str))); 
- naah: numeric:00003396:  ereport(ERROR, 
- naah: numeric:00003397:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
- naah: numeric:00003398:  errmsg("invalid input syntax for type numeric: "%s"", 
- naah: numeric:00003399:  str))); 
- naah: numeric:00003773:  ereport(ERROR, 
- naah: numeric:00003774:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- naah: numeric:00003775:  errmsg("value overflows numeric format"), 
- naah: numeric:00003776:  errdetail("Overflowing value: %s", ntp) 
- naah: numeric:00003777:  )); 
- naah: numeric:00003849:  ereport(ERROR, 
- naah: numeric:00003850:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- naah: numeric:00003851:  errmsg("value overflows numeric format"), 
- naah: numeric:00003852:  errdetail("Overflowing value: %s", ntp) 
- naah: numeric:00003853:  )); 
- naah: numeric:00003926:  ereport(ERROR, 
- naah: numeric:00003927:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- naah: numeric:00003928:  errmsg("numeric field overflow"), 
- naah: numeric:00003929:  errdetail("A field with precision %d, scale %d must round to an absolute value less than %s%d. Rounded overflowing value: %s", 
- naah: numeric:00003930:  precision, scale, 
- naah: numeric:00003931:  /* Display 10^0 as 1 */ 
- naah: numeric:00003932:  maxdigits ? "10^" : "", 
- naah: numeric:00003933:  maxdigits ? maxdigits : 1, 
- naah: numeric:00003934:  ntp 
- naah: numeric:00003935:  ))); 
- naah: numeric:00004079:  ereport(ERROR, 
- naah: numeric:00004080:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
- naah: numeric:00004081:  errmsg("invalid input syntax for type double precision: "%s"", 
- naah: numeric:00004082:  tmp))); 
- naah: numeric:00004105:  ereport(ERROR, 
- naah: numeric:00004106:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
- naah: numeric:00004107:  errmsg("invalid input syntax for type double precision: "%s"", 
- naah: numeric:00004108:  tmp))); 
- naah: numeric:00004631:  ereport(ERROR, 
- naah: numeric:00004632:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
- naah: numeric:00004633:  errmsg("division by zero"))); 
- naah: numeric:00005041:  ereport(ERROR, 
- naah: numeric:00005042:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION), 
- naah: numeric:00005043:  errmsg("cannot take square root of a negative number"))); 
- naah: numeric:00005127:  ereport(ERROR, 
- naah: numeric:00005128:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- naah: numeric:00005129:  errmsg("argument for function "exp" too big"))); 
- naah: numeric:00005250:  ereport(ERROR, 
- naah: numeric:00005251:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_LOG), 
- naah: numeric:00005252:  errmsg("cannot take logarithm of zero"))); 
+ naah: numeric:00000471:  ereport(ERROR, 
+ naah: numeric:00000472:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
+ naah: numeric:00000473:  errmsg("invalid length in external "numeric" value"))); 
+ naah: numeric:00000482:  ereport(ERROR, 
+ naah: numeric:00000483:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
+ naah: numeric:00000484:  errmsg("invalid sign in external "numeric" value"))); 
+ naah: numeric:00000492:  ereport(ERROR, 
+ naah: numeric:00000493:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
+ naah: numeric:00000494:  errmsg("invalid digit in external "numeric" value"))); 
+ naah: numeric:00000891:  ereport(ERROR, 
+ naah: numeric:00000892:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION), 
+ naah: numeric:00000893:  errmsg("count must be greater than zero"))); 
+ naah: numeric:00000904:  ereport(ERROR, 
+ naah: numeric:00000905:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION), 
+ naah: numeric:00000906:  errmsg("lower bound cannot equal upper bound"))); 
+ naah: numeric:00001550:  ereport(ERROR, 
+ naah: numeric:00001551:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ naah: numeric:00001552:  errmsg("value overflows numeric format"))); 
+ naah: numeric:00001822:  ereport(ERROR, 
+ naah: numeric:00001823:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION), 
+ naah: numeric:00001824:  errmsg("invalid argument for power function"))); 
+ naah: numeric:00001876:  ereport(ERROR, 
+ naah: numeric:00001877:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ naah: numeric:00001878:  errmsg("cannot convert NaN to integer"))); 
+ naah: numeric:00001899:  ereport(ERROR, 
+ naah: numeric:00001900:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ naah: numeric:00001901:  errmsg("integer out of range"))); 
+ naah: numeric:00001908:  ereport(ERROR, 
+ naah: numeric:00001909:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ naah: numeric:00001910:  errmsg("integer out of range"))); 
+ naah: numeric:00001941:  ereport(ERROR, 
+ naah: numeric:00001942:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ naah: numeric:00001943:  errmsg("cannot convert NaN to bigint"))); 
+ naah: numeric:00001949:  ereport(ERROR, 
+ naah: numeric:00001950:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ naah: numeric:00001951:  errmsg("bigint out of range"))); 
+ naah: numeric:00001984:  ereport(ERROR, 
+ naah: numeric:00001985:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ naah: numeric:00001986:  errmsg("cannot convert NaN to smallint"))); 
+ naah: numeric:00001992:  ereport(ERROR, 
+ naah: numeric:00001993:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ naah: numeric:00001994:  errmsg("smallint out of range"))); 
+ naah: numeric:00002001:  ereport(ERROR, 
+ naah: numeric:00002002:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ naah: numeric:00002003:  errmsg("smallint out of range"))); 
+ naah: numeric:00003329:  ereport(ERROR, 
+ naah: numeric:00003330:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+ naah: numeric:00003331:  errmsg("invalid input syntax for type numeric: "%s"", str))); 
+ naah: numeric:00003355:  ereport(ERROR, 
+ naah: numeric:00003356:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+ naah: numeric:00003357:  errmsg("invalid input syntax for type numeric: "%s"", 
+ naah: numeric:00003358:  str))); 
+ naah: numeric:00003379:  ereport(ERROR, 
+ naah: numeric:00003380:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+ naah: numeric:00003381:  errmsg("invalid input syntax for type numeric: "%s"", 
+ naah: numeric:00003382:  str))); 
+ naah: numeric:00003386:  ereport(ERROR, 
+ naah: numeric:00003387:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+ naah: numeric:00003388:  errmsg("invalid input syntax for type numeric: "%s"", 
+ naah: numeric:00003389:  str))); 
+ naah: numeric:00003400:  ereport(ERROR, 
+ naah: numeric:00003401:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+ naah: numeric:00003402:  errmsg("invalid input syntax for type numeric: "%s"", 
+ naah: numeric:00003403:  str))); 
+ naah: numeric:00003777:  ereport(ERROR, 
+ naah: numeric:00003778:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ naah: numeric:00003779:  errmsg("value overflows numeric format"), 
+ naah: numeric:00003780:  errdetail("Overflowing value: %s", ntp) 
+ naah: numeric:00003781:  )); 
+ naah: numeric:00003853:  ereport(ERROR, 
+ naah: numeric:00003854:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ naah: numeric:00003855:  errmsg("value overflows numeric format"), 
+ naah: numeric:00003856:  errdetail("Overflowing value: %s", ntp) 
+ naah: numeric:00003857:  )); 
+ naah: numeric:00003930:  ereport(ERROR, 
+ naah: numeric:00003931:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ naah: numeric:00003932:  errmsg("numeric field overflow"), 
+ naah: numeric:00003933:  errdetail("A field with precision %d, scale %d must round to an absolute value less than %s%d. Rounded overflowing value: %s", 
+ naah: numeric:00003934:  precision, scale, 
+ naah: numeric:00003935:  /* Display 10^0 as 1 */ 
+ naah: numeric:00003936:  maxdigits ? "10^" : "", 
+ naah: numeric:00003937:  maxdigits ? maxdigits : 1, 
+ naah: numeric:00003938:  ntp 
+ naah: numeric:00003939:  ))); 
+ naah: numeric:00004083:  ereport(ERROR, 
+ naah: numeric:00004084:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+ naah: numeric:00004085:  errmsg("invalid input syntax for type double precision: "%s"", 
+ naah: numeric:00004086:  tmp))); 
+ naah: numeric:00004109:  ereport(ERROR, 
+ naah: numeric:00004110:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+ naah: numeric:00004111:  errmsg("invalid input syntax for type double precision: "%s"", 
+ naah: numeric:00004112:  tmp))); 
+ naah: numeric:00004635:  ereport(ERROR, 
+ naah: numeric:00004636:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+ naah: numeric:00004637:  errmsg("division by zero"))); 
+ naah: numeric:00005045:  ereport(ERROR, 
+ naah: numeric:00005046:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION), 
+ naah: numeric:00005047:  errmsg("cannot take square root of a negative number"))); 
+ naah: numeric:00005131:  ereport(ERROR, 
+ naah: numeric:00005132:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ naah: numeric:00005133:  errmsg("argument for function "exp" too big"))); 
  naah: numeric:00005254:  ereport(ERROR, 
  naah: numeric:00005255:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_LOG), 
- naah: numeric:00005256:  errmsg("cannot take logarithm of a negative number"))); 
- naah: numeric:00005497:  ereport(ERROR, 
- naah: numeric:00005498:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
- naah: numeric:00005499:  errmsg("zero raised to zero is undefined"))); 
- naai: nabstime:00000164:  ereport(WARNING, 
- naai: nabstime:00000165:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- naai: nabstime:00000166:  errmsg("invalid time zone name: "%s"", 
- naai: nabstime:00000167:  tm->tm_zone))); 
- naai: nabstime:00000484:  ereport(ERROR, 
- naai: nabstime:00000485:  (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE), 
- naai: nabstime:00000486:  errmsg("timestamp out of range"))); 
- naai: nabstime:00000510:  ereport(ERROR, 
- naai: nabstime:00000511:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- naai: nabstime:00000512:  errmsg("cannot convert abstime "invalid" to timestamp"))); 
- naai: nabstime:00000527:  ereport(ERROR, 
- naai: nabstime:00000528:  (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE), 
- naai: nabstime:00000529:  errmsg("timestamp out of range"))); 
- naai: nabstime:00000557:  ereport(ERROR, 
- naai: nabstime:00000558:  (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE), 
- naai: nabstime:00000559:  errmsg("timestamp out of range"))); 
- naai: nabstime:00000583:  ereport(ERROR, 
- naai: nabstime:00000584:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- naai: nabstime:00000585:  errmsg("cannot convert abstime "invalid" to timestamp"))); 
- naai: nabstime:00000600:  ereport(ERROR, 
- naai: nabstime:00000601:  (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE), 
- naai: nabstime:00000602:  errmsg("timestamp out of range"))); 
- naai: nabstime:00000802:  ereport(ERROR, 
- naai: nabstime:00000803:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
- naai: nabstime:00000804:  errmsg("invalid status in external "tinterval" value"))); 
- naai: nabstime:00000879:  ereport(ERROR, 
- naai: nabstime:00000880:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- naai: nabstime:00000881:  errmsg("cannot convert reltime "invalid" to interval"))); 
- naai: nabstime:00001566:  ereport(ERROR, 
- naai: nabstime:00001567:  (errcode(ERRCODE_INVALID_DATETIME_FORMAT), 
- naai: nabstime:00001568:  errmsg("invalid input syntax for type tinterval: "%s"", 
- naai: nabstime:00001569:  i_string))); 
+ naah: numeric:00005256:  errmsg("cannot take logarithm of zero"))); 
+ naah: numeric:00005258:  ereport(ERROR, 
+ naah: numeric:00005259:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_LOG), 
+ naah: numeric:00005260:  errmsg("cannot take logarithm of a negative number"))); 
+ naah: numeric:00005501:  ereport(ERROR, 
+ naah: numeric:00005502:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
+ naah: numeric:00005503:  errmsg("zero raised to zero is undefined"))); 
+ naai: nabstime:00000158:  ereport(WARNING, 
+ naai: nabstime:00000159:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ naai: nabstime:00000160:  errmsg("invalid time zone name: "%s"", 
+ naai: nabstime:00000161:  tm->tm_zone))); 
+ naai: nabstime:00000478:  ereport(ERROR, 
+ naai: nabstime:00000479:  (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE), 
+ naai: nabstime:00000480:  errmsg("timestamp out of range"))); 
+ naai: nabstime:00000504:  ereport(ERROR, 
+ naai: nabstime:00000505:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ naai: nabstime:00000506:  errmsg("cannot convert abstime "invalid" to timestamp"))); 
+ naai: nabstime:00000521:  ereport(ERROR, 
+ naai: nabstime:00000522:  (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE), 
+ naai: nabstime:00000523:  errmsg("timestamp out of range"))); 
+ naai: nabstime:00000551:  ereport(ERROR, 
+ naai: nabstime:00000552:  (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE), 
+ naai: nabstime:00000553:  errmsg("timestamp out of range"))); 
+ naai: nabstime:00000577:  ereport(ERROR, 
+ naai: nabstime:00000578:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ naai: nabstime:00000579:  errmsg("cannot convert abstime "invalid" to timestamp"))); 
+ naai: nabstime:00000594:  ereport(ERROR, 
+ naai: nabstime:00000595:  (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE), 
+ naai: nabstime:00000596:  errmsg("timestamp out of range"))); 
+ naai: nabstime:00000796:  ereport(ERROR, 
+ naai: nabstime:00000797:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
+ naai: nabstime:00000798:  errmsg("invalid status in external "tinterval" value"))); 
+ naai: nabstime:00000873:  ereport(ERROR, 
+ naai: nabstime:00000874:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ naai: nabstime:00000875:  errmsg("cannot convert reltime "invalid" to interval"))); 
+ naai: nabstime:00001555:  ereport(ERROR, 
+ naai: nabstime:00001556:  (errcode(ERRCODE_INVALID_DATETIME_FORMAT), 
+ naai: nabstime:00001557:  errmsg("invalid input syntax for type tinterval: "%s"", 
+ naai: nabstime:00001558:  i_string))); 
  naai: nextstep:00000035:  ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY), 
  naai: nextstep:00000036:  errmsg("Transer error failed: out of memory")); 
  naai: numutils:00000051:  ereport(ERROR, 
@@ -9802,221 +9794,229 @@ select * from get_ereport order by 1;
  pabb: pseudotypes:00000344:  ereport(ERROR, 
  pabb: pseudotypes:00000345:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  pabb: pseudotypes:00000346:  errmsg("cannot display a value of a shell type"))); 
- pabc: parsexclause:00000189:  ereport(ERROR, 
- pabc: parsexclause:00000190:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
- pabc: parsexclause:00000191:  errmsg("ROWS parameter must be an integer expression"))); 
- pabc: parsexclause:00000193:  ereport(ERROR, 
- pabc: parsexclause:00000194:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
- pabc: parsexclause:00000195:  errmsg("ROWS parameter cannot be negative"))); 
- pabc: parsexclause:00000199:  ereport(ERROR, 
- pabc: parsexclause:00000200:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
- pabc: parsexclause:00000201:  errmsg("ROWS parameter cannot contain NULL value"))); 
- pabc: parsexclause:00000216:  ereport(ERROR, 
- pabc: parsexclause:00000217:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000218:  errmsg("only one ORDER BY column may be specified when" 
- pabc: parsexclause:00000219:  " RANGE is used in a window specification"))); 
- pabc: parsexclause:00000229:  ereport(ERROR, 
- pabc: parsexclause:00000230:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
- pabc: parsexclause:00000231:  errmsg("RANGE parameter cannot be NULL"))); 
- pabc: parsexclause:00000249:  ereport(ERROR, 
- pabc: parsexclause:00000250:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000251:  errmsg("window specification RANGE parameter type " 
- pabc: parsexclause:00000252:  "must be coercible to ORDER BY column type"))); 
- pabc: parsexclause:00000278:  ereport(ERROR, 
- pabc: parsexclause:00000279:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000280:  errmsg("type mismatch between ORDER BY and RANGE " 
- pabc: parsexclause:00000281:  "parameter in window specification"), 
- pabc: parsexclause:00000282:  errhint("Operations between window specification " 
- pabc: parsexclause:00000283:  "the ORDER BY column and RANGE parameter " 
- pabc: parsexclause:00000284:  "must result in a data type which can be " 
- pabc: parsexclause:00000285:  "cast back to the ORDER BY column type"))); 
- pabc: parsexclause:00000295:  ereport(ERROR, 
- pabc: parsexclause:00000296:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000297:  errmsg("invalid RANGE parameter"), 
- pabc: parsexclause:00000298:  errhint("Operations between window specification " 
- pabc: parsexclause:00000299:  "the ORDER BY column and RANGE parameter " 
- pabc: parsexclause:00000300:  "must result in a data type which can be " 
- pabc: parsexclause:00000301:  "cast back to the ORDER BY column type"))); 
- pabc: parsexclause:00000328:  ereport(ERROR, 
- pabc: parsexclause:00000329:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
- pabc: parsexclause:00000330:  errmsg("RANGE parameter cannot be negative"))); 
- pabc: parsexclause:00000354:  ereport(ERROR, 
- pabc: parsexclause:00000355:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000356:  errmsg("DISTINCT cannot be used with " 
- pabc: parsexclause:00000357:  "window specification containing an " 
- pabc: parsexclause:00000358:  "ORDER BY clause"))); 
- pabc: parsexclause:00000361:  ereport(ERROR, 
- pabc: parsexclause:00000362:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000363:  errmsg("DISTINCT cannot be used with " 
- pabc: parsexclause:00000364:  "window specification containing a " 
- pabc: parsexclause:00000365:  "framing clause"))); 
- pabc: parsexclause:00000418:  ereport(ERROR, 
- pabc: parsexclause:00000419:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000420:  errmsg("cannot use window function in a window " 
- pabc: parsexclause:00000421:  "specification"))); 
- pabc: parsexclause:00000437:  ereport(ERROR, 
- pabc: parsexclause:00000438:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- pabc: parsexclause:00000439:  errmsg("window "%s" cannot reference itself", 
- pabc: parsexclause:00000440:  ws->name))); 
- pabc: parsexclause:00000448:  ereport(ERROR, 
- pabc: parsexclause:00000449:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- pabc: parsexclause:00000450:  errmsg("window name "%s" occurs more than once " 
- pabc: parsexclause:00000451:  "in WINDOW clause", ws->name))); 
- pabc: parsexclause:00000474:  ereport(ERROR, 
- pabc: parsexclause:00000475:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000476:  errmsg("PARTITION BY not allowed when " 
- pabc: parsexclause:00000477:  "an existing window name is specified"))); 
- pabc: parsexclause:00000480:  ereport(ERROR, 
- pabc: parsexclause:00000481:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000482:  errmsg("conflicting ORDER BY clauses in window " 
- pabc: parsexclause:00000483:  "specification"))); 
- pabc: parsexclause:00000494:  ereport(ERROR, 
- pabc: parsexclause:00000495:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000496:  errmsg("window specification "%s" cannot have " 
- pabc: parsexclause:00000497:  "a framing clause", ws2->name), 
- pabc: parsexclause:00000498:  errhint("Window specifications which are " 
- pabc: parsexclause:00000499:  "referenced by other window " 
- pabc: parsexclause:00000500:  "specifications cannot have framing " 
- pabc: parsexclause:00000501:  "clauses"), 
- pabc: parsexclause:00000502:  parser_errposition(pstate, ws2->location) 
- pabc: parsexclause:00000503:  )); 
- pabc: parsexclause:00000522:  ereport(ERROR, 
- pabc: parsexclause:00000523:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000524:  errmsg("window specification "%s" not found", 
- pabc: parsexclause:00000525:  ws->parent))); 
- pabc: parsexclause:00000605:  ereport(ERROR, 
- pabc: parsexclause:00000606:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000607:  errmsg("window specifications with a framing clause " 
- pabc: parsexclause:00000608:  "must have an ORDER BY clause"))); 
- pabc: parsexclause:00000616:  ereport(ERROR, 
- pabc: parsexclause:00000617:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000618:  errmsg("conflicting bounds in window framing " 
- pabc: parsexclause:00000619:  "clause"), 
- pabc: parsexclause:00000620:  errhint("First bound of BETWEEN clause in window " 
- pabc: parsexclause:00000621:  "specification cannot be UNBOUNDED FOLLOWING"))); 
- pabc: parsexclause:00000623:  ereport(ERROR, 
- pabc: parsexclause:00000624:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000625:  errmsg("conflicting bounds in window framing " 
- pabc: parsexclause:00000626:  "clause"), 
- pabc: parsexclause:00000627:  errhint("Second bound of BETWEEN clause in window " 
- pabc: parsexclause:00000628:  "specification cannot be UNBOUNDED PRECEDING"))); 
- pabc: parsexclause:00000632:  ereport(ERROR, 
- pabc: parsexclause:00000633:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000634:  errmsg("conflicting bounds in window framing " 
- pabc: parsexclause:00000635:  "clause"), 
- pabc: parsexclause:00000636:  errhint("Second bound cannot be PRECEDING " 
- pabc: parsexclause:00000637:  "when first bound is CURRENT ROW"))); 
- pabc: parsexclause:00000642:  ereport(ERROR, 
- pabc: parsexclause:00000643:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00000644:  errmsg("conflicting bounds in window framing " 
- pabc: parsexclause:00000645:  "clause"), 
- pabc: parsexclause:00000646:  errhint("Second bound must be FOLLOWING if first " 
- pabc: parsexclause:00000647:  "bound is FOLLOWING"))); 
- pabc: parsexclause:00000744:  ereport(ERROR, 
- pabc: parsexclause:00000745:  (errcode(ERRCODE_UNDEFINED_TABLE), 
- pabc: parsexclause:00000746:  errmsg("relation "%s.%s" does not exist", 
- pabc: parsexclause:00000747:  relation->schemaname, relation->relname))); 
- pabc: parsexclause:00000749:  ereport(ERROR, 
- pabc: parsexclause:00000750:  (errcode(ERRCODE_UNDEFINED_TABLE), 
- pabc: parsexclause:00000751:  errmsg("relation "%s" does not exist", 
- pabc: parsexclause:00000752:  relation->relname))); 
- pabc: parsexclause:00000984:  ereport(ERROR, 
- pabc: parsexclause:00000985:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- pabc: parsexclause:00000986:  errmsg("JOIN/ON clause refers to "%s", which is not part of JOIN", 
- pabc: parsexclause:00000987:  rt_fetch(varno, pstate->p_rtable)->eref->aliasname))); 
- pabc: parsexclause:00001032:  ereport(ERROR, 
- pabc: parsexclause:00001033:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00001034:  errmsg("subquery in FROM must have an alias"))); 
- pabc: parsexclause:00001055:  ereport(ERROR, 
- pabc: parsexclause:00001056:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00001057:  errmsg("subquery in FROM may not have SELECT INTO"))); 
- pabc: parsexclause:00001075:  ereport(ERROR, 
- pabc: parsexclause:00001076:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- pabc: parsexclause:00001077:  errmsg("subquery in FROM may not refer to other relations of same query level"))); 
- pabc: parsexclause:00001181:  ereport(ERROR, 
- pabc: parsexclause:00001182:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- pabc: parsexclause:00001183:  errmsg("function expression in FROM may not refer to other relations of same query level"))); 
- pabc: parsexclause:00001193:  ereport(ERROR, 
- pabc: parsexclause:00001194:  (errcode(ERRCODE_GROUPING_ERROR), 
- pabc: parsexclause:00001195:  errmsg("cannot use aggregate function in function expression in FROM"))); 
- pabc: parsexclause:00001461:  ereport(ERROR, 
- pabc: parsexclause:00001462:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
- pabc: parsexclause:00001463:  errmsg("column name "%s" appears more than once in USING clause", 
- pabc: parsexclause:00001464:  u_colname))); 
- pabc: parsexclause:00001476:  ereport(ERROR, 
- pabc: parsexclause:00001477:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
- pabc: parsexclause:00001478:  errmsg("common column name "%s" appears more than once in left table", 
- pabc: parsexclause:00001479:  u_colname))); 
- pabc: parsexclause:00001485:  ereport(ERROR, 
- pabc: parsexclause:00001486:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- pabc: parsexclause:00001487:  errmsg("column "%s" specified in USING clause does not exist in left table", 
- pabc: parsexclause:00001488:  u_colname))); 
- pabc: parsexclause:00001499:  ereport(ERROR, 
- pabc: parsexclause:00001500:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
- pabc: parsexclause:00001501:  errmsg("common column name "%s" appears more than once in right table", 
- pabc: parsexclause:00001502:  u_colname))); 
+ pabc: parsexclause:00000190:  ereport(ERROR, 
+ pabc: parsexclause:00000191:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+ pabc: parsexclause:00000192:  errmsg("ROWS parameter must be an integer expression"))); 
+ pabc: parsexclause:00000194:  ereport(ERROR, 
+ pabc: parsexclause:00000195:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+ pabc: parsexclause:00000196:  errmsg("ROWS parameter cannot be negative"))); 
+ pabc: parsexclause:00000200:  ereport(ERROR, 
+ pabc: parsexclause:00000201:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+ pabc: parsexclause:00000202:  errmsg("ROWS parameter cannot contain NULL value"))); 
+ pabc: parsexclause:00000217:  ereport(ERROR, 
+ pabc: parsexclause:00000218:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000219:  errmsg("only one ORDER BY column may be specified when" 
+ pabc: parsexclause:00000220:  " RANGE is used in a window specification"))); 
+ pabc: parsexclause:00000230:  ereport(ERROR, 
+ pabc: parsexclause:00000231:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+ pabc: parsexclause:00000232:  errmsg("RANGE parameter cannot be NULL"))); 
+ pabc: parsexclause:00000250:  ereport(ERROR, 
+ pabc: parsexclause:00000251:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000252:  errmsg("window specification RANGE parameter type " 
+ pabc: parsexclause:00000253:  "must be coercible to ORDER BY column type"))); 
+ pabc: parsexclause:00000279:  ereport(ERROR, 
+ pabc: parsexclause:00000280:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000281:  errmsg("type mismatch between ORDER BY and RANGE " 
+ pabc: parsexclause:00000282:  "parameter in window specification"), 
+ pabc: parsexclause:00000283:  errhint("Operations between window specification " 
+ pabc: parsexclause:00000284:  "the ORDER BY column and RANGE parameter " 
+ pabc: parsexclause:00000285:  "must result in a data type which can be " 
+ pabc: parsexclause:00000286:  "cast back to the ORDER BY column type"))); 
+ pabc: parsexclause:00000296:  ereport(ERROR, 
+ pabc: parsexclause:00000297:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000298:  errmsg("invalid RANGE parameter"), 
+ pabc: parsexclause:00000299:  errhint("Operations between window specification " 
+ pabc: parsexclause:00000300:  "the ORDER BY column and RANGE parameter " 
+ pabc: parsexclause:00000301:  "must result in a data type which can be " 
+ pabc: parsexclause:00000302:  "cast back to the ORDER BY column type"))); 
+ pabc: parsexclause:00000329:  ereport(ERROR, 
+ pabc: parsexclause:00000330:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+ pabc: parsexclause:00000331:  errmsg("RANGE parameter cannot be negative"))); 
+ pabc: parsexclause:00000355:  ereport(ERROR, 
+ pabc: parsexclause:00000356:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000357:  errmsg("DISTINCT cannot be used with " 
+ pabc: parsexclause:00000358:  "window specification containing an " 
+ pabc: parsexclause:00000359:  "ORDER BY clause"))); 
+ pabc: parsexclause:00000362:  ereport(ERROR, 
+ pabc: parsexclause:00000363:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000364:  errmsg("DISTINCT cannot be used with " 
+ pabc: parsexclause:00000365:  "window specification containing a " 
+ pabc: parsexclause:00000366:  "framing clause"))); 
+ pabc: parsexclause:00000419:  ereport(ERROR, 
+ pabc: parsexclause:00000420:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000421:  errmsg("cannot use window function in a window " 
+ pabc: parsexclause:00000422:  "specification"))); 
+ pabc: parsexclause:00000438:  ereport(ERROR, 
+ pabc: parsexclause:00000439:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ pabc: parsexclause:00000440:  errmsg("window "%s" cannot reference itself", 
+ pabc: parsexclause:00000441:  ws->name))); 
+ pabc: parsexclause:00000449:  ereport(ERROR, 
+ pabc: parsexclause:00000450:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ pabc: parsexclause:00000451:  errmsg("window name "%s" occurs more than once " 
+ pabc: parsexclause:00000452:  "in WINDOW clause", ws->name))); 
+ pabc: parsexclause:00000475:  ereport(ERROR, 
+ pabc: parsexclause:00000476:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000477:  errmsg("PARTITION BY not allowed when " 
+ pabc: parsexclause:00000478:  "an existing window name is specified"))); 
+ pabc: parsexclause:00000481:  ereport(ERROR, 
+ pabc: parsexclause:00000482:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000483:  errmsg("conflicting ORDER BY clauses in window " 
+ pabc: parsexclause:00000484:  "specification"))); 
+ pabc: parsexclause:00000495:  ereport(ERROR, 
+ pabc: parsexclause:00000496:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000497:  errmsg("window specification "%s" cannot have " 
+ pabc: parsexclause:00000498:  "a framing clause", ws2->name), 
+ pabc: parsexclause:00000499:  errhint("Window specifications which are " 
+ pabc: parsexclause:00000500:  "referenced by other window " 
+ pabc: parsexclause:00000501:  "specifications cannot have framing " 
+ pabc: parsexclause:00000502:  "clauses"), 
+ pabc: parsexclause:00000503:  parser_errposition(pstate, ws2->location) 
+ pabc: parsexclause:00000504:  )); 
+ pabc: parsexclause:00000523:  ereport(ERROR, 
+ pabc: parsexclause:00000524:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000525:  errmsg("window specification "%s" not found", 
+ pabc: parsexclause:00000526:  ws->parent))); 
+ pabc: parsexclause:00000606:  ereport(ERROR, 
+ pabc: parsexclause:00000607:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000608:  errmsg("window specifications with a framing clause " 
+ pabc: parsexclause:00000609:  "must have an ORDER BY clause"))); 
+ pabc: parsexclause:00000617:  ereport(ERROR, 
+ pabc: parsexclause:00000618:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000619:  errmsg("conflicting bounds in window framing " 
+ pabc: parsexclause:00000620:  "clause"), 
+ pabc: parsexclause:00000621:  errhint("First bound of BETWEEN clause in window " 
+ pabc: parsexclause:00000622:  "specification cannot be UNBOUNDED FOLLOWING"))); 
+ pabc: parsexclause:00000624:  ereport(ERROR, 
+ pabc: parsexclause:00000625:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000626:  errmsg("conflicting bounds in window framing " 
+ pabc: parsexclause:00000627:  "clause"), 
+ pabc: parsexclause:00000628:  errhint("Second bound of BETWEEN clause in window " 
+ pabc: parsexclause:00000629:  "specification cannot be UNBOUNDED PRECEDING"))); 
+ pabc: parsexclause:00000633:  ereport(ERROR, 
+ pabc: parsexclause:00000634:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000635:  errmsg("conflicting bounds in window framing " 
+ pabc: parsexclause:00000636:  "clause"), 
+ pabc: parsexclause:00000637:  errhint("Second bound cannot be PRECEDING " 
+ pabc: parsexclause:00000638:  "when first bound is CURRENT ROW"))); 
+ pabc: parsexclause:00000643:  ereport(ERROR, 
+ pabc: parsexclause:00000644:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00000645:  errmsg("conflicting bounds in window framing " 
+ pabc: parsexclause:00000646:  "clause"), 
+ pabc: parsexclause:00000647:  errhint("Second bound must be FOLLOWING if first " 
+ pabc: parsexclause:00000648:  "bound is FOLLOWING"))); 
+ pabc: parsexclause:00000745:  ereport(ERROR, 
+ pabc: parsexclause:00000746:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+ pabc: parsexclause:00000747:  errmsg("relation "%s.%s" does not exist", 
+ pabc: parsexclause:00000748:  relation->schemaname, relation->relname))); 
+ pabc: parsexclause:00000750:  ereport(ERROR, 
+ pabc: parsexclause:00000751:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+ pabc: parsexclause:00000752:  errmsg("relation "%s" does not exist", 
+ pabc: parsexclause:00000753:  relation->relname))); 
+ pabc: parsexclause:00000781:  ereport(ERROR, 
+ pabc: parsexclause:00000782:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ pabc: parsexclause:00000783:  errmsg("cannot update or delete from external relation "%s"", 
+ pabc: parsexclause:00000784:  RelationGetRelationName(pstate->p_target_relation)))); 
+ pabc: parsexclause:00000795:  ereport(ERROR, 
+ pabc: parsexclause:00000796:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ pabc: parsexclause:00000797:  errmsg("cannot change a readable external table "%s"", 
+ pabc: parsexclause:00000798:  RelationGetRelationName(pstate->p_target_relation)))); 
+ pabc: parsexclause:00001016:  ereport(ERROR, 
+ pabc: parsexclause:00001017:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ pabc: parsexclause:00001018:  errmsg("JOIN/ON clause refers to "%s", which is not part of JOIN", 
+ pabc: parsexclause:00001019:  rt_fetch(varno, pstate->p_rtable)->eref->aliasname))); 
+ pabc: parsexclause:00001064:  ereport(ERROR, 
+ pabc: parsexclause:00001065:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00001066:  errmsg("subquery in FROM must have an alias"))); 
+ pabc: parsexclause:00001087:  ereport(ERROR, 
+ pabc: parsexclause:00001088:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00001089:  errmsg("subquery in FROM may not have SELECT INTO"))); 
+ pabc: parsexclause:00001107:  ereport(ERROR, 
+ pabc: parsexclause:00001108:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ pabc: parsexclause:00001109:  errmsg("subquery in FROM may not refer to other relations of same query level"))); 
+ pabc: parsexclause:00001213:  ereport(ERROR, 
+ pabc: parsexclause:00001214:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ pabc: parsexclause:00001215:  errmsg("function expression in FROM may not refer to other relations of same query level"))); 
+ pabc: parsexclause:00001225:  ereport(ERROR, 
+ pabc: parsexclause:00001226:  (errcode(ERRCODE_GROUPING_ERROR), 
+ pabc: parsexclause:00001227:  errmsg("cannot use aggregate function in function expression in FROM"))); 
+ pabc: parsexclause:00001493:  ereport(ERROR, 
+ pabc: parsexclause:00001494:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+ pabc: parsexclause:00001495:  errmsg("column name "%s" appears more than once in USING clause", 
+ pabc: parsexclause:00001496:  u_colname))); 
  pabc: parsexclause:00001508:  ereport(ERROR, 
- pabc: parsexclause:00001509:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- pabc: parsexclause:00001510:  errmsg("column "%s" specified in USING clause does not exist in right table", 
+ pabc: parsexclause:00001509:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
+ pabc: parsexclause:00001510:  errmsg("common column name "%s" appears more than once in left table", 
  pabc: parsexclause:00001511:  u_colname))); 
- pabc: parsexclause:00001563:  ereport(ERROR, 
- pabc: parsexclause:00001564:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00001565:  errmsg("column alias list for "%s" has too many entries", 
- pabc: parsexclause:00001566:  j->alias->aliasname))); 
- pabc: parsexclause:00001783:  ereport(ERROR, 
- pabc: parsexclause:00001784:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- pabc: parsexclause:00001785:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
- pabc: parsexclause:00001786:  errmsg("argument of %s must not contain variables", 
- pabc: parsexclause:00001787:  constructName))); 
- pabc: parsexclause:00001791:  ereport(ERROR, 
- pabc: parsexclause:00001792:  (errcode(ERRCODE_GROUPING_ERROR), 
- pabc: parsexclause:00001793:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
- pabc: parsexclause:00001794:  errmsg("argument of %s must not contain aggregates", 
- pabc: parsexclause:00001795:  constructName))); 
- pabc: parsexclause:00001799:  ereport(ERROR, 
- pabc: parsexclause:00001800:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- pabc: parsexclause:00001801:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
- pabc: parsexclause:00001802:  errmsg("argument of %s must not contain subqueries", 
- pabc: parsexclause:00001803:  constructName))); 
- pabc: parsexclause:00002008:  ereport(ERROR, 
- pabc: parsexclause:00002009:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
- pabc: parsexclause:00002010:  
- pabc: parsexclause:00002011:  /*------ 
- pabc: parsexclause:00002012:  translator: first %s is name of a SQL construct, eg ORDER BY */ 
- pabc: parsexclause:00002013:  errmsg("%s "%s" is ambiguous", 
- pabc: parsexclause:00002014:  clauseText[clause], name), 
- pabc: parsexclause:00002015:  parser_errposition(pstate, location))); 
- pabc: parsexclause:00002033:  ereport(ERROR, 
- pabc: parsexclause:00002034:  (errcode(ERRCODE_SYNTAX_ERROR), 
- pabc: parsexclause:00002035:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
- pabc: parsexclause:00002036:  errmsg("non-integer constant in %s", 
- pabc: parsexclause:00002037:  clauseText[clause]))); 
- pabc: parsexclause:00002049:  ereport(ERROR, 
- pabc: parsexclause:00002050:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- pabc: parsexclause:00002051:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
- pabc: parsexclause:00002052:  errmsg("%s position %d is not in select list", 
- pabc: parsexclause:00002053:  clauseText[clause], target_pos))); 
- pabc: parsexclause:00002235:  ereport(ERROR, 
- pabc: parsexclause:00002236:  (errcode(ERRCODE_GROUPING_ERROR), 
- pabc: parsexclause:00002237:  errmsg("row type can not be used inside a grouping function."))); 
- pabc: parsexclause:00002240:  ereport(ERROR, 
- pabc: parsexclause:00002241:  (errcode(ERRCODE_GROUPING_ERROR), 
- pabc: parsexclause:00002242:  errmsg("expression in a grouping fuction does not appear in GROUP BY."))); 
- pabc: parsexclause:00002251:  ereport(ERROR, 
- pabc: parsexclause:00002252:  (errcode(ERRCODE_GROUPING_ERROR), 
- pabc: parsexclause:00002253:  errmsg("column "%s"."%s" is not in GROUP BY", 
- pabc: parsexclause:00002254:  rte->eref->aliasname, attname))); 
- pabc: parsexclause:00002584:  ereport(ERROR, 
- pabc: parsexclause:00002585:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- pabc: parsexclause:00002586:  errmsg("for SELECT DISTINCT, ORDER BY expressions must appear in select list"))); 
- pabc: parsexclause:00002624:  ereport(ERROR, 
- pabc: parsexclause:00002625:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- pabc: parsexclause:00002626:  errmsg("SELECT DISTINCT ON expressions must match initial ORDER BY expressions"))); 
- pabc: parsexclause:00002808:  ereport(ERROR, 
- pabc: parsexclause:00002809:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- pabc: parsexclause:00002810:  errmsg("operator %s is not a valid ordering operator", 
- pabc: parsexclause:00002811:  strVal(llast(sortby_opname))), 
- pabc: parsexclause:00002812:  errhint("Ordering operators must be "<" or ">" members of btree operator families."))); 
+ pabc: parsexclause:00001517:  ereport(ERROR, 
+ pabc: parsexclause:00001518:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ pabc: parsexclause:00001519:  errmsg("column "%s" specified in USING clause does not exist in left table", 
+ pabc: parsexclause:00001520:  u_colname))); 
+ pabc: parsexclause:00001531:  ereport(ERROR, 
+ pabc: parsexclause:00001532:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
+ pabc: parsexclause:00001533:  errmsg("common column name "%s" appears more than once in right table", 
+ pabc: parsexclause:00001534:  u_colname))); 
+ pabc: parsexclause:00001540:  ereport(ERROR, 
+ pabc: parsexclause:00001541:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ pabc: parsexclause:00001542:  errmsg("column "%s" specified in USING clause does not exist in right table", 
+ pabc: parsexclause:00001543:  u_colname))); 
+ pabc: parsexclause:00001595:  ereport(ERROR, 
+ pabc: parsexclause:00001596:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00001597:  errmsg("column alias list for "%s" has too many entries", 
+ pabc: parsexclause:00001598:  j->alias->aliasname))); 
+ pabc: parsexclause:00001815:  ereport(ERROR, 
+ pabc: parsexclause:00001816:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ pabc: parsexclause:00001817:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+ pabc: parsexclause:00001818:  errmsg("argument of %s must not contain variables", 
+ pabc: parsexclause:00001819:  constructName))); 
+ pabc: parsexclause:00001823:  ereport(ERROR, 
+ pabc: parsexclause:00001824:  (errcode(ERRCODE_GROUPING_ERROR), 
+ pabc: parsexclause:00001825:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+ pabc: parsexclause:00001826:  errmsg("argument of %s must not contain aggregates", 
+ pabc: parsexclause:00001827:  constructName))); 
+ pabc: parsexclause:00001831:  ereport(ERROR, 
+ pabc: parsexclause:00001832:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ pabc: parsexclause:00001833:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+ pabc: parsexclause:00001834:  errmsg("argument of %s must not contain subqueries", 
+ pabc: parsexclause:00001835:  constructName))); 
+ pabc: parsexclause:00002040:  ereport(ERROR, 
+ pabc: parsexclause:00002041:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
+ pabc: parsexclause:00002042:  
+ pabc: parsexclause:00002043:  /*------ 
+ pabc: parsexclause:00002044:  translator: first %s is name of a SQL construct, eg ORDER BY */ 
+ pabc: parsexclause:00002045:  errmsg("%s "%s" is ambiguous", 
+ pabc: parsexclause:00002046:  clauseText[clause], name), 
+ pabc: parsexclause:00002047:  parser_errposition(pstate, location))); 
+ pabc: parsexclause:00002065:  ereport(ERROR, 
+ pabc: parsexclause:00002066:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ pabc: parsexclause:00002067:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
+ pabc: parsexclause:00002068:  errmsg("non-integer constant in %s", 
+ pabc: parsexclause:00002069:  clauseText[clause]))); 
+ pabc: parsexclause:00002081:  ereport(ERROR, 
+ pabc: parsexclause:00002082:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ pabc: parsexclause:00002083:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
+ pabc: parsexclause:00002084:  errmsg("%s position %d is not in select list", 
+ pabc: parsexclause:00002085:  clauseText[clause], target_pos))); 
+ pabc: parsexclause:00002267:  ereport(ERROR, 
+ pabc: parsexclause:00002268:  (errcode(ERRCODE_GROUPING_ERROR), 
+ pabc: parsexclause:00002269:  errmsg("row type can not be used inside a grouping function."))); 
+ pabc: parsexclause:00002272:  ereport(ERROR, 
+ pabc: parsexclause:00002273:  (errcode(ERRCODE_GROUPING_ERROR), 
+ pabc: parsexclause:00002274:  errmsg("expression in a grouping fuction does not appear in GROUP BY."))); 
+ pabc: parsexclause:00002283:  ereport(ERROR, 
+ pabc: parsexclause:00002284:  (errcode(ERRCODE_GROUPING_ERROR), 
+ pabc: parsexclause:00002285:  errmsg("column "%s"."%s" is not in GROUP BY", 
+ pabc: parsexclause:00002286:  rte->eref->aliasname, attname))); 
+ pabc: parsexclause:00002616:  ereport(ERROR, 
+ pabc: parsexclause:00002617:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ pabc: parsexclause:00002618:  errmsg("for SELECT DISTINCT, ORDER BY expressions must appear in select list"))); 
+ pabc: parsexclause:00002656:  ereport(ERROR, 
+ pabc: parsexclause:00002657:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ pabc: parsexclause:00002658:  errmsg("SELECT DISTINCT ON expressions must match initial ORDER BY expressions"))); 
+ pabc: parsexclause:00002840:  ereport(ERROR, 
+ pabc: parsexclause:00002841:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ pabc: parsexclause:00002842:  errmsg("operator %s is not a valid ordering operator", 
+ pabc: parsexclause:00002843:  strVal(llast(sortby_opname))), 
+ pabc: parsexclause:00002844:  errhint("Ordering operators must be "<" or ">" members of btree operator families."))); 
  pabc: parsexcoerce:00000168:  ereport(ERROR, 
  pabc: parsexcoerce:00000169:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
  pabc: parsexcoerce:00000170:  errmsg("Cannot convert non-Array type to ANYARRAY"))); 
@@ -10794,39 +10794,39 @@ select * from get_ereport order by 1;
  raah: regress:00000318:  ereport(ERROR, 
  raah: regress:00000319:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  raah: regress:00000320:  errmsg("float8_mregr_r2 called on invalid input array"))); 
- raah: regress:00000871:  ereport(ERROR, 
- raah: regress:00000872:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- raah: regress:00000873:  errmsg("there is no attribute "%s" in relation "%s"", 
- raah: regress:00000874:  args[i], SPI_getrelname(rel)))); 
- raah: regress:00000946:  ereport(ERROR, 
- raah: regress:00000947:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
- raah: regress:00000948:  errmsg("tuple references non-existent key"), 
- raah: regress:00000949:  errdetail("Trigger "%s" found tuple referencing non-existent key in "%s".", trigger->tgname, relname))); 
- raah: regress:00001099:  ereport(ERROR, 
- raah: regress:00001100:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- raah: regress:00001101:  errmsg("there is no attribute "%s" in relation "%s"", 
- raah: regress:00001102:  args[i], SPI_getrelname(rel)))); 
- raah: regress:00001314:  ereport(ERROR, 
- raah: regress:00001315:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
- raah: regress:00001316:  errmsg("SPI_execp returned %d", ret))); 
- raah: regress:00001323:  ereport(ERROR, 
- raah: regress:00001324:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
- raah: regress:00001325:  errmsg(""%s": tuple is referenced in "%s"", 
- raah: regress:00001326:  trigger->tgname, relname))); 
- raah: regress:00001438:  ereport(ERROR, 
- raah: regress:00001439:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
- raah: regress:00001440:  errmsg(""%s" has no attribute "%s"", 
- raah: regress:00001441:  relname, args[i]))); 
- raah: regress:00001444:  ereport(ERROR, 
- raah: regress:00001445:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
- raah: regress:00001446:  errmsg("attribute "%s" of "%s" must be type INT4", 
- raah: regress:00001447:  args[i], relname))); 
- raah: regress:00001518:  ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), 
- raah: regress:00001519:  errmsg("Invalid hex string") 
- raah: regress:00001520:  )); 
- raah: regress:00001532:  ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), 
- raah: regress:00001533:  errmsg("Invalid hex string") 
- raah: regress:00001534:  )); 
+ raah: regress:00000866:  ereport(ERROR, 
+ raah: regress:00000867:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ raah: regress:00000868:  errmsg("there is no attribute "%s" in relation "%s"", 
+ raah: regress:00000869:  args[i], SPI_getrelname(rel)))); 
+ raah: regress:00000941:  ereport(ERROR, 
+ raah: regress:00000942:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+ raah: regress:00000943:  errmsg("tuple references non-existent key"), 
+ raah: regress:00000944:  errdetail("Trigger "%s" found tuple referencing non-existent key in "%s".", trigger->tgname, relname))); 
+ raah: regress:00001094:  ereport(ERROR, 
+ raah: regress:00001095:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ raah: regress:00001096:  errmsg("there is no attribute "%s" in relation "%s"", 
+ raah: regress:00001097:  args[i], SPI_getrelname(rel)))); 
+ raah: regress:00001309:  ereport(ERROR, 
+ raah: regress:00001310:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+ raah: regress:00001311:  errmsg("SPI_execp returned %d", ret))); 
+ raah: regress:00001318:  ereport(ERROR, 
+ raah: regress:00001319:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+ raah: regress:00001320:  errmsg(""%s": tuple is referenced in "%s"", 
+ raah: regress:00001321:  trigger->tgname, relname))); 
+ raah: regress:00001433:  ereport(ERROR, 
+ raah: regress:00001434:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+ raah: regress:00001435:  errmsg(""%s" has no attribute "%s"", 
+ raah: regress:00001436:  relname, args[i]))); 
+ raah: regress:00001439:  ereport(ERROR, 
+ raah: regress:00001440:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+ raah: regress:00001441:  errmsg("attribute "%s" of "%s" must be type INT4", 
+ raah: regress:00001442:  args[i], relname))); 
+ raah: regress:00001513:  ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), 
+ raah: regress:00001514:  errmsg("Invalid hex string") 
+ raah: regress:00001515:  )); 
+ raah: regress:00001527:  ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), 
+ raah: regress:00001528:  errmsg("Invalid hex string") 
+ raah: regress:00001529:  )); 
  raah: relnode:00000858:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
  raah: relnode:00000859:  errmsg_internal("invalid varattno %d for rangetable entry %s", 
  raah: relnode:00000860:  var->varattno, rtename) )); 
@@ -11997,18 +11997,18 @@ select * from get_ereport order by 1;
  saba: sysvxshmem:00000380:  (errcode_for_file_access(), 
  saba: sysvxshmem:00000381:  errmsg("could not stat data directory "%s": %m", 
  saba: sysvxshmem:00000382:  DataDir))); 
- taad: tid:00000066:  ereport(ERROR, 
- taad: tid:00000067:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
- taad: tid:00000068:  errmsg("invalid input syntax for type tid: "%s"", 
- taad: tid:00000069:  str))); 
- taad: tid:00000074:  ereport(ERROR, 
- taad: tid:00000075:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
- taad: tid:00000076:  errmsg("invalid input syntax for type tid: "%s"", 
- taad: tid:00000077:  str))); 
- taad: tid:00000082:  ereport(ERROR, 
- taad: tid:00000083:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
- taad: tid:00000084:  errmsg("invalid input syntax for type tid: "%s"", 
- taad: tid:00000085:  str))); 
+ taad: tid:00000069:  ereport(ERROR, 
+ taad: tid:00000070:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+ taad: tid:00000071:  errmsg("invalid input syntax for type tid: "%s"", 
+ taad: tid:00000072:  str))); 
+ taad: tid:00000077:  ereport(ERROR, 
+ taad: tid:00000078:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+ taad: tid:00000079:  errmsg("invalid input syntax for type tid: "%s"", 
+ taad: tid:00000080:  str))); 
+ taad: tid:00000085:  ereport(ERROR, 
+ taad: tid:00000086:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+ taad: tid:00000087:  errmsg("invalid input syntax for type tid: "%s"", 
+ taad: tid:00000088:  str))); 
  taae: type:00000221:  ereport(ERROR, ( 
  taae: type:00000222:  errmsg("Type '%s' has no corresponding java class", 
  taae: type:00000223:  PgObjectClass_getName((PgObjectClass)typeClass)))); 
@@ -12931,19 +12931,19 @@ select * from get_ereport order by 1;
  taaj: tablecmds:00005355:  errmsg(""%s" is a member of a partitioning configuration", 
  taaj: tablecmds:00005356:  RelationGetRelationName(rel)), 
  taaj: tablecmds:00005357:  errhint("Perform the operation on the master table."))); 
- taaj: tablecmds:00005375:  ereport(ERROR, 
- taaj: tablecmds:00005376:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- taaj: tablecmds:00005377:  errmsg(""%s" is an external relation and can't be altered", 
- taaj: tablecmds:00005378:  RelationGetRelationName(rel)), 
- taaj: tablecmds:00005379:  errhint("drop the external relation and re-create it with your changes"))); 
- taaj: tablecmds:00005384:  ereport(ERROR, 
- taaj: tablecmds:00005385:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- taaj: tablecmds:00005386:  errmsg(""%s" is not a table or view", 
- taaj: tablecmds:00005387:  RelationGetRelationName(rel)))); 
- taaj: tablecmds:00005398:  ereport(ERROR, 
- taaj: tablecmds:00005399:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- taaj: tablecmds:00005400:  errmsg(""%s" is not a table", 
- taaj: tablecmds:00005401:  RelationGetRelationName(rel)))); 
+ taaj: tablecmds:00005376:  ereport(ERROR, 
+ taaj: tablecmds:00005377:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ taaj: tablecmds:00005378:  errmsg(""%s" is not a table or view", 
+ taaj: tablecmds:00005379:  RelationGetRelationName(rel)))); 
+ taaj: tablecmds:00005390:  ereport(ERROR, 
+ taaj: tablecmds:00005391:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ taaj: tablecmds:00005392:  errmsg(""%s" is not a table", 
+ taaj: tablecmds:00005393:  RelationGetRelationName(rel)))); 
+ taaj: tablecmds:00005397:  ereport(ERROR, 
+ taaj: tablecmds:00005398:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ taaj: tablecmds:00005399:  errmsg(""%s" is an external relation and can't be altered", 
+ taaj: tablecmds:00005400:  RelationGetRelationName(rel)), 
+ taaj: tablecmds:00005401:  errhint("drop the external relation and re-create it with your changes"))); 
  taaj: tablecmds:00005410:  ereport(ERROR, 
  taaj: tablecmds:00005411:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  taaj: tablecmds:00005412:  errmsg("permission denied: "%s" is a system catalog", 

@@ -5370,15 +5370,7 @@ ATSimplePermissions(Relation rel, bool allowView)
 {
 	if (rel->rd_rel->relkind != RELKIND_RELATION)
 	{
-		if (RelationIsExternal(rel))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("\"%s\" is an external relation and can't be altered",
-							RelationGetRelationName(rel)),
-					 errhint("drop the external relation and re-create it with your changes")));
-		}
-		else if (allowView)
+		if (allowView)
 		{
 			if (rel->rd_rel->relkind != RELKIND_VIEW)
 				ereport(ERROR,
@@ -5399,6 +5391,14 @@ ATSimplePermissions(Relation rel, bool allowView)
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("\"%s\" is not a table",
 							RelationGetRelationName(rel))));
+	}
+	else if (RelationIsExternal(rel))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is an external relation and can't be altered",
+						RelationGetRelationName(rel)),
+				 errhint("drop the external relation and re-create it with your changes")));
 	}
 
 	/* Permissions checks */

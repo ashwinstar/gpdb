@@ -1672,16 +1672,6 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 					 errmsg("cannot change view \"%s\"",
 							RelationGetRelationName(resultRelationDesc))));
 			break;
-		case RELKIND_RELATION:
-			if (operation == CMD_UPDATE || operation == CMD_DELETE)
-			{
-				if(RelationIsExternal(resultRelationDesc))
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("cannot update or delete from external relation \"%s\"",
-									RelationGetRelationName(resultRelationDesc))));
-			}
-			break;
 	}
 
 	MemSet(resultRelInfo, 0, sizeof(ResultRelInfo));

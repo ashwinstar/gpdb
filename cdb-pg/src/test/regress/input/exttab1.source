@@ -298,7 +298,7 @@ location ('bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/badt2.tbl' )
 format 'text' (delimiter '|');
 
 --
--- TRUNCATE/UPDATE/DELETE
+-- TRUNCATE/UPDATE/DELETE/INSERT (INTO RET)/ALTER
 --
 create external table ext (x text) 
 location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
@@ -306,6 +306,8 @@ format 'text';
 truncate ext;
 delete from ext;
 update ext set x='1' where x='2';
+insert into ext values('a');
+alter table ext drop column a;
 drop external table ext;
 
 --

@@ -452,13 +452,7 @@ external_insert_init(Relation rel)
 	 * Get the pg_exttable information for this table
 	 */
 	extentry = GetExtTableEntry(RelationGetRelid(rel));
-
-	if(!extentry->iswritable)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("cannot change a readable external table \"%s\"",
-						 RelationGetRelationName(rel))));
-
+	
 	/*
 	 * allocate and initialize the insert descriptor
 	 */	

@@ -20,6 +20,7 @@
 #include "catalog/heap.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
+#include "catalog/pg_exttable.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
@@ -759,6 +760,7 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	else
     	CdbLockRelation(pstate->p_target_relation, RowExclusiveLock, false);
 
+	
 	/*
 	 * Now build an RTE.
 	 */
@@ -769,6 +771,36 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	/* assume new rte is at end */
 	rtindex = list_length(pstate->p_rtable);
 	Assert(rte == rt_fetch(rtindex, pstate->p_rtable));
+
+	/* special check for DML on external relations */
+	if(RelationIsExternal(pstate->p_target_relation))
+	{
+		if (requiredPerms != ACL_INSERT)
+		{
+			/* UPDATE/DELETE */
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot update or delete from external relation \"%s\"",
+							RelationGetRelationName(pstate->p_target_relation))));
+		}
+		else
+		{
+			/* INSERT */
+			Oid reloid = RelationGetRelid(pstate->p_target_relation);
+			ExtTableEntry* 	extentry;
+			
+			extentry = GetExtTableEntry(reloid);
+			
+			if(!extentry->iswritable)
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("cannot change a readable external table \"%s\"",
+								 RelationGetRelationName(pstate->p_target_relation))));
+
+			pfree(extentry);
+		}
+	}
+	
 
 	/*
 	 * Override addRangeTableEntry's default ACL_SELECT permissions check, and

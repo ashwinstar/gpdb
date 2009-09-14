@@ -512,7 +512,7 @@ location ('bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/badt2.tbl' )
 format 'text' (delimiter '|');
 ERROR:  invalid URI 'bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/badt2.tbl' : undefined protocol
 --
--- TRUNCATE/UPDATE/DELETE
+-- TRUNCATE/UPDATE/DELETE/INSERT (INTO RET)/ALTER
 --
 create external table ext (x text) 
 location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
@@ -523,6 +523,11 @@ delete from ext;
 ERROR:  cannot update or delete from external relation "ext"
 update ext set x='1' where x='2';
 ERROR:  cannot update or delete from external relation "ext"
+insert into ext values('a');
+ERROR:  cannot change a readable external table "ext"
+alter table ext drop column a;
+ERROR:  "ext" is an external relation and can't be altered
+HINT:  drop the external relation and re-create it with your changes
 drop external table ext;
 --
 -- get an error for missing gpfdist
