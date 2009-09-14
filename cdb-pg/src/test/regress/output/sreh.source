@@ -61,7 +61,7 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
  14 | 14 | 14
 (12 rows)
 
-SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata,errmsg;
   relname  | linenum |                      errmsg                       | rawdata 
 -----------+---------+---------------------------------------------------+---------
  sreh_copy |       2 | missing data for column "b"                       | 2
@@ -104,7 +104,7 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
  14 | 14 | 14
 (18 rows)
 
-SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata,errmsg;
   relname  | linenum |                      errmsg                       | rawdata 
 -----------+---------+---------------------------------------------------+---------
  sreh_copy |       2 | missing data for column "b"                       | 2
@@ -159,7 +159,7 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
  300 | 300 | 300
 (20 rows)
 
-SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata,errmsg;
   relname  | linenum |                                 errmsg                                  |              rawdata              
 -----------+---------+-------------------------------------------------------------------------+-----------------------------------
  sreh_copy |       2 | missing data for column "b"                                             | 2
@@ -167,9 +167,9 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
  sreh_copy |       2 | missing data for column "b"                                             | 200 bad data from stdin
  sreh_copy |       3 | missing data for column "c"                                             | 3|
  sreh_copy |       3 | missing data for column "c"                                             | 3|
+ sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
+ sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
  sreh_copy |       4 | invalid input syntax for integer: " more bad data from stdin", column c | 400|400| more bad data from stdin
- sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
- sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
  sreh_copy |       7 | invalid input syntax for integer: "bad", column c                       | 7|7|bad
  sreh_copy |       7 | invalid input syntax for integer: "bad", column c                       | 7|7|bad
  sreh_copy |       8 | invalid input syntax for integer: "bad", column a                       | bad|8|8
