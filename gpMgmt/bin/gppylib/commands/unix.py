@@ -131,6 +131,11 @@ class LinuxPlatform(GenericPlatform):
     
     def getDefaultLocale(self):
         return 'en_US.utf8'
+    
+    def getDiskFreeCmd(self):
+        # -P is for POSIX formatting.  Prevents error 
+        # on lines that would wrap
+        return findCmdInPath('df') + " -Pk"
             
 
 class SolarisPlatform(GenericPlatform):
