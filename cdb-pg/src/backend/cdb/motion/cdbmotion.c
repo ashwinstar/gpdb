@@ -39,9 +39,14 @@ int			Gp_max_tuple_chunk_size;
 
 /*
  * STATIC STATE VARS
+ *
+ * Note, the alignment here isn't quite right.
+ * GCC4.0 doesn't like our earlier initializer method of declaration.
+ *
+ * static TupleChunkListItemData s_eos_chunk_data = {NULL, TUPLE_CHUNK_HEADER_SIZE, NULL, "                "};
  */
-static TupleChunkListItemData s_eos_chunk_data =
-{NULL, TUPLE_CHUNK_HEADER_SIZE, NULL, "                "};
+static uint8 s_eos_buffer[sizeof(TupleChunkListItemData) + 8];
+static TupleChunkListItem s_eos_chunk_data = (TupleChunkListItem)s_eos_buffer;
 
 /*
  * HELPER FUNCTION DECLARATIONS
@@ -166,10 +171,11 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 	 * stream messages so that we don't incur allocation and deallocation
 	 * overheads.
 	 */
-	Assert(s_eos_chunk_data.p_next == NULL);
-	Assert(s_eos_chunk_data.chunk_length == TUPLE_CHUNK_HEADER_SIZE);
+	s_eos_chunk_data->p_next = NULL;
+	s_eos_chunk_data->inplace = NULL;
+	s_eos_chunk_data->chunk_length = TUPLE_CHUNK_HEADER_SIZE;
 
-	pData = s_eos_chunk_data.chunk_data;
+	pData = s_eos_chunk_data->chunk_data;
 
 	SetChunkDataSize(pData, 0);
 	SetChunkType(pData, TC_END_OF_STREAM);
@@ -501,7 +507,7 @@ SendTuple(MotionLayerState *mlStates,
 TupleChunkListItem
 get_eos_tuplechunklist(void)
 {
-	return &s_eos_chunk_data;
+	return s_eos_chunk_data;
 }
 
 /*
@@ -522,7 +528,7 @@ SendEndOfStream(MotionLayerState       *mlStates,
 	 */
 	pMNEntry = getMotionNodeEntry(mlStates, motNodeID, "SendEndOfStream");
 
-	transportStates->SendEos(mlStates, transportStates, motNodeID, &s_eos_chunk_data);
+	transportStates->SendEos(mlStates, transportStates, motNodeID, s_eos_chunk_data);
 
 	/*
 	 * We increment our own "stream-ends received" count when we send our own,
