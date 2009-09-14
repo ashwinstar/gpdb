@@ -388,7 +388,7 @@ SharedSnapshotLookup(int4 slotId)
 
 	for (;;)
 	{
-		LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
+		LWLockAcquire(SharedSnapshotLock, LW_SHARED);
 	
 		for (index=0; index < arrayP->maxSlots; index++)
 		{
