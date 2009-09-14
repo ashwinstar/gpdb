@@ -226,6 +226,7 @@ bool		Debug_appendonly_use_no_toast = false;
 bool 		Test_appendonly_override = false;
 bool 		gp_test_orientation_override = false;
 bool 		Test_checksum_override = false;
+bool		Test_enable_broken_quicklz3 = false;
 int         Test_compresslevel_override = 0;
 int			Test_blocksize_override = 0;
 int			Test_safefswritesize_override = 0;
@@ -1996,6 +1997,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Test_appendonly_override,
+		false, NULL, NULL
+	},
+
+	{
+		{"test_enable_broken_quicklz3", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("For testing purposes, allow using quicklz level 3 compression."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Test_enable_broken_quicklz3,
 		false, NULL, NULL
 	},
 

@@ -5106,81 +5106,81 @@ select * from get_ereport order by 1;
  fabc: functioncmds:00001584:  errmsg("function "%s" already exists in schema "%s"", 
  fabc: functioncmds:00001585:  NameStr(proc->proname), 
  fabc: functioncmds:00001586:  newschema))); 
- gaad: guc:00006502:  ereport(ERROR, 
- gaad: guc:00006503:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00006504:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00006506:  ereport(ERROR, 
- gaad: guc:00006507:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00006508:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00006542:  ereport(ERROR, 
- gaad: guc:00006543:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00006544:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00006546:  ereport(ERROR, 
- gaad: guc:00006547:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00006548:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00006617:  ereport(ERROR, 
- gaad: guc:00006618:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00006619:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00006626:  ereport(ERROR, 
- gaad: guc:00006627:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00006628:  errmsg("SET %s takes only one argument", name))); 
- gaad: guc:00006799:  ereport(ERROR, 
- gaad: guc:00006800:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
- gaad: guc:00006801:  errmsg("SET requires parameter name"))); 
- gaad: guc:00006863:  ereport(ERROR, 
- gaad: guc:00006864:  (errcode(ERRCODE_INTERNAL_ERROR), 
- gaad: guc:00006865:  errmsg("attempt to redefine parameter "%s"", name))); 
- gaad: guc:00007184:  ereport(ERROR, 
- gaad: guc:00007185:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007186:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007188:  ereport(ERROR, 
- gaad: guc:00007189:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007190:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00007998:  ereport(FATAL, 
- gaad: guc:00007999:  (errcode_for_file_access(), 
- gaad: guc:00008000:  errmsg("could not read from file "%s": %m", 
- gaad: guc:00008001:  CONFIG_EXEC_PARAMS))); 
- gaad: guc:00008108:  ereport(WARNING, 
- gaad: guc:00008109:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaad: guc:00008110:  errmsg("could not parse setting for parameter "%s"", name))); 
- gaad: guc:00008304:  ereport(ERROR, 
- gaad: guc:00008305:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008306:  errmsg("invalid list syntax for parameter "log_destination""))); 
- gaad: guc:00008327:  ereport(ERROR, 
- gaad: guc:00008328:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008329:  errmsg("unrecognized "log_destination" key word: "%s"", 
- gaad: guc:00008330:  tok))); 
- gaad: guc:00008356:  ereport(ERROR, 
- gaad: guc:00008357:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008358:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
- gaad: guc:00008359:  value))); 
- gaad: guc:00008664:  ereport(ERROR, 
- gaad: guc:00008665:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaad: guc:00008666:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
- gaad: guc:00008740:  ereport(ERROR, 
- gaad: guc:00008741:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008742:  errmsg("assertion checking is not supported by this build"))); 
- gaad: guc:00008752:  ereport(ERROR, 
- gaad: guc:00008753:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008754:  errmsg("SSL is not supported by this build"))); 
- gaad: guc:00008765:  ereport(ERROR, 
- gaad: guc:00008766:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008767:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
- gaad: guc:00008782:  ereport(ERROR, 
- gaad: guc:00008783:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008784:  errmsg("cannot enable "log_statement_stats" when " 
- gaad: guc:00008785:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00008786:  ""log_dispatch_stats", " 
- gaad: guc:00008787:  "or "log_executor_stats" is true"))); 
- gaad: guc:00008802:  ereport(ERROR, 
- gaad: guc:00008803:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008804:  errmsg("cannot enable "log_dispatch_stats" when " 
- gaad: guc:00008805:  ""log_statement_stats", " 
- gaad: guc:00008806:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00008807:  "or "log_executor_stats" is true"))); 
- gaad: guc:00008822:  ereport(ERROR, 
- gaad: guc:00008823:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008824:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+ gaad: guc:00006513:  ereport(ERROR, 
+ gaad: guc:00006514:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00006515:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00006517:  ereport(ERROR, 
+ gaad: guc:00006518:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00006519:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00006553:  ereport(ERROR, 
+ gaad: guc:00006554:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00006555:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00006557:  ereport(ERROR, 
+ gaad: guc:00006558:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00006559:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00006628:  ereport(ERROR, 
+ gaad: guc:00006629:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00006630:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00006637:  ereport(ERROR, 
+ gaad: guc:00006638:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00006639:  errmsg("SET %s takes only one argument", name))); 
+ gaad: guc:00006810:  ereport(ERROR, 
+ gaad: guc:00006811:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+ gaad: guc:00006812:  errmsg("SET requires parameter name"))); 
+ gaad: guc:00006874:  ereport(ERROR, 
+ gaad: guc:00006875:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ gaad: guc:00006876:  errmsg("attempt to redefine parameter "%s"", name))); 
+ gaad: guc:00007195:  ereport(ERROR, 
+ gaad: guc:00007196:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007197:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007199:  ereport(ERROR, 
+ gaad: guc:00007200:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007201:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00008009:  ereport(FATAL, 
+ gaad: guc:00008010:  (errcode_for_file_access(), 
+ gaad: guc:00008011:  errmsg("could not read from file "%s": %m", 
+ gaad: guc:00008012:  CONFIG_EXEC_PARAMS))); 
+ gaad: guc:00008119:  ereport(WARNING, 
+ gaad: guc:00008120:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaad: guc:00008121:  errmsg("could not parse setting for parameter "%s"", name))); 
+ gaad: guc:00008315:  ereport(ERROR, 
+ gaad: guc:00008316:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008317:  errmsg("invalid list syntax for parameter "log_destination""))); 
+ gaad: guc:00008338:  ereport(ERROR, 
+ gaad: guc:00008339:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008340:  errmsg("unrecognized "log_destination" key word: "%s"", 
+ gaad: guc:00008341:  tok))); 
+ gaad: guc:00008367:  ereport(ERROR, 
+ gaad: guc:00008368:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008369:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
+ gaad: guc:00008370:  value))); 
+ gaad: guc:00008675:  ereport(ERROR, 
+ gaad: guc:00008676:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaad: guc:00008677:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+ gaad: guc:00008751:  ereport(ERROR, 
+ gaad: guc:00008752:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008753:  errmsg("assertion checking is not supported by this build"))); 
+ gaad: guc:00008763:  ereport(ERROR, 
+ gaad: guc:00008764:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008765:  errmsg("SSL is not supported by this build"))); 
+ gaad: guc:00008776:  ereport(ERROR, 
+ gaad: guc:00008777:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008778:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
+ gaad: guc:00008793:  ereport(ERROR, 
+ gaad: guc:00008794:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008795:  errmsg("cannot enable "log_statement_stats" when " 
+ gaad: guc:00008796:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00008797:  ""log_dispatch_stats", " 
+ gaad: guc:00008798:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00008813:  ereport(ERROR, 
+ gaad: guc:00008814:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008815:  errmsg("cannot enable "log_dispatch_stats" when " 
+ gaad: guc:00008816:  ""log_statement_stats", " 
+ gaad: guc:00008817:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00008818:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00008833:  ereport(ERROR, 
+ gaad: guc:00008834:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008835:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
  gaae: gram:00017336:  ereport(ERROR, 
  gaae: gram:00017337:  (errcode(ERRCODE_SYNTAX_ERROR), 
  gaae: gram:00017338:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
@@ -10989,64 +10989,60 @@ select * from get_ereport order by 1;
  raba: reloptions:00000423:  errmsg("compresslevel=%d is out of range (should be " 
  raba: reloptions:00000424:  "between 0 and 9)", 
  raba: reloptions:00000425:  compresslevel))); 
- raba: reloptions:00000442:  ereport(ERROR, 
- raba: reloptions:00000443:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- raba: reloptions:00000444:  errmsg("compresslevel=%d is out of range for quicklz " 
- raba: reloptions:00000445:  "(should be 1 or 3)", compresslevel))); 
- raba: reloptions:00000459:  ereport(ERROR, 
- raba: reloptions:00000460:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- raba: reloptions:00000461:  errmsg("invalid option 'checksum' for base relation. " 
- raba: reloptions:00000462:  "Only valid for Append Only relations"))); 
- raba: reloptions:00000467:  ereport(ERROR, 
- raba: reloptions:00000468:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- raba: reloptions:00000469:  errmsg("invalid parameter value for "checksum": "%s"", 
- raba: reloptions:00000470:  values[5]))); 
- raba: reloptions:00000479:  ereport(ERROR, 
- raba: reloptions:00000480:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- raba: reloptions:00000481:  errmsg("invalid option "orientation" for base relation. " 
- raba: reloptions:00000482:  "Only valid for Append Only relations"))); 
- raba: reloptions:00000487:  ereport(ERROR, 
- raba: reloptions:00000488:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- raba: reloptions:00000489:  errmsg("invalid parameter value for "orientation": "%s"", 
- raba: reloptions:00000490:  values[6]))); 
- raba: reloptions:00000649:  ereport(ERROR, 
- raba: reloptions:00000650:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- raba: reloptions:00000651:  errmsg("appendonly may only be specified for base relations"))); 
- raba: reloptions:00000654:  ereport(ERROR, 
- raba: reloptions:00000655:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- raba: reloptions:00000656:  errmsg("checksum may only be specified for base relations"))); 
- raba: reloptions:00000659:  ereport(ERROR, 
- raba: reloptions:00000660:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- raba: reloptions:00000661:  errmsg("compresstype may only be specified for base relations"))); 
- raba: reloptions:00000665:  ereport(ERROR, 
- raba: reloptions:00000666:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- raba: reloptions:00000667:  errmsg("compresstype can't be used with compresslevel 0"))); 
- raba: reloptions:00000670:  ereport(ERROR, 
- raba: reloptions:00000671:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- raba: reloptions:00000672:  errmsg("compresslevel=%d is out of range (should be between 0 and 9)", 
- raba: reloptions:00000673:  complevel))); 
- raba: reloptions:00000676:  ereport(ERROR, 
- raba: reloptions:00000677:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- raba: reloptions:00000678:  errmsg("invalid compresstype "%s". currently supported: " 
- raba: reloptions:00000679:  ""zlib" ", comptype))); 
- raba: reloptions:00000682:  ereport(ERROR, 
- raba: reloptions:00000683:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- raba: reloptions:00000684:  errmsg("compresslevel=%d is out of range for quicklz " 
- raba: reloptions:00000685:  "(should be 1 or 3)", complevel))); 
- raba: reloptions:00000689:  ereport(ERROR, 
- raba: reloptions:00000690:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- raba: reloptions:00000691:  errmsg("block size must be between 8KB and 2MB and " 
- raba: reloptions:00000692:  "be an 8KB multiple, Got %d", blocksize))); 
- raba: reloptions:00000695:  ereport(ERROR, 
- raba: reloptions:00000696:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- raba: reloptions:00000697:  errmsg("safefswrite size must be less than 8MB and " 
- raba: reloptions:00000698:  "be a multiple of 8"))); 
- raba: reloptions:00000701:  ereport(ERROR, 
- raba: reloptions:00000702:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- raba: reloptions:00000703:  errmsg("block size (%d) is smaller gp_safefswritesize (%d). " 
- raba: reloptions:00000704:  "increase blocksize or decrease gp_safefswritesize if it " 
- raba: reloptions:00000705:  "is safe to do so on this file system", 
- raba: reloptions:00000706:  blocksize, gp_safefswritesize))); 
+ raba: reloptions:00000445:  ereport(ERROR, 
+ raba: reloptions:00000446:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ raba: reloptions:00000447:  errmsg("compresslevel=%d is out of range for quicklz " 
+ raba: reloptions:00000448:  "(should be 1)", compresslevel))); 
+ raba: reloptions:00000463:  ereport(ERROR, 
+ raba: reloptions:00000464:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ raba: reloptions:00000465:  errmsg("invalid option 'checksum' for base relation. " 
+ raba: reloptions:00000466:  "Only valid for Append Only relations"))); 
+ raba: reloptions:00000471:  ereport(ERROR, 
+ raba: reloptions:00000472:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ raba: reloptions:00000473:  errmsg("invalid parameter value for "checksum": "%s"", 
+ raba: reloptions:00000474:  values[5]))); 
+ raba: reloptions:00000483:  ereport(ERROR, 
+ raba: reloptions:00000484:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ raba: reloptions:00000485:  errmsg("invalid option "orientation" for base relation. " 
+ raba: reloptions:00000486:  "Only valid for Append Only relations"))); 
+ raba: reloptions:00000491:  ereport(ERROR, 
+ raba: reloptions:00000492:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ raba: reloptions:00000493:  errmsg("invalid parameter value for "orientation": "%s"", 
+ raba: reloptions:00000494:  values[6]))); 
+ raba: reloptions:00000653:  ereport(ERROR, 
+ raba: reloptions:00000654:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ raba: reloptions:00000655:  errmsg("appendonly may only be specified for base relations"))); 
+ raba: reloptions:00000658:  ereport(ERROR, 
+ raba: reloptions:00000659:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ raba: reloptions:00000660:  errmsg("checksum may only be specified for base relations"))); 
+ raba: reloptions:00000663:  ereport(ERROR, 
+ raba: reloptions:00000664:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ raba: reloptions:00000665:  errmsg("compresstype may only be specified for base relations"))); 
+ raba: reloptions:00000669:  ereport(ERROR, 
+ raba: reloptions:00000670:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ raba: reloptions:00000671:  errmsg("compresstype can't be used with compresslevel 0"))); 
+ raba: reloptions:00000674:  ereport(ERROR, 
+ raba: reloptions:00000675:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ raba: reloptions:00000676:  errmsg("compresslevel=%d is out of range (should be between 0 and 9)", 
+ raba: reloptions:00000677:  complevel))); 
+ raba: reloptions:00000685:  ereport(ERROR, 
+ raba: reloptions:00000686:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ raba: reloptions:00000687:  errmsg("compresslevel=%d is out of range for quicklz " 
+ raba: reloptions:00000688:  "(should be 1)", complevel))); 
+ raba: reloptions:00000694:  ereport(ERROR, 
+ raba: reloptions:00000695:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ raba: reloptions:00000696:  errmsg("block size must be between 8KB and 2MB and " 
+ raba: reloptions:00000697:  "be an 8KB multiple, Got %d", blocksize))); 
+ raba: reloptions:00000700:  ereport(ERROR, 
+ raba: reloptions:00000701:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ raba: reloptions:00000702:  errmsg("safefswrite size must be less than 8MB and " 
+ raba: reloptions:00000703:  "be a multiple of 8"))); 
+ raba: reloptions:00000706:  ereport(ERROR, 
+ raba: reloptions:00000707:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ raba: reloptions:00000708:  errmsg("block size (%d) is smaller gp_safefswritesize (%d). " 
+ raba: reloptions:00000709:  "increase blocksize or decrease gp_safefswritesize if it " 
+ raba: reloptions:00000710:  "is safe to do so on this file system", 
+ raba: reloptions:00000711:  blocksize, gp_safefswritesize))); 
  rabb: rixtriggers:00000304:  ereport(ERROR, 
  rabb: rixtriggers:00000305:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  rabb: rixtriggers:00000306:  errmsg("MATCH PARTIAL not yet implemented"))); 
@@ -15473,6 +15469,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15413 rows)
+(15409 rows)
 
 drop external table get_ereport;

@@ -436,15 +436,19 @@ default_reloptions(Datum reloptions, bool validate,
 			compresstype = pstrdup(defaultCompressor);
 
 		if (compresstype && (pg_strcasecmp(compresstype, "quicklz") == 0) &&
-			(compresslevel != 1) && (compresslevel != 3))
+			(compresslevel != 1))
 		{
-			if (validate)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("compresslevel=%d is out of range for quicklz "
-								 "(should be 1 or 3)", compresslevel)));
+			/* allow quicklz level 3 only if the debug guc is on */
+			if (!(compresslevel == 3 && Test_enable_broken_quicklz3))
+			{
+				if (validate)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("compresslevel=%d is out of range for quicklz "
+									 "(should be 1)", compresslevel)));
 
-			compresslevel = setDefaultCompressionLevel(compresstype);
+				compresslevel = setDefaultCompressionLevel(compresstype);				
+			}
 		}
 	}
 	else
@@ -671,18 +675,19 @@ void validateAppendOnlyRelOptions(bool ao,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("compresslevel=%d is out of range (should be between 0 and 9)",
 						complevel)));
-/*
-	if (comptype && (pg_strcasecmp(comptype, "zlib") != 0))
+	
+	if (comptype && (pg_strcasecmp(comptype, "quicklz") == 0) &&
+		(complevel != 1))
+	{
+		/* allow quicklz level 3 only if the debug guc is on */
+		if (!(complevel == 3 && Test_enable_broken_quicklz3))
+		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("invalid compresstype \"%s\". currently supported: "
-							 "\"zlib\" ", comptype)));
-*/	if (comptype && (pg_strcasecmp(comptype, "quicklz") == 0) &&
-		(complevel != 1) && (complevel != 3))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("compresslevel=%d is out of range for quicklz "
-						 "(should be 1 or 3)", complevel)));
+					 errmsg("compresslevel=%d is out of range for quicklz "
+							 "(should be 1)", complevel)));
+		}
+	}
 
 	if (blocksize < MIN_APPENDONLY_BLOCK_SIZE || blocksize > MAX_APPENDONLY_BLOCK_SIZE ||
 	    blocksize % MIN_APPENDONLY_BLOCK_SIZE != 0)
