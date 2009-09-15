@@ -85,10 +85,6 @@ extern void PGSemaphoreLock(PGSemaphore sema, bool interruptOK);
  */
 extern bool PGSemaphoreLockInterruptable(PGSemaphore sema);
 
-extern void PGSemaphoreHandleSigAlarm(SIGNAL_ARGS);
-
-extern bool PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout);
-
 /* Unlock a semaphore (increment count) */
 extern void PGSemaphoreUnlock(PGSemaphore sema);
 
