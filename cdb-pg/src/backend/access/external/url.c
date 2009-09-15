@@ -57,7 +57,7 @@
 #define TRUE 1
 #endif
 
-static char *interpretExitCode(int exitCode, char *buf, size_t buflen);
+static char *interpretError(int exitCode, char *buf, size_t buflen, char *err, size_t errlen);
 static const char *getSignalNameFromCode(int signo);
 static int popen_with_stderr(int *rwepipe, const char *exe, bool forwrite);
 static int pclose_with_stderr(int pid, int *rwepipe, char *buf, int len);
@@ -870,13 +870,13 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 				 * generates a descriptive message from the exit code.
 				 */
 				char buf[512];
+				
 				if (failOnError) free(file);
 				ereport( (failOnError ? ERROR : LOG),
 						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-								errmsg("external table \'%s\' command ended with %s. error msg: %s",
+								errmsg("external table \'%s\' command ended with %s",
 										relname,
-										interpretExitCode(ret, buf, sizeof(buf)/sizeof(char)),
-										err),
+										interpretError(ret, buf, sizeof(buf)/sizeof(char), err, strlen(err))),
 								errdetail("Command: %s", url)));
 			}
 			break;
@@ -1378,11 +1378,11 @@ url_rewind(URL_FILE *file, const char *relname)
 
 
 /*
- * interpretExitCode - formats a brief message and the exit code from pclose()
+ * interpretError - formats a brief message and/or the exit code from pclose()
  * 		(or wait4()).
  */
 static char *
-interpretExitCode(int rc, char *buf, size_t buflen)
+interpretError(int rc, char *buf, size_t buflen, char *err, size_t errlen)
 {
 	if (WIFEXITED(rc))
 	{
@@ -1402,8 +1402,10 @@ interpretExitCode(int rc, char *buf, size_t buflen)
 		}
 		else
 		{
-			/* Exit codes from commands rarely map to strerror() strings */
-			snprintf(buf, buflen, "EXITED; rc=%d [raw=%#x]", exitCode, rc);
+			/* Exit codes from commands rarely map to strerror() strings. In here
+			 * we show the error string returned from pclose, and omit the non
+			 * friendly exit code interpretation */
+			snprintf(buf, buflen, "error. %s", err);
 		}
 	}
 	else if (WIFSIGNALED(rc))
@@ -1709,7 +1711,7 @@ static int pclose_with_stderr(int pid, int *pipes, char *buf, int len)
 	close(pipes[EXEC_ERR_P]);
 	
 	waitpid(pid, &status, 0);
-	
+
 	return status;
 }
 
