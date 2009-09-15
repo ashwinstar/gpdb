@@ -1026,7 +1026,7 @@ copylibs : thirdparty-dist
 	        cp -p $$lib $(INSTLOC)/lib ; \
 	    done ; \
 	fi
-	if [ `uname -s` != 'AIX' ] ; then \
+	if [ `uname -s` != 'AIX' -a `uname -s` != 'Darwin' ] ; then \
 	    lib_wildcards=`$(BLD_LDD) $(INSTLOC)/bin/lib/gpcheckdb | egrep 'libstdc\+\+' $(BLD_LDD_FILTER)` export lib_wildcards; \
 	    if [ -z "$${lib_wildcards}" ]; then exit 0; fi; \
 	    lib_list=`ls $${lib_wildcards}` export lib_list; \
