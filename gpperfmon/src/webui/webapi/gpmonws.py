@@ -4,17 +4,9 @@ import os, sys, socket, re, ConfigParser
 import time, datetime, tempfile
 from socket import gethostname
 
-gphome = os.environ.get('GPHOME')
-if not gphome:
-    sys.exit('GPHOME env not set')
 datadir = os.getenv('MASTER_DATA_DIRECTORY', None)
-if not datadir:
-    sys.exit('MASTER_DATA_DIRECTORY env not set')
-if not os.path.isdir(datadir):
-    sys.exit('MASTER_DATA_DIRECTORY "%s" is not valid' % datadir)
 
 sys.path.append(os.path.join(sys.path[0], 'lib'))
-sys.path.append(os.path.join(gphome, 'bin', 'lib'))
 
 import pg8000
 import web
@@ -33,6 +25,8 @@ allow_trust_logon = False
 displayed_server_name = ''
 gpperfmon_version = '2.0.0.3'
 
+instance_name = os.path.basename(os.path.abspath(os.path.join(os.getcwd(), '..')))
+
 urls = ('/', 'index',
         '/api', 'api',
         '/logon', 'logon',
@@ -50,9 +44,9 @@ urls = ('/', 'index',
 
 app = web.application(urls, locals())
 session = web.session.Session(app, 
-                              web.session.DiskStore(tempfile.mkdtemp()), 
+                              web.session.DiskStore(tempfile.mkdtemp(dir=os.path.join(os.getcwd(), '..', 'sessions'))), 
                               initializer={'user': '', 'role': {}, 
-                                           'loggedin': 0})
+                                           'loggedin': 0, 'gpperfmon_instance_name': instance_name})
 
 render = web.template.render('./templates/', cache=False)
 
@@ -205,7 +199,7 @@ class config:
         # Holds the complete configuration
         self.gpperfmon_config = {}
 
-        filename = datadir + '/gpperfmon/conf/gpperfmon.conf'
+        filename = os.path.join(os.getcwd(), '..', 'conf', 'gpperfmonui.conf')
         try:
             # parse configuration file
             cfg = ConfigParser.SafeConfigParser()
@@ -229,6 +223,22 @@ class config:
             remote = False
         if DEBUG:
             sys.stderr.write("WEB APP/remote = %s\n" % remote)
+
+        quantum = 15
+        if remote:
+            quantum = db.get_quantum()
+        else:
+            try:
+                # parse configuration file
+                filename = os.path.join(datadir, 'gpperfmon', 'conf', 'gpperfmon.conf')
+                gpmmon_cfg = ConfigParser.SafeConfigParser()
+                gpmmon_cfg.readfp(open(filename))
+                quantum = gpmmon_cfg.getint('GPMMON', 'quantum')
+            except:
+                sys.exit("FATAL: Unable to load configuration file: %s\n" % filename)
+                       
+        self.gpperfmon_config['GPMMON'] = {'quantum': quantum}
+
 
         # look for specific values
         try:

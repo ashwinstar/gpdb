@@ -45,6 +45,13 @@ class Session(utils.ThreadedDict):
         self.__dict__['store'] = store
         self.__dict__['_initializer'] = initializer
         self.__dict__['_last_cleanup_time'] = 0
+        
+        # GREENPLUM - to allow multiple instances to run
+        if initializer.has_key('gpperfmon_instance_name'):
+            web.config.session_parameters['cookie_name'] = 'gpperfmon_instance_%s' % initializer['gpperfmon_instance_name']
+        # END GREENPLUM CHANGE
+
+
         self.__dict__['_config'] = utils.storage(web.config.session_parameters)
 
         if app:

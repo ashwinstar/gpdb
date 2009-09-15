@@ -6,259 +6,320 @@
 #include "libpq-fe.h"
 #include "apr_strings.h"
 
-
-
 static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
 {
-    const char *connstr = "dbname='" GPMON_DB "' user='" GPMON_DBUSER 
-                          "' connect_timeout='30'";
-    PGconn *conn      = NULL;
-    PGresult* res = 0;
-    ExecStatusType status;
+	const char *connstr = "dbname='" GPMON_DB "' user='" GPMON_DBUSER
+	"' connect_timeout='30'";
+	PGconn *conn = NULL;
+	PGresult* res = 0;
+	ExecStatusType status;
 
-    conn = PQconnectdb(connstr);
-    if (PQstatus(conn) != CONNECTION_OK) {
-	gpmon_fatal(FLINE, 
-		    "GPDB connect error: %s\n", PQerrorMessage(conn));
-    }
+	conn = PQconnectdb(connstr);
+	if (PQstatus(conn) != CONNECTION_OK)
+	{
+		/* TODO: remove the fatal here? */
+		gpmon_fatal(FLINE, "GPDB connect error: %s\n", PQerrorMessage(conn));
+	}
 
-    TR1(("Query: %s\n", query));
+	TR1(("Query: %s\n", query));
 
-    *pconn = conn;
-    res = PQexec(conn, query);
-    status = PQresultStatus(res);
-    if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK) {
-	return PQerrorMessage(conn);
-    }
+	*pconn = conn;
+	res = PQexec(conn, query);
+	status = PQresultStatus(res);
+	if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK)
+	{
+		return PQerrorMessage(conn);
+	}
 
-    *pres = res;
-    return 0;
+	*pres = res;
+	return 0;
 }
 
+int gpdb_gpperfmon_db_exists(void)
+{
+	const char *connstr = "dbname='" GPMON_DB "' user='" GPMON_DBUSER
+	"' connect_timeout='30'";
+	PGconn *conn = NULL;
+	int db_exists = 0;
+
+	conn = PQconnectdb(connstr);
+	if (PQstatus(conn) == CONNECTION_OK)
+	{
+		db_exists = 1;
+		PQfinish(conn);
+	}
+
+	return db_exists;
+}
+
+int gpdb_gpperfmon_enabled(void)
+{
+	int enabled = 0;
+
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	ExecStatusType status;
+
+	int rowcount;
+
+	const char *connstr = "dbname='template1' user='" GPMON_DBUSER
+			"' connect_timeout='30'";
+
+	const char* query =
+			"SELECT 1 FROM pg_settings WHERE name = 'gp_enable_gpperfmon' and setting='on'";
+
+	conn = PQconnectdb(connstr);
+	if (PQstatus(conn) == CONNECTION_OK)
+	{
+		result = PQexec(conn, query);
+		status = PQresultStatus(result);
+		if (status == PGRES_COMMAND_OK && status == PGRES_TUPLES_OK)
+		{
+			rowcount = PQntuples(result);
+			if (rowcount > 0)
+				enabled = 1;
+		}
+	}
+
+	PQclear(result);
+	PQfinish(conn);
+
+	return enabled;
+}
 
 int gpdb_get_gpmon_port(void)
 {
-    PGconn* conn = 0;
-    PGresult* result = 0;
-    char* curport = 0;
-    int rowcount;
-    const char* QUERY = "SELECT setting FROM pg_settings WHERE name = 'gpperfmon_port'";
-    int port = 0;
-    const char* errmsg = gpdb_exec(&conn, &result, QUERY);
-    if (errmsg) {
-	gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
-    }
-
-    rowcount = PQntuples(result);
-    if (rowcount > 0) {
-	curport = PQgetvalue(result, 0, 0);
-	if (curport) {
-	    port = atoi(curport);
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	char* curport = 0;
+	int rowcount;
+	const char* QUERY =
+			"SELECT setting FROM pg_settings WHERE name = 'gpperfmon_port'";
+	int port = 0;
+	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
+	if (errmsg)
+	{
+		gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
 	}
-    }
-    PQclear(result);
-    PQfinish(conn);
 
-    if (!port) {
-	gpmon_fatal(FLINE, "Unable to retrieve gpperfmon_port GUC from GPDB\n");
-    }
-    return port;
+	rowcount = PQntuples(result);
+	if (rowcount > 0)
+	{
+		curport = PQgetvalue(result, 0, 0);
+		if (curport)
+		{
+			port = atoi(curport);
+		}
+	}
+	PQclear(result);
+	PQfinish(conn);
+
+	if (!port)
+	{
+		gpmon_fatal(FLINE, "Unable to retrieve gpperfmon_port GUC from GPDB\n");
+	}
+	return port;
 }
 
-
-
-void gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datadirvec, apr_pool_t* pool)
+void gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datadirvec,
+		apr_pool_t* pool)
 {
-    PGconn* conn = 0;
-    PGresult* result = 0;
-    int rowcount, i;
-    const char* QUERY = "SELECT hostname, datadir, dbid FROM gp_configuration WHERE valid = 't' ORDER BY dbid ASC";
-    int    cnt = 0;
-    char** vec = 0;
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	int rowcount, i;
+	const char
+			* QUERY =
+					"SELECT hostname, datadir, dbid FROM gp_configuration WHERE valid = 't' ORDER BY dbid ASC";
+	int cnt = 0;
+	char** vec = 0;
 	char** vec2 = 0;
-    const char* errmsg = gpdb_exec(&conn, &result, QUERY);
-    if (errmsg) {
-	gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
-    }
+	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
+	if (errmsg)
+	{
+		gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
+	}
 
-    rowcount = PQntuples(result);
-    if (rowcount > 0) 
+	rowcount = PQntuples(result);
+	if (rowcount > 0)
 	{
 		vec = apr_pcalloc(pool, sizeof(char*) * (1 + rowcount));
 		CHECKMEM(vec);
 		vec2 = apr_pcalloc(pool, sizeof(char*) * (1 + rowcount));
 		CHECKMEM(vec2);
-	
-		for (i = 0; i < rowcount; i++) 
+
+		for (i = 0; i < rowcount; i++)
 		{
-	    	char* p = PQgetvalue(result, i, 0);
+			char* p = PQgetvalue(result, i, 0);
 			char* datadir = PQgetvalue(result, i, 1);
-	    	if (!p || !datadir) 
+			if (!p || !datadir)
 				continue;
-	    	p = apr_pstrdup(pool, p);
-	    	CHECKMEM(p);
+			p = apr_pstrdup(pool, p);
+			CHECKMEM(p);
 			datadir = apr_pstrdup(pool, datadir);
 			CHECKMEM(datadir);
-	    	p = gpmon_trim(p);
+			p = gpmon_trim(p);
 			datadir = gpmon_trim(datadir);
-	    	vec[cnt] = p;
+			vec[cnt] = p;
 			vec2[cnt++] = datadir;
 		}
-    }
-    PQclear(result);
-    PQfinish(conn);
+	}
+	PQclear(result);
+	PQfinish(conn);
 
-    *hostcnt = cnt;
-    *hostvec = vec;
+	*hostcnt = cnt;
+	*hostvec = vec;
 	*datadirvec = vec2;
 }
 
-
-
 void gpdb_get_config_md5(unsigned char md5[APR_MD5_DIGESTSIZE])
 {
-    PGconn* conn = 0;
-    PGresult* result = 0;
-    const char* QUERY = "select content || case when definedprimary then 1 else 0 end || dbid || case when isprimary then 1 else 0 end || case when valid then 1 else 0 end || hostname || port || datadir from gp_configuration";
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	const char
+			* QUERY =
+					"select content || case when definedprimary then 1 else 0 end || dbid || case when isprimary then 1 else 0 end || case when valid then 1 else 0 end || hostname || port || datadir from gp_configuration";
 
-    apr_md5_ctx_t ctx;
-    int e, i;
-    int rowcount;
-    const char* errmsg = gpdb_exec(&conn, &result, QUERY);
-    if (errmsg) {
-	gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
-    }
-    
-    if (0 != (e = apr_md5_init(&ctx))) {
-	gpmon_fatalx(FLINE, e, "apr_md5_init failed");
-    }
-    
-    rowcount = PQntuples(result);
-    for (i = 0; i < rowcount; i++) {
-	const char* p = PQgetvalue(result, i, 0);
-	if (p) {
-	    if (0 != (e = apr_md5_update(&ctx, p, strlen(p))))
-		gpmon_fatalx(FLINE, e, "apr_md5_update failed");
+	apr_md5_ctx_t ctx;
+	int e, i;
+	int rowcount;
+	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
+	if (errmsg)
+	{
+		gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
 	}
-    }
-    apr_md5_final(md5, &ctx);
-    PQclear(result);
-    PQfinish(conn);
-}
 
+	if (0 != (e = apr_md5_init(&ctx)))
+	{
+		gpmon_fatalx(FLINE, e, "apr_md5_init failed");
+	}
+
+	rowcount = PQntuples(result);
+	for (i = 0; i < rowcount; i++)
+	{
+		const char* p = PQgetvalue(result, i, 0);
+		if (p)
+		{
+			if (0 != (e = apr_md5_update(&ctx, p, strlen(p))))
+				gpmon_fatalx(FLINE, e, "apr_md5_update failed");
+		}
+	}
+	apr_md5_final(md5, &ctx);
+	PQclear(result);
+	PQfinish(conn);
+}
 
 void gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_pool_t* pool)
 {
-    PGconn* conn = 0;
-    PGresult* result = 0;
-    const char* QUERY = "select * from master_data_dir";
-    char* dir = 0;
-    char* hname = 0;
-    int rowcount;
-    const char* errmsg = gpdb_exec(&conn, &result, QUERY);
-    if (errmsg) {
-	gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
-    }
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	const char* QUERY = "select * from master_data_dir";
+	char* dir = 0;
+	char* hname = 0;
+	int rowcount;
+	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
+	if (errmsg)
+	{
+		gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
+	}
 
-    rowcount = PQntuples(result);
-    if (rowcount > 0) {
-	hname = PQgetvalue(result, 0, 0);
-	dir = PQgetvalue(result, 0, 1);
-    }
+	rowcount = PQntuples(result);
+	if (rowcount > 0)
+	{
+		hname = PQgetvalue(result, 0, 0);
+		dir = PQgetvalue(result, 0, 1);
+	}
 
-    if (!hname || !dir) {
-	gpmon_fatal(FLINE, "unable to get master data directory");
-    }
+	if (!hname || !dir)
+	{
+		gpmon_fatal(FLINE, "unable to get master data directory");
+	}
 
-    hname = apr_pstrdup(pool, gpmon_trim(hname));
-    CHECKMEM(hname);
+	hname = apr_pstrdup(pool, gpmon_trim(hname));
+	CHECKMEM(hname);
 
-    dir = apr_pstrdup(pool, gpmon_trim(dir));
-    CHECKMEM(dir);
+	dir = apr_pstrdup(pool, gpmon_trim(dir));
+	CHECKMEM(dir);
 
-    PQclear(result);
-    PQfinish(conn);
+	PQclear(result);
+	PQfinish(conn);
 
-    *hostname = hname;
-    *mstrdir = dir;
+	*hostname = hname;
+	*mstrdir = dir;
 }
-
 
 static apr_status_t do_rename(const char* tbl)
 {
-    char src[200];
-    char dst[200];
-    FILE* fp;
+	char src[200];
+	char dst[200];
+	FILE* fp;
 
-    /* make the file names */
-    sprintf(src, "%s%s_tail.dat", GPMON_DIR, tbl);
-    sprintf(dst, "%s_%s_tail.dat", GPMON_DIR, tbl);
+	/* make the file names */
+	sprintf(src, "%s%s_tail.dat", GPMON_DIR, tbl);
+	sprintf(dst, "%s_%s_tail.dat", GPMON_DIR, tbl);
 
-    /* delete destination */
-    unlink(dst);
+	/* delete destination */
+	unlink(dst);
 
-    /* rename src -> dst */
-    if (0 != rename(src, dst))
-	return APR_EINVAL;
+	/* rename src -> dst */
+	if (0 != rename(src, dst))
+		return APR_EINVAL;
 
-    /* recreate src as empty file */
-    fp = fopen(src, "a");
-    if (fp) fclose(fp);
+	/* recreate src as empty file */
+	fp = fopen(src, "a");
+	if (fp)
+		fclose(fp);
 
-
-    return 0;
+	return 0;
 }
 
 static apr_status_t harvest(const char* tbl)
 {
-    PGconn* conn = 0;
-    PGresult* result = 0;
-    char qrybuf[1024];
-    const char* QRYFMT = "insert into %s_history select * from _%s_tail;";
-    const char* errmsg;
-    apr_status_t res = APR_SUCCESS;
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	char qrybuf[1024];
+	const char* QRYFMT = "insert into %s_history select * from _%s_tail;";
+	const char* errmsg;
+	apr_status_t res = APR_SUCCESS;
 
-    TR1(("---- HARVEST %s STARTED ---- \n", tbl));
-    
+	TR1(("---- HARVEST %s STARTED ---- \n", tbl));
 
-    /* rename the file, e.g. queries_tail.dat -> _queries_tail.dat */
-    if (0 != do_rename(tbl))  {
-	TR1(("---- HARVEST %s FAILED to rename ---- \n", tbl));
-	return 1;
-    }
+	/* rename the file, e.g. queries_tail.dat -> _queries_tail.dat */
+	if (0 != do_rename(tbl))
+	{
+		TR1(("---- HARVEST %s FAILED to rename ---- \n", tbl));
+		return 1;
+	}
 
-    sprintf(qrybuf, QRYFMT, tbl, tbl);
-    errmsg = gpdb_exec(&conn, &result, qrybuf);
-    if (errmsg)
-    {
-        char src[200];
-        char dst[200];
-        sprintf(dst, "%s%s_tail.dat", GPMON_DIR, tbl);
-        sprintf(src, "%s_%s_tail.dat", GPMON_DIR, tbl);
-        /* import failed so put the file back.
-           We don't need to syncronize this as the writing
-           is done by the same thread that does the harvest */
-        rename(src, dst);
-        res = 1;
-	TR1(("---- HARVEST %s FAILED ---- \n", tbl));
-    }
-    else
-        TR1(("---- HARVEST %s OK ---- \n", tbl));
+	sprintf(qrybuf, QRYFMT, tbl, tbl);
+	errmsg = gpdb_exec(&conn, &result, qrybuf);
+	if (errmsg)
+	{
+		char src[200];
+		char dst[200];
+		sprintf(dst, "%s%s_tail.dat", GPMON_DIR, tbl);
+		sprintf(src, "%s_%s_tail.dat", GPMON_DIR, tbl);
+		/* import failed so put the file back.
+		 We don't need to syncronize this as the writing
+		 is done by the same thread that does the harvest */
+		rename(src, dst);
+		res = 1;
+		TR1(("---- HARVEST %s FAILED ---- \n", tbl));
+	}
+	else
+		TR1(("---- HARVEST %s OK ---- \n", tbl));
 
-    PQclear(result);
-    PQfinish(conn);
-    return res;
+	PQclear(result);
+	PQfinish(conn);
+	return res;
 }
-
 
 apr_status_t gpdb_harvest(void)
 {
-    if ( harvest("system") != APR_SUCCESS
-         || harvest("queries") != APR_SUCCESS
-         || harvest("iterators") != APR_SUCCESS
-         || harvest("database") != APR_SUCCESS )
-    {
-        return 1;
-    }
-    return APR_SUCCESS;
+	if (harvest("system") != APR_SUCCESS || harvest("queries") != APR_SUCCESS
+			|| harvest("iterators") != APR_SUCCESS || harvest("database")
+			!= APR_SUCCESS)
+	{
+		return 1;
+	}
+	return APR_SUCCESS;
 }

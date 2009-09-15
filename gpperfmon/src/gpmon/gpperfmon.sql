@@ -1,13 +1,9 @@
-
-\c template1;
-drop database if exists gpperfmon;
-create database gpperfmon;
-\c gpperfmon;
-
-
 --  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 --  system 
 --
+create database gpperfmon;
+
+\c gpperfmon;
 
 create table system_history (
        ctime timestamp(0) not null, -- record creation time
@@ -30,7 +26,7 @@ create table system_history (
 ) 
 with (fillfactor=100)
 distributed by (ctime)
-partition by range (ctime)(start (date '2008-10-01') end (date '2010-03-01') EVERY (interval '1 month'));
+partition by range (ctime)(start (date '2009-09-01') end (date '2011-09-01') EVERY (interval '1 month'));
 
 create external web table system_now (
        like system_history
@@ -74,14 +70,14 @@ create table queries_history (
 )
 with (fillfactor=100)
 distributed by (ctime)
-partition by range (ctime)(start (date '2008-10-01') end (date '2010-03-01') EVERY (interval '1 month'));
+partition by range (ctime)(start (date '2009-09-01') end (date '2011-09-01') EVERY (interval '1 month'));
 
 
 
 
 create external web table queries_now (
         like queries_history
-) execute 'python $MASTER_DATA_DIRECTORY/gpperfmon/bin/gpmon_catqrynow.py 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
+) execute 'python $GPHOME/sbin/gpmon_catqrynow.py 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
 create external web table queries_now_fast (
        ctime timestamp(0),
@@ -211,7 +207,7 @@ create table iterators_history (
 )
 with (fillfactor=100)
 distributed by (ctime)
-partition by range (ctime)(start (date '2008-10-01') end (date '2010-03-01') EVERY (interval '1 month'));
+partition by range (ctime)(start (date '2009-09-01') end (date '2011-09-01') EVERY (interval '1 month'));
 
 
 
@@ -242,7 +238,7 @@ create table database_history (
 ) 
 with (fillfactor=100)
 distributed by (ctime)
-partition by range (ctime)(start (date '2008-10-01') end (date '2010-03-01') EVERY (interval '1 month'));
+partition by range (ctime)(start (date '2009-09-01') end (date '2011-09-01') EVERY (interval '1 month'));
 
 create external web table database_now (
        like database_history

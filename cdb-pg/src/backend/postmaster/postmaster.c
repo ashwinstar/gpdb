@@ -126,6 +126,7 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
 #include "postmaster/ftsprobe.h"
+#include "postmaster/perfmon.h"
 #include "postmaster/walsendserver.h"
 #include "postmaster/walredoserver.h"
 #include "postmaster/ddaserver.h"
@@ -187,6 +188,7 @@ typedef enum pmsub_type
 	DdaServerProc,
 #endif
 	FtsProbeProc,
+	PerfmonProc,
 	MaxPMSubType
 } PMSubType;
 
@@ -282,26 +284,32 @@ typedef struct pmsubproc
 	char       *procName;
 	int        flags;          /* flags indicating in which kind
 							    * of instance to start the process */
+	bool        cleanupBackend; /* flag if process failure should
+								* cause cleanup of backend processes
+								* false = do not cleanup (eg. for gpperfmon) */
 } PMSubProc;
 
 static PMSubProc PMSubProcList[MaxPMSubType] =
 {
 	{0, SeqServerProc,
 	 (PMSubStartCallback*)&seqserver_start,
-	 "seqserver process", PMSUBPROC_FLAG_QD},
+	 "seqserver process", PMSUBPROC_FLAG_QD, true},
 	{0, WalSendServerProc,
 	 (PMSubStartCallback*)&walsendserver_start,
-	 "walsendserver process",(PMSUBPROC_FLAG_QD|PMSUBPROC_FLAG_STOP_AFTER_BGWRITER)},
+	 "walsendserver process",(PMSUBPROC_FLAG_QD|PMSUBPROC_FLAG_STOP_AFTER_BGWRITER), true},
 	{0, WalRedoServerProc,
 	 (PMSubStartCallback*)&walredoserver_start,
-	 "walredoserver process", PMSUBPROC_FLAG_STANDBY},
+	 "walredoserver process", PMSUBPROC_FLAG_STANDBY, true},
 	{0, FtsProbeProc,
 	 (PMSubStartCallback*)&ftsprobe_start,
-	 "ftsprobe process", PMSUBPROC_FLAG_QD},
+	 "ftsprobe process", PMSUBPROC_FLAG_QD, true},
+	{0, PerfmonProc,
+	(PMSubStartCallback*)&perfmon_start,
+	"perfmon process", PMSUBPROC_FLAG_QD, false},
 #ifdef DO_DDA_SERV
 	{0, DdaServerProc,
 	 (PMSubStartCallback*)&ddaserver_start,
-	 "ddaserver process", PMSUBPROC_FLAG_QD_AND_QE},
+	 "ddaserver process", PMSUBPROC_FLAG_QD_AND_QE, true},
 #endif
 };
 
@@ -1439,7 +1447,10 @@ ServiceStartable(PMSubProc *subProc)
 	else
 		flagNeeded = PMSUBPROC_FLAG_STANDBY;
 
-	result = ((subProc->flags & flagNeeded) != 0);
+	if (subProc->procType == PerfmonProc && !gp_enable_gpperfmon)
+		result = 0;
+	else
+		result = ((subProc->flags & flagNeeded) != 0);
 
 	return result;
 }
@@ -2670,7 +2681,11 @@ static void do_reaper()
 						 * sure that any backend Proc structures are
 						 * tidied up.
 						 */
-						CleanupBackend(pid, exitstatus);
+						if (subProc->cleanupBackend == true)
+						{
+							Assert(subProc->procName && strcmp(subProc->procName, "perfmon process") != 0);
+							CleanupBackend(pid, exitstatus);
+						}
 
 						subProc->pid =
 							(subProc->serverStart)();
@@ -3657,19 +3672,19 @@ BackendInitialize(Port *port)
 	/*
 	 * Now perform authentication exchange.
 	 */
-    
+
 	/*
 	 *  If this is internal communications between segments, the protocol must be 3, and the special flag nibble must be 7.
-	 *  Otherwise, this is not a trusted connection, and must go through normal client authentication 
-	 * 
+	 *  Otherwise, this is not a trusted connection, and must go through normal client authentication
+	 *
 	 *  This is not really secure, but no client that uses normal libpq can fake this... It requires either a custom libpq,
 	 *  or using a program that does it's own wire protocol communications and bypasses libpq.
-	 * 
+	 *
 	 *  The SyncMaster doesn't need authentication, but why is it going through this code, instead of being an AuxilliaryProcess ?
 	 */
 	if (PG_PROTOCOL_MAJOR(port->proto) != 3 || port->proto >> 28 != 7) /* Check for special startup packed that indicates internal communications */
 	{
-		/* Do normal client authentication via pg_hba.conf */ 
+		/* Do normal client authentication via pg_hba.conf */
 		ClientAuthentication(port); /* might not return, if failure */
 	}
 	else
@@ -4367,6 +4382,16 @@ SubPostmasterMain(int argc, char *argv[])
 		CreateSharedMemoryAndSemaphores(false, 0);
 
 		FtsProbeMain(argc - 2, argv + 2);
+		proc_exit(0);
+	}
+	if (strcmp(argv[1], "--forkperfmon") == 0)
+	{
+		/* Close the postmaster's sockets */
+		ClosePostmasterPorts(false);
+
+		/* Do not want to attach to shared memory */
+
+		PerfmonMain(argc - 2, argv + 2);
 		proc_exit(0);
 	}
 
@@ -5082,7 +5107,7 @@ win32_RemoveChild(pid_t pid)
 			(errmsg_internal("could not find child entry with pid %lu",
 							 (unsigned long) pid)));
 }
-#endif 
+#endif
 
 static pid_t
 win32_waitpid(int *exitstatus)

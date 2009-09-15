@@ -34,13 +34,13 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 	GPMON_NTOHS(pkt->version);
 	GPMON_NTOHS(pkt->pkttype);
 	switch (pkt->pkttype) {
-	case GPMON_PKTTYPE_HELLO: 
+	case GPMON_PKTTYPE_HELLO:
 	    {
 		gpmon_hello_t* p = &pkt->u.hello;
 		GPMON_NTOHLL(p->signature);
 		break;
 	    }
-	case GPMON_PKTTYPE_METRICS: 
+	case GPMON_PKTTYPE_METRICS:
 	    {
 		gpmon_metrics_t* p = &pkt->u.metrics;
 		GPMON_NTOHLL(p->mem.total);
@@ -109,7 +109,7 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 	}
     }
 
-    if (pkt->magic != GPMON_MAGIC) 
+    if (pkt->magic != GPMON_MAGIC)
 	{
 		apr_int64_t now = apr_time_sec(apr_time_now());
 		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
@@ -120,7 +120,7 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 		return APR_EINVAL;
     }
 
-    if (pkt->version != GPMON_PACKET_VERSION) 
+    if (pkt->version != GPMON_PACKET_VERSION)
 	{
 		apr_int64_t now = apr_time_sec(apr_time_now());
 		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
@@ -132,13 +132,13 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 		return APR_EINVAL;
     }
 
-    if (! (GPMON_PKTTYPE_NONE < pkt->pkttype && pkt->pkttype < GPMON_PKTTYPE_MAX)) 
+    if (! (GPMON_PKTTYPE_NONE < pkt->pkttype && pkt->pkttype < GPMON_PKTTYPE_MAX))
 	{
 		apr_int64_t now = apr_time_sec(apr_time_now());
 		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
 		{
 			last_err_sec = now;
-			gpmon_warning(FLINE, "bad packet (unexpected packet type %d)", 
+			gpmon_warning(FLINE, "bad packet (unexpected packet type %d)",
 		    			  pkt->pkttype);
 		}
 		return APR_EINVAL;
@@ -227,23 +227,6 @@ int gpmon_warningx(const char* fline, int e, const char* fmt, ...)
 }
 
 
-
-
-
-gpmon_spin_t* gpmon_spin_lock(gpmon_spin_t* spin)
-{
-    do ; while (0 != (apr_atomic_xchg32(spin, 1)));
-    return spin;
-}
-
-
-gpmon_spin_t* gpmon_spin_unlock(gpmon_spin_t* spin)
-{
-    *spin = 0;
-    return 0;
-}
-
-
 const char* gpmon_qlog_status_string(int gpmon_qlog_status)
 {
     switch (gpmon_qlog_status) {
@@ -275,14 +258,14 @@ char* gpmon_datetime(apr_time_t t, char str[24])
     apr_time_exp_t tm;
     int e;
     str[0] = 0;
-    if (t < 0) 
+    if (t < 0)
 	t = 0;
     if (0 != (e = apr_time_exp_lt(&tm, t))) {
 	gpmon_warningx(FLINE, e, "apr_time_exp_lt failed");
 	return str;
     }
-    sprintf(str, "%04d-%02d-%02d %02d:%02d:%02d", 
-	    1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday, 
+    sprintf(str, "%04d-%02d-%02d %02d:%02d:%02d",
+	    1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday,
 	    tm.tm_hour, tm.tm_min, tm.tm_sec);
     return str;
 }

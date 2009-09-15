@@ -287,8 +287,8 @@ define BUILD_STEPS
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 	@$(MAKE) groupSession INSTLOC=$(INSTLOC)
 	@$(MAKE) mkgpcc
-	@$(MAKE) mkgpperfmon INSTLOC=$(INSTLOC)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
+	@$(MAKE) mkgpperfmon INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
@@ -847,6 +847,10 @@ mkgpperfmon:
 	@cd $(GPPERFMON) && $(MAKE)
 	rm -f $(INSTLOC)/../greenplum-perfmon-*.zip
 	cp -p gpperfmon/installer/greenplum-perfmon-*.zip $(INSTLOC)/..
+	cp -p gpperfmon/src/gpmon/gpmmon gpperfmon/src/gpmon/gpsmon $(INSTLOC)/bin
+	cp -p gpperfmon/src/gpmon/gpmon_catqrynow.py $(INSTLOC)/sbin
+	mkdir -p $(INSTLOC)/lib/gpperfmon
+	cp -p gpperfmon/src/gpmon/gpperfmon.sql $(INSTLOC)/lib/gpperfmon
 
 copydocs :
 	@if [ ! -d $($INSTLOC)/docs ] ; then mkdir -p $(INSTLOC)/docs; fi

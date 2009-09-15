@@ -12,7 +12,11 @@ pgport = os.environ.get('PGPORT', '5432')
 pgport = int(pgport)
 pghost = os.environ.get('PGHOST', 'localhost')
 pghost_logon = os.environ.get('PGHOST_LOGON', pghost)
-path = os.environ.get('MASTER_DATA_DIRECTORY') + '/gpperfmon/data'
+path=''
+try:
+    path = os.environ.get('MASTER_DATA_DIRECTORY') + '/gpperfmon/data'
+except:
+    print 'MASTER_DATA_DIRECTORY env not set'
 
 # Use this to throw exceptions related to unavailability of the DB
 class GPDBError(Exception):
@@ -51,6 +55,14 @@ def validate_db_conn():
 
 # Connect to the database
 create_db_conn()
+
+def get_quantum():
+    rows = execute_query('SELECT quantum FROM system_now LIMIT 1')
+    if rows and len(rows) > 0:
+        return (rows[0])['quantum']
+    else:
+        return 15
+    
 
 def get_role(username, password, allow_trust_logon):
     validate_db_conn()

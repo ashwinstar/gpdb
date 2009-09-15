@@ -4,7 +4,6 @@ BLD_TOP=$(shell echo `pwd`/../../)
 include $(BLD_TOP)/Makefile.global
 include $(BLD_TOP)/Makefile.thirdparty
 
-GPMON_DIR=../src/gpmon
 GPMONWS_DIR=../src/webui/webapi
 GPMONUI_DIR=../src/webui/flexGUI
 GPMONDOCS_DIR=../docs/release
@@ -32,44 +31,58 @@ all:
 	@if [ -d .tmp ]; then \
 		rm -rf .tmp; \
 	fi;
-	@if [ -a greenplum-perfmon.tar.gz ]; then \
-		rm -f greenplum-perfmon.tar.gz; \
+	@if [ -a greenplum-perfmon-web.tar.gz ]; then \
+		rm -f greenplum-perfmon-web.tar.gz; \
 	fi;
 	mkdir .tmp
 	mkdir .tmp/bin
 	mkdir .tmp/etc
 	mkdir .tmp/lib
+	mkdir .tmp/lib/python
 	mkdir .tmp/docs
 	mkdir .tmp/www
 	mkdir .tmp/www/static
-	cp $(GPMON_DIR)/gpmmon $(GPMON_DIR)/gpsmon ../src/gpperfmon .tmp/bin
-	cp $(GPMON_DIR)/gpmon_catqrynow.py .tmp/lib
-	cp $(GPMON_DIR)/gpperfmon.sql .tmp
+	mkdir .tmp/instances
+	cp ../src/gpperfmon ../src/gpperfmon.py .tmp/bin
+	cp -rp $(BLD_TOP)/gpMgmt/bin/gppylib .tmp/lib/python
+	cp -rp $(BLD_TOP)/gpMgmt/bin/ext/* .tmp/lib/python
+	mkdir -p .tmp/ext/python
+	cp -rp $(BLD_TOP)/ext/$(BLD_ARCH)/python-2.6.2/* .tmp/ext/python
 	cp -R $(GPMONWS_DIR)/* .tmp/www
 	cp -R $(GPMONUI_DIR)/bin-release/* .tmp/www/static
 	cp -R $(LIGHTY_DIR)/* .tmp
+	cp $(BLD_TOP)/ext/$(BLD_ARCH)/bin/openssl .tmp/bin
+	cp $(BLD_TOP)/ext/$(BLD_ARCH)/ssl/openssl.cnf .tmp/etc	
 	cp $(GPMONDOCS_DIR)/GPMonGuide.pdf .tmp/docs
 	cp $(GPMONDOCS_DIR)/GPMon_2000_README.pdf .tmp/docs
 	@if [ "$(PACKAGE_ARCH)" = "OSX-i386" ] ; then \
 		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libpcre.0.0.1.dylib .tmp/lib; \
+		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libcrypto.0.9.8.dylib .tmp/lib; \
+		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libssl.0.9.8.dylib .tmp/lib; \
 		cd .tmp/lib; \
 		ln -s libpcre.0.0.1.dylib libpcre.0.dylib; \
+		ln -s libssl.0.9.8.dylib libssl.dylib; \
+		ln -l libcrypto.0.9.8 libcrypto.dylib; \
 		cd ../..; \
 	else \
 		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libpcre.so.0.0.1 .tmp/lib; \
+		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libcrypto.so.0.9.8 .tmp/lib; \
+		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libssl.so.0.9.8 .tmp/lib; \
 		cd .tmp/lib; \
 		ln -s libpcre.so.0.0.1 libpcre.so.0; \
 		ln -s libpcre.so.0.0.1 libpcre.so; \
+		ln -s libssl.so.0.9.8 libssl.so; \
+		ln -s libcrypto.so.0.9.8 libcrypto.so; \
 		cd ../..; \
 	fi ;
 	./generate-gpperfmon-path.sh > .tmp/gpperfmon_path.sh
-	cd .tmp && tar cvf ../greenplum-perfmon.tar *
-	gzip greenplum-perfmon.tar
+	cd .tmp && tar cvf ../greenplum-perfmon-web.tar *
+	gzip greenplum-perfmon-web.tar
 	./create-gpperfmon-installer.sh
-	mv greenplum-perfmon.bin greenplum-perfmon-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin
+	mv greenplum-perfmon-web.bin greenplum-perfmon-web-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin
 	rm -rf .tmp
-	zip -q greenplum-perfmon-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).zip greenplum-perfmon-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin
+	zip -q greenplum-perfmon-web-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).zip greenplum-perfmon-web-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin
 
 clean:
 	rm -rf .tmp
-	rm -f greenplum-perfmon.tar.gz greenplum-perfmon-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin greenplum-perfmon-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).zip
+	rm -f greenplum-perfmon-web.tar.gz greenplum-perfmon-web-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin greenplum-perfmon-web-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).zip

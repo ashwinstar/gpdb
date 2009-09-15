@@ -1064,7 +1064,10 @@ CREATE_QD_DB () {
 				done
 		fi
 		LOG_MSG "[INFO]:-Adding gp_dumpall access to $PG_HBA for master host"
-		BUILD_MASTER_PG_HBA_FILE $GP_DIR 
+		BUILD_MASTER_PG_HBA_FILE $GP_DIR
+		LOG_MSG "[INFO]:-Creating perfmon directories and configuration file"
+		BUILD_PERFMON $GP_DIR
+		ERROR_CHK $? "create perfmon directories and configuration file" 1
 		LOG_MSG "[INFO]:-Starting the Master in admin mode" 1
 		export PGPORT=$GP_PORT;$PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o "-i -p $GP_PORT -c gp_role=utility" start >> /dev/null 2>&1
 		RET_TEXT="`$PG_CTL status -D $GP_DIR`"
@@ -1542,7 +1545,7 @@ READ_INPUT_CONFIG () {
 #******************************************************************************
 # Main Section
 #******************************************************************************
-trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+trap 'ERROR_EXIT "[FATAL]:-Received INT or TERM signal" 2' INT TERM
 while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:!DB:SI:O:" opt
 		do
 		case $opt in

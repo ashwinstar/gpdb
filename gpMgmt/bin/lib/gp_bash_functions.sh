@@ -1089,6 +1089,35 @@ BUILD_MASTER_PG_HBA_FILE () {
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+BUILD_PERFMON() {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	GP_DIR=$1
+	$MKDIR -p $GP_DIR/gpperfmon/conf $GP_DIR/gpperfmon/logs $GP_DIR/gpperfmon/data
+	$CAT <<_EOF_ >> $GP_DIR/gpperfmon/conf/gpperfmon.conf
+[GPMMON]
+# quantum specifies the time in seconds between updates from 
+# performance monitor agents on all segments. Valid values 
+# are between 10 and 60 seconds.
+quantum = 15
+
+# min_query_time specifies the minimum query run time 
+# in seconds for statistics collection. The monitor logs all 
+# queries that run longer than this value in the queries_history 
+# table. For queries with shorter run times, no historical 
+# data is collected.
+min_query_time = 20
+
+# Specifies the minimum iterator run time in seconds for 
+# statistics collection. The monitor logs all iterators that 
+# run longer than this value in the iterators_history table. 
+# For iterators with shorter run times, no data is collected. 
+# Minimum value is 10 seconds.
+min_detailed_query_time = 60
+
+log_location = $GP_DIR/gpperfmon/logs
+_EOF_
+}
+
 CHK_DB_RUNNING () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ $# -eq 1 ];then

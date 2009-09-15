@@ -291,7 +291,6 @@ static void send_machine_metrics(SOCKET sock)
 	memset(&loadavg, 0, sizeof(loadavg));
 	sigar_loadavg_get(gx.sigar, &loadavg);
 	TR2(("load_avg: %e %e %e\n", loadavg.loadavg[0], loadavg.loadavg[1], loadavg.loadavg[2]));
-
 	memset(&tdisk, 0, sizeof(tdisk));
 	memset(&tnet, 0, sizeof(tnet));
 
@@ -1293,12 +1292,11 @@ void gx_main(int port, apr_int64_t signature)
 static void usage(const char* msg)
 {
 	fprintf(stderr, "\nusage: %s [options] port\n\n", opt.pname);
-	fprintf(stderr, "\toptions:\n");
-	fprintf(stderr, "\t-?        : print this help screen\n");
-	fprintf(stderr, "\t-v        : verbose\n");
-	fprintf(stderr, "\t-V        : very verbose\n");
-	fprintf(stderr, "\t-D        : run in debug mode; don't run as daemon\n");
-	fprintf(stderr, "\t--version : print version number\n\n");
+	fprintf(stderr, "options:\n");
+	fprintf(stderr, "\t-?:\tprint this help screen\n");
+	fprintf(stderr, "\t-v:\tverbose\n");
+	fprintf(stderr, "\t-D:\trun in debug mode; don't run as daemon\n");
+	fprintf(stderr, "\t-V:\tprint version number\n\n");
 	if (msg)
 		fprintf(stderr, "%s\n\n", msg);
 
@@ -1307,7 +1305,7 @@ static void usage(const char* msg)
 
 static void print_version(void)
 {
-	printf("%s version '%s'\n", opt.pname, GPPERFMON_VERSIONX);
+	fprintf(stdout, "%s version %s\n", opt.pname, GPPERFMON_VERSIONX);
 	exit(0);
 }
 
@@ -1316,16 +1314,16 @@ static void parse_command_line(int argc, const char* const argv[])
 	apr_getopt_t* os;
 	int ch;
 	const char* arg;
+	const char* bin_start = NULL;
 	int e;
 	static apr_getopt_option_t option[] =
 	{
 	{ NULL, '?', 0, "print help screen" },
 	{ NULL, 'v', 0, "verbose" },
-	{ NULL, 'V', 0, "very verbose" },
 	{ NULL, 'D', 0, "debug mode" },
 	{ NULL, 'l', 1, "log directory" },
 	{ NULL, 'm', 1, "max log size" },
-	{ "version", 256, 0, "print version number" },
+	{ NULL, 'V', 0, "print version number" },
 	{ NULL, 0, 0, NULL } };
 	apr_pool_t* pool;
 
@@ -1334,8 +1332,14 @@ static void parse_command_line(int argc, const char* const argv[])
 		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
 	}
 
-	opt.pname = argv[0];
-	opt.v = opt.V = opt.D = 0;
+	bin_start = argv[0] + strlen(argv[0]) - 1;
+	while (bin_start != argv[0] && *bin_start != '/')
+		bin_start--;
+	if (bin_start[0] == '/')
+		bin_start++;
+
+	opt.pname = bin_start;
+	opt.v = opt.D = 0;
 	opt.max_log_size = 0;
 
 	if (0 != (e = apr_getopt_init(&os, pool, argc, argv)))
@@ -1353,9 +1357,6 @@ static void parse_command_line(int argc, const char* const argv[])
 		case 'v':
 			opt.v = 1;
 			break;
-		case 'V':
-			opt.v = opt.V = 1;
-			break;
 		case 'D':
 			opt.D = 1;
 			break;
@@ -1365,7 +1366,7 @@ static void parse_command_line(int argc, const char* const argv[])
 		case 'm':
 			opt.max_log_size = apr_atoi64(arg);
 			break;
-		case 256:
+		case 'V':
 			print_version();
 			break;
 		}

@@ -21,11 +21,12 @@ typedef struct gpmon_metrics_t gpmon_metrics_t;
 
 /*
  * this dir sits in $MASTER_DATA_DIRECTORY. always include the
- * suffix / 
+ * suffix /
  */
 #define GPMON_DIR   "./gpperfmon/data/"
 #define GPMON_DIR_MAX_PATH 100
 #define GPMON_DB    "gpperfmon"
+#define GPMMON_VERSION_STRING "gpmmon version 2.1.0.0\n"
 
 /* ------------------------------------------------------------------
          INTERFACE
@@ -34,7 +35,7 @@ extern void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
 						 const char* type, /* "qtext", "qplan" */
 						 const char* content /* the query text or plan */
 						 );
-extern void gpmon_record_update(apr_int32_t tmid, apr_int32_t ssid, 
+extern void gpmon_record_update(apr_int32_t tmid, apr_int32_t ssid,
 								apr_int32_t ccnt, apr_int32_t status);
 
 extern void gpmon_send(gpmon_packet_t*);
@@ -66,10 +67,10 @@ struct gpmon_metrics_t {
 		apr_uint64_t rcount, wcount, rbytes, wbytes;
     } net;
 };
-    
+
 
 /* ------------------------------------------------------------------
-         QLOG 
+         QLOG
    ------------------------------------------------------------------ */
 
 struct gpmon_qlogkey_t {
@@ -89,8 +90,8 @@ struct gpmon_qlogkey_t {
 struct gpmon_qlog_t {
     /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     gpmon_qlogkey_t key;
-    char        user[NAMEDATALEN]; 
-    char        db[NAMEDATALEN]; 
+    char        user[NAMEDATALEN];
+    char        db[NAMEDATALEN];
     apr_int32_t cost;
     apr_int32_t tsubmit, tstart, tfin;
     apr_int32_t status;		/* GPMON_QLOG_STATUS_XXXXXX */
@@ -106,7 +107,7 @@ struct gpmon_qlog_t {
 
 
 /* XXX According to CK.
- * QE will NOT need to touch anything begin with _ 
+ * QE will NOT need to touch anything begin with _
  */
 struct gpmon_qexeckey_t {
     /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
@@ -136,7 +137,7 @@ enum {
 	GPMON_QEXEC_M_BYTESIN,
 	GPMON_QEXEC_M_BYTESOUT,
 #endif
-	GPMON_QEXEC_M_NODE_START, 
+	GPMON_QEXEC_M_NODE_START,
 	GPMON_QEXEC_M_COUNT = 16
 };
 
@@ -158,11 +159,11 @@ struct gpmon_qexec_t {
     /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     gpmon_qexeckey_t key;
     apr_int32_t pnid;	/* plan parent node id */
-    char        _hname[NAMEDATALEN]; 
-    char        ntype[NAMEDATALEN]; 	/* node type (SeqScan, HashJoin, etc) */	
+    char        _hname[NAMEDATALEN];
+    char        ntype[NAMEDATALEN]; 	/* node type (SeqScan, HashJoin, etc) */
     char        nstatus[NAMEDATALEN];  /* node status */
     apr_int32_t tstart, tduration; /* start (wall clock) time and duration.  XXX Leave as 0 for now. */
-    apr_int64_t p_mem, p_memmax;   /* XXX Aset instrumentation.  Leave as 0 for now. */ 
+    apr_int64_t p_mem, p_memmax;   /* XXX Aset instrumentation.  Leave as 0 for now. */
     apr_int64_t _cpu_elapsed; /* CPU elapsed for iter */
 
     gpmon_proc_metrics_t _p_metrics;
@@ -171,7 +172,7 @@ struct gpmon_qexec_t {
     struct {
 		char name[NAMEDATALEN];	/* measure name */
 		char unit[15+1];	/* measure unit */
-		apr_int64_t value; 
+		apr_int64_t value;
 		apr_int64_t valuemax;
     } m[GPMON_QEXEC_M_COUNT]; 		/* Measures */
     struct {
@@ -218,8 +219,8 @@ struct gpmon_packet_t {
 		gpmon_qexec_t   qexec;
     } u;
 };
-    
+
 
 extern const char* gpmon_qlog_status_string(int gpmon_qlog_status);
 
-#endif 
+#endif

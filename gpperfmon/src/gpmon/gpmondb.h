@@ -5,6 +5,16 @@
 #include "apr_md5.h"
 
 /**
+ * Check if gpperfmon database exists.
+ */
+APR_DECLARE(int) gpdb_gpperfmon_db_exists(void);
+
+/**
+ * Check if perfmon is enabled
+ */
+APR_DECLARE(int) gpdb_gpperfmon_enabled(void);
+
+/**
  *  Retrieve the gpmon_port from GPDB. (SHOW GPMON_PORT)
  */
 APR_DECLARE(int) gpdb_get_gpmon_port(void);

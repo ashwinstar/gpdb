@@ -25,10 +25,11 @@ typedef int SOCKET;
 #define CHECKMEM(x)  if (x) ; else gpmon_fatal(FLINE, "out of memory")
 
 extern int verbose;
-extern int very_verbose;
+/* TODO: REMOVE */
+//extern int very_verbose;
 #define TR0(x) gpmon_print x
-#define TR1(x) if (!verbose) ; else gpmon_print x
-#define TR2(x) if (!very_verbose) ; else gpmon_print x
+#define TR1(x) if (verbose == 1) gpmon_print x
+#define TR2(x) if (verbose == 2) gpmon_print x
 
 /* Architecture specific limits for metrics */
 #if defined(osx104_x86) || defined(osx105_x86) || defined(rhel4_x86_32) || defined(rhel5_x86_32)
@@ -49,11 +50,6 @@ extern int gpmon_warningx(const char* fline, int e, const char* fmt, ...);
 
 /* convert packets to host order */
 extern apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt);
-
-/* spin lock */
-typedef volatile apr_uint32_t gpmon_spin_t;
-extern gpmon_spin_t* gpmon_spin_lock(gpmon_spin_t* spin);
-extern gpmon_spin_t* gpmon_spin_unlock(gpmon_spin_t* spin);
 
 /* strings */
 extern char* gpmon_trim(char* s);

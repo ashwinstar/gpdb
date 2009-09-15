@@ -1,0 +1,681 @@
+#!/usr/bin/env python
+
+'''
+Controls or queries the web components of gpperfmon.
+'''
+
+import os
+import sys
+import signal
+import time
+import socket
+import subprocess
+import shutil
+import ConfigParser
+
+GPPERFMONHOME=os.getenv('GPPERFMONHOME')
+if not GPPERFMONHOME:
+    sys.exit('ERROR: GPPERFMONHOME environment variable is not set.  Please check that you have sourced gpperfmon_path.sh.')
+
+sys.path.append(os.path.join(GPPERFMONHOME, 'lib', 'python'))
+
+try:
+    from gppylib.gpparseopts import OptParser
+    from gppylib.gpparseopts import OptChecker
+    from gppylib.userinput import *
+except ImportError, e:    
+    sys.exit('ERROR: Cannot import modules.  Please check that you have sourced gpperfmon_path.sh.  Detail: ' + str(e))
+
+
+script_name = os.path.split(__file__)[-1]
+script_version = '2.0.0.3'
+
+# consts
+STOPPED = 0
+RUNNING = 1
+
+LIGHTY_BIN = os.path.join(GPPERFMONHOME, 'bin', 'lighttpd')
+OPENSSL_BIN = os.path.join(GPPERFMONHOME, 'bin', 'openssl')
+OPENSSL_CNF = os.path.join(GPPERFMONHOME, 'etc', 'openssl.cnf')
+
+# Custom input validators
+len_validator = lambda str, ignore1, ignore2: str if len(str) > 0 else None
+len_nospace_validator = lambda str, ignore1, ignore2: str if len(str) > 0 and str.find(' ') == -1 else None
+
+
+_usage = """{ --start | --stop | --restart | --status | --setup | --upgrade} ["instance name"]
+"""
+   
+_description = (""" 
+Controls and configures the Greenplum Performance Monitor web server.
+""")
+
+_help = ("""
+""")
+    
+#################
+def version():
+    print '%s version %s' % (script_name, script_version)
+    print 'lighttpd version: %s' % lighty_version()
+
+    
+#################
+def parse_command_line():
+    parser = OptParser(option_class=OptChecker,
+                description=' '.join(_description.split()))
+    parser.setHelp(_help)
+    parser.set_usage('%prog ' + _usage)
+    parser.remove_option('-h')
+    
+    parser.add_option('--start', action='store_true',
+                        help='Start the Greenplum Performance Monitor web server.')
+    parser.add_option('--stop', action='store_true',
+                      help='Stop the Greenplum Performance Monitor web server.')
+    parser.add_option('--restart', action='store_true',
+                      help='Restart the Greenplum Performance Monitor web server.')                        
+    parser.add_option('--status', action='store_true',
+                      help='Display the status of the Gerrnplum Performance Monitor web server.')
+    parser.add_option('--setup', action='store_true',
+                      help='Setup the Greenplum Performance Monitor web server.')
+    parser.add_option('--version', action='store_true',
+                       help='Display version information')
+    parser.add_option('--upgrade', action='store_true',
+                      help='Upgrade a previous installation of the Greenplum Performance Monitors web UI')
+        
+    parser.set_defaults(verbose=False,filters=[], slice=(None, None))
+    
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+
+    if options.version:
+        version()
+        sys.exit(0)
+    
+    # check for too many options
+    opt_count = 0
+    if options.start:
+        opt_count+=1
+    if options.stop:
+        opt_count+=1
+    if options.setup:
+        opt_count+=1
+    if options.upgrade:
+        opt_count+=1
+    if options.status:
+        opt_count+=1
+
+    if opt_count > 1:
+        parser.print_help()
+        parser.exit()
+    
+    return options, args
+
+#################
+def start_application(cmd):
+    pid = os.fork()
+    if not pid:
+        os.execve('/bin/sh', ['sh', '-c', cmd], os.environ)
+
+#################
+def get_instance_info(instance):
+    instance_info = {}
+    
+    instance_info['name'] = instance
+    instance_info['root_dir'] = os.path.join(GPPERFMONHOME, 'instances', instance)
+    instance_info['sessions_dir'] = os.path.join(GPPERFMONHOME, 'instances', instance, 'sessions')
+    instance_info['temp_dir'] = os.path.join(GPPERFMONHOME, 'instances', instance, 'tmp')
+    instance_info['log_dir'] = os.path.join(GPPERFMONHOME, 'instances', instance, 'logs')
+    instance_info['ui_conf_dir'] = os.path.join(GPPERFMONHOME, 'instances', instance, 'conf')
+    instance_info['ui_conf_file'] = os.path.join(GPPERFMONHOME, 'instances', instance, 'conf', 'gpperfmonui.conf')
+    instance_info['lighttpd_conf_file'] = os.path.join(GPPERFMONHOME, 'instances', instance, 'conf', 'lighttpd.conf')
+    instance_info['lighttpd_pid_file'] = os.path.join(GPPERFMONHOME, 'instances', instance, 'lighttpd.pid')
+    instance_info['web_root_dir'] = os.path.join(GPPERFMONHOME, 'instances', instance, 'web')
+    instance_info['web_lib_dir'] = os.path.join(GPPERFMONHOME, 'instances', instance, 'web', 'lib')
+    instance_info['web_static_dir'] = os.path.join(GPPERFMONHOME, 'instances', instance, 'web', 'static')
+    instance_info['web_templates_dir'] = os.path.join(GPPERFMONHOME, 'instances', instance, 'web', 'templates')
+    
+    return instance_info
+
+
+
+#################
+def lighty_version():
+    ver_string = 'Unknown'
+    try:
+        FILE = os.popen('%s -v' % LIGHTY_BIN)
+        if FILE:
+            ver_string = FILE.readline().split(' ')[0]
+            FILE.close()
+    except:
+        pass
+    
+    return ver_string
+
+
+#################
+def lighty_start(instance):
+    res = 0
+    cfg = ConfigParser.SafeConfigParser()
+    instance_info = get_instance_info(instance)
+    if lighty_status(instance) == 0:
+        # Read in the config so we can set env for remote connections if needed
+        try:
+            # parse configuration file
+            cfg.readfp(open(instance_info['ui_conf_file']))
+        except:
+            print 'Error loading configuration file %s for instance %s' % (instance_info['ui_conf_file'], instance)
+            return 0
+
+        # save off original values
+        old_pghost = os.getenv('PGHOST', '')
+        old_pgport = os.getenv('PGPORT', '')
+
+        # see if there are values in conf file
+        master_hostname = None
+        master_port = None
+        try:
+            master_hostname = cfg.get('WEB APP', 'master_hostname')
+        except:
+            pass
+        
+        try:
+            master_port = cfg.get('WEB APP', 'master_port')
+        except:
+            pass
+        
+        if master_hostname:
+            os.environ['PGHOST'] = master_hostname
+            
+        if master_port:
+            os.environ['PGPORT'] = master_port
+
+        start_application('%s -f "%s" -m "%s"' % (LIGHTY_BIN, instance_info['lighttpd_conf_file'], os.path.join(GPPERFMONHOME, 'lib')))
+        time.sleep(1)
+        
+        # restore the original values
+        os.environ['PGHOST'] = old_pghost
+        os.environ['PGHOST'] = old_pgport
+        
+    return lighty_status(instance)
+
+
+#################
+def lighty_stop(instance):
+    instance_info = get_instance_info(instance)
+    if lighty_status(instance) == 1:
+        try:
+            FILE = open(instance_info['lighttpd_pid_file'], 'r')
+            pid = FILE.readline()
+            FILE.close()
+            FILE = os.popen('ps -p %s 2>/dev/null' % pid)
+            FILE.readline()
+            line = FILE.readline()
+            FILE.close()
+            if line.find('lighttpd') != -1:
+                os.kill(int(pid), signal.SIGTERM)
+            
+            # lighty shuts down quickly, but give it a little bit of time.
+            time.sleep(1)
+        except:
+            return lighty_status()
+        
+    # clean up session info
+    try:
+        for dir in os.listdir(instance_info['sessions_dir']):
+            shutil.rmtree(os.path.join(instance_info['sessions_dir'], dir))
+    except Exception, msg:
+        pass
+
+    # clean up lighttpd's folder used for compression
+    try:
+        shutil.rmtree(os.path.join(instance_info['temp_dir'], 'lighttpd'))
+    except:
+        pass
+
+    return lighty_status(instance)
+
+#################
+def lighty_restart(instance):
+    if lighty_status(instance) == RUNNING:
+        lighty_stop(instance)
+    lighty_start(instance)
+
+
+#################
+def lighty_status(instance):
+    status = STOPPED
+    instance_info = get_instance_info(instance)
+    try:
+        FILE = open(instance_info['lighttpd_pid_file'], 'r')
+        pid = FILE.readline()
+        FILE.close()
+        FILE = os.popen('ps -p %s 2>/dev/null' % pid)
+        FILE.readline()
+        line = FILE.readline()
+        FILE.close()
+        if line.find('lighttpd') != -1:
+            status = RUNNING
+    except:
+        pass
+
+    return status
+
+#################
+def webui_setup():
+    help = """An instance name is used by the Greenplum Performance monitor as
+a way to uniquely identify a Greenplum Database that has the monitoring
+components installed and configured.  This name is also used to control
+specific instances of the Greenplum Performance monitors web UI.  Instance
+names cannot contain spaces."""
+    
+    instance_name = ask_input(help, 'Please enter a new instance name', '', 'default', len_nospace_validator, None)
+    instance_info = get_instance_info(instance_name)
+
+    # defaults for webapi
+    server_name_default = '[server name to display]'
+    allow_trust_logon_default = '[no|yes] - setting to yes is insecure and only for testing'
+
+    config = ConfigParser.ConfigParser()
+    config.add_section('WEB APP')
+    config.set('WEB APP', '#allow_trust_logon', allow_trust_logon_default)
+
+    help = """The web component of the Greenplum Performance Monitor can connect to a
+monitor database on a remote Greenplum Database."""
+
+    yn = ask_yesno(help, '\nIs the master host for the Greenplum Database remote?', 'N')
+    if yn:
+        config.set('WEB APP', 'remote', True)
+        master_hostname = ask_input(None, 'What is the hostname of the master', '', '', len_validator, None)
+        config.set('WEB APP', 'master_hostname', master_hostname)
+        config.set('WEB APP', 'server_name', master_hostname)
+    else:
+        help = """The display name is shown in the web interface and does not need to be
+a hostname.
+        """
+        display_name = ask_input(help, 'What would you like to use for the display name for this instance', 
+                                 '', 'Greenplum Database', len_validator, None)
+        config.set('WEB APP', 'server_name', display_name)
+
+    pgport = int(os.getenv('PGPORT', 5432))
+    master_port = ask_int(None, 'What port does the Greenplum Database use?', '', pgport, 1, 65535)       
+    config.set('WEB APP', 'master_port', master_port)
+            
+    setup_instance_directory(instance_name)
+
+    enable_ssl = 'disable'
+    
+    #TODO: check available ports?
+    lighty_port = 28080
+
+    #lighty conf
+    #TODO: log location change
+    lighty_access_log = os.path.join(instance_info['log_dir'], 'lighttpd-access.log')
+    lighty_error_log = os.path.join(instance_info['log_dir'], 'lighttpd-error.log')
+
+    help = """The Greenplum Performance Monitor runs a small web server for the UI and web API.  
+This web server by default runs on port 28080, but you may specify any available port."""
+    lighty_port = ask_int(help, 'What port would you like the web server to use for this instance?', '', 28080, 1, 65534)
+
+    ssl_cert = ''
+
+    help = """Users logging in to the Performance Monitor must provide database user
+credentials.  In order to protect user names and passwords, it is recommended
+that SSL be enabled."""
+
+    yn = ask_yesno(help, '\nDo you want to enable SSL for the Web API', 'Y')
+    if yn:
+        ret = generate_cert(os.path.join(instance_info['ui_conf_dir'], 'cert.pem'))
+        if ret:
+            enable_ssl = 'enable'
+            ssl_cert = os.path.join(instance_info['ui_conf_dir'], 'cert.pem')
+        else:
+            print 'Failed to generate SSL certificate.  SSL will be disabled.'
+
+    lighty_conf = generate_lighty_conf(instance_info, lighty_port, lighty_access_log, lighty_error_log,
+                                       os.path.join(instance_info['web_root_dir'], 'gpmonws.py'), 
+                                       enable_ssl, ssl_cert)
+
+    try:
+        FILE = open(instance_info['lighttpd_conf_file'], 'w')
+        FILE.writelines(lighty_conf)
+        FILE.close()
+        print '\nDone writing lighttpd configuration to %s' % instance_info['lighttpd_conf_file']
+    except (errno, errstr):
+        print 'Error: Failed to write lighttpd configuration file to %s' % instance_info['lighttpd_conf_file']
+        print errstr
+        sys.exit(1)
+
+    try:
+        FILE = open(instance_info['ui_conf_file'], 'w')
+        config.write(FILE)
+        FILE.close()
+        print 'Done writing web UI configuration to %s' % instance_info['ui_conf_file']
+    except (errno, errstr):
+        print 'Error: Failed to write gpperfmon configuration to %s' % instance_info['ui_conf_file']
+        print errstr
+        sys.exit(1)
+
+    webui_url = ''
+    if enable_ssl == 'enable':
+        webui_url = 'https://'
+    else:
+        webui_url = 'http://'
+    webui_url = webui_url + socket.gethostname() + ':' + str(lighty_port) + '/'
+    #TODO: print the instance name.
+    print '\nGreenplum Performance Monitor UI configuration is now complete.  If'
+    print 'at a later date you want to change certain parameters, you can '
+    print 'either re-run \'gpperfmon --setup\' or edit the configuration file'
+    print 'located at ' + instance_info['ui_conf_file'] + '.'
+    print '\nYou can now start the web UI for this instance by running'
+    print '\'gpperfmon --start "' + instance_info['name'] + '"\'.'
+    print 'The web UI for this instance is available at %s' % webui_url
+      
+    
+#################
+def setup_instance_directory(instance_name):
+    instance_info = get_instance_info(instance_name)
+    
+    try:
+        os.mkdir(instance_info['root_dir'])
+    except OSError:
+        pass #dir exists
+
+    try:
+        os.mkdir(instance_info['sessions_dir'])
+    except OSError:
+        pass #dir exists
+
+    try:
+        os.mkdir(instance_info['temp_dir'])
+    except OSError:
+        pass #dir exists
+
+    try:
+        os.mkdir(instance_info['log_dir'])
+    except OSError:
+        pass #dir exists
+    
+    try:
+        os.mkdir(instance_info['ui_conf_dir'])
+    except OSError:
+        pass #dir exists
+
+    try:
+        os.mkdir(instance_info['web_root_dir'])
+    except OSError:
+        pass #dir exists
+
+    try:
+        if os.path.islink(instance_info['web_lib_dir']):
+            os.unlink(instance_info['web_lib_dir'])
+        os.symlink(os.path.join(GPPERFMONHOME, 'www', 'lib'), instance_info['web_lib_dir'])
+    except OSError, detail:
+        print 'Error linking www/lib directory: %s' % detail
+        sys.exit(1)
+
+    try:
+        if os.path.islink(instance_info['web_static_dir']):
+            os.unlink(instance_info['web_static_dir'])
+        os.symlink(os.path.join(GPPERFMONHOME, 'www', 'static'), instance_info['web_static_dir'])
+    except OSError, detail:
+        print 'Error linking www/static directory: %s' % detail
+        sys.exit(1)
+
+    try:
+        if os.path.islink(instance_info['web_templates_dir']):
+            os.unlink(instance_info['web_templates_dir'])
+        os.symlink(os.path.join(GPPERFMONHOME, 'www', 'templates'), instance_info['web_templates_dir'])
+    except OSError, detail:
+        print 'Error linking www/templates directory: %s' % detail
+        sys.exit(1)
+
+    try:
+        if os.path.islink(os.path.join(instance_info['web_root_dir'], 'gpmonws.py')):
+            os.unlink(os.path.join(instance_info['web_root_dir'], 'gpmonws.py'))
+        os.symlink(os.path.join(GPPERFMONHOME,'www', 'gpmonws.py'), os.path.join(instance_info['web_root_dir'], 'gpmonws.py'))
+    except OSError, detail:
+        print 'Error linking www/gpmonws.py: %s' % detail
+        sys.exit(1)  
+
+#################
+def generate_lighty_conf(instance_info, port, lighty_access_log, 
+                         lighty_err_log, webpybin, usessl, certpath):
+    # TODO: by instance
+    fcgisocket = os.path.join(instance_info['root_dir'], 'perfmon.fastcgi.socket')
+    return '''server.modules = (
+    "mod_rewrite",
+    "mod_fastcgi",
+    "mod_compress",
+    "mod_accesslog" )
+
+server.document-root = "%s"
+server.pid-file = "%s"
+server.errorlog = "%s"
+
+mimetype.assign = (
+  ".pdf"          =>      "application/pdf",
+  ".sig"          =>      "application/pgp-signature",
+  ".spl"          =>      "application/futuresplash",
+  ".class"        =>      "application/octet-stream",
+  ".ps"           =>      "application/postscript",
+  ".torrent"      =>      "application/x-bittorrent",
+  ".dvi"          =>      "application/x-dvi",
+  ".gz"           =>      "application/x-gzip",
+  ".pac"          =>      "application/x-ns-proxy-autoconfig",
+  ".swf"          =>      "application/x-shockwave-flash",
+  ".tar.gz"       =>      "application/x-tgz",
+  ".tgz"          =>      "application/x-tgz",
+  ".tar"          =>      "application/x-tar",
+  ".zip"          =>      "application/zip",
+  ".mp3"          =>      "audio/mpeg",
+  ".m3u"          =>      "audio/x-mpegurl",
+  ".wma"          =>      "audio/x-ms-wma",
+  ".wax"          =>      "audio/x-ms-wax",
+  ".ogg"          =>      "application/ogg",
+  ".wav"          =>      "audio/x-wav",
+  ".gif"          =>      "image/gif",
+  ".jpg"          =>      "image/jpeg",
+  ".jpeg"         =>      "image/jpeg",
+  ".png"          =>      "image/png",
+  ".xbm"          =>      "image/x-xbitmap",
+  ".xpm"          =>      "image/x-xpixmap",
+  ".xwd"          =>      "image/x-xwindowdump",
+  ".css"          =>      "text/css",
+  ".html"         =>      "text/html",
+  ".htm"          =>      "text/html",
+  ".js"           =>      "text/javascript",
+  ".asc"          =>      "text/plain",
+  ".c"            =>      "text/plain",
+  ".cpp"          =>      "text/plain",
+  ".log"          =>      "text/plain",
+  ".conf"         =>      "text/plain",
+  ".text"         =>      "text/plain",
+  ".txt"          =>      "text/plain",
+  ".dtd"          =>      "text/xml",
+  ".xml"          =>      "text/xml",
+  ".mpeg"         =>      "video/mpeg",
+  ".mpg"          =>      "video/mpeg",
+  ".mov"          =>      "video/quicktime",
+  ".qt"           =>      "video/quicktime",
+  ".avi"          =>      "video/x-msvideo",
+  ".asf"          =>      "video/x-ms-asf",
+  ".asx"          =>      "video/x-ms-asf",
+  ".wmv"          =>      "video/x-ms-wmv",
+  ".bz2"          =>      "application/x-bzip",
+  ".tbz"          =>      "application/x-bzip-compressed-tar",
+  ".tar.bz2"      =>      "application/x-bzip-compressed-tar"
+ )
+
+accesslog.filename = "%s"
+
+$HTTP["url"] =~ "\.pdf$" {
+  server.range-requests = "disable"
+}
+
+static-file.exclude-extensions = ( ".php", ".pl", ".fcgi", ".py" )
+
+server.port = %d
+
+compress.cache-dir = "%s"
+compress.filetype = ("text/plain", "text/html", "text/xml")
+
+fastcgi.server = ( "/gpmonws.py" =>
+((
+   "socket" => "%s",
+   "bin-path" => "%s",
+   "max-procs" => 1,
+   "bin-environment" => (
+     "REAL_SCRIPT_NAME" => ""
+   ),
+   "check-local" => "disable"
+))
+)
+
+ url.rewrite-once = (
+   "^/favicon.ico$" => "/static/favicon.ico",
+   "^/static/(.*)$" => "/static/$1",
+   "^/(.*)$" => "/gpmonws.py/$1",
+ )
+
+#### SSL engine
+ssl.engine = "%s"
+ssl.pemfile = "%s"
+''' % (instance_info['web_root_dir'], 
+       instance_info['lighttpd_pid_file'], 
+       lighty_err_log, lighty_access_log, 
+       port, instance_info['temp_dir'], 
+       fcgisocket, webpybin, usessl, certpath)
+
+
+#################
+def webui_upgrade():
+    master_data_directory = os.getenv('MASTER_DATA_DIRECTORY')
+    if not master_data_directory:
+        print 'Error - MASTER_DATA_DIRECTORY environment variable not set.'
+        sys.exit(1)
+        
+    gpperfmon_loc = os.path.dirname(os.path.abspath(os.path.join(sys.argv[0], '..')))
+    
+    if gpperfmon_loc != GPPERFMONHOME:
+        print 'Error - GPPERFMONHOME does not match the location of the new version'
+        print '        Make sure that gpperfmon_path.sh from the new installation'
+        print '        has been sourced correctly and try running the upgrade again.'
+        sys.exit(1)
+
+    # setup a new instance
+    setup_instance_directory('default')
+    instance_info = get_instance_info('default')
+    # copy needed file from previous installation
+    gpperfmon_dir = os.path.join(master_data_directory, 'gpperfmon')
+    try:
+        shutil.rmtree(instance_info['ui_conf_dir'])
+        shutil.copytree(os.path.join(gpperfmon_dir, 'conf'), instance_info['ui_conf_dir'])
+    except Exception, msg:
+        print 'Error - Failed to copy configuration directory from previous installation:'
+        print '        %s' % msg
+        sys.exit(1)
+
+    # fix up possible path problems and update file
+    sed_cmd = 'sed "s/\/\/*/\//g" %s | sed  "s/%s/%s/g" | sed "s/\/tmp.*fastcgi.socket/%s/g" > %s' % (
+                                                                 instance_info['lighttpd_conf_file'],
+                                                                 gpperfmon_dir.replace('/', '\/'),
+                                                                 instance_info['root_dir'].replace('/', '\/'),
+                                                                 os.path.join(instance_info['root_dir'], 'perfmon.fastcgi.socket').replace('/', '\/'),
+                                                                 instance_info['lighttpd_conf_file'] + '.new')
+
+    ret = os.system(sed_cmd)
+    if ret:
+        print 'Error - There was an error updating the lighttpd configuration file.'
+        sys.exit(1)
+    
+    shutil.move(os.path.join(instance_info['ui_conf_dir'], 'lighttpd.conf.new'), instance_info['lighttpd_conf_file'])
+    # in this version the conf file name has changed.
+    shutil.move(os.path.join(instance_info['ui_conf_dir'], 'gpperfmon.conf'), instance_info['ui_conf_file'])
+    
+    # cleanup unneeded files from the MASTER_DATA_DIRECTORY
+    try:
+        os.unlink(os.path.join(master_data_directory, 'gpperfmon', 'conf', 'lighttpd.conf'))
+    except Exception, msg:
+        print 'Warning - Error while trying to delete %s' % os.path.join(master_data_directory, 'gpperfmon', 'conf', 'lighttpd.conf')
+        print msg
+    try:
+        os.unlink(os.path.join(master_data_directory, 'gpperfmon', 'conf', 'cert.pem'))
+    except Exception, msg:
+        print 'Warning - Error while trying to delete %s' % os.path.join(master_data_directory, 'gpperfmon', 'conf', 'cert.pem')
+        print msg
+
+    print 'Upgrade finished.  The Greenplum Performance Monitor web UI can be started'
+    print 'by running gpperfmon \'--start\'.'
+
+#################
+def generate_cert(destfile):
+    cert_gen_cmd = '%s req -config %s -new -x509 -keyout %s -out %s -days 3650 -nodes' % (OPENSSL_BIN, OPENSSL_CNF, destfile, destfile)
+    res = os.system(cert_gen_cmd)
+    return (res == 0)
+
+
+#################
+def get_instances():
+    instances = []
+    instance_dir = os.path.join(GPPERFMONHOME, 'instances')
+    for item in os.listdir(instance_dir):
+        if os.path.isdir(os.path.join(instance_dir, item)):
+            instance_info = get_instance_info(item)
+            if os.path.isfile(instance_info['ui_conf_file']):
+                instances.append(item)
+
+    return instances
+
+
+#################
+# script begin
+
+# read in instances that have been configured
+valid_instances = get_instances()
+
+# parse the command line
+options, instances = parse_command_line()
+
+# if we weren't given a specific instance, do the op on all of them.
+if not instances:
+    instances = valid_instances
+
+# validate the instance names given
+for instance in instances:
+    if instance not in valid_instances:
+        print 'Error: %s is an invalid instance name' % instance
+        sys.exit(1)
+
+try:
+    if options.start:
+        for instance in instances:
+            print 'Starting instance %s...' % instance,
+            sys.stdout.flush()
+            lighty_start(instance)
+            print 'Done.'
+    elif options.stop:
+        for instance in instances:
+            print 'Stopping instance %s...' % instance,
+            sys.stdout.flush()
+            lighty_stop(instance)
+            print 'Done.'
+    elif options.restart:
+        for instance in instances:
+            print 'Restarting instance %s...' % instance,
+            sys.stdout.flush()
+            lighty_restart(instance)
+            print 'Done.'
+    elif options.status:
+        for instance in instances:
+            status = lighty_status(instance)
+            if status == RUNNING:
+                print 'Greenplum Performance Monitor UI for instance \'%s\' - [RUNNING]' % instance
+            else:
+                print 'Greenplum Performance Monitor UI for instance \'%s\' - [STOPPED]' % instance
+    elif options.setup:
+        webui_setup()
+    elif options.upgrade:
+        webui_upgrade()
+
+except KeyboardInterrupt:
+    sys.exit('User canceled')
