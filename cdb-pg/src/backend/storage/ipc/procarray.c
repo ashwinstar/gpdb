@@ -1641,36 +1641,34 @@ DisplayXidCache(void)
 
 #endif   /* XIDCACHE_DEBUG */
 
-PGPROC *FindProcByGpSessionId(long gp_session_id)
+PGPROC *
+FindProcByGpSessionId(long gp_session_id)
 {
-		/* Find the guy who should manage our locks */
-		ProcArrayStruct *arrayP = procArray;
-		int			index;
+	/* Find the guy who should manage our locks */
+	ProcArrayStruct *arrayP = procArray;
+	int			index;
 
-		Assert(gp_session_id > 0);
+	Assert(gp_session_id > 0);
 		
-		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
-		for (index = 0; index < arrayP->numProcs; index++)
-		{
-			PGPROC	   *proc = arrayP->procs[index];
+	for (index = 0; index < arrayP->numProcs; index++)
+	{
+		PGPROC	   *proc = arrayP->procs[index];
 			
-			if (proc->pid == MyProc->pid)
-				continue;
+		if (proc->pid == MyProc->pid)
+			continue;
 				
-			if (!proc->mppIsWriter)
-				continue;
+		if (!proc->mppIsWriter)
+			continue;
 				
-			//if (proc->pid == 0)
-			//	continue;			 /* skip prepared transactions ? */
-			if (proc->mppSessionId == gp_session_id)
-			{
-				 
-				LWLockRelease(ProcArrayLock);
-				return proc;
-			}
+		if (proc->mppSessionId == gp_session_id)
+		{
+			LWLockRelease(ProcArrayLock);
+			return proc;
 		}
-		
-		LWLockRelease(ProcArrayLock);
-		return NULL;
 	}
+		
+	LWLockRelease(ProcArrayLock);
+	return NULL;
+}
