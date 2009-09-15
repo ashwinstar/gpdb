@@ -1002,13 +1002,15 @@ ECPG_informix_set_var(int number, void *pointer, int lineno)
 	{
 		struct sqlca_t *sqlca = ECPGget_sqlca();
 
+		/* replace constant for strncpy() below to avoid bogus warning from gcc-4.1.1 on kite12 */
+		char my_msg[6]="YE001";
+
 		sqlca->sqlcode = ECPG_OUT_OF_MEMORY;
-		strncpy(sqlca->sqlstate, "YE001", sizeof("YE001"));
+		strncpy(sqlca->sqlstate, my_msg, sizeof(my_msg));
 		snprintf(sqlca->sqlerrm.sqlerrmc, sizeof(sqlca->sqlerrm.sqlerrmc), "Out of memory in line %d.", lineno);
 		sqlca->sqlerrm.sqlerrml = strlen(sqlca->sqlerrm.sqlerrmc);
 		/* free all memory we have allocated for the user */
 		ECPGfree_auto_mem();
-		(void) sqlca;  // Attempt to work around gcc 4.1.1 bug on Kite12 which gives spurious warning "computed value not used".
 	}
 	else
 	{
