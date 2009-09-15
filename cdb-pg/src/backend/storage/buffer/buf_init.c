@@ -107,6 +107,9 @@ InitBufferPool(void)
 	BufferBlocks = (char *)
 		ShmemInitStruct("Buffer Blocks", bufferBlocksTotalSize, &foundBufs);
 
+	/* GPDB: Init the buffer memory to something to help check for bugs */
+	memset(BufferBlocks,0xFE,bufferBlocksTotalSize);
+
 	if (foundDescs || foundBufs)
 	{
 		/* both should be present or neither */
