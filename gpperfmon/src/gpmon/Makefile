@@ -10,7 +10,7 @@ EXT_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/
 LIBPQ_DIR=$(BLD_TOP)/cdb-pg/src/interfaces/libpq/
 
 osx105_x86_COPT=-Wl,-search_paths_first
-CC=$(strip gcc $(BLD_CFLAGS))
+CC=$(strip $(BLD_CC) $(BLD_CFLAGS))
 COPT=$($(BLD_ARCH)_COPT)
 OPT=-g -O3 -Wall
 ifneq ($(CUSTOM_COPT),)

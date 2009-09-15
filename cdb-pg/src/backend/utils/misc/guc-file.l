@@ -18,6 +18,8 @@
 #include "storage/fd.h"
 #include "utils/guc.h"
 
+#define unify_version(a,b,c) ((a<<16)+(b<<8)+c)
+#if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35)
 int GUC_yylex_destroy  (void);
 int GUC_yyget_lineno  (void);
 FILE *GUC_yyget_in  (void);
@@ -30,6 +32,7 @@ void GUC_yyset_out (FILE *  out_str );
 int GUC_yyget_debug  (void);
 void GUC_yyset_debug (int  bdebug );
 int GUC_yylex_destroy  (void);
+#endif
 
 
 

@@ -49,6 +49,8 @@
 #include "settings.h"
 #include "variables.h"
 
+#define unify_version(a,b,c) ((a<<16)+(b<<8)+c)
+#if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35)
 int yyget_lineno  (void);
 FILE *yyget_in  (void);
 FILE *yyget_out  (void);
@@ -60,6 +62,7 @@ void yyset_out (FILE *  out_str );
 int yyget_debug  (void);
 void yyset_debug (int  bdebug );
 int yylex_destroy  (void);
+#endif
 
 
 

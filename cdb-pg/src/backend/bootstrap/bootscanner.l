@@ -36,7 +36,9 @@
 #include "storage/off.h"
 #include "utils/rel.h"
 
-#if YY_FLEX_SUBMINOR_VERSION < 35
+#define unify_version(a,b,c) ((a<<16)+(b<<8)+c)
+
+#if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35)
 /* These routines aren't used, but are defined to supress warnings from gcc */
 int boot_yyget_lineno  (void);
 FILE *boot_yyget_in  (void);

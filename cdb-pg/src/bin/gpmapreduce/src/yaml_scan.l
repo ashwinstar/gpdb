@@ -21,6 +21,8 @@
  * Setup prototypes since we build with -Wmissing-prototypes and flex isn't 
  * kind enough to generate them.
  */
+#define unify_version(a,b,c) ((a<<16)+(b<<8)+c)
+#if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35)
 int   yaml_scalar_yyget_lineno(void);
 FILE* yaml_scalar_yyget_in(void);
 FILE* yaml_scalar_yyget_out(void);
@@ -35,6 +37,7 @@ int   yaml_scalar_yyget_debug(void);
 void  yaml_scalar_yyset_debug(int);
 
 int     yaml_scalar_yylex_destroy(void);
+#endif
 
 %}
    /* 

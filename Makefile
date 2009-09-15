@@ -535,41 +535,14 @@ define tmpLOADERS_FILESET_BINEXT
 endef
 LOADERS_FILESET_BINEXT = $(strip $(tmpLOADERS_FILESET_BINEXT))
 
-# ship python on Linux, OSX, and Solaris
-aix5_ppc_32_PYTHON=/opt/pware
-aix5_ppc_64_PYTHON=/opt/pware
-osx104_x86_PYTHON=/opt/python-2.5.1
-osx105_x86_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
-rhel4_x86_32_PYTHON=/opt/python-2.5.1
-rhel4_x86_64_PYTHON=/opt/python-2.5.1
-rhel5_x86_32_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
-rhel5_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
-sol10_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
-sol10_x86_32_PYTHON=/opt/python32-2.5.1
-sol10_sparc_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
-sol10_sparc_32_PYTHON=/opt/python32-2.5.1
-sol9_sparc_32_PYTHON=/opt/python32-2.5.1
-sol8_sparc_32_PYTHON=/opt/python32-2.5.1
-suse10_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
-BLD_PYTHON=$($(BLD_ARCH)_PYTHON)
+# moved BLD_PYTHON definition and inclusion in path and library path to Makefile.global
 
+# define python file subset to ship by platform, as desired
 BLD_PYTHON_FILESET=.
 aix5_ppc_32_PYTHON_FILESET=bin/python* lib/python*
 aix5_ppc_64_PYTHON_FILESET=bin/python* lib/python*
 ifneq "$($(BLD_ARCH)_PYTHON_FILESET)" ""
 BLD_PYTHON_FILESET=$($(BLD_ARCH)_PYTHON_FILESET)
-endif
-
-# if PYTHON was specified above, use it for the build
-ifneq "$(BLD_PYTHON)" ""
-ifeq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
-tmpPATH=$(BLD_PYTHON)/bin:$(PATH)
-export PATH:=$(tmpPATH)
-tmpLD_LIBRARY_PATH=$(BLD_PYTHON)/lib:$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE))
-export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE):=$(tmpLD_LIBRARY_PATH)
-export PYTHONHOME=$(BLD_PYTHON)
-#$(warning $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE)))
-endif
 endif
 
 ifneq "$(findstring $(BLD_ARCH),win32 win64)" ""

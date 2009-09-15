@@ -4,6 +4,8 @@
 # This file controls which thirdparty libraries are made available to the build of our product(s).
 #
 
+# only load this file once
+ifeq "$(BLD_THIRDPARTY_DIR)" ""
 
 # ------------------------------------------------------------------------------------------------
 #
@@ -11,7 +13,10 @@
 #
 # ------------------------------------------------------------------------------------------------
 
-BLD_THIRDPARTY:=$(BLD_TOP)/ext
+# calculate BLD_TOP in absolute path form
+BLD_TOP_ABSOLUTE:=$(shell cd $(BLD_TOP) && pwd)
+
+BLD_THIRDPARTY:=$(BLD_TOP_ABSOLUTE)/ext
 ifeq "$(BLD_ARCH)" ""
 BLD_ARCH:=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
 endif
@@ -284,3 +289,5 @@ thirdparty-delete:
 thirdparty-revert:
 	p4 revert $(BLD_THIRDPARTY)/...
 	@echo "`date` -- INFO:  Files have been reverted."
+
+endif

@@ -7,7 +7,7 @@ include $(BLD_TOP)/Makefile.thirdparty
 
 # NO_M64 set in Makefile.global turns off default to 64-bit
 # here, select bitness we desire this build for gcc and ld
-CC=$(strip gcc $(BLD_CFLAGS))
+CC=$(strip $(BLD_CC) $(BLD_CFLAGS))
 
 GPCC=$(CURDIR)
 CDBINCL=-I$(GPCC)/../cdb-pg/src/include

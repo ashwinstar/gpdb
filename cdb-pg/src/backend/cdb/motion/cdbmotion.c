@@ -1272,3 +1272,4 @@ statRecvTuple(MotionNodeEntry * pMNEntry, ChunkSorterEntry * pCSEntry,
 			pCSEntry->stat_tuples_available--;
 	}
 }
+

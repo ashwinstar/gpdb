@@ -11,6 +11,18 @@ ifeq "$(BLD_ARCH)" "osx106_x86"
 export BLD_ARCH=osx105_x86
 endif
 
+# include thirdparty infrastructure which depends on WHERE_THE...
+BLD_WHERE_THE_LIBRARY_THINGS_ARE=LD_LIBRARY_PATH
+aix5_ppc_64_WHERE_THE_LIBRARY_THINGS_ARE=LIBPATH
+aix5_ppc_32_WHERE_THE_LIBRARY_THINGS_ARE=LIBPATH
+osx104_x86_WHERE_THE_LIBRARY_THINGS_ARE=DYLD_LIBRARY_PATH
+osx105_x86_WHERE_THE_LIBRARY_THINGS_ARE=DYLD_LIBRARY_PATH
+ifneq "$($(BLD_ARCH)_WHERE_THE_LIBRARY_THINGS_ARE)" ""
+BLD_WHERE_THE_LIBRARY_THINGS_ARE=$($(BLD_ARCH)_WHERE_THE_LIBRARY_THINGS_ARE)
+endif
+
+include $(BLD_TOP)/Makefile.thirdparty
+
 # get current working directory with symlinks maintained
 HERE:=$(shell pwd -L)
 
@@ -34,12 +46,15 @@ osx104_x86_CC=gcc-4.0
 ifneq "$($(BLD_ARCH)_CC)" ""
 BLD_CC=$($(BLD_ARCH)_CC)
 export CC=$(BLD_CC)
+export CPP=$(subst gcc,cpp,$(BLD_CC))
+export CXX=$(subst gcc,g++,$(BLD_CC))
 endif
 
 # take over the path
 ifneq "$(BLD_PATH_FIXED)" "true"
 aix5_ppc_64_PATH_PREPEND=/opt/freeware/bin
 aix5_ppc_32_PATH_PREPEND=/opt/freeware/bin
+osx105_x86_PATH_PREPEND=$(BLD_THIRDPARTY_BIN_DIR)
 rhel4_x86_32_PATH_PREPEND=/opt/python-2.5.1/bin
 sol10_x86_32_PATH_PREPEND=/opt/python32-2.5.1/bin
 sol10_sparc_64_PATH_PREPEND=/opt/gcc-4.1.1/bin
@@ -56,18 +71,6 @@ export PATH:=$(BLD_PATH_PREPEND):$(PATH)
 endif
 export BLD_PATH_FIXED=true
 endif
-ifeq "$(DISABLE_MAKE_WARNING)" ""
-$(warning PATH=$(PATH))
-endif
-
-BLD_WHERE_THE_LIBRARY_THINGS_ARE=LD_LIBRARY_PATH
-aix5_ppc_64_WHERE_THE_LIBRARY_THINGS_ARE=LIBPATH
-aix5_ppc_32_WHERE_THE_LIBRARY_THINGS_ARE=LIBPATH
-osx104_x86_WHERE_THE_LIBRARY_THINGS_ARE=DYLD_LIBRARY_PATH
-osx105_x86_WHERE_THE_LIBRARY_THINGS_ARE=DYLD_LIBRARY_PATH
-ifneq "$($(BLD_ARCH)_WHERE_THE_LIBRARY_THINGS_ARE)" ""
-BLD_WHERE_THE_LIBRARY_THINGS_ARE=$($(BLD_ARCH)_WHERE_THE_LIBRARY_THINGS_ARE)
-endif
 
 # take over the library search path
 aix5_ppc_64_LD_LIBRARY_PATH_PREPEND=/opt/freeware/lib
@@ -82,10 +85,42 @@ ifneq "$(BLD_LD_LIBRARY_PATH_PREPEND)" ""
 export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE):=$(BLD_LD_LIBRARY_PATH_PREPEND):$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE))
 endif
 export BLD_LD_LIBRARY_PATH_FIXED=true
+
+# specify python version to use for build-time and run-time
+aix5_ppc_32_PYTHON=/opt/pware
+aix5_ppc_64_PYTHON=/opt/pware
+osx104_x86_PYTHON=/opt/python-2.5.1
+osx105_x86_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
+rhel4_x86_32_PYTHON=/opt/python-2.5.1
+rhel4_x86_64_PYTHON=/opt/python-2.5.1
+rhel5_x86_32_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
+rhel5_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
+sol10_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
+sol10_x86_32_PYTHON=/opt/python32-2.5.1
+sol10_sparc_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
+sol10_sparc_32_PYTHON=/opt/python32-2.5.1
+sol9_sparc_32_PYTHON=/opt/python32-2.5.1
+sol8_sparc_32_PYTHON=/opt/python32-2.5.1
+suse10_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
+BLD_PYTHON=$($(BLD_ARCH)_PYTHON)
+
+# if PYTHON was specified above, use it for the build
+ifneq "$(BLD_PYTHON)" ""
+ifeq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
+tmpPATH=$(BLD_PYTHON)/bin:$(PATH)
+export PATH:=$(tmpPATH)
+tmpLD_LIBRARY_PATH=$(BLD_PYTHON)/lib:$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE))
+export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE):=$(tmpLD_LIBRARY_PATH)
+export PYTHONHOME=$(BLD_PYTHON)
+endif
+endif
+
 ifeq "$(DISABLE_MAKE_WARNING)" ""
+$(warning PATH=$(PATH))
 $(warning $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE)))
 endif
 
+# set MACOSX_DEPLOYMENT_TARGET to deal with new OSX versions ahead of our supported version(s)
 osx106_x86_MACOSX_DEPLOYMENT_TARGET=10.5
 osx105_x86_MACOSX_DEPLOYMENT_TARGET=10.5
 osx104_x86_MACOSX_DEPLOYMENT_TARGET=10.4
@@ -94,8 +129,9 @@ osx105_x86_DEPLOYMENT_SETTING=MACOSX_DEPLOYMENT_TARGET=$(osx105_x86_MACOSX_DEPLO
 osx104_x86_DEPLOYMENT_SETTING=MACOSX_DEPLOYMENT_TARGET=$(osx104_x86_MACOSX_DEPLOYMENT_SETTING)
 BLD_DEPLOYMENT_SETTING=$($(BLD_ARCH)_DEPLOYMENT_SETTING)
 ifneq "$(BLD_DEPLOYMENT_SETTING)" ""
-export MACOSX_DEPLOYMENT_SETTING=$($(BLD_ARCH)_MACOSX_DEPLOYMENT_SETTING)
-$(warning $(BLD_DEPLOYMENT_SETTING))
+export MACOSX_DEPLOYMENT_TARGET=$($(BLD_ARCH)_MACOSX_DEPLOYMENT_TARGET)
+$(warning BLD_ARCH=$(BLD_ARCH))
+$(warning MACOSX_DEPLOYMENT_TARGET=$(MACOSX_DEPLOYMENT_TARGET))
 endif
 
 # disable our gcc wrapper
