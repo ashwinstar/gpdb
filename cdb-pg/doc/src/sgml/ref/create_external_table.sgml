@@ -20,38 +20,41 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-CREATE EXTERNAL TABLE <replaceable class="PARAMETER">table_name</replaceable> (<replaceable class="PARAMETER">column_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [, ...])
-      LOCATION ('file://<replaceable class="PARAMETER">seghost</replaceable>[:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
-          | ('gpfdist://<replaceable class="PARAMETER">filehost</replaceable>[:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/file_pattern</replaceable>' [, ...])
+CREATE EXTERNAL TABLE table_name ( column_name data_type [, ...]
+                                  | LIKE other_table )
+      LOCATION ('file://seghost[:port]/path/file' [, ...])
+          | ('gpfdist://filehost[:port]/file_pattern' [, ...])
       FORMAT 'TEXT | CSV' 
-             [( [DELIMITER [AS] '<replaceable class="PARAMETER">delimiter</replaceable>' | '<replaceable class="PARAMETER">OFF</replaceable>']
-               [NULL [AS] '<replaceable class="PARAMETER">null string</replaceable>']
-               [ESCAPE [AS] '<replaceable class="PARAMETER">escape</replaceable>' | 'OFF']
+             [( [DELIMITER [AS] 'delimiter' | 'OFF']
+               [NULL [AS] 'null string']
+               [ESCAPE [AS] 'escape' | 'OFF']
                [HEADER]
-               [QUOTE [AS] '<replaceable class="PARAMETER">quote</replaceable>'] 
-               [FORCE NOT NULL <replaceable class="PARAMETER">column</replaceable> [, ...]]
-			   [FILL MISSING FIELDS] )]
-	  [ ENCODING '<replaceable class="parameter">encoding</replaceable>' ]
-	  [ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS | PERCENT] ] ]
+               [QUOTE [AS] 'quote'] 
+               [FORCE NOT NULL column [, ...]]
+               [FILL MISSING FIELDS] )]
+     [ ENCODING 'encoding' ]
+     [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
+       [ROWS | PERCENT] ]
 
-CREATE EXTERNAL WEB TABLE <replaceable class="PARAMETER">table_name</replaceable> (<replaceable class="PARAMETER">column_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [, ...])
-      LOCATION ('http://<replaceable class="PARAMETER">webhost</replaceable>[:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
-    | EXECUTE '<replaceable class="PARAMETER">command</replaceable>' 
-	                  [ ON ALL 
-					      | MASTER
-                          | <replaceable class="PARAMETER">number_of_segments</replaceable> 
-                          | HOST ['<replaceable class="PARAMETER">segment_hostname</replaceable>'] 
-                          | SEGMENT <replaceable class="PARAMETER">segment_dbid</replaceable> ]
+CREATE EXTERNAL WEB TABLE table_name ( column_name data_type [, ...]
+                                       | LIKE other_table )
+      LOCATION ('http://webhost[:port]/path/file' [, ...])
+    | EXECUTE 'command' [ON ALL 
+                          | MASTER
+                          | number_of_segments 
+                          | HOST ['segment_hostname'] 
+                          | SEGMENT segment_id ]
       FORMAT 'TEXT | CSV' 
-             [( [DELIMITER [AS] '<replaceable class="PARAMETER">delimiter</replaceable>']
-               [NULL [AS] '<replaceable class="PARAMETER">null string</replaceable>']
-               [ESCAPE [AS] '<replaceable class="PARAMETER">escape</replaceable>' | 'OFF']
+             [( [DELIMITER [AS] 'delimiter' | 'OFF']
+               [NULL [AS] 'null string']
+               [ESCAPE [AS] 'escape' | 'OFF']
                [HEADER]
-               [QUOTE [AS] '<replaceable class="PARAMETER">quote</replaceable>'] 
-               [FORCE NOT NULL <replaceable class="PARAMETER">column</replaceable> [, ...]] 
-			   [FILL MISSING FIELDS] )]
-	 [ ENCODING '<replaceable class="parameter">encoding</replaceable>' ]
-	 [ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS | PERCENT] ]
+               [QUOTE [AS] 'quote'] 
+               [FORCE NOT NULL column [, ...] )]
+               [FILL MISSING FIELDS]
+     [ ENCODING 'encoding' ]
+     [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
+       [ROWS | PERCENT] ]
 </synopsis>
 
  </refsynopsisdiv>
