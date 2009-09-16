@@ -80,8 +80,6 @@ COPY { <replaceable class="parameter">tablename</replaceable> [ ( <replaceable c
 
           [ BINARY ]
 
-          [ HEADER ]
-
           [ OIDS ]
 
           [ DELIMITER [ AS ] '<replaceable class="parameter">delimiter</replaceable>' ]
