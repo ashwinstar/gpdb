@@ -35,7 +35,7 @@ NETPERF_DIR=netperf-2.4.3
 netperf:
 	@echo "--- netperf"
 	if [ ! -f $(SRC)/src/$(NETPERF_DIR)/Makefile ]; then \
-		(cd $(SRC)/src && gzip -d -c $(NETPERF_DIR).tar.gz | tar xvf - && cd $(NETPERF_DIR) && CC="$(strip $(BLD_CC_) $(BLD_CFLAGS))" LDFLAGS="$(BLD_LDFLAGS)" ./configure) \
+		(cd $(SRC)/src && gzip -d -c $(NETPERF_DIR).tar.gz | tar xvf - && cd $(NETPERF_DIR) && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))" LDFLAGS="$(BLD_LDFLAGS)" ./configure) \
 	fi
 	cd $(SRC)/src/$(NETPERF_DIR) && $(MAKE)
 	cp $(SRC)/src/$(NETPERF_DIR)/src/netperf $(SRC)/src/$(NETPERF_DIR)/src/netserver lib/
@@ -46,7 +46,7 @@ netperf:
 STREAM_DIR=$(SRC)/src/stream
 stream:
 	@echo "--- stream"
-	cd $(STREAM_DIR) && NO_M64=TRUE "$(strip $(BLD_CC) $(BLD_CFLAGS))" stream.c -o stream
+	cd $(STREAM_DIR) && NO_M64=TRUE $(strip $(BLD_CC) $(BLD_CFLAGS)) stream.c -o stream
 	cp $(STREAM_DIR)/stream lib/stream 
 
 #
@@ -55,7 +55,7 @@ stream:
 PYGRESQL_VERSION=4.0
 PYGRESQL_DIR=PyGreSQL-$(PYGRESQL_VERSION)
 
-osx105_x86_PYGRESQL_BIN_MAPPINGS_DIR:=$(shell pwd)/ext/osx105_x86/bin_mappings:
+osx105_x86_PYGRESQL_BIN_MAPPINGS_DIR:=$(BLD_THIRDPARTY_DIR)/bin_mappings:
 PYGRESQL_BIN_MAPPINGS_DIR=$($(BLD_ARCH)_PYGRESQL_BIN_MAPPINGS_DIR)
 
 pygresql:
@@ -86,7 +86,7 @@ paramiko:
 PYCRYPTO_VERSION=2.0.1
 PYCRYPTO_DIR=pycrypto-$(PYCRYPTO_VERSION)
 
-osx105_x86_PYCRYPTO_BIN_MAPPINGS_DIR:=$(shell pwd)/ext/osx105_x86/bin_mappings:
+osx105_x86_PYCRYPTO_BIN_MAPPINGS_DIR:=$(BLD_THIRDPARTY_DIR)/bin_mappings:
 PYCRYPTO_BIN_MAPPINGS_DIR=$($(BLD_ARCH)_PYCRYPTO_BIN_MAPPINGS_DIR)
 
 pycrypto:
