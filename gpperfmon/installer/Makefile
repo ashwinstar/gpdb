@@ -47,7 +47,7 @@ all:
 	cp -rp $(BLD_TOP)/gpMgmt/bin/gppylib .tmp/lib/python
 	cp -rp $(BLD_TOP)/gpMgmt/bin/ext/* .tmp/lib/python
 	mkdir -p .tmp/ext/python
-	cp -rp $(BLD_TOP)/ext/$(BLD_ARCH)/python-2.6.2/* .tmp/ext/python
+	cp -rp $(BLD_PYTHON_PERFMON)/* .tmp/ext/python
 	cp -R $(GPMONWS_DIR)/* .tmp/www
 	cp -R $(GPMONUI_DIR)/bin-release/* .tmp/www/static
 	cp -R $(LIGHTY_DIR)/* .tmp
