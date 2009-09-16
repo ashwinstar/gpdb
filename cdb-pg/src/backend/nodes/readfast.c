@@ -911,6 +911,25 @@ _readAConst(const char ** str)
 }
 
 
+static A_Indices *
+_readA_Indices(const char ** str)
+{
+	READ_LOCALS(A_Indices);
+	READ_NODE_FIELD(lidx);
+	READ_NODE_FIELD(uidx);
+	READ_DONE();
+}
+
+static A_Indirection *
+_readA_Indirection(const char ** str)
+{
+	READ_LOCALS(A_Indirection);
+	READ_NODE_FIELD(arg);
+	READ_NODE_FIELD(indirection);
+	READ_DONE();
+}
+
+
 static A_Expr *
 _readAExpr(const char ** str)
 {
@@ -3820,13 +3839,14 @@ readNodeBinary(const char ** str)
 			case T_A_Const:
 				return_value = _readAConst(str);
 				break;
-#if 0
 			case T_A_Indices:
 				return_value = _readA_Indices(str);
 				break;
 			case T_A_Indirection:
 				return_value = _readA_Indirection(str);
 				break;
+
+#if 0
 			case T_ResTarget:
 				return_value = _readResTarget(str);
 				break;
