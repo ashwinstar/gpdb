@@ -85,4 +85,4 @@ all:
 
 clean:
 	rm -rf .tmp
-	rm -f greenplum-perfmon-*.tar.gz greenplum-perfmon-web-*.bin greenplum-perfmon-web-*.zip
+	rm -f greenplum-perfmon-*.tar.gz greenplum-perfmon-*.bin greenplum-perfmon-*.zip
