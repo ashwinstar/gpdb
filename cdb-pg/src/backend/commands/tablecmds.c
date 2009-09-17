@@ -387,7 +387,7 @@ static void update_ri_trigger_args(Oid relid,
 					   const char *newname,
 					   bool fk_scan,
 					   bool update_relname);
-static Datum transformLocationUris(List *locs, bool isweb);
+static Datum transformLocationUris(List *locs, bool isweb, bool iswritable);
 static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
 static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols, bool iswritable);
@@ -877,7 +877,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 
 			/* Parse and validate URI strings (LOCATION clause) */
 			locationUris = transformLocationUris(exttypeDesc->location_list,
-												 isweb);
+												 isweb, iswritable);
 			break;
 
 		case EXTTBL_TYPE_EXECUTE:
@@ -20054,7 +20054,7 @@ AtEOSubXact_on_commit_actions(bool isCommit, SubTransactionId mySubid,
  * The result is a text array but we declare it as Datum to avoid
  * including array.h in analyze.h.
  */
-static Datum transformLocationUris(List *locs, bool isweb)
+static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 {
 	ListCell   *cell;
 	ArrayBuildState *astate;
@@ -20181,6 +20181,17 @@ static Datum transformLocationUris(List *locs, bool isweb)
 					errmsg("http URI\'s can only be used in an external web table"),
 					errhint("Use CREATE EXTERNAL WEB TABLE instead.")));
 
+		if(iswritable && (uri->protocol == URI_GPFDIST))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("writable external table \'gpfdist\' protocol is not yet supported")));
+
+		if(iswritable && (uri->protocol == URI_HTTP || uri->protocol == URI_FILE))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("unsupported URI protocol \'%s\' for writable external table", 
+							(uri->protocol == URI_HTTP ? "http" : "file")),
+					 errhint("Writable external tables may use \'gpfdist\' URIs only.")));
 
 
 		len = VARHDRSZ + strlen(uri_str_final);

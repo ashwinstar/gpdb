@@ -1675,9 +1675,9 @@ select * from get_ereport order by 1;
  baai: bufxinit:00000084:  ereport(ERROR, 
  baai: bufxinit:00000085:  (errmsg("Unable to set memory level to %d, error %d, allocation size %ud, ptr %ld", PROT_NONE, 
  baai: bufxinit:00000086:  errno, (unsigned int) bufferBlocksTotalSize, (long int) BufferBlocks))); 
- baai: bufxinit:00000180:  ereport(FATAL, 
- baai: bufxinit:00000181:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- baai: bufxinit:00000182:  errmsg("out of memory"))); 
+ baai: bufxinit:00000183:  ereport(FATAL, 
+ baai: bufxinit:00000184:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ baai: bufxinit:00000185:  errmsg("out of memory"))); 
  baaj: bexsecure:00000725:  ereport(FATAL, 
  baaj: bexsecure:00000726:  (errmsg("could not create SSL context: %s", 
  baaj: bexsecure:00000727:  SSLerrmessage()))); 
@@ -2845,35 +2845,35 @@ select * from get_ereport order by 1;
  caaj: cdbbackup:00001313:  ereport(ERROR, 
  caaj: cdbbackup:00001314:  (errcode_for_file_access(), 
  caaj: cdbbackup:00001315:  errmsg("BackupDirectory %s exists but is not a directory.", pszBackupDirectory))); 
- caaj: cdbmotion:00000858:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caaj: cdbmotion:00000859:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. This means" 
- caaj: cdbmotion:00000860:  " a motion node that wasn't setup is requesting interconnect" 
- caaj: cdbmotion:00000861:  " resources.", motNodeID))); 
- caaj: cdbmotion:00000914:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- caaj: cdbmotion:00000915:  errmsg("Could not allocate entry for tuple chunk sorter."))); 
- caaj: cdbmotion:00001029:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caaj: cdbmotion:00001030:  errmsg("Received TC_WHOLE chunk from [src=%d,mn=%d] after" 
- caaj: cdbmotion:00001031:  " partial tuple data.", srcRoute, motNodeID))); 
- caaj: cdbmotion:00001046:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caaj: cdbmotion:00001047:  errmsg("Received TC_PARTIAL_START chunk from [src=%d,mn=%d]" 
- caaj: cdbmotion:00001048:  " after partial tuple data.", srcRoute, motNodeID))); 
- caaj: cdbmotion:00001067:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caaj: cdbmotion:00001068:  errmsg("Received TC_PARTIAL_MID chunk from [src=%d,mn=%d]" 
- caaj: cdbmotion:00001069:  " without any leading tuple data.", srcRoute, motNodeID))); 
- caaj: cdbmotion:00001088:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caaj: cdbmotion:00001089:  errmsg("Received TC_PARTIAL_END chunk from [src=%d,mn=%d]" 
- caaj: cdbmotion:00001090:  " without any leading tuple data.", srcRoute, motNodeID))); 
- caaj: cdbmotion:00001107:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caaj: cdbmotion:00001108:  errmsg("Received TC_END_OF_STREAM chunk from [src=%d,mn=%d]" 
- caaj: cdbmotion:00001109:  " after partial tuple data.", srcRoute, motNodeID))); 
- caaj: cdbmotion:00001116:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caaj: cdbmotion:00001117:  errmsg("Received end-of-stream chunk from" 
- caaj: cdbmotion:00001118:  " [src=%d,mn=%d] when already marked as at end-of-stream.", 
- caaj: cdbmotion:00001119:  srcRoute, motNodeID))); 
- caaj: cdbmotion:00001138:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caaj: cdbmotion:00001139:  errmsg("Received tuple chunk of unrecognized type %d (len %d)" 
- caaj: cdbmotion:00001140:  " from [src=%d,mn=%d].", 
- caaj: cdbmotion:00001141:  tcType, tcItem->chunk_length, srcRoute, motNodeID))); 
+ caaj: cdbmotion:00000864:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caaj: cdbmotion:00000865:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. This means" 
+ caaj: cdbmotion:00000866:  " a motion node that wasn't setup is requesting interconnect" 
+ caaj: cdbmotion:00000867:  " resources.", motNodeID))); 
+ caaj: cdbmotion:00000920:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ caaj: cdbmotion:00000921:  errmsg("Could not allocate entry for tuple chunk sorter."))); 
+ caaj: cdbmotion:00001035:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caaj: cdbmotion:00001036:  errmsg("Received TC_WHOLE chunk from [src=%d,mn=%d] after" 
+ caaj: cdbmotion:00001037:  " partial tuple data.", srcRoute, motNodeID))); 
+ caaj: cdbmotion:00001052:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caaj: cdbmotion:00001053:  errmsg("Received TC_PARTIAL_START chunk from [src=%d,mn=%d]" 
+ caaj: cdbmotion:00001054:  " after partial tuple data.", srcRoute, motNodeID))); 
+ caaj: cdbmotion:00001073:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caaj: cdbmotion:00001074:  errmsg("Received TC_PARTIAL_MID chunk from [src=%d,mn=%d]" 
+ caaj: cdbmotion:00001075:  " without any leading tuple data.", srcRoute, motNodeID))); 
+ caaj: cdbmotion:00001094:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caaj: cdbmotion:00001095:  errmsg("Received TC_PARTIAL_END chunk from [src=%d,mn=%d]" 
+ caaj: cdbmotion:00001096:  " without any leading tuple data.", srcRoute, motNodeID))); 
+ caaj: cdbmotion:00001113:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caaj: cdbmotion:00001114:  errmsg("Received TC_END_OF_STREAM chunk from [src=%d,mn=%d]" 
+ caaj: cdbmotion:00001115:  " after partial tuple data.", srcRoute, motNodeID))); 
+ caaj: cdbmotion:00001122:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caaj: cdbmotion:00001123:  errmsg("Received end-of-stream chunk from" 
+ caaj: cdbmotion:00001124:  " [src=%d,mn=%d] when already marked as at end-of-stream.", 
+ caaj: cdbmotion:00001125:  srcRoute, motNodeID))); 
+ caaj: cdbmotion:00001144:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caaj: cdbmotion:00001145:  errmsg("Received tuple chunk of unrecognized type %d (len %d)" 
+ caaj: cdbmotion:00001146:  " from [src=%d,mn=%d].", 
+ caaj: cdbmotion:00001147:  tcType, tcItem->chunk_length, srcRoute, motNodeID))); 
  caaj: cdbmutate:00000322:  ereport(NOTICE, 
  caaj: cdbmutate:00000323:  (errcode(ERRCODE_SUCCESSFUL_COMPLETION), 
  caaj: cdbmutate:00000324:  errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) " 
@@ -5693,19 +5693,19 @@ select * from get_ereport order by 1;
  gaai: gistutil:00000599:  RelationGetRelationName(rel), 
  gaai: gistutil:00000600:  BufferGetBlockNumber(buf)), 
  gaai: gistutil:00000601:  errhint("Please REINDEX it."))); 
- gaai: gucxfile:00000539: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- gaai: gucxfile:00000540:  
- gaai: gucxfile:00000541: enum { 
- gaai: gucxfile:00000542:  GUC_ID = 1, 
- gaai: gucxfile:00000543:  GUC_STRING = 2, 
- gaai: gucxfile:00000544:  GUC_INTEGER = 3, 
- gaai: gucxfile:00000545:  GUC_REAL = 4, 
- gaai: gucxfile:00000546:  GUC_EQUALS = 5, 
- gaai: gucxfile:00000547:  GUC_UNQUOTED_STRING = 6, 
- gaai: gucxfile:00000548:  GUC_QUALIFIED_ID = 7, 
- gaai: gucxfile:00000549:  GUC_EOL = 99, 
- gaai: gucxfile:00000550:  GUC_ERROR = 100 
- gaai: gucxfile:00000551: }; 
+ gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ gaai: gucxfile:00000543:  
+ gaai: gucxfile:00000544: enum { 
+ gaai: gucxfile:00000545:  GUC_ID = 1, 
+ gaai: gucxfile:00000546:  GUC_STRING = 2, 
+ gaai: gucxfile:00000547:  GUC_INTEGER = 3, 
+ gaai: gucxfile:00000548:  GUC_REAL = 4, 
+ gaai: gucxfile:00000549:  GUC_EQUALS = 5, 
+ gaai: gucxfile:00000550:  GUC_UNQUOTED_STRING = 6, 
+ gaai: gucxfile:00000551:  GUC_QUALIFIED_ID = 7, 
+ gaai: gucxfile:00000552:  GUC_EOL = 99, 
+ gaai: gucxfile:00000553:  GUC_ERROR = 100 
+ gaai: gucxfile:00000554: }; 
  gaba: gistvacuum:00000569:  ereport(NOTICE, 
  gaba: gistvacuum:00000570:  (errmsg("index "%s" needs VACUUM FULL or REINDEX to finish crash recovery", 
  gaba: gistvacuum:00000571:  RelationGetRelationName(rel)))); 
@@ -8073,31 +8073,31 @@ select * from get_ereport order by 1;
  paah: pgxproc:00000576:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
  paah: pgxproc:00000577:  errmsg("SQL functions cannot have arguments of type %s", 
  paah: pgxproc:00000578:  format_type_be(proc->proargtypes.values[i])))); 
- paah: pgxsema:00000126:  ereport(FATAL, 
- paah: pgxsema:00000127:  (errmsg("could not create semaphores: %m"), 
- paah: pgxsema:00000128:  errdetail("Failed system call was semget(%lu, %d, 0%o).", 
- paah: pgxsema:00000129:  (unsigned long) semKey, numSems, 
- paah: pgxsema:00000130:  IPC_CREAT *PIPE* IPC_EXCL *PIPE* IPCProtection), 
- paah: pgxsema:00000131:  (errno == ENOSPC) ? 
- paah: pgxsema:00000132:  errhint("This error does *not* mean that you have run out of disk space.
+ paah: pgxsema:00000117:  ereport(FATAL, 
+ paah: pgxsema:00000118:  (errmsg("could not create semaphores: %m"), 
+ paah: pgxsema:00000119:  errdetail("Failed system call was semget(%lu, %d, 0%o).", 
+ paah: pgxsema:00000120:  (unsigned long) semKey, numSems, 
+ paah: pgxsema:00000121:  IPC_CREAT *PIPE* IPC_EXCL *PIPE* IPCProtection), 
+ paah: pgxsema:00000122:  (errno == ENOSPC) ? 
+ paah: pgxsema:00000123:  errhint("This error does *not* mean that you have run out of disk space.
  " 
- paah: pgxsema:00000133:  "It occurs when either the system limit for the maximum number of " 
- paah: pgxsema:00000134:  "semaphore sets (SEMMNI), or the system wide maximum number of " 
- paah: pgxsema:00000135:  "semaphores (SEMMNS), would be exceeded. You need to raise the " 
- paah: pgxsema:00000136:  "respective kernel parameter. Alternatively, reduce PostgreSQL's " 
- paah: pgxsema:00000137:  "consumption of semaphores by reducing its max_connections parameter " 
- paah: pgxsema:00000138:  "(currently %d).
+ paah: pgxsema:00000124:  "It occurs when either the system limit for the maximum number of " 
+ paah: pgxsema:00000125:  "semaphore sets (SEMMNI), or the system wide maximum number of " 
+ paah: pgxsema:00000126:  "semaphores (SEMMNS), would be exceeded. You need to raise the " 
+ paah: pgxsema:00000127:  "respective kernel parameter. Alternatively, reduce PostgreSQL's " 
+ paah: pgxsema:00000128:  "consumption of semaphores by reducing its max_connections parameter " 
+ paah: pgxsema:00000129:  "(currently %d).
  " 
- paah: pgxsema:00000139:  "The PostgreSQL documentation contains more information about " 
- paah: pgxsema:00000140:  "configuring your system for PostgreSQL.", 
- paah: pgxsema:00000141:  MaxBackends) : 0)); 
- paah: pgxsema:00000157:  ereport(FATAL, 
- paah: pgxsema:00000158:  (errmsg_internal("semctl(%d, %d, SETVAL, %d) failed: %m", 
- paah: pgxsema:00000159:  semId, semNum, value), 
- paah: pgxsema:00000160:  (errno == ERANGE) ? 
- paah: pgxsema:00000161:  errhint("You possibly need to raise your kernel's SEMVMX value to be at least " 
- paah: pgxsema:00000162:  "%d. Look into the PostgreSQL documentation for details.", 
- paah: pgxsema:00000163:  value) : 0)); 
+ paah: pgxsema:00000130:  "The PostgreSQL documentation contains more information about " 
+ paah: pgxsema:00000131:  "configuring your system for PostgreSQL.", 
+ paah: pgxsema:00000132:  MaxBackends) : 0)); 
+ paah: pgxsema:00000148:  ereport(FATAL, 
+ paah: pgxsema:00000149:  (errmsg_internal("semctl(%d, %d, SETVAL, %d) failed: %m", 
+ paah: pgxsema:00000150:  semId, semNum, value), 
+ paah: pgxsema:00000151:  (errno == ERANGE) ? 
+ paah: pgxsema:00000152:  errhint("You possibly need to raise your kernel's SEMVMX value to be at least " 
+ paah: pgxsema:00000153:  "%d. Look into the PostgreSQL documentation for details.", 
+ paah: pgxsema:00000154:  value) : 0)); 
  paah: pgxtype:00000218:  ereport(ERROR, 
  paah: pgxtype:00000219:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
  paah: pgxtype:00000220:  errmsg("invalid type internal size %d", 
@@ -8521,31 +8521,33 @@ select * from get_ereport order by 1;
  paah: plxgram:00004391:  end_label, start_label))); 
  paah: plxscan:00000858: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
  paah: plxscan:00000859:  
- paah: plxscan:00000860: int plpgsql_base_yyget_lineno (void); 
- paah: plxscan:00001584:  ereport(ERROR, 
- paah: plxscan:00001585:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001586:  errmsg("unterminated quoted identifier"))); 
- paah: plxscan:00001635:  ereport(ERROR, 
- paah: plxscan:00001636:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001637:  errmsg("unterminated comment"))); 
- paah: plxscan:00001705:  ereport(ERROR, 
- paah: plxscan:00001706:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001707:  errmsg("unterminated string"))); 
- paah: plxscan:00001761:  ereport(ERROR, 
- paah: plxscan:00001762:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001763:  errmsg("unterminated dollar-quoted string"))); 
- paah: plxscan:00002781:  ereport(ERROR, 
- paah: plxscan:00002782:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002783:  /* translator: %s is typically "syntax error" */ 
- paah: plxscan:00002784:  errmsg("%s at end of input", message), 
- paah: plxscan:00002785:  internalerrposition(cursorpos), 
- paah: plxscan:00002786:  internalerrquery(scanstr))); 
- paah: plxscan:00002790:  ereport(ERROR, 
- paah: plxscan:00002791:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002792:  /* translator: first %s is typically "syntax error" */ 
- paah: plxscan:00002793:  errmsg("%s at or near "%s"", message, loc), 
- paah: plxscan:00002794:  internalerrposition(cursorpos), 
- paah: plxscan:00002795:  internalerrquery(scanstr))); 
+ paah: plxscan:00000860: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
+ paah: plxscan:00000861: #if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35) 
+ paah: plxscan:00000862: int plpgsql_base_yyget_lineno (void); 
+ paah: plxscan:00001587:  ereport(ERROR, 
+ paah: plxscan:00001588:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001589:  errmsg("unterminated quoted identifier"))); 
+ paah: plxscan:00001638:  ereport(ERROR, 
+ paah: plxscan:00001639:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001640:  errmsg("unterminated comment"))); 
+ paah: plxscan:00001708:  ereport(ERROR, 
+ paah: plxscan:00001709:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001710:  errmsg("unterminated string"))); 
+ paah: plxscan:00001764:  ereport(ERROR, 
+ paah: plxscan:00001765:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001766:  errmsg("unterminated dollar-quoted string"))); 
+ paah: plxscan:00002784:  ereport(ERROR, 
+ paah: plxscan:00002785:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00002786:  /* translator: %s is typically "syntax error" */ 
+ paah: plxscan:00002787:  errmsg("%s at end of input", message), 
+ paah: plxscan:00002788:  internalerrposition(cursorpos), 
+ paah: plxscan:00002789:  internalerrquery(scanstr))); 
+ paah: plxscan:00002793:  ereport(ERROR, 
+ paah: plxscan:00002794:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00002795:  /* translator: first %s is typically "syntax error" */ 
+ paah: plxscan:00002796:  errmsg("%s at or near "%s"", message, loc), 
+ paah: plxscan:00002797:  internalerrposition(cursorpos), 
+ paah: plxscan:00002798:  internalerrquery(scanstr))); 
  paah: prepare:00000070:  ereport(ERROR, 
  paah: prepare:00000071:  (errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION), 
  paah: prepare:00000072:  errmsg("invalid statement name: must not be empty"))); 
@@ -9549,131 +9551,131 @@ select * from get_ereport order by 1;
  paba: portalcmds:00000536:  ereport(ERROR, 
  paba: portalcmds:00000537:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
  paba: portalcmds:00000538:  errmsg("could not reposition held cursor"))); 
- paba: postmaster:00000731:  ereport(ERROR, 
- paba: postmaster:00000732:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paba: postmaster:00000733:  errmsg("--%s requires a value", 
- paba: postmaster:00000734:  optarg))); 
- paba: postmaster:00000736:  ereport(ERROR, 
- paba: postmaster:00000737:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paba: postmaster:00000738:  errmsg("-c %s requires a value", 
- paba: postmaster:00000739:  optarg))); 
- paba: postmaster:00000945:  ereport(FATAL, 
- paba: postmaster:00000946:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- paba: postmaster:00000947:  errmsg("invalid list syntax for "listen_addresses""))); 
- paba: postmaster:00000967:  ereport(WARNING, 
- paba: postmaster:00000968:  (errmsg("could not create listen socket for "%s"", 
- paba: postmaster:00000969:  curhost))); 
- paba: postmaster:00000973:  ereport(FATAL, 
- paba: postmaster:00000974:  (errmsg("could not create any TCP/IP sockets"))); 
- paba: postmaster:00001000:  ereport(WARNING, 
- paba: postmaster:00001001:  (errmsg("could not create Unix-domain socket"))); 
- paba: postmaster:00001008:  ereport(FATAL, 
- paba: postmaster:00001009:  (errmsg("no socket created for listening"))); 
- paba: postmaster:00001034:  ereport(FATAL, 
- paba: postmaster:00001035:  (errmsg("could not create I/O completion port for child queue"))); 
- paba: postmaster:00001048:  ereport(FATAL, 
- paba: postmaster:00001049:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
- paba: postmaster:00001050:  (int) GetLastError()))); 
- paba: postmaster:00001145:  ereport(FATAL, 
- paba: postmaster:00001146:  (errmsg("could not load pg_hba.conf"))); 
- paba: postmaster:00001194:  ereport(FATAL, 
- paba: postmaster:00001195:  (errmsg("%s: could not locate matching postgres executable", 
- paba: postmaster:00001196:  argv0))); 
- paba: postmaster:00001214:  ereport(ERROR, 
- paba: postmaster:00001215:  (errcode_for_file_access(), 
- paba: postmaster:00001216:  errmsg("could not open directory "%s": %m", 
- paba: postmaster:00001217:  pkglib_path), 
- paba: postmaster:00001218:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file "%s" has been moved away from its proper location.", 
- paba: postmaster:00001219:  my_exec_path))); 
- paba: postmaster:00001244:  ereport(FATAL, 
- paba: postmaster:00001245:  (errcode_for_file_access(), 
- paba: postmaster:00001246:  errmsg("data directory "%s" does not exist", 
- paba: postmaster:00001247:  DataDir))); 
- paba: postmaster:00001249:  ereport(FATAL, 
- paba: postmaster:00001250:  (errcode_for_file_access(), 
- paba: postmaster:00001251:  errmsg("could not read permissions of directory "%s": %m", 
- paba: postmaster:00001252:  DataDir))); 
+ paba: postmaster:00000739:  ereport(ERROR, 
+ paba: postmaster:00000740:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paba: postmaster:00000741:  errmsg("--%s requires a value", 
+ paba: postmaster:00000742:  optarg))); 
+ paba: postmaster:00000744:  ereport(ERROR, 
+ paba: postmaster:00000745:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paba: postmaster:00000746:  errmsg("-c %s requires a value", 
+ paba: postmaster:00000747:  optarg))); 
+ paba: postmaster:00000953:  ereport(FATAL, 
+ paba: postmaster:00000954:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ paba: postmaster:00000955:  errmsg("invalid list syntax for "listen_addresses""))); 
+ paba: postmaster:00000975:  ereport(WARNING, 
+ paba: postmaster:00000976:  (errmsg("could not create listen socket for "%s"", 
+ paba: postmaster:00000977:  curhost))); 
+ paba: postmaster:00000981:  ereport(FATAL, 
+ paba: postmaster:00000982:  (errmsg("could not create any TCP/IP sockets"))); 
+ paba: postmaster:00001008:  ereport(WARNING, 
+ paba: postmaster:00001009:  (errmsg("could not create Unix-domain socket"))); 
+ paba: postmaster:00001016:  ereport(FATAL, 
+ paba: postmaster:00001017:  (errmsg("no socket created for listening"))); 
+ paba: postmaster:00001042:  ereport(FATAL, 
+ paba: postmaster:00001043:  (errmsg("could not create I/O completion port for child queue"))); 
+ paba: postmaster:00001056:  ereport(FATAL, 
+ paba: postmaster:00001057:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
+ paba: postmaster:00001058:  (int) GetLastError()))); 
+ paba: postmaster:00001153:  ereport(FATAL, 
+ paba: postmaster:00001154:  (errmsg("could not load pg_hba.conf"))); 
+ paba: postmaster:00001202:  ereport(FATAL, 
+ paba: postmaster:00001203:  (errmsg("%s: could not locate matching postgres executable", 
+ paba: postmaster:00001204:  argv0))); 
+ paba: postmaster:00001222:  ereport(ERROR, 
+ paba: postmaster:00001223:  (errcode_for_file_access(), 
+ paba: postmaster:00001224:  errmsg("could not open directory "%s": %m", 
+ paba: postmaster:00001225:  pkglib_path), 
+ paba: postmaster:00001226:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file "%s" has been moved away from its proper location.", 
+ paba: postmaster:00001227:  my_exec_path))); 
+ paba: postmaster:00001252:  ereport(FATAL, 
+ paba: postmaster:00001253:  (errcode_for_file_access(), 
+ paba: postmaster:00001254:  errmsg("data directory "%s" does not exist", 
+ paba: postmaster:00001255:  DataDir))); 
  paba: postmaster:00001257:  ereport(FATAL, 
- paba: postmaster:00001258:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001259:  errmsg("specified data directory "%s" is not a directory", 
+ paba: postmaster:00001258:  (errcode_for_file_access(), 
+ paba: postmaster:00001259:  errmsg("could not read permissions of directory "%s": %m", 
  paba: postmaster:00001260:  DataDir))); 
- paba: postmaster:00001273:  ereport(FATAL, 
- paba: postmaster:00001274:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001275:  errmsg("data directory "%s" has wrong ownership", 
- paba: postmaster:00001276:  DataDir), 
- paba: postmaster:00001277:  errhint("The server must be started by the user that owns the data directory."))); 
- paba: postmaster:00001295:  ereport(FATAL, 
- paba: postmaster:00001296:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001297:  errmsg("data directory "%s" has group or world access", 
- paba: postmaster:00001298:  DataDir), 
- paba: postmaster:00001299:  errdetail("Permissions should be u=rwx (0700)."))); 
- paba: postmaster:00001813:  ereport(FATAL, 
- paba: postmaster:00001814:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paba: postmaster:00001815:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
- paba: postmaster:00001816:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
- paba: postmaster:00001817:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
- paba: postmaster:00001818:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
- paba: postmaster:00001819:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
- paba: postmaster:00001883:  ereport(FATAL, 
- paba: postmaster:00001884:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paba: postmaster:00001885:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
- paba: postmaster:00001911:  ereport(FATAL, 
- paba: postmaster:00001912:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
- paba: postmaster:00001913:  errmsg("no PostgreSQL user name specified in startup packet"))); 
- paba: postmaster:00001974:  ereport(FATAL, 
- paba: postmaster:00001975:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00001976:  errmsg("the database system is starting up"))); 
- paba: postmaster:00001979:  ereport(FATAL, 
- paba: postmaster:00001980:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00001981:  errmsg("the database system is shutting down"))); 
- paba: postmaster:00001984:  ereport(FATAL, 
- paba: postmaster:00001985:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00001986:  errmsg("the database system is in recovery mode"))); 
- paba: postmaster:00001989:  ereport(FATAL, 
- paba: postmaster:00001990:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
- paba: postmaster:00001991:  errmsg("sorry, too many clients already"))); 
- paba: postmaster:00002267:  ereport(WARNING, 
- paba: postmaster:00002268:  (errmsg("pg_hba.conf not reloaded"))); 
- paba: postmaster:00003579:  ereport(WARNING, 
- paba: postmaster:00003580:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
- paba: postmaster:00003581:  gai_strerror(ret)))); 
- paba: postmaster:00003622:  ereport(FATAL, 
- paba: postmaster:00003623:  (errmsg("could not load pg_hba.conf"))); 
- paba: postmaster:00004044:  ereport(ERROR, 
- paba: postmaster:00004045:  (errmsg_internal("could not terminate unstarted process: error code %d", 
- paba: postmaster:00004046:  (int) GetLastError()))); 
- paba: postmaster:00004069:  ereport(ERROR, 
- paba: postmaster:00004070:  (errmsg_internal("could not terminate unstartable process: error code %d", 
- paba: postmaster:00004071:  (int) GetLastError()))); 
- paba: postmaster:00004078:  ereport(ERROR, 
- paba: postmaster:00004079:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
- paba: postmaster:00004080:  (int) GetLastError()))); 
- paba: postmaster:00004094:  ereport(FATAL, 
- paba: postmaster:00004095:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- paba: postmaster:00004096:  errmsg("out of memory"))); 
- paba: postmaster:00004107:  ereport(FATAL, 
- paba: postmaster:00004108:  (errmsg_internal("could not register process for wait: error code %d", 
- paba: postmaster:00004109:  (int) GetLastError()))); 
- paba: postmaster:00004175:  ereport(FATAL, 
- paba: postmaster:00004176:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- paba: postmaster:00004177:  errmsg("out of memory"))); 
- paba: postmaster:00004788:  ereport(ERROR, 
- paba: postmaster:00004789:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
- paba: postmaster:00004790:  (int) GetLastError()))); 
- paba: postmaster:00004810:  ereport(ERROR, 
- paba: postmaster:00004811:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
- paba: postmaster:00004812:  src, WSAGetLastError()))); 
- paba: postmaster:00005004:  ereport(FATAL, 
- paba: postmaster:00005005:  (errmsg_internal("no free slots in shmem backend array"))); 
- paba: postmaster:00005023:  ereport(WARNING, 
- paba: postmaster:00005024:  (errmsg_internal("could not find backend entry with pid %d", 
- paba: postmaster:00005025:  (int) pid))); 
- paba: postmaster:00005055:  ereport(FATAL, 
- paba: postmaster:00005056:  (errmsg_internal("no room for child entry with pid %lu", 
- paba: postmaster:00005057:  (unsigned long) pid))); 
- paba: postmaster:00005081:  ereport(WARNING, 
- paba: postmaster:00005082:  (errmsg_internal("could not find child entry with pid %lu", 
- paba: postmaster:00005083:  (unsigned long) pid))); 
+ paba: postmaster:00001265:  ereport(FATAL, 
+ paba: postmaster:00001266:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001267:  errmsg("specified data directory "%s" is not a directory", 
+ paba: postmaster:00001268:  DataDir))); 
+ paba: postmaster:00001281:  ereport(FATAL, 
+ paba: postmaster:00001282:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001283:  errmsg("data directory "%s" has wrong ownership", 
+ paba: postmaster:00001284:  DataDir), 
+ paba: postmaster:00001285:  errhint("The server must be started by the user that owns the data directory."))); 
+ paba: postmaster:00001303:  ereport(FATAL, 
+ paba: postmaster:00001304:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001305:  errmsg("data directory "%s" has group or world access", 
+ paba: postmaster:00001306:  DataDir), 
+ paba: postmaster:00001307:  errdetail("Permissions should be u=rwx (0700)."))); 
+ paba: postmaster:00001824:  ereport(FATAL, 
+ paba: postmaster:00001825:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paba: postmaster:00001826:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
+ paba: postmaster:00001827:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
+ paba: postmaster:00001828:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
+ paba: postmaster:00001829:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
+ paba: postmaster:00001830:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
+ paba: postmaster:00001894:  ereport(FATAL, 
+ paba: postmaster:00001895:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paba: postmaster:00001896:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
+ paba: postmaster:00001922:  ereport(FATAL, 
+ paba: postmaster:00001923:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+ paba: postmaster:00001924:  errmsg("no PostgreSQL user name specified in startup packet"))); 
+ paba: postmaster:00001985:  ereport(FATAL, 
+ paba: postmaster:00001986:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00001987:  errmsg("the database system is starting up"))); 
+ paba: postmaster:00001990:  ereport(FATAL, 
+ paba: postmaster:00001991:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00001992:  errmsg("the database system is shutting down"))); 
+ paba: postmaster:00001995:  ereport(FATAL, 
+ paba: postmaster:00001996:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00001997:  errmsg("the database system is in recovery mode"))); 
+ paba: postmaster:00002000:  ereport(FATAL, 
+ paba: postmaster:00002001:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+ paba: postmaster:00002002:  errmsg("sorry, too many clients already"))); 
+ paba: postmaster:00002278:  ereport(WARNING, 
+ paba: postmaster:00002279:  (errmsg("pg_hba.conf not reloaded"))); 
+ paba: postmaster:00003594:  ereport(WARNING, 
+ paba: postmaster:00003595:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+ paba: postmaster:00003596:  gai_strerror(ret)))); 
+ paba: postmaster:00003637:  ereport(FATAL, 
+ paba: postmaster:00003638:  (errmsg("could not load pg_hba.conf"))); 
+ paba: postmaster:00004059:  ereport(ERROR, 
+ paba: postmaster:00004060:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+ paba: postmaster:00004061:  (int) GetLastError()))); 
+ paba: postmaster:00004084:  ereport(ERROR, 
+ paba: postmaster:00004085:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+ paba: postmaster:00004086:  (int) GetLastError()))); 
+ paba: postmaster:00004093:  ereport(ERROR, 
+ paba: postmaster:00004094:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+ paba: postmaster:00004095:  (int) GetLastError()))); 
+ paba: postmaster:00004109:  ereport(FATAL, 
+ paba: postmaster:00004110:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ paba: postmaster:00004111:  errmsg("out of memory"))); 
+ paba: postmaster:00004122:  ereport(FATAL, 
+ paba: postmaster:00004123:  (errmsg_internal("could not register process for wait: error code %d", 
+ paba: postmaster:00004124:  (int) GetLastError()))); 
+ paba: postmaster:00004190:  ereport(FATAL, 
+ paba: postmaster:00004191:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ paba: postmaster:00004192:  errmsg("out of memory"))); 
+ paba: postmaster:00004813:  ereport(ERROR, 
+ paba: postmaster:00004814:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+ paba: postmaster:00004815:  (int) GetLastError()))); 
+ paba: postmaster:00004835:  ereport(ERROR, 
+ paba: postmaster:00004836:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+ paba: postmaster:00004837:  src, WSAGetLastError()))); 
+ paba: postmaster:00005029:  ereport(FATAL, 
+ paba: postmaster:00005030:  (errmsg_internal("no free slots in shmem backend array"))); 
+ paba: postmaster:00005048:  ereport(WARNING, 
+ paba: postmaster:00005049:  (errmsg_internal("could not find backend entry with pid %d", 
+ paba: postmaster:00005050:  (int) pid))); 
+ paba: postmaster:00005080:  ereport(FATAL, 
+ paba: postmaster:00005081:  (errmsg_internal("no room for child entry with pid %lu", 
+ paba: postmaster:00005082:  (unsigned long) pid))); 
+ paba: postmaster:00005106:  ereport(WARNING, 
+ paba: postmaster:00005107:  (errmsg_internal("could not find child entry with pid %lu", 
+ paba: postmaster:00005108:  (unsigned long) pid))); 
  pabb: pgstatfuncs:00000748:  ereport(ERROR, 
  pabb: pgstatfuncs:00000749:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  pabb: pgstatfuncs:00000750:  (errmsg("only superuser can renice another user's session")))); 
@@ -11415,44 +11417,44 @@ select * from get_ereport order by 1;
  saad: spi:00003036:  (errcode(ERRCODE_WARNING), 
  saad: spi:00003037:  errmsg("A stable or volatile function is used as if it is immutable"), 
  saad: spi:00003038:  errhint("The function should be declared as stable or volatile in create function statement."))); 
- saae: scan:00005273: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- saae: scan:00005274:  
- saae: scan:00005275: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
- saae: scan:00005276: static char *dolqstart; /* current $foo$ quote start string */ 
+ saae: scan:00005276: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
  saae: scan:00005277:  
- saae: scan:00005278: /* 
- saae: scan:00005279:  * GUC variables. This is a DIRECT violation of the warning given at the 
- saae: scan:00005280:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
- saae: scan:00005934:  ereport(ERROR, 
- saae: scan:00005935:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00005936:  errmsg("unsafe use of \' in a string literal"), 
- saae: scan:00005937:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
- saae: scan:00005938:  lexer_errposition())); 
- saae: scan:00007291:  ereport(ERROR, 
- saae: scan:00007292:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00007293:  /* translator: %s is typically "syntax error" */ 
- saae: scan:00007294:  errmsg("%s at end of input", _(message)), 
- saae: scan:00007295:  lexer_errposition())); 
- saae: scan:00007299:  ereport(ERROR, 
- saae: scan:00007300:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00007301:  /* translator: first %s is typically "syntax error" */ 
- saae: scan:00007302:  errmsg("%s at or near "%s"", _(message), loc), 
- saae: scan:00007303:  lexer_errposition())); 
- saae: scan:00007434:  ereport(WARNING, 
- saae: scan:00007435:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00007436:  errmsg("nonstandard use of \' in a string literal"), 
- saae: scan:00007437:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
- saae: scan:00007438:  lexer_errposition())); 
- saae: scan:00007444:  ereport(WARNING, 
- saae: scan:00007445:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00007446:  errmsg("nonstandard use of \\ in a string literal"), 
- saae: scan:00007447:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
- saae: scan:00007448:  lexer_errposition())); 
- saae: scan:00007459:  ereport(WARNING, 
- saae: scan:00007460:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00007461:  errmsg("nonstandard use of escape in a string literal"), 
- saae: scan:00007462:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
- saae: scan:00007463:  lexer_errposition())); 
+ saae: scan:00005278: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
+ saae: scan:00005279: static char *dolqstart; /* current $foo$ quote start string */ 
+ saae: scan:00005280:  
+ saae: scan:00005281: /* 
+ saae: scan:00005282:  * GUC variables. This is a DIRECT violation of the warning given at the 
+ saae: scan:00005283:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
+ saae: scan:00005937:  ereport(ERROR, 
+ saae: scan:00005938:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00005939:  errmsg("unsafe use of \' in a string literal"), 
+ saae: scan:00005940:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
+ saae: scan:00005941:  lexer_errposition())); 
+ saae: scan:00007294:  ereport(ERROR, 
+ saae: scan:00007295:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00007296:  /* translator: %s is typically "syntax error" */ 
+ saae: scan:00007297:  errmsg("%s at end of input", _(message)), 
+ saae: scan:00007298:  lexer_errposition())); 
+ saae: scan:00007302:  ereport(ERROR, 
+ saae: scan:00007303:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00007304:  /* translator: first %s is typically "syntax error" */ 
+ saae: scan:00007305:  errmsg("%s at or near "%s"", _(message), loc), 
+ saae: scan:00007306:  lexer_errposition())); 
+ saae: scan:00007437:  ereport(WARNING, 
+ saae: scan:00007438:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00007439:  errmsg("nonstandard use of \' in a string literal"), 
+ saae: scan:00007440:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
+ saae: scan:00007441:  lexer_errposition())); 
+ saae: scan:00007447:  ereport(WARNING, 
+ saae: scan:00007448:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00007449:  errmsg("nonstandard use of \\ in a string literal"), 
+ saae: scan:00007450:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
+ saae: scan:00007451:  lexer_errposition())); 
+ saae: scan:00007462:  ereport(WARNING, 
+ saae: scan:00007463:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00007464:  errmsg("nonstandard use of escape in a string literal"), 
+ saae: scan:00007465:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
+ saae: scan:00007466:  lexer_errposition())); 
  saae: slru:00000755:  ereport(ERROR, 
  saae: slru:00000756:  (errcode_for_file_access(), 
  saae: slru:00000757:  errmsg("could not access status of transaction %u", xid), 
@@ -11886,31 +11888,31 @@ select * from get_ereport order by 1;
  saaj: syslogger:00000706:  ereport(FATAL, 
  saaj: syslogger:00000707:  (errcode_for_file_access(), 
  saaj: syslogger:00000708:  errmsg("could not redirect stderr: %m"))); 
- saaj: sysvxsema:00000126:  ereport(FATAL, 
- saaj: sysvxsema:00000127:  (errmsg("could not create semaphores: %m"), 
- saaj: sysvxsema:00000128:  errdetail("Failed system call was semget(%lu, %d, 0%o).", 
- saaj: sysvxsema:00000129:  (unsigned long) semKey, numSems, 
- saaj: sysvxsema:00000130:  IPC_CREAT *PIPE* IPC_EXCL *PIPE* IPCProtection), 
- saaj: sysvxsema:00000131:  (errno == ENOSPC) ? 
- saaj: sysvxsema:00000132:  errhint("This error does *not* mean that you have run out of disk space.
+ saaj: sysvxsema:00000117:  ereport(FATAL, 
+ saaj: sysvxsema:00000118:  (errmsg("could not create semaphores: %m"), 
+ saaj: sysvxsema:00000119:  errdetail("Failed system call was semget(%lu, %d, 0%o).", 
+ saaj: sysvxsema:00000120:  (unsigned long) semKey, numSems, 
+ saaj: sysvxsema:00000121:  IPC_CREAT *PIPE* IPC_EXCL *PIPE* IPCProtection), 
+ saaj: sysvxsema:00000122:  (errno == ENOSPC) ? 
+ saaj: sysvxsema:00000123:  errhint("This error does *not* mean that you have run out of disk space.
  " 
- saaj: sysvxsema:00000133:  "It occurs when either the system limit for the maximum number of " 
- saaj: sysvxsema:00000134:  "semaphore sets (SEMMNI), or the system wide maximum number of " 
- saaj: sysvxsema:00000135:  "semaphores (SEMMNS), would be exceeded. You need to raise the " 
- saaj: sysvxsema:00000136:  "respective kernel parameter. Alternatively, reduce PostgreSQL's " 
- saaj: sysvxsema:00000137:  "consumption of semaphores by reducing its max_connections parameter " 
- saaj: sysvxsema:00000138:  "(currently %d).
+ saaj: sysvxsema:00000124:  "It occurs when either the system limit for the maximum number of " 
+ saaj: sysvxsema:00000125:  "semaphore sets (SEMMNI), or the system wide maximum number of " 
+ saaj: sysvxsema:00000126:  "semaphores (SEMMNS), would be exceeded. You need to raise the " 
+ saaj: sysvxsema:00000127:  "respective kernel parameter. Alternatively, reduce PostgreSQL's " 
+ saaj: sysvxsema:00000128:  "consumption of semaphores by reducing its max_connections parameter " 
+ saaj: sysvxsema:00000129:  "(currently %d).
  " 
- saaj: sysvxsema:00000139:  "The PostgreSQL documentation contains more information about " 
- saaj: sysvxsema:00000140:  "configuring your system for PostgreSQL.", 
- saaj: sysvxsema:00000141:  MaxBackends) : 0)); 
- saaj: sysvxsema:00000157:  ereport(FATAL, 
- saaj: sysvxsema:00000158:  (errmsg_internal("semctl(%d, %d, SETVAL, %d) failed: %m", 
- saaj: sysvxsema:00000159:  semId, semNum, value), 
- saaj: sysvxsema:00000160:  (errno == ERANGE) ? 
- saaj: sysvxsema:00000161:  errhint("You possibly need to raise your kernel's SEMVMX value to be at least " 
- saaj: sysvxsema:00000162:  "%d. Look into the PostgreSQL documentation for details.", 
- saaj: sysvxsema:00000163:  value) : 0)); 
+ saaj: sysvxsema:00000130:  "The PostgreSQL documentation contains more information about " 
+ saaj: sysvxsema:00000131:  "configuring your system for PostgreSQL.", 
+ saaj: sysvxsema:00000132:  MaxBackends) : 0)); 
+ saaj: sysvxsema:00000148:  ereport(FATAL, 
+ saaj: sysvxsema:00000149:  (errmsg_internal("semctl(%d, %d, SETVAL, %d) failed: %m", 
+ saaj: sysvxsema:00000150:  semId, semNum, value), 
+ saaj: sysvxsema:00000151:  (errno == ERANGE) ? 
+ saaj: sysvxsema:00000152:  errhint("You possibly need to raise your kernel's SEMVMX value to be at least " 
+ saaj: sysvxsema:00000153:  "%d. Look into the PostgreSQL documentation for details.", 
+ saaj: sysvxsema:00000154:  value) : 0)); 
  saba: schemacmds:00000089:  ereport(ERROR, 
  saba: schemacmds:00000090:  (errcode(ERRCODE_RESERVED_NAME), 
  saba: schemacmds:00000091:  errmsg("unacceptable schema name "%s"", schemaName), 
@@ -13869,45 +13871,53 @@ select * from get_ereport order by 1;
  taaj: tablecmds:00020180:  (errcode(ERRCODE_SYNTAX_ERROR), 
  taaj: tablecmds:00020181:  errmsg("http URI's can only be used in an external web table"), 
  taaj: tablecmds:00020182:  errhint("Use CREATE EXTERNAL WEB TABLE instead."))); 
- taaj: tablecmds:00020235:  ereport(ERROR, 
- taaj: tablecmds:00020236:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020237:  errmsg("ON clause must not have more than one element."))); 
- taaj: tablecmds:00020280:  ereport(ERROR, 
- taaj: tablecmds:00020281:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- taaj: tablecmds:00020282:  errmsg("Unknown location code for EXECUTE in tablecmds."))); 
- taaj: tablecmds:00020320:  ereport(ERROR, 
- taaj: tablecmds:00020321:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020322:  errmsg("unsupported format '%s'", formatname), 
- taaj: tablecmds:00020323:  errhint("available formats are "text" or "csv""))); 
- taaj: tablecmds:00020370:  ereport(ERROR, 
- taaj: tablecmds:00020371:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020372:  errmsg("conflicting or redundant options"))); 
- taaj: tablecmds:00020378:  ereport(ERROR, 
- taaj: tablecmds:00020379:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020380:  errmsg("conflicting or redundant options"))); 
- taaj: tablecmds:00020386:  ereport(ERROR, 
- taaj: tablecmds:00020387:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020388:  errmsg("conflicting or redundant options"))); 
- taaj: tablecmds:00020394:  ereport(ERROR, 
- taaj: tablecmds:00020395:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020396:  errmsg("conflicting or redundant options"))); 
- taaj: tablecmds:00020402:  ereport(ERROR, 
- taaj: tablecmds:00020403:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020404:  errmsg("conflicting or redundant options"))); 
- taaj: tablecmds:00020410:  ereport(ERROR, 
- taaj: tablecmds:00020411:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020412:  errmsg("conflicting or redundant options"))); 
- taaj: tablecmds:00020419:  ereport(ERROR, 
- taaj: tablecmds:00020420:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020421:  errmsg("conflicting or redundant options"))); 
- taaj: tablecmds:00020428:  ereport(ERROR, 
- taaj: tablecmds:00020429:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020430:  errmsg("conflicting or redundant options"))); 
- taaj: tablecmds:00020636:  ereport(ERROR, 
- taaj: tablecmds:00020637:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- taaj: tablecmds:00020638:  errmsg("column "%s" of relation "%s" does not exist", 
- taaj: tablecmds:00020639:  cname, 
- taaj: tablecmds:00020640:  RelationGetRelationName(rel)))); 
+ taaj: tablecmds:00020185:  ereport(ERROR, 
+ taaj: tablecmds:00020186:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ taaj: tablecmds:00020187:  errmsg("writable external table 'gpfdist' protocol is not yet supported"))); 
+ taaj: tablecmds:00020190:  ereport(ERROR, 
+ taaj: tablecmds:00020191:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ taaj: tablecmds:00020192:  errmsg("unsupported URI protocol '%s' for writable external table", 
+ taaj: tablecmds:00020193:  (uri->protocol == URI_HTTP ? "http" : "file")), 
+ taaj: tablecmds:00020194:  errhint("Writable external tables may use 'gpfdist' URIs only."))); 
+ taaj: tablecmds:00020246:  ereport(ERROR, 
+ taaj: tablecmds:00020247:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020248:  errmsg("ON clause must not have more than one element."))); 
+ taaj: tablecmds:00020291:  ereport(ERROR, 
+ taaj: tablecmds:00020292:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ taaj: tablecmds:00020293:  errmsg("Unknown location code for EXECUTE in tablecmds."))); 
+ taaj: tablecmds:00020331:  ereport(ERROR, 
+ taaj: tablecmds:00020332:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020333:  errmsg("unsupported format '%s'", formatname), 
+ taaj: tablecmds:00020334:  errhint("available formats are "text" or "csv""))); 
+ taaj: tablecmds:00020381:  ereport(ERROR, 
+ taaj: tablecmds:00020382:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020383:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020389:  ereport(ERROR, 
+ taaj: tablecmds:00020390:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020391:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020397:  ereport(ERROR, 
+ taaj: tablecmds:00020398:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020399:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020405:  ereport(ERROR, 
+ taaj: tablecmds:00020406:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020407:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020413:  ereport(ERROR, 
+ taaj: tablecmds:00020414:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020415:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020421:  ereport(ERROR, 
+ taaj: tablecmds:00020422:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020423:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020430:  ereport(ERROR, 
+ taaj: tablecmds:00020431:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020432:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020439:  ereport(ERROR, 
+ taaj: tablecmds:00020440:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020441:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020647:  ereport(ERROR, 
+ taaj: tablecmds:00020648:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ taaj: tablecmds:00020649:  errmsg("column "%s" of relation "%s" does not exist", 
+ taaj: tablecmds:00020650:  cname, 
+ taaj: tablecmds:00020651:  RelationGetRelationName(rel)))); 
  taaj: timestamp:00000093:  ereport(ERROR, 
  taaj: timestamp:00000094:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  taaj: timestamp:00000095:  errmsg("invalid type modifier"))); 
@@ -15469,6 +15479,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15409 rows)
+(15419 rows)
 
 drop external table get_ereport;
