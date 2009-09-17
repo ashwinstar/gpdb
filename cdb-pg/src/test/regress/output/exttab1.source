@@ -12,7 +12,7 @@
 -- m/ERROR\:\s+external table .* command ended with .*No such file.*/
 -- s/nosuchfile\.txt\:\s*No such file (or directory)?/nosuchfile\.txt\: NO SUCH FILE/
 -- m/ERROR\:\s+external table .* command ended with .*No such file.*/i
--- s/cat\: (cannot open)? nosuchfile\.txt/cat\: CANNOT OPEN nosuchfile\.txt/
+-- s/cat\: (cannot open)? nosuchfile\.txt/cat\: nosuchfile\.txt/
 --
 -- end_matchsubs
 CREATE TABLE REG_REGION (R_REGIONKEY INT, R_NAME CHAR(25), R_COMMENT VARCHAR(152)) DISTRIBUTED BY (R_REGIONKEY);
@@ -36,74 +36,71 @@ DROP EXTERNAL TABLE EXT_REGION;
 -- check platform
 -- --------------------------------------
 drop external web table if exists check_ps;
-NOTICE:  external table "check_ps" does not exist, skipping
+NOTICE:  table "check_ps" does not exist, skipping
 CREATE EXTERNAL WEB TABLE check_ps (x text)
 execute E'( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)'
 on SEGMENT 0
 format 'text';
 drop external web table if exists check_env;
-NOTICE:  external table "check_env" does not exist, skipping
+NOTICE:  table "check_env" does not exist, skipping
 CREATE EXTERNAL WEB TABLE check_env (x text)
 execute E'( env | sort)'
 on SEGMENT 0
 format 'text';
 select * from check_ps;
-ERROR:  error closing file or executing program "execute:( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)": Illegal seek (fileam.c:1171)  (seg0 slice1 @hostname@:12002 pid=16995)
+ERROR:  external table 'check_ps' command ended with error.  (seg0 slice1 @hostname@:11002 pid=88888)
+DETAIL:  Command: execute:( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)
 select * from check_env;
-                                                                                                             x                                                                                                              
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CVSROOT=:ext:cktan@cvs:/home/cvsroot
- CVS_RSH=ssh
- GP_ARRAY_NAME=gpdb
+                                                                                                      x                                                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ DYLD_LIBRARY_PATH=/Users/jcohen/greenplum-db-devel/lib:/Users/jcohen/greenplum-db-devel/ext/python/lib:
+ GPHOME=/Users/jcohen/greenplum-db-devel
  GP_CID=0
  GP_DATABASE=regression
- GP_DATE=20080612
- GPHOME=/Users/cktan/greenplum-db
- GP_MA_ADDR=localhost:11000
- GP_MASTER_HOST=10.0.0.225
- GP_MASTER_PORT=12000
- GP_SEG_DATADIR=/datapool/data_p2/cktan/testdb0
+ GP_DATE=20090917
+ GP_MASTER_HOST=10.254.0.239
+ GP_MASTER_PORT=11000
  GP_SEGMENT_COUNT=2
  GP_SEGMENT_ID=0
- GP_SEG_PG_CONF=/datapool/data_p2/cktan/testdb0/postgresql.conf
- GP_SEG_PORT=12002
- GP_SESSION_ID=809
+ GP_SEG_DATADIR=/Users/jcohen/cdb-data/testdb0
+ GP_SEG_PG_CONF=/Users/jcohen/cdb-data/testdb0/postgresql.conf
+ GP_SEG_PORT=11002
+ GP_SESSION_ID=259
  GP_SN=1
- GP_TIME=142401
- GP_XID=1213305841-0000030228
- HOME=/home/cktan
- LC_COLLATE=en_US.UTF-8
- LC_CTYPE=en_US.UTF-8
+ GP_TIME=130910
+ GP_USER=jcohen
+ GP_XID=1253217831-0000002241
+ HOME=/Users/jcohen
+ LC_COLLATE=en_US.utf-8
+ LC_CTYPE=en_US.utf-8
  LC_MESSAGES=C
  LC_MONETARY=C
  LC_NUMERIC=C
  LC_TIME=C
- LD_LIBRARY_PATH=/Users/cktan/greenplum-db/lib:/Users/cktan/greenplum-db/lib:/opt/python-2.5.1/lib:/opt/sfw/lib:/usr/sfw/lib/amd64:/usr/local/lib/:/opt/sfw/lib:/usr/sfw/lib/gcc:/usr/sfw/lib:/opt/sfw/lib:/usr/sfw/lib/gcc
- LOGNAME=cktan
- MAIL=/var/mail//cktan
- MASTER_DATA_DIRECTORY=/datapool/data_p1/cktan/testdb-1
- P4CONFIG=/home/cktan/dev/.p4config
- PATH=.:/Users/cktan/greenplum-db/bin:/opt/python-2.5.1/bin:/opt/gdb-6.6/bin:/opt/gcc-4.1.1/bin:/usr/sfw/i386-sun-solaris2.10/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin:/usr/sfw/bin:/opt/sfw/bin
- PGDATA=/datapool/data_p2/cktan/testdb0
- PGPATH=/Users/cktan/greenplum-db/bin
- PGPORT=12002
- PGSYSCONFDIR=/home/cktan/greenplum-db-devel/etc/postgresql
- PWD=/home/cktan
+ LOGNAME=jcohen
+ MAIL=/var/mail/jcohen
+ OPENSSL_CONF=/Users/jcohen/greenplum-db-devel/etc/openssl.cnf
+ PATH=/Users/jcohen/greenplum-db-devel/bin:/Users/jcohen/greenplum-db-devel/ext/python/bin:/Users/jcohen/greenplum-db-devel/bin:/Users/jcohen/greenplum-db-devel/ext/python/bin:/usr/bin:/bin:/usr/sbin:/sbin
+ PGDATA=/Users/jcohen/cdb-data/testdb0
+ PGSYSCONFDIR=/Users/jcohen/greenplum-db-devel/etc/postgresql
+ PWD=/Users/jcohen/cdb-data/testdb0
+ PYTHONHOME=/Users/jcohen/greenplum-db-devel/ext/python
+ PYTHONPATH=/Users/jcohen/greenplum-db-devel/lib/python
  SHELL=/bin/bash
- SHLVL=1
- SSH_CLIENT=10.0.0.225 34583 22
- SSH_CONNECTION=10.0.0.225 34583 10.0.0.225 22
- TZ=US/Pacific
- USER=cktan
- _=/Users/cktan/greenplum-db/bin/pg_ctl
-(44 rows)
+ SHLVL=4
+ SSH_CLIENT=::1 53092 22
+ SSH_CONNECTION=::1 53092 ::1 22
+ USER=jcohen
+ _=/usr/bin/env
+ __CF_USER_TEXT_ENCODING=0x1F6:0:0
+(40 rows)
 
 -- end_ignore
 -- --------------------------------------
 -- 'gpfdist' protocol
 -- --------------------------------------
 CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
-execute E'( python $GPHOME/bin/lib/gppinggpfdist.py localhost:7070 2>&1 || echo) '
+execute E'( python $GPHOME/bin/lib/gppinggpfdist.py @hostname@:7070 2>&1 || echo) '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
@@ -138,7 +135,7 @@ select * from gpfdist_start;
 select * from gpfdist_status;
                                   x                                   
 ----------------------------------------------------------------------
- Okay, gpfdist version "main build dev" is running on localhost:7070.
+ Okay, gpfdist version "main build dev" is running on @hostname@:7070.
 (1 row)
 
 -- end_ignore
@@ -199,16 +196,6 @@ SELECT * FROM EXT_REGION as r, EXT_NATION as n WHERE n.N_REGIONKEY = r.R_REGIONK
            0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |          14 | KENYA                     |           0 |  pending excuses haggle furiously deposits. pending, express pinto beans wake fluffily past t
            0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |           5 | ETHIOPIA                  |           0 | ven packages wake quickly. regu
            0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |           0 | ALGERIA                   |           0 |  haggle. carefully final deposits detect slyly agai
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |          24 | UNITED STATES             |           1 | y final packages. slow foxes cajole quickly. quickly silent platelets breach ironic accounts. unusual pinto be
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |          17 | PERU                      |           1 | platelets. blithely pending dependencies use fluffily across the even pinto beans. carefully silent accoun
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           3 | CANADA                    |           1 | eas hang ironic, silent packages. slyly regular packages are furiously over the tithes. fluffily bold
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           2 | BRAZIL                    |           1 | y alongside of the pending deposits. carefully special packages are about the ironic forges. slyly special 
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           1 | ARGENTINA                 |           1 | al foxes promise slyly according to the regular accounts. bold requests alon
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          21 | VIETNAM                   |           2 | hely enticingly express accounts. even, final 
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          18 | CHINA                     |           2 | c dependencies. furiously express notornis sleep slyly regular accounts. ideas sleep. depos
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          12 | JAPAN                     |           2 | ously. final, express gifts cajole a
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           9 | INDONESIA                 |           2 |  slyly express asymptotes. regular deposits haggle slyly. carefully ironic hockey players sleep blithely. carefull
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           8 | INDIA                     |           2 | ss excuses cajole slyly across the packages. deposits print aroun
            3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |          23 | UNITED KINGDOM            |           3 | eans boost carefully special requests. accounts are. carefull
            3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |          22 | RUSSIA                    |           3 |  requests against the platelets use never according to the quickly regular pint
            3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |          19 | ROMANIA                   |           3 | ular asymptotes are about the furious multipliers. express dependencies nag above the ironically ironic account
@@ -219,13 +206,23 @@ SELECT * FROM EXT_REGION as r, EXT_NATION as n WHERE n.N_REGIONKEY = r.R_REGIONK
            4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          11 | IRAQ                      |           4 | nic deposits boost atop the quickly final requests? quickly regula
            4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          10 | IRAN                      |           4 | efully alongside of the slyly final dependencies. 
            4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |           4 | EGYPT                     |           4 | y above the carefully unusual theodolites. final dugouts are quickly across the furiously regular d
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |          24 | UNITED STATES             |           1 | y final packages. slow foxes cajole quickly. quickly silent platelets breach ironic accounts. unusual pinto be
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |          17 | PERU                      |           1 | platelets. blithely pending dependencies use fluffily across the even pinto beans. carefully silent accoun
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           3 | CANADA                    |           1 | eas hang ironic, silent packages. slyly regular packages are furiously over the tithes. fluffily bold
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           2 | BRAZIL                    |           1 | y alongside of the pending deposits. carefully special packages are about the ironic forges. slyly special 
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           1 | ARGENTINA                 |           1 | al foxes promise slyly according to the regular accounts. bold requests alon
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          21 | VIETNAM                   |           2 | hely enticingly express accounts. even, final 
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          18 | CHINA                     |           2 | c dependencies. furiously express notornis sleep slyly regular accounts. ideas sleep. depos
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          12 | JAPAN                     |           2 | ously. final, express gifts cajole a
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           9 | INDONESIA                 |           2 |  slyly express asymptotes. regular deposits haggle slyly. carefully ironic hockey players sleep blithely. carefull
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           8 | INDIA                     |           2 | ss excuses cajole slyly across the packages. deposits print aroun
 (25 rows)
 
 -- start_ignore
 select * from gpfdist_status;
                                   x                                   
 ----------------------------------------------------------------------
- Okay, gpfdist version "main build dev" is running on localhost:7070.
+ Okay, gpfdist version "main build dev" is running on @hostname@:7070.
 (1 row)
 
 select * from gpfdist_stop;
@@ -289,7 +286,7 @@ select * from gpfdist_csv_start;
 select * from gpfdist_status;
                                   x                                   
 ----------------------------------------------------------------------
- Okay, gpfdist version "main build dev" is running on localhost:7070.
+ Okay, gpfdist version "main build dev" is running on @hostname@:7070.
 (1 row)
 
 -- end_ignore
@@ -418,7 +415,7 @@ select * from ext_fill1 order by a,b,c; -- should pad missing attrs with nulls
 (5 rows)
 
 select * from ext_fill2 order by a,b,c; -- should fail due to empty data line
-ERROR:  missing data for column "b", found empty data line  (seg0 slice1 @hostname@:11001 pid=44570)
+ERROR:  missing data for column "b", found empty data line  (seg1 slice1 @hostname@:11003 pid=88889)
 DETAIL:  External table ext_fill2, line 3 of gpfdist://@hostname@:7070/missing_fields2.data: ""
 select * from ext_fill3_fnn where c is null; -- should be empty
  a | b | c 
@@ -462,10 +459,10 @@ drop external table ext_mpp6698;
 create external web table ext_stderr1(a text) execute 'nosuchcommand' format 'text';
 create external web table ext_stderr2(a text) execute 'cat nosuchfile.txt' format 'text';
 select * from ext_stderr1;
-ERROR:  external table 'ext_stderr1' command ended with error. sh: nosuchcommand: command not found  (seg1 slice1 localhost:11002 pid=90145)
+ERROR:  external table 'ext_stderr1' command ended with error. sh: nosuchcommand: command not found  (seg0 slice1 @hostname@:11002 pid=88888)
 DETAIL:  Command: execute:nosuchcommand
 select * from ext_stderr2;
-ERROR:  external table 'ext_stderr2' command ended with error. cat: CANNOT OPEN nosuchfile.txt: No such file or directory  (seg0 slice1 localhost:11001 pid=90144)
+ERROR:  external table 'ext_stderr2' command ended with error. cat: nosuchfile.txt: No such file or directory  (seg1 slice1 @hostname@:11003 pid=88889)
 DETAIL:  Command: execute:cat nosuchfile.txt
 drop external web table ext_stderr1;
 drop external web table ext_stderr2;
@@ -478,7 +475,7 @@ domain_name			varchar(350)
 )
 location ('gpfdist://@hostname@:7070/whois.csv' )
 format 'csv' ( header quote as 'ggg');
-NOTICE:  HEADER means that each one of the data files has a header row. Also, if you are using a file distribution utility such as gpfdist re-create this table without HEADER and specify the header option in the utility itself (since the header row will be distributed to only one segment database)
+NOTICE:  HEADER means that each one of the data files has a header row.
 ERROR:  quote must be a single character
 select count(*) from bad_whois;
 ERROR:  relation "bad_whois" does not exist
@@ -490,7 +487,7 @@ ERROR:  table "bad_whois" does not exist
 select * from gpfdist_status;
                                   x                                   
 ----------------------------------------------------------------------
- Okay, gpfdist version "main build dev" is running on localhost:7070.
+ Okay, gpfdist version "main build dev" is running on @hostname@:7070.
 (1 row)
 
 select * from gpfdist_stop;
@@ -515,7 +512,9 @@ create external table badt1 (x text)
 location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
 format 'text' (delimiter '|');
 select * from badt1;
-ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: 404 file not found
+NOTICE:  gfile stat @abs_srcdir@/data/no/such/place/badt1.tbl failure: No such file or directory  (seg0 slice1 @hostname@:11002 pid=88888)
+NOTICE:  fstream unable to open file @abs_srcdir@/data/no/such/place/badt1.tbl  (seg0 slice1 @hostname@:11002 pid=88888)
+ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: 404 file not found  (seg0 slice1 @hostname@:11002 pid=88888)
 drop external table badt1;
 --
 -- try a bad protocol
@@ -546,7 +545,7 @@ drop external table ext;
 -- get an error for missing gpfdist
 --
 select count(*) from ext_whois;
-ERROR:  connection failed while gpfdist://@hostname@:7070/whois.csv (url.i:175)  (seg0 slice1 @hostname@:12002 pid=16995)
+ERROR:  connection with gpfdist failed for gpfdist://@hostname@:7070/whois.csv. effective url: http://127.0.0.1:7070/whois.csv. error code = 61 (Connection refused) (url.c:262)  (seg0 slice1 @hostname@:11002 pid=88888)
 drop external table ext_whois;
 drop external table gpfdist_status;
 drop external table gpfdist_start;
