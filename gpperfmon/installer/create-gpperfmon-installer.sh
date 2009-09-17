@@ -3,7 +3,7 @@
 . ./lib/platform_defines.sh
 
 #Tarfile to use
-TARFILE=`ls | grep '^greenplum-perfmon.*.tar.gz'`
+TARFILE=`ls | grep '^greenplum-perfmon-web.*.tar.gz'`
 INSTALLER_NAME=`echo ${TARFILE} | sed 's,.tar.gz,,'`
 TARFILE_SIZE=`ls -al ${TARFILE} | awk '{print $5}'`
 BOM="installer-bom.txt"

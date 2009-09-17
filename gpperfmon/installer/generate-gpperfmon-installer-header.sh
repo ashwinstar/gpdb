@@ -22,7 +22,7 @@ if [ x"$1" = "x" ] ; then
 else
     VERSION_EXT="$1"
 fi
-DEFAULT_INSTALL_PATH="/usr/local/greenplum-perfmon-${VERSION_EXT}"
+DEFAULT_INSTALL_PATH="/usr/local/greenplum-perfmon-web-${VERSION_EXT}"
 
 cat <<EOF_HEADER
 #!/bin/sh

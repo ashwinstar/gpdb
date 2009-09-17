@@ -1,15 +1,14 @@
 #!/bin/bash
 
-#PERFMON_ARGS=
+PERFMON_ARGS=
 
 while [ "$1" != "" ]; do
 	case $1 in
 		--* )
-#		--start | --stop | --status | --setup )
-			PERFMON_ARGS+="$1 "
+			PERFMON_ARGS="$PERFMON_ARGS $1 "
 			;;	
 		* )
-			PERFMON_ARGS+="\"$1\" "
+			PERFMON_ARGS="$PERFMON_ARGS \"$1\" "
 			;;
 	esac
 	shift
