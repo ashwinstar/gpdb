@@ -11,6 +11,8 @@
 --
 -- m/ERROR\:\s+external table .* command ended with .*No such file.*/
 -- s/nosuchfile\.txt\:\s*No such file (or directory)?/nosuchfile\.txt\: NO SUCH FILE/
+-- m/ERROR\:\s+external table .* command ended with .*No such file.*/i
+-- s/cat\: (cannot open)? nosuchfile\.txt/cat\: CANNOT OPEN nosuchfile\.txt/
 --
 -- end_matchsubs
 CREATE TABLE REG_REGION (R_REGIONKEY INT, R_NAME CHAR(25), R_COMMENT VARCHAR(152)) DISTRIBUTED BY (R_REGIONKEY);

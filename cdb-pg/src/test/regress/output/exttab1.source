@@ -11,6 +11,8 @@
 --
 -- m/ERROR\:\s+external table .* command ended with .*No such file.*/
 -- s/nosuchfile\.txt\:\s*No such file (or directory)?/nosuchfile\.txt\: NO SUCH FILE/
+-- m/ERROR\:\s+external table .* command ended with .*No such file.*/i
+-- s/cat\: (cannot open)? nosuchfile\.txt/cat\: CANNOT OPEN nosuchfile\.txt/
 --
 -- end_matchsubs
 CREATE TABLE REG_REGION (R_REGIONKEY INT, R_NAME CHAR(25), R_COMMENT VARCHAR(152)) DISTRIBUTED BY (R_REGIONKEY);
@@ -463,7 +465,7 @@ select * from ext_stderr1;
 ERROR:  external table 'ext_stderr1' command ended with error. sh: nosuchcommand: command not found  (seg1 slice1 localhost:11002 pid=90145)
 DETAIL:  Command: execute:nosuchcommand
 select * from ext_stderr2;
-ERROR:  external table 'ext_stderr2' command ended with error. cat: nosuchfile.txt: No such file or directory  (seg0 slice1 localhost:11001 pid=90144)
+ERROR:  external table 'ext_stderr2' command ended with error. cat: CANNOT OPEN nosuchfile.txt: No such file or directory  (seg0 slice1 localhost:11001 pid=90144)
 DETAIL:  Command: execute:cat nosuchfile.txt
 drop external web table ext_stderr1;
 drop external web table ext_stderr2;
