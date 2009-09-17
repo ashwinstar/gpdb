@@ -46,7 +46,7 @@ CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE table_name (
        [ { column_name data_type [DEFAULT default_expr] 
            [column_constraint [ ... ]]
            | table_constraint
-           | LIKE parent_table [{INCLUDING | EXCLUDING} 
+           | LIKE other_table [{INCLUDING | EXCLUDING} 
                                 {DEFAULTS | CONSTRAINTS}] ...}
            [, ... ] ] )
    [ INHERITS ( parent_table [, ... ] ) ]
@@ -68,14 +68,16 @@ CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE table_name (
     )
 
 where storage_parameter is:
+
    APPENDONLY={TRUE|FALSE}
    ORIENTATION={COLUMN|ROW}
-   COMPRESSLEVEL={0-9}
    COMPRESSTYPE={ZLIB|QUICKLZ}
+   COMPRESSLEVEL={0-9 | 1}
    FILLFACTOR={10-100}
    OIDS[=TRUE|FALSE]
 
 where column_constraint is:
+
    [CONSTRAINT constraint_name]
    NOT NULL | NULL 
    | UNIQUE [USING INDEX TABLESPACE tablespace]
@@ -85,6 +87,7 @@ where column_constraint is:
    | CHECK ( expression )
 
 and table_constraint is:
+
    [CONSTRAINT constraint_name]
    UNIQUE ( column_name [, ... ] )
           [USING INDEX TABLESPACE tablespace] 
@@ -95,13 +98,16 @@ and table_constraint is:
    | CHECK ( expression )
 
 where partition_type is:
+
     LIST
   | RANGE
 
 where partition_specification is:
+
 partition_element [, ...]
 
 and partition_element is:
+
    DEFAULT PARTITION name
   | [PARTITION name] VALUES (list_value [,...] )
   | [PARTITION name] 
@@ -115,9 +121,11 @@ and partition_element is:
 [ TABLESPACE tablespace ]
 
 where subpartition_spec or template_spec is:
+
 subpartition_element [, ...]
 
 and subpartition_element is:
+
    DEFAULT SUBPARTITION name
   | [SUBPARTITION name] VALUES (list_value [,...] )
   | [SUBPARTITION name] 
