@@ -2,11 +2,11 @@
  *
  *	  Utility functions for conversion procs.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mb/conv.c,v 1.61 2006/10/04 00:30:02 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mb/conv.c,v 1.67 2009/01/01 17:23:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -324,22 +324,24 @@ set_iso_code(unsigned char *iso, uint32 code)
  * utf: input UTF8 string (need not be null-terminated).
  * iso: pointer to the output area (must be large enough!)
  * map: the conversion map.
- * size: the size of the conversion map.
+ * cmap: the conversion map for combined characters.
+ *		  (optional)
+ * size1: the size of the conversion map.
+ * size2: the size of the conversion map for combined characters
+ *		  (optional)
  * encoding: the PG identifier for the local encoding.
  * len: length of input string.
  */
 void
 UtfToLocal(const unsigned char *utf, unsigned char *iso,
-		   const pg_utf_to_local *map, int size, int encoding, int len)
+		   const pg_utf_to_local *map, const pg_utf_to_local_combined *cmap,
+		   int size1, int size2, int encoding, int len)
 {
 	uint32		iutf;
 	uint32		cutf[2];
 	uint32		code;
 	pg_utf_to_local *p;
-	pg_utf_to_local_combined *cp = 0;
-	const pg_utf_to_local_combined *cmap = 0;
-	int size1 = size;
-	int size2 = 0;
+	pg_utf_to_local_combined *cp;
 	int			l;
 
 	for (; len > 0; len -= l)
@@ -393,18 +395,18 @@ UtfToLocal(const unsigned char *utf, unsigned char *iso,
 			len -= l;
 
 			l = pg_utf_mblen(utf);
-		if (len < l)
-			break;
+			if (len < l)
+				break;
 
-		if (!pg_utf8_islegal(utf, l))
-			break;
+			if (!pg_utf8_islegal(utf, l))
+				break;
 
 			cutf[0] = iutf;
 
-		if (l == 1)
+			if (l == 1)
 			{
 				if (len_save > 1)
-		{
+				{
 					p = bsearch(&cutf[0], map, size1,
 								sizeof(pg_utf_to_local), compare1);
 					if (p == NULL)
@@ -413,28 +415,28 @@ UtfToLocal(const unsigned char *utf, unsigned char *iso,
 					iso = set_iso_code(iso, p->code);
 				}
 
-			/* ASCII case is easy */
-			*iso++ = *utf++;
-			continue;
-		}
-		else if (l == 2)
-		{
-			iutf = *utf++ << 8;
-			iutf |= *utf++;
-		}
-		else if (l == 3)
-		{
-			iutf = *utf++ << 16;
-			iutf |= *utf++ << 8;
-			iutf |= *utf++;
-		}
-		else if (l == 4)
-		{
-			iutf = *utf++ << 24;
-			iutf |= *utf++ << 16;
-			iutf |= *utf++ << 8;
-			iutf |= *utf++;
-		}
+				/* ASCII case is easy */
+				*iso++ = *utf++;
+				continue;
+			}
+			else if (l == 2)
+			{
+				iutf = *utf++ << 8;
+				iutf |= *utf++;
+			}
+			else if (l == 3)
+			{
+				iutf = *utf++ << 16;
+				iutf |= *utf++ << 8;
+				iutf |= *utf++;
+			}
+			else if (l == 4)
+			{
+				iutf = *utf++ << 24;
+				iutf |= *utf++ << 16;
+				iutf |= *utf++ << 8;
+				iutf |= *utf++;
+			}
 
 			cutf[1] = iutf;
 			cp = bsearch(cutf, cmap, size2,
@@ -445,7 +447,7 @@ UtfToLocal(const unsigned char *utf, unsigned char *iso,
 			{
 				/* not found in combined map. try with ordinary map */
 				p = bsearch(&cutf[0], map, size1,
-					sizeof(pg_utf_to_local), compare1);
+							sizeof(pg_utf_to_local), compare1);
 				if (p == NULL)
 					report_untranslatable_char(PG_UTF8, encoding,
 							   (const char *) (utf_save - l_save), len_save);
@@ -453,10 +455,10 @@ UtfToLocal(const unsigned char *utf, unsigned char *iso,
 
 				p = bsearch(&cutf[1], map, size1,
 							sizeof(pg_utf_to_local), compare1);
-		if (p == NULL)
-			report_untranslatable_char(PG_UTF8, encoding,
-									   (const char *) (utf - l), len);
-			code = p->code;
+				if (p == NULL)
+					report_untranslatable_char(PG_UTF8, encoding,
+											   (const char *) (utf - l), len);
+				code = p->code;
 			}
 		}
 		else	/* no cmap or no remaining data */
@@ -483,21 +485,23 @@ UtfToLocal(const unsigned char *utf, unsigned char *iso,
  * iso: input local string (need not be null-terminated).
  * utf: pointer to the output area (must be large enough!)
  * map: the conversion map.
- * size: the size of the conversion map.
+ * cmap: the conversion map for combined characters.
+ *		  (optional)
+ * size1: the size of the conversion map.
+ * size2: the size of the conversion map for combined characters
+ *		  (optional)
  * encoding: the PG identifier for the local encoding.
  * len: length of input string.
  */
 void
 LocalToUtf(const unsigned char *iso, unsigned char *utf,
-		   const pg_local_to_utf *map, int size, int encoding, int len)
+		   const pg_local_to_utf *map, const pg_local_to_utf_combined *cmap,
+		   int size1, int size2, int encoding, int len)
 {
 	unsigned int iiso;
 	int			l;
 	pg_local_to_utf *p;
-	pg_local_to_utf_combined *cp = 0;
-	const pg_local_to_utf_combined *cmap = 0;
-	int size1 = size;
-	int size2 = 0;
+	pg_local_to_utf_combined *cp;
 
 	if (!PG_VALID_ENCODING(encoding))
 		ereport(ERROR,
@@ -545,6 +549,7 @@ LocalToUtf(const unsigned char *iso, unsigned char *utf,
 
 		p = bsearch(&iiso, map, size1,
 					sizeof(pg_local_to_utf), compare2);
+
 		if (p == NULL)
 		{
 			/*
@@ -586,14 +591,14 @@ LocalToUtf(const unsigned char *iso, unsigned char *utf,
 		}
 		else
 		{
-		if (p->utf & 0xff000000)
-			*utf++ = p->utf >> 24;
-		if (p->utf & 0x00ff0000)
-			*utf++ = (p->utf & 0x00ff0000) >> 16;
-		if (p->utf & 0x0000ff00)
-			*utf++ = (p->utf & 0x0000ff00) >> 8;
-		if (p->utf & 0x000000ff)
-			*utf++ = p->utf & 0x000000ff;
+			if (p->utf & 0xff000000)
+				*utf++ = p->utf >> 24;
+			if (p->utf & 0x00ff0000)
+				*utf++ = (p->utf & 0x00ff0000) >> 16;
+			if (p->utf & 0x0000ff00)
+				*utf++ = (p->utf & 0x0000ff00) >> 8;
+			if (p->utf & 0x000000ff)
+				*utf++ = p->utf & 0x000000ff;
 		}
 	}
 

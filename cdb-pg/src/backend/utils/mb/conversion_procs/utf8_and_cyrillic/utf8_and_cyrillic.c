@@ -2,11 +2,11 @@
  *
  *	  UTF8 and Cyrillic
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_cyrillic/utf8_and_cyrillic.c,v 1.17 2006/10/04 00:30:02 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_cyrillic/utf8_and_cyrillic.c,v 1.24 2009/02/10 19:29:39 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -53,8 +53,8 @@ utf8_to_koi8r(PG_FUNCTION_ARGS)
 
 	CHECK_ENCODING_CONVERSION_ARGS(PG_UTF8, PG_KOI8R);
 
-	UtfToLocal(src, dest, ULmapKOI8R,
-			   sizeof(ULmapKOI8R) / sizeof(pg_utf_to_local), PG_KOI8R, len);
+	UtfToLocal(src, dest, ULmapKOI8R, NULL,
+			 sizeof(ULmapKOI8R) / sizeof(pg_utf_to_local), 0, PG_KOI8R, len);
 
 	PG_RETURN_VOID();
 }
@@ -68,8 +68,8 @@ koi8r_to_utf8(PG_FUNCTION_ARGS)
 
 	CHECK_ENCODING_CONVERSION_ARGS(PG_KOI8R, PG_UTF8);
 
-	LocalToUtf(src, dest, LUmapKOI8R, 
-			 sizeof(LUmapKOI8R) / sizeof(pg_local_to_utf), PG_KOI8R, len);
+	LocalToUtf(src, dest, LUmapKOI8R, NULL,
+			 sizeof(LUmapKOI8R) / sizeof(pg_local_to_utf), 0, PG_KOI8R, len);
 
 	PG_RETURN_VOID();
 }
@@ -83,8 +83,8 @@ utf8_to_koi8u(PG_FUNCTION_ARGS)
 
 	CHECK_ENCODING_CONVERSION_ARGS(PG_UTF8, PG_KOI8U);
 
-	UtfToLocal(src, dest, ULmapKOI8U, 
-			 sizeof(ULmapKOI8U) / sizeof(pg_utf_to_local),  PG_KOI8U, len);
+	UtfToLocal(src, dest, ULmapKOI8U, NULL,
+			 sizeof(ULmapKOI8U) / sizeof(pg_utf_to_local), 0, PG_KOI8U, len);
 
 	PG_RETURN_VOID();
 }
@@ -98,8 +98,8 @@ koi8u_to_utf8(PG_FUNCTION_ARGS)
 
 	CHECK_ENCODING_CONVERSION_ARGS(PG_KOI8U, PG_UTF8);
 
-	LocalToUtf(src, dest, LUmapKOI8U,
-			   sizeof(LUmapKOI8U) / sizeof(pg_local_to_utf), PG_KOI8U, len);
+	LocalToUtf(src, dest, LUmapKOI8U, NULL,
+			 sizeof(LUmapKOI8U) / sizeof(pg_local_to_utf), 0, PG_KOI8U, len);
 
 	PG_RETURN_VOID();
 }

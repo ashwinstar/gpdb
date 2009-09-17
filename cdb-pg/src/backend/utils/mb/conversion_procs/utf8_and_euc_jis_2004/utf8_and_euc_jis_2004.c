@@ -16,8 +16,8 @@
 #include "mb/pg_wchar.h"
 #include "../../Unicode/euc_jis_2004_to_utf8.map"
 #include "../../Unicode/utf8_to_euc_jis_2004.map"
-//#include "../../Unicode/euc_jis_2004_to_utf8_combined.map"
-//#include "../../Unicode/utf8_to_euc_jis_2004_combined.map"
+#include "../../Unicode/euc_jis_2004_to_utf8_combined.map"
+#include "../../Unicode/utf8_to_euc_jis_2004_combined.map"
 
 PG_MODULE_MAGIC;
 
@@ -45,14 +45,11 @@ euc_jis_2004_to_utf8(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 
 	CHECK_ENCODING_CONVERSION_ARGS(PG_EUC_JIS_2004, PG_UTF8);
-/*
+
 	LocalToUtf(src, dest, LUmapEUC_JIS_2004, LUmapEUC_JIS_2004_combined,
 			   sizeof(LUmapEUC_JIS_2004) / sizeof(pg_local_to_utf),
 	   sizeof(LUmapEUC_JIS_2004_combined) / sizeof(pg_local_to_utf_combined),
 			   PG_EUC_JIS_2004, len);
-*/
-	LocalToUtf(src, dest, LUmapEUC_JIS_2004, sizeof(LUmapEUC_JIS_2004) / sizeof(pg_local_to_utf), PG_EUC_JIS_2004, len);
-
 
 	PG_RETURN_VOID();
 }
@@ -65,14 +62,11 @@ utf8_to_euc_jis_2004(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 
 	CHECK_ENCODING_CONVERSION_ARGS(PG_UTF8, PG_EUC_JIS_2004);
-/*
+
 	UtfToLocal(src, dest, ULmapEUC_JIS_2004, ULmapEUC_JIS_2004_combined,
 			   sizeof(ULmapEUC_JIS_2004) / sizeof(pg_utf_to_local),
 	   sizeof(ULmapEUC_JIS_2004_combined) / sizeof(pg_utf_to_local_combined),
 			   PG_EUC_JIS_2004, len);
-*/	
-	UtfToLocal(src, dest, ULmapEUC_JIS_2004, sizeof(ULmapEUC_JIS_2004) / sizeof(pg_local_to_utf), PG_EUC_JIS_2004, len);
-
 
 	PG_RETURN_VOID();
 }

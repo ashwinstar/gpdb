@@ -175,7 +175,7 @@ SetClientEncoding(int encoding, bool doit)
 
 /*
  * Initialize client encoding if necessary.
- *		called from InitPostgres() once during backend starting up.
+ *		called from InitPostgres() once during backend startup.
  */
 void
 InitializeClientEncoding(void)
@@ -229,7 +229,7 @@ pg_get_client_encoding_name(void)
  *
  * CAUTION: although the presence of a length argument means that callers
  * can pass non-null-terminated strings, care is required because the same
- * string will be passed back if no conversion occurs.  Such callers *must*
+ * string will be passed back if no conversion occurs.	Such callers *must*
  * check whether result == src and handle that case differently.
  *
  * Note: we try to avoid raising error, since that could get us into
@@ -652,21 +652,22 @@ perform_default_encoding_conversion(const char *src, int len, bool is_client_to_
 size_t
 wchar2char(char *to, const wchar_t *from, size_t tolen)
 {
-	size_t result;
-	
+	size_t		result;
+
 	if (tolen == 0)
 		return 0;
 
 #ifdef WIN32
+
 	/*
-	 * On Windows, the "Unicode" locales assume UTF16 not UTF8 encoding,
-	 * and for some reason mbstowcs and wcstombs won't do this for us,
-	 * so we use MultiByteToWideChar().
+	 * On Windows, the "Unicode" locales assume UTF16 not UTF8 encoding, and
+	 * for some reason mbstowcs and wcstombs won't do this for us, so we use
+	 * MultiByteToWideChar().
 	 */
 	if (GetDatabaseEncoding() == PG_UTF8)
 	{
 		result = WideCharToMultiByte(CP_UTF8, 0, from, -1, to, tolen,
-								NULL, NULL);
+									 NULL, NULL);
 		/* A zero return is failure */
 		if (result <= 0)
 			result = -1;
@@ -680,7 +681,7 @@ wchar2char(char *to, const wchar_t *from, size_t tolen)
 	else
 #endif   /* WIN32 */
 	{
-		Assert( !lc_ctype_is_c() );
+		Assert(!lc_ctype_is_c());
 		result = wcstombs(to, from, tolen);
 	}
 	return result;
@@ -731,7 +732,7 @@ char2wchar(wchar_t *to, size_t tolen, const char *from, size_t fromlen)
 		/* mbstowcs requires ending '\0' */
 		char	   *str = pnstrdup(from, fromlen);
 
-		Assert( !lc_ctype_is_c() );
+		Assert(!lc_ctype_is_c());
 		result = mbstowcs(to, str, tolen);
 		pfree(str);
 	}
@@ -752,11 +753,10 @@ char2wchar(wchar_t *to, size_t tolen, const char *from, size_t fromlen)
 				(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
 				 errmsg("invalid multibyte character for locale"),
 				 errhint("The server's LC_CTYPE locale is probably incompatible with the database encoding.")));
-	}	
+	}
 
 	return result;
 }
-
 #endif
 
 /*
@@ -1103,4 +1103,3 @@ pg_client_encoding(PG_FUNCTION_ARGS)
 	Assert(ClientEncoding);
 	return DirectFunctionCall1(namein, CStringGetDatum(ClientEncoding->name));
 }
-

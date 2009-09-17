@@ -8,10 +8,12 @@ subdir = src/backend/utils
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-SUBDIRS     := adt cache datumstream error fmgr hash init mb misc mmgr resowner \
+SUBDIRS     = adt cache datumstream error fmgr hash init mb misc mmgr resowner \
 			   resscheduler sort stat time gpmon
+
 SUBDIROBJS  := $(SUBDIRS:%=%/SUBSYS.o)
 
+#include $(top_srcdir)/src/backend/common.mk
 
 all: SUBSYS.o fmgroids.h
 

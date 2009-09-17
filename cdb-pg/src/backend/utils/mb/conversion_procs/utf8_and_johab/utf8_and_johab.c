@@ -2,11 +2,11 @@
  *
  *	  JOHAB <--> UTF8
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_johab/utf8_and_johab.c,v 1.15 2006/05/30 22:12:15 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_johab/utf8_and_johab.c,v 1.21 2009/01/29 19:23:42 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -44,8 +44,8 @@ johab_to_utf8(PG_FUNCTION_ARGS)
 
 	CHECK_ENCODING_CONVERSION_ARGS(PG_JOHAB, PG_UTF8);
 
-	LocalToUtf(src, dest, LUmapJOHAB,
-			   sizeof(LUmapJOHAB) / sizeof(pg_local_to_utf), PG_JOHAB, len);
+	LocalToUtf(src, dest, LUmapJOHAB, NULL,
+			 sizeof(LUmapJOHAB) / sizeof(pg_local_to_utf), 0, PG_JOHAB, len);
 
 	PG_RETURN_VOID();
 }
@@ -59,8 +59,8 @@ utf8_to_johab(PG_FUNCTION_ARGS)
 
 	CHECK_ENCODING_CONVERSION_ARGS(PG_UTF8, PG_JOHAB);
 
-	UtfToLocal(src, dest, ULmapJOHAB,
-			   sizeof(ULmapJOHAB) / sizeof(pg_utf_to_local), PG_JOHAB, len);
+	UtfToLocal(src, dest, ULmapJOHAB, NULL,
+			 sizeof(ULmapJOHAB) / sizeof(pg_utf_to_local), 0, PG_JOHAB, len);
 
 	PG_RETURN_VOID();
 }

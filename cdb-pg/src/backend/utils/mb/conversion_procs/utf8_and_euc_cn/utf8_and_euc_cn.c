@@ -2,11 +2,11 @@
  *
  *	  EUC_CN <--> UTF8
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_euc_cn/utf8_and_euc_cn.c,v 1.15 2006/05/30 22:12:15 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_euc_cn/utf8_and_euc_cn.c,v 1.21 2009/01/29 19:23:40 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -44,8 +44,8 @@ euc_cn_to_utf8(PG_FUNCTION_ARGS)
 
 	CHECK_ENCODING_CONVERSION_ARGS(PG_EUC_CN, PG_UTF8);
 
-	LocalToUtf(src, dest, LUmapEUC_CN,
-			   sizeof(LUmapEUC_CN) / sizeof(pg_local_to_utf), PG_EUC_CN, len);
+	LocalToUtf(src, dest, LUmapEUC_CN, NULL,
+		   sizeof(LUmapEUC_CN) / sizeof(pg_local_to_utf), 0, PG_EUC_CN, len);
 
 	PG_RETURN_VOID();
 }
@@ -59,8 +59,8 @@ utf8_to_euc_cn(PG_FUNCTION_ARGS)
 
 	CHECK_ENCODING_CONVERSION_ARGS(PG_UTF8, PG_EUC_CN);
 
-	UtfToLocal(src, dest, ULmapEUC_CN,
-			   sizeof(ULmapEUC_CN) / sizeof(pg_utf_to_local), PG_EUC_CN, len);
+	UtfToLocal(src, dest, ULmapEUC_CN, NULL,
+		   sizeof(ULmapEUC_CN) / sizeof(pg_utf_to_local), 0, PG_EUC_CN, len);
 
 	PG_RETURN_VOID();
 }
