@@ -4827,6 +4827,7 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 	int			hex_val;
 	int			attnum = 0;		/* attribute number being parsed */
 	int			attribute = 1;
+	bool		saw_high_bit = false;
 	ListCell   *cur;			/* cursor to attribute list used for this COPY */
 
 	/* init variables for attribute scan */
@@ -5038,6 +5039,8 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 							}
 						}
 						newc = oct_val & 0377;	/* the escaped byte value */
+						if (IS_HIGHBIT_SET(newc))
+							saw_high_bit = true;
 						break;
 					case 'x':
 						/* Handle \x3F */
@@ -5056,6 +5059,8 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 								hex_val = (hex_val << 4) + GetDecimalFromHex(nextc);
 							}
 							newc = hex_val & 0xff;
+							if (IS_HIGHBIT_SET(newc))
+								saw_high_bit = true;
 						}
 						else
 						{
@@ -5149,6 +5154,22 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 			*(cstate->attribute_buf.data + attr_offsets[attribute] - 1) = '\0';
 	}
 
+	/* 
+	 * MPP-6816 
+	 * If any attribute has a de-escaped octal or hex sequence with a
+	 * high bit set, we check that the changed attribute text is still
+	 * valid WRT encoding. We run the check on all attributes since 
+	 * such octal sequences are so rare in client data that it wouldn't
+	 * affect performance at all anyway.
+	 */
+	if(saw_high_bit)
+	{
+		for (attribute = 0; attribute < num_phys_attrs; attribute++)
+		{
+			char *fld = cstate->attribute_buf.data + attr_offsets[attribute];
+			pg_verifymbstr(fld, strlen(fld), false);
+		}
+	}
 }
 
 /*
