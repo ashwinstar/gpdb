@@ -9,7 +9,7 @@ subdir = src/bin/gpcheckdb
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) -g $(CPPFLAGS) 
+override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) -Wno-write-strings -g  $(CPPFLAGS) 
 
 CXX += $(strip $(findstring -m64,$(CC)) $(findstring -m32,$(CC)))
 
@@ -27,7 +27,7 @@ install: all installdirs
 installdirs:
 	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
 
-uninstall:
+uninstall:ok
 	rm -f '$(DESTDIR)$(bindir)/lib/gpcheckdb$(X)' 
 
 clean distclean:
