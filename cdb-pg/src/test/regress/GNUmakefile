@@ -77,10 +77,6 @@ include $(top_srcdir)/src/Makefile.shlib
 
 all: all-lib
 
-$(NAME)$(DLSUFFIX): $(shlib)
-	rm -f $(NAME)$(DLSUFFIX)
-	$(LN_S) $(shlib) $(NAME)$(DLSUFFIX)
-
 # Test input and expected files.  These are created by pg_regress itself, so we
 # don't have a rule to create them.  We do need rules to clean them however.
 ifile_list := $(subst .source,, $(notdir $(wildcard $(top_srcdir)/$(subdir)/input/*.source)))
