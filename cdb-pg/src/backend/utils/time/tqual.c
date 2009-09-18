@@ -181,21 +181,6 @@ SharedSnapshotShmemSize(void)
 	return MAXALIGN(size);
 }
 
-Size
-newSharedSnapshotShmemSize(void)
-{
-	Size		size;
-
-	slotSize = sizeof(SharedSnapshotSlot);
-	slotSize += sizeof(TransactionId) * (MaxBackends + max_prepared_xacts);
-	slotSize = MAXALIGN(slotSize);
-	
-	size = offsetof(SharedSnapshotStruct, xips);
-	size = add_size(size, mul_size(slotSize, (2*max_prepared_xacts)));
-	
-	return MAXALIGN(size);
-}
-
 /*
  * Initialize the sharedSnapshot array.  This array is used to communicate 
  * snapshots between qExecs that are segmates. 
@@ -206,8 +191,6 @@ CreateSharedSnapshotArray(void)
 	bool	found;
 	int		i;
 	TransactionId *xip_base=NULL;
-
-	elog(LOG, "old size %d new size %d", SharedSnapshotShmemSize(), newSharedSnapshotShmemSize());
 
 	/* Create or attach to the SharedSnapshot shared structure */
 	sharedSnapshotArray = (SharedSnapshotStruct *)
