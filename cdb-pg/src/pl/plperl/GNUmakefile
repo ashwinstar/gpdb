@@ -33,8 +33,6 @@ rpathdir = $(perl_archlibexp)/CORE
 
 
 NAME = plperl
-SO_MAJOR_VERSION = 0
-SO_MINOR_VERSION = 0
 
 OBJS = plperl.o spi_internal.o SPI.o
 
