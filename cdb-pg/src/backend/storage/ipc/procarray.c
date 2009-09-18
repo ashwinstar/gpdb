@@ -511,7 +511,7 @@ char *DebugGetSnapshotString(const Snapshot snapshot)
 }
 
 void
-updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char* debugCaller)
+updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char *debugCaller)
 {
 	int combocidSize;
 
@@ -519,7 +519,8 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 
 	Assert(snapshot != NULL);
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "updateSharedLocalSnapshot for DistributedTransactionContext = '%s' passed local snapshot (xmin: %u xmax: %u xcnt: %u) curcid: %d", 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		 "updateSharedLocalSnapshot for DistributedTransactionContext = '%s' passed local snapshot (xmin: %u xmax: %u xcnt: %u) curcid: %d", 
 		 DtxContextToString(DistributedTransactionContext),
 		 snapshot->xmin,
 		 snapshot->xmax,
@@ -546,45 +547,9 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 
 	if (snapshot->xcnt > 0)
 	{
-		void *snapshotArray;
-		int maxSlots;
-		char* expectedXip;
-		
-		GetSlotTableDebugInfo(&snapshotArray, &maxSlots);
-
-		expectedXip = ((char *)SharedLocalSnapshotSlot) + sizeof(SharedSnapshotSlot);
-		
-		/* Verify xip array pointer to space allocated after slot struct */
-		if((char *)SharedLocalSnapshotSlot->snapshot.xip != expectedXip)
-		{
-			elog(FATAL,"updateSharedLocalSnapshot found problem with "
-				 "SharedLocalSnapshotSlot "
-				 "(snapshot {xmin %u, xmax %u, xcnt %d, curcid %d}, "
-				 "base %p, xip address = %p, expected = %p, "
-				 "SharedLocalSnapshotSlot {slotindex %d, slotid %d, "
-				 "combocidcnt %d} SharedLocalSnapshotSlot->snapshot "
-				 "{xmin = %u, xmax = %u, xcnt = %d} "
-				 "snapshotArray %p maxSlots %d)",
-				 snapshot->xmin,
-				 snapshot->xmax,
-				 snapshot->xcnt,
-				 snapshot->curcid,
-				 SharedLocalSnapshotSlot,
-				 SharedLocalSnapshotSlot->snapshot.xip,
-				 expectedXip,
-				 SharedLocalSnapshotSlot->slotindex,
-				 SharedLocalSnapshotSlot->slotid,
-				 SharedLocalSnapshotSlot->combocidcnt,
-				 SharedLocalSnapshotSlot->snapshot.xmin,
-				 SharedLocalSnapshotSlot->snapshot.xmax,
-				 SharedLocalSnapshotSlot->snapshot.xcnt,
-				 snapshotArray,
-				 maxSlots);
-				
-		}
 		Assert(snapshot->xip != NULL);
 	
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"updateSharedLocalSnapshot count of in-doubt ids %u",SharedLocalSnapshotSlot->snapshot.xcnt);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"updateSharedLocalSnapshot count of in-doubt ids %u", SharedLocalSnapshotSlot->snapshot.xcnt);
 
 		memcpy(SharedLocalSnapshotSlot->snapshot.xip, snapshot->xip, snapshot->xcnt * sizeof(TransactionId));
 	}
