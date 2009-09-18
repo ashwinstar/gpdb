@@ -8761,7 +8761,8 @@ assign_debug_assertions(bool newval, bool doit, GucSource source)
 static bool
 assign_autovacuum_warning(bool newval, bool doit, GucSource source)
 {
-	elog(WARNING, "Autovacuum is not supported in GPDB.");
+	if (newval)
+		elog(WARNING, "Autovacuum is not supported in GPDB.");
 
 	return true;
 }
