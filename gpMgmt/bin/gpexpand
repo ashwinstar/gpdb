@@ -364,9 +364,24 @@ ORDER BY
     attrelid, attnum
 """
 
+has_unique_index_sql = """
+SELECT 
+    current_database() || '.' || pg_catalog.quote_ident(nspname) || '.' || pg_catalog.quote_ident(relname) AS table 
+FROM 
+    pg_class c, 
+    pg_namespace n, 
+    pg_index i 
+WHERE 
+  i.indrelid = c.oid 
+  AND c.relnamespace = n.oid 
+  AND i.indisunique 
+  AND n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast',  
+                        'pg_bitmapindex', 'pg_aoseg')
+"""
+
 #-------------------------------------------------------------------------
 class InvalidStatusError(Exception): pass
-
+class ValidationError(Exception): pass
     
 #-------------------------------------------------------------------------    
 class GpExpandStatus():
@@ -839,6 +854,7 @@ class gpexpand:
         self.dburl = dburl
         self.numworkers=parallel   
         self.gparray = gparray
+        self.unique_index_tables = {}
         self.conn = dbconn.connect(self.dburl,utility=True)
         self.old_segments = gparray.getSegDbList()
                 
@@ -1027,6 +1043,41 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             return False
         
         return True
+    
+    def check_unique_indexes(self):
+        """ Checks if there are tables with unique indexes.
+        Returns true if unique indexes exist"""
+        
+        conn = None
+        has_unique_indexes = False
+ 
+        try:
+            conn = dbconn.connect(self.dburl, utility=True)
+            databases = catalog.getDatabaseList(conn)
+            conn.close()
+            
+            tempurl = copy.deepcopy(self.dburl)
+            for db in databases:
+                if db[0] == 'template0':
+                    continue
+                self.logger.info('Checking database %s for tables with unique indexes...' % db[0])
+                tempurl.pgdb = db[0]
+                conn = dbconn.connect(tempurl, utility=True)
+                cursor = dbconn.execSQL(conn, has_unique_index_sql)
+                for row in cursor:
+                    has_unique_indexes = True
+                    self.unique_index_tables[row[0]] = True
+                cursor.close()
+                conn.close()
+            
+        except DatabaseError,ex:
+            if options.verbose:
+                logger.exception(ex)
+            logger.error('Failed to check for unique indexes.')
+            if conn: conn.close()
+            raise ex
+
+        return has_unique_indexes 
     
     def rollback(self):
         """Rolls back and expansion setup that didn't successfully complete"""
@@ -1499,10 +1550,13 @@ WHERE
             
                 if dist_policy is None:
                     dist_policy = 'NULL'
-
+                    
+                full_name = '%s.%s' % (dbname, fqname)
+                rank = 1 if self.unique_index_tables.has_key(full_name) else 2
+                
                 fp.write("""%s\t%s\t%s\t%s\t%s\t%s\t%s\tNULL\t%d\t%s\tNULL\tNULL\t%d\n""" % (dbname,fqname,schema_oid,table_oid, 
-                                                                                                    dist_policy,policy_name,policy_oids, 1, 
-                                                                                                    undone_status, rel_bytes ))
+                                                                                             dist_policy,policy_name,policy_oids,
+                                                                                             rank, undone_status, rel_bytes ))
         except Exception, e:
             raise ExpansionError(e)
         finally:
@@ -1594,10 +1648,13 @@ ORDER BY tablename, c2.oid desc;
             
                 if dist_policy is None:
                     dist_policy = 'NULL'
+                    
+                full_name = '%s.%s' % (dbname, fqname)
+                rank = 1 if self.unique_index_tables.has_key(full_name) else 2
 
                 fp.write("""%s\t%s\t%s\t%s\t%s\t%s\t%s\tNULL\t%d\t%s\tNULL\tNULL\t%d\n""" % (dbname,fqname,schema_oid,table_oid, 
-                                                                                                    dist_policy,policy_name,policy_oids, 1, 
-                                                                                                    undone_status, rel_bytes ))
+                                                                                             dist_policy,policy_name,policy_oids, 
+                                                                                             rank, undone_status, rel_bytes))
         except Exception:
             raise
         finally:
@@ -2253,15 +2310,13 @@ try:
     
     if gpexpand_db_status == 'SETUP DONE' or gpexpand_db_status == 'EXPANSION STOPPED':
         if not gp_expand.validate_max_connections():
-            logger.info('Exiting...')
-            sys.exit(1)
+            raise ValidationError()
         gp_expand.perform_expansion()
     elif gpexpand_db_status == 'EXPANSION STARTED':
         logger.info('It appears the last run of gpexpand did not exit cleanly.')
         logger.info('Resuming the expansion process...')
         if not gp_expand.validate_max_connections():
-            logger.info('Exiting...')
-            sys.exit(1)
+            raise ValidationError()
         gp_expand.perform_expansion()        
     elif gpexpand_db_status == 'EXPANSION COMPLETE':
         logger.info('Expansion has already completed.')
@@ -2269,8 +2324,13 @@ try:
         logger.info('the gpexpand schema and begin a new expansion')
     elif gpexpand_db_status == None and gpexpand_file_status == None and options.filename:
         if not gp_expand.validate_unalterable_tables():
-            logger.info('Exiting...')
-            sys.exit(1)              
+            raise ValidationError()
+        if gp_expand.check_unique_indexes():
+            logger.info("Tables with unique indexes exist.  Until these tables are successfully")
+            logger.info("redistributed, unique constraints may be violated.  For more information")
+            logger.info("on this issue, see the Greenplum Database Administrator Guide")
+            if not ask_yesno(None,"Would you like to continue with System Expansion",'N'):
+                raise ValidationError()
         gp_expand.read_input_file()
         gp_expand.start_prepare()
         gp_expand.add_segments()
@@ -2293,7 +2353,13 @@ try:
 
     logger.info("Exiting...")
     sys.exit(0)
-        
+  
+except ValidationError:
+    logger.info('Bringing Greenplum Database back online...')
+    if gp_expand is not None:
+        gp_expand.shutdown()    
+    gpexpand.get_gpdb_in_state(GPDB_STARTED)
+    sys.exit()
 except Exception,e:
     if options.verbose:
         logger.exception("gpexpand failed. exiting...")
@@ -2318,6 +2384,8 @@ except KeyboardInterrupt:
     signal.signal(signal.SIGINT,signal.default_int_handler)
 
     sys.exit('\nUser Interrupted')
+
+
 finally:
     try:
         if remove_pid:
