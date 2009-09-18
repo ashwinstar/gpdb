@@ -42,8 +42,6 @@ override CPPFLAGS := -Wno-error -I$(srcdir) $(python_includespec) $(CPPFLAGS)
 rpathdir = $(python_libdir)
 
 NAME = plpython
-SO_MAJOR_VERSION = 0
-SO_MINOR_VERSION = 0
 OBJS = plpython.o
 
 
@@ -61,7 +59,8 @@ python${pytverstr}.def: $(WD)/system32/python${pytverstr}.dll
 endif
 
 
-SHLIB_LINK = $(BE_DLLLIBS) $(python_libspec) $(python_additional_libs)
+SHLIB_LINK = $(python_libspec) $(python_additional_libs) $(filter -lintl,$(LIBS))
+
 
 REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=plpythonu
 REGRESS = plpython_schema plpython_populate plpython_function plpython_test \
