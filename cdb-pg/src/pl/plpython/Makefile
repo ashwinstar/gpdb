@@ -1,4 +1,4 @@
-# $PostgreSQL: pgsql/src/pl/plpython/Makefile,v 1.26 2006/07/21 00:24:04 tgl Exp $
+# $PostgreSQL: pgsql/src/pl/plpython/Makefile,v 1.32 2009/01/15 13:49:56 petere Exp $
 
 subdir = src/pl/plpython
 top_builddir = ../../..
@@ -18,18 +18,18 @@ endif
 ifeq ($(PORTNAME), win32)
 shared_libpython = yes
 python_includespec := $(subst \,/,$(python_includespec))
-override python_libspec :=
+override python_libspec =
 endif
 
 # Darwin (OS X) has its own ideas about how to do this.
 ifeq ($(PORTNAME), darwin)
 shared_libpython = yes
 # Replaced to allow use of Greenplum-provided Python
-#override python_libspec := -framework Python
-#override python_additional_libs :=
+#override python_libspec = -framework Python
+#override python_additional_libs =
 # sys.prefix reflects the runtime location of the python tree;
 # the GP install has the dylib in the lib directory of that tree.
-override python_libspec := -L$(shell ${PYTHON} -c "import sys, os; print os.path.join(sys.prefix, 'lib')") -lpython${python_version}
+override python_libspec = -L$(shell ${PYTHON} -c "import sys, os; print os.path.join(sys.prefix, 'lib')") -lpython${python_version}
 endif
 
 # If we don't have a shared library and the platform doesn't allow it
@@ -61,7 +61,6 @@ endif
 
 SHLIB_LINK = $(python_libspec) $(python_additional_libs) $(filter -lintl,$(LIBS))
 
-
 REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=plpythonu
 REGRESS = plpython_schema plpython_populate plpython_function plpython_test \
 	plpython_returns plpython_error plpython_drop
@@ -73,44 +72,14 @@ include $(top_srcdir)/src/Makefile.shlib
 
 all: all-lib
 
-# When doing a VPATH build, copy over the .sql and .out files so that the
-# test script can find them.  See comments in src/test/regress/GNUmakefile.
-ifdef VPATH
+install: all installdirs install-lib
 
-ifneq ($(PORTNAME),win32)
-abs_srcdir := $(shell cd $(srcdir) && pwd)
-abs_builddir := $(shell pwd)
-else
-abs_srcdir := $(shell cd $(srcdir) && pwd -W)
-abs_builddir := $(shell pwd -W)
-endif
+installdirs: installdirs-lib
 
-test_files_src := $(wildcard $(srcdir)/sql/*.sql) $(wildcard $(srcdir)/expected/*.out)
-test_files_build := $(patsubst $(srcdir)/%, $(abs_builddir)/%, $(test_files_src))
-
-all: $(test_files_build)
-$(test_files_build): $(abs_builddir)/%: $(srcdir)/%
-	ln -s $< $@
-
-endif
-
-install: all installdirs
-ifeq ($(enable_shared), yes)
-	$(INSTALL_SHLIB) $(shlib) '$(DESTDIR)$(pkglibdir)/plpython$(DLSUFFIX)'
-else
-	@echo "*****"; \
-	 echo "* PL/Python was not installed due to lack of shared library support."; \
-	 echo "*****"
-endif
-
-installdirs:
-	$(mkinstalldirs) '$(DESTDIR)$(pkglibdir)'
-
-uninstall:
-	rm -f '$(DESTDIR)$(pkglibdir)/plpython$(DLSUFFIX)'
+uninstall: uninstall-lib
 
 installcheck: submake
-	$(top_builddir)/src/test/regress/pg_regress --psqldir=$(PSQLDIR) $(REGRESS_OPTS) $(REGRESS)
+	$(top_builddir)/src/test/regress/pg_regress --inputdir=$(srcdir) --psqldir=$(PSQLDIR) $(REGRESS_OPTS) $(REGRESS)
 
 .PHONY: submake
 submake:
