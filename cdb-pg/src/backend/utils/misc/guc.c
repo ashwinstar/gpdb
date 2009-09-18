@@ -192,6 +192,9 @@ static const char *assign_debug_dtm_action_protocol(const char *newval,
 static const char *assign_gp_log_format(const char *value, bool doit,
 										GucSource source);
 
+static bool dummy_autovac=false;
+static bool assign_autovacuum_warning(bool newval, bool doit, GucSource source);
+
 /*
  * GUC option variables that are exported from this module
  */
@@ -969,8 +972,8 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Starts the autovacuum subprocess."),
 			NULL
 		},
-		&autovacuum_start_daemon,
-		false, NULL, NULL
+		&dummy_autovac,
+		false, assign_autovacuum_warning, NULL
 	},
 
 	{
@@ -8752,6 +8755,14 @@ assign_debug_assertions(bool newval, bool doit, GucSource source)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 			   errmsg("assertion checking is not supported by this build")));
 #endif
+	return true;
+}
+
+static bool
+assign_autovacuum_warning(bool newval, bool doit, GucSource source)
+{
+	elog(WARNING, "Autovacuum is not supported in GPDB.");
+
 	return true;
 }
 
