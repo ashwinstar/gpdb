@@ -270,7 +270,7 @@ def getGPConfiguration():
     db = connect()
     curs = db.query("select * from gp_configuration")
     for row in curs.dictresult():
-        if row['content'] == -1 and not row['isprimary']:
+        if row['content'] == -1 and row['isprimary'] != 't':
             continue    # skip standby master
         cfg[row['dbid']] = row
     db.close()
