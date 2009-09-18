@@ -52,7 +52,6 @@ PORT_TXT="#port"
 LOG_STATEMENT_TXT="#log_statement ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
-LOG_STATS_TXT="stats_command_string="
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 #******************************************************************************
 # Functions
