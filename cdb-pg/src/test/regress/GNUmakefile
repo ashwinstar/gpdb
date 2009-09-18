@@ -61,7 +61,7 @@ pg_regress.o: pg_regress.c $(top_builddir)/src/port/pg_config_paths.h
 $(top_builddir)/src/port/pg_config_paths.h: $(top_builddir)/src/Makefile.global
 	$(MAKE) -C $(top_builddir)/src/port pg_config_paths.h
 
-install: pg_regress$(X)
+install: all installdirs
 	$(INSTALL_PROGRAM) pg_regress$(X) '$(DESTDIR)$(pgxsdir)/$(subdir)/pg_regress$(X)'
 
 uninstall:
@@ -71,14 +71,11 @@ uninstall:
 # Build dynamically-loaded object file for CREATE FUNCTION ... LANGUAGE C.
 
 NAME = regress
-SO_MAJOR_VERSION= 0
-SO_MINOR_VERSION= 0
 OBJS = regress.o
-SHLIB_LINK = $(BE_DLLLIBS)
 
 include $(top_srcdir)/src/Makefile.shlib
 
-all: $(NAME)$(DLSUFFIX)
+all: all-lib
 
 $(NAME)$(DLSUFFIX): $(shlib)
 	rm -f $(NAME)$(DLSUFFIX)
