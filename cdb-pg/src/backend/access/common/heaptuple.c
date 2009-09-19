@@ -63,6 +63,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/sysattr.h"
 #include "access/transam.h"
 #include "access/tuptoaster.h"
 #include "executor/tuptable.h"
@@ -126,6 +127,8 @@ heap_compute_data_size(TupleDesc tupleDesc,
  *
  * We also fill the null bitmap (if any) and set the infomask bits
  * that reflect the tuple's data contents.
+ *
+ * NOTE: it is now REQUIRED that the caller have pre-zeroed the data area.
  */
 Size
 heap_fill_tuple(TupleDesc tupleDesc,
@@ -177,8 +180,10 @@ heap_fill_tuple(TupleDesc tupleDesc,
 			*bitP |= bitmask;
 		}
 
-		/* XXX below the att_align calls are aligning the pointer itself, not
-		 * the offset */
+		/*
+		 * XXX we use the att_align macros on the pointer value itself, not on
+		 * an offset.  This is a bit of a hack.
+		 */
 
 		if (att[i]->attbyval)
 		{
@@ -421,12 +426,22 @@ nocachegetattr(HeapTuple tuple,
 	 */
 	if (!slow)
 	{
-		if (att[attnum]->attcacheoff != -1)
+		/*
+		 * If we get here, there are no nulls up to and including the target
+		 * attribute.  If we have a cached offset, we can use it.
+		 */
+		if (att[attnum]->attcacheoff >= 0)
 		{
 			return fetchatt(att[attnum],
 							tp + att[attnum]->attcacheoff);
 		}
-		else if (HeapTupleHasVarWidth(tuple))
+
+		/*
+		 * Otherwise, check for non-fixed-length attrs up to and including
+		 * target.	If there aren't any, it's safe to cheaply initialize the
+		 * cached offsets for these attrs.
+		 */
+		if (HeapTupleHasVarWidth(tuple))
 		{
 			int			j;
 
@@ -436,7 +451,7 @@ nocachegetattr(HeapTuple tuple,
 			 */
 			for (j = 0; j <= attnum; j++)
 			{
-				if (att[j]->attlen < 0)
+				if (att[j]->attlen <= 0)
 				{
 					slow = true;
 					break;
@@ -589,10 +604,10 @@ heap_getsysattr(HeapTuple tup, int attnum, bool *isnull)
 		case MinCommandIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
 			/*
-			 * cmin and cmax are now both aliases for the same field,
-			 * which can in fact also be a combo command id.  XXX perhaps we
-			 * should return the "real" cmin or cmax if possible, that is
-			 * if we are inside the originating transaction?
+			 * cmin and cmax are now both aliases for the same field, which
+			 * can in fact also be a combo command id.	XXX perhaps we should
+			 * return the "real" cmin or cmax if possible, that is if we are
+			 * inside the originating transaction?
 			 */
 			result = CommandIdGetDatum(HeapTupleHeaderGetRawCommandId(tup->t_data));
 			break;
@@ -818,7 +833,7 @@ heaptuple_form_to(TupleDesc tupleDescriptor, Datum *values, bool *isnull, HeapTu
 	return tuple;
 }
 
-/* ----------------
+/*
  *		heap_formtuple
  *
  *		construct a tuple from the given values[] and nulls[] arrays
@@ -919,7 +934,7 @@ heap_modify_tuple(HeapTuple tuple,
 	return newTuple;
 }
 
-/* ----------------
+/*
  *		heap_modifytuple
  *
  *		forms a new tuple from an old tuple and a set of replacement values.
@@ -1058,7 +1073,7 @@ heap_deform_tuple(HeapTuple tuple, TupleDesc tupleDesc,
 	}
 }
 
-/* ----------------
+/*
  *		heap_deformtuple
  *
  *		Given a tuple, extract data into values/nulls arrays; this is
