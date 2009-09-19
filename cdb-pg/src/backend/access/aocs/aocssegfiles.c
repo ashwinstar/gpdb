@@ -356,6 +356,37 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel, Snapshot snapshot, int32 
     return allseg;
 }
 
+/*
+ * GetAOCSTotalBytes
+ *
+ * Get the total bytes for a specific AOCS table from the pg_aocsseg table on this local segdb.
+ */
+int64 GetAOCSTotalBytes(Relation parentrel)
+{
+	AOCSFileSegInfo **allseg;
+	int totalseg;
+	int64 result;
+	int s;
+	AOCSVPInfo *vpinfo;
+
+	result = 0;
+	allseg = GetAllAOCSFileSegInfo(parentrel, SnapshotNow, &totalseg);
+	for (s = 0; s < totalseg; s++)
+	{
+		int32 nEntry;
+		int e;
+		
+		vpinfo = &((allseg[s])->vpinfo);
+		nEntry = vpinfo->nEntry;
+
+		for (e = 0; e < nEntry; e++)
+			result += vpinfo->entry[e].eof;
+	}
+
+	// UNDONE: How do you free allseg?
+
+	return result;
+}
 
 void UpdateAOCSFileSegInfo(AOCSInsertDesc idesc)
 {

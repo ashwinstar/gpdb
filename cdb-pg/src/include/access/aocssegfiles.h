@@ -72,6 +72,9 @@ extern AOCSFileSegInfo *GetAOCSFileSegInfoForWrite(Relation prel, int32 segno);
 extern AOCSFileSegInfo *GetAOCSFileSegInfoForVacuum(Relation prel, int32 segno);
 
 extern AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel, Snapshot snapshot, int *totalseg);
+
+extern int64 GetAOCSTotalBytes(Relation parentrel);
+
 extern void InsertInitialAOCSFileSegInfo(Relation parentrel, int32 segno, int32 nvp); 
 extern void UpdateAOCSFileSegInfo(struct AOCSInsertDescData *desc);
 extern void AOCSFileSegInfoAddCount(Relation prel, int32 segno, int64 tupadded, int64 varblockadded); 

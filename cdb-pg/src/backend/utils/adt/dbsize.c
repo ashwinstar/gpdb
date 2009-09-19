@@ -17,6 +17,7 @@
 
 #include "access/heapam.h"
 #include "access/appendonlywriter.h"
+#include "access/aocssegfiles.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_tablespace.h"
@@ -427,6 +428,16 @@ calculate_relation_size(Relation rel)
             }
         }
     }
+	else if (Debug_column_store_use_new_segment_filename_format)
+	{
+		Assert(RelationIsAoRows(rel) || RelationIsAoCols(rel));
+
+		if (RelationIsAoRows(rel))
+			totalsize = GetAOTotalBytes(rel);
+		else
+			totalsize = GetAOCSTotalBytes(rel);
+		
+	}
     else if (RelationIsAoRows(rel))
     {
         /* AO: same as heap, it will look like relationpath, or relationpath.%d,

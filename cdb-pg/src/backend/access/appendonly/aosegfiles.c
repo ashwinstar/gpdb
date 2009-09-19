@@ -684,6 +684,46 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel)
 	return result;
 }
 
+/*
+ * GetAOTotalBytes
+ *
+ * Get the total bytes for a specific AO table from the pg_aoseg table on this local segdb.
+ * (A version of GetSegFilesTotals that just gets the total bytes.)
+ */
+int64 GetAOTotalBytes(Relation parentrel)
+{
+
+	Relation		pg_aoseg_rel;
+	TupleDesc		pg_aoseg_dsc;
+	HeapTuple		tuple;
+	HeapScanDesc	aoscan;
+	int64		  	result;
+	Datum			eof;
+	bool			isNull;
+
+	result = 0;
+
+	pg_aoseg_rel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
+	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
+
+	aoscan = heap_beginscan(pg_aoseg_rel, GetTransactionSnapshot(), 0, NULL);
+
+	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
+	{
+		eof = fastgetattr(tuple, Anum_pg_aoseg_eof, pg_aoseg_dsc, &isNull);
+		Assert(!isNull);
+
+		result += (int64)DatumGetFloat8(eof);
+
+		CHECK_FOR_INTERRUPTS();
+	}
+
+	heap_endscan(aoscan);
+	heap_close(pg_aoseg_rel, AccessShareLock);
+
+	return result;
+}
+
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
 /*

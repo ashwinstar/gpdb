@@ -90,6 +90,8 @@ UpdateFileSegInfo(Relation parentrel,
 extern FileSegTotals *
 GetSegFilesTotals(Relation parentrel);
 
+extern int64 GetAOTotalBytes(Relation parentrel);
+
 extern Datum 
 gp_update_ao_master_stats_name(PG_FUNCTION_ARGS);
 
