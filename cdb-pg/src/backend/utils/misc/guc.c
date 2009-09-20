@@ -670,6 +670,14 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
+		{"gp_enable_direct_dispatch", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable dispatch for single-row-insert targetted mirror-pairs."),
+			gettext_noop("Don't involve the whole cluster if it isn't needed.")
+		},
+		&gp_enable_direct_dispatch,
+		false, NULL, NULL
+	},
+	{
 		{"gp_enable_predicate_propagation", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("When two expressions are equivalent (such as with "
 			             "equijoined keys) then the planner applies predicates "

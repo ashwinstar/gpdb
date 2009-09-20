@@ -438,15 +438,18 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		if (shouldDispatch)
 		{
 
-			/* MPP-2869: preprocess_initplans() may
+			/*
+			 * MPP-2869: preprocess_initplans() may
 			 * dispatch. (interacted with MPP-2859, which caused an
 			 * initPlan to do a write which should have happened in
-			 * main body of query) We need to call ExecutorSaysTransactionDoesWrites()
-			 * before any dispatch work for this query. */
+			 * main body of query) We need to call
+			 * ExecutorSaysTransactionDoesWrites() before any dispatch
+			 * work for this query.
+			 */
 			needDtxTwoPhase = ExecutorSaysTransactionDoesWrites();
 			if (needDtxTwoPhase)
 			{
-				setCurrentDtxTwoPhase("ExecutorStart", "(none)");
+				setCurrentDtxTwoPhase("ExecutorStart", "(none)", (Node *)queryDesc->plantree);
 			}
 
 			/*

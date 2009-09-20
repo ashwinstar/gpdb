@@ -243,7 +243,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	if (c->copy_in)
 	{
 		/* Mark this txn as needing a two-phase distributed transaction */
-		setCurrentDtxTwoPhase("CdbCopy", copyCmd);
+		setCurrentDtxTwoPhase("CdbCopy", copyCmd, NULL);
 	}
 	
 	cdbdisp_dispatchCommand(copyCmd, serializedQuerytree, serializedQuerytree_len, 
@@ -1024,5 +1024,5 @@ cdbCopyStartTransaction(void)
 	sendDtxExplicitBegin();
 	
 	/* this txn is gonna be dirty */
-	setCurrentDtxTwoPhase("cdbCopyStartTransaction", "(none)");
+	setCurrentDtxTwoPhase("cdbCopyStartTransaction", "(none)", NULL);
 }

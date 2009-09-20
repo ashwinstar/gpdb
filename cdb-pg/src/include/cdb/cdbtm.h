@@ -135,7 +135,9 @@ typedef struct TMGXACT
 	DtxParticipationSummary		participationSummary;
 
 	int							debugIndex;
-	
+
+	bool						directTransaction;
+	uint16						directTransactionContentId;
 }	TMGXACT;
 
 typedef struct TMGXACTSTATUS
@@ -190,23 +192,20 @@ extern volatile bool *shmDtmStarted;
 extern volatile int *shmSegmentCount;
 extern volatile int *shmSegmentsStatesByteLen;
 
-extern char* DtxStateToString(DtxState state);
-extern char* DtxParticipationSummaryToString(DtxParticipationSummary summary);
-extern char* DtxProtocolCommandToString(DtxProtocolCommand command);
-extern char* DtxContextToString(DtxContext context);
+extern char *DtxStateToString(DtxState state);
+extern char *DtxParticipationSummaryToString(DtxParticipationSummary summary);
+extern char *DtxProtocolCommandToString(DtxProtocolCommand command);
+extern char *DtxContextToString(DtxContext context);
 extern DistributedTransactionTimeStamp getDtxStartTime(void);
-extern void dtxCrackOpenGid(
-	const char 						*gid,
-	DistributedTransactionTimeStamp	*distribTimeStamp,
-	DistributedTransactionId		*distribXid);
+extern void dtxCrackOpenGid(const char	*gid,
+							DistributedTransactionTimeStamp	*distribTimeStamp,
+							DistributedTransactionId		*distribXid);
 extern DistributedTransactionId getDistributedTransactionId(void);
 extern bool getDistributedTransactionIdentifier(char *id);
 
-extern void createDtx(
-	DistributedTransactionId	*distribXid,
-	TransactionId 				*localXid);
-extern bool createDtxSnapshot(
-	DistributedSnapshotWithLocalMapping *distribSnapshotWithLocalMapping);
+extern void createDtx(DistributedTransactionId	*distribXid,
+					  TransactionId				*localXid);
+extern bool createDtxSnapshot(DistributedSnapshotWithLocalMapping *distribSnapshotWithLocalMapping);
 extern void	prepareDtxTransaction(void);
 extern bool isPreparedDtxTransaction(void);
 extern void getDtxLogInfo(TMGXACT_LOG *gxact_log);
@@ -219,14 +218,16 @@ extern void forcedDistributedCommitted(XLogRecPtr *recptr);
 
 extern bool validateRedoDtxCheckPointSize(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize);
 extern void redoDtxCheckPoint(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize);
-extern void redoDistributedCommitRecord(TMGXACT_LOG * gxact_log);
-extern void redoDistributedForgetCommitRecord(TMGXACT_LOG * gxact_log);
-extern void descDistributedCommitRecord(StringInfo buf, TMGXACT_LOG * gxact_log);
-extern void descDistributedForgetCommitRecord(StringInfo buf, TMGXACT_LOG * gxact_log);
+extern void redoDistributedCommitRecord(TMGXACT_LOG *gxact_log);
+extern void redoDistributedForgetCommitRecord(TMGXACT_LOG *gxact_log);
+extern void descDistributedCommitRecord(StringInfo buf, TMGXACT_LOG *gxact_log);
+extern void descDistributedForgetCommitRecord(StringInfo buf, TMGXACT_LOG *gxact_log);
 
-extern void setCurrentDtxTwoPhase(const char* debugCaller, const char* debugDetail);
+/* some plans are annotated with dispatch details which the DTM needs. */
+extern void setCurrentDtxTwoPhase(const char *debugCaller, const char *debugDetail, Node *p);
 extern bool isCurrentDtxTwoPhase(void);
 extern bool isCurrentDtxActive(void);
+
 extern void sendDtxExplicitBegin(void);
 extern int dtxCurrentPhase1Count(void);
 
@@ -259,7 +260,7 @@ extern void getAllDistributedXactStatus(TMGALLXACTSTATUS **allDistributedXactSta
 extern bool getNextDistributedXactStatus(TMGALLXACTSTATUS *allDistributedXactStatus, TMGXACTSTATUS **distributedXactStatus);
 extern void setupRegularDtxContext (void);
 extern void setupQEDtxContext (DtxContextInfo *dtxContextInfo);
-extern void finishDistributedTransactionContext (char* debugCaller, bool aborted);
+extern void finishDistributedTransactionContext (char *debugCaller, bool aborted);
 extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					int flags,
 					const char *loggingStr, const char *gid, 

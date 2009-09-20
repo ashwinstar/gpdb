@@ -112,6 +112,9 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_SCALAR_FIELD(nMotionNodes);
 	COPY_SCALAR_FIELD(nInitPlans);
 	COPY_NODE_FIELD(sliceTable);
+
+	COPY_SCALAR_FIELD(directDispatch);
+	COPY_SCALAR_FIELD(directDispatchContentId);
 }
 
 /*

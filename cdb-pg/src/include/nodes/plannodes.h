@@ -89,15 +89,15 @@ typedef struct Plan
 	int			nParamExec;		/* Number of them in entire query. This is to
 								 * get Executor know about how many PARAM_EXEC
 								 * there are in query plan. */
-	
+
 	/*
 	 * MPP needs to keep track of the characteristics of flow of output
 	 * tuple of Plan nodes.
+	 *
+	 * Flow description. Initially NULL. Set during parallelization.
 	 */
-	Flow		*flow;			/* Flow description.  Initially NULL.
-								 * Set during parallelization.
-								 */
-	
+	Flow		*flow;
+
 	/*
 	 * CDB:  How should this plan tree be dispatched?  Initially this is set
 	 * to DISPATCH_UNDETERMINED and, in non-root nodes, may remain so.
@@ -107,6 +107,12 @@ typedef struct Plan
 	 * above.
 	 */
 	DispatchMethod dispatch;
+
+	/*
+	 * CDB: if we're going to direct dispatch, point it at a particular id.
+	 */
+	bool		directDispatch;
+	uint32		directDispatchContentId;
 
 	/*
 	 * CDB: Now many motion nodes are there in the Plan.  How many init plans?
@@ -127,7 +133,6 @@ typedef struct Plan
 	 * the slice table in the plan as required there.
 	 */
 	Node *sliceTable;
-
 } Plan;
 
 /* ----------------

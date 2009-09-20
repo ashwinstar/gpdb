@@ -519,6 +519,9 @@ gpvars_verbosity_to_string(GpVars_Verbosity verbosity);
 /* Enable single-slice single-row inserts. */
 extern bool gp_enable_fast_sri;
 
+/* Enable single-mirror pair dispatch. */
+extern bool gp_enable_direct_dispatch;
+
 /* Name of pseudo-function to access any table as if it was randomly distributed. */
 #define GP_DIST_RANDOM_NAME "GP_DIST_RANDOM"
 

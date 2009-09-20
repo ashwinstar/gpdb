@@ -160,6 +160,16 @@ typedef struct CdbDispatchCmdThreads
 	
 }   CdbDispatchCmdThreads;
 
+typedef struct CdbDispatchDirectDesc
+{
+	bool directed_dispatch;
+	uint16 count;
+	uint16 content[1];
+} CdbDispatchDirectDesc;
+
+extern CdbDispatchDirectDesc default_dispatch_direct_desc;
+#define DEFAULT_DISP_DIRECT (&default_dispatch_direct_desc)
+
 /*--------------------------------------------------------------------*/
 
 /*
@@ -195,13 +205,14 @@ typedef struct CdbDispatchCmdThreads
  * PG_THROW, CHECK_FOR_INTERRUPTS, etc.
  */
 void
-cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads,
+cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads	**dispatchThreads,
 					   GpDispatchCommandType		mppDispatchCommandType,
-					   void						   *commandTypeParms,
-                       struct Gang                 *gp,
-                       struct CdbDispatchResults   *dispatchResults,
-                       int                          sliceIndex,
-                       unsigned int                 maxSlices);
+					   void							*commandTypeParms,
+                       struct Gang					*gp,
+                       struct CdbDispatchResults	*dispatchResults,
+                       int							sliceIndex,
+                       unsigned int					maxSlices,
+                       CdbDispatchDirectDesc		*direct);
 
 /*
  * CdbCheckDispatchResult:
@@ -259,15 +270,16 @@ cdbdisp_dispatchRMCommand(const char   *strCommand,
  * by the caller.
  */
 struct pg_result **             /* returns ptr to array of PGresult ptrs */
-cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
-						  int						flags,
-						  char*						dtxProtocolCommandLoggingStr,
-						  char*						gid,
-						  DistributedTransactionId	gxid,
-						  bool						dispatchToMirrors,
-                          StringInfo    			errmsgbuf,
-                          int						*numresults,
-                          bool 						*badGangs);
+cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand		dtxProtocolCommand,
+								   int						flags,
+								   char						*dtxProtocolCommandLoggingStr,
+								   char						*gid,
+								   DistributedTransactionId	gxid,
+								   bool						dispatchToMirrors,
+								   StringInfo    			errmsgbuf,
+								   int						*numresults,
+								   bool 					*badGangs,
+								   CdbDispatchDirectDesc *direct);
 
 
 /*--------------------------------------------------------------------*/
@@ -373,12 +385,12 @@ CdbDoCommandOnAllGangs(const char *strCommand, bool cancelOnError, bool needTwoP
 
 void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
-					 bool cancelOnError,
-					 SliceTable *sliceTbl,
-					 struct CdbDispatchResults ** pPrimaryResults,		/* OUT */
-					 struct CdbDispatchResults ** pMirrorResults,       /* OUT */
-					 struct CdbDispatchCmdThreads ** pDispatchThreads);		/* OUT */
-
+				  bool cancelOnError,
+				  SliceTable *sliceTbl,
+				  CdbDispatchDirectDesc		*direct,
+				  struct CdbDispatchResults **pPrimaryResults,		/* OUT */
+				  struct CdbDispatchResults **pMirrorResults,       /* OUT */
+				  struct CdbDispatchCmdThreads **pDispatchThreads); 		/* OUT */
 
 /* Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.

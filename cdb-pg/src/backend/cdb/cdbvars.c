@@ -279,6 +279,9 @@ int gp_gpperfmon_send_interval = 1;
 /* Enable single-slice single-row inserts ?*/
 bool		gp_enable_fast_sri=true;
 
+/* Enable single-mirror pair dispatch. */
+bool		gp_enable_direct_dispatch=false;
+
 /* Disable logging while creating mapreduce objects */
 bool        gp_mapreduce_define=false;
 

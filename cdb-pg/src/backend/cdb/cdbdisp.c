@@ -68,6 +68,11 @@ extern pthread_t main_tid;
 #endif 
 
 /*
+ * default directed-dispatch parameters: don't direct anything.
+ */
+CdbDispatchDirectDesc default_dispatch_direct_desc = {false, 0, {0}};
+
+/*
  * Static Helper functions
  */
 
@@ -467,7 +472,8 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
                        int                          sliceIndex,
-                       unsigned int                 maxSlices)
+                       unsigned int                 maxSlices,
+                       CdbDispatchDirectDesc		*disp_direct)
 {
 	SegmentDatabaseDescriptor *segdbDesc;
 	int	i,
@@ -615,21 +621,29 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	}
 
 	MemoryContextSwitchTo(oldContext);
-	
-	
+
+	x = 0;
 	/*
 	 * Create the thread parms structures based targetSet parameter.
 	 * This will add the segdbDesc pointers appropriate to the
 	 * targetSet into the thread Parms structures, making sure that each thread
 	 * handles gp_connections_per_thread segdbs.
 	 */
-	for (x = 0; x < db_descriptors_size; x++)
+	for (i = 0; i < db_descriptors_size; i++)
 	{
 		CdbDispatchResult *qeResult;
 
-		segdbDesc = &db_descriptors[x];
+		segdbDesc = &db_descriptors[i];
 
 		Assert(segdbDesc != NULL);
+
+		if (disp_direct->directed_dispatch)
+		{
+			Assert (disp_direct->count == 1); /* currently we allow direct-to-one dispatch, only */
+
+			if (disp_direct->content[0] != segdbDesc->segment_database_info->segindex)
+				continue;
+		}
 
 //		if (mppDispatchCommandType == GP_DISPATCH_COMMAND_TYPE_QUERY)
 //		{
@@ -661,6 +675,8 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		 * to wait for completion.
 		 */
 		qeResult->stillRunning = true;
+
+		x++;
 	}
 	segdbs_in_thread_pool = x;
 
@@ -741,7 +757,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
  * It figures out which thread will handle it, based on the setting of
  * gp_connections_per_thread.
  */
-void
+static void
 addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              int                    segdbs_in_thread_pool,
 						     GpDispatchCommandType	mppDispatchCommandType,
@@ -1249,7 +1265,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 								   bool dispatchToMirrors,
 								   StringInfo errmsgbuf,
 								   int *numresults,
-								   bool *badGangs)
+								   bool *badGangs,
+								   CdbDispatchDirectDesc *direct)
 {
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
@@ -1337,7 +1354,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	cdbdisp_dispatchToGang(&dispatchThreads, 
 						   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 						   &dtxProtocolParms,
-						   primaryGang, primaryResults, -1, 1);
+						   primaryGang, primaryResults, -1, 1, direct);
 
 	/*
 	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
@@ -1349,7 +1366,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		cdbdisp_dispatchToGang(&dispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 							   &dtxProtocolParms,
-							   mirrorGang, mirrorResults, -1, 1);
+							   mirrorGang, mirrorResults, -1, 1, direct);
 	}
 
 	/* Wait for all QEs to finish.	Don't cancel. */
@@ -1477,7 +1494,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	    cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   mirrorGang, *pMirrorResults, -1, 1);
+							   mirrorGang, *pMirrorResults, -1, 1, DEFAULT_DISP_DIRECT);
 	    
 	    /*
 	     * make sure we don't dispatch again 
@@ -1497,7 +1514,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 		cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   primaryGang, *pPrimaryResults, -1, 1);
+							   primaryGang, *pPrimaryResults, -1, 1, DEFAULT_DISP_DIRECT);
 	}
 
 	/*
@@ -1512,7 +1529,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
         cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   mirrorGang, *pMirrorResults, -1, 1);
+							   mirrorGang, *pMirrorResults, -1, 1, DEFAULT_DISP_DIRECT);
     }
 
 	/*
@@ -1787,7 +1804,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
     cdbdisp_dispatchToGang(pDispatchThreads, 
 						   GP_DISPATCH_COMMAND_TYPE_QUERY,
 						   &queryParms,
-						   primaryGang, *pPrimaryResults, -1, gangCount);
+						   primaryGang, *pPrimaryResults, -1, gangCount, DEFAULT_DISP_DIRECT);
 
     /*
 	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
@@ -1800,7 +1817,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
         cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   mirrorGang, *pMirrorResults, -1, gangCount);
+							   mirrorGang, *pMirrorResults, -1, gangCount, DEFAULT_DISP_DIRECT);
     }
 
 	/*
@@ -1815,7 +1832,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 			cdbdisp_dispatchToGang(pDispatchThreads, 
 								   GP_DISPATCH_COMMAND_TYPE_QUERY,
 								   &queryParms,
-								   rg, *pPrimaryResults, -1, gangCount);
+								   rg, *pPrimaryResults, -1, gangCount, DEFAULT_DISP_DIRECT);
 		}
 
 }	/* cdbdisp_dispatchCommandToAllGangs */
@@ -3087,7 +3104,7 @@ CdbDoCommand(const char *strCommand,
 	if (needTwoPhase)
 	{
 		/* Mark this txn as needing a two-phase distributed transaction */
-		setCurrentDtxTwoPhase("CdbDoCommand", strCommand);
+		setCurrentDtxTwoPhase("CdbDoCommand", strCommand, NULL);
 	}
 
 	cdbdisp_dispatchCommand(strCommand, NULL, 0, cancelOnError, needTwoPhase, 
@@ -3117,7 +3134,7 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 	if (needTwoPhase)
 	{
 		/* mark this txn as dirty */
-		setCurrentDtxTwoPhase("CdbDoCommandOnAllGangs", strCommand);
+		setCurrentDtxTwoPhase("CdbDoCommandOnAllGangs", strCommand, NULL);
 	}
 
 	cdbdisp_dispatchCommandToAllGangs(strCommand, NULL, 0, NULL, 0, cancelOnError, needTwoPhase,
@@ -3309,7 +3326,6 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			/* Get back to outer memory context */
 			MemoryContextSwitchTo(oldcontext);
 
-
 			/* Must copy result out of sub-context used by expression eval */
 			if (!const_is_null)
 				const_val = datumCopy(const_val, resultTypByVal, resultTypLen);
@@ -3323,7 +3339,6 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			simple = (Expr *) makeConst(expr->funcresulttype, resultTypLen,
 										const_val, const_is_null,
 										resultTypByVal);
-
 
 			if (simple)			/* successfully simplified it */
 				return (Node *) simple;
@@ -3357,13 +3372,14 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		 * to this extent.
 		 */
 		set_opfuncid(expr);
-		
+
 		newexpr = makeNode(OpExpr);
 		newexpr->opno = expr->opno;
 		newexpr->opfuncid = expr->opfuncid;
 		newexpr->opresulttype = expr->opresulttype;
 		newexpr->opretset = expr->opretset;
 		newexpr->args = args;
+
 		return (Node *) newexpr;
 	}
 
@@ -3374,7 +3390,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 	 * simplify its arguments (if any) using this routine.
 	 */
 	savetargets = NIL;
-		
+
 	if (is_plan_node(node) &&
 		!is_projection_capable_plan((Plan *)node))
 	{
@@ -3407,9 +3423,10 @@ void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  bool cancelOnError,
 				  SliceTable *sliceTbl,
-				  struct CdbDispatchResults ** pPrimaryResults,		/* OUT */
-				  struct CdbDispatchResults ** pMirrorResults,       /* OUT */
-				  struct CdbDispatchCmdThreads ** pDispatchThreads)		/* OUT */
+				  CdbDispatchDirectDesc *direct,
+				  struct CdbDispatchResults **pPrimaryResults,		/* OUT */
+				  struct CdbDispatchResults **pMirrorResults,       /* OUT */
+				  struct CdbDispatchCmdThreads **pDispatchThreads)  /* OUT */
 {
 	int			oldLocalSlice = 0;
 	sliceVec	*sliceVector = NULL;
@@ -3501,6 +3518,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				break;
 		}
 	}
+
 	/*
 	 * Now we need to call CDBDispatchCommand once per slice.  Each such
 	 * call dispatches a MPPEXEC command to each of the QEs assigned to
@@ -3529,8 +3547,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			 */
 			slice = sliceVector[iSlice].slice;
 			si = slice->sliceIndex;
-			
-			
+
 			/*
 			 * Is this a slice we should dispatch?
 			 */
@@ -3542,12 +3559,12 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				 */
 				continue;
 			}
-			
+
 			primaryGang = slice->primaryGang;
 			mirrorGang = slice->mirrorGang;
-			
+
 			Assert(primaryGang == NULL || Gp_role == GP_ROLE_DISPATCH);
-			
+
 			/*
 			 * If we are on the dispatch agent, the gang pointers aren't filled in.
 			 * We must look them up by ID
@@ -3558,14 +3575,14 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				primaryGang = findGangById(slice->primary_gang_id);
 				if (slice->mirror_gang_id > 0)
 					mirrorGang = findGangById(slice->mirror_gang_id);
-				
+
 				Assert(Gp_role == GP_ROLE_DISPATCHAGENT || primaryGang != NULL);
 				if (primaryGang != NULL)
 					Assert(primaryGang->type == slice->gangType || primaryGang->type == GANGTYPE_PRIMARY_WRITER);
-					
+
 				if (slice->mirror_gang_id >0)
 					Assert(Gp_role == GP_ROLE_DISPATCHAGENT || mirrorGang != NULL);
-				
+
 				if (primaryGang == NULL && mirrorGang == NULL)
 					continue;
 			}
@@ -3580,8 +3597,8 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				primaryGang = findGangById(pQueryParms->primary_gang_id);
 			if (pQueryParms->mirror_gang_id > 0)
 				mirrorGang = findGangById(pQueryParms->mirror_gang_id);
-			 
 		}
+
 		if (primaryGang == NULL && mirrorGang == NULL)
 		{
 			/*
@@ -3608,7 +3625,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 
 			mirrorGang = NULL;
 		}
-	 
+
 		if (primaryGang == NULL && mirrorGang != NULL && Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
 		{
 			/*
@@ -3618,12 +3635,11 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			 */
 			primaryGang = mirrorGang;
 		}
-		
+
 		Assert(primaryGang != NULL || mirrorGang != NULL);	/* Must have a gang to dispatch to */
 		if (primaryGang)
 		{
-			Assert((*pPrimaryResults) &&
-				   (*pPrimaryResults)->resultArray);
+			Assert((*pPrimaryResults) && (*pPrimaryResults)->resultArray);
 		}
 
 		/* Bail out if already got an error or cancellation request. */
@@ -3636,7 +3652,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			if (InterruptPending)
 				break;
 		}
-			
+
 		/*
 		 * Dispatch the plan to our primaryGang.
 		 * Doesn't wait for it to finish.
@@ -3649,7 +3665,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			cdbdisp_dispatchToGang(pDispatchThreads,
 								   GP_DISPATCH_COMMAND_TYPE_QUERY,
 								   pQueryParms, primaryGang, *pPrimaryResults,
-								   si, sliceLim);
+								   si, sliceLim, direct);
 		}
 
 		/*
@@ -3667,15 +3683,14 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				Assert(mirrorGang != NULL);	/* Must have a gang to dispatch to */
 				Assert(mirrorGang->size > 0);
 				Assert(pMirrorResults);
-				Assert((*pMirrorResults) &&
-					   (*pMirrorResults)->resultArray);
+				Assert((*pMirrorResults) && (*pMirrorResults)->resultArray);
 
 				(*pMirrorResults)->writer_gang = mirrorGang;
 
 				cdbdisp_dispatchToGang(pDispatchThreads,
 									   GP_DISPATCH_COMMAND_TYPE_QUERY,
 									   pQueryParms, mirrorGang, *pMirrorResults,
-									   si, sliceLim);
+									   si, sliceLim, direct);
 			}
 		}
 	}
@@ -3695,8 +3710,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		CdbDispatchResults *mr = pMirrorResults ? *pMirrorResults : NULL;
 		CdbDispatchCmdThreads *dThreads = *pDispatchThreads;
 
-		elog(DEBUG2, "Plan dispatch canceled; dispatched %d of %d slices",
-			 iSlice, nSlices);
+		elog(DEBUG2, "Plan dispatch canceled; dispatched %d of %d slices", iSlice, nSlices);
 
 		/* Cancel any QEs still running, and wait for them to terminate. */
 		CdbCheckDispatchResult(pr, mr, dThreads, true);
@@ -3730,7 +3744,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				break;
 		}
 	}
-	
+
 }	/* cdbdisp_dispatchX */
 
 /*
@@ -3810,6 +3824,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	
 	DispatchCommandQueryParms queryParms;
  
+	CdbDispatchDirectDesc direct_desc = default_dispatch_direct_desc;
+
 	*pPrimaryResults = NULL;
 	if (pMirrorResults)
 		*pMirrorResults = NULL;
@@ -4024,16 +4040,27 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	Assert(sliceTbl);
 	Assert(sliceTbl->slices != NIL);
 
+	if (is_plan_node((Node *)queryDesc->plantree))
+	{
+		Plan *p = (Plan *)queryDesc->plantree;
+
+		if (p->directDispatch)
+		{
+			direct_desc.directed_dispatch = true;
+			direct_desc.count = 1;
+			direct_desc.content[0] = p->directDispatchContentId;
+		}
+	}
+
 	cdbdisp_dispatchX(&queryParms,
-			 cancelOnError,
-			 sliceTbl,
-			 pPrimaryResults,		/* OUT */
-			 pMirrorResults,        /* OUT */
-			 pDispatchThreads)	;	/* OUT */
-	
+					  cancelOnError,
+					  sliceTbl,
+					  &direct_desc,
+					  pPrimaryResults,		/* OUT */
+					  pMirrorResults,       /* OUT */
+					  pDispatchThreads)	;	/* OUT */
 
 	sliceTbl->localSlice = oldLocalSlice;
-	
 }	/* cdbdisp_dispatchPlan */
 
 
@@ -4201,7 +4228,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	if (needTwoPhase)
 	{
 		/* mark the dtx as dirty */
-		setCurrentDtxTwoPhase("cdbdisp_dispatchUtilityStatement", "(none)");
+		setCurrentDtxTwoPhase("cdbdisp_dispatchUtilityStatement", "(none)", NULL);
 	}
 	
 	initStringInfo(&buffer);

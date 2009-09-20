@@ -108,6 +108,7 @@ contains_nonconstant_walker(Node *node, void *context)
         return true;
     return expression_tree_walker(node, contains_nonconstant_walker, context);
 }
+
 /*
  * Is target list all-constant ?
  *
@@ -137,6 +138,78 @@ allConstantValuesClause(Plan *node)
 	}
 
 	return true;
+}
+
+static void
+directDispatchCalculateHash(Plan *plan, GpPolicy *targetPolicy)
+{
+	int i;
+	CdbHash *h=NULL;
+	ListCell *cell=NULL;
+	uint32 hashcode;
+
+	h = makeCdbHash(GpIdentity.numsegments, HASH_FNV_1);
+	cdbhashinit(h);
+
+	/*
+	 * the nested loops here seem scary --
+	 * especially since we've already
+	 * walked them before -- but I think
+	 * this is still required since they
+	 * may not be in the same order.
+	 * (also typically we don't distribute
+	 * by more than a handful of
+	 * attributes).
+	 */
+	plan->directDispatch = true;
+	for (i = 0; i < targetPolicy->nattrs; i++)
+	{
+		Const *c;
+		TargetEntry *tle = NULL;
+
+		foreach(cell, plan->targetlist)
+		{
+			tle = (TargetEntry *)lfirst(cell);
+
+			Assert(tle->expr);
+
+			if (tle->resno != targetPolicy->attrs[i])
+				continue;
+
+			if (!IsA(tle->expr, Const))
+			{
+				/* Probably this is type-coerced ? can't calculate this currently */
+				plan->directDispatch = false;
+				break;
+			}
+
+			c = (Const *)tle->expr;
+
+			if (c->constisnull)
+			{
+				cdbhashnull(h);
+			}
+			else
+			{
+				cdbhash(h, c->constvalue, c->consttype);
+			}
+
+			break;
+		}
+
+		if (!plan->directDispatch)
+			break;
+	}
+
+	/* We now have the hash-partition that this row belong to */
+	if (plan->directDispatch)
+	{
+		hashcode = cdbhashreduce(h);
+
+		plan->directDispatchContentId = hashcode;
+
+		elog(DEBUG1, "sending single row constant insert to content %d", hashcode);
+	}
 }
 
 /* ------------------------------------------------------------------------- *
@@ -562,13 +635,20 @@ apply_motion(Plan *plan, Query *query)
 							 * See partition check above.
 							 */
 
-
 							/* build our list */
 							for (i = 0; i < targetPolicy->nattrs; i++)
 							{
 								Assert(targetPolicy->attrs[i] > 0);
+
 								hList = lappend_int(hList, targetPolicy->attrs[i]);
 							}
+
+							if (gp_enable_direct_dispatch)
+							{
+								directDispatchCalculateHash(plan, targetPolicy);
+								/* we now either have a hash-code, or we've marked the plan non-directed. */
+							}
+
 							rNode->hashFilter = true;
 							rNode->hashList = hList;
 
@@ -592,8 +672,10 @@ apply_motion(Plan *plan, Query *query)
 					 * mirroring.
 					 */
 					if (isFTSEnabled())
+					{
 						if (!IsA(plan, Result) || !((Result *)plan)->hashFilter)
 							plan->flow->hashExpr = NIL;
+					}
 
 					if (!hashExpr)
 						hashExpr = getExprListFromTargetList(plan->targetlist,

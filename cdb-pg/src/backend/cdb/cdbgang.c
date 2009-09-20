@@ -1440,7 +1440,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
  * It figures out which thread will handle it, based on the setting of
  * gp_connections_per_thread.
  */
-void
+static void
 addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 						 SegmentDatabaseDescriptor * segdbDesc)
 {

@@ -3707,7 +3707,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	PG_TRY();
 	{
 		/* mark the dtx as dirty */
-		setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
+		setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)", NULL);
 
 		cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
 								 true /* cancelOnError */, true /* needTwoPhase */,
@@ -3733,7 +3733,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		Assert(pszVacuum != NULL);
 
 		/* mark the dtx as dirty */
-		setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
+		setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)", NULL);
 
 		cdbdisp_dispatchCommand("vacuum", pszVacuum, pszVacuum_len,
 								true /* cancelOnError */, true /* needTwoPhase */,

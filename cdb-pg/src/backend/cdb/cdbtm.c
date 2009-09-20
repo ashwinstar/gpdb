@@ -34,6 +34,8 @@
 #include "access/distributedlog.h"
 #include "postmaster/postmaster.h"
 
+#include "cdb/cdbllize.h"
+
 /*
  * Directory where Utility Mode DTM REDO file reside within PGDATA
  */
@@ -121,11 +123,9 @@ static void dumpAllDtx(void);
 static void dumpRMOnlyDtx(HTAB *htab, StringInfoData *buff);
 
 static void summarizeParticipation(void);
-static bool doDispatchDtxProtocolCommand(
-				DtxProtocolCommand dtxProtocolCommand, 
-				int flags,
-				char* gid, DistributedTransactionId gxid,
-				bool dispatchToMirrors, bool *badGangs, bool raiseError);
+static bool doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
+										 char* gid, DistributedTransactionId gxid,
+										 bool dispatchToMirrors, bool *badGangs, bool raiseError, CdbDispatchDirectDesc *direct);
 static void doPrepareTransaction(void);
 static void doInsertForgetCommitted(void);
 static void doNotifyingCommitPrepared(void);
@@ -403,14 +403,14 @@ summarizeParticipation(void)
 
 	if (currentGxact->participationSummary != DTX_PARTICIPATION_SUMMARY_NONE)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"summarizeParticipation already called???");
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "summarizeParticipation already called???");
 		return;
 	}
 
 	/* FUTURE: Collect information on whether particular segments were dirty */
 	currentGxact->participationSummary = DTX_PARTICIPATION_SUMMARY_MULTIPLE_SEGMENTS_DIRTY;
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"summarizeParticipation participationSummary = \"%s\"",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "summarizeParticipation participationSummary = \"%s\"",
 		 DtxParticipationSummaryToString(currentGxact->participationSummary));
 	
 }
@@ -446,16 +446,16 @@ getDtxLogInfo(TMGXACT_LOG *gxact_log)
 void
 notifyCommittedDtxTransaction(void)
 {
-	if(DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
+	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
 	{
-	    elog((Debug_print_full_dtm ? LOG : DEBUG5),"notifyCommittedDtxTransaction nothing to do (DistributedTransactionContext = '%s')", 
+	    elog((Debug_print_full_dtm ? LOG : DEBUG5), "notifyCommittedDtxTransaction nothing to do (DistributedTransactionContext = '%s')", 
 			 DtxContextToString(DistributedTransactionContext));
 		return;
 	}
 
-	if(currentGxact == NULL)
+	if (currentGxact == NULL)
 	{
-	    elog((Debug_print_full_dtm ? LOG : DEBUG5),"notifyCommittedDtxTransaction nothing to do (currentGxact == NULL)");
+	    elog((Debug_print_full_dtm ? LOG : DEBUG5), "notifyCommittedDtxTransaction nothing to do (currentGxact == NULL)");
 		return;
 	}
 
@@ -470,8 +470,8 @@ PleaseDebugMe(char *caller)
 	
 	for (i = 0; i < 300;i++)
 	{
-		elog(LOG,"%s  --> Now would be a good time to debug pid = %d",caller, MyProcPid);
-		elog(NOTICE,"%s  --> Now would be a good time to debug pid = %d",caller, MyProcPid);
+		elog(LOG, "%s  --> Now would be a good time to debug pid = %d", caller, MyProcPid);
+		elog(NOTICE, "%s  --> Now would be a good time to debug pid = %d", caller, MyProcPid);
 		pg_usleep(1000000L);
 	}
 }
@@ -481,7 +481,7 @@ PleaseDebugMe(char *caller)
  * 2 phase commit protocol.
  */
 void
-setCurrentDtxTwoPhase(const char* debugCaller, const char* debugDetail)
+setCurrentDtxTwoPhase(const char *debugCaller, const char *debugDetail, Node *n)
 {
 	Assert(debugCaller != NULL);
 	Assert(debugDetail != NULL);
@@ -490,24 +490,38 @@ setCurrentDtxTwoPhase(const char* debugCaller, const char* debugDetail)
 	{
 		if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
 		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"setCurrentDtxTwoPhase going distributed for gid = %s (%s, detail = '%s')", 
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),
+				 "setCurrentDtxTwoPhase going distributed for gid = %s (%s, detail = '%s')", 
 			     currentGxact->gid, debugCaller, debugDetail);
+
+			/* Can we direct this transaction to a single content-id ? */
+			if (n != NULL && is_plan_node(n) && ((Plan *)n)->directDispatch)
+			{
+				currentGxact->directTransaction = true;
+				currentGxact->directTransactionContentId = ((Plan *)n)->directDispatchContentId;
+			}
+			else
+			{
+				currentGxact->directTransaction = false;
+			}
+
 			currentGxact->state = DTX_STATE_ACTIVE_DISTRIBUTED;
 		}
 	 	else if (currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED)
 		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"setCurrentDtxTwoPhase gid = %s is already distributed (%s, detail = '%s')", 
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),
+				 "setCurrentDtxTwoPhase gid = %s is already distributed (%s, detail = '%s')", 
 			     currentGxact->gid, debugCaller, debugDetail);
 		}
 		else
 		{
-			elog(ERROR,"DTM transaction is not active (state = %s, %s, detail = '%s')", 
-				DtxStateToString(currentGxact->state), debugCaller, debugDetail);
+			elog(ERROR, "DTM transaction is not active (state = %s, %s, detail = '%s')", 
+				 DtxStateToString(currentGxact->state), debugCaller, debugDetail);
 		}
 	}
 	else
 	{
-		elog(ERROR,"DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail);
+		elog(ERROR, "DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail);
 	}
 }
 
@@ -537,18 +551,32 @@ isCurrentDtxActive(void)
 	return (currentGxact != NULL);
 }
 
+static inline void
+handleDirectDispatch(bool directTransaction, CdbDispatchDirectDesc *d)
+{
+	if (directTransaction)
+	{
+		d->directed_dispatch = true;
+		d->count = 1;
+		d->content[0] = currentGxact->directTransactionContentId;
+	}
+}
+
 static void
 doPrepareTransaction(void)
 {
 	bool succeeded;
+	CdbDispatchDirectDesc direct=default_dispatch_direct_desc;
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doPrepareTransaction entering in state = %s", 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "doPrepareTransaction entering in state = %s", 
 	     DtxStateToString(currentGxact->state));
 
 	/* Don't allow a cancel while we're dispatching our prepare (we wrap our
 	 * state change as well; for good measure. */
 	HOLD_INTERRUPTS();
-	
+
+	handleDirectDispatch(currentGxact->directTransaction, &direct);
+
 	getTmLock();
 	Assert(currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED);
 	currentGxact->state = DTX_STATE_PREPARING;
@@ -563,12 +591,12 @@ doPrepareTransaction(void)
 	currentGxact->bumpedPhase1Count = true;
 	releaseTmLock();
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doPrepareTransaction moved to state = %s", DtxStateToString(currentGxact->state));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "doPrepareTransaction moved to state = %s", DtxStateToString(currentGxact->state));
 
-	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_PREPARE, /* flags */ 0, 
-					currentGxact->gid, currentGxact->gxid,
-					/* dispatchToMirrors */ true, &currentGxact->badPrepareGangs, /* raiseError */ false);
+	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_PREPARE, /* flags */ 0, 
+											 currentGxact->gid, currentGxact->gxid,
+											 /* dispatchToMirrors */ true,
+											 &currentGxact->badPrepareGangs, /* raiseError */ false, &direct);
 
 	/* Now we've cleaned up our dispatched statement, cancels are allowed again. */
 	RESUME_INTERRUPTS();
@@ -588,7 +616,7 @@ doPrepareTransaction(void)
 	currentGxact->state = DTX_STATE_PREPARED;
 	releaseTmLock();
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doPrepareTransaction leaving in state = %s", DtxStateToString(currentGxact->state));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "doPrepareTransaction leaving in state = %s", DtxStateToString(currentGxact->state));
 
 	CHECK_FOR_INTERRUPTS();
 }
@@ -602,7 +630,7 @@ doInsertForgetCommitted(void)
 {
 	TMGXACT_LOG gxact_log;
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doInsertForgetCommitted entering in state = %s", DtxStateToString(currentGxact->state));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "doInsertForgetCommitted entering in state = %s", DtxStateToString(currentGxact->state));
 	
 	currentGxact->state = DTX_STATE_INSERTING_FORGET_COMMITTED;
 
@@ -615,7 +643,7 @@ doInsertForgetCommitted(void)
 
 	releaseGxact_UnderLocks();
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doInsertForgetCommitted called releaseGxact");
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "doInsertForgetCommitted called releaseGxact");
 }
 
 static void
@@ -623,18 +651,22 @@ doNotifyingCommitPrepared(void)
 {
 	bool succeeded;
 	bool badGangs;
+
+	CdbDispatchDirectDesc direct=default_dispatch_direct_desc;
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doNotifyingCommitPrepared entering in state = %s", DtxStateToString(currentGxact->state));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "doNotifyingCommitPrepared entering in state = %s", DtxStateToString(currentGxact->state));
 	
 	getTmLock();
+
+	handleDirectDispatch(currentGxact->directTransaction, &direct);
+
 	Assert(currentGxact->state == DTX_STATE_FORCED_COMMITTED);
 	currentGxact->state = DTX_STATE_NOTIFYING_COMMIT_PREPARED;
 	releaseTmLock();
 
-	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, /* flags */ 0,  
-					currentGxact->gid, currentGxact->gxid,
-					/* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
+	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, /* flags */ 0,  
+											 currentGxact->gid, currentGxact->gxid,
+											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
 	if (!succeeded)
 	{
 		elog(WARNING, "The distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.",
@@ -649,7 +681,7 @@ doNotifyingCommitPrepared(void)
 		 * Reset the dispatch logic (i.e. deallocate gang) so later we can attempt a retry 
 		 * at the top in PostgresMain.
 		 */
-		elog(NOTICE,"Releasing gangs for retry broadcast.");
+		elog(NOTICE, "Releasing gangs for retry broadcast.");
 		disconnectAndDestroyAllGangs();
 
 		/*
@@ -697,8 +729,10 @@ doNotifyingAbort(void)
 {
 	bool succeeded;
 	bool badGangs;
-	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doNotifyingAborted entering in state = %s", DtxStateToString(currentGxact->state));
+
+	CdbDispatchDirectDesc direct=default_dispatch_direct_desc;
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "doNotifyingAborted entering in state = %s", DtxStateToString(currentGxact->state));
 	
 	getTmLock();
 	Assert(currentGxact->state == DTX_STATE_NOTIFYING_ABORT_NO_PREPARED ||
@@ -706,13 +740,15 @@ doNotifyingAbort(void)
 	       currentGxact->state == DTX_STATE_NOTIFYING_ABORT_PREPARED);
 	releaseTmLock();
 
+	handleDirectDispatch(currentGxact->directTransaction, &direct);
+
 	if (currentGxact->state == DTX_STATE_NOTIFYING_ABORT_NO_PREPARED)
 	{
 		if (gangsExist())
 		{
 			succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED, /* flags */ 0,  
 													 currentGxact->gid, currentGxact->gxid,
-													 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
+													 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
 			if (!succeeded)
 			{
 				elog(WARNING, "The distributed transaction 'Abort' broadcast failed to one or more segments for gid = %s.",
@@ -721,7 +757,7 @@ doNotifyingAbort(void)
 				/*
 				 * Reset the dispatch logic and disconnect from any segment that didn't respond to our abort.
 				 */
-				elog(NOTICE,"Releasing gangs to finish aborting the transaction.");
+				elog(NOTICE, "Releasing gangs to finish aborting the transaction.");
 				disconnectAndDestroyAllGangs();
 			
 				/*
@@ -763,10 +799,9 @@ doNotifyingAbort(void)
 			abortString = "Abort Prepared";
 		}
 		
-		succeeded = doDispatchDtxProtocolCommand(
-			dtxProtocolCommand, /* flags */ 0,
-			currentGxact->gid, currentGxact->gxid,
-			/* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
+		succeeded = doDispatchDtxProtocolCommand(dtxProtocolCommand, /* flags */ 0,
+												 currentGxact->gid, currentGxact->gxid,
+												 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
 		if (!succeeded)
 		{
 			elog(WARNING, "The distributed transaction '%s' broadcast failed to one or more segments for gid = %s.",
@@ -780,7 +815,7 @@ doNotifyingAbort(void)
 			/*
 			 * Reset the dispatch logic (i.e. deallocate gang) so we can attempt a retry.
 			 */
-			elog(NOTICE,"Releasing gangs for retry broadcast.");
+			elog(NOTICE, "Releasing gangs for retry broadcast.");
 			disconnectAndDestroyAllGangs();
 			
 			/*
@@ -815,7 +850,7 @@ doNotifyingAbort(void)
 	       currentGxact->state == DTX_STATE_NOTIFYING_ABORT_PREPARED);
 
 	releaseGxact_UnderLocks();
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doNotifyingAbort called releaseGxact");
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "doNotifyingAbort called releaseGxact");
 	
 	releaseTmLock();
 	
@@ -830,12 +865,16 @@ doDtxPhase2Retry(void)
 {
 	bool succeeded;
 	bool badGangs;
-	
+
+	CdbDispatchDirectDesc direct=default_dispatch_direct_desc;
+
 	if (currentGxact == NULL)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"doDtxPhase2Retry found no work to do (currentGxact == NULL)");
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "doDtxPhase2Retry found no work to do (currentGxact == NULL)");
 		return;
 	}
+
+	handleDirectDispatch(currentGxact->directTransaction, &direct);
 
 	switch (currentGxact->state)
 	{
@@ -846,7 +885,7 @@ doDtxPhase2Retry(void)
 				/*
 				 * Take down GP Array.
 				 */
-				elog(PANIC,"Unable to complete '%s Prepared' broadcast for gid = %s",
+				elog(PANIC, "Unable to complete '%s Prepared' broadcast for gid = %s",
 					 (currentGxact->state == DTX_STATE_RETRY_COMMIT_PREPARED ? "Commit" : "Abort"),
 					 currentGxact->gid);
 			}
@@ -872,17 +911,17 @@ doDtxPhase2Retry(void)
 				 * transaction context to tell it not to raise an ERROR...
 				 */
 				DistributedTransactionContext = DTX_CONTEXT_QD_RETRY_PHASE_2;
-				elog((Debug_print_full_dtm ? LOG : DEBUG5), "doDtxPhase2Retry setting DistributedTransactionContext to '%s' for retry of '%s Prepared'.",
+				elog((Debug_print_full_dtm ? LOG : DEBUG5),
+					 "doDtxPhase2Retry setting DistributedTransactionContext to '%s' for retry of '%s Prepared'.",
 					 DtxContextToString(DistributedTransactionContext), prepareKind);
 
 				StartTransactionCommand();
 
 				currentGxact->retryPhase2RecursionStop = true;
 			
-				succeeded = doDispatchDtxProtocolCommand(
-					dtxProtocolCommand, /* flags */ 0,  
-					currentGxact->gid, currentGxact->gxid,
-					/* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
+				succeeded = doDispatchDtxProtocolCommand(dtxProtocolCommand, /* flags */ 0,  
+														 currentGxact->gid, currentGxact->gxid,
+														 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
 				if (!succeeded)
 				{
 					elog(FATAL, "A retry of the distributed transaction '%s Prepared' broadcast failed to one or more segments for gid = %s.",
@@ -952,21 +991,19 @@ doNotifyCommittedInDoubt(char *gid)
 	bool succeeded;
 	bool badGangs;
 
+	CdbDispatchDirectDesc direct=default_dispatch_direct_desc;
+
 	/* UNDONE: Pass real gxid instead of InvalidDistributedTransactionId. */
-	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED, /* flags */ 0,
-					gid, InvalidDistributedTransactionId,
-					/* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
+	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED, /* flags */ 0,
+											 gid, InvalidDistributedTransactionId,
+											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
 	if (!succeeded)
 	{
-		elog(FATAL, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", 
-			 gid);
-		
+		elog(FATAL, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", gid);
 	}
 	else
 	{
-		elog(INFO, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast succeeded for gid = %s.", 
-			 gid);
+		elog(INFO, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast succeeded for gid = %s.", gid);
 	}
 
 	return succeeded;
@@ -978,20 +1015,19 @@ doAbortInDoubt(char *gid)
 	bool succeeded;
 	bool badGangs;
 
+	CdbDispatchDirectDesc direct=default_dispatch_direct_desc;
+
 	/* UNDONE: Pass real gxid instead of InvalidDistributedTransactionId. */
-	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED, /* flags */ 0,
-					gid, InvalidDistributedTransactionId,
-					/* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
+	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED, /* flags */ 0,
+											 gid, InvalidDistributedTransactionId,
+											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
 	if (!succeeded)
 	{
-		elog(FATAL, "Crash recovery retry of the distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = %s.  System will retry again later", 
-			 gid);
+		elog(FATAL, "Crash recovery retry of the distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = %s.  System will retry again later", gid);
 	}
 	else
 	{
-		elog(INFO, "Crash recovery broadcast of the distributed transaction 'Abort Prepared' broadcast succeeded for gid = %s", 
-			 gid);
+		elog(INFO, "Crash recovery broadcast of the distributed transaction 'Abort Prepared' broadcast succeeded for gid = %s", gid);
 	}
 }
 
@@ -1002,9 +1038,9 @@ doAbortInDoubt(char *gid)
 void
 prepareDtxTransaction(void)
 {
-	if(DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
+	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
 	{
-	    elog((Debug_print_full_dtm ? LOG : DEBUG5),"prepareDtxTransaction nothing to do (DistributedTransactionContext = '%s')", 
+	    elog((Debug_print_full_dtm ? LOG : DEBUG5), "prepareDtxTransaction nothing to do (DistributedTransactionContext = '%s')", 
 			 DtxContextToString(DistributedTransactionContext));
 		return;
 	}
@@ -1019,12 +1055,13 @@ prepareDtxTransaction(void)
 		/*
 		 * This transaction did not go distributed.
 		 */
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"prepareDtxTransaction ignoring not distributed gid = %s", currentGxact->gid);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "prepareDtxTransaction ignoring not distributed gid = %s", currentGxact->gid);
 		releaseGxact();
 		return;
 	}
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"prepareDtxTransaction called with state = %s",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		 "prepareDtxTransaction called with state = %s",
 		 DtxStateToString(currentGxact->state));
 	
 	Assert(currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED);
@@ -1062,19 +1099,19 @@ prepareDtxTransaction(void)
 void
 rollbackDtxTransaction(void)
 {
-	if(DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
+	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
 	{
-	    elog((Debug_print_full_dtm ? LOG : DEBUG5),"rollbackDtxTransaction nothing to do (DistributedTransactionContext = '%s')", 
+	    elog((Debug_print_full_dtm ? LOG : DEBUG5), "rollbackDtxTransaction nothing to do (DistributedTransactionContext = '%s')", 
 			 DtxContextToString(DistributedTransactionContext));
 		return;
 	}
-	if(currentGxact == NULL)
+	if (currentGxact == NULL)
 	{
-	    elog((Debug_print_full_dtm ? LOG : DEBUG5),"rollbackDtxTransaction nothing to do (currentGxact == NULL)");
+	    elog((Debug_print_full_dtm ? LOG : DEBUG5), "rollbackDtxTransaction nothing to do (currentGxact == NULL)");
 		return;
 	}
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"rollbackDtxTransaction called with state = %s, gid = %s",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "rollbackDtxTransaction called with state = %s, gid = %s",
 		 DtxStateToString(currentGxact->state), currentGxact->gid);
 	
 	switch (currentGxact->state)
@@ -1098,7 +1135,7 @@ rollbackDtxTransaction(void)
 			 * segment instances.  And, we will abort the transactions in the
 			 * segments.  What's left are possibily prepared transactions.
 			 */
-			elog(WARNING,"Releasing gangs since one or more segment connections failed.  This will abort the transactions in the segments that did not get prepared.");
+			elog(WARNING, "Releasing gangs since one or more segment connections failed.  This will abort the transactions in the segments that did not get prepared.");
 			disconnectAndDestroyAllGangs();
 			
 			/*
@@ -1123,7 +1160,7 @@ rollbackDtxTransaction(void)
 		 * segment instances.  And, we will abort the transactions in the
 		 * segments.
 		 */
-		elog(NOTICE,"Releasing gangs to finish aborting the transaction.");
+		elog(NOTICE, "Releasing gangs to finish aborting the transaction.");
 		disconnectAndDestroyAllGangs();
 		
 		/*
@@ -1397,7 +1434,7 @@ mppTxOptions_IsoLevel(int txnOptions)
 		return XACT_READ_COMMITTED;
 	else if (txnOptions & GP_OPT_SERIALIZABLE)
 		return XACT_SERIALIZABLE;
-	else if( txnOptions & GP_OPT_REPEATABLE_READ)
+	else if ( txnOptions & GP_OPT_REPEATABLE_READ)
 		return XACT_REPEATABLE_READ;
 	else
 		return XACT_READ_UNCOMMITTED;
@@ -1523,7 +1560,7 @@ GetRedoFileName(char *path)
 {
 	snprintf(path, MAXPGPATH, 
 		     "%s/" UTILITYMODEDTMREDO_DIR "/" UTILITYMODEDTMREDO_FILE, DataDir);
-	elog((Debug_print_full_dtm ? LOG : DEBUG3),"Returning save DTM redo file path = %s",path);
+	elog((Debug_print_full_dtm ? LOG : DEBUG3), "Returning save DTM redo file path = %s",path);
 }
 
 void
@@ -1533,7 +1570,7 @@ UtilityModeFindOrCreateDtmRedoFile(void)
 
 	if (Gp_role != GP_ROLE_UTILITY)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG3),"Not in Utility Mode (role = %s) -- skipping finding or creating DTM redo file",
+		elog((Debug_print_full_dtm ? LOG : DEBUG3), "Not in Utility Mode (role = %s) -- skipping finding or creating DTM redo file",
 			 role_to_string(Gp_role));
 		return;
 	}
@@ -1549,7 +1586,7 @@ UtilityModeFindOrCreateDtmRedoFile(void)
 	}
 
 	redoFileOffset = lseek(redoFileFD, 0, SEEK_END);
-	elog((Debug_print_full_dtm ? LOG : DEBUG3),"Succesfully opened DTM redo file %s (end offset %d)",
+	elog((Debug_print_full_dtm ? LOG : DEBUG3), "Succesfully opened DTM redo file %s (end offset %d)",
 		 path, redoFileOffset);
 }
 
@@ -1565,7 +1602,7 @@ UtilityModeSaveRedo(bool committed, TMGXACT_LOG * gxact_log)
 	utilityModeRedo.committed = committed;
 	memcpy(&utilityModeRedo.gxact_log, gxact_log, sizeof(TMGXACT_LOG));
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"Writing {committed = %s, gid = %s, gxid = %u} to DTM redo file",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Writing {committed = %s, gid = %s, gxid = %u} to DTM redo file",
 	     (utilityModeRedo.committed ? "true" : "false"),
 	     utilityModeRedo.gxact_log.gid,
 	     utilityModeRedo.gxact_log.gxid);
@@ -1585,11 +1622,11 @@ UtilityModeCloseDtmRedoFile(void)
 {
 	if (Gp_role != GP_ROLE_UTILITY)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG3),"Not in Utility Mode (role = %s)-- skipping closing DTM redo file",
+		elog((Debug_print_full_dtm ? LOG : DEBUG3), "Not in Utility Mode (role = %s)-- skipping closing DTM redo file",
 			 role_to_string(Gp_role));
 		return;
 	}
-	elog((Debug_print_full_dtm ? LOG : DEBUG3),"Closing DTM redo file");
+	elog((Debug_print_full_dtm ? LOG : DEBUG3), "Closing DTM redo file");
 	close(redoFileFD);
 }
 
@@ -1612,12 +1649,12 @@ ReplayRedoFromUtilityMode(void)
 	if (fd < 0)
 	{
 		/* UNDONE: Distinquish "not found" from other errors. */
-		elog((Debug_print_full_dtm ? LOG : DEBUG3),"Could not open DTM redo file %s for reading",
+		elog((Debug_print_full_dtm ? LOG : DEBUG3), "Could not open DTM redo file %s for reading",
 		     path);
 		return;
 	}
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG3),"Succesfully opened DTM redo file %s for reading",
+	elog((Debug_print_full_dtm ? LOG : DEBUG3), "Succesfully opened DTM redo file %s for reading",
 		 path);
 	
 	while(true)
@@ -1628,7 +1665,7 @@ ReplayRedoFromUtilityMode(void)
 		if (read_len == 0)
 			break;
 		else if (read_len != sizeof(TMGXACT_UTILITY_MODE_REDO) && errno == 0)
-			elog(ERROR,"Bad redo length (expected %d and found %d)",
+			elog(ERROR, "Bad redo length (expected %d and found %d)",
 			     (int)sizeof(TMGXACT_UTILITY_MODE_REDO), read_len);
 		else if (errno != 0)
 		{
@@ -1638,7 +1675,7 @@ ReplayRedoFromUtilityMode(void)
 					 errmsg("error reading DTM redo file: %m")));
 		}
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"Read {committed = %s, gid = %s, gxid = %u} from DTM redo file",
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "Read {committed = %s, gid = %s, gxid = %u} from DTM redo file",
 		     (utilityModeRedo.committed ? "true" : "false"),
 		     utilityModeRedo.gxact_log.gid,
 		     utilityModeRedo.gxact_log.gxid);
@@ -1654,7 +1691,7 @@ ReplayRedoFromUtilityMode(void)
 		entries++;
 	}
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"Processed %d entries from DTM redo file",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Processed %d entries from DTM redo file",
 		 entries);
 	close(fd);
 
@@ -1668,7 +1705,7 @@ RemoveRedoUtilityModeFile(void)
 
 	GetRedoFileName(path);
 	removed = (unlink(path) == 0);
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"Removed DTM redo file %s (%s)",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Removed DTM redo file %s (%s)",
 		 path, (removed ? "true" : "false"));
 }
 
@@ -1790,18 +1827,17 @@ descDistributedForgetCommitRecord(StringInfo buf, TMGXACT_LOG * gxact_log)
  */
 
 static bool
-doDispatchDtxProtocolCommand(
-	DtxProtocolCommand dtxProtocolCommand,
-	int flags,
-	char* gid, DistributedTransactionId gxid,
-	bool dispatchToMirrors, bool *badGangs, bool raiseError)
+doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
+							 char* gid, DistributedTransactionId gxid,
+							 bool dispatchToMirrors, bool *badGangs, bool raiseError,
+							 CdbDispatchDirectDesc *direct)
 {
-	int		i, resultCount, numOfFailed = 0;
+	int			i, resultCount, numOfFailed = 0;
 
-	char *dtxProtocolCommandStr;
+	char		*dtxProtocolCommandStr = 0;
 
-	struct pg_result **results = NULL;
-	StringInfoData errbuf;
+	struct pg_result	**results = NULL;
+	StringInfoData		errbuf;
 
 	dtxProtocolCommandStr = DtxProtocolCommandToString(dtxProtocolCommand);
 
@@ -1810,13 +1846,11 @@ doDispatchDtxProtocolCommand(
 		 dtxProtocolCommand, dtxProtocolCommandStr, dispatchToMirrors ? "yes" : "no");
 
 	initStringInfo(&errbuf);
-	results = cdbdisp_dispatchDtxProtocolCommand(dtxProtocolCommand,
-												 flags,
+	results = cdbdisp_dispatchDtxProtocolCommand(dtxProtocolCommand, flags,
 												 dtxProtocolCommandStr,
-												 gid,
-												 gxid,
+												 gid, gxid,
 												 dispatchToMirrors,
-												 &errbuf, &resultCount, badGangs);
+												 &errbuf, &resultCount, badGangs, direct);
 
 	if (errbuf.len > 0)
 	{
@@ -1885,8 +1919,7 @@ dispatchDtxCommand(const char *cmd, bool dispatchToMirrors, bool withSnapshot, b
 		 "dispatchDtxCommand: '%s' willMirror: %s", cmd, dispatchToMirrors ? "yes" : "no");
 
 	initStringInfo(&errbuf);
-	results = cdbdisp_dispatchRMCommand(cmd,
-										withSnapshot,
+	results = cdbdisp_dispatchRMCommand(cmd, withSnapshot,
 										dispatchToMirrors,
 										&errbuf, &resultCount);
 
@@ -2068,9 +2101,9 @@ createDtxSnapshot(
 
 	DistributedSnapshotMapEntry 	*inProgressEntryArray;
 	
-	if(currentGxact == NULL)
+	if (currentGxact == NULL)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"createDtxSnapshot found currentGxact is NULL");
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "createDtxSnapshot found currentGxact is NULL");
 		return false;
 	}
 
@@ -2159,8 +2192,8 @@ createDtxSnapshot(
 		if (gxact_candidate == currentGxact)
 			continue;
 
-		if(count >= distribSnapshotWithLocalMapping->header.maxCount)
-			elog(ERROR,"Too many distributed transactions for snapshot");
+		if (count >= distribSnapshotWithLocalMapping->header.maxCount)
+			elog(ERROR, "Too many distributed transactions for snapshot");
 
 
 		inProgressEntryArray[count].distribXid = inProgressXid;
@@ -2204,9 +2237,11 @@ createDtxSnapshot(
 	if (xmin < currentGxact->xminDistributedSnapshot)
 		currentGxact->xminDistributedSnapshot = xmin;
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"createDtxSnapshot distributed snapshot has xmin = %u, count = %u, xmax = %u.", 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		 "createDtxSnapshot distributed snapshot has xmin = %u, count = %u, xmax = %u.", 
 		 xmin, count, xmax);
-	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Create* (gxid = %u, '%s')", 
+	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
+		 "[Distributed Snapshot #%u] *Create* (gxid = %u, '%s')", 
 		 distribSnapshotId,
 		 currentGxact->gxid,
 		 DtxContextToString(DistributedTransactionContext));
@@ -2274,7 +2309,8 @@ createDtx(
 	
 	currentGxact = gxact;
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"createDtx created new distributed transaction gid = %s, gxid = %u.", 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		 "createDtx created new distributed transaction gid = %s, gxid = %u.", 
 		 currentGxact->gid, currentGxact->gxid);
 
 
@@ -2653,7 +2689,7 @@ recoverTM(void)
 	elog(LOG, "Next distributed transaction id is %u", *shmGIDSeq);
 	
 	*shmDtmStarted = true;
-	elog(LOG,"DTM Started");
+	elog(LOG, "DTM Started");
 }
 
 static bool deferredRecoveryActive=false;
@@ -2688,7 +2724,7 @@ cdbtm_performDeferredRecovery(void)
 			PG_END_TRY();
 
 			*shmDtmRecoveryDeferred = false;
-			elog(NOTICE,"Releasing gangs for deferred recovery.");
+			elog(NOTICE, "Releasing gangs for deferred recovery.");
 			disconnectAndDestroyAllGangs();
 			resetSessionForPrimaryGangLoss();
 		}
@@ -2885,13 +2921,13 @@ determineSegmentMaxDistributedXid(void)
 	}
 	else
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"determineSegmentMaxDistributedXid resultCount = %d",resultCount);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "determineSegmentMaxDistributedXid resultCount = %d",resultCount);
 		
 		for (i = 0; i < resultCount; i++)
 		{
 			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
 			{
-				elog(ERROR,"gp_max_distributed_xid: resultStatus not tuples_Ok");
+				elog(ERROR, "gp_max_distributed_xid: resultStatus not tuples_Ok");
 			}
 			else
 			{
@@ -2905,7 +2941,7 @@ determineSegmentMaxDistributedXid(void)
 				{
 					DistributedTransactionId temp = 0;
 					temp  =  atol(PQgetvalue(results[i], j, 0));
-					elog((Debug_print_full_dtm ? LOG : DEBUG5),"determineSegmentMaxDistributedXid value = %d",temp);
+					elog((Debug_print_full_dtm ? LOG : DEBUG5), "determineSegmentMaxDistributedXid value = %d",temp);
 					if (temp  > max)
 						max = temp;
 				}
@@ -3079,7 +3115,7 @@ abortRMInDoubtTransactions(HTAB *htab)
 	{
 		if (FindRetryNotifyCommitted(entry->gid, &gxact))
 		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"Skipping in-doubt transaction gid = %s since it is \"%s\"",
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "Skipping in-doubt transaction gid = %s since it is \"%s\"",
 				 gxact->gid, DtxStateToString(gxact->state));
 			continue;
 		}
@@ -3205,7 +3241,7 @@ assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source __attri
 	 */
 	if (doit && newval)
 	{
-		if(Gp_role == GP_ROLE_EXECUTE)
+		if (Gp_role == GP_ROLE_EXECUTE)
 			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());			
 	}
 
@@ -3521,7 +3557,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 		
 			if (explicitBegin)
 			{
-				elog(ERROR,"Cannot have an explicit BEGIN statement...");
+				elog(ERROR, "Cannot have an explicit BEGIN statement...");
 			}
 			break;
 		
@@ -3559,7 +3595,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 
 	if (haveDistributedSnapshot)
 	{
-		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Set QE* currcid = %d (gxid = %u, '%s')", 
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5), "[Distributed Snapshot #%u] *Set QE* currcid = %d (gxid = %u, '%s')", 
 			 dtxContextInfo->distributedSnapshot.header.distribSnapshotId,
 			 dtxContextInfo->curcid,
 			 getDistributedTransactionId(),
@@ -3577,7 +3613,7 @@ finishDistributedTransactionContext (char* debugCaller, bool aborted)
 	 * We let the 2 retry states go up to PostgresMain.c, otherwise
 	 * everything MUST be complete.
 	 */
-	if(currentGxact != NULL &&
+	if (currentGxact != NULL &&
 	   (currentGxact->state != DTX_STATE_RETRY_COMMIT_PREPARED &&
 	    currentGxact->state != DTX_STATE_RETRY_ABORT_PREPARED))
 	{
@@ -3611,13 +3647,13 @@ rememberDtxExplicitBegin(void)
 
 	if (!currentGxact->explicitBeginRemembered)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"rememberDtxExplicitBegin explicit BEGIN for gid = %s", 
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "rememberDtxExplicitBegin explicit BEGIN for gid = %s", 
 			 currentGxact->gid);
 		currentGxact->explicitBeginRemembered = true;
 	}
 	else
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"rememberDtxExplicitBegin already an explicit BEGIN for gid = %s",
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "rememberDtxExplicitBegin already an explicit BEGIN for gid = %s",
 			 currentGxact->gid);
 	}
 }
@@ -3638,7 +3674,7 @@ sendDtxExplicitBegin(void)
 	
 	rememberDtxExplicitBegin();
 	
-	setCurrentDtxTwoPhase("sendDtxExplicitBegin", "(none)");
+	setCurrentDtxTwoPhase("sendDtxExplicitBegin", "(none)", NULL);
 	
 	/* 
 	 * Be explicit about both the isolation level and the access mode
@@ -3654,8 +3690,8 @@ sendDtxExplicitBegin(void)
 	 */
 	if (!dispatchDtxCommand(cmdbuf, /* dispatchToMirrors */ true, /* withSnapshot */ false, /* raiseError */ false))
 	{
-			ereport(ERROR, (errmsg("Global transaction BEGIN failed failed for gid = \"%s\" due to error",
-								   currentGxact->gid)));
+		ereport(ERROR, (errmsg("Global transaction BEGIN failed failed for gid = \"%s\" due to error",
+							   currentGxact->gid)));
 	}
 }
 

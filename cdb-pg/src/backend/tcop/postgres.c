@@ -3886,11 +3886,12 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				 */
  
 				cdbdisp_dispatchX(&queryParms,
-						 true,
-						 sliceTable,
-						 &pPrimaryResults,		/* OUT */
-						 &pMirrorResults,       /* OUT */
-						 &dispatchThreads)	;	/* OUT */
+								  true,
+								  sliceTable,
+								  DEFAULT_DISP_DIRECT,
+								  &pPrimaryResults,		/* OUT */
+								  &pMirrorResults,      /* OUT */
+								  &dispatchThreads);	/* OUT */
 			   				 
 			}
 			elog(DEBUG2,"Dispatch Agent checking dispatch results");
@@ -4112,14 +4113,14 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				cdbdisp_dispatchToGang(&dispatchThreads, 
 									   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 									   &dtxProtocolParms,
-									   primaryGang, primaryResults, -1, 1);
+									   primaryGang, primaryResults, -1, 1, DEFAULT_DISP_DIRECT);
 				
 				if (mirrorResults != NULL)
 				{
 					cdbdisp_dispatchToGang(&dispatchThreads, 
 										   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 										   &dtxProtocolParms,
-										   mirrorGang, mirrorResults, -1, 1);
+										   mirrorGang, mirrorResults, -1, 1, DEFAULT_DISP_DIRECT);
 				}
 
 				/* Wait for all QEs to finish.	Don't cancel. */
