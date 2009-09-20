@@ -205,11 +205,28 @@ void AppendOnlyStorageRead_FinishSession(
 	if(!storageRead->isActive)
 		return;
 
-	// UNDONE: Should move this down one level?
 	oldMemoryContext = MemoryContextSwitchTo(storageRead->memoryContext);
 
-	// UNDONE: This expects the MemoryContent to be what was used for the 'memory' in ~Init
+	// UNDONE: This expects the MemoryContext to be what was used for the 'memory' in ~Init
 	BufferedReadFinish(&storageRead->bufferedRead);
+
+	if (storageRead->relationName != NULL)
+	{
+		pfree(storageRead->relationName);
+		storageRead->relationName = NULL;
+	}
+
+	if (storageRead->qlzScratch != NULL)
+	{
+		pfree(storageRead->qlzScratch);
+		storageRead->qlzScratch = NULL;
+	}
+
+	if (storageRead->segmentFileName != NULL)
+	{
+		pfree(storageRead->segmentFileName);
+		storageRead->segmentFileName = NULL;
+	}
 
 	/* Deallocation is done.	  Go back to caller memory-context. */
 	MemoryContextSwitchTo(oldMemoryContext);
@@ -294,7 +311,10 @@ void AppendOnlyStorageRead_OpenFile(
 	 * When reading multiple segment files, we throw away the old segment file name strings.
 	 */	
 	oldMemoryContext = MemoryContextSwitchTo(storageRead->memoryContext);
-	
+
+	if (storageRead->segmentFileName != NULL)
+		pfree(storageRead->segmentFileName);
+
 	segmentFileNameLen = strlen(filePathName);
 	storageRead->segmentFileName = (char *) palloc(segmentFileNameLen + 1);
 	memcpy(storageRead->segmentFileName, filePathName, segmentFileNameLen + 1);

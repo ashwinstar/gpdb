@@ -236,11 +236,46 @@ void AppendOnlyStorageWrite_FinishSession(
 	if(!storageWrite->isActive)
 		return;
 
-	// UNDONE: Should move this down one level?
 	oldMemoryContext = MemoryContextSwitchTo(storageWrite->memoryContext);
 
 	// UNDONE: This expects the MemoryContent to be what was used for the 'memory' in ~Init
 	BufferedAppendFinish(&storageWrite->bufferedAppend);
+
+	if (storageWrite->relationName != NULL)
+	{
+		pfree(storageWrite->relationName);
+		storageWrite->relationName = NULL;
+	}
+
+	if (storageWrite->uncompressedBuffer != NULL)
+	{
+		pfree(storageWrite->uncompressedBuffer);
+		storageWrite->uncompressedBuffer = NULL;
+	}
+
+	if (storageWrite->qlzScratchCompress != NULL)
+	{
+		pfree(storageWrite->qlzScratchCompress);
+		storageWrite->qlzScratchCompress = NULL;
+	}
+
+	if (storageWrite->verifyWriteBuffer != NULL)
+	{
+		pfree(storageWrite->verifyWriteBuffer);
+		storageWrite->verifyWriteBuffer = NULL;
+	}
+
+	if (storageWrite->qlzScratchDecompress != NULL)
+	{
+		pfree(storageWrite->qlzScratchDecompress);
+		storageWrite->qlzScratchDecompress = NULL;
+	}
+
+	if (storageWrite->segmentFileName != NULL)
+	{
+		pfree(storageWrite->segmentFileName);
+		storageWrite->segmentFileName = NULL;
+	}
 
 	/* Deallocation is done.	  Go back to caller memory-context. */
 	MemoryContextSwitchTo(oldMemoryContext);
@@ -351,7 +386,10 @@ void AppendOnlyStorageWrite_OpenFile(
 	 * When writing multiple segment files, we throw away the old segment file name strings.
 	 */	
 	oldMemoryContext = MemoryContextSwitchTo(storageWrite->memoryContext);
-	
+
+	if (storageWrite->segmentFileName != NULL)
+		pfree(storageWrite->segmentFileName);
+
 	segmentFileNameLen = strlen(filePathName);
 	storageWrite->segmentFileName = (char *) palloc(segmentFileNameLen + 1);
 	memcpy(storageWrite->segmentFileName, filePathName, segmentFileNameLen + 1);
