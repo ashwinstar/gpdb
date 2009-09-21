@@ -241,6 +241,11 @@ extern bool           gp_enable_slow_writer_testmode;
  */
 extern bool           gp_enable_delete_as_truncate;
 
+/*
+ * MPP-6926: Resource Queues on by default
+ */
+extern bool           gp_enable_default_resource_queues;
+
 /* Parameter debug_print_combocid_detail
  *
  * This run-time parameter requests extra details when we hit the combocid

@@ -2165,6 +2165,18 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_statistics_use_fkeys,
 		false, NULL, NULL
 	},
+
+	{
+		/* MPP-6926 */
+		{"gp_enable_default_resource_queues", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable default resource queues"),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_enable_default_resource_queues,
+		false, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL

@@ -42,6 +42,7 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbllize.h"
+#include "cdb/cdbvars.h"
 #include "nodes/print.h"
 
 /*
@@ -760,6 +761,13 @@ GetResQueueForRole(Oid roleid)
 	} 
 
 	heap_close(authrel, AccessShareLock);
+
+	/* MPP-6926: use default queue if none specified */
+	if (gp_enable_default_resource_queues && 
+		(InvalidOid == queueid))
+	{
+		queueid = GetResQueueIdForName("gp_default");
+	}
 
 	return queueid;
 	
