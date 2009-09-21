@@ -165,7 +165,6 @@ static void close_cur_scan_seg(AOCSScanDesc scan)
         if(scan->ds[i])
         {
             datumstream_close_file(scan->ds[i]);
-            scan->ds[i] = NULL;
         }
     }
 }
