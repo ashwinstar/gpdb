@@ -177,7 +177,7 @@ GPLOAD:
            - <field_name>: <data_type>
     - FORMAT: text | csv
     - DELIMITER: '<delimiter_character>'
-    - ESCAPE: <escape_character> | 'OFF'
+    - ESCAPE: '<escape_character>' | 'OFF'
     - NULL_AS: '<null_string>'
     - QUOTE: '<csv_quote_character>'
     - HEADER: true | false
@@ -296,9 +296,9 @@ FORMAT - Optional. Specifies the format of the source data file(s);
          either plain text (TEXT) or comma separated values (CSV) format. 
          Defaults to TEXT if not specified.
 
-DELIMITER - Optional. Specifies a single character that separates columns 
-            within each row (line) of data. The default is a tab character 
-            in TEXT mode, a comma in CSV mode.
+DELIMITER - Optional. Specifies a single ASCII character that separates 
+            columns within each row (line) of data. The default is a 
+            tab character in TEXT mode, a comma in CSV mode.
 
 ESCAPE - Optional. Specifies the single character that is used for C 
          escape sequences (such as \n,\t,\100, and so on) and for escaping 
