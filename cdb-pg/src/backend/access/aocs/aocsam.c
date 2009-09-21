@@ -417,5 +417,7 @@ void aocs_insert_finish(AOCSInsertDesc idesc)
     }
 
     UpdateAOCSFileSegInfo(idesc);
+
+	close_ds(idesc->ds, rel->rd_att->natts);
 }
 
