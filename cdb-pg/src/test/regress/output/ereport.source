@@ -14740,6 +14740,11 @@ select * from get_ereport order by 1;
  vaag: vacuum:00003852:  ereport(WARNING, 
  vaag: vacuum:00003853:  (errmsg("skipping "%s" --- cannot vacuum indexes, views, external tables, or special system tables", 
  vaag: vacuum:00003854:  RelationGetRelationName(onerel)))); 
+ vaag: vacuum:00004014:  ereport(ERROR, 
+ vaag: vacuum:00004015:  (errmsg("can not vacuum the relation '%s' with bitmap indexes. " 
+ vaag: vacuum:00004016:  "Please either increase your maintenance_work_mem or " 
+ vaag: vacuum:00004017:  "drop the bitmap index and try again.", 
+ vaag: vacuum:00004018:  RelationGetRelationName(onerel)))); 
  vaag: varbit:00000103:  ereport(ERROR, 
  vaag: varbit:00000104:  (errcode(ERRCODE_STRING_DATA_LENGTH_MISMATCH), 
  vaag: varbit:00000105:  errmsg("bit string length %d does not match type bit(%d)", 
@@ -15479,6 +15484,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15419 rows)
+(15424 rows)
 
 drop external table get_ereport;

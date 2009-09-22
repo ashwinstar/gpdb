@@ -263,6 +263,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 				nunused;
 	IndexBulkDeleteResult **indstats;
 	int			i;
+	int reindex_count = 1;
 	PGRUsage	ru0;
 
 	pg_rusage_init(&ru0);
@@ -310,7 +311,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			for (i = 0; i < nindexes; i++)
 			{
 				List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i],
-													   1);
+													   onerel, reindex_count);
 				
 				lazy_vacuum_index(Irel[i],
 								  &indstats[i],
@@ -318,6 +319,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 								  extra_oids);
 				list_free(extra_oids);
 			}
+			reindex_count++;
 			
 			/* Remove tuples from heap */
 			lazy_vacuum_heap(onerel, vacrelstats);
@@ -527,7 +529,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 		for (i = 0; i < nindexes; i++)
 		{
 			List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i],
-												   2);
+												   onerel, reindex_count);
 			
 			lazy_vacuum_index(Irel[i],
 							  &indstats[i],
@@ -535,6 +537,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 							  extra_oids);
 			list_free(extra_oids);
 		}
+		reindex_count++;
 		
 		/* Remove tuples from heap */
 		lazy_vacuum_heap(onerel, vacrelstats);
