@@ -204,11 +204,12 @@ def connect2(cfgrec, user=None, password=None, database=None, utilityMode=True):
     return conn
 
 class execThread(Thread):
-    def __init__(self, db, qry):
-       self.db = db
-       self.qry = qry
-       self.curs = None
-       Thread.__init__(self)
+    def __init__(self, cfg, db, qry):
+        self.cfg = cfg
+        self.db = db
+        self.qry = qry
+        self.curs = None
+        Thread.__init__(self)
 
     def run(self):
         self.curs = self.db.query(self.qry)
@@ -227,7 +228,7 @@ def connect2run(qry, col):
         c = GV.cfg[dbid]
         db = connect2(c)
 
-        thread = execThread(db, qry)
+        thread = execThread(c, db, qry)
         thread.start()
         logger.debug('launching query thread %s for dbid %i' % 
                 (thread.getName(), dbid))
@@ -238,7 +239,7 @@ def connect2run(qry, col):
             for th in threads:
                 logger.debug('waiting on thread %s' % th.getName())
                 th.join()
-                batch.append(th.curs)
+                batch.append([th.cfg, th.curs])
 
             threads = []
 
@@ -247,12 +248,12 @@ def connect2run(qry, col):
     for th in threads:
         logger.debug('waiting on thread %s' % th.getName())
         th.join()
+        batch.append([th.cfg, th.curs])
 
     err = []
-    for curs in batch:
+    for [cfg, curs] in batch:
         for row in curs.dictresult():
-            c = db.x_cfgrec
-            err.append([c, col, row])
+            err.append([cfg, col, row])
 
     return err
 
@@ -300,7 +301,8 @@ def checkDistribPolicy():
         GV.retcode = 1
         logger.info('[ERROR] pg_constraint has %d issue(s)' % len(err))
         logger.info('[ERROR] %s' % qry)
-        for e in err: logger.info('[ERROR]', formatErr(e[0], e[1], e[2]))
+        for e in err: 
+            logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
         for e in err:
             cons = e[2]
             removeIndexConstraint(cons['nspname'], cons['relname'],
@@ -335,7 +337,7 @@ def checkDistribPolicy():
         GV.retcode = 1
         logger.info('[ERROR] pg_constraint has %d issue(s)' % len(err))
         logger.info('[ERROR] %s' % qry)
-        for e in err: logger.info('[ERROR]', formatErr(e[0], e[1], e[2]))
+        for e in err: logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
         for e in err:
             cons = e[2]
             removeIndexConstraint(cons['nspname'], cons['relname'],
@@ -359,7 +361,8 @@ def checkPGClass():
         GV.retcode = 1
         logger.info('[ERROR] pg_class has %d issue(s)' % len(err))
         logger.info('[ERROR] %s' % qry)
-        for e in err: logger.info('[ERROR]', formatErr(e[0], e[1], e[2]))
+        for e in err: 
+            logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
         relids = {}
         for e in err:
             seg = e[0]['dbid'] 
@@ -390,7 +393,7 @@ def checkPGAttribute():
         GV.retcode = 1
         logger.info('[ERROR] pg_attribute has %d issue(s)' % len(err))
         logger.info('[ERROR] %s' % qry)
-        for e in err: logger.info('[ERROR]', formatErr(e[0], e[1], e[2]))
+        for e in err: logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
 
         relids = {}
         for e in err:
@@ -423,7 +426,7 @@ def checkPGType():
         GV.retcode = 1
         logger.info('[ERROR] pg_type has %d issue(s)' % len(err))
         logger.info('[ERROR] %s' % qry)
-        for e in err: logger.info('[ERROR]', formatErr(e[0], e[1], e[2]))
+        for e in err: logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
         relids = {}
         for e in err:
             seg = e[0]['dbid'] 
@@ -486,7 +489,7 @@ def checkPGClassToast():
         GV.retcode = 1
         logger.info('[ERROR] pg_class.reltoastrelid has %d issue(s)' % len(err))
         logger.info('[ERROR] %s' % qry)
-        for e in err: logger.info('[ERROR]', formatErr(e[0], e[1], e[2]))
+        for e in err: logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
 
 #############
 def checkPGNamespace():
@@ -539,7 +542,7 @@ def checkPGNamespace():
             GV.retcode = 1
             logger.info('[ERROR] schema test %i has %d issue(s)' % (count, len(err)))
             logger.info('[ERROR] %s' % qry)
-            for e in err: logger.info('[ERROR]', formatErr(e[0], e[1], e[2]))
+            for e in err: logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
             schemaids = {}
             for e in err:
                 seg = e[0]['dbid'] 
@@ -566,9 +569,8 @@ def removeSchema(seg, db, schemaid):
 
     # get schema name
     curs = db.query('select nspname from pg_namespace where oid = %i' % schemaid)
-    row = db.getresult()[0]
-
-    if row:
+    if curs.ntuples() > 0:
+        row = db.getresult()[0]
         schemaname = row[0]
         oidmap[schemaid] = schemaname
     else:
@@ -602,9 +604,8 @@ def removeTable(seg, db, reloid):
         curs = db.query('select nspname, relname, relnamespace from pg_namespace n' +
                     ' right outer join pg_class c on ' +
                     '(c.relnamespace = n.oid) where c.oid = %i' % reloid)
-        row = curs.getresult()[0]
-    
-        if row:
+        if curs.ntuples() > 0:
+            row = curs.getresult()[0]
             nspname = row[0]
             relname = row[1]
             if nspname == None:
