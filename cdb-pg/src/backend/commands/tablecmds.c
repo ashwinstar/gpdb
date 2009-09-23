@@ -5160,6 +5160,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
             AOCSScanDesc sdesc = NULL;
             int nvp = oldrel->rd_att->natts;
             bool *proj = palloc0(sizeof(bool) * nvp);
+			TupleDesc new_desc = NULL;
 
             if (oldTupDesc)
             {
@@ -5172,6 +5173,15 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
             if(newrel)
                 idesc = aocs_insert_init(newrel, segno);
 
+			/*
+			 * Before the scan, we temporarily modify the tuple descriptor inside
+			 * oldrel, which already contains altered column type. This is because
+			 * the CO needs the original tuple descriptor to scan the data.
+			 * See MPP-7066.
+			 */
+			new_desc = oldrel->rd_att;
+			oldrel->rd_att = tab->oldDesc;
+			
             sdesc = aocs_beginscan(oldrel, SnapshotNow, 0, NULL, proj);
 
             aocs_getnext(sdesc, ForwardScanDirection, oldslot);
@@ -5256,6 +5266,9 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			}
 
 			aocs_endscan(sdesc);
+
+			/* Reset the tuple descriptor in oldrel */
+			oldrel->rd_att = new_desc;
 
 			if(newrel)
 				aocs_insert_finish(idesc);
