@@ -3,8 +3,8 @@
  * heap.c
  *	  code to create and destroy POSTGRES heap relations
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -36,6 +36,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/sysattr.h"
 #include "access/transam.h"
 #include "access/reloptions.h"
 #include "access/sysattr.h"
@@ -594,12 +595,12 @@ InsertPgClassTuple(Relation pg_class_desc,
 {
 	Form_pg_class rd_rel = new_rel_desc->rd_rel;
 	Datum		values[Natts_pg_class];
-	char		nulls[Natts_pg_class];
+	bool		nulls[Natts_pg_class];
 	HeapTuple	tup;
 
 	/* This is a tad tedious, but way cleaner than what we used to do... */
 	memset(values, 0, sizeof(values));
-	memset(nulls, ' ', sizeof(nulls));
+	memset(nulls, false, sizeof(nulls));
 
 	values[Anum_pg_class_relname - 1] = NameGetDatum(&rd_rel->relname);
 	values[Anum_pg_class_relnamespace - 1] = ObjectIdGetDatum(rd_rel->relnamespace);
@@ -630,13 +631,13 @@ InsertPgClassTuple(Relation pg_class_desc,
 	values[Anum_pg_class_relhassubclass - 1] = BoolGetDatum(rd_rel->relhassubclass);
 	values[Anum_pg_class_relfrozenxid - 1] = TransactionIdGetDatum(rd_rel->relfrozenxid);
 	/* start out with empty permissions */
-	nulls[Anum_pg_class_relacl - 1] = 'n';
+	nulls[Anum_pg_class_relacl - 1] = true;
 	if (reloptions != (Datum) 0)
 		values[Anum_pg_class_reloptions - 1] = reloptions;
 	else
-		nulls[Anum_pg_class_reloptions - 1] = 'n';
+		nulls[Anum_pg_class_reloptions - 1] = true;
 
-	tup = heap_formtuple(RelationGetDescr(pg_class_desc), values, nulls);
+	tup = heap_form_tuple(RelationGetDescr(pg_class_desc), values, nulls);
 
 	/*
 	 * The new tuple must have the oid already chosen for the rel.	Sure would
@@ -725,9 +726,9 @@ AddNewRelationTuple(Relation pg_class_desc,
 	else
 	{
 		/*
-		 * Other relation types will not contain XIDs, so set relfrozenxid
-		 * to InvalidTransactionId.  (Note: a sequence does contain a tuple,
-		 * but we force its xmin to be FrozenTransactionId always; see
+		 * Other relation types will not contain XIDs, so set relfrozenxid to
+		 * InvalidTransactionId.  (Note: a sequence does contain a tuple, but
+		 * we force its xmin to be FrozenTransactionId always; see
 		 * commands/sequence.c.)
 		 */
 		new_rel_reltup->relfrozenxid = InvalidTransactionId;
@@ -977,15 +978,16 @@ heap_create_with_catalog(const char *relname,
 	AddNewAttributeTuples(relid, new_rel_desc->rd_att, relkind,
 						  oidislocal, oidinhcount);
 
-    /* Make a dependency link to force the relation to be deleted if its
-     * namespace is.  Also make a dependency link to its owner.
-     *
-     * For composite types, these dependencies are tracked for the pg_type
-     * entry, so we needn't record them here.  Likewise, TOAST tables don't
-     * need a namespace dependency (they live in a pinned namespace) nor an
-     * owner dependency (they depend indirectly through the parent table).
-     * Also, skip this in bootstrap mode, since we don't make dependencies
-     * while bootstrapping.
+	/*
+	 * Make a dependency link to force the relation to be deleted if its
+	 * namespace is.  Also make a dependency link to its owner.
+	 *
+	 * For composite types, these dependencies are tracked for the pg_type
+	 * entry, so we needn't record them here.  Likewise, TOAST tables don't
+	 * need a namespace dependency (they live in a pinned namespace) nor an
+	 * owner dependency (they depend indirectly through the parent table).
+	 * Also, skip this in bootstrap mode, since we don't make dependencies
+	 * while bootstrapping.
 	 */
 	if (relkind != RELKIND_COMPOSITE_TYPE &&
 		relkind != RELKIND_TOASTVALUE &&
@@ -1006,7 +1008,7 @@ heap_create_with_catalog(const char *relname,
 	}
 
 	/*
-	 * store constraints and defaults passed in the tupdesc, if any.
+	 * Store any supplied constraints and defaults.
 	 *
 	 * NB: this may do a CommandCounterIncrement and rebuild the relcache
 	 * entry, so the relation must be valid and self-consistent at this point.
@@ -1568,7 +1570,7 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
 	Relation	adrel;
 	HeapTuple	tuple;
 	Datum		values[4];
-	static char nulls[4] = {' ', ' ', ' ', ' '};
+	static bool nulls[4] = {false, false, false, false};
 	Relation	attrrel;
 	HeapTuple	atttup;
 	Form_pg_attribute attStruct;
@@ -1582,7 +1584,7 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
 	expr = stringToNode(adbin);
 
 	/*
-	 * deparse it
+	 * Also deparse it to form the mostly-obsolete adsrc field.
 	 */
 	adsrc = deparse_expression(expr,
 							deparse_context_for(RelationGetRelationName(rel),
@@ -1594,14 +1596,12 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
 	 */
 	values[Anum_pg_attrdef_adrelid - 1] = RelationGetRelid(rel);
 	values[Anum_pg_attrdef_adnum - 1] = attnum;
-	values[Anum_pg_attrdef_adbin - 1] = DirectFunctionCall1(textin,
-													 CStringGetDatum(adbin));
-	values[Anum_pg_attrdef_adsrc - 1] = DirectFunctionCall1(textin,
-													 CStringGetDatum(adsrc));
+	values[Anum_pg_attrdef_adbin - 1] = CStringGetTextDatum(adbin);
+	values[Anum_pg_attrdef_adsrc - 1] = CStringGetTextDatum(adsrc);
 
 	adrel = heap_open(AttrDefaultRelationId, RowExclusiveLock);
 
-	tuple = heap_formtuple(adrel->rd_att, values, nulls);
+	tuple = heap_form_tuple(adrel->rd_att, values, nulls);
 	attrdefOid = simple_heap_insert(adrel, tuple);
 
 	CatalogUpdateIndexes(adrel, tuple);
@@ -2539,4 +2539,3 @@ insert_ordered_unique_oid(List *list, Oid datum)
 	lappend_cell_oid(list, prev, datum);
 	return list;
 }
-

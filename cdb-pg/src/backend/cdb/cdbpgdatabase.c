@@ -89,7 +89,7 @@ gp_pgdatabase__(PG_FUNCTION_ARGS)
 	while (cdb_dbs != NULL && mystatus->currIdx < cdb_dbs->total_segment_dbs + cdb_dbs->total_entry_dbs)
 	{
 		Datum		values[6];
-		char		nulls[6];
+		bool		nulls[6];
 		HeapTuple	tuple;
 		Datum		result;
 		CdbComponentDatabaseInfo *db;
@@ -104,7 +104,7 @@ gp_pgdatabase__(PG_FUNCTION_ARGS)
 		 * Form tuple with appropriate data.
 		 */
 		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, ' ', sizeof(nulls));
+		MemSet(nulls, false, sizeof(nulls));
 
 		values[0] = UInt16GetDatum(db->dbid);
 		values[1] = BoolGetDatum(db->isprimary);
@@ -113,7 +113,7 @@ gp_pgdatabase__(PG_FUNCTION_ARGS)
 		values[3] = BoolGetDatum(db->valid);
 		values[4] = BoolGetDatum(db->definedprimary);
 
-		tuple = heap_formtuple(funcctx->tuple_desc, values, nulls);
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
 		SRF_RETURN_NEXT(funcctx, result);
 	}

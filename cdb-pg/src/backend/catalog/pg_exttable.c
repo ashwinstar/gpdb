@@ -53,12 +53,12 @@ InsertExtTableEntry(Oid 	tbloid,
 {
 	Relation	pg_exttable_rel;
 	HeapTuple	pg_exttable_tuple = NULL;
-	char		nulls[Natts_pg_exttable];
+	bool		nulls[Natts_pg_exttable];
 	Datum		values[Natts_pg_exttable];
 
 
  	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, ' ', sizeof(nulls));
+	MemSet(nulls, false, sizeof(nulls));
 
     /*
      * Open and lock the pg_exttable catalog.
@@ -84,7 +84,7 @@ InsertExtTableEntry(Oid 	tbloid,
 
 		values[Anum_pg_exttable_location - 1] = locationUris;
 		values[Anum_pg_exttable_command - 1] = 0;
-		nulls[Anum_pg_exttable_command - 1] = 'n';
+		nulls[Anum_pg_exttable_command - 1] = true;
 	}
 
 	if(issreh)
@@ -96,19 +96,19 @@ InsertExtTableEntry(Oid 	tbloid,
 		if(fmtErrTblOid != InvalidOid)
 			values[Anum_pg_exttable_fmterrtbl - 1] = ObjectIdGetDatum(fmtErrTblOid);
 		else
-			nulls[Anum_pg_exttable_fmterrtbl - 1] = 'n';
+			nulls[Anum_pg_exttable_fmterrtbl - 1] = true;
 	}
 	else
 	{
-		nulls[Anum_pg_exttable_rejectlimit -1] = 'n';
-		nulls[Anum_pg_exttable_rejectlimittype - 1] = 'n';
-		nulls[Anum_pg_exttable_fmterrtbl - 1] = 'n';
+		nulls[Anum_pg_exttable_rejectlimit -1] = true;
+		nulls[Anum_pg_exttable_rejectlimittype - 1] = true;
+		nulls[Anum_pg_exttable_fmterrtbl - 1] = true;
 	}
 
 	values[Anum_pg_exttable_encoding - 1] = Int32GetDatum(encoding);
 	values[Anum_pg_exttable_writable - 1] = BoolGetDatum(iswritable);
 
-	pg_exttable_tuple = heap_formtuple(RelationGetDescr(pg_exttable_rel),
+	pg_exttable_tuple = heap_form_tuple(RelationGetDescr(pg_exttable_rel),
 									   values, nulls);
 
 	simple_heap_insert(pg_exttable_rel, pg_exttable_tuple);

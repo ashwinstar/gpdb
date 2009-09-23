@@ -2202,7 +2202,7 @@ mpp_global_xid_map(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
 	struct mpp_xid_map *ctx;
-	char		nulls[3];
+	bool	nulls[3];
 	int			i, j;
 
 	if (SRF_IS_FIRSTCALL())
@@ -2261,7 +2261,7 @@ mpp_global_xid_map(PG_FUNCTION_ARGS)
 	funcctx = SRF_PERCALL_SETUP();
 	ctx = (struct mpp_xid_map *)funcctx->user_fctx;
 
-	MemSet(nulls, ' ', sizeof(nulls));
+	MemSet(nulls, false, sizeof(nulls));
 	while (ctx->cur < ctx->size)
 	{
 		Datum		values[3];
@@ -2280,7 +2280,7 @@ mpp_global_xid_map(PG_FUNCTION_ARGS)
 
 		ctx->cur++;
 
-		tuple = heap_formtuple(funcctx->tuple_desc, values, nulls);
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
 		SRF_RETURN_NEXT(funcctx, result);
 	}

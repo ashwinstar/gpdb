@@ -750,7 +750,7 @@ AlterRole(AlterRoleStmt *stmt)
 
 		if ( strcmp(resqueue, "none") == 0)
 		{
-			new_record_nulls[Anum_pg_authid_rolresqueue - 1] = 'n';
+			new_record_nulls[Anum_pg_authid_rolresqueue - 1] = true;
 		}
 		else
 		{
@@ -763,7 +763,7 @@ AlterRole(AlterRoleStmt *stmt)
 			new_record[Anum_pg_authid_rolresqueue - 1] = 
 			ObjectIdGetDatum(GetResQueueIdForName(resqueue));
 		}
-		new_record_repl[Anum_pg_authid_rolresqueue - 1] = 'r';
+		new_record_repl[Anum_pg_authid_rolresqueue - 1] = true;
 
 		if (!ResourceScheduler)
 			ereport(WARNING,

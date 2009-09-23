@@ -51,7 +51,7 @@ POSTGRES_BKI_SRCS := $(addprefix $(top_srcdir)/src/include/catalog/,\
 	pg_partition.h pg_partition_rule.h toasting.h indexing.h \
     )
 
-pg_includes := $(sort -I$(top_srcdir)/src/include -I$(top_builddir)/src/include)
+pg_includes = $(sort -I$(top_srcdir)/src/include -I$(top_builddir)/src/include)
 
 # see explanation in ../parser/Makefile
 postgres.description: postgres.bki ;

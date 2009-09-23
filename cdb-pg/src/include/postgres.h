@@ -105,7 +105,7 @@ typedef union varattrib
 
 /*
  * VARDATA, VARSIZE, and SET_VARSIZE are the recommended API for most code
- * for varlena datatypes.  Note that they only work on
+ * for varlena datatypes.  Note that they only work on untoasted,
  * 4-byte-header Datums!
  *
  * Code that wants to use 1-byte-header values without detoasting should

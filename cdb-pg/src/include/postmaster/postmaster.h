@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/postmaster/postmaster.h,v 1.14 2006/08/08 19:15:09 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/postmaster/postmaster.h,v 1.20 2009/05/05 19:59:00 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -37,7 +37,6 @@ extern const char *progname;
 
 extern int	PostmasterMain(int argc, char *argv[]);
 extern void ClosePostmasterPorts(bool am_syslogger);
-extern int gpsyncMain(int argc, char *argv[]);
 
 extern int	MaxLivePostmasterChildren(void);
 
@@ -50,6 +49,7 @@ extern void ShmemBackendArrayAllocation(void);
 #endif
 
 /* CDB */
+extern int gpsyncMain(int argc, char *argv[]);
 typedef int (PMSubStartCallback)(void);
 bool GPPostmaster(void);
 bool GPStandby(void);

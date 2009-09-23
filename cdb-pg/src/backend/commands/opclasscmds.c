@@ -89,7 +89,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	HeapTuple	tup;
 	Form_pg_am	pg_am;
 	Datum		values[Natts_pg_opclass];
-	char		nulls[Natts_pg_opclass];
+	bool		nulls[Natts_pg_opclass];
 	AclResult	aclresult;
 	NameData	opcName;
 	int			i;
@@ -341,7 +341,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	 */
 	for (i = 0; i < Natts_pg_opclass; ++i)
 	{
-		nulls[i] = ' ';
+		nulls[i] = false;
 		values[i] = 0;		/* redundant, but safe */
 	}
 
@@ -355,7 +355,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	values[i++] = BoolGetDatum(stmt->isDefault);		/* opcdefault */
 	values[i++] = ObjectIdGetDatum(storageoid); /* opckeytype */
 
-	tup = heap_formtuple(rel->rd_att, values, nulls);
+	tup = heap_form_tuple(rel->rd_att, values, nulls);
 
 	if (stmt->opclassOid !=0)
 		HeapTupleSetOid(tup, stmt->opclassOid);
@@ -584,7 +584,7 @@ storeOperators(Oid opclassoid, List *operators)
 {
 	Relation	rel;
 	Datum		values[Natts_pg_amop];
-	char		nulls[Natts_pg_amop];
+	bool		nulls[Natts_pg_amop];
 	HeapTuple	tup;
 	ListCell   *l;
 	int			i;
@@ -597,7 +597,7 @@ storeOperators(Oid opclassoid, List *operators)
 
 		for (i = 0; i < Natts_pg_amop; ++i)
 		{
-			nulls[i] = ' ';
+			nulls[i] = false;
 			values[i] = 0;
 		}
 
@@ -608,7 +608,7 @@ storeOperators(Oid opclassoid, List *operators)
 		values[i++] = BoolGetDatum(op->recheck);		/* amopreqcheck */
 		values[i++] = ObjectIdGetDatum(op->object);		/* amopopr */
 
-		tup = heap_formtuple(rel->rd_att, values, nulls);
+		tup = heap_form_tuple(rel->rd_att, values, nulls);
 
 		simple_heap_insert(rel, tup);
 
@@ -628,7 +628,7 @@ storeProcedures(Oid opclassoid, List *procedures)
 {
 	Relation	rel;
 	Datum		values[Natts_pg_amproc];
-	char		nulls[Natts_pg_amproc];
+	bool		nulls[Natts_pg_amproc];
 	HeapTuple	tup;
 	ListCell   *l;
 	int			i;
@@ -641,7 +641,7 @@ storeProcedures(Oid opclassoid, List *procedures)
 
 		for (i = 0; i < Natts_pg_amproc; ++i)
 		{
-			nulls[i] = ' ';
+			nulls[i] = false;
 			values[i] = 0;
 		}
 
@@ -651,7 +651,7 @@ storeProcedures(Oid opclassoid, List *procedures)
 		values[i++] = Int16GetDatum(proc->number);		/* amprocnum */
 		values[i++] = ObjectIdGetDatum(proc->object);	/* amproc */
 
-		tup = heap_formtuple(rel->rd_att, values, nulls);
+		tup = heap_form_tuple(rel->rd_att, values, nulls);
 
 		simple_heap_insert(rel, tup);
 

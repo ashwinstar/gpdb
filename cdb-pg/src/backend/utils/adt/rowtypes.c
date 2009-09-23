@@ -1,9 +1,9 @@
 /*-------------------------------------------------------------------------
  *
  * rowtypes.c
- *	  I/O functions for generic composite types.
+ *	  I/O and comparison functions for generic composite types.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -70,7 +70,7 @@ record_in(PG_FUNCTION_ARGS)
 	int			i;
 	char	   *ptr;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *nulls;
 	StringInfoData buf;
 
 	/*
@@ -116,7 +116,7 @@ record_in(PG_FUNCTION_ARGS)
 	}
 
 	values = (Datum *) palloc(ncolumns * sizeof(Datum));
-	nulls = (char *) palloc(ncolumns * sizeof(char));
+	nulls = (bool *) palloc(ncolumns * sizeof(bool));
 
 	/*
 	 * Scan the string.  We use "buf" to accumulate the de-quoted data for
@@ -147,7 +147,7 @@ record_in(PG_FUNCTION_ARGS)
 		if (tupdesc->attrs[i]->attisdropped)
 		{
 			values[i] = (Datum) 0;
-			nulls[i] = 'n';
+			nulls[i] = true;
 			continue;
 		}
 
@@ -171,7 +171,7 @@ record_in(PG_FUNCTION_ARGS)
 		if (*ptr == ',' || *ptr == ')')
 		{
 			column_data = NULL;
-			nulls[i] = 'n';
+			nulls[i] = true;
 		}
 		else
 		{
@@ -223,7 +223,7 @@ record_in(PG_FUNCTION_ARGS)
 			}
 
 			column_data = buf.data;
-			nulls[i] = ' ';
+			nulls[i] = false;
 		}
 
 		/*
@@ -269,10 +269,10 @@ record_in(PG_FUNCTION_ARGS)
 				 errmsg("malformed record literal: \"%s\"", string),
 				 errdetail("Junk after right parenthesis.")));
 	}
-	tuple = heap_formtuple(tupdesc, values, nulls);
+	tuple = heap_form_tuple(tupdesc, values, nulls);
 
 	/*
-	 * We cannot return tuple->t_data because heap_formtuple allocates it as
+	 * We cannot return tuple->t_data because heap_form_tuple allocates it as
 	 * part of a larger chunk, and our caller may expect to be able to pfree
 	 * our result.	So must copy the info into a new palloc chunk.
 	 */
@@ -304,7 +304,7 @@ record_out(PG_FUNCTION_ARGS)
 	int			ncolumns;
 	int			i;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *nulls;
 	StringInfoData buf;
 
 	/* Extract type info from the tuple itself */
@@ -347,10 +347,10 @@ record_out(PG_FUNCTION_ARGS)
 	}
 
 	values = (Datum *) palloc(ncolumns * sizeof(Datum));
-	nulls = (char *) palloc(ncolumns * sizeof(char));
+	nulls = (bool *) palloc(ncolumns * sizeof(bool));
 
 	/* Break down the tuple into fields */
-	heap_deformtuple(&tuple, tupdesc, values, nulls);
+	heap_deform_tuple(&tuple, tupdesc, values, nulls);
 
 	/* And build the result string */
 	initStringInfo(&buf);
@@ -373,7 +373,7 @@ record_out(PG_FUNCTION_ARGS)
 			appendStringInfoChar(&buf, ',');
 		needComma = true;
 
-		if (nulls[i] == 'n')
+		if (nulls[i])
 		{
 			/* emit nothing... */
 			continue;
@@ -457,7 +457,7 @@ record_recv(PG_FUNCTION_ARGS)
 	int			validcols;
 	int			i;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *nulls;
 
 	/*
 	 * Use the passed type unless it's RECORD; we can't support input of
@@ -502,7 +502,7 @@ record_recv(PG_FUNCTION_ARGS)
 	}
 
 	values = (Datum *) palloc(ncolumns * sizeof(Datum));
-	nulls = (char *) palloc(ncolumns * sizeof(char));
+	nulls = (bool *) palloc(ncolumns * sizeof(bool));
 
 	/* Fetch number of columns user thinks it has */
 	usercols = pq_getmsgint(buf, 4);
@@ -535,7 +535,7 @@ record_recv(PG_FUNCTION_ARGS)
 		if (tupdesc->attrs[i]->attisdropped)
 		{
 			values[i] = (Datum) 0;
-			nulls[i] = 'n';
+			nulls[i] = true;
 			continue;
 		}
 
@@ -558,7 +558,7 @@ record_recv(PG_FUNCTION_ARGS)
 		{
 			/* -1 length means NULL */
 			bufptr = NULL;
-			nulls[i] = 'n';
+			nulls[i] = true;
 			csave = 0;			/* keep compiler quiet */
 		}
 		else
@@ -580,7 +580,7 @@ record_recv(PG_FUNCTION_ARGS)
 			buf->data[buf->cursor] = '\0';
 
 			bufptr = &item_buf;
-			nulls[i] = ' ';
+			nulls[i] = false;
 		}
 
 		/* Now call the column's receiveproc */
@@ -612,10 +612,10 @@ record_recv(PG_FUNCTION_ARGS)
 		}
 	}
 
-	tuple = heap_formtuple(tupdesc, values, nulls);
+	tuple = heap_form_tuple(tupdesc, values, nulls);
 
 	/*
-	 * We cannot return tuple->t_data because heap_formtuple allocates it as
+	 * We cannot return tuple->t_data because heap_form_tuple allocates it as
 	 * part of a larger chunk, and our caller may expect to be able to pfree
 	 * our result.	So must copy the info into a new palloc chunk.
 	 */
@@ -646,7 +646,7 @@ record_send(PG_FUNCTION_ARGS)
 	int			validcols;
 	int			i;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *nulls;
 	StringInfoData buf;
 
 	/* Extract type info from the tuple itself */
@@ -689,10 +689,10 @@ record_send(PG_FUNCTION_ARGS)
 	}
 
 	values = (Datum *) palloc(ncolumns * sizeof(Datum));
-	nulls = (char *) palloc(ncolumns * sizeof(char));
+	nulls = (bool *) palloc(ncolumns * sizeof(bool));
 
 	/* Break down the tuple into fields */
-	heap_deformtuple(&tuple, tupdesc, values, nulls);
+	heap_deform_tuple(&tuple, tupdesc, values, nulls);
 
 	/* And build the result string */
 	pq_begintypsend(&buf);
@@ -718,7 +718,7 @@ record_send(PG_FUNCTION_ARGS)
 
 		pq_sendint(&buf, column_type, sizeof(Oid));
 
-		if (nulls[i] == 'n')
+		if (nulls[i])
 		{
 			/* emit -1 data length to signify a NULL */
 			pq_sendint(&buf, -1, 4);

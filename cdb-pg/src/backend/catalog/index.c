@@ -3,8 +3,8 @@
  * index.c
  *	  code to create and destroy POSTGRES index relations
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -26,6 +26,8 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/relscan.h"
+#include "access/sysattr.h"
 #include "access/transam.h"
 #include "access/xact.h"
 #include "bootstrap/bootstrap.h"
@@ -91,6 +93,7 @@ static void validate_index_heapscan(Relation heapRelation,
 						Snapshot snapshot,
 						v_i_state *state);
 static Oid	IndexGetRelation(Oid indexId);
+
 
 /*
  *		ConstructTupleDescriptor
@@ -350,7 +353,7 @@ UpdateIndexRelation(Oid indexoid,
 	Datum		exprsDatum;
 	Datum		predDatum;
 	Datum		values[Natts_pg_index];
-	char		nulls[Natts_pg_index];
+	bool		nulls[Natts_pg_index];
 	Relation	pg_index;
 	HeapTuple	tuple;
 	int			i;
@@ -372,8 +375,7 @@ UpdateIndexRelation(Oid indexoid,
 		char	   *exprsString;
 
 		exprsString = nodeToString(indexInfo->ii_Expressions);
-		exprsDatum = DirectFunctionCall1(textin,
-										 CStringGetDatum(exprsString));
+		exprsDatum = CStringGetTextDatum(exprsString);
 		pfree(exprsString);
 	}
 	else
@@ -388,8 +390,7 @@ UpdateIndexRelation(Oid indexoid,
 		char	   *predString;
 
 		predString = nodeToString(make_ands_explicit(indexInfo->ii_Predicate));
-		predDatum = DirectFunctionCall1(textin,
-										CStringGetDatum(predString));
+		predDatum = CStringGetTextDatum(predString);
 		pfree(predString);
 	}
 	else
@@ -403,7 +404,7 @@ UpdateIndexRelation(Oid indexoid,
 	/*
 	 * Build a pg_index tuple
 	 */
-	MemSet(nulls, ' ', sizeof(nulls));
+	MemSet(nulls, false, sizeof(nulls));
 
 	values[Anum_pg_index_indexrelid - 1] = ObjectIdGetDatum(indexoid);
 	values[Anum_pg_index_indrelid - 1] = ObjectIdGetDatum(heapoid);
@@ -416,12 +417,12 @@ UpdateIndexRelation(Oid indexoid,
 	values[Anum_pg_index_indclass - 1] = PointerGetDatum(indclass);
 	values[Anum_pg_index_indexprs - 1] = exprsDatum;
 	if (exprsDatum == (Datum) 0)
-		nulls[Anum_pg_index_indexprs - 1] = 'n';
+		nulls[Anum_pg_index_indexprs - 1] = true;
 	values[Anum_pg_index_indpred - 1] = predDatum;
 	if (predDatum == (Datum) 0)
-		nulls[Anum_pg_index_indpred - 1] = 'n';
+		nulls[Anum_pg_index_indpred - 1] = true;
 
-	tuple = heap_formtuple(RelationGetDescr(pg_index), values, nulls);
+	tuple = heap_form_tuple(RelationGetDescr(pg_index), values, nulls);
 
 	/*
 	 * insert the tuple into the pg_index catalog
@@ -710,7 +711,7 @@ index_create(Oid heapRelationId,
 		}
 		else
 		{
-			bool	have_simple_col = false;
+			bool		have_simple_col = false;
 
 			/* Create auto dependencies on simply-referenced columns */
 			for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
@@ -728,12 +729,12 @@ index_create(Oid heapRelationId,
 			}
 
 			/*
-			 * It's possible for an index to not depend on any columns of
-			 * the table at all, in which case we need to give it a dependency
-			 * on the table as a whole; else it won't get dropped when the
-			 * table is dropped.  This edge case is not totally useless;
-			 * for example, a unique index on a constant expression can serve
-			 * to prevent a table from containing more than one row.
+			 * It's possible for an index to not depend on any columns of the
+			 * table at all, in which case we need to give it a dependency on
+			 * the table as a whole; else it won't get dropped when the table
+			 * is dropped.	This edge case is not totally useless; for
+			 * example, a unique index on a constant expression can serve to
+			 * prevent a table from containing more than one row.
 			 */
 			if (!have_simple_col &&
 				!contain_vars_of_level((Node *) indexInfo->ii_Expressions, 0) &&
@@ -896,7 +897,7 @@ index_drop(Oid indexId)
 	userIndexRelation = index_open(indexId, AccessExclusiveLock);
 
 	/*
-	 * Schedule physical removal of the file
+	 * Schedule physical removal of the files
 	 */
 	RelationOpenSmgr(userIndexRelation);
 	smgrscheduleunlink(userIndexRelation->rd_smgr,
@@ -1124,7 +1125,6 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
 	HeapTuple	tuple;
 	Form_pg_class rd_rel;
 	bool		dirty;
-
 
 	/*
 	 * We always update the pg_class row using a non-transactional,

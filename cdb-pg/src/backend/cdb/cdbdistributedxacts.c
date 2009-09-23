@@ -76,7 +76,7 @@ gp_distributed_xacts__(PG_FUNCTION_ARGS)
 		TMGXACTSTATUS *distributedXactStatus;
 		
 		Datum		values[6];
-		char		nulls[6];
+		bool		nulls[6];
 		HeapTuple	tuple;
 		Datum		result;
 
@@ -88,7 +88,7 @@ gp_distributed_xacts__(PG_FUNCTION_ARGS)
 		 * Form tuple with appropriate data.
 		 */
 		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, ' ', sizeof(nulls));
+		MemSet(nulls, false, sizeof(nulls));
 
 		values[0] = TransactionIdGetDatum(distributedXactStatus->gxid);
 		values[1] = DirectFunctionCall1(textin,
@@ -99,7 +99,7 @@ gp_distributed_xacts__(PG_FUNCTION_ARGS)
 		values[3] = UInt32GetDatum(distributedXactStatus->sessionId);
 		values[4] = TransactionIdGetDatum(distributedXactStatus->xminDistributedSnapshot);
 
-		tuple = heap_formtuple(funcctx->tuple_desc, values, nulls);
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
 		SRF_RETURN_NEXT(funcctx, result);
 	}

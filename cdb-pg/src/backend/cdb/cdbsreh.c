@@ -276,7 +276,7 @@ void DropErrorTable(CdbSreh *cdbsreh)
 void InsertIntoErrorTable(CdbSreh *cdbsreh)
 {
 	HeapTuple	tuple;
-	char		nulls[NUM_ERRORTABLE_ATTR];
+	bool		nulls[NUM_ERRORTABLE_ATTR];
 	Datum		values[NUM_ERRORTABLE_ATTR];
 	MemoryContext oldcontext;
 					
@@ -284,47 +284,47 @@ void InsertIntoErrorTable(CdbSreh *cdbsreh)
 	
 	/* Initialize all values for row to NULL */
 	MemSet(values, 0, NUM_ERRORTABLE_ATTR * sizeof(Datum));
-	MemSet(nulls, 'n', NUM_ERRORTABLE_ATTR * sizeof(char));
+	MemSet(nulls, true, NUM_ERRORTABLE_ATTR * sizeof(bool));
 	
 	/* command start time */
 	values[errtable_cmdtime - 1] = TimestampTzGetDatum(GetCurrentStatementStartTimestamp());
-	nulls[errtable_cmdtime - 1] = ' ';
+	nulls[errtable_cmdtime - 1] = false;
 		
 	/* line number */
 	if (cdbsreh->linenumber > 0)
 	{
 		values[errtable_linenum - 1] = Int64GetDatum(cdbsreh->linenumber);
-		nulls[errtable_linenum - 1] = ' ';
+		nulls[errtable_linenum - 1] = false;
 	}
 
 	if(cdbsreh->is_server_enc)
 	{
 		/* raw data */
 		values[errtable_rawdata - 1] = DirectFunctionCall1(textin, CStringGetDatum(cdbsreh->rawdata));
-		nulls[errtable_rawdata - 1] = ' ';		
+		nulls[errtable_rawdata - 1] = false;
 	}
 	else
 	{
 		/* raw bytes */
 		PreprocessByteaData(cdbsreh->rawdata);
 		values[errtable_rawbytes - 1] = DirectFunctionCall1(byteain, CStringGetDatum(cdbsreh->rawdata));
-		nulls[errtable_rawbytes - 1] = ' ';				
+		nulls[errtable_rawbytes - 1] = false;
 	}
 	
 	/* file name */
 	if(cdbsreh->filename)
 	{
 		values[errtable_filename - 1] = DirectFunctionCall1(textin, CStringGetDatum(cdbsreh->filename));
-		nulls[errtable_filename - 1] = ' ';		
+		nulls[errtable_filename - 1] = false;
 	}
 
 	/* relation name */
 	values[errtable_relname - 1] = DirectFunctionCall1(textin, CStringGetDatum(cdbsreh->relname));
-	nulls[errtable_relname - 1] = ' ';
+	nulls[errtable_relname - 1] = false;
 	
 	/* error message */
 	values[errtable_errmsg - 1] = DirectFunctionCall1(textin, CStringGetDatum(cdbsreh->errmsg));
-	nulls[errtable_errmsg - 1] = ' ';
+	nulls[errtable_errmsg - 1] = false;
 	
 	
 	MemoryContextSwitchTo(oldcontext);
@@ -332,7 +332,7 @@ void InsertIntoErrorTable(CdbSreh *cdbsreh)
 	/*
 	 * And now we can form the input tuple.
 	 */
-	tuple = heap_formtuple(RelationGetDescr(cdbsreh->errtbl), values, nulls);
+	tuple = heap_form_tuple(RelationGetDescr(cdbsreh->errtbl), values, nulls);
 
 	MemoryContextSwitchTo(oldcontext);
 

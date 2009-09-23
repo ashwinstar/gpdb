@@ -60,7 +60,7 @@ InsertInitialSegnoEntry(Relation parentrel,
 	TupleDesc	pg_aoseg_dsc;
 	HeapTuple	pg_aoseg_tuple = NULL;
 	int			natts = 0;
-	char	   *nulls;
+	bool	   *nulls;
 	Datum	   *values;
 
 	/*
@@ -72,9 +72,9 @@ InsertInitialSegnoEntry(Relation parentrel,
 
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
 	natts = pg_aoseg_dsc->natts;
-	nulls = palloc(sizeof(char) * natts);
+	nulls = palloc(sizeof(bool) * natts);
 	values = palloc0(sizeof(Datum) * natts);
-	MemSet(nulls, ' ', sizeof(char) * natts);
+	MemSet(nulls, false, sizeof(char) * natts);
 
 	pg_aoseg_idx = index_open(pg_aoseg_rel->rd_rel->relaosegidxid, RowExclusiveLock);
 
@@ -87,7 +87,7 @@ InsertInitialSegnoEntry(Relation parentrel,
 	/*
 	 * form the tuple and insert it
 	 */
-	pg_aoseg_tuple = heap_formtuple(pg_aoseg_dsc, values, nulls);
+	pg_aoseg_tuple = heap_form_tuple(pg_aoseg_dsc, values, nulls);
 	if (!HeapTupleIsValid(pg_aoseg_tuple))
 		elog(ERROR, "failed to build AO file segment tuple");
 
@@ -521,8 +521,8 @@ UpdateFileSegInfo(Relation parentrel,
 	Datum				new_tuple_count;
 	Datum				new_varblock_count;
 	Datum			   *new_record;
-	char			   *new_record_nulls;
-	char			   *new_record_repl;
+	bool			   *new_record_nulls;
+	bool			   *new_record_repl;
 	bool				isNull;
 
 	/* overflow sanity checks. don't check the same for tuples_added,
@@ -538,8 +538,8 @@ UpdateFileSegInfo(Relation parentrel,
 	pg_aoseg_rel = heap_open(parentrel->rd_rel->relaosegrelid, RowExclusiveLock);
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
 	new_record = palloc0(sizeof(Datum) * pg_aoseg_dsc->natts);
-	new_record_nulls = palloc(sizeof(char) * pg_aoseg_dsc->natts);
-	new_record_repl = palloc(sizeof(char) * pg_aoseg_dsc->natts);
+	new_record_nulls = palloc(sizeof(bool) * pg_aoseg_dsc->natts);
+	new_record_repl = palloc(sizeof(bool) * pg_aoseg_dsc->natts);
 	pg_aoseg_idx = index_open(pg_aoseg_rel->rd_rel->relaosegidxid, RowExclusiveLock);
 
 	/*
@@ -598,25 +598,25 @@ UpdateFileSegInfo(Relation parentrel,
 	/*
 	 * Build a tuple to update
 	 */
-	MemSet(new_record_nulls, ' ', sizeof(char) * pg_aoseg_dsc->natts);
-	MemSet(new_record_repl, ' ', sizeof(char) * pg_aoseg_dsc->natts);
+	MemSet(new_record_nulls, false, sizeof(char) * pg_aoseg_dsc->natts);
+	MemSet(new_record_repl, false, sizeof(char) * pg_aoseg_dsc->natts);
 
 	new_record[Anum_pg_aoseg_eof - 1] = Float8GetDatum((float8)eof);
-	new_record_repl[Anum_pg_aoseg_eof - 1] = 'r';
+	new_record_repl[Anum_pg_aoseg_eof - 1] = true;
 
 	new_record[Anum_pg_aoseg_tupcount - 1] = new_tuple_count;
-	new_record_repl[Anum_pg_aoseg_tupcount - 1] = 'r';
+	new_record_repl[Anum_pg_aoseg_tupcount - 1] = true;
 
 	new_record[Anum_pg_aoseg_varblockcount - 1] = new_varblock_count;
-	new_record_repl[Anum_pg_aoseg_varblockcount - 1] = 'r';
+	new_record_repl[Anum_pg_aoseg_varblockcount - 1] = true;
 
 	new_record[Anum_pg_aoseg_eofuncompressed - 1] = Float8GetDatum((float8)eof_uncompressed);
-	new_record_repl[Anum_pg_aoseg_eofuncompressed - 1] = 'r';
+	new_record_repl[Anum_pg_aoseg_eofuncompressed - 1] = true;
 
 	/*
 	 * update the tuple in the pg_aoseg table
 	 */
-	new_tuple = heap_modifytuple(tuple, pg_aoseg_dsc, new_record,
+	new_tuple = heap_modify_tuple(tuple, pg_aoseg_dsc, new_record,
 								new_record_nulls, new_record_repl);
 
 	simple_heap_update(pg_aoseg_rel, &tuple->t_self, new_tuple);
@@ -1089,14 +1089,14 @@ get_ao_distribution_oid(PG_FUNCTION_ARGS)
 		TupleDesc tupleDesc = funcctx->tuple_desc;
 
 		Datum *values = (Datum *) palloc(tupleDesc->natts * sizeof(Datum));
-		char *nulls = (char *) palloc(tupleDesc->natts * sizeof(char));
+		bool *nulls = (bool *) palloc(tupleDesc->natts * sizeof(bool));
 
 		HeapTuple res = NULL;
 		Datum result;
 
-		heap_deformtuple(tuple, tupleDesc, values, nulls);
+		heap_deform_tuple(tuple, tupleDesc, values, nulls);
 
-		res = heap_formtuple(tupleDesc, values, nulls );
+		res = heap_form_tuple(tupleDesc, values, nulls );
 
 		pfree(values);
 		pfree(nulls);
@@ -1262,14 +1262,14 @@ get_ao_distribution_name(PG_FUNCTION_ARGS)
 		TupleDesc tupleDesc = funcctx->tuple_desc;
 
 		Datum *values = (Datum *) palloc(tupleDesc->natts * sizeof(Datum));
-		char *nulls = (char *) palloc(tupleDesc->natts * sizeof(char));
+		bool *nulls = (bool *) palloc(tupleDesc->natts * sizeof(bool));
 
 		HeapTuple res = NULL;
 		Datum result;
 
-		heap_deformtuple(tuple, tupleDesc, values, nulls);
+		heap_deform_tuple(tuple, tupleDesc, values, nulls);
 
-		res = heap_formtuple(tupleDesc, values, nulls );
+		res = heap_form_tuple(tupleDesc, values, nulls );
 
 		pfree(values);
 		pfree(nulls);

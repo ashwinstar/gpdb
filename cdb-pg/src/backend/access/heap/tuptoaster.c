@@ -4,7 +4,7 @@
  *	  Support routines for external and compressed storage of
  *	  variable size attributes.
  *
- * Copyright (c) 2000-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2009, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -40,6 +40,7 @@
 #include "catalog/catalog.h"
 #include "utils/fmgroids.h"
 #include "utils/pg_lzcompress.h"
+#include "utils/rel.h"
 #include "utils/typcache.h"
 
 
@@ -358,10 +359,10 @@ toast_delete(Relation rel, HeapTuple oldtup)
 	/*
 	 * Get the tuple descriptor and break down the tuple into fields.
 	 *
-	 * NOTE: it's debatable whether to use heap_deformtuple() here or just
+	 * NOTE: it's debatable whether to use heap_deform_tuple() here or just
 	 * heap_getattr() only the varlena columns.  The latter could win if there
 	 * are few varlena columns and many non-varlena ones. However,
-	 * heap_deformtuple costs only O(N) while the heap_getattr way would cost
+	 * heap_deform_tuple costs only O(N) while the heap_getattr way would cost
 	 * O(N^2) if there are many varlena columns, so it seems better to err on
 	 * the side of linear cost.  (We won't even be here unless there's at
 	 * least one varlena column, by the way.)

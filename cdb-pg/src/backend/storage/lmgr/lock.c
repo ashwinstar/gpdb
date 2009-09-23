@@ -2569,7 +2569,7 @@ int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData)
 		 * Form tuple with appropriate data.
 		 */
 /*		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, ' ', sizeof(nulls));
+		MemSet(nulls, false, sizeof(nulls));
 */
 		if (lock->tag.locktag_type <= LOCKTAG_ADVISORY)
 			locktypename = LockTagTypeNames[lock->tag.locktag_type];
@@ -2640,7 +2640,7 @@ int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData)
 		
 		lf->lf_mppIsWriter = (proc->mppIsWriter);
 /*
-		tuple = heap_formtuple(funcctx->tuple_desc, values, nulls);
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
 		SRF_RETURN_NEXT(funcctx, result);
 */

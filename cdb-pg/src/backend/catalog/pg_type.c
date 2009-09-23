@@ -3,7 +3,7 @@
  * pg_type.c
  *	  routines to support manipulation of the pg_type relation
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -60,7 +60,7 @@ TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid ownerId,
 	int			i;
 	HeapTuple	tup;
 	Datum		values[Natts_pg_type];
-	char		nulls[Natts_pg_type];
+	bool		nulls[Natts_pg_type];
 	Oid			typoid;
 	NameData	name;
 
@@ -77,8 +77,8 @@ TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid ownerId,
 	 */
 	for (i = 0; i < Natts_pg_type; ++i)
 	{
-		nulls[i] = ' ';
-		values[i] = (Datum) 0;		/* redundant, but safe */
+		nulls[i] = false;
+		values[i] = (Datum) NULL;		/* redundant, but safe */
 	}
 
 	/*
@@ -112,13 +112,13 @@ TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid ownerId,
 	values[i++] = ObjectIdGetDatum(InvalidOid); /* typbasetype */
 	values[i++] = Int32GetDatum(-1);	/* typtypmod */
 	values[i++] = Int32GetDatum(0);		/* typndims */
-	nulls[i++] = 'n';			/* typdefaultbin */
-	nulls[i++] = 'n';			/* typdefault */
+	nulls[i++] = true;			/* typdefaultbin */
+	nulls[i++] = true;			/* typdefault */
 
 	/*
 	 * create a new type tuple
 	 */
-	tup = heap_formtuple(tupDesc, values, nulls);
+	tup = heap_form_tuple(tupDesc, values, nulls);
 
 	/*
 	 * MPP: If we are on the QEs, we need to use the same Oid as the QD used
@@ -198,8 +198,8 @@ TypeCreateWithOid(const char *typeName,
 	Oid			typeObjectId;
 	bool		rebuildDeps = false;
 	HeapTuple	tup;
-	char		nulls[Natts_pg_type];
-	char		replaces[Natts_pg_type];
+	bool		nulls[Natts_pg_type];
+	bool		replaces[Natts_pg_type];
 	Datum		values[Natts_pg_type];
 	NameData	name;
 	int			i;
@@ -233,12 +233,12 @@ TypeCreateWithOid(const char *typeName,
 				 errmsg("fixed-size types must have storage PLAIN")));
 
 	/*
-	 * initialize arrays needed for heap_formtuple or heap_modifytuple
+	 * initialize arrays needed for heap_form_tuple or heap_modify_tuple
 	 */
 	for (i = 0; i < Natts_pg_type; ++i)
 	{
-		nulls[i] = ' ';
-		replaces[i] = 'r';
+		nulls[i] = false;
+		replaces[i] = true;
 		values[i] = (Datum) 0;
 	}
 
@@ -274,20 +274,18 @@ TypeCreateWithOid(const char *typeName,
 	 * course.
 	 */
 	if (defaultTypeBin)
-		values[i] = DirectFunctionCall1(textin,
-										CStringGetDatum(defaultTypeBin));
+		values[i] = CStringGetTextDatum(defaultTypeBin);
 	else
-		nulls[i] = 'n';
+		nulls[i] = true;
 	i++;						/* typdefaultbin */
 
 	/*
 	 * initialize the default value for this type.
 	 */
 	if (defaultTypeValue)
-		values[i] = DirectFunctionCall1(textin,
-										CStringGetDatum((char *) defaultTypeValue));
+		values[i] = CStringGetTextDatum(defaultTypeValue);
 	else
-		nulls[i] = 'n';
+		nulls[i] = true;
 	i++;						/* typdefault */
 
 	/*
@@ -322,11 +320,11 @@ TypeCreateWithOid(const char *typeName,
 		/*
 		 * Okay to update existing shell type tuple
 		 */
-		tup = heap_modifytuple(tup,
-							   RelationGetDescr(pg_type_desc),
-							   values,
-							   nulls,
-							   replaces);
+		tup = heap_modify_tuple(tup,
+								RelationGetDescr(pg_type_desc),
+								values,
+								nulls,
+								replaces);
 
 		simple_heap_update(pg_type_desc, &tup->t_self, tup);
 
@@ -336,9 +334,9 @@ TypeCreateWithOid(const char *typeName,
 	}
 	else
 	{
-		tup = heap_formtuple(RelationGetDescr(pg_type_desc),
-							 values,
-							 nulls);
+		tup = heap_form_tuple(RelationGetDescr(pg_type_desc),
+							  values,
+							  nulls);
 						 
 		if (newtypeOid != InvalidOid)
 		{

@@ -4,8 +4,8 @@
  *	  POSTGRES heap tuple definitions.
  *
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/access/htup.h,v 1.87 2006/11/05 22:42:10 tgl Exp $
@@ -74,7 +74,7 @@
  *
  * We store five "virtual" fields Xmin, Cmin, Xmax, Cmax, and Xvac in three
  * physical fields.  Xmin and Xmax are always really stored, but Cmin, Cmax
- * and Xvac share a field.  This works because we know that Cmin and Cmax
+ * and Xvac share a field.	This works because we know that Cmin and Cmax
  * are only interesting for the lifetime of the inserting and deleting
  * transaction respectively.  If a tuple is inserted and deleted in the same
  * transaction, we store a "combo" command id that can be mapped to the real
@@ -345,6 +345,21 @@ do { \
 	(BLCKSZ - MAXALIGN(sizeof(PageHeaderData) + MaxSpecialSpace))
 
 /*
+ * MaxHeapTupleSize is the maximum allowed size of a heap tuple, including
+ * header and MAXALIGN alignment padding.  Basically it's BLCKSZ minus the
+ * other stuff that has to be on a disk page.  Since heap pages use no
+ * "special space", there's no deduction for that.
+ *
+ * NOTE: we allow for the ItemId that must point to the tuple, ensuring that
+ * an otherwise-empty page can indeed hold a tuple of this size.  Because
+ * ItemIds and tuples have different alignment requirements, don't assume that
+ * you can, say, fit 2 tuples of size MaxHeapTupleSize/2 on the same page.
+ */
+//#define MaxHeapTupleSize  (BLCKSZ - MAXALIGN(SizeOfPageHeaderData + sizeof(ItemIdData)))
+// Play it safe until I test better... Make MaxHeapTupleSize restricted to MaxTupleSize
+#define MaxHeapTupleSize MaxTupleSize
+
+/*
  * MaxHeapTuplesPerPage is an upper bound on the number of tuples that can
  * fit on one heap page.  (Note that indexes could have more, because they
  * use a smaller tuple header.)  We arrive at the divisor because each tuple
@@ -358,7 +373,7 @@ do { \
  * MaxAttrSize is a somewhat arbitrary upper limit on the declared size of
  * data fields of char(n) and similar types.  It need not have anything
  * directly to do with the *actual* upper limit of varlena values, which
- * is currently 1Gb (see struct varattrib in postgres.h).  I've set it
+ * is currently 1Gb (see TOAST structures in postgres.h).  I've set it
  * at 10Mb which seems like a reasonable number --- tgl 8/6/00.
  */
 #define MaxAttrSize		(10 * 1024 * 1024)
@@ -608,6 +623,8 @@ typedef struct xl_heap_freeze
 /* HeapTupleHeader functions implemented in utils/time/combocid.c */
 extern CommandId HeapTupleHeaderGetCmin(HeapTupleHeader tup);
 extern CommandId HeapTupleHeaderGetCmax(HeapTupleHeader tup);
-extern void HeapTupleHeaderAdjustCmax(HeapTupleHeader tup, CommandId *cmax, bool *iscombo);
-
+extern void HeapTupleHeaderAdjustCmax(HeapTupleHeader tup,
+						  CommandId *cmax,
+						  bool *iscombo);
+						  
 #endif   /* HTUP_H */

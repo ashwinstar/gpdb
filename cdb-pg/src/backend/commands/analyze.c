@@ -2019,8 +2019,8 @@ static void analyzeComputeAttributeStatistics(Oid relationOid,
 static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attributeName, AttributeStatistics *stats)
 {
 	Datum		values[Natts_pg_statistic];
-	char		nulls[Natts_pg_statistic];
-	char		replaces[Natts_pg_statistic];
+	bool		nulls[Natts_pg_statistic];
+	bool		replaces[Natts_pg_statistic];
 	int2		attNum = -1;	
 	int 		i = 0;
 	Oid			equalityOid = InvalidOid;
@@ -2062,8 +2062,8 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 
 	for (i = 0; i < Natts_pg_statistic; ++i)
 	{
-		nulls[i] = ' ';
-		replaces[i] = 'r';
+		nulls[i] = false;
+		replaces[i] = true;
 	}
 
 	values[Anum_pg_statistic_starelid - 1] = ObjectIdGetDatum(relationOid);	/* starelid */
@@ -2129,16 +2129,16 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 	}
 	else
 	{
-		nulls[Anum_pg_statistic_stanumbers1 - 1] = 'n';
+		nulls[Anum_pg_statistic_stanumbers1 - 1] = true;
 		values[Anum_pg_statistic_stanumbers1 - 1] = 0;
 	}
 
 	/* dummy fields */
-	nulls[Anum_pg_statistic_stanumbers2 - 1] = 'n';
+	nulls[Anum_pg_statistic_stanumbers2 - 1] = true;
 	values[Anum_pg_statistic_stanumbers2 - 1] = 0;
-	nulls[Anum_pg_statistic_stanumbers3 - 1] = 'n';
+	nulls[Anum_pg_statistic_stanumbers3 - 1] = true;
 	values[Anum_pg_statistic_stanumbers3 - 1] = 0;
-	nulls[Anum_pg_statistic_stanumbers4 - 1] = 'n';
+	nulls[Anum_pg_statistic_stanumbers4 - 1] = true;
 	values[Anum_pg_statistic_stanumbers4 - 1] = 0;
 
 	/* Now working on stavalues */
@@ -2148,7 +2148,7 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 	}
 	else
 	{
-		nulls[Anum_pg_statistic_stavalues1 - 1] = 'n';
+		nulls[Anum_pg_statistic_stavalues1 - 1] = true;
 		values[Anum_pg_statistic_stavalues1 - 1] = 0;
 	}
 	
@@ -2158,14 +2158,14 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 	}
 	else
 	{
-		nulls[Anum_pg_statistic_stavalues2 - 1] = 'n';
+		nulls[Anum_pg_statistic_stavalues2 - 1] = true;
 		values[Anum_pg_statistic_stavalues2 - 1] = 0;
 	}
 	
 	/* dummy values */
-	nulls[Anum_pg_statistic_stavalues3 - 1] = 'n';
+	nulls[Anum_pg_statistic_stavalues3 - 1] = true;
 	values[Anum_pg_statistic_stavalues3 - 1] = 0;
-	nulls[Anum_pg_statistic_stavalues4 - 1] = 'n';
+	nulls[Anum_pg_statistic_stavalues4 - 1] = true;
 	values[Anum_pg_statistic_stavalues4 - 1] = 0;
 
 	/* Now work on pg_statistic */
@@ -2182,7 +2182,7 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 		if (HeapTupleIsValid(oldStatisticsTuple))
 		{
 			/* pg_statistic tuple exists. */
-			HeapTuple stup = heap_modifytuple(oldStatisticsTuple,
+			HeapTuple stup = heap_modify_tuple(oldStatisticsTuple,
 					RelationGetDescr(pgstatisticRel),
 					values,
 					nulls,
@@ -2196,7 +2196,7 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 		{
 			/* insert new tuple into pg_statistic. we are guaranteed no-one else
 			 * will overwrite this row because of ShareUpdateExclusiveLock on the relation. */
-			HeapTuple stup = heap_formtuple(RelationGetDescr(pgstatisticRel), values, nulls);
+			HeapTuple stup = heap_form_tuple(RelationGetDescr(pgstatisticRel), values, nulls);
 			simple_heap_insert(pgstatisticRel, stup);
 			CatalogUpdateIndexes(pgstatisticRel, stup);
 			heap_freetuple(stup);

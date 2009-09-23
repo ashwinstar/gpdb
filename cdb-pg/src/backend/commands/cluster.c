@@ -796,7 +796,7 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
 	TupleDesc	newTupDesc;
 	int			natts;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *isnull;
 	IndexScanDesc scan;
 	HeapTuple	tuple;
 
@@ -818,8 +818,7 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
 	/* Preallocate values/nulls arrays */
 	natts = newTupDesc->natts;
 	values = (Datum *) palloc0(natts * sizeof(Datum));
-	nulls = (char *) palloc(natts * sizeof(char));
-	memset(nulls, 'n', natts * sizeof(char));
+	isnull = (bool *) palloc0(natts * sizeof(bool));
 
 	/*
 	 * Scan through the OldHeap on the OldIndex and copy each tuple into the
@@ -853,16 +852,16 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
 		HeapTuple	copiedTuple;
 		int			i;
 
-		heap_deformtuple(tuple, oldTupDesc, values, nulls);
+		heap_deform_tuple(tuple, oldTupDesc, values, isnull);
 
 		/* Be sure to null out any dropped columns */
 		for (i = 0; i < natts; i++)
 		{
 			if (newTupDesc->attrs[i]->attisdropped)
-				nulls[i] = 'n';
+				isnull[i] = true;
 		}
 
-		copiedTuple = heap_formtuple(newTupDesc, values, nulls);
+		copiedTuple = heap_form_tuple(newTupDesc, values, isnull);
 
 		/* Preserve OID, if any */
 		if (NewHeap->rd_rel->relhasoids)
@@ -878,7 +877,7 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
 	index_endscan(scan);
 
 	pfree(values);
-	pfree(nulls);
+	pfree(isnull);
 
 	index_close(OldIndex, NoLock);
 	heap_close(OldHeap, NoLock);

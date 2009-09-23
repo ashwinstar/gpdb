@@ -2298,7 +2298,7 @@ StoreCatalogInheritance1(Oid relationId, Oid parentOid,
 {
 	TupleDesc	desc = RelationGetDescr(inhRelation);
 	Datum		datum[Natts_pg_inherits];
-	char		nullarr[Natts_pg_inherits];
+	bool		nullarr[Natts_pg_inherits];
 	ObjectAddress childobject,
 				parentobject;
 	HeapTuple	tuple;
@@ -2310,11 +2310,11 @@ StoreCatalogInheritance1(Oid relationId, Oid parentOid,
 	datum[1] = ObjectIdGetDatum(parentOid);		/* inhparent */
 	datum[2] = Int16GetDatum(seqNumber);		/* inhseqno */
 
-	nullarr[0] = ' ';
-	nullarr[1] = ' ';
-	nullarr[2] = ' ';
+	nullarr[0] = false;
+	nullarr[1] = false;
+	nullarr[2] = false;
 
-	tuple = heap_formtuple(desc, datum, nullarr);
+	tuple = heap_form_tuple(desc, datum, nullarr);
 
 	simple_heap_insert(inhRelation, tuple);
 
@@ -2834,8 +2834,8 @@ update_ri_trigger_args(Oid relid,
 	SysScanDesc trigscan;
 	HeapTuple	tuple;
 	Datum		values[Natts_pg_trigger];
-	char		nulls[Natts_pg_trigger];
-	char		replaces[Natts_pg_trigger];
+	bool		nulls[Natts_pg_trigger];
+	bool		replaces[Natts_pg_trigger];
 
 	tgrel = heap_open(TriggerRelationId, RowExclusiveLock);
 	if (fk_scan)
@@ -2966,13 +2966,13 @@ update_ri_trigger_args(Oid relid,
 		for (i = 0; i < Natts_pg_trigger; i++)
 		{
 			values[i] = (Datum) 0;
-			replaces[i] = ' ';
-			nulls[i] = ' ';
+			replaces[i] = false;
+			nulls[i] = false;
 		}
 		values[Anum_pg_trigger_tgargs - 1] = PointerGetDatum(newtgargs);
-		replaces[Anum_pg_trigger_tgargs - 1] = 'r';
+		replaces[Anum_pg_trigger_tgargs - 1] = true;
 
-		tuple = heap_modifytuple(tuple, RelationGetDescr(tgrel), values, nulls, replaces);
+		tuple = heap_modify_tuple(tuple, RelationGetDescr(tgrel), values, nulls, replaces);
 
 		/*
 		 * Update pg_trigger and its indexes
@@ -8475,8 +8475,8 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 	if (tuple_class->relowner != newOwnerId)
 	{
 		Datum		repl_val[Natts_pg_class];
-		char		repl_null[Natts_pg_class];
-		char		repl_repl[Natts_pg_class];
+		bool		repl_null[Natts_pg_class];
+		bool		repl_repl[Natts_pg_class];
 		Acl		   *newAcl;
 		Datum		aclDatum;
 		bool		isNull;
@@ -8508,10 +8508,10 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 			}
 		}
 
-		memset(repl_null, ' ', sizeof(repl_null));
-		memset(repl_repl, ' ', sizeof(repl_repl));
+		memset(repl_null, false, sizeof(repl_null));
+		memset(repl_repl, false, sizeof(repl_repl));
 
-		repl_repl[Anum_pg_class_relowner - 1] = 'r';
+		repl_repl[Anum_pg_class_relowner - 1] = true;
 		repl_val[Anum_pg_class_relowner - 1] = ObjectIdGetDatum(newOwnerId);
 
 		/*
@@ -8525,11 +8525,11 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 		{
 			newAcl = aclnewowner(DatumGetAclP(aclDatum),
 								 tuple_class->relowner, newOwnerId);
-			repl_repl[Anum_pg_class_relacl - 1] = 'r';
+			repl_repl[Anum_pg_class_relacl - 1] = true;
 			repl_val[Anum_pg_class_relacl - 1] = PointerGetDatum(newAcl);
 		}
 
-		newtuple = heap_modifytuple(tuple, RelationGetDescr(class_rel), repl_val, repl_null, repl_repl);
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(class_rel), repl_val, repl_null, repl_repl);
 
 		simple_heap_update(class_rel, &newtuple->t_self, newtuple);
 		CatalogUpdateIndexes(class_rel, newtuple);
@@ -8748,8 +8748,8 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 	bool		isnull;
 	Datum		newOptions;
 	Datum		repl_val[Natts_pg_class];
-	char		repl_null[Natts_pg_class];
-	char		repl_repl[Natts_pg_class];
+	bool		repl_null[Natts_pg_class];
+	bool		repl_repl[Natts_pg_class];
 
 	if (defList == NIL)
 		return;					/* nothing to do */
@@ -8829,17 +8829,17 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 	 * propagated into relcaches during post-commit cache inval.
 	 */
 	memset(repl_val, 0, sizeof(repl_val));
-	memset(repl_null, ' ', sizeof(repl_null));
-	memset(repl_repl, ' ', sizeof(repl_repl));
+	memset(repl_null, false, sizeof(repl_null));
+	memset(repl_repl, false, sizeof(repl_repl));
 
 	if (newOptions != (Datum) 0)
 		repl_val[Anum_pg_class_reloptions - 1] = newOptions;
 	else
-		repl_null[Anum_pg_class_reloptions - 1] = 'n';
+		repl_null[Anum_pg_class_reloptions - 1] = true;
 
-	repl_repl[Anum_pg_class_reloptions - 1] = 'r';
+	repl_repl[Anum_pg_class_reloptions - 1] = true;
 
-	newtuple = heap_modifytuple(tuple, RelationGetDescr(pgclass),
+	newtuple = heap_modify_tuple(tuple, RelationGetDescr(pgclass),
 								repl_val, repl_null, repl_repl);
 
 	simple_heap_update(pgclass, &newtuple->t_self, newtuple);
@@ -10858,8 +10858,8 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	if (DatumGetPointer(newOptions))
 	{
 		Datum		repl_val[Natts_pg_class];
-		char		repl_null[Natts_pg_class];
-		char		repl_repl[Natts_pg_class];
+		bool		repl_null[Natts_pg_class];
+		bool		repl_repl[Natts_pg_class];
 		HeapTuple	newOptsTuple;
 		Relation	class = heap_open(RelationRelationId, RowExclusiveLock);
 		HeapTuple	tuple;
@@ -10873,24 +10873,24 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		 */
 
 		MemSet(repl_val, 0, sizeof(repl_val));
-		MemSet(repl_null, ' ', sizeof(repl_null));
-		MemSet(repl_repl, ' ', sizeof(repl_repl));
+		MemSet(repl_null, false, sizeof(repl_null));
+		MemSet(repl_repl, false, sizeof(repl_repl));
 
 		repl_val[Anum_pg_class_relstorage - 1] = CharGetDatum(relstorage);
-		repl_repl[Anum_pg_class_relstorage - 1] = 'r';
+		repl_repl[Anum_pg_class_relstorage - 1] = true;
 
 		if (newOptions != (Datum) 0)
 			repl_val[Anum_pg_class_reloptions - 1] = newOptions;
 		else
-			repl_null[Anum_pg_class_reloptions - 1] = 'n';
+			repl_null[Anum_pg_class_reloptions - 1] = true;
 
-		repl_repl[Anum_pg_class_reloptions - 1] = 'r';
+		repl_repl[Anum_pg_class_reloptions - 1] = true;
 
 		tuple = SearchSysCache(RELOID,
 								   ObjectIdGetDatum(RelationGetRelid(rel)),
 								   0, 0, 0);
 		Insist(HeapTupleIsValid(tuple));
-		newOptsTuple = heap_modifytuple(tuple, RelationGetDescr(class),
+		newOptsTuple = heap_modify_tuple(tuple, RelationGetDescr(class),
 									repl_val, repl_null, repl_repl);
 
 		simple_heap_update(class, &newOptsTuple->t_self, newOptsTuple);
@@ -16992,8 +16992,8 @@ exchange_permissions(Oid oldrelid, Oid newrelid)
 	Datum save;
 	bool saveisnull;
 	Datum values[Natts_pg_class];
-	char nulls[Natts_pg_class];
-	char replaces[Natts_pg_class];
+	bool nulls[Natts_pg_class];
+	bool replaces[Natts_pg_class];
 	HeapTuple replace_tuple;
 	bool isnull;
 	Relation rel = heap_open(RelationRelationId, RowExclusiveLock);
@@ -17013,17 +17013,17 @@ exchange_permissions(Oid oldrelid, Oid newrelid)
 
 	/* finished building new ACL value, now insert it */
 	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, ' ', sizeof(nulls));
-	MemSet(replaces, ' ', sizeof(replaces));
+	MemSet(nulls, false, sizeof(nulls));
+	MemSet(replaces, false, sizeof(replaces));
 
-	replaces[Anum_pg_class_relacl - 1] = 'r';
+	replaces[Anum_pg_class_relacl - 1] = true;
 	values[Anum_pg_class_relacl - 1] = SysCacheGetAttr(RELOID, newtuple,
 													   Anum_pg_class_relacl,
 													   &isnull);
 	if (isnull)
-		nulls[Anum_pg_class_relacl - 1] = 'n';
+		nulls[Anum_pg_class_relacl - 1] = true;
 
-	replace_tuple = heap_modifytuple(oldtuple, RelationGetDescr(rel),
+	replace_tuple = heap_modify_tuple(oldtuple, RelationGetDescr(rel),
 									 values, nulls, replaces);
 
 	simple_heap_update(rel, &replace_tuple->t_self, replace_tuple);
@@ -17035,16 +17035,16 @@ exchange_permissions(Oid oldrelid, Oid newrelid)
 
 	/* finished building new ACL value, now insert it */
 	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, ' ', sizeof(nulls));
-	MemSet(replaces, ' ', sizeof(replaces));
+	MemSet(nulls, false, sizeof(nulls));
+	MemSet(replaces, false, sizeof(replaces));
 
-	replaces[Anum_pg_class_relacl - 1] = 'r';
+	replaces[Anum_pg_class_relacl - 1] = true;
 	values[Anum_pg_class_relacl - 1] = save;
 
 	if (saveisnull)
-		nulls[Anum_pg_class_relacl - 1] = 'n';
+		nulls[Anum_pg_class_relacl - 1] = true;
 
-	replace_tuple = heap_modifytuple(newtuple, RelationGetDescr(rel),
+	replace_tuple = heap_modify_tuple(newtuple, RelationGetDescr(rel),
 									 values, nulls, replaces);
 
 	simple_heap_update(rel, &replace_tuple->t_self, replace_tuple);

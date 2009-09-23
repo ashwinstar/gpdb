@@ -3,7 +3,7 @@
  * pg_aggregate.c
  *	  routines to support manipulation of the pg_aggregate relation
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -74,7 +74,7 @@ AggregateCreateWithOid(const char *aggName,
 {
 	Relation	aggdesc;
 	HeapTuple	tup;
-	char		nulls[Natts_pg_aggregate];
+	bool		nulls[Natts_pg_aggregate];
 	Datum		values[Natts_pg_aggregate];
 	Form_pg_proc proc;
 	Oid			transfn;
@@ -289,8 +289,8 @@ AggregateCreateWithOid(const char *aggName,
 	/* initialize nulls and values */
 	for (i = 0; i < Natts_pg_aggregate; i++)
 	{
-		nulls[i] = ' ';
-		values[i] = 0;
+		nulls[i] = false;
+		values[i] = (Datum) NULL;
 	}
 	values[Anum_pg_aggregate_aggfnoid - 1] = ObjectIdGetDatum(procOid);
 	values[Anum_pg_aggregate_aggtransfn - 1] = ObjectIdGetDatum(transfn);
@@ -301,15 +301,14 @@ AggregateCreateWithOid(const char *aggName,
 	values[Anum_pg_aggregate_aggsortop - 1] = ObjectIdGetDatum(sortop);
 	values[Anum_pg_aggregate_aggtranstype - 1] = ObjectIdGetDatum(aggTransType);
 	if (agginitval)
-		values[Anum_pg_aggregate_agginitval - 1] =
-			DirectFunctionCall1(textin, CStringGetDatum((char *) agginitval));
+		values[Anum_pg_aggregate_agginitval - 1] = CStringGetTextDatum(agginitval);
 	else
-		nulls[Anum_pg_aggregate_agginitval - 1] = 'n';
+		nulls[Anum_pg_aggregate_agginitval - 1] = true;
 
 	aggdesc = heap_open(AggregateRelationId, RowExclusiveLock);
 	tupDesc = aggdesc->rd_att;
 
-	tup = heap_formtuple(tupDesc, values, nulls);
+	tup = heap_form_tuple(tupDesc, values, nulls);
 	simple_heap_insert(aggdesc, tup);
 
 	CatalogUpdateIndexes(aggdesc, tup);

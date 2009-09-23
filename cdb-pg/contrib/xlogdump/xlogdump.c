@@ -35,8 +35,6 @@
 
 #include "xlogdump.h"
 
-// GPDB: Because we aren't up to date with PostgreSQL
-#define MaxHeapTupleSize MaxTupleSize
 
 static int		logFd;		/* kernel FD for current input file */
 static TimeLineID	logTLI;		/* current log file timeline */

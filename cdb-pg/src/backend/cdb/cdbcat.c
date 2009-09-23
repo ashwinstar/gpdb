@@ -184,7 +184,7 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy)
 
 	ArrayType  *attrnums;
 
-	char		nulls[2];
+	bool		nulls[2];
 	Datum		values[2];
 
 	Insist(policy->ptype == POLICYTYPE_PARTITIONED);
@@ -213,16 +213,16 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy)
 		attrnums = NULL;
 	}
 
-	nulls[0] = ' ';
-	nulls[1] = ' ';
+	nulls[0] = false;
+	nulls[1] = false;
 	values[0] = ObjectIdGetDatum(tbloid);
 
 	if (attrnums)
 		values[1] = PointerGetDatum(attrnums);
 	else
-		nulls[1] = 'n';
+		nulls[1] = true;
 
-	gp_policy_tuple = heap_formtuple(RelationGetDescr(gp_policy_rel), values, nulls);
+	gp_policy_tuple = heap_form_tuple(RelationGetDescr(gp_policy_rel), values, nulls);
 
 	simple_heap_insert(gp_policy_rel, gp_policy_tuple);
 
@@ -252,9 +252,9 @@ GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
 
 	ArrayType  *attrnums;
 
-	char		nulls[2];
+	bool		nulls[2];
 	Datum		values[2];
-	char		repl[2];
+	bool		repl[2];
 
 	Insist(policy->ptype == POLICYTYPE_PARTITIONED);
 
@@ -282,17 +282,17 @@ GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
 		attrnums = NULL;
 	}
 
-	nulls[0] = ' ';
-	nulls[1] = ' ';
+	nulls[0] = false;
+	nulls[1] = false;
 	values[0] = ObjectIdGetDatum(tbloid);
 
 	if (attrnums)
 		values[1] = PointerGetDatum(attrnums);
 	else
-		nulls[1] = 'n';
+		nulls[1] = true;
 		
-	repl[0] = ' ';
-	repl[1] = 'r';
+	repl[0] = false;
+	repl[1] = true;
 
 	
 
@@ -319,7 +319,7 @@ GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
 	if (HeapTupleIsValid(gp_policy_tuple))
 	{
 		
-		HeapTuple newtuple = heap_modifytuple(gp_policy_tuple, RelationGetDescr(gp_policy_rel), values,
+		HeapTuple newtuple = heap_modify_tuple(gp_policy_tuple, RelationGetDescr(gp_policy_rel), values,
 								nulls, repl);
 								
 		simple_heap_update(gp_policy_rel, &gp_policy_tuple->t_self, newtuple);
@@ -329,7 +329,7 @@ GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
 	}
 	else
 	{
-		gp_policy_tuple = heap_formtuple(RelationGetDescr(gp_policy_rel), values, nulls);
+		gp_policy_tuple = heap_form_tuple(RelationGetDescr(gp_policy_rel), values, nulls);
 		simple_heap_insert(gp_policy_rel, gp_policy_tuple);
 		/* update catalog indexes */
 		CatalogUpdateIndexes(gp_policy_rel, gp_policy_tuple);

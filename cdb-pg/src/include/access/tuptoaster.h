@@ -35,22 +35,22 @@
  *
  * The numbers need not be the same, though they currently are.
  */
-#define TOAST_TUPLE_THRESHOLD	(MaxTupleSize / 4)
+#define TOAST_TUPLE_THRESHOLD	(MaxHeapTupleSize / 4)
 
-#define TOAST_TUPLE_TARGET		(MaxTupleSize / 4)
+#define TOAST_TUPLE_TARGET		(MaxHeapTupleSize / 4)
 
 /*
  * If an index value is larger than TOAST_INDEX_TARGET, we will try to
  * compress it (we can't move it out-of-line, however).  Note that this
  * number is per-datum, not per-tuple, for simplicity in index_form_tuple().
  */
-#define TOAST_INDEX_TARGET		(MaxTupleSize / 16)
+#define TOAST_INDEX_TARGET		(MaxHeapTupleSize / 16)
 
 /*
  * When we store an oversize datum externally, we divide it into chunks
  * containing at most TOAST_MAX_CHUNK_SIZE data bytes.	This number *must*
  * be small enough that the completed toast-table tuple (including the
- * ID and sequence fields and all overhead) is no more than MaxTupleSize
+ * ID and sequence fields and all overhead) is no more than MaxHeapTupleSize
  * bytes.  It *should* be small enough to make toast-table tuples no more
  * than TOAST_TUPLE_THRESHOLD bytes, else heapam.c will uselessly invoke
  * the toaster on toast-table tuples.

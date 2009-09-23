@@ -1739,12 +1739,12 @@ heap_insertgetpage(HeapInsertDesc *ins, Size len)
 	/*
 	 * If we're gonna fail for oversize tuple, do it right away
 	 */
-	if (len > MaxTupleSize)
+	if (len > MaxHeapTupleSize)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("row is too big: size %lu, maximum size %lu",
 						(unsigned long) len,
-						(unsigned long) MaxTupleSize)));
+						(unsigned long) MaxHeapTupleSize)));
 
 	/* Compute desired extra freespace due to fillfactor option */
 	saveFreeSpace = RelationGetTargetPageFreeSpace(ins->hi_rel,
@@ -1763,7 +1763,7 @@ heap_insertgetpage(HeapInsertDesc *ins, Size len)
 	 * When use_fsm is false, we either put the tuple onto the existing target
 	 * page or extend the relation.
 	 */
-	if (len + saveFreeSpace <= MaxTupleSize)
+	if (len + saveFreeSpace <= MaxHeapTupleSize)
 		targetBlock = ins->hi_targblock;
 	else
 	{
@@ -1857,12 +1857,12 @@ heap_insertextend(HeapInsertDesc *ins, Size len)
 	/*
 	 * If we're gonna fail for oversize tuple, do it right away
 	 */
-	if (len > MaxTupleSize)
+	if (len > MaxHeapTupleSize)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("row is too big: size %lu, maximum size %lu",
 						(unsigned long) len,
-						(unsigned long) MaxTupleSize)));
+						(unsigned long) MaxHeapTupleSize)));
 
 	/* Compute desired extra freespace due to fillfactor option */
 	saveFreeSpace = RelationGetTargetPageFreeSpace(ins->hi_rel,
@@ -4196,7 +4196,7 @@ heap_xlog_insert(XLogRecPtr lsn, XLogRecord *record)
 	struct
 	{
 		HeapTupleHeaderData hdr;
-		char		data[MaxTupleSize];
+		char		data[MaxHeapTupleSize];
 	}			tbuf;
 	HeapTupleHeader htup;
 	xl_heap_header xlhdr;
@@ -4238,7 +4238,7 @@ heap_xlog_insert(XLogRecPtr lsn, XLogRecord *record)
 		elog(PANIC, "heap_insert_redo: invalid max offset number");
 
 	newlen = record->xl_len - SizeOfHeapInsert - SizeOfHeapHeader;
-	Assert(newlen <= MaxTupleSize);
+	Assert(newlen <= MaxHeapTupleSize);
 	memcpy((char *) &xlhdr,
 		   (char *) xlrec + SizeOfHeapInsert,
 		   SizeOfHeapHeader);
@@ -4284,7 +4284,7 @@ heap_xlog_update(XLogRecPtr lsn, XLogRecord *record, bool move)
 	struct
 	{
 		HeapTupleHeaderData hdr;
-		char		data[MaxTupleSize];
+		char		data[MaxHeapTupleSize];
 	}			tbuf;
 	xl_heap_header xlhdr;
 	int			hsize;
@@ -4401,7 +4401,7 @@ newsame:;
 		hsize += (2 * sizeof(TransactionId));
 
 	newlen = record->xl_len - hsize;
-	Assert(newlen <= MaxTupleSize);
+	Assert(newlen <= MaxHeapTupleSize);
 	memcpy((char *) &xlhdr,
 		   (char *) xlrec + SizeOfHeapUpdate,
 		   SizeOfHeapHeader);

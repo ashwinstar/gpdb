@@ -89,7 +89,7 @@ gp_transaction_log(PG_FUNCTION_ARGS)
 		XidStatus 	status;
 		char 		*statusStr = NULL;
 		Datum		values[4];
-		char		nulls[4];
+		bool		nulls[4];
 		HeapTuple	tuple;
 		Datum		result;
 
@@ -104,7 +104,7 @@ gp_transaction_log(PG_FUNCTION_ARGS)
 		 * Form tuple with appropriate data.
 		 */
 		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, ' ', sizeof(nulls));
+		MemSet(nulls, false, sizeof(nulls));
 
 		values[0] = Int16GetDatum((int16)Gp_segment);
 		values[1] = Int16GetDatum((int16)GpIdentity.dbid);
@@ -126,7 +126,7 @@ gp_transaction_log(PG_FUNCTION_ARGS)
 			DirectFunctionCall1(textin,
 				                CStringGetDatum(statusStr));
 		
-		tuple = heap_formtuple(funcctx->tuple_desc, values, nulls);
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
 		SRF_RETURN_NEXT(funcctx, result);
 	}

@@ -964,8 +964,8 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 	if (procForm->proowner != newOwnerId)
 	{
 		Datum		repl_val[Natts_pg_proc];
-		char		repl_null[Natts_pg_proc];
-		char		repl_repl[Natts_pg_proc];
+		bool		repl_null[Natts_pg_proc];
+		bool		repl_repl[Natts_pg_proc];
 		Acl		   *newAcl;
 		Datum		aclDatum;
 		bool		isNull;
@@ -991,10 +991,10 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 							   get_namespace_name(procForm->pronamespace));
 		}
 
-		memset(repl_null, ' ', sizeof(repl_null));
-		memset(repl_repl, ' ', sizeof(repl_repl));
+		memset(repl_null, false, sizeof(repl_null));
+		memset(repl_repl, false, sizeof(repl_repl));
 
-		repl_repl[Anum_pg_proc_proowner - 1] = 'r';
+		repl_repl[Anum_pg_proc_proowner - 1] = true;
 		repl_val[Anum_pg_proc_proowner - 1] = ObjectIdGetDatum(newOwnerId);
 
 		/*
@@ -1008,12 +1008,12 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 		{
 			newAcl = aclnewowner(DatumGetAclP(aclDatum),
 								 procForm->proowner, newOwnerId);
-			repl_repl[Anum_pg_proc_proacl - 1] = 'r';
+			repl_repl[Anum_pg_proc_proacl - 1] = true;
 			repl_val[Anum_pg_proc_proacl - 1] = PointerGetDatum(newAcl);
 		}
 
-		newtuple = heap_modifytuple(tup, RelationGetDescr(rel), repl_val,
-									repl_null, repl_repl);
+		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), repl_val,
+									 repl_null, repl_repl);
 
 		simple_heap_update(rel, &newtuple->t_self, newtuple);
 		CatalogUpdateIndexes(rel, newtuple);
@@ -1191,7 +1191,7 @@ CreateCast(CreateCastStmt *stmt)
 	Relation	relation;
 	HeapTuple	tuple;
 	Datum		values[Natts_pg_cast];
-	char		nulls[Natts_pg_cast];
+	bool		nulls[Natts_pg_cast];
 	ObjectAddress myself,
 				referenced;
 
@@ -1368,9 +1368,9 @@ CreateCast(CreateCastStmt *stmt)
 	values[Anum_pg_cast_castfunc - 1] = ObjectIdGetDatum(funcid);
 	values[Anum_pg_cast_castcontext - 1] = CharGetDatum(castcontext);
 
-	MemSet(nulls, ' ', Natts_pg_cast);
+	MemSet(nulls, false, sizeof(nulls));
 
-	tuple = heap_formtuple(RelationGetDescr(relation), values, nulls);
+	tuple = heap_form_tuple(RelationGetDescr(relation), values, nulls);
 
 	if (stmt->castOid != 0)
 		HeapTupleSetOid(tuple, stmt->castOid);

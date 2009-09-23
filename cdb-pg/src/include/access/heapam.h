@@ -262,7 +262,7 @@ static inline HeapTuple heap_form_tuple(TupleDesc tupleDescriptor, Datum *values
 {
 	return heaptuple_form_to(tupleDescriptor, values, isnull, NULL, NULL);
 }
-extern HeapTuple heap_formtuple(TupleDesc tupleDescriptor, Datum *values, char *nulls);
+extern HeapTuple heap_formtuple(TupleDesc tupleDescriptor, Datum *values, char *nulls) __attribute__ ((deprecated));
 
 extern HeapTuple heap_modify_tuple(HeapTuple tuple,
 				  TupleDesc tupleDesc,
@@ -273,11 +273,11 @@ extern HeapTuple heap_modifytuple(HeapTuple tuple,
 				 TupleDesc tupleDesc,
 				 Datum *replValues,
 				 char *replNulls,
-				 char *replActions);
+				 char *replActions) __attribute__ ((deprecated));
 extern void heap_deform_tuple(HeapTuple tuple, TupleDesc tupleDesc,
 				  Datum *values, bool *isnull);
 extern void heap_deformtuple(HeapTuple tuple, TupleDesc tupleDesc,
-				 Datum *values, char *nulls);
+				 Datum *values, char *nulls) __attribute__ ((deprecated));
 extern void heap_freetuple(HeapTuple htup);
 extern HeapTuple heap_addheader(int natts, bool withoid,
 			   Size structlen, void *structure);

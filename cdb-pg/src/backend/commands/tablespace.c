@@ -198,7 +198,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 #ifdef HAVE_SYMLINK
 	Relation	rel;
 	Datum		values[Natts_pg_tablespace];
-	char		nulls[Natts_pg_tablespace];
+	bool		nulls[Natts_pg_tablespace];
 	HeapTuple	tuple;
 	Oid			tablespaceoid;
 	char	   *location = NULL;
@@ -408,7 +408,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	 */
 	rel = heap_open(TableSpaceRelationId, RowExclusiveLock);
 
-	MemSet(nulls, ' ', Natts_pg_tablespace);
+	MemSet(nulls, false, Natts_pg_tablespace);
 
 	values[Anum_pg_tablespace_spcname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->tablespacename));
@@ -416,7 +416,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		ObjectIdGetDatum(ownerId);
 	values[Anum_pg_tablespace_spclocation - 1] =
 		DirectFunctionCall1(textin, CStringGetDatum(location));
-	nulls[Anum_pg_tablespace_spcacl - 1] = 'n';
+	nulls[Anum_pg_tablespace_spcacl - 1] = true;
 
 	/* CDB include the distinct primary and mirror directory locations on QD */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -484,17 +484,17 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		}
 		else
 		{
-			nulls[Anum_pg_tablespace_spcmirlocations - 1] = 'n';
+			nulls[Anum_pg_tablespace_spcmirlocations - 1] = false;
 		}
 	}
 	else
 	{
 		/* we don't store the full array of locations on the QE's */
-		nulls[Anum_pg_tablespace_spcprilocations - 1] = 'n';
-		nulls[Anum_pg_tablespace_spcmirlocations - 1] = 'n';
+		nulls[Anum_pg_tablespace_spcprilocations - 1] = false;
+		nulls[Anum_pg_tablespace_spcmirlocations - 1] = false;
 	}
 
-	tuple = heap_formtuple(rel->rd_att, values, nulls);
+	tuple = heap_form_tuple(rel->rd_att, values, nulls);
 
 	tablespaceoid = simple_heap_insert(rel, tuple);
 
@@ -1149,8 +1149,8 @@ AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 	if (spcForm->spcowner != newOwnerId)
 	{
 		Datum		repl_val[Natts_pg_tablespace];
-		char		repl_null[Natts_pg_tablespace];
-		char		repl_repl[Natts_pg_tablespace];
+		bool		repl_null[Natts_pg_tablespace];
+		bool		repl_repl[Natts_pg_tablespace];
 		Acl		   *newAcl;
 		Datum		aclDatum;
 		bool		isNull;
@@ -1174,10 +1174,10 @@ AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 		 * anyway.
 		 */
 
-		memset(repl_null, ' ', sizeof(repl_null));
-		memset(repl_repl, ' ', sizeof(repl_repl));
+		memset(repl_null, false, sizeof(repl_null));
+		memset(repl_repl, false, sizeof(repl_repl));
 
-		repl_repl[Anum_pg_tablespace_spcowner - 1] = 'r';
+		repl_repl[Anum_pg_tablespace_spcowner - 1] = true;
 		repl_val[Anum_pg_tablespace_spcowner - 1] = ObjectIdGetDatum(newOwnerId);
 
 		/*
@@ -1192,11 +1192,11 @@ AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 		{
 			newAcl = aclnewowner(DatumGetAclP(aclDatum),
 								 spcForm->spcowner, newOwnerId);
-			repl_repl[Anum_pg_tablespace_spcacl - 1] = 'r';
+			repl_repl[Anum_pg_tablespace_spcacl - 1] = true;
 			repl_val[Anum_pg_tablespace_spcacl - 1] = PointerGetDatum(newAcl);
 		}
 
-		newtuple = heap_modifytuple(tup, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
+		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
 
 		simple_heap_update(rel, &newtuple->t_self, newtuple);
 		CatalogUpdateIndexes(rel, newtuple);

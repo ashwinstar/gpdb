@@ -76,7 +76,7 @@ typedef struct SerTupInfo
 
 	/* Preallocated space for deformtuple and formtuple. */
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *nulls;
 }	SerTupInfo;
 
 /* Populate a SerTupInfo struct with information looked up from the specified

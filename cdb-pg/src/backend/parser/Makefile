@@ -18,11 +18,7 @@ OBJS= analyze.o gram.o keywords.o parser.o parse_agg.o parse_clause.o \
 
 FLEXFLAGS = -CF
 
-
-all: SUBSYS.o
-
-SUBSYS.o: $(OBJS)
-	$(LD) $(LDREL) $(LDOUT) $@ $^
+include $(top_srcdir)/src/backend/common.mk
 
 
 # scan is compiled as part of gram

@@ -251,7 +251,7 @@ create_proc_lang(const char *languageName,
 	Relation	rel;
 	TupleDesc	tupDesc;
 	Datum		values[Natts_pg_language];
-	char		nulls[Natts_pg_language];
+	bool		nulls[Natts_pg_language];
 	NameData	langname;
 	HeapTuple	tup;
 	ObjectAddress myself,
@@ -264,7 +264,7 @@ create_proc_lang(const char *languageName,
 	tupDesc = rel->rd_att;
 
 	memset(values, 0, sizeof(values));
-	memset(nulls, ' ', sizeof(nulls));
+	memset(nulls, false, sizeof(nulls));
 
 	namestrcpy(&langname, languageName);
 	values[Anum_pg_language_lanname - 1] = NameGetDatum(&langname);
@@ -272,9 +272,9 @@ create_proc_lang(const char *languageName,
 	values[Anum_pg_language_lanpltrusted - 1] = BoolGetDatum(trusted);
 	values[Anum_pg_language_lanplcallfoid - 1] = ObjectIdGetDatum(handlerOid);
 	values[Anum_pg_language_lanvalidator - 1] = ObjectIdGetDatum(valOid);
-	nulls[Anum_pg_language_lanacl - 1] = 'n';
+	nulls[Anum_pg_language_lanacl - 1] = true;
 
-	tup = heap_formtuple(tupDesc, values, nulls);
+	tup = heap_form_tuple(tupDesc, values, nulls);
 
 	simple_heap_insert(rel, tup);
 

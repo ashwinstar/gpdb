@@ -3,7 +3,7 @@
  * pg_constraint.c
  *	  routines to support manipulation of the pg_constraint relation
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -27,6 +27,8 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/lsyscache.h"
+#include "utils/rel.h"
 #include "utils/syscache.h"
 
 
@@ -62,7 +64,7 @@ CreateConstraintEntry(const char *constraintName,
 	Relation	conDesc;
 	Oid			conOid;
 	HeapTuple	tup;
-	char		nulls[Natts_pg_constraint];
+	bool		nulls[Natts_pg_constraint];
 	Datum		values[Natts_pg_constraint];
 	ArrayType  *conkeyArray;
 	ArrayType  *confkeyArray;
@@ -107,8 +109,8 @@ CreateConstraintEntry(const char *constraintName,
 	/* initialize nulls and values */
 	for (i = 0; i < Natts_pg_constraint; i++)
 	{
-		nulls[i] = ' ';
-		values[i] = 0;
+		nulls[i] = false;
+		values[i] = (Datum) NULL;
 	}
 
 	values[Anum_pg_constraint_conname - 1] = NameGetDatum(&cname);
@@ -126,12 +128,12 @@ CreateConstraintEntry(const char *constraintName,
 	if (conkeyArray)
 		values[Anum_pg_constraint_conkey - 1] = PointerGetDatum(conkeyArray);
 	else
-		nulls[Anum_pg_constraint_conkey - 1] = 'n';
+		nulls[Anum_pg_constraint_conkey - 1] = true;
 
 	if (confkeyArray)
 		values[Anum_pg_constraint_confkey - 1] = PointerGetDatum(confkeyArray);
 	else
-		nulls[Anum_pg_constraint_confkey - 1] = 'n';
+		nulls[Anum_pg_constraint_confkey - 1] = true;
 
 	/*
 	 * initialize the binary form of the check constraint.
@@ -140,7 +142,7 @@ CreateConstraintEntry(const char *constraintName,
 		values[Anum_pg_constraint_conbin - 1] = DirectFunctionCall1(textin,
 													CStringGetDatum((char *) conBin));
 	else
-		nulls[Anum_pg_constraint_conbin - 1] = 'n';
+		nulls[Anum_pg_constraint_conbin - 1] = true;
 
 	/*
 	 * initialize the text form of the check constraint
@@ -149,9 +151,9 @@ CreateConstraintEntry(const char *constraintName,
 		values[Anum_pg_constraint_consrc - 1] = DirectFunctionCall1(textin,
 													CStringGetDatum((char *) conSrc));
 	else
-		nulls[Anum_pg_constraint_consrc - 1] = 'n';
+		nulls[Anum_pg_constraint_consrc - 1] = true;
 
-	tup = heap_formtuple(RelationGetDescr(conDesc), values, nulls);
+	tup = heap_form_tuple(RelationGetDescr(conDesc), values, nulls);
 
 	conOid = simple_heap_insert(conDesc, tup);
 

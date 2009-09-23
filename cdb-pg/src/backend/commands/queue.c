@@ -48,7 +48,7 @@ CreateQueue(CreateQueueStmt *stmt)
 	Oid			queueid;
 	Cost		thresholds[NUM_RES_LIMIT_TYPES];
 	Datum		new_record[Natts_pg_resqueue];
-	char		new_record_nulls[Natts_pg_resqueue];
+	bool		new_record_nulls[Natts_pg_resqueue];
 	ListCell    *option;
 
 	/* thresholds for active and cost limiters. */
@@ -205,7 +205,7 @@ CreateQueue(CreateQueueStmt *stmt)
 	 * Build a tuple to insert
 	 */
 	MemSet(new_record, 0, sizeof(new_record));
-	MemSet(new_record_nulls, ' ', sizeof(new_record_nulls));
+	MemSet(new_record_nulls, false, sizeof(new_record_nulls));
 
 	new_record[Anum_pg_resqueue_rsqname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->queue));
@@ -223,7 +223,7 @@ CreateQueue(CreateQueueStmt *stmt)
 		Float4GetDatum(ignorelimit);
 
 
-	tuple = heap_formtuple(pg_resqueue_dsc, new_record, new_record_nulls);
+	tuple = heap_form_tuple(pg_resqueue_dsc, new_record, new_record_nulls);
 
 	/*
 	 * Insert new record in the pg_resqueue table
@@ -281,8 +281,8 @@ AlterQueue(AlterQueueStmt *stmt)
 	Oid			queueid;
 	Cost		thresholds[NUM_RES_LIMIT_TYPES];
 	Datum		new_record[Natts_pg_resqueue];
-	char		new_record_nulls[Natts_pg_resqueue];
-	char		new_record_repl[Natts_pg_resqueue];
+	bool		new_record_nulls[Natts_pg_resqueue];
+	bool		new_record_repl[Natts_pg_resqueue];
 	ListCell    *option;
 
 	/* thresholds for active and cost limiters. */
@@ -441,14 +441,14 @@ AlterQueue(AlterQueueStmt *stmt)
 	 * Build a tuple to update.
 	 */
 	MemSet(new_record, 0, sizeof(new_record));
-	MemSet(new_record_nulls, ' ', sizeof(new_record_nulls));
-	MemSet(new_record_repl, ' ', sizeof(new_record_repl));
+	MemSet(new_record_nulls, false, sizeof(new_record_nulls));
+	MemSet(new_record_repl, false, sizeof(new_record_repl));
 
 	if (dactivelimit)
 	{
 		new_record[Anum_pg_resqueue_rsqcountlimit - 1] = 
 			Float4GetDatum(activelimit);
-		new_record_repl[Anum_pg_resqueue_rsqcountlimit - 1] = 'r';
+		new_record_repl[Anum_pg_resqueue_rsqcountlimit - 1] = true;
 
 		thresholds[RES_COUNT_LIMIT] = activelimit;
 		
@@ -458,7 +458,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	{
 		new_record[Anum_pg_resqueue_rsqcostlimit - 1] = 
 			Float4GetDatum(costlimit);
-		new_record_repl[Anum_pg_resqueue_rsqcostlimit - 1] = 'r';
+		new_record_repl[Anum_pg_resqueue_rsqcostlimit - 1] = true;
 
 		thresholds[RES_COST_LIMIT] = costlimit;
 	}
@@ -467,7 +467,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	{
 		new_record[Anum_pg_resqueue_rsqovercommit - 1] = 
 			BoolGetDatum(overcommit);
-		new_record_repl[Anum_pg_resqueue_rsqovercommit - 1] = 'r';
+		new_record_repl[Anum_pg_resqueue_rsqovercommit - 1] = true;
 
 	}
 
@@ -475,7 +475,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	{
 		new_record[Anum_pg_resqueue_rsqignorecostlimit - 1] = 
 			Float4GetDatum(ignorelimit);
-		new_record_repl[Anum_pg_resqueue_rsqignorecostlimit - 1] = 'r';
+		new_record_repl[Anum_pg_resqueue_rsqignorecostlimit - 1] = true;
 	}
 
 
@@ -492,7 +492,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	/*
 	 * update the tuple in the pg_resqueue table
 	 */
-	new_tuple = heap_modifytuple(tuple, pg_resqueue_dsc, new_record, 
+	new_tuple = heap_modify_tuple(tuple, pg_resqueue_dsc, new_record,
 								 new_record_nulls, new_record_repl);
 
 	simple_heap_update(pg_resqueue_rel, &tuple->t_self, new_tuple);

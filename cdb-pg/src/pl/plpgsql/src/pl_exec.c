@@ -3417,7 +3417,7 @@ exec_assign_value(PLpgSQL_execstate *estate,
 				int			natts;
 				int			i;
 				Datum	   *values;
-				char	   *nulls;
+				bool	   *nulls;
 				void	   *mustfree;
 				bool		attisnull;
 				Oid			atttype;
@@ -3451,12 +3451,12 @@ exec_assign_value(PLpgSQL_execstate *estate,
 				natts = rec->tupdesc->natts;
 
 				/*
-				 * Set up values/datums arrays for heap_formtuple.	For all
+				 * Set up values/datums arrays for heap_form_tuple.	For all
 				 * the attributes except the one we want to replace, use the
 				 * value that's in the old tuple.
 				 */
 				values = palloc(sizeof(Datum) * natts);
-				nulls = palloc(natts);
+				nulls = palloc(sizeof(bool) * natts);
 
 				for (i = 0; i < natts; i++)
 				{
@@ -3464,10 +3464,7 @@ exec_assign_value(PLpgSQL_execstate *estate,
 						continue;
 					values[i] = SPI_getbinval(rec->tup, rec->tupdesc,
 											  i + 1, &attisnull);
-					if (attisnull)
-						nulls[i] = 'n';
-					else
-						nulls[i] = ' ';
+					nulls[i] = attisnull;
 				}
 
 				/*
@@ -3482,10 +3479,7 @@ exec_assign_value(PLpgSQL_execstate *estate,
 													 atttype,
 													 atttypmod,
 													 attisnull);
-				if (attisnull)
-					nulls[fno] = 'n';
-				else
-					nulls[fno] = ' ';
+				nulls[fno] = attisnull;
 
 				/*
 				 * Avoid leaking the result of exec_simple_cast_value, if it
@@ -3497,10 +3491,10 @@ exec_assign_value(PLpgSQL_execstate *estate,
 					mustfree = NULL;
 
 				/*
-				 * Now call heap_formtuple() to create a new tuple that
+				 * Now call heap_form_tuple() to create a new tuple that
 				 * replaces the old one in the record.
 				 */
-				newtup = heap_formtuple(rec->tupdesc, values, nulls);
+				newtup = heap_form_tuple(rec->tupdesc, values, nulls);
 
 				if (rec->freetup)
 					heap_freetuple(rec->tup);
@@ -4155,12 +4149,12 @@ exec_move_row(PLpgSQL_execstate *estate,
 		else if (tupdesc)
 		{
 			/* If we have a tupdesc but no data, form an all-nulls tuple */
-			char	   *nulls;
+			bool   *nulls;
 
-			nulls = (char *) palloc(tupdesc->natts * sizeof(char));
-			memset(nulls, 'n', tupdesc->natts * sizeof(char));
+			nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
+			memset(nulls, true, tupdesc->natts * sizeof(bool));
 
-			tup = heap_formtuple(tupdesc, NULL, nulls);
+			tup = heap_form_tuple(tupdesc, NULL, nulls);
 
 			pfree(nulls);
 		}

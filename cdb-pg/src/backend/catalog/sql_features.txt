@@ -1,5 +1,5 @@
 B011	Embedded Ada			NO	
-B012	Embedded C			NO	
+B012	Embedded C			YES	
 B013	Embedded COBOL			NO	
 B014	Embedded Fortran			NO	
 B015	Embedded MUMPS			NO	

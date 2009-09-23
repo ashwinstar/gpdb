@@ -3,7 +3,7 @@
  * pg_proc.c
  *	  routines to support manipulation of the pg_proc relation
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -87,9 +87,9 @@ ProcedureCreate(const char *procedureName,
 	Relation	rel;
 	HeapTuple	tup;
 	HeapTuple	oldtup;
-	char		nulls[Natts_pg_proc];
+	bool		nulls[Natts_pg_proc];
 	Datum		values[Natts_pg_proc];
-	char		replaces[Natts_pg_proc];
+	bool		replaces[Natts_pg_proc];
 	Oid			relid;
 	NameData	procname;
 	TupleDesc	tupDesc;
@@ -212,9 +212,9 @@ ProcedureCreate(const char *procedureName,
 
 	for (i = 0; i < Natts_pg_proc; ++i)
 	{
-		nulls[i] = ' ';
+		nulls[i] = false;
 		values[i] = (Datum) 0;
-		replaces[i] = 'r';
+		replaces[i] = true;
 	}
 
 	namestrcpy(&procname, procedureName);
@@ -234,21 +234,22 @@ ProcedureCreate(const char *procedureName,
 	if (allParameterTypes != PointerGetDatum(NULL))
 		values[Anum_pg_proc_proallargtypes - 1] = allParameterTypes;
 	else
-		nulls[Anum_pg_proc_proallargtypes - 1] = 'n';
+		nulls[Anum_pg_proc_proallargtypes - 1] = true;
 	if (parameterModes != PointerGetDatum(NULL))
 		values[Anum_pg_proc_proargmodes - 1] = parameterModes;
 	else
-		nulls[Anum_pg_proc_proargmodes - 1] = 'n';
+		nulls[Anum_pg_proc_proargmodes - 1] = true;
 	if (parameterNames != PointerGetDatum(NULL))
 		values[Anum_pg_proc_proargnames - 1] = parameterNames;
 	else
-		nulls[Anum_pg_proc_proargnames - 1] = 'n';
-	values[Anum_pg_proc_prosrc - 1] = DirectFunctionCall1(textin,
-													CStringGetDatum((char *) prosrc));
-	values[Anum_pg_proc_probin - 1] = DirectFunctionCall1(textin,
-													CStringGetDatum((char *) probin));
+		nulls[Anum_pg_proc_proargnames - 1] = true;
+	values[Anum_pg_proc_prosrc - 1] = CStringGetTextDatum(prosrc);
+	if (probin)
+		values[Anum_pg_proc_probin - 1] = CStringGetTextDatum(probin);
+	else
+		nulls[Anum_pg_proc_probin - 1] = true;
 	/* start out with empty permissions */
-	nulls[Anum_pg_proc_proacl - 1] = 'n';
+	nulls[Anum_pg_proc_proacl - 1] = true;
 
 	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
 	tupDesc = RelationGetDescr(rel);
@@ -338,11 +339,11 @@ ProcedureCreate(const char *procedureName,
 		}
 
 		/* do not change existing ownership or permissions, either */
-		replaces[Anum_pg_proc_proowner - 1] = ' ';
-		replaces[Anum_pg_proc_proacl - 1] = ' ';
+		replaces[Anum_pg_proc_proowner - 1] = false;
+		replaces[Anum_pg_proc_proacl - 1] = false;
 
 		/* Okay, do it... */
-		tup = heap_modifytuple(oldtup, tupDesc, values, nulls, replaces);
+		tup = heap_modify_tuple(oldtup, tupDesc, values, nulls, replaces);
 		simple_heap_update(rel, &tup->t_self, tup);
 
 		ReleaseSysCache(oldtup);
@@ -351,8 +352,8 @@ ProcedureCreate(const char *procedureName,
 	else
 	{
 		/* Creating a new procedure */
-		tup = heap_formtuple(tupDesc, values, nulls);
-		
+		tup = heap_form_tuple(tupDesc, values, nulls);
+				
 		if (Gp_role == GP_ROLE_EXECUTE && funcOid != 0)
 			HeapTupleSetOid(tup, funcOid);
 			
@@ -457,7 +458,7 @@ fmgr_internal_validator(PG_FUNCTION_ARGS)
 	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
 	if (isnull)
 		elog(ERROR, "null prosrc");
-	prosrc = DatumGetCString(DirectFunctionCall1(textout, tmp));
+	prosrc = TextDatumGetCString(tmp);
 
 	if (fmgr_internal_function(prosrc) == InvalidOid)
 		ereport(ERROR,
@@ -586,7 +587,7 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 		if (isnull)
 			elog(ERROR, "null prosrc");
 
-		prosrc = DatumGetCString(DirectFunctionCall1(textout, tmp));
+		prosrc = TextDatumGetCString(tmp);
 
 		/*
 		 * Setup error traceback support for ereport().

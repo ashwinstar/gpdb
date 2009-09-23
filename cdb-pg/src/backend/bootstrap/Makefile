@@ -2,7 +2,7 @@
 #
 # Makefile for the bootstrap module
 #
-# $PostgreSQL: pgsql/src/backend/bootstrap/Makefile,v 1.34 2006/03/07 01:03:12 tgl Exp $
+# $PostgreSQL: pgsql/src/backend/bootstrap/Makefile,v 1.37 2008/08/29 13:02:32 petere Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -14,10 +14,7 @@ override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)
 
 OBJS= bootparse.o bootstrap.o 
 
-all: SUBSYS.o
-
-SUBSYS.o: $(OBJS)
-	$(LD) $(LDREL) $(LDOUT) $@ $^
+include $(top_srcdir)/src/backend/common.mk
 
 
 # bootscanner is compiled as part of bootparse
@@ -38,20 +35,5 @@ else
 endif
 
 
-
 # bootparse.c and bootscanner.c are in the distribution tarball, so
 # they are not cleaned here.
-clean:
-	rm -f SUBSYS.o $(OBJS)
-# And the garbage that might have been left behind by partial build:
-	@rm -f y.tab.h y.tab.c y.output lex.yy.c bootparse.tab.c bootparse.tab.h bootstrap_tokens.h bootstrap.h
-
-
-# This is unusual:  We actually have to build some of the parts before
-# we know what the header file dependencies are.  
-dep depend: bootparse.c bootscanner.c bootparse.h
-	$(CC) -MM $(CFLAGS) *.c >depend
-
-ifeq (depend,$(wildcard depend))
-include depend
-endif

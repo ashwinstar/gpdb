@@ -190,7 +190,7 @@ createdb_int(CreatedbStmt *stmt,
 	Relation	pg_database_rel;
 	HeapTuple	tuple;
 	Datum		new_record[Natts_pg_database];
-	char		new_record_nulls[Natts_pg_database];
+	bool		new_record_nulls[Natts_pg_database];
 	Oid			dboid;
 	Oid			datdba;
 	ListCell   *option;
@@ -505,7 +505,7 @@ createdb_int(CreatedbStmt *stmt,
 
 	/* Form tuple */
 	MemSet(new_record, 0, sizeof(new_record));
-	MemSet(new_record_nulls, ' ', sizeof(new_record_nulls));
+	MemSet(new_record_nulls, false, sizeof(new_record_nulls));
 
 	new_record[Anum_pg_database_datname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(dbname));
@@ -524,11 +524,11 @@ createdb_int(CreatedbStmt *stmt,
 	 * a bad idea when the owner is not the same as the template's owner. It's
 	 * more debatable whether datconfig should be copied.
 	 */
-	new_record_nulls[Anum_pg_database_datconfig - 1] = 'n';
-	new_record_nulls[Anum_pg_database_datacl - 1] = 'n';
+	new_record_nulls[Anum_pg_database_datconfig - 1] = true;
+	new_record_nulls[Anum_pg_database_datacl - 1] = true;
 
-	tuple = heap_formtuple(RelationGetDescr(pg_database_rel),
-						   new_record, new_record_nulls);
+	tuple = heap_form_tuple(RelationGetDescr(pg_database_rel),
+							new_record, new_record_nulls);
 
 	HeapTupleSetOid(tuple, dboid);
 
@@ -976,8 +976,8 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 	int			connlimit = -1;
 	DefElem    *dconnlimit = NULL;
 	Datum		new_record[Natts_pg_database];
-	char		new_record_nulls[Natts_pg_database];
-	char		new_record_repl[Natts_pg_database];
+	bool		new_record_nulls[Natts_pg_database];
+	bool		new_record_repl[Natts_pg_database];
 
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
@@ -1026,17 +1026,17 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 	 * Build an updated tuple, perusing the information just obtained
 	 */
 	MemSet(new_record, 0, sizeof(new_record));
-	MemSet(new_record_nulls, ' ', sizeof(new_record_nulls));
-	MemSet(new_record_repl, ' ', sizeof(new_record_repl));
+	MemSet(new_record_nulls, false, sizeof(new_record_nulls));
+	MemSet(new_record_repl, false, sizeof(new_record_repl));
 
 	if (dconnlimit)
 	{
 		new_record[Anum_pg_database_datconnlimit - 1] = Int32GetDatum(connlimit);
-		new_record_repl[Anum_pg_database_datconnlimit - 1] = 'r';
+		new_record_repl[Anum_pg_database_datconnlimit - 1] = true;
 	}
 
-	newtuple = heap_modifytuple(tuple, RelationGetDescr(rel), new_record,
-								new_record_nulls, new_record_repl);
+	newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), new_record,
+								 new_record_nulls, new_record_repl);
 	simple_heap_update(rel, &tuple->t_self, newtuple);
 
 	/* Update indexes */
@@ -1081,8 +1081,8 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	ScanKeyData scankey;
 	SysScanDesc scan;
 	Datum		repl_val[Natts_pg_database];
-	char		repl_null[Natts_pg_database];
-	char		repl_repl[Natts_pg_database];
+	bool		repl_null[Natts_pg_database];
+	bool		repl_repl[Natts_pg_database];
 
 	valuestr = flatten_set_variable_args(stmt->variable, stmt->value);
 
@@ -1108,13 +1108,13 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
 					   stmt->dbname);
 
-	MemSet(repl_repl, ' ', sizeof(repl_repl));
-	repl_repl[Anum_pg_database_datconfig - 1] = 'r';
+	memset(repl_repl, false, sizeof(repl_repl));
+	repl_repl[Anum_pg_database_datconfig - 1] = true;
 
 	if (strcmp(stmt->variable, "all") == 0 && valuestr == NULL)
 	{
-		/* RESET ALL */
-		repl_null[Anum_pg_database_datconfig - 1] = 'n';
+		/* RESET ALL, so just set datconfig to null */
+		repl_null[Anum_pg_database_datconfig - 1] = true;
 		repl_val[Anum_pg_database_datconfig - 1] = (Datum) 0;
 	}
 	else
@@ -1123,7 +1123,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 		bool		isnull;
 		ArrayType  *a;
 
-		repl_null[Anum_pg_database_datconfig - 1] = ' ';
+		repl_null[Anum_pg_database_datconfig - 1] = false;
 
 		datum = heap_getattr(tuple, Anum_pg_database_datconfig,
 							 RelationGetDescr(rel), &isnull);
@@ -1138,10 +1138,11 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 		if (a)
 			repl_val[Anum_pg_database_datconfig - 1] = PointerGetDatum(a);
 		else
-			repl_null[Anum_pg_database_datconfig - 1] = 'n';
+			repl_null[Anum_pg_database_datconfig - 1] = true;
 	}
 
-	newtuple = heap_modifytuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
+	newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel),
+								 repl_val, repl_null, repl_repl);
 	simple_heap_update(rel, &tuple->t_self, newtuple);
 
 	/* Update indexes */
@@ -1258,8 +1259,8 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 	if (datForm->datdba != newOwnerId)
 	{
 		Datum		repl_val[Natts_pg_database];
-		char		repl_null[Natts_pg_database];
-		char		repl_repl[Natts_pg_database];
+		bool		repl_null[Natts_pg_database];
+		bool		repl_repl[Natts_pg_database];
 		Acl		   *newAcl;
 		Datum		aclDatum;
 		bool		isNull;
@@ -1287,10 +1288,10 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				   errmsg("permission denied to change owner of database")));
 
-		memset(repl_null, ' ', sizeof(repl_null));
-		memset(repl_repl, ' ', sizeof(repl_repl));
+		memset(repl_null, false, sizeof(repl_null));
+		memset(repl_repl, false, sizeof(repl_repl));
 
-		repl_repl[Anum_pg_database_datdba - 1] = 'r';
+		repl_repl[Anum_pg_database_datdba - 1] = true;
 		repl_val[Anum_pg_database_datdba - 1] = ObjectIdGetDatum(newOwnerId);
 
 		/*
@@ -1305,11 +1306,11 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 		{
 			newAcl = aclnewowner(DatumGetAclP(aclDatum),
 								 datForm->datdba, newOwnerId);
-			repl_repl[Anum_pg_database_datacl - 1] = 'r';
+			repl_repl[Anum_pg_database_datacl - 1] = true;
 			repl_val[Anum_pg_database_datacl - 1] = PointerGetDatum(newAcl);
 		}
 
-		newtuple = heap_modifytuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
 		simple_heap_update(rel, &newtuple->t_self, newtuple);
 		CatalogUpdateIndexes(rel, newtuple);
 
@@ -1324,7 +1325,6 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
-
 
 	/*
 	 * We don't bother updating the flat file since ALTER DATABASE OWNER

@@ -4,7 +4,7 @@
 #    Makefile for access/common
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/backend/access/common/Makefile,v 1.22 2006/07/03 22:45:36 tgl Exp $
+#    $PostgreSQL: pgsql/src/backend/access/common/Makefile,v 1.25 2008/02/19 11:49:12 petere Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -14,17 +14,4 @@ include $(top_builddir)/src/Makefile.global
 
 OBJS = memtuple.o heaptuple.o indextuple.o printtup.o reloptions.o scankey.o tupdesc.o  
 
-all: SUBSYS.o
-
-SUBSYS.o: $(OBJS)
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
-
-dep depend:
-	$(CC) -MM $(CFLAGS) *.c >depend
-
-clean: 
-	rm -f SUBSYS.o $(OBJS)
-
-ifeq (depend,$(wildcard depend))
-include depend
-endif
+include $(top_srcdir)/src/backend/common.mk

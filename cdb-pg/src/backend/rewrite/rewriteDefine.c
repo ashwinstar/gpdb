@@ -3,8 +3,8 @@
  * rewriteDefine.c
  *	  routines for defining a rewrite rule
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -29,6 +29,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
@@ -59,8 +60,8 @@ InsertRule(char *rulname,
 	char	   *actiontree = nodeToString((Node *) action);
 	int			i;
 	Datum		values[Natts_pg_rewrite];
-	char		nulls[Natts_pg_rewrite];
-	char		replaces[Natts_pg_rewrite];
+	bool		nulls[Natts_pg_rewrite];
+	bool		replaces[Natts_pg_rewrite];
 	NameData	rname;
 	Relation	pg_rewrite_desc;
 	HeapTuple	tup,
@@ -73,7 +74,7 @@ InsertRule(char *rulname,
 	/*
 	 * Set up *nulls and *values arrays
 	 */
-	MemSet(nulls, ' ', sizeof(nulls));
+	MemSet(nulls, false, sizeof(nulls));
 
 	i = 0;
 	namestrcpy(&rname, rulname);
@@ -82,8 +83,8 @@ InsertRule(char *rulname,
 	values[i++] = Int16GetDatum(evslot_index);	/* ev_attr */
 	values[i++] = CharGetDatum(evtype + '0');	/* ev_type */
 	values[i++] = BoolGetDatum(evinstead);		/* is_instead */
-	values[i++] = DirectFunctionCall1(textin, CStringGetDatum(evqual)); /* ev_qual */
-	values[i++] = DirectFunctionCall1(textin, CStringGetDatum(actiontree));		/* ev_action */
+	values[i++] = CStringGetTextDatum(evqual);	/* ev_qual */
+	values[i++] = CStringGetTextDatum(actiontree);		/* ev_action */
 
 	/*
 	 * Ready to store new pg_rewrite tuple
@@ -109,15 +110,15 @@ InsertRule(char *rulname,
 		/*
 		 * When replacing, we don't need to replace every attribute
 		 */
-		MemSet(replaces, ' ', sizeof(replaces));
-		replaces[Anum_pg_rewrite_ev_attr - 1] = 'r';
-		replaces[Anum_pg_rewrite_ev_type - 1] = 'r';
-		replaces[Anum_pg_rewrite_is_instead - 1] = 'r';
-		replaces[Anum_pg_rewrite_ev_qual - 1] = 'r';
-		replaces[Anum_pg_rewrite_ev_action - 1] = 'r';
+		MemSet(replaces, false, sizeof(replaces));
+		replaces[Anum_pg_rewrite_ev_attr - 1] = true;
+		replaces[Anum_pg_rewrite_ev_type - 1] = true;
+		replaces[Anum_pg_rewrite_is_instead - 1] = true;
+		replaces[Anum_pg_rewrite_ev_qual - 1] = true;
+		replaces[Anum_pg_rewrite_ev_action - 1] = true;
 
-		tup = heap_modifytuple(oldtup, RelationGetDescr(pg_rewrite_desc),
-							   values, nulls, replaces);
+		tup = heap_modify_tuple(oldtup, RelationGetDescr(pg_rewrite_desc),
+								values, nulls, replaces);
 
 		simple_heap_update(pg_rewrite_desc, &tup->t_self, tup);
 
@@ -128,7 +129,7 @@ InsertRule(char *rulname,
 	}
 	else
 	{
-		tup = heap_formtuple(pg_rewrite_desc->rd_att, values, nulls);
+		tup = heap_form_tuple(pg_rewrite_desc->rd_att, values, nulls);
 
 		rewriteObjectId = simple_heap_insert(pg_rewrite_desc, tup);
 	}

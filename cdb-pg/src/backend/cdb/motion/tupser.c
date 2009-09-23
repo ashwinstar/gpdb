@@ -154,7 +154,7 @@ InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo)
 	pSerInfo->myinfo = (SerAttrInfo *) palloc0(numAttrs * sizeof(SerAttrInfo));
 
 	pSerInfo->values = (Datum *) palloc(numAttrs * sizeof(Datum));
-	pSerInfo->nulls = (char *) palloc(numAttrs * sizeof(char));
+	pSerInfo->nulls = (bool *) palloc(numAttrs * sizeof(bool));
 
 	for (i = 0; i < numAttrs; i++)
 	{
@@ -466,7 +466,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 			oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
 
 			/* deconstruct the tuple (faster than a heap_getattr loop) */
-			heap_deformtuple(tuple, tupdesc, pSerInfo->values, pSerInfo->nulls);
+			heap_deform_tuple(tuple, tupdesc, pSerInfo->values, pSerInfo->nulls);
 
 			MemoryContextSwitchTo(oldCtxt);
 
@@ -487,7 +487,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 				bytea	   *outputbytes=0;
 
 				/* skip null attributes (already taken care of above) */
-				if (pSerInfo->nulls[i] == 'n')
+				if (pSerInfo->nulls[i])
 					continue;
 
 				/*
@@ -840,7 +840,7 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 	{
 		attrInfo = pSerInfo->myinfo + i;
 
-		if (pSerInfo->nulls[i] == 'n')	/* NULL field. */
+		if (pSerInfo->nulls[i])	/* NULL field. */
 		{
 			pSerInfo->values[i] = (Datum) 0;
 			continue;
@@ -1029,7 +1029,7 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 	 */
 	MemoryContextSwitchTo(oldCtxt);
 
-	htup = heap_formtuple(tupdesc, pSerInfo->values, pSerInfo->nulls);
+	htup = heap_form_tuple(tupdesc, pSerInfo->values, pSerInfo->nulls);
 
 	MemoryContextReset(s_tupSerMemCtxt);
 
@@ -1064,7 +1064,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 			 */
 			clearTCList(NULL, tcList);
 
-			htup = heap_formtuple(pSerInfo->tupdesc, pSerInfo->values, pSerInfo->nulls);
+			htup = heap_form_tuple(pSerInfo->tupdesc, pSerInfo->values, pSerInfo->nulls);
 
 			return htup;
 		}
