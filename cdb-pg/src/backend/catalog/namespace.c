@@ -497,7 +497,7 @@ TypeIsVisible(Oid typid)
 				break;
 			}
 			if (SearchSysCacheExists(TYPENAMENSP,
-									 PointerGetDatum(typname),
+									 PointerGetDatum((char *) typname),
 									 ObjectIdGetDatum(namespaceId),
 									 0, 0))
 			{
@@ -1154,7 +1154,7 @@ ConversionGetConid(const char *conname)
 			continue;			/* do not look in temp namespace */
 
 		conid = GetSysCacheOid(CONNAMENSP,
-							   PointerGetDatum(conname),
+							   PointerGetDatum((char *) conname),
 							   ObjectIdGetDatum(namespaceId),
 							   0, 0);
 		if (OidIsValid(conid))
