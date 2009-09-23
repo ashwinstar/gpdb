@@ -671,8 +671,8 @@ OVER(order by ord,sale.cn rows between current row and
 unbounded following) as fv from sale_ord as sale;
 
 SELECT sale.cn,sale.pn, 
-last_VALUE(((cn*100 + (sale.pn+sale.pn)/100)%100)) OVER(order by sale.cn range between current row and
-unbounded following) as fv from sale; --mvd 1->3
+last_VALUE(((cn*100 + (sale.pn+sale.pn)/100)%100)) OVER(order by sale.cn, sale.pn range between current row and
+unbounded following) as fv from sale; --mvd 1,2->3
 
 -- Test obscure types
 create table typetest (i int[], j box, k bit, l bytea, m text[]);
