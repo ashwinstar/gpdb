@@ -1154,7 +1154,7 @@ ConversionGetConid(const char *conname)
 			continue;			/* do not look in temp namespace */
 
 		conid = GetSysCacheOid(CONNAMENSP,
-							   PointerGetDatum((char *) conname),
+							   PointerGetDatum(conname),
 							   ObjectIdGetDatum(namespaceId),
 							   0, 0);
 		if (OidIsValid(conid))
