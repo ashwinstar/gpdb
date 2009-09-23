@@ -428,67 +428,10 @@ calculate_relation_size(Relation rel)
             }
         }
     }
-	else if (Debug_column_store_use_new_segment_filename_format)
-	{
-		Assert(RelationIsAoRows(rel) || RelationIsAoCols(rel));
-
-		if (RelationIsAoRows(rel))
-			totalsize = GetAOTotalBytes(rel);
-		else
-			totalsize = GetAOCSTotalBytes(rel);
-		
-	}
-    else if (RelationIsAoRows(rel))
-    {
-        /* AO: same as heap, it will look like relationpath, or relationpath.%d,
-         * but it may contains holes.  We need to looping till reach MAX_AOREL_CONCURRENCY.
-         */
-        for(i=0; i<MAX_AOREL_CONCURRENCY; ++i)
-        {
-            if (i==0)
-                snprintf(pathname, MAXPGPATH, "%s", relationpath); 
-            else
-                snprintf(pathname, MAXPGPATH, "%s.%d", relationpath, i);
-
-            if (stat(pathname, &fst) >= 0)
-                totalsize += fst.st_size;
-            else 
-            {
-                if (errno != ENOENT)
-                    ereport(ERROR, (errcode_for_file_access(), 
-                                    errmsg("could not stat file %s: %m", pathname)
-                                ));
-            }
-        }
-    }
-    else if (RelationIsAoCols(rel))
-    {
-        /* AOCS: It looks like relpath.col.segno.  Also, segno may have
-         * holes, so we will test till MAX_AOREL_CONCURRENCY. 
-         */
-        int nvp = rel->rd_att->natts;
-        int j = 0;
-
-        for(i = 0; i < MAX_AOREL_CONCURRENCY; ++i)
-        {
-            for(j = 0; j < nvp; ++j)
-            {
-                snprintf(pathname, MAXPGPATH, "%s.%d.%d", relationpath, j, i);
- 
-                if (stat(pathname, &fst) >= 0)
-                    totalsize += fst.st_size;
-                else 
-                {
-                    if (errno == ENOENT)
-                        break;
-                    else
-                        ereport(ERROR, (errcode_for_file_access(), 
-                                    errmsg("could not stat file %s: %m", pathname)
-                                    ));
-                }
-            }
-        }
-    }
+	else if (RelationIsAoRows(rel))
+		totalsize = GetAOTotalBytes(rel);
+	else if (RelationIsAoCols(rel))
+		totalsize = GetAOCSTotalBytes(rel);
            
     /* RELSTORAGE_VIRTUAL has no space usage */
     return totalsize;

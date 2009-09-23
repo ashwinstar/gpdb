@@ -28,9 +28,6 @@
 #include "access/appendonlytid.h"
 #include "cdb/cdbappendonlystorage.h"
 
-#define AO_FILE_PATH_FORMAT "%s.%u"
-#define AOCS_FILE_PATH_FORMAT "%s.%d.%d"
-
 int
 AOSegmentFilePathNameLen(Relation rel)
 {
@@ -77,15 +74,6 @@ FormatAOSegmentFileName(
 	}
 	else
 	{
-		/*
-		 * Handle old Column-Store filename format HERE.
-		 */
-		if (!Debug_column_store_use_new_segment_filename_format)
-		{
-			sprintf(filepathname, AOCS_FILE_PATH_FORMAT, basepath, col, segno);
-			return;
-		}
-		
 		/*
 		 * Column oriented Append-only.
 		 */
