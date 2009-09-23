@@ -640,6 +640,8 @@ perform_default_encoding_conversion(const char *src, int len, bool is_client_to_
 	return result;
 }
 
+
+
 #ifdef USE_WIDE_UPPER_LOWER
 
 /*
@@ -911,7 +913,7 @@ pg_mbstrlen_with_len(const char *mbstr, int limit)
 
 /*
  * returns the byte length of a multibyte string
- * (not necessarily  NULL terminated)
+ * (not necessarily NULL terminated)
  * that is no longer than limit.
  * this function does not break multibyte character boundary.
  */
@@ -1041,29 +1043,42 @@ SetDatabaseEncoding(int encoding)
 
 	DatabaseEncoding = &pg_enc2name_tbl[encoding];
 	Assert(DatabaseEncoding->encoding == encoding);
-
-#ifdef ENABLE_NLS
-	pg_bind_textdomain_codeset(textdomain(NULL), encoding);
-#endif
 }
 
-	/*
- * On Windows, we need to explicitly bind gettext to the correct
- * encoding, because gettext() tends to get confused.
-	 */
+/*
+ * Bind gettext to the codeset equivalent with the database encoding.
+ */
 void
-pg_bind_textdomain_codeset(const char *domainname, int encoding)
+pg_bind_textdomain_codeset(const char *domainname)
 {
-#if defined(ENABLE_NLS) && defined(WIN32)
-	int     i;
+#if defined(ENABLE_NLS)
+	int			encoding = GetDatabaseEncoding();
+	int			i;
 
-	for (i = 0; i < lengthof(codeset_map_array); i++)
+	/*
+	 * gettext() uses the codeset specified by LC_CTYPE by default, so if that
+	 * matches the database encoding we don't need to do anything. In CREATE
+	 * DATABASE, we enforce or trust that the locale's codeset matches
+	 * database encoding, except for the C locale. In C locale, we bind
+	 * gettext() explicitly to the right codeset.
+	 *
+	 * On Windows, though, gettext() tends to get confused so we always bind
+	 * it.
+	 */
+#ifndef WIN32
+	const char *ctype = setlocale(LC_CTYPE, NULL);
+
+	if (pg_strcasecmp(ctype, "C") != 0 && pg_strcasecmp(ctype, "POSIX") != 0)
+		return;
+#endif
+
+	for (i = 0; pg_enc2gettext_tbl[i].name != NULL; i++)
 	{
-		if (codeset_map_array[i].encoding == encoding)
+		if (pg_enc2gettext_tbl[i].encoding == encoding)
 		{
 			if (bind_textdomain_codeset(domainname,
-										codeset_map_array[i].codeset) == NULL)
-			elog(LOG, "bind_textdomain_codeset failed");
+										pg_enc2gettext_tbl[i].name) == NULL)
+				elog(LOG, "bind_textdomain_codeset failed");
 			break;
 		}
 	}

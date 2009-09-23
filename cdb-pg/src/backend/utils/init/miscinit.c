@@ -377,7 +377,7 @@ GetAuthenticatedUserId(void)
  * ever throw any kind of error.  This is because they are used by
  * StartTransaction and AbortTransaction to save/restore the settings,
  * and during the first transaction within a backend, the value to be saved
- * and perhaps restored is indeed invalid.  We have to be able to get
+ * and perhaps restored is indeed invalid.	We have to be able to get
  * through AbortTransaction without asserting in case InitPostgres fails.
  */
 void
@@ -1267,6 +1267,7 @@ process_local_preload_libraries(void)
 				   "local_preload_libraries",
 				   true);
 }
+
 void
 pg_bindtextdomain(const char *domain)
 {

@@ -15,7 +15,7 @@ include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I$(top_srcdir)/src/backend/gp_libpq_fe $(CPPFLAGS)
 
 SUBDIRS := motion
-SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
+
 
 OBJS = cdbanalyze.o \
        cdbappendonlystorage.o cdbappendonlystorageformat.o \
@@ -53,26 +53,4 @@ endif
 
 ALLOBJS = $(OBJS) $(SUBDIROBJS)
 
-all: SUBSYS.o
-
-SUBSYS.o: $(ALLOBJS) $(pre_reqs)
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS) $(EXTRA_OBJS) 
-
-
-$(SUBDIROBJS): $(SUBDIRS:%=%-recursive) ;
-
-.PHONY: $(SUBDIRS:%=%-recursive)
-$(SUBDIRS:%=%-recursive):
-	$(MAKE) -C $(subst -recursive,,$@) SUBSYS.o
-
-depend dep:
-	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
-	$(CC) -MM $(CFLAGS) *.c >depend
-
-clean:
-	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
-	rm -f SUBSYS.o $(ALLOBJS)
-
-ifeq (depend,$(wildcard depend))
-include depend
-endif
+include $(top_srcdir)/src/backend/common.mk

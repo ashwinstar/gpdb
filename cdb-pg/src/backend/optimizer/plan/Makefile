@@ -4,7 +4,7 @@
 #    Makefile for optimizer/plan
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/backend/optimizer/plan/Makefile,v 1.13 2005/04/11 23:06:55 tgl Exp $
+#    $PostgreSQL: pgsql/src/backend/optimizer/plan/Makefile,v 1.15 2008/02/19 10:30:07 petere Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -23,17 +23,4 @@ OBJS = createplan.o \
 	   setrefs.o \
 	   subselect.o
 
-all: SUBSYS.o
-
-SUBSYS.o: $(OBJS)
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
-
-depend dep:
-	$(CC) -MM $(CFLAGS) *.c >depend
-
-clean: 
-	rm -f SUBSYS.o $(OBJS)
-
-ifeq (depend,$(wildcard depend))
-include depend
-endif
+include $(top_srcdir)/src/backend/common.mk

@@ -17,6 +17,8 @@ OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
 
 BKIFILES = postgres.bki postgres.description postgres.shdescription
 
+include $(top_srcdir)/src/backend/common.mk
+
 all: cdb_util.sql cdb_schema.sql SUBSYS.o $(BKIFILES)
 
 cdb_schema.sql: cdb_schema.in
@@ -29,8 +31,6 @@ cdb_util.sql: cdb_util.in
                 -e 's,@dlsuffix@,$(DLSUFFIX),g' \
              $< > cdb_util.sql
 
-SUBSYS.o: $(OBJS)
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
 
 # Note: there are some undocumented dependencies on the ordering in which
 # the catalog header files are assembled into postgres.bki.  In particular,

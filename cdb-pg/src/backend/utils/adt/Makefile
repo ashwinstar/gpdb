@@ -16,7 +16,6 @@ override CFLAGS+= -mieee
 endif
 endif
 
-.PHONY: version.c
 
 OBJS = acl.o array_userfuncs.o arrayfuncs.o arrayutils.o ascii.o \
 	bool.o cash.o char.o date.o datetime.o datum.o dbsize.o \
@@ -31,17 +30,4 @@ OBJS = acl.o array_userfuncs.o arrayfuncs.o arrayutils.o ascii.o \
 
 like.o: like.c like_match.c
 
-all: SUBSYS.o
-
-SUBSYS.o: $(OBJS)
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
-
-depend dep:
-	$(CC) -MM $(CFLAGS) *.c >depend
-
-clean: 
-	rm -f SUBSYS.o $(OBJS)
-
-ifeq (depend,$(wildcard depend))
-include depend
-endif
+include $(top_srcdir)/src/backend/common.mk

@@ -13,7 +13,7 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 SUBDIRS     := fstream
-SUBDIROBJS  := $(SUBDIRS:%=%/SUBSYS.o)
+
 
 override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)
 
@@ -25,16 +25,7 @@ ifdef krb_srvtab
 override CPPFLAGS += -DPG_KRB_SRVTAB='"$(krb_srvtab)"'
 endif
 
-
-all: SUBSYS.o
-
-SUBSYS.o: $(OBJS) $(SUBDIROBJS)
-	$(LD) $(LDREL) $(LDOUT) $@ $^
-
-$(SUBDIROBJS): $(SUBDIRS:%=%-recursive) ;
-.PHONY: $(SUBDIRS:%=%-recursive)
-$(SUBDIRS:%=%-recursive):
-	$(MAKE) -C $(subst -recursive,,$@) SUBSYS.o
+include $(top_srcdir)/src/backend/common.mk
 
 # guc-file is compiled as part of guc
 guc.o: $(srcdir)/guc-file.c
@@ -52,11 +43,3 @@ clean:
 	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
 	rm -f SUBSYS.o $(OBJS)
 	@rm -f lex.yy.c
-
-depend dep:
-	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
-	$(CC) -MM $(CFLAGS) *.c >depend
-
-ifeq (depend,$(wildcard depend))
-include depend
-endif
