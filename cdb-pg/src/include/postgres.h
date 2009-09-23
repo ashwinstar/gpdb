@@ -318,13 +318,13 @@ static inline CommandId DatumGetCommandId(Datum d) { return (CommandId) d; }
 static inline Datum CommandIdGetDatum(CommandId cid) { return (Datum) cid; } 
 
 static inline void *DatumGetPointer(Datum d) { Datum_U du; du.d = d; return du.ptr; }
-static inline Datum PointerGetDatum(void *p) { Datum_U du; du.d = 0; du.ptr = p; return du.d; } 
+static inline Datum PointerGetDatum(const void *p) { Datum_U du; du.d = 0; du.ptr = (void *)p; return du.d; }
 
 static inline char *DatumGetCString(Datum d) { return (char* ) DatumGetPointer(d); } 
-static inline Datum CStringGetDatum(char *p) { return PointerGetDatum(p); }
+static inline Datum CStringGetDatum(const char *p) { return PointerGetDatum(p); }
 
 static inline Name DatumGetName(Datum d) { return (Name) DatumGetPointer(d); }
-static inline Datum NameGetDatum(Name n) { return PointerGetDatum(n); } 
+static inline Datum NameGetDatum(const Name n) { return PointerGetDatum(n); }
 
 #if BYTE_ORDER == LITTLE_ENDIAN 
 static inline float4 DatumGetFloat4(Datum d) { Datum_U du; du.d = d; return du.f4[0]; } 
