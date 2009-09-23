@@ -390,7 +390,8 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
          */
         if(mke_get_lv(e) != 0)
         {
-            (mkheap->mkctxt->prep)(e, mkheap->mkctxt, 0); 
+        	if (mkheap->mkctxt->prep)
+        		(mkheap->mkctxt->prep)(e, mkheap->mkctxt, 0); 
             mke_set_lv(e, 0);
         }
     }
@@ -403,7 +404,8 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 
         while (lv < toplv)
         {
-            mkheap->mkctxt->prep(e, mkheap->mkctxt, lv);
+        	if (mkheap->mkctxt->prep)
+        		mkheap->mkctxt->prep(e, mkheap->mkctxt, lv);
             c = mkheap_compare(mkheap, e, mkheap->lvtops+lv); 
             if(c!=0)
                 break;
@@ -419,7 +421,8 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
         Assert(mke_get_lv(e) == lv);
         if(lv == toplv)
         {
-            (mkheap->mkctxt->prep)(e, mkheap->mkctxt, lv);
+        	if (mkheap->mkctxt->prep)
+        		(mkheap->mkctxt->prep)(e, mkheap->mkctxt, lv);
             c = mkheap_compare(mkheap, e, mkheap->p);
             if(c < 0)
                 return -1;
@@ -439,8 +442,11 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
              */
             while(lv < mkheap->mkctxt->total_lv - 1)
             {
-                mkheap->mkctxt->prep(mkheap->p, mkheap->mkctxt, lv+1);
-                mkheap->mkctxt->prep(e, mkheap->mkctxt, lv+1);
+            	if (mkheap->mkctxt->prep)
+            		mkheap->mkctxt->prep(mkheap->p, mkheap->mkctxt, lv+1);
+                
+            	if (mkheap->mkctxt->prep)
+            		mkheap->mkctxt->prep(e, mkheap->mkctxt, lv+1);
 
                 ++lv;
                 mke_set_lv(mkheap->p, lv);
