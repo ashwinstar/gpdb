@@ -219,6 +219,25 @@ PGAC_ARG_BOOL(enable, profiling, no,
 AC_SUBST(enable_profiling)
 
 #
+# --enable-coverage enables generation of code coverage metrics with gcov
+#
+PGAC_ARG_BOOL(enable, coverage, no,
+              [build with coverage testing instrumentation],
+[AC_CHECK_PROGS(GCOV, gcov)
+if test -z "$GCOV"; then
+  AC_MSG_ERROR([gcov not found])
+fi
+AC_CHECK_PROGS(LCOV, lcov)
+if test -z "$LCOV"; then
+  AC_MSG_ERROR([lcov not found])
+fi
+AC_CHECK_PROGS(GENHTML, genhtml)
+if test -z "$GENHTML"; then
+  AC_MSG_ERROR([genhtml not found])
+fi])
+AC_SUBST(enable_coverage)
+
+#
 # DTrace
 #
 PGAC_ARG_BOOL(enable, dtrace, no,
@@ -274,6 +293,7 @@ unset CFLAGS
 # CFLAGS are selected so:
 # If the user specifies something in the environment, that is used.
 # else:  If the template file set something, that is used.
+# else:  If coverage was enabled, don't set anything.
 # else:  If the compiler is GCC, then we use -O2.
 # else:  If the compiler is something else, then we use -O, unless debugging.
 
@@ -281,6 +301,8 @@ if test "$ac_env_CFLAGS_set" = set; then
   CFLAGS=$ac_env_CFLAGS_value
 elif test "${CFLAGS+set}" = set; then
   : # (keep what template set)
+elif test "$enable_coverage" = yes; then
+  : # no optimization by default
 elif test "$GCC" = yes; then
   CFLAGS="-O2"
 else
@@ -320,6 +342,15 @@ if test "$enable_debug" = yes && test "$ac_cv_prog_cc_g" = yes; then
   CFLAGS="$CFLAGS -g"
 fi
 
+# enable code coverage if --enable-coverage
+if test "$enable_coverage" = yes; then
+  if test "$GCC" = yes; then
+    CFLAGS="$CFLAGS -fprofile-arcs -ftest-coverage"
+  else
+    AC_MSG_ERROR([--enable-coverage is supported only when using GCC])
+  fi
+fi
+
 # enable profiling if --enable-profiling
 if test "$enable_profiling" = yes && test "$ac_cv_prog_cc_g" = yes; then
   if test "$GCC" = yes; then
@@ -328,7 +359,7 @@ if test "$enable_profiling" = yes && test "$ac_cv_prog_cc_g" = yes; then
     CFLAGS="$CFLAGS -pg $PLATFORM_PROFILE_FLAGS"
   else
     AC_MSG_ERROR([--enable-profiling is supported only when using GCC])
-fi
+  fi
 fi
 
 # We already have this in Makefile.win32, but configure needs it too
@@ -676,10 +707,10 @@ AC_SUBST(ELF_SYS)
 CPPFLAGS="$CPPFLAGS $INCLUDES"
 LDFLAGS="$LDFLAGS $LIBDIRS"
 
+AC_ARG_VAR(LDFLAGS_SL, [linker flags for shared library linking])
+
 AC_MSG_NOTICE([using CPPFLAGS=$CPPFLAGS])
 AC_MSG_NOTICE([using LDFLAGS=$LDFLAGS])
-
-AC_ARG_VAR(LDFLAGS_SL)
 
 PGAC_PROG_LD
 AC_SUBST(LD)
@@ -719,6 +750,17 @@ fi
 if test "$with_python" = yes; then
   PGAC_PATH_PYTHON
   PGAC_CHECK_PYTHON_EMBED_SETUP
+fi
+
+ZIC=
+if test "$cross_compiling" = yes && test -z "$with_system_tzdata"; then
+  AC_PATH_PROG(ZIC, zic)
+  if test -z "$ZIC"; then
+    AC_MSG_ERROR([
+When cross-compiling, either use the option --with-system-tzdata to use
+existing time-zone data, or set the environment variable ZIC to a zic
+program to use during the build.])
+  fi
 fi
 
 # Supply a numeric version string for use by 3rd party add-ons
@@ -824,6 +866,27 @@ AC_CHECK_CURL([7.0.0])
 CFLAGS="$CFLAGS $CURL_CFLAGS"
 LIBS="$LIBS $CURL_LIBS"
 
+# Check for bzip2
+AC_SEARCH_LIBS(BZ2_bzDecompress, bz2)
+
+# Check for hstrerrror in libresolv
+AC_SEARCH_LIBS(hstrerror, resolv)
+
+if test "$PORTNAME" = "darwin"; then
+# Check for f2c, needed by blas and lapack
+AC_SEARCH_LIBS(c_cos,f2c,,,,[-Z])
+# Check for blas, needed by lappack
+AC_SEARCH_LIBS(f2c_sgemm, [blas],,,[-Z -lf2c])
+# Check for lapack
+AC_SEARCH_LIBS(dgesdd_, [lapack],,,[-Z -lf2c -lblas])
+else
+# Check for f2c, needed by blas and lapack
+AC_SEARCH_LIBS(c_cos,f2c)
+# Check for blas, needed by lappack
+AC_SEARCH_LIBS(f2c_sgemm, [blas],,,[-lf2c])
+# Check for lapack
+AC_SEARCH_LIBS(dgesdd_, [lapack],,,[-lf2c -lblas])
+fi
 
 ##
 ## Header files
