@@ -19,7 +19,7 @@ BKIFILES = postgres.bki postgres.description postgres.shdescription
 
 include $(top_srcdir)/src/backend/common.mk
 
-all: cdb_util.sql cdb_schema.sql SUBSYS.o $(BKIFILES)
+all: cdb_util.sql cdb_schema.sql  $(BKIFILES)
 
 cdb_schema.sql: cdb_schema.in
 			sed -e 's,@pkglibdir@,$(pkglibdir),g' \
