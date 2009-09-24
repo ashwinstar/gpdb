@@ -1088,6 +1088,7 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 				{
 					char		hostinfo[NI_MAXHOST];
 
+					/* Get a text representation of the IP address */
 					pg_getnameinfo_all((struct sockaddr_storage *) addr->ai_addr, addr->ai_addrlen,
 									   hostinfo, sizeof(hostinfo),
 									   NULL, 0,
@@ -1098,8 +1099,24 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 			}
 
 #ifdef HAVE_IPV6
+			/*
+			 * IPv6 probably would work fine, we'd just need to make sure all the data structures are big enough for
+			 * the IPv6 address.  And on some broken systems, you can get an IPv6 address, but not be able to bind to it
+			 * because IPv6 is disabled or missing in the kernel, so we'd only want to use the IPv6 address if there isn't
+			 * an IPv4 address.  All we really need to do is test this.
+			 */
 			if (cdbinfo->hostip == NULL && addrs->ai_family == AF_INET6)
-				elog(ERROR, "host %s only has IPv6 address, not yet supported", conninfo->seginfo[i].hostname);
+			{
+				char		hostinfo[NI_MAXHOST];
+
+				elog(WARNING, "host %s only has IPv6 address, not yet supported", conninfo->seginfo[i].hostname);
+				addr = addrs;
+				pg_getnameinfo_all((struct sockaddr_storage *) addr->ai_addr, addr->ai_addrlen,
+								   hostinfo, sizeof(hostinfo),
+								   NULL, 0,
+								   NI_NUMERICHOST);
+				cdbinfo->hostip = pstrdup(hostinfo);
+			}
 #endif
 
 			pg_freeaddrinfo_all(hint.ai_family, addrs);
