@@ -820,6 +820,34 @@ getDnsCachedAddress(char *name, int port, int elevel)
 				break;
 			}
 		}
+
+#ifdef HAVE_IPV6
+		/*
+		 * IPv6 probably would work fine, we'd just need to make sure all the data structures are big enough for
+		 * the IPv6 address.  And on some broken systems, you can get an IPv6 address, but not be able to bind to it
+		 * because IPv6 is disabled or missing in the kernel, so we'd only want to use the IPv6 address if there isn't
+		 * an IPv4 address.  All we really need to do is test this.
+		 */
+		if (e == NULL && addrs->ai_family == AF_INET6)
+		{
+			char		hostinfo[NI_MAXHOST];
+
+			/* We haven't tested this code, so warn about it */
+			elog(WARNING, "host %s only has IPv6 address, not yet supported", name);
+			addr = addrs;
+			pg_getnameinfo_all((struct sockaddr_storage *) addr->ai_addr, addr->ai_addrlen,
+							   hostinfo, sizeof(hostinfo),
+							   NULL, 0,
+							   NI_NUMERICHOST);
+
+			e = (struct segment_ip_cache_entry *)hash_search(segment_ip_cache_htab,
+															 name,
+															 HASH_ENTER,
+															 NULL);
+			Assert(e != NULL);
+			memcpy(e->hostinfo, hostinfo, sizeof(hostinfo));
+		}
+#endif
 			
 		MemoryContextSwitchTo(oldContext);
 			
