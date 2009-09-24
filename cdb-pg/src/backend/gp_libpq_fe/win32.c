@@ -33,13 +33,7 @@
 #include "win32.h"
 
 /* Declared here to avoid pulling in all includes, which causes name collissions */
-#ifdef ENABLE_NLS
-extern char *
-libpq_gettext(const char *msgid)
-__attribute__((format_arg(1)));
-#else
-#define libpq_gettext(x) (x)
-#endif
+
 
 
 static struct WSErrorEntry
@@ -319,7 +313,7 @@ winsock_strerror(int err, char *strerrbuf, size_t buflen)
 	}
 
 	if (!success)
-		sprintf(strerrbuf, libpq_gettext("Unknown socket error (0x%08X/%i)"), err, err);
+		sprintf(strerrbuf, gettext("Unknown socket error (0x%08X/%i)"), err, err);
 	else
 	{
 		strerrbuf[buflen - 1] = '\0';

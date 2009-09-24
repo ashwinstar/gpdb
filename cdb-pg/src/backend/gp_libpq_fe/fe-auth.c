@@ -107,7 +107,7 @@ pg_local_sendauth(PGconn *conn)
 	return STATUS_OK;
 #else
 	printfPQExpBuffer(&conn->errorMessage,
-			 libpq_gettext("SCM_CRED authentication method not supported\n"));
+			 gettext("SCM_CRED authentication method not supported\n"));
 	return STATUS_ERROR;
 #endif
 }
@@ -131,7 +131,7 @@ pg_password_sendauth(PGconn *conn, const char *password, AuthRequest areq)
 				if (!crypt_pwd)
 				{
 					printfPQExpBuffer(&conn->errorMessage,
-									  libpq_gettext("out of memory\n"));
+									  gettext("out of memory\n"));
 					return STATUS_ERROR;
 				}
 
@@ -181,28 +181,28 @@ pg_fe_sendauth(AuthRequest areq, PGconn *conn)
 
 		case AUTH_REQ_KRB4:
 			printfPQExpBuffer(&conn->errorMessage,
-				 libpq_gettext("Kerberos 4 authentication not supported\n"));
+				 gettext("Kerberos 4 authentication not supported\n"));
 			return STATUS_ERROR;
 
 		case AUTH_REQ_KRB5:
 			printfPQExpBuffer(&conn->errorMessage,
-				 libpq_gettext("Kerberos 5 authentication not supported\n"));
+				 gettext("Kerberos 5 authentication not supported\n"));
 			return STATUS_ERROR;
 
 		case AUTH_REQ_GSS:
 		case AUTH_REQ_GSS_CONT:
 			printfPQExpBuffer(&conn->errorMessage,
-					 libpq_gettext("GSSAPI authentication not supported\n"));
+					 gettext("GSSAPI authentication not supported\n"));
 			return STATUS_ERROR;
 
 		case AUTH_REQ_SSPI:
 			printfPQExpBuffer(&conn->errorMessage,
-					   libpq_gettext("SSPI authentication not supported\n"));
+					   gettext("SSPI authentication not supported\n"));
 			return STATUS_ERROR;
 
 		case AUTH_REQ_CRYPT:
 			printfPQExpBuffer(&conn->errorMessage,
-				 libpq_gettext("Crypt authentication not supported\n"));
+				 gettext("Crypt authentication not supported\n"));
 			return STATUS_ERROR;
 
 		case AUTH_REQ_MD5:
@@ -229,7 +229,7 @@ pg_fe_sendauth(AuthRequest areq, PGconn *conn)
 
 		default:
 			printfPQExpBuffer(&conn->errorMessage,
-			libpq_gettext("authentication method %u not supported\n"), areq);
+			gettext("authentication method %u not supported\n"), areq);
 			return STATUS_ERROR;
 	}
 

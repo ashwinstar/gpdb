@@ -539,14 +539,6 @@ extern void pq_reset_sigpipe(sigset_t *osigset, bool sigpipe_pending,
  */
 #define pqIsnonblocking(conn)	((conn)->nonblocking)
 
-#ifdef ENABLE_NLS
-extern char *
-libpq_gettext(const char *msgid)
-__attribute__((format_arg(1)));
-#else
-#define libpq_gettext(x) (x)
-#endif
-
 /*
  * These macros are needed to let error-handling code be portable between
  * Unix and Windows.  (ugh)

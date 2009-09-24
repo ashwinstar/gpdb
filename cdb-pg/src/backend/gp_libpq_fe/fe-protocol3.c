@@ -446,7 +446,7 @@ pqParseInput3(PGconn *conn)
 					{
 						/* Set up to report error at end of query */
 						printfPQExpBuffer(&conn->errorMessage,
-										  libpq_gettext("server sent data (\"D\" message) without prior row description (\"T\" message)\n"));
+										  gettext("server sent data (\"D\" message) without prior row description (\"T\" message)\n"));
 						pqSaveErrorResult(conn);
 						/* Discard the unexpected message */
 						conn->inCursor += msgLength;
@@ -538,7 +538,7 @@ pqParseInput3(PGconn *conn)
 
 				default:
 					printfPQExpBuffer(&conn->errorMessage,
-									  libpq_gettext(
+									  gettext(
 										  "unexpected response from server; first received character was \"%c\"\n"),
 									  id);
 					/* build an error result holding the error message */
@@ -560,7 +560,7 @@ pqParseInput3(PGconn *conn)
 		{
 			/* Trouble --- report it */
 			printfPQExpBuffer(&conn->errorMessage,
-							  libpq_gettext("message contents do not agree with length in message type \"%c\"\n"),
+							  gettext("message contents do not agree with length in message type \"%c\"\n"),
 							  id);
 			/* build an error result holding the error message */
 			pqSaveErrorResult(conn);
@@ -580,7 +580,7 @@ static void
 handleSyncLoss(PGconn *conn, char id, int msgLength)
 {
 	printfPQExpBuffer(&conn->errorMessage,
-					  libpq_gettext(
+					  gettext(
 						  "lost synchronization with server: got message type \"%c\", length %d\n"),
 					  id, msgLength);
 	/* build an error result holding the error message */
@@ -812,7 +812,7 @@ getAnotherTuple(PGconn *conn, int msgLength)
 	{
 		/* Replace partially constructed result with an error result */
 		printfPQExpBuffer(&conn->errorMessage,
-				 libpq_gettext("unexpected field count in \"D\" message\n"));
+				 gettext("unexpected field count in \"D\" message\n"));
 		pqSaveErrorResult(conn);
 		/* Discard the failed message by pretending we read it */
 		conn->inCursor = conn->inStart + 5 + msgLength;
@@ -867,7 +867,7 @@ outOfMemory:
 	 */
 	pqClearAsyncResult(conn);
 	printfPQExpBuffer(&conn->errorMessage,
-					  libpq_gettext("out of memory for query result\n"));
+					  gettext("out of memory for query result\n"));
 	pqSaveErrorResult(conn);
 
 	/* Discard the failed message by pretending we read it */
@@ -954,7 +954,7 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 		{
 			/* emit position as text addition to primary message */
 			/* translator: %s represents a digit string */
-			appendPQExpBuffer(&workBuf, libpq_gettext(" at character %s"),
+			appendPQExpBuffer(&workBuf, gettext(" at character %s"),
 							  val);
 		}
 	}
@@ -973,7 +973,7 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 			{
 				/* emit position as text addition to primary message */
 				/* translator: %s represents a digit string */
-				appendPQExpBuffer(&workBuf, libpq_gettext(" at character %s"),
+				appendPQExpBuffer(&workBuf, gettext(" at character %s"),
 								  val);
 			}
 		}
@@ -986,16 +986,16 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 								conn->client_encoding);
 		val = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
 		if (val)
-			appendPQExpBuffer(&workBuf, libpq_gettext("DETAIL:  %s\n"), val);
+			appendPQExpBuffer(&workBuf, gettext("DETAIL:  %s\n"), val);
 		val = PQresultErrorField(res, PG_DIAG_MESSAGE_HINT);
 		if (val)
-			appendPQExpBuffer(&workBuf, libpq_gettext("HINT:  %s\n"), val);
+			appendPQExpBuffer(&workBuf, gettext("HINT:  %s\n"), val);
 		val = PQresultErrorField(res, PG_DIAG_INTERNAL_QUERY);
 		if (val)
-			appendPQExpBuffer(&workBuf, libpq_gettext("QUERY:  %s\n"), val);
+			appendPQExpBuffer(&workBuf, gettext("QUERY:  %s\n"), val);
 		val = PQresultErrorField(res, PG_DIAG_CONTEXT);
 		if (val)
-			appendPQExpBuffer(&workBuf, libpq_gettext("CONTEXT:  %s\n"), val);
+			appendPQExpBuffer(&workBuf, gettext("CONTEXT:  %s\n"), val);
 	}
 	if (conn->verbosity == PQERRORS_VERBOSE)
 	{
@@ -1007,11 +1007,11 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 		val = PQresultErrorField(res, PG_DIAG_SOURCE_FUNCTION);
 		if (val || valf || vall)
 		{
-			appendPQExpBufferStr(&workBuf, libpq_gettext("LOCATION:  "));
+			appendPQExpBufferStr(&workBuf, gettext("LOCATION:  "));
 			if (val)
-				appendPQExpBuffer(&workBuf, libpq_gettext("%s, "), val);
+				appendPQExpBuffer(&workBuf, gettext("%s, "), val);
 			if (valf && vall)	/* unlikely we'd have just one */
-				appendPQExpBuffer(&workBuf, libpq_gettext("%s:%s"),
+				appendPQExpBuffer(&workBuf, gettext("%s:%s"),
 								  valf, vall);
 			appendPQExpBufferChar(&workBuf, '\n');
 		}
@@ -1258,7 +1258,7 @@ reportErrorPosition(PQExpBuffer msg, const char *query, int loc, int encoding)
 
 		/* Begin building the finished message. */
 		i = msg->len;
-		appendPQExpBuffer(msg, libpq_gettext("LINE %d: "), loc_line);
+		appendPQExpBuffer(msg, gettext("LINE %d: "), loc_line);
 		if (beg_trunc)
 			appendPQExpBufferStr(msg, "...");
 
@@ -1718,7 +1718,7 @@ pqGetCopyData3(PGconn *conn, char **buffer, int async)
 			if (*buffer == NULL)
 			{
 				printfPQExpBuffer(&conn->errorMessage,
-								  libpq_gettext("out of memory\n"));
+								  gettext("out of memory\n"));
 				return -2;
 			}
 			memcpy(*buffer, &conn->inBuffer[conn->inCursor], msgLength);
@@ -1750,7 +1750,7 @@ pqGetline3(PGconn *conn, char *s, int maxlen)
 		conn->copy_is_binary)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-					  libpq_gettext("PQgetline: not doing text COPY OUT\n"));
+					  gettext("PQgetline: not doing text COPY OUT\n"));
 		*s = '\0';
 		return EOF;
 	}
@@ -1854,7 +1854,7 @@ pqEndcopy3(PGconn *conn)
 		conn->asyncStatus != PGASYNC_COPY_OUT)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-						  libpq_gettext("no COPY in progress\n"));
+						  gettext("no COPY in progress\n"));
 		return 1;
 	}
 
@@ -2125,7 +2125,7 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
 			default:
 				/* The backend violates the protocol. */
 				printfPQExpBuffer(&conn->errorMessage,
-								  libpq_gettext("protocol error: id=0x%x\n"),
+								  gettext("protocol error: id=0x%x\n"),
 								  id);
 				pqSaveErrorResult(conn);
 				/* trust the specified message length as what to skip */

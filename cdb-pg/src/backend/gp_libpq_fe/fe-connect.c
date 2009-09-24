@@ -644,7 +644,7 @@ connectNoDelay(PGconn *conn)
 		char		sebuf[256];
 
 		appendPQExpBuffer(&conn->errorMessage,
-			libpq_gettext("could not set socket to TCP no delay mode: %s\n"),
+			gettext("could not set socket to TCP no delay mode: %s\n"),
 						  SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 		return 0;
 	}
@@ -674,7 +674,7 @@ connectFailureMessage(PGconn *conn, int errorno)
 						   service, sizeof(service),
 						   NI_NUMERICSERV);
 		appendPQExpBuffer(&conn->errorMessage,
-						  libpq_gettext("could not connect to server: %s\n"
+						  gettext("could not connect to server: %s\n"
 							"\tIs the server running locally and accepting\n"
 							"\tconnections on Unix domain socket \"%s\"?\n"),
 						  SOCK_STRERROR(errorno, sebuf, sizeof(sebuf)),
@@ -684,7 +684,7 @@ connectFailureMessage(PGconn *conn, int errorno)
 #endif   /* HAVE_UNIX_SOCKETS */
 	{
 		appendPQExpBuffer(&conn->errorMessage,
-						  libpq_gettext("could not connect to server: %s\n"
+						  gettext("could not connect to server: %s\n"
 					 "\tIs the server running on host \"%s\" and accepting\n"
 										"\tTCP/IP connections on port %s?\n"),
 						  SOCK_STRERROR(errorno, sebuf, sizeof(sebuf)),
@@ -774,11 +774,11 @@ connectDBStart(PGconn *conn)
 	{
 		if (node)
 			appendPQExpBuffer(&conn->errorMessage,
-							  libpq_gettext("could not translate host name \"%s\" to address: %s\n"),
+							  gettext("could not translate host name \"%s\" to address: %s\n"),
 							  node, gai_strerror(ret));
 		else
 			appendPQExpBuffer(&conn->errorMessage,
-							  libpq_gettext("could not translate Unix-domain socket path \"%s\" to address: %s\n"),
+							  gettext("could not translate Unix-domain socket path \"%s\" to address: %s\n"),
 							  portstr, gai_strerror(ret));
 		if (addrs)
 			pg_freeaddrinfo_all(hint.ai_family, addrs);
@@ -977,7 +977,7 @@ PQconnectPoll(PGconn *conn)
 
 		default:
 			appendPQExpBuffer(&conn->errorMessage,
-							  libpq_gettext(
+							  gettext(
 											"invalid connection state, "
 								 "probably indicative of memory corruption\n"
 											));
@@ -1021,7 +1021,7 @@ keep_going:						/* We will come back to here until there is
 							continue;
 						}
 						appendPQExpBuffer(&conn->errorMessage,
-							  libpq_gettext("could not create socket: %s\n"),
+							  gettext("could not create socket: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 						break;
 					}
@@ -1044,7 +1044,7 @@ keep_going:						/* We will come back to here until there is
 					if (!pg_set_noblock(conn->sock))
 					{
 						appendPQExpBuffer(&conn->errorMessage,
-										  libpq_gettext("could not set socket to non-blocking mode: %s\n"),
+										  gettext("could not set socket to non-blocking mode: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 						closesocket(conn->sock);
 						conn->sock = -1;
@@ -1056,7 +1056,7 @@ keep_going:						/* We will come back to here until there is
 					if (fcntl(conn->sock, F_SETFD, FD_CLOEXEC) == -1)
 					{
 						appendPQExpBuffer(&conn->errorMessage,
-										  libpq_gettext("could not set socket to close-on-exec mode: %s\n"),
+										  gettext("could not set socket to close-on-exec mode: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 						closesocket(conn->sock);
 						conn->sock = -1;
@@ -1143,7 +1143,7 @@ keep_going:						/* We will come back to here until there is
 							   (char *) &optval, &optlen) == -1)
 				{
 					appendPQExpBuffer(&conn->errorMessage,
-					libpq_gettext("could not get socket error status: %s\n"),
+					gettext("could not get socket error status: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 					goto error_return;
 				}
@@ -1181,7 +1181,7 @@ keep_going:						/* We will come back to here until there is
 								&conn->laddr.salen) < 0)
 				{
 					appendPQExpBuffer(&conn->errorMessage,
-									  libpq_gettext("could not get client address from socket: %s\n"),
+									  gettext("could not get client address from socket: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 					goto error_return;
 				}
@@ -1211,7 +1211,7 @@ keep_going:						/* We will come back to here until there is
 					 * run out of memory
 					 */
 					printfPQExpBuffer(&conn->errorMessage,
-									  libpq_gettext("out of memory\n"));
+									  gettext("out of memory\n"));
 					goto error_return;
 				}
 
@@ -1224,7 +1224,7 @@ keep_going:						/* We will come back to here until there is
 				if (pqPacketSend(conn, 0, startpacket, packetlen) != STATUS_OK)
 				{
 					appendPQExpBuffer(&conn->errorMessage,
-						libpq_gettext("could not send startup packet: %s\n"),
+						gettext("could not send startup packet: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 					free(startpacket);
 					goto error_return;
@@ -1281,7 +1281,7 @@ keep_going:						/* We will come back to here until there is
 				if (!(beresp == 'R' || beresp == 'E'))
 				{
 					appendPQExpBuffer(&conn->errorMessage,
-									  libpq_gettext(
+									  gettext(
 									  "expected authentication request from "
 												"server, but received %c\n"),
 									  beresp);
@@ -1314,7 +1314,7 @@ keep_going:						/* We will come back to here until there is
 				if (beresp == 'R' && (msgLength < 8 || msgLength > 2000))
 				{
 					appendPQExpBuffer(&conn->errorMessage,
-									  libpq_gettext(
+									  gettext(
 									  "expected authentication request from "
 												"server, but received %c\n"),
 									  beresp);
@@ -1479,7 +1479,7 @@ keep_going:						/* We will come back to here until there is
 				{
 					if (res->resultStatus != PGRES_FATAL_ERROR)
 						appendPQExpBuffer(&conn->errorMessage,
-										  libpq_gettext("unexpected message from server during startup\n"));
+										  gettext("unexpected message from server during startup\n"));
 
 					/*
 					 * if the resultStatus is FATAL, then conn->errorMessage
@@ -1517,7 +1517,7 @@ keep_going:						/* We will come back to here until there is
 				/* CONNECTION_SETENV is only used by protocol2 */
 		default:
 			printfPQExpBuffer(&conn->errorMessage,
-							  libpq_gettext(
+							  gettext(
 											"invalid connection state %c, "
 								 "probably indicative of memory corruption\n"
 											),
@@ -2150,7 +2150,7 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 		f = fopen(serviceFile, "r");
 		if (f == NULL)
 		{
-			printfPQExpBuffer(errorMessage, libpq_gettext("ERROR: service file \"%s\" not found\n"),
+			printfPQExpBuffer(errorMessage, gettext("ERROR: service file \"%s\" not found\n"),
 							  serviceFile);
 			return 1;
 		}
@@ -2163,7 +2163,7 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 			{
 				fclose(f);
 				printfPQExpBuffer(errorMessage,
-								  libpq_gettext("ERROR: line %d too long in service file \"%s\"\n"),
+								  gettext("ERROR: line %d too long in service file \"%s\"\n"),
 								  linenr,
 								  serviceFile);
 				return 2;
@@ -2214,7 +2214,7 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 					if (val == NULL)
 					{
 						printfPQExpBuffer(errorMessage,
-										  libpq_gettext("ERROR: syntax error in service file \"%s\", line %d\n"),
+										  gettext("ERROR: syntax error in service file \"%s\", line %d\n"),
 										  serviceFile,
 										  linenr);
 						fclose(f);
@@ -2241,7 +2241,7 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 					if (!found_keyword)
 					{
 						printfPQExpBuffer(errorMessage,
-										  libpq_gettext("ERROR: syntax error in service file \"%s\", line %d\n"),
+										  gettext("ERROR: syntax error in service file \"%s\", line %d\n"),
 										  serviceFile,
 										  linenr);
 						fclose(f);
@@ -2319,7 +2319,7 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
 	if (options == NULL)
 	{
 		printfPQExpBuffer(errorMessage,
-						  libpq_gettext("out of memory\n"));
+						  gettext("out of memory\n"));
 		return NULL;
 	}
 	memcpy(options, PQconninfoOptions, sizeof(PQconninfoOptions));
@@ -2328,7 +2328,7 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
 	if ((buf = strdup(conninfo)) == NULL)
 	{
 		printfPQExpBuffer(errorMessage,
-						  libpq_gettext("out of memory\n"));
+						  gettext("out of memory\n"));
 		PQconninfoFree(options);
 		return NULL;
 	}
@@ -2367,7 +2367,7 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
 		if (*cp != '=')
 		{
 			printfPQExpBuffer(errorMessage,
-							  libpq_gettext("missing \"=\" after \"%s\" in connection info string\n"),
+							  gettext("missing \"=\" after \"%s\" in connection info string\n"),
 							  pname);
 			PQconninfoFree(options);
 			free(buf);
@@ -2416,7 +2416,7 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
 				if (*cp == '\0')
 				{
 					printfPQExpBuffer(errorMessage,
-									  libpq_gettext("unterminated quoted string in connection info string\n"));
+									  gettext("unterminated quoted string in connection info string\n"));
 					PQconninfoFree(options);
 					free(buf);
 					return NULL;
@@ -2449,7 +2449,7 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
 		if (option->keyword == NULL)
 		{
 			printfPQExpBuffer(errorMessage,
-						 libpq_gettext("invalid connection option \"%s\"\n"),
+						 gettext("invalid connection option \"%s\"\n"),
 							  pname);
 			PQconninfoFree(options);
 			free(buf);
@@ -2465,7 +2465,7 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
 		if (!option->val)
 		{
 			printfPQExpBuffer(errorMessage,
-							  libpq_gettext("out of memory\n"));
+							  gettext("out of memory\n"));
 			PQconninfoFree(options);
 			free(buf);
 			return NULL;
@@ -2511,7 +2511,7 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
 				if (!option->val)
 				{
 					printfPQExpBuffer(errorMessage,
-									  libpq_gettext("out of memory\n"));
+									  gettext("out of memory\n"));
 					PQconninfoFree(options);
 					return NULL;
 				}
@@ -2529,7 +2529,7 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
 			if (!option->val)
 			{
 				printfPQExpBuffer(errorMessage,
-								  libpq_gettext("out of memory\n"));
+								  gettext("out of memory\n"));
 				PQconninfoFree(options);
 				return NULL;
 			}
@@ -2736,7 +2736,7 @@ char *
 PQerrorMessage(const PGconn *conn)
 {
 	if (!conn)
-		return libpq_gettext("connection pointer is NULL\n");
+		return gettext("connection pointer is NULL\n");
 
 	return conn->errorMessage.data;
 }
@@ -3018,7 +3018,7 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 	if (!S_ISREG(stat_buf.st_mode))
 	{
 		fprintf(stderr,
-		libpq_gettext("WARNING: password file \"%s\" is not a plain file\n"),
+		gettext("WARNING: password file \"%s\" is not a plain file\n"),
 				pgpassfile);
 		return NULL;
 	}
@@ -3027,7 +3027,7 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 	if (stat_buf.st_mode & (S_IRWXG | S_IRWXO))
 	{
 		fprintf(stderr,
-				libpq_gettext("WARNING: password file \"%s\" has group or world access; permissions should be u=rw (0600) or less\n"),
+				gettext("WARNING: password file \"%s\" has group or world access; permissions should be u=rw (0600) or less\n"),
 				pgpassfile);
 		return NULL;
 	}

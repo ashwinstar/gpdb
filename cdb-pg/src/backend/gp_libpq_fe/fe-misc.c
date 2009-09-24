@@ -590,7 +590,7 @@ pqReadData(PGconn *conn)
 	if (conn->sock < 0)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-						  libpq_gettext("connection not open\n"));
+						  gettext("connection not open\n"));
 		return -1;
 	}
 
@@ -656,7 +656,7 @@ retry3:
 			goto definitelyFailed;
 #endif
 		printfPQExpBuffer(&conn->errorMessage,
-				   libpq_gettext("could not receive data from server: %s\n"),
+				   gettext("could not receive data from server: %s\n"),
 						  SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 		return -1;
 	}
@@ -738,7 +738,7 @@ retry4:
 			goto definitelyFailed;
 #endif
 		printfPQExpBuffer(&conn->errorMessage,
-				   libpq_gettext("could not receive data from server: %s\n"),
+				   gettext("could not receive data from server: %s\n"),
 						  SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 		return -1;
 	}
@@ -754,7 +754,7 @@ retry4:
 	 */
 definitelyFailed:
 	printfPQExpBuffer(&conn->errorMessage,
-					  libpq_gettext(
+					  gettext(
 								"server closed the connection unexpectedly\n"
 				   "\tThis probably means the server terminated abnormally\n"
 							 "\tbefore or while processing the request.\n"));
@@ -785,7 +785,7 @@ pqSendSome(PGconn *conn, int len)
 	if (conn->sock < 0)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-						  libpq_gettext("connection not open\n"));
+						  gettext("connection not open\n"));
 		return -1;
 	}
 
@@ -832,7 +832,7 @@ pqSendSome(PGconn *conn, int len)
 				case ECONNRESET:
 #endif
 					printfPQExpBuffer(&conn->errorMessage,
-									  libpq_gettext(
+									  gettext(
 								"server closed the connection unexpectedly\n"
 					"\tThis probably means the server terminated abnormally\n"
 							 "\tbefore or while processing the request.\n"));
@@ -850,7 +850,7 @@ pqSendSome(PGconn *conn, int len)
 
 				default:
 					printfPQExpBuffer(&conn->errorMessage,
-						libpq_gettext("could not send data to server: %s\n"),
+						gettext("could not send data to server: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 					/* We don't assume it's a fatal error... */
 					conn->outCount = 0;
@@ -979,7 +979,7 @@ pqWaitTimed(int forRead, int forWrite, PGconn *conn, time_t finish_time)
 	if (result == 0)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-						  libpq_gettext("timeout expired\n"));
+						  gettext("timeout expired\n"));
 		return EOF;
 	}
 
@@ -1021,7 +1021,7 @@ pqSocketCheck(PGconn *conn, int forRead, int forWrite, time_t end_time)
 	if (conn->sock < 0)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-						  libpq_gettext("socket not open\n"));
+						  gettext("socket not open\n"));
 		return -1;
 	}
 
@@ -1035,7 +1035,7 @@ pqSocketCheck(PGconn *conn, int forRead, int forWrite, time_t end_time)
 		char		sebuf[256];
 
 		printfPQExpBuffer(&conn->errorMessage,
-						  libpq_gettext("select() failed: %s\n"),
+						  gettext("select() failed: %s\n"),
 						  SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 	}
 
@@ -1173,39 +1173,6 @@ PQenv2encoding(void)
 }
 
 
-#ifdef ENABLE_NLS
 
-char *
-libpq_gettext(const char *msgid)
-{
-	static bool already_bound = false;
-
-	if (!already_bound)
-	{
-		/* dgettext() preserves errno, but bindtextdomain() doesn't */
-#ifdef WIN32
-		int			save_errno = GetLastError();
-#else
-		int			save_errno = errno;
-#endif
-		const char *ldir;
-
-		already_bound = true;
-		/* No relocatable lookup here because the binary could be anywhere */
-		ldir = getenv("PGLOCALEDIR");
-		if (!ldir)
-			ldir = LOCALEDIR;
-		bindtextdomain(PG_TEXTDOMAIN("libpq"), ldir);
-#ifdef WIN32
-		SetLastError(save_errno);
-#else
-		errno = save_errno;
-#endif
-	}
-
-	return dgettext(PG_TEXTDOMAIN("libpq"), msgid);
-}
-
-#endif   /* ENABLE_NLS */
 
 
