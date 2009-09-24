@@ -35,6 +35,7 @@ static TupleTableSlot *ExecHashJoinGetSavedTuple(HashJoinBatchSide *side,
 static int	ExecHashJoinNewBatch(HashJoinState *hjstate);
 static bool isNotDistinctJoin(List *qualList);
 
+static void ReleaseHashTable(HashJoinState *node);
 
 /* ----------------------------------------------------------------
  *		ExecHashJoin
@@ -200,7 +201,11 @@ ExecHashJoin(HashJoinState *node)
 			     * pipeline with our never-to-be-consumed data.
 			     */
 			    ExecSquelchNode(outerNode);
-
+				/* end of join */
+				if (gp_eager_hashtable_release)
+				{
+					ReleaseHashTable(node);
+				}
 			    return NULL;
 		    }
         }
@@ -233,6 +238,10 @@ ExecHashJoin(HashJoinState *node)
 			if (TupIsNull(outerTupleSlot))
 			{
 				/* end of join */
+				if (gp_eager_hashtable_release)
+				{
+					ReleaseHashTable(node);
+				}
 				return NULL;
 			}
 
@@ -1061,7 +1070,7 @@ ExecHashJoinGetSavedTuple(HashJoinBatchSide *batchside,
 
 void
 ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
-{
+{	
 	/*
 	 * In a multi-batch join, we currently have to do rescans the hard way,
 	 * primarily because batch temp files may have already been released. But
@@ -1122,6 +1131,30 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 	 */
 	if (((PlanState *) node)->lefttree->chgParam == NULL)
 		ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
+}
+
+/**
+ * This method releases the hash table. 
+ */
+static void ReleaseHashTable(HashJoinState *node)
+{
+	Assert(gp_eager_hashtable_release);
+	
+	if (node->hj_HashTable)
+	{
+		ExecHashTableDestroy(node->hj_HashTable);
+		node->hj_HashTable = NULL;
+	}
+	
+	/* Always reset intra-tuple state */
+	node->hj_CurHashValue = 0;
+	node->hj_CurBucketNo = 0;
+	node->hj_CurTuple = NULL;
+
+	node->js.ps.ps_OuterTupleSlot = NULL;
+	node->hj_NeedNewOuter = true;
+	node->hj_MatchedOuter = false;
+	node->hj_FirstOuterTupleSlot = NULL;	
 }
 
 /* Is this an IS-NOT-DISTINCT-join qual list (as opposed the an equijoin)?

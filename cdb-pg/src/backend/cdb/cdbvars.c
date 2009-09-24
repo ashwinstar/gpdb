@@ -145,6 +145,11 @@ bool	gp_enable_delete_as_truncate = false;
  */
 bool	gp_enable_default_resource_queues = false;
 
+/**
+ * Hash-join node releases hash table when it returns last tuple.
+ */
+bool gp_eager_hashtable_release = true;
+
 /*
  * Debug_print_combocid_detail: request details when we hit combocid limits.
  */

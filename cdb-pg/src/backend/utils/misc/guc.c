@@ -2164,7 +2164,15 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_enable_default_resource_queues,
 		false, NULL, NULL
 	},
-
+	{
+		{"gp_eager_hashtable_release", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("This guc determines if a hash-join eagerly releases its hash table."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_eager_hashtable_release,
+		true, NULL, NULL
+	},
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL

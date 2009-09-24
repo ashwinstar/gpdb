@@ -246,6 +246,11 @@ extern bool           gp_enable_delete_as_truncate;
  */
 extern bool           gp_enable_default_resource_queues;
 
+/**
+ * Hash-join node releases hash table when it returns last tuple.
+ */
+extern bool gp_eager_hashtable_release;
+
 /* Parameter debug_print_combocid_detail
  *
  * This run-time parameter requests extra details when we hit the combocid
