@@ -874,12 +874,15 @@ AC_SEARCH_LIBS(hstrerror, resolv)
 
 # Check for f2c, needed by blas and lapack
 AC_SEARCH_LIBS(c_cos,f2c)
+
 # Check for blas, needed by lappack
-AC_SEARCH_LIBS(f2c_sgemm, [blas],,,[])
-AC_SEARCH_LIBS(sgemm, [blas],,,[])
+# On some platforms (Solaris), there is an f2c_ prefix on all blas functions
+# On others, (OSX), there is not.   Try both ways
+AC_SEARCH_LIBS(f2c_sgemm, [blas])
+AC_SEARCH_LIBS(sgemm, [blas])
 
 # Check for lapack
-AC_SEARCH_LIBS(dgesdd_, [lapack],,,[])
+AC_SEARCH_LIBS(dgesdd_, [lapack])
 
 ##
 ## Header files
