@@ -37,7 +37,7 @@ OBJS = $(SUBDIROBJS) $(LOCALOBJS) $(top_builddir)/src/port/libpgport_srv.a
 # clapack is used in backend/utils/stat, so we need to include the libraries for it.
 CLAPACKLIBS = -llapack -lf2c -lblas
 
-ifeq "$(findstring osx,$(BLD_ARCH))" "osx"
+ifeq ($(PORTNAME), darwin)
 LDOPTS = -Z
 endif
 
