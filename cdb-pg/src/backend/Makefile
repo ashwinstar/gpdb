@@ -37,6 +37,11 @@ OBJS = $(SUBDIROBJS) $(LOCALOBJS) $(top_builddir)/src/port/libpgport_srv.a
 # clapack is used in backend/utils/stat, so we need to include the libraries for it.
 CLAPACKLIBS = -llapack -lf2c -lblas
 
+ifeq "$(findstring osx,$(BLD_ARCH))" "osx"
+LDOPTS = -Z
+endif
+
+
 # We put libpgport into OBJS, so remove it from LIBS; also add libldap
 LIBS := $(filter-out -lpgport, $(LIBS)) $(LDAP_LIBS_BE) -lcurl -lbz2 -lresolv $(CLAPACKLIBS) $(PTHREAD_LIBS)
 

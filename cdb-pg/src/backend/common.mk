@@ -26,7 +26,7 @@ all: $(subsysfilename)
 endif
 
 SUBSYS.o: $(SUBDIROBJS) $(OBJS)
-	$(LD) $(LDREL) $(LDOUT) $@ $^
+	$(LD) $(LDREL) $(LDOUT) $@ $^ $(LDOPTS)
 
 objfiles.txt: Makefile $(SUBDIROBJS) $(OBJS)
 # Don't rebuild the list if only the OBJS have changed.
