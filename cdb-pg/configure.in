@@ -872,21 +872,14 @@ AC_SEARCH_LIBS(BZ2_bzDecompress, bz2)
 # Check for hstrerrror in libresolv
 AC_SEARCH_LIBS(hstrerror, resolv)
 
-if test "$PORTNAME" = "darwin"; then
-# Check for f2c, needed by blas and lapack
-AC_SEARCH_LIBS(c_cos,f2c,,,,[-Z])
-# Check for blas, needed by lappack
-AC_SEARCH_LIBS(f2c_sgemm, [blas],,,[-Z -lf2c])
-# Check for lapack
-AC_SEARCH_LIBS(dgesdd_, [lapack],,,[-Z -lf2c -lblas])
-else
 # Check for f2c, needed by blas and lapack
 AC_SEARCH_LIBS(c_cos,f2c)
 # Check for blas, needed by lappack
-AC_SEARCH_LIBS(f2c_sgemm, [blas],,,[-lf2c])
+AC_SEARCH_LIBS(f2c_sgemm, [blas],,,[])
+AC_SEARCH_LIBS(sgemm, [blas],,,[])
+
 # Check for lapack
-AC_SEARCH_LIBS(dgesdd_, [lapack],,,[-lf2c -lblas])
-fi
+AC_SEARCH_LIBS(dgesdd_, [lapack],,,[])
 
 ##
 ## Header files
