@@ -28,8 +28,8 @@ probes.h: Gen_dummy_probes.sed
 endif
 
 probes.h: probes.d
-ifeq ($(enable_dtrace), yes)
-	$(DTRACE) -C -h -s $< -o $@.tmp
+ifeq ($(enable_dtrace), xxxyes)
+	$(DTRACE) -C -s $< -o $@.tmp
 	sed -e 's/POSTGRESQL_/TRACE_POSTGRESQL_/g' $@.tmp >$@
 	rm $@.tmp
 else
