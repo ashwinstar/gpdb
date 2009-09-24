@@ -13,7 +13,7 @@ BLD_TOP = ../../../../..
 CLAPACKDIR = $(BLD_TOP)/ext/$(BLD_ARCH)/lib
 CLAPACKLIBS = -llapack -lf2c -lblas
 
-ifeq "$(findstring osx,$(BLD_ARCH))" "osx"
+ifeq ($(PORTNAME), darwin)
 LDOPTS = -Z
 endif
 
