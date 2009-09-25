@@ -1,5 +1,6 @@
 /*#include "c.h"*/
 #include <fstream/gfile.h>
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -36,9 +37,24 @@ read_and_retry(gfile_t *fd, void *ptr, size_t size)
 	return i;
 }
 
+static ssize_t
+write_and_retry(gfile_t *fd, void *ptr, size_t size)
+{
+	ssize_t i = 0;
+
+	do
+		i = write(fd->fd.filefd, ptr, size);
+	while (i<0 && errno==EINTR);
+
+	if (i > 0)
+		fd->compressed_position += i;
+	return i;
+}
+
 static int
 closewinpipe(gfile_t*fd)
 {
+	assert(fd->is_win_pipe);
 #ifdef WIN32
 	CloseHandle(fd->fd.pipefd);
 #endif
@@ -46,23 +62,34 @@ closewinpipe(gfile_t*fd)
 }
 
 static ssize_t
-readwinpipe(gfile_t*fd,void*ptr,size_t size)
+readwinpipe(gfile_t* fd, void* ptr, size_t size)
+{
+	ssize_t i = 0;
+	
+	assert(fd->is_win_pipe);
+#ifdef WIN32
+	do
+		ReadFile(fd->fd.pipefd, ptr, size, &i, NULL);
+	while (i < 0 && errno == EINTR);
+#endif
+
+	if (i > 0)
+		fd->compressed_position += i;
+
+	return i;
+}
+
+static ssize_t
+writewinpipe(gfile_t* fd, void* ptr, size_t size)
 {
 	ssize_t i = 0;
 
-	do
-	{
-		if (fd->is_win_pipe)
-		{
+	assert(fd->is_win_pipe);
 #ifdef WIN32
-			ReadFile(fd->fd.pipefd, ptr, size, &i, NULL);
-#endif
-		}
-		else
-			i = read(fd->fd.filefd, ptr, size);
-	}
+	do
+		WriteFile(fd->fd.pipefd, ptr, size, &i, NULL);
 	while (i < 0 && errno == EINTR);
-
+#endif
 	if (i > 0)
 		fd->compressed_position += i;
 
@@ -295,7 +322,7 @@ static int gz_file_open(gfile_t *fd)
 #endif
 
 int 
-gfile_open(gfile_t *fd, const char *fpath, int *response_code,
+gfile_open(gfile_t *fd, const char *fpath, int for_write, int *response_code,
 		   const char **response_string)
 {
 	const char* s = strrchr(fpath, '.');
@@ -333,7 +360,8 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 		/* Try and open it as a windows named pipe */
 		while (1)
 		{
-			HANDLE pipe = CreateFile(fpath, GENERIC_READ /* read access */,
+			HANDLE pipe = CreateFile(fpath, 
+									 (for_write ? GENERIC_WRITE : GENERIC_READ),
 									 0, /* no sharing */
 									 NULL, /* default security */
 									 OPEN_EXISTING, /* file must exist */
@@ -376,7 +404,7 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 
 #else
 
-	if (!is_win_pipe)
+	if (!is_win_pipe && !for_write)
 	{
 		if (stat(fpath, &sta))
 		{
@@ -396,6 +424,9 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 				 * 
 				 * TODO: there may be side effects to setting the size to 0,
 				 * need to double check.
+				 * 
+				 * TODO: this hack could possibly now be removed after enabling
+				 * largefiles via the build process with compiler flags.
 				 */
 				sta.st_size = 0;
 			}
@@ -424,14 +455,20 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 	if (!fd->is_win_pipe)
 	{
 		do
-			fd->fd.filefd = open(fpath,O_RDONLY|O_BINARY);
+		{
+			if (for_write)
+				fd->fd.filefd = open(fpath, O_WRONLY | O_CREAT | O_BINARY | O_APPEND, S_IRUSR | S_IWUSR);
+			else
+				fd->fd.filefd = open(fpath, O_RDONLY | O_BINARY);
+		}
 		while (fd->fd.filefd < 0 && errno == EINTR);
 	}
 
 	if (!fd->is_win_pipe && -1 == fd->fd.filefd) 
 	{
 		static char buf[256];
-		gfile_printf_then_putc_newline("gfile open failed %s: %s",
+		gfile_printf_then_putc_newline("gfile open (for %s) failed %s: %s",
+					  				  (for_write ? "write" : "read"),
 					  				  fpath, strerror(errno));
 		*response_code = 404;
 		snprintf(buf, sizeof buf, "file open failure %s: %s", fpath, 
@@ -443,26 +480,39 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 	if (fd->is_win_pipe)
 	{
 		fd->read = readwinpipe;
+		fd->write = writewinpipe;
 		fd->close = closewinpipe;
 	}
 	else
 	{
 		fd->read = read_and_retry;
+		fd->write = write_and_retry;
 		fd->close = nothing_close;
 	}
 
+	
 	if (s && strcasecmp(s,".gz")==0)
+	{
 #ifdef WIN32
 		gfile_printf_then_putc_newline(".gz not supported");
 #else
+		if (for_write)
+			gfile_printf_then_putc_newline(".gz not yet supported for writable tables");
+		
 		return gz_file_open(fd);
 #endif
+	}
 	else if (s && strcasecmp(s,".bz2")==0)
+	{
 #ifdef WIN32
 		gfile_printf_then_putc_newline(".bz2 not supported");
 #else
+		if (for_write)
+			gfile_printf_then_putc_newline(".bz2 not yet supported for writable tables");
+
 		return bz_file_open(fd);
 #endif
+	}
 	else if (s && strcasecmp(s,".z") == 0)
 		gfile_printf_then_putc_newline("gfile compression .z file is not supported");
 	else if (s && strcasecmp(s,".zip") == 0)
@@ -512,6 +562,27 @@ gfile_read(gfile_t *fd, void *ptr, size_t len)
 			return i;
 		if (i == 0)
 			break;
+		ptr = (char*) ptr + i;
+		len -= i;
+	}
+	
+	return olen - len;
+}
+
+ssize_t 
+gfile_write(gfile_t *fd, void *ptr, size_t len)
+{
+	size_t olen = len;
+	
+	while (len)
+	{
+		ssize_t i = fd->write(fd, ptr, len);
+				
+		if (i < 0)
+			return i;
+		if (i == 0)
+			break;
+		
 		ptr = (char*) ptr + i;
 		len -= i;
 	}

@@ -2316,14 +2316,14 @@ select * from get_ereport order by 1;
  caah: cdbgang:00001076:  ereport(FATAL, 
  caah: cdbgang:00001077:  (errmsg("could not translate host name "%s", port "%d" to address: %s", 
  caah: cdbgang:00001078:  conninfo->seginfo[i].hostname, conninfo->seginfo[i].port, gai_strerror(ret)))); 
- caah: cdbgang:00002232:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
- caah: cdbgang:00002233:  errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount), 
- caah: cdbgang:00002234:  errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread), 
- caah: cdbgang:00002235:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
- caah: cdbgang:00002300:  ereport(ERROR, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION), 
- caah: cdbgang:00002301:  errmsg("%s", segdbDesc->error_message.data))); 
- caah: cdbgang:00002561:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
- caah: cdbgang:00002562:  errmsg_internal("problem in allocateGang"))); 
+ caah: cdbgang:00002249:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+ caah: cdbgang:00002250:  errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount), 
+ caah: cdbgang:00002251:  errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread), 
+ caah: cdbgang:00002252:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
+ caah: cdbgang:00002317:  ereport(ERROR, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION), 
+ caah: cdbgang:00002318:  errmsg("%s", segdbDesc->error_message.data))); 
+ caah: cdbgang:00002578:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+ caah: cdbgang:00002579:  errmsg_internal("problem in allocateGang"))); 
  caah: cdbhash:00000570:  ereport(ERROR, 
  caah: cdbhash:00000571:  (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
  caah: cdbhash:00000572:  errmsg("Type %u is not hashable.", type))); 
@@ -3992,19 +3992,19 @@ select * from get_ereport order by 1;
  eaae: elog:00000151: bool SuppressPanic = false; /* GP */ 
  eaae: elog:00000152:  
  eaae: elog:00000153: static void cdb_tidy_message(ErrorData *edata); 
- eaae: elog:00001710:  ereport(FATAL, 
- eaae: elog:00001711:  (errcode_for_file_access(), 
- eaae: elog:00001712:  errmsg("could not open file "%s": %m", OutputFileName))); 
- eaae: elog:00001720:  ereport(FATAL, 
- eaae: elog:00001721:  (errcode_for_file_access(), 
- eaae: elog:00001722:  errmsg("could not reopen file "%s" as stderr: %m", 
- eaae: elog:00001723:  OutputFileName))); 
- eaae: elog:00001733:  ereport(FATAL, 
- eaae: elog:00001734:  (errcode_for_file_access(), 
- eaae: elog:00001735:  errmsg("could not reopen file "%s" as stdout: %m", 
- eaae: elog:00001736:  OutputFileName))); 
- eaae: elog:00003860:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- eaae: elog:00003861:  errmsg("Failed to get backtrace symbol: out of memory"))); 
+ eaae: elog:00001724:  ereport(FATAL, 
+ eaae: elog:00001725:  (errcode_for_file_access(), 
+ eaae: elog:00001726:  errmsg("could not open file "%s": %m", OutputFileName))); 
+ eaae: elog:00001734:  ereport(FATAL, 
+ eaae: elog:00001735:  (errcode_for_file_access(), 
+ eaae: elog:00001736:  errmsg("could not reopen file "%s" as stderr: %m", 
+ eaae: elog:00001737:  OutputFileName))); 
+ eaae: elog:00001747:  ereport(FATAL, 
+ eaae: elog:00001748:  (errcode_for_file_access(), 
+ eaae: elog:00001749:  errmsg("could not reopen file "%s" as stdout: %m", 
+ eaae: elog:00001750:  OutputFileName))); 
+ eaae: elog:00003874:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ eaae: elog:00003875:  errmsg("Failed to get backtrace symbol: out of memory"))); 
  eaag: encode:00000053:  ereport(ERROR, 
  eaag: encode:00000054:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  eaag: encode:00000055:  errmsg("unrecognized encoding: "%s"", namebuf))); 
@@ -4452,56 +4452,60 @@ select * from get_ereport order by 1;
  faaf: float:00002791:  ereport(ERROR, 
  faaf: float:00002792:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
  faaf: float:00002793:  errmsg("division by zero"))); 
- faag: fileam:00000723:  ereport(ERROR,  
- faag: fileam:00000724:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED),  
- faag: fileam:00000725:  (errmsg(finalmsg)  
- faag: fileam:00000726:  )));  
- faag: fileam:00000727: } 
- faag: fileam:00000728:  
- faag: fileam:00000729: /* 
- faag: fileam:00000730:  * parse_next_line 
- faag: fileam:00000731:  * 
- faag: fileam:00000732:  * Given a buffer of data, extract the next data line from it and parse it 
- faag: fileam:00000733:  * to attributes according to the data format specifications. 
- faag: fileam:00000734:  * 
- faag: fileam:00000735:  * Returns: 
- faag: fileam:00000736:  * LINE_OK - line parsed successfully. 
- faag: fileam:00000737:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
- faag: fileam:00000738:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
- faag: fileam:00000739:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
- faag: fileam:00000740:  */ 
- faag: fileam:00000741: static DataLineStatus parse_next_line(FileScanDesc scan) 
- faag: fileam:00000742: { 
- faag: fileam:00000743:  CopyState pstate = scan->fs_pstate; 
- faag: fileam:00001048:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
- faag: fileam:00001049:  errmsg("The specified error table for this " 
- faag: fileam:00001050:  "external table doesn't appear to " 
- faag: fileam:00001051:  "exist in the database. It may have " 
- faag: fileam:00001052:  "been dropped."), 
- faag: fileam:00001053:  errhint("Refresh your external table definition."))); 
- faag: fileam:00001231:  ereport(ERROR, 
- faag: fileam:00001232:  (errcode_for_file_access(), 
- faag: fileam:00001233:  errmsg("could not open "%s" for reading: %d %s", 
- faag: fileam:00001234:  scan->fs_uri, response_code, response_string))); 
- faag: fileam:00001282:  ereport(ERROR, 
- faag: fileam:00001283:  (errcode_for_file_access(), 
- faag: fileam:00001284:  errmsg("could not open "%s" for writing: %d %s", 
- faag: fileam:00001285:  extInsertDesc->ext_uri, response_code, response_string))); 
- faag: fileam:00001344:  ereport(ERROR, 
- faag: fileam:00001345:  (errcode_for_file_access(), 
- faag: fileam:00001346:  errmsg("could not read from external file: %m"))); 
- faag: fileam:00001364:  ereport(ERROR, 
- faag: fileam:00001365:  (errcode_for_file_access(), 
- faag: fileam:00001366:  errmsg("could not write to external resource: %m"))); 
- faag: fileam:00001949:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- faag: fileam:00001950:  errmsg("external table internal parse error at "%s"", 
- faag: fileam:00001951:  token))); 
- faag: fileam:00001953:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- faag: fileam:00001954:  errmsg("external table internal parse error at end of " 
- faag: fileam:00001955:  "line"))); 
- faag: fileam:00002005:  ereport(ERROR, 
- faag: fileam:00002006:  (errcode_for_file_access(), 
- faag: fileam:00002007:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+ faag: fileam:00000493:  ereport(ERROR, 
+ faag: fileam:00000494:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+ faag: fileam:00000495:  errmsg("External table has more URLs then available primary " 
+ faag: fileam:00000496:  "segments that can write into them"))); 
+ faag: fileam:00000729:  ereport(ERROR,  
+ faag: fileam:00000730:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED),  
+ faag: fileam:00000731:  (errmsg(finalmsg)  
+ faag: fileam:00000732:  )));  
+ faag: fileam:00000733: } 
+ faag: fileam:00000734:  
+ faag: fileam:00000735: /* 
+ faag: fileam:00000736:  * parse_next_line 
+ faag: fileam:00000737:  * 
+ faag: fileam:00000738:  * Given a buffer of data, extract the next data line from it and parse it 
+ faag: fileam:00000739:  * to attributes according to the data format specifications. 
+ faag: fileam:00000740:  * 
+ faag: fileam:00000741:  * Returns: 
+ faag: fileam:00000742:  * LINE_OK - line parsed successfully. 
+ faag: fileam:00000743:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
+ faag: fileam:00000744:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
+ faag: fileam:00000745:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
+ faag: fileam:00000746:  */ 
+ faag: fileam:00000747: static DataLineStatus parse_next_line(FileScanDesc scan) 
+ faag: fileam:00000748: { 
+ faag: fileam:00000749:  CopyState pstate = scan->fs_pstate; 
+ faag: fileam:00001054:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+ faag: fileam:00001055:  errmsg("The specified error table for this " 
+ faag: fileam:00001056:  "external table doesn't appear to " 
+ faag: fileam:00001057:  "exist in the database. It may have " 
+ faag: fileam:00001058:  "been dropped."), 
+ faag: fileam:00001059:  errhint("Refresh your external table definition."))); 
+ faag: fileam:00001237:  ereport(ERROR, 
+ faag: fileam:00001238:  (errcode_for_file_access(), 
+ faag: fileam:00001239:  errmsg("could not open "%s" for reading: %d %s", 
+ faag: fileam:00001240:  scan->fs_uri, response_code, response_string))); 
+ faag: fileam:00001288:  ereport(ERROR, 
+ faag: fileam:00001289:  (errcode_for_file_access(), 
+ faag: fileam:00001290:  errmsg("could not open "%s" for writing: %d %s", 
+ faag: fileam:00001291:  extInsertDesc->ext_uri, response_code, response_string))); 
+ faag: fileam:00001350:  ereport(ERROR, 
+ faag: fileam:00001351:  (errcode_for_file_access(), 
+ faag: fileam:00001352:  errmsg("could not read from external file: %m"))); 
+ faag: fileam:00001370:  ereport(ERROR, 
+ faag: fileam:00001371:  (errcode_for_file_access(), 
+ faag: fileam:00001372:  errmsg("could not write to external resource: %m"))); 
+ faag: fileam:00001955:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ faag: fileam:00001956:  errmsg("external table internal parse error at "%s"", 
+ faag: fileam:00001957:  token))); 
+ faag: fileam:00001959:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ faag: fileam:00001960:  errmsg("external table internal parse error at end of " 
+ faag: fileam:00001961:  "line"))); 
+ faag: fileam:00002011:  ereport(ERROR, 
+ faag: fileam:00002012:  (errcode_for_file_access(), 
+ faag: fileam:00002013:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
  faah: funcapi:00000059:  ereport(ERROR, 
  faah: funcapi:00000060:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  faah: funcapi:00000061:  errmsg("set-valued function called in context that cannot accept a set"))); 
@@ -13868,25 +13872,29 @@ select * from get_ereport order by 1;
  taaj: tablecmds:00020195:  errhint("Use CREATE EXTERNAL WEB TABLE instead."))); 
  taaj: tablecmds:00020198:  ereport(ERROR, 
  taaj: tablecmds:00020199:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- taaj: tablecmds:00020200:  errmsg("writable external table 'gpfdist' protocol is not yet supported"))); 
- taaj: tablecmds:00020203:  ereport(ERROR, 
- taaj: tablecmds:00020204:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- taaj: tablecmds:00020205:  errmsg("unsupported URI protocol '%s' for writable external table", 
- taaj: tablecmds:00020206:  (uri->protocol == URI_HTTP ? "http" : "file")), 
- taaj: tablecmds:00020207:  errhint("Writable external tables may use 'gpfdist' URIs only."))); 
- taaj: tablecmds:00020259:  ereport(ERROR, 
- taaj: tablecmds:00020260:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020261:  errmsg("ON clause must not have more than one element."))); 
- taaj: tablecmds:00020304:  ereport(ERROR, 
- taaj: tablecmds:00020305:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- taaj: tablecmds:00020306:  errmsg("Unknown location code for EXECUTE in tablecmds."))); 
- taaj: tablecmds:00020344:  ereport(ERROR, 
- taaj: tablecmds:00020345:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020346:  errmsg("unsupported format '%s'", formatname), 
- taaj: tablecmds:00020347:  errhint("available formats are "text" or "csv""))); 
- taaj: tablecmds:00020394:  ereport(ERROR, 
- taaj: tablecmds:00020395:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020396:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020200:  errmsg("unsupported URI protocol '%s' for writable external table", 
+ taaj: tablecmds:00020201:  (uri->protocol == URI_HTTP ? "http" : "file")), 
+ taaj: tablecmds:00020202:  errhint("Writable external tables may use 'gpfdist' URIs only."))); 
+ taaj: tablecmds:00020205:  ereport(ERROR, 
+ taaj: tablecmds:00020206:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020207:  errmsg("Unsupported use of wildcard in a writable external web table definition: " 
+ taaj: tablecmds:00020208:  "'%s'", uri_str_final), 
+ taaj: tablecmds:00020209:  errhint("Specify the explicit path and file name to write into."))); 
+ taaj: tablecmds:00020212:  ereport(ERROR, 
+ taaj: tablecmds:00020213:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020214:  errmsg("Unsupported use of a directory name in a writable external web table definition: " 
+ taaj: tablecmds:00020215:  "'%s'", uri_str_final), 
+ taaj: tablecmds:00020216:  errhint("Specify the explicit path and file name to write into."))); 
+ taaj: tablecmds:00020267:  ereport(ERROR, 
+ taaj: tablecmds:00020268:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020269:  errmsg("ON clause must not have more than one element."))); 
+ taaj: tablecmds:00020312:  ereport(ERROR, 
+ taaj: tablecmds:00020313:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ taaj: tablecmds:00020314:  errmsg("Unknown location code for EXECUTE in tablecmds."))); 
+ taaj: tablecmds:00020352:  ereport(ERROR, 
+ taaj: tablecmds:00020353:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020354:  errmsg("unsupported format '%s'", formatname), 
+ taaj: tablecmds:00020355:  errhint("available formats are "text" or "csv""))); 
  taaj: tablecmds:00020402:  ereport(ERROR, 
  taaj: tablecmds:00020403:  (errcode(ERRCODE_SYNTAX_ERROR), 
  taaj: tablecmds:00020404:  errmsg("conflicting or redundant options"))); 
@@ -13902,17 +13910,20 @@ select * from get_ereport order by 1;
  taaj: tablecmds:00020434:  ereport(ERROR, 
  taaj: tablecmds:00020435:  (errcode(ERRCODE_SYNTAX_ERROR), 
  taaj: tablecmds:00020436:  errmsg("conflicting or redundant options"))); 
- taaj: tablecmds:00020443:  ereport(ERROR, 
- taaj: tablecmds:00020444:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020445:  errmsg("conflicting or redundant options"))); 
- taaj: tablecmds:00020452:  ereport(ERROR, 
- taaj: tablecmds:00020453:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taaj: tablecmds:00020454:  errmsg("conflicting or redundant options"))); 
- taaj: tablecmds:00020660:  ereport(ERROR, 
- taaj: tablecmds:00020661:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- taaj: tablecmds:00020662:  errmsg("column "%s" of relation "%s" does not exist", 
- taaj: tablecmds:00020663:  cname, 
- taaj: tablecmds:00020664:  RelationGetRelationName(rel)))); 
+ taaj: tablecmds:00020442:  ereport(ERROR, 
+ taaj: tablecmds:00020443:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020444:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020451:  ereport(ERROR, 
+ taaj: tablecmds:00020452:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020453:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020460:  ereport(ERROR, 
+ taaj: tablecmds:00020461:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taaj: tablecmds:00020462:  errmsg("conflicting or redundant options"))); 
+ taaj: tablecmds:00020668:  ereport(ERROR, 
+ taaj: tablecmds:00020669:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ taaj: tablecmds:00020670:  errmsg("column "%s" of relation "%s" does not exist", 
+ taaj: tablecmds:00020671:  cname, 
+ taaj: tablecmds:00020672:  RelationGetRelationName(rel)))); 
  taaj: timestamp:00000093:  ereport(ERROR, 
  taaj: timestamp:00000094:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  taaj: timestamp:00000095:  errmsg("invalid type modifier"))); 
@@ -14380,13 +14391,13 @@ select * from get_ereport order by 1;
  uaad: udt:00000285:  ereport(ERROR, ( 
  uaad: udt:00000286:  errcode(ERRCODE_CANNOT_COERCE), 
  uaad: udt:00000287:  errmsg("Attempt to register UDT with Oid %d failed. Oid appoints a non UDT type", typeId))); 
- uaad: url:00000617:  ereport(ERROR, 
- uaad: url:00000618:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
- uaad: url:00000619:  errmsg("cannot start external table command: %m"), 
- uaad: url:00000620:  errdetail("Command: %s", url))); 
- uaad: url:00000914:  ereport(ERROR, 
- uaad: url:00000915:  (errcode(ERRCODE_INTERNAL_ERROR), 
- uaad: url:00000916:  errmsg_internal("external table type not implemented: %d", type))); 
+ uaad: url:00000623:  ereport(ERROR, 
+ uaad: url:00000624:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+ uaad: url:00000625:  errmsg("cannot start external table command: %m"), 
+ uaad: url:00000626:  errdetail("Command: %s", url))); 
+ uaad: url:00000978:  ereport(ERROR, 
+ uaad: url:00000979:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ uaad: url:00000980:  errmsg_internal("external table type not implemented: %d", type))); 
  uaae: user:00000139:  ereport(ERROR, 
  uaae: user:00000140:  (errcode(ERRCODE_SYNTAX_ERROR), 
  uaae: user:00000141:  errmsg("conflicting or redundant options"))); 
@@ -15479,6 +15490,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15419 rows)
+(15430 rows)
 
 drop external table get_ereport;

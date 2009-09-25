@@ -221,6 +221,7 @@ struct session_t
 	fstream_t* 		fstream;
 	int 			is_error;	/* error flag */
 	int 			nrequest;	/* # requests attached to this session */
+	int				is_get;     /* true for GET, false for POST */
 	apr_time_t		mtime; 		/* time when nrequest was modified */
 };
 
@@ -238,6 +239,7 @@ struct request_t
 	const char* 	csvopt; 	/* options for csv file */
 	session_t* 		session; 	/* the session this request is attached to */
 	int 			gp_proto; 	/* the protocol to use, sent from client */
+	int				is_get;     /* true for GET, false for POST */
 
 	struct
 	{
@@ -245,6 +247,10 @@ struct request_t
 		int 	hbuftop; 	/* # bytes used in hbuf */
 		int 	hbufmax; 	/* size of hbuf[] */
 		gnet_request_t* req; /* a parsed HTTP request, NULL if still incomplete. */
+		int		davailable;	/* number of data bytes available to consume */
+		char*	dbuf;		/* buffer for raw data from a POST request */
+		int 	dbuftop; 	/* # bytes used in dbuf */
+		int 	dbufmax; 	/* size of dbuf[] */
 	} in;
 
 	block_t outblock; /* next block to send out */
@@ -256,10 +262,15 @@ static void gp1_send_errmsg(request_t* r, const char* msg);
 
 static int setup_read(request_t* r);
 static int setup_write(request_t* r);
-static void session_attach(request_t* r);
+static int session_attach(request_t* r);
 static void session_detach(request_t* r);
 static void session_end(session_t* s, int error);
 static void session_free(session_t* s);
+static int request_validate(request_t *r);
+static int request_set_path(request_t *r, const char* d, char* p, char* pp, char* path);
+static int request_parse_gp_headers(request_t *r, int opt_g);
+static void handle_post_request(request_t *r, int header_end);
+static void handle_get_request(request_t *r);
 
 /* Print usage */
 static void usage_error(const char* msg, int print_usage)
@@ -533,6 +544,17 @@ static void http_empty(request_t* r)
 	gprint("%s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 	send(r->sock, buf, sizeof buf - 1, 0);
 }
+
+/* send a Continue response */
+static void http_continue(request_t* r)
+{
+	static const char buf[] = "HTTP/1.1 100 Continue\r\n\r\n";
+	
+	gprint("%s %s %s - Continue\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	
+	send(r->sock, buf, sizeof buf - 1, 0);
+}
+
 
 /* send an OK response */
 static apr_status_t http_ok(request_t* r)
@@ -876,7 +898,7 @@ static void sessions_cleanup(void)
  *
  * attach a request to a session (create the session if not already exists).
  */
-static void session_attach(request_t* r)
+static int session_attach(request_t* r)
 {
 	char key[1024];
 	session_t* session = 0;
@@ -889,9 +911,10 @@ static void session_attach(request_t* r)
 	{
 		http_error(r, FDIST_BAD_REQUEST, "path too long");
 		request_end(r, 1, 0);
-		return;
+		return -1;
 	}
 
+	
 	/* check if such session already exists in hashtable */
 	session = apr_hash_get(gcb.session.tab, key, APR_HASH_KEY_STRING);
 
@@ -913,7 +936,7 @@ static void session_attach(request_t* r)
 			gwarning(FLINE, "out of memory");
 			http_error(r, FDIST_INTERNAL_ERROR, "internal error - out of memory");
 			request_end(r, 1, 0);
-			return;
+			return -1;
 		}
 
 		/* parse csvopt header */
@@ -931,6 +954,12 @@ static void session_attach(request_t* r)
 			fstream_options.escape = escape;
 		}
 
+		/* set fstream for read (GET) or write (PUT) */
+		if (r->is_get)
+			fstream_options.forwrite = 0; /* GET request */
+		else
+			fstream_options.forwrite = 1;  /* PUT request */
+				
 		/* try opening the fstream */
 		fstream = fstream_open(r->path, &fstream_options, &response_code,
 							   &response_string);
@@ -941,7 +970,7 @@ static void session_attach(request_t* r)
 			http_error(r, response_code, response_string);
 			request_end(r, 1, 0);
 			apr_pool_destroy(pool);
-			return;
+			return -1;
 		}
 		gcb.total_sessions++;
 		gcb.total_bytes += fstream_get_compressed_size(fstream);
@@ -960,6 +989,7 @@ static void session_attach(request_t* r)
 		session->key = apr_pstrdup(pool, key);
 		session->fstream = fstream;
 		session->pool = pool;
+		session->is_get = r->is_get;
 
 		if (session->tid == 0 || session->path == 0 || session->key == 0)
 		{
@@ -979,7 +1009,7 @@ static void session_attach(request_t* r)
 	{
 		http_error(r, FDIST_INTERNAL_ERROR, "session error");
 		request_end(r, 1, 0);
-		return;
+		return -1;
 	}
 
 	/* session already ended. send an empty response, and close. */
@@ -987,27 +1017,30 @@ static void session_attach(request_t* r)
 	{
 		http_empty(r);
 		request_end(r, 0, 0);
-		return;
+		return -1;
 	}
 
-	gprint("joined session (%s, %s)\n", session->path, session->tid);
-
-	/* setup so receive EV_WRITE events to write to socket */
-	if (setup_write(r))
+	/*
+	 * disallow mixing GET and POST requests in one session.
+	 * this will protect us from an infinitely running
+	 * INSERT INTO ext_t SELECT FROM ext_t
+	 */
+	if (r->is_get != session->is_get)
 	{
-		http_error(r, FDIST_INTERNAL_ERROR, "internal error");
+		http_error(r, FDIST_BAD_REQUEST, "can\'t write to and read from the same "
+										 "gpfdist server simultaneously");
 		request_end(r, 1, 0);
-		return;
+		return -1;		
 	}
+	
+	gprint("joined session (%s, %s)\n", session->path, session->tid);
 
 	/* one more request for session */
 	session->nrequest++;
 	session->mtime = apr_time_now();
 	r->session = session;
-
-	/* finally, tell peer that we are ready to send data */
-	if (0 != http_ok(r))
-		request_end(r, 1, 0);
+	
+	return 0;
 }
 
 /*
@@ -1078,9 +1111,6 @@ static void do_write(int fd, short event, void* arg)
 		 * write out the block data
 		 */
 		n = datablock->top - datablock->bot;
-		/* if (n == 0)
-		   gfatal(FLINE, "internal error: 0 bytes");
-		 */
 		n = local_send(fd, datablock->data + datablock->bot, n);
 		if (n < 0)
 		{
@@ -1117,12 +1147,12 @@ static void do_write(int fd, short event, void* arg)
 }
 
 /*
- * do_read
+ * do_read_request
  *
  * Callback when a socket is ready to be read. Read the
  * socket for a complete HTTP request.
  */
-static void do_read(int fd, short event, void* arg)
+static void do_read_request(int fd, short event, void* arg)
 {
 	request_t* 	r = (request_t*) arg;
 	int 		n, i;
@@ -1186,8 +1216,10 @@ static void do_read(int fd, short event, void* arg)
 		}
 	}
 
-	/* if we don't yet have a complete request, set up this function to be
-	 called again for */
+	/* 
+	 * if we don't yet have a complete request, set up this function to be
+	 * called again for 
+	 */
 	if (!r->in.req)
 	{
 		if (setup_read(r))
@@ -1202,9 +1234,6 @@ static void do_read(int fd, short event, void* arg)
 	gprint("%s requests %s\n", r->peer, r->in.req->argv[1] ? r->in.req->argv[1]
 			: "(none)");
 
-	/* we don't need to read from the socket anymore */
-	shutdown(r->sock, SHUT_RD);
-
 	/* print the complete request to the log if in verbose mode */
 	if (opt.V)
 	{
@@ -1212,32 +1241,23 @@ static void do_read(int fd, short event, void* arg)
 		for (i = 0; i < r->in.req->argc; i++)
 			TR((" %s", r->in.req->argv[i]));
 		TR(("\n"));
+		gprint("request headers:");
+		for (i = 0; i < r->in.req->hc; i++)
+			TR(("%s:%s\n", r->in.req->hname[i], r->in.req->hvalue[i] ));
 	}
 
-	/* parse the HTTP request. Expect "GET /path HTTP/1.X" */
-	if (r->in.req->argc != 3)
-	{
-		gwarning(FLINE, "reject invalid request from %s", r->peer);
-		http_error(r, FDIST_BAD_REQUEST, "invalid request");
-		request_end(r, 1, 0);
+	/* check that the request is validly formatted */
+	if(request_validate(r))
 		return;
-	}
-	if (0 != strncmp("HTTP/1.", r->in.req->argv[2], 7))
-	{
-		gwarning(FLINE, "reject invalid protocol from %s [%s]", r->peer,
-				r->in.req->argv[2]);
-		http_error(r, FDIST_BAD_REQUEST, "invalid request");
-		request_end(r, 1, 0);
-		return;
-	}
-	if (0 != strcmp("GET", r->in.req->argv[0]))
-	{
-		gwarning(FLINE, "reject invalid request from %s [%s %s]", r->peer,
-				r->in.req->argv[0], r->in.req->argv[1]);
-		http_error(r, FDIST_BAD_REQUEST, "invalid request");
-		request_end(r, 1, 0);
-		return;
-	}
+	
+	/* mark it as a GET or PUT request */
+	if (0 == strcmp("GET", r->in.req->argv[0]))
+		r->is_get = 1;
+	
+	/* if GET, we don't need to read from the socket anymore */
+	if (r->is_get)
+		shutdown(r->sock, SHUT_RD);
+
 
 	/* make a copy of the path */
 	path = apr_pstrdup(r->pool, r->in.req->argv[1]);
@@ -1257,141 +1277,40 @@ static void do_read(int fd, short event, void* arg)
 		return;
 	}
 
+	/*
+	 * set up the requested path
+	 */
 	if (opt.f)
 	{
 		/* we forced in a filename with the hidden -f option. use it */
 		r->path = opt.f;
-
-		/* TODO: find out why this option exists. it's hidden */
 	}
 	else
 	{
-		/*
-		 * disallow using a relative path in the request
-		 */
-		if (strstr(path, ".."))
-		{
-			gwarning(FLINE, "reject invalid request from %s [%s %s] - request "
-							"is using a relative path",
-							r->peer,
-							r->in.req->argv[0],
-							r->in.req->argv[1]);
-
-			http_error(r, FDIST_BAD_REQUEST, "invalid request due to relative path");
-			request_end(r, 1, 0);
-
+		if(request_set_path(r, opt.d, p, pp, path) != 0)
 			return;
-		}
-
-		r->path = 0;
-
-		/*
-		 * make the new path relative to the user's specified dir (opt.d)
-		 */
-		do
-		{
-			while (*path == ' ')
-				path++;
-
-			p = strchr(path, ' ');
-
-			if (p)
-				*p++ = 0;
-
-			while (*path == '/')
-				path++;
-
-			if (*path)
-			{
-				if (r->path)
-					r->path = apr_psprintf(r->pool, "%s %s/%s", r->path, opt.d,
-										   path);
-				else
-					r->path = apr_psprintf(r->pool, "%s/%s", opt.d, path);
-			}
-
-			path = p;
-
-		} while (path);
-
-
-		if (!r->path)
-		{
-			http_error(r, FDIST_BAD_REQUEST, "invalid request (unable to set path)");
-			request_end(r, 1, 0);
-			return;
-		}
 	}
 
-	/*
-	 * Extract all X-GP-* variables from the HTTP headers.
-	 * Create a unique X-GP-TID value from it.
-	 */
+	/* parse gp variables from the request */
+	if(request_parse_gp_headers(r, opt.g) != 0)
+		return;
+	
+	/* Attach the request to a session */
+	if(session_attach(r) != 0)
+		return;
+	
+	if (r->is_get)
 	{
-		const char* xid = 0;
-		const char* cid = 0;
-		const char* sn = 0;
-		const char* gp_proto = "0";
-
-		r->csvopt = "";
-
-		for (i = 0; i < r->in.req->hc; i++)
-		{
-			if (0 == strcmp("X-GP-XID", r->in.req->hname[i]))
-				xid = r->in.req->hvalue[i];
-			else if (0 == strcmp("X-GP-CID", r->in.req->hname[i]))
-				cid = r->in.req->hvalue[i];
-			else if (0 == strcmp("X-GP-SN", r->in.req->hname[i]))
-				sn = r->in.req->hvalue[i];
-			else if (0 == strcmp("X-GP-CSVOPT", r->in.req->hname[i]))
-				r->csvopt = r->in.req->hvalue[i];
-			else if (0 == strcmp("X-GP-PROTO", r->in.req->hname[i]))
-				gp_proto = r->in.req->hvalue[i];
-
-			if (r->in.req->hname[i][0] == 'X')
-				TR(("%s: %s\n", r->in.req->hname[i], r->in.req->hvalue[i]));
-		}
-
-		r->gp_proto = strtol(gp_proto, 0, 0);
-
-		if (r->gp_proto != 0 && r->gp_proto != 1)
-		{
-			gwarning(FLINE,
-					"reject invalid request from %s [%s %s] - X-GP-PROTO "
-					"invalid '%s'",
-					r->peer, r->in.req->argv[0], r->in.req->argv[1], gp_proto);
-			http_error(r, FDIST_BAD_REQUEST, "invalid request (invalid gp-proto)");
-			request_end(r, 1, 0);
-			return;
-		}
-
-		if (opt.g != -1) /* override?  */
-			r->gp_proto = opt.g;
-
-		if (xid && cid && sn)
-		{
-			r->tid = apr_psprintf(r->pool, "%s.%s.%s.%d", xid, cid, sn,
-								  r->gp_proto);
-		}
-		else if (xid || cid || sn)
-		{
-			gwarning(FLINE,
-					 "reject invalid request from %s [%s %s] - missing X-GP-* "
-					 "header",
-					 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-			http_error(r, FDIST_BAD_REQUEST, "invalid request (missing X-GP-* header)");
-			request_end(r, 1, 0);
-			return;
-		}
-		else
-		{
-			r->tid = apr_psprintf(r->pool, "auto-tid.%d", gcb.session.gen++);
-		}
+		/* handle GET */
+		handle_get_request(r);
 	}
-
-	/* Attach to a session */
-	session_attach(r);
+	else
+	{
+		/* handle PUT */
+		handle_post_request(r, n);
+	}
 }
+
 
 /* Callback when the listen socket is ready to accept connections. */
 static void do_accept(int fd, short event, void* arg)
@@ -1458,7 +1377,7 @@ static void do_accept(int fd, short event, void* arg)
 	r->peer = apr_psprintf(r->pool, "%d.%d.%d.%d", (addr >> 24) & 0xff,
 						  (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
 
-	/* set up for callback when socket ready for reading */
+	/* set up for callback when socket ready for reading the http request */
 	if (setup_read(r))
 	{
 		http_error(r, FDIST_INTERNAL_ERROR, "internal error");
@@ -1472,7 +1391,7 @@ failure: gwarning(FLINE, "accept failed");
 }
 
 /*
- * setup_read
+ * setup_write
  *
  * setup the write event to write data to the socket. It uses
  * the callback function 'do_write'.
@@ -1486,11 +1405,19 @@ static int setup_write(request_t* r)
 	return (event_add(&r->ev, 0));
 }
 
+
 /*
  * setup_read
  *
- * setup the read event to read data from a socket. It uses
- * the callback function 'do_read'.
+ * setup the read event to read data from a socket. 
+ * 
+ * we expect to be reading either:
+ * 1) a GET or PUT request. or,
+ * 2) the body of a PUT request (the raw data from client).
+ * 
+ * this is controller by 'is_request' as follows:
+ * -- if set to true, use the callback function 'do_read_request'.
+ * -- if set to false, use the callback function 'do_read_body'.
  */
 static int setup_read(request_t* r)
 {
@@ -1498,13 +1425,14 @@ static int setup_read(request_t* r)
 		gfatal(FLINE, "assert failed");
 
 	event_del(&r->ev);
-	event_set(&r->ev, r->sock, EV_READ, do_read, r);
+	event_set(&r->ev, r->sock, EV_READ, do_read_request, r);
 
 	r->tm.tv_sec = opt.t;
 	r->tm.tv_usec = 0;
 
 	return (event_add(&r->ev, &r->tm));
 }
+
 
 /* Create HTTP port and start to receive request */
 static void http_setup(void)
@@ -1833,6 +1761,320 @@ void percent_encoding_to_char(char* p, char* pp, char* path)
 	*p = 0;
 }
 
+static void handle_get_request(request_t *r)
+{
+	/* setup to receive EV_WRITE events to write to socket */
+	if (setup_write(r))
+	{
+		http_error(r, FDIST_INTERNAL_ERROR, "internal error");
+		request_end(r, 1, 0);
+		return;
+	}
+	
+	if (0 != http_ok(r))
+		request_end(r, 1, 0);
+}
+
+static void handle_post_request(request_t *r, int header_end)
+{
+	int h_count = r->in.req->hc;
+	char** h_names = r->in.req->hname;
+	char** h_values = r->in.req->hvalue;
+	int i = 0;
+	int b_continue = 0;
+	char *data_start = 0;
+	int data_bytes_in_req = 0;
+	int wrote = 0;
+	
+	for(i = 0 ; i < h_count ; i++)
+	{
+		/* the request include a "Expect: 100-continue" header? */
+		if(strcmp("Expect", h_names[i]) == 0 && strcmp("100-continue", h_values[i]) == 0)
+			b_continue = 1;
+		
+		/* find out how long is our data by looking at "Content-Length" header*/
+		if(strcmp("Content-Length", h_names[i]) == 0)
+			r->in.davailable = atoi(h_values[i]);
+	}
+	
+	/* if client asked for 100-Continue, send it. otherwise, move on. */
+	if(b_continue)
+		http_continue(r);
+
+	gprint("available data to consume %d, starting at offset %d\n", r->in.davailable, r->in.hbuftop);
+	
+	/* create a buffer to hold the incoming raw data */
+	r->in.dbufmax = opt.m; /* size of max line size */
+	r->in.dbuf = apr_palloc(r->pool, r->in.dbufmax);
+	r->in.dbuftop = 0;
+	
+	/* if some data come along with the request, copy it first */
+	data_start = strstr(r->in.hbuf, "\r\n\r\n");
+	
+	if(data_start)
+	{
+		data_start += 4;
+		data_bytes_in_req = (r->in.hbuf + r->in.hbuftop) - data_start;
+	}
+	
+	if(data_bytes_in_req > 0)
+	{
+		/* we have data after the request headers. consume it */
+		memcpy(r->in.dbuf, data_start, data_bytes_in_req);
+		r->in.dbuftop += data_bytes_in_req;
+		r->in.davailable -= data_bytes_in_req;
+
+		/* only write it out if no more data is expected */
+		if(r->in.davailable == 0)
+			wrote = fstream_write(r->session->fstream, r->in.dbuf, data_bytes_in_req, 1);
+	}
+	
+	/* 
+	 * we've consumed all data that came in the first buffer (with the request) 
+	 * if we're still expecting more data, get it from socket now and process it.
+	 */
+	while(r->in.davailable > 0)
+	{
+		size_t want;
+		ssize_t n;
+		size_t buf_space_left = r->in.dbufmax - r->in.dbuftop;
+		
+		if (r->in.davailable - buf_space_left >= 0)
+			want = buf_space_left;
+		else
+			want = r->in.davailable;
+		
+		/* read from socket into data buf */
+		n = recv(r->sock, r->in.dbuf + r->in.dbuftop, want, 0);
+		
+		if (n < 0)
+		{
+#ifdef WIN32
+			int e = WSAGetLastError();
+			int ok = (e == WSAEINTR || e == WSAEWOULDBLOCK);
+#else
+			int e = errno;
+			int ok = (e == EINTR || e == EAGAIN);
+#endif
+			if (!ok)
+			{
+				request_end(r, 1, 0);
+				return;
+			}
+		}
+		else if (n == 0)
+		{
+			/* socket close by peer will return 0 */
+			request_end(r, 1, 0);
+			return;
+		}
+		else
+		{			
+			/*gprint("received %d bytes from client\n", n);*/
+			
+			r->in.davailable -= n;
+			r->in.dbuftop += n;
+			
+			/* if filled our buffer or no more data expected, write it */
+			if (r->in.dbufmax == r->in.dbuftop || r->in.davailable == 0)
+			{
+				/* only write up to end of last row */
+				wrote = fstream_write(r->session->fstream, r->in.dbuf, r->in.dbuftop, 1);
+				gprint("wrote %d bytes to file\n", wrote);
+				
+				if(wrote == -1)
+				{
+					/* write error */
+					http_error(r, FDIST_INTERNAL_ERROR, fstream_get_error(r->session->fstream));
+					request_end(r, 1, 0);
+				}
+				else if(wrote == r->in.dbuftop)
+				{
+					/* wrote the whole buffer. clean it for next round */
+					r->in.dbuftop = 0;
+				}
+				else
+				{
+					/* wrote up to last line, some data left over in buffer. move to front */
+					int bytes_left_over = r->in.dbuftop - wrote;
+					
+					memmove(r->in.dbuf, r->in.dbuf + wrote, bytes_left_over);
+					r->in.dbuftop = bytes_left_over;
+				}	
+			}
+		}
+
+	}
+
+	/* send our success response and end the request */
+	if (0 != http_ok(r))
+		request_end(r, 1, 0);
+	else
+		request_end(r, 0, 0); /* we're done! */
+
+}
+
+static int request_set_path(request_t *r, const char* d, char* p, char* pp, char* path)
+{
+
+	/*
+	 * disallow using a relative path in the request
+	 */
+	if (strstr(path, ".."))
+	{
+		gwarning(FLINE, "reject invalid request from %s [%s %s] - request "
+						"is using a relative path",
+						r->peer,
+						r->in.req->argv[0],
+						r->in.req->argv[1]);
+
+		http_error(r, FDIST_BAD_REQUEST, "invalid request due to relative path");
+		request_end(r, 1, 0);
+
+		return -1;
+	}
+
+	r->path = 0;
+
+	/*
+	 * make the new path relative to the user's specified dir (opt.d)
+	 */
+	do
+	{
+		while (*path == ' ')
+			path++;
+
+		p = strchr(path, ' ');
+
+		if (p)
+			*p++ = 0;
+
+		while (*path == '/')
+			path++;
+
+		if (*path)
+		{
+			if (r->path)
+				r->path = apr_psprintf(r->pool, "%s %s/%s", r->path, d,
+									   path);
+			else
+				r->path = apr_psprintf(r->pool, "%s/%s", d, path);
+		}
+
+		path = p;
+
+	} while (path);
+
+
+	if (!r->path)
+	{
+		http_error(r, FDIST_BAD_REQUEST, "invalid request (unable to set path)");
+		request_end(r, 1, 0);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int request_validate(request_t *r)
+{
+	/* parse the HTTP request. Expect "GET /path HTTP/1.X" or "PUT /path HTTP/1.X" */
+	if (r->in.req->argc != 3)
+	{
+		gwarning(FLINE, "reject invalid request from %s", r->peer);
+		http_error(r, FDIST_BAD_REQUEST, "invalid request");
+		request_end(r, 1, 0);
+		return -1;
+	}
+	if (0 != strncmp("HTTP/1.", r->in.req->argv[2], 7))
+	{
+		gwarning(FLINE, "reject invalid protocol from %s [%s]", r->peer,
+				r->in.req->argv[2]);
+		http_error(r, FDIST_BAD_REQUEST, "invalid request");
+		request_end(r, 1, 0);
+		return -1;
+	}
+	if (0 != strcmp("GET", r->in.req->argv[0]) && 
+		0 != strcmp("POST", r->in.req->argv[0]))
+	{
+		gwarning(FLINE, "reject invalid request from %s [%s %s]", r->peer,
+				r->in.req->argv[0], r->in.req->argv[1]);
+		http_error(r, FDIST_BAD_REQUEST, "invalid request");
+		request_end(r, 1, 0);
+		return -1;
+	}
+	
+	return 0;
+}
+
+/*
+ * request_parse_gp_headers
+ * 
+ * Extract all X-GP-* variables from the HTTP headers.
+ * Create a unique X-GP-TID value from it.
+ */
+static int request_parse_gp_headers(request_t *r, int opt_g)
+{
+	const char* xid = 0;
+	const char* cid = 0;
+	const char* sn = 0;
+	const char* gp_proto = "0";
+	int 		i;
+
+	r->csvopt = "";
+
+	for (i = 0; i < r->in.req->hc; i++)
+	{
+		if (0 == strcmp("X-GP-XID", r->in.req->hname[i]))
+			xid = r->in.req->hvalue[i];
+		else if (0 == strcmp("X-GP-CID", r->in.req->hname[i]))
+			cid = r->in.req->hvalue[i];
+		else if (0 == strcmp("X-GP-SN", r->in.req->hname[i]))
+			sn = r->in.req->hvalue[i];
+		else if (0 == strcmp("X-GP-CSVOPT", r->in.req->hname[i]))
+			r->csvopt = r->in.req->hvalue[i];
+		else if (0 == strcmp("X-GP-PROTO", r->in.req->hname[i]))
+			gp_proto = r->in.req->hvalue[i];
+	}
+
+	r->gp_proto = strtol(gp_proto, 0, 0);
+
+	if (r->gp_proto != 0 && r->gp_proto != 1)
+	{
+		gwarning(FLINE,
+				"reject invalid request from %s [%s %s] - X-GP-PROTO "
+				"invalid '%s'",
+				r->peer, r->in.req->argv[0], r->in.req->argv[1], gp_proto);
+		http_error(r, FDIST_BAD_REQUEST, "invalid request (invalid gp-proto)");
+		request_end(r, 1, 0);
+		return -1;
+	}
+
+	if (opt_g != -1) /* override?  */
+		r->gp_proto = opt_g;
+
+	if (xid && cid && sn)
+	{
+		r->tid = apr_psprintf(r->pool, "%s.%s.%s.%d", xid, cid, sn,
+							  r->gp_proto);
+	}
+	else if (xid || cid || sn)
+	{
+		gwarning(FLINE,
+				 "reject invalid request from %s [%s %s] - missing X-GP-* "
+				 "header",
+				 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+		http_error(r, FDIST_BAD_REQUEST, "invalid request (missing X-GP-* header)");
+		request_end(r, 1, 0);
+		return -1;
+	}
+	else
+	{
+		r->tid = apr_psprintf(r->pool, "auto-tid.%d", gcb.session.gen++);
+	}
+
+	return 0;
+}
 /*
  * gpfdist main
  *

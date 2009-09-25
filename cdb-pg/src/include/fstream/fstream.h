@@ -17,6 +17,7 @@ struct fstream_options{
     char quote;		/* quote char */
     char escape;	/* escape char */
     int bufsize;
+    int forwrite;   /* true for write, false for read */
 };
 
 struct fstream_filename_and_offset{
@@ -29,6 +30,10 @@ struct fstream_filename_and_offset{
 int fstream_read(fstream_t* fs, void* buffer, int size,
 				 struct fstream_filename_and_offset* fo,
 				 const int read_whole_lines);
+int fstream_write(fstream_t *fs,
+				  void *buf,
+				  int size,
+				  const int write_whole_lines);
 int fstream_eof(fstream_t* fs);
 int64_t fstream_get_compressed_size(fstream_t* fs);
 int64_t fstream_get_compressed_position(fstream_t* fs);

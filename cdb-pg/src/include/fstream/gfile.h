@@ -20,6 +20,7 @@ typedef long ssize_t;
 typedef struct gfile_t
 {
     ssize_t(*read)(struct gfile_t*,void*,size_t);
+    ssize_t(*write)(struct gfile_t*,void*,size_t);
     int(*close)(struct gfile_t*);
     off_t compressed_size,compressed_position;
 #ifdef WIN32
@@ -45,11 +46,12 @@ typedef struct gfile_t
     }u;
 }gfile_t;
 
-int gfile_open(gfile_t*fd,const char*fpath,int*response_code,const char**response_string);
+int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code, const char** response_string);
 int gfile_close(gfile_t*fd);
 off_t gfile_get_compressed_size(gfile_t*fd);
 off_t gfile_get_compressed_position(gfile_t*fd);
-ssize_t gfile_read(gfile_t*fd,void*ptr,size_t len); /* gfile_read reads as much as it can--short read indicates error. */
+ssize_t gfile_read(gfile_t* fd, void* ptr, size_t len); /* gfile_read reads as much as it can--short read indicates error. */
+ssize_t gfile_write(gfile_t* fd, void* ptr, size_t len);
 void gfile_printf_then_putc_newline(const char*format,...);
 void*gfile_malloc(size_t size);
 void gfile_free(void*a);

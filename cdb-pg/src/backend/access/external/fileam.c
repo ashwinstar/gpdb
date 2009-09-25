@@ -480,23 +480,27 @@ external_insert_init(Relation rel)
 	}
 	else
 	{
-		/* LOCATION - tablespace */
+		/* LOCATION - gpfdist */
 		
-		Uri*		uri;
-		char*		uri_str;
 		Value*		v;
+		char*		uri_str;
+		int			segindex = GpIdentity.segindex;
+		int			num_segs = GpIdentity.numsegments;
+		int			num_urls = list_length(extentry->locations);
+		int			my_url = segindex % num_urls;
+		
+		if (num_urls > num_segs)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("External table has more URLs then available primary "
+							"segments that can write into them")));
 
-		Assert(list_length(extentry->locations) == 1); /* WETs have just one location entry */
-		
-		v = linitial(extentry->locations);
-		uri_str = pstrdup(v->val.str);
-		uri = ParseUriString(uri_str);
-
-		/* ... do stuff with the url ... */
-		
-		pfree(uri);
-		
+		/* get a url to use. we use seg number modulo total num of urls */
+		v = list_nth(extentry->locations, my_url);
+		uri_str = pstrdup(v->val.str);	
 		extInsertDesc->ext_uri = uri_str;
+		
+		/*elog(NOTICE, "seg %d got url number %d: %s", segindex, my_url, uri_str);*/
 	}
 
 	/*
@@ -586,18 +590,20 @@ external_insert(ExternalInsertDesc extInsertDesc, HeapTuple instup)
 void
 external_insert_finish(ExternalInsertDesc extInsertDesc)
 {
-	char *relname = pstrdup(RelationGetRelationName(extInsertDesc->ext_rel));
-	
+
 	/*
 	 * Close the external source
 	 */
 	if(extInsertDesc->ext_file)
 	{
+		char *relname = pstrdup(RelationGetRelationName(extInsertDesc->ext_rel));
+		
+		url_fflush((URL_FILE*)extInsertDesc->ext_file, extInsertDesc->ext_pstate);
 		close_external_source(extInsertDesc->ext_file, true, (const char*)relname);
 		extInsertDesc->ext_file = NULL;
+		pfree(relname);
 	}
 
-	pfree(relname);
 	pfree(extInsertDesc);
 }
 
@@ -1358,7 +1364,7 @@ external_senddata(URL_FILE *extfile, CopyState pstate)
 	StringInfo	fe_msgbuf = pstate->fe_msgbuf;
 	size_t	nwrote = 0;
 	
-	nwrote = url_fwrite((void *) fe_msgbuf->data, 1, fe_msgbuf->len, extfile);
+	nwrote = url_fwrite((void *) fe_msgbuf->data, 1, fe_msgbuf->len, extfile, pstate);
 	
 	if (url_ferror(extfile, nwrote))
 			ereport(ERROR,

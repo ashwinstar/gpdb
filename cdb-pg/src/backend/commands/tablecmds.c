@@ -20194,11 +20194,6 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 					errmsg("http URI\'s can only be used in an external web table"),
 					errhint("Use CREATE EXTERNAL WEB TABLE instead.")));
 
-		if(iswritable && (uri->protocol == URI_GPFDIST))
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("writable external table \'gpfdist\' protocol is not yet supported")));
-
 		if(iswritable && (uri->protocol == URI_HTTP || uri->protocol == URI_FILE))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -20206,7 +20201,20 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 							(uri->protocol == URI_HTTP ? "http" : "file")),
 					 errhint("Writable external tables may use \'gpfdist\' URIs only.")));
 
-
+		if(iswritable && strchr(uri->path, '*'))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("Unsupported use of wildcard in a writable external web table definition: "
+							"\'%s\'", uri_str_final),
+					errhint("Specify the explicit path and file name to write into.")));
+		
+		if(iswritable && uri->path[strlen(uri->path) - 1] == '/')
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("Unsupported use of a directory name in a writable external web table definition: "
+							"\'%s\'", uri_str_final),
+					errhint("Specify the explicit path and file name to write into.")));
+		
 		len = VARHDRSZ + strlen(uri_str_final);
 
 		/* +1 leaves room for sprintf's trailing null */

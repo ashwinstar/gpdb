@@ -43,21 +43,36 @@ enum fcurl_type_e { CFTYPE_NONE=0, CFTYPE_FILE=1, CFTYPE_CURL=2, CFTYPE_EXEC=3 }
 #endif
 
 typedef struct curlctl_t {
+	
 	CURL *handle;
 	char *curl_url;
 	struct curl_slist *x_httpheader;
-	struct {
+	
+	struct 
+	{
 		char* ptr;	   /* malloc-ed buffer */
 		int   max;
 		int   bot, top;
-	} buf;
+	} in;
+
+	struct 
+	{
+		char* ptr;	   /* malloc-ed buffer */
+		int   max;
+		int   bot, top;
+	} out;
+
 	int still_running;          /* Is background url fetch still in progress */
+	int for_write;				/* 'f' when we SELECT, 't' when we INSERT    */
 	int error, eof;				/* error & eof flags */
 	int gp_proto;
 	char *http_response;
-	struct {
+	
+	struct 
+	{
 		int   datalen;  /* remaining datablock length */
 	} block;
+	
 } curlctl_t;
 
 #define EXEC_DATA_P 0 /* index to data pipe */
@@ -109,7 +124,8 @@ extern int url_fclose(URL_FILE *file, bool failOnError, const char *relname);
 extern bool url_feof(URL_FILE *file, int bytesread);
 extern bool url_ferror(URL_FILE *file, int bytesread);
 extern size_t url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate);
-extern size_t url_fwrite(void *ptr, size_t size, size_t nmemb, URL_FILE *file);
+extern size_t url_fwrite(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate);
 extern void url_rewind(URL_FILE *file, const char *relname);
+extern void url_fflush(URL_FILE *file, CopyState pstate);
 
 #endif

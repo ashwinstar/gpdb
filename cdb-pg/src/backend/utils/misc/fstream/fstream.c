@@ -339,16 +339,29 @@ fstream_open(const char *path, const struct fstream_options *options,
 		return 0;
 	}
 
+	if (fs->glob.gl_pathc != 1 && options->forwrite)
+	{
+		gfile_printf_then_putc_newline("fstream open for write found more than one file (%d)",
+										fs->glob.gl_pathc);
+		*response_code = 404;
+		*response_string = "More than 1 file found for writing. Unsupported operation.";
+
+		fstream_close(fs);
+		return 0;
+	}
+
 	/*
-	 * check READ access right for all files, and then close them. Leave the
-	 * first file opened
+	 * if writing - check write access rights for the one file.
+	 * if reading - check read access right for all files, and 
+	 * then close them, leaving the first file open.
+	 * 
 	 */
 	for (i = fs->glob.gl_pathc; --i >= 0;)
 	{
 		gfile_close(&fs->fd);
 
-		if (gfile_open(&fs->fd, fs->glob.gl_pathv[i], response_code,
-					   response_string))
+		if (gfile_open(&fs->fd, fs->glob.gl_pathv[i], options->forwrite,
+					   response_code, response_string))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
 					fs->glob.gl_pathv[i]);
@@ -404,8 +417,8 @@ static int nextFile(fstream_t*fs)
 	{
 		fs->skip_header_line = fs->options.header;
 
-		if (gfile_open(&fs->fd, fs->glob.gl_pathv[fs->fidx], &response_code,
-				&response_string))
+		if (gfile_open(&fs->fd, fs->glob.gl_pathv[fs->fidx], 0 /* readonly */, 
+						&response_code, &response_string))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
 											fs->glob.gl_pathv[fs->fidx]);
@@ -661,6 +674,64 @@ int fstream_read(fstream_t *fs,
 	}
 }
 
+int fstream_write(fstream_t *fs,
+				  void *buf,
+				  int size,
+				  const int write_whole_lines)
+{
+	int byteswritten = 0;
+	
+	if (fs->ferror)
+		return -1;
+
+	/*
+	 * If we need to write all the data up to the last *complete* logical
+	 * line in the data buffer (like gpfdist for example) - we choose this
+	 * path (we don't want to write partial lines to the output file). 
+	 * We grab the bigger chunk we can get that includes whole lines.
+	 * Otherwise, if we just want the whole buffer we skip.
+	 */	
+	if (write_whole_lines)
+	{
+		char* last_lf;
+
+		/*
+		 * scan for \n for record boundary
+		 * find the last \n from the back
+		 */
+		for (last_lf = (char*)buf + size; (char*)buf <= --last_lf && *last_lf != '\n';)
+			;
+		last_lf = (char*)buf <= last_lf ? last_lf + 1 : 0;
+
+		if (last_lf == 0)
+		{
+			fs->ferror = "no complete data row found for writing";
+			return -1;
+		}
+
+		/* TODO: need to do this more carefully for CSV, like in the read case */
+		
+		/* write data to destination file */
+		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, last_lf - (char *)buf);
+		
+		/* caller should move leftover data to start of buffer */
+
+	}
+	else
+	{
+		/* write data to destination file */
+		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, size);
+	}
+		
+	if (byteswritten < 0)
+	{
+		fs->ferror = "cannot write into file";
+		return -1;
+	}
+
+	return byteswritten;
+	
+}
 int fstream_eof(fstream_t *fs)
 {
 	return fs->fidx == fs->glob.gl_pathc;
@@ -700,8 +771,8 @@ int fstream_rewind(fstream_t *fs)
 
 	gfile_close(&fs->fd);
 
-	if (gfile_open(&fs->fd, fs->glob.gl_pathv[0], &response_code,
-				   &response_string))
+	if (gfile_open(&fs->fd, fs->glob.gl_pathv[0], 0 /* readonly */,
+				   &response_code, &response_string))
 	{
 		gfile_printf_then_putc_newline("fstream unable to open file %s",
 				fs->glob.gl_pathv[0]);
