@@ -90,7 +90,7 @@ int			Gp_segment = UNDEF_SEGMENT;		/* What content this QE is
 bool		Gp_write_shared_snapshot;	/* tell the writer QE to write the
 										 * shared snapshot */
 
-bool		gp_reraise_signal=true;	/* try to dump core when we get SIGABRT & SIGSEGV */
+bool		gp_reraise_signal=false;	/* try to dump core when we get SIGABRT & SIGSEGV */
 
 bool		gp_version_mismatch_error=true;	/* Enforce same-version on QD&QE. */
 

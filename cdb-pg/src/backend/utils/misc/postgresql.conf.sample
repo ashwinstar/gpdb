@@ -244,9 +244,9 @@
 # ERROR REPORTING AND LOGGING
 #------------------------------------------------------------------------------
 
-# - Where to Log -
+# - Set gp_reraise_signal to on to generate core files on SIGSEGV
 
-#gp_reraise_signal = on
+#gp_reraise_signal = off
 
 # - Where to Log -
 
