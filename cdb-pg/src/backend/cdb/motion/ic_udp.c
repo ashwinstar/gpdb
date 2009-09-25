@@ -721,9 +721,16 @@ put_rx_buffer(MotionConn *conn)
 
 	buf = (struct icpkthdr *)conn->pBuff;
 
-	Insist(buf != NULL);
-
-	Insist((uint8 *)buf == conn->pkt_q[conn->pkt_q_head]);
+	if (buf == NULL)
+	{
+		pthread_mutex_unlock(&rx_thread_mutex);
+		elog(FATAL, "put_rx_buffer: buffer is NULL");
+	}
+	else if ((uint8 *)buf != conn->pkt_q[conn->pkt_q_head])
+	{
+		pthread_mutex_unlock(&rx_thread_mutex);
+		elog(FATAL, "put_rx_buffer: buffer is not at head position.");
+	}
 
 	/* advance queue head. */
 	conn->pkt_q[conn->pkt_q_head] = NULL;
@@ -1177,7 +1184,14 @@ SetupUDPInterconnect(EState *estate)
 
 	ChunkTransportStateEntry *sendingChunkTransportState = NULL;
 
-	Insist(!estate->interconnect_context && estate->es_sliceTable);
+	if (estate->interconnect_context)
+	{
+		elog(FATAL, "SetupUDPInterconnect: already initialized.");
+	}
+	else if (!estate->es_sliceTable)
+	{
+		elog(FATAL, "SetupUDPInterconnect: no slice table ?");
+	}
 
 	estate->interconnect_context = palloc0(sizeof(ChunkTransportState));
 
@@ -1675,7 +1689,10 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 	Slice	   *mySlice;
 	MotionConn *conn;
 
-	Insist(transportStates->sliceTable != NULL);
+	if (transportStates->sliceTable == NULL)
+	{
+		elog(FATAL, "TeardownUDPInterconnect: missing slice table.");
+	}
 
 	mySlice = (Slice *) list_nth(transportStates->sliceTable->slices, transportStates->sliceId);
 
@@ -2124,7 +2141,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 
 	/* We either got data, or get cancelled. We never make it out to
 	 * here. */
-	Insist(0);
+	elog(FATAL, "receiveChunksUDP: not cancelled, but didn't receive.");
 }
 
 static TupleChunkListItem
@@ -2138,7 +2155,14 @@ RecvTupleChunkFromAnyUDP(MotionLayerState *mlStates,
 	int					i, index, activeCount=0;
 	TupleChunkListItem	tcItem=NULL;
 
-	Insist(transportStates && transportStates->activated);
+	if (!transportStates)
+	{
+		elog(FATAL, "RecvTupleChunkFromAnyUDP: missing context");
+	}
+	else if (!transportStates->activated)
+	{
+		elog(FATAL, "RecvTupleChunkFromAnyUDP: interconnect context not active!");
+	}
 
 	getChunkTransportState(transportStates, motNodeID, &pEntry);
 
@@ -2193,7 +2217,14 @@ RecvTupleChunkFromUDP(ChunkTransportState *transportStates,
 	MotionConn			*conn;
 	int16				route;
 
-	Insist(transportStates && transportStates->activated);
+	if (!transportStates)
+	{
+		elog(FATAL, "RecvTupleChunkFromUDP: missing context");
+	}
+	else if (!transportStates->activated)
+	{
+		elog(FATAL, "RecvTupleChunkFromUDP: interconnect context not active!");
+	}
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(LOG, "recvtuplechunkfromudp().");
@@ -2703,7 +2734,14 @@ SendEosUDP(MotionLayerState *mlStates,
 	int			i;
 	bool		stopRace=false;
 
-	Insist(transportStates && (transportStates->activated || transportStates->teardownActive));
+	if (!transportStates)
+	{
+		elog(FATAL, "SendEosUDP: missing interconnect context.");
+	}
+	else if (!transportStates->activated && !transportStates->teardownActive)
+	{
+		elog(FATAL, "SendEosUDP: context and teardown inactive.");
+	}
 
 	/* check em' */
 	ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
