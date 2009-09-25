@@ -15,6 +15,13 @@ include $(top_builddir)/src/Makefile.global
 
 OBJS=   pg_config.o $(WIN32RES)
 
+# The frontend doesn't need everything that's in LIBS, some are backend only
+LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
+# This program isn't interactive, so doesn't need these
+LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
+
+
+
 # don't include subdirectory-path-dependent -I and -L switches
 STD_CPPFLAGS := $(filter-out -I$(top_srcdir)/src/include -I$(top_builddir)/src/include,$(CPPFLAGS))
 STD_LDFLAGS := $(filter-out -L$(top_builddir)/src/port,$(LDFLAGS))

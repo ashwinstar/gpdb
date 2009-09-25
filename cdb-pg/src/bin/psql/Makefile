@@ -36,6 +36,8 @@ EXTRA_OBJS = $(top_builddir)/src/backend/parser/keywords.o
 
 FLEXFLAGS = -Cfe
 
+# The frontend doesn't need everything that's in LIBS, some are backend only
+LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
 
 all: submake-libpq submake-libpgport submake-backend psql
 

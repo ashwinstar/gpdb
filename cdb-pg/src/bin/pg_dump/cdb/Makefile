@@ -13,6 +13,12 @@ subdir = src/bin/pg_dump/cdb
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
+# The frontend doesn't need everything that's in LIBS, some are backend only
+LIBS := $(filter-out -llapack -lblas -lf2c -lresolv, $(LIBS))
+# This program isn't interactive, so doesn't need these
+LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto, $(LIBS))
+
+
 EXTRA_OBJS = $(top_builddir)/src/backend/parser/keywords.o
 
 PGDUMP_SRCDIR= $(top_srcdir)/src/bin/pg_dump

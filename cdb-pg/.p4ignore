@@ -8,3 +8,4 @@ config.status.lineno
 config.log
 
 configure.lineno
+.config.log.swp

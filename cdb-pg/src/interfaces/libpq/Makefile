@@ -31,6 +31,9 @@ endif
 # platforms.
 LIBS := $(LIBS:-lpgport=)
 
+# The frontend doesn't need everything that's in LIBS, some are backend only
+LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
+
 OBJS=	fe-auth.o fe-connect.o fe-exec.o fe-misc.o fe-print.o fe-lobj.o \
 	fe-protocol2.o fe-protocol3.o pqexpbuffer.o pqsignal.o fe-secure.o \
 	libpq-events.o \

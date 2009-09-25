@@ -17,6 +17,11 @@ SO_MAJOR_VERSION= 5
 SO_MINOR_VERSION= 2
 DLTYPE= library
 
+# The frontend doesn't need everything that's in LIBS, some are backend only
+LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
+# This program isn't interactive, so doesn't need these
+LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
+
 override CPPFLAGS := -DFRONTEND \
 	-I../include -I$(top_srcdir)/src/interfaces/ecpg/include \
 	-I$(libpq_srcdir) -I$(top_builddir)/src/port $(CPPFLAGS)

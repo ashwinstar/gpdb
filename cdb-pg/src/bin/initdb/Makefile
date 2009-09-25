@@ -20,6 +20,11 @@ OBJS=	initdb.o encnames.o pqsignal.o $(WIN32RES)
 
 all: submake-libpgport initdb
 
+# The frontend doesn't need everything that's in LIBS, some are backend only
+LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
+# This program isn't interactive, so doesn't need these
+LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
+
 initdb: $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LIBS) -o $@$(X)
 

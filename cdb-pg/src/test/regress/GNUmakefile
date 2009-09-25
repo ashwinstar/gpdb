@@ -43,6 +43,12 @@ EXTRADEFS = '-DHOST_TUPLE="$(host_tuple)"' \
 	'-DSHELLPROG="$(SHELL)"' \
 	'-DDLSUFFIX="$(DLSUFFIX)"'
 
+
+# The frontend doesn't need everything that's in LIBS, some are backend only
+LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
+# This program isn't interactive, so doesn't need these
+LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
+
 ##
 ## Prepare for tests
 ##

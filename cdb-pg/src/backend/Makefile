@@ -43,7 +43,7 @@ endif
 
 
 # We put libpgport into OBJS, so remove it from LIBS; also add libldap
-LIBS := $(filter-out -lpgport, $(LIBS)) $(LDAP_LIBS_BE) -lcurl -lbz2 -lresolv $(CLAPACKLIBS) $(PTHREAD_LIBS)
+LIBS := $(filter-out -lpgport, $(LIBS)) $(LDAP_LIBS_BE)
 
 # The backend doesn't need everything that's in LIBS, however
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses, $(LIBS))
