@@ -94,7 +94,7 @@ sigjmp_buf *PG_exception_stack = NULL;
 extern bool redirection_done;
 
 /* GUC parameters */
-PGErrorVerbosity Log_error_verbosity = PGERROR_VERBOSE;
+int Log_error_verbosity = PGERROR_VERBOSE;
 char	   *Log_line_prefix = NULL;		/* format for extra log line info */
 int			Log_destination = LOG_DESTINATION_STDERR;
 
@@ -207,12 +207,19 @@ err_gettext(const char *str)
 /*
  * elog_internalerror -- report an internal error
  *
+ * GPDB only
+ *
  * Does not return; exits via longjmp to PG_CATCH error handler.
  */
 void
 elog_internalerror(const char *filename, int lineno, const char *funcname)
 {
-    if (errstart(ERROR, filename, lineno, funcname))
+	/*
+	 * TODO  Chuck asks:  Why isn't this a FATAL error?
+	 *
+	 * Also, why aren't we allowing for a specific err message to be passed in?
+	 */
+    if (errstart(ERROR, filename, lineno, funcname,TEXTDOMAIN))
     {
         errfinish(errcode(ERRCODE_INTERNAL_ERROR),
                   errmsg("Unexpected internal error"));
@@ -235,7 +242,7 @@ elog_internalerror(const char *filename, int lineno, const char *funcname)
  */
 bool
 errstart(int elevel, const char *filename, int lineno,
-         const char *funcname)
+         const char *funcname, const char *domain)
 {
     ErrorData  *edata;
     bool		output_to_server = false;
@@ -252,6 +259,10 @@ errstart(int elevel, const char *filename, int lineno,
          * If we are inside a critical section, all errors become PANIC
          * errors.	See miscadmin.h.
          */
+         /*
+          * TODO  Chuck asks:  Isn't it dangerous to supress the PANIC?
+          * Can't we do this in a better way?
+          */
         if (CritSectionCount > 0 && !SuppressPanic)
             elevel = PANIC;
 
@@ -379,8 +390,7 @@ errstart(int elevel, const char *filename, int lineno,
     edata->lineno = lineno;
     edata->funcname = funcname;
     /* the default text domain is the backend's */
-    edata->domain = PG_TEXTDOMAIN("postgres");
-    //edata->domain = domain ? domain : PG_TEXTDOMAIN("postgres");
+	edata->domain = domain ? domain : PG_TEXTDOMAIN("postgres");
     /* Select default errcode based on elevel */
     if (elevel >= ERROR)
         edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
@@ -1279,7 +1289,7 @@ elog_finish(int elevel, const char *fmt,...)
      */
     errordata_stack_depth--;
     errno = edata->saved_errno;
-    if (!errstart(elevel, edata->filename, edata->lineno, edata->funcname))
+	if (!errstart(elevel, edata->filename, edata->lineno, edata->funcname, NULL))
         return;					/* nothing to do */
 
     /*
@@ -1317,6 +1327,10 @@ EmitErrorReport(void)
     oldcontext = MemoryContextSwitchTo(ErrorContext);
 
     /* CDB: Tidy up the message */
+    /*
+     * TODO Chuck asks:  Why do we want to do this?  it seems pointless
+     * and makes the error messages harder to read.
+     */
     if (edata->output_to_server ||
         edata->output_to_client)
         cdb_tidy_message(edata);
@@ -1614,7 +1628,7 @@ elog_dismiss(int downgrade_to_elevel)
     error_context_stack = NULL;
 
     /* Use errstart to decide where to send the error report. */
-    shouldEmit = errstart(downgrade_to_elevel, NULL, 0, NULL);
+    shouldEmit = errstart(downgrade_to_elevel, NULL, 0, NULL, TEXTDOMAIN);
 
     /* Send error report to log and/or client. */
     if (shouldEmit)

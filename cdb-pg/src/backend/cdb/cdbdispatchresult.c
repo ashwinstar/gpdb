@@ -627,7 +627,7 @@ cdbdisp_relayDispatchResult(CdbDispatchResult       *dispatchResult)
         				
         			}
         		}
-        		errstart(elevel,file,linenum,func);
+        		errstart(elevel,file,linenum,func,TEXTDOMAIN);
 #if 0
 			/* XXX Fix me! what is the test for?  It is always true */
         		if (message)

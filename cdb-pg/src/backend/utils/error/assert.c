@@ -36,7 +36,7 @@ ExceptionalCondition(const char *conditionName,
 					 int         lineNumber)
 {
     /* CDB: Try to tell the QD or client what happened. */
-    if (errstart(FATAL, fileName, lineNumber, NULL))
+    if (errstart(FATAL, fileName, lineNumber, NULL,TEXTDOMAIN))
     {
 		if (!PointerIsValid(conditionName)
 			|| !PointerIsValid(fileName)
@@ -51,15 +51,24 @@ ExceptionalCondition(const char *conditionName,
 					  errdetail("%s(\"%s\", File: \"%s\", Line: %d)\n",
 								errorType, conditionName, fileName, lineNumber)
 				);
+				
+		/* Usually this shouldn't be needed, but make sure the msg went out */
+		fflush(stderr);
+		
 		/*
 		 * Force to generate a core dump by sending the current process
 		 * a SIGSEGV signal
+		 *
+		 * TODO  Chuck asks:   Why is this necessary?  abort() should cause a core dump
+		 * to be generated, so there should be no reason to raise the signal.
+		 * And why is this in the if block?
 		 */
 		PG_SETMASK(&BlockSig);
 #ifdef SIGSEGV
 		pqsignal(SIGSEGV, SIG_DFL);
-#endif
+
 		raise(SIGSEGV);
+#endif
 	}
 	
     abort();

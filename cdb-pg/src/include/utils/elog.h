@@ -113,6 +113,10 @@ extern pthread_t main_tid;
  *  for that weird case that should never happen.
  ** Can be used in macros and conditional expressions.
  */
+/*
+ * TODO  Chuck asks:  Why aren't we passing the text of the assertion to elog_internalerror?
+ * How is anybody supposed to know what was wrong?
+ */
 #define Insist(assertion)   \
     ( (assertion)           \
         ? true              \
@@ -137,14 +141,26 @@ void elog_internalerror(const char *filename, int lineno, const char *funcname)
  * ERRCODE_INTERNAL_ERROR if elevel is ERROR or more, ERRCODE_WARNING
  * if elevel is WARNING, or ERRCODE_SUCCESSFUL_COMPLETION if elevel is
  * NOTICE or below.
+ *
+ * ereport_domain() allows a message domain to be specified, for modules that
+ * wish to use a different message catalog from the backend's.	To avoid having
+ * one copy of the default text domain per .o file, we define it as NULL here
+ * and have errstart insert the default text domain.  Modules can either use
+ * ereport_domain() directly, or preferably they can override the TEXTDOMAIN
+ * macro.
  *----------
  */
-#define ereport(elevel, rest)  \
-	(errstart(elevel, __FILE__, __LINE__, PG_FUNCNAME_MACRO) ? \
+#define ereport_domain(elevel, domain, rest)	\
+	(errstart(elevel, __FILE__, __LINE__, PG_FUNCNAME_MACRO, domain) ? \
 	 (errfinish rest) : (void) 0)
 
+#define ereport(elevel, rest)	\
+	ereport_domain(elevel, TEXTDOMAIN, rest)
+
+#define TEXTDOMAIN NULL
+
 extern bool errstart(int elevel, const char *filename, int lineno,
-		 const char *funcname);
+		 const char *funcname, const char *domain);
 extern void errfinish(int dummy,...);
 
 extern int	errcode(int sqlerrcode);
@@ -412,7 +428,7 @@ typedef enum
 	PGERROR_VERBOSE				/* all the facts, ma'am */
 } PGErrorVerbosity;
 
-extern PGErrorVerbosity Log_error_verbosity;
+extern int	Log_error_verbosity;
 extern char *Log_line_prefix;
 extern int	Log_destination;
 
