@@ -2142,6 +2142,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 	/* We either got data, or get cancelled. We never make it out to
 	 * here. */
 	elog(FATAL, "receiveChunksUDP: not cancelled, but didn't receive.");
+	return NULL; /* make GCC behave */
 }
 
 static TupleChunkListItem
