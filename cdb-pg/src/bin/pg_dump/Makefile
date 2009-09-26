@@ -20,8 +20,8 @@ LIBS := $(filter-out -llapack -lblas -lf2c -lresolv, $(LIBS))
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto, $(LIBS))
 
 
-
-override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) $(CPPFLAGS)
+# the use of tempnam in pg_backup_tar.c causes a warning when using newer versions of GCC
+override CPPFLAGS := -Wno-deprecated-declarations -DFRONTEND -I$(libpq_srcdir) $(CPPFLAGS)
 
 OBJS=	pg_backup_archiver.o pg_backup_db.o pg_backup_custom.o \
 	pg_backup_files.o pg_backup_null.o pg_backup_tar.o \
