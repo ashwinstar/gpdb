@@ -93,6 +93,7 @@
 #include <sys/procset.h>
 #endif
 #ifdef HAVE_NUMA_H
+#define NUMA_VERSION1_COMPATIBILITY 1
 #include <numa.h>
 #endif
 
