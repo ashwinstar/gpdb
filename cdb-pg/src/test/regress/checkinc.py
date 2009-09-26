@@ -2,8 +2,8 @@
 
 import sys, os, re, subprocess
 
-p1 = subprocess.Popen('pg_config --includedir', stdout=subprocess.PIPE, shell=True)
-p2 = subprocess.Popen('pg_config --pkgincludedir', stdout=subprocess.PIPE, shell=True)
+p1 = subprocess.Popen('../../bin/pg_config --includedir', stdout=subprocess.PIPE, shell=True)
+p2 = subprocess.Popen('../../bin/pg_config --pkgincludedir', stdout=subprocess.PIPE, shell=True)
 inc    = p1.communicate()[0].strip();
 pkginc = p2.communicate()[0].strip();
 
