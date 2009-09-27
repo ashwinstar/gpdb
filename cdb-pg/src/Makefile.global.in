@@ -472,6 +472,9 @@ ifeq ($(PORTNAME),win32)
 LIBS += -lws2_32 -lshfolder
 endif
 
+# Because GPDB always needs pthreads, make sure we include the pthread libs
+LIBS += $(PTHREAD_LIBS)
+
 # Not really standard libc functions, used by the backend.
 TAS         = @TAS@
 
