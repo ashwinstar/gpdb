@@ -2313,17 +2313,14 @@ select * from get_ereport order by 1;
  caah: cdbgang:00000845:  errmsg("%s", segdbDesc->error_message.data))); 
  caah: cdbgang:00000909:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
  caah: cdbgang:00000910:  errmsg("All segment databases are unavailable"))); 
- caah: cdbgang:00001076:  ereport(FATAL, 
- caah: cdbgang:00001077:  (errmsg("could not translate host name "%s", port "%d" to address: %s", 
- caah: cdbgang:00001078:  conninfo->seginfo[i].hostname, conninfo->seginfo[i].port, gai_strerror(ret)))); 
- caah: cdbgang:00002249:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
- caah: cdbgang:00002250:  errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount), 
- caah: cdbgang:00002251:  errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread), 
- caah: cdbgang:00002252:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
- caah: cdbgang:00002317:  ereport(ERROR, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION), 
- caah: cdbgang:00002318:  errmsg("%s", segdbDesc->error_message.data))); 
- caah: cdbgang:00002578:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
- caah: cdbgang:00002579:  errmsg_internal("problem in allocateGang"))); 
+ caah: cdbgang:00002182:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+ caah: cdbgang:00002183:  errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount), 
+ caah: cdbgang:00002184:  errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread), 
+ caah: cdbgang:00002185:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
+ caah: cdbgang:00002250:  ereport(ERROR, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION), 
+ caah: cdbgang:00002251:  errmsg("%s", segdbDesc->error_message.data))); 
+ caah: cdbgang:00002511:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+ caah: cdbgang:00002512:  errmsg_internal("problem in allocateGang"))); 
  caah: cdbhash:00000570:  ereport(ERROR, 
  caah: cdbhash:00000571:  (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
  caah: cdbhash:00000572:  errmsg("Type %u is not hashable.", type))); 
@@ -6231,86 +6228,86 @@ select * from get_ereport order by 1;
  iaag: icxudp:00000370:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
  iaag: icxudp:00000371:  errmsg("InitMotionLayerIPC: failed to create thread"), 
  iaag: icxudp:00000372:  errdetail("pthread_create() failed with err %d", pthread_err))); 
- iaag: icxudp:00000918:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00000919:  errmsg("Interconnect Error: Could not set udp-tx socket" 
- iaag: icxudp:00000920:  "to non-blocking mode."), 
- iaag: icxudp:00000921:  errdetail("%m%s sockfd=%d", "fcntl", pEntry->txfd))); 
- iaag: icxudp:00001016:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00001017:  errmsg("Interconnect Error: Could not set up listener socket."), 
- iaag: icxudp:00001018:  errdetail("%m%s", fun))); 
- iaag: icxudp:00001058:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00001059:  errmsg("Interconnect Error: Could not parse remote listener" 
- iaag: icxudp:00001060:  "address: '%s'", cdbProc->listenerAddr), 
- iaag: icxudp:00001061:  errdetail("inet_pton() unable to parse address: '%s'", 
- iaag: icxudp:00001062:  cdbProc->listenerAddr))); 
- iaag: icxudp:00001066:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00001067:  errmsg("Interconnect Error: System error occured during parsing" 
- iaag: icxudp:00001068:  " of remote listener address '%s'", cdbProc->listenerAddr), 
- iaag: icxudp:00001069:  errdetail("%m%s", "inet_pton"))); 
- iaag: icxudp:00001118:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00001119:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
- iaag: icxudp:00001120:  errdetail("%m%s", "malloc"))); 
- iaag: icxudp:00001152:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00001153:  errmsg("Interconnect error setting up outgoing " 
- iaag: icxudp:00001154:  "connection."), 
- iaag: icxudp:00001155:  errdetail("%m%s", "sendto"))); 
- iaag: icxudp:00001281:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- iaag: icxudp:00001282:  errmsg("Setup UDP interconnect failed: out of memory"))); 
- iaag: icxudp:00001323:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00001324:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
- iaag: icxudp:00001325:  errdetail("%m%s", "malloc"))); 
- iaag: icxudp:00001435:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00001436:  errmsg("Interconnect error: %m%s", "poll"))); 
- iaag: icxudp:00001461:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00001462:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
- iaag: icxudp:00001466:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00001467:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
- iaag: icxudp:00001636:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00001637:  errmsg("Interconnect timeout: Unable to " 
- iaag: icxudp:00001638:  "complete setup of all connections " 
- iaag: icxudp:00001639:  "within time limit."), 
- iaag: icxudp:00001640:  errdetail("Completed %d of %d incoming and " 
- iaag: icxudp:00001641:  "%d of %d outgoing connections. " 
- iaag: icxudp:00001642:  "gp_interconnect_setup_timeout = %d " 
- iaag: icxudp:00001643:  "seconds.", 
- iaag: icxudp:00001644:  incoming_count, expectedTotalIncoming, 
- iaag: icxudp:00001645:  outgoing_count, expectedTotalOutgoing, 
- iaag: icxudp:00001646:  interconnect_setup_timeout))); 
- iaag: icxudp:00002003:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00002004:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
- iaag: icxudp:00002104:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00002105:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
- iaag: icxudp:00002107:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00002108:  errmsg("Interconnect error master lost contact with client (recv)"))); 
- iaag: icxudp:00002115:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00002116:  errmsg("Interconnect error: UDP-IC out of memory."))); 
- iaag: icxudp:00002281:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00002282:  errmsg("Interconnect error waiting for peer ack"), 
- iaag: icxudp:00002283:  errdetail("During recvfrom() call.
+ iaag: icxudp:00000925:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00000926:  errmsg("Interconnect Error: Could not set udp-tx socket" 
+ iaag: icxudp:00000927:  "to non-blocking mode."), 
+ iaag: icxudp:00000928:  errdetail("%m%s sockfd=%d", "fcntl", pEntry->txfd))); 
+ iaag: icxudp:00001023:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00001024:  errmsg("Interconnect Error: Could not set up listener socket."), 
+ iaag: icxudp:00001025:  errdetail("%m%s", fun))); 
+ iaag: icxudp:00001065:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00001066:  errmsg("Interconnect Error: Could not parse remote listener" 
+ iaag: icxudp:00001067:  "address: '%s'", cdbProc->listenerAddr), 
+ iaag: icxudp:00001068:  errdetail("inet_pton() unable to parse address: '%s'", 
+ iaag: icxudp:00001069:  cdbProc->listenerAddr))); 
+ iaag: icxudp:00001073:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00001074:  errmsg("Interconnect Error: System error occured during parsing" 
+ iaag: icxudp:00001075:  " of remote listener address '%s'", cdbProc->listenerAddr), 
+ iaag: icxudp:00001076:  errdetail("%m%s", "inet_pton"))); 
+ iaag: icxudp:00001125:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00001126:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
+ iaag: icxudp:00001127:  errdetail("%m%s", "malloc"))); 
+ iaag: icxudp:00001159:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00001160:  errmsg("Interconnect error setting up outgoing " 
+ iaag: icxudp:00001161:  "connection."), 
+ iaag: icxudp:00001162:  errdetail("%m%s", "sendto"))); 
+ iaag: icxudp:00001295:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ iaag: icxudp:00001296:  errmsg("Setup UDP interconnect failed: out of memory"))); 
+ iaag: icxudp:00001337:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00001338:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
+ iaag: icxudp:00001339:  errdetail("%m%s", "malloc"))); 
+ iaag: icxudp:00001449:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00001450:  errmsg("Interconnect error: %m%s", "poll"))); 
+ iaag: icxudp:00001475:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00001476:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
+ iaag: icxudp:00001480:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00001481:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
+ iaag: icxudp:00001650:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00001651:  errmsg("Interconnect timeout: Unable to " 
+ iaag: icxudp:00001652:  "complete setup of all connections " 
+ iaag: icxudp:00001653:  "within time limit."), 
+ iaag: icxudp:00001654:  errdetail("Completed %d of %d incoming and " 
+ iaag: icxudp:00001655:  "%d of %d outgoing connections. " 
+ iaag: icxudp:00001656:  "gp_interconnect_setup_timeout = %d " 
+ iaag: icxudp:00001657:  "seconds.", 
+ iaag: icxudp:00001658:  incoming_count, expectedTotalIncoming, 
+ iaag: icxudp:00001659:  outgoing_count, expectedTotalOutgoing, 
+ iaag: icxudp:00001660:  interconnect_setup_timeout))); 
+ iaag: icxudp:00002020:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00002021:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
+ iaag: icxudp:00002121:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00002122:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
+ iaag: icxudp:00002124:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00002125:  errmsg("Interconnect error master lost contact with client (recv)"))); 
+ iaag: icxudp:00002132:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00002133:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+ iaag: icxudp:00002313:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00002314:  errmsg("Interconnect error waiting for peer ack"), 
+ iaag: icxudp:00002315:  errdetail("During recvfrom() call.
  "))); 
- iaag: icxudp:00002288:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00002289:  errmsg("Interconnect error waiting for peer ack"), 
- iaag: icxudp:00002290:  errdetail("short read during recvfrom() call. (%d)
+ iaag: icxudp:00002320:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00002321:  errmsg("Interconnect error waiting for peer ack"), 
+ iaag: icxudp:00002322:  errdetail("short read during recvfrom() call. (%d)
  ", n))); 
- iaag: icxudp:00002446:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00002447:  errmsg("Interconnect error writing an outgoing packet"), 
- iaag: icxudp:00002448:  errdetail("error during sendto() call (error:%d).
+ iaag: icxudp:00002478:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00002479:  errmsg("Interconnect error writing an outgoing packet"), 
+ iaag: icxudp:00002480:  errdetail("error during sendto() call (error:%d).
  " 
- iaag: icxudp:00002449:  "For Remote Connection: contentId=%d at %s", 
- iaag: icxudp:00002450:  errno, conn->remoteContentId, 
- iaag: icxudp:00002451:  conn->remoteHostAndPort))); 
- iaag: icxudp:00002457:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00002458:  errmsg("Interconnect error writing an outgoing packet"), 
- iaag: icxudp:00002459:  errdetail("short transmit during sendto() call.
+ iaag: icxudp:00002481:  "For Remote Connection: contentId=%d at %s", 
+ iaag: icxudp:00002482:  errno, conn->remoteContentId, 
+ iaag: icxudp:00002483:  conn->remoteHostAndPort))); 
+ iaag: icxudp:00002489:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00002490:  errmsg("Interconnect error writing an outgoing packet"), 
+ iaag: icxudp:00002491:  errdetail("short transmit during sendto() call.
  " 
- iaag: icxudp:00002460:  "For Remote Connection: contentId=%d at %s", 
- iaag: icxudp:00002461:  conn->remoteContentId, 
- iaag: icxudp:00002462:  conn->remoteHostAndPort))); 
- iaag: icxudp:00002512:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00002513:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
- iaag: icxudp:00002528:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- iaag: icxudp:00002529:  errmsg("Interconnect error waiting for peer ack"), 
- iaag: icxudp:00002530:  errdetail("During poll() call.
+ iaag: icxudp:00002492:  "For Remote Connection: contentId=%d at %s", 
+ iaag: icxudp:00002493:  conn->remoteContentId, 
+ iaag: icxudp:00002494:  conn->remoteHostAndPort))); 
+ iaag: icxudp:00002544:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00002545:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
+ iaag: icxudp:00002560:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ iaag: icxudp:00002561:  errmsg("Interconnect error waiting for peer ack"), 
+ iaag: icxudp:00002562:  errdetail("During poll() call.
  "))); 
  iaah: indexam:00000148:  ereport(ERROR, 
  iaah: indexam:00000149:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
@@ -9550,131 +9547,131 @@ select * from get_ereport order by 1;
  paba: portalcmds:00000536:  ereport(ERROR, 
  paba: portalcmds:00000537:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
  paba: portalcmds:00000538:  errmsg("could not reposition held cursor"))); 
- paba: postmaster:00000739:  ereport(ERROR, 
- paba: postmaster:00000740:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paba: postmaster:00000741:  errmsg("--%s requires a value", 
- paba: postmaster:00000742:  optarg))); 
- paba: postmaster:00000744:  ereport(ERROR, 
- paba: postmaster:00000745:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paba: postmaster:00000746:  errmsg("-c %s requires a value", 
- paba: postmaster:00000747:  optarg))); 
- paba: postmaster:00000953:  ereport(FATAL, 
- paba: postmaster:00000954:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- paba: postmaster:00000955:  errmsg("invalid list syntax for "listen_addresses""))); 
- paba: postmaster:00000975:  ereport(WARNING, 
- paba: postmaster:00000976:  (errmsg("could not create listen socket for "%s"", 
- paba: postmaster:00000977:  curhost))); 
- paba: postmaster:00000981:  ereport(FATAL, 
- paba: postmaster:00000982:  (errmsg("could not create any TCP/IP sockets"))); 
- paba: postmaster:00001008:  ereport(WARNING, 
- paba: postmaster:00001009:  (errmsg("could not create Unix-domain socket"))); 
- paba: postmaster:00001016:  ereport(FATAL, 
- paba: postmaster:00001017:  (errmsg("no socket created for listening"))); 
- paba: postmaster:00001042:  ereport(FATAL, 
- paba: postmaster:00001043:  (errmsg("could not create I/O completion port for child queue"))); 
- paba: postmaster:00001056:  ereport(FATAL, 
- paba: postmaster:00001057:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
- paba: postmaster:00001058:  (int) GetLastError()))); 
- paba: postmaster:00001153:  ereport(FATAL, 
- paba: postmaster:00001154:  (errmsg("could not load pg_hba.conf"))); 
- paba: postmaster:00001202:  ereport(FATAL, 
- paba: postmaster:00001203:  (errmsg("%s: could not locate matching postgres executable", 
- paba: postmaster:00001204:  argv0))); 
- paba: postmaster:00001222:  ereport(ERROR, 
- paba: postmaster:00001223:  (errcode_for_file_access(), 
- paba: postmaster:00001224:  errmsg("could not open directory "%s": %m", 
- paba: postmaster:00001225:  pkglib_path), 
- paba: postmaster:00001226:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file "%s" has been moved away from its proper location.", 
- paba: postmaster:00001227:  my_exec_path))); 
- paba: postmaster:00001252:  ereport(FATAL, 
- paba: postmaster:00001253:  (errcode_for_file_access(), 
- paba: postmaster:00001254:  errmsg("data directory "%s" does not exist", 
- paba: postmaster:00001255:  DataDir))); 
- paba: postmaster:00001257:  ereport(FATAL, 
- paba: postmaster:00001258:  (errcode_for_file_access(), 
- paba: postmaster:00001259:  errmsg("could not read permissions of directory "%s": %m", 
- paba: postmaster:00001260:  DataDir))); 
- paba: postmaster:00001265:  ereport(FATAL, 
- paba: postmaster:00001266:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001267:  errmsg("specified data directory "%s" is not a directory", 
- paba: postmaster:00001268:  DataDir))); 
- paba: postmaster:00001281:  ereport(FATAL, 
- paba: postmaster:00001282:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001283:  errmsg("data directory "%s" has wrong ownership", 
- paba: postmaster:00001284:  DataDir), 
- paba: postmaster:00001285:  errhint("The server must be started by the user that owns the data directory."))); 
- paba: postmaster:00001303:  ereport(FATAL, 
- paba: postmaster:00001304:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001305:  errmsg("data directory "%s" has group or world access", 
- paba: postmaster:00001306:  DataDir), 
- paba: postmaster:00001307:  errdetail("Permissions should be u=rwx (0700)."))); 
- paba: postmaster:00001824:  ereport(FATAL, 
- paba: postmaster:00001825:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paba: postmaster:00001826:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
- paba: postmaster:00001827:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
- paba: postmaster:00001828:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
- paba: postmaster:00001829:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
- paba: postmaster:00001830:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
- paba: postmaster:00001894:  ereport(FATAL, 
- paba: postmaster:00001895:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paba: postmaster:00001896:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
- paba: postmaster:00001922:  ereport(FATAL, 
- paba: postmaster:00001923:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
- paba: postmaster:00001924:  errmsg("no PostgreSQL user name specified in startup packet"))); 
- paba: postmaster:00001985:  ereport(FATAL, 
- paba: postmaster:00001986:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00001987:  errmsg("the database system is starting up"))); 
- paba: postmaster:00001990:  ereport(FATAL, 
- paba: postmaster:00001991:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00001992:  errmsg("the database system is shutting down"))); 
- paba: postmaster:00001995:  ereport(FATAL, 
- paba: postmaster:00001996:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00001997:  errmsg("the database system is in recovery mode"))); 
- paba: postmaster:00002000:  ereport(FATAL, 
- paba: postmaster:00002001:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
- paba: postmaster:00002002:  errmsg("sorry, too many clients already"))); 
- paba: postmaster:00002278:  ereport(WARNING, 
- paba: postmaster:00002279:  (errmsg("pg_hba.conf not reloaded"))); 
- paba: postmaster:00003594:  ereport(WARNING, 
- paba: postmaster:00003595:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
- paba: postmaster:00003596:  gai_strerror(ret)))); 
- paba: postmaster:00003637:  ereport(FATAL, 
- paba: postmaster:00003638:  (errmsg("could not load pg_hba.conf"))); 
- paba: postmaster:00004059:  ereport(ERROR, 
- paba: postmaster:00004060:  (errmsg_internal("could not terminate unstarted process: error code %d", 
- paba: postmaster:00004061:  (int) GetLastError()))); 
- paba: postmaster:00004084:  ereport(ERROR, 
- paba: postmaster:00004085:  (errmsg_internal("could not terminate unstartable process: error code %d", 
- paba: postmaster:00004086:  (int) GetLastError()))); 
- paba: postmaster:00004093:  ereport(ERROR, 
- paba: postmaster:00004094:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
- paba: postmaster:00004095:  (int) GetLastError()))); 
- paba: postmaster:00004109:  ereport(FATAL, 
- paba: postmaster:00004110:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- paba: postmaster:00004111:  errmsg("out of memory"))); 
- paba: postmaster:00004122:  ereport(FATAL, 
- paba: postmaster:00004123:  (errmsg_internal("could not register process for wait: error code %d", 
- paba: postmaster:00004124:  (int) GetLastError()))); 
- paba: postmaster:00004190:  ereport(FATAL, 
- paba: postmaster:00004191:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- paba: postmaster:00004192:  errmsg("out of memory"))); 
- paba: postmaster:00004813:  ereport(ERROR, 
- paba: postmaster:00004814:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
- paba: postmaster:00004815:  (int) GetLastError()))); 
- paba: postmaster:00004835:  ereport(ERROR, 
- paba: postmaster:00004836:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
- paba: postmaster:00004837:  src, WSAGetLastError()))); 
- paba: postmaster:00005029:  ereport(FATAL, 
- paba: postmaster:00005030:  (errmsg_internal("no free slots in shmem backend array"))); 
- paba: postmaster:00005048:  ereport(WARNING, 
- paba: postmaster:00005049:  (errmsg_internal("could not find backend entry with pid %d", 
- paba: postmaster:00005050:  (int) pid))); 
- paba: postmaster:00005080:  ereport(FATAL, 
- paba: postmaster:00005081:  (errmsg_internal("no room for child entry with pid %lu", 
- paba: postmaster:00005082:  (unsigned long) pid))); 
- paba: postmaster:00005106:  ereport(WARNING, 
- paba: postmaster:00005107:  (errmsg_internal("could not find child entry with pid %lu", 
- paba: postmaster:00005108:  (unsigned long) pid))); 
+ paba: postmaster:00000740:  ereport(ERROR, 
+ paba: postmaster:00000741:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paba: postmaster:00000742:  errmsg("--%s requires a value", 
+ paba: postmaster:00000743:  optarg))); 
+ paba: postmaster:00000745:  ereport(ERROR, 
+ paba: postmaster:00000746:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paba: postmaster:00000747:  errmsg("-c %s requires a value", 
+ paba: postmaster:00000748:  optarg))); 
+ paba: postmaster:00000954:  ereport(FATAL, 
+ paba: postmaster:00000955:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ paba: postmaster:00000956:  errmsg("invalid list syntax for "listen_addresses""))); 
+ paba: postmaster:00000976:  ereport(WARNING, 
+ paba: postmaster:00000977:  (errmsg("could not create listen socket for "%s"", 
+ paba: postmaster:00000978:  curhost))); 
+ paba: postmaster:00000982:  ereport(FATAL, 
+ paba: postmaster:00000983:  (errmsg("could not create any TCP/IP sockets"))); 
+ paba: postmaster:00001009:  ereport(WARNING, 
+ paba: postmaster:00001010:  (errmsg("could not create Unix-domain socket"))); 
+ paba: postmaster:00001017:  ereport(FATAL, 
+ paba: postmaster:00001018:  (errmsg("no socket created for listening"))); 
+ paba: postmaster:00001043:  ereport(FATAL, 
+ paba: postmaster:00001044:  (errmsg("could not create I/O completion port for child queue"))); 
+ paba: postmaster:00001057:  ereport(FATAL, 
+ paba: postmaster:00001058:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
+ paba: postmaster:00001059:  (int) GetLastError()))); 
+ paba: postmaster:00001154:  ereport(FATAL, 
+ paba: postmaster:00001155:  (errmsg("could not load pg_hba.conf"))); 
+ paba: postmaster:00001203:  ereport(FATAL, 
+ paba: postmaster:00001204:  (errmsg("%s: could not locate matching postgres executable", 
+ paba: postmaster:00001205:  argv0))); 
+ paba: postmaster:00001223:  ereport(ERROR, 
+ paba: postmaster:00001224:  (errcode_for_file_access(), 
+ paba: postmaster:00001225:  errmsg("could not open directory "%s": %m", 
+ paba: postmaster:00001226:  pkglib_path), 
+ paba: postmaster:00001227:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file "%s" has been moved away from its proper location.", 
+ paba: postmaster:00001228:  my_exec_path))); 
+ paba: postmaster:00001253:  ereport(FATAL, 
+ paba: postmaster:00001254:  (errcode_for_file_access(), 
+ paba: postmaster:00001255:  errmsg("data directory "%s" does not exist", 
+ paba: postmaster:00001256:  DataDir))); 
+ paba: postmaster:00001258:  ereport(FATAL, 
+ paba: postmaster:00001259:  (errcode_for_file_access(), 
+ paba: postmaster:00001260:  errmsg("could not read permissions of directory "%s": %m", 
+ paba: postmaster:00001261:  DataDir))); 
+ paba: postmaster:00001266:  ereport(FATAL, 
+ paba: postmaster:00001267:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001268:  errmsg("specified data directory "%s" is not a directory", 
+ paba: postmaster:00001269:  DataDir))); 
+ paba: postmaster:00001282:  ereport(FATAL, 
+ paba: postmaster:00001283:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001284:  errmsg("data directory "%s" has wrong ownership", 
+ paba: postmaster:00001285:  DataDir), 
+ paba: postmaster:00001286:  errhint("The server must be started by the user that owns the data directory."))); 
+ paba: postmaster:00001304:  ereport(FATAL, 
+ paba: postmaster:00001305:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001306:  errmsg("data directory "%s" has group or world access", 
+ paba: postmaster:00001307:  DataDir), 
+ paba: postmaster:00001308:  errdetail("Permissions should be u=rwx (0700)."))); 
+ paba: postmaster:00001825:  ereport(FATAL, 
+ paba: postmaster:00001826:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paba: postmaster:00001827:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
+ paba: postmaster:00001828:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
+ paba: postmaster:00001829:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
+ paba: postmaster:00001830:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
+ paba: postmaster:00001831:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
+ paba: postmaster:00001895:  ereport(FATAL, 
+ paba: postmaster:00001896:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paba: postmaster:00001897:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
+ paba: postmaster:00001923:  ereport(FATAL, 
+ paba: postmaster:00001924:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+ paba: postmaster:00001925:  errmsg("no PostgreSQL user name specified in startup packet"))); 
+ paba: postmaster:00001986:  ereport(FATAL, 
+ paba: postmaster:00001987:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00001988:  errmsg("the database system is starting up"))); 
+ paba: postmaster:00001991:  ereport(FATAL, 
+ paba: postmaster:00001992:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00001993:  errmsg("the database system is shutting down"))); 
+ paba: postmaster:00001996:  ereport(FATAL, 
+ paba: postmaster:00001997:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00001998:  errmsg("the database system is in recovery mode"))); 
+ paba: postmaster:00002001:  ereport(FATAL, 
+ paba: postmaster:00002002:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+ paba: postmaster:00002003:  errmsg("sorry, too many clients already"))); 
+ paba: postmaster:00002279:  ereport(WARNING, 
+ paba: postmaster:00002280:  (errmsg("pg_hba.conf not reloaded"))); 
+ paba: postmaster:00003595:  ereport(WARNING, 
+ paba: postmaster:00003596:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+ paba: postmaster:00003597:  gai_strerror(ret)))); 
+ paba: postmaster:00003638:  ereport(FATAL, 
+ paba: postmaster:00003639:  (errmsg("could not load pg_hba.conf"))); 
+ paba: postmaster:00004060:  ereport(ERROR, 
+ paba: postmaster:00004061:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+ paba: postmaster:00004062:  (int) GetLastError()))); 
+ paba: postmaster:00004085:  ereport(ERROR, 
+ paba: postmaster:00004086:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+ paba: postmaster:00004087:  (int) GetLastError()))); 
+ paba: postmaster:00004094:  ereport(ERROR, 
+ paba: postmaster:00004095:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+ paba: postmaster:00004096:  (int) GetLastError()))); 
+ paba: postmaster:00004110:  ereport(FATAL, 
+ paba: postmaster:00004111:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ paba: postmaster:00004112:  errmsg("out of memory"))); 
+ paba: postmaster:00004123:  ereport(FATAL, 
+ paba: postmaster:00004124:  (errmsg_internal("could not register process for wait: error code %d", 
+ paba: postmaster:00004125:  (int) GetLastError()))); 
+ paba: postmaster:00004191:  ereport(FATAL, 
+ paba: postmaster:00004192:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ paba: postmaster:00004193:  errmsg("out of memory"))); 
+ paba: postmaster:00004814:  ereport(ERROR, 
+ paba: postmaster:00004815:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+ paba: postmaster:00004816:  (int) GetLastError()))); 
+ paba: postmaster:00004836:  ereport(ERROR, 
+ paba: postmaster:00004837:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+ paba: postmaster:00004838:  src, WSAGetLastError()))); 
+ paba: postmaster:00005030:  ereport(FATAL, 
+ paba: postmaster:00005031:  (errmsg_internal("no free slots in shmem backend array"))); 
+ paba: postmaster:00005049:  ereport(WARNING, 
+ paba: postmaster:00005050:  (errmsg_internal("could not find backend entry with pid %d", 
+ paba: postmaster:00005051:  (int) pid))); 
+ paba: postmaster:00005081:  ereport(FATAL, 
+ paba: postmaster:00005082:  (errmsg_internal("no room for child entry with pid %lu", 
+ paba: postmaster:00005083:  (unsigned long) pid))); 
+ paba: postmaster:00005107:  ereport(WARNING, 
+ paba: postmaster:00005108:  (errmsg_internal("could not find child entry with pid %lu", 
+ paba: postmaster:00005109:  (unsigned long) pid))); 
  pabb: pgstatfuncs:00000748:  ereport(ERROR, 
  pabb: pgstatfuncs:00000749:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  pabb: pgstatfuncs:00000750:  (errmsg("only superuser can renice another user's session")))); 
@@ -14391,13 +14388,13 @@ select * from get_ereport order by 1;
  uaad: udt:00000285:  ereport(ERROR, ( 
  uaad: udt:00000286:  errcode(ERRCODE_CANNOT_COERCE), 
  uaad: udt:00000287:  errmsg("Attempt to register UDT with Oid %d failed. Oid appoints a non UDT type", typeId))); 
- uaad: url:00000623:  ereport(ERROR, 
- uaad: url:00000624:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
- uaad: url:00000625:  errmsg("cannot start external table command: %m"), 
- uaad: url:00000626:  errdetail("Command: %s", url))); 
- uaad: url:00000978:  ereport(ERROR, 
- uaad: url:00000979:  (errcode(ERRCODE_INTERNAL_ERROR), 
- uaad: url:00000980:  errmsg_internal("external table type not implemented: %d", type))); 
+ uaad: url:00000626:  ereport(ERROR, 
+ uaad: url:00000627:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+ uaad: url:00000628:  errmsg("cannot start external table command: %m"), 
+ uaad: url:00000629:  errdetail("Command: %s", url))); 
+ uaad: url:00000981:  ereport(ERROR, 
+ uaad: url:00000982:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ uaad: url:00000983:  errmsg_internal("external table type not implemented: %d", type))); 
  uaae: user:00000139:  ereport(ERROR, 
  uaae: user:00000140:  (errcode(ERRCODE_SYNTAX_ERROR), 
  uaae: user:00000141:  errmsg("conflicting or redundant options"))); 
@@ -15490,6 +15487,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15430 rows)
+(15427 rows)
 
 drop external table get_ereport;

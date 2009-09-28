@@ -139,5 +139,9 @@ extern CdbComponentDatabases *getCdbComponentInfo(bool DnsLookupFailureIsError);
  */
 extern bool *makeRandomSegMap(int total_primaries, int total_to_skip);
 
+/*
+ * do a host:port to IP lookup, bypass caching.
+ */
+extern char *getDnsAddress(char *name, int port, int elevel);
 
 #endif   /* CDBUTIL_H */

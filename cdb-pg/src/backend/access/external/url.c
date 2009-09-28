@@ -491,9 +491,10 @@ make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
 	char *hostname_start;
 	char *hostname_end;
 	char hostname[100];
-	char hostip[20];
-	struct hostent * he;
+	char *hostip = NULL;
+	char portstr[8];
 	int len;
+	int port = 80; /* default for http */
 	char *p;
 
 	if (! authority_start)
@@ -512,8 +513,18 @@ make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
 
 	hostname_end = strchr(hostname_start, ':');
 	if (! (hostname_end && hostname_end < authority_end))
+	{
 		hostname_end = authority_end;
-
+	}
+	else
+	{
+		/* port number exists in this url. get it */
+		int len = authority_end - hostname_end;
+		memcpy(portstr, hostname_end + 1, len);
+		portstr[len] = 0;
+		port = atoi(portstr);
+	}
+		
 	if (hostname_end - hostname_start >= sizeof(hostname))
 	{
 		elog(ERROR, "hostname too long for url '%s'", url);
@@ -521,16 +532,8 @@ make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
 
 	memcpy(hostname, hostname_start, hostname_end - hostname_start);
 	hostname[hostname_end - hostname_start] = 0;
-	he = gethostbyname(hostname);
-	if (he)
-	{
-		strcpy(hostip, inet_ntoa(*(struct in_addr*)he->h_addr));
-		/* elog(NOTICE, "IP: %s", hostip); */
-	}
-	else
-	{
-		elog(ERROR, "unable to resolve host '%s' in url '%s'. %s", hostname, url, hstrerror(h_errno));
-	}
+	
+	hostip = getDnsAddress(hostname, port, ERROR);
 
 	if (!buf)
 		return strlen(url) + 1 - strlen(hostname) + strlen(hostip);

@@ -1052,76 +1052,9 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 		cdbinfo->hostname = pstrdup(conninfo->seginfo[i].hostname);
 		cdbinfo->hostip = NULL;
 		cdbinfo->port = conninfo->seginfo[i].port;
-		{
-			int			ret;
-			char		portNumberStr[32];
-			char	   *service;
-			struct addrinfo *addrs = NULL,
-					   *addr;
-			struct addrinfo hint;
-
-			/* Initialize hint structure */
-			MemSet(&hint, 0, sizeof(hint));
-			hint.ai_socktype = SOCK_STREAM;
-			hint.ai_family = AF_UNSPEC;
-
-			snprintf(portNumberStr, sizeof(portNumberStr), "%d", conninfo->seginfo[i].port);
-			service = portNumberStr;
-
-			ret = pg_getaddrinfo_all(conninfo->seginfo[i].hostname, service, &hint, &addrs);
-			if (ret || !addrs)
-			{
-				if (addrs)
-					pg_freeaddrinfo_all(hint.ai_family, addrs);
-				ereport(FATAL,
-						(errmsg("could not translate host name \"%s\", port \"%d\" to address: %s",
-								conninfo->seginfo[i].hostname, conninfo->seginfo[i].port, gai_strerror(ret))));
-			}
-			for (addr = addrs; addr; addr = addr->ai_next)
-			{
-#ifdef HAVE_UNIX_SOCKETS
-				/* Ignore AF_UNIX sockets, if any are returned. */
-				if (addr->ai_family == AF_UNIX)
-					continue;
-#endif
-				if (addr->ai_family == AF_INET) /* IPv4 address */
-				{
-					char		hostinfo[NI_MAXHOST];
-
-					/* Get a text representation of the IP address */
-					pg_getnameinfo_all((struct sockaddr_storage *) addr->ai_addr, addr->ai_addrlen,
-									   hostinfo, sizeof(hostinfo),
-									   NULL, 0,
-									   NI_NUMERICHOST);
-					cdbinfo->hostip = pstrdup(hostinfo);
-					break;
-				}
-			}
-
-#ifdef HAVE_IPV6
-			/*
-			 * IPv6 probably would work fine, we'd just need to make sure all the data structures are big enough for
-			 * the IPv6 address.  And on some broken systems, you can get an IPv6 address, but not be able to bind to it
-			 * because IPv6 is disabled or missing in the kernel, so we'd only want to use the IPv6 address if there isn't
-			 * an IPv4 address.  All we really need to do is test this.
-			 */
-			if (cdbinfo->hostip == NULL && addrs->ai_family == AF_INET6)
-			{
-				char		hostinfo[NI_MAXHOST];
-
-				elog(WARNING, "host %s only has IPv6 address, not yet supported", conninfo->seginfo[i].hostname);
-				addr = addrs;
-				pg_getnameinfo_all((struct sockaddr_storage *) addr->ai_addr, addr->ai_addrlen,
-								   hostinfo, sizeof(hostinfo),
-								   NULL, 0,
-								   NI_NUMERICHOST);
-				cdbinfo->hostip = pstrdup(hostinfo);
-			}
-#endif
-
-			pg_freeaddrinfo_all(hint.ai_family, addrs);
-		}
-
+		cdbinfo->hostip = getDnsAddress(conninfo->seginfo[i].hostname, 
+										conninfo->seginfo[i].port, 
+										FATAL);
 
 		/* Segment db info */
 		segdbDesc->segment_database_info = cdbinfo;
