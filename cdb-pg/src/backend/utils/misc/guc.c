@@ -747,7 +747,7 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 	{
-		{"memory_protect_buffer_pool", PGC_SUSET, DEVELOPER_OPTIONS,
+		{"memory_protect_buffer_pool", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("Enables memory protection of the buffer pool"),
 			gettext_noop("Turn on memory protection of the buffer pool "
 						 "to detect invalid accesses to the buffer pool memory."),
