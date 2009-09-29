@@ -339,6 +339,19 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 	if (contain_volatile_functions(sublink->testexpr))
 		return (Node *)sublink;
 
+	/**
+	 * If subquery returns a set-returning function (SRF) in the targetlist, we
+	 * do not attempt to convert the IN to a join.
+	 */
+	
+	if (expression_returns_set((Node *) subselect->targetList))
+		return (Node *) sublink;
+	
+	/*
+	 * If the subquery contains a set returning function in the targetlist,
+	 * we don't attempt to pull up 
+	 */
+	
     /*
      * If uncorrelated, and no Var nodes on lhs, the subquery will be executed
      * only once.  It should become an InitPlan, but make_subplan() doesn't
