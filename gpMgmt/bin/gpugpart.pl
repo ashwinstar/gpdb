@@ -1210,6 +1210,66 @@ sub genpartdefs4
             my $pby_txt = "PARTITION BY " . uc($vv->{pby}->{typ}) . " " .
                 "(" . join(", ", @{$vv->{pby}->{keys}}) . ")";
 
+			my $priv_txt = "";
+
+			if (exists($vv->{owner_privs}))
+			{
+				$priv_txt .= 
+					"ALTER TABLE $newname SET OWNER " . 
+					"$vv->{owner_privs}->{owner};\n"
+					if (exists($vv->{owner_privs}->{owner}));
+
+				if (exists($vv->{owner_privs}->{grant_regular}))
+				{
+					my $grant_list = 
+						$vv->{owner_privs}->{grant_regular};
+
+					my @kl = sort(keys(%{$grant_list}));
+
+					for my $namekey (@kl)
+					{
+						my $acla = $grant_list->{$namekey};
+
+						if (scalar(@{$acla}))
+						{
+							$priv_txt .=
+								"\nGRANT \n " . 
+								join(", ", @{$acla}) . 
+								"\n ON $newname\n" .
+								"TO $namekey\;\n";
+						}
+
+					}
+
+				}
+				if (exists($vv->{owner_privs}->{grant_with_grant}))
+				{
+					my $grant_list = 
+						$vv->{owner_privs}->{grant_with_grant};
+
+					my @kl = sort(keys(%{$grant_list}));
+
+					for my $namekey (@kl)
+					{
+						my $acla = $grant_list->{$namekey};
+
+						if (scalar(@{$acla}))
+						{
+							$priv_txt .=
+								"\nGRANT \n " . 
+								join(", ", @{$acla}) . 
+								"\n ON $newname\n" .
+								"TO $namekey\n" .
+								"WITH GRANT OPTION\;\n";
+						}
+
+					}
+
+				}
+
+
+			}
+
             my $spec_txt = "(\n";
 
 			# for all partition specs
@@ -1424,6 +1484,8 @@ sub genpartdefs4
 
             $vv->{pby}->{pby_txt} =  $pby_txt ;
             $vv->{pby}->{spec_txt} =  $spec_txt ;
+
+            $vv->{pby}->{priv_txt} =  $priv_txt ;
 
         }
 
@@ -1790,6 +1852,12 @@ sub printpartdefs1
 
                         print "\n";
                         print $ct_txt . "\n" . $pby_txt . "\n" . $spec_txt . ";\n";
+
+						my $priv_txt = $vv->{pby}->{priv_txt};
+
+						print "\n", $priv_txt, "\n"
+							if (length($priv_txt));
+
                     }
                 }
                 elsif ($ph =~ m/mdf/i)
@@ -2571,6 +2639,200 @@ sub prettydump
     }
 } # end prettydump
 
+sub get_owner_privs
+{
+	my $tname = shift;
+
+    my $psql_str = "psql ";
+
+    $psql_str .= $glob_connect
+        if (defined($glob_connect));
+
+	# describe table and get owner
+	$psql_str .= " -c \'\\dt  $tname\'";
+
+#    print $psql_str, "\n";
+
+    my $tabdef = `$psql_str`;
+
+	# remove pre-header -- need table header
+	$tabdef =~ s/^\s+List of relations\s*//;
+
+#	print $tabdef, "\n";
+
+    my $rowarr = tablelizer($tabdef);
+
+#	print Data::Dumper->Dump([$rowarr]);
+
+	my $owner;
+
+	if (scalar(@{$rowarr}))
+	{
+		my $r1 = pop @{$rowarr};
+		$owner = $r1->{Owner};
+	}
+
+	my $outi = {};
+	
+	$outi->{owner} = $owner;
+
+	$psql_str = "psql ";
+
+	$psql_str .= $glob_connect
+		if (defined($glob_connect));
+
+	# describe table and get privileges
+	$psql_str .= " -c \'\\dp  $tname\'";
+
+	$tabdef = `$psql_str`;
+
+	# remove pre-header -- need table header
+	my @ttt = split(/\n/, $tabdef);
+
+	shift @ttt; # drop "Access privileges for database..."
+
+	$tabdef = join("\n", @ttt);
+
+	$rowarr = tablelizer($tabdef);
+
+	my $acl;
+
+	if (scalar(@{$rowarr}))
+	{
+		my $r1 = pop @{$rowarr};
+		$acl = $r1->{"Access privileges"};
+	}
+
+	if ($acl)
+	{
+		$outi->{acl} = $acl;
+
+		$acl =~ s/^\{//;
+		$acl =~ s/\}$//;
+
+		my @privs = split(/\,/, $acl);
+
+		my $grant_regular = {};
+		my $grant_with_grant = {};
+
+		for my $pr1 (@privs)
+		{
+			# remove any quotes
+			$pr1 =~ s/^\"//;
+			$pr1 =~ s/\"$//;
+
+			# remove the grantor
+			my @p2 = split(/\//, $pr1);
+
+			my $p3 = shift @p2; # first part is name/role/group = priv list
+
+			$p3 = "PUBLIC" . $p3
+				if ($p3 =~ m/^\=/); # change anonymous role to PUBLIC
+
+			my @name_list = split(/\=/, $p3);
+
+			my $grant_name = $name_list[0];
+
+			if ($name_list[1] =~ m/^arwdRxt$/)
+			{
+				$grant_regular->{$grant_name} = ["ALL PRIVILEGES"];
+			}
+			else
+			{
+				my @alphalist = split(//, $name_list[1]);
+
+				$grant_with_grant->{$grant_name} = []
+					unless (exists($grant_with_grant->{$grant_name}));
+
+				$grant_regular->{$grant_name} = []
+					unless (exists($grant_regular->{$grant_name}));
+
+				for my $a1 (@alphalist)
+				{
+					my $tt;
+
+					$tt = undef;
+
+					if ($a1 =~ m/\*/)
+					{
+						my $last_priv = pop @{$grant_regular->{$grant_name}};
+
+						push @{$grant_with_grant->{$grant_name}}, $last_priv;
+						
+					}
+					else
+					{
+						if ($a1 =~ m/r/)
+						{
+							$tt = "SELECT";
+						}
+						elsif ($a1 =~ m/w/)
+						{
+							$tt = "UPDATE";
+						}
+						elsif ($a1 =~ m/a/)
+						{
+							$tt = "INSERT";
+						}
+						elsif ($a1 =~ m/d/)
+						{
+							$tt = "DELETE";
+						}
+						elsif ($a1 =~ m/R/)
+						{
+							$tt = "RULE";
+						}
+						elsif ($a1 =~ m/x/)
+						{
+							$tt = "REFERENCES";
+						}
+						elsif ($a1 =~ m/t/)
+						{
+							$tt = "TRIGGER";
+						}
+						elsif ($a1 =~ m/X/)
+						{
+							$tt = "EXECUTE";
+						}
+						elsif ($a1 =~ m/U/)
+						{
+							$tt = "USAGE";
+						}
+						elsif ($a1 =~ m/C/)
+						{
+							$tt = "CREATE";
+						}
+						elsif ($a1 =~ m/T/)
+						{
+							$tt = "TEMPORARY";
+						}
+						else
+						{
+							# complain
+						}
+						push @{$grant_regular->{$grant_name}}, $tt;
+
+					}
+				
+
+				} # end for alphalist
+
+			} # end if not all privs
+
+
+		} # end for all @privs
+		
+		$outi->{grant_with_grant} = $grant_with_grant;
+		$outi->{grant_regular} = $grant_regular;
+
+
+	} # end if acl
+
+	print Data::Dumper->Dump([$outi]);
+
+	return $outi;
+}
+
 if (1)
 {
     my $psql_str = "psql ";
@@ -2665,6 +2927,10 @@ if (1)
 
         next
             unless ($tabdef =~ m/^Rules\:/m);
+
+		my $owner_privs = get_owner_privs($kk);
+
+		$vv->{owner_privs} = $owner_privs;
 
 #        print $tabdef;
 
