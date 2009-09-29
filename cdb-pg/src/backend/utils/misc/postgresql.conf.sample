@@ -279,7 +279,7 @@
 					#   warning
 					#   error
 
-#log_min_messages = notice		# Values in order of decreasing detail:
+#log_min_messages = warning		# Values in order of decreasing detail:
 					#   debug5
 					#   debug4
 					#   debug3
@@ -377,8 +377,8 @@
 #------------------------------------------------------------------------------
 
 #autovacuum = off			# enable autovacuum subprocess?
-					# 'on' requires stats_start_collector
-					# and stats_row_level to also be on
+					# 'on' requires track_counts to be on
+
 #autovacuum_naptime = 1min		# time between autovacuum runs
 #autovacuum_vacuum_threshold = 500	# min # of tuple updates before
 					# vacuum
