@@ -766,7 +766,7 @@ GetResQueueForRole(Oid roleid)
 	if (gp_enable_default_resource_queues && 
 		(InvalidOid == queueid))
 	{
-		queueid = GetResQueueIdForName("gp_default");
+		queueid = GetResQueueIdForName(GP_DEFAULT_RESOURCE_QUEUE_NAME);
 	}
 
 	return queueid;

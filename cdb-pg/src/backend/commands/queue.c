@@ -622,6 +622,14 @@ DropQueue(DropQueueStmt *stmt)
 
 	heap_close(pg_authid_rel, AccessShareLock);
 
+	/* MPP-6926: cannot DROP default queue  */
+	if (gp_enable_default_resource_queues && 
+		( 0 == pg_strcasecmp(stmt->queue, GP_DEFAULT_RESOURCE_QUEUE_NAME)))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot drop default resource queue \"%s\"",
+						GP_DEFAULT_RESOURCE_QUEUE_NAME)));
+
 	/*
 	 * Delete the queue from the catalog.
 	 */
