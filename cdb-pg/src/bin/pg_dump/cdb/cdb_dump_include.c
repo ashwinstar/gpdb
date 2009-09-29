@@ -186,12 +186,13 @@ selectDumpableTable(TableInfo *tbinfo)
 
 	/* MPP addition */
 	/* if we are dumping the mpp catalog, mark all mpp catalog tables for
-		* dump and skip the policy table since it has oids and will be populated
-		* automatically when creating the tables.
-		*/
+	 * dump and skip the policy table since it has oids and will be populated
+	 * automatically when creating the tables.
+	 */
 	if(g_gp_catalog_only)
 	{
 		if(strncmp(tbinfo->dobj.name, "gp_", 3) == 0 &&
+		   strcmp(tbinfo->dobj.namespace->dobj.name, "pg_catalog") == 0 &&
 		   strcmp(tbinfo->dobj.name, "gp_distribution_policy") != 0)
 			tbinfo->dobj.dump = true;
 		else
