@@ -503,12 +503,9 @@ IFS=$ac_save_IFS
 # Enable thread-safe client libraries
 #
 AC_MSG_CHECKING([allow thread-safe client libraries])
-if test "$PORTNAME" != "win32"; then
-PGAC_ARG_BOOL(enable, thread-safety, no, [  --enable-thread-safety  make client libraries thread-safe])
-else
-# Win32 should always use threads
-PGAC_ARG_BOOL(enable, thread-safety, yes, [  --enable-thread-safety  make client libraries thread-safe])
-fi
+# GPDB wants the default here to be "yes", unlike PostgreSQL.
+# it's also required for Win32 client builds.
+PGAC_ARG_BOOL(enable, thread-safety, yes, [  --disable-thread-safety  Do not make client libraries thread-safe])
 
 PGAC_ARG_BOOL(enable, thread-safety-force, no, [  --enable-thread-safety-force  force thread-safety despite thread test failure])
 if test "$enable_thread_safety" = yes -o \
@@ -658,8 +655,10 @@ fi
 #
 # Prefer libedit
 #
-PGAC_ARG_BOOL(with, libedit-preferred, no,
-              [  --with-libedit-preferred  prefer BSD Libedit over GNU Readline])
+# In GPDB we want the default to be yes, because we don't want to link with GPL code.
+#
+PGAC_ARG_BOOL(with, libedit-preferred, yes,
+              [  --without-libedit-preferred  Don't prefer BSD Libedit over GNU Readline])
 
 
 #

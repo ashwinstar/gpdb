@@ -1494,7 +1494,7 @@ build with coverage testing instrumentation
   --enable-debugbreak        enable debug_break and debug_break_n (for debugging)
   --enable-ntuplestore      enable debug_ntuplestore (for debugging)
   --enable-faultinjection        enable fault injection for testing
-  --enable-thread-safety  make client libraries thread-safe
+  --disable-thread-safety  Do not make client libraries thread-safe
   --enable-thread-safety-force  force thread-safety despite thread test failure
   --disable-largefile     omit support for large files
 
@@ -1521,7 +1521,7 @@ Optional Packages:
   --with-bonjour          build with Bonjour support
   --with-openssl          build with OpenSSL support
   --without-readline      do not use GNU Readline nor BSD Libedit for editing
-  --with-libedit-preferred  prefer BSD Libedit over GNU Readline
+  --without-libedit-preferred  Don't prefer BSD Libedit over GNU Readline
   --with-system-tzdata=DIR  use system time zone data in DIR
   --without-zlib          do not use Zlib
   --with-gnu-ld           assume the C compiler uses GNU ld [default=no]
@@ -4850,35 +4850,8 @@ IFS=$ac_save_IFS
 #
 { $as_echo "$as_me:$LINENO: checking allow thread-safe client libraries" >&5
 $as_echo_n "checking allow thread-safe client libraries... " >&6; }
-if test "$PORTNAME" != "win32"; then
-
-pgac_args="$pgac_args enable_thread_safety"
-
-# Check whether --enable-thread-safety was given.
-if test "${enable_thread_safety+set}" = set; then
-  enableval=$enable_thread_safety;
-  case $enableval in
-    yes)
-      :
-      ;;
-    no)
-      :
-      ;;
-    *)
-      { { $as_echo "$as_me:$LINENO: error: no argument expected for --enable-thread-safety option" >&5
-$as_echo "$as_me: error: no argument expected for --enable-thread-safety option" >&2;}
-   { (exit 1); exit 1; }; }
-      ;;
-  esac
-
-else
-  enable_thread_safety=no
-
-fi
-
-
-else
-# Win32 should always use threads
+# GPDB wants the default here to be "yes", unlike PostgreSQL.
+# it's also required for Win32 client builds.
 
 pgac_args="$pgac_args enable_thread_safety"
 
@@ -4905,7 +4878,6 @@ else
 fi
 
 
-fi
 
 
 pgac_args="$pgac_args enable_thread_safety_force"
@@ -5457,6 +5429,8 @@ fi
 #
 # Prefer libedit
 #
+# In GPDB we want the default to be yes, because we don't want to link with GPL code.
+#
 
 pgac_args="$pgac_args with_libedit_preferred"
 
@@ -5479,7 +5453,7 @@ $as_echo "$as_me: error: no argument expected for --with-libedit-preferred optio
   esac
 
 else
-  with_libedit_preferred=no
+  with_libedit_preferred=yes
 
 fi
 
