@@ -780,8 +780,7 @@ char2wchar(wchar_t *to, size_t tolen, const char *from, size_t fromlen)
  * altering the global client_encoding variable for this local database.
  */
 char *
-pg_custom_client_to_server(const char *s, int len, int src_encoding,
-						   void *cep)
+pg_custom_to_server(const char *s, int len, int src_encoding, void *cep)
 {
 	FmgrInfo *custom_encoding_proc = (FmgrInfo *)cep;
 
@@ -832,6 +831,31 @@ pg_custom_client_to_server(const char *s, int len, int src_encoding,
 	}
 	
 	return perform_default_encoding_conversion(s, len, true, src_encoding, custom_encoding_proc);
+}
+
+/*
+ * pg_server_to_custom
+ * 
+ * convert server encoding to custom encoding. the reverse of pg_custom_to_server.
+ * see pg_custom_to_server, and perform_default_encoding_conversion headers for
+ * more information.
+ */
+char *
+pg_server_to_custom(const char *s, int len, int dest_encoding, void *cep)
+{
+	FmgrInfo *custom_encoding_proc = (FmgrInfo *)cep;
+	
+	Assert(DatabaseEncoding);
+
+	if (len <= 0)
+		return (char *) s;
+
+	if (dest_encoding == DatabaseEncoding->encoding ||
+		dest_encoding == PG_SQL_ASCII ||
+		DatabaseEncoding->encoding == PG_SQL_ASCII)
+		return (char *) s;		/* assume data is valid */
+
+	return perform_default_encoding_conversion(s, len, false, dest_encoding, custom_encoding_proc);
 }
 
 /* convert a multibyte string to a wchar */

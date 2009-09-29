@@ -1382,7 +1382,6 @@ DoCopy(const CopyStmt *stmt)
 		cstate->need_transcoding = false;
 	cstate->encoding_embeds_ascii = (qe_copy_from ? false : PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding));
 	cstate->line_buf_converted = (Gp_role == GP_ROLE_EXECUTE ? true : false);
-	cstate->enc_conversion_proc = NULL; /* only used in external tables */
 	setEncodingConversionProc(cstate, pg_get_client_encoding(), !is_from);
 
 	/*
@@ -1846,8 +1845,10 @@ CopyToDispatch(CopyState cstate)
 		 */
 		if (cstate->need_transcoding)
 			cstate->null_print = (char *)
-				pg_server_to_client(cstate->null_print,
-									strlen(cstate->null_print));
+				pg_server_to_custom(cstate->null_print,
+									strlen(cstate->null_print),
+									cstate->client_encoding,
+									cstate->enc_conversion_proc);
 
 		foreach(cur, cstate->attnumlist)
 		{
@@ -1997,12 +1998,14 @@ CopyTo(CopyState cstate)
 											   ALLOCSET_DEFAULT_MAXSIZE);
 
 	/*
-	 * For non-binary copy, we need to convert null_print to client
+	 * we need to convert null_print to client
 	 * encoding, because it will be sent directly with CopySendString.
 	 */
 	if (cstate->need_transcoding)
-		cstate->null_print_client = pg_server_to_client(cstate->null_print,
-														cstate->null_print_len);
+		cstate->null_print_client = pg_server_to_custom(cstate->null_print,
+														cstate->null_print_len,
+														cstate->client_encoding,
+														cstate->enc_conversion_proc);
 
 	/* if a header has been requested send the line */
 	if (cstate->header_line)
@@ -5490,7 +5493,10 @@ CopyAttributeOutText(CopyState cstate, char *string)
 	char		escapec = cstate->escape[0];
 
 	if (cstate->need_transcoding)
-		ptr = pg_server_to_client(string, strlen(string));
+		ptr = pg_server_to_custom(string, 
+								  strlen(string), 
+								  cstate->client_encoding, 
+								  cstate->enc_conversion_proc);
 	else
 		ptr = string;
 
@@ -5657,7 +5663,10 @@ CopyAttributeOutCSV(CopyState cstate, char *string,
 		use_quote = true;
 
 	if (cstate->need_transcoding)
-		ptr = pg_server_to_client(string, strlen(string));
+		ptr = pg_server_to_custom(string, 
+								  strlen(string),
+								  cstate->client_encoding,
+								  cstate->enc_conversion_proc);
 	else
 		ptr = string;
 
@@ -6873,10 +6882,10 @@ void preProcessDataLine(CopyState cstate)
 
 	if (cstate->need_transcoding)
 	{
-		cvt = (char *) pg_custom_client_to_server(cstate->line_buf.data,
-												  cstate->line_buf.len,
-												  cstate->client_encoding,
-												  cstate->enc_conversion_proc);
+		cvt = (char *) pg_custom_to_server(cstate->line_buf.data,
+										   cstate->line_buf.len,
+										   cstate->client_encoding,
+										   cstate->enc_conversion_proc);
 		if (cvt != cstate->line_buf.data)
 		{
 			/* transfer converted data back to line_buf */
