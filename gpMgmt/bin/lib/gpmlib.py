@@ -290,8 +290,6 @@ class Env:
         self.NETSTAT = findCmdInPath('netstat')
         self.PING = findCmdInPath('ping')
         self.PS = findCmdInPath('ps')
-        self.RCP = findCmdInPath('rcp')
-        self.RSH = findCmdInPath('rsh')
         self.RM = findCmdInPath('rm')
         self.SCP = findCmdInPath('scp')
         self.SED = findCmdInPath('sed')
