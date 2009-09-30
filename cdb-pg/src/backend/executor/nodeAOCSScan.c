@@ -155,7 +155,7 @@ ExecInitAOCSScan(AOCSScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_AOCSSCAN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT, 
-			{ "AOCS Scan Rescan", "Rescans", 0},
+			{ "Append-Only Columnar Scan Rescan", "Rescans", 0},
 			{ NULL, NULL, 0 }
 		};
 		
@@ -168,7 +168,7 @@ ExecInitAOCSScan(AOCSScan *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_AOCSSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&state->ss.ps, "Append-only Scan", 
+		InitPlanStateGpmonPkt(&state->ss.ps, "Append-Only Columnar Scan", 
                                       (int64)state->ss.ps.plan->plan_rows,
                                       m, t);
 	}

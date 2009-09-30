@@ -1,5 +1,5 @@
 /* 
- * Append only column store access 
+ * Append only columnar access methods
  *
  *	Copyright (c), 2009, Greenplum Inc.
  */

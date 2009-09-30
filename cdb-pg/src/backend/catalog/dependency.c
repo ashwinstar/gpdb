@@ -2078,10 +2078,10 @@ getRelationDescription(StringInfo buffer, Oid relid)
 		case RELKIND_RELATION:
 			if(relForm->relstorage == RELSTORAGE_AOROWS)
 				appendStringInfo(buffer, _("append only table %s"), relname);
-            else if (relForm->relstorage == RELSTORAGE_AOCOLS)
-				appendStringInfo(buffer, _("append only column store table %s"), relname);
-            else if (relForm->relstorage == RELSTORAGE_EXTERNAL)
-    			appendStringInfo(buffer, _("external table %s"), relname);
+            		else if (relForm->relstorage == RELSTORAGE_AOCOLS)
+				appendStringInfo(buffer, _("append only columnar table %s"), relname);
+            		else if (relForm->relstorage == RELSTORAGE_EXTERNAL)
+    				appendStringInfo(buffer, _("external table %s"), relname);
 			else
 				appendStringInfo(buffer, _("table %s"), relname);
 			break;

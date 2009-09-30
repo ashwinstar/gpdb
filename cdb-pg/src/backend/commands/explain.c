@@ -922,7 +922,7 @@ explain_outNode(StringInfo str,
 			pname = "Append-only Scan";
 			break;
 		case T_AOCSScan:
-			pname = "Append-only Column Store Scan";
+			pname = "Append-only Columnar Scan";
 			break;
 		case T_ExternalScan:
 			pname = "External Scan";

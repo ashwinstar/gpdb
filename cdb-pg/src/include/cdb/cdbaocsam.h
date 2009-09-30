@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
- * aocsam.h
- *	  append-only column store relation access method definitions.
+ * cdbaocsam.h
+ *	  append-only columnar relation access method definitions.
  *
  * Portions Copyright (c) 2009, Greenplum Inc.
  *
