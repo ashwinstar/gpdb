@@ -23,6 +23,6 @@ tr ',' '\n' | \
 sort -n | \
 uniq -d`
 
-test $DUPS && echo "Duplicate OIDS\n--------------\n$DUPS" && exit 1
+test "$DUPS" && echo "Duplicate OIDS\n--------------\n$DUPS" && exit 1
 
 exit 0
