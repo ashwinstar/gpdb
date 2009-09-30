@@ -617,7 +617,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 		}
 
 		if(maxtup > (mintup * 10))
-			elog(WARNING, "Extreme skew in the innerside of Hashjoin, nbatch %d, mintuples %u, maxtuples %u", oldnbatch, mintup, maxtup);
+			elog(LOG, "Extreme skew in the innerside of Hashjoin, nbatch %d, mintuples %u, maxtuples %u", oldnbatch, mintup, maxtup);
 	}
 
 
