@@ -250,7 +250,7 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
                 acc->datump += 4;
                 break;
             case 8:
-                Assert(IsAligned(acc->datump, 8));
+                Assert(IsAligned(acc->datump, 8) || IsAligned(acc->datump, 4));
                 *(Datum *) (acc->datump) = d;
                 acc->datump += 8;
                 break;
