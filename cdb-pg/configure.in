@@ -868,9 +868,6 @@ LIBS="$LIBS $CURL_LIBS"
 # Check for bzip2
 AC_SEARCH_LIBS(BZ2_bzDecompress, bz2)
 
-# Check for hstrerrror in libresolv
-AC_SEARCH_LIBS(hstrerror, resolv)
-
 # Check for f2c, needed by blas and lapack
 AC_SEARCH_LIBS(c_cos,f2c)
 
