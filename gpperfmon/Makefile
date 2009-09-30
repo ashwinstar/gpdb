@@ -15,7 +15,7 @@ FLEXSDK=$(HOME)/flex_sdk_3.4.0.9271_mpl
 
 flexGUI:
 	@echo flexGUI
-	[ -d "$(FLEXSDK)" ] && $(MAKE) MXMLC=$(FLEXSDK)/bin/mxmlc -C src/webui/flexGUI/src release
+	if [ -d "$(FLEXSDK)" ]; then $(MAKE) MXMLC=$(FLEXSDK)/bin/mxmlc -C src/webui/flexGUI/src release; fi
 
 installer: gpsmon gpmmon
 	$(MAKE) -C installer all
