@@ -445,7 +445,7 @@ float8  segfileMaxRowThreshold(void)
  *				   a segment file number for writing data. It does so by looking
  *				   at the in-memory hash table and selecting a segment number
  *				   that the most empty across the database and is also not
- *				   currently used. Or, if we an in an explicit transaction and
+ *				   currently used. Or, if we are in an explicit transaction and
  *				   inserting into the same table we use the same segno over and
  *				   over again. the passed in parameter 'existingsegno' is
  *				   meaningless for this role.
@@ -552,7 +552,10 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 				}
 			}
 
-			Insist(segno_chosen);
+			if(!segno_chosen)
+				ereport(ERROR, (errmsg("could not find segment file to use for "
+									   "inserting into relation %d.", relid)));
+				
 			Insist(usesegno != RESERVED_SEGNO);
 
 			/* mark this segno as in use */
