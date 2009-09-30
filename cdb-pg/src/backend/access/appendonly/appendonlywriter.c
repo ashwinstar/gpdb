@@ -177,7 +177,8 @@ AORelCreateHashEntry(Oid relid)
 
 
 	Insist(aoentry->relid == relid);
-
+	aoentry->txns_using_rel = 0;
+	
 	/*
 	 * Initialize all segfile array to zero
 	 */
