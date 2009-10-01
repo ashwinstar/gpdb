@@ -104,7 +104,6 @@ elog(DEBUG2, "external_getnext returning tuple")
  * from the outside during an error/abort (in AbortTransaction).
  */
 static FILE *g_dataSource = NULL;
-static char *g_dataSourceName = NULL;
 
 
 /* ----------------
@@ -1247,7 +1246,6 @@ open_external_readable_source(FileScanDesc scan)
 		 * for anything else.
 		 */
 		g_dataSource = scan->fs_file;
-		g_dataSourceName = scan->fs_uri;
 	}
 }
 
@@ -1298,7 +1296,6 @@ open_external_writable_source(ExternalInsertDesc extInsertDesc)
 		 * for anything else.
 		 */
 		g_dataSource = extInsertDesc->ext_file;
-		g_dataSourceName = extInsertDesc->ext_uri;
 	}
 }
 

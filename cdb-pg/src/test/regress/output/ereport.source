@@ -1537,20 +1537,22 @@ select * from get_ereport order by 1;
  aabg: appendonlywriter:00000096:  ereport(FATAL, 
  aabg: appendonlywriter:00000097:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  aabg: appendonlywriter:00000098:  errmsg("not enough shared memory for append only writer"))); 
- aabg: appendonlywriter:00000302:  ereport(ERROR, (errmsg("expected an AO hash entry for relid %d but " 
- aabg: appendonlywriter:00000303:  "found none", relid))); 
- aabg: appendonlywriter:00000424:  ereport(ERROR, 
- aabg: appendonlywriter:00000425:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- aabg: appendonlywriter:00000426:  errmsg("int64 out of range"))); 
- aabg: appendonlywriter:00000495:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
- aabg: appendonlywriter:00000496:  "tables open for writing data at the same time. " 
- aabg: appendonlywriter:00000497:  "if tables are heavily partitioned or if your " 
- aabg: appendonlywriter:00000498:  "workload requires, increase the value of " 
- aabg: appendonlywriter:00000499:  "max_appendonly_tables and retry", 
- aabg: appendonlywriter:00000500:  MaxAppendOnlyTables))); 
- aabg: appendonlywriter:00000654:  ereport(ERROR, 
- aabg: appendonlywriter:00000655:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- aabg: appendonlywriter:00000656:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
+ aabg: appendonlywriter:00000303:  ereport(ERROR, (errmsg("expected an AO hash entry for relid %d but " 
+ aabg: appendonlywriter:00000304:  "found none", relid))); 
+ aabg: appendonlywriter:00000425:  ereport(ERROR, 
+ aabg: appendonlywriter:00000426:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ aabg: appendonlywriter:00000427:  errmsg("int64 out of range"))); 
+ aabg: appendonlywriter:00000496:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
+ aabg: appendonlywriter:00000497:  "tables open for writing data at the same time. " 
+ aabg: appendonlywriter:00000498:  "if tables are heavily partitioned or if your " 
+ aabg: appendonlywriter:00000499:  "workload requires, increase the value of " 
+ aabg: appendonlywriter:00000500:  "max_appendonly_tables and retry", 
+ aabg: appendonlywriter:00000501:  MaxAppendOnlyTables))); 
+ aabg: appendonlywriter:00000557:  ereport(ERROR, (errmsg("could not find segment file to use for " 
+ aabg: appendonlywriter:00000558:  "inserting into relation %d.", relid))); 
+ aabg: appendonlywriter:00000658:  ereport(ERROR, 
+ aabg: appendonlywriter:00000659:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ aabg: appendonlywriter:00000660:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
  baae: bool:00000093:  ereport(ERROR, 
  baae: bool:00000094:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  baae: bool:00000095:  errmsg("invalid input syntax for type boolean: "%s"", in_str))); 
@@ -4449,60 +4451,60 @@ select * from get_ereport order by 1;
  faaf: float:00002791:  ereport(ERROR, 
  faaf: float:00002792:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
  faaf: float:00002793:  errmsg("division by zero"))); 
- faag: fileam:00000493:  ereport(ERROR, 
- faag: fileam:00000494:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
- faag: fileam:00000495:  errmsg("External table has more URLs then available primary " 
- faag: fileam:00000496:  "segments that can write into them"))); 
- faag: fileam:00000729:  ereport(ERROR,  
- faag: fileam:00000730:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED),  
- faag: fileam:00000731:  (errmsg(finalmsg)  
- faag: fileam:00000732:  )));  
- faag: fileam:00000733: } 
- faag: fileam:00000734:  
- faag: fileam:00000735: /* 
- faag: fileam:00000736:  * parse_next_line 
- faag: fileam:00000737:  * 
- faag: fileam:00000738:  * Given a buffer of data, extract the next data line from it and parse it 
- faag: fileam:00000739:  * to attributes according to the data format specifications. 
- faag: fileam:00000740:  * 
- faag: fileam:00000741:  * Returns: 
- faag: fileam:00000742:  * LINE_OK - line parsed successfully. 
- faag: fileam:00000743:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
- faag: fileam:00000744:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
- faag: fileam:00000745:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
- faag: fileam:00000746:  */ 
- faag: fileam:00000747: static DataLineStatus parse_next_line(FileScanDesc scan) 
- faag: fileam:00000748: { 
- faag: fileam:00000749:  CopyState pstate = scan->fs_pstate; 
- faag: fileam:00001054:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
- faag: fileam:00001055:  errmsg("The specified error table for this " 
- faag: fileam:00001056:  "external table doesn't appear to " 
- faag: fileam:00001057:  "exist in the database. It may have " 
- faag: fileam:00001058:  "been dropped."), 
- faag: fileam:00001059:  errhint("Refresh your external table definition."))); 
- faag: fileam:00001237:  ereport(ERROR, 
- faag: fileam:00001238:  (errcode_for_file_access(), 
- faag: fileam:00001239:  errmsg("could not open "%s" for reading: %d %s", 
- faag: fileam:00001240:  scan->fs_uri, response_code, response_string))); 
- faag: fileam:00001288:  ereport(ERROR, 
- faag: fileam:00001289:  (errcode_for_file_access(), 
- faag: fileam:00001290:  errmsg("could not open "%s" for writing: %d %s", 
- faag: fileam:00001291:  extInsertDesc->ext_uri, response_code, response_string))); 
- faag: fileam:00001350:  ereport(ERROR, 
- faag: fileam:00001351:  (errcode_for_file_access(), 
- faag: fileam:00001352:  errmsg("could not read from external file: %m"))); 
- faag: fileam:00001370:  ereport(ERROR, 
- faag: fileam:00001371:  (errcode_for_file_access(), 
- faag: fileam:00001372:  errmsg("could not write to external resource: %m"))); 
- faag: fileam:00001955:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- faag: fileam:00001956:  errmsg("external table internal parse error at "%s"", 
- faag: fileam:00001957:  token))); 
- faag: fileam:00001959:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- faag: fileam:00001960:  errmsg("external table internal parse error at end of " 
- faag: fileam:00001961:  "line"))); 
- faag: fileam:00002011:  ereport(ERROR, 
- faag: fileam:00002012:  (errcode_for_file_access(), 
- faag: fileam:00002013:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+ faag: fileam:00000492:  ereport(ERROR, 
+ faag: fileam:00000493:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+ faag: fileam:00000494:  errmsg("External table has more URLs then available primary " 
+ faag: fileam:00000495:  "segments that can write into them"))); 
+ faag: fileam:00000728:  ereport(ERROR,  
+ faag: fileam:00000729:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED),  
+ faag: fileam:00000730:  (errmsg(finalmsg)  
+ faag: fileam:00000731:  )));  
+ faag: fileam:00000732: } 
+ faag: fileam:00000733:  
+ faag: fileam:00000734: /* 
+ faag: fileam:00000735:  * parse_next_line 
+ faag: fileam:00000736:  * 
+ faag: fileam:00000737:  * Given a buffer of data, extract the next data line from it and parse it 
+ faag: fileam:00000738:  * to attributes according to the data format specifications. 
+ faag: fileam:00000739:  * 
+ faag: fileam:00000740:  * Returns: 
+ faag: fileam:00000741:  * LINE_OK - line parsed successfully. 
+ faag: fileam:00000742:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
+ faag: fileam:00000743:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
+ faag: fileam:00000744:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
+ faag: fileam:00000745:  */ 
+ faag: fileam:00000746: static DataLineStatus parse_next_line(FileScanDesc scan) 
+ faag: fileam:00000747: { 
+ faag: fileam:00000748:  CopyState pstate = scan->fs_pstate; 
+ faag: fileam:00001053:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+ faag: fileam:00001054:  errmsg("The specified error table for this " 
+ faag: fileam:00001055:  "external table doesn't appear to " 
+ faag: fileam:00001056:  "exist in the database. It may have " 
+ faag: fileam:00001057:  "been dropped."), 
+ faag: fileam:00001058:  errhint("Refresh your external table definition."))); 
+ faag: fileam:00001236:  ereport(ERROR, 
+ faag: fileam:00001237:  (errcode_for_file_access(), 
+ faag: fileam:00001238:  errmsg("could not open "%s" for reading: %d %s", 
+ faag: fileam:00001239:  scan->fs_uri, response_code, response_string))); 
+ faag: fileam:00001286:  ereport(ERROR, 
+ faag: fileam:00001287:  (errcode_for_file_access(), 
+ faag: fileam:00001288:  errmsg("could not open "%s" for writing: %d %s", 
+ faag: fileam:00001289:  extInsertDesc->ext_uri, response_code, response_string))); 
+ faag: fileam:00001347:  ereport(ERROR, 
+ faag: fileam:00001348:  (errcode_for_file_access(), 
+ faag: fileam:00001349:  errmsg("could not read from external file: %m"))); 
+ faag: fileam:00001367:  ereport(ERROR, 
+ faag: fileam:00001368:  (errcode_for_file_access(), 
+ faag: fileam:00001369:  errmsg("could not write to external resource: %m"))); 
+ faag: fileam:00001952:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ faag: fileam:00001953:  errmsg("external table internal parse error at "%s"", 
+ faag: fileam:00001954:  token))); 
+ faag: fileam:00001956:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ faag: fileam:00001957:  errmsg("external table internal parse error at end of " 
+ faag: fileam:00001958:  "line"))); 
+ faag: fileam:00002008:  ereport(ERROR, 
+ faag: fileam:00002009:  (errcode_for_file_access(), 
+ faag: fileam:00002010:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
  faah: funcapi:00000059:  ereport(ERROR, 
  faah: funcapi:00000060:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  faah: funcapi:00000061:  errmsg("set-valued function called in context that cannot accept a set"))); 
@@ -15491,6 +15493,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15431 rows)
+(15433 rows)
 
 drop external table get_ereport;

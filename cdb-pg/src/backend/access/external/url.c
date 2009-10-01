@@ -918,9 +918,9 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 				if (failOnError) free(file);
 				ereport( (failOnError ? ERROR : LOG),
 						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-								errmsg("cannot close external table command: %m"),
-								errdetail("Table: \'%s\', Command: %s", relname, 
-										  url)));
+								errmsg("cannot close external table %s command: %m", 
+										(relname ? relname : "")),
+								errdetail("command: %s", url)));
 			}
 			else
 			{
@@ -933,8 +933,8 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 				if (failOnError) free(file);
 				ereport( (failOnError ? ERROR : LOG),
 						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-								errmsg("external table \'%s\' command ended with %s",
-										relname,
+								errmsg("external table %s command ended with %s",
+										(relname ? relname : ""),
 										interpretError(ret, buf, sizeof(buf)/sizeof(char), err, strlen(err))),
 								errdetail("Command: %s", url)));
 			}

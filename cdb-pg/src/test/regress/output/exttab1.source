@@ -48,7 +48,7 @@ execute E'( env | sort)'
 on SEGMENT 0
 format 'text';
 select * from check_ps;
-ERROR:  external table 'check_ps' command ended with error.  (seg0 slice1 @hostname@:11002 pid=88888)
+ERROR:  external table check_ps command ended with error.  (seg0 slice1 @hostname@:11002 pid=88888)
 DETAIL:  Command: execute:( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)
 select * from check_env;
                                                                                                       x                                                                                                       
@@ -459,10 +459,10 @@ drop external table ext_mpp6698;
 create external web table ext_stderr1(a text) execute 'nosuchcommand' format 'text';
 create external web table ext_stderr2(a text) execute 'cat nosuchfile.txt' format 'text';
 select * from ext_stderr1;
-ERROR:  external table 'ext_stderr1' command ended with error. sh: nosuchcommand: command not found  (seg0 slice1 @hostname@:11002 pid=88888)
+ERROR:  external table ext_stderr1 command ended with error. sh: nosuchcommand: command not found  (seg0 slice1 @hostname@:11002 pid=88888)
 DETAIL:  Command: execute:nosuchcommand
 select * from ext_stderr2;
-ERROR:  external table 'ext_stderr2' command ended with error. cat: nosuchfile.txt: No such file or directory  (seg1 slice1 @hostname@:11003 pid=88889)
+ERROR:  external table ext_stderr2 command ended with error. cat: nosuchfile.txt: No such file or directory  (seg1 slice1 @hostname@:11003 pid=88889)
 DETAIL:  Command: execute:cat nosuchfile.txt
 drop external web table ext_stderr1;
 drop external web table ext_stderr2;
