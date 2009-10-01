@@ -775,18 +775,29 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 	 */
 	if(header_line)
 	{
-		if(copy && !csv_mode)
+		if(!csv_mode)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("HEADER available only in CSV mode")));
 		}
-		else if(Gp_role == GP_ROLE_DISPATCH)
+		else if(!copy && Gp_role == GP_ROLE_DISPATCH)
 		{
 			/* (exttab) */
-			ereport(NOTICE,
-					(errmsg("HEADER means that each one of the data files "
-							"has a header row.")));
+			if(load)
+			{
+				/* RET */
+				ereport(NOTICE,
+						(errmsg("HEADER means that each one of the data files "
+								"has a header row.")));				
+			}
+			else
+			{
+				/* WET */
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+						errmsg("HEADER is not yet supported for writable external tables")));				
+			}
 		}
 	}
 
