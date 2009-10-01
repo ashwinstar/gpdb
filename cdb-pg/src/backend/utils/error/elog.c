@@ -2480,21 +2480,22 @@ gp_write_pipe_chunk(const char *buffer, int len)
     if (retval == 1)
     {
         int bytes;
-    retry:
+
+		do
+		{
 #ifdef USE_ASSERT_CHECKING
-        {
-            PipeProtoChunk *chunk = (PipeProtoChunk *) buffer;
-            Assert(chunk->hdr.zero == 0);
-            Assert(chunk->hdr.pid != 0);
-            Assert(chunk->hdr.thid != 0);
-            Assert(len <= PIPE_CHUNK_SIZE);
-        }
+			{
+				PipeProtoChunk *chunk = (PipeProtoChunk *) buffer;
+				Assert(chunk->hdr.zero == 0);
+				Assert(chunk->hdr.pid != 0);
+				Assert(chunk->hdr.thid != 0);
+				Assert(len <= PIPE_CHUNK_SIZE);
+			}
 #endif
 
-        bytes = write(fileno(stderr), buffer, len);
-    
-        if (bytes < 0 && errno == EINTR)
-            goto retry;
+			bytes = write(fileno(stderr), buffer, len);
+		}
+		while (bytes < 0 && errno == EINTR);
     }
 }
 
