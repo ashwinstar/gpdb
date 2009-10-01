@@ -30,6 +30,7 @@
 #include "utils/syscache.h"
 #include "utils/fmgroids.h"
 #include "utils/numeric.h"
+#include "access/aocssegfiles.h"
 
 static FileSegInfo *GetFileSegInfo(Relation parentrel, int segno,
                 SegfileLockStrategy lockstrategy);
@@ -1334,10 +1335,9 @@ get_ao_compression_ratio_oid(PG_FUNCTION_ARGS)
 }
 
 static Datum
-ao_compression_ratio_internal(Oid relid)
+aorow_compression_ratio_internal(Relation parentrel)
 {
 	StringInfoData 	sqlstmt;
-	Relation		parentrel;
 	Relation		aosegrel;
 	bool 			connected = false;
 	char			aoseg_relname[32];
@@ -1346,17 +1346,6 @@ ao_compression_ratio_internal(Oid relid)
 	float8			compress_ratio = -1; /* the default, meaning "not available" */
 
 	MemoryContext 	oldcontext = CurrentMemoryContext;
-
-	Assert(Gp_role == GP_ROLE_DISPATCH);
-
-	/* open the parent (main) relation */
-	parentrel = heap_open(relid, AccessShareLock);
-
-	if(!RelationIsAoRows(parentrel) && !RelationIsAoCols(parentrel))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("'%s' is not an append-only relation",
-						RelationGetRelationName(parentrel))));
 
 	/*
 	 * get the name of the aoseg relation
@@ -1369,9 +1358,14 @@ ao_compression_ratio_internal(Oid relid)
 	 * assemble our query string
 	 */
 	initStringInfo(&sqlstmt);
-	appendStringInfo(&sqlstmt, "select sum(eof), sum(eofuncompressed) "
-							"from gp_dist_random('pg_aoseg.%s')",
-								aoseg_relname);
+	if (Gp_role == GP_ROLE_DISPATCH)
+		appendStringInfo(&sqlstmt, "select sum(eof), sum(eofuncompressed) "
+								"from gp_dist_random('pg_aoseg.%s')",
+									aoseg_relname);
+	else
+		appendStringInfo(&sqlstmt, "select eof, eofuncompressed "
+								"from pg_aoseg.%s",
+									aoseg_relname);
 
 	PG_TRY();
 	{
@@ -1460,8 +1454,37 @@ ao_compression_ratio_internal(Oid relid)
 
 
 	pfree(sqlstmt.data);
-	heap_close(parentrel, AccessShareLock);
 
 	PG_RETURN_FLOAT8(compress_ratio);
 }
+
+static Datum
+ao_compression_ratio_internal(Oid relid)
+{
+	Relation		parentrel;
+	Datum			returnDatum;
+
+	/* open the parent (main) relation */
+	parentrel = heap_open(relid, AccessShareLock);
+
+	if(!RelationIsAoRows(parentrel) && !RelationIsAoCols(parentrel))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("'%s' is not an append-only relation",
+						RelationGetRelationName(parentrel))));
+
+	if (RelationIsAoRows(parentrel))
+	{
+		returnDatum = aorow_compression_ratio_internal(parentrel);
+	}
+	else
+	{
+		returnDatum = aocol_compression_ratio_internal(parentrel);
+	}
+	
+	heap_close(parentrel, AccessShareLock);
+
+	return returnDatum;
+}
+
 

@@ -22,6 +22,11 @@
 #include "catalog/namespace.h"
 #include "catalog/indexing.h"
 #include "cdb/cdbvars.h"
+#include "executor/spi.h"
+#include "nodes/makefuncs.h"
+#include "utils/acl.h"
+#include "utils/syscache.h"
+#include "utils/numeric.h"
 #include "cdb/cdbappendonlystorageread.h"
 #include "cdb/cdbappendonlystoragewrite.h"
 #include "utils/datumstream.h"
@@ -553,3 +558,139 @@ Datum aocsvpinfo_decode(PG_FUNCTION_ARGS)
 
     PG_RETURN_INT64(result);
 }
+
+Datum
+aocol_compression_ratio_internal(Relation parentrel)
+{
+	StringInfoData 	sqlstmt;
+	Relation		aosegrel;
+	bool 			connected = false;
+	char			aocsseg_relname[32];
+	int 			proc;
+	int 			ret;
+	int64			eof = 0;
+	int64			eof_uncompressed = 0;
+	float8			compress_ratio = -1; /* the default, meaning "not available" */
+
+	MemoryContext 	oldcontext = CurrentMemoryContext;
+
+	/*
+	 * get the name of the aoseg relation
+	 */
+	aosegrel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
+	sprintf(aocsseg_relname, "%s", RelationGetRelationName(aosegrel));
+	heap_close(aosegrel, AccessShareLock);
+
+	/*
+	 * assemble our query string.
+	 *
+	 * NOTE: The aocsseg (per table) system catalog lives in the gp_aoseg namespace, too.
+	 */
+	initStringInfo(&sqlstmt);
+	if (Gp_role == GP_ROLE_DISPATCH)
+		appendStringInfo(&sqlstmt, "select vpinfo "
+								"from gp_dist_random('pg_aoseg.%s')",
+									aocsseg_relname);
+	else
+		appendStringInfo(&sqlstmt, "select vpinfo "
+								"from pg_aoseg.%s",
+									aocsseg_relname);
+
+	PG_TRY();
+	{
+
+		if (SPI_OK_CONNECT != SPI_connect())
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Unable to obtain AO relation information from segment databases."),
+							errdetail("SPI_connect failed in get_ao_compression_ratio")));
+		}
+		connected = true;
+
+		/* Do the query. */
+		ret = SPI_execute(sqlstmt.data, false, 0);
+		proc = SPI_processed;
+
+
+		if (ret > 0 && SPI_tuptable != NULL)
+		{
+			TupleDesc 		tupdesc = SPI_tuptable->tupdesc;
+			SPITupleTable*	tuptable = SPI_tuptable;
+			int				i;
+			HeapTuple 		tuple;
+			bool			isnull;
+			Datum			vpinfoDatum;
+			AOCSVPInfo 		*vpinfo;
+			int				j;
+			MemoryContext 	cxt_save;
+
+			for (i = 0; i < proc; i++)
+			{
+				/*
+				 * Each row is a binary struct vpinfo with a variable number of entries
+				 * on the end.
+				 */
+				tuple = tuptable->vals[i];
+				
+				vpinfoDatum = heap_getattr(tuple, 1, tupdesc, &isnull);
+				if (isnull)
+					break;
+
+				vpinfo = (AOCSVPInfo*)DatumGetByteaP(vpinfoDatum);
+				
+				// CONSIDER: Better verification of vpinfo.
+				Assert(vpinfo->version == 0);
+				for (j = 0; j < vpinfo->nEntry; j++)
+				{
+					eof += vpinfo->entry[j].eof;
+					eof_uncompressed += vpinfo->entry[j].eof_uncompressed;
+				}
+			}
+
+			/* use our own context so that SPI won't free our stuff later */
+			cxt_save = MemoryContextSwitchTo(oldcontext);
+
+			/* guard against division by zero */
+			if (eof > 0)
+			{
+				char  buf[8];
+
+				/* calculate the compression ratio */
+				float8 compress_ratio_raw = 
+						((float8)eof_uncompressed) /
+												((float8)eof);
+
+				/* format to 2 digits past the decimal point */
+				sprintf(buf, "%.2f", compress_ratio_raw);
+
+				/* format to 2 digit decimal precision */
+				compress_ratio = DatumGetFloat8(DirectFunctionCall1(float8in,
+												CStringGetDatum(buf)));
+			}
+
+			MemoryContextSwitchTo(cxt_save);
+
+		}
+
+		connected = false;
+		SPI_finish();
+	}
+
+	/* Clean up in case of error. */
+	PG_CATCH();
+	{
+		if (connected)
+			SPI_finish();
+
+		/* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+
+	pfree(sqlstmt.data);
+
+	PG_RETURN_FLOAT8(compress_ratio);
+}
+
+
