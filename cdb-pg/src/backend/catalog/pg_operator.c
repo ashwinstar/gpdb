@@ -226,7 +226,7 @@ OperatorShellMake(const char *operatorName,
 	for (i = 0; i < Natts_pg_operator; ++i)
 	{
 		nulls[i] = false;
-		values[i] = (Datum) NULL;		/* redundant, but safe */
+		values[i] = (Datum) 0;		/* redundant, but safe */
 	}
 
 	/*
@@ -882,7 +882,7 @@ OperatorUpd(Oid baseId, Oid commId, Oid negId)
 
 		CatalogUpdateIndexes(pg_operator_desc, tup);
 
-		values[Anum_pg_operator_oprcom - 1] = (Datum) NULL;
+		values[Anum_pg_operator_oprcom - 1] = (Datum) 0;
 		replaces[Anum_pg_operator_oprcom - 1] = false;
 	}
 
