@@ -3823,10 +3823,11 @@ This issue must be resolved before upgrade can complete.
                 # for this is a file, copy all segments
                 if os.path.isfile(os.path.join(src, f)):
                     for i in range(1, 66000):
-                        i = str(i)
-                        if os.path.exists(os.path.join(src, f, i)):
-                            shutil.copy2(os.path.join(src, f, i),
-                                         os.path.join(dst, f, i))
+                        i = '.' + str(i)
+                        fseg = f + i
+                        if os.path.exists(os.path.join(src, fseg)):
+                            shutil.copy2(os.path.join(src, fseg),
+                                         os.path.join(dst, fseg))
                         else:
                             break
 
