@@ -131,6 +131,8 @@ def parseargs():
                       help='debug output.')
     parser.add_option('-h', '-?', '--help', action='help',
                         help='show this help message and exit.')
+    parser.add_option('-s', '--silent', action='store_true',
+                      help='Do not prompt for confirmation to proceed on warnings')
     parser.add_option('--usage', action="briefhelp")
         
     parser.set_defaults(verbose=False,filters=[], slice=(None, None))
@@ -2329,8 +2331,9 @@ try:
             logger.info("Tables with unique indexes exist.  Until these tables are successfully")
             logger.info("redistributed, unique constraints may be violated.  For more information")
             logger.info("on this issue, see the Greenplum Database Administrator Guide")
-            if not ask_yesno(None,"Would you like to continue with System Expansion",'N'):
-                raise ValidationError()
+            if not options.silent:
+                if not ask_yesno(None,"Would you like to continue with System Expansion",'N'):
+                    raise ValidationError()
         gp_expand.read_input_file()
         gp_expand.start_prepare()
         gp_expand.add_segments()
