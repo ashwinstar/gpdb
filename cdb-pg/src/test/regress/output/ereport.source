@@ -1078,61 +1078,61 @@ select * from get_ereport order by 1;
  aaai: allpaths:00001331:  errdetail("Could not devise a query plan for the given query."), 
  aaai: allpaths:00001332:  errhint("Current settings: %s", buf.data) 
  aaai: allpaths:00001333:  )); 
- aaba: aosegfiles:00000297:  ereport(ERROR, 
- aaba: aosegfiles:00000298:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
- aaba: aosegfiles:00000299:  errmsg("could not serialize access due to concurrent update"))); 
- aaba: aosegfiles:00000347:  ereport(ERROR, 
- aaba: aosegfiles:00000348:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaba: aosegfiles:00000349:  errmsg("got invalid eof value: NULL"))); 
- aaba: aosegfiles:00000355:  ereport(ERROR, 
- aaba: aosegfiles:00000356:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaba: aosegfiles:00000357:  errmsg("got invalid tupcount value: NULL"))); 
- aaba: aosegfiles:00000363:  ereport(ERROR, 
- aaba: aosegfiles:00000364:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaba: aosegfiles:00000365:  errmsg("got invalid varblockcount value: NULL"))); 
- aaba: aosegfiles:00000389:  ereport(ERROR, 
- aaba: aosegfiles:00000390:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aaba: aosegfiles:00000391:  errmsg("Invalid eof " INT64_FORMAT " for relation %s", 
- aaba: aosegfiles:00000392:  (int64)fsinfo->eof, NameStr(parentrel->rd_rel->relname)))); 
- aaba: aosegfiles:00000559:  ereport(ERROR, 
- aaba: aosegfiles:00000560:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaba: aosegfiles:00000561:  errmsg("append-only table "%s" file segment "%d" entry " 
- aaba: aosegfiles:00000562:  "does not exist", RelationGetRelationName(parentrel), 
- aaba: aosegfiles:00000563:  segno))); 
- aaba: aosegfiles:00000572:  ereport(ERROR, 
- aaba: aosegfiles:00000573:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaba: aosegfiles:00000574:  errmsg("got invalid pg_aoseg filetupcount value: NULL"))); 
- aaba: aosegfiles:00000588:  ereport(ERROR, 
- aaba: aosegfiles:00000589:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaba: aosegfiles:00000590:  errmsg("got invalid pg_aoseg varblockcount value: NULL"))); 
- aaba: aosegfiles:00000760:  ereport(ERROR, 
- aaba: aosegfiles:00000761:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00000762:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00000763:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00000786:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00000787:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00000788:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
- aaba: aosegfiles:00001000:  ereport(ERROR, 
- aaba: aosegfiles:00001001:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00001002:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00001003:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00001025:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001026:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001027:  errdetail("SPI_connect failed in get_ao_distribution"))); 
- aaba: aosegfiles:00001173:  ereport(ERROR, 
- aaba: aosegfiles:00001174:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00001175:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00001176:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00001198:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001199:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001200:  errdetail("SPI_connect failed in get_ao_distribution"))); 
- aaba: aosegfiles:00001356:  ereport(ERROR, 
- aaba: aosegfiles:00001357:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00001358:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00001359:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00001381:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001382:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001383:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+ aaba: aosegfiles:00000298:  ereport(ERROR, 
+ aaba: aosegfiles:00000299:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+ aaba: aosegfiles:00000300:  errmsg("could not serialize access due to concurrent update"))); 
+ aaba: aosegfiles:00000348:  ereport(ERROR, 
+ aaba: aosegfiles:00000349:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaba: aosegfiles:00000350:  errmsg("got invalid eof value: NULL"))); 
+ aaba: aosegfiles:00000356:  ereport(ERROR, 
+ aaba: aosegfiles:00000357:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaba: aosegfiles:00000358:  errmsg("got invalid tupcount value: NULL"))); 
+ aaba: aosegfiles:00000364:  ereport(ERROR, 
+ aaba: aosegfiles:00000365:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaba: aosegfiles:00000366:  errmsg("got invalid varblockcount value: NULL"))); 
+ aaba: aosegfiles:00000390:  ereport(ERROR, 
+ aaba: aosegfiles:00000391:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aaba: aosegfiles:00000392:  errmsg("Invalid eof " INT64_FORMAT " for relation %s", 
+ aaba: aosegfiles:00000393:  (int64)fsinfo->eof, NameStr(parentrel->rd_rel->relname)))); 
+ aaba: aosegfiles:00000560:  ereport(ERROR, 
+ aaba: aosegfiles:00000561:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaba: aosegfiles:00000562:  errmsg("append-only table "%s" file segment "%d" entry " 
+ aaba: aosegfiles:00000563:  "does not exist", RelationGetRelationName(parentrel), 
+ aaba: aosegfiles:00000564:  segno))); 
+ aaba: aosegfiles:00000573:  ereport(ERROR, 
+ aaba: aosegfiles:00000574:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaba: aosegfiles:00000575:  errmsg("got invalid pg_aoseg filetupcount value: NULL"))); 
+ aaba: aosegfiles:00000589:  ereport(ERROR, 
+ aaba: aosegfiles:00000590:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaba: aosegfiles:00000591:  errmsg("got invalid pg_aoseg varblockcount value: NULL"))); 
+ aaba: aosegfiles:00000761:  ereport(ERROR, 
+ aaba: aosegfiles:00000762:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00000763:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00000764:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00000787:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00000788:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00000789:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+ aaba: aosegfiles:00001001:  ereport(ERROR, 
+ aaba: aosegfiles:00001002:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00001003:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00001004:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00001026:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001027:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001028:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+ aaba: aosegfiles:00001174:  ereport(ERROR, 
+ aaba: aosegfiles:00001175:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00001176:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00001177:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00001199:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001200:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001201:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+ aaba: aosegfiles:00001375:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001376:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001377:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+ aaba: aosegfiles:00001471:  ereport(ERROR, 
+ aaba: aosegfiles:00001472:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00001473:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00001474:  RelationGetRelationName(parentrel)))); 
  aaba: arrayfuncs:00000201:  ereport(ERROR, 
  aaba: arrayfuncs:00000202:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
  aaba: arrayfuncs:00000203:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
@@ -1384,23 +1384,26 @@ select * from get_ereport order by 1;
  aaba: autovacuum:00001134:  (errcode(ERRCODE_UNDEFINED_TABLE), 
  aaba: autovacuum:00001135:  errmsg("relation with OID %u does not exist", 
  aaba: autovacuum:00001136:  relationOid))); 
- aabc: aocssegfiles:00000171:  ereport(ERROR, 
- aabc: aocssegfiles:00000172:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
- aabc: aocssegfiles:00000173:  errmsg("could not serialize access due to concurrent update"))); 
- aabc: aocssegfiles:00000423:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aabc: aocssegfiles:00000424:  errmsg("AOCS table "%s" file segment "%d" does not exist", 
- aabc: aocssegfiles:00000425:  RelationGetRelationName(prel), idesc->cur_segno) 
- aabc: aocssegfiles:00000426:  )); 
- aabc: aocssegfiles:00000497:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aabc: aocssegfiles:00000498:  errmsg("AOCS table "%s" file segment "%d" does not exist", 
- aabc: aocssegfiles:00000499:  RelationGetRelationName(prel), segno) 
- aabc: aocssegfiles:00000500:  )); 
- aabc: aocssegfiles:00000540:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aabc: aocssegfiles:00000541:  errmsg("invalid entry for decoding aocsvpinfo") 
- aabc: aocssegfiles:00000542:  )); 
+ aabc: aocssegfiles:00000176:  ereport(ERROR, 
+ aabc: aocssegfiles:00000177:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+ aabc: aocssegfiles:00000178:  errmsg("could not serialize access due to concurrent update"))); 
+ aabc: aocssegfiles:00000428:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aabc: aocssegfiles:00000429:  errmsg("AOCS table "%s" file segment "%d" does not exist", 
+ aabc: aocssegfiles:00000430:  RelationGetRelationName(prel), idesc->cur_segno) 
+ aabc: aocssegfiles:00000431:  )); 
+ aabc: aocssegfiles:00000502:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aabc: aocssegfiles:00000503:  errmsg("AOCS table "%s" file segment "%d" does not exist", 
+ aabc: aocssegfiles:00000504:  RelationGetRelationName(prel), segno) 
+ aabc: aocssegfiles:00000505:  )); 
  aabc: aocssegfiles:00000545:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  aabc: aocssegfiles:00000546:  errmsg("invalid entry for decoding aocsvpinfo") 
  aabc: aocssegfiles:00000547:  )); 
+ aabc: aocssegfiles:00000550:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aabc: aocssegfiles:00000551:  errmsg("invalid entry for decoding aocsvpinfo") 
+ aabc: aocssegfiles:00000552:  )); 
+ aabc: aocssegfiles:00000604:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aabc: aocssegfiles:00000605:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aabc: aocssegfiles:00000606:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
  aabc: appendonlyam:00000524:  ereport(ERROR, 
  aabc: appendonlyam:00000525:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  aabc: appendonlyam:00000526:  errmsg("VarBlock is not valid. " 
@@ -1868,247 +1871,250 @@ select * from get_ereport order by 1;
  caae: copy:00000780:  ereport(ERROR, 
  caae: copy:00000781:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  caae: copy:00000782:  errmsg("HEADER available only in CSV mode"))); 
- caae: copy:00000787:  ereport(NOTICE, 
- caae: copy:00000788:  (errmsg("HEADER means that each one of the data files " 
- caae: copy:00000789:  "has a header row."))); 
- caae: copy:00000798:  ereport(ERROR, 
- caae: copy:00000799:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000800:  errmsg("quote available only in CSV mode"))); 
- caae: copy:00000803:  ereport(ERROR, 
- caae: copy:00000804:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000805:  errmsg("quote must be a single character"))); 
- caae: copy:00000808:  ereport(ERROR, 
- caae: copy:00000809:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000810:  errmsg("CSV quote character must not appear in the NULL specification"))); 
- caae: copy:00000813:  ereport(ERROR, 
- caae: copy:00000814:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- caae: copy:00000815:  errmsg("delimiter and quote must be different"))); 
- caae: copy:00000821:  ereport(ERROR, 
- caae: copy:00000822:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000823:  errmsg("escape in CSV format must be a single character"))); 
- caae: copy:00000828:  ereport(ERROR, 
- caae: copy:00000829:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- caae: copy:00000830:  errmsg("escape representation in text format cannot use newline or carriage return"))); 
- caae: copy:00000835:  ereport(ERROR, 
- caae: copy:00000836:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000837:  errmsg("escape must be a single character, or [OFF/off] to disable escapes"))); 
- caae: copy:00000844:  ereport(ERROR, 
- caae: copy:00000845:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000846:  errmsg("force quote available only in CSV mode"))); 
- caae: copy:00000848:  ereport(ERROR, 
- caae: copy:00000849:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000850:  errmsg("force quote only available for data unloading, not loading"))); 
- caae: copy:00000856:  ereport(ERROR, 
- caae: copy:00000857:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000858:  errmsg("force not null available only in CSV mode"))); 
- caae: copy:00000860:  ereport(ERROR, 
- caae: copy:00000861:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000862:  errmsg("force not null only available for data loading, not unloading"))); 
- caae: copy:00000865:  ereport(ERROR, 
- caae: copy:00000866:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000867:  errmsg("fill missing fields only available for data loading, not unloading"))); 
- caae: copy:00000932:  ereport(ERROR, 
- caae: copy:00000933:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000934:  errmsg("BINARY is not supported"))); 
- caae: copy:00000939:  ereport(ERROR, 
- caae: copy:00000940:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000941:  errmsg("conflicting or redundant options"))); 
- caae: copy:00000947:  ereport(ERROR, 
- caae: copy:00000948:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000949:  errmsg("conflicting or redundant options"))); 
- caae: copy:00000955:  ereport(ERROR, 
- caae: copy:00000956:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000957:  errmsg("conflicting or redundant options"))); 
- caae: copy:00000972:  ereport(ERROR, 
- caae: copy:00000973:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000974:  errmsg("conflicting or redundant options"))); 
- caae: copy:00000980:  ereport(ERROR, 
- caae: copy:00000981:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000982:  errmsg("conflicting or redundant options"))); 
- caae: copy:00000988:  ereport(ERROR, 
- caae: copy:00000989:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000990:  errmsg("conflicting or redundant options"))); 
- caae: copy:00000996:  ereport(ERROR, 
- caae: copy:00000997:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000998:  errmsg("conflicting or redundant options"))); 
- caae: copy:00001004:  ereport(ERROR, 
- caae: copy:00001005:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00001006:  errmsg("conflicting or redundant options"))); 
- caae: copy:00001012:  ereport(ERROR, 
- caae: copy:00001013:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00001014:  errmsg("conflicting or redundant options"))); 
- caae: copy:00001020:  ereport(ERROR, 
- caae: copy:00001021:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00001022:  errmsg("conflicting or redundant options"))); 
- caae: copy:00001063:  ereport(ERROR, 
- caae: copy:00001064:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- caae: copy:00001065:  errmsg("COPY single row error handling only available using COPY FROM"))); 
- caae: copy:00001075:  ereport(ERROR, 
- caae: copy:00001076:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- caae: copy:00001077:  errmsg("KEEP may only be specified with a LOG INTO errortable clause"))); 
- caae: copy:00001127:  ereport(ERROR, 
- caae: copy:00001128:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- caae: copy:00001129:  errmsg("must be superuser to COPY to or from a file"), 
- caae: copy:00001130:  errhint("Anyone can COPY to stdout or from stdin. " 
- caae: copy:00001131:  "psql's \copy command also works for anyone."))); 
- caae: copy:00001158:  ereport(ERROR, 
- caae: copy:00001159:  (errcode(ERRCODE_INVALID_NAME), 
- caae: copy:00001160:  errmsg("relative path not allowed for COPY to file"))); 
- caae: copy:00001167:  ereport(ERROR, 
- caae: copy:00001168:  (errcode_for_file_access(), 
- caae: copy:00001169:  errmsg("could not open file "%s" for writing: %m", 
- caae: copy:00001170:  cstate->filename))); 
- caae: copy:00001179:  ereport(ERROR, 
- caae: copy:00001180:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001181:  errmsg(""%s" is a directory", cstate->filename))); 
- caae: copy:00001211:  ereport(ERROR, 
- caae: copy:00001212:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
- caae: copy:00001213:  errmsg("transaction is read-only"))); 
- caae: copy:00001217:  ereport(ERROR, 
- caae: copy:00001218:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- caae: copy:00001219:  errmsg("table "%s" does not have OIDs", 
- caae: copy:00001220:  RelationGetRelationName(cstate->rel)))); 
- caae: copy:00001237:  ereport(ERROR, 
- caae: copy:00001238:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00001239:  errmsg("COPY (SELECT) WITH OIDS is not supported"))); 
- caae: copy:00001242:  ereport(ERROR, 
- caae: copy:00001243:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00001244:  errmsg("COPY (SELECT INTO) is not supported"))); 
- caae: copy:00001328:  ereport(ERROR, 
- caae: copy:00001329:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- caae: copy:00001330:  errmsg("FORCE QUOTE column "%s" not referenced by COPY", 
- caae: copy:00001331:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
- caae: copy:00001350:  ereport(ERROR, 
- caae: copy:00001351:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- caae: copy:00001352:  errmsg("FORCE NOT NULL column "%s" not referenced by COPY", 
- caae: copy:00001353:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
- caae: copy:00001412:  ereport(ERROR, 
- caae: copy:00001413:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001414:  errmsg("cannot copy to view "%s"", 
- caae: copy:00001415:  RelationGetRelationName(cstate->rel)))); 
- caae: copy:00001417:  ereport(ERROR, 
- caae: copy:00001418:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001419:  errmsg("cannot copy to sequence "%s"", 
- caae: copy:00001420:  RelationGetRelationName(cstate->rel)))); 
- caae: copy:00001422:  ereport(ERROR, 
- caae: copy:00001423:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001424:  errmsg("cannot copy to non-table relation "%s"", 
- caae: copy:00001425:  RelationGetRelationName(cstate->rel)))); 
- caae: copy:00001429:  ereport(ERROR, 
- caae: copy:00001430:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- caae: copy:00001431:  errmsg("COPY single row error handling only available for distributed user tables"))); 
- caae: copy:00001447:  ereport(ERROR, 
- caae: copy:00001448:  (errcode_for_file_access(), 
- caae: copy:00001449:  errmsg("could not open file "%s" for reading: %m", 
- caae: copy:00001450:  cstate->filename))); 
- caae: copy:00001459:  ereport(ERROR, 
- caae: copy:00001460:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001461:  errmsg(""%s" is a directory", cstate->filename))); 
- caae: copy:00001537:  ereport(ERROR, 
- caae: copy:00001538:  (errcode_for_file_access(), 
- caae: copy:00001539:  errmsg("could not write to file "%s": %m", 
- caae: copy:00001540:  cstate->filename))); 
- caae: copy:00001615:  ereport(ERROR, 
- caae: copy:00001616:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001617:  errmsg("cannot copy from view "%s"", 
- caae: copy:00001618:  RelationGetRelationName(cstate->rel)), 
- caae: copy:00001619:  errhint("Try the COPY (SELECT ...) TO variant."))); 
- caae: copy:00001621:  ereport(ERROR, 
- caae: copy:00001622:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001623:  errmsg("cannot copy from sequence "%s"", 
- caae: copy:00001624:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00000790:  ereport(NOTICE, 
+ caae: copy:00000791:  (errmsg("HEADER means that each one of the data files " 
+ caae: copy:00000792:  "has a header row."))); 
+ caae: copy:00000797:  ereport(ERROR, 
+ caae: copy:00000798:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+ caae: copy:00000799:  errmsg("HEADER is not yet supported for writable external tables"))); 
+ caae: copy:00000809:  ereport(ERROR, 
+ caae: copy:00000810:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000811:  errmsg("quote available only in CSV mode"))); 
+ caae: copy:00000814:  ereport(ERROR, 
+ caae: copy:00000815:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000816:  errmsg("quote must be a single character"))); 
+ caae: copy:00000819:  ereport(ERROR, 
+ caae: copy:00000820:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000821:  errmsg("CSV quote character must not appear in the NULL specification"))); 
+ caae: copy:00000824:  ereport(ERROR, 
+ caae: copy:00000825:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ caae: copy:00000826:  errmsg("delimiter and quote must be different"))); 
+ caae: copy:00000832:  ereport(ERROR, 
+ caae: copy:00000833:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000834:  errmsg("escape in CSV format must be a single character"))); 
+ caae: copy:00000839:  ereport(ERROR, 
+ caae: copy:00000840:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ caae: copy:00000841:  errmsg("escape representation in text format cannot use newline or carriage return"))); 
+ caae: copy:00000846:  ereport(ERROR, 
+ caae: copy:00000847:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000848:  errmsg("escape must be a single character, or [OFF/off] to disable escapes"))); 
+ caae: copy:00000855:  ereport(ERROR, 
+ caae: copy:00000856:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000857:  errmsg("force quote available only in CSV mode"))); 
+ caae: copy:00000859:  ereport(ERROR, 
+ caae: copy:00000860:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000861:  errmsg("force quote only available for data unloading, not loading"))); 
+ caae: copy:00000867:  ereport(ERROR, 
+ caae: copy:00000868:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000869:  errmsg("force not null available only in CSV mode"))); 
+ caae: copy:00000871:  ereport(ERROR, 
+ caae: copy:00000872:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000873:  errmsg("force not null only available for data loading, not unloading"))); 
+ caae: copy:00000876:  ereport(ERROR, 
+ caae: copy:00000877:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000878:  errmsg("fill missing fields only available for data loading, not unloading"))); 
+ caae: copy:00000943:  ereport(ERROR, 
+ caae: copy:00000944:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000945:  errmsg("BINARY is not supported"))); 
+ caae: copy:00000950:  ereport(ERROR, 
+ caae: copy:00000951:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000952:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00000958:  ereport(ERROR, 
+ caae: copy:00000959:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000960:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00000966:  ereport(ERROR, 
+ caae: copy:00000967:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000968:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00000983:  ereport(ERROR, 
+ caae: copy:00000984:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000985:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00000991:  ereport(ERROR, 
+ caae: copy:00000992:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000993:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00000999:  ereport(ERROR, 
+ caae: copy:00001000:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00001001:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00001007:  ereport(ERROR, 
+ caae: copy:00001008:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00001009:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00001015:  ereport(ERROR, 
+ caae: copy:00001016:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00001017:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00001023:  ereport(ERROR, 
+ caae: copy:00001024:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00001025:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00001031:  ereport(ERROR, 
+ caae: copy:00001032:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00001033:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00001074:  ereport(ERROR, 
+ caae: copy:00001075:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00001076:  errmsg("COPY single row error handling only available using COPY FROM"))); 
+ caae: copy:00001086:  ereport(ERROR, 
+ caae: copy:00001087:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00001088:  errmsg("KEEP may only be specified with a LOG INTO errortable clause"))); 
+ caae: copy:00001138:  ereport(ERROR, 
+ caae: copy:00001139:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ caae: copy:00001140:  errmsg("must be superuser to COPY to or from a file"), 
+ caae: copy:00001141:  errhint("Anyone can COPY to stdout or from stdin. " 
+ caae: copy:00001142:  "psql's \copy command also works for anyone."))); 
+ caae: copy:00001169:  ereport(ERROR, 
+ caae: copy:00001170:  (errcode(ERRCODE_INVALID_NAME), 
+ caae: copy:00001171:  errmsg("relative path not allowed for COPY to file"))); 
+ caae: copy:00001178:  ereport(ERROR, 
+ caae: copy:00001179:  (errcode_for_file_access(), 
+ caae: copy:00001180:  errmsg("could not open file "%s" for writing: %m", 
+ caae: copy:00001181:  cstate->filename))); 
+ caae: copy:00001190:  ereport(ERROR, 
+ caae: copy:00001191:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001192:  errmsg(""%s" is a directory", cstate->filename))); 
+ caae: copy:00001222:  ereport(ERROR, 
+ caae: copy:00001223:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+ caae: copy:00001224:  errmsg("transaction is read-only"))); 
+ caae: copy:00001228:  ereport(ERROR, 
+ caae: copy:00001229:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ caae: copy:00001230:  errmsg("table "%s" does not have OIDs", 
+ caae: copy:00001231:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00001248:  ereport(ERROR, 
+ caae: copy:00001249:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00001250:  errmsg("COPY (SELECT) WITH OIDS is not supported"))); 
+ caae: copy:00001253:  ereport(ERROR, 
+ caae: copy:00001254:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00001255:  errmsg("COPY (SELECT INTO) is not supported"))); 
+ caae: copy:00001339:  ereport(ERROR, 
+ caae: copy:00001340:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ caae: copy:00001341:  errmsg("FORCE QUOTE column "%s" not referenced by COPY", 
+ caae: copy:00001342:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
+ caae: copy:00001361:  ereport(ERROR, 
+ caae: copy:00001362:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ caae: copy:00001363:  errmsg("FORCE NOT NULL column "%s" not referenced by COPY", 
+ caae: copy:00001364:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
+ caae: copy:00001423:  ereport(ERROR, 
+ caae: copy:00001424:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001425:  errmsg("cannot copy to view "%s"", 
+ caae: copy:00001426:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00001428:  ereport(ERROR, 
+ caae: copy:00001429:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001430:  errmsg("cannot copy to sequence "%s"", 
+ caae: copy:00001431:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00001433:  ereport(ERROR, 
+ caae: copy:00001434:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001435:  errmsg("cannot copy to non-table relation "%s"", 
+ caae: copy:00001436:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00001440:  ereport(ERROR, 
+ caae: copy:00001441:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00001442:  errmsg("COPY single row error handling only available for distributed user tables"))); 
+ caae: copy:00001458:  ereport(ERROR, 
+ caae: copy:00001459:  (errcode_for_file_access(), 
+ caae: copy:00001460:  errmsg("could not open file "%s" for reading: %m", 
+ caae: copy:00001461:  cstate->filename))); 
+ caae: copy:00001470:  ereport(ERROR, 
+ caae: copy:00001471:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001472:  errmsg(""%s" is a directory", cstate->filename))); 
+ caae: copy:00001548:  ereport(ERROR, 
+ caae: copy:00001549:  (errcode_for_file_access(), 
+ caae: copy:00001550:  errmsg("could not write to file "%s": %m", 
+ caae: copy:00001551:  cstate->filename))); 
  caae: copy:00001626:  ereport(ERROR, 
  caae: copy:00001627:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001628:  errmsg("cannot copy from non-table relation "%s"", 
- caae: copy:00001629:  RelationGetRelationName(cstate->rel)))); 
- caae: copy:00001633:  ereport(ERROR, 
- caae: copy:00001634:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001635:  errmsg("cannot copy from external relation "%s"", 
- caae: copy:00001636:  RelationGetRelationName(cstate->rel)), 
- caae: copy:00001637:  errhint("Try the COPY (SELECT ...) TO variant."))); 
- caae: copy:00001678:  ereport(ERROR, 
- caae: copy:00001679:  (errcode_for_file_access(), 
- caae: copy:00001680:  errmsg("could not write to file "%s": %m", 
- caae: copy:00001681:  cstate->filename))); 
- caae: copy:00001915:  ereport(ERROR, 
- caae: copy:00001916:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00001917:  errmsg("%s", cdbcopy_err.data))); 
- caae: copy:00001919:  ereport(ERROR, 
- caae: copy:00001920:  (errcode(ERRCODE_IO_ERROR), 
- caae: copy:00001921:  errmsg("%s", cdbcopy_err.data))); 
- caae: copy:00003025:  ereport(ERROR, 
- caae: copy:00003026:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003027:  errmsg("null OID in COPY data."))); 
- caae: copy:00003059:  ereport(ERROR, 
- caae: copy:00003060:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003061:  errmsg("invalid OID in COPY data."))); 
- caae: copy:00003412:  ereport(ERROR, 
- caae: copy:00003413:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003414:  errmsg("%s", cdbcopy_err.data))); 
- caae: copy:00003416:  ereport(ERROR, 
- caae: copy:00003417:  (errcode(ERRCODE_IO_ERROR), 
- caae: copy:00003418:  errmsg("%s", cdbcopy_err.data))); 
- caae: copy:00003834:  ereport(ERROR, 
- caae: copy:00003835:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003836:  errmsg("null OID in COPY data."))); 
- caae: copy:00003864:  ereport(ERROR, 
- caae: copy:00003865:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003866:  errmsg("invalid OID in COPY data."))); 
- caae: copy:00004626:  ereport(ERROR, 
- caae: copy:00004627:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004628:  errmsg("data line too long. likely due to invalid csv data"))); 
- caae: copy:00004882:  ereport(ERROR, 
- caae: copy:00004883:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004884:  errmsg("extra data after last expected column"))); 
- caae: copy:00004931:  ereport(ERROR, 
- caae: copy:00004932:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004933:  errmsg("missing data for column "%s"", 
- caae: copy:00004934:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)))); 
- caae: copy:00004937:  ereport(ERROR, 
- caae: copy:00004938:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004939:  errmsg("missing data for column "%s", found empty data line", 
- caae: copy:00004940:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)))); 
- caae: copy:00004947:  ereport(ERROR, 
- caae: copy:00004948:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004949:  errmsg("extra data after last expected column"))); 
- caae: copy:00005247:  ereport(ERROR, 
- caae: copy:00005248:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005249:  errmsg("extra data after last expected column"))); 
- caae: copy:00005259:  ereport(ERROR, 
- caae: copy:00005260:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005261:  errmsg("unterminated CSV quoted field"))); 
- caae: copy:00005276:  ereport(ERROR, 
- caae: copy:00005277:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005278:  errmsg("missing data for column "%s"", 
- caae: copy:00005279:  NameStr(attr[m + 1]->attname)))); 
- caae: copy:00005282:  ereport(ERROR, 
- caae: copy:00005283:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005284:  errmsg("missing data for column "%s", found empty data line", 
- caae: copy:00005285:  NameStr(attr[m + 1]->attname)))); 
- caae: copy:00005316:  ereport(ERROR, 
- caae: copy:00005317:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005318:  errmsg("extra data after last expected column"))); 
- caae: copy:00005789:  ereport(ERROR, 
- caae: copy:00005790:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- caae: copy:00005791:  errmsg("column "%s" of relation "%s" does not exist", 
- caae: copy:00005792:  name, RelationGetRelationName(rel)))); 
- caae: copy:00005794:  ereport(ERROR, 
- caae: copy:00005795:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- caae: copy:00005796:  errmsg("column "%s" does not exist", 
- caae: copy:00005797:  name))); 
- caae: copy:00005801:  ereport(ERROR, 
- caae: copy:00005802:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
- caae: copy:00005803:  errmsg("column "%s" specified more than once", 
- caae: copy:00005804:  name))); 
- caae: copy:00006388:  ereport(ERROR, 
- caae: copy:00006389:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00006390:  errmsg("BINARY is not supported"))); 
- caae: copy:00006498:  ereport(ERROR, 
- caae: copy:00006499:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- caae: copy:00006500:  errmsg("COPY single row error handling only available using COPY FROM"))); 
- caae: copy:00006510:  ereport(ERROR, 
- caae: copy:00006511:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- caae: copy:00006512:  errmsg("KEEP may only be specified with a LOG INTO errortable clause"))); 
+ caae: copy:00001628:  errmsg("cannot copy from view "%s"", 
+ caae: copy:00001629:  RelationGetRelationName(cstate->rel)), 
+ caae: copy:00001630:  errhint("Try the COPY (SELECT ...) TO variant."))); 
+ caae: copy:00001632:  ereport(ERROR, 
+ caae: copy:00001633:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001634:  errmsg("cannot copy from sequence "%s"", 
+ caae: copy:00001635:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00001637:  ereport(ERROR, 
+ caae: copy:00001638:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001639:  errmsg("cannot copy from non-table relation "%s"", 
+ caae: copy:00001640:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00001644:  ereport(ERROR, 
+ caae: copy:00001645:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001646:  errmsg("cannot copy from external relation "%s"", 
+ caae: copy:00001647:  RelationGetRelationName(cstate->rel)), 
+ caae: copy:00001648:  errhint("Try the COPY (SELECT ...) TO variant."))); 
+ caae: copy:00001689:  ereport(ERROR, 
+ caae: copy:00001690:  (errcode_for_file_access(), 
+ caae: copy:00001691:  errmsg("could not write to file "%s": %m", 
+ caae: copy:00001692:  cstate->filename))); 
+ caae: copy:00001926:  ereport(ERROR, 
+ caae: copy:00001927:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00001928:  errmsg("%s", cdbcopy_err.data))); 
+ caae: copy:00001930:  ereport(ERROR, 
+ caae: copy:00001931:  (errcode(ERRCODE_IO_ERROR), 
+ caae: copy:00001932:  errmsg("%s", cdbcopy_err.data))); 
+ caae: copy:00003036:  ereport(ERROR, 
+ caae: copy:00003037:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003038:  errmsg("null OID in COPY data."))); 
+ caae: copy:00003070:  ereport(ERROR, 
+ caae: copy:00003071:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003072:  errmsg("invalid OID in COPY data."))); 
+ caae: copy:00003423:  ereport(ERROR, 
+ caae: copy:00003424:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003425:  errmsg("%s", cdbcopy_err.data))); 
+ caae: copy:00003427:  ereport(ERROR, 
+ caae: copy:00003428:  (errcode(ERRCODE_IO_ERROR), 
+ caae: copy:00003429:  errmsg("%s", cdbcopy_err.data))); 
+ caae: copy:00003845:  ereport(ERROR, 
+ caae: copy:00003846:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003847:  errmsg("null OID in COPY data."))); 
+ caae: copy:00003875:  ereport(ERROR, 
+ caae: copy:00003876:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003877:  errmsg("invalid OID in COPY data."))); 
+ caae: copy:00004637:  ereport(ERROR, 
+ caae: copy:00004638:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004639:  errmsg("data line too long. likely due to invalid csv data"))); 
+ caae: copy:00004893:  ereport(ERROR, 
+ caae: copy:00004894:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004895:  errmsg("extra data after last expected column"))); 
+ caae: copy:00004942:  ereport(ERROR, 
+ caae: copy:00004943:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004944:  errmsg("missing data for column "%s"", 
+ caae: copy:00004945:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)))); 
+ caae: copy:00004948:  ereport(ERROR, 
+ caae: copy:00004949:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004950:  errmsg("missing data for column "%s", found empty data line", 
+ caae: copy:00004951:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)))); 
+ caae: copy:00004958:  ereport(ERROR, 
+ caae: copy:00004959:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004960:  errmsg("extra data after last expected column"))); 
+ caae: copy:00005258:  ereport(ERROR, 
+ caae: copy:00005259:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005260:  errmsg("extra data after last expected column"))); 
+ caae: copy:00005270:  ereport(ERROR, 
+ caae: copy:00005271:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005272:  errmsg("unterminated CSV quoted field"))); 
+ caae: copy:00005287:  ereport(ERROR, 
+ caae: copy:00005288:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005289:  errmsg("missing data for column "%s"", 
+ caae: copy:00005290:  NameStr(attr[m + 1]->attname)))); 
+ caae: copy:00005293:  ereport(ERROR, 
+ caae: copy:00005294:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005295:  errmsg("missing data for column "%s", found empty data line", 
+ caae: copy:00005296:  NameStr(attr[m + 1]->attname)))); 
+ caae: copy:00005327:  ereport(ERROR, 
+ caae: copy:00005328:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005329:  errmsg("extra data after last expected column"))); 
+ caae: copy:00005800:  ereport(ERROR, 
+ caae: copy:00005801:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ caae: copy:00005802:  errmsg("column "%s" of relation "%s" does not exist", 
+ caae: copy:00005803:  name, RelationGetRelationName(rel)))); 
+ caae: copy:00005805:  ereport(ERROR, 
+ caae: copy:00005806:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ caae: copy:00005807:  errmsg("column "%s" does not exist", 
+ caae: copy:00005808:  name))); 
+ caae: copy:00005812:  ereport(ERROR, 
+ caae: copy:00005813:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+ caae: copy:00005814:  errmsg("column "%s" specified more than once", 
+ caae: copy:00005815:  name))); 
+ caae: copy:00006399:  ereport(ERROR, 
+ caae: copy:00006400:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00006401:  errmsg("BINARY is not supported"))); 
+ caae: copy:00006509:  ereport(ERROR, 
+ caae: copy:00006510:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00006511:  errmsg("COPY single row error handling only available using COPY FROM"))); 
+ caae: copy:00006521:  ereport(ERROR, 
+ caae: copy:00006522:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00006523:  errmsg("KEEP may only be specified with a LOG INTO errortable clause"))); 
  caaf: cdbtm:00001582:  ereport(ERROR, 
  caaf: cdbtm:00001583:  (errcode_for_file_access(), 
  caaf: cdbtm:00001584:  errmsg("could not create save DTM redo file "%s"", 
@@ -5679,18 +5685,18 @@ select * from get_ereport order by 1;
  gaah: ginscan:00000180:  ereport(ERROR, 
  gaah: ginscan:00000181:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  gaah: ginscan:00000182:  errmsg("GIN index does not support search with void query"))); 
- gaai: gistutil:00000584:  ereport(ERROR, 
- gaai: gistutil:00000585:  (errcode(ERRCODE_INDEX_CORRUPTED), 
- gaai: gistutil:00000586:  errmsg("index "%s" contains unexpected zero page at block %u", 
- gaai: gistutil:00000587:  RelationGetRelationName(rel), 
- gaai: gistutil:00000588:  BufferGetBlockNumber(buf)), 
- gaai: gistutil:00000589:  errhint("Please REINDEX it."))); 
- gaai: gistutil:00000596:  ereport(ERROR, 
- gaai: gistutil:00000597:  (errcode(ERRCODE_INDEX_CORRUPTED), 
- gaai: gistutil:00000598:  errmsg("index "%s" contains corrupted page at block %u", 
- gaai: gistutil:00000599:  RelationGetRelationName(rel), 
- gaai: gistutil:00000600:  BufferGetBlockNumber(buf)), 
- gaai: gistutil:00000601:  errhint("Please REINDEX it."))); 
+ gaai: gistutil:00000587:  ereport(ERROR, 
+ gaai: gistutil:00000588:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+ gaai: gistutil:00000589:  errmsg("index "%s" contains unexpected zero page at block %u", 
+ gaai: gistutil:00000590:  RelationGetRelationName(rel), 
+ gaai: gistutil:00000591:  BufferGetBlockNumber(buf)), 
+ gaai: gistutil:00000592:  errhint("Please REINDEX it."))); 
+ gaai: gistutil:00000599:  ereport(ERROR, 
+ gaai: gistutil:00000600:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+ gaai: gistutil:00000601:  errmsg("index "%s" contains corrupted page at block %u", 
+ gaai: gistutil:00000602:  RelationGetRelationName(rel), 
+ gaai: gistutil:00000603:  BufferGetBlockNumber(buf)), 
+ gaai: gistutil:00000604:  errhint("Please REINDEX it."))); 
  gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
  gaai: gucxfile:00000543:  
  gaai: gucxfile:00000544: enum { 
@@ -15493,6 +15499,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15433 rows)
+(15439 rows)
 
 drop external table get_ereport;
