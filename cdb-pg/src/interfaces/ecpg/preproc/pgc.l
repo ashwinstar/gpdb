@@ -24,6 +24,24 @@
 
 #include "extern.h"
 
+#define unify_version(a,b,c) ((a<<16)+(b<<8)+c)
+
+#if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35)
+/* These routines aren't used, but are defined to supress warnings from gcc */
+int yyget_lineno  (void);
+FILE *yyget_in  (void);
+FILE *yyget_out  (void);
+int yyget_leng  (void);
+char *yyget_text  (void);
+void yyset_lineno (int  line_number );
+void yyset_in (FILE *  in_str );
+void yyset_out (FILE *  out_str );
+int yyget_debug  (void);
+void yyset_debug (int  bdebug );
+int yylex_destroy  (void);
+#endif
+
+
 extern YYSTYPE yylval;
 
 static int		xcdepth = 0;	/* depth of nesting in slash-star comments */
