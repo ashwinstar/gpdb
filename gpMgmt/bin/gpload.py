@@ -1204,7 +1204,7 @@ class gpload:
                     self.log(self.ERROR,
                              name+":file must be a sequence of strings")
             popenList = ['gpfdist','-p',str(startPort),'-P',str(endPort),
-                         '-f',' '.join(file), '-t', '30']
+                         '-f','"' + ' '.join(file) + '"', '-t', '30']
             if self.options.qv == self.LOG:
                 popenList.append('-v')
             elif self.options.qv > self.LOG:
