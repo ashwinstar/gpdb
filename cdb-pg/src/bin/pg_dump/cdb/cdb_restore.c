@@ -1224,7 +1224,7 @@ void updateAppendOnlyStats(PGconn* pConn)
 					  "SELECT c.relname,n.nspname "
 					  "FROM pg_class c, pg_namespace n "
 					  "WHERE c.relnamespace=n.oid "
-					  "AND c.relstorage='a'");
+					  "AND (c.relstorage='a' OR c.relstorage='c')");
 
 	get_res = PQexec(pConn, get_query->data);
 

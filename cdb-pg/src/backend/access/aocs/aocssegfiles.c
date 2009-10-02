@@ -560,6 +560,156 @@ Datum aocsvpinfo_decode(PG_FUNCTION_ARGS)
 }
 
 Datum
+gp_update_aocol_master_stats_internal(Relation parentrel)
+{
+	StringInfoData 	sqlstmt;
+	Relation		aosegrel;
+	bool 			connected = false;
+	char			aoseg_relname[32];
+	int 			proc;
+	int 			ret;
+	float8			total_count = 0;
+	MemoryContext 	oldcontext = CurrentMemoryContext;
+
+	/*
+	 * get the name of the aoseg relation
+	 */
+	aosegrel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
+	sprintf(aoseg_relname, "%s", RelationGetRelationName(aosegrel));
+	heap_close(aosegrel, AccessShareLock);
+
+	/*
+	 * assemble our query string
+	 */
+	initStringInfo(&sqlstmt);
+	appendStringInfo(&sqlstmt, "select segno,sum(tupcount) "
+					"from gp_dist_random('pg_aoseg.%s') "
+					"group by (segno)", aoseg_relname);
+
+
+	PG_TRY();
+	{
+
+		if (SPI_OK_CONNECT != SPI_connect())
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Unable to obtain AO relation information from segment databases."),
+							errdetail("SPI_connect failed in gp_update_ao_master_stats")));
+		}
+		connected = true;
+
+		/* Do the query. */
+		ret = SPI_execute(sqlstmt.data, false, 0);
+		proc = SPI_processed;
+
+
+		if (ret > 0 && SPI_tuptable != NULL)
+		{
+			TupleDesc tupdesc = SPI_tuptable->tupdesc;
+			SPITupleTable *tuptable = SPI_tuptable;
+			int i;
+
+			/*
+			 * Iterate through each result tuple
+			 */
+			for (i = 0; i < proc; i++)
+			{
+				HeapTuple 	tuple = tuptable->vals[i];
+				AOCSFileSegInfo *aocsfsinfo = NULL;
+				int			qe_segno;
+				float8 		qe_tupcount;
+				char 		*val_segno;
+				char 		*val_tupcount;
+				MemoryContext 	cxt_save;
+
+				/*
+				 * Get totals from QE's for a specific segment
+				 */
+				val_segno = SPI_getvalue(tuple, tupdesc, 1);
+				val_tupcount = SPI_getvalue(tuple, tupdesc, 2);
+
+				/* use our own context so that SPI won't free our stuff later */
+				cxt_save = MemoryContextSwitchTo(oldcontext);
+
+				/*
+				 * Convert to desired data type
+				 */
+				qe_segno = pg_atoi(val_segno, sizeof(int32), 0);
+				qe_tupcount = DatumGetFloat8(DirectFunctionCall1(float8in,
+																 CStringGetDatum(val_tupcount)));
+
+				total_count += qe_tupcount;
+
+				/*
+				 * Get the numbers on the QD for this segment
+				 */
+				aocsfsinfo = GetAOCSFileSegInfoForWrite(parentrel, qe_segno);
+
+				/* since we passed 'true' a segfile record must exist now */
+				Assert(aocsfsinfo);
+
+				/*
+				 * check if numbers match.
+				 * NOTE: proper way is to use float8eq() but since we
+				 * don't expect any NAN's in here better do it directly
+				 */
+				if(aocsfsinfo->tupcount != qe_tupcount)
+				{
+					float8 	diff = qe_tupcount - aocsfsinfo->tupcount;
+
+					elog(DEBUG3, "gp_update_ao_master_stats: updating "
+						"segno %d with tupcount %d", qe_segno,
+						(int)qe_tupcount);
+
+					/*
+					 * QD tup count !=  QE tup count. update QD count by
+					 * passing in the diff (may be negative sometimes).
+					 */
+					AOCSFileSegInfoAddCount(parentrel, qe_segno, diff, 0);
+				}
+				else
+					elog(DEBUG3, "gp_update_ao_master_stats: no need to "
+						"update segno %d. it is synced", qe_segno);
+
+				pfree(aocsfsinfo);
+
+				MemoryContextSwitchTo(cxt_save);
+
+				/*
+				 * TODO: if an entry exists for this rel in the AO hash table
+				 * need to also update that entry in shared memory. Need to
+				 * figure out how to do this safely when concurrent operations
+				 * are in progress. note that if no entry exists we are ok.
+				 *
+				 * At this point this doesn't seem too urgent as we generally
+				 * only expect this function to update segno 0 only and the QD
+				 * never cares about segment 0 anyway.
+				 */
+			}
+		}
+
+		connected = false;
+		SPI_finish();
+	}
+
+	/* Clean up in case of error. */
+	PG_CATCH();
+	{
+		if (connected)
+			SPI_finish();
+
+		/* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+
+	pfree(sqlstmt.data);
+
+	PG_RETURN_FLOAT8(total_count);
+}
+
+Datum
 aocol_compression_ratio_internal(Relation parentrel)
 {
 	StringInfoData 	sqlstmt;

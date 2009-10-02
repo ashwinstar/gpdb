@@ -79,6 +79,7 @@ extern void InsertInitialAOCSFileSegInfo(Relation parentrel, int32 segno, int32 
 extern void UpdateAOCSFileSegInfo(struct AOCSInsertDescData *desc);
 extern void AOCSFileSegInfoAddCount(Relation prel, int32 segno, int64 tupadded, int64 varblockadded); 
 
+extern Datum gp_update_aocol_master_stats_internal(Relation parentrel);
 extern Datum aocol_compression_ratio_internal(Relation parentrel);
 
 #endif

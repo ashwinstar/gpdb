@@ -727,20 +727,10 @@ int64 GetAOTotalBytes(Relation parentrel)
 
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
-/*
- * gp_update_ao_master_stats
- *
- * This function is mainly created to handle cases that our product allowed
- * loading data into an append only table in utility mode, and as a result
- * the QD gets out of sync as to the number of rows in this table for each
- * segment. An example for this scenario is gp_restore. running this function
- * puts the QD aoseg table back in sync.
- */
 static Datum
-gp_update_ao_master_stats_internal(Oid relid)
+gp_update_aorow_master_stats_internal(Relation parentrel)
 {
 	StringInfoData 	sqlstmt;
-	Relation		parentrel;
 	Relation		aosegrel;
 	bool 			connected = false;
 	char			aoseg_relname[32];
@@ -748,20 +738,6 @@ gp_update_ao_master_stats_internal(Oid relid)
 	int 			ret;
 	float8			total_count = 0;
 	MemoryContext 	oldcontext = CurrentMemoryContext;
-
-
-	Assert(Gp_role == GP_ROLE_DISPATCH);
-
-	/*
-	 * get the relid of the parent (main) relation
-	 */
-	parentrel = heap_open(relid, RowExclusiveLock);
-
-	if(!RelationIsAoRows(parentrel) && !RelationIsAoCols(parentrel))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("'%s' is not an append-only relation",
-						RelationGetRelationName(parentrel))));
 
 	/*
 	 * get the name of the aoseg relation
@@ -897,9 +873,46 @@ gp_update_ao_master_stats_internal(Oid relid)
 
 
 	pfree(sqlstmt.data);
-	heap_close(parentrel, RowExclusiveLock);
 
 	PG_RETURN_FLOAT8(total_count);
+}
+
+/*
+ * gp_update_ao_master_stats
+ *
+ * This function is mainly created to handle cases that our product allowed
+ * loading data into an append only table in utility mode, and as a result
+ * the QD gets out of sync as to the number of rows in this table for each
+ * segment. An example for this scenario is gp_restore. running this function
+ * puts the QD aoseg table back in sync.
+ */
+static Datum
+gp_update_ao_master_stats_internal(Oid relid)
+{
+	Relation		parentrel;
+	Datum			returnDatum;
+
+	/* open the parent (main) relation */
+	parentrel = heap_open(relid, RowExclusiveLock);
+
+	if(!RelationIsAoRows(parentrel) && !RelationIsAoCols(parentrel))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("'%s' is not an append-only relation",
+						RelationGetRelationName(parentrel))));
+
+	if (RelationIsAoRows(parentrel))
+	{
+		returnDatum = gp_update_aorow_master_stats_internal(parentrel);
+	}
+	else
+	{
+		returnDatum = gp_update_aocol_master_stats_internal(parentrel);
+	}
+	
+	heap_close(parentrel, RowExclusiveLock);
+
+	return returnDatum;
 }
 
 Datum
