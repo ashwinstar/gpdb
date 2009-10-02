@@ -147,7 +147,7 @@ static bool datumstream_has_space(DatumStream *ds, bool null, int32 sz)
         return false;
 
     if(null || ds->has_null)
-        dssz += (ds->nullp - ds->npbuf);
+        dssz += (ds->nullp - ds->npbuf) + 1;
 
     return dssz + sz < ds->maxdatasz;
 }
@@ -268,6 +268,11 @@ DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 
         Form_pg_attribute attr, char *relname, bool isreader) 
 {
     DatumStream *acc = palloc0(sizeof(DatumStream));
+
+	/*
+	 * Adjust maxsz for Append-Only Storage.
+	 */
+	maxsz = AppendOnlyStorage_GetUsableBlockSize(maxsz);
 
     /* datumlen and align not set */
     acc->datumlen = attr->attlen;
