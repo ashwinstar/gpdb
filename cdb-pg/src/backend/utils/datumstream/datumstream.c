@@ -60,7 +60,7 @@ int datumstream_get(DatumStream *acc, Datum *datum, bool *null)
         }
         else if(acc->datumlen == 8)
         {
-            Assert(IsAligned(acc->datump, 8)); 
+			Assert(IsAligned(acc->datump, 8) || IsAligned(acc->datump, 4));
             *datum = *(Datum *) acc->datump;
         }
         else
