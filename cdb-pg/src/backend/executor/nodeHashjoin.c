@@ -1087,9 +1087,6 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 	 */
 	if (node->hj_HashTable != NULL)
 	{
-		/* If eager release was requested, it should have been fulfilled! */
-		AssertEquivalent(gp_eager_hashtable_release, node->hj_HashTable->eagerlyReleased);
-
 		if (node->hj_HashTable->nbatch == 1 &&
 			((PlanState *) node)->righttree->chgParam == NULL
 			&& !node->hj_HashTable->eagerlyReleased)
