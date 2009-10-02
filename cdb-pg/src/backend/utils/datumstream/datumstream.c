@@ -147,7 +147,12 @@ static bool datumstream_has_space(DatumStream *ds, bool null, int32 sz)
         return false;
 
     if(null || ds->has_null)
-        dssz += (ds->nullp - ds->npbuf) + 1;
+	{
+		int32 new_nth = ds->nth + 1;
+
+		/* Use size calculation from datumstream_write_block */
+        dssz += MAXALIGN((new_nth+7) >> 3);
+	}
 
     return dssz + sz < ds->maxdatasz;
 }
