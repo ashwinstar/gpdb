@@ -1215,7 +1215,7 @@ sub genpartdefs4
 			if (exists($vv->{owner_privs}))
 			{
 				$priv_txt .= 
-					"ALTER TABLE $newname SET OWNER " . 
+					"ALTER TABLE $newname OWNER " . 
 					"$vv->{owner_privs}->{owner};\n"
 					if (exists($vv->{owner_privs}->{owner}));
 
@@ -2828,10 +2828,10 @@ sub get_owner_privs
 
 	} # end if acl
 
-	print Data::Dumper->Dump([$outi]);
+#	print Data::Dumper->Dump([$outi]);
 
 	return $outi;
-}
+} # end get_owner_privs
 
 if (1)
 {
