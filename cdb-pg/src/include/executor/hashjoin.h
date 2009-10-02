@@ -188,6 +188,7 @@ typedef struct HashJoinTableData
 	MemoryContext bfCxt;		/* CDB */ /* context for temp buf file */
 
     HashJoinTableStats *stats;  /* statistics workarea for EXPLAIN ANALYZE */
+    bool		eagerlyReleased; /* Has this hash-table been eagerly released? */
 } HashJoinTableData;
 
 #endif   /* HASHJOIN_H */

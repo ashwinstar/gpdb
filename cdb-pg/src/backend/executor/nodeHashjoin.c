@@ -227,6 +227,9 @@ ExecHashJoin(HashJoinState *node)
 	 */
 	for (;;)
 	{
+		/* We must never use an eagerly released hash table */
+		Assert(!hashtable->eagerlyReleased);
+		
 		/*
 		 * If we don't have an outer tuple, get the next one
 		 */
@@ -623,7 +626,11 @@ ExecEndHashJoin(HashJoinState *node)
 	 */
 	if (node->hj_HashTable)
 	{
-		ExecHashTableDestroy(node->hj_HashTable);
+		if (!node->hj_HashTable->eagerlyReleased)
+		{
+			ExecHashTableDestroy(node->hj_HashTable);
+		}
+		pfree(node->hj_HashTable);
 		node->hj_HashTable = NULL;
 	}
 
@@ -1070,7 +1077,7 @@ ExecHashJoinGetSavedTuple(HashJoinBatchSide *batchside,
 
 void
 ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
-{	
+{		
 	/*
 	 * In a multi-batch join, we currently have to do rescans the hard way,
 	 * primarily because batch temp files may have already been released. But
@@ -1080,8 +1087,12 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 	 */
 	if (node->hj_HashTable != NULL)
 	{
+		/* If eager release was requested, it should have been fulfilled! */
+		AssertEquivalent(gp_eager_hashtable_release, node->hj_HashTable->eagerlyReleased);
+
 		if (node->hj_HashTable->nbatch == 1 &&
-			((PlanState *) node)->righttree->chgParam == NULL)
+			((PlanState *) node)->righttree->chgParam == NULL
+			&& !node->hj_HashTable->eagerlyReleased)
 		{
 			/*
 			 * okay to reuse the hash table; needn't rescan inner, either.
@@ -1103,7 +1114,11 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 		else
 		{
 			/* must destroy and rebuild hash table */
-			ExecHashTableDestroy(node->hj_HashTable);
+			if (!node->hj_HashTable->eagerlyReleased)
+			{
+				ExecHashTableDestroy(node->hj_HashTable);
+			}
+			pfree(node->hj_HashTable);
 			node->hj_HashTable = NULL;
 
 			/*
@@ -1134,7 +1149,10 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 }
 
 /**
- * This method releases the hash table. 
+ * This method releases the hash table's memory. It maintains some of the other
+ * aspects of the hash table like memory usage statistics. These may be required
+ * during an explain analyze. A hash table that has been released cannot perform
+ * any useful function anymore. 
  */
 static void ReleaseHashTable(HashJoinState *node)
 {
@@ -1142,8 +1160,15 @@ static void ReleaseHashTable(HashJoinState *node)
 	
 	if (node->hj_HashTable)
 	{
+		/* This hashtable should not have been released already! */
+		Assert(!node->hj_HashTable->eagerlyReleased);
+	    if (node->hj_HashTable->stats)
+	    {
+	    	/* Report on batch in progress. */
+	    	ExecHashTableExplainBatchEnd(node->hj_HashTable);
+	    }
 		ExecHashTableDestroy(node->hj_HashTable);
-		node->hj_HashTable = NULL;
+		node->hj_HashTable->eagerlyReleased = true;
 	}
 	
 	/* Always reset intra-tuple state */

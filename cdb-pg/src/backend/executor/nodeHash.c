@@ -302,7 +302,7 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 	hashtable->batches = NULL;
 	hashtable->spaceAllowed = work_mem * 1024L;
     hashtable->stats = NULL;
-
+    hashtable->eagerlyReleased = false;
 	/*
 	 * Get info about the hash functions to be used for each hash key.
 	 * Also remember whether the join operators are strict.
@@ -532,7 +532,9 @@ void
 ExecHashTableDestroy(HashJoinTable hashtable)
 {
 	int			i;
-
+	Assert(hashtable);
+	Assert(!hashtable->eagerlyReleased);
+	
 	/*
 	 * Make sure all the temp files are closed.  We skip batch 0, since it
 	 * can't have any temp files.
@@ -565,9 +567,7 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 
 	/* Release working memory (batchCxt is a child, so it goes away too) */
 	MemoryContextDelete(hashtable->hashCxt);
-
-	/* And drop the control block */
-	pfree(hashtable);
+	hashtable->batches = NULL;
 }
 
 /*
@@ -1026,9 +1026,13 @@ ExecScanHashBucket(HashJoinState *hjstate,
  */
 void
 ExecHashTableReset(HashJoinTable hashtable)
-{
+{	
 	MemoryContext oldcxt;
-	int			nbuckets = hashtable->nbuckets;
+	int			nbuckets = 0;
+	Assert(hashtable);
+	Assert(!hashtable->eagerlyReleased);
+
+	nbuckets = hashtable->nbuckets;
 
 	/*
 	 * Release all the hash buckets and tuples acquired in the prior pass, and
@@ -1123,13 +1127,27 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
 	if(stats->batchstats == NULL)
 		return;
 
-    /* Report on batch in progress, in case the join is being ended early. */
-    ExecHashTableExplainBatchEnd(hashtable);
+	if (!hashtable->eagerlyReleased)
+	{		
+		/* Report on batch in progress, in case the join is being ended early. */
+		ExecHashTableExplainBatchEnd(hashtable);
 
-    /* Report executor memory used by our memory context. */
-    jinstrument->execmemused +=
-        (double)MemoryContextGetPeakSpace(hashtable->hashCxt);
+		/* Report executor memory used by our memory context. */
+		jinstrument->execmemused +=
+				(double)MemoryContextGetPeakSpace(hashtable->hashCxt);
+	}
+	else
+	{
+		/**
+		 * Memory has been eagerly released. We can't get statistics
+		 * from the memory context. We approximate from stats structure.
+		 */
 
+		Assert(gp_eager_hashtable_release);
+		jinstrument->execmemused +=
+				(double) stats->workmem_max;
+	}
+	
     /* Report actual work_mem high water mark. */
     jinstrument->workmemused = Max(jinstrument->workmemused, stats->workmem_max);
 
@@ -1338,8 +1356,13 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
     int                 curbatch = hashtable->curbatch;
     HashJoinTableStats *stats = hashtable->stats;
     HashJoinBatchStats *batchstats = &stats->batchstats[curbatch];
-    HashJoinBatchData  *batch = hashtable->batches[curbatch];
+    HashJoinBatchData  *batch = NULL;
     int                 i;
+    
+    Assert(!hashtable->eagerlyReleased);
+    Assert(hashtable->batches);
+
+    batch = hashtable->batches[curbatch];
 
     /* Already reported on this batch? */
     if ( stats->endedbatch == curbatch 
