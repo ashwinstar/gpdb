@@ -29,6 +29,7 @@ extern PGDLLIMPORT int NBuffers;
 
 /* should not be accessed directly.  Use ShouldMemoryProtectBufferPool() instead */
 extern bool memory_protect_buffer_pool;
+extern bool flush_buffer_pages_when_evicted;
 extern bool zero_damaged_pages;
 extern double bgwriter_lru_percent;
 extern double bgwriter_all_percent;
