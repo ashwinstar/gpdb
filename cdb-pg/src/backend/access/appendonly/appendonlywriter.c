@@ -14,11 +14,13 @@
 
 #include "access/appendonlywriter.h"
 #include "access/appendonlytid.h"	  /* AOTupleId_MaxRowNum  */
+#include "access/aocssegfiles.h"                  /* AOCS */
 #include "access/heapam.h"			  /* heap_open            */
 #include "access/transam.h"			  /* InvalidTransactionId */
+#include "utils/lsyscache.h"
+
 #include "cdb/cdbvars.h"			  /* Gp_role              */
 
-#include "access/aocssegfiles.h"                  /* AOCS */
 
 /*
  * GUC variables
@@ -485,7 +487,8 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 
 			if (Debug_appendonly_print_insert)
 				ereport(LOG, (errmsg("Choosing a segno for append-only "
-									 "relation %d ", relid)));
+									 "relation \"%s\" (%d) ", 
+									 get_rel_name(relid), relid)));
 
 			LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
 
@@ -504,6 +507,12 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			/* get the hash entry for this relation (must exist) */
 			aoentry = AORelGetHashEntry(relid);
 			aoentry->txns_using_rel++;
+
+			if (Debug_appendonly_print_insert)
+				ereport(LOG, (errmsg("got the hash entry for relation \"%s\" (%d). "
+									 "setting txns_using_rel to %d",
+									 get_rel_name(relid), relid, 
+									 aoentry->txns_using_rel)));
 
 			/*
 			 * Now pick a segment that is not in use and is not over the
@@ -555,7 +564,8 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 
 			if(!segno_chosen)
 				ereport(ERROR, (errmsg("could not find segment file to use for "
-									   "inserting into relation %d.", relid)));
+									   "inserting into relation %s (%d).", 
+									   get_rel_name(relid), relid)));
 				
 			Insist(usesegno != RESERVED_SEGNO);
 
@@ -569,8 +579,8 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			Assert(usesegno != RESERVED_SEGNO);
 
 			if (Debug_appendonly_print_insert)
-				ereport(LOG, (errmsg("Segno chosen for append-only relation %d "
-									 "is %d", relid, usesegno)));
+				ereport(LOG, (errmsg("Segno chosen for append-only relation \"%s\" (%d)"
+									 "is %d", get_rel_name(relid), relid, usesegno)));
 
 			return usesegno;
 
@@ -904,7 +914,15 @@ AtEOXact_AppendOnly(void)
 
 			/* done with this AO table entry */
 			if(entry_updated)
+			{
 				aoentry->txns_using_rel--;
+				
+				if (Debug_appendonly_print_insert)
+					ereport(LOG, (errmsg("updated txns_using_rel, it is now %d",
+										  aoentry->txns_using_rel)));				
+			}
+				
+				
 		}
 	}
 
