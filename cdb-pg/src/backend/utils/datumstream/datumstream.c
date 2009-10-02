@@ -549,8 +549,10 @@ int datumstream_read_block(DatumStream *acc)
     else
     {
         Assert(execBlockKind == AOCSBK_BLOB); 
-        Assert(isLarge);
         Assert(rowCnt == 1);
+
+		// NOTE: Do not assert the content is large.  What appears to be large content
+		// NOTE: can compress into one AO storage block.
 
         acc->block = NULL;
 
