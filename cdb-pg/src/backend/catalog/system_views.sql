@@ -450,8 +450,14 @@ case when pp.parkind = 'h' then 'hash' when pp.parkind = 'r' then 'range'
 pp.parlevel as partitionlevel,
 pr1.parruleord
 as partitionposition,
-rank() over (partition by pp.oid, cl.relname, pp.parlevel, cl3.relname 
-	order by pr1.parruleord) as partitionrank,
+CASE WHEN pp.parkind != 'r'::"char" OR pr1.parisdefault 
+	 THEN NULL::bigint
+     ELSE 
+	 	  rank() OVER(
+          		      PARTITION BY pp.oid, cl.relname, pp.parlevel, cl3.relname
+               	      ORDER BY pr1.parisdefault, pr1.parruleord) 
+     END AS partitionrank, 
+
 pg_get_expr(pr1.parlistvalues, pr1.parchildrelid) as partitionlistvalues,
 pg_get_expr(pr1.parrangestart, pr1.parchildrelid) as partitionrangestart,
 pr1.parrangestartincl as partitionstartinclusive,

@@ -190,12 +190,94 @@ COPY public.pg_rewrite_v33
   from '@abs_srcdir@/data/pg_rewrite33.data' oids csv header;
 COPY public.pg_conversion_v33
   from '@abs_srcdir@/data/pg_conversion33.data' csv header;
+-- the 3.3 pg_partitions
+create view public.pg_partitions_v33 as
+select 
+schemaname,
+tablename, 
+partitionschemaname,
+partitiontablename,
+partitionname,
+parentpartitiontablename,
+parentpartitionname,
+partitiontype, 
+partitionlevel,
+-- if not a range partition, no partition rank
+-- for range partitions, the parruleord of the default partition is zero,
+-- so if no_default (min of parruleord) > 0 then there is no default partition
+-- so return the normal rank.  However, if there is a default partition, it
+-- is rank 1, so skip it, and decrement remaining ranks by 1 so the first
+-- non-default partition starts at 1
+--
+case when (partitiontype != 'range') then NULL
+	 when (partitionnodefault > 0) then partitionrank
+	 when (partitionrank = 1) then NULL
+	 else  partitionrank - 1
+end as partitionrank,
+partitionposition,
+partitionlistvalues,
+partitionrangestart,
+case when (partitiontype = 'range') then partitionstartinclusive
+	 else NULL
+end as partitionstartinclusive,
+partitionrangeend,
+case when (partitiontype = 'range') then partitionendinclusive
+	else NULL
+end as partitionendinclusive,
+partitioneveryclause,
+parisdefault as partitionisdefault,
+partitionboundary
+from
+(
+select
+n.nspname as schemaname,
+cl.relname as tablename, 
+n2.nspname as partitionschemaname,
+cl2.relname as partitiontablename,
+pr1.parname as partitionname,
+cl3.relname as parentpartitiontablename,
+pr2.parname as parentpartitionname,
+case when pp.parkind = 'h' then 'hash' when pp.parkind = 'r' then 'range'
+	 when pp.parkind = 'l' then 'list' else null end as partitiontype, 
+pp.parlevel as partitionlevel,
+pr1.parruleord
+as partitionposition,
+rank() over (partition by pp.oid, cl.relname, pp.parlevel, cl3.relname 
+	order by pr1.parruleord) as partitionrank,
+pg_get_expr(pr1.parlistvalues, pr1.parchildrelid) as partitionlistvalues,
+pg_get_expr(pr1.parrangestart, pr1.parchildrelid) as partitionrangestart,
+pr1.parrangestartincl as partitionstartinclusive,
+pg_get_expr(pr1.parrangeend, pr1.parchildrelid) as partitionrangeend,
+pr1.parrangeendincl as partitionendinclusive,
+pg_get_expr(pr1.parrangeevery, pr1.parchildrelid) as partitioneveryclause,
+min(pr1.parruleord) 
+    over (partition by pp.oid, cl.relname, pp.parlevel, cl3.relname 
+	order by pr1.parruleord) as partitionnodefault,
+pr1.parisdefault,
+pg_get_partition_rule_def(pr1.oid, true) as partitionboundary
+from 
+pg_namespace n,
+pg_namespace n2,
+pg_class cl,
+pg_class cl2, 
+pg_partition pp,
+pg_partition_rule pr1 left outer join pg_partition_rule pr2 
+   on(pr1.parparentrule = pr2.oid)
+left outer join pg_class cl3 on (pr2.parchildrelid = cl3.oid)
+where 
+ pp.paristemplate = 'f' and -- paristemplate = 't' handled in its on view
+ pp.parrelid = cl.oid and 
+ pr1.paroid = pp.oid and
+ cl2.oid = pr1.parchildrelid and
+ cl.relnamespace = n.oid and
+ cl2.relnamespace = n2.oid
+) as p1;
 --
 -- 5. Run the scripts that upgrade from 32->33
 --      phase 1:  loadcat33
 --      phase 2:  upg2_conversion32.sql
 --
-\i @abs_srcdir@/sql/loadcat33.sql
+\i @abs_builddir@/sql/loadcat33.sql
 begin;
 copy public.pg_class from '@abs_srcdir@/data//upg2_pg_class_toadd32.data' oids null E'\\N' csv delimiter '|' header;
 copy public.pg_attribute from '@abs_srcdir@/data//upg2_pg_attribute_toadd32.data' csv delimiter '|' header;
@@ -693,14 +775,14 @@ update public.pg_depend set classid='pg_type'::regclass, objid=reltype from publ
 -- 6. Compare upgraded 32 to loaded 33
 --
 -- new pg_partitions 
---   note that the view changed, pg_catalog.pg_partitions should now
+--   note that the view changed, public.pg_partitions_v33 should now
 --   be the same as public.pg_partitions
 --
 select pg_get_viewdef(a.ev_class) = pg_get_viewdef(b.ev_class)
 from pg_rewrite a, pg_rewrite b
 where
 a.ev_class = 'public.pg_partitions'::regclass and
-b.ev_class = 'pg_catalog.pg_partitions'::regclass;
+b.ev_class = 'public.pg_partitions_v33'::regclass;
  ?column? 
 ----------
  t
@@ -1014,7 +1096,7 @@ select * from public.pg_exttable_v33 where reloid < 10000;
 -- 7. Run the scripts that upgrade from 33->34
 --      phase 1:  loadcat34
 --
-\i @abs_srcdir@/sql/loadcat34.sql
+\i @abs_builddir@/sql/loadcat34.sql
 begin;
 copy public.pg_class from '@abs_srcdir@/data//upg2_pg_class_toadd33.data' oids null E'\\N' csv delimiter '|' header;
 copy public.pg_attribute from '@abs_srcdir@/data//upg2_pg_attribute_toadd33.data' csv delimiter '|' header;
@@ -1032,22 +1114,80 @@ alter table public.pg_appendonly alter column columnstore set not null;
 alter table public.pg_exttable add column writable boolean;
 update public.pg_exttable set writable='f';
 alter table public.pg_exttable alter column writable set not null;
+-- upgrade pg_partitions.parentpartitioname
+-- Need to manually diff the view definitions and extract the changed
+-- portions.  Yuck!
+update public.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+':resname partitionposition :ressortgroupref 5 :resorigtbl',
+':resname partitionposition :ressortgroupref 6 :resorigtbl')
+where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+'{TARGETENTRY :expr {WINDOWREF :winfnoid 7001 ',
+'{TARGETENTRY :expr {CASE :casetype 20 :arg <> :args ({WHEN :expr {BOOLEXPR :boolop or :args ({OPEXPR :opno 630 :opfuncid 0 :opresulttype 16 :opretset false :args ({VAR :varno 5 :varattno 2 :vartype 18 :vartypmod -1 :varlevelsup 0 :varnoold 5 :varoattno 2} {CONST :consttype 18 :constlen 1 :constbyval true :constisnull false :constvalue 1 [ 114 0 0 0 0 0 0 0 ]})} {VAR :varno 6 :varattno 5 :vartype 16 :vartypmod -1 :varlevelsup 0 :varnoold 6 :varoattno 5})} :result {CONST :consttype 20 :constlen 8 :constbyval true :constisnull true :constvalue <>}}) :defresult {WINDOWREF :winfnoid 7001 '
+)
+where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+':winlevel 0} :resno 11 :resname partitionrank ',
+':winlevel 0}} :resno 11 :resname partitionrank '
+)
+where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+':winspec 0 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault ',
+':winspec 1 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault '
+)
+where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+'parisdefault :ressortgroupref 0 :resorigtbl 5011 :resorigcol ',
+'parisdefault :ressortgroupref 5 :resorigtbl 5011 :resorigcol '
+)
+where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+'({SORTCLAUSE :tleSortGroupRef 5 :sortop 95}) :frame <> :location -1}) :distinctClause ',
+'({SORTCLAUSE :tleSortGroupRef 5 :sortop 58} {SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1} {WINDOWSPEC :name <> :parent <> :partition ({SORTCLAUSE :tleSortGroupRef 1 :sortop 609} {SORTCLAUSE :tleSortGroupRef 2 :sortop 660} {SORTCLAUSE :tleSortGroupRef 3 :sortop 95} {SORTCLAUSE :tleSortGroupRef 4 :sortop 660}) :order ({SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1}) :distinctClause '
+)
+where ev_class = 'public.pg_partitions'::regclass;
 commit;
 reindex table public.pg_appendonly;
 -- will error out in regression tests, this is expected
-reindex table @gpupgradeschemaname@.pg_exttable;
+reindex table public.pg_exttable;
 -- will error out in regression tests, this is expected
 reindex table public.gp_configuration_history;
-psql:@abs_srcdir@/sql/loadcat34.sql:27: ERROR:  relation "public.gp_configuration_history" does not exist
+psql:@abs_builddir@/sql/loadcat34.sql:79: ERROR:  relation "public.gp_configuration_history" does not exist
 -- will error out in regression tests, this is expected
 reindex table public.gp_db_interfaces;
-psql:@abs_srcdir@/sql/loadcat34.sql:29: ERROR:  relation "public.gp_db_interfaces" does not exist
+psql:@abs_builddir@/sql/loadcat34.sql:81: ERROR:  relation "public.gp_db_interfaces" does not exist
 -- will error out in regression tests, this is expected
 reindex table public.gp_interfaces;
-psql:@abs_srcdir@/sql/loadcat34.sql:31: ERROR:  relation "public.gp_interfaces" does not exist
+psql:@abs_builddir@/sql/loadcat34.sql:83: ERROR:  relation "public.gp_interfaces" does not exist
 --
 -- 8. Compare upgraded 33 to actual 34
 --
+-- new pg_partitions 
+--   note that the view changed, pg_catalog.pg_partitions should now
+--   be the same as public.pg_partitions
+--
+select pg_get_viewdef(a.ev_class) = pg_get_viewdef(b.ev_class)
+from pg_rewrite a, pg_rewrite b
+where
+a.ev_class = 'public.pg_partitions'::regclass and
+b.ev_class = 'pg_catalog.pg_partitions'::regclass;
+ ?column? 
+----------
+ f
+(1 row)
+
 -- pg_attribute 
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute a,
@@ -1347,12 +1487,12 @@ select * from pg_catalog.pg_appendonly where relid < 10000;
 -- compare old and new pg_exttable
 select * from public.pg_exttable where reloid < 10000;
  reloid | location | fmttype | fmtopts | command | rejectlimit | rejectlimittype | fmterrtbl | encoding | writable 
---------+----------+---------+---------+---------+-------------+-----------------+-----------+----------+---------- 
+--------+----------+---------+---------+---------+-------------+-----------------+-----------+----------+----------
 (0 rows)
 
 select * from pg_catalog.pg_exttable where reloid < 10000;
  reloid | location | fmttype | fmtopts | command | rejectlimit | rejectlimittype | fmterrtbl | encoding | writable 
---------+----------+---------+---------+---------+-------------+-----------------+-----------+----------+---------- 
+--------+----------+---------+---------+---------+-------------+-----------------+-----------+----------+----------
 (0 rows)
 
 --
@@ -1418,3 +1558,7 @@ drop table
   public.pg_appendonly_v33,
   public.pg_exttable,
   public.pg_exttable_v33;
+drop view
+   public.pg_partitions_v33;
+drop view
+   public.pg_partitions;

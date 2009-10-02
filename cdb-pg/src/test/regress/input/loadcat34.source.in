@@ -18,6 +18,58 @@ alter table @gpupgradeschemaname@.pg_exttable add column writable boolean;
 update @gpupgradeschemaname@.pg_exttable set writable='f';
 alter table @gpupgradeschemaname@.pg_exttable alter column writable set not null;
 
+-- upgrade pg_partitions.parentpartitioname
+
+-- Need to manually diff the view definitions and extract the changed
+-- portions.  Yuck!
+
+update @gpupgradeschemaname@.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+':resname partitionposition :ressortgroupref 5 :resorigtbl',
+':resname partitionposition :ressortgroupref 6 :resorigtbl')
+where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+
+update @gpupgradeschemaname@.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+'{TARGETENTRY :expr {WINDOWREF :winfnoid 7001 ',
+'{TARGETENTRY :expr {CASE :casetype 20 :arg <> :args ({WHEN :expr {BOOLEXPR :boolop or :args ({OPEXPR :opno 630 :opfuncid 0 :opresulttype 16 :opretset false :args ({VAR :varno 5 :varattno 2 :vartype 18 :vartypmod -1 :varlevelsup 0 :varnoold 5 :varoattno 2} {CONST :consttype 18 :constlen 1 :constbyval true :constisnull false :constvalue 1 [ 114 0 0 0 0 0 0 0 ]})} {VAR :varno 6 :varattno 5 :vartype 16 :vartypmod -1 :varlevelsup 0 :varnoold 6 :varoattno 5})} :result {CONST :consttype 20 :constlen 8 :constbyval true :constisnull true :constvalue <>}}) :defresult {WINDOWREF :winfnoid 7001 '
+)
+where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+
+update @gpupgradeschemaname@.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+':winlevel 0} :resno 11 :resname partitionrank ',
+':winlevel 0}} :resno 11 :resname partitionrank '
+)
+where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+
+update @gpupgradeschemaname@.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+':winspec 0 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault ',
+':winspec 1 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault '
+)
+where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+
+update @gpupgradeschemaname@.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+'parisdefault :ressortgroupref 0 :resorigtbl 5011 :resorigcol ',
+'parisdefault :ressortgroupref 5 :resorigtbl 5011 :resorigcol '
+)
+where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+
+update @gpupgradeschemaname@.pg_rewrite 
+set ev_action = 
+replace(ev_action, 
+'({SORTCLAUSE :tleSortGroupRef 5 :sortop 95}) :frame <> :location -1}) :distinctClause ',
+'({SORTCLAUSE :tleSortGroupRef 5 :sortop 58} {SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1} {WINDOWSPEC :name <> :parent <> :partition ({SORTCLAUSE :tleSortGroupRef 1 :sortop 609} {SORTCLAUSE :tleSortGroupRef 2 :sortop 660} {SORTCLAUSE :tleSortGroupRef 3 :sortop 95} {SORTCLAUSE :tleSortGroupRef 4 :sortop 660}) :order ({SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1}) :distinctClause '
+)
+where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+
 commit;
 
 reindex table @gpupgradeschemaname@.pg_appendonly;
