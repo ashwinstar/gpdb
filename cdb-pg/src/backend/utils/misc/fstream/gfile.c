@@ -15,6 +15,12 @@
 #define O_BINARY 0
 #endif
 
+#ifndef S_IRUSR					/* XXX [TRH] should be in a header */
+#define S_IRUSR		 S_IREAD
+#define S_IWUSR		 S_IWRITE
+#define S_IXUSR		 S_IEXEC
+#endif 
+
 #define COMPRESSION_BUFFER_SIZE		4096
 
 static int
