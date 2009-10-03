@@ -58,7 +58,6 @@ sub new
 		unless $options->{wal_segsize}; # undef or 0 means default
 	die "Bad wal_segsize $options->{wal_segsize}"
 		unless grep {$_ == $options->{wal_segsize}} (1,2,4,8,16,32,64);
-
     return $self;
 }
 
@@ -269,7 +268,7 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
     {
         print "Generating preproc.y...\n";
         chdir('src\interfaces\ecpg\preproc');
-        system('chmod -r preproc.y');
+        system('attrib -r preproc.y');
         system('perl parse.pl < ..\..\..\backend\parser\gram.y > preproc.y');
         chdir('..\..\..\..');
     }

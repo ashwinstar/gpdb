@@ -323,7 +323,6 @@ sub mkvcbuild
     opendir($D, 'contrib') || croak "Could not opendir on contrib!\n";
     while (my $d = readdir($D))
     {
-		next if length($d)< 1;
         next if ($d =~ /^\./);
         next unless (-f "contrib/$d/Makefile");
         next if (grep {/^$d\s*$/} @contrib_excludes);
@@ -461,9 +460,11 @@ sub AddContrib
 		}	
 
         my $proj = $solution->AddProject($dn, 'dll', 'contrib');
-        $mf =~ /^OBJS\s*=\s*(.*)\s*$/gm || croak "Could not find objects in MODULE_big for $n\n";
-        foreach my $o (split /\s+/, $1)
+        $mf =~ /^OBJS\s*=\s*(.*)$/gm || croak "Could not find objects in MODULE_big for $n\n";
+		my $objs = $1;
+        while ($objs =~ /\b([\w-]+\.o)\b/g)
         {
+			my $o = $1;
             $o =~ s/\.o$/.c/;
             $proj->AddFile('contrib\\' . $n . '\\' . $o);
         }
@@ -499,18 +500,12 @@ sub AddContrib
     }
     elsif ($mf =~ m/^PROGRAM\s*=\s*(.*)\s*$/mg)
     {
-		my $dn = $1;
-		if (length($dn) > 1 && (substr($dn,length($dn)-1) eq "\r"))
+        my $proj = $solution->AddProject($1, 'exe', 'contrib');
+        $mf =~ /^OBJS\s*=\s*(.*)$/gm || croak "Could not find objects in MODULE_big for $n\n";
+        my $objs = $1;
+        while ($objs =~ /\b([\w-]+\.o)\b/g)
         {
-			chop $dn;
-		}
-		
-        $dn =~ s{\\\s*[\r\n]+}{}mg;
-
-        my $proj = $solution->AddProject($dn, 'exe', 'contrib');
-        $mf =~ /^OBJS\s*=\s*(.*)\s*$/gm || croak "Could not find objects in MODULE_big for $n\n";
-        foreach my $o (split /\s+/, $1)
-        {
+			my $o = $1;
             $o =~ s/\.o$/.c/;
             $proj->AddFile('contrib\\' . $n . '\\' . $o);
         }
