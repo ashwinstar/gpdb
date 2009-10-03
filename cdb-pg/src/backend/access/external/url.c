@@ -892,7 +892,7 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 	enum fcurl_type_e type = file->type;
     int 	ret = 0;/* default is good return */
     int 	errlen = 512;
-	char	err[errlen];
+	char	err[512];
     char* 	url = pstrdup(file->url);
 	
     switch (type)
