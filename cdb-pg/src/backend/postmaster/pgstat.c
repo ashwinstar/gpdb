@@ -48,6 +48,7 @@
 #include "libpq/pqsignal.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "executor/instrument.h"
 #include "pg_trace.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/fork_process.h"

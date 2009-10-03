@@ -1786,7 +1786,7 @@ static int popen_with_stderr(int *pipes, const char *exe, bool forwrite)
 {
 	int data[2];	/* pipe to send data child <--> parent */
 	int err[2];		/* pipe to send errors child --> parent */
-	int pid;
+	int pid = -1;
 	
 	const int READ = 0;
 	const int WRITE = 1;
@@ -1800,6 +1800,7 @@ static int popen_with_stderr(int *pipes, const char *exe, bool forwrite)
 		close(data[WRITE]);
 		return -1;
 	}
+#ifndef WIN32
 
 	pid = fork();
 	
@@ -1903,6 +1904,7 @@ static int popen_with_stderr(int *pipes, const char *exe, bool forwrite)
 		
 		return -1;		
 	}
+#endif
 
 	return pid;
 }
@@ -1929,8 +1931,13 @@ static int pclose_with_stderr(int pid, int *pipes, char *buf, int len)
 		strcpy(buf,"error string unavailable due to read error");
 
 	close(pipes[EXEC_ERR_P]);
-	
+
+#ifndef WIN32
+
 	waitpid(pid, &status, 0);
+#else
+    status = -1;
+#endif 
 
 	return status;
 }

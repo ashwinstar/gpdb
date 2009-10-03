@@ -4132,6 +4132,11 @@ internal_forkexec(int argc, char *argv[], Port *port)
 }
 #endif   /* WIN32 */
 
+#ifdef EXEC_BACKEND
+/* This should really be in a header file */
+NON_EXEC_STATIC void
+PerfmonMain(int argc, char *argv[]);
+#endif 
 
 /*
  * SubPostmasterMain -- Get the fork/exec'd process into a state equivalent
