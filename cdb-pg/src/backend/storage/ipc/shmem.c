@@ -117,7 +117,11 @@ InitShmemAllocation(void)
 
 	Assert(shmhdr != NULL);
 
+#ifdef WIN32
+    ShmemSystemPageSize = 4096;  /* Need a way to get this on Win32 */
+#else
 	ShmemSystemPageSize = sysconf(_SC_PAGESIZE);
+#endif
 	if ( ShmemSystemPageSize <= 1 ||
 		(ShmemSystemPageSize & ( ShmemSystemPageSize - 1)))  // checks for power of 2
 	{
