@@ -1,3 +1,8 @@
+#if _MSC_VER >= 1400
+#define errcode __msvc_errcode
+#include <crtdefs.h>
+#undef errcode
+#endif
 #include <fcntl.h>
 #include <unistd.h>
 #include <ctype.h>
