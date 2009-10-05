@@ -2015,7 +2015,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL,
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&Test_appendonly_override,
+		&Test_checksum_override,
 		false, NULL, NULL
 	},
 
