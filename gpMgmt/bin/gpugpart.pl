@@ -1215,7 +1215,7 @@ sub genpartdefs4
 			if (exists($vv->{owner_privs}))
 			{
 				$priv_txt .= 
-					"ALTER TABLE $newname OWNER " . 
+					"ALTER TABLE $newname OWNER TO " . 
 					"$vv->{owner_privs}->{owner};\n"
 					if (exists($vv->{owner_privs}->{owner}));
 
