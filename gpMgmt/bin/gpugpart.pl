@@ -1330,11 +1330,14 @@ sub genpartdefs4
                         $xch_txt .= "ALTER TABLE $tname " . 
 							" NO INHERIT $kk ; \n";
 
+#						print Data::Dumper->Dump([$all_cons]), "\n";
+
 						# drop all existing constraints on the table
 						if (exists($all_cons->{$tname}))
 						{
-							for my $cname (@{$all_cons->{$tname}})
+							for my $con_item (@{$all_cons->{$tname}})
 							{
+								my $cname = $con_item->{name};
 
 								$xch_txt .= "ALTER TABLE $tname " . 
 									" DROP CONSTRAINT $cname ; \n";
@@ -1348,6 +1351,33 @@ sub genpartdefs4
 						# after the exchange, fix the inheritance
                         $xch_txt .= "ALTER TABLE $tname " . 
 							" INHERIT $kk ; \n";
+
+						# fixup rule: the rule definition text is
+						# correct, but it is associated in the catalog
+						# with the relid of the original partition
+						# (table).  Drop the rule and recreate it
+						# using the newly-exchanged table.
+
+						my $ruledef = $vv->{definition};
+						my $rulenam = $vv->{rulename};
+
+                        $xch_txt .= "DROP RULE IF EXISTS $rulenam " .
+							"ON $kk ; \n";
+                        $xch_txt .= $ruledef . "\n";
+
+						# re-add all existing constraints on the table
+						if (exists($all_cons->{$tname}))
+						{
+							for my $con_item (@{$all_cons->{$tname}})
+							{
+								my $cname = $con_item->{name};
+
+								$xch_txt .= "ALTER TABLE $tname " . 
+									" ADD CONSTRAINT $cname CHECK " .
+									$con_item->{src} .  " ; \n";
+							}
+						}
+
 
                     }
 
@@ -2881,9 +2911,11 @@ if (1)
 		$psql_str .= $glob_connect
 			if (defined($glob_connect));
 
-		$psql_str .= " -c \'select pcon.conname, pc.relname, pn.nspname " . 
+		$psql_str .= " -c \'select pcon.conname, pc.relname, " .
+			" pn.nspname, pcon.consrc " . 
 			"from pg_constraint pcon, pg_class pc, pg_namespace pn " .
-			"where pcon.conrelid = pc.oid and pc.relnamespace = pn.oid \' ";
+			"where pcon.conrelid = pc.oid and pc.relnamespace = pn.oid " .
+			"order by pcon.conname, pn.nspname, pc.relname, pcon.consrc  \' ";
 
 #    print $psql_str, "\n";
 
@@ -2897,13 +2929,15 @@ if (1)
 		{
 			my $tname = $rr->{nspname} . "." . $rr->{relname};
 
+			my $con_item = {name => $rr->{conname}, src => $rr->{consrc}};
+
 			if (exists($all_cons{$tname}))
 			{
-				push @{$all_cons{$tname}}, $rr->{conname};
+				push @{$all_cons{$tname}}, $con_item;
 			}
 			else
 			{
-				$all_cons{$tname} = [$rr->{conname}];
+				$all_cons{$tname} = [$con_item];
 			}
 
 		}
