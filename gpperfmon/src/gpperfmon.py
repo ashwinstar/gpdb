@@ -5,6 +5,7 @@ Controls or queries the web components of gpperfmon.
 '''
 
 import os
+import stat
 import sys
 import signal
 import time
@@ -52,6 +53,64 @@ Controls and configures the Greenplum Performance Monitor web server.
 
 _help = ("""
 """)
+
+
+class Pgpass():
+    """ Class for handling .pgpass file.
+    """
+    entries = []
+    valid_pgpass = False
+    
+    def __init__(self):
+        HOME = os.getenv('HOME')
+        PGPASSFILE = os.getenv('PGPASSFILE', '%s/.pgpass' % HOME)
+        
+        if not os.path.exists(PGPASSFILE):
+            return
+        
+        st_info = os.stat(PGPASSFILE)
+        mode = str(oct(st_info[stat.ST_MODE] & 0777))
+        
+        if mode != "0600":
+            print 'WARNING: password file "%s" has group or world access; permissions should be u=rw (0600) or less' % PGPASSFILE
+            return
+        
+        try:
+            fp = open(PGPASSFILE, 'r')
+            try:
+                lineno = 1
+                for line in fp:
+                    try:
+                        (hostname, port, database, username, password) = line.strip().split(':')
+                        entry = {'hostname': hostname,
+                                 'port': port,
+                                 'database': database,
+                                 'username': username,
+                                 'password': password }
+                        self.entries.append(entry)
+                    except:
+                        print 'Invalid line in .pgpass file.  Line number %d' % lineno 
+                    lineno += 1
+            except IOError:
+                pass
+            finally:
+                if fp: fp.close()
+        except OSError:
+            pass
+        
+        valid_pgpass = True
+    
+    def get_password(self, username, hostname, port, database):
+        for entry in self.entries:
+            if ((entry['hostname'] == hostname or entry['hostname'] == '*') and
+               (entry['port'] == port or entry['port'] == '*') and
+               (entry['database'] == database or entry['database'] == '*') and
+               (entry['username'] == username or entry['username'] == '*')):
+                return entry['password']
+        return None
+    
+    def pgpass_valid(self):
+        return self.valid_pgpass
     
 #################
 def version():
@@ -156,6 +215,12 @@ def lighty_version():
 def lighty_start(instance):
     res = 0
     cfg = ConfigParser.SafeConfigParser()
+    
+    pgpass = Pgpass()
+    if not pgpass.pgpass_valid():
+        print 'Error: .pgpass file not valid.  Unable to start instance'
+        return 0
+    
     instance_info = get_instance_info(instance)
     if lighty_status(instance) == 0:
         # Read in the config so we can set env for remote connections if needed
@@ -169,6 +234,7 @@ def lighty_start(instance):
         # save off original values
         old_pghost = os.getenv('PGHOST', '')
         old_pgport = os.getenv('PGPORT', '')
+        old_pgpassword = os.getenv('PGPASSWORD', '')
 
         # see if there are values in conf file
         master_hostname = None
@@ -189,12 +255,18 @@ def lighty_start(instance):
         if master_port:
             os.environ['PGPORT'] = master_port
 
+        if old_pgpassword == '':
+            password = pgpass.get_password('gpmon', master_hostname, master_port, 'gpperfmon')
+            if password:
+                os.environ['PGPASSWORD'] = password
+
         start_application('%s -f "%s" -m "%s"' % (LIGHTY_BIN, instance_info['lighttpd_conf_file'], os.path.join(GPPERFMONHOME, 'lib')))
         time.sleep(1)
         
         # restore the original values
         os.environ['PGHOST'] = old_pghost
         os.environ['PGHOST'] = old_pgport
+        os.environ['PGPASSWORD'] = old_pgpassword
         
     return lighty_status(instance)
 
