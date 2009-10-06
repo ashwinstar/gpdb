@@ -4,10 +4,10 @@
  *	  routines for signaling the postmaster from its child processes
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/pmsignal.h,v 1.15 2006/07/10 16:20:52 alvherre Exp $
+ * $PostgreSQL: pgsql/src/include/storage/pmsignal.h,v 1.25 2009/06/11 14:49:12 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,21 +22,35 @@
  */
 typedef enum
 {
+	PMSIGNAL_RECOVERY_STARTED,	/* recovery has started */
+	PMSIGNAL_RECOVERY_CONSISTENT,		/* recovery has reached consistent
+										 * state */
 	PMSIGNAL_PASSWORD_CHANGE,	/* pg_auth file has changed */
 	PMSIGNAL_WAKEN_CHILDREN,	/* send a SIGUSR1 signal to all backends */
 	PMSIGNAL_WAKEN_ARCHIVER,	/* send a NOTIFY signal to xlog archiver */
 	PMSIGNAL_ROTATE_LOGFILE,	/* send SIGUSR1 to syslogger to rotate logfile */
-	PMSIGNAL_START_AUTOVAC,		/* start an autovacuum iteration */
+
+	PMSIGNAL_START_AUTOVAC,
+	//PMSIGNAL_START_AUTOVAC_LAUNCHER,	/* start an autovacuum launcher */
+	//PMSIGNAL_START_AUTOVAC_WORKER,		/* start an autovacuum worker */
 
 	NUM_PMSIGNALS				/* Must be last value of enum! */
 } PMSignalReason;
 
+/* PMSignalData is an opaque struct, details known only within pmsignal.c */
+typedef struct PMSignalData PMSignalData;
+
 /*
  * prototypes for functions in pmsignal.c
  */
-extern void PMSignalInit(void);
+extern Size PMSignalShmemSize(void);
+extern void PMSignalShmemInit(void);
 extern void SendPostmasterSignal(PMSignalReason reason);
 extern bool CheckPostmasterSignal(PMSignalReason reason);
+extern int	AssignPostmasterChildSlot(void);
+extern bool ReleasePostmasterChildSlot(int slot);
+extern void MarkPostmasterChildActive(void);
+extern void MarkPostmasterChildInactive(void);
 extern bool PostmasterIsAlive(bool amDirectChild);
 
 #endif   /* PMSIGNAL_H */

@@ -51,7 +51,7 @@ extern char *optarg;
 
 #define ALLOC(t, c)		((t *) calloc((unsigned)(c), sizeof(t)))
 
-static void CheckerModeMain(int	xlogop);
+static void CheckerModeMain(void);
 static void BootstrapModeMain(void);
 static void bootstrap_signals(void);
 static void ShutdownAuxiliaryProcess(int code, Datum arg);
@@ -207,16 +207,15 @@ void
 AuxiliaryProcessMain(int argc, char *argv[])
 {
 	char	   *progname = argv[0];
-	char	   *dbname;
 	int			flag;
-	int			xlogop = BS_XLOG_NOP;
+	AuxProcType auxType = CheckerProcess;
 	char	   *userDoption = NULL;
 
 	/*
 	 * initialize globals
 	 */
 	MyProcPid = getpid();
-	
+
 	MyStartTime = time(NULL);
 
 	/*
@@ -240,7 +239,6 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	 */
 
 	/* Set defaults, to be overriden by explicit options below */
-	dbname = NULL;
 	if (!IsUnderPostmaster)
 		InitializeGUCOptions();
 
@@ -281,14 +279,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 				strlcpy(OutputFileName, optarg, MAXPGPATH);
 				break;
 			case 'x':
-				xlogop = atoi(optarg);
-				break;
-			case 'y':
-				dbname = strdup(optarg);
-				if(!dbname)
-					ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg("Bootstrap failed: out of memory")));
-
+				auxType = atoi(optarg);
 				break;
 			case 'c':
 			case '-':
@@ -325,12 +316,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 		}
 	}
 
-	if (!dbname && argc - optind == 1)
-	{
-		dbname = argv[optind];
-		optind++;
-	}
-	if (!dbname || argc != optind)
+	if (argc != optind)
 	{
 		write_stderr("%s: invalid command-line arguments\n", progname);
 		proc_exit(1);
@@ -343,12 +329,12 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	{
 		const char *statmsg;
 
-		switch (xlogop)
+		switch (auxType)
 		{
-			case BS_XLOG_STARTUP:
+			case StartupProcess:
 				statmsg = "startup process";
 				break;
-			case BS_XLOG_BGWRITER:
+			case BgWriterProcess:
 				statmsg = "writer process";
 				break;
 			default:
@@ -413,33 +399,33 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	 */
 	SetProcessingMode(NormalProcessing);
 
-	switch (xlogop)
+	switch (auxType)
 	{
-		case BS_XLOG_NOP:
+		case CheckerProcess:
 			bootstrap_signals();
-			CheckerModeMain(xlogop);
+			CheckerModeMain();
 			proc_exit(1);		/* should never return */
 
-		case BS_XLOG_BOOTSTRAP:
+		case BootstrapProcess:
 			bootstrap_signals();
 			BootStrapXLOG();
 			StartupXLOG();
 			BootstrapModeMain();
 			proc_exit(1);		/* should never return */
 
-		case BS_XLOG_STARTUP:
+		case StartupProcess:
 			/* don't set signals, startup process has its own agenda */
 			StartupProcessMain();
 			proc_exit(1);		/* should never return */
 
-		case BS_XLOG_BGWRITER:
+		case BgWriterProcess:
 			/* don't set signals, bgwriter has its own agenda */
 			InitXLOGAccess();
 			BackgroundWriterMain();
 			proc_exit(1);		/* should never return */
 
 		default:
-			elog(PANIC, "unrecognized XLOG op: %d", xlogop);
+			elog(PANIC, "unrecognized process type: %d", auxType);
 			proc_exit(1);
 	}
 }
@@ -450,7 +436,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
  * settings).
  */
 static void
-CheckerModeMain(int	xlogop)
+CheckerModeMain(void)
 {
 	/*
 	 * We must be getting invoked for bootstrap mode
@@ -462,11 +448,8 @@ CheckerModeMain(int	xlogop)
 	/*
 	 * Do backend-like initialization for bootstrap mode
 	 */
-	if (xlogop == BS_XLOG_NOP)
-		proc_exit(0);
-	
 	InitProcess();
-	InitPostgres(NULL, NULL);
+	InitPostgres(NULL, InvalidOid, NULL, NULL);
 	proc_exit(0);
 }
 
@@ -490,7 +473,7 @@ BootstrapModeMain(void)
 	 * Do backend-like initialization for bootstrap mode
 	 */
 	InitProcess();
-	InitPostgres(NULL, NULL);
+	InitPostgres(NULL, InvalidOid, NULL, NULL);
 
 	/* Initialize stuff for bootstrap-file processing */
 	for (i = 0; i < MAXATTR; i++)

@@ -3,8 +3,8 @@
  * postgres.c
  *	  POSTGRES C Backend Interface
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,6 +21,7 @@
 #include "postgres.h"
 #include "gpmon/gpmon.h"
 
+#include <time.h>
 #include <unistd.h>
 #include <signal.h>
 #include <fcntl.h>
@@ -53,6 +54,8 @@
 #include "nodes/execnodes.h"            /* Slice, SliceTable */
 #include "nodes/print.h"
 #include "optimizer/planner.h"
+#include "pgstat.h"
+#include "pg_trace.h"
 #include "parser/analyze.h"
 #include "parser/parser.h"
 #include "rewrite/rewriteHandler.h"
@@ -100,7 +103,7 @@ CommandDest whereToSendOutput = DestDebug;
 /* flag for logging end of session */
 bool		Log_disconnections = false;
 
-LogStmtLevel log_statement = LOGSTMT_NONE;
+int			log_statement = LOGSTMT_NONE;
 
 /* GUC variable for maximum stack depth (measured in kilobytes) */
 int			max_stack_depth = 100;
@@ -4743,7 +4746,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 */
 	ereport(DEBUG3,
 			(errmsg_internal("InitPostgres")));
-	am_superuser = InitPostgres(dbname, username);
+	am_superuser = InitPostgres(dbname, InvalidOid, username, NULL);
 
 	SetProcessingMode(NormalProcessing);
 

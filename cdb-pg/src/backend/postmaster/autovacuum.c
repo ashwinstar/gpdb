@@ -427,7 +427,7 @@ AutoVacMain(int argc, char *argv[])
 		 * Note: if we have selected a just-deleted database (due to using
 		 * stale stats info), we'll fail and exit here.
 		 */
-		InitPostgres(db->name, NULL);
+		InitPostgres(db->name, db->oid, NULL, NULL);
 		SetProcessingMode(NormalProcessing);
 		set_ps_display(db->name, false);
 		ereport(DEBUG1,

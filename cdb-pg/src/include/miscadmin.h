@@ -143,6 +143,7 @@ extern PGDLLIMPORT int MyProcPid;
 extern PGDLLIMPORT pg_time_t MyStartTime;
 extern PGDLLIMPORT struct Port *MyProcPort;
 extern long MyCancelKey;
+extern int	MyPMChildSlot;
 
 extern char OutputFileName[];
 extern PGDLLIMPORT char my_exec_path[];
@@ -334,11 +335,13 @@ extern ProcessingMode Mode;
  *****************************************************************************/
 
 /* in utils/init/postinit.c */
-extern bool InitPostgres(const char *dbname, const char *username);
+extern bool InitPostgres(const char *in_dbname, Oid dboid, const char *username,
+			 char **out_dbname);
 extern void BaseInit(void);
 
 /* in utils/init/miscinit.c */
 extern bool IgnoreSystemIndexes;
+extern PGDLLIMPORT bool process_shared_preload_libraries_in_progress;
 extern char *shared_preload_libraries_string;
 extern char *local_preload_libraries_string;
 

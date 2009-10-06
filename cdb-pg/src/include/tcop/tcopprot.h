@@ -41,7 +41,7 @@ typedef enum
 	LOGSTMT_ALL					/* log all statements */
 } LogStmtLevel;
 
-extern LogStmtLevel log_statement;
+extern int log_statement;
 
 #ifndef BOOTSTRAP_INCLUDE
 

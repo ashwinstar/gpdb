@@ -3,18 +3,19 @@
  * ipci.c
  *	  POSTGRES inter-process communication initialization code.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/ipc/ipci.c,v 1.89 2006/10/15 22:04:07 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/ipc/ipci.c,v 1.100 2009/05/05 19:59:00 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/clog.h"
+#include "access/heapam.h"
 #include "access/multixact.h"
 #include "access/nbtree.h"
 #include "access/subtrans.h"
@@ -53,7 +54,7 @@ static bool addin_request_allowed = true;
  *		a loadable module.
  *
  * This is only useful if called from the _PG_init hook of a library that
- * is loaded into the postmaster via shared_preload_libraries.  Once
+ * is loaded into the postmaster via shared_preload_libraries.	Once
  * shared memory has been allocated, calls will be ignored.  (We could
  * raise an error, but it seems better to make it a no-op, so that
  * libraries containing such calls can be reloaded if needed.)
@@ -141,6 +142,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, BackendStatusShmemSize());
 		size = add_size(size, SharedSnapshotShmemSize());
 		size = add_size(size, SInvalShmemSize());
+		size = add_size(size, PMSignalShmemSize());
 		size = add_size(size, FreeSpaceShmemSize());
 		size = add_size(size, BgWriterShmemSize());
 		size = add_size(size, FtsShmemSize());
@@ -280,7 +282,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	/*
 	 * Set up interprocess signaling mechanisms
 	 */
-	PMSignalInit();
+	PMSignalShmemInit();
 	BgWriterShmemInit();
 	SeqServerShmemInit();
 	WalSendServerShmemInit();
