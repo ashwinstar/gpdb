@@ -775,13 +775,7 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 	 */
 	if(header_line)
 	{
-		if(!csv_mode)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("HEADER available only in CSV mode")));
-		}
-		else if(!copy && Gp_role == GP_ROLE_DISPATCH)
+		if(!copy && Gp_role == GP_ROLE_DISPATCH)
 		{
 			/* (exttab) */
 			if(load)
@@ -800,7 +794,6 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 			}
 		}
 	}
-
 
 	/*
 	 * QUOTE

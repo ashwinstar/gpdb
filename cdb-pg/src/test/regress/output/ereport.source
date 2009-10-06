@@ -1105,34 +1105,34 @@ select * from get_ereport order by 1;
  aaba: aosegfiles:00000589:  ereport(ERROR, 
  aaba: aosegfiles:00000590:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  aaba: aosegfiles:00000591:  errmsg("got invalid pg_aoseg varblockcount value: NULL"))); 
- aaba: aosegfiles:00000761:  ereport(ERROR, 
- aaba: aosegfiles:00000762:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00000763:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00000764:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00000787:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00000788:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00000789:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
- aaba: aosegfiles:00001001:  ereport(ERROR, 
- aaba: aosegfiles:00001002:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00001003:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00001004:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00001026:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001027:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001028:  errdetail("SPI_connect failed in get_ao_distribution"))); 
- aaba: aosegfiles:00001174:  ereport(ERROR, 
- aaba: aosegfiles:00001175:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00001176:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00001177:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00001199:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001200:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001201:  errdetail("SPI_connect failed in get_ao_distribution"))); 
- aaba: aosegfiles:00001375:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001376:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001377:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
- aaba: aosegfiles:00001471:  ereport(ERROR, 
- aaba: aosegfiles:00001472:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00001473:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00001474:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00000763:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00000764:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00000765:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+ aaba: aosegfiles:00000899:  ereport(ERROR, 
+ aaba: aosegfiles:00000900:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00000901:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00000902:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00001014:  ereport(ERROR, 
+ aaba: aosegfiles:00001015:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00001016:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00001017:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00001039:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001040:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001041:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+ aaba: aosegfiles:00001187:  ereport(ERROR, 
+ aaba: aosegfiles:00001188:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00001189:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00001190:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00001212:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001213:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001214:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+ aaba: aosegfiles:00001388:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001389:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001390:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+ aaba: aosegfiles:00001484:  ereport(ERROR, 
+ aaba: aosegfiles:00001485:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00001486:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00001487:  RelationGetRelationName(parentrel)))); 
  aaba: arrayfuncs:00000201:  ereport(ERROR, 
  aaba: arrayfuncs:00000202:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
  aaba: arrayfuncs:00000203:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
@@ -1401,9 +1401,12 @@ select * from get_ereport order by 1;
  aabc: aocssegfiles:00000550:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  aabc: aocssegfiles:00000551:  errmsg("invalid entry for decoding aocsvpinfo") 
  aabc: aocssegfiles:00000552:  )); 
- aabc: aocssegfiles:00000604:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aabc: aocssegfiles:00000605:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aabc: aocssegfiles:00000606:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+ aabc: aocssegfiles:00000595:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aabc: aocssegfiles:00000596:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aabc: aocssegfiles:00000597:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+ aabc: aocssegfiles:00000754:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aabc: aocssegfiles:00000755:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aabc: aocssegfiles:00000756:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
  aabc: appendonlyam:00000524:  ereport(ERROR, 
  aabc: appendonlyam:00000525:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  aabc: appendonlyam:00000526:  errmsg("VarBlock is not valid. " 
@@ -1537,25 +1540,26 @@ select * from get_ereport order by 1;
  aabf: arrayxuserfuncs:00000565:  errdetail("Arrays of %d and %d dimensions are not " 
  aabf: arrayxuserfuncs:00000566:  "compatible for array_add.", 
  aabf: arrayxuserfuncs:00000567:  ndims1, ndims2))); 
- aabg: appendonlywriter:00000096:  ereport(FATAL, 
- aabg: appendonlywriter:00000097:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- aabg: appendonlywriter:00000098:  errmsg("not enough shared memory for append only writer"))); 
- aabg: appendonlywriter:00000303:  ereport(ERROR, (errmsg("expected an AO hash entry for relid %d but " 
- aabg: appendonlywriter:00000304:  "found none", relid))); 
- aabg: appendonlywriter:00000425:  ereport(ERROR, 
- aabg: appendonlywriter:00000426:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- aabg: appendonlywriter:00000427:  errmsg("int64 out of range"))); 
- aabg: appendonlywriter:00000496:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
- aabg: appendonlywriter:00000497:  "tables open for writing data at the same time. " 
- aabg: appendonlywriter:00000498:  "if tables are heavily partitioned or if your " 
- aabg: appendonlywriter:00000499:  "workload requires, increase the value of " 
- aabg: appendonlywriter:00000500:  "max_appendonly_tables and retry", 
- aabg: appendonlywriter:00000501:  MaxAppendOnlyTables))); 
- aabg: appendonlywriter:00000557:  ereport(ERROR, (errmsg("could not find segment file to use for " 
- aabg: appendonlywriter:00000558:  "inserting into relation %d.", relid))); 
- aabg: appendonlywriter:00000658:  ereport(ERROR, 
- aabg: appendonlywriter:00000659:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- aabg: appendonlywriter:00000660:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
+ aabg: appendonlywriter:00000098:  ereport(FATAL, 
+ aabg: appendonlywriter:00000099:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ aabg: appendonlywriter:00000100:  errmsg("not enough shared memory for append only writer"))); 
+ aabg: appendonlywriter:00000305:  ereport(ERROR, (errmsg("expected an AO hash entry for relid %d but " 
+ aabg: appendonlywriter:00000306:  "found none", relid))); 
+ aabg: appendonlywriter:00000427:  ereport(ERROR, 
+ aabg: appendonlywriter:00000428:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ aabg: appendonlywriter:00000429:  errmsg("int64 out of range"))); 
+ aabg: appendonlywriter:00000499:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
+ aabg: appendonlywriter:00000500:  "tables open for writing data at the same time. " 
+ aabg: appendonlywriter:00000501:  "if tables are heavily partitioned or if your " 
+ aabg: appendonlywriter:00000502:  "workload requires, increase the value of " 
+ aabg: appendonlywriter:00000503:  "max_appendonly_tables and retry", 
+ aabg: appendonlywriter:00000504:  MaxAppendOnlyTables))); 
+ aabg: appendonlywriter:00000566:  ereport(ERROR, (errmsg("could not find segment file to use for " 
+ aabg: appendonlywriter:00000567:  "inserting into relation %s (%d).", 
+ aabg: appendonlywriter:00000568:  get_rel_name(relid), relid))); 
+ aabg: appendonlywriter:00000668:  ereport(ERROR, 
+ aabg: appendonlywriter:00000669:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ aabg: appendonlywriter:00000670:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
  baae: bool:00000093:  ereport(ERROR, 
  baae: bool:00000094:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  baae: bool:00000095:  errmsg("invalid input syntax for type boolean: "%s"", in_str))); 
@@ -1606,29 +1610,29 @@ select * from get_ereport order by 1;
  baag: bitmap:00000089:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  baag: bitmap:00000090:  errmsg("oids for bitmap index "%s" do not exist", 
  baag: bitmap:00000091:  RelationGetRelationName(index)))); 
- baag: bufmgr:00000107:  ereport(ERROR, 
- baag: bufmgr:00000108:  (errmsg("Unable to set memory level to %d, error %d, block size %d, ptr %ld", protectionLevel, 
- baag: bufmgr:00000109:  errno, BLCKSZ, (long int) BufHdrGetBlock(bufHdr)))); 
- baag: bufmgr:00000260:  ereport(ERROR, 
- baag: bufmgr:00000261:  (errmsg("unexpected data beyond EOF in block %u of relation "%s"", 
- baag: bufmgr:00000262:  blockNum, RelationGetRelationName(reln)), 
- baag: bufmgr:00000263:  errhint("This has been seen to occur with buggy kernels; consider updating your system."))); 
- baag: bufmgr:00000333:  ereport(WARNING, 
- baag: bufmgr:00000334:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baag: bufmgr:00000335:  errmsg("invalid page header in block %u of relation "%s"; zeroing out page", 
- baag: bufmgr:00000336:  blockNum, RelationGetRelationName(reln)))); 
- baag: bufmgr:00000340:  ereport(ERROR, 
- baag: bufmgr:00000341:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baag: bufmgr:00000342:  errmsg("invalid page header in block %u of relation "%s"", 
- baag: bufmgr:00000343:  blockNum, RelationGetRelationName(reln)))); 
- baag: bufmgr:00002329:  ereport(WARNING, 
- baag: bufmgr:00002330:  (errcode(ERRCODE_IO_ERROR), 
- baag: bufmgr:00002331:  errmsg("could not write block %u of %u/%u/%u", 
- baag: bufmgr:00002332:  buf->tag.blockNum, 
- baag: bufmgr:00002333:  buf->tag.rnode.spcNode, 
- baag: bufmgr:00002334:  buf->tag.rnode.dbNode, 
- baag: bufmgr:00002335:  buf->tag.rnode.relNode), 
- baag: bufmgr:00002336:  errdetail("Multiple failures --- write error might be permanent."))); 
+ baag: bufmgr:00000108:  ereport(ERROR, 
+ baag: bufmgr:00000109:  (errmsg("Unable to set memory level to %d, error %d, block size %d, ptr %ld", protectionLevel, 
+ baag: bufmgr:00000110:  errno, BLCKSZ, (long int) BufHdrGetBlock(bufHdr)))); 
+ baag: bufmgr:00000261:  ereport(ERROR, 
+ baag: bufmgr:00000262:  (errmsg("unexpected data beyond EOF in block %u of relation "%s"", 
+ baag: bufmgr:00000263:  blockNum, RelationGetRelationName(reln)), 
+ baag: bufmgr:00000264:  errhint("This has been seen to occur with buggy kernels; consider updating your system."))); 
+ baag: bufmgr:00000334:  ereport(WARNING, 
+ baag: bufmgr:00000335:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baag: bufmgr:00000336:  errmsg("invalid page header in block %u of relation "%s"; zeroing out page", 
+ baag: bufmgr:00000337:  blockNum, RelationGetRelationName(reln)))); 
+ baag: bufmgr:00000341:  ereport(ERROR, 
+ baag: bufmgr:00000342:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baag: bufmgr:00000343:  errmsg("invalid page header in block %u of relation "%s"", 
+ baag: bufmgr:00000344:  blockNum, RelationGetRelationName(reln)))); 
+ baag: bufmgr:00002351:  ereport(WARNING, 
+ baag: bufmgr:00002352:  (errcode(ERRCODE_IO_ERROR), 
+ baag: bufmgr:00002353:  errmsg("could not write block %u of %u/%u/%u", 
+ baag: bufmgr:00002354:  buf->tag.blockNum, 
+ baag: bufmgr:00002355:  buf->tag.rnode.spcNode, 
+ baag: bufmgr:00002356:  buf->tag.rnode.dbNode, 
+ baag: bufmgr:00002357:  buf->tag.rnode.relNode), 
+ baag: bufmgr:00002358:  errdetail("Multiple failures --- write error might be permanent."))); 
  baah: backend:00000171:  ereport(ERROR, ( 
  baah: backend:00000172:  errcode(ERRCODE_INTERNAL_ERROR), 
  baah: backend:00000173:  errmsg("Unable to initialize java security"))); 
@@ -1868,253 +1872,250 @@ select * from get_ereport order by 1;
  caae: copy:00000767:  ereport(ERROR, 
  caae: copy:00000768:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  caae: copy:00000769:  errmsg("Using no delimiter is only possible for a single column table"))); 
- caae: copy:00000780:  ereport(ERROR, 
- caae: copy:00000781:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000782:  errmsg("HEADER available only in CSV mode"))); 
- caae: copy:00000790:  ereport(NOTICE, 
- caae: copy:00000791:  (errmsg("HEADER means that each one of the data files " 
- caae: copy:00000792:  "has a header row."))); 
- caae: copy:00000797:  ereport(ERROR, 
- caae: copy:00000798:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
- caae: copy:00000799:  errmsg("HEADER is not yet supported for writable external tables"))); 
- caae: copy:00000809:  ereport(ERROR, 
- caae: copy:00000810:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000811:  errmsg("quote available only in CSV mode"))); 
- caae: copy:00000814:  ereport(ERROR, 
- caae: copy:00000815:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000816:  errmsg("quote must be a single character"))); 
- caae: copy:00000819:  ereport(ERROR, 
- caae: copy:00000820:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000821:  errmsg("CSV quote character must not appear in the NULL specification"))); 
- caae: copy:00000824:  ereport(ERROR, 
- caae: copy:00000825:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- caae: copy:00000826:  errmsg("delimiter and quote must be different"))); 
+ caae: copy:00000784:  ereport(NOTICE, 
+ caae: copy:00000785:  (errmsg("HEADER means that each one of the data files " 
+ caae: copy:00000786:  "has a header row."))); 
+ caae: copy:00000791:  ereport(ERROR, 
+ caae: copy:00000792:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+ caae: copy:00000793:  errmsg("HEADER is not yet supported for writable external tables"))); 
+ caae: copy:00000802:  ereport(ERROR, 
+ caae: copy:00000803:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000804:  errmsg("quote available only in CSV mode"))); 
+ caae: copy:00000807:  ereport(ERROR, 
+ caae: copy:00000808:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000809:  errmsg("quote must be a single character"))); 
+ caae: copy:00000812:  ereport(ERROR, 
+ caae: copy:00000813:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000814:  errmsg("CSV quote character must not appear in the NULL specification"))); 
+ caae: copy:00000817:  ereport(ERROR, 
+ caae: copy:00000818:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ caae: copy:00000819:  errmsg("delimiter and quote must be different"))); 
+ caae: copy:00000825:  ereport(ERROR, 
+ caae: copy:00000826:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000827:  errmsg("escape in CSV format must be a single character"))); 
  caae: copy:00000832:  ereport(ERROR, 
- caae: copy:00000833:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000834:  errmsg("escape in CSV format must be a single character"))); 
+ caae: copy:00000833:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ caae: copy:00000834:  errmsg("escape representation in text format cannot use newline or carriage return"))); 
  caae: copy:00000839:  ereport(ERROR, 
- caae: copy:00000840:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- caae: copy:00000841:  errmsg("escape representation in text format cannot use newline or carriage return"))); 
- caae: copy:00000846:  ereport(ERROR, 
- caae: copy:00000847:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000848:  errmsg("escape must be a single character, or [OFF/off] to disable escapes"))); 
- caae: copy:00000855:  ereport(ERROR, 
- caae: copy:00000856:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000857:  errmsg("force quote available only in CSV mode"))); 
- caae: copy:00000859:  ereport(ERROR, 
- caae: copy:00000860:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000861:  errmsg("force quote only available for data unloading, not loading"))); 
- caae: copy:00000867:  ereport(ERROR, 
- caae: copy:00000868:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000869:  errmsg("force not null available only in CSV mode"))); 
- caae: copy:00000871:  ereport(ERROR, 
- caae: copy:00000872:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000873:  errmsg("force not null only available for data loading, not unloading"))); 
- caae: copy:00000876:  ereport(ERROR, 
- caae: copy:00000877:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00000878:  errmsg("fill missing fields only available for data loading, not unloading"))); 
+ caae: copy:00000840:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000841:  errmsg("escape must be a single character, or [OFF/off] to disable escapes"))); 
+ caae: copy:00000848:  ereport(ERROR, 
+ caae: copy:00000849:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000850:  errmsg("force quote available only in CSV mode"))); 
+ caae: copy:00000852:  ereport(ERROR, 
+ caae: copy:00000853:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000854:  errmsg("force quote only available for data unloading, not loading"))); 
+ caae: copy:00000860:  ereport(ERROR, 
+ caae: copy:00000861:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000862:  errmsg("force not null available only in CSV mode"))); 
+ caae: copy:00000864:  ereport(ERROR, 
+ caae: copy:00000865:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000866:  errmsg("force not null only available for data loading, not unloading"))); 
+ caae: copy:00000869:  ereport(ERROR, 
+ caae: copy:00000870:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00000871:  errmsg("fill missing fields only available for data loading, not unloading"))); 
+ caae: copy:00000936:  ereport(ERROR, 
+ caae: copy:00000937:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000938:  errmsg("BINARY is not supported"))); 
  caae: copy:00000943:  ereport(ERROR, 
  caae: copy:00000944:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000945:  errmsg("BINARY is not supported"))); 
- caae: copy:00000950:  ereport(ERROR, 
- caae: copy:00000951:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000952:  errmsg("conflicting or redundant options"))); 
- caae: copy:00000958:  ereport(ERROR, 
- caae: copy:00000959:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000960:  errmsg("conflicting or redundant options"))); 
- caae: copy:00000966:  ereport(ERROR, 
- caae: copy:00000967:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000968:  errmsg("conflicting or redundant options"))); 
- caae: copy:00000983:  ereport(ERROR, 
- caae: copy:00000984:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000985:  errmsg("conflicting or redundant options"))); 
- caae: copy:00000991:  ereport(ERROR, 
- caae: copy:00000992:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00000993:  errmsg("conflicting or redundant options"))); 
- caae: copy:00000999:  ereport(ERROR, 
- caae: copy:00001000:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00001001:  errmsg("conflicting or redundant options"))); 
- caae: copy:00001007:  ereport(ERROR, 
- caae: copy:00001008:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00001009:  errmsg("conflicting or redundant options"))); 
- caae: copy:00001015:  ereport(ERROR, 
- caae: copy:00001016:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00001017:  errmsg("conflicting or redundant options"))); 
- caae: copy:00001023:  ereport(ERROR, 
- caae: copy:00001024:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00001025:  errmsg("conflicting or redundant options"))); 
- caae: copy:00001031:  ereport(ERROR, 
- caae: copy:00001032:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00001033:  errmsg("conflicting or redundant options"))); 
- caae: copy:00001074:  ereport(ERROR, 
- caae: copy:00001075:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- caae: copy:00001076:  errmsg("COPY single row error handling only available using COPY FROM"))); 
- caae: copy:00001086:  ereport(ERROR, 
- caae: copy:00001087:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- caae: copy:00001088:  errmsg("KEEP may only be specified with a LOG INTO errortable clause"))); 
- caae: copy:00001138:  ereport(ERROR, 
- caae: copy:00001139:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- caae: copy:00001140:  errmsg("must be superuser to COPY to or from a file"), 
- caae: copy:00001141:  errhint("Anyone can COPY to stdout or from stdin. " 
- caae: copy:00001142:  "psql's \copy command also works for anyone."))); 
- caae: copy:00001169:  ereport(ERROR, 
- caae: copy:00001170:  (errcode(ERRCODE_INVALID_NAME), 
- caae: copy:00001171:  errmsg("relative path not allowed for COPY to file"))); 
- caae: copy:00001178:  ereport(ERROR, 
- caae: copy:00001179:  (errcode_for_file_access(), 
- caae: copy:00001180:  errmsg("could not open file "%s" for writing: %m", 
- caae: copy:00001181:  cstate->filename))); 
- caae: copy:00001190:  ereport(ERROR, 
- caae: copy:00001191:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001192:  errmsg(""%s" is a directory", cstate->filename))); 
- caae: copy:00001222:  ereport(ERROR, 
- caae: copy:00001223:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
- caae: copy:00001224:  errmsg("transaction is read-only"))); 
- caae: copy:00001228:  ereport(ERROR, 
- caae: copy:00001229:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- caae: copy:00001230:  errmsg("table "%s" does not have OIDs", 
- caae: copy:00001231:  RelationGetRelationName(cstate->rel)))); 
- caae: copy:00001248:  ereport(ERROR, 
- caae: copy:00001249:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00001250:  errmsg("COPY (SELECT) WITH OIDS is not supported"))); 
- caae: copy:00001253:  ereport(ERROR, 
- caae: copy:00001254:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- caae: copy:00001255:  errmsg("COPY (SELECT INTO) is not supported"))); 
- caae: copy:00001339:  ereport(ERROR, 
- caae: copy:00001340:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- caae: copy:00001341:  errmsg("FORCE QUOTE column "%s" not referenced by COPY", 
- caae: copy:00001342:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
- caae: copy:00001361:  ereport(ERROR, 
- caae: copy:00001362:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- caae: copy:00001363:  errmsg("FORCE NOT NULL column "%s" not referenced by COPY", 
- caae: copy:00001364:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
- caae: copy:00001423:  ereport(ERROR, 
- caae: copy:00001424:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001425:  errmsg("cannot copy to view "%s"", 
- caae: copy:00001426:  RelationGetRelationName(cstate->rel)))); 
- caae: copy:00001428:  ereport(ERROR, 
- caae: copy:00001429:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001430:  errmsg("cannot copy to sequence "%s"", 
- caae: copy:00001431:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00000945:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00000951:  ereport(ERROR, 
+ caae: copy:00000952:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000953:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00000959:  ereport(ERROR, 
+ caae: copy:00000960:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000961:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00000976:  ereport(ERROR, 
+ caae: copy:00000977:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000978:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00000984:  ereport(ERROR, 
+ caae: copy:00000985:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000986:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00000992:  ereport(ERROR, 
+ caae: copy:00000993:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00000994:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00001000:  ereport(ERROR, 
+ caae: copy:00001001:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00001002:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00001008:  ereport(ERROR, 
+ caae: copy:00001009:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00001010:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00001016:  ereport(ERROR, 
+ caae: copy:00001017:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00001018:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00001024:  ereport(ERROR, 
+ caae: copy:00001025:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00001026:  errmsg("conflicting or redundant options"))); 
+ caae: copy:00001067:  ereport(ERROR, 
+ caae: copy:00001068:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00001069:  errmsg("COPY single row error handling only available using COPY FROM"))); 
+ caae: copy:00001079:  ereport(ERROR, 
+ caae: copy:00001080:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00001081:  errmsg("KEEP may only be specified with a LOG INTO errortable clause"))); 
+ caae: copy:00001131:  ereport(ERROR, 
+ caae: copy:00001132:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ caae: copy:00001133:  errmsg("must be superuser to COPY to or from a file"), 
+ caae: copy:00001134:  errhint("Anyone can COPY to stdout or from stdin. " 
+ caae: copy:00001135:  "psql's \copy command also works for anyone."))); 
+ caae: copy:00001162:  ereport(ERROR, 
+ caae: copy:00001163:  (errcode(ERRCODE_INVALID_NAME), 
+ caae: copy:00001164:  errmsg("relative path not allowed for COPY to file"))); 
+ caae: copy:00001171:  ereport(ERROR, 
+ caae: copy:00001172:  (errcode_for_file_access(), 
+ caae: copy:00001173:  errmsg("could not open file "%s" for writing: %m", 
+ caae: copy:00001174:  cstate->filename))); 
+ caae: copy:00001183:  ereport(ERROR, 
+ caae: copy:00001184:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001185:  errmsg(""%s" is a directory", cstate->filename))); 
+ caae: copy:00001215:  ereport(ERROR, 
+ caae: copy:00001216:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+ caae: copy:00001217:  errmsg("transaction is read-only"))); 
+ caae: copy:00001221:  ereport(ERROR, 
+ caae: copy:00001222:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ caae: copy:00001223:  errmsg("table "%s" does not have OIDs", 
+ caae: copy:00001224:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00001241:  ereport(ERROR, 
+ caae: copy:00001242:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00001243:  errmsg("COPY (SELECT) WITH OIDS is not supported"))); 
+ caae: copy:00001246:  ereport(ERROR, 
+ caae: copy:00001247:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00001248:  errmsg("COPY (SELECT INTO) is not supported"))); 
+ caae: copy:00001332:  ereport(ERROR, 
+ caae: copy:00001333:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ caae: copy:00001334:  errmsg("FORCE QUOTE column "%s" not referenced by COPY", 
+ caae: copy:00001335:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
+ caae: copy:00001354:  ereport(ERROR, 
+ caae: copy:00001355:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ caae: copy:00001356:  errmsg("FORCE NOT NULL column "%s" not referenced by COPY", 
+ caae: copy:00001357:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
+ caae: copy:00001416:  ereport(ERROR, 
+ caae: copy:00001417:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001418:  errmsg("cannot copy to view "%s"", 
+ caae: copy:00001419:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00001421:  ereport(ERROR, 
+ caae: copy:00001422:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001423:  errmsg("cannot copy to sequence "%s"", 
+ caae: copy:00001424:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00001426:  ereport(ERROR, 
+ caae: copy:00001427:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001428:  errmsg("cannot copy to non-table relation "%s"", 
+ caae: copy:00001429:  RelationGetRelationName(cstate->rel)))); 
  caae: copy:00001433:  ereport(ERROR, 
- caae: copy:00001434:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001435:  errmsg("cannot copy to non-table relation "%s"", 
- caae: copy:00001436:  RelationGetRelationName(cstate->rel)))); 
- caae: copy:00001440:  ereport(ERROR, 
- caae: copy:00001441:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- caae: copy:00001442:  errmsg("COPY single row error handling only available for distributed user tables"))); 
- caae: copy:00001458:  ereport(ERROR, 
- caae: copy:00001459:  (errcode_for_file_access(), 
- caae: copy:00001460:  errmsg("could not open file "%s" for reading: %m", 
- caae: copy:00001461:  cstate->filename))); 
- caae: copy:00001470:  ereport(ERROR, 
- caae: copy:00001471:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001472:  errmsg(""%s" is a directory", cstate->filename))); 
- caae: copy:00001548:  ereport(ERROR, 
- caae: copy:00001549:  (errcode_for_file_access(), 
- caae: copy:00001550:  errmsg("could not write to file "%s": %m", 
- caae: copy:00001551:  cstate->filename))); 
- caae: copy:00001626:  ereport(ERROR, 
- caae: copy:00001627:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001628:  errmsg("cannot copy from view "%s"", 
- caae: copy:00001629:  RelationGetRelationName(cstate->rel)), 
- caae: copy:00001630:  errhint("Try the COPY (SELECT ...) TO variant."))); 
- caae: copy:00001632:  ereport(ERROR, 
- caae: copy:00001633:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001634:  errmsg("cannot copy from sequence "%s"", 
- caae: copy:00001635:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00001434:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00001435:  errmsg("COPY single row error handling only available for distributed user tables"))); 
+ caae: copy:00001451:  ereport(ERROR, 
+ caae: copy:00001452:  (errcode_for_file_access(), 
+ caae: copy:00001453:  errmsg("could not open file "%s" for reading: %m", 
+ caae: copy:00001454:  cstate->filename))); 
+ caae: copy:00001463:  ereport(ERROR, 
+ caae: copy:00001464:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001465:  errmsg(""%s" is a directory", cstate->filename))); 
+ caae: copy:00001541:  ereport(ERROR, 
+ caae: copy:00001542:  (errcode_for_file_access(), 
+ caae: copy:00001543:  errmsg("could not write to file "%s": %m", 
+ caae: copy:00001544:  cstate->filename))); 
+ caae: copy:00001619:  ereport(ERROR, 
+ caae: copy:00001620:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001621:  errmsg("cannot copy from view "%s"", 
+ caae: copy:00001622:  RelationGetRelationName(cstate->rel)), 
+ caae: copy:00001623:  errhint("Try the COPY (SELECT ...) TO variant."))); 
+ caae: copy:00001625:  ereport(ERROR, 
+ caae: copy:00001626:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001627:  errmsg("cannot copy from sequence "%s"", 
+ caae: copy:00001628:  RelationGetRelationName(cstate->rel)))); 
+ caae: copy:00001630:  ereport(ERROR, 
+ caae: copy:00001631:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caae: copy:00001632:  errmsg("cannot copy from non-table relation "%s"", 
+ caae: copy:00001633:  RelationGetRelationName(cstate->rel)))); 
  caae: copy:00001637:  ereport(ERROR, 
  caae: copy:00001638:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001639:  errmsg("cannot copy from non-table relation "%s"", 
- caae: copy:00001640:  RelationGetRelationName(cstate->rel)))); 
- caae: copy:00001644:  ereport(ERROR, 
- caae: copy:00001645:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caae: copy:00001646:  errmsg("cannot copy from external relation "%s"", 
- caae: copy:00001647:  RelationGetRelationName(cstate->rel)), 
- caae: copy:00001648:  errhint("Try the COPY (SELECT ...) TO variant."))); 
- caae: copy:00001689:  ereport(ERROR, 
- caae: copy:00001690:  (errcode_for_file_access(), 
- caae: copy:00001691:  errmsg("could not write to file "%s": %m", 
- caae: copy:00001692:  cstate->filename))); 
- caae: copy:00001926:  ereport(ERROR, 
- caae: copy:00001927:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00001928:  errmsg("%s", cdbcopy_err.data))); 
- caae: copy:00001930:  ereport(ERROR, 
- caae: copy:00001931:  (errcode(ERRCODE_IO_ERROR), 
- caae: copy:00001932:  errmsg("%s", cdbcopy_err.data))); 
- caae: copy:00003036:  ereport(ERROR, 
- caae: copy:00003037:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003038:  errmsg("null OID in COPY data."))); 
- caae: copy:00003070:  ereport(ERROR, 
- caae: copy:00003071:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003072:  errmsg("invalid OID in COPY data."))); 
- caae: copy:00003423:  ereport(ERROR, 
- caae: copy:00003424:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003425:  errmsg("%s", cdbcopy_err.data))); 
- caae: copy:00003427:  ereport(ERROR, 
- caae: copy:00003428:  (errcode(ERRCODE_IO_ERROR), 
- caae: copy:00003429:  errmsg("%s", cdbcopy_err.data))); 
- caae: copy:00003845:  ereport(ERROR, 
- caae: copy:00003846:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003847:  errmsg("null OID in COPY data."))); 
- caae: copy:00003875:  ereport(ERROR, 
- caae: copy:00003876:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003877:  errmsg("invalid OID in COPY data."))); 
- caae: copy:00004637:  ereport(ERROR, 
- caae: copy:00004638:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004639:  errmsg("data line too long. likely due to invalid csv data"))); 
- caae: copy:00004893:  ereport(ERROR, 
- caae: copy:00004894:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004895:  errmsg("extra data after last expected column"))); 
- caae: copy:00004942:  ereport(ERROR, 
- caae: copy:00004943:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004944:  errmsg("missing data for column "%s"", 
- caae: copy:00004945:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)))); 
- caae: copy:00004948:  ereport(ERROR, 
- caae: copy:00004949:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004950:  errmsg("missing data for column "%s", found empty data line", 
- caae: copy:00004951:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)))); 
- caae: copy:00004958:  ereport(ERROR, 
- caae: copy:00004959:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004960:  errmsg("extra data after last expected column"))); 
- caae: copy:00005258:  ereport(ERROR, 
- caae: copy:00005259:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005260:  errmsg("extra data after last expected column"))); 
- caae: copy:00005270:  ereport(ERROR, 
- caae: copy:00005271:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005272:  errmsg("unterminated CSV quoted field"))); 
- caae: copy:00005287:  ereport(ERROR, 
- caae: copy:00005288:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005289:  errmsg("missing data for column "%s"", 
- caae: copy:00005290:  NameStr(attr[m + 1]->attname)))); 
- caae: copy:00005293:  ereport(ERROR, 
- caae: copy:00005294:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005295:  errmsg("missing data for column "%s", found empty data line", 
- caae: copy:00005296:  NameStr(attr[m + 1]->attname)))); 
- caae: copy:00005327:  ereport(ERROR, 
- caae: copy:00005328:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005329:  errmsg("extra data after last expected column"))); 
- caae: copy:00005800:  ereport(ERROR, 
- caae: copy:00005801:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- caae: copy:00005802:  errmsg("column "%s" of relation "%s" does not exist", 
- caae: copy:00005803:  name, RelationGetRelationName(rel)))); 
+ caae: copy:00001639:  errmsg("cannot copy from external relation "%s"", 
+ caae: copy:00001640:  RelationGetRelationName(cstate->rel)), 
+ caae: copy:00001641:  errhint("Try the COPY (SELECT ...) TO variant."))); 
+ caae: copy:00001682:  ereport(ERROR, 
+ caae: copy:00001683:  (errcode_for_file_access(), 
+ caae: copy:00001684:  errmsg("could not write to file "%s": %m", 
+ caae: copy:00001685:  cstate->filename))); 
+ caae: copy:00001919:  ereport(ERROR, 
+ caae: copy:00001920:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00001921:  errmsg("%s", cdbcopy_err.data))); 
+ caae: copy:00001923:  ereport(ERROR, 
+ caae: copy:00001924:  (errcode(ERRCODE_IO_ERROR), 
+ caae: copy:00001925:  errmsg("%s", cdbcopy_err.data))); 
+ caae: copy:00003029:  ereport(ERROR, 
+ caae: copy:00003030:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003031:  errmsg("null OID in COPY data."))); 
+ caae: copy:00003063:  ereport(ERROR, 
+ caae: copy:00003064:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003065:  errmsg("invalid OID in COPY data."))); 
+ caae: copy:00003416:  ereport(ERROR, 
+ caae: copy:00003417:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003418:  errmsg("%s", cdbcopy_err.data))); 
+ caae: copy:00003420:  ereport(ERROR, 
+ caae: copy:00003421:  (errcode(ERRCODE_IO_ERROR), 
+ caae: copy:00003422:  errmsg("%s", cdbcopy_err.data))); 
+ caae: copy:00003838:  ereport(ERROR, 
+ caae: copy:00003839:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003840:  errmsg("null OID in COPY data."))); 
+ caae: copy:00003868:  ereport(ERROR, 
+ caae: copy:00003869:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003870:  errmsg("invalid OID in COPY data."))); 
+ caae: copy:00004630:  ereport(ERROR, 
+ caae: copy:00004631:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004632:  errmsg("data line too long. likely due to invalid csv data"))); 
+ caae: copy:00004886:  ereport(ERROR, 
+ caae: copy:00004887:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004888:  errmsg("extra data after last expected column"))); 
+ caae: copy:00004935:  ereport(ERROR, 
+ caae: copy:00004936:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004937:  errmsg("missing data for column "%s"", 
+ caae: copy:00004938:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)))); 
+ caae: copy:00004941:  ereport(ERROR, 
+ caae: copy:00004942:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004943:  errmsg("missing data for column "%s", found empty data line", 
+ caae: copy:00004944:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)))); 
+ caae: copy:00004951:  ereport(ERROR, 
+ caae: copy:00004952:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004953:  errmsg("extra data after last expected column"))); 
+ caae: copy:00005251:  ereport(ERROR, 
+ caae: copy:00005252:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005253:  errmsg("extra data after last expected column"))); 
+ caae: copy:00005263:  ereport(ERROR, 
+ caae: copy:00005264:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005265:  errmsg("unterminated CSV quoted field"))); 
+ caae: copy:00005280:  ereport(ERROR, 
+ caae: copy:00005281:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005282:  errmsg("missing data for column "%s"", 
+ caae: copy:00005283:  NameStr(attr[m + 1]->attname)))); 
+ caae: copy:00005286:  ereport(ERROR, 
+ caae: copy:00005287:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005288:  errmsg("missing data for column "%s", found empty data line", 
+ caae: copy:00005289:  NameStr(attr[m + 1]->attname)))); 
+ caae: copy:00005320:  ereport(ERROR, 
+ caae: copy:00005321:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005322:  errmsg("extra data after last expected column"))); 
+ caae: copy:00005793:  ereport(ERROR, 
+ caae: copy:00005794:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ caae: copy:00005795:  errmsg("column "%s" of relation "%s" does not exist", 
+ caae: copy:00005796:  name, RelationGetRelationName(rel)))); 
+ caae: copy:00005798:  ereport(ERROR, 
+ caae: copy:00005799:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ caae: copy:00005800:  errmsg("column "%s" does not exist", 
+ caae: copy:00005801:  name))); 
  caae: copy:00005805:  ereport(ERROR, 
- caae: copy:00005806:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- caae: copy:00005807:  errmsg("column "%s" does not exist", 
+ caae: copy:00005806:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+ caae: copy:00005807:  errmsg("column "%s" specified more than once", 
  caae: copy:00005808:  name))); 
- caae: copy:00005812:  ereport(ERROR, 
- caae: copy:00005813:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
- caae: copy:00005814:  errmsg("column "%s" specified more than once", 
- caae: copy:00005815:  name))); 
- caae: copy:00006399:  ereport(ERROR, 
- caae: copy:00006400:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caae: copy:00006401:  errmsg("BINARY is not supported"))); 
- caae: copy:00006509:  ereport(ERROR, 
- caae: copy:00006510:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- caae: copy:00006511:  errmsg("COPY single row error handling only available using COPY FROM"))); 
- caae: copy:00006521:  ereport(ERROR, 
- caae: copy:00006522:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- caae: copy:00006523:  errmsg("KEEP may only be specified with a LOG INTO errortable clause"))); 
+ caae: copy:00006392:  ereport(ERROR, 
+ caae: copy:00006393:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caae: copy:00006394:  errmsg("BINARY is not supported"))); 
+ caae: copy:00006502:  ereport(ERROR, 
+ caae: copy:00006503:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00006504:  errmsg("COPY single row error handling only available using COPY FROM"))); 
+ caae: copy:00006514:  ereport(ERROR, 
+ caae: copy:00006515:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ caae: copy:00006516:  errmsg("KEEP may only be specified with a LOG INTO errortable clause"))); 
  caaf: cdbtm:00001582:  ereport(ERROR, 
  caaf: cdbtm:00001583:  (errcode_for_file_access(), 
  caaf: cdbtm:00001584:  errmsg("could not create save DTM redo file "%s"", 
@@ -4008,8 +4009,8 @@ select * from get_ereport order by 1;
  eaae: elog:00001748:  (errcode_for_file_access(), 
  eaae: elog:00001749:  errmsg("could not reopen file "%s" as stdout: %m", 
  eaae: elog:00001750:  OutputFileName))); 
- eaae: elog:00003874:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- eaae: elog:00003875:  errmsg("Failed to get backtrace symbol: out of memory"))); 
+ eaae: elog:00003875:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ eaae: elog:00003876:  errmsg("Failed to get backtrace symbol: out of memory"))); 
  eaag: encode:00000053:  ereport(ERROR, 
  eaag: encode:00000054:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  eaag: encode:00000055:  errmsg("unrecognized encoding: "%s"", namebuf))); 
@@ -5110,81 +5111,81 @@ select * from get_ereport order by 1;
  fabc: functioncmds:00001584:  errmsg("function "%s" already exists in schema "%s"", 
  fabc: functioncmds:00001585:  NameStr(proc->proname), 
  fabc: functioncmds:00001586:  newschema))); 
- gaad: guc:00006532:  ereport(ERROR, 
- gaad: guc:00006533:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00006534:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00006536:  ereport(ERROR, 
- gaad: guc:00006537:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00006538:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00006572:  ereport(ERROR, 
- gaad: guc:00006573:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00006574:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00006576:  ereport(ERROR, 
- gaad: guc:00006577:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00006578:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00006647:  ereport(ERROR, 
- gaad: guc:00006648:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00006649:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00006541:  ereport(ERROR, 
+ gaad: guc:00006542:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00006543:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00006545:  ereport(ERROR, 
+ gaad: guc:00006546:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00006547:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00006581:  ereport(ERROR, 
+ gaad: guc:00006582:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00006583:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00006585:  ereport(ERROR, 
+ gaad: guc:00006586:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00006587:  errmsg("must be superuser to examine "%s"", name))); 
  gaad: guc:00006656:  ereport(ERROR, 
- gaad: guc:00006657:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00006658:  errmsg("SET %s takes only one argument", name))); 
- gaad: guc:00006829:  ereport(ERROR, 
- gaad: guc:00006830:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
- gaad: guc:00006831:  errmsg("SET requires parameter name"))); 
- gaad: guc:00006893:  ereport(ERROR, 
- gaad: guc:00006894:  (errcode(ERRCODE_INTERNAL_ERROR), 
- gaad: guc:00006895:  errmsg("attempt to redefine parameter "%s"", name))); 
- gaad: guc:00007214:  ereport(ERROR, 
- gaad: guc:00007215:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007216:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007218:  ereport(ERROR, 
- gaad: guc:00007219:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007220:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00008028:  ereport(FATAL, 
- gaad: guc:00008029:  (errcode_for_file_access(), 
- gaad: guc:00008030:  errmsg("could not read from file "%s": %m", 
- gaad: guc:00008031:  CONFIG_EXEC_PARAMS))); 
- gaad: guc:00008138:  ereport(WARNING, 
- gaad: guc:00008139:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaad: guc:00008140:  errmsg("could not parse setting for parameter "%s"", name))); 
- gaad: guc:00008334:  ereport(ERROR, 
- gaad: guc:00008335:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008336:  errmsg("invalid list syntax for parameter "log_destination""))); 
- gaad: guc:00008357:  ereport(ERROR, 
- gaad: guc:00008358:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008359:  errmsg("unrecognized "log_destination" key word: "%s"", 
- gaad: guc:00008360:  tok))); 
- gaad: guc:00008386:  ereport(ERROR, 
- gaad: guc:00008387:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008388:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
- gaad: guc:00008389:  value))); 
- gaad: guc:00008694:  ereport(ERROR, 
- gaad: guc:00008695:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaad: guc:00008696:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
- gaad: guc:00008770:  ereport(ERROR, 
- gaad: guc:00008771:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008772:  errmsg("assertion checking is not supported by this build"))); 
- gaad: guc:00008791:  ereport(ERROR, 
- gaad: guc:00008792:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008793:  errmsg("SSL is not supported by this build"))); 
- gaad: guc:00008804:  ereport(ERROR, 
- gaad: guc:00008805:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008806:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
- gaad: guc:00008821:  ereport(ERROR, 
- gaad: guc:00008822:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008823:  errmsg("cannot enable "log_statement_stats" when " 
- gaad: guc:00008824:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00008825:  ""log_dispatch_stats", " 
- gaad: guc:00008826:  "or "log_executor_stats" is true"))); 
- gaad: guc:00008841:  ereport(ERROR, 
- gaad: guc:00008842:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008843:  errmsg("cannot enable "log_dispatch_stats" when " 
- gaad: guc:00008844:  ""log_statement_stats", " 
- gaad: guc:00008845:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00008846:  "or "log_executor_stats" is true"))); 
- gaad: guc:00008861:  ereport(ERROR, 
- gaad: guc:00008862:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008863:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+ gaad: guc:00006657:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00006658:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00006665:  ereport(ERROR, 
+ gaad: guc:00006666:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00006667:  errmsg("SET %s takes only one argument", name))); 
+ gaad: guc:00006838:  ereport(ERROR, 
+ gaad: guc:00006839:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+ gaad: guc:00006840:  errmsg("SET requires parameter name"))); 
+ gaad: guc:00006902:  ereport(ERROR, 
+ gaad: guc:00006903:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ gaad: guc:00006904:  errmsg("attempt to redefine parameter "%s"", name))); 
+ gaad: guc:00007223:  ereport(ERROR, 
+ gaad: guc:00007224:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007225:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007227:  ereport(ERROR, 
+ gaad: guc:00007228:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007229:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00008037:  ereport(FATAL, 
+ gaad: guc:00008038:  (errcode_for_file_access(), 
+ gaad: guc:00008039:  errmsg("could not read from file "%s": %m", 
+ gaad: guc:00008040:  CONFIG_EXEC_PARAMS))); 
+ gaad: guc:00008147:  ereport(WARNING, 
+ gaad: guc:00008148:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaad: guc:00008149:  errmsg("could not parse setting for parameter "%s"", name))); 
+ gaad: guc:00008343:  ereport(ERROR, 
+ gaad: guc:00008344:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008345:  errmsg("invalid list syntax for parameter "log_destination""))); 
+ gaad: guc:00008366:  ereport(ERROR, 
+ gaad: guc:00008367:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008368:  errmsg("unrecognized "log_destination" key word: "%s"", 
+ gaad: guc:00008369:  tok))); 
+ gaad: guc:00008395:  ereport(ERROR, 
+ gaad: guc:00008396:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008397:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
+ gaad: guc:00008398:  value))); 
+ gaad: guc:00008703:  ereport(ERROR, 
+ gaad: guc:00008704:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaad: guc:00008705:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+ gaad: guc:00008779:  ereport(ERROR, 
+ gaad: guc:00008780:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008781:  errmsg("assertion checking is not supported by this build"))); 
+ gaad: guc:00008800:  ereport(ERROR, 
+ gaad: guc:00008801:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008802:  errmsg("SSL is not supported by this build"))); 
+ gaad: guc:00008813:  ereport(ERROR, 
+ gaad: guc:00008814:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008815:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
+ gaad: guc:00008830:  ereport(ERROR, 
+ gaad: guc:00008831:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008832:  errmsg("cannot enable "log_statement_stats" when " 
+ gaad: guc:00008833:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00008834:  ""log_dispatch_stats", " 
+ gaad: guc:00008835:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00008850:  ereport(ERROR, 
+ gaad: guc:00008851:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008852:  errmsg("cannot enable "log_dispatch_stats" when " 
+ gaad: guc:00008853:  ""log_statement_stats", " 
+ gaad: guc:00008854:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00008855:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00008870:  ereport(ERROR, 
+ gaad: guc:00008871:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008872:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
  gaae: gram:00017336:  ereport(ERROR, 
  gaae: gram:00017337:  (errcode(ERRCODE_SYNTAX_ERROR), 
  gaae: gram:00017338:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
@@ -7475,17 +7476,17 @@ select * from get_ereport order by 1;
  nabb: nodesubplan:00001153:  ereport(ERROR, 
  nabb: nodesubplan:00001154:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
  nabb: nodesubplan:00001155:  errmsg("more than one row returned by a subquery used as an expression"))); 
- nabc: nodehashjoin:00000897:  ereport(ERROR, (errcode_for_file_access(), 
- nabc: nodehashjoin:00000898:  errmsg("Cound not rewind hash join tmp file"))); 
- nabc: nodehashjoin:00000949:  ereport(ERROR, (errcode_for_file_access(), 
- nabc: nodehashjoin:00000950:  errmsg("Cound not rewind hash join tmp file"))); 
- nabc: nodehashjoin:00001003:  ereport(ERROR, (errcode_for_file_access(), 
- nabc: nodehashjoin:00001004:  errmsg("Hashjoin write error"))); 
- nabc: nodehashjoin:00001008:  ereport(ERROR, (errcode_for_file_access(), 
- nabc: nodehashjoin:00001009:  errmsg("Hashjoin write error"))); 
- nabc: nodehashjoin:00001064:  ereport(ERROR, 
- nabc: nodehashjoin:00001065:  (errcode_for_file_access(), 
- nabc: nodehashjoin:00001066:  errmsg("could not read from hash-join temporary file: %m"))); 
+ nabc: nodehashjoin:00000904:  ereport(ERROR, (errcode_for_file_access(), 
+ nabc: nodehashjoin:00000905:  errmsg("Cound not rewind hash join tmp file"))); 
+ nabc: nodehashjoin:00000956:  ereport(ERROR, (errcode_for_file_access(), 
+ nabc: nodehashjoin:00000957:  errmsg("Cound not rewind hash join tmp file"))); 
+ nabc: nodehashjoin:00001010:  ereport(ERROR, (errcode_for_file_access(), 
+ nabc: nodehashjoin:00001011:  errmsg("Hashjoin write error"))); 
+ nabc: nodehashjoin:00001015:  ereport(ERROR, (errcode_for_file_access(), 
+ nabc: nodehashjoin:00001016:  errmsg("Hashjoin write error"))); 
+ nabc: nodehashjoin:00001071:  ereport(ERROR, 
+ nabc: nodehashjoin:00001072:  (errcode_for_file_access(), 
+ nabc: nodehashjoin:00001073:  errmsg("could not read from hash-join temporary file: %m"))); 
  nabd: nodemergejoin:00001262:  ereport(ERROR, 
  nabd: nodemergejoin:00001263:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  nabd: nodemergejoin:00001264:  errmsg("Mergejoin: compareResult > 0, bad plan ?"))); 
@@ -7888,21 +7889,21 @@ select * from get_ereport order by 1;
  paag: pgarch:00000592:  (errcode_for_file_access(), 
  paag: pgarch:00000593:  errmsg("could not rename file "%s" to "%s": %m", 
  paag: pgarch:00000594:  rlogready, rlogdone))); 
- paag: pgstat:00001167:  ereport(ERROR, 
- paag: pgstat:00001168:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- paag: pgstat:00001169:  errmsg("must be superuser to reset statistics counters"))); 
- paag: pgstat:00002759:  ereport(ERROR, 
- paag: pgstat:00002760:  (errcode_for_socket_access(), 
- paag: pgstat:00002761:  errmsg("poll() failed in statistics collector: %m"))); 
- paag: pgstat:00002780:  ereport(ERROR, 
- paag: pgstat:00002781:  (errcode_for_socket_access(), 
- paag: pgstat:00002782:  errmsg("select() failed in statistics collector: %m"))); 
- paag: pgstat:00002804:  ereport(ERROR, 
- paag: pgstat:00002805:  (errcode_for_socket_access(), 
- paag: pgstat:00002806:  errmsg("could not read statistics message: %m"))); 
- paag: pgstat:00003761:  ereport(ERROR, 
- paag: pgstat:00003762:  (errmsg("database hash table corrupted " 
- paag: pgstat:00003763:  "during cleanup --- abort"))); 
+ paag: pgstat:00001168:  ereport(ERROR, 
+ paag: pgstat:00001169:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ paag: pgstat:00001170:  errmsg("must be superuser to reset statistics counters"))); 
+ paag: pgstat:00002760:  ereport(ERROR, 
+ paag: pgstat:00002761:  (errcode_for_socket_access(), 
+ paag: pgstat:00002762:  errmsg("poll() failed in statistics collector: %m"))); 
+ paag: pgstat:00002781:  ereport(ERROR, 
+ paag: pgstat:00002782:  (errcode_for_socket_access(), 
+ paag: pgstat:00002783:  errmsg("select() failed in statistics collector: %m"))); 
+ paag: pgstat:00002805:  ereport(ERROR, 
+ paag: pgstat:00002806:  (errcode_for_socket_access(), 
+ paag: pgstat:00002807:  errmsg("could not read statistics message: %m"))); 
+ paag: pgstat:00003762:  ereport(ERROR, 
+ paag: pgstat:00003763:  (errmsg("database hash table corrupted " 
+ paag: pgstat:00003764:  "during cleanup --- abort"))); 
  paag: plperl:00000668:  ereport(ERROR, 
  paag: plperl:00000669:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
  paag: plperl:00000670:  errmsg("Perl hash contains nonexistent column "%s"", 
@@ -8745,222 +8746,238 @@ select * from get_ereport order by 1;
  paai: plxfuncs:00000401:  (errcode(ERRCODE_SYNTAX_ERROR), 
  paai: plxfuncs:00000402:  errmsg("qualified identifier cannot be used here: %s", 
  paai: plxfuncs:00000403:  sstart))); 
- paai: postgres:00000419:  ereport(FATAL, 
- paai: postgres:00000420:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00000421:  errmsg("invalid frontend message type %d", qtype))); 
- paai: postgres:00000431:  ereport(FATAL, 
- paai: postgres:00000432:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00000433:  errmsg("invalid frontend message type %d", qtype))); 
- paai: postgres:00000442:  ereport(FATAL, 
- paai: postgres:00000443:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00000444:  errmsg("invalid frontend message type %d", qtype))); 
- paai: postgres:00000458:  ereport(FATAL, 
- paai: postgres:00000459:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00000460:  errmsg("invalid frontend message type %d", qtype))); 
- paai: postgres:00001115:  ereport(ERROR, 
- paai: postgres:00001116:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00001117:  errmsg("current transaction is aborted, " 
- paai: postgres:00001118:  "commands ignored until end of transaction block"))); 
- paai: postgres:00001514:  ereport(ERROR, 
- paai: postgres:00001515:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00001516:  errmsg("current transaction is aborted, " 
- paai: postgres:00001517:  "commands ignored until end of transaction block"))); 
- paai: postgres:00001814:  ereport(ERROR, 
- paai: postgres:00001815:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00001816:  errmsg("cannot insert multiple commands into a prepared statement"))); 
- paai: postgres:00001839:  ereport(ERROR, 
- paai: postgres:00001840:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00001841:  errmsg("current transaction is aborted, " 
- paai: postgres:00001842:  "commands ignored until end of transaction block"))); 
- paai: postgres:00001876:  ereport(ERROR, 
- paai: postgres:00001877:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
- paai: postgres:00001878:  errmsg("could not determine data type of parameter $%d", 
- paai: postgres:00001879:  i + 1))); 
- paai: postgres:00002038:  ereport(ERROR, 
- paai: postgres:00002039:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
- paai: postgres:00002040:  errmsg("unnamed prepared statement does not exist"))); 
- paai: postgres:00002080:  ereport(ERROR, 
- paai: postgres:00002081:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00002082:  errmsg("bind message has %d parameter formats but %d parameters", 
- paai: postgres:00002083:  numPFormats, numParams))); 
- paai: postgres:00002086:  ereport(ERROR, 
- paai: postgres:00002087:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00002088:  errmsg("bind message supplies %d parameters, but prepared statement "%s" requires %d", 
- paai: postgres:00002089:  numParams, stmt_name, list_length(pstmt->argtype_list)))); 
- paai: postgres:00002102:  ereport(ERROR, 
- paai: postgres:00002103:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00002104:  errmsg("current transaction is aborted, " 
- paai: postgres:00002105:  "commands ignored until end of transaction block"))); 
- paai: postgres:00002233:  ereport(ERROR, 
- paai: postgres:00002234:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
- paai: postgres:00002235:  errmsg("incorrect binary data format in bind parameter %d", 
- paai: postgres:00002236:  paramno + 1))); 
- paai: postgres:00002240:  ereport(ERROR, 
- paai: postgres:00002241:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- paai: postgres:00002242:  errmsg("unsupported format code: %d", 
- paai: postgres:00002243:  pformat))); 
- paai: postgres:00002402:  ereport(ERROR, 
- paai: postgres:00002403:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
- paai: postgres:00002404:  errmsg("portal "%s" does not exist", portal_name))); 
- paai: postgres:00002513:  ereport(ERROR, 
- paai: postgres:00002514:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00002515:  errmsg("current transaction is aborted, " 
- paai: postgres:00002516:  "commands ignored until end of transaction block"))); 
- paai: postgres:00002829:  ereport(ERROR, 
- paai: postgres:00002830:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
- paai: postgres:00002831:  errmsg("unnamed prepared statement does not exist"))); 
- paai: postgres:00002845:  ereport(ERROR, 
- paai: postgres:00002846:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00002847:  errmsg("current transaction is aborted, " 
- paai: postgres:00002848:  "commands ignored until end of transaction block"))); 
- paai: postgres:00002901:  ereport(ERROR, 
- paai: postgres:00002902:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
- paai: postgres:00002903:  errmsg("portal "%s" does not exist", portal_name))); 
- paai: postgres:00002915:  ereport(ERROR, 
- paai: postgres:00002916:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00002917:  errmsg("current transaction is aborted, " 
- paai: postgres:00002918:  "commands ignored until end of transaction block"))); 
- paai: postgres:00003244:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
- paai: postgres:00003245:  errFatalReturn(gp_reraise_signal), 
- paai: postgres:00003246:  errOmitLocation(true), 
- paai: postgres:00003247:  errmsg("Unexpected internal error: %s received signal %s", 
- paai: postgres:00003248:  pts, signame) )); 
- paai: postgres:00003260:  ereport(ERROR, 
- paai: postgres:00003261:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
- paai: postgres:00003262:  errmsg("floating-point exception"), 
- paai: postgres:00003263:  errdetail("An invalid floating-point operation was signaled. " 
- paai: postgres:00003264:  "This probably means an out-of-range result or an " 
- paai: postgres:00003265:  "invalid operation, such as division by zero."))); 
- paai: postgres:00003308:  ereport(FATAL, 
- paai: postgres:00003309:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
- paai: postgres:00003310:  errmsg("terminating connection due to administrator command"))); 
- paai: postgres:00003321:  ereport(ERROR, 
- paai: postgres:00003322:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
- paai: postgres:00003323:  errmsg("canceling MPP operation"))); 
- paai: postgres:00003325:  ereport(ERROR, 
- paai: postgres:00003326:  (errcode(ERRCODE_QUERY_CANCELED), 
- paai: postgres:00003327:  errmsg("canceling statement due to statement timeout"))); 
- paai: postgres:00003329:  ereport(ERROR, 
- paai: postgres:00003330:  (errcode(ERRCODE_QUERY_CANCELED), 
- paai: postgres:00003331:  errmsg("canceling statement due to user request"))); 
- paai: postgres:00003404:  ereport(ERROR, 
- paai: postgres:00003405:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
- paai: postgres:00003406:  errmsg("stack depth limit exceeded"), 
- paai: postgres:00003407:  errhint("Increase the configuration parameter "max_stack_depth", " 
- paai: postgres:00003408:  "after ensuring the platform's stack depth limit is adequate."))); 
- paai: postgres:00004209:  ereport(FATAL, 
- paai: postgres:00004210:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00004211:  errmsg("invalid frontend message for Dispatch Agent, message type %d ('%c')", 
- paai: postgres:00004212:  firstchar,firstchar))); 
- paai: postgres:00004497:  ereport(ERROR, 
- paai: postgres:00004498:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00004499:  errmsg("--%s requires a value", 
- paai: postgres:00004500:  optarg))); 
- paai: postgres:00004502:  ereport(ERROR, 
- paai: postgres:00004503:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00004504:  errmsg("-c %s requires a value", 
- paai: postgres:00004505:  optarg))); 
- paai: postgres:00004537:  ereport(FATAL, 
- paai: postgres:00004538:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paai: postgres:00004539:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
- paai: postgres:00004657:  ereport(FATAL, 
- paai: postgres:00004658:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00004659:  errmsg("invalid command-line arguments for server process"), 
- paai: postgres:00004660:  errhint("Try "%s --help" for more information.", argv[0]))); 
- paai: postgres:00004670:  ereport(FATAL, 
- paai: postgres:00004671:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00004672:  errmsg("%s: invalid command-line arguments", 
- paai: postgres:00004673:  argv[0]), 
- paai: postgres:00004674:  errhint("Try "%s --help" for more information.", argv[0]))); 
- paai: postgres:00004680:  ereport(FATAL, 
- paai: postgres:00004681:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- paai: postgres:00004682:  errmsg("%s: no database nor user name specified", 
- paai: postgres:00004683:  argv[0]))); 
- paai: postgres:00005520:  ereport(ERROR, 
- paai: postgres:00005521:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00005522:  errmsg("invalid CLOSE message subtype %d", 
- paai: postgres:00005523:  close_type))); 
- paai: postgres:00005557:  ereport(ERROR, 
- paai: postgres:00005558:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00005559:  errmsg("invalid DESCRIBE message subtype %d", 
- paai: postgres:00005560:  describe_type))); 
- paai: postgres:00005614:  ereport(FATAL, 
- paai: postgres:00005615:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00005616:  errmsg("invalid frontend message type %d ('%c')", 
- paai: postgres:00005617:  firstchar,firstchar))); 
- paai: postgres:00006115:  ereport(ERROR, 
- paai: postgres:00006116:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00006117:  errmsg("--%s requires a value", 
- paai: postgres:00006118:  optarg))); 
- paai: postgres:00006120:  ereport(ERROR, 
- paai: postgres:00006121:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00006122:  errmsg("-c %s requires a value", 
- paai: postgres:00006123:  optarg))); 
- paai: postgres:00006236:  ereport(FATAL, 
- paai: postgres:00006237:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00006238:  errmsg("invalid command-line arguments for server process"), 
- paai: postgres:00006239:  errhint("Try "%s --help" for more information.", argv[0]))); 
- paai: postgres:00006250:  ereport(FATAL, 
- paai: postgres:00006251:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00006252:  errmsg("%s: invalid command-line arguments", 
- paai: postgres:00006253:  argv[0]), 
- paai: postgres:00006254:  errhint("Try "%s --help" for more information.", argv[0]))); 
- paai: postgres:00006260:  ereport(FATAL, 
- paai: postgres:00006261:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- paai: postgres:00006262:  errmsg("%s: no database nor user name specified", 
- paai: postgres:00006263:  argv[0]))); 
- paai: postgres:00006581:  ereport(FATAL, 
- paai: postgres:00006582:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00006583:  errmsg("invalid frontend message type %d", 
- paai: postgres:00006584:  firstchar))); 
- paai: postinit:00000089:  ereport(FATAL, 
- paai: postinit:00000090:  (errcode_for_file_access(), 
- paai: postinit:00000091:  errmsg("could not open file "%s": %m", filename))); 
- paai: postinit:00000128:  ereport(FATAL, 
- paai: postinit:00000129:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- paai: postinit:00000130:  errmsg("database "%s" has disappeared from pg_database", 
- paai: postinit:00000131:  name), 
- paai: postinit:00000132:  errdetail("Database OID %u now seems to belong to "%s".", 
- paai: postinit:00000133:  MyDatabaseId, NameStr(dbform->datname)))); 
- paai: postinit:00000150:  ereport(FATAL, 
- paai: postinit:00000151:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paai: postinit:00000152:  errmsg("database "%s" is not currently accepting connections", 
- paai: postinit:00000153:  name))); 
- paai: postinit:00000163:  ereport(FATAL, 
- paai: postinit:00000164:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- paai: postinit:00000165:  errmsg("permission denied for database "%s"", name), 
- paai: postinit:00000166:  errdetail("User does not have CONNECT privilege."))); 
- paai: postinit:00000181:  ereport(FATAL, 
- paai: postinit:00000182:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
- paai: postinit:00000183:  errmsg("too many connections for database "%s"", 
- paai: postinit:00000184:  name))); 
- paai: postinit:00000320:  ereport(FATAL, 
- paai: postinit:00000321:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- paai: postinit:00000322:  errmsg("database "%s" does not exist", 
- paai: postinit:00000323:  dbname))); 
- paai: postinit:00000435:  ereport(FATAL, 
- paai: postinit:00000436:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- paai: postinit:00000437:  errmsg("database "%s" does not exist", 
- paai: postinit:00000438:  dbname), 
- paai: postinit:00000439:  errdetail("It seems to have just been dropped or renamed."))); 
- paai: postinit:00000451:  ereport(FATAL, 
- paai: postinit:00000452:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- paai: postinit:00000453:  errmsg("database "%s" does not exist", 
- paai: postinit:00000454:  dbname), 
- paai: postinit:00000455:  errdetail("The database subdirectory "%s" is missing.", 
- paai: postinit:00000456:  fullpath))); 
- paai: postinit:00000458:  ereport(FATAL, 
- paai: postinit:00000459:  (errcode_for_file_access(), 
- paai: postinit:00000460:  errmsg("could not access directory "%s": %m", 
- paai: postinit:00000461:  fullpath))); 
- paai: postinit:00000491:  ereport(WARNING, 
- paai: postinit:00000492:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- paai: postinit:00000493:  errmsg("no roles are defined in this database system"), 
- paai: postinit:00000494:  errhint("You should immediately run CREATE USER "%s" CREATEUSER;.", 
- paai: postinit:00000495:  username))); 
- paai: postinit:00000522:  ereport(FATAL, 
- paai: postinit:00000523:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
- paai: postinit:00000524:  errmsg("connection limit exceeded for non-superusers"))); 
+ paai: postgres:00000422:  ereport(FATAL, 
+ paai: postgres:00000423:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00000424:  errmsg("invalid frontend message type %d", qtype))); 
+ paai: postgres:00000434:  ereport(FATAL, 
+ paai: postgres:00000435:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00000436:  errmsg("invalid frontend message type %d", qtype))); 
+ paai: postgres:00000445:  ereport(FATAL, 
+ paai: postgres:00000446:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00000447:  errmsg("invalid frontend message type %d", qtype))); 
+ paai: postgres:00000461:  ereport(FATAL, 
+ paai: postgres:00000462:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00000463:  errmsg("invalid frontend message type %d", qtype))); 
+ paai: postgres:00001118:  ereport(ERROR, 
+ paai: postgres:00001119:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00001120:  errmsg("current transaction is aborted, " 
+ paai: postgres:00001121:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00001517:  ereport(ERROR, 
+ paai: postgres:00001518:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00001519:  errmsg("current transaction is aborted, " 
+ paai: postgres:00001520:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00001817:  ereport(ERROR, 
+ paai: postgres:00001818:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00001819:  errmsg("cannot insert multiple commands into a prepared statement"))); 
+ paai: postgres:00001842:  ereport(ERROR, 
+ paai: postgres:00001843:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00001844:  errmsg("current transaction is aborted, " 
+ paai: postgres:00001845:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00001879:  ereport(ERROR, 
+ paai: postgres:00001880:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
+ paai: postgres:00001881:  errmsg("could not determine data type of parameter $%d", 
+ paai: postgres:00001882:  i + 1))); 
+ paai: postgres:00002041:  ereport(ERROR, 
+ paai: postgres:00002042:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
+ paai: postgres:00002043:  errmsg("unnamed prepared statement does not exist"))); 
+ paai: postgres:00002083:  ereport(ERROR, 
+ paai: postgres:00002084:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00002085:  errmsg("bind message has %d parameter formats but %d parameters", 
+ paai: postgres:00002086:  numPFormats, numParams))); 
+ paai: postgres:00002089:  ereport(ERROR, 
+ paai: postgres:00002090:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00002091:  errmsg("bind message supplies %d parameters, but prepared statement "%s" requires %d", 
+ paai: postgres:00002092:  numParams, stmt_name, list_length(pstmt->argtype_list)))); 
+ paai: postgres:00002105:  ereport(ERROR, 
+ paai: postgres:00002106:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00002107:  errmsg("current transaction is aborted, " 
+ paai: postgres:00002108:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00002236:  ereport(ERROR, 
+ paai: postgres:00002237:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
+ paai: postgres:00002238:  errmsg("incorrect binary data format in bind parameter %d", 
+ paai: postgres:00002239:  paramno + 1))); 
+ paai: postgres:00002243:  ereport(ERROR, 
+ paai: postgres:00002244:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ paai: postgres:00002245:  errmsg("unsupported format code: %d", 
+ paai: postgres:00002246:  pformat))); 
+ paai: postgres:00002405:  ereport(ERROR, 
+ paai: postgres:00002406:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
+ paai: postgres:00002407:  errmsg("portal "%s" does not exist", portal_name))); 
+ paai: postgres:00002516:  ereport(ERROR, 
+ paai: postgres:00002517:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00002518:  errmsg("current transaction is aborted, " 
+ paai: postgres:00002519:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00002832:  ereport(ERROR, 
+ paai: postgres:00002833:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
+ paai: postgres:00002834:  errmsg("unnamed prepared statement does not exist"))); 
+ paai: postgres:00002848:  ereport(ERROR, 
+ paai: postgres:00002849:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00002850:  errmsg("current transaction is aborted, " 
+ paai: postgres:00002851:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00002904:  ereport(ERROR, 
+ paai: postgres:00002905:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
+ paai: postgres:00002906:  errmsg("portal "%s" does not exist", portal_name))); 
+ paai: postgres:00002918:  ereport(ERROR, 
+ paai: postgres:00002919:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00002920:  errmsg("current transaction is aborted, " 
+ paai: postgres:00002921:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00003247:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+ paai: postgres:00003248:  errFatalReturn(gp_reraise_signal), 
+ paai: postgres:00003249:  errOmitLocation(true), 
+ paai: postgres:00003250:  errmsg("Unexpected internal error: %s received signal %s", 
+ paai: postgres:00003251:  pts, signame) )); 
+ paai: postgres:00003263:  ereport(ERROR, 
+ paai: postgres:00003264:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
+ paai: postgres:00003265:  errmsg("floating-point exception"), 
+ paai: postgres:00003266:  errdetail("An invalid floating-point operation was signaled. " 
+ paai: postgres:00003267:  "This probably means an out-of-range result or an " 
+ paai: postgres:00003268:  "invalid operation, such as division by zero."))); 
+ paai: postgres:00003311:  ereport(FATAL, 
+ paai: postgres:00003312:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
+ paai: postgres:00003313:  errmsg("terminating connection due to administrator command"))); 
+ paai: postgres:00003324:  ereport(ERROR, 
+ paai: postgres:00003325:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
+ paai: postgres:00003326:  errmsg("canceling MPP operation"))); 
+ paai: postgres:00003328:  ereport(ERROR, 
+ paai: postgres:00003329:  (errcode(ERRCODE_QUERY_CANCELED), 
+ paai: postgres:00003330:  errmsg("canceling statement due to statement timeout"))); 
+ paai: postgres:00003332:  ereport(ERROR, 
+ paai: postgres:00003333:  (errcode(ERRCODE_QUERY_CANCELED), 
+ paai: postgres:00003334:  errmsg("canceling statement due to user request"))); 
+ paai: postgres:00003407:  ereport(ERROR, 
+ paai: postgres:00003408:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
+ paai: postgres:00003409:  errmsg("stack depth limit exceeded"), 
+ paai: postgres:00003410:  errhint("Increase the configuration parameter "max_stack_depth", " 
+ paai: postgres:00003411:  "after ensuring the platform's stack depth limit is adequate."))); 
+ paai: postgres:00004212:  ereport(FATAL, 
+ paai: postgres:00004213:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00004214:  errmsg("invalid frontend message for Dispatch Agent, message type %d ('%c')", 
+ paai: postgres:00004215:  firstchar,firstchar))); 
+ paai: postgres:00004500:  ereport(ERROR, 
+ paai: postgres:00004501:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00004502:  errmsg("--%s requires a value", 
+ paai: postgres:00004503:  optarg))); 
+ paai: postgres:00004505:  ereport(ERROR, 
+ paai: postgres:00004506:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00004507:  errmsg("-c %s requires a value", 
+ paai: postgres:00004508:  optarg))); 
+ paai: postgres:00004540:  ereport(FATAL, 
+ paai: postgres:00004541:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paai: postgres:00004542:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
+ paai: postgres:00004660:  ereport(FATAL, 
+ paai: postgres:00004661:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00004662:  errmsg("invalid command-line arguments for server process"), 
+ paai: postgres:00004663:  errhint("Try "%s --help" for more information.", argv[0]))); 
+ paai: postgres:00004673:  ereport(FATAL, 
+ paai: postgres:00004674:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00004675:  errmsg("%s: invalid command-line arguments", 
+ paai: postgres:00004676:  argv[0]), 
+ paai: postgres:00004677:  errhint("Try "%s --help" for more information.", argv[0]))); 
+ paai: postgres:00004683:  ereport(FATAL, 
+ paai: postgres:00004684:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ paai: postgres:00004685:  errmsg("%s: no database nor user name specified", 
+ paai: postgres:00004686:  argv[0]))); 
+ paai: postgres:00005523:  ereport(ERROR, 
+ paai: postgres:00005524:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00005525:  errmsg("invalid CLOSE message subtype %d", 
+ paai: postgres:00005526:  close_type))); 
+ paai: postgres:00005560:  ereport(ERROR, 
+ paai: postgres:00005561:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00005562:  errmsg("invalid DESCRIBE message subtype %d", 
+ paai: postgres:00005563:  describe_type))); 
+ paai: postgres:00005617:  ereport(FATAL, 
+ paai: postgres:00005618:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00005619:  errmsg("invalid frontend message type %d ('%c')", 
+ paai: postgres:00005620:  firstchar,firstchar))); 
+ paai: postgres:00006118:  ereport(ERROR, 
+ paai: postgres:00006119:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00006120:  errmsg("--%s requires a value", 
+ paai: postgres:00006121:  optarg))); 
+ paai: postgres:00006123:  ereport(ERROR, 
+ paai: postgres:00006124:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00006125:  errmsg("-c %s requires a value", 
+ paai: postgres:00006126:  optarg))); 
+ paai: postgres:00006239:  ereport(FATAL, 
+ paai: postgres:00006240:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00006241:  errmsg("invalid command-line arguments for server process"), 
+ paai: postgres:00006242:  errhint("Try "%s --help" for more information.", argv[0]))); 
+ paai: postgres:00006253:  ereport(FATAL, 
+ paai: postgres:00006254:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00006255:  errmsg("%s: invalid command-line arguments", 
+ paai: postgres:00006256:  argv[0]), 
+ paai: postgres:00006257:  errhint("Try "%s --help" for more information.", argv[0]))); 
+ paai: postgres:00006263:  ereport(FATAL, 
+ paai: postgres:00006264:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ paai: postgres:00006265:  errmsg("%s: no database nor user name specified", 
+ paai: postgres:00006266:  argv[0]))); 
+ paai: postgres:00006584:  ereport(FATAL, 
+ paai: postgres:00006585:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00006586:  errmsg("invalid frontend message type %d", 
+ paai: postgres:00006587:  firstchar))); 
+ paai: postinit:00000091:  ereport(FATAL, 
+ paai: postinit:00000092:  (errcode_for_file_access(), 
+ paai: postinit:00000093:  errmsg("could not open file "%s": %m", filename))); 
+ paai: postinit:00000131:  ereport(FATAL, 
+ paai: postinit:00000132:  (errcode_for_file_access(), 
+ paai: postinit:00000133:  errmsg("could not open file "%s": %m", filename))); 
+ paai: postinit:00000176:  ereport(FATAL, 
+ paai: postinit:00000177:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ paai: postinit:00000178:  errmsg("database "%s" has disappeared from pg_database", 
+ paai: postinit:00000179:  name), 
+ paai: postinit:00000180:  errdetail("Database OID %u now seems to belong to "%s".", 
+ paai: postinit:00000181:  MyDatabaseId, NameStr(dbform->datname)))); 
+ paai: postinit:00000198:  ereport(FATAL, 
+ paai: postinit:00000199:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paai: postinit:00000200:  errmsg("database "%s" is not currently accepting connections", 
+ paai: postinit:00000201:  name))); 
+ paai: postinit:00000211:  ereport(FATAL, 
+ paai: postinit:00000212:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ paai: postinit:00000213:  errmsg("permission denied for database "%s"", name), 
+ paai: postinit:00000214:  errdetail("User does not have CONNECT privilege."))); 
+ paai: postinit:00000229:  ereport(FATAL, 
+ paai: postinit:00000230:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+ paai: postinit:00000231:  errmsg("too many connections for database "%s"", 
+ paai: postinit:00000232:  name))); 
+ paai: postinit:00000253:  ereport(FATAL, 
+ paai: postinit:00000254:  (errmsg("database locale is incompatible with operating system"), 
+ paai: postinit:00000255:  errdetail("The database was initialized with LC_COLLATE "%s", " 
+ paai: postinit:00000256:  " which is not recognized by setlocale().", collate), 
+ paai: postinit:00000257:  errhint("Recreate the database with another locale or install the missing locale."))); 
+ paai: postinit:00000260:  ereport(FATAL, 
+ paai: postinit:00000261:  (errmsg("database locale is incompatible with operating system"), 
+ paai: postinit:00000262:  errdetail("The database was initialized with LC_CTYPE "%s", " 
+ paai: postinit:00000263:  " which is not recognized by setlocale().", ctype), 
+ paai: postinit:00000264:  errhint("Recreate the database with another locale or install the missing locale."))); 
+ paai: postinit:00000406:  ereport(FATAL, 
+ paai: postinit:00000407:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ paai: postinit:00000408:  errmsg("database %u does not exist", dboid))); 
+ paai: postinit:00000416:  ereport(FATAL, 
+ paai: postinit:00000417:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ paai: postinit:00000418:  errmsg("database "%s" does not exist", 
+ paai: postinit:00000419:  in_dbname))); 
+ paai: postinit:00000534:  ereport(FATAL, 
+ paai: postinit:00000535:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ paai: postinit:00000536:  errmsg("database "%s" does not exist", 
+ paai: postinit:00000537:  dbname), 
+ paai: postinit:00000538:  errdetail("It seems to have just been dropped or renamed."))); 
+ paai: postinit:00000550:  ereport(FATAL, 
+ paai: postinit:00000551:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ paai: postinit:00000552:  errmsg("database "%s" does not exist", 
+ paai: postinit:00000553:  dbname), 
+ paai: postinit:00000554:  errdetail("The database subdirectory "%s" is missing.", 
+ paai: postinit:00000555:  fullpath))); 
+ paai: postinit:00000557:  ereport(FATAL, 
+ paai: postinit:00000558:  (errcode_for_file_access(), 
+ paai: postinit:00000559:  errmsg("could not access directory "%s": %m", 
+ paai: postinit:00000560:  fullpath))); 
+ paai: postinit:00000590:  ereport(WARNING, 
+ paai: postinit:00000591:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ paai: postinit:00000592:  errmsg("no roles are defined in this database system"), 
+ paai: postinit:00000593:  errhint("You should immediately run CREATE USER "%s" CREATEUSER;.", 
+ paai: postinit:00000594:  username))); 
+ paai: postinit:00000621:  ereport(FATAL, 
+ paai: postinit:00000622:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+ paai: postinit:00000623:  errmsg("connection limit exceeded for non-superusers"))); 
  paai: pqformat:00000461:  ereport(ERROR, 
  paai: pqformat:00000462:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
  paai: pqformat:00000463:  errmsg("no data left in message"))); 
@@ -9555,131 +9572,134 @@ select * from get_ereport order by 1;
  paba: portalcmds:00000536:  ereport(ERROR, 
  paba: portalcmds:00000537:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
  paba: portalcmds:00000538:  errmsg("could not reposition held cursor"))); 
- paba: postmaster:00000740:  ereport(ERROR, 
- paba: postmaster:00000741:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paba: postmaster:00000742:  errmsg("--%s requires a value", 
- paba: postmaster:00000743:  optarg))); 
- paba: postmaster:00000745:  ereport(ERROR, 
- paba: postmaster:00000746:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paba: postmaster:00000747:  errmsg("-c %s requires a value", 
- paba: postmaster:00000748:  optarg))); 
- paba: postmaster:00000954:  ereport(FATAL, 
- paba: postmaster:00000955:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- paba: postmaster:00000956:  errmsg("invalid list syntax for "listen_addresses""))); 
- paba: postmaster:00000976:  ereport(WARNING, 
- paba: postmaster:00000977:  (errmsg("could not create listen socket for "%s"", 
- paba: postmaster:00000978:  curhost))); 
- paba: postmaster:00000982:  ereport(FATAL, 
- paba: postmaster:00000983:  (errmsg("could not create any TCP/IP sockets"))); 
- paba: postmaster:00001009:  ereport(WARNING, 
- paba: postmaster:00001010:  (errmsg("could not create Unix-domain socket"))); 
- paba: postmaster:00001017:  ereport(FATAL, 
- paba: postmaster:00001018:  (errmsg("no socket created for listening"))); 
- paba: postmaster:00001043:  ereport(FATAL, 
- paba: postmaster:00001044:  (errmsg("could not create I/O completion port for child queue"))); 
- paba: postmaster:00001057:  ereport(FATAL, 
- paba: postmaster:00001058:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
- paba: postmaster:00001059:  (int) GetLastError()))); 
- paba: postmaster:00001154:  ereport(FATAL, 
- paba: postmaster:00001155:  (errmsg("could not load pg_hba.conf"))); 
- paba: postmaster:00001203:  ereport(FATAL, 
- paba: postmaster:00001204:  (errmsg("%s: could not locate matching postgres executable", 
- paba: postmaster:00001205:  argv0))); 
- paba: postmaster:00001223:  ereport(ERROR, 
- paba: postmaster:00001224:  (errcode_for_file_access(), 
- paba: postmaster:00001225:  errmsg("could not open directory "%s": %m", 
- paba: postmaster:00001226:  pkglib_path), 
- paba: postmaster:00001227:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file "%s" has been moved away from its proper location.", 
- paba: postmaster:00001228:  my_exec_path))); 
- paba: postmaster:00001253:  ereport(FATAL, 
- paba: postmaster:00001254:  (errcode_for_file_access(), 
- paba: postmaster:00001255:  errmsg("data directory "%s" does not exist", 
- paba: postmaster:00001256:  DataDir))); 
- paba: postmaster:00001258:  ereport(FATAL, 
- paba: postmaster:00001259:  (errcode_for_file_access(), 
- paba: postmaster:00001260:  errmsg("could not read permissions of directory "%s": %m", 
- paba: postmaster:00001261:  DataDir))); 
- paba: postmaster:00001266:  ereport(FATAL, 
- paba: postmaster:00001267:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001268:  errmsg("specified data directory "%s" is not a directory", 
- paba: postmaster:00001269:  DataDir))); 
- paba: postmaster:00001282:  ereport(FATAL, 
- paba: postmaster:00001283:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001284:  errmsg("data directory "%s" has wrong ownership", 
- paba: postmaster:00001285:  DataDir), 
- paba: postmaster:00001286:  errhint("The server must be started by the user that owns the data directory."))); 
- paba: postmaster:00001304:  ereport(FATAL, 
- paba: postmaster:00001305:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001306:  errmsg("data directory "%s" has group or world access", 
- paba: postmaster:00001307:  DataDir), 
- paba: postmaster:00001308:  errdetail("Permissions should be u=rwx (0700)."))); 
- paba: postmaster:00001825:  ereport(FATAL, 
- paba: postmaster:00001826:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paba: postmaster:00001827:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
- paba: postmaster:00001828:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
- paba: postmaster:00001829:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
- paba: postmaster:00001830:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
- paba: postmaster:00001831:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
- paba: postmaster:00001895:  ereport(FATAL, 
- paba: postmaster:00001896:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paba: postmaster:00001897:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
- paba: postmaster:00001923:  ereport(FATAL, 
- paba: postmaster:00001924:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
- paba: postmaster:00001925:  errmsg("no PostgreSQL user name specified in startup packet"))); 
- paba: postmaster:00001986:  ereport(FATAL, 
- paba: postmaster:00001987:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00001988:  errmsg("the database system is starting up"))); 
- paba: postmaster:00001991:  ereport(FATAL, 
- paba: postmaster:00001992:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00001993:  errmsg("the database system is shutting down"))); 
- paba: postmaster:00001996:  ereport(FATAL, 
- paba: postmaster:00001997:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00001998:  errmsg("the database system is in recovery mode"))); 
- paba: postmaster:00002001:  ereport(FATAL, 
- paba: postmaster:00002002:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
- paba: postmaster:00002003:  errmsg("sorry, too many clients already"))); 
- paba: postmaster:00002279:  ereport(WARNING, 
- paba: postmaster:00002280:  (errmsg("pg_hba.conf not reloaded"))); 
- paba: postmaster:00003595:  ereport(WARNING, 
- paba: postmaster:00003596:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
- paba: postmaster:00003597:  gai_strerror(ret)))); 
- paba: postmaster:00003638:  ereport(FATAL, 
- paba: postmaster:00003639:  (errmsg("could not load pg_hba.conf"))); 
- paba: postmaster:00004060:  ereport(ERROR, 
- paba: postmaster:00004061:  (errmsg_internal("could not terminate unstarted process: error code %d", 
- paba: postmaster:00004062:  (int) GetLastError()))); 
- paba: postmaster:00004085:  ereport(ERROR, 
- paba: postmaster:00004086:  (errmsg_internal("could not terminate unstartable process: error code %d", 
- paba: postmaster:00004087:  (int) GetLastError()))); 
- paba: postmaster:00004094:  ereport(ERROR, 
- paba: postmaster:00004095:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
- paba: postmaster:00004096:  (int) GetLastError()))); 
- paba: postmaster:00004110:  ereport(FATAL, 
- paba: postmaster:00004111:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- paba: postmaster:00004112:  errmsg("out of memory"))); 
- paba: postmaster:00004123:  ereport(FATAL, 
- paba: postmaster:00004124:  (errmsg_internal("could not register process for wait: error code %d", 
- paba: postmaster:00004125:  (int) GetLastError()))); 
- paba: postmaster:00004191:  ereport(FATAL, 
- paba: postmaster:00004192:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- paba: postmaster:00004193:  errmsg("out of memory"))); 
- paba: postmaster:00004814:  ereport(ERROR, 
- paba: postmaster:00004815:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
- paba: postmaster:00004816:  (int) GetLastError()))); 
- paba: postmaster:00004836:  ereport(ERROR, 
- paba: postmaster:00004837:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
- paba: postmaster:00004838:  src, WSAGetLastError()))); 
- paba: postmaster:00005030:  ereport(FATAL, 
- paba: postmaster:00005031:  (errmsg_internal("no free slots in shmem backend array"))); 
- paba: postmaster:00005049:  ereport(WARNING, 
- paba: postmaster:00005050:  (errmsg_internal("could not find backend entry with pid %d", 
- paba: postmaster:00005051:  (int) pid))); 
- paba: postmaster:00005081:  ereport(FATAL, 
- paba: postmaster:00005082:  (errmsg_internal("no room for child entry with pid %lu", 
- paba: postmaster:00005083:  (unsigned long) pid))); 
- paba: postmaster:00005107:  ereport(WARNING, 
- paba: postmaster:00005108:  (errmsg_internal("could not find child entry with pid %lu", 
- paba: postmaster:00005109:  (unsigned long) pid))); 
+ paba: postmaster:00000814:  ereport(ERROR, 
+ paba: postmaster:00000815:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paba: postmaster:00000816:  errmsg("--%s requires a value", 
+ paba: postmaster:00000817:  optarg))); 
+ paba: postmaster:00000819:  ereport(ERROR, 
+ paba: postmaster:00000820:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paba: postmaster:00000821:  errmsg("-c %s requires a value", 
+ paba: postmaster:00000822:  optarg))); 
+ paba: postmaster:00001028:  ereport(FATAL, 
+ paba: postmaster:00001029:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ paba: postmaster:00001030:  errmsg("invalid list syntax for "listen_addresses""))); 
+ paba: postmaster:00001050:  ereport(WARNING, 
+ paba: postmaster:00001051:  (errmsg("could not create listen socket for "%s"", 
+ paba: postmaster:00001052:  curhost))); 
+ paba: postmaster:00001056:  ereport(FATAL, 
+ paba: postmaster:00001057:  (errmsg("could not create any TCP/IP sockets"))); 
+ paba: postmaster:00001083:  ereport(WARNING, 
+ paba: postmaster:00001084:  (errmsg("could not create Unix-domain socket"))); 
+ paba: postmaster:00001091:  ereport(FATAL, 
+ paba: postmaster:00001092:  (errmsg("no socket created for listening"))); 
+ paba: postmaster:00001117:  ereport(FATAL, 
+ paba: postmaster:00001118:  (errmsg("could not create I/O completion port for child queue"))); 
+ paba: postmaster:00001131:  ereport(FATAL, 
+ paba: postmaster:00001132:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
+ paba: postmaster:00001133:  (int) GetLastError()))); 
+ paba: postmaster:00001228:  ereport(FATAL, 
+ paba: postmaster:00001229:  (errmsg("could not load pg_hba.conf"))); 
+ paba: postmaster:00001281:  ereport(FATAL, 
+ paba: postmaster:00001282:  (errmsg("%s: could not locate matching postgres executable", 
+ paba: postmaster:00001283:  argv0))); 
+ paba: postmaster:00001301:  ereport(ERROR, 
+ paba: postmaster:00001302:  (errcode_for_file_access(), 
+ paba: postmaster:00001303:  errmsg("could not open directory "%s": %m", 
+ paba: postmaster:00001304:  pkglib_path), 
+ paba: postmaster:00001305:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file "%s" has been moved away from its proper location.", 
+ paba: postmaster:00001306:  my_exec_path))); 
+ paba: postmaster:00001331:  ereport(FATAL, 
+ paba: postmaster:00001332:  (errcode_for_file_access(), 
+ paba: postmaster:00001333:  errmsg("data directory "%s" does not exist", 
+ paba: postmaster:00001334:  DataDir))); 
+ paba: postmaster:00001336:  ereport(FATAL, 
+ paba: postmaster:00001337:  (errcode_for_file_access(), 
+ paba: postmaster:00001338:  errmsg("could not read permissions of directory "%s": %m", 
+ paba: postmaster:00001339:  DataDir))); 
+ paba: postmaster:00001344:  ereport(FATAL, 
+ paba: postmaster:00001345:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001346:  errmsg("specified data directory "%s" is not a directory", 
+ paba: postmaster:00001347:  DataDir))); 
+ paba: postmaster:00001360:  ereport(FATAL, 
+ paba: postmaster:00001361:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001362:  errmsg("data directory "%s" has wrong ownership", 
+ paba: postmaster:00001363:  DataDir), 
+ paba: postmaster:00001364:  errhint("The server must be started by the user that owns the data directory."))); 
+ paba: postmaster:00001382:  ereport(FATAL, 
+ paba: postmaster:00001383:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001384:  errmsg("data directory "%s" has group or world access", 
+ paba: postmaster:00001385:  DataDir), 
+ paba: postmaster:00001386:  errdetail("Permissions should be u=rwx (0700)."))); 
+ paba: postmaster:00001924:  ereport(FATAL, 
+ paba: postmaster:00001925:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paba: postmaster:00001926:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
+ paba: postmaster:00001927:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
+ paba: postmaster:00001928:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
+ paba: postmaster:00001929:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
+ paba: postmaster:00001930:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
+ paba: postmaster:00001994:  ereport(FATAL, 
+ paba: postmaster:00001995:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paba: postmaster:00001996:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
+ paba: postmaster:00002022:  ereport(FATAL, 
+ paba: postmaster:00002023:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+ paba: postmaster:00002024:  errmsg("no PostgreSQL user name specified in startup packet"))); 
+ paba: postmaster:00002085:  ereport(FATAL, 
+ paba: postmaster:00002086:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00002087:  errmsg("the database system is starting up"))); 
+ paba: postmaster:00002090:  ereport(FATAL, 
+ paba: postmaster:00002091:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00002092:  errmsg("the database system is shutting down"))); 
+ paba: postmaster:00002095:  ereport(FATAL, 
+ paba: postmaster:00002096:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00002097:  errmsg("the database system is in recovery mode"))); 
+ paba: postmaster:00002100:  ereport(FATAL, 
+ paba: postmaster:00002101:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+ paba: postmaster:00002102:  errmsg("sorry, too many clients already"))); 
+ paba: postmaster:00002380:  ereport(WARNING, 
+ paba: postmaster:00002381:  (errmsg("pg_hba.conf not reloaded"))); 
+ paba: postmaster:00003712:  ereport(WARNING, 
+ paba: postmaster:00003713:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+ paba: postmaster:00003714:  gai_strerror(ret)))); 
+ paba: postmaster:00003755:  ereport(FATAL, 
+ paba: postmaster:00003756:  (errmsg("could not load pg_hba.conf"))); 
+ paba: postmaster:00004176:  ereport(ERROR, 
+ paba: postmaster:00004177:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+ paba: postmaster:00004178:  (int) GetLastError()))); 
+ paba: postmaster:00004203:  ereport(ERROR, 
+ paba: postmaster:00004204:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+ paba: postmaster:00004205:  (int) GetLastError()))); 
+ paba: postmaster:00004220:  ereport(ERROR, 
+ paba: postmaster:00004221:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+ paba: postmaster:00004222:  (int) GetLastError()))); 
+ paba: postmaster:00004229:  ereport(ERROR, 
+ paba: postmaster:00004230:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+ paba: postmaster:00004231:  (int) GetLastError()))); 
+ paba: postmaster:00004245:  ereport(FATAL, 
+ paba: postmaster:00004246:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ paba: postmaster:00004247:  errmsg("out of memory"))); 
+ paba: postmaster:00004258:  ereport(FATAL, 
+ paba: postmaster:00004259:  (errmsg_internal("could not register process for wait: error code %d", 
+ paba: postmaster:00004260:  (int) GetLastError()))); 
+ paba: postmaster:00004331:  ereport(FATAL, 
+ paba: postmaster:00004332:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ paba: postmaster:00004333:  errmsg("out of memory"))); 
+ paba: postmaster:00005056:  ereport(ERROR, 
+ paba: postmaster:00005057:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+ paba: postmaster:00005058:  (int) GetLastError()))); 
+ paba: postmaster:00005078:  ereport(ERROR, 
+ paba: postmaster:00005079:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+ paba: postmaster:00005080:  src, WSAGetLastError()))); 
+ paba: postmaster:00005274:  ereport(FATAL, 
+ paba: postmaster:00005275:  (errmsg_internal("no free slots in shmem backend array"))); 
+ paba: postmaster:00005293:  ereport(WARNING, 
+ paba: postmaster:00005294:  (errmsg_internal("could not find backend entry with pid %d", 
+ paba: postmaster:00005295:  (int) pid))); 
+ paba: postmaster:00005325:  ereport(FATAL, 
+ paba: postmaster:00005326:  (errmsg_internal("no room for child entry with pid %lu", 
+ paba: postmaster:00005327:  (unsigned long) pid))); 
+ paba: postmaster:00005351:  ereport(WARNING, 
+ paba: postmaster:00005352:  (errmsg_internal("could not find child entry with pid %lu", 
+ paba: postmaster:00005353:  (unsigned long) pid))); 
  pabb: pgstatfuncs:00000748:  ereport(ERROR, 
  pabb: pgstatfuncs:00000749:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  pabb: pgstatfuncs:00000750:  (errmsg("only superuser can renice another user's session")))); 
@@ -11557,25 +11577,25 @@ select * from get_ereport order by 1;
  saae: smgr:00000988:  reln->smgr_rnode.dbNode, 
  saae: smgr:00000989:  reln->smgr_rnode.relNode, 
  saae: smgr:00000990:  xlrec->blkno))); 
- saaf: shmem:00000124:  ereport(ERROR, 
- saaf: shmem:00000125:  (errcode(ERRCODE_INTERNAL_ERROR), 
- saaf: shmem:00000126:  errmsg("invalid page size %d; must be a power of two and not an error", ShmemSystemPageSize))); 
- saaf: shmem:00000200:  ereport(WARNING, 
- saaf: shmem:00000201:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- saaf: shmem:00000202:  errmsg("out of shared memory"))); 
- saaf: shmem:00000369:  ereport(ERROR, 
- saaf: shmem:00000370:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- saaf: shmem:00000371:  errmsg("out of shared memory"))); 
- saaf: shmem:00000402:  ereport(WARNING, 
- saaf: shmem:00000403:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- saaf: shmem:00000404:  errmsg("could not allocate shared memory segment "%s"", 
- saaf: shmem:00000405:  name))); 
- saaf: shmem:00000430:  ereport(ERROR, 
- saaf: shmem:00000431:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- saaf: shmem:00000432:  errmsg("requested shared memory size overflows size_t"))); 
- saaf: shmem:00000449:  ereport(ERROR, 
- saaf: shmem:00000450:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- saaf: shmem:00000451:  errmsg("requested shared memory size overflows size_t"))); 
+ saaf: shmem:00000128:  ereport(ERROR, 
+ saaf: shmem:00000129:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ saaf: shmem:00000130:  errmsg("invalid page size %d; must be a power of two and not an error", ShmemSystemPageSize))); 
+ saaf: shmem:00000204:  ereport(WARNING, 
+ saaf: shmem:00000205:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ saaf: shmem:00000206:  errmsg("out of shared memory"))); 
+ saaf: shmem:00000373:  ereport(ERROR, 
+ saaf: shmem:00000374:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ saaf: shmem:00000375:  errmsg("out of shared memory"))); 
+ saaf: shmem:00000406:  ereport(WARNING, 
+ saaf: shmem:00000407:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ saaf: shmem:00000408:  errmsg("could not allocate shared memory segment "%s"", 
+ saaf: shmem:00000409:  name))); 
+ saaf: shmem:00000434:  ereport(ERROR, 
+ saaf: shmem:00000435:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ saaf: shmem:00000436:  errmsg("requested shared memory size overflows size_t"))); 
+ saaf: shmem:00000453:  ereport(ERROR, 
+ saaf: shmem:00000454:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ saaf: shmem:00000455:  errmsg("requested shared memory size overflows size_t"))); 
  saag: signal:00000085:  ereport(FATAL, 
  saag: signal:00000086:  (errmsg_internal("failed to create signal event: %d", (int) GetLastError()))); 
  saag: signal:00000091:  ereport(FATAL, 
@@ -15499,6 +15519,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15439 rows)
+(15459 rows)
 
 drop external table get_ereport;
