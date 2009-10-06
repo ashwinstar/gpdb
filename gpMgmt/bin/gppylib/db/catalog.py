@@ -113,11 +113,23 @@ def get_catalogtable_list(conn):
         if cursor:
             cursor.close()
 
-def get_usertable_list(conn):    
-    sql = """SELECT schemaname || '.' ||  tablename 
-             FROM pg_tables 
-             WHERE schemaname <> 'pg_catalog'
-          """
+def get_usertable_list(conn, include_external_tables=True):
+    if include_external_tables:    
+        sql = """SELECT schemaname || '.' ||  tablename 
+                 FROM pg_tables 
+                 WHERE schemaname <> 'pg_catalog'
+              """
+    else:
+        sql = """SELECT schemaname || '.' || tablename FROM
+                (SELECT 
+                    n.nspname AS schemaname, c.relname AS tablename, 
+                    pg_get_userbyid(c.relowner) AS tableowner, t.spcname AS "tablespace", 
+                    c.relhasindex AS hasindexes, c.relhasrules AS hasrules, c.reltriggers > 0 AS hastriggers
+                FROM pg_class c
+                    LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+                    LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
+                    WHERE c.relkind = 'r'::"char" AND c.relstorage <> 'x'::"char" AND n.nspname <> 'pg_catalog') foo;      
+        """
     return basicSQLExec(conn,sql)
 
 
