@@ -547,15 +547,18 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 						Assert(segfilestat->inuse);
 						usesegno = i;
 						segno_chosen = true;
-
+						aoentry->txns_using_rel--; /* same txn. re-adjust */
+						
 						if (Debug_appendonly_print_insert)
 							ereport(LOG, (errmsg("reusing segno %d for append-"
 									 "only relation "
 									 "%d. there are " INT64_FORMAT " tuples "
 									 "added to it from previous operations "
-									 "in this not yet committed txn",
+									 "in this not yet committed txn. decrementing"
+									 "txns_using_rel back to %d",
 									 usesegno, relid,
-									 (int64) segfilestat->tupsadded)));
+									 (int64) segfilestat->tupsadded,
+									 aoentry->txns_using_rel)));
 
 						break;
 					}

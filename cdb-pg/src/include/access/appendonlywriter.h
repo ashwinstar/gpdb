@@ -94,7 +94,7 @@ typedef struct AOSegfileStatus
 typedef struct AORelHashEntryData
 {
 	Oid				relid;
-	bool			txns_using_rel;
+	int				txns_using_rel;
 	AOSegfileStatus relsegfiles[MAX_AOREL_CONCURRENCY];
 	
 } AORelHashEntryData;
