@@ -409,7 +409,8 @@ text_int4(PG_FUNCTION_ARGS)
 Datum
 int4_bool(PG_FUNCTION_ARGS)
 {
-	if (PG_GETARG_INT32(0) == 0)
+	int32 arg = PG_GETARG_INT32(0);
+	if (arg == 0)
 		PG_RETURN_BOOL(false);
 	else
 		PG_RETURN_BOOL(true);
@@ -419,7 +420,8 @@ int4_bool(PG_FUNCTION_ARGS)
 Datum
 bool_int4(PG_FUNCTION_ARGS)
 {
-	if (PG_GETARG_BOOL(0) == false)
+	bool arg = PG_GETARG_BOOL(0);
+	if (arg == false)
 		PG_RETURN_INT32(0);
 	else
 		PG_RETURN_INT32(1);
@@ -1019,7 +1021,7 @@ int24div(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
 		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
-		PG_RETURN_NULL();
+		return (Datum)0;
 	}
 
 	/* No overflow is possible */
