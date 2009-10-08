@@ -1134,6 +1134,22 @@ initParseState(CopyState pstate, Relation relation,
 		}
 	}
 
+	/* Convert FORCE QUOTE name list to per-column flags, check validity */
+	pstate->force_quote_flags = (bool *) palloc0(tupDesc->natts * sizeof(bool));
+	if (pstate->force_quote)
+	{
+		List	   *attnums;
+		ListCell   *cur;
+
+		attnums = CopyGetAttnums(tupDesc, relation, pstate->force_quote);
+
+		foreach(cur, attnums)
+		{
+			int			attnum = lfirst_int(cur);
+			pstate->force_quote_flags[attnum - 1] = true;
+		}
+	}
+
 	/* finally take care of state that is WET or RET specific */
 	if(!iswritable)
 	{
@@ -1900,6 +1916,28 @@ static void parseFormatString(CopyState pstate, char *fmtstr)
 						if (!token || token[0] != ',')
 							break;
 					}
+				}
+				else if (pg_strcasecmp(token, "quote") == 0)
+				{
+					fetch_next = false;
+					for (;;)
+					{
+						Value *val;
+
+						token = strtokx2(NULL, whitespace, ",", "\"",
+										0, false, false, encoding);
+						if (!token || strchr(",", token[0]))
+							goto error;
+
+						val = makeString((char *)pstrdup(token));
+						pstate->force_quote = lappend(pstate->force_quote, val);
+
+						/* consume the comma if any */
+						token = strtokx2(NULL, whitespace, ",", "\"",
+										0, false, false, encoding);
+						if (!token || token[0] != ',')
+							break;
+					}					
 				}
 				else
 					goto error;

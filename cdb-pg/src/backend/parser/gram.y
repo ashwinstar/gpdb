@@ -4352,6 +4352,10 @@ format_opt_item:
 			{
 				$$ = makeDefElem("force_notnull", (Node *)$4);
 			}
+			| FORCE QUOTE columnList
+			{
+				$$ = makeDefElem("force_quote", (Node *)$3);
+			}
 			| FILL MISSING FIELDS
 			{
 				$$ = makeDefElem("fill_missing_fields", (Node *)makeInteger(TRUE));
