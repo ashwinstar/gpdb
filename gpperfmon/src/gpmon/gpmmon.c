@@ -36,6 +36,7 @@ struct
 	int argc;
 	const char* const *argv;
 	const char* pname;
+	char* gpdb_port;
 	char* conf_file;
 	char* log_dir;
 	apr_uint64_t max_log_size;
@@ -80,6 +81,7 @@ static struct
 	agg_t* agg;
 
 	int exit; /* TRUE if we need to exit */
+	int reload;
 	unsigned int gpmon_tick;
 } ax = { 0 };
 
@@ -180,22 +182,13 @@ static void cleanup()
  */
 static void SIGHUP_handler(int sig)
 {
-	/* Check if perfmon is enabled.  If not, exit */
-	if (!gpdb_gpperfmon_enabled())
-	{
-		TR0(("Monitoring has been disabled, exiting..."));
-		ax.exit = 1;
-		return;
-	}
-
-	/* Reload configuration values from conf file */
-	read_conf_file(opt.conf_file);
+	/* Flag to reload configuration values from conf file */
+	ax.reload = 1;
 }
 
 static void SIGTERM_handler(int sig)
 {
-	sigprocmask(SIG_SETMASK, &blocksig, NULL);
-	exit(0);
+	ax.exit = 1;
 }
 
 static void SIGQUIT_handler(int sig)
@@ -379,6 +372,19 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 		{
 			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
 					"event_dispatch failed");
+		}
+		if (ax.reload == 1)
+		{
+			ax.reload = 0;
+			/* Check if perfmon is enabled.  If not, exit */
+			if (!gpdb_gpperfmon_enabled())
+			{
+				TR0(("Monitoring has been disabled, exiting..."));
+				ax.exit = 1;
+				continue;
+			}
+			else
+				read_conf_file(opt.conf_file);
 		}
 	}
 	return 0;
@@ -881,6 +887,7 @@ static void parse_command_line(int argc, const char* const argv[])
 		{
 		{ NULL, '?', 0, "Print help screen" },
 		{ NULL, 'D', 1, "Configuration file" },
+		{ NULL, 'p', 1, "GPDB port"},
 		{ "version", 'V', 0, "Print version number" },
 		{ NULL, 0, 0, NULL } };
 
@@ -914,6 +921,9 @@ static void parse_command_line(int argc, const char* const argv[])
 		case 'D':
 			opt.conf_file = strdup(arg);
 			break;
+		case 'p':
+			opt.gpdb_port = strdup(arg);
+			break;
 		case 'V':
 			print_version();
 			break;
@@ -944,6 +954,10 @@ int main(int argc, const char* const argv[])
 	}
 
 	parse_command_line(argc, argv);
+
+	/* Set env if we got a port.  This will be picked up by libpq */
+	if (opt.gpdb_port)
+		setenv("PGPORT", opt.gpdb_port, 1);
 
 	sigemptyset(&unblocksig);
 	sigfillset(&blocksig);

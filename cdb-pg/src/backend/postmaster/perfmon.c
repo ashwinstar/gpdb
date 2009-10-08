@@ -97,6 +97,7 @@ PerfmonMain(int argc, char *argv[])
 	char		gpmmon_bin[MAXPGPATH] = {'\0'};
 	char		gpmmon_cfg_file[MAXPGPATH] = {'\0'};
 	char	   *av[10] = {NULL};
+	char		port[6] = {'\0'};
 	int			ac = 0;
 	int			ret = 0;
 
@@ -118,9 +119,13 @@ PerfmonMain(int argc, char *argv[])
 	snprintf(gpmmon_cfg_file, MAXPGPATH, "%s/gpperfmon/conf/gpperfmon.conf",
 				data_directory);
 
+	snprintf(port, 6, "%d", PostPortNumber);
+
 	av[ac++] = gpmmon_bin;
 	av[ac++] = "-D";
 	av[ac++] = gpmmon_cfg_file;
+	av[ac++] = "-p";
+	av[ac++] = port;
 	av[ac] = NULL;
 
 	Assert(ac < lengthof(av));
