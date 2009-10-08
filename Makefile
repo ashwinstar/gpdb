@@ -929,6 +929,7 @@ mgmtcopy :
 	echo "`date` -- INFO: Removing $(INSTLOC)/bin/gpexpandsystem"
 	rm -f $(INSTLOC)/bin/gpexpandsystem
 	rm -rf $(INSTLOC)/bin/gppylib
+	rm -f $(INSTLOC)/bin/lib/gpsnap.py
 
 pkgplr:
 	@if [ ! -z "$(PLRDIR)" ]; then \
