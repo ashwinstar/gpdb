@@ -14,6 +14,13 @@
 -- m/ERROR\:\s+external table .* command ended with .*No such file.*/i
 -- s/cat\: (cannot open)? nosuchfile\.txt/cat\: nosuchfile\.txt/
 --
+-- # remove line number - redhat
+-- m/ERROR\:\s+external table .* command ended with .*NOT FOUND.*/i
+-- s/\s+line \d+\://
+-- # remove cannot open - solaris
+-- m/ERROR\:\s+external table .* command ended with .*cat\: cannot open.*/i
+-- s/cat\: cannot open (.*)$/cat\: $1\: NO SUCH FILE/
+--
 -- end_matchsubs
 CREATE TABLE REG_REGION (R_REGIONKEY INT, R_NAME CHAR(25), R_COMMENT VARCHAR(152)) DISTRIBUTED BY (R_REGIONKEY);
 
