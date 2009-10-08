@@ -19,6 +19,7 @@
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "tcop/dest.h"
+#include "gpmon/gpmon.h"
 
 struct CdbExplain_ShowStatCtx;  /* private, in "cdb/cdbexplain.c" */
 struct EState;                  /* #include "nodes/execnodes.h" */
@@ -62,6 +63,8 @@ typedef struct QueryDesc
     /* CDB: EXPLAIN ANALYZE statistics */
     struct CdbExplain_ShowStatCtx  *showstatctx;
 
+	/* Gpmon */
+	gpmon_packet_t *gpmon_pkt;
 } QueryDesc;
 
 /* in pquery.c */

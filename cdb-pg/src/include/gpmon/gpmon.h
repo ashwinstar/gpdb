@@ -31,12 +31,14 @@ typedef struct gpmon_metrics_t gpmon_metrics_t;
 /* ------------------------------------------------------------------
          INTERFACE
    ------------------------------------------------------------------ */
-extern void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
-						 const char* type, /* "qtext", "qplan" */
-						 const char* content /* the query text or plan */
-						 );
-extern void gpmon_record_update(apr_int32_t tmid, apr_int32_t ssid,
-								apr_int32_t ccnt, apr_int32_t status);
+
+extern void gpmon_qlog_packet_init(gpmon_packet_t *gpmonPacket);
+extern void gpmon_qlog_query_submit(gpmon_packet_t *gpmonPacket);
+extern void gpmon_qlog_query_text(const gpmon_packet_t *gpmonPacket, const char *queryText);
+extern void gpmon_qlog_query_start(gpmon_packet_t *gpmonPacket);
+extern void gpmon_qlog_query_end(gpmon_packet_t *gpmonPacket);
+extern void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket);
+
 
 extern void gpmon_send(gpmon_packet_t*);
 

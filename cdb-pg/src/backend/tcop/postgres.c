@@ -1395,7 +1395,6 @@ exec_simple_query(const char *query_string)
 	bool		save_log_statement_stats = log_statement_stats;
 	bool		was_logged = false;
 	char		msec_str[32];
-	apr_int32_t	tmid = 0;
 	/*
 	 * Report query to various monitoring facilities.
 	 */
@@ -1449,13 +1448,6 @@ exec_simple_query(const char *query_string)
 	/* Disable statement logging during mapreduce */
 	if (!gp_mapreduce_define)
 	{
-		if(gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
-		{
-			gpmon_gettmid(&tmid);
-			gpmon_record(tmid, gp_session_id, gp_command_count, 
-						 "qtext", query_string);
-		}
-
 		/* Log immediately if dictated by log_statement */
 		if (check_log_statement_raw(parsetree_list))
 		{
@@ -1728,7 +1720,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
 	NodeTag		sourceTag = T_Query;
-	apr_int32_t tmid = 0;
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -1800,13 +1791,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	 * we are in aborted transaction state!)
 	 */
 	parsetree_list = pg_parse_query(query_string);
-
-	if(gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
-	{
-		gpmon_gettmid(&tmid);
-		gpmon_record(tmid, gp_session_id, gp_command_count, 
-					 "qtext", query_string);
-	}
 	
 	/*
 	 * We only allow a single user statement in a prepared statement. This is
@@ -2393,7 +2377,6 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	bool		execute_is_fetch = false;
 	bool		was_logged = false;
 	char		msec_str[32];
-	apr_int32_t tmid = 0;
 
 	/* Adjust destination to tell printtup.c what to do */
 	dest = whereToSendOutput;
@@ -2454,13 +2437,6 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	 */
 	debug_query_string = sourceText ? sourceText : "<EXECUTE>";
 		
-	if(gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
-	{
-		gpmon_gettmid(&tmid);
-		gpmon_record(tmid, gp_session_id, gp_command_count, 
-					 "qtext", debug_query_string);
-	}
-
 	pgstat_report_activity(debug_query_string);
 
 	set_ps_display(portal->commandTag, false);
@@ -5088,11 +5064,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 				break;
 			case 'Q':			/* simple query */
 				{
-					const char *query_string;
-
-                    if (Gp_role != GP_ROLE_EXECUTE)
-                        gp_command_count++;
-                    
+					const char *query_string = NULL;                    
  
                     elog(DEBUG1, "Message type %c received by from libpq, len = %d", firstchar, input_message.len); /* TODO: Remove this */
 
@@ -5360,9 +5332,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 					int			numParams;
 					Oid		   *paramTypes = NULL;
 
-                    if (Gp_role != GP_ROLE_EXECUTE)
-                        gp_command_count++;
-
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
 
@@ -5398,9 +5367,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 				/* Set statement_timestamp() */
 				SetCurrentStatementStartTimestamp();
 
-                if (Gp_role != GP_ROLE_EXECUTE)
-                    gp_command_count++;
-
                 setupRegularDtxContext();
                 
 				/*
@@ -5414,9 +5380,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 				{
 					const char *portal_name;
 					int64			max_rows;
-
-                    if (Gp_role != GP_ROLE_EXECUTE)
-                        gp_command_count++;
 
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
@@ -5436,8 +5399,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 				break;
 
 			case 'F':			/* fastpath function call */
-                if (Gp_role != GP_ROLE_EXECUTE)
-                    gp_command_count++;
                     
                 /* Set statement_timestamp() */
  				SetCurrentStatementStartTimestamp();

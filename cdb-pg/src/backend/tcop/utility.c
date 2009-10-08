@@ -478,6 +478,9 @@ ProcessUtility(Node *parsetree,
 			   char *completionTag)
 {
 	check_xact_readonly(parsetree);
+	
+    if (Gp_role != GP_ROLE_EXECUTE)
+        gp_command_count++;
 
 	if (completionTag)
 		completionTag[0] = '\0';

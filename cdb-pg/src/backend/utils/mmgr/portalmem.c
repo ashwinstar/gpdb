@@ -257,44 +257,8 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	/* put portal in table (sets portal->name) */
 	PortalHashTableInsert(portal, name);
 
-	/* Setup gpmon */
+	/* Setup gpmon. Siva - should this be moved elsewhere? */
 	gpmon_init();
-
-	memset(&portal->gpmon_pkt, 0, sizeof(portal->gpmon_pkt));
-
-	portal->gpmon_pkt.magic = GPMON_MAGIC;
-	portal->gpmon_pkt.version = GPMON_PACKET_VERSION;
-	portal->gpmon_pkt.pkttype = GPMON_PKTTYPE_QLOG;
-
-	/* XXX: Need to setup the following fields of the gpmon_pkt.  
-	 * These info should be ready here.  Need to verify.
-	 * Some of them like UserId, DbId should have a better way to display.
-	 */
-
-	/* Gid */
-	gpmon_gettmid(&portal->gpmon_pkt.u.qlog.key.tmid);
-    	portal->gpmon_pkt.u.qlog.key.ssid = gp_session_id;
-
-	/* Command id is not setup yet */
-	if(gp_enable_gpperfmon)
-	{
-		const char *username;
-		char *dbname;
-
-		username = show_session_authorization();
-
-		/* User Id.  We use session authorization (so to make sense with session id) */
-		snprintf(portal->gpmon_pkt.u.qlog.user, sizeof(portal->gpmon_pkt.u.qlog.user), "%s",
-				username ? username : ""
-				);
-
-		/* DB Id */
-		dbname = get_database_name(MyDatabaseId);
-
-		snprintf(portal->gpmon_pkt.u.qlog.db, sizeof(portal->gpmon_pkt.u.qlog.db), "%s", dbname ? dbname : ""); 
-		if(dbname)
-			pfree(dbname);
-	}
 
 	/* End Gpmon */
 
@@ -1099,69 +1063,8 @@ CdbShutdownPortals(void)
 	}
 }
 
-#define GPM_INVALID GPMON_QLOG_STATUS_INVALID
-#define GPM_SILENT  GPMON_QLOG_STATUS_SILENT
-#define GPM_SUBMIT  GPMON_QLOG_STATUS_SUBMIT
-#define GPM_START   GPMON_QLOG_STATUS_START
-#define GPM_DONE    GPMON_QLOG_STATUS_DONE
-#define GPM_ERROR   GPMON_QLOG_STATUS_ERROR
-
-static apr_int32_t gpmon_portal_status_change [PORTAL_STATUSMAX][PORTAL_STATUSMAX] = 
-{
-        /*                 NEW,       READY,       QUEUE,        ACTIVE,         DONE,         FAILED     */
-        /* -----------------------------------------------------------------------------------------------*/
-        /* NEW */   { GPM_SILENT,    GPM_SILENT,   GPM_SUBMIT,   GPM_START ,   GPM_INVALID,   GPM_ERROR},            
-        /* READY */ { GPM_INVALID,   GPM_SILENT,   GPM_SUBMIT,   GPM_START,    GPM_INVALID,   GPM_ERROR},            
-        /* QUEUE */ { GPM_INVALID,   GPM_SILENT,   GPM_SILENT,   GPM_START,    GPM_DONE,   	  GPM_ERROR},            
-        /* ACTIVE */{ GPM_INVALID,   GPM_DONE,     GPM_SUBMIT,   GPM_SILENT,   GPM_DONE,      GPM_ERROR},            
-        /* DONE */  { GPM_INVALID,   GPM_SILENT,   GPM_INVALID,  GPM_INVALID,  GPM_SILENT,    GPM_INVALID},
-        /* FAILED */{ GPM_INVALID,   GPM_SILENT,   GPM_INVALID,  GPM_INVALID,  GPM_INVALID,   GPM_SILENT}
-};
-
 void PortalSetStatus(Portal p, PortalStatus s)
 {
-	apr_int32_t gpmon_qlog_status;
-
-	if (p->portal_status >= 0 && p->portal_status < PORTAL_STATUSMAX)
-		gpmon_qlog_status = gpmon_portal_status_change[p->portal_status][s];
-	else
-		gpmon_qlog_status = GPM_ERROR;
-
-	Assert(gpmon_qlog_status >= GPMON_QLOG_STATUS_SILENT && gpmon_qlog_status <= GPMON_QLOG_STATUS_ERROR);
-
-	if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH && gpmon_qlog_status != GPMON_QLOG_STATUS_SILENT)
-	{
-		if (gpmon_qlog_status == GPMON_QLOG_STATUS_SUBMIT ||
-			gpmon_qlog_status == GPMON_QLOG_STATUS_START ||
-			gpmon_qlog_status == GPMON_QLOG_STATUS_DONE ||
-			gpmon_qlog_status == GPMON_QLOG_STATUS_ERROR)
-		{
-			struct timeval tv;
-			gettimeofday(&tv, 0);
-
-			if (gpmon_qlog_status == GPMON_QLOG_STATUS_SUBMIT)
-				p->gpmon_pkt.u.qlog.tsubmit = tv.tv_sec;
-			else if (gpmon_qlog_status == GPMON_QLOG_STATUS_START)
-			{
-				if (p->gpmon_pkt.u.qlog.tsubmit == 0)
-					p->gpmon_pkt.u.qlog.tsubmit = tv.tv_sec;
-				/* check needed for subqueries so start time isn't overwritten */
-				if(p->gpmon_pkt.u.qlog.tstart == 0)
-					p->gpmon_pkt.u.qlog.tstart = tv.tv_sec;
-			}
-			else
-				p->gpmon_pkt.u.qlog.tfin = tv.tv_sec;
-		}
-
-		p->gpmon_pkt.u.qlog.key.ccnt = gp_command_count;
-		p->gpmon_pkt.u.qlog.status = gpmon_qlog_status;
-		gpmon_record_update(p->gpmon_pkt.u.qlog.key.tmid,
-							p->gpmon_pkt.u.qlog.key.ssid,
-							p->gpmon_pkt.u.qlog.key.ccnt,
-							gpmon_qlog_status);
-        gpmon_send(&p->gpmon_pkt);
-	}
-
 	p->portal_status = s;
 }
 

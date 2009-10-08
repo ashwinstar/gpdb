@@ -50,7 +50,7 @@
 #include "utils/resowner.h"
 #include "utils/timestamp.h"
 
-#include "gpmon/gpmon.h"
+
 
 struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
 
@@ -201,8 +201,6 @@ typedef struct PortalData
 	/* DispatchAgents are per Portal */
 	struct DispatchAgentSet * dispatchagents;
 
-	/* Gpmon */
-	gpmon_packet_t gpmon_pkt;
 } PortalData;
 
 extern PortalStatus PortalGetStatus(PortalData *p);

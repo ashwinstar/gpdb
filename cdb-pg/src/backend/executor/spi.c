@@ -2868,6 +2868,13 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
 											crosscheck_snapshot,
 											dest,
 											paramLI, false);
+
+					if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
+					{			
+						Assert(plan->query);
+						gpmon_qlog_query_text(qdesc->gpmon_pkt, plan->query);
+					}
+
 					res = _SPI_pquery(qdesc, fire_triggers,
 									  queryTree->canSetTag ? tcount : 0);
 					FreeQueryDesc(qdesc);

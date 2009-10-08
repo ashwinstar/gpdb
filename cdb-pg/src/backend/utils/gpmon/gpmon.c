@@ -20,6 +20,18 @@
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 
+/* Extern stuff */
+extern const char * show_session_authorization(void);
+extern char *get_database_name(Oid dbid);
+
+static void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
+						 const char* type, /* "qtext", "qplan" */
+						 const char* content /* the query text or plan */
+						 );
+static void gpmon_record_update(apr_int32_t tmid, apr_int32_t ssid,
+								apr_int32_t ccnt, apr_int32_t status);
+
+
 struct  {
     int    gxsock;
 	pid_t  pid;
@@ -90,7 +102,7 @@ void gpmon_init(void)
 	gpmon.pid = pid;
 }
 
-void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
+static void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
 				  const char* type,
 				  const char* content)
 {
@@ -164,3 +176,151 @@ void gpmon_send(gpmon_packet_t* p)
 		}
 	}
 }
+
+#define GPMON_QLOG_PACKET_ASSERTS(gpmonPacket) \
+		Assert(gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH); \
+		Assert(gpmonPacket); \
+		Assert(gpmonPacket->magic == GPMON_MAGIC); \
+		Assert(gpmonPacket->version == GPMON_PACKET_VERSION); \
+		Assert(gpmonPacket->pkttype == GPMON_PKTTYPE_QLOG)
+
+/**
+ * To be used when gpmon packet has not been inited already.
+ */
+void gpmon_qlog_packet_init(gpmon_packet_t *gpmonPacket)
+{
+	const char *username = NULL;
+	char *dbname = NULL;
+
+	Assert(gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH);
+	Assert(gpmonPacket);
+	Assert(gpmonPacket->magic != GPMON_MAGIC);
+	
+	gpmonPacket->magic = GPMON_MAGIC;
+	gpmonPacket->version = GPMON_PACKET_VERSION;
+	gpmonPacket->pkttype = GPMON_PKTTYPE_QLOG;
+
+	gpmon_gettmid(&gpmonPacket->u.qlog.key.tmid);
+	gpmonPacket->u.qlog.key.ssid = gp_session_id;
+
+	username = show_session_authorization(); /* does not have to be freed */
+	/* User Id.  We use session authorization (so to make sense with session id) */
+	snprintf(gpmonPacket->u.qlog.user, sizeof(gpmonPacket->u.qlog.user), "%s",
+			username ? username : "");
+
+	/* DB Id */
+	dbname = get_database_name(MyDatabaseId); /* needs to be freed */
+	snprintf(gpmonPacket->u.qlog.db, sizeof(gpmonPacket->u.qlog.db), "%s", dbname ? dbname : ""); 
+	if(dbname)
+	{
+		pfree(dbname);
+		dbname = NULL;
+	}
+
+	/* Fix up command count */
+	gpmonPacket->u.qlog.key.ccnt = gp_command_count;
+}
+
+/**
+ * Call this method when query is submitted.
+ */
+void gpmon_qlog_query_submit(gpmon_packet_t *gpmonPacket)
+{
+	struct timeval tv;
+
+	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+
+	gettimeofday(&tv, 0);
+	
+	gpmonPacket->u.qlog.status = GPMON_QLOG_STATUS_SUBMIT;
+	gpmonPacket->u.qlog.tsubmit = tv.tv_sec;
+	
+	gpmon_record_update(gpmonPacket->u.qlog.key.tmid,
+			gpmonPacket->u.qlog.key.ssid,
+			gpmonPacket->u.qlog.key.ccnt,
+			gpmonPacket->u.qlog.status);
+	
+	gpmon_send(gpmonPacket);
+}
+
+/**
+ * Call this method to let gpmon know the query text.
+ */
+void gpmon_qlog_query_text(const gpmon_packet_t *gpmonPacket, const char *queryText)
+{
+	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+
+	gpmon_record(gpmonPacket->u.qlog.key.tmid,
+			gpmonPacket->u.qlog.key.ssid,
+			gpmonPacket->u.qlog.key.ccnt,
+			"qtext", queryText);
+}
+
+/**
+ * Call this method when query starts executing.
+ */
+void gpmon_qlog_query_start(gpmon_packet_t *gpmonPacket)
+{
+	struct timeval tv;
+
+	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+
+	gettimeofday(&tv, 0);
+	
+	gpmonPacket->u.qlog.status = GPMON_QLOG_STATUS_START;
+	gpmonPacket->u.qlog.tstart = tv.tv_sec;
+	
+	gpmon_record_update(gpmonPacket->u.qlog.key.tmid,
+			gpmonPacket->u.qlog.key.ssid,
+			gpmonPacket->u.qlog.key.ccnt,
+			gpmonPacket->u.qlog.status);
+	
+	gpmon_send(gpmonPacket);
+}
+
+/**
+ * Call this method when query finishes executing.
+ */
+void gpmon_qlog_query_end(gpmon_packet_t *gpmonPacket)
+{
+	struct timeval tv;
+
+	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	Assert(gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_START);
+	gettimeofday(&tv, 0);
+	
+	gpmonPacket->u.qlog.status = GPMON_QLOG_STATUS_DONE;
+	gpmonPacket->u.qlog.tfin = tv.tv_sec;
+	
+	gpmon_record_update(gpmonPacket->u.qlog.key.tmid,
+			gpmonPacket->u.qlog.key.ssid,
+			gpmonPacket->u.qlog.key.ccnt,
+			gpmonPacket->u.qlog.status);
+	
+	gpmon_send(gpmonPacket);
+}
+
+/**
+ * Call this method when query errored out.
+ */
+void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket)
+{
+	struct timeval tv;
+
+	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	Assert(gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_START);
+
+	gettimeofday(&tv, 0);
+	
+	gpmonPacket->u.qlog.status = GPMON_QLOG_STATUS_ERROR;
+	gpmonPacket->u.qlog.tfin = tv.tv_sec;
+	
+	gpmon_record_update(gpmonPacket->u.qlog.key.tmid,
+			gpmonPacket->u.qlog.key.ssid,
+			gpmonPacket->u.qlog.key.ccnt,
+			gpmonPacket->u.qlog.status);
+	
+	gpmon_send(gpmonPacket);
+}
+
+

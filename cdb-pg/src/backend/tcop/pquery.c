@@ -39,6 +39,8 @@
 #include "utils/acl.h"
 #include "catalog/catalog.h"
 #include "postmaster/autovacuum.h"
+
+
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
  * if there are several).
@@ -104,6 +106,17 @@ CreateQueryDesc(Query *parsetree,
 	
 	qd->cursor_query = false; /* default value */
 	qd->portal_name = NULL;
+
+	qd->gpmon_pkt = NULL;
+	
+    if (Gp_role != GP_ROLE_EXECUTE)
+        gp_command_count++;
+	
+	if(gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
+	{
+		qd->gpmon_pkt = (gpmon_packet_t *) palloc0(sizeof(gpmon_packet_t));
+		gpmon_qlog_packet_init(qd->gpmon_pkt);
+	}
 
 	return qd;
 }
@@ -175,6 +188,13 @@ ProcessQuery(Portal portal,
 		queryDesc = CreateQueryDesc(parsetree, plan,
 									ActiveSnapshot, InvalidSnapshot,
 									dest, params, false);
+
+	if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
+	{			
+		Assert(portal->sourceText);
+		gpmon_qlog_query_submit(queryDesc->gpmon_pkt);
+		gpmon_qlog_query_text(queryDesc->gpmon_pkt, portal->sourceText);
+	}
 
 	/*
 	 * If resource scheduling is enabled and we are locking non SELECT queries,
@@ -604,6 +624,13 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 											params,
 											false);
 				
+				if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
+				{			
+					Assert(portal->sourceText);
+					gpmon_qlog_query_submit(queryDesc->gpmon_pkt);
+					gpmon_qlog_query_text(queryDesc->gpmon_pkt, portal->sourceText);
+				}
+
 				/* 
 				 * let queryDesc know that it is servicing a cursor so that
 				 * it could do the right cleanup in ExecutorEnd.
