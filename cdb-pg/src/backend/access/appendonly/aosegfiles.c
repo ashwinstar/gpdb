@@ -164,6 +164,7 @@ GetFileSegInfo(Relation parentrel, int segno, SegfileLockStrategy lockstrategy)
 	TupleDesc		pg_aoseg_dsc;
 	HeapTuple		tuple;
 	HeapTupleData 	tupdata;
+	HeapTupleData   old_tupdata;
 	ScanKeyData		key;
 	IndexScanDesc	aoscan;
 	Datum			eof, eof_uncompressed, tupcount, varbcount;
@@ -234,6 +235,13 @@ GetFileSegInfo(Relation parentrel, int segno, SegfileLockStrategy lockstrategy)
 			return NULL;
 		}
 	}
+
+	/* Close the index */
+	old_tupdata = *tuple;
+	tuple = &old_tupdata;
+
+	index_endscan(aoscan);
+	index_close(pg_aoseg_idx, lockmode);
 
 	if(forupdate)
 		LWLockRelease(AppendOnlyLock);
@@ -328,8 +336,6 @@ lmark:	;
 				 * LockTupleIfNotLocked waittype) then just quit and return NULL
 				 */
 				Assert(waittype = LockTupleIfNotLocked);
-				index_endscan(aoscan);
-				index_close(pg_aoseg_idx, lockmode);
 				heap_close(pg_aoseg_rel, lockmode);
 				return NULL;
 			default:
@@ -393,8 +399,6 @@ lmark:	;
 						(int64)fsinfo->eof, NameStr(parentrel->rd_rel->relname))));
 
 	/* Finish up scan and close appendonly catalog. */
-	index_endscan(aoscan);
-	index_close(pg_aoseg_idx, lockmode);
 	heap_close(pg_aoseg_rel, lockmode);
 
 	return fsinfo;

@@ -86,6 +86,7 @@ static AOCSFileSegInfo *GetAOCSFileSegInfo(Relation prel, int32 segno, SegfileLo
     HeapTuple segtup;
     HeapTuple needfree = NULL;
     HeapTupleData segtupdata;
+	HeapTupleData old_segtupdata;
 
     AOCSFileSegInfo *seginfo;
     Datum *d;
@@ -131,6 +132,13 @@ static AOCSFileSegInfo *GetAOCSFileSegInfo(Relation prel, int32 segno, SegfileLo
         else
             return NULL;
     }
+
+	/* Close the index */
+	old_segtupdata = *segtup;
+	segtup = &old_segtupdata;
+	
+	index_endscan(scan);
+	index_close(segidx, lkmode);
 
     if(forupdate)
     {
@@ -210,8 +218,6 @@ lmark:
                  * LockTupleIfNotLocked waittype) then just quit and return NULL
                  */
                 Assert(waittype = LockTupleIfNotLocked);
-                index_endscan(scan);
-                index_close(segidx, lkmode);
                 heap_close(segrel, lkmode);
                 return NULL;
 
@@ -257,8 +263,6 @@ lmark:
        pfree(needfree);
      */
 
-    index_endscan(scan);
-    index_close(segidx, lkmode);
     heap_close(segrel, lkmode);
 
     return seginfo;
