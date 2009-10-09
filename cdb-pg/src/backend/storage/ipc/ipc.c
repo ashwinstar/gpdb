@@ -8,12 +8,12 @@
  * exit-time cleanup for either a postmaster or a backend.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/ipc/ipc.c,v 1.94 2006/07/14 05:28:28 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/ipc/ipc.c,v 1.105 2009/06/11 14:49:01 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,8 +21,12 @@
 
 #include <signal.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "miscadmin.h"
+#ifdef PROFILE_PID_DIR
+#include "postmaster/autovacuum.h"
+#endif
 #include "storage/ipc.h"
 
 
@@ -32,6 +36,15 @@
  * of the exit procedure.  We do NOT want to go back to the idle loop...
  */
 bool		proc_exit_inprogress = false;
+
+/*
+ * This flag tracks whether we've called atexit(2) in the current process
+ * (or in the parent postmaster).
+ */
+static bool atexit_callback_setup = false;
+
+/* local functions */
+static void proc_exit_prepare(int code);
 
 
 /* ----------------------------------------------------------------
@@ -65,12 +78,71 @@ static int	on_proc_exit_index,
  *
  *		this function calls all the callbacks registered
  *		for it (to free resources) and then calls exit.
+ *
  *		This should be the only function to call exit().
  *		-cim 2/6/90
+ *
+ *		Unfortunately, we can't really guarantee that add-on code
+ *		obeys the rule of not calling exit() directly.	So, while
+ *		this is the preferred way out of the system, we also register
+ *		an atexit callback that will make sure cleanup happens.
  * ----------------------------------------------------------------
  */
 void
 proc_exit(int code)
+{
+	/* Clean up everything that must be cleaned up */
+	proc_exit_prepare(code);
+
+#ifdef PROFILE_PID_DIR
+	{
+		/*
+		 * If we are profiling ourself then gprof's mcleanup() is about to
+		 * write out a profile to ./gmon.out.  Since mcleanup() always uses a
+		 * fixed file name, each backend will overwrite earlier profiles. To
+		 * fix that, we create a separate subdirectory for each backend
+		 * (./gprof/pid) and 'cd' to that subdirectory before we exit() - that
+		 * forces mcleanup() to write each profile into its own directory.	We
+		 * end up with something like: $PGDATA/gprof/8829/gmon.out
+		 * $PGDATA/gprof/8845/gmon.out ...
+		 *
+		 * To avoid undesirable disk space bloat, autovacuum workers are
+		 * discriminated against: all their gmon.out files go into the same
+		 * subdirectory.  Without this, an installation that is "just sitting
+		 * there" nonetheless eats megabytes of disk space every few seconds.
+		 *
+		 * Note that we do this here instead of in an on_proc_exit() callback
+		 * because we want to ensure that this code executes last - we don't
+		 * want to interfere with any other on_proc_exit() callback.  For the
+		 * same reason, we do not include it in proc_exit_prepare ... so if
+		 * you are exiting in the "wrong way" you won't drop your profile in a
+		 * nice place.
+		 */
+		char		gprofDirName[32];
+
+		if (IsAutoVacuumWorkerProcess())
+			snprintf(gprofDirName, 32, "gprof/avworker");
+		else
+			snprintf(gprofDirName, 32, "gprof/%d", (int) getpid());
+
+		mkdir("gprof", 0777);
+		mkdir(gprofDirName, 0777);
+		chdir(gprofDirName);
+	}
+#endif
+
+	elog(DEBUG3, "exit(%d)", code);
+
+	exit(code);
+}
+
+/*
+ * Code shared between proc_exit and the atexit handler.  Note that in
+ * normal exit through proc_exit, this will actually be called twice ...
+ * but the second call will have nothing to do.
+ */
+static void
+proc_exit_prepare(int code)
 {
 	/*
 	 * Once we set this flag, we are committed to exit.  Any ereport() will
@@ -91,13 +163,14 @@ proc_exit(int code)
 	InterruptHoldoffCount = 1;
 	CritSectionCount = 0;
 
-	elog(DEBUG3, "proc_exit(%d)", code);
-
 	/* do our shared memory exits first */
 	shmem_exit(code);
 
+	elog(DEBUG3, "proc_exit(%d): %d callbacks to make",
+		 code, on_proc_exit_index);
+
 	/*
-	 * call all the callbacks registered before calling exit().
+	 * call all the registered callbacks.
 	 *
 	 * Note that since we decrement on_proc_exit_index each time, if a
 	 * callback calls ereport(ERROR) or ereport(FATAL) then it won't be
@@ -109,8 +182,7 @@ proc_exit(int code)
 		(*on_proc_exit_list[on_proc_exit_index].function) (code,
 								  on_proc_exit_list[on_proc_exit_index].arg);
 
-	elog(DEBUG3, "exit(%d)", code);
-	exit(code);
+	on_proc_exit_index = 0;
 }
 
 /* ------------------
@@ -122,7 +194,8 @@ proc_exit(int code)
 void
 shmem_exit(int code)
 {
-	elog(DEBUG3, "shmem_exit(%d)", code);
+	elog(DEBUG3, "shmem_exit(%d): %d callbacks to make",
+		 code, on_shmem_exit_index);
 
 	/*
 	 * call all the registered callbacks.
@@ -136,6 +209,35 @@ shmem_exit(int code)
 
 	on_shmem_exit_index = 0;
 }
+
+/* ----------------------------------------------------------------
+ *		atexit_callback
+ *
+ *		Backstop to ensure that direct calls of exit() don't mess us up.
+ *
+ * Somebody who was being really uncooperative could call _exit(),
+ * but for that case we have a "dead man switch" that will make the
+ * postmaster treat it as a crash --- see pmsignal.c.
+ * ----------------------------------------------------------------
+ */
+#ifdef HAVE_ATEXIT
+
+static void
+atexit_callback(void)
+{
+	/* Clean up everything that must be cleaned up */
+	/* ... too bad we don't know the real exit code ... */
+	proc_exit_prepare(-1);
+}
+#else							/* assume we have on_exit instead */
+
+static void
+atexit_callback(int exitstatus, void *arg)
+{
+	/* Clean up everything that must be cleaned up */
+	proc_exit_prepare(exitstatus);
+}
+#endif   /* HAVE_ATEXIT */
 
 /* ----------------------------------------------------------------
  *		on_proc_exit
@@ -156,6 +258,16 @@ on_proc_exit(pg_on_exit_callback function, Datum arg)
 	on_proc_exit_list[on_proc_exit_index].arg = arg;
 
 	++on_proc_exit_index;
+
+	if (!atexit_callback_setup)
+	{
+#ifdef HAVE_ATEXIT
+		atexit(atexit_callback);
+#else
+		on_exit(atexit_callback, NULL);
+#endif
+		atexit_callback_setup = true;
+	}
 }
 
 /* ----------------------------------------------------------------
@@ -177,6 +289,16 @@ on_shmem_exit(pg_on_exit_callback function, Datum arg)
 	on_shmem_exit_list[on_shmem_exit_index].arg = arg;
 
 	++on_shmem_exit_index;
+
+	if (!atexit_callback_setup)
+	{
+#ifdef HAVE_ATEXIT
+		atexit(atexit_callback);
+#else
+		on_exit(atexit_callback, NULL);
+#endif
+		atexit_callback_setup = true;
+	}
 }
 
 /* ----------------------------------------------------------------
