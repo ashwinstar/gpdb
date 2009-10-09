@@ -26,6 +26,7 @@
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "postmaster/autovacuum.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
@@ -43,6 +44,8 @@
 #include "cdb/cdbfts.h"
 #include "cdb/cdbtm.h"
 #include "utils/tqual.h"
+
+shmem_startup_hook_type shmem_startup_hook = NULL;
 
 static Size total_addin_request = 0;
 static bool addin_request_allowed = true;
@@ -145,6 +148,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, PMSignalShmemSize());
 		size = add_size(size, FreeSpaceShmemSize());
 		size = add_size(size, BgWriterShmemSize());
+		size = add_size(size, AutoVacuumShmemSize());
 		size = add_size(size, FtsShmemSize());
 		size = add_size(size, tmShmemSize());
 		size = add_size(size, SeqServerShmemSize());
@@ -284,6 +288,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 */
 	PMSignalShmemInit();
 	BgWriterShmemInit();
+	AutoVacuumShmemInit();
 	SeqServerShmemInit();
 	WalSendServerShmemInit();
 	WalRedoServerShmemInit();
@@ -301,4 +306,10 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	if (!IsUnderPostmaster)
 		ShmemBackendArrayAllocation();
 #endif
+
+	/*
+	 * Now give loadable modules a chance to set up their shmem allocations
+	 */
+	if (shmem_startup_hook)
+		shmem_startup_hook();
 }
