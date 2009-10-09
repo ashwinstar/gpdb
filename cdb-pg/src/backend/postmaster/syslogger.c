@@ -1697,15 +1697,15 @@ set_next_rotation_time(void)
  */
 
 /* SIGHUP: set flag to reload config file */
-    static void
+static void
 sigHupHandler(SIGNAL_ARGS)
 {
-    got_SIGHUP = true;
+	got_SIGHUP = true;
 }
 
 /* SIGUSR1: set flag to rotate logfile */
-    static void
+static void
 sigUsr1Handler(SIGNAL_ARGS)
 {
-    rotation_requested = true;
+	rotation_requested = true;
 }
