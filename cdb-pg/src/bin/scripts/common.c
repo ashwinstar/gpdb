@@ -4,10 +4,10 @@
  *		Common support routines for bin/scripts/
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/scripts/common.c,v 1.31 2008/01/01 19:45:56 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/scripts/common.c,v 1.37 2009/06/11 14:49:08 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -96,14 +96,14 @@ handle_help_version_opts(int argc, char *argv[],
  */
 PGconn *
 connectDatabase(const char *dbname, const char *pghost, const char *pgport,
-				const char *pguser, bool require_password,
+				const char *pguser, enum trivalue prompt_password,
 				const char *progname)
 {
 	PGconn	   *conn;
 	char	   *password = NULL;
-	bool		new_pass = false;
+	bool		new_pass;
 
-	if (require_password)
+	if (prompt_password == TRI_YES)
 		password = simple_prompt("Password: ", 100, false);
 
 	/*
@@ -125,11 +125,9 @@ connectDatabase(const char *dbname, const char *pghost, const char *pgport,
 		if (PQstatus(conn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(conn) &&
 			password == NULL &&
-			!feof(stdin))
+			prompt_password != TRI_NO)
 		{
 			PQfinish(conn);
-			free(password);
-			password = NULL;
 			password = simple_prompt("Password: ", 100, false);
 			new_pass = true;
 		}
@@ -231,6 +229,27 @@ executeMaintenanceCommand(PGconn *conn, const char *query, bool echo)
 	return r;
 }
 
+/*
+ * "Safe" wrapper around strdup().	Pulled from psql/common.c
+ */
+char *
+pg_strdup(const char *string)
+{
+	char	   *tmp;
+
+	if (!string)
+	{
+		fprintf(stderr, _("pg_strdup: cannot duplicate null pointer (internal error)\n"));
+		exit(EXIT_FAILURE);
+	}
+	tmp = strdup(string);
+	if (!tmp)
+	{
+		fprintf(stderr, _("out of memory\n"));
+		exit(EXIT_FAILURE);
+	}
+	return tmp;
+}
 
 /*
  * Check yes/no answer in a localized way.	1=yes, 0=no, -1=neither.

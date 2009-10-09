@@ -70,5 +70,5 @@ uninstall:
 
 clean distclean maintainer-clean:
 	rm -f $(addsuffix $(X), $(PROGRAMS)) $(addsuffix .o, $(PROGRAMS))
-	rm -f common.o dumputils.o print.o mbprint.o $(WIN32RES)
-	rm -f dumputils.c print.c mbprint.c
+	rm -f common.o dumputils.o kwlookup.o keywords.o print.o mbprint.o $(WIN32RES)
+	rm -f dumputils.c print.c mbprint.c kwlookup.c keywords.c
