@@ -115,11 +115,11 @@ extern int datumstream_advance(DatumStream *acc)
         if(*acc->datump == 0)
             acc->datump = (char *) att_align(acc->datump, acc->align);
 
-        Assert((acc->has_null && (*acc->nullp & acc->nullbit))
-                || VARATT_IS_SHORT_D(PointerGetDatum(acc->datump)) 
-                || !VARATT_IS_EXTENDED_D(PointerGetDatum(acc->datump)) 
-              ); 
-    }
+		Assert((acc->has_null && (*acc->nullp & acc->nullbit))
+			   || VARATT_IS_SHORT_D(PointerGetDatum(acc->datump)) 
+			   || !VARATT_IS_EXTERNAL_D(PointerGetDatum(acc->datump)) 
+			); 
+   }
     else
         acc->datump += acc->datumlen; 
 
@@ -222,6 +222,7 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
         }
         
         memcpy(acc->datump, p, wsz);
+
         acc->datump += wsz;
         incr_acc_n(acc);
         return sz;
