@@ -59,7 +59,7 @@ class Pgpass():
     """ Class for handling .pgpass file.
     """
     entries = []
-    valid_pgpass = False
+    valid_pgpass = True
     
     def __init__(self):
         HOME = os.getenv('HOME')
@@ -73,6 +73,7 @@ class Pgpass():
         
         if mode != "0600":
             print 'WARNING: password file "%s" has group or world access; permissions should be u=rw (0600) or less' % PGPASSFILE
+            self.valid_pgpass = False
             return
         
         try:
@@ -97,8 +98,7 @@ class Pgpass():
                 if fp: fp.close()
         except OSError:
             pass
-        
-        valid_pgpass = True
+
     
     def get_password(self, username, hostname, port, database):
         for entry in self.entries:
