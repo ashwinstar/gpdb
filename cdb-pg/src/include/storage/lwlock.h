@@ -65,6 +65,8 @@ typedef enum LWLockId
 	TablespaceCreateLock,
 	BtreeVacuumLock,
 	AddinShmemInitLock,
+	AutovacuumLock,
+	AutovacuumScheduleLock,
 	SharedSnapshotLock,
 	DistributedLogControlLock,
 	TemporarySerializePreparesLock,
