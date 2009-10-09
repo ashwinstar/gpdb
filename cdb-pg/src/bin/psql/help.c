@@ -312,7 +312,7 @@ helpSQL(const char *topic, unsigned short int pager)
 		size_t		len,
 					wordlen;
 		int			nl_count = 0;
-		char	   *ch;
+		const char	   *ch;
 
 		/* User gets two chances: exact match, then the first word */
 
