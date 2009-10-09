@@ -148,7 +148,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, PMSignalShmemSize());
 		size = add_size(size, FreeSpaceShmemSize());
 		size = add_size(size, BgWriterShmemSize());
-		size = add_size(size, AutoVacuumShmemSize());
+		//size = add_size(size, AutoVacuumShmemSize());
 		size = add_size(size, FtsShmemSize());
 		size = add_size(size, tmShmemSize());
 		size = add_size(size, SeqServerShmemSize());
@@ -288,7 +288,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 */
 	PMSignalShmemInit();
 	BgWriterShmemInit();
-	AutoVacuumShmemInit();
+	//AutoVacuumShmemInit();
 	SeqServerShmemInit();
 	WalSendServerShmemInit();
 	WalRedoServerShmemInit();
