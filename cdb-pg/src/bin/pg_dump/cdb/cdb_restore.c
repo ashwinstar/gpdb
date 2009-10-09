@@ -328,12 +328,6 @@ bool fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	pInputOpts->backupLocation = FILE_ON_PRIMARIES;
 	pInputOpts->bOnErrorStop	= true;
 
-#ifdef ENABLE_NLS
-	setlocale(LC_ALL, "");
-	bindtextdomain("pg_dump", LOCALEDIR);
-	textdomain("pg_dump");
-#endif
-
 	opts = (RestoreOptions *) calloc(1, sizeof(RestoreOptions));
 	if ( opts == NULL )
 	{
