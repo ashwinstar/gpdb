@@ -752,8 +752,6 @@ get_id(void)
 
 	struct passwd *pw;
 
-	pw = getpwuid(geteuid());
-
 	if (geteuid() == 0)			/* 0 is root's uid */
 	{
 		fprintf(stderr,
@@ -762,6 +760,15 @@ get_id(void)
 				  "(unprivileged) user that will\n"
 				  "own the server process.\n"),
 				progname);
+		exit(1);
+	}
+
+	pw = getpwuid(geteuid());
+	if (!pw)
+	{
+		fprintf(stderr,
+			  _("%s: could not obtain information about current user: %s\n"),
+				progname, strerror(errno));
 		exit(1);
 	}
 #else							/* the windows code */
@@ -775,7 +782,12 @@ get_id(void)
 	DWORD		pwname_size = sizeof(pass_win32.pw_name) - 1;
 
 	pw->pw_uid = 1;
-	GetUserName(pw->pw_name, &pwname_size);
+	if (!GetUserName(pw->pw_name, &pwname_size))
+	{
+		fprintf(stderr, _("%s: could not get current user name: %s\n"),
+				progname, strerror(errno));
+		exit(1);
+	}
 #endif
 
 	return xstrdup(pw->pw_name);
