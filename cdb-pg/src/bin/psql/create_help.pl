@@ -1,11 +1,11 @@
-#! /usr/bin/perl
+#! /usr/bin/perl -w
 
 #################################################################
 # create_help.pl -- converts SGML docs to internal psql help
 #
-# Copyright (c) 2000-2006, PostgreSQL Global Development Group
+# Copyright (c) 2000-2009, PostgreSQL Global Development Group
 #
-# $PostgreSQL: pgsql/src/bin/psql/create_help.pl,v 1.14 2006/03/05 15:58:51 momjian Exp $
+# $PostgreSQL: pgsql/src/bin/psql/create_help.pl,v 1.19 2009/01/01 17:23:54 momjian Exp $
 #################################################################
 
 #
@@ -19,9 +19,12 @@
 # sure does matter to the rest of the source.
 #
 
-$docdir = $ARGV[0] || die "$0: missing required argument: docdir\n";
-$outputfile = $ARGV[1] || die "$0: missing required argument: output file\n";
+use strict;
 
+my $docdir = $ARGV[0] or die "$0: missing required argument: docdir\n";
+my $outputfile = $ARGV[1] or die "$0: missing required argument: output file\n";
+
+my $outputfilebasename;
 if ($outputfile =~ m!.*/([^/]+)$!) {
     $outputfilebasename = $1;
 }
@@ -29,14 +32,14 @@ else {
     $outputfilebasename = $outputfile;
 }
 
-$define = $outputfilebasename;
+my $define = $outputfilebasename;
 $define =~ tr/a-z/A-Z/;
 $define =~ s/\W/_/g;
 
 opendir(DIR, $docdir)
-    || die "$0: could not open documentation source dir '$docdir': $!\n";
+    or die "$0: could not open documentation source dir '$docdir': $!\n";
 open(OUT, ">$outputfile")
-    || die "$0: could not open output file '$outputfile': $!\n";
+    or die "$0: could not open output file '$outputfile': $!\n";
 
 print OUT
 "/*
@@ -51,58 +54,42 @@ print OUT
 #ifndef $define
 #define $define
 
-#define N_(x) (x) /* gettext noop */
+#define N_(x) (x)				/* gettext noop */
 
 struct _helpStruct
 {
-    char	   *cmd;	   /* the command name */
-    char	   *help;	   /* the help associated with it */
-    char	   *syntax;	   /* the syntax associated with it */
+	const char	   *cmd;		/* the command name */
+	const char	   *help;		/* the help associated with it */
+	const char	   *syntax;		/* the syntax associated with it */
 };
 
 
-static struct _helpStruct QL_HELP[] = {
+static const struct _helpStruct QL_HELP[] = {
 ";
 
-$count = 0;
+my $maxlen = 0;
 
-foreach $file (sort readdir DIR) {
-    local ($cmdname, $cmddesc, $cmdsynopsis);
-    $file =~ /\.sgml$/ || next;
+my %entries;
 
-    open(FILE, "$docdir/$file") || next;
-    $filecontent = join('', <FILE>);
+foreach my $file (sort readdir DIR) {
+    my (@cmdnames, $cmddesc, $cmdsynopsis);
+    $file =~ /\.sgml$/ or next;
+
+    open(FILE, "$docdir/$file") or next;
+    my $filecontent = join('', <FILE>);
     close FILE;
 
     # Ignore files that are not for SQL language statements
     $filecontent =~ m!<refmiscinfo>\s*SQL - Language Statements\s*</refmiscinfo>!i
-	|| next;
+	or next;
 
-    # Extract <refname>, <refpurpose>, and <synopsis> fields, taking the
-    # first one if there are more than one.  NOTE: we cannot just say
-    # "<synopsis>(.*)</synopsis>", because that will match the first
-    # occurrence of <synopsis> and the last one of </synopsis>!  Under
-    # Perl 5 we could use a non-greedy wildcard, .*?, to ensure we match
-    # the first </synopsis>, but we want this script to run under Perl 4
-    # too, and Perl 4 hasn't got that feature.  So, do it the hard way.
-    # Also, use [\000-\377] where we want to match anything including
-    # newline --- Perl 4 does not have Perl 5's /s modifier.
-    $filecontent =~ m!<refname>\s*([a-z ]*[a-z])\s*</refname>!i && ($cmdname = $1);
-    if ($filecontent =~ m!<refpurpose>\s*([\000-\377]+)$!i) {
-	$tmp = $1;		# everything after first <refpurpose>
-	if ($tmp =~ s!\s*</refpurpose>[\000-\377]*$!!i) {
-	    $cmddesc = $tmp;
-	}
-    }
-    if ($filecontent =~ m!<synopsis>\s*([\000-\377]+)$!i) {
-	$tmp = $1;		# everything after first <synopsis>
-	if ($tmp =~ s!\s*</synopsis>[\000-\377]*$!!i) {
-	    $cmdsynopsis = $tmp;
-	}
-    }
+    # Collect multiple refnames
+    LOOP: { $filecontent =~ m!\G.*?<refname>\s*([a-z ]+?)\s*</refname>!cgis and push @cmdnames, $1 and redo LOOP; }
+    $filecontent =~ m!<refpurpose>\s*(.+?)\s*</refpurpose>!is and $cmddesc = $1;
+    $filecontent =~ m!<synopsis>\s*(.+?)\s*</synopsis>!is and $cmdsynopsis = $1;
 
-    if ($cmdname && $cmddesc && $cmdsynopsis) {
-        $cmdname =~ s/\"/\\"/g;
+    if (@cmdnames && $cmddesc && $cmdsynopsis) {
+        s/\"/\\"/g foreach @cmdnames;
 
 	$cmddesc =~ s/<[^>]+>//g;
 	$cmddesc =~ s/\s+/ /g;
@@ -112,20 +99,25 @@ foreach $file (sort readdir DIR) {
 	$cmdsynopsis =~ s/\r?\n/\\n/g;
         $cmdsynopsis =~ s/\"/\\"/g;
 
-	print OUT "    { \"$cmdname\",\n      N_(\"$cmddesc\"),\n      N_(\"$cmdsynopsis\") },\n\n";
-        $count++;
+        foreach my $cmdname (@cmdnames) {
+	    $entries{$cmdname} = { cmddesc => $cmddesc, cmdsynopsis => $cmdsynopsis };
+	    $maxlen = ($maxlen >= length $cmdname) ? $maxlen : length $cmdname;
+	}
     }
     else {
-	print STDERR "$0: parsing file '$file' failed (N='$cmdname' D='$cmddesc')\n";
+	die "$0: parsing file '$file' failed (N='@cmdnames' D='$cmddesc')\n";
     }
 }
+
+print OUT "    { \"$_\",\n      N_(\"".$entries{$_}{cmddesc}."\"),\n      N_(\"".$entries{$_}{cmdsynopsis}."\") },\n\n" foreach (sort keys %entries);
 
 print OUT "
     { NULL, NULL, NULL }    /* End of list marker */
 };
 
 
-#define QL_HELP_COUNT $count
+#define QL_HELP_COUNT	".scalar(keys %entries)."		/* number of help items */
+#define QL_MAX_CMD_LEN	$maxlen		/* largest strlen(cmd) */
 
 
 #endif /* $define */
