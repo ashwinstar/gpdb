@@ -66,8 +66,9 @@ CATALOG(pg_type,1247) BKI_BOOTSTRAP
 	bool		typbyval;
 
 	/*
-	 * typtype is 'b' for a basic type, 'c' for a complex type (ie a table's
-	 * rowtype), 'd' for a domain type, or 'p' for a pseudo type.
+	 * typtype is 'b' for a base type, 'c' for a composite type (e.g., a
+	 * table's rowtype), 'd' for a domain type, or 'p'
+	 * for a pseudo-type.  (Use the TYPTYPE macros below.)
 	 *
 	 * If typtype is 'c', typrelid is the OID of the class' entry in pg_class.
 	 */
@@ -81,7 +82,7 @@ CATALOG(pg_type,1247) BKI_BOOTSTRAP
 
 	char		typdelim;		/* delimiter for arrays of this type */
 
-	Oid			typrelid;		/* 0 if not a complex type */
+	Oid			typrelid;		/* 0 if not a composite type */
 
 	/*
 	 * If typelem is not 0 then it identifies another row in pg_type. The
@@ -123,8 +124,10 @@ CATALOG(pg_type,1247) BKI_BOOTSTRAP
 	 * 'i' = INT alignment (4 bytes on most machines).
 	 * 'd' = DOUBLE alignment (8 bytes on many machines, but by no means all).
 	 *
-	 * See include/utils/memutils.h for the macros that compute these
-	 * alignment requirements.
+	 * See include/access/tupmacs.h for the macros that compute these
+	 * alignment requirements.	Note also that we allow the nominal alignment
+	 * to be violated when storing "packed" varlenas; the TOAST mechanism
+	 * takes care of hiding that from most code.
 	 *
 	 * NOTE: for types used in system tables, it is critical that the
 	 * size and alignment defined in pg_type agree with the way that the
@@ -236,12 +239,15 @@ typedef FormData_pg_type *Form_pg_type;
  * ----------------
  */
 
-/* keep the following ordered by OID so that later changes can be made easier*/
-
-/* Make sure the typlen, typbyval, and typalign values here match the initial
-   values for attlen, attbyval, and attalign in both places in pg_attribute.h
-   for every instance.
-*/
+/*
+ * Keep the following ordered by OID so that later changes can be made more
+ * easily.
+ *
+ * For types used in the system catalogs, make sure the typlen, typbyval, and
+ * typalign values here match the initial values for attlen, attbyval, and
+ * attalign in both places in pg_attribute.h for every instance.  Also see
+ * TypInfo[] in bootstrap.c.
+ */
 
 /* OIDS 1 - 99 */
 DATA(insert OID = 16 (	bool	   PGNSP PGUID	1 t b t \054 0	 0 boolin boolout boolrecv boolsend - c p f 0 -1 0 _null_ _null_ ));
