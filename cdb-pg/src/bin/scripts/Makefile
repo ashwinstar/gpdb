@@ -5,7 +5,7 @@
 # Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/bin/scripts/Makefile,v 1.36 2006/03/05 15:58:52 momjian Exp $
+# $PostgreSQL: pgsql/src/bin/scripts/Makefile,v 1.42 2009/03/07 02:09:22 alvherre Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -24,31 +24,29 @@ PROGRAMS = createdb createlang createuser dropdb droplang dropuser clusterdb vac
 
 override CPPFLAGS := -DFRONTEND -I$(top_srcdir)/src/bin/pg_dump -I$(top_srcdir)/src/bin/psql -I$(libpq_srcdir) $(CPPFLAGS)
 
-all: submake-libpq submake-libpgport submake-backend $(PROGRAMS)
+all: submake-libpq $(PROGRAMS)
 
 %: %.o $(WIN32RES)
 	$(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) $(LIBS) -o $@$(X)
 
-createdb: createdb.o common.o dumputils.o $(top_builddir)/src/backend/parser/keywords.o
+createdb: createdb.o common.o dumputils.o kwlookup.o keywords.o
 createlang: createlang.o common.o print.o mbprint.o
-createuser: createuser.o common.o dumputils.o $(top_builddir)/src/backend/parser/keywords.o
-dropdb: dropdb.o common.o dumputils.o $(top_builddir)/src/backend/parser/keywords.o
+createuser: createuser.o common.o dumputils.o kwlookup.o keywords.o
+dropdb: dropdb.o common.o dumputils.o kwlookup.o keywords.o
 droplang: droplang.o common.o print.o mbprint.o
-dropuser: dropuser.o common.o dumputils.o $(top_builddir)/src/backend/parser/keywords.o
-clusterdb: clusterdb.o common.o dumputils.o $(top_builddir)/src/backend/parser/keywords.o
+dropuser: dropuser.o common.o dumputils.o kwlookup.o keywords.o
+clusterdb: clusterdb.o common.o dumputils.o kwlookup.o keywords.o
 vacuumdb: vacuumdb.o common.o
-reindexdb: reindexdb.o common.o dumputils.o $(top_builddir)/src/backend/parser/keywords.o
+reindexdb: reindexdb.o common.o dumputils.o kwlookup.o keywords.o
 
-dumputils.c: % : $(top_srcdir)/src/bin/pg_dump/%
+dumputils.c keywords.c: % : $(top_srcdir)/src/bin/pg_dump/%
 	rm -f $@ && $(LN_S) $< .
 
 print.c mbprint.c : % : $(top_srcdir)/src/bin/psql/%
 	rm -f $@ && $(LN_S) $< .
 
-.PHONY: submake-backend
-submake-backend:
-	$(MAKE) -C $(top_builddir)/src/backend/parser keywords.o
-
+kwlookup.c: % : $(top_srcdir)/src/backend/parser/%
+	rm -f $@ && $(LN_S) $< .
 
 install: all installdirs
 	$(INSTALL_PROGRAM) createdb$(X)   '$(DESTDIR)$(bindir)'/createdb$(X)

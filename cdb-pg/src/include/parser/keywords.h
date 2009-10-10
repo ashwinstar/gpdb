@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/parser/keywords.h,v 1.21 2006/03/05 15:58:57 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/parser/keywords.h,v 1.26 2009/01/01 17:24:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,9 +23,13 @@
 
 typedef struct ScanKeyword
 {
-	const char *name;
-	int			value;
+	const char *name;			/* in lower case */
+	int16		value;			/* grammar's token code */
+	int16		category;		/* see codes above */
 } ScanKeyword;
+
+extern const ScanKeyword ScanKeywords[];
+extern const ScanKeyword *LastScanKeyword;
 
 extern const ScanKeyword *ScanKeywordLookup(const char *text);
 
