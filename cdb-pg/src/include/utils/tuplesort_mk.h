@@ -1,6 +1,6 @@
 /* 
  * tuplesort_mk.h 
- * 	Tuplesort Multi Key.	
+ * 	Tuplesort Multi Key.
  *
  * Copyright (c) Greenplum Inc. 2008.
  */
@@ -35,19 +35,26 @@
 #define MKE_MAX_READER        0x3FFF
 #define MKE_ReaderShift       2 
 
-
-/* 
- * Our impl. of mk qsort and heap only handles the following data
- * type.  
- */
 typedef struct MKEntry 
 {
     int32 compflags;
     int32 flags;
+
+    /**
+     *  The datum for this key
+     */
     Datum d;
+
+    /**
+     * Ptr to the tuple that contains this entry's key.  Is a void * to provide polymorphism: it could be a memtuple, heaptuple, or really anything that has multi-key behavior!
+     *   Deciphering of this field is done by the functions that are passed when the multi-key heap is prepared
+     */
     void *ptr;
 } MKEntry;
 
+/**
+ * Set flags and compflags to their initial values
+ */
 static inline void mke_blank(MKEntry *e)
 {
     e->compflags = (MKE_MAX_LV << MKE_LvShift);
@@ -193,43 +200,68 @@ static inline void mk_prepare_array(MKEntry *a, int i, int j, int32 lv, struct M
     } while (++cur <= last);
 }
 
+/*
+ * Our impl. of multi-key sort and heap only handles the following data type.
+ */
 typedef enum MKLvType
 {
-    MKLV_TYPE_NONE,
-    MKLV_TYPE_INT32,
-    MKLV_TYPE_CHAR,
-    MKLV_TYPE_TEXT,
+    MKLV_TYPE_NONE,  /* this level has not yet been assigned a type: todo: verify meaning */
+    MKLV_TYPE_INT32, /* this level contains int32 values */
+    MKLV_TYPE_CHAR,  /* this level contains char (blank padded) values */
+    MKLV_TYPE_TEXT,  /* this level contains text values */
 } MKLvType;
 
 typedef struct MKLvContext
 {
+	/* Is the type of datums in this level passed by value instead of reference */
     bool typByVal;
+
+    /* what is the length field of datums in this level */
     int  typLen;
 
+    /* type of datums in this level, converted to our MKLvType enumeration */
     MKLvType lvtype;
+
     SortFunctionKind sortfnkind;
     FmgrInfo fmgrinfo;
+
+    /* should null sort first (low) in this level */
     bool nullfirst;
 
     int16 attno;
+
+    /* the mk heap context that this level context belongs to */
     struct MKContext *mkctxt;
 } MKLvContext;
 
 typedef struct MKContext {
-    int total_lv;
+
+	/* how many levels are there?  This should correspond to the # of keys in the multi-key value */
+	int total_lv;
+	/* the levels themselves */
     MKLvContext *lvctxt;
 
+    /* callback capable of comparing two entries for a particular level */
     MKCompare comp; 	
+    /* callback capable of converting a tuple into the appropriate MKEntry data */
     MKPrepare prep;   
+    /* callback capable of copying data from one MKEntry to another (freeing the dest MKEntry).  todo: verify this */
     MKCopyFree  cpfr; 
 
     TupleDesc tupdesc;
     MemTupleBinding *mt_bind;
 
-    int32 limit;		/* Limit sort */
-    int32 limitmask;    /* Bit trick */
-    bool unique;		/* Unique sort */
-    bool enforceUnique;	/* enforce Unique, for index build */
+    /* Limit sort : todo what is the sentinel value for no-limit?  */
+    int32 limit;
+
+    /* Bit trick : todo: how does bit trick work */
+    int32 limitmask;
+
+    /* Unique sort todo: how is this different from enforceUnique  */
+    bool unique;
+
+    /* enforce Unique, for index build */
+    bool enforceUnique;
 } MKContext;
 
 extern void tupsort_cpfr(MKEntry *dst, MKEntry *src, MKLvContext *ctxt);
@@ -258,19 +290,40 @@ typedef struct MKHeapReader
     void *mkhr_ctxt;
 } MKHeapReader;
 
+/**
+ * The heap itself
+ */
 typedef struct MKHeap 
 {
+	/* Configuration data for the heap, indicating how to interpret values and how to perform the sort */
     MKContext *mkctxt;
 
     MKEntry *lvtops;
 
+    /* the top of the heap */
     MKEntry *p;
+
+    /* the number of non-empty values in the heap */
     int count;
+
+    /* the first maxentry values of p represent the heap, which contains cnt # of non-empty values.  cnt <= maxentry
+     *
+     * todo: rename this to numEntries (or maxentryplusone)
+     */
     int maxentry;
+
+    /* the allocated size of p, can be used to check for overruns */
     int alloc_size;
 
-    MKHeapReader *readers;
+    /* if 0 then we have an instantiated heap
+     * If non-zero then we have a heap which contains only the most-recent values from each reader.  When a
+     *   value is removed from the heap it will be replenished, if possible, by a value from the reader
+     *   that produced the value.
+     */
     int nreader;
+
+    /* the readers themselves -- see nreader field */
+    MKHeapReader *readers;
 } MKHeap;
 
 
@@ -278,6 +331,7 @@ typedef struct MKHeap
  * Create a heap from an array.  Once the heap is created, it owns the array. 
  */
 extern MKHeap *mkheap_from_array(MKEntry *entries, int alloc_size, int count, MKContext *mkctxt); 
+
 /* 
  * Create a heap from an array of readers.  MKHeap never owns the reader.  Readers
  * are assumed to have a longer life cycle than the mkheap. 
@@ -297,6 +351,8 @@ extern void mkheap_destroy(MKHeap *mkheap);
  * This means, we cannot insert anything smaller than current smallest entry, however, we will see this
  * is enough for our use in external sort or limit sort.  More general way of doing this is definately 
  * doable, but not needed.
+ *
+ * On output, in cases where the value is >= the min element, *e will be filled in with a copy of the min value of the heap.
  */
 extern int mkheap_puget(MKHeap *mkheap, MKEntry *e);
 extern int mkheap_puget_run(MKHeap *mkheap, MKEntry *e, int16 run); 
