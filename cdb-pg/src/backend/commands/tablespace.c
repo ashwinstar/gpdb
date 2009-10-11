@@ -32,7 +32,7 @@
  * and munge the system catalogs of the new database.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -49,6 +49,7 @@
 #include <sys/stat.h>
 
 #include "access/heapam.h"
+#include "access/sysattr.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
@@ -355,7 +356,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	if (strchr(location, '\''))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_NAME),
-			   errmsg("tablespace location may not contain single quotes")));
+				 errmsg("tablespace location cannot contain single quotes")));
 
 	/*
 	 * Allowing relative paths seems risky
@@ -388,7 +389,6 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 				 errmsg("unacceptable tablespace name \"%s\"",
 						stmt->tablespacename),
 		errdetail("The prefix \"pg_\" is reserved for system tablespaces.")));
-		
 
 	/*
 	 * Check that there is no other tablespace by this name.  (The unique
@@ -408,14 +408,14 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	 */
 	rel = heap_open(TableSpaceRelationId, RowExclusiveLock);
 
-	MemSet(nulls, false, Natts_pg_tablespace);
+	MemSet(nulls, false, sizeof(nulls));
 
 	values[Anum_pg_tablespace_spcname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->tablespacename));
 	values[Anum_pg_tablespace_spcowner - 1] =
 		ObjectIdGetDatum(ownerId);
 	values[Anum_pg_tablespace_spclocation - 1] =
-		DirectFunctionCall1(textin, CStringGetDatum(location));
+		CStringGetTextDatum(location);
 	nulls[Anum_pg_tablespace_spcacl - 1] = true;
 
 	/* CDB include the distinct primary and mirror directory locations on QD */
@@ -484,14 +484,14 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		}
 		else
 		{
-			nulls[Anum_pg_tablespace_spcmirlocations - 1] = false;
+			nulls[Anum_pg_tablespace_spcmirlocations - 1] = true;
 		}
 	}
 	else
 	{
 		/* we don't store the full array of locations on the QE's */
-		nulls[Anum_pg_tablespace_spcprilocations - 1] = false;
-		nulls[Anum_pg_tablespace_spcmirlocations - 1] = false;
+		nulls[Anum_pg_tablespace_spcprilocations - 1] = true;
+		nulls[Anum_pg_tablespace_spcmirlocations - 1] = true;
 	}
 
 	tuple = heap_form_tuple(rel->rd_att, values, nulls);
@@ -754,7 +754,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	LWLockAcquire(TablespaceCreateLock, LW_EXCLUSIVE);
 
 	/*
-	 * Try to remove the physical infrastructure
+	 * Try to remove the physical infrastructure.
 	 */
 	if (!remove_tablespace_directories(tablespaceoid, false, location))
 		ereport(ERROR,
@@ -895,7 +895,7 @@ remove_tablespace_directories(Oid tablespaceoid, bool redo, char *phys)
 		if (rmdir(subfile) < 0)
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("could not delete directory \"%s\": %m",
+					 errmsg("could not remove directory \"%s\": %m",
 							subfile)));
 
 		pfree(subfile);
@@ -1065,7 +1065,7 @@ RenameTableSpace(const char *oldname, const char *newname)
 	ScanKeyInit(&entry[0],
 				Anum_pg_tablespace_spcname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum((char *) oldname));
+				CStringGetDatum(oldname));
 	scan = heap_beginscan(rel, SnapshotNow, 1, entry);
 	tup = heap_getnext(scan, ForwardScanDirection);
 	if (!HeapTupleIsValid(tup))
@@ -1094,7 +1094,7 @@ RenameTableSpace(const char *oldname, const char *newname)
 	ScanKeyInit(&entry[0],
 				Anum_pg_tablespace_spcname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum((char *) newname));
+				CStringGetDatum(newname));
 	scan = heap_beginscan(rel, SnapshotNow, 1, entry);
 	tup = heap_getnext(scan, ForwardScanDirection);
 	if (HeapTupleIsValid(tup))
@@ -1132,7 +1132,7 @@ AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 	ScanKeyInit(&entry[0],
 				Anum_pg_tablespace_spcname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum((char *) name));
+				CStringGetDatum(name));
 	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
 	tup = heap_getnext(scandesc, ForwardScanDirection);
 	if (!HeapTupleIsValid(tup))
@@ -1292,16 +1292,21 @@ get_tablespace_oid(const char *tablespacename)
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 
-	/* Search pg_tablespace */
+	/*
+	 * Search pg_tablespace.  We use a heapscan here even though there is an
+	 * index on name, on the theory that pg_tablespace will usually have just
+	 * a few entries and so an indexed lookup is a waste of effort.
+	 */
 	rel = heap_open(TableSpaceRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0],
 				Anum_pg_tablespace_spcname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum((char *) tablespacename));
+				CStringGetDatum(tablespacename));
 	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
+	/* We assume that there can be at most one matching tuple */
 	if (HeapTupleIsValid(tuple))
 		result = HeapTupleGetOid(tuple);
 	else
@@ -1327,7 +1332,11 @@ get_tablespace_name(Oid spc_oid)
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 
-	/* Search pg_tablespace */
+	/*
+	 * Search pg_tablespace.  We use a heapscan here even though there is an
+	 * index on oid, on the theory that pg_tablespace will usually have just a
+	 * few entries and so an indexed lookup is a waste of effort.
+	 */
 	rel = heap_open(TableSpaceRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0],
