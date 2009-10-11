@@ -11453,6 +11453,11 @@ select * from get_ereport order by 1;
  saae: scan:00005279: /* 
  saae: scan:00005280:  * GUC variables. This is a DIRECT violation of the warning given at the 
  saae: scan:00005281:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
+ saae: scan:00014871:  ereport(ERROR,
+ saae: scan:00014872:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ saae: scan:00014873:  errmsg("unsafe use of string constant with Unicode escapes"),
+ saae: scan:00014874:  errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."),
+ saae: scan:00014875:  lexer_errposition()));
  saae: scan:00005935:  ereport(ERROR, 
  saae: scan:00005936:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
  saae: scan:00005937:  errmsg("unsafe use of \' in a string literal"), 
