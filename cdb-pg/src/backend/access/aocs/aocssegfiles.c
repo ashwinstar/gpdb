@@ -86,7 +86,6 @@ static AOCSFileSegInfo *GetAOCSFileSegInfo(Relation prel, int32 segno, SegfileLo
     HeapTuple segtup;
     HeapTuple needfree = NULL;
     HeapTupleData segtupdata;
-	HeapTupleData old_segtupdata;
 
     AOCSFileSegInfo *seginfo;
     Datum *d;
@@ -134,8 +133,7 @@ static AOCSFileSegInfo *GetAOCSFileSegInfo(Relation prel, int32 segno, SegfileLo
     }
 
 	/* Close the index */
-	old_segtupdata = *segtup;
-	segtup = &old_segtupdata;
+    segtup = heap_copytuple(segtup);
 	
 	index_endscan(scan);
 	index_close(segidx, lkmode);
