@@ -4913,7 +4913,7 @@ select * from get_ereport order by 1;
  faba: formatting:00003225:  errmsg("hour "%d" is invalid for the 12-hour clock", 
  faba: formatting:00003226:  tm->tm_hour), 
  faba: formatting:00003227:  errhint("Use the 24-hour clock, or give an hour between 1 and 12."))); 
- faba: formatting:00003232:  ereport(ERROR, 
+ faba: formatting:00003232:  ereport(ERROR, /* translator: %s is typically the translation of "syntax error" */
  faba: formatting:00003233:  (errcode(ERRCODE_INVALID_DATETIME_FORMAT), 
  faba: formatting:00003234:  errmsg("hour "%d" is invalid for the 12-hour clock", 
  faba: formatting:00003235:  tm->tm_hour), 
@@ -11465,12 +11465,12 @@ select * from get_ereport order by 1;
  saae: scan:00005939:  lexer_errposition())); 
  saae: scan:00007292:  ereport(ERROR, 
  saae: scan:00007293:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00007294:  /* translator: %s is typically "syntax error" */ 
+ saae: scan:00007294:  /* translator: %s is typically the translation of "syntax error" */
  saae: scan:00007295:  errmsg("%s at end of input", _(message)), 
  saae: scan:00007296:  lexer_errposition())); 
  saae: scan:00007300:  ereport(ERROR, 
  saae: scan:00007301:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00007302:  /* translator: first %s is typically "syntax error" */ 
+ saae: scan:00007302:  /* translator: first %s is typically the translation of "syntax error" */
  saae: scan:00007303:  errmsg("%s at or near "%s"", _(message), loc), 
  saae: scan:00007304:  lexer_errposition())); 
  saae: scan:00007435:  ereport(WARNING, 
@@ -14263,7 +14263,7 @@ select * from get_ereport order by 1;
  taba: tablespace:00000298:  errhint("Your system has mirroring configured, so you must allow for locations for the mirrors as well as primaries"))); 
  taba: tablespace:00000356:  ereport(ERROR, 
  taba: tablespace:00000357:  (errcode(ERRCODE_INVALID_NAME), 
- taba: tablespace:00000358:  errmsg("tablespace location may not contain single quotes"))); 
+ taba: tablespace:00000358:  errmsg("tablespace location cannot contain single quotes"))); 
  taba: tablespace:00000366:  ereport(ERROR, 
  taba: tablespace:00000367:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
  taba: tablespace:00000368:  errmsg("tablespace location must be an absolute path"))); 
@@ -14326,7 +14326,7 @@ select * from get_ereport order by 1;
  taba: tablespace:00000847:  )); 
  taba: tablespace:00000896:  ereport(ERROR, 
  taba: tablespace:00000897:  (errcode_for_file_access(), 
- taba: tablespace:00000898:  errmsg("could not delete directory "%s": %m", 
+ taba: tablespace:00000898:  errmsg("could not remove directory "%s": %m", 
  taba: tablespace:00000899:  subfile))); 
  taba: tablespace:00000916:  ereport(ERROR, 
  taba: tablespace:00000917:  (errcode_for_file_access(), 
@@ -15532,6 +15532,6 @@ select * from get_ereport order by 1;
  xaae: xlog:00008229:  (errcode_for_file_access(), 
  xaae: xlog:00008230:  errmsg("could not read file "%s": %m", 
  xaae: xlog:00008231:  histfilepath))); 
-(15467 rows)
+(15472 rows)
 
 drop external table get_ereport;
