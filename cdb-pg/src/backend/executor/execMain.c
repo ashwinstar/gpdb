@@ -189,6 +189,16 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 	Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 
+	/**
+	 * Perfmon related stuff.
+	 */
+	if (gp_enable_gpperfmon 
+			&& Gp_role == GP_ROLE_DISPATCH 
+			&& queryDesc->gpmon_pkt)
+	{			
+		gpmon_qlog_query_start(queryDesc->gpmon_pkt);
+	}
+	
 	/*
 	 * If the transaction is read-only, we need to check if any writes are
 	 * planned to non-temporary tables.  EXPLAIN is considered read-only.
@@ -829,6 +839,17 @@ ExecutorEnd(QueryDesc *queryDesc)
 		 * everything the executor has allocated.
 		 */
 		FreeExecutorState(estate);
+		
+		/**
+		 * Perfmon related stuff.
+		 */
+		if (gp_enable_gpperfmon 
+				&& Gp_role == GP_ROLE_DISPATCH
+				&& queryDesc->gpmon_pkt)
+		{			
+			gpmon_qlog_query_error(queryDesc->gpmon_pkt);
+		}
+
 
 		PG_RE_THROW();
 	}
@@ -871,6 +892,17 @@ ExecutorEnd(QueryDesc *queryDesc)
 	 * everything the executor has allocated.
 	 */
 	FreeExecutorState(estate);
+	
+	/**
+	 * Perfmon related stuff.
+	 */
+	if (gp_enable_gpperfmon 
+			&& Gp_role == GP_ROLE_DISPATCH
+			&& queryDesc->gpmon_pkt)
+	{			
+		gpmon_qlog_query_end(queryDesc->gpmon_pkt);
+
+	}
 
 	/* Reset queryDesc fields that no longer point to anything */
 	queryDesc->tupDesc = NULL;
