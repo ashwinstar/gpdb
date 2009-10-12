@@ -839,17 +839,6 @@ ExecutorEnd(QueryDesc *queryDesc)
 		 * everything the executor has allocated.
 		 */
 		FreeExecutorState(estate);
-		
-		/**
-		 * Perfmon related stuff.
-		 */
-		if (gp_enable_gpperfmon 
-				&& Gp_role == GP_ROLE_DISPATCH
-				&& queryDesc->gpmon_pkt)
-		{			
-			gpmon_qlog_query_error(queryDesc->gpmon_pkt);
-		}
-
 
 		PG_RE_THROW();
 	}
@@ -901,7 +890,7 @@ ExecutorEnd(QueryDesc *queryDesc)
 			&& queryDesc->gpmon_pkt)
 	{			
 		gpmon_qlog_query_end(queryDesc->gpmon_pkt);
-
+		queryDesc->gpmon_pkt = NULL;
 	}
 
 	/* Reset queryDesc fields that no longer point to anything */

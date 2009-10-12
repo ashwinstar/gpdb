@@ -2082,4 +2082,16 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 		TeardownInterconnect(estate->interconnect_context, estate->motionlayer_context, true /* force EOS */);
 		estate->es_interconnect_is_setup = false;
 	}
+	
+	/**
+	 * Perfmon related stuff.
+	 */
+	if (gp_enable_gpperfmon 
+			&& Gp_role == GP_ROLE_DISPATCH
+			&& queryDesc->gpmon_pkt)
+	{			
+		gpmon_qlog_query_error(queryDesc->gpmon_pkt);
+		queryDesc->gpmon_pkt = NULL;
+	}
+
 }
