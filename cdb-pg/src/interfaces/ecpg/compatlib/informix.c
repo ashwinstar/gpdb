@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/interfaces/ecpg/compatlib/informix.c,v 1.54 2008/01/08 01:14:52 tgl Exp $ */
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/compatlib/informix.c,v 1.59 2009/06/11 14:49:13 momjian Exp $ */
 
 #define POSTGRES_ECPG_INTERNAL
 #include "postgres_fe.h"
@@ -151,7 +151,7 @@ static char *
 ecpg_strndup(const char *str, size_t len)
 {
 	int			real_len = strlen(str);
-	int			use_len = (real_len > len) ? len : real_len;
+	int			use_len = (real_len > len) ? (int) len : real_len;
 
 	char	   *new = malloc(use_len + 1);
 
@@ -755,10 +755,16 @@ rfmtlong(long lng_val, char *fmt, char *outbuf)
 				fmtchar = ' ';
 
 	temp = (char *) malloc(fmt_len + 1);
+	if (!temp)
+	{
+		errno = ENOMEM;
+		return -1;
+	}
 
 	/* put all info about the long in a struct */
-	if (!temp || initValue(lng_val) == -1)
+	if (initValue(lng_val) == -1)
 	{
+		free(temp);
 		errno = ENOMEM;
 		return -1;
 	}
