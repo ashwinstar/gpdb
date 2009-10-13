@@ -58,6 +58,7 @@
 #include "catalog/namespace.h"
 #include "commands/defrem.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
 #include "nodes/print.h"
 #include "parser/gramparse.h"
 #include "storage/lmgr.h"
@@ -106,7 +107,7 @@ static bool QueryIsRule = FALSE;
 /*#define __YYSCLASS*/
 
 static Node *makeAddPartitionCreateStmt(Node *n, Node *subSpec);
-static Node *makeColumnRef(char *relname, List *indirection, int location);
+static Node *makeColumnRef(char *colname, List *indirection, int location);
 static Node *makeTypeCast(Node *arg, TypeName *typname);
 static Node *makeStringConst(char *str, TypeName *typname, int location);
 static Node *makeIntConst(int val, int location);
@@ -444,16 +445,16 @@ static TypeName *TableFuncTypeName(List *columns);
 	CACHE CALLED CASCADE CASCADED CASE CAST CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLUMN COMMENT COMMIT
-	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONVERSION_P CONVERT COPY COST
+	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P CONVERT COPY COST
 	CREATE CREATEDB
-	CREATEROLE CREATEUSER CROSS CSV CUBE CURRENT CURRENT_DATE CURRENT_ROLE 
+	CREATEROLE CREATEUSER CROSS CSV CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
-	DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
+	DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS
 	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOMAIN_P DOUBLE_P DROP
 
-	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ERRORS ESCAPE EVERY EXCEPT 
+	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ERRORS ESCAPE EVERY EXCEPT 
 	EXCHANGE EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
 	FALSE_P FETCH FIELDS FILL FILTER FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FORMAT FORWARD
@@ -481,9 +482,9 @@ static TypeName *TableFuncTypeName(List *columns);
 	MASTER MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MISSING MODE MODIFY 
 	MONTH_P MOVE
 
-	NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NOCREATEDB
+	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NOCREATEDB
 	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOOVERCOMMIT NOSUPERUSER
-	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF NUMERIC
+	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLS_P NULLIF NUMERIC
 
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OR
 	ORDER OTHERS OUT_P OUTER_P OVER OVERCOMMIT OVERLAPS OVERLAY OWNED OWNER
@@ -494,12 +495,12 @@ static TypeName *TableFuncTypeName(List *columns);
 
 	QUEUE QUOTE
 
-	RANDOMLY RANGE READ READABLE REAL REASSIGN RECHECK REFERENCES REINDEX REJECT_P RELATIVE_P 
+	RANDOMLY RANGE READ READABLE REAL REASSIGN RECHECK RECURSIVE REFERENCES REINDEX REJECT_P RELATIVE_P 
 	RELEASE RENAME REPEATABLE REPLACE RESET RESOURCE RESTART RESTRICT 
 	RETURNING RETURNS REVOKE RIGHT
 	ROLE ROLLBACK ROLLUP ROW ROWS RULE
 
-	SAVEPOINT SCHEMA SCROLL SECOND_P SECURITY SEGMENT SELECT SEQUENCE
+	SAVEPOINT SCHEMA SCROLL SEARCH SECOND_P SECURITY SEGMENT SELECT SEQUENCE
 	SERIALIZABLE SESSION SESSION_USER SET SETOF SETS SHARE
 	SHOW SIMILAR SIMPLE SMALLINT SOME SPLIT STABLE START STATEMENT
 	STATISTICS STDIN STDOUT STORAGE STRICT_P 
@@ -514,7 +515,7 @@ static TypeName *TableFuncTypeName(List *columns);
 	UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN UNTIL
 	UPDATE USER USING
 
-	VACUUM VALID VALIDATION VALIDATOR VALUES VARCHAR VARYING
+	VACUUM VALID VALIDATION VALIDATOR VALUE_P VALUES VARCHAR VARYING
 	VERBOSE VIEW VOLATILE
 
 	WEB WHEN WHERE WINDOW WITH WITHOUT WORK WRITABLE WRITE
@@ -523,11 +524,11 @@ static TypeName *TableFuncTypeName(List *columns);
 
 	ZONE
 
-/* The grammar thinks these are keywords, but they are not in the keywords.c
+/* The grammar thinks these are keywords, but they are not in the kwlist.h
  * list and so can never be entered directly.  The filter in parser.c
  * creates these tokens when required.
  */
-%token			WITH_CASCADED WITH_LOCAL WITH_CHECK
+%token			NULLS_FIRST NULLS_LAST WITH_CASCADED WITH_LOCAL WITH_CHECK
 
 /* Special token types, not actually keywords - see the "lex" file */
 %token <str>	IDENT FCONST SCONST BCONST XCONST Op
@@ -11168,6 +11169,8 @@ unreserved_keyword:
 			| CONCURRENTLY
 			| CONNECTION
 			| CONSTRAINTS
+			| CONTENT_P
+			| CONTINUE_P
 			| CONVERSION_P
 			| COPY
 			| COST
@@ -11178,6 +11181,7 @@ unreserved_keyword:
 			| CURRENT
 			| CURSOR
 			| CYCLE
+			| DATA_P
 			| DATABASE
 			| DAY_P
 			| DEALLOCATE
@@ -11196,6 +11200,7 @@ unreserved_keyword:
 			| ENABLE_P
 			| ENCODING
 			| ENCRYPTED
+			| ENUM_P
 			| ERRORS
 			| ESCAPE
 			| EVERY
@@ -11264,6 +11269,7 @@ unreserved_keyword:
 			| MODIFY
 			| MONTH_P
 			| MOVE
+			| NAME_P
 			| NAMES
 			| NEXT
 			| NO
@@ -11277,6 +11283,7 @@ unreserved_keyword:
 			| NOTHING
 			| NOTIFY
 			| NOWAIT
+			| NULLS_P
 			| OBJECT_P
 			| OF
 			| OIDS
@@ -11322,6 +11329,7 @@ unreserved_keyword:
 			| ROLLBACK
 			| RULE
 			| SAVEPOINT
+			| SEARCH
 			| SCHEMA
 			| SCROLL
 			| SECOND_P
@@ -11369,6 +11377,7 @@ unreserved_keyword:
 			| VALID
 			| VALIDATION /* gp */
 			| VALIDATOR
+			| VALUE_P
 			| VARYING
 			| VIEW
 			| VOLATILE
@@ -11945,7 +11954,7 @@ makeAddPartitionCreateStmt(Node *n, Node *subSpec)
 }
 
 static Node *
-makeColumnRef(char *relname, List *indirection, int location)
+makeColumnRef(char *colname, List *indirection, int location)
 {
 	/*
 	 * Generate a ColumnRef node, with an A_Indirection node added if there
@@ -11967,7 +11976,7 @@ makeColumnRef(char *relname, List *indirection, int location)
 			if (nfields == 0)
 			{
 				/* easy case - all indirection goes to A_Indirection */
-				c->fields = list_make1(makeString(relname));
+				c->fields = list_make1(makeString(colname));
 				i->indirection = indirection;
 			}
 			else
@@ -11975,7 +11984,7 @@ makeColumnRef(char *relname, List *indirection, int location)
 				/* got to split the list in two */
 				i->indirection = list_copy_tail(indirection, nfields);
 				indirection = list_truncate(indirection, nfields);
-				c->fields = lcons(makeString(relname), indirection);
+				c->fields = lcons(makeString(colname), indirection);
 			}
 			i->arg = (Node *) c;
 			return (Node *) i;
@@ -11983,7 +11992,7 @@ makeColumnRef(char *relname, List *indirection, int location)
 		nfields++;
 	}
 	/* No subscripting, so all indirection gets added to field list */
-	c->fields = lcons(makeString(relname), indirection);
+	c->fields = lcons(makeString(colname), indirection);
 	return (Node *) c;
 }
 
@@ -12072,7 +12081,7 @@ makeBoolAConst(bool state, int location)
 	n->val.type = T_String;
 	n->val.val.str = (state? "t": "f");
 	n->typname = SystemTypeName("bool");
-	n->location = location;     /*CDB*/
+	n->location = location;
 	return n;
 }
 
@@ -12246,6 +12255,7 @@ SystemFuncName(char *name)
  * Build a properly-qualified reference to a built-in type.
  *
  * typmod is defaulted, but may be changed afterwards by caller.
+ * Likewise for the location.
  */
 TypeName *
 SystemTypeName(char *name)
@@ -12384,7 +12394,6 @@ TableFuncTypeName(List *columns)
 
 	return result;
 }
-
 
 /*
  * Must undefine base_yylex before including scan.c, since we want it
