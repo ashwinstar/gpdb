@@ -1157,7 +1157,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 				/* for now, just use the last entry that got there */
 				rec->hostname = host[i].hostname;
 				rec->data_dir = host[i].data_dir;
-				apr_thread_mutex_create(&rec->mutex, APR_THREAD_MUTEX_UNNESTED, pool);
+				apr_thread_mutex_create(&rec->mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool);
 			}
 			else
 			{
@@ -1171,7 +1171,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 				CHECKMEM(rec->data_dir);
 				apr_hash_set(htab, rec->realhostname,
 						APR_HASH_KEY_STRING, rec);
-				apr_thread_mutex_create(&rec->mutex, APR_THREAD_MUTEX_UNNESTED, pool);
+				apr_thread_mutex_create(&rec->mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool);
 			}
 		}
 		/* clean up file handles */
