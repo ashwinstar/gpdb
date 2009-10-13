@@ -52,7 +52,7 @@ pgkill(int pid, int sig)
 		if (CallNamedPipe(pipename, &sigData, 1, &sigRet, 1, &bytes, 1000))
 		{
 			if (bytes != 1 || sigRet != sig)
-	{
+			{
 				errno = ESRCH;
 				return -1;
 			}
@@ -60,13 +60,13 @@ pgkill(int pid, int sig)
 		}
 	}
 
-		if (GetLastError() == ERROR_FILE_NOT_FOUND)
-			errno = ESRCH;
-		else if (GetLastError() == ERROR_ACCESS_DENIED)
-			errno = EPERM;
-		else
-			errno = EINVAL;
-		return -1;
+	if (GetLastError() == ERROR_FILE_NOT_FOUND)
+		errno = ESRCH;
+	else if (GetLastError() == ERROR_ACCESS_DENIED)
+		errno = EPERM;
+	else
+		errno = EINVAL;
+	return -1;
 }
 
 #endif

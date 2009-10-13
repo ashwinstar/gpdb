@@ -10,7 +10,7 @@
  *	Win32 (NT4 and newer).
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/dirmod.c,v 1.58 2009/06/11 14:49:15 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/dirmod.c,v 1.58.2.1 2009/09/13 18:32:17 heikki Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -120,7 +120,8 @@ pgrename(const char *from, const char *to)
 	 * We need to loop because even though PostgreSQL uses flags that allow
 	 * rename while the file is open, other applications might have the file
 	 * open without those flags.  However, we won't wait indefinitely for
-	 * someone else to close the file.
+	 * someone else to close the file, as the caller might be holding locks
+	 * and blocking other backends.
 	 */
 #if defined(WIN32) && !defined(__CYGWIN__)
 	while (!MoveFileEx(from, to, MOVEFILE_REPLACE_EXISTING))
@@ -129,13 +130,28 @@ pgrename(const char *from, const char *to)
 #endif
 	{
 #if defined(WIN32) && !defined(__CYGWIN__)
-		if (GetLastError() != ERROR_ACCESS_DENIED)
+		DWORD		err = GetLastError();
+
+		_dosmaperr(err);
+
+		/*
+		 * Modern NT-based Windows versions return ERROR_SHARING_VIOLATION
+		 * if another process has the file open without FILE_SHARE_DELETE.
+		 * ERROR_LOCK_VIOLATION has also been seen with some anti-virus
+		 * software. This used to check for just ERROR_ACCESS_DENIED, so
+		 * presumably you can get that too with some OS versions. We don't
+		 * expect real permission errors where we currently use rename().
+		 */
+		if (err != ERROR_ACCESS_DENIED &&
+			err != ERROR_SHARING_VIOLATION &&
+			err != ERROR_LOCK_VIOLATION)
+			return -1;
 #else
 		if (errno != EACCES)
-#endif
-			/* set errno? */
 			return -1;
-		if (++loops > 300)		/* time out after 30 sec */
+#endif
+
+		if (++loops > 100)		/* time out after 10 sec */
 			return -1;
 		pg_usleep(100000);		/* us */
 	}
@@ -155,14 +171,14 @@ pgunlink(const char *path)
 	 * We need to loop because even though PostgreSQL uses flags that allow
 	 * unlink while the file is open, other applications might have the file
 	 * open without those flags.  However, we won't wait indefinitely for
-	 * someone else to close the file.
+	 * someone else to close the file, as the caller might be holding locks
+	 * and blocking other backends.
 	 */
 	while (unlink(path))
 	{
 		if (errno != EACCES)
-			/* set errno? */
 			return -1;
-		if (++loops > 300)		/* time out after 30 sec */
+		if (++loops > 100)		/* time out after 10 sec */
 			return -1;
 		pg_usleep(100000);		/* us */
 	}
@@ -195,7 +211,7 @@ typedef struct
 	WORD		PrintNameOffset;
 	WORD		PrintNameLength;
 	WCHAR		PathBuffer[1];
-}	REPARSE_JUNCTION_DATA_BUFFER;
+} REPARSE_JUNCTION_DATA_BUFFER;
 
 #define REPARSE_JUNCTION_DATA_BUFFER_HEADER_SIZE   \
 		FIELD_OFFSET(REPARSE_JUNCTION_DATA_BUFFER, SubstituteNameOffset)
@@ -260,7 +276,7 @@ pgsymlink(const char *oldpath, const char *newpath)
 		FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
 					  NULL, GetLastError(),
 					  MAKELANGID(LANG_ENGLISH, SUBLANG_DEFAULT),
-					  (LPSTR) & msg, 0, NULL);
+					  (LPSTR) &msg, 0, NULL);
 #ifndef FRONTEND
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -446,7 +462,7 @@ rmtree(const char *path, bool rmtopdir)
 		else
 		{
 			if (unlink(pathbuf) != 0)
-		{
+			{
 				if (errno != ENOENT)
 				{
 #ifndef FRONTEND
@@ -470,7 +486,7 @@ rmtree(const char *path, bool rmtopdir)
 			elog(WARNING, "could not remove file or directory \"%s\": %m",
 				 path);
 #else
-	fprintf(stderr, _("could not remove file or directory \"%s\": %s\n"),
+			fprintf(stderr, _("could not remove file or directory \"%s\": %s\n"),
 					path, strerror(errno));
 #endif
 			result = false;
@@ -492,10 +508,10 @@ rmtree(const char *path, bool rmtopdir)
  * field when run. So we define our own version that uses the Win32 API
  * to update this field.
  */
-int 
-pgwin32_safestat(const char *path, struct stat *buf)
+int
+pgwin32_safestat(const char *path, struct stat * buf)
 {
-	int r;
+	int			r;
 	WIN32_FILE_ATTRIBUTE_DATA attr;
 
 	r = stat(path, buf);

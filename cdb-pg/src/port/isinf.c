@@ -22,8 +22,6 @@
 #if HAVE_IEEEFP_H
 #include <ieeefp.h>
 #endif
-
-#undef isinf
 int
 isinf(double d)
 {
