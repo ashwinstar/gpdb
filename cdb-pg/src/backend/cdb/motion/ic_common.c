@@ -160,6 +160,23 @@ static void	dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry);
 static void	print_connection(ChunkTransportState *transportStates, int fd, const char *msg);
 #endif
 
+static void
+logChunkParseDetails(MotionConn *conn)
+{
+	struct icpkthdr *pkt;
+
+	Assert(conn != NULL);
+	Assert(conn->pBuff != NULL);
+
+	pkt = (struct icpkthdr *)conn->pBuff;
+
+	elog(LOG, "Interconnect parse details: pkt->len %d pkt->seq %d pkt->flags 0x%x conn->active %d conn->stopRequest %d pkt->icId %d my_icId %d", 
+		 pkt->len, pkt->seq, pkt->flags, conn->stillActive, conn->stopRequested, pkt->icId, gp_interconnect_id);
+
+	elog(LOG, "Interconnect parse details continued: peer: srcpid %d dstpid %d recvslice %d sendslice %d srccontent %d dstcontent %d",
+		 pkt->srcPid, pkt->dstPid, pkt->recvSliceIndex, pkt->sendSliceIndex, pkt->srcContentId, pkt->dstContentId);
+}
+
 TupleChunkListItem
 RecvTupleChunk(MotionConn *conn, bool inTeardown)
 {
@@ -192,13 +209,7 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 	{
 		if (conn->msgSize - bytesProcessed < TUPLE_CHUNK_HEADER_SIZE)
 		{
-			struct icpkthdr *pkt=(struct icpkthdr *) conn->pBuff;
-
-			elog(LOG, "Interconnect parse details: pkt->len %d pkt->seq %d pkt->flags 0x%x conn->active %d conn->stopRequest %d pkt->icId %d my_icId %d", 
-				 pkt->len, pkt->seq, pkt->flags, conn->stillActive, conn->stopRequested, pkt->icId, gp_interconnect_id);
-
-			elog(LOG, "Interconnect parse details continued: peer: srcpid %d dstpid %d recvslice %d sendslice %d srccontent %d dstcontent %d",
-				 pkt->srcPid, pkt->dstPid, pkt->recvSliceIndex, pkt->sendSliceIndex, pkt->srcContentId, pkt->dstContentId);
+			logChunkParseDetails(conn);
 
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect error parsing message: insufficient data received."),
@@ -223,6 +234,8 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 			else
 				elog(LOG, "Interconnect error parsing message: no last item");
 
+			logChunkParseDetails(conn);
+
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect error parsing message"),
 							errdetail("tcSize %d > max %d header %d processed %d/%d from %p",
@@ -239,6 +252,8 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 				/* see MPP-720: it is possible that our message got
 				 * messed up by a cancellation ? */
 				ML_CHECK_FOR_INTERRUPTS(inTeardown);
+
+				logChunkParseDetails(conn);
 
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								errmsg("Interconnect error parsing message"),
