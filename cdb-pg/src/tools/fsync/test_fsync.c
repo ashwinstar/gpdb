@@ -332,6 +332,8 @@ main(int argc, char *argv[])
 			die("write failed");
 		if (fsync(tmpfile) != 0)
 			die("fsync failed");
+		if (lseek(tmpfile, 0, SEEK_SET) == -1)
+			die("seek failed");
 	}
 	gettimeofday(&elapse_t, NULL);
 	close(tmpfile);
