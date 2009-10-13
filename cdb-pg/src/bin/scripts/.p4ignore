@@ -10,3 +10,5 @@ mbprint.c
 print.c
 reindexdb
 vacuumdb
+keywords.c
+kwlookup.c
