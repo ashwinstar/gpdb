@@ -6,3 +6,4 @@ pl.tab.h
 pl_gram.c
 pl_scan.c
 pl_gram.h
+plpgsql.so
