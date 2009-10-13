@@ -483,6 +483,9 @@ TAS         = @TAS@
 #
 # Global targets and rules
 
+%.i: %.c
+	$(CPP) $(CPPFLAGS) -o $@ $<
+
 %.gz: %
 	$(GZIP) -f --best $<
 
