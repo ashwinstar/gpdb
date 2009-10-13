@@ -14,7 +14,5 @@ include $(top_builddir)/src/Makefile.global
 
 DIRS = libpq ecpg 
 
-ALLDIRS := $(DIRS) 
-
-all install installdirs uninstall dep depend distprep clean distclean maintainer-clean:
+all install installdirs uninstall distprep clean distclean maintainer-clean:
 	@for dir in $(DIRS); do $(MAKE) -C $$dir $@ || exit; done
