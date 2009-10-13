@@ -5926,7 +5926,9 @@ make_par_name(char *parname, bool isevery)
 }
 
 static char *
-partition_rule_def_worker(PartitionRule *rule, Node *start, Node *end, Node *every,
+partition_rule_def_worker(PartitionRule *rule, Node *start, 
+						  Node *end, PartitionRule *end_rule,
+						  Node *every,
 						  Partition *part, bool handleevery, int prettyFlags)
 {
 	StringInfoData str;
@@ -5992,10 +5994,14 @@ partition_rule_def_worker(PartitionRule *rule, Node *start, Node *end, Node *eve
 
 		case 'r':
 			{
+				/* MPP-7232: Note: distinguish "(start) rule" and
+				 * "end_rule", because for an EVERY clause
+				 * inclusivity/exclusivity can differ
+				 */
 				partition_rule_range(&c, (List *)start, 
 									 rule->parrangestartincl,
 									 (List *)end,
-									 rule->parrangeendincl,
+									 end_rule->parrangeendincl,
 									 (List *)every);
 				needspace = true;
 			}
@@ -6055,9 +6061,12 @@ partition_rule_def_worker(PartitionRule *rule, Node *start, Node *end, Node *eve
 }
 
 static void
-write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start, Node *end,
+write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start, 
+			   Node *end,
+			   PartitionRule *end_rule,
 			   Node *every, deparse_context *head, deparse_context *body,
-			   bool handleevery, bool *needcomma, bool *first_rule, int16 *leveldone,
+			   bool handleevery, bool *needcomma, 
+			   bool *first_rule, int16 *leveldone,
 			   PartitionNode *children)
 {
 	char *str;
@@ -6075,7 +6084,13 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start, Node *end,
 							   Max(body->indentLevel, 0) + 2);
 	}
 
-   	str = partition_rule_def_worker(rule, start, end, every, pn->part, handleevery,
+	/* MPP-7232: Note: distinguish "(start) rule" and "end_rule",
+	 * because for an EVERY clause inclusivity/exclusivity
+	 * can differ 
+	 */
+   	str = partition_rule_def_worker(rule, start, 
+									end, end_rule, 
+									every, pn->part, handleevery,
 									body->prettyFlags);
 	if (str && strlen(str))
 	{
@@ -6249,7 +6264,10 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 					 */
 					write_out_rule(first_every_rule, pn, 
 								   first_every_rule->parrangestart,
-								   prev_rule ? prev_rule->parrangeend : first_every_rule->parrangeend,
+								   prev_rule ? 
+								    prev_rule->parrangeend : 
+								    first_every_rule->parrangeend,
+								   prev_rule ? prev_rule : first_every_rule,
 								   first_every_rule->parrangeevery,
 			   					   head, body, true, &needcomma, &first_rule, 
 								   leveldone,
@@ -6297,7 +6315,9 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 
 		/*
 		 * Note that this handles the LIST and HASH cases too */
-		write_out_rule(rule, pn, rule->parrangestart, rule->parrangeend,
+		write_out_rule(rule, pn, rule->parrangestart, 
+					   rule->parrangeend,
+					   rule,
 					   rule->parrangeevery, head, body, false, &needcomma,
 					   &first_rule, leveldone,
 					   rule->children);
@@ -6306,7 +6326,10 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 	if (first_every_rule)
 	{
 		write_out_rule(first_every_rule, pn, first_every_rule->parrangestart,
-					   prev_rule ? prev_rule->parrangeend : first_every_rule->parrangeend,
+					   prev_rule ? 
+					    prev_rule->parrangeend : 
+					    first_every_rule->parrangeend,
+					   prev_rule ? prev_rule : first_every_rule,
 					   first_every_rule->parrangeevery,
    					   head, body, true, &needcomma, &first_rule, leveldone,
 					   first_every_rule->children);
@@ -6314,7 +6337,9 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 
 	if (pn->default_part)
 	{
-		write_out_rule(pn->default_part, pn, NULL, NULL, NULL, head, body, false,
+		write_out_rule(pn->default_part, pn, NULL, NULL, 
+					   NULL, NULL, 
+					   head, body, false,
 					   &needcomma,
 					   &first_rule, leveldone, pn->default_part->children);
 	}
@@ -6422,8 +6447,10 @@ get_rule_def_common(Oid partid, int prettyFlags)
 	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
 
-	return partition_rule_def_worker(rule, rule->parrangestart, rule->parrangeend,
-									 rule->parrangeevery, part, false, prettyFlags);
+	return partition_rule_def_worker(rule, rule->parrangestart, 
+									 rule->parrangeend, rule,
+									 rule->parrangeevery, part, 
+									 false, prettyFlags);
 }
 
 Datum
