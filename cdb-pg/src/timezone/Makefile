@@ -45,9 +45,9 @@ endif
 #	$(if $(ZIC),$(ZIC),./zic)
 # but gmake versions <= 3.78.1 or perhaps later have a bug
 # that causes a segfault;  gmake 3.81 or later fixes this.
-#ifeq (,$(ZIC))
+ifeq (,$(ZIC))
 ZIC= ./zic
-#endif
+endif
 
 zic: $(ZICOBJS)
 	$(CC) $(CFLAGS) $(ZICOBJS) $(LDFLAGS) $(LIBS) -o $@$(X)
