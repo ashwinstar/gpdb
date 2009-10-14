@@ -1770,7 +1770,7 @@ static struct config_bool ConfigureNamesBool[] =
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_interconnect_elide_setup,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{
