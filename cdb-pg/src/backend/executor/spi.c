@@ -2870,11 +2870,19 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
 											dest,
 											paramLI, false);
 
-					if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
-					{			
-						Assert(plan->query);
-						gpmon_qlog_query_text(qdesc->gpmon_pkt, plan->query);
-					}
+                    if (gp_enable_gpperfmon 
+                    		&& Gp_role == GP_ROLE_DISPATCH 
+                    		&& log_min_messages < DEBUG4)
+                    {
+                    	/* For log level of DEBUG4, gpmon is sent information about SPI internal queries as well */
+                    	Assert(plan->query);
+                    	gpmon_qlog_query_text(qdesc->gpmon_pkt, plan->query);
+                    }
+                    else
+                    {
+                    	/* Otherwise, we do not record information about internal queries */
+                    	qdesc->gpmon_pkt=NULL;
+                    }
 
 					res = _SPI_pquery(qdesc, fire_triggers,
 									  queryTree->canSetTag ? tcount : 0);
