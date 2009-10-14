@@ -2,3 +2,13 @@ objoid|classoid|objsubid|description
 9998|1255|0|convert an object name to oid.
 9999|1255|0|Greenplum fault testing only
 5032|1255|0|Return reltuples/relpages information for relation.
+3302|1255|0|I/O
+3303|1255|0|I/O
+3304|1255|0|I/O
+3305|1255|0|I/O
+3312|1255|0|I/O
+3313|1255|0|I/O
+3314|1255|0|I/O
+3315|1255|0|I/O
+3300|1247|0|(segment file num, row number), logical location of append-only tuple
+3310|1247|0|(h/h) -- the hexadecimal xlogid and xrecoff of an XLOG location

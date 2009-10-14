@@ -530,6 +530,16 @@ DATA(insert OID = 2211 ( _regtype	   PGNSP PGUID -1 f b t \054 0 2206 array_in a
 
 DATA(insert OID = 3251 ( nb_classification PGNSP PGUID -1 f c t \054 3250 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 
+DATA(insert OID = 3300 (	gpaotid		   PGNSP PGUID	6 f b t \054 0	 0 gpaotidin gpaotidout gpaotidrecv gpaotidsend - s p f 0 -1 0 _null_ _null_ ));
+DESCR("(segment file num, row number), logical location of append-only tuple");
+#define AOTIDOID	3300
+DATA(insert OID = 3301 (  _gpaotid		 PGNSP PGUID -1 f b t \054 0	3300 array_in array_out array_recv array_send - i x f 0 -1 0 _null_ _null_ ));
+
+DATA(insert OID = 3310 (	gpxlogloc		   PGNSP PGUID	8 f b t \054 0	 0 gpxloglocin gpxloglocout gpxloglocrecv gpxloglocsend - s p f 0 -1 0 _null_ _null_ ));
+DESCR("(h/h) -- the hexadecimal xlogid and xrecoff of an XLOG location");
+#define XLOGLOCOID	3310
+DATA(insert OID = 3311 (  _gpxlogloc		 PGNSP PGUID -1 f b t \054 0	3310 array_in array_out array_recv array_send - i x f 0 -1 0 _null_ _null_ ));
+
 
 /*
  * pseudo-types

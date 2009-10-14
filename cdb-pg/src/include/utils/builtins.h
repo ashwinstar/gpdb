@@ -589,6 +589,18 @@ extern Datum tidsmaller(PG_FUNCTION_ARGS);
 extern Datum currtid_byreloid(PG_FUNCTION_ARGS);
 extern Datum currtid_byrelname(PG_FUNCTION_ARGS);
 
+/* appendonlytid.c */
+extern Datum gpaotidin(PG_FUNCTION_ARGS);
+extern Datum gpaotidout(PG_FUNCTION_ARGS);
+extern Datum gpaotidrecv(PG_FUNCTION_ARGS);
+extern Datum gpaotidsend(PG_FUNCTION_ARGS);
+
+/* xlog.c */
+extern Datum gpxloglocin(PG_FUNCTION_ARGS);
+extern Datum gpxloglocout(PG_FUNCTION_ARGS);
+extern Datum gpxloglocrecv(PG_FUNCTION_ARGS);
+extern Datum gpxloglocsend(PG_FUNCTION_ARGS);
+
 /* varchar.c */
 extern Datum bpcharin(PG_FUNCTION_ARGS);
 extern Datum bpcharout(PG_FUNCTION_ARGS);

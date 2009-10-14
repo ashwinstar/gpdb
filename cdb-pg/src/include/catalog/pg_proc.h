@@ -4400,6 +4400,24 @@ DATA(insert OID = 3260 (  float8_mregr_r2     PGNSP PGUID 12 f f t f i 1 701 f "
 DATA(insert OID = 3261 (  mregr_coef          PGNSP PGUID 12 t f t f i 2 1022 f "701 1022" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 DATA(insert OID = 3262 (  mregr_r2            PGNSP PGUID 12 t f t f i 2 701 f "701 1022" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 
+DATA(insert OID =  3302 (  gpaotidin			   PGNSP PGUID 12 f f t f i 1 3300 f "2275" _null_ _null_ _null_ gpaotidin - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3303 (  gpaotidout			   PGNSP PGUID 12 f f t f i 1 2275 f "3300" _null_ _null_ _null_ gpaotidout - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3304 (  gpaotidrecv		   PGNSP PGUID 12 f f t f i 1 3300 f "2281" _null_ _null_ _null_	gpaotidrecv - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3305 (  gpaotidsend		   PGNSP PGUID 12 f f t f i 1 17 f "3300" _null_ _null_ _null_	gpaotidsend - _null_ ));
+DESCR("I/O");
+
+DATA(insert OID =  3312 (  gpxloglocin			   PGNSP PGUID 12 f f t f i 1 3310 f "2275" _null_ _null_ _null_ gpxloglocin - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3313 (  gpxloglocout			   PGNSP PGUID 12 f f t f i 1 2275 f "3310" _null_ _null_ _null_ gpxloglocout - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3314 (  gpxloglocrecv		   PGNSP PGUID 12 f f t f i 1 3310 f "2281" _null_ _null_ _null_	gpxloglocrecv - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3315 (  gpxloglocsend		   PGNSP PGUID 12 f f t f i 1 17 f "3310" _null_ _null_ _null_	gpxloglocsend - _null_ ));
+DESCR("I/O");
+
 
 /* Greenplum MPP exposed internally-defined functions. */
 DATA(insert OID = 6003 (  gp_backup_launch    PGNSP PGUID 12 f f f f v 5 25 f "25 25 25 25 25" _null_ _null_ _null_ gp_backup_launch__  - _null_  ));

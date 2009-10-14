@@ -2,3 +2,11 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 9900|aocsvpinfo_decode|11|10|12|f|f|t|f|i|3|20|f|1562 23 23|\N|\N|\N|aocsvpinfo_decode|-|\N
 9998|pg_objname_to_oid|11|10|12|f|f|t|f|i|1|26|f|25|\N|\N|\N|pg_objname_to_oid|-|\N
 5032|gp_statistics_estimate_reltuples_relpages_oid|11|10|12|f|f|t|f|v|1|1021|f|26|\N|\N|\N|gp_statistics_estimate_reltuples_relpages_oid|-|\N
+3302|gpaotidin|11|10|12|f|f|t|f|i|1|3300|f|2275|\N|\N|\N|gpaotidin|-|\N
+3303|gpaotidout|11|10|12|f|f|t|f|i|1|2275|f|3300|\N|\N|\N|gpaotidout|-|\N
+3304|gpaotidrecv|11|10|12|f|f|t|f|i|1|3300|f|2281|\N|\N|\N|gpaotidrecv|-|\N
+3305|gpaotidsend|11|10|12|f|f|t|f|i|1|17|f|3300|\N|\N|\N|gpaotidsend|-|\N
+3312|gpxloglocin|11|10|12|f|f|t|f|i|1|3310|f|2275|\N|\N|\N|gpxloglocin|-|\N
+3313|gpxloglocout|11|10|12|f|f|t|f|i|1|2275|f|3310|\N|\N|\N|gpxloglocout|-|\N
+3314|gpxloglocrecv|11|10|12|f|f|t|f|i|1|3310|f|2281|\N|\N|\N|gpxloglocrecv|-|\N
+3315|gpxloglocsend|11|10|12|f|f|t|f|i|1|17|f|3310|\N|\N|\N|gpxloglocsend|-|\N
