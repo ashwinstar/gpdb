@@ -15,11 +15,20 @@
  * AOTupleId is a unique tuple id, specific to AO 
  * relation tuples, of the form (segfile#, row#)
  * 
+ * *** WARNING *** Some code interprets AOTIDs as HEAPTIDs.
+ *
+ * Begin mischief.  Want to make sure the last 16 bits (uint16) are non-zero so that when
+ * the executor asserts the item number is non-zero our AOTID will pass the test.
+ * So, we create a reserved bit that is always on.  So, in the case that the segment file
+ * number is 0 (utility mode) and the lower part (6 bits) of the row number is 0, our AOTID's
+ * last 16 bits will be non-zero because of the always on reserved bit.
+ *
  * Out of the following 48 bits, the 38 leftmost
  * bits stand for the row within the segment file 
- * (Limit: 274 trillion (2^38) - 1), and the 10
+ * (Limit: 274 trillion (2^38) - 1), the next bit is reserved
+ * and always ON, and the 9
  * rightmost bits stand for which segment file the 
- * tuple is in (Limit: 1023 (2^10 - 1))
+ * tuple is in (Limit: 511 (2^9 - 1))
  *
  *
  * ***WARNING*** STRUCT PACKING ISSUE.
@@ -38,19 +47,15 @@ typedef struct AOTupleId
 } AOTupleId;
 
    
-#define AOTupleIdGet_segmentFileNum(h)        (((h)->bytes_4_5&0x03FF)) // 10 bits
+#define AOTupleIdGet_segmentFileNum(h)        (((h)->bytes_4_5&0x01FF)) // 9 bits
+#define AOTupleIdGet_makeHeapExecutorHappy(h) (((h)->bytes_4_5&0x0200)>>9) // 1 bit
 #define AOTupleIdGet_rowNum(h) \
           ((((uint64)((h)->bytes_0_3))<<6)|(((uint64)((h)->bytes_4_5&0xFC00))>>10))
          /* top most 32 bits (all bytes_2_3) */  /* 6 top bits from bytes_4_5 */
 
-/* For single bits, set or clear directly.  Otherwise, use AND to clear field then OR to set.
-#define AOTupleIdSet_segmentFileNum(h,e)         {(h)->bytes_0_1&=0x03FF;(h)->bytes_0_1|=((0x03FF&((uint16)(e)))<<6);}
-#define AOTupleIdSet_rowNum(h,e)    {(h)->bytes_0_1&=0xFFC0;(h)->bytes_0_1|=(uint16)((0x0000003F00000000&(e))>>32);\
-                                     (h)->bytes_2_5=(uint32)(e);}
-*/
-// Assume field is initially zero.
-#define AOTupleIdInit_Init(h)                {(h)->bytes_0_3=0;(h)->bytes_4_5=0;}
-#define AOTupleIdInit_segmentFileNum(h,e)    {(h)->bytes_4_5|=(0x03FF&((uint16)(e)));}
+/* ~_Init zeroes the 2 regular fields and sets the always on field to 1. */
+#define AOTupleIdInit_Init(h)                {(h)->bytes_0_3=0;(h)->bytes_4_5=0x0200;}
+#define AOTupleIdInit_segmentFileNum(h,e)    {(h)->bytes_4_5|=(0x01FF&((uint16)(e)));}
 #define AOTupleIdInit_rowNum(h,e)            {(h)->bytes_0_3|=((uint32)((INT64CONST(0x0000003FFFFFFFFF)&(e))>>6));\
 											  (h)->bytes_4_5|=((0x003F&((uint16)(e)))<<10);}
 
