@@ -33,11 +33,11 @@
 #include "access/subtrans.h"
 #include "access/transam.h"
 #include "access/xact.h"
+#include "utils/tqual.h"
 #include "access/twophase.h"
 #include "miscadmin.h"
 #include "storage/procarray.h"
 #include "utils/combocid.h"
-#include "utils/tqual.h"
 #include "cdb/cdbtm.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
@@ -537,9 +537,8 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 	 * Copy all active subtransctions to shared snapshot.
 	 *
 	 */
-    GetSubtransactionsForSharedSnapshot(
-    	(uint32 *)&SharedLocalSnapshotSlot->subcnt,
-    	(TransactionId *)SharedLocalSnapshotSlot->subxids);
+    GetSubtransactionsForSharedSnapshot((uint32 *)&SharedLocalSnapshotSlot->subcnt,
+										(TransactionId *)SharedLocalSnapshotSlot->subxids);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
 		 "updateSharedLocalSnapshot count of subtransaction ids %u",
@@ -548,7 +547,7 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 	if (snapshot->xcnt > 0)
 	{
 		Assert(snapshot->xip != NULL);
-	
+
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),"updateSharedLocalSnapshot count of in-doubt ids %u", SharedLocalSnapshotSlot->snapshot.xcnt);
 
 		memcpy(SharedLocalSnapshotSlot->snapshot.xip, snapshot->xip, snapshot->xcnt * sizeof(TransactionId));
@@ -637,7 +636,6 @@ GetDistributedSnapshotMaxCount(void)
 
 	return 0;
 }
-
 
 static void
 FillInDistributedSnapshot(Snapshot snapshot)
@@ -742,6 +740,30 @@ FillInDistributedSnapshot(Snapshot snapshot)
 	}
 }
 
+/*
+ * QEDtxContextInfo and SharedLocalSnapshotSlot are both global.
+ *
+ * NOTE: this function may change SharedLocalSnapshotSlot as a side-effect
+ */
+static bool
+QEwriterSnapshotUpToDate(void)
+{
+	Assert(!Gp_is_writer);
+
+	if (SharedLocalSnapshotSlot == NULL)
+		elog(ERROR, "SharedLocalSnapshotSlot is NULL");
+
+	if (QEDtxContextInfo.distributedXid == SharedLocalSnapshotSlot->QDxid &&
+		QEDtxContextInfo.curcid == SharedLocalSnapshotSlot->QDcid &&
+		QEDtxContextInfo.segmateSync == SharedLocalSnapshotSlot->segmateSync &&
+		SharedLocalSnapshotSlot->ready)
+	{
+		return true;
+	}
+
+	return false;
+}
+
 /*----------
  * GetSnapshotData -- returns information about running transactions.
  *
@@ -815,7 +837,6 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
-
 	}
 
 	/*
@@ -864,8 +885,22 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		uint64		segmate_timeout_us = (3 * (uint64)interconnect_setup_timeout * 1000* 1000) / 4;
 		uint64	   	total_sleep_time_us = 0;
 		uint64		warning_sleep_time_us = 0;
-		
-		
+
+		/*
+		 * Make a copy of the distributed snapshot information; this
+		 * doesn't use the shared-snapshot-slot stuff it is just
+		 * making copies from the QEDtxContextInfo structure sent by
+		 * the QD.
+		 */
+		FillInDistributedSnapshot(snapshot);
+
+		if (QEDtxContextInfo.cursorContext)
+		{
+			readSharedLocalSnapshot_forCursor(snapshot);
+
+			return snapshot;
+		}
+
 		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Start Reader Match* gxid = %u and currcid %d (%s)", 
 			 QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
 			 QEDtxContextInfo.distributedXid,
@@ -892,13 +927,11 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		 */
 		for (;;)
 		{
-			if (SharedLocalSnapshotSlot == NULL)
-				elog(ERROR, "SharedLocalSnapshotSlot is NULL");
-
-			if (QEDtxContextInfo.distributedXid == SharedLocalSnapshotSlot->QDxid &&
-				QEDtxContextInfo.curcid == SharedLocalSnapshotSlot->QDcid &&
-				QEDtxContextInfo.segmateSync == SharedLocalSnapshotSlot->segmateSync &&
-				SharedLocalSnapshotSlot->ready)
+			/*
+			 * NOTE: QEwriterSnapshotUpToDate() may change
+			 * SharedLocalSnapshotSlot as a side-effect.
+			 */
+			if (QEwriterSnapshotUpToDate())
 			{
 				/*
 				 * YAY we found it.  set the contents of the
@@ -934,11 +967,6 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 					 usedComboCids, SharedLocalSnapshotSlot->combocidcnt, SharedLocalSnapshotSlot->segmateSync);
 				
 				SetSharedTransactionId();
-
-				/*
-				 * Make a copy of the distributed snapshot information.
-				 */
-			 	FillInDistributedSnapshot(snapshot);
 
 				elog(DEBUG5, "Reader qExec setting shared local snapshot to: xmin: %d xmax: %d curcid: %d",
 					 snapshot->xmin, snapshot->xmax, snapshot->curcid);
@@ -1042,15 +1070,16 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	 	 xmin);
 
 	/*
-	 * It is sufficient to get shared lock on ProcArrayLock, even if we are
-	 * computing a serializable snapshot and therefore will be setting
-	 * MyProc->xmin.  This is because any two backends that have overlapping
-	 * shared holds on ProcArrayLock will certainly compute the same xmin
-	 * (since no xact, in particular not the oldest, can exit the set of
-	 * running transactions while we hold ProcArrayLock --- see further
-	 * discussion just below).	So it doesn't matter whether another backend
-	 * concurrently doing GetSnapshotData or GetOldestXmin sees our xmin as
-	 * set or not; he'd compute the same xmin for himself either way.
+	 * It is sufficient to get shared lock on ProcArrayLock, even if
+	 * we are computing a serializable snapshot and therefore will be
+	 * setting MyProc->xmin.  This is because any two backends that
+	 * have overlapping shared holds on ProcArrayLock will certainly
+	 * compute the same xmin (since no xact, in particular not the
+	 * oldest, can exit the set of running transactions while we hold
+	 * ProcArrayLock --- see further discussion just below). So it
+	 * doesn't matter whether another backend concurrently doing
+	 * GetSnapshotData or GetOldestXmin sees our xmin as set or not;
+	 * he'd compute the same xmin for himself either way.
 	 */
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
@@ -1144,8 +1173,9 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 			!TransactionIdIsNormal(xid) ||
 			TransactionIdFollowsOrEquals(xid, xmax) ||
 			proc->mppIsDispatchAgent)
+		{
 			continue;
-
+		}
 		
 		if (TransactionIdPrecedes(xid, xmin))
 			xmin = xid;

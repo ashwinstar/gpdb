@@ -2359,7 +2359,8 @@ _SPI_execute_plan_remote(_SPI_plan * plan, Datum *Values, const char *Nulls,
 		else
 		{
 			serializedSnapshot =
-				qdSerializeDtxContextInfo(&serializedSnapshotlen, true /* wantSnapshot */ , txnOptions, "_SPI_execute_plan");
+				qdSerializeDtxContextInfo(&serializedSnapshotlen, true /* wantSnapshot */,
+										  false /* not in a cursor*/, txnOptions, "_SPI_execute_plan");
 		}
 
 		/*

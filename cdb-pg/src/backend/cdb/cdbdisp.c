@@ -1480,7 +1480,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 
 	/* Serialize a version of our DTX Context Info */
 	queryParms.serializedDtxContextInfo = 
-			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommand");
+		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, false, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommand");
 
 	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && dispatchToMirrors && !dispatchToPrimaries)
 	{
@@ -1790,7 +1790,8 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 
 	/* serialized a version of our snapshot */
 	queryParms.serializedDtxContextInfo = 
-		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* withSnapshot */, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommandToAllGangs");
+		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* withSnapshot */, false /* cursor*/,
+								  generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommandToAllGangs");
 	
 	readerGangs = getAllReaderGangs();
 	
@@ -3810,13 +3811,13 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 {
 	 
 	char	   *squery,
-			   *splan,
-			   *ssliceinfo,
-			   *sparams;
+		*splan,
+		*ssliceinfo,
+		*sparams;
 	int			squery_len,
-				splan_len,
-				ssliceinfo_len,
-				sparams_len;
+		splan_len,
+		ssliceinfo_len,
+		sparams_len;
 	SliceTable *sliceTbl;
 	int			rootIdx;
 	int			oldLocalSlice;
@@ -3944,7 +3945,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	Assert(squery != NULL && splan != NULL);
 
 	/*
-	*/
+	 */
 	if (queryDesc->params != NULL && queryDesc->params->numParams > 0)
 	{		
         ParamListInfoData  *pli;
@@ -4035,7 +4036,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * dispatch without starting a global xact.
 	 */
 	queryParms.serializedDtxContextInfo = 
-			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* wantSnapshot */, generateTxnOptions(planRequiresTxn), "cdbdisp_dispatchPlan");
+		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* wantSnapshot */, queryDesc->cursor_query,
+								  generateTxnOptions(planRequiresTxn), "cdbdisp_dispatchPlan");
 	
 	Assert(sliceTbl);
 	Assert(sliceTbl->slices != NIL);
@@ -4052,10 +4054,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		}
 	}
 
-	cdbdisp_dispatchX(&queryParms,
-					  cancelOnError,
-					  sliceTbl,
-					  &direct_desc,
+	cdbdisp_dispatchX(&queryParms, cancelOnError,
+					  sliceTbl, &direct_desc,
 					  pPrimaryResults,		/* OUT */
 					  pMirrorResults,       /* OUT */
 					  pDispatchThreads)	;	/* OUT */
@@ -4308,17 +4308,14 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char*
 
 }	/* CdbDispatchUtilityStatement */
 
-
-
-char*
-qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* debugCaller)
+char *
+qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor, int txnOptions, char *debugCaller)
 {
 	char *serializedDtxContextInfo;
 
 	Snapshot snapshot;
 	int serializedLen;
 	DtxContextInfo *pDtxContextInfo = NULL;
-
 	
 	/* If we already have a LatestSnapshot set then no reason to try
 	 * and get a new one.  just use that one.  But... there is one important
@@ -4350,7 +4347,6 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 	 * NOTE: This will be a problem if we ever need to dispatch more than one
 	 *  	 statement to the qExecs and more than one needs a snapshot!
 	 */
-	 
 	*size = 0;
 	snapshot = NULL;
 
@@ -4405,17 +4401,18 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
 		case DTX_CONTEXT_LOCAL_ONLY:
 			if (snapshot != NULL)
-				DtxContextInfo_CreateOnMaster(
-					&TempQDDtxContextInfo, 
-					&snapshot->distribSnapshotWithLocalMapping, 
-					snapshot->curcid, 
-					txnOptions);
+			{
+				DtxContextInfo_CreateOnMaster(&TempQDDtxContextInfo,
+											  &snapshot->distribSnapshotWithLocalMapping,
+											  snapshot->curcid, txnOptions);
+			}
 			else
-				DtxContextInfo_CreateOnMaster(
-					&TempQDDtxContextInfo, 
-					NULL, 
-					0, 
-					txnOptions);
+			{
+				DtxContextInfo_CreateOnMaster(&TempQDDtxContextInfo, 
+											  NULL, 0, txnOptions);
+			}
+			
+			TempQDDtxContextInfo.cursorContext = inCursor;
 
 			if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
 				snapshot != NULL)

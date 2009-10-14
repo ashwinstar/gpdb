@@ -469,7 +469,7 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads);
 /* used to take the current Transaction Snapshot and serialized a version of it
  * into the static variable serializedDtxContextInfo */
 char *
-qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* debugCaller);
+qdSerializeDtxContextInfo(int * size, bool wantSnapshot, bool inCursor, int txnOptions, char* debugCaller);
 
 
 /* this is used for dire cleanup emergencies (in portalmem.c) */

@@ -9,7 +9,7 @@
 #ifndef CDBDTXCONTEXTINFO_H
 #define CDBDTXCONTEXTINFO_H
 
-#define DtxContextInfo_StaticInit {0,InvalidDistributedTransactionId,TmGid_Init,0,false,DistributedSnapshot_StaticInit,0}
+#define DtxContextInfo_StaticInit {0,InvalidDistributedTransactionId,TmGid_Init,0,false,false,DistributedSnapshot_StaticInit,0}
 
 typedef struct DtxContextInfo
 {
@@ -22,6 +22,7 @@ typedef struct DtxContextInfo
 	CommandId				 		curcid;	/* in my xact, CID < curcid are visible */
 
 	bool							haveDistributedSnapshot;
+	bool							cursorContext;
 	
 	DistributedSnapshot		 		distributedSnapshot;
 

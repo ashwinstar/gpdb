@@ -54,8 +54,7 @@
 #include "access/distributedlog.h"
 
 #include "cdb/cdbgang.h"
-#include "cdb/cdbvars.h"		/* Gp_role, Gp_is_writer,
-					   interconnect_setup_timeout */
+#include "cdb/cdbvars.h" /* Gp_role, Gp_is_writer, interconnect_setup_timeout */
 
 /*
  *	User-tweakable parameters
@@ -68,7 +67,6 @@ bool		XactReadOnly;
 
 int			CommitDelay = 0;	/* precommit delay in microseconds */
 int			CommitSiblings = 5; /* # concurrent xacts needed to sleep */
-
 
 /* gp-specific
  *
@@ -1801,8 +1799,8 @@ SetSharedTransactionId(void)
 		
 	case DTX_CONTEXT_QE_READER:
 	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
-		TopTransactionStateData.transactionId = SharedLocalSnapshotSlot->xid;
-		currentCommandId = SharedLocalSnapshotSlot->snapshot.curcid;
+
+		SetSharedTransactionId_reader(SharedLocalSnapshotSlot->xid, SharedLocalSnapshotSlot->snapshot.curcid);
 
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec READER setting local xid to: %u (distributedXid %u/%u)", 
 		     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync);
@@ -1819,6 +1817,16 @@ SetSharedTransactionId(void)
 		elog(PANIC, "Unrecognized DTX transaction context: %d",
 			(int) DistributedTransactionContext);
 	}
+}
+
+void
+SetSharedTransactionId_reader(TransactionId xid, CommandId cid)
+{
+	Assert(DistributedTransactionContext == DTX_CONTEXT_QE_READER ||
+		   DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON);
+
+	TopTransactionStateData.transactionId = xid;
+	currentCommandId = cid;
 }
 
 /* MPP routine for fetching the currently active subtransaction ids.
@@ -1872,6 +1880,7 @@ bool
 CheckSharedSnapshotForSubtransaction(TransactionId xid)
 {
 	uint32 sub;
+
 	for(sub = 0; sub < SharedLocalSnapshotSlot->subcnt; sub++)
 	{
 		if (TransactionIdEquals(xid, SharedLocalSnapshotSlot->subxids[sub]))
@@ -1880,7 +1889,8 @@ CheckSharedSnapshotForSubtransaction(TransactionId xid)
 	return false;
 }
 
-/* MPP debug routine for showing currently active subtransaction ids.
+/*
+ * MPP debug routine for showing currently active subtransaction ids.
  */
 void
 ShowSubtransactionsForSharedSnapshot(uint32 subcnt,const TransactionId *subxids)
@@ -1894,18 +1904,17 @@ ShowSubtransactionsForSharedSnapshot(uint32 subcnt,const TransactionId *subxids)
 
 }
 
-/* MPP routine for marking when a sequence makes a mark in the xlog.  we need
- * to keep track of this because sequences are the only reason a reader should
- * ever write to the xlog during commit.  As a result, we keep track of such
- * and will complain loudly if its violated.
+/*
+ * MPP routine for marking when a sequence makes a mark in the xlog.
+ * we need to keep track of this because sequences are the only reason
+ * a reader should ever write to the xlog during commit.  As a result,
+ * we keep track of such and will complain loudly if its violated.
  */
 void
 SetXactSeqXlog(void)
 {
 	seqXlogWrite = true;
 }
-
-
 
 /*
  *	StartTransaction
@@ -1976,9 +1985,9 @@ StartTransaction(void)
 	 */
 	switch (DistributedTransactionContext)
 	{
-	case DTX_CONTEXT_LOCAL_ONLY:
-	case DTX_CONTEXT_QD_RETRY_PHASE_2:
-	case DTX_CONTEXT_QE_FINISH_PREPARED:
+		case DTX_CONTEXT_LOCAL_ONLY:
+		case DTX_CONTEXT_QD_RETRY_PHASE_2:
+		case DTX_CONTEXT_QE_FINISH_PREPARED:
 		{
 			/*
 			 * MPP: we're in utility-mode or a QE starting a pure-local
@@ -2004,7 +2013,7 @@ StartTransaction(void)
 		}
 		break;
 
-	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
 		{
 			/*
 			 * MPP: we're the dispatcher.
@@ -2015,9 +2024,7 @@ StartTransaction(void)
 			 * distributed transaction to a local transaction id for the
 			 * master database.
 			 */
-			createDtx(
-				&s->distribXid,
-				&s->transactionId);
+			createDtx(&s->distribXid, &s->transactionId);
 
 			XactLockTableInsert(s->transactionId);
 			
@@ -2032,9 +2039,9 @@ StartTransaction(void)
 		}
 		break;
 
-	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
-	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
-	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+		case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+		case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+		case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
 		{
 			/* If we're running in test-mode insert a delay in writer. */
 			if (gp_enable_slow_writer_testmode)
@@ -2050,7 +2057,6 @@ StartTransaction(void)
 			 */
 			if (QEDtxContextInfo.distributedXid != InvalidDistributedTransactionId)
 			{
-
 				if (DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
 					DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER)
 				{
@@ -2058,16 +2064,15 @@ StartTransaction(void)
 					 * Use local xid that is mapped to distributed xid.
 					 */
 					LocalDistribXact_StartOnSegment(
-											QEDtxContextInfo.distributedTimeStamp,
-											QEDtxContextInfo.distributedXid,
-											&s->transactionId);
-					
+						QEDtxContextInfo.distributedTimeStamp,
+						QEDtxContextInfo.distributedXid,
+						&s->transactionId);
+
 					s->distribXid = QEDtxContextInfo.distributedXid;
 
 					elog((Debug_print_full_dtm ? LOG : DEBUG5),
 						 "LocalDistribXact_StartOnSegment returned %s",
 				 	     LocalDistribXact_DisplayString(&MyProc->localDistribXactRef));
-
 				}
 				else
 				{
@@ -2111,7 +2116,7 @@ StartTransaction(void)
 				 * Generate a new transaction id
 				 */
 				s->transactionId = GetNewTransactionId(false, true);
-				
+
 				elog((Debug_print_full_dtm ? LOG : DEBUG5),
 					 "Not tied to distributed transaction id, but still coordinated "
 				     "as a distributed transaction with the 2 phase protocol... local xid %u", 
@@ -2122,29 +2127,30 @@ StartTransaction(void)
 			 * Common.
 			 */
 			XactLockTableInsert(s->transactionId);
-			
+
 			PG_TRACE1(transaction__start, s->transactionId);
 
 		}
 		break;
 
-	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
-	case DTX_CONTEXT_QE_READER:
+		case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+		case DTX_CONTEXT_QE_READER:
 		{
-			/* the pg_usleep() call below is in units of us (microseconds), interconnect
-			 * timeout is in seconds.  Start with 1 millisecond. */
-			uint64     sleep_per_check_us = 1 * 1000;
-			
+			/*
+			 * the pg_usleep() call below is in units of us
+			 * (microseconds), interconnect timeout is in seconds.
+			 * Start with 1 millisecond.
+			 */
+			uint64		sleep_per_check_us = 1 * 1000;
 			uint64		segmate_timeout_us = (3 * (uint64)interconnect_setup_timeout * 1000 * 1000) / 4;
-
-			uint64	   	total_sleep_time_us = 0;
+			uint64		total_sleep_time_us = 0;
 			uint64		warning_sleep_time_us = 0;
-			
+
 			/*
 			 * MPP: we're a QE Reader.
 			 */
 			Assert (SharedLocalSnapshotSlot != NULL);
-			
+
 			/*
 			 * we want to get our XID from the shared snapshot and not
 			 * generate one ourselves
@@ -2153,11 +2159,21 @@ StartTransaction(void)
 				 QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid, 
 				 SharedSnapshotDump());
 
+			/*
+			 * NOTE: it is important to notice that we *do not check*
+			 * for QEDtxContextInfo.cursorContext here. This means
+			 * that we'll be pulling some information from the
+			 * SharedLocalSnapshotSlot even in the cursor case!
+			 *
+			 * In particular, we're getting the local-xid, the
+			 * local transaction-start-timestamp.
+			 */
 			for (;;)
 			{
 				Assert(SharedLocalSnapshotSlot != NULL);
 
-				elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Reader Match?* gxid %u == %u allow currcid %d ~~ %d (StartTransaction, gxid = %u, slot #%d, '%s')", 
+				elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
+					 "[Distributed Snapshot #%u] *Reader Match?* gxid %u == %u allow currcid %d ~~ %d (StartTransaction, gxid = %u, slot #%d, '%s')", 
 					 QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
 					 QEDtxContextInfo.distributedXid,
 					 SharedLocalSnapshotSlot->QDxid,
@@ -2168,9 +2184,9 @@ StartTransaction(void)
 					 DtxContextToString(DistributedTransactionContext));
 				
 				/*
-				 * If the QDxid in the SharedLocalSnapshotSlot is the same
-				 * one that the QD sent us... then we know we are both on
-				 * the same page.
+				 * If the QDxid in the SharedLocalSnapshotSlot is the
+				 * same one that the QD sent us... then we know we are
+				 * both on the same page.
 				 *
 				 * NOTE: The xid we end up getting here may be changed
 				 * later on if we wind up needing a snapshot. There is
@@ -2182,6 +2198,8 @@ StartTransaction(void)
 				 * relevant xid, that we may update the xid when we do
 				 * a full sync with our writer shouldn't matter (since
 				 * we will do that before ever using a snapshot).
+				 *
+				 * This should match a similar check in procarray.c.
 				 */
 				if (QEDtxContextInfo.distributedXid == SharedLocalSnapshotSlot->QDxid)
 				{
@@ -2244,32 +2262,30 @@ StartTransaction(void)
 							 DtxContextToString(DistributedTransactionContext));
 						warning_sleep_time_us = 0;
 					}
-
-					// UNDONE: Back-off from checking every millisecond...
 				}
 			}
-			
 			s->distribXid = QEDtxContextInfo.distributedXid;
 		}
 		break;
 	
-	case DTX_CONTEXT_QE_PREPARED:
-		elog(FATAL, "Unexpected segment distribute transaction context: '%s'",
-			 DtxContextToString(DistributedTransactionContext));
-		break;
+		case DTX_CONTEXT_QE_PREPARED:
+			elog(FATAL, "Unexpected segment distribute transaction context: '%s'",
+				 DtxContextToString(DistributedTransactionContext));
+			break;
 	
-	default:
-		elog(PANIC, "Unrecognized DTX transaction context: %d",
-			(int) DistributedTransactionContext);
-		break;
+		default:
+			elog(PANIC, "Unrecognized DTX transaction context: %d",
+				 (int) DistributedTransactionContext);
+			break;
 	}
 
-	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *StartTransaction* (gxid = %u, xid = %u, '%s')", 
-	 	  (SerializableSnapshot == NULL ? 0 :
-	 	  						SerializableSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId),
-	 	  getDistributedTransactionId(),
-	 	  s->transactionId,
-		  DtxContextToString(DistributedTransactionContext));
+	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
+		 "[Distributed Snapshot #%u] *StartTransaction* (gxid = %u, xid = %u, '%s')", 
+		 (SerializableSnapshot == NULL ? 0 :
+		  SerializableSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId),
+		 getDistributedTransactionId(),
+		 s->transactionId,
+		 DtxContextToString(DistributedTransactionContext));
 
 	/*
 	 * initialize current transaction state fields
@@ -2301,7 +2317,6 @@ StartTransaction(void)
 		 "StartTransaction in DTX Context = '%s', %s",
 		 DtxContextToString(DistributedTransactionContext),
  	     LocalDistribXact_DisplayString(&MyProc->localDistribXactRef));
-	
 }
 
 
@@ -2446,37 +2461,37 @@ CommitTransaction(void)
 		{
 			switch (DistributedTransactionContext)
 			{
-			case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
-				LocalDistribXact_ChangeStateUnderLock(
-									MyProc->xid,
-									&MyProc->localDistribXactRef,
-									LOCALDISTRIBXACT_STATE_COMMITDELIVERY);
-				needDistribCommitted = true;
-			    break;
+				case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+					LocalDistribXact_ChangeStateUnderLock(
+						MyProc->xid,
+						&MyProc->localDistribXactRef,
+						LOCALDISTRIBXACT_STATE_COMMITDELIVERY);
+					needDistribCommitted = true;
+					break;
 				
-			case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
-			case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
-			case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
-				LocalDistribXact_ChangeStateUnderLock(
-									MyProc->xid,
-									&MyProc->localDistribXactRef,
-									LOCALDISTRIBXACT_STATE_COMMITTED);
-				break;
+				case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+				case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+				case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+					LocalDistribXact_ChangeStateUnderLock(
+						MyProc->xid,
+						&MyProc->localDistribXactRef,
+						LOCALDISTRIBXACT_STATE_COMMITTED);
+					break;
 				
-			case DTX_CONTEXT_QE_READER:
-			case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
-				// QD or QE Writer will handle it.
-				break;
+				case DTX_CONTEXT_QE_READER:
+				case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+					// QD or QE Writer will handle it.
+					break;
 
-			case DTX_CONTEXT_QD_RETRY_PHASE_2:
-			case DTX_CONTEXT_QE_PREPARED:
-			case DTX_CONTEXT_QE_FINISH_PREPARED:
-				elog(PANIC, "Unexpected distribute transaction context: '%s'",
-					DtxContextToString(DistributedTransactionContext));
+				case DTX_CONTEXT_QD_RETRY_PHASE_2:
+				case DTX_CONTEXT_QE_PREPARED:
+				case DTX_CONTEXT_QE_FINISH_PREPARED:
+					elog(PANIC, "Unexpected distribute transaction context: '%s'",
+						 DtxContextToString(DistributedTransactionContext));
 
-			default:
-				elog(PANIC, "Unrecognized DTX transaction context: %d",
-					(int) DistributedTransactionContext);
+				default:
+					elog(PANIC, "Unrecognized DTX transaction context: %d",
+						 (int) DistributedTransactionContext);
 			}
 
 			/*
@@ -2485,8 +2500,8 @@ CommitTransaction(void)
 			 */
 			localXid = MyProc->xid;
 			LocalDistribXactRef_Transfer(
-							&localDistribXactRef,
-							&MyProc->localDistribXactRef);
+				&localDistribXactRef,
+				&MyProc->localDistribXactRef);
 		}
 
 		MyProc->xid = InvalidTransactionId;
@@ -2603,9 +2618,9 @@ CommitTransaction(void)
 
 		if (needDistribCommitted)
 			LocalDistribXact_ChangeStateUnderLock(
-										localXid,
-										&localDistribXactRef,
-										LOCALDISTRIBXACT_STATE_COMMITTED);
+				localXid,
+				&localDistribXactRef,
+				LOCALDISTRIBXACT_STATE_COMMITTED);
 		
 		LocalDistribXactRef_ReleaseUnderLock(&localDistribXactRef);
 
@@ -2987,37 +3002,37 @@ AbortTransaction(void)
 		{
 			switch (DistributedTransactionContext)
 			{
-			case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
-				LocalDistribXact_ChangeStateUnderLock(
-									MyProc->xid,
-									&MyProc->localDistribXactRef,
-									LOCALDISTRIBXACT_STATE_ABORTDELIVERY);
-				needDistribAborted = true;
-			    break;
+				case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+					LocalDistribXact_ChangeStateUnderLock(
+						MyProc->xid,
+						&MyProc->localDistribXactRef,
+						LOCALDISTRIBXACT_STATE_ABORTDELIVERY);
+					needDistribAborted = true;
+					break;
 				
-			case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
-			case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
-			case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
-				LocalDistribXact_ChangeStateUnderLock(
-									MyProc->xid,
-									&MyProc->localDistribXactRef,
-									LOCALDISTRIBXACT_STATE_ABORTED);
-				break;
+				case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+				case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+				case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+					LocalDistribXact_ChangeStateUnderLock(
+						MyProc->xid,
+						&MyProc->localDistribXactRef,
+						LOCALDISTRIBXACT_STATE_ABORTED);
+					break;
 				
-			case DTX_CONTEXT_QE_READER:
-			case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
-				// QD or QE Writer will handle it.
-				break;
+				case DTX_CONTEXT_QE_READER:
+				case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+					// QD or QE Writer will handle it.
+					break;
 
-			case DTX_CONTEXT_QD_RETRY_PHASE_2:
-			case DTX_CONTEXT_QE_PREPARED:
-			case DTX_CONTEXT_QE_FINISH_PREPARED:
-				elog(PANIC, "Unexpected distribute transaction context: '%s'",
-					DtxContextToString(DistributedTransactionContext));
+				case DTX_CONTEXT_QD_RETRY_PHASE_2:
+				case DTX_CONTEXT_QE_PREPARED:
+				case DTX_CONTEXT_QE_FINISH_PREPARED:
+					elog(PANIC, "Unexpected distribute transaction context: '%s'",
+						 DtxContextToString(DistributedTransactionContext));
 
-			default:
-				elog(PANIC, "Unrecognized DTX transaction context: %d",
-					(int) DistributedTransactionContext);
+				default:
+					elog(PANIC, "Unrecognized DTX transaction context: %d",
+						 (int) DistributedTransactionContext);
 			}
 			
 			/*
@@ -3026,8 +3041,8 @@ AbortTransaction(void)
 			 */
 			localXid = MyProc->xid;
 			LocalDistribXactRef_Transfer(
-							&localDistribXactRef,
-							&MyProc->localDistribXactRef);
+				&localDistribXactRef,
+				&MyProc->localDistribXactRef);
 		}
 
 		MyProc->xid = InvalidTransactionId;
@@ -3092,9 +3107,9 @@ AbortTransaction(void)
 
 		if (needDistribAborted)
 			LocalDistribXact_ChangeStateUnderLock(
-										localXid,
-										&localDistribXactRef,
-										LOCALDISTRIBXACT_STATE_ABORTED);
+				localXid,
+				&localDistribXactRef,
+				LOCALDISTRIBXACT_STATE_ABORTED);
 		
 		LocalDistribXactRef_ReleaseUnderLock(&localDistribXactRef);
 
@@ -3120,8 +3135,8 @@ AbortTransaction(void)
 	/* If memprot decides to kill process, make sure we destroy all processes
 	 * so that all mem/resource will be freed
 	 */
-	 if(elog_geterrcode() == ERRCODE_GP_MEMPROT_KILL)
-		 disconnectAndDestroyAllGangs();
+	if(elog_geterrcode() == ERRCODE_GP_MEMPROT_KILL)
+		disconnectAndDestroyAllGangs();
 }
 
 /*
@@ -3180,10 +3195,10 @@ StartTransactionCommand(void)
 
 	switch (s->blockState)
 	{
-			/*
-			 * if we aren't in a transaction block, we just do our usual start
-			 * transaction.
-			 */
+		/*
+		 * if we aren't in a transaction block, we just do our usual start
+		 * transaction.
+		 */
 		case TBLOCK_DEFAULT:
 			StartTransaction();
 
@@ -3288,11 +3303,11 @@ CommitTransactionCommand(void)
 	
 	switch (s->blockState)
 	{
-			/*
-			 * This shouldn't happen, because it means the previous
-			 * StartTransactionCommand didn't set the STARTED state
-			 * appropriately.
-			 */
+		/*
+		 * This shouldn't happen, because it means the previous
+		 * StartTransactionCommand didn't set the STARTED state
+		 * appropriately.
+		 */
 		case TBLOCK_DEFAULT:
 			elog(FATAL, "CommitTransactionCommand: unexpected state %s",
 				 BlockStateAsString(s->blockState));
@@ -3443,67 +3458,67 @@ CommitTransactionCommand(void)
 			 * with the same name.
 			 */
 		case TBLOCK_SUBRESTART:
+		{
+			char	   *name;
+			int			savepointLevel;
+
+			/* save name and keep Cleanup from freeing it */
+			name = s->name;
+			s->name = NULL;
+			savepointLevel = s->savepointLevel;
+
+			AbortSubTransaction();
+			CleanupSubTransaction();
+
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				char	   *name;
-				int			savepointLevel;
-
-				/* save name and keep Cleanup from freeing it */
-				name = s->name;
-				s->name = NULL;
-				savepointLevel = s->savepointLevel;
-
-				AbortSubTransaction();
-				CleanupSubTransaction();
-
-				if (Gp_role == GP_ROLE_DISPATCH)
-				{
-					DispatchRollbackToSavepoint(name);
-				}
-
-				DefineSavepoint(name);
-				s = CurrentTransactionState;	/* changed by push */
-				s->name = name;
-				s->savepointLevel = savepointLevel;
-
-				/* This is the same as TBLOCK_SUBBEGIN case */
-				AssertState(s->blockState == TBLOCK_SUBBEGIN);
-				StartSubTransaction();
-				s->blockState = TBLOCK_SUBINPROGRESS;
+				DispatchRollbackToSavepoint(name);
 			}
-			break;
 
-			/*
-			 * Same as above, but the subtransaction had already failed, so we
-			 * don't need AbortSubTransaction.
-			 */
+			DefineSavepoint(name);
+			s = CurrentTransactionState;	/* changed by push */
+			s->name = name;
+			s->savepointLevel = savepointLevel;
+
+			/* This is the same as TBLOCK_SUBBEGIN case */
+			AssertState(s->blockState == TBLOCK_SUBBEGIN);
+			StartSubTransaction();
+			s->blockState = TBLOCK_SUBINPROGRESS;
+		}
+		break;
+
+		/*
+		 * Same as above, but the subtransaction had already failed, so we
+		 * don't need AbortSubTransaction.
+		 */
 		case TBLOCK_SUBABORT_RESTART:
+		{
+			char	   *name;
+			int			savepointLevel;
+
+			/* save name and keep Cleanup from freeing it */
+			name = s->name;
+			s->name = NULL;
+			savepointLevel = s->savepointLevel;
+
+			CleanupSubTransaction();
+
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				char	   *name;
-				int			savepointLevel;
-
-				/* save name and keep Cleanup from freeing it */
-				name = s->name;
-				s->name = NULL;
-				savepointLevel = s->savepointLevel;
-
-				CleanupSubTransaction();
-
-				if (Gp_role == GP_ROLE_DISPATCH)
-				{
-					DispatchRollbackToSavepoint(name);
-				}
-
-				DefineSavepoint(name);
-				s = CurrentTransactionState;	/* changed by push */
-				s->name = name;
-				s->savepointLevel = savepointLevel;
-
-				/* This is the same as TBLOCK_SUBBEGIN case */
-				AssertState(s->blockState == TBLOCK_SUBBEGIN);
-				StartSubTransaction();
-				s->blockState = TBLOCK_SUBINPROGRESS;
+				DispatchRollbackToSavepoint(name);
 			}
-			break;
+
+			DefineSavepoint(name);
+			s = CurrentTransactionState;	/* changed by push */
+			s->name = name;
+			s->savepointLevel = savepointLevel;
+
+			/* This is the same as TBLOCK_SUBBEGIN case */
+			AssertState(s->blockState == TBLOCK_SUBBEGIN);
+			StartSubTransaction();
+			s->blockState = TBLOCK_SUBINPROGRESS;
+		}
+		break;
 	}
 }
 
@@ -3689,7 +3704,7 @@ PreventTransactionChain(void *stmtNode, const char *stmtType)
 	if (IsTransactionBlock())
 		ereport(ERROR,
 				(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
-		/* translator: %s represents an SQL statement name */
+				 /* translator: %s represents an SQL statement name */
 				 errmsg("%s cannot run inside a transaction block",
 						stmtType)));
 
@@ -3699,7 +3714,7 @@ PreventTransactionChain(void *stmtNode, const char *stmtType)
 	if (IsSubTransaction())
 		ereport(ERROR,
 				(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
-		/* translator: %s represents an SQL statement name */
+				 /* translator: %s represents an SQL statement name */
 				 errmsg("%s cannot run inside a subtransaction",
 						stmtType)));
 
@@ -3711,7 +3726,7 @@ PreventTransactionChain(void *stmtNode, const char *stmtType)
 	if (!MemoryContextContains(QueryContext, stmtNode))
 		ereport(ERROR,
 				(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
-		/* translator: %s represents an SQL statement name */
+				 /* translator: %s represents an SQL statement name */
 				 errmsg("%s cannot be executed from a function", stmtType)));
 
 	/* If we got past IsTransactionBlock test, should be in default state */
@@ -3762,7 +3777,7 @@ RequireTransactionChain(void *stmtNode, const char *stmtType)
 		return;
 	ereport(ERROR,
 			(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
-	/* translator: %s represents an SQL statement name */
+			 /* translator: %s represents an SQL statement name */
 			 errmsg("%s may only be used in transaction blocks",
 					stmtType)));
 }
@@ -3981,9 +3996,9 @@ BeginTransactionBlock(void)
 
 	switch (s->blockState)
 	{
-			/*
-			 * We are not inside a transaction block, so allow one to begin.
-			 */
+		/*
+		 * We are not inside a transaction block, so allow one to begin.
+		 */
 		case TBLOCK_STARTED:
 			s->blockState = TBLOCK_BEGIN;
 			break;
@@ -3996,13 +4011,13 @@ BeginTransactionBlock(void)
 		case TBLOCK_ABORT:
 		case TBLOCK_SUBABORT:
 			if (Gp_role == GP_ROLE_EXECUTE)
-			ereport(DEBUG1,
-					(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
-					 errmsg("there is already a transaction in progress")));
+				ereport(DEBUG1,
+						(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+						 errmsg("there is already a transaction in progress")));
 			else
-			ereport(WARNING,
-					(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
-					 errmsg("there is already a transaction in progress")));
+				ereport(WARNING,
+						(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+						 errmsg("there is already a transaction in progress")));
 			break;
 
 			/* These cases are invalid. */
@@ -4095,10 +4110,10 @@ EndTransactionBlock(void)
 
 	switch (s->blockState)
 	{
-			/*
-			 * We are in a transaction block, so tell CommitTransactionCommand
-			 * to COMMIT.
-			 */
+		/*
+		 * We are in a transaction block, so tell CommitTransactionCommand
+		 * to COMMIT.
+		 */
 		case TBLOCK_INPROGRESS:
 			s->blockState = TBLOCK_END;
 			result = true;
@@ -4170,13 +4185,13 @@ EndTransactionBlock(void)
 			if (Gp_role == GP_ROLE_EXECUTE)
 			{
 				ereport(DEBUG2,
-					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
-					 errmsg("there is no transaction in progress")));
+						(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
+						 errmsg("there is no transaction in progress")));
 			}
 			else
-			ereport(WARNING,
-					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
-					 errmsg("there is no transaction in progress")));
+				ereport(WARNING,
+						(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
+						 errmsg("there is no transaction in progress")));
 			result = true;
 			break;
 
@@ -4214,11 +4229,11 @@ UserAbortTransactionBlock(void)
 
 	switch (s->blockState)
 	{
-			/*
-			 * We are inside a transaction block and we got a ROLLBACK command
-			 * from the user, so tell CommitTransactionCommand to abort and
-			 * exit the transaction block.
-			 */
+		/*
+		 * We are inside a transaction block and we got a ROLLBACK command
+		 * from the user, so tell CommitTransactionCommand to abort and
+		 * exit the transaction block.
+		 */
 		case TBLOCK_INPROGRESS:
 			s->blockState = TBLOCK_ABORT_PENDING;
 			break;
@@ -4269,13 +4284,13 @@ UserAbortTransactionBlock(void)
 			if (Gp_role == GP_ROLE_EXECUTE)
 			{
 				ereport(DEBUG2,
-					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
-					 errmsg("there is no transaction in progress")));
+						(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
+						 errmsg("there is no transaction in progress")));
 			}
 			else
-			ereport(WARNING,
-					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
-					 errmsg("there is no transaction in progress")));
+				ereport(WARNING,
+						(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
+						 errmsg("there is no transaction in progress")));
 			s->blockState = TBLOCK_ABORT_PENDING;
 			break;
 
@@ -4391,16 +4406,16 @@ ReleaseSavepoint(List *options)
 {
 	TransactionState s = CurrentTransactionState;
 	TransactionState target,
-				xact;
+		xact;
 	ListCell   *cell;
 	char	   *name = NULL;
 
 	switch (s->blockState)
 	{
-			/*
-			 * We can't rollback to a savepoint if there is no savepoint
-			 * defined.
-			 */
+		/*
+		 * We can't rollback to a savepoint if there is no savepoint
+		 * defined.
+		 */
 		case TBLOCK_INPROGRESS:
 			ereport(ERROR,
 					(errcode(ERRCODE_S_E_INVALID_SPECIFICATION),
@@ -4523,16 +4538,16 @@ RollbackToSavepoint(List *options)
 {
 	TransactionState s = CurrentTransactionState;
 	TransactionState target,
-				xact;
+		xact;
 	ListCell   *cell;
 	char	   *name = NULL;
 
 	switch (s->blockState)
 	{
-			/*
-			 * We can't rollback to a savepoint if there is no savepoint
-			 * defined.
-			 */
+		/*
+		 * We can't rollback to a savepoint if there is no savepoint
+		 * defined.
+		 */
 		case TBLOCK_INPROGRESS:
 		case TBLOCK_ABORT:
 			ereport(ERROR,
@@ -4750,7 +4765,7 @@ RollbackAndReleaseCurrentSubTransaction(void)
 
 	switch (s->blockState)
 	{
-			/* Must be in a subtransaction */
+		/* Must be in a subtransaction */
 		case TBLOCK_SUBINPROGRESS:
 		case TBLOCK_SUBABORT:
 			break;

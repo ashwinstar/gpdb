@@ -535,7 +535,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 					(errcode(ERRCODE_UNDEFINED_DATABASE),
 					 errmsg("database \"%s\" does not exist",
 							dbname),
-			   errdetail("It seems to have just been dropped or renamed.")));
+					 errdetail("It seems to have just been dropped or renamed.")));
 	}
 
 	/*
@@ -551,8 +551,8 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 						(errcode(ERRCODE_UNDEFINED_DATABASE),
 						 errmsg("database \"%s\" does not exist",
 								dbname),
-					errdetail("The database subdirectory \"%s\" is missing.",
-							  fullpath)));
+						 errdetail("The database subdirectory \"%s\" is missing.",
+								   fullpath)));
 			else
 				ereport(FATAL,
 						(errcode_for_file_access(),
@@ -649,7 +649,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		cdb_setup();
 		on_proc_exit( cdb_cleanup, 0 );
     }
-    
+
     /* 
      * MPP SharedSnapshot Setup
 	 */

@@ -152,6 +152,7 @@ typedef struct xl_xact_distributed_forget
 
 /* Greenplum Database specific */ 
 extern void SetSharedTransactionId(void);
+extern void SetSharedTransactionId_reader(TransactionId xid, CommandId cid);
 extern void GetSubtransactionsForSharedSnapshot(uint32 *subcnt, TransactionId *subxids);
 extern bool CheckSharedSnapshotForSubtransaction(TransactionId xid);
 extern void SetXactSeqXlog(void);

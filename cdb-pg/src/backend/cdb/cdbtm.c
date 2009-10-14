@@ -3236,13 +3236,21 @@ assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source __attri
 	elog(DEBUG1, "SET gp_write_shared_snapshot: %s, doit=%s",
 		 (newval ? "true" : "false"), (doit ? "true" : "false"));
 #endif
-	/* make sure newval is "true". if it's "false" this could be a part
-	 * of a ROLLBACK so we don't want to set the snapshot then.
+	/*
+	 * Make sure newval is "true". if it's "false" this could be a
+	 * part of a ROLLBACK so we don't want to set the snapshot then.
 	 */
 	if (doit && newval)
 	{
 		if (Gp_role == GP_ROLE_EXECUTE)
-			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());			
+		{
+			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
+
+			if (Gp_is_writer)
+			{
+				dumpSharedLocalSnapshot_forCursor();
+			}
+		}
 	}
 
 	return true;

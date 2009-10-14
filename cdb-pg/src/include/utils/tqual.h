@@ -118,8 +118,6 @@ typedef struct SharedSnapshotSlot
 
 extern volatile SharedSnapshotSlot *SharedLocalSnapshotSlot;
 
-
-
 /*
  * HeapTupleSatisfiesVisibility
  *		True iff heap tuple satisfies a time qual.
@@ -321,6 +319,9 @@ extern char *SharedSnapshotDump(void);
 extern void SharedSnapshotRemove(volatile SharedSnapshotSlot *slot, char *creatorDescription);
 extern void addSharedSnapshot(char *creatorDescription, int id);
 extern void lookupSharedSnapshot(char *lookerDescription, char *creatorDescription, int id);
+
+extern void dumpSharedLocalSnapshot_forCursor(void);
+extern void readSharedLocalSnapshot_forCursor(Snapshot snapshot);
 
 extern bool HeapTupleSatisfiesItself(Relation relation, HeapTupleHeader tuple, Buffer buffer);
 extern bool HeapTupleSatisfiesNow(Relation relation, HeapTupleHeader tuple, Buffer buffer);

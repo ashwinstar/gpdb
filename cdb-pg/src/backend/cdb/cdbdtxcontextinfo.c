@@ -206,6 +206,7 @@ DtxContextInfo_SerializeSize(DtxContextInfo *dtxContextInfo)
 
 	size += sizeof(uint32); /* segmateSync */
 	size += sizeof(bool);	/* haveDistributedSnapshot */
+	size += sizeof(bool);	/* cursorContext */
 
 	if (dtxContextInfo->haveDistributedSnapshot)
 	{
@@ -262,6 +263,9 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 	p += sizeof(uint32);
 
 	memcpy(p, &dtxContextInfo->haveDistributedSnapshot, sizeof(bool));
+	p += sizeof(bool);
+
+	memcpy(p, &dtxContextInfo->cursorContext, sizeof(bool));
 	p += sizeof(bool);
 
 	if (dtxContextInfo->haveDistributedSnapshot)
@@ -361,6 +365,7 @@ DtxContextInfo_Copy(
 	target->curcid = source->curcid;
 
 	target->haveDistributedSnapshot = source->haveDistributedSnapshot;
+	target->cursorContext = source->cursorContext;
 
 	if (source->haveDistributedSnapshot)
 		DistributedSnapshot_Copy(
@@ -431,6 +436,9 @@ DtxContextInfo_Deserialize(
 		memcpy(&dtxContextInfo->segmateSync, p, sizeof(uint32));
 		p += sizeof(uint32);
 		memcpy(&dtxContextInfo->haveDistributedSnapshot, p, sizeof(bool));
+		p += sizeof(bool);
+
+		memcpy(&dtxContextInfo->cursorContext, p, sizeof(bool));
 		p += sizeof(bool);
 
 		if (dtxContextInfo->distributedXid == FirstDistributedTransactionId)
