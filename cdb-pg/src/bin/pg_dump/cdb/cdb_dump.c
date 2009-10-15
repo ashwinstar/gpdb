@@ -42,7 +42,7 @@ static char* addPassThroughLongParm( const char *Parm, const char* pszValue, cha
 static char* shellEscape( const char *shellArg, PQExpBuffer escapeBuf );
 static bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr);
 static void decrementFinishedLaunchCount(void);
-static bool doInitialActions(PGconn* pConn /*, const char* pszDBName*/);
+static bool lockDumpableObjects(PGconn* pConn);
 static bool execCommit( PGconn* pConn );
 static bool	fillInputOptions(int argc, char** argv, InputOptions* pInputOpts);
 static void freeThreadParmArray(ThreadParmArray* pParmAr);
@@ -63,7 +63,6 @@ static bool testPartitioningSupport(void);
  */
 extern char* optarg;
 extern int	optind, opterr;
-/*static int	disable_triggers = 0;*/
 static bool	dumpInserts;			/* dump data using proper insert strings */
 static bool	attrNames;			/* put attr names into insert strings */
 static char *dumpencoding = NULL;
@@ -136,26 +135,23 @@ int main( int argc, char** argv)
 	if ( master_db_conn == NULL )
 		goto cleanup;
 
-	/* Read mpp segmentDB configuration from the master */
 	mpp_msg( logInfo, pszProgName, "Reading Greenplum Database configuration info from master database.\n");
 	if ( !GetDumpSegmentDatabaseArray(master_db_conn, &segDBAr, inputOpts.actors, inputOpts.pszRawDumpSet, dataOnly, schemaOnly) )
 		goto cleanup;
 
 	/* Start a transaction and lock selected tables for this db */
-	if ( !doInitialActions(master_db_conn) )
+	if ( !lockDumpableObjects(master_db_conn) )
 		goto cleanup;
 
 	/* Install the SIGINT and SIGTERM handlers */
 	installSignalHandlers();
 
-	/* Create the threads to talk to each of the databases being backed up.
-	 * Wait for them to finish.  Inside this function, when all threads have started
-	 * the transaction that we began in doInitialActions is committed unlocking
-	 * the tables locked in doInitialActions.
+	/* 
+	 * Create the threads to spawn local segment dumps using gp_dump_agent.
+	 * Inside this function we release the locks taken in lockDumpableObjects.
+	 * When this function returns, all the agents have completed operation.
 	 */
 	spinOffThreads(master_db_conn, &inputOpts, &segDBAr, &parmAr);
-
-	mpp_msg( logInfo, pszProgName, "All remote %s programs are finished.\n", pszAgent );
 
 	/* Clean-up memory allocated */
 cleanup:
@@ -358,9 +354,9 @@ void decrementFinishedLaunchCount(void)
  * dumped are locked.
  *
  * The locks obtained by this routine are released through COMMIT by
- * spinOffThreads().
+ * spinOffThreads(). 
  */
-bool doInitialActions(PGconn* pMasterConn)
+bool lockDumpableObjects(PGconn* pMasterConn)
 {
 	TableInfo  *tblinfo;
 	bool		bRtn = false;
@@ -493,7 +489,6 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 {
 	bool			bRtn = false;
 	int				c;
-	static int		auth = 0;
 	char*			pszFormat = "p";
 	bool			bOutputBlobs = false;
 	bool			bOids = false;
@@ -502,6 +497,8 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	//int				outputCreate = 0;
 	int				outputNoOwner = 0;
 	static int		disable_triggers = 0;
+	static int		auth = 0;
+	static int		skipcat = 0;
 	bool bSawCDB_S_Option;
 	int lenCmdLineParms;
 	int i;
@@ -546,6 +543,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		 */
 		{"use-set-session-authorization", no_argument, &auth, 1},
 		{"disable-triggers", no_argument, &disable_triggers, 1},
+		{"gp-catalog-skip", no_argument, &skipcat, 1},
 
 		/*
 		 * the following are Greenplum Database specific, and don't have an equivalent short option
@@ -554,7 +552,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		//{"gp-cf", required_argument, NULL, 2},
 		{"gp-d", required_argument, NULL, 3},
 		{"gp-r", required_argument, NULL, 4},
-		{"gp-s", required_argument, NULL, 5},
+		{"gp-s", required_argument, NULL, 5},	
 		{NULL, 0, NULL, 0}
 	};
 
@@ -781,6 +779,8 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 					auth = 1;
 				else if (strcmp(optarg, "disable-triggers") == 0)
 					disable_triggers = 1;
+				else if (strcmp(optarg, "gp-catalog-skip") == 0)
+					skipcat = 1;
 				else
 				{
 					fprintf(stderr,
@@ -862,7 +862,6 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				}
 
 				break;
-
 			default:
 				mpp_err_msg_cache(logError, pszProgName, "Try \"%s --help\" for more information.\n", pszProgName);
 				goto cleanup;
@@ -883,6 +882,8 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		pInputOpts->pszPassThroughParms = addPassThroughLongParm( "use-set-session-authorization", NULL, pInputOpts->pszPassThroughParms );
 	if ( disable_triggers )
 		pInputOpts->pszPassThroughParms = addPassThroughLongParm( "disable-triggers", NULL, pInputOpts->pszPassThroughParms );
+	if ( skipcat )
+		pInputOpts->pszPassThroughParms = addPassThroughLongParm( "gp-catalog-skip", NULL, pInputOpts->pszPassThroughParms );
 
 	/* Get database name from command line */
 	if (optind < argc)
@@ -1353,9 +1354,26 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
  * ThreadParmArray, and the thread synchronization objects.  Then it loops
  * and creates each of the threads. It waits on a condition variable. This
  * will release when all threads have attained the SET_SERIALIZABLE state
- * (or have failed to do so). It then commits the transaction, which releases
- * the locks it holds on all the Greenplum Database managed tables. It then waits for all
- * threads to finish.
+ * (or have failed to do so). 
+ * 
+ * in here we releas the LOCKs we have on the dumpable objects by commiting 
+ * the transaction, once all the threads reached SET_SERIALIZABLE. 
+ * 
+ * This function waits for all threads to finish, and only then returns.
+ * 
+ * NOTE!
+ * However, this was discovered as a bug since a table
+ * may get dropped in the time between an agent gets the list of tables
+ * from pg_class and until it gets a LOCK on the object. A proposed solution
+ * was to keep holding the LOCK on this gp_dump master thread until all the agents
+ * completed operations. But this may create deadlocks with the agent that dumps
+ * the master database schema, even if the agent itself don't take an explicit lock.
+ * it's enough that a DROP command comes in from a concurrent user session, which
+ * will try to obtain an access exclusive lock (and wait on it because we already
+ * got a lock on it), then when the agent will try to get an access share lock, say,
+ * on a COPY OUT, we'll deadlock. agent and concurrent user will wait on the lock
+ * forever, and gp_dump will wait on the agent to complete, which it never does.
+ * 
  */
 void spinOffThreads(PGconn* pConn,
 					InputOptions* pInputOpts,
@@ -1412,8 +1430,8 @@ void spinOffThreads(PGconn* pConn,
 
 	/* wait for all threads to complete launch and attain the SET_SERIALIZABLE state. */
 	mpp_msg( logInfo, pszProgName, "Waiting for remote %s processes to start "
-				"transactions in serializable isolation level\n",
-				pszAgent );
+								   "transactions in serializable isolation level\n",
+								   pszAgent );
 
 	pthread_mutex_lock( &MyMutex );
 	if ( nThreadsFinishedLaunch > 0 )
@@ -1422,13 +1440,13 @@ void spinOffThreads(PGconn* pConn,
 	}
 	pthread_mutex_unlock( &MyMutex );
 
-	mpp_msg( logInfo, pszProgName, "All remote %s processes have "
-				"set transacactions in serializable isolation level\n",
-				pszAgent );
-
-	/* Now commit the transaction so locks will be released */
+	mpp_msg( logInfo, pszProgName, "All remote %s processes have began "
+								   "transactions in serializable isolation level\n",
+								   pszAgent );
+	
+	/* End the transaction and therefore unlock the dumpable objects that are locked */
 	mpp_msg( logInfo, pszProgName, "Committing transaction on the master database, thereby releasing locks.\n");
-	execCommit( pConn );
+	execCommit(pConn);
 
 	mpp_msg( logInfo, pszProgName, "Waiting for all remote %s programs to finish.\n", pszAgent );
 
@@ -1441,6 +1459,8 @@ void spinOffThreads(PGconn* pConn,
 		pthread_join( pParm->thread, NULL);
 		pParm->thread = (pthread_t)0;
 	}
+
+	mpp_msg( logInfo, pszProgName, "All remote %s programs are finished.\n", pszAgent );
 }
 
 /* threadProc: This function is used to connect to one database that needs to be backed up,
@@ -1584,7 +1604,6 @@ void* threadProc(void *arg)
 			mpp_msg( logInfo, pszProgName, "noticed that a cancel order is in effect. Informing dbid %d on host %s by notifying on connection\n",
 							pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost") );
 			// Either one of the other threads have failed, or a Ctrl C was received.  So post a cancel message
-//			InsertStatusRow(pConn, pszKey, pSegDB->role, pSegDB->dbid, TASK_CANCEL, TASK_RC_SUCCESS, "Cancel Requested");
 			DoCancelNotifyListen( pConn, false, pszKey, pSegDB->role, pSegDB->dbid, -1, NULL );
 			bSentCancelMessage = true;
 		}

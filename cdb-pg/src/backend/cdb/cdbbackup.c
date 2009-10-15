@@ -1330,7 +1330,7 @@ static char *positionToError(char *source)
 {
 	char*	sourceCopy = source;
 	char*	firstErr = NULL;
-	char*	defaultNoErr = "No extra error information available";
+	char*	defaultNoErr = "No extra error information available. Please examine status file.";
 
 	while(true)
 	{

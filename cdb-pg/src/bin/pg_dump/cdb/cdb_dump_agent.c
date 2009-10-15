@@ -123,6 +123,8 @@ char		g_comment_end[10];
 /* flag to turn on/off dollar quoting */
 static int	disable_dollar_quoting = 0;
 
+static int	skipcat = 0;			/* if true, don't dump gp_ catalog tables */ 
+
 /* MPP Additions start */
 static SegmentDatabase g_SegDB;
 //static int             plainText = 0;
@@ -299,7 +301,7 @@ main(int argc, char **argv)
 	{"disable-dollar-quoting", no_argument, &disable_dollar_quoting, 1},
 	{"disable-triggers", no_argument, &disable_triggers, 1},
 	{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
-
+	{"gp-catalog-skip", no_argument, &skipcat, 1},
 	{NULL, 0, NULL, 0}
 	};
 	int			optindex;
@@ -456,6 +458,8 @@ main(int argc, char **argv)
 					disable_triggers = 1;
 				else if (strcmp(optarg, "use-set-session-authorization") == 0)
 					use_setsessauth = 1;
+				else if (strcmp(optarg, "gp-catalog-skip") == 0)
+					skipcat = 1;
 				else
 				{
 					fprintf(stderr,
@@ -776,8 +780,15 @@ main(int argc, char **argv)
     {
 		mpp_err_msg( logInfo, progname, "Dumping CREATE DATABASE statement for database \"%s\"\n", g_conn->dbName);
 		dumpDatabaseDefinition();
-		mpp_err_msg( logInfo, progname, "Dumping Greenplum Database catalog for database \"%s\"\n", g_conn->dbName);
-        dumpGreenplumCatalog(oids, dumpencoding, outputBlobs, plainText, ropt);
+		
+		if(!skipcat)
+		{
+			mpp_err_msg( logInfo, progname, "Dumping Greenplum Database catalog for database \"%s\"\n", g_conn->dbName);
+	        dumpGreenplumCatalog(oids, dumpencoding, outputBlobs, plainText, ropt);			
+		}
+		else
+			mpp_err_msg( logInfo, progname, "Skipping Greenplum Database catalog for database \"%s\"\n", g_conn->dbName);
+
         mpp_err_msg( logInfo, progname, "Additional master dumps completed\n");
     }
 
