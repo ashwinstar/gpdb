@@ -326,7 +326,7 @@ retry:
 
 	if (slot != NULL)
 	{
-		elog(LOG, "SharedSnapshotAdd: found existing entry for our session-id. id %d retry %d pid %u", slotId, retryCount, (int)slot->pid);
+		elog(DEBUG1, "SharedSnapshotAdd: found existing entry for our session-id. id %d retry %d pid %u", slotId, retryCount, (int)slot->pid);
 		LWLockRelease(SharedSnapshotLock);
 
 		if (retryCount > 0)
