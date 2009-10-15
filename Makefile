@@ -866,6 +866,9 @@ copydocs :
 		cp -r $(INSTLOC)/doc/postgresql/contrib/* $(INSTLOC)/docs/contrib ; \
 	    fi \
 	fi
+	if [ -f BUILD_EDITION -a "`cat BUILD_EDITION`" = "Single-Node Edition" ]; then \
+	    cp $(GPDOCDIR)/pdf/SNE/GP*.pdf $(INSTLOC)/docs/; \
+	fi
 	@if [ -d $(INSTLOC)/doc ] ; then \
 	    echo "Removing $(INSTLOC)/doc" ; \
 	    rm -rf $(INSTLOC)/doc ; \
