@@ -7,3 +7,5 @@ libecpg.so.5.2
 strlcpy.c
 exports.list
 pgstrcasecmp.c
+libecpg.so.6
+libecpg.so.6.1
