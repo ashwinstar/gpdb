@@ -5,8 +5,8 @@
  *	  along with the relation's initial contents.
  *
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/catalog/pg_attribute.h,v 1.126 2006/11/05 22:42:10 tgl Exp $
@@ -150,13 +150,27 @@ CATALOG(pg_attribute,1249) BKI_BOOTSTRAP BKI_WITHOUT_OIDS
 
 	/* Number of times inherited from direct parent relation(s) */
 	int4		attinhcount;
+
+	/*
+	 * VARIABLE LENGTH FIELDS start here.  These fields may be NULL, too.
+	 *
+	 * NOTE: the following fields are not present in tuple descriptors!
+	 */
+
+	/* Column-level access permissions */
+	//aclitem		attacl[1];
 } FormData_pg_attribute;
 
 /*
- * someone should figure out how to do this properly. (The problem is
- * the size of the C struct is not the same as the size of the tuple
- * because of alignment padding at the end of the struct.)
+ * ATTRIBUTE_FIXED_PART_SIZE is the size of the fixed-layout,
+ * guaranteed-not-null part of a pg_attribute row.	This is in fact as much
+ * of the row as gets copied into tuple descriptors, so don't expect you
+ * can access fields beyond attinhcount except in a real tuple!
  */
+#define ATTRIBUTE_FIXED_PART_SIZE \
+	(offsetof(FormData_pg_attribute,attinhcount) + sizeof(int4))
+
+/* Old version of the define */
 #define ATTRIBUTE_TUPLE_SIZE \
 	(offsetof(FormData_pg_attribute,attinhcount) + sizeof(int4))
 
