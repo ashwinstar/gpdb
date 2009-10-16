@@ -46,7 +46,7 @@
 #include "access/hio.h"
 #include "access/multixact.h"
 #include "access/relscan.h"
-
+#include "access/sysattr.h"
 #include "access/transam.h"
 #include "access/tuptoaster.h"
 #include "access/valid.h"
@@ -420,6 +420,7 @@ heapgettup(HeapScanDesc scan,
 		dp = (Page) BufferGetPage(scan->rs_cbuf);
 		lineoff = ItemPointerGetOffsetNumber(&(tuple->t_self));
 		lpp = PageGetItemId(dp, lineoff);
+		Assert(ItemIdIsNormal(lpp));
 
 		tuple->t_data = (HeapTupleHeader) PageGetItem((Page) dp, lpp);
 		tuple->t_len = ItemIdGetLength(lpp);
@@ -678,6 +679,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 		dp = (Page) BufferGetPage(scan->rs_cbuf);
 		lineoff = ItemPointerGetOffsetNumber(&(tuple->t_self));
 		lpp = PageGetItemId(dp, lineoff);
+		Assert(ItemIdIsNormal(lpp));
 
 		tuple->t_data = (HeapTupleHeader) PageGetItem((Page) dp, lpp);
 		tuple->t_len = ItemIdGetLength(lpp);
