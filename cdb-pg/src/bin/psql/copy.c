@@ -1,9 +1,9 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2009, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/copy.c,v 1.71.2.1 2007/02/05 15:23:24 adunstan Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/copy.c,v 1.80.2.1 2009/08/07 20:16:16 tgl Exp $
  */
 #include "postgres_fe.h"
 #include "copy.h"
@@ -26,30 +26,21 @@
 #include "prompt.h"
 #include "stringutils.h"
 
-#if defined(WIN32) && !defined(S_ISDIR)
-#define __S_ISTYPE(mode, mask)	(((mode) & S_IFMT) == (mask))
-#define S_ISDIR(mode)	 __S_ISTYPE((mode), S_IFDIR)
-#endif
 
 /*
  * parse_slash_copy
  * -- parses \copy command line
  *
- * The documented preferred syntax is:
+ * The documented syntax is:
  *	\copy tablename [(columnlist)] from|to filename
  *	  [ with ] [ binary ] [ oids ] [ delimiter [as] char ] [ null [as] string ]
+ *	  [ csv  [ header ] [ quote [ AS ] string ]  escape [as] string
+ *
  *
  *	\copy ( select stmt ) to filename
  *	  [ with ] [ binary ] [ delimiter [as] char ] [ null [as] string ]
+ *	  [ csv  [ header ] [ quote [ AS ] string ]  escape [as] string
  *
- * The pre-7.3 syntax was:
- *	\copy [ binary ] tablename [(columnlist)] [with oids] from|to filename
- *		[ [using] delimiters char ] [ with null as string ]
- *
- * The actual accepted syntax is a rather unholy combination of these,
- * plus some undocumented flexibility (for instance, the clauses after
- * WITH can appear in any order).  The accepted syntax matches what
- * the backend grammar actually accepts (see backend/parser/gram.y).
  *
  * table name can be double-quoted and can have a schema part.
  * column names can be double-quoted.
@@ -217,23 +208,6 @@ parse_slash_copy(const char *args)
 			goto error;
 	}
 
-	/*
-	 * Allows old COPY syntax for backward compatibility 2002-06-19
-	 */
-	if (pg_strcasecmp(token, "with") == 0)
-	{
-		token = strtokx(NULL, whitespace, NULL, NULL,
-						0, false, false, pset.encoding);
-		if (!token || pg_strcasecmp(token, "oids") != 0)
-			goto error;
-		result->oids = true;
-
-		token = strtokx(NULL, whitespace, NULL, NULL,
-						0, false, false, pset.encoding);
-		if (!token)
-			goto error;
-	}
-
 	if (pg_strcasecmp(token, "from") == 0)
 		result->from = true;
 	else if (pg_strcasecmp(token, "to") == 0)
@@ -268,27 +242,6 @@ parse_slash_copy(const char *args)
 	token = strtokx(NULL, whitespace, NULL, NULL,
 					0, false, false, pset.encoding);
 
-	/*
-	 * Allows old COPY syntax for backward compatibility.
-	 */
-	if (token && pg_strcasecmp(token, "using") == 0)
-	{
-		token = strtokx(NULL, whitespace, NULL, NULL,
-						0, false, false, pset.encoding);
-		if (!(token && pg_strcasecmp(token, "delimiters") == 0))
-			goto error;
-	}
-	if (token && pg_strcasecmp(token, "delimiters") == 0)
-	{
-		token = strtokx(NULL, whitespace, NULL, "'",
-						nonstd_backslash, true, false, pset.encoding);
-		if (!token)
-			goto error;
-		result->delim = pg_strdup(token);
-		token = strtokx(NULL, whitespace, NULL, NULL,
-						0, false, false, pset.encoding);
-	}
-
 	if (token)
 	{
 		/*
@@ -315,6 +268,8 @@ parse_slash_copy(const char *args)
 				result->header = true;
 			else if (pg_strcasecmp(token, "delimiter") == 0)
 			{
+				if (result->delim)
+					goto error;
 				token = strtokx(NULL, whitespace, NULL, "'",
 								nonstd_backslash, true, false, pset.encoding);
 				if (token && pg_strcasecmp(token, "as") == 0)
@@ -327,6 +282,8 @@ parse_slash_copy(const char *args)
 			}
 			else if (pg_strcasecmp(token, "null") == 0)
 			{
+				if (result->null)
+					goto error;
 				token = strtokx(NULL, whitespace, NULL, "'",
 								nonstd_backslash, true, false, pset.encoding);
 				if (token && pg_strcasecmp(token, "as") == 0)
@@ -339,6 +296,8 @@ parse_slash_copy(const char *args)
 			}
 			else if (pg_strcasecmp(token, "quote") == 0)
 			{
+				if (result->quote)
+					goto error;
 				token = strtokx(NULL, whitespace, NULL, "'",
 								nonstd_backslash, true, false, pset.encoding);
 				if (token && pg_strcasecmp(token, "as") == 0)
@@ -351,6 +310,8 @@ parse_slash_copy(const char *args)
 			}
 			else if (pg_strcasecmp(token, "escape") == 0)
 			{
+				if (result->escape)
+					goto error;
 				token = strtokx(NULL, whitespace, NULL, "'",
 								nonstd_backslash, true, false, pset.encoding);
 				if (token && pg_strcasecmp(token, "as") == 0)
@@ -367,6 +328,8 @@ parse_slash_copy(const char *args)
 								0, false, false, pset.encoding);
 				if (pg_strcasecmp(token, "quote") == 0)
 				{
+					if (result->force_quote_list)
+						goto error;
 					/* handle column list */
 					fetch_next = false;
 					for (;;)
@@ -388,6 +351,8 @@ parse_slash_copy(const char *args)
 				}
 				else if (pg_strcasecmp(token, "not") == 0)
 				{
+					if (result->force_notnull_list)
+						goto error;
 					token = strtokx(NULL, whitespace, ",", "\"",
 									0, false, false, pset.encoding);
 					if (pg_strcasecmp(token, "null") != 0)
@@ -614,14 +579,17 @@ do_copy(const char *args)
 	PQclear(result);
 
 	/*
-	 * Make sure we have pumped libpq dry of results; else it may still be
-	 * in ASYNC_BUSY state, leading to false readings in, eg, get_prompt().
+	 * Make sure we have pumped libpq dry of results; else it may still be in
+	 * ASYNC_BUSY state, leading to false readings in, eg, get_prompt().
 	 */
 	while ((result = PQgetResult(pset.db)) != NULL)
 	{
 		success = false;
 		psql_error("\\copy: unexpected response (%d)\n",
 				   PQresultStatus(result));
+		/* if still in COPY IN state, try to get out of it */
+		if (PQresultStatus(result) == PGRES_COPY_IN)
+			PQputCopyEnd(pset.db, _("trying to exit copy mode"));
 		PQclear(result);
 	}
 
@@ -820,7 +788,7 @@ handleCopyIn(PGconn *conn, FILE *copystream, bool isbinary)
 				/* enable longjmp while waiting for input */
 				sigint_interrupt_enabled = true;
 
-				fgresult = fgets(buf, COPYBUFSIZ, copystream);
+				fgresult = fgets(buf, sizeof(buf), copystream);
 
 				sigint_interrupt_enabled = false;
 
