@@ -61,6 +61,12 @@
    (--enable-thread-safety) */
 #undef ENABLE_THREAD_SAFETY
 
+/* Define to 1 if you want snmp support (MIB and TRAP/INFORM) */
+#undef ENABLE_SNMP
+
+/* Define to 1 if you want email alert support */
+#undef ENABLE_EMAIL
+
 /* Define to 1 if getpwuid_r() takes a 5th argument. */
 #undef GETPWUID_R_5ARG
 
