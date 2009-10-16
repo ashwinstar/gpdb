@@ -11077,6 +11077,7 @@ RoleId:		ColId									{ $$ = $1; };
 QueueId:	ColId									{ $$ = $1; };
 
 SignedIconst: ICONST								{ $$ = $1; }
+			| '+' ICONST							{ $$ = + $2; }
 			| '-' ICONST							{ $$ = - $2; }
 		;
 
