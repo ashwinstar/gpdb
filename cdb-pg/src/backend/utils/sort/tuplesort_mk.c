@@ -69,33 +69,33 @@
  * the final sorted run on a logical tape which is then "frozen", so
  * that we can access it randomly.	When the caller does not need random
  * access, we return from tuplesort_performsort() as soon as we are down
-* to one run per logical tape.  The final merge is then performed
-* on-the-fly as the caller repeatedly calls tuplesort_getXXX; this
-* saves one cycle of writing all the data out to disk and reading it in.
-*
-* Before Postgres 8.2, we always used a seven-tape polyphase merge, on the
-* grounds that 7 is the "sweet spot" on the tapes-to-passes curve according
-* to Knuth's figure 70 (section 5.4.2).  However, Knuth is assuming that
-* tape drives are expensive beasts, and in particular that there will always
-* be many more runs than tape drives.	In our implementation a "tape drive"
-* doesn't cost much more than a few Kb of memory buffers, so we can afford
-* to have lots of them.  In particular, if we can have as many tape drives
-* as sorted runs, we can eliminate any repeated I/O at all.  In the current
-* code we determine the number of tapes M on the basis of workMem: we want
-* workMem/M to be large enough that we read a fair amount of data each time
-* we preread from a tape, so as to maintain the locality of access described
-* above.  Nonetheless, with large workMem we can have many tapes.
-*
-*
-* Portions Copyright (c) 2007-2008, Greenplum inc
-* Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
-* Portions Copyright (c) 1994, Regents of the University of California
-*
-* IDENTIFICATION
-*	  $PostgreSQL: pgsql/src/backend/utils/sort/tuplesort.c,v 1.70 2006/10/04 00:30:04 momjian Exp $
-*
-*-------------------------------------------------------------------------
-*/
+ * to one run per logical tape.  The final merge is then performed
+ * on-the-fly as the caller repeatedly calls tuplesort_getXXX; this
+ * saves one cycle of writing all the data out to disk and reading it in.
+ *
+ * Before Postgres 8.2, we always used a seven-tape polyphase merge, on the
+ * grounds that 7 is the "sweet spot" on the tapes-to-passes curve according
+ * to Knuth's figure 70 (section 5.4.2).  However, Knuth is assuming that
+ * tape drives are expensive beasts, and in particular that there will always
+ * be many more runs than tape drives.	In our implementation a "tape drive"
+ * doesn't cost much more than a few Kb of memory buffers, so we can afford
+ * to have lots of them.  In particular, if we can have as many tape drives
+ * as sorted runs, we can eliminate any repeated I/O at all.  In the current
+ * code we determine the number of tapes M on the basis of workMem: we want
+ * workMem/M to be large enough that we read a fair amount of data each time
+ * we preread from a tape, so as to maintain the locality of access described
+ * above.  Nonetheless, with large workMem we can have many tapes.
+ *
+ *
+ * Portions Copyright (c) 2007-2008, Greenplum inc
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ * IDENTIFICATION
+ *	  $PostgreSQL: pgsql/src/backend/utils/sort/tuplesort.c,v 1.70 2006/10/04 00:30:04 momjian Exp $
+ *
+ *-------------------------------------------------------------------------
+ */
 
 #include "postgres.h"
 
