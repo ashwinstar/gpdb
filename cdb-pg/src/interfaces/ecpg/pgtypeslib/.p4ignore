@@ -5,3 +5,4 @@ libpgtypes.so.2.2
 pgstrcasecmp.c
 libpgtypes.so.3
 libpgtypes.so.3.1
+exports.list

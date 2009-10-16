@@ -158,7 +158,7 @@ PGTYPESdate_today(date * d)
 
 	GetCurrentDateTime(&ts);
 	if (errno == 0)
-	*d = date2j(ts.tm_year, ts.tm_mon, ts.tm_mday) - date2j(2000, 1, 1);
+		*d = date2j(ts.tm_year, ts.tm_mon, ts.tm_mday) - date2j(2000, 1, 1);
 	return;
 }
 
@@ -347,7 +347,7 @@ PGTYPESdate_defmt_asc(date * d, char *fmt, char *str)
 	char	   *fmt_ystart,
 			   *fmt_mstart,
 			   *fmt_dstart;
-	unsigned int	i;
+	unsigned int i;
 	int			reading_digit;
 	int			token_count;
 	char	   *str_copy;

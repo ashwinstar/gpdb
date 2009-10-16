@@ -2,9 +2,10 @@
 #
 # Makefile for ecpg pgtypes library
 #
-# Copyright (c) 1994, Regents of the University of California
+# Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+# Portions Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/interfaces/ecpg/pgtypeslib/Makefile,v 1.30 2006/08/28 16:13:11 tgl Exp $
+# $PostgreSQL: pgsql/src/interfaces/ecpg/pgtypeslib/Makefile,v 1.43 2009/01/01 17:24:02 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -32,6 +33,8 @@ LIBS := $(filter-out -lpgport, $(LIBS))
 
 SHLIB_LINK += -lm
 
+SHLIB_EXPORTS = exports.txt
+
 OBJS= numeric.o datetime.o common.o dt_common.o timestamp.o interval.o \
 	pgstrcasecmp.o \
 	$(filter rint.o snprintf.o, $(LIBOBJS))
@@ -51,17 +54,11 @@ pgstrcasecmp.c rint.c snprintf.c: % : $(top_srcdir)/src/port/%
 
 install: all installdirs install-lib
 
-installdirs:
-	$(mkinstalldirs) '$(DESTDIR)$(libdir)'
+installdirs: installdirs-lib
 
 uninstall: uninstall-lib
 
-clean distclean maintainer-clean: clean-lib
+clean distclean: clean-lib
 	rm -f $(OBJS) pgstrcasecmp.c rint.c snprintf.c
 
-depend dep:
-	$(CC) -MM $(CFLAGS) *.c >depend
-
-ifeq (depend,$(wildcard depend))
-include depend
-endif
+maintainer-clean: distclean maintainer-clean-lib
