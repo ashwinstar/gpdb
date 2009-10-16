@@ -21,6 +21,7 @@ enum printFormat
 	PRINT_NOTHING = 0,			/* to make sure someone initializes this */
 	PRINT_UNALIGNED,
 	PRINT_ALIGNED,
+	PRINT_WRAPPED,
 	PRINT_HTML,
 	PRINT_LATEX,
 	PRINT_TROFF_MS
@@ -47,6 +48,8 @@ typedef struct _printTableOpt
 								 * decimal marker */
 	char	   *tableAttr;		/* attributes for HTML <table ...> */
 	int			encoding;		/* character encoding */
+	int			env_columns;	/* $COLUMNS on psql start, 0 is unset */
+	int			columns;		/* target width for wrapped format */
 } printTableOpt;
 
 
@@ -76,6 +79,9 @@ typedef struct _printQueryOpt
 	char	   *title;			/* override title */
 	char	  **footers;		/* override footer (default is "(xx rows)") */
 	bool		default_footer; /* print default footer if footers==NULL */
+	bool		translate_header;		/* do gettext on column headers */
+	const bool *translate_columns;		/* translate_columns[i-1] => do
+										 * gettext on col i */
 } printQueryOpt;
 
 /*
@@ -83,10 +89,10 @@ typedef struct _printQueryOpt
  *
  * It calls the printTable above with all the things set straight.
  */
-void printQuery(const PGresult *result, const printQueryOpt *opt,
+extern void printQuery(const PGresult *result, const printQueryOpt *opt,
 		   FILE *fout, FILE *flog);
 
-void		setDecimalLocale(void);
+extern void setDecimalLocale(void);
 
 #ifndef __CYGWIN__
 #define DEFAULT_PAGER "more"
