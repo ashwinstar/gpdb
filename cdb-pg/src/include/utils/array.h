@@ -46,10 +46,10 @@
  * only work with varlena arrays.
  *
  *
- * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/array.h,v 1.76 2009/04/09 17:39:50 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/array.h,v 1.60 2006/11/08 19:24:38 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -195,21 +195,14 @@ extern Datum btarraycmp(PG_FUNCTION_ARGS);
 extern Datum arrayoverlap(PG_FUNCTION_ARGS);
 extern Datum arraycontains(PG_FUNCTION_ARGS);
 extern Datum arraycontained(PG_FUNCTION_ARGS);
-extern Datum array_ndims(PG_FUNCTION_ARGS);
 extern Datum array_dims(PG_FUNCTION_ARGS);
 extern Datum array_lower(PG_FUNCTION_ARGS);
 extern Datum array_upper(PG_FUNCTION_ARGS);
 extern Datum array_type_coerce(PG_FUNCTION_ARGS);
 extern Datum array_type_length_coerce(PG_FUNCTION_ARGS);
 extern Datum array_length_coerce(PG_FUNCTION_ARGS);
-extern Datum array_length(PG_FUNCTION_ARGS);
 extern Datum array_larger(PG_FUNCTION_ARGS);
 extern Datum array_smaller(PG_FUNCTION_ARGS);
-extern Datum generate_subscripts(PG_FUNCTION_ARGS);
-extern Datum generate_subscripts_nodir(PG_FUNCTION_ARGS);
-extern Datum array_fill(PG_FUNCTION_ARGS);
-extern Datum array_fill_with_lower_bounds(PG_FUNCTION_ARGS);
-extern Datum array_unnest(PG_FUNCTION_ARGS);
 
 extern Datum array_ref(ArrayType *array, int nSubscripts, int *indx,
 		  int arraytyplen, int elmlen, bool elmbyval, char elmalign,
@@ -253,7 +246,7 @@ extern ArrayBuildState *accumArrayResult(ArrayBuildState *astate,
 extern Datum makeArrayResult(ArrayBuildState *astate,
 				MemoryContext rcontext);
 extern Datum makeMdArrayResult(ArrayBuildState *astate, int ndims,
-				  int *dims, int *lbs, MemoryContext rcontext, bool release);
+				  int *dims, int *lbs, MemoryContext rcontext);
 
 /*
  * prototypes for functions defined in arrayutils.c
@@ -279,8 +272,6 @@ extern ArrayType *create_singleton_array(FunctionCallInfo fcinfo,
 					   Datum element,
 					   int ndims);
 
-extern Datum array_agg_transfn(PG_FUNCTION_ARGS);
-extern Datum array_agg_finalfn(PG_FUNCTION_ARGS);
 /* MPP Additions: */
 extern Datum array_int4_add(PG_FUNCTION_ARGS);
 
