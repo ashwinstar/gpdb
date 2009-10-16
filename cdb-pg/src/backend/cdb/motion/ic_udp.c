@@ -607,7 +607,7 @@ findConnByHeader(struct icpkthdr *hdr, bool mirrorsPossible)
 			ret = bin->conn;
 
 			if (DEBUG5 >= log_min_messages)
-				write_log("findConnByHeader: found. route %d state %d hashcode %d conn %p\n",
+				write_log("findConnByHeader: found. route %d state %d hashcode %d conn %p",
 						  ret->route, ret->state, hashcode, ret);
 
 			return ret;
@@ -616,7 +616,7 @@ findConnByHeader(struct icpkthdr *hdr, bool mirrorsPossible)
 
 	if (DEBUG5 >= log_min_messages)
 		write_log("findConnByHeader: not found! (hdr->srcPid %d "
-				  "hdr->srcContentId %d hdr->dstContentId %d hdr->dstPid %d sess(%d:%d) cmd(%d:%d)) hashcode %d\n",
+				  "hdr->srcContentId %d hdr->dstContentId %d hdr->dstPid %d sess(%d:%d) cmd(%d:%d)) hashcode %d",
 				  hdr->srcPid, hdr->srcContentId, hdr->dstContentId, hdr->dstPid, hdr->sessionId,
 				  gp_session_id, hdr->icId, gp_interconnect_id, hashcode);
 
@@ -693,7 +693,7 @@ sendAck(MotionConn *conn, bool stop)
 	msg.len = 0;
 
 	if (DEBUG5 >= log_min_messages)
-		write_log("sendack: flags 0x%x node %d route %d seq %d\n",
+		write_log("sendack: flags 0x%x node %d route %d seq %d",
 				  msg.flags, msg.motNodeId, conn->route, conn->conn_info.seq);
 
 #ifdef USE_ASSERT_CHECKING
@@ -709,7 +709,7 @@ sendAck(MotionConn *conn, bool stop)
 	 * handle that case*/
 
 	if (n < sizeof(msg))
-		write_log("sendack: got error %d errno %d route %d seq %d\n",
+		write_log("sendack: got error %d errno %d route %d seq %d",
 				  n, errno, conn->route, conn->conn_info.seq);
 }
 
@@ -2975,7 +2975,7 @@ ic_rx_thread_func(void *arg)
 		if (rx_thread_shutdown)
 		{
 			if (DEBUG2 >= log_min_messages)
-				write_log("udp-ic: rx-thread shutting down\n");
+				write_log("udp-ic: rx-thread shutting down");
 			break;
 		}
 
@@ -2987,7 +2987,7 @@ ic_rx_thread_func(void *arg)
 			if (pkt == NULL)
 			{
 				if (DEBUG3 >= log_min_messages)
-					write_log("no rx_buffer available\n");
+					write_log("no rx_buffer available");
 
 				/* SLEEP HERE ? WAIT ON COND_VAR */
 				rx_thread_waiting = true;
@@ -2999,7 +2999,7 @@ ic_rx_thread_func(void *arg)
 			}
 
 			if (DEBUG5 >= log_min_messages)
-				write_log("rx_thread: got buffer %p\n", pkt);
+				write_log("rx_thread: got buffer %p", pkt);
 
 			pthread_mutex_unlock(&rx_thread_mutex);
 		}
@@ -3020,7 +3020,7 @@ ic_rx_thread_func(void *arg)
 				{
 					continue;
 				}
-				write_log("Interconnect error: poll %d\n", errno);
+				write_log("Interconnect error: poll %d", errno);
 				break;
 			}
 
@@ -3048,7 +3048,7 @@ ic_rx_thread_func(void *arg)
 			ic_stats_pkt_count++;
 
 			if (DEBUG5 >= log_min_messages)
-				write_log("received inbound len %d\n", read_count);
+				write_log("received inbound len %d", read_count);
 
 			if (read_count < 0)
 			{
@@ -3057,7 +3057,7 @@ ic_rx_thread_func(void *arg)
 					skip_poll = false;
 					continue;
 				}
-				write_log("Interconnect error: recvfrom (%d)\n", errno);
+				write_log("Interconnect error: recvfrom (%d)", errno);
 				break;
 			}
 
@@ -3066,7 +3066,7 @@ ic_rx_thread_func(void *arg)
 
 			if (read_count < sizeof(pkt))
 			{
-				write_log("Interconnect error: short conn receive\n");
+				write_log("Interconnect error: short conn receive");
 				break;
 			}
 
@@ -3074,11 +3074,11 @@ ic_rx_thread_func(void *arg)
 			if (pkt->len < 0)
 			{
 				if (DEBUG3 >= log_min_messages)
-					write_log("received inbound with negative length\n");
+					write_log("received inbound with negative length");
 				continue;
 			}
 			if (DEBUG5 >= log_min_messages)
-				write_log("received inbound mot-id %d listener %d\n",
+				write_log("received inbound mot-id %d listener %d",
 						  pkt->motNodeId, pkt->srcListenerPort);
 
 			pthread_mutex_lock(&rx_thread_mutex);
@@ -3090,13 +3090,13 @@ ic_rx_thread_func(void *arg)
 				if (pkt->seq == 0)
 				{
 					if (DEBUG5 >= log_min_messages)
-						write_log("connection request from node %d route %d, seq 0\n",
+						write_log("connection request from node %d route %d, seq 0",
 								  pkt->motNodeId, conn->route);
 
 					if (pkt->len > 0) /* invalid ? */
 					{
 						if (LOG >= log_min_messages)
-							write_log("invalid packet, seq 0 pkt.len %d\n", pkt->len);
+							write_log("invalid packet, seq 0 pkt.len %d", pkt->len);
 						pthread_mutex_unlock(&rx_thread_mutex);
 						continue;
 					}
@@ -3116,7 +3116,7 @@ ic_rx_thread_func(void *arg)
 
 						conn->conn_info.seq++;
 						if (DEBUG4 >= log_min_messages)
-							write_log("successful conn request.\n");
+							write_log("successful conn request.");
 
 						/* MPP-3088: if the main thread is waiting on
 						 * inbound connections, wake it if appropriate.
@@ -3147,11 +3147,11 @@ ic_rx_thread_func(void *arg)
 
 						if (DEBUG3 >= log_min_messages)
 						{
-							write_log("duplicate connection request from node %d route %d, seq 0\n",
+							write_log("duplicate connection request from node %d route %d, seq 0",
 									  pkt->motNodeId, conn->route);
 							if (conn->stopRequested)
 							{
-								write_log("duplicate conn request, stopRequested!\n");
+								write_log("duplicate conn request, stopRequested!");
 							}
 						}
 
@@ -3161,9 +3161,9 @@ ic_rx_thread_func(void *arg)
 						conn->conn_info.seq = seq;
 
 						if (conn->state != mcsStarted)
-							write_log("corrupt connection state ?\n");
+							write_log("corrupt connection state ?");
 						if (!conn->stillActive)
-							write_log("corrupt stillActive flag?\n");
+							write_log("corrupt stillActive flag?");
 					}
 
 					/* we'll reuse the current rx-buffer */
@@ -3174,7 +3174,7 @@ ic_rx_thread_func(void *arg)
 				{
 					if (pkt->len != read_count)
 					{
-						write_log("received inbound packet, short: read %d bytes, pkt->len %d\n", read_count, pkt->len);
+						write_log("received inbound packet, short: read %d bytes, pkt->len %d", read_count, pkt->len);
 						pthread_mutex_unlock(&rx_thread_mutex);
 						continue;
 					}
@@ -3182,7 +3182,7 @@ ic_rx_thread_func(void *arg)
 					if (pkt->len == 0) /* no data ? */
 					{
 						if (DEBUG1 >= log_min_messages)
-							write_log("data packet with length of ZERO, seq %d (ignoring, stop ?)\n",
+							write_log("data packet with length of ZERO, seq %d (ignoring, stop ?)",
 									  pkt->seq);
 						pthread_mutex_unlock(&rx_thread_mutex);
 						continue;
@@ -3206,7 +3206,7 @@ ic_rx_thread_func(void *arg)
 					if (pkt->flags & UDPIC_FLAGS_EOS)
 					{
 						if (DEBUG3 >= log_min_messages)
-							write_log("received packet with EOS motid %d route %d seq %d\n",
+							write_log("received packet with EOS motid %d route %d seq %d",
 									  pkt->motNodeId, conn->route, pkt->seq);
 					}
 
@@ -3272,7 +3272,7 @@ ic_rx_thread_func(void *arg)
 						ic_stats_dropped_acks++;
 
 						if (DEBUG3 >= log_min_messages)
-							write_log("dropped ack ? ignored data packet w/ cmd %d conn->cmd %d node %d route %d seq %d expected %d flags 0x%x\n",
+							write_log("dropped ack ? ignored data packet w/ cmd %d conn->cmd %d node %d route %d seq %d expected %d flags 0x%x",
 									  pkt->icId, conn->conn_info.icId, pkt->motNodeId,
 									  conn->route, pkt->seq, conn->conn_info.seq, pkt->flags);
 
@@ -3291,7 +3291,7 @@ ic_rx_thread_func(void *arg)
 						/* peer may have dropped ack */
 						if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE &&
 							DEBUG1 >= log_min_messages)
-							write_log("received on inactive connection node %d route %d (seq %d pkt->seq %d)\n",
+							write_log("received on inactive connection node %d route %d (seq %d pkt->seq %d)",
 									  pkt->motNodeId, conn->route, conn->conn_info.seq, pkt->seq);
 
 						conn->conn_info.seq = pkt->seq;
@@ -3310,7 +3310,7 @@ ic_rx_thread_func(void *arg)
 						 * its input queue; but for now, we drop
 						 * this packet */
 						if (DEBUG2 >= log_min_messages)
-							write_log("no rx-space for pkt with motid %d route %d seq %d dropped\n",
+							write_log("no rx-space for pkt with motid %d route %d seq %d dropped",
 									  pkt->motNodeId, conn->route, pkt->seq);
 
 						ic_stats_rx_overrun++;
@@ -3350,7 +3350,7 @@ ic_rx_thread_func(void *arg)
 
 					/* valid packet, and we have space. */
 					if (DEBUG5 >= log_min_messages)
-						write_log("delivered data packet for node %d route %d seq %d\n",
+						write_log("delivered data packet for node %d route %d seq %d",
 								  pkt->motNodeId, conn->route, pkt->seq);
 
 					/* point the pBuff at the head of the queue */
@@ -3388,7 +3388,7 @@ ic_rx_thread_func(void *arg)
 						if (main_thread_waiting_route == conn->route)
 						{
 							if (DEBUG2 >= log_min_messages)
-								write_log("rx thread: main_waiting waking it route %d (%p)\n", main_thread_waiting_route, conn->pBuff);
+								write_log("rx thread: main_waiting waking it route %d (%p)", main_thread_waiting_route, conn->pBuff);
 							/* WAKE MAIN THREAD HERE */
 							pthread_cond_signal(&rx_thread_cond);
 						}
@@ -3410,7 +3410,7 @@ ic_rx_thread_func(void *arg)
 				ic_stats_mismatch++;
 
 				if (DEBUG4 >= log_min_messages)
-					write_log("dropping packet from command-id %d seq %d (my cmd %d)\n", pkt->icId, pkt->seq, gp_interconnect_id);
+					write_log("dropping packet from command-id %d seq %d (my cmd %d)", pkt->icId, pkt->seq, gp_interconnect_id);
 
 				/* we want to ack old packets; but *must* avoid acking connection requests */
 				if (pkt->seq > 0 && pkt->sessionId == gp_session_id && 
@@ -3439,7 +3439,7 @@ ic_rx_thread_func(void *arg)
 					dummyconn.peer = peer;
 
 					if (DEBUG4 >= log_min_messages)
-						write_log("idle, acking old packet ?\n");
+						write_log("idle, acking old packet ?");
 
 					/* we're idle ? send an Ack to a fake conn */
 					sendAck(&dummyconn, true);
