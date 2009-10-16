@@ -158,7 +158,6 @@ CATALOG(pg_attribute,1249) BKI_BOOTSTRAP BKI_WITHOUT_OIDS
 	 */
 
 	/* Column-level access permissions */
-	//aclitem		attacl[1];
 } FormData_pg_attribute;
 
 /*
