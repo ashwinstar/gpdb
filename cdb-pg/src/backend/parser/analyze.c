@@ -1873,8 +1873,9 @@ transformTableConstraint(ParseState *pstate, CreateStmtContext *cxt,
  * transformETDistributedBy - transform DISTRIBUTED BY clause for 
  * external tables. 
  * 
- * WET: by defult we distribute RANDOMLY. However, if DISTRIBUTED BY
- * was specified we just call the regular transformDistributedBy and
+ * WET: by default we distribute RANDOMLY, or by the distribution key
+ * of the LIKE table if exists. However, if DISTRIBUTED BY was
+ * specified we use it by calling the regular transformDistributedBy and
  * handle it like we would for non external tables.
  * 
  * RET: We always create a random distribution policy entry *unless* 
@@ -1910,7 +1911,7 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	{
 		/* WET */
 		
-		if(!distributedBy)
+		if(!distributedBy && !likeDistributedBy)
 		{
 			/* defaults to DISTRIBUTED RANDOMLY */
 			p = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs *
@@ -1919,7 +1920,7 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			p->nattrs = 0;
 			p->attrs[0] = 1;
 			
-			*policyp = p; 
+			*policyp = p; 	
 		}
 		else
 		{
