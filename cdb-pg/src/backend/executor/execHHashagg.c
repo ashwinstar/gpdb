@@ -1129,7 +1129,7 @@ obtain_spill_set(HashAggTable *hashtable)
 		 */
 		if (hashtable->hats.nbatches == 0)
 		{
-			elog(LOG, "HashAgg: the optimizer wrongly considers all groups fit in memory.");
+			elog(DEBUG2, "Not all groups fit into memory; writing to disk");
 			hashtable->hats.nbatches = gp_hashagg_default_nbatches;
 		}
 
