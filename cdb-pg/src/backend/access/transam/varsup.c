@@ -47,6 +47,7 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 	if (IsBootstrapProcessingMode())
 	{
 		Assert(!isSubXact);
+		MyProc->xid = BootstrapTransactionId;
 		return BootstrapTransactionId;
 	}
 
@@ -72,9 +73,9 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 		TransactionIdIsValid(ShmemVariableCache->xidVacLimit))
 	{
 		/*
-		 * To avoid swamping the postmaster with signals, we issue the
-		 * autovac request only once per 64K transaction starts.  This
-		 * still gives plenty of chances before we get into real trouble.
+		 * To avoid swamping the postmaster with signals, we issue the autovac
+		 * request only once per 64K transaction starts.  This still gives
+		 * plenty of chances before we get into real trouble.
 		 */
 		if (IsUnderPostmaster && (xid % 65536) == 0)
 		{
@@ -147,7 +148,7 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 	 * race-condition window, in that the new XID will not appear as running
 	 * until its parent link has been placed into pg_subtrans. However, that
 	 * will happen before anyone could possibly have a reason to inquire about
-	 * the status of the XID, so it seems OK. (Snapshots taken during this
+	 * the status of the XID, so it seems OK.  (Snapshots taken during this
 	 * window *will* include the parent XID, so they will deliver the correct
 	 * answer later on when someone does have a reason to inquire.)
 	 */
@@ -163,9 +164,7 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 		volatile PGPROC *myproc = MyProc;
 
 		if (!isSubXact)
-		{
 			myproc->xid = xid;
-		}
 		else
 		{
 			int			nxids = myproc->subxids.nxids;
@@ -255,18 +254,18 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid,
 		xidWarnLimit -= FirstNormalTransactionId;
 
 	/*
-	 * We'll start trying to force autovacuums when oldest_datfrozenxid
-	 * gets to be more than autovacuum_freeze_max_age transactions old.
+	 * We'll start trying to force autovacuums when oldest_datfrozenxid gets
+	 * to be more than autovacuum_freeze_max_age transactions old.
 	 *
-	 * Note: guc.c ensures that autovacuum_freeze_max_age is in a sane
-	 * range, so that xidVacLimit will be well before xidWarnLimit.
+	 * Note: guc.c ensures that autovacuum_freeze_max_age is in a sane range,
+	 * so that xidVacLimit will be well before xidWarnLimit.
 	 *
 	 * Note: autovacuum_freeze_max_age is a PGC_POSTMASTER parameter so that
 	 * we don't have to worry about dealing with on-the-fly changes in its
 	 * value.  It doesn't look practical to update shared state from a GUC
 	 * assign hook (too many processes would try to execute the hook,
-	 * resulting in race conditions as well as crashes of those not
-	 * connected to shared memory).  Perhaps this can be improved someday.
+	 * resulting in race conditions as well as crashes of those not connected
+	 * to shared memory).  Perhaps this can be improved someday.
 	 */
 	xidVacLimit = oldest_datfrozenxid + autovacuum_freeze_max_age;
 	if (xidVacLimit < FirstNormalTransactionId)
