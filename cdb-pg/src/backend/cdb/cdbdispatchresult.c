@@ -136,14 +136,21 @@ cdbdisp_makeResult(struct CdbDispatchResults           *meleeResults,
 void
 cdbdisp_termResult(CdbDispatchResult  *dispatchResult)
 {
+	PQExpBuffer trash;
+
     dispatchResult->segdbDesc = NULL;
 
     /* Free the PGresult objects. */
     cdbdisp_resetResult(dispatchResult);
 
     /* Free the error message buffer and result buffer. */
-    destroyPQExpBuffer(dispatchResult->resultbuf);
-    destroyPQExpBuffer(dispatchResult->error_message);
+	trash = dispatchResult->resultbuf;
+	dispatchResult->resultbuf = NULL;
+    destroyPQExpBuffer(trash);
+
+	trash = dispatchResult->error_message;
+	dispatchResult->error_message = NULL;
+    destroyPQExpBuffer(trash);
 }                               /* cdbdisp_termResult */
 
 
