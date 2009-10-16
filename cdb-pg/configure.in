@@ -294,7 +294,7 @@ unset CFLAGS
 # If the user specifies something in the environment, that is used.
 # else:  If the template file set something, that is used.
 # else:  If coverage was enabled, don't set anything.
-# else:  If the compiler is GCC, then we use -O2.
+# else:  If the compiler is GCC, then we use -O3.
 # else:  If the compiler is something else, then we use -O, unless debugging.
 
 if test "$ac_env_CFLAGS_set" = set; then
@@ -304,7 +304,7 @@ elif test "${CFLAGS+set}" = set; then
 elif test "$enable_coverage" = yes; then
   : # no optimization by default
 elif test "$GCC" = yes; then
-  CFLAGS="-O2"
+  CFLAGS="-O3"
 else
   # if the user selected debug mode, don't use -O
   if test "$enable_debug" != yes; then
@@ -339,7 +339,11 @@ fi
 
 # supply -g if --enable-debug
 if test "$enable_debug" = yes && test "$ac_cv_prog_cc_g" = yes; then
-  CFLAGS="$CFLAGS -g"
+  if test "$GCC" = yes; then
+  	CFLAGS="$CFLAGS -g -ggdb"
+  else
+    CFLAGS="$CFLAGS -g"
+  fi
 fi
 
 # enable code coverage if --enable-coverage
@@ -456,6 +460,7 @@ PGAC_ARG_BOOL(enable, debugbreak, no, [  --enable-debugbreak        enable debug
               [AC_DEFINE([USE_DEBUG_BREAK], 1,
                          [Define to 1 to build with debug_break capabilities. (--enable-debugbreak)])])
 
+# Enable debug ntuplestore
 PGAC_ARG_BOOL(enable, debugntuplestore, no, [  --enable-ntuplestore      enable debug_ntuplestore (for debugging)],
               [AC_DEFINE([USE_DEBUG_NTUPLESTORE], 1,
                          [Define to 1 to build with debug_ntuplestore. (--enable-ntuplestore)])])
@@ -466,6 +471,24 @@ PGAC_ARG_BOOL(enable, debugntuplestore, no, [  --enable-ntuplestore      enable 
 PGAC_ARG_BOOL(enable, faultinjection, no, [  --enable-faultinjection        enable fault injection for testing],
               [AC_DEFINE([USE_FAULT_INJECTION], 1,
                          [Define to 1 to build with fault injection capabilities. (--enable-faultinjection)])])
+                         
+#
+# --enable-snmp enables snmp mib and trap/inform
+#
+PGAC_ARG_BOOL(enable, snmp, no, [  --enable-snmp        enable snmp for MIB and alerts via TRAP/INFORM],
+              [AC_DEFINE([USE_SNMP], 1, 
+                         [Define to 1 to build with snmp capabilities. (--enable-snmp)])])
+AC_MSG_RESULT([$enable_snmp])
+AC_SUBST(enable_snmp)
+
+#
+# --enable-email enables email alerts
+#
+PGAC_ARG_BOOL(enable, email, no,  [  --enable-email        enable email alerts],
+              [AC_DEFINE([USE_EMAIL], 1,
+                         [Define to 1 to build with email alert capabilities. (--enable-email)])])
+AC_MSG_RESULT([$enable_email])
+AC_SUBST(enable_email)
 
 #
 # Include directories
@@ -880,6 +903,19 @@ AC_SEARCH_LIBS(sgemm, [blas])
 # Check for lapack
 AC_SEARCH_LIBS(dgesdd_, [lapack])
 
+# Check for net-snmp
+if test "$enable_snmp" = yes ; then
+	AC_CHECK_LIB(netsnmp,  netsnmp_ds_set_string,  [], [AC_MSG_ERROR([library 'netsnmp' is required for snmp support])])
+fi 
+
+# Check for libesmtp
+if test "$enable_email" = yes ; then
+	if test "$with_openssl" != yes ; then
+		AC_MSG_ERROR([--enable-email requires --with-openssl])
+	fi
+	AC_CHECK_LIB(esmtp,  smtp_start_session,  [], [AC_MSG_ERROR([library 'libesmtp' is required for email alert support])])
+fi
+
 ##
 ## Header files
 ##
@@ -987,6 +1023,21 @@ case $template in
     AC_CHECK_HEADERS([numa.h])
     ;;
 esac
+
+# net-snmp
+if test "$enable_snmp" = yes; then
+	AC_CHECK_HEADERS([net-snmp/net-snmp-config.h], [],
+					[AC_MSG_ERROR([header file <<net-snmp/net-snmp-config.h> is required for snmp support])])
+fi
+
+
+# email
+if test "$enable_email" = yes; then
+	AC_CHECK_HEADERS(libesmtp.h, [],
+					[AC_MSG_ERROR([header file <libesnmp.h> is required for email alert support])])
+	AC_CHECK_HEADERS(auth-client.h, [],
+					[AC_MSG_ERROR([header file <auth-client.h> is required for email alert support])])
+fi
 
 
 ##
