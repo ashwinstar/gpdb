@@ -47,7 +47,7 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 	if (IsBootstrapProcessingMode())
 	{
 		Assert(!isSubXact);
-		MyProc->xid = BootstrapTransactionId;
+		//MyProc->xid = BootstrapTransactionId;
 		return BootstrapTransactionId;
 	}
 
