@@ -3,12 +3,12 @@
  * tupdesc.c
  *	  POSTGRES tuple descriptor support code
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/common/tupdesc.c,v 1.118 2006/07/14 14:52:16 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/common/tupdesc.c,v 1.126 2009/06/11 14:48:53 momjian Exp $
  *
  * NOTES
  *	  some of the executor utility code such as "ExecTypeFromTL" should be
@@ -53,10 +53,14 @@ CreateTemplateTupleDesc(int natts, bool hasoid)
 	 * struct pointer alignment requirement, and hence we don't need to insert
 	 * alignment padding between the struct and the array of attribute row
 	 * pointers.
+	 *
+	 * Note: Only the fixed part of pg_attribute rows is included in tuple
+	 * descriptors, so we only need ATTRIBUTE_FIXED_PART_SIZE space per attr.
+	 * That might need alignment padding, however.
 	 */
 	attroffset = sizeof(struct tupleDesc) + natts * sizeof(Form_pg_attribute);
 	attroffset = MAXALIGN(attroffset);
-	stg = palloc(attroffset + natts * MAXALIGN(ATTRIBUTE_TUPLE_SIZE));
+	stg = palloc(attroffset + natts * MAXALIGN(ATTRIBUTE_FIXED_PART_SIZE));
 	desc = (TupleDesc) stg;
 
 	if (natts > 0)
@@ -70,7 +74,7 @@ CreateTemplateTupleDesc(int natts, bool hasoid)
 		for (i = 0; i < natts; i++)
 		{
 			attrs[i] = (Form_pg_attribute) stg;
-			stg += MAXALIGN(ATTRIBUTE_TUPLE_SIZE);
+			stg += MAXALIGN(ATTRIBUTE_FIXED_PART_SIZE);
 		}
 	}
 	else
@@ -139,7 +143,7 @@ CreateTupleDescCopy(TupleDesc tupdesc)
 
 	for (i = 0; i < desc->natts; i++)
 	{
-		memcpy(desc->attrs[i], tupdesc->attrs[i], ATTRIBUTE_TUPLE_SIZE);
+		memcpy(desc->attrs[i], tupdesc->attrs[i], ATTRIBUTE_FIXED_PART_SIZE);
 		desc->attrs[i]->attnotnull = false;
 		desc->attrs[i]->atthasdef = false;
 	}
@@ -166,7 +170,7 @@ CreateTupleDescCopyConstr(TupleDesc tupdesc)
 
 	for (i = 0; i < desc->natts; i++)
 	{
-		memcpy(desc->attrs[i], tupdesc->attrs[i], ATTRIBUTE_TUPLE_SIZE);
+		memcpy(desc->attrs[i], tupdesc->attrs[i], ATTRIBUTE_FIXED_PART_SIZE);
 	}
 
 	if (constr)
