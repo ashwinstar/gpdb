@@ -7055,7 +7055,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		Node					*pPostCreate  = NULL;
 		Node					*pConstraint  = NULL;
 		Node					*pStoreAttr	  = NULL;
-		char					*relname;
+		char					*relname	  = NULL;
 		PartitionBoundSpec		*pBSpec		  = NULL;
 		Node					*every		  = NULL;
 		PartitionBy				*curPby		  = NULL;
