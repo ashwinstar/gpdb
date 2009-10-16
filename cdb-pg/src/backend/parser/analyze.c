@@ -7070,8 +7070,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		if (pElem)
 		{
 			pStoreAttr = pElem->storeAttr;
-			if (pElem->boundSpec && IsA(pElem->boundSpec, PartitionBoundSpec))
 
+			if (pElem->boundSpec && IsA(pElem->boundSpec, PartitionBoundSpec))
 			{
 				pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
 				every = pBSpec->partEvery;
@@ -7187,10 +7187,39 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		else
 			snprintf(prtstr, sizeof(prtstr), "prt_%d", partno + 1);
 
-		relname = ChooseRelationName(cxt->relation->relname,
-									 depthstr, /* depth */
-									 prtstr, 	/* part spec */
-									 snamespaceid);
+		/* MPP-6297: check for WITH (tablename=name) clause */
+		if (0 && pStoreAttr && ((AlterPartitionCmd *)pStoreAttr)->arg1)
+		{
+			ListCell *prev_lc = NULL;
+			ListCell *def_lc  = NULL;
+			List *pWithList = (List *)
+					(((AlterPartitionCmd *)pStoreAttr)->arg1);
+
+			foreach(def_lc, pWithList)
+			{
+				DefElem *pDef = (DefElem *)lfirst(def_lc);
+
+				/* get the tablename from the WITH, then remove this
+				 * element from the list */
+				if (0 == strcmp(pDef->defname, "tablename"))
+				{
+					relname = pstrdup(strVal(pDef->arg));
+					prtstr[0] = '\0';
+					pWithList = list_delete_cell(pWithList, def_lc, prev_lc);
+					((AlterPartitionCmd *)pStoreAttr)->arg1 = 
+							(Node *)pWithList;
+					break;
+				}
+				prev_lc = def_lc;
+			} /* end foreach */
+			
+		}
+
+		if (strlen(prtstr))
+			relname = ChooseRelationName(cxt->relation->relname,
+										 depthstr, /* depth */
+										 prtstr, 	/* part spec */
+										 snamespaceid);
 
 		/* XXX: temporarily add rule creation code for debugging */
 
