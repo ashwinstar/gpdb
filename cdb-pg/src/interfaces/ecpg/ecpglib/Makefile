@@ -14,8 +14,8 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 NAME= ecpg
-SO_MAJOR_VERSION= 5
-SO_MINOR_VERSION= 2
+SO_MAJOR_VERSION= 6
+SO_MINOR_VERSION= 1
 
 
 # The frontend doesn't need everything that's in LIBS, some are backend only

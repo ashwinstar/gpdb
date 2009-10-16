@@ -1,12 +1,12 @@
-/* Processed by ecpg (4.2.1) */
+/* Processed by ecpg (regression mode) */
 /* These include files are added by the preprocessor */
-#include <ecpgtype.h>
 #include <ecpglib.h>
 #include <ecpgerrno.h>
 #include <sqlca.h>
 /* Needed for informix compatibility */
 #include <ecpg_informix.h>
 /* End of automatic include section */
+#define ECPGdebug(X,Y) ECPGdebug((X)+100,(Y))
 
 #line 1 "dec_test.pgc"
 #include <stdio.h>
@@ -256,5 +256,4 @@ check_errno(void)
 			printf("(libc: (%s)) ", strerror(errno));
 			break;
 	}
-
 }

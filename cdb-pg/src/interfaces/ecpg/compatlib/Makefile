@@ -19,13 +19,13 @@ LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
 
 NAME= ecpg_compat
-SO_MAJOR_VERSION= 2
-SO_MINOR_VERSION= 2
-DLTYPE= library
+SO_MAJOR_VERSION= 3
+SO_MINOR_VERSION= 1
 
 override CPPFLAGS := -I../include -I$(top_srcdir)/src/interfaces/ecpg/include \
 	-I$(libpq_srcdir) -I$(top_srcdir)/src/include/utils $(CPPFLAGS)
 override CFLAGS += $(PTHREAD_CFLAGS)
+
 SHLIB_LINK = -L../ecpglib -lecpg -L../pgtypeslib -lpgtypes $(libpq) \
 	$(filter -lintl -lm, $(LIBS)) $(PTHREAD_LIBS)
 	

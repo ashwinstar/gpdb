@@ -2,3 +2,4 @@ pgc.c
 ecpg
 preproc.c
 preproc.h
+kwlookup.c
