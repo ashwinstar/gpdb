@@ -171,7 +171,7 @@ extern void add_exact_object_address(const ObjectAddress *object,
 						 ObjectAddresses *addrs);
 
 extern bool object_address_present(const ObjectAddress *object,
-					   ObjectAddresses *addrs);
+					   const ObjectAddresses *addrs);
 
 extern void free_object_addresses(ObjectAddresses *addrs);
 

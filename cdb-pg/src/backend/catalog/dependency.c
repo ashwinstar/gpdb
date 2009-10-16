@@ -16,6 +16,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/sysattr.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
@@ -1586,7 +1587,7 @@ add_exact_object_address(const ObjectAddress *object,
  */
 bool
 object_address_present(const ObjectAddress *object,
-					   ObjectAddresses *addrs)
+					   const ObjectAddresses *addrs)
 {
 	int			i;
 
