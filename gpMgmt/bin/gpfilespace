@@ -1,0 +1,1180 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+'''
+  gpfilespace [options]
+
+General Options:
+  -? | --help                show this help message and exit
+  -v | --version             show the program's version number and exit
+  -l | --logdir DIRECTORY    log file directory
+
+Connection Options:
+  -h | --host HOSTNAME       database server host
+  -p | --port PORT           database server port
+  -U | --username NAME       database user name
+  -W | --password            prompt for password
+
+Execution Options:
+  -n | --name NAME           name for the filespace
+  -c | --config FILE         configuration file
+  -o | --output DIRECTORY    output directory for config file
+'''
+# ============================================================================
+__version__ = '$Revision: #1 $'
+
+# ============================================================================
+import sys, os
+EXECNAME = os.path.split(__file__)[-1]
+
+# ============================================================================
+# Python version 2.6.2 is expected, must be between 2.5-3.0
+# ============================================================================
+if sys.version_info < (2, 5, 0) or sys.version_info >= (3, 0, 0):
+    sys.stderr.write("""
+Error: %s is supported on Python versions 2.5 or greater
+Please upgrade python installed on this machine.
+""" % EXECNAME)
+    sys.exit(1)
+
+# ============================================================================
+import optparse                          # Option Parsing
+import subprocess                        # Calling external processes
+import socket                            # getfqdn()
+import traceback                         # exception logging
+try:
+    from pygresql import pg              # Database interaction
+    from gppylib.gplog import *          # Greenplum logging facility
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
+
+
+# ============================================================================
+# Some basic exceptions:
+#
+# + StandardError
+#    + GPError
+#       + GPDatabaseError
+#       + GPPrivilegeError
+#
+# ============================================================================
+class GPError(StandardError): pass
+class GPDatabaseError(GPError): pass
+class GPPrivilegeError(GPError): pass
+
+CLUSTERSIZE = 70    #  DEBUGGING
+
+# ============================================================================
+def cli_help():
+    '''
+    Reads the help file from the docs directory, if documentation file can't
+    be found this defaults to the __doc__ string.
+    '''
+    help_path = os.path.join(sys.path[0], '../docs/cli_help', 
+                             EXECNAME + '_help')
+    f = None
+    try:
+        try:
+            f = open(help_path)
+            return f.read(-1)
+        except:
+            return __doc__
+    finally:
+        if f: 
+            f.close()
+
+def usage():
+    print cli_help()
+
+# ============================================================================
+def ParseOptions():
+    '''
+    Parses command line options input to the script.
+    '''
+
+    # Determine Default Values
+    gphome = os.environ.get("GPHOME")
+    home   = os.environ.get("HOME")
+
+    logdir = os.path.join(home, "gpAdminLogs")
+    pguser = os.environ.get("PGUSER") or os.getlogin()
+    pghost = os.environ.get("PGHOST") or socket.getfqdn()
+    pgport = os.environ.get("PGPORT") or 5432
+    output = os.getcwd()
+
+    # Setup Options Parser
+    parser = optparse.OptionParser(usage=cli_help(), add_help_option=False)
+    parser.add_option('-v', '--version', default=False,
+                      action='store_true', help=optparse.SUPPRESS_HELP)
+    parser.add_option('-?', '--help', default=False,
+                      action='store_true', help=optparse.SUPPRESS_HELP)
+    parser.add_option('-l', '--logdir', default=logdir,
+                      help=optparse.SUPPRESS_HELP)
+    parser.add_option('-h', '--host', default=pghost,
+                      help=optparse.SUPPRESS_HELP)
+    parser.add_option('-p', '--port', default=pgport,
+                      help=optparse.SUPPRESS_HELP)
+    parser.add_option('-U', '--username', default=pguser,
+                      help=optparse.SUPPRESS_HELP)
+    parser.add_option('-W', '--password', default=False, 
+                      action='store_true', help=optparse.SUPPRESS_HELP)
+    parser.add_option('-c', '--config', default=None,
+                      help=optparse.SUPPRESS_HELP)
+    parser.add_option('-n', '--name', default=None,
+                      help=optparse.SUPPRESS_HELP)
+    parser.add_option('-o', '--output', default=output,
+                      help=optparse.SUPPRESS_HELP)
+    
+    (options, args) = parser.parse_args()
+
+    # Print version and exit
+    if options.version:
+        print EXECNAME + ' ' + __version__
+        sys.exit(0)
+
+    # Print help and exit
+    if options.help:
+        usage()
+        sys.exit(0)
+
+        # We don't support any arguments not listed above
+    if len(args) > 0:
+        parser.error("unknown arguments %s" % repr(args))
+
+    # Make sure that port is an integer
+    # We check this here rather than in parser.add_option because the default
+    # value from getenv() might fail this check, and OptionParser doesn't
+    # like recieving bad default values
+    try:
+        options.port = int(options.port)
+    except:
+        logger.error("Invalid PORT: '%s'" % options.port)
+        sys.exit(1)
+
+    return options
+
+
+# ============================================================================
+def runcmd(cmd):
+    '''
+    runcmd(cmd)
+    
+    Executes a command in the shell and returns STDOUT.  
+
+    Throws:
+      OSError - command returned error code
+
+    Usage:
+      runcmd(['ssh', hostname, cmd])
+    '''
+    logger.debug(" ".join(cmd))
+    pipe = subprocess.Popen(cmd, 
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            close_fds=True)
+    result = pipe.communicate()
+    if pipe.returncode:
+        raise OSError(result[1])
+    else:
+        return result[0].strip()
+
+# ============================================================================
+def getstring(prompt, question=False, default=""):
+    '''
+    getstring(prompt, question, default)
+
+    Prompts the user for input, returns the value read from STDIN.
+    '''
+
+    # test that we have an interactive terminal
+    if not sys.stdin.isatty():
+        logger.error('stdin is not a tty')
+        logger.error('gpfilespace must be run from an interactive terminal')
+        sys.exit(1)
+
+    # Give the user the prompt and read from STDIN
+    try:
+        if question:
+            if default:
+                print "%s (default=%s)" % (question, default)
+            else:
+                print question
+
+        value = raw_input(prompt)
+        if value == "":
+            value = default
+        return value
+
+    # Control-C or Control-D
+    except (KeyboardInterrupt, EOFError), e:
+        print
+        raise KeyboardInterrupt()
+
+    # Some other exception
+    except Exception, e:
+        logger.error('failure reading from stdin')
+        logger.error(repr(e))
+        sys.exit(1)
+
+# ============================================================================
+def getbool(prompt, question, default):
+    '''
+    getbool(prompt, question, default)
+
+    Prompts the user for input (yes|no), returns True/False
+    '''
+    while True:
+        value = getstring(prompt, question, default).lower()
+        if value in ("y", "ye", "yes"): 
+            return True
+        elif value in ("n", "no"):
+            return False
+
+# ============================================================================
+def getdir(prompt, hosts=[], primary=None):
+    '''
+    getdir(prompt, hosts)
+
+    Prompts the user for input, checks that the input is a full path and 
+    validates that it exists on at least a subset of the specified hosts.
+
+    Since we will be entering a number of directories and since checking them
+    can be expensive on large clusters we do NOT exhaustively check all the 
+    hosts on input.  The checking perfomed here is merely a sanity check.  
+    We will perform more exhaustive checking after all paths are known.
+    '''
+    while True:
+        value = getstring(prompt)
+        if len(value) == 0:
+            continue
+        if not os.path.isabs(value):
+            print "Must specify a full path"
+            continue
+        value = os.path.normpath(value)
+
+        # only check up to 3 hosts (this is just a sanity check)
+        nhosts = len(hosts)
+        N = min(nhosts, 3)
+        try:
+            for i in range(N):
+                hosts[i].dircheck(value, primary)
+            return value
+        except OSError, e:
+            print "[error] " + str(e)
+            continue
+
+def checkdirs(host, parents, paths):
+    '''
+    checkdirs()
+
+    Helper function that uses ssh to call gpdircheck on the specified host.  
+
+    For every directory in 'parents' we will check that the directory
+    actually exists and has reasonable permissions.
+
+    For every directory in 'paths' we will check that the directory does not 
+    exist.  (This is the -E option for gpdircheck)
+    '''
+
+    # Wrap the directory names in double quotes, this helps with 
+    # unexpected characters (such as spaces) in a path name.
+    quoted_parents = map(lambda x: '"%s"' % x, parents)
+    quoted_paths   = map(lambda x: '"%s"' % x, paths)
+
+    # add -E before each path,
+    #   - We now have a list that looks something like:
+    #         ['"/gpdata"', '-E', '"/gpdata/gp0"', ... ]
+    dirs = quoted_parents + \
+        reduce(lambda x,y: x+y, [["-E", d] for d in quoted_paths], [])        
+
+    # Execute the command on the host
+    dircheck = os.path.expandvars("$GPHOME/bin/lib/gpdircheck")
+    try:
+        runcmd(['ssh', host, dircheck] + dirs)
+    except OSError, e:
+        raise OSError('%s: %s' % (host, str(e)))
+
+
+# ============================================================================
+class GPSegment():
+    '''
+    GPSegment()
+
+    Simple abstraction of a Greenplum Segment.
+    '''
+
+    # --------------------------------------------------------------------
+    def __init__(self, dbid, content, primary, nic, datadir):
+        (location, name) = os.path.split(datadir)
+        self.parent   = None         # points to GPHost
+        self.dbid     = dbid
+        self.content  = content
+        self.primary  = (primary == True or primary == 't')
+        self.nic      = nic
+        self.datadir  = datadir
+        self.location = location
+        self.name     = name
+        self.path     = None         # Path for the new filespace
+
+    # --------------------------------------------------------------------
+    def __str__(self):
+        return ":".join([self.nic, self.datadir])
+
+    # --------------------------------------------------------------------
+    def __repr__(self):
+        x = (self.dbid, self.content, self.primary, self.nic, self.datadir)
+        return str(x)
+
+    # --------------------------------------------------------------------
+    # Six simple helper functions to identify what role a segment plays:
+    #  + Leader
+    #     + master
+    #     + standby master
+    #  + Segment
+    #     + primary
+    #     + mirror
+    def isleader(self):   return self.content < 0
+    def ismaster(self):   return self.content < 0 and self.primary
+    def isstandby(self):  return self.content < 0 and not self.primary
+    def issegment(self):  return self.content >= 0
+    def isprimary(self):  return self.content >= 0 and self.primary
+    def ismirror(self):   return self.content >= 0 and not self.primary
+
+    # --------------------------------------------------------------------
+    def set_host(self, parent):  
+        self.parent = parent
+
+    # --------------------------------------------------------------------
+    def set_path(self, path):    
+        '''
+        set_path(path)
+
+        Is used to indicate the path that the current filespace should be
+        created under.  It should include both the original location specified
+        at config time as well as the unique identifier for the segment.
+
+        Throws:
+          GPError - when a path has already been specified for this segment.
+        '''
+        if not self.path:
+            self.path = path
+        else:
+            raise GPError("Duplicate path set for dbid %d" % self.dbid)
+
+    # --------------------------------------------------------------------
+    def hostname(self):
+        '''
+        hostname()
+
+        Returns the hostname that this segment is on - distinct from the
+        NIC specified in gp_configuration.
+
+        Looks the value up in the parent GPHost, otherwise simply returns
+        the nic (maybe it should do something else for this case?) 
+        '''
+        if self.parent:
+            return self.parent.hostname
+        else:
+            return self.nic
+
+# ============================================================================
+class GPHost():
+    '''
+    GPHost()
+
+    Simple abstraction of a host machine.
+
+    This is a container class for the segments on the host
+    '''
+
+    # --------------------------------------------------------------------
+    def __init__(self, nic, hostname):
+        '''
+        GPHost()
+
+        Used to resolve multiple nics into a single hostname.  
+          - nic is used for communication
+          - hostname is used for grouping
+          - segments is the set of segments on the host
+
+
+        Because a poorly configured system may be configured such that 
+        "hostname" is not a valid network address we keep track of the
+        first "nic" that we identified this host with and will use that
+        nic for future communication with this host.
+        '''
+        self.nic      = nic
+        self.hostname = hostname
+        self.segments = []
+
+    # --------------------------------------------------------------------
+    def __str__(self):   return self.hostname
+    def __repr__(self):  return self.hostname
+    
+    # --------------------------------------------------------------------
+    def add_segment(self, segment):
+        '''
+        Adds a new segment to the host
+        '''
+        segment.set_host(self)
+        self.segments.append(segment)
+
+    # --------------------------------------------------------------------
+    def segments(self):
+        '''
+        Returns all the segments (primary/mirror/master) on the host
+        '''
+        return self.segments
+
+    # --------------------------------------------------------------------
+    def primaries(self):
+        '''
+        Returns a list of primary segments on this host
+        '''
+        return filter(GPSegment.isprimary, self.segments)
+
+    # --------------------------------------------------------------------
+    def mirrors(self):
+        '''
+        Returns a list of mirror segments on this host
+        '''
+        return filter(GPSegment.ismirror, self.segments)
+
+    # --------------------------------------------------------------------
+    def dircheck(self, dir, primary=None):
+        '''
+        Checks that a directory exists on the host and that the directory
+        can be used to install filespace directories.  This checks that the
+        specified directory can work with all of the segments of the specified
+        type on the host.  Some tests can be logically determined based on
+        the cataloged information of existing datadirs and filespaces, others
+        require actally sshing to the host and checking the filesystem.
+
+        Possible errors (OSError):
+          - Directory conflicts with datadir
+          - Subdirectory of datadir
+          - No such file or directory
+          - Not a directory
+          - No read permissions
+          - No write permissions
+          - Directory not empty
+        '''
+
+        # The directory should not be a subdirectory of ANY datadir or
+        # filespace on the host.
+        #
+        # Note: all paths have gone through os.path.normpath(), which means
+        # no trailing "/" characters.
+        for d in self.segments:
+            cdir = os.path.join(dir, d.name)
+
+            # If the directories are one and the same
+            if cdir == d.datadir:
+                raise OSError("%s: %s - "
+                              "Directory conflicts with existing datadir"
+                              % (self.nic, cdir))
+
+            # If the directory is a subdirectory
+            if ((cdir[0:len(d.datadir)] == d.datadir) and 
+                (cdir[len(d.datadir):len(d.datadir)+1] == "/")):
+                raise OSError("%s: %s - Subdirectory of existing datadir" 
+                              % (self.nic, cdir))
+
+        # determine which directories we are checking
+        if primary == True:
+            segdirs = map(lambda x: os.path.join(dir, x.name), self.primaries())
+        elif primary == False:
+            segdirs = map(lambda x: os.path.join(dir, x.name), self.mirrors())
+        else:
+            segdirs = []
+
+        checkdirs(self.nic, [dir], segdirs)
+        return True
+
+    # --------------------------------------------------------------------
+    def validate_paths(self):
+        '''
+        validate_paths()
+
+        This function checks that the paths specified exist with the 
+        correct permissions on all hosts.
+        '''
+
+        # Get the list of all specified paths and their parent directories
+        paths   = map(lambda x: x.path, self.segments)
+        parents = map(lambda x: os.path.split(x)[0], paths)
+
+        # Check the host that we have no duplicate paths, if we are
+        # looking at an unmodified config file this should always be true.
+        if len(paths) != len(set(paths)):
+            raise GPError("Duplicate paths on host: %s" % self.hostname)
+
+        # The parent directories are allowed to have duplicates, but we
+        # would like to remove the duplicates before we check them.
+        parents = list(set(parents))
+        
+        # ssh to the host and check the paths
+        #   - TODO: do a better job parallelizing this
+        checkdirs(self.nic, parents, paths)
+
+
+# ============================================================================
+class GPConfig:
+    '''
+    GPConfig()
+
+    A simple abstraction of a "configuration" of like hosts.  
+
+    A configuration is basically a set of hosts that all have:
+      - The same number of primary + mirror segment
+      - The same set of "locations" for the segments on the node.
+    
+    Presence or absense of master or standby master does not matter.
+    '''
+
+    # --------------------------------------------------------------------
+    def __init__(self, host):
+        # Extract the locations of the primary and mirror segments
+        primaries  = host.primaries()
+        mirrors    = host.mirrors()
+
+        # We generate unique identifications based on the sorted 
+        # "locations" of the primary and mirror segments
+        plocations = map(lambda x: x.location, primaries)
+        mlocations = map(lambda x: x.location, mirrors)
+        plocations.sort()
+        mlocations.sort()
+        
+        self.identity  = ":".join(plocations + ["&"] + mlocations)
+        self.primaries = plocations
+        self.mirrors   = mlocations
+        self.hosts     = []   # added via add_host() later
+        self.pdest     = []   # Filespace Primary destination
+        self.mdest     = []   # Filespace Mirror destination
+
+    # --------------------------------------------------------------------
+    def __str__(self):
+        return "{'primaries': %s, 'mirrors': %s, 'hosts': %s}" % (
+                str(self.primaries), str(self.mirrors), str(self.hosts)
+                )
+
+    # --------------------------------------------------------------------
+    def __repr__(self):
+        return "GPConfig<%s,%s>" % (self.identity, str(self.hosts))
+
+    # --------------------------------------------------------------------
+    def add_host(self, host):
+        self.hosts.append(host)
+
+    # --------------------------------------------------------------------
+    def set_primary(self, dir):
+        self.pdest.append(dir)
+
+    # --------------------------------------------------------------------
+    def set_mirror(self, dir):
+        self.mdest.append(dir)
+
+        
+
+# ============================================================================
+class GPFilespace:
+    '''
+    Greenplum Filespace Management Utility
+    '''
+
+    # --------------------------------------------------------------------
+    def __init__(self, options):
+        '''
+        GPFilespace(options) 
+
+        Creates an instance of a GPFilespace with the parsed options
+
+        This will:
+          - setup the basic container object
+          - establish a connection to the database
+          - assert that the user is a database superuser 
+          - gather the basic information from gp_configuration
+
+        It will not:
+          - resolve gp_configuration.hostname to real hostnames
+          - group segments to their hosts
+          - identify host configuration groups
+
+        These steps are omitted because they require probing the
+        network, which can be expensive an large clusters.  We will
+        eventually need to bite the bullet and perform some of those
+        tests, but if there are other errors that crop up before we
+        need that it is better not to have wasted time.
+
+        Do not fear, the class is still fully functional.  The above
+        information will be fetched the first time it is required.
+
+        Usage:  
+           options = ParseOptions()
+           X = GPFilespace(options)
+        '''
+
+        self.options    = options
+        self.fspacename = options.name
+        self.dir        = options.output
+        self.master     = None # [] list of master segments
+        self.segments   = None # {} dbid => GPSegment resolution
+        self.hosts      = None # {} hostname => GPHost resolution
+        self.nics       = None # {} nic => hostname resolution
+        self.config     = None # {} host configuration groups
+        self.db         = None # pygresql.pgobject 
+
+        self.db = self.connect()
+        self.get_configuration()
+        
+    # --------------------------------------------------------------------
+    def connect(self):
+        '''
+        GPFilespace::connect()
+
+        Establishes a connection to the database as specified in the options.
+        Checks that the database user is a database superuser.
+
+        throws: 
+           GPDatabaseError - failure communicating with the database
+           GPPrivilegeError - database user is not a database superuser
+
+        Usage:  
+          X = GPFilespace(options)
+          connection = X.connect()
+        '''
+    
+        try:
+            user = self.options.username
+            host = self.options.host 
+            port = self.options.port
+            db   = 'template1'
+            conn = pg.connect(user=user, host=host, dbname=db, port=port)
+
+            q = "SELECT usesuper FROM pg_user where usename = user"
+            is_super = (conn.query(q).getresult()[0][0] == 't')
+
+        except Exception, e:
+            raise GPDatabaseError(str(e))
+
+        if not is_super:
+            error = "gpfilespace requires database superuser privledges"
+            raise GPPrivilegeError(error)
+
+        return conn
+
+
+    # --------------------------------------------------------------------
+    def get_configuration(self):
+        '''
+        GPFilespace::get_configuration()
+        
+        Extracts gp_configuration from the database and uses it to populate:
+          self.segments = hash of segments {dbid: GPSegment()}
+          self.master   = list of master segments [GPSegment()]
+
+        If any existing configuration groups or host lists are present they
+        will be obliterated, but we will keep any existing nic->hostname
+        mappings.
+        
+        Usage:
+          X = GPFilespace(options)
+          X.get_configuration()
+        '''
+
+        # We should already have a connection, but if not establish one.
+        if (not self.db or self.db.status != 1):
+            self.db = self.connect()
+
+        try:
+            conn = self.db
+
+            q = "SELECT dbid, content, isprimary, hostname, datadir " \
+                "FROM gp_configuration "
+            gp_config = conn.query(q).getresult()
+        except Exception, e:
+            raise GPDatabaseError(str(e))
+
+        # These have pointers to the old GPSegments so they must be destroyed
+        # before we populate the new structures.
+        self.master   = []
+        self.segments = {}
+        self.hosts    = None
+        self.config   = None
+
+        # Loop through configuration and add segments to datastructures
+        # We save the costly hostname lookup step until later.
+        for tuple in gp_config:
+            (dbid, content, primary, nic, datadir) = tuple
+            seg = GPSegment(dbid, content, primary, nic, datadir)
+
+            # Keep the primary master is at the front of the list
+            if seg.ismaster():  
+                self.master.insert(0, seg)
+            elif seg.isstandby(): self.master.append(seg)
+
+            # Segment hash includes primary, mirror, and master segments
+            self.segments[dbid] = seg
+
+        logger.debug('Configuration contains %d segments' % len(self.segments))
+
+
+    # --------------------------------------------------------------------
+    def resolve_hostnames(self):
+        '''
+        resolve_hostnames()
+
+        For every segment in the configuration we make sure that we have
+        a real hostname available for that segment.  In order to determine true
+        configurations we need to resolve the NICs stored in gp_configuration
+        into distinct hostnames so that we can unambiguously tell which segments
+        are on the same host.
+        '''
+
+        # Should have already established the configuration
+        if not self.segments:
+            self.get_configuration()
+
+        # If we haven't already looked up any hosts then create an empty
+        # nic lookup dictionary, otherwise we can use existing nic->hostname
+        # lookups.
+        if not self.nics: 
+            self.nics = {}
+
+        # The actual GPHost records themselves must always be recalculated.
+        self.hosts = {}
+
+        # This really shouldn't happen, but on the off chance that there
+        # are no segments in gp_configuration this error is cleaner than
+        # a division by zero.
+        if not self.segments or len(self.segments) == 0:
+            raise GPError("gp_configuration is empty")
+
+        # Progress indicator: 
+        progress = 0
+        done     = 0.0
+        each     = 78.0 / len(self.segments)
+
+        # Loop through all the segments to get the nics
+        for dbid in self.segments:
+            seg = self.segments[dbid]
+            nic = seg.nic
+            if nic not in self.nics:
+                # need to improve this
+                for i in range(CLUSTERSIZE):  ## DEBUG: mimic a large cluster
+                    hostname = runcmd(['ssh', nic, 'hostname'])
+                self.nics[nic] = hostname
+            else:
+                hostname = self.nics[nic]
+
+            # Build the host => segment list mapping
+            if not hostname in self.hosts:
+                self.hosts[hostname] = GPHost(nic, hostname)
+            self.hosts[hostname].add_segment(seg)
+
+            # progress reporting
+            done += each
+            while (done > progress):
+                progress += 1
+                sys.stdout.write(".")
+                sys.stdout.flush()
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+        logger.debug('nics: ' + str(self.nics))
+        logger.debug('hosts: ' + str(self.hosts))
+
+    # --------------------------------------------------------------------
+    def group_configurations(self):
+        '''
+        group_configurations()
+
+        For all of the hosts in the filespaces we group them into distinct
+        "configurations" of simalar shape - all have the same number of
+        primaries/mirrors in the same locations.
+        '''
+        if not self.nics:
+            self.resolve_hostnames()
+
+        configs = {}
+        for h in self.hosts:
+            host = self.hosts[h]
+
+            # Make a configuration for this host, this resolves the messy
+            # distinct identification of the configuration
+            c = GPConfig(host)
+
+            # Lookup the identity in our existing configurations, if it 
+            # matches use it, otherwise enter this as a new configuration.
+            if c.identity not in configs:
+                configs[c.identity] = c
+            config = configs[c.identity]
+
+            # Finally add the host to the configuration
+            config.add_host(host)
+
+        return configs
+
+
+    # --------------------------------------------------------------------
+    def generate_config(self):
+        '''
+        generate_config()
+
+        This function coordinates user inputs into the generation of a 
+        filespace configuration file.  It reads in paths from STDIN, performs
+        so simple sanity checks on them and produces a config file.  
+
+        It does NOT exhaustively check all hosts that the directories are
+        valid, but it does check a small sample of hosts.  This is on the
+        assumption that the segments will have been maintained together
+        and that validating can be expensive on large clusters.  A more
+        exhaustive check will be performed when a user attempts to actually
+        create the filespace using the generated config file.
+        '''
+        
+        # test that the output directory is writeable
+        if not os.access(self.dir, os.W_OK):
+            logger.error('Directory not writeable: "%s"' % self.dir)
+            logger.error('Unable to create config file')
+            sys.exit(1)
+            
+        #question = "Would you like to configure a new Filespace?  (Y|N)"
+        #if not getbool("> ", question, "Y"):
+        #    raise KeyboardInterrupt()
+
+        # Helper function to validate reasonable names for filespaces
+        def check_fsname(name):
+            if name == "": 
+                return False
+            if name[0:3] == "pg_":
+                print "[Error] The name prefix 'pg_' is reserved for " \
+                    "system filespaces"
+                return False 
+            # FIXME: Check against existing filespaces
+            return True
+
+        # If the filespace name was passed in as a command line argument:
+        #   - use it or raise an error, 
+        #   - otherwise prompt until a valid name is given.
+        fspacename = ""
+        if self.options.name:
+            if check_fsname(self.options.name):
+                fspacename = self.options.name
+            else:
+                raise GPError("Invalid filespace name")
+        else:
+            question = "Please provide a name for this Filespace:"
+            while not check_fsname(fspacename):
+                fspacename = getstring("> ", question)
+
+        logger.debug("Filespace Name: %s" % fspacename)
+
+        # Search through the existing datadirectories in order to find 
+        # sets of hosts that have similar directory layouts for the segments.
+        #
+        # We expect this to return a single configuration for most of our
+        # customers, but unusual gpexpand or recovery scenarios may have
+        # left some hosts with unusual configurations.
+        #
+        print "\nChecking your configuration...\n"
+        configurations = self.group_configurations()
+        for id in configurations:
+            logger.debug("Config: " + str(configurations[id]))
+        if len(configurations) > 1:
+            raise GPError("mixed configurations not yet supported")
+
+        # For every configuration we need to setup paths for the filespace
+        # Loop through each one and prompt for paths.
+        for id in configurations:
+            config   = configurations[id]
+            nhosts   = len(config.hosts)
+            nprimary = len(config.primaries)
+            nmirror  = len(config.mirrors)
+            print "You have %d hosts with %d primary and %d mirror segments." \
+                % (nhosts, nprimary, nmirror)
+
+            print "hosts: " + str(config.hosts)
+            #question = "Should all of the nodes be configured identically? (Y|N)"
+            #if not getbool("> ", question, "Y"):
+            #    logger.debug("configuring hosts as mixed configuration")
+            #    raise GPError("mixed configurations not yet supported")
+            #else:
+            logger.debug("configuring all hosts identically")
+
+            # Get primary segment locations, if needed
+            #
+            # Note: it is theoretically possible for gpexpand to create
+            # some hosts with "mirror only" configurations.
+            if (nprimary > 0):
+                print "\nPlease specify %s locations for the primary " \
+                    "segments, one per line:" % nprimary
+                for i in range(nprimary):
+                    prompt = "Primary %d> " % (i+1)
+                    dir = getdir(prompt, config.hosts, primary=True)
+                    config.set_primary(dir)
+                    logger.debug("%s %s" % (prompt, dir))
+                
+            # Get mirror segment locations, if needed
+            if (nmirror > 0):
+                print "\nPlease specify %s locations for the mirror " \
+                    "segments, one per line:" % nmirror
+                for i in range(nmirror):
+                    prompt = "Mirror %d> " % (i+1)
+                    dir = getdir(prompt, config.hosts, primary=False)
+                    config.set_mirror(dir)
+                    logger.debug("%s %s" % (prompt, dir))
+
+        # Get a location for the master, this directory applies both to
+        # the master and the standby master, like a regular datadir.
+        print "\nPlease specify location for the master directory"
+        masterdir = getdir("Master> ", [self.master[0].parent])
+        logger.debug("Master> %s" % masterdir)
+
+        # Write out the information to a configuration file
+        filename = os.path.join(self.dir, "gpfilespace_config_1")
+        logger.debug("Creating Config File: %s" % filename)
+        print "Creating configuration file...",
+
+        f = open(filename, 'w')
+        f.write('filespace:%s\n' % fspacename)
+
+        def writeseg(seg, loc):
+            f.write(seg.hostname())
+            f.write(':')
+            f.write(str(seg.dbid))
+            f.write(':')
+            f.write(os.path.join(loc, seg.name))  # new prefix needed?
+            f.write('\n')
+
+        # Write out location for master nodes
+        for seg in self.master:
+            writeseg(seg, masterdir)
+
+        # Loop through all of our configurations
+        for id in configurations:
+            config = configurations[id]
+            
+            # For every host in the current configuration loop through the 
+            # hosts in that configuration
+            for host in config.hosts:
+                # Write out the primary segments for this host
+                primaries = host.primaries()
+                for i in range(len(primaries)):
+                    writeseg(primaries[i], config.pdest[i])
+
+                # Write out the mirror segments for this host
+                mirrors = host.mirrors()
+                for i in range(len(mirrors)):
+                    writeseg(mirrors[i], config.mdest[i])
+
+        f.close()
+        print "[created]"
+        print """
+To add this filespace to the database please run the command:
+   gpfilespace --config %s
+""" % filename
+        
+        return None
+
+    # --------------------------------------------------------------------
+    def execute_config(self):
+        '''
+        execute_config()
+
+        Reads a configuration file from the filesystem and attempts to create
+        the specified filespace within the database.
+
+        This first involves checking that we expect the create filespace 
+        command to succeed.  This is an important step since a failure of a
+        mirror to create the filespace may result in the mirror failing 
+        completely.
+        '''
+
+        # Read the configuration file passed as input (-c filename)
+        try:
+            print "Reading Configuration file: '%s'" % self.options.config
+            config = open(self.options.config)
+        except IOError, e:
+            raise GPError(str(e))
+
+        # We are recalculating our nic and host lookups from the config 
+        # file.
+        self.hosts = {}
+        if not self.nics:
+            self.nics = {}
+
+        # logger.debug('segs: ' + str(self.segments))
+        
+        # First line in file is the filespace name, remaining lines are
+        # specify hostname, dbid, and a path:
+        #
+        #   filespace:name
+        #   hostname:dbid:path
+        #   ...
+        lineno = 0
+        fspacename = None
+        for line in config:
+            lineno += 1
+
+            # It may be nice to add a more robust parsing, but this is
+            # sufficient for now.
+            values = line.strip().split(':')
+            if (len(values) == 2 and values[0] == 'filespace'):
+                fspacename = values[1]
+                continue
+            elif len(values) != 3:
+                raise GPError("Syntax Error at line %d: %s" 
+                              % (lineno, line))
+            
+            (host, dbid, path) = values
+            try:
+                dbid = int(dbid)
+            except:
+                raise GPError("Invalid dbid at line %d: %s" % (lineno, line))
+
+            if dbid not in self.segments:
+                raise GPError("Segment not found in cluster at line %d: %s"
+                              % (lineno, line))
+            seg = self.segments[dbid]
+            
+            # The hostname lookup can be expensive on large clusters, so we 
+            # assume that the values inserted by the config file generation 
+            # are still valid. If this assumption is somehow false we should 
+            # error gracefully. 
+            #
+            # It is required that a single nic->hostname must be consistent 
+            # within the config file.  
+            #
+            nic = seg.nic
+            if nic not in self.nics:
+                self.nics[nic] = host
+            elif self.nics[nic] != host:
+                raise GPError("Network interface mismatch for host: "
+                              "%s => (%s, %s)" % (nic, host, self.nics[nic]))
+            
+            if not host in self.hosts:
+                self.hosts[host] = GPHost(nic, host)
+            self.hosts[host].add_segment(seg)
+
+            # Assign the path for the segment, will throw GPError if the
+            # segment already has a path associated with it.
+            try:
+                seg.set_path(path)
+            except GPError, e:
+                raise GPError("Duplicate path set for dbid %d at line %d: %s"
+                              % (dbid, lineno, line))
+
+        if not fspacename:
+            raise GPError("Filespace name not specified")
+
+        # Loop through the segments to validate that we now have a mapping
+        # for every segment!
+        for dbid in self.segments:
+            seg = self.segments[dbid]
+            if not seg.path:
+                raise GPError("No path specified for dbid: %d" % seg.dbid)
+
+        logger.debug('nics: ' + str(self.nics))
+        logger.debug('hosts: ' + str(self.hosts))
+
+
+        # Progress indicator: 
+        print "Performing validation on paths"
+        progress = 0
+        done     = 0.0
+        each     = 78.0 / len(self.hosts)
+
+        # Perform exhaustive checking of paths:
+        #   - This may take some time on large clusters
+        #   - raises GPError on failure
+        for h in self.hosts:
+            for i in range(CLUSTERSIZE):  ## DEBUG: mimic a large cluster
+                self.hosts[h].validate_paths()
+
+            # progress reporting
+            done += each
+            while (done > progress):
+                progress += 1
+                sys.stdout.write(".")
+                sys.stdout.flush()
+        sys.stdout.write("\n\n")
+        sys.stdout.flush()
+
+        # Everything checks out, generate the SQL and execute it
+        q = "\nCREATE FILESPACE %s \n(\n" % fspacename
+        dbids = self.segments.keys()
+        dbids.sort()
+        for dbid in dbids:
+            q += "  %d: %s,\n" % (dbid, self.segments[dbid].path)
+        q += ");"
+
+        logger.info(q);
+
+        print "Connecting to database"
+        conn = self.connect()
+        try:
+            result = conn.query(q).getresult()
+        except Exception, e:
+            raise GPDatabaseError(str(e))
+        
+        print "[%s]" % result
+        sys.stdout.flush()
+
+
+# ============================================================================
+# main()
+# ============================================================================
+logger = None
+
+if __name__ == '__main__':
+    opt = ParseOptions()
+    logger = setup_tool_logging(EXECNAME, opt.host, opt.username, opt.logdir)
+    enable_verbose_logging()
+    quiet_stdout_logging()
+    
+    try:
+        logger.info("Start, config=" + str(opt.config))
+        print """
+Filespace Creation is used to describe the physical resources of nodes within 
+an existing GPDB array.  Once a Filespace has been created it will be possible 
+to easily create multiple Tablespaces within that Filespace directly from SQL 
+using the CREATE TABLESPACE command. 
+
+Please refer to chapter XXX in the Admin Guide for more information.
+
+""",
+        gpf = GPFilespace(opt)
+
+        if opt.config == None:
+            gpf.generate_config()
+        else:
+            gpf.execute_config()
+
+        logger.info("Done")
+        
+    # An expected error
+    except GPError, e:
+        logger.error(str(e))
+        logger.info("exit(1)")
+        sys.exit(1)
+
+    # User cancelation 
+    except KeyboardInterrupt, e:
+        logger.info("cancelled")
+        print '[Cancelled]'
+        sys.exit(1)
+
+    # Let SystemExit exceptions through
+    except SystemExit, e:
+        logger.info("exit(%s)" % str(e))
+        raise e
+
+    # Catch anything else - shouldn't ever occur
+    except BaseException, e:
+        logger.error(repr(e))
+        logger.info(traceback.format_exc())
+        logger.info("exit(1)")
+
+        sys.stderr.write('[ERROR] See "%s" for details\n' % get_logfile())
+        sys.exit(1)
+
