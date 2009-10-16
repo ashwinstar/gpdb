@@ -128,6 +128,7 @@ typedef ArrayType Acl;
 #define ACL_SELECT_CHR			'r'		/* formerly known as "read" */
 #define ACL_UPDATE_CHR			'w'		/* formerly known as "write" */
 #define ACL_DELETE_CHR			'd'
+#define ACL_TRUNCATE_CHR		'D'		/* super-delete, as it were */
 #define ACL_REFERENCES_CHR		'x'
 #define ACL_TRIGGER_CHR			't'
 #define ACL_EXECUTE_CHR			'X'
