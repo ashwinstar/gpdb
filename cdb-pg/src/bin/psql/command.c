@@ -105,30 +105,6 @@ HandleSlashCmds(PsqlScanState scan_state,
 	/* And try to execute it */
 	status = exec_command(cmd, scan_state, query_buf);
 
-	if (status == PSQL_CMD_UNKNOWN && strlen(cmd) > 1)
-	{
-		/*
-		 * If the command was not recognized, try to parse it as a one-letter
-		 * command with immediately following argument (a still-supported, but
-		 * no longer encouraged, syntax).
-		 */
-		char		new_cmd[2];
-
-		/* don't change cmd until we know it's okay */
-		new_cmd[0] = cmd[0];
-		new_cmd[1] = '\0';
-
-		psql_scan_slash_pushback(scan_state, cmd + 1);
-
-		status = exec_command(new_cmd, scan_state, query_buf);
-
-		if (status != PSQL_CMD_UNKNOWN)
-		{
-			/* adjust cmd for possible messages below */
-			cmd[1] = '\0';
-		}
-	}
-
 	if (status == PSQL_CMD_UNKNOWN)
 	{
 		if (pset.cur_cmd_interactive)
@@ -1541,6 +1517,9 @@ _align2string(enum printFormat in)
 		case PRINT_ALIGNED:
 			return "aligned";
 			break;
+		case PRINT_WRAPPED:
+			return "wrapped";
+			break;
 		case PRINT_HTML:
 			return "html";
 			break;
@@ -1574,6 +1553,8 @@ do_pset(const char *param, const char *value, printQueryOpt *popt, bool quiet)
 			popt->topt.format = PRINT_UNALIGNED;
 		else if (pg_strncasecmp("aligned", value, vallen) == 0)
 			popt->topt.format = PRINT_ALIGNED;
+		else if (pg_strncasecmp("wrapped", value, vallen) == 0)
+			popt->topt.format = PRINT_WRAPPED;
 		else if (pg_strncasecmp("html", value, vallen) == 0)
 			popt->topt.format = PRINT_HTML;
 		else if (pg_strncasecmp("latex", value, vallen) == 0)
