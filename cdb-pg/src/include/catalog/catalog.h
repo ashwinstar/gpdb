@@ -14,6 +14,7 @@
 #ifndef CATALOG_H
 #define CATALOG_H
 
+#include "utils/relcache.h"
 #include "utils/rel.h"
 
 
