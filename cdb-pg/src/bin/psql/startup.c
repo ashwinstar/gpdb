@@ -3,14 +3,11 @@
  *
  * Copyright (c) 2000-2009, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/startup.c,v 1.138 2006/10/04 00:30:06 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/startup.c,v 1.156 2009/04/05 04:19:58 tgl Exp $
  */
 #include "postgres_fe.h"
 
 #include <sys/types.h>
-#ifdef USE_SSL
-#include <openssl/ssl.h>
-#endif
 
 #ifndef WIN32
 #include <unistd.h>
@@ -84,10 +81,6 @@ static void process_psqlrc_file(char *filename);
 static void showVersion(void);
 static void EstablishVariableSpace(void);
 
-#ifdef WIN32
-static void checkWin32Codepage(void);
-#endif
-
 /*
  *
  * main
@@ -102,7 +95,7 @@ main(int argc, char *argv[])
 	char	   *password_prompt = NULL;
 	bool		new_pass;
 
-	set_pglocale_pgservice(argv[0], ("psql"));
+	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("psql"));
 
 	if (argc > 1)
 	{
@@ -142,7 +135,7 @@ main(int argc, char *argv[])
 	pset.popt.topt.stop_table = true;
 	pset.popt.default_footer = true;
 	/* We must get COLUMNS here before readline() sets it */
-	//pset.popt.topt.env_columns = getenv("COLUMNS") ? atoi(getenv("COLUMNS")) : 0;
+	pset.popt.topt.env_columns = getenv("COLUMNS") ? atoi(getenv("COLUMNS")) : 0;
 
 	pset.notty = (!isatty(fileno(stdin)) || !isatty(fileno(stdout)));
 
@@ -611,29 +604,6 @@ showVersion(void)
 #endif
 }
 
-/*
- * checkWin32Codepage
- *
- * Prints a warning when win32 console codepage differs from Windows codepage
- */
-#ifdef WIN32
-static void
-checkWin32Codepage(void)
-{
-	unsigned int wincp,
-				concp;
-
-	wincp = GetACP();
-	concp = GetConsoleCP();
-	if (wincp != concp)
-	{
-		printf(_("Warning: Console code page (%u) differs from Windows code page (%u)\n"
-				 "         8-bit characters may not work correctly. See psql reference\n"
-			   "         page \"Notes for Windows users\" for details.\n\n"),
-			   concp, wincp);
-	}
-}
-#endif
 
 
 /*
