@@ -86,6 +86,11 @@
 #undef _
 #define _(x) err_gettext(x)
 
+static const char *err_gettext(const char *str)
+/* This extension allows gcc to check the format string for consistency with
+   the supplied arguments. */
+__attribute__((format_arg(1)));
+
 /* Global variables */
 ErrorContextCallback *error_context_stack = NULL;
 
@@ -94,7 +99,7 @@ sigjmp_buf *PG_exception_stack = NULL;
 extern bool redirection_done;
 
 /* GUC parameters */
-int Log_error_verbosity = PGERROR_VERBOSE;
+int			Log_error_verbosity = PGERROR_VERBOSE;
 char	   *Log_line_prefix = NULL;		/* format for extra log line info */
 int			Log_destination = LOG_DESTINATION_STDERR;
 
@@ -103,7 +108,7 @@ int			Log_destination = LOG_DESTINATION_STDERR;
 /*
  * Max string length to send to syslog().  Note that this doesn't count the
  * sequence-number prefix we add, and of course it doesn't count the prefix
- * added by syslog itself.  On many implementations it seems that the hard
+ * added by syslog itself.	On many implementations it seems that the hard
  * limit is approximately 2K bytes including both those prefixes.
  */
 #ifndef PG_SYSLOG_LIMIT
@@ -181,8 +186,8 @@ static void setup_formatted_start_time(void);
 bool
 in_error_recursion_trouble(void)
 {
-        /* Pull the plug if recurse more than once */
-        return (recursion_depth > 2);
+	/* Pull the plug if recurse more than once */
+	return (recursion_depth > 2);
 }
 
 /*
@@ -194,12 +199,12 @@ static inline const char *
 err_gettext(const char *str)
 {
 #ifdef ENABLE_NLS
-        if (in_error_recursion_trouble())
-                return str;
-        else
-                return gettext(str);
+	if (in_error_recursion_trouble())
+		return str;
+	else
+		return gettext(str);
 #else
-        return str;
+	return str;
 #endif
 }
 
@@ -2154,8 +2159,7 @@ log_line_prefix(StringInfo buf)
     /*
      * This is one of the few places where we'd rather not inherit a static
      * variable's value from the postmaster.  But since we will, reset it when
-     * MyProcPid changes. MyStartTime also changes when MyProcPid does, so
-     * reset the formatted start timestamp too.
+	 * MyProcPid changes.
      */
     if (log_my_pid != MyProcPid)
     {
@@ -2734,7 +2738,10 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
     write_syslogger_file_string(edata->message, amsyslogger, true);
     
     /* errdetail */
-    write_syslogger_file_string(edata->detail, amsyslogger, true);
+    if (edata->detail_log)
+    	write_syslogger_file_string(edata->detail_log, amsyslogger, true);
+    else
+    	write_syslogger_file_string(edata->detail, amsyslogger, true);
 
     /* errhint */
     write_syslogger_file_string(edata->hint, amsyslogger, true);
@@ -2976,7 +2983,7 @@ send_message_to_server_log(ErrorData *edata)
                     write_message_to_server_log(edata->elevel,
                                                 edata->sqlerrcode,
                                                 edata->message,
-                                                edata->detail,
+                                                edata->detail_log != NULL ? edata->detail_log : edata->detail,
                                                 edata->hint,
                                                 edata->cursorpos,
                                                 edata->internalpos,
@@ -3341,7 +3348,7 @@ send_message_to_frontend(ErrorData *edata)
         else
             err_sendstring(&msgbuf, _("missing error text"));
 
-        if (edata->detail)
+		if (edata->detail)
         {
             pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_DETAIL);
             err_sendstring(&msgbuf, edata->detail);
@@ -3563,19 +3570,19 @@ error_severity(int elevel)
     switch (elevel)
     {
         case DEBUG1:
-            prefix = gettext("DEBUG1");
+            prefix = _("DEBUG1");
             break;
         case DEBUG2:
-            prefix = gettext("DEBUG2");
+            prefix = _("DEBUG2");
             break;
         case DEBUG3:
-            prefix = gettext("DEBUG3");
+            prefix = _("DEBUG3");
             break;
         case DEBUG4:
-            prefix = gettext("DEBUG4");
+            prefix = _("DEBUG4");
             break;
         case DEBUG5:
-            prefix = gettext("DEBUG5");
+            prefix = _("DEBUG5");
             break;
         case LOG:
         case COMMERROR:
