@@ -658,7 +658,6 @@ typedef NameData *Name;
  *	live bug reports from real live users over exactly this mistake.
  *	Do it honestly with "memcpy(dst,src,len); dst[len] = '\0';", instead.
  */
-#undef StrNCpy
 #define StrNCpy(dst,src,len) \
 	do \
 	{ \
