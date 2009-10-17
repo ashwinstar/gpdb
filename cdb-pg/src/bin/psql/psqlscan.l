@@ -29,11 +29,11 @@
  * subroutine is responsible for looking back to the original string and
  * replacing FF's with the corresponding original bytes.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/bin/psql/psqlscan.l,v 1.20 2006/05/31 22:11:44 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/bin/psql/psqlscan.l,v 1.28 2009/01/01 17:23:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -42,8 +42,6 @@
 #include "psqlscan.h"
 
 #include <ctype.h>
-
-#include "mb/pg_wchar.h"
 
 #include "common.h"
 #include "settings.h"
@@ -174,6 +172,8 @@ static void emit(const char *txt, int len);
  *  <xq> standard quoted strings
  *  <xe> extended quoted strings (support backslash escape sequences)
  *  <xdolq> $foo$ quoted strings
+ *  <xui> quoted identifier with Unicode escapes
+ *  <xus> quoted string with Unicode escapes
  */
 
 %x xb
@@ -183,6 +183,8 @@ static void emit(const char *txt, int len);
 %x xe
 %x xq
 %x xdolq
+%x xui
+%x xus
 /* Additional exclusive states for psql only: lex backslash commands */
 %x xslashcmd
 %x xslasharg
@@ -298,6 +300,25 @@ xdstart			{dquote}
 xdstop			{dquote}
 xddouble		{dquote}{dquote}
 xdinside		[^"]+
+
+/* Unicode escapes */
+uescape			[uU][eE][sS][cC][aA][pP][eE]{whitespace}*{quote}[^']{quote}
+/* error rule to avoid backup */
+uescapefail		("-"|[uU][eE][sS][cC][aA][pP][eE]{whitespace}*"-"|[uU][eE][sS][cC][aA][pP][eE]{whitespace}*{quote}[^']|[uU][eE][sS][cC][aA][pP][eE]{whitespace}*{quote}|[uU][eE][sS][cC][aA][pP][eE]{whitespace}*|[uU][eE][sS][cC][aA][pP]|[uU][eE][sS][cC][aA]|[uU][eE][sS][cC]|[uU][eE][sS]|[uU][eE]|[uU])
+
+/* Quoted identifier with Unicode escapes */
+xuistart		[uU]&{dquote}
+xuistop1		{dquote}{whitespace}*{uescapefail}?
+xuistop2		{dquote}{whitespace}*{uescape}
+
+/* Quoted string with Unicode escapes */
+xusstart		[uU]&{quote}
+xusstop1		{quote}{whitespace}*{uescapefail}?
+xusstop2		{quote}{whitespace}*{uescape}
+
+/* error rule to avoid backup */
+xufailed		[uU]&
+
 
 /* C-style comments
  *
@@ -478,16 +499,29 @@ other			.
 					BEGIN(xe);
 					ECHO;
 				}
+{xusstart}		{
+					BEGIN(xus);
+					ECHO;
+				}
 <xq,xe>{quotestop}	|
 <xq,xe>{quotefail} {
 					yyless(1);
 					BEGIN(INITIAL);
 					ECHO;
 				}
-<xq,xe>{xqdouble} {
+<xus>{xusstop1} {
+					yyless(1);
+					BEGIN(INITIAL);
 					ECHO;
 				}
-<xq>{xqinside}  {
+<xus>{xusstop2} {
+					BEGIN(INITIAL);
+					ECHO;
+				}
+<xq,xe,xus>{xqdouble} {
+					ECHO;
+				}
+<xq,xus>{xqinside}  {
 					ECHO;
 				}
 <xe>{xeinside}  {
@@ -502,7 +536,7 @@ other			.
 <xe>{xehexesc}  {
 					ECHO;
 				}
-<xq,xe>{quotecontinue} {
+<xq,xe,xus>{quotecontinue} {
 					ECHO;
 				}
 <xe>.			{
@@ -553,14 +587,33 @@ other			.
 					BEGIN(xd);
 					ECHO;
 				}
+{xuistart}		{
+					BEGIN(xui);
+					ECHO;
+				}
 <xd>{xdstop}	{
 					BEGIN(INITIAL);
 					ECHO;
 				}
-<xd>{xddouble}	{
+<xui>{xuistop1}	{
+					yyless(1);
+					BEGIN(INITIAL);
 					ECHO;
 				}
-<xd>{xdinside}	{
+<xui>{xuistop2}	{
+					BEGIN(INITIAL);
+					ECHO;
+				}
+<xd,xui>{xddouble}	{
+					ECHO;
+				}
+<xd,xui>{xdinside}	{
+					ECHO;
+				}
+
+{xufailed}	{
+					/* throw back all but the initial u/U */
+					yyless(1);
 					ECHO;
 				}
 
@@ -1038,7 +1091,7 @@ psql_scan_setup(PsqlScanState state,
 
 	/* Do we need to hack the character set encoding? */
 	state->encoding = pset.encoding;
-	state->safe_encoding = PG_VALID_BE_ENCODING(state->encoding);
+	state->safe_encoding = pg_valid_server_encoding_id(state->encoding);
 
 	/* needed for prepare_buffer */
 	cur_state = state;
@@ -1416,6 +1469,12 @@ psql_scan_slash_option(PsqlScanState state,
 					error = true;
 				}
 
+				if (PQExpBufferBroken(&output))
+				{
+					psql_error("%s: out of memory\n", cmd);
+					error = true;
+				}
+
 				/* Now done with cmd, transfer result to mybuf */
 				resetPQExpBuffer(&mybuf);
 
@@ -1542,22 +1601,6 @@ psql_scan_slash_command_end(PsqlScanState state)
 	lexresult = yylex();
 
 	/* There are no possible errors in this lex state... */
-}
-
-/*
- * "Push back" the passed string so that it will be rescanned by subsequent
- * psql_scan_slash_option calls.  This is presently only used in the case
- * where a single-letter command has been concatenated with its argument.
- *
- * We use the same buffer stack mechanism as for variable expansion.
- */
-void
-psql_scan_slash_pushback(PsqlScanState state, const char *str)
-{
-	/* needed for push_new_buffer */
-	cur_state = state;
-
-	push_new_buffer(str);
 }
 
 
