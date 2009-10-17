@@ -1655,7 +1655,7 @@ heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup)
 	Page		page = BufferGetPage(buffer);
 	uint8		info = XLOG_HEAP_INSERT;
 
-	ASSERT_IN_CRIT_SECTION();
+	Assert(CritSectionCount > 0);
 
 	xlrec.target.node = rel->rd_node;
 	xlrec.target.tid = tup->t_self;
