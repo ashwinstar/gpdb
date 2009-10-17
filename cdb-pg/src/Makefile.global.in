@@ -162,6 +162,7 @@ with_python	= @with_python@
 with_tcl	= @with_tcl@
 with_r		= @with_r@
 with_openssl	= @with_openssl@
+with_system_tzdata = @with_system_tzdata@
 with_zlib	= @with_zlib@
 enable_shared	= @enable_shared@
 enable_rpath	= @enable_rpath@
@@ -368,6 +369,7 @@ ifeq ($(enable_rpath), yes)
 LDFLAGS += $(rpath)
 endif
 
+
 ##########################################################################
 #
 # Some variables needed to find some client interfaces
@@ -458,7 +460,7 @@ endif
 #
 # substitute implementations of C library routines (see src/port/)
 
-LIBOBJS = @LIBOBJS@ chklocale.o copydir.o dirmod.o exec.o noblock.o path.o pipe.o pgsleep.o pgstrcasecmp.o qsort.o qsort_arg.o sprompt.o thread.o
+LIBOBJS = @LIBOBJS@
 
 LIBS := -lpgport $(LIBS)
 # add location of libpgport.a to LDFLAGS
@@ -614,6 +616,7 @@ include $(top_srcdir)/src/nls-global.mk
 
 endif # nls.mk
 endif # enable_nls
+
 
 ##########################################################################
 #
