@@ -120,16 +120,18 @@ static const struct typinfo TypInfo[] = {
 	F_BYTEAIN, F_BYTEAOUT},
 	{"char", CHAROID, 0, 1, true, 'c', 'p',
 	F_CHARIN, F_CHAROUT},
-	{"name", NAMEOID, CHAROID, NAMEDATALEN, false, 'i', 'p',
-	F_NAMEIN, F_NAMEOUT},
 	{"int2", INT2OID, 0, 2, true, 's', 'p',
 	F_INT2IN, F_INT2OUT},
 	{"int4", INT4OID, 0, 4, true, 'i', 'p',
 	F_INT4IN, F_INT4OUT},
-	{"regproc", REGPROCOID, 0, 4, true, 'i', 'p',
-	F_REGPROCIN, F_REGPROCOUT},
+	{"float4", FLOAT4OID, 0, 4, FLOAT4PASSBYVAL, 'i', 'p',
+	F_FLOAT4IN, F_FLOAT4OUT},
+	{"name", NAMEOID, CHAROID, NAMEDATALEN, false, 'i', 'p',
+	F_NAMEIN, F_NAMEOUT},
 	{"regclass", REGCLASSOID, 0, 4, true, 'i', 'p',
 	F_REGCLASSIN, F_REGCLASSOUT},
+	{"regproc", REGPROCOID, 0, 4, true, 'i', 'p',
+	F_REGPROCIN, F_REGPROCOUT},
 	{"regtype", REGTYPEOID, 0, 4, true, 'i', 'p',
 	F_REGTYPEIN, F_REGTYPEOUT},
 	{"text", TEXTOID, 0, -1, false, 'i', 'x',
@@ -638,7 +640,7 @@ boot_openrel(char *relname)
 		closerel(NULL);
 
 	elog(DEBUG4, "open relation %s, attrsize %d",
-		 relname, (int) ATTRIBUTE_TUPLE_SIZE);
+		 relname, (int) ATTRIBUTE_FIXED_PART_SIZE);
 
 	boot_reldesc = heap_openrv(makeRangeVar(NULL, relname), NoLock);
 	numattr = boot_reldesc->rd_rel->relnatts;
@@ -648,7 +650,7 @@ boot_openrel(char *relname)
 			attrtypes[i] = AllocateAttribute();
 		memmove((char *) attrtypes[i],
 				(char *) boot_reldesc->rd_att->attrs[i],
-				ATTRIBUTE_TUPLE_SIZE);
+				ATTRIBUTE_FIXED_PART_SIZE);
 
 		{
 			Form_pg_attribute at = attrtypes[i];
@@ -714,7 +716,7 @@ DefineAttr(char *name, char *type, int attnum)
 
 	if (attrtypes[attnum] == NULL)
 		attrtypes[attnum] = AllocateAttribute();
-	MemSet(attrtypes[attnum], 0, ATTRIBUTE_TUPLE_SIZE);
+	MemSet(attrtypes[attnum], 0, ATTRIBUTE_FIXED_PART_SIZE);
 
 	namestrcpy(&attrtypes[attnum]->attname, name);
 	elog(DEBUG4, "column %s %s", NameStr(attrtypes[attnum]->attname), type);
@@ -1050,11 +1052,11 @@ boot_get_type_io_data(Oid typid,
 static Form_pg_attribute
 AllocateAttribute(void)
 {
-	Form_pg_attribute attribute = (Form_pg_attribute) malloc(ATTRIBUTE_TUPLE_SIZE);
+	Form_pg_attribute attribute = (Form_pg_attribute) malloc(ATTRIBUTE_FIXED_PART_SIZE);
 
 	if (!PointerIsValid(attribute))
 		elog(FATAL, "out of memory");
-	MemSet(attribute, 0, ATTRIBUTE_TUPLE_SIZE);
+	MemSet(attribute, 0, ATTRIBUTE_FIXED_PART_SIZE);
 
 	return attribute;
 }
@@ -1144,9 +1146,9 @@ CompHash(char *str, int len)
 {
 	int			result;
 
-	result = len==0?0:(NUM * str[0] + NUMSQR * str[len - 1] + NUMCUBE * str[(len - 1) / 2]);
+	result = (NUM * str[0] + NUMSQR * str[len - 1] + NUMCUBE * str[(len - 1) / 2]);
 
-	return (result % HASHTABLESIZE+HASHTABLESIZE)%HASHTABLESIZE;
+	return result % HASHTABLESIZE;
 
 }
 
