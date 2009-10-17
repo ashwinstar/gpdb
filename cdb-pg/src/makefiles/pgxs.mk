@@ -131,7 +131,9 @@ installdirs:
 ifneq (,$(DATA)$(DATA_built))
 	$(mkinstalldirs) '$(DESTDIR)$(datadir)/contrib'
 endif
-
+ifneq (,$(MODULES))
+	$(mkinstalldirs) '$(DESTDIR)$(pkglibdir)'
+endif
 ifdef DOCS
 ifdef docdir
 	$(mkinstalldirs) '$(DESTDIR)$(docdir)/contrib'
