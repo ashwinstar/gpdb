@@ -68,7 +68,7 @@
 /* these are marked volatile because they are set by signal handlers: */
 extern PGDLLIMPORT volatile bool InterruptPending;
 extern volatile bool QueryCancelPending;
-extern volatile bool QueryCancelCleanup;
+extern volatile bool QueryCancelCleanup; /* GPDB only */
 extern volatile bool ProcDiePending;
 
 /* these are marked volatile because they are examined by signal handlers: */
