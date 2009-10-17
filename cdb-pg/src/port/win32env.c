@@ -1,9 +1,9 @@
 /*-------------------------------------------------------------------------
  *
  * win32env.c
- *    putenv() and unsetenv() for win32, that updates both process
- *    environment and the cached versions in (potentially multiple)
- *    MSVCRT.
+ *	  putenv() and unsetenv() for win32, that updates both process
+ *	  environment and the cached versions in (potentially multiple)
+ *	  MSVCRT.
  *
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -20,8 +20,8 @@
 int
 pgwin32_putenv(const char *envval)
 {
-	char   *envcpy;
-	char   *cp;
+	char	   *envcpy;
+	char	   *cp;
 
 	/*
 	 * Each version of MSVCRT has its own _putenv() call in the runtime
@@ -32,24 +32,24 @@ pgwin32_putenv(const char *envval)
 	 * linked against it (such as gnuwin32 libraries).
 	 */
 #if defined(_MSC_VER) && (_MSC_VER >= 1300)
-	typedef int 		(_cdecl *PUTENVPROC)(const char *);
-	HMODULE				hmodule;
-	static PUTENVPROC	putenvFunc = NULL;
-	int					ret;
+	typedef int (_cdecl * PUTENVPROC) (const char *);
+	HMODULE		hmodule;
+	static PUTENVPROC putenvFunc = NULL;
+	int			ret;
 
 	if (putenvFunc == NULL)
 	{
 		hmodule = GetModuleHandle("msvcrt");
 		if (hmodule == NULL)
 			return 1;
-		putenvFunc = (PUTENVPROC)GetProcAddress(hmodule, "_putenv");
+		putenvFunc = (PUTENVPROC) GetProcAddress(hmodule, "_putenv");
 		if (putenvFunc == NULL)
 			return 1;
 	}
 	ret = putenvFunc(envval);
 	if (ret != 0)
 		return ret;
-#endif /* _MSC_VER >= 1300 */
+#endif   /* _MSC_VER >= 1300 */
 
 
 	/*
@@ -86,9 +86,9 @@ pgwin32_putenv(const char *envval)
 void
 pgwin32_unsetenv(const char *name)
 {
-	char   *envbuf;
+	char	   *envbuf;
 
-	envbuf = (char *) malloc(strlen(name)+2);
+	envbuf = (char *) malloc(strlen(name) + 2);
 	if (!envbuf)
 		return;
 
@@ -96,4 +96,3 @@ pgwin32_unsetenv(const char *name)
 	pgwin32_putenv(envbuf);
 	free(envbuf);
 }
-
