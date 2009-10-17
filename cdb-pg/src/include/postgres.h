@@ -198,7 +198,7 @@ typedef union varattrib
 #define VARSIZE_1B(PTR) 		(     ((PTR)->va_1byte.va_header) & 0x7F)
 
 #define SET_VARSIZE_4B(PTR,len) 	((PTR)->va_4byte.va_header = htonl( (len) & 0x3fffffff ))
-#define SET_VARSIZE_4B_C(PTR,len) 	((PTR)->va_4byte.va_header = htonl( (len) & 0x3fffffff | 0x40000000))
+#define SET_VARSIZE_4B_C(PTR,len) 	((PTR)->va_4byte.va_header = htonl( ((len) & 0x3fffffff) | 0x40000000))
 #define SET_VARSIZE_1B(PTR,len) 	((PTR)->va_1byte.va_header =        (len) | 0x80)
 #define SET_VARSIZE_1B_E(PTR)		((PTR)->va_1byte.va_header = 0x80)
 #define SET_VARSIZE_C(PTR)			((PTR)->va_1byte.va_header |= 0x40)
