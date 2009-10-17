@@ -12,44 +12,6 @@
  *
  *-------------------------------------------------------------------------
  */
-/*----------
- * OLD COMMENTS
- *		Basic float4 ops:
- *		 float4in, float4out, float4recv, float4send
- *		 float4abs, float4um, float4up
- *		Basic float8 ops:
- *		 float8in, float8out, float8recv, float8send
- *		 float8abs, float8um, float8up
- *		Arithmetic operators:
- *		 float4pl, float4mi, float4mul, float4div
- *		 float8pl, float8mi, float8mul, float8div
- *		Comparison operators:
- *		 float4eq, float4ne, float4lt, float4le, float4gt, float4ge, float4cmp
- *		 float8eq, float8ne, float8lt, float8le, float8gt, float8ge, float8cmp
- *		Conversion routines:
- *		 ftod, dtof, i4tod, dtoi4, i2tod, dtoi2, itof, ftoi, i2tof, ftoi2
- *
- *		Random float8 ops:
- *		 dround, dtrunc, dsqrt, dcbrt, dpow, dexp, dlog1
- *		Arithmetic operators:
- *		 float48pl, float48mi, float48mul, float48div
- *		 float84pl, float84mi, float84mul, float84div
- *		Comparison operators:
- *		 float48eq, float48ne, float48lt, float48le, float48gt, float48ge
- *		 float84eq, float84ne, float84lt, float84le, float84gt, float84ge
- *
- *		(You can do the arithmetic and comparison stuff using conversion
- *		 routines, but then you pay the overhead of invoking a separate
- *		 conversion function...)
- *
- * XXX GLUESOME STUFF. FIX IT! -AY '94
- *
- *		Added some additional conversion routines and cleaned up
- *		 a bit of the existing code. Need to change the error checking
- *		 for calls to pow(), exp() since on some machines (my Linux box
- *		 included) these routines do not set errno. - tgl 97/05/10
- *----------
- */
 #include "postgres.h"
 
 #include <ctype.h>
@@ -90,6 +52,23 @@ static const uint32 nan[2] = {0xffffffff, 0x7fffffff};
 /* not sure what the following should be, but better to make it over-sufficient */
 #define MAXFLOATWIDTH	64
 #define MAXDOUBLEWIDTH	128
+
+/*
+ * check to see if a float4/8 val has underflowed or overflowed
+ */
+#define CHECKFLOATVAL(val, inf_is_valid, zero_is_valid)			\
+do {															\
+	if (isinf(val) && !(inf_is_valid))							\
+		ereport(ERROR,											\
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),	\
+		  errmsg("value out of range: overflow")));				\
+																\
+	if ((val) == 0.0 && !(zero_is_valid))						\
+		ereport(ERROR,											\
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),	\
+		 errmsg("value out of range: underflow")));				\
+} while(0)
+
 
 /* ========== USER I/O ROUTINES ========== */
 
@@ -207,11 +186,10 @@ is_infinite(double val)
 
 	if (inf == 0)
 		return 0;
-
-	if (val > 0)
+	else if (val > 0)
 		return 1;
-
-	return -1;
+	else
+		return -1;
 }
 
 
@@ -340,10 +318,11 @@ float4in(PG_FUNCTION_ARGS)
 #endif   /* HAVE_BUGGY_SOLARIS_STRTOD */
 
 #ifdef HAVE_BUGGY_IRIX_STRTOD
+
 	/*
-	 * In some IRIX versions, strtod() recognizes only "inf", so if the
-	 * input is "infinity" we have to skip over "inity".  Also, it may
-	 * return positive infinity for "-inf".
+	 * In some IRIX versions, strtod() recognizes only "inf", so if the input
+	 * is "infinity" we have to skip over "inity".	Also, it may return
+	 * positive infinity for "-inf".
 	 */
 	if (isinf(val))
 	{
@@ -363,7 +342,7 @@ float4in(PG_FUNCTION_ARGS)
 			endptr = num + 4;
 		}
 	}
-#endif /* HAVE_BUGGY_IRIX_STRTOD */
+#endif   /* HAVE_BUGGY_IRIX_STRTOD */
 
 	/* skip trailing whitespace */
 	while (*endptr != '\0' && isspace((unsigned char) *endptr))
@@ -380,8 +359,7 @@ float4in(PG_FUNCTION_ARGS)
 	 * if we get here, we have a legal double, still need to check to see if
 	 * it's a legal float4
 	 */
-	if (!isinf(val))
-		CheckFloat4Val(val);
+	CHECKFLOATVAL((float4) val, isinf(val), val == 0);
 
 	PG_RETURN_FLOAT4((float4) val);
 }
@@ -534,9 +512,9 @@ float8in(PG_FUNCTION_ARGS)
 
 #ifdef HAVE_BUGGY_IRIX_STRTOD
 	/*
-	 * In some IRIX versions, strtod() recognizes only "inf", so if the
-	 * input is "infinity" we have to skip over "inity".  Also, it may
-	 * return positive infinity for "-inf".
+	 * In some IRIX versions, strtod() recognizes only "inf", so if the input
+	 * is "infinity" we have to skip over "inity".	Also, it may return
+	 * positive infinity for "-inf".
 	 */
 	if (isinf(val))
 	{
@@ -569,8 +547,7 @@ float8in(PG_FUNCTION_ARGS)
 			 errmsg("invalid input syntax for type double precision: \"%s\"",
 					orig_num)));
 
-	if (!isinf(val))
-		CheckFloat8Val(val);
+	CHECKFLOATVAL(val, true, true);
 
 	PG_RETURN_FLOAT8(val);
 }
@@ -1153,7 +1130,7 @@ dtof(PG_FUNCTION_ARGS)
 {
 	float8		num = PG_GETARG_FLOAT8(0);
 
-	CheckFloat4Val(num);
+	CHECKFLOATVAL((float4) num, isinf(num), num == 0);
 
 	PG_RETURN_FLOAT4((float4) num);
 }
@@ -1168,7 +1145,8 @@ dtoi4(PG_FUNCTION_ARGS)
 	float8		num = PG_GETARG_FLOAT8(0);
 	int32		result;
 
-	if ((num < INT_MIN) || (num > INT_MAX))
+	/* 'Inf' is handled by INT_MAX */
+	if (num < INT_MIN || num > INT_MAX || isnan(num))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -1571,16 +1549,10 @@ dexp(PG_FUNCTION_ARGS)
 	 */
 	errno = 0;
 	result = exp(arg1);
-	if (errno != 0 || result == 0.0
-#ifdef HAVE_FINITE
-		|| !finite(result)
-#endif
-		)
-		ereport(ERROR,
-				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("result is out of range")));
+	if (errno == ERANGE && result != 0 && !isinf(result))
+		result = get_float8_infinity();
 
-	CheckFloat8Val(result);
+	CHECKFLOATVAL(result, isinf(arg1), false);
 	PG_RETURN_FLOAT8(result);
 }
 
@@ -1609,7 +1581,7 @@ dlog1(PG_FUNCTION_ARGS)
 
 	result = log(arg1);
 
-	CheckFloat8Val(result);
+	CHECKFLOATVAL(result, isinf(arg1), arg1 == 1);
 	PG_RETURN_FLOAT8(result);
 }
 
@@ -1639,7 +1611,7 @@ dlog10(PG_FUNCTION_ARGS)
 
 	result = log10(arg1);
 
-	CheckFloat8Val(result);
+	CHECKFLOATVAL(result, isinf(arg1), arg1 == 1);
 	PG_RETURN_FLOAT8(result);
 }
 
@@ -1653,18 +1625,18 @@ dacos(PG_FUNCTION_ARGS)
 	float8		arg1 = PG_GETARG_FLOAT8(0);
 	float8		result;
 
+	/*
+	 * We use errno here because the trigonometric functions are cyclic and
+	 * hard to check for underflow.
+	 */
 	errno = 0;
 	result = acos(arg1);
-	if (errno != 0
-#ifdef HAVE_FINITE
-		|| !finite(result)
-#endif
-		)
+	if (errno != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("input is out of range")));
 
-	CheckFloat8Val(result);
+	CHECKFLOATVAL(result, isinf(arg1), true);
 	PG_RETURN_FLOAT8(result);
 }
 
@@ -1680,16 +1652,12 @@ dasin(PG_FUNCTION_ARGS)
 
 	errno = 0;
 	result = asin(arg1);
-	if (errno != 0
-#ifdef HAVE_FINITE
-		|| !finite(result)
-#endif
-		)
+	if (errno != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("input is out of range")));
 
-	CheckFloat8Val(result);
+	CHECKFLOATVAL(result, isinf(arg1), true);
 	PG_RETURN_FLOAT8(result);
 }
 
@@ -1705,16 +1673,12 @@ datan(PG_FUNCTION_ARGS)
 
 	errno = 0;
 	result = atan(arg1);
-	if (errno != 0
-#ifdef HAVE_FINITE
-		|| !finite(result)
-#endif
-		)
+	if (errno != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("input is out of range")));
 
-	CheckFloat8Val(result);
+	CHECKFLOATVAL(result, isinf(arg1), true);
 	PG_RETURN_FLOAT8(result);
 }
 
@@ -1731,16 +1695,12 @@ datan2(PG_FUNCTION_ARGS)
 
 	errno = 0;
 	result = atan2(arg1, arg2);
-	if (errno != 0
-#ifdef HAVE_FINITE
-		|| !finite(result)
-#endif
-		)
+	if (errno != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("input is out of range")));
 
-	CheckFloat8Val(result);
+	CHECKFLOATVAL(result, isinf(arg1) || isinf(arg2), true);
 	PG_RETURN_FLOAT8(result);
 }
 
@@ -1756,16 +1716,12 @@ dcos(PG_FUNCTION_ARGS)
 
 	errno = 0;
 	result = cos(arg1);
-	if (errno != 0
-#ifdef HAVE_FINITE
-		|| !finite(result)
-#endif
-		)
+	if (errno != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("input is out of range")));
 
-	CheckFloat8Val(result);
+	CHECKFLOATVAL(result, isinf(arg1), true);
 	PG_RETURN_FLOAT8(result);
 }
 
@@ -1781,17 +1737,13 @@ dcot(PG_FUNCTION_ARGS)
 
 	errno = 0;
 	result = tan(arg1);
-	if (errno != 0 || result == 0.0
-#ifdef HAVE_FINITE
-		|| !finite(result)
-#endif
-		)
+	if (errno != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("input is out of range")));
 
 	result = 1.0 / result;
-	CheckFloat8Val(result);
+	CHECKFLOATVAL(result, true /* cotan(pi/2) == inf */ , true);
 	PG_RETURN_FLOAT8(result);
 }
 
@@ -1807,16 +1759,12 @@ dsin(PG_FUNCTION_ARGS)
 
 	errno = 0;
 	result = sin(arg1);
-	if (errno != 0
-#ifdef HAVE_FINITE
-		|| !finite(result)
-#endif
-		)
+	if (errno != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("input is out of range")));
 
-	CheckFloat8Val(result);
+	CHECKFLOATVAL(result, isinf(arg1), true);
 	PG_RETURN_FLOAT8(result);
 }
 
@@ -1910,8 +1858,12 @@ Datum
 setseed(PG_FUNCTION_ARGS)
 {
 	float8		seed = PG_GETARG_FLOAT8(0);
-	int			iseed = (int) (seed * MAX_RANDOM_VALUE);
+	int			iseed;
 
+	if (seed < -1 || seed > 1)
+		elog(ERROR, "setseed parameter %f out of range [-1,1]", seed);
+
+	iseed = (int) (seed * MAX_RANDOM_VALUE);
 	srandom((unsigned int) iseed);
 
 	PG_RETURN_INT32(iseed);
