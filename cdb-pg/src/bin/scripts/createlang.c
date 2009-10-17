@@ -129,7 +129,7 @@ main(int argc, char *argv[])
 	if (listlangs)
 	{
 		printQueryOpt popt;
-		//static const bool translate_columns[] = {false, true};
+		static const bool translate_columns[] = {false, true};
 
 		conn = connectDatabase(dbname, host, port, username, prompt_password,
 							   progname);
@@ -149,8 +149,8 @@ main(int argc, char *argv[])
 		popt.topt.stop_table = true;
 		popt.topt.encoding = PQclientEncoding(conn);
 		popt.title = _("Procedural Languages");
-		//popt.translate_header = true;
-		//popt.translate_columns = translate_columns;
+		popt.translate_header = true;
+		popt.translate_columns = translate_columns;
 		printQuery(result, &popt, stdout, NULL);
 
 		PQfinish(conn);
