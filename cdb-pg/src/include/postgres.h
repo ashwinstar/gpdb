@@ -426,18 +426,7 @@ extern void gp_set_thread_sigmasks(void);
  *				Section 4: genbki macros used by catalog/pg_xxx.h files
  * ----------------------------------------------------------------
  */
-#define CATALOG(name,oid)	typedef struct CppConcat(FormData_,name)
-
-#define BKI_BOOTSTRAP
-#define BKI_SHARED_RELATION
-#define BKI_WITHOUT_OIDS
-
-/* these need to expand into some harmless, repeatable declaration */
-#define DATA(x)   extern int no_such_variable
-#define DESCR(x)  extern int no_such_variable
-#define SHDESCR(x) extern int no_such_variable
-
-typedef int4 aclitem;			/* PHONY definition for catalog use only */
+#include "catalog/genbki.h"
 
 #ifdef __cplusplus
 }   /* extern "C" */
