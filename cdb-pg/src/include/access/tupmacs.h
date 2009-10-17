@@ -4,7 +4,7 @@
  *	  Tuple macros used by both index tuples and heap tuples.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/access/tupmacs.h,v 1.31 2007/01/05 22:19:51 momjian Exp $
@@ -84,6 +84,41 @@
 )
 
 /*
+ * att_align_datum aligns the given offset as needed for a datum of alignment
+ * requirement attalign and typlen attlen.	attdatum is the Datum variable
+ * we intend to pack into a tuple (it's only accessed if we are dealing with
+ * a varlena type).  Note that this assumes the Datum will be stored as-is;
+ * callers that are intending to convert non-short varlena datums to short
+ * format have to account for that themselves.
+ */
+#define att_align_datum(cur_offset, attalign, attlen, attdatum) \
+( \
+	((attlen) == -1 && VARATT_IS_SHORT(DatumGetPointer(attdatum))) ? (long) (cur_offset) : \
+	att_align_nominal(cur_offset, attalign) \
+)
+
+/*
+ * att_align_pointer performs the same calculation as att_align_datum,
+ * but is used when walking a tuple.  attptr is the current actual data
+ * pointer; when accessing a varlena field we have to "peek" to see if we
+ * are looking at a pad byte or the first byte of a 1-byte-header datum.
+ * (A zero byte must be either a pad byte, or the first byte of a correctly
+ * aligned 4-byte length word; in either case we can align safely.	A non-zero
+ * byte must be either a 1-byte length word, or the first byte of a correctly
+ * aligned 4-byte length word; in either case we need not align.)
+ *
+ * Note: some callers pass a "char *" pointer for cur_offset.  This is
+ * a bit of a hack but works OK on all known platforms.  It ought to be
+ * cleaned up someday, though.
+ */
+#define att_align_pointer(cur_offset, attalign, attlen, attptr) \
+( \
+	((attlen) == -1 && VARATT_NOT_PAD_BYTE(attptr)) ? (long) (cur_offset) : \
+	att_align_nominal(cur_offset, attalign) \
+)
+
+
+/*
  * att_align_nominal aligns the given offset as needed for a datum of alignment
  * requirement attalign, ignoring any consideration of packed varlena datums.
  * There are three main use cases for using this macro directly:
@@ -126,7 +161,7 @@
  * actually perfectly OK, but probably should be cleaned up along with
  * the same practice for att_align_pointer.
  */
- #define att_addlength_pointer(cur_offset, attlen, attptr) \
+#define att_addlength_pointer(cur_offset, attlen, attptr) \
 ( \
 	((attlen) > 0) ? \
 	( \
@@ -200,6 +235,11 @@ static inline char * att_align_zero(char *data, char alignchar)
 
 	return data;
 }
+
+#ifndef VARATT_COULD_SHORT
+#define VARATT_COULD_SHORT(PTR) (VARATT_IS_4B_U(PTR) && (VARSIZE(PTR)-VARHDRSZ+VARHDRSZ_SHORT <= VARATT_SHORT_MAX))
+#define VARATT_COULD_SHORT_D(D) VARATT_COULD_SHORT(DatumGetPointer(D))
+#endif
 
 /* Determin if a datum of type oid can be stored in short varlena format */
 static inline bool value_type_could_short(Datum d, Oid typid)
