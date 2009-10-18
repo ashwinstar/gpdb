@@ -55,7 +55,6 @@ extern int	opterr;
 extern int	optind;
 extern int	optopt;
 extern char *optarg;
-
 #endif
 
 #ifndef HAVE_INT_OPTRESET
