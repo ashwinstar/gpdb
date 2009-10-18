@@ -409,8 +409,7 @@ text_int4(PG_FUNCTION_ARGS)
 Datum
 int4_bool(PG_FUNCTION_ARGS)
 {
-	int32 arg = PG_GETARG_INT32(0);
-	if (arg == 0)
+	if (PG_GETARG_INT32(0) == 0)
 		PG_RETURN_BOOL(false);
 	else
 		PG_RETURN_BOOL(true);
@@ -420,8 +419,7 @@ int4_bool(PG_FUNCTION_ARGS)
 Datum
 bool_int4(PG_FUNCTION_ARGS)
 {
-	bool arg = PG_GETARG_BOOL(0);
-	if (arg == false)
+	if (PG_GETARG_BOOL(0) == false)
 		PG_RETURN_INT32(0);
 	else
 		PG_RETURN_INT32(1);
@@ -804,7 +802,7 @@ int4div(PG_FUNCTION_ARGS)
 	 * represented on a two's-complement machine.  Most machines produce
 	 * INT_MIN but it seems some produce zero.
 	 */
-	if (arg2 == -1 && arg1 < 0 && result < 0)
+	if (arg2 == -1 && arg1 < 0 && result <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("integer out of range")));
@@ -933,7 +931,7 @@ int2div(PG_FUNCTION_ARGS)
 	 * be represented on a two's-complement machine.  Most machines produce
 	 * SHRT_MIN but it seems some produce zero.
 	 */
-	if (arg2 == -1 && arg1 < 0 && result < 0)
+	if (arg2 == -1 && arg1 < 0 && result <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("smallint out of range")));
@@ -1021,7 +1019,7 @@ int24div(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
 		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
-		return (Datum)0;
+		PG_RETURN_NULL();
 	}
 
 	/* No overflow is possible */

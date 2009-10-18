@@ -17,3 +17,4 @@ aocs.sql
 appendonly.sql
 bkup_bkupdb.sql
 mapred.sql
+ereport.sql

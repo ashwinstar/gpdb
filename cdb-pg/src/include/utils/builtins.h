@@ -70,6 +70,7 @@ extern Datum boolin(PG_FUNCTION_ARGS);
 extern Datum boolout(PG_FUNCTION_ARGS);
 extern Datum boolrecv(PG_FUNCTION_ARGS);
 extern Datum boolsend(PG_FUNCTION_ARGS);
+extern Datum booltext(PG_FUNCTION_ARGS);
 extern Datum booleq(PG_FUNCTION_ARGS);
 extern Datum boolne(PG_FUNCTION_ARGS);
 extern Datum boollt(PG_FUNCTION_ARGS);
@@ -382,6 +383,7 @@ extern Datum float84lt(PG_FUNCTION_ARGS);
 extern Datum float84le(PG_FUNCTION_ARGS);
 extern Datum float84gt(PG_FUNCTION_ARGS);
 extern Datum float84ge(PG_FUNCTION_ARGS);
+extern Datum width_bucket_float8(PG_FUNCTION_ARGS);
 extern Datum float8_amalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum float8_demalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum float8_regr_amalg(PG_FUNCTION_ARGS); /* MPP */
@@ -415,11 +417,15 @@ extern Datum pg_file_length(PG_FUNCTION_ARGS);
 extern Datum nullvalue(PG_FUNCTION_ARGS);
 extern Datum nonnullvalue(PG_FUNCTION_ARGS);
 extern Datum current_database(PG_FUNCTION_ARGS);
+extern Datum current_query(PG_FUNCTION_ARGS);
 extern Datum pg_cancel_backend(PG_FUNCTION_ARGS);
+extern Datum pg_terminate_backend(PG_FUNCTION_ARGS);
 extern Datum pg_reload_conf(PG_FUNCTION_ARGS);
 extern Datum pg_tablespace_databases(PG_FUNCTION_ARGS);
 extern Datum pg_rotate_logfile(PG_FUNCTION_ARGS);
 extern Datum pg_sleep(PG_FUNCTION_ARGS);
+extern Datum pg_get_keywords(PG_FUNCTION_ARGS);
+extern Datum pg_typeof(PG_FUNCTION_ARGS);
 
 /* not_in.c */
 extern Datum int4notin(PG_FUNCTION_ARGS);
