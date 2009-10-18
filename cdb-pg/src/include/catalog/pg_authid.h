@@ -21,6 +21,8 @@
 #ifndef PG_AUTHID_H
 #define PG_AUTHID_H
 
+#include "catalog/genbki.h"
+
 /*
  * The CATALOG definition has to refer to the type of rolvaliduntil as
  * "timestamptz" (lower case) so that bootstrap mode recognizes it.  But

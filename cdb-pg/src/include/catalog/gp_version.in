@@ -1,6 +1,7 @@
 #ifndef _GP_VERSION_H_
 #define _GP_VERSION_H_
 
+#include "catalog/genbki.h"
 /*
  * Defines for gp_version table
  */

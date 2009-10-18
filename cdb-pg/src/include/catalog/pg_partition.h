@@ -9,6 +9,9 @@
 #ifndef PG_PARTITION_H
 #define PG_PARTITION_H
 
+
+#include "catalog/genbki.h"
+
 /*
  * pg_partition definition.
  */

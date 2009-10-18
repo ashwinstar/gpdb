@@ -1,6 +1,7 @@
 #ifndef _GP_CONFIGURATION_H_
 #define _GP_CONFIGURATION_H_
 
+#include "catalog/genbki.h"
 /*
  * Defines for gp_configuration table
  */

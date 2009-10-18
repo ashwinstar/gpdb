@@ -2,6 +2,7 @@
 #define _GP_ID_H_
 
 
+#include "catalog/genbki.h"
 /*
  * Defines for gp_id table
  */

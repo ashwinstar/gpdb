@@ -9,6 +9,7 @@
 #ifndef PG_APPENDONLY_ALTER_COLUMN_H
 #define PG_APPENDONLY_ALTER_COLUMN_H
 
+#include "catalog/genbki.h"
 /*
  * pg_appendonly_alter_column definition.
  */

@@ -19,15 +19,9 @@
 #ifndef PG_CONSTRAINT_H
 #define PG_CONSTRAINT_H
 
+#include "catalog/genbki.h"
 #include "nodes/pg_list.h"
 #include "access/attnum.h"
-
-/* ----------------
- *		postgres.h contains the system type definitions and the
- *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
- *		can be read by both genbki.sh and the C compiler.
- * ----------------
- */
 
 /* ----------------
  *		pg_constraint definition.  cpp turns this into

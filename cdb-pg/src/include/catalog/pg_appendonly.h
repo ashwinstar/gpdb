@@ -9,6 +9,7 @@
 #ifndef PG_APPENDONLY_H
 #define PG_APPENDONLY_H
 
+#include "catalog/genbki.h"
 /*
  * pg_appendonly definition.
  */

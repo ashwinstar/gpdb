@@ -20,6 +20,8 @@
 #define PG_RESQUEUE_H
 
 
+#include "catalog/genbki.h"
+
 /* ----------------
  *		pg_resqueue definition.  cpp turns this into
  *		typedef struct FormData_pg_resqueue

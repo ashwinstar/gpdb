@@ -19,14 +19,9 @@
 #ifndef PG_TYPE_H
 #define PG_TYPE_H
 
-#include "nodes/nodes.h"
 
-/* ----------------
- *		postgres.h contains the system type definitions and the
- *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
- *		can be read by both genbki.sh and the C compiler.
- * ----------------
- */
+#include "catalog/genbki.h"
+#include "nodes/nodes.h"
 
 /* ----------------
  *		pg_type definition.  cpp turns this into

@@ -5,7 +5,7 @@
  *	  along with the relation's initial contents.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/catalog/pg_statistic.h,v 1.31 2006/03/05 15:58:55 momjian Exp $
@@ -19,12 +19,7 @@
 #ifndef PG_STATISTIC_H
 #define PG_STATISTIC_H
 
-/* ----------------
- *		postgres.h contains the system type definitions and the
- *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
- *		can be read by both genbki.sh and the C compiler.
- * ----------------
- */
+#include "catalog/genbki.h"
 
 /*
  * Keep C compiler happy with anyarray, below.	This will need to go elsewhere

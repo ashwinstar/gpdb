@@ -1,6 +1,7 @@
 #ifndef _GP_MASTER_MIRRORING_H_
 #define _GP_MASTER_MIRRORING_H_
 
+#include "catalog/genbki.h"
 /*
  * The CATALOG definition has to refer to the type of log_time as
  * "timestamptz" (lower case) so that bootstrap mode recognizes it.  But
