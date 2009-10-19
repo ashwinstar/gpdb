@@ -232,11 +232,13 @@ extern int	geterrcode(void);
 extern int	geterrposition(void);
 extern int	getinternalerrposition(void);
 
-int errOmitLocation(bool omitLocation);   /*CDB*/
+extern int errOmitLocation(bool omitLocation);   /* GPDB */
 
-int errFatalReturn(bool fatalReturn);   /* CDB: true => return on FATAL error */
+extern int errFatalReturn(bool fatalReturn); /* GPDB: true => return on FATAL error */
 
-int errSuppressOutputToLog(void);   /* GP */
+extern int errSendAlert(bool sendAlert);		/* GPDB: Send alert via e-mail or SNMP */
+
+extern int errSuppressOutputToLog(void);   /* GP */
 
 // Generally a good idea!
 extern bool SuppressPanic;   /* GP */
@@ -341,9 +343,10 @@ typedef struct ErrorData
 	bool		output_to_server;		/* will report to server log? */
 	bool		output_to_client;		/* will report to client? */
 	bool		show_funcname;	/* true to force funcname inclusion */
-    bool        omit_location;  /* CDB: don't add filename:line# */
-    bool        fatal_return;   /* CDB: true => return instead of proc_exit() */
+    bool        omit_location;  /* GPDB: don't add filename:line# and stack trace */
+    bool        fatal_return;   /* GPDB: true => return instead of proc_exit() */
 	bool		hide_stmt;		/* true to prevent STATEMENT: inclusion */
+	bool		send_alert;		/* GPDB: send e-mail alert and/or SNMP trap/inform */
 	const char *filename;		/* __FILE__ of ereport() call */
 	int			lineno;			/* __LINE__ of ereport() call */
 	const char *funcname;		/* __func__ of ereport() call */
@@ -479,6 +482,7 @@ extern void write_message_to_server_log(int elevel,
 										int lineno,
 										int stacktracesize,
 										bool omit_location,
+										bool send_alert,
 										void* const *stacktracearray);
 
 #endif   /* ELOG_H */

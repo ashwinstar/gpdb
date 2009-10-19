@@ -403,6 +403,8 @@ errstart(int elevel, const char *filename, int lineno,
         edata->sqlerrcode = ERRCODE_WARNING;
     else
         edata->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
+    if (elevel > ERROR)
+    	edata->send_alert = true;  /* Send alerts for PANIC and FATAL errors */
     /* errno is saved here so that error parameter eval can't change it */
     edata->saved_errno = errno;
 
@@ -1179,7 +1181,7 @@ getinternalerrposition(void)
 
 
 /*
- * CDB: errOmitLocation -- set flag indicating the error was reported by a qExec
+ * GPDB: errOmitLocation -- set flag indicating the error was reported by a qExec
  */
 int
 errOmitLocation(bool omitLocation)
@@ -1190,6 +1192,22 @@ errOmitLocation(bool omitLocation)
     CHECK_STACK_DEPTH();
 
     edata->omit_location = omitLocation;
+
+    return 0;					/* return value does not matter */
+}
+
+/*
+ * GPDB: errSendAlert -- set flag indicating the error should trigger an alert via e-mail or SNMP
+ */
+int
+errSendAlert(bool sendAlert)
+{
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
+
+    edata->send_alert = sendAlert;
 
     return 0;					/* return value does not matter */
 }
@@ -2044,6 +2062,7 @@ cdb_tidy_message(ErrorData *edata)
 
     cdb_strip_trailing_whitespace(&edata->hint);
     cdb_strip_trailing_whitespace(&edata->detail);
+    cdb_strip_trailing_whitespace(&edata->detail_log);
     cdb_strip_trailing_whitespace(&edata->message);
 
     /* Look at main error message. */
@@ -2827,6 +2846,7 @@ write_message_to_server_log(int elevel,
                             int lineno,
                             int stacktracesize,
                             bool omit_location,
+                            bool send_alert,
                             void* const *stacktracearray
                 ) 
 {
@@ -2995,6 +3015,7 @@ send_message_to_server_log(ErrorData *edata)
                                                 edata->lineno,
                                                 edata->stacktracesize,
                                                 edata->omit_location,
+                                                edata->send_alert,
                                                 edata->stacktracearray);
                 else
                     write_syslogger_in_csv(edata, true);
@@ -3673,6 +3694,7 @@ write_stderr(const char *fmt,...)
                                         0,
                                         0,
                                         true,
+                                        false,
                                         NULL);
         }
         else
