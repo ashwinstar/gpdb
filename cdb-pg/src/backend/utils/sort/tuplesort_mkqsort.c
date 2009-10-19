@@ -61,8 +61,8 @@ static inline MKEntry *mkqs_med3(MKEntry *a, MKEntry *b, MKEntry *c, MKCompare c
 /**
  * Choose a pivot from the array of elements (a) from between left (inclusive) and right (inclusive).
  *
- * lv/comp/ctxt combine to allow comparison.  Note that, as usual with the multi-key structure, comparision is only done
- *   up to a certain level
+ * lv/comp/ctxt combine to allow comparison.  Note that, as usual with the multi-key structure, comparison is only done
+ *   up to a certain level.
  */
 static inline MKEntry *mkqs_choose_pivot(MKEntry *a, int left, int right, int lv, MKCompare comp, MKLvContext *ctxt)
 {
@@ -82,9 +82,9 @@ static inline MKEntry *mkqs_choose_pivot(MKEntry *a, int left, int right, int lv
 		if(n > 40)
 		{
 			s = n/8;
-			pl = mkqs_med3(a+left, a+left+s, a+left+s*2, comp, ctxt);
-			pm = mkqs_med3(a+left+n/2-s, pm, a+left+n/2+s, comp, ctxt);
-			pn = mkqs_med3(a+right-s*2, a+right-s, a+right, comp, ctxt);
+			pl = mkqs_med3(pl, pl+s, pl+s*2, comp, ctxt);
+			pm = mkqs_med3(pm-s, pm, pm+s, comp, ctxt);
+			pn = mkqs_med3(pn-s*2, pn-s, pn, comp, ctxt);
 		}
 
 		pm = mkqs_med3(pl, pm, pn, comp, ctxt);
@@ -136,12 +136,12 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 
 	while(1)
 	{
-		int tmpi, cmp;
+		int tmpLeftIndex, cmp;
 
 		cmp = -1;
 		while(1)
 		{
-			/* increase i from the left until a[i] >= pivot */
+			/* increase leftIndex until a[leftIndex] >= pivot */
 			while(++leftIndex < rightIndex &&
 				 (cmp = mkqs_comp(comp, a+leftIndex, &v, lvctxt)) < 0)
 			{
@@ -169,37 +169,40 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 
 		/**
 		 *  now, p points to the last value of a run of values equal to the pivot
-		 *  i points one beyond a run of values <= the pivot (and between p+1 and i they are < the pivot)
+		 *  leftIndex points one beyond a run of values <= the pivot (and between p+1 and leftIndex they are < the pivot)
 		 */
 
-		/* tmpi points at the last of those <= pivot */
-		tmpi = leftIndex-1;
+		/* tmpLeftIndex points at the last of those <= pivot */
+		tmpLeftIndex = leftIndex-1;
 
 		/* same case as above, but from the upper end and transferring equal values to the q end */
 		cmp = 1;
 		while(1)
 		{
-			while(--rightIndex > tmpi &&
+			while(--rightIndex > tmpLeftIndex &&
 					(cmp = mkqs_comp(comp, &v, a+rightIndex, lvctxt)) < 0)
 			{
-				Assert(tmpi >= left-1 && tmpi<= right);
+				Assert(tmpLeftIndex >= left-1 && tmpLeftIndex <= right);
 				Assert(rightIndex >= left && rightIndex<= right);
-				Assert(tmpi <= rightIndex);
+				Assert(tmpLeftIndex <= rightIndex);
 			}
 
-			if(tmpi == rightIndex || cmp > 0)
+			if(tmpLeftIndex == rightIndex || cmp > 0)
 				break;
 
 			mkqs_swap(a, rightIndex, --q);
 		}
 
-		if(tmpi == rightIndex)
+		if(tmpLeftIndex == rightIndex)
 		{
-			--leftIndex; /* make leftIndex = tmpi */
-			++rightIndex; /* move j up to avoid overlap */
+			--leftIndex; /* make leftIndex = tmpLeftIndex */
+			++rightIndex; /* move rightIndex up to avoid overlap */
 			break;
 		}
 
+		/* at this point, a[leftIndex] > pivot and a[rightIndex] < pivot, so swap them */
+		/* note: there is an extra compare between leftIndex and pivot, and rightIndex and pivot because
+		 * we don't alter leftIndex and rightIndex here.  But doing so may complicate other code */
 		Assert(leftIndex < rightIndex);
 		mkqs_swap(a, leftIndex, rightIndex);
 
