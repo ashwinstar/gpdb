@@ -98,7 +98,7 @@ typedef LARGE_INTEGER instr_time;
 
 extern double InstrTimerFrequency;
 
-static __inline__ double
+static inline double
 GetTimerFrequency(void)
 {
     if (InstrTimerFrequency == 0.0)
