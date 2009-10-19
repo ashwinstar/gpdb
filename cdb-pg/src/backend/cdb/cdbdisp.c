@@ -337,6 +337,7 @@ write_log(const char *fmt,...)
 									0,
 									0,
 									true,
+									false,
 									NULL);
 
 		va_end(ap);
