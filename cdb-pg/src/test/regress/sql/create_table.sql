@@ -293,3 +293,22 @@ create table distpol3 as (select i, j from distpol1 union
   select i, j from distpol2) distributed by (j);
 select attrnums from gp_distribution_policy where
   localoid = 'distpol3'::regclass;
+
+
+-- MPP-7268: CTAS produces incorrect distribution.
+drop table if exists foo;
+drop table if exists bar;
+create table foo (a varchar(15), b int) distributed by (b);
+create table bar as select * from foo;
+select attrnums from gp_distribution_policy where localoid='bar'::regclass;
+
+drop table if exists foo;
+drop table if exists bar;
+create table foo (a int, b varchar(15)) distributed by (b);
+create table bar as select * from foo;
+select attrnums from gp_distribution_policy where localoid='bar'::regclass;
+
+drop table if exists foo;
+drop table if exists bar;
+
+-- 

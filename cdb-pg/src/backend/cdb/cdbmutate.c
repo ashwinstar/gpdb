@@ -303,6 +303,8 @@ apply_motion(Plan *plan, Query *query)
 						{
 							AttrNumber	n;
 							bool found_expr = false;
+
+							
 							/* See if this Expr is a column of the result table */
 						
 							for(n=1;n<=list_length(plan->targetlist);n++)
@@ -313,6 +315,12 @@ apply_motion(Plan *plan, Query *query)
 							
 								if (!target->resjunk)
 								{
+									Expr *var1 = (Expr *) lfirst(exp1);
+
+									/* right side variable may be encapsulated by a relabel node. motion, however, does not care about relabel nodes. */
+									if (IsA(var1, RelabelType))
+										var1 = ((RelabelType *)var1)->arg;
+									
 									/* If subplan expr is a Var, copy to preserve its EXPLAIN info. */
 									if (IsA(target->expr, Var))
 									{
@@ -332,7 +340,7 @@ apply_motion(Plan *plan, Query *query)
 														  exprTypmod((Node *) target->expr),
 														  0);
 					
-									if (equal(lfirst(exp1),new_var))
+									if (equal(var1,new_var))
 									{
 										/* If it is, use it to partition the result table, to avoid
 										 * unnecessary redistibution of data */
