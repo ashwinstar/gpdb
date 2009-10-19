@@ -51,7 +51,7 @@ static inline int32 mkqs_comp(MKCompare comp, MKEntry *a, MKEntry *b, void *ctxt
  */
 static inline MKEntry *mkqs_med3(MKEntry *a, MKEntry *b, MKEntry *c, MKCompare comp, MKLvContext *ctxt) 
 {
-	return mkqs_comp(comp, a, b, ctxt) < 0 ? 
+	return mkqs_comp(comp, a, b, ctxt) < 0 ?
                         (mkqs_comp(comp, b, c, ctxt) < 0 ? b : mkqs_comp(comp, a, c, ctxt) < 0 ? c : a )
                         :
                         (mkqs_comp(comp, b, c, ctxt) > 0 ? b : mkqs_comp(comp, a, c, ctxt) > 0 ? c : a )
@@ -98,11 +98,13 @@ static inline MKEntry *mkqs_choose_pivot(MKEntry *a, int left, int right, int lv
  *
  * left and right are both INCLUSIVE
  */
-static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *mkqs_ctxt, int *i, int *j)
+static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *mkqs_ctxt, int *lastInLowOut, int *firstInHighOut)
 {
 	/* p, q points to the last equals we put to both end */
 	int p = left-1;
 	int q = right+1;
+
+	int leftIndex,rightIndex;
 
 	int k;
 	MKCompare comp = mkqs_ctxt->comp; 
@@ -114,19 +116,19 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 	Assert(left < right);
 
 	/*
-	 * *i points to the known <= upper,
-	 * *j points to the known >= lower.
+	 * leftIndex points to the known <= upper,
+	 * rightIndex points to the known >= lower.
 	 * 
 	 * Initially, we know nothing, so point them to out of bounds.
 	 */
-	*i = left-1;
-	*j = right+1;
+	leftIndex = left-1;
+	rightIndex = right+1;
 
 	/* Choose a pivot */
 	pv = mkqs_choose_pivot(a, left, right, lv, comp, lvctxt);
 
 	/* Save pivot in v */ 
-	/* Hacking a ref count */ // TODO: understand this
+	/* Hacking a ref count */
 	if(mke_is_refc(pv))
 		mkqs_ctxt->cpfr(&v, pv, lvctxt);
 	else 
@@ -134,35 +136,34 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 
 	while(1)
 	{
-		int tmpi;
-		int c1 = -1;
-		int c2 = 1;
+		int tmpi, cmp;
 
+		cmp = -1;
 		while(1)
 		{
 			/* increase i from the left until a[i] >= pivot */
-			while(++(*i) < (*j) &&
-				 (c1 = mkqs_comp(comp, a+(*i), &v, lvctxt)) < 0)
+			while(++leftIndex < rightIndex &&
+				 (cmp = mkqs_comp(comp, a+leftIndex, &v, lvctxt)) < 0)
 			{
-				Assert(*i >= left && *i<= right);
-				Assert(*j >= left && *j<= right+1);
-				Assert(*i <= *j);
+				Assert(leftIndex >= left && leftIndex<= right);
+				Assert(rightIndex >= left && rightIndex<= right+1);
+				Assert(leftIndex <= rightIndex);
 			}
 
 			/* now i refers to the first value that is >= the pivot */
-			if(*i == *j || c1 > 0)
+			if(leftIndex == rightIndex || cmp > 0)
 				break;
 
-			/* since *i equals the pivot, put the equals one at the beginning and move one there to take its place. */
-			mkqs_swap(a, ++p, *i);
+			/* since leftIndex equals the pivot, put the equals one at the beginning and move one there to take its place. */
+			mkqs_swap(a, ++p, leftIndex);
 		}
 
-		if(*i == *j)
+		if(leftIndex == rightIndex)
 		{ 
 			/**
 			 * Caught up, back down and done loop
 			 */
-			--(*i);
+			--leftIndex;
 			break; 
 		}
 
@@ -172,82 +173,86 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 		 */
 
 		/* tmpi points at the last of those <= pivot */
-		tmpi = (*i)-1;
+		tmpi = leftIndex-1;
 
-		/* same case as above, but from the upper end and stashing equal values to the q end */
+		/* same case as above, but from the upper end and transferring equal values to the q end */
+		cmp = 1;
 		while(1)
 		{
-			while(--(*j) > tmpi &&
-					(c2 = mkqs_comp(comp, &v, a+(*j), lvctxt)) < 0)
+			while(--rightIndex > tmpi &&
+					(cmp = mkqs_comp(comp, &v, a+rightIndex, lvctxt)) < 0)
 			{
 				Assert(tmpi >= left-1 && tmpi<= right);
-				Assert(*j >= left && *j<= right);
-				Assert(tmpi <= *j);
+				Assert(rightIndex >= left && rightIndex<= right);
+				Assert(tmpi <= rightIndex);
 			}
 
-			if(tmpi == *j || c2 > 0)
+			if(tmpi == rightIndex || cmp > 0)
 				break;
 
-			mkqs_swap(a, *j, --q);
+			mkqs_swap(a, rightIndex, --q);
 		}
 
-		if(tmpi == *j)
+		if(tmpi == rightIndex)
 		{
-			--(*i); /* make *i = tmpi */
-			++(*j); /* move j up to avoid overlap */
+			--leftIndex; /* make leftIndex = tmpi */
+			++rightIndex; /* move j up to avoid overlap */
 			break;
 		}
 
-		Assert(*i < *j);
-		mkqs_swap(a, *i, *j);
+		Assert(leftIndex < rightIndex);
+		mkqs_swap(a, leftIndex, rightIndex);
 
-		if((*i)+1 == *j)
+		if(leftIndex+1 == rightIndex)
 			break;
 	}
 
-	/* Now *i points to where the run of values <= the pivot ends
-     * And *j points to where the run of values >= the pivot begins
+	/* Now leftIndex points to where the run of values <= the pivot ends
+     * And rightIndex points to where the run of values >= the pivot begins
      */
-	Assert(*i+1 == *j);
-	Assert(*j>=left && *i<=right);
+	Assert(leftIndex+1 == rightIndex);
+	Assert(rightIndex>=left && leftIndex<=right);
 
 	/**
 	 * Push all the equal values at the beginning to the middle (at i)
 	 */
-	for(k=left; k<=p; ++k, --(*i))
+	for(k=left; k<=p; ++k, --leftIndex)
 	{
 		Assert(k>=left && k<=right);
-		Assert(*i>=left && *i<=right);
-		mkqs_swap(a, k, *i);
+		Assert(leftIndex>=left && leftIndex<=right);
+		mkqs_swap(a, k, leftIndex);
 	}
 
 	/**
 	 * Push all the equal values at the end to the middle (at j)
 	 */
-	for(k=right; k>=q; --k, ++(*j))
+	for(k=right; k>=q; --k, ++rightIndex)
 	{
 		Assert(k>=left && k<=right);
-		Assert(*j>=left && *j<=right);
-		mkqs_swap(a, *j, k);
+		Assert(rightIndex>=left && rightIndex<=right);
+		mkqs_swap(a, rightIndex, k);
 	}
 
 	/*
-	 * Now *i points to the last value of the run of values < the pivot
-	 * And *j points to the last value of the run of values > the pivot
+	 * Now leftIndex points to the last value of the run of values < the pivot
+	 * And rightIndex points to the last value of the run of values > the pivot
 	 */
-	Assert(*i >= left-1 && *i < right);
-	Assert(*j > left && *j <= right+1);
-	Assert(*j >= *i+2);
+	Assert(leftIndex >= left-1 && leftIndex < right);
+	Assert(rightIndex > left && rightIndex <= right+1);
+	Assert(rightIndex >= leftIndex+2);
 
 	/* Hack ref count */
 	if(mke_is_refc(&v))
 		mkqs_ctxt->cpfr(&v, NULL, lvctxt);
+
+	*lastInLowOut = leftIndex;
+	*firstInHighOut = rightIndex;
 }
 
 void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKContext *ctxt, bool seenNull)
 {
-	int i; 
-	int j; 
+	int lastInLow;
+	int firstInHigh;
 
 	Assert(ctxt);
 	Assert(lv < ctxt->total_lv);
@@ -270,7 +275,7 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 	 *
 	 * XXX Find out why we have a new wisdom in [2] and impl. & compare.
 	 */
-	mk_qsort_part3(a, left, right, lv, ctxt, &i, &j);
+	mk_qsort_part3(a, left, right, lv, ctxt, &lastInLow, &firstInHigh);
 
 #if 0 
 	/* Check that the partition is done right. */
@@ -281,15 +286,17 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 		int x = 0;
 		int c;
 
-		MKEntry *pv = a+i+1;
+		MKEntry *pv = a+lastInLow+1;
 
-		for(x=left; x<=i; ++x)
+		/* low should all be smaller than pivot */
+		for(x=left; x<=lastInLow; ++x)
 		{
 			c = mkqs_comp(comp, a+x, pv, cmpctxt);
 			Assert(c < 0);
 		}
 
-		for(x=i+1; x<j; ++x)
+		/* the ones in the middle should all equal the pivot */
+		for(x=i+lastInLow; x<firstInHigh; ++x)
 		{
 			if(a+x != pv)
 			{
@@ -298,7 +305,8 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 			}
 		}
 
-		for(x=j; x<=right; ++x)
+		/* high should all be bigger than pivot */
+		for(x=firstInHigh; x<=right; ++x)
 		{
 			c = mkqs_comp(comp, a+x, pv, cmpctxt);
 			Assert(c > 0);
@@ -307,26 +315,32 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 #endif
 
 	/* recurse to left chunk */
-	mk_qsort_impl(a, left, i, lv, false, ctxt, seenNull);
+	mk_qsort_impl(a, left, lastInLow, lv, false, ctxt, seenNull);
 
-	/* recurse to right chunk */
-	mk_qsort_impl(a, j, right, lv, false, ctxt, seenNull);
-
+	/* recurse to middle (equal) chunk */
 	if(lv < ctxt->total_lv-1)
 	{
 		/*
-		 * [i+1,j-1] defines the pivot region which was all equal at level lv.  So increase the level and compare that region!
+		 * [lastInLow+1,firstInHigh-1] defines the pivot region which was all equal at level lv.  So increase the level and compare that region!
 		 */
-		mk_qsort_impl(a, i+1, j-1, lv+1, true, ctxt, seenNull || mke_is_null(a+i+1)); /* a + i + 1 points to the pivot */
+		mk_qsort_impl(a, lastInLow+1, firstInHigh-1, lv+1, true, ctxt, seenNull || mke_is_null(a+lastInLow+1)); /* a + lastInLow + 1 points to the pivot */
 	}
 	else
 	{
-		/* values are all equal to the deepest level...no need for more compares, but check uniqueness */
-		if(ctxt->enforceUnique && j-1 > i+1 && !seenNull && !mke_is_null(a+i+1)) /* a + i + 1 points to the pivot */
+		/* values are all equal to the deepest level...no need for more compares, but check uniqueness if requested */
+		if(ctxt->enforceUnique &&
+				firstInHigh-1 > lastInLow+1 &&
+				!seenNull &&
+				!mke_is_null(a+lastInLow+1)) /* a + lastInLow + 1 points to the pivot */
+		{
 			ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
 					errmsg("could not create unique index"),
 					errdetail("Table contains duplicate values.")));
+		}
 	}
+
+	/* recurse to right chunk */
+	mk_qsort_impl(a, firstInHigh, right, lv, false, ctxt, seenNull);
 
 #ifdef MKQSORT_VERIFY 
 	if(lv == 0)
