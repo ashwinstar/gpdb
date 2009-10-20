@@ -318,6 +318,8 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <objtype>	reindex_type drop_type comment_type
 
 %type <node>	fetch_direction select_limit_value select_offset_value
+				select_offset_value2 opt_select_fetch_first_value
+%type <ival>	row_or_rows first_or_next
 
 %type <list>	OptSeqList
 %type <defelt>	OptSeqElem
@@ -3287,7 +3289,7 @@ ConstraintAttr:
  * tables completely decoupled except for the original commonality in definitions.
  *
  * This is very similar to CREATE TABLE AS except for the INCLUDING DEFAULTS extension
- * which is a part of SQL 200N
+ * which is a part of SQL:2003.
  */
 TableLikeClause:
 			LIKE qualified_name TableLikeOptionList
@@ -5095,6 +5097,11 @@ old_aggr_list: old_aggr_elem						{ $$ = list_make1($1); }
 			| old_aggr_list ',' old_aggr_elem		{ $$ = lappend($1, $3); }
 		;
 
+/*
+ * Must use IDENT here to avoid reduce/reduce conflicts; fortunately none of
+ * the item names needed in old aggregate definitions are likely to become
+ * SQL keywords.
+ */
 old_aggr_elem:  IDENT '=' def_arg
 				{
 					$$ = makeDefElem($1, (Node *)$3);
@@ -7091,7 +7098,7 @@ opt_check_option:
 /*****************************************************************************
  *
  *		QUERY:
- *				load "filename"
+ *				LOAD "filename"
  *
  *****************************************************************************/
 
@@ -7388,8 +7395,8 @@ ClusterStmt:
 /*****************************************************************************
  *
  *		QUERY:
- *				vacuum
- *				analyze
+ *				VACUUM
+ *				ANALYZE
  *
  *****************************************************************************/
 
@@ -7725,6 +7732,14 @@ using_clause:
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *				LOCK TABLE
+ *
+ *****************************************************************************/
+
 LockStmt:	LOCK_P opt_table qualified_name_list opt_lock opt_nowait
 				{
 					LockStmt *n = makeNode(LockStmt);
@@ -7925,6 +7940,10 @@ select_with_parens:
 		;
 
 /*
+ * This rule parses the equivalent of the standard's <query expression>.
+ * The duplicative productions are annoying, but hard to get rid of without
+ * creating shift/reduce conflicts.
+ *
  *	FOR UPDATE/SHARE may be before or after LIMIT/OFFSET.
  *	In <=7.2.X, LIMIT/OFFSET had to be after FOR UPDATE
  *	We now support both orderings, but prefer LIMIT/OFFSET before FOR UPDATE/SHARE
@@ -8145,6 +8164,13 @@ select_limit:
 							 errmsg("LIMIT #,# syntax is not supported"),
 							 errhint("Use separate LIMIT and OFFSET clauses.")));
 				}
+			/* SQL:2008 syntax variants */
+			| OFFSET select_offset_value2 row_or_rows
+				{ $$ = list_make2($2, NULL); }
+			| FETCH first_or_next opt_select_fetch_first_value row_or_rows ONLY
+				{ $$ = list_make2(NULL, $3); }
+			| OFFSET select_offset_value2 row_or_rows FETCH first_or_next opt_select_fetch_first_value row_or_rows ONLY
+				{ $$ = list_make2($2, $6); }
 		;
 
 opt_select_limit:
@@ -8164,9 +8190,40 @@ select_limit_value:
 				}
 		;
 
+/*
+ * Allowing full expressions without parentheses causes various parsing
+ * problems with the trailing ROW/ROWS key words.  SQL only calls for
+ * constants, so we allow the rest only with parentheses.
+ */
+opt_select_fetch_first_value:
+			SignedIconst		{ $$ = makeIntConst($1, @1); }
+			| '(' a_expr ')'	{ $$ = $2; }
+			| /*EMPTY*/		{ $$ = makeIntConst(1, -1); }
+		;
+
 select_offset_value:
 			a_expr									{ $$ = $1; }
 		;
+
+/*
+ * Again, the trailing ROW/ROWS in this case prevent the full expression
+ * syntax.  c_expr is the best we can do.
+ */
+select_offset_value2:
+			c_expr									{ $$ = $1; }
+		;
+
+/* noise words */
+row_or_rows:
+			ROW		{ $$ = 0; }
+			| ROWS		{ $$ = 0; }
+			;
+
+/* noise words */
+first_or_next:
+			FIRST_P		{ $$ = 0; }
+			| NEXT		{ $$ = 0; }
+			;
 
 group_clause:
 			GROUP_P BY group_elem_list				{ $$ = $3; }
@@ -8799,15 +8856,14 @@ Typename:	SimpleTypename opt_array_bounds
 					$$->arrayBounds = $3;
 					$$->setof = TRUE;
 				}
+			/* SQL standard syntax, currently only one-dimensional */
 			| SimpleTypename ARRAY '[' Iconst ']'
 				{
-					/* SQL99's redundant syntax */
 					$$ = $1;
 					$$->arrayBounds = list_make1(makeInteger($4));
 				}
 			| SETOF SimpleTypename ARRAY '[' Iconst ']'
 				{
-					/* SQL99's redundant syntax */
 					$$ = $2;
 					$$->arrayBounds = list_make1(makeInteger($5));
 					$$->setof = TRUE;
@@ -8823,14 +8879,6 @@ opt_array_bounds:
 					{  $$ = NIL; }
 		;
 
-/*
- * XXX ideally, the production for a qualified typename should be ColId attrs
- * (there's no obvious reason why the first name should need to be restricted)
- * and should be an alternative of GenericType (so that it can be used to
- * specify a type for a literal in AExprConst).  However doing either causes
- * reduce/reduce conflicts that I haven't been able to find a workaround
- * for.  FIXME later.
- */
 SimpleTypename:
 			GenericType								{ $$ = $1; }
 			| Numeric								{ $$ = $1; }
@@ -9216,6 +9264,9 @@ opt_charset:
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+/*
+ * SQL92 date/time types
+ */
 ConstDatetime:
 			TIMESTAMP '(' Iconst ')' opt_timezone
 				{
@@ -9610,6 +9661,11 @@ a_expr:		c_expr									{ $$ = $1; }
 				{
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OF, "<>", $1, (Node *) $6, @2);
 				}
+			/*
+			 *	Ideally we would not use hard-wired operators below but instead use
+			 *	opclasses.  However, mixed data types and other issues make this
+			 *	difficult:  http://archives.postgresql.org/pgsql-hackers/2008-08/msg01142.php
+			 */			
 			| a_expr BETWEEN opt_asymmetric b_expr AND b_expr		%prec BETWEEN
 				{
 					$$ = (Node *) makeA_Expr(AEXPR_AND, NIL,
@@ -9815,7 +9871,7 @@ c_expr:		columnref								{ $$ = $1; }
 				{
 					ParamRef *p = makeNode(ParamRef);
 					p->number = $1;
-					p->location = @1;   /*CDB*/
+					p->location = @1;
 					if ($2)
 					{
 						A_Indirection *n = makeNode(A_Indirection);
@@ -9849,7 +9905,7 @@ c_expr:		columnref								{ $$ = $1; }
 					n->testexpr = NULL;
 					n->operName = NIL;
 					n->subselect = $1;
-					n->location = @1;   /*CDB*/
+					n->location = @1;
 					$$ = (Node *)n;
 				}
 			| EXISTS select_with_parens
@@ -9859,7 +9915,7 @@ c_expr:		columnref								{ $$ = $1; }
 					n->testexpr = NULL;
 					n->operName = NIL;
 					n->subselect = $2;
-					n->location = @1;   /*CDB*/
+					n->location = @1;
 					$$ = (Node *)n;
 				}
 			| ARRAY select_with_parens
@@ -9869,7 +9925,7 @@ c_expr:		columnref								{ $$ = $1; }
 					n->testexpr = NULL;
 					n->operName = NIL;
 					n->subselect = $2;
-					n->location = @1;   /*CDB*/
+					n->location = @1;
 					$$ = (Node *)n;
 				}
 			| ARRAY array_expr
@@ -9882,7 +9938,6 @@ c_expr:		columnref								{ $$ = $1; }
 					$$ = (Node *)r;
 				}
 		;
-
 
 /*
  * Users can write their own inline specification or refer to a
@@ -10241,6 +10296,30 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					n->args = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
+					n->location = @1;
+					$$ = (Node *)n;
+				}
+			| CURRENT_CATALOG
+				{
+					FuncCall *n = makeNode(FuncCall);
+					n->funcname = SystemFuncName("current_database");
+					n->args = NIL;
+					n->agg_star = FALSE;
+					n->agg_distinct = FALSE;
+					/*n->func_variadic = FALSE;*/
+					n->over = NULL;
+					n->location = @1;
+					$$ = (Node *)n;
+				}
+			| CURRENT_SCHEMA
+				{
+					FuncCall *n = makeNode(FuncCall);
+					n->funcname = SystemFuncName("current_schema");
+					n->args = NIL;
+					n->agg_star = FALSE;
+					n->agg_distinct = FALSE;
+					/*n->func_variadic = FALSE;*/
 					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
@@ -10628,9 +10707,11 @@ substr_list:
 					/*
 					 * Since there are no cases where this syntax allows
 					 * a textual FOR value, we forcibly cast the argument
-					 * to int4.  This is a kluge to avoid surprising results
-					 * when the argument is, say, int8.  It'd be better if
-					 * there were not an implicit cast from int8 to text ...
+					 * to int4.  The possible matches in pg_proc are
+					 * substring(text,int4) and substring(text,text),
+					 * and we don't want the parser to choose the latter,
+					 * which it is likely to do if the second argument
+					 * is unknown or doesn't have an implicit cast to int4.
 					 */
 					A_Const *n = makeNode(A_Const);
 					n->val.type = T_Integer;
@@ -10811,13 +10892,12 @@ target_el:	a_expr AS ColLabel
 					$$->location = @1;
 				}
 			/*
-			 * PostgreSQL supports omitting AS only for column labels
-			 * that aren't any known keyword.  There is an ambiguity
-			 * against postfix operators: is "a ! b" an infix
-			 * expression, or a postfix expression and a column label?
-			 * We prefer to resolve this as an infix expression, which
-			 * we accomplish by assigning IDENT a precedence higher
-			 * than POSTFIXOP.
+			 * Postgres supports omitting AS only for column labels that aren't
+			 * any known keyword.  There is an ambiguity against postfix
+			 * operators: is "a ! b" an infix expression, or a postfix
+			 * expression and a column label?  We prefer to resolve this
+			 * as an infix expression, which we accomplish by assigning
+			 * IDENT a precedence higher than POSTFIXOP.
 			 *
 			 * In GPDB, we extent this to allow most
 			 * unreserved_keywords by also assigning them a
@@ -11125,12 +11205,16 @@ ColLabel:	IDENT									{ $$ = $1; }
 
 
 /*
- * Keyword classification lists.  Generally, every keyword present in
+ * Keyword category lists.  Generally, every keyword present in
  * the Postgres grammar should appear in exactly one of these lists.
  *
  * Put a new keyword into the first list that it can go into without causing
  * shift or reduce conflicts.  The earlier lists define "less reserved"
  * categories of keywords.
+ *
+ * Make sure that each keyword's category in keywords.c matches where
+ * it is listed here.  (Someday we may be able to generate these lists and
+ * keywords.c's table from a common master list.)
  */
 
 /* "Unreserved" keywords --- available for use as any kind of name.
@@ -11211,7 +11295,6 @@ unreserved_keyword:
 			| EXECUTE
 			| EXPLAIN
 			| EXTERNAL
-			| FETCH
 			| FIELDS
 			| FILL
 			| FIRST_P
@@ -11351,12 +11434,12 @@ unreserved_keyword:
 			| STDIN
 			| STDOUT
 			| STORAGE
+			| STRICT_P
 			| SUBPARTITION
 			| SUBPARTITIONS
 			| SUPERUSER_P
 			| SYSID
 			| SYSTEM_P
-			| STRICT_P
 			| TABLESPACE
 			| TEMP
 			| TEMPLATE
@@ -11485,7 +11568,6 @@ PartitionIdentKeyword: ABORT_P
 			| EXECUTE
 			| EXPLAIN
 			| EXTERNAL
-			| FETCH
 			| FIELDS
 			| FILL
 			| FIRST_P
@@ -11763,6 +11845,7 @@ func_name_keyword:
 			  AUTHORIZATION
 			| BINARY
 			| CROSS
+			| CURRENT_SCHEMA
 			| FREEZE
 			| FULL
 			| ILIKE
@@ -11806,6 +11889,7 @@ reserved_keyword:
 			| COLUMN
 			| CONSTRAINT
 			| CREATE
+			| CURRENT_CATALOG
 			| CURRENT_DATE
 			| CURRENT_ROLE
 			| CURRENT_TIME
@@ -11822,6 +11906,7 @@ reserved_keyword:
 			| EXCEPT
 			| EXCLUDE 
 			| FALSE_P
+			| FETCH
 			| FOLLOWING
 			| FOR
 			| FOREIGN
@@ -12199,6 +12284,8 @@ insertSelectOptions(SelectStmt *stmt,
 					List *sortClause, List *lockingClause,
 					Node *limitOffset, Node *limitCount)
 {
+	Assert(IsA(stmt, SelectStmt));
+
 	/*
 	 * Tests here are to reject constructs like
 	 *	(SELECT foo ORDER BY bar) ORDER BY baz
