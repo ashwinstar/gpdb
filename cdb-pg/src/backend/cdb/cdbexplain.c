@@ -11,6 +11,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include "portability/instr_time.h"
 
 #include "cdb/cdbconn.h"                /* SegmentDatabaseDescriptor */
 #include "cdb/cdbdispatchresult.h"      /* CdbDispatchResults */
@@ -1255,7 +1256,8 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
 	/* Time from start of query on qDisp to this worker's first result row */
 	if (!(INSTR_TIME_IS_ZERO(instr->firststart)))
 	{
-        InstrTimeSubtract(&timediff, &instr->firststart, &ctx->querystarttime);
+		INSTR_TIME_SET_ZERO(timediff);
+		INSTR_TIME_ACCUM_DIFF(timediff, instr->firststart, ctx->querystarttime);
 		cdbexplain_formatSeconds(startbuf, INSTR_TIME_GET_DOUBLE(timediff));
 		appendStringInfo(str, ", start offset by %s", startbuf);
 	}
@@ -1375,7 +1377,8 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
                 continue;
 
 	        /* Time from start of query on qDisp to worker's first result row */
-            InstrTimeSubtract(&timediff, &nsi->firststart, &ctx->querystarttime);
+			INSTR_TIME_SET_ZERO(timediff);
+	        INSTR_TIME_ACCUM_DIFF(timediff, nsi->firststart, ctx->querystarttime);
 	        cdbexplain_formatSeconds(startbuf, INSTR_TIME_GET_DOUBLE(timediff));
 
 			appendStringInfo(str,
