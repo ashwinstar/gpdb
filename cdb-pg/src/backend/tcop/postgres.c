@@ -772,7 +772,7 @@ pg_plan_query(Query *querytree, ParamListInfo boundParams)
 	 * Print plan if debugging.
 	 */
 	if (Debug_print_plan)
-		elog_node_display(DEBUG1, "plan", plan, Debug_pretty_print);
+		elog_node_display(LOG, "plan", plan, Debug_pretty_print);
 
 	return plan;
 }
@@ -933,8 +933,11 @@ exec_mpp_query(const char *query_string,
 			(query->commandType != CMD_SELECT && log_statement >= LOGSTMT_MOD) )
 
 		{
-			ereport(LOG, (errmsg("statement: %s", query_string),
-					          errdetail_execute(querytree_list) ));
+			ereport(LOG,
+				(errmsg("statement: %s", query_string),
+				 errhidestmt(true),
+				 errOmitLocation(true),
+				 errdetail_execute(querytree_list)));
 			was_logged = true;
 		}
 		
@@ -1279,12 +1282,17 @@ exec_mpp_query(const char *query_string,
 	{
 		case 1:
 			ereport(LOG,
-					(errmsg("duration: %s ms", msec_str)));
+					(errmsg("duration: %s ms", msec_str),
+					 errOmitLocation(true),
+					 errhidestmt(true)));
 			break;
 		case 2:
-			ereport(LOG, (errmsg("duration: %s ms  statement: %s",
-						             msec_str, query_string),
-					          errdetail_execute(querytree_list) ));
+			ereport(LOG,
+					(errmsg("duration: %s ms  statement: %s",
+							msec_str, query_string),
+					 errhidestmt(true),
+					 errOmitLocation(true),
+					 errdetail_execute(querytree_list)));
 			break;
 	}
 
@@ -1451,8 +1459,11 @@ exec_simple_query(const char *query_string)
 		/* Log immediately if dictated by log_statement */
 		if (check_log_statement_raw(parsetree_list))
 		{
-			ereport(LOG, (errmsg("statement: %s", query_string),
-				          errdetail_execute(parsetree_list) ));
+			ereport(LOG,
+				(errmsg("statement: %s", query_string),
+				 errhidestmt(true),
+				 errOmitLocation(true),
+				 errdetail_execute(parsetree_list)));
 			was_logged = true;
 		}
 	}
@@ -1683,12 +1694,16 @@ exec_simple_query(const char *query_string)
 		{
 			case 1:
 				ereport(LOG,
-						(errmsg("duration: %s ms", msec_str)));
+					(errmsg("duration: %s ms", msec_str),
+					 errOmitLocation(true),
+					 errhidestmt(true)));
 				break;
 			case 2:
 				ereport(LOG, (errmsg("duration: %s ms  statement: %s",
 									 msec_str, query_string),
-							  errdetail_execute(parsetree_list) ));
+							  errdetail_execute(parsetree_list),
+							  errOmitLocation(true),
+							  errhidestmt(true)));
 				break;
 		}
 	}
@@ -1962,14 +1977,18 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	{
 		case 1:
 			ereport(LOG,
-					(errmsg("duration: %s ms", msec_str)));
+					(errmsg("duration: %s ms", msec_str),
+					 errOmitLocation(true),
+					 errhidestmt(true)));
 			break;
 		case 2:
 			ereport(LOG,
 					(errmsg("duration: %s ms  parse %s: %s",
 							msec_str,
 							*stmt_name ? stmt_name : "<unnamed>",
-							query_string)));
+							query_string),
+							errOmitLocation(true),
+							errhidestmt(true)));
 			break;
 	}
 
@@ -2336,7 +2355,9 @@ exec_bind_message(StringInfo input_message)
 	{
 		case 1:
 			ereport(LOG,
-					(errmsg("duration: %s ms", msec_str)));
+					(errmsg("duration: %s ms", msec_str),
+					 errOmitLocation(true),
+					 errhidestmt(true)));
 			break;
 		case 2:
 			ereport(LOG,
@@ -2346,7 +2367,9 @@ exec_bind_message(StringInfo input_message)
 							*portal_name ? "/" : "",
 							*portal_name ? portal_name : "",
 							pstmt->query_string ? pstmt->query_string : "<source not stored>"),
-					 errdetail_params(params)));
+					 errdetail_params(params),
+					 errOmitLocation(true),
+					 errhidestmt(true)));
 			break;
 	}
 
@@ -2479,7 +2502,9 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 						*portal_name ? portal_name : "",
 						sourceText ? ": " : "",
 						sourceText ? sourceText : ""),
-				 errdetail_params(portalParams)));
+				 errdetail_params(portalParams),
+				 errOmitLocation(true),
+				 errhidestmt(true)));
 		was_logged = true;
 	}
 
@@ -2547,7 +2572,9 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	{
 		case 1:
 			ereport(LOG,
-					(errmsg("duration: %s ms", msec_str)));
+					(errmsg("duration: %s ms", msec_str),
+					 errOmitLocation(true),
+					 errhidestmt(true)));
 			break;
 		case 2:
 			ereport(LOG,
@@ -2561,7 +2588,9 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 							*portal_name ? portal_name : "",
 							sourceText ? ": " : "",
 							sourceText ? sourceText : ""),
-					 errdetail_params(portalParams)));
+					 errdetail_params(portalParams),
+					 errOmitLocation(true),
+					 errhidestmt(true)));
 			break;
 	}
 
@@ -3622,7 +3651,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				case 1:
 				case 2:
 					ereport(LOG,  (errmsg("duration: %s ms  gang statement: %s gang_id %d",
-				             msec_str, query_string, gang_id) ));
+				             msec_str, query_string, gang_id),
+				             errOmitLocation(true)));
 					break;
 			}
 			
@@ -3967,7 +3997,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				case 1:
 				case 2:
 					ereport(LOG,  (errmsg("duration: %s ms  statement: %.80s",
-				             msec_str, query_string) ));
+				             msec_str, query_string),
+				             errOmitLocation(true)));
 					break;
 			}
 		
@@ -4125,7 +4156,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 					case 1:
 					case 2:
 						ereport(LOG,  (errmsg("duration: %s ms  DTM statement: %s",
-					             msec_str, loggingStr) ));
+					             msec_str, loggingStr),
+					             errOmitLocation(true)));
 						break;
 				}
 				
@@ -5767,7 +5799,8 @@ ShowUsage(const char *title)
 
 	ereport(LOG,
 			(errmsg_internal("%s", title),
-			 errdetail("%s", str.data)));
+			 errdetail("%s", str.data),
+			 errOmitLocation(true)));
 
 	pfree(str.data);
 }
@@ -5801,7 +5834,8 @@ log_disconnections(int code, Datum arg __attribute__((unused)))
 					"user=%s database=%s host=%s%s%s",
 					hours, minutes, seconds, msecs,
 					port->user_name, port->database_name, port->remote_host,
-					port->remote_port[0] ? " port=" : "", port->remote_port)));
+					port->remote_port[0] ? " port=" : "", port->remote_port),
+					errOmitLocation(true)));
 }
 
 int

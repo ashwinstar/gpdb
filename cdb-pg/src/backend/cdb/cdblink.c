@@ -358,6 +358,7 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 							Assert(timeout != NULL);
 							ereport(ERROR,
 									(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									 errSendAlert(true),
 									 errmsg("Send to standby master timed out after %d.%03d seconds",
 									        (int)timeout->tv_sec,
 									        (int)timeout->tv_usec / 1000)));
@@ -413,6 +414,7 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 			cdb_mirrored_entry_db->conn = NULL;
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+					 errSendAlert(true),
 					 errmsg("Error from sending to standby master: %s",msg)));
 		}
 		else

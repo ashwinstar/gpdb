@@ -1226,7 +1226,8 @@ PostmasterMain(int argc, char *argv[])
 		 * since there is no way to connect to the database in this case.
 		 */
 		ereport(FATAL,
-				(errmsg("could not load pg_hba.conf")));
+				(errmsg("could not load pg_hba.conf"),
+				 errOmitLocation(true)));
 	}
 	load_ident();
 
@@ -1302,6 +1303,7 @@ getInstallationPaths(const char *argv0)
 				(errcode_for_file_access(),
 				 errmsg("could not open directory \"%s\": %m",
 						pkglib_path),
+				 errSendAlert(true),
 				 errhint("This may indicate an incomplete PostgreSQL installation, or that the file \"%s\" has been moved away from its proper location.",
 						 my_exec_path)));
 	FreeDir(pdir);
@@ -2084,21 +2086,29 @@ retry1:
 		case CAC_STARTUP:
 			ereport(FATAL,
 					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+					 errSendAlert(true),
+					 errOmitLocation(true),
 					 errmsg("the database system is starting up")));
 			break;
 		case CAC_SHUTDOWN:
 			ereport(FATAL,
 					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+					 errSendAlert(true),
+					 errOmitLocation(true),
 					 errmsg("the database system is shutting down")));
 			break;
 		case CAC_RECOVERY:
 			ereport(FATAL,
 					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+					 errSendAlert(true),
+					 errOmitLocation(true),
 					 errmsg("the database system is in recovery mode")));
 			break;
 		case CAC_TOOMANY:
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
+					 errSendAlert(true),
+					 errOmitLocation(true),
 					 errmsg("sorry, too many clients already")));
 			break;
 		case CAC_OK:
@@ -2348,7 +2358,8 @@ SIGHUP_handler(SIGNAL_ARGS)
 	if (Shutdown <= SmartShutdown)
 	{
 		ereport(LOG,
-				(errmsg("received SIGHUP, reloading configuration files")));
+				(errmsg("received SIGHUP, reloading configuration files"),
+				 errOmitLocation(true)));
 		ProcessConfigFile(PGC_SIGHUP);
 		SignalChildren(SIGHUP);
 		if (StartupPID != 0)
@@ -2422,7 +2433,8 @@ pmdie(SIGNAL_ARGS)
 				break;
 			Shutdown = SmartShutdown;
 			ereport(LOG,
-					(errmsg("received smart shutdown request")));
+					(errmsg("received smart shutdown request"),
+					 errOmitLocation(true)));
 
 			/*
 			 * We won't wait out an autovacuum iteration ...
@@ -2497,14 +2509,16 @@ pmdie(SIGNAL_ARGS)
 				break;
 			Shutdown = FastShutdown;
 			ereport(LOG,
-					(errmsg("received fast shutdown request")));
+					(errmsg("received fast shutdown request"),
+					 errOmitLocation(true)));
 
 			if (DLGetHead(BackendList) || AutoVacPID != 0)
 			{
 				if (!FatalError)
 				{
 					ereport(LOG,
-							(errmsg("aborting any active transactions")));
+							(errmsg("aborting any active transactions"),
+							 errOmitLocation(true)));
 					SignalChildren(SIGTERM);
 					if (AutoVacPID != 0)
 						signal_child(AutoVacPID, SIGTERM);
@@ -2575,7 +2589,8 @@ pmdie(SIGNAL_ARGS)
 			 * properly shut down data base system.
 			 */
 			ereport(LOG,
-					(errmsg("received immediate shutdown request")));
+					(errmsg("received immediate shutdown request"),
+					 errOmitLocation(true)));
 			SignalChildren(SIGQUIT);
 			if (StartupPID != 0)
 				signal_child(StartupPID, SIGQUIT);
@@ -2678,7 +2693,7 @@ static void do_reaper()
 				LogChildExit(LOG, _("startup process"),
 							 pid, exitstatus);
 				ereport(LOG,
-				(errmsg("aborting startup due to startup process failure")));
+						(errmsg("aborting startup due to startup process failure")));
 				ExitPostmaster(1);
 			}
 
@@ -2754,7 +2769,9 @@ static void do_reaper()
 			
 			/* at this point we are really open for business */
 			ereport(LOG,
-				 (errmsg("database system is ready to accept connections")));
+				 (errmsg("database system is ready to accept connections"),
+				  errSendAlert(true),
+				  errOmitLocation(true)));
 
 			continue;
 		}
@@ -3307,12 +3324,38 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	FatalError = true;
 }
 
+
+// This is a duplicate of strsignal, for those platforms that have it.
+static const char *
+signal_to_name(int signal)
+{
+#if defined(HAVE_DECL_SYS_SIGLIST) && HAVE_DECL_SYS_SIGLIST
+	// sys_siglist knows all possible signal names on ths platform.
+	if (signal < NSIG)
+		return sys_siglist[signal];
+	else
+		return NULL;
+#else
+ 	switch (signal)
+	{
+	case SIGINT:	return "SIGINT";
+	case SIGTERM:	return "SIGTERM";
+	case SIGQUIT:	return "SIGQUIT";
+	case SIGSTOP:	return "SIGSTOP";
+	case SIGUSR1:	return "SIGUSR1";
+	case SIGUSR2:	return "SIGUSR2";
+	default:		return NULL;
+	}
+#endif
+}
+
 /*
  * Log the death of a child process.
  */
 static void
 LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 {
+
 	if (WIFEXITED(exitstatus))
 		ereport(lev,
 
@@ -3337,18 +3380,26 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 	/*------
 	  translator: %s is a noun phrase describing a child process, such as
 	  "server process" */
+	// strsignal() is preferred over the deprecated use of sys_siglist, on platforms that support it.
 			(errmsg("%s (PID %d) was terminated by signal %d: %s",
 					procname, pid, WTERMSIG(exitstatus),
 					WTERMSIG(exitstatus) < NSIG ?
 					sys_siglist[WTERMSIG(exitstatus)] : "(unknown)")));
 #else
+	{
+		// If we don't have strsignal or sys_siglist, do our own translation
+		const char *signalName;
+		signalName = signal_to_name(signal);
+		if (signalName==NULL)
+			signalName = "(unknown)"
 		ereport(lev,
 
 		/*------
 		  translator: %s is a noun phrase describing a child process, such as
 		  "server process" */
-				(errmsg("%s (PID %d) was terminated by signal %d",
-						procname, pid, WTERMSIG(exitstatus))));
+			    (errmsg("%s (PID %d) was terminated by signal %d: %s",
+						procname, pid, WTERMSIG(exitstatus), signalName)));
+	}
 #endif
 	else
 		ereport(lev,
@@ -3360,20 +3411,7 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 						procname, pid, exitstatus)));
 }
 
-static char *
-signal_to_name(int signal)
-{
-	switch (signal)
-	{
-	case SIGINT:	return "SIGINT";
-	case SIGTERM:	return "SIGTERM";
-	case SIGQUIT:	return "SIGQUIT";
-	case SIGSTOP:	return "SIGSTOP";
-	case SIGUSR1:	return "SIGUSR1";
-	case SIGUSR2:	return "SIGUSR2";
-	default:		return NULL;
-	}
-}
+
 
 /*
  * Send a signal to a postmaster child process
@@ -3402,7 +3440,7 @@ signal_child(pid_t pid, int signal)
 		procName = GetServerProcessTitle(pid);
 		if (procName != NULL)
 		{
-			char *signalName;
+			const char *signalName;
 
 			signalName = signal_to_name(signal);
 			if (signalName != NULL)
@@ -3721,7 +3759,8 @@ BackendInitialize(Port *port)
 		ereport(LOG,
 				(errmsg("connection received: host=%s%s%s",
 						remote_host, remote_port[0] ? " port=" : "",
-						remote_port)));
+						remote_port),
+				 errOmitLocation(true)));
 
 	/*
 	 * save remote_host and remote_port in port structure
@@ -3822,7 +3861,8 @@ BackendInitialize(Port *port)
 	if (Log_connections)
 		ereport(LOG,
 				(errmsg("connection authorized: user=%s database=%s",
-						port->user_name, port->database_name)));
+						port->user_name, port->database_name),
+				 errOmitLocation(true)));
 }
 
 

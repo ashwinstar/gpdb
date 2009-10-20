@@ -2794,7 +2794,7 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
 #if defined(__GLIBC__) || defined(pg_on_solaris)
         
     if (edata->elevel >= ERROR &&
-        (edata->elevel > ERROR || !edata->omit_location) &&
+        (edata->elevel == PANIC || !edata->omit_location) &&
         edata->stacktracesize > 0 &&
         edata->stacktracearray != NULL)
     {

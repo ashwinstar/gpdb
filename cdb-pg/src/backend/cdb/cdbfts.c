@@ -222,7 +222,7 @@ FtsReConfigureMPP(bool create_new_gangs)
 	detectFailedConnections();
 	local_fts_statusVersion = ftsProbeInfo->fts_statusVersion;
 
-	elog(LOG, "FTS: reconfiguration is in progress");
+	ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress")));
 	disconnectAndDestroyAllGangs();
 
 	/* Caller should throw an error. */
@@ -235,7 +235,8 @@ FtsReConfigureMPP(bool create_new_gangs)
 static void
 CdbShutdown(void)
 {
-	elog(ERROR, "FTS: Greenplum system is shut down (segment failure)");
+	ereport(ERROR, (errmsg_internal("FTS: Greenplum system is shut down (segment failure)"),
+			errSendAlert(true)));
 }
 
 static void
@@ -718,6 +719,7 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 				else
 					ereport(WARNING,
 							(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							 errSendAlert(true),
 							 errmsg("Master mirroring synchronization lost"),
 							 errdetail(detail)));
 
@@ -1041,7 +1043,7 @@ FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
 	 * scanning and connecting as long as we have more failures */
 	if (*ftsAction == FTS_SHUTDOWN)
 	{
-		elog(LOG, "MPP detects segment failures, system is shut down");
+		ereport(LOG, (errmsg_internal("MPP detects segment failures, system is shut down")));
 		CdbShutdown();
 		/* not reached */
 	}
@@ -1050,7 +1052,7 @@ FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
 		FtsReConfigureMPP(true);
 	}
 
-	elog(ERROR, "MPP detected %d segment failures, system is reconnected", numOfFailed);
+	ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed)));
 }
 
 /*
@@ -1103,12 +1105,12 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	/* shutdown if action is set to shutdown */
 	if (*ftsAction == FTS_SHUTDOWN)
 	{
-		elog(LOG, "MPP detects segment failures, system is shut down");
+		ereport(LOG, (errmsg_internal("MPP detects segment failures, system is shut down")));
 		CdbShutdown();
 		return true;
 	}
 
-	elog(LOG, "FTS: reconfiguration is in progress");
+	ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress")));
 
 	forceRescan = true;
 	for (i = 0; i < size; i++)
@@ -1119,7 +1121,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 		{
 			if (!FtsTestConnection(segInfo, forceRescan))
 			{
-				elog(LOG, "FTS: found bad segment with dbid %d", segInfo->dbid);
+				ereport(LOG, (errmsg_internal("FTS: found bad segment with dbid %d", segInfo->dbid)));
 				/* probe process has already marked segment down. */
 			}
 			forceRescan = false; /* only force rescan on first call. */
@@ -1484,8 +1486,8 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 			QDMIRRORState state = ftsQDMirrorInfo->state;
 
 			LWLockRelease(ftsQDMirrorLock);
-			elog(ERROR,"Unexpected master mirroring state '%s'",
-				 QDMirroringStateToString(state));
+			ereport(ERROR, (errmsg_internal("Unexpected master mirroring state '%s'",
+				 QDMirroringStateToString(state))));
 		}
 	}
 
@@ -1580,8 +1582,8 @@ FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 			QDMIRRORState state = ftsQDMirrorInfo->state;
 
 			LWLockRelease(ftsQDMirrorLock);
-			elog(ERROR,"Unexpected master mirror state '%s'",
-				 QDMirroringStateToString(state));
+			ereport(ERROR, (errmsg_internal("Unexpected master mirror state '%s'",
+				 QDMirroringStateToString(state))));
 		}
 	}
 
