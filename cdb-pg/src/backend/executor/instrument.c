@@ -4,8 +4,8 @@
  *	 functions for instrumentation of plan execution
  *
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Copyright (c) 2001-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Copyright (c) 2001-2009, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/instrument.c,v 1.18 2006/06/09 19:30:56 tgl Exp $
@@ -18,10 +18,6 @@
 
 #include "executor/instrument.h"
 
-/* Globals */
-#ifdef WIN32
-double InstrTimerFrequency;
-#endif
 
 /* Allocate new instrumentation structure(s) */
 Instrumentation *
@@ -60,7 +56,9 @@ InstrStopNode(Instrumentation *instr, double nTuples)
 	}
 
 	INSTR_TIME_SET_CURRENT(endtime);
-    InstrTimeAddDifference(&instr->counter, &endtime, &instr->starttime);
+	INSTR_TIME_ACCUM_DIFF(instr->counter, endtime, instr->starttime);
+
+	INSTR_TIME_SET_ZERO(instr->starttime);
 
 	/* Is this the first tuple of this cycle? */
 	if (!instr->running)
