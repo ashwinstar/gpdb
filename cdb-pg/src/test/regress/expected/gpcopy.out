@@ -39,9 +39,9 @@ COPY copy_regression_hash3(d) from stdin;
 SELECT * FROM copy_regression_hash3;
    a    | b | c |   d    
 --------+---+---+--------
+ a data | 2 | 3 | d data
+ a data | 2 | 3 | d data
  a data |   | 3 | 
- a data | 2 | 3 | d data
- a data | 2 | 3 | d data
         |   |   | d data
 (4 rows)
 
@@ -235,11 +235,11 @@ COPY copy_regression_text2 from stdin with delimiter '|' null 'i''m null';
 SELECT * FROM copy_regression_text2;
       a      |      b      |      c      | d |      e      
 -------------+-------------+-------------+---+-------------
-             | b text data | c text data |   | e text data
  a text data |             | c text data |   | e text data
  a text data |             | c text data |   | 
  a text data |             | c text data |   | e text data
  a text data | b text data |             |   | e text data
+             | b text data | c text data |   | e text data
 (5 rows)
 
 -- escape tests
@@ -319,7 +319,7 @@ SELECT * FROM copy_regression_csv3 ORDER BY b;
  an embedded escape \ is printed                   | 03 | c  csv data | d  csv data | e  csv data
  an embedded line feed                             | 04 | c  csv data | d  csv data | e  csv data
  is printed                                                                           
- an embedded delimiter (tab)\x09 is printed        | 05 | c  csv data | d  csv data | e  csv data 
+ an embedded delimiter (tab)      is printed       | 05 | c  csv data | d  csv data | e  csv data 
  an embedded quote or escape (doubleq)" is printed | 06 | c  csv data | d  csv data | e  csv data 
  an embedded line feed                             | 07 | c  csv data | d  csv data | e  csv data
  is printed                                                                           
@@ -468,7 +468,7 @@ DROP TABLE copy_regression_fnn;
 CREATE TABLE copy_regression_error1(a int, b int) distributed by(a);
 -- parse error on QE (extra column on line 6)
 COPY copy_regression_error1 from stdin;
-ERROR:  extra data after last expected column  (seg1 localhost:11002 pid=8018)
+ERROR:  extra data after last expected column  (seg3 minithump2:50004 pid=16198)
 CONTEXT:  COPY copy_regression_error1, line 6: "6	6	6"
 -- parse error on QD (missing column on line 3)
 COPY copy_regression_error1 from stdin;
@@ -480,6 +480,6 @@ ERROR:  invalid input syntax for integer: "two"
 CONTEXT:  COPY copy_regression_error1, line 2, column a
 -- convert error on QE (invalid type line 5)
 COPY copy_regression_error1 from stdin;
-ERROR:  invalid input syntax for integer: "five"  (seg0 localhost:11001 pid=8017)
+ERROR:  invalid input syntax for integer: "five"  (seg2 minithump2:50003 pid=16196)
 CONTEXT:  COPY copy_regression_error1, line 5, column b
 DROP TABLE copy_regression_error1;
