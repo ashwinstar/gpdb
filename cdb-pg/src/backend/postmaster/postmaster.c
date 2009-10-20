@@ -3389,8 +3389,8 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 	{
 		// If we don't have strsignal or sys_siglist, do our own translation
 		const char *signalName;
-		signalName = signal_to_name(signal);
-		if (signalName==NULL)
+		signalName = signal_to_name(WTERMSIG(exitstatus));
+		if (signalName == NULL)
 			signalName = "(unknown)"
 		ereport(lev,
 
