@@ -3,8 +3,8 @@
  * explain.c
  *	  Explain query execution plans
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
@@ -720,7 +720,7 @@ elapsed_time(instr_time *starttime)
 	instr_time	endtime;
 
 	INSTR_TIME_SET_CURRENT(endtime);
-    InstrTimeSubtract(&endtime, &endtime, starttime);
+	INSTR_TIME_SUBTRACT(endtime, *starttime);
 	return INSTR_TIME_GET_DOUBLE(endtime);
 }
 
