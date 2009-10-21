@@ -17,6 +17,8 @@
 #include "access/genam.h"
 #include "access/hash.h"
 #include "access/heapam.h"
+#include "access/relscan.h"
+#include "access/sysattr.h"
 #include "access/valid.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
@@ -1790,6 +1792,7 @@ PrepareToInvalidateCacheTuple(Relation relation,
 	Assert(RelationIsValid(relation));
 	Assert(HeapTupleIsValid(tuple));
 	Assert(function != NULL);
+	Assert(PointerIsValid(function));
 	Assert(CacheHdr != NULL);
 
 	reloid = RelationGetRelid(relation);
