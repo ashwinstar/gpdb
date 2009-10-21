@@ -38,6 +38,9 @@
 #include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
+#if ENABLE_EMAIL == 1
+#include "postmaster/sendalert.h"
+#endif
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "utils/guc.h"
