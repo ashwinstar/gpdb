@@ -41,7 +41,7 @@ static int authinteract(auth_client_request_t request, char **result,
 		int fields, void *arg);
 //static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
 
-extern int send_alert(PipeProtoChunk *chunk);
+
 int
 send_alert(PipeProtoChunk *chunk)
 {
