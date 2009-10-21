@@ -1,5 +1,5 @@
-#ifdef SENDALERT_H
-#define SENDALERT_H
+#ifndef _SENDALERT_H
+#define _SENDALERT_H
 
 #include "postmaster/syslogger.h"
 
