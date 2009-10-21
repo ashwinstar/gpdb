@@ -9,8 +9,9 @@
  *
  *-------------------------------------------------------------------------
  */
-#include "postgres.h"
 #define _XOPEN_SOURCE 500
+#include "postgres.h"
+
 #include <fcntl.h>
 #include <signal.h>
 #include <time.h>
@@ -23,34 +24,37 @@
 #include "pgtime.h"
 #include "utils/guc.h"
 #include "postmaster/syslogger.h"
+#include "postmaster/sendalert.h"
 
-#if ENABLE_EMAIL == 1
-#if USE_SSL == 1
+#if ENABLE_EMAIL
+#if USE_SSL
 #include <openssl/ssl.h>
 #endif
 #include <auth-client.h>
 #include <libesmtp.h>
 #endif
 
-#include "postmaster/sendalert.h"
 
-static const char *
-messagebody_cb(void **buf, int *len, void *arg);
+
+static const char * messagebody_cb(void **buf, int *len, void *arg);
 static int authinteract(auth_client_request_t request, char **result,
 		int fields, void *arg);
+//static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
 
-int send_alert(PipeProtoChunk *chunk)
+extern int send_alert(PipeProtoChunk *chunk);
+int
+send_alert(PipeProtoChunk *chunk)
 {
 	smtp_session_t session;
 	smtp_message_t message;
 	smtp_recipient_t recipient;
 	auth_context_t authctx;
 	const smtp_status_t *status;
-	struct sigaction sa;
+	//struct sigaction sa;
 	char *host = NULL;
 	char *from = NULL;
 	char *subject = NULL;
-	enum notify_flags notify = Notify_NOTSET;
+	//enum notify_flags notify = Notify_NOTSET;
 
 	Assert(chunk->hdr.log_format == 'c');
 
@@ -109,7 +113,7 @@ int send_alert(PipeProtoChunk *chunk)
 		status = smtp_message_transfer_status(message);
 		printf("%d %s", status->code, (status->text != NULL) ? status->text
 				: "\n");
-		smtp_enumerate_recipients(message, print_recipient_status, NULL);
+		//smtp_enumerate_recipients(message, print_recipient_status, NULL);
 		smtp_destroy_session(session);
 		auth_destroy_context(authctx);
 
@@ -138,15 +142,15 @@ typedef struct CSVChunkStr
 static const char *
 get_str_from_chunk(CSVChunkStr *chunkstr)
 {
-    int wlen = 0;
+    //int wlen = 0;
     int len = 0;
 
     if (chunkstr->chunk != NULL)
 	{
 		len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
 
-		if (len == 0 && chunkstr->chunk->hdr.next >= 0)
-			PipeProtoChunk *next_chunk = &saved_chunks[chunkstr->chunk->hdr.next];
+		//if (len == 0 && chunkstr->chunk->hdr.next >= 0)
+		//	PipeProtoChunk *next_chunk = &saved_chunks[chunkstr->chunk->hdr.next];
 	}
 	else
 		Assert(chunkstr->p == NULL);
@@ -199,7 +203,8 @@ messagebody_cb(void **buf, int *len, void *arg)
 
 	PipeProtoChunk *chunk = (PipeProtoChunk *)arg;
 
-	GpErrorDataFixFields *pfixed = (GpErrorDataFixFields *) (chunk->data);
+
+	//GpErrorDataFixFields *pfixed = (GpErrorDataFixFields *) (chunk->data);
 	CSVChunkStr chunkstr = { chunk, chunk->data + sizeof(GpErrorDataFixFields) };
 
 	const char * message = "Return-Path: <cmcdevitt@greenplum.com>\r\n"
@@ -212,6 +217,12 @@ messagebody_cb(void **buf, int *len, void *arg)
 		"Hello world!\r\n"
 
 		"\r\n\r\nEnd of test---\r\n";
+	if (chunk==NULL)
+	{
+		*len = 0;
+		return NULL;
+	}
+	get_str_from_chunk(&chunkstr);
 	*len = strlen(message);
 	return message;
 }
@@ -225,11 +236,11 @@ static int authinteract(auth_client_request_t request, char **result,
 	{
 		if (request[i].flags & AUTH_PASS)
 		{
-			result[i] = my_auth->password;
+			//result[i] = my_auth->password;
 		}
 		else if (request[i].flags & AUTH_USER)
 		{
-			result[i] = my_auth->username;
+			//result[i] = my_auth->username;
 		}
 		else if (result[i] == NULL)
 		{
@@ -241,11 +252,12 @@ static int authinteract(auth_client_request_t request, char **result,
 
 }
 
+#if 0
 /*
  * We currently just return 1 to keep libesmtp happy
  * Will turn this into a proper event handler some day
  */
-void event_cb(smtp_session_t session, int event_no, void *arg, ...)
+static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 {
 	va_list alist;
 	int *ok;
@@ -294,3 +306,5 @@ void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	va_end(alist);
 
 }
+#endif
+
