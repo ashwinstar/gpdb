@@ -57,7 +57,7 @@ PORT_BASE=50000
 # may want to create these directories on the segment hosts before running 
 # gpinitsystem and chown them to the appropriate user.
 
-declare -a DATA_DIRECTORY=(/gpdata1 /gpdata1)
+declare -a DATA_DIRECTORY=(/gpdata1 /gpdata2)
 
 
 # The host name of the Greenplum Database master instance.
