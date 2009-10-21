@@ -3,6 +3,11 @@ Database. For detailed installation, configuration and setup
 information see the 'Greenplum Database Administrator Guide'
 located in $GPHOME/docs following installation.
 
+For Greenplum Database Single Node Edition (SNE) refer to the 
+Quick Start Guide (GPDB-SingleNodeEdition-QuickStart.pdf) for
+detailed installation and setup of a single-node Greenplum
+Database system.
+
 
 ***********************************************************
 RUNNING THE GREENPLUM DATABASE INSTALLER
@@ -13,13 +18,13 @@ RUNNING THE GREENPLUM DATABASE INSTALLER
 
 2. Execute the installer using bash:
 
-   /bin/bash greenplum-db-3.3.0.0-<PLATFORM>.bin 
+   /bin/bash greenplum-db-3.3.4.0-<PLATFORM>.bin 
 
 3. When prompted, type 'yes' to accept the license agreement.
 
 4. When prompted, provide an installation path. For example:
 
-   /usr/local/greenplum-db-3.3.0.0
+   /usr/local/greenplum-db-3.3.4.0
 
 
 ***********************************************************
@@ -35,8 +40,7 @@ kernel parameters.
 MAC OS X
 ----------------
 
-In OS X 10.3.9 and later, add all of the following to 
-/etc/sysctl.conf:
+Add all of the following to /etc/sysctl.conf:
 
 kern.sysv.shmmax=2147483648
 kern.sysv.shmmin=1
@@ -45,7 +49,7 @@ kern.sysv.shmseg=16
 kern.sysv.shmall=524288
 net.inet.tcp.msl=60
 
-If using DHCP with MAC OS X, add the following line to /etc/hostconfig:
+If using DHCP, add the following line to /etc/hostconfig:
 
 HOSTNAME="<your_hostname>"
 
@@ -104,7 +108,11 @@ POST INSTALLATION STEPS
 These are the high-level steps to configure and initialize a new 
 Greenplum Database instance. For detailed instructions, please 
 see the 'Greenplum Database Administrator Guide' located in
-$GPHOME/docs.
+$GPHOME/docs. 
+
+For Greenplum Database Single Node Edition (SNE) 
+refer to the Greenplum Database Single Node Edition 
+Quick Start Guide (GPDB-SingleNodeEdition-QuickStart.pdf). 
 
 
 1. Allocate a 'gpadmin' user to own and run your installation.
@@ -118,10 +126,10 @@ $GPHOME/docs.
 
 4. Use the gpssh-exkeys utility on the master host to exchange 
    SSH keys between all hosts in your Greenplum array. Note that 
-   for a single host 'demo' configuration you still must exchange 
-   ssh keys between the current host and itself.
+   for a single-node configuration you still must exchange 
+   ssh keys between the local host and itself.
 
-5. (multi-host configuration only) Use the gpscp and gpssh 
+5. (multi-node configuration only) Use the gpscp and gpssh 
    utilities on the master host to copy and install the 
    Greenplum Database software on all segment hosts.
 
@@ -131,9 +139,16 @@ $GPHOME/docs.
 
    gpinitsystem -c gp_init_config
 
-   A sample gp_init_config configuration file can be found in
-   $GPHOME/docs/cli_help/gp_init_config_example. Edit this file
-   to reflect your desired Greenplum Database array configuration.
+   A sample multi-node initialization configuration file can 
+   be found in $GPHOME/docs/cli_help/gp_init_config_example.
+
+   A sample single-node initialization configuration file can 
+   be found in $GPHOME/docs/cli_help/gp_init_singlenode_example.
+ 
+   Edit the appropriate example file to reflect your desired 
+   Greenplum Database configuration.
+
+   
    
 
 
@@ -167,14 +182,15 @@ directories:
 GREENPLUM DATABASE DOCUMENTATION
 ************************************************
 
-The Greenplum Database Administrator Guide is available in the
-$GPHOME/docs directory of your Greenplum installation.  Both the 
-Administrator Guide and the release notes are available for download
-on http://gpn.greenplum.com.
+Greenplum Database documentation is available in the $GPHOME/docs 
+directory of your Greenplum installation and is also available 
+for download on http://gpn.greenplum.com.
 
 * GPAdminGuide.pdf - Greenplum Database Administrator Guide
 
-* README - Release notes for this version of Greenplum Database.
+* GPDB-SingleNodeEdition-QuickStart.pdf - Greenplum Database Single Node Edition (SNE) Quick Start Guide
+
+* GPDB_<version>_README - Release notes for this version of Greenplum Database.
 
 
 
