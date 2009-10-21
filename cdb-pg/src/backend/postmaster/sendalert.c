@@ -26,7 +26,7 @@
 #include "postmaster/syslogger.h"
 #include "postmaster/sendalert.h"
 
-#if ENABLE_EMAIL
+#if USE_EMAIL
 #if USE_SSL
 #include <openssl/ssl.h>
 #endif
@@ -35,16 +35,18 @@
 #endif
 
 
-
+#if USE_EMAIL
 static const char * messagebody_cb(void **buf, int *len, void *arg);
 static int authinteract(auth_client_request_t request, char **result,
 		int fields, void *arg);
 //static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
+#endif
 
 
 int
 send_alert(PipeProtoChunk *chunk)
 {
+#if USE_EMAIL
 	smtp_session_t session;
 	smtp_message_t message;
 	smtp_recipient_t recipient;
@@ -58,6 +60,10 @@ send_alert(PipeProtoChunk *chunk)
 
 	Assert(chunk->hdr.log_format == 'c');
 
+	//
+	host = "scriptmail.intermedia.net";
+	from = "cmcdevitt@greenplum.com";
+	subject = "test alert";
 	// Ok, send the alert here.
 
 	auth_client_init(); // Call this only once!
@@ -129,6 +135,7 @@ send_alert(PipeProtoChunk *chunk)
 	auth_destroy_context(authctx);
 
 	auth_client_exit();
+#endif
 
 	return 0;
 }
@@ -197,6 +204,7 @@ get_str_from_chunk(CSVChunkStr *chunkstr)
 #endif
 }
 
+#if USE_EMAIL
 const char *
 messagebody_cb(void **buf, int *len, void *arg)
 {
@@ -306,5 +314,6 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	va_end(alist);
 
 }
+#endif
 #endif
 

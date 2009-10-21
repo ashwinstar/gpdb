@@ -38,7 +38,7 @@
 #include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
-#if ENABLE_EMAIL == 1
+#if (USE_EMAIL || USE_SNMP)
 #include "postmaster/sendalert.h"
 #endif
 #include "storage/ipc.h"
