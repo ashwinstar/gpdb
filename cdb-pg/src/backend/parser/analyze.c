@@ -1902,7 +1902,7 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		return;
 	}
 
-	if(!iswritable && distributedBy)
+	if(!iswritable && list_length(distributedBy) > 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("Readable external tables can\'t specify a DISTRIBUTED BY clause.")));
@@ -1911,7 +1911,7 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	{
 		/* WET */
 		
-		if(!distributedBy && !likeDistributedBy)
+		if(distributedBy == NIL && likeDistributedBy == NIL)
 		{
 			/* defaults to DISTRIBUTED RANDOMLY */
 			p = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs *
