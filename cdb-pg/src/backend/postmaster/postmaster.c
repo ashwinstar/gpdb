@@ -179,7 +179,7 @@ typedef struct bkend
 	int			child_slot;		/* PMChildSlot for this backend, if any */
 	bool		is_autovacuum;	/* is it an autovacuum process? */
 	bool		dead_end;		/* is it going to send an error and quit? */
-	//Dlelem		elem;			/* list link in BackendList */
+	Dlelem		elem;			/* list link in BackendList */
 } Backend;
 
 static Dllist *BackendList;
@@ -200,12 +200,6 @@ typedef enum pmsub_type
 } PMSubType;
 
 #ifdef EXEC_BACKEND
-/*
- * Number of entries in the backend table. Twice the number of backends,
- * plus four other subprocesses (stats, bgwriter, autovac, logger).
- * plus CDB subprocs (eg seqserver)
- */
-#define NUM_BACKENDARRAY_ELEMS (2*MaxBackends + 4 + MaxPMSubType)
 static Backend *ShmemBackendArray;
 #endif
 
@@ -273,9 +267,7 @@ static pid_t StartupPID = 0,
 static int	Shutdown = NoShutdown;
 
 static bool FatalError = false; /* T if recovering from backend crash */
-
-#if 0
-//static bool RecoveryError = false;		/* T if WAL recovery failed */
+static bool RecoveryError = false;		/* T if WAL recovery failed */
 
 /*
  * We use a simple state machine to control startup, shutdown, and
@@ -338,7 +330,6 @@ typedef enum
 } PMState;
 
 static PMState pmState = PM_INIT;
-#endif
 
 /* CDB */
 
@@ -396,7 +387,7 @@ bool		ClientAuthInProgress = false;		/* T during new-client
 
 bool		redirection_done = false;	/* stderr redirected for syslogger? */
 
-static bool force_autovac = false; /* received START_AUTOVAC signal */
+static volatile bool force_autovac = false; /* received START_AUTOVAC signal */
 
 /*
  * State for assigning random salts and cancel keys.
@@ -444,6 +435,7 @@ static void CleanupBackend(int pid, int exitstatus);
 static void HandleChildCrash(int pid, int exitstatus, const char *procname);
 static void LogChildExit(int lev, const char *procname,
 			 int pid, int exitstatus);
+static void PostmasterStateMachine(void);
 static void BackendInitialize(Port *port);
 static int	BackendRun(Port *port);
 static void ExitPostmaster(int status);
@@ -554,7 +546,7 @@ static bool save_backend_variables(BackendParameters *param, Port *port,
 #endif
 
 static void ShmemBackendArrayAdd(Backend *bn);
-static void ShmemBackendArrayRemove(pid_t pid);
+static void ShmemBackendArrayRemove(Backend *bn);
 #endif   /* EXEC_BACKEND */
 
 #define StartupDataBase()		StartChildProcess(StartupProcess)
@@ -880,8 +872,6 @@ PostmasterMain(int argc, char *argv[])
 	ChangeToDataDir();
 
 	/*
-	 * Check for invalid combinations of GUC settings.
-     *
      * CDB: Decouple NBuffers from MaxBackends.  The entry db doesn't benefit
      * from buffers in excess of the global catalog size; this is typically
      * small and unrelated to the number of clients.  Segment dbs need enough
@@ -1168,8 +1158,9 @@ PostmasterMain(int argc, char *argv[])
 	 *
 	 * CAUTION: when changing this list, check for side-effects on the signal
 	 * handling setup of child processes.  See tcop/postgres.c,
-	 * bootstrap/bootstrap.c, postmaster/bgwriter.c, postmaster/autovacuum.c,
-	 * postmaster/pgarch.c, postmaster/pgstat.c, and postmaster/syslogger.c.
+	 * bootstrap/bootstrap.c, postmaster/bgwriter.c, postmaster/walsendserver.c,
+	 * postmaster/autovacuum.c, postmaster/pgarch.c, postmaster/pgstat.c, and
+	 * postmaster/syslogger.c.
 	 */
 	pqinitmask();
 	PG_SETMASK(&BlockSig);
@@ -1249,7 +1240,7 @@ PostmasterMain(int argc, char *argv[])
 		StartupPID = StartupDataBase();
 		Assert(StartupPID != 0);
 	}
-	//pmState = PM_STARTUP;
+	pmState = PM_STARTUP;
 
 	status = ServerLoop();
 
@@ -1545,11 +1536,8 @@ ServerLoop(void)
 	fd_set		readmask;
 	int			nSockets;
 	time_t		now,
-		last_touch_time;
-	struct timeval earlier,
-		later;
+				last_touch_time;
 
-	gettimeofday(&earlier, NULL);
 	last_touch_time = time(NULL);
 
 	nSockets = initMasks(&readmask);
@@ -1560,11 +1548,8 @@ ServerLoop(void)
 
 	for (;;)
 	{
-		Port	   *port;
 		fd_set		rmask;
-		struct timeval timeout;
 		int			selres;
-		int			i;
 		int			s;
 
 		/*
@@ -1579,13 +1564,30 @@ ServerLoop(void)
 		 */
 		memcpy((char *) &rmask, (char *) &readmask, sizeof(fd_set));
 
-		timeout.tv_sec = Min(60, autovacuum_naptime);
-		timeout.tv_usec = 0;
-
 		PG_SETMASK(&UnBlockSig);
 
-		selres = select(nSockets, &rmask, NULL, NULL, &timeout);
+		if (pmState == PM_WAIT_DEAD_END)
+		{
+			pg_usleep(100000L); /* 100 msec seems reasonable */
+			selres = 0;
+		}
+		else
+		{
+			/* must set timeout each time; some OSes change it! */
+			struct timeval timeout;
 
+			timeout.tv_sec = 60;
+			timeout.tv_usec = 0;
+
+			selres = select(nSockets, &rmask, NULL, NULL, &timeout);
+		}
+
+		/*
+		 * GPDB Change:  Reaper just sets a flag, and we call the real reaper code here.
+		 * I assume this was done because we wanted to excecute some code that wasn't safe in a
+		 * signal handler context (debugging code, most likely).
+		 * But the real reason is lost in antiquity.
+		 */
 		if (need_call_reaper)
 			do_reaper();
 
@@ -1613,23 +1615,7 @@ ServerLoop(void)
 		 */
 		if (selres > 0)
 		{
-			/*
-			 * Select a random seed at the time of first receiving a request.
-			 */
-			while (random_seed == 0)
-			{
-				gettimeofday(&later, NULL);
-
-				/*
-				 * We are not sure how much precision is in tv_usec, so we
-				 * swap the high and low 16 bits of 'later' and XOR them with
-				 * 'earlier'. On the off chance that the result is 0, we loop
-				 * until it isn't.
-				 */
-				random_seed = earlier.tv_usec ^
-					((later.tv_usec << 16) |
-					 ((later.tv_usec >> 16) & 0xffff));
-			}
+			int			i;
 
 			for (i = 0; i < MAXLISTEN; i++)
 			{
@@ -1637,6 +1623,8 @@ ServerLoop(void)
 					break;
 				if (FD_ISSET(ListenSocket[i], &rmask))
 				{
+					Port	   *port;
+
 					port = ConnCreate(ListenSocket[i]);
 					if (port)
 					{
@@ -1667,7 +1655,9 @@ ServerLoop(void)
 		 * state that prevents it, start one.  It doesn't matter if this
 		 * fails, we'll just try again later.
 		 */
-		if (BgWriterPID == 0 && StartupPID == 0 && !FatalError && !SyncMaster)
+		if (BgWriterPID == 0 && !SyncMaster &&
+            (pmState == PM_RUN || pmState == PM_RECOVERY ||
+			 pmState == PM_RECOVERY_CONSISTENT))
 		{
 			BgWriterPID = StartBackgroundWriter();
 			if (Debug_print_server_processes)
@@ -1713,25 +1703,21 @@ ServerLoop(void)
 		}
 
 		/* If we have lost the archiver, try to start a new one */
-		if (XLogArchivingActive() && PgArchPID == 0 &&
-			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
-		{
+		if (XLogArchivingActive() && PgArchPID == 0 && pmState == PM_RUN && !SyncMaster)
 			PgArchPID = pgarch_start();
 			if (Debug_print_server_processes)
 				elog(LOG,"restarted 'archiver process' as pid %ld",
 					 (long)PgArchPID);
-		}
+
 
 		/* If we have lost the stats collector, try to start a new one */
-		if (PgStatPID == 0 &&
-			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
-		{
+		if (PgStatPID == 0 && pmState == PM_RUN && !SyncMaster)
 			PgStatPID = pgstat_start();
 			if (Debug_print_server_processes)
 				elog(LOG,"restarted 'statistics collector process' as pid %ld",
 					 (long)PgStatPID);
 
-		}
+
 
 		/* MPP: If we have lost one of our servers, try to start a new one */
 		for (s=0; s < MaxPMSubType; s++)
@@ -2112,7 +2098,7 @@ retry1:
 					 errmsg("sorry, too many clients already")));
 			break;
 		case CAC_OK:
-		default:
+		//default:
 			break;
 	}
 
@@ -2190,12 +2176,22 @@ canAcceptConnections(void)
 	/*
 	 * Can't start backends when in startup/shutdown/recovery state.
 	 */
+	if (pmState != PM_RUN)
+	{
+#if 0
+        /* GPDB doesn't have WAIT_BACKUP */
+		if (pmState == PM_WAIT_BACKUP)
+			return CAC_WAITBACKUP;		/* allow superusers only */
+#endif
 	if (Shutdown > NoShutdown)
-		return CAC_SHUTDOWN;
-	if (StartupPID)
-		return CAC_STARTUP;
-	if (FatalError)
-		return CAC_RECOVERY;
+			return CAC_SHUTDOWN;	/* shutdown is pending */
+		if (!FatalError &&
+			(pmState == PM_STARTUP ||
+			 pmState == PM_RECOVERY ||
+			 pmState == PM_RECOVERY_CONSISTENT))
+			return CAC_STARTUP; /* normal startup */
+		return CAC_RECOVERY;	/* else must be crash recovery */
+	}
 
 	/*
 	 * Don't start too many children.
@@ -2436,15 +2432,31 @@ pmdie(SIGNAL_ARGS)
 					(errmsg("received smart shutdown request"),
 					 errOmitLocation(true)));
 
-			/*
-			 * We won't wait out an autovacuum iteration ...
-			 */
-			if (AutoVacPID != 0)
+			if (pmState == PM_RUN || pmState == PM_RECOVERY ||
+				pmState == PM_RECOVERY_CONSISTENT)
 			{
-				/* Use statement cancel to shut it down */
-				signal_child(AutoVacPID, SIGINT);
-				break;			/* let reaper() handle this */
+				/* autovacuum workers are told to shut down immediately */
+				SignalAutovacWorkers(SIGTERM);
+				/* and the autovac launcher too */
+				if (AutoVacPID != 0)
+					signal_child(AutoVacPID, SIGTERM);
+#if 0
+				/* GPDB Doesn't have a walwriter */
+				if (WalWriterPy(int id);
+				ID != 0)
+					signal_child(WalWriterPID, SIGTERM);
+
+				pmState = PM_WAIT_BACKUP;
+#endif
+				pmState = PM_WAIT_BACKENDS;
 			}
+
+	        /*
+			 * Now wait for backends to exit.
+			 * If that is already the case, PostmasterStateMachine will take
+			 * the next step.
+			 */
+			PostmasterStateMachine(); 
 
 			if (DLGetHead(BackendList))
  			{
@@ -2512,20 +2524,29 @@ pmdie(SIGNAL_ARGS)
 					(errmsg("received fast shutdown request"),
 					 errOmitLocation(true)));
 
-			if (DLGetHead(BackendList) || AutoVacPID != 0)
+			if (StartupPID != 0)
+				signal_child(StartupPID, SIGTERM);
+			if (pmState == PM_RECOVERY)
 			{
-				if (!FatalError)
-				{
-					ereport(LOG,
-							(errmsg("aborting any active transactions"),
-							 errOmitLocation(true)));
-					SignalChildren(SIGTERM);
-					if (AutoVacPID != 0)
-						signal_child(AutoVacPID, SIGTERM);
-					/* reaper() does the rest */
-				}
-				break;
+				/* only bgwriter is active in this state */
+				pmState = PM_WAIT_BACKENDS;
 			}
+			if (pmState == PM_RUN ||
+				//pmState == PM_WAIT_BACKUP ||
+				pmState == PM_WAIT_BACKENDS ||
+				pmState == PM_RECOVERY_CONSISTENT)
+			{
+				ereport(LOG,
+						(errmsg("aborting any active transactions"),
+						 errOmitLocation(true)));
+				/* shut down all backends and autovac workers */
+				SignalChildren(SIGTERM);
+				if (AutoVacPID != 0)
+					signal_child(AutoVacPID, SIGTERM);
+                pmState = PM_WAIT_BACKENDS;
+					/* reaper() does the rest */
+			}
+
 
 			/*
 			 * No children left. Begin shutdown of data base system.
@@ -2578,6 +2599,12 @@ pmdie(SIGNAL_ARGS)
 
  			if (SyncMaster)
  				ExitPostmaster(0);
+
+			/*
+			 * Now wait for backends to exit.  If there are none,
+			 * PostmasterStateMachine will take the next step.
+			 */
+			PostmasterStateMachine();
 			break;
 
 		case SIGQUIT:
@@ -2621,52 +2648,49 @@ pmdie(SIGNAL_ARGS)
 static void
 reaper(SIGNAL_ARGS)
 {
-        need_call_reaper = 1;
+    need_call_reaper = 1;
 }
 
 static void do_reaper()
 {
 	int			save_errno = errno;
 	int         s;
-	bool        wasServiceProcess;
+	int			pid;			/* process id of dead child process */
+	int			exitstatus;		/* its exit status */
+	bool        wasServiceProcess = false;
 	bool        didServiceProcessWork = false;
-	bool		anyServiceSignaled;
+	bool		anyServiceSignaled = false;
 
+
+	/* These macros hide platform variations in getting child status */
 #ifdef HAVE_WAITPID
-	int			status;			/* backend exit status */
-#else
+	int			status;			/* child exit status */
+
+#define LOOPTEST()		((pid = waitpid(-1, &status, WNOHANG)) > 0)
+#define LOOPHEADER()	(exitstatus = status)
+#else							/* !HAVE_WAITPID */
 #ifndef WIN32
-	union wait	status;			/* backend exit status */
-#endif
-#endif
-	int			exitstatus;
-	int			pid;			/* process id of dead backend */
+	union wait	status;			/* child exit status */
+
+#define LOOPTEST()		((pid = wait3(&status, WNOHANG, NULL)) > 0)
+#define LOOPHEADER()	(exitstatus = status.w_status)
+#else							/* WIN32 */
+#define LOOPTEST()		((pid = win32_waitpid(&exitstatus)) > 0)
+#define LOOPHEADER()
+#endif   /* WIN32 */
+#endif   /* HAVE_WAITPID */
 
 	PG_SETMASK(&BlockSig);
 	need_call_reaper = 0;
 
 	ereport(DEBUG4,
 			(errmsg_internal("reaping dead processes")));
-#ifdef HAVE_WAITPID
-	while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
-	{
-		exitstatus = status;
-#else
-#ifndef WIN32
-	while ((pid = wait3(&status, WNOHANG, NULL)) > 0)
-	{
-		exitstatus = status.w_status;
-#else
-	while ((pid = win32_waitpid(&exitstatus)) > 0)
-	{
-		/*
-		 * We need to do this here, and not in CleanupBackend, since this is
-		 * to be called on all children when we are done with them. Could move
-		 * to LogChildExit, but that seems like asking for future trouble...
-		 */
 		//win32_RemoveChild(pid);
-#endif   /* WIN32 */
-#endif   /* HAVE_WAITPID */
+	while (LOOPTEST())
+	{
+		LOOPHEADER();
+
+        Assert(pid != 0);
 
 		if (Debug_print_server_processes)
 		{
@@ -2684,11 +2708,16 @@ static void do_reaper()
 		/*
 		 * Check if this child was a startup process.
 		 */
-		if (StartupPID != 0 && pid == StartupPID)
+		if (pid == StartupPID)
 		{
 			StartupPID = 0;
-			/* Note: FATAL exit of startup is treated as catastrophic */
-			if (!EXIT_STATUS_0(exitstatus))
+
+			/*
+			 * Unexpected exit of startup process (including FATAL exit)
+			 * during PM_STARTUP is treated as catastrophic. There are no
+			 * other processes running yet, so we can just exit.
+			 */
+			if (pmState == PM_STARTUP && !EXIT_STATUS_0(exitstatus))
 			{
 				LogChildExit(LOG, _("startup process"),
 							 pid, exitstatus);
@@ -2701,7 +2730,32 @@ static void do_reaper()
 			 * Startup process exited in response to a shutdown request (or it
 			 * completed normally regardless of the shutdown request).
 			 */
+			if (Shutdown > NoShutdown &&
+				(EXIT_STATUS_0(exitstatus) || EXIT_STATUS_1(exitstatus)))
+			{
+				pmState = PM_WAIT_BACKENDS;
+				/* PostmasterStateMachine logic does the rest */
+				continue;
+			}
+
+			/*
+			 * Any unexpected exit (including FATAL exit) of the startup
+			 * process is treated as a crash, except that we don't want to
+			 * reinitialize.
+			 */
+			if (!EXIT_STATUS_0(exitstatus))
+			{
+				RecoveryError = true;
+				HandleChildCrash(pid, exitstatus,
+								 _("startup process"));
+				continue;
+			}
+
+			/*
+			 * Startup succeeded, commence normal operations
+			 */
 			FatalError = false;
+			pmState = PM_RUN;
 
 			/*
 			 * Load the flat authorization file into postmaster's cache. The
@@ -2722,6 +2776,12 @@ static void do_reaper()
 			 * Likewise, start other special children as needed.  In a restart
 			 * situation, some of them may be alive already.
 			 */
+#if 0
+			if (WalWriterPID == 0)
+				WalWriterPID = StartWalWriter();
+			if (AutoVacuumingActive() && AutoVacPID == 0)
+				AutoVacPID = StartAutoVacLauncher();
+#endif
 			if (Shutdown > NoShutdown && BgWriterPID != 0)
 				signal_child(BgWriterPID, SIGUSR2);
 			else if (Shutdown == NoShutdown)
@@ -2833,23 +2893,24 @@ static void do_reaper()
 		/*
 		 * Was it the bgwriter?
 		 */
-		if (BgWriterPID != 0 && pid == BgWriterPID)
+		if (pid == BgWriterPID)
 		{
 			BgWriterPID = 0;
-			if (EXIT_STATUS_0(exitstatus) &&
-				Shutdown > NoShutdown && !FatalError &&
-				!DLGetHead(BackendList) && AutoVacPID == 0)
+			if (EXIT_STATUS_0(exitstatus) && pmState == PM_SHUTDOWN)
 			{
 				/*
-				 * Normal postmaster exit is here: we've seen normal exit of
-				 * the bgwriter after it's been told to shut down. We expect
-				 * that it wrote a shutdown checkpoint.  (If for some reason
-				 * it didn't, recovery will occur on next postmaster start.)
+				 * OK, we saw normal exit of the bgwriter after it's been told
+				 * to shut down.  We expect that it wrote a shutdown
+				 * checkpoint.	(If for some reason it didn't, recovery will
+				 * occur on next postmaster start.)
 				 *
-				 * Note: we do not wait around for exit of the archiver or
-				 * stats processes.  They've been sent SIGQUIT by this point,
-				 * and in any case contain logic to commit hara-kiri if they
-				 * notice the postmaster is gone.
+				 * At this point we should have no normal backend children
+				 * left (else we'd not be in PM_SHUTDOWN state) but we might
+				 * have dead_end children to wait for.
+				 *
+				 * If we have an archiver subprocess, tell it to do a last
+				 * archive cycle and quit; otherwise we can go directly to
+				 * PM_WAIT_DEAD_END state.
 				 */
 				Assert(Shutdown > NoShutdown);
 				/*
@@ -2864,16 +2925,32 @@ static void do_reaper()
 				StopServices(/* excludeFlags */ 0, SIGUSR2);
 										// Get the service processes that
 										// want to stop after bgwriter.
+				if (PgArchPID != 0)
+				{
+					/* Waken archiver for the last time */
+					signal_child(PgArchPID, SIGUSR2);
+					pmState = PM_SHUTDOWN_2;
+			    }
+				else
+					pmState = PM_WAIT_DEAD_END;
 
-				ExitPostmaster(0);
+				/*
+				 * We can also shut down the stats collector now; there's
+				 * nothing left for it to do.
+				 */
+				if (PgStatPID != 0)
+					signal_child(PgStatPID, SIGQUIT);
 			}
-
+			else
+			{
 			/*
 			 * Any unexpected exit of the bgwriter (including FATAL exit)
 			 * is treated as a crash.
 			 */
 			HandleChildCrash(pid, exitstatus,
 							 _("background writer process"));
+			}
+
 
 			/*
 			 * If the bgwriter crashed while trying to write the shutdown
@@ -2914,14 +2991,13 @@ static void do_reaper()
 		 * again in future cycles of the main loop.)  But if we were waiting
 		 * for it to shut down, advance to the next shutdown step.
 		 */
-		if (PgArchPID != 0 && pid == PgArchPID)
+		if (pid == PgArchPID)
 		{
 			PgArchPID = 0;
 			if (!EXIT_STATUS_0(exitstatus))
 				LogChildExit(LOG, _("archiver process"),
 							 pid, exitstatus);
-			if (XLogArchivingActive() &&
-				StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
+			if (XLogArchivingActive() && pmState == PM_RUN)
 			{
 				PgArchPID = pgarch_start();
 				if (Debug_print_server_processes)
@@ -2931,6 +3007,8 @@ static void do_reaper()
 					didServiceProcessWork = true;
 				}
 			}
+			else if (pmState == PM_SHUTDOWN_2)
+				pmState = PM_WAIT_DEAD_END;
 			continue;
 		}
 
@@ -2939,14 +3017,14 @@ static void do_reaper()
 		 * one; no need to force reset of the rest of the system.  (If fail,
 		 * we'll try again in future cycles of the main loop.)
 		 */
-		if (PgStatPID != 0 && pid == PgStatPID)
+		if (pid == PgStatPID)
 		{
 			PgStatPID = 0;
 			if (!EXIT_STATUS_0(exitstatus))
 				LogChildExit(LOG, _("statistics collector process"),
 							 pid, exitstatus);
-			if (StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
-			{
+			if (pmState == PM_RUN)
+            {
 				PgStatPID = pgstat_start();
 				if (Debug_print_server_processes)
 				{
@@ -2958,8 +3036,8 @@ static void do_reaper()
 			continue;
 		}
 
-		/* Was it the system logger? try to start a new one */
-		if (SysLoggerPID != 0 && pid == SysLoggerPID)
+		/* Was it the system logger?  If so, try to start a new one */
+		if (pid == SysLoggerPID)
 		{
 			SysLoggerPID = 0;
 			/* for safety's sake, launch new logger *first* */
@@ -3057,13 +3135,20 @@ static void do_reaper()
 			signal_child(PgStatPID, SIGQUIT);
 	}
 
+	/*
+	 * After cleaning out the SIGCHLD queue, see if we have any state changes
+	 * or actions to make.
+	 */
+	PostmasterStateMachine();
+
 reaper_done:
+
+	/* Done with signal handler */
+	PG_SETMASK(&UnBlockSig);
 
 	if (Debug_print_server_processes && didServiceProcessWork)
 		elog(LOG,"returning from reaper");
 
-	/* Done with signal handler */
-	PG_SETMASK(&UnBlockSig);
 
 	errno = save_errno;
 }
@@ -3166,12 +3251,23 @@ CleanupBackend(int pid,
 
 		if (bp->pid == pid)
 		{
+			if (!bp->dead_end)
+			{
+				if (!ReleasePostmasterChildSlot(bp->child_slot))
+				{
+					/*
+					 * Uh-oh, the child failed to clean itself up.	Treat as a
+					 * crash after all.
+					 */
+					HandleChildCrash(pid, exitstatus, _("server process"));
+					return;
+				}
+#ifdef EXEC_BACKEND
+				ShmemBackendArrayRemove(bp);
+#endif
+			}
 			DLRemove(curr);
 			free(bp);
-			DLFreeElem(curr);
-#ifdef EXEC_BACKEND
-			ShmemBackendArrayRemove(pid);
-#endif
 			break;
 		}
 	}
@@ -3212,12 +3308,15 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 			/*
 			 * Found entry for freshly-dead backend, so remove it.
 			 */
+			if (!bp->dead_end)
+			{
+				(void) ReleasePostmasterChildSlot(bp->child_slot);
+#ifdef EXEC_BACKEND
+				ShmemBackendArrayRemove(bp);
+#endif
+			}
 			DLRemove(curr);
 			free(bp);
-			DLFreeElem(curr);
-#ifdef EXEC_BACKEND
-			ShmemBackendArrayRemove(pid);
-#endif
 			/* Keep looping so we can signal remaining backends */
 		}
 		else
@@ -3243,6 +3342,18 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 				signal_child(bp->pid, (SendStop ? SIGSTOP : SIGQUIT));
 			}
 		}
+	}
+
+	/* Take care of the startup process too */
+	if (pid == StartupPID)
+		StartupPID = 0;
+	else if (StartupPID != 0 && !FatalError)
+	{
+		ereport(DEBUG2,
+				(errmsg_internal("sending %s to process %d",
+								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
+								 (int) StartupPID)));
+		signal_child(StartupPID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
 	/* Take care of the bgwriter too */
@@ -3317,11 +3428,19 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 								 "SIGQUIT",
 								 (int) PgStatPID)));
 		signal_child(PgStatPID, SIGQUIT);
+		allow_immediate_pgstat_restart();
 	}
 
 	/* We do NOT restart the syslogger */
 
 	FatalError = true;
+	/* We now transit into a state of waiting for children to die */
+	if (pmState == PM_RECOVERY ||
+		pmState == PM_RECOVERY_CONSISTENT ||
+		pmState == PM_RUN ||
+		//pmState == PM_WAIT_BACKUP ||
+		pmState == PM_SHUTDOWN)
+		pmState = PM_WAIT_BACKENDS;
 }
 
 
@@ -3355,7 +3474,6 @@ signal_to_name(int signal)
 static void
 LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 {
-
 	if (WIFEXITED(exitstatus))
 		ereport(lev,
 
@@ -3381,6 +3499,7 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 	  translator: %s is a noun phrase describing a child process, such as
 	  "server process" */
 	// strsignal() is preferred over the deprecated use of sys_siglist, on platforms that support it.
+	// Solaris and Linux do support it, but I think MAC OSX doesn't?
 			(errmsg("%s (PID %d) was terminated by signal %d: %s",
 					procname, pid, WTERMSIG(exitstatus),
 					WTERMSIG(exitstatus) < NSIG ?
@@ -3391,7 +3510,7 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 		const char *signalName;
 		signalName = signal_to_name(WTERMSIG(exitstatus));
 		if (signalName == NULL)
-			signalName = "(unknown)";
+			signalName = "(unknown)"
 		ereport(lev,
 
 		/*------
@@ -3411,7 +3530,204 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 						procname, pid, exitstatus)));
 }
 
+/*
+ * Advance the postmaster's state machine and take actions as appropriate
+ *
+ * This is common code for pmdie() and reaper(), which receive the signals
+ * that might mean we need to change state.
+ */
+static void
+PostmasterStateMachine(void)
+{
+#if 0
+	/* GPDB doesn't have online backup or WAIT_BACKUP state */
+	if (pmState == PM_WAIT_BACKUP)
+	{
+		/*
+		 * PM_WAIT_BACKUP state ends when online backup mode is not active.
+		 */
+		if (!BackupInProgress())
+			pmState = PM_WAIT_BACKENDS;
+	}
+#endif
 
+	/*
+	 * If we are in a state-machine state that implies waiting for backends to
+	 * exit, see if they're all gone, and change state if so.
+	 */
+	if (pmState == PM_WAIT_BACKENDS)
+	{
+		/*
+		 * PM_WAIT_BACKENDS state ends when we have no regular backends
+		 * (including autovac workers) and no walwriter or autovac launcher.
+		 * If we are doing crash recovery then we expect the bgwriter to exit
+		 * too, otherwise not.	The archiver, stats, and syslogger processes
+		 * are disregarded since they are not connected to shared memory; we
+		 * also disregard dead_end children here.
+		 */
+		if (CountChildren() == 0 &&
+			StartupPID == 0 &&
+			(BgWriterPID == 0 || !FatalError) &&
+			//WalWriterPID == 0 &&
+			AutoVacPID == 0)
+		{
+			if (FatalError)
+			{
+				/*
+				 * Start waiting for dead_end children to die.	This state
+				 * change causes ServerLoop to stop creating new ones.
+				 */
+				pmState = PM_WAIT_DEAD_END;
+
+				/*
+				 * We already SIGQUIT'd the archiver and stats processes, if
+				 * any, when we entered FatalError state.
+				 */
+			}
+			else
+			{
+				/*
+				 * If we get here, we are proceeding with normal shutdown. All
+				 * the regular children are gone, and it's time to tell the
+				 * bgwriter to do a shutdown checkpoint.
+				 */
+				Assert(Shutdown > NoShutdown);
+				/* Start the bgwriter if not running */
+				if (BgWriterPID == 0)
+					BgWriterPID = StartBackgroundWriter();
+				/* And tell it to shut down */
+				if (BgWriterPID != 0)
+				{
+					signal_child(BgWriterPID, SIGUSR2);
+					pmState = PM_SHUTDOWN;
+				}
+				else
+				{
+					/*
+					 * If we failed to fork a bgwriter, just shut down. Any
+					 * required cleanup will happen at next restart. We set
+					 * FatalError so that an "abnormal shutdown" message gets
+					 * logged when we exit.
+					 */
+					FatalError = true;
+					pmState = PM_WAIT_DEAD_END;
+
+					/* Kill the archiver and stats collector too */
+					if (PgArchPID != 0)
+						signal_child(PgArchPID, SIGQUIT);
+					if (PgStatPID != 0)
+						signal_child(PgStatPID, SIGQUIT);
+				}
+			}
+		}
+	}
+
+	if (pmState == PM_WAIT_DEAD_END)
+	{
+		/*
+		 * PM_WAIT_DEAD_END state ends when the BackendList is entirely empty
+		 * (ie, no dead_end children remain), and the archiver and stats
+		 * collector are gone too.
+		 *
+		 * The reason we wait for those two is to protect them against a new
+		 * postmaster starting conflicting subprocesses; this isn't an
+		 * ironclad protection, but it at least helps in the
+		 * shutdown-and-immediately-restart scenario.  Note that they have
+		 * already been sent appropriate shutdown signals, either during a
+		 * normal state transition leading up to PM_WAIT_DEAD_END, or during
+		 * FatalError processing.
+		 */
+		if (DLGetHead(BackendList) == NULL &&
+			PgArchPID == 0 && PgStatPID == 0)
+		{
+			/* These other guys should be dead already */
+			Assert(StartupPID == 0);
+			Assert(BgWriterPID == 0);
+
+			Assert(AutoVacPID == 0);
+			/* syslogger is not considered here */
+			pmState = PM_NO_CHILDREN;
+		}
+	}
+
+	/*
+	 * If we've been told to shut down, we exit as soon as there are no
+	 * remaining children.	If there was a crash, cleanup will occur at the
+	 * next startup.  (Before PostgreSQL 8.3, we tried to recover from the
+	 * crash before exiting, but that seems unwise if we are quitting because
+	 * we got SIGTERM from init --- there may well not be time for recovery
+	 * before init decides to SIGKILL us.)
+	 *
+	 * Note that the syslogger continues to run.  It will exit when it sees
+	 * EOF on its input pipe, which happens when there are no more upstream
+	 * processes.
+	 */
+	if (Shutdown > NoShutdown && pmState == PM_NO_CHILDREN)
+	{
+		if (FatalError)
+		{
+			ereport(LOG, (errmsg("abnormal database system shutdown")));
+			ExitPostmaster(1);
+		}
+		else
+		{
+			/*
+			 * Terminate backup mode to avoid recovery after a clean fast
+			 * shutdown.
+			 */
+			 /* GPDB doesn't have backup mode, so nothing to cancel */
+			//CancelBackup();
+
+			/* Normal exit from the postmaster is here */
+			ExitPostmaster(0);
+		}
+	}
+
+	/*
+	 * If recovery failed, wait for all non-syslogger children to exit, and
+	 * then exit postmaster. We don't try to reinitialize when recovery fails,
+	 * because more than likely it will just fail again and we will keep
+	 * trying forever.
+	 */
+	if (RecoveryError && pmState == PM_NO_CHILDREN)
+		ExitPostmaster(1);
+
+	/*
+	 * If we need to recover from a crash, wait for all non-syslogger children
+	 * to exit, then reset shmem and StartupDataBase.
+	 */
+	if (FatalError && pmState == PM_NO_CHILDREN)
+	{
+		ereport(LOG,
+				(errmsg("all server processes terminated; reinitializing")));
+
+		/*
+		 * Save the MPP session number from shared-memory before we reset
+		 * everything.  There is some risk here accessing the shared-memory,
+		 * but we don't want to reuse session-ids on the master.
+		 */
+
+		if (ProcGetMppLocalProcessCounter(&Save_MppLocalProcessCounter))
+			ereport(LOG,
+					(errmsg("gp_session_id high-water mark is %d",
+					        Save_MppLocalProcessCounter)));
+
+		/*
+		 * And, save the DTM start time, too.
+		 */
+		Save_DtxStartTime = getDtxStartTime();
+
+		shmem_exit(1);
+		reset_shared(PostPortNumber);
+
+        if ( !SyncMaster )
+        {
+		    StartupPID = StartupDataBase();
+		    Assert(StartupPID != 0);
+        }
+		pmState = PM_STARTUP;
+	}
+}
 
 /*
  * Send a signal to a postmaster child process
@@ -3534,7 +3850,13 @@ BackendStartup(Port *port)
 	port->canAcceptConnections = canAcceptConnections();
 	bn->dead_end = (port->canAcceptConnections != CAC_OK);
 
-    //MyPMChildSlot = AssignPostmasterChildSlot();
+	/*
+	 * Unless it's a dead_end child, assign it a child slot number
+	 */
+	if (!bn->dead_end)
+		bn->child_slot = MyPMChildSlot = AssignPostmasterChildSlot();
+	else
+		bn->child_slot = 0;
 
 #ifdef EXEC_BACKEND
 	pid = backend_forkexec(port);
@@ -3574,6 +3896,8 @@ BackendStartup(Port *port)
 		/* in parent, fork failed */
 		int			save_errno = errno;
 
+		if (!bn->dead_end)
+			(void) ReleasePostmasterChildSlot(bn->child_slot);
 		free(bn);
 		errno = save_errno;
 		ereport(LOG,
@@ -3592,10 +3916,12 @@ BackendStartup(Port *port)
 	 * of backends.
 	 */
 	bn->pid = pid;
-	bn->cancel_key = MyCancelKey;
-	DLAddHead(BackendList, DLNewElem(bn));
+	bn->is_autovacuum = false;
+	DLInitElem(&bn->elem, bn);
+	DLAddHead(BackendList, &bn->elem);
 #ifdef EXEC_BACKEND
-	ShmemBackendArrayAdd(bn);
+	if (!bn->dead_end)
+	    ShmemBackendArrayAdd(bn);
 #endif
 
 	return STATUS_OK;
@@ -3830,7 +4156,7 @@ BackendInitialize(Port *port)
 	 */
 
 	/*
-	 *  If this is internal communications between segments, the protocol must be 3, and the special flag nibble must be 7.
+	 *  GPDB: If this is internal communications between segments, the protocol must be 3, and the special flag nibble must be 7.
 	 *  Otherwise, this is not a trusted connection, and must go through normal client authentication
 	 *
 	 *  This is not really secure, but no client that uses normal libpq can fake this... It requires either a custom libpq,
@@ -3890,6 +4216,7 @@ BackendRun(Port *port)
 	 * a new random sequence in the random() library function.
 	 */
 	random_seed = 0;
+	random_start_time.tv_usec = 0;
 	/* slightly hacky way to get integer microseconds part of timestamptz */
 	TimestampDifference(0, port->SessionStartTime, &secs, &usecs);
 	srandom((unsigned int) (MyProcPid ^ usecs));
@@ -4384,10 +4711,20 @@ SubPostmasterMain(int argc, char *argv[])
 	 * same address the postmaster used.
 	 */
 	if (strcmp(argv[1], "--forkbackend") == 0   ||
+		strcmp(argv[1], "--forkavlauncher") == 0 ||
+		strcmp(argv[1], "--forkavworker") == 0 ||
 		strcmp(argv[1], "--forkautovac") == 0   ||
 		strcmp(argv[1], "--forkseqserver") == 0 ||
 		strcmp(argv[1], "--forkboot") == 0)
 		PGSharedMemoryReAttach();
+
+#if 0
+	/* autovacuum needs this set before calling InitProcess */
+	if (strcmp(argv[1], "--forkavlauncher") == 0)
+		AutovacuumLauncherIAm();
+	if (strcmp(argv[1], "--forkavworker") == 0)
+		AutovacuumWorkerIAm();
+#endif
 
 	/*
 	 * Start our win32 signal implementation. This has to be done after we
@@ -4630,6 +4967,50 @@ sigusr1_handler(SIGNAL_ARGS)
 
 	PG_SETMASK(&BlockSig);
 
+	/*
+	 * RECOVERY_STARTED and RECOVERY_CONSISTENT signals are ignored in
+	 * unexpected states. If the startup process quickly starts up, completes
+	 * recovery, exits, we might process the death of the startup process
+	 * first. We don't want to go back to recovery in that case.
+	 */
+	if (CheckPostmasterSignal(PMSIGNAL_RECOVERY_STARTED) &&
+		pmState == PM_STARTUP)
+	{
+		/* WAL redo has started. We're out of reinitialization. */
+		FatalError = false;
+
+		/*
+		 * Crank up the background writer.	It doesn't matter if this fails,
+		 * we'll just try again later.
+		 */
+		Assert(BgWriterPID == 0);
+		BgWriterPID = StartBackgroundWriter();
+
+		pmState = PM_RECOVERY;
+	}
+	if (CheckPostmasterSignal(PMSIGNAL_RECOVERY_CONSISTENT) &&
+		pmState == PM_RECOVERY)
+	{
+		/*
+		 * Load the flat authorization file into postmaster's cache. The
+		 * startup process won't have recomputed this from the database yet,
+		 * so it may change following recovery.
+		 */
+		load_role();
+
+		/*
+		 * Likewise, start other special children as needed.
+		 */
+		Assert(PgStatPID == 0);
+		PgStatPID = pgstat_start();
+
+		/* XXX at this point we could accept read-only connections */
+		ereport(DEBUG1,
+				(errmsg("database system is in consistent recovery mode")));
+
+		pmState = PM_RECOVERY_CONSISTENT;
+	}
+
 	if (CheckPostmasterSignal(PMSIGNAL_PASSWORD_CHANGE))
 	{
 		/*
@@ -4653,7 +5034,7 @@ sigusr1_handler(SIGNAL_ARGS)
 	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_WAKEN_ARCHIVER) &&
-		PgArchPID != 0 && Shutdown == NoShutdown)
+		PgArchPID != 0)
 	{
 		/*
 		 * Send SIGUSR1 to archiver process, to wake it up and begin archiving
@@ -4732,13 +5113,30 @@ RandomSalt(char *md5Salt)
 static long
 PostmasterRandom(void)
 {
-	static bool initialized = false;
-
-	if (!initialized)
+	/*
+	 * Select a random seed at the time of first receiving a request.
+	 */
+	if (random_seed == 0)
 	{
-		Assert(random_seed != 0);
+		do
+		{
+			struct timeval random_stop_time;
+
+			gettimeofday(&random_stop_time, NULL);
+
+			/*
+			 * We are not sure how much precision is in tv_usec, so we swap
+			 * the high and low 16 bits of 'random_stop_time' and XOR them
+			 * with 'random_start_time'. On the off chance that the result is
+			 * 0, we loop until it isn't.
+			 */
+			random_seed = random_start_time.tv_usec ^
+				((random_stop_time.tv_usec << 16) |
+				 ((random_stop_time.tv_usec >> 16) & 0xffff));
+		}
+		while (random_seed == 0);
+
 		srandom(random_seed);
-		initialized = true;
 	}
 
 	return random();
@@ -4755,7 +5153,12 @@ CountChildren(void)
 	int			cnt = 0;
 
 	for (curr = DLGetHead(BackendList); curr; curr = DLGetSucc(curr))
-		cnt++;
+	{
+		Backend    *bp = (Backend *) DLE_VAL(curr);
+
+		if (!bp->dead_end)
+			cnt++;
+	}
 	return cnt;
 }
 
@@ -5299,100 +5702,26 @@ ShmemBackendArrayAllocation(void)
 static void
 ShmemBackendArrayAdd(Backend *bn)
 {
-	int			i;
+	/* The array slot corresponding to my PMChildSlot should be free */
+	int			i = bn->child_slot - 1;
 
-	/* Find an empty slot */
-	for (i = 0; i < NUM_BACKENDARRAY_ELEMS; i++)
-	{
-		if (ShmemBackendArray[i].pid == 0)
-		{
-			ShmemBackendArray[i] = *bn;
-			return;
-		}
-	}
-
-	ereport(FATAL,
-			(errmsg_internal("no free slots in shmem backend array")));
+	Assert(ShmemBackendArray[i].pid == 0);
+	ShmemBackendArray[i] = *bn;
 }
 
 static void
-ShmemBackendArrayRemove(pid_t pid)
+ShmemBackendArrayRemove(Backend *bn)
 {
-	int			i;
+	int			i = bn->child_slot - 1;
 
-	for (i = 0; i < NUM_BACKENDARRAY_ELEMS; i++)
-	{
-		if (ShmemBackendArray[i].pid == pid)
-		{
-			/* Mark the slot as empty */
-			ShmemBackendArray[i].pid = 0;
-			return;
-		}
-	}
-
-	ereport(WARNING,
-			(errmsg_internal("could not find backend entry with pid %d",
-							 (int) pid)));
+	Assert(ShmemBackendArray[i].pid == bn->pid);
+	/* Mark the slot as empty */
+	ShmemBackendArray[i].pid = 0;
 }
 #endif   /* EXEC_BACKEND */
 
 
 #ifdef WIN32
-
-#if 0
-/*
- * Note: The following three functions must not be interrupted (eg. by
- * signals).  As the Postgres Win32 signalling architecture (currently)
- * requires polling, or APC checking functions which aren't used here, this
- * is not an issue.
- *
- * We keep two separate arrays, instead of a single array of pid/HANDLE
- * structs, to avoid having to re-create a handle array for
- * WaitForMultipleObjects on each call to win32_waitpid.
- */
-
-static void
-win32_AddChild(pid_t pid, HANDLE handle)
-{
-	Assert(win32_childPIDArray && win32_childHNDArray);
-	if (win32_numChildren < NUM_BACKENDARRAY_ELEMS)
-	{
-		win32_childPIDArray[win32_numChildren] = pid;
-		win32_childHNDArray[win32_numChildren] = handle;
-		++win32_numChildren;
-	}
-	else
-		ereport(FATAL,
-				(errmsg_internal("no room for child entry with pid %lu",
-								 (unsigned long) pid)));
-}
-
-static void
-win32_RemoveChild(pid_t pid)
-{
-	int			i;
-
-	Assert(win32_childPIDArray && win32_childHNDArray);
-
-	for (i = 0; i < win32_numChildren; i++)
-	{
-		if (win32_childPIDArray[i] == pid)
-		{
-			CloseHandle(win32_childHNDArray[i]);
-
-			/* Swap last entry into the "removed" one */
-			--win32_numChildren;
-			win32_childPIDArray[i] = win32_childPIDArray[win32_numChildren];
-			win32_childHNDArray[i] = win32_childHNDArray[win32_numChildren];
-			return;
-		}
-	}
-
-	ereport(WARNING,
-			(errmsg_internal("could not find child entry with pid %lu",
-							 (unsigned long) pid)));
-}
-#endif
 
 static pid_t
 win32_waitpid(int *exitstatus)
