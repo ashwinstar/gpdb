@@ -5227,8 +5227,10 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
                             TupSetVirtualTupleNValid(newslot, ex->attnum);
 					}
 
+					/* Use the modified tuple to check constraints below */
+					econtext->ecxt_scantuple = newslot;
 				}
-
+ 
 				/* Check constraints */
 				foreach (l, tab->constraints)
 				{
