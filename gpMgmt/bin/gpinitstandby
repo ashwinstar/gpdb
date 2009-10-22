@@ -63,6 +63,8 @@ PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
 BATCH_DEFAULT=40
 GPSEGINITSB=${WORKDIR}/lib/gpseginitsb.sh
 REMOVE_STANDBY=0
+RESTART_GPDB_AFTER_DELETE=1
+GPSTOP_MODE_OPTION=
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -100,6 +102,9 @@ USAGE () {
 		$ECHO "          tables and only need to re-sync the standby master data directory"
 		$ECHO "      -r, remove current warm master standby, use this option if the warm master standby host has"
 		$ECHO "          failed, this option will need to shutdown the GPDB array to be able to complete request"
+		$ECHO "      -M <smart|fast>, use specified mode when stopping the GPDB array.[default mode:- smart]"
+		$ECHO "      -L, leave the GPDB array in a stopped state after removing the warm standby master."
+		$ECHO "          This option is only valid when used with the -r or -R option"		
 		$ECHO "      -B, <number> number of pg_hba.conf updates to run in parallel [default:-$BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Return codes:"
@@ -136,15 +141,14 @@ DELETE_STANDBY () {
 	fi
 	#Shutdown the cluster
 	LOG_MSG "[INFO]:-Commencing GPDB array shutdown, please wait..." 1
-	$GPSTOP -a
+	$GPSTOP -a $GPSTOP_MODE_OPTION
 	if [ $? -ne 0 ];then
 		LOG_MSG "[WARN]:-Attempt to shutdown the GPDB array with mode=smart failed" 1
 		LOG_MSG "[INFO]:-Ensure that all connections to the GPDB array are removed" 1
 		LOG_MSG "[INFO]:-Then re-call this utility" 1
 		ERROR_EXIT "[FATAL]:-Unable to continue due to active database connections" 2
-	else
-		LOG_MSG "[INFO]:-Successfully completed GPDB array shutdown" 1
 	fi
+	LOG_MSG "[INFO]:-Successfully completed GPDB array shutdown" 1
 	LOG_MSG "[INFO]:-Starting master in admin mode" 1
 	$GPSTART -am
 	if [ $? -ne 0 ];then
@@ -163,7 +167,9 @@ DELETE_STANDBY () {
 	fi
 	LOG_MSG "[INFO]:-Restarting the GPDB array" 1
 	$GPSTOP -am
-	$GPSTART -a
+	if [ $RESTART_GPDB_AFTER_DELETE -eq 1 ];then
+		$GPSTART -a
+	fi
 	if [ $CLEAN_STANDBY -eq 0 ];then
 		LOG_MSG "[INFO]:-Commencing clear down of $MASTER_STANDBY_HOSTNAME" 1
 		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
@@ -198,10 +204,18 @@ DISPLAY_REMOVE_PARAM () {
 	LOG_MSG "[INFO]:-Warm master hostname                            = $MASTER_STANDBY_HOSTNAME" 1
 	LOG_MSG "[INFO]:-Warm master data directory                      = $MASTER_STANDBY_DIRECTORY" 1
 	LOG_MSG "[INFO]:-Warm master port                                = $MASTER_STANDBY_PORT" 1
+	if [ "$GPSTOP_MODE_OPTION" == "-M fast" ];then
+	LOG_MSG "[INFO]:-Shutdown mode                                   = fast" 1
+	else
+	LOG_MSG "[INFO]:-Shutdown mode                                   = smart" 1
+	fi
 	if [ $CLEAN_STANDBY -eq 0 ];then
 	LOG_MSG "[INFO]:-Clear warm master standby files and PID         = On" 1
 	else
 	LOG_MSG "[INFO]:-Clear warm master standby files and PID         = Off, unable to access host" 1
+	fi
+	if [ $RESTART_GPDB_AFTER_DELETE -eq 0 ];then
+	LOG_MSG "[INFO]:-Database will not be restarted" 1
 	fi
 	$ECHO	
 	$ECHO  "Continue with Greenplum standby master removal Yy/Nn>"
@@ -544,7 +558,7 @@ FAIL_PRIMARY_SEGMENTS () {
 #******************************************************************************
 trap '$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE;$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-	while getopts ":v'?'anfqs:l:!DB:r" opt;do
+	while getopts ":v'?'anfqs:l:!DB:rm:L" opt;do
 		case $opt in
 			v ) VERSION_INFO ;;
 			'?' ) USAGE ;;
@@ -558,7 +572,12 @@ if [ $# -ne 0 ]; then
 			f ) FAIL_PRI_SEG=1 ;;
 			D ) DEBUG_LEVEL=1 ;;
 			B ) BATCH_DEFAULT=$OPTARG ;;
+			m ) if [ "$OPTARG" != "fast" ] && [ "$OPTARG" != "smart" ]; then
+					ERROR_EXIT "[FATAL]:- Invalid shutdown option $OPTARG" 2
+				fi
+				GPSTOP_MODE_OPTION="-M $OPTARG" ;;
 			r ) REMOVE_STANDBY=1 ;;
+			L ) RESTART_GPDB_AFTER_DELETE=0 ;;
 			* ) USAGE ;;
 		esac
 	done	
