@@ -29,6 +29,7 @@
  */
 #include "postgres.h"
 
+#include <signal.h>
 #include "access/distributedlog.h"
 #include "access/subtrans.h"
 #include "access/transam.h"
@@ -57,7 +58,7 @@ typedef struct ProcArrayStruct
 	 * actually it is maxProcs entries long.
 	 */
 	PGPROC	   *procs[1];		/* VARIABLE LENGTH ARRAY */
-}	ProcArrayStruct;
+} ProcArrayStruct;
 
 static ProcArrayStruct *procArray;
 
@@ -202,7 +203,8 @@ ProcArrayRemove(PGPROC *proc, bool forPrepare, bool isCommit)
 /*
  * TransactionIdIsInProgress -- is given transaction running in some backend
  *
- * There are three possibilities for finding a running transaction:
+ * Aside from some shortcuts such as checking RecentXmin and our own Xid,
+ * there are three possibilities for finding a running transaction:
  *
  * 1. the given Xid is a main transaction Id.  We will find this out cheaply
  * by looking at the PGPROC struct for each backend.
@@ -234,9 +236,9 @@ TransactionIdIsInProgress(TransactionId xid)
 
 	/*
 	 * Don't bother checking a transaction older than RecentXmin; it could not
-	 * possibly still be running.  (Note: in particular, this guarantees
-	 * that we reject InvalidTransactionId, FrozenTransactionId, etc as
-	 * not running.)
+	 * possibly still be running.  (Note: in particular, this guarantees that
+	 * we reject InvalidTransactionId, FrozenTransactionId, etc as not
+	 * running.)
 	 */
 	if (TransactionIdPrecedes(xid, RecentXmin))
 	{
@@ -252,7 +254,7 @@ TransactionIdIsInProgress(TransactionId xid)
 
 	for (i = 0; i < arrayP->numProcs; i++)
 	{
-		PGPROC	   *proc = arrayP->procs[i];
+		volatile PGPROC *proc = arrayP->procs[i];
 
 		/* Fetch xid just once - see GetNewTransactionId */
 		TransactionId pxid = proc->xid;
@@ -329,8 +331,8 @@ TransactionIdIsInProgress(TransactionId xid)
 
 	/*
 	 * It isn't aborted, so check whether the transaction tree it belongs to
-	 * is still running (or, more precisely, whether it was running when this
-	 * routine started -- note that we already released ProcArrayLock).
+	 * is still running (or, more precisely, whether it was running when we
+	 * held ProcArrayLock).
 	 */
 	topxid = SubTransGetTopmostTransaction(xid);
 	Assert(TransactionIdIsValid(topxid));
@@ -380,7 +382,7 @@ TransactionIdIsActive(TransactionId xid)
 
 	for (i = 0; i < arrayP->numProcs; i++)
 	{
-		PGPROC	   *proc = arrayP->procs[i];
+		volatile PGPROC *proc = arrayP->procs[i];
 
 		/* Fetch xid just once - see GetNewTransactionId */
 		TransactionId pxid = proc->xid;
@@ -449,7 +451,7 @@ GetOldestXmin(bool allDbs)
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
-		PGPROC	   *proc = arrayP->procs[index];
+		volatile PGPROC *proc = arrayP->procs[index];
 
 		if (allDbs || proc->databaseId == MyDatabaseId)
 		{
@@ -799,8 +801,8 @@ Snapshot
 GetSnapshotData(Snapshot snapshot, bool serializable)
 {
 	ProcArrayStruct *arrayP = procArray;
-	TransactionId xmin,
-		xmax;
+	TransactionId xmin;
+	TransactionId xmax;
 	TransactionId globalxmin;
 	int			index;
 	int			count = 0;
@@ -1155,7 +1157,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	 */
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
-		PGPROC	   *proc = arrayP->procs[index];
+		volatile PGPROC *proc = arrayP->procs[index];
 
 		/* Fetch xid just once - see GetNewTransactionId */
 		TransactionId xid = proc->xid;
@@ -1210,7 +1212,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				if (nxids > 0)
 				{
 					memcpy(snapshot->subxip + subcount,
-						   proc->subxids.xids,
+						   ((PGPROC *)proc)->subxids.xids,
 						   nxids * sizeof(TransactionId));
 					subcount += nxids;
 				}
@@ -1339,7 +1341,7 @@ DatabaseHasActiveBackends(Oid databaseId, bool ignoreMyself)
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
-		PGPROC	   *proc = arrayP->procs[index];
+		volatile PGPROC *proc = arrayP->procs[index];
 
 		if (proc->databaseId == databaseId)
 		{
@@ -1469,11 +1471,11 @@ CountActiveBackends(void)
 		 *
 		 * If someone just decremented numProcs, 'proc' could also point to a
 		 * PGPROC entry that's no longer in the array. It still points to a
-		 * PGPROC struct, though, because freed PGPPROC entries just go to
-		 * the free list and are recycled. Its contents are nonsense in that
-		 * case, but that's acceptable for this function.
+		 * PGPROC struct, though, because freed PGPPROC entries just go to the
+		 * free list and are recycled. Its contents are nonsense in that case,
+		 * but that's acceptable for this function.
 		 */
-		if (proc != NULL)
+		if (proc == NULL)
 			continue;
 
 		if (proc == MyProc)
