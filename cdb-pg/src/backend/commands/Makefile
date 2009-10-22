@@ -11,6 +11,7 @@
 subdir = src/backend/commands
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
+override CPPFLAGS := -I$(top_srcdir)/src/backend/gp_libpq_fe $(CPPFLAGS)
 
 OBJS = aggregatecmds.o alter.o analyze.o async.o cluster.o comment.o  \
 	conversioncmds.o copy.o \

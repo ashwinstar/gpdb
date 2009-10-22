@@ -64,7 +64,8 @@
 #include "pgstat.h"
 #include "access/distributedlog.h"
 #include "nodes/makefuncs.h"     /* makeRangeVar */
-
+#include "gp-libpq-fe.h"
+#include "gp-libpq-int.h"
 /*
  * GUC parameters
  */
@@ -240,6 +241,11 @@ static Relation open_relation_and_check_permission(VacuumStmt *vacstmt,
 												   Oid relid,
 												   char expected_relkind);
 static void vacuumStatement(VacuumStmt *vacstmt, List *relids);
+
+static void
+vacuum_combine_stats(CdbDispatchResults *primaryResults,
+						 CdbDispatchResults *mirrorResults,
+						 void *ctx);
 
 /****************************************************************************
  *																			*
@@ -3744,7 +3750,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		 * NOTE: this has the side-effect of calling pfree() on
 		 * pszVacuum! (we re-serialize for our mirrors below).
 		 */
-		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, ctx);
+		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, vacuum_combine_stats, ctx);
 
 		disp_phase = 2;
 
@@ -4023,5 +4029,96 @@ get_oids_for_bitmap(List *all_extra_oids, Relation Irel,
 
 	Assert(extra_oids != NULL && list_length(extra_oids) == 3);
 	return extra_oids;
+}
+
+/*
+ * cdbanalyze_combine_stats
+ * This function combine the stats information sent by QEs to generate
+ * the final stats for QD relations.
+ *
+ * Note that the mirrorResults is ignored by this function.
+ */
+void
+vacuum_combine_stats(CdbDispatchResults *primaryResults,
+						 CdbDispatchResults *mirrorResults,
+						 void *ctx)
+{
+	int result_no;
+	VacuumStatsContext *stats_context = (VacuumStatsContext *)ctx;
+		
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+
+	if (primaryResults == NULL)
+		return;
+
+	/*
+	 * Process the dispatch results from the primary. Note that the QE
+	 * processes also send back the new stats info, such as stats on
+	 * pg_class, for the relevant table and its
+	 * indexes. We parse this information, and compute the final stats
+	 * for the QD.
+	 *
+	 * For pg_class stats, we compute the maximum number of tuples and
+	 * maximum number of pages after processing the stats from each QE.
+	 *
+	 */
+	for(result_no = 0; result_no < primaryResults->resultCount; result_no++)
+	{
+		CdbDispatchResult *result = &(primaryResults->resultArray[result_no]);
+		int num_pgresults = cdbdisp_numPGresult(result);
+		int pgresult_no;
+		VPgClassStats *pgclass_stats = NULL;
+
+		for (pgresult_no = 0; pgresult_no < num_pgresults; pgresult_no++)
+		{
+			ListCell *lc = NULL;
+
+			struct pg_result *pgresult = cdbdisp_getPGresult(result, pgresult_no);
+			int type;
+
+			if (pgresult->extras == NULL)
+				continue;
+
+			Assert(pgresult->extraslen > sizeof(int));
+
+			/* Check for the type of stats that are received */
+			memcpy(&type, pgresult->extras, sizeof(int));
+			Assert(type == PG_CLASS_STATS);
+
+			/*
+			 * Process the stats for pg_class. We simple compute the maximum
+			 * number of rel_tuples and rel_pages.
+			 */
+			pgclass_stats = (VPgClassStats *)pgresult->extras;
+			foreach (lc, stats_context->updated_stats)
+			{
+				VUpdatedStats *tmp_stats = (VUpdatedStats *)lfirst(lc);
+				if (tmp_stats->relid == pgclass_stats->metadata.relid &&
+						tmp_stats->type == PG_CLASS_STATS)
+				{
+					VPgClassStats *tmp_pgclass_stats = (VPgClassStats *)tmp_stats;
+
+					tmp_pgclass_stats->rel_pages +=
+							pgclass_stats->rel_pages;
+					tmp_pgclass_stats->rel_tuples +=
+							pgclass_stats->rel_tuples;
+
+					break;
+				}
+			}
+
+			if (lc == NULL)
+			{
+				Assert(pgresult->extraslen == sizeof(VPgClassStats));
+
+				pgclass_stats = palloc(sizeof(VPgClassStats));
+				memcpy(pgclass_stats, pgresult->extras, pgresult->extraslen);
+
+				stats_context->updated_stats =
+						lappend(stats_context->updated_stats, pgclass_stats);
+			}
+		}
+	}
+
 }
 
