@@ -1107,9 +1107,10 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
 
         /* EOL */
         write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
-
+#if USE_EMAIL
         if (pfixed->send_alert == 't')
         	send_alert(chunk, saved_chunks);
+#endif
     }
 
     /* Free the chunks */
