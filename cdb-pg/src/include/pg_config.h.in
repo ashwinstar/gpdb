@@ -12,29 +12,23 @@
 /* Define to the return type of 'accept' */
 #undef ACCEPT_TYPE_RETURN
 
-/* The normal alignment of `double', in bytes. */
+/* Define if building universal (internal helper macro) */
+#undef AC_APPLE_UNIVERSAL_BUILD
+
+/* The alignment requirement of a `double'. */
 #undef ALIGNOF_DOUBLE
 
-/* The normal alignment of `int', in bytes. */
+/* The alignment requirement of a `int'. */
 #undef ALIGNOF_INT
 
-/* The normal alignment of `long', in bytes. */
+/* The alignment requirement of a `long'. */
 #undef ALIGNOF_LONG
 
-/* The normal alignment of `long long int', in bytes. */
+/* The alignment requirement of a `long long int'. */
 #undef ALIGNOF_LONG_LONG_INT
 
-/* The normal alignment of `short', in bytes. */
+/* The alignment requirement of a `short'. */
 #undef ALIGNOF_SHORT
-
-/* Size of a disk block --- this also limits the size of a tuple. You can set
-   it bigger if you need bigger tuples (although TOAST should reduce the need
-   to have large tuples, since fields can be spread across multiple tuples).
-   BLCKSZ must be a power of 2. The maximum possible value of BLCKSZ is
-   currently 2^15 (32768). This is determined by the 15-bit widths of the
-   lp_off and lp_len fields in ItemIdData (see include/storage/itemid.h).
-   Changing BLCKSZ requires an initdb. */
-//#undef BLCKSZ
 
 /* Define to the default TCP port number on which the server listens and to
    which clients will try to connect. This can be overridden at run-time, but
@@ -48,9 +42,6 @@
 /* Define to 1 to enable DTrace support. (--enable-dtrace) */
 #undef ENABLE_DTRACE
 
-/* Define to 1 to enable Linux Trace. (--enable-ltrace) */
-#undef ENABLE_LTRACE
-
 /* Define to build with GSSAPI support. (--with-gssapi) */
 #undef ENABLE_GSS
 
@@ -60,12 +51,6 @@
 /* Define to 1 to build client libraries as thread-safe code.
    (--enable-thread-safety) */
 #undef ENABLE_THREAD_SAFETY
-
-/* Define to 1 if you want snmp support (MIB and TRAP/INFORM) */
-#undef ENABLE_SNMP
-
-/* Define to 1 if you want email alert support */
-#undef ENABLE_EMAIL
 
 /* Define to 1 if getpwuid_r() takes a 5th argument. */
 #undef GETPWUID_R_5ARG
@@ -82,6 +67,9 @@
 
 /* Define to 1 if you have the `atexit' function. */
 #undef HAVE_ATEXIT
+
+/* Define to 1 if you have the <auth-client.h> header file. */
+#undef HAVE_AUTH_CLIENT_H
 
 /* Define to 1 if you have the `cbrt' function. */
 #undef HAVE_CBRT
@@ -280,6 +268,12 @@
 /* Define to 1 if you have the `eay32' library (-leay32). */
 #undef HAVE_LIBEAY32
 
+/* Define to 1 if you have the `esmtp' library (-lesmtp). */
+#undef HAVE_LIBESMTP
+
+/* Define to 1 if you have the <libesmtp.h> header file. */
+#undef HAVE_LIBESMTP_H
+
 /* Define to 1 if you have the `ldap' library (-lldap). */
 #undef HAVE_LIBLDAP
 
@@ -289,8 +283,8 @@
 /* Define to 1 if you have the `m' library (-lm). */
 #undef HAVE_LIBM
 
-/* Define to 1 if you have the `nsl' library (-lnsl). */
-#undef HAVE_LIBNSL
+/* Define to 1 if you have the `netsnmp' library (-lnetsnmp). */
+#undef HAVE_LIBNETSNMP
 
 /* Define to 1 if you have the `numa' library (-lnuma). */
 #undef HAVE_LIBNUMA
@@ -309,12 +303,6 @@
 
 /* Define to 1 if you have the `wldap32' library (-lwldap32). */
 #undef HAVE_LIBWLDAP32
-
-/* Define to 1 if you have the `xml2' library (-lxml2). */
-#undef HAVE_LIBXML2
-
-/* Define to 1 if you have the `xslt' library (-lxslt). */
-#undef HAVE_LIBXSLT
 
 /* Define to 1 if you have the `z' library (-lz). */
 #undef HAVE_LIBZ
@@ -341,14 +329,14 @@
 /* Define to 1 if you have the <netinet/tcp.h> header file. */
 #undef HAVE_NETINET_TCP_H
 
+/* Define to 1 if you have the <net-snmp/net-snmp-config.h> header file. */
+#undef HAVE_NET_SNMP_NET_SNMP_CONFIG_H
+
 /* Define to 1 if you have the <numa.h> header file. */
 #undef HAVE_NUMA_H
 
 /* Define to 1 if you have the `on_exit' function. */
 #undef HAVE_ON_EXIT
-
-/* Define to 1 if you have the <ossp/uuid.h> header file. */
-#undef HAVE_OSSP_UUID_H
 
 /* Define to 1 if you have the <pam/pam_appl.h> header file. */
 #undef HAVE_PAM_PAM_APPL_H
@@ -616,9 +604,6 @@
 /* Define to 1 if you have the <utime.h> header file. */
 #undef HAVE_UTIME_H
 
-/* Define to 1 if you have the <uuid.h> header file. */
-#undef HAVE_UUID_H
-
 /* Define to 1 if you have the `vsnprintf' function. */
 #undef HAVE_VSNPRINTF
 
@@ -688,6 +673,9 @@
    your system. */
 #undef PTHREAD_CREATE_JOINABLE
 
+/* The size of `off_t', as computed by sizeof. */
+#undef SIZEOF_OFF_T
+
 /* The size of `size_t', as computed by sizeof. */
 #undef SIZEOF_SIZE_T
 
@@ -723,6 +711,9 @@
 /* Define to 1 to build with debug_ntuplestore. (--enable-ntuplestore) */
 #undef USE_DEBUG_NTUPLESTORE
 
+/* Define to 1 to build with email alert capabilities. (--enable-email) */
+#undef USE_EMAIL
+
 /* Define to 1 to build with fault injection capabilities.
    (--enable-faultinjection) */
 #undef USE_FAULT_INJECTION
@@ -738,13 +729,6 @@
 /* Define to 1 to build with LDAP support. (--with-ldap) */
 #undef USE_LDAP
 
-/* Define to 1 to build with XML support. (--with-libxml) */
-#undef USE_LIBXML
-
-/* Define to 1 to use XSLT support when building contrib/xml2.
-   (--with-libxslt) */
-#undef USE_LIBXSLT
-
 /* Define to select named POSIX semaphores. */
 #undef USE_NAMED_POSIX_SEMAPHORES
 
@@ -753,6 +737,9 @@
 
 /* Use replacement snprintf() functions. */
 #undef USE_REPL_SNPRINTF
+
+/* Define to 1 to build with snmp capabilities. (--enable-snmp) */
+#undef USE_SNMP
 
 /* Define to build with (Open)SSL support. (--with-openssl) */
 #undef USE_SSL
@@ -772,9 +759,17 @@
 /* Define to select Win32-style shared memory. */
 #undef USE_WIN32_SHARED_MEMORY
 
-/* Define to 1 if your processor stores words with the most significant byte
-   first (like Motorola and SPARC, unlike Intel and VAX). */
-#undef WORDS_BIGENDIAN
+/* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
+   significant byte first (like Motorola and SPARC, unlike Intel). */
+#if defined AC_APPLE_UNIVERSAL_BUILD
+# if defined __BIG_ENDIAN__
+#  define WORDS_BIGENDIAN 1
+# endif
+#else
+# ifndef WORDS_BIGENDIAN
+#  undef WORDS_BIGENDIAN
+# endif
+#endif
 
 /* Number of bits in a file offset, on hosts where this is settable. */
 #undef _FILE_OFFSET_BITS
@@ -788,11 +783,9 @@
 /* Define to empty if `const' does not conform to ANSI C. */
 #undef const
 
-/* Define to `__inline__' or `__inline' if that's what the C compiler
-   calls it, or to nothing if 'inline' is not supported under any name.  */
-#ifndef __cplusplus
+/* Define as `__inline' if that's what the C compiler calls it, or to nothing
+   if it is not supported. */
 #undef inline
-#endif
 
 /* Define to empty if the C compiler does not understand signed types. */
 #undef signed
