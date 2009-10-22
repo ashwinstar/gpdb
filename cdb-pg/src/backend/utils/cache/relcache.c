@@ -476,7 +476,7 @@ RelationBuildTupleDesc(Relation relation)
 
 		memcpy(relation->rd_att->attrs[attp->attnum - 1],
 			   attp,
-			   ATTRIBUTE_TUPLE_SIZE);
+			   ATTRIBUTE_FIXED_PART_SIZE);
 
 		/* Update constraint/default info */
 		if (attp->attnotnull)
@@ -646,7 +646,6 @@ RelationBuildRuleLock(Relation relation)
 		Form_pg_rewrite rewrite_form = (Form_pg_rewrite) GETSTRUCT(rewrite_tuple);
 		bool		isnull;
 		Datum		rule_datum;
-		text	   *rule_text;
 		char	   *rule_str;
 		RewriteRule *rule;
 
@@ -670,30 +669,22 @@ RelationBuildRuleLock(Relation relation)
 								  rewrite_tupdesc,
 								  &isnull);
 		Assert(!isnull);
-		rule_text = DatumGetTextP(rule_datum);
-		rule_str = DatumGetCString(DirectFunctionCall1(textout,
-												PointerGetDatum(rule_text)));
+		rule_str = TextDatumGetCString(rule_datum);
 		oldcxt = MemoryContextSwitchTo(rulescxt);
 		rule->actions = (List *) stringToNode(rule_str);
 		MemoryContextSwitchTo(oldcxt);
 		pfree(rule_str);
-		if ((Pointer) rule_text != DatumGetPointer(rule_datum))
-			pfree(rule_text);
 
 		rule_datum = heap_getattr(rewrite_tuple,
 								  Anum_pg_rewrite_ev_qual,
 								  rewrite_tupdesc,
 								  &isnull);
 		Assert(!isnull);
-		rule_text = DatumGetTextP(rule_datum);
-		rule_str = DatumGetCString(DirectFunctionCall1(textout,
-												PointerGetDatum(rule_text)));
+		rule_str = TextDatumGetCString(rule_datum);
 		oldcxt = MemoryContextSwitchTo(rulescxt);
 		rule->qual = (Node *) stringToNode(rule_str);
 		MemoryContextSwitchTo(oldcxt);
 		pfree(rule_str);
-		if ((Pointer) rule_text != DatumGetPointer(rule_datum))
-			pfree(rule_text);
 
 		/*
 		 * We want the rule's table references to be checked as though by the
@@ -1136,9 +1127,13 @@ IndexSupportInitialize(oidvector *indclass,
  * numbers is passed in, rather than being looked up, mainly because the
  * caller will have it already.
  *
- * XXX There isn't any provision for flushing the cache.  However, there
- * isn't any provision for flushing relcache entries when opclass info
- * changes, either :-(
+ * Note there is no provision for flushing the cache.  This is OK at the
+ * moment because there is no way to ALTER any interesting properties of an
+ * existing opclass --- all you can do is drop it, which will result in
+ * a useless but harmless dead entry in the cache.	To support altering
+ * opclass membership (not the same as opfamily membership!), we'd need to
+ * be able to flush this cache as well as the contents of relcache entries
+ * for indexes.
  */
 static OpClassCacheEnt *
 LookupOpclassInfo(Oid operatorClassOid,
@@ -1381,7 +1376,7 @@ formrdesc(const char *relationName, Oid relationReltype,
 	{
 		memcpy(relation->rd_att->attrs[i],
 			   &att[i],
-			   ATTRIBUTE_TUPLE_SIZE);
+			   ATTRIBUTE_FIXED_PART_SIZE);
 		has_not_null |= att[i].attnotnull;
 		/* make sure attcacheoff is valid */
 		relation->rd_att->attrs[i]->attcacheoff = -1;
@@ -2609,7 +2604,7 @@ BuildHardcodedDescriptor(int natts, Form_pg_attribute attrs, bool hasoids)
 
 	for (i = 0; i < natts; i++)
 	{
-		memcpy(result->attrs[i], &attrs[i], ATTRIBUTE_TUPLE_SIZE);
+		memcpy(result->attrs[i], &attrs[i], ATTRIBUTE_FIXED_PART_SIZE);
 		/* make sure attcacheoff is valid */
 		result->attrs[i]->attcacheoff = -1;
 	}
@@ -2700,8 +2695,7 @@ AttrDefaultFetch(Relation relation)
 					 RelationGetRelationName(relation));
 			else
 				attrdef[i].adbin = MemoryContextStrdup(CacheMemoryContext,
-								 DatumGetCString(DirectFunctionCall1(textout,
-																	 val)));
+												   TextDatumGetCString(val));
 			break;
 		}
 
@@ -2764,8 +2758,7 @@ CheckConstraintFetch(Relation relation)
 				 RelationGetRelationName(relation));
 
 		check[found].ccbin = MemoryContextStrdup(CacheMemoryContext,
-								 DatumGetCString(DirectFunctionCall1(textout,
-																	 val)));
+												 TextDatumGetCString(val));
 		found++;
 	}
 
@@ -3012,7 +3005,7 @@ RelationGetIndexExpressions(Relation relation)
 							  GetPgIndexDescriptor(),
 							  &isnull);
 	Assert(!isnull);
-	exprsString = DatumGetCString(DirectFunctionCall1(textout, exprsDatum));
+	exprsString = TextDatumGetCString(exprsDatum);
 	result = (List *) stringToNode(exprsString);
 	pfree(exprsString);
 
@@ -3079,7 +3072,7 @@ RelationGetIndexPredicate(Relation relation)
 							 GetPgIndexDescriptor(),
 							 &isnull);
 	Assert(!isnull);
-	predString = DatumGetCString(DirectFunctionCall1(textout, predDatum));
+	predString = TextDatumGetCString(predDatum);
 	result = (List *) stringToNode(predString);
 	pfree(predString);
 
@@ -3263,7 +3256,7 @@ load_relcache_init_file(void)
 		{
 			if ((nread = fread(&len, 1, sizeof(len), fp)) != sizeof(len))
 				goto read_failed;
-			if (len != ATTRIBUTE_TUPLE_SIZE)
+			if (len != ATTRIBUTE_FIXED_PART_SIZE)
 				goto read_failed;
 			if ((nread = fread(rel->rd_att->attrs[i], 1, len, fp)) != len)
 				goto read_failed;
