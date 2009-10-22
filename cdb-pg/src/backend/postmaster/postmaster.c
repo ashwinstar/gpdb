@@ -3510,7 +3510,7 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 		const char *signalName;
 		signalName = signal_to_name(WTERMSIG(exitstatus));
 		if (signalName == NULL)
-			signalName = "(unknown)"
+			signalName = "(unknown)";
 		ereport(lev,
 
 		/*------
