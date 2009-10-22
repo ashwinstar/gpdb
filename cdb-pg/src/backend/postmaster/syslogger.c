@@ -94,7 +94,7 @@ static char *last_file_name = NULL;
  * An inactive buffer has pid == 0 and undefined contents of data.
  */
 
-#define CHUNK_SLOTS 20
+
 PipeProtoChunk saved_chunks[CHUNK_SLOTS];
 
 /* Find an unused chunk */
@@ -1107,6 +1107,9 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
 
         /* EOL */
         write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
+
+        if (pfixed->send_alert == 't')
+        	send_alert(chunk, saved_chunks);
     }
 
     /* Free the chunks */

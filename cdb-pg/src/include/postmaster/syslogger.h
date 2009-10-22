@@ -70,6 +70,8 @@ typedef struct
 #define PIPE_HEADER_SIZE  sizeof(PipeProtoHeader)
 #define PIPE_MAX_PAYLOAD  ((int) (PIPE_CHUNK_SIZE - PIPE_HEADER_SIZE))
 
+#define CHUNK_SLOTS 20
+
 typedef struct 
 {
 	PipeProtoHeader hdr; 
@@ -82,7 +84,8 @@ extern void syslogger_log_chunk_list(PipeProtoChunk *chunk);
 typedef struct
 {
 	pg_time_t session_start_time;
-	bool gp_is_primary;
+	char send_alert;
+	char gp_is_primary;
 	int32 gp_session_id;
 	int32 gp_command_count;
 	int32 gp_segment_id;

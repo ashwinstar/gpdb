@@ -36,6 +36,7 @@
 
 
 #if USE_EMAIL
+PipeProtoChunk * saved_chunks;
 static const char * messagebody_cb(void **buf, int *len, void *arg);
 static int authinteract(auth_client_request_t request, char **result,
 		int fields, void *arg);
@@ -44,7 +45,7 @@ static int authinteract(auth_client_request_t request, char **result,
 
 
 int
-send_alert(PipeProtoChunk *chunk)
+send_alert(PipeProtoChunk *chunk, PipeProtoChunk * saved_chunks_in)
 {
 #if USE_EMAIL
 	smtp_session_t session;
@@ -53,12 +54,14 @@ send_alert(PipeProtoChunk *chunk)
 	auth_context_t authctx;
 	const smtp_status_t *status;
 	//struct sigaction sa;
+
 	char *host = NULL;
 	char *from = NULL;
 	char *subject = NULL;
 	//enum notify_flags notify = Notify_NOTSET;
 
 	Assert(chunk->hdr.log_format == 'c');
+	saved_chunks = saved_chunks_in;
 
 	//
 	host = "scriptmail.intermedia.net";
@@ -149,25 +152,36 @@ typedef struct CSVChunkStr
 static const char *
 get_str_from_chunk(CSVChunkStr *chunkstr)
 {
-    //int wlen = 0;
+    int wlen = 0;
     int len = 0;
+    char * out = NULL;
+    char * outstr = NULL;
+
 
     if (chunkstr->chunk != NULL)
 	{
 		len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
 
-		//if (len == 0 && chunkstr->chunk->hdr.next >= 0)
-		//	PipeProtoChunk *next_chunk = &saved_chunks[chunkstr->chunk->hdr.next];
+		/* Check if the string is an empty string */
+		//if (len > 0 && chunkstr->p[0] == '\0')
+		//	is_empty_string = true;
+		if (len == 0 && chunkstr->chunk->hdr.next >= 0)
+		{
+			//PipeProtoChunk *next_chunk = &saved_chunks[chunkstr->chunk->hdr.next];
+
+		}
 	}
 	else
 		Assert(chunkstr->p == NULL);
 
     if (chunkstr->p == NULL)
     	return "";
-    else
-    	return chunkstr->p;
 
-#if 0
+    out = malloc(len+1);
+    out[0] = '\0';
+
+    outstr = out;
+
     while(chunkstr->p)
     {
         bool done = false;
@@ -176,11 +190,17 @@ get_str_from_chunk(CSVChunkStr *chunkstr)
         /* Write OK, don't forget to account for the trailing 0 */
         if(wlen < len)
         {
+        	memcpy(outstr, chunkstr->p, wlen + 1); // include the null byte
             done = true;
             chunkstr->p += wlen + 1;
         }
         else
+        {
+        	memcpy(outstr, chunkstr->p, wlen);
+        	outstr[wlen] = '\0';
+        	outstr += wlen;
             chunkstr->p += wlen;
+        }
 
         if(chunkstr->p - chunkstr->chunk->data == chunkstr->chunk->hdr.len)
         {
@@ -201,7 +221,8 @@ get_str_from_chunk(CSVChunkStr *chunkstr)
         if(done)
             break;
     }
-#endif
+
+    return out;
 }
 
 #if USE_EMAIL
