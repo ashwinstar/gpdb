@@ -1291,8 +1291,10 @@ class gpload:
             f = open(pgpassname,'r')
         except IOError:
             return
-        for line in map(splitPgpassLine,f):
+        for row in f:
             try:
+                row = row.rstrip("\n")
+                line = splitPgpassLine(row)
                 if line[0]!='*' and line[0].lower()!=self.options.h.lower():
                     continue
                 if line[1]!='*' and int(line[1])!=self.options.p:
