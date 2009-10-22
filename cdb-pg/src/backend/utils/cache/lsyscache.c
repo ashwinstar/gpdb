@@ -3,8 +3,8 @@
  * lsyscache.c
  *	  Convenience routines for common queries in the system catalog cache.
  *
- * Portions Copyright (c) 2007-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2007-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -1611,8 +1611,7 @@ get_typdefault(Oid typid)
 	if (!isNull)
 	{
 		/* We have an expression default */
-		expr = stringToNode(DatumGetCString(DirectFunctionCall1(textout,
-																datum)));
+		expr = stringToNode(TextDatumGetCString(datum));
 	}
 	else
 	{
@@ -1627,8 +1626,7 @@ get_typdefault(Oid typid)
 			char	   *strDefaultVal;
 
 			/* Convert text datum to C string */
-			strDefaultVal = DatumGetCString(DirectFunctionCall1(textout,
-																datum));
+			strDefaultVal = TextDatumGetCString(datum);
 			/* Convert C string to a value of the given type */
 			datum = OidInputFunctionCall(type->typinput, strDefaultVal,
 										 getTypeIOParam(typeTuple), -1);
