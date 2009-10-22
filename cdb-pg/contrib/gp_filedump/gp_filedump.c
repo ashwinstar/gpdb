@@ -1631,7 +1631,7 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 								 */
 								struct varlena *va =
 								(struct varlena *) DatumGetPointer(datum);
-								varattrib      *attrib = (varattrib *) va;
+								struct varlena      *attrib = (struct varlena *) va;
 
 								if (VARATT_IS_EXTENDED(attrib))
 								{
@@ -1659,7 +1659,7 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 							break;
 						case NUMERICOID:
 							{
-								varattrib      *attrib = DatumGetPointer(datum);
+								struct varlena      *attrib = DatumGetPointer(datum);
 								char           *str;
 
 								if (VARATT_IS_EXTENDED(attrib))
@@ -1668,9 +1668,9 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 									{
 										unsigned        size = VARSIZE_SHORT(attrib);
 										unsigned        new_size = size - VARHDRSZ_SHORT + VARHDRSZ;
-										varattrib      *tmp = attrib;
+										struct varlena      *tmp = attrib;
 
-										attrib = (varattrib *) malloc(new_size);
+										attrib = (struct varlena *) malloc(new_size);
 										SET_VARSIZE(attrib, new_size);
 										memcpy(VARDATA(attrib), VARDATA_SHORT(tmp), size - VARHDRSZ_SHORT);
 									}
