@@ -102,9 +102,9 @@ USAGE () {
 		$ECHO "          tables and only need to re-sync the standby master data directory"
 		$ECHO "      -r, remove current warm master standby, use this option if the warm master standby host has"
 		$ECHO "          failed, this option will need to shutdown the GPDB array to be able to complete request"
-		$ECHO "      -M <smart|fast>, use specified mode when stopping the GPDB array.[default mode:- smart]"
+		$ECHO "      -m <smart|fast>, use specified mode when stopping the GPDB array.[default mode:- smart]"
 		$ECHO "      -L, leave the GPDB array in a stopped state after removing the warm standby master."
-		$ECHO "          This option is only valid when used with the -r or -R option"		
+		$ECHO "          This option is only valid when used with the -r option"		
 		$ECHO "      -B, <number> number of pg_hba.conf updates to run in parallel [default:-$BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Return codes:"
