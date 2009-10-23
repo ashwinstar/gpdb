@@ -4,7 +4,7 @@
  *	  POSTGRES definitions for external and compressed storage
  *	  of variable size attributes.
  *
- * Copyright (c) 2000-2009, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/include/access/tuptoaster.h,v 1.28.2.1 2007/02/04 20:00:49 tgl Exp $
  *
@@ -16,12 +16,6 @@
 #include "access/htup.h"
 #include "access/memtup.h"
 #include "storage/bufpage.h"
-#include "utils/relcache.h"
-
-#ifndef VARSIZE_TO_SHORT
-#define VARSIZE_TO_SHORT(PTR)   ((char)(VARSIZE(PTR)-VARHDRSZ+VARHDRSZ_SHORT) | 0x80)
-#define VARSIZE_TO_SHORT_D(D)   VARSIZE_TO_SHORT(DatumGetPointer(D))
-#endif 
 
 /*
  * This enables de-toasting of index entries.  Needed until VACUUM is
@@ -98,7 +92,7 @@ extern void toast_delete(Relation rel, HeapTuple oldtup);
  *		in compressed format.
  * ----------
  */
-extern struct varlena *heap_tuple_fetch_attr(struct varlena *attr);
+extern varattrib *heap_tuple_fetch_attr(varattrib *attr);
 
 /* ----------
  * varattrib_untoast_ptr_len
@@ -115,7 +109,7 @@ extern void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void 
  *		it as needed.
  * ----------
  */
-extern struct varlena *heap_tuple_untoast_attr(struct varlena *attr);
+extern varattrib *heap_tuple_untoast_attr(varattrib *attr);
 
 /* ----------
  * heap_tuple_untoast_attr_slice() -
@@ -124,7 +118,7 @@ extern struct varlena *heap_tuple_untoast_attr(struct varlena *attr);
  *		(Handles all cases for attribute storage)
  * ----------
  */
-extern struct varlena *heap_tuple_untoast_attr_slice(struct varlena *attr,
+extern varattrib *heap_tuple_untoast_attr_slice(varattrib *attr,
 							  int32 sliceoffset,
 							  int32 slicelength);
 
