@@ -39,7 +39,7 @@ COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT
 100|100|100
 200 bad data from stdin
 300|300|300
-400|400| more bad data from stdin
+500|500| more bad data from stdin
 \.
 SELECT * FROM sreh_copy ORDER BY a,b,c;
 SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata,errmsg;
