@@ -7,8 +7,8 @@ Adds and/or initializes a standby master host for a Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-gpinitstandby -s <standby_hostname> [-r] [-n] [-a] [-q] 
-[-l <logfile_directory>] [-B <parallel_processes>] [-D] 
+gpinitstandby -s <standby_hostname> [-r] [-M smart | fast] [-n] 
+[-a] [-q] [-l <logfile_directory>] [-L] [-B <parallel_processes>] [-D] 
 
 gpinitstandby -? 
 
@@ -74,6 +74,25 @@ and just want to resynchronize the data between the primary and
 backup master host. The Greenplum system catalog tables will not 
 be updated.
 
+
+-M fast (fast shutdown - rollback)
+
+Use fast shut down when stopping Greenplum Database at the beginning
+of the standby initialization process. Any transactions in progress 
+are interrupted and rolled back.
+
+
+-M smart (smart shutdown - warn)
+
+Use smart shut down when stopping Greenplum Database at the beginning
+of the standby initialization process. If there are active connections, 
+this command fails with a warning. This is the default shutdown mode.
+
+
+-L (leave database stopped)
+
+Leave Greenplum Database in a stopped state after removing the warm 
+standby master.
 
 -a (do not prompt)
 
