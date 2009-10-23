@@ -346,7 +346,7 @@ inv_getsize(LargeObjectDesc *obj_desc)
 		if (VARATT_IS_EXTENDED(datafield))
 		{
 			datafield = (bytea *)
-				heap_tuple_untoast_attr(datafield);
+				heap_tuple_untoast_attr((varattrib *) datafield);
 			pfreeit = true;
 		}
 		lastbyte = data->pageno * LOBLKSIZE + getbytealen(datafield);
@@ -474,7 +474,7 @@ inv_read(LargeObjectDesc *obj_desc, char *buf, int nbytes)
 			if (VARATT_IS_EXTENDED(datafield))
 			{
 				datafield = (bytea *)
-					heap_tuple_untoast_attr(datafield);
+					heap_tuple_untoast_attr((varattrib *) datafield);
 				pfreeit = true;
 			}
 			len = getbytealen(datafield);
@@ -595,7 +595,7 @@ inv_write(LargeObjectDesc *obj_desc, const char *buf, int nbytes)
 			if (VARATT_IS_EXTENDED(datafield))
 			{
 				datafield = (bytea *)
-					heap_tuple_untoast_attr(datafield);
+					heap_tuple_untoast_attr((varattrib *) datafield);
 				pfreeit = true;
 			}
 			len = getbytealen(datafield);
@@ -774,7 +774,7 @@ inv_truncate(LargeObjectDesc *obj_desc, int len)
 		if (VARATT_IS_EXTENDED(datafield))
 		{
 			datafield = (bytea *)
-				heap_tuple_untoast_attr(datafield);
+				heap_tuple_untoast_attr((varattrib *) datafield);
 			pfreeit = true;
 		}
 		pagelen = getbytealen(datafield);
