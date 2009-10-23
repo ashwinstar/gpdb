@@ -83,5 +83,5 @@ uninstall:
 	rm -f '$(DESTDIR)$(bindir)/gpsnmpd$(X)'
 
 clean distclean maintainer-clean:
-	rm -f gpsnmpd
-	$(X) $(OBJS)
+clean distclean maintainer-clean:
+	rm -f gpsnmpd$(X) $(OBJS)
