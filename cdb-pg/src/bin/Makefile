@@ -15,7 +15,11 @@ include $(top_builddir)/src/Makefile.global
 
 DIRS = initdb ipcclean pg_ctl pg_dump \
 	psql scripts pg_config pg_controldata pg_resetxlog \
-	gpcheckdb gpmapreduce gpupgrade
+	gpcheckdb gpmapreduce gpupgrade 
+	
+ifeq ($(USE_SNMP), 1)
+DIRS+=gpsnmpd
+endif
 
 ifeq ($(PORTNAME), win32)
 DIRS+=pgevent

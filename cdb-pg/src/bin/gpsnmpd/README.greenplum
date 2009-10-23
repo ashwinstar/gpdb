@@ -1,0 +1,61 @@
+SNMP MIB for monitoring the health of the Greenplum Database (3.x)
+------------------------------------------------------------------
+6/30/2008   Ben Werther    bwerther@greenplum.com
+-------------------------------------------------
+
+NOTE: This is for internal Greenplum use only, or as a package installed by authorized Greenplum personel on customer systems. The source code should not be given to customers at this point in time.
+
+I've adapted and extended the basic Postgres SNMP MIB to support health monitoring of a Greenplum array.
+
+The Postgres MIB implements the standard RDBMS MIB, which provides general vendor neutral information about the configuration of a database.
+
+For details of the underlying MIB, see http://publib.boulder.ibm.com/infocenter/idshelp/v10/index.jsp?topic=/com.ibm.snmp.doc/snmp80.htm or the actual MIB file enclosed.
+
+
+How it operates:
+- The mode in which I've been using this package is as a standalone SNMP agent. It needs net-snmp to be on the system to build, but runs independently on its own port.
+
+Building the MIB:
+- Requires that the build box has a GPDB or Postgres tree, and has net-snmp installed.
+- Copy this folder into the contrib folder of GPDB or Postgres
+- make clean; make
+- Let me know if you have any problems building
+
+Installing the MIB:
+- Copy the APPLICATION-MIB and RDBMS-MIB files to the /usr/share/snmp/mibs folder on the target machine
+- Put pgsnmpd and pgsnmpd.conf in a convenient directory 
+- Edit the agentaddress setting in pgsnmpd.conf to set the UDP port that it will listen on (currently set to 160)
+- Run pgsnmpd with syntax like: pgsnmpd -c pgsnmpd.conf -C "host=127.0.0.1 user=gpadmin dbname=pgsnmpd" where -C is the connect string to the Greenplum database
+- From an snmp client you should be able to browse this MIB
+
+    snmpwalk -c public localhost:160 -v2c RDBMS-MIB::rdbmsRelState       will give you the state of the system and the segments --
+
+         [root@localhost pgsnmpd-1.0]# snmpwalk -c public localhost:160 -v2c RDBMS-MIB::rdbmsRelState
+          RDBMS-MIB::rdbmsRelState.1.1 = INTEGER: active(2)
+          RDBMS-MIB::rdbmsRelState.2.0 = INTEGER: active(2)
+          RDBMS-MIB::rdbmsRelState.2.1 = INTEGER: active(2)
+          RDBMS-MIB::rdbmsRelState.2.2 = INTEGER: active(2)
+          RDBMS-MIB::rdbmsRelState.2.3 = INTEGER: active(2)
+
+  rdbmsRelState.1.1 is the entire array, and can have the value:
+     active(2) -- if it is queryable
+     unavailable(5) -- if the array or a required segement is down
+
+     [it determines this by connecting to the array and doing a tiny distributed query every 60 seconds]
+
+  rdbmsRelState.2.x are the segnents, and can have the values:
+    active(2) -- currently valid and acting as a primary
+    available(3) -- valid but not acting as a primary (i.e. a standby)
+    unavailable(4) -- not valid
+    other(1) -- anything else (this is not expected to occur)
+     
+    [it determines these from the gp_configuration table]
+
+
+
+ Good luck, and let me know if you have any questions...
+
+   -Ben
+
+
+
