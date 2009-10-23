@@ -75,7 +75,7 @@ index_form_tuple(TupleDesc tupleDescriptor,
 		if (VARATT_IS_EXTERNAL_D(values[i]))
 		{
 			untoasted_values[i] = 
-				PointerGetDatum(heap_tuple_fetch_attr((varattrib *) 
+				PointerGetDatum(heap_tuple_fetch_attr(
 													  DatumGetPointer(values[i])));
 			untoasted_free[i] = true;
 		}

@@ -2167,7 +2167,7 @@ struct varlena *
 pg_detoast_datum(struct varlena * datum)
 {
 	if (VARATT_IS_EXTENDED(datum))
-		return (struct varlena *) heap_tuple_untoast_attr((varattrib *) datum);
+		return heap_tuple_untoast_attr(datum);
 	else
 		return datum;
 }
@@ -2176,7 +2176,7 @@ struct varlena *
 pg_detoast_datum_copy(struct varlena * datum)
 {
 	if (VARATT_IS_EXTENDED(datum))
-		return (struct varlena *)heap_tuple_untoast_attr((varattrib *) datum);
+		return heap_tuple_untoast_attr(datum);
 	else
 	{
 		/* Make a modifiable copy of the varlena object */
@@ -2192,14 +2192,14 @@ struct varlena *
 pg_detoast_datum_slice(struct varlena * datum, int32 first, int32 count)
 {
 	/* Only get the specified portion from the toast rel */
-	return (struct varlena *)heap_tuple_untoast_attr_slice((varattrib *) datum, first, count);
+	return heap_tuple_untoast_attr_slice(datum, first, count);
 }
 
 struct varlena *
 pg_detoast_datum_packed(struct varlena * datum)
 {
 	if (VARATT_IS_COMPRESSED(datum) || VARATT_IS_EXTERNAL(datum))
-		return (struct varlena *)heap_tuple_untoast_attr((varattrib *) datum);
+		return heap_tuple_untoast_attr(datum);
 	else
 		return datum;
 }
