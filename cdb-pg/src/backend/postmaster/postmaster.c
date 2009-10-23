@@ -559,7 +559,8 @@ static bool SyncMaster = false;
 #define EXIT_STATUS_1(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 1)
 
 /* if we are a QD postmaster or not */
-static bool Gp_entry_postmaster = false;
+extern bool Gp_entry_postmaster;
+bool Gp_entry_postmaster = false;
 
 static int Save_MppLocalProcessCounter = 0;
 static DistributedTransactionTimeStamp Save_DtxStartTime = 0;

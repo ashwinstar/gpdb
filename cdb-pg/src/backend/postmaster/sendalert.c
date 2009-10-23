@@ -10,7 +10,7 @@
  *-------------------------------------------------------------------------
  */
 #define _XOPEN_SOURCE 500
-#include "postgres.h"
+#include "postgres_fe.h"
 
 #include <fcntl.h>
 #include <signal.h>
@@ -18,13 +18,18 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <stdio.h>
 
 #include "lib/stringinfo.h"
-#include "miscadmin.h"
+#include "libpq/pqsignal.h"
+
 #include "pgtime.h"
-#include "utils/guc.h"
+
 #include "postmaster/syslogger.h"
 #include "postmaster/sendalert.h"
+//#include "miscadmin.h"
+//#include "utils/guc.h"
+#include "utils/elog.h"
 
 #if USE_EMAIL
 #if USE_SSL
@@ -34,18 +39,71 @@
 #include <libesmtp.h>
 #endif
 
-
-#if USE_EMAIL
-PipeProtoChunk * saved_chunks;
-static const char * messagebody_cb(void **buf, int *len, void *arg);
-static int authinteract(auth_client_request_t request, char **result,
-		int fields, void *arg);
-//static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
+#if 1
+#include <net-snmp/net-snmp-config.h>
+#include <net-snmp/net-snmp-includes.h>
 #endif
 
 
+#if USE_EMAIL
+const PipeProtoChunk * saved_chunks;
+static char * get_str_from_chunk(CSVChunkStr *chunkstr);
+static const char * messagebody_cb(void **buf, int *len, void *arg);
+static int authinteract(auth_client_request_t request, char **result,
+		int fields, void *arg);
+static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
+#endif
+FILE * mylog = NULL;
+
 int
-send_alert(PipeProtoChunk *chunk, PipeProtoChunk * saved_chunks_in)
+send_alert_from_chunks(const PipeProtoChunk *chunk, const PipeProtoChunk * saved_chunks_in)
+{
+	static bool firsttime = true;
+	GpErrorData errorData;
+
+	GpErrorDataFixFields *pfixed = (GpErrorDataFixFields *) (chunk->data);
+	CSVChunkStr chunkstr = { chunk, chunk->data + sizeof(GpErrorDataFixFields) };
+
+	if (chunk==NULL)
+		return -1;
+	pqsignal(SIGSEGV, SIG_DFL);
+	if (firsttime)
+	{
+		sleep(20);
+		firsttime = false;
+	}
+	if (mylog == NULL)
+		mylog = fopen("/tmp/mylog.log","a");
+	fprintf(mylog," In send_alert_from_chunks\n");
+	fflush(mylog);
+
+	if (chunk->hdr.log_format != 'c')
+		elog(ERROR,"send_alert_from_chunks only works when CSV logging is enabled");
+	saved_chunks = saved_chunks_in;
+
+	memset(&errorData,0,sizeof(errorData));
+
+	memcpy(&errorData.fix_fields, pfixed, sizeof(GpErrorDataFixFields));
+
+	errorData.username = get_str_from_chunk(&chunkstr);
+	fprintf(mylog,"%s\n",errorData.username);
+	errorData.databasename = get_str_from_chunk(&chunkstr);
+	errorData.remote_host = get_str_from_chunk(&chunkstr);
+	errorData.remote_port = get_str_from_chunk(&chunkstr);
+	errorData.error_severity = get_str_from_chunk(&chunkstr);
+	errorData.sql_state = get_str_from_chunk(&chunkstr);
+	errorData.error_message = get_str_from_chunk(&chunkstr);
+	fprintf(mylog,"%s: %s\n",errorData.error_severity, errorData.error_message);
+
+	// Don't forget to free them!
+
+
+
+	return -1; //send_alert(&errorData);
+
+}
+int
+send_alert(const GpErrorData * errorData)
 {
 #if USE_EMAIL
 	smtp_session_t session;
@@ -60,9 +118,10 @@ send_alert(PipeProtoChunk *chunk, PipeProtoChunk * saved_chunks_in)
 	char *subject = NULL;
 	//enum notify_flags notify = Notify_NOTSET;
 
-	Assert(chunk->hdr.log_format == 'c');
-	saved_chunks = saved_chunks_in;
+	fprintf(mylog," In send_alert\n");
+	fflush(mylog);
 
+	//pqsignal(SIGPIPE, SIG_IGN);  // already set in syslogger.c
 	//
 	host = "scriptmail.intermedia.net";
 	from = "cmcdevitt@greenplum.com";
@@ -77,6 +136,8 @@ send_alert(PipeProtoChunk *chunk, PipeProtoChunk * saved_chunks_in)
 
 
 	smtp_set_server(session, host ? host : "localhost:25");
+	fprintf(mylog," did set_server\n");
+	fflush(mylog);
 
 	/* Do what's needed at application level to use authentication.
 	 */
@@ -84,7 +145,7 @@ send_alert(PipeProtoChunk *chunk, PipeProtoChunk * saved_chunks_in)
 	auth_set_mechanism_flags(authctx, AUTH_PLUGIN_PLAIN, 0);
 	auth_set_interact_cb(authctx, authinteract, NULL);
 
-	//  smtp_set_eventcb(session, event_cb, NULL);
+	smtp_set_eventcb(session, event_cb, NULL);
 
 	smtp_auth_set_context(session, authctx);
 
@@ -100,7 +161,7 @@ send_alert(PipeProtoChunk *chunk, PipeProtoChunk * saved_chunks_in)
 	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
 	smtp_set_header(message, "Message-Id", NULL);
 
-	smtp_set_messagecb(message, messagebody_cb, chunk);
+	smtp_set_messagecb(message, messagebody_cb, (void *)errorData);
 
 	/* Recipient must be in RFC2821 format */
 
@@ -139,17 +200,15 @@ send_alert(PipeProtoChunk *chunk, PipeProtoChunk * saved_chunks_in)
 
 	auth_client_exit();
 #endif
+	fprintf(stderr," returning from send_alert\n");
+	fflush(mylog);
 
 	return 0;
 }
 
-typedef struct CSVChunkStr
-{
-    PipeProtoChunk *chunk;
-    char *p;
-} CSVChunkStr;
 
-static const char *
+
+static char *
 get_str_from_chunk(CSVChunkStr *chunkstr)
 {
     int wlen = 0;
@@ -163,46 +222,58 @@ get_str_from_chunk(CSVChunkStr *chunkstr)
 		len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
 
 		/* Check if the string is an empty string */
-		//if (len > 0 && chunkstr->p[0] == '\0')
-		//	is_empty_string = true;
+		if (len > 0 && chunkstr->p[0] == '\0')
+			return strdup("");
+
 		if (len == 0 && chunkstr->chunk->hdr.next >= 0)
 		{
-			//PipeProtoChunk *next_chunk = &saved_chunks[chunkstr->chunk->hdr.next];
-
+			const PipeProtoChunk *next_chunk = &saved_chunks[chunkstr->chunk->hdr.next];
+			if (next_chunk->hdr.len > 0 && next_chunk->data[0] == '\0')
+				return strdup("");
 		}
 	}
 	else
-		Assert(chunkstr->p == NULL);
+	{
+		if(chunkstr->p != NULL)
+			fprintf(mylog,"Bug in send_alert:  chunkstr->p != NULL");
+		return strdup("");
+	}
 
     if (chunkstr->p == NULL)
-    	return "";
+    	return strdup("");
 
-    out = malloc(len+1);
-    out[0] = '\0';
 
-    outstr = out;
-
+    fprintf(mylog,"finding non-empty string\n");
     while(chunkstr->p)
     {
-        bool done = false;
+        bool done = true;
         wlen = strlen(chunkstr->p);
 
         /* Write OK, don't forget to account for the trailing 0 */
         if(wlen < len)
         {
+        	out = malloc(wlen + 1);
+        	outstr = out;
         	memcpy(outstr, chunkstr->p, wlen + 1); // include the null byte
+        	fprintf(mylog,"string: %s\n",chunkstr->p);
+        	fflush(mylog);
             done = true;
-            chunkstr->p += wlen + 1;
+            chunkstr->p += wlen + 1;  // skip to next string.
         }
         else
         {
+        	fprintf(mylog,"partial string: %s\n",chunkstr->p);
+        	        	fflush(mylog);
+        	out = malloc(wlen + 2);
+        	outstr = out;
         	memcpy(outstr, chunkstr->p, wlen);
         	outstr[wlen] = '\0';
         	outstr += wlen;
             chunkstr->p += wlen;
+            done = true; // not really
         }
 
-        if(chunkstr->p - chunkstr->chunk->data == chunkstr->chunk->hdr.len)
+        if(chunkstr->p - chunkstr->chunk->data >= chunkstr->chunk->hdr.len)
         {
             /* switch to next chunk */
             if(chunkstr->chunk->hdr.next >= 0)
@@ -230,11 +301,9 @@ const char *
 messagebody_cb(void **buf, int *len, void *arg)
 {
 
-	PipeProtoChunk *chunk = (PipeProtoChunk *)arg;
+	const GpErrorData *errorData = (GpErrorData *)arg;
 
 
-	//GpErrorDataFixFields *pfixed = (GpErrorDataFixFields *) (chunk->data);
-	CSVChunkStr chunkstr = { chunk, chunk->data + sizeof(GpErrorDataFixFields) };
 
 	const char * message = "Return-Path: <cmcdevitt@greenplum.com>\r\n"
 		"Subject: LibESMTP test mail\r\n"
@@ -246,12 +315,12 @@ messagebody_cb(void **buf, int *len, void *arg)
 		"Hello world!\r\n"
 
 		"\r\n\r\nEnd of test---\r\n";
-	if (chunk==NULL)
+
+	if (errorData && errorData->username)
 	{
-		*len = 0;
-		return NULL;
+		if ( strlen(errorData->username) > 255 )
+			elog(ERROR,"Something strange");
 	}
-	get_str_from_chunk(&chunkstr);
 	*len = strlen(message);
 	return message;
 }
@@ -281,7 +350,6 @@ static int authinteract(auth_client_request_t request, char **result,
 
 }
 
-#if 0
 /*
  * We currently just return 1 to keep libesmtp happy
  * Will turn this into a proper event handler some day
@@ -335,6 +403,5 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	va_end(alist);
 
 }
-#endif
 #endif
 

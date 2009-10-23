@@ -78,6 +78,12 @@ typedef struct
 	char		data[PIPE_MAX_PAYLOAD];
 } PipeProtoChunk;
 
+typedef struct CSVChunkStr
+{
+    const PipeProtoChunk *chunk;
+    const char *p;
+} CSVChunkStr;
+
 extern void write_syslogger_file_binary(const char *buffer, int count);
 extern void syslogger_log_chunk_list(PipeProtoChunk *chunk);
 

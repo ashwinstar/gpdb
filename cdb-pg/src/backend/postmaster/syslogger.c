@@ -46,9 +46,11 @@
 #include "utils/guc.h"
 #include "utils/ps_status.h"
 #include "utils/timestamp.h"
+#include "cdb/cdbvars.h"
 
 #define READ_BUF_SIZE (2 * PIPE_CHUNK_SIZE)
 
+extern bool Gp_entry_postmaster;
 
 /*
  * GUC parameters.	Redirect_stderr cannot be changed after postmaster
@@ -184,7 +186,10 @@ SysLoggerMain(int argc, char *argv[])
 
     am_syslogger = true;
 
-    init_ps_display("logger process", "", "", "");
+    if (Gp_entry_postmaster && Gp_role == GP_ROLE_DISPATCH)
+    	init_ps_display("master logger process", "", "", "");
+    else
+    	init_ps_display("logger process", "", "", "");
 
     /*
      * If we restarted, our stderr is already redirected into our own input
@@ -578,7 +583,7 @@ SysLoggerMain(int argc, char *argv[])
 /*
  * Postmaster subroutine to start a syslogger subprocess.
  */
-    int
+int
 SysLogger_Start(void)
 {
     pid_t		sysloggerPid;
@@ -884,11 +889,6 @@ syslogger_append_current_timestamp(bool amsyslogger)
 	}
 }
 
-typedef struct CSVChunkStr
-{
-    PipeProtoChunk *chunk;
-    char *p;
-} CSVChunkStr;
 
 /*
  * We use the PostgreSQL defaults for CSV, i.e. quote = escape = '"'
@@ -1107,9 +1107,11 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
 
         /* EOL */
         write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
+
 #if USE_EMAIL
         if (pfixed->send_alert == 't')
-        	send_alert(chunk, saved_chunks);
+        	if (Gp_entry_postmaster && Gp_role == GP_ROLE_DISPATCH) /* Only the master sends alerts */
+        		send_alert_from_chunks(chunk, saved_chunks);
 #endif
     }
 

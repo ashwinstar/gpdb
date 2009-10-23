@@ -3,5 +3,6 @@
 
 #include "postmaster/syslogger.h"
 
-extern int send_alert(PipeProtoChunk *chunk, PipeProtoChunk * saved_chunks_in);
+extern int send_alert(const GpErrorData * errorData);
+extern int send_alert_from_chunks(const PipeProtoChunk *chunk, const PipeProtoChunk * saved_chunks_in);
 #endif 
