@@ -43,7 +43,7 @@ except Exception, e:
 import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
 import platform
 
-EXECNAME = os.path.split(__file__)[-1]
+EXECNAME = 'gpload'
 
 NUM_WARN_ROWS = 0
 
