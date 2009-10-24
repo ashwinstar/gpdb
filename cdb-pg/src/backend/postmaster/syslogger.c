@@ -1111,7 +1111,7 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
 #if USE_EMAIL
         if (pfixed->send_alert == 't')
         	if (Gp_entry_postmaster && Gp_role == GP_ROLE_DISPATCH) /* Only the master sends alerts */
-        		send_alert_from_chunks(chunk, saved_chunks);
+        		send_alert_from_chunks(chunk, &saved_chunks[0]);
 #endif
     }
 

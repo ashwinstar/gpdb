@@ -46,60 +46,87 @@
 
 
 #if USE_EMAIL
-const PipeProtoChunk * saved_chunks;
-static char * get_str_from_chunk(CSVChunkStr *chunkstr);
+
+static char * get_str_from_chunk(CSVChunkStr *chunkstr,const PipeProtoChunk *saved_chunks);
 static const char * messagebody_cb(void **buf, int *len, void *arg);
 static int authinteract(auth_client_request_t request, char **result,
 		int fields, void *arg);
 static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
 #endif
-FILE * mylog = NULL;
+static FILE * mylog = NULL;
 
 int
 send_alert_from_chunks(const PipeProtoChunk *chunk, const PipeProtoChunk * saved_chunks_in)
 {
-	static bool firsttime = true;
+
+	int ret = -1;
 	GpErrorData errorData;
 
-	GpErrorDataFixFields *pfixed = (GpErrorDataFixFields *) (chunk->data);
+	//GpErrorDataFixFields *pfixed = (GpErrorDataFixFields *) (chunk->data);
 	CSVChunkStr chunkstr = { chunk, chunk->data + sizeof(GpErrorDataFixFields) };
+
+
+	if (mylog == NULL)
+			mylog = fopen("/tmp/mylog.log","a");
+
+
+	memset(&errorData,0,sizeof(errorData));
+
+	memcpy(&errorData.fix_fields, chunk->data, sizeof(errorData.fix_fields));
 
 	if (chunk==NULL)
 		return -1;
-	pqsignal(SIGSEGV, SIG_DFL);
-	if (firsttime)
-	{
-		sleep(20);
-		firsttime = false;
-	}
-	if (mylog == NULL)
-		mylog = fopen("/tmp/mylog.log","a");
+	if (chunk->hdr.len == 0)
+		return -1;
+	if (chunk->hdr.zero != 0)
+		return -1;
+
+	//pqsignal(SIGSEGV, SIG_DFL);
+
 	fprintf(mylog," In send_alert_from_chunks\n");
 	fflush(mylog);
 
 	if (chunk->hdr.log_format != 'c')
 		elog(ERROR,"send_alert_from_chunks only works when CSV logging is enabled");
-	saved_chunks = saved_chunks_in;
 
-	memset(&errorData,0,sizeof(errorData));
+	errorData.username = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.databasename = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.remote_host = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.remote_port = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.error_severity = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.sql_state = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.error_message = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.error_detail = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.error_hint = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.internal_query = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.debug_query_string = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.error_func_name = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.error_filename = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.stacktrace = get_str_from_chunk(&chunkstr,saved_chunks_in);
 
-	memcpy(&errorData.fix_fields, pfixed, sizeof(GpErrorDataFixFields));
+	fprintf(mylog,"%s: %s\n%s\n",errorData.error_severity, errorData.error_message, errorData.error_detail);
+	fflush(mylog);
 
-	errorData.username = get_str_from_chunk(&chunkstr);
-	fprintf(mylog,"%s\n",errorData.username);
-	errorData.databasename = get_str_from_chunk(&chunkstr);
-	errorData.remote_host = get_str_from_chunk(&chunkstr);
-	errorData.remote_port = get_str_from_chunk(&chunkstr);
-	errorData.error_severity = get_str_from_chunk(&chunkstr);
-	errorData.sql_state = get_str_from_chunk(&chunkstr);
-	errorData.error_message = get_str_from_chunk(&chunkstr);
-	fprintf(mylog,"%s: %s\n",errorData.error_severity, errorData.error_message);
-
+	ret = send_alert(&errorData);
 	// Don't forget to free them!
 
+	free(errorData.username ); errorData.username = NULL;
+	free(errorData.databasename ); errorData.databasename = NULL;
+	free(errorData.remote_host ); errorData.remote_host = NULL;
+	free(errorData.remote_port ); errorData.remote_port = NULL;
+	free((char *)errorData.error_severity ); errorData.error_severity = NULL;
+	free(errorData.sql_state ); errorData.sql_state = NULL;
+	free(errorData.error_message ); errorData.error_message = NULL;
+	free(errorData.error_detail ); errorData.error_detail = NULL;
+	free(errorData.error_hint ); errorData.error_hint = NULL;
+	free(errorData.internal_query ); errorData.internal_query = NULL;
+	free(errorData.debug_query_string ); errorData.debug_query_string = NULL;
+	free((char *)errorData.error_func_name ); errorData.error_func_name = NULL;
+	free((char *)errorData.error_filename ); errorData.error_filename = NULL;
+	free(errorData.stacktrace ); errorData.stacktrace = NULL;
 
-
-	return -1; //send_alert(&errorData);
+	fflush(mylog);
+	return ret;
 
 }
 int
@@ -207,90 +234,146 @@ send_alert(const GpErrorData * errorData)
 }
 
 
+static void move_to_next_chunk(CSVChunkStr * chunkstr,const PipeProtoChunk * saved_chunks)
+{
+	if (chunkstr->chunk != NULL)
+		if(chunkstr->p - chunkstr->chunk->data >= chunkstr->chunk->hdr.len)
+		{
+			/* switch to next chunk */
+			fprintf(mylog,"switch to next chunk\n");
+			fflush(mylog);
+			if(chunkstr->chunk->hdr.next >= 0)
+			{
+				fprintf(mylog,"found next chunk\n");
+							fflush(mylog);
+				chunkstr->chunk = &saved_chunks[chunkstr->chunk->hdr.next];
+				chunkstr->p = chunkstr->chunk->data;
+
+			}
+			else
+			{
+				// no more chunks
+				chunkstr->chunk = NULL;
+				chunkstr->p = NULL;
+
+			}
+		}
+}
+
 
 static char *
-get_str_from_chunk(CSVChunkStr *chunkstr)
+get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 {
     int wlen = 0;
     int len = 0;
     char * out = NULL;
-    char * outstr = NULL;
 
+    move_to_next_chunk(chunkstr,saved_chunks);
 
-    if (chunkstr->chunk != NULL)
-	{
-		len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
-
-		/* Check if the string is an empty string */
-		if (len > 0 && chunkstr->p[0] == '\0')
-			return strdup("");
-
-		if (len == 0 && chunkstr->chunk->hdr.next >= 0)
-		{
-			const PipeProtoChunk *next_chunk = &saved_chunks[chunkstr->chunk->hdr.next];
-			if (next_chunk->hdr.len > 0 && next_chunk->data[0] == '\0')
-				return strdup("");
-		}
-	}
-	else
-	{
-		if(chunkstr->p != NULL)
-			fprintf(mylog,"Bug in send_alert:  chunkstr->p != NULL");
+    if (chunkstr->p == NULL)
+    {
+		fprintf(mylog,"past end of chunks\n");
+		fflush(mylog);
 		return strdup("");
 	}
 
-    if (chunkstr->p == NULL)
-    	return strdup("");
+
+
+	len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
+	if (chunkstr->chunk->hdr.len < (chunkstr->p - chunkstr->chunk->data))
+		fprintf(mylog,"hdr.len %d\n",chunkstr->chunk->hdr.len);
+	fprintf(mylog,"len of chunk %d\n",len);
+
+	/* Check if the string is an empty string */
+	if (len > 0 && chunkstr->p[0] == '\0')
+	{
+		fprintf(mylog,"chunkstr->p has empty string\n");move_to_next_chunk(chunkstr,saved_chunks);
+		chunkstr->p++;
+		return strdup("");
+	}
+
+	if (len == 0 && chunkstr->chunk->hdr.next >= 0)
+	{
+		const PipeProtoChunk *next_chunk = &saved_chunks[chunkstr->chunk->hdr.next];
+		if (next_chunk->hdr.len > 0 && next_chunk->data[0] == '\0')
+		{
+			fprintf(mylog,"chunkstr->p has empty string2\n");
+
+			move_to_next_chunk(chunkstr,saved_chunks);
+			return strdup("");
+		}
+	}
+
 
 
     fprintf(mylog,"finding non-empty string\n");
+    fflush(mylog);
+
+    wlen = strnlen(chunkstr->p,len);
+
+    if(wlen < len)
+	{
+		// String all contained in this chunk
+		out = malloc(wlen + 1);
+		memcpy(out, chunkstr->p, wlen + 1); // include the null byte
+		fprintf(mylog,"string all from this chunk: %s\n",chunkstr->p);
+		fflush(mylog);
+		chunkstr->p += wlen + 1;  // skip to start of next string.
+		return out;
+	}
+
+    out = malloc(wlen + 1);
+	memcpy(out, chunkstr->p, wlen);
+	out[wlen] = '\0';
+	chunkstr->p += wlen;
+	fprintf(mylog,"partial string: %s\n",out);
+	fflush(mylog);
+
+
+	if(chunkstr->p - chunkstr->chunk->data >= chunkstr->chunk->hdr.len)
+		fprintf(mylog,"time for next chunk\n");
+
     while(chunkstr->p)
     {
-        bool done = true;
-        wlen = strlen(chunkstr->p);
+
+        move_to_next_chunk(chunkstr,saved_chunks);
+        if (chunkstr->p == NULL)
+        	break;
+        len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
+
+        wlen = strnlen(chunkstr->p,len);
 
         /* Write OK, don't forget to account for the trailing 0 */
         if(wlen < len)
         {
-        	out = malloc(wlen + 1);
-        	outstr = out;
-        	memcpy(outstr, chunkstr->p, wlen + 1); // include the null byte
-        	fprintf(mylog,"string: %s\n",chunkstr->p);
+        	// Remainder of String all contained in this chunk
+        	out = realloc(out, strlen(out) +  wlen + 1);
+        	strncat(out, chunkstr->p, wlen + 1); // include the null byte
+
+        	//memcpy(outstr, chunkstr->p, wlen + 1); // include the null byte
+        	fprintf(mylog,"new fragment string: %s\n",chunkstr->p);
+        	fprintf(mylog,"new  string: %s\n",out);
         	fflush(mylog);
-            done = true;
-            chunkstr->p += wlen + 1;  // skip to next string.
+            chunkstr->p += wlen + 1;  // skip to start of next string.
+            fprintf(mylog,"next string: %s\n",chunkstr->p);
+            return out;
         }
         else
         {
-        	fprintf(mylog,"partial string: %s\n",chunkstr->p);
-        	        	fflush(mylog);
-        	out = malloc(wlen + 2);
-        	outstr = out;
-        	memcpy(outstr, chunkstr->p, wlen);
-        	outstr[wlen] = '\0';
-        	outstr += wlen;
+
+        	int newlen = strlen(out) + wlen;
+        	out = realloc(out, newlen + 1);
+        	strncat(out, chunkstr->p, wlen);
+        	out[newlen] = '\0';
+        	//memcpy(outstr, chunkstr->p, wlen);
+        	//outstr[wlen] = '\0';
+        	fprintf(mylog,"partial string: %s\n",out);
+        	        	        	fflush(mylog);
+
             chunkstr->p += wlen;
-            done = true; // not really
+            if(chunkstr->p - chunkstr->chunk->data >= chunkstr->chunk->hdr.len)
+            	fprintf(mylog,"time for next chunk\n");
         }
-
-        if(chunkstr->p - chunkstr->chunk->data >= chunkstr->chunk->hdr.len)
-        {
-            /* switch to next chunk */
-            if(chunkstr->chunk->hdr.next >= 0)
-            {
-                chunkstr->chunk = &saved_chunks[chunkstr->chunk->hdr.next];
-                chunkstr->p = chunkstr->chunk->data;
-                len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
-            }
-            else
-            {
-                chunkstr->chunk = NULL;
-                chunkstr->p = NULL;
-            }
-        }
-
-        if(done)
-            break;
     }
 
     return out;
@@ -334,10 +417,12 @@ static int authinteract(auth_client_request_t request, char **result,
 	{
 		if (request[i].flags & AUTH_PASS)
 		{
+			result[i] = "password";
 			//result[i] = my_auth->password;
 		}
 		else if (request[i].flags & AUTH_USER)
 		{
+			result[i] = "chuck";
 			//result[i] = my_auth->username;
 		}
 		else if (result[i] == NULL)
