@@ -120,6 +120,7 @@
 #include "utils/pg_locale.h"
 #include "utils/builtins.h"
 #include "utils/tuplesort_mk.h"
+#include "utils/string_wrapper.h"
 
 #include "cdb/cdbvars.h"
 
@@ -2806,7 +2807,7 @@ void tupsort_prepare_char(MKEntry *a, bool isCHAR)
     avail -= len + 1;
     Assert(avail > 0);
 
-    llen = (int) strxfrm(pstr->data+pstr->xfrm_pos, pstr->data, avail);
+    llen = (int) gp_strxfrm(pstr->data+pstr->xfrm_pos, pstr->data, avail);
     retlen = offsetof(refcnt_locale_str, data) + len + 1 + llen + 1;
 
     ret = (refcnt_locale_str *) palloc(retlen); 
@@ -2827,7 +2828,7 @@ void tupsort_prepare_char(MKEntry *a, bool isCHAR)
         Assert(ret->xfrm_pos == len + 1);
         Assert(ret->data[len] == '\0');
 
-        llen = (int) strxfrm(ret->data+ret->xfrm_pos, pstr->data, avail); 
+        llen = (int) gp_strxfrm(ret->data+ret->xfrm_pos, pstr->data, avail);
         Assert(llen < avail); 
         Assert(ret->data[ret->xfrm_pos + llen] == '\0'); 
     }
