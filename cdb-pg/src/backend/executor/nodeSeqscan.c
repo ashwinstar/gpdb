@@ -37,7 +37,7 @@
 
 static void InitScanRelation(SeqScanState *node, EState *estate);
 
-/* Open and close scanned relation Open/Close means resource acquisition. 
+/* Open and close scanned relation Open/Close means resource acquisition.
  */
 static void OpenScanRelation(SeqScanState *node);
 static void CloseScanRelation(SeqScanState *node);
@@ -104,14 +104,14 @@ SeqNext(SeqScanState *node)
 	 * get the next tuple from the access methods
 	 */
 	/* CKTAN- */
-	if (node->ss_heapTupleData.bot == node->ss_heapTupleData.top 
+	if (node->ss_heapTupleData.bot == node->ss_heapTupleData.top
 		&& !node->ss_heapTupleData.seen_EOS)
 	{
 		node->ss_heapTupleData.last = NULL;
 		node->ss_heapTupleData.bot = 0;
 		node->ss_heapTupleData.top = lengthof(node->ss_heapTupleData.item);
 		heap_getnextx(scandesc, direction, node->ss_heapTupleData.item,
-					  &node->ss_heapTupleData.top, 
+					  &node->ss_heapTupleData.top,
 					  &node->ss_heapTupleData.seen_EOS);
 
 		/* Gpmon */
@@ -122,8 +122,8 @@ SeqNext(SeqScanState *node)
                 }
 	}
 
-	node->ss_heapTupleData.last = 
-		((node->ss_heapTupleData.bot < node->ss_heapTupleData.top) 
+	node->ss_heapTupleData.last =
+		((node->ss_heapTupleData.bot < node->ss_heapTupleData.top)
 		 ? &node->ss_heapTupleData.item[node->ss_heapTupleData.bot++]
 		 : 0);
 	tuple = node->ss_heapTupleData.last;
@@ -165,14 +165,14 @@ ExecSeqScan(SeqScanState *node)
 	 * use SeqNext as access method
 	 */
 	TupleTableSlot *slot;
-	
+
 	if((node->scan_state & SCAN_SCAN) == 0)
 		OpenScanRelation(node);
 
 	slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) SeqNext);
      	if (!TupIsNull(slot))
         {
-     		Gpmon_M_Incr_Rows_Out(GpmonPktFromSeqScanState(node)); 
+     		Gpmon_M_Incr_Rows_Out(GpmonPktFromSeqScanState(node));
                 CheckSendPlanStateGpmonPkt(&node->ps);
         }
 
@@ -205,20 +205,20 @@ InitScanRelation(SeqScanState *node, EState *estate)
 }
 
 /* ---------------------------------------------------------------
- * Open underlying relation for scan.  
+ * Open underlying relation for scan.
  * Open means resource acquisition, in seq scan, file descriptor.
- * 
+ *
  * We delay open as much as possible, and later, close as early as
  * possible to prevent from hogging lots of resources.  This is
  * very important because now some user partition a talbe to thousands
- * of smaller ones.  If we are not careful, we cannot even do a 
- * scan on the table.  
+ * of smaller ones.  If we are not careful, we cannot even do a
+ * scan on the table.
  *
  * We need to do this for all the scanners.  See nodeAppendOnlyscan.c
  * as well.
  * --------------------------------------------------------------
  */
-static void 
+static void
 OpenScanRelation(SeqScanState *node)
 {
 	Assert(node->scan_state == SCAN_INIT || node->scan_state == SCAN_DONE);
@@ -231,7 +231,7 @@ OpenScanRelation(SeqScanState *node)
 			NULL);
 
 	/* CKTAN- */
-	node->ss_heapTupleData.bot = node->ss_heapTupleData.top 
+	node->ss_heapTupleData.bot = node->ss_heapTupleData.top
 		= node->ss_heapTupleData.seen_EOS = 0;
 	node->ss_heapTupleData.last = NULL;
 
@@ -243,7 +243,7 @@ OpenScanRelation(SeqScanState *node)
  * Close means release resource.
  * ----------------------------------------------------------------
  */
-static void 
+static void
 CloseScanRelation(SeqScanState *node)
 {
 	Assert((node->scan_state & SCAN_SCAN) != 0);
@@ -321,24 +321,24 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	/* Set up gpmon */
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SEQSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
-			{ "Seq Scan Page Stats", "Pages", 0 }, 
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ "Seq Scan Page Stats", "Pages", 0 },
 			{ "Seq Scan Restore Pos", "Restores", 0},
 			{ "Seq Scan Rescan", "Rescans", 0},
-			{ NULL, NULL, 0 } 
+			{ NULL, NULL, 0 }
 		};
-		
+
 		RangeTblEntry *rte = rt_fetch(((Scan *)scanstate->ps.plan)->scanrelid, estate->es_range_table);
 		char schema_rel_name[NAMEDATALEN * 2] = {0};
-		
+
 		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
 			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
 			{ NULL, NULL }
 		};
 
 		Assert(GPMON_SEQSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&scanstate->ps, "Seq Scan", 
-                                      (int64) scanstate->ps.plan->plan_rows, m, t); 
+		InitPlanStateGpmonPkt(&scanstate->ps, "Seq Scan",
+                                      (int64) scanstate->ps.plan->plan_rows, m, t);
 	}
 
 	return scanstate;
@@ -430,7 +430,7 @@ ExecSeqReScan(SeqScanState *node, ExprContext *exprCtxt)
 	heap_rescan(scan,			/* scan desc */
 				NULL);			/* new scan keys */
 	/* CKTAN */
-	node->ss_heapTupleData.bot = node->ss_heapTupleData.top 
+	node->ss_heapTupleData.bot = node->ss_heapTupleData.top
 		= node->ss_heapTupleData.seen_EOS = 0;
 	node->ss_heapTupleData.last = NULL;
 
@@ -504,13 +504,25 @@ char * GetScanRelNameGpmon(Oid relid, char schema_rel_name[NAMEDATALEN * 2])
 	return schema_rel_name;
 }
 
-void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename, 
+void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename,
                            int64 rowsout_est, Gpmon_NameUnit_MaxVal *m,
-                           Gpmon_NameVal_Text *t) 
+                           Gpmon_NameVal_Text *t)
 {
+	int rowsout_adjustment_factor = 0;
 
 	if(!ps)
 		return;
+
+	/* The estimates are now global so we need to adjust by
+	 * the number of segments in the array.
+	 */
+	rowsout_adjustment_factor = getgpsegmentCount();
+
+	/* Make sure we don't div by zero below */
+	if (rowsout_adjustment_factor < 1)
+		rowsout_adjustment_factor = 1;
+
+	Assert(rowsout_adjustment_factor >= 1);
 
 	memset(&ps->gpmon_pkt, 0, sizeof(ps->gpmon_pkt));
 
@@ -532,8 +544,8 @@ void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename,
 
 	snprintf(ps->gpmon_pkt.u.qexec.ntype, sizeof(ps->gpmon_pkt.u.qexec.ntype), nodename);
 
-        ps->gpmon_pkt.u.qexec.rowsout = 0;
-        ps->gpmon_pkt.u.qexec.rowsout_est = rowsout_est;
+	ps->gpmon_pkt.u.qexec.rowsout = 0;
+	ps->gpmon_pkt.u.qexec.rowsout_est = rowsout_est / rowsout_adjustment_factor;
 
 	if(m)
 	{
@@ -544,11 +556,11 @@ void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename,
 			if(m[i].name)
 			{
 				Assert(m[i].unit);
-				snprintf(ps->gpmon_pkt.u.qexec.m[i].name, 
-						sizeof(ps->gpmon_pkt.u.qexec.m[i].name), 
+				snprintf(ps->gpmon_pkt.u.qexec.m[i].name,
+						sizeof(ps->gpmon_pkt.u.qexec.m[i].name),
 						m[i].name);
-				snprintf(ps->gpmon_pkt.u.qexec.m[i].unit, 
-						sizeof(ps->gpmon_pkt.u.qexec.m[i].unit), 
+				snprintf(ps->gpmon_pkt.u.qexec.m[i].unit,
+						sizeof(ps->gpmon_pkt.u.qexec.m[i].unit),
 						m[i].unit);
 				ps->gpmon_pkt.u.qexec.m[i].valuemax = m[i].maxval;
 			}
@@ -556,7 +568,7 @@ void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename,
 				break;
 		}
 	}
-	
+
 	if (t)
 	{
 		int i=0;
