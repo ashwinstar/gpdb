@@ -680,6 +680,182 @@ bool cdbCopyRelayData(CdbCopy *c,  bool copy_cancel, uint64 *rows_processed)
 }
 
 /*
+ * Process the results from segments after sending the end of copy command.
+ */
+static void
+processCopyEndResults(CdbCopy *c,
+					  SegmentDatabaseDescriptor *db_descriptors,
+					  int *results,
+					  int size,
+					  SegmentDatabaseDescriptor **failedSegDBs,
+					  bool is_primary,
+					  bool *err_header,
+					  bool *primary_had_error,
+					  bool *first_error,
+					  int *failed_count,
+					  int *total_rows_rejected)
+{
+	SegmentDatabaseDescriptor *q;
+	int seg;
+	PGresult *res;
+	int			segment_rows_rejected = 0; /* num of rows rejected by this QE */
+
+	for (seg = 0; seg < size; seg ++)
+	{
+		int result = results[seg];
+		q = &db_descriptors[seg];
+		
+		/* get command end status */
+		if (result == 0)
+		{
+			/* attempt blocked */
+
+			/*
+			 * CDB TODO: Can this occur?  The libpq documentation says,
+			 * "this case is only possible if the connection is in
+			 * nonblocking mode... wait for write-ready and try again",
+			 * i.e., the proper response would be to retry, not error out.
+			 */
+			if (!(*err_header))
+				appendStringInfo(&(c->err_msg),
+								 "Failed to complete COPY on the following:\n");
+			*err_header = true;
+
+			appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, attempt blocked\n", 
+							 (q->segment_database_info->isprimary ? "primary" : "mirror"),
+							 seg, q->segment_database_info->dbid);
+			c->io_errors = true;
+		}
+			
+		/*
+		 * Fetch any error status existing on completion of the COPY command.
+		 * It is critical that for any connection that had an asynchronous
+		 * command sent thru it, we call PQgetResult until it returns NULL.
+		 * Otherwise, the next time a command is sent to that connection,
+		 * it will return an error that there's a command pending.
+		 */
+		while ((res = PQgetResult(q->conn)) != NULL && PQstatus(q->conn) != CONNECTION_BAD)
+		{
+			elog(DEBUG1,"PQgetResult got status %d %s %d    ",
+				 PQresultStatus(res), is_primary ? "seg" : "mir", q->segindex);
+			/* if the COPY command had a data error */
+			if (PQresultStatus(res) == PGRES_FATAL_ERROR)
+			{
+				if (is_primary)
+					*primary_had_error = true;
+				
+				/* 
+				 * Always append error from the primary. Append error from 
+				 * mirror only if its primary didn't have an error. 
+				 *
+				 * For now, we only report the first error we get from the
+				 * QE's.
+				 *
+				 * We get the error message in pieces so that we could append
+				 * whoami to the primary error message only.
+				 */
+				if ((is_primary && *first_error) ||
+					(!is_primary && !primary_had_error && *first_error))
+				{
+					char   *pri = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
+					char   *dtl = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
+					char   *ctx = PQresultErrorField(res, PG_DIAG_CONTEXT);
+					
+					if (pri)
+						appendStringInfo(&(c->err_msg), "%s", pri);
+					else
+						appendStringInfo(&(c->err_msg), "Unknown primary error.");
+					
+					if (q->whoami)
+						appendStringInfo(&(c->err_msg),"  (%s)", q->whoami);
+					
+					if (dtl)
+						appendStringInfo(&(c->err_msg), "\n%s", dtl);
+					
+					/*
+					 * note that due to cdb_tidy_message() in elog.c "If more than 
+					 * one line, move lines after the first to errdetail" so we save
+					 * the context in another stringInfo and fetch it in the error
+					 * callback in copy.c, so it wouldn't appear as DETAIL...
+					 */
+					if (ctx)
+						appendStringInfo(&(c->err_context), "%s", ctx);
+						
+					/* Indicate that the err_msg already was filled with one error */
+					*first_error = false;
+				}
+				c->remote_data_err = true;
+			}
+				
+			if (PQresultStatus(res) == PGRES_COPY_IN)
+			{
+				elog(LOG,"Bug, still in copy in, retrying the putCopyEnd");
+				result = PQputCopyEnd(q->conn, NULL);
+			}
+
+			if (is_primary && PQresultStatus(res) == PGRES_COPY_OUT)
+			{
+				elog(LOG,"Segment still in copy out, cleaning retrying the putCopyEnd");
+				result = PQputCopyEnd(q->conn, NULL);
+			}
+
+			/* in SREH mode, check if this seg rejected (how many) rows */
+			if (is_primary && res->numRejected > 0)
+				segment_rows_rejected = res->numRejected;
+				
+			/* Get AO tuple counts */
+			if (is_primary)
+				c->aotupcounts = process_aotupcounts(c->partitions,
+													 c->aotupcounts, 
+													 res->aotupcounts,
+													 res->naotupcounts);
+			/* free the PGresult object */
+			PQclear(res);
+		}
+
+		/* Finished with this segment db. */
+		if (is_primary)
+			c->segdb_state[seg][0] = SEGDB_DONE;
+		else
+			c->segdb_state[seg][1] = SEGDB_DONE;
+
+		/* 
+		 * add number of rows rejected from this segment to the 
+		 * total of rejected rows. Only count from primary segs.
+		 */
+		if (is_primary && segment_rows_rejected > 0)
+			*total_rows_rejected += segment_rows_rejected;
+		
+		segment_rows_rejected = 0;
+		
+		/* Lost the connection? */
+		if (PQstatus(q->conn) == CONNECTION_BAD)
+		{
+			if (!*(err_header))
+				appendStringInfo(&(c->err_msg),
+								 "ERROR - Failed to complete COPY on the following:\n");
+			*err_header = true;
+			
+			/* command error */
+			c->io_errors = true;
+			appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, with error: %s\n",
+							 is_primary ? "primary" : "mirror",
+							 seg, q->segment_database_info->dbid, PQerrorMessage(q->conn));
+			
+			/* Free the PGconn object. */
+			PQfinish(q->conn);
+			q->conn = NULL;
+			
+			/* Let FTS deal with it! */
+			failedSegDBs[*failed_count] = q;
+			(*failed_count)++;
+		}
+	}
+}
+
+					  
+
+/*
  * ends the copy command on all segment databases.
  * c->err_msg will include the error msg(s) if any.
  *
@@ -693,12 +869,10 @@ cdbCopyEnd(CdbCopy *c)
 	SegmentDatabaseDescriptor *q;
 	SegmentDatabaseDescriptor **failedSegDBs;
 	Gang	   *gp;
-	PGresult   *res;
-	int			result;			/* final result of COPY command execution */
+	int			*results;			/* final result of COPY command execution */
 	int			seg;
 
 	int			failed_count = 0;
-	int			segment_rows_rejected = 0; /* num of rows rejected by this QE */
 	int			total_rows_rejected = 0; /* total num rows rejected by all QEs */
 	bool		err_header = false;
 	bool		primary_had_error = false; /* flag to consolidate pri/mir errors */
@@ -723,152 +897,21 @@ cdbCopyEnd(CdbCopy *c)
 		size = gp->dispatchagents->size;
 	}
 		
+	/* results from each segment */
+	results = (int *)palloc0(sizeof(int) * size);
+
 	for (seg = 0; seg < size; seg++)
 	{
-			q =&db_descriptors[seg];
-			elog(DEBUG1,"PQputCopyEnd seg %d    ",q->segindex);
-			/* end this COPY command */
-			result = PQputCopyEnd(q->conn, NULL);
-
-			/* get command end status */
-			if (result == 0)
-			{
-				/* attempt blocked */
-
-				/*
-				 * CDB TODO: Can this occur?  The libpq documentation says,
-				 * "this case is only possible if the connection is in
-				 * nonblocking mode... wait for write-ready and try again",
-				 * i.e., the proper response would be to retry, not error out.
-				 */
-
-				if (!err_header)
-					appendStringInfo(&(c->err_msg),
-					"Failed to complete COPY on the following:\n");
-				err_header = true;
-
-				appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, attempt blocked\n", 
-								 (q->segment_database_info->isprimary ? "primary" : "mirror"),
-								 seg, q->segment_database_info->dbid);
-				c->io_errors = true;
-			}
-			
-			/*
-			 * Fetch any error status existing on completion of the COPY command.
-			 * It is critical that for any connection that had an asynchronous
-			 * command sent thru it, we call PQgetResult until it returns NULL.
-			 * Otherwise, the next time a command is sent to that connection,
-			 * it will return an error that there's a command pending.
-			 */
-			while ((res = PQgetResult(q->conn)) != NULL && PQstatus(q->conn) != CONNECTION_BAD)
-			{
-				elog(DEBUG1,"PQgetResult got status %d seg %d    ", PQresultStatus(res),q->segindex);
-				/* if the COPY command had a data error */
-				if (PQresultStatus(res) == PGRES_FATAL_ERROR)
-				{
-					primary_had_error = true;
-					
-					/* 
-					 * Always append error from the primary. Append error from 
-					 * mirror only if its primary didn't have an error. 
-					 *
-					 * For now, we only report the first error we get from the
-					 * QE's.
-					 *
-					 * We get the error message in pieces so that we could append
-					 * whoami to the primary error message only.
-					 */
-					if (first_error)
-					{
-						char   *pri = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
-						char   *dtl = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
-						char   *ctx = PQresultErrorField(res, PG_DIAG_CONTEXT);
-
-						if (pri)
-							appendStringInfo(&(c->err_msg), "%s", pri);
-						else
-							appendStringInfo(&(c->err_msg), "Unknown primary error.");
-
-						if (q->whoami)
-							appendStringInfo(&(c->err_msg),"  (%s)", q->whoami);
-						
-						if (dtl)
-							appendStringInfo(&(c->err_msg), "\n%s", dtl);
-						
-						/*
-						 * note that due to cdb_tidy_message() in elog.c "If more than 
-						 * one line, move lines after the first to errdetail" so we save
-						 * the context in another stringInfo and fetch it in the error
-						 * callback in copy.c, so it wouldn't appear as DETAIL...
-						 */
-						if (ctx)
-							appendStringInfo(&(c->err_context), "%s", ctx);
-						
-						/* Indicate that the err_msg already was filled with one error */
-						first_error = false;
-					}
-					c->remote_data_err = true;
-				}
-				
-				if (PQresultStatus(res) == PGRES_COPY_IN)
-				{
-					elog(LOG,"Bug, still in copy in, retrying the putCopyEnd");
-					result = PQputCopyEnd(q->conn, NULL);
-				}
-
-				if (PQresultStatus(res) == PGRES_COPY_OUT)
-				{
-					elog(LOG,"Segment still in copy out, cleaning retrying the putCopyEnd");
-					result = PQputCopyEnd(q->conn, NULL);
-				}
-
-				/* in SREH mode, check if this seg rejected (how many) rows */
-				if (res->numRejected > 0)
-					segment_rows_rejected = res->numRejected;
-				
-				/* Get AO tuple counts */
-				c->aotupcounts = process_aotupcounts(c->partitions,
-													 c->aotupcounts, 
-													 res->aotupcounts,
-													 res->naotupcounts);
-				/* free the PGresult object */
-				PQclear(res);
-			}
-
-			/* Finished with this segment db. */
-			c->segdb_state[seg][0] = SEGDB_DONE;
-
-			/* 
-			 * add number of rows rejected from this segment to the 
-			 * total of rejected rows. Only count from primary segs.
-			 */
-			if (segment_rows_rejected > 0)
-				total_rows_rejected += segment_rows_rejected;
-			
-			segment_rows_rejected = 0;
-			
-			/* Lost the connection? */
-			if (PQstatus(q->conn) == CONNECTION_BAD)
-			{
-				if (!err_header)
-					appendStringInfo(&(c->err_msg),
-					"ERROR - Failed to complete COPY on the following:\n");
-				err_header = true;
-
-				/* command error */
-				c->io_errors = true;
-				appendStringInfo(&(c->err_msg), "primary segment %d, dbid %d, with error: %s\n",
-				seg, q->segment_database_info->dbid, PQerrorMessage(q->conn));
-
-				/* Free the PGconn object. */
-				PQfinish(q->conn);
-				q->conn = NULL;
-
-				/* Let FTS deal with it! */
-				failedSegDBs[failed_count] = q;
-				failed_count++;
-			}
+		q =&db_descriptors[seg];
+		elog(DEBUG1,"PQputCopyEnd seg %d    ",q->segindex);
+		/* end this COPY command */
+		results[seg] = PQputCopyEnd(q->conn, NULL);
 	}
+
+	processCopyEndResults(c, db_descriptors, results, size,
+						  failedSegDBs, true, &err_header,
+						  &primary_had_error, &first_error,
+						  &failed_count, &total_rows_rejected);
 	
 	gp = c->mirror_writer;
 	size = 0;
@@ -883,121 +926,17 @@ cdbCopyEnd(CdbCopy *c)
 	{
 		for (seg = 0; seg < size; seg++)
 		{
-		
 			q = &db_descriptors[seg];
 			
 			/* end this COPY command */
-			result = PQputCopyEnd(q->conn, NULL);
-
-			/* get command end status */
-			if (result == 0)
-			{
-				/* attempt blocked */
-
-				if (!err_header)
-					appendStringInfo(&(c->err_msg),
-					"Failed to complete COPY on the following:\n");
-				err_header = true;
-
-				appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, attempt blocked\n", 
-								 (q->segment_database_info->isprimary ? "primary" : "mirror"),
-								 seg, q->segment_database_info->dbid);
-				c->io_errors = true;
-			}
-			
-			/*
-			 * Fetch any error status existing on completion of the COPY command.
-			 * It is critical that for any connection that had an asynchronous
-			 * command sent thru it, we call PQgetResult until it returns NULL.
-			 * Otherwise, the next time a command is sent to that connection,
-			 * it will return an error that there's a command pending.
-			 */
-			while (NULL != (res = PQgetResult(q->conn)))
-			{
-				/* if the COPY command had a data error */
-				if (PQresultStatus(res) == PGRES_FATAL_ERROR)
-				{
-					
-					/* 
-					 * Always append error from the primary. Append error from 
-					 * mirror only if its primary didn't have an error. 
-					 *
-					 * For now, we only report the first error we get from the
-					 * QE's.
-					 *
-					 * We get the error message in pieces so that we could append
-					 * whoami to the primary error message only.
-					 */
-					if ((!primary_had_error) && first_error)
-					{
-						char   *pri = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
-						char   *dtl = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
-						char   *ctx = PQresultErrorField(res, PG_DIAG_CONTEXT);
-												
-						if (pri)
-							appendStringInfo(&(c->err_msg), "%s", pri);
-						else
-							appendStringInfo(&(c->err_msg), "Unknown mirror error.");
-						
-						if (q->whoami)
-							appendStringInfo(&(c->err_msg),"  (%s)", q->whoami);
-						
-						if (dtl)
-							appendStringInfo(&(c->err_msg), "\n%s", dtl);
-						
-						/*
-						 * note that due to cdb_tidy_message() in elog.c "If more than 
-						 * one line, move lines after the first to errdetail" so we save
-						 * the context in another stringInfo and fetch it in the error
-						 * callback in copy.c, so it wouldn't appear as DETAIL...
-						 */
-						if (ctx)
-							appendStringInfo(&(c->err_context), "%s", ctx);
-						
-						/* Indicate that the err_msg already was filled with one error */
-						first_error = false;
-					}
-					c->remote_data_err = true;
-				}
-				
-				if (PQresultStatus(res) == PGRES_COPY_IN)
-				{
-					elog(LOG,"Bug, still in copy in (during mirror)");
-					result = PQputCopyEnd(q->conn, NULL);
-				}
-					
-				
-				/* free the PGresult object */
-				PQclear(res);
-			}
-
-			/* Finished with this segment db. */
-			c->segdb_state[seg][1] = SEGDB_DONE;
-			
-			segment_rows_rejected = 0;
-			
-			/* Lost the connection? */
-			if (PQstatus(q->conn) == CONNECTION_BAD)
-			{
-				if (!err_header)
-					appendStringInfo(&(c->err_msg),
-					"ERROR - Failed to complete COPY on the following:\n");
-				err_header = true;
-
-				/* command error */
-				c->io_errors = true;
-				appendStringInfo(&(c->err_msg), "mirror segment %d, dbid %d, with error: %s\n",
-				seg, q->segment_database_info->dbid, PQerrorMessage(q->conn));
-
-				/* Free the PGconn object. */
-				PQfinish(q->conn);
-				q->conn = NULL;
-
-				/* Let FTS deal with it! */
-				failedSegDBs[failed_count] = q;
-				failed_count++;
-			}
+			results[seg] = PQputCopyEnd(q->conn, NULL);
 		}
+
+
+		processCopyEndResults(c, db_descriptors, results, size,
+							  failedSegDBs, false, &err_header,
+							  &primary_had_error, &first_error,
+							  &failed_count, &total_rows_rejected);
 	}
 
 	/* If lost contact with segment db, try to reconnect. */
@@ -1007,6 +946,9 @@ cdbCopyEnd(CdbCopy *c)
 		elog(LOG, "COPY passes failed segment(s) information to FTS");
 		FtsHandleNetFailure(failedSegDBs, failed_count);
 	}
+	
+	pfree(results);
+	pfree(failedSegDBs);
 	
 	return total_rows_rejected;
 }
