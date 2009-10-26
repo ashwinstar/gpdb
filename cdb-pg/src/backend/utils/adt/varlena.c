@@ -27,7 +27,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
-
+#include "utils/string_wrapper.h"
 
 typedef struct varlena unknown;
 
@@ -1181,7 +1181,7 @@ varstr_cmp(char *arg1, int len1, char *arg2, int len2)
 		memcpy(a2p, arg2, len2);
 		a2p[len2] = '\0';
 
-		result = strcoll(a1p, a2p);
+		result = gp_strcoll(a1p, a2p);
 
 		/*
 		 * In some locales strcoll() can claim that nonidentical strings are
