@@ -5,7 +5,7 @@
  *	Lately it's also being used by psql and bin/scripts/ ...
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/bin/pg_dump/dumputils.h,v 1.19 2006/10/09 23:30:33 tgl Exp $
@@ -19,6 +19,7 @@
 #include "libpq-fe.h"
 #include "pqexpbuffer.h"
 
+extern void init_parallel_dump_utils(void);
 extern const char *fmtId(const char *identifier);
 extern void appendStringLiteral(PQExpBuffer buf, const char *str,
 					int encoding, bool std_strings);

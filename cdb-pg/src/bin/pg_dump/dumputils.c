@@ -5,7 +5,7 @@
  *	Lately it's also being used by psql and bin/scripts/ ...
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/bin/pg_dump/dumputils.c,v 1.33.2.1 2007/01/04 17:49:42 tgl Exp $
@@ -29,13 +29,30 @@ static bool parseAclItem(const char *item, const char *type, const char *name,
 static char *copyAclUserName(PQExpBuffer output, char *input);
 static void AddAcl(PQExpBuffer aclbuf, const char *keyword);
 
+#ifdef WIN32
+static bool parallel_init_done = false;
+static DWORD tls_index;
+#endif
+
+void
+init_parallel_dump_utils(void)
+{
+#ifdef WIN32
+	if (!parallel_init_done)
+	{
+		tls_index = TlsAlloc();
+		parallel_init_done = true;
+	}
+#endif
+}
 
 /*
  *	Quotes input string if it's not a legitimate SQL identifier as-is.
  *
  *	Note that the returned string must be used before calling fmtId again,
  *	since we re-use the same return buffer each time.  Non-reentrant but
- *	avoids memory leakage.
+ *	reduces memory leakage. (On Windows the memory leakage will be one buffer
+ *	per thread, which is at least better than one per call).
  */
 const char *
 fmtId(const char *rawid)
@@ -53,11 +70,8 @@ fmtId(const char *rawid)
 	 * These checks need to match the identifier production in scan.l. Don't
 	 * use islower() etc.
 	 */
-
-	if (ScanKeywordLookup(rawid))
-		need_quotes = true;
 	/* slightly different rules for first character */
-	else if (!((rawid[0] >= 'a' && rawid[0] <= 'z') || rawid[0] == '_'))
+	if (!((rawid[0] >= 'a' && rawid[0] <= 'z') || rawid[0] == '_'))
 		need_quotes = true;
 	else
 	{
@@ -72,6 +86,22 @@ fmtId(const char *rawid)
 				break;
 			}
 		}
+	}
+
+	if (!need_quotes)
+	{
+		/*
+		 * Check for keyword.  We quote keywords except for unreserved ones.
+		 * (In some cases we could avoid quoting a col_name or type_func_name
+		 * keyword, but it seems much harder than it's worth to tell that.)
+		 *
+		 * Note: ScanKeywordLookup() does case-insensitive comparison, but
+		 * that's fine, since we already know we have all-lower-case.
+		 */
+		const ScanKeyword *keyword = ScanKeywordLookup(rawid);
+
+		if (keyword != NULL && keyword->category != UNRESERVED_KEYWORD)
+			need_quotes = true;
 	}
 
 	if (!need_quotes)
@@ -381,8 +411,8 @@ parsePGArray(const char *atext, char ***itemarray, int *nitems)
  * Returns TRUE if okay, FALSE if could not parse the acl string.
  * The resulting commands (if any) are appended to the contents of 'sql'.
  *
- * Note: beware of passing fmtId() result as 'name', since this routine
- * uses fmtId() internally.
+ * Note: beware of passing a fmtId() result directly as 'name' or 'subname',
+ * since this routine uses fmtId() internally.
  */
 bool
 buildACLCommands(const char *name, const char *type,
@@ -742,7 +772,7 @@ AddAcl(PQExpBuffer aclbuf, const char *keyword)
  * schemavar: name of query variable to match against a schema-name pattern.
  * Can be NULL if no schema.
  * namevar: name of query variable to match against an object-name pattern.
- * altnamevar: NULL, or name of an alternate variable to match against name.
+ * altnamevar: NULL, or name of an alternative variable to match against name.
  * visibilityrule: clause to use if we want to restrict to visible objects
  * (for example, "pg_catalog.pg_table_is_visible(p.oid)").	Can be NULL.
  *
@@ -788,9 +818,9 @@ processSQLNamePattern(PGconn *conn, PQExpBuffer buf, const char *pattern,
 	 * contains "|", else the "^" and "$" will be bound into the first and
 	 * last alternatives which is not what we want.
 	 *
-	 * Note: the result of this pass is the actual regexp pattern(s) we want to
-	 * execute.  Quoting/escaping into SQL literal format will be done below
-	 * using appendStringLiteralConn().
+	 * Note: the result of this pass is the actual regexp pattern(s) we want
+	 * to execute.	Quoting/escaping into SQL literal format will be done
+	 * below using appendStringLiteralConn().
 	 */
 	appendPQExpBufferStr(&namebuf, "^(");
 
@@ -799,7 +829,7 @@ processSQLNamePattern(PGconn *conn, PQExpBuffer buf, const char *pattern,
 
 	while (*cp)
 	{
-		char	ch = *cp;
+		char		ch = *cp;
 
 		if (ch == '"')
 		{
@@ -838,6 +868,18 @@ processSQLNamePattern(PGconn *conn, PQExpBuffer buf, const char *pattern,
 			appendPQExpBufferStr(&namebuf, "^(");
 			cp++;
 		}
+		else if (ch == '$')
+		{
+			/*
+			 * Dollar is always quoted, whether inside quotes or not. The
+			 * reason is that it's allowed in SQL identifiers, so there's a
+			 * significant use-case for treating it literally, while because
+			 * we anchor the pattern automatically there is no use-case for
+			 * having it possess its regexp meaning.
+			 */
+			appendPQExpBufferStr(&namebuf, "\\$");
+			cp++;
+		}
 		else
 		{
 			/*
@@ -862,8 +904,8 @@ processSQLNamePattern(PGconn *conn, PQExpBuffer buf, const char *pattern,
 	}
 
 	/*
-	 * Now decide what we need to emit.  Note there will be a leading "^("
-	 * in the patterns in any case.
+	 * Now decide what we need to emit.  Note there will be a leading "^(" in
+	 * the patterns in any case.
 	 */
 	if (namebuf.len > 2)
 	{
