@@ -209,6 +209,17 @@ DECLARE_INDEX(pg_shdepend_reference_index, 1233, on pg_shdepend using btree(refc
 DECLARE_UNIQUE_INDEX(pg_statistic_relid_att_index, 2696, on pg_statistic using btree(starelid oid_ops, staattnum int2_ops));
 #define StatisticRelidAttnumIndexId  2696
 
+DECLARE_UNIQUE_INDEX(pg_filespace_oid_index, 2858, on pg_filespace using btree(oid oid_ops));
+#define FilespaceOidIndexId  2858
+DECLARE_UNIQUE_INDEX(pg_filespace_fsname_index, 2859, on pg_filespace using btree(fsname name_ops));
+#define FilespaceNameIndexId  2859
+
+/* The following index is not used for a cache and is not unique */
+DECLARE_INDEX(pg_filespace_entry_fs_index, 2893, on pg_filespace_entry using btree(fsefsoid oid_ops));
+#define FilespaceEntryFsIndexId  2893
+DECLARE_UNIQUE_INDEX(pg_filespace_entry_fsdb_index, 2894, on pg_filespace_entry using btree(fsefsoid oid_ops, fsedbid int4_ops));
+#define FilespaceEntryFsDbIndexId  2894
+
 DECLARE_UNIQUE_INDEX(pg_tablespace_oid_index, 2697, on pg_tablespace using btree(oid oid_ops));
 #define TablespaceOidIndexId  2697
 DECLARE_UNIQUE_INDEX(pg_tablespace_spcname_index, 2698, on pg_tablespace using btree(spcname name_ops));

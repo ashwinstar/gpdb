@@ -565,14 +565,26 @@ DATA(insert OID = 2282 ( opaque			PGNSP PGUID  4 t p t \054 0 0 opaque_in opaque
 #define OPAQUEOID		2282
 DATA(insert OID = 2283 ( anyelement		PGNSP PGUID  4 t p t \054 0 0 anyelement_in anyelement_out - - - i p f 0 -1 0 _null_ _null_ ));
 #define ANYELEMENTOID	2283
-DATA(insert OID = 6433 ( gp_interfaces	PGNSP PGUID	-1 f c t \054 5030 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+
+/* 
+ * These tables must be created with standardized oids because they are 
+ * created during upgrades from prior versions.
+ *
+ * Note: For this to work correctly it requires some hackery in bootparse.y
+ * When extending this list make sure to update there as well.
+ */
+DATA(insert OID = 6433 ( gp_interfaces	            PGNSP PGUID	-1 f c t \054 5030 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define GPINTERFACES_RELTYPE_OID 6433
 DATA(insert OID = 6434 ( gp_configuration_history	PGNSP PGUID -1 f c t \054 5006 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define GP_CONFIG_HISTORY_RELTYPE_OID 6434
-DATA(insert OID = 6436 ( gp_db_interfaces	PGNSP PGUID -1 f c t \054 5029 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 6436 ( gp_db_interfaces	        PGNSP PGUID -1 f c t \054 5029 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define GP_DB_INTERFACES_RELTYPE_OID 6436
-DATA(insert OID = 6437 ( pg_appendonly_alter_column	PGNSP PGUID -1 f c t \054 6110  0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 6437 ( pg_appendonly_alter_column	PGNSP PGUID -1 f c t \054 6110 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define PG_APPENDONLY_ALTER_COLUMN_OID 6437
+DATA(insert OID = 6438 ( pg_filespace 	            PGNSP PGUID -1 f c t \054 5009 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+#define PG_FILESPACE_OID 6438
+DATA(insert OID = 6439 ( pg_filespace_entry 	    PGNSP PGUID -1 f c t \054 5033 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+#define PG_FILESPACE_ENTRY_OID 6439
 
 /*
  * macros

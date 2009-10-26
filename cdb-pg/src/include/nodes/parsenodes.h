@@ -975,6 +975,7 @@ typedef enum ObjectType
 	OBJECT_SEQUENCE,
 	OBJECT_TABLE,
 	OBJECT_EXTTABLE,
+	OBJECT_FILESPACE,
 	OBJECT_TABLESPACE,
 	OBJECT_TRIGGER,
 	OBJECT_TYPE,
@@ -1521,8 +1522,18 @@ typedef struct PartitionSpec			/* a Partition Specification */
 	int					location;		/* token location, or -1 if unknown */
 } PartitionSpec;
 
+/* CREATE FILESPACE ... */
+typedef struct CreateFileSpaceStmt
+{
+	NodeTag		type;
+	char	   *filespacename;
+	char	   *owner;
+	List       *locations;
+	Oid         fsoid;
+} CreateFileSpaceStmt;
+
 /* ----------------------
- *		Create/Drop Table Space Statements
+ *		Create/Drop TableSpace Statements
  * ----------------------
  */
 
@@ -1531,17 +1542,9 @@ typedef struct CreateTableSpaceStmt
 	NodeTag		type;
 	char	   *tablespacename;
 	char	   *owner;
-	List	   *locations;
-	List	   *mirrorlocations;
-	char	   *masterlocation;
+	char       *filespacename;
+	Oid         tsoid;
 } CreateTableSpaceStmt;
-
-typedef struct DropTableSpaceStmt
-{
-	NodeTag		type;
-	char	   *tablespacename;
-	bool		missing_ok;		/* skip error if missing? */
-} DropTableSpaceStmt;
 
 /* ----------------------
  *		Create/Drop TRIGGER Statements
@@ -1744,7 +1747,9 @@ typedef struct CreateOpClassItem
 } CreateOpClassItem;
 
 /* ----------------------
- *		Drop Table|Sequence|View|Index|Type|Domain|Conversion|Schema Statement
+ *		DROP Statement, applies to:
+ *        Table, External Table, Sequence, View, Index, Type, Domain, 
+ *        Conversion, Schema, Filespace
  * ----------------------
  */
 

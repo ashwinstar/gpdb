@@ -1448,17 +1448,7 @@ _equalCreateTableSpaceStmt(CreateTableSpaceStmt *a, CreateTableSpaceStmt *b)
 {
 	COMPARE_STRING_FIELD(tablespacename);
 	COMPARE_STRING_FIELD(owner);
-	COMPARE_NODE_FIELD(locations);
-	COMPARE_NODE_FIELD(mirrorlocations);
-
-	return true;
-}
-
-static bool
-_equalDropTableSpaceStmt(DropTableSpaceStmt *a, DropTableSpaceStmt *b)
-{
-	COMPARE_STRING_FIELD(tablespacename);
-	COMPARE_SCALAR_FIELD(missing_ok);
+	COMPARE_STRING_FIELD(filespacename);
 
 	return true;
 }
@@ -2487,9 +2477,6 @@ equal(void *a, void *b)
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _equalCreateTableSpaceStmt(a, b);
-			break;
-		case T_DropTableSpaceStmt:
-			retval = _equalDropTableSpaceStmt(a, b);
 			break;
 		case T_CreateTrigStmt:
 			retval = _equalCreateTrigStmt(a, b);

@@ -3141,6 +3141,33 @@ _readCreateTrigStmt(const char ** str)
 
 }
 
+static CreateFileSpaceStmt *
+_readCreateFileSpaceStmt(const char ** str)
+{
+	READ_LOCALS(CreateFileSpaceStmt);
+
+	READ_STRING_FIELD(filespacename);
+	READ_STRING_FIELD(owner);
+	READ_NODE_FIELD(locations);
+	READ_OID_FIELD(fsoid);
+
+	READ_DONE();
+}
+
+
+static CreateTableSpaceStmt *
+_readCreateTableSpaceStmt(const char ** str)
+{
+	READ_LOCALS(CreateTableSpaceStmt);
+
+	READ_STRING_FIELD(tablespacename);
+	READ_STRING_FIELD(owner);
+	READ_STRING_FIELD(filespacename);
+	READ_OID_FIELD(tsoid);
+
+	READ_DONE();
+}
+
 static Node *
 _readValue(const char ** str, NodeTag nt)
 {
@@ -3895,6 +3922,14 @@ readNodeBinary(const char ** str)
 
 			case T_CreateTrigStmt:
 				return_value = _readCreateTrigStmt(str);
+				break;
+
+			case T_CreateFileSpaceStmt:
+				return_value = _readCreateFileSpaceStmt(str);
+				break;
+
+			case T_CreateTableSpaceStmt:
+				return_value = _readCreateTableSpaceStmt(str);
 				break;
 
 			default:

@@ -33,6 +33,7 @@
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_tablespace.h"
+#include "catalog/pg_filespace.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "commands/tablecmds.h"
@@ -1586,7 +1587,9 @@ static const char *const not_owner_msg[MAX_ACL_KIND] =
 	/* ACL_KIND_CONVERSION */
 	gettext_noop("must be owner of conversion %s"),
 	/* ACL_KIND_TABLESPACE */
-	gettext_noop("must be owner of tablespace %s")
+	gettext_noop("must be owner of tablespace %s"),
+	/* ACL_KIND_FILESPACE */
+	gettext_noop("must be owner of filespace %s")
 };
 
 
@@ -2353,6 +2356,47 @@ pg_tablespace_ownercheck(Oid spc_oid, Oid roleid)
 
 	return has_privs_of_role(roleid, spcowner);
 }
+
+/*
+ * Ownership check for a filespace (specified by OID).
+ */
+bool
+pg_filespace_ownercheck(Oid fsoid, Oid roleid)
+{
+	Relation	rel;
+	ScanKeyData entry[1];
+	SysScanDesc scan;
+	HeapTuple	tuple;
+	Oid			owner;
+
+	/* Superusers bypass all permission checking. */
+	if (superuser_arg(roleid))
+		return true;
+
+	/* There's no syscache for pg_filespace, so must look the hard way */
+	rel = heap_open(FileSpaceRelationId, AccessShareLock);
+	ScanKeyInit(&entry[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(fsoid));
+	scan = systable_beginscan(rel, FilespaceOidIndexId, true, 
+							  SnapshotNow, 1, entry);
+
+	tuple = systable_getnext(scan);
+
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("filepace with OID %u does not exist", fsoid)));
+
+	owner = ((Form_pg_filespace) GETSTRUCT(tuple))->fsowner;
+
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+
+	return has_privs_of_role(roleid, owner);
+}
+
 
 /*
  * Ownership check for an operator class (specified by OID).

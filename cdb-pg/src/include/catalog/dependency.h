@@ -137,6 +137,7 @@ typedef enum ObjectClass
 	OCLASS_ROLE,				/* pg_authid */
 	OCLASS_DATABASE,			/* pg_database */
 	OCLASS_TBLSPACE,			/* pg_tablespace */
+	OCLASS_FILESPACE,           /* pg_filespace */
 	MAX_OCLASS					/* MUST BE LAST */
 } ObjectClass;
 

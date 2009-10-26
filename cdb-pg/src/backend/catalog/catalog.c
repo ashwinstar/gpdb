@@ -32,6 +32,8 @@
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_shdepend.h"
 #include "catalog/pg_shdescription.h"
+#include "catalog/pg_filespace.h"
+#include "catalog/pg_filespace_entry.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/gp_configuration.h"
@@ -302,6 +304,8 @@ IsSharedRelation(Oid relationId)
 		relationId == ResQueueRelationId ||
 		relationId == SharedDescriptionRelationId ||
 		relationId == SharedDependRelationId ||
+		relationId == FileSpaceRelationId ||
+		relationId == FileSpaceEntryRelationId ||
 		relationId == TableSpaceRelationId ||
 		relationId == GpConfigurationRelationId ||
 		relationId == GpConfigHistoryRelationId ||
@@ -327,6 +331,10 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedDescriptionObjIndexId ||
 		relationId == SharedDependDependerIndexId ||
 		relationId == SharedDependReferenceIndexId ||
+		relationId == FilespaceOidIndexId ||
+		relationId == FilespaceNameIndexId ||
+		relationId == FilespaceEntryFsIndexId ||
+		relationId == FilespaceEntryFsDbIndexId ||
 		relationId == TablespaceOidIndexId ||
 		relationId == TablespaceNameIndexId ||
 		relationId == GpConfigurationContentDefinedprimaryIndexId ||
@@ -343,7 +351,7 @@ IsSharedRelation(Oid relationId)
 		relationId == PgDatabaseToastTable ||
 		relationId == PgDatabaseToastIndex ||
 		relationId == PgShdescriptionToastTable ||
-		relationId == PgShdescriptionToastIndex)
+		relationId == PgShdescriptionToastIndex )
 		return true;
 	return false;
 }

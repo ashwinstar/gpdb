@@ -66,6 +66,17 @@ create table public.pg_exttable (reloid oid not null,
 								 rejectlimittype char,
 								 fmterrtbl oid,
 								 encoding integer);
+create table public.pg_tablespace(spcname name,
+	                              spcowner oid,
+								  spclocation text,
+								  spcacl aclitem[],
+								  spcprilocations text[],
+								  spcmirlocations text[]) with oids;
+-- These tables we only create so that the REINDEX statements wont error
+create table public.gp_configuration_history(like pg_catalog.gp_configuration_history);
+create table public.gp_db_interfaces(like pg_catalog.gp_db_interfaces);
+create table public.gp_interfaces(like pg_catalog.gp_interfaces);
+create table public.pg_filespace(like pg_catalog.pg_filespace);
 --
 -- 2. Build the 33 catalog
 --
@@ -772,6 +783,19 @@ delete from public.pg_depend d using public.pg_proc p where (p.oid = d.objid) an
 update public.pg_class set relowner=typowner from public.pg_type t where relkind='c' and t.oid=reltype;
 update public.pg_depend set classid='pg_type'::regclass, objid=reltype from public.pg_class where refclassid='pg_namespace'::regclass and objid=oid and relkind='c';
 --
+-- Some manual fixups.
+--   The above loadcat added some columns to our "public" versions of the
+--   catalogs, but this updated the "pg_catalog.pg_attribute".
+--   Insert the appropriate rows into the "public.pg_attribute".
+insert into public.pg_attribute 
+  select 'pg_catalog.pg_appendonly'::regclass, a.attname, a.atttypid,
+    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
+    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
+    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
+  from pg_catalog.pg_attribute a
+  where (attrelid, attnum) in ( ('public.pg_appendonly'::regclass, 8) );
+update public.pg_class set relnatts=8 where oid = 'pg_catalog.pg_appendonly'::regclass;
+--
 -- 6. Compare upgraded 32 to loaded 33
 --
 -- new pg_partitions 
@@ -810,83 +834,6 @@ from public.pg_attribute_v33 a,
 ---------+---------+--------+---------+--------+-----------
 (0 rows)
 
--- we expect one difference here: 
---   we added a column "compresstype" to pg_appendonly
---
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute_v33 a,
-     public.pg_class_v33 c,
-     public.pg_type_v33 t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r'
-except
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute a,
-     public.pg_class c,
-     public.pg_type t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r';
-    relname    |   attname    | attnum | typname | typlen | atttypmod 
----------------+--------------+--------+---------+--------+-----------
- pg_appendonly | compresstype |      8 | text    |     -1 |        -1
-(1 row)
-
--- The above diff occurs despite the alter table in the transform
--- because the alter table effected the "real" catalog, not our copy.
--- Validate that the new column exists in the "real" catalog
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from pg_catalog.pg_attribute a,
-     pg_catalog.pg_class c,
-     pg_catalog.pg_type t
-where c.oid = a.attrelid and a.attnum > 0
-  and t.oid = a.atttypid
-  and c.oid = 'public.pg_appendonly'::regclass
-order by attnum;
-    relname    |     attname     | attnum | typname | typlen | atttypmod 
----------------+-----------------+--------+---------+--------+-----------
- pg_appendonly | relid           |      1 | oid     |      4 |        -1
- pg_appendonly | blocksize       |      2 | int4    |      4 |        -1
- pg_appendonly | safefswritesize |      3 | int4    |      4 |        -1
- pg_appendonly | compresslevel   |      4 | int2    |      2 |        -1
- pg_appendonly | majorversion    |      5 | int2    |      2 |        -1
- pg_appendonly | minorversion    |      6 | int2    |      2 |        -1
- pg_appendonly | checksum        |      7 | bool    |      1 |        -1
- pg_appendonly | compresstype    |      8 | text    |     -1 |        -1
-(8 rows)
-
--- Add the column to our phoney catalog
-insert into public.pg_attribute 
-  select 'pg_catalog.pg_appendonly'::regclass, a.attname, a.atttypid,
-    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
-    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
-    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
-  from pg_catalog.pg_attribute a
-  where a.attrelid = 'public.pg_appendonly'::regclass and a.attnum = 8;
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute a,
-     public.pg_class c,
-     public.pg_type t
-where c.oid = a.attrelid and a.attnum > 0
-  and t.oid = a.atttypid
-  and c.oid = 'pg_catalog.pg_appendonly'::regclass
-order by attnum;
-    relname    |     attname     | attnum | typname | typlen | atttypmod 
----------------+-----------------+--------+---------+--------+-----------
- pg_appendonly | relid           |      1 | oid     |      4 |        -1
- pg_appendonly | blocksize       |      2 | int4    |      4 |        -1
- pg_appendonly | safefswritesize |      3 | int4    |      4 |        -1
- pg_appendonly | compresslevel   |      4 | int2    |      2 |        -1
- pg_appendonly | majorversion    |      5 | int2    |      2 |        -1
- pg_appendonly | minorversion    |      6 | int2    |      2 |        -1
- pg_appendonly | checksum        |      7 | bool    |      1 |        -1
- pg_appendonly | compresstype    |      8 | text    |     -1 |        -1
-(8 rows)
-
--- Recheck, now there should be no diffs
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute_v33 a,
      public.pg_class_v33 c,
@@ -952,6 +899,41 @@ select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
 from public.pg_proc_v33 where oid < 10000;
  proname | pronamespace | proowner | prolang | proisagg | prosecdef | proisstrict | proretset | provolatile | pronargs | prorettype | proiswin | proargtypes | proallargtypes | proargmodes | proargnames | prosrc | probin 
 ---------+--------------+----------+---------+----------+-----------+-------------+-----------+-------------+----------+------------+----------+-------------+----------------+-------------+-------------+--------+--------
+(0 rows)
+
+-- compare old and new pg_class
+select relname, relnamespace, reltype, relowner, relam, reltablespace,
+       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
+       relhasindex, relisshared, relkind, relstorage, relnatts,
+	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
+       relhaspkey, relhasrules, relhassubclass, reloptions
+from public.pg_class_v33 where oid < 10000 and relname !~ 'pg_toast'
+except
+select relname, relnamespace, reltype, relowner, relam, reltablespace,
+       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
+       relhasindex, relisshared, relkind, relstorage, relnatts,
+	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
+       relhaspkey, relhasrules, relhassubclass, reloptions
+from public.pg_class where oid < 10000 and relname !~ 'pg_toast';
+ relname | relnamespace | reltype | relowner | relam | reltablespace | reltoastrelid | reltoastidxid | relaosegrelid | relaosegidxid | relhasindex | relisshared | relkind | relstorage | relnatts | relchecks | reltriggers | relukeys | relfkeys | relrefs | relhasoids | relhaspkey | relhasrules | relhassubclass | reloptions 
+---------+--------------+---------+----------+-------+---------------+---------------+---------------+---------------+---------------+-------------+-------------+---------+------------+----------+-----------+-------------+----------+----------+---------+------------+------------+-------------+----------------+------------
+(0 rows)
+
+select relname, relnamespace, reltype, relowner, relam, reltablespace,
+       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
+       relhasindex, relisshared, relkind, relstorage, relnatts,
+	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
+       relhaspkey, relhasrules, relhassubclass, reloptions
+from public.pg_class where oid < 10000 and relname !~ 'pg_toast'
+except
+select relname, relnamespace, reltype, relowner, relam, reltablespace,
+       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
+       relhasindex, relisshared, relkind, relstorage, relnatts,
+	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
+       relhaspkey, relhasrules, relhassubclass, reloptions
+from public.pg_class_v33 where oid < 10000 and relname !~ 'pg_toast';
+ relname | relnamespace | reltype | relowner | relam | reltablespace | reltoastrelid | reltoastidxid | relaosegrelid | relaosegidxid | relhasindex | relisshared | relkind | relstorage | relnatts | relchecks | reltriggers | relukeys | relfkeys | relrefs | relhasoids | relhaspkey | relhasrules | relhassubclass | reloptions 
+---------+--------------+---------+----------+-------+---------------+---------------+---------------+---------------+---------------+-------------+-------------+---------+------------+----------+-----------+-------------+----------+----------+---------+------------+------------+-------------+----------------+------------
 (0 rows)
 
 -- compare old and new pg_aggregate
@@ -1106,6 +1088,7 @@ copy public.pg_proc from '@abs_srcdir@/data//upg2_pg_proc_toadd33.data' oids nul
 copy public.pg_namespace from '@abs_srcdir@/data//upg2_pg_namespace_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_description from '@abs_srcdir@/data//upg2_pg_description_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy public.pg_depend from '@abs_srcdir@/data//upg2_pg_depend_toadd33.data' null as E'\\N' csv delimiter '|' header;
+copy public.pg_shdescription from '@abs_srcdir@/data//upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
 -- fix up pg_appendonly
 alter table public.pg_appendonly add column columnstore boolean;
 update public.pg_appendonly set columnstore='f';
@@ -1114,6 +1097,9 @@ alter table public.pg_appendonly alter column columnstore set not null;
 alter table public.pg_exttable add column writable boolean;
 update public.pg_exttable set writable='f';
 alter table public.pg_exttable alter column writable set not null;
+-- fix up pg_tablespace
+alter table public.pg_tablespace add column spcfsoid oid;
+update public.pg_tablespace set spcfsoid = 3052;   -- oid of "pg_system" filespace 
 -- upgrade pg_partitions.parentpartitioname
 -- Need to manually diff the view definitions and extract the changed
 -- portions.  Yuck!
@@ -1160,17 +1146,44 @@ replace(ev_action,
 where ev_class = 'public.pg_partitions'::regclass;
 commit;
 reindex table public.pg_appendonly;
--- will error out in regression tests, this is expected
 reindex table public.pg_exttable;
--- will error out in regression tests, this is expected
 reindex table public.gp_configuration_history;
-psql:@abs_builddir@/sql/loadcat34.sql:79: ERROR:  relation "public.gp_configuration_history" does not exist
--- will error out in regression tests, this is expected
 reindex table public.gp_db_interfaces;
-psql:@abs_builddir@/sql/loadcat34.sql:81: ERROR:  relation "public.gp_db_interfaces" does not exist
--- will error out in regression tests, this is expected
+NOTICE:  table "gp_db_interfaces" has no indexes
 reindex table public.gp_interfaces;
-psql:@abs_builddir@/sql/loadcat34.sql:83: ERROR:  relation "public.gp_interfaces" does not exist
+NOTICE:  table "gp_interfaces" has no indexes
+reindex table public.pg_filespace;
+NOTICE:  table "pg_filespace" has no indexes
+reindex table public.pg_tablespace;
+-- 
+-- Some manual fixups.
+--   The above loadcat added some columns to our "public" versions of the
+--   catalogs, but this updated the "pg_catalog.pg_attribute".
+--   Insert the appropriate rows into the "public.pg_attribute".
+insert into public.pg_attribute 
+  select 'pg_catalog.pg_appendonly'::regclass, a.attname, a.atttypid,
+    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
+    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
+    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
+  from pg_catalog.pg_attribute a
+  where (attrelid, attnum) in ( ('public.pg_appendonly'::regclass, 9) );
+update public.pg_class set relnatts=9 where oid = 'pg_catalog.pg_appendonly'::regclass;
+insert into public.pg_attribute 
+  select 'pg_catalog.pg_exttable'::regclass, a.attname, a.atttypid,
+    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
+    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
+    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
+  from pg_catalog.pg_attribute a
+  where (attrelid, attnum) in ( ('public.pg_exttable'::regclass, 10) );
+update public.pg_class set relnatts=10 where oid = 'pg_catalog.pg_exttable'::regclass;
+insert into public.pg_attribute 
+  select 'pg_catalog.pg_tablespace'::regclass, a.attname, a.atttypid,
+    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
+    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
+    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
+  from pg_catalog.pg_attribute a
+  where (attrelid, attnum) in ( ('public.pg_tablespace'::regclass, 7) );
+update public.pg_class set relnatts=7 where oid = 'pg_catalog.pg_tablespace'::regclass;
 --
 -- 8. Compare upgraded 33 to actual 34
 --
@@ -1210,90 +1223,10 @@ from pg_catalog.pg_attribute a,
 ---------+---------+--------+---------+--------+-----------
 (0 rows)
 
--- we expect one difference here: 
---   we added a column "columnstore" to pg_appendonly
---
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from pg_catalog.pg_attribute a,
      pg_catalog.pg_class c,
      pg_catalog.pg_type t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r'
-except
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute a,
-     public.pg_class c,
-     public.pg_type t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r';
-    relname    |   attname   | attnum | typname | typlen | atttypmod 
----------------+-------------+--------+---------+--------+-----------
- pg_appendonly | columnstore |      9 | bool    |      1 |        -1
- pg_exttable   | writable    |     10 | bool    |      1 |        -1
-(2 rows)
-
--- The above diff occurs despite the alter table in the transform
--- because the alter table effected the "real" catalog, not our copy.
--- Validate that the new column exists in the "real" catalog
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from pg_catalog.pg_attribute a,
-     pg_catalog.pg_class c,
-     pg_catalog.pg_type t
-where c.oid = a.attrelid and a.attnum > 0
-  and t.oid = a.atttypid
-  and c.oid = 'public.pg_appendonly'::regclass
-order by attnum;
-    relname    |     attname     | attnum | typname | typlen | atttypmod 
----------------+-----------------+--------+---------+--------+-----------
- pg_appendonly | relid           |      1 | oid     |      4 |        -1
- pg_appendonly | blocksize       |      2 | int4    |      4 |        -1
- pg_appendonly | safefswritesize |      3 | int4    |      4 |        -1
- pg_appendonly | compresslevel   |      4 | int2    |      2 |        -1
- pg_appendonly | majorversion    |      5 | int2    |      2 |        -1
- pg_appendonly | minorversion    |      6 | int2    |      2 |        -1
- pg_appendonly | checksum        |      7 | bool    |      1 |        -1
- pg_appendonly | compresstype    |      8 | text    |     -1 |        -1
- pg_appendonly | columnstore     |      9 | bool    |      1 |        -1
-(9 rows)
-
--- Add the column to our phoney catalog
-insert into public.pg_attribute 
-  select 'pg_catalog.pg_appendonly'::regclass, a.attname, a.atttypid,
-    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
-    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
-    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
-  from pg_catalog.pg_attribute a
-  where a.attrelid = 'public.pg_appendonly'::regclass and a.attnum = 9;
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute a,
-     public.pg_class c,
-     public.pg_type t
-where c.oid = a.attrelid and a.attnum > 0
-  and t.oid = a.atttypid
-  and c.oid = 'pg_catalog.pg_appendonly'::regclass
-order by attnum;
-    relname    |     attname     | attnum | typname | typlen | atttypmod 
----------------+-----------------+--------+---------+--------+-----------
- pg_appendonly | relid           |      1 | oid     |      4 |        -1
- pg_appendonly | blocksize       |      2 | int4    |      4 |        -1
- pg_appendonly | safefswritesize |      3 | int4    |      4 |        -1
- pg_appendonly | compresslevel   |      4 | int2    |      2 |        -1
- pg_appendonly | majorversion    |      5 | int2    |      2 |        -1
- pg_appendonly | minorversion    |      6 | int2    |      2 |        -1
- pg_appendonly | checksum        |      7 | bool    |      1 |        -1
- pg_appendonly | compresstype    |      8 | text    |     -1 |        -1
- pg_appendonly | columnstore     |      9 | bool    |      1 |        -1
-(9 rows)
-
--- Recheck, now there should be no diffs
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute_v33 a,
-     public.pg_class_v33 c,
-     public.pg_type_v33 t
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
@@ -1355,6 +1288,41 @@ select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
 from pg_catalog.pg_proc where oid < 10000;
  proname | pronamespace | proowner | prolang | proisagg | prosecdef | proisstrict | proretset | provolatile | pronargs | prorettype | proiswin | proargtypes | proallargtypes | proargmodes | proargnames | prosrc | probin 
 ---------+--------------+----------+---------+----------+-----------+-------------+-----------+-------------+----------+------------+----------+-------------+----------------+-------------+-------------+--------+--------
+(0 rows)
+
+-- compare old and new pg_class
+select relname, relnamespace, reltype, relowner, relam, reltablespace,
+       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
+       relhasindex, relisshared, relkind, relstorage, relnatts,
+	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
+       relhaspkey, relhasrules, relhassubclass, reloptions
+from pg_catalog.pg_class where oid < 10000 and relname !~ 'pg_toast'
+except
+select relname, relnamespace, reltype, relowner, relam, reltablespace,
+       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
+       relhasindex, relisshared, relkind, relstorage, relnatts,
+	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
+       relhaspkey, relhasrules, relhassubclass, reloptions
+from public.pg_class where oid < 10000 and relname !~ 'pg_toast';
+ relname | relnamespace | reltype | relowner | relam | reltablespace | reltoastrelid | reltoastidxid | relaosegrelid | relaosegidxid | relhasindex | relisshared | relkind | relstorage | relnatts | relchecks | reltriggers | relukeys | relfkeys | relrefs | relhasoids | relhaspkey | relhasrules | relhassubclass | reloptions 
+---------+--------------+---------+----------+-------+---------------+---------------+---------------+---------------+---------------+-------------+-------------+---------+------------+----------+-----------+-------------+----------+----------+---------+------------+------------+-------------+----------------+------------
+(0 rows)
+
+select relname, relnamespace, reltype, relowner, relam, reltablespace,
+       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
+       relhasindex, relisshared, relkind, relstorage, relnatts,
+	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
+       relhaspkey, relhasrules, relhassubclass, reloptions
+from public.pg_class where oid < 10000 and relname !~ 'pg_toast'
+except
+select relname, relnamespace, reltype, relowner, relam, reltablespace,
+       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
+       relhasindex, relisshared, relkind, relstorage, relnatts,
+	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
+       relhaspkey, relhasrules, relhassubclass, reloptions
+from pg_catalog.pg_class where oid < 10000 and relname !~ 'pg_toast';
+ relname | relnamespace | reltype | relowner | relam | reltablespace | reltoastrelid | reltoastidxid | relaosegrelid | relaosegidxid | relhasindex | relisshared | relkind | relstorage | relnatts | relchecks | reltriggers | relukeys | relfkeys | relrefs | relhasoids | relhaspkey | relhasrules | relhassubclass | reloptions 
+---------+--------------+---------+----------+-------+---------------+---------------+---------------+---------------+---------------+-------------+-------------+---------+------------+----------+-----------+-------------+----------+----------+---------+------------+------------+-------------+----------------+------------
 (0 rows)
 
 -- compare old and new pg_aggregate
@@ -1557,7 +1525,10 @@ drop table
   public.pg_appendonly,
   public.pg_appendonly_v33,
   public.pg_exttable,
-  public.pg_exttable_v33;
+  public.pg_exttable_v33,
+  public.gp_configuration_history,
+  public.gp_db_interfaces,
+  public.gp_interfaces;
 drop view
    public.pg_partitions_v33;
 drop view

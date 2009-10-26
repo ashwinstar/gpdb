@@ -30,6 +30,7 @@
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_depend.h"
+#include "catalog/pg_filespace.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
@@ -42,6 +43,7 @@
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/filespace.h"
 #include "commands/proclang.h"
 #include "commands/schemacmds.h"
 #include "commands/tablespace.h"
@@ -93,7 +95,11 @@ static const Oid object_classes[MAX_OCLASS] = {
 	OperatorClassRelationId,	/* OCLASS_OPCLASS */
 	RewriteRelationId,			/* OCLASS_REWRITE */
 	TriggerRelationId,			/* OCLASS_TRIGGER */
-	NamespaceRelationId			/* OCLASS_SCHEMA */
+	NamespaceRelationId,		/* OCLASS_SCHEMA */
+	AuthIdRelationId,           /* OCLASS_ROLE */
+	DatabaseRelationId,         /* OCLASS_DATABASE */
+	TableSpaceRelationId,       /* OCLASS_TBLSPACE */
+	FileSpaceRelationId         /* OCLASS_FILESPACE */
 };
 
 
@@ -1003,6 +1009,10 @@ doDeletion(const ObjectAddress *object)
 			RemoveSchemaById(object->objectId);
 			break;
 
+		case OCLASS_FILESPACE:
+			RemoveFileSpaceById(object->objectId);
+			break;
+
 		default:
 			elog(ERROR, "unrecognized object class: %u",
 				 object->classId);
@@ -1691,6 +1701,10 @@ getObjectClass(const ObjectAddress *object)
 		case TableSpaceRelationId:
 			Assert(object->objectSubId == 0);
 			return OCLASS_TBLSPACE;
+
+		case FileSpaceRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_FILESPACE;
 	}
 
 	/* shouldn't get here */
@@ -2036,6 +2050,18 @@ getObjectDescription(const ObjectAddress *object)
 				appendStringInfo(&buffer, _("tablespace %s"), tblspace);
 				break;
 			}
+
+		case OCLASS_FILESPACE:
+			{
+				char       *fsname;
+
+				fsname = get_filespace_name(object->objectId);
+				if (!fsname)
+					elog(ERROR, "cache lookup failed for filespace %u",
+						 object->objectId);
+				appendStringInfo(&buffer, _("filespace %s"), fsname);
+				break;
+			}				
 
 		default:
 			appendStringInfo(&buffer, "unrecognized object %u %u %d",

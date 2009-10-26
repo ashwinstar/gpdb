@@ -7,6 +7,7 @@ copy @gpupgradeschemaname@.pg_proc from '@gpupgradedatadir@/upg2_pg_proc_toadd33
 copy @gpupgradeschemaname@.pg_namespace from '@gpupgradedatadir@/upg2_pg_namespace_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_description from '@gpupgradedatadir@/upg2_pg_description_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_depend from '@gpupgradedatadir@/upg2_pg_depend_toadd33.data' null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_shdescription from '@gpupgradedatadir@/upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
 
 -- fix up pg_appendonly
 alter table @gpupgradeschemaname@.pg_appendonly add column columnstore boolean;
@@ -17,6 +18,10 @@ alter table @gpupgradeschemaname@.pg_appendonly alter column columnstore set not
 alter table @gpupgradeschemaname@.pg_exttable add column writable boolean;
 update @gpupgradeschemaname@.pg_exttable set writable='f';
 alter table @gpupgradeschemaname@.pg_exttable alter column writable set not null;
+
+-- fix up pg_tablespace
+alter table @gpupgradeschemaname@.pg_tablespace add column spcfsoid oid;
+update @gpupgradeschemaname@.pg_tablespace set spcfsoid = 3052;   -- oid of "pg_system" filespace 
 
 -- upgrade pg_partitions.parentpartitioname
 
@@ -73,11 +78,9 @@ where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
 commit;
 
 reindex table @gpupgradeschemaname@.pg_appendonly;
--- will error out in regression tests, this is expected
 reindex table @gpupgradeschemaname@.pg_exttable;
--- will error out in regression tests, this is expected
 reindex table @gpupgradeschemaname@.gp_configuration_history;
--- will error out in regression tests, this is expected
 reindex table @gpupgradeschemaname@.gp_db_interfaces;
--- will error out in regression tests, this is expected
 reindex table @gpupgradeschemaname@.gp_interfaces;
+reindex table @gpupgradeschemaname@.pg_filespace;
+reindex table @gpupgradeschemaname@.pg_tablespace;

@@ -355,7 +355,7 @@ typedef enum NodeTag
 	T_DeallocateStmt,
 	T_DeclareCursorStmt,
 	T_CreateTableSpaceStmt,
-	T_DropTableSpaceStmt,
+	T_DropTableSpaceStmt,           /* Removed, See DropStmt */
 	T_AlterObjectSchemaStmt,
 	T_AlterOwnerStmt,
 	T_DropOwnedStmt,
@@ -371,6 +371,7 @@ typedef enum NodeTag
 	T_AlterPartitionId,
 	T_AlterPartitionCmd,
 	T_InheritPartitionCmd,
+	T_CreateFileSpaceStmt,
 	/* XXX: careful, we're almost at 800 */
 	
 	T_A_Expr = 800,

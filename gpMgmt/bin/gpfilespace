@@ -61,7 +61,7 @@ class GPError(StandardError): pass
 class GPDatabaseError(GPError): pass
 class GPPrivilegeError(GPError): pass
 
-CLUSTERSIZE = 70    #  DEBUGGING
+CLUSTERSIZE = 1    #  DEBUGGING (to simulate ebay set to 98)
 
 # ============================================================================
 def cli_help():
@@ -291,7 +291,7 @@ def checkdirs(host, parents, paths):
     try:
         runcmd(['ssh', host, dircheck] + dirs)
     except OSError, e:
-        raise OSError('%s: %s' % (host, str(e)))
+        raise GPError('%s: %s' % (host, str(e)))
 
 
 # ============================================================================
@@ -1105,19 +1105,22 @@ To add this filespace to the database please run the command:
         dbids = self.segments.keys()
         dbids.sort()
         for dbid in dbids:
-            q += "  %d: %s,\n" % (dbid, self.segments[dbid].path)
-        q += ");"
+            q += "  %d: '%s',\n" % (dbid, self.segments[dbid].path)
+        
+        # We have an extra "," in the above, strip it out and add in
+        # the end paren instead
+        q = q[0:-2] + ");"
 
         logger.info(q);
 
         print "Connecting to database"
         conn = self.connect()
         try:
-            result = conn.query(q).getresult()
+            conn.query(q)
         except Exception, e:
             raise GPDatabaseError(str(e))
         
-        print "[%s]" % result
+        print 'Filespace "%s" successfully created' % fspacename
         sys.stdout.flush()
 
 

@@ -54,9 +54,11 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_filespace.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "commands/comment.h"
+#include "commands/filespace.h"
 #include "commands/tablespace.h"
 #include "miscadmin.h"
 #include "storage/fd.h"
@@ -77,7 +79,8 @@
 char	   *default_tablespace = NULL;
 
 
-static bool remove_tablespace_directories(Oid tablespaceoid, bool redo, char *location);
+static bool remove_tablespace_directories(Oid tablespaceoid, bool redo, 
+										  char *location);
 static void set_short_version(const char *path);
 
 
@@ -196,26 +199,19 @@ TablespaceCreateDbspace(Oid spcNode, Oid dbNode, bool isRedo)
 void
 CreateTableSpace(CreateTableSpaceStmt *stmt)
 {
-#ifdef HAVE_SYMLINK
 	Relation	rel;
+	Relation    filespaceRel;
 	Datum		values[Natts_pg_tablespace];
 	bool		nulls[Natts_pg_tablespace];
 	HeapTuple	tuple;
 	Oid			tablespaceoid;
-	char	   *location = NULL;
-	char	   *sublocation = NULL;
-	char	   *linkloc;
+	Oid         filespaceoid;
 	Oid			ownerId;
-	ListCell   *cell;
-	int numSegsPerHost = 0;
-	bool hasMirrors = false;
-	struct stat     st;
-	int i;
 
 	/* validate */
 
 	/* don't call this in a transaction block */
-	PreventTransactionChain((void *) stmt, "CREATE TABLESPACE");
+	// PreventTransactionChain((void *) stmt, "CREATE TABLESPACE");
 
 	/* Must be super user */
 	if (!superuser())
@@ -231,154 +227,6 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	else
 		ownerId = GetUserId();
 		
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		CdbComponentDatabases *cdb_component_dbs = NULL;
-		int i;
-		
-		char * firsthost = NULL;
-		
-		if (cdb_component_dbs == NULL) 
-			cdb_component_dbs = getCdbComponentDatabases();
-		
-		for (i =0;i < cdb_component_dbs->total_segment_dbs;i++)
-		{	
-			if (cdb_component_dbs->segment_db_info[i].definedprimary && 
-				cdb_component_dbs->segment_db_info[i].segindex >=0)
-				firsthost = cdb_component_dbs->segment_db_info[i].hostname;
-			break;
-		}
-		
-		for (i = 0;i< cdb_component_dbs->total_segment_dbs;i++)
-		{
-			elog((Debug_print_tablespace ? LOG : DEBUG5),"%d %s",cdb_component_dbs->segment_db_info[i].segindex,cdb_component_dbs->segment_db_info[i].hostname);
-			if (cdb_component_dbs->segment_db_info[i].definedprimary && 
-				cdb_component_dbs->segment_db_info[i].segindex >=0 &&
-			    strcmp(firsthost, cdb_component_dbs->segment_db_info[i].hostname)==0)
-				numSegsPerHost++;
-			if (!cdb_component_dbs->segment_db_info[i].definedprimary && 
-				cdb_component_dbs->segment_db_info[i].segindex >=0 )
-				hasMirrors = true;
-		}
-		
-		 
-		
-		if (hasMirrors && stmt->mirrorlocations == NULL)
-		{
-			ereport(ERROR,
-				(errcode(ERRCODE_GP_COMMAND_ERROR),
-				 errmsg("Your system is using segment mirroring.  You must specify locations for the mirrors as well as the primaries"),
-				 errhint("Use a MIRROR LOCATION clause after the LOCATION clause")));
-		}
-		
-		i = 0;
-		foreach(cell, stmt->locations)
-		{
-			i++;
-		}
-		
-		if (i!=numSegsPerHost)
-			ereport(ERROR,
-				(errcode(ERRCODE_GP_COMMAND_ERROR),
-				 errmsg("You must specify as many locations as you have segment databases on each host. You specified %d locations but there are %d segments per host.",i,numSegsPerHost),
-				 errhint("Check gp_configuration for number of primary segment databases on each host")));
-			
-		
-		if (stmt->mirrorlocations)
-		{
-			int j = 0;
-			foreach(cell, stmt->mirrorlocations)
-			{
-				j++;
-			}
-			
-			if (i!=j)
-				ereport(ERROR,
-				(errcode(ERRCODE_GP_COMMAND_ERROR),
-				 errmsg("You must specify as many mirror locations as primary locations"),
-				 errhint("Your system has mirroring configured, so you must allow for locations for the mirrors as well as primaries")));
-		}
-		
-	}
-	else
-	{
-		i = 0;
-		foreach(cell, stmt->locations)
-		{
-			i++;
-		}
-		numSegsPerHost = i;
-		 
-	}
-	
-	i = 0;
-	
-	if (Gp_is_primary)
-	{
-	 
-		foreach(cell, stmt->locations)
-		{
-			Value * v = lfirst(cell);
-			location= pstrdup(v->val.str);
-			if (Gp_segment < 0 || i== (Gp_segment % numSegsPerHost))
-				break;
-			i++;
-		}
-	}
-	else
-	{
-		foreach(cell, stmt->mirrorlocations)
-		{
-			Value * v = lfirst(cell);
-			location= pstrdup(v->val.str);
-			if (Gp_segment < 0 || i== (Gp_segment % numSegsPerHost))
-				break;
-			i++;
-		}
-	}
-	
-	/* If specified, use a special directory for master database. */
-	if (Gp_role == GP_ROLE_DISPATCH && stmt->masterlocation)
-	{
-		location = pstrdup(stmt->masterlocation);
-		elog((Debug_print_tablespace ? LOG : DEBUG3), "dispatcher using location %s", location);
-	}
-	else
-		elog((Debug_print_tablespace ? LOG : DEBUG3),"Create Tablespace Using location %s", location);
-	
-		
-	/* Unix-ify the offered path, and strip any trailing slashes */
- 
-	Assert(PointerIsValid(location));
-	canonicalize_path(location);
-
-	/* disallow quotes, else CREATE DATABASE would be at risk */
-	if (strchr(location, '\''))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_NAME),
-				 errmsg("tablespace location cannot contain single quotes")));
-
-	/*
-	 * Allowing relative paths seems risky
-	 *
-	 * this also helps us ensure that location is not empty or whitespace
-	 */
-	if (!is_absolute_path(location))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("tablespace location must be an absolute path")));
-
-	/*
-	 * Check that location isn't too long. Remember that we're going to append
-	 * '/<dboid>/<relid>.<nnn>'  (XXX but do we ever form the whole path
-	 * explicitly?	This may be overly conservative.)
-	 */
-	if (strlen(location) >= (MAXPGPATH - 1 - 10 - 1 - 10 - 1 - 10))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("tablespace location \"%s\" is too long",
-						location)));
-
 	/*
 	 * Disallow creation of tablespaces named "pg_xxx"; we reserve this
 	 * namespace for system purposes.
@@ -389,6 +237,40 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 				 errmsg("unacceptable tablespace name \"%s\"",
 						stmt->tablespacename),
 		errdetail("The prefix \"pg_\" is reserved for system tablespaces.")));
+
+	/*
+	 * Check the specified filespace 
+	 */
+	filespaceRel = heap_open(FileSpaceRelationId, RowShareLock);
+	filespaceoid = get_filespace_oid(filespaceRel, stmt->filespacename);
+	heap_close(filespaceRel, NoLock);  /* hold lock until commit/abort */
+	if (!OidIsValid(filespaceoid))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("filespace \"%s\" does not exist",
+						stmt->filespacename)));
+	
+	/* 
+	 * Filespace pg_system is reserved for system use:
+	 *   - Used for pg_global and pg_default tablespaces only
+	 * 
+	 * Directory layout is slightly different for the system filespace.
+	 * Instead of having subdirectories for individual tablespaces instead
+	 * the two system tablespaces have specific locations within it:
+	 *	   pg_global  :	$PG_SYSTEM/global/relfilenode
+	 *	   pg_default : $PG_SYSTEM/base/dboid/relfilenode
+	 *
+	 * In other words PG_SYSTEM points to the segments "datadir", or in 
+	 * postgres vocabulary $PGDATA.
+	 * 
+	 */
+	if (filespaceoid == SYSTEMFILESPACE_OID && !IsBootstrapProcessingMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to create tablespace \"%s\"",
+						stmt->tablespacename),
+				 errhint("filespace %s is reserve for system use",
+						 stmt->filespacename)));
 
 	/*
 	 * Check that there is no other tablespace by this name.  (The unique
@@ -414,87 +296,18 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->tablespacename));
 	values[Anum_pg_tablespace_spcowner - 1] =
 		ObjectIdGetDatum(ownerId);
-	values[Anum_pg_tablespace_spclocation - 1] =
-		CStringGetTextDatum(location);
+	values[Anum_pg_tablespace_spcfsoid - 1] =
+		ObjectIdGetDatum(filespaceoid);
+	nulls[Anum_pg_tablespace_spclocation - 1] = true;
+	nulls[Anum_pg_tablespace_spcprilocations - 1] = true;
+	nulls[Anum_pg_tablespace_spcmirlocations - 1] = true;
 	nulls[Anum_pg_tablespace_spcacl - 1] = true;
 
-	/* CDB include the distinct primary and mirror directory locations on QD */
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		ArrayType	*prilocations = NULL;
-		ArrayType	*mirlocations = NULL;
-		char		*loc;
-		Datum		p;
-		Datum		m;
-		int			pindex = 0;
-		int			mindex = 0;
-		
-		/* Primaries */
-		if (stmt->locations)
-		{
-			foreach(cell, stmt->locations)
-			{
-				Value * v = lfirst(cell);
-				loc = pstrdup(v->val.str);
-				p = DirectFunctionCall1(textin, CStringGetDatum(loc));
-				pindex++;		/* array starts at 1 */
-
-				if (prilocations) 
-				{
-					prilocations =  array_set(prilocations, 1, &pindex,
-											  p, false, -1, -1, false, 'i');
-				}
-				else
-				{
-					prilocations = construct_array(&p, 1, 
-												   TEXTOID, -1, false, 'i');
-				}
-
-			}
-
-			values[Anum_pg_tablespace_spcprilocations - 1] =
-				PointerGetDatum(prilocations);
-		}
-
-		/* Mirrors */
-		if (stmt->mirrorlocations)
-		{
-			foreach(cell, stmt->mirrorlocations)
-			{
-				Value * v = lfirst(cell);
-				loc = pstrdup(v->val.str);
-				m = DirectFunctionCall1(textin, CStringGetDatum(loc));
-				mindex++;		/* array starts at 1 */
-
-				if (mirlocations) 
-				{
-					mirlocations =  array_set(mirlocations, 1, &mindex, 
-											  m, false, -1, -1, false, 'i');
-				}
-				else
-				{
-					mirlocations = construct_array(&m, 1, 
-												   TEXTOID, -1, false, 'i');
-				}
-
-			}
-
-			values[Anum_pg_tablespace_spcmirlocations - 1] =
-				PointerGetDatum(mirlocations);
-		}
-		else
-		{
-			nulls[Anum_pg_tablespace_spcmirlocations - 1] = true;
-		}
-	}
-	else
-	{
-		/* we don't store the full array of locations on the QE's */
-		nulls[Anum_pg_tablespace_spcprilocations - 1] = true;
-		nulls[Anum_pg_tablespace_spcmirlocations - 1] = true;
-	}
-
 	tuple = heap_form_tuple(rel->rd_att, values, nulls);
+
+	/* Keep oids synchonized between master and segments */
+	if (OidIsValid(stmt->tsoid))
+		HeapTupleSetOid(tuple, stmt->tsoid);
 
 	tablespaceoid = simple_heap_insert(rel, tuple);
 
@@ -502,54 +315,14 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 
 	heap_freetuple(tuple);
 
+	/* We keep the lock on pg_tablespace until commit */
+	heap_close(rel, NoLock);
+
 	/* Record dependency on owner */
 	recordDependencyOnOwner(TableSpaceRelationId, tablespaceoid, ownerId);
 
-	/*
-	 * MPP-2333: Try to create the target directory if it does not exist.
-	 */
-	if (gp_enable_tablespace_auto_mkdir && (stat(location, &st) < 0))
-	{
-		if (mkdir(location, 0700) != 0)
-		{
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not create location directory \"%s\": %m",
-							location)));
-		}
-	}
-
-	/*
-	 * Attempt to coerce target directory to safe permissions.	If this fails,
-	 * it doesn't exist or has the wrong owner.
-	 */
-	if (chmod(location, 0700) != 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not set permissions on directory \"%s\": %m",
-						location)));
-
-	
- 	sublocation = palloc(MAXPGPATH);
- 	if (Gp_is_primary)
-		sprintf(sublocation,"%s/seg%d",location,Gp_segment);
-	else
-		sprintf(sublocation,"%s/mir%d",location,Gp_segment);
-	
-	if (mkdir(sublocation, 0700) != 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not create subdirectory \"%s\": %m",
-						sublocation)));
-	
-	/*
-	 * Check the target directory is empty.
-	 */
-	if (!directory_is_empty(sublocation))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("directory \"%s\" is not empty",
-						sublocation)));
+	/* Add dependency on filespace? */
+	// FIXME
 
 	/*
 	 * Create the PG_VERSION file in the target directory.	This has several
@@ -558,21 +331,11 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	 * (the emptiness check above will fail), and to label tablespace
 	 * directories by PG version.
 	 */
-	set_short_version(sublocation);
+	// set_short_version(sublocation);
 
-	/*
-	 * All seems well, create the symlink
-	 */
-	linkloc = (char *) palloc(10 + 10 + 1);
-	sprintf(linkloc, "pg_tblspc/%u", tablespaceoid);
-
-	if (symlink(sublocation, linkloc) < 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not create symbolic link \"%s\": %m",
-						linkloc)));
 
 	/* Record the filesystem change in XLOG */
+#if 0
 	{
 		xl_tblspc_create_rec xlrec;
 		XLogRecData rdata[2];
@@ -590,63 +353,13 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 
 		(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_CREATE, rdata);
 	}
+#endif
 
-	pfree(linkloc);
-	pfree(sublocation);
-
-	/* We keep the lock on pg_tablespace until commit */
-	heap_close(rel, NoLock);
-	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		ListCell   *cell;
-		StringInfoData buffer;
-		bool first = 0;
-
-		initStringInfo(&buffer);
-
-		appendStringInfo(&buffer, "CREATE TABLESPACE \"%s\"", stmt->tablespacename);
-		
-		if (stmt->owner)
-			appendStringInfo(&buffer, " OWNER \"%s\"", stmt->owner);
-		
-		
-		appendStringInfo(&buffer, " LOCATION ");
-
-		foreach(cell, stmt->locations)
-		{
-			Value * v = lfirst(cell);
-			if (first++)
-				appendStringInfo(&buffer, ",");
-			appendStringInfo(&buffer, " '%s'", v->val.str);
-		}
-		
-		if (hasMirrors)
-		{
-			first = 0;
-			appendStringInfo(&buffer, " MIRROR LOCATION ");
-
-			foreach(cell, stmt->mirrorlocations)
-			{
-				Value * v = lfirst(cell);
-				if (first++)
-					appendStringInfo(&buffer, ",");
-				appendStringInfo(&buffer, " '%s'", v->val.str);
-			}
-		}
-
-		elog((Debug_print_tablespace ? LOG : DEBUG5),
-			 "Dispatching '%s'", buffer.data);
-		
-		CdbDoCommand(buffer.data, false, /*no txn */ false, 
-					 /* mirrors */ true, /* primaries */ true);
-
+		stmt->tsoid = tablespaceoid;
+		CdbDispatchUtilityStatement((Node *) stmt, "CreateTablespaceCommand");
 	}
-#else							/* !HAVE_SYMLINK */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("tablespaces are not supported on this platform")));
-#endif   /* HAVE_SYMLINK */
 }
 
 /*
@@ -655,21 +368,30 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
  * Be careful to check that the tablespace is empty.
  */
 void
-DropTableSpace(DropTableSpaceStmt *stmt)
+RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 {
-#ifdef HAVE_SYMLINK
-	char	   *tablespacename = stmt->tablespacename;
+	char	   *tablespacename;
 	HeapScanDesc scandesc;
 	Relation	rel;
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 	Oid			tablespaceoid;
-	Datum		loc_dat;
-	char		*location;
-	bool		isnull;
 
 	/* don't call this in a transaction block */
-	PreventTransactionChain((void *) stmt, "DROP TABLESPACE");
+	// PreventTransactionChain((void *) stmt, "DROP TABLESPACE");
+
+	/* 
+	 * General DROP (object) syntax allows fully qualified names, but
+	 * tablespaces are global objects that do not live in schemas, so
+	 * it is a syntax error if a fully qualified name was given.
+	 */
+	if (list_length(names) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("tablespace name may not be qualified")));
+	tablespacename = strVal(linitial(names));
+
+	/* XXX: Do we need to disallow DROP CASCADE? */
 
 	/*
 	 * Find the target tuple
@@ -685,7 +407,10 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 
 	if (!HeapTupleIsValid(tuple))
 	{
-		if (!stmt->missing_ok)
+		heap_endscan(scandesc);
+		heap_close(rel, RowExclusiveLock);
+
+		if (!missing_ok)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -697,27 +422,10 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 			ereport(NOTICE,
 					(errmsg("tablespace \"%s\" does not exist, skipping",
 							tablespacename)));
-			/* XXX I assume I need one or both of these next two calls */
-			heap_endscan(scandesc);
-			heap_close(rel, NoLock);
 		}
 		return;
 	}
-
 	tablespaceoid = HeapTupleGetOid(tuple);
-
-	loc_dat = heap_getattr(tuple, (Anum_pg_tablespace_spclocation),
-						   (RelationGetDescr(rel)), &isnull);
-
-	if (isnull)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("tablespace \"%s\" has no physical location information!",
-						tablespacename)));
-
-	location =
-		DatumGetCString(DirectFunctionCall1(textout, loc_dat));
-	elog(DEBUG3, "DropTablespace: %s physical location: %s", tablespacename, location);
 
 	/* Must be tablespace owner */
 	if (!pg_tablespace_ownercheck(tablespaceoid, GetUserId()))
@@ -734,7 +442,6 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	 * Remove the pg_tablespace tuple (this will roll back if we fail below)
 	 */
 	simple_heap_delete(rel, &tuple->t_self);
-
 	heap_endscan(scandesc);
 
 	/*
@@ -756,6 +463,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	/*
 	 * Try to remove the physical infrastructure.
 	 */
+	#if 0
 	if (!remove_tablespace_directories(tablespaceoid, false, location))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
@@ -780,6 +488,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 
 		(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_DROP, rdata);
 	}
+	#endif
 
 	/*
 	 * Note: because we checked that the tablespace was empty, there should be
@@ -792,28 +501,11 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	 */
 	LWLockRelease(TablespaceCreateLock);
 
-	/* We keep the lock on pg_tablespace until commit */
+	/* We keep the lock on the row in pg_tablespace until commit */
 	heap_close(rel, NoLock);
-	
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
 
-		StringInfoData buffer;
-
-		initStringInfo(&buffer);
-
-		appendStringInfo(&buffer, "DROP TABLESPACE \"%s\"", stmt->tablespacename);
-		
-
-		CdbDoCommand(buffer.data, false, /*no txn */ false, 
-					 /* mirrors */ true, /* primaries */ true);
-
-	}
-#else							/* !HAVE_SYMLINK */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("tablespaces are not supported on this platform")));
-#endif   /* HAVE_SYMLINK */
+	/* Note: no need for dispatch, that is handled in utility.c */
+	return;
 }
 
 /*

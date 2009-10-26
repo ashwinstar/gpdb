@@ -3079,6 +3079,29 @@ _outCreateTrigStmt(StringInfo str, CreateTrigStmt *node)
 
 }
 
+static void
+_outCreateFileSpaceStmt(StringInfo str, CreateFileSpaceStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEFILESPACESTMT");
+
+	WRITE_STRING_FIELD(filespacename);
+	WRITE_STRING_FIELD(owner);
+	WRITE_NODE_FIELD(locations);
+	WRITE_OID_FIELD(fsoid);
+}
+
+static void
+_outCreateTableSpaceStmt(StringInfo str, CreateTableSpaceStmt *node)
+{
+	WRITE_NODE_TYPE("CREATETABLESPACESTMT");
+
+	WRITE_STRING_FIELD(tablespacename);
+	WRITE_STRING_FIELD(owner);
+	WRITE_STRING_FIELD(filespacename);
+	WRITE_OID_FIELD(tsoid);
+}
+
+
 /*
  * _outNode -
  *	  converts a Node into binary string and append it to 'str'
@@ -3739,6 +3762,14 @@ _outNode(StringInfo str, void *obj)
 
 			case T_CreateTrigStmt:
 				_outCreateTrigStmt(str, obj);
+				break;
+
+			case T_CreateFileSpaceStmt:
+				_outCreateFileSpaceStmt(str, obj);
+				break;
+
+			case T_CreateTableSpaceStmt:
+				_outCreateTableSpaceStmt(str, obj);
 				break;
 
 			default:

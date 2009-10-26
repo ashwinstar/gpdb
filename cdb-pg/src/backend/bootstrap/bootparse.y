@@ -34,6 +34,8 @@
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_filespace.h"
+#include "catalog/pg_filespace_entry.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
@@ -231,6 +233,12 @@ Boot_CreateStmt:
 								break;
 							case AppendOnlyAlterColumnRelationId:
 								typid = PG_APPENDONLY_ALTER_COLUMN_OID;
+								break;
+							case FileSpaceRelationId:
+								typid = PG_FILESPACE_OID;
+								break;
+							case FileSpaceEntryRelationId:
+								typid = PG_FILESPACE_ENTRY_OID;
 								break;
 							default:
 								break;

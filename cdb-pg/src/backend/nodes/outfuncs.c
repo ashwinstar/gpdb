@@ -2712,6 +2712,9 @@ _outQuery(StringInfo str, Query *node)
 			case T_AlterOwnerStmt:
 			case T_AlterObjectSchemaStmt:
 
+			case T_CreateFileSpaceStmt:
+			case T_CreateTableSpaceStmt:
+
 			case T_RenameStmt:
 			case T_IndexStmt:
 			case T_NotifyStmt:
@@ -3298,6 +3301,7 @@ _outCreateTrigStmt(StringInfo str, CreateTrigStmt *node)
 	WRITE_OID_FIELD(trigOid);
 
 }
+
 
 /*
  * _outNode -

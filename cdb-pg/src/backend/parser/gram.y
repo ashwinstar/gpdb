@@ -173,14 +173,15 @@ static TypeName *TableFuncTypeName(List *columns);
 		AlterTableStmt AlterUserStmt AlterUserSetStmt AlterRoleStmt 
 		AlterRoleSetStmt AnalyzeStmt ClosePortalStmt ClusterStmt 
 		CommentStmt ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
-		CreateDomainStmt CreateExternalStmt CreateGroupStmt CreateOpClassStmt CreatePLangStmt
+		CreateDomainStmt CreateExternalStmt CreateFileSpaceStmt CreateGroupStmt
+		CreateOpClassStmt CreatePLangStmt
 		CreateQueueStmt CreateSchemaStmt CreateSeqStmt CreateStmt 
 		CreateTableSpaceStmt CreateAssertStmt CreateTrigStmt 
 		CreateUserStmt CreateRoleStmt
 		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt
 		DropGroupStmt DropOpClassStmt DropPLangStmt DropQueueStmt DropStmt
 		DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt DropRoleStmt
-		DropUserStmt DropdbStmt DropTableSpaceStmt ExplainStmt 
+		DropUserStmt DropdbStmt ExplainStmt 
 		ExtTypedesc FetchStmt
 		GrantStmt GrantRoleStmt IndexStmt InsertStmt ListenStmt LoadStmt
 		LockStmt NotifyStmt OptSingleRowErrorHandling ExplainableStmt PreparableStmt
@@ -266,7 +267,6 @@ static TypeName *TableFuncTypeName(List *columns);
 				aggr_args aggr_args_list old_aggr_definition old_aggr_list
 				oper_argtypes RuleActionList RuleActionMulti
 				cdb_string_list
-				opt_mirror_location
 				opt_column_list columnList opt_name_list
 				opt_inherited_column_list
 				sort_clause opt_sort_clause sortby_list index_params
@@ -345,7 +345,6 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <list>	window_partition_clause opt_window_partition_clause
 				opt_window_order_clause
 %type <str>		opt_window_name window_name
-				opt_master_location
 
 %type <list>	row type_list array_expr_list
 %type <node>	case_expr case_arg when_clause case_default
@@ -400,7 +399,9 @@ static TypeName *TableFuncTypeName(List *columns);
 
 %type <list>	constraints_set_list
 %type <boolean> constraints_set_mode
-%type <str>		OptTableSpace OptConsTableSpace OptTableSpaceOwner
+%type <str>		OptTableSpace OptConsTableSpace OptOwner
+%type <list>    FileSpaceSegList
+%type <defelt>  FileSpaceSeg
 %type <list>    DistributedBy OptDistributedBy
 %type <ival>	TabPartitionByType OptTabPartitionRangeInclusive
 %type <node>	OptTabPartitionBy TabSubPartitionBy 
@@ -459,8 +460,8 @@ static TypeName *TableFuncTypeName(List *columns);
 	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ERRORS ESCAPE EVERY EXCEPT 
 	EXCHANGE EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
-	FALSE_P FETCH FIELDS FILL FILTER FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FORMAT FORWARD
-	FREEZE FROM FULL FUNCTION
+	FALSE_P FETCH FIELDS FILESPACE FILL FILTER FIRST_P FLOAT_P FOLLOWING FOR 
+    FORCE FOREIGN FORMAT FORWARD FREEZE FROM FULL FUNCTION
 
 	GLOBAL GRANT GRANTED GREATEST GROUP_P GROUP_ID GROUPING
 
@@ -927,6 +928,7 @@ stmt :
 			| CreateConversionStmt
 			| CreateDomainStmt
 			| CreateExternalStmt
+			| CreateFileSpaceStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
 			| CreateOpClassStmt
@@ -953,7 +955,6 @@ stmt :
 			| DropQueueStmt
 			| DropRuleStmt
 			| DropStmt
-			| DropTableSpaceStmt
 			| DropTrigStmt
 			| DropRoleStmt
 			| DropUserStmt
@@ -4646,67 +4647,59 @@ opt_procedural:
 /*****************************************************************************
  *
  * 		QUERY:
- *             CREATE TABLESPACE tablespace LOCATION '/path/to/tablespace/'
+ *             CREATE FILESPACE filespace ( ... )
  *
  *****************************************************************************/
 
-CreateTableSpaceStmt: CREATE TABLESPACE name OptTableSpaceOwner LOCATION cdb_string_list opt_mirror_location opt_master_location
+CreateFileSpaceStmt: 
+			CREATE FILESPACE name OptOwner '(' FileSpaceSegList ')' 
+				{
+					CreateFileSpaceStmt *n = makeNode(CreateFileSpaceStmt);
+					n->filespacename = $3;
+					n->owner = $4;
+					n->locations = $6;
+					n->fsoid = 0;
+					$$ = (Node *) n;
+				}
+		;
+
+FileSpaceSegList:
+			FileSpaceSeg
+			{
+				$$ = list_make1($1);
+			}
+			| FileSpaceSegList ',' FileSpaceSeg  
+			{ 
+				$$ = lappend($1, $3); 
+			}
+		;
+
+FileSpaceSeg:
+            Iconst ':' Sconst
+			{
+				$$ = makeDefElem($3, (Node *) makeInteger($1));
+			}
+		;
+
+OptOwner: 
+			OWNER name			{ $$ = $2; }
+			| /*EMPTY*/			{ $$ = NULL; }
+		;
+
+/*****************************************************************************
+ *
+ * 		QUERY:
+ *             CREATE TABLESPACE tablespace FILESPACE filespace
+ *
+ *****************************************************************************/
+
+CreateTableSpaceStmt: CREATE TABLESPACE name OptOwner FILESPACE name
 				{
 					CreateTableSpaceStmt *n = makeNode(CreateTableSpaceStmt);
 					n->tablespacename = $3;
 					n->owner = $4;
-					n->locations = $6;
-					n->mirrorlocations = $7;
-					n->masterlocation = $8;
-					$$ = (Node *) n;
-
-                    if (!gp_enable_tablespaces)
-                    {
-                        ereport(ERROR,
-                                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                                 errmsg("CREATE TABLESPACE not supported")));
-                    }
-				}
-		;
-
-OptTableSpaceOwner: OWNER name			{ $$ = $2; }
-			| /*EMPTY*/					{ $$ = NULL; }
-		;
-
-opt_mirror_location:
-				MIRROR LOCATION cdb_string_list 	{ $$ = $3; }
-			|	/*EMPTY*/						 	{ $$ = NULL; }
-		;
-
-opt_master_location:
-				MASTER LOCATION Sconst 	{ $$ = $3; }
-			|	/*EMPTY*/			 	{ $$ = NULL; }
-		;
-			
-			
-			
-/*****************************************************************************
- *
- * 		QUERY :
- *				DROP TABLESPACE <tablespace>
- *
- *		No need for drop behaviour as we cannot implement dependencies for
- *		objects in other databases; we can only support RESTRICT.
- *
- ****************************************************************************/
-
-DropTableSpaceStmt: DROP TABLESPACE name
-				{
-					DropTableSpaceStmt *n = makeNode(DropTableSpaceStmt);
-					n->tablespacename = $3;
-					n->missing_ok = false;
-					$$ = (Node *) n;
-				}
-				|  DROP TABLESPACE IF_P EXISTS name
-                {
-					DropTableSpaceStmt *n = makeNode(DropTableSpaceStmt);
-					n->tablespacename = $5;
-					n->missing_ok = true;
+					n->filespacename = $6;
+					n->tsoid = 0;
 					$$ = (Node *) n;
 				}
 		;
@@ -5273,6 +5266,8 @@ drop_type:	TABLE									{ $$ = OBJECT_TABLE; }
 			| DOMAIN_P								{ $$ = OBJECT_DOMAIN; }
 			| CONVERSION_P							{ $$ = OBJECT_CONVERSION; }
 			| SCHEMA								{ $$ = OBJECT_SCHEMA; }
+			| FILESPACE								{ $$ = OBJECT_FILESPACE; }
+			| TABLESPACE							{ $$ = OBJECT_TABLESPACE; }
 		;
 
 any_name_list:
@@ -5452,6 +5447,7 @@ comment_type:
 			| CONVERSION_P						{ $$ = OBJECT_CONVERSION; }
 			| TABLESPACE						{ $$ = OBJECT_TABLESPACE; }
 			| ROLE								{ $$ = OBJECT_ROLE; }
+			| FILESPACE                         { $$ = OBJECT_FILESPACE; }
 		;
 
 comment_text:
@@ -6489,6 +6485,14 @@ RenameStmt: ALTER AGGREGATE func_name aggr_args RENAME TO name
 					n->newname = $6;
 					$$ = (Node *)n;
 				}
+			| ALTER FILESPACE name RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_FILESPACE;
+					n->subname = $3;
+					n->newname = $6;
+					$$ = (Node *)n;
+				}
 			| ALTER FUNCTION func_name func_args RENAME TO name
 				{
 					RenameStmt *n = makeNode(RenameStmt);
@@ -6692,6 +6696,14 @@ AlterOwnerStmt: ALTER AGGREGATE func_name aggr_args OWNER TO RoleId
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
 					n->objectType = OBJECT_DOMAIN;
 					n->object = $3;
+					n->newowner = $6;
+					$$ = (Node *)n;
+				}
+			| ALTER FILESPACE name OWNER TO RoleId
+				{
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_FILESPACE;
+					n->object = list_make1(makeString($3));
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}
@@ -9716,7 +9728,7 @@ a_expr:		c_expr									{ $$ = $1; }
 						n->subLinkType = ANY_SUBLINK;
 						n->testexpr = $1;
 						n->operName = list_make1(makeString("="));
-    					n->location = @2;   /*CDB*/
+    					n->location = @2;
 						$$ = (Node *)n;
 					}
 					else
@@ -9736,7 +9748,7 @@ a_expr:		c_expr									{ $$ = $1; }
 						n->subLinkType = ANY_SUBLINK;
 						n->testexpr = $1;
 						n->operName = list_make1(makeString("="));
-    					n->location = @3;   /*CDB*/
+    					n->location = @3;
 						/* Stick a NOT on top */
 						$$ = (Node *) makeA_Expr(AEXPR_NOT, NIL, NULL, (Node *) n, @2);
 					}
@@ -9753,7 +9765,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->testexpr = $1;
 					n->operName = $2;
 					n->subselect = $4;
-					n->location = @3;   /*CDB*/
+					n->location = @3;
 					$$ = (Node *)n;
 				}
 			| a_expr subquery_Op sub_type '(' a_expr ')'		%prec Op
@@ -11695,12 +11707,12 @@ PartitionIdentKeyword: ABORT_P
 			| STDIN
 			| STDOUT
 			| STORAGE
+			| STRICT_P
 			| SUBPARTITION
 			| SUBPARTITIONS
 			| SUPERUSER_P
 			| SYSID
 			| SYSTEM_P
-			| STRICT_P
 			| TEMP
 			| TEMPLATE
 			| TEMPORARY

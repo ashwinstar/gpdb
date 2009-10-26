@@ -31,6 +31,7 @@
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
+#include "commands/filespace.h"
 #include "commands/lockcmds.h"
 #include "commands/portalcmds.h"
 #include "commands/prepare.h"
@@ -428,13 +429,13 @@ check_xact_readonly(Node *parsetree)
 		case T_CreateSchemaStmt:
 		case T_CreateSeqStmt:
 		case T_CreateExternalStmt:
+		case T_CreateFileSpaceStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreateTrigStmt:
 		case T_CompositeTypeStmt:
 		case T_ViewStmt:
 		case T_DropCastStmt:
 		case T_DropdbStmt:
-		case T_DropTableSpaceStmt:
 		case T_RemoveFuncStmt:
 		case T_DropQueueStmt:
 		case T_DropRoleStmt:
@@ -730,12 +731,12 @@ ProcessUtility(Node *parsetree,
 			DefineExternalRelation((CreateExternalStmt *) parsetree);
 			break;
 
-		case T_CreateTableSpaceStmt:
-			CreateTableSpace((CreateTableSpaceStmt *) parsetree);
+		case T_CreateFileSpaceStmt:
+			CreateFileSpace((CreateFileSpaceStmt *) parsetree);
 			break;
 
-		case T_DropTableSpaceStmt:
-			DropTableSpace((DropTableSpaceStmt *) parsetree);
+		case T_CreateTableSpaceStmt:
+			CreateTableSpace((CreateTableSpaceStmt *) parsetree);
 			break;
 
 		case T_DropStmt:
@@ -833,6 +834,18 @@ ProcessUtility(Node *parsetree,
 							 */
 							RemoveSchema(names, stmt->behavior,
 										 stmt->missing_ok);
+							break;
+
+						case OBJECT_FILESPACE:
+							/* RemoveFileSpace checks permissions */
+							RemoveFileSpace(names, stmt->behavior, 
+											stmt->missing_ok);
+							break;
+
+						case OBJECT_TABLESPACE:
+							/* RemoveFileSpace checks permissions */
+							RemoveTableSpace(names, stmt->behavior, 
+											 stmt->missing_ok);
 							break;
 
 						default:
@@ -1726,12 +1739,12 @@ CreateCommandTag(Node *parsetree)
 			tag = "CREATE EXTERNAL TABLE";
 			break;
 
-		case T_CreateTableSpaceStmt:
-			tag = "CREATE TABLESPACE";
+		case T_CreateFileSpaceStmt:
+			tag = "CREATE FILESPACE";
 			break;
 
-		case T_DropTableSpaceStmt:
-			tag = "DROP TABLESPACE";
+		case T_CreateTableSpaceStmt:
+			tag = "CREATE TABLESPACE";
 			break;
 
 		case T_DropStmt:
@@ -1764,6 +1777,13 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_SCHEMA:
 					tag = "DROP SCHEMA";
 					break;
+				case OBJECT_FILESPACE:
+					tag = "DROP FILESPACE";
+					break;
+				case OBJECT_TABLESPACE:
+					tag = "DROP TABLESPACE";
+					break;
+
 				default:
 					tag = "???";
 			}
@@ -1814,6 +1834,9 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_COLUMN:
 				case OBJECT_TABLE:
 					tag = "ALTER TABLE";
+					break;
+				case OBJECT_FILESPACE:
+					tag = "ALTER FILESPACE";
 					break;
 				case OBJECT_TABLESPACE:
 					tag = "ALTER TABLESPACE";
@@ -1880,6 +1903,9 @@ CreateCommandTag(Node *parsetree)
 					break;
 				case OBJECT_SCHEMA:
 					tag = "ALTER SCHEMA";
+					break;
+				case OBJECT_FILESPACE:
+					tag = "ALTER FILESPACE";
 					break;
 				case OBJECT_TABLESPACE:
 					tag = "ALTER TABLESPACE";
@@ -2293,11 +2319,11 @@ GetCommandLogLevel(Node *parsetree)
 			lev = LOGSTMT_DDL;
 			break;
 
-		case T_CreateTableSpaceStmt:
+		case T_CreateFileSpaceStmt:
 			lev = LOGSTMT_DDL;
 			break;
 
-		case T_DropTableSpaceStmt:
+		case T_CreateTableSpaceStmt:
 			lev = LOGSTMT_DDL;
 			break;
 

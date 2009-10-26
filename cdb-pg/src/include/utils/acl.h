@@ -181,6 +181,7 @@ typedef enum AclObjectKind
 	ACL_KIND_OPCLASS,			/* pg_opclass */
 	ACL_KIND_CONVERSION,		/* pg_conversion */
 	ACL_KIND_TABLESPACE,		/* pg_tablespace */
+	ACL_KIND_FILESPACE,         /* pg_filespace */
 	MAX_ACL_KIND				/* MUST BE LAST */
 } AclObjectKind;
 
@@ -277,6 +278,7 @@ extern bool pg_oper_ownercheck(Oid oper_oid, Oid roleid);
 extern bool pg_proc_ownercheck(Oid proc_oid, Oid roleid);
 extern bool pg_namespace_ownercheck(Oid nsp_oid, Oid roleid);
 extern bool pg_tablespace_ownercheck(Oid spc_oid, Oid roleid);
+extern bool pg_filespace_ownercheck(Oid fs_oid, Oid roleid);
 extern bool pg_opclass_ownercheck(Oid opc_oid, Oid roleid);
 extern bool pg_database_ownercheck(Oid db_oid, Oid roleid);
 extern bool pg_conversion_ownercheck(Oid conv_oid, Oid roleid);
