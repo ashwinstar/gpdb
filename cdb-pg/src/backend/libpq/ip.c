@@ -78,30 +78,36 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 	rc = getaddrinfo((!hostname || hostname[0] == '\0') ? NULL : hostname,
 					 servname, hintp, result);
 
-	/*
-	 * If we get EAI_AGAIN, the error might be temporary.   Retry it to see.
-	 * Note:  Mac OSX seems to give this error for some non-temporary errors
-	 */
-	if (rc == EAI_AGAIN)
-	{
-#ifndef FRONTEND
-		pg_usleep(1000);
-#endif
-		rc = getaddrinfo((!hostname || hostname[0] == '\0') ? NULL : hostname,
-							 servname, hintp, result);
-	}
+
 
 #if defined(__darwin__)
 	/*
-	 * Attempt to work around stupid OSX issue:  By default, /etc/hosts isn't looked at, or is looked at after DNS,
-	 * and is ignored if DNS definitively says the hostname doesn't exist.
+	 * Attempt to work around stupid OSX issue:  By default, /etc/hosts isn't looked at or is looked at after DNS,
+	 * and is ignored if DNS definitively says the hostname doesn't or can't exist.
 	 *
 	 * So, you can get a "Temporary failure in name resolution", even though the name is in your /etc/hosts.
 	 * This "temporary" error won't go away until you add the name to the DNS server, which only the network admin can do.
 	 *
 	 * Perhaps there is some way to configure MAC OSX to look in the /etc/hosts file first, but I can't figure it out.
 	 *
-	 * To make life easier, let's do our own resolution if the name is our own machine's name.
+	 * To make life easier, let's do our own resolution if the hostname is our own machine's name.
+	 *
+	 * Additional Note: From what I can tell (and it's a guess), the problem is really with MAC machine names
+	 * that end in ".local".  Our in-house DNS service 	 * doesn't recognize .local, and returns
+	 * a NXDOMAIN (no such domain) error.  This error means the name cannot be valid,
+	 * so OSX just gives up, and assumes that the domain name will be resolvable sometime in the future when
+	 * the DNS server next gets an update.
+	 *
+	 * Beyond what I've done here, it might be better if instead, or addition to, this hack, we look for .local
+	 * at the end of the name, and remove it before calling getaddrinfo.  This will return a "don't know the name" error
+	 * from DNS, and I suspect that OSX will then look in /etc/hosts.   This would be slower than my hack here, but
+	 * would work if you are setting up two or more OSX boxes as part of the GPDB system.  I've not tested this theory,
+	 * and since I don't really care about OSX (it's not a supported platform), I'll leave it to some MAC fan-boy
+	 * to add that code if he thinks it's worthwhile.
+	 *
+	 * The other possible way would be to read /etc/hosts ourselves, and resolve the hostname.  Again, not
+	 * important to me, so up to any MAC fan-boys out there to do this if desired.
+	 *
 	 */
 	if (hostname != NULL && rc == EAI_AGAIN)
 	{
@@ -115,14 +121,19 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 			/*
 			 * If we got a valid hostname, and the name we are looking up is our own hostname,
 			 * we know we are really localhost, and can give back the loopback address.
+			 *
+			 * "localhost" should have resolved by getaddrinfo, but if not, it too is a safe
+			 * hostname to convert to the loopback address.
 			 */
 			if (((strlen(myhostname) > 0) && (strncmp(myhostname,hostname,255) == 0)) ||
 					(strcmp("localhost",hostname) == 0))
 			{
 				/*
-				 * This is a little dangerous... If we call freeaddrinfo(), there is no guarantee that
-				 * the memory was allocated in this way.  But it probably was, and we are only worried about one
-				 * OS here:  OSX.
+				 * This is a little dangerous... If we later call freeaddrinfo(), there is no guarantee that
+				 * the memory getaddrinfo allocates was done this way, so freeaddrinfo might try some other
+				 * way to release the memory beside the two free() calls.
+				 * But it probably does, and we are only worried about one OS here:  OSX.
+				 * So testing should show up any issue.
 				 */
 				ai = malloc(sizeof(*ai));
 				if (!ai)
@@ -140,14 +151,12 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 #ifdef HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN
 				psin->sin_len = sizeof(struct sockaddr_in);
 #endif
-
 				psin->sin_family = AF_INET;
 
 				/* This only fills in sin_port if servname was numeric.  If it was a name from /etc/services, it returns 0 */
 				if (servname)
 						psin->sin_port = htons((unsigned short) atoi(servname));
 				psin->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
 
 				ai->ai_flags = 0;
 				ai->ai_family = AF_INET;
@@ -165,6 +174,20 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 
 	}
 #endif
+
+	/*
+	 * If we get EAI_AGAIN, the error might be temporary.   Retry it to see.
+	 * Note:  Mac OSX seems to give this error for NXDOMAIN errors, which aren't
+	 * really temporary.  The above hack should normally handle that case.
+	 */
+	if (rc == EAI_AGAIN)
+	{
+#ifndef FRONTEND
+		pg_usleep(1000);
+#endif
+		rc = getaddrinfo((!hostname || hostname[0] == '\0') ? NULL : hostname,
+							 servname, hintp, result);
+	}
 
 	return rc;
 }
