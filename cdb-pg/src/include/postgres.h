@@ -26,7 +26,6 @@
  *		1)		variable-length datatypes (TOAST support)
  *		2)		datum type + support macros
  *		3)		exception handling definitions
- *		4)		genbki macros used by catalog/pg_xxx.h files
  *
  *	 NOTES
  *
@@ -100,6 +99,169 @@ typedef union varattrib
 		char 	va_data[1];
 	} va_4byte;
 } varattrib;
+
+/*
+ * struct varatt_external is a "TOAST pointer", that is, the information
+ * needed to fetch a stored-out-of-line Datum.	The data is compressed
+ * if and only if va_extsize < va_rawsize - VARHDRSZ.  This struct must not
+ * contain any padding, because we sometimes compare pointers using memcmp.
+ *
+ * Note that this information is stored unaligned within actual tuples, so
+ * you need to memcpy from the tuple into a local struct variable before
+ * you can look at these fields!  (The reason we use memcmp is to avoid
+ * having to do that just to detect equality of two TOAST pointers...)
+ */
+struct varatt_external
+{
+	int32		va_rawsize;		/* Original data size (includes header) */
+	int32		va_extsize;		/* External saved size (doesn't) */
+	Oid			va_valueid;		/* Unique ID of value within TOAST table */
+	Oid			va_toastrelid;	/* RelID of TOAST table containing it */
+};
+
+/*
+ * These structs describe the header of a varlena object that may have been
+ * TOASTed.  Generally, don't reference these structs directly, but use the
+ * macros below.
+ *
+ * We use separate structs for the aligned and unaligned cases because the
+ * compiler might otherwise think it could generate code that assumes
+ * alignment while touching fields of a 1-byte-header varlena.
+ */
+typedef union
+{
+	struct						/* Normal varlena (4-byte length) */
+	{
+		uint32		va_header;
+		char		va_data[1];
+	}			va_4byte;
+	struct						/* Compressed-in-line format */
+	{
+		uint32		va_header;
+		uint32		va_rawsize; /* Original data size (excludes header) */
+		char		va_data[1]; /* Compressed data */
+	}			va_compressed;
+} varattrib_4b;
+
+typedef struct
+{
+	uint8		va_header;
+	char		va_data[1];		/* Data begins here */
+} varattrib_1b;
+
+#if 0
+typedef struct
+{
+	uint8		va_header;		/* Always 0x80  */
+	uint8		va_len_1be;		/* Physical length of datum */
+	char		va_data[1];		/* Data (for now always a TOAST pointer) */
+} varattrib_1b_e;
+#endif
+
+/*
+ * Bit layouts for varlena headers:
+ *
+ * 00xxxxxx 4-byte length word, aligned, uncompressed data (up to 1G)
+ * 01xxxxxx 4-byte length word, aligned, *compressed* data (up to 1G)
+ * 10000000 1-byte length word, unaligned, TOAST pointer
+ * 1xxxxxxx 1-byte length word, unaligned, uncompressed data (up to 126b)
+ *
+ * Greenplum differs from PostgreSQL here... In Postgres, they use different
+ * macros for big-endian and little-endian machines, so the length is contiguous,
+ * while the 4 byte lengths are stored in native endian format.
+ *
+ * Greenplum stored the 4 byte varlena header in network byte order, so it always
+ * look big-endian in the tuple.   This is a bit ugly, but changing it would require
+ * all our customers to initdb.
+ *
+ * Note that in both cases the flag bits are in the physically
+ * first byte.	Also, it is not possible for a 1-byte length word to be zero;
+ * this lets us disambiguate alignment padding bytes from the start of an
+ * unaligned datum.  (We now *require* pad bytes to be filled with zero!)
+ */
+
+/*
+ * Endian-dependent macros.  These are considered internal --- use the
+ * external macros below instead of using these directly.
+ *
+ * Note: IS_1B is true for external toast records but VARSIZE_1B will return 0
+ * for such records. Hence you should usually check for IS_EXTERNAL before
+ * checking for IS_1B.
+ */
+
+#define VARATT_IS_4B(PTR) \
+	((((varattrib_1b *) (PTR))->va_header & 0x80) == 0x00)
+#define VARATT_IS_4B_U(PTR) \
+	((((varattrib_1b *) (PTR))->va_header & 0xC0) == 0x00)
+#define VARATT_IS_4B_C(PTR) \
+	((((varattrib_1b *) (PTR))->va_header & 0xC0) == 0x40)
+#define VARATT_IS_1B(PTR) \
+	((((varattrib_1b *) (PTR))->va_header & 0x80) == 0x80)
+#define VARATT_IS_1B_E(PTR) \
+	((((varattrib_1b *) (PTR))->va_header) == 0x80)
+#define VARATT_NOT_PAD_BYTE(PTR) \
+	(*((uint8 *) (PTR)) != 0)
+
+/* VARSIZE_4B() should only be used on known-aligned data */
+#define VARSIZE_4B(PTR) \
+	(ntohl(((varattrib_4b *) (PTR))->va_4byte.va_header) & 0x3FFFFFFF)
+#define VARSIZE_1B(PTR) \
+	(((varattrib_1b *) (PTR))->va_header & 0x7F)
+
+#if 0
+#define VARSIZE_1B_E(PTR) \
+	(((varattrib_1b_e *) (PTR))->va_len_1be)
+
+
+#define SET_VARSIZE_4B(PTR,len) \
+	(((varattrib_4b *) (PTR))->va_4byte.va_header = htonl( (len) & 0x3FFFFFFF ))
+#define SET_VARSIZE_4B_C(PTR,len) \
+	(((varattrib_4b *) (PTR))->va_4byte.va_header = htonl( ((len) & 0x3FFFFFFF) | 0x40000000 ))
+#define SET_VARSIZE_1B(PTR,len) \
+	(((varattrib_1b *) (PTR))->va_header = (len) | 0x80)
+#define SET_VARSIZE_1B_E(PTR,len) \
+	(((varattrib_1b_e *) (PTR))->va_header = 0x80, \
+	 ((varattrib_1b_e *) (PTR))->va_len_1be = (len))
+#endif
+
+/*
+ *  This is how postgreSQL does it on little-endian machines
+ *  NOT USED in GPDB
+ */
+/*
+#if 0
+#define VARATT_IS_4B(PTR) \
+	((((varattrib_1b *) (PTR))->va_header & 0x01) == 0x00)
+#define VARATT_IS_4B_U(PTR) \
+	((((varattrib_1b *) (PTR))->va_header & 0x03) == 0x00)
+#define VARATT_IS_4B_C(PTR) \
+	((((varattrib_1b *) (PTR))->va_header & 0x03) == 0x02)
+#define VARATT_IS_1B(PTR) \
+	((((varattrib_1b *) (PTR))->va_header & 0x01) == 0x01)
+#define VARATT_IS_1B_E(PTR) \
+	((((varattrib_1b *) (PTR))->va_header) == 0x01)
+#define VARATT_NOT_PAD_BYTE(PTR) \
+	(*((uint8 *) (PTR)) != 0)
+
+#define VARSIZE_4B(PTR) \
+	((((varattrib_4b *) (PTR))->va_4byte.va_header >> 2) & 0x3FFFFFFF)
+#define VARSIZE_1B(PTR) \
+	((((varattrib_1b *) (PTR))->va_header >> 1) & 0x7F)
+#define VARSIZE_1B_E(PTR) \
+	(((varattrib_1b_e *) (PTR))->va_len_1be)
+
+#define SET_VARSIZE_4B(PTR,len) \
+	(((varattrib_4b *) (PTR))->va_4byte.va_header = (((uint32) (len)) << 2))
+#define SET_VARSIZE_4B_C(PTR,len) \
+	(((varattrib_4b *) (PTR))->va_4byte.va_header = (((uint32) (len)) << 2) | 0x02)
+#define SET_VARSIZE_1B(PTR,len) \
+	(((varattrib_1b *) (PTR))->va_header = (((uint8) (len)) << 1) | 0x01)
+#define SET_VARSIZE_1B_E(PTR,len) \
+	(((varattrib_1b_e *) (PTR))->va_header = 0x01, \
+	 ((varattrib_1b_e *) (PTR))->va_len_1be = (len))
+#endif
+*/
+
 
 /* Externally visible macros (do these all belong here?) */
 
@@ -187,15 +349,6 @@ typedef union varattrib
 #define VARDATA_4B_C(PTR) 		((PTR)->va_compressed.va_data)
 #define VARDATA_1B(PTR) 		((PTR)->va_1byte.va_data)
 
-#define VARATT_IS_4B(PTR)		(((PTR)->va_1byte.va_header & 0x80) == 0x00)
-#define VARATT_IS_4B_U(PTR)		(((PTR)->va_1byte.va_header & 0xC0) == 0x00)
-#define VARATT_IS_4B_C(PTR)		(((PTR)->va_1byte.va_header & 0xC0) == 0x40)
-#define VARATT_IS_1B(PTR)		(((PTR)->va_1byte.va_header & 0x80) == 0x80)
-#define VARATT_IS_1B_E(PTR)		(((PTR)->va_1byte.va_header       ) == 0x80)
-
-/* VARSIZE_4B() should only be used on aligned data */
-#define VARSIZE_4B(PTR) 		(ntohl((PTR)->va_4byte.va_header) & 0x3FFFFFFF)
-#define VARSIZE_1B(PTR) 		(     ((PTR)->va_1byte.va_header) & 0x7F)
 
 #define SET_VARSIZE_4B(PTR,len) 	((PTR)->va_4byte.va_header = htonl( (len) & 0x3fffffff ))
 #define SET_VARSIZE_4B_C(PTR,len) 	((PTR)->va_4byte.va_header = htonl( ((len) & 0x3fffffff) | 0x40000000))
@@ -269,8 +422,18 @@ typedef union Datum_U
 	void *ptr;
 } Datum_U;
 
-#define SIZEOF_DATUM (sizeof(Datum))
+#define SIZEOF_DATUM 8
+
 typedef Datum *DatumPtr;
+
+#define GET_1_BYTE(datum)	(((Datum) (datum)) & 0x000000ff)
+#define GET_2_BYTES(datum)	(((Datum) (datum)) & 0x0000ffff)
+#define GET_4_BYTES(datum)	(((Datum) (datum)) & 0xffffffff)
+#define GET_8_BYTES(datum)	((Datum) (datum))
+#define SET_1_BYTE(value)	(((Datum) (value)) & 0x000000ff)
+#define SET_2_BYTES(value)	(((Datum) (value)) & 0x0000ffff)
+#define SET_4_BYTES(value)	(((Datum) (value)) & 0xffffffff)
+#define SET_8_BYTES(value)	((Datum) (value))
 
 /* 
  * Conversion between Datum and type X.  Changed from Macro to static inline
@@ -415,18 +578,13 @@ extern PGDLLIMPORT bool assert_enabled;
 #endif   /* USE_ASSERT_CHECKING */
 
 extern int ExceptionalCondition(const char *conditionName,
-                                const char *errorType,
-                                const char *fileName,
-                                int lineNumber);
+					 const char *errorType,
+					 const char *fileName, int lineNumber);
+					 
 extern int SyncAgentMain(int, char **, const char *);
 
 extern void gp_set_thread_sigmasks(void);
 
-/* ----------------------------------------------------------------
- *				Section 4: genbki macros used by catalog/pg_xxx.h files
- * ----------------------------------------------------------------
- */
-#include "catalog/genbki.h"
 
 #ifdef __cplusplus
 }   /* extern "C" */
