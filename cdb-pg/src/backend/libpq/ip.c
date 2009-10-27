@@ -78,6 +78,21 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 	rc = getaddrinfo((!hostname || hostname[0] == '\0') ? NULL : hostname,
 					 servname, hintp, result);
 
+	/*
+	 * If we get EAI_AGAIN, the error might be temporary.   Retry it to see.
+	 * Note:  Mac OSX seems to give this error for some non-temporary errors
+	 */
+	if (rc == EAI_AGAIN)
+	{
+#ifndef FRONTEND
+		pg_usleep(1000);
+#endif
+		rc = getaddrinfo((!hostname || hostname[0] == '\0') ? NULL : hostname,
+							 servname, hintp, result);
+	}
+
+
+
 	return rc;
 }
 
