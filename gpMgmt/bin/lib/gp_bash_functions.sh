@@ -1068,7 +1068,7 @@ BUILD_MASTER_PG_HBA_FILE () {
         $ECHO "local    all         $USER_NAME         $PG_METHOD" >> ${GP_DIR}/$PG_HBA
         #$ECHO "local    all         all                $PG_METHOD" >> ${GP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Setting local host access"
-        $ECHO "host     all         $USER_NAME         127.0.0.1/32    trust" >> ${GP_DIR}/$PG_HBA
+        $ECHO "host     all         $USER_NAME         127.0.0.1/28    trust" >> ${GP_DIR}/$PG_HBA
         for ADDR in "${MASTER_IP_ADDRESS_ALL[@]}"
         do
         	$ECHO "host     all         $USER_NAME         $ADDR/32       trust" >> ${GP_DIR}/$PG_HBA
