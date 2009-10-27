@@ -159,6 +159,7 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 				ai->ai_next = NULL;
 
 				*result = ai;
+				rc = 0;
 			}
 		}
 
