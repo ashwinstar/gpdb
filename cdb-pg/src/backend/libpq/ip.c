@@ -91,7 +91,79 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 							 servname, hintp, result);
 	}
 
+#if defined(__darwin__)
+	/*
+	 * Attempt to work around stupid OSX issue:  By default, /etc/hosts isn't looked at, or is looked at after DNS,
+	 * and is ignored if DNS definitively says the hostname doesn't exist.
+	 *
+	 * So, you can get a "Temporary failure in name resolution", even though the name is in your /etc/hosts.
+	 * This "temporary" error won't go away until you add the name to the DNS server, which only the network admin can do.
+	 *
+	 * Perhaps there is some way to configure MAC OSX to look in the /etc/hosts file first, but I can't figure it out.
+	 *
+	 * To make life easier, let's do our own resolution if the name is our own machine's name.
+	 */
+	if (hostname != NULL && rc == EAI_AGAIN)
+	{
+		struct addrinfo *ai;
+		struct sockaddr_in *psin;
+		char myhostname[255];
+		myhostname[0] = '\0';
 
+		if (gethostname(myhostname, sizeof(myhostname)) == 0)
+		{
+			/*
+			 * If we got a valid hostname, and the name we are looking up is our own hostname,
+			 * we know we are really localhost, and can give back the loopback address.
+			 */
+			if (((strlen(myhostname) > 0) && (strncmp(myhostname,hostname,255) == 0)) ||
+					(strcmp("localhost",hostname) == 0))
+			{
+				/*
+				 * This is a little dangerous... If we call freeaddrinfo(), there is no guarantee that
+				 * the memory was allocated in this way.  But it probably was, and we are only worried about one
+				 * OS here:  OSX.
+				 */
+				ai = malloc(sizeof(*ai));
+				if (!ai)
+					return EAI_MEMORY;
+
+				psin = malloc(sizeof(*psin));
+				if (!psin)
+				{
+					free(ai);
+					return EAI_MEMORY;
+				}
+
+				memset(psin, 0, sizeof(struct sockaddr_in));
+
+#ifdef HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN
+				psin->sin_len = sizeof(struct sockaddr_in);
+#endif
+
+				psin->sin_family = AF_INET;
+
+				/* This only fills in sin_port if servname was numeric.  If it was a name from /etc/services, it returns 0 */
+				if (servname)
+						psin->sin_port = htons((unsigned short) atoi(servname));
+				psin->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+
+				ai->ai_flags = 0;
+				ai->ai_family = AF_INET;
+				ai->ai_socktype = SOCK_STREAM;
+				ai->ai_protocol = 0;
+				ai->ai_addrlen = sizeof(*psin);
+				ai->ai_addr = (struct sockaddr *) psin;
+				ai->ai_canonname = NULL;
+				ai->ai_next = NULL;
+
+				*result = ai;
+			}
+		}
+
+	}
+#endif
 
 	return rc;
 }
