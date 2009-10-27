@@ -1500,7 +1500,8 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	cxt.ckconstraints = NIL;
 	cxt.fkconstraints = NIL;
 	cxt.ixconstraints = NIL;
-
+	cxt.pkey = NULL;
+	
 	cxt.blist = NIL;
 	cxt.alist = NIL;
 
