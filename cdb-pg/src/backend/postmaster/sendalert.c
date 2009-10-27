@@ -44,93 +44,89 @@
 #include <net-snmp/net-snmp-includes.h>
 #endif
 
-
 #if USE_EMAIL
 
-static char * get_str_from_chunk(CSVChunkStr *chunkstr,const PipeProtoChunk *saved_chunks);
+static char * get_str_from_chunk(CSVChunkStr *chunkstr,
+		const PipeProtoChunk *saved_chunks);
 static const char * messagebody_cb(void **buf, int *len, void *arg);
+static void print_recipient_status(smtp_recipient_t recipient,
+		const char *mailbox, void *arg  __attribute__((unused)));
 static int authinteract(auth_client_request_t request, char **result,
 		int fields, void *arg);
+static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)), void *arg  __attribute__((unused)));
+static int handle_invalid_peer_certificate(long vfy_result);
 static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
 #endif
 static FILE * mylog = NULL;
 
-int
-send_alert_from_chunks(const PipeProtoChunk *chunk, const PipeProtoChunk * saved_chunks_in)
+int send_alert_from_chunks(const PipeProtoChunk *chunk,
+		const PipeProtoChunk * saved_chunks_in)
 {
 
 	int ret = -1;
 	GpErrorData errorData;
 
-	//GpErrorDataFixFields *pfixed = (GpErrorDataFixFields *) (chunk->data);
-	CSVChunkStr chunkstr = { chunk, chunk->data + sizeof(GpErrorDataFixFields) };
-
+	CSVChunkStr chunkstr =
+	{ chunk, chunk->data + sizeof(GpErrorDataFixFields) };
 
 	if (mylog == NULL)
-			mylog = fopen("/tmp/mylog.log","a");
+		mylog = fopen("/tmp/mylog.log", "a");
 
-
-	memset(&errorData,0,sizeof(errorData));
+	memset(&errorData, 0, sizeof(errorData));
 
 	memcpy(&errorData.fix_fields, chunk->data, sizeof(errorData.fix_fields));
 
-	if (chunk==NULL)
+	if (chunk == NULL)
 		return -1;
 	if (chunk->hdr.len == 0)
 		return -1;
 	if (chunk->hdr.zero != 0)
 		return -1;
 
-	//pqsignal(SIGSEGV, SIG_DFL);
-
-	fprintf(mylog," In send_alert_from_chunks\n");
-	fflush(mylog);
-
 	if (chunk->hdr.log_format != 'c')
 		elog(ERROR,"send_alert_from_chunks only works when CSV logging is enabled");
 
-	errorData.username = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.databasename = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.remote_host = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.remote_port = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.error_severity = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.sql_state = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.error_message = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.error_detail = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.error_hint = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.internal_query = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.debug_query_string = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.error_func_name = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.error_filename = get_str_from_chunk(&chunkstr,saved_chunks_in);
-	errorData.stacktrace = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.username = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.databasename = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.remote_host = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.remote_port = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.error_severity = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.sql_state = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.error_message = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.error_detail = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.error_hint = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.internal_query = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.debug_query_string = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.error_func_name = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.error_filename = get_str_from_chunk(&chunkstr,saved_chunks_in);
+		errorData.stacktrace = get_str_from_chunk(&chunkstr,saved_chunks_in);
 
-	fprintf(mylog,"%s: %s\n%s\n",errorData.error_severity, errorData.error_message, errorData.error_detail);
-	fflush(mylog);
 
-	ret = send_alert(&errorData);
-	// Don't forget to free them!
 
-	free(errorData.username ); errorData.username = NULL;
-	free(errorData.databasename ); errorData.databasename = NULL;
-	free(errorData.remote_host ); errorData.remote_host = NULL;
-	free(errorData.remote_port ); errorData.remote_port = NULL;
-	free((char *)errorData.error_severity ); errorData.error_severity = NULL;
-	free(errorData.sql_state ); errorData.sql_state = NULL;
-	free(errorData.error_message ); errorData.error_message = NULL;
-	free(errorData.error_detail ); errorData.error_detail = NULL;
-	free(errorData.error_hint ); errorData.error_hint = NULL;
-	free(errorData.internal_query ); errorData.internal_query = NULL;
-	free(errorData.debug_query_string ); errorData.debug_query_string = NULL;
-	free((char *)errorData.error_func_name ); errorData.error_func_name = NULL;
-	free((char *)errorData.error_filename ); errorData.error_filename = NULL;
-	free(errorData.stacktrace ); errorData.stacktrace = NULL;
+		ret = send_alert(&errorData);
 
-	fflush(mylog);
-	return ret;
+		// Don't forget to free them!  Best in reverse order of the mallocs.
 
-}
-int
-send_alert(const GpErrorData * errorData)
+		free(errorData.stacktrace ); errorData.stacktrace = NULL;
+		free((char *)errorData.error_filename ); errorData.error_filename = NULL;
+		free((char *)errorData.error_func_name ); errorData.error_func_name = NULL;
+		free(errorData.debug_query_string ); errorData.debug_query_string = NULL;
+		free(errorData.internal_query ); errorData.internal_query = NULL;
+		free(errorData.error_hint ); errorData.error_hint = NULL;
+		free(errorData.error_detail ); errorData.error_detail = NULL;
+		free(errorData.error_message ); errorData.error_message = NULL;
+		free(errorData.sql_state ); errorData.sql_state = NULL;
+		free((char *)errorData.error_severity ); errorData.error_severity = NULL;
+		free(errorData.remote_port ); errorData.remote_port = NULL;
+		free(errorData.remote_host ); errorData.remote_host = NULL;
+		free(errorData.databasename ); errorData.databasename = NULL;
+		free(errorData.username ); errorData.username = NULL;
+
+		fflush(mylog);
+		return ret;
+
+	}
+int send_alert(const GpErrorData * errorData)
 {
 #if USE_EMAIL
 	smtp_session_t session;
@@ -138,20 +134,26 @@ send_alert(const GpErrorData * errorData)
 	smtp_recipient_t recipient;
 	auth_context_t authctx;
 	const smtp_status_t *status;
-	//struct sigaction sa;
+
 
 	char *host = NULL;
 	char *from = NULL;
 	char *subject = NULL;
 	//enum notify_flags notify = Notify_NOTSET;
 
-	fprintf(mylog," In send_alert\n");
+	if (mylog == NULL)
+		mylog = fopen("/tmp/mylog.log", "a");
+
+	fprintf(mylog,"send_alert: %s: %s\n%s\n",errorData->error_severity, errorData->error_message, errorData->error_detail);
 	fflush(mylog);
 
+
+	// SIGPIPE must be ignored, or we will have problems.
 	//pqsignal(SIGPIPE, SIG_IGN);  // already set in syslogger.c
 	//
-	host = "scriptmail.intermedia.net";
-	from = "cmcdevitt@greenplum.com";
+	//host = "scriptmail.intermedia.net:25";  // Don't forget the port!
+	host = "greenplum.com.s5a1.psmtp.com:25";
+	from = "<cmcdevitt@greenplum.com>";
 	subject = "test alert";
 	// Ok, send the alert here.
 
@@ -159,22 +161,28 @@ send_alert(const GpErrorData * errorData)
 	session = smtp_create_session();
 	message = smtp_add_message(session);
 
-	//smtp_starttls_enable(session, Starttls_ENABLED);
+#if USE_SSL
+	smtp_starttls_enable(session, Starttls_ENABLED);
+#endif
 
-
+	/* Set the host running the SMTP server.  LibESMTP has a default port
+	 number of 587, however this is not widely deployed so the port
+	 is specified as 25 along with the default MTA host. */
 	smtp_set_server(session, host ? host : "localhost:25");
-	fprintf(mylog," did set_server\n");
+	fprintf(mylog, " did set_server\n");
 	fflush(mylog);
 
+	smtp_set_eventcb(session, event_cb, NULL);
 	/* Do what's needed at application level to use authentication.
 	 */
 	authctx = auth_create_context();
 	auth_set_mechanism_flags(authctx, AUTH_PLUGIN_PLAIN, 0);
 	auth_set_interact_cb(authctx, authinteract, NULL);
-
-	smtp_set_eventcb(session, event_cb, NULL);
-
 	smtp_auth_set_context(session, authctx);
+
+	/* Use our callback for X.509 certificate passwords.  If STARTTLS is
+	 not in use or disabled in configure, the following is harmless. */
+	smtp_starttls_set_password_cb(tlsinteract, NULL);
 
 	/* Set the reverse path for the mail envelope.  (NULL is ok)
 	 */
@@ -182,25 +190,28 @@ send_alert(const GpErrorData * errorData)
 
 	/* RFC 2822 doesn't require recipient headers but a To: header would
 	 be nice to have if not present. */
-	smtp_set_header(message, "To", NULL, NULL);
+	smtp_set_header(message, "To", "Chuck McDevitt", "cmcdevitt@greenplum.com");
 
 	smtp_set_header(message, "Subject", subject);
 	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
 	smtp_set_header(message, "Message-Id", NULL);
 
-	smtp_set_messagecb(message, messagebody_cb, (void *)errorData);
+	smtp_set_messagecb(message, messagebody_cb, (void *) errorData);
 
 	/* Recipient must be in RFC2821 format */
 
 	recipient = smtp_add_recipient(message, "cmcdevitt@greenplum.com");
 	smtp_dsn_set_notify(recipient, Notify_SUCCESS | Notify_FAILURE);
+
 	/* Initiate a connection to the SMTP server and transfer the
 	 message. */
+	fprintf(mylog, " about to smtp_start_session\n");
+	fflush(mylog);
 	if (!smtp_start_session(session))
 	{
 		char buf[128];
 
-		fprintf(stderr, "SMTP server problem %s\n", smtp_strerror(smtp_errno(),
+		fprintf(mylog, "SMTP server problem %s\n", smtp_strerror(smtp_errno(),
 				buf, sizeof buf));
 	}
 	else
@@ -208,15 +219,9 @@ send_alert(const GpErrorData * errorData)
 		/* Report on the success or otherwise of the mail transfer.
 		 */
 		status = smtp_message_transfer_status(message);
-		printf("%d %s", status->code, (status->text != NULL) ? status->text
-				: "\n");
-		//smtp_enumerate_recipients(message, print_recipient_status, NULL);
-		smtp_destroy_session(session);
-		auth_destroy_context(authctx);
-
-		auth_client_exit();
-
-		return (-1);
+		fprintf(mylog, "%d %s", status->code,
+				(status->text != NULL) ? status->text : "\n");
+		smtp_enumerate_recipients(message, print_recipient_status, NULL);
 
 	}
 
@@ -227,25 +232,25 @@ send_alert(const GpErrorData * errorData)
 
 	auth_client_exit();
 #endif
-	fprintf(stderr," returning from send_alert\n");
+	fprintf(mylog, " returning from send_alert\n");
 	fflush(mylog);
 
 	return 0;
 }
 
-
-static void move_to_next_chunk(CSVChunkStr * chunkstr,const PipeProtoChunk * saved_chunks)
+static void move_to_next_chunk(CSVChunkStr * chunkstr,
+		const PipeProtoChunk * saved_chunks)
 {
 	if (chunkstr->chunk != NULL)
-		if(chunkstr->p - chunkstr->chunk->data >= chunkstr->chunk->hdr.len)
+		if (chunkstr->p - chunkstr->chunk->data >= chunkstr->chunk->hdr.len)
 		{
 			/* switch to next chunk */
-			fprintf(mylog,"switch to next chunk\n");
+			fprintf(mylog, "switch to next chunk\n");
 			fflush(mylog);
-			if(chunkstr->chunk->hdr.next >= 0)
+			if (chunkstr->chunk->hdr.next >= 0)
 			{
-				fprintf(mylog,"found next chunk\n");
-							fflush(mylog);
+				fprintf(mylog, "found next chunk\n");
+				fflush(mylog);
 				chunkstr->chunk = &saved_chunks[chunkstr->chunk->hdr.next];
 				chunkstr->p = chunkstr->chunk->data;
 
@@ -260,123 +265,109 @@ static void move_to_next_chunk(CSVChunkStr * chunkstr,const PipeProtoChunk * sav
 		}
 }
 
-
 static char *
 get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 {
-    int wlen = 0;
-    int len = 0;
-    char * out = NULL;
+	int wlen = 0;
+	int len = 0;
+	char * out = NULL;
 
-    move_to_next_chunk(chunkstr,saved_chunks);
+	move_to_next_chunk(chunkstr, saved_chunks);
 
-    if (chunkstr->p == NULL)
-    {
-		fprintf(mylog,"past end of chunks\n");
+	if (chunkstr->p == NULL)
+	{
+		fprintf(mylog, "past end of chunks\n");
 		fflush(mylog);
 		return strdup("");
 	}
 
-
-
 	len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
-	if (chunkstr->chunk->hdr.len < (chunkstr->p - chunkstr->chunk->data))
-		fprintf(mylog,"hdr.len %d\n",chunkstr->chunk->hdr.len);
-	fprintf(mylog,"len of chunk %d\n",len);
 
 	/* Check if the string is an empty string */
 	if (len > 0 && chunkstr->p[0] == '\0')
 	{
-		fprintf(mylog,"chunkstr->p has empty string\n");move_to_next_chunk(chunkstr,saved_chunks);
+		//fprintf(mylog, "chunkstr->p has empty string\n");
+		move_to_next_chunk(chunkstr, saved_chunks);
 		chunkstr->p++;
 		return strdup("");
 	}
 
 	if (len == 0 && chunkstr->chunk->hdr.next >= 0)
 	{
-		const PipeProtoChunk *next_chunk = &saved_chunks[chunkstr->chunk->hdr.next];
+		const PipeProtoChunk *next_chunk =
+				&saved_chunks[chunkstr->chunk->hdr.next];
 		if (next_chunk->hdr.len > 0 && next_chunk->data[0] == '\0')
 		{
-			fprintf(mylog,"chunkstr->p has empty string2\n");
+			//fprintf(mylog, "chunkstr->p has empty string2\n");
 
-			move_to_next_chunk(chunkstr,saved_chunks);
+			move_to_next_chunk(chunkstr, saved_chunks);
 			return strdup("");
 		}
 	}
 
+	wlen = strnlen(chunkstr->p, len);
 
-
-    fprintf(mylog,"finding non-empty string\n");
-    fflush(mylog);
-
-    wlen = strnlen(chunkstr->p,len);
-
-    if(wlen < len)
+	if (wlen < len)
 	{
 		// String all contained in this chunk
 		out = malloc(wlen + 1);
 		memcpy(out, chunkstr->p, wlen + 1); // include the null byte
-		fprintf(mylog,"string all from this chunk: %s\n",chunkstr->p);
-		fflush(mylog);
-		chunkstr->p += wlen + 1;  // skip to start of next string.
+		//fprintf(mylog, "string all from this chunk: %s\n", chunkstr->p);
+		//fflush(mylog);
+		chunkstr->p += wlen + 1; // skip to start of next string.
 		return out;
 	}
 
-    out = malloc(wlen + 1);
+	out = malloc(wlen + 1);
 	memcpy(out, chunkstr->p, wlen);
 	out[wlen] = '\0';
 	chunkstr->p += wlen;
-	fprintf(mylog,"partial string: %s\n",out);
+	fprintf(mylog, "partial string: %s\n", out);
 	fflush(mylog);
 
+	while (chunkstr->p)
+	{
 
-	if(chunkstr->p - chunkstr->chunk->data >= chunkstr->chunk->hdr.len)
-		fprintf(mylog,"time for next chunk\n");
+		move_to_next_chunk(chunkstr, saved_chunks);
+		if (chunkstr->p == NULL)
+			break;
+		len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
 
-    while(chunkstr->p)
-    {
+		wlen = strnlen(chunkstr->p, len);
 
-        move_to_next_chunk(chunkstr,saved_chunks);
-        if (chunkstr->p == NULL)
-        	break;
-        len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
+		/* Write OK, don't forget to account for the trailing 0 */
+		if (wlen < len)
+		{
+			// Remainder of String all contained in this chunk
+			out = realloc(out, strlen(out) + wlen + 1);
+			strncat(out, chunkstr->p, wlen + 1); // include the null byte
 
-        wlen = strnlen(chunkstr->p,len);
+			//memcpy(outstr, chunkstr->p, wlen + 1); // include the null byte
+			fprintf(mylog, "new fragment string: %s\n", chunkstr->p);
+			fprintf(mylog, "new  string: %s\n", out);
+			fflush(mylog);
+			chunkstr->p += wlen + 1; // skip to start of next string.
+			fprintf(mylog, "next string: %s\n", chunkstr->p);
+			fflush(mylog);
+			return out;
+		}
+		else
+		{
 
-        /* Write OK, don't forget to account for the trailing 0 */
-        if(wlen < len)
-        {
-        	// Remainder of String all contained in this chunk
-        	out = realloc(out, strlen(out) +  wlen + 1);
-        	strncat(out, chunkstr->p, wlen + 1); // include the null byte
+			int newlen = strlen(out) + wlen;
+			out = realloc(out, newlen + 1);
+			strncat(out, chunkstr->p, wlen);
+			out[newlen] = '\0';
 
-        	//memcpy(outstr, chunkstr->p, wlen + 1); // include the null byte
-        	fprintf(mylog,"new fragment string: %s\n",chunkstr->p);
-        	fprintf(mylog,"new  string: %s\n",out);
-        	fflush(mylog);
-            chunkstr->p += wlen + 1;  // skip to start of next string.
-            fprintf(mylog,"next string: %s\n",chunkstr->p);
-            return out;
-        }
-        else
-        {
+			fprintf(mylog, "partial string: %s\n", out);
+			fflush(mylog);
 
-        	int newlen = strlen(out) + wlen;
-        	out = realloc(out, newlen + 1);
-        	strncat(out, chunkstr->p, wlen);
-        	out[newlen] = '\0';
-        	//memcpy(outstr, chunkstr->p, wlen);
-        	//outstr[wlen] = '\0';
-        	fprintf(mylog,"partial string: %s\n",out);
-        	        	        	fflush(mylog);
+			chunkstr->p += wlen;
 
-            chunkstr->p += wlen;
-            if(chunkstr->p - chunkstr->chunk->data >= chunkstr->chunk->hdr.len)
-            	fprintf(mylog,"time for next chunk\n");
-        }
-    }
+		}
+	}
 
-    return out;
+	return out;
 }
 
 #if USE_EMAIL
@@ -384,9 +375,7 @@ const char *
 messagebody_cb(void **buf, int *len, void *arg)
 {
 
-	const GpErrorData *errorData = (GpErrorData *)arg;
-
-
+	const GpErrorData *errorData = (GpErrorData *) arg;
 
 	const char * message = "Return-Path: <cmcdevitt@greenplum.com>\r\n"
 		"Subject: LibESMTP test mail\r\n"
@@ -401,11 +390,21 @@ messagebody_cb(void **buf, int *len, void *arg)
 
 	if (errorData && errorData->username)
 	{
-		if ( strlen(errorData->username) > 255 )
+		if (strlen(errorData->username) > 255)
 			elog(ERROR,"Something strange");
+		}
+		*len = strlen(message);
+		return message;
 	}
-	*len = strlen(message);
-	return message;
+
+			/* Callback to prnt the recipient status */
+static void print_recipient_status(smtp_recipient_t recipient,
+		const char *mailbox, void *arg  __attribute__((unused)))
+{
+	const smtp_status_t *status;
+
+	status = smtp_recipient_status(recipient);
+	fprintf(mylog, "%s: %d %s\n", mailbox, status->code, status->text);
 }
 
 static int authinteract(auth_client_request_t request, char **result,
@@ -417,12 +416,14 @@ static int authinteract(auth_client_request_t request, char **result,
 	{
 		if (request[i].flags & AUTH_PASS)
 		{
-			result[i] = "password";
+			fprintf(mylog, "authinteract asking for password\n");
+			result[i] = "fonda1";
 			//result[i] = my_auth->password;
 		}
 		else if (request[i].flags & AUTH_USER)
 		{
-			result[i] = "chuck";
+			fprintf(mylog, "authinteract asking for username\n");
+			result[i] = "cmcdevitt@greenplum.com";
 			//result[i] = my_auth->username;
 		}
 		else if (result[i] == NULL)
@@ -435,6 +436,105 @@ static int authinteract(auth_client_request_t request, char **result,
 
 }
 
+static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)), void *arg  __attribute__((unused)))
+{
+
+	fprintf(mylog, "tlsinteract asking for tls password\n");
+	strcpy(buf, "password");
+	return strlen(buf);
+}
+
+static int handle_invalid_peer_certificate(long vfy_result)
+{
+	const char *k = "rare error";
+	switch (vfy_result)
+	{
+	case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
+		k = "X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT";
+		break;
+	case X509_V_ERR_UNABLE_TO_GET_CRL:
+		k = "X509_V_ERR_UNABLE_TO_GET_CRL";
+		break;
+	case X509_V_ERR_UNABLE_TO_DECRYPT_CERT_SIGNATURE:
+		k = "X509_V_ERR_UNABLE_TO_DECRYPT_CERT_SIGNATURE";
+		break;
+	case X509_V_ERR_UNABLE_TO_DECRYPT_CRL_SIGNATURE:
+		k = "X509_V_ERR_UNABLE_TO_DECRYPT_CRL_SIGNATURE";
+		break;
+	case X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY:
+		k = "X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY";
+		break;
+	case X509_V_ERR_CERT_SIGNATURE_FAILURE:
+		k = "X509_V_ERR_CERT_SIGNATURE_FAILURE";
+		break;
+	case X509_V_ERR_CRL_SIGNATURE_FAILURE:
+		k = "X509_V_ERR_CRL_SIGNATURE_FAILURE";
+		break;
+	case X509_V_ERR_CERT_NOT_YET_VALID:
+		k = "X509_V_ERR_CERT_NOT_YET_VALID";
+		break;
+	case X509_V_ERR_CERT_HAS_EXPIRED:
+		k = "X509_V_ERR_CERT_HAS_EXPIRED";
+		break;
+	case X509_V_ERR_CRL_NOT_YET_VALID:
+		k = "X509_V_ERR_CRL_NOT_YET_VALID";
+		break;
+	case X509_V_ERR_CRL_HAS_EXPIRED:
+		k = "X509_V_ERR_CRL_HAS_EXPIRED";
+		break;
+	case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
+		k = "X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD";
+		break;
+	case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
+		k = "X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD";
+		break;
+	case X509_V_ERR_ERROR_IN_CRL_LAST_UPDATE_FIELD:
+		k = "X509_V_ERR_ERROR_IN_CRL_LAST_UPDATE_FIELD";
+		break;
+	case X509_V_ERR_ERROR_IN_CRL_NEXT_UPDATE_FIELD:
+		k = "X509_V_ERR_ERROR_IN_CRL_NEXT_UPDATE_FIELD";
+		break;
+	case X509_V_ERR_OUT_OF_MEM:
+		k = "X509_V_ERR_OUT_OF_MEM";
+		break;
+	case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
+		k = "X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT";
+		break;
+	case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
+		k = "X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN";
+		break;
+	case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
+		k = "X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY";
+		break;
+	case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
+		k = "X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE";
+		break;
+	case X509_V_ERR_CERT_CHAIN_TOO_LONG:
+		k = "X509_V_ERR_CERT_CHAIN_TOO_LONG";
+		break;
+	case X509_V_ERR_CERT_REVOKED:
+		k = "X509_V_ERR_CERT_REVOKED";
+		break;
+	case X509_V_ERR_INVALID_CA:
+		k = "X509_V_ERR_INVALID_CA";
+		break;
+	case X509_V_ERR_PATH_LENGTH_EXCEEDED:
+		k = "X509_V_ERR_PATH_LENGTH_EXCEEDED";
+		break;
+	case X509_V_ERR_INVALID_PURPOSE:
+		k = "X509_V_ERR_INVALID_PURPOSE";
+		break;
+	case X509_V_ERR_CERT_UNTRUSTED:
+		k = "X509_V_ERR_CERT_UNTRUSTED";
+		break;
+	case X509_V_ERR_CERT_REJECTED:
+		k = "X509_V_ERR_CERT_REJECTED";
+		break;
+	}
+	fprintf(mylog, "SMTP_EV_INVALID_PEER_CERTIFICATE: %ld: %s\n", vfy_result, k);
+	return 1; /* Accept the problem */
+}
+
 /*
  * We currently just return 1 to keep libesmtp happy
  * Will turn this into a proper event handler some day
@@ -443,8 +543,6 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 {
 	va_list alist;
 	int *ok;
-	long foo;
-	int bar;
 
 	va_start(alist, arg);
 
@@ -452,17 +550,23 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	{
 
 	case SMTP_EV_WEAK_CIPHER:
+	{
+		int bar;
 
 		bar = va_arg(alist, long);
 		ok = va_arg(alist, int*);
+		fprintf(mylog,"WEAK_CIPHER\n");
 		*ok = 1;
+	}
 		break;
 
 	case SMTP_EV_INVALID_PEER_CERTIFICATE:
-
-		foo = va_arg(alist, long);
+	{
+		long vfy_result;
+		vfy_result = va_arg(alist, long);
 		ok = va_arg(alist, int*);
-		*ok = 1;
+		*ok = handle_invalid_peer_certificate(vfy_result);
+	}
 		break;
 
 	case SMTP_EV_NO_PEER_CERTIFICATE:
@@ -470,6 +574,7 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	case SMTP_EV_NO_CLIENT_CERTIFICATE:
 
 		ok = va_arg(alist, int*);
+		fprintf(mylog,"NO PEER CERT, WRONG PEER CERT, or NO CLIENT CERT\n");
 		*ok = 1;
 		break;
 
@@ -480,7 +585,6 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	case SMTP_EV_MESSAGESENT:
 	case SMTP_EV_DISCONNECT:
 	default:
-
 		break;
 
 	}
