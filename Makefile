@@ -288,6 +288,7 @@ define BUILD_STEPS
 	@$(MAKE) groupSession INSTLOC=$(INSTLOC)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
+	@$(MAKE) mkpgbench INSTLOC=$(INSTLOC)
 	@$(MAKE) mkgpperfmon INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
@@ -843,6 +844,9 @@ groupSession:
 
 mkgpcc:
 	@cd $(GPCC) && $(MAKE)
+
+mkpgbench:
+	@cd cdb-pg/contrib/pgbench && $(MAKE) install
 
 mkgpperfmon:
 	@cd $(GPPERFMON) && $(MAKE)
