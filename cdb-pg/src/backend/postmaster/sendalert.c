@@ -21,6 +21,14 @@
 #include <sys/time.h>
 #include <stdio.h>
 
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#ifdef HAVE_NETINET_TCP_H
+#include <netinet/tcp.h>
+#endif
+#include <arpa/inet.h>
+
 #include "lib/stringinfo.h"
 
 #include "pgtime.h"
@@ -29,6 +37,8 @@
 #include "postmaster/sendalert.h"
 #include "utils/guc.h"
 #include "utils/elog.h"
+extern int	PostPortNumber;
+extern void pg_itoa(int16 i, char *a);
 
 #if USE_EMAIL
 #if USE_SSL
@@ -171,6 +181,7 @@ int send_alert(const GpErrorData * errorData)
 #if USE_EMAIL
 
 	//host = "smtpx18.msoutlookonline.net:587";
+	host = "greenplum.com.s5a2.psmtp.com:25";
 	from = "cmcdevitt@greenplum.com";
 	snprintf(subject, 127, "%s: %s",errorData->error_severity, errorData->error_message);
 	subject[127] = '\0';
@@ -217,7 +228,7 @@ int send_alert(const GpErrorData * errorData)
 	 * RFC 2822 doesn't require recipient headers but a To: header would
 	 * be nice to have if not present.
 	 */
-	smtp_set_header(message, "To", "Chuck McDevitt", "cmcdevitt@greenplum.com");
+	smtp_set_header(message, "To", "Chuck McDevitt <cmcdevitt@greenplum.com>", "cmcdevitt@greenplum.com");
 
 	smtp_set_header(message, "Subject", subject);
 	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
@@ -227,7 +238,7 @@ int send_alert(const GpErrorData * errorData)
 
 	/* Recipient must be in RFC2821 format */
 
-	recipient = smtp_add_recipient(message, "cmcdevitt");
+	recipient = smtp_add_recipient(message, "cmcdevitt@greenplum.com");
 	smtp_dsn_set_notify(recipient, Notify_SUCCESS | Notify_FAILURE);
 
 	smtp_8bitmime_set_body(message, E8bitmime_8BITMIME);
@@ -411,7 +422,14 @@ static void add_to_message(char * message, const char * newstr_in)
 	/* Scan for \n, and convert to \r\n */
 	while ((p = strchr(newstr,'\n')) != NULL)
 	{
-		if (p - newstr >=2 && *(p-1) != '\r')
+		/* Don't exceed 900 chars added to this line, so total line < 1000 */
+		if (p - newstr >= 900)
+		{
+			strncat(message, newstr, 898);
+			strcat(message, "\r\n");
+			newstr += 898;
+		}
+		else if (p - newstr >=2 && *(p-1) != '\r')
 		{
 			strncat(message, newstr, p - newstr);
 			strcat(message, "\r\n");
@@ -438,7 +456,6 @@ messagebody_cb(void **buf, int *len, void *arg)
 	if (*buf == NULL)
 	{
 		alreadyreturned = 0;
-		fprintf(mylog, "message: *buf is null\n");
 		if (len == NULL)
 			return NULL;
 
@@ -450,22 +467,42 @@ messagebody_cb(void **buf, int *len, void *arg)
 	if (len == NULL)
 	{
 		alreadyreturned = 0;
-		fprintf(mylog, "message: len is null\n");
+		message = ((char *)(*buf));
+		message[0] = '\0';
 	    return NULL;
 	}
 
+	message = ((char *)(*buf));
+
 	if (alreadyreturned == 0)
 	{
-		strcpy(message, "Return-Path: <cmcdevitt@greenplum.com>\r\n"
-				"Subject: LibESMTP test mail\r\n"
-				"MIME-Version: 1.0\r\n"
+		/* Perhaps better to use text/html ? */
+		strcpy(message,
+			//"Return-Path: <cmcdevitt@greenplum.com>\r\n"
+			//"Subject: LibESMTP test mail\r\n"
+			"MIME-Version: 1.0\r\n"
 			"Content-Type: text/plain;\r\n"
-			"  charset=iso-8859-1\r\n"
+			"  charset=utf-8\r\n"
 			"Content-Transfer-Encoding: 8bit\r\n\r\n");
 
 		/* Lines must be < 1000 bytes long for 7bit or 8bit transfer-encoding */
 		/* Perhaps use base64 encoding instead?  Or just wrap them? */
-		strcat(message,"Alert from GPDB system:\r\n\r\n");
+		strcat(message,"Alert from GPDB system ");
+		{
+			char myhostname[255];
+			char portnum[7];
+			myhostname[0] = '\0';
+
+
+			if (gethostname(myhostname, sizeof(myhostname)) == 0)
+			{
+				strcat(message,myhostname);
+				strcat(message," on port ");
+				pg_itoa(PostPortNumber,portnum);
+				strcat(message,portnum);
+			}
+		}
+		strcat(message,":\r\n\r\n");
 
 		strcat(message, errorData->error_severity);
 		strcat(message, ": ");
@@ -480,23 +517,20 @@ messagebody_cb(void **buf, int *len, void *arg)
 		}
 		if (strlen(errorData->error_hint) > 0)
 		{
-			strcat(message, "HINT: ");
+			strcat(message, "HINT:   ");
 			add_to_message(message, errorData->error_hint);
+			strcat(message, "\r\n");
+		}
+		if (strlen(errorData->error_context) > 0)
+		{
+			strcat(message, "CONTEXT:   ");
+			add_to_message(message, errorData->error_context);
 			strcat(message, "\r\n");
 		}
 
 
 	}
-		/*const char * message = "Return-Path: <cmcdevitt@greenplum.com>\r\n"
-			"Subject: LibESMTP test mail\r\n"
-			"MIME-Version: 1.0\r\n"
-			"Content-Type: text/plain;\r\n"
-			"  charset=iso-8859-1\r\n"
-			"Content-Transfer-Encoding: 7bit\r\n\r\n"
 
-			"Hello world!\r\n"
-
-			"\r\n\r\nEnd of test---\r\n";*/
 	if (alreadyreturned < strlen(message))
 	{
 		char * p;
@@ -505,24 +539,21 @@ messagebody_cb(void **buf, int *len, void *arg)
 		{
 			*len = p - message + 1;
 			alreadyreturned += *len;
-			fprintf(mylog, "message: %.*s",*len,message);
 		}
 		else if (strlen(message)>0)
 		{
 			*len = strlen(message);
 			alreadyreturned += *len;
 			fprintf(mylog, "message, without rn?: %.*s",*len, message);
+			fflush(mylog);
 		}
 		else
 		{
 			fprintf(mylog, "message finished, returning zero\n");
-					fflush(mylog);
+			fflush(mylog);
 			*len = 0;
 			message = NULL;
 		}
-
-
-		fprintf(mylog, "length: %d\n",*len);
 	}
 	else
 	{
@@ -531,7 +562,7 @@ messagebody_cb(void **buf, int *len, void *arg)
 		*len = 0;
 		return NULL;
 	}
-	fflush(mylog);
+
 	return message;
 }
 
@@ -542,8 +573,11 @@ static void print_recipient_status(smtp_recipient_t recipient,
 	const smtp_status_t *status;
 
 	status = smtp_recipient_status(recipient);
-	fprintf(mylog, "recipient status: %s: %d %s\n", mailbox, status->code, status->text);
-	fflush(mylog);
+	if (status->code != 0)
+	{
+		fprintf(mylog, "recipient status: %s: %d %s\n", mailbox, status->code, status->text);
+		fflush(mylog);
+	}
 }
 
 static int authinteract(auth_client_request_t request, char **result,
@@ -570,9 +604,9 @@ static int authinteract(auth_client_request_t request, char **result,
 		}
 		else if (request[i].flags & AUTH_REALM)
 		{
-					fprintf(mylog, "authinteract asking for realm: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
-	    					: "");
-					result[i] = "greenplum.com";
+			fprintf(mylog, "authinteract asking for realm: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
+					: "");
+			result[i] = "greenplum.com";
 
 		}
 		else if (result[i] == NULL)
@@ -589,6 +623,7 @@ static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)
 {
 
 	fprintf(mylog, "tlsinteract asking for tls password\n");
+	fflush(mylog);
 	strcpy(buf, "password");
 	return strlen(buf);
 }
@@ -680,7 +715,10 @@ static int handle_invalid_peer_certificate(long vfy_result)
 		k = "X509_V_ERR_CERT_REJECTED";
 		break;
 	}
-	fprintf(mylog, "SMTP_EV_INVALID_PEER_CERTIFICATE: %ld: %s\n", vfy_result, k);
+
+	if (vfy_result != X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY)
+		fprintf(mylog, "SMTP_EV_INVALID_PEER_CERTIFICATE: %ld: %s\n", vfy_result, k);
+
 	return 1; /* Accept the problem */
 }
 
@@ -729,9 +767,9 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 		break;
 
 	case SMTP_EV_STARTTLS_OK:
-		{
+		/*{
 			fprintf(mylog, "STARTTLS_OK\n");
-		}
+		}*/
 		break;
 	case SMTP_EV_CONNECT:
 		fprintf(mylog, "EV_CONNECT\n"); break;
@@ -741,10 +779,8 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 		fprintf(mylog, "EV_RCPTSTATUS\n"); break;
 	case SMTP_EV_MESSAGEDATA:
 		{
-			//long junk;
 			smtp_message_t * msg;
 			int mlen;
-			//junk = va_arg(alist, long);
 			msg = va_arg(alist, void*);
 			mlen = va_arg(alist, int);
 			fprintf(mylog, "EV_MESSAGEDATA len = %d\n", mlen);
