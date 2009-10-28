@@ -294,12 +294,6 @@ format 'csv' ( header quote as 'ggg');
 select count(*) from bad_whois;
 drop external table bad_whois;
 
--- start_ignore
-select * from gpfdist_status;
-select * from gpfdist_stop;
-select * from gpfdist_status;
--- end_ignore
-
 --
 -- try a bad location
 --
@@ -330,6 +324,59 @@ alter table ext drop column a;
 drop external table ext;
 
 --
+-- WET tests
+--
+
+--
+-- CREATE (including LIKE, DISTRIBUTED BY)
+--
+-- positive
+create writable external table wet_pos1(a text, b text) location('gpfdist://@hostname@:7070/wet.out') format 'text';
+create writable external table wet_pos2(a text, b text) location('gpfdist://@hostname@:7070/wet.out') format 'text' distributed by(b);
+create writable external table wet_pos3(like wet_pos2) location('gpfdist://@hostname@:7070/wet.out') format 'text' distributed by(a,b);
+create writable external web table wet_pos4(a text, b text) execute 'some command' format 'text';
+create writable external table wet_region(like reg_region) location('gpfdist://@hostname@:7070/wet_region.out') format 'text';
+create readable external table ret_region(like wet_region) location('gpfdist://@hostname@:7070/wet_region.out') format 'text';
+
+-- negative
+create writable external table wet_neg1(a text, b text) location('file://@hostname@@abs_srcdir@/badt1.tbl') format 'text';
+create writable external table wet_neg1(a text, b text) location('gpfdist://@hostname@:7070/wet.out', 'gpfdist://@hostname@:7070/wet.out') format 'text';
+create writable external web table wet_pos5(a text, b text) execute 'some command' on segment 0 format 'text';
+
+--
+-- SELECT from WET (negative)
+--
+select * from wet_pos1;
+
+--
+-- WET: export some data with INSERT SELECT, INSERT and COPY. 
+--
+COPY reg_region FROM STDIN DELIMITER '|';
+0|AFRICA|lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to 
+1|AMERICA|hs use ironic, even requests. s
+\.
+INSERT INTO wet_region SELECT * from reg_region;
+
+COPY wet_region FROM STDIN DELIMITER '|';
+2|ASIA|ges. thinly even pinto beans ca
+3|EUROPE|ly final courts cajole furiously final excuse
+\.
+INSERT INTO wet_region VALUES(4,'MIDDLE EAST','uickly special');
+
+--
+-- Now use RET to see if data was exported correctly.
+-- NOTE: since we don't bother cleaning up the exported file, it may grow bigger
+-- in between runs, so we don't check for count(*), and instead check for distinct.
+--
+SELECT DISTINCT(R_NAME) FROM ret_region ORDER BY R_NAME;
+
+-- start_ignore
+select * from gpfdist_status;
+select * from gpfdist_stop;
+select * from gpfdist_status;
+-- end_ignore
+
+--
 -- get an error for missing gpfdist
 --
 select count(*) from ext_whois;
@@ -342,6 +389,12 @@ drop external table gpfdist_csv_start;
 drop external table gpfdist_stop;
 drop external table check_ps;
 drop external table check_env;
+drop external table wet_pos1;
+drop external table wet_pos2;
+drop external table wet_pos3;
+drop external table wet_pos4;
+drop external table wet_region;
+drop external table ret_region;
 drop table reg_region;
 
 -- Tests for MPP-2513: dropping an external table must result in the deletion
