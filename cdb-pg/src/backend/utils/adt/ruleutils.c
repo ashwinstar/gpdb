@@ -105,10 +105,10 @@ typedef struct
  * Global data
  * ----------
  */
-static void *plan_getrulebyoid = NULL;
-static char *query_getrulebyoid = "SELECT * FROM pg_catalog.pg_rewrite WHERE oid = $1";
-static void *plan_getviewrule = NULL;
-static char *query_getviewrule = "SELECT * FROM pg_catalog.pg_rewrite WHERE ev_class = $1 AND rulename = $2";
+static SPIPlanPtr plan_getrulebyoid = NULL;
+static const char *query_getrulebyoid = "SELECT * FROM pg_catalog.pg_rewrite WHERE oid = $1";
+static SPIPlanPtr plan_getviewrule = NULL;
+static const char *query_getviewrule = "SELECT * FROM pg_catalog.pg_rewrite WHERE ev_class = $1 AND rulename = $2";
 
 
 /* ----------
@@ -266,7 +266,7 @@ pg_get_ruledef_worker(Oid ruleoid, int prettyFlags)
 	if (plan_getrulebyoid == NULL)
 	{
 		Oid			argtypes[1];
-		void	   *plan;
+		SPIPlanPtr	plan;
 
 		argtypes[0] = OIDOID;
 		plan = SPI_prepare(query_getrulebyoid, 1, argtypes);
@@ -396,7 +396,7 @@ pg_get_viewdef_worker(Oid viewoid, int prettyFlags)
 	if (plan_getviewrule == NULL)
 	{
 		Oid			argtypes[2];
-		void	   *plan;
+		SPIPlanPtr	plan;
 
 		argtypes[0] = OIDOID;
 		argtypes[1] = NAMEOID;
@@ -702,8 +702,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 		exprsDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
 									 Anum_pg_index_indexprs, &isnull);
 		Assert(!isnull);
-		exprsString = DatumGetCString(DirectFunctionCall1(textout,
-														  exprsDatum));
+		exprsString = TextDatumGetCString(exprsDatum);
 		indexprs = (List *) stringToNode(exprsString);
 		pfree(exprsString);
 	}
@@ -822,8 +821,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 			predDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
 										Anum_pg_index_indpred, &isnull);
 			Assert(!isnull);
-			predString = DatumGetCString(DirectFunctionCall1(textout,
-															 predDatum));
+			predString = TextDatumGetCString(predDatum);
 			node = (Node *) stringToNode(predString);
 			pfree(predString);
 
@@ -1224,11 +1222,18 @@ pg_get_expr_worker(text *expr, Oid relid, char *relname, int prettyFlags)
 	char	   *str;
 
 	/* Convert input TEXT object to C string */
-	exprstr = DatumGetCString(DirectFunctionCall1(textout,
-												  PointerGetDatum(expr)));
+	exprstr = text_to_cstring(expr);
 
 	/* Convert expression to node tree */
 	node = (Node *) stringToNode(exprstr);
+
+	pfree(exprstr);
+
+	/* Prepare deparse context if needed */
+	if (OidIsValid(relid))
+		context = deparse_context_for(relname, relid);
+	else
+		context = NIL;
 
 	/* Deparse */
 	context = deparse_context_for(relname, relid);
@@ -1304,8 +1309,7 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 	tableOid = RangeVarGetRelid(tablerv, false);
 
 	/* Get the number of the column */
-	column = DatumGetCString(DirectFunctionCall1(textout,
-											   PointerGetDatum(columnname)));
+	column = text_to_cstring(columnname);
 
 	attnum = get_attnum(tableOid, column);
 	if (attnum == InvalidAttrNumber)
