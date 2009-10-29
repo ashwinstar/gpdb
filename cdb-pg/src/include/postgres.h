@@ -489,11 +489,10 @@ static inline Datum CStringGetDatum(const char *p) { return PointerGetDatum(p); 
 static inline Name DatumGetName(Datum d) { return (Name) DatumGetPointer(d); }
 static inline Datum NameGetDatum(const Name n) { return PointerGetDatum(n); }
 
-#if BYTE_ORDER == LITTLE_ENDIAN 
+#ifndef WORDS_BIGENDIAN 
 static inline float4 DatumGetFloat4(Datum d) { Datum_U du; du.d = d; return du.f4[0]; } 
 static inline Datum Float4GetDatum(float4 f) { Datum_U du; du.d = 0; du.f4[0] = f; return du.d; } 
-#endif
-#if BYTE_ORDER == BIG_ENDIAN
+#else
 static inline float4 DatumGetFloat4(Datum d) { Datum_U du; du.d = d; return du.f4[1]; } 
 static inline Datum Float4GetDatum(float4 f) { Datum_U du; du.d = 0; du.f4[1] = f; return du.d; } 
 #endif
