@@ -6884,7 +6884,8 @@ ShutdownXLOG(int code __attribute__((unused)) , Datum arg __attribute__((unused)
 		elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"skipping shutdown steps for standby");
 
 	ereport(LOG,
-			(errmsg("database system is shut down")));
+			(errmsg("database system is shut down"),
+					errSendAlert(true),errOmitLocation(true)));
 }
 
 /*
