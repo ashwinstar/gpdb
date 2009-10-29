@@ -2960,7 +2960,7 @@ write_message_to_server_log(int elevel,
 #if defined(__GLIBC__) || defined(pg_on_solaris)
         
     if (elevel >= ERROR &&
-        (elevel > ERROR || !omit_location) &&
+        (elevel == PANIC || !omit_location) &&
         stacktracesize > 0 &&
         stacktracearray != NULL)
     {
@@ -3116,7 +3116,7 @@ send_message_to_server_log(ErrorData *edata)
         }
         if (Log_error_verbosity >= PGERROR_VERBOSE)
         {
-            if (edata->elevel == INFO)
+            if (edata->elevel == INFO || edata->omit_location)
             {}
             /* assume no newlines in funcname or filename... */
             else if (edata->funcname && edata->filename)
@@ -3152,7 +3152,7 @@ send_message_to_server_log(ErrorData *edata)
 #if defined(__GLIBC__) || defined(pg_on_solaris)
         
     if (edata->elevel >= ERROR &&
-        (edata->elevel > ERROR || !edata->omit_location) &&
+        (edata->elevel == PANIC || !edata->omit_location) &&
         edata->stacktracesize > 0 &&
         edata->stacktracearray != NULL)
     {
