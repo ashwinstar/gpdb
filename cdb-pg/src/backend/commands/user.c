@@ -14,6 +14,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "catalog/heap.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -460,6 +461,13 @@ CreateRole(CreateRoleStmt *stmt)
 		Assert(stmt->type == T_CreateRoleStmt);
 		Assert(stmt->type < 1000);
 		CdbDispatchUtilityStatement((Node *) stmt, "CreateRole");
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackAddObject(AuthIdRelationId,
+						   roleid,
+						   GetUserId(),
+						   "CREATE", "ROLE"
+				);
 	}
 }
 
@@ -808,6 +816,14 @@ AlterRole(AlterRoleStmt *stmt)
 	ReleaseSysCache(tuple);
 	heap_freetuple(new_tuple);
 
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(AuthIdRelationId,
+						   roleid,
+						   GetUserId(),
+						   "ALTER", "ROLE"
+				);
+
 	/*
 	 * Advance command counter so we can see new record; else tests in
 	 * AddRoleMems may fail.
@@ -927,6 +943,14 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 	simple_heap_update(rel, &oldtuple->t_self, newtuple);
 	CatalogUpdateIndexes(rel, newtuple);
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+		/* MPP-6929: metadata tracking */
+		MetaTrackUpdObject(AuthIdRelationId,
+						   HeapTupleGetOid(oldtuple),
+						   GetUserId(),
+						   "ALTER", "ROLE"
+				);
+
 	ReleaseSysCache(oldtuple);
 	/* needn't keep lock since we won't be updating the flat file */
 	heap_close(rel, RowExclusiveLock);
@@ -990,7 +1014,7 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
 					 /* mirrors */ true, /* primaries */ true);
 
-	}
+	} /* end if dispatch */
 }
 
 
@@ -1135,6 +1159,10 @@ DropRole(DropRoleStmt *stmt)
 		 */
 		DeleteSharedComments(roleid, AuthIdRelationId);
 
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackDropObject(AuthIdRelationId,
+								roleid);
 		/*
 		 * Advance command counter so that later iterations of this loop will
 		 * see the changes already made.  This is essential if, for example,
@@ -1286,6 +1314,15 @@ RenameRole(const char *oldname, const char *newname)
 	 * Set flag to update flat auth file at commit.
 	 */
 	auth_file_update_needed();
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(AuthIdRelationId,
+						   roleid,
+						   GetUserId(),
+						   "ALTER", "ROLE"
+				);
+
 }
 
 /*
@@ -1296,10 +1333,10 @@ RenameRole(const char *oldname, const char *newname)
 void
 GrantRole(GrantRoleStmt *stmt)
 {
-	Relation	pg_authid_rel;
-	Oid			grantor;
-	List	   *grantee_ids;
-	ListCell   *item;
+	Relation	 pg_authid_rel;
+	Oid			 grantor;
+	List		*grantee_ids;
+	ListCell	*item;
 
 	if (stmt->grantor)
 		grantor = get_roleid_checked(stmt->grantor);
@@ -1324,13 +1361,27 @@ GrantRole(GrantRoleStmt *stmt)
 		Oid			roleid = get_roleid_checked(rolename);
 
 		if (stmt->is_grant)
+		{
 			AddRoleMems(rolename, roleid,
 						stmt->grantee_roles, grantee_ids,
 						grantor, stmt->admin_opt);
+		}
 		else
+		{
 			DelRoleMems(rolename, roleid,
 						stmt->grantee_roles, grantee_ids,
 						stmt->admin_opt);
+		}
+
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+				MetaTrackUpdObject(AuthIdRelationId,
+								   roleid,
+								   GetUserId(),
+								   "PRIVILEGE", 
+								   (stmt->is_grant) ? "GRANT" : "REVOKE"
+						);
+
 	}
 
 	/*
@@ -1345,9 +1396,8 @@ GrantRole(GrantRoleStmt *stmt)
 	auth_file_update_needed();
 
     if (Gp_role == GP_ROLE_DISPATCH)
-    {
         CdbDispatchUtilityStatement((Node *) stmt, "GrantRole");
-    }
+
 }
 
 /*

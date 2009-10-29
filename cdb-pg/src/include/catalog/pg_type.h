@@ -585,6 +585,8 @@ DATA(insert OID = 6438 ( pg_filespace 	            PGNSP PGUID -1 f c t \054 500
 #define PG_FILESPACE_OID 6438
 DATA(insert OID = 6439 ( pg_filespace_entry 	    PGNSP PGUID -1 f c t \054 5033 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define PG_FILESPACE_ENTRY_OID 6439
+DATA(insert OID = 6440 ( pg_stat_last_operation	    PGNSP PGUID -1 f c t \054 6052 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+#define PG_STAT_LAST_OPERATION_OID 6440
 
 /*
  * macros

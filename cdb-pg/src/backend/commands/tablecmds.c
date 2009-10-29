@@ -2808,6 +2808,13 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 	}
 
+	/* MPP-6929: metadata tracking */
+	MetaTrackUpdObject(RelationRelationId,
+					   myrelid,
+					   GetUserId(),
+					   "ALTER", "RENAME"
+				);
+
 
 	/*
 	 * Close rel, but keep exclusive lock!
@@ -14466,6 +14473,15 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 		}
 
 	}
+
+	/* MPP-6929: metadata tracking */
+	if (!is_split && !bSetTemplate)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "PARTITION", "ADD"
+				);
+
 } /* end ATPExecPartAdd */
 
 
@@ -16678,6 +16694,14 @@ ATPExecPartDrop(Relation rel,
 						(errmsg("dropped partition%s for %s",
 								prule->partIdStr,
 								prule->relname)));
+
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "PARTITION", "DROP"
+				);
 	}
 
 } /* end ATPExecPartDrop */
@@ -17131,6 +17155,13 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 		pc->partid = (Node *)oldrelrv;
 		pc2 = (AlterPartitionCmd *)pc->arg2;
 		pc2->arg2 = (Node *)pcols; /* for execute nodes */
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "PARTITION", "EXCHANGE"
+				);
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
@@ -17316,6 +17347,13 @@ ATPExecPartMerge(Relation rel,
 			pc->partid = (Node *)relrv1;
 			pc->arg1 = (Node *)relrv2;
 		}
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "PARTITION", "MERGE"
+				);
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
@@ -18001,6 +18039,13 @@ ATPExecPartModify(Relation rel,
 				prule->topRule->parparentoid,
 				prule->topRule->parruleord,
 				CurrentMemoryContext);
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "PARTITION", "MODIFY"
+				);
 	}
 
 	if (0)
@@ -18327,6 +18372,13 @@ ATPExecPartRename(Relation rel,
 			}
 		}
 
+		/* MPP-6929: metadata tracking */
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "PARTITION", "RENAME"
+				);
+
 		/* Notify of name if did not use name for partition id spec */
 		if ((pid->idtype != AT_AP_IDName)
 			&& prule->isName)
@@ -18440,6 +18492,14 @@ ATPExecPartSetTemplate(AlteredTableInfo *tab,
 
 	if (pc->arg1)
 		ATPExecPartAdd(tab, rel, pc, AT_PartSetTemplate);
+
+	/* MPP-6929: metadata tracking */
+	MetaTrackUpdObject(RelationRelationId,
+					   RelationGetRelid(rel),
+					   GetUserId(),
+					   "ALTER", "SET SUBPARTITION TEMPLATE"
+			);
+
 
 } /* end ATPExecPartSetTemplate */
 
@@ -19251,7 +19311,15 @@ ATPExecPartSplit(Relation rel,
 		pc->partid = (Node *)makeInteger(RelationGetRelid(temprel));
 		pc->arg1 = (Node *)copyObject(rva);
 		pc->arg2 = (Node *)copyObject(rvb);
-	}
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "PARTITION", "SPLIT"
+				);
+
+	} /* end if dispatch */
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		Oid temprelid;
@@ -19583,6 +19651,13 @@ ATPExecPartTruncate(Relation rel,
 		ProcessUtility(
 				(Node *) ts,
 				NULL, dest, NULL);
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "PARTITION", "TRUNCATE"
+				);
 
 		/* Notify of name if did not use name for partition id spec */
 		if (prule && prule->topRule && prule->topRule->children

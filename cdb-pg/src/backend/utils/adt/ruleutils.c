@@ -57,6 +57,8 @@
 /* Pretty flags */
 #define PRETTYFLAG_PAREN		1
 #define PRETTYFLAG_INDENT		2
+/* #define PRETTYFLAG_PARTN_TNAME	16 */
+#define PRETTYFLAG_PARTN_TNAME	0
 
 /* macro to test if pretty action needed */
 #define PRETTY_PAREN(context)	((context)->prettyFlags & PRETTYFLAG_PAREN)
@@ -5939,7 +5941,31 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 	bool needspace = false;
 
 	if (OidIsValid(rule->parchildrelid))
+	{
 		reloptions = flatten_reloptions(rule->parchildrelid);
+
+		if (PRETTYFLAG_PARTN_TNAME)
+		{
+			StringInfoData      	 sid1;
+
+			initStringInfo(&sid1);
+
+			truncateStringInfo(&sid1, 0);
+			appendStringInfo(&sid1, "tablename=%s", 
+							 quote_identifier(
+									 get_rel_name(rule->parchildrelid)));
+
+			if (reloptions)
+			{
+				appendStringInfo(&sid1, ", %s ", reloptions);
+
+				pfree(reloptions);
+			}
+			reloptions = sid1.data;
+
+		}
+
+	}
 	else if (PointerIsValid(rule->parreloptions))
 	{
 		ListCell *lc;
@@ -6199,7 +6225,7 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 		{
 			if (!first_every_rule)
 			{
-				if (rule->parrangeevery)
+				if (!PRETTYFLAG_PARTN_TNAME && rule->parrangeevery)
 				{
 					if (!strlen(rule->parname))
 						first_every_rule = rule;

@@ -75,6 +75,13 @@
 
 #include "cdb/cdbvars.h"
 
+static void MetaTrackAddUpdInternal(Oid			classid, 
+									Oid			objoid, 
+									Oid			relowner,
+									char*		actionname,
+									char*		subtype,
+									Relation	rel,
+									HeapTuple	old_tuple);
 
 static void AddNewRelationTuple(Relation pg_class_desc,
 					Relation new_rel_desc,
@@ -453,6 +460,210 @@ CheckAttributeType(const char *attname, Oid atttypid)
 		}
 	}
 }
+
+/* MPP-6929: metadata tracking */
+/* --------------------------------
+ *		MetaTrackAddObject
+ *
+ *		Track creation of object in pg_stat_last_operation. The
+ *		arguments are:
+ *
+ *		classid		- the oid of the table containing the object, eg
+ *					  "pg_class" for a relation
+ *		objoid		- the oid of the object itself in the specified table
+ *		relowner	- role ? user ?
+ *		actionname	- generally CREATE for this case
+ *		subtype		- some generic descriptive, eg TABLE for a "CREATE TABLE"
+ *
+ *
+ * --------------------------------
+ */
+
+static void MetaTrackAddUpdInternal(Oid			classid, 
+									Oid			objoid, 
+									Oid			relowner,
+									char*		actionname,
+									char*		subtype,
+									Relation	rel,
+									HeapTuple	old_tuple)
+{
+	HeapTuple	new_tuple;
+	Datum		values[Natts_pg_statlastop];
+	bool		isnull[Natts_pg_statlastop];
+	bool		new_record_repl[Natts_pg_statlastop];
+	NameData	uname;
+	NameData	aname;
+
+	MemSet(isnull, 0, sizeof(bool) * Natts_pg_statlastop);
+	MemSet(new_record_repl, 0, sizeof(bool) * Natts_pg_statlastop);
+
+	values[Anum_pg_statlastop_classid - 1] = ObjectIdGetDatum(classid);
+	values[Anum_pg_statlastop_objid - 1] = ObjectIdGetDatum(objoid);
+
+	aname.data[0] = '\0';
+	namestrcpy(&aname, actionname);
+	values[Anum_pg_statlastop_actionname - 1] = NameGetDatum(&aname);
+
+	values[Anum_pg_statlastop_usesysid - 1] = ObjectIdGetDatum(relowner);
+	new_record_repl[Anum_pg_statlastop_usesysid - 1] = true;
+
+	uname.data[0] = '\0';
+	namestrcpy(&uname, "BOZO");
+	values[Anum_pg_statlastop_usename - 1] = NameGetDatum(&uname);
+	new_record_repl[Anum_pg_statlastop_usename - 1] = true;
+
+	values[Anum_pg_statlastop_subtype - 1] = CStringGetTextDatum(subtype);
+	new_record_repl[Anum_pg_statlastop_subtype - 1] = true;
+
+	values[Anum_pg_statlastop_time - 1] = GetCurrentTimestamp();
+	new_record_repl[Anum_pg_statlastop_time - 1] = true;
+
+	if (HeapTupleIsValid(old_tuple))
+	{
+		new_tuple = heap_modify_tuple(old_tuple, 
+									  RelationGetDescr(rel), values,
+									  isnull, new_record_repl);
+
+		simple_heap_update(rel, &old_tuple->t_self, new_tuple);
+	}
+	else
+	{
+		Oid s1;
+
+		new_tuple = heap_form_tuple(RelationGetDescr(rel), values, isnull);
+
+		s1 = simple_heap_insert(rel, new_tuple);
+	}
+	/* keep the system catalog indexes current */
+	CatalogUpdateIndexes(rel, new_tuple);
+
+	if (HeapTupleIsValid(old_tuple))
+		heap_freetuple(new_tuple);
+
+} /* end MetaTrackAddUpdInternal */
+
+
+void MetaTrackAddObject(Oid		classid, 
+						Oid		objoid, 
+						Oid		relowner,
+						char*	actionname,
+						char*	subtype)
+{
+	Relation	rel;
+
+	if (IsBootstrapProcessingMode())
+		return;
+
+	rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
+
+	MetaTrackAddUpdInternal(classid, objoid, relowner, 
+							actionname, subtype, 
+							rel, InvalidOid);
+
+	heap_close(rel, RowExclusiveLock);
+
+/*	CommandCounterIncrement(); */
+
+} /* end MetaTrackAddObject */
+
+void MetaTrackUpdObject(Oid		classid, 
+						Oid		objoid, 
+						Oid		relowner,
+						char*	actionname,
+						char*	subtype)
+{
+	HeapTuple	tuple;
+	ScanKeyData key[3];
+	SysScanDesc scan;
+	Relation	rel;
+	int			ii = 0;
+
+	if (IsBootstrapProcessingMode())
+		return;
+
+	rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_statlastop_classid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(classid));
+	ScanKeyInit(&key[1],
+				Anum_pg_statlastop_objid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(objoid));
+	ScanKeyInit(&key[2],
+				Anum_pg_statlastop_actionname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(actionname));
+
+	scan = systable_beginscan(rel,
+							  StatLastOpClassidObjidActionnameIndexId,
+							  /* XXX XXX XXX XXX : snapshotnow ? */
+							  true, SnapshotNow, 3, key);
+
+	/* should be a unique index - only 1 answer... */
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		if (HeapTupleIsValid(tuple))
+		{
+			MetaTrackAddUpdInternal(classid, objoid, relowner, 
+									actionname, subtype, 
+									rel, tuple);
+
+/*			CommandCounterIncrement(); */
+
+			ii++;
+		}
+	}
+	systable_endscan(scan);
+	heap_close(rel, RowExclusiveLock);
+
+	/* add it if it didn't already exist */
+	if (!ii)
+		MetaTrackAddObject(classid, 
+						   objoid, 
+						   relowner,
+						   actionname,
+						   subtype);
+
+} /* end MetaTrackUpdObject */
+
+void MetaTrackDropObject(Oid		classid, 
+						 Oid		objoid)
+{
+	HeapTuple tuple;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	Relation rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
+	int ii = 0;
+
+	ScanKeyInit(&key[0],
+				Anum_pg_statlastop_classid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(classid));
+	ScanKeyInit(&key[1],
+				Anum_pg_statlastop_objid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(objoid));
+
+	scan = systable_beginscan(rel,
+							  StatLastOpClassidObjidIndexId,
+							  /* XXX XXX XXX XXX : snapshotnow ? */
+							  true, SnapshotNow, 2, key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		if (HeapTupleIsValid(tuple))
+		{
+			simple_heap_delete(rel, &tuple->t_self);
+			ii++;
+		}
+	}
+	systable_endscan(scan);
+	heap_close(rel, RowExclusiveLock);
+} /* end MetaTrackDropObject */
+
+
 
 /* --------------------------------
  *		AddNewAttributeTuples
@@ -1035,6 +1246,35 @@ heap_create_with_catalog(const char *relname,
         GpPolicyStore(relid, policy);
     }
 
+	{
+		bool doIt = true;
+		char *subtyp = "TABLE";
+
+		switch (relkind)
+		{
+			case RELKIND_RELATION:
+				break;
+			case RELKIND_INDEX:
+				subtyp = "INDEX";
+				break;
+			case RELKIND_SEQUENCE:
+				subtyp = "SEQUENCE";
+				break;
+			case RELKIND_VIEW:
+				subtyp = "VIEW";
+				break;
+			default:
+				doIt = false;
+		}
+
+		/* MPP-6929: metadata tracking */
+		if (doIt)
+			MetaTrackAddObject(RelationRelationId,
+							   relid, ownerid,
+							   "CREATE", subtyp
+					);
+	}
+
 	/*
 	 * ok, the relation has been cataloged, so close our relations and return
 	 * the OID of the newly created relation.
@@ -1555,6 +1795,11 @@ heap_drop_with_catalog(Oid relid)
  	 */
 	if (removePolicy)
 		GpPolicyRemove(relid);
+
+	/* MPP-6929: metadata tracking */
+	MetaTrackDropObject(RelationRelationId,
+						relid);
+
 }
 
 

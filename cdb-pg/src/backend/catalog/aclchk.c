@@ -19,6 +19,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "catalog/heap.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
@@ -840,6 +841,20 @@ ExecGrant_Relation(InternalGrant *istmt)
 										 values, nulls, replaces);
 
 		simple_heap_update(relation, &newtuple->t_self, newtuple);
+
+		/* MPP-6929: metadata tracking */
+		if ((Gp_role == GP_ROLE_DISPATCH)
+			&& (
+				(pg_class_tuple->relkind == RELKIND_INDEX) ||
+				(pg_class_tuple->relkind == RELKIND_RELATION) ||
+				(pg_class_tuple->relkind == RELKIND_SEQUENCE) ||
+				(pg_class_tuple->relkind == RELKIND_VIEW)))
+			MetaTrackUpdObject(RelationRelationId,
+							   relOid,
+							   grantorId,
+							   "PRIVILEGE", 
+							   (istmt->is_grant) ? "GRANT" : "REVOKE"
+					);
 
 		/* keep the catalog indexes up to date */
 		CatalogUpdateIndexes(relation, newtuple);

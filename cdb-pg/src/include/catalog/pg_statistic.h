@@ -228,4 +228,59 @@ typedef FormData_pg_statistic *Form_pg_statistic;
  */
 #define STATISTIC_KIND_CORRELATION	3
 
+
+/* quoting pg_authid and gp_configuration: */
+
+/*
+ * The CATALOG definition has to refer to the type of log_time as
+ * "timestamptz" (lower case) so that bootstrap mode recognizes it.  But
+ * the C header files define this type as TimestampTz.	Since the field is
+ * potentially-null and therefore can't be accessed directly from C code,
+ * there is no particular need for the C struct definition to show the
+ * field type as TimestampTz --- instead we just make it Datum.
+ */
+
+#define timestamptz Datum
+
+/* MPP-6929: metadata tracking */
+#define StatLastOpRelationName		"pg_stat_last_operation"
+
+#define StatLastOpRelationId 6052
+
+CATALOG(pg_stat_last_operation,6052) BKI_WITHOUT_OIDS
+{
+	/* unique key */
+	Oid			classid;		/* OID of table containing object */
+	Oid			objid;			/* OID of object itself */
+	NameData	actionname;		/* name of action */
+
+	/* */
+	Oid			usesysid;		/* OID of user (when action was performed) */
+	NameData	usename;		/* name of user (when action was performed) */
+	text		subtype;		/* action subtype */
+	timestamptz	time;
+} FormData_pg_statlastop;
+
+#undef timestamptz
+
+/* ----------------
+ *		Form_pg_statlastop corresponds to a pointer to a tuple with
+ *		the format of pg_statlastop relation.
+ * ----------------
+ */
+typedef FormData_pg_statlastop *Form_pg_statlastop;
+
+/* ----------------
+ *		compiler constants for pg_stat_last_operation
+ * ----------------
+ */
+#define Natts_pg_statlastop					7
+#define Anum_pg_statlastop_classid			1
+#define Anum_pg_statlastop_objid			2
+#define Anum_pg_statlastop_actionname		3
+#define Anum_pg_statlastop_usesysid			4
+#define Anum_pg_statlastop_usename			5
+#define Anum_pg_statlastop_subtype			6
+#define Anum_pg_statlastop_time				7
+
 #endif   /* PG_STATISTIC_H */

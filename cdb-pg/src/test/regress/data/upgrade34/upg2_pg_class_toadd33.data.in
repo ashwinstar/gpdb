@@ -5,3 +5,6 @@ relname|relnamespace|reltype|relowner|relam|relfilenode|reltablespace|relpages|r
 2893|pg_filespace_entry_fs_index|11|0|10|403|2893|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
 2894|pg_filespace_entry_fsdb_index|11|0|10|403|2894|1664|1|0|0|0|0|0|f|t|i|h|2|0|0|0|0|0|f|f|f|f|0|\N|\N
 5033|pg_filespace_entry|11|6439|10|0|5033|1664|1|0|0|0|0|0|t|t|r|h|3|0|0|0|0|0|f|f|f|f|885|{=r/@gpcurusername@}|\N
+6052|pg_stat_last_operation|11|6440|10|0|6052|0|1|89|0|0|0|0|t|f|r|h|7|0|0|0|0|0|f|f|f|f|859|{=r/@gpcurusername@}|\N
+6053|pg_statlastop_classid_objid_index|11|0|10|403|6053|0|2|89|0|0|0|0|f|f|i|h|2|0|0|0|0|0|f|f|f|f|0|\N|\N
+6054|pg_statlastop_classid_objid_actionname_index|11|0|10|403|6054|0|2|89|0|0|0|0|f|f|i|h|3|0|0|0|0|0|f|f|f|f|0|\N|\N

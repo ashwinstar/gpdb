@@ -61,24 +61,32 @@
   	    - regress/data/upgrade34/upg2_pg_class_toadd33.data
 
 		  This file is in pretty much the same format as pg_class.h.
+		  Also includes new index entries (and sequences, views?)
+
+  	    - regress/data/upgrade34/upg2_pg_attribute_toadd33.data
+
+		  Column definitions.		
 
 		- regress/data/upgrade34/upg2_pg_depend_toadd33.data
 
-		  This is the pg_depend entries for the new table
+		  This is the pg_depend entries for the new table (and
+		  indexes).  [check for relid in refobjic]
 
 		- regress/data/upgrade34/upg2_pg_index_toadd33.data
 
-		  Only required if the new table has indices.
+		  Only required if the new table has indices.  Note that the
+		  index names from the DECLARE_INDEX/DECLARE_UNIQUE_INDEX
+		  definitions in indexing.h.
 
 		- regress/data/upgrade34/upg2_pg_type_toadd33.data
 
 		  This is the implementation type for the new table.
 
-        Note: Any new tables MUST have a fixed OID for the entry in
-		pg_type.  In order to accomplish this the value must be inserted
-		into the list of upgrade types at the bottom of pg_type.h AND
-        it must be added to the list of specially handled cases inside
-		of bootparse.y.
+        **NOTE WELL**: Any new tables MUST have a fixed OID for the
+		entry in pg_type.  In order to accomplish this the value must
+		be inserted into the list of upgrade types at the bottom of
+		pg_type.h AND it must be added to the list of specially
+		handled cases inside of bootparse.y.
 
   3) Altering existing catalog tables:
 

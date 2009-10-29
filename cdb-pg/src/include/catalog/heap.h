@@ -106,4 +106,19 @@ extern void CheckAttributeNamesTypes(TupleDesc tupdesc, char relkind);
 extern void CheckAttributeType(const char *attname, Oid atttypid);
 extern void SetRelationNumChecks(Relation rel, int numchecks);
 
+/* MPP-6929: metadata tracking */
+extern void MetaTrackAddObject(Oid		classid, 
+							   Oid		objoid, 
+							   Oid		relowner,
+							   char*	actionname,
+							   char*	subtype);
+extern void MetaTrackUpdObject(Oid		classid, 
+							   Oid		objoid, 
+							   Oid		relowner,
+							   char*	actionname,
+							   char*	subtype);
+extern void MetaTrackDropObject(Oid		classid, 
+								Oid		objoid);
+
+
 #endif   /* HEAP_H */

@@ -37,6 +37,7 @@
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_filespace_entry.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_statistic.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/toasting.h"
@@ -239,6 +240,10 @@ Boot_CreateStmt:
 								break;
 							case FileSpaceEntryRelationId:
 								typid = PG_FILESPACE_ENTRY_OID;
+								break;
+							case StatLastOpRelationId: 
+								/* MPP-6929: metadata tracking */
+								typid = PG_STAT_LAST_OPERATION_OID;
 								break;
 							default:
 								break;

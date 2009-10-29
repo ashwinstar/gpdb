@@ -278,6 +278,13 @@ DECLARE_INDEX(pg_partition_rule_paroid_parentrule_ruleord_index, 5026, on pg_par
 DECLARE_UNIQUE_INDEX(pg_appendonly_alter_column_relid_index, 5031, on pg_appendonly_alter_column using btree(relid oid_ops, changenum int4_ops));
 #define AppendOnlyAlterColumnRelidIndexId  5031
 
+/* MPP-6929: metadata tracking */
+DECLARE_INDEX(pg_statlastop_classid_objid_index, 6053, on pg_stat_last_operation using btree(classid oid_ops, objid oid_ops));
+#define StatLastOpClassidObjidIndexId  6053
+
+DECLARE_UNIQUE_INDEX(pg_statlastop_classid_objid_actionname_index, 6054, on pg_stat_last_operation using btree(classid oid_ops, objid oid_ops, actionname name_ops));
+#define StatLastOpClassidObjidActionnameIndexId  6054
+
 /* last step of initialization script: build the indexes declared above */
 BUILD_INDICES
 
