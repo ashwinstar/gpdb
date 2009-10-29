@@ -278,6 +278,17 @@ int send_alert(const GpErrorData * errorData)
 	return 0;
 }
 
+
+static size_t
+pg_strnlen(const char *str, size_t maxlen)
+{
+	const char *p = str;
+
+	while (maxlen-- > 0 && *p)
+		p++;
+	return p - str;
+}
+
 static void move_to_next_chunk(CSVChunkStr * chunkstr,
 		const PipeProtoChunk * saved_chunks)
 {
@@ -338,7 +349,7 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 		}
 	}
 
-	wlen = strnlen(chunkstr->p, len);
+	wlen = pg_strnlen(chunkstr->p, len);
 
 	if (wlen < len)
 	{
@@ -363,7 +374,7 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 			break;
 		len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
 
-		wlen = strnlen(chunkstr->p, len);
+		wlen = pg_strnlen(chunkstr->p, len);
 
 		/* Write OK, don't forget to account for the trailing 0 */
 		if (wlen < len)
