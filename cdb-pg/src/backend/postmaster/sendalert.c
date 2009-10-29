@@ -107,6 +107,7 @@ int send_alert_from_chunks(const PipeProtoChunk *chunk,
 	errorData.error_detail = get_str_from_chunk(&chunkstr,saved_chunks_in);
 	errorData.error_hint = get_str_from_chunk(&chunkstr,saved_chunks_in);
 	errorData.internal_query = get_str_from_chunk(&chunkstr,saved_chunks_in);
+	errorData.error_context = get_str_from_chunk(&chunkstr,saved_chunks_in);
 	errorData.debug_query_string = get_str_from_chunk(&chunkstr,saved_chunks_in);
 	errorData.error_func_name = get_str_from_chunk(&chunkstr,saved_chunks_in);
 	errorData.error_filename = get_str_from_chunk(&chunkstr,saved_chunks_in);
@@ -131,6 +132,7 @@ int send_alert_from_chunks(const PipeProtoChunk *chunk,
 	free((char *)errorData.error_filename ); errorData.error_filename = NULL;
 	free((char *)errorData.error_func_name ); errorData.error_func_name = NULL;
 	free(errorData.debug_query_string ); errorData.debug_query_string = NULL;
+	free(errorData.error_context); errorData.error_context = NULL;
 	free(errorData.internal_query ); errorData.internal_query = NULL;
 	free(errorData.error_hint ); errorData.error_hint = NULL;
 	free(errorData.error_detail ); errorData.error_detail = NULL;
@@ -160,7 +162,7 @@ int send_alert(const GpErrorData * errorData)
 	char *host = NULL;
 	char *from = NULL;
 	char subject[128];
-	//enum notify_flags notify = Notify_NOTSET;
+	enum notify_flags notify = Notify_FAILURE;
 #endif
 	if (mylog == NULL)
 		mylog = fopen("/tmp/mylog.log", "a");
@@ -228,7 +230,7 @@ int send_alert(const GpErrorData * errorData)
 	 * RFC 2822 doesn't require recipient headers but a To: header would
 	 * be nice to have if not present.
 	 */
-	smtp_set_header(message, "To", "Chuck McDevitt <cmcdevitt@greenplum.com>", "cmcdevitt@greenplum.com");
+	//smtp_set_header(message, "To", "Chuck McDevitt <cmcdevitt@greenplum.com>", "cmcdevitt@greenplum.com");
 
 	smtp_set_header(message, "Subject", subject);
 	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
@@ -239,7 +241,7 @@ int send_alert(const GpErrorData * errorData)
 	/* Recipient must be in RFC2821 format */
 
 	recipient = smtp_add_recipient(message, "cmcdevitt@greenplum.com");
-	smtp_dsn_set_notify(recipient, Notify_SUCCESS | Notify_FAILURE);
+	smtp_dsn_set_notify(recipient, notify);
 
 	smtp_8bitmime_set_body(message, E8bitmime_8BITMIME);
 
@@ -321,8 +323,6 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 
 	if (chunkstr->p == NULL)
 	{
-		fprintf(mylog, "past end of chunks\n");
-		fflush(mylog);
 		return strdup("");
 	}
 
@@ -331,9 +331,10 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 	/* Check if the string is an empty string */
 	if (len > 0 && chunkstr->p[0] == '\0')
 	{
-		//fprintf(mylog, "chunkstr->p has empty string\n");
-		move_to_next_chunk(chunkstr, saved_chunks);
+		fprintf(mylog, "chunkstr->p has empty string\n");
 		chunkstr->p++;
+		move_to_next_chunk(chunkstr, saved_chunks);
+
 		return strdup("");
 	}
 
@@ -343,12 +344,13 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 				&saved_chunks[chunkstr->chunk->hdr.next];
 		if (next_chunk->hdr.len > 0 && next_chunk->data[0] == '\0')
 		{
-			//fprintf(mylog, "chunkstr->p has empty string2\n");
+			chunkstr->p++;
+		   fprintf(mylog, "chunkstr->p has empty string2\n");
 			move_to_next_chunk(chunkstr, saved_chunks);
 			return strdup("");
 		}
 	}
-
+	fprintf(mylog,"get_str_from_chunk = %s\n",out);
 	wlen = pg_strnlen(chunkstr->p, len);
 
 	if (wlen < len)
@@ -357,6 +359,7 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 		out = malloc(wlen + 1);
 		memcpy(out, chunkstr->p, wlen + 1); // include the null byte
 		chunkstr->p += wlen + 1; // skip to start of next string.
+		fprintf(mylog,"get_str_from_chunk = %s\n",out);
 		return out;
 	}
 
@@ -462,8 +465,6 @@ messagebody_cb(void **buf, int *len, void *arg)
 	char * message = NULL;
 	static int alreadyreturned = 0;
 
-	fprintf(mylog, "in messagebody_cb\n");
-
 	if (*buf == NULL)
 	{
 		alreadyreturned = 0;
@@ -520,26 +521,30 @@ messagebody_cb(void **buf, int *len, void *arg)
 		add_to_message(message, errorData->error_message);
 		strcat(message, "\r\n");
 
-		if (strlen(errorData->error_detail) > 0)
+		if (errorData->error_detail != NULL &&strlen(errorData->error_detail) > 0)
 		{
 			strcat(message, "DETAIL: ");
 			add_to_message(message, errorData->error_detail);
 			strcat(message, "\r\n");
 		}
-		if (strlen(errorData->error_hint) > 0)
+		if (errorData->error_hint != NULL &&strlen(errorData->error_hint) > 0)
 		{
 			strcat(message, "HINT:   ");
 			add_to_message(message, errorData->error_hint);
 			strcat(message, "\r\n");
 		}
-		if (strlen(errorData->error_context) > 0)
+		if (errorData->error_context != NULL && strlen(errorData->error_context) > 0)
 		{
 			strcat(message, "CONTEXT:   ");
 			add_to_message(message, errorData->error_context);
 			strcat(message, "\r\n");
 		}
-
-
+		if (errorData->stacktrace != NULL && strlen(errorData->stacktrace) > 0)
+		{
+			strcat(message, "STACK TRACE:   ");
+			add_to_message(message, errorData->stacktrace);
+			strcat(message, "\r\n");
+		}
 	}
 
 	if (alreadyreturned < strlen(message))
@@ -568,8 +573,6 @@ messagebody_cb(void **buf, int *len, void *arg)
 	}
 	else
 	{
-		fprintf(mylog, "message finished2, returning zero\n");
-		fflush(mylog);
 		*len = 0;
 		return NULL;
 	}
@@ -727,10 +730,14 @@ static int handle_invalid_peer_certificate(long vfy_result)
 		break;
 	}
 
-	if (vfy_result != X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY)
+	/*
+	 * These two errors come from using self-signed certificates.  We don't care about that.
+	 */
+	if (vfy_result != X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY &&
+		vfy_result != X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN)
 		fprintf(mylog, "SMTP_EV_INVALID_PEER_CERTIFICATE: %ld: %s\n", vfy_result, k);
 
-	return 1; /* Accept the problem */
+	return 1; /* Accept the problem and try to continue  */
 }
 
 /*
@@ -768,11 +775,23 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 		break;
 
 	case SMTP_EV_NO_PEER_CERTIFICATE:
+		{
+			ok = va_arg(alist, int*);
+			fprintf(mylog,"NO PEER CERT\n");
+			*ok = 1;
+		}
+		break;
 	case SMTP_EV_WRONG_PEER_CERTIFICATE:
+		{
+			ok = va_arg(alist, int*);
+			fprintf(mylog,"WRONG PEER CERT\n");
+			*ok = 1;
+		}
+		break;
 	case SMTP_EV_NO_CLIENT_CERTIFICATE:
 		{
 			ok = va_arg(alist, int*);
-			fprintf(mylog,"NO PEER CERT, WRONG PEER CERT, or NO CLIENT CERT\n");
+			fprintf(mylog,"NO CLIENT CERT\n");
 			*ok = 1;
 		}
 		break;
@@ -789,13 +808,13 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	case SMTP_EV_RCPTSTATUS:
 		fprintf(mylog, "EV_RCPTSTATUS\n"); break;
 	case SMTP_EV_MESSAGEDATA:
-		{
+		/*{
 			smtp_message_t * msg;
 			int mlen;
 			msg = va_arg(alist, void*);
 			mlen = va_arg(alist, int);
 			fprintf(mylog, "EV_MESSAGEDATA len = %d\n", mlen);
-		}
+		}*/
 		break;
 	case SMTP_EV_MESSAGESENT:
 		fprintf(mylog, "EV_MESSAGESENT\n"); break;
