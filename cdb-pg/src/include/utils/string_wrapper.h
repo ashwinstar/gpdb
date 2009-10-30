@@ -17,6 +17,7 @@
 #include <utils/elog.h>
 
 #define NULL_TO_DUMMY_STR(s) ((s) == NULL ? "<<null>>" : (s))
+#define SAFE_STR_LENGTH(s) ((s) == NULL ? 0 : strlen(s))
 
 static inline
 int gp_strcoll(const char *left, const char *right)
@@ -32,14 +33,15 @@ int gp_strcoll(const char *left, const char *right)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
-							errmsg("Failed to compare strings because of characters outside of the domain of the collating sequence.  First string: '%s' Second string: '%s'",
-									NULL_TO_DUMMY_STR(left), NULL_TO_DUMMY_STR(right))));
+							errmsg("Failed to compare strings because of characters outside of the domain of the collating sequence.  First string has length %lu and value (limited to 100 characters): '%.100s'.  Second string has length %lu and value (limited to 100 characters): '%.100s'",
+									SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(left), SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(right))));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-							errmsg("Unable to compare strings.  Error code %d.  First string: '%s' Second string: '%s'", errno, NULL_TO_DUMMY_STR(left), NULL_TO_DUMMY_STR(right))));
+							errmsg("Unable to compare strings.  Error: %s.  First string has length %lu and value (limited to 100 characters): '%.100s'.  Second string has length %lu and value (limited to 100 characters): '%.100s'"
+									, strerror(errno), SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(left), SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(right))));
 		}
 	}
 
@@ -60,14 +62,15 @@ size_t gp_strxfrm(char *dst, const char *src, size_t n)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
-							errmsg("Failed to transform string because it contains characters outside of the domain of the collating sequence.  String: '%s'",
-									NULL_TO_DUMMY_STR(src))));
+							errmsg("Failed to transform string because it contains characters outside of the domain of the collating sequence.  String has length %lu and value (limited to 100 characters): '%.100s'",
+									SAFE_STR_LENGTH(src), NULL_TO_DUMMY_STR(src))));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-							errmsg("Unable to transform string.  Error code %d", errno)));
+							errmsg("Unable to transform string.  Error: %s.  String has length %lu and value (limited to 100 characters): '%.100s'",
+									strerror(errno), SAFE_STR_LENGTH(src), NULL_TO_DUMMY_STR(src))));
 		}
 	}
 
