@@ -166,22 +166,15 @@ logChunkParseDetails(MotionConn *conn)
 	struct icpkthdr *pkt;
 
 	Assert(conn != NULL);
+	Assert(conn->pBuff != NULL);
 
-	if (conn->pBuff == NULL)
-	{
-		elog(LOG, "Interconnect parse details: rx-buff is NULL conn->active %d conn->stopRequest %d my_icId %d", 
-			 conn->stillActive, conn->stopRequested, gp_interconnect_id);
-	}
-	else
-	{
-		pkt = (struct icpkthdr *)conn->pBuff;
+	pkt = (struct icpkthdr *)conn->pBuff;
 	
-		elog(LOG, "Interconnect parse details: pkt->len %d pkt->seq %d pkt->flags 0x%x conn->active %d conn->stopRequest %d pkt->icId %d my_icId %d", 
-			 pkt->len, pkt->seq, pkt->flags, conn->stillActive, conn->stopRequested, pkt->icId, gp_interconnect_id);
+	elog(LOG, "Interconnect parse details: pkt->len %d pkt->seq %d pkt->flags 0x%x conn->active %d conn->stopRequest %d pkt->icId %d my_icId %d", 
+		 pkt->len, pkt->seq, pkt->flags, conn->stillActive, conn->stopRequested, pkt->icId, gp_interconnect_id);
 
-		elog(LOG, "Interconnect parse details continued: peer: srcpid %d dstpid %d recvslice %d sendslice %d srccontent %d dstcontent %d",
-			 pkt->srcPid, pkt->dstPid, pkt->recvSliceIndex, pkt->sendSliceIndex, pkt->srcContentId, pkt->dstContentId);
-	}
+	elog(LOG, "Interconnect parse details continued: peer: srcpid %d dstpid %d recvslice %d sendslice %d srccontent %d dstcontent %d",
+		 pkt->srcPid, pkt->dstPid, pkt->recvSliceIndex, pkt->sendSliceIndex, pkt->srcContentId, pkt->dstContentId);
 }
 
 TupleChunkListItem

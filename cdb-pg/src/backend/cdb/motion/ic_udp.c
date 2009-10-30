@@ -175,9 +175,10 @@ static int	rx_buf_maxcount = 1;
 static int	rx_buf_count = 0;
 static char	*rx_buf_freelist = NULL;
 
-static bool main_thread_waiting = false;
-static int main_thread_waiting_node = -1;
-static int main_thread_waiting_route = ANY_ROUTE;
+static volatile bool main_thread_waiting = false;
+static volatile int main_thread_waiting_node = -1;
+static volatile int main_thread_waiting_route = ANY_ROUTE;
+static volatile int main_thread_waiting_query = -1; /* need to disambiguate for cursors. */
 
 static uint32	ic_id_last_teardown=0;
 
@@ -1558,6 +1559,7 @@ SetupUDPInterconnect(EState *estate)
 					main_thread_waiting_node = conn->conn_info.motNodeId;
 					main_thread_waiting = true;
 					main_thread_waiting_route = conn->route;
+					main_thread_waiting_query = gp_interconnect_id;
 
 					if (conn->state == mcsStarted ||
 						wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
@@ -1568,6 +1570,8 @@ SetupUDPInterconnect(EState *estate)
 					{
 						/* timed out waiting. */
 					}
+
+					main_thread_waiting_query = -1;
 					main_thread_waiting_route = ANY_ROUTE;
 					main_thread_waiting_node = -1;
 					main_thread_waiting = false;
@@ -1855,9 +1859,11 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 			main_thread_waiting = true;
 			main_thread_waiting_node = conn->conn_info.motNodeId;
 			main_thread_waiting_route = conn->route;
+			main_thread_waiting_query = transportStates->sliceTable->ic_instance_id;
 
 			if (wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
 			{
+				main_thread_waiting_query = -1;
 				main_thread_waiting_route = ANY_ROUTE;
 				main_thread_waiting_node = -1;
 				main_thread_waiting = false;
@@ -1871,6 +1877,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 			}
 			else
 			{
+				main_thread_waiting_query = -1;
 				main_thread_waiting_route = ANY_ROUTE;
 				main_thread_waiting_node = -1;
 				main_thread_waiting = false;
@@ -2037,6 +2044,9 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 	elog(DEBUG5, "receivechunksUDP: motnodeid %d", motNodeID);
 #endif
 
+	Assert(pTransportStates);
+	Assert(pTransportStates->sliceTable);
+
 	/* directed receive ? */
 	if (conn != NULL)
 	{
@@ -2050,6 +2060,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 		main_thread_waiting_route = ANY_ROUTE;
 	}
 
+	main_thread_waiting_query = pTransportStates->sliceTable->ic_instance_id;
 	main_thread_waiting_node = motNodeID;
 	main_thread_waiting = true;
 
@@ -2074,6 +2085,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 #ifdef AMS_VERBOSE_LOGGING
 			elog(LOG, "got data with length %d", rxconn->recvBytes);
 #endif
+			Assert(rxconn->pBuff);
 
 			/* successfully read into this connection's buffer. */
 			tcItem = RecvTupleChunk(rxconn, inTeardown);
@@ -2081,6 +2093,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 			if (!directed)
 				*srcRoute = rxconn->route;
 
+			main_thread_waiting_query = -1;
 			main_thread_waiting_route = ANY_ROUTE;
 			main_thread_waiting_node = -1;
 			main_thread_waiting = false;
@@ -2135,9 +2148,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 
 		/* if we made it here we need the lock again. */
 		pthread_mutex_lock(&rx_thread_mutex);
-
-		continue;
-	}
+	} /* for (;;) */
 
 	/* We either got data, or get cancelled. We never make it out to
 	 * here. */
@@ -2254,13 +2265,13 @@ RecvTupleChunkFromUDP(ChunkTransportState *transportStates,
 	pthread_mutex_lock(&rx_thread_mutex);
 	if (conn->pBuff != NULL)
 	{
-			TupleChunkListItem	tcItem=NULL;
+		TupleChunkListItem	tcItem=NULL;
 
-			tcItem = RecvTupleChunk(conn, transportStates->teardownActive);
+		tcItem = RecvTupleChunk(conn, transportStates->teardownActive);
 
-			pthread_mutex_unlock(&rx_thread_mutex);
-			return tcItem;
-}
+		pthread_mutex_unlock(&rx_thread_mutex);
+		return tcItem;
+	}
 
 	/* no existing data, we've got to read a packet */
 	/* receiveChunksUDP() releases rx_thread_mutex as a side-effect */
@@ -3125,13 +3136,13 @@ ic_rx_thread_func(void *arg)
 						 * conn->route set (that is, ANY_ROUTE isn't
 						 * allowed).
 						 */
-						if (main_thread_waiting && main_thread_waiting_node == pkt->motNodeId)
+						if (main_thread_waiting &&
+							main_thread_waiting_node == pkt->motNodeId &&
+							main_thread_waiting_query == pkt->icId &&
+							main_thread_waiting_route == conn->route)
 						{
-							if (main_thread_waiting_route == conn->route)
-							{
-								/* WAKE MAIN THREAD HERE */
-								pthread_cond_signal(&rx_thread_cond);
-							}
+							/* WAKE MAIN THREAD HERE */
+							pthread_cond_signal(&rx_thread_cond);
 						}
 					}
 					else 
@@ -3250,13 +3261,13 @@ ic_rx_thread_func(void *arg)
 							conn->stillActive = false;
 
 							/* we may need to wake a waiter */
-							if (main_thread_waiting && main_thread_waiting_node == pkt->motNodeId)
+							if (main_thread_waiting &&
+								main_thread_waiting_node == pkt->motNodeId &&
+								main_thread_waiting_query == pkt->icId &&
+								main_thread_waiting_route == conn->route)
 							{
-								if (main_thread_waiting_route == conn->route)
-								{
-									/* WAKE MAIN THREAD HERE */
-									pthread_cond_signal(&rx_thread_cond);
-								}
+								/* WAKE MAIN THREAD HERE */
+								pthread_cond_signal(&rx_thread_cond);
 							}
 						}
 
@@ -3380,15 +3391,19 @@ ic_rx_thread_func(void *arg)
 						conn->conn_info.flags |= UDPIC_FLAGS_EOS;
 
 					/* Was the main thread waiting for something ? */
-					if (main_thread_waiting && main_thread_waiting_node == pkt->motNodeId)
+					if (main_thread_waiting &&
+						main_thread_waiting_node == pkt->motNodeId &&
+						main_thread_waiting_query == pkt->icId)
 					{
 						if (main_thread_waiting_route == ANY_ROUTE)
 							main_thread_waiting_route = conn->route;
 
+						/* were we either waiting for this connection or "any" */
 						if (main_thread_waiting_route == conn->route)
 						{
 							if (DEBUG2 >= log_min_messages)
-								write_log("rx thread: main_waiting waking it route %d (%p)", main_thread_waiting_route, conn->pBuff);
+								write_log("rx thread: main_waiting waking it route %d (%p:%d)", main_thread_waiting_route, conn->pBuff, conn->pkt_q_size);
+
 							/* WAKE MAIN THREAD HERE */
 							pthread_cond_signal(&rx_thread_cond);
 						}
