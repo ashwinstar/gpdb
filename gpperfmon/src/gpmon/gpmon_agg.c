@@ -121,14 +121,8 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
     key.ccnt = qexec->key.ccnt;
     dp = apr_hash_get(agg->qtab, &key, sizeof(key));
     if (!dp) {
-	/* not found, make new entry */
-	gpmon_qlog_t tmp;
-	memset(&tmp, 0, sizeof(tmp));
-	tmp.key = key;
-	if (0 != (e = agg_put_qlog(agg, &tmp, generation)))
-	    return e;
-	if (! (dp = apr_hash_get(agg->qtab, &key, sizeof(key))))
-	    gpmon_fatal(FLINE, "assert failed");
+    	/* not found, internal SPI query.  Ignore. */
+    	return 0;
     }
 
     /* find qexec in qenode_list */
