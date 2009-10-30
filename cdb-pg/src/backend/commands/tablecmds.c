@@ -19487,6 +19487,10 @@ ATPExecPartSplit(Relation rel,
 		appendonly_insert_finish(aoinsertdesc_a);
 	if (aoinsertdesc_b)
 		appendonly_insert_finish(aoinsertdesc_b);
+	if (aocsinsertdesc_a)
+		aocs_insert_finish(aocsinsertdesc_a);
+	if (aocsinsertdesc_b)
+		aocs_insert_finish(aocsinsertdesc_b);
 
 	MemoryContextSwitchTo(oldCxt);
 	ExecDropSingleTupleTableSlot(tts);
