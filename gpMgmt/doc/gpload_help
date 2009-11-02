@@ -305,11 +305,13 @@ ESCAPE - Optional. Specifies the single character that is used for C
          data characters that might otherwise be taken as row or column 
          delimiters. Make sure to choose an escape character that is not 
          used anywhere in your actual column data. The default escape 
-         character is a \ (backslash), however it is possible to specify 
-         any other character to represent an escape. It is also possible 
+         character is a \ (backslash) for text-formatted files and a "
+         (double quote for csv-formatted files), however it is possible to
+         use another character to represent an escape. It is also possible 
          to disable escaping by specifying the value 'OFF' as the escape 
-         value. This is very useful for data such as web log data that 
-         has many embedded backslashes that are not intended to be escapes.
+         value. This is very useful for data such as text-formatted web 
+         log data that has many embedded backslashes that are not intended 
+         to be escapes.
 
 NULL_AS - Optional. Specifies the string that represents a null value. The 
           default is \N (backslash-N) in TEXT mode, and an empty value with 
