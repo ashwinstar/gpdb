@@ -607,14 +607,12 @@ ifeq "$(findstring connectivity,$(BLD_TARGETS))" ""
 else
 ifneq "$(findstring $(BLD_ARCH)$(BLD_FORCE_OUR_LIBPQ),aix5_ppc_32 aix5_ppc_64)" ""
 	# ---- (for AIX) load LIBPATH with the PostgreSQL library set and build the ODBC drivers ----
-	AUTHLIBS_HOME=$(BLD_THIRDPARTY_DIR); export AUTHLIBS_HOME ; \
 	export LIBPATH=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/lib:$(LIBPATH); \
 	  export PG_CONFIG=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/bin/pg_config; \
 	  cd $(BLD_TOP)/client/odbc/src && \
 	    $(MAKE) all
 else
 	# ---- (for other than AIX) load LD_LIBRARY_PATH with the GPDB library set and build the ODBC drivers ----
-	AUTHLIBS_HOME=$(BLD_THIRDPARTY_DIR); export AUTHLIBS_HOME ; \
 	cd $(INSTLOC)/ && \
 	  . ./greenplum_path.sh; \
 	  cd $(BLD_TOP)/client/odbc/src && \
