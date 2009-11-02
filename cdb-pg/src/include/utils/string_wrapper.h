@@ -34,14 +34,14 @@ int gp_strcoll(const char *left, const char *right)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
 							errmsg("Failed to compare strings because of characters outside of the domain of the collating sequence.  First string has length %lu and value (limited to 100 characters): '%.100s'.  Second string has length %lu and value (limited to 100 characters): '%.100s'",
-									SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(left), SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(right))));
+									(unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(left), (unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(right))));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 							errmsg("Unable to compare strings.  Error: %s.  First string has length %lu and value (limited to 100 characters): '%.100s'.  Second string has length %lu and value (limited to 100 characters): '%.100s'"
-									, strerror(errno), SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(left), SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(right))));
+									, strerror(errno), (unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(left), (unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(right))));
 		}
 	}
 
@@ -63,14 +63,14 @@ size_t gp_strxfrm(char *dst, const char *src, size_t n)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
 							errmsg("Failed to transform string because it contains characters outside of the domain of the collating sequence.  String has length %lu and value (limited to 100 characters): '%.100s'",
-									SAFE_STR_LENGTH(src), NULL_TO_DUMMY_STR(src))));
+									(unsigned long) SAFE_STR_LENGTH(src), NULL_TO_DUMMY_STR(src))));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 							errmsg("Unable to transform string.  Error: %s.  String has length %lu and value (limited to 100 characters): '%.100s'",
-									strerror(errno), SAFE_STR_LENGTH(src), NULL_TO_DUMMY_STR(src))));
+									strerror(errno),(unsigned long) SAFE_STR_LENGTH(src), NULL_TO_DUMMY_STR(src))));
 		}
 	}
 
