@@ -406,6 +406,8 @@ typedef enum NodeTag
 	T_FunctionParameter,
 	T_LockingClause,
 	T_RowMarkClause,
+	T_WithClause,
+	T_CommonTableExpr,
 
 	/*
 	 * TAGS FOR RANDOM OTHER STUFF

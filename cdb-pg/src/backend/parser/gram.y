@@ -121,7 +121,8 @@ static List *extractArgTypes(List *parameters);
 static SelectStmt *findLeftmostSelect(SelectStmt *node);
 static void insertSelectOptions(SelectStmt *stmt,
 								List *sortClause, List *lockingClause,
-								Node *limitOffset, Node *limitCount);
+								Node *limitOffset, Node *limitCount,
+								WithClause *withClause);
 static Node *makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg);
 static Node *doNegate(Node *n, int location);
 static void doNegateFloat(Value *v);
@@ -165,6 +166,7 @@ static TypeName *TableFuncTypeName(List *columns);
 
 	InsertStmt			*istmt;
 	VariableSetStmt		*vsetstmt;
+	WithClause			*with;
 }
 
 %type <node>	stmt schema_stmt
@@ -430,6 +432,10 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <boolean>	opt_comma
 %type <node> 	OptTabPartitionStorageAttr
 
+%type <node> 	common_table_expr
+%type <with> 	with_clause
+%type <list>	cte_list
+
 /*
  * If you make any token changes, update the keyword table in
  * parser/keywords.c and add new keywords to the appropriate one of
@@ -568,6 +574,7 @@ static TypeName *TableFuncTypeName(List *columns);
  * the "AS" keyword, and not conflict with PostgreSQL's non-standard
  * suffix operators, we need to give these a precidence.
  */
+
 %nonassoc   ABORT_P
 			%nonassoc ABSOLUTE_P
 			%nonassoc ACCESS
@@ -601,6 +608,8 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc CONCURRENTLY
 			%nonassoc CONNECTION
 			%nonassoc CONSTRAINTS
+			%nonassoc CONTENT_P
+			%nonassoc CONTINUE_P
 			%nonassoc CONVERSION_P
 			%nonassoc COPY
 			%nonassoc COST
@@ -611,6 +620,7 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc CURRENT
 			%nonassoc CURSOR
 			%nonassoc CYCLE
+			%nonassoc DATA_P
 			%nonassoc DATABASE
 			%nonassoc DAY_P
 			%nonassoc DEALLOCATE
@@ -629,6 +639,8 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc ENABLE_P
 			%nonassoc ENCODING
 			%nonassoc ENCRYPTED
+			%nonassoc END_P
+			%nonassoc ENUM_P
 			%nonassoc ERRORS
 			%nonassoc EVERY
 			%nonassoc EXCHANGE
@@ -670,6 +682,7 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc INSTEAD
 			%nonassoc INVOKER
 			%nonassoc ISOLATION
+			%nonassoc KEEP
 			%nonassoc KEY
 			%nonassoc LANCOMPILER
 			%nonassoc LANGUAGE
@@ -695,6 +708,7 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc MODIFY
 			%nonassoc MONTH_P
 			%nonassoc MOVE
+			%nonassoc NAME_P
 			%nonassoc NAMES
 			%nonassoc NEXT
 			%nonassoc NO
@@ -708,6 +722,7 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc NOTHING
 			%nonassoc NOTIFY
 			%nonassoc NOWAIT
+			%nonassoc NULLS_P
 			%nonassoc OBJECT_P
 			%nonassoc OF
 			%nonassoc OIDS
@@ -730,10 +745,14 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc PROCEDURE
 			%nonassoc QUEUE
 			%nonassoc QUOTE
+			%nonassoc RANDOMLY
 			%nonassoc READ
+			%nonassoc READABLE
 			%nonassoc REASSIGN
 			%nonassoc RECHECK
+			%nonassoc RECURSIVE
 			%nonassoc REINDEX
+			%nonassoc REJECT_P
 			%nonassoc RELATIVE_P
 			%nonassoc RELEASE
 			%nonassoc RENAME
@@ -751,6 +770,7 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc SAVEPOINT
 			%nonassoc SCHEMA
 			%nonassoc SCROLL
+			%nonassoc SEARCH
 			%nonassoc SECOND_P
 			%nonassoc SECURITY
 			%nonassoc SEGMENT
@@ -792,13 +812,17 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc UPDATE
 			%nonassoc VACUUM
 			%nonassoc VALID
+			%nonassoc VALIDATION
 			%nonassoc VALIDATOR
+			%nonassoc VALUE_P
 			%nonassoc VARYING
 			%nonassoc VIEW
 			%nonassoc VOLATILE
+			%nonassoc WEB
 			%nonassoc WITH
 			%nonassoc WITHOUT
 			%nonassoc WORK
+			%nonassoc WRITABLE
 			%nonassoc WRITE
 			%nonassoc YEAR_P
 			%nonassoc BIGINT
@@ -850,7 +874,6 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc LOG_P
 			%nonassoc OUTER_P
 			%nonassoc VERBOSE
-
 
 
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
@@ -7966,20 +7989,48 @@ select_no_parens:
 			| select_clause sort_clause
 				{
 					insertSelectOptions((SelectStmt *) $1, $2, NIL,
-										NULL, NULL);
+										NULL, NULL, NULL);
 					$$ = $1;
 				}
 			| select_clause opt_sort_clause for_locking_clause opt_select_limit
 				{
 					insertSelectOptions((SelectStmt *) $1, $2, $3,
-										list_nth($4, 0), list_nth($4, 1));
+										list_nth($4, 0), list_nth($4, 1), NULL);
 					$$ = $1;
 				}
 			| select_clause opt_sort_clause select_limit opt_for_locking_clause
 				{
 					insertSelectOptions((SelectStmt *) $1, $2, $4,
-										list_nth($3, 0), list_nth($3, 1));
+										list_nth($3, 0), list_nth($3, 1), NULL);
 					$$ = $1;
+				}
+			| with_clause select_clause
+				{
+					insertSelectOptions((SelectStmt *) $2, NULL, NIL,
+										NULL, NULL,
+										$1);
+					$$ = $2;
+				}
+			| with_clause select_clause sort_clause
+				{
+					insertSelectOptions((SelectStmt *) $2, $3, NIL,
+										NULL, NULL,
+										$1);
+					$$ = $2;
+				}
+			| with_clause select_clause opt_sort_clause for_locking_clause opt_select_limit
+				{
+					insertSelectOptions((SelectStmt *) $2, $3, $4,
+										list_nth($5, 0), list_nth($5, 1),
+										$1);
+					$$ = $2;
+				}
+			| with_clause select_clause opt_sort_clause select_limit opt_for_locking_clause
+				{
+					insertSelectOptions((SelectStmt *) $2, $3, $5,
+										list_nth($4, 0), list_nth($4, 1),
+										$1);
+					$$ = $2;
 				}
 		;
 
@@ -8041,6 +8092,47 @@ simple_select:
 				{
 					$$ = makeSetOp(SETOP_EXCEPT, $3, $1, $4);
 				}
+		;
+
+/*
+ * SQL standard WITH clause looks like:
+ *
+ * WITH [ RECURSIVE ] <query name> [ (<column>,...) ]
+ *		AS (query) [ SEARCH or CYCLE clause ]
+ *
+ * We don't currently support the SEARCH or CYCLE clause.
+ */
+with_clause:
+		WITH cte_list
+			{
+				$$ = makeNode(WithClause);
+				$$->ctes = $2;
+				$$->recursive = false;
+				$$->location = @1;
+			}
+		| WITH RECURSIVE cte_list
+			{
+				$$ = makeNode(WithClause);
+				$$->ctes = $3;
+				$$->recursive = true;
+				$$->location = @1;
+			}
+		;
+
+cte_list:
+		common_table_expr						{ $$ = list_make1($1); }
+		| cte_list ',' common_table_expr		{ $$ = lappend($1, $3); }
+		;
+
+common_table_expr:  name opt_name_list AS select_with_parens
+			{
+				CommonTableExpr *n = makeNode(CommonTableExpr);
+				n->ctename = $1;
+				n->aliascolnames = $2;
+				n->ctequery = $4;
+				n->location = @1;
+				$$ = (Node *) n;
+			}
 		;
 
 into_clause:
@@ -11408,6 +11500,7 @@ unreserved_keyword:
 			| READABLE
 			| REASSIGN
 			| RECHECK
+			| RECURSIVE
 			| REINDEX
 			| REJECT_P /* gp */
 			| RELATIVE_P
@@ -12294,7 +12387,8 @@ findLeftmostSelect(SelectStmt *node)
 static void
 insertSelectOptions(SelectStmt *stmt,
 					List *sortClause, List *lockingClause,
-					Node *limitOffset, Node *limitCount)
+					Node *limitOffset, Node *limitCount,
+					WithClause *withClause)
 {
 	Assert(IsA(stmt, SelectStmt));
 
@@ -12328,6 +12422,17 @@ insertSelectOptions(SelectStmt *stmt,
 					 errmsg("multiple LIMIT clauses not allowed")));
 		stmt->limitCount = limitCount;
 	}
+	if (withClause)
+	{
+		/*		if (stmt->withClause) */
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("multiple WITH clauses not allowed")));
+					 /*					 errmsg("multiple WITH clauses not allowed"),
+					 		 scanner_errposition(exprLocation((Node *) withClause)))); */
+			/*		stmt->withClause = withClause; */
+	}
+
 }
 
 static Node *

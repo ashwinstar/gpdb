@@ -766,6 +766,43 @@ typedef struct RowMarkClause
 	bool		noWait;			/* NOWAIT option */
 } RowMarkClause;
 
+/*
+ * WithClause -
+ *	   representation of WITH clause
+ *
+ * Note: WithClause does not propagate into the Query representation;
+ * but CommonTableExpr does.
+ */
+typedef struct WithClause
+{
+	NodeTag		type;
+	List	   *ctes;			/* list of CommonTableExprs */
+	bool		recursive;		/* true = WITH RECURSIVE */
+	int			location;		/* token location, or -1 if unknown */
+} WithClause;
+
+/*
+ * CommonTableExpr -
+ *	   representation of WITH list element
+ *
+ * We don't currently support the SEARCH or CYCLE clause.
+ */
+typedef struct CommonTableExpr
+{
+	NodeTag		type;
+	char	   *ctename;		/* query name (never qualified) */
+	List	   *aliascolnames;	/* optional list of column names */
+	Node	   *ctequery;		/* subquery (SelectStmt or Query) */
+	int			location;		/* token location, or -1 if unknown */
+	/* These fields are set during parse analysis: */
+	bool		cterecursive;	/* is this CTE actually recursive? */
+	int			cterefcount;	/* number of RTEs referencing this CTE
+								 * (excluding internal self-references) */
+	List	   *ctecolnames;	/* list of output column names */
+	List	   *ctecoltypes;	/* OID list of output column type OIDs */
+	List	   *ctecoltypmods;	/* integer list of output column typmods */
+} CommonTableExpr;
+
 /*****************************************************************************
  *		Optimizable Statements
  *****************************************************************************/
