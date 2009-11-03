@@ -679,7 +679,10 @@ sub genpartdefs
                 }
                 else
                 {
-                    my $pspec = { child => $vv2->{child} };
+                    my $pspec = { child => $vv2->{child}, 
+								  childrulename => $kk2,
+								  childruledef => $vv2->{ruledef}
+  };
 
                     $pspec = makespec($pspec, $pps);
 
@@ -691,7 +694,10 @@ sub genpartdefs
                 $vv->{pby} = {typ => $pps->{typ}, 
                               pspec => [] };
  
-                my $pspec = { child => $vv2->{child} };
+                my $pspec = { child => $vv2->{child}, 
+							  childrulename => $kk2,
+							  childruledef => $vv2->{ruledef}
+				};
                 
                 $pspec = makespec($pspec, $pps);
 
@@ -1327,7 +1333,10 @@ sub genpartdefs4
 
                     if (exists($pspec->{name}) && defined($pspec->{name}))
                     {
-                        $xch_txt .= "ALTER TABLE $tname " . 
+						# XXX XXX: identify the table, partition
+                        $xch_txt .= "\n-- " . $newname . " " . 
+							$pspec->{name};
+                        $xch_txt .= "\nALTER TABLE $tname " . 
 							" NO INHERIT $kk ; \n";
 
 #						print Data::Dumper->Dump([$all_cons]), "\n";
@@ -1358,10 +1367,11 @@ sub genpartdefs4
 						# (table).  Drop the rule and recreate it
 						# using the newly-exchanged table.
 
-						my $ruledef = $vv->{definition};
-						my $rulenam = $vv->{rulename};
+						my $ruledef = "CREATE RULE " . 
+							$pspec->{childruledef} . " ; \n";
+						my $rulenam = $pspec->{childrulename};
 
-                        $xch_txt .= "DROP RULE IF EXISTS $rulenam " .
+                        $xch_txt .= "\nDROP RULE IF EXISTS $rulenam " .
 							"ON $kk ; \n";
                         $xch_txt .= $ruledef . "\n";
 
@@ -2637,12 +2647,6 @@ sub prettydump
             {
                 my $vv2 = $vv->{rules}->{$kk2};
 
-#				print "kk2: $kk2\n";
-#				if ($kk2 eq "rule_user_prof_mwrk_c_d_2_md_9_2504734_daily")
-#				{
-#					print Data::Dumper->Dump([$vv2]),"\n";
-#				}
-
                 next
                     unless (exists($vv2->{parsetree}));
 
@@ -2983,7 +2987,6 @@ if (1)
         # look for next "<tag>: " in column zero, and use it to
         # delimit set of all rules...
         @ruletxt = split(/\n\w+((\s+\w+)*)\:/s, $r1, 2);
-#        @ruletxt = split(/funky/, $r1, 2);
 
         next
             unless (scalar(@ruletxt));
@@ -3021,7 +3024,15 @@ if (1)
 
                 $rulenam = $foo[0];
                 $ruleitm = {};
+				
+				$ruleitm->{ruledef} = $lin;
+				$ruleitm->{ruledef} =~ s/^\s+//;
+
             }
+			else
+			{
+				$ruleitm->{ruledef} .= "\n" . $lin;
+			}
 
             unless (defined($rulenam))
             {
