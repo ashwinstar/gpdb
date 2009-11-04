@@ -53,52 +53,11 @@ extern "C" {
 #include "utils/elog.h"
 #include "utils/palloc.h"
 
-#if BYTE_ORDER == BIG_ENDIAN
-#ifndef WORDS_BIGENDIAN
-#define WORDS_BIGENDIAN
-#endif
-#endif
 
 /* ----------------------------------------------------------------
  *				Section 1:	variable-length datatypes (TOAST support)
  * ----------------------------------------------------------------
  */
-
-/* ----------------
- * struct varattrib is the header of a varlena object that may have been
- * TOASTed.  Generally, only the code closely associated with TOAST logic
- * should mess directly with struct varattrib or use the VARATT_FOO macros.
- * ----------------
- */
-
-typedef union varattrib
-{
-	struct						/* Normal varlena (4-byte length) */ 
-	{
-		uint8 	va_header;
-		char 	va_data[1];
-	} va_1byte;
-	struct 
-	{
-		uint8 	va_header;
-		uint8	va_padding[3];
-		int32	va_rawsize;		/* Plain data size */
-		int32	va_extsize;		/* External saved size */
-		Oid		va_valueid;		/* Unique identifier of value */
-		Oid		va_toastrelid;	/* RelID where to find chunks */
-	} va_external;
-	struct						/* Compressed-in-line format */ 
-	{
-		uint32 	va_header;
-		uint32	va_rawsize;		/* Original data size (excludes header) */
-		char	va_data[1];		/* Compressed data */
-	} va_compressed;
-	struct
-	{
-		uint32 	va_header;
-		char 	va_data[1];
-	} va_4byte;
-} varattrib;
 
 /*
  * struct varatt_external is a "TOAST pointer", that is, the information
@@ -149,17 +108,18 @@ typedef struct
 	char		va_data[1];		/* Data begins here */
 } varattrib_1b;
 
-#if 0
+
+/* NOT Like Postgres! ...In GPDB, We waste a few bytes of padding, and don't always set the va_len_1be to anything */
 typedef struct
 {
 	uint8		va_header;		/* Always 0x80  */
-	uint8		va_len_1be;		/* Physical length of datum */
+	uint8		va_len_1be;		/*** PG only:  Len of toast pointer w/ 1b header, ignored in GPDB  ***/ /* Physical length of datum */
+	uint8		va_padding[2];	/*** GPDB only:  Alignment padding ***/
 	char		va_data[1];		/* Data (for now always a TOAST pointer) */
 } varattrib_1b_e;
-#endif
 
 /*
- * Bit layouts for varlena headers:
+ * Bit layouts for varlena headers: (GPDB always stores this big-endian format)
  *
  * 00xxxxxx 4-byte length word, aligned, uncompressed data (up to 1G)
  * 01xxxxxx 4-byte length word, aligned, *compressed* data (up to 1G)
@@ -208,9 +168,9 @@ typedef struct
 #define VARSIZE_1B(PTR) \
 	(((varattrib_1b *) (PTR))->va_header & 0x7F)
 
-#if 0
-#define VARSIZE_1B_E(PTR) \
-	(((varattrib_1b_e *) (PTR))->va_len_1be)
+
+/* In GPDB, VARSIZE_1B_E() is always the size of a toast pointer plus the 4 byte header */
+#define VARSIZE_1B_E(PTR) (VARHDRSZ_EXTERNAL + sizeof(struct varatt_external))
 
 
 #define SET_VARSIZE_4B(PTR,len) \
@@ -219,10 +179,7 @@ typedef struct
 	(((varattrib_4b *) (PTR))->va_4byte.va_header = htonl( ((len) & 0x3FFFFFFF) | 0x40000000 ))
 #define SET_VARSIZE_1B(PTR,len) \
 	(((varattrib_1b *) (PTR))->va_header = (len) | 0x80)
-#define SET_VARSIZE_1B_E(PTR,len) \
-	(((varattrib_1b_e *) (PTR))->va_header = 0x80, \
-	 ((varattrib_1b_e *) (PTR))->va_len_1be = (len))
-#endif
+
 
 /*
  *  This is how postgreSQL does it on little-endian machines
@@ -249,7 +206,8 @@ typedef struct
 	((((varattrib_1b *) (PTR))->va_header >> 1) & 0x7F)
 #define VARSIZE_1B_E(PTR) \
 	(((varattrib_1b_e *) (PTR))->va_len_1be)
-
+#define VARRAWSIZE_4B_C(PTR) \
+	(((varattrib_4b *) (PTR))->va_compressed.va_rawsize)
 #define SET_VARSIZE_4B(PTR,len) \
 	(((varattrib_4b *) (PTR))->va_4byte.va_header = (((uint32) (len)) << 2))
 #define SET_VARSIZE_4B_C(PTR,len) \
@@ -262,8 +220,24 @@ typedef struct
 #endif
 */
 
+#define VARHDRSZ_SHORT			1
+#define VARATT_SHORT_MAX		0x7F
+#define VARATT_CAN_MAKE_SHORT(PTR) \
+	(VARATT_IS_4B_U(PTR) && \
+	 (VARSIZE(PTR) - VARHDRSZ + VARHDRSZ_SHORT) <= VARATT_SHORT_MAX)
+#define VARATT_CONVERTED_SHORT_SIZE(PTR) \
+	(VARSIZE(PTR) - VARHDRSZ + VARHDRSZ_SHORT)
 
-/* Externally visible macros (do these all belong here?) */
+/* In Postgres, this is 2 */
+#define VARHDRSZ_EXTERNAL		4
+
+#define VARDATA_4B(PTR)		(((varattrib_4b *) (PTR))->va_4byte.va_data)
+#define VARDATA_4B_C(PTR)	(((varattrib_4b *) (PTR))->va_compressed.va_data)
+#define VARDATA_1B(PTR)		(((varattrib_1b *) (PTR))->va_data)
+#define VARDATA_1B_E(PTR)	(((varattrib_1b_e *) (PTR))->va_data)
+
+
+/* Externally visible macros */
 
 /*
  * VARDATA, VARSIZE, and SET_VARSIZE are the recommended API for most code
@@ -281,50 +255,36 @@ typedef struct
  * doesn't matter or because you're not going to access its constituent parts
  * and just use things like memcpy on it anyways.
  */
-
-#define VARDATA(PTR)						VARDATA_4B((varattrib*)(PTR))
+#define VARDATA(PTR)						VARDATA_4B(PTR)
 #define VARDATA_D(D)						VARDATA(DatumGetPointer(D))
-#define VARSIZE(PTR) 						VARSIZE_4B((varattrib*)(PTR))
+#define VARSIZE(PTR)						VARSIZE_4B(PTR)
 #define VARSIZE_D(D) 						VARSIZE(DatumGetPointer(D))
 
 /* these are used by tuptoaster.c */
 #define VARHDRSZ_SHORT 						1
-#define VARSIZE_SHORT(PTR)					VARSIZE_1B((varattrib*)(PTR))
+#define VARSIZE_SHORT(PTR)					VARSIZE_1B(PTR)
 #define VARSIZE_SHORT_D(D)					VARSIZE_SHORT(DatumGetPointer(D))
-#define VARDATA_SHORT(PTR)					VARDATA_1B((varattrib*)(PTR))
+#define VARDATA_SHORT(PTR)					VARDATA_1B(PTR)
 #define VARDATA_SHORT_D(D) 					VARDATA_SHORT(DatumGetPointer(D))
-#define SET_VARSIZE(PTR, len)				SET_VARSIZE_4B  ((varattrib*)(PTR), (len))
-#define SET_VARSIZE_SHORT(PTR, len) 		SET_VARSIZE_1B  ((varattrib*)(PTR), (len))
-#define SET_VARSIZE_COMPRESSED(PTR, len) 	SET_VARSIZE_4B_C((varattrib*)(PTR), (len))
-#define SET_VARSIZE_EXTERNAL(PTR) 			SET_VARSIZE_1B_E((varattrib*)(PTR))
+#define SET_VARSIZE(PTR, len)				SET_VARSIZE_4B  ((varattrib_4b*)(PTR), (len))
+#define SET_VARSIZE_SHORT(PTR, len) 		SET_VARSIZE_1B  ((PTR), (len))
+#define SET_VARSIZE_COMPRESSED(PTR, len) 	SET_VARSIZE_4B_C((PTR), (len))
+
 
 /* Do we want to rename these? */
-#define VARATT_IS_COMPRESSED(PTR) 			VARATT_IS_4B_C((varattrib*)(PTR))
+#define VARATT_IS_COMPRESSED(PTR) 			VARATT_IS_4B_C(PTR)
 #define VARATT_IS_COMPRESSED_D(D) 			VARATT_IS_COMPRESSED(DatumGetPointer(D))
-#define VARATT_IS_EXTERNAL(PTR) 			VARATT_IS_1B_E((varattrib*)(PTR))
-#define VARATT_IS_EXTERNAL_D(D) 			VARATT_IS_1B_E((varattrib*)( DatumGetPointer(D)))
-#define VARATT_IS_SHORT(PTR) 				VARATT_IS_1B((varattrib*)(PTR))
-#define VARATT_IS_SHORT_D(D) 				VARATT_IS_1B((varattrib*)( DatumGetPointer(D)))
-#define VARATT_SET_COMPRESSED(PTR)			SET_VARSIZE_C((varattrib*)(PTR))
+#define VARATT_IS_EXTERNAL(PTR) 			VARATT_IS_1B_E(PTR)
+#define VARATT_IS_EXTERNAL_D(D) 			VARATT_IS_1B_E(DatumGetPointer(D))
+#define VARATT_IS_SHORT(PTR) 				VARATT_IS_1B(PTR)
+#define VARATT_IS_SHORT_D(D) 				VARATT_IS_1B(DatumGetPointer(D))
+#define VARATT_SET_COMPRESSED(PTR)			SET_VARSIZE_C(PTR)
 /* XXX */
-#define VARATT_IS_EXTENDED(PTR)				(!VARATT_IS_4B_U((varattrib*)(PTR)))
+#define VARATT_IS_EXTENDED(PTR)				(!VARATT_IS_4B_U(PTR))
 #define VARATT_IS_EXTENDED_D(D)				VARATT_IS_EXTENDED(DatumGetPointer(D))
 
-#define VARSIZE_EXTERNAL(PTR)				(sizeof(((varattrib*)(PTR))->va_external))
-#define VARATT_EXTERNAL_IS_COMPRESSED(PTR)  (((varattrib*)(PTR))->va_external.va_extsize != \
-											 ((varattrib*)(PTR))->va_external.va_rawsize - VARHDRSZ)
-#define VARSIZE_ANY_EXHDR(PTR)				VARSIZE__ANY__EXHDR((varattrib*)(PTR))
-#define VARSIZE_ANY_EXHDR_D(D)			    VARSIZE_ANY_EXHDR(DatumGetPointer(D))	
-#define VARSIZE_ANY(PTR)					VARSIZE__ANY((varattrib*)(PTR))
-#define VARSIZE_ANY_D(D)					VARSIZE_ANY(DatumGetPointer(D))
-/* caution: this will not work on an external or compressed-in-line Datum */
-/* caution: this will return a possibly unaligned pointer */
-#define VARDATA_ANY(PTR)					VARDATA__ANY((varattrib*)(PTR))
-#define VARDATA_ANY_D(D)					VARDATA_ANY(DatumGetPointer(D))
+#define VARSIZE_EXTERNAL(PTR)				VARSIZE_1B_E(PTR)
 
-/* Internal macros used by heap_deform_tuple and tuptoaster.c and anywhere else
- * that wants to look at toasted tuples without detoasting them.
- */
 
 /*
  * Bit patterns used to indicate sort varlena headers:
@@ -339,43 +299,36 @@ typedef struct
  * before checking for IS_1B.
  */
 
-#define VARATT_SHORT_MAX		0x7f
+
 #define VARATT_COULD_SHORT(PTR)	(VARATT_IS_4B_U(PTR) && (VARSIZE(PTR)-VARHDRSZ+VARHDRSZ_SHORT <= VARATT_SHORT_MAX))
-#define VARATT_COULD_SHORT_D(D)	VARATT_COULD_SHORT((varattrib *)(DatumGetPointer(D))) 
+#define VARATT_COULD_SHORT_D(D)	VARATT_COULD_SHORT(DatumGetPointer(D))
 #define VARSIZE_TO_SHORT(PTR)	((char)(VARSIZE(PTR)-VARHDRSZ+VARHDRSZ_SHORT) | 0x80)
 #define VARSIZE_TO_SHORT_D(D)	VARSIZE_TO_SHORT(DatumGetPointer(D))
 
-#define VARDATA_4B(PTR) 		((PTR)->va_4byte.va_data)
-#define VARDATA_4B_C(PTR) 		((PTR)->va_compressed.va_data)
-#define VARDATA_1B(PTR) 		((PTR)->va_1byte.va_data)
 
 
-#define SET_VARSIZE_4B(PTR,len) 	((PTR)->va_4byte.va_header = htonl( (len) & 0x3fffffff ))
-#define SET_VARSIZE_4B_C(PTR,len) 	((PTR)->va_4byte.va_header = htonl( ((len) & 0x3fffffff) | 0x40000000))
-#define SET_VARSIZE_1B(PTR,len) 	((PTR)->va_1byte.va_header =        (len) | 0x80)
-#define SET_VARSIZE_1B_E(PTR)		((PTR)->va_1byte.va_header = 0x80)
-#define SET_VARSIZE_C(PTR)			((PTR)->va_1byte.va_header |= 0x40)
 
-/* this is a bit weird if you pass in an external toast pointer, VARDATA
- * returns the original datum and VARSIZE_EXHDR returns the size of the whole
- * pointer including the header. That might be wrong but it works for the
- * assertion VARSIZE_EXHDR is being used for.
- */
+#define VARSIZE_ANY(PTR) \
+	(VARATT_IS_1B_E(PTR) ? VARSIZE_1B_E(PTR) : \
+	 (VARATT_IS_1B(PTR) ? VARSIZE_1B(PTR) : \
+	  VARSIZE_4B(PTR)))
 
-#define VARSIZE__ANY__EXHDR(PTR)									\
-	(VARATT_IS_1B_E(PTR) ? sizeof((PTR)->va_external) :				\
-	 (VARATT_IS_1B(PTR) ? VARSIZE_1B(PTR)-1 :						\
-	  VARSIZE_4B(PTR)-4 ))
+#define VARSIZE_ANY_EXHDR(PTR) \
+	(VARATT_IS_1B_E(PTR) ? VARSIZE_1B_E(PTR)-VARHDRSZ_EXTERNAL : \
+	 (VARATT_IS_1B(PTR) ? VARSIZE_1B(PTR)-VARHDRSZ_SHORT : \
+	  VARSIZE_4B(PTR)-VARHDRSZ))
 
-#define VARSIZE__ANY(PTR)											\
-	(VARATT_IS_1B_E(PTR) ? sizeof((PTR)->va_external) :				\
-	 (VARATT_IS_1B(PTR) ? VARSIZE_1B(PTR) :							\
-	  VARSIZE_4B(PTR) ))
 
-#define VARDATA__ANY(PTR)											\
-	(VARATT_IS_1B_E(PTR) ? (char*)(PTR) :							\
-	 (VARATT_IS_1B(PTR) ? VARDATA_1B(PTR) :							\
-	  VARDATA_4B(PTR) ))
+
+/* caution: this will not work on an external or compressed-in-line Datum */
+/* caution: this will return a possibly unaligned pointer */
+#define VARDATA_ANY(PTR) \
+	 (VARATT_IS_1B(PTR) ? VARDATA_1B(PTR) : VARDATA_4B(PTR))
+
+#define VARSIZE_ANY_D(D)					VARSIZE_ANY(DatumGetPointer(D))
+#define VARDATA_ANY_D(D)					VARDATA_ANY(DatumGetPointer(D))
+#define VARSIZE_ANY_EXHDR_D(D)			    VARSIZE_ANY_EXHDR(DatumGetPointer(D))
+
 
 #define VARDATA_COMPRESSED(PTR)	((PTR)->va_compressed.va_data)
 
@@ -440,7 +393,15 @@ typedef Datum *DatumPtr;
  * functions to get proper type checking.
  */
 
-static inline bool DatumGetBool(Datum d) { return d != 0; }
+
+/*
+ * DatumGetBool
+ *		Returns boolean value of a datum.
+ *
+ * Note: any nonzero value will be considered TRUE, but we ignore bits to
+ * the left of the width of bool, per comment above.
+ */
+static inline bool DatumGetBool(Datum d) { return ((bool)d) != 0; }
 static inline Datum BoolGetDatum(bool b) { return (b ? 1 : 0); } 
 
 static inline char DatumGetChar(Datum d) { return (char) d; } 
