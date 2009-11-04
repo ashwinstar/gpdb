@@ -2875,6 +2875,7 @@ write_message_to_server_log(int elevel,
     fix_fields.session_start_time =
         (MyProcPort == NULL) ? 0 : (pg_time_t)timestamptz_to_time_t(MyProcPort->SessionStartTime);
     fix_fields.send_alert = send_alert ? 't' : 'f';
+    fix_fields.omit_location = omit_location ? 't' : 'f';
     fix_fields.gp_is_primary = Gp_is_primary ? 't' : 'f';
     fix_fields.gp_session_id = gp_session_id;
     fix_fields.gp_command_count = gp_command_count;
