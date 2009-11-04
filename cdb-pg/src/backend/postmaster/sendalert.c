@@ -169,7 +169,7 @@ int send_alert(const GpErrorData * errorData)
 #if USE_EMAIL
 	smtp_session_t session;
 	smtp_message_t message;
-	smtp_recipient_t recipient;
+	smtp_recipient_t recipient = NULL;
 	auth_context_t authctx;
 	const smtp_status_t *status;
 
@@ -290,6 +290,9 @@ int send_alert(const GpErrorData * errorData)
 
 			/* Recipient must be in RFC2821 format */
 			recipient = smtp_add_recipient(message, cur_email_addr);
+
+			smtp_dsn_set_notify(recipient, notify);
+
 			success = true;
 		}
 
@@ -301,9 +304,6 @@ int send_alert(const GpErrorData * errorData)
 
 	list_free(elemlist);
 	pfree(rawstring);
-
-
-	smtp_dsn_set_notify(recipient, notify);
 
 	smtp_8bitmime_set_body(message, E8bitmime_8BITMIME);
 
