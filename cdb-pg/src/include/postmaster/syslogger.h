@@ -91,6 +91,7 @@ typedef struct
 {
 	pg_time_t session_start_time;
 	char send_alert;
+	char omit_location;
 	char gp_is_primary;
 	int32 gp_session_id;
 	int32 gp_command_count;
