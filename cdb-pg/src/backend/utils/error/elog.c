@@ -2652,7 +2652,7 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
             dli.dli_fname[0] != '\0')
         {
             symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: %s %s+0x%x\n",
-                                  stack_no, stackarray[stack_no], dli.dli_fname,
+                                  stack_no, stackarray[stack_no], strncmp(dli.dli_fname,"postgres:",strlen("postgres:"))==0 ? "postgres" : dli.dli_fname,
                                   (dli.dli_sname != NULL ? dli.dli_sname : ""),
                                   (int)((char *)(stackarray[stack_no]) - (char *)(dli.dli_saddr)));
         }
