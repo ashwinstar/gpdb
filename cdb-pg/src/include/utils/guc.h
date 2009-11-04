@@ -214,6 +214,12 @@ extern int  WalSendClientTimeout;
 
 extern char  *data_directory;
 
+#if USE_EMAIL
+extern char  *email_smtp_server;
+extern char  *email_smtp_userid;
+extern char  *email_smtp_password;
+#endif
+
 extern void SetConfigOption(const char *name, const char *value,
 				GucContext context, GucSource source);
 

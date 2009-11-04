@@ -182,7 +182,7 @@ int send_alert(const GpErrorData * errorData)
 
 #if USE_EMAIL
 
-	host = "smtpx18.msoutlookonline.net:587";
+	//host = "smtpx18.msoutlookonline.net:587";
 	host = "greenplum.com.s5a2.psmtp.com:25";
 	from = "cmcdevitt@greenplum.com";
 
@@ -707,7 +707,7 @@ static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)
 
 	elog(LOG, "tlsinteract asking for tls password\n");
 
-	strcpy(buf, "password");
+	strcpy(buf, "fonda1");
 	return strlen(buf);
 }
 
@@ -853,7 +853,7 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	case SMTP_EV_WRONG_PEER_CERTIFICATE:
 		{
 			ok = va_arg(alist, int*);
-			fprintf(mylog,"WRONG PEER CERT\n");
+			elog(DEBUG2,"SMTP_EV_WRONG_PEER_CERTIFICATE");
 			*ok = 1;
 		}
 		break;
@@ -888,7 +888,7 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 		fprintf(mylog," %d:  %s:  %s\n", status->code, rev_path,  status->text);
 
 		if (status && status->code != 0 && status->text != NULL)
-			elog(LOG,"SMTP server reports a mailstatus problem %d:  %s:  %s", status->code, rev_path,  status->text);
+			elog(LOG,"EV_MAILSTATUS: SMTP server reports a problem %d:  %s:  %s", status->code, rev_path,  status->text);
 	}
 	break;
 	case SMTP_EV_RCPTSTATUS:

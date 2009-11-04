@@ -305,6 +305,12 @@ int			WalSendClientTimeout = 30000;	// 30 seconds.
 
 char 	   *data_directory;
 
+#if USE_EMAIL
+char	   *email_smtp_server;
+char	   *email_smtp_userid;
+char	   *email_smtp_password;
+#endif
+
 /*
  * These variables are all dummies that don't do anything, except in some
  * cases provide the value for SHOW to display.  The real state is elsewhere
@@ -4250,6 +4256,37 @@ static struct config_string ConfigureNamesString[] =
 		&gp_autostats_mode_string,
 		"none", gpvars_assign_gp_autostats_mode, gpvars_show_gp_autostats_mode
 	},
+
+#if USE_EMAIL
+	{
+		{"email_smtp_server", PGC_SUSET, LOGGING,
+			gettext_noop("Sets the SMTP server and port used to send e-mail alerts."),
+			NULL,
+			GUC_SUPERUSER_ONLY| GUC_REPORT
+		},
+		&email_smtp_server,
+		"localhost:25", NULL, NULL
+	},
+	{
+		{"email_smtp_userid", PGC_SUSET, LOGGING,
+			gettext_noop("Sets the userid used for the SMTP server, if required."),
+			NULL,
+			GUC_SUPERUSER_ONLY| GUC_REPORT
+		},
+		&email_smtp_userid,
+		"", NULL, NULL
+	},
+	{
+		{"email_smtp_password", PGC_SUSET, LOGGING,
+			gettext_noop("Sets the password used for the SMTP server, if required."),
+			NULL,
+			GUC_SUPERUSER_ONLY| GUC_REPORT
+		},
+		&email_smtp_password,
+		"", NULL, NULL
+	},
+
+#endif
 
     /* End-of-list marker */
 	{

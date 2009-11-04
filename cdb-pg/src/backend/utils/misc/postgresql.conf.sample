@@ -342,6 +342,11 @@
 #gp_log_interconnect = terse            # off, terse, verbose, debug
                                         # logging of Greenplum interconnect 
 										# events
+										
+#email_smtp_server = 'localhost:25'       # SMTP server hostname and port
+#email_smtp_userid = ''
+#email_smtp_password = ''
+
 
 #------------------------------------------------------------------------------
 # RUNTIME STATISTICS
