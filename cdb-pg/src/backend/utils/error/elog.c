@@ -2611,7 +2611,42 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
     {
         Dl_info dli;
         int symbol_len;
+        FILE * fd;
+        char cmd[1024];
+        char cmdresult[SYMBOL_SIZE];
+        int cmdreslen;
+        bool addr2line_ok = false;
+#ifdef pg_on_solaris
+        const char * prog = "gaddr2line";
+#else
+        const char * prog = "addr2line";
+#endif
+        snprintf(cmd,1024,"%s -s -e %s %p ",prog,my_exec_path,stackarray[stack_no]);
+
+        cmdresult[0] = '\0';
+        fd = popen(cmd,"r");
+        if (fd != NULL && errno == 0)
+        {
+        	cmdreslen = fread(cmdresult,1,SYMBOL_SIZE,fd);
+        	cmdresult[cmdreslen] = '\0';
+        }
+
+        if (fd != NULL && errno == 0 && strlen(cmdresult) >1)
+        {
+        	addr2line_ok = true;
+        	if (cmdresult[strlen(cmdresult)-1] == '\n')
+        		cmdresult[strlen(cmdresult)-1] = '\0';
+        }
+
+        if (fd != NULL)
+        pclose(fd);
         
+
+        if (addr2line_ok)
+        {
+        	symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p %s\n",stack_no, stackarray[stack_no], cmdresult);
+        }
+        else
         if (dladdr(stackarray[stack_no], &dli) != 0 &&
             dli.dli_fname != NULL &&
             dli.dli_fname[0] != '\0')
