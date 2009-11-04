@@ -218,6 +218,8 @@ extern char  *data_directory;
 extern char  *email_smtp_server;
 extern char  *email_smtp_userid;
 extern char  *email_smtp_password;
+extern char  *email_from;
+extern char  *email_to;
 #endif
 
 extern void SetConfigOption(const char *name, const char *value,

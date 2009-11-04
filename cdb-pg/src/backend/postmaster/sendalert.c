@@ -37,6 +37,7 @@
 #include "postmaster/sendalert.h"
 #include "utils/guc.h"
 #include "utils/elog.h"
+#include "utils/builtins.h"
 extern int	PostPortNumber;
 extern void pg_itoa(int16 i, char *a);
 
@@ -121,6 +122,21 @@ int send_alert_from_chunks(const PipeProtoChunk *chunk,
 	PG_CATCH();
 	{
 		elog(LOG,"send_alert failed.  Not sending the alert");
+		free(errorData.stacktrace ); errorData.stacktrace = NULL;
+		free((char *)errorData.error_filename ); errorData.error_filename = NULL;
+		free((char *)errorData.error_func_name ); errorData.error_func_name = NULL;
+		free(errorData.debug_query_string ); errorData.debug_query_string = NULL;
+		free(errorData.error_context); errorData.error_context = NULL;
+		free(errorData.internal_query ); errorData.internal_query = NULL;
+		free(errorData.error_hint ); errorData.error_hint = NULL;
+		free(errorData.error_detail ); errorData.error_detail = NULL;
+		free(errorData.error_message ); errorData.error_message = NULL;
+		free(errorData.sql_state ); errorData.sql_state = NULL;
+		free((char *)errorData.error_severity ); errorData.error_severity = NULL;
+		free(errorData.remote_port ); errorData.remote_port = NULL;
+		free(errorData.remote_host ); errorData.remote_host = NULL;
+		free(errorData.databasename ); errorData.databasename = NULL;
+		free(errorData.username ); errorData.username = NULL;
 		/* Carry on with error handling. */
 		PG_RE_THROW();
 	}
@@ -158,10 +174,14 @@ int send_alert(const GpErrorData * errorData)
 	const smtp_status_t *status;
 
 
-	char *host = NULL;
+
 	char *from = NULL;
 	char subject[128];
 	enum notify_flags notify = Notify_FAILURE;
+	char	   *rawstring;
+	List	   *elemlist;
+	ListCell   *l;
+	int			success = 0;
 
 #endif
 	if (mylog == NULL)
@@ -183,8 +203,14 @@ int send_alert(const GpErrorData * errorData)
 #if USE_EMAIL
 
 	//host = "smtpx18.msoutlookonline.net:587";
-	host = "greenplum.com.s5a2.psmtp.com:25";
-	from = "cmcdevitt@greenplum.com";
+	//"greenplum.com.s5a2.psmtp.com:25";
+
+
+	if (strlen(email_from) == 0 || strlen(email_to) == 0)
+	{
+		elog(LOG,"e-mail alerts are not properly configured");
+		return -1;
+	}
 
 	/* Set up a subject line for the e-mail.  Let's limit it to 127 bytes just to be safe. */
 	if (strcmp(errorData->error_severity,"LOG") == 0)
@@ -208,7 +234,7 @@ int send_alert(const GpErrorData * errorData)
 	 * number of 587, however this is not widely deployed so the port
 	 * is specified as 25 along with the default MTA host.
 	 */
-	smtp_set_server(session, host ? host : "localhost:25");
+	smtp_set_server(session, email_smtp_server != NULL && strlen(email_smtp_server) > 0 ? email_smtp_server : "localhost:25");
 
 	smtp_set_eventcb(session, event_cb, NULL);
 
@@ -218,7 +244,10 @@ int send_alert(const GpErrorData * errorData)
 	authctx = auth_create_context();
 	auth_set_mechanism_flags(authctx, AUTH_PLUGIN_PLAIN|AUTH_PLUGIN_ANONYMOUS, 0);
 	auth_set_interact_cb(authctx, authinteract, NULL);
-	auth_set_external_id(authctx, "cmcdevitt@greenplum.com");
+
+	/* I don't know how "external" is supposed to work, or what ID I'm supposed to set here */
+	auth_set_external_id(authctx, email_smtp_userid);
+
 	smtp_auth_set_context(session, authctx);
 
 	/*
@@ -227,15 +256,10 @@ int send_alert(const GpErrorData * errorData)
 	 */
 	smtp_starttls_set_password_cb(tlsinteract, NULL);
 
-
-
-
 	/*
 	 * Set the reverse path for the mail envelope.  (NULL is ok)
 	 */
 	smtp_set_reverse_path(message, from);
-
-
 
 	smtp_set_header(message, "Subject", subject);
 	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
@@ -243,15 +267,45 @@ int send_alert(const GpErrorData * errorData)
 
 	smtp_set_messagecb(message, messagebody_cb, (void *) errorData);
 
+	/* Need a modifiable copy of To list */
+	rawstring = pstrdup(email_to);
 
-	/*
-	 * RFC 2822 doesn't require recipient headers but a To: header would
-	 * be nice to have if not present.
-	 */
-	smtp_set_header(message, "To", "cmcdevitt@greenplum.com", "cmcdevitt@greenplum.com");
+	/* Parse string into list of identifiers */
+	if (!SplitIdentifierString(rawstring, ',', &elemlist))
+	{
+		/* syntax error in list */
+		ereport(LOG,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid list syntax for \"email_to\"")));
+	}
 
-	/* Recipient must be in RFC2821 format */
-	recipient = smtp_add_recipient(message, "cmcdevitt@greenplum.com");
+	foreach(l, elemlist)
+	{
+		char	   *cur_email_addr = (char *) lfirst(l);
+
+		if (cur_email_addr != NULL && strlen(cur_email_addr) > 0)
+		{
+			/*
+			 * RFC 2822 doesn't require recipient headers but a To: header would
+			 * be nice to have if not present.
+			 */
+			smtp_set_header(message, "To", cur_email_addr, cur_email_addr);
+
+			/* Recipient must be in RFC2821 format */
+			recipient = smtp_add_recipient(message, cur_email_addr);
+			success = true;
+		}
+
+	}
+
+	if (!success && list_length(elemlist))
+		ereport(LOG,
+				(errmsg("Could not understand e-mail To: list")));
+
+	list_free(elemlist);
+	pfree(rawstring);
+
+
 	smtp_dsn_set_notify(recipient, notify);
 
 	smtp_8bitmime_set_body(message, E8bitmime_8BITMIME);
@@ -259,6 +313,9 @@ int send_alert(const GpErrorData * errorData)
 	/* Initiate a connection to the SMTP server and transfer the message. */
 	if (!smtp_start_session(session))
 	{
+		/*
+		 * If we get here, we can't talk to the SMTP server at all
+		 */
 		char buf[128];
 
 		elog(LOG, "SMTP server problem %s", smtp_strerror(smtp_errno(),
@@ -266,12 +323,23 @@ int send_alert(const GpErrorData * errorData)
 	}
 	else
 	{
-		/* Report on the success or otherwise of the mail transfer.
+		/*
+		 * Report on the success or otherwise of the mail transfer.
+		 * This really only tells the "overall" status, so if an individual e-mail fails,
+		 * we won't see it here (even if every one of them fails!).
+		 */
+
+		/*
+		 * status 250 == ok
+		 * > 300 is errors
 		 */
 		status = smtp_message_transfer_status(message);
-		elog(status->code == 0 ? DEBUG1 : LOG, "overall transfer status: %d %s\n", status->code,
+		elog(status->code < 300 ? DEBUG1 : LOG, "overall transfer status: %d %s\n", status->code,
 				(status->text != NULL) ? status->text : "");
 
+		/*
+		 * This should tell us how each e-mail recipient fared.
+		 */
 		smtp_enumerate_recipients(message, print_recipient_status, NULL);
 	}
 
@@ -357,8 +425,7 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 			return strdup("");
 		}
 	}
-	if (out != NULL && mylog != NULL)
-		fprintf(mylog,"get_str_from_chunk = %s\n",out);
+
 	wlen = pg_strnlen(chunkstr->p, len);
 
 	if (wlen < len)
@@ -658,7 +725,7 @@ static void print_recipient_status(smtp_recipient_t recipient,
 	const smtp_status_t *status;
 
 	status = smtp_recipient_status(recipient);
-	if (status->code != 0)
+	if (status->code != 0 && status->code != 250)
 	{
 		elog(LOG, "recipient status: %s: %d %s", mailbox, status->code, status->text);
 	}
@@ -676,19 +743,18 @@ static int authinteract(auth_client_request_t request, char **result,
 		{
 			elog(DEBUG1, "authinteract asking for password: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
 					: "");
-			result[i] = "fonda1";
-			//result[i] = my_auth->password;
+			result[i] = email_smtp_password;
 		}
 		else if (request[i].flags & AUTH_USER)
 		{
 			elog(DEBUG1, "authinteract asking for username: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
 					: "");
-			result[i] = "cmcdevitt@greenplum.com";
-			//result[i] = my_auth->username;
+			result[i] = email_smtp_userid;
+
 		}
 		else if (request[i].flags & AUTH_REALM)
 		{
-			elog(DEBUG1, "authinteract asking for realm: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
+			elog(LOG, "authinteract asking for realm: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
 					: "");
 			result[i] = "greenplum.com";
 
@@ -707,7 +773,7 @@ static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)
 
 	elog(LOG, "tlsinteract asking for tls password\n");
 
-	strcpy(buf, "fonda1");
+	strcpy(buf, email_smtp_password);
 	return strlen(buf);
 }
 
@@ -883,16 +949,33 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 		if (msg != NULL)
 		status = smtp_reverse_path_status (msg);
 
-		fprintf(mylog, "EV_MAILSTATUS\n");
-		if (status && status->text && rev_path)
-		fprintf(mylog," %d:  %s:  %s\n", status->code, rev_path,  status->text);
+		if (status && status->code != 250 && status->text && rev_path)
+		fprintf(mylog,"EV_MAILSTATUS %d:  %s:  %s\n", status->code, rev_path,  status->text);
 
-		if (status && status->code != 0 && status->text != NULL)
+		if (status && status->code != 0 && status->code != 250 && status->text != NULL)
 			elog(LOG,"EV_MAILSTATUS: SMTP server reports a problem %d:  %s:  %s", status->code, rev_path,  status->text);
 	}
 	break;
 	case SMTP_EV_RCPTSTATUS:
-		elog(DEBUG1, "EV_RCPTSTATUS");
+#if 0
+	{
+			const smtp_status_t *status = NULL;
+
+			smtp_recipient_t msg;
+				msg = va_arg(alist, smtp_recipient_t);
+				if (msg != NULL)
+				status = smtp_recipient_status (msg);
+
+
+
+			if (status && status->code !=250 && status->text)
+				fprintf(mylog,"SMTP_EV_RCPTSTATUS status = %d %s\n",status->code, status->text);
+
+			if (status && status->code != 0 && status->code != 250 && status->text != NULL)
+				elog(LOG,"SMTP server reports a RCPTSTATUS problem %d: %s", status->code, status->text);
+		}
+#endif
+	fprintf(mylog,"SMTP_EV_RCPTSTATUS\n");
 		break;
 	case SMTP_EV_MESSAGEDATA:
 		/*{
@@ -913,10 +996,11 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 			status = smtp_message_transfer_status (msg);
 
 
-		fprintf(mylog, "EV_MESSAGESENT\n");
-		if (status && status->text)
-		fprintf(mylog," status = %d %s\n",status->code, status->text);
-		if (status && status->code != 0 && status->text != NULL)
+
+		if (status && status->code !=250 && status->text)
+			fprintf(mylog,"SMTP_EV_MESSAGESENT status = %d %s\n",status->code, status->text);
+
+		if (status && status->code != 0 && status->code != 250 && status->text != NULL)
 			elog(LOG,"SMTP server reports a messagesent problem %d: %s", status->code, status->text);
 	}
 	break;
