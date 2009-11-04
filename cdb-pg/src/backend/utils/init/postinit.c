@@ -416,7 +416,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 				ereport(FATAL,
 						(errcode(ERRCODE_UNDEFINED_DATABASE),
 						 errmsg("database \"%s\" does not exist",
-								in_dbname), errOmitLocation(true)));
+								in_dbname), errOmitLocation(true),errSendAlert(false)));
 			/* our database name is gotten from the caller */
 			strlcpy(dbname, in_dbname, NAMEDATALEN);
 		}
