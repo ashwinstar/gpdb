@@ -173,9 +173,6 @@ int send_alert(const GpErrorData * errorData)
 	auth_context_t authctx;
 	const smtp_status_t *status;
 
-
-
-	char *from = NULL;
 	char subject[128];
 	enum notify_flags notify = Notify_FAILURE;
 	char	   *rawstring;
@@ -259,7 +256,7 @@ int send_alert(const GpErrorData * errorData)
 	/*
 	 * Set the reverse path for the mail envelope.  (NULL is ok)
 	 */
-	smtp_set_reverse_path(message, from);
+	smtp_set_reverse_path(message, email_from);
 
 	smtp_set_header(message, "Subject", subject);
 	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
@@ -603,7 +600,7 @@ messagebody_cb(void **buf, int *len, void *arg)
 			if (errorData->remote_host != NULL && strlen(errorData->remote_host) > 0)
 			{
 				if (strcmp(errorData->remote_host,"[local]")==0)
-					strcat(message, " on master node");
+					strcat(message, " connected locally on master node");
 				else
 				{
 					strcat(message," from host ");
@@ -615,6 +612,13 @@ messagebody_cb(void **buf, int *len, void *arg)
 			strcat(message, "\r\n");
 
 		}
+		if (errorData->fix_fields.gp_segment_id != -1)
+		{
+			strcat(message,"Error occurred on segment ");
+		}
+		else
+			strcat(message,"Error occurred on master segment");
+		strcat(message, "\r\n");
 		strcat(message, "\r\n");
 
 		strcat(message, errorData->error_severity);
