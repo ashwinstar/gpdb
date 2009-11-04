@@ -80,6 +80,9 @@ int send_alert_from_chunks(const PipeProtoChunk *chunk,
 	CSVChunkStr chunkstr =
 	{ chunk, chunk->data + sizeof(GpErrorDataFixFields) };
 
+	if (mylog == NULL)
+			mylog = fopen("/tmp/mylog.log", "a");
+
 	memset(&errorData, 0, sizeof(errorData));
 
 	memcpy(&errorData.fix_fields, chunk->data, sizeof(errorData.fix_fields));
@@ -118,6 +121,8 @@ int send_alert_from_chunks(const PipeProtoChunk *chunk,
 	PG_CATCH();
 	{
 		elog(LOG,"send_alert failed.  Not sending the alert");
+		/* Carry on with error handling. */
+		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
@@ -157,6 +162,7 @@ int send_alert(const GpErrorData * errorData)
 	char *from = NULL;
 	char subject[128];
 	enum notify_flags notify = Notify_FAILURE;
+
 #endif
 	if (mylog == NULL)
 		mylog = fopen("/tmp/mylog.log", "a");
@@ -164,7 +170,7 @@ int send_alert(const GpErrorData * errorData)
 	fprintf(mylog,"send_alert: %s: %s\n%s\n",errorData->error_severity, errorData->error_message, errorData->error_detail);
 	fflush(mylog);
 
-	elog(DEBUG2,"send_alert: %s: %s\n",errorData->error_severity, errorData->error_message);
+	elog(DEBUG2,"send_alert: %s: %s",errorData->error_severity, errorData->error_message);
 
 	/*
 	 * SIGPIPE must be ignored, or we will have problems.
@@ -177,7 +183,7 @@ int send_alert(const GpErrorData * errorData)
 #if USE_EMAIL
 
 	host = "smtpx18.msoutlookonline.net:587";
-	//host = "greenplum.com.s5a2.psmtp.com:25";
+	host = "greenplum.com.s5a2.psmtp.com:25";
 	from = "cmcdevitt@greenplum.com";
 
 	/* Set up a subject line for the e-mail.  Let's limit it to 127 bytes just to be safe. */
@@ -212,6 +218,7 @@ int send_alert(const GpErrorData * errorData)
 	authctx = auth_create_context();
 	auth_set_mechanism_flags(authctx, AUTH_PLUGIN_PLAIN|AUTH_PLUGIN_ANONYMOUS, 0);
 	auth_set_interact_cb(authctx, authinteract, NULL);
+	auth_set_external_id(authctx, "cmcdevitt@greenplum.com");
 	smtp_auth_set_context(session, authctx);
 
 	/*
@@ -219,6 +226,9 @@ int send_alert(const GpErrorData * errorData)
 	 * not in use or disabled in configure, the following is harmless.
 	 */
 	smtp_starttls_set_password_cb(tlsinteract, NULL);
+
+
+
 
 	/*
 	 * Set the reverse path for the mail envelope.  (NULL is ok)
@@ -246,27 +256,23 @@ int send_alert(const GpErrorData * errorData)
 
 	smtp_8bitmime_set_body(message, E8bitmime_8BITMIME);
 
-	fprintf(mylog, "start_session\n");
-	fflush(mylog);
 	/* Initiate a connection to the SMTP server and transfer the message. */
 	if (!smtp_start_session(session))
 	{
 		char buf[128];
 
-		fprintf(mylog, "SMTP server problem %s\n", smtp_strerror(smtp_errno(),
+		elog(LOG, "SMTP server problem %s", smtp_strerror(smtp_errno(),
 				buf, sizeof buf));
-		fflush(mylog);
 	}
 	else
 	{
 		/* Report on the success or otherwise of the mail transfer.
 		 */
 		status = smtp_message_transfer_status(message);
-		fprintf(mylog, "overall transfer status: %d %s\n", status->code,
-				(status->text != NULL) ? status->text : "\n");
-		fflush(mylog);
+		elog(status->code == 0 ? DEBUG1 : LOG, "overall transfer status: %d %s\n", status->code,
+				(status->text != NULL) ? status->text : "");
+
 		smtp_enumerate_recipients(message, print_recipient_status, NULL);
-		fflush(mylog);
 	}
 
 	/* Free resources consumed by the program.
@@ -332,7 +338,6 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 	/* Check if the string is an empty string */
 	if (len > 0 && chunkstr->p[0] == '\0')
 	{
-		fprintf(mylog, "chunkstr->p has empty string\n");
 		chunkstr->p++;
 		move_to_next_chunk(chunkstr, saved_chunks);
 
@@ -346,12 +351,14 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 		if (next_chunk->hdr.len > 0 && next_chunk->data[0] == '\0')
 		{
 			chunkstr->p++;
-		   fprintf(mylog, "chunkstr->p has empty string2\n");
+			if (mylog)
+				fprintf(mylog, "chunkstr->p has empty string2\n");
 			move_to_next_chunk(chunkstr, saved_chunks);
 			return strdup("");
 		}
 	}
-	fprintf(mylog,"get_str_from_chunk = %s\n",out);
+	if (out != NULL && mylog != NULL)
+		fprintf(mylog,"get_str_from_chunk = %s\n",out);
 	wlen = pg_strnlen(chunkstr->p, len);
 
 	if (wlen < len)
@@ -360,7 +367,6 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 		out = malloc(wlen + 1);
 		memcpy(out, chunkstr->p, wlen + 1); // include the null byte
 		chunkstr->p += wlen + 1; // skip to start of next string.
-		fprintf(mylog,"get_str_from_chunk = %s\n",out);
 		return out;
 	}
 
@@ -368,6 +374,7 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 	memcpy(out, chunkstr->p, wlen);
 	out[wlen] = '\0';
 	chunkstr->p += wlen;
+	if (out != NULL && mylog != NULL)
 	fprintf(mylog, "partial string: %s\n", out);
 	fflush(mylog);
 
@@ -653,8 +660,7 @@ static void print_recipient_status(smtp_recipient_t recipient,
 	status = smtp_recipient_status(recipient);
 	if (status->code != 0)
 	{
-		fprintf(mylog, "recipient status: %s: %d %s\n", mailbox, status->code, status->text);
-		fflush(mylog);
+		elog(LOG, "recipient status: %s: %d %s", mailbox, status->code, status->text);
 	}
 }
 
@@ -668,21 +674,21 @@ static int authinteract(auth_client_request_t request, char **result,
 	{
 		if (request[i].flags & AUTH_PASS)
 		{
-			fprintf(mylog, "authinteract asking for password: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
+			elog(DEBUG1, "authinteract asking for password: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
 					: "");
 			result[i] = "fonda1";
 			//result[i] = my_auth->password;
 		}
 		else if (request[i].flags & AUTH_USER)
 		{
-			fprintf(mylog, "authinteract asking for username: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
+			elog(DEBUG1, "authinteract asking for username: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
 					: "");
 			result[i] = "cmcdevitt@greenplum.com";
 			//result[i] = my_auth->username;
 		}
 		else if (request[i].flags & AUTH_REALM)
 		{
-			fprintf(mylog, "authinteract asking for realm: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
+			elog(DEBUG1, "authinteract asking for realm: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
 					: "");
 			result[i] = "greenplum.com";
 
@@ -692,7 +698,6 @@ static int authinteract(auth_client_request_t request, char **result,
 			return 0;
 		}
 	}
-	fflush(mylog);
 
 	return 1;
 }
@@ -700,8 +705,8 @@ static int authinteract(auth_client_request_t request, char **result,
 static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)), void *arg  __attribute__((unused)))
 {
 
-	fprintf(mylog, "tlsinteract asking for tls password\n");
-	fflush(mylog);
+	elog(LOG, "tlsinteract asking for tls password\n");
+
 	strcpy(buf, "password");
 	return strlen(buf);
 }
@@ -861,29 +866,63 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 		break;
 
 	case SMTP_EV_STARTTLS_OK:
-		/*{
-			fprintf(mylog, "STARTTLS_OK\n");
-		}*/
+		elog(DEBUG2,"SMTP_EV_STARTTLS_OK");
 		break;
 	case SMTP_EV_CONNECT:
-		fprintf(mylog, "EV_CONNECT\n"); break;
+		elog(DEBUG1,"SMTP_EV_CONNECT");
+		break;
 	case SMTP_EV_MAILSTATUS:
-		fprintf(mylog, "EV_MAILSTATUS\n"); break;
+	{
+		const smtp_status_t *status = NULL;
+
+		smtp_message_t msg;
+		const char * rev_path;
+		rev_path = va_arg(alist, const char*);
+		msg = va_arg(alist, smtp_message_t);
+
+		if (msg != NULL)
+		status = smtp_reverse_path_status (msg);
+
+		fprintf(mylog, "EV_MAILSTATUS\n");
+		if (status && status->text && rev_path)
+		fprintf(mylog," %d:  %s:  %s\n", status->code, rev_path,  status->text);
+
+		if (status && status->code != 0 && status->text != NULL)
+			elog(LOG,"SMTP server reports a mailstatus problem %d:  %s:  %s", status->code, rev_path,  status->text);
+	}
+	break;
 	case SMTP_EV_RCPTSTATUS:
-		fprintf(mylog, "EV_RCPTSTATUS\n"); break;
+		elog(DEBUG1, "EV_RCPTSTATUS");
+		break;
 	case SMTP_EV_MESSAGEDATA:
 		/*{
 			smtp_message_t * msg;
 			int mlen;
-			msg = va_arg(alist, void*);
+			msg = va_arg(alist, smtp_message_t);
 			mlen = va_arg(alist, int);
 			fprintf(mylog, "EV_MESSAGEDATA len = %d\n", mlen);
 		}*/
 		break;
 	case SMTP_EV_MESSAGESENT:
-		fprintf(mylog, "EV_MESSAGESENT\n"); break;
+	{
+		const smtp_status_t *status = NULL;
+
+			smtp_message_t msg;
+			msg = va_arg(alist, smtp_message_t);
+			if (msg != NULL)
+			status = smtp_message_transfer_status (msg);
+
+
+		fprintf(mylog, "EV_MESSAGESENT\n");
+		if (status && status->text)
+		fprintf(mylog," status = %d %s\n",status->code, status->text);
+		if (status && status->code != 0 && status->text != NULL)
+			elog(LOG,"SMTP server reports a messagesent problem %d: %s", status->code, status->text);
+	}
+	break;
 	case SMTP_EV_DISCONNECT:
-		fprintf(mylog, "EV_DISCONNECT\n"); break;
+		elog(DEBUG2, "EV_DISCONNECT\n");
+		break;
 	default:
 		break;
 
