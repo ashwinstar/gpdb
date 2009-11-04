@@ -612,6 +612,8 @@ messagebody_cb(void **buf, int *len, void *arg)
 			strcat(message, "\r\n");
 
 		}
+		if (errorData->fix_fields.omit_location != 't')
+		{
 		if (errorData->fix_fields.gp_segment_id != -1)
 		{
 			strcat(message,"Error occurred on segment ");
@@ -619,6 +621,7 @@ messagebody_cb(void **buf, int *len, void *arg)
 		else
 			strcat(message,"Error occurred on master segment");
 		strcat(message, "\r\n");
+		}
 		strcat(message, "\r\n");
 
 		strcat(message, errorData->error_severity);
