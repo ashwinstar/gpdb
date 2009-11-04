@@ -839,7 +839,8 @@ CreateLockFile(const char *filename, bool amPostmaster,
 						  errhint("Is another postgres (PID %d) using socket file \"%s\"?",
 								  (int) other_pid, refName) :
 						  errhint("Is another postmaster (PID %d) using socket file \"%s\"?",
-								  (int) other_pid, refName))));
+								  (int) other_pid, refName)),
+						  errOmitLocation(true)));
 			}
 		}
 
