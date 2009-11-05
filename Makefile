@@ -532,7 +532,7 @@ endef
 LOADERS_FILESET_BIN = $(strip $(tmpLOADERS_FILESET_BIN))
 
 define tmpLOADERS_FILESET_BINEXT
-	pg8000
+	pygresql
 	yaml
 endef
 LOADERS_FILESET_BINEXT = $(strip $(tmpLOADERS_FILESET_BINEXT))
