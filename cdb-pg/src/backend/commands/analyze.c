@@ -191,6 +191,18 @@ extern List 		*find_all_inheritors(Oid parentrel);
 extern BlockNumber RelationGuessNumberOfBlocks(double totalbytes);
 extern Oid	LookupFuncName(List *funcname, int nargs, const Oid *argtypes, bool noError);
 
+/*
+ * To avoid consuming too much memory during analysis and/or too much space
+ * in the resulting pg_statistic rows, we ignore varlena datums that are wider
+ * than WIDTH_THRESHOLD (after detoasting!).  This is legitimate for MCV
+ * and distinct-value calculations since a wide value is unlikely to be
+ * duplicated at all, much less be a most-common value.  For the same reason,
+ * ignoring wide values will not affect our estimates of histogram bin
+ * boundaries very much.
+ */
+#define COLUMN_WIDTH_THRESHOLD  1024
+
+
 /**
  * This is the main entry point for analyze execution. Three possible ways of calling this method.
  * 1. Full database ANALYZE. No relations are explicitly specified.
@@ -1922,10 +1934,15 @@ static void analyzeComputeAttributeStatistics(Oid relationOid,
 		computeHist = false;
 	}
 	
-	/**
-	 * TODO: maybe avoid ndistinct, mcv, hist computations for too-wide columns?
-	 */
-	
+	if (stats->avgWidth > COLUMN_WIDTH_THRESHOLD)
+	{
+		/* Extremely wide columns are considered to be fully distinct. See comments
+		 * against COLUMN_WIDTH_THRESHOLD */
+		computeDistinct = false;
+		computeMCV = false;
+		computeHist = false;
+	}
+		
 	if (computeDistinct)
 	{
 		float4 	nDistinctAbsolute = analyzeComputeNDistinct(sampleTableOid, sampleTableRelTuples, attributeName);
