@@ -5936,6 +5936,15 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	 * Add needed dependency entries for the new column.
 	 */
 	add_column_datatype_dependency(myrelid, i, attribute->atttypid);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "ADD COLUMN"
+				);
+
 }
 
 /*
@@ -6047,6 +6056,15 @@ ATExecDropNotNull(Relation rel, const char *colName)
 	}
 
 	heap_close(attr_rel, RowExclusiveLock);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "ALTER COLUMN DROP NOT NULL"
+				);
+
 }
 
 /*
@@ -6099,6 +6117,15 @@ ATExecSetNotNull(AlteredTableInfo *tab, Relation rel,
 	}
 
 	heap_close(attr_rel, RowExclusiveLock);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "ALTER COLUMN SET NOT NULL"
+				);
+
 }
 
 /*
@@ -6149,6 +6176,16 @@ ATExecColumnDefault(Relation rel, const char *colName,
 		 */
 		AddRelationRawConstraints(rel, list_make1(rawEnt), NIL);
 	}
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "ALTER COLUMN DEFAULT"
+				);
+
+
 }
 
 /*
@@ -6233,6 +6270,16 @@ ATExecSetStatistics(Relation rel, const char *colName, Node *newValue)
 	heap_freetuple(tuple);
 
 	heap_close(attrelation, RowExclusiveLock);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "ALTER COLUMN SET STATISTICS"
+				);
+
+
 }
 
 /*
@@ -6304,6 +6351,15 @@ ATExecSetStorage(Relation rel, const char *colName, Node *newValue)
 	heap_freetuple(tuple);
 
 	heap_close(attrelation, RowExclusiveLock);
+	
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "ALTER COLUMN SET STORAGE"
+				);
+	
 }
 
 
@@ -6520,6 +6576,15 @@ ATExecDropColumn(Relation rel, const char *colName,
 
 		heap_close(class_rel, RowExclusiveLock);
 	}
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "DROP COLUMN"
+				);
+
 }
 
 /*
@@ -6645,6 +6710,15 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 			ProcessUtility((Node *)ats, NULL, dest, NULL);
 		}
 	}
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "ADD INDEX"
+				);
+
 }
 
 /*
@@ -6737,6 +6811,15 @@ ATExecAddConstraint(AlteredTableInfo *tab, Relation rel, Node *newConstraint)
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(newConstraint));
 	}
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "ADD CONSTRAINT"
+				);
+
 }
 
 /*
@@ -7654,6 +7737,7 @@ ATPrepDropConstraint(List **wqueue, Relation rel,
 		heap_close(masterrel, AccessShareLock);
 		list_free_deep(cons);
 	}
+
 }
 
 static void
@@ -7678,6 +7762,15 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 					(errmsg("multiple constraints named \"%s\" were dropped",
 							constrName)));
 	}
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "DROP CONSTRAINT"
+				);
+
 }
 
 /*
@@ -8242,6 +8335,16 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 
 	/* Cleanup */
 	heap_freetuple(heapTup);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "ALTER COLUMN TYPE"
+				);
+
+
 }
 
 /*
@@ -8619,6 +8722,20 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 	ReleaseSysCache(tuple);
 	heap_close(class_rel, RowExclusiveLock);
 	relation_close(target_rel, NoLock);
+
+	/* MPP-6929: metadata tracking */
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& ((tuple_class->relkind == RELKIND_RELATION)
+			|| (tuple_class->relkind == RELKIND_INDEX)
+			|| (tuple_class->relkind == RELKIND_SEQUENCE)
+			|| (tuple_class->relkind == RELKIND_VIEW))
+				)
+		MetaTrackUpdObject(RelationRelationId,
+						   relationOid,
+						   GetUserId(),
+						   "ALTER", "OWNER"
+				);
+
 }
 
 /*
@@ -8713,6 +8830,14 @@ ATExecClusterOn(Relation rel, const char *indexName)
 
 	/* And do the work */
 	mark_index_clustered(rel, indexOid);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "CLUSTER ON"
+				);
 }
 
 /*
@@ -8725,6 +8850,15 @@ static void
 ATExecDropCluster(Relation rel)
 {
 	mark_index_clustered(rel, InvalidOid);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "SET WITHOUT CLUSTER"
+				);
+
 }
 
 /*
@@ -8873,6 +9007,21 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 	ReleaseSysCache(tuple);
 
 	heap_close(pgclass, RowExclusiveLock);
+
+	/* MPP-6929: metadata tracking */
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& ((rel->rd_rel->relkind == RELKIND_RELATION)
+			|| (rel->rd_rel->relkind == RELKIND_INDEX)
+			|| (rel->rd_rel->relkind == RELKIND_SEQUENCE)
+			|| (rel->rd_rel->relkind == RELKIND_VIEW))
+				)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", isReset ? "RESET" : "SET" 
+				);
+
+
 }
 
 /*
@@ -9000,6 +9149,14 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 		ATExecSetTableSpace(relaosegrelid, newTableSpace);
 	if (OidIsValid(relaosegidxid))
 		ATExecSetTableSpace(relaosegidxid, newTableSpace);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "SET TABLESPACE"
+				);
 }
 
 /*
@@ -9104,6 +9261,17 @@ ATExecEnableDisableTrigger(Relation rel, char *trigname,
 						   bool enable, bool skip_system)
 {
 	EnableDisableTrigger(rel, trigname, enable, skip_system);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", 
+						   enable ? "ENABLE TRIGGER" : 
+						   "DISABLE TRIGGER"
+				);
+
 }
 
 static void
@@ -9286,6 +9454,14 @@ ATExecAddInherit(Relation child_rel, Node *node)
 		heap_close(parent_rel, AccessShareLock);
 	else
 		heap_close(parent_rel, NoLock);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(child_rel),
+						   GetUserId(),
+						   "ALTER", "INHERIT"
+				);
 }
 
 /*
@@ -9711,6 +9887,16 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 
 	/* keep our lock on the parent relation until commit */
 	heap_close(parent_rel, NoLock);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "NO INHERIT"
+				);
+
+
 }
 
 static StdRdOptions *
@@ -10436,6 +10622,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	bool		is_ao = false;
     bool        is_aocs = false;
     char        relstorage = RELSTORAGE_HEAP;
+    char       *distro_str = "SET WITH DISTRIBUTED BY";
 	List	   *hidden_types = NIL; /* types we need to build for dropped columns */
 
 	/* Permissions checks */
@@ -10457,6 +10644,16 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 	lwith   = (List *)linitial(lprime);
 	ldistro = (List *)lsecond(lprime);
+
+	if (lwith && ldistro)
+		distro_str = "SET WITH DISTRIBUTED BY";
+	else
+	{
+		if (lwith)
+			distro_str = "SET WITH";
+		else if (ldistro)
+			distro_str = "SET DISTRIBUTED BY";
+	}
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		ereport(ERROR,
@@ -10637,7 +10834,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 				 * (see the non-random distribution case below for why.
 				 */
 				heap_close(rel, NoLock);
-				return;
+				goto l_distro_fini;
 			}
 		}
 	}
@@ -10760,6 +10957,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 						lsecond(lprime) = list_make1(NULL);
 
 						return;
+						/* don't goto l_distro_fini -- didn't do anything! */
 					}
 				}
 			}
@@ -10844,7 +11042,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		{
 			/* caller expects rel to be closed for this AT type */
 			heap_close(rel, NoLock);
-			return;
+			goto l_distro_fini;			
 		}
 
 		backend_id = intVal(linitial(qe_data));
@@ -11039,6 +11237,18 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			}
 		}
 	}
+
+l_distro_fini:
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", distro_str
+				);
+
+
 }
 
 static char

@@ -1270,7 +1270,7 @@ heap_create_with_catalog(const char *relname,
 		/* MPP-6929: metadata tracking */
 		if (doIt)
 			MetaTrackAddObject(RelationRelationId,
-							   relid, ownerid,
+							   relid, GetUserId(), /* not ownerid */
 							   "CREATE", subtyp
 					);
 	}

@@ -26,6 +26,7 @@
 #include "access/clog.h"
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "catalog/heap.h"
 #include "access/transam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
@@ -356,8 +357,8 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 	}
 
 	/*
-	 * Greenplum Database: send a scary warning message about vacuum full. its not safe
-	 *		for large tables.
+	 * Greenplum Database: send a scary warning message about vacuum full. 
+	 * its not safe for large tables.
 	 */
 	if (vacstmt->full)
 	{
@@ -434,10 +435,11 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 			/*
 			 * Decide whether we need to start/commit our own transactions.
 			 *
-			 * For VACUUM, we always start/commit our own transactions, so that we can
-			 * release locks as soon as possible.  (We could possibly use the outer
-			 * transaction for a one-table VACUUM, but handling TOAST tables would be
-			 * problematic.)
+			 * For VACUUM, we always start/commit our own
+			 * transactions, so that we can release locks as soon as
+			 * possible.  (We could possibly use the outer transaction
+			 * for a one-table VACUUM, but handling TOAST tables would
+			 * be problematic.)
 			 */
 
 			StartTransactionCommand();
@@ -459,9 +461,10 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 			}
 
 			/*
-			 * Modify the Vacuum statement to vacuum an individual relation. This
-			 * ensures that only one relation will be locked for vacuum, when the user
-			 * issues a "vacuum <db>" command, or a "vacuum <parent_partition_table>"
+			 * Modify the Vacuum statement to vacuum an individual
+			 * relation. This ensures that only one relation will be
+			 * locked for vacuum, when the user issues a "vacuum <db>"
+			 * command, or a "vacuum <parent_partition_table>"
 			 * command.
 			 */
 			if (list_length(relations) > 1 || vacstmt->relation == NULL)
@@ -485,19 +488,20 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 			}
 
 			/*
-			 * Record the relation that is in the vacuum process, so that we can clear up
-			 * its freespace map entry when the vacuum process crashes or is cancelled.
+			 * Record the relation that is in the vacuum process, so
+			 * that we can clear up its freespace map entry when the
+			 * vacuum process crashes or is cancelled.
 			 *
-			 * XXX: Have to allocate the space inside ToMemoryContext, since it is required
-			 * during commit.
+			 * XXX: Have to allocate the space inside ToMemoryContext,
+			 * since it is required during commit.
 			 */
 			oldctx = MemoryContextSwitchTo(TopMemoryContext);
 			AppendRelToVacuumRels(onerel);
 			MemoryContextSwitchTo(oldctx);
 
 			/*
-			 * If we are in the dispatch mode, dispatch this modified vacuum statement
-			 * to QEs, and wait for them to finish.
+			 * If we are in the dispatch mode, dispatch this modified
+			 * vacuum statement to QEs, and wait for them to finish.
 			 */
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
@@ -506,12 +510,14 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 				stats_context.updated_stats = NIL;
 				stats_context.vac_stats = NULL;
 
-				/* Generate extra oids for relfilenodes to be used in bitmap indexes if any. */
+				/* Generate extra oids for relfilenodes to be used in
+				 * bitmap indexes if any. */
 				gen_oids_for_bitmaps(vacstmt, onerel);
 
 				/*
-				 * We have to acquire a ShareLock for the relation which has bitmap indexes,
-				 * since reindex is used later. Otherwise, concurrent vacuum and insert may
+				 * We have to acquire a ShareLock for the relation
+				 * which has bitmap indexes, since reindex is used
+				 * later. Otherwise, concurrent vacuum and insert may
 				 * cause deadlock, see MPP-5960.
 				 */
 				if (vacstmt->extra_oids != NULL)
@@ -525,14 +531,15 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 			lmode = vacstmt->full ? AccessExclusiveLock : ShareUpdateExclusiveLock;
 
 			/*
-			 * Get a session-level lock too. This will protect our access to the
-			 * relation across multiple transactions, so that we can vacuum the
-			 * relation's TOAST table (if any) secure in the knowledge that no one is
-			 * deleting the parent relation.
+			 * Get a session-level lock too. This will protect our
+			 * access to the relation across multiple transactions, so
+			 * that we can vacuum the relation's TOAST table (if any)
+			 * secure in the knowledge that no one is deleting the
+			 * parent relation.
 			 *
-			 * NOTE: this cannot block, even if someone else is waiting for access,
-			 * because the lock manager knows that both lock requests are from the
-			 * same process.
+			 * NOTE: this cannot block, even if someone else is
+			 * waiting for access, because the lock manager knows that
+			 * both lock requests are from the same process.
 			 */
 			LockRelationIdForSession(&onerelid, lmode);
 
@@ -547,12 +554,39 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 			}
 
 			/*
-			 * Close source relation now, but keep lock so that no one deletes it
-			 * before we commit.  (If someone did, they'd fail to clean up the entries
-			 * we made in pg_statistic.  Also, releasing the lock before commit would
-			 * expose us to concurrent-update failures in update_attstats.)
+			 * Close source relation now, but keep lock so that no one
+			 * deletes it before we commit.  (If someone did, they'd
+			 * fail to clean up the entries we made in pg_statistic.
+			 * Also, releasing the lock before commit would expose us
+			 * to concurrent-update failures in update_attstats.)
 			 */
 			relation_close(onerel, NoLock);
+
+			/* MPP-6929: metadata tracking */
+			if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				char *vsubtype = ""; /* NOFULL */
+
+				if (IsAutoVacuumProcess())
+					vsubtype = "AUTO";
+				else
+				{
+					if (vacstmt->full && 
+						(0 == vacstmt->freeze_min_age))
+							vsubtype = "FULL FREEZE";
+					else if (vacstmt->full)
+							vsubtype = "FULL";
+					else if (0 == vacstmt->freeze_min_age)
+							vsubtype = "FREEZE";
+				}
+				MetaTrackUpdObject(RelationRelationId,
+								   relid,
+								   GetUserId(),
+								   "VACUUM", 
+								   vsubtype
+						);
+			}
+
 
 			if (list_length(relations) > 1)
 			{

@@ -851,7 +851,7 @@ ExecGrant_Relation(InternalGrant *istmt)
 				(pg_class_tuple->relkind == RELKIND_VIEW)))
 			MetaTrackUpdObject(RelationRelationId,
 							   relOid,
-							   grantorId,
+							   GetUserId(), /* not grantorId, */
 							   "PRIVILEGE", 
 							   (istmt->is_grant) ? "GRANT" : "REVOKE"
 					);

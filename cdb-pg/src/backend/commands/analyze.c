@@ -23,6 +23,7 @@
 #include <math.h>
 
 #include "access/heapam.h"
+#include "catalog/heap.h"
 #include "access/transam.h"
 #include "access/tuptoaster.h"
 #include "access/aosegfiles.h"
@@ -412,13 +413,31 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 					MemoryContextResetAndDeleteChildren(analyzeRelationContext);
 					
 					/*
-					 * Close source relation now, but keep lock so that no one deletes it
-					 * before we commit.  (If someone did, they'd fail to clean up the entries
-					 * we made in pg_statistic.  Also, releasing the lock before commit would
-					 * expose us to concurrent-update failures.)
+					 * Close source relation now, but keep lock so
+					 * that no one deletes it before we commit.  (If
+					 * someone did, they'd fail to clean up the
+					 * entries we made in pg_statistic.  Also,
+					 * releasing the lock before commit would expose
+					 * us to concurrent-update failures.)
 					 */
 
 					relation_close(candidateRelation, NoLock);
+
+					/* MPP-6929: metadata tracking */
+					if (Gp_role == GP_ROLE_DISPATCH)
+					{
+						char *asubtype = "";
+
+						if (IsAutoVacuumProcess())
+							asubtype = "AUTO";
+
+						MetaTrackUpdObject(RelationRelationId,
+										   RelationGetRelid(candidateRelation),
+										   GetUserId(),
+										   "ANALYZE", 
+										   asubtype
+								);
+					}
 				}
 			}
 			else
