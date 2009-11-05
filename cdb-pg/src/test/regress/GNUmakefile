@@ -169,6 +169,8 @@ upg2-setup:
 	@gpstringsubs.pl input/loadcat33.source
 	@cp -f input/loadcat34.source.in input/loadcat34.source
 	@gpstringsubs.pl input/loadcat34.source
+	@cp -f input/loadcat34_sh.source.in input/loadcat34_sh.source
+	@gpstringsubs.pl input/loadcat34_sh.source
 	@cp -f $(upg2_data) data/.
 	@cp -f $(upg2_in) data/.
 	$(MAKE) upg2-transform

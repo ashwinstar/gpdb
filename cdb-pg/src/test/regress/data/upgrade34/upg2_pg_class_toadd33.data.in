@@ -1,4 +1,5 @@
 relname|relnamespace|reltype|relowner|relam|relfilenode|reltablespace|relpages|reltuples|reltoastrelid|reltoastidxid|relaosegrelid|relaosegidxid|relhasindex|relisshared|relkind|relstorage|relnatts|relchecks|reltriggers|relukeys|relfkeys|relrefs|relhasoids|relhaspkey|relhasrules|relhassubclass|relfrozenxid|relacl|reloptions
+1213|pg_tablespace|11|6435|10|0|1213|1664|1|2|0|0|0|0|t|t|r|h|4|0|0|0|0|0|t|f|f|f|868|{=r/@gpcurusername@}|\N
 2858|pg_filespace_oid_index|11|0|10|403|2858|1664|2|1|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
 2859|pg_filespace_fsname_index|11|0|10|403|2859|1664|2|1|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
 5009|pg_filespace|11|6438|10|0|5009|1664|1|1|0|0|0|0|t|t|r|h|2|0|0|0|0|0|t|f|f|f|863|{=r/@gpcurusername@}|\N

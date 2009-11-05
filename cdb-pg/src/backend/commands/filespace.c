@@ -135,7 +135,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 					if (found)
 						ereport(ERROR,
 								(errcode(ERRCODE_GP_COMMAND_ERROR),
-								 errmsg("Duplicate segment id %d", segid)));
+								 errmsg("duplicate segment id %d", segid)));
 					found = true;
 				}
 			}
@@ -144,7 +144,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_COMMAND_ERROR),
-						 errmsg("No Path Specified for segment id %d", segid)));
+						 errmsg("no path specified for segment id %d", segid)));
 			}
 		}
 
@@ -164,7 +164,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 					if (found)
 						ereport(ERROR,
 								(errcode(ERRCODE_GP_COMMAND_ERROR),
-								 errmsg("Duplicate segment id %d", segid)));
+								 errmsg("duplicate segment id %d", segid)));
 					found = true;
 				}
 			}
@@ -172,7 +172,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_COMMAND_ERROR),
-						 errmsg("No Path Specified for segment id %d", segid)));
+						 errmsg("no path specified for segment id %d", segid)));
 			}
 		}
 
@@ -334,7 +334,11 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 				 errmsg("filespace name may not be qualified")));
 	fsname = strVal(linitial(names));
 
-	/* XXX: Do we need to disallow DROP CASCADE? */
+	/* Disallow CASCADE */
+	if (behavior == DROP_CASCADE)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("syntax at or near \"cascade\"")));
 
 	/* 
 	 * Because rollback of filespace operations are difficult and expected

@@ -66,17 +66,17 @@ create table public.pg_exttable (reloid oid not null,
 								 rejectlimittype char,
 								 fmterrtbl oid,
 								 encoding integer);
-create table public.pg_tablespace(spcname name,
-	                              spcowner oid,
-								  spclocation text,
-								  spcacl aclitem[],
-								  spcprilocations text[],
-								  spcmirlocations text[]) with oids;
+-- We cheat on this table since it is being dropped and recreated, which
+-- doesn't work well in the context of upg2.  Here we simply define it like
+-- it should look when fully upgraded so the copy will work correctly.
+create table public.pg_tablespace(like pg_catalog.pg_tablespace) with oids;
+create table public.pg_filespace(like pg_catalog.pg_filespace) with oids;
+create unique index pg_filespace_fsname_index on public.pg_filespace (fsname);
 -- These tables we only create so that the REINDEX statements wont error
-create table public.gp_configuration_history(like pg_catalog.gp_configuration_history);
-create table public.gp_db_interfaces(like pg_catalog.gp_db_interfaces);
-create table public.gp_interfaces(like pg_catalog.gp_interfaces);
-create table public.pg_filespace(like pg_catalog.pg_filespace);
+create table public.gp_configuration_history(foo text);
+create table public.gp_db_interfaces(foo text);
+create table public.gp_interfaces(foo text);
+create table public.pg_stat_last_operation(foo text);
 --
 -- 2. Build the 33 catalog
 --
@@ -820,7 +820,6 @@ from public.pg_attribute a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-     and c.relkind = 'r'
 except
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute_v33 a,
@@ -828,8 +827,7 @@ from public.pg_attribute_v33 a,
      public.pg_type_v33 t
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r';
+     and c.oid < 10000;
  relname | attname | attnum | typname | typlen | atttypmod 
 ---------+---------+--------+---------+--------+-----------
 (0 rows)
@@ -841,7 +839,6 @@ from public.pg_attribute_v33 a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-     and c.relkind = 'r'
 except
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute a,
@@ -849,8 +846,7 @@ from public.pg_attribute a,
      public.pg_type t
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r';
+     and c.oid < 10000;
  relname | attname | attnum | typname | typlen | atttypmod 
 ---------+---------+--------+---------+--------+-----------
 (0 rows)
@@ -902,35 +898,39 @@ from public.pg_proc_v33 where oid < 10000;
 (0 rows)
 
 -- compare old and new pg_class
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class_v33 where oid < 10000 and relname !~ 'pg_toast'
 except
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class where oid < 10000 and relname !~ 'pg_toast';
  relname | relnamespace | reltype | relowner | relam | reltablespace | reltoastrelid | reltoastidxid | relaosegrelid | relaosegidxid | relhasindex | relisshared | relkind | relstorage | relnatts | relchecks | reltriggers | relukeys | relfkeys | relrefs | relhasoids | relhaspkey | relhasrules | relhassubclass | reloptions 
 ---------+--------------+---------+----------+-------+---------------+---------------+---------------+---------------+---------------+-------------+-------------+---------+------------+----------+-----------+-------------+----------+----------+---------+------------+------------+-------------+----------------+------------
 (0 rows)
 
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class where oid < 10000 and relname !~ 'pg_toast'
 except
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class_v33 where oid < 10000 and relname !~ 'pg_toast';
  relname | relnamespace | reltype | relowner | relam | reltablespace | reltoastrelid | reltoastidxid | relaosegrelid | relaosegidxid | relhasindex | relisshared | relkind | relstorage | relnatts | relchecks | reltriggers | relukeys | relfkeys | relrefs | relhasoids | relhaspkey | relhasrules | relhassubclass | reloptions 
 ---------+--------------+---------+----------+-------+---------------+---------------+---------------+---------------+---------------+-------------+-------------+---------+------------+----------+-----------+-------------+----------+----------+---------+------------+------------+-------------+----------------+------------
@@ -1077,18 +1077,25 @@ select * from public.pg_exttable_v33 where reloid < 10000;
 --
 -- 7. Run the scripts that upgrade from 33->34
 --      phase 1:  loadcat34
+--      phase 2:  loadcat34_sh
 --
 \i @abs_builddir@/sql/loadcat34.sql
 begin;
+-- Before we copy in the new catalog entrees we begin by deleting the old
+-- definition of pg_tablespace;
+delete from public.pg_depend where refobjid='pg_catalog.pg_tablespace'::regtype;
+delete from public.pg_type where typrelid='pg_catalog.pg_tablespace'::regclass;
+delete from public.pg_attribute where attrelid='pg_catalog.pg_tablespace'::regclass;
+delete from public.pg_class where oid='pg_catalog.pg_tablespace'::regclass;
+-- Copy in the new catalog definitions
 copy public.pg_class from '@abs_srcdir@/data//upg2_pg_class_toadd33.data' oids null E'\\N' csv delimiter '|' header;
 copy public.pg_attribute from '@abs_srcdir@/data//upg2_pg_attribute_toadd33.data' csv delimiter '|' header;
 copy public.pg_index from '@abs_srcdir@/data//upg2_pg_index_toadd33.data' null as E'\\N' csv delimiter '|' header;
-copy public.pg_type from '@abs_srcdir@/data//upg2_pg_type_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_proc from '@abs_srcdir@/data//upg2_pg_proc_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
+copy public.pg_type from '@abs_srcdir@/data//upg2_pg_type_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_namespace from '@abs_srcdir@/data//upg2_pg_namespace_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_description from '@abs_srcdir@/data//upg2_pg_description_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy public.pg_depend from '@abs_srcdir@/data//upg2_pg_depend_toadd33.data' null as E'\\N' csv delimiter '|' header;
-copy public.pg_shdescription from '@abs_srcdir@/data//upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
 -- fix up pg_appendonly
 alter table public.pg_appendonly add column columnstore boolean;
 update public.pg_appendonly set columnstore='f';
@@ -1097,64 +1104,42 @@ alter table public.pg_appendonly alter column columnstore set not null;
 alter table public.pg_exttable add column writable boolean;
 update public.pg_exttable set writable='f';
 alter table public.pg_exttable alter column writable set not null;
--- fix up pg_tablespace
-alter table public.pg_tablespace add column spcfsoid oid;
-update public.pg_tablespace set spcfsoid = 3052;   -- oid of "pg_system" filespace 
 -- upgrade pg_partitions.parentpartitioname
 -- Need to manually diff the view definitions and extract the changed
 -- portions.  Yuck!
-update public.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-':resname partitionposition :ressortgroupref 5 :resorigtbl',
-':resname partitionposition :ressortgroupref 6 :resorigtbl')
-where ev_class = 'public.pg_partitions'::regclass;
-update public.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-'{TARGETENTRY :expr {WINDOWREF :winfnoid 7001 ',
-'{TARGETENTRY :expr {CASE :casetype 20 :arg <> :args ({WHEN :expr {BOOLEXPR :boolop or :args ({OPEXPR :opno 630 :opfuncid 0 :opresulttype 16 :opretset false :args ({VAR :varno 5 :varattno 2 :vartype 18 :vartypmod -1 :varlevelsup 0 :varnoold 5 :varoattno 2} {CONST :consttype 18 :constlen 1 :constbyval true :constisnull false :constvalue 1 [ 114 0 0 0 0 0 0 0 ]})} {VAR :varno 6 :varattno 5 :vartype 16 :vartypmod -1 :varlevelsup 0 :varnoold 6 :varoattno 5})} :result {CONST :consttype 20 :constlen 8 :constbyval true :constisnull true :constvalue <>}}) :defresult {WINDOWREF :winfnoid 7001 '
-)
-where ev_class = 'public.pg_partitions'::regclass;
-update public.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-':winlevel 0} :resno 11 :resname partitionrank ',
-':winlevel 0}} :resno 11 :resname partitionrank '
-)
-where ev_class = 'public.pg_partitions'::regclass;
-update public.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-':winspec 0 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault ',
-':winspec 1 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault '
-)
-where ev_class = 'public.pg_partitions'::regclass;
-update public.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-'parisdefault :ressortgroupref 0 :resorigtbl 5011 :resorigcol ',
-'parisdefault :ressortgroupref 5 :resorigtbl 5011 :resorigcol '
-)
-where ev_class = 'public.pg_partitions'::regclass;
-update public.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-'({SORTCLAUSE :tleSortGroupRef 5 :sortop 95}) :frame <> :location -1}) :distinctClause ',
-'({SORTCLAUSE :tleSortGroupRef 5 :sortop 58} {SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1} {WINDOWSPEC :name <> :parent <> :partition ({SORTCLAUSE :tleSortGroupRef 1 :sortop 609} {SORTCLAUSE :tleSortGroupRef 2 :sortop 660} {SORTCLAUSE :tleSortGroupRef 3 :sortop 95} {SORTCLAUSE :tleSortGroupRef 4 :sortop 660}) :order ({SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1}) :distinctClause '
-)
-where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_rewrite set ev_action = replace(ev_action, ':resname partitionposition :ressortgroupref 5 :resorigtbl',':resname partitionposition :ressortgroupref 6 :resorigtbl') where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_rewrite set ev_action = replace(ev_action, '{TARGETENTRY :expr {WINDOWREF :winfnoid 7001 ','{TARGETENTRY :expr {CASE :casetype 20 :arg <> :args ({WHEN :expr {BOOLEXPR :boolop or :args ({OPEXPR :opno 630 :opfuncid 0 :opresulttype 16 :opretset false :args ({VAR :varno 5 :varattno 2 :vartype 18 :vartypmod -1 :varlevelsup 0 :varnoold 5 :varoattno 2} {CONST :consttype 18 :constlen 1 :constbyval true :constisnull false :constvalue 1 [ 114 0 0 0 0 0 0 0 ]})} {VAR :varno 6 :varattno 5 :vartype 16 :vartypmod -1 :varlevelsup 0 :varnoold 6 :varoattno 5})} :result {CONST :consttype 20 :constlen 8 :constbyval true :constisnull true :constvalue <>}}) :defresult {WINDOWREF :winfnoid 7001 ') where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_rewrite set ev_action = replace(ev_action, ':winlevel 0} :resno 11 :resname partitionrank ',':winlevel 0}} :resno 11 :resname partitionrank ') where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_rewrite set ev_action = replace(ev_action, ':winspec 0 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault ',':winspec 1 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault ') where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_rewrite set ev_action = replace(ev_action, 'parisdefault :ressortgroupref 0 :resorigtbl 5011 :resorigcol ','parisdefault :ressortgroupref 5 :resorigtbl 5011 :resorigcol ') where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_rewrite set ev_action = replace(ev_action, '({SORTCLAUSE :tleSortGroupRef 5 :sortop 95}) :frame <> :location -1}) :distinctClause ','({SORTCLAUSE :tleSortGroupRef 5 :sortop 58} {SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1} {WINDOWSPEC :name <> :parent <> :partition ({SORTCLAUSE :tleSortGroupRef 1 :sortop 609} {SORTCLAUSE :tleSortGroupRef 2 :sortop 660} {SORTCLAUSE :tleSortGroupRef 3 :sortop 95} {SORTCLAUSE :tleSortGroupRef 4 :sortop 660}) :order ({SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1}) :distinctClause ') where ev_class = 'public.pg_partitions'::regclass;
 commit;
+-- Reindex normal tables (not shared tables)
 reindex table public.pg_appendonly;
 reindex table public.pg_exttable;
+reindex table public.pg_stat_last_operation;
+-- end
+\i /Users/cwelton/review/main/cdb-pg/src/test/regress/sql/loadcat34_sh.sql
+begin;
+-- Updates for shared tables, these updates can only occur in ONE
+-- database (template0) otherwise we will end up with duplication
+-- issues.
+delete from public.pg_tablespace;
+reindex table public.pg_tablespace;
+vacuum full public.pg_tablespace;
+reindex table public.pg_filespace;
+-- Copy in the shared data
+copy public.pg_filespace from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_filespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
+copy public.pg_tablespace from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_tablespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
+copy public.pg_shdescription from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
+commit;
+-- Reindex shared tables
+reindex table public.pg_tablespace;
+reindex table public.pg_filespace;
 reindex table public.gp_configuration_history;
 reindex table public.gp_db_interfaces;
-NOTICE:  table "gp_db_interfaces" has no indexes
 reindex table public.gp_interfaces;
-NOTICE:  table "gp_interfaces" has no indexes
-reindex table public.pg_filespace;
-NOTICE:  table "pg_filespace" has no indexes
-reindex table public.pg_tablespace;
+-- end
 -- 
 -- Some manual fixups.
 --   The above loadcat added some columns to our "public" versions of the
@@ -1176,14 +1161,6 @@ insert into public.pg_attribute
   from pg_catalog.pg_attribute a
   where (attrelid, attnum) in ( ('public.pg_exttable'::regclass, 10) );
 update public.pg_class set relnatts=10 where oid = 'pg_catalog.pg_exttable'::regclass;
-insert into public.pg_attribute 
-  select 'pg_catalog.pg_tablespace'::regclass, a.attname, a.atttypid,
-    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
-    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
-    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
-  from pg_catalog.pg_attribute a
-  where (attrelid, attnum) in ( ('public.pg_tablespace'::regclass, 7) );
-update public.pg_class set relnatts=7 where oid = 'pg_catalog.pg_tablespace'::regclass;
 --
 -- 8. Compare upgraded 33 to actual 34
 --
@@ -1209,7 +1186,6 @@ from public.pg_attribute a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-     and c.relkind = 'r'
 except
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from pg_catalog.pg_attribute a,
@@ -1217,8 +1193,7 @@ from pg_catalog.pg_attribute a,
      pg_catalog.pg_type t
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r';
+     and c.oid < 10000;
  relname | attname | attnum | typname | typlen | atttypmod 
 ---------+---------+--------+---------+--------+-----------
 (0 rows)
@@ -1230,7 +1205,6 @@ from pg_catalog.pg_attribute a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-     and c.relkind = 'r'
 except
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute a,
@@ -1238,8 +1212,7 @@ from public.pg_attribute a,
      public.pg_type t
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r';
+     and c.oid < 10000;
  relname | attname | attnum | typname | typlen | atttypmod 
 ---------+---------+--------+---------+--------+-----------
 (0 rows)
@@ -1291,35 +1264,39 @@ from pg_catalog.pg_proc where oid < 10000;
 (0 rows)
 
 -- compare old and new pg_class
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from pg_catalog.pg_class where oid < 10000 and relname !~ 'pg_toast'
 except
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class where oid < 10000 and relname !~ 'pg_toast';
  relname | relnamespace | reltype | relowner | relam | reltablespace | reltoastrelid | reltoastidxid | relaosegrelid | relaosegidxid | relhasindex | relisshared | relkind | relstorage | relnatts | relchecks | reltriggers | relukeys | relfkeys | relrefs | relhasoids | relhaspkey | relhasrules | relhassubclass | reloptions 
 ---------+--------------+---------+----------+-------+---------------+---------------+---------------+---------------+---------------+-------------+-------------+---------+------------+----------+-----------+-------------+----------+----------+---------+------------+------------+-------------+----------------+------------
 (0 rows)
 
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class where oid < 10000 and relname !~ 'pg_toast'
 except
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from pg_catalog.pg_class where oid < 10000 and relname !~ 'pg_toast';
  relname | relnamespace | reltype | relowner | relam | reltablespace | reltoastrelid | reltoastidxid | relaosegrelid | relaosegidxid | relhasindex | relisshared | relkind | relstorage | relnatts | relchecks | reltriggers | relukeys | relfkeys | relrefs | relhasoids | relhaspkey | relhasrules | relhassubclass | reloptions 
 ---------+--------------+---------+----------+-------+---------------+---------------+---------------+---------------+---------------+-------------+-------------+---------+------------+----------+-----------+-------------+----------+----------+---------+------------+------------+-------------+----------------+------------
@@ -1528,7 +1505,9 @@ drop table
   public.pg_exttable_v33,
   public.gp_configuration_history,
   public.gp_db_interfaces,
-  public.gp_interfaces;
+  public.gp_interfaces,
+  public.pg_filespace,
+  public.pg_stat_last_operation;
 drop view
    public.pg_partitions_v33;
 drop view

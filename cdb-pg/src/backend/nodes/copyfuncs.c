@@ -3147,6 +3147,19 @@ _copyVariableResetStmt(VariableResetStmt *from)
 	return newnode;
 }
 
+static CreateFileSpaceStmt *
+_copyCreateFileSpaceStmt(CreateFileSpaceStmt *from)
+{
+	CreateFileSpaceStmt *newnode = makeNode(CreateFileSpaceStmt);
+
+	COPY_STRING_FIELD(filespacename);
+	COPY_STRING_FIELD(owner);
+	COPY_NODE_FIELD(locations);
+	COPY_SCALAR_FIELD(fsoid);
+
+	return newnode;
+}
+
 static CreateTableSpaceStmt *
 _copyCreateTableSpaceStmt(CreateTableSpaceStmt *from)
 {
@@ -4080,6 +4093,9 @@ copyObject(void *from)
 			break;
 		case T_VariableResetStmt:
 			retval = _copyVariableResetStmt(from);
+			break;
+		case T_CreateFileSpaceStmt:
+			retval = _copyCreateFileSpaceStmt(from);
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _copyCreateTableSpaceStmt(from);

@@ -298,9 +298,6 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		ObjectIdGetDatum(ownerId);
 	values[Anum_pg_tablespace_spcfsoid - 1] =
 		ObjectIdGetDatum(filespaceoid);
-	nulls[Anum_pg_tablespace_spclocation - 1] = true;
-	nulls[Anum_pg_tablespace_spcprilocations - 1] = true;
-	nulls[Anum_pg_tablespace_spcmirlocations - 1] = true;
 	nulls[Anum_pg_tablespace_spcacl - 1] = true;
 
 	tuple = heap_form_tuple(rel->rd_att, values, nulls);
@@ -318,11 +315,15 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	/* We keep the lock on pg_tablespace until commit */
 	heap_close(rel, NoLock);
 
-	/* Record dependency on owner */
+	/*
+	 * Record dependency on owner 
+	 *
+	 * We do not record the dependency on pg_filespace because we do not track
+	 * dependencies between shared objects.  Additionally the pg_tablespace 
+	 * table itself contains the foreign key back to pg_filespace and can be
+	 * used to fulfill the same purpose that an entry in pg_shdepend would. 
+	 */	 
 	recordDependencyOnOwner(TableSpaceRelationId, tablespaceoid, ownerId);
-
-	/* Add dependency on filespace? */
-	// FIXME
 
 	/*
 	 * Create the PG_VERSION file in the target directory.	This has several
@@ -391,7 +392,11 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 				 errmsg("tablespace name may not be qualified")));
 	tablespacename = strVal(linitial(names));
 
-	/* XXX: Do we need to disallow DROP CASCADE? */
+	/* Disallow CASCADE */
+	if (behavior == DROP_CASCADE)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("syntax at or near \"cascade\"")));
 
 	/*
 	 * Find the target tuple
@@ -451,6 +456,9 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 
 	/*
 	 * Remove dependency on owner.
+	 *
+	 * If shared dependencies are addded between filespace <=> tablespace
+	 * they will be deleted as well.
 	 */
 	deleteSharedDependencyRecordsFor(TableSpaceRelationId, tablespaceoid);
 

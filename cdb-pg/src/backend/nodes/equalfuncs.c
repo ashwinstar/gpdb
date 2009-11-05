@@ -1444,6 +1444,16 @@ _equalVariableResetStmt(VariableResetStmt *a, VariableResetStmt *b)
 }
 
 static bool
+_equalCreateFileSpaceStmt(CreateFileSpaceStmt *a, CreateFileSpaceStmt *b)
+{
+	COMPARE_STRING_FIELD(filespacename);
+	COMPARE_STRING_FIELD(owner);
+	COMPARE_NODE_FIELD(locations);
+
+	return true;
+}
+
+static bool
 _equalCreateTableSpaceStmt(CreateTableSpaceStmt *a, CreateTableSpaceStmt *b)
 {
 	COMPARE_STRING_FIELD(tablespacename);
@@ -2474,6 +2484,9 @@ equal(void *a, void *b)
 			break;
 		case T_VariableResetStmt:
 			retval = _equalVariableResetStmt(a, b);
+			break;
+		case T_CreateFileSpaceStmt:
+			retval = _equalCreateFileSpaceStmt(a, b);
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _equalCreateTableSpaceStmt(a, b);

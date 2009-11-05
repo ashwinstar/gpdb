@@ -71,18 +71,19 @@ create table public.pg_exttable (reloid oid not null,
 								 rejectlimittype char,
 								 fmterrtbl oid,
 								 encoding integer);
-create table public.pg_tablespace(spcname name,
-	                              spcowner oid,
-								  spclocation text,
-								  spcacl aclitem[],
-								  spcprilocations text[],
-								  spcmirlocations text[]) with oids;
+
+-- We cheat on this table since it is being dropped and recreated, which
+-- doesn't work well in the context of upg2.  Here we simply define it like
+-- it should look when fully upgraded so the copy will work correctly.
+create table public.pg_tablespace(like pg_catalog.pg_tablespace) with oids;
+create table public.pg_filespace(like pg_catalog.pg_filespace) with oids;
+create unique index pg_filespace_fsname_index on public.pg_filespace (fsname);
 
 -- These tables we only create so that the REINDEX statements wont error
-create table public.gp_configuration_history(like pg_catalog.gp_configuration_history);
-create table public.gp_db_interfaces(like pg_catalog.gp_db_interfaces);
-create table public.gp_interfaces(like pg_catalog.gp_interfaces);
-create table public.pg_filespace(like pg_catalog.pg_filespace);
+create table public.gp_configuration_history(foo text);
+create table public.gp_db_interfaces(foo text);
+create table public.gp_interfaces(foo text);
+create table public.pg_stat_last_operation(foo text);
 
 --
 -- 2. Build the 33 catalog
@@ -342,7 +343,6 @@ from public.pg_attribute a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-     and c.relkind = 'r'
 except
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute_v33 a,
@@ -350,8 +350,7 @@ from public.pg_attribute_v33 a,
      public.pg_type_v33 t
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r';
+     and c.oid < 10000;
 
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute_v33 a,
@@ -360,7 +359,6 @@ from public.pg_attribute_v33 a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-     and c.relkind = 'r'
 except
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute a,
@@ -368,8 +366,7 @@ from public.pg_attribute a,
      public.pg_type t
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r';
+     and c.oid < 10000;
 
 -- compare old and new pg_index
 select * from public.pg_index_v33 where indexrelid < 10000
@@ -406,32 +403,36 @@ select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
 from public.pg_proc_v33 where oid < 10000;
 
 -- compare old and new pg_class
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class_v33 where oid < 10000 and relname !~ 'pg_toast'
 except
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class where oid < 10000 and relname !~ 'pg_toast';
 
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class where oid < 10000 and relname !~ 'pg_toast'
 except
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class_v33 where oid < 10000 and relname !~ 'pg_toast';
 
 -- compare old and new pg_aggregate
@@ -515,8 +516,10 @@ select * from public.pg_exttable_v33 where reloid < 10000;
 --
 -- 7. Run the scripts that upgrade from 33->34
 --      phase 1:  loadcat34
+--      phase 2:  loadcat34_sh
 --
 \i @abs_srcdir@/sql/loadcat34.sql
+\i @abs_srcdir@/sql/loadcat34_sh.sql
 
 -- 
 -- Some manual fixups.
@@ -539,14 +542,6 @@ insert into public.pg_attribute
   from pg_catalog.pg_attribute a
   where (attrelid, attnum) in ( ('public.pg_exttable'::regclass, 10) );
 update public.pg_class set relnatts=10 where oid = 'pg_catalog.pg_exttable'::regclass;
-insert into public.pg_attribute 
-  select 'pg_catalog.pg_tablespace'::regclass, a.attname, a.atttypid,
-    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
-    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
-    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
-  from pg_catalog.pg_attribute a
-  where (attrelid, attnum) in ( ('public.pg_tablespace'::regclass, 7) );
-update public.pg_class set relnatts=7 where oid = 'pg_catalog.pg_tablespace'::regclass;
 
 --
 -- 8. Compare upgraded 33 to actual 34
@@ -571,7 +566,6 @@ from public.pg_attribute a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-     and c.relkind = 'r'
 except
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from pg_catalog.pg_attribute a,
@@ -579,8 +573,7 @@ from pg_catalog.pg_attribute a,
      pg_catalog.pg_type t
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r';
+     and c.oid < 10000;
 
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from pg_catalog.pg_attribute a,
@@ -589,7 +582,6 @@ from pg_catalog.pg_attribute a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-     and c.relkind = 'r'
 except
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute a,
@@ -597,8 +589,7 @@ from public.pg_attribute a,
      public.pg_type t
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
-     and c.oid < 10000
-     and c.relkind = 'r';
+     and c.oid < 10000;
 
 -- compare old and new pg_index
 select * from pg_catalog.pg_index where indexrelid < 10000
@@ -635,32 +626,36 @@ select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
 from pg_catalog.pg_proc where oid < 10000;
 
 -- compare old and new pg_class
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from pg_catalog.pg_class where oid < 10000 and relname !~ 'pg_toast'
 except
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class where oid < 10000 and relname !~ 'pg_toast';
 
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class where oid < 10000 and relname !~ 'pg_toast'
 except
-select relname, relnamespace, reltype, relowner, relam, reltablespace,
-       reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, 
-       relhasindex, relisshared, relkind, relstorage, relnatts,
-	   relchecks, reltriggers, relukeys, relfkeys, relrefs, relhasoids,
-       relhaspkey, relhasrules, relhassubclass, reloptions
+select relname, relnamespace, 
+	   case when reltype > 10000 then 10000 else reltype end as reltype,
+       relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
+	   relaosegrelid, relaosegidxid, relhasindex, relisshared, relkind, 
+	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
+	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from pg_catalog.pg_class where oid < 10000 and relname !~ 'pg_toast';
 
 
@@ -806,7 +801,9 @@ drop table
   public.pg_exttable_v33,
   public.gp_configuration_history,
   public.gp_db_interfaces,
-  public.gp_interfaces;
+  public.gp_interfaces,
+  public.pg_filespace,
+  public.pg_stat_last_operation;
 
 drop view
    public.pg_partitions_v33;

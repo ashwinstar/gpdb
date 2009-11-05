@@ -3973,6 +3973,12 @@ This issue must be resolved before upgrade can complete.
         
         def transform(path, dbs, tfile):
             for dboid, db in dbs.iteritems():
+
+                # The shared table upgrade is only run for template0
+                if (os.path.basename(tfile) == 'loadcat34_sh.source' and 
+                    db != 'template0'):
+                    continue
+
                 logger.info('... ' + db)
                 transform_db(path, db, dboid, tfile)
         
@@ -4096,7 +4102,8 @@ This issue must be resolved before upgrade can complete.
                                   "upg2_pg_depend_toadd32.data"])
 
             if (self.oldversion <= '3.3' and self.newversion >= '3.4.0.0'):
-                runfiles.extend(["loadcat34.source.in"])
+                runfiles.extend(["loadcat34.source.in",
+                                 "loadcat34_sh.source.in"])
                 datafiles.extend(["upg2_pg_class_toadd33.data.in",
                                   "upg2_pg_attribute_toadd33.data.in",
                                   "upg2_pg_type_toadd33.data.in",
@@ -4104,7 +4111,12 @@ This issue must be resolved before upgrade can complete.
                                   "upg2_pg_proc_toadd33.data",
                                   "upg2_pg_namespace_toadd33.data",
                                   "upg2_pg_description_toadd33.data",
-                                  "upg2_pg_depend_toadd33.data"])
+                                  "upg2_pg_depend_toadd33.data",
+                                  "upg2_pg_shdescription_toadd33.data.in",
+                                  "upg2_pg_filespace_toadd33.data",
+                                  "upg2_pg_tablespace_toadd33.data"])
+
+
 
             h = self.newhome
             

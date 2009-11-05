@@ -1,13 +1,21 @@
 begin;
+
+-- Before we copy in the new catalog entrees we begin by deleting the old
+-- definition of pg_tablespace;
+delete from @gpupgradeschemaname@.pg_depend where refobjid='pg_catalog.pg_tablespace'::regtype;
+delete from @gpupgradeschemaname@.pg_type where typrelid='pg_catalog.pg_tablespace'::regclass;
+delete from @gpupgradeschemaname@.pg_attribute where attrelid='pg_catalog.pg_tablespace'::regclass;
+delete from @gpupgradeschemaname@.pg_class where oid='pg_catalog.pg_tablespace'::regclass;
+
+-- Copy in the new catalog definitions
 copy @gpupgradeschemaname@.pg_class from '@gpupgradedatadir@/upg2_pg_class_toadd33.data' oids null E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_attribute from '@gpupgradedatadir@/upg2_pg_attribute_toadd33.data' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_index from '@gpupgradedatadir@/upg2_pg_index_toadd33.data' null as E'\\N' csv delimiter '|' header;
-copy @gpupgradeschemaname@.pg_type from '@gpupgradedatadir@/upg2_pg_type_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_proc from '@gpupgradedatadir@/upg2_pg_proc_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_type from '@gpupgradedatadir@/upg2_pg_type_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_namespace from '@gpupgradedatadir@/upg2_pg_namespace_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_description from '@gpupgradedatadir@/upg2_pg_description_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_depend from '@gpupgradedatadir@/upg2_pg_depend_toadd33.data' null as E'\\N' csv delimiter '|' header;
-copy @gpupgradeschemaname@.pg_shdescription from '@gpupgradedatadir@/upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
 
 -- fix up pg_appendonly
 alter table @gpupgradeschemaname@.pg_appendonly add column columnstore boolean;
@@ -19,68 +27,28 @@ alter table @gpupgradeschemaname@.pg_exttable add column writable boolean;
 update @gpupgradeschemaname@.pg_exttable set writable='f';
 alter table @gpupgradeschemaname@.pg_exttable alter column writable set not null;
 
--- fix up pg_tablespace
-alter table @gpupgradeschemaname@.pg_tablespace add column spcfsoid oid;
-update @gpupgradeschemaname@.pg_tablespace set spcfsoid = 3052;   -- oid of "pg_system" filespace 
-
 -- upgrade pg_partitions.parentpartitioname
 
 -- Need to manually diff the view definitions and extract the changed
 -- portions.  Yuck!
 
-update @gpupgradeschemaname@.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-':resname partitionposition :ressortgroupref 5 :resorigtbl',
-':resname partitionposition :ressortgroupref 6 :resorigtbl')
-where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+update @gpupgradeschemaname@.pg_rewrite set ev_action = replace(ev_action, ':resname partitionposition :ressortgroupref 5 :resorigtbl',':resname partitionposition :ressortgroupref 6 :resorigtbl') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
 
-update @gpupgradeschemaname@.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-'{TARGETENTRY :expr {WINDOWREF :winfnoid 7001 ',
-'{TARGETENTRY :expr {CASE :casetype 20 :arg <> :args ({WHEN :expr {BOOLEXPR :boolop or :args ({OPEXPR :opno 630 :opfuncid 0 :opresulttype 16 :opretset false :args ({VAR :varno 5 :varattno 2 :vartype 18 :vartypmod -1 :varlevelsup 0 :varnoold 5 :varoattno 2} {CONST :consttype 18 :constlen 1 :constbyval true :constisnull false :constvalue 1 [ 114 0 0 0 0 0 0 0 ]})} {VAR :varno 6 :varattno 5 :vartype 16 :vartypmod -1 :varlevelsup 0 :varnoold 6 :varoattno 5})} :result {CONST :consttype 20 :constlen 8 :constbyval true :constisnull true :constvalue <>}}) :defresult {WINDOWREF :winfnoid 7001 '
-)
-where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+update @gpupgradeschemaname@.pg_rewrite set ev_action = replace(ev_action, '{TARGETENTRY :expr {WINDOWREF :winfnoid 7001 ','{TARGETENTRY :expr {CASE :casetype 20 :arg <> :args ({WHEN :expr {BOOLEXPR :boolop or :args ({OPEXPR :opno 630 :opfuncid 0 :opresulttype 16 :opretset false :args ({VAR :varno 5 :varattno 2 :vartype 18 :vartypmod -1 :varlevelsup 0 :varnoold 5 :varoattno 2} {CONST :consttype 18 :constlen 1 :constbyval true :constisnull false :constvalue 1 [ 114 0 0 0 0 0 0 0 ]})} {VAR :varno 6 :varattno 5 :vartype 16 :vartypmod -1 :varlevelsup 0 :varnoold 6 :varoattno 5})} :result {CONST :consttype 20 :constlen 8 :constbyval true :constisnull true :constvalue <>}}) :defresult {WINDOWREF :winfnoid 7001 ') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
 
-update @gpupgradeschemaname@.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-':winlevel 0} :resno 11 :resname partitionrank ',
-':winlevel 0}} :resno 11 :resname partitionrank '
-)
-where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+update @gpupgradeschemaname@.pg_rewrite set ev_action = replace(ev_action, ':winlevel 0} :resno 11 :resname partitionrank ',':winlevel 0}} :resno 11 :resname partitionrank ') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
 
-update @gpupgradeschemaname@.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-':winspec 0 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault ',
-':winspec 1 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault '
-)
-where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+update @gpupgradeschemaname@.pg_rewrite set ev_action = replace(ev_action, ':winspec 0 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault ',':winspec 1 :winindex 0 :winstage 0 :winlevel 0} :resno 18 :resname partitionnodefault ') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
 
-update @gpupgradeschemaname@.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-'parisdefault :ressortgroupref 0 :resorigtbl 5011 :resorigcol ',
-'parisdefault :ressortgroupref 5 :resorigtbl 5011 :resorigcol '
-)
-where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+update @gpupgradeschemaname@.pg_rewrite set ev_action = replace(ev_action, 'parisdefault :ressortgroupref 0 :resorigtbl 5011 :resorigcol ','parisdefault :ressortgroupref 5 :resorigtbl 5011 :resorigcol ') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
 
-update @gpupgradeschemaname@.pg_rewrite 
-set ev_action = 
-replace(ev_action, 
-'({SORTCLAUSE :tleSortGroupRef 5 :sortop 95}) :frame <> :location -1}) :distinctClause ',
-'({SORTCLAUSE :tleSortGroupRef 5 :sortop 58} {SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1} {WINDOWSPEC :name <> :parent <> :partition ({SORTCLAUSE :tleSortGroupRef 1 :sortop 609} {SORTCLAUSE :tleSortGroupRef 2 :sortop 660} {SORTCLAUSE :tleSortGroupRef 3 :sortop 95} {SORTCLAUSE :tleSortGroupRef 4 :sortop 660}) :order ({SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1}) :distinctClause '
-)
-where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+update @gpupgradeschemaname@.pg_rewrite set ev_action = replace(ev_action, '({SORTCLAUSE :tleSortGroupRef 5 :sortop 95}) :frame <> :location -1}) :distinctClause ','({SORTCLAUSE :tleSortGroupRef 5 :sortop 58} {SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1} {WINDOWSPEC :name <> :parent <> :partition ({SORTCLAUSE :tleSortGroupRef 1 :sortop 609} {SORTCLAUSE :tleSortGroupRef 2 :sortop 660} {SORTCLAUSE :tleSortGroupRef 3 :sortop 95} {SORTCLAUSE :tleSortGroupRef 4 :sortop 660}) :order ({SORTCLAUSE :tleSortGroupRef 6 :sortop 95}) :frame <> :location -1}) :distinctClause ') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
 
 commit;
 
+-- Reindex normal tables (not shared tables)
 reindex table @gpupgradeschemaname@.pg_appendonly;
 reindex table @gpupgradeschemaname@.pg_exttable;
-reindex table @gpupgradeschemaname@.gp_configuration_history;
-reindex table @gpupgradeschemaname@.gp_db_interfaces;
-reindex table @gpupgradeschemaname@.gp_interfaces;
-reindex table @gpupgradeschemaname@.pg_filespace;
-reindex table @gpupgradeschemaname@.pg_tablespace;
+reindex table @gpupgradeschemaname@.pg_stat_last_operation;
+
+-- end
