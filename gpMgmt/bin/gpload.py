@@ -32,12 +32,10 @@ except ImportError:
     sys.exit(2)
 
 try:
-    import pg8000
-except ImportError:
-    sys.stderr.write("gpload needs pg8000")
-    sys.exit(2)
+    import pg
 except Exception, e:
-    sys.stderr.write("could not import pg8000");
+    errorMsg = "gpload was unable to import The PyGreSQL Python module (pg.py) - ", str(e)
+    sys.stderr.write(errorMsg)
     sys.exit(2)
  
 import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
@@ -563,9 +561,15 @@ def build_safe_table_name(conn, tab, into_cols = None):
         res.append(quote_ident(t))
     return '.'.join(res)
 
-def notice_processor(a):
-    r = re.compile("^Found (\d) data formatting errors.*")
-    m = r.match(a.msg)
+def notice_processor(self):
+    theNotices = self.db.notices()
+    r = re.compile("^NOTICE:  Found (\d) data formatting errors.*")
+    messageNumber = 0
+    m = None
+    while messageNumber < len(theNotices) and m == None:
+       aNotice = theNotices[messageNumber]
+       m = r.match(aNotice)
+       messageNumber = messageNumber + 1
     if m:
         global NUM_WARN_ROWS
         NUM_WARN_ROWS = int(m.group(1))
@@ -1313,8 +1317,9 @@ class gpload:
         """
         Connect to the backend
         """
-        if self.pg8000 != None:
-            self.pg8000.close()
+        if self.db != None: 
+            self.db.close()
+            self.db = None
         if self.options.W:
             if self.options.password==None:
                 self.options.password = getpass.getpass()
@@ -1333,26 +1338,25 @@ class gpload:
                      " host=" + str(self.options.h) +
                      " port=" + str(self.options.p) +
                      " database=" + str(self.options.d))
-            self.pg8000 = pg8000.Connection(user=self.options.U,
-                                            host=self.options.h,
-                                            port=self.options.p,
-                                            database=self.options.d,
-                                            password=self.options.password,
-                                            socket_timeout=None)
-        except pg8000.errors.InterfaceError,e:
-            if e[0] == "server requesting MD5 password authentication, but no password was provided":
+            self.db = pg.DB( dbname=self.options.d
+                           , host=self.options.h 
+                           , port=self.options.p
+                           , user=self.options.U
+                           , passwd=self.options.password
+                           )
+            self.log(self.DEBUG, "Successfully connected to database")
+        except Exception, e:
+            errorMessage = str(e)
+            if errorMessage.find("no password supplied") != -1:
                 self.options.password = getpass.getpass()
                 recurse += 1
                 if recurse > 10:
                     self.log(self.ERROR, "too many login attempt failures")
-
                 self.setup_connection(recurse)
-            else: 
+            else:
                 self.log(self.ERROR, "could not connect to database: %s. Is " \
-                    "the Greenplum Database running on port %i?" % (e[0],
+                    "the Greenplum Database running on port %i?" % (errorMessage,
                     self.options.p))
-        except pg8000.errors.ProgrammingError, e:
-            self.log(self.ERROR, "could not connect to database: %s" % e[2])
 
     def read_columns(self):
         columns = self.getconfig('gpload:input:columns',list,None)
@@ -1406,16 +1410,18 @@ class gpload:
         if i>=0:
             tableSchema = tableName[:i]
             tableName = tableName[i+1:]
-        self.pg8000.execute("""select *, data_type in ('int4', 'bigint') and 
+        queryString = """select *, data_type in ('int4', 'bigint') and 
                                column_default ~ E'nextval\\\\(.*regclass' as 
                                has_sequence 
                                from information_schema.columns where 
-                               table_name=$1 and table_schema=$2 order by 
-                               ordinal_position""", tableName, tableSchema)
+                               table_name='%s' and table_schema='%s' order by 
+                               ordinal_position""" % (tableName, tableSchema)
         count = 0
         self.into_columns = []
         self.into_columns_dict = dict()
-        for row in self.pg8000.iterate_dict():
+        resultList = self.db.query(queryString).dictresult()
+        while count < len(resultList):
+            row = resultList[count]
             count += 1
             ct = unicode(row['data_type'])
             if ct=='numeric':
@@ -1451,8 +1457,8 @@ class gpload:
                         where c.relname = '%s' and 
                         n.nspname = '%s' and 
                         n.oid = c.relnamespace""" % (tableName, tableSchema)
-            self.pg8000.execute(sql.encode('utf-8'))
-            if self.pg8000.row_count > 0:
+            resultList = self.db.query(sql.encode('utf-8')).getresult()
+            if len(resultList) > 0:
                 self.log(self.ERROR, "permission denied for table %s.%s" % \
                             (tableSchema, tableName))
             else:
@@ -1514,7 +1520,7 @@ class gpload:
         else:
             from_cols = self.from_columns
 
-        sql += "(%s)"%','.join(map(lambda a:'%s %s' % (build_safe_table_name(self.pg8000, a[0]), a[1]), from_cols))
+        sql += "(%s)"%','.join(map(lambda a:'%s %s' % (build_safe_table_name(self.db, a[0]), a[1]), from_cols))
 
         sql += "location(%s)"%','.join(map(quote,self.locations))
         sql += "format%s("%quote(format)
@@ -1573,17 +1579,17 @@ class gpload:
         self.cleanupSql.append('drop external table if exists ext_%s'%self.name)
 
         try:
-                self.pg8000.execute(sql.encode('utf-8'))
+                self.db.query(sql.encode('utf-8'))
         except Exception, e:
             self.log(self.ERROR, 'could not run SQL "%s": %s' % (sql, unicode(e)))
 
     def count_errors(self):
         if self.error_table and not self.options.D:
             # make sure we only get errors for our own instance
-            self.pg8000.execute('select count(*) from ' + self.error_table +
-                                " WHERE relname = 'ext_%s'" % self.name)
-            return self.pg8000.iterate_dict().next()['count']
-        return NUM_WARN_ROWS
+            results = self.db.query('select count(*) from ' + self.error_table +
+                                " WHERE relname = 'ext_%s'" % self.name).getresult()
+            return results[0]
+        return notice_processor(self)
 
     def report_errors(self):
         errors = self.count_errors()
@@ -1606,11 +1612,10 @@ class gpload:
         if not self.from_cols_from_user:
             cols = filter(lambda a:a[3] == False, cols)
 
-
-        self.pg8000.NoticeReceived += notice_processor
+        # KAS must fix this - self.pg8000.NoticeReceived += notice_processor
         sql = 'INSERT INTO %s' % dest
-        sql += ' (%s)'%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[0]),cols))
-        sql += ' SELECT %s '%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[2], self.from_columns), cols))
+        sql += ' (%s)'%','.join(map(lambda a:build_safe_table_name(self.db,a[0]),cols))
+        sql += ' SELECT %s '%','.join(map(lambda a:build_safe_table_name(self.db,a[2], self.from_columns), cols))
         sql += ' FROM ext_%s'%self.name
 
         # cktan: progress thread is not reliable. revisit later.
@@ -1620,34 +1625,11 @@ class gpload:
         self.log(self.LOG, sql)
         if not self.options.D:
             try:
-                self.pg8000.execute(sql.encode('utf-8'))
+                self.db.query(sql.encode('utf-8'))
 
-            except pg8000.ProgrammingError, p:
-                # See if we hit the segment reject limit
-                if p[1] == '42000': # invalid schema
-                    self.log(self.ERROR, 'error in schema: %s' % p[2])
-                elif p[1] == '42703':
-                    self.log(self.ERROR, '%s: likely error in mapping configuration' % p[2])
-                elif p[1] == '40M00':
-                    # seems like we did
-                    self.log(self.ERROR, 'error limit reached while loading ' +
-                        'data')
-                else:
-                    errstr = p[2]
-                    r = re.compile("^http response code 404 while gpfdist://" +
-                        "([^/]+):\d+/([^ ]+)")
-                    m = r.match(errstr)
-                    if m:
-                        e = m.group(2)
-                        if e[-1] == ',': # trim trailing ,
-                            e = e[:-1]
-                        self.log(self.ERROR, 'file "' + e + '"' +
-                                ' does not exist on host ' + m.group(1))
-                    else:
-                        errstr = errstr.decode('utf-8')
-                        self.log(self.ERROR, u'%s ' % (errstr)  + 
+            except Exception, e:
+                self.log(self.ERROR, u'%s ' % str(e)  + 
                                  u'encountered while running %s' % (sql))
-
 
         #progress.condition.acquire()
         #progress.number = 1
@@ -1682,14 +1664,14 @@ class gpload:
         """
         sql = 'update %s into_table ' % self.table_quoted
 
-        sql += 'set %s '%','.join(self.map_stuff('gpload:output:update_columns',lambda x,y:'%s=from_table.%s' % (build_safe_table_name(self.pg8000, x), build_safe_table_name(self.pg8000, y)),index))
+        sql += 'set %s '%','.join(self.map_stuff('gpload:output:update_columns',lambda x,y:'%s=from_table.%s' % (build_safe_table_name(self.db, x), build_safe_table_name(self.db, y)),index))
 
-        sql += 'from %s from_table' % build_safe_table_name(self.pg8000, fromname)
+        sql += 'from %s from_table' % build_safe_table_name(self.db, fromname)
 
         match = self.map_stuff('gpload:output:match_columns',
                     lambda x,y:'into_table.%s=from_table.%s' % \
-                    (build_safe_table_name(self.pg8000, x),
-                     build_safe_table_name(self.pg8000, y)), index)
+                    (build_safe_table_name(self.db, x),
+                     build_safe_table_name(self.db, y)), index)
 
         update_condition = self.getconfig('gpload:output:update_condition',
                             unicode, None)
@@ -1711,19 +1693,21 @@ class gpload:
         self.log(self.LOG, sql)
         if not self.options.D:
             try:
-                self.pg8000.execute(sql.encode('utf-8'))
-            except pg8000.ProgrammingError, p:
-                self.log(self.ERROR, 'error encountered executing SQL "%s": %s' % (sql, p[2]))
+                self.db.query(sql.encode('utf-8'))
+            except Exception, e:
+                self.log(self.ERROR, 'error encountered executing SQL "%s": %s' % (sql, str(e)))
 
     def get_table_dist_key(self):
         sql = "select attname from pg_attribute a, gp_distribution_policy p "+\
               "where a.attrelid = '" + self.table + "'::regclass and " + \
               "a.attrelid = " + \
               "p.localoid and a.attnum = any (p.attrnums);"
-        self.pg8000.execute(sql.encode('utf-8'))
+        resultList = self.db.query(sql.encode('utf-8')).getresult()
         attrs = []
-        for a in self.pg8000.iterate_tuple():
-            attrs.append(a[0])
+        count = 0
+        while count < len(resultList):
+            attrs.append(resultList[count])
+            count = count + 1
 
         return attrs
 
@@ -1777,7 +1761,7 @@ class gpload:
             from_cols = self.from_columns
         
         cols = map(lambda a:'%s %s' %
-                   (build_safe_table_name(self.pg8000, a[0]), a[1]), from_cols)
+                   (build_safe_table_name(self.db, a[0]), a[1]), from_cols)
 
         sql += "(%s)" % ','.join(cols)
         # make sure we set the correct distribution policy
@@ -1788,7 +1772,7 @@ class gpload:
 
         if not self.options.D:
             self.cleanupSql.append('drop table if exists temp_%s'%self.name)
-            self.pg8000.execute(sql.encode('utf-8'))
+            self.db.query(sql.encode('utf-8'))
 
         self.create_external_table()
         self.do_insert('temp_%s' % self.name)
@@ -1803,14 +1787,14 @@ class gpload:
         self.log(self.DEBUG, sql)
         if not self.options.D:
             self.cleanupSql.append('drop table if exists temp_%s'%self.name)
-            self.pg8000.execute(sql.encode('utf-8'))
+            self.db.query(sql.encode('utf-8'))
         self.create_external_table()
         self.do_insert('temp_%s' % self.name)
         self.do_update('temp_%s' % self.name,0)
         sql = 'insert into %s(' % self.table_quoted
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
         matchColumns = self.getconfig('gpload:output:match_columns',list)
-        sql += 'select %s '%','.join(map(lambda a:'from_table.%s' % build_safe_table_name(self.pg8000, a[0]),self.into_columns))
+        sql += 'select %s '%','.join(map(lambda a:'from_table.%s' % build_safe_table_name(self.db, a[0]),self.into_columns))
         sql += 'from(select *,row_number()over(partition by %s)as gpload_row_number '%','.join(matchColumns)
         sql += 'from temp_%s)as from_table '%self.name
         sql += 'left outer join %s into_table ' % self.table_quoted
@@ -1821,7 +1805,7 @@ class gpload:
         sql += ')'
         self.log(self.LOG, sql)
         if not self.options.D:
-            self.pg8000.execute(sql.encode('utf-8'))
+            self.db.query(sql.encode('utf-8'))
 
     def do_method(self):
         # Is the table to be truncated before the load?
@@ -1834,9 +1818,8 @@ class gpload:
             if not self.options.D:
                 try:
                     truncateSQLtext = "truncate %s" % self.table_quoted
-                    self.pg8000.execute(truncateSQLtext.encode('utf-8'))
-                except pg8000.ProgrammingError, p:
-                    print p
+                    self.db.query(truncateSQLtext.encode('utf-8'))
+                except Exception, e:
                     self.log(self.ERROR, 'could not execute truncate target %s: %s' % (self.table_quoted, str(p)))
 
         # sql pre or post processing?
@@ -1850,11 +1833,10 @@ class gpload:
             self.log(self.LOG, "Pre-SQL from user: %s" % before)
             if not self.options.D:
                 try:
-                    self.pg8000.execute(before.encode('utf-8'))
-                except pg8000.ProgrammingError, p:
-                    print p
+                    self.db.query(before.encode('utf-8'))
+                except Exception, e:
                     self.log(self.ERROR, 'could not execute SQL in sql:before "%s": %s' %
-                             (before, str(p)))
+                             (before, str(e)))
 
         method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
         if method=='insert':
@@ -1870,17 +1852,17 @@ class gpload:
             self.log(self.LOG, "Post-SQL from user: %s" % after)
             if not self.options.D:
                 try:
-                    self.pg8000.execute(after.encode('utf-8'))
-                except pg8000.ProgrammingError, p:
+                    self.db.query(after.encode('utf-8'))
+                except Exception, e:
                     self.log(self.ERROR, 'could not execute SQL in sql:after "%s": %s' %
-                             (after, p[2]))
+                             (after, str(e)))
 
     def run2(self):
         self.log(self.DEBUG, 'config ' + str(self.config))
         start = time.time()
         self.read_config()
         self.setup_connection()
-        self.table_quoted = build_safe_table_name(self.pg8000, self.table)
+        self.table_quoted = build_safe_table_name(self.db, self.table)
         self.read_table_metadata()
         self.read_columns()
         self.read_mapping()
@@ -1889,7 +1871,7 @@ class gpload:
         self.log(self.INFO, 'running time: %.2f seconds'%(time.time()-start))
 
     def run(self):
-        self.pg8000 = None
+        self.db = None
         signal.signal(signal.SIGINT, handle_kill)
         signal.signal(signal.SIGTERM, handle_kill)
         # win32 doesn't do SIGQUIT
@@ -1916,8 +1898,8 @@ class gpload:
                 for a in self.cleanupSql:
                     try:
                         self.log(self.DEBUG, a)
-                        self.pg8000.execute(a.encode('utf-8'))
-                    except (pg8000.errors.InternalError,pg8000.errors.ProgrammingError):
+                        self.db.query(a.encode('utf-8'))
+                    except Exception:
                         traceback.print_exc(file=self.logfile)
                         self.logfile.flush()
                         traceback.print_exc()
