@@ -1382,7 +1382,7 @@ static float4 analyzeComputeNDistinct(Oid sampleTableOid,
 	sampleTableName = get_rel_name(sampleTableOid); // must be pfreed 	
 
 	initStringInfo(&str);
-	appendStringInfo(&str, "select count(distinct(Ta.%s))::float4 from only %s.%s as Ta where Ta.%s is not null", 
+	appendStringInfo(&str, "select count(*)::float4 from (select Ta.%s from only %s.%s as Ta group by Ta.%s) as Tb", 
 			quote_identifier(attributeName), 
 			quote_identifier(sampleSchemaName), 
 			quote_identifier(sampleTableName),
