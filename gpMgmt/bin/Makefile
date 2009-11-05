@@ -60,7 +60,6 @@ PYGRESQL_BIN_MAPPINGS_DIR=$($(BLD_ARCH)_PYGRESQL_BIN_MAPPINGS_DIR)
 
 pygresql:
 	@echo "--- PyGreSQL"
-	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PYGRESQL_DIR).tar.gz
 	cd $(INSTLOC)/ && . greenplum_path.sh && unset PYTHONHOME &&\
 	  export PATH=$(PYGRESQL_BIN_MAPPINGS_DIR)$(PATH) && \
 	  cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))" LDFLAGS="$(BLD_CFLAGS)" python setup.py build
