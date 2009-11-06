@@ -1119,7 +1119,7 @@ reindex table public.pg_appendonly;
 reindex table public.pg_exttable;
 reindex table public.pg_stat_last_operation;
 -- end
-\i /Users/cwelton/review/main/cdb-pg/src/test/regress/sql/loadcat34_sh.sql
+\i @abs_srcdir@/sql/loadcat34_sh.sql
 begin;
 -- Updates for shared tables, these updates can only occur in ONE
 -- database (template0) otherwise we will end up with duplication
@@ -1129,9 +1129,9 @@ reindex table public.pg_tablespace;
 vacuum full public.pg_tablespace;
 reindex table public.pg_filespace;
 -- Copy in the shared data
-copy public.pg_filespace from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_filespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
-copy public.pg_tablespace from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_tablespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
-copy public.pg_shdescription from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
+copy public.pg_filespace from '@abs_srcdir@/data//upg2_pg_filespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
+copy public.pg_tablespace from '@abs_srcdir@/data//upg2_pg_tablespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
+copy public.pg_shdescription from '@abs_srcdir@/data//upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
 commit;
 -- Reindex shared tables
 reindex table public.pg_tablespace;
