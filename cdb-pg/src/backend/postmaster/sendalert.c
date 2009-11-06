@@ -600,10 +600,10 @@ messagebody_cb(void **buf, int *len, void *arg)
 			if (errorData->remote_host != NULL && strlen(errorData->remote_host) > 0)
 			{
 				if (strcmp(errorData->remote_host,"[local]")==0)
-					strcat(message, " connected locally on master node");
+					strcat(message, " logged on locally from master node");
 				else
 				{
-					strcat(message," from host ");
+					strcat(message," logged on from host ");
 					strcat(message,errorData->remote_host);
 				}
 			}
@@ -614,13 +614,16 @@ messagebody_cb(void **buf, int *len, void *arg)
 		}
 		if (errorData->fix_fields.omit_location != 't')
 		{
-		if (errorData->fix_fields.gp_segment_id != -1)
-		{
-			strcat(message,"Error occurred on segment ");
-		}
-		else
-			strcat(message,"Error occurred on master segment");
-		strcat(message, "\r\n");
+			if (errorData->fix_fields.gp_segment_id != -1)
+			{
+				char segid[7];
+				pg_itoa(errorData->fix_fields.gp_segment_id,segid);
+				strcat(message,"Error occurred on segment ");
+				strcat(message,segid);
+			}
+			else
+				strcat(message,"Error occurred on master segment");
+			strcat(message, "\r\n");
 		}
 		strcat(message, "\r\n");
 
@@ -968,10 +971,10 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	{
 			const smtp_status_t *status = NULL;
 
-			smtp_recipient_t msg;
+			smtp_recipient_t rcpt;
 				msg = va_arg(alist, smtp_recipient_t);
-				if (msg != NULL)
-				status = smtp_recipient_status (msg);
+				if (rcpt != NULL)
+				status = smtp_recipient_status (rcpt);
 
 
 
@@ -982,7 +985,6 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 				elog(LOG,"SMTP server reports a RCPTSTATUS problem %d: %s", status->code, status->text);
 		}
 #endif
-	fprintf(mylog,"SMTP_EV_RCPTSTATUS\n");
 		break;
 	case SMTP_EV_MESSAGEDATA:
 		/*{
