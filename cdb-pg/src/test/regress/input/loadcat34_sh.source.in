@@ -1,0 +1,27 @@
+begin;
+
+-- Updates for shared tables, these updates can only occur in ONE
+-- database (template0) otherwise we will end up with duplication
+-- issues.
+
+delete from @gpupgradeschemaname@.pg_tablespace;
+reindex table @gpupgradeschemaname@.pg_tablespace;
+vacuum full @gpupgradeschemaname@.pg_tablespace;
+
+reindex table @gpupgradeschemaname@.pg_filespace;
+
+-- Copy in the shared data
+copy @gpupgradeschemaname@.pg_filespace from '@gpupgradedatadir@/upg2_pg_filespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
+copy @gpupgradeschemaname@.pg_tablespace from '@gpupgradedatadir@/upg2_pg_tablespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
+copy @gpupgradeschemaname@.pg_shdescription from '@gpupgradedatadir@/upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
+
+commit;
+
+-- Reindex shared tables
+reindex table @gpupgradeschemaname@.pg_tablespace;
+reindex table @gpupgradeschemaname@.pg_filespace;
+reindex table @gpupgradeschemaname@.gp_configuration_history;
+reindex table @gpupgradeschemaname@.gp_db_interfaces;
+reindex table @gpupgradeschemaname@.gp_interfaces;
+
+-- end
