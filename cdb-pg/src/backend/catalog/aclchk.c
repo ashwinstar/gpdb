@@ -1576,7 +1576,9 @@ static const char *const no_priv_msg[MAX_ACL_KIND] =
 	/* ACL_KIND_CONVERSION */
 	gettext_noop("permission denied for conversion %s"),
 	/* ACL_KIND_TABLESPACE */
-	gettext_noop("permission denied for tablespace %s")
+	gettext_noop("permission denied for tablespace %s"),
+	/* ACL_KIND_FILESPACE */
+	gettext_noop("permission denied for filespace %s")
 };
 
 static const char *const not_owner_msg[MAX_ACL_KIND] =
