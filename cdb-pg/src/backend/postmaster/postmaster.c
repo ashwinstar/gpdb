@@ -1705,18 +1705,22 @@ ServerLoop(void)
 
 		/* If we have lost the archiver, try to start a new one */
 		if (XLogArchivingActive() && PgArchPID == 0 && pmState == PM_RUN && !SyncMaster)
+		{
 			PgArchPID = pgarch_start();
 			if (Debug_print_server_processes)
 				elog(LOG,"restarted 'archiver process' as pid %ld",
 					 (long)PgArchPID);
+		}
 
 
 		/* If we have lost the stats collector, try to start a new one */
 		if (PgStatPID == 0 && pmState == PM_RUN && !SyncMaster)
+		{
 			PgStatPID = pgstat_start();
 			if (Debug_print_server_processes)
 				elog(LOG,"restarted 'statistics collector process' as pid %ld",
 					 (long)PgStatPID);
+		}
 
 
 
@@ -2099,7 +2103,6 @@ retry1:
 					 errmsg("sorry, too many clients already")));
 			break;
 		case CAC_OK:
-		//default:
 			break;
 	}
 
@@ -2184,7 +2187,7 @@ canAcceptConnections(void)
 		if (pmState == PM_WAIT_BACKUP)
 			return CAC_WAITBACKUP;		/* allow superusers only */
 #endif
-	if (Shutdown > NoShutdown)
+		if (Shutdown > NoShutdown)
 			return CAC_SHUTDOWN;	/* shutdown is pending */
 		if (!FatalError &&
 			(pmState == PM_STARTUP ||
@@ -2459,6 +2462,7 @@ pmdie(SIGNAL_ARGS)
 			 */
 			PostmasterStateMachine(); 
 
+			/* I think this test is dead code, and should be removed */
 			if (DLGetHead(BackendList))
  			{
  				if (Debug_print_server_processes)
@@ -2472,7 +2476,7 @@ pmdie(SIGNAL_ARGS)
 			if (StartupPID != 0 || FatalError)
  			{
  				if (Debug_print_server_processes)
- 					elog(LOG,"Startup going or fatal error");
+ 					elog(LOG,"Startup going or fatal error");				signal_child(BgWriterPID, SIGUSR2);
   				break;			/* let reaper() handle this */
  			}
 
@@ -2545,7 +2549,6 @@ pmdie(SIGNAL_ARGS)
 				if (AutoVacPID != 0)
 					signal_child(AutoVacPID, SIGTERM);
                 pmState = PM_WAIT_BACKENDS;
-					/* reaper() does the rest */
 			}
 
 
@@ -2577,7 +2580,6 @@ pmdie(SIGNAL_ARGS)
 				BgWriterPID = StartBackgroundWriter();
 			/* And tell it to shut down */
 			if (BgWriterPID != 0)
-				signal_child(BgWriterPID, SIGUSR2);
  			{
   				signal_child(BgWriterPID, SIGUSR2);
  				break;
@@ -2686,7 +2688,7 @@ static void do_reaper()
 
 	ereport(DEBUG4,
 			(errmsg_internal("reaping dead processes")));
-		//win32_RemoveChild(pid);
+
 	while (LOOPTEST())
 	{
 		LOOPHEADER();
@@ -2702,7 +2704,7 @@ static void do_reaper()
 			{
 				elog(LOG,"'%s' pid %ld exit status %d",
 				     procName, (long)pid, exitstatus);
-				didServiceProcessWork = true;
+				didServiceProcessWork = true; /* TODO: Should this be set in code that depends on a Debug GUC ? */
 			}
 		}
 
@@ -2778,43 +2780,41 @@ static void do_reaper()
 			 * situation, some of them may be alive already.
 			 */
 #if 0
+			/* GPDB doesn't have WalWriter, and we don't have AutoVacLauncher yet */
 			if (WalWriterPID == 0)
 				WalWriterPID = StartWalWriter();
 			if (AutoVacuumingActive() && AutoVacPID == 0)
 				AutoVacPID = StartAutoVacLauncher();
 #endif
-			if (Shutdown > NoShutdown && BgWriterPID != 0)
-				signal_child(BgWriterPID, SIGUSR2);
-			else if (Shutdown == NoShutdown)
+
+			if (XLogArchivingActive() && PgArchPID == 0)
 			{
-				if (XLogArchivingActive() && PgArchPID == 0)
+				PgArchPID = pgarch_start();
+				if (Debug_print_server_processes)
 				{
-					PgArchPID = pgarch_start();
-					if (Debug_print_server_processes)
-					{
-						elog(LOG,"on startup successful: started 'archiver process' as pid %ld",
-							 (long)PgArchPID);
-						didServiceProcessWork = true;
-					}
+					elog(LOG,"on startup successful: started 'archiver process' as pid %ld",
+							(long)PgArchPID);
+					didServiceProcessWork = true;
 				}
-				if (PgStatPID == 0)
+			}
+			if (PgStatPID == 0)
+			{
+				PgStatPID = pgstat_start();
+				if (Debug_print_server_processes)
 				{
-					PgStatPID = pgstat_start();
-					if (Debug_print_server_processes)
-					{
-						elog(LOG,"on startup successful: started 'statistics collector process' as pid %ld",
-							 (long)PgStatPID);
-						didServiceProcessWork = true;
-					}
+					elog(LOG,"on startup successful: started 'statistics collector process' as pid %ld",
+							(long)PgStatPID);
+					didServiceProcessWork = true;
 				}
+			}
 
-				for (s = 0; s < MaxPMSubType; s++)
+			for (s = 0; s < MaxPMSubType; s++)
+			{
+				PMSubProc *subProc = &PMSubProcList[s];
+
+				if (subProc->pid == 0 &&
+					ServiceStartable(subProc))
 				{
-					PMSubProc *subProc = &PMSubProcList[s];
-
-					if (subProc->pid == 0 &&
-						ServiceStartable(subProc))
-					{
 						subProc->pid =
 							(subProc->serverStart)();
 
@@ -2824,9 +2824,9 @@ static void do_reaper()
 								 subProc->procName, (long)subProc->pid);
 							didServiceProcessWork = true;
 						}
-					}
 				}
 			}
+
 			
 			/* at this point we are really open for business */
 			ereport(LOG,
@@ -2931,7 +2931,7 @@ static void do_reaper()
 					/* Waken archiver for the last time */
 					signal_child(PgArchPID, SIGUSR2);
 					pmState = PM_SHUTDOWN_2;
-			    }
+				}
 				else
 					pmState = PM_WAIT_DEAD_END;
 
@@ -2944,12 +2944,12 @@ static void do_reaper()
 			}
 			else
 			{
-			/*
-			 * Any unexpected exit of the bgwriter (including FATAL exit)
-			 * is treated as a crash.
-			 */
-			HandleChildCrash(pid, exitstatus,
-							 _("background writer process"));
+				/*
+				 * Any unexpected exit of the bgwriter (including FATAL exit)
+				 * is treated as a crash.
+				 */
+				HandleChildCrash(pid, exitstatus,
+								 _("background writer process"));
 			}
 
 
@@ -2958,11 +2958,12 @@ static void do_reaper()
 			 * checkpoint, we may as well just stop here; any recovery
 			 * required will happen on next postmaster start.
 			 */
+			 /* TODO: Is this code needed, or will PostmasterStateMachine handle this? */
 			if (Shutdown > NoShutdown &&
 				!DLGetHead(BackendList) && AutoVacPID == 0)
 			{
 				ereport(LOG,
-						(errmsg("abnormal database system shutdown")));
+						(errmsg("abnormal database system shutdown"),errSendAlert(true)));
 				ExitPostmaster(1);
 			}
 
@@ -3047,7 +3048,7 @@ static void do_reaper()
 			{
 				elog(LOG,"restarted 'system logger process' as pid %ld",
 					 (long)SysLoggerPID);
-				didServiceProcessWork = true;
+				didServiceProcessWork = true; /* TODO: Should this be set in code that depends on a Debug GUC? */
 			}
 			if (!EXIT_STATUS_0(exitstatus))
 				LogChildExit(LOG, _("system logger process"),
@@ -3061,6 +3062,10 @@ static void do_reaper()
 		CleanupBackend(pid, exitstatus);
 	}							/* loop over pending child-death reports */
 
+	/* 
+	 * TODO: All of the code in this if block should be in PostmasterStateMachine, and 
+	 * this code should be removed.  Chuck 
+	 */
 	if (FatalError)
 	{
 		/*
@@ -3638,6 +3643,7 @@ PostmasterStateMachine(void)
 		 * normal state transition leading up to PM_WAIT_DEAD_END, or during
 		 * FatalError processing.
 		 */
+		/* TODO: The GPDB specific children should be added to the list of what we check */
 		if (DLGetHead(BackendList) == NULL &&
 			PgArchPID == 0 && PgStatPID == 0)
 		{
@@ -3667,7 +3673,7 @@ PostmasterStateMachine(void)
 	{
 		if (FatalError)
 		{
-			ereport(LOG, (errmsg("abnormal database system shutdown")));
+			ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true)));
 			ExitPostmaster(1);
 		}
 		else
