@@ -686,6 +686,9 @@ OperatorCreateWithOid(const char *operatorName,
 	{
 		tupDesc = pg_operator_desc->rd_att;
 		tup = heap_form_tuple(tupDesc, values, nulls);
+		
+		if (newOid != (Oid) 0)
+			HeapTupleSetOid(tup, newOid);
 
 		operatorObjectId = simple_heap_insert(pg_operator_desc, tup);
 	}
