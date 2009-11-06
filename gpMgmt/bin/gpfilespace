@@ -876,15 +876,8 @@ class GPFilespace:
         # customers, but unusual gpexpand or recovery scenarios may have
         # left some hosts with unusual configurations.
         #
-        print "\nChecking your configuration...\n"
+        print "\nChecking your configuration:"
         configurations = self.group_configurations()
-        for id in configurations:
-            logger.debug("Config: " + str(configurations[id]))
-        if len(configurations) > 1:
-            raise GPError("mixed configurations not yet supported")
-
-        # For every configuration we need to setup paths for the filespace
-        # Loop through each one and prompt for paths.
         for id in configurations:
             config   = configurations[id]
             nhosts   = len(config.hosts)
@@ -893,7 +886,17 @@ class GPFilespace:
             print "You have %d hosts with %d primary and %d mirror segments." \
                 % (nhosts, nprimary, nmirror)
 
-            print "hosts: " + str(config.hosts)
+        # For every configuration we need to setup paths for the filespace
+        # Loop through each one and prompt for paths.
+        for id in configurations:
+            config   = configurations[id]
+            nhosts   = len(config.hosts)
+            nprimary = len(config.primaries)
+            nmirror  = len(config.mirrors)
+
+            logger.debug("Configuring hosts: " + str(config.hosts))
+            print "\nConfiguring hosts: " + str(config.hosts)
+
             #question = "Should all of the nodes be configured identically? (Y|N)"
             #if not getbool("> ", question, "Y"):
             #    logger.debug("configuring hosts as mixed configuration")
