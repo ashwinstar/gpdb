@@ -137,7 +137,11 @@ static inline int32 mkheap_compare(MKHeap *heap, MKEntry *a, MKEntry *b)
          * So this causes a REVERSE sort -- which is what tuplesort_limit_sort wants and because for tuplesort_limit_insert
          *    we actually want to POP the HIGHER values, not the lower ones since we are trying to find the smallest elements
          *
-         * todo: rename limitmask to reverseSortMask
+         * There's no need to reverse the initial comparison of this function because it is considering only
+         *    differences in levels and runs, which already represent the reversed order.
+         *
+         * todo: bug when ret is the min possible int val (so negating it leaves it unchanged).  (and earlier comp does not guarantee -1,0,1 as results)
+         * todo: rename limitmask to reverseSortMask...
          */
         ret = (ret & (~limitmask)) + ((-ret) & limitmask);
     }
@@ -197,7 +201,7 @@ MKHeap *mkheap_from_array(MKEntry *entries, int alloc_sz, int cnt, MKContext *mk
 
     mk_prepare_array(entries, 0, cnt-1, 0, mkctxt, mkctxt->prep);
     mkheap_heapify(heap, true);
-    return heap;
+	return heap;
 }
 
 /*
@@ -597,6 +601,11 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
  *		insert the element, but return 0.  Caller need to
  * 		handle this.  In case of sort build runs, that means
  * 		e can be written to current run immediately.
+ *
+ * Note: run must be passed in as equal to the run of the top element of the heap.
+ *       Perhaps change the function interface so this is not required (make the
+ *       function itself peek at the top run and return whether or not the top run
+ *       of the heap was increased by this action
  */
 int mkheap_puget_run(MKHeap *mkheap, MKEntry *e, int16 run)
 {
@@ -623,15 +632,6 @@ int mkheap_puget_run(MKHeap *mkheap, MKEntry *e, int16 run)
     mke_set_run(e, run+1);
     ins = mkheap_puget_impl(mkheap, e);
 
-    /*
-     * todo: is this possible? :
-     *    top of heap is value:10, run:2   (which was actually inserted as part of run:1)
-     *    we try to insert value:10, run:1
-     * Then we will reach here and ins == 0
-     * This could happen if we are about to go to the next run but haven't yet (so caller is on the old run #)
-     *
-     * So I think this assertion is invalid
-     */
     Assert(ins > 0);
     return ins;
 }
@@ -723,7 +723,7 @@ int mkheap_puget(MKHeap *mkheap, MKEntry *out)
     else
         ret = mkheap_puget_impl(mkheap, out);
 
-	/* copy as needed */
+	/* free *out */
     if(mkheap->mkctxt->cpfr)
         (mkheap->mkctxt->cpfr)(out, NULL, mkheap->mkctxt->lvctxt + mke_get_lv(out));
     return ret;
