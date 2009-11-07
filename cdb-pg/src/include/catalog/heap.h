@@ -120,5 +120,10 @@ extern void MetaTrackUpdObject(Oid		classid,
 extern void MetaTrackDropObject(Oid		classid, 
 								Oid		objoid);
 
+#define MetaTrackValidRelkind(relkind) \
+		(((relkind) == RELKIND_RELATION) \
+		|| ((relkind) == RELKIND_INDEX) \
+		|| ((relkind) == RELKIND_SEQUENCE) \
+		|| ((relkind) == RELKIND_VIEW)) 
 
 #endif   /* HEAP_H */

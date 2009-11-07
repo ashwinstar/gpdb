@@ -2809,10 +2809,12 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	}
 
 	/* MPP-6929: metadata tracking */
-	MetaTrackUpdObject(RelationRelationId,
-					   myrelid,
-					   GetUserId(),
-					   "ALTER", "RENAME"
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(relkind))
+		MetaTrackUpdObject(RelationRelationId,
+						   myrelid,
+						   GetUserId(),
+						   "ALTER", "RENAME"
 				);
 
 
@@ -5938,7 +5940,8 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	add_column_datatype_dependency(myrelid, i, attribute->atttypid);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6058,7 +6061,8 @@ ATExecDropNotNull(Relation rel, const char *colName)
 	heap_close(attr_rel, RowExclusiveLock);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6119,7 +6123,8 @@ ATExecSetNotNull(AlteredTableInfo *tab, Relation rel,
 	heap_close(attr_rel, RowExclusiveLock);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6178,7 +6183,8 @@ ATExecColumnDefault(Relation rel, const char *colName,
 	}
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6272,7 +6278,8 @@ ATExecSetStatistics(Relation rel, const char *colName, Node *newValue)
 	heap_close(attrelation, RowExclusiveLock);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6353,7 +6360,8 @@ ATExecSetStorage(Relation rel, const char *colName, Node *newValue)
 	heap_close(attrelation, RowExclusiveLock);
 	
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6578,7 +6586,8 @@ ATExecDropColumn(Relation rel, const char *colName,
 	}
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6712,7 +6721,8 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 	}
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6813,7 +6823,8 @@ ATExecAddConstraint(AlteredTableInfo *tab, Relation rel, Node *newConstraint)
 	}
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -7764,7 +7775,8 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 	}
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -8337,7 +8349,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	heap_freetuple(heapTup);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -8725,11 +8738,8 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& ((tuple_class->relkind == RELKIND_RELATION)
-			|| (tuple_class->relkind == RELKIND_INDEX)
-			|| (tuple_class->relkind == RELKIND_SEQUENCE)
-			|| (tuple_class->relkind == RELKIND_VIEW))
-				)
+		&& MetaTrackValidRelkind(tuple_class->relkind)
+			)
 		MetaTrackUpdObject(RelationRelationId,
 						   relationOid,
 						   GetUserId(),
@@ -8832,7 +8842,8 @@ ATExecClusterOn(Relation rel, const char *indexName)
 	mark_index_clustered(rel, indexOid);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -8852,7 +8863,8 @@ ATExecDropCluster(Relation rel)
 	mark_index_clustered(rel, InvalidOid);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -9010,11 +9022,7 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& ((rel->rd_rel->relkind == RELKIND_RELATION)
-			|| (rel->rd_rel->relkind == RELKIND_INDEX)
-			|| (rel->rd_rel->relkind == RELKIND_SEQUENCE)
-			|| (rel->rd_rel->relkind == RELKIND_VIEW))
-				)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -9151,7 +9159,8 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 		ATExecSetTableSpace(relaosegidxid, newTableSpace);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -9263,7 +9272,8 @@ ATExecEnableDisableTrigger(Relation rel, char *trigname,
 	EnableDisableTrigger(rel, trigname, enable, skip_system);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -9456,7 +9466,8 @@ ATExecAddInherit(Relation child_rel, Node *node)
 		heap_close(parent_rel, NoLock);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(child_rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(child_rel),
 						   GetUserId(),
@@ -9889,7 +9900,8 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 	heap_close(parent_rel, NoLock);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -11241,7 +11253,8 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 l_distro_fini:
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if (0 && (Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -16555,6 +16568,8 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 		if (atc->subtype != AT_SetDistributedBy)
 			heap_close(rel2, NoLock);
 	}
+
+	/* MPP-6929: metadata tracking - don't track this! */
 
 } /* end ATPExecPartAlter */
 

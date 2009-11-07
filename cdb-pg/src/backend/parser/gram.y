@@ -12425,6 +12425,7 @@ insertSelectOptions(SelectStmt *stmt,
 	if (withClause)
 	{
 		/*		if (stmt->withClause) */
+		if (1)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("multiple WITH clauses not allowed")));
