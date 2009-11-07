@@ -165,7 +165,7 @@ typedef struct sbufdesc
 
 
 /* in buf_init.c */
-extern PGDLLIMPORT BufferDesc *BufferDescriptors;
+extern PGDLLIMPORT volatile BufferDesc *BufferDescriptors;
 
 /* in localbuf.c */
 extern BufferDesc *LocalBufferDescriptors;

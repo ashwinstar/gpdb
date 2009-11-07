@@ -92,10 +92,10 @@ static void TerminateBufferIO(volatile BufferDesc *buf, bool clear_dirty,
 				  int set_flag_bits);
 static void buffer_write_error_callback(void *arg);
 static volatile BufferDesc *BufferAlloc(Relation reln, BlockNumber blockNum,
-										bool *foundPtr, BufferDesc* availBufHdr);
+										bool *foundPtr, volatile BufferDesc* availBufHdr);
 static void FlushBuffer(volatile BufferDesc *buf, SMgrRelation reln);
 static void AtProcExit_Buffers(int code, Datum arg);
-static Buffer ReadBuffer_Ex(Relation reln, BlockNumber blockNum, BufferDesc* availBufHdr);
+static Buffer ReadBuffer_Ex(Relation reln, BlockNumber blockNum, volatile BufferDesc* availBufHdr);
 
 #define ShouldMemoryProtect(buf) (ShouldMemoryProtectBufferPool() && ! BufferIsLocal(buf->buf_id+1) && ! BufferIsInvalid(buf->buf_id+1))
 
@@ -187,7 +187,7 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
  * 
  */
 static Buffer
-ReadBuffer_Ex(Relation reln, BlockNumber blockNum, BufferDesc* availBufHdr)
+ReadBuffer_Ex(Relation reln, BlockNumber blockNum, volatile BufferDesc* availBufHdr)
 {
 	volatile BufferDesc* bufHdr;
 	Block		bufBlock;
@@ -395,7 +395,7 @@ static volatile BufferDesc *
 BufferAlloc(Relation reln,
 			BlockNumber blockNum,
 			bool *foundPtr,
-			BufferDesc* availBufHdr)
+			volatile BufferDesc* availBufHdr)
 {
 	BufferTag	newTag;			/* identity of requested block */
 	uint32		newHash;		/* hash value for newTag */
@@ -929,7 +929,7 @@ KillAndReadBuffer(Buffer buffer,
 					 Relation relation,
 					 BlockNumber blockNum)
 {
-	BufferDesc* bufHdr;
+	volatile BufferDesc* bufHdr;
 	if (!BufferIsValid(buffer) || BufferIsLocal(buffer)) 
 	{
 		return ReleaseAndReadBuffer(buffer, relation, blockNum);

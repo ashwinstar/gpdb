@@ -22,7 +22,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
-BufferDesc *BufferDescriptors;
+volatile BufferDesc *BufferDescriptors;
 char	   *BufferBlocks;
 int32	   *PrivateRefCount;
 
@@ -100,7 +100,7 @@ InitBufferPool(void)
 	bool		foundBufs,
 				foundDescs;
 
-	BufferDescriptors = (BufferDesc *)
+	BufferDescriptors = (volatile BufferDesc *)
 		ShmemInitStruct("Buffer Descriptors",
 						NBuffers * sizeof(BufferDesc), &foundDescs);
 
@@ -118,7 +118,7 @@ InitBufferPool(void)
 	}
 	else
 	{
-		BufferDesc *buf;
+		volatile BufferDesc *buf;
 		int			i;
 
 		buf = BufferDescriptors;
