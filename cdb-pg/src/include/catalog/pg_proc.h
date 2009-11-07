@@ -1153,7 +1153,7 @@ DESCR("convert char to char()");
 
 DATA(insert OID = 861 ( current_database	   PGNSP PGUID 12 f f t f i 0 19 f "" _null_ _null_ _null_ current_database - _null_ ));
 DESCR("returns the current database");
-DATA(insert OID = 820 (  current_query		  PGNSP PGUID 12 f f f f v 0 25 f "" _null_ _null_ _null_ current_query _null_ ));
+DATA(insert OID = 820 (  current_query		  PGNSP PGUID 12 f f f f v 0 25 f "" _null_ _null_ _null_ current_query - _null_ ));
 DESCR("returns the currently executing query");
 
 DATA(insert OID =  862 (  int4_mul_cash		   PGNSP PGUID 12 f f t f i 2 790 f "23 790" _null_ _null_ _null_ int4_mul_cash - _null_ ));
