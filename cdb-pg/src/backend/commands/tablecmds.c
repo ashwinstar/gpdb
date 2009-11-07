@@ -11253,10 +11253,10 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 l_distro_fini:
 
 	/* MPP-6929: metadata tracking */
-	if (0 && (Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+	if (Gp_role == GP_ROLE_DISPATCH)
+		/* don't check relkind - must be a table */
 		MetaTrackUpdObject(RelationRelationId,
-						   RelationGetRelid(rel),
+						   tarrelid,
 						   GetUserId(),
 						   "ALTER", distro_str
 				);
