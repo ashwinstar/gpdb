@@ -1119,7 +1119,7 @@ reindex table public.pg_appendonly;
 reindex table public.pg_exttable;
 reindex table public.pg_stat_last_operation;
 -- end
-\i @abs_srcdir@/sql/loadcat34_sh.sql
+\i @abs_builddir@/sql/loadcat34_sh.sql
 begin;
 -- Updates for shared tables, these updates can only occur in ONE
 -- database (template0) otherwise we will end up with duplication
