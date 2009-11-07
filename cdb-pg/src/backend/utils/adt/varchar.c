@@ -3,7 +3,7 @@
  * varchar.c
  *	  Functions for the built-in types char(n) and varchar(n).
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,8 +18,63 @@
 #include "access/hash.h"
 #include "access/tuptoaster.h"
 #include "libpq/pqformat.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "mb/pg_wchar.h"
+
+
+/* common code for bpchartypmodin and varchartypmodin */
+static int32
+anychar_typmodin(ArrayType *ta, const char *typename)
+{
+	int32		typmod;
+	int32	   *tl;
+	int			n;
+
+	tl = ArrayGetIntegerTypmods(ta, &n);
+
+	/*
+	 * we're not too tense about good error message here because grammar
+	 * shouldn't allow wrong number of modifiers for CHAR
+	 */
+	if (n != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid type modifier")));
+
+	if (*tl < 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("length for type %s must be at least 1", typename)));
+	if (*tl > MaxAttrSize)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("length for type %s cannot exceed %d",
+						typename, MaxAttrSize)));
+
+	/*
+	 * For largely historical reasons, the typmod is VARHDRSZ plus the number
+	 * of characters; there is enough client-side code that knows about that
+	 * that we'd better not change it.
+	 */
+	typmod = VARHDRSZ + *tl;
+
+	return typmod;
+}
+
+/* common code for bpchartypmodout and varchartypmodout */
+static char *
+anychar_typmodout(int32 typmod)
+{
+	char	   *res = (char *) palloc(64);
+
+	if (typmod > VARHDRSZ)
+		snprintf(res, 64, "(%d)", (int) (typmod - VARHDRSZ));
+	else
+		*res = '\0';
+
+	return res;
+}
 
 
 /*
@@ -148,6 +203,9 @@ bpcharin(PG_FUNCTION_ARGS)
 
 /*
  * Convert a CHARACTER value to a C string.
+ *
+ * Uses the text conversion functions, which is only appropriate if BpChar
+ * and text are equivalent types.
  */
 Datum
 bpcharout(PG_FUNCTION_ARGS)
@@ -360,20 +418,34 @@ bpchar_name(PG_FUNCTION_ARGS)
 
 /* name_bpchar()
  * Converts a NameData type to a bpchar type.
+ *
+ * Uses the text conversion functions, which is only appropriate if BpChar
+ * and text are equivalent types.
  */
 Datum
 name_bpchar(PG_FUNCTION_ARGS)
 {
 	Name		s = PG_GETARG_NAME(0);
 	BpChar	   *result;
-	int			len;
 
-	len = strlen(NameStr(*s));
-	result = (BpChar *) palloc(VARHDRSZ + len);
-	memcpy(VARDATA(result), NameStr(*s), len);
-	SET_VARSIZE(result, VARHDRSZ + len);
-
+	result = (BpChar *) cstring_to_text(NameStr(*s));
 	PG_RETURN_BPCHAR_P(result);
+}
+
+Datum
+bpchartypmodin(PG_FUNCTION_ARGS)
+{
+	ArrayType  *ta = PG_GETARG_ARRAYTYPE_P(0);
+
+	PG_RETURN_INT32(anychar_typmodin(ta, "char"));
+}
+
+Datum
+bpchartypmodout(PG_FUNCTION_ARGS)
+{
+	int32		typmod = PG_GETARG_INT32(0);
+
+	PG_RETURN_CSTRING(anychar_typmodout(typmod));
 }
 
 
@@ -395,6 +467,9 @@ name_bpchar(PG_FUNCTION_ARGS)
  *
  * If the input string is too long, raise an error, unless the extra
  * characters are spaces, in which case they're truncated.  (per SQL)
+ *
+ * Uses the C string to text conversion function, which is only appropriate
+ * if VarChar and text are equivalent types.
  */
 static VarChar *
 varchar_input(const char *s, size_t len, int32 atttypmod)
@@ -422,10 +497,7 @@ varchar_input(const char *s, size_t len, int32 atttypmod)
 		len = mbmaxlen;
 	}
 
-	result = (VarChar *) palloc(len + VARHDRSZ);
-	SET_VARSIZE(result, len + VARHDRSZ);
-	memcpy(VARDATA(result), s, len);
-
+	result = (VarChar *) cstring_to_text_with_len(s, len);
 	return result;
 }
 
@@ -451,6 +523,9 @@ varcharin(PG_FUNCTION_ARGS)
 
 /*
  * Convert a VARCHAR value to a C string.
+ *
+ * Uses the text to C string conversion function, which is only appropriate
+ * if VarChar and text are equivalent types.
  */
 Datum
 varcharout(PG_FUNCTION_ARGS)
@@ -561,6 +636,21 @@ varchar(PG_FUNCTION_ARGS)
 	PG_RETURN_VARCHAR_P(result);
 }
 
+Datum
+varchartypmodin(PG_FUNCTION_ARGS)
+{
+	ArrayType  *ta = PG_GETARG_ARRAYTYPE_P(0);
+
+	PG_RETURN_INT32(anychar_typmodin(ta, "varchar"));
+}
+
+Datum
+varchartypmodout(PG_FUNCTION_ARGS)
+{
+	int32		typmod = PG_GETARG_INT32(0);
+
+	PG_RETURN_CSTRING(anychar_typmodout(typmod));
+}
 
 /*****************************************************************************
  * Exported functions
@@ -788,4 +878,116 @@ hashbpchar(PG_FUNCTION_ARGS)
 		pfree(tofree);
 
 	return result;
+}
+
+
+/*
+ * The following operators support character-by-character comparison
+ * of bpchar datums, to allow building indexes suitable for LIKE clauses.
+ * Note that the regular bpchareq/bpcharne comparison operators are assumed
+ * to be compatible with these!
+ */
+
+static int
+internal_bpchar_pattern_compare(BpChar *arg1, BpChar *arg2)
+{
+	int			result;
+	int			len1,
+				len2;
+
+	len1 = VARSIZE_ANY_EXHDR(arg1);
+	len2 = VARSIZE_ANY_EXHDR(arg2);
+
+	//len1 = bcTruelen(arg1);
+	//len2 = bcTruelen(arg2);
+
+	result = strncmp(VARDATA_ANY(arg1), VARDATA_ANY(arg2), Min(len1, len2));
+	if (result != 0)
+		return result;
+	else if (len1 < len2)
+		return -1;
+	else if (len1 > len2)
+		return 1;
+	else
+		return 0;
+}
+
+
+Datum
+bpchar_pattern_lt(PG_FUNCTION_ARGS)
+{
+	BpChar	   *arg1 = PG_GETARG_BPCHAR_PP(0);
+	BpChar	   *arg2 = PG_GETARG_BPCHAR_PP(1);
+	int			result;
+
+	result = internal_bpchar_pattern_compare(arg1, arg2);
+
+	PG_FREE_IF_COPY(arg1, 0);
+	PG_FREE_IF_COPY(arg2, 1);
+
+	PG_RETURN_BOOL(result < 0);
+}
+
+
+Datum
+bpchar_pattern_le(PG_FUNCTION_ARGS)
+{
+	BpChar	   *arg1 = PG_GETARG_BPCHAR_PP(0);
+	BpChar	   *arg2 = PG_GETARG_BPCHAR_PP(1);
+	int			result;
+
+	result = internal_bpchar_pattern_compare(arg1, arg2);
+
+	PG_FREE_IF_COPY(arg1, 0);
+	PG_FREE_IF_COPY(arg2, 1);
+
+	PG_RETURN_BOOL(result <= 0);
+}
+
+
+Datum
+bpchar_pattern_ge(PG_FUNCTION_ARGS)
+{
+	BpChar	   *arg1 = PG_GETARG_BPCHAR_PP(0);
+	BpChar	   *arg2 = PG_GETARG_BPCHAR_PP(1);
+	int			result;
+
+	result = internal_bpchar_pattern_compare(arg1, arg2);
+
+	PG_FREE_IF_COPY(arg1, 0);
+	PG_FREE_IF_COPY(arg2, 1);
+
+	PG_RETURN_BOOL(result >= 0);
+}
+
+
+Datum
+bpchar_pattern_gt(PG_FUNCTION_ARGS)
+{
+	BpChar	   *arg1 = PG_GETARG_BPCHAR_PP(0);
+	BpChar	   *arg2 = PG_GETARG_BPCHAR_PP(1);
+	int			result;
+
+	result = internal_bpchar_pattern_compare(arg1, arg2);
+
+	PG_FREE_IF_COPY(arg1, 0);
+	PG_FREE_IF_COPY(arg2, 1);
+
+	PG_RETURN_BOOL(result > 0);
+}
+
+
+Datum
+btbpchar_pattern_cmp(PG_FUNCTION_ARGS)
+{
+	BpChar	   *arg1 = PG_GETARG_BPCHAR_PP(0);
+	BpChar	   *arg2 = PG_GETARG_BPCHAR_PP(1);
+	int			result;
+
+	result = internal_bpchar_pattern_compare(arg1, arg2);
+
+	PG_FREE_IF_COPY(arg1, 0);
+	PG_FREE_IF_COPY(arg2, 1);
+
+	PG_RETURN_INT32(result);
 }

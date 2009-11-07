@@ -148,21 +148,20 @@ boolsend(PG_FUNCTION_ARGS)
  * We need this because it's different from the behavior of boolout();
  * this function follows the SQL-spec result (except for producing lower case)
  */
-#if 0
 Datum
 booltext(PG_FUNCTION_ARGS)
 {
 	bool		arg1 = PG_GETARG_BOOL(0);
-	char	   *str;
+	const char *str;
 
 	if (arg1)
 		str = "true";
 	else
 		str = "false";
 
-	PG_RETURN_DATUM(DirectFunctionCall1(textin, CStringGetDatum(str)));
+	PG_RETURN_TEXT_P(cstring_to_text(str));
 }
-#endif
+
 
 
 /*****************************************************************************

@@ -4,8 +4,8 @@
  *	  definition of the system "procedure" relation (pg_proc)
  *	  along with the relation's initial contents.
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/catalog/pg_proc.h,v 1.429 2006/11/28 19:18:44 tgl Exp $
@@ -1153,6 +1153,8 @@ DESCR("convert char to char()");
 
 DATA(insert OID = 861 ( current_database	   PGNSP PGUID 12 f f t f i 0 19 f "" _null_ _null_ _null_ current_database - _null_ ));
 DESCR("returns the current database");
+DATA(insert OID = 820 (  current_query		  PGNSP PGUID 12 f f f f v 0 25 f "" _null_ _null_ _null_ current_query _null_ ));
+DESCR("returns the currently executing query");
 
 DATA(insert OID =  862 (  int4_mul_cash		   PGNSP PGUID 12 f f t f i 2 790 f "23 790" _null_ _null_ _null_ int4_mul_cash - _null_ ));
 DESCR("multiply");
@@ -2313,6 +2315,12 @@ DATA(insert OID = 5027 (  pg_get_partition_rule_def	PGNSP PGUID 12 f f t f s 1 2
 DATA(insert OID = 5028 (  pg_get_partition_rule_def	PGNSP PGUID 12 f f t f s 2 25 f "26 16" _null_ _null_ _null_	pg_get_partition_rule_def_ext - _null_ ));
 DESCR("partition configuration for a given rule");
 
+DATA(insert OID = 821 (  pg_get_keywords		PGNSP PGUID 12 f f t t s 0 2249 f "" "{25,18,25}" "{o,o,o}" "{word,catcode,catdesc}" pg_get_keywords - _null_ ));
+DESCR("list of SQL keywords");
+
+DATA(insert OID = 822 (  pg_typeof				PGNSP PGUID 12 f f f f s 1 2206 f "2276" _null_ _null_ _null_ pg_typeof - _null_ ));
+DESCR("returns the type of the argument");
+
 /* Generic referential integrity constraint triggers */
 DATA(insert OID = 1644 (  RI_FKey_check_ins		PGNSP PGUID 12 f f t f v 0 2279 f "" _null_ _null_ _null_ RI_FKey_check_ins - _null_ ));
 DESCR("referential integrity FOREIGN KEY ... REFERENCES");
@@ -3183,6 +3191,8 @@ DESCR("is schema another session's temp schema?");
 
 DATA(insert OID = 2171 ( pg_cancel_backend		PGNSP PGUID 12 f f t f v 1 16 f "23" _null_ _null_ _null_ pg_cancel_backend - _null_ ));
 DESCR("Cancel a server process' current query");
+DATA(insert OID = 2162 ( pg_terminate_backend	PGNSP PGUID 12 f f t f v 1 16 f "23" _null_ _null_ _null_  pg_terminate_backend - _null_ ));
+DESCR("terminate a server process");
 DATA(insert OID = 2172 ( pg_start_backup		PGNSP PGUID 12 f f t f v 1 25 f "25" _null_ _null_ _null_ pg_start_backup - _null_ ));
 DESCR("Prepare for taking an online backup");
 DATA(insert OID = 2173 ( pg_stop_backup			PGNSP PGUID 12 f f t f v 0 25 f "" _null_ _null_ _null_ pg_stop_backup - _null_ ));
@@ -3228,6 +3238,8 @@ DESCR("ls the log dir");
 DATA(insert OID = 6051 ( pg_file_length		PGNSP PGUID 12 f f t f v 1 20 f "25" _null_ _null_ _null_ pg_file_length - _null_ ));
 DESCR("Get the length of a file (via stat)");
 
+DATA(insert OID = 2971 (  text				PGNSP PGUID 12 f f t f i 1 25 f "16" _null_ _null_ _null_  booltext - _null_  ));
+DESCR("convert boolean to text");
 
 
 
@@ -3361,10 +3373,8 @@ DATA(insert OID = 2829 (  corr				PGNSP PGUID 12 t f f f i 2 701 f "701 701" _nu
 
 DATA(insert OID = 2160 ( text_pattern_lt	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_lt - _null_ ));
 DATA(insert OID = 2161 ( text_pattern_le	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_le - _null_ ));
-DATA(insert OID = 2162 ( text_pattern_eq	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_eq - _null_ ));
 DATA(insert OID = 2163 ( text_pattern_ge	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_ge - _null_ ));
 DATA(insert OID = 2164 ( text_pattern_gt	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_gt - _null_ ));
-DATA(insert OID = 2165 ( text_pattern_ne	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_ne - _null_ ));
 DATA(insert OID = 2166 ( bttext_pattern_cmp  PGNSP PGUID 12 f f t f i 2 23 f "25 25" _null_ _null_ _null_ bttext_pattern_cmp - _null_ ));
 
 /* Window functions (similar to aggregates) */
@@ -3665,10 +3675,10 @@ DATA(insert OID = 7264 ( lead	PGNSP	PGUID 12 f f f f i 3 603 t "603 20 603"  _nu
 /* We use the same procedures here as above since the types are binary compatible. */
 DATA(insert OID = 2174 ( bpchar_pattern_lt	  PGNSP PGUID 12 f f t f i 2 16 f "1042 1042" _null_ _null_ _null_ text_pattern_lt - _null_ ));
 DATA(insert OID = 2175 ( bpchar_pattern_le	  PGNSP PGUID 12 f f t f i 2 16 f "1042 1042" _null_ _null_ _null_ text_pattern_le - _null_ ));
-DATA(insert OID = 2176 ( bpchar_pattern_eq	  PGNSP PGUID 12 f f t f i 2 16 f "1042 1042" _null_ _null_ _null_ text_pattern_eq - _null_ ));
+DATA(insert OID = 2176 ( bpchar_pattern_eq	  PGNSP PGUID 12 f f t f i 2 16 f "1042 1042" _null_ _null_ _null_ texteq - _null_ ));
 DATA(insert OID = 2177 ( bpchar_pattern_ge	  PGNSP PGUID 12 f f t f i 2 16 f "1042 1042" _null_ _null_ _null_ text_pattern_ge - _null_ ));
 DATA(insert OID = 2178 ( bpchar_pattern_gt	  PGNSP PGUID 12 f f t f i 2 16 f "1042 1042" _null_ _null_ _null_ text_pattern_gt - _null_ ));
-DATA(insert OID = 2179 ( bpchar_pattern_ne	  PGNSP PGUID 12 f f t f i 2 16 f "1042 1042" _null_ _null_ _null_ text_pattern_ne - _null_ ));
+DATA(insert OID = 2179 ( bpchar_pattern_ne	  PGNSP PGUID 12 f f t f i 2 16 f "1042 1042" _null_ _null_ _null_ textne - _null_ ));
 DATA(insert OID = 2180 ( btbpchar_pattern_cmp PGNSP PGUID 12 f f t f i 2 23 f "1042 1042" _null_ _null_ _null_ bttext_pattern_cmp - _null_ ));
 
 DATA(insert OID = 2181 ( name_pattern_lt	PGNSP PGUID 12 f f t f i 2 16 f "19 19" _null_ _null_ _null_ name_pattern_lt - _null_ ));
