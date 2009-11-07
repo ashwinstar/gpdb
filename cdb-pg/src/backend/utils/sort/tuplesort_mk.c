@@ -2992,7 +2992,14 @@ static void tupsort_prepare_char(MKEntry *a, bool isCHAR)
     	transformedLenToStore = (int) gp_strxfrm(kstr.data+kstr.xfrm_pos, str, STRXFRM_INPUT_LENGTH_LIMIT + 1);
 
     	if ( transformedLenToStore > STRXFRM_INPUT_LENGTH_LIMIT)
+		{
     		transformedLenToStore = STRXFRM_INPUT_LENGTH_LIMIT;
+
+    		/* this is required for linux -- when there is not enough room then linux
+    		 * does NOT write the \0
+    		 */
+    		ret->data[ret->xfrm_pos + transformedLenToStore] = '\0';
+		}
 
     	if ( str != possibleStr )
     		pfree(str);
