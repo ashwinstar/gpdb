@@ -103,7 +103,6 @@ solarisTest:
 clean :
 	@rm -rf $(PYLIB_SRC)/$(PARAMIKO_DIR)
 	@rm -rf $(PYLIB_SRC)/$(PYCRYPTO_DIR)
-	@rm -rf $(PYLIB_SRC)/$(PYGRESQL_DIR)
 	@rm -rf $(STREAM_DIR)/stream lib/stream  
 	@if [ -f $(SRC)/src/$(NETPERF_DIR)/Makefile ]; then \
 		(cd $(SRC)/src/$(NETPERF_DIR) && $(MAKE) clean) \
