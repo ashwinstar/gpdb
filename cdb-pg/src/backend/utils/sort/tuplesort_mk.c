@@ -2998,7 +2998,7 @@ static void tupsort_prepare_char(MKEntry *a, bool isCHAR)
     		/* this is required for linux -- when there is not enough room then linux
     		 * does NOT write the \0
     		 */
-    		ret->data[ret->xfrm_pos + transformedLenToStore] = '\0';
+    		kstr.data[kstr.xfrm_pos + transformedLenToStore] = '\0';
 		}
 
     	if ( str != possibleStr )
