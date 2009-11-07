@@ -50,6 +50,7 @@
 #include "utils/tqual.h"  /*SharedLocalSnapshotSlot*/
 
 #include "cdb/cdblocaldistribxact.h"
+#include "cdb/cdbgang.h"
 #include "cdb/cdbvars.h"  /*Gp_is_writer*/
 
 /* GUC variables */
@@ -1343,7 +1344,21 @@ disable_sig_alarm(bool is_statement_timeout)
 	return true;
 }
 
-
+extern void resetSessionForPrimaryGangLoss(void);
+/*
+ * If we have waited a while for client input,
+ * release any gangs we have to free resources.
+ */
+static void
+HandleClientWaitTimeout(void)
+{
+	elog(LOG,"HandleClientWaitTimeout");
+	cleanupIdleReaderGangs();
+	if (!IsTransactionOrTransactionBlock())
+	{
+		//disconnectAndDestroyAllGangs();
+	}
+}
 /*
  * Check for statement timeout.  If the timeout time has come,
  * trigger a query-cancel interrupt; if not, reschedule the SIGALRM
@@ -1404,7 +1419,7 @@ CheckStatementTimeout(void)
 	return true;
 }
 
-
+extern bool DoingCommandRead;
 /*
  * Signal handler for SIGALRM
  *
@@ -1426,6 +1441,10 @@ handle_sig_alarm(SIGNAL_ARGS)
 
 	if (statement_timeout_active)
 		(void) CheckStatementTimeout();
+
+	if (DoingCommandRead)
+		(void) HandleClientWaitTimeout();
+
 
 	errno = save_errno;
 }

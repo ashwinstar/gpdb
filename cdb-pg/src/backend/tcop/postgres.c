@@ -146,7 +146,8 @@ static bool xact_started = false;
  * as opposed to any random read from client that might happen within
  * commands like COPY FROM STDIN.
  */
-static bool DoingCommandRead = false;
+extern bool DoingCommandRead;
+bool DoingCommandRead = false;
 
 /*
  * Flags to implement skip-till-Sync-after-error behavior for messages of
@@ -337,6 +338,9 @@ SocketBackend(StringInfo inBuf)
 	 * Get message type code from the frontend.
 	 */
 	qtype = pq_getbyte();
+
+	if (!disable_sig_alarm(false))
+			elog(FATAL, "could not disable timer for client wiat timeout");
 
 	if (qtype == EOF)			/* frontend disconnected */
 	{
@@ -5056,6 +5060,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 		/*
 		 * (3) read a command (loop blocks here)
 		 */
+		if (!enable_sig_alarm( 8000 /* ms */, false))
+				elog(FATAL, "could not set timer for client wait timeout");
+
 		firstchar = ReadCommand(&input_message);
 
 		/*
