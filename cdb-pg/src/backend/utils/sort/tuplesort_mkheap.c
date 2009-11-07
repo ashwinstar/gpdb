@@ -126,8 +126,7 @@ static inline int32 mkheap_compare(MKHeap *heap, MKEntry *a, MKEntry *b)
             int32 lv = mke_get_lv(a);
             Assert(lv < heap->mkctxt->total_lv);
             Assert(lv == mke_get_lv(b));
-            Assert(heap->mkctxt->comp);
-            ret = (heap->mkctxt->comp)(a, b, heap->mkctxt->lvctxt+lv);
+            ret = tupsort_compare_datum(a, b, heap->mkctxt->lvctxt+lv, heap->mkctxt);
         }
 
         /*
@@ -199,7 +198,7 @@ MKHeap *mkheap_from_array(MKEntry *entries, int alloc_sz, int cnt, MKContext *mk
     }
 #endif
 
-    mk_prepare_array(entries, 0, cnt-1, 0, mkctxt, mkctxt->prep);
+    mk_prepare_array(entries, 0, cnt-1, 0, mkctxt);
     mkheap_heapify(heap, true);
 	return heap;
 }
@@ -245,7 +244,7 @@ MKHeap *mkheap_from_reader(MKHeapReader *readers, int nreader, MKContext *ctxt)
     /* at least one reader had a value so convert the values to the heap */
     if (j>0)
     {
-        mk_prepare_array(heap->p, 0, j-1, 0, ctxt, ctxt->prep);
+        mk_prepare_array(heap->p, 0, j-1, 0, ctxt);
         mkheap_heapify(heap, true);
     }
 
@@ -355,8 +354,8 @@ static void mkheap_prep_siftdown_lv(MKHeap *mkheap, int lv, int cur, MKContext *
     }
 
     Assert(mke_get_lv(mkheap->p+cur) == lv-1);
-    if (mkctxt->prep)
-        (mkctxt->prep)(mkheap->p+cur, mkctxt, lv);
+    if ( mkheap->mkctxt->fetchForPrep)
+		tupsort_prepare(mkheap->p+cur, mkctxt, lv);
 
     mke_set_lv(mkheap->p+cur, lv);
 
@@ -460,10 +459,16 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
     	/* this code assumes that the new one, with lower run, is LARGER than the top -- so it must be larger run */
     	Assert(mke_get_run(e) > mke_get_run(mkheap->p));
 
-        /* Not same run, at least prep lv 0 */
-		if (mkheap->mkctxt->prep)
-			(mkheap->mkctxt->prep)(e, mkheap->mkctxt, 0);
-		mke_set_lv(e, 0);
+    	/* when the runs differ it is because we attempted once with the runs equal.
+    	 *   So if level is zero then:  the level was zero AND validly prepared for the previous run -- and there is no need to prep again
+    	 */
+    	if ( mke_get_lv(e) != 0 )
+    	{
+			/* Not same run, at least prepare lv 0 */
+			if ( mkheap->mkctxt->fetchForPrep)
+				tupsort_prepare(e, mkheap->mkctxt, 0);
+			mke_set_lv(e, 0);
+    	}
 
         /* now fall through and let top be returned, new one is also inserted so no change to count */
     }
@@ -478,8 +483,8 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
         /* populate level until we differ from the top element of the heap */
         while (lv < toplv)
         {
-        	if (mkheap->mkctxt->prep)
-        		mkheap->mkctxt->prep(e, mkheap->mkctxt, lv);
+        	if ( mkheap->mkctxt->fetchForPrep)
+				tupsort_prepare(e, mkheap->mkctxt, lv);
             c = mkheap_compare(mkheap, e, mkheap->lvtops+lv);
             if(c!=0)
                 break;
@@ -495,8 +500,8 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
         Assert(mke_get_lv(e) == lv);
         if(lv == toplv)
         {
-        	if (mkheap->mkctxt->prep)
-        		(mkheap->mkctxt->prep)(e, mkheap->mkctxt, lv);
+        	if ( mkheap->mkctxt->fetchForPrep)
+				tupsort_prepare(e, mkheap->mkctxt, lv);
             c = mkheap_compare(mkheap, e, mkheap->p);
             if(c < 0)
                 return -1;
@@ -522,12 +527,12 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
                 ++lv;
 
                 /* expand top */
-            	if (mkheap->mkctxt->prep)
-            		mkheap->mkctxt->prep(mkheap->p, mkheap->mkctxt, lv);
+                if ( mkheap->mkctxt->fetchForPrep)
+					tupsort_prepare(mkheap->p, mkheap->mkctxt, lv);
 
             	/* expand new element */
-            	if (mkheap->mkctxt->prep)
-            		mkheap->mkctxt->prep(e, mkheap->mkctxt, lv);
+                if ( mkheap->mkctxt->fetchForPrep)
+					tupsort_prepare(e, mkheap->mkctxt, lv);
 
                 mke_set_lv(mkheap->p, lv);
 				mke_set_lv(e, lv);
@@ -771,7 +776,8 @@ void mkheap_verify_heap(MKHeap *heap, int top)
            {
          */
         mke_set_lv(&e, i);
-        heap->mkctxt->prep(&e, heap->mkctxt, i);
+        if ( heap->mkctxt->fetchForPrep)
+        	tupsort_prepare(&e, heap->mkctxt, i);
 
         c = mkheap_compare(heap, &e, heap->lvtops+i);
         Assert(c==0);

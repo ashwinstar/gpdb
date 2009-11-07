@@ -109,6 +109,14 @@ extern struct varlena *heap_tuple_fetch_attr(struct varlena *attr);
 extern void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void **tofree);
 
 /* ----------
+ * varattrib_untoast_len
+ *
+ *		Fast path to get the length, avoid palloc if possible.
+ * ----------
+ */
+extern int varattrib_untoast_len(Datum d);
+
+/* ----------
  * heap_tuple_untoast_attr() -
  *
  *		Fully detoasts one attribute, fetching and/or decompressing

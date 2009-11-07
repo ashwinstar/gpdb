@@ -36,6 +36,13 @@ int gp_strcoll(const char *left, const char *right)
 							errmsg("Failed to compare strings because of characters outside of the domain of the collating sequence.  First string has length %lu and value (limited to 100 characters): '%.100s'.  Second string has length %lu and value (limited to 100 characters): '%.100s'",
 									(unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(left), (unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(right))));
 		}
+		else if ( errno == EILSEQ)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
+							errmsg("Failed to compare strings because of an invalid byte sequence in the data.  First string has length %lu and value (limited to 100 characters): '%.100s'.  Second string has length %lu and value (limited to 100 characters): '%.100s'",
+									(unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(left), (unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(right))));
+		}
 		else
 		{
 			ereport(ERROR,
@@ -63,6 +70,13 @@ size_t gp_strxfrm(char *dst, const char *src, size_t n)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
 							errmsg("Failed to transform string because it contains characters outside of the domain of the collating sequence.  String has length %lu and value (limited to 100 characters): '%.100s'",
+									(unsigned long) SAFE_STR_LENGTH(src), NULL_TO_DUMMY_STR(src))));
+		}
+		else if ( errno == EILSEQ)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
+							errmsg("Failed to transform string because of an invalid byte sequence in the data.  String has length %lu and value (limited to 100 characters): '%.100s'",
 									(unsigned long) SAFE_STR_LENGTH(src), NULL_TO_DUMMY_STR(src))));
 		}
 		else

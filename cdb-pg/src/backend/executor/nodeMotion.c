@@ -488,27 +488,15 @@ static bool motion_mkhp_read(void *vpctxt, MKEntry *a)
 
     return false;
 }
-        
-static void tupsort_motion_prep(MKEntry *a, MKContext *mkctxt, int lv)
+
+static Datum tupsort_fetch_datum_motion(MKEntry *a, MKContext *mkctxt, MKLvContext *lvctxt, bool *isNullOut)
 {
-    MKLvContext *lvctxt = mkctxt->lvctxt + lv; 
-    bool isnull = false;
-
-    tupsort_cpfr(a, NULL, lvctxt);
+	Datum d;
     if (is_heaptuple_memtuple(a->ptr))
-        a->d = memtuple_getattr((MemTuple) a->ptr, mkctxt->mt_bind, lvctxt->attno, &isnull);
+        d = memtuple_getattr((MemTuple) a->ptr, mkctxt->mt_bind, lvctxt->attno, isNullOut);
     else
-        a->d = heap_getattr((HeapTuple) a->ptr, lvctxt->attno, mkctxt->tupdesc, &isnull);
-    
-    if (!isnull)
-        mke_set_not_null(a);
-    else
-        mke_set_null(a, lvctxt->nullfirst);
-
-    if (lvctxt->lvtype == MKLV_TYPE_CHAR)
-        tupsort_prepare_char(a, true);
-    else if (lvctxt->lvtype == MKLV_TYPE_TEXT)
-        tupsort_prepare_char(a, false);
+        d = heap_getattr((HeapTuple) a->ptr, lvctxt->attno, mkctxt->tupdesc, isNullOut);
+    return d;
 }
     
 static void create_motion_mk_heap(MotionState *node)
@@ -523,7 +511,7 @@ static void create_motion_mk_heap(MotionState *node)
     create_mksort_context(
             &ctxt->mkctxt,
             motion->numSortCols, 
-            tupsort_motion_prep,
+            tupsort_fetch_datum_motion,
             ExecGetResultType(outerPlanState(node)), false, 0, /* dummy does not matter */
             motion->sortOperators,
             motion->sortColIdx,

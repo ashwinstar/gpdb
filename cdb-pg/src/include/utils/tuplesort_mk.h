@@ -183,22 +183,11 @@ static inline void mke_set_reader(MKEntry *e, int32 r)
 struct MKContext;
 struct MKLvContext;
 
-typedef int32 (*MKCompare) (MKEntry *v1, MKEntry *v2, struct MKLvContext *lvctxt);
-typedef void (*MKPrepare)(MKEntry *a, struct MKContext *mkctxt, int lv); 
-typedef void (*MKCopyFree) (MKEntry *dst, MKEntry *src, struct MKLvContext *lvctxt); 
+typedef int32 (*MKCompare) (MKEntry *v1, MKEntry *v2, struct MKLvContext *lvctxt, struct MKContext *mkctxt);
+typedef void (*MKCopyFree) (MKEntry *dst, MKEntry *src, struct MKLvContext *lvctxt);
+typedef Datum (*MKFetchDatumForPrepare) (MKEntry *a, struct MKContext *mkctxt, struct MKLvContext *lvctxt, bool *isNullOut);
 
-static inline void mk_prepare_array(MKEntry *a, int i, int j, int32 lv, struct MKContext *ctxt, MKPrepare prep)
-{
-    MKEntry *last = a+j;
-    MKEntry *cur = a+i;
-
-    Assert(a && j>=0);
-    do {
-        if (prep)
-            (prep)(cur, ctxt, lv);
-        mke_set_lv(cur, lv);
-    } while (++cur <= last);
-}
+extern void tupsort_prepare(MKEntry *a, struct MKContext *ctxt, int lv);
 
 /*
  * Our impl. of multi-key sort and heap only handles the following data type.
@@ -238,39 +227,65 @@ typedef struct MKContext {
 
 	/* how many levels are there?  This should correspond to the # of keys in the multi-key value */
 	int total_lv;
+
 	/* the levels themselves */
     MKLvContext *lvctxt;
 
-    /* callback capable of comparing two entries for a particular level */
-    MKCompare comp; 	
-    /* callback capable of converting a tuple into the appropriate MKEntry data */
-    MKPrepare prep;   
-    /* callback capable of copying data from one MKEntry to another (freeing the dest MKEntry).  todo: verify this */
-    MKCopyFree  cpfr; 
+    /* callback capable of fetching a datum from the MKEntry data */
+    MKFetchDatumForPrepare fetchForPrep;
+    /* callback capable of copying data from one MKEntry to another (freeing the dest MKEntry).  It can also be called with a NULL src so that the dst is simply freed. */
+    MKCopyFree  cpfr;
+
+    /* as calculated by estimateExtraSpace.  This is only valid before we've switched to buildruns mode
+     *   It is only calculate when the fetchForPrep fn is set as well
+     */
+    long estimatedExtraForPrep;
+
+    /* strxfrm's scale factor (multiplies by length), depends on the current collation */
+    int strxfrmScaleFactor;
+
+    /* strxfrm's constant factor, depends on the current collation */
+    int strxfrmConstantFactor;
 
     TupleDesc tupdesc;
     MemTupleBinding *mt_bind;
 
-    /* Limit sort : todo what is the sentinel value for no-limit?  */
+    /* Limit the sort?  If 0 then we sort all input values, else we keep only the first limit-many values */
     int32 limit;
 
-    /* Bit trick : todo: how does bit trick work */
+    /* Bit trick: this mask will be set so it can be used to negate a return value.  See comments on usage */
     int32 limitmask;
 
-    /* Unique sort todo: how is this different from enforceUnique  */
+    /* Unique sort: should the sort discard duplicate values?  */
     bool unique;
 
     /* enforce Unique, for index build */
     bool enforceUnique;
 } MKContext;
 
+/**
+ * This prepares entries AND sets their level.
+ */
+static inline void mk_prepare_array(MKEntry *a, int i, int j, int32 lv, struct MKContext *ctxt)
+{
+    MKEntry *last = a+j;
+    MKEntry *cur = a+i;
+
+    Assert(a && j>=0);
+    do {
+        if (ctxt->fetchForPrep)
+            tupsort_prepare(cur, ctxt, lv);
+        mke_set_lv(cur, lv);
+    } while (++cur <= last);
+}
+
 extern void tupsort_cpfr(MKEntry *dst, MKEntry *src, MKLvContext *ctxt);
-extern void tupsort_prepare_char(MKEntry *a, bool isChar);
+extern int tupsort_compare_datum(MKEntry *v1, MKEntry *v2, MKLvContext *ctxt, MKContext *mkContext);
 
 extern void create_mksort_context(
         MKContext *mkctxt,
         int nkeys, 
-        MKPrepare prep, TupleDesc tupdesc, bool tbyv, int tlen,
+        MKFetchDatumForPrepare fetchForPrep, TupleDesc tupdesc, bool tbyv, int tlen,
         Oid *sortOperators, 
         AttrNumber *attNums,
         ScanKey sk);

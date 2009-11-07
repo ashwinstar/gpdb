@@ -44,6 +44,7 @@ extern char *pg_perm_setlocale(int category, const char *locale);
 
 extern bool lc_collate_is_c(void);
 extern bool lc_ctype_is_c(void);
+extern void lc_guess_strxfrm_scaling_factor(int *scaleFactorOut, int *constantFactorOut);
 
 /*
  * Return the POSIX lconv struct (contains number/money formatting

@@ -153,8 +153,10 @@ typedef enum
 #define TAPE_BUFFER_OVERHEAD		(BLCKSZ * 3)
 #define MERGE_BUFFER_SIZE			(BLCKSZ * 32)
 
+// #define PRINT_SPILL_AND_MEMORY_MESSAGES
+
 /* 
- * Current postion of Tuplesort operation.
+ * Current position of Tuplesort operation.
  */
 struct TuplesortPos_mk
 {
@@ -361,13 +363,32 @@ static bool is_under_sort_ctxt(Tuplesortstate_mk *state)
 }
 #endif
 
+/**
+ * Any strings that are STRXFRM_INPUT_LENGTH_LIMIT or larger will store only the
+ *    first STRXFRM_INPUT_LENGTH_LIMIT bytes of the transformed string.
+ *
+ * Note that this is actually less transformed data in some cases than if the string were
+ *   just a little smaller than STRXFRM_INPUT_LENGTH_LIMIT.  We can probably make the
+ *   transition more gradual but will still want this fading off -- for long strings
+ *   that differ within the first STRXFRM_INPUT_LENGTH_LIMIT bytes then the prefix
+ *   will be sufficient for all but equal cases -- in which case a longer prefix does
+ *   not help (we must resort to datum for comparison)
+ *
+ * If less than the whole transformed size is stored then the transformed string itself is also
+ *   not copied -- so for large strings we must resort to datum-based comparison.
+ */
+#define STRXFRM_INPUT_LENGTH_LIMIT (512)
 #define COPYTUP(state,stup,tup) ((*(state)->copytup) (state, stup, tup))
 #define WRITETUP(state,tape,stup)	((*(state)->writetup) (state, tape, stup))
 #define READTUP(state,pos,stup,tape,len) ((*(state)->readtup) (state, pos, stup, tape, len))
-static inline bool LACKMEM(Tuplesortstate_mk *state)
+
+static inline bool LACKMEM_WITH_ESTIMATE(Tuplesortstate_mk *state)
 {
-    return MemoryContextGetCurrentSpace(state->sortcontext) 
-           > state->memAllowed;
+	/* Assert: lackmem is only effective during initial run build because
+	 *         we don't maintain the estimate after that. */
+	Assert(state->status == TSS_INITIAL);
+
+    return MemoryContextGetCurrentSpace(state->sortcontext) + state->mkctxt.estimatedExtraForPrep > state->memAllowed;
 }
 
 /*
@@ -434,14 +455,14 @@ static long writetup_datum(Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e
 static void readtup_datum(Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e,
         LogicalTape *lt, uint32 len);
 
-static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt);
-static int tupsort_compare_datum(MKEntry *v1, MKEntry *v2, MKLvContext *ctxt);
+static void tupsort_prepare_char(MKEntry *a, bool isChar);
+static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt, MKContext *mkContext);
 
-static void tupsort_prepare_mtup(MKEntry *a, MKContext *ctxt, int lv);
-static void tupsort_prepare_itup(MKEntry *a, MKContext *ctxt, int lv);
-#if 0
-static void tupsort_prepare_datum(MKEntry *a, MKContext *ctxt, int lv);
-#endif
+static Datum tupsort_fetch_datum_mtup(MKEntry *a, MKContext *mkctxt, MKLvContext *lvctxt, bool *isNullOut);
+static Datum tupsort_fetch_datum_itup(MKEntry *a, MKContext *mkctxt, MKLvContext *lvctxt, bool *isNullOut);
+
+static int32 estimateMaxPrepareSizeForEntry(MKEntry *a, struct MKContext *mkctxt);
+static int32 estimatePrepareSpaceForChar(struct MKContext *mkContext, MKEntry *e, Datum d, bool isCHAR);
 
 static void tuplesort_limit_insert(Tuplesortstate_mk *state, MKEntry *e);
 static void tuplesort_heap_insert(Tuplesortstate_mk *state, MKEntry *e);
@@ -523,7 +544,7 @@ tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
             mke_blank(state->entries+i);
 
         /* workMem must be large enough for the minimal memtuples array */
-        if (LACKMEM(state))
+        if (LACKMEM_WITH_ESTIMATE(state))
             elog(ERROR, "insufficient memory allowed for sort");
     } 
 
@@ -541,7 +562,7 @@ tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
  * and uniqueness.  Should do this after begin_heap.
  * 
  */
-    void
+void
 cdb_tuplesort_init_mk(Tuplesortstate_mk *state, 
         int64 offset, int64 limit, int unique, int sort_flags,
         int64 maxdistinct)
@@ -584,7 +605,7 @@ void
 create_mksort_context(
         MKContext *mkctxt,
         int nkeys, 
-        MKPrepare prep, TupleDesc tupdesc, bool tbyv, int tlen,
+        MKFetchDatumForPrepare fetchForPrep, TupleDesc tupdesc, bool tbyv, int tlen,
         Oid *sortOperators, 
         AttrNumber *attNums,
         ScanKey sk)
@@ -596,15 +617,17 @@ create_mksort_context(
     mkctxt->lvctxt = (MKLvContext *) palloc0(sizeof(MKLvContext) * nkeys);
 
     AssertEquivalent(sortOperators == NULL, sk != NULL); 
-    AssertEquivalent(prep==NULL, tupdesc==NULL); 
+    AssertEquivalent(fetchForPrep==NULL, tupdesc==NULL);
 
-    mkctxt->prep = prep;
+    mkctxt->fetchForPrep = fetchForPrep;
     mkctxt->tupdesc = tupdesc;
     if (tupdesc)
         mkctxt->mt_bind = create_memtuple_binding(tupdesc); 
 
-    mkctxt->comp = tupsort_compare_datum;
     mkctxt->cpfr = tupsort_cpfr;
+    mkctxt->estimatedExtraForPrep = 0;
+
+    lc_guess_strxfrm_scaling_factor(&mkctxt->strxfrmScaleFactor, &mkctxt->strxfrmConstantFactor);
 
     for(i=0; i<nkeys; ++i)
     {
@@ -692,7 +715,7 @@ tuplesort_begin_heap_mk(TupleDesc tupDesc,
     create_mksort_context(
             &state->mkctxt,
             nkeys, 
-            tupsort_prepare_mtup, 
+            tupsort_fetch_datum_mtup,
             tupDesc, 0, 0, 
             sortOperators, attNums,
             NULL);
@@ -793,7 +816,7 @@ tuplesort_begin_index_mk(Relation indexRel,
     create_mksort_context(
             &state->mkctxt,
             state->nKeys, 
-            tupsort_prepare_itup, 
+            tupsort_fetch_datum_itup,
             tupdesc, 0, 0,
             NULL, NULL, state->cmpScanKey);
    
@@ -854,7 +877,7 @@ tuplesort_begin_datum_mk(Oid datumType,
  * pointing to garbage.  Be careful not to attempt to use or free such
  * pointers afterwards!
  */
-    void
+void
 tuplesort_end_mk(Tuplesortstate_mk *state)
 {
     /* context swap probably not needed, but let's be safe */
@@ -884,19 +907,18 @@ tuplesort_end_mk(Tuplesortstate_mk *state)
      */ 
     if (state->instrument)
     {
-        /* How close did we come to the work_mem limit? */
-        if (state->instrument->workmemused < MemoryContextGetCurrentSpace(state->sortcontext)) 
-            state->instrument->workmemused = MemoryContextGetCurrentSpace(state->sortcontext);
+    	Size maxSpaceUsedOnSort = MemoryContextGetPeakSpace(state->sortcontext);
+
+        if (state->instrument->workmemused < maxSpaceUsedOnSort)
+            state->instrument->workmemused = maxSpaceUsedOnSort;
 
         /* Report executor memory used by our memory context. */
-        state->instrument->execmemused +=
-            (double)MemoryContextGetPeakSpace(state->sortcontext);
+        state->instrument->execmemused += (double)maxSpaceUsedOnSort;
 
         /* Wanted */
         if(state->spilledBytes > 0)
         {
-            state->instrument->workmemwanted = MemoryContextGetPeakSpace(state->sortcontext)
-                    + state->spilledBytes;
+            state->instrument->workmemwanted = maxSpaceUsedOnSort + state->spilledBytes;
         }
         else
             state->instrument->workmemwanted = 0;
@@ -926,7 +948,7 @@ tuplesort_end_mk(Tuplesortstate_mk *state)
  * valid for the life of the Tuplesortstate_mk object; or if they are to be
  * freed early, disconnect them by calling again with NULL pointers.
  */
-    void 
+void
 tuplesort_set_instrument_mk(Tuplesortstate_mk            *state,
         struct Instrumentation    *instrument,
         struct StringInfoData     *explainbuf)
@@ -940,7 +962,7 @@ tuplesort_set_instrument_mk(Tuplesortstate_mk            *state,
  *
  * Note that the input data is always copied; the caller need not save it.
  */
-    void
+void
 tuplesort_puttupleslot_mk(Tuplesortstate_mk *state, TupleTableSlot *slot)
 {
     MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
@@ -958,7 +980,7 @@ tuplesort_puttupleslot_mk(Tuplesortstate_mk *state, TupleTableSlot *slot)
  *
  * Note that the input tuple is always copied; the caller need not save it.
  */
-    void
+void
 tuplesort_putindextuple_mk(Tuplesortstate_mk *state, IndexTuple tuple)
 {
     MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
@@ -976,7 +998,7 @@ tuplesort_putindextuple_mk(Tuplesortstate_mk *state, IndexTuple tuple)
  *
  * If the Datum is pass-by-ref type, the value will be copied.
  */
-    void
+void
 tuplesort_putdatum_mk(Tuplesortstate_mk *state, Datum val, bool isNull)
 {
     MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
@@ -1008,7 +1030,7 @@ tuplesort_putdatum_mk(Tuplesortstate_mk *state, Datum val, bool isNull)
 /*
  * Shared code for tuple and datum cases.
  */
-    static void
+static void
 puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
 {
     Assert(is_under_sort_ctxt(state));
@@ -1044,7 +1066,12 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
 
             /* full sort? */
             if (state->mkctxt.limit == 0)
-                state->entries[state->entry_count++] = *e;
+			{
+            	state->entries[state->entry_count] = *e;
+            	if ( state->mkctxt.fetchForPrep)
+            		state->mkctxt.estimatedExtraForPrep += estimateMaxPrepareSizeForEntry(&state->entries[state->entry_count], &state->mkctxt);
+            	state->entry_count++;
+			}
             else
             {
                 tuplesort_limit_insert(state, e); 
@@ -1052,7 +1079,7 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
             }
 
             /* If out of work_mem, switch to diskmode */
-            if(LACKMEM(state))
+            if(LACKMEM_WITH_ESTIMATE(state))
             {
                 inittapes_mk(state, is_sortstate_rwfile(state) ? state->pfile_rwfile_prefix : NULL);
                 Assert(state->status == TSS_BUILDRUNS);
@@ -1076,7 +1103,7 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
 /*
  * All tuples have been provided; finish the sort.
  */
-    void
+void
 tuplesort_performsort_mk(Tuplesortstate_mk *state)
 {
     MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
@@ -1110,7 +1137,16 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
             inittapes_mk(state, state->pfile_rwfile_prefix);
             /* Fall through */
         case TSS_BUILDRUNS:
+
+#ifdef PRINT_SPILL_AND_MEMORY_MESSAGES
+            elog(INFO, "Done building runs.  Mem peak is now %ld", (long)MemoryContextGetPeakSpace(state->sortcontext));
+#endif // PRINT_SPILL_AND_MEMORY_MESSAGES
+
             dumptuples_mk(state, true);
+
+#ifdef PRINT_SPILL_AND_MEMORY_MESSAGES
+            elog(INFO, "Done tuple dump.  Mem peak is now %ld", (long)MemoryContextGetPeakSpace(state->sortcontext));
+#endif // PRINT_SPILL_AND_MEMORY_MESSAGES
 
             mergeruns(state);
 
@@ -1141,7 +1177,7 @@ void tuplesort_flush_mk(Tuplesortstate_mk *state)
  * direction into *stup.  Returns FALSE if no more tuples.
  * If *should_free is set, the caller must pfree stup.tuple when done with it.
  */
-    static bool
+static bool
 tuplesort_gettuple_common_pos(Tuplesortstate_mk *state, TuplesortPos_mk *pos,
         bool forward, MKEntry *e, bool *should_free)
 {
@@ -1411,7 +1447,7 @@ tuplesort_merge_order(long allowedMem)
  *
  * This is called only if we have found we don't have room to sort in memory.
  */
-    void
+void
 inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
 {
     int			maxTapes;
@@ -1423,6 +1459,9 @@ inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
     /* Compute number of tapes to use: merge order plus 1 */
     maxTapes = tuplesort_merge_order(state->memAllowed) + 1;
 
+#ifdef PRINT_SPILL_AND_MEMORY_MESSAGES
+    elog(INFO, "Spilling after %d", (int) state->entry_count);
+#endif // PRINT_SPILL_AND_MEMORY_MESSAGES
     /*
      * We must have at least 2*maxTapes slots in the memtuples[] array, else
      * we'd not have room for merge heap plus preread.  It seems unlikely that
@@ -1430,6 +1469,10 @@ inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
      */
     maxTapes = Min(maxTapes, state->entry_count / 2);
     maxTapes = Max(maxTapes, 1);
+
+#ifdef PRINT_SPILL_AND_MEMORY_MESSAGES
+    elog(INFO, "     maxtapes %d Mem peak is now %ld", maxTapes, (long)MemoryContextGetPeakSpace(state->sortcontext));
+#endif // PRINT_SPILL_AND_MEMORY_MESSAGES
 
     /* XXX XXX: with losers, only need 1x slots because we don't need a merge heap */
 
@@ -1478,6 +1521,11 @@ inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
      */
     Assert(state->mkheap == NULL);
     Assert(state->status == TSS_INITIAL || state->status == TSS_SORTEDINMEM);
+
+#ifdef PRINT_SPILL_AND_MEMORY_MESSAGES
+    elog(INFO, "     about to make heap mem peak is now %ld", (long)MemoryContextGetPeakSpace(CurrentMemoryContext));
+#endif // PRINT_SPILL_AND_MEMORY_MESSAGES
+
     if(state->status == TSS_INITIAL)
     {
         state->mkheap = mkheap_from_array(state->entries, state->entry_allocsize, state->entry_count, &state->mkctxt);
@@ -1505,6 +1553,10 @@ inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
     state->destTape = 0;
 
     state->status = TSS_BUILDRUNS;
+#ifdef PRINT_SPILL_AND_MEMORY_MESSAGES
+    elog(INFO, "     build-run ready mem peak is now %ld", (long)MemoryContextGetPeakSpace(state->sortcontext));
+#endif // PRINT_SPILL_AND_MEMORY_MESSAGES
+
 }
 
 /*
@@ -1513,7 +1565,7 @@ inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
  * This is called after finishing a run when we know another run
  * must be started.  This implements steps D3, D4 of Algorithm D.
  */
-    static void
+static void
 selectnewtape_mk(Tuplesortstate_mk *state)
 {
     int			j;
@@ -1548,7 +1600,7 @@ selectnewtape_mk(Tuplesortstate_mk *state)
  * This implements steps D5, D6 of Algorithm D.  All input data has
  * already been written to initial runs on tape (see dumptuples).
  */
-    static void
+static void
 mergeruns(Tuplesortstate_mk *state)
 {
     int			tapenum,
@@ -1696,7 +1748,7 @@ mergeruns(Tuplesortstate_mk *state)
  * This is the inner loop of Algorithm D step D5.  We know that the
  * output tape is TAPE[T].
  */
-    void
+void
 mergeonerun_mk(Tuplesortstate_mk *state)
 {
     int			destTape = state->tp_tapenum[state->tapeRange];
@@ -1754,7 +1806,8 @@ static bool tupsort_preread(TupsortMergeReadCtxt *ctxt)
         tuplen = getlen(ctxt->tsstate, &ctxt->pos, ctxt->pos.cur_work_tape, true);
         if(tuplen != 0)
         {
-            READTUP(ctxt->tsstate, &ctxt->pos, ctxt->p + ctxt->cnt, ctxt->pos.cur_work_tape, tuplen);
+        	MKEntry *e = ctxt->p + ctxt->cnt;
+            READTUP(ctxt->tsstate, &ctxt->pos, e, ctxt->pos.cur_work_tape, tuplen);
             ctxt->mem_used += tuplen;
         }
         else
@@ -1796,7 +1849,7 @@ static bool tupsort_mergeread(void *pvctxt, MKEntry *e)
  * as many tuples as we can from each active input tape, and finally
  * fill the merge heap with the first tuple from each active tape.
  */
-    static void
+static void
 beginmerge(Tuplesortstate_mk *state)
 {
     int			activeTapes;
@@ -1935,7 +1988,7 @@ beginmerge(Tuplesortstate_mk *state)
  * only happen at end of input data).  If we see that the tuple run number
  * at the top of the heap has changed, start a new run.
  */
-    void
+void
 dumptuples_mk(Tuplesortstate_mk *state, bool alltuples)
 {
     int i;
@@ -2033,7 +2086,7 @@ dumptuples_mk(Tuplesortstate_mk *state, bool alltuples)
 /*
  * Put pos at the begining of the tuplesort.  Create pos->work_tape if necessary
  */
-    void
+void
 tuplesort_rescan_pos_mk(Tuplesortstate_mk *state, TuplesortPos_mk *pos)
 {
     MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
@@ -2088,7 +2141,7 @@ void tuplesort_rescan_mk(Tuplesortstate_mk *state)
 /*
  * tuplesort_markpos	- saves current position in the merged sort file
  */
-    void
+void
 tuplesort_markpos_pos_mk(Tuplesortstate_mk *state, TuplesortPos_mk *pos)
 {
     LogicalTape *work_tape = NULL;
@@ -2115,7 +2168,8 @@ tuplesort_markpos_pos_mk(Tuplesortstate_mk *state, TuplesortPos_mk *pos)
 
     MemoryContextSwitchTo(oldcontext);
 }
-    void 
+
+void
 tuplesort_markpos_mk(Tuplesortstate_mk *state)
 {
     tuplesort_markpos_pos_mk(state, &state->pos);
@@ -2125,7 +2179,7 @@ tuplesort_markpos_mk(Tuplesortstate_mk *state)
  * tuplesort_restorepos - restores current position in merged sort file to
  *						  last saved position
  */
-    void
+void
 tuplesort_restorepos_pos_mk(Tuplesortstate_mk *state, TuplesortPos_mk *pos)
 {
     MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
@@ -2156,7 +2210,8 @@ tuplesort_restorepos_pos_mk(Tuplesortstate_mk *state, TuplesortPos_mk *pos)
 
     MemoryContextSwitchTo(oldcontext);
 }
-    void 
+
+void
 tuplesort_restorepos_mk(Tuplesortstate_mk *state)
 {
     tuplesort_restorepos_pos_mk(state, &state->pos);
@@ -2165,8 +2220,7 @@ tuplesort_restorepos_mk(Tuplesortstate_mk *state)
 /*
  * Tape interface routines
  */
-
-    static uint32 
+static uint32
 getlen(Tuplesortstate_mk *state, TuplesortPos_mk *pos, LogicalTape *lt, bool eofOK)
 {
     uint32 len;
@@ -2186,7 +2240,7 @@ getlen(Tuplesortstate_mk *state, TuplesortPos_mk *pos, LogicalTape *lt, bool eof
     return len;
 }
 
-    static void
+static void
 markrunend(Tuplesortstate_mk *state, int tapenum)
 {
     uint32 len = 0;
@@ -2199,7 +2253,7 @@ markrunend(Tuplesortstate_mk *state, int tapenum)
 /*
  * Inline-able copy of FunctionCall2() to save some cycles in sorting.
  */
-    static inline Datum
+static inline Datum
 myFunctionCall2(FmgrInfo *flinfo, Datum arg1, Datum arg2)
 {
     FunctionCallInfoData fcinfo;
@@ -2226,7 +2280,7 @@ myFunctionCall2(FmgrInfo *flinfo, Datum arg1, Datum arg2)
  * and return a 3-way comparison result.  This takes care of handling
  * NULLs and sort ordering direction properly.
  */
-    static inline int32
+static inline int32
 inlineApplySortFunction(FmgrInfo *sortFunction, SortFunctionKind kind,
         Datum datum1, bool isNull1,
         Datum datum2, bool isNull2)
@@ -2294,7 +2348,7 @@ inlineApplySortFunction(FmgrInfo *sortFunction, SortFunctionKind kind,
     }
 }
 
-    static void
+static void
 copytup_heap(Tuplesortstate_mk *state, MKEntry *e, void *tup)
 {
     /*
@@ -2546,19 +2600,24 @@ readtup_datum(Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e,
 typedef struct refcnt_locale_str
 {
     int ref;
-    int xfrm_pos;
+    short xfrm_pos;
+    char isPrefixOnly;
     char data[1];
 } refcnt_locale_str;
 
 typedef struct refcnt_locale_str_k
 {
     int ref;
-    int xfrm_pos;
-    char data[1024];
+    short xfrm_pos;
+    char isPrefixOnly;
+    char data[16000];
 } refcnt_locale_str_k;
 
-
-static int tupsort_compare_datum(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt)
+/**
+ * Compare the datums for the given level.  It is assumed that each entry has been prepared
+ *   for the given level.
+ */
+int tupsort_compare_datum(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt, MKContext *context)
 {
     Assert(!mke_is_null(v1));
     Assert(!mke_is_null(v2));
@@ -2578,7 +2637,7 @@ static int tupsort_compare_datum(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt)
                 return (lvctxt->sortfnkind == SORTFUNC_CMP) ? result : -result;
             }
         default:
-            return tupsort_compare_char(v1, v2, lvctxt);
+            return tupsort_compare_char(v1, v2, lvctxt, context);
     }
 
     Assert(!"Never reach here");
@@ -2637,7 +2696,7 @@ static void tupsort_refcnt(void *vp, int ref)
     }
 }
 
-static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt)
+static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt, MKContext *mkContext)
 {
     int result = 0;
 
@@ -2649,6 +2708,7 @@ static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt)
 
     Assert(!lc_collate_is_c());
     Assert(lvctxt->sortfnkind == SORTFUNC_CMP || lvctxt->sortfnkind == SORTFUNC_REVCMP);
+    Assert(mkContext->fetchForPrep);
 
     Assert(p1->ref > 0 && p2->ref > 0);
 
@@ -2659,16 +2719,42 @@ static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt)
     }
     else
     {
-        result = strcmp(p1->data + p1->xfrm_pos, p2->data + p2->xfrm_pos); 
+		result = strcmp(p1->data + p1->xfrm_pos, p2->data + p2->xfrm_pos);
 
-        /* 
-         * See varstr_cmp for comment on comparing str with locale.
-         * Essentially, for some locale, strcoll may return eq even if
-         * original str are different.  
-         */
-        if(result == 0)
-            result = strcmp(p1->data, p2->data); 
+		if(result == 0)
+		{
+			if ( p1->isPrefixOnly || p2->isPrefixOnly)
+			{
+				/*
+				 * only prefixes were equal so we must compare more of the strings
+				 *
+				 * do this by getting the true datum and calling the built-in comparison
+				 * function
+				 */
+				Datum p1Original, p2Original;
+				bool p1IsNull, p2IsNull;
 
+				p1Original = (mkContext->fetchForPrep)(v1, mkContext, lvctxt, &p1IsNull);
+				p2Original = (mkContext->fetchForPrep)(v2, mkContext, lvctxt, &p2IsNull);
+
+				Assert(!p1IsNull);  /* should not have been prepared if null */
+				Assert(!p2IsNull);
+
+				result = inlineApplySortFunction(&lvctxt->fmgrinfo, lvctxt->sortfnkind,
+				                    p1Original, false, p2Original, false );
+			}
+			else
+			{
+				/*
+				 * See varstr_cmp for comment on comparing str with locale.
+				 * Essentially, for some locale, strcoll may return eq even if
+				 * original str are different.
+				 */
+				result = strcmp(p1->data, p2->data);
+			}
+		}
+
+		/* The values were equal -- de-dupe them */
         if(result == 0)
         {
             if(p1->ref >= p2->ref)
@@ -2689,23 +2775,72 @@ static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, MKLvContext *lvctxt)
     return (lvctxt->sortfnkind == SORTFUNC_CMP) ? result : -result;
 }
 
-static void tupsort_prepare_mtup(MKEntry *a, MKContext *mkctxt, int lv)
+static int32 estimateMaxPrepareSizeForEntry(MKEntry *a, struct MKContext *mkContext)
 {
-    MKLvContext *lvctxt = mkctxt->lvctxt + lv; 
+	int result = 0;
+	int lv;
+
+	Assert(mkContext->fetchForPrep != NULL);
+
+	for ( lv = 0; lv < mkContext->total_lv; lv++)
+	{
+	    MKLvContext *level = mkContext->lvctxt + lv;
+	    MKLvType levelType = level->lvtype;
+
+	    if (levelType == MKLV_TYPE_CHAR ||
+	    	levelType == MKLV_TYPE_TEXT )
+	    {
+			bool isnull;
+		    Datum d = (mkContext->fetchForPrep)(a, mkContext, level, &isnull);
+
+		    if ( ! isnull )
+		    {
+				int amountThisDatum = estimatePrepareSpaceForChar(mkContext, a, d, levelType == MKLV_TYPE_CHAR);
+				if ( amountThisDatum > result )
+					result = amountThisDatum;
+		    }
+	    }
+	}
+
+	return result;
+}
+
+static Datum tupsort_fetch_datum_mtup(MKEntry *a, MKContext *mkctxt, MKLvContext *lvctxt, bool *isNullOut)
+{
+    Datum d = memtuple_getattr(
+            (MemTuple) a->ptr,
+            mkctxt->mt_bind,
+            lvctxt->attno,
+            isNullOut
+            );
+    return d;
+}
+
+static Datum tupsort_fetch_datum_itup(MKEntry *a, MKContext *mkctxt, MKLvContext *lvctxt, bool *isNullOut)
+{
+    Datum d = index_getattr(
+            (IndexTuple) a->ptr, 
+            lvctxt->attno,
+            mkctxt->tupdesc,
+            isNullOut
+            );
+    return d;
+}
+
+void tupsort_prepare(MKEntry *a, MKContext *mkctxt, int lv)
+{
+    MKLvContext *lvctxt = mkctxt->lvctxt + lv;
     bool isnull;
 
-    tupsort_cpfr(a, NULL, lvctxt); 
+	Assert(mkctxt->fetchForPrep != NULL);
 
-    a->d = memtuple_getattr(
-            (MemTuple) a->ptr, 
-            mkctxt->mt_bind, 
-            lvctxt->attno,
-            &isnull
-            );
+    tupsort_cpfr(a, NULL, lvctxt);
+
+    a->d = (mkctxt->fetchForPrep)(a, mkctxt, lvctxt, &isnull);
 
     if(!isnull)
-        mke_set_not_null(a); 
-    else 
+        mke_set_not_null(a);
+    else
         mke_set_null(a, lvctxt->nullfirst);
 
     if (lvctxt->lvtype == MKLV_TYPE_CHAR)
@@ -2714,51 +2849,8 @@ static void tupsort_prepare_mtup(MKEntry *a, MKContext *mkctxt, int lv)
         tupsort_prepare_char(a, false);
 }
 
-static void tupsort_prepare_itup(MKEntry *a, MKContext *mkctxt, int lv)
-{
-    MKLvContext *lvctxt = mkctxt->lvctxt + lv; 
-    bool isnull;
-
-    tupsort_cpfr(a, NULL, lvctxt); 
-
-    a->d = index_getattr(
-            (IndexTuple) a->ptr, 
-            lvctxt->attno,
-            mkctxt->tupdesc,
-            &isnull
-            );
-
-    if(!isnull)
-        mke_set_not_null(a); 
-    else 
-        mke_set_null(a, lvctxt->nullfirst);
-
-    if (lvctxt->lvtype == MKLV_TYPE_CHAR)
-        tupsort_prepare_char(a, true);
-    else if (lvctxt->lvtype == MKLV_TYPE_TEXT)
-        tupsort_prepare_char(a, false); 
-}
-
-#if 0
-static void tupsort_prepare_datum(MKEntry *a, MKContext *mkctxt, int lv)
-{
-    MKLvContext *lvctxt = mkctxt->lvctxt + lv; 
-
-    Assert(lv == 0);
-
-    tupsort_cpfr(a, NULL, lvctxt); 
-    mke_set_not_null(a); 
-
-    if (lvctxt->lvtype == MKLV_TYPE_CHAR)
-        tupsort_prepare_char(a, true);
-    else if (lvctxt->lvtype == MKLV_TYPE_TEXT)
-        tupsort_prepare_char(a, false); 
-}
-#endif
-
 /* "True" length (not counting trailing blanks) of a BpChar */
-    static inline int
-bcTruelen(char *p, int len)
+static inline int bcTruelen(char *p, int len)
 {
     int			i;
 
@@ -2770,18 +2862,69 @@ bcTruelen(char *p, int len)
     return i + 1;
 }
 
-void tupsort_prepare_char(MKEntry *a, bool isCHAR)
+/**
+ * should only be called for non-null Datum (caller must check the isnull flag from the fetch)
+ */
+static int32 estimatePrepareSpaceForChar(struct MKContext *mkContext, MKEntry *e, Datum d, bool isCHAR)
+{
+    int len, transformedLength, retlen;
+
+    if(isCHAR)
+    {
+        char *p;
+        void *toFree;
+
+        varattrib_untoast_ptr_len(d, &p, &len, &toFree);
+        len = bcTruelen(p, len);
+
+        if ( toFree )
+        	pfree(toFree);
+    }
+    else
+	{
+    	/* since we don't need the data for checking the true length, just unpack enough to get the length
+    	 * this may avoid decompression
+    	 */
+    	len = varattrib_untoast_len(d);
+	}
+
+    /* figure out how much space transformed version will take */
+	transformedLength = len * mkContext->strxfrmScaleFactor + mkContext->strxfrmConstantFactor;
+    if ( len > STRXFRM_INPUT_LENGTH_LIMIT)
+    {
+    	if ( transformedLength > STRXFRM_INPUT_LENGTH_LIMIT)
+    		transformedLength = STRXFRM_INPUT_LENGTH_LIMIT;
+    	 /* we do not store the raw data for long input strings (in part because
+    	  * of compression producing a long input string from a much smaller datum) */
+    	len = 0;
+    }
+
+	retlen = offsetof(refcnt_locale_str, data) + len + 1 + transformedLength + 1;
+    return retlen;
+}
+
+/**
+ * Prepare a character string by copying the datum out to a null-terminated string and
+ *   then also keeping a strxfrmed copy of it.
+ *
+ * If the string is long then the copied out value is not kept and only the prefix of the strxfrm
+ *   is kept.
+ *
+ * Note that this must be in sync with the estimation function.
+ */
+static void tupsort_prepare_char(MKEntry *a, bool isCHAR)
 {
     char *p;
     void *tofree = NULL;
     int len;
-    int llen;
+    int lenToStore;
+    int transformedLenToStore;
     int retlen;
 
     refcnt_locale_str *ret;
     refcnt_locale_str_k kstr;
-    refcnt_locale_str *pstr = (refcnt_locale_str *) &kstr;
-    int avail = 1024;
+    int avail = sizeof(kstr.data);
+    bool storePrefixOnly;
 
     Assert(!lc_collate_is_c());
 
@@ -2793,52 +2936,112 @@ void tupsort_prepare_char(MKEntry *a, bool isCHAR)
     if(isCHAR)
         len = bcTruelen(p, len);
 
-    if(len > avail - 2) 
+    if ( len > STRXFRM_INPUT_LENGTH_LIMIT)
     {
-        pstr = (refcnt_locale_str *) palloc(offsetof(refcnt_locale_str, data) + len + 2); 
-        avail = len + 2;
+        /* too long?  store prefix of strxfrm only and DON'T store copy of original string */
+    	storePrefixOnly = true;
+    	lenToStore = 0;
     }
+    else
+	{
+    	storePrefixOnly = false;
+		lenToStore = len;
+	}
 
-    pstr->ref = 1;
-    pstr->xfrm_pos = len+1;
-    memcpy(pstr->data, p, len);
-    pstr->data[len] = '\0';
+    /* This assertion is true because avail is larger than
+     * STRXFRM_INPUT_LENGTH_LIMIT, which is the max of lenToStore ... */
+    Assert(lenToStore <= avail - 2);
+    Assert(lenToStore < 32768); /* so it will fit in a short (xfrm_pos field) */
+    Assert(STRXFRM_INPUT_LENGTH_LIMIT < 32768); /* so it will fit in a short (xfrm_pos field) */
 
-    avail -= len + 1;
+    kstr.ref = 1;
+    kstr.xfrm_pos = lenToStore+1;
+    memcpy(kstr.data, p, lenToStore);
+    kstr.data[lenToStore] = '\0';
+
+    avail -= lenToStore + 1;
     Assert(avail > 0);
 
-    llen = (int) gp_strxfrm(pstr->data+pstr->xfrm_pos, pstr->data, avail);
-    retlen = offsetof(refcnt_locale_str, data) + len + 1 + llen + 1;
-
-    ret = (refcnt_locale_str *) palloc(retlen); 
-
-    if(llen < avail)
+    /*
+     * String transformation.
+     */
+    if ( storePrefixOnly)
     {
-        memcpy(ret, pstr, retlen); 
+    	/* prefix only: we haven't copied from p into a null-terminated string so do that now
+    	 */
+    	char *possibleStr = kstr.data + kstr.xfrm_pos + STRXFRM_INPUT_LENGTH_LIMIT + 2;
+    	char *str;
+
+    	if ( avail >= STRXFRM_INPUT_LENGTH_LIMIT + 1 + len + 1 )
+    	{
+    		/* will segment this so first part is xformed string and next is the throw-away string
+    		 *  to be passed to strxfrm */
+    		str = possibleStr;
+    	}
+    	else
+    	{
+    		str = palloc(len + 1);
+    	}
+    	memcpy(str, p, len);
+    	str[len] = '\0';
+
+    	/*
+    	 * transform, but limit length of transformed string
+    	 */
+    	Assert(avail >= STRXFRM_INPUT_LENGTH_LIMIT + 1);
+    	transformedLenToStore = (int) gp_strxfrm(kstr.data+kstr.xfrm_pos, str, STRXFRM_INPUT_LENGTH_LIMIT + 1);
+
+    	if ( transformedLenToStore > STRXFRM_INPUT_LENGTH_LIMIT)
+    		transformedLenToStore = STRXFRM_INPUT_LENGTH_LIMIT;
+
+    	if ( str != possibleStr )
+    		pfree(str);
+    }
+    else transformedLenToStore = (int) gp_strxfrm(kstr.data+kstr.xfrm_pos, kstr.data, avail);
+
+    /*
+     * Copy or transform into the result as needed
+     */
+    retlen = offsetof(refcnt_locale_str, data) + lenToStore + 1 + transformedLenToStore + 1;
+
+    ret = (refcnt_locale_str *) palloc(retlen);
+
+    if(transformedLenToStore < avail)
+    {
+        memcpy(ret, &kstr, retlen);
         Assert(ret->ref == 1);
         Assert(ret->data[ret->xfrm_pos - 1] == '\0');
-        Assert(ret->data[ret->xfrm_pos + llen] == '\0');
+        Assert(ret->data[ret->xfrm_pos + transformedLenToStore] == '\0');
     }
     else
     {
-        memcpy(ret, pstr, offsetof(refcnt_locale_str, data) + len + 1);
-        avail = retlen - offsetof(refcnt_locale_str, data) - len - 1;
-        Assert(avail > llen);
+    	/* note that when avail (determined by refcnt_locale_str_k.data) is much larger than
+    	 *   STRXFRM_INPUT_LENGTH_LIMIT then this code won't be hit.
+    	 */
+        memcpy(ret, &kstr, offsetof(refcnt_locale_str, data) + lenToStore + 1);
+        avail = retlen - offsetof(refcnt_locale_str, data) - lenToStore - 1;
+        Assert(avail > transformedLenToStore);
         Assert(ret->ref == 1);
         Assert(ret->xfrm_pos == len + 1);
         Assert(ret->data[len] == '\0');
 
-        llen = (int) gp_strxfrm(ret->data+ret->xfrm_pos, pstr->data, avail);
-        Assert(llen < avail); 
-        Assert(ret->data[ret->xfrm_pos + llen] == '\0'); 
+		transformedLenToStore = (int) gp_strxfrm(ret->data+ret->xfrm_pos, kstr.data, avail);
+		Assert(transformedLenToStore < avail);
+		Assert(ret->data[ret->xfrm_pos + transformedLenToStore] == '\0');
     }
-
-    if(pstr != (refcnt_locale_str *) &kstr)
-        pfree(pstr);
 
     if(tofree)
         pfree(tofree);
 
+    /* data string is length zero in this case (could just not even store it and have xfrm_pos == 0
+     *       but that complicates code more)
+     */
+    AssertImply(storePrefixOnly, ret->data[0] == '\0' );
+
+    /*
+     * finalize result
+     */
+    ret->isPrefixOnly = storePrefixOnly ? 1 : 0;
     a->d = PointerGetDatum(ret);
     mke_set_refc(a);
 }
@@ -2942,7 +3145,7 @@ static void tuplesort_limit_sort(Tuplesortstate_mk *state)
     state->mkheap = NULL;
 }
 
-    void 
+void
 tuplesort_set_gpmon_mk(Tuplesortstate_mk *state, gpmon_packet_t *gpmon_pkt, int *gpmon_tick)
 {
     state->gpmon_pkt = gpmon_pkt;

@@ -199,6 +199,53 @@ heap_tuple_fetch_attr(struct varlena *attr)
 	return result;
 }
 
+
+/**
+ * If this function is changed then update varattrib_untoast_ptr_len as well
+ */
+int varattrib_untoast_len(Datum d)
+{
+	struct varlena *va = (struct varlena *) DatumGetPointer(d);
+	varattrib *attr = (varattrib *) va;
+
+	int len = -1;
+	void *toFree = NULL;
+
+	if(VARATT_IS_EXTENDED(attr))
+	{
+		if(VARATT_IS_EXTERNAL(attr))
+		{
+			attr = (varattrib *)toast_fetch_datum((struct varlena *)attr);
+			/* toast_fetch_datum will palloc, so set it up for free */
+			toFree = attr;
+		}
+
+		if(VARATT_IS_COMPRESSED(attr))
+		{
+			PGLZ_Header *tmp = (PGLZ_Header *) attr;
+			len = PGLZ_RAW_SIZE(tmp);
+		}
+		else if(VARATT_IS_SHORT(attr))
+		{
+			len = VARSIZE_SHORT(attr) - VARHDRSZ_SHORT;
+		}
+	}
+
+	if(len == -1)
+	{
+		len = VARSIZE(attr) - VARHDRSZ;
+	}
+
+	if ( toFree)
+		pfree(toFree);
+
+	Assert(len >= 0);
+	return len;
+}
+
+/**
+ * If this function is changed then update varattrib_untoast_len as well
+ */
 void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void **tofree)
 {
 	struct varlena *va = (struct varlena *) DatumGetPointer(d);

@@ -36,12 +36,12 @@ static inline void mkqs_swap(MKEntry *a, int i, int j)
 /**
  * Compare the two entries, only does comparison using compFlags and the level in the context
  */
-static inline int32 mkqs_comp(MKCompare comp, MKEntry *a, MKEntry *b, void *ctxt)
+static inline int32 mkqs_comp(MKEntry *a, MKEntry *b, MKLvContext *ctxt, MKContext *mkctxt)
 {
 	int ret = a->compflags - b->compflags;
 
 	if (ret == 0 && !mke_is_null(a))
-		ret = (comp)(a, b, ctxt);
+		ret = tupsort_compare_datum(a, b, ctxt, mkctxt);
 
 	return ret;
 }
@@ -49,12 +49,12 @@ static inline int32 mkqs_comp(MKCompare comp, MKEntry *a, MKEntry *b, void *ctxt
 /**
  *  Return the median of three multi-key entries
  */
-static inline MKEntry *mkqs_med3(MKEntry *a, MKEntry *b, MKEntry *c, MKCompare comp, MKLvContext *ctxt) 
+static inline MKEntry *mkqs_med3(MKEntry *a, MKEntry *b, MKEntry *c, MKLvContext *ctxt, MKContext *mkctxt)
 {
-	return mkqs_comp(comp, a, b, ctxt) < 0 ?
-                        (mkqs_comp(comp, b, c, ctxt) < 0 ? b : mkqs_comp(comp, a, c, ctxt) < 0 ? c : a )
+	return mkqs_comp(a, b, ctxt, mkctxt) < 0 ?
+                        (mkqs_comp(b, c, ctxt, mkctxt) < 0 ? b : mkqs_comp(a, c, ctxt, mkctxt) < 0 ? c : a )
                         :
-                        (mkqs_comp(comp, b, c, ctxt) > 0 ? b : mkqs_comp(comp, a, c, ctxt) > 0 ? c : a )
+                        (mkqs_comp(b, c, ctxt, mkctxt) > 0 ? b : mkqs_comp(a, c, ctxt, mkctxt) > 0 ? c : a )
                         ;
 }
 
@@ -64,7 +64,7 @@ static inline MKEntry *mkqs_med3(MKEntry *a, MKEntry *b, MKEntry *c, MKCompare c
  * lv/comp/ctxt combine to allow comparison.  Note that, as usual with the multi-key structure, comparison is only done
  *   up to a certain level.
  */
-static inline MKEntry *mkqs_choose_pivot(MKEntry *a, int left, int right, int lv, MKCompare comp, MKLvContext *ctxt)
+static inline MKEntry *mkqs_choose_pivot(MKEntry *a, int left, int right, int lv, MKLvContext *ctxt, MKContext *mkctxt)
 {
 	int s;
 	int n = right - left + 1;
@@ -82,12 +82,12 @@ static inline MKEntry *mkqs_choose_pivot(MKEntry *a, int left, int right, int lv
 		if(n > 40)
 		{
 			s = n/8;
-			pl = mkqs_med3(pl, pl+s, pl+s*2, comp, ctxt);
-			pm = mkqs_med3(pm-s, pm, pm+s, comp, ctxt);
-			pn = mkqs_med3(pn-s*2, pn-s, pn, comp, ctxt);
+			pl = mkqs_med3(pl, pl+s, pl+s*2, ctxt, mkctxt);
+			pm = mkqs_med3(pm-s, pm, pm+s, ctxt, mkctxt);
+			pn = mkqs_med3(pn-s*2, pn-s, pn, ctxt, mkctxt);
 		}
 
-		pm = mkqs_med3(pl, pm, pn, comp, ctxt);
+		pm = mkqs_med3(pl, pm, pn, ctxt, mkctxt);
 	}
 
 	return pm;
@@ -107,7 +107,6 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 	int leftIndex,rightIndex;
 
 	int k;
-	MKCompare comp = mkqs_ctxt->comp; 
     MKLvContext *lvctxt = mkqs_ctxt->lvctxt + lv;
 
 	MKEntry v = {0, };
@@ -125,7 +124,7 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 	rightIndex = right+1;
 
 	/* Choose a pivot */
-	pv = mkqs_choose_pivot(a, left, right, lv, comp, lvctxt);
+	pv = mkqs_choose_pivot(a, left, right, lv, lvctxt, mkqs_ctxt);
 
 	/* Save pivot in v */ 
 	/* Hacking a ref count */
@@ -143,7 +142,7 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 		{
 			/* increase leftIndex until a[leftIndex] >= pivot */
 			while(++leftIndex < rightIndex &&
-				 (cmp = mkqs_comp(comp, a+leftIndex, &v, lvctxt)) < 0)
+				 (cmp = mkqs_comp(a+leftIndex, &v, lvctxt, mkqs_ctxt)) < 0)
 			{
 				Assert(leftIndex >= left && leftIndex<= right);
 				Assert(rightIndex >= left && rightIndex<= right+1);
@@ -180,7 +179,7 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 		while(1)
 		{
 			while(--rightIndex > tmpLeftIndex &&
-					(cmp = mkqs_comp(comp, &v, a+rightIndex, lvctxt)) < 0)
+					(cmp = mkqs_comp(&v, a+rightIndex, lvctxt, mkqs_ctxt)) < 0)
 			{
 				Assert(tmpLeftIndex >= left-1 && tmpLeftIndex <= right);
 				Assert(rightIndex >= left && rightIndex<= right);
@@ -266,8 +265,8 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 		return;
 	
 	/* Prepare at level lv */
-	if(lvdown && ctxt->prep) 
-        mk_prepare_array(a, left, right, lv, ctxt, ctxt->prep);
+	if(lvdown)
+        mk_prepare_array(a, left, right, lv, ctxt);
 
 	/* 
 	 * According to Bentley & McIlroy [1] (1993), using insert sort for case 
@@ -283,7 +282,6 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 #if 0 
 	/* Check that the partition is done right. */
 	{
-		MKCompare comp = ctxt->comp[lv];
 		void *cmpctxt = mk_get_ctxt(ctxt, lv); 
 
 		int x = 0;
@@ -294,7 +292,7 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 		/* low should all be smaller than pivot */
 		for(x=left; x<=lastInLow; ++x)
 		{
-			c = mkqs_comp(comp, a+x, pv, cmpctxt);
+			c = mkqs_comp(a+x, pv, cmpctxt);
 			Assert(c < 0);
 		}
 
@@ -303,7 +301,7 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 		{
 			if(a+x != pv)
 			{
-				c = mkqs_comp(comp, a+x, pv, cmpctxt);
+				c = mkqs_comp(a+x, pv, cmpctxt);
 				Assert(c == 0);
 			}
 		}
@@ -311,7 +309,7 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 		/* high should all be bigger than pivot */
 		for(x=firstInHigh; x<=right; ++x)
 		{
-			c = mkqs_comp(comp, a+x, pv, cmpctxt);
+			c = mkqs_comp(a+x, pv, cmpctxt);
 			Assert(c > 0);
 		}
 	}
@@ -366,7 +364,6 @@ static int mkqsort_comp_entry_all_lv(MKEntry *a, MKEntry *b, MKContext *mkctxt)
 	for(i=0; i<mkctxt->total_lv; ++i)
 	{
 		MKPrepare prep = mkctxt->prep[i];
-		MKCompare comp = mkctxt->comp[i];
 
 		void *ctxt = mk_get_ctxt(mkctxt, i);
         int32 nf1, nf2;
