@@ -448,6 +448,7 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 	char *varlen_start;
 	uint32 null_save_len;
 	MemTupleBindingCols *colbind;
+	Datum *old_values = NULL;
 
 	/*
 	 * Check for nulls and embedded tuples; expand any toasted attributes in
@@ -479,21 +480,27 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 				attr->attndims == 0 &&
 				!VARATT_IS_EXTENDED_D(values[i]))
 		{
-			/*
-			 * FIXME:
-			 * XXX The following is a bug -- unless the caller calls 
-			 * reset, we will leak.  
-			 */
-#if 0
-			Assert(!"Who owns the memory?  It will leak!");
-#endif
+			if (old_values == NULL)
+				old_values = (Datum *)palloc0(pbind->tupdesc->natts * sizeof(Datum));
+			old_values[i] = values[i];
 			values[i] = toast_flatten_tuple_attribute(values[i], attr->atttypid, attr->atttypmod);
+			if (values[i] == old_values[i])
+				old_values[i] = 0;
 		}
 
 		if (attr->attlen == -1 && VARATT_IS_EXTERNAL_D(values[i]))
 		{
 			if(inline_toast)
+			{
+				if (old_values == NULL)
+					old_values = (Datum *)palloc0(pbind->tupdesc->natts * sizeof(Datum));
+				old_values[i] = values[i];
 				values[i] = PointerGetDatum(heap_tuple_fetch_attr(DatumGetPointer(values[i])));
+
+				if (old_values[i] == values[i])
+					old_values[i] = 0;
+			}
+			
 			else
 				hasext = true;
 		}
@@ -511,6 +518,26 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 	else if(*destlen < len)
 	{
 		*destlen = len;
+
+		/*
+		 * Set values to their old values if we have changed their values
+		 * during de-toasting, and release the space allocated during
+		 * de-toasting.
+		 */
+		if (old_values != NULL)
+		{
+			for(i=0; i<pbind->tupdesc->natts; ++i)
+			{
+				if (DatumGetPointer(old_values[i]) != NULL)
+				{
+					Assert(DatumGetPointer(values[i]) != NULL);
+					pfree(DatumGetPointer(values[i]));
+					values[i] = old_values[i];
+				}
+			}
+			pfree(old_values);
+		}
+		
 		return NULL;
 	}
 	else
@@ -685,6 +712,26 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 	}
 
 	Assert((varlen_start - (char *) mtup) <= len);
+
+	/*
+	 * Set values to their old values if we have changed their values
+	 * during de-toasting, and release the space allocated during
+	 * de-toasting.
+	 */
+	if (old_values != NULL)
+	{
+		for(i=0; i<pbind->tupdesc->natts; ++i)
+		{
+			if (DatumGetPointer(old_values[i]) != NULL)
+			{
+				Assert(DatumGetPointer(values[i]) != NULL);
+				pfree(DatumGetPointer(values[i]));
+				values[i] = old_values[i];
+			}
+		}
+		pfree(old_values);
+	}
+
 	return mtup;
 }
 
