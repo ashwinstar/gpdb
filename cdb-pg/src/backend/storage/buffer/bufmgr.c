@@ -774,13 +774,17 @@ retry:
 	}
 
 	/*
-	 * We assume the only reason for it to be pinned is that someone else is
+	 * In the spin case, we assume the only reason for it to be pinned is that someone else is
 	 * flushing the page out.  Wait for them to finish.  (This could be an
 	 * infinite loop if the refcount is messed up... it would be nice to time
 	 * out after awhile, but there seems no way to be sure how many loops may
 	 * be needed.  Note that if the other guy has pinned the buffer but not
 	 * yet done StartBufferIO, WaitIO will fall through and we'll effectively
 	 * be busy-looping here.)
+	 *
+	 * For the non-spin (GP) case, the other party may have a refcount for other reasons
+	 *   since invalidate will be called not just for dropped relation and those kinds of
+	 *   operations.
 	 */
 	if (buf->refcount != 0)
 	{
@@ -797,6 +801,13 @@ retry:
 		}
 		else
 			return false;
+	}
+	if ( ! spin)
+	{
+		if ( buf->flags & BM_DIRTY)
+		{
+			return false;
+		}
 	}
 
 	/*
