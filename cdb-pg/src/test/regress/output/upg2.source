@@ -40,6 +40,7 @@ create table public.pg_shdepend (like pg_catalog.pg_shdepend);
 create table public.pg_shdescription (like pg_catalog.pg_shdescription);
 create table public.pg_rewrite (like pg_catalog.pg_rewrite) with oids;
 create table public.pg_conversion (like pg_catalog.pg_conversion);
+create table public.pg_operator (like pg_catalog.pg_operator) with oids;
 -- don't use LIKE, as 3.2 has a different structure
 create table public.pg_aggregate (aggfnoid        regproc  not null,
                                   aggtransfn      regproc  not null,
@@ -93,6 +94,7 @@ create table public.pg_shdepend_v33 (like pg_catalog.pg_shdepend);
 create table public.pg_shdescription_v33(like pg_catalog.pg_shdescription);
 create table public.pg_rewrite_v33(like pg_catalog.pg_rewrite) with oids;
 create table public.pg_conversion_v33(like pg_catalog.pg_conversion);
+create table public.pg_operator_v33 (like pg_catalog.pg_operator) with oids;
 -- don't use LIKE, as 3.3 had a different structure
 create table public.pg_appendonly_v33 (relid oid,
                                    blocksize integer,
@@ -140,6 +142,8 @@ COPY public.pg_rewrite
   from '@abs_srcdir@/data/pg_rewrite32.data' oids csv header;
 COPY public.pg_conversion
   from '@abs_srcdir@/data/pg_conversion32.data' csv header;
+COPY public.pg_operator
+  from '@abs_srcdir@/data/pg_operator32.data' with oids csv header;
 -- pg_partitions from 3.2
 create view public.pg_partitions as
 SELECT p1.schemaname, p1.tablename, p1.partitionschemaname, p1.partitiontablename, p1.partitionname, p1.parentpartitiontablename, p1.parentpartitionname, p1.partitiontype, p1.partitionlevel,
@@ -201,6 +205,8 @@ COPY public.pg_rewrite_v33
   from '@abs_srcdir@/data/pg_rewrite33.data' oids csv header;
 COPY public.pg_conversion_v33
   from '@abs_srcdir@/data/pg_conversion33.data' csv header;
+COPY public.pg_operator_v33
+  from '@abs_srcdir@/data/pg_operator33.data' with oids csv header;
 -- the 3.3 pg_partitions
 create view public.pg_partitions_v33 as
 select 
@@ -897,6 +903,21 @@ from public.pg_proc_v33 where oid < 10000;
 ---------+--------------+----------+---------+----------+-----------+-------------+-----------+-------------+----------+------------+----------+-------------+----------------+-------------+-------------+--------+--------
 (0 rows)
 
+-- compare old and new pg_operator
+select * from public.pg_operator_v33 where oid < 10000
+except
+select * from public.pg_operator where oid < 10000;
+ oprname | oprnamespace | oprowner | oprkind | oprcanhash | oprleft | oprright | oprresult | oprcom | oprnegate | oprlsortop | oprrsortop | oprltcmpop | oprgtcmpop | oprcode | oprrest | oprjoin 
+---------+--------------+----------+---------+------------+---------+----------+-----------+--------+-----------+------------+------------+------------+------------+---------+---------+---------
+(0 rows)
+
+select * from public.pg_operator where oid < 10000
+except
+select * from public.pg_operator_v33 where oid < 10000;
+ oprname | oprnamespace | oprowner | oprkind | oprcanhash | oprleft | oprright | oprresult | oprcom | oprnegate | oprlsortop | oprrsortop | oprltcmpop | oprgtcmpop | oprcode | oprrest | oprjoin 
+---------+--------------+----------+---------+------------+---------+----------+-----------+--------+-----------+------------+------------+------------+------------+---------+---------+---------
+(0 rows)
+
 -- compare old and new pg_class
 select relname, relnamespace, 
 	   case when reltype > 10000 then 10000 else reltype end as reltype,
@@ -1263,6 +1284,21 @@ from pg_catalog.pg_proc where oid < 10000;
 ---------+--------------+----------+---------+----------+-----------+-------------+-----------+-------------+----------+------------+----------+-------------+----------------+-------------+-------------+--------+--------
 (0 rows)
 
+-- compare old and new pg_operator
+select * from pg_catalog.pg_operator where oid < 10000
+except
+select * from public.pg_operator where oid < 10000;
+ oprname | oprnamespace | oprowner | oprkind | oprcanhash | oprleft | oprright | oprresult | oprcom | oprnegate | oprlsortop | oprrsortop | oprltcmpop | oprgtcmpop | oprcode | oprrest | oprjoin 
+---------+--------------+----------+---------+------------+---------+----------+-----------+--------+-----------+------------+------------+------------+------------+---------+---------+---------
+(0 rows)
+
+select * from public.pg_operator where oid < 10000
+except
+select * from pg_catalog.pg_operator where oid < 10000;
+ oprname | oprnamespace | oprowner | oprkind | oprcanhash | oprleft | oprright | oprresult | oprcom | oprnegate | oprlsortop | oprrsortop | oprltcmpop | oprgtcmpop | oprcode | oprrest | oprjoin 
+---------+--------------+----------+---------+------------+---------+----------+-----------+--------+-----------+------------+------------+------------+------------+---------+---------+---------
+(0 rows)
+
 -- compare old and new pg_class
 select relname, relnamespace, 
 	   case when reltype > 10000 then 10000 else reltype end as reltype,
@@ -1479,6 +1515,7 @@ drop table
   public.pg_index,
   public.pg_aggregate,
   public.pg_proc,
+  public.pg_operator,
   public.pg_namespace,
   public.pg_conversion,
   public.pg_description,
@@ -1492,6 +1529,7 @@ drop table
   public.pg_index_v33,
   public.pg_aggregate_v33,
   public.pg_proc_v33,
+  public.pg_operator_v33,
   public.pg_namespace_v33,
   public.pg_conversion_v33,
   public.pg_description_v33,
