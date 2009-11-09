@@ -34,6 +34,7 @@ static bool describeOneTableDetails(const char *schemaname,
 static bool add_tablespace_footer(char relkind, Oid tablespace, char **footers,
 					  int *count, PQExpBufferData buf, bool newline);
 static int add_distributed_by_footer(const char* oid, char **footers, int *count, PQExpBufferData buf);
+static void printACLColumn(PQExpBuffer buf, const char *colname);
 
 /*----------------
  * Handlers for various slash commands displaying some sort of list
@@ -2112,3 +2113,202 @@ listSchemas(const char *pattern, bool verbose)
 	PQclear(res);
 	return true;
 }
+
+/*
+ * \dew
+ *
+ * Describes foreign-data wrappers
+ */
+bool
+listForeignDataWrappers(const char *pattern, bool verbose)
+{
+	PQExpBufferData buf;
+	PGresult   *res;
+	printQueryOpt myopt = pset.popt;
+
+	if (pset.sversion < 80213/* TODO FIX VERSION ONCE BRANCHED OF OFF MAIN */)
+	{
+		fprintf(stderr, _("The server (version %d.%d) does not support foreign-data wrappers.\n"),
+				pset.sversion / 10000, (pset.sversion / 100) % 100);
+		return true;
+	}
+
+	initPQExpBuffer(&buf);
+	printfPQExpBuffer(&buf,
+					  "SELECT fdwname AS \"%s\",\n"
+					  "  pg_catalog.pg_get_userbyid(fdwowner) AS \"%s\",\n"
+					  "  fdwvalidator::pg_catalog.regproc AS \"%s\"",
+					  gettext_noop("Name"),
+					  gettext_noop("Owner"),
+					  gettext_noop("Validator"));
+
+	if (verbose)
+	{
+		appendPQExpBuffer(&buf, ",\n  ");
+		printACLColumn(&buf, "fdwacl");
+		appendPQExpBuffer(&buf,
+						  ",\n  fdwoptions AS \"%s\"",
+						  gettext_noop("Options"));
+	}
+
+	appendPQExpBuffer(&buf, "\nFROM pg_catalog.pg_foreign_data_wrapper\n");
+
+	processSQLNamePattern(pset.db, &buf, pattern, false, false,
+						  NULL, "fdwname", NULL, NULL);
+
+	appendPQExpBuffer(&buf, "ORDER BY 1;");
+
+	res = PSQLexec(buf.data, false);
+	termPQExpBuffer(&buf);
+	if (!res)
+		return false;
+
+	myopt.nullPrint = NULL;
+	myopt.title = _("List of foreign-data wrappers");
+	myopt.translate_header = true;
+
+	printQuery(res, &myopt, pset.queryFout, pset.logfile);
+
+	PQclear(res);
+	return true;
+}
+
+/*
+ * \des
+ *
+ * Describes foreign servers.
+ */
+bool
+listForeignServers(const char *pattern, bool verbose)
+{
+	PQExpBufferData buf;
+	PGresult   *res;
+	printQueryOpt myopt = pset.popt;
+
+	if (pset.sversion < 80213/* TODO FIX VERSION ONCE BRANCHED OF OFF MAIN */)
+	{
+		fprintf(stderr, _("The server (version %d.%d) does not support foreign servers.\n"),
+				pset.sversion / 10000, (pset.sversion / 100) % 100);
+		return true;
+	}
+
+	initPQExpBuffer(&buf);
+	printfPQExpBuffer(&buf,
+					  "SELECT s.srvname AS \"%s\",\n"
+					  "  pg_catalog.pg_get_userbyid(s.srvowner) AS \"%s\",\n"
+					  "  f.fdwname AS \"%s\"",
+					  gettext_noop("Name"),
+					  gettext_noop("Owner"),
+					  gettext_noop("Foreign-data wrapper"));
+
+	if (verbose)
+	{
+		appendPQExpBuffer(&buf, ",\n  ");
+		printACLColumn(&buf, "s.srvacl");
+		appendPQExpBuffer(&buf,
+						  ",\n"
+						  "  s.srvtype AS \"%s\",\n"
+						  "  s.srvversion AS \"%s\",\n"
+						  "  s.srvoptions AS \"%s\"",
+						  gettext_noop("Type"),
+						  gettext_noop("Version"),
+						  gettext_noop("Options"));
+	}
+
+	appendPQExpBuffer(&buf,
+					  "\nFROM pg_catalog.pg_foreign_server s\n"
+	   "     JOIN pg_catalog.pg_foreign_data_wrapper f ON f.oid=s.srvfdw\n");
+
+	processSQLNamePattern(pset.db, &buf, pattern, false, false,
+						  NULL, "s.srvname", NULL, NULL);
+
+	appendPQExpBuffer(&buf, "ORDER BY 1;");
+
+	res = PSQLexec(buf.data, false);
+	termPQExpBuffer(&buf);
+	if (!res)
+		return false;
+
+	myopt.nullPrint = NULL;
+	myopt.title = _("List of foreign servers");
+	myopt.translate_header = true;
+
+	printQuery(res, &myopt, pset.queryFout, pset.logfile);
+
+	PQclear(res);
+	return true;
+}
+
+/*
+ * \deu
+ *
+ * Describes user mappings.
+ */
+bool
+listUserMappings(const char *pattern, bool verbose)
+{
+	PQExpBufferData buf;
+	PGresult   *res;
+	printQueryOpt myopt = pset.popt;
+
+	if (pset.sversion < 80213/* TODO FIX VERSION ONCE BRANCHED OF OFF MAIN */)
+	{
+		fprintf(stderr, _("The server (version %d.%d) does not support user mappings.\n"),
+				pset.sversion / 10000, (pset.sversion / 100) % 100);
+		return true;
+	}
+
+	initPQExpBuffer(&buf);
+	printfPQExpBuffer(&buf,
+					  "SELECT um.srvname AS \"%s\",\n"
+					  "  um.usename AS \"%s\"",
+					  gettext_noop("Server"),
+					  gettext_noop("User name"));
+
+	if (verbose)
+		appendPQExpBuffer(&buf,
+						  ",\n  um.umoptions AS \"%s\"",
+						  gettext_noop("Options"));
+
+	appendPQExpBuffer(&buf, "\nFROM pg_catalog.pg_user_mappings um\n");
+
+	processSQLNamePattern(pset.db, &buf, pattern, false, false,
+						  NULL, "um.srvname", "um.usename", NULL);
+
+	appendPQExpBuffer(&buf, "ORDER BY 1, 2;");
+
+	res = PSQLexec(buf.data, false);
+	termPQExpBuffer(&buf);
+	if (!res)
+		return false;
+
+	myopt.nullPrint = NULL;
+	myopt.title = _("List of user mappings");
+	myopt.translate_header = true;
+
+	printQuery(res, &myopt, pset.queryFout, pset.logfile);
+
+	PQclear(res);
+	return true;
+}
+
+/*
+ * printACLColumn
+ *
+ * Helper function for consistently formatting ACL (privilege) columns.
+ * The proper targetlist entry is appended to buf.	Note lack of any
+ * whitespace or comma decoration.
+ */
+static void
+printACLColumn(PQExpBuffer buf, const char *colname)
+{
+	if (pset.sversion >= 80100)
+		appendPQExpBuffer(buf,
+						  "pg_catalog.array_to_string(%s, E'\\n') AS \"%s\"",
+						  colname, gettext_noop("Access privileges"));
+	else
+		appendPQExpBuffer(buf,
+						  "pg_catalog.array_to_string(%s, '\\n') AS \"%s\"",
+						  colname, gettext_noop("Access privileges"));
+}
+

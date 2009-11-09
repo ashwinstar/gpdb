@@ -1464,6 +1464,100 @@ _equalCreateTableSpaceStmt(CreateTableSpaceStmt *a, CreateTableSpaceStmt *b)
 }
 
 static bool
+_equalCreateFdwStmt(CreateFdwStmt *a, CreateFdwStmt *b)
+{
+	COMPARE_STRING_FIELD(fdwname);
+	COMPARE_NODE_FIELD(validator);
+	COMPARE_NODE_FIELD(options);
+
+	return true;
+}
+
+static bool
+_equalAlterFdwStmt(AlterFdwStmt *a, AlterFdwStmt *b)
+{
+	COMPARE_STRING_FIELD(fdwname);
+	COMPARE_NODE_FIELD(validator);
+	COMPARE_SCALAR_FIELD(change_validator);
+	COMPARE_NODE_FIELD(options);
+
+	return true;
+}
+
+static bool
+_equalDropFdwStmt(DropFdwStmt *a, DropFdwStmt *b)
+{
+	COMPARE_STRING_FIELD(fdwname);
+	COMPARE_SCALAR_FIELD(missing_ok);
+	COMPARE_SCALAR_FIELD(behavior);
+
+	return true;
+}
+
+static bool
+_equalCreateForeignServerStmt(CreateForeignServerStmt *a, CreateForeignServerStmt *b)
+{
+	COMPARE_STRING_FIELD(servername);
+	COMPARE_STRING_FIELD(servertype);
+	COMPARE_STRING_FIELD(version);
+	COMPARE_STRING_FIELD(fdwname);
+	COMPARE_NODE_FIELD(options);
+
+	return true;
+}
+
+static bool
+_equalAlterForeignServerStmt(AlterForeignServerStmt *a, AlterForeignServerStmt *b)
+{
+	COMPARE_STRING_FIELD(servername);
+	COMPARE_STRING_FIELD(version);
+	COMPARE_NODE_FIELD(options);
+	COMPARE_SCALAR_FIELD(has_version);
+
+	return true;
+}
+
+static bool
+_equalDropForeignServerStmt(DropForeignServerStmt *a, DropForeignServerStmt *b)
+{
+	COMPARE_STRING_FIELD(servername);
+	COMPARE_SCALAR_FIELD(missing_ok);
+	COMPARE_SCALAR_FIELD(behavior);
+
+	return true;
+}
+
+static bool
+_equalCreateUserMappingStmt(CreateUserMappingStmt *a, CreateUserMappingStmt *b)
+{
+	COMPARE_STRING_FIELD(username);
+	COMPARE_STRING_FIELD(servername);
+	COMPARE_NODE_FIELD(options);
+
+	return true;
+}
+
+static bool
+_equalAlterUserMappingStmt(AlterUserMappingStmt *a, AlterUserMappingStmt *b)
+{
+	COMPARE_STRING_FIELD(username);
+	COMPARE_STRING_FIELD(servername);
+	COMPARE_NODE_FIELD(options);
+
+	return true;
+}
+
+static bool
+_equalDropUserMappingStmt(DropUserMappingStmt *a, DropUserMappingStmt *b)
+{
+	COMPARE_STRING_FIELD(username);
+	COMPARE_STRING_FIELD(servername);
+	COMPARE_SCALAR_FIELD(missing_ok);
+
+	return true;
+}
+
+static bool
 _equalCreateTrigStmt(CreateTrigStmt *a, CreateTrigStmt *b)
 {
 	COMPARE_STRING_FIELD(trigname);
@@ -2490,6 +2584,33 @@ equal(void *a, void *b)
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _equalCreateTableSpaceStmt(a, b);
+			break;
+		case T_CreateFdwStmt:
+			retval = _equalCreateFdwStmt(a, b);
+			break;
+		case T_AlterFdwStmt:
+			retval = _equalAlterFdwStmt(a, b);
+			break;
+		case T_DropFdwStmt:
+			retval = _equalDropFdwStmt(a, b);
+			break;
+		case T_CreateForeignServerStmt:
+			retval = _equalCreateForeignServerStmt(a, b);
+			break;
+		case T_AlterForeignServerStmt:
+			retval = _equalAlterForeignServerStmt(a, b);
+			break;
+		case T_DropForeignServerStmt:
+			retval = _equalDropForeignServerStmt(a, b);
+			break;
+		case T_CreateUserMappingStmt:
+			retval = _equalCreateUserMappingStmt(a, b);
+			break;
+		case T_AlterUserMappingStmt:
+			retval = _equalAlterUserMappingStmt(a, b);
+			break;
+		case T_DropUserMappingStmt:
+			retval = _equalDropUserMappingStmt(a, b);
 			break;
 		case T_CreateTrigStmt:
 			retval = _equalCreateTrigStmt(a, b);

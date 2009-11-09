@@ -419,6 +419,21 @@ static const SchemaQuery Query_for_list_of_views = {
 "       (SELECT tgrelid FROM pg_catalog.pg_trigger "\
 "         WHERE pg_catalog.quote_ident(tgname)='%s')"
 
+#define Query_for_list_of_fdws \
+" SELECT pg_catalog.quote_ident(fdwname) "\
+"   FROM pg_catalog.pg_foreign_data_wrapper "\
+"  WHERE substring(pg_catalog.quote_ident(fdwname),1,%d)='%s'"
+
+#define Query_for_list_of_servers \
+" SELECT pg_catalog.quote_ident(srvname) "\
+"   FROM pg_catalog.pg_foreign_server "\
+"  WHERE substring(pg_catalog.quote_ident(srvname),1,%d)='%s'"
+
+#define Query_for_list_of_user_mappings \
+" SELECT pg_catalog.quote_ident(usename) "\
+"   FROM pg_catalog.pg_user_mappings "\
+"  WHERE substring(pg_catalog.quote_ident(usename),1,%d)='%s'"
+
 /*
  * This is a list of all "things" in Pgsql, which can show up after CREATE or
  * DROP; and there is also a query to get a list of them.
@@ -443,6 +458,7 @@ static const pgsql_thing_t words_after_create[] = {
 	{"CONVERSION", "SELECT pg_catalog.quote_ident(conname) FROM pg_catalog.pg_conversion WHERE substring(pg_catalog.quote_ident(conname),1,%d)='%s'"},
 	{"DATABASE", Query_for_list_of_databases},
 	{"DOMAIN", NULL, &Query_for_list_of_domains},
+	{"FOREIGN DATA WRAPPER", NULL, NULL},
 	{"FUNCTION", NULL, &Query_for_list_of_functions},
 	{"GROUP", Query_for_list_of_roles},
 	{"LANGUAGE", Query_for_list_of_languages},
@@ -453,6 +469,7 @@ static const pgsql_thing_t words_after_create[] = {
 	{"RULE", "SELECT pg_catalog.quote_ident(rulename) FROM pg_catalog.pg_rules WHERE substring(pg_catalog.quote_ident(rulename),1,%d)='%s'"},
 	{"SCHEMA", Query_for_list_of_schemas},
 	{"SEQUENCE", NULL, &Query_for_list_of_sequences},
+	{"SERVER", Query_for_list_of_servers},
 	{"TABLE", NULL, &Query_for_list_of_tables},
 	{"TABLESPACE", Query_for_list_of_tablespaces},
 	{"TEMP", NULL, NULL},		/* for CREATE TEMP TABLE ... */
@@ -460,6 +477,7 @@ static const pgsql_thing_t words_after_create[] = {
 	{"TYPE", NULL, &Query_for_list_of_datatypes},
 	{"UNIQUE", NULL, NULL},		/* for CREATE UNIQUE INDEX ... */
 	{"USER", Query_for_list_of_roles},
+	{"USER MAPPING FOR", NULL, NULL},
 	{"VIEW", NULL, &Query_for_list_of_views},
 	{NULL, NULL, NULL}			/* end of list */
 };
@@ -536,7 +554,7 @@ psql_completion(char *text, int start, int end)
 
 	static const char *const backslash_commands[] = {
 		"\\a", "\\connect", "\\C", "\\cd", "\\copy", "\\copyright",
-		"\\d", "\\da", "\\db", "\\dc", "\\dC", "\\dd", "\\dD", "\\df",
+		"\\d", "\\da", "\\db", "\\dc", "\\dC", "\\dd", "\\dD", "\\des", "\\deu", "\\dew", "\\df",
 		"\\dg", "\\di", "\\dl", "\\dn", "\\do", "\\dp", "\\ds", "\\dS",
 		"\\dt", "\\dT", "\\dv", "\\du",
 		"\\e", "\\echo", "\\encoding",
@@ -600,9 +618,9 @@ psql_completion(char *text, int start, int end)
 			 pg_strcasecmp(prev3_wd, "TABLE") != 0)
 	{
 		static const char *const list_ALTER[] =
-		{"AGGREGATE", "CONVERSION", "DATABASE", "DOMAIN", "FUNCTION",
-			"GROUP", "INDEX", "LANGUAGE", "OPERATOR", "ROLE", "SCHEMA", "SEQUENCE", "TABLE",
-		"TABLESPACE", "TRIGGER", "TYPE", "USER", NULL};
+		{"AGGREGATE", "CONVERSION", "DATABASE", "DOMAIN", "FOREIGN DATA WRAPPER", "FUNCTION",
+			"GROUP", "INDEX", "LANGUAGE", "OPERATOR", "ROLE", "SCHEMA", "SERVER", "SEQUENCE", "TABLE",
+		"TABLESPACE", "TRIGGER", "TYPE", "USER", "USER MAPPING FOR", NULL};
 
 		COMPLETE_WITH_LIST(list_ALTER);
 	}
@@ -638,6 +656,18 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_LIST(list_ALTERDATABASE);
 	}
 
+	/* ALTER FOREIGN DATA WRAPPER <name> */
+	else if (pg_strcasecmp(prev5_wd, "ALTER") == 0 &&
+			 pg_strcasecmp(prev4_wd, "FOREIGN") == 0 &&
+			 pg_strcasecmp(prev3_wd, "DATA") == 0 &&
+			 pg_strcasecmp(prev2_wd, "WRAPPER") == 0)
+	{
+		static const char *const list_ALTER_FDW[] =
+		{"VALIDATOR", "OPTIONS", "OWNER TO", NULL};
+
+		COMPLETE_WITH_LIST(list_ALTER_FDW);
+	}
+
 	/* ALTER INDEX <name> */
 	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
 			 pg_strcasecmp(prev2_wd, "INDEX") == 0)
@@ -655,6 +685,7 @@ psql_completion(char *text, int start, int end)
 
 	/* ALTER USER,ROLE <name> */
 	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
+			 !(pg_strcasecmp(prev2_wd, "USER") == 0 && pg_strcasecmp(prev_wd, "MAPPING") == 0) &&
 			 (pg_strcasecmp(prev2_wd, "USER") == 0 ||
 			  pg_strcasecmp(prev2_wd, "ROLE") == 0))
 	{
@@ -722,6 +753,15 @@ psql_completion(char *text, int start, int end)
 		{"MINVALUE", "MAXVALUE", "CYCLE", NULL};
 
 		COMPLETE_WITH_LIST(list_ALTERSEQUENCE2);
+	}
+	/* ALTER SERVER <name> */
+	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
+			 pg_strcasecmp(prev2_wd, "SERVER") == 0)
+	{
+		static const char *const list_ALTER_SERVER[] =
+		{"VERSION", "OPTIONS", "OWNER TO", NULL};
+
+		COMPLETE_WITH_LIST(list_ALTER_SERVER);
 	}
 	/* ALTER TRIGGER <name>, add ON */
 	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
@@ -1026,6 +1066,13 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_LIST(list_DATABASE);
 	}
 
+	/* CREATE FOREIGN DATA WRAPPER */
+	else if (pg_strcasecmp(prev5_wd, "CREATE") == 0 &&
+			 pg_strcasecmp(prev4_wd, "FOREIGN") == 0 &&
+			 pg_strcasecmp(prev3_wd, "DATA") == 0 &&
+			 pg_strcasecmp(prev2_wd, "WRAPPER") == 0)
+		COMPLETE_WITH_CONST("VALIDATOR");
+
 	/* CREATE INDEX */
 	/* First off we complete CREATE UNIQUE with "INDEX" */
 	else if (pg_strcasecmp(prev2_wd, "CREATE") == 0 &&
@@ -1102,6 +1149,15 @@ psql_completion(char *text, int start, int end)
 			 pg_strcasecmp(prev_wd, "TO") == 0)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables, NULL);
 
+/* CREATE SERVER <name> */
+	else if (pg_strcasecmp(prev3_wd, "CREATE") == 0 &&
+			 pg_strcasecmp(prev2_wd, "SERVER") == 0)
+	{
+		static const char *const list_CREATE_SERVER[] =
+		{"TYPE", "VERSION", "FOREIGN DATA WRAPPER", NULL};
+			COMPLETE_WITH_LIST(list_CREATE_SERVER);
+	}
+
 /* CREATE TABLE */
 	/* Complete CREATE TEMP with "TABLE" */
 	else if (pg_strcasecmp(prev2_wd, "CREATE") == 0 &&
@@ -1149,6 +1205,7 @@ psql_completion(char *text, int start, int end)
 
 /* CREATE ROLE,USER,GROUP */
 	else if (pg_strcasecmp(prev3_wd, "CREATE") == 0 &&
+			 !(pg_strcasecmp(prev2_wd, "USER") == 0 && pg_strcasecmp(prev_wd, "MAPPING") == 0) &&
 			 (pg_strcasecmp(prev2_wd, "ROLE") == 0 ||
 			  pg_strcasecmp(prev2_wd, "GROUP") == 0 || pg_strcasecmp(prev2_wd, "USER") == 0))
 	{
@@ -1255,12 +1312,17 @@ psql_completion(char *text, int start, int end)
 			   pg_strcasecmp(prev2_wd, "LANGUAGE") == 0 ||
 			   pg_strcasecmp(prev2_wd, "SCHEMA") == 0 ||
 			   pg_strcasecmp(prev2_wd, "SEQUENCE") == 0 ||
+			   pg_strcasecmp(prev2_wd, "SERVER") == 0 ||
 			   pg_strcasecmp(prev2_wd, "TABLE") == 0 ||
 			   pg_strcasecmp(prev2_wd, "TYPE") == 0 ||
 			   pg_strcasecmp(prev2_wd, "VIEW") == 0)) ||
 			 (pg_strcasecmp(prev4_wd, "DROP") == 0 &&
 			  pg_strcasecmp(prev3_wd, "AGGREGATE") == 0 &&
-			  prev_wd[strlen(prev_wd) - 1] == ')'))
+			  prev_wd[strlen(prev_wd) - 1] == ')') ||
+			 (pg_strcasecmp(prev5_wd, "DROP") == 0 &&
+			  pg_strcasecmp(prev4_wd, "FOREIGN") == 0 &&
+			  pg_strcasecmp(prev3_wd, "DATA") == 0 &&
+			  pg_strcasecmp(prev2_wd, "WRAPPER") == 0))
 	{
 		if ((pg_strcasecmp(prev3_wd, "DROP") == 0) && (pg_strcasecmp(prev2_wd, "FUNCTION") == 0))
 		{
@@ -1374,6 +1436,14 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_LIST(list_FROMIN);
 	}
 
+/* FOREIGN DATA WRAPPER */
+	/* applies in ALTER/DROP FDW and in CREATE SERVER */
+	else if (pg_strcasecmp(prev4_wd, "CREATE") != 0 &&
+			 pg_strcasecmp(prev3_wd, "FOREIGN") == 0 &&
+			 pg_strcasecmp(prev2_wd, "DATA") == 0 &&
+			 pg_strcasecmp(prev_wd, "WRAPPER") == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_fdws);
+
 /* GRANT && REVOKE*/
 	/* Complete GRANT/REVOKE with a list of privileges */
 	else if (pg_strcasecmp(prev_wd, "GRANT") == 0 ||
@@ -1407,6 +1477,8 @@ psql_completion(char *text, int start, int end)
 			 pg_strcasecmp(prev_wd, "ON") == 0)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tsv,
 								   " UNION SELECT 'DATABASE'"
+								   " UNION SELECT 'FOREIGN DATA WRAPPER'"
+								   " UNION SELECT 'FOREIGN SERVER'"
 								   " UNION SELECT 'FUNCTION'"
 								   " UNION SELECT 'LANGUAGE'"
 								   " UNION SELECT 'SCHEMA'"
@@ -1525,6 +1597,10 @@ psql_completion(char *text, int start, int end)
 /* NOTIFY */
 	else if (pg_strcasecmp(prev_wd, "NOTIFY") == 0)
 		COMPLETE_WITH_QUERY("SELECT pg_catalog.quote_ident(relname) FROM pg_catalog.pg_listener WHERE substring(pg_catalog.quote_ident(relname),1,%d)='%s'");
+
+/* OPTIONS */
+	else if (pg_strcasecmp(prev_wd, "OPTIONS") == 0)
+		COMPLETE_WITH_CONST("(");
 
 /* OWNER TO  - complete with available roles */
 	else if (pg_strcasecmp(prev2_wd, "OWNER") == 0 &&
@@ -1772,6 +1848,32 @@ psql_completion(char *text, int start, int end)
 			 pg_strcasecmp(prev4_wd, "UPDATE") == 0)
 		COMPLETE_WITH_CONST("=");
 
+/* USER MAPPING */
+	else if ((pg_strcasecmp(prev3_wd, "ALTER") == 0 ||
+			  pg_strcasecmp(prev3_wd, "CREATE") == 0 ||
+			  pg_strcasecmp(prev3_wd, "DROP") == 0) &&
+			 pg_strcasecmp(prev2_wd, "USER") == 0 &&
+			 pg_strcasecmp(prev_wd, "MAPPING") == 0)
+		COMPLETE_WITH_CONST("FOR");
+	else if (pg_strcasecmp(prev4_wd, "CREATE") == 0 &&
+			 pg_strcasecmp(prev3_wd, "USER") == 0 &&
+			 pg_strcasecmp(prev2_wd, "MAPPING") == 0 &&
+			 pg_strcasecmp(prev_wd, "FOR") == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
+	else if ((pg_strcasecmp(prev4_wd, "ALTER") == 0 ||
+			  pg_strcasecmp(prev4_wd, "DROP") == 0) &&
+			 pg_strcasecmp(prev3_wd, "USER") == 0 &&
+			 pg_strcasecmp(prev2_wd, "MAPPING") == 0 &&
+			 pg_strcasecmp(prev_wd, "FOR") == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_user_mappings);
+	else if ((pg_strcasecmp(prev5_wd, "CREATE") == 0 ||
+			  pg_strcasecmp(prev5_wd, "ALTER") == 0 ||
+			  pg_strcasecmp(prev5_wd, "DROP") == 0) &&
+			 pg_strcasecmp(prev4_wd, "USER") == 0 &&
+			 pg_strcasecmp(prev3_wd, "MAPPING") == 0 &&
+			 pg_strcasecmp(prev2_wd, "FOR") == 0)
+		COMPLETE_WITH_CONST("SERVER");
+
 /*
  * VACUUM [ FULL | FREEZE ] [ VERBOSE ] [ table ]
  * VACUUM [ FULL | FREEZE ] [ VERBOSE ] ANALYZE [ table [ (column [, ...] ) ] ]
@@ -1844,6 +1946,12 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_QUERY(Query_for_list_of_tablespaces);
 	else if (strcmp(prev_wd, "\\dD") == 0)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_domains, NULL);
+	else if (strncmp(prev_wd, "\\des", strlen("\\des")) == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_servers);
+	else if (strncmp(prev_wd, "\\deu", strlen("\\deu")) == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_user_mappings);
+	else if (strncmp(prev_wd, "\\dew", strlen("\\dew")) == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_fdws);
 	else if (strcmp(prev_wd, "\\df") == 0 || strcmp(prev_wd, "\\df+") == 0)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_functions, NULL);
 	else if (strcmp(prev_wd, "\\di") == 0 || strcmp(prev_wd, "\\di+") == 0)

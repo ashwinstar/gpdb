@@ -31,6 +31,8 @@
 #include "catalog/pg_cast.h"
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_foreign_data_wrapper.h"
+#include "catalog/pg_foreign_server.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
@@ -40,6 +42,7 @@
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_user_mapping.h"
 #include "catalog/pg_window.h"
 #include "utils/syscache.h"
 
@@ -324,6 +327,54 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		4
 	},
+	{ForeignDataWrapperRelationId,		/* FOREIGNDATAWRAPPERNAME */
+		ForeignDataWrapperNameIndexId,
+		0,
+		1,
+		{
+			Anum_pg_foreign_data_wrapper_fdwname,
+			0,
+			0,
+			0
+		},
+		8
+	},
+	{ForeignDataWrapperRelationId,		/* FOREIGNDATAWRAPPEROID */
+		ForeignDataWrapperOidIndexId,
+		0,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		8
+	},
+	{ForeignServerRelationId,	/* FOREIGNSERVERNAME */
+		ForeignServerNameIndexId,
+		0,
+		1,
+		{
+			Anum_pg_foreign_server_srvname,
+			0,
+			0,
+			0
+		},
+		32
+	},
+	{ForeignServerRelationId,	/* FOREIGNSERVEROID */
+		ForeignServerOidIndexId,
+		0,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		32
+	},
 	{IndexRelationId,			/* INDEXRELID */
 		IndexRelidIndexId,
 		Anum_pg_index_indrelid,
@@ -515,6 +566,30 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		1024
+	},
+	{UserMappingRelationId,		/* USERMAPPINGOID */
+		UserMappingOidIndexId,
+		0,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		128
+	},
+	{UserMappingRelationId,		/* USERMAPPINGUSERSERVER */
+		UserMappingUserServerIndexId,
+		0,
+		2,
+		{
+			Anum_pg_user_mapping_umuser,
+			Anum_pg_user_mapping_umserver,
+			0,
+			0
+		},
+		128
 	},
 	{WindowRelationId,		/* WINFNOID */
 		WindowFnoidIndexId,

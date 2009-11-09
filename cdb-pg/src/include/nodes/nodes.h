@@ -372,6 +372,16 @@ typedef enum NodeTag
 	T_AlterPartitionCmd,
 	T_InheritPartitionCmd,
 	T_CreateFileSpaceStmt,
+	T_CreateFdwStmt,
+	T_AlterFdwStmt,
+	T_DropFdwStmt,
+	T_CreateForeignServerStmt,
+	T_AlterForeignServerStmt,
+	T_DropForeignServerStmt,
+	T_CreateUserMappingStmt,
+	T_AlterUserMappingStmt,
+	T_DropUserMappingStmt, /* 798 */
+
 	/* XXX: careful, we're almost at 800 */
 	
 	T_A_Expr = 800,

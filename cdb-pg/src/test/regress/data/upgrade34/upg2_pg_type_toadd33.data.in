@@ -7,4 +7,7 @@ oid|typname|typnamespace|typowner|typlen|typbyval|typtype|typisdefined|typdelim|
 6438|pg_filespace|11|10|-1|f|c|t|,|5009|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
 6439|pg_filespace_entry|11|10|-1|f|c|t|,|5033|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
 6440|pg_stat_last_operation|11|10|-1|f|c|t|,|6052|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
+10296|pg_foreign_data_wrapper|11|10|-1|f|c|t|,|2898|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
+10297|pg_foreign_server|11|10|-1|f|c|t|,|2899|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
+10298|pg_user_mapping|11|10|-1|f|c|t|,|2895|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
 \.

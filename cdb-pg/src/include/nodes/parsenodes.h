@@ -56,7 +56,6 @@ typedef struct TableOidInfo
 
 } TableOidInfo;
 
-
 /*
  * Grantable rights are encoded so that we can OR them together in a bitmask.
  * The present representation of AclItem limits us to 16 distinct rights,
@@ -494,15 +493,31 @@ typedef struct IndexElem
 } IndexElem;
 
 /*
- * DefElem -
- *	  a definition (used in definition lists in the form of defname = arg)
+ * DefElem - a generic "name = value" option definition
+ *
+ * In some contexts the name can be qualified.	Also, certain SQL commands
+ * allow a SET/ADD/DROP action to be attached to option settings, so it's
+ * convenient to carry a field for that too.  (Note: currently, it is our
+ * practice that the grammar allows namespace and action only in statements
+ * where they are relevant; C code can just ignore those fields in other
+ * statements.)
  */
+typedef enum DefElemAction
+{
+	DEFELEM_UNSPEC,				/* no action given */
+	DEFELEM_SET,
+	DEFELEM_ADD,
+	DEFELEM_DROP
+} DefElemAction;
+
 typedef struct DefElem
 {
 	NodeTag		type;
 	char	   *defname;
 	Node	   *arg;			/* a (Value *) or a (TypeName *) */
+	DefElemAction defaction;	/* unspecified action, or SET/ADD/DROP */
 } DefElem;
+
 
 /*
  * LockingClause - raw representation of FOR UPDATE/SHARE options
@@ -1000,6 +1015,8 @@ typedef enum ObjectType
 	OBJECT_CONVERSION,
 	OBJECT_DATABASE,
 	OBJECT_DOMAIN,
+	OBJECT_FDW,
+	OBJECT_FOREIGN_SERVER,
 	OBJECT_FUNCTION,
 	OBJECT_INDEX,
 	OBJECT_LANGUAGE,
@@ -1188,6 +1205,8 @@ typedef enum GrantObjectType
 	ACL_OBJECT_RELATION,		/* table, view */
 	ACL_OBJECT_SEQUENCE,		/* sequence */
 	ACL_OBJECT_DATABASE,		/* database */
+	ACL_OBJECT_FDW,				/* foreign-data wrapper */
+	ACL_OBJECT_FOREIGN_SERVER,	/* foreign server */
 	ACL_OBJECT_FUNCTION,		/* function */
 	ACL_OBJECT_LANGUAGE,		/* procedural language */
 	ACL_OBJECT_NAMESPACE,		/* namespace */
@@ -1582,6 +1601,97 @@ typedef struct CreateTableSpaceStmt
 	char       *filespacename;
 	Oid         tsoid;
 } CreateTableSpaceStmt;
+
+/* ----------------------
+ *		Create/Drop FOREIGN DATA WRAPPER Statements
+ * ----------------------
+ */
+
+typedef struct CreateFdwStmt
+{
+	NodeTag		type;
+	char	   *fdwname;		/* foreign-data wrapper name */
+	List	   *validator;		/* optional validator function (qual. name) */
+	List	   *options;		/* generic options to FDW */
+} CreateFdwStmt;
+
+typedef struct AlterFdwStmt
+{
+	NodeTag		type;
+	char	   *fdwname;		/* foreign-data wrapper name */
+	List	   *validator;		/* optional validator function (qual. name) */
+	bool		change_validator;
+	List	   *options;		/* generic options to FDW */
+} AlterFdwStmt;
+
+typedef struct DropFdwStmt
+{
+	NodeTag		type;
+	char	   *fdwname;		/* foreign-data wrapper name */
+	bool		missing_ok;		/* don't complain if missing */
+	DropBehavior behavior;		/* drop behavior - cascade/restrict */
+} DropFdwStmt;
+
+/* ----------------------
+ *		Create/Drop FOREIGN SERVER Statements
+ * ----------------------
+ */
+
+typedef struct CreateForeignServerStmt
+{
+	NodeTag		type;
+	char	   *servername;		/* server name */
+	char	   *servertype;		/* optional server type */
+	char	   *version;		/* optional server version */
+	char	   *fdwname;		/* FDW name */
+	List	   *options;		/* generic options to server */
+} CreateForeignServerStmt;
+
+typedef struct AlterForeignServerStmt
+{
+	NodeTag		type;
+	char	   *servername;		/* server name */
+	char	   *version;		/* optional server version */
+	List	   *options;		/* generic options to server */
+	bool		has_version;	/* version specified */
+} AlterForeignServerStmt;
+
+typedef struct DropForeignServerStmt
+{
+	NodeTag		type;
+	char	   *servername;		/* server name */
+	bool		missing_ok;		/* ignore missing servers */
+	DropBehavior behavior;		/* drop behavior - cascade/restrict */
+} DropForeignServerStmt;
+
+/* ----------------------
+ *		Create/Drop USER MAPPING Statements
+ * ----------------------
+ */
+
+typedef struct CreateUserMappingStmt
+{
+	NodeTag		type;
+	char	   *username;		/* username or PUBLIC/CURRENT_USER */
+	char	   *servername;		/* server name */
+	List	   *options;		/* generic options to server */
+} CreateUserMappingStmt;
+
+typedef struct AlterUserMappingStmt
+{
+	NodeTag		type;
+	char	   *username;		/* username or PUBLIC/CURRENT_USER */
+	char	   *servername;		/* server name */
+	List	   *options;		/* generic options to server */
+} AlterUserMappingStmt;
+
+typedef struct DropUserMappingStmt
+{
+	NodeTag		type;
+	char	   *username;		/* username or PUBLIC/CURRENT_USER */
+	char	   *servername;		/* server name */
+	bool		missing_ok;		/* ignore missing mappings */
+} DropUserMappingStmt;
 
 /* ----------------------
  *		Create/Drop TRIGGER Statements

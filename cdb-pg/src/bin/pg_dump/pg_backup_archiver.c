@@ -2452,7 +2452,10 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te, ArchiveHandle *AH)
 
 	/* objects named by just a name */
 	if (strcmp(type, "DATABASE") == 0 ||
-		strcmp(type, "SCHEMA") == 0)
+		strcmp(type, "SCHEMA") == 0 ||
+		strcmp(type, "FOREIGN DATA WRAPPER") == 0 ||
+		strcmp(type, "SERVER") == 0 ||
+		strcmp(type, "USER MAPPING") == 0)
 	{
 		appendPQExpBuffer(buf, "%s %s", type, fmtId(te->tag));
 		return;
@@ -2597,7 +2600,9 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 			strcmp(te->desc, "TABLE") == 0 ||
 			strcmp(te->desc, "TYPE") == 0 ||
 			strcmp(te->desc, "VIEW") == 0 ||
-			strcmp(te->desc, "SEQUENCE") == 0)
+			strcmp(te->desc, "SEQUENCE") == 0 ||
+			strcmp(te->desc, "FOREIGN DATA WRAPPER") == 0 ||
+			strcmp(te->desc, "SERVER") == 0)
 		{
 			PQExpBuffer temp = createPQExpBuffer();
 
@@ -2615,7 +2620,8 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 				 strcmp(te->desc, "INDEX") == 0 ||
 				 strcmp(te->desc, "PROCEDURAL LANGUAGE") == 0 ||
 				 strcmp(te->desc, "RULE") == 0 ||
-				 strcmp(te->desc, "TRIGGER") == 0)
+				 strcmp(te->desc, "TRIGGER") == 0 ||
+				 strcmp(te->desc, "USER MAPPING") == 0)
 		{
 			/* these object types don't have separate owners */
 		}

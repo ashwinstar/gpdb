@@ -5,3 +5,10 @@ indexrelid|indrelid|indnatts|indisunique|indisprimary|indisclustered|indisvalid|
 2894|5033|2|t|f|f|t|1 2|1989 1978|\N|\N
 6053|6052|2|f|f|f|t|1 2|1989 1989|\N|\N
 6054|6052|3|t|f|f|t|1 2 3|1989 1989 1986|\N|\N
+3306|2898|1|t|f|f|t|-2|1989|\N|\N
+3307|2898|1|t|f|f|t|1|1986|\N|\N
+3308|2899|1|t|f|f|t|-2|1989|\N|\N
+3309|2899|1|t|f|f|t|1|1986|\N|\N
+3316|2895|1|t|f|f|t|-2|1989|\N|\N
+3317|2895|2|t|f|f|t|1 2|1989 1989|\N|\N
+\.

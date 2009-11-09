@@ -868,6 +868,7 @@ _readDefElem(const char ** str)
 
 	READ_STRING_FIELD(defname);
 	READ_NODE_FIELD(arg);
+	READ_ENUM_FIELD(defaction, DefElemAction);
 	READ_DONE();
 }
 
@@ -2067,6 +2068,118 @@ _readAlterDomainStmt(const char ** str)
 	READ_STRING_FIELD(name);
 	READ_NODE_FIELD(def);
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
+
+	READ_DONE();
+}
+
+static CreateFdwStmt *
+_readCreateFdwStmt(const char ** str)
+{
+	READ_LOCALS(CreateFdwStmt);
+	
+	READ_STRING_FIELD(fdwname);
+	READ_NODE_FIELD(validator);
+	READ_NODE_FIELD(options);
+	
+	READ_DONE();
+}
+
+static AlterFdwStmt *
+_readAlterFdwStmt(const char ** str)
+{
+	READ_LOCALS(AlterFdwStmt);
+	
+	READ_STRING_FIELD(fdwname);
+	READ_NODE_FIELD(validator);
+	READ_BOOL_FIELD(change_validator);
+	READ_NODE_FIELD(options);
+
+	READ_DONE();
+}
+
+static DropFdwStmt *
+_readDropFdwStmt(const char ** str)
+{
+	READ_LOCALS(DropFdwStmt);
+	
+	READ_STRING_FIELD(fdwname);
+	READ_BOOL_FIELD(missing_ok);
+	READ_ENUM_FIELD(behavior, DropBehavior);
+
+	READ_DONE();
+}
+
+static CreateForeignServerStmt *
+_readCreateForeignServerStmt(const char ** str)
+{
+	READ_LOCALS(CreateForeignServerStmt);
+	
+	READ_STRING_FIELD(servername);
+	READ_STRING_FIELD(servertype);
+	READ_STRING_FIELD(version);
+	READ_STRING_FIELD(fdwname);
+	READ_NODE_FIELD(options);
+
+	READ_DONE();
+}
+
+static AlterForeignServerStmt *
+_readAlterForeignServerStmt(const char ** str)
+{
+	READ_LOCALS(AlterForeignServerStmt);
+	
+	READ_STRING_FIELD(servername);
+	READ_STRING_FIELD(version);
+	READ_NODE_FIELD(options);
+	READ_BOOL_FIELD(has_version);
+
+	READ_DONE();
+}
+
+static DropForeignServerStmt *
+_readDropForeignServerStmt(const char ** str)
+{
+	READ_LOCALS(DropForeignServerStmt);
+	
+	READ_STRING_FIELD(servername);
+	READ_BOOL_FIELD(missing_ok);
+	READ_ENUM_FIELD(behavior, DropBehavior);
+
+	READ_DONE();
+}
+
+static CreateUserMappingStmt *
+_readCreateUserMappingStmt(const char ** str)
+{
+	READ_LOCALS(CreateUserMappingStmt);
+	
+	READ_STRING_FIELD(username);
+	READ_STRING_FIELD(servername);
+	READ_NODE_FIELD(options);
+
+	READ_DONE();
+}
+
+static AlterUserMappingStmt *
+_readAlterUserMappingStmt(const char ** str)
+{
+	READ_LOCALS(AlterUserMappingStmt);
+	
+	READ_STRING_FIELD(username);
+	READ_STRING_FIELD(servername);
+	READ_NODE_FIELD(options);
+
+	READ_DONE();
+}
+
+static DropUserMappingStmt *
+_readDropUserMappingStmt(const char ** str)
+{
+	READ_LOCALS(DropUserMappingStmt);
+	
+	READ_STRING_FIELD(username);
+	READ_STRING_FIELD(servername);
+	READ_BOOL_FIELD(missing_ok);
 
 	READ_DONE();
 }
@@ -3775,6 +3888,34 @@ readNodeBinary(const char ** str)
 				return_value = _readAlterDomainStmt(str);
 				break;
 
+			case T_CreateFdwStmt:
+				return_value = _readCreateFdwStmt(str);
+				break;
+			case T_AlterFdwStmt:
+				return_value = _readAlterFdwStmt(str);
+				break;
+			case T_DropFdwStmt:
+				return_value = _readDropFdwStmt(str);
+				break;
+			case T_CreateForeignServerStmt:
+				return_value = _readCreateForeignServerStmt(str);
+				break;
+			case T_AlterForeignServerStmt:
+				return_value = _readAlterForeignServerStmt(str);
+				break;
+			case T_DropForeignServerStmt:
+				return_value = _readDropForeignServerStmt(str);
+				break;
+			case T_CreateUserMappingStmt:
+				return_value = _readCreateUserMappingStmt(str);
+				break;
+			case T_AlterUserMappingStmt:
+				return_value = _readAlterUserMappingStmt(str);
+				break;
+			case T_DropUserMappingStmt:
+				return_value = _readDropUserMappingStmt(str);
+				break;
+	
 #if 0
 			case T_TransactionStmt:
 				return_value = _readTransactionStmt(str);

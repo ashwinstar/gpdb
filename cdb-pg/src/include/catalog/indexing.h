@@ -285,6 +285,24 @@ DECLARE_INDEX(pg_statlastop_classid_objid_index, 6053, on pg_stat_last_operation
 DECLARE_UNIQUE_INDEX(pg_statlastop_classid_objid_actionname_index, 6054, on pg_stat_last_operation using btree(classid oid_ops, objid oid_ops, actionname name_ops));
 #define StatLastOpClassidObjidActionnameIndexId  6054
 
+DECLARE_UNIQUE_INDEX(pg_foreign_data_wrapper_oid_index, 3306, on pg_foreign_data_wrapper using btree(oid oid_ops));
+#define ForeignDataWrapperOidIndexId	3306
+
+DECLARE_UNIQUE_INDEX(pg_foreign_data_wrapper_name_index, 3307, on pg_foreign_data_wrapper using btree(fdwname name_ops));
+#define ForeignDataWrapperNameIndexId	3307
+
+DECLARE_UNIQUE_INDEX(pg_foreign_server_oid_index, 3308, on pg_foreign_server using btree(oid oid_ops));
+#define ForeignServerOidIndexId 3308
+
+DECLARE_UNIQUE_INDEX(pg_foreign_server_name_index, 3309, on pg_foreign_server using btree(srvname name_ops));
+#define ForeignServerNameIndexId	3309
+
+DECLARE_UNIQUE_INDEX(pg_user_mapping_oid_index, 3316, on pg_user_mapping using btree(oid oid_ops));
+#define UserMappingOidIndexId	3316
+
+DECLARE_UNIQUE_INDEX(pg_user_mapping_user_server_index, 3317, on pg_user_mapping using btree(umuser oid_ops, umserver oid_ops));
+#define UserMappingUserServerIndexId	3317
+
 /* last step of initialization script: build the indexes declared above */
 BUILD_INDICES
 

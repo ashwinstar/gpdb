@@ -218,6 +218,14 @@ CREATE DOMAIN time_stamp AS timestamp(2) with time zone
     DEFAULT current_timestamp(2);
 
 
+/*
+ * 5.7
+ * YES_OR_NO domain
+ */
+
+CREATE DOMAIN yes_or_no AS character varying(3)
+    CONSTRAINT yes_or_no_check CHECK (value IN ('YES', 'NO'));
+
 -- 5.7 ADMINISTRABLE_ROLE_AUTHORIZATIONS view appears later.
 
 
@@ -1236,16 +1244,61 @@ GRANT SELECT ON role_table_grants TO PUBLIC;
  */
 
 CREATE VIEW role_usage_grants AS
-    SELECT CAST(null AS sql_identifier) AS grantor,
-           CAST(null AS sql_identifier) AS grantee,
-           CAST(current_database() AS sql_identifier) AS object_catalog,
-           CAST(null AS sql_identifier) AS object_schema,
-           CAST(null AS sql_identifier) AS object_name,
-           CAST(null AS character_data) AS object_type,
-           CAST('USAGE' AS character_data) AS privilege_type,
-           CAST(null AS character_data) AS is_grantable
 
-    WHERE false;
+    /* foreign-data wrappers */
+    SELECT CAST(u_grantor.rolname AS sql_identifier) AS grantor,
+           CAST(g_grantee.rolname AS sql_identifier) AS grantee,
+           CAST(current_database() AS sql_identifier) AS object_catalog,
+           CAST('' AS sql_identifier) AS object_schema,
+           CAST(fdw.fdwname AS sql_identifier) AS object_name,
+           CAST('FOREIGN DATA WRAPPER' AS character_data) AS object_type,
+           CAST('USAGE' AS character_data) AS privilege_type,
+           CAST(
+             CASE WHEN
+                  -- object owner always has grant options
+                  pg_has_role(g_grantee.oid, fdw.fdwowner, 'USAGE')
+                  OR aclcontains(fdw.fdwacl,
+                                 makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', true))
+                  THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_grantable
+
+    FROM pg_foreign_data_wrapper fdw,
+         pg_authid u_grantor,
+         pg_authid g_grantee
+
+    WHERE aclcontains(fdw.fdwacl,
+                          makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', false))
+          AND (u_grantor.rolname IN (SELECT role_name FROM enabled_roles)
+               OR g_grantee.rolname IN (SELECT role_name FROM enabled_roles))
+
+    UNION ALL
+
+    /* foreign server */
+    SELECT CAST(u_grantor.rolname AS sql_identifier) AS grantor,
+           CAST(g_grantee.rolname AS sql_identifier) AS grantee,
+           CAST(current_database() AS sql_identifier) AS object_catalog,
+           CAST('' AS sql_identifier) AS object_schema,
+           CAST(srv.srvname AS sql_identifier) AS object_name,
+           CAST('FOREIGN SERVER' AS character_data) AS object_type,
+           CAST('USAGE' AS character_data) AS privilege_type,
+           CAST(
+             CASE WHEN
+                  -- object owner always has grant options
+                  pg_has_role(g_grantee.oid, srv.srvowner, 'USAGE')
+                  OR aclcontains(srv.srvacl,
+                                 makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', true))
+                  THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_grantable
+
+    FROM pg_foreign_server srv,
+         pg_authid u_grantor,
+         pg_authid g_grantee
+
+    WHERE aclcontains(srv.srvacl,
+                          makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', false))
+          AND (u_grantor.rolname IN (SELECT role_name FROM enabled_roles)
+               OR g_grantee.rolname IN (SELECT role_name FROM enabled_roles));
+
+
+
 
 GRANT SELECT ON role_usage_grants TO PUBLIC;
 
@@ -1991,11 +2044,10 @@ GRANT SELECT ON triggers TO PUBLIC;
  * USAGE_PRIVILEGES view
  */
 
--- Of the things currently implemented in PostgreSQL, usage privileges
--- apply only to domains.  Since domains have no real privileges, we
--- represent all domains with implicit usage privilege here.
-
 CREATE VIEW usage_privileges AS
+
+    /* domains */
+    -- Domains have no real privileges, so we represent all domains with implicit usage privilege here.
     SELECT CAST(u.rolname AS sql_identifier) AS grantor,
            CAST('PUBLIC' AS sql_identifier) AS grantee,
            CAST(current_database() AS sql_identifier) AS object_catalog,
@@ -2003,7 +2055,7 @@ CREATE VIEW usage_privileges AS
            CAST(t.typname AS sql_identifier) AS object_name,
            CAST('DOMAIN' AS character_data) AS object_type,
            CAST('USAGE' AS character_data) AS privilege_type,
-           CAST('NO' AS character_data) AS is_grantable
+           CAST('NO' AS yes_or_no) AS is_grantable
 
     FROM pg_authid u,
          pg_namespace n,
@@ -2011,7 +2063,71 @@ CREATE VIEW usage_privileges AS
 
     WHERE u.oid = t.typowner
           AND t.typnamespace = n.oid
-          AND t.typtype = 'd';
+          AND t.typtype = 'd'
+
+    UNION ALL
+
+    /* foreign-data wrappers */
+    SELECT CAST(u_grantor.rolname AS sql_identifier) AS grantor,
+           CAST(grantee.rolname AS sql_identifier) AS grantee,
+           CAST(current_database() AS sql_identifier) AS object_catalog,
+           CAST('' AS sql_identifier) AS object_schema,
+           CAST(fdw.fdwname AS sql_identifier) AS object_name,
+           CAST('FOREIGN DATA WRAPPER' AS character_data) AS object_type,
+           CAST('USAGE' AS character_data) AS privilege_type,
+           CAST(
+             CASE WHEN
+                  -- object owner always has grant options
+                  pg_has_role(grantee.oid, fdw.fdwowner, 'USAGE')
+                  OR aclcontains(fdw.fdwacl,
+                                 makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', true))
+                  THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_grantable
+
+    FROM pg_foreign_data_wrapper fdw,
+         pg_authid u_grantor,
+         (
+           SELECT oid, rolname FROM pg_authid
+           UNION ALL
+           SELECT 0::oid, 'PUBLIC'
+         ) AS grantee (oid, rolname)
+
+    WHERE aclcontains(fdw.fdwacl,
+                      makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', false))
+          AND (pg_has_role(u_grantor.oid, 'USAGE')
+               OR pg_has_role(grantee.oid, 'USAGE')
+               OR grantee.rolname = 'PUBLIC')
+
+    UNION ALL
+
+    /* foreign servers */
+    SELECT CAST(u_grantor.rolname AS sql_identifier) AS grantor,
+           CAST(grantee.rolname AS sql_identifier) AS grantee,
+           CAST(current_database() AS sql_identifier) AS object_catalog,
+           CAST('' AS sql_identifier) AS object_schema,
+           CAST(srv.srvname AS sql_identifier) AS object_name,
+           CAST('FOREIGN SERVER' AS character_data) AS object_type,
+           CAST('USAGE' AS character_data) AS privilege_type,
+           CAST(
+             CASE WHEN
+                  -- object owner always has grant options
+                  pg_has_role(grantee.oid, srv.srvowner, 'USAGE')
+                  OR aclcontains(srv.srvacl,
+                                 makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', true))
+                  THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_grantable
+
+    FROM pg_foreign_server srv,
+         pg_authid u_grantor,
+         (
+           SELECT oid, rolname FROM pg_authid
+           UNION ALL
+           SELECT 0::oid, 'PUBLIC'
+         ) AS grantee (oid, rolname)
+
+    WHERE aclcontains(srv.srvacl,
+                      makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', false))
+          AND (pg_has_role(u_grantor.oid, 'USAGE')
+               OR pg_has_role(grantee.oid, 'USAGE')
+               OR grantee.rolname = 'PUBLIC');
 
 GRANT SELECT ON usage_privileges TO PUBLIC;
 
@@ -2296,3 +2412,142 @@ CREATE VIEW element_types AS
                     FROM data_type_privileges );
 
 GRANT SELECT ON element_types TO PUBLIC;
+
+-- SQL/MED views; these use section numbers from part 9 of the standard.
+
+/* Base view for foreign-data wrappers */
+CREATE VIEW _pg_foreign_data_wrappers AS
+    SELECT w.oid,
+           w.fdwowner,
+           w.fdwoptions,
+           CAST(current_database() AS sql_identifier) AS foreign_data_wrapper_catalog,
+           CAST(fdwname AS sql_identifier) AS foreign_data_wrapper_name,
+           CAST(u.rolname AS sql_identifier) AS authorization_identifier,
+           CAST('c' AS character_data) AS foreign_data_wrapper_language
+    FROM pg_foreign_data_wrapper w, pg_authid u
+    WHERE u.oid = w.fdwowner
+          AND (pg_has_role(fdwowner, 'USAGE')
+               OR has_foreign_data_wrapper_privilege(w.oid, 'USAGE'));
+
+
+/*
+ * 24.4
+ * FOREIGN_DATA_WRAPPER_OPTIONS view
+ */
+CREATE VIEW foreign_data_wrapper_options AS
+    SELECT foreign_data_wrapper_catalog,
+           foreign_data_wrapper_name,
+           CAST((pg_options_to_table(w.fdwoptions)).option_name AS sql_identifier) AS option_name,
+           CAST((pg_options_to_table(w.fdwoptions)).option_value AS character_data) AS option_value
+    FROM _pg_foreign_data_wrappers w;
+
+GRANT SELECT ON foreign_data_wrapper_options TO PUBLIC;
+
+
+/*
+ * 24.5
+ * FOREIGN_DATA_WRAPPERS view
+ */
+CREATE VIEW foreign_data_wrappers AS
+    SELECT foreign_data_wrapper_catalog,
+           foreign_data_wrapper_name,
+           authorization_identifier,
+           CAST(NULL AS character_data) AS library_name,
+           foreign_data_wrapper_language
+    FROM _pg_foreign_data_wrappers w;
+
+GRANT SELECT ON foreign_data_wrappers TO PUBLIC;
+
+
+/* Base view for foreign servers */
+CREATE VIEW _pg_foreign_servers AS
+    SELECT s.oid,
+           s.srvoptions,
+           CAST(current_database() AS sql_identifier) AS foreign_server_catalog,
+           CAST(srvname AS sql_identifier) AS foreign_server_name,
+           CAST(current_database() AS sql_identifier) AS foreign_data_wrapper_catalog,
+           CAST(w.fdwname AS sql_identifier) AS foreign_data_wrapper_name,
+           CAST(srvtype AS character_data) AS foreign_server_type,
+           CAST(srvversion AS character_data) AS foreign_server_version,
+           CAST(u.rolname AS sql_identifier) AS authorization_identifier
+    FROM pg_foreign_server s, pg_foreign_data_wrapper w, pg_authid u
+    WHERE w.oid = s.srvfdw
+          AND u.oid = s.srvowner
+          AND (pg_has_role(s.srvowner, 'USAGE')
+               OR has_server_privilege(s.oid, 'USAGE'));
+
+
+/*
+ * 24.6
+ * FOREIGN_SERVER_OPTIONS view
+ */
+CREATE VIEW foreign_server_options AS
+    SELECT foreign_server_catalog,
+           foreign_server_name,
+           CAST((pg_options_to_table(s.srvoptions)).option_name AS sql_identifier) AS option_name,
+           CAST((pg_options_to_table(s.srvoptions)).option_value AS character_data) AS option_value
+    FROM _pg_foreign_servers s;
+
+GRANT SELECT ON TABLE foreign_server_options TO PUBLIC;
+
+
+/*
+ * 24.7
+ * FOREIGN_SERVERS view
+ */
+CREATE VIEW foreign_servers AS
+    SELECT foreign_server_catalog,
+           foreign_server_name,
+           foreign_data_wrapper_catalog,
+           foreign_data_wrapper_name,
+           foreign_server_type,
+           foreign_server_version,
+           authorization_identifier
+    FROM _pg_foreign_servers;
+
+GRANT SELECT ON foreign_servers TO PUBLIC;
+
+
+/* Base view for user mappings */
+CREATE VIEW _pg_user_mappings AS
+    SELECT um.oid,
+           um.umoptions,
+           um.umuser,
+           CAST(COALESCE(u.rolname,'PUBLIC') AS sql_identifier ) AS authorization_identifier,
+           s.foreign_server_catalog,
+           s.foreign_server_name,
+           s.authorization_identifier AS srvowner
+    FROM pg_user_mapping um LEFT JOIN pg_authid u ON (u.oid = um.umuser),
+         _pg_foreign_servers s
+    WHERE s.oid = um.umserver;
+
+
+/*
+ * 24.12
+ * USER_MAPPING_OPTIONS view
+ */
+CREATE VIEW user_mapping_options AS
+    SELECT authorization_identifier,
+           foreign_server_catalog,
+           foreign_server_name,
+           CAST((pg_options_to_table(um.umoptions)).option_name AS sql_identifier) AS option_name,
+           CAST(CASE WHEN (umuser <> 0 AND authorization_identifier = current_user)
+                       OR (umuser = 0 AND pg_has_role(srvowner, 'USAGE'))
+                       OR (SELECT rolsuper FROM pg_authid WHERE rolname = current_user) THEN (pg_options_to_table(um.umoptions)).option_value
+                     ELSE NULL END AS character_data) AS option_value
+    FROM _pg_user_mappings um;
+
+GRANT SELECT ON user_mapping_options TO PUBLIC;
+
+
+/*
+ * 24.13
+ * USER_MAPPINGS view
+ */
+CREATE VIEW user_mappings AS
+    SELECT authorization_identifier,
+           foreign_server_catalog,
+           foreign_server_name
+    FROM _pg_user_mappings;
+
+GRANT SELECT ON user_mappings TO PUBLIC;

@@ -216,6 +216,9 @@ slashUsage(unsigned short int pager)
 	fprintf(output, _("  \\dC            list casts\n"));
 	fprintf(output, _("  \\dd [PATTERN]  show comment for object\n"));
 	fprintf(output, _("  \\dD [PATTERN]  list domains\n"));
+	fprintf(output, _("  \\des[+] [PATTERN]      list foreign servers\n"));
+	fprintf(output, _("  \\deu[+] [PATTERN]      list user mappings\n"));
+	fprintf(output, _("  \\dew[+] [PATTERN]      list foreign-data wrappers\n"));
 	fprintf(output, _("  \\df [PATTERN]  list functions (add \"+\" for more detail)\n"));
 	fprintf(output, _("  \\dg [PATTERN]  list groups\n"));
 	fprintf(output, _("  \\dn [PATTERN]  list schemas (add \"+\" for more detail)\n"));

@@ -10,3 +10,18 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 3313|gpxloglocout|11|10|12|f|f|t|f|i|1|2275|f|3310|\N|\N|\N|gpxloglocout|-|\N
 3314|gpxloglocrecv|11|10|12|f|f|t|f|i|1|3310|f|2281|\N|\N|\N|gpxloglocrecv|-|\N
 3315|gpxloglocsend|11|10|12|f|f|t|f|i|1|17|f|3310|\N|\N|\N|gpxloglocsend|-|\N
+2896|pg_options_to_table|11|10|12|f|f|t|t|s|1|2249|f|1009|{1009,25,25}|{i,o,o}|{options_array,option_name,option_value}|pg_options_to_table|-|\N
+3112|has_foreign_data_wrapper_privilege|11|10|12|f|f|t|f|s|3|16|f|19 25 25|\N|\N|\N|has_foreign_data_wrapper_privilege_name_name|-|\N
+3113|has_foreign_data_wrapper_privilege|11|10|12|f|f|t|f|s|3|16|f|19 26 25|\N|\N|\N|has_foreign_data_wrapper_privilege_name_id|-|\N
+3114|has_foreign_data_wrapper_privilege|11|10|12|f|f|t|f|s|3|16|f|26 25 25|\N|\N|\N|has_foreign_data_wrapper_privilege_id_name|-|\N
+3115|has_foreign_data_wrapper_privilege|11|10|12|f|f|t|f|s|3|16|f|26 26 25|\N|\N|\N|has_foreign_data_wrapper_privilege_id_id|-|\N
+3116|has_foreign_data_wrapper_privilege|11|10|12|f|f|t|f|s|2|16|f|25 25|\N|\N|\N|has_foreign_data_wrapper_privilege_name|-|\N
+3117|has_foreign_data_wrapper_privilege|11|10|12|f|f|t|f|s|2|16|f|26 25|\N|\N|\N|has_foreign_data_wrapper_privilege_id|-|\N
+3118|has_server_privilege|11|10|12|f|f|t|f|s|3|16|f|19 25 25|\N|\N|\N|has_server_privilege_name_name|-|\N
+3119|has_server_privilege|11|10|12|f|f|t|f|s|3|16|f|19 26 25|\N|\N|\N|has_server_privilege_name_id|-|\N
+3120|has_server_privilege|11|10|12|f|f|t|f|s|3|16|f|26 25 25|\N|\N|\N|has_server_privilege_id_name|-|\N
+3121|has_server_privilege|11|10|12|f|f|t|f|s|3|16|f|26 26 25|\N|\N|\N|has_server_privilege_id_id|-|\N
+3122|has_server_privilege|11|10|12|f|f|t|f|s|2|16|f|25 25|\N|\N|\N|has_server_privilege_name|-|\N
+3123|has_server_privilege|11|10|12|f|f|t|f|s|2|16|f|26 25|\N|\N|\N|has_server_privilege_id|-|\N
+2897|gpdb_fdw_validator|11|10|12|f|f|t|f|i|2|16|f|1009 26|\N|\N|\N|gpdb_fdw_validator|-|\N
+\.

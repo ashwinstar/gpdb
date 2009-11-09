@@ -2186,6 +2186,91 @@ _outAlterDomainStmt(StringInfo str, AlterDomainStmt *node)
 }
 
 static void
+_outCreateFdwStmt(StringInfo str, CreateFdwStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEFDWSTMT");
+	WRITE_STRING_FIELD(fdwname);
+	WRITE_NODE_FIELD(validator);
+	WRITE_NODE_FIELD(options);
+}
+
+static void
+_outAlterFdwStmt(StringInfo str, AlterFdwStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERFDWSTMT");
+	WRITE_STRING_FIELD(fdwname);
+	WRITE_NODE_FIELD(validator);
+	WRITE_BOOL_FIELD(change_validator);
+	WRITE_NODE_FIELD(options);
+}
+
+static void
+_outDropFdwStmt(StringInfo str, DropFdwStmt *node)
+{
+	WRITE_NODE_TYPE("DROPFDWSTMT");
+	WRITE_STRING_FIELD(fdwname);
+	WRITE_BOOL_FIELD(missing_ok);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+}
+
+static void
+_outCreateForeignServerStmt(StringInfo str, CreateForeignServerStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEFOREIGNSERVERSTMT");
+	WRITE_STRING_FIELD(servername);
+	WRITE_STRING_FIELD(servertype);
+	WRITE_STRING_FIELD(version);
+	WRITE_STRING_FIELD(fdwname);
+	WRITE_NODE_FIELD(options);
+}
+
+static void
+_outAlterForeignServerStmt(StringInfo str, AlterForeignServerStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERFOREIGNSERVERSTMT");
+	WRITE_STRING_FIELD(servername);
+	WRITE_STRING_FIELD(version);
+	WRITE_NODE_FIELD(options);
+	WRITE_BOOL_FIELD(has_version);
+}
+
+static void
+_outDropForeignServerStmt(StringInfo str, DropForeignServerStmt *node)
+{
+	WRITE_NODE_TYPE("DROPFOREIGNSERVERSTMT");
+	WRITE_STRING_FIELD(servername);
+	WRITE_BOOL_FIELD(missing_ok);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+}
+
+static void
+_outCreateUserMappingStmt(StringInfo str, CreateUserMappingStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEUSERMAPPINGSTMT");
+	WRITE_STRING_FIELD(username);
+	WRITE_STRING_FIELD(servername);
+	WRITE_NODE_FIELD(options);
+}
+
+static void
+_outAlterUserMappingStmt(StringInfo str, AlterUserMappingStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERUSERMAPPINGSTMT");
+	WRITE_STRING_FIELD(username);
+	WRITE_STRING_FIELD(servername);
+	WRITE_NODE_FIELD(options);
+}
+
+static void
+_outDropUserMappingStmt(StringInfo str, DropUserMappingStmt *node)
+{
+	WRITE_NODE_TYPE("DROPUSERMAPPINGSTMT");
+	WRITE_STRING_FIELD(username);
+	WRITE_STRING_FIELD(servername);
+	WRITE_BOOL_FIELD(missing_ok);
+}
+
+static void
 _outCreateFunctionStmt(StringInfo str, CreateFunctionStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEFUNCSTMT");
@@ -2485,6 +2570,7 @@ _outDefElem(StringInfo str, DefElem *node)
 
 	WRITE_STRING_FIELD(defname);
 	WRITE_NODE_FIELD(arg);
+	WRITE_ENUM_FIELD(defaction, DefElemAction);
 }
 
 static void
@@ -3625,6 +3711,34 @@ _outNode(StringInfo str, void *obj)
 				_outAlterDomainStmt(str, obj);
 				break;
 
+			case T_CreateFdwStmt:
+				_outCreateFdwStmt(str, obj);
+				break;
+			case T_AlterFdwStmt:
+				_outAlterFdwStmt(str, obj);
+				break;
+			case T_DropFdwStmt:
+				_outDropFdwStmt(str, obj);
+				break;
+			case T_CreateForeignServerStmt:
+				_outCreateForeignServerStmt(str, obj);
+				break;
+			case T_AlterForeignServerStmt:
+				_outAlterForeignServerStmt(str, obj);
+				break;
+			case T_DropForeignServerStmt:
+				_outDropForeignServerStmt(str, obj);
+				break;
+			case T_CreateUserMappingStmt:
+				_outCreateUserMappingStmt(str, obj);
+				break;
+			case T_AlterUserMappingStmt:
+				_outAlterUserMappingStmt(str, obj);
+				break;
+			case T_DropUserMappingStmt:
+				_outDropUserMappingStmt(str, obj);
+				break;
+				
 			case T_TransactionStmt:
 				_outTransactionStmt(str, obj);
 				break;

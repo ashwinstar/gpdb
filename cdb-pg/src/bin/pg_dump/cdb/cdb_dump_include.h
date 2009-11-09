@@ -49,6 +49,13 @@ extern const char *username_subquery;
 extern bool g_gp_supportsPartitioning;
 
 /*
+ * Indicates whether or not the GPDB cluster supports SQL/MED.
+ * This boolean is used in cdb_dump_include.c to ignore sql/med
+ * related object if needed.
+ */
+extern bool g_gp_supportsSqlMed;
+
+/*
  * Indicates whether or not only catalogs are dumped.  True
  * when the agent job is dumping the MPP schema only.
  */

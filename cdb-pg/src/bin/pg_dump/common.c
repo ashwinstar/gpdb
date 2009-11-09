@@ -79,6 +79,8 @@ getSchemaData(int *numTablesPtr)
 	CastInfo   *castinfo;
 	OpclassInfo *opcinfo;
 	ConvInfo   *convinfo;
+	FdwInfo    *fdwinfo;
+	ForeignServerInfo *srvinfo;
 	int			numNamespaces;
 	int			numAggregates;
 	int			numInherits;
@@ -87,6 +89,9 @@ getSchemaData(int *numTablesPtr)
 	int			numCasts;
 	int			numOpclasses;
 	int			numConversions;
+	int			numForeignDataWrappers;
+	int			numForeignServers;
+
 
 	if (g_verbose)
 		write_msg(NULL, "reading schemas\n");
@@ -117,6 +122,24 @@ getSchemaData(int *numTablesPtr)
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined operator classes\n");
 	opcinfo = getOpclasses(&numOpclasses);
+
+	if (testSqlMedSupport())
+	{
+		if (g_verbose)
+			write_msg(NULL, "reading user-defined foreign-data wrappers\n");
+		fdwinfo = getForeignDataWrappers(&numForeignDataWrappers);
+
+		if (g_verbose)
+			write_msg(NULL, "reading user-defined foreign servers\n");
+		srvinfo = getForeignServers(&numForeignServers);
+	}
+	else
+	{
+		fdwinfo = NULL;
+		srvinfo = NULL;
+		numForeignDataWrappers = 0;
+		numForeignServers = 0;
+	}
 
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined conversions\n");

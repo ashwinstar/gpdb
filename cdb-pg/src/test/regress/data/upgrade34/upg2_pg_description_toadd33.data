@@ -12,3 +12,17 @@ objoid|classoid|objsubid|description
 3315|1255|0|I/O
 3300|1247|0|(segment file num, row number), logical location of append-only tuple
 3310|1247|0|(h/h) -- the hexadecimal xlogid and xrecoff of an XLOG location
+2896|1255|0|convert generic options array to name/value table
+3112|1255|0|user privilege on foreign data wrapper by username, foreign data wrapper name
+3113|1255|0|user privilege on foreign data wrapper by username, foreign data wrapper oid
+3114|1255|0|user privilege on foreign data wrapper by user oid, foreign data wrapper name
+3115|1255|0|user privilege on foreign data wrapper by user oid, foreign data wrapper oid
+3116|1255|0|current user privilege on foreign data wrapper by foreign data wrapper name
+3117|1255|0|current user privilege on foreign data wrapper by foreign data wrapper oid
+3118|1255|0|user privilege on server by username, server name
+3119|1255|0|user privilege on server by username, server oid
+3120|1255|0|user privilege on server by user oid, server name
+3121|1255|0|user privilege on server by user oid, server oid
+3122|1255|0|current user privilege on server by server name
+3123|1255|0|current user privilege on server by server oid
+\.

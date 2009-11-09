@@ -245,6 +245,15 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 			AlterTypeOwner(stmt->object, newowner);
 			break;
 
+		case OBJECT_FDW:
+			AlterForeignDataWrapperOwner(strVal(linitial(stmt->object)),
+										 newowner);
+			break;
+
+		case OBJECT_FOREIGN_SERVER:
+			AlterForeignServerOwner(strVal(linitial(stmt->object)), newowner);
+			break;
+
 		default:
 			elog(ERROR, "unrecognized AlterOwnerStmt type: %d",
 				 (int) stmt->objectType);
