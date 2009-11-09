@@ -26,7 +26,8 @@
 #include "utils/array.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-
+#include "cdb/cdbhash.h"
+#include "access/hash.h"
 
 /*
  * Proof attempts involving many AND or OR branches are likely to require
@@ -96,6 +97,16 @@ static Node *extract_not_arg(Node *clause);
 static bool list_member_strip(List *list, Expr *datum);
 static bool btree_predicate_proof(Expr *predicate, Node *clause,
 					  bool refute_it);
+
+static HTAB* CreateNodeSetHashTable();
+static void AddValue(PossibleValueSet *pvs, Const *valueToCopy);
+static void RemoveValue(PossibleValueSet *pvs, Const *value);
+static bool ContainsValue(PossibleValueSet *pvs, Const *value);
+static void AddUnmatchingValues( PossibleValueSet *pvs, PossibleValueSet *toCheck );
+static void RemoveUnmatchingValues(PossibleValueSet *pvs, PossibleValueSet *toCheck);
+static PossibleValueSet ProcessAndClause( PredIterInfoData *clauseInfo, Node *clause, Node *variable);
+static PossibleValueSet ProcessOrClause( PredIterInfoData *clauseInfo, Node *clause, Node *variable);
+static bool TryProcessEqualityNode(OpExpr *expr, Node *variable, PossibleValueSet *resultOut );
 
 
 /*
@@ -1575,4 +1586,403 @@ btree_predicate_proof(Expr *predicate, Node *clause, bool refute_it)
 		return false;
 	}
 	return DatumGetBool(test_result);
+}
+
+typedef struct ConstHashValue
+{
+	Const * c;
+} ConstHashValue;
+
+static void
+CalculateHashWithHashAny(void *clientData, void *buf, size_t len)
+{
+	uint32 *result = (uint32*) clientData;
+	*result = hash_any((unsigned char *)clientData, len );
+}
+
+static uint32
+ConstHashTableHash(const void *keyPtr, Size keysize)
+{
+	uint32 result;
+	Const *c = *((Const **)keyPtr);
+
+	if ( c->constisnull)
+	{
+		hashNullDatum(CalculateHashWithHashAny, &result);
+	}
+	else
+	{
+		hashDatum(c->constvalue, c->consttype, CalculateHashWithHashAny, &result);
+	}
+	return result;
+}
+
+static int
+ConstHashTableMatch(const void*keyPtr1, const void *keyPtr2, Size keysize)
+{
+	Node *left = *((Node **)keyPtr1);
+	Node *right = *((Node **)keyPtr2);
+	return equal(left, right) ? 0 : 1;
+}
+
+/**
+ * returns a hashtable that can be used to map from a node to itself
+ */
+static HTAB*
+CreateNodeSetHashTable(MemoryContext memoryContext)
+{
+	HASHCTL	hash_ctl;
+
+	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
+
+	hash_ctl.keysize = sizeof(Const**);
+	hash_ctl.entrysize = sizeof(ConstHashValue);
+	hash_ctl.hash = ConstHashTableHash;
+	hash_ctl.match = ConstHashTableMatch;
+	hash_ctl.hcxt = memoryContext;
+
+	return hash_create("ConstantSet", 16, &hash_ctl, HASH_ELEM | HASH_FUNCTION | HASH_COMPARE);
+}
+
+/**
+ * basic operation on PossibleValueSet:  initialize to "any value possible"
+ */
+void
+InitPossibleValueSetData(PossibleValueSet *pvs)
+{
+	pvs->memoryContext = NULL;
+	pvs->set = NULL;
+	pvs->isAnyValuePossible = true;
+}
+
+Node **
+GetPossibleValuesAsArray( PossibleValueSet *pvs, int *numValuesOut )
+{
+	HASH_SEQ_STATUS status;
+	ConstHashValue *value;
+	List *list = NULL;
+	Node ** result;
+	int numValues, i;
+	ListCell *lc;
+
+	if ( pvs->set == NULL)
+	{
+		*numValuesOut = 0;
+		return NULL;
+	}
+
+	hash_seq_init(&status, pvs->set);
+	while ((value = (ConstHashValue*) hash_seq_search(&status)) != NULL)
+	{
+		list = lappend(list, copyObject(value->c));
+	}
+
+	numValues = list_length(list);
+	result = palloc(sizeof(Node*) * numValues);
+	foreach_with_count( lc, list, i)
+	{
+		result[i] = (Node*) lfirst(lc);
+	}
+
+	*numValuesOut = numValues;
+	return result;
+}
+
+/**
+ * basic operation on PossibleValueSet:  cleanup
+ */
+void
+DeletePossibleValueSetData(PossibleValueSet *pvs)
+{
+	if ( pvs->set != NULL)
+	{
+		Assert(pvs->memoryContext != NULL);
+
+		MemoryContextDelete(pvs->memoryContext);
+		pvs->memoryContext = NULL;
+		pvs->set = NULL;
+	}
+	pvs->isAnyValuePossible = true;
+}
+
+/**
+ * basic operation on PossibleValueSet:  add a value to the set field of PossibleValueSet
+ *
+ * The caller must verify that the valueToCopy is greenplum hashable
+ */
+static void
+AddValue(PossibleValueSet *pvs, Const *valueToCopy)
+{
+	Assert( isGreenplumDbHashable(valueToCopy->consttype));
+	
+	if ( pvs->set == NULL)
+	{
+		Assert(pvs->memoryContext == NULL);
+
+		pvs->memoryContext = AllocSetContextCreate(CurrentMemoryContext,
+													   "PossibleValueSet",
+													   ALLOCSET_DEFAULT_MINSIZE,
+													   ALLOCSET_DEFAULT_INITSIZE,
+													   ALLOCSET_DEFAULT_MAXSIZE);
+		pvs->set = CreateNodeSetHashTable(pvs->memoryContext);
+	}
+
+	if ( ! ContainsValue(pvs, valueToCopy))
+	{
+		bool found; /* unused but needed in call */
+		MemoryContext oldContext = MemoryContextSwitchTo(pvs->memoryContext);
+
+		Const *key = copyObject(valueToCopy);
+		void *entry = hash_search(pvs->set, &key, HASH_ENTER, &found);
+
+		if ( entry == NULL)
+		{
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory")));
+		}
+		((ConstHashValue*)entry)->c = key;
+
+		MemoryContextSwitchTo(oldContext);
+	}
+}
+
+/**
+ * basic operation on PossibleValueSet:  remove a value from the set field of PossibleValueSet
+ */
+static void
+RemoveValue(PossibleValueSet *pvs, Const *value)
+{
+	bool found; /* unused, needed in call */
+	Assert( pvs->set != NULL);
+	hash_search(pvs->set, &value, HASH_REMOVE, &found);
+}
+
+/**
+ * basic operation on PossibleValueSet:  determine if a value is contained in the set field of PossibleValueSet
+ */
+static bool
+ContainsValue(PossibleValueSet *pvs, Const *value)
+{
+	bool found = false;
+	Assert(!pvs->isAnyValuePossible);
+	if ( pvs->set != NULL)
+		hash_search(pvs->set, &value, HASH_FIND, &found);
+	return found;
+}
+
+/**
+ * in-place union operation
+ */
+static void
+AddUnmatchingValues( PossibleValueSet *pvs, PossibleValueSet *toCheck )
+{
+	HASH_SEQ_STATUS status;
+	ConstHashValue *value;
+
+	Assert(!pvs->isAnyValuePossible);
+	Assert(!toCheck->isAnyValuePossible);
+
+	hash_seq_init(&status, toCheck->set);
+	while ((value = (ConstHashValue*) hash_seq_search(&status)) != NULL)
+	{
+		AddValue(pvs, value->c);
+	}
+}
+
+/**
+ * in-place intersection operation
+ */
+static void
+RemoveUnmatchingValues(PossibleValueSet *pvs, PossibleValueSet *toCheck)
+{
+	List *toRemove = NULL;
+	ListCell *lc;
+	HASH_SEQ_STATUS status;
+	ConstHashValue *value;
+
+	Assert(!pvs->isAnyValuePossible);
+	Assert(!toCheck->isAnyValuePossible);
+
+	hash_seq_init(&status, pvs->set);
+	while ((value = (ConstHashValue*) hash_seq_search(&status)) != NULL)
+	{
+		if ( ! ContainsValue(toCheck, value->c ))
+		{
+			toRemove = lappend(toRemove, value->c);
+		}
+	}
+
+	/* remove after so we don't mod hashtable underneath iteration */
+	foreach(lc, toRemove)
+	{
+		Const *value = (Const*) lfirst(lc);
+		RemoveValue(pvs, value);
+	}
+	list_free(toRemove);
+}
+
+static PossibleValueSet
+ProcessAndClause( PredIterInfoData *clauseInfo, Node *clause, Node *variable)
+{
+	PossibleValueSet result;
+	InitPossibleValueSetData(&result);
+
+	iterate_begin(child, clause, *clauseInfo)
+	{
+		PossibleValueSet childPossible = DeterminePossibleValueSet( child, variable );
+		if ( childPossible.isAnyValuePossible)
+		{
+			/* any value possible, this AND member does not add any information */
+			DeletePossibleValueSetData( &childPossible);
+		}
+		else
+		{
+			/* a particular set so this AND member can refine our estimate */
+			if ( result.isAnyValuePossible )
+			{
+				/* current result was not informative so just take the child */
+				result = childPossible;
+			}
+			else
+			{
+				/* result.set AND childPossible.set: do intersection inside result */
+				RemoveUnmatchingValues( &result, &childPossible );
+				DeletePossibleValueSetData( &childPossible);
+			}
+		}
+	}
+	iterate_end(*clauseInfo);
+
+	return result;
+}
+
+static PossibleValueSet
+ProcessOrClause( PredIterInfoData *clauseInfo, Node *clause, Node *variable)
+{
+	PossibleValueSet result;
+	InitPossibleValueSetData(&result);
+
+	iterate_begin(child, clause, *clauseInfo)
+	{
+		PossibleValueSet childPossible = DeterminePossibleValueSet( child, variable );
+		if ( childPossible.isAnyValuePossible)
+		{
+			/* any value is possible for the entire AND */
+			DeletePossibleValueSetData( &childPossible );
+			DeletePossibleValueSetData( &result );
+
+			/* it can't improve once a part of the OR accepts all, so just quit */
+			result.isAnyValuePossible = true;
+			break;
+		}
+
+		if ( result.isAnyValuePossible )
+		{
+			/* first one in loop so just take it */
+			result = childPossible;
+		}
+		else
+		{
+			/* result.set OR childPossible.set --> do union into result */
+			AddUnmatchingValues( &result, &childPossible );
+			DeletePossibleValueSetData( &childPossible);
+		}
+	}
+	iterate_end(*clauseInfo);
+
+	return result;
+}
+
+/**
+ */
+static bool
+TryProcessEqualityNode(OpExpr *expr, Node *variable, PossibleValueSet *resultOut )
+{
+	Node *leftop, *rightop, *varExpr;
+    Const *constExpr;
+
+	InitPossibleValueSetData(resultOut);
+
+	leftop = get_leftop((Expr*)expr);
+	rightop = get_rightop((Expr*)expr);
+	if (!leftop || !rightop)
+		return false;
+
+	/* check if it's equality operation */
+	if ( ! is_builtin_true_equality_between_same_type(expr->opno))
+	{
+		return false;
+	}
+
+	/* check if one operand is a constant */
+	if ( IsA(rightop, Const))
+	{
+		varExpr = leftop;
+		constExpr = (Const *) rightop;
+	}
+	else if ( IsA(leftop, Const))
+	{
+		constExpr = (Const *) leftop;
+		varExpr = rightop;
+	}
+	else return false;
+
+	if ( IsA(varExpr, RelabelType))
+	{
+		RelabelType *rt = (RelabelType*) varExpr;
+		varExpr = (Node*) rt->arg;
+	}
+
+	if ( ! equal(varExpr, variable))
+		return false;
+
+	if ( isGreenplumDbHashable(constExpr->consttype))
+	{
+		resultOut->isAnyValuePossible = false;
+		AddValue(resultOut, constExpr);
+	}
+	else
+	{
+		resultOut->isAnyValuePossible = true;
+	}
+	return true;
+}
+
+/**
+ * Note that if there are two variables to check, you must call this twice.  This then means that
+ *    if the two variables are dependent you won't learn of that -- you only know that the set of
+ *    possible values is within the cross-product of the two variables's sets
+ */
+PossibleValueSet
+DeterminePossibleValueSet( Node *clause, Node *variable)
+{
+	PredIterInfoData clauseInfo;
+	PossibleValueSet result;
+
+	if ( clause == NULL )
+	{
+		InitPossibleValueSetData(&result);
+		return result;
+	}
+
+	switch (predicate_classify(clause, &clauseInfo))
+	{
+		case CLASS_AND:
+			return ProcessAndClause(&clauseInfo, clause, variable);
+		case CLASS_OR:
+			return ProcessOrClause(&clauseInfo, clause, variable);
+		case CLASS_ATOM:
+			if (IsA(clause, OpExpr) &&
+				TryProcessEqualityNode((OpExpr*)clause, variable, &result))
+			{
+				return result;
+			}
+			/* can't infer anything, so return that any value is possible */
+			InitPossibleValueSetData(&result);
+			return result;
+	}
+	
+
+	/* can't get here */
+	elog(ERROR, "predicate_classify returned a bad value");
+	return result;
 }

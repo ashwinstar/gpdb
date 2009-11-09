@@ -620,6 +620,8 @@ extern int      gp_segments_for_planner;
  */
 extern bool enable_agg_restruct;
 
+extern bool fast_path_expressions;
+
 /*
  * Perform a post-planning scan of the final plan looking for motion deadlocks:
  * emit verbose messages about any found.

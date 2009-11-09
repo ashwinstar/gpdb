@@ -22,6 +22,7 @@
 #include "parser/parse_oper.h"	/* for compatible_oper_opid() */
 #include "utils/relcache.h"     /* RelationGetPartitioningKey() */
 #include "optimizer/tlist.h"	/* get_sortgroupclause_tle() */
+#include "optimizer/predtest.h"
 
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
@@ -40,10 +41,13 @@
 #include "cdb/cdbplan.h"
 #include "cdb/cdbpullup.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbtargeteddispatch.h"
 
 #include "nodes/print.h"
 
 #include "executor/executor.h"
+#include "optimizer/geqo_random.h"
+
 /*
  * An ApplyMotionState holds state for the recursive apply_motion_mutator().
  * It is externalized here to make it shareable by helper code in other
@@ -475,6 +479,9 @@ apply_motion(Plan *plan, Query *query)
                 else
                     Insist(focusPlan(plan, true, false, false));
 			}
+			
+			AssignContentIdsToPlanData(query, plan);
+			
 			break;
 
 		case CMD_INSERT:
@@ -749,6 +756,9 @@ apply_motion(Plan *plan, Query *query)
 										   query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
 								));
 				}
+
+				/* figure out if we can run on a reduced set of nodes */
+				AssignContentIdsToPlanData(query, plan);
 			}
 
 			/* Target table is not distributed.  Must be in entry db. */

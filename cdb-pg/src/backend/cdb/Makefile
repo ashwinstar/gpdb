@@ -38,7 +38,7 @@ OBJS = cdbanalyze.o \
 	   cdbrelsize.o \
 	   cdbshareddoublylinked.o \
 	   cdbsetop.o cdbsreh.o cdbsrlz.o cdbsubplan.o cdbsubselect.o \
-	   cdbthreadwork.o \
+	   cdbtargeteddispatch.o cdbthreadwork.o \
 	   cdbtimer.o \
 	   cdbtm.o \
 	   cdbutil.o \

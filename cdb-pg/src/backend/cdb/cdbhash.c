@@ -156,8 +156,27 @@ cdbhashinit(CdbHash *h)
 	h->hash = FNV1_32_INIT;
 }
 
+/**
+ * Implements datumHashFunction
+ */
+static void
+addToCdbHash(void *cdbHash, void *buf, size_t len)
+{
+	CdbHash *h = (CdbHash*)cdbHash;
+	h->hash = (h->hashfn) (buf, len, h->hash);
+}
 
 extern void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void **tofree);
+
+/*
+ * Add an attribute to the CdbHash calculation.
+ */
+void
+cdbhash(CdbHash *h, Datum datum, Oid type)
+{
+	hashDatum(datum, type, addToCdbHash, (void*)h);
+}
+
 /*
  * Add an attribute to the hash calculation.
  * **IMPORTANT: any new hard coded support for a data type in here
@@ -167,9 +186,12 @@ extern void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void 
  * of a domain type. It is quite expensive to call get_typtype() and
  * getBaseType() here since this function gets called a lot for the
  * same set of Datums.
+ *
+ * @param hashFn called to update the hash value.
+ * @param clientData passed to hashFn.
  */
 void
-cdbhash(CdbHash *h, Datum datum, Oid type)
+hashDatum(Datum datum, Oid type, datumHashFunction hashFn, void *clientData)
 {
 
 	void	   *buf = NULL;		/* pointer to the data */
@@ -574,7 +596,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	}							/* switch(type) */
 
 	/* do the hash using the selected algorithm */
-	h->hash = (h->hashfn) (buf, len, h->hash);
+	hashFn(clientData, buf, len);
 	if(tofree)
 		pfree(tofree);
 }
@@ -585,13 +607,24 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 void
 cdbhashnull(CdbHash *h)
 {
+	hashNullDatum(addToCdbHash, (void*)h);
+}
+
+/**
+ * Update the hash value for a null Datum
+ *
+ * @param hashFn called to update the hash value.
+ * @param clientData passed to hashFn.
+ */
+void
+hashNullDatum(datumHashFunction hashFn, void *clientData)
+{
 	uint32		nullbuf = NULL_VAL;		/* stores the constant value that
 										 * represents a NULL */
 	void	   *buf = &nullbuf; /* stores the address of the buffer					*/
 	size_t		len = sizeof(nullbuf);	/* length of the value								*/
 
-	/* do the hash using the selected algorithm */
-	h->hash = (h->hashfn) (buf, len, h->hash);
+	hashFn(clientData, buf, len);
 }
 
 /*
