@@ -2173,7 +2173,7 @@ false
 			NULL
 		},
 		&gp_statistics_use_fkeys,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{
