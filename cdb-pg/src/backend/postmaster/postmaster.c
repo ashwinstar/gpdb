@@ -1236,12 +1236,16 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * We're ready to rock and roll...
 	 */
-	if (!SyncMaster)
+	if (SyncMaster)
+	{
+		pmState = PM_RUN;
+	}
+	else /* non-SyncMaster */
 	{
 		StartupPID = StartupDataBase();
 		Assert(StartupPID != 0);
+		pmState = PM_STARTUP;
 	}
-	pmState = PM_STARTUP;
 
 	status = ServerLoop();
 
@@ -1543,9 +1547,9 @@ ServerLoop(void)
 
 	nSockets = initMasks(&readmask);
 
-    /* initialize tm sync */
-    if (SyncMaster)
-        cdb_init_log_sync();
+	/* initialize tm sync */
+    	if (SyncMaster)
+		cdb_init_log_sync();
 
 	for (;;)
 	{
@@ -1590,7 +1594,9 @@ ServerLoop(void)
 		 * But the real reason is lost in antiquity.
 		 */
 		if (need_call_reaper)
+		{
 			do_reaper();
+		}
 
 		/*
 		 * Block all signals until we wait again.  (This makes it safe for our
