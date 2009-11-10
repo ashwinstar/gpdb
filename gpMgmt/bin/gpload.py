@@ -35,7 +35,7 @@ try:
     import pg
 except Exception, e:
     errorMsg = "gpload was unable to import The PyGreSQL Python module (pg.py) - ", str(e)
-    sys.stderr.write(errorMsg)
+    sys.stderr.write(str(errorMsg))
     sys.exit(2)
  
 import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
@@ -1612,7 +1612,6 @@ class gpload:
         if not self.from_cols_from_user:
             cols = filter(lambda a:a[3] == False, cols)
 
-        # KAS must fix this - self.pg8000.NoticeReceived += notice_processor
         sql = 'INSERT INTO %s' % dest
         sql += ' (%s)'%','.join(map(lambda a:build_safe_table_name(self.db,a[0]),cols))
         sql += ' SELECT %s '%','.join(map(lambda a:build_safe_table_name(self.db,a[2], self.from_columns), cols))

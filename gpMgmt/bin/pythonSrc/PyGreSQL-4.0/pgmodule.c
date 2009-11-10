@@ -98,6 +98,10 @@ const char *__movename[5] =
 #define DEFAULT_VARS 1			/* enables default variables use */
 #endif
 
+#ifndef NO_NOTICES
+#define HANDLE_NOTICES        1               /* enables notices handling */
+#endif   /* NO_NOTICES */
+
 #ifndef PG_VERSION_NUM
 #ifdef PQnoPasswordSupplied
 #define PG_VERSION_NUM 80000
@@ -126,6 +130,11 @@ static PyObject *pg_default_user;	/* default username */
 static PyObject *pg_default_passwd;	/* default password */
 #endif	/* DEFAULT_VARS */
 
+#ifdef HANDLE_NOTICES
+#define MAX_BUFFERED_NOTICES 101              /* max notices (+1) to keep for each connection */
+static void notice_processor(void * arg, const char * message);
+#endif /* HANDLE_NOTICES */ 
+
 DL_EXPORT(void) init_pg(void);
 int *get_type_array(PGresult *result, int nfields);
 
@@ -142,6 +151,11 @@ typedef struct
 	int			valid;			/* validity flag */
 	PGconn		*cnx;			/* PostGres connection handle */
 	PGresult	*last_result;	/* last result content */
+#ifdef HANDLE_NOTICES
+        char           **notices;            /* dynamically allocated circular buffer for notices */
+        int              notices_first;  /* index of first filled index in notices */
+        int              notices_next;   /* index of first free index in notices */
+#endif /* HANDLE_NOTICES */
 }	pgobject;
 
 staticforward PyTypeObject PgType;
@@ -159,6 +173,9 @@ pgobject_New(void)
 	pgobj->valid = 1;
 	pgobj->last_result = NULL;
 	pgobj->cnx = NULL;
+        pgobj->notices = malloc(sizeof(char*) * MAX_BUFFERED_NOTICES);
+        pgobj->notices_first = 0;
+        pgobj->notices_next = 0;
 	return (PyObject *) pgobj;
 }
 
@@ -1642,6 +1659,10 @@ pgconnect(pgobject * self, PyObject * args, PyObject * dict)
 		return NULL;
 	}
 
+#ifdef HANDLE_NOTICES
+        PQsetNoticeProcessor(npgobj->cnx, notice_processor, npgobj);
+#endif /* HANDLE_NOTICES */
+
 	return (PyObject *) npgobj;
 }
 
@@ -1651,6 +1672,9 @@ pgconnect(pgobject * self, PyObject * args, PyObject * dict)
 static void
 pg_dealloc(pgobject * self)
 {
+#ifdef HANDLE_NOTICES
+        free(self->notices);
+#endif /* HANDLE_NOTICES */
 	if (self->cnx)
 	{
 		Py_BEGIN_ALLOW_THREADS
@@ -2873,6 +2897,77 @@ pg_loimport(pgobject * self, PyObject * args)
 }
 #endif /* LARGE_OBJECTS */
 
+#ifdef HANDLE_NOTICES
+ 
+/* fetch accumulated backend notices */
+static char pg_notices__doc__[] =
+  "notices() -- returns and clears the list of currently accumulated backend notices for the connection.";
+ 
+static void 
+notice_processor(void * arg, const char * message)
+{
+       
+       pgobject *pgobj = (pgobject *)arg;
+ 
+        /* skip if memory allocation failed */
+        if (pgobj->notices == NULL) 
+         {
+                   return;
+           }
+ 
+         pgobj->notices[pgobj->notices_next] = strdup(message);
+        pgobj->notices_next = (pgobj->notices_next + 1) % MAX_BUFFERED_NOTICES;
+        if (pgobj->notices_next == pgobj->notices_first)
+          {
+                    free(pgobj->notices[pgobj->notices_first]);
+                    pgobj->notices_first = (pgobj->notices_first + 1) % MAX_BUFFERED_NOTICES;
+            }
+ 
+   }
+ 
+static PyObject *
+  pg_notices(pgobject * self, PyObject * args)
+ {
+ 
+         PyObject *reslist,
+                      *str;
+        int      i;
+ 
+         /* allocate list for result */
+         if ((reslist = PyList_New(0)) == NULL)
+                 return NULL;
+ 
+         /* skip if memory allocation failed */
+         if (self->notices == NULL) 
+         {
+                   return reslist;
+           }
+ 
+         /* builds result */
+         while (self->notices_first != self->notices_next)
+         {
+               
+                 if (self->notices[self->notices_first] != NULL) /* skip if memory allocation failed */
+                 {
+                       
+                         str = PyString_FromString(self->notices[self->notices_first]);
+                        PyList_Append(reslist, str);
+                        Py_DECREF(str);
+ 
+                         free(self->notices[self->notices_first]);
+ 
+                 }
+ 
+                 self->notices_first = (self->notices_first + 1) % MAX_BUFFERED_NOTICES;
+ 
+         }
+ 
+         return reslist;
+ 
+  }
+ 
+#endif /* HANDLE_NOTICES */
+
 /* connection object methods */
 static struct PyMethodDef pgobj_methods[] = {
 	{"source", (PyCFunction) pg_source, METH_VARARGS, pg_source__doc__},
@@ -2905,6 +3000,10 @@ static struct PyMethodDef pgobj_methods[] = {
 	{"getlo", (PyCFunction) pg_getlo, 1, pg_getlo__doc__},
 	{"loimport", (PyCFunction) pg_loimport, 1, pg_loimport__doc__},
 #endif /* LARGE_OBJECTS */
+
+#ifdef HANDLE_NOTICES
+        {"notices", (PyCFunction) pg_notices, 1, pg_notices__doc__},
+#endif /* HANDLE_NOTICES */
 
 	{NULL, NULL} /* sentinel */
 };
