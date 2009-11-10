@@ -27,6 +27,14 @@ alter table @gpupgradeschemaname@.pg_exttable add column writable boolean;
 update @gpupgradeschemaname@.pg_exttable set writable='f';
 alter table @gpupgradeschemaname@.pg_exttable alter column writable set not null;
 
+-- fix up pg_proc and pg_operator to replace "text_pattern_eq" with "texteq"
+update @gpupgradeschemaname@.pg_proc set prosrc = 'texteq' where oid = 2162;
+update @gpupgradeschemaname@.pg_proc set prosrc = 'texteq' where oid = 2176;
+update @gpupgradeschemaname@.pg_proc set prosrc = 'textne' where oid = 2165;
+update @gpupgradeschemaname@.pg_proc set prosrc = 'textne' where oid = 2179;
+update @gpupgradeschemaname@.pg_operator set oprcode = 'pg_catalog.texteq'::regproc where oid = 2316;
+update @gpupgradeschemaname@.pg_operator set oprcode = 'pg_catalog.textne'::regproc where oid = 2319;
+
 -- upgrade pg_partitions.parentpartitioname
 
 -- Need to manually diff the view definitions and extract the changed

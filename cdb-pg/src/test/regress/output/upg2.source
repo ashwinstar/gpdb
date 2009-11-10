@@ -793,6 +793,13 @@ update public.pg_depend set classid='pg_type'::regclass, objid=reltype from publ
 --   The above loadcat added some columns to our "public" versions of the
 --   catalogs, but this updated the "pg_catalog.pg_attribute".
 --   Insert the appropriate rows into the "public.pg_attribute".
+--
+-- WARNING: DO NOT ADD ACTUAL CATALOG UPGRADE LOGIC HERE!
+--
+-- This is only to fix the dummy catalog for Alter operations.  When these
+-- are run by the loadcat script the tables are only updated in the Real
+-- catalog and we must manually update the dummy catalog to account for them.
+--
 insert into public.pg_attribute 
   select 'pg_catalog.pg_appendonly'::regclass, a.attname, a.atttypid,
     a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
@@ -1125,6 +1132,13 @@ alter table public.pg_appendonly alter column columnstore set not null;
 alter table public.pg_exttable add column writable boolean;
 update public.pg_exttable set writable='f';
 alter table public.pg_exttable alter column writable set not null;
+-- fix up pg_proc and pg_operator to replace "text_pattern_eq" with "texteq"
+update public.pg_proc set prosrc = 'texteq' where oid = 2162;
+update public.pg_proc set prosrc = 'texteq' where oid = 2176;
+update public.pg_proc set prosrc = 'textne' where oid = 2165;
+update public.pg_proc set prosrc = 'textne' where oid = 2179;
+update public.pg_operator set oprcode = 'pg_catalog.texteq'::regproc where oid = 2316;
+update public.pg_operator set oprcode = 'pg_catalog.textne'::regproc where oid = 2319;
 -- upgrade pg_partitions.parentpartitioname
 -- Need to manually diff the view definitions and extract the changed
 -- portions.  Yuck!
@@ -1166,6 +1180,13 @@ reindex table public.gp_interfaces;
 --   The above loadcat added some columns to our "public" versions of the
 --   catalogs, but this updated the "pg_catalog.pg_attribute".
 --   Insert the appropriate rows into the "public.pg_attribute".
+--
+-- WARNING: DO NOT ADD ACTUAL CATALOG UPGRADE LOGIC HERE!
+--
+-- This is only to fix the dummy catalog for Alter operations.  When these
+-- are run by the loadcat script the tables are only updated in the Real
+-- catalog and we must manually update the dummy catalog to account for them.
+--
 insert into public.pg_attribute 
   select 'pg_catalog.pg_appendonly'::regclass, a.attname, a.atttypid,
     a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
@@ -1182,13 +1203,6 @@ insert into public.pg_attribute
   from pg_catalog.pg_attribute a
   where (attrelid, attnum) in ( ('public.pg_exttable'::regclass, 10) );
 update public.pg_class set relnatts=10 where oid = 'pg_catalog.pg_exttable'::regclass;
-update public.pg_proc set prosrc = 'texteq' where oid = 2162;
-update public.pg_proc set prosrc = 'texteq' where oid = 2176;
-update public.pg_proc set prosrc = 'textne' where oid = 2165;
-update public.pg_proc set prosrc = 'textne' where oid = 2179;
-update public.pg_operator set oprcode = 'pg_catalog.texteq'::regproc where oid = 2316;
-update public.pg_operator set oprcode = 'pg_catalog.textne'::regproc where oid = 2319;
-
 --
 -- 8. Compare upgraded 33 to actual 34
 --
