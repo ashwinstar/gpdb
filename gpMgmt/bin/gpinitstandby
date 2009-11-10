@@ -102,7 +102,7 @@ USAGE () {
 		$ECHO "          tables and only need to re-sync the standby master data directory"
 		$ECHO "      -r, remove current warm master standby, use this option if the warm master standby host has"
 		$ECHO "          failed, this option will need to shutdown the GPDB array to be able to complete request"
-		$ECHO "      -m <smart|fast>, use specified mode when stopping the GPDB array.[default mode:- smart]"
+		$ECHO "      -M <smart|fast>, use specified mode when stopping the GPDB array.[default mode:- smart]"
 		$ECHO "      -L, leave the GPDB array in a stopped state after removing the warm standby master."
 		$ECHO "          This option is only valid when used with the -r option"		
 		$ECHO "      -B, <number> number of pg_hba.conf updates to run in parallel [default:-$BATCH_DEFAULT]"
@@ -558,7 +558,7 @@ FAIL_PRIMARY_SEGMENTS () {
 #******************************************************************************
 trap '$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE;$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-	while getopts ":v'?'anfqs:l:!DB:rm:L" opt;do
+	while getopts ":v'?'anfqs:l:!DB:rM:L" opt;do
 		case $opt in
 			v ) VERSION_INFO ;;
 			'?' ) USAGE ;;
@@ -572,7 +572,7 @@ if [ $# -ne 0 ]; then
 			f ) FAIL_PRI_SEG=1 ;;
 			D ) DEBUG_LEVEL=1 ;;
 			B ) BATCH_DEFAULT=$OPTARG ;;
-			m ) if [ "$OPTARG" != "fast" ] && [ "$OPTARG" != "smart" ]; then
+			M ) if [ "$OPTARG" != "fast" ] && [ "$OPTARG" != "smart" ]; then
 					ERROR_EXIT "[FATAL]:- Invalid shutdown option $OPTARG" 2
 				fi
 				GPSTOP_MODE_OPTION="-M $OPTARG" ;;
