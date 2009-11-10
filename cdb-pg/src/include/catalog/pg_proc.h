@@ -3191,7 +3191,7 @@ DESCR("is schema another session's temp schema?");
 
 DATA(insert OID = 2171 ( pg_cancel_backend		PGNSP PGUID 12 f f t f v 1 16 f "23" _null_ _null_ _null_ pg_cancel_backend - _null_ ));
 DESCR("Cancel a server process' current query");
-DATA(insert OID = 2162 ( pg_terminate_backend	PGNSP PGUID 12 f f t f v 1 16 f "23" _null_ _null_ _null_  pg_terminate_backend - _null_ ));
+DATA(insert OID = 2878 ( pg_terminate_backend	PGNSP PGUID 12 f f t f v 1 16 f "23" _null_ _null_ _null_  pg_terminate_backend - _null_ ));
 DESCR("terminate a server process");
 DATA(insert OID = 2172 ( pg_start_backup		PGNSP PGUID 12 f f t f v 1 25 f "25" _null_ _null_ _null_ pg_start_backup - _null_ ));
 DESCR("Prepare for taking an online backup");
@@ -3373,8 +3373,10 @@ DATA(insert OID = 2829 (  corr				PGNSP PGUID 12 t f f f i 2 701 f "701 701" _nu
 
 DATA(insert OID = 2160 ( text_pattern_lt	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_lt - _null_ ));
 DATA(insert OID = 2161 ( text_pattern_le	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_le - _null_ ));
+DATA(insert OID = 2162 ( text_pattern_eq	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ texteq - _null_ ));
 DATA(insert OID = 2163 ( text_pattern_ge	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_ge - _null_ ));
 DATA(insert OID = 2164 ( text_pattern_gt	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_gt - _null_ ));
+DATA(insert OID = 2165 ( text_pattern_ne	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ textne - _null_ ));
 DATA(insert OID = 2166 ( bttext_pattern_cmp  PGNSP PGUID 12 f f t f i 2 23 f "25 25" _null_ _null_ _null_ bttext_pattern_cmp - _null_ ));
 
 /* Window functions (similar to aggregates) */
@@ -4909,7 +4911,6 @@ DESCR("Greenplum fault testing only");
 /* Analyze related */
 DATA(insert OID = 5032 ( gp_statistics_estimate_reltuples_relpages_oid		PGNSP PGUID 12 f f t f v 1 1021 f "26" _null_ _null_ _null_ gp_statistics_estimate_reltuples_relpages_oid - _null_ ));
 DESCR("Return reltuples/relpages information for relation.");
-
 
 /*
  * Symbolic values for provolatile column: these indicate whether the result
