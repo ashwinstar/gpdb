@@ -2222,7 +2222,8 @@ convert_function_name(text *functionname)
 	if (!OidIsValid(oid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
-				 errmsg("function \"%s\" does not exist", funcname)));
+				 errmsg("function \"%s\" does not exist", funcname),
+				 errOmitLocation(true)));
 
 	return oid;
 }
@@ -2426,7 +2427,8 @@ convert_language_name(text *languagename)
 	if (!OidIsValid(oid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("language \"%s\" does not exist", langname)));
+				 errmsg("language \"%s\" does not exist", langname),
+				 errOmitLocation(true)));
 
 	return oid;
 }
@@ -2630,7 +2632,8 @@ convert_schema_name(text *schemaname)
 	if (!OidIsValid(oid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
-				 errmsg("schema \"%s\" does not exist", nspname)));
+				 errmsg("schema \"%s\" does not exist", nspname),
+				 errOmitLocation(true)));
 
 	return oid;
 }
