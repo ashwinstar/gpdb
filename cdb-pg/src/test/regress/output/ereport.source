@@ -28,13 +28,356 @@
 -- *********************************************************************
 -- *********************************************************************
 CREATE EXTERNAL WEB TABLE get_ereport (x text)
-execute E'(find @abs_builddir@/../.. -name \'*.c\'  | xargs perl @gpwhich_get_ereport.pl@ -quiet -lax )' 
+execute E'(find @abs_builddir@/../.. -name \'*.c\'  | xargs perl @gpwhich_get_ereport.pl@ -quiet -lax -fullname )' 
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 -- return filename:linenumber: c source line
 select * from get_ereport order by 1;
                                                                                                                 x                                                                                                                
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ GP_IGNORE: aaad: acl - @abs_builddir@/../../backend/utils/adt/acl.c
+ GP_IGNORE: aaae: aomd - @abs_builddir@/../../backend/access/appendonly/aomd.c
+ GP_IGNORE: aaae: auth - @abs_builddir@/../../backend/libpq/auth.c
+ GP_IGNORE: aaaf: aclid - @abs_builddir@/../../pl/pljava/src/C/pljava/type/AclId.c
+ GP_IGNORE: aaaf: ascii - @abs_builddir@/../../backend/utils/adt/ascii.c
+ GP_IGNORE: aaaf: async - @abs_builddir@/../../backend/commands/async.c
+ GP_IGNORE: aaag: aclchk - @abs_builddir@/../../backend/catalog/aclchk.c
+ GP_IGNORE: aaah: analyze - @abs_builddir@/../../backend/commands/analyze.c
+ GP_IGNORE: aaah: analyze - @abs_builddir@/../../backend/parser/analyze.c
+ GP_IGNORE: aaai: allpaths - @abs_builddir@/../../backend/optimizer/path/allpaths.c
+ GP_IGNORE: aaba: aosegfiles - @abs_builddir@/../../backend/access/appendonly/aosegfiles.c
+ GP_IGNORE: aaba: arrayfuncs - @abs_builddir@/../../backend/utils/adt/arrayfuncs.c
+ GP_IGNORE: aaba: arrayutils - @abs_builddir@/../../backend/utils/adt/arrayutils.c
+ GP_IGNORE: aaba: autovacuum - @abs_builddir@/../../backend/postmaster/autovacuum.c
+ GP_IGNORE: aabc: aocssegfiles - @abs_builddir@/../../backend/access/aocs/aocssegfiles.c
+ GP_IGNORE: aabc: appendonlyam - @abs_builddir@/../../backend/access/appendonly/appendonlyam.c
+ GP_IGNORE: aabd: aggregatecmds - @abs_builddir@/../../backend/commands/aggregatecmds.c
+ GP_IGNORE: aabd: appendonlytid - @abs_builddir@/../../backend/access/appendonly/appendonlytid.c
+ GP_IGNORE: aabf: arrayxuserfuncs - @abs_builddir@/../../backend/utils/adt/array_userfuncs.c
+ GP_IGNORE: aabg: appendonlywriter - @abs_builddir@/../../backend/access/appendonly/appendonlywriter.c
+ GP_IGNORE: baae: bool - @abs_builddir@/../../backend/utils/adt/bool.c
+ GP_IGNORE: baaf: bayes - @abs_builddir@/../../backend/utils/stat/bayes.c
+ GP_IGNORE: baag: bitmap - @abs_builddir@/../../backend/access/bitmap/bitmap.c
+ GP_IGNORE: baag: bufmgr - @abs_builddir@/../../backend/storage/buffer/bufmgr.c
+ GP_IGNORE: baah: backend - @abs_builddir@/../../pl/pljava/src/C/pljava/Backend.c
+ GP_IGNORE: baah: bufpage - @abs_builddir@/../../backend/storage/page/bufpage.c
+ GP_IGNORE: baai: bgwriter - @abs_builddir@/../../backend/postmaster/bgwriter.c
+ GP_IGNORE: baai: bufxinit - @abs_builddir@/../../backend/storage/buffer/buf_init.c
+ GP_IGNORE: baaj: bexsecure - @abs_builddir@/../../backend/libpq/be-secure.c
+ GP_IGNORE: baba: bexfsstubs - @abs_builddir@/../../backend/libpq/be-fsstubs.c
+ GP_IGNORE: baba: bitmapxlog - @abs_builddir@/../../backend/access/bitmap/bitmapxlog.c
+ GP_IGNORE: babb: bitmappages - @abs_builddir@/../../backend/access/bitmap/bitmappages.c
+ GP_IGNORE: babc: bitmapinsert - @abs_builddir@/../../backend/access/bitmap/bitmapinsert.c
+ GP_IGNORE: caae: cash - @abs_builddir@/../../backend/utils/adt/cash.c
+ GP_IGNORE: caae: char - @abs_builddir@/../../backend/utils/adt/char.c
+ GP_IGNORE: caae: conv - @abs_builddir@/../../backend/utils/mb/conv.c
+ GP_IGNORE: caae: copy - @abs_builddir@/../../backend/commands/copy.c
+ GP_IGNORE: caaf: cdbtm - @abs_builddir@/../../backend/cdb/cdbtm.c
+ GP_IGNORE: caag: cdbcat - @abs_builddir@/../../backend/cdb/cdbcat.c
+ GP_IGNORE: caag: cdbfts - @abs_builddir@/../../backend/cdb/cdbfts.c
+ GP_IGNORE: caag: cdboid - @abs_builddir@/../../test/libcdbtest/cdboid.c
+ GP_IGNORE: caah: cdbdisp - @abs_builddir@/../../backend/cdb/cdbdisp.c
+ GP_IGNORE: caah: cdbgang - @abs_builddir@/../../backend/cdb/cdbgang.c
+ GP_IGNORE: caah: cdbhash - @abs_builddir@/../../backend/cdb/cdbhash.c
+ GP_IGNORE: caah: cdblink - @abs_builddir@/../../backend/cdb/cdblink.c
+ GP_IGNORE: caah: cdbpath - @abs_builddir@/../../backend/cdb/cdbpath.c
+ GP_IGNORE: caah: cdbsreh - @abs_builddir@/../../backend/cdb/cdbsreh.c
+ GP_IGNORE: caah: cdbutil - @abs_builddir@/../../backend/cdb/cdbutil.c
+ GP_IGNORE: caah: cdbvars - @abs_builddir@/../../backend/cdb/cdbvars.c
+ GP_IGNORE: caah: clauses - @abs_builddir@/../../backend/optimizer/util/clauses.c
+ GP_IGNORE: caah: cluster - @abs_builddir@/../../backend/commands/cluster.c
+ GP_IGNORE: caah: comment - @abs_builddir@/../../backend/commands/comment.c
+ GP_IGNORE: caah: complex - @abs_builddir@/../../tutorial/complex.c
+ GP_IGNORE: caah: copydir - @abs_builddir@/../../port/copydir.c
+ GP_IGNORE: caai: cdbgroup - @abs_builddir@/../../backend/cdb/cdbgroup.c
+ GP_IGNORE: caai: cdbllize - @abs_builddir@/../../backend/cdb/cdbllize.c
+ GP_IGNORE: caai: cdbsetop - @abs_builddir@/../../backend/cdb/cdbsetop.c
+ GP_IGNORE: caaj: cdbbackup - @abs_builddir@/../../backend/cdb/cdbbackup.c
+ GP_IGNORE: caaj: cdbmotion - @abs_builddir@/../../backend/cdb/motion/cdbmotion.c
+ GP_IGNORE: caaj: cdbmutate - @abs_builddir@/../../backend/cdb/cdbmutate.c
+ GP_IGNORE: caaj: chklocale - @abs_builddir@/../../port/chklocale.c
+ GP_IGNORE: caaj: composite - @abs_builddir@/../../pl/pljava/src/C/pljava/type/Composite.c
+ GP_IGNORE: caba: cdbcellbuf - @abs_builddir@/../../backend/cdb/cdbcellbuf.c
+ GP_IGNORE: caba: cdbexplain - @abs_builddir@/../../backend/cdb/cdbexplain.c
+ GP_IGNORE: caba: cdblogsync - @abs_builddir@/../../backend/cdb/cdblogsync.c
+ GP_IGNORE: caba: cdboidsync - @abs_builddir@/../../backend/cdb/cdboidsync.c
+ GP_IGNORE: caba: cdbrelsize - @abs_builddir@/../../backend/cdb/cdbrelsize.c
+ GP_IGNORE: caba: cdbsubplan - @abs_builddir@/../../backend/cdb/cdbsubplan.c
+ GP_IGNORE: caba: createplan - @abs_builddir@/../../backend/optimizer/plan/createplan.c
+ GP_IGNORE: cabb: cdbchunkbuf - @abs_builddir@/../../backend/cdb/cdbchunkbuf.c
+ GP_IGNORE: cabb: cdbexecplan - @abs_builddir@/../../test/libcdbtest/cdbexecplan.c
+ GP_IGNORE: cabb: cdbheaptest - @abs_builddir@/../../test/libcdbtest/cdbheaptest.c
+ GP_IGNORE: cabb: cdbworkfile - @abs_builddir@/../../backend/cdb/cdbworkfile.c
+ GP_IGNORE: cabc: cdbshowalias - @abs_builddir@/../../test/libcdbtest/cdbshowalias.c
+ GP_IGNORE: cabc: cdbsubselect - @abs_builddir@/../../backend/cdb/cdbsubselect.c
+ GP_IGNORE: cabe: conversioncmds - @abs_builddir@/../../backend/commands/conversioncmds.c
+ GP_IGNORE: cabf: cdbbufferedread - @abs_builddir@/../../backend/cdb/cdbbufferedread.c
+ GP_IGNORE: cabh: cdbbufferedappend - @abs_builddir@/../../backend/cdb/cdbbufferedappend.c
+ GP_IGNORE: cabh: cdbdispatchresult - @abs_builddir@/../../backend/cdb/cdbdispatchresult.c
+ GP_IGNORE: cabh: cdbdtxcontextinfo - @abs_builddir@/../../backend/cdb/cdbdtxcontextinfo.c
+ GP_IGNORE: cacc: cdbdistributedsnapshot - @abs_builddir@/../../backend/cdb/cdbdistributedsnapshot.c
+ GP_IGNORE: cace: cdbappendonlystorageread - @abs_builddir@/../../backend/cdb/cdbappendonlystorageread.c
+ GP_IGNORE: cacf: cdbappendonlystoragewrite - @abs_builddir@/../../backend/cdb/cdbappendonlystoragewrite.c
+ GP_IGNORE: daae: date - @abs_builddir@/../../backend/utils/adt/date.c
+ GP_IGNORE: daaf: datum - @abs_builddir@/../../backend/utils/adt/datum.c
+ GP_IGNORE: daaf: dfmgr - @abs_builddir@/../../backend/utils/fmgr/dfmgr.c
+ GP_IGNORE: daag: dbsize - @abs_builddir@/../../backend/utils/adt/dbsize.c
+ GP_IGNORE: daag: define - @abs_builddir@/../../backend/commands/define.c
+ GP_IGNORE: daag: dirmod - @abs_builddir@/../../port/dirmod.c
+ GP_IGNORE: daah: domains - @abs_builddir@/../../backend/utils/adt/domains.c
+ GP_IGNORE: daai: datetime - @abs_builddir@/../../backend/utils/adt/datetime.c
+ GP_IGNORE: daai: deadlock - @abs_builddir@/../../backend/storage/lmgr/deadlock.c
+ GP_IGNORE: daai: dynahash - @abs_builddir@/../../backend/utils/hash/dynahash.c
+ GP_IGNORE: daaj: ddaserver - @abs_builddir@/../../backend/postmaster/ddaserver.c
+ GP_IGNORE: daba: dbcommands - @abs_builddir@/../../backend/commands/dbcommands.c
+ GP_IGNORE: daba: dependency - @abs_builddir@/../../backend/catalog/dependency.c
+ GP_IGNORE: eaae: elog - @abs_builddir@/../../backend/utils/error/elog.c
+ GP_IGNORE: eaag: encode - @abs_builddir@/../../backend/utils/adt/encode.c
+ GP_IGNORE: eaah: execami - @abs_builddir@/../../backend/executor/execAmi.c
+ GP_IGNORE: eaah: explain - @abs_builddir@/../../backend/commands/explain.c
+ GP_IGNORE: eaai: encnames - @abs_builddir@/../../backend/utils/mb/encnames.c
+ GP_IGNORE: eaai: encnames - @abs_builddir@/../../bin/initdb/encnames.c
+ GP_IGNORE: eaai: encnames - @abs_builddir@/../../interfaces/libpq/encnames.c
+ GP_IGNORE: eaai: execmain - @abs_builddir@/../../backend/executor/execMain.c
+ GP_IGNORE: eaai: execqual - @abs_builddir@/../../backend/executor/execQual.c
+ GP_IGNORE: eaaj: exception - @abs_builddir@/../../pl/pljava/src/C/pljava/Exception.c
+ GP_IGNORE: eabc: exechhashagg - @abs_builddir@/../../backend/executor/execHHashagg.c
+ GP_IGNORE: faac: fd - @abs_builddir@/../../backend/storage/file/fd.c
+ GP_IGNORE: faae: fmgr - @abs_builddir@/../../backend/utils/fmgr/fmgr.c
+ GP_IGNORE: faaf: float - @abs_builddir@/../../backend/utils/adt/float.c
+ GP_IGNORE: faag: fileam - @abs_builddir@/../../backend/access/external/fileam.c
+ GP_IGNORE: faah: foreign - @abs_builddir@/../../backend/foreign/foreign.c
+ GP_IGNORE: faah: funcapi - @abs_builddir@/../../backend/utils/fmgr/funcapi.c
+ GP_IGNORE: faai: fastpath - @abs_builddir@/../../backend/tcop/fastpath.c
+ GP_IGNORE: faai: freelist - @abs_builddir@/../../backend/storage/buffer/freelist.c
+ GP_IGNORE: faai: ftsprobe - @abs_builddir@/../../backend/postmaster/ftsprobe.c
+ GP_IGNORE: faai: function - @abs_builddir@/../../pl/pljava/src/C/pljava/Function.c
+ GP_IGNORE: faaj: filespace - @abs_builddir@/../../backend/commands/filespace.c
+ GP_IGNORE: faaj: flatfiles - @abs_builddir@/../../backend/utils/init/flatfiles.c
+ GP_IGNORE: faaj: freespace - @abs_builddir@/../../backend/storage/freespace/freespace.c
+ GP_IGNORE: faaj: functions - @abs_builddir@/../../backend/executor/functions.c
+ GP_IGNORE: faba: formatting - @abs_builddir@/../../backend/utils/adt/formatting.c
+ GP_IGNORE: fabb: foreigncmds - @abs_builddir@/../../backend/commands/foreigncmds.c
+ GP_IGNORE: fabc: functioncmds - @abs_builddir@/../../backend/commands/functioncmds.c
+ GP_IGNORE: gaad: guc - @abs_builddir@/../../backend/utils/misc/guc.c
+ GP_IGNORE: gaae: gram - @abs_builddir@/../../backend/parser/gram.c
+ GP_IGNORE: gaah: genfile - @abs_builddir@/../../backend/utils/adt/genfile.c
+ GP_IGNORE: gaah: geoxops - @abs_builddir@/../../backend/utils/adt/geo_ops.c
+ GP_IGNORE: gaah: ginscan - @abs_builddir@/../../backend/access/gin/ginscan.c
+ GP_IGNORE: gaai: gistutil - @abs_builddir@/../../backend/access/gist/gistutil.c
+ GP_IGNORE: gaai: gucxfile - @abs_builddir@/../../backend/utils/misc/guc-file.c
+ GP_IGNORE: gaba: gistvacuum - @abs_builddir@/../../backend/access/gist/gistvacuum.c
+ GP_IGNORE: gabb: gpxcompress - @abs_builddir@/../../backend/storage/file/gp_compress.c
+ GP_IGNORE: gabc: ginarrayproc - @abs_builddir@/../../backend/access/gin/ginarrayproc.c
+ GP_IGNORE: haad: hio - @abs_builddir@/../../backend/access/heap/hio.c
+ GP_IGNORE: haae: heap - @abs_builddir@/../../backend/catalog/heap.c
+ GP_IGNORE: haag: heapam - @abs_builddir@/../../backend/access/heap/heapam.c
+ GP_IGNORE: haai: hashovfl - @abs_builddir@/../../backend/access/hash/hashovfl.c
+ GP_IGNORE: haai: hashutil - @abs_builddir@/../../backend/access/hash/hashutil.c
+ GP_IGNORE: haaj: heaptuple - @abs_builddir@/../../backend/access/common/heaptuple.c
+ GP_IGNORE: haba: hashinsert - @abs_builddir@/../../backend/access/hash/hashinsert.c
+ GP_IGNORE: haba: hashsearch - @abs_builddir@/../../backend/access/hash/hashsearch.c
+ GP_IGNORE: iaad: int - @abs_builddir@/../../backend/utils/adt/int.c
+ GP_IGNORE: iaad: ipc - @abs_builddir@/../../backend/storage/ipc/ipc.c
+ GP_IGNORE: iaaf: index - @abs_builddir@/../../backend/catalog/index.c
+ GP_IGNORE: iaag: icxtcp - @abs_builddir@/../../backend/cdb/motion/ic_tcp.c
+ GP_IGNORE: iaag: icxudp - @abs_builddir@/../../backend/cdb/motion/ic_udp.c
+ GP_IGNORE: iaah: indexam - @abs_builddir@/../../backend/access/index/indexam.c
+ GP_IGNORE: iaah: invxapi - @abs_builddir@/../../backend/storage/large_object/inv_api.c
+ GP_IGNORE: iaai: inteight - @abs_builddir@/../../backend/utils/adt/int8.c
+ GP_IGNORE: iaai: ipcfuncs - @abs_builddir@/../../test/libcdbtest/ipcfuncs.c
+ GP_IGNORE: iaaj: icxcommon - @abs_builddir@/../../backend/cdb/motion/ic_common.c
+ GP_IGNORE: iaaj: indexcmds - @abs_builddir@/../../backend/commands/indexcmds.c
+ GP_IGNORE: iaaj: initsplan - @abs_builddir@/../../backend/optimizer/plan/initsplan.c
+ GP_IGNORE: iaba: indextuple - @abs_builddir@/../../backend/access/common/indextuple.c
+ GP_IGNORE: jaai: joinpath - @abs_builddir@/../../backend/optimizer/path/joinpath.c
+ GP_IGNORE: laae: like - @abs_builddir@/../../backend/utils/adt/like.c
+ GP_IGNORE: laae: lmgr - @abs_builddir@/../../backend/storage/lmgr/lmgr.c
+ GP_IGNORE: laae: lock - @abs_builddir@/../../backend/storage/lmgr/lock.c
+ GP_IGNORE: laag: lwlock - @abs_builddir@/../../backend/storage/lmgr/lwlock.c
+ GP_IGNORE: laah: logtape - @abs_builddir@/../../backend/utils/sort/logtape.c
+ GP_IGNORE: laai: localbuf - @abs_builddir@/../../backend/storage/buffer/localbuf.c
+ GP_IGNORE: laai: lockcmds - @abs_builddir@/../../backend/commands/lockcmds.c
+ GP_IGNORE: laaj: lsyscache - @abs_builddir@/../../backend/utils/cache/lsyscache.c
+ GP_IGNORE: laba: likexmatch - @abs_builddir@/../../backend/utils/adt/like_match.c
+ GP_IGNORE: maac: md - @abs_builddir@/../../backend/storage/smgr/md.c
+ GP_IGNORE: maad: mac - @abs_builddir@/../../backend/utils/adt/mac.c
+ GP_IGNORE: maae: mcxt - @abs_builddir@/../../backend/utils/mmgr/mcxt.c
+ GP_IGNORE: maae: misc - @abs_builddir@/../../backend/utils/adt/misc.c
+ GP_IGNORE: maag: matrix - @abs_builddir@/../../backend/utils/adt/matrix.c
+ GP_IGNORE: maah: mbutils - @abs_builddir@/../../backend/utils/mb/mbutils.c
+ GP_IGNORE: maah: memprot - @abs_builddir@/../../backend/utils/mmgr/memprot.c
+ GP_IGNORE: maai: miscinit - @abs_builddir@/../../backend/utils/init/miscinit.c
+ GP_IGNORE: mabb: mingwcompat - @abs_builddir@/../../backend/port/win32/mingwcompat.c
+ GP_IGNORE: mabc: mlipcxaccess - @abs_builddir@/../../test/libcdbtest/mlipc_access.c
+ GP_IGNORE: naae: name - @abs_builddir@/../../backend/utils/adt/name.c
+ GP_IGNORE: naag: notxin - @abs_builddir@/../../backend/utils/adt/not_in.c
+ GP_IGNORE: naah: nbtpage - @abs_builddir@/../../backend/access/nbtree/nbtpage.c
+ GP_IGNORE: naah: nbtsort - @abs_builddir@/../../backend/access/nbtree/nbtsort.c
+ GP_IGNORE: naah: network - @abs_builddir@/../../backend/utils/adt/network.c
+ GP_IGNORE: naah: nodeagg - @abs_builddir@/../../backend/executor/nodeAgg.c
+ GP_IGNORE: naah: numeric - @abs_builddir@/../../backend/utils/adt/numeric.c
+ GP_IGNORE: naai: nabstime - @abs_builddir@/../../backend/utils/adt/nabstime.c
+ GP_IGNORE: naai: nextstep - @abs_builddir@/../../backend/port/dynloader/nextstep.c
+ GP_IGNORE: naai: numutils - @abs_builddir@/../../backend/utils/adt/numutils.c
+ GP_IGNORE: naaj: namespace - @abs_builddir@/../../backend/catalog/namespace.c
+ GP_IGNORE: naaj: nbtinsert - @abs_builddir@/../../backend/access/nbtree/nbtinsert.c
+ GP_IGNORE: naba: nodemotion - @abs_builddir@/../../backend/executor/nodeMotion.c
+ GP_IGNORE: naba: nodewindow - @abs_builddir@/../../backend/executor/nodeWindow.c
+ GP_IGNORE: nabb: nodesubplan - @abs_builddir@/../../backend/executor/nodeSubplan.c
+ GP_IGNORE: nabc: nodehashjoin - @abs_builddir@/../../backend/executor/nodeHashjoin.c
+ GP_IGNORE: nabd: nodemergejoin - @abs_builddir@/../../backend/executor/nodeMergejoin.c
+ GP_IGNORE: nabg: nodefunctionscan - @abs_builddir@/../../backend/executor/nodeFunctionscan.c
+ GP_IGNORE: nabi: nodeshareinputscan - @abs_builddir@/../../backend/executor/nodeShareInputScan.c
+ GP_IGNORE: nabj: nodebitmapindexscan - @abs_builddir@/../../backend/executor/nodeBitmapIndexscan.c
+ GP_IGNORE: oaad: oid - @abs_builddir@/../../backend/utils/adt/oid.c
+ GP_IGNORE: oabb: opclasscmds - @abs_builddir@/../../backend/commands/opclasscmds.c
+ GP_IGNORE: oabc: operatorcmds - @abs_builddir@/../../backend/commands/operatorcmds.c
+ GP_IGNORE: oabd: oraclexcompat - @abs_builddir@/../../backend/utils/adt/oracle_compat.c
+ GP_IGNORE: paad: plr - @abs_builddir@/../../pl/plr/plr.c
+ GP_IGNORE: paae: pgtz - @abs_builddir@/../../timezone/pgtz.c
+ GP_IGNORE: paae: pinv - @abs_builddir@/../../backend/utils/stat/pinv.c
+ GP_IGNORE: paae: proc - @abs_builddir@/../../backend/storage/lmgr/proc.c
+ GP_IGNORE: paaf: pivot - @abs_builddir@/../../backend/utils/adt/pivot.c
+ GP_IGNORE: paaf: pltcl - @abs_builddir@/../../pl/tcl/pltcl.c
+ GP_IGNORE: paag: pgarch - @abs_builddir@/../../backend/postmaster/pgarch.c
+ GP_IGNORE: paag: pgstat - @abs_builddir@/../../backend/postmaster/pgstat.c
+ GP_IGNORE: paag: plperl - @abs_builddir@/../../pl/plperl/plperl.c
+ GP_IGNORE: paag: pquery - @abs_builddir@/../../backend/tcop/pquery.c
+ GP_IGNORE: paah: pgxproc - @abs_builddir@/../../backend/catalog/pg_proc.c
+ GP_IGNORE: paah: pgxsema - @abs_builddir@/../../backend/port/pg_sema.c
+ GP_IGNORE: paah: pgxtype - @abs_builddir@/../../backend/catalog/pg_type.c
+ GP_IGNORE: paah: plancat - @abs_builddir@/../../backend/optimizer/util/plancat.c
+ GP_IGNORE: paah: planner - @abs_builddir@/../../backend/optimizer/plan/planner.c
+ GP_IGNORE: paah: plxcomp - @abs_builddir@/../../pl/plpgsql/src/pl_comp.c
+ GP_IGNORE: paah: plxexec - @abs_builddir@/../../pl/plpgsql/src/pl_exec.c
+ GP_IGNORE: paah: plxgram - @abs_builddir@/../../pl/plpgsql/src/pl_gram.c
+ GP_IGNORE: paah: plxscan - @abs_builddir@/../../pl/plpgsql/src/pl_scan.c
+ GP_IGNORE: paah: prepare - @abs_builddir@/../../backend/commands/prepare.c
+ GP_IGNORE: paai: pathnode - @abs_builddir@/../../backend/optimizer/util/pathnode.c
+ GP_IGNORE: paai: pgobject - @abs_builddir@/../../pl/pljava/src/C/pljava/PgObject.c
+ GP_IGNORE: paai: pgxshmem - @abs_builddir@/../../backend/port/pg_shmem.c
+ GP_IGNORE: paai: plpython - @abs_builddir@/../../pl/plpython/plpython.c
+ GP_IGNORE: paai: plxfuncs - @abs_builddir@/../../pl/plpgsql/src/pl_funcs.c
+ GP_IGNORE: paai: postgres - @abs_builddir@/../../backend/tcop/postgres.c
+ GP_IGNORE: paai: postinit - @abs_builddir@/../../backend/utils/init/postinit.c
+ GP_IGNORE: paai: pqformat - @abs_builddir@/../../backend/libpq/pqformat.c
+ GP_IGNORE: paai: predtest - @abs_builddir@/../../backend/optimizer/util/predtest.c
+ GP_IGNORE: paai: printtup - @abs_builddir@/../../backend/access/common/printtup.c
+ GP_IGNORE: paai: proclang - @abs_builddir@/../../backend/commands/proclang.c
+ GP_IGNORE: paaj: parsexagg - @abs_builddir@/../../backend/parser/parse_agg.c
+ GP_IGNORE: paaj: pgxdepend - @abs_builddir@/../../backend/catalog/pg_depend.c
+ GP_IGNORE: paaj: portalmem - @abs_builddir@/../../backend/utils/mmgr/portalmem.c
+ GP_IGNORE: paaj: preptlist - @abs_builddir@/../../backend/optimizer/prep/preptlist.c
+ GP_IGNORE: paaj: procarray - @abs_builddir@/../../backend/storage/ipc/procarray.c
+ GP_IGNORE: paba: parsexexpr - @abs_builddir@/../../backend/parser/parse_expr.c
+ GP_IGNORE: paba: parsexfunc - @abs_builddir@/../../backend/parser/parse_func.c
+ GP_IGNORE: paba: parsexnode - @abs_builddir@/../../backend/parser/parse_node.c
+ GP_IGNORE: paba: parsexoper - @abs_builddir@/../../backend/parser/parse_oper.c
+ GP_IGNORE: paba: parsextype - @abs_builddir@/../../backend/parser/parse_type.c
+ GP_IGNORE: paba: planwindow - @abs_builddir@/../../backend/optimizer/plan/planwindow.c
+ GP_IGNORE: paba: plxhandler - @abs_builddir@/../../pl/plpgsql/src/pl_handler.c
+ GP_IGNORE: paba: portalcmds - @abs_builddir@/../../backend/commands/portalcmds.c
+ GP_IGNORE: paba: postmaster - @abs_builddir@/../../backend/postmaster/postmaster.c
+ GP_IGNORE: pabb: pgstatfuncs - @abs_builddir@/../../backend/utils/adt/pgstatfuncs.c
+ GP_IGNORE: pabb: pgxexttable - @abs_builddir@/../../backend/catalog/pg_exttable.c
+ GP_IGNORE: pabb: pgxoperator - @abs_builddir@/../../backend/catalog/pg_operator.c
+ GP_IGNORE: pabb: pgxshdepend - @abs_builddir@/../../backend/catalog/pg_shdepend.c
+ GP_IGNORE: pabb: pseudotypes - @abs_builddir@/../../backend/utils/adt/pseudotypes.c
+ GP_IGNORE: pabc: parsexclause - @abs_builddir@/../../backend/parser/parse_clause.c
+ GP_IGNORE: pabc: parsexcoerce - @abs_builddir@/../../backend/parser/parse_coerce.c
+ GP_IGNORE: pabc: parsextarget - @abs_builddir@/../../backend/parser/parse_target.c
+ GP_IGNORE: pabc: pgxaggregate - @abs_builddir@/../../backend/catalog/pg_aggregate.c
+ GP_IGNORE: pabc: pgxnamespace - @abs_builddir@/../../backend/catalog/pg_namespace.c
+ GP_IGNORE: pabc: pgxuserfuncs - @abs_builddir@/../../pl/plr/pg_userfuncs.c
+ GP_IGNORE: pabd: parsexutilcmd - @abs_builddir@/../../backend/parser/parse_utilcmd.c
+ GP_IGNORE: pabd: pgxappendonly - @abs_builddir@/../../backend/catalog/pg_appendonly.c
+ GP_IGNORE: pabd: pgxconversion - @abs_builddir@/../../backend/catalog/pg_conversion.c
+ GP_IGNORE: pabd: pgxconversion - @abs_builddir@/../../pl/plr/pg_conversion.c
+ GP_IGNORE: pabe: parsexrelation - @abs_builddir@/../../backend/parser/parse_relation.c
+ GP_IGNORE: pabe: pgxlargeobject - @abs_builddir@/../../backend/catalog/pg_largeobject.c
+ GP_IGNORE: pabi: pgxbackendxsupport - @abs_builddir@/../../pl/plr/pg_backend_support.c
+ GP_IGNORE: qaaf: queue - @abs_builddir@/../../backend/commands/queue.c
+ GP_IGNORE: qaba: quicklzone - @abs_builddir@/../../backend/storage/file/quicklz1.c
+ GP_IGNORE: qabc: quicklzthree - @abs_builddir@/../../backend/storage/file/quicklz3.c
+ GP_IGNORE: raae: read - @abs_builddir@/../../backend/nodes/read.c
+ GP_IGNORE: raag: regexp - @abs_builddir@/../../backend/utils/adt/regexp.c
+ GP_IGNORE: raah: regproc - @abs_builddir@/../../backend/utils/adt/regproc.c
+ GP_IGNORE: raah: regress - @abs_builddir@/../../backend/utils/stat/regress.c
+ GP_IGNORE: raah: regress - @abs_builddir@/../../test/regress/regress.c
+ GP_IGNORE: raah: relnode - @abs_builddir@/../../backend/optimizer/util/relnode.c
+ GP_IGNORE: raai: relcache - @abs_builddir@/../../backend/utils/cache/relcache.c
+ GP_IGNORE: raai: resqueue - @abs_builddir@/../../backend/utils/resscheduler/resqueue.c
+ GP_IGNORE: raai: rowtypes - @abs_builddir@/../../backend/utils/adt/rowtypes.c
+ GP_IGNORE: raaj: readfuncs - @abs_builddir@/../../backend/nodes/readfuncs.c
+ GP_IGNORE: raaj: ruleutils - @abs_builddir@/../../backend/utils/adt/ruleutils.c
+ GP_IGNORE: raba: reloptions - @abs_builddir@/../../backend/access/common/reloptions.c
+ GP_IGNORE: rabb: rixtriggers - @abs_builddir@/../../backend/utils/adt/ri_triggers.c
+ GP_IGNORE: rabc: resscheduler - @abs_builddir@/../../backend/utils/resscheduler/resscheduler.c
+ GP_IGNORE: rabc: rewritemanip - @abs_builddir@/../../backend/rewrite/rewriteManip.c
+ GP_IGNORE: rabd: rewritedefine - @abs_builddir@/../../backend/rewrite/rewriteDefine.c
+ GP_IGNORE: rabd: rewriteremove - @abs_builddir@/../../backend/rewrite/rewriteRemove.c
+ GP_IGNORE: rabe: rewritehandler - @abs_builddir@/../../backend/rewrite/rewriteHandler.c
+ GP_IGNORE: saad: spi - @abs_builddir@/../../backend/executor/spi.c
+ GP_IGNORE: saad: spi - @abs_builddir@/../../pl/pljava/src/C/pljava/SPI.c
+ GP_IGNORE: saae: scan - @abs_builddir@/../../backend/parser/scan.c
+ GP_IGNORE: saae: slru - @abs_builddir@/../../backend/access/transam/slru.c
+ GP_IGNORE: saae: smgr - @abs_builddir@/../../backend/storage/smgr/smgr.c
+ GP_IGNORE: saaf: shmem - @abs_builddir@/../../backend/storage/ipc/shmem.c
+ GP_IGNORE: saag: signal - @abs_builddir@/../../backend/port/win32/signal.c
+ GP_IGNORE: saag: sinval - @abs_builddir@/../../backend/storage/ipc/sinval.c
+ GP_IGNORE: saag: socket - @abs_builddir@/../../backend/port/win32/socket.c
+ GP_IGNORE: saah: scansup - @abs_builddir@/../../backend/parser/scansup.c
+ GP_IGNORE: saah: service - @abs_builddir@/../../backend/postmaster/service.c
+ GP_IGNORE: saai: selfuncs - @abs_builddir@/../../backend/utils/adt/selfuncs.c
+ GP_IGNORE: saai: sequence - @abs_builddir@/../../backend/commands/sequence.c
+ GP_IGNORE: saaj: seqserver - @abs_builddir@/../../backend/postmaster/seqserver.c
+ GP_IGNORE: saaj: syslogger - @abs_builddir@/../../backend/postmaster/syslogger.c
+ GP_IGNORE: saaj: sysvxsema - @abs_builddir@/../../backend/port/sysv_sema.c
+ GP_IGNORE: saba: schemacmds - @abs_builddir@/../../backend/commands/schemacmds.c
+ GP_IGNORE: saba: stringinfo - @abs_builddir@/../../backend/lib/stringinfo.c
+ GP_IGNORE: saba: sysvxshmem - @abs_builddir@/../../backend/port/sysv_shmem.c
+ GP_IGNORE: taad: tid - @abs_builddir@/../../backend/utils/adt/tid.c
+ GP_IGNORE: taae: type - @abs_builddir@/../../pl/pljava/src/C/pljava/type/Type.c
+ GP_IGNORE: taaf: timer - @abs_builddir@/../../backend/port/win32/timer.c
+ GP_IGNORE: taaf: tqual - @abs_builddir@/../../backend/utils/time/tqual.c
+ GP_IGNORE: taag: tupser - @abs_builddir@/../../backend/cdb/motion/tupser.c
+ GP_IGNORE: taah: trigger - @abs_builddir@/../../backend/commands/trigger.c
+ GP_IGNORE: taah: tupdesc - @abs_builddir@/../../backend/access/common/tupdesc.c
+ GP_IGNORE: taai: toasting - @abs_builddir@/../../backend/catalog/toasting.c
+ GP_IGNORE: taai: twophase - @abs_builddir@/../../backend/access/transam/twophase.c
+ GP_IGNORE: taai: typcache - @abs_builddir@/../../backend/utils/cache/typcache.c
+ GP_IGNORE: taai: typecmds - @abs_builddir@/../../backend/commands/typecmds.c
+ GP_IGNORE: taaj: tablecmds - @abs_builddir@/../../backend/commands/tablecmds.c
+ GP_IGNORE: taaj: timestamp - @abs_builddir@/../../backend/utils/adt/timestamp.c
+ GP_IGNORE: taaj: tuplesort - @abs_builddir@/../../backend/utils/sort/tuplesort.c
+ GP_IGNORE: taba: tablespace - @abs_builddir@/../../backend/commands/tablespace.c
+ GP_IGNORE: tabd: tuplestorenew - @abs_builddir@/../../backend/utils/sort/tuplestorenew.c
+ GP_IGNORE: tabg: tuplesortxmkheap - @abs_builddir@/../../backend/utils/sort/tuplesort_mkheap.c
+ GP_IGNORE: tabh: tuplesortxmkqsort - @abs_builddir@/../../backend/utils/sort/tuplesort_mkqsort.c
+ GP_IGNORE: uaad: udt - @abs_builddir@/../../pl/pljava/src/C/pljava/type/UDT.c
+ GP_IGNORE: uaad: url - @abs_builddir@/../../backend/access/external/url.c
+ GP_IGNORE: uaae: user - @abs_builddir@/../../backend/commands/user.c
+ GP_IGNORE: uaah: utility - @abs_builddir@/../../backend/tcop/utility.c
+ GP_IGNORE: uaaj: uriparser - @abs_builddir@/../../backend/utils/misc/uriparser.c
+ GP_IGNORE: uabg: utfeightxandxwin - @abs_builddir@/../../backend/utils/mb/conversion_procs/utf8_and_win/utf8_and_win.c
+ GP_IGNORE: uade: utfeightxandxisoeighteightfivenine - @abs_builddir@/../../backend/utils/mb/conversion_procs/utf8_and_iso8859/utf8_and_iso8859.c
+ GP_IGNORE: vaae: view - @abs_builddir@/../../backend/commands/view.c
+ GP_IGNORE: vaag: vacuum - @abs_builddir@/../../backend/commands/vacuum.c
+ GP_IGNORE: vaag: varbit - @abs_builddir@/../../backend/utils/adt/varbit.c
+ GP_IGNORE: vaag: varsup - @abs_builddir@/../../backend/access/transam/varsup.c
+ GP_IGNORE: vaah: varchar - @abs_builddir@/../../backend/utils/adt/varchar.c
+ GP_IGNORE: vaah: varlena - @abs_builddir@/../../backend/utils/adt/varlena.c
+ GP_IGNORE: vaai: variable - @abs_builddir@/../../backend/commands/variable.c
+ GP_IGNORE: vaba: vacuumlazy - @abs_builddir@/../../backend/commands/vacuumlazy.c
+ GP_IGNORE: waaf: wchar - @abs_builddir@/../../backend/utils/mb/wchar.c
+ GP_IGNORE: waaf: wchar - @abs_builddir@/../../interfaces/libpq/wchar.c
+ GP_IGNORE: wabd: walsendserver - @abs_builddir@/../../backend/postmaster/walsendserver.c
+ GP_IGNORE: wabg: winthreetwoxsema - @abs_builddir@/../../backend/port/win32_sema.c
+ GP_IGNORE: wabh: winthreetwoxshmem - @abs_builddir@/../../backend/port/win32_shmem.c
+ GP_IGNORE: xaae: xact - @abs_builddir@/../../backend/access/transam/xact.c
+ GP_IGNORE: xaae: xlog - @abs_builddir@/../../backend/access/transam/xlog.c
+ GP_IGNORE: xaah: xlogloc - @abs_builddir@/../../backend/access/transam/xlogloc.c
  aaad: acl:00000155:  ereport(ERROR, 
  aaad: acl:00000156:  (errcode(ERRCODE_NAME_TOO_LONG), 
  aaad: acl:00000157:  errmsg("identifier too long"), 
@@ -2409,9 +2752,9 @@ select * from get_ereport order by 1;
  caah: cdbgang:00002251:  errmsg("%s", segdbDesc->error_message.data))); 
  caah: cdbgang:00002511:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
  caah: cdbgang:00002512:  errmsg_internal("problem in allocateGang"))); 
- caah: cdbhash:00000570:  ereport(ERROR, 
- caah: cdbhash:00000571:  (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caah: cdbhash:00000572:  errmsg("Type %u is not hashable.", type))); 
+ caah: cdbhash:00000592:  ereport(ERROR, 
+ caah: cdbhash:00000593:  (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caah: cdbhash:00000594:  errmsg("Type %u is not hashable.", type))); 
  caah: cdblink:00000351:  ereport(ERROR, 
  caah: cdblink:00000352:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
  caah: cdblink:00000353:  errmsg("Shutdown detected during send to standby master"))); 
@@ -2962,42 +3305,42 @@ select * from get_ereport order by 1;
  caaj: cdbmotion:00001145:  errmsg("Received tuple chunk of unrecognized type %d (len %d)" 
  caaj: cdbmotion:00001146:  " from [src=%d,mn=%d].", 
  caaj: cdbmotion:00001147:  tcType, tcItem->chunk_length, srcRoute, motNodeID))); 
- caaj: cdbmutate:00000403:  ereport(NOTICE, 
- caaj: cdbmutate:00000404:  (errcode(ERRCODE_SUCCESSFUL_COMPLETION), 
- caaj: cdbmutate:00000405:  errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) " 
- caaj: cdbmutate:00000406:  "named '%s' as the Greenplum Database data distribution key for this " 
- caaj: cdbmutate:00000407:  "table. ", columns), 
- caaj: cdbmutate:00000408:  errhint("The 'DISTRIBUTED BY' clause determines the distribution of data." 
- caaj: cdbmutate:00000409:  " Make sure column(s) chosen are the optimal data distribution key to minimize skew."))); 
- caaj: cdbmutate:00000437:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000438:  errmsg("Cannot parallelize that SELECT INTO yet") 
- caaj: cdbmutate:00000439:  )); 
- caaj: cdbmutate:00000695:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000696:  errmsg("Cannot parallelize that INSERT yet"))); 
- caaj: cdbmutate:00000712:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000713:  errmsg("Cannot parallelize that INSERT yet"))); 
- caaj: cdbmutate:00000742:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000743:  errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns"))); 
- caaj: cdbmutate:00000747:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000748:  errmsg("Cannot parallelize that %s yet", 
- caaj: cdbmutate:00000749:  query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE") 
- caaj: cdbmutate:00000750:  )); 
- caaj: cdbmutate:00000761:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000762:  errmsg("Cannot parallelize that %s yet", 
- caaj: cdbmutate:00000763:  query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE") 
- caaj: cdbmutate:00000764:  )); 
- caaj: cdbmutate:00000805:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
- caaj: cdbmutate:00000806:  errmsg("Cannot parallelize that %s yet", cmd), 
- caaj: cdbmutate:00000807:  errdetail("Passage of data from one segment to another " 
- caaj: cdbmutate:00000808:  "is not yet supported during %s operations.", 
- caaj: cdbmutate:00000809:  cmd), 
- caaj: cdbmutate:00000810:  errhint("The WHERE condition must specify equality " 
- caaj: cdbmutate:00000811:  "between corresponding DISTRIBUTED BY columns " 
- caaj: cdbmutate:00000812:  "of the target table and all joined tables.") 
- caaj: cdbmutate:00000813:  )); 
- caaj: cdbmutate:00001177:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- caaj: cdbmutate:00001178:  errmsg("no equality operator for typid %d", 
- caaj: cdbmutate:00001179:  typeoid))); 
+ caaj: cdbmutate:00000408:  ereport(NOTICE, 
+ caaj: cdbmutate:00000409:  (errcode(ERRCODE_SUCCESSFUL_COMPLETION), 
+ caaj: cdbmutate:00000410:  errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) " 
+ caaj: cdbmutate:00000411:  "named '%s' as the Greenplum Database data distribution key for this " 
+ caaj: cdbmutate:00000412:  "table. ", columns), 
+ caaj: cdbmutate:00000413:  errhint("The 'DISTRIBUTED BY' clause determines the distribution of data." 
+ caaj: cdbmutate:00000414:  " Make sure column(s) chosen are the optimal data distribution key to minimize skew."))); 
+ caaj: cdbmutate:00000442:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000443:  errmsg("Cannot parallelize that SELECT INTO yet") 
+ caaj: cdbmutate:00000444:  )); 
+ caaj: cdbmutate:00000702:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000703:  errmsg("Cannot parallelize that INSERT yet"))); 
+ caaj: cdbmutate:00000719:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000720:  errmsg("Cannot parallelize that INSERT yet"))); 
+ caaj: cdbmutate:00000749:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000750:  errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns"))); 
+ caaj: cdbmutate:00000754:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000755:  errmsg("Cannot parallelize that %s yet", 
+ caaj: cdbmutate:00000756:  query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE") 
+ caaj: cdbmutate:00000757:  )); 
+ caaj: cdbmutate:00000770:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000771:  errmsg("Cannot parallelize that %s yet", 
+ caaj: cdbmutate:00000772:  query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE") 
+ caaj: cdbmutate:00000773:  )); 
+ caaj: cdbmutate:00000820:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ caaj: cdbmutate:00000821:  errmsg("Cannot parallelize that %s yet", cmd), 
+ caaj: cdbmutate:00000822:  errdetail("Passage of data from one segment to another " 
+ caaj: cdbmutate:00000823:  "is not yet supported during %s operations.", 
+ caaj: cdbmutate:00000824:  cmd), 
+ caaj: cdbmutate:00000825:  errhint("The WHERE condition must specify equality " 
+ caaj: cdbmutate:00000826:  "between corresponding DISTRIBUTED BY columns " 
+ caaj: cdbmutate:00000827:  "of the target table and all joined tables.") 
+ caaj: cdbmutate:00000828:  )); 
+ caaj: cdbmutate:00001192:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ caaj: cdbmutate:00001193:  errmsg("no equality operator for typid %d", 
+ caaj: cdbmutate:00001194:  typeoid))); 
  caaj: chklocale:00000324:  ereport(WARNING, 
  caaj: chklocale:00000325:  (errmsg("could not determine encoding for locale "%s": codeset is "%s"", 
  caaj: chklocale:00000326:  ctype, sys), 
@@ -9347,6 +9690,7 @@ select * from get_ereport order by 1;
  paai: pqformat:00000705:  ereport(ERROR, 
  paai: pqformat:00000706:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
  paai: pqformat:00000707:  errmsg("invalid message format"))); 
+ paai: predtest:00001740:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory"))); 
  paai: printtup:00000266:  ereport(ERROR, 
  paai: printtup:00000267:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  paai: printtup:00000268:  errmsg("unsupported format code: %d", format))); 
@@ -9948,105 +10292,105 @@ select * from get_ereport order by 1;
  paba: postmaster:00001220:  ereport(FATAL, 
  paba: postmaster:00001221:  (errmsg("could not load pg_hba.conf"), 
  paba: postmaster:00001222:  errOmitLocation(true))); 
- paba: postmaster:00001274:  ereport(FATAL, 
- paba: postmaster:00001275:  (errmsg("%s: could not locate matching postgres executable", 
- paba: postmaster:00001276:  argv0))); 
- paba: postmaster:00001294:  ereport(ERROR, 
- paba: postmaster:00001295:  (errcode_for_file_access(), 
- paba: postmaster:00001296:  errmsg("could not open directory "%s": %m", 
- paba: postmaster:00001297:  pkglib_path), 
- paba: postmaster:00001298:  errSendAlert(true), 
- paba: postmaster:00001299:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file "%s" has been moved away from its proper location.", 
- paba: postmaster:00001300:  my_exec_path))); 
- paba: postmaster:00001325:  ereport(FATAL, 
- paba: postmaster:00001326:  (errcode_for_file_access(), 
- paba: postmaster:00001327:  errmsg("data directory "%s" does not exist", 
- paba: postmaster:00001328:  DataDir))); 
- paba: postmaster:00001330:  ereport(FATAL, 
- paba: postmaster:00001331:  (errcode_for_file_access(), 
- paba: postmaster:00001332:  errmsg("could not read permissions of directory "%s": %m", 
- paba: postmaster:00001333:  DataDir))); 
- paba: postmaster:00001338:  ereport(FATAL, 
- paba: postmaster:00001339:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001340:  errmsg("specified data directory "%s" is not a directory", 
- paba: postmaster:00001341:  DataDir))); 
- paba: postmaster:00001354:  ereport(FATAL, 
- paba: postmaster:00001355:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001356:  errmsg("data directory "%s" has wrong ownership", 
- paba: postmaster:00001357:  DataDir), 
- paba: postmaster:00001358:  errhint("The server must be started by the user that owns the data directory."))); 
- paba: postmaster:00001376:  ereport(FATAL, 
- paba: postmaster:00001377:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- paba: postmaster:00001378:  errmsg("data directory "%s" has group or world access", 
- paba: postmaster:00001379:  DataDir), 
- paba: postmaster:00001380:  errdetail("Permissions should be u=rwx (0700)."))); 
- paba: postmaster:00001917:  ereport(FATAL, 
- paba: postmaster:00001918:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paba: postmaster:00001919:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
- paba: postmaster:00001920:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
- paba: postmaster:00001921:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
- paba: postmaster:00001922:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
- paba: postmaster:00001923:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
- paba: postmaster:00001987:  ereport(FATAL, 
- paba: postmaster:00001988:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paba: postmaster:00001989:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
- paba: postmaster:00002015:  ereport(FATAL, 
- paba: postmaster:00002016:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
- paba: postmaster:00002017:  errmsg("no PostgreSQL user name specified in startup packet"))); 
- paba: postmaster:00002078:  ereport(FATAL, 
- paba: postmaster:00002079:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00002080:  errSendAlert(true), 
- paba: postmaster:00002081:  errOmitLocation(true), 
- paba: postmaster:00002082:  errmsg("the database system is starting up"))); 
- paba: postmaster:00002085:  ereport(FATAL, 
- paba: postmaster:00002086:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00002087:  errSendAlert(true), 
- paba: postmaster:00002088:  errOmitLocation(true), 
- paba: postmaster:00002089:  errmsg("the database system is shutting down"))); 
- paba: postmaster:00002092:  ereport(FATAL, 
- paba: postmaster:00002093:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paba: postmaster:00002094:  errSendAlert(true), 
- paba: postmaster:00002095:  errOmitLocation(true), 
- paba: postmaster:00002096:  errmsg("the database system is in recovery mode"))); 
- paba: postmaster:00002099:  ereport(FATAL, 
- paba: postmaster:00002100:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
- paba: postmaster:00002101:  errSendAlert(true), 
- paba: postmaster:00002102:  errOmitLocation(true), 
- paba: postmaster:00002103:  errmsg("sorry, too many clients already"))); 
- paba: postmaster:00002391:  ereport(WARNING, 
- paba: postmaster:00002392:  (errmsg("pg_hba.conf not reloaded"))); 
- paba: postmaster:00004083:  ereport(WARNING, 
- paba: postmaster:00004084:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
- paba: postmaster:00004085:  gai_strerror(ret)))); 
- paba: postmaster:00004127:  ereport(FATAL, 
- paba: postmaster:00004128:  (errmsg("could not load pg_hba.conf"))); 
- paba: postmaster:00004550:  ereport(ERROR, 
- paba: postmaster:00004551:  (errmsg_internal("could not terminate unstarted process: error code %d", 
- paba: postmaster:00004552:  (int) GetLastError()))); 
- paba: postmaster:00004577:  ereport(ERROR, 
- paba: postmaster:00004578:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
- paba: postmaster:00004579:  (int) GetLastError()))); 
- paba: postmaster:00004594:  ereport(ERROR, 
- paba: postmaster:00004595:  (errmsg_internal("could not terminate unstartable process: error code %d", 
- paba: postmaster:00004596:  (int) GetLastError()))); 
- paba: postmaster:00004603:  ereport(ERROR, 
- paba: postmaster:00004604:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
- paba: postmaster:00004605:  (int) GetLastError()))); 
- paba: postmaster:00004619:  ereport(FATAL, 
- paba: postmaster:00004620:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- paba: postmaster:00004621:  errmsg("out of memory"))); 
- paba: postmaster:00004632:  ereport(FATAL, 
- paba: postmaster:00004633:  (errmsg_internal("could not register process for wait: error code %d", 
- paba: postmaster:00004634:  (int) GetLastError()))); 
- paba: postmaster:00004705:  ereport(FATAL, 
- paba: postmaster:00004706:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- paba: postmaster:00004707:  errmsg("out of memory"))); 
- paba: postmaster:00005506:  ereport(ERROR, 
- paba: postmaster:00005507:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
- paba: postmaster:00005508:  (int) GetLastError()))); 
- paba: postmaster:00005528:  ereport(ERROR, 
- paba: postmaster:00005529:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
- paba: postmaster:00005530:  src, WSAGetLastError()))); 
+ paba: postmaster:00001278:  ereport(FATAL, 
+ paba: postmaster:00001279:  (errmsg("%s: could not locate matching postgres executable", 
+ paba: postmaster:00001280:  argv0))); 
+ paba: postmaster:00001298:  ereport(ERROR, 
+ paba: postmaster:00001299:  (errcode_for_file_access(), 
+ paba: postmaster:00001300:  errmsg("could not open directory "%s": %m", 
+ paba: postmaster:00001301:  pkglib_path), 
+ paba: postmaster:00001302:  errSendAlert(true), 
+ paba: postmaster:00001303:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file "%s" has been moved away from its proper location.", 
+ paba: postmaster:00001304:  my_exec_path))); 
+ paba: postmaster:00001329:  ereport(FATAL, 
+ paba: postmaster:00001330:  (errcode_for_file_access(), 
+ paba: postmaster:00001331:  errmsg("data directory "%s" does not exist", 
+ paba: postmaster:00001332:  DataDir))); 
+ paba: postmaster:00001334:  ereport(FATAL, 
+ paba: postmaster:00001335:  (errcode_for_file_access(), 
+ paba: postmaster:00001336:  errmsg("could not read permissions of directory "%s": %m", 
+ paba: postmaster:00001337:  DataDir))); 
+ paba: postmaster:00001342:  ereport(FATAL, 
+ paba: postmaster:00001343:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001344:  errmsg("specified data directory "%s" is not a directory", 
+ paba: postmaster:00001345:  DataDir))); 
+ paba: postmaster:00001358:  ereport(FATAL, 
+ paba: postmaster:00001359:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001360:  errmsg("data directory "%s" has wrong ownership", 
+ paba: postmaster:00001361:  DataDir), 
+ paba: postmaster:00001362:  errhint("The server must be started by the user that owns the data directory."))); 
+ paba: postmaster:00001380:  ereport(FATAL, 
+ paba: postmaster:00001381:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ paba: postmaster:00001382:  errmsg("data directory "%s" has group or world access", 
+ paba: postmaster:00001383:  DataDir), 
+ paba: postmaster:00001384:  errdetail("Permissions should be u=rwx (0700)."))); 
+ paba: postmaster:00001923:  ereport(FATAL, 
+ paba: postmaster:00001924:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paba: postmaster:00001925:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
+ paba: postmaster:00001926:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
+ paba: postmaster:00001927:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
+ paba: postmaster:00001928:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
+ paba: postmaster:00001929:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
+ paba: postmaster:00001993:  ereport(FATAL, 
+ paba: postmaster:00001994:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paba: postmaster:00001995:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
+ paba: postmaster:00002021:  ereport(FATAL, 
+ paba: postmaster:00002022:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+ paba: postmaster:00002023:  errmsg("no PostgreSQL user name specified in startup packet"))); 
+ paba: postmaster:00002084:  ereport(FATAL, 
+ paba: postmaster:00002085:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00002086:  errSendAlert(true), 
+ paba: postmaster:00002087:  errOmitLocation(true), 
+ paba: postmaster:00002088:  errmsg("the database system is starting up"))); 
+ paba: postmaster:00002091:  ereport(FATAL, 
+ paba: postmaster:00002092:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00002093:  errSendAlert(true), 
+ paba: postmaster:00002094:  errOmitLocation(true), 
+ paba: postmaster:00002095:  errmsg("the database system is shutting down"))); 
+ paba: postmaster:00002098:  ereport(FATAL, 
+ paba: postmaster:00002099:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paba: postmaster:00002100:  errSendAlert(true), 
+ paba: postmaster:00002101:  errOmitLocation(true), 
+ paba: postmaster:00002102:  errmsg("the database system is in recovery mode"))); 
+ paba: postmaster:00002105:  ereport(FATAL, 
+ paba: postmaster:00002106:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+ paba: postmaster:00002107:  errSendAlert(true), 
+ paba: postmaster:00002108:  errOmitLocation(true), 
+ paba: postmaster:00002109:  errmsg("sorry, too many clients already"))); 
+ paba: postmaster:00002397:  ereport(WARNING, 
+ paba: postmaster:00002398:  (errmsg("pg_hba.conf not reloaded"))); 
+ paba: postmaster:00004089:  ereport(WARNING, 
+ paba: postmaster:00004090:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+ paba: postmaster:00004091:  gai_strerror(ret)))); 
+ paba: postmaster:00004133:  ereport(FATAL, 
+ paba: postmaster:00004134:  (errmsg("could not load pg_hba.conf"))); 
+ paba: postmaster:00004556:  ereport(ERROR, 
+ paba: postmaster:00004557:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+ paba: postmaster:00004558:  (int) GetLastError()))); 
+ paba: postmaster:00004583:  ereport(ERROR, 
+ paba: postmaster:00004584:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+ paba: postmaster:00004585:  (int) GetLastError()))); 
+ paba: postmaster:00004600:  ereport(ERROR, 
+ paba: postmaster:00004601:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+ paba: postmaster:00004602:  (int) GetLastError()))); 
+ paba: postmaster:00004609:  ereport(ERROR, 
+ paba: postmaster:00004610:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+ paba: postmaster:00004611:  (int) GetLastError()))); 
+ paba: postmaster:00004625:  ereport(FATAL, 
+ paba: postmaster:00004626:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ paba: postmaster:00004627:  errmsg("out of memory"))); 
+ paba: postmaster:00004638:  ereport(FATAL, 
+ paba: postmaster:00004639:  (errmsg_internal("could not register process for wait: error code %d", 
+ paba: postmaster:00004640:  (int) GetLastError()))); 
+ paba: postmaster:00004711:  ereport(FATAL, 
+ paba: postmaster:00004712:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ paba: postmaster:00004713:  errmsg("out of memory"))); 
+ paba: postmaster:00005512:  ereport(ERROR, 
+ paba: postmaster:00005513:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+ paba: postmaster:00005514:  (int) GetLastError()))); 
+ paba: postmaster:00005534:  ereport(ERROR, 
+ paba: postmaster:00005535:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+ paba: postmaster:00005536:  src, WSAGetLastError()))); 
  pabb: pgstatfuncs:00000748:  ereport(ERROR, 
  pabb: pgstatfuncs:00000749:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  pabb: pgstatfuncs:00000750:  (errmsg("only superuser can renice another user's session")))); 
@@ -15865,6 +16209,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000073:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000074:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000075:  str))); 
-(15805 rows)
+(16149 rows)
 
 drop external table get_ereport;

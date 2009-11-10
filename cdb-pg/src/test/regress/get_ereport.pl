@@ -28,7 +28,7 @@ Options:
     -version         print version 
 	-quiet           be less verbose
 	-lax             be very lax
-
+	-fullname        print full file name (with GP_IGNORE)
 
 =head1 OPTIONS
 
@@ -55,6 +55,11 @@ Options:
     Cleanup spaces, vertical bar (|), etc, that might effect gpdiff
     comparison (if invoked via a sql script)
 
+=item B<-fullname>
+
+    Print the full file name information in a GP_IGNORE message to
+    make it easier to track ereport diffs back to the original file.
+
 
 =back
 
@@ -76,12 +81,13 @@ Address bug reports and comments to: jcohen@greenplum.com
 
 if (1)
 {
-    my $man  = 0;
-    my $help = 0;
-    my $verzion = 0;
-    my $pmsg = "";
-	my $bQuiet = 0;
-	my $bLax = 0;
+    my $man		  = 0;
+    my $help	  = 0;
+    my $verzion	  = 0;
+    my $pmsg	  = "";
+	my $bQuiet	  = 0;
+	my $bLax	  = 0;
+	my $bFullname = 0;
 
     # check for man or help args
     if (scalar(@ARGV))
@@ -110,9 +116,14 @@ if (1)
 				$bQuiet = 1;
 				goto L_wWhile;
 			}
-			elsif ($ARGV[0] =~ m/^\-(\-)*lax$/i)			
+			elsif ($ARGV[0] =~ m/^\-(\-)*lax$/i)
 			{
 				$bLax = 1;
+				goto L_wWhile;
+			}
+			elsif ($ARGV[0] =~ m/^\-(\-)*fullname$/i)
+			{
+				$bFullname = 1;
 				goto L_wWhile;
 			}
 
@@ -235,6 +246,12 @@ if (1)
 						$filnam = $fprefix . $flen . ": " . $filnam;
 						
 
+					}
+
+					if ($bFullname)
+					{
+						print "GP_IGNORE: ", $filnam, " - ", 
+						$orig_filnam, "\n";
 					}
 
 					$printname = 0;

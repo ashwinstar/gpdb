@@ -33,7 +33,7 @@
 
 
 CREATE EXTERNAL WEB TABLE get_ereport (x text)
-execute E'(find @abs_srcdir@/../.. -name \'*.c\'  | xargs perl @gpwhich_get_ereport.pl@ -quiet -lax )' 
+execute E'(find @abs_srcdir@/../.. -name \'*.c\'  | xargs perl @gpwhich_get_ereport.pl@ -quiet -lax -fullname )' 
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
