@@ -732,16 +732,9 @@ main(int argc, char **argv)
 
 	/*
 	 * If we got here it means we successfully set transaction isolation level to serializable.
-	 * Create a status operator that describes our new status. The monitor thread will consume it.
+	 * However, we don't yet NOTIFY it to the master gp_dump thread. Instead, we wait until we
+	 * get all the LOCKs we need and only then NOTIFY. (See DumpMain()).
 	 */
-	pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
-	if ( pOp == NULL )
-	{
-		exit_horribly(g_fout, NULL, "could not allocate memory for gp_backup_status operation\n");
-	}
-
-	/* add status operator, to let the monitor thread see it */
-	AddToStatusOpList( g_pStatusOpList, pOp );
 
 	if (plainText)
 	{
@@ -826,6 +819,7 @@ void dumpMain(bool oids, const char* dumpencoding, int outputBlobs, int plainTex
 
 	TableInfo      *tblinfo;
     DumpableObject **dobjs;
+    StatusOp*        pOp;
     int            numObjs;
     int            numTables;
     int            i;
@@ -873,9 +867,22 @@ void dumpMain(bool oids, const char* dumpencoding, int outputBlobs, int plainTex
 
 	/*
 	 * Now scan the database and create DumpableObject structs for all the
-	 * objects we intend to dump.
+	 * objects we intend to dump. LOCK those objects in ACCESS SHARE mode.
 	 */
 	tblinfo = getSchemaData(&numTables);
+
+	/*
+	 * If we got here it means we successfully got LOCKs on all our dumpable tables in this
+	 * agent. we can now notify the main gp_dump thread that we're ok.
+	 */
+	pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
+	if ( pOp == NULL )
+	{
+		exit_horribly(g_fout, NULL, "could not allocate memory for gp_backup_status operation\n");
+	}
+
+	/* add status operator, to let the monitor thread see it */
+	AddToStatusOpList( g_pStatusOpList, pOp );
 
 	if (!schemaOnly)
 		getTableData(tblinfo, numTables, oids);

@@ -399,9 +399,25 @@ bool lockDumpableObjects(PGconn* pMasterConn)
 	/*
 	 * Now scan the database and create DumpableObject structs for all the
 	 * objects we intend to dump.  A function called by getSchemaData performs
-	 * the LOCK operations required.
+	 * the per-table LOCK operations required. We first make sure to hold a lock
+	 * on pg_class on the master to avoid colliding with concurrent transaction
+	 * DROP/CREATE.
 	 */
-	table_lock_mode = "EXCLUSIVE";
+	pQry = createPQExpBuffer();
+	appendPQExpBuffer(pQry, "LOCK TABLE pg_catalog.pg_class IN EXCLUSIVE MODE;");
+	pRes = PQexec(pMasterConn, pQry->data);
+	if ( pRes == NULL )
+	{
+		mpp_err_msg_cache(logError, pszProgName, "no result from server: %s", PQerrorMessage(pMasterConn));
+		goto cleanup;
+	}
+	if (PQresultStatus(pRes) != PGRES_COMMAND_OK)
+	{
+		mpp_err_msg_cache(logError, pszProgName, "bad result from server: %s", PQerrorMessage(pMasterConn));
+		goto cleanup;
+	}
+
+	table_lock_mode = "ACCESS SHARE";
 	tblinfo = getSchemaData(&numTables);
 
 	bRtn = true;
