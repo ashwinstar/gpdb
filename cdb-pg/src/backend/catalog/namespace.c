@@ -220,12 +220,14 @@ RangeVarGetRelid(const RangeVar *relation, bool failOK)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_TABLE),
 					 errmsg("relation \"%s.%s\" does not exist",
-							relation->schemaname, relation->relname)));
+							relation->schemaname, relation->relname),
+					 errOmitLocation(true)));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_TABLE),
 					 errmsg("relation \"%s\" does not exist",
-							relation->relname)));
+							relation->relname),
+					 errOmitLocation(true)));
 	}
 	return relId;
 }
@@ -1298,7 +1300,8 @@ LookupExplicitNamespace(const char *nspname)
 	if (!OidIsValid(namespaceId))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
-				 errmsg("schema \"%s\" does not exist", nspname)));
+				 errmsg("schema \"%s\" does not exist", nspname),
+				 errOmitLocation(true)));
 
 	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
@@ -1339,7 +1342,8 @@ LookupCreationNamespace(const char *nspname)
 	if (!OidIsValid(namespaceId))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
-				 errmsg("schema \"%s\" does not exist", nspname)));
+				 errmsg("schema \"%s\" does not exist", nspname),
+				 errOmitLocation(true)));
 
 	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
@@ -1387,7 +1391,8 @@ QualifiedNameGetCreationNamespace(List *names, char **objname_p)
 		if (!OidIsValid(namespaceId))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
-					 errmsg("schema \"%s\" does not exist", schemaname)));
+					 errmsg("schema \"%s\" does not exist", schemaname),
+				     errOmitLocation(true)));
 		/* we do not check for USAGE rights here! */
 	}
 	else
@@ -2108,7 +2113,8 @@ assign_search_path(const char *newval, bool doit, GucSource source)
 				if (Gp_role != GP_ROLE_EXECUTE)
 					ereport((source == PGC_S_TEST) ? NOTICE : ERROR,
 							(errcode(ERRCODE_UNDEFINED_SCHEMA),
-							 errmsg("schema \"%s\" does not exist", curname)));
+							 errmsg("schema \"%s\" does not exist", curname),
+							 errOmitLocation(true)));
 		}
 	}
 
