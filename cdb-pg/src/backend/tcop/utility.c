@@ -136,7 +136,8 @@ DropErrorMsgWrongType(char *relname, char wrongkind, char rightkind)
 	ereport(ERROR,
 			(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 			 errmsg(rentry->nota_msg, relname),
-			 (wentry->kind != '\0') ? errhint(wentry->drophint_msg) : 0));
+			 (wentry->kind != '\0') ? errhint(wentry->drophint_msg) : 0,
+			 errOmitLocation(true)));
 }
 
 /*
@@ -156,12 +157,14 @@ DropErrorMsgNonExistent(RangeVar *rel, char rightkind, bool missing_ok)
 	        {
 				ereport(ERROR,
 					(errcode(rentry->nonexistent_code),
-					 errmsg(rentry->nonexistent_msg, rel->relname)));
+					 errmsg(rentry->nonexistent_msg, rel->relname),
+					 errOmitLocation(true)));
 			}
             else
             {
             	if (Gp_role != GP_ROLE_EXECUTE)
-                	ereport(NOTICE, (errmsg(rentry->skipping_msg, rel->relname)));
+                	ereport(NOTICE, (errmsg(rentry->skipping_msg, rel->relname),
+									 errOmitLocation(true)));
                 break;
             }
     	}
@@ -257,13 +260,15 @@ CheckDropRelStorage(RangeVar *rel, bool externalstorage)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is not an external table", rel->relname),
-				 errhint("Use DROP TABLE to remove a base table")));
+				 errhint("Use DROP TABLE to remove a base table"),
+				 errOmitLocation(true)));
 	
 	if (!externalstorage && classform->relstorage == RELSTORAGE_EXTERNAL) /* heap, ao */
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("\"%s\" is not a base table", rel->relname),
-					 errhint("Use DROP EXTERNAL TABLE to remove an external table")));
+					 errhint("Use DROP EXTERNAL TABLE to remove an external table"),
+					 errOmitLocation(true)));
 
 	ReleaseSysCache(tuple);
 
