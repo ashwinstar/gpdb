@@ -1423,7 +1423,8 @@ plpgsql_parse_wordrowtype(char *word)
 	if (!OidIsValid(classOid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_TABLE),
-				 errmsg("relation \"%s\" does not exist", cp[0])));
+				 errmsg("relation \"%s\" does not exist", cp[0]),
+				 errOmitLocation(true)));
 
 	/*
 	 * Build and return the row type struct
@@ -1470,7 +1471,8 @@ plpgsql_parse_dblwordrowtype(char *word)
 	if (!OidIsValid(classOid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_TABLE),
-				 errmsg("relation \"%s\" does not exist", cp)));
+				 errmsg("relation \"%s\" does not exist", cp),
+				 errOmitLocation(true)));
 
 	/* Build and return the row type struct */
 	plpgsql_yylval.dtype = plpgsql_build_datatype(get_rel_type_id(classOid),
