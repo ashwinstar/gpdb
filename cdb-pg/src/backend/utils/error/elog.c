@@ -2476,34 +2476,59 @@ unpack_sql_state(int sql_state)
     return buf;
 }
 
-    
+#define NUM_RETRIES 1000
+
 /*
  * Send the data through the pipe.
  */
 static inline void
 gp_write_pipe_chunk(const char *buffer, int len)
 {
-    int retval;
+    int retval = -1;
     fd_set wfds;
     struct timeval tv;
+	int retry_no = 0;
 
-    /*
-     * Wait up to 1 second to see if stderr is available for write.
-     * If not, we ignore the error message. This could happen when
-     * the logger process crashes.
-     */
-    tv.tv_sec = 1;
-    tv.tv_usec = 0;
+	while (retry_no < NUM_RETRIES)
+	{
+		CHECK_FOR_INTERRUPTS();
+		
+		retry_no++;
 
-    FD_ZERO(&wfds);
-    FD_SET(fileno(stderr), &wfds);
+		/*
+		 * Wait up to 1 second to see if stderr is available for write.
+		 * If not, we ignore the error message. This could happen when
+		 * the logger process crashes.
+		 */
+		tv.tv_sec = 1;
+		tv.tv_usec = 0;
 
-    retval = select(fileno(stderr) + 1, NULL, &wfds, NULL, &tv);
+		FD_ZERO(&wfds);
+		FD_SET(fileno(stderr), &wfds);
 
-    if (retval == 1)
-    {
-        int bytes;
+		retval = select(fileno(stderr) + 1, NULL, &wfds, NULL, &tv);
 
+		if (retval == 0 || (retval < 0 && errno == EINTR))
+		{
+			/* select() timeout or interruptted. Retry */
+			continue;
+		}
+		else
+		{
+			/*
+			 * When the stderr is ready (retval == 1), or errors (other cases),
+			 * break out the loop.
+			 */
+			break;
+		}
+	}
+
+	Assert((retval == 1) || (retval < 0 && errno != EINTR) || (retry_no == NUM_RETRIES));
+
+	if (retval == 1)
+	{
+		int bytes;
+		
 		do
 		{
 #ifdef USE_ASSERT_CHECKING
@@ -2515,11 +2540,11 @@ gp_write_pipe_chunk(const char *buffer, int len)
 				Assert(len <= PIPE_CHUNK_SIZE);
 			}
 #endif
-
+			
 			bytes = write(fileno(stderr), buffer, len);
 		}
 		while (bytes < 0 && errno == EINTR);
-    }
+	}
 }
 
 /*
