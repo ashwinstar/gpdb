@@ -22,10 +22,14 @@ DESCRIPTION
 The gpinitstandby utility adds a backup master host to your 
 Greenplum Database system. If your system has an existing backup 
 master host configured, use the -r option to remove it before adding 
-the new standby master host. Before running this utility, make sure 
+the new standby master host. 
+
+Before running this utility, make sure 
 that the Greenplum Database software is installed on the backup master 
-host and that you have exchanged SSH keys between hosts. This utility 
-should be run on the currently active primary master host.
+host and that you have exchanged SSH keys between hosts. Also make sure 
+that the master port is set to the same port number on the master host 
+and the backup master host. This utility should be run on the currently 
+active primary master host.
  
 The utility will perform the following steps:
 

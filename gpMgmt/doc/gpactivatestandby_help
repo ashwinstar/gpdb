@@ -24,7 +24,12 @@ DESCRIPTION
 
 The gpactivatestandby script activates a backup master host and 
 brings it into operation as the active master instance for a Greenplum 
-Database system. You must run this script from the master host you are 
+Database system. The activated standby master effectively becomes the 
+Greenplum Database master, accepting client connections on the master port 
+(which must be set to the same port number on the master host and the 
+backup master host). 
+
+You must run this script from the master host you are 
 activating, not the failed master host you are disabling. Running this 
 script assumes you have a backup master host configured for the system 
 (see gpinitstandby).
