@@ -150,7 +150,8 @@ bpchar_input(const char *s, size_t len, int32 atttypmod)
 					ereport(ERROR,
 							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 							 errmsg("value too long for type character(%d)",
-									(int) maxlen)));
+									(int) maxlen),
+							 errOmitLocation(true)));
 			}
 
 			/*
@@ -319,7 +320,8 @@ bpchar(PG_FUNCTION_ARGS)
 					ereport(ERROR,
 							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 							 errmsg("value too long for type character(%d)",
-									maxlen - VARHDRSZ)));
+									maxlen - VARHDRSZ),
+							 errOmitLocation(true)));
 		}
 
 		len = maxmblen;
@@ -491,7 +493,8 @@ varchar_input(const char *s, size_t len, int32 atttypmod)
 				ereport(ERROR,
 						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 					  errmsg("value too long for type character varying(%d)",
-							 (int) maxlen)));
+							 (int) maxlen),
+					  errOmitLocation(true)));
 		}
 
 		len = mbmaxlen;
@@ -622,7 +625,8 @@ varchar(PG_FUNCTION_ARGS)
 				ereport(ERROR,
 						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 					  errmsg("value too long for type character varying(%d)",
-							 maxlen - VARHDRSZ)));
+							 maxlen - VARHDRSZ),
+					  errOmitLocation(true)));
 	}
 
 	len = maxmblen + VARHDRSZ;

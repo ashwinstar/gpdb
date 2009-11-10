@@ -948,7 +948,8 @@ DecodeDateTime(char **field, int *ftype, int nf,
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 									 errmsg("time zone \"%s\" not recognized",
-											field[i])));
+											field[i]),
+													 errOmitLocation(true)));
 						}
 						/* we'll apply the zone setting below */
 						tmask = DTK_M(TZ);
@@ -1683,7 +1684,8 @@ DecodeTimeOnly(char **field, int *ftype, int nf,
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 									 errmsg("time zone \"%s\" not recognized",
-											field[i])));
+											field[i]),
+													 errOmitLocation(true)));
 						}
 						/* we'll apply the zone setting below */
 						ftype[i] = DTK_TZ;
@@ -3566,7 +3568,8 @@ DateTimeParseError(int dterr, const char *str, const char *datatype)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
 					 errmsg("date/time field value out of range: \"%s\"",
-							str)));
+							str),
+									 errOmitLocation(true)));
 			break;
 		case DTERR_MD_FIELD_OVERFLOW:
 			/* <nanny>same as above, but add hint about DateStyle</nanny> */
@@ -3574,26 +3577,30 @@ DateTimeParseError(int dterr, const char *str, const char *datatype)
 					(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
 					 errmsg("date/time field value out of range: \"%s\"",
 							str),
-			errhint("Perhaps you need a different \"datestyle\" setting.")));
+			errhint("Perhaps you need a different \"datestyle\" setting."),
+					 errOmitLocation(true)));
 			break;
 		case DTERR_INTERVAL_OVERFLOW:
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERVAL_FIELD_OVERFLOW),
 					 errmsg("interval field value out of range: \"%s\"",
-							str)));
+							str),
+									 errOmitLocation(true)));
 			break;
 		case DTERR_TZDISP_OVERFLOW:
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TIME_ZONE_DISPLACEMENT_VALUE),
 					 errmsg("time zone displacement out of range: \"%s\"",
-							str)));
+							str),
+									 errOmitLocation(true)));
 			break;
 		case DTERR_BAD_FORMAT:
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 					 errmsg("invalid input syntax for type %s: \"%s\"",
-							datatype, str)));
+							datatype, str),
+									 errOmitLocation(true)));
 			break;
 	}
 }

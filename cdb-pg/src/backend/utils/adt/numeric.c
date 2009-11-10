@@ -470,7 +470,8 @@ numeric_recv(PG_FUNCTION_ARGS)
 	if (len < 0 || len > NUMERIC_MAX_PRECISION + NUMERIC_MAX_RESULT_SCALE)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-				 errmsg("invalid length in external \"numeric\" value")));
+				 errmsg("invalid length in external \"numeric\" value"),
+						 errOmitLocation(true)));
 
 	init_alloc_var(&value, len);
 
@@ -481,7 +482,8 @@ numeric_recv(PG_FUNCTION_ARGS)
 		  value.sign == NUMERIC_NAN))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-				 errmsg("invalid sign in external \"numeric\" value")));
+				 errmsg("invalid sign in external \"numeric\" value"),
+						 errOmitLocation(true)));
 
 	value.dscale = (uint16) pq_getmsgint(buf, sizeof(uint16));
 	for (i = 0; i < len; i++)
@@ -491,7 +493,8 @@ numeric_recv(PG_FUNCTION_ARGS)
 		if (d < 0 || d >= NBASE)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-					 errmsg("invalid digit in external \"numeric\" value")));
+					 errmsg("invalid digit in external \"numeric\" value"),
+							 errOmitLocation(true)));
 		value.digits[i] = d;
 	}
 
@@ -890,7 +893,8 @@ width_bucket_numeric(PG_FUNCTION_ARGS)
 	if (count <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
-				 errmsg("count must be greater than zero")));
+				 errmsg("count must be greater than zero"),
+						 errOmitLocation(true)));
 
 	quick_init_var(&result_var);
 	quick_init_var(&count_var);
@@ -903,7 +907,8 @@ width_bucket_numeric(PG_FUNCTION_ARGS)
 		case 0:
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
-				 errmsg("lower bound cannot equal upper bound")));
+				 errmsg("lower bound cannot equal upper bound"),
+						 errOmitLocation(true)));
 
 			/* bound1 < bound2 */
 		case -1:
@@ -1549,7 +1554,8 @@ numeric_fac(PG_FUNCTION_ARGS)
 	if (num > 32177)
 		ereport(ERROR, 
 			(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-			 errmsg("value overflows numeric format")));
+			 errmsg("value overflows numeric format"),
+					 errOmitLocation(true)));
 
 	quick_init_var(&fact);
 	quick_init_var(&result);
@@ -1821,7 +1827,8 @@ numeric_power(PG_FUNCTION_ARGS)
 		 cmp_var(&arg2, &arg2_trunc) != 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION),
-				 errmsg("invalid argument for power function")));
+				 errmsg("invalid argument for power function"),
+						 errOmitLocation(true)));
 
 	/*
 	 * Call power_var() to compute and return the result; note it handles
@@ -1875,7 +1882,8 @@ numeric_int4(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot convert NaN to integer")));
+				 errmsg("cannot convert NaN to integer"),
+						 errOmitLocation(true)));
 
 	/* Convert to variable format, then convert to int4 */
 	init_var_from_num(num, &x);
@@ -1898,7 +1906,8 @@ numericvar_to_int4(NumericVar *var)
 	if (!numericvar_to_int8(var, &val))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("integer out of range")));
+				 errmsg("integer out of range"),
+						 errOmitLocation(true)));
 
 	/* Down-convert to int4 */
 	result = (int32) val;
@@ -1907,7 +1916,8 @@ numericvar_to_int4(NumericVar *var)
 	if ((int64) result != val)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("integer out of range")));
+				 errmsg("integer out of range"),
+						 errOmitLocation(true)));
 
 	return result;
 }
@@ -1940,7 +1950,8 @@ numeric_int8(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot convert NaN to bigint")));
+				 errmsg("cannot convert NaN to bigint"),
+						 errOmitLocation(true)));
 
 	/* Convert to variable format and thence to int8 */
 	init_var_from_num(num, &x);
@@ -1948,7 +1959,8 @@ numeric_int8(PG_FUNCTION_ARGS)
 	if (!numericvar_to_int8(&x, &result))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("bigint out of range")));
+				 errmsg("bigint out of range"),
+						 errOmitLocation(true)));
 
 	PG_RETURN_INT64(result);
 }
@@ -1983,7 +1995,8 @@ numeric_int2(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot convert NaN to smallint")));
+				 errmsg("cannot convert NaN to smallint"),
+						 errOmitLocation(true)));
 
 	/* Convert to variable format and thence to int8 */
 	init_var_from_num(num, &x);
@@ -1991,7 +2004,8 @@ numeric_int2(PG_FUNCTION_ARGS)
 	if (!numericvar_to_int8(&x, &val))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("smallint out of range")));
+				 errmsg("smallint out of range"),
+						 errOmitLocation(true)));
 
 	/* Down-convert to int2 */
 	result = (int16) val;
@@ -2000,7 +2014,8 @@ numeric_int2(PG_FUNCTION_ARGS)
 	if ((int64) result != val)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("smallint out of range")));
+				 errmsg("smallint out of range"),
+						 errOmitLocation(true)));
 
 	PG_RETURN_INT16(result);
 }
@@ -3328,7 +3343,8 @@ init_var_from_str(const char *str, NumericVar *dest)
 	if (!isdigit((unsigned char) *cp))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-			  errmsg("invalid input syntax for type numeric: \"%s\"", str)));
+			  errmsg("invalid input syntax for type numeric: \"%s\"", str),
+						 errOmitLocation(true)));
 
 	decdigits = tdd;
 	i = strlen(cp) + DEC_DIGITS * 2;
@@ -3355,7 +3371,8 @@ init_var_from_str(const char *str, NumericVar *dest)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					  errmsg("invalid input syntax for type numeric: \"%s\"",
-							 str)));
+							 str),
+									 errOmitLocation(true)));
 			have_dp = TRUE;
 			cp++;
 		}
@@ -3379,14 +3396,16 @@ init_var_from_str(const char *str, NumericVar *dest)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					 errmsg("invalid input syntax for type numeric: \"%s\"",
-							str)));
+							str),
+									 errOmitLocation(true)));
 		cp = endptr;
 		if (exponent > NUMERIC_MAX_PRECISION ||
 			exponent < -NUMERIC_MAX_PRECISION)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					 errmsg("invalid input syntax for type numeric: \"%s\"",
-							str)));
+							str),
+									 errOmitLocation(true)));
 		dweight += (int) exponent;
 		dscale -= (int) exponent;
 		if (dscale < 0)
@@ -3400,7 +3419,8 @@ init_var_from_str(const char *str, NumericVar *dest)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					 errmsg("invalid input syntax for type numeric: \"%s\"",
-							str)));
+							str),
+									 errOmitLocation(true)));
 		cp++;
 	}
 
@@ -3777,7 +3797,8 @@ make_result(NumericVar *var)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("value overflows numeric format"),
-				 errdetail("Overflowing value: %s", ntp)
+				 errdetail("Overflowing value: %s", ntp),
+						 errOmitLocation(true)
 				));
 	}
 
@@ -3853,7 +3874,8 @@ make_result_inplace(NumericVar *var, Numeric result, int in_len)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("value overflows numeric format"),
-				 errdetail("Overflowing value: %s", ntp)
+				 errdetail("Overflowing value: %s", ntp),
+						 errOmitLocation(true)
 				));
 	}
 
@@ -3936,7 +3958,8 @@ apply_typmod(NumericVar *var, int32 typmod)
 									   maxdigits ? "10^" : "",
 									   maxdigits ? maxdigits : 1,
 									   ntp
-									   )));
+									   ),
+												 errOmitLocation(true)));
 				}
 				break;
 			}
@@ -4083,7 +4106,8 @@ numeric_to_double_no_overflow(Numeric num)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 			 errmsg("invalid input syntax for type double precision: \"%s\"",
-					tmp)));
+					tmp),
+							 errOmitLocation(true)));
 	}
 
 	pfree(tmp);
@@ -4109,7 +4133,8 @@ numericvar_to_double_no_overflow(NumericVar *var)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 			 errmsg("invalid input syntax for type double precision: \"%s\"",
-					tmp)));
+					tmp),
+							 errOmitLocation(true)));
 	}
 
 	pfree(tmp);
@@ -4634,7 +4659,8 @@ div_var(NumericVar *var1, NumericVar *var2, NumericVar *result,
 	if (var2ndigits == 0 || var2digits[0] == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
-				 errmsg("division by zero")));
+				 errmsg("division by zero"),
+						 errOmitLocation(true)));
 
 	/*
 	 * Now result zero check
@@ -5044,7 +5070,8 @@ sqrt_var(NumericVar *arg, NumericVar *result, int rscale)
 	if (stat < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION),
-				 errmsg("cannot take square root of a negative number")));
+				 errmsg("cannot take square root of a negative number"),
+						 errOmitLocation(true)));
 
 	/* Copy arg in case it is the same var as result */
 	init_var_from_var(arg, &tmp_arg);
@@ -5130,7 +5157,8 @@ exp_var(NumericVar *arg, NumericVar *result, int rscale)
 		if (xintval >= NUMERIC_MAX_RESULT_SCALE * 3)
 			ereport(ERROR,
 					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-					 errmsg("argument for function \"exp\" too big")));
+					 errmsg("argument for function \"exp\" too big"),
+							 errOmitLocation(true)));
 	}
 
 	/* Select an appropriate scale for internal calculation */
@@ -5253,11 +5281,13 @@ ln_var(NumericVar *arg, NumericVar *result, int rscale)
 	if (cmp == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_LOG),
-				 errmsg("cannot take logarithm of zero")));
+				 errmsg("cannot take logarithm of zero"),
+						 errOmitLocation(true)));
 	else if (cmp < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_LOG),
-				 errmsg("cannot take logarithm of a negative number")));
+				 errmsg("cannot take logarithm of a negative number"),
+						 errOmitLocation(true)));
 
 	local_rscale = rscale + 8;
 
@@ -5500,7 +5530,8 @@ power_var_int(NumericVar *base, int exp, NumericVar *result, int rscale)
 			if (base->ndigits == 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_FLOATING_POINT_EXCEPTION),
-						 errmsg("zero raised to zero is undefined")));
+						 errmsg("zero raised to zero is undefined"),
+								 errOmitLocation(true)));
 			set_var_from_var(&const_one, result);
 			result->dscale = rscale;	/* no need to round */
 			return;

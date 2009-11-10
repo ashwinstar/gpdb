@@ -106,7 +106,8 @@ network_in(char *src, bool is_cidr)
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 		/* translator: first %s is inet or cidr */
 				 errmsg("invalid input syntax for type %s: \"%s\"",
-						is_cidr ? "cidr" : "inet", src)));
+						is_cidr ? "cidr" : "inet", src),
+								 errOmitLocation(true)));
 
 	/*
 	 * Error check: CIDR values must not have any bits set beyond the masklen.
@@ -117,7 +118,8 @@ network_in(char *src, bool is_cidr)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					 errmsg("invalid cidr value: \"%s\"", src),
-					 errdetail("Value has bits set to right of mask.")));
+					 errdetail("Value has bits set to right of mask."),
+							 errOmitLocation(true)));
 	}
 
 	ip_bits(dst) = bits;
@@ -158,7 +160,8 @@ network_out(inet *src, bool is_cidr)
 	if (dst == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-				 errmsg("could not format inet value: %m")));
+				 errmsg("could not format inet value: %m"),
+						 errOmitLocation(true)));
 
 	/* For CIDR, add /n if not present */
 	if (is_cidr && strchr(tmp, '/') == NULL)
@@ -216,14 +219,16 @@ network_recv(StringInfo buf, bool is_cidr)
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
 		/* translator: %s is inet or cidr */
 				 errmsg("invalid address family in external \"%s\" value",
-						is_cidr ? "cidr" : "inet")));
+						is_cidr ? "cidr" : "inet"),
+								 errOmitLocation(true)));
 	bits = pq_getmsgbyte(buf);
 	if (bits < 0 || bits > ip_maxbits(addr))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
 		/* translator: %s is inet or cidr */
 				 errmsg("invalid bits in external \"%s\" value",
-						is_cidr ? "cidr" : "inet")));
+						is_cidr ? "cidr" : "inet"),
+								 errOmitLocation(true)));
 	ip_bits(addr) = bits;
 	i = pq_getmsgbyte(buf);		/* ignore is_cidr */
 	nb = pq_getmsgbyte(buf);
@@ -232,7 +237,8 @@ network_recv(StringInfo buf, bool is_cidr)
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
 		/* translator: %s is inet or cidr */
 				 errmsg("invalid length in external \"%s\" value",
-						is_cidr ? "cidr" : "inet")));
+						is_cidr ? "cidr" : "inet"),
+								 errOmitLocation(true)));
 
 	addrptr = (char *) ip_addr(addr);
 	for (i = 0; i < nb; i++)
@@ -247,7 +253,8 @@ network_recv(StringInfo buf, bool is_cidr)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
 					 errmsg("invalid external \"cidr\" value"),
-					 errdetail("Value has bits set to right of mask.")));
+					 errdetail("Value has bits set to right of mask."),
+							 errOmitLocation(true)));
 	}
 
 	SET_INET_VARSIZE(addr);
@@ -397,7 +404,8 @@ inet_set_masklen(PG_FUNCTION_ARGS)
 	if ((bits < 0) || (bits > ip_maxbits(src)))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid mask length: %d", bits)));
+				 errmsg("invalid mask length: %d", bits),
+						 errOmitLocation(true)));
 
 	/* clone the original data */
 	dst = (inet *) palloc(VARSIZE_ANY(src));
@@ -424,7 +432,8 @@ cidr_set_masklen(PG_FUNCTION_ARGS)
 	if ((bits < 0) || (bits > ip_maxbits(src)))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid mask length: %d", bits)));
+				 errmsg("invalid mask length: %d", bits),
+						 errOmitLocation(true)));
 
 	/* clone the original data */
 	dst = (inet *) palloc(VARSIZE_ANY(src));
@@ -640,7 +649,8 @@ network_host(PG_FUNCTION_ARGS)
 					  tmp, sizeof(tmp)) == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-				 errmsg("could not format inet value: %m")));
+				 errmsg("could not format inet value: %m"),
+						 errOmitLocation(true)));
 
 	/* Suppress /n if present (shouldn't happen now) */
 	if ((ptr = strchr(tmp, '/')) != NULL)
@@ -665,7 +675,8 @@ network_show(PG_FUNCTION_ARGS)
 					  tmp, sizeof(tmp)) == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-				 errmsg("could not format inet value: %m")));
+				 errmsg("could not format inet value: %m"),
+						 errOmitLocation(true)));
 
 	/* Add /n if not present (which it won't be) */
 	if (strchr(tmp, '/') == NULL)
@@ -690,7 +701,8 @@ inet_abbrev(PG_FUNCTION_ARGS)
 	if (dst == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-				 errmsg("could not format inet value: %m")));
+				 errmsg("could not format inet value: %m"),
+						 errOmitLocation(true)));
 
 	PG_RETURN_TEXT_P(cstring_to_text(tmp));
 }
@@ -708,7 +720,8 @@ cidr_abbrev(PG_FUNCTION_ARGS)
 	if (dst == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-				 errmsg("could not format cidr value: %m")));
+				 errmsg("could not format cidr value: %m"),
+						 errOmitLocation(true)));
 
 	PG_RETURN_TEXT_P(cstring_to_text(tmp));
 }
@@ -1277,7 +1290,8 @@ inetand(PG_FUNCTION_ARGS)
 	if (ip_family(ip) != ip_family(ip2))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("cannot AND inet values of different sizes")));
+				 errmsg("cannot AND inet values of different sizes"),
+						 errOmitLocation(true)));
 	else
 	{
 		int			nb = ip_addrsize(ip);
@@ -1309,7 +1323,8 @@ inetor(PG_FUNCTION_ARGS)
 	if (ip_family(ip) != ip_family(ip2))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("cannot OR inet values of different sizes")));
+				 errmsg("cannot OR inet values of different sizes"),
+						 errOmitLocation(true)));
 	else
 	{
 		int			nb = ip_addrsize(ip);
@@ -1370,7 +1385,8 @@ internal_inetpl(inet *ip, int64 addend)
 			  (addend == -1 && carry == 1)))
 			ereport(ERROR,
 					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-					 errmsg("result is out of range")));
+					 errmsg("result is out of range"),
+							 errOmitLocation(true)));
 	}
 	ip_bits(dst) = ip_bits(ip);
 
@@ -1411,7 +1427,8 @@ inetmi(PG_FUNCTION_ARGS)
 	if (ip_family(ip) != ip_family(ip2))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("cannot subtract inet values of different sizes")));
+				 errmsg("cannot subtract inet values of different sizes"),
+						 errOmitLocation(true)));
 	else
 	{
 		/*
@@ -1446,7 +1463,8 @@ inetmi(PG_FUNCTION_ARGS)
 				if ((res < 0) ? (lobyte != 0xFF) : (lobyte != 0))
 					ereport(ERROR,
 							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-							 errmsg("result is out of range")));
+							 errmsg("result is out of range"),
+									 errOmitLocation(true)));
 			}
 			carry >>= 8;
 			byte++;

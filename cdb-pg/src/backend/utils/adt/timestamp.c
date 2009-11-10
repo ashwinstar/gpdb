@@ -92,20 +92,24 @@ anytimestamp_typmodin(bool istz, ArrayType *ta)
 	if (n != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid type modifier")));
+				 errmsg("invalid type modifier"),
+						 errOmitLocation(true),
+								 errOmitLocation(true)));
 
 	if (*tl < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("TIMESTAMP(%d)%s precision must not be negative",
-						*tl, (istz ? " WITH TIME ZONE" : ""))));
+						*tl, (istz ? " WITH TIME ZONE" : "")),
+								 errOmitLocation(true)));
 	if (*tl > MAX_TIMESTAMP_PRECISION)
 	{
 		ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 		   errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d",
 				  *tl, (istz ? " WITH TIME ZONE" : ""),
-				  MAX_TIMESTAMP_PRECISION)));
+				  MAX_TIMESTAMP_PRECISION),
+							 errOmitLocation(true)));
 		typmod = MAX_TIMESTAMP_PRECISION;
 	}
 	else
@@ -171,7 +175,8 @@ timestamp_in(PG_FUNCTION_ARGS)
 			if (tm2timestamp(tm, fsec, NULL, &result) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range: \"%s\"", str)));
+						 errmsg("timestamp out of range: \"%s\"", str),
+								 errOmitLocation(true)));
 			break;
 
 		case DTK_EPOCH:
@@ -189,7 +194,8 @@ timestamp_in(PG_FUNCTION_ARGS)
 		case DTK_INVALID:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			  errmsg("date/time value \"%s\" is no longer supported", str)));
+			  errmsg("date/time value \"%s\" is no longer supported", str),
+						 errOmitLocation(true)));
 
 			TIMESTAMP_NOEND(result);
 			break;
@@ -226,7 +232,8 @@ timestamp_out(PG_FUNCTION_ARGS)
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+				 errmsg("timestamp out of range"),
+						 errOmitLocation(true)));
 
 	result = pstrdup(buf);
 	PG_RETURN_CSTRING(result);
@@ -264,7 +271,8 @@ timestamp_recv(PG_FUNCTION_ARGS)
 	else if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+				 errmsg("timestamp out of range"),
+						 errOmitLocation(true)));
 
 	AdjustTimestampForTypmod(&timestamp, typmod);
 
@@ -366,7 +374,8 @@ AdjustTimestampForTypmod(Timestamp *time, int32 typmod)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				  errmsg("timestamp(%d) precision must be between %d and %d",
-						 typmod, 0, MAX_TIMESTAMP_PRECISION)));
+						 typmod, 0, MAX_TIMESTAMP_PRECISION),
+								 errOmitLocation(true)));
 
 		/*
 		 * Note: this round-to-nearest code is not completely consistent about
@@ -430,7 +439,8 @@ timestamptz_in(PG_FUNCTION_ARGS)
 			if (tm2timestamp(tm, fsec, &tz, &result) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range: \"%s\"", str)));
+						 errmsg("timestamp out of range: \"%s\"", str),
+								 errOmitLocation(true)));
 			break;
 
 		case DTK_EPOCH:
@@ -448,7 +458,8 @@ timestamptz_in(PG_FUNCTION_ARGS)
 		case DTK_INVALID:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			  errmsg("date/time value \"%s\" is no longer supported", str)));
+			  errmsg("date/time value \"%s\" is no longer supported", str),
+						 errOmitLocation(true)));
 
 			TIMESTAMP_NOEND(result);
 			break;
@@ -486,7 +497,8 @@ timestamptz_out(PG_FUNCTION_ARGS)
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+				 errmsg("timestamp out of range"),
+						 errOmitLocation(true)));
 
 	result = pstrdup(buf);
 	PG_RETURN_CSTRING(result);
@@ -526,7 +538,8 @@ timestamptz_recv(PG_FUNCTION_ARGS)
 	else if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+				 errmsg("timestamp out of range"),
+						 errOmitLocation(true)));
 
 	AdjustTimestampForTypmod(&timestamp, typmod);
 
@@ -653,13 +666,15 @@ interval_in(PG_FUNCTION_ARGS)
 			if (tm2interval(tm, fsec, result) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("interval out of range")));
+						 errmsg("interval out of range"),
+								 errOmitLocation(true)));
 			break;
 
 		case DTK_INVALID:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			  errmsg("date/time value \"%s\" is no longer supported", str)));
+			  errmsg("date/time value \"%s\" is no longer supported", str),
+						 errOmitLocation(true)));
 			break;
 
 		default:
@@ -782,7 +797,8 @@ intervaltypmodin(PG_FUNCTION_ARGS)
 			default:
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("invalid INTERVAL type modifier")));
+						 errmsg("invalid INTERVAL type modifier"),
+								 errOmitLocation(true)));
 		}
 	}
 
@@ -799,13 +815,15 @@ intervaltypmodin(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("INTERVAL(%d) precision must not be negative",
-							tl[1])));
+							tl[1]),
+									 errOmitLocation(true)));
 		if (tl[1] > MAX_INTERVAL_PRECISION)
 		{
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 			  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d",
-					 tl[1], MAX_INTERVAL_PRECISION)));
+					 tl[1], MAX_INTERVAL_PRECISION),
+							 errOmitLocation(true)));
 			typmod = INTERVAL_TYPMOD(MAX_INTERVAL_PRECISION, tl[0]);
 		}
 		else
@@ -815,7 +833,8 @@ intervaltypmodin(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid INTERVAL type modifier")));
+				 errmsg("invalid INTERVAL type modifier"),
+						 errOmitLocation(true)));
 		typmod = 0;				/* keep compiler quiet */
 	}
 
@@ -1097,7 +1116,8 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				   errmsg("interval(%d) precision must be between %d and %d",
-						  precision, 0, MAX_INTERVAL_PRECISION)));
+						  precision, 0, MAX_INTERVAL_PRECISION),
+									 errOmitLocation(true)));
 
 			/*
 			 * Note: this round-to-nearest code is not completely consistent
@@ -2308,7 +2328,8 @@ timestamp_mi(PG_FUNCTION_ARGS)
 	if (TIMESTAMP_NOT_FINITE(dt1) || TIMESTAMP_NOT_FINITE(dt2))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("cannot subtract infinite timestamps")));
+				 errmsg("cannot subtract infinite timestamps"),
+						 errOmitLocation(true)));
 
 	result->time = dt1 - dt2;
 
@@ -2532,7 +2553,8 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 			if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								 errOmitLocation(true)));
 
 			tm->tm_mon += span->month;
 			if (tm->tm_mon > MONTHS_PER_YEAR)
@@ -2553,7 +2575,8 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								 errOmitLocation(true)));
 		}
 
 		if (span->day != 0)
@@ -2566,7 +2589,8 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 			if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								 errOmitLocation(true)));
 
 			/* Add days by converting to and from julian */
 			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
@@ -2575,7 +2599,8 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								 errOmitLocation(true)));
 		}
 
 		timestamp += span->time;
@@ -2633,7 +2658,8 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 			if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								 errOmitLocation(true)));
 
 			tm->tm_mon += span->month;
 			if (tm->tm_mon > MONTHS_PER_YEAR)
@@ -2656,7 +2682,8 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 			if (tm2timestamp(tm, fsec, &tz, &timestamp) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								 errOmitLocation(true)));
 		}
 
 		if (span->day != 0)
@@ -2669,7 +2696,8 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 			if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								 errOmitLocation(true)));
 
 			/* Add days by converting to and from julian */
 			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
@@ -2680,7 +2708,8 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 			if (tm2timestamp(tm, fsec, &tz, &timestamp) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								 errOmitLocation(true)));
 		}
 
 		timestamp += span->time;
@@ -2872,7 +2901,8 @@ interval_div(PG_FUNCTION_ARGS)
 	if (factor == 0.0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
-				 errmsg("division by zero")));
+				 errmsg("division by zero"),
+						 errOmitLocation(true)));
 
 	result->month = (int32) (span->month / factor);
 	result->day = (int32) (span->day / factor);
@@ -3150,12 +3180,14 @@ timestamp_age(PG_FUNCTION_ARGS)
 		if (tm2interval(tm, fsec, result) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("interval out of range")));
+					 errmsg("interval out of range"),
+							 errOmitLocation(true)));
 	}
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+				 errmsg("timestamp out of range"),
+						 errOmitLocation(true)));
 
 	PG_RETURN_INTERVAL_P(result);
 }
@@ -3280,12 +3312,14 @@ timestamptz_age(PG_FUNCTION_ARGS)
 		if (tm2interval(tm, fsec, result) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("interval out of range")));
+					 errmsg("interval out of range"),
+							 errOmitLocation(true)));
 	}
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+				 errmsg("timestamp out of range"),
+						 errOmitLocation(true)));
 
 	PG_RETURN_INTERVAL_P(result);
 }
@@ -3341,7 +3375,8 @@ text_timestamp(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 				 errmsg("invalid input syntax for type timestamp: \"%s\"",
 						DatumGetCString(DirectFunctionCall1(textout,
-												   PointerGetDatum(str))))));
+												   PointerGetDatum(str)))),
+															 errOmitLocation(true)));
 
 	sp = VARDATA(str);
 	dp = dstr;
@@ -3401,7 +3436,8 @@ text_timestamptz(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 				 errmsg("invalid input syntax for type timestamp with time zone: \"%s\"",
 						DatumGetCString(DirectFunctionCall1(textout,
-												   PointerGetDatum(str))))));
+												   PointerGetDatum(str)))),
+															 errOmitLocation(true)));
 
 	sp = VARDATA(str);
 	dp = dstr;
@@ -3462,7 +3498,8 @@ text_interval(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 				 errmsg("invalid input syntax for type interval: \"%s\"",
 						DatumGetCString(DirectFunctionCall1(textout,
-												   PointerGetDatum(str))))));
+												   PointerGetDatum(str)))),
+															 errOmitLocation(true)));
 
 	sp = VARDATA(str);
 	dp = dstr;
@@ -3507,7 +3544,8 @@ timestamp_trunc(PG_FUNCTION_ARGS)
 		if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+					 errmsg("timestamp out of range"),
+							 errOmitLocation(true)));
 
 		switch (val)
 		{
@@ -3588,21 +3626,24 @@ timestamp_trunc(PG_FUNCTION_ARGS)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("timestamp units \"%s\" not supported",
-								lowunits)));
+								lowunits),
+										 errOmitLocation(true)));
 				result = 0;
 		}
 
 		if (tm2timestamp(tm, fsec, NULL, &result) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+					 errmsg("timestamp out of range"),
+							 errOmitLocation(true)));
 	}
 	else
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("timestamp units \"%s\" not recognized",
-						lowunits)));
+						lowunits),
+								 errOmitLocation(true)));
 		result = 0;
 	}
 
@@ -3642,7 +3683,8 @@ timestamptz_trunc(PG_FUNCTION_ARGS)
 		if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+					 errmsg("timestamp out of range"),
+							 errOmitLocation(true)));
 
 		switch (val)
 		{
@@ -3743,7 +3785,8 @@ timestamptz_trunc(PG_FUNCTION_ARGS)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("timestamp with time zone units \"%s\" not "
-								"supported", lowunits)));
+								"supported", lowunits),
+										 errOmitLocation(true)));
 				result = 0;
 		}
 
@@ -3753,14 +3796,16 @@ timestamptz_trunc(PG_FUNCTION_ARGS)
 		if (tm2timestamp(tm, fsec, &tz, &result) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+					 errmsg("timestamp out of range"),
+							 errOmitLocation(true)));
 	}
 	else
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 			   errmsg("timestamp with time zone units \"%s\" not recognized",
-					  lowunits)));
+					  lowunits),
+								 errOmitLocation(true)));
 		result = 0;
 	}
 
@@ -3840,13 +3885,15 @@ interval_trunc(PG_FUNCTION_ARGS)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("interval units \"%s\" not supported",
-									lowunits)));
+									lowunits),
+											 errOmitLocation(true)));
 			}
 
 			if (tm2interval(tm, fsec, result) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("interval out of range")));
+						 errmsg("interval out of range"),
+								 errOmitLocation(true)));
 		}
 		else
 			elog(ERROR, "could not convert interval to tm");
@@ -3856,7 +3903,8 @@ interval_trunc(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("interval units \"%s\" not recognized",
-						lowunits)));
+						lowunits),
+								 errOmitLocation(true)));
 	}
 
 	PG_RETURN_INTERVAL_P(result);
@@ -4066,7 +4114,8 @@ timestamp_part(PG_FUNCTION_ARGS)
 		if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+					 errmsg("timestamp out of range"),
+							 errOmitLocation(true)));
 
 		switch (val)
 		{
@@ -4203,14 +4252,16 @@ timestamp_part(PG_FUNCTION_ARGS)
 					if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
 						ereport(ERROR,
 								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-								 errmsg("timestamp out of range")));
+								 errmsg("timestamp out of range"),
+										 errOmitLocation(true)));
 
 					tz = DetermineTimeZoneOffset(tm, session_timezone);
 
 					if (tm2timestamp(tm, fsec, &tz, &timestamptz) != 0)
 						ereport(ERROR,
 								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-								 errmsg("timestamp out of range")));
+								 errmsg("timestamp out of range"),
+										 errOmitLocation(true)));
 
 #ifdef HAVE_INT64_TIMESTAMP
 					result = (timestamptz - SetEpochTimestamp()) / 1000000.0;
@@ -4224,7 +4275,8 @@ timestamp_part(PG_FUNCTION_ARGS)
 				if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("timestamp out of range")));
+							 errmsg("timestamp out of range"),
+									 errOmitLocation(true)));
 				result = j2day(date2j(tm->tm_year, tm->tm_mon, tm->tm_mday));
 				if (val == DTK_ISODOW && result == 0)
 					result = 7;
@@ -4234,7 +4286,8 @@ timestamp_part(PG_FUNCTION_ARGS)
 				if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("timestamp out of range")));
+							 errmsg("timestamp out of range"),
+									 errOmitLocation(true)));
 				result = (date2j(tm->tm_year, tm->tm_mon, tm->tm_mday)
 						  - date2j(tm->tm_year, 1, 1) + 1);
 				break;
@@ -4243,7 +4296,8 @@ timestamp_part(PG_FUNCTION_ARGS)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("timestamp units \"%s\" not supported",
-								lowunits)));
+								lowunits),
+										 errOmitLocation(true)));
 				result = 0;
 		}
 
@@ -4252,7 +4306,8 @@ timestamp_part(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("timestamp units \"%s\" not recognized", lowunits)));
+				 errmsg("timestamp units \"%s\" not recognized", lowunits),
+						 errOmitLocation(true)));
 		result = 0;
 	}
 
@@ -4297,7 +4352,8 @@ timestamptz_part(PG_FUNCTION_ARGS)
 		if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+					 errmsg("timestamp out of range"),
+							 errOmitLocation(true)));
 
 		switch (val)
 		{
@@ -4415,7 +4471,8 @@ timestamptz_part(PG_FUNCTION_ARGS)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("timestamp with time zone units \"%s\" not supported",
-					   lowunits)));
+					   lowunits),
+								 errOmitLocation(true)));
 				result = 0;
 		}
 
@@ -4437,7 +4494,8 @@ timestamptz_part(PG_FUNCTION_ARGS)
 				if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("timestamp out of range")));
+							 errmsg("timestamp out of range"),
+									 errOmitLocation(true)));
 				result = j2day(date2j(tm->tm_year, tm->tm_mon, tm->tm_mday));
 				if (val == DTK_ISODOW && result == 0)
 					result = 7;
@@ -4447,7 +4505,8 @@ timestamptz_part(PG_FUNCTION_ARGS)
 				if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("timestamp out of range")));
+							 errmsg("timestamp out of range"),
+									 errOmitLocation(true)));
 				result = (date2j(tm->tm_year, tm->tm_mon, tm->tm_mday)
 						  - date2j(tm->tm_year, 1, 1) + 1);
 				break;
@@ -4456,7 +4515,8 @@ timestamptz_part(PG_FUNCTION_ARGS)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("timestamp with time zone units \"%s\" not supported",
-					   lowunits)));
+					   lowunits),
+								 errOmitLocation(true)));
 				result = 0;
 		}
 	}
@@ -4465,7 +4525,8 @@ timestamptz_part(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 			   errmsg("timestamp with time zone units \"%s\" not recognized",
-					  lowunits)));
+					  lowunits),
+								 errOmitLocation(true)));
 
 		result = 0;
 	}
@@ -4571,7 +4632,8 @@ interval_part(PG_FUNCTION_ARGS)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("interval units \"%s\" not supported",
-									lowunits)));
+									lowunits),
+											 errOmitLocation(true)));
 					result = 0;
 			}
 
@@ -4598,7 +4660,8 @@ interval_part(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("interval units \"%s\" not recognized",
-						lowunits)));
+						lowunits),
+								 errOmitLocation(true)));
 		result = 0;
 	}
 
@@ -4662,19 +4725,22 @@ timestamp_zone(PG_FUNCTION_ARGS)
 			if (timestamp2tm(timestamp, NULL, &tm, &fsec, NULL, tzp) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								 errOmitLocation(true)));
 			tz = DetermineTimeZoneOffset(&tm, tzp);
 			if (tm2timestamp(&tm, fsec, &tz, &result) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("could not convert to time zone \"%s\"",
-								tzname)));
+								tzname),
+										 errOmitLocation(true)));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("time zone \"%s\" not recognized", tzname)));
+					 errmsg("time zone \"%s\" not recognized", tzname),
+							 errOmitLocation(true)));
 			result = 0;				/* keep compiler quiet */
 		}
 	}
@@ -4701,7 +4767,8 @@ timestamp_izone(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("interval time zone \"%s\" must not specify month",
 						DatumGetCString(DirectFunctionCall1(interval_out,
-												  PointerGetDatum(zone))))));
+												  PointerGetDatum(zone)))),
+															 errOmitLocation(true)));
 
 #ifdef HAVE_INT64_TIMESTAMP
 	tz = zone->time / USECS_PER_SEC;
@@ -4741,14 +4808,16 @@ timestamp2timestamptz(Timestamp timestamp)
 		if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+					 errmsg("timestamp out of range"),
+							 errOmitLocation(true)));
 
 		tz = DetermineTimeZoneOffset(tm, session_timezone);
 
 		if (tm2timestamp(tm, fsec, &tz, &result) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+					 errmsg("timestamp out of range"),
+							 errOmitLocation(true)));
 	}
 
 	return result;
@@ -4775,11 +4844,13 @@ timestamptz_timestamp(PG_FUNCTION_ARGS)
 		if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+					 errmsg("timestamp out of range"),
+							 errOmitLocation(true)));
 		if (tm2timestamp(tm, fsec, NULL, &result) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
+					 errmsg("timestamp out of range"),
+							 errOmitLocation(true)));
 	}
 	PG_RETURN_TIMESTAMP(result);
 }
@@ -4836,7 +4907,8 @@ timestamptz_zone(PG_FUNCTION_ARGS)
 			if (timestamp2tm(timestamp, &tz, &tm, &fsec, NULL, tzp) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								 errOmitLocation(true)));
 			if (tm2timestamp(&tm, fsec, NULL, &result) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -4847,7 +4919,8 @@ timestamptz_zone(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("time zone \"%s\" not recognized", tzname)));
+					 errmsg("time zone \"%s\" not recognized", tzname),
+							 errOmitLocation(true)));
 			result = 0;				/* keep compiler quiet */
 		}
 	}
@@ -4875,7 +4948,8 @@ timestamptz_izone(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("interval time zone \"%s\" must not specify month",
 						DatumGetCString(DirectFunctionCall1(interval_out,
-												  PointerGetDatum(zone))))));
+												  PointerGetDatum(zone)))),
+															 errOmitLocation(true)));
 
 #ifdef HAVE_INT64_TIMESTAMP
 	tz = -(zone->time / USECS_PER_SEC);
@@ -4934,7 +5008,8 @@ generate_series_timestamp(PG_FUNCTION_ARGS)
 		if (fctx->step_sign == 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("step size cannot equal zero")));
+					 errmsg("step size cannot equal zero"),
+							 errOmitLocation(true)));
 
 		funcctx->user_fctx = fctx;
 		MemoryContextSwitchTo(oldcontext);
@@ -5015,7 +5090,8 @@ generate_series_timestamptz(PG_FUNCTION_ARGS)
 		if (fctx->step_sign == 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("step size cannot equal zero")));
+					 errmsg("step size cannot equal zero"),
+							 errOmitLocation(true)));
 
 		funcctx->user_fctx = fctx;
 		MemoryContextSwitchTo(oldcontext);

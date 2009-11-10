@@ -92,7 +92,8 @@ boolin(PG_FUNCTION_ARGS)
 
 	ereport(ERROR,
 			(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-		   errmsg("invalid input syntax for type boolean: \"%s\"", in_str)));
+		   errmsg("invalid input syntax for type boolean: \"%s\"", in_str),
+		   errOmitLocation(true)));
 
 	/* not reached */
 	PG_RETURN_BOOL(false);

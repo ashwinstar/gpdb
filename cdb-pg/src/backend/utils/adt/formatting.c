@@ -2042,7 +2042,8 @@ from_char_seq_search(int *dest, char **src, char **array, int type, int max,
 				 errmsg("invalid value \"%s\" for \"%s\"",
 					    copy, node->key->name),
 				 errdetail("The given value did not match any of the allowed "
-					 	   "values for this field.")));
+					 	   "values for this field."),
+									 errOmitLocation(true)));
 	}
 	*src += len;
 	return len;
