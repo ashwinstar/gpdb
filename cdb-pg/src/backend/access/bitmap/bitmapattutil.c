@@ -201,12 +201,6 @@ _bitmap_create_lov_heapandindex(Relation rel,
 						 classObjectId, 0, false, false, true,
 						 false, false);
 	Assert(idxid == *lovIndexOid);
-
-	objAddr.classId = RelationRelationId;
-	objAddr.objectId = *lovIndexOid;
-	objAddr.objectSubId = 0 ;
-
-	recordDependencyOn(&objAddr, &referenced, DEPENDENCY_INTERNAL);
 }
 
 /*
