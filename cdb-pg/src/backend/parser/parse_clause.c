@@ -745,12 +745,14 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_TABLE),
 					 errmsg("relation \"%s.%s\" does not exist",
-							relation->schemaname, relation->relname)));
+							relation->schemaname, relation->relname),
+					 errOmitLocation(true)));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_TABLE),
 					 errmsg("relation \"%s\" does not exist",
-							relation->relname)));
+							relation->relname),
+					 errOmitLocation(true)));
 		PG_RE_THROW();
 	}
 	PG_END_TRY();

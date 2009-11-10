@@ -2223,7 +2223,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 										"named '%s' from parent table as the Greenplum Database data distribution key for this "
 										"table. ", inhname),
 								 errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
-								 		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
+								 		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew."),
+								 errOmitLocation(true)));
 						found = true;
 						break;
 					}
@@ -2262,7 +2263,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 									"named '%s' as the Greenplum Database data distribution key for this "
 									"table. ", column->colname),
 							 errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
-							 		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
+							 		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew."),
+							 errOmitLocation(true)));
 					break;
 				}
 
@@ -2403,7 +2405,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
 						 errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
-								key)));
+								key),
+						 errOmitLocation(true)));
 
 			policy->attrs[policy->nattrs++] = colindex;
 
@@ -2508,7 +2511,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 							 errhint("When there is both a PRIMARY KEY, and a "
 									"DISTRIBUTED BY clause, the DISTRIBUTED BY "
 									"clause must be equal to or a left-subset "
-									"of the PRIMARY KEY")));
+									"of the PRIMARY KEY"),
+							 errOmitLocation(true)));
 				}
 
 				i++;
@@ -9463,6 +9467,7 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 					 errmsg("column \"%s\" of relation \"%s\" does not exist",
 							origTarget->name,
 						 RelationGetRelationName(pstate->p_target_relation)),
+				     errOmitLocation(true),
 					 parser_errposition(pstate, origTarget->location)));
 
 		updateTargetListEntry(pstate, tle, origTarget->name,
@@ -10739,7 +10744,8 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
 						 errmsg("column \"%s\" named in DISTRIBUTED BY "
 								"clause does not exist",
-								key)));
+								key),
+						 errOmitLocation(true)));
 
 			policy->attrs[policy->nattrs++] = colindex;
 

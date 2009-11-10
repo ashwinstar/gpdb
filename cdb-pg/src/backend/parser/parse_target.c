@@ -791,6 +791,7 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 					errmsg("column \"%s\" of relation \"%s\" does not exist",
 						   name,
 						 RelationGetRelationName(pstate->p_target_relation)),
+						 errOmitLocation(true),
 						 parser_errposition(pstate, col->location)));
 
 			/*

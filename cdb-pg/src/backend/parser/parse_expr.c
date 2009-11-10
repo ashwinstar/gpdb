@@ -681,6 +681,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 								(errcode(ERRCODE_UNDEFINED_COLUMN),
 								 errmsg("column \"%s\" does not exist",
 										name),
+								 errOmitLocation(true),
 								 parser_errposition(pstate, cref->location)));
 				}
 				break;

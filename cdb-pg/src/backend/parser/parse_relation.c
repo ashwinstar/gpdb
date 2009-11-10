@@ -375,6 +375,7 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 						(errcode(ERRCODE_AMBIGUOUS_COLUMN),
 						 errmsg("column reference \"%s\" is ambiguous",
 								colname),
+						 errOmitLocation(true),
 						 parser_errposition(pstate, location)));
 			result = (Node *) make_var(pstate, rte, attnum);
 			/* Require read access */
@@ -447,6 +448,7 @@ colNameToVar(ParseState *pstate, char *colname, bool localonly,
 							(errcode(ERRCODE_AMBIGUOUS_COLUMN),
 							 errmsg("column reference \"%s\" is ambiguous",
 									colname),
+							 errOmitLocation(true),
 							 parser_errposition(orig_pstate, location)));
 				result = newresult;
 			}
@@ -1671,7 +1673,8 @@ get_rte_attribute_type(RangeTblEntry *rte, AttrNumber attnum,
 							(errcode(ERRCODE_UNDEFINED_COLUMN),
 					errmsg("column \"%s\" of relation \"%s\" does not exist",
 						   NameStr(att_tup->attname),
-						   get_rel_name(rte->relid))));
+						   get_rel_name(rte->relid)),
+					errOmitLocation(true)));
 				*vartype = att_tup->atttypid;
 				*vartypmod = att_tup->atttypmod;
 				ReleaseSysCache(tp);
