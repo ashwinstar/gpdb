@@ -3907,7 +3907,7 @@ resetSessionForPrimaryGangLoss(void)
 		NeedResetSession = true;
 		NeedSessionIdChange = true;
 
-		if (ExistsCommittedTempNamespace())
+		if (CurrentResourceOwner != NULL && ExistsCommittedTempNamespace())
 		{
 			/*
 			 * Here we indicate we don't have a temporary table namespace
