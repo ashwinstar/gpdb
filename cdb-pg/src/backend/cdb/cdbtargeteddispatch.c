@@ -67,7 +67,7 @@ typedef struct PartitionKeyInfo
 typedef struct TargetedDispatchInfo
 {
 	bool directDispatch;
-	int contentId;
+	int contentId; /* -1 is a sentinel for "can go to any" */
 	bool haveProcessedAnyCalculations;
 } TargetedDispatchInfo;
 
@@ -351,23 +351,39 @@ FinalizeDirectDispatchDataForSlice(Node *node, ContentIdAssignmentData *data, bo
 	TargetedDispatchInfo *ddcr = (TargetedDispatchInfo*) lfirst(list_tail(data->sliceStack));
 	data->sliceStack = list_truncate(data->sliceStack, list_length(data->sliceStack) - 1);
 
-	if ( ddcr->haveProcessedAnyCalculations)
+
+	if ( is_plan_node(node))
 	{
-		if ( ddcr->directDispatch)
+		Plan *plan = (Plan*)node;
+
+		if ( ddcr->haveProcessedAnyCalculations)
 		{
-			if ( ddcr->contentId == -1 )
+			plan->directDispatch = ddcr->directDispatch;
+			if ( ddcr->directDispatch)
 			{
-				ddcr->contentId = geqo_randint(GpIdentity.numsegments - 1, 0);
-				if (  ShouldPrintTestMessages())
+				if ( ddcr->contentId == -1 )
 				{
-					elog(INFO, "DDCR learned no content dispatch is required");
+					ddcr->contentId = geqo_randint(GpIdentity.numsegments - 1, 0);
+					if (  ShouldPrintTestMessages())
+					{
+						elog(INFO, "DDCR learned no content dispatch is required");
+					}
 				}
+				else
+				{
+					if (  ShouldPrintTestMessages())
+					{
+						elog(INFO, "DDCR learned dispatch to content %d", ddcr->contentId);
+					}
+				}
+
+				plan->directDispatchContentId = ddcr->contentId;
 			}
 			else
 			{
 				if (  ShouldPrintTestMessages())
 				{
-					elog(INFO, "DDCR learned dispatch to content %d", ddcr->contentId);
+					elog(INFO, "DDCR learned full dispatch is required");
 				}
 			}
 		}
@@ -375,15 +391,9 @@ FinalizeDirectDispatchDataForSlice(Node *node, ContentIdAssignmentData *data, bo
 		{
 			if (  ShouldPrintTestMessages())
 			{
-				elog(INFO, "DDCR learned full dispatch is required");
+				elog(INFO, "DDCR learned no information: default to full dispatch");
 			}
-		}
-	}
-	else
-	{
-		if (  ShouldPrintTestMessages())
-		{
-			elog(INFO, "DDCR learned no information: default to full dispatch");
+			plan->directDispatch = false;
 		}
 	}
 
@@ -609,7 +619,12 @@ AssignContentIdsToPlanData(Query *query, Plan *plan)
 
 	/* Do it! */
 	AssignContentIdsToPlanData_Walker((Node*)plan, &data);
-	FinalizeDirectDispatchDataForSlice((Node*)plan, &data, true);
+
+	/** todo: this is hacky peek-ahead...find a cleaner way to do this */
+	if ( ! IsA(plan, SubPlan) && ! IsA(plan, Motion))
+	{
+		FinalizeDirectDispatchDataForSlice((Node*)plan, &data, true);
+	}
 
 	/* cleanup */
 	MemoryContextSwitchTo(oldContext);

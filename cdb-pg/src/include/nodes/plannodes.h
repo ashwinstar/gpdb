@@ -110,6 +110,13 @@ typedef struct Plan
 
 	/*
 	 * CDB: if we're going to direct dispatch, point it at a particular id.
+	 *
+	 * For motion nodes, this direct dispatch data is for the slice rooted at the
+	 *   motion node (the sending side!)
+	 * For other nodes, it is for the slice rooted at this plan so it must be a root
+	 *   plan for a query
+	 * Note that for nodes that are internal to a slice then this data is not
+	 *   set.
 	 */
 	bool		directDispatch;
 	uint32		directDispatchContentId;

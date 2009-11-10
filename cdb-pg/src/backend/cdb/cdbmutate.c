@@ -239,6 +239,7 @@ apply_motion(Plan *plan, Query *query)
     GpPolicy			*targetPolicy = NULL;
     GpPolicyType		targetPolicyType = POLICYTYPE_ENTRY;
 	ApplyMotionState	state;
+	bool needToAssignDirectDispatchContentIds = false;
 
     /* Initialize mutator context. */
     state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
@@ -480,8 +481,7 @@ apply_motion(Plan *plan, Query *query)
                     Insist(focusPlan(plan, true, false, false));
 			}
 			
-			AssignContentIdsToPlanData(query, plan);
-			
+			needToAssignDirectDispatchContentIds = gp_enable_direct_dispatch;
 			break;
 
 		case CMD_INSERT:
@@ -757,8 +757,7 @@ apply_motion(Plan *plan, Query *query)
 								));
 				}
 
-				/* figure out if we can run on a reduced set of nodes */
-				AssignContentIdsToPlanData(query, plan);
+				needToAssignDirectDispatchContentIds = gp_enable_direct_dispatch;
 			}
 
 			/* Target table is not distributed.  Must be in entry db. */
@@ -787,6 +786,12 @@ apply_motion(Plan *plan, Query *query)
 	}
 
 	result = (Plan *) apply_motion_mutator((Node *) plan, &state);
+
+	if ( needToAssignDirectDispatchContentIds )
+	{
+		/* figure out if we can run on a reduced set of nodes */
+		AssignContentIdsToPlanData(query, result);
+	}
 
 	Assert(result->nMotionNodes == state.nextMotionID - 1);
     Assert(result->nInitPlans == list_length(state.initPlans));
@@ -1239,7 +1244,7 @@ void add_slice_to_motion(Motion *motion,
 			}
 			break;
 		default:
-			Assert(!"Invalide motion type");
+			Assert(!"Invalid motion type");
 			motion->plan.flow = NULL;
 			break;
 	}
