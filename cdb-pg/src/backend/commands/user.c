@@ -274,10 +274,11 @@ CreateRole(CreateRoleStmt *stmt)
 		/* MPP-6926: resource queue required -- use default queue  */
 		if (gp_enable_default_resource_queues)
 		{
-			ereport(NOTICE,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("resource queue required -- using default resource queue \"%s\"",
-						GP_DEFAULT_RESOURCE_QUEUE_NAME)));
+			if (Gp_role == GP_ROLE_DISPATCH)
+				ereport(NOTICE,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("resource queue required -- using default resource queue \"%s\"",
+								GP_DEFAULT_RESOURCE_QUEUE_NAME)));
 
 			resqueue = pstrdup(GP_DEFAULT_RESOURCE_QUEUE_NAME);
 		}
