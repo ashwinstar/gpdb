@@ -25,4 +25,9 @@ objoid|classoid|objsubid|description
 3121|1255|0|user privilege on server by user oid, server oid
 3122|1255|0|current user privilege on server by server name
 3123|1255|0|current user privilege on server by server oid
+820|1255|0|returns the currently executing query
+821|1255|0|list of SQL keywords
+822|1255|0|returns the type of the argument
+2878|1255|0|terminate a server process
+2971|1255|0|convert boolean to text
 \.

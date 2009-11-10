@@ -24,4 +24,9 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 3122|has_server_privilege|11|10|12|f|f|t|f|s|2|16|f|25 25|\N|\N|\N|has_server_privilege_name|-|\N
 3123|has_server_privilege|11|10|12|f|f|t|f|s|2|16|f|26 25|\N|\N|\N|has_server_privilege_id|-|\N
 2897|gpdb_fdw_validator|11|10|12|f|f|t|f|i|2|16|f|1009 26|\N|\N|\N|gpdb_fdw_validator|-|\N
+820|current_query|11|10|12|f|f|f|f|v|0|25|f||\N|\N|\N|current_query|-|\N
+821|pg_get_keywords|11|10|12|f|f|t|t|s|0|2249|f||{25,18,25}|{o,o,o}|{word,catcode,catdesc}|pg_get_keywords|-|\N
+822|pg_typeof|11|10|12|f|f|f|f|s|1|2206|f|2276|\N|\N|\N|pg_typeof|-|\N
+2878|pg_terminate_backend|11|10|12|f|f|t|f|v|1|16|f|23|\N|\N|\N|pg_terminate_backend|-|\N
+2971|text|11|10|12|f|f|t|f|i|1|25|f|16|\N|\N|\N|booltext|-|\N
 \.

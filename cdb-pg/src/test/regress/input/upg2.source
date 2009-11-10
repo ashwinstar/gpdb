@@ -557,6 +557,12 @@ insert into public.pg_attribute
   from pg_catalog.pg_attribute a
   where (attrelid, attnum) in ( ('public.pg_exttable'::regclass, 10) );
 update public.pg_class set relnatts=10 where oid = 'pg_catalog.pg_exttable'::regclass;
+update public.pg_proc set prosrc = 'texteq' where oid = 2162;
+update public.pg_proc set prosrc = 'texteq' where oid = 2176;
+update public.pg_proc set prosrc = 'textne' where oid = 2165;
+update public.pg_proc set prosrc = 'textne' where oid = 2179;
+update public.pg_operator set oprcode = 'pg_catalog.texteq'::regproc where oid = 2316;
+update public.pg_operator set oprcode = 'pg_catalog.textne'::regproc where oid = 2319;
 
 --
 -- 8. Compare upgraded 33 to actual 34
