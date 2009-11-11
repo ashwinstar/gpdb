@@ -35,9 +35,9 @@ select lanname, lanispl, lanpltrusted from pg_language;
 --    the segments (but perhaps not desirable?)
 --
 CREATE EXTERNAL WEB TABLE env_segment(var text, value text) 
-EXECUTE 'env | grep "[^=]*=[^=]*"' format 'text' (delimiter '=');
+EXECUTE 'env | grep "^[^=]*=[^=]*$"' format 'text' (delimiter '=');
 CREATE EXTERNAL WEB TABLE env_master(var text, value text) 
-EXECUTE 'env | grep "[^=]*=[^=]*"' on master format 'text' (delimiter '=');
+EXECUTE 'env | grep "^[^=]*=[^=]*$"' on master format 'text' (delimiter '=');
 CREATE VIEW env AS
   SELECT gp_execution_segment(), * FROM env_segment
   UNION ALL
