@@ -63,7 +63,8 @@ ConversionCreate(const char *conname, Oid connamespace,
 							 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("conversion \"%s\" already exists", conname)));
+				 errmsg("conversion \"%s\" already exists", conname),
+						   errOmitLocation(true)));
 
 	if (def)
 	{
@@ -78,7 +79,8 @@ ConversionCreate(const char *conname, Oid connamespace,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("default conversion for %s to %s already exists",
 							pg_encoding_to_char(conforencoding),
-							pg_encoding_to_char(contoencoding))));
+							pg_encoding_to_char(contoencoding)),
+									   errOmitLocation(true)));
 	}
 
 	/* open pg_conversion */
@@ -316,7 +318,8 @@ pg_convert_using(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("conversion \"%s\" does not exist",
-						NameListToString(parsed_name))));
+						NameListToString(parsed_name)),
+								   errOmitLocation(true)));
 
 	tuple = SearchSysCache(CONOID,
 						   ObjectIdGetDatum(convoid),

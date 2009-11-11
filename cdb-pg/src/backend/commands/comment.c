@@ -1128,7 +1128,8 @@ CommentConversion(List *qualname, char *comment)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("conversion \"%s\" does not exist",
-						NameListToString(qualname))));
+						NameListToString(qualname)),
+				 errOmitLocation(true)));
 
 	/* Check object security */
 	if (!pg_conversion_ownercheck(conversionOid, GetUserId()))

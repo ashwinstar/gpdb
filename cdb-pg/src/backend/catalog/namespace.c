@@ -269,7 +269,8 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 			if (strcmp(newRelation->schemaname,namespaceName)!=0)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					  errmsg("temporary tables may not specify a schema name")));
+					  errmsg("temporary tables may not specify a schema name"),
+							   errOmitLocation(true)));
 		}
 		/* Initialize temp namespace if first time through */
 		if (!OidIsValid(myTempNamespace))
@@ -295,7 +296,8 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
 					 errmsg("schema \"%s\" does not exist",
-							newRelation->schemaname)));
+							newRelation->schemaname),
+									   errOmitLocation(true)));
 		/* we do not check for USAGE rights here! */
 	}
 	else
@@ -312,7 +314,8 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 		if (!OidIsValid(namespaceId))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
-					 errmsg("no schema has been selected to create in")));
+					 errmsg("no schema has been selected to create in"),
+							   errOmitLocation(true)));
 	}
 
 	/* Note: callers will check for CREATE rights when appropriate */

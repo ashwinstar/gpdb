@@ -501,7 +501,8 @@ interpret_AS_clause(Oid languageOid, const char *languageName, List *as,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("only one AS item needed for language \"%s\"",
-							languageName)));
+							languageName),
+					 errOmitLocation(true)));
 	}
 }
 
@@ -615,7 +616,8 @@ CreateFunction(CreateFunctionStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("function result type must be %s because of OUT parameters",
-							format_type_be(requiredResultType))));
+							format_type_be(requiredResultType)),
+					 errOmitLocation(true)));
 		stmt->shelltypeOid = prorettype;
 	}
 	else if (OidIsValid(requiredResultType))

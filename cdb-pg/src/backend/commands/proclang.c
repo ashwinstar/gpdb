@@ -68,7 +68,8 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to create procedural language")));
+				 errmsg("must be superuser to create procedural language"),
+						   errOmitLocation(true)));
 
 	/*
 	 * Translate the language name and check that this language doesn't
@@ -81,7 +82,8 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 							 0, 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("language \"%s\" already exists", languageName)));
+				 errmsg("language \"%s\" already exists", languageName),
+						   errOmitLocation(true)));
 
 	/*
 	 * If we have template information for the language, ignore the supplied
@@ -97,7 +99,8 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 		if (stmt->plhandler)
 			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
-					(errmsg("using pg_pltemplate information instead of CREATE LANGUAGE parameters")));
+					(errmsg("using pg_pltemplate information instead of CREATE LANGUAGE parameters"),
+							   errOmitLocation(true)));
 
 		/*
 		 * Find or create the handler function, which we force to be in the
@@ -113,7 +116,8 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				  errmsg("function %s must return type \"language_handler\"",
-						 NameListToString(funcname))));
+						 NameListToString(funcname)),
+								   errOmitLocation(true)));
 		}
 		else
 		{
@@ -189,7 +193,8 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("unsupported language \"%s\"",
 							languageName),
-					 errhint("The supported languages are listed in the pg_pltemplate system catalog.")));
+					 errhint("The supported languages are listed in the pg_pltemplate system catalog."),
+							   errOmitLocation(true)));
 
 		/*
 		 * Lookup the PL handler function and check that it is of the expected
@@ -210,14 +215,16 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 				ereport(WARNING,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("changing return type of function %s from \"opaque\" to \"language_handler\"",
-								NameListToString(stmt->plhandler))));
+								NameListToString(stmt->plhandler)),
+										   errOmitLocation(true)));
 				SetFunctionReturnType(handlerOid, LANGUAGE_HANDLEROID);
 			}
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				  errmsg("function %s must return type \"language_handler\"",
-						 NameListToString(stmt->plhandler))));
+						 NameListToString(stmt->plhandler)),
+								   errOmitLocation(true)));
 		}
 
 		/* validate the validator function */
@@ -398,7 +405,8 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to drop procedural language")));
+				 errmsg("must be superuser to drop procedural language"),
+						   errOmitLocation(true)));
 
 	/*
 	 * Translate the language name, check that the language exists
@@ -413,11 +421,13 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 		if (!stmt->missing_ok)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("language \"%s\" does not exist", languageName)));
+					 errmsg("language \"%s\" does not exist", languageName),
+							   errOmitLocation(true)));
 		else
 			ereport(NOTICE,
 					(errmsg("language \"%s\" does not exist, skipping",
-							languageName)));
+							languageName),
+									   errOmitLocation(true)));
 
 		return;
 	}
@@ -484,7 +494,8 @@ RenameLanguage(const char *oldname, const char *newname)
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("language \"%s\" does not exist", oldname)));
+				 errmsg("language \"%s\" does not exist", oldname),
+						   errOmitLocation(true)));
 
 	/* make sure the new name doesn't exist */
 	if (SearchSysCacheExists(LANGNAME,
@@ -492,13 +503,15 @@ RenameLanguage(const char *oldname, const char *newname)
 							 0, 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("language \"%s\" already exists", newname)));
+				 errmsg("language \"%s\" already exists", newname),
+						   errOmitLocation(true)));
 
 	/* must be superuser, since we do not have owners for PLs */
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to rename procedural language")));
+				 errmsg("must be superuser to rename procedural language"),
+						   errOmitLocation(true)));
 
 	/* rename */
 	namestrcpy(&(((Form_pg_language) GETSTRUCT(tup))->lanname), newname);

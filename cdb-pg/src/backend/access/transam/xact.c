@@ -3706,7 +3706,8 @@ PreventTransactionChain(void *stmtNode, const char *stmtType)
 				(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
 				 /* translator: %s represents an SQL statement name */
 				 errmsg("%s cannot run inside a transaction block",
-						stmtType)));
+						stmtType),
+								   errOmitLocation(true)));
 
 	/*
 	 * subtransaction?
@@ -3716,7 +3717,8 @@ PreventTransactionChain(void *stmtNode, const char *stmtType)
 				(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
 				 /* translator: %s represents an SQL statement name */
 				 errmsg("%s cannot run inside a subtransaction",
-						stmtType)));
+						stmtType),
+								   errOmitLocation(true)));
 
 	/*
 	 * Are we inside a function call?  If the statement's parameter block was
@@ -3727,7 +3729,8 @@ PreventTransactionChain(void *stmtNode, const char *stmtType)
 		ereport(ERROR,
 				(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
 				 /* translator: %s represents an SQL statement name */
-				 errmsg("%s cannot be executed from a function", stmtType)));
+				 errmsg("%s cannot be executed from a function", stmtType),
+						   errOmitLocation(true)));
 
 	/* If we got past IsTransactionBlock test, should be in default state */
 	if (CurrentTransactionState->blockState != TBLOCK_DEFAULT &&
@@ -4419,7 +4422,8 @@ ReleaseSavepoint(List *options)
 		case TBLOCK_INPROGRESS:
 			ereport(ERROR,
 					(errcode(ERRCODE_S_E_INVALID_SPECIFICATION),
-					 errmsg("no such savepoint")));
+					 errmsg("no such savepoint"),
+							   errOmitLocation(true)));
 			break;
 
 			/*

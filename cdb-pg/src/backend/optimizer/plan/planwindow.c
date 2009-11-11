@@ -663,7 +663,8 @@ check_ntile_argument(List *args, WindowSpec *win_spec, List *tlist)
 			if (tlist_lc == NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("PARTITION BY expression not appear in the targetlist.")));
+						 errmsg("PARTITION BY expression not appear in the targetlist."),
+								   errOmitLocation(true)));
 		}
 	}
 
@@ -674,7 +675,8 @@ check_ntile_argument(List *args, WindowSpec *win_spec, List *tlist)
 		if (ntile_argument_walker(node, part_tlist))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("NTILE function argument expression should be in PARTITION BY.")));
+					 errmsg("NTILE function argument expression should be in PARTITION BY."),
+							   errOmitLocation(true)));
 	}
 }
 
@@ -737,7 +739,8 @@ static Node * window_tlist_mutator(Node *node, WindowContext *context)
 			{
 				ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("Call to window function may not reference outer queries.")));									
+					 errmsg("Call to window function may not reference outer queries."),
+							   errOmitLocation(true)));
 			}
 		}
 		return (Node *) copyObject(node); /* Exact copy of the Var */
@@ -756,7 +759,8 @@ static Node * window_tlist_mutator(Node *node, WindowContext *context)
 				(func_volatile(expr->funcid) == PROVOLATILE_VOLATILE))
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("NTILE function argument should not use volatile functions.")));
+						 errmsg("NTILE function argument should not use volatile functions."),
+								   errOmitLocation(true)));
 		}
 	}
 	
@@ -802,7 +806,8 @@ static Node * window_tlist_mutator(Node *node, WindowContext *context)
 		{
 			ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("Window function calls may not be nested.")));					
+				 errmsg("Window function calls may not be nested."),
+						   errOmitLocation(true)));
 		}
 	}
 	
@@ -1368,7 +1373,8 @@ static bool validateBound(Node *node, bool is_rows)
 	if ( isNeg )						
 		ereport(ERROR,
 				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-				 errmsg("%s parameter cannot be negative", is_rows ? "ROWS" : "RANGE")));
+				 errmsg("%s parameter cannot be negative", is_rows ? "ROWS" : "RANGE"),
+						   errOmitLocation(true)));
 	
 	ReleaseSysCache(tup);
 	ReleaseSysCache(typ);
@@ -1632,7 +1638,8 @@ static void set_window_keys(WindowContext *context, int wind_index)
 				ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("invalid window specification"),
-					 errhint("Only ordered windows may specify ROWS or RANGE framing.")));
+					 errhint("Only ordered windows may specify ROWS or RANGE framing."),
+							   errOmitLocation(true)));
 			}
 
 			sinfo->keylevel = -1;  /* No ordering key, just partition key. */
@@ -1708,7 +1715,8 @@ lookup_window_function(RefInfo *rinfo)
 	{
 		ereport(ERROR,
 			(errcode(ERRCODE_SYNTAX_ERROR),
-			 errmsg("can not call ordinary function, %s, as window function", NameStr(proform->proname))));
+			 errmsg("can not call ordinary function, %s, as window function", NameStr(proform->proname)),
+					   errOmitLocation(true)));
 	}
 	ReleaseSysCache(tuple);
 	

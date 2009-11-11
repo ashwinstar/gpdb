@@ -304,7 +304,7 @@ if(IsRejectLimitReached(cstate->cdbsreh)) \
 	ereport(ERROR, \
 			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
 			(errmsg(finalmsg) \
-			))); \
+			),errOmitLocation(true))); \
 }
 
 /*
@@ -801,12 +801,14 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 	if (!csv_mode && quote != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("quote available only in CSV mode")));
+				errmsg("quote available only in CSV mode"),
+				errOmitLocation(true)));
 
 	if (csv_mode && strlen(quote) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("quote must be a single character")));
+				errmsg("quote must be a single character"),
+				errOmitLocation(true)));
 
 	if (csv_mode && strchr(null_print, quote[0]) != NULL)
 		ereport(ERROR,
@@ -824,7 +826,8 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 	if (csv_mode && strlen(escape) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("escape in CSV format must be a single character")));
+			errmsg("escape in CSV format must be a single character"),
+			errOmitLocation(true)));
 
 	if (!csv_mode &&
 		(strchr(escape, '\r') != NULL ||
@@ -1240,12 +1243,14 @@ DoCopy(const CopyStmt *stmt)
 		if (cstate->oids)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY (SELECT) WITH OIDS is not supported")));
+					 errmsg("COPY (SELECT) WITH OIDS is not supported"),
+					 errOmitLocation(true)));
 
 		if (query->into)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY (SELECT INTO) is not supported")));
+					 errmsg("COPY (SELECT INTO) is not supported"),
+					 errOmitLocation(true)));
 
 
 		/*
@@ -3415,11 +3420,13 @@ CopyFromDispatch(CopyState cstate)
 	if (cdbCopy->remote_data_err)
 		ereport(ERROR,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-				 errmsg("%s", cdbcopy_err.data)));
+				 errmsg("%s", cdbcopy_err.data),
+				 errOmitLocation(true)));
 	if (cdbCopy->io_errors)
 		ereport(ERROR,
 				(errcode(ERRCODE_IO_ERROR),
-				 errmsg("%s", cdbcopy_err.data)));
+				 errmsg("%s", cdbcopy_err.data),
+				 errOmitLocation(true)));
 
 	/*
 	 * switch back away from COPY error context callback. don't want line
@@ -4885,7 +4892,8 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 			if (cur == NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 errmsg("extra data after last expected column")));
+						 errmsg("extra data after last expected column"),
+						 errOmitLocation(true)));
 
 			attnum = lfirst_int(cur);
 			m = attnum - 1;
@@ -4935,13 +4943,15 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 					ereport(ERROR,
 							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 							 errmsg("missing data for column \"%s\"",
-									 NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname))));
+									 NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)),
+							 errOmitLocation(true)));
 
 				else if (attribute == 1 && attr_pre_len == 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 							 errmsg("missing data for column \"%s\", found empty data line",
-									 NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname))));
+									 NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)),
+							 errOmitLocation(true)));
 			}
 		}
 		else
@@ -4950,7 +4960,8 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 			if (cur == NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 errmsg("extra data after last expected column")));
+						 errmsg("extra data after last expected column"),
+						 errOmitLocation(true)));
 
 			if (*scan_end == delimc)	/* found a delimiter */
 			{
@@ -5250,7 +5261,8 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 			if(num_phys_attrs == 0 && input_len > 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 errmsg("extra data after last expected column")));
+						 errmsg("extra data after last expected column"),
+						 errOmitLocation(true)));
 
 			if (in_quote)
 			{
@@ -5262,7 +5274,8 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 				if(c != quotec)
 					ereport(ERROR,
 							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-							 errmsg("unterminated CSV quoted field")));
+							 errmsg("unterminated CSV quoted field"),
+							 errOmitLocation(true)));
 			}
 
 			/*
@@ -5280,13 +5293,15 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 					ereport(ERROR,
 							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 							 errmsg("missing data for column \"%s\"",
-									NameStr(attr[m + 1]->attname))));
+									NameStr(attr[m + 1]->attname)),
+							 errOmitLocation(true)));
 
 				else if (attribute == 1 && input_len == 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 							 errmsg("missing data for column \"%s\", found empty data line",
-									NameStr(attr[m + 1]->attname))));
+									NameStr(attr[m + 1]->attname)),
+							 errOmitLocation(true)));
 			}
 
 			break;
@@ -5319,7 +5334,8 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 			if (cur == NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 errmsg("extra data after last expected column")));
+						 errmsg("extra data after last expected column"),
+						 errOmitLocation(true)));
 
 			saw_quote = false;
 
@@ -5793,12 +5809,14 @@ CopyGetAttnums(TupleDesc tupDesc, Relation rel, List *attnamelist)
 					ereport(ERROR,
 							(errcode(ERRCODE_UNDEFINED_COLUMN),
 							 errmsg("column \"%s\" of relation \"%s\" does not exist",
-									name, RelationGetRelationName(rel))));
+									name, RelationGetRelationName(rel)),
+							 errOmitLocation(true)));
 				else
 					ereport(ERROR,
 							(errcode(ERRCODE_UNDEFINED_COLUMN),
 							 errmsg("column \"%s\" does not exist",
-									name)));
+									name),
+							 errOmitLocation(true)));
 			}
 			/* Check for duplicates */
 			if (list_member_int(attnums, attnum))

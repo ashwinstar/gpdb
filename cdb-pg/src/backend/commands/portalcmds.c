@@ -226,7 +226,8 @@ PerformPortalFetch(FetchStmt *stmt,
 	if (!stmt->portalname || stmt->portalname[0] == '\0')
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_CURSOR_NAME),
-				 errmsg("invalid cursor name: must not be empty")));
+				 errmsg("invalid cursor name: must not be empty"),
+						   errOmitLocation(true)));
 
 	/* get the portal from the portal name */
 	portal = GetPortalByName(stmt->portalname);
@@ -234,7 +235,8 @@ PerformPortalFetch(FetchStmt *stmt,
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_CURSOR),
-				 errmsg("cursor \"%s\" does not exist", stmt->portalname)));
+				 errmsg("cursor \"%s\" does not exist", stmt->portalname),
+						   errOmitLocation(true)));
 		return;					/* keep compiler happy */
 	}
 
@@ -271,7 +273,8 @@ PerformPortalClose(const char *name)
 	if (!name || name[0] == '\0')
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_CURSOR_NAME),
-				 errmsg("invalid cursor name: must not be empty")));
+				 errmsg("invalid cursor name: must not be empty"),
+						   errOmitLocation(true)));
 
 	/*
 	 * get the portal from the portal name
@@ -281,7 +284,8 @@ PerformPortalClose(const char *name)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_CURSOR),
-				 errmsg("cursor \"%s\" does not exist", name)));
+				 errmsg("cursor \"%s\" does not exist", name),
+						   errOmitLocation(true)));
 		return;					/* keep compiler happy */
 	}
 

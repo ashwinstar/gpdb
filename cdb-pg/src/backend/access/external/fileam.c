@@ -728,7 +728,7 @@ if (IsRejectLimitReached(pstate->cdbsreh)) \
 	ereport(ERROR, \
 			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
 			(errmsg(finalmsg) \
-			))); \
+			),errOmitLocation(true))); \
 }
 
 /*
@@ -1252,7 +1252,8 @@ open_external_readable_source(FileScanDesc scan)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not open \"%s\" for reading: %d %s",
-						scan->fs_uri, response_code, response_string)));
+						scan->fs_uri, response_code, response_string),
+				 errOmitLocation(true)));
 	}
 	else
 	{

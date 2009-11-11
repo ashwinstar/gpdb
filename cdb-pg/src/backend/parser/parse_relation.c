@@ -878,14 +878,16 @@ addRangeTableEntryForFunction(ParseState *pstate,
 		if (functypclass != TYPEFUNC_RECORD)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("a column definition list is only allowed for functions returning \"record\"")));
+					 errmsg("a column definition list is only allowed for functions returning \"record\""),
+							   errOmitLocation(true)));
 	}
 	else
 	{
 		if (functypclass == TYPEFUNC_RECORD)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("a column definition list is required for functions returning \"record\"")));
+					 errmsg("a column definition list is required for functions returning \"record\""),
+							   errOmitLocation(true)));
 	}
 
 	if (functypclass == TYPEFUNC_COMPOSITE)
@@ -920,7 +922,8 @@ addRangeTableEntryForFunction(ParseState *pstate,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						 errmsg("column \"%s\" cannot be declared SETOF",
-								attrname)));
+								attrname),
+										   errOmitLocation(true)));
 			eref->colnames = lappend(eref->colnames, makeString(attrname));
 			attrtype = typenameTypeId(pstate, n->typname);
 			attrtypmod = n->typname->typmod;
@@ -932,7 +935,8 @@ addRangeTableEntryForFunction(ParseState *pstate,
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 			 errmsg("function \"%s\" in FROM has unsupported return type %s",
-					funcname, format_type_be(funcrettype))));
+					funcname, format_type_be(funcrettype)),
+							   errOmitLocation(true)));
 
 	/*----------
 	 * Flags:
@@ -1001,7 +1005,8 @@ addRangeTableEntryForValues(ParseState *pstate,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
 				 errmsg("VALUES lists \"%s\" have %d columns available but %d columns specified",
-						refname, numcolumns, numaliases)));
+						refname, numcolumns, numaliases),
+								   errOmitLocation(true)));
 
 	rte->eref = eref;
 

@@ -2264,7 +2264,8 @@ heap_delete(Relation relation, ItemPointer tid,
 	if (RelationIsAoRows(relation) || RelationIsAoCols(relation))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Append-only tables are not updatable. Operation not permitted.")));
+				 errmsg("Append-only tables are not updatable. Operation not permitted."),
+				 errOmitLocation(true)));
 
 	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(tid));
 	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
@@ -2583,7 +2584,8 @@ heap_update(Relation relation, ItemPointer otid, HeapTuple newtup,
 	if (RelationIsAoRows(relation) || RelationIsAoCols(relation))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Append-only tables are not updatable. Operation not permitted.")));
+				 errmsg("Append-only tables are not updatable. Operation not permitted."),
+				 errOmitLocation(true)));
 
 	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(otid));
 	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);

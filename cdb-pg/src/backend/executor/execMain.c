@@ -2852,7 +2852,8 @@ ExecUpdate(TupleTableSlot *slot,
 					 errmsg("moving tuple from partition \"%s\" to "
 							"partition \"%s\" not supported",
 							get_rel_name(RelationGetRelid(resultRelationDesc)),
-							get_rel_name(targetid))));
+							get_rel_name(targetid)),
+					 errOmitLocation(true)));
 		}
 	}
 
@@ -3790,7 +3791,8 @@ OpenIntoRel(QueryDesc *queryDesc)
 	if (parseTree->intoOnCommit != ONCOMMIT_NOOP && !parseTree->into->istemp)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("ON COMMIT can only be used on temporary tables")));
+				 errmsg("ON COMMIT can only be used on temporary tables"),
+				 errOmitLocation(true)));
 
 	/* MPP specific stuff */
 	intoName = parseTree->into->relname;
@@ -4095,7 +4097,8 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 	if (!OidIsValid(targetid))
 		ereport(ERROR,
 				(errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY),
-				 errmsg("no partition for partitioning key")));
+				 errmsg("no partition for partitioning key"),
+				 errOmitLocation(true)));
 
 	if (estate->es_partition_state->result_partition_hash == NULL)
 	{

@@ -1909,12 +1909,14 @@ aclcheck_error(AclResult aclerr, AclObjectKind objectkind,
 		case ACLCHECK_NO_PRIV:
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg(no_priv_msg[objectkind], objectname)));
+					 errmsg(no_priv_msg[objectkind], objectname),
+					 errOmitLocation(true)));
 			break;
 		case ACLCHECK_NOT_OWNER:
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg(not_owner_msg[objectkind], objectname)));
+					 errmsg(not_owner_msg[objectkind], objectname),
+					 errOmitLocation(true)));
 			break;
 		default:
 			elog(ERROR, "unrecognized AclResult: %d", (int) aclerr);

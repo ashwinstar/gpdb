@@ -832,7 +832,8 @@ transformParamRef(ParseState *pstate, ParamRef *pref)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_PARAMETER),
 					 errmsg("there is no parameter $%d",
-							paramno)));
+							paramno),
+									   errOmitLocation(true)));
 		/* Okay to enlarge param array */
 		if (toppstate->p_paramtypes)
 			toppstate->p_paramtypes =

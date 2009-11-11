@@ -92,7 +92,8 @@ PrepareQuery(PrepareStmt *stmt)
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION),
-					 errmsg("utility statements cannot be prepared")));
+					 errmsg("utility statements cannot be prepared"),
+							   errOmitLocation(true)));
 			commandTag = NULL;	/* keep compiler quiet */
 			srctag = T_Query;
 			break;
@@ -199,12 +200,14 @@ ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
 		if (list_length(query_list) != 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("prepared statement is not a SELECT")));
+					 errmsg("prepared statement is not a SELECT"),
+							   errOmitLocation(true)));
 		query = (Query *) linitial(query_list);
 		if (query->commandType != CMD_SELECT)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("prepared statement is not a SELECT")));
+					 errmsg("prepared statement is not a SELECT"),
+							   errOmitLocation(true)));
 		query->into = copyObject(stmt->into);
 		query->intoOptions = copyObject(stmt->intoOptions);
 		query->intoOnCommit = stmt->into_on_commit;
@@ -351,7 +354,8 @@ StorePreparedStatement(const char *stmt_name,
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_PSTATEMENT),
 				 errmsg("prepared statement \"%s\" already exists",
-						stmt_name)));
+						stmt_name),
+								   errOmitLocation(true)));
 
 	/* Make a permanent memory context for the hashtable entry */
 	entrycxt = AllocSetContextCreate(TopMemoryContext,
@@ -423,7 +427,8 @@ FetchPreparedStatement(const char *stmt_name, bool throwError)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_PSTATEMENT),
 				 errmsg("prepared statement \"%s\" does not exist",
-						stmt_name)));
+						stmt_name),
+								   errOmitLocation(true)));
 
 	return entry;
 }
@@ -655,7 +660,8 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 				if (query->commandType != CMD_SELECT)
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-							 errmsg("prepared statement is not a SELECT")));
+							 errmsg("prepared statement is not a SELECT"),
+									   errOmitLocation(true)));
 
 				/* Copy the query so we can modify it */
 				query = copyObject(query);

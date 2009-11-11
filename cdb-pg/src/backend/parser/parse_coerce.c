@@ -1610,7 +1610,8 @@ enforce_generic_type_consistency(Oid *actual_arg_types,
 					 errmsg("argument declared \"anyarray\" is not consistent with argument declared \"anyelement\""),
 					 errdetail("%s versus %s",
 							   format_type_be(array_typeid),
-							   format_type_be(elem_typeid))));
+							   format_type_be(elem_typeid)),
+									   errOmitLocation(true)));
 		}
 	}
 	else if (!OidIsValid(elem_typeid))
@@ -1618,7 +1619,8 @@ enforce_generic_type_consistency(Oid *actual_arg_types,
 		/* Only way to get here is if all the generic args are UNKNOWN */
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("could not determine anyarray/anyelement type because input has type \"unknown\"")));
+				 errmsg("could not determine anyarray/anyelement type because input has type \"unknown\""),
+						   errOmitLocation(true)));
 	}
 
 	/*

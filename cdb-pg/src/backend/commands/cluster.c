@@ -148,7 +148,8 @@ cluster(ClusterStmt *stmt)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
 						 errmsg("there is no previously clustered index for table \"%s\"",
-								stmt->relation->relname)));
+								stmt->relation->relname),
+						 errOmitLocation(true)));
 		}
 		else
 		{
