@@ -289,7 +289,8 @@ cdbparallelize(Plan *plan,
 			ereport(ERROR, (
 					errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
 					errmsg(notyet),
-					errdetail("The query contains a correlated subquery.")
+					errdetail("The query contains a correlated subquery."),
+					errOmitLocation(true)
 			));
 		}
 		else if ( context->hasNonRootSubplan )
@@ -297,7 +298,8 @@ cdbparallelize(Plan *plan,
 			ereport(ERROR, (
 					errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
 					errmsg(notyet),
-					errdetail("The query contains a multi-row subquery.")
+					errdetail("The query contains a multi-row subquery."),
+					errOmitLocation(true)
 			));
 		}
 		
