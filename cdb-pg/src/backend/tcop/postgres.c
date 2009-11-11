@@ -3252,6 +3252,49 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
     write_stderr("\nUnexpected internal error: %s %d received signal %s\n\n",
                  pts, MyProcPid, signame);
 
+#ifndef __darwin__
+
+    /*
+     * re-raising the signal will dump core, but if we aren't going to re-raise,
+     * let's try an ugly way to get a core file:  Call gcore.
+     *
+     * On Linux gcore is a script that calls gdb, on Solaris it is a program,
+     * and doesn't require gdb be installed at all.
+     *
+     * OSX does not have gcore
+     *
+     * We could make this work on OSX:  Just write a tempfile ourselves, and call gdb -x tempfile -batch
+     *
+     * The tempfile should look like:
+     * attach $pid
+	 * gcore core.$pid
+	 * detach
+	 * quit
+     *
+     *
+     */
+    if (!gp_reraise_signal)
+    {
+    	char gcore_cmd[128];
+    	char gcore_result[256];
+    	int reslen = 0;
+    	FILE * fp;
+    	snprintf(gcore_cmd,128,"gcore %d",MyProcPid);
+    	fp = popen(gcore_cmd,"r");
+    	if (errno != 0)
+    	{
+			if (fp != NULL)
+				reslen = fread(gcore_result,1,255,fp);
+			if (reslen > 0)
+			{
+				write_stderr("\nCan't get core via gcore: %*.s\n",reslen,gcore_result);
+			}
+    	}
+    	pclose(fp);
+    }
+
+#endif
+
     errno = save_errno;
     ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
                     errFatalReturn(gp_reraise_signal),
