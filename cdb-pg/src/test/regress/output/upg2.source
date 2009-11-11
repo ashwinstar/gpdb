@@ -1603,6 +1603,7 @@ drop table
   public.gp_db_interfaces,
   public.gp_interfaces,
   public.pg_filespace,
+  public.pg_tablespace,
   public.pg_stat_last_operation;
 drop view
    public.pg_partitions_v33;
