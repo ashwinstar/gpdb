@@ -2107,7 +2107,8 @@ findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
 				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
 		/* translator: %s is name of a SQL construct, eg ORDER BY */
 				 errmsg("%s position %d is not in select list",
-						clauseText[clause], target_pos)));
+						clauseText[clause], target_pos),
+				 errOmitLocation(true)));
 	}
 
 	/*
