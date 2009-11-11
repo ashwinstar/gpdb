@@ -41,8 +41,7 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 
-static void PortalCleanupHelper(Portal portal, int *cleanupstate);
-
+static void PortalCleanupHelper(Portal portal, volatile int *cleanupstate);
 
 /*
  * PerformCursorOpen
@@ -309,11 +308,11 @@ PerformPortalClose(const char *name)
 void
 PortalCleanup(Portal portal)
 {
-	ResourceOwner   saveResourceOwner = CurrentResourceOwner;   /* save */
-    MemoryContext   saveContext = CurrentMemoryContext;         /* save */
-    int             cleanupstate = 0;
+	ResourceOwner	saveResourceOwner = CurrentResourceOwner;   /* save */
+	MemoryContext	saveContext = CurrentMemoryContext;         /* save */
+	volatile int	cleanupstate = 0;
 
-    Assert(portal);
+	Assert(portal);
 
 	/* We must make the portal's resource owner current */
 	CurrentResourceOwner = portal->resowner;
@@ -329,6 +328,22 @@ PortalCleanup(Portal portal)
 		CurrentResourceOwner = saveResourceOwner;           /* restore */
 		MemoryContextSwitchTo(saveContext);                 /* restore */
 
+		/*
+		 * If PortalCleanupHelper() threw an error -- it means that
+		 * ExecutorEnd() threw and error, which means that our gangs
+		 * may be sitting on the allocated-list without having been
+		 * properly free()ed.
+		 *
+		 * For cursor-queries with large numbers of slices, this
+		 * can "leak" a lot of resources on the segments.
+		 */
+		if (cleanupstate < 1 && Gp_role == GP_ROLE_DISPATCH)
+		{
+			cleanupstate = 1;
+			freeGangsForPortal((char *)portal->name);
+			cleanupPortalGangs(portal);
+		}
+
 		/* Sorry, can't dismiss this error. */
 		PortalSetStatus(portal, PORTAL_FAILED);
 
@@ -337,7 +352,7 @@ PortalCleanup(Portal portal)
 	PG_END_TRY();
 
 	CurrentResourceOwner = saveResourceOwner;                   /* restore */
-    MemoryContextSwitchTo(saveContext);                         /* restore */
+	MemoryContextSwitchTo(saveContext);                         /* restore */
 }                               /* PortalCleanup */
 
 /*
@@ -348,61 +363,57 @@ PortalCleanup(Portal portal)
  * The *cleanupstate arg can be used to remember what has been done.
  */
 static void
-PortalCleanupHelper(Portal portal, int *cleanupstate)
+PortalCleanupHelper(Portal portal, volatile int *cleanupstate)
 {
-    QueryDesc      *queryDesc = PortalGetQueryDesc(portal);
+	QueryDesc      *queryDesc = PortalGetQueryDesc(portal);
 
     /*
 	 * Shut down executor, if still running.  We skip this during error abort,
 	 * since other mechanisms will take care of releasing executor resources,
 	 * and we can't be sure that ExecutorEnd itself wouldn't fail.
 	 */
-    portal->queryDesc = NULL;
-    if (queryDesc &&
-        queryDesc->estate)
-    {
+	portal->queryDesc = NULL;
+	if (queryDesc && queryDesc->estate)
+	{
 		/*
 		 * If we still have an estate -- then we need to cancel any
 		 * unfinished work.
 		 */
 		queryDesc->estate->cancelUnfinished = true;
 
-        /* we do not need AfterTriggerEndQuery() here */
-        ExecutorEnd(queryDesc);
-    }
+		/* we do not need AfterTriggerEndQuery() here */
+		ExecutorEnd(queryDesc);
+	}
     
-    /*
-     * Terminate unneeded QE processes.
-     */
-    if (*cleanupstate < 1 && 
-        Gp_role == GP_ROLE_DISPATCH)
-    {
-        *cleanupstate = 1;
-        cleanupPortalGangs(portal);
-    }
+	/*
+	 * Terminate unneeded QE processes.
+	 */
+	if (*cleanupstate < 1 && Gp_role == GP_ROLE_DISPATCH)
+	{
+		*cleanupstate = 1;
+		cleanupPortalGangs(portal);
+	}
 
-    /* 
-     * Terminate dispatch agent processes.  
-     * DAs for unnamed portal can be kept and reused for next query. 
-     */
-    if (portal->dispatchagents &&
-        portal->name && 
-        strcmp(portal->name,"") != 0)
-    {
-        struct DispatchAgentSet    *agents = portal->dispatchagents;
+	/* 
+	 * Terminate dispatch agent processes.  
+	 * DAs for unnamed portal can be kept and reused for next query. 
+	 */
+	if (portal->dispatchagents && portal->name && strcmp(portal->name,"") != 0)
+	{
+		struct DispatchAgentSet    *agents = portal->dispatchagents;
 
-        portal->dispatchagents = NULL;
-        disconnectAndDestroyDispatchAgents(agents);
-    }
+		portal->dispatchagents = NULL;
+		disconnectAndDestroyDispatchAgents(agents);
+	}
 
-    /* 
-     * If resource scheduling is enabled, release the resource lock. 
-     */
-    if (portal->releaseResLock)
-    {
-        portal->releaseResLock = false;
+	/* 
+	 * If resource scheduling is enabled, release the resource lock. 
+	 */
+	if (portal->releaseResLock)
+	{
+		portal->releaseResLock = false;
         ResUnLockPortal(portal);
-    }
+	}
 }                               /* PortalCleanupHelper */
 
 
