@@ -1481,10 +1481,13 @@ SetupUDPInterconnect(EState *estate)
 					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 									errmsg("Interconnect error: %m%s short ack receive!", "recvfrom")));
 
+				/*
+				 * NOTE: we don't have a connection here, yet.
+				 */
 				if (pkt.flags & UDPIC_FLAGS_STOP)
 				{
-					elog(DEBUG1, "during setup received ack with STOP. node %d route %d state %d pktseq %d connseq %d",
-						 pkt.motNodeId, conn->route, conn->state, pkt.seq, conn->conn_info.seq);
+					elog(DEBUG1, "during setup received ack with STOP. node %d srcContent %d srcPid %d pktseq %d pkt->icId %d my->icId %d",
+						 pkt.motNodeId, pkt.srcContentId, pkt.srcPid, pkt.seq, pkt.icId, gp_interconnect_id);
 				}
 
 				conn = findConnByHeader(&pkt, true);
