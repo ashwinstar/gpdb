@@ -1625,17 +1625,20 @@ DoCopyTo(CopyState cstate)
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot copy from view \"%s\"",
 								RelationGetRelationName(cstate->rel)),
-						 errhint("Try the COPY (SELECT ...) TO variant.")));
+						 errhint("Try the COPY (SELECT ...) TO variant."),
+						 errOmitLocation(true)));
 			else if (relkind == RELKIND_SEQUENCE)
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot copy from sequence \"%s\"",
-								RelationGetRelationName(cstate->rel))));
+								RelationGetRelationName(cstate->rel)),
+										 errOmitLocation(true)));
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot copy from non-table relation \"%s\"",
-								RelationGetRelationName(cstate->rel))));
+								RelationGetRelationName(cstate->rel)),
+										 errOmitLocation(true)));
 		}
 		else if (RelationIsExternal(cstate->rel))
 		{
@@ -1643,7 +1646,8 @@ DoCopyTo(CopyState cstate)
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot copy from external relation \"%s\"",
 								RelationGetRelationName(cstate->rel)),
-						 errhint("Try the COPY (SELECT ...) TO variant.")));
+						 errhint("Try the COPY (SELECT ...) TO variant."),
+								 errOmitLocation(true)));
 		}
 	}
 
