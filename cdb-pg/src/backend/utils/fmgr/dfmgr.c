@@ -123,7 +123,8 @@ load_external_function(char *filename, char *funcname,
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("could not find function \"%s\" in file \"%s\"",
-						funcname, fullname)));
+						funcname, fullname),
+				 errOmitLocation(true)));
 
 	pfree(fullname);
 	return retval;
@@ -202,7 +203,8 @@ internal_load_library(const char *libname)
 			ereport(ERROR,
 					(errcode_for_file_access(),
 					 errmsg("could not access file \"%s\": %m",
-							libname)));
+							libname),
+					 errOmitLocation(true)));
 
 		for (file_scanner = file_list;
 			 file_scanner != NULL &&
