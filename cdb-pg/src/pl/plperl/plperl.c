@@ -1066,7 +1066,8 @@ plperl_create_sub(char *s, bool trusted)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("creation of Perl function failed"),
-				 errdetail(strip_trailing_ws(SvPV(ERRSV, PL_na)))));
+				 errdetail(strip_trailing_ws(SvPV(ERRSV, PL_na))),
+						   errOmitLocation(true)));
 	}
 
 	/*
@@ -1445,7 +1446,8 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("composite-returning Perl function "
-							"must return reference to hash")));
+							"must return reference to hash"),
+									   errOmitLocation(true)));
 		}
 
 		if (!call_data->attinmeta)
@@ -1454,7 +1456,8 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("function returning record called in context "
-							"that cannot accept type record")));
+							"that cannot accept type record"),
+									   errOmitLocation(true)));
 		}
 
 		tup = plperl_build_tuple_result(call_data, (HV*) SvRV(perlret));
