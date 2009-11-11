@@ -284,7 +284,8 @@ _bt_check_unique(Relation rel, IndexTuple itup, Relation heapRel,
 					ereport(ERROR,
 							(errcode(ERRCODE_UNIQUE_VIOLATION),
 					errmsg("duplicate key violates unique constraint \"%s\"",
-						   RelationGetRelationName(rel))));
+						   RelationGetRelationName(rel)),
+					errOmitLocation(true)));
 				}
 				else if (htup.t_data != NULL)
 				{
