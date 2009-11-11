@@ -2269,6 +2269,7 @@ typecast_expression(ParseState *pstate, Node *expr, TypeName *typname)
 				 errmsg("cannot cast type %s to %s",
 						format_type_be(inputType),
 						format_type_be(targetType)),
+								errOmitLocation(true),
 				 parser_errposition(pstate, typname->location)));
 
 	return expr;
@@ -2308,6 +2309,7 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("unequal number of entries in row expressions"),
+						 errOmitLocation(true),
 				 parser_errposition(pstate, location)));
 
 	/*
@@ -2318,6 +2320,7 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot compare rows of zero length"),
+						 errOmitLocation(true),
 				 parser_errposition(pstate, location)));
 
 	/*
@@ -2345,11 +2348,13 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 				   errmsg("row comparison operator must yield type boolean, "
 						  "not type %s",
 						  format_type_be(cmp->opresulttype)),
+								  errOmitLocation(true),
 					 parser_errposition(pstate, location)));
 		if (expression_returns_set((Node *) cmp))
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("row comparison operator must not return a set"),
+							 errOmitLocation(true),
 					 parser_errposition(pstate, location)));
 		opexprs = lappend(opexprs, cmp);
 	}
@@ -2405,6 +2410,7 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 					 errmsg("could not determine interpretation of row comparison operator %s",
 							strVal(llast(opname))),
 					 errhint("Row comparison operators must be associated with btree operator classes."),
+							 errOmitLocation(true),
 					 parser_errposition(pstate, location)));
 			rctype = 0;			/* keep compiler quiet */
 			break;
@@ -2454,6 +2460,7 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 							 errmsg("could not determine interpretation of row comparison operator %s",
 									strVal(llast(opname))),
 							 errdetail("There are multiple equally-plausible candidates."),
+									 errOmitLocation(true),
 							 parser_errposition(pstate, location)));
 				break;
 			}
@@ -2506,6 +2513,7 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 					 errmsg("could not determine interpretation of row comparison operator %s",
 							strVal(llast(opname))),
 			   errdetail("There are multiple equally-plausible candidates."),
+					   errOmitLocation(true),
 					 parser_errposition(pstate, location)));
 	}
 
@@ -2557,6 +2565,7 @@ make_row_distinct_op(ParseState *pstate, List *opname,
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("unequal number of entries in row expressions"),
+						 errOmitLocation(true),
 				 parser_errposition(pstate, location)));
 
 	forboth(l, largs, r, rargs)
@@ -2596,6 +2605,7 @@ make_distinct_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree,
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 			 errmsg("IS DISTINCT FROM requires = operator to yield boolean"),
+					 errOmitLocation(true),
 				 parser_errposition(pstate, location)));
 
 	/*

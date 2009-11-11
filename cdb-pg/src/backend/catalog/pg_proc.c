@@ -464,7 +464,8 @@ fmgr_internal_validator(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("there is no built-in function named \"%s\"",
-						prosrc)));
+						prosrc),
+				 errOmitLocation(true)));
 
 	ReleaseSysCache(tuple);
 

@@ -1110,7 +1110,8 @@ DropRole(DropRoleStmt *stmt)
 					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 					 errmsg("role \"%s\" cannot be dropped because some objects depend on it",
 							role),
-					 errdetail("%s", detail)));
+					 errdetail("%s", detail),
+					 errOmitLocation(true)));
 
 		/*
 		 * Remove the role from the pg_authid table
@@ -1222,7 +1223,8 @@ RenameRole(const char *oldname, const char *newname)
 	if (!HeapTupleIsValid(oldtuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("role \"%s\" does not exist", oldname)));
+				 errmsg("role \"%s\" does not exist", oldname),
+				 errOmitLocation(true)));
 
 	/*
 	 * XXX Client applications probably store the session user somewhere, so
@@ -1420,7 +1422,8 @@ DropOwnedObjects(DropOwnedStmt *stmt)
 		if (!has_privs_of_role(GetUserId(), roleid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("permission denied to drop objects")));
+					 errmsg("permission denied to drop objects"),
+					 errOmitLocation(true)));
 	}
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1452,7 +1455,8 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 		if (!has_privs_of_role(GetUserId(), roleid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("permission denied to reassign objects")));
+					 errmsg("permission denied to reassign objects"),
+					 errOmitLocation(true)));
 	}
 
 	/* Must have privileges on the receiving side too */
@@ -1461,7 +1465,8 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 	if (!has_privs_of_role(GetUserId(), newrole))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("permission denied to reassign objects")));
+				 errmsg("permission denied to reassign objects"),
+				 errOmitLocation(true)));
 				 
 	if (Gp_role == GP_ROLE_DISPATCH)
     {

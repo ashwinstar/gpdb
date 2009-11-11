@@ -796,7 +796,8 @@ ExecutorEnd(QueryDesc *queryDesc)
 		{
 			case 1:
 			case 2:
-				ereport(LOG, (errmsg("duration to ExecutorEnd starting: %s ms", msec_str)));
+				ereport(LOG, (errmsg("duration to ExecutorEnd starting: %s ms", msec_str),
+						errOmitLocation(true)));
 				break;
 		}
 	}
@@ -904,7 +905,8 @@ ExecutorEnd(QueryDesc *queryDesc)
 		{
 			case 1:
 			case 2:
-				ereport(LOG, (errmsg("duration to ExecutorEnd end: %s ms", msec_str)));
+				ereport(LOG, (errmsg("duration to ExecutorEnd end: %s ms", msec_str),
+						errOmitLocation(true)));
 				break;
 		}
 	}
@@ -1149,7 +1151,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			{
 				case 1:
 				case 2:
-					ereport(LOG, (errmsg("duration to InitPlan start: %s ms", msec_str)));
+					ereport(LOG, (errmsg("duration to InitPlan start: %s ms", msec_str),
+							errOmitLocation(true)));
 					break;
 			}
 		}
@@ -1618,7 +1621,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 				{
 					case 1:
 					case 2:
-						ereport(LOG, (errmsg("duration to InitPlan end: %s ms", msec_str)));
+						ereport(LOG, (errmsg("duration to InitPlan end: %s ms", msec_str),
+								errOmitLocation(true)));
 						break;
 				}
 			}
@@ -1897,7 +1901,8 @@ SendAOTupCounts(EState *estate)
 
 					if (Debug_appendonly_print_insert)
 						ereport(LOG,(errmsg("sent tupcount " INT64_FORMAT " for "
-											"relation %d", tupcount, relid)));
+											"relation %d", tupcount, relid),
+											errOmitLocation(true)));
 
 				}
 				resultRelInfo++;
@@ -3067,7 +3072,8 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 				ereport(ERROR,
 						(errcode(ERRCODE_NOT_NULL_VIOLATION),
 						 errmsg("null value in column \"%s\" violates not-null constraint",
-						NameStr(rel->rd_att->attrs[attrChk - 1]->attname))));
+						NameStr(rel->rd_att->attrs[attrChk - 1]->attname)),
+						errOmitLocation(true)));
 		}
 	}
 
@@ -3079,7 +3085,8 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 			ereport(ERROR,
 					(errcode(ERRCODE_CHECK_VIOLATION),
 					 errmsg("new row for relation \"%s\" violates check constraint \"%s\"",
-							RelationGetRelationName(rel), failed)));
+							RelationGetRelationName(rel), failed),
+					 errOmitLocation(true)));
 	}
 }
 

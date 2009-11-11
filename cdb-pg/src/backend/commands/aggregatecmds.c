@@ -137,7 +137,8 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters, Oid new
 		if (baseType == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-					 errmsg("aggregate input type must be specified")));
+					 errmsg("aggregate input type must be specified"),
+					 errOmitLocation(true)));
 
 		if (pg_strcasecmp(TypeNameToString(baseType), "ANY") == 0)
 		{

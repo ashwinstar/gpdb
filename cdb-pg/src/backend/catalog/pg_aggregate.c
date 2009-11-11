@@ -412,12 +412,14 @@ lookup_agg_function(List *fnName,
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("function %s does not exist",
-						func_signature_string(fnName, nargs, input_types))));
+						func_signature_string(fnName, nargs, input_types)),
+				 errOmitLocation(true)));
 	if (retset)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("function %s returns a set",
-						func_signature_string(fnName, nargs, input_types))));
+						func_signature_string(fnName, nargs, input_types)),
+				 errOmitLocation(true)));
 
 	/*
 	 * If the given type(s) are all polymorphic, there's nothing we can check.

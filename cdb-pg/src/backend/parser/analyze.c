@@ -1296,12 +1296,14 @@ transformInsertRow(ParseState *pstate, List *exprlist,
 	if (list_length(exprlist) > list_length(icolumns))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("INSERT has more expressions than target columns")));
+				 errmsg("INSERT has more expressions than target columns"),
+				 errOmitLocation(true)));
 	if (stmtcols != NIL &&
 		list_length(exprlist) < list_length(icolumns))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("INSERT has more target columns than expressions")));
+				 errmsg("INSERT has more target columns than expressions"),
+				 errOmitLocation(true)));
 
 	/*
 	 * Prepare columns for assignment to target table.
@@ -10088,7 +10090,8 @@ transformExecuteStmt(ParseState *pstate, ExecuteStmt *stmt)
 			errmsg("wrong number of parameters for prepared statement \"%s\"",
 				   stmt->name),
 					 errdetail("Expected %d parameters but got %d.",
-							   nexpected, nparams)));
+							   nexpected, nparams),
+					 errOmitLocation(true)));
 
 		forboth(l, stmt->params, l2, paramtypes)
 		{
@@ -10127,7 +10130,8 @@ transformExecuteStmt(ParseState *pstate, ExecuteStmt *stmt)
 								i,
 								format_type_be(given_type_id),
 								format_type_be(expected_type_id)),
-				errhint("You will need to rewrite or cast the expression.")));
+				errhint("You will need to rewrite or cast the expression."),
+				errOmitLocation(true)));
 
 			lfirst(l) = expr;
 			i++;

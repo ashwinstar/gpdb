@@ -85,14 +85,16 @@ check_call(ParseState *pstate, Node *call)
 		if (checkExprHasAggs((Node *)((Aggref *)call)->args))
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
-					 errmsg("aggregate function calls may not be nested")));
+					 errmsg("aggregate function calls may not be nested"),
+							 errOmitLocation(true)));
 		
 		if (checkExprHasWindFuncs((Node *)((Aggref *)call)->args))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
 					 errmsg("window functions may not be used as arguments to "
-							"aggregates")));
+							"aggregates"),
+									 errOmitLocation(true)));
 		}
 	}
 
@@ -107,7 +109,8 @@ check_call(ParseState *pstate, Node *call)
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
 					 errmsg("cannot use window function as an argument "
-							"to another window function")));
+							"to another window function"),
+									 errOmitLocation(true)));
 		}
 	}
 
@@ -180,24 +183,29 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	if (checkExprHasAggs(qry->jointree->quals))
 		ereport(ERROR,
 				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("aggregates not allowed in WHERE clause")));
+				 errmsg("aggregates not allowed in WHERE clause"),
+				 errOmitLocation(true)));
 	if (checkExprHasAggs((Node *) qry->jointree->fromlist))
 		ereport(ERROR,
 				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("aggregates not allowed in JOIN conditions")));
+				 errmsg("aggregates not allowed in JOIN conditions"),
+						 errOmitLocation(true)));
 
 	if (checkExprHasWindFuncs(qry->jointree->quals))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("window functions not allowed in WHERE clause")));
+				 errmsg("window functions not allowed in WHERE clause"),
+						 errOmitLocation(true)));
 	if (checkExprHasWindFuncs((Node *) qry->jointree->fromlist))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("window functions not allowed in JOIN conditions")));
+				 errmsg("window functions not allowed in JOIN conditions"),
+						 errOmitLocation(true)));
 	if (checkExprHasWindFuncs((Node *) qry->havingQual))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("window functions not allowed in HAVING conditions")));
+				 errmsg("window functions not allowed in HAVING conditions"),
+						 errOmitLocation(true)));
 	/*
 	 * No aggregates allowed in GROUP BY clauses, either.
 	 *
@@ -392,12 +400,14 @@ check_ungrouped_columns_walker(Node *node,
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
 					 errmsg("column \"%s.%s\" must appear in the GROUP BY clause or be used in an aggregate function",
-							rte->eref->aliasname, attname)));
+							rte->eref->aliasname, attname),
+									 errOmitLocation(true)));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
 					 errmsg("subquery uses ungrouped column \"%s.%s\" from outer query",
-							rte->eref->aliasname, attname)));
+							rte->eref->aliasname, attname),
+									 errOmitLocation(true)));
 
 	}
 
@@ -638,17 +648,20 @@ check_aggregate_ingroup(Node *grpcl, List *targetList, List *groupClauses)
 		if (checkExprHasAggs(expr))
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
-					 errmsg("aggregates not allowed in GROUP BY clause")));
+					 errmsg("aggregates not allowed in GROUP BY clause"),
+							 errOmitLocation(true)));
 
 		if (checkExprHasGroupExtFuncs(expr))
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
-					 errmsg("grouping() or group_id() not allowed in GROUP BY clause")));
+					 errmsg("grouping() or group_id() not allowed in GROUP BY clause"),
+							 errOmitLocation(true)));
 
 		if (checkExprHasWindFuncs(expr))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("window functions not allowed in GROUP BY clause")));
+					 errmsg("window functions not allowed in GROUP BY clause"),
+							 errOmitLocation(true)));
 		result = lcons(expr, result);
 	}
 
@@ -900,10 +913,12 @@ parseProcessWindFuncs(ParseState *pstate, Query *qry)
 	if (checkExprHasWindFuncs(qry->jointree->quals))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("window functions not allowed in WHERE clause")));
+				 errmsg("window functions not allowed in WHERE clause"),
+						 errOmitLocation(true)));
 /*	if (checkExprHasAggs((Node *) qry->jointree->fromlist)) */
 	if (checkExprHasWindFuncs((Node *) qry->jointree->fromlist))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("window functions not allowed in JOIN conditions")));
+				 errmsg("window functions not allowed in JOIN conditions"),
+						 errOmitLocation(true)));
 }

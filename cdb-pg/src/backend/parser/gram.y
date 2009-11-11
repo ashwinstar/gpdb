@@ -6709,7 +6709,8 @@ oper_argtypes:
 				   ereport(ERROR,
 						   (errcode(ERRCODE_SYNTAX_ERROR),
 							errmsg("missing argument"),
-							errhint("Use NONE to denote the missing argument of a unary operator.")));
+							errhint("Use NONE to denote the missing argument of a unary operator."),
+							errOmitLocation(true)));
 				}
 			| Typename ',' Typename
 					{ $$ = list_make2($1, $3); }

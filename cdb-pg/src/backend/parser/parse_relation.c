@@ -2073,6 +2073,7 @@ warnAutoRange(ParseState *pstate, RangeVar *relation, int location)
 					badAlias) :
 					  errhint("There is an entry for table \"%s\", but it cannot be referenced from this part of the query.",
 							  rte->eref->aliasname)),
+					  errOmitLocation(true),
 					 parser_errposition(pstate, location)));
 		else
 			ereport(ERROR,
@@ -2082,6 +2083,7 @@ warnAutoRange(ParseState *pstate, RangeVar *relation, int location)
 					relation->relname) :
 					  errmsg("missing FROM-clause entry for table \"%s\"",
 							 relation->relname)),
+					  errOmitLocation(true),
 					 parser_errposition(pstate, location)));
 	}
 	else
@@ -2100,6 +2102,7 @@ warnAutoRange(ParseState *pstate, RangeVar *relation, int location)
 				  (rte ?
 				   errhint("There is an entry for table \"%s\", but it cannot be referenced from this part of the query.",
 						   rte->eref->aliasname) : 0)),
+					errOmitLocation(true),
 				 parser_errposition(pstate, location)));
 	}
 }

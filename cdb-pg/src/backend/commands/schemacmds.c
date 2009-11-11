@@ -205,7 +205,8 @@ RemoveSchema(List *names, DropBehavior behavior, bool missing_ok)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
-					 errmsg("schema \"%s\" does not exist", namespaceName)));
+					 errmsg("schema \"%s\" does not exist", namespaceName),
+					 errOmitLocation(true)));
 		}
 		else
 		{

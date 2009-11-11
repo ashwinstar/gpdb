@@ -411,7 +411,8 @@ apply_motion(Plan *plan, Query *query)
 									    "named '%s' as the Greenplum Database data distribution key for this "
 									    "table. ", columns),
 							     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
-							     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
+							     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew."),
+							     errOmitLocation(true)));
 					}
 				}
 				
@@ -747,7 +748,8 @@ apply_motion(Plan *plan, Query *query)
 					doesUpdateAffectPartitionCols(plan,query))
 				{
 					ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns")));
+									errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns"),
+									errOmitLocation(true)));
 				}
 				if (plan->flow->flotype != FLOW_PARTITIONED)
 				{
@@ -824,7 +826,8 @@ apply_motion(Plan *plan, Query *query)
                                       cmd),
                             errhint("The WHERE condition must specify equality "
                                     "between corresponding DISTRIBUTED BY columns "
-                                    "of the target table and all joined tables.")
+                                    "of the target table and all joined tables."),
+                            errOmitLocation(true)
 						));
 		}
 	}
