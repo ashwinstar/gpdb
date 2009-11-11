@@ -1502,7 +1502,8 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock)
 		LWLockRelease(partitionLock);
 		ereport(ERROR,
 				(errcode(ERRCODE_T_R_DEADLOCK_DETECTED),
-				 errmsg("deadlock detected, locking against self")));
+				 errmsg("deadlock detected, locking against self"),
+						   errOmitLocation(true)));
 	}
 
 	/* Ok to wait.*/

@@ -1928,12 +1928,14 @@ getTypeInputInfo(Oid type, Oid *typInput, Oid *typIOParam)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type %s is only a shell",
-						format_type_be(type))));
+						format_type_be(type)),
+								   errOmitLocation(true)));
 	if (!OidIsValid(pt->typinput))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("no input function available for type %s",
-						format_type_be(type))));
+						format_type_be(type)),
+								   errOmitLocation(true)));
 
 	*typInput = pt->typinput;
 	*typIOParam = getTypeIOParam(typeTuple);
@@ -1963,12 +1965,14 @@ getTypeOutputInfo(Oid type, Oid *typOutput, bool *typIsVarlena)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type %s is only a shell",
-						format_type_be(type))));
+						format_type_be(type)),
+								   errOmitLocation(true)));
 	if (!OidIsValid(pt->typoutput))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("no output function available for type %s",
-						format_type_be(type))));
+						format_type_be(type)),
+								   errOmitLocation(true)));
 
 	*typOutput = pt->typoutput;
 	*typIsVarlena = (!pt->typbyval) && (pt->typlen == -1);
@@ -1998,12 +2002,14 @@ getTypeBinaryInputInfo(Oid type, Oid *typReceive, Oid *typIOParam)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type %s is only a shell",
-						format_type_be(type))));
+						format_type_be(type)),
+								   errOmitLocation(true)));
 	if (!OidIsValid(pt->typreceive))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("no binary input function available for type %s",
-						format_type_be(type))));
+						format_type_be(type)),
+								   errOmitLocation(true)));
 
 	*typReceive = pt->typreceive;
 	*typIOParam = getTypeIOParam(typeTuple);
@@ -2033,12 +2039,14 @@ getTypeBinaryOutputInfo(Oid type, Oid *typSend, bool *typIsVarlena)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("type %s is only a shell",
-						format_type_be(type))));
+						format_type_be(type)),
+								   errOmitLocation(true)));
 	if (!OidIsValid(pt->typsend))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("no binary output function available for type %s",
-						format_type_be(type))));
+						format_type_be(type)),
+								   errOmitLocation(true)));
 
 	*typSend = pt->typsend;
 	*typIsVarlena = (!pt->typbyval) && (pt->typlen == -1);
@@ -2319,6 +2327,7 @@ get_roleid_checked(const char *rolname)
 	if (!OidIsValid(roleid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("role \"%s\" does not exist", rolname)));
+				 errmsg("role \"%s\" does not exist", rolname),
+						   errOmitLocation(true)));
 	return roleid;
 }

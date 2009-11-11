@@ -336,7 +336,8 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 		{
 			ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
 					errmsg("could not create unique index"),
-					errdetail("Table contains duplicate values.")));
+					errdetail("Table contains duplicate values."),
+							   errOmitLocation(true)));
 		}
 	}
 

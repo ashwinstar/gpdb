@@ -1207,7 +1207,8 @@ DecodeDateTime(char **field, int *ftype, int nf,
 							case DTK_CURRENT:
 								ereport(ERROR,
 									 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									  errmsg("date/time value \"current\" is no longer supported")));
+									  errmsg("date/time value \"current\" is no longer supported"),
+									  errOmitLocation(true)));
 
 								return DTERR_BAD_FORMAT;
 								break;

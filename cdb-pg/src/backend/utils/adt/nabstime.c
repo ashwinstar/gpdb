@@ -158,7 +158,8 @@ abstime2tm(AbsoluteTime _time, int *tzp, struct pg_tm * tm, char **tzn)
 					ereport(WARNING,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid time zone name: \"%s\"",
-									tm->tm_zone)));
+									tm->tm_zone),
+											   errOmitLocation(true)));
 			}
 		}
 	}
@@ -477,7 +478,8 @@ timestamp_abstime(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+				 errmsg("timestamp out of range"),
+						   errOmitLocation(true)));
 		result = INVALID_ABSTIME;
 	}
 
@@ -503,7 +505,8 @@ abstime_timestamp(PG_FUNCTION_ARGS)
 		case INVALID_ABSTIME:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot convert abstime \"invalid\" to timestamp")));
+				 errmsg("cannot convert abstime \"invalid\" to timestamp"),
+						   errOmitLocation(true)));
 			TIMESTAMP_NOBEGIN(result);
 			break;
 
@@ -520,7 +523,8 @@ abstime_timestamp(PG_FUNCTION_ARGS)
 			if (tm2timestamp(tm, 0, NULL, &result) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								   errOmitLocation(true)));
 			break;
 	};
 
@@ -550,7 +554,8 @@ timestamptz_abstime(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+				 errmsg("timestamp out of range"),
+						   errOmitLocation(true)));
 		result = INVALID_ABSTIME;
 	}
 
@@ -576,7 +581,8 @@ abstime_timestamptz(PG_FUNCTION_ARGS)
 		case INVALID_ABSTIME:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot convert abstime \"invalid\" to timestamp")));
+				 errmsg("cannot convert abstime \"invalid\" to timestamp"),
+						   errOmitLocation(true)));
 			TIMESTAMP_NOBEGIN(result);
 			break;
 
@@ -593,7 +599,8 @@ abstime_timestamptz(PG_FUNCTION_ARGS)
 			if (tm2timestamp(tm, 0, &tz, &result) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
+						 errmsg("timestamp out of range"),
+								   errOmitLocation(true)));
 			break;
 	};
 
@@ -795,7 +802,8 @@ tintervalrecv(PG_FUNCTION_ARGS)
 		  tinterval->status == T_INTERVAL_VALID))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-				 errmsg("invalid status in external \"tinterval\" value")));
+				 errmsg("invalid status in external \"tinterval\" value"),
+						   errOmitLocation(true)));
 
 	tinterval->data[0] = pq_getmsgint(buf, sizeof(tinterval->data[0]));
 	tinterval->data[1] = pq_getmsgint(buf, sizeof(tinterval->data[1]));
@@ -872,7 +880,8 @@ reltime_interval(PG_FUNCTION_ARGS)
 		case INVALID_RELTIME:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				  errmsg("cannot convert reltime \"invalid\" to interval")));
+				  errmsg("cannot convert reltime \"invalid\" to interval"),
+						   errOmitLocation(true)));
 			result->time = 0;
 			result->day = 0;
 			result->month = 0;
@@ -1555,7 +1564,8 @@ bogus:
 	ereport(ERROR,
 			(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 			 errmsg("invalid input syntax for type tinterval: \"%s\"",
-					i_string)));
+					i_string),
+							   errOmitLocation(true)));
 	*i_start = *i_end = INVALID_ABSTIME;		/* keep compiler quiet */
 }
 
