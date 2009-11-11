@@ -41,6 +41,8 @@ create table public.pg_shdescription (like pg_catalog.pg_shdescription);
 create table public.pg_rewrite (like pg_catalog.pg_rewrite) with oids;
 create table public.pg_conversion (like pg_catalog.pg_conversion);
 create table public.pg_operator (like pg_catalog.pg_operator) with oids;
+create table public.pg_authid (like pg_catalog.pg_authid);
+create table public.pg_resqueue (like pg_catalog.pg_resqueue) with oids;
 -- don't use LIKE, as 3.2 has a different structure
 create table public.pg_aggregate (aggfnoid        regproc  not null,
                                   aggtransfn      regproc  not null,
@@ -95,6 +97,8 @@ create table public.pg_shdescription_v33(like pg_catalog.pg_shdescription);
 create table public.pg_rewrite_v33(like pg_catalog.pg_rewrite) with oids;
 create table public.pg_conversion_v33(like pg_catalog.pg_conversion);
 create table public.pg_operator_v33 (like pg_catalog.pg_operator) with oids;
+create table public.pg_authid_v33 (like pg_catalog.pg_authid);
+create table public.pg_resqueue_v33 (like pg_catalog.pg_resqueue) with oids;
 -- don't use LIKE, as 3.3 had a different structure
 create table public.pg_appendonly_v33 (relid oid,
                                    blocksize integer,
@@ -1102,6 +1106,17 @@ select * from public.pg_exttable_v33 where reloid < 10000;
 --------+----------+---------+---------+---------+-------------+-----------------+-----------+----------
 (0 rows)
 
+-- compare old and new pg_resqueue
+select * from public.pg_resqueue where oid < 10000;
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
+(0 rows)
+
+select * from public.pg_resqueue_v33 where oid < 10000;
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
+(0 rows)
+
 --
 -- 7. Run the scripts that upgrade from 33->34
 --      phase 1:  loadcat34
@@ -1167,6 +1182,9 @@ reindex table public.pg_filespace;
 copy public.pg_filespace from '@abs_srcdir@/data//upg2_pg_filespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 copy public.pg_tablespace from '@abs_srcdir@/data//upg2_pg_tablespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 copy public.pg_shdescription from '@abs_srcdir@/data//upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
+copy public.pg_resqueue from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_resqueue_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
+-- Assign users without queues to the default queue
+update public.pg_authid u set rolresqueue=q.oid from pg_catalog.pg_resqueue q where q.rsqname='gp_default' and u.rolresqueue is null and not u.rolsuper;
 commit;
 -- Reindex shared tables
 reindex table public.pg_tablespace;
@@ -1497,6 +1515,21 @@ select * from pg_catalog.pg_exttable where reloid < 10000;
 --------+----------+---------+---------+---------+-------------+-----------------+-----------+----------+----------
 (0 rows)
 
+-- compare old and new pg_resqueue
+select * from pg_catalog.pg_resqueue where oid < 10000
+except
+select * from public.pg_resqueue where oid < 10000;
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
+(0 rows)
+
+select * from public.pg_resqueue where oid < 10000
+except
+select * from pg_catalog.pg_resqueue where oid < 10000;
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
+(0 rows)
+
 --
 -- 9. Final sanity checks and cleanup
 --
@@ -1544,6 +1577,8 @@ drop table
   public.pg_shdescription,
   public.pg_shdepend,
   public.pg_rewrite,
+  public.pg_authid,
+  public.pg_resqueue,
   public.pg_class_v33,
   public.pg_attribute_v33,
   public.pg_type_v33,
@@ -1562,6 +1597,8 @@ drop table
   public.pg_appendonly_v33,
   public.pg_exttable,
   public.pg_exttable_v33,
+  public.pg_authid_v33,
+  public.pg_resqueue_v33,
   public.gp_configuration_history,
   public.gp_db_interfaces,
   public.gp_interfaces,

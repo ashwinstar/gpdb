@@ -47,6 +47,4 @@ CREATE OR REPLACE VIEW gp_distributed_log AS
 
 GRANT SELECT ON gp_distributed_log TO PUBLIC;
 
-CREATE RESOURCE QUEUE gp_default ACTIVE THRESHOLD 20;
-
 RESET log_min_messages;

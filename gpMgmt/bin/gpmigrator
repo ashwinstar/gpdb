@@ -1961,7 +1961,18 @@ This may be specified on the commandline with:
                          (item['hostname'], item['datadir']));
             raise UpgradeError('Cannot upgrade database with invalid segments')
 
+        # Upgrade will create the "pg_default" resource queue, error if it
+        # already exists
+        if (self.oldversion <= '3.3' and self.newversion >= '3.4.0.0'):
+            resqueue = self.Select(
+            '''
+               SELECT rsqname from pg_resqueue WHERE rsqname = 'pg_default'
+            ''', forceutility=True);
+            if len(resqueue) > 0:
+                raise UpgradeError('Resource queue "pg_default" already exists')
 
+        # It would be nice to keep this around and reuse it.  
+        # Instead we just issue this query a lot.
         logger.info('Creating list of databases')
         databases = self.Select("SELECT datname from pg_database WHERE datname != 'template0'")
 

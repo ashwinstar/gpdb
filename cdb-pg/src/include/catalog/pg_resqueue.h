@@ -58,6 +58,9 @@ typedef FormData_pg_resqueue *Form_pg_resqueue;
 #define Anum_pg_resqueue_rsqovercommit		4
 #define Anum_pg_resqueue_rsqignorecostlimit	5
 
-/* No initial contents. */
+/* Create initial default resource queue */
+DATA(insert OID = 6055 ( pg_default 20 -1 f 0 ));
+
+#define DEFAULTRESQUEUE_OID 6055
 
 #endif   /* PG_RESQUEUE_H */

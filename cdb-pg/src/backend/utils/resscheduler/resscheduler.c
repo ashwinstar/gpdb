@@ -763,10 +763,9 @@ GetResQueueForRole(Oid roleid)
 	heap_close(authrel, AccessShareLock);
 
 	/* MPP-6926: use default queue if none specified */
-	if (gp_enable_default_resource_queues && 
-		(InvalidOid == queueid))
+	if (gp_enable_default_resource_queues && (InvalidOid == queueid))
 	{
-		queueid = GetResQueueIdForName(GP_DEFAULT_RESOURCE_QUEUE_NAME);
+		queueid = DEFAULTRESQUEUE_OID;
 	}
 
 	return queueid;
