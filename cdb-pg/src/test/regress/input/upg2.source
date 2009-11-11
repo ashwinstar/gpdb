@@ -166,13 +166,13 @@ COPY public.pg_conversion
 COPY public.pg_operator
   from '@abs_srcdir@/data/pg_operator32.data' with oids csv header;
 COPY public.pg_amop
-  from '@abs_srcdir@/data/pg_amop33.data'  csv header;
+  from '@abs_srcdir@/data/pg_amop32.data'  csv header;
 COPY public.pg_amproc
-  from '@abs_srcdir@/data/pg_amproc33.data'  csv header;
+  from '@abs_srcdir@/data/pg_amproc32.data'  csv header;
 COPY public.pg_cast
-  from '@abs_srcdir@/data/pg_cast33.data' with oids csv header;
+  from '@abs_srcdir@/data/pg_cast32.data' with oids csv header;
 COPY public.pg_opclass
-  from '@abs_srcdir@/data/pg_opclass33.data' with oids csv header;
+  from '@abs_srcdir@/data/pg_opclass32.data' with oids csv header;
 
 -- pg_partitions from 3.2
 create view public.pg_partitions as
@@ -568,6 +568,42 @@ select * from public.pg_resqueue where oid < 10000;
 
 select * from public.pg_resqueue_v33 where oid < 10000;
 
+-- compare old and new pg_cast
+select * from public.pg_cast
+except
+select * from public.pg_cast_v33;
+
+select * from public.pg_cast_v33
+except
+select * from public.pg_cast;
+
+-- pg_opclass
+select * from public.pg_opclass
+except
+select * from public.pg_opclass_v33;
+
+select * from public.pg_opclass_v33
+except
+select * from public.pg_opclass;
+
+-- pg_amproc
+select * from public.pg_amproc
+except
+select * from public.pg_amproc_v33;
+
+select * from public.pg_amproc_v33
+except
+select * from public.pg_amproc;
+
+-- pg_amop
+select * from public.pg_amop
+except
+select * from public.pg_amop_v33;
+
+select * from public.pg_amop_v33
+except
+select * from public.pg_amop;
+
 --
 -- 7. Run the scripts that upgrade from 33->34
 --      phase 1:  loadcat34
@@ -817,6 +853,11 @@ select * from public.pg_resqueue where oid < 10000
 except
 select * from pg_catalog.pg_resqueue where oid < 10000;
 
+-- compare old and new pg_cast
+select * from pg_catalog.pg_cast
+except
+select * from public.pg_cast;
+
 select * from public.pg_cast
 except
 select * from pg_catalog.pg_cast;
@@ -830,15 +871,6 @@ select * from public.pg_opclass
 except
 select * from pg_catalog.pg_opclass;
 
--- pg_operator
-select * from pg_catalog.pg_operator
-except
-select * from public.pg_operator;
-
-select * from public.pg_operator
-except
-select * from pg_catalog.pg_operator;
-
 -- pg_amproc
 select * from pg_catalog.pg_amproc
 except
@@ -848,7 +880,7 @@ select * from public.pg_amproc
 except
 select * from pg_catalog.pg_amproc;
 
--- pg_conversion
+-- pg_amop
 select * from pg_catalog.pg_amop
 except
 select * from public.pg_amop;

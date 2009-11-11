@@ -43,6 +43,10 @@ create table public.pg_conversion (like pg_catalog.pg_conversion);
 create table public.pg_operator (like pg_catalog.pg_operator) with oids;
 create table public.pg_authid (like pg_catalog.pg_authid);
 create table public.pg_resqueue (like pg_catalog.pg_resqueue) with oids;
+create table public.pg_amop (like pg_catalog.pg_amop);
+create table public.pg_amproc (like pg_catalog.pg_amproc);
+create table public.pg_cast (like pg_catalog.pg_cast) with oids;
+create table public.pg_opclass(like pg_catalog.pg_opclass) with oids;
 -- don't use LIKE, as 3.2 has a different structure
 create table public.pg_aggregate (aggfnoid        regproc  not null,
                                   aggtransfn      regproc  not null,
@@ -99,6 +103,10 @@ create table public.pg_conversion_v33(like pg_catalog.pg_conversion);
 create table public.pg_operator_v33 (like pg_catalog.pg_operator) with oids;
 create table public.pg_authid_v33 (like pg_catalog.pg_authid);
 create table public.pg_resqueue_v33 (like pg_catalog.pg_resqueue) with oids;
+create table public.pg_amop_v33 (like pg_catalog.pg_amop);
+create table public.pg_amproc_v33 (like pg_catalog.pg_amproc);
+create table public.pg_cast_v33 (like pg_catalog.pg_cast) with oids;
+create table public.pg_opclass_v33(like pg_catalog.pg_opclass) with oids;
 -- don't use LIKE, as 3.3 had a different structure
 create table public.pg_appendonly_v33 (relid oid,
                                    blocksize integer,
@@ -148,6 +156,14 @@ COPY public.pg_conversion
   from '@abs_srcdir@/data/pg_conversion32.data' csv header;
 COPY public.pg_operator
   from '@abs_srcdir@/data/pg_operator32.data' with oids csv header;
+COPY public.pg_amop
+  from '@abs_srcdir@/data/pg_amop32.data'  csv header;
+COPY public.pg_amproc
+  from '@abs_srcdir@/data/pg_amproc32.data'  csv header;
+COPY public.pg_cast
+  from '@abs_srcdir@/data/pg_cast32.data' with oids csv header;
+COPY public.pg_opclass
+  from '@abs_srcdir@/data/pg_opclass32.data' with oids csv header;
 -- pg_partitions from 3.2
 create view public.pg_partitions as
 SELECT p1.schemaname, p1.tablename, p1.partitionschemaname, p1.partitiontablename, p1.partitionname, p1.parentpartitiontablename, p1.parentpartitionname, p1.partitiontype, p1.partitionlevel,
@@ -211,6 +227,14 @@ COPY public.pg_conversion_v33
   from '@abs_srcdir@/data/pg_conversion33.data' csv header;
 COPY public.pg_operator_v33
   from '@abs_srcdir@/data/pg_operator33.data' with oids csv header;
+COPY public.pg_amop_v33
+  from '@abs_srcdir@/data/pg_amop33.data'  csv header;
+COPY public.pg_amproc_v33
+  from '@abs_srcdir@/data/pg_amproc33.data'  csv header;
+COPY public.pg_cast_v33
+  from '@abs_srcdir@/data/pg_cast33.data' with oids csv header;
+COPY public.pg_opclass_v33
+  from '@abs_srcdir@/data/pg_opclass33.data' with oids csv header;
 -- the 3.3 pg_partitions
 create view public.pg_partitions_v33 as
 select 
@@ -1117,6 +1141,66 @@ select * from public.pg_resqueue_v33 where oid < 10000;
 ---------+---------------+--------------+---------------+--------------------
 (0 rows)
 
+-- compare old and new pg_cast
+select * from public.pg_cast
+except
+select * from public.pg_cast_v33;
+ castsource | casttarget | castfunc | castcontext 
+------------+------------+----------+-------------
+(0 rows)
+
+select * from public.pg_cast_v33
+except
+select * from public.pg_cast;
+ castsource | casttarget | castfunc | castcontext 
+------------+------------+----------+-------------
+(0 rows)
+
+-- pg_opclass
+select * from public.pg_opclass
+except
+select * from public.pg_opclass_v33;
+ opcamid | opcname | opcnamespace | opcowner | opcintype | opcdefault | opckeytype 
+---------+---------+--------------+----------+-----------+------------+------------
+(0 rows)
+
+select * from public.pg_opclass_v33
+except
+select * from public.pg_opclass;
+ opcamid | opcname | opcnamespace | opcowner | opcintype | opcdefault | opckeytype 
+---------+---------+--------------+----------+-----------+------------+------------
+(0 rows)
+
+-- pg_amproc
+select * from public.pg_amproc
+except
+select * from public.pg_amproc_v33;
+ amopclaid | amprocsubtype | amprocnum | amproc 
+-----------+---------------+-----------+--------
+(0 rows)
+
+select * from public.pg_amproc_v33
+except
+select * from public.pg_amproc;
+ amopclaid | amprocsubtype | amprocnum | amproc 
+-----------+---------------+-----------+--------
+(0 rows)
+
+-- pg_amop
+select * from public.pg_amop
+except
+select * from public.pg_amop_v33;
+ amopclaid | amopsubtype | amopstrategy | amopreqcheck | amopopr 
+-----------+-------------+--------------+--------------+---------
+(0 rows)
+
+select * from public.pg_amop_v33
+except
+select * from public.pg_amop;
+ amopclaid | amopsubtype | amopstrategy | amopreqcheck | amopopr 
+-----------+-------------+--------------+--------------+---------
+(0 rows)
+
 --
 -- 7. Run the scripts that upgrade from 33->34
 --      phase 1:  loadcat34
@@ -1131,6 +1215,7 @@ delete from public.pg_type where typrelid='pg_catalog.pg_tablespace'::regclass;
 delete from public.pg_attribute where attrelid='pg_catalog.pg_tablespace'::regclass;
 delete from public.pg_class where oid='pg_catalog.pg_tablespace'::regclass;
 -- Copy in the new catalog definitions
+copy public.pg_amproc from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_amproc_toadd33.data' null E'\\N' csv delimiter '|' header;
 copy public.pg_class from '@abs_srcdir@/data//upg2_pg_class_toadd33.data' oids null E'\\N' csv delimiter '|' header;
 copy public.pg_attribute from '@abs_srcdir@/data//upg2_pg_attribute_toadd33.data' csv delimiter '|' header;
 copy public.pg_index from '@abs_srcdir@/data//upg2_pg_index_toadd33.data' null as E'\\N' csv delimiter '|' header;
@@ -1139,6 +1224,7 @@ copy public.pg_type from '@abs_srcdir@/data//upg2_pg_type_toadd33.data' oids nul
 copy public.pg_namespace from '@abs_srcdir@/data//upg2_pg_namespace_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_description from '@abs_srcdir@/data//upg2_pg_description_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy public.pg_depend from '@abs_srcdir@/data//upg2_pg_depend_toadd33.data' null as E'\\N' csv delimiter '|' header;
+copy public.pg_operator from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_operator_toadd33.data' oids null E'\\N' csv delimiter '|' header;
 -- fix up pg_appendonly
 alter table public.pg_appendonly add column columnstore boolean;
 update public.pg_appendonly set columnstore='f';
@@ -1182,7 +1268,7 @@ reindex table public.pg_filespace;
 copy public.pg_filespace from '@abs_srcdir@/data//upg2_pg_filespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 copy public.pg_tablespace from '@abs_srcdir@/data//upg2_pg_tablespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 copy public.pg_shdescription from '@abs_srcdir@/data//upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
-copy public.pg_resqueue from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_resqueue_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
+copy public.pg_resqueue from '@abs_srcdir@/data//upg2_pg_resqueue_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 -- Assign users without queues to the default queue
 update public.pg_authid u set rolresqueue=q.oid from pg_catalog.pg_resqueue q where q.rsqname='gp_default' and u.rolresqueue is null and not u.rolsuper;
 commit;
@@ -1530,6 +1616,66 @@ select * from pg_catalog.pg_resqueue where oid < 10000;
 ---------+---------------+--------------+---------------+--------------------
 (0 rows)
 
+-- compare old and new pg_cast
+select * from pg_catalog.pg_cast
+except
+select * from public.pg_cast;
+ castsource | casttarget | castfunc | castcontext 
+------------+------------+----------+-------------
+(0 rows)
+
+select * from public.pg_cast
+except
+select * from pg_catalog.pg_cast;
+ castsource | casttarget | castfunc | castcontext 
+------------+------------+----------+-------------
+(0 rows)
+
+-- pg_opclass
+select * from pg_catalog.pg_opclass
+except
+select * from public.pg_opclass;
+ opcamid | opcname | opcnamespace | opcowner | opcintype | opcdefault | opckeytype 
+---------+---------+--------------+----------+-----------+------------+------------
+(0 rows)
+
+select * from public.pg_opclass
+except
+select * from pg_catalog.pg_opclass;
+ opcamid | opcname | opcnamespace | opcowner | opcintype | opcdefault | opckeytype 
+---------+---------+--------------+----------+-----------+------------+------------
+(0 rows)
+
+-- pg_amproc
+select * from pg_catalog.pg_amproc
+except
+select * from public.pg_amproc;
+ amopclaid | amprocsubtype | amprocnum | amproc 
+-----------+---------------+-----------+--------
+(0 rows)
+
+select * from public.pg_amproc
+except
+select * from pg_catalog.pg_amproc;
+ amopclaid | amprocsubtype | amprocnum | amproc 
+-----------+---------------+-----------+--------
+(0 rows)
+
+-- pg_amop
+select * from pg_catalog.pg_amop
+except
+select * from public.pg_amop;
+ amopclaid | amopsubtype | amopstrategy | amopreqcheck | amopopr 
+-----------+-------------+--------------+--------------+---------
+(0 rows)
+
+select * from public.pg_amop
+except
+select * from pg_catalog.pg_amop;
+ amopclaid | amopsubtype | amopstrategy | amopreqcheck | amopopr 
+-----------+-------------+--------------+--------------+---------
+(0 rows)
+
 --
 -- 9. Final sanity checks and cleanup
 --
@@ -1577,6 +1723,10 @@ drop table
   public.pg_shdescription,
   public.pg_shdepend,
   public.pg_rewrite,
+  public.pg_cast,
+  public.pg_opclass,
+  public.pg_amproc,
+  public.pg_amop,
   public.pg_authid,
   public.pg_resqueue,
   public.pg_class_v33,
@@ -1593,6 +1743,10 @@ drop table
   public.pg_shdescription_v33,
   public.pg_shdepend_v33,
   public.pg_rewrite_v33,
+  public.pg_cast_v33,
+  public.pg_opclass_v33,
+  public.pg_amproc_v33,
+  public.pg_amop_v33,
   public.pg_appendonly,
   public.pg_appendonly_v33,
   public.pg_exttable,
