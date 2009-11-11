@@ -1,0 +1,8 @@
+oprname|oprnamespace|oprowner|oprkind|oprcanhash|oprleft|oprright|oprresult|oprcom|oprnegate|oprlsortop|oprrsortop|oprltcmpop|oprgtcmpop|oprcode|oprrest|oprjoin
+=|11|10|b|f|28|28|16|352|3063|3064|3064|3064|3065|xideq|eqsel|eqjoinsel
+<>|11|10|b|f|28|28|16|3063|352|0|0|0|0|xidne|neqsel|neqjoinsel
+<|11|10|b|f|28|28|16|3065|3067|0|0|0|0|xidlt|scalarltsel|scalarltjoinsel
+>|11|10|b|f|28|28|16|3064|3066|0|0|0|0|xidgt|scalargtsel|scalargtjoinsel
+<=|11|10|b|f|28|28|16|3067|3065|0|0|0|0|xidle|scalarltsel|scalarltjoinsel
+>=|11|10|b|f|28|28|16|3066|3064|0|0|0|0|xidge|scalargtsel|scalargtjoinsel
+\.

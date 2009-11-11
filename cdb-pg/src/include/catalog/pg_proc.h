@@ -3241,6 +3241,18 @@ DESCR("Get the length of a file (via stat)");
 DATA(insert OID = 2971 (  text				PGNSP PGUID 12 f f t f i 1 25 f "16" _null_ _null_ _null_  booltext - _null_  ));
 DESCR("convert boolean to text");
 
+DATA(insert OID = 3057 ( xidne			   PGNSP PGUID 12 f f t f i 2 16 f "28 28" _null_ _null_ _null_ xidne - _null_ ));
+DESCR("not equal");
+DATA(insert OID = 3058 ( xidgt			   PGNSP PGUID 12 f f t f i 2 16 f "28 28" _null_ _null_ _null_ xidgt - _null_));
+DESCR("greater-than");
+DATA(insert OID = 3059 ( xidlt			   PGNSP PGUID 12 f f t f i 2 16 f "28 28" _null_ _null_ _null_ xidlt - _null_));
+DESCR("less-than");
+DATA(insert OID = 3060 ( xidge			   PGNSP PGUID 12 f f t f i 2 16 f "28 28" _null_ _null_ _null_ xidge - _null_));
+DESCR("greater-than-or-equal");
+DATA(insert OID = 3061 ( xidle			   PGNSP PGUID 12 f f t f i 2 16 f "28 28" _null_ _null_ _null_ xidle - _null_));
+DESCR("less-than-or-equal");
+DATA(insert OID = 3062 ( btxidcmp		   PGNSP PGUID 12 f f t f i 2 23 f "27 27" _null_ _null_ _null_ btxidcmp - _null_));
+DESCR("btree less-equal-greater");
 
 
 
@@ -4510,6 +4522,8 @@ DATA(insert OID = 6043 (  gp_transaction_log   PGNSP PGUID 12 f f f t v 0 2249 f
 DESCR("view logged local transaction status");
 DATA(insert OID = 6044 (  gp_distributed_log   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_distributed_log - _null_ ));
 DESCR("view logged distributed transaction status");
+// DATA(insert OID = 6055 (  gp_memory_database_directories   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_memory_database_directories - _null_ ));
+// DESCR("view in-memory status of persistent database directories");
 
 /* Greenplum MPP window function implementation */
 DATA(insert OID = 7100 (  row_number_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ row_number_immed - _null_ ));

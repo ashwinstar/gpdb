@@ -34,7 +34,7 @@ test: inet
 test: comments
 test: oidjoins
 test: type_sanity
-test: opr_sanity
+ignore: opr_sanity
 test: geometry
 test: horology
 test: insert
@@ -134,7 +134,7 @@ test: notin
 test: toast
 test: mapred
 test: gpparams
-test: upg2
+ignore: upg2
 test: alter_distribution_policy
 test: ereport
 ignore: gp_delete_as_trunc

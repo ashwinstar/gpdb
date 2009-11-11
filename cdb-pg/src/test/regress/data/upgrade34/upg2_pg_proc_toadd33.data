@@ -29,4 +29,10 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 822|pg_typeof|11|10|12|f|f|f|f|s|1|2206|f|2276|\N|\N|\N|pg_typeof|-|\N
 2878|pg_terminate_backend|11|10|12|f|f|t|f|v|1|16|f|23|\N|\N|\N|pg_terminate_backend|-|\N
 2971|text|11|10|12|f|f|t|f|i|1|25|f|16|\N|\N|\N|booltext|-|\N
+3057|xidne|11|10|12|f|f|t|f|i|2|16|f|28 28|\N|\N|\N|xidne|-|\N
+3058|xidgt|11|10|12|f|f|t|f|i|2|16|f|28 28|\N|\N|\N|xidgt|-|\N
+3059|xidlt|11|10|12|f|f|t|f|i|2|16|f|28 28|\N|\N|\N|xidlt|-|\N
+3060|xidge|11|10|12|f|f|t|f|i|2|16|f|28 28|\N|\N|\N|xidge|-|\N
+3061|xidle|11|10|12|f|f|t|f|i|2|16|f|28 28|\N|\N|\N|xidle|-|\N
+3062|btxidcmp|11|10|12|f|f|t|f|i|2|23|f|27 27|\N|\N|\N|btxidcmp|-|\N
 \.
