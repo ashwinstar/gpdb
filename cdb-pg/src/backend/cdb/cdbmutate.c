@@ -755,7 +755,8 @@ apply_motion(Plan *plan, Query *query)
 				{
 					ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 									errmsg("Cannot parallelize that %s yet",
-										   query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
+										   query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE"),
+								    errOmitLocation(true)
 								));
 				}
 
