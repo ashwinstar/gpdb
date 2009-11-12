@@ -225,7 +225,7 @@ typedef struct CopyStateData
 								 * buffer */
 
 	/* Original row number tracking variables */
-#define ORIGINAL_LINENO_DELIM '^'
+#define COPY_METADATA_DELIM '^'
 	ErrLocType  err_loc_type;   /* see enum def for description */
 
 	/* Error handling options */

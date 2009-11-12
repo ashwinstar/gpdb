@@ -303,16 +303,20 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 		char temp[60];
 		
 		/* Add mirror vs primary flag */
-		sprintf(temp,"%c%d %c", ORIGINAL_LINENO_DELIM,
+		sprintf(temp,"%c%d %c", COPY_METADATA_DELIM,
 								 target_seg, 
-								 ORIGINAL_LINENO_DELIM);
+								 COPY_METADATA_DELIM);
 		flagloc = strstr(buffer,temp);
 		Assert(flagloc);
-		flagloc = strchr(flagloc+1, ORIGINAL_LINENO_DELIM);
+		flagloc = strchr(flagloc+1, COPY_METADATA_DELIM);
 		Assert(flagloc);
-		Assert(*flagloc == ORIGINAL_LINENO_DELIM);
+		Assert(*flagloc == COPY_METADATA_DELIM);
 		flagloc--;
 		Assert(*flagloc == ' ');
+		
+		/* NOTE!! note that another DELIM was added, for the buf_converted
+		 * metadata. if DA is ever enabled again, need to skip another delimiter
+		 * in the code above. I didn't do it because it's broken right now */
 	}
 	
 	

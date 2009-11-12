@@ -101,7 +101,7 @@ static int	CopyGetData(CopyState cstate, void *databuf, int datasize);
 static char *scanTextLine(CopyState cstate, const char *s, char c, size_t len);
 static char *scanCSVLine(CopyState cstate, const char *s, char c1, char c2, char c3, size_t len);
 
-static int CopyExtractLineNum(CopyState cstate);
+static void CopyExtractRowMetaData(CopyState cstate);
 static void preProcessDataLine(CopyState cstate);
 static void concatenateEol(CopyState cstate);
 static char *escape_quotes(const char *src);
@@ -192,11 +192,13 @@ else \
 												   sizeof(char) + 1 + 24); \
 \
 		rawdata_is_a_copy = true; \
-		sprintf(cstate->cdbsreh->rawdata, "%d%c%d%c%s", \
+		sprintf(cstate->cdbsreh->rawdata, "%d%c%d%c%d%c%s", \
 			    original_lineno_for_qe, \
-				ORIGINAL_LINENO_DELIM, \
+				COPY_METADATA_DELIM, \
+				cstate->line_buf_converted, \
+				COPY_METADATA_DELIM, \
 				target_seg, \
-				ORIGINAL_LINENO_DELIM, \
+				COPY_METADATA_DELIM, \
 				cstate->line_buf.data);	\
 	}\
 	else\
@@ -210,7 +212,7 @@ else \
 			/* if line has embedded rownum, update the cursor to the pos right after */ \
 			Insist(cstate->err_loc_type == ROWNUM_EMBEDDED);\
 			cstate->line_buf.cursor = 0;\
-			cstate->cur_lineno = CopyExtractLineNum(cstate); \
+			CopyExtractRowMetaData(cstate); \
 		}\
 \
 		cstate->cdbsreh->rawdata = cstate->line_buf.data + cstate->line_buf.cursor; \
@@ -2993,7 +2995,7 @@ CopyFromDispatch(CopyState cstate)
 				}
 				PG_CATCH();
 				{
-					/* got here? encoding conversion/check error occured */
+					/* got here? encoding conversion/check error occurred */
 					COPY_HANDLE_ERROR;
 				}
 				PG_END_TRY();
@@ -3351,13 +3353,15 @@ CopyFromDispatch(CopyState cstate)
 				 * The space will be filled in by cdbCopySendData with
 				 * P or M (primary or mirror)
 				 */
-				appendStringInfo(&line_buf_with_lineno, "%d%c%d %c%s",
+				appendStringInfo(&line_buf_with_lineno, "%d%c%d%c%d %c%s",
 								 original_lineno_for_qe,
-								 ORIGINAL_LINENO_DELIM,
+								 COPY_METADATA_DELIM,
+								 cstate->line_buf_converted, \
+								 COPY_METADATA_DELIM, \
 								 target_seg,
-								 ORIGINAL_LINENO_DELIM,
+								 COPY_METADATA_DELIM,
 								 cstate->line_buf.data);
-
+				
 				/* send modified data */
 				cdbCopySendData(cdbCopy,
 								target_seg,
@@ -3778,56 +3782,6 @@ CopyFrom(CopyState cstate)
 					 */
 					if (!cstate->fe_eof || cstate->end_marker)
 						break;
-				}
-				else
-				{
-					/*
-					 * SREH special case - encoding error
-					 *
-					 * If data is already in server encoding then it means
-					 * that it was converted successfully by QD COPY. Then
-					 * we are done. However, if it's not in a valid server
-					 * encoding this must mean that the QD COPY failed to
-					 * convert to server encoding and sent us the raw text
-					 * from the original data stream. In order to
-					 * reconstruct the error for logging it we attempt to
-					 * do the conversion here again, and then catch the
-					 * error and log it.
-					 */
-					if(Gp_role == GP_ROLE_EXECUTE && cstate->errMode == SREH_LOG)
-					{
-						Assert(!cstate->need_transcoding);
-
-						if(!pg_verify_mbstr(GetDatabaseEncoding(),
-											cstate->line_buf.data,
-											cstate->line_buf.len,
-											true /* don't ereport */))
-						{
-							PG_TRY();
-							{
-								/* invalid server encoding. reconstruct QD error */
-								cstate->line_buf_converted = false;
-								(void) pg_client_to_server(cstate->line_buf.data,
-																   cstate->line_buf.len);
-
-								/* previous statement MUST report an error! */
-								Assert(false);
-							}
-							PG_CATCH();
-							{
-								/* got here? encoding conversion/check error occurred */
-								COPY_HANDLE_ERROR;
-							}
-							PG_END_TRY();
-
-							if(cur_row_rejected)
-							{
-								IF_REJECT_LIMIT_REACHED_ABORT;
-								QE_GOTO_NEXT_ROW;
-							}
-
-						}
-					}
 				}
 
 				if (file_has_oids)
@@ -4818,7 +4772,7 @@ int GetDecimalFromHex(char hex)
  *
  * line_buf.cursor -- an offset from beginning of the line buffer
  * that indicates where we are about to begin the next scan. Note that
- * if we have WITH OIDS or if we ran CopyExtractLineNum this cursor is
+ * if we have WITH OIDS or if we ran CopyExtractRowMetaData this cursor is
  * already shifted and is not in the beginning of line buf anymore.
  *
  * attribute_buf.cursor -- an offset from the beginning of the
@@ -5835,60 +5789,72 @@ CopyGetAttnums(TupleDesc tupDesc, Relation rel, List *attnamelist)
 	return attnums;
 }
 
+#define COPY_FIND_MD_DELIM \
+md_delim = memchr(line_start, COPY_METADATA_DELIM, 32); \
+Assert(md_delim && (md_delim != line_start)); \
+value_len = md_delim - line_start + 1; \
+*md_delim = '\0';
+
 /*
- * CopyExtractLineNum - extract embedded row number from data.
+ * CopyExtractRowMetaData - extract embedded row number from data.
  *
  * If data is being parsed in execute mode the parser (QE) doesn't
  * know the original line number (in the original file) of the current
  * row. Therefore the QD sends this information along with the data.
- * The same goes for external table scans with gpfdist. gpfdist will
- * send embedded line numbers with data.
+ * other metadata that the QD sends includes whether the data was
+ * converted to server encoding (should always be the case, unless
+ * encoding error happened and we're in error table mode) and some
+ * dispatch agent info.
  *
  * in:
- *    line_buf: <original_num>^<data for this row>
+ *    line_buf: <original_num>^<buf_converted>^<DA stuff>^<data for this row>
  *    lineno: ?
+ *    line_buf_converted: ?
+ *    DA info: ?
  *
  * out:
  *    line_buf: <data for this row>
  *    lineno: <original_num>
+ *    line_buf_converted: <t/f>
+ *    DA info: <target seg>
  */
 static
-int CopyExtractLineNum(CopyState cstate)
+void CopyExtractRowMetaData(CopyState cstate)
 {
-	char *lineno_delim = NULL;
+	char *md_delim = NULL; /* position of the metadata delimiter */
 
 	/*
 	 * Line_buf may have already skipped an OID column if WITH OIDS defined,
 	 * so we need to start from cursor not always from beginning of linebuf.
 	 */
 	char *line_start = cstate->line_buf.data + cstate->line_buf.cursor;
-	int  lineno_str_len = 0;
-	int  lineno = 0;
+	int  value_len = 0;
 
-	lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
-	Insist(lineno_delim && (lineno_delim != line_start));
-	lineno_str_len = lineno_delim - line_start + 1;
+	/* look for the first delimiter, and extract lineno */
+	COPY_FIND_MD_DELIM;
+	cstate->cur_lineno = atoi(line_start);
 
-	/* change the lineno delim to null '\0' to look at the lineno */
-	*lineno_delim = '\0';
-	lineno = atoi(line_start);
+	*md_delim = COPY_METADATA_DELIM; /* restore the line_buf byte after setting it to \0 */
 
-	/* restore the line_buf byte */
-	*lineno_delim = ORIGINAL_LINENO_DELIM;
-
-	/* reposition line buf cursor to see real data (skip lineno) */
-	cstate->line_buf.cursor += lineno_str_len;
-
-	/* skip target_seg */
+	/* reposition line buf cursor to see next metadata value (skip lineno) */
+	cstate->line_buf.cursor += value_len;
 	line_start = cstate->line_buf.data + cstate->line_buf.cursor;
-	lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
-	Insist(lineno_delim && (lineno_delim != line_start));
-	lineno_str_len = lineno_delim - line_start + 1;
 
+	/* look for the second delimiter, and extract line_buf_converted */
+	COPY_FIND_MD_DELIM;
+	cstate->line_buf_converted = atoi(line_start);
+	//Assert(value_len == 1);
+	
+	*md_delim = COPY_METADATA_DELIM;
+	cstate->line_buf.cursor += value_len;
+	line_start = cstate->line_buf.data + cstate->line_buf.cursor;
+	
+	/* skip target_seg */
+	COPY_FIND_MD_DELIM;
+	*md_delim = COPY_METADATA_DELIM;
+	
 	/* reposition line buf cursor to see real data (skip target_seg) */
-	cstate->line_buf.cursor += lineno_str_len;
-
-	return lineno;
+	cstate->line_buf.cursor += value_len;
 }
 
 /*
@@ -5920,35 +5886,41 @@ copy_in_error_callback(void *arg)
 	buff_orig = copy_of_line_buf.data;
 
 	/*
-	 * If our (copy of) linebuf has the embedded original row number, remove
-     * it. It is not part of the actual data, and should not be displayed.
+	 * If our (copy of) linebuf has the embedded original row number and other
+	 * row-specific metadata, remove it. It is not part of the actual data, and 
+	 * should not be displayed.
 	 */
 	if(cstate->err_loc_type == ROWNUM_EMBEDDED)
 	{
-		/* the following is a compacted mod of CopyExtractLineNum */
-		int lineno_str_len = 0;
+		
+		/* the following is a compacted mod of CopyExtractRowMetaData */
+		int value_len = 0;
 		char *line_start = copy_of_line_buf.data;
-		char *lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+		char *lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
 
-		/* Calling Insist or Assert here will cause recursive errors */
 		if (!(lineno_delim && (lineno_delim != line_start)))
 			write_log("Error in copy_in_error_callback: !(lineno_delim && (lineno_delim != line_start))\n");
-		else
+
+		value_len = lineno_delim - line_start + 1;
+		copy_of_line_buf.data += value_len; /* advance beyond original lineno */
+		copy_of_line_buf.len -= value_len;
+
+		line_start = copy_of_line_buf.data;
+		lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
+
+		value_len = lineno_delim - line_start + 1;
+		copy_of_line_buf.data += value_len; /* advance beyond line_buf_converted */
+		copy_of_line_buf.len -= value_len;
+		
+		/* skip target_seg */
+		line_start = copy_of_line_buf.data;
+		lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
+
+		if (lineno_delim && (lineno_delim != line_start))
 		{
-			lineno_str_len = lineno_delim - line_start + 1;
-			copy_of_line_buf.data += lineno_str_len; /* advance beyond original lineno */
-			copy_of_line_buf.len -= lineno_str_len;
-
-			/* skip target_seg */
-			line_start = copy_of_line_buf.data;
-			lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
-
-			if (lineno_delim && (lineno_delim != line_start))
-			{
-				lineno_str_len = lineno_delim - line_start + 1;
-				copy_of_line_buf.data += lineno_str_len; /* advance beyond target_seg */
-				copy_of_line_buf.len -= lineno_str_len;
-			}
+			value_len = lineno_delim - line_start + 1;
+			copy_of_line_buf.data += value_len; /* advance beyond target_seg */
+			copy_of_line_buf.len -= value_len;
 		}
 	}
 
@@ -6720,7 +6692,7 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 						int  lineno_str_len = 0;
 						bool primary = true;
 
-						lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+						lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
 						Insist(lineno_delim && (lineno_delim != line_start));
 						lineno_str_len = lineno_delim - line_start + 1;
 
@@ -6729,14 +6701,25 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 						original_lineno_for_qe = atoi(line_start);
 
 						/* restore the line_buf byte */
-						*lineno_delim = ORIGINAL_LINENO_DELIM;
+						*lineno_delim = COPY_METADATA_DELIM;
 
 						/* reposition line buf cursor to see real data (skip lineno) */
 						cstate->line_buf.cursor += lineno_str_len;
 
+						lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32); \
+						Assert(lineno_delim && (lineno_delim != line_start)); \
+						lineno_str_len = lineno_delim - line_start + 1; \
+						*lineno_delim = '\0';
+						cstate->line_buf_converted = atoi(line_start);
+						Assert(lineno_str_len == 1);
+						
+						//*lineno_delim = COPY_METADATA_DELIM;
+						cstate->line_buf.cursor += lineno_str_len;
+						line_start = cstate->line_buf.data + cstate->line_buf.cursor;
+						
 						/* skip target_seg */
 						line_start = cstate->line_buf.data + cstate->line_buf.cursor;
-						lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+						lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
 						Insist(lineno_delim && (lineno_delim != line_start));
 						lineno_str_len = lineno_delim - line_start + 1;
 
@@ -6747,13 +6730,10 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 						primary = *(lineno_delim-1) == 'P';
 
 						/* restore the line_buf byte */
-						*lineno_delim = ORIGINAL_LINENO_DELIM;
-
+						*lineno_delim = COPY_METADATA_DELIM;
 
 						/* reposition line buf cursor to see real data (skip target_seg) */
 						cstate->line_buf.cursor += lineno_str_len;
-
-
 
 						Assert(target_seg >= 0 && target_seg <= 10000);
 
@@ -6762,16 +6742,9 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 										target_seg,
 										cstate->line_buf.data,
 										cstate->line_buf.len, primary);
-
-
 						}
 
-
-
-
 					cstate->processed++;
-
-
 					RESET_LINEBUF;
 
 				}					/* end while(!raw_buf_done) */
@@ -6891,6 +6864,7 @@ static
 void preProcessDataLine(CopyState cstate)
 {
 	char	   *cvt;
+	bool		force_transcoding = false;
 
 	/*
 	 * Increment line count by 1 if we have access to all the original
@@ -6900,18 +6874,48 @@ void preProcessDataLine(CopyState cstate)
 	 * get that number instead.
 	 */
 	if(cstate->err_loc_type == ROWNUM_ORIGINAL)
+	{
 		cstate->cur_lineno++;
+	}
 	else if(cstate->err_loc_type == ROWNUM_EMBEDDED)
-		cstate->cur_lineno = CopyExtractLineNum(cstate);
+	{
+		Assert(Gp_role == GP_ROLE_EXECUTE);
+		
+		/*
+		 * Extract various metadata sent to us from the QD COPY about this row:
+		 * 1) the original line number of the row.
+		 * 2) if the row was converted to server encoding or not
+		 * 3) some dispatch agent info.
+		 */
+		CopyExtractRowMetaData(cstate); /* sets cur_lineno internally */
+		
+		/* check if QD sent us a badly encoded row, still in client_encoding, 
+		 * in order to catch the encoding error ourselves. if line_buf_converted
+		 * is false after CopyExtractRowMetaData then we must transcode and catch
+		 * the error. Verify that we are indeed in SREH error table mode. that's
+		 * the only valid path for receiving an unconverted data row.
+		 */
+		if (!cstate->line_buf_converted)
+		{
+			Assert(cstate->errMode == SREH_LOG);
+			force_transcoding = true; 
+		}
+			
+	}
 	else
+	{
 		Assert(false); /* byte offset not yet supported */
-
-	if (cstate->need_transcoding)
+	}
+	
+	if (cstate->need_transcoding || force_transcoding)
 	{
 		cvt = (char *) pg_custom_to_server(cstate->line_buf.data,
 										   cstate->line_buf.len,
 										   cstate->client_encoding,
 										   cstate->enc_conversion_proc);
+		
+		Assert(!force_transcoding); /* if force is 't' we must have failed in the conversion */
+		
 		if (cvt != cstate->line_buf.data)
 		{
 			/* transfer converted data back to line_buf */
