@@ -476,7 +476,8 @@ prescan_walker(Node *node, PlanProfile * context)
 					            errmsg("Cannot parallelize that query yet."),
                                 errdetail("In a subquery FROM clause, a "
                                           "function invocation cannot contain "
-                                          "a correlated reference.")
+                                          "a correlated reference."),
+                                errOmitLocation(true)
 					    ));
             }
 

@@ -259,6 +259,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("DISTINCT specified, but %s is not an aggregate function",
 							NameListToString(funcname)),
+					 errOmitLocation(true),
 					 parser_errposition(pstate, location)));
 		if (agg_filter)
 		    ereport(ERROR,
@@ -266,6 +267,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 					 errmsg("filter clause specified, but "
 							"%s is not an aggregate function",
 							NameListToString(funcname)),
+					 errOmitLocation(true),
 					 parser_errposition(pstate, location)));
 	}
 	else if (fdresult != FUNCDETAIL_AGGREGATE)
@@ -404,7 +406,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("window function \"%s\" requires a window "
 								"specification with an ordering clause",
-								NameListToString(funcname))));
+								NameListToString(funcname)),
+										 errOmitLocation(true)));
 
 			/*
 			 * We do not test the parent for a framing clause as parent
@@ -416,7 +419,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("window function \"%s\" cannot be used with "
 								"a framed window specification",
-								NameListToString(funcname))));
+								NameListToString(funcname)),
+										 errOmitLocation(true)));
 			
 			ReleaseSysCache(tuple);
 		}
@@ -502,7 +506,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 							func_signature_string(funcname, nargs, 
 												  actual_arg_types)),
 					 errhint("The filter clause is only supported over functions "
-							 "defined as STRICT.")));
+							 "defined as STRICT."),
+									 errOmitLocation(true)));
 		}
 
 		/* parse_agg.c does additional aggregate-specific processing */
@@ -514,7 +519,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("aggregates may not return sets"),
-					 parser_errposition(pstate, location)));
+					 parser_errposition(pstate, location),
+							 errOmitLocation(true)));
 	}
 
 	return retval;

@@ -806,7 +806,8 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot update or delete from external relation \"%s\"",
-							RelationGetRelationName(pstate->p_target_relation))));
+							RelationGetRelationName(pstate->p_target_relation)),
+					 errOmitLocation(true)));
 		}
 		else
 		{
@@ -820,7 +821,8 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot change a readable external table \"%s\"",
-								 RelationGetRelationName(pstate->p_target_relation))));
+								 RelationGetRelationName(pstate->p_target_relation)),
+						 errOmitLocation(true)));
 
 			pfree(extentry);
 		}
@@ -1131,7 +1133,8 @@ transformRangeSubselect(ParseState *pstate, RangeSubselect *r)
 		if (contain_vars_of_level((Node *) query, 1))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-					 errmsg("subquery in FROM may not refer to other relations of same query level")));
+					 errmsg("subquery in FROM may not refer to other relations of same query level"),
+							 errOmitLocation(true)));
 	}
 
 	/*
@@ -1237,7 +1240,8 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 		if (contain_vars_of_level(funcexpr, 0))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-					 errmsg("function expression in FROM may not refer to other relations of same query level")));
+					 errmsg("function expression in FROM may not refer to other relations of same query level"),
+					 errOmitLocation(true)));
 	}
 
 	/*
@@ -1249,7 +1253,8 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 		if (checkExprHasAggs(funcexpr))
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
-					 errmsg("cannot use aggregate function in function expression in FROM")));
+					 errmsg("cannot use aggregate function in function expression in FROM"),
+					 errOmitLocation(true)));
 	}
 
 	/*

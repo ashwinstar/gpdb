@@ -626,7 +626,8 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 							errmsg("cannot start external table command: %m"),
-							errdetail("Command: %s", url)));
+							errdetail("Command: %s", url),
+							errOmitLocation(true)));
 
 		}
 	}
@@ -920,7 +921,8 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 								errmsg("cannot close external table %s command: %m", 
 										(relname ? relname : "")),
-								errdetail("command: %s", url)));
+								errdetail("command: %s", url),
+								errOmitLocation(true)));
 			}
 			else
 			{
@@ -936,7 +938,8 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 								errmsg("external table %s command ended with %s",
 										(relname ? relname : ""),
 										interpretError(ret, buf, sizeof(buf)/sizeof(char), err, strlen(err))),
-								errdetail("Command: %s", url)));
+								errdetail("Command: %s", url),
+								errOmitLocation(true)));
 			}
 			break;
 
