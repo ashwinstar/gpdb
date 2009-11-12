@@ -1524,7 +1524,8 @@ exec_simple_query(const char *query_string)
 			ereport(ERROR,
 					(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
 					 errmsg("current transaction is aborted, "
-						"commands ignored until end of transaction block")));
+						"commands ignored until end of transaction block"),
+					 errOmitLocation(true)));
 
 		/* Make sure we are in a transaction command */
 		start_xact_command();

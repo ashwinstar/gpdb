@@ -802,7 +802,8 @@ process_matched_tle(TargetEntry *src_tle,
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("multiple assignments to same column \"%s\"",
-						attrName)));
+						attrName),
+				 errOmitLocation(true)));
 
 	/*
 	 * Prior TLE could be a nest of assignments if we do this more than once.
