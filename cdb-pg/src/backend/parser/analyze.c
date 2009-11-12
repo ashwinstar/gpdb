@@ -7241,7 +7241,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			snprintf(prtstr, sizeof(prtstr), "prt_%d", partno + 1);
 
 		/* MPP-6297: check for WITH (tablename=name) clause */
-		if (0 && pStoreAttr && ((AlterPartitionCmd *)pStoreAttr)->arg1)
+		if (pStoreAttr && ((AlterPartitionCmd *)pStoreAttr)->arg1)
 		{
 			ListCell *prev_lc = NULL;
 			ListCell *def_lc  = NULL;
