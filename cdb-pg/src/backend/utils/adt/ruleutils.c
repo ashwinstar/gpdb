@@ -57,8 +57,6 @@
 /* Pretty flags */
 #define PRETTYFLAG_PAREN		1
 #define PRETTYFLAG_INDENT		2
-/* #define PRETTYFLAG_PARTN_TNAME	16 */
-#define PRETTYFLAG_PARTN_TNAME	0
 
 /* macro to test if pretty action needed */
 #define PRETTY_PAREN(context)	((context)->prettyFlags & PRETTYFLAG_PAREN)
@@ -205,8 +203,11 @@ static char *generate_function_name(Oid funcid, int nargs, Oid *argtypes);
 static char *generate_operator_name(Oid operid, Oid arg1, Oid arg2);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
-static void get_partition_recursive(PartitionNode *pn, deparse_context *head, deparse_context *body,
-									int16 *leveldone);
+static void get_partition_recursive(PartitionNode *pn, 
+									deparse_context *head, 
+									deparse_context *body,
+									int16 *leveldone,
+									int bLeafTablename);
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
 
@@ -5937,7 +5938,8 @@ static char *
 partition_rule_def_worker(PartitionRule *rule, Node *start, 
 						  Node *end, PartitionRule *end_rule,
 						  Node *every,
-						  Partition *part, bool handleevery, int prettyFlags)
+						  Partition *part, bool handleevery, int prettyFlags,
+						  bool bLeafTablename)
 {
 	StringInfoData str;
 	deparse_context c;
@@ -5948,7 +5950,8 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 	{
 		reloptions = flatten_reloptions(rule->parchildrelid);
 
-		if (PRETTYFLAG_PARTN_TNAME)
+
+		if (bLeafTablename) /* MPP-6297: dump by tablename */	
 		{
 			StringInfoData      	 sid1;
 
@@ -6099,7 +6102,7 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start,
 			   Node *every, deparse_context *head, deparse_context *body,
 			   bool handleevery, bool *needcomma, 
 			   bool *first_rule, int16 *leveldone,
-			   PartitionNode *children)
+			   PartitionNode *children, bool bLeafTablename)
 {
 	char *str;
 
@@ -6123,7 +6126,8 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start,
    	str = partition_rule_def_worker(rule, start, 
 									end, end_rule, 
 									every, pn->part, handleevery,
-									body->prettyFlags);
+									body->prettyFlags,
+									bLeafTablename);
 	if (str && strlen(str))
 	{
 		if (strlen(body->buf->data) && !first_rule && 
@@ -6135,7 +6139,7 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start,
 	}
 	pfree(str);
 
-	get_partition_recursive(children, head, body, leveldone);
+	get_partition_recursive(children, head, body, leveldone, bLeafTablename);
 
 	if (*first_rule)
 		*first_rule = false;
@@ -6145,7 +6149,7 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start,
 static void
 get_partition_recursive(PartitionNode *pn, deparse_context *head,
 						deparse_context *body,
-						int16 *leveldone)
+						int16 *leveldone, int bLeafTablename)
 {
 	PartitionRule		*rule			  = NULL;
 	ListCell			*lc;
@@ -6229,7 +6233,7 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 		{
 			if (!first_every_rule)
 			{
-				if (!PRETTYFLAG_PARTN_TNAME && rule->parrangeevery)
+				if (!bLeafTablename && rule->parrangeevery)
 				{
 					if (!strlen(rule->parname))
 						first_every_rule = rule;
@@ -6303,7 +6307,8 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 								   first_every_rule->parrangeevery,
 			   					   head, body, true, &needcomma, &first_rule, 
 								   leveldone,
-								   first_every_rule->children);
+								   first_every_rule->children, 
+								   bLeafTablename);
 					if (rule->parrangeevery)
 					{
 						first_every_rule = NULL;
@@ -6352,7 +6357,7 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 					   rule,
 					   rule->parrangeevery, head, body, false, &needcomma,
 					   &first_rule, leveldone,
-					   rule->children);
+					   rule->children, bLeafTablename);
 	} /* end foreach */
 
 	if (first_every_rule)
@@ -6364,7 +6369,8 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 					   prev_rule ? prev_rule : first_every_rule,
 					   first_every_rule->parrangeevery,
    					   head, body, true, &needcomma, &first_rule, leveldone,
-					   first_every_rule->children);
+					   first_every_rule->children,
+					   bLeafTablename);
 	}
 
 	if (pn->default_part)
@@ -6373,7 +6379,8 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 					   NULL, NULL, 
 					   head, body, false,
 					   &needcomma,
-					   &first_rule, leveldone, pn->default_part->children);
+					   &first_rule, leveldone, pn->default_part->children,
+					   bLeafTablename);
 	}
 
 	if (pn->rules || pn->default_part)
@@ -6381,7 +6388,7 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 }
 
 static char *
-pg_get_partition_def_worker(Oid relid, int prettyFlags)
+pg_get_partition_def_worker(Oid relid, int prettyFlags, int bLeafTablename)
 {
 	Relation rel = heap_open(relid, AccessShareLock);
 	PartitionNode *pn = RelationBuildPartitionDesc(rel, false);
@@ -6407,7 +6414,7 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 	bodyc.prettyFlags = prettyFlags;
 	bodyc.indentLevel = 0;
 
-	get_partition_recursive(pn, &headc, &bodyc, &leveldone);
+	get_partition_recursive(pn, &headc, &bodyc, &leveldone, bLeafTablename);
 
 	heap_close(rel, NoLock);
 
@@ -6420,7 +6427,7 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 }
 
 static char *
-get_rule_def_common(Oid partid, int prettyFlags)
+get_rule_def_common(Oid partid, int prettyFlags, int bLeafTablename)
 {
 	Relation rel;
 	ScanKeyData key;
@@ -6482,7 +6489,7 @@ get_rule_def_common(Oid partid, int prettyFlags)
 	return partition_rule_def_worker(rule, rule->parrangestart, 
 									 rule->parrangeend, rule,
 									 rule->parrangeevery, part, 
-									 false, prettyFlags);
+									 false, prettyFlags, bLeafTablename);
 }
 
 Datum
@@ -6491,7 +6498,8 @@ pg_get_partition_rule_def(PG_FUNCTION_ARGS)
 	Oid ruleid = PG_GETARG_OID(0);
 	char *str;
 
-	str = get_rule_def_common(ruleid, 0);
+	/* MPP-6297: dump by tablename */ /* XXX XXX */	
+	str = get_rule_def_common(ruleid, 0, FALSE);
 	if (!str)
 		PG_RETURN_NULL();
 	PG_RETURN_TEXT_P(string_to_text(str));
@@ -6507,7 +6515,8 @@ pg_get_partition_rule_def_ext(PG_FUNCTION_ARGS)
 
 	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
 
-	str = get_rule_def_common(partid, prettyFlags);
+	/* MPP-6297: dump by tablename */ /* XXX XXX */	
+	str = get_rule_def_common(partid, prettyFlags, FALSE);
 	if (!str)
 		PG_RETURN_NULL();
 
@@ -6520,7 +6529,9 @@ pg_get_partition_def(PG_FUNCTION_ARGS)
 	Oid			relid = PG_GETARG_OID(0);
 	char 	   *str;
 
-	str = pg_get_partition_def_worker(relid, 0);
+	/* MPP-6297: dump by tablename */ /* XXX XXX */	
+/*	str = pg_get_partition_def_worker(relid, 0, TRUE); */
+	str = pg_get_partition_def_worker(relid, 0, FALSE);
 
 	if (!str)
 		PG_RETURN_NULL();
@@ -6538,7 +6549,9 @@ pg_get_partition_def_ext(PG_FUNCTION_ARGS)
 
 	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
 
-	str = pg_get_partition_def_worker(relid, prettyFlags);
+	/* MPP-6297: dump by tablename */ /* XXX XXX */	
+/*	str = pg_get_partition_def_worker(relid, prettyFlags, TRUE); */
+	str = pg_get_partition_def_worker(relid, prettyFlags, FALSE); 
 	
 	if (!str)
 		PG_RETURN_NULL();
