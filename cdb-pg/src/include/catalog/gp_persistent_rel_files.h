@@ -26,17 +26,19 @@ CATALOG(gp_persistent_rel_files,5037) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 	Oid			database;
 	Oid			relation;
 	int2		state;
+	int4		serial_num;
 	tid			previous_free_tid;
 } FormData_gp_persistent_rel_files;
 
 #undef tid
 
-#define Natts_gp_persistent_rel_files				    		5
+#define Natts_gp_persistent_rel_files				    		6
 #define Anum_gp_persistent_rel_files_tablespace  				1
 #define Anum_gp_persistent_rel_files_database   				2
 #define Anum_gp_persistent_rel_files_relation		    		3
 #define Anum_gp_persistent_rel_files_state      				4
-#define Anum_gp_persistent_rel_files_previous_free_tid  		5
+#define Anum_gp_persistent_rel_files_serial_num     			5
+#define Anum_gp_persistent_rel_files_previous_free_tid  		6
  
 typedef FormData_gp_persistent_rel_files *Form_gp_persistent_rel_files;
 
@@ -48,11 +50,12 @@ typedef FormData_gp_persistent_rel_files *Form_gp_persistent_rel_files;
  *  pg_attribute.h]
  */
 #define Schema_gp_persistent_rel_files \
-{ GpPersistentRelFilesRelationId, {"tablespace"}, 			    26, -1,	4, 1, 0, 0, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelFilesRelationId, {"database"}, 				26, -1,	4, 2, 0, 4, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelFilesRelationId, {"relation"}, 				26, -1,	4, 3, 0, 8, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelFilesRelationId, {"state"},	   				21, -1,	2, 4, 0, 12, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentRelFilesRelationId, {"previous_free_tid"},  		27, -1,	6, 5, 0, 14, -1, false, 'p', 's', true, false, false, true, 0 }
+{ GpPersistentRelFilesRelationId, {"tablespace"}, 			    26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelFilesRelationId, {"database"}, 				26, -1,	4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelFilesRelationId, {"relation"}, 				26, -1,	4, 3, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelFilesRelationId, {"state"},					21, -1, 2, 4, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentRelFilesRelationId, {"serial_num"},				23, -1, 4, 5, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelFilesRelationId, {"previous_free_tid"},		27, -1, 6, 6, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
 
 /*
  *

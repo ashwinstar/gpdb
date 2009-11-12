@@ -105,7 +105,8 @@ attrelid|attname|atttypid|attstattarget|attlen|attnum|attndims|attcacheoff|attty
 5037|database|26|-1|4|2|0|-1|-1|t|p|i|t|f|f|t|0
 5037|relation|26|-1|4|3|0|-1|-1|t|p|i|t|f|f|t|0
 5037|state|21|-1|2|4|0|-1|-1|t|p|s|t|f|f|t|0
-5037|previous_free_tid|27|-1|6|5|0|-1|-1|f|p|s|t|f|f|t|0
+5037|serial_num|23|-1|4|5|0|-1|-1|t|p|i|t|f|f|t|0
+5037|previous_free_tid|27|-1|6|6|0|-1|-1|f|p|s|t|f|f|t|0
 5037|ctid|27|0|6|-1|0|-1|-1|f|p|s|t|f|f|t|0
 5037|xmin|28|0|4|-3|0|-1|-1|t|p|i|t|f|f|t|0
 5037|cmin|29|0|4|-4|0|-1|-1|t|p|i|t|f|f|t|0
@@ -116,7 +117,8 @@ attrelid|attname|atttypid|attstattarget|attlen|attnum|attndims|attcacheoff|attty
 5038|tablespace|26|-1|4|1|0|-1|-1|t|p|i|t|f|f|t|0
 5038|database|26|-1|4|2|0|-1|-1|t|p|i|t|f|f|t|0
 5038|state|21|-1|2|3|0|-1|-1|t|p|s|t|f|f|t|0
-5038|previous_free_tid|27|-1|6|4|0|-1|-1|f|p|s|t|f|f|t|0
+5038|serial_num|23|-1|4|4|0|-1|-1|t|p|i|t|f|f|t|0
+5038|previous_free_tid|27|-1|6|5|0|-1|-1|f|p|s|t|f|f|t|0
 5038|ctid|27|0|6|-1|0|-1|-1|f|p|s|t|f|f|t|0
 5038|xmin|28|0|4|-3|0|-1|-1|t|p|i|t|f|f|t|0
 5038|cmin|29|0|4|-4|0|-1|-1|t|p|i|t|f|f|t|0

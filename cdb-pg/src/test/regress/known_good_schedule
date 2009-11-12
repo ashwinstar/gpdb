@@ -34,7 +34,7 @@ test: inet
 test: comments
 test: oidjoins
 test: type_sanity
-ignore: opr_sanity
+test: opr_sanity
 test: geometry
 test: horology
 test: insert

@@ -3241,20 +3241,6 @@ DESCR("Get the length of a file (via stat)");
 DATA(insert OID = 2971 (  text				PGNSP PGUID 12 f f t f i 1 25 f "16" _null_ _null_ _null_  booltext - _null_  ));
 DESCR("convert boolean to text");
 
-DATA(insert OID = 3057 ( xidne			   PGNSP PGUID 12 f f t f i 2 16 f "28 28" _null_ _null_ _null_ xidne - _null_ ));
-DESCR("not equal");
-DATA(insert OID = 3058 ( xidgt			   PGNSP PGUID 12 f f t f i 2 16 f "28 28" _null_ _null_ _null_ xidgt - _null_));
-DESCR("greater-than");
-DATA(insert OID = 3059 ( xidlt			   PGNSP PGUID 12 f f t f i 2 16 f "28 28" _null_ _null_ _null_ xidlt - _null_));
-DESCR("less-than");
-DATA(insert OID = 3060 ( xidge			   PGNSP PGUID 12 f f t f i 2 16 f "28 28" _null_ _null_ _null_ xidge - _null_));
-DESCR("greater-than-or-equal");
-DATA(insert OID = 3061 ( xidle			   PGNSP PGUID 12 f f t f i 2 16 f "28 28" _null_ _null_ _null_ xidle - _null_));
-DESCR("less-than-or-equal");
-DATA(insert OID = 3062 ( btxidcmp		   PGNSP PGUID 12 f f t f i 2 23 f "27 27" _null_ _null_ _null_ btxidcmp - _null_));
-DESCR("btree less-equal-greater");
-
-
 
 
 /* Aggregates (moved here from pg_aggregate for 7.3) */

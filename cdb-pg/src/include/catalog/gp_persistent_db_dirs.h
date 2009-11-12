@@ -25,16 +25,18 @@ CATALOG(gp_persistent_db_dirs,5038) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 	Oid			tablespace;
 	Oid			database;
 	int2		state;
+	int4		serial_num;
 	tid			previous_free_tid;
 } FormData_gp_persistent_db_dirs;
 
 #undef tid
 
-#define Natts_gp_persistent_db_dirs				    		4
+#define Natts_gp_persistent_db_dirs				    		5
 #define Anum_gp_persistent_db_dirs_tablespace  				1
 #define Anum_gp_persistent_db_dirs_database   				2
 #define Anum_gp_persistent_db_dirs_state      				3
-#define Anum_gp_persistent_db_dirs_previous_free_tid	  	4
+#define Anum_gp_persistent_db_dirs_serial_num    			4
+#define Anum_gp_persistent_db_dirs_previous_free_tid	  	5
  
 typedef FormData_gp_persistent_db_dirs *Form_gp_persistent_db_dirs;
 
@@ -46,10 +48,11 @@ typedef FormData_gp_persistent_db_dirs *Form_gp_persistent_db_dirs;
  *  pg_attribute.h]
  */
 #define Schema_gp_persistent_db_dirs \
-{ GpPersistentDbDirsRelationId, {"tablespace"}, 			26, -1,	4, 1, 0, 0, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentDbDirsRelationId, {"database"}, 				26, -1,	4, 2, 0, 4, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentDbDirsRelationId, {"state"},	   				21, -1,	2, 3, 0, 8, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentDbDirsRelationId, {"previous_free_tid"},  	27, -1,	6, 4, 0, 10, -1, false, 'p', 's', true, false, false, true, 0 }
+{ GpPersistentDbDirsRelationId, {"tablespace"}, 			26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentDbDirsRelationId, {"database"}, 				26, -1,	4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentDbDirsRelationId, {"state"},					21, -1, 2, 3, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentDbDirsRelationId, {"serial_num"},				23, -1, 4, 4, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentDbDirsRelationId, {"previous_free_tid"},		27, -1, 6, 5, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
 
 /*
  *

@@ -120,16 +120,9 @@ DATA(insert OID = 349 (  "||"	   PGNSP PGUID b f 2277 2283 2277	0 0 0 0 0 0 arra
 DATA(insert OID = 374 (  "||"	   PGNSP PGUID b f 2283 2277 2277	0 0 0 0 0 0 array_prepend  -	   -	 ));
 DATA(insert OID = 375 (  "||"	   PGNSP PGUID b f 2277 2277 2277	0 0 0 0 0 0 array_cat	   -	   -	 ));
 
-DATA(insert OID = 352 (  "="	   PGNSP PGUID b f	28	28	16 352 3063	3064 3064 3064 3065 xideq eqsel eqjoinsel ));
+DATA(insert OID = 352 (  "="	   PGNSP PGUID b t	28	28	16 352	 0	 0	 0	 0	 0 xideq eqsel eqjoinsel ));
 #define XidEqualOperator 352
-DATA(insert OID = 3063 (  "<>"	   PGNSP PGUID b f	28	28	16 3063 352 0 0 0 0 xidne neqsel neqjoinsel ));
-DATA(insert OID = 3064 (  "<"	   PGNSP PGUID b f	28	28	16 3065 3067 0 0 0 0 xidlt scalarltsel scalarltjoinsel ));
-DATA(insert OID = 3065 (  ">"	   PGNSP PGUID b f	28	28	16 3064 3066 0 0 0 0 xidgt scalargtsel scalargtjoinsel ));
-DATA(insert OID = 3066 (  "<="	   PGNSP PGUID b f	28	28	16 3067 3065 0 0 0 0 xidle scalarltsel scalarltjoinsel ));
-DATA(insert OID = 3067 (  ">="	   PGNSP PGUID b f	28	28	16 3066 3064 0 0 0 0 xidge scalargtsel scalargtjoinsel ));
-
 DATA(insert OID = 353 (  "="	   PGNSP PGUID b f	28	23	16	 0	 0	 0	 0	 0	 0 xideqint4 eqsel eqjoinsel ));
-
 DATA(insert OID = 388 (  "!"	   PGNSP PGUID r f	20	 0	1700   0   0   0   0  0   0 numeric_fac - - ));
 DATA(insert OID = 389 (  "!!"	   PGNSP PGUID l f	 0	20	1700   0   0   0   0  0   0 numeric_fac - - ));
 DATA(insert OID = 385 (  "="	   PGNSP PGUID b t	29	29	16 385	 0	 0	 0	 0	 0 cideq eqsel eqjoinsel ));

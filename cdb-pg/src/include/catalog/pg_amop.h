@@ -162,16 +162,6 @@ DATA(insert (	2789	0 4 f 2802 ));
 DATA(insert (	2789	0 5 f 2800 ));
 
 /*
- * btree xid_ops
- */
-
-DATA(insert (	2225	0 1 f 3064 ));
-DATA(insert (	2225	0 2 f 3066 ));
-DATA(insert (	2225	0 3 f 352 ));
-DATA(insert (	2225	0 4 f 3067 ));
-DATA(insert (	2225	0 5 f 3065 ));
-
-/*
  *	btree oidvector_ops
  */
 
@@ -581,6 +571,8 @@ DATA(insert (	2222	0 1 f	91 ));
 DATA(insert (	2223	0 1 f 1955 ));
 /* int2vector_ops */
 DATA(insert (	2224	0 1 f  386 ));
+/* xid_ops */
+DATA(insert (	2225	0 1 f  352 ));
 /* cid_ops */
 DATA(insert (	2226	0 1 f  385 ));
 /* abstime_ops */
