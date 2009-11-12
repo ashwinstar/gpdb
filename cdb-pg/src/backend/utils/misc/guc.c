@@ -2184,7 +2184,7 @@ false
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_enable_default_resource_queues,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 	{
 		{"gp_eager_hashtable_release", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -2904,7 +2904,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&MaxResourceQueues,
-		8, 0, INT_MAX, NULL, NULL
+		9, 0, INT_MAX, NULL, NULL
 	},
 
 	{
