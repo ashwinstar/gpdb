@@ -3349,7 +3349,7 @@ CopyFromDispatch(CopyState cstate)
 				 * Send data row to all databases for this segment.
 				 * Also send the original row number with the data.
 				 * modify the data to look like:
-				 *    "<lineno>^<target_seg><space>^<data>"
+				 *    "<lineno>^<linebuf_converted>^<target_seg><space>^<data>"
 				 * The space will be filled in by cdbCopySendData with
 				 * P or M (primary or mirror)
 				 */
@@ -4426,6 +4426,9 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 			cstate->line_done = false;
 			cstate->raw_buf_done = true;
 			CopyCheckIsLastLine(cstate); /* may set line_done to true */
+
+			if (cstate->line_done)
+				preProcessDataLine(cstate);
 
 			return cstate->line_done;
 		}
@@ -5842,8 +5845,8 @@ void CopyExtractRowMetaData(CopyState cstate)
 
 	/* look for the second delimiter, and extract line_buf_converted */
 	COPY_FIND_MD_DELIM;
+	Assert(*line_start == '0' || *line_start == '1'); 
 	cstate->line_buf_converted = atoi(line_start);
-	//Assert(value_len == 1);
 	
 	*md_delim = COPY_METADATA_DELIM;
 	cstate->line_buf.cursor += value_len;
@@ -6711,9 +6714,8 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 						lineno_str_len = lineno_delim - line_start + 1; \
 						*lineno_delim = '\0';
 						cstate->line_buf_converted = atoi(line_start);
-						Assert(lineno_str_len == 1);
 						
-						//*lineno_delim = COPY_METADATA_DELIM;
+						*lineno_delim = COPY_METADATA_DELIM;
 						cstate->line_buf.cursor += lineno_str_len;
 						line_start = cstate->line_buf.data + cstate->line_buf.cursor;
 						
@@ -6924,7 +6926,6 @@ void preProcessDataLine(CopyState cstate)
 			pfree(cvt);
 		}
 	}
-
 	/* indicate that line buf is in server encoding */
 	cstate->line_buf_converted = true;
 }
