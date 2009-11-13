@@ -1352,7 +1352,7 @@ extern void resetSessionForPrimaryGangLoss(void);
 static void
 HandleClientWaitTimeout(void)
 {
-	elog(LOG,"HandleClientWaitTimeout");
+	elog(DEBUG2,"HandleClientWaitTimeout");
 	cleanupIdleReaderGangs();
 	if (!IsTransactionOrTransactionBlock())
 	{
