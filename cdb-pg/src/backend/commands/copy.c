@@ -4214,6 +4214,9 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 			cstate->line_done = false;
 			CopyCheckIsLastLine(cstate); /* may set line_done to true */
 
+			if (cstate->line_done)
+				preProcessDataLine(cstate);
+
 			return cstate->line_done;
 		}
 	}
