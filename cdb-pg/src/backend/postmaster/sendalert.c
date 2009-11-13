@@ -202,10 +202,15 @@ int send_alert(const GpErrorData * errorData)
 	//host = "smtpx18.msoutlookonline.net:587";
 	//"greenplum.com.s5a2.psmtp.com:25";
 
-
-	if (strlen(email_from) == 0 || strlen(email_to) == 0)
+	if (strlen(email_to) == 0)
 	{
-		elog(LOG,"e-mail alerts are not properly configured");
+		ereport(LOG,(errmsg("e-mail alerts are disabled"),errOmitLocation(true)));
+		return -1;
+	}
+
+	if (strlen(email_from) == 0)
+	{
+		elog(LOG,"e-mail alerts are not properly configured:  No 'from:' address configured");
 		return -1;
 	}
 
@@ -242,7 +247,7 @@ int send_alert(const GpErrorData * errorData)
 	auth_set_mechanism_flags(authctx, AUTH_PLUGIN_PLAIN|AUTH_PLUGIN_ANONYMOUS, 0);
 	auth_set_interact_cb(authctx, authinteract, NULL);
 
-	/* I don't know how "external" is supposed to work, or what ID I'm supposed to set here */
+	/* TODO: I don't know how "external" is supposed to work, or what ID I'm supposed to set here */
 	auth_set_external_id(authctx, email_smtp_userid);
 
 	smtp_auth_set_context(session, authctx);
