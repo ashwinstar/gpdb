@@ -7256,6 +7256,12 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 				 * element from the list */
 				if (0 == strcmp(pDef->defname, "tablename"))
 				{
+					/* if the string isn't quoted you get a typename ? */
+					if (!IsA(pDef->arg, String))
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("invalid tablename specification")));
+
 					relname = pstrdup(strVal(pDef->arg));
 					prtstr[0] = '\0';
 					pWithList = list_delete_cell(pWithList, def_lc, prev_lc);

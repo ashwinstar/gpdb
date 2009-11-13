@@ -5958,9 +5958,9 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 			initStringInfo(&sid1);
 
 			truncateStringInfo(&sid1, 0);
-			appendStringInfo(&sid1, "tablename=%s", 
-							 quote_identifier(
-									 get_rel_name(rule->parchildrelid)));
+			/* always quote to make WITH (tablename=...) work correctly */
+			appendStringInfo(&sid1, "tablename=\'%s\'", 
+							 get_rel_name(rule->parchildrelid));
 
 			if (reloptions)
 			{
@@ -6498,7 +6498,7 @@ pg_get_partition_rule_def(PG_FUNCTION_ARGS)
 	Oid ruleid = PG_GETARG_OID(0);
 	char *str;
 
-	/* MPP-6297: dump by tablename */ /* XXX XXX */	
+	/* MPP-6297: don't dump by tablename here */ 
 	str = get_rule_def_common(ruleid, 0, FALSE);
 	if (!str)
 		PG_RETURN_NULL();
@@ -6515,7 +6515,7 @@ pg_get_partition_rule_def_ext(PG_FUNCTION_ARGS)
 
 	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
 
-	/* MPP-6297: dump by tablename */ /* XXX XXX */	
+	/* MPP-6297: don't dump by tablename here */ 
 	str = get_rule_def_common(partid, prettyFlags, FALSE);
 	if (!str)
 		PG_RETURN_NULL();
@@ -6529,8 +6529,7 @@ pg_get_partition_def(PG_FUNCTION_ARGS)
 	Oid			relid = PG_GETARG_OID(0);
 	char 	   *str;
 
-	/* MPP-6297: dump by tablename */ /* XXX XXX */	
-/*	str = pg_get_partition_def_worker(relid, 0, TRUE); */
+	/* MPP-6297: don't dump by tablename here */ 
 	str = pg_get_partition_def_worker(relid, 0, FALSE);
 
 	if (!str)
@@ -6549,9 +6548,35 @@ pg_get_partition_def_ext(PG_FUNCTION_ARGS)
 
 	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
 
-	/* MPP-6297: dump by tablename */ /* XXX XXX */	
-/*	str = pg_get_partition_def_worker(relid, prettyFlags, TRUE); */
+	/* MPP-6297: don't dump by tablename here 
+	 * NOTE: may need to backport fix to 3.3.x, and changing
+	 * bLeafTablename = TRUE here should only affect
+	 * pg_dump/cdb_dump_agent (and partition.sql test) 
+	 */ 
 	str = pg_get_partition_def_worker(relid, prettyFlags, FALSE); 
+	
+	if (!str)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(string_to_text(str));
+}
+
+/* MPP-6297: final boolean argument to determine whether to dump by
+ * tablename (normally, only for pg_dump.c/cdb_dump_agent.c)
+ */ 
+Datum
+pg_get_partition_def_ext2(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+	bool		pretty = PG_GETARG_BOOL(1);
+	bool		bLeafTablename = PG_GETARG_BOOL(2);
+	int			prettyFlags;
+	char	   *str;
+
+	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
+
+	/* MPP-6297: dump by tablename */ 
+	str = pg_get_partition_def_worker(relid, prettyFlags, bLeafTablename); 
 	
 	if (!str)
 		PG_RETURN_NULL();

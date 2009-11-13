@@ -5072,8 +5072,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		if ( g_gp_supportsPartitioning )
 		{
 			resetPQExpBuffer(query);
+			/* MPP-6297: dump by tablename */ 
 			appendPQExpBuffer(query, "SELECT "
-							  "pg_get_partition_def('%u'::pg_catalog.oid, true) ",
+							  "pg_get_partition_def('%u'::pg_catalog.oid, true, true) ",
 							  tbinfo->dobj.catId.oid);
 
 			res = PQexec(g_conn, query->data);

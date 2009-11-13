@@ -586,6 +586,7 @@ extern char *quote_qualified_identifier(const char *namespace,
 						   const char *ident);
 extern Datum pg_get_partition_def(PG_FUNCTION_ARGS);
 extern Datum pg_get_partition_def_ext(PG_FUNCTION_ARGS);
+extern Datum pg_get_partition_def_ext2(PG_FUNCTION_ARGS);
 extern Datum pg_get_partition_rule_def(PG_FUNCTION_ARGS);
 extern Datum pg_get_partition_rule_def_ext(PG_FUNCTION_ARGS);
 
