@@ -5104,8 +5104,11 @@ PostgresMain(int argc, char *argv[], const char *username)
 		/*
 		 * (3) read a command (loop blocks here)
 		 */
-		if (!enable_sig_alarm( 8000 /* ms */, false))
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			if (!enable_sig_alarm( 12000 /* ms */, false))
 				elog(FATAL, "could not set timer for client wait timeout");
+		}
 
 		firstchar = ReadCommand(&input_message);
 
