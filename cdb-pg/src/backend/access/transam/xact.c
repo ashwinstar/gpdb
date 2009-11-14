@@ -3185,6 +3185,13 @@ CleanupTransaction(void)
 
 }
 
+static void
+SetBlockState(TransactionState s, TBlockState state)
+{
+//	elog(INFO, "Block State To : %d", state);
+	s->blockState = state;
+}
+
 /*
  *	StartTransactionCommand
  */
@@ -3207,14 +3214,14 @@ StartTransactionCommand(void)
 				/*
 				 * Pretend we executed an explicit BEGIN.
 				 */
-				s->blockState = TBLOCK_INPROGRESS;
+				SetBlockState(s, TBLOCK_INPROGRESS );
 			}
 			else
 			{
 				/*
 				 * Normal case.
 				 */
-				s->blockState = TBLOCK_STARTED;
+				SetBlockState(s, TBLOCK_STARTED );
 			}
 			break;
 
@@ -3319,7 +3326,7 @@ CommitTransactionCommand(void)
 			 */
 		case TBLOCK_STARTED:
 			CommitTransaction();
-			s->blockState = TBLOCK_DEFAULT;
+			SetBlockState(s, TBLOCK_DEFAULT);
 			break;
 
 			/*
@@ -3329,7 +3336,7 @@ CommitTransactionCommand(void)
 			 * CommandCounterIncrement.)
 			 */
 		case TBLOCK_BEGIN:
-			s->blockState = TBLOCK_INPROGRESS;
+			SetBlockState(s, TBLOCK_INPROGRESS);
 			break;
 
 			/*
@@ -3348,7 +3355,7 @@ CommitTransactionCommand(void)
 			 */
 		case TBLOCK_END:
 			CommitTransaction();
-			s->blockState = TBLOCK_DEFAULT;
+			SetBlockState(s, TBLOCK_DEFAULT );
 			break;
 
 			/*
@@ -3367,7 +3374,7 @@ CommitTransactionCommand(void)
 			 */
 		case TBLOCK_ABORT_END:
 			CleanupTransaction();
-			s->blockState = TBLOCK_DEFAULT;
+			SetBlockState(s, TBLOCK_DEFAULT );
 			break;
 
 			/*
@@ -3378,7 +3385,7 @@ CommitTransactionCommand(void)
 		case TBLOCK_ABORT_PENDING:
 			AbortTransaction();
 			CleanupTransaction();
-			s->blockState = TBLOCK_DEFAULT;
+			SetBlockState(s, TBLOCK_DEFAULT );
 			break;
 
 			/*
@@ -3387,7 +3394,7 @@ CommitTransactionCommand(void)
 			 */
 		case TBLOCK_PREPARE:
 			PrepareTransaction();
-			s->blockState = TBLOCK_DEFAULT;
+			SetBlockState(s, TBLOCK_DEFAULT );
 			break;
 
 			/*
@@ -3398,7 +3405,7 @@ CommitTransactionCommand(void)
 			 */
 		case TBLOCK_SUBBEGIN:
 			StartSubTransaction();
-			s->blockState = TBLOCK_SUBINPROGRESS;
+			SetBlockState(s, TBLOCK_SUBINPROGRESS);
 			break;
 
 			/*
@@ -3418,13 +3425,13 @@ CommitTransactionCommand(void)
 			{
 				Assert(s->parent == NULL);
 				CommitTransaction();
-				s->blockState = TBLOCK_DEFAULT;
+				SetBlockState(s, TBLOCK_DEFAULT);
 			}
 			else if (s->blockState == TBLOCK_PREPARE)
 			{
 				Assert(s->parent == NULL);
 				PrepareTransaction();
-				s->blockState = TBLOCK_DEFAULT;
+				SetBlockState(s, TBLOCK_DEFAULT);
 			}
 			else
 			{
@@ -3483,7 +3490,7 @@ CommitTransactionCommand(void)
 			/* This is the same as TBLOCK_SUBBEGIN case */
 			AssertState(s->blockState == TBLOCK_SUBBEGIN);
 			StartSubTransaction();
-			s->blockState = TBLOCK_SUBINPROGRESS;
+			SetBlockState(s, TBLOCK_SUBINPROGRESS);
 		}
 		break;
 
@@ -3516,7 +3523,7 @@ CommitTransactionCommand(void)
 			/* This is the same as TBLOCK_SUBBEGIN case */
 			AssertState(s->blockState == TBLOCK_SUBBEGIN);
 			StartSubTransaction();
-			s->blockState = TBLOCK_SUBINPROGRESS;
+			SetBlockState(s, TBLOCK_SUBINPROGRESS);
 		}
 		break;
 	}
@@ -3560,7 +3567,7 @@ AbortCurrentTransaction(void)
 		case TBLOCK_STARTED:
 			AbortTransaction();
 			CleanupTransaction();
-			s->blockState = TBLOCK_DEFAULT;
+			SetBlockState(s, TBLOCK_DEFAULT );
 			break;
 
 			/*
@@ -3573,7 +3580,7 @@ AbortCurrentTransaction(void)
 		case TBLOCK_BEGIN:
 			AbortTransaction();
 			CleanupTransaction();
-			s->blockState = TBLOCK_DEFAULT;
+			SetBlockState(s, TBLOCK_DEFAULT);
 			break;
 
 			/*
@@ -3583,7 +3590,7 @@ AbortCurrentTransaction(void)
 			 */
 		case TBLOCK_INPROGRESS:
 			AbortTransaction();
-			s->blockState = TBLOCK_ABORT;
+			SetBlockState(s, TBLOCK_ABORT);
 			/* CleanupTransaction happens when we exit TBLOCK_ABORT_END */
 			break;
 
@@ -3595,7 +3602,7 @@ AbortCurrentTransaction(void)
 		case TBLOCK_END:
 			AbortTransaction();
 			CleanupTransaction();
-			s->blockState = TBLOCK_DEFAULT;
+			SetBlockState(s, TBLOCK_DEFAULT);
 			break;
 
 			/*
@@ -3614,7 +3621,7 @@ AbortCurrentTransaction(void)
 			 */
 		case TBLOCK_ABORT_END:
 			CleanupTransaction();
-			s->blockState = TBLOCK_DEFAULT;
+			SetBlockState(s, TBLOCK_DEFAULT);
 			
 			Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 			break;
@@ -3626,7 +3633,7 @@ AbortCurrentTransaction(void)
 		case TBLOCK_ABORT_PENDING:
 			AbortTransaction();
 			CleanupTransaction();
-			s->blockState = TBLOCK_DEFAULT;
+			SetBlockState(s, TBLOCK_DEFAULT);
 			
 			Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 			break;
@@ -3639,7 +3646,7 @@ AbortCurrentTransaction(void)
 		case TBLOCK_PREPARE:
 			AbortTransaction();
 			CleanupTransaction();
-			s->blockState = TBLOCK_DEFAULT;
+			SetBlockState(s, TBLOCK_DEFAULT);
 			
 			Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 			break;
@@ -3651,7 +3658,7 @@ AbortCurrentTransaction(void)
 			 */
 		case TBLOCK_SUBINPROGRESS:
 			AbortSubTransaction();
-			s->blockState = TBLOCK_SUBABORT;
+			SetBlockState(s, TBLOCK_SUBABORT);
 			break;
 
 			/*
@@ -4003,7 +4010,7 @@ BeginTransactionBlock(void)
 		 * We are not inside a transaction block, so allow one to begin.
 		 */
 		case TBLOCK_STARTED:
-			s->blockState = TBLOCK_BEGIN;
+			SetBlockState(s, TBLOCK_BEGIN );
 			break;
 
 			/*
@@ -4076,7 +4083,7 @@ PrepareTransactionBlock(char *gid)
 			/* Save GID where PrepareTransaction can find it again */
 			prepareGID = MemoryContextStrdup(TopTransactionContext, gid);
 
-			s->blockState = TBLOCK_PREPARE;
+			SetBlockState(s, TBLOCK_PREPARE);
 		}
 		else
 		{
@@ -4118,7 +4125,7 @@ EndTransactionBlock(void)
 		 * to COMMIT.
 		 */
 		case TBLOCK_INPROGRESS:
-			s->blockState = TBLOCK_END;
+			SetBlockState(s, TBLOCK_END);
 			result = true;
 			break;
 
@@ -4127,7 +4134,7 @@ EndTransactionBlock(void)
 			 * CommitTransactionCommand it's time to exit the block.
 			 */
 		case TBLOCK_ABORT:
-			s->blockState = TBLOCK_ABORT_END;
+			SetBlockState(s, TBLOCK_ABORT_END);
 			break;
 
 			/*
@@ -4138,14 +4145,14 @@ EndTransactionBlock(void)
 			while (s->parent != NULL)
 			{
 				if (s->blockState == TBLOCK_SUBINPROGRESS)
-					s->blockState = TBLOCK_SUBEND;
+					SetBlockState(s, TBLOCK_SUBEND );
 				else
 					elog(FATAL, "EndTransactionBlock: unexpected state %s",
 						 BlockStateAsString(s->blockState));
 				s = s->parent;
 			}
 			if (s->blockState == TBLOCK_INPROGRESS)
-				s->blockState = TBLOCK_END;
+				SetBlockState(s, TBLOCK_END);
 			else
 				elog(FATAL, "EndTransactionBlock: unexpected state %s",
 					 BlockStateAsString(s->blockState));
@@ -4161,18 +4168,18 @@ EndTransactionBlock(void)
 			while (s->parent != NULL)
 			{
 				if (s->blockState == TBLOCK_SUBINPROGRESS)
-					s->blockState = TBLOCK_SUBABORT_PENDING;
+					SetBlockState(s, TBLOCK_SUBABORT_PENDING);
 				else if (s->blockState == TBLOCK_SUBABORT)
-					s->blockState = TBLOCK_SUBABORT_END;
+					SetBlockState(s, TBLOCK_SUBABORT_END);
 				else
 					elog(FATAL, "EndTransactionBlock: unexpected state %s",
 						 BlockStateAsString(s->blockState));
 				s = s->parent;
 			}
 			if (s->blockState == TBLOCK_INPROGRESS)
-				s->blockState = TBLOCK_ABORT_PENDING;
+				SetBlockState(s, TBLOCK_ABORT_PENDING);
 			else if (s->blockState == TBLOCK_ABORT)
-				s->blockState = TBLOCK_ABORT_END;
+				SetBlockState(s, TBLOCK_ABORT_END);
 			else
 				elog(FATAL, "EndTransactionBlock: unexpected state %s",
 					 BlockStateAsString(s->blockState));
@@ -4238,7 +4245,7 @@ UserAbortTransactionBlock(void)
 		 * exit the transaction block.
 		 */
 		case TBLOCK_INPROGRESS:
-			s->blockState = TBLOCK_ABORT_PENDING;
+			SetBlockState(s, TBLOCK_ABORT_PENDING);
 			break;
 
 			/*
@@ -4248,7 +4255,7 @@ UserAbortTransactionBlock(void)
 			 * idle state.
 			 */
 		case TBLOCK_ABORT:
-			s->blockState = TBLOCK_ABORT_END;
+			SetBlockState(s, TBLOCK_ABORT_END);
 			break;
 
 			/*
@@ -4260,18 +4267,18 @@ UserAbortTransactionBlock(void)
 			while (s->parent != NULL)
 			{
 				if (s->blockState == TBLOCK_SUBINPROGRESS)
-					s->blockState = TBLOCK_SUBABORT_PENDING;
+					SetBlockState(s, TBLOCK_SUBABORT_PENDING);
 				else if (s->blockState == TBLOCK_SUBABORT)
-					s->blockState = TBLOCK_SUBABORT_END;
+					SetBlockState(s, TBLOCK_SUBABORT_END);
 				else
 					elog(FATAL, "UserAbortTransactionBlock: unexpected state %s",
 						 BlockStateAsString(s->blockState));
 				s = s->parent;
 			}
 			if (s->blockState == TBLOCK_INPROGRESS)
-				s->blockState = TBLOCK_ABORT_PENDING;
+				SetBlockState(s, TBLOCK_ABORT_PENDING);
 			else if (s->blockState == TBLOCK_ABORT)
-				s->blockState = TBLOCK_ABORT_END;
+				SetBlockState(s, TBLOCK_ABORT_END);
 			else
 				elog(FATAL, "UserAbortTransactionBlock: unexpected state %s",
 					 BlockStateAsString(s->blockState));
@@ -4294,7 +4301,7 @@ UserAbortTransactionBlock(void)
 				ereport(WARNING,
 						(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
 						 errmsg("there is no transaction in progress")));
-			s->blockState = TBLOCK_ABORT_PENDING;
+			SetBlockState(s, TBLOCK_ABORT_PENDING);
 			break;
 
 			/* These cases are invalid. */
@@ -4841,7 +4848,7 @@ AbortOutOfAnyTransaction(void)
 				/* In a transaction, so clean up */
 				AbortTransaction();
 				CleanupTransaction();
-				s->blockState = TBLOCK_DEFAULT;
+				SetBlockState(s, TBLOCK_DEFAULT);
 
 				Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 				break;
@@ -4849,7 +4856,7 @@ AbortOutOfAnyTransaction(void)
 			case TBLOCK_ABORT_END:
 				/* AbortTransaction already done, still need Cleanup */
 				CleanupTransaction();
-				s->blockState = TBLOCK_DEFAULT;
+				SetBlockState(s, TBLOCK_DEFAULT);
 
 				Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 				break;
@@ -5360,7 +5367,7 @@ PushTransaction(void)
 	s->nestingLevel = p->nestingLevel + 1;
 	s->savepointLevel = p->savepointLevel;
 	s->state = TRANS_DEFAULT;
-	s->blockState = TBLOCK_SUBBEGIN;
+	SetBlockState(s, TBLOCK_SUBBEGIN);
 	GetUserIdAndContext(&s->prevUser, &s->prevSecDefCxt);
 	s->prevXactReadOnly = XactReadOnly;
 	s->executorSaysXactDoesWrites = false;
