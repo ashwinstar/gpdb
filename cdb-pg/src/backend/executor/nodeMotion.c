@@ -468,16 +468,17 @@ static bool motion_mkhp_read(void *vpctxt, MKEntry *a)
 	Motion *motion = (Motion *) node->ps.plan;
 
     ReceiveReturnCode recvRC;
-
     if ( ctxt->srcRoute < 0 )
     {
     	/* routes have not been set yet so set them */
     	ListCell *lcProcess;
     	int routeIndex, readerIndex;
     	MotionMKHeapContext *ctxt = (MotionMKHeapContext *) node->tupleheap;
+    	Slice *sendSlice = (Slice *)list_nth(node->ps.state->es_sliceTable->slices, motion->motionID);
+		Assert(sendSlice->sliceIndex == motion->motionID);
 
     	readerIndex = 0;
-    	foreach_with_count(lcProcess, node->sendSlice->primaryProcesses, routeIndex)
+    	foreach_with_count(lcProcess, sendSlice->primaryProcesses, routeIndex)
     	{
     		if ( lfirst(lcProcess) != NULL)
     		{
@@ -493,8 +494,6 @@ static bool motion_mkhp_read(void *vpctxt, MKEntry *a)
     	Assert(readerIndex == node->numInputSegs);
     }
 
-    node->routeIdNext = ctxt->srcRoute;
-
     MemSet(a, 0, sizeof(MKEntry));
 
     /* Receive the successor of the tuple that we returned last time. */
@@ -502,7 +501,7 @@ static bool motion_mkhp_read(void *vpctxt, MKEntry *a)
 							   node->ps.state->interconnect_context,
 							   motion->motionID, 
 							   &inputTuple,
-							   node->routeIdNext);
+							   ctxt->srcRoute);
 
     if (recvRC == GOT_TUPLE)
     {
@@ -752,20 +751,22 @@ execMotionSortedReceiverFirstTime(MotionState * node)
 	HeapTuple	inputTuple;
     CdbHeap    *hp = (CdbHeap *) node->tupleheap;
 	Motion	   *motion = (Motion *) node->ps.plan;
-	int			mySegIdx;
-	int			i;
+	int			iSegIdx;
     int         n = 0;
+    ListCell *lcProcess;
 
 	ReceiveReturnCode recvRC;
 
-	mySegIdx = Gp_segment;
+	Slice *sendSlice = (Slice *)list_nth(node->ps.state->es_sliceTable->slices, motion->motionID);
+	Assert(sendSlice->sliceIndex == motion->motionID);
 
 	/*
 	 * We need to get a tuple from every sender, and stick it into the heap.
 	 */
-	for (i = 0; i < node->numInputSegs; i++)
+	foreach_with_count(lcProcess, sendSlice->primaryProcesses, iSegIdx)
 	{
-        int iSegIdx = i;
+		if ( lfirst(lcProcess) == NULL)
+			continue; /* skip this one: we are not receiving from it */
 
 		/*
 		 * another place where we are mapping segid space to routeid space. so
@@ -778,7 +779,8 @@ execMotionSortedReceiverFirstTime(MotionState * node)
 		if (recvRC == GOT_TUPLE)
 		{
             CdbTupleHeapInfo   *infoArray = (CdbTupleHeapInfo *)hp->slotArray;
-            CdbTupleHeapInfo   *info = &infoArray[n++];
+            CdbTupleHeapInfo   *info = &infoArray[n];
+            n++;
 
             info->tuple = inputTuple;
             info->sourceRouteId = iSegIdx;
@@ -803,6 +805,7 @@ execMotionSortedReceiverFirstTime(MotionState * node)
 #endif
 		}
 	}
+	Assert(iSegIdx == node->numInputSegs);
 
     /*
      * Rearrange the infoArray to satisfy the heap property.
@@ -866,8 +869,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 		MemoryContext   oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
         Flow           *sendFlow;
 
-        int numInputSegs;
-
         /* Top node of subplan should have a Flow node. */
         Insist(node->plan.lefttree && node->plan.lefttree->flow);
         sendFlow = node->plan.lefttree->flow;
@@ -893,11 +894,10 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 		/* The gang beneath a Motion will be a reader. */
 		sendSlice->gangType = GANGTYPE_PRIMARY_READER;
 
-	    /* How many sending processes? */
-	    numInputSegs = 1;
+	    /* How many sending processes in the dispatcher array? Note that targeted dispatch may reduce this number in practice */
+		sendSlice->gangSize = 1;
 	    if (sendFlow->flotype != FLOW_SINGLETON)
-	        numInputSegs = getgpsegmentCount();
-        sendSlice->gangSize = numInputSegs;
+	    	sendSlice->gangSize = getgpsegmentCount();
 
         /* Does sending slice need 1-gang with read-only access to entry db? */
         if (sendFlow->flotype == FLOW_SINGLETON &&
@@ -1059,8 +1059,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
                     NULL);
         }
 	}
-
-    motionstate->sendSlice = sendSlice;
 
 	/*
 	 * Perform per-node initialization in the motion layer.

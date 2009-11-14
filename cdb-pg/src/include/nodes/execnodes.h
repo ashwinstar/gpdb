@@ -2037,10 +2037,8 @@ typedef struct MotionState
                                      */
                 
         Oid *outputFunArray;        /* output functions for each column (debug only) */
-        Slice *sendSlice;           /* sending slice */
-        Slice *recvSlice;           /* receiving slice */
 
-        int numInputSegs; /* the number of segments on the sending slice */
+        int numInputSegs;           /* the number of segments on the sending slice */
 } MotionState;
 
 #endif   /* EXECNODES_H */
