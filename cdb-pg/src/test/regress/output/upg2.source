@@ -1215,7 +1215,7 @@ delete from public.pg_type where typrelid='pg_catalog.pg_tablespace'::regclass;
 delete from public.pg_attribute where attrelid='pg_catalog.pg_tablespace'::regclass;
 delete from public.pg_class where oid='pg_catalog.pg_tablespace'::regclass;
 -- Copy in the new catalog definitions
-copy public.pg_amproc from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_amproc_toadd33.data' null E'\\N' csv delimiter '|' header;
+copy public.pg_amproc from '@abs_srcdir@/data//upg2_pg_amproc_toadd33.data' null E'\\N' csv delimiter '|' header;
 copy public.pg_class from '@abs_srcdir@/data//upg2_pg_class_toadd33.data' oids null E'\\N' csv delimiter '|' header;
 copy public.pg_attribute from '@abs_srcdir@/data//upg2_pg_attribute_toadd33.data' csv delimiter '|' header;
 copy public.pg_index from '@abs_srcdir@/data//upg2_pg_index_toadd33.data' null as E'\\N' csv delimiter '|' header;
@@ -1224,7 +1224,7 @@ copy public.pg_type from '@abs_srcdir@/data//upg2_pg_type_toadd33.data' oids nul
 copy public.pg_namespace from '@abs_srcdir@/data//upg2_pg_namespace_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_description from '@abs_srcdir@/data//upg2_pg_description_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy public.pg_depend from '@abs_srcdir@/data//upg2_pg_depend_toadd33.data' null as E'\\N' csv delimiter '|' header;
-copy public.pg_operator from '/Users/cwelton/review/main/cdb-pg/src/test/regress/data//upg2_pg_operator_toadd33.data' oids null E'\\N' csv delimiter '|' header;
+copy public.pg_operator from '@abs_srcdir@/data//upg2_pg_operator_toadd33.data' oids null E'\\N' csv delimiter '|' header;
 -- fix up pg_appendonly
 alter table public.pg_appendonly add column columnstore boolean;
 update public.pg_appendonly set columnstore='f';

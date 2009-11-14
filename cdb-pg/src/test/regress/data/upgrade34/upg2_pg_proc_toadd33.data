@@ -35,4 +35,5 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 3060|xidge|11|10|12|f|f|t|f|i|2|16|f|28 28|\N|\N|\N|xidge|-|\N
 3061|xidle|11|10|12|f|f|t|f|i|2|16|f|28 28|\N|\N|\N|xidle|-|\N
 3062|btxidcmp|11|10|12|f|f|t|f|i|2|23|f|27 27|\N|\N|\N|btxidcmp|-|\N
+5034|pg_get_partition_def|11|10|12|f|f|t|f|s|3|25|f|26 16 16|\N|\N|\N|pg_get_partition_def_ext2|-|\N
 \.

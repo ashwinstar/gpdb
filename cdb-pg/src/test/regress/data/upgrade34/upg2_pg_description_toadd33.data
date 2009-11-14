@@ -36,4 +36,5 @@ objoid|classoid|objsubid|description
 3060|1255|0|greater-than-or-equal
 3061|1255|0|less-than-or-equal
 3062|1255|0|btree less-equal-greater
+5034|1255|0|partition configuration for a given relation
 \.
