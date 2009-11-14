@@ -104,13 +104,6 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
 {
     Motion *motion = NULL;
     Path   *subpath = path->subpath;
-    int     numInputSegs;
-
-    /* How many processes in source gang? */
-    if (CdbPathLocus_IsBottleneck(subpath->locus))
-        numInputSegs = 1;
-    else
-        numInputSegs = getgpsegmentCount();
 
     /* Send all tuples to a single process? */
     if (CdbPathLocus_IsBottleneck(path->path.locus))
@@ -140,7 +133,6 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
                 subplan = sort->plan.lefttree; 
                 motion = make_sorted_union_motion(subplan,
                                                   false,  /* sendToSecondary */
-                                                  numInputSegs,
                                                   destSegIndex,
                                                   sort->numCols,
                                                   sort->sortColIdx,
@@ -151,7 +143,6 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
             else
                 motion = make_union_motion(subplan,
                                            false,           /* sendToSecondary */
-                                           numInputSegs,
                                            destSegIndex);
         }
         
@@ -159,15 +150,14 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
         else
             motion = make_union_motion(subplan,
                                        false,           /* sendToSecondary */
-                                       numInputSegs,
                                        destSegIndex);
     }
 
     /* Send all of the tuples to all of the QEs in gang above... */
     else if (CdbPathLocus_IsReplicated(path->path.locus))
             motion = make_broadcast_motion(subplan,
-                                           false,       /* sendToSecondary */
-                                           numInputSegs);
+                                           false       /* sendToSecondary */
+                                           );
 
     /* Hashed redistribution to all QEs in gang above... */
     else if (CdbPathLocus_IsHashed(path->path.locus) ||
@@ -179,7 +169,6 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
         Insist(hashExpr);
         motion = make_hashed_motion(subplan,
                                     false,              /* sendToSecondary */
-                                    numInputSegs,
                                     hashExpr);
     }
     else

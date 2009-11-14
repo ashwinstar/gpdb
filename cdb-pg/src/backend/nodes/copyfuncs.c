@@ -113,8 +113,8 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_SCALAR_FIELD(nInitPlans);
 	COPY_NODE_FIELD(sliceTable);
 
-	COPY_SCALAR_FIELD(directDispatch);
-	COPY_SCALAR_FIELD(directDispatchContentId);
+	COPY_SCALAR_FIELD(directDispatch.isDirectDispatch);
+	COPY_NODE_FIELD(directDispatch.contentIds);
 }
 
 /*
@@ -863,10 +863,6 @@ _copyMotion(Motion *from)
 	COPY_SCALAR_FIELD(motionID);
 
 	COPY_SCALAR_FIELD(motionType);
-
-	COPY_SCALAR_FIELD(numInputSegs);
-	if (from->inputSegIdx)
-		COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
 
 	COPY_SCALAR_FIELD(numHashSegs);
 	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
@@ -3569,6 +3565,10 @@ _copySlice(Slice *from)
 	COPY_SCALAR_FIELD(rootIndex);
 	COPY_SCALAR_FIELD(gangType);
 	COPY_SCALAR_FIELD(gangSize);
+	COPY_SCALAR_FIELD(numGangMembersToBeActive);
+	COPY_SCALAR_FIELD(directDispatch.isDirectDispatch);
+	COPY_NODE_FIELD(directDispatch.contentIds);
+
 	newnode->primaryGang = from->primaryGang;
 	newnode->mirrorGang = from->mirrorGang;
 	COPY_SCALAR_FIELD(primary_gang_id);

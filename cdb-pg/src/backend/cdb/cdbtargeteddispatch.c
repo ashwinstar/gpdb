@@ -64,12 +64,16 @@ typedef struct PartitionKeyInfo
 /**
  * Targeted dispatch info: used when building the dispatch information for a given qual or slice
  */
-typedef struct TargetedDispatchInfo
+typedef struct DirectDispatchCalculationInfo
 {
-	bool directDispatch;
-	int contentId; /* -1 is a sentinel for "can go to any" */
+	/*
+	 * in this use of the  DirectDispatchInfo structure, a NULL contentIds means that
+	 *    ANY contentID is valid (when dd->isDirectDispatch is true)
+	 * note also that we don't free dd->contentIds.  We let memory context cleanup handle that.
+	 */
+	DirectDispatchInfo dd;
 	bool haveProcessedAnyCalculations;
-} TargetedDispatchInfo;
+} DirectDispatchCalculationInfo;
 
 /**
  * ContentIdAssignmentData: used as the context parameter to the plan walking function that assigns
@@ -80,8 +84,11 @@ typedef struct ContentIdAssignmentData
 	/* the range table! note, for subqueries will the range table be the same throughout?  */
 	List *rtable;
 
-	/* of TargetedDispatchInfo pointers */
+	/* of DirectDispatchCalculationInfo pointers */
 	List *sliceStack;
+
+	/* for use when constructing the output data structure */
+	MemoryContext memoryContextForOutput;
 } ContentIdAssignmentData;
 
 static bool AssignContentIdsToPlanData_Walker(Node *node, void *context);
@@ -99,46 +106,46 @@ void cdbhashconstvalue(CdbHash *h, Const *c)
 	}
 	else
 	{
-		cdbhash(h, c->constvalue, c->consttype);
+		cdbhash(h, c->constvalue, typeIsArrayType(c->consttype) ? ANYARRAYOID : c->consttype);
 	}
 }
 
 /**
- * Initialize a TargetedDispatchInfo.
+ * Initialize a DirectDispatchCalculationInfo.
  */
 static void
-InitTargetedDispatchInfo( TargetedDispatchInfo *data)
+InitDirectDispatchCalculationInfo( DirectDispatchCalculationInfo *data)
 {
-	data->directDispatch = false;
-	data->contentId = -1;
+	data->dd.isDirectDispatch = false;
+	data->dd.contentIds = NULL;
 	data->haveProcessedAnyCalculations = false;
 }
 
 /**
- * Mark a TargetedDispatchInfo as having targeted dispatch disabled
+ * Mark a DirectDispatchCalculationInfo as having targeted dispatch disabled
  */
 static void
-DisableTargetedDispatch( TargetedDispatchInfo *data)
+DisableTargetedDispatch( DirectDispatchCalculationInfo *data)
 {
-	data->directDispatch = false;
-	data->contentId = -1;
+	data->dd.isDirectDispatch = false;
+	data->dd.contentIds = NULL; /* leaks but it's okay, we made a new memory context for the entire calculation */
 	data->haveProcessedAnyCalculations = true;
 }
 
 /**
  * helper function for AssignContentIdsFromUpdateDeleteQualification
  */
-static TargetedDispatchInfo
+static DirectDispatchCalculationInfo
 GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableIndex)
 {
 	GpPolicy  *policy = NULL;
 	PartitionKeyInfo *parts = NULL;
 	int i;
 
-	TargetedDispatchInfo result;
+	DirectDispatchCalculationInfo result;
 	RangeTblEntry  *rte;
 
-	InitTargetedDispatchInfo(&result);
+	InitDirectDispatchCalculationInfo(&result);
 
 	if ( nodeTag((Node*)plan) == T_BitmapHeapScan)
 	{
@@ -189,7 +196,7 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 			policy->nattrs == 0 ||
 			policy->ptype != POLICYTYPE_PARTITIONED )
 	{
-		result.directDispatch = false;
+		result.dd.isDirectDispatch = false;
 	}
 	else
 	{
@@ -229,8 +236,8 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 		if ( totalCombinations == 0 )
 		{
 			/* one of the possible sets was empty and so we don't care where we run this */
-			result.directDispatch = true;
-			result.contentId = -1; /* direct dispatch but no specific content at all! */
+			result.dd.isDirectDispatch = true;
+			Assert(result.dd.contentIds == NULL); /* direct dispatch but no specific content at all! */
 		}
 		else if ( totalCombinations > 0 &&
 				/* don't bother for ones which will likely hash to many segments */
@@ -239,8 +246,8 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 			CdbHash *h = makeCdbHash(GpIdentity.numsegments, HASH_FNV_1);
 			long index = 0;
 
-			result.directDispatch = true;
-			result.contentId = -1;
+			result.dd.isDirectDispatch = true;
+			result.dd.contentIds = NULL;
 
 			/* for each combination of keys calculate target segment */
 			for ( index = 0; index < totalCombinations; index++ )
@@ -263,21 +270,25 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 					}
 					else
 					{
-						result.directDispatch = false;
+						result.dd.isDirectDispatch = false;
 						break;
 					}
 					curIndex /= numValues;
 				}
 
-				if ( ! result.directDispatch)
+				if ( ! result.dd.isDirectDispatch)
 					break;
 
 				hashCode = cdbhashreduce(h);
-				if ( result.contentId == -1 )
-					result.contentId = hashCode;
-				else if ( result.contentId != hashCode)
+
+				/*
+				 * right now we only allow ONE contentid
+				 */
+				if ( result.dd.contentIds == NULL )
+					result.dd.contentIds = list_make1_int(hashCode);
+				else if ( linitial_int(result.dd.contentIds) != hashCode)
 				{
-					result.directDispatch = false;
+					result.dd.isDirectDispatch = false;
 					break;
 				}
 			}
@@ -285,7 +296,7 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 		else
 		{
 			// know nothing, can't do directed dispatch
-			result.directDispatch = false;
+			result.dd.isDirectDispatch = false;
 		}
 	}
 
@@ -294,40 +305,42 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 }
 
 static void
-MergeTargetedDispatchInfo( TargetedDispatchInfo *to, TargetedDispatchInfo *from )
+MergeDirectDispatchCalculationInfo( DirectDispatchCalculationInfo *to, DirectDispatchCalculationInfo *from )
 {
-	if ( ! from->directDispatch )
+	if ( ! from->dd.isDirectDispatch )
 	{
 		/* from eliminates all options so take it */
-		to->directDispatch = false;
+		to->dd.isDirectDispatch = false;
 	}
 	else if ( ! to->haveProcessedAnyCalculations )
 	{
 		/* to has no data, so just take from */
 		*to = *from;
 	}
-	else if ( ! to->directDispatch )
+	else if ( ! to->dd.isDirectDispatch )
 	{
 		/* to cannot get better -- leave it alone */
 	}
-	else if ( from->contentId == -1 )
+	else if ( from->dd.contentIds == NULL )
 	{
 		/* from says that it doesn't need to run anywhere -- so we accept to */
 	}
-	else if ( to->contentId == -1 )
+	else if ( to->dd.contentIds == NULL )
 	{
 		/* to didn't even think it needed to run so accept from */
-		to->contentId = from->contentId;
+		to->dd.contentIds = from->dd.contentIds;
 	}
-	else if ( to->contentId != from->contentId )
+	else if ( linitial_int(to->dd.contentIds) != linitial_int( from->dd.contentIds ))
 	{
 		/* we only support dispatch to single segment or all segments, so can't support this right now */
 		/* but this needs to be a union of the segments */
-		to->directDispatch = false;
+		to->dd.isDirectDispatch = false;
 	}
 	else
 	{
 		/* they matched -- no merge required! */
+
+		Assert(list_length(to->dd.contentIds) == list_length(from->dd.contentIds));
 	}
 
 	to->haveProcessedAnyCalculations = true;
@@ -344,56 +357,63 @@ ShouldPrintTestMessages()
 	return gp_test_options && strstr(gp_test_options, PRINT_DISPATCH_DECISIONS_STRING ) != NULL;
 }
 
+/**
+ * If node is not a plan then no direct dispatch data is copied in.
+ *
+ * Otherwise, overrides any previous direct dispatch data on the given node and updates it
+ *   with the targeted dispatch info from the ContentIdAssignmentData
+ *
+ */
 static void
 FinalizeDirectDispatchDataForSlice(Node *node, ContentIdAssignmentData *data, bool isFromTopRoot)
 {
 	/* pop it from the top and set it on the root of the slice */
-	TargetedDispatchInfo *ddcr = (TargetedDispatchInfo*) lfirst(list_tail(data->sliceStack));
+	DirectDispatchCalculationInfo *ddcr = (DirectDispatchCalculationInfo*) lfirst(list_tail(data->sliceStack));
 	data->sliceStack = list_truncate(data->sliceStack, list_length(data->sliceStack) - 1);
-
 
 	if ( is_plan_node(node))
 	{
 		Plan *plan = (Plan*)node;
 
+		if ( plan->directDispatch.contentIds != NULL)
+		{
+			list_free(plan->directDispatch.contentIds);
+			plan->directDispatch.contentIds = NULL;
+		}
+
 		if ( ddcr->haveProcessedAnyCalculations)
 		{
-			plan->directDispatch = ddcr->directDispatch;
-			if ( ddcr->directDispatch)
+			plan->directDispatch.isDirectDispatch = ddcr->dd.isDirectDispatch;
+			if ( ddcr->dd.isDirectDispatch)
 			{
-				if ( ddcr->contentId == -1 )
+				MemoryContext oldContext;
+				if ( ddcr->dd.contentIds == NULL )
 				{
-					ddcr->contentId = geqo_randint(GpIdentity.numsegments - 1, 0);
+					ddcr->dd.contentIds = list_make1_int( geqo_randint(GpIdentity.numsegments - 1, 0));
 					if (  ShouldPrintTestMessages())
-					{
 						elog(INFO, "DDCR learned no content dispatch is required");
-					}
 				}
 				else
 				{
 					if (  ShouldPrintTestMessages())
-					{
-						elog(INFO, "DDCR learned dispatch to content %d", ddcr->contentId);
-					}
+						elog(INFO, "DDCR learned dispatch to content %d", linitial_int(ddcr->dd.contentIds));
 				}
 
-				plan->directDispatchContentId = ddcr->contentId;
+				oldContext = MemoryContextSwitchTo(data->memoryContextForOutput);
+				plan->directDispatch.contentIds = list_copy(ddcr->dd.contentIds);
+				MemoryContextSwitchTo(oldContext);
 			}
 			else
 			{
 				if (  ShouldPrintTestMessages())
-				{
 					elog(INFO, "DDCR learned full dispatch is required");
-				}
 			}
 		}
 		else
 		{
 			if (  ShouldPrintTestMessages())
-			{
 				elog(INFO, "DDCR learned no information: default to full dispatch");
-			}
-			plan->directDispatch = false;
+			plan->directDispatch.isDirectDispatch = false;
 		}
 	}
 
@@ -453,8 +473,8 @@ static bool
 AssignContentIdsToPlanData_Walker(Node *node, void *context)
 {
 	ContentIdAssignmentData *data = (ContentIdAssignmentData *) context;
-	TargetedDispatchInfo *ddcr = NULL;
-	TargetedDispatchInfo dispatchInfo;
+	DirectDispatchCalculationInfo *ddcr = NULL;
+	DirectDispatchCalculationInfo dispatchInfo;
 	bool pushNewDirectDispatchInfo = false;
 	bool result;
 	List *newRtable = NULL;
@@ -465,7 +485,7 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 
 	if (is_plan_node(node) || IsA(node, SubPlan))
 	{
-		InitTargetedDispatchInfo(&dispatchInfo);
+		InitDirectDispatchCalculationInfo(&dispatchInfo);
 
 		switch (nodeTag(node))
 		{
@@ -556,14 +576,14 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 		{
 			/* learned new info: merge it in */
 			ddcr = llast(data->sliceStack);
-			MergeTargetedDispatchInfo(ddcr, &dispatchInfo );
+			MergeDirectDispatchCalculationInfo(ddcr, &dispatchInfo );
 		}
 
 		if ( pushNewDirectDispatchInfo)
 		{
 			/* recursing to a child slice */
-			ddcr = palloc(sizeof(TargetedDispatchInfo));
-			InitTargetedDispatchInfo(ddcr);
+			ddcr = palloc(sizeof(DirectDispatchCalculationInfo));
+			InitDirectDispatchCalculationInfo(ddcr);
 			data->sliceStack = lappend(data->sliceStack, ddcr);
 		}
 
@@ -601,7 +621,7 @@ AssignContentIdsToPlanData(Query *query, Plan *plan)
 {
 	ContentIdAssignmentData data;
 	MemoryContext oldContext, tmpContext;
-	TargetedDispatchInfo *ddcr;
+	DirectDispatchCalculationInfo *ddcr;
 
 	/* setup */
 	tmpContext = AllocSetContextCreate(CurrentMemoryContext,
@@ -611,9 +631,10 @@ AssignContentIdsToPlanData(Query *query, Plan *plan)
 									   ALLOCSET_SMALL_MAXSIZE);
 	oldContext = MemoryContextSwitchTo(tmpContext);
 
-	ddcr = palloc(sizeof(TargetedDispatchInfo));
-	InitTargetedDispatchInfo(ddcr);
+	ddcr = palloc(sizeof(DirectDispatchCalculationInfo));
+	InitDirectDispatchCalculationInfo(ddcr);
 
+	data.memoryContextForOutput = oldContext;
 	data.sliceStack = list_make1(ddcr);
 	data.rtable = query->rtable;
 

@@ -678,7 +678,7 @@ cdbhashreduce(CdbHash *h)
 	return result;
 }
 
-static bool
+bool
 typeIsArrayType(Oid typeoid)
 {
 	Type tup = typeidType(typeoid);

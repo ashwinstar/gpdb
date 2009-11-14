@@ -25,15 +25,14 @@ struct RelOptInfo;                          /* #include "nodes/relation.h" */
 extern Plan *apply_motion(Plan *plan, Query *query);
 
 extern Motion *make_union_motion(Plan *lefttree, bool sendToSecondary,
-                                 int numInputSegs, int destSegIndex);
+		                                int destSegIndex);
 extern Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary,
-                                        int numInputSegs, int destSegIndex,
+                                        int destSegIndex,
 				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
 extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
-				    int numInputSegs, List *hashExpr);
+				    List *hashExpr);
 
-extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary,
-                                     int numInputSegs);
+extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary );
 
 void 
 cdbmutate_warn_ctid_without_segid(struct PlannerInfo *root, struct RelOptInfo *rel);

@@ -3042,9 +3042,6 @@ _readMotion(void)
 	READ_BOOL_FIELD(sendToSecondary);
 	READ_BOOL_FIELD(sendSorted);
 
-    READ_INT_FIELD(numInputSegs);
-    READ_INT_ARRAY_OR_NULL(inputSegIdx, numInputSegs, int);
-
 	READ_INT_FIELD(numHashSegs);
 	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
@@ -3128,6 +3125,9 @@ _readSlice(void)
 	READ_INT_FIELD(rootIndex);
 	READ_ENUM_FIELD(gangType, GangType);
 	READ_INT_FIELD(gangSize);
+	READ_INT_FIELD(numGangMembersToBeActive);
+	READ_BOOL_FIELD(directDispatch.isDirectDispatch);
+	READ_NODE_FIELD(directDispatch.contentIds); /* List of int index */
 	READ_DUMMY_FIELD(primaryGang, NULL);
 	READ_DUMMY_FIELD(mirrorGang, NULL);
 	READ_INT_FIELD(primary_gang_id);

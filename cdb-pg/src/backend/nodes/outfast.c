@@ -735,22 +735,6 @@ _outMotion(StringInfo str, Motion *node)
 	WRITE_BOOL_FIELD(sendToSecondary);
 	WRITE_BOOL_FIELD(sendSorted);
 
-    WRITE_INT_FIELD(numInputSegs);
-    if (node->numInputSegs > 0)
-    {
-    	char array_is_null = 0;
-        if (node->inputSegIdx == NULL)
-        {
- 			array_is_null = 1;
-            appendBinaryStringInfo(str, &array_is_null, 1);
-        }
-        else
-        {
-        	appendBinaryStringInfo(str, &array_is_null, 1);
-            WRITE_INT_ARRAY(inputSegIdx, numInputSegs, int);
-        }
-    }
-
 	WRITE_INT_FIELD(numHashSegs);
 	WRITE_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
@@ -3120,6 +3104,9 @@ _outSlice(StringInfo str, Slice *node)
 	WRITE_INT_FIELD(rootIndex);
 	WRITE_ENUM_FIELD(gangType,GangType);
 	WRITE_INT_FIELD(gangSize);
+	WRITE_INT_FIELD(numGangMembersToBeActive);
+	WRITE_BOOL_FIELD(directDispatch.isDirectDispatch);
+	WRITE_NODE_FIELD(directDispatch.contentIds); /* List of int */
 	WRITE_DUMMY_FIELD(primaryGang);
 	WRITE_DUMMY_FIELD(mirrorGang);
 	WRITE_INT_FIELD(primary_gang_id);

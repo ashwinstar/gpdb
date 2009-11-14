@@ -3029,23 +3029,6 @@ _readMotion(const char ** str)
 	READ_BOOL_FIELD(sendToSecondary);
 	READ_BOOL_FIELD(sendSorted);
 
-    READ_INT_FIELD(numInputSegs);
-    if (local_node->numInputSegs > 0)
-    {
-    	bool array_is_null;
-    	array_is_null = ((*str)[0] != 0);
-
-    	(*str)++;
-    	if (array_is_null)
-    	{
-    		local_node->inputSegIdx = NULL;
-    	}
-    	else
-    	{
-    		READ_INT_ARRAY(inputSegIdx, numInputSegs, int);
-    	}
-    }
-
 	READ_INT_FIELD(numHashSegs);
 	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
@@ -3110,6 +3093,9 @@ _readSlice(const char ** str)
 	READ_INT_FIELD(rootIndex);
 	READ_ENUM_FIELD(gangType, GangType);  Assert(local_node->gangType <= GANGTYPE_MIRROR_WRITER);
 	READ_INT_FIELD(gangSize);
+	READ_INT_FIELD(numGangMembersToBeActive);
+	READ_BOOL_FIELD(directDispatch.isDirectDispatch);
+	READ_NODE_FIELD(directDispatch.contentIds); /* List of int index */
 	READ_DUMMY_FIELD(primaryGang, NULL);
 	READ_DUMMY_FIELD(mirrorGang, NULL);
 	READ_INT_FIELD(primary_gang_id);

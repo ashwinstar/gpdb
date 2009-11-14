@@ -348,10 +348,10 @@ extern GpExecIdentity getGpExecIdentity(QueryDesc *queryDesc,
 extern void mppExecutorFinishup(QueryDesc *queryDesc);
 extern void mppExecutorCleanup(QueryDesc *queryDesc);
 
-
 extern Slice *getCurrentSlice(EState* estate, int sliceIndex);
 extern bool sliceRunsOnQD(Slice *slice);
 extern bool sliceRunsOnQE(Slice *slice);
+extern int sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster);
 
 /* prototypes defined in nodeAgg.c for rollup-aware Agg/Group nodes. */
 extern int64 tuple_grouping(TupleTableSlot *outerslot, int numGroupCols,

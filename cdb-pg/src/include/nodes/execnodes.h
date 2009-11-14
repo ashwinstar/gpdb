@@ -336,11 +336,20 @@ typedef struct Slice
         GangType gangType;                /* What kind of gang does this slice need? */
         
         int gangSize;                        /* How many gang members needed?
-                                                         *
+                                                         *  This should be either 1 or the # of segments in the cluster
                                                          * This may seem redundant, but it is set before
                                                          * the process lists below and used to decide how
                                                          * to initialize them.
                                                          */
+        int numGangMembersToBeActive; /* how many of the gang members will actually be used?
+                                       *  This takes into account directDispatch information
+                                       */
+
+
+        /**
+         * directDispatch->isDirectDispatch should ONLY be set for a slice when it requires an n-gang.
+         */
+        DirectDispatchInfo directDispatch;
                                                         
         struct Gang *primaryGang;
         struct Gang *mirrorGang;
@@ -2030,6 +2039,8 @@ typedef struct MotionState
         Oid *outputFunArray;        /* output functions for each column (debug only) */
         Slice *sendSlice;           /* sending slice */
         Slice *recvSlice;           /* receiving slice */
+
+        int numInputSegs; /* the number of segments on the sending slice */
 } MotionState;
 
 #endif   /* EXECNODES_H */

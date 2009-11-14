@@ -483,45 +483,70 @@ PleaseDebugMe(char *caller)
 void
 setCurrentDtxTwoPhase(const char *debugCaller, const char *debugDetail, Node *n)
 {
+	int logLevel = Debug_print_full_dtm ? LOG : DEBUG5;
+
 	Assert(debugCaller != NULL);
 	Assert(debugDetail != NULL);
 
-	if (currentGxact != NULL)
+	if (currentGxact == NULL)
 	{
-		if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
+		elog(ERROR, "DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail);
+	}
+	else if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
+	{
+		/* Can we direct this transaction to a single content-id ? */
+		if (n != NULL && is_plan_node(n) && ((Plan *)n)->directDispatch.isDirectDispatch)
 		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),
-				 "setCurrentDtxTwoPhase going distributed for gid = %s (%s, detail = '%s')", 
-			     currentGxact->gid, debugCaller, debugDetail);
+			currentGxact->directTransaction = true;
+			currentGxact->directTransactionContentId = linitial_int(((Plan *)n)->directDispatch.contentIds);
 
-			/* Can we direct this transaction to a single content-id ? */
-			if (n != NULL && is_plan_node(n) && ((Plan *)n)->directDispatch)
-			{
-				currentGxact->directTransaction = true;
-				currentGxact->directTransactionContentId = ((Plan *)n)->directDispatchContentId;
-			}
-			else
-			{
-				currentGxact->directTransaction = false;
-			}
-
-			currentGxact->state = DTX_STATE_ACTIVE_DISTRIBUTED;
-		}
-	 	else if (currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED)
-		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),
-				 "setCurrentDtxTwoPhase gid = %s is already distributed (%s, detail = '%s')", 
-			     currentGxact->gid, debugCaller, debugDetail);
+			elog(logLevel,
+				 "setCurrentDtxTwoPhase going distributed (to content %d) for gid = %s (%s, detail = '%s')",
+				 currentGxact->directTransactionContentId, currentGxact->gid, debugCaller, debugDetail);
 		}
 		else
 		{
-			elog(ERROR, "DTM transaction is not active (state = %s, %s, detail = '%s')", 
-				 DtxStateToString(currentGxact->state), debugCaller, debugDetail);
+			currentGxact->directTransaction = false;
+
+			elog(logLevel,
+				 "setCurrentDtxTwoPhase going distributed (all gangs) for gid = %s (%s, detail = '%s')",
+				 currentGxact->gid, debugCaller, debugDetail);
 		}
+
+		currentGxact->state = DTX_STATE_ACTIVE_DISTRIBUTED;
+	}
+	else if (currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED)
+	{
+		bool wasDirected = currentGxact->directTransaction;
+
+		/* Can we still direct this transaction to a single content-id ? */
+		if ( currentGxact->directTransaction)
+		{
+			currentGxact->directTransaction = false; // turn off, but may be restored below
+
+			if (n != NULL && is_plan_node(n) && ((Plan *)n)->directDispatch.isDirectDispatch)
+			{
+				int contentId = linitial_int(((Plan *)n)->directDispatch.contentIds);
+
+				if ( contentId == currentGxact->directTransactionContentId)
+				{
+					// it was the same content!  Stay in a single direct transaction
+					currentGxact->directTransaction = true;
+				}
+			}
+		}
+
+		elog(logLevel,
+			 "setCurrentDtxTwoPhase gid = %s is already distributed (%s, detail = '%s'), (was %s : now %s)",
+			 currentGxact->gid, debugCaller, debugDetail,
+			 wasDirected ? "directed" : "all gangs",
+			 currentGxact->directTransaction ? "directed" : "all gangs"
+		);
 	}
 	else
 	{
-		elog(ERROR, "DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail);
+		elog(ERROR, "DTM transaction is not active (state = %s, %s, detail = '%s')",
+			 DtxStateToString(currentGxact->state), debugCaller, debugDetail);
 	}
 }
 
@@ -1842,8 +1867,9 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 	dtxProtocolCommandStr = DtxProtocolCommandToString(dtxProtocolCommand);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
-		 "dispatchDtxProtocolCommand: %d ('%s') willMirror: %s",
-		 dtxProtocolCommand, dtxProtocolCommandStr, dispatchToMirrors ? "yes" : "no");
+		 "dispatchDtxProtocolCommand: %d ('%s') willMirror: %s, direct content #: %d",
+		 dtxProtocolCommand, dtxProtocolCommandStr, dispatchToMirrors ? "yes" : "no",
+				 direct->directed_dispatch ? direct->content[0] : -1);
 
 	initStringInfo(&errbuf);
 	results = cdbdisp_dispatchDtxProtocolCommand(dtxProtocolCommand, flags,
@@ -2007,6 +2033,9 @@ initGxact(TMGXACT * gxact)
 	gxact->retryPhase2RecursionStop = false;
 
 	gxact->participationSummary = DTX_PARTICIPATION_SUMMARY_NONE;
+
+	gxact->directTransaction = false;
+	gxact->directTransactionContentId = 0;
 }
 
 void

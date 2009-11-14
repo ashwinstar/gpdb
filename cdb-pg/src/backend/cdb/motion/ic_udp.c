@@ -1255,6 +1255,7 @@ SetupUDPInterconnect(EState *estate)
 		int			numProcs;
 		int			childId = lfirst_int(cell);
 		ChunkTransportStateEntry *pEntry=NULL;
+		int numValidProcs = 0;
 
 #ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG5, "Setting up RECEIVING motion node %d", childId);
@@ -1273,9 +1274,6 @@ SetupUDPInterconnect(EState *estate)
 		Assert(pEntry);
 		Assert(pEntry->valid);
 
-		/* let cdbmotion now how many receivers to expect. */
-		setExpectedReceivers(estate->motionlayer_context, childId, numProcs);
-
 		for (i=0; i < pEntry->numConns; i++)
 		{
 			MotionConn *conn;
@@ -1283,66 +1281,74 @@ SetupUDPInterconnect(EState *estate)
 			conn = &pEntry->conns[i];
 			conn->cdbProc = list_nth(aSlice->primaryProcesses, i);
 
-			/* rx_buffer_queue */
-			conn->pkt_q_size = 0;
-			conn->pkt_q_head = 0;
-			conn->pkt_q_tail = 0;
-			conn->pkt_q = (uint8 **)malloc(Gp_interconnect_queue_depth * sizeof(char *));
-
-			if (!conn->pkt_q)
+			if ( conn->cdbProc)
 			{
-				pthread_mutex_unlock(&rx_thread_mutex);
+				numValidProcs++;
 
-				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-								errmsg("Setup UDP interconnect failed: out of memory")));
-				/* not reached */
-			}
+				/* rx_buffer_queue */
+				conn->pkt_q_size = 0;
+				conn->pkt_q_head = 0;
+				conn->pkt_q_tail = 0;
+				conn->pkt_q = (uint8 **)malloc(Gp_interconnect_queue_depth * sizeof(char *));
 
-			/* connection header info (defining characteristics of this connection) */
-			MemSet(&conn->conn_info, 0, sizeof(conn->conn_info));
-			conn->route = i;
+				if (!conn->pkt_q)
+				{
+					pthread_mutex_unlock(&rx_thread_mutex);
 
-			if (gp_interconnect_elide_setup && gp_interconnect_id > 1)
-			{
-				conn->conn_info.seq = 1;
-				conn->state = mcsStarted;
-				conn->stillActive = true;
+					ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+									errmsg("Setup UDP interconnect failed: out of memory")));
+					/* not reached */
+				}
 
-				incoming_count++;
-			}
+				/* connection header info (defining characteristics of this connection) */
+				MemSet(&conn->conn_info, 0, sizeof(conn->conn_info));
+				conn->route = i;
 
-			conn->conn_info.motNodeId = pEntry->motNodeId;
-			conn->conn_info.recvSliceIndex = mySlice->sliceIndex;
-			conn->conn_info.sendSliceIndex = aSlice->sliceIndex;
+				if (gp_interconnect_elide_setup && gp_interconnect_id > 1)
+				{
+					conn->conn_info.seq = 1;
+					conn->state = mcsStarted;
+					conn->stillActive = true;
 
-			conn->conn_info.srcContentId = conn->cdbProc->contentid;
-			conn->conn_info.dstContentId = Gp_segment;
+					incoming_count++;
+				}
 
-			conn->conn_info.srcListenerPort = conn->cdbProc->listenerPort;
-			conn->conn_info.srcPid = conn->cdbProc->pid;
-			conn->conn_info.dstPid = MyProcPid;
-			conn->conn_info.dstListenerPort = (Gp_listener_port>>16) & 0x0ffff;
-			conn->conn_info.sessionId = gp_session_id;
-			conn->conn_info.icId = gp_interconnect_id;
+				conn->conn_info.motNodeId = pEntry->motNodeId;
+				conn->conn_info.recvSliceIndex = mySlice->sliceIndex;
+				conn->conn_info.sendSliceIndex = aSlice->sliceIndex;
 
-			/* If we're doing full interconnect setup*/
-			if (!gp_interconnect_elide_setup || gp_interconnect_id <= 1)
-			{
-				estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, conn);
-			}
+				conn->conn_info.srcContentId = conn->cdbProc->contentid;
+				conn->conn_info.dstContentId = Gp_segment;
 
-			if (!conn_addhash(conn))
-			{
-				pthread_mutex_unlock(&rx_thread_mutex);
+				conn->conn_info.srcListenerPort = conn->cdbProc->listenerPort;
+				conn->conn_info.srcPid = conn->cdbProc->pid;
+				conn->conn_info.dstPid = MyProcPid;
+				conn->conn_info.dstListenerPort = (Gp_listener_port>>16) & 0x0ffff;
+				conn->conn_info.sessionId = gp_session_id;
+				conn->conn_info.icId = gp_interconnect_id;
 
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."),
-								errdetail("%m%s", "malloc")));
-				/* not reached */
+				/* If we're doing full interconnect setup*/
+				if (!gp_interconnect_elide_setup || gp_interconnect_id <= 1)
+				{
+					estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, conn);
+				}
+
+				if (!conn_addhash(conn))
+				{
+					pthread_mutex_unlock(&rx_thread_mutex);
+
+					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."),
+									errdetail("%m%s", "malloc")));
+					/* not reached */
+				}
 			}
 		}
 
-		expectedTotalIncoming += pEntry->numConns;
+		expectedTotalIncoming += numValidProcs;
+
+		/* let cdbmotion now how many receivers to expect. */
+		setExpectedReceivers(estate->motionlayer_context, childId, numValidProcs);
 
 		/* update the length of our rx freelist */
 		rx_buf_maxcount += (pEntry->numConns * Gp_interconnect_queue_depth);
@@ -1800,7 +1806,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 			if (conn->pong)
 			{
 				pfree(conn->pong);
-				conn->pBuff = NULL;
+				conn->pong = NULL;
 			}
 		}
 	}

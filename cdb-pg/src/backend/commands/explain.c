@@ -760,6 +760,37 @@ explain_defer_error(ExplainState *es)
     return edata;
 }                               /* explain_defer_error */
 
+static void
+appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceId)
+{
+	SliceTable *sliceTable = planstate->state->es_sliceTable;
+	Slice *slice = (Slice *)list_nth(sliceTable->slices, sliceId);
+
+
+	switch (slice->gangType)
+	{
+		case GANGTYPE_UNALLOCATED:
+		case GANGTYPE_ENTRYDB_READER:
+			appendStringInfo(str, "  (slice%d)", sliceId);
+			break;
+
+		case GANGTYPE_PRIMARY_WRITER:
+		case GANGTYPE_PRIMARY_READER:
+			appendStringInfo(str, "  (slice%d", sliceId);
+			if ( slice->directDispatch.isDirectDispatch )
+			{
+				Assert( list_length(slice->directDispatch.contentIds) == 1);
+				appendStringInfo(str, " on content:%d)", linitial_int(slice->directDispatch.contentIds));
+			}
+			break;
+
+		case GANGTYPE_MIRROR_WRITER:
+			/* Shouldn't see this in a slice->gangType. */
+			Assert(FALSE);
+			break;
+	}
+}
+
 
 /*
  * explain_outNode -
@@ -1017,11 +1048,12 @@ explain_outNode(StringInfo str,
 		case T_Motion:
 			{
 				Motion	   *pMotion = (Motion *) plan;
-                int         nSenders = pMotion->numInputSegs;
+				SliceTable *sliceTable = planstate->state->es_sliceTable;
+				Slice *slice = (Slice *)list_nth(sliceTable->slices, pMotion->motionID);
+
+                int         nSenders = slice->numGangMembersToBeActive;
 
 				int         nReceivers = 0; 
-				bool        senderIsEntryDb = false;
-
 				switch (pMotion->motionType)
 				{
 					case MOTIONTYPE_HASH:
@@ -1043,16 +1075,10 @@ explain_outNode(StringInfo str,
 						break;
 				}
 
-				if(nSenders == 1 &&
-						plan->lefttree &&
-						plan->lefttree->flow &&
-						plan->lefttree->flow->flotype == FLOW_SINGLETON &&
-						plan->lefttree->flow->segindex == -1)
-					senderIsEntryDb = true;
+				appendStringInfo(str, "%s %d:%d", pname,
+						nSenders, nReceivers);
 
-				appendStringInfo(str, "%s %d:%d  (slice%d%s)", pname,
-						nSenders, nReceivers, pMotion->motionID,
-						senderIsEntryDb ? " on entry db" : "");
+				appendGangAndDirectDispatchInfo(str, planstate, pMotion->motionID);
 				pname = "";
 
 			}
@@ -1455,7 +1481,7 @@ explain_outNode(StringInfo str,
             {
                 es->currentSlice = (Slice *)list_nth(sliceTable->slices,
                                                      sp->qDispSliceId);
-    		    appendStringInfo(str, "  (slice%d)", sp->qDispSliceId);
+    		    appendGangAndDirectDispatchInfo(str, planstate, sp->qDispSliceId );
             }
             else
             {

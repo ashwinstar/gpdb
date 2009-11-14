@@ -1280,8 +1280,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	Gang	*mirrorGang;
 	int		nsegdb = getgpsegmentCount();
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: %s for gid = %s", 
-		 dtxProtocolCommandLoggingStr, gid);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: %s for gid = %s, direct content #: %d",
+		 dtxProtocolCommandLoggingStr, gid, direct->directed_dispatch ? direct->content[0] : -1);
 
 	Assert(dispatchToMirrors);	/* Dispatch agent assumes this for now */
 
@@ -3426,7 +3426,6 @@ void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  bool cancelOnError,
 				  SliceTable *sliceTbl,
-				  CdbDispatchDirectDesc *direct,
 				  struct CdbDispatchResults **pPrimaryResults,		/* OUT */
 				  struct CdbDispatchResults **pMirrorResults,       /* OUT */
 				  struct CdbDispatchCmdThreads **pDispatchThreads)  /* OUT */
@@ -3535,6 +3534,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	 */
 	for (iSlice = 0; iSlice < nSlices; iSlice++)
 	{
+		CdbDispatchDirectDesc direct;
 		Gang	   *primaryGang = NULL;
 		Gang	   *mirrorGang = NULL;
 		Slice *slice = NULL;
@@ -3589,9 +3589,25 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				if (primaryGang == NULL && mirrorGang == NULL)
 					continue;
 			}
+
+			if ( slice->directDispatch.isDirectDispatch)
+			{
+				direct.directed_dispatch = true;
+				direct.count = list_length( slice->directDispatch.contentIds );
+				Assert(direct.count == 1); /* only support to single content right now.  If this changes then we need to change from a list to another structure to avoid n^2 cases */
+				direct.content[0] = linitial_int( slice->directDispatch.contentIds );
+			}
+			else
+			{
+				direct.directed_dispatch = false;
+				direct.count = 0;
+			}
 		}
 		else
 		{
+			direct.directed_dispatch = false;
+			direct.count = 0;
+
 			/*
 			 *  Non-sliced, used specified gangs
 			 */
@@ -3668,7 +3684,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			cdbdisp_dispatchToGang(pDispatchThreads,
 								   GP_DISPATCH_COMMAND_TYPE_QUERY,
 								   pQueryParms, primaryGang, *pPrimaryResults,
-								   si, sliceLim, direct);
+								   si, sliceLim, &direct);
 		}
 
 		/*
@@ -3693,7 +3709,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				cdbdisp_dispatchToGang(pDispatchThreads,
 									   GP_DISPATCH_COMMAND_TYPE_QUERY,
 									   pQueryParms, mirrorGang, *pMirrorResults,
-									   si, sliceLim, direct);
+									   si, sliceLim, &direct);
 			}
 		}
 	}
@@ -3827,8 +3843,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	
 	DispatchCommandQueryParms queryParms;
  
-	CdbDispatchDirectDesc direct_desc = default_dispatch_direct_desc;
-
 	*pPrimaryResults = NULL;
 	if (pMirrorResults)
 		*pMirrorResults = NULL;
@@ -4044,20 +4058,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	Assert(sliceTbl);
 	Assert(sliceTbl->slices != NIL);
 
-	if (is_plan_node((Node *)queryDesc->plantree))
-	{
-		Plan *p = (Plan *)queryDesc->plantree;
-
-		if (p->directDispatch)
-		{
-			direct_desc.directed_dispatch = true;
-			direct_desc.count = 1;
-			direct_desc.content[0] = p->directDispatchContentId;
-		}
-	}
-
 	cdbdisp_dispatchX(&queryParms, cancelOnError,
-					  sliceTbl, &direct_desc,
+					  sliceTbl,
 					  pPrimaryResults,		/* OUT */
 					  pMirrorResults,       /* OUT */
 					  pDispatchThreads)	;	/* OUT */

@@ -2764,12 +2764,14 @@ getSegmentDescriptorFromGang(const Gang *gp, int seg)
 	return NULL;
 }
 
+/**
+ * @param directDispatch may be null
+ */
 List *
-getCdbProcessList(Gang *gang, int sliceIndex)
+getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch)
 {
 	int			i;
 	List	   *list = NIL;
-
 
 	Assert((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && Gp_is_primary);
 	Assert(gang != NULL);
@@ -2788,20 +2790,23 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 
 		for (i = 0; i < gang->size; i++)
 		{
+			CdbProcess *process;
 			SegmentDatabaseDescriptor *segdbDesc;
-			CdbProcess *process = (CdbProcess *) makeNode(CdbProcess);
-
+			bool includeThisProcess = true;
 
 			segdbDesc = &gang->db_descriptors[i];
-			qeinfo = segdbDesc->segment_database_info;
-
-			if (qeinfo == NULL)
+			if ( directDispatch != NULL && directDispatch->isDirectDispatch)
 			{
-				elog(ERROR, "getCdbProcessList: a required segment is unexpectedly unavailable");
-			}
-			else if (qeinfo->hostip == NULL)
-			{
-				elog(ERROR, "getCdbProcessList: a required segment-ip is unexpectedly unavailable");
+				ListCell *cell;
+				includeThisProcess = false;
+				foreach(cell, directDispatch->contentIds)
+				{
+					if ( lfirst_int(cell) == segdbDesc->segindex)
+					{
+						includeThisProcess = true;
+						break;
+					}
+				}
 			}
 
 			/*
@@ -2824,6 +2829,25 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 					list = lappend(list, NULL);
 					listsize++;
 				}
+			}
+
+			if ( ! includeThisProcess)
+			{
+				list = lappend(list, NULL);
+				listsize++;
+				continue;
+			}
+
+			process = (CdbProcess *) makeNode(CdbProcess);
+			qeinfo = segdbDesc->segment_database_info;
+
+			if (qeinfo == NULL)
+			{
+				elog(ERROR, "getCdbProcessList: a required segment is unexpectedly unavailable");
+			}
+			else if (qeinfo->hostip == NULL)
+			{
+				elog(ERROR, "getCdbProcessList: a required segment-ip is unexpectedly unavailable");
 			}
 
 			process->listenerAddr = pstrdup(qeinfo->hostip);

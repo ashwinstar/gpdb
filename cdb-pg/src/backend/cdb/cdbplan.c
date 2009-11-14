@@ -969,7 +969,6 @@ plan_tree_mutator(Node *node,
 
 				FLATCOPY(newmotion, motion, Motion);
 				PLANMUTATE(newmotion, motion);
-                COPYARRAY(newmotion, motion, numInputSegs, inputSegIdx);
 
 				COPYARRAY(newmotion, motion, numHashSegs, hashSegIdx);
 				MUTATE(newmotion->hashExpr, motion->hashExpr, List *);

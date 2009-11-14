@@ -3945,7 +3945,6 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				cdbdisp_dispatchX(&queryParms,
 								  true,
 								  sliceTable,
-								  DEFAULT_DISP_DIRECT,
 								  &pPrimaryResults,		/* OUT */
 								  &pMirrorResults,      /* OUT */
 								  &dispatchThreads);	/* OUT */

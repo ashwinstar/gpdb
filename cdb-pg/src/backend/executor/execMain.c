@@ -82,6 +82,7 @@
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbexplain.h"             /* cdbexplain_sendExecStats() */
+#include "cdb/cdbplan.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbsubplan.h"
 #include "cdb/cdbvars.h"
@@ -148,9 +149,60 @@ static void intorel_startup(DestReceiver *self, int operation, TupleDesc typeinf
 static void intorel_receive(TupleTableSlot *slot, DestReceiver *self);
 static void intorel_shutdown(DestReceiver *self);
 static void intorel_destroy(DestReceiver *self);
+static bool CopyDirectDispatchFromPlanToSliceTableWalker( Node *node, EState *estate);
 
 /* end of local decls */
 
+static void
+CopyDirectDispatchToSlice( Plan *ddPlan, int sliceId, EState *estate)
+{
+	Slice *slice = (Slice *)list_nth(estate->es_sliceTable->slices, sliceId);
+
+	Assert( ! slice->directDispatch.isDirectDispatch );	/* should not have been set by some other process */
+	Assert(ddPlan != NULL);
+
+	if ( ddPlan->directDispatch.isDirectDispatch)
+	{
+		slice->directDispatch.isDirectDispatch = true;
+		slice->directDispatch.contentIds = list_copy(ddPlan->directDispatch.contentIds);
+	}
+}
+
+static bool
+CopyDirectDispatchFromPlanToSliceTableWalker( Node *node, EState *estate)
+{
+	int sliceId;
+	Plan *ddPlan = NULL;
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, Motion))
+	{
+		Motion *motion = (Motion *) node;
+		ddPlan = (Plan*)node;
+		sliceId = motion->motionID;
+	}
+	else if ( IsA(node, SubPlan))
+	{
+		/* todo DIRECT_DISPATCH is manual walk required?  test ones under an initplan */
+		SubPlan *subPlan = (SubPlan*) node;
+		ddPlan = subPlan->plan;
+		sliceId = subPlan->qDispSliceId;
+	}
+
+	if ( ddPlan != NULL)
+	{
+		CopyDirectDispatchToSlice(ddPlan, sliceId, estate );
+	}
+	return plan_tree_walker(node, CopyDirectDispatchFromPlanToSliceTableWalker, estate);
+}
+
+static void
+CopyDirectDispatchFromPlanToSliceTable( Plan *plan, EState *estate)
+{
+	CopyDirectDispatchToSlice( plan, 0, estate);
+	CopyDirectDispatchFromPlanToSliceTableWalker((Node *) plan, estate);
+}
 
 /* ----------------------------------------------------------------
  *		ExecutorStart
@@ -259,6 +311,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 		/* Set up blank slice table to be filled in during InitPlan. */
 		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nInitPlans);
+
+		/* Copy direct dispatch decisions out of the plan and into the slice table.  Must be done after slice table is built */
+		CopyDirectDispatchFromPlanToSliceTable(queryDesc->plantree, estate );
 
         /* Pass EXPLAIN ANALYZE flag to qExecs. */
         estate->es_sliceTable->doInstrument = queryDesc->doInstrument;

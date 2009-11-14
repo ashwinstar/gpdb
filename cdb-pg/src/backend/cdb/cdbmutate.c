@@ -79,7 +79,6 @@ static Motion *
 make_motion(Plan       *lefttree,
             bool        sendToSecondary,
             bool        sendSorted,
-            int         numInputSegs,
             int         numSortCols,
             AttrNumber *sortColIdx,
             Oid        *sortOperators);
@@ -150,7 +149,7 @@ directDispatchCalculateHash(Plan *plan, GpPolicy *targetPolicy)
 	int i;
 	CdbHash *h=NULL;
 	ListCell *cell=NULL;
-	uint32 hashcode;
+	bool directDispatch;
 
 	h = makeCdbHash(GpIdentity.numsegments, HASH_FNV_1);
 	cdbhashinit(h);
@@ -165,7 +164,7 @@ directDispatchCalculateHash(Plan *plan, GpPolicy *targetPolicy)
 	 * by more than a handful of
 	 * attributes).
 	 */
-	plan->directDispatch = true;
+	directDispatch = true;
 	for (i = 0; i < targetPolicy->nattrs; i++)
 	{
 		Const *c;
@@ -183,34 +182,35 @@ directDispatchCalculateHash(Plan *plan, GpPolicy *targetPolicy)
 			if (!IsA(tle->expr, Const))
 			{
 				/* Probably this is type-coerced ? can't calculate this currently */
-				plan->directDispatch = false;
+				directDispatch = false;
 				break;
 			}
 
 			c = (Const *)tle->expr;
-
 			if (c->constisnull)
 			{
 				cdbhashnull(h);
 			}
 			else
 			{
-				cdbhash(h, c->constvalue, c->consttype);
+				Assert(isGreenplumDbHashable(c->consttype));
+				cdbhash(h, c->constvalue, typeIsArrayType(c->consttype) ? ANYARRAYOID : c->consttype);
 			}
 
 			break;
 		}
 
-		if (!plan->directDispatch)
+		if (!directDispatch)
 			break;
 	}
 
 	/* We now have the hash-partition that this row belong to */
-	if (plan->directDispatch)
+	plan->directDispatch.isDirectDispatch = directDispatch;
+	if (directDispatch)
 	{
-		hashcode = cdbhashreduce(h);
+		uint32 hashcode = cdbhashreduce(h);
 
-		plan->directDispatchContentId = hashcode;
+		plan->directDispatch.contentIds = list_make1_int(hashcode );
 
 		elog(DEBUG1, "sending single row constant insert to content %d", hashcode);
 	}
@@ -860,7 +860,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 	Node   *newnode;
     Plan   *plan;
     Flow   *flow;
-    int     numInputSegs;
     int     saveNextMotionID;
     int     saveNumInitPlans;
     int     saveSliceDepth;
@@ -983,12 +982,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
     Assert(IsA(flow, Flow));
 
-    /* How many sending processes? */
-    numInputSegs = 1;
-    if (flow->flow_before_req_move &&
-        flow->flow_before_req_move->flotype != FLOW_SINGLETON)
-        numInputSegs = getgpsegmentCount();
-
     /* Add motion atop the copied node, if necessary. */
     switch (flow->req_move)
     {
@@ -1002,7 +995,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
             {
                 newnode = (Node *)make_sorted_union_motion(plan,
                                                            sendToSecondary,
-                                                           numInputSegs,
                                                            flow->segindex,
                                                            flow->numSortCols,
                                                            flow->sortColIdx,
@@ -1012,20 +1004,17 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
             {
                 newnode = (Node *)make_union_motion(plan,
                                                     sendToSecondary,
-                                                    numInputSegs,
                                                     flow->segindex);
             }
             break;
 
         case MOVEMENT_BROADCAST:
-            newnode = (Node *) make_broadcast_motion(plan, sendToSecondary,
-                                                     numInputSegs);
+            newnode = (Node *) make_broadcast_motion(plan, sendToSecondary );
             break;
 
         case MOVEMENT_REPARTITION:
             newnode = (Node *)make_hashed_motion(plan,
                                                  sendToSecondary,
-                                                 numInputSegs,
                                                  flow->hashExpr
 				);
             break;
@@ -1114,7 +1103,6 @@ Motion *
 make_motion(Plan       *lefttree,
 			bool        sendToSecondary,
             bool        sendSorted,
-            int         numInputSegs,
 			int         numSortCols,
             AttrNumber *sortColIdx,
             Oid        *sortOperators)
@@ -1140,9 +1128,6 @@ make_motion(Plan       *lefttree,
 
 	node->sendToSecondary = sendToSecondary;
 	node->sendSorted = sendSorted;
-
-    node->numInputSegs = numInputSegs;
-    node->inputSegIdx = NULL;
 
 	node->numSortCols = numSortCols;
 	node->sortColIdx = sortColIdx;
@@ -1272,14 +1257,13 @@ void add_slice_to_motion(Motion *motion,
 }
 
 Motion *
-make_union_motion(Plan *lefttree, bool sendToSecondary,
-                  int numInputSegs, int destSegIndex)
+make_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex)
 {
 	Motion 	*motion;
 	int		*outSegIdx = (int *) palloc(sizeof(int)); 
 	outSegIdx[0] = destSegIndex; 
 
-	motion = make_motion(lefttree, sendToSecondary, false, numInputSegs,
+	motion = make_motion(lefttree, sendToSecondary, false,
 			0, NULL, NULL /* numSortCols, sortColIdx, sortOperaotrs */
 			);
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED, 
@@ -1289,14 +1273,14 @@ make_union_motion(Plan *lefttree, bool sendToSecondary,
 
 Motion *
 make_sorted_union_motion(Plan *lefttree, bool sendToSecondary,
-                         int numInputSegs, int destSegIndex,
+                         int destSegIndex,
 				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
 {
 	Motion 	*motion;
 	int		*outSegIdx = (int *) palloc(sizeof(int)); 
 	outSegIdx[0] = destSegIndex; 
 
-	motion = make_motion(lefttree, sendToSecondary, true, numInputSegs,
+	motion = make_motion(lefttree, sendToSecondary, true,
 			numSortCols, sortColIdx, sortOperators);
 
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED,
@@ -1305,12 +1289,12 @@ make_sorted_union_motion(Plan *lefttree, bool sendToSecondary,
 }
 
 Motion *
-make_hashed_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs,
+make_hashed_motion(Plan *lefttree, bool sendToSecondary,
 				   List *hashExpr)
 {
 	Motion *motion;
 
-	motion = make_motion(lefttree, sendToSecondary, false, numInputSegs,
+	motion = make_motion(lefttree, sendToSecondary, false,
 			0, NULL, NULL);
 	add_slice_to_motion(motion, MOTIONTYPE_HASH, 
 			hashExpr,
@@ -1319,11 +1303,11 @@ make_hashed_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs,
 }
 
 Motion *
-make_broadcast_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs)
+make_broadcast_motion(Plan *lefttree, bool sendToSecondary)
 {
 	Motion *motion;
 
-	motion = make_motion(lefttree, sendToSecondary, false, numInputSegs,
+	motion = make_motion(lefttree, sendToSecondary, false,
 			0, NULL, NULL);
 
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED,

@@ -86,7 +86,8 @@ typedef struct GpSegmentConnectionResponse
 extern Gang *allocateGang(GangType type, int size, int content, char *portal_name);
 extern Gang *allocateWriterGang(GangType type);
 
-extern List *getCdbProcessList(Gang *gang, int sliceIndex);
+struct DirectDispatchInfo;
+extern List *getCdbProcessList(Gang *gang, int sliceIndex, struct DirectDispatchInfo *directDispatch);
 
 extern bool dispatchagentsOk(DispatchAgentSet * das);
 

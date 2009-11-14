@@ -331,12 +331,9 @@ Motion* make_motion_gather_to_QE(Plan *subplan, bool keep_ordering)
 Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 {
 	Motion *motion;
-	int numInputSegs;				
 
 	Assert(subplan->flow != NULL);
 	Assert(subplan->flow->flotype == FLOW_PARTITIONED);
-	
-	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getgpsegmentCount();
 	
 	if ( keep_ordering && subplan->flow->numSortCols > 0 )
 	{
@@ -345,7 +342,6 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 		motion = make_sorted_union_motion(
 			subplan,
 			false, /* sendToSecondary */
-			numInputSegs,
 			segindex,
 			flow->numSortCols, /* Motion and Flow can share arrays. */
 			flow->sortColIdx,
@@ -356,7 +352,6 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 		motion = make_union_motion(
 			subplan,
 			false, /* sendToSecondary */
-			numInputSegs,
 			segindex);
 	}
 	
@@ -384,16 +379,12 @@ Motion* make_motion_hash_all_targets(PlannerInfo *root, Plan *subplan)
 Motion* make_motion_hash(PlannerInfo *root __attribute__((unused)) , Plan *subplan, List *hashexprs)
 {
 	Motion *motion;
-	int numInputSegs;
 	
 	Assert(subplan->flow != NULL);
-	
-	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getgpsegmentCount();
 	
 	motion = make_hashed_motion(
 		subplan,
 		false, /* sendToSecondary */
-		numInputSegs,
 		hashexprs);
 
 	return motion;

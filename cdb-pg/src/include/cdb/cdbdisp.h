@@ -387,7 +387,6 @@ void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  bool cancelOnError,
 				  SliceTable *sliceTbl,
-				  CdbDispatchDirectDesc		*direct,
 				  struct CdbDispatchResults **pPrimaryResults,		/* OUT */
 				  struct CdbDispatchResults **pMirrorResults,       /* OUT */
 				  struct CdbDispatchCmdThreads **pDispatchThreads); 		/* OUT */

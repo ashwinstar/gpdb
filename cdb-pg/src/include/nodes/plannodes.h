@@ -19,7 +19,21 @@
 #include "access/sdir.h"
 #include "nodes/bitmapset.h"
 #include "nodes/primnodes.h"
-/* ----------------------------------------------------------------
+
+typedef struct DirectDispatchInfo
+{
+     /**
+      * if true then this Slice requires an n-gang but the gang can be targeted to
+      *   fewer segments than the entire cluster.
+      *
+      * When true, directDispatchContentId and directDispathCount will combine to indicate
+      *    the content ids that need segments.
+      */
+	bool isDirectDispatch;
+    List *contentIds;
+} DirectDispatchInfo;
+
+ /* ----------------------------------------------------------------
  *						node definitions
  * ----------------------------------------------------------------
  */
@@ -118,8 +132,7 @@ typedef struct Plan
 	 * Note that for nodes that are internal to a slice then this data is not
 	 *   set.
 	 */
-	bool		directDispatch;
-	uint32		directDispatchContentId;
+	DirectDispatchInfo directDispatch;
 
 	/*
 	 * CDB: Now many motion nodes are there in the Plan.  How many init plans?
@@ -868,11 +881,6 @@ typedef struct Motion
 	/* For Fixed */
 	int 	  	numOutputSegs;		/* number of seg indexes in outputSegIdx array, 0 for broadcast */
 	int 	 	*outputSegIdx; 	 	/* array of output segindexes */
-
-
-    /* The sending gang */
-    int			numInputSegs;		/* number of sending processes */
-	int        *inputSegIdx;		/* array of input segids (NULL=>default) */
 
 	List       *sliceEntries;       /* for each output slice */
 

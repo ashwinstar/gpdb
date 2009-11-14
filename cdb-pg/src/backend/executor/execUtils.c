@@ -1398,6 +1398,9 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
         slice->rootIndex = (i > 0 && i <= nMotions) ? -1 : i;
 		slice->gangType = GANGTYPE_UNALLOCATED;
 		slice->gangSize = 0;
+		slice->numGangMembersToBeActive = 0;
+		slice->directDispatch.isDirectDispatch = false;
+		slice->directDispatch.contentIds = NIL;
 		slice->primaryGang = NULL;
 		slice->mirrorGang = NULL;
 		slice->primary_gang_id = 0;
@@ -1458,6 +1461,7 @@ InitRootSlices(QueryDesc *queryDesc)
 					{
 						slice->gangType = GANGTYPE_PRIMARY_WRITER;
 						slice->gangSize = getgpsegmentCount();
+						slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice, getgpsegmentCount());
 					}
 					break;
 
@@ -1466,6 +1470,7 @@ InitRootSlices(QueryDesc *queryDesc)
 				case CMD_DELETE:
 					slice->gangType = GANGTYPE_PRIMARY_WRITER;
 					slice->gangSize = getgpsegmentCount();
+					slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice, getgpsegmentCount());
 					break;
 
 				default:
@@ -1677,6 +1682,12 @@ AccumSliceReq(SliceReq * inv, SliceReq * req)
 	inv->writer = (inv->writer || req->writer);
 }
 
+static bool
+is1GangSlice(Slice *slice)
+{
+	return slice->gangSize == 1 && getgpsegmentCount() != 1;
+}
+
 /*
  * Helper for AssignGangs takes a simple inventory of the gangs required
  * by a slice tree.  Recursive.  Closely coupled with AssignGangs.	Not
@@ -1704,7 +1715,7 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			req->writer = TRUE;
 			/* fall through */
 		case GANGTYPE_PRIMARY_READER:
-			if (slice->gangSize == 1 && getgpsegmentCount() != 1)
+			if (is1GangSlice(slice))
 			{
 				req->num1gangs_primary_reader++;
 			}
@@ -1728,6 +1739,49 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 	}
 }
 
+/**
+ * Calculate the number of sending processes that should in be a slice.
+ */
+int
+sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
+{
+	switch(slice->gangType)
+	{
+		case GANGTYPE_UNALLOCATED:
+			return 0; /* does not send */
+
+		case GANGTYPE_ENTRYDB_READER:
+			return 1; /* on master */
+
+		case GANGTYPE_PRIMARY_WRITER:
+			return 0; /* writers don't send */
+
+		case GANGTYPE_PRIMARY_READER:
+			if ( is1GangSlice(slice))
+				return 1;
+			else if ( slice->directDispatch.isDirectDispatch)
+				return list_length(slice->directDispatch.contentIds);
+			else return getgpsegmentCount();
+
+		case GANGTYPE_MIRROR_WRITER:
+			return 0; /* does not send */
+		default:
+			Insist(false);
+			return -1;
+	}
+}
+
+static int
+countNonNullValues(List *list)
+{
+	int res = 0;
+	ListCell *lc;
+
+	foreach(lc,list)
+		if ( lfirst(lc) != NULL)
+			res++;
+	return res;
+}
 
 /*
  * Helper for AssignGangs uses the gangs in the inventory to fill in the
@@ -1755,8 +1809,11 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			Assert(slice->primaryGang != NULL);
 			slice->primary_gang_id = slice->primaryGang->gang_id;
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-                                                        slice->sliceIndex);
+                                                        slice->sliceIndex,
+														NULL);
 			req->nxt1gang_entrydb_reader++;
+
+			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->primaryProcesses));
 			break;
 
 		case GANGTYPE_PRIMARY_WRITER:
@@ -1768,13 +1825,15 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			Assert(slice->primaryGang != NULL);
 			slice->primary_gang_id = slice->primaryGang->gang_id;
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-                                                        slice->sliceIndex);
+                                                        slice->sliceIndex,
+                                                        &slice->directDispatch);
 			slice->mirrorGang = req->mirrorWriterGang;
 			if (slice->mirrorGang != NULL)
 			{
 				slice->mirror_gang_id = slice->mirrorGang->gang_id;
 				slice->mirrorProcesses = getCdbProcessList(slice->mirrorGang,
-                                                        slice->sliceIndex);
+                                                        slice->sliceIndex,
+                                                        &slice->directDispatch);
 			}
 			else
 				slice->mirrorProcesses = NIL;
@@ -1783,7 +1842,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			break;
 
 		case GANGTYPE_PRIMARY_READER:
-			if (slice->gangSize == 1 && getgpsegmentCount() != 1)
+			if (is1GangSlice(slice))
 			{
 				slice->primaryGang = req->vec1gangs_primary_reader[req->nxt1gang_primary_reader];
 				req->nxt1gang_primary_reader++;
@@ -1797,7 +1856,9 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			Assert(slice->primaryGang != NULL);
 			slice->primary_gang_id = slice->primaryGang->gang_id;
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-                                                        slice->sliceIndex);
+                                                        slice->sliceIndex,
+                                                        &slice->directDispatch);
+			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->primaryProcesses));
 			break;
 
 		case GANGTYPE_MIRROR_WRITER:
@@ -1811,7 +1872,6 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 		childIndex = lfirst_int(cell);
 		AssociateSlicesToProcesses(sliceMap, childIndex, req);
 	}
-
 }
 
 /*
