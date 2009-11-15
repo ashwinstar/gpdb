@@ -142,9 +142,6 @@ INLINE_FLAGS=-finline-limit=1800
 ifeq "$(BLD_ARCH)" "sol10_x86_64"
 	TRACE_CFG_FLAG=--enable-dtrace DTRACEFLAGS=-64
 	TRACE_GCC_FLAG=-m64
-else
-	TRACE_CFG_FLAG=--enable-ltrace
-	TRACE_GCC_FALG=
 endif
 
 OPTFLAGS="$(strip -O3 -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS) $(TRACE_GCC_FLAG))"
@@ -407,7 +404,7 @@ devel : CONNECTIVITYINSTLOC=$(CONNECTIVITYDEVPATH)
 devel : LOADERSINSTLOC=$(LOADERSDEVPATH)
 devel : PWXINSTLOC=$(PWXDEVPATH)
 devel : GPPERFMONINSTLOC=$(GPPERFMONDEVPATH)
-devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak
+devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak --enable-depend
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	$(BUILD_STEPS)
 
