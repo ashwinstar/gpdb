@@ -1771,6 +1771,7 @@ sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
 	}
 }
 
+#ifdef NOT_USED
 static int
 countNonNullValues(List *list)
 {
@@ -1782,6 +1783,7 @@ countNonNullValues(List *list)
 			res++;
 	return res;
 }
+#endif
 
 /*
  * Helper for AssignGangs uses the gangs in the inventory to fill in the
