@@ -1771,7 +1771,7 @@ sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
 	}
 }
 
-#ifdef NOT_USED
+#ifdef USE_ASSERT_CHECKING
 static int
 countNonNullValues(List *list)
 {
