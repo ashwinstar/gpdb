@@ -85,6 +85,7 @@
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/numeric.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "utils/uri.h"
@@ -10512,6 +10513,10 @@ make_typname(Form_pg_attribute att, bool *built)
 	Value *typname = NULL;
 	bool dig_in_catalog = false;
 
+	Assert(att->attisdropped); /* better not be here unless */
+
+	tname->typmod = att->atttypmod;
+
 	if (attlen == -1)
 	{
 		if (att->attalign == 'i')
@@ -10520,6 +10525,19 @@ make_typname(Form_pg_attribute att, bool *built)
 				typname = makeString(pstrdup("varchar"));
 			else
 				typname = makeString(pstrdup("numeric"));
+
+			/* 
+			 * We're building dropped columns. Dropped columns should never
+			 * create a TOAST table because they only ever contain NULL. So,
+			 * even if the original typmod was -1 (variable length), set it to a
+			 * real value so that we avoid TOAST creation. To do this, we must
+			 * be one byte longer than the maximum variable length header size.
+			 * See needs_toast_table().
+			 *
+			 * XXX: there may be occassions where tables with dropped TOASTable
+			 * columns do still have TOAST tables. Need to explore those.
+			 */
+			tname->typmod = 1 + Max(NUMERIC_HDRSZ, VARHDRSZ);
 		}
 		else if (att->attalign == 'd')
 			typname = makeString(pstrdup("path"));
@@ -10594,7 +10612,6 @@ make_typname(Form_pg_attribute att, bool *built)
 		tname->names = list_make2(makeString(pstrdup("pg_catalog")), typname);
 	}
 
-	tname->typmod = att->atttypmod;
 	tname->location = -1;
 	return tname;
 }
