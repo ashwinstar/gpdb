@@ -10,6 +10,7 @@ include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I$../../gp_libpq_fe  $(CPPFLAGS)
 
 BLD_TOP = ../../../../..
+include $(BLD_TOP)/Makefile.global
 CLAPACKDIR = $(BLD_TOP)/ext/$(BLD_ARCH)/lib
 CLAPACKLIBS = -llapack -lf2c -lblas
 
