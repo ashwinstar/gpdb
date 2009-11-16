@@ -246,14 +246,22 @@ DECLARE_UNIQUE_INDEX(gp_configuration_content_definedprimary_index, 6101, on gp_
 #define GpConfigurationContentDefinedprimaryIndexId  6101
 DECLARE_UNIQUE_INDEX(gp_configuration_dbid_index, 6102, on gp_configuration using btree(dbid int2_ops));
 #define GpConfigurationDbidIndexId	6102
+
 DECLARE_UNIQUE_INDEX(gp_policy_localoid_index, 6103, on gp_distribution_policy using btree(localoid oid_ops));
 #define GpPolicyLocalOidIndexId  6103
 
+DECLARE_UNIQUE_INDEX(gp_segment_config_content_preferred_role_index, 6106, on gp_segment_config using btree(content int2_ops, preferred_role char_ops));
+#define GpSegmentConfigContentPreferredroleIndexId  6106
+DECLARE_UNIQUE_INDEX(gp_segment_config_dbid_index, 6107, on gp_segment_config using btree(dbid int2_ops));
+#define GpSegmentConfigDbidIndexId  6107
+
 DECLARE_INDEX(gp_db_interfaces_dbid_index, 6108, on gp_db_interfaces using btree(dbid int2_ops));
 #define GpDbInterfacesIndexId  6108
-
 DECLARE_UNIQUE_INDEX(gp_interfaces_interface_index, 6109, on gp_interfaces using btree(interfaceid int2_ops));
 #define GpInterfacesIndexId  6109
+
+DECLARE_UNIQUE_INDEX(gp_san_config_mountid_index, 6111, on gp_san_config using btree(mountid int2_ops));
+#define GpSanConfigMountidIndexId  6111
 
 DECLARE_UNIQUE_INDEX(pg_window_fnoid_index, 5005, on pg_window using btree(winfnoid oid_ops));
 #define WindowFnoidIndexId  5005

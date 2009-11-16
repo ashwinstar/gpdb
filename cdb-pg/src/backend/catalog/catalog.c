@@ -38,6 +38,9 @@
 #include "catalog/pg_resqueue.h"
 
 #include "catalog/gp_configuration.h"
+#include "catalog/gp_configuration.h"
+#include "catalog/gp_segment_config.h"
+#include "catalog/gp_san_config.h"
 
 #include "catalog/gp_master_mirroring.h"
 #include "catalog/gp_persistent_rel_files.h"
@@ -311,13 +314,20 @@ IsSharedRelation(Oid relationId)
 		relationId == FileSpaceRelationId ||
 		relationId == FileSpaceEntryRelationId ||
 		relationId == TableSpaceRelationId ||
+
 		relationId == GpConfigurationRelationId ||
 		relationId == GpConfigHistoryRelationId ||
 		relationId == GpDbInterfacesRelationId ||
 		relationId == GpInterfacesRelationId ||
+
 		relationId == GpIdRelationId ||
 		relationId == GpVersionRelationId ||
 		relationId == ResQueueRelationId ||
+
+		relationId == GpFaultStrategyId ||
+		relationId == GpSegmentConfigRelationId ||
+		relationId == GpSanConfigRelationId ||
+
 		relationId == GpMasterMirroringRelationId ||
 		relationId == GpPersistentRelFilesRelationId ||
 		relationId == GpPersistentDbDirsRelationId)
@@ -347,6 +357,11 @@ IsSharedRelation(Oid relationId)
 		relationId == GpConfigurationDbidIndexId ||
 		relationId == GpDbInterfacesIndexId ||
 		relationId == GpInterfacesIndexId ||
+
+		relationId == GpSegmentConfigContentPreferredroleIndexId ||
+		relationId == GpSegmentConfigDbidIndexId ||
+		relationId == GpSanConfigMountidIndexId ||
+
 		relationId == AuthIdRolResQueueIndexId ||
 		relationId == ResQueueOidIndexId ||
 		relationId == ResQueueRsqnameIndexId )

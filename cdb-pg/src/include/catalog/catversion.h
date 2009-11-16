@@ -52,7 +52,7 @@
  * catalog changes on the same day...)
  */
 
-/*							yyyymmddN */
-#define CATALOG_VERSION_NO	200911201
+/*                         yyyymmddN */
+#define CATALOG_VERSION_NO 200911202
 
 #endif
