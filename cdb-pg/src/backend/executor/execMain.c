@@ -296,18 +296,10 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
 	{
 		/*
-		 * If this is a cursor query - before starting the portal, we need to
-		 * make sure that the shared snapshot is already set by a writer gang,
-		 * or the cursor query readers will timeout waiting for one that may not
-		 * exist (in some cases). Therefore we insert a small hack here and
-		 * dispatch a SET query that will do it for us. (This is also done in
-		 * performOpenCursor() for the simple query protocol).
+		 * MPP-7504/MPP-7448: we used to call verify_shared_snapshot_ready here for all
+		 * queries with queryDesc->cursor_query. But now that gets called inside the
+		 * dispatcher because we may evaluate some functions which recursively dispatch.
 		 */
-		if (queryDesc->cursor_query)
-		{
-			verify_shared_snapshot_ready();
-		}
-
 
 		/* Set up blank slice table to be filled in during InitPlan. */
 		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nInitPlans);

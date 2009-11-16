@@ -1067,30 +1067,12 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			ExecUpdateTransportState(planstate, queryDesc->estate->interconnect_context);
 
 			/*
-			 * MPP-6533/MPP-5805: If this is an initplan-running from
-			 * a cursor, we need to make sure that we properly
-			 * maintain the writer-gang sync (the initplans for such a
-			 * query aren't run on the writer-gang).
-			 *
-			 * However, we must *not* rewind on ordinary initplans --
-			 * since they *do* use the writer-gang. "Rewind"
-			 * essentially bypasses synchronization between reader and
-			 * writer, and isn't safe for any query which uses both
-			 * readers and writers.
-			 *
-			 * I would prefer to use verify_shared_snapshot_ready()
-			 * here, but that would introduce more latency (an extra
-			 * dispatch to the writer).
+			 * MPP-7504/MPP-7448: we used to call
+			 * verify_shared_snapshot_ready here for all queries with
+			 * queryDesc->cursor_query. But now that gets called
+			 * inside the dispatcher because we may evaluate some
+			 * functions which recursively dispatch.
 			 */
-			if (queryDesc->cursor_query)
-			{
-				/*
-				 * We rewind the segmateSync value since the InitPlan can
-				 * share the same value with its parent plan. See MPP-4504.
-				 */
-
-				DtxContextInfo_RewindSegmateSync();
-			}
 		}
 
 		/*

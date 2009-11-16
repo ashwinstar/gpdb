@@ -3932,6 +3932,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 				oldContext = MemoryContextSwitchTo(MessageContext);
 		}
 
+		/* NOTE: as a side-effect this may dispatch functions ... */
 		queryDesc->plantree = (Plan *) make_plan_constant((Node *) queryDesc->plantree, is_SRI);
 
 		/* 
@@ -3949,6 +3950,22 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		MemoryContextSwitchTo(oldContext);
 	}
 
+	/*
+	 * Cursor queries don't run on the writer-gang QEs; but they
+	 * require snapshot-synchronization to get started.
+	 *
+	 * initPlans, and other work (see the function pre-evaluation
+	 * above) may advance the snapshot "segmateSync" value, so we're
+	 * best off setting the shared-snapshot-ready value here. This
+	 * will dispatch to the writer gang and force it to set its
+	 * snapshot; we'll then be able to serialize the same snapshot
+	 * version (see qdSerializeDtxContextInfo() below).
+	 *
+	 * For details see MPP-6533/MPP-5805. There are a large number of
+	 * interesting test cases for segmate-sync.
+	 */
+	if (queryDesc->cursor_query)
+		verify_shared_snapshot_ready();
 
 	/*
 	 * serialized plan and query trees. Note that we're called for a single
