@@ -592,6 +592,12 @@ DATA(insert OID = 6440 ( pg_stat_last_operation	    PGNSP PGUID -1 f c t \054 60
 #define PG_STAT_LAST_OPERATION_OID 6440
 DATA(insert OID = 6441 ( pg_stat_last_shoperation	    PGNSP PGUID -1 f c t \054 6056 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define PG_STAT_LAST_SHOPERATION_OID 6441
+DATA(insert OID = 6442 ( gp_segment_config	    PGNSP PGUID -1 f c t \054 5036 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+#define GP_SEGMENT_CONFIG_RELTYPE_OID 6442
+DATA(insert OID = 6443 ( gp_fault_strategy	    PGNSP PGUID -1 f c t \054 5039 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+#define GP_FAULT_STRATEGY_RELTYPE_OID 6443
+DATA(insert OID = 6444 ( gp_san_config	    PGNSP PGUID -1 f c t \054 5035 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+#define GP_SAN_CONFIG_RELTYPE_OID 6444
 
 /*
  * macros

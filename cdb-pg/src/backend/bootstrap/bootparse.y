@@ -28,6 +28,8 @@
 #include "bootstrap/bootstrap.h"
 #include "catalog/catalog.h"
 #include "catalog/gp_configuration.h"
+#include "catalog/gp_san_config.h"
+#include "catalog/gp_segment_config.h"
 #include "catalog/heap.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_appendonly_alter_column.h"
@@ -252,6 +254,18 @@ Boot_CreateStmt:
 								/* MPP-6929: metadata tracking */
 								typid = PG_STAT_LAST_SHOPERATION_OID;
 								break;
+
+								/* Three new configuration tables in 3.4 */
+							case GpSanConfigRelationId:
+								typid = GP_SAN_CONFIG_RELTYPE_OID;
+								break;
+							case GpFaultStrategyId:
+								typid = GP_FAULT_STRATEGY_RELTYPE_OID;
+								break;
+							case GpSegmentConfigRelationId:
+								typid = GP_SEGMENT_CONFIG_RELTYPE_OID;
+								break;
+
 							default:
 								break;
 						}
