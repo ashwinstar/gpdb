@@ -112,7 +112,7 @@ static void attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno
 static void copy_in_error_callback(void *arg);
 static void CopyInitPartitioningState(EState *estate);
 static void CopyInitDataParser(CopyState cstate);
-static void CopyCheckIsLastLine(CopyState cstate);
+static bool CopyCheckIsLastLine(CopyState cstate);
 
 /* ==========================================================================
  * The follwing macros aid in major refactoring of data processing code (in
@@ -4211,8 +4211,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 			/* load entire input buffer into line buf, and quit */
 			appendBinaryStringInfo(&cstate->line_buf, cstate->raw_buf, bytesread);
 			cstate->raw_buf_done = true;
-			cstate->line_done = false;
-			CopyCheckIsLastLine(cstate); /* may set line_done to true */
+			cstate->line_done = CopyCheckIsLastLine(cstate);
 
 			if (cstate->line_done)
 				preProcessDataLine(cstate);
@@ -4278,9 +4277,8 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 					cstate->cr_in_prevbuf = true;
 			}
 
-			cstate->line_done = false;
+			cstate->line_done = CopyCheckIsLastLine(cstate);
 			cstate->raw_buf_done = true;
-			CopyCheckIsLastLine(cstate); /* may set line_done to true */
 
 			break;
 		}
@@ -4426,9 +4424,8 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 		{
 			/* EOL not found. load entire input buffer into line buf, and return */
 			appendBinaryStringInfo(&cstate->line_buf, cstate->raw_buf, bytesread);
-			cstate->line_done = false;
+			cstate->line_done = CopyCheckIsLastLine(cstate);;
 			cstate->raw_buf_done = true;
-			CopyCheckIsLastLine(cstate); /* may set line_done to true */
 
 			if (cstate->line_done)
 				preProcessDataLine(cstate);
@@ -4498,10 +4495,8 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 				}
 			}
 
-			cstate->line_done = false;
+			cstate->line_done = CopyCheckIsLastLine(cstate);
 			cstate->raw_buf_done = true;
-			CopyCheckIsLastLine(cstate); /* may set line_done to true */
-
 			break;
 		}
 		else
@@ -6355,13 +6350,15 @@ static void CopyInitDataParser(CopyState cstate)
  *
  * See MPP-4406 for an example of why this is needed.
  */
-static void CopyCheckIsLastLine(CopyState cstate)
+static bool CopyCheckIsLastLine(CopyState cstate)
 {
 	if (cstate->fe_eof)
 	{
 		concatenateEol(cstate);
-		cstate->line_done = true;
+		return true;
 	}
+	
+	return false;
 }
 
 uint64
