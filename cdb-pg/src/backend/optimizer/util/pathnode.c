@@ -572,13 +572,11 @@ cdb_set_cheapest_dedup(PlannerInfo *root, RelOptInfo *rel)
      */
     if (dedup->join_unique_ininfo)
     {
-        /* Top off the subpath with DISTINCT ON the result columns. */
-        if (rel->reltargetlist)
-            upath = create_unique_exprlist_path(root,
-                                                dedup->cheapest_total_path,
-                                                rel->reltargetlist);
-        else
-            upath = create_limit1_path(root, dedup->cheapest_total_path);
+    	Assert(dedup->join_unique_ininfo->sub_targetlist);
+    	/* Top off the subpath with DISTINCT ON the result columns. */
+    	upath = create_unique_exprlist_path(root,
+    			dedup->cheapest_total_path,
+    			dedup->join_unique_ininfo->sub_targetlist);
 
         /* Add to rel's main pathlist. */
         add_path(root, rel, (Path *)upath);
