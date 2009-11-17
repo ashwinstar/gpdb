@@ -48,6 +48,8 @@
  *    1) we do not do any unnecessary lv expansions -- meaning, many tuples in a multi-key comparison differ
  *       only in first few keys so no need to materialize the later keys and comparable keys.
  *    2) the compare is cheap because once you've determined the level of a row then you can compare using only level
+ *
+ * Testing note: see attachment on MPP-7231 for some useful testing code
  */
 
 static void mkheap_heapify(MKHeap *mkheap, bool doLv0);
@@ -432,6 +434,36 @@ static void mkheap_heapify(MKHeap *mkheap, bool doLv0)
 #endif
 }
 
+static bool
+mke_has_duplicates_with_root(MKHeap *mkheap)
+{
+	/* can't have duplicates in a small heap! */
+	if ( mkheap->count <= 1)
+		return false;
+
+	/** since the heap is heapified, only if the level is at the max can
+	 *   we have a duplicate
+	 */
+	if ( mke_get_lv(mkheap->p) + 1 != mkheap->mkctxt->total_lv )
+		return false;
+
+	/* see if we have children which exactly match the root */
+    if(RIGHT(0) < mkheap->maxentry)
+    {
+        int cmp = mkheap_compare(mkheap, mkheap->p, mkheap->p+RIGHT(0));
+        if(cmp==0)
+			return true;
+    }
+
+    if(LEFT(0) < mkheap->maxentry)
+    {
+    	int cmp = mkheap_compare(mkheap, mkheap->p, mkheap->p+LEFT(0));
+        if(cmp==0)
+			return true;
+    }
+    return false;
+}
+
 /*
  * Insert an entry and perhaps return the top element of the heap in *e
  *
@@ -641,6 +673,14 @@ int mkheap_puget_run(MKHeap *mkheap, MKEntry *e, int16 run)
     return ins;
 }
 
+static void
+errorUniquenessViolated()
+{
+    ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
+                errmsg("could not create unique index"),
+                errdetail("Table contains duplicated values.")));
+}
+
 int mkheap_puget_reader(MKHeap *mkheap, MKEntry *out)
 {
     int n;
@@ -660,6 +700,14 @@ int mkheap_puget_reader(MKHeap *mkheap, MKEntry *out)
 
     /* _reader code is not compatible with the run code */
     Assert(mke_get_run(e) == 0);
+
+    if ( mkheap->mkctxt->enforceUnique && mke_has_duplicates_with_root(mkheap))
+    {
+    	/* this checks if two different readers produce the same value
+    	 *   a single reader producing the same value is checked below
+    	 */
+    	errorUniquenessViolated();
+    }
 
     /* Figure out the reader that provided the current top of the heap */
     n = mke_get_reader(e);
@@ -687,14 +735,11 @@ int mkheap_puget_reader(MKHeap *mkheap, MKEntry *out)
     ins = mkheap_puget_impl(mkheap, out);
 
     /*
-     * If we are supposed to enforce uniqueness AND the new value is equal to the top value
-     *    then no change!   Note that this is incorrect, MPP-7231 has been filed for this issue
+     * Check to see if two successive values for this reader were unique
      */
     if(mkheap->mkctxt->enforceUnique && ins == 0)
     {
-        ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
-                    errmsg("could not create unique index"),
-                    errdetail("Table contains duplicated values.")));
+    	errorUniquenessViolated();
     }
 
     Assert(ins >= 0);
@@ -813,160 +858,5 @@ void mkheap_verify_heap(MKHeap *heap, int top)
             Assert(mke_get_lv(heap->p) == heap->mkctxt->total_lv-1);
     }
 }
-
-
-/**
-
-Here is some testing code you can use to test out mkheap
-
- 	numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 1, 7, 0);
-	numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 8, 4, 5, 0);
-
-	whichReader = 1;
-	numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 1, 7, 0);
-	numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 2, 3, 0);
-	numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 2, 3, 0);
-	numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 2, 3, 0);
-
- *
-
-typedef struct
-{
-	int nextIndex;
-	int numTuples;
-	int numValuesPerTuple;
-	Datum tuples[400][4];
-	TupleDesc tupDesc;
-} TestReaderForHeap;
-
-static bool
-readFromDataArray(void *ctxt, MKEntry *e)
-{
-	TestReaderForHeap *data = (TestReaderForHeap*)ctxt;
-	Datum *vals;
-	bool *isNull;
-	MemTupleBinding *binding;
-
-	if ( data->nextIndex == data->numTuples)
-		return false;
-
-	vals = data->tuples[data->nextIndex];
-	isNull = palloc0(sizeof(bool) * data->numValuesPerTuple);
-
-	binding = create_memtuple_binding(data->tupDesc);
-
-	MemSet(e, 0, sizeof(MKEntry));
-	e->ptr = memtuple_form_to(binding, vals, isNull, NULL, NULL, false);
-	e->d = (Datum)0;
-
-	data->nextIndex++;
-	return true;
-}
-
-static int
-populateTestTuple(Datum tuple[4], int a, int b, int c, int d)
-{
-	tuple[0] = Int32GetDatum(a);
-	tuple[1] = Int32GetDatum(b);
-	tuple[2] = Int32GetDatum(c);
-	tuple[3] = Int32GetDatum(d);
-	return 1;
-}
-
-void testHeapProblem(void)
-{
-	const int numKeys = 4;
-	const int numReaders = 2;
-
-	MKHeapReader readers[numReaders];
-	TestReaderForHeap readerData[numReaders];
-	MKContext context;
-	int i, j;
-	Oid sortOps[numKeys];
-	int numTuples[numReaders];
-	int totalTuples = 0;
-	int whichReader = 0;
-
-	memset(numTuples, 0, sizeof(int) * numReaders);
-
-	if ( false )
-	{
-		// try to test the expand case
-		numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 1, 7, 0);
-		numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 8, 4, 5, 0);
-
-		whichReader = 1;
-		numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 1, 7, 0);
-		numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 2, 3, 0);
-		numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 2, 3, 0);
-		numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 2, 3, 0);
-	}
-	else
-	{
-		numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 1, 2, 3);
-		numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 1, 2, 4);
-
-		whichReader = 1;
-		numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 1, 2, 3);
-		numTuples[whichReader] += populateTestTuple(readerData[whichReader].tuples[numTuples[whichReader]], 0, 1, 2, 4);
-	}
-
-	for ( i = 0; i < numReaders; i++)
-	{
-		readerData[i].nextIndex = 0;
-		readerData[i].numTuples = numTuples[i];
-		readerData[i].numValuesPerTuple = numKeys;
-		readers[i].mkhr_ctxt = &readerData[i];
-		readers[i].reader = readFromDataArray;
-
-		totalTuples += numTuples[i];
-
-		readerData[i].tupDesc = CreateTemplateTupleDesc(numKeys, false);
-		for ( j = 0; j < numKeys; j++)
-		{
-			TupleDescInitEntry(readerData[i].tupDesc, (AttrNumber) (j+1), "DummyAttr", INT4OID, -1, 0);
-		}
-	}
-
-	for ( i = 0; i < numKeys; i++)
-	{
-		sortOps[i] = 97; // int4 compare
-	}
-
-// if this testing code is enabled must make tupsort_prepare_mtup external
-	create_mksort_context(&context, numKeys, tupsort_prepare_mtup, readerData[0].tupDesc, true, -1, sortOps, NULL, NULL );
-	context.enforceUnique = true;
-
-	// now build the heap and keep testing
-	{
-		MKHeap *heap = mkheap_from_reader(readers, numReaders, &context);
-
-		for ( i = 0; i < totalTuples; i++ )
-		{
-			MKEntry entry;
-			int getResult, topLevel;
-			char buf[1000];
-			char *target = buf;
-
-			elog(INFO, "--");
-			elog(INFO, "--");
-			topLevel = mke_get_lv(heap->p);
-
-			for ( j = 0; j < topLevel; j++)
-			{
-				int32 val = DatumGetInt32(heap->lvtops[j].d);
-				target += sprintf( target, j == 0 ? "%d" : ", %d", val);
-			}
-			*target = '\0';
-			elog(INFO, "lvltops: %s", buf );
-
-			getResult = mkheap_puget(heap, &entry);
-			elog(INFO, " Popped from reader %d", mke_get_reader(&entry));
-		}
-	}
-}
-
-*/
-
 
 #endif
