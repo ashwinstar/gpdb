@@ -18,11 +18,11 @@ relname|relnamespace|reltype|relowner|relam|relfilenode|reltablespace|relpages|r
 2895|pg_user_mapping|11|10298|10|0|2895|0|1|0|0|0|0|0|t|f|r|h|3|0|0|0|0|0|t|f|f|f|848|{@gpcurusername@=arwdxt/@gpcurusername@}|\N
 2898|pg_foreign_data_wrapper|11|10296|10|0|2898|0|1|0|0|0|0|0|t|f|r|h|5|0|0|0|0|0|t|f|f|f|896|{=r/@gpcurusername@}|\N
 2899|pg_foreign_server|11|10297|10|0|2899|0|1|0|0|0|0|0|t|f|r|h|7|0|0|0|0|0|t|f|f|f|897|{=r/@gpcurusername@}|\N
-5035|gp_san_config|11|10293|10|0|5035|1664|1|0|0|0|0|0|t|t|r|h|9|0|0|0|0|0|f|f|f|f|900|{=r/@gpcurusername@}|\N
-5036|gp_segment_config|11|10291|10|0|5036|1664|1|0|0|0|0|0|t|t|r|h|12|0|0|0|0|0|f|f|f|f|898|{=r/@gpcurusername@}|\N
+5035|gp_san_config|11|6444|10|0|5035|1664|1|0|0|0|0|0|t|t|r|h|9|0|0|0|0|0|f|f|f|f|900|{=r/@gpcurusername@}|\N
+5036|gp_segment_config|11|6442|10|0|5036|1664|1|0|0|0|0|0|t|t|r|h|12|0|0|0|0|0|f|f|f|f|898|{=r/@gpcurusername@}|\N
 5037|gp_persistent_rel_files|11|10296|10|0|5037|1664|1|0|0|0|0|0|f|t|r|h|6|0|0|0|0|0|f|f|f|f|900|{=r/@gpcurusername@}|\N
 5038|gp_persistent_db_dirs|11|10297|10|0|5038|1664|1|0|0|0|0|0|f|t|r|h|5|0|0|0|0|0|f|f|f|f|901|{=r/@gpcurusername@}|\N
-5039|gp_fault_strategy|11|10292|10|0|5039|1664|1|0|0|0|0|0|f|t|r|h|1|0|0|0|0|0|f|f|f|f|899|{=r/@gpcurusername@}|\N
+5039|gp_fault_strategy|11|6443|10|0|5039|1664|1|0|0|0|0|0|f|t|r|h|1|0|0|0|0|0|f|f|f|f|899|{=r/@gpcurusername@}|\N
 6106|gp_segment_config_content_preferred_role_index|11|0|10|403|6106|1664|1|0|0|0|0|0|f|t|i|h|2|0|0|0|0|0|f|f|f|f|0|\N|\N
 6107|gp_segment_config_dbid_index|11|0|10|403|6107|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
 6111|gp_san_config_mountid_index|11|0|10|403|6111|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
