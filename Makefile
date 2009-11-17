@@ -1052,7 +1052,7 @@ jetpack:
 	@cd $(JETPACK) && $(MAKE)
 	mkdir -p $(INSTLOC)/lib/jetpack
 	cp -p $(JETPACK)/jetpack.sql $(INSTLOC)/lib/jetpack
-	cp -p $(JETPACK)/README_JETPACK.txt $(INSTLOC)/lib/jetpack/README
+	cp -p $(JETPACK)/JETPACK_README $(INSTLOC)/lib/jetpack
 
 HOMEDEP :
 	@#If the HOME variable isn't set, then execute the usage() path
