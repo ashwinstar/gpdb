@@ -838,7 +838,7 @@ AlterRole(AlterRoleStmt *stmt)
 		MetaTrackUpdObject(AuthIdRelationId,
 						   roleid,
 						   GetUserId(),
-						   "ALTER", "ROLE"
+						   "ALTER", "" /* kind of redundant to say "role" */
 				);
 
 	/*
@@ -968,7 +968,7 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		MetaTrackUpdObject(AuthIdRelationId,
 						   HeapTupleGetOid(oldtuple),
 						   GetUserId(),
-						   "ALTER", "ROLE"
+						   "ALTER", "SET"
 				);
 
 	ReleaseSysCache(oldtuple);
@@ -1348,7 +1348,7 @@ RenameRole(const char *oldname, const char *newname)
 		MetaTrackUpdObject(AuthIdRelationId,
 						   roleid,
 						   GetUserId(),
-						   "ALTER", "ROLE"
+						   "ALTER", "RENAME"
 				);
 
 }

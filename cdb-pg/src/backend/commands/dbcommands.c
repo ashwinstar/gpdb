@@ -27,6 +27,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "catalog/heap.h"
 #include "access/xact.h"
 #include "access/transam.h"				/* InvalidTransactionId */
 #include "catalog/catalog.h"
@@ -547,6 +548,14 @@ createdb_int(CreatedbStmt *stmt,
 	/* Create pg_shdepend entries for objects within database */
 	copyTemplateDependencies(src_dboid, dboid);
 
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackAddObject(DatabaseRelationId,
+						   dboid,
+						   datdba, /* GetUserId() ? */
+						   "CREATE", "DATABASE"
+				);
+
 	/*
 	 * Force dirty buffers out to disk, to ensure source database is
 	 * up-to-date for the copy.  (We really only need to flush buffers for the
@@ -841,6 +850,11 @@ dropdb(const char *dbname, bool missing_ok)
 	 */
 	pgstat_drop_database(db_id);
 	
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackDropObject(DatabaseRelationId,
+							db_id);
+
 	/*
 	 * Also, clean out any entries in the shared free space map.
 	 */
@@ -946,6 +960,15 @@ RenameDatabase(const char *oldname, const char *newname)
 		elog(ERROR, "cache lookup failed for database %u", db_id);
 	namestrcpy(&(((Form_pg_database) GETSTRUCT(newtup))->datname), newname);
 	simple_heap_update(rel, &newtup->t_self, newtup);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(DatabaseRelationId,
+						   db_id,
+						   GetUserId(),
+						   "ALTER", "RENAME"
+				);
+
 	CatalogUpdateIndexes(rel, newtup);
 
 	/*
@@ -978,6 +1001,7 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 	Datum		new_record[Natts_pg_database];
 	bool		new_record_nulls[Natts_pg_database];
 	bool		new_record_repl[Natts_pg_database];
+	Oid			dboid = InvalidOid;
 
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
@@ -1018,7 +1042,9 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
 				 errmsg("database \"%s\" does not exist", stmt->dbname)));
 
-	if (!pg_database_ownercheck(HeapTupleGetOid(tuple), GetUserId()))
+	dboid = HeapTupleGetOid(tuple);
+
+	if (!pg_database_ownercheck(dboid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
 					   stmt->dbname);
 
@@ -1038,6 +1064,14 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 	newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), new_record,
 								 new_record_nulls, new_record_repl);
 	simple_heap_update(rel, &tuple->t_self, newtuple);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(DatabaseRelationId,
+						   dboid,
+						   GetUserId(),
+						   "ALTER", "CONNECTION LIMIT"
+				);
 
 	/* Update indexes */
 	CatalogUpdateIndexes(rel, newtuple);
@@ -1083,6 +1117,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	Datum		repl_val[Natts_pg_database];
 	bool		repl_null[Natts_pg_database];
 	bool		repl_repl[Natts_pg_database];
+	Oid			dboid = InvalidOid;
 
 	valuestr = flatten_set_variable_args(stmt->variable, stmt->value);
 
@@ -1104,7 +1139,9 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
 				 errmsg("database \"%s\" does not exist", stmt->dbname)));
 
-	if (!pg_database_ownercheck(HeapTupleGetOid(tuple), GetUserId()))
+	dboid = HeapTupleGetOid(tuple);
+
+	if (!pg_database_ownercheck(dboid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
 					   stmt->dbname);
 
@@ -1144,6 +1181,15 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel),
 								 repl_val, repl_null, repl_repl);
 	simple_heap_update(rel, &tuple->t_self, newtuple);
+
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(DatabaseRelationId,
+						   dboid,
+						   GetUserId(),
+						   "ALTER", "SET"
+				);
 
 	/* Update indexes */
 	CatalogUpdateIndexes(rel, newtuple);
@@ -1230,7 +1276,7 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 	ScanKeyData scankey;
 	SysScanDesc scan;
 	Form_pg_database datForm;
-
+	Oid			dboid = InvalidOid;
 	/*
 	 * Get the old tuple.  We don't need a lock on the database per se,
 	 * because we're not going to do anything that would mess up incoming
@@ -1251,6 +1297,8 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 
 	datForm = (Form_pg_database) GETSTRUCT(tuple);
 
+	dboid = HeapTupleGetOid(tuple);
+
 	/*
 	 * If the new owner is the same as the existing owner, consider the
 	 * command to have succeeded.  This is to be consistent with other
@@ -1267,7 +1315,7 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 		HeapTuple	newtuple;
 
 		/* Otherwise, must be owner of the existing object */
-		if (!pg_database_ownercheck(HeapTupleGetOid(tuple), GetUserId()))
+		if (!pg_database_ownercheck(dboid, GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
 						   dbname);
 
@@ -1319,6 +1367,15 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 		/* Update owner dependency reference */
 		changeDependencyOnOwner(DatabaseRelationId, HeapTupleGetOid(tuple),
 								newOwnerId);
+
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackUpdObject(DatabaseRelationId,
+							   dboid,
+							   GetUserId(),
+							   "ALTER", "OWNER"
+					);
+
 	}
 
 	systable_endscan(scan);

@@ -248,6 +248,10 @@ Boot_CreateStmt:
 								/* MPP-6929: metadata tracking */
 								typid = PG_STAT_LAST_OPERATION_OID;
 								break;
+							case StatLastShOpRelationId: 
+								/* MPP-6929: metadata tracking */
+								typid = PG_STAT_LAST_SHOPERATION_OID;
+								break;
 							default:
 								break;
 						}

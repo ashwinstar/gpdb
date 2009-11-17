@@ -36,6 +36,7 @@
 #include "catalog/pg_filespace_entry.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_resqueue.h"
+#include "catalog/pg_statistic.h"
 
 #include "catalog/gp_configuration.h"
 #include "catalog/gp_configuration.h"
@@ -330,7 +331,10 @@ IsSharedRelation(Oid relationId)
 
 		relationId == GpMasterMirroringRelationId ||
 		relationId == GpPersistentRelFilesRelationId ||
-		relationId == GpPersistentDbDirsRelationId)
+		relationId == GpPersistentDbDirsRelationId ||
+
+		/* MPP-6929: metadata tracking */
+		relationId == StatLastShOpRelationId)
 		return true;
 	/* These are their indexes (see indexing.h) */
 	if (relationId == AuthIdRolnameIndexId ||
@@ -364,7 +368,11 @@ IsSharedRelation(Oid relationId)
 
 		relationId == AuthIdRolResQueueIndexId ||
 		relationId == ResQueueOidIndexId ||
-		relationId == ResQueueRsqnameIndexId )
+		relationId == ResQueueRsqnameIndexId ||
+
+		/* MPP-6929: metadata tracking */
+		relationId == StatLastShOpClassidObjidIndexId ||
+		relationId == StatLastShOpClassidObjidStaactionnameIndexId )
 		return true;
 	/* These are their toast tables and toast indexes (see toasting.h) */
 	if (relationId == PgAuthidToastTable ||

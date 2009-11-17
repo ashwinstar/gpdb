@@ -49,6 +49,7 @@
 #include "catalog/indexing.h"
 #include "catalog/pg_appendonly.h"
 #include "catalog/pg_attrdef.h"
+#include "catalog/pg_authid.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_exttable.h"
 #include "catalog/pg_inherits.h"
@@ -506,21 +507,43 @@ static void MetaTrackAddUpdInternal(Oid			classid,
 
 	aname.data[0] = '\0';
 	namestrcpy(&aname, actionname);
-	values[Anum_pg_statlastop_actionname - 1] = NameGetDatum(&aname);
+	values[Anum_pg_statlastop_staactionname - 1] = NameGetDatum(&aname);
 
-	values[Anum_pg_statlastop_usesysid - 1] = ObjectIdGetDatum(relowner);
-	new_record_repl[Anum_pg_statlastop_usesysid - 1] = true;
+	values[Anum_pg_statlastop_stasysid - 1] = ObjectIdGetDatum(relowner);
+	new_record_repl[Anum_pg_statlastop_stasysid - 1] = true;
 
 	uname.data[0] = '\0';
-	namestrcpy(&uname, "BOZO");
-	values[Anum_pg_statlastop_usename - 1] = NameGetDatum(&uname);
-	new_record_repl[Anum_pg_statlastop_usename - 1] = true;
 
-	values[Anum_pg_statlastop_subtype - 1] = CStringGetTextDatum(subtype);
-	new_record_repl[Anum_pg_statlastop_subtype - 1] = true;
+	{
+		HeapTuple	utup;
 
-	values[Anum_pg_statlastop_time - 1] = GetCurrentTimestamp();
-	new_record_repl[Anum_pg_statlastop_time - 1] = true;
+		utup = SearchSysCache(AUTHOID,
+							  ObjectIdGetDatum(relowner),
+							  0, 0, 0);
+
+		if (HeapTupleIsValid(utup))
+		{
+			namestrcpy(&uname, 
+					   NameStr(
+							   ((Form_pg_authid) GETSTRUCT(utup))->rolname)
+					);
+			ReleaseSysCache(utup);
+		}
+		else
+		{
+			/* Generate numeric OID if we don't find an entry */
+			sprintf(NameStr(uname), "%u", relowner);
+		}
+	}
+
+	values[Anum_pg_statlastop_stausename - 1] = NameGetDatum(&uname);
+	new_record_repl[Anum_pg_statlastop_stausename - 1] = true;
+
+	values[Anum_pg_statlastop_stasubtype - 1] = CStringGetTextDatum(subtype);
+	new_record_repl[Anum_pg_statlastop_stasubtype - 1] = true;
+
+	values[Anum_pg_statlastop_statime - 1] = GetCurrentTimestamp();
+	new_record_repl[Anum_pg_statlastop_statime - 1] = true;
 
 	if (HeapTupleIsValid(old_tuple))
 	{
@@ -558,7 +581,10 @@ void MetaTrackAddObject(Oid		classid,
 	if (IsBootstrapProcessingMode())
 		return;
 
-	rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
+	if (IsSharedRelation(classid))
+		rel = heap_open(StatLastShOpRelationId, RowExclusiveLock);
+	else
+		rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
 
 	MetaTrackAddUpdInternal(classid, objoid, relowner, 
 							actionname, subtype, 
@@ -585,7 +611,10 @@ void MetaTrackUpdObject(Oid		classid,
 	if (IsBootstrapProcessingMode())
 		return;
 
-	rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
+	if (IsSharedRelation(classid))
+		rel = heap_open(StatLastShOpRelationId, RowExclusiveLock);
+	else
+		rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
 
 	ScanKeyInit(&key[0],
 				Anum_pg_statlastop_classid,
@@ -596,14 +625,20 @@ void MetaTrackUpdObject(Oid		classid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(objoid));
 	ScanKeyInit(&key[2],
-				Anum_pg_statlastop_actionname,
+				Anum_pg_statlastop_staactionname,
 				BTEqualStrategyNumber, F_NAMEEQ,
 				CStringGetDatum(actionname));
 
-	scan = systable_beginscan(rel,
-							  StatLastOpClassidObjidActionnameIndexId,
-							  /* XXX XXX XXX XXX : snapshotnow ? */
-							  true, SnapshotNow, 3, key);
+	if (IsSharedRelation(classid))
+		scan = systable_beginscan(rel,
+								  StatLastShOpClassidObjidStaactionnameIndexId,
+								  /* XXX XXX XXX XXX : snapshotnow ? */
+								  true, SnapshotNow, 3, key);
+	else
+		scan = systable_beginscan(rel,
+								  StatLastOpClassidObjidStaactionnameIndexId,
+								  /* XXX XXX XXX XXX : snapshotnow ? */
+								  true, SnapshotNow, 3, key);
 
 	/* should be a unique index - only 1 answer... */
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
@@ -631,15 +666,19 @@ void MetaTrackUpdObject(Oid		classid,
 						   subtype);
 
 } /* end MetaTrackUpdObject */
-
 void MetaTrackDropObject(Oid		classid, 
 						 Oid		objoid)
 {
 	HeapTuple tuple;
 	ScanKeyData key[2];
 	SysScanDesc scan;
-	Relation rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
+	Relation rel;
 	int ii = 0;
+
+	if (IsSharedRelation(classid))
+		rel = heap_open(StatLastShOpRelationId, RowExclusiveLock);
+	else
+		rel = heap_open(StatLastOpRelationId, RowExclusiveLock);
 
 	ScanKeyInit(&key[0],
 				Anum_pg_statlastop_classid,
@@ -650,10 +689,16 @@ void MetaTrackDropObject(Oid		classid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(objoid));
 
-	scan = systable_beginscan(rel,
-							  StatLastOpClassidObjidIndexId,
-							  /* XXX XXX XXX XXX : snapshotnow ? */
-							  true, SnapshotNow, 2, key);
+	if (IsSharedRelation(classid))
+		scan = systable_beginscan(rel,
+								  StatLastShOpClassidObjidIndexId,
+								  /* XXX XXX XXX XXX : snapshotnow ? */
+								  true, SnapshotNow, 2, key);
+	else
+		scan = systable_beginscan(rel,
+								  StatLastOpClassidObjidIndexId,
+								  /* XXX XXX XXX XXX : snapshotnow ? */
+								  true, SnapshotNow, 2, key);
 
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{

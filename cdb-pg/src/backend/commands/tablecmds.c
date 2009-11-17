@@ -1537,6 +1537,8 @@ ExecuteTruncate(TruncateStmt *stmt)
 
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
+			ListCell	*lc;
+
 			stmt->relids = relids;
 			stmt->new_heap_oids = new_heap_oids;
 			stmt->new_toast_oids = new_toast_oids;
@@ -1544,6 +1546,22 @@ ExecuteTruncate(TruncateStmt *stmt)
 			stmt->new_ind_oids = new_ind_oids;
 
 			CdbDispatchUtilityStatement((Node *) stmt, "ExecuteTruncate");
+
+			/* MPP-6929: metadata tracking */
+			foreach(lc, relids)
+			{
+				Oid			a_relid = lfirst_oid(lc);
+
+				/* Note: don't need MetaTrackValidRelkind(relkind)
+				 * because truncate_check_rel does equivalent
+				 * check... 
+				 */
+				MetaTrackUpdObject(RelationRelationId,
+								   a_relid,
+								   GetUserId(),
+								   "VACUUM", "TRUNCATE");
+			}
+
 		}
 	}
 	else /* role=execute */

@@ -290,8 +290,15 @@ DECLARE_UNIQUE_INDEX(pg_appendonly_alter_column_relid_index, 5031, on pg_appendo
 DECLARE_INDEX(pg_statlastop_classid_objid_index, 6053, on pg_stat_last_operation using btree(classid oid_ops, objid oid_ops));
 #define StatLastOpClassidObjidIndexId  6053
 
-DECLARE_UNIQUE_INDEX(pg_statlastop_classid_objid_actionname_index, 6054, on pg_stat_last_operation using btree(classid oid_ops, objid oid_ops, actionname name_ops));
-#define StatLastOpClassidObjidActionnameIndexId  6054
+DECLARE_UNIQUE_INDEX(pg_statlastop_classid_objid_staactionname_index, 6054, on pg_stat_last_operation using btree(classid oid_ops, objid oid_ops, staactionname name_ops));
+#define StatLastOpClassidObjidStaactionnameIndexId  6054
+
+/* Note: no dbid */
+DECLARE_INDEX(pg_statlastshop_classid_objid_index, 6057, on pg_stat_last_shoperation using btree(classid oid_ops, objid oid_ops));
+#define StatLastShOpClassidObjidIndexId  6057
+
+DECLARE_UNIQUE_INDEX(pg_statlastshop_classid_objid_staactionname_index, 6058, on pg_stat_last_shoperation using btree(classid oid_ops, objid oid_ops, staactionname name_ops));
+#define StatLastShOpClassidObjidStaactionnameIndexId  6058
 
 DECLARE_UNIQUE_INDEX(pg_foreign_data_wrapper_oid_index, 3306, on pg_foreign_data_wrapper using btree(oid oid_ops));
 #define ForeignDataWrapperOidIndexId	3306
