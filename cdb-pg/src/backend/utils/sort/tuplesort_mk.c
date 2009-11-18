@@ -2056,9 +2056,19 @@ dumptuples_mk(Tuplesortstate_mk *state, bool alltuples)
         if(state->entry_count != 0)
         {
             lt = LogicalTapeSetGetTape(state->tapeset, state->tp_tapenum[state->destTape]);
-            for(i=0; i<state->entry_count; ++i)
-                state->spilledBytes += WRITETUP(state, lt, &state->entries[i]);
-        }
+
+            if ( state->mkctxt.unique)
+            {
+            	for(i=0; i<state->entry_count; ++i)
+            		if ( ! mke_is_empty(&state->entries[i])) /* can be empty because the qsort may have marked duplicates */
+						state->spilledBytes += WRITETUP(state, lt, &state->entries[i]);
+            }
+            else
+            {
+            	for(i=0; i<state->entry_count; ++i)
+					state->spilledBytes += WRITETUP(state, lt, &state->entries[i]);
+            }
+		}
 
         markrunend(state, state->tp_tapenum[state->destTape]);
         state->currentRun++;
