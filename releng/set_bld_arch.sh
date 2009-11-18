@@ -32,7 +32,7 @@ case "`uname -s`" in
     ;;
 
     SunOS)
-    BLD_ARCH_HOST="sol`uname -r | awk -F. ' {print $2}'`_`isainfo | awk ' {print $1}' | sed -e s/amd64/x86_64/ | sed -e s/sparcv9/sparc/`"
+    BLD_ARCH_HOST="sol`uname -r | awk -F. ' {print $2}'`_`isainfo | awk ' {print $1}' | sed -e s/amd64/x86_64/ | sed -e s/sparcv9/sparc_64/`"
     ;;
 
     AIX)
