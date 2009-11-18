@@ -472,7 +472,7 @@ mke_has_duplicates_with_root(MKHeap *mkheap)
  *   Return = 0 if eq to heap top ; *e is unchanged (but will have value equal to the heap top)
  *   Return > 0 if successfully inserted; *e is populated with the removed heap top
  */
-static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
+static int mkheap_putAndGet_impl(MKHeap *mkheap, MKEntry *e)
 {
     int c = 0;
     int toplv;
@@ -644,14 +644,14 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
  *       function itself peek at the top run and return whether or not the top run
  *       of the heap was increased by this action
  */
-int mkheap_puget_run(MKHeap *mkheap, MKEntry *e, int16 run)
+int mkheap_putAndGet_run(MKHeap *mkheap, MKEntry *e, int16 run)
 {
     int ins;
 
     /* try insertion into specified run */
     Assert(!mke_is_empty(e));
     mke_set_run(e, run);
-    ins = mkheap_puget_impl(mkheap, e);
+    ins = mkheap_putAndGet_impl(mkheap, e);
 
     /* success! Greater than or Equal. */
     if(ins >= 0)
@@ -667,7 +667,7 @@ int mkheap_puget_run(MKHeap *mkheap, MKEntry *e, int16 run)
 
     /* failed, put into next run */
     mke_set_run(e, run+1);
-    ins = mkheap_puget_impl(mkheap, e);
+    ins = mkheap_putAndGet_impl(mkheap, e);
 
     Assert(ins > 0);
     return ins;
@@ -681,7 +681,7 @@ errorUniquenessViolated()
                 errdetail("Table contains duplicated values.")));
 }
 
-int mkheap_puget_reader(MKHeap *mkheap, MKEntry *out)
+int mkheap_putAndGet_reader(MKHeap *mkheap, MKEntry *out)
 {
     int n;
     bool fOK;
@@ -732,7 +732,7 @@ int mkheap_puget_reader(MKHeap *mkheap, MKEntry *out)
      *      is NOT in the heap (which could be either the result of mkheap_peek
      *      above OR the result of the .reader() call, depending)
      */
-    ins = mkheap_puget_impl(mkheap, out);
+    ins = mkheap_putAndGet_impl(mkheap, out);
 
     /*
      * Check to see if two successive values for this reader were unique
@@ -756,7 +756,7 @@ int mkheap_puget_reader(MKHeap *mkheap, MKEntry *out)
  * if this is an array-backed heap then *out is inserted into the heap.  If it's a reader-backed heap then
  *    *out is ignored on input.
  */
-int mkheap_puget(MKHeap *mkheap, MKEntry *out)
+int mkheap_putAndGet(MKHeap *mkheap, MKEntry *out)
 {
 	int ret = 0;
 	Assert(out);
@@ -765,13 +765,13 @@ int mkheap_puget(MKHeap *mkheap, MKEntry *out)
 	 * fetch from appropriate source
 	 *
 	 * note that these two cases don't behave the same in terms of how *out is treated.
-	 *    mkheap_puget_reader should be called mkheap_get_reader -- it never puts the input value
-	 *    mkheap_puget_impl will put *out if it's not empty, and then do the get.
+	 *    mkheap_putAndGet_reader should be called mkheap_get_reader -- it never puts the input value
+	 *    mkheap_putAndGet_impl will put *out if it's not empty, and then do the get.
 	 */
     if(mkheap->nreader > 0)
-        ret = mkheap_puget_reader(mkheap, out);
+        ret = mkheap_putAndGet_reader(mkheap, out);
     else
-        ret = mkheap_puget_impl(mkheap, out);
+        ret = mkheap_putAndGet_impl(mkheap, out);
 
 	/* free *out */
     if(mkheap->mkctxt->cpfr)

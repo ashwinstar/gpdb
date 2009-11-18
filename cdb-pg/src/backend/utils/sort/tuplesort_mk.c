@@ -1311,7 +1311,7 @@ tuplesort_gettuple_common_pos(Tuplesortstate_mk *state, TuplesortPos_mk *pos,
             Assert(pos == &state->pos && pos->cur_work_tape == NULL);
 
             *should_free = true;
-            mkheap_puget(state->mkheap, e);
+            mkheap_putAndGet(state->mkheap, e);
             return !mke_is_empty(e);
 
         default:
@@ -1771,7 +1771,7 @@ mergeonerun_mk(Tuplesortstate_mk *state)
 
     Assert(state->mkheap);
 
-    while (mkheap_puget(state->mkheap, &e) >= 0) 
+    while (mkheap_putAndGet(state->mkheap, &e) >= 0)
         WRITETUP(state, lt, &e); 
 
     /*
@@ -2045,7 +2045,7 @@ dumptuples_mk(Tuplesortstate_mk *state, bool alltuples)
 
         mke_set_empty(&e);
         mke_set_run(&e, state->currentRun+1);
-        mkheap_puget(state->mkheap, &e);
+        mkheap_putAndGet(state->mkheap, &e);
 
         Assert(!mke_is_empty(&e));
 
@@ -3080,7 +3080,7 @@ static void tuplesort_limit_insert(Tuplesortstate_mk *state, MKEntry *e)
 
     Assert(state->mkheap && !mkheap_empty(state->mkheap));
     Assert(state->mkheap->count == state->mkctxt.limit);
-    i = mkheap_puget(state->mkheap, e); 
+    i = mkheap_putAndGet(state->mkheap, e);
 
     Assert(!mke_is_empty(e));
     Assert(e->ptr);
@@ -3094,7 +3094,7 @@ static void tuplesort_heap_insert(Tuplesortstate_mk *state, MKEntry *e)
     Assert(state->mkheap);
     Assert(is_under_sort_ctxt(state));
 
-    ins = mkheap_puget_run(state->mkheap, e, state->currentRun);
+    ins = mkheap_putAndGet_run(state->mkheap, e, state->currentRun);
     tupsort_cpfr(e, NULL, &state->mkctxt.lvctxt[mke_get_lv(e)]);
 
     Assert(ins >= 0);
@@ -3142,7 +3142,7 @@ static void tuplesort_limit_sort(Tuplesortstate_mk *state)
             mke_set_comp_max(state->entries+i); 
 
         for(i=state->entry_allocsize-1; i>=0; --i)
-            mkheap_puget(state->mkheap, state->entries+i);
+            mkheap_putAndGet(state->mkheap, state->entries+i);
 
         Assert(mkheap_cnt(state->mkheap) == 0);
         state->entry_count = state->entry_allocsize;

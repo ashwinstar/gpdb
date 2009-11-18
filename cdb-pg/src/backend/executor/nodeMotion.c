@@ -596,7 +596,7 @@ execMotionSortedReceiver_mk(MotionState * node)
     }
 
     mke_set_empty(&e);
-    mkheap_puget(ctxt->heap, &e);
+    mkheap_putAndGet(ctxt->heap, &e);
     if (mke_is_empty(&e))
         return NULL;
 

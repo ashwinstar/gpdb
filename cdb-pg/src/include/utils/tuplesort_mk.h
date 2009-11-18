@@ -369,9 +369,9 @@ extern void mkheap_destroy(MKHeap *mkheap);
  *
  * On output, in cases where the value is >= the min element, *e will be filled in with a copy of the min value of the heap.
  */
-extern int mkheap_puget(MKHeap *mkheap, MKEntry *e);
-extern int mkheap_puget_run(MKHeap *mkheap, MKEntry *e, int16 run); 
-extern int mkheap_puget_reader(MKHeap *mkheap, MKEntry *e);
+extern int mkheap_putAndGet(MKHeap *mkheap, MKEntry *e);
+extern int mkheap_putAndGet_run(MKHeap *mkheap, MKEntry *e, int16 run);
+extern int mkheap_putAndGet_reader(MKHeap *mkheap, MKEntry *e);
 
 /* 
  * Remove and return smallest elements from the heap.
