@@ -77,10 +77,12 @@ BackupStateMachine* CreateBackupStateMachine(const char* pszKey, int instid, int
 	pStateMachine->bStatus					= true;
 	pStateMachine->ppNotifyAr				= NULL;
 	pStateMachine->bReceivedSetSerializable = false;
+	pStateMachine->bReceivedGotLocks 		= false;
 	
 	pStateMachine->pszNotifyRelName = MakeString("N%s_%d_%d", pszKey, instid, segid );
 	pStateMachine->pszNotifyRelNameStart = MakeString("%s_%s", pStateMachine->pszNotifyRelName, SUFFIX_START);
 	pStateMachine->pszNotifyRelNameSetSerializable = MakeString("%s_%s", pStateMachine->pszNotifyRelName, SUFFIX_SET_SERIALIZABLE);
+	pStateMachine->pszNotifyRelNameGotLocks = MakeString("%s_%s", pStateMachine->pszNotifyRelName, SUFFIX_GOTLOCKS);
 	pStateMachine->pszNotifyRelNameSucceed = MakeString("%s_%s", pStateMachine->pszNotifyRelName, SUFFIX_SUCCEED);
 	pStateMachine->pszNotifyRelNameFail = MakeString("%s_%s", pStateMachine->pszNotifyRelName, SUFFIX_FAIL);
 	
@@ -111,7 +113,10 @@ void DestroyBackupStateMachine(BackupStateMachine* pStateMachine)
 		
 	if ( pStateMachine->pszNotifyRelNameSetSerializable != NULL )
 		free( pStateMachine->pszNotifyRelNameSetSerializable );
-		
+
+	if ( pStateMachine->pszNotifyRelNameGotLocks != NULL )
+		free( pStateMachine->pszNotifyRelNameGotLocks );
+
 	if ( pStateMachine->pszNotifyRelNameSucceed != NULL )
 		free( pStateMachine->pszNotifyRelNameSucceed );
 		
@@ -131,6 +136,12 @@ void DestroyBackupStateMachine(BackupStateMachine* pStateMachine)
 bool HasReceivedSetSerializable( BackupStateMachine* pStateMachine )
 {
 	return pStateMachine->bReceivedSetSerializable;	
+}
+
+/* HasReceivedGotLocks: accessor function to the bReceivedGotLocks member of the StateMachine */ 
+bool HasReceivedGotLocks( BackupStateMachine* pStateMachine )
+{
+	return pStateMachine->bReceivedGotLocks;	
 }
 
 /* HasStarted: Test the currentState to see whether it's left the start state yet. */
@@ -203,8 +214,8 @@ void ProcessInput( BackupStateMachine* pStateMachine )
 		/* 
 		 * Getting here means we didn't get a taskrc of failure.  This is the simple, non error
 		 * case.  The order of the taskids should be TASK_START, TASK_SET_SERIALIZABLE,
-		 * TASK_FINISH, which moves the state from STATE_INITIAL -> STATE_BACKUP_STARTED ->
-		 * STATE_SET_SERIALIZABLE -> STATE_FINISHED.
+		 * TASK_GOTLOCKS, TASK_FINISH, which moves the state from STATE_INITIAL -> STATE_BACKUP_STARTED ->
+		 * STATE_SET_SERIALIZABLE -> STATE_GOTLOCKS -> STATE_FINISHED.
 		 */
 		switch( pStateMachine->currentState )
 		{
@@ -246,6 +257,30 @@ void ProcessInput( BackupStateMachine* pStateMachine )
 					break;
 				}
 	
+				if ( strcasecmp( pStateMachine->pszNotifyRelNameGotLocks, pNotify->relname ) == 0 )
+				{
+					pStateMachine->currentState = STATE_SET_GOTLOCKS;
+					pStateMachine->bReceivedGotLocks = true;
+				}
+				else
+				{
+					pStateMachine->bStatus = false;
+					pStateMachine->currentState = STATE_UNEXPECTED_INPUT;
+				}
+				break;
+			
+			case STATE_SET_GOTLOCKS:
+				if ( strcasecmp( pStateMachine->pszNotifyRelNameStart, pNotify->relname ) == 0 )
+					break;
+				if ( strcasecmp( pStateMachine->pszNotifyRelNameSetSerializable, pNotify->relname ) == 0 )
+					break;
+				
+				if ( strcasecmp( pStateMachine->pszNotifyRelNameGotLocks, pNotify->relname ) == 0 )
+				{
+					pStateMachine->bReceivedGotLocks = true;
+					break;
+				}
+
 				if ( strcasecmp( pStateMachine->pszNotifyRelNameSucceed, pNotify->relname ) == 0 )
 				{
 					pStateMachine->currentState = STATE_BACKUP_FINISHED;
@@ -256,7 +291,7 @@ void ProcessInput( BackupStateMachine* pStateMachine )
 					pStateMachine->currentState = STATE_UNEXPECTED_INPUT;
 				}
 				break;
-				
+
 			default:
 				break;
 		}
@@ -289,14 +324,16 @@ int assignSortVal( const PGnotify* pNotify )
 		return 0;
 	else if ( endsWith( pNotify->relname, SUFFIX_SET_SERIALIZABLE ) )
 		return 1;
-	else if ( endsWith( pNotify->relname, SUFFIX_SUCCEED ) )
+	else if ( endsWith( pNotify->relname, SUFFIX_GOTLOCKS ) )
 		return 2;
-	else if ( endsWith( pNotify->relname, SUFFIX_FAIL ) )
+	else if ( endsWith( pNotify->relname, SUFFIX_SUCCEED ) )
 		return 3;
+	else if ( endsWith( pNotify->relname, SUFFIX_FAIL ) )
+		return 4;
 	else
 	{
 		assert( false );
-		return 4;
+		return 5;
 	}
 }
 

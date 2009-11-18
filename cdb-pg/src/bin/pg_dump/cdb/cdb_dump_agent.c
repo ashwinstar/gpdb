@@ -732,9 +732,15 @@ main(int argc, char **argv)
 
 	/*
 	 * If we got here it means we successfully set transaction isolation level to serializable.
-	 * However, we don't yet NOTIFY it to the master gp_dump thread. Instead, we wait until we
-	 * get all the LOCKs we need and only then NOTIFY. (See DumpMain()).
 	 */
+	pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
+	if ( pOp == NULL )
+	{
+		exit_horribly(g_fout, NULL, "could not allocate memory for gp_backup_status operation\n");
+	}
+
+	/* add status operator, to let the monitor thread see it */
+	AddToStatusOpList( g_pStatusOpList, pOp );
 
 	if (plainText)
 	{
@@ -875,7 +881,7 @@ void dumpMain(bool oids, const char* dumpencoding, int outputBlobs, int plainTex
 	 * If we got here it means we successfully got LOCKs on all our dumpable tables in this
 	 * agent. we can now notify the main gp_dump thread that we're ok.
 	 */
-	pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
+	pOp = CreateStatusOp( TASK_GOTLOCKS, TASK_RC_SUCCESS, SUFFIX_GOTLOCKS, TASK_MSG_SUCCESS );
 	if ( pOp == NULL )
 	{
 		exit_horribly(g_fout, NULL, "could not allocate memory for gp_backup_status operation\n");
@@ -6304,7 +6310,7 @@ void* monitorThreadProc(void *arg  __attribute__((unused)))
 			if ( notify->be_pid !=  PID )
 			{
 				mpp_err_msg( logInfo, progname, "Notification received that we need to cancel for backup key %s\n",
-							 g_CDBDumpKey, g_dbID);
+							 g_CDBDumpKey/*, g_dbID*/);
 				bGotCancelRequest = true;
 			}
 				
@@ -6313,7 +6319,7 @@ void* monitorThreadProc(void *arg  __attribute__((unused)))
 
 		if ( bGotCancelRequest )
 		{
-			mpp_err_msg( logInfo, progname, "Canceling seg with dbid %d\n", g_CDBDumpKey, g_dbID);
+			mpp_err_msg( logInfo, progname, "Canceling seg with dbid %d\n", /*g_CDBDumpKey,*/ g_dbID);
 			pthread_kill( g_main_tid, SIGINT );
 		}
 
@@ -6344,9 +6350,9 @@ void* monitorThreadProc(void *arg  __attribute__((unused)))
 			}
 
 			if ( pOp->TaskID == TASK_SET_SERIALIZABLE )
-			{
 				mpp_err_msg( logInfo, progname, "TASK_SET_SERIALIZABLE\n");
-			}
+			else if ( pOp->TaskID == TASK_GOTLOCKS )
+				mpp_err_msg( logInfo, progname, "TASK_GOTLOCKS\n");
 
 			FreeStatusOp( pOp );
 		}

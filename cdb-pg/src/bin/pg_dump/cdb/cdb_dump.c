@@ -42,7 +42,8 @@ static char* addPassThroughLongParm( const char *Parm, const char* pszValue, cha
 static char* shellEscape( const char *shellArg, PQExpBuffer escapeBuf );
 static bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr);
 static void decrementFinishedLaunchCount(void);
-static bool lockDumpableObjects(PGconn* pConn);
+static void decrementFinishedLockingCount(void);
+static bool startTransactionAndLock(PGconn* pConn);
 static bool execCommit( PGconn* pConn );
 static bool	fillInputOptions(int argc, char** argv, InputOptions* pInputOpts);
 static void freeThreadParmArray(ThreadParmArray* pParmAr);
@@ -98,8 +99,11 @@ static bool include_everything = true;
  * Thread synchronization variables
  */
 static int nThreadsFinishedLaunch;
+static int nThreadsFinishedLocking;
 static pthread_cond_t MyCondVar = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t MyMutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t MyCondVar2 = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t MyMutex2 = PTHREAD_MUTEX_INITIALIZER;
 static bool g_b_SendCancelMessage = false;
 static const char* pszAgent = "gp_dump_agent";
 
@@ -139,8 +143,8 @@ int main( int argc, char** argv)
 	if ( !GetDumpSegmentDatabaseArray(master_db_conn, &segDBAr, inputOpts.actors, inputOpts.pszRawDumpSet, dataOnly, schemaOnly) )
 		goto cleanup;
 
-	/* Start a transaction and lock selected tables for this db */
-	if ( !lockDumpableObjects(master_db_conn) )
+	/* Start a transaction (to be released in spinOffThreads)  */
+	if ( !startTransactionAndLock(master_db_conn) )
 		goto cleanup;
 
 	/* Install the SIGINT and SIGTERM handlers */
@@ -148,7 +152,7 @@ int main( int argc, char** argv)
 
 	/* 
 	 * Create the threads to spawn local segment dumps using gp_dump_agent.
-	 * Inside this function we release the locks taken in lockDumpableObjects.
+	 * Inside this function we release the lock taken in startTransactionAndLock.
 	 * When this function returns, all the agents have completed operation.
 	 */
 	spinOffThreads(master_db_conn, &inputOpts, &segDBAr, &parmAr);
@@ -166,6 +170,8 @@ cleanup:
 	/* Clean-up synchronization variables */
 	pthread_mutex_destroy( &MyMutex );
 	pthread_cond_destroy( &MyCondVar );
+	pthread_mutex_destroy( &MyMutex2 );
+	pthread_cond_destroy( &MyCondVar2 );
 
 	if ( master_db_conn != NULL )
 		PQfinish(master_db_conn);
@@ -334,7 +340,7 @@ bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr)
  * decrementFinishedLaunchCount: This function handles the decrementing
  * of the finished launch count. It uses a mutex to protect the int variable.
  * If this is the last thread to get here, the variable will be 0, and the
- * condition variable is signalled, so the main threrad wakes up.
+ * condition variable is signaled, so the main thread wakes up.
  */
 void decrementFinishedLaunchCount(void)
 {
@@ -348,21 +354,30 @@ void decrementFinishedLaunchCount(void)
 	pthread_mutex_unlock( &MyMutex );
 }
 
+void decrementFinishedLockingCount(void)
+{
+	pthread_mutex_lock( &MyMutex2 );
+
+	nThreadsFinishedLocking--;
+
+	if ( nThreadsFinishedLocking == 0 )
+		pthread_cond_signal( &MyCondVar2 );
+
+	pthread_mutex_unlock( &MyMutex2 );
+}
+
 /*
- * doInitialActions: This function uses the PGconn connection to begin
- * a transaction. After opening the transaction, the tables to be
- * dumped are locked.
+ * startTransactionAndLock: This function uses the PGconn connection to begin
+ * a transaction. After opening the transaction, we grab a lock on pg_class
  *
  * The locks obtained by this routine are released through COMMIT by
  * spinOffThreads(). 
  */
-bool lockDumpableObjects(PGconn* pMasterConn)
+bool startTransactionAndLock(PGconn* pMasterConn)
 {
-	TableInfo  *tblinfo;
 	bool		bRtn = false;
 	PQExpBuffer	pQry = NULL;
 	PGresult*	pRes = NULL;
-	int			numTables;
 
 	mpp_msg( logInfo, pszProgName, "Starting a transaction on master database %s.\n", pMasterConn->dbName);
 
@@ -385,8 +400,6 @@ bool lockDumpableObjects(PGconn* pMasterConn)
     pRes = NULL;
 	resetPQExpBuffer(pQry);
 
-	mpp_msg( logInfo, pszProgName, "Getting a list of Greenplum Database managed tables for database %s.\n", pMasterConn->dbName);
-
 	/*
 	 * Process the schema and table include/exclude lists and determine the OIDs of the
 	 * tables to be dumped.
@@ -397,12 +410,10 @@ bool lockDumpableObjects(PGconn* pMasterConn)
 	convert_patterns_to_oids();
 
 	/*
-	 * Now scan the database and create DumpableObject structs for all the
-	 * objects we intend to dump.  A function called by getSchemaData performs
-	 * the per-table LOCK operations required. We first make sure to hold a lock
-	 * on pg_class on the master to avoid colliding with concurrent transaction
-	 * DROP/CREATE.
+	 * Now grab a lock on pg_class on the master to avoid colliding with concurrent 
+	 * transaction DROP/CREATE. This lock will later be release when COMMIT is run.
 	 */
+	mpp_msg( logInfo, pszProgName, "Getting a lock on pg_class in database %s.\n", pMasterConn->dbName);
 	pQry = createPQExpBuffer();
 	appendPQExpBuffer(pQry, "LOCK TABLE pg_catalog.pg_class IN EXCLUSIVE MODE;");
 	pRes = PQexec(pMasterConn, pQry->data);
@@ -416,9 +427,6 @@ bool lockDumpableObjects(PGconn* pMasterConn)
 		mpp_err_msg_cache(logError, pszProgName, "bad result from server: %s", PQerrorMessage(pMasterConn));
 		goto cleanup;
 	}
-
-	table_lock_mode = "ACCESS SHARE";
-	tblinfo = getSchemaData(&numTables);
 
 	bRtn = true;
 
@@ -1370,26 +1378,15 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
  * ThreadParmArray, and the thread synchronization objects.  Then it loops
  * and creates each of the threads. It waits on a condition variable. This
  * will release when all threads have attained the SET_SERIALIZABLE state
- * (or have failed to do so). 
+ * (or have failed to do so). Once SET_SERIALIZABLE is reached we know that
+ * all the agents are in healthy shape to start operation. We then wait for
+ * them to grab locks on their objects. again, we wait on a condition variable
+ * until they all done so.
  * 
- * in here we releas the LOCKs we have on the dumpable objects by commiting 
- * the transaction, once all the threads reached SET_SERIALIZABLE. 
+ * in here we release the LOCKs we have on the pg_class by committing 
+ * the transaction, once all the threads reached STATE_GETLOCKS
  * 
  * This function waits for all threads to finish, and only then returns.
- * 
- * NOTE!
- * However, this was discovered as a bug since a table
- * may get dropped in the time between an agent gets the list of tables
- * from pg_class and until it gets a LOCK on the object. A proposed solution
- * was to keep holding the LOCK on this gp_dump master thread until all the agents
- * completed operations. But this may create deadlocks with the agent that dumps
- * the master database schema, even if the agent itself don't take an explicit lock.
- * it's enough that a DROP command comes in from a concurrent user session, which
- * will try to obtain an access exclusive lock (and wait on it because we already
- * got a lock on it), then when the agent will try to get an access share lock, say,
- * on a COPY OUT, we'll deadlock. agent and concurrent user will wait on the lock
- * forever, and gp_dump will wait on the agent to complete, which it never does.
- * 
  */
 void spinOffThreads(PGconn* pConn,
 					InputOptions* pInputOpts,
@@ -1400,6 +1397,8 @@ void spinOffThreads(PGconn* pConn,
 	ThreadParm* pParm;
 	pthread_cond_init( &MyCondVar, NULL );
 	pthread_mutex_init( &MyMutex, NULL );
+	pthread_cond_init( &MyCondVar2, NULL );
+	pthread_mutex_init( &MyMutex2, NULL );
 
 	pInputOpts->pszKey = GenerateTimestampKey();
 
@@ -1412,8 +1411,8 @@ void spinOffThreads(PGconn* pConn,
 		exit(1);
 	}
 
-	nThreadsFinishedLaunch = pParmAr->count;
-
+	nThreadsFinishedLaunch = nThreadsFinishedLocking = pParmAr->count;
+	
 	mpp_msg( logInfo, pszProgName, "About to spin off %d threads with timestamp key %s\n",
 				nThreadsFinishedLaunch, pInputOpts->pszKey );
 
@@ -1459,8 +1458,24 @@ void spinOffThreads(PGconn* pConn,
 	mpp_msg( logInfo, pszProgName, "All remote %s processes have began "
 								   "transactions in serializable isolation level\n",
 								   pszAgent );
-	
-	/* End the transaction and therefore unlock the dumpable objects that are locked */
+
+	/* wait for all threads to lock all dumpable objects and attain the SET_GOTLOCKS state. */
+	mpp_msg( logInfo, pszProgName, "Waiting for remote %s processes to obtain "
+								   "local locks on dumpable objects\n",
+								   pszAgent );
+
+
+	pthread_mutex_lock( &MyMutex2 );
+	if ( nThreadsFinishedLocking > 0 )
+	{
+		pthread_cond_wait( &MyCondVar2, &MyMutex2 );
+	}
+	pthread_mutex_unlock( &MyMutex2 );
+
+	mpp_msg( logInfo, pszProgName, "All remote %s processes have obtains the necessary locks\n",
+								   pszAgent );
+
+	/* End the transaction and therefore unlock the lock we took on pg_class */
 	mpp_msg( logInfo, pszProgName, "Committing transaction on the master database, thereby releasing locks.\n");
 	execCommit(pConn);
 
@@ -1487,7 +1502,8 @@ void spinOffThreads(PGconn* pConn,
  */
 void* threadProc(void *arg)
 {
-	bool bDidDecrement = false;
+	bool decrementedLunchCount = false;
+	bool decrementedLockCount = false;
 
 	/* The argument is a pointer to a ThreadParm structure
 	 * that stays around for the entire time the program is running.
@@ -1530,9 +1546,10 @@ void* threadProc(void *arg)
 		return NULL;
 	}
 
-	/* issue a LISTEN command for 4 different names*/
+	/* issue a LISTEN command for 5 different names*/
 	DoCancelNotifyListen( pConn, true, pszKey, pSegDB->role, pSegDB->dbid, -1, SUFFIX_START );
 	DoCancelNotifyListen( pConn, true, pszKey, pSegDB->role, pSegDB->dbid, -1, SUFFIX_SET_SERIALIZABLE );
+	DoCancelNotifyListen( pConn, true, pszKey, pSegDB->role, pSegDB->dbid, -1, SUFFIX_GOTLOCKS );
 	DoCancelNotifyListen( pConn, true, pszKey, pSegDB->role, pSegDB->dbid, -1, SUFFIX_SUCCEED );
 	DoCancelNotifyListen( pConn, true, pszKey, pSegDB->role, pSegDB->dbid, -1, SUFFIX_FAIL );
 
@@ -1574,7 +1591,7 @@ void* threadProc(void *arg)
 		mpp_err_msg_cache(logFatal, pszProgName,pParm->pszErrorMsg);
 		PQfinish( pConn );
 		decrementFinishedLaunchCount();
-		bDidDecrement = true;
+		decrementedLunchCount = true;
 		return NULL;
 	}
 
@@ -1598,13 +1615,14 @@ void* threadProc(void *arg)
 		mpp_err_msg_cache(logError, pszProgName,pParm->pszErrorMsg);
 		PQfinish( pConn );
 		decrementFinishedLaunchCount();
-		bDidDecrement = true;
+		decrementedLunchCount = true;
 		return NULL;
 	}
 
-	/* This is a bit involved.  We are waiting for 3 messages:
+	/* This is a bit involved.  We are waiting for 4 messages:
 	 * one that the backend process has started,
 	 * one that the SET_SERIALIZABLE has happened,
+	 * one that the SET_GOTLOCKS has happened,
 	 * and the third that FINISH has happened.
 	 * To avoid polling, we use the NOTIFY/LISTEM approach.
 	 * But we only select for 2 secs at a time, so we can see whether or not we need to NOTIFY
@@ -1636,10 +1654,10 @@ void* threadProc(void *arg)
 			mpp_err_msg(logFatal, pszProgName, pParm->pszErrorMsg );
 			PQfinish(pConn);
 			DestroyBackupStateMachine(pState);
-			if ( !bDidDecrement )
+			if ( !decrementedLunchCount )
 			{
 				decrementFinishedLaunchCount();
-				bDidDecrement = true;
+				decrementedLunchCount = true;
 			}
 
 			return NULL;
@@ -1654,10 +1672,10 @@ void* threadProc(void *arg)
 			mpp_err_msg(logError, pszProgName, pParm->pszErrorMsg );
 			PQfinish(pConn);
 			DestroyBackupStateMachine(pState);
-			if ( !bDidDecrement )
+			if ( !decrementedLunchCount )
 			{
 				decrementFinishedLaunchCount();
-				bDidDecrement = true;
+				decrementedLunchCount = true;
 			}
 			return NULL;
 		}
@@ -1682,10 +1700,10 @@ void* threadProc(void *arg)
 					mpp_err_msg(logError, pszProgName, pParm->pszErrorMsg );
 					PQfinish(pConn);
 					DestroyBackupStateMachine(pState);
-					if ( !bDidDecrement )
+					if ( !decrementedLunchCount )
 					{
 						decrementFinishedLaunchCount();
-						bDidDecrement = true;
+						decrementedLunchCount = true;
 					}
 					return NULL;
 				}
@@ -1693,21 +1711,35 @@ void* threadProc(void *arg)
 		}
 
 		ProcessInput( pState );
-		if ( !bDidDecrement && HasReceivedSetSerializable( pState ) )
+		if ( /*!decrementedLunchCount &&*/ HasReceivedSetSerializable( pState ) )
 		{
 			decrementFinishedLaunchCount();
-			bDidDecrement = true;
+			decrementedLunchCount = true;
 		}
+
+		if ( /*!decrementedLunchCount &&*/ HasReceivedGotLocks( pState ) )
+		{
+			decrementFinishedLockingCount();
+			decrementedLockCount = true;
+		}
+
 	}
 
-	if ( !bDidDecrement )
+	/* make sure to decrement if we haven't already, to release mutex if in error state */
+	if ( !decrementedLunchCount )
 	{
 		decrementFinishedLaunchCount();
-		bDidDecrement = true;
+		decrementedLunchCount = true;
+	}
+
+	if ( !decrementedLockCount )
+	{
+		decrementFinishedLockingCount();
+		decrementedLockCount = true;
 	}
 
 	/* We don't get here unless the BackupStateMachine reached a final state.
-	 * If the status indicates ar error, we process this error in the switch statement below.
+	 * If the status indicates an error, we process this error in the switch statement below.
 	 */
 	if ( !pState->bStatus )
 	{

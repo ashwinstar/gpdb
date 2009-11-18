@@ -22,8 +22,9 @@ typedef enum backup_task_id
 {
 	TASK_START = 0,
 	TASK_SET_SERIALIZABLE = 1,
-	TASK_FINISH = 2,
-	TASK_CANCEL = 3,
+	TASK_GOTLOCKS = 2,
+	TASK_FINISH = 3,
+	TASK_CANCEL = 4,
 } BackupTaskID;
 
 /* --------------------------------------------------------------------------------------------------
@@ -59,6 +60,7 @@ typedef struct status_op_list
 #define TASK_MSG_SUCCESS "Success"
 #define SUFFIX_START "Start"
 #define SUFFIX_SET_SERIALIZABLE "SetSerializable"
+#define SUFFIX_GOTLOCKS "GotLocks"
 #define SUFFIX_SUCCEED "Succeed"
 #define SUFFIX_FAIL "Fail"
 

@@ -21,11 +21,12 @@ typedef enum backup_state
 	STATE_INITIAL= 0,
 	STATE_BACKUP_STARTED = 1,
 	STATE_SET_SERIALIZABLE = 2,
+	STATE_SET_GOTLOCKS = 3,
 	/* The following are all final states */
-	STATE_BACKUP_FINISHED = 3,
-	STATE_TIMEOUT = 4,
-	STATE_BACKUP_ERROR = 5,
-	STATE_UNEXPECTED_INPUT = 6,
+	STATE_BACKUP_FINISHED = 4,
+	STATE_TIMEOUT = 5,
+	STATE_BACKUP_ERROR = 6,
+	STATE_UNEXPECTED_INPUT = 7,
 } BackupState;
 
 /* --------------------------------------------------------------------------------------------------
@@ -37,9 +38,11 @@ typedef struct backup_state_machine
 	int					nWaits;
 	bool				bStatus;
 	bool				bReceivedSetSerializable;
+	bool				bReceivedGotLocks;	
 	char*				pszNotifyRelName;  /* "N<backupkey>_<contentid>_<dbid>" */
 	char*				pszNotifyRelNameStart; /* "<pszNotifyRelName>_Start" */
 	char*				pszNotifyRelNameSetSerializable; /* "<pszNotifyRelName>_SetSerializable" */
+	char*				pszNotifyRelNameGotLocks; /* "<pszNotifyRelName>_SetGotLocks" */	
 	char*				pszNotifyRelNameSucceed; /* "<pszNotifyRelName>_Success" */
 	char*				pszNotifyRelNameFail; /* "<pszNotifyRelName>_Fail" */
 	PGnotify**			ppNotifyAr;
@@ -57,6 +60,8 @@ extern BackupStateMachine* CreateBackupStateMachine(const char* pszKey, int inst
 extern void DestroyBackupStateMachine(BackupStateMachine* pStateMachine);
 /* test the current state to see whether it's left the STATE_INITIAL */
 extern bool HasReceivedSetSerializable( BackupStateMachine* pStateMachine );
+/* test the current state to see whether it's left the STATE_INITIAL */
+extern bool HasReceivedGotLocks( BackupStateMachine* pStateMachine );
 /* test the current state to see whether it's left the STATE_INITIAL */
 extern bool HasStarted( BackupStateMachine* pStateMachine );
 /* test the current state to see whether it's in a final state */
