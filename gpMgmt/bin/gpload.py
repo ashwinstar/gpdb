@@ -1588,7 +1588,7 @@ class gpload:
             # make sure we only get errors for our own instance
             results = self.db.query('select count(*) from ' + self.error_table +
                                 " WHERE relname = 'ext_%s'" % self.name).getresult()
-            return results[0]
+            return (results[0])[0]
         return notice_processor(self)
 
     def report_errors(self):
@@ -1624,7 +1624,7 @@ class gpload:
         self.log(self.LOG, sql)
         if not self.options.D:
             try:
-                self.db.query(sql.encode('utf-8'))
+                self.rowsInserted = self.db.query(sql.encode('utf-8'))
 
             except Exception, e:
                 self.log(self.ERROR, u'%s ' % str(e)  + 
@@ -1692,7 +1692,7 @@ class gpload:
         self.log(self.LOG, sql)
         if not self.options.D:
             try:
-                self.db.query(sql.encode('utf-8'))
+                self.rowsUpdated = self.db.query(sql.encode('utf-8'))
             except Exception, e:
                 self.log(self.ERROR, 'error encountered executing SQL "%s": %s' % (sql, str(e)))
 
@@ -1705,7 +1705,7 @@ class gpload:
         attrs = []
         count = 0
         while count < len(resultList):
-            attrs.append(resultList[count])
+            attrs.append((resultList[count])[0])
             count = count + 1
 
         return attrs
@@ -1731,7 +1731,7 @@ class gpload:
         a = distkey.intersection(update_columns)
         if len(a):
             self.log(self.ERROR, 'update_columns cannot reference column(s) ' +
-                        'in distribution key (%s)' % ', '.join(distkey))
+                        'in distribution key (%s)' % ', '.join(str(distkey)))
 
         # remember, match_columns might be a superset of the key
         match_columns = set(self.getconfig('gpload:output:match_columns', list))
@@ -1740,7 +1740,7 @@ class gpload:
             self.log(self.ERROR, 
                     'match_columns (' + ', '.join(match_columns) + ') ' +
                     'must contain all attributes in distribution key '+
-                    '(' + ', '.join(distkey) + ')')
+                    '(' + ', '.join(str(distkey)) + ')')
 
     def do_method_update(self):
         """Load the data in and update an existing table based upon it"""
@@ -1804,7 +1804,7 @@ class gpload:
         sql += ')'
         self.log(self.LOG, sql)
         if not self.options.D:
-            self.db.query(sql.encode('utf-8'))
+            self.rowsInserted = self.db.query(sql.encode('utf-8'))
 
     def do_method(self):
         # Is the table to be truncated before the load?
@@ -1871,6 +1871,8 @@ class gpload:
 
     def run(self):
         self.db = None
+        self.rowsInserted = 0
+        self.rowsUpdated  = 0
         signal.signal(signal.SIGINT, handle_kill)
         signal.signal(signal.SIGTERM, handle_kill)
         # win32 doesn't do SIGQUIT
@@ -1920,6 +1922,9 @@ class gpload:
             for t in self.threads:
                 t.join()
 
+            self.log(self.INFO, 'rows Inserted          = ' + str(self.rowsInserted))
+            self.log(self.INFO, 'rows Updated           = ' + str(self.rowsUpdated))
+            self.log(self.INFO, 'data formatting errors = ' + str(NUM_WARN_ROWS))
             if self.exitValue==0:
                 self.log(self.INFO, 'gpload succeeded')
             elif self.exitValue==1:
