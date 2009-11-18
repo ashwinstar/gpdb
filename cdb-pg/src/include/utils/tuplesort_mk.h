@@ -186,6 +186,7 @@ struct MKLvContext;
 typedef int32 (*MKCompare) (MKEntry *v1, MKEntry *v2, struct MKLvContext *lvctxt, struct MKContext *mkctxt);
 typedef void (*MKCopyFree) (MKEntry *dst, MKEntry *src, struct MKLvContext *lvctxt);
 typedef Datum (*MKFetchDatumForPrepare) (MKEntry *a, struct MKContext *mkctxt, struct MKLvContext *lvctxt, bool *isNullOut);
+typedef void (*MKFreeTuple) (MKEntry *e);
 
 extern void tupsort_prepare(MKEntry *a, struct MKContext *ctxt, int lv);
 
@@ -233,8 +234,20 @@ typedef struct MKContext {
 
     /* callback capable of fetching a datum from the MKEntry data */
     MKFetchDatumForPrepare fetchForPrep;
-    /* callback capable of copying data from one MKEntry to another (freeing the dest MKEntry).  It can also be called with a NULL src so that the dst is simply freed. */
+
+    /* Callback capable of copying prepared data from one MKEntry to another (freeing the dest MKEntry).
+     * It can also be called with a NULL src so that the dst is simply freed.
+     */
     MKCopyFree  cpfr;
+
+    /**
+     * MUST be set
+     *
+     * pfree() the out-of-line data (not the SortTuple struct!), and increase
+     * state->availMem by the amount of memory space thereby released.
+     */
+    MKFreeTuple freeTup;
+
 
     /* as calculated by estimateExtraSpace.  This is only valid before we've switched to buildruns mode
      *   It is only calculate when the fetchForPrep fn is set as well
@@ -285,7 +298,7 @@ extern int tupsort_compare_datum(MKEntry *v1, MKEntry *v2, MKLvContext *ctxt, MK
 extern void create_mksort_context(
         MKContext *mkctxt,
         int nkeys, 
-        MKFetchDatumForPrepare fetchForPrep, TupleDesc tupdesc, bool tbyv, int tlen,
+        MKFetchDatumForPrepare fetchForPrep, MKFreeTuple freeTup, TupleDesc tupdesc, bool tbyv, int tlen,
         Oid *sortOperators, 
         AttrNumber *attNums,
         ScanKey sk);

@@ -212,6 +212,8 @@ struct Tuplesortstate_mk
     LogicalTapeSet 	*tapeset;	/* logtape.c object for tapes in a temp file */
 
     /*
+     * MUST be set
+     *
      * Function to copy a supplied input tuple into palloc'd space and set up
      * its SortTuple representation (ie, set tuple/datum1/isnull1).  Also,
      * state->availMem must be decreased by the amount of space used for the
@@ -220,6 +222,8 @@ struct Tuplesortstate_mk
     void (*copytup) (Tuplesortstate_mk *state, MKEntry *e, void *tup);
 
     /*
+     * MUST be set
+     *
      * Function to write a stored tuple onto tape.	The representation of the
      * tuple on tape need not be the same as it is in memory; requirements on
      * the tape representation are given below.  After writing the tuple,
@@ -229,6 +233,8 @@ struct Tuplesortstate_mk
     long (*writetup) (Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e);
 
     /*
+     * MUST be set
+     *
      * Function to read a stored tuple from tape back into memory. 'len' is
      * the already-read length of the stored tuple.  Create a palloc'd copy,
      * initialize tuple/datum1/isnull1 in the target SortTuple struct, and
@@ -442,16 +448,21 @@ static void markrunend(Tuplesortstate_mk *state, int tapenum);
 
 static void copytup_heap(Tuplesortstate_mk *state, MKEntry *e, void *tup);
 static long writetup_heap(Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e); 
+static void freetup_heap(MKEntry *e);
 static void readtup_heap(Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e, 
         LogicalTape *lt, uint32 len);
 
 static void copytup_index(Tuplesortstate_mk *state, MKEntry *e, void *tup);
 static long writetup_index(Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e);
+static void freetup_index(MKEntry *e);
 static void readtup_index(Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e, 
         LogicalTape *lt, uint32 len);
 
+static void freetup_noop(MKEntry *e);
+
 static void copytup_datum(Tuplesortstate_mk *state, MKEntry *e, void *tup);
 static long writetup_datum(Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e); 
+static void freetup_datum(MKEntry *e);
 static void readtup_datum(Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e,
         LogicalTape *lt, uint32 len);
 
@@ -605,7 +616,7 @@ void
 create_mksort_context(
         MKContext *mkctxt,
         int nkeys, 
-        MKFetchDatumForPrepare fetchForPrep, TupleDesc tupdesc, bool tbyv, int tlen,
+        MKFetchDatumForPrepare fetchForPrep, MKFreeTuple freeTupleFn, TupleDesc tupdesc, bool tbyv, int tlen,
         Oid *sortOperators, 
         AttrNumber *attNums,
         ScanKey sk)
@@ -625,6 +636,7 @@ create_mksort_context(
         mkctxt->mt_bind = create_memtuple_binding(tupdesc); 
 
     mkctxt->cpfr = tupsort_cpfr;
+    mkctxt->freeTup = freeTupleFn;
     mkctxt->estimatedExtraForPrep = 0;
 
     lc_guess_strxfrm_scaling_factor(&mkctxt->strxfrmScaleFactor, &mkctxt->strxfrmConstantFactor);
@@ -716,6 +728,7 @@ tuplesort_begin_heap_mk(TupleDesc tupDesc,
             &state->mkctxt,
             nkeys, 
             tupsort_fetch_datum_mtup,
+            freetup_heap,
             tupDesc, 0, 0, 
             sortOperators, attNums,
             NULL);
@@ -817,6 +830,7 @@ tuplesort_begin_index_mk(Relation indexRel,
             &state->mkctxt,
             state->nKeys, 
             tupsort_fetch_datum_itup,
+            freetup_index,
             tupdesc, 0, 0,
             NULL, NULL, state->cmpScanKey);
    
@@ -860,6 +874,7 @@ tuplesort_begin_datum_mk(Oid datumType,
             &state->mkctxt, 
             1, 
             NULL, /* tupsort_prepare_datum, */
+            typbyval ? freetup_noop : freetup_datum,
             NULL, typbyval, typlen, 
             &sortOperator, NULL, NULL); 
 
@@ -1196,10 +1211,25 @@ tuplesort_gettuple_common_pos(Tuplesortstate_mk *state, TuplesortPos_mk *pos,
 
             if (forward)
             {
-                if (pos->current < state->entry_count)
+				if ( state->mkctxt.unique)
                 {
-                    *e = state->entries[pos->current++];
-                    return true;
+					/**
+ 					  * request to skip duplicates.  qsort has already replaced all but one of each
+ 					  *   values with empty so skip the empties
+					  * When limit heap sort was used, the limit heap sort should have done this
+					  */
+					while ( pos->current < state->entry_count &&
+							mke_is_empty( &state->entries[pos->current]))
+					{
+						pos->current++;
+					}
+                }
+
+				if (pos->current < state->entry_count)
+                {
+                    *e = state->entries[pos->current];
+					pos->current++;
+	                return true;
                 }
                 pos->eof_reached = true;
                 return false;
@@ -1217,11 +1247,29 @@ tuplesort_gettuple_common_pos(Tuplesortstate_mk *state, TuplesortPos_mk *pos,
                     pos->eof_reached = false;
                 else
                 {
-                    pos->current--;	/* last returned tuple */
+                    pos->current--;	/* pos->current points to one above the last returned tuple */
                     if (pos->current <= 0)
                         return false;
                 }
+
+				if ( state->mkctxt.unique)
+				{
+					/**
+					 * request to skip duplicates.  qsort has already replaced all but one of each
+					 *   values with empty so skip the empties
+					 * When limit heap sort was used, the limit heap sort should have done this
+					 */
+					while ( pos->current - 1 >= 0 &&
+							mke_is_empty( &state->entries[pos->current - 1]))
+					{
+						pos->current--;
+					}
+					if ( pos->current <= 0)
+						return false;
+				}
+
                 *e = state->entries[pos->current-1]; 
+
                 return true;
             }
             break;
@@ -2407,6 +2455,13 @@ writetup_heap(Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e)
 }
 
 static void
+freetup_heap(MKEntry *e)
+{
+    pfree(e->ptr);
+    e->ptr = NULL;
+}
+
+static void
 readtup_heap(Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e, LogicalTape *lt, uint32 len)
 {
     uint32 tuplen;
@@ -2471,6 +2526,13 @@ writetup_index(Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e)
     pfree(tuple);
     e->ptr = NULL;
     return ret;
+}
+
+static void
+freetup_index(MKEntry *e)
+{
+    pfree(e->ptr);
+    e->ptr = NULL;
 }
 
 static void
@@ -2551,6 +2613,29 @@ writetup_datum(Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e)
 
     return ret;
 }
+
+/**
+ * No-op free: does nothing!
+ */
+static void
+freetup_noop(MKEntry *e)
+{
+
+}
+
+/**
+ * Free the datum if non-null, should only be used for by-reference datums
+ */
+static void
+freetup_datum(MKEntry *e)
+{
+    if (!mke_is_null(e))
+    {
+        void *waddr = DatumGetPointer(e->d);
+        pfree(waddr);
+    }
+}
+
 
 static void
 readtup_datum(Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e, 

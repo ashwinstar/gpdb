@@ -521,6 +521,12 @@ static Datum tupsort_fetch_datum_motion(MKEntry *a, MKContext *mkctxt, MKLvConte
         d = heap_getattr((HeapTuple) a->ptr, lvctxt->attno, mkctxt->tupdesc, isNullOut);
     return d;
 }
+
+static void tupsort_free_datum_motion(MKEntry *e)
+{
+	pfree(e->ptr);
+	e->ptr = NULL;
+}
     
 static void create_motion_mk_heap(MotionState *node)
 {
@@ -535,6 +541,7 @@ static void create_motion_mk_heap(MotionState *node)
             &ctxt->mkctxt,
             motion->numSortCols, 
             tupsort_fetch_datum_motion,
+            tupsort_free_datum_motion,
             ExecGetResultType(outerPlanState(node)), false, 0, /* dummy does not matter */
             motion->sortOperators,
             motion->sortColIdx,

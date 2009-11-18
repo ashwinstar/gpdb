@@ -329,15 +329,29 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 	else
 	{
 		/* values are all equal to the deepest level...no need for more compares, but check uniqueness if requested */
-		if(ctxt->enforceUnique &&
-				firstInHigh-1 > lastInLow+1 &&
+		if(firstInHigh-1 > lastInLow+1 &&
 				!seenNull &&
 				!mke_is_null(a+lastInLow+1)) /* a + lastInLow + 1 points to the pivot */
 		{
-			ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
-					errmsg("could not create unique index"),
+			if ( ctxt->enforceUnique )
+			{
+				ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
+								errmsg("could not create unique index"),
 					errdetail("Table contains duplicate values."),
 							   errOmitLocation(true)));
+			}
+			else if ( ctxt->unique)
+			{
+				int toFreeIndex;
+				for ( toFreeIndex = lastInLow + 2; toFreeIndex < firstInHigh; toFreeIndex++) /* +2 because we want to keep one around! */
+				{
+					MKEntry *toFree = a + toFreeIndex;
+					if ( ctxt->cpfr)
+						ctxt->cpfr(toFree, NULL, ctxt->lvctxt + lv); // todo: verify off-by-one
+					ctxt->freeTup(toFree);
+					mke_set_empty(toFree);
+				}
+			}
 		}
 	}
 
