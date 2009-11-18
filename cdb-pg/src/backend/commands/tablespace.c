@@ -290,7 +290,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	 */
 	rel = heap_open(TableSpaceRelationId, RowExclusiveLock);
 
-	MemSet(nulls, false, sizeof(nulls));
+	MemSet(nulls, true, sizeof(nulls));
 
 	values[Anum_pg_tablespace_spcname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->tablespacename));
@@ -298,7 +298,9 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		ObjectIdGetDatum(ownerId);
 	values[Anum_pg_tablespace_spcfsoid - 1] =
 		ObjectIdGetDatum(filespaceoid);
-	nulls[Anum_pg_tablespace_spcacl - 1] = true;
+	nulls[Anum_pg_tablespace_spcname - 1] = false;
+	nulls[Anum_pg_tablespace_spcowner - 1] = false;
+	nulls[Anum_pg_tablespace_spcfsoid - 1] = false;
 
 	tuple = heap_form_tuple(rel->rd_att, values, nulls);
 
