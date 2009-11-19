@@ -80,9 +80,14 @@
 #include "utils/debugbreak.h"
 
 #include "miscadmin.h"
-#if defined(pg_on_solaris) || (!defined (__darwin__) && defined(__GLIBC__))
+
+//#if defined(pg_on_solaris) || defined(__GLIBC__)
+#define _DARWIN_C_SOURCE 1
+#define _STDBOOL_H_
 #include <dlfcn.h>
-#endif
+#undef bool
+//#endif
+
 #undef _
 #define _(x) err_gettext(x)
 
