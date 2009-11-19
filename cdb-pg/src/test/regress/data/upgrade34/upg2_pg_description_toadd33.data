@@ -30,11 +30,5 @@ objoid|classoid|objsubid|description
 822|1255|0|returns the type of the argument
 2878|1255|0|terminate a server process
 2971|1255|0|convert boolean to text
-3057|1255|0|not equal
-3058|1255|0|greater-than
-3059|1255|0|less-than
-3060|1255|0|greater-than-or-equal
-3061|1255|0|less-than-or-equal
-3062|1255|0|btree less-equal-greater
 5034|1255|0|partition configuration for a given relation
 \.
