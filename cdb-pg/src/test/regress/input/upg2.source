@@ -78,19 +78,22 @@ create table public.pg_exttable (reloid oid not null,
 								 rejectlimittype char,
 								 fmterrtbl oid,
 								 encoding integer);
-
--- We cheat on this table since it is being dropped and recreated, which
--- doesn't work well in the context of upg2.  Here we simply define it like
--- it should look when fully upgraded so the copy will work correctly.
-create table public.pg_tablespace(like pg_catalog.pg_tablespace) with oids;
-create table public.pg_filespace(like pg_catalog.pg_filespace) with oids;
-create unique index pg_filespace_fsname_index on public.pg_filespace (fsname);
+create table public.pg_tablespace(spcname name not null,
+	   		 					  spcowner oid not null,
+								  spclocation text,
+								  spcacl aclitem[],
+								  spcprilocations text[],
+								  spcmirlocations text[]
+ 								  ) with oids;
 
 -- These tables we only create so that the REINDEX statements wont error
 create table public.gp_configuration_history(foo text);
 create table public.gp_db_interfaces(foo text);
 create table public.gp_interfaces(foo text);
 create table public.pg_stat_last_operation(foo text);
+create table public.pg_filespace(like pg_catalog.pg_filespace) with oids;
+create unique index pg_filespace_fsname_index on public.pg_filespace (fsname);
+
 
 --
 -- 2. Build the 33 catalog
@@ -173,39 +176,10 @@ COPY public.pg_cast
   from '@abs_srcdir@/data/pg_cast32.data' with oids csv header;
 COPY public.pg_opclass
   from '@abs_srcdir@/data/pg_opclass32.data' with oids csv header;
+COPY public.pg_tablespace
+  from '@abs_srcdir@/data/pg_tablespace32.data' with oids csv header;
 
--- pg_partitions from 3.2
-create view public.pg_partitions as
-SELECT p1.schemaname, p1.tablename, p1.partitionschemaname, p1.partitiontablename, p1.partitionname, p1.parentpartitiontablename, p1.parentpartitionname, p1.partitiontype, p1.partitionlevel,
-        CASE
-            WHEN p1.partitiontype <> 'range'::text THEN NULL::bigint
-            WHEN p1.partitionnodefault > 0 THEN p1.partitionrank
-            WHEN p1.partitionrank = 1 THEN NULL::bigint
-            ELSE p1.partitionrank - 1
-        END AS partitionrank, p1.partitionposition, p1.partitionlistvalues, p1.partitionrangestart,
-        CASE
-            WHEN p1.partitiontype = 'range'::text THEN p1.partitionstartinclusive
-            ELSE NULL::boolean
-        END AS partitionstartinclusive, p1.partitionrangeend,
-        CASE
-            WHEN p1.partitiontype = 'range'::text THEN p1.partitionendinclusive
-            ELSE NULL::boolean
-        END AS partitionendinclusive, p1.partitioneveryclause, p1.parisdefault AS partitionisdefault, p1.partitionboundary
-   FROM ( SELECT n.nspname AS schemaname, cl.relname AS tablename, n2.nspname AS partitionschemaname, cl2.relname AS partitiontablename, pr1.parname AS partitionname, cl3.relname AS parentpartitiontablename, pr2.parname AS parentpartitionname,
-                CASE
-                    WHEN pp.parkind = 'h'::"char" THEN 'hash'::text
-                    WHEN pp.parkind = 'r'::"char" THEN 'range'::text
-                    WHEN pp.parkind = 'l'::"char" THEN 'list'::text
-                    ELSE NULL::text
-                END AS partitiontype, pp.parlevel AS partitionlevel, pr1.parruleord AS partitionposition, rank() OVER(
-         PARTITION BY pp.oid, cl.relname, pp.parlevel, cl3.relname
-          ORDER BY pr1.parruleord) AS partitionrank, pg_get_expr(pr1.parlistvalues, pr1.parchildrelid) AS partitionlistvalues, pg_get_expr(pr1.parrangestart, pr1.parchildrelid) AS partitionrangestart, pr1.parrangestartincl AS partitionstartinclusive, pg_get_expr(pr1.parrangeend, pr1.parchildrelid) AS partitionrangeend, pr1.parrangeendincl AS partitionendinclusive, pg_get_expr(pr1.parrangeevery, pr1.parchildrelid) AS partitioneveryclause, min(pr1.parruleord) OVER(
-         PARTITION BY pp.oid, cl.relname, pp.parlevel, cl3.relname
-          ORDER BY pr1.parruleord) AS partitionnodefault, pr1.parisdefault, pg_get_partition_rule_def(pr1.oid, true) AS partitionboundary
-           FROM pg_namespace n, pg_namespace n2, pg_class cl, pg_class cl2, pg_partition pp, pg_partition_rule pr1
-      LEFT JOIN pg_partition_rule pr2 ON pr1.parparentrule = pr2.oid
-   LEFT JOIN pg_class cl3 ON pr2.parchildrelid = cl3.oid
-  WHERE pp.paristemplate = false AND pp.parrelid = cl.oid AND pr1.paroid = pp.oid AND cl2.oid = pr1.parchildrelid AND cl.relnamespace = n.oid AND cl2.relnamespace = n2.oid) p1;
+\i @abs_srcdir@/sql/upg2_viewdefs_32.sql
 
 --
 -- 4. Load the 33 catalog into public (with different names)
@@ -359,7 +333,6 @@ insert into public.pg_attribute
   from pg_catalog.pg_attribute a
   where (attrelid, attnum) in ( ('public.pg_appendonly'::regclass, 8) );
 update public.pg_class set relnatts=8 where oid = 'pg_catalog.pg_appendonly'::regclass;
-
 
 --
 -- 6. Compare upgraded 32 to loaded 33
@@ -549,9 +522,44 @@ except
 select * from public.pg_shdepend_v33 where objid < 10000 and refobjid < 10000;
 
 -- compare old and new pg_rewrite
-select * from public.pg_rewrite where oid < 10000;
+--   We must take care to mask out OIDS that may not match between our catalog
+--   versions (any oid >= 10000, so we simply mask out all occurances of 5+ digits).
+--
+-- NOTE:
+--   pg_partitions diffs are caused by a harmless change in the way that window
+--   functions are handled.   This diff will disapear after we upgarde to 34.
+--
+select 
+  nspname, relname, rulename, ev_attr, ev_type, is_instead,
+  regexp_replace(ev_qual || ev_action, '[1-9][0-9][0-9][0-9][0-9]+', 'xxxxx', 'g') as compiled
+from public.pg_rewrite 
+     join public.pg_class c on (c.oid = ev_class)
+     join public.pg_namespace n on (n.oid = c.relnamespace)
+where nspname in ('pg_catalog', 'information_schema')
+except all
+select 
+  nspname, relname, rulename, ev_attr, ev_type, is_instead,
+  regexp_replace(ev_qual || ev_action, '[1-9][0-9][0-9][0-9][0-9]+', 'xxxxx', 'g') as compiled
+from public.pg_rewrite_v33 
+     join public.pg_class_v33 c on (c.oid = ev_class)
+     join public.pg_namespace_v33 n on (n.oid = c.relnamespace)
+where nspname in ('pg_catalog', 'information_schema');
 
-select * from public.pg_rewrite_v33 where oid < 10000;
+select 
+  nspname, relname, rulename, ev_attr, ev_type, is_instead,
+  regexp_replace(ev_qual || ev_action, '[1-9][0-9][0-9][0-9][0-9]+', 'xxxxx', 'g') as compiled
+from public.pg_rewrite_v33 
+     join public.pg_class_v33 c on (c.oid = ev_class)
+     join public.pg_namespace_v33 n on (n.oid = c.relnamespace)
+where nspname in ('pg_catalog', 'information_schema')
+except all
+select 
+  nspname, relname, rulename, ev_attr, ev_type, is_instead,
+  regexp_replace(ev_qual || ev_action, '[1-9][0-9][0-9][0-9][0-9]+', 'xxxxx', 'g') as compiled
+from public.pg_rewrite 
+     join public.pg_class c on (c.oid = ev_class)
+     join public.pg_namespace n on (n.oid = c.relnamespace)
+where nspname in ('pg_catalog', 'information_schema');
 
 -- compare old and new pg_appendonly
 select * from public.pg_appendonly where relid < 10000;
@@ -640,6 +648,93 @@ insert into public.pg_attribute
   from pg_catalog.pg_attribute a
   where (attrelid, attnum) in ( ('public.pg_exttable'::regclass, 10) );
 update public.pg_class set relnatts=10 where oid = 'pg_catalog.pg_exttable'::regclass;
+insert into public.pg_attribute 
+  select 'pg_catalog.pg_tablespace'::regclass, a.attname, a.atttypid,
+    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
+    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
+    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
+  from pg_catalog.pg_attribute a
+  where (attrelid, attnum) in ( ('public.pg_tablespace'::regclass, 7) );
+update public.pg_class set relnatts=7 where oid = 'pg_catalog.pg_tablespace'::regclass;
+
+-- System views that have changed, update fake schema.
+--   We upgrade "public.viewname", which is a view defined in the _actual_
+--   catalog, we need to mirror these updates in the fake schema so that
+--   we can diff the fake schema to the real views ("pg_catalog.viewname")
+update public.pg_rewrite av set ev_action = bv.ev_action
+from public.pg_class ac,
+     public.pg_namespace an, 
+	 pg_catalog.pg_rewrite bv, 
+	 pg_catalog.pg_class bc,
+	 pg_catalog.pg_namespace bn
+where ac.oid = av.ev_class     
+  and bc.oid = bv.ev_class 
+  and ac.relnamespace = an.oid
+  and bc.relnamespace = bn.oid
+  and an.nspname in ('information_schema', 'pg_catalog')
+  and bn.nspname in ('public')
+  and ac.relname=bc.relname
+  and bc.oid in (
+     'public.check_constraints'::regclass,
+     'public.element_types'::regclass,
+     'public.parameters'::regclass,
+     'public.role_usage_grants'::regclass,
+     'public.table_constraints'::regclass,
+     'public.usage_privileges'::regclass,
+     'public.views'::regclass,
+	 'public.pg_partitions'::regclass,
+	 'public.pg_partition_templates'::regclass
+  );
+
+-- System views that are new
+insert into public.pg_rewrite
+  select * from pg_catalog.pg_rewrite
+  where ev_class in (
+     'public._pg_foreign_data_wrappers'::regclass,
+	 'public.foreign_data_wrapper_options'::regclass,
+	 'public.foreign_data_wrappers'::regclass,
+	 'public._pg_foreign_servers'::regclass,
+	 'public.foreign_server_options'::regclass,
+	 'public.foreign_servers'::regclass,
+	 'public._pg_user_mappings'::regclass,
+	 'public.user_mapping_options'::regclass,
+	 'public.user_mappings'::regclass,
+	 'public.pg_user_mappings'::regclass
+  );
+-- add views created in pg_catalog to public.pg_class
+copy ( 
+  select oid, relname, (select oid from public.pg_namespace where nspname='pg_catalog'),
+	 	 reltype, relowner, relam, relfilenode, reltablespace, relpages, reltuples, 
+ 		 reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, relhasindex,
+		 relisshared, relkind, relstorage, relnatts, relchecks, reltriggers, 
+		 relukeys, relfkeys, relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, 
+		 relfrozenxid, relacl, reloptions
+  from pg_catalog.pg_class
+  where oid in (
+	 'public.pg_user_mappings'::regclass
+)) to '/tmp/pg_class';
+copy public.pg_class from '/tmp/pg_class' with oids;
+-- add views created in information_schema to public.pg_class
+copy (
+  select oid, relname, (select oid from public.pg_namespace where nspname='information_schema'),
+	 	 reltype, relowner, relam, relfilenode, reltablespace, relpages, reltuples, 
+ 		 reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid, relhasindex,
+		 relisshared, relkind, relstorage, relnatts, relchecks, reltriggers, 
+		 relukeys, relfkeys, relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, 
+		 relfrozenxid, relacl, reloptions
+  from pg_catalog.pg_class
+  where oid in (
+     'public._pg_foreign_data_wrappers'::regclass,
+	 'public.foreign_data_wrapper_options'::regclass,
+	 'public.foreign_data_wrappers'::regclass,
+	 'public._pg_foreign_servers'::regclass,
+	 'public.foreign_server_options'::regclass,
+	 'public.foreign_servers'::regclass,
+	 'public._pg_user_mappings'::regclass,
+	 'public.user_mapping_options'::regclass,
+	 'public.user_mappings'::regclass
+)) to '/tmp/pg_class';
+copy public.pg_class from '/tmp/pg_class' with oids;
 
 --
 -- 8. Compare upgraded 33 to actual 34
@@ -830,9 +925,45 @@ except
 select * from pg_catalog.pg_shdepend where objid < 10000 and refobjid < 10000;
 
 -- compare old and new pg_rewrite
-select * from public.pg_rewrite where oid < 10000;
+--   We must take care to mask out OIDS that may not match between our catalog
+--   versions (any oid >= 10000, so we simply mask out all occurances of 5+ digits).
+--
+-- Note: the diff in pg_tables and pg_indexes is due to pg_tablespace having an
+-- extra column that is not actually referenced in the views.  This is a typical
+-- difference you see in otherwise identical views when underlying tables have
+-- added columns through normal operations and is harmless.
+--
+select 
+  nspname, relname, rulename, ev_attr, ev_type, is_instead,
+  regexp_replace(ev_qual || ev_action, '[1-9][0-9][0-9][0-9][0-9]+', 'xxxxx', 'g') as compiled
+from public.pg_rewrite
+     join public.pg_class c on (c.oid = ev_class)
+     join public.pg_namespace n on (n.oid = c.relnamespace)
+where nspname in ('pg_catalog', 'information_schema')
+except all
+select 
+  nspname, relname, rulename, ev_attr, ev_type, is_instead,
+  regexp_replace(ev_qual || ev_action, '[1-9][0-9][0-9][0-9][0-9]+', 'xxxxx', 'g') as compiled
+from pg_catalog.pg_rewrite
+     join pg_catalog.pg_class c on (c.oid = ev_class)
+     join pg_catalog.pg_namespace n on (n.oid = c.relnamespace)
+where nspname in ('pg_catalog', 'information_schema');
 
-select * from pg_catalog.pg_rewrite where oid < 10000;
+select 
+  nspname, relname, rulename, ev_attr, ev_type, is_instead,
+  regexp_replace(ev_qual || ev_action, '[1-9][0-9][0-9][0-9][0-9]+', 'xxxxx', 'g') as compiled
+from pg_catalog.pg_rewrite
+     join pg_catalog.pg_class c on (c.oid = ev_class)
+     join pg_catalog.pg_namespace n on (n.oid = c.relnamespace)
+where nspname in ('pg_catalog', 'information_schema')
+except all
+select 
+  nspname, relname, rulename, ev_attr, ev_type, is_instead,
+  regexp_replace(ev_qual || ev_action, '[1-9][0-9][0-9][0-9][0-9]+', 'xxxxx', 'g') as compiled
+from public.pg_rewrite
+     join public.pg_class c on (c.oid = ev_class)
+     join public.pg_namespace n on (n.oid = c.relnamespace)
+where nspname in ('pg_catalog', 'information_schema');
 
 -- compare old and new pg_appendonly
 select * from public.pg_appendonly where relid < 10000;
@@ -889,6 +1020,14 @@ select * from public.pg_amop
 except
 select * from pg_catalog.pg_amop;
 
+-- pg_tablespace
+select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace
+except
+select oid, spcname, spcowner, spcfsoid from public.pg_tablespace;
+
+select oid, spcname, spcowner, spcfsoid from public.pg_tablespace
+except
+select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace;
 
 --
 -- 9. Final sanity checks and cleanup
@@ -971,8 +1110,10 @@ drop table
   public.pg_filespace,
   public.pg_tablespace,
   public.pg_stat_last_operation;
-
 drop view
-   public.pg_partitions_v33;
-drop view
-   public.pg_partitions;
+   public.pg_partitions,
+   public.pg_partitions_v33,
+   public._pg_foreign_data_wrappers,
+   public._pg_foreign_servers,
+   public.pg_user_mappings
+CASCADE;

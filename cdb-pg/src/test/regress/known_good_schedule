@@ -134,7 +134,7 @@ test: notin
 test: toast
 test: mapred
 test: gpparams
-ignore: upg2
+test: upg2
 test: alter_distribution_policy
 test: ereport
 ignore: gp_delete_as_trunc

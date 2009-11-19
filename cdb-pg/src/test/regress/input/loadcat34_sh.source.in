@@ -4,22 +4,20 @@ begin;
 -- database (template0) otherwise we will end up with duplication
 -- issues.
 
-delete from @gpupgradeschemaname@.pg_tablespace;
-reindex table @gpupgradeschemaname@.pg_tablespace;
-vacuum full @gpupgradeschemaname@.pg_tablespace;
-
-reindex table @gpupgradeschemaname@.pg_filespace;
-
 -- Copy in the shared data
 copy @gpupgradeschemaname@.pg_filespace from '@gpupgradedatadir@/upg2_pg_filespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
-copy @gpupgradeschemaname@.pg_tablespace from '@gpupgradedatadir@/upg2_pg_tablespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 copy @gpupgradeschemaname@.pg_shdescription from '@gpupgradedatadir@/upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_resqueue from '@gpupgradedatadir@/upg2_pg_resqueue_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 
 -- Assign users without queues to the default queue
 update @gpupgradeschemaname@.pg_authid u set rolresqueue=q.oid from pg_catalog.pg_resqueue q where q.rsqname='gp_default' and u.rolresqueue is null and not u.rolsuper;
-commit;
 
+-- Assign the system tablespaces to the system filespace
+update @gpupgradeschemaname@.pg_tablespace set spcfsoid=3052, spclocation=null, spcprilocations=null, spcmirlocations=null;
+
+
+-- Commit
+commit;
 
 -- Reindex shared tables
 reindex table @gpupgradeschemaname@.pg_tablespace;

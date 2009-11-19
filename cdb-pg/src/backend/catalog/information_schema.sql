@@ -1241,64 +1241,71 @@ GRANT SELECT ON role_table_grants TO PUBLIC;
 /*
  * 5.41
  * ROLE_USAGE_GRANTS view
+ *
+ * MPP-7509 - bug in UNION handling forces us to move the type casts
+ * to an outer query block.
  */
 
 CREATE VIEW role_usage_grants AS
+	SELECT CAST(grantor AS sql_identifier),
+	       CAST(grantee AS sql_identifier),
+		   CAST(object_catalog AS sql_identifier),
+		   CAST(object_schema AS sql_identifier),
+		   CAST(object_name AS sql_identifier),
+		   CAST(object_type as character_data),
+		   CAST(privilege_type as character_data),
+		   CAST(is_grantable as character_data)
+    FROM (
+          /* foreign-data wrappers */
+    	  SELECT u_grantor.rolname AS grantor,
+                 g_grantee.rolname AS grantee,
+                 current_database() AS object_catalog,
+				 '' AS object_schema,
+				 fdw.fdwname AS object_name,
+                 'FOREIGN DATA WRAPPER' AS object_type,
+                 'USAGE' AS privilege_type,
+                  CASE WHEN
+                      -- object owner always has grant options
+                      pg_has_role(g_grantee.oid, fdw.fdwowner, 'USAGE')
+                      OR aclcontains(fdw.fdwacl,
+                                     makeaclitem(g_grantee.oid, u_grantor.oid, 
+									             'USAGE', true))
+                      THEN 'YES' ELSE 'NO' END AS is_grantable
+    	  FROM pg_foreign_data_wrapper fdw,
+          	   pg_authid u_grantor,
+         	   pg_authid g_grantee
+    	  WHERE aclcontains(fdw.fdwacl,
+							makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', false))
+                AND (u_grantor.rolname IN (SELECT role_name FROM enabled_roles)
+               	OR g_grantee.rolname IN (SELECT role_name FROM enabled_roles))
 
-    /* foreign-data wrappers */
-    SELECT CAST(u_grantor.rolname AS sql_identifier) AS grantor,
-           CAST(g_grantee.rolname AS sql_identifier) AS grantee,
-           CAST(current_database() AS sql_identifier) AS object_catalog,
-           CAST('' AS sql_identifier) AS object_schema,
-           CAST(fdw.fdwname AS sql_identifier) AS object_name,
-           CAST('FOREIGN DATA WRAPPER' AS character_data) AS object_type,
-           CAST('USAGE' AS character_data) AS privilege_type,
-           CAST(
-             CASE WHEN
-                  -- object owner always has grant options
-                  pg_has_role(g_grantee.oid, fdw.fdwowner, 'USAGE')
-                  OR aclcontains(fdw.fdwacl,
-                                 makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', true))
-                  THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_grantable
+    	  UNION ALL
 
-    FROM pg_foreign_data_wrapper fdw,
-         pg_authid u_grantor,
-         pg_authid g_grantee
+    	  /* foreign server */
+    	  SELECT u_grantor.rolname AS grantor,
+                 g_grantee.rolname AS grantee,
+                 current_database() AS object_catalog,
+				 '' AS object_schema,
+				 srv.srvname AS object_name,
+                 'FOREIGN SERVER' AS object_type,
+                 'USAGE' AS privilege_type,
+                 CASE WHEN
+                      -- object owner always has grant options
+                      pg_has_role(g_grantee.oid, srv.srvowner, 'USAGE')
+                      OR aclcontains(srv.srvacl,
+                                     makeaclitem(g_grantee.oid, u_grantor.oid, 
+									             'USAGE', true))
+                      THEN 'YES' ELSE 'NO' END AS is_grantable
 
-    WHERE aclcontains(fdw.fdwacl,
+          FROM pg_foreign_server srv,
+          	   pg_authid u_grantor,
+         	   pg_authid g_grantee
+
+    	  WHERE aclcontains(srv.srvacl,
                           makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', false))
           AND (u_grantor.rolname IN (SELECT role_name FROM enabled_roles)
                OR g_grantee.rolname IN (SELECT role_name FROM enabled_roles))
-
-    UNION ALL
-
-    /* foreign server */
-    SELECT CAST(u_grantor.rolname AS sql_identifier) AS grantor,
-           CAST(g_grantee.rolname AS sql_identifier) AS grantee,
-           CAST(current_database() AS sql_identifier) AS object_catalog,
-           CAST('' AS sql_identifier) AS object_schema,
-           CAST(srv.srvname AS sql_identifier) AS object_name,
-           CAST('FOREIGN SERVER' AS character_data) AS object_type,
-           CAST('USAGE' AS character_data) AS privilege_type,
-           CAST(
-             CASE WHEN
-                  -- object owner always has grant options
-                  pg_has_role(g_grantee.oid, srv.srvowner, 'USAGE')
-                  OR aclcontains(srv.srvacl,
-                                 makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', true))
-                  THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_grantable
-
-    FROM pg_foreign_server srv,
-         pg_authid u_grantor,
-         pg_authid g_grantee
-
-    WHERE aclcontains(srv.srvacl,
-                          makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', false))
-          AND (u_grantor.rolname IN (SELECT role_name FROM enabled_roles)
-               OR g_grantee.rolname IN (SELECT role_name FROM enabled_roles));
-
-
-
+   ) subquery;
 
 GRANT SELECT ON role_usage_grants TO PUBLIC;
 
@@ -2042,92 +2049,102 @@ GRANT SELECT ON triggers TO PUBLIC;
 /*
  * 5.71
  * USAGE_PRIVILEGES view
+ *
+ * MPP-7509 - bug in UNION handling forces us to move the type casts
+ * to an outer query block.
  */
 
 CREATE VIEW usage_privileges AS
+	SELECT CAST(grantor AS sql_identifier),
+	       CAST(grantee AS sql_identifier),
+		   CAST(object_catalog AS sql_identifier),
+		   CAST(object_schema AS sql_identifier),
+		   CAST(object_name AS sql_identifier),
+		   CAST(object_type as character_data),
+		   CAST(privilege_type as character_data),
+		   CAST(is_grantable as character_data)
+    FROM (
+   	      /* domains */
+          -- Domains have no real privileges, so we represent all domains 
+		  -- with implicit usage privilege here.
+          SELECT u.rolname AS grantor,
+           	     'PUBLIC' AS grantee,
+           	     current_database() AS object_catalog,
+           	     n.nspname AS object_schema,
+           	     t.typname AS object_name,
+           	     'DOMAIN' AS object_type,
+           	     'USAGE' AS privilege_type,
+           	     'NO' AS is_grantable
+          FROM pg_authid u,
+          	   pg_namespace n,
+         	   pg_type t
 
-    /* domains */
-    -- Domains have no real privileges, so we represent all domains with implicit usage privilege here.
-    SELECT CAST(u.rolname AS sql_identifier) AS grantor,
-           CAST('PUBLIC' AS sql_identifier) AS grantee,
-           CAST(current_database() AS sql_identifier) AS object_catalog,
-           CAST(n.nspname AS sql_identifier) AS object_schema,
-           CAST(t.typname AS sql_identifier) AS object_name,
-           CAST('DOMAIN' AS character_data) AS object_type,
-           CAST('USAGE' AS character_data) AS privilege_type,
-           CAST('NO' AS yes_or_no) AS is_grantable
+          WHERE u.oid = t.typowner
+          	    AND t.typnamespace = n.oid
+                AND t.typtype = 'd'
 
-    FROM pg_authid u,
-         pg_namespace n,
-         pg_type t
+    	  UNION ALL
 
-    WHERE u.oid = t.typowner
-          AND t.typnamespace = n.oid
-          AND t.typtype = 'd'
+    	  /* foreign-data wrappers */
+    	  SELECT u_grantor.rolname AS grantor,
+           		 grantee.rolname AS grantee,
+           		 current_database() AS object_catalog,
+           		 '' AS object_schema,
+           		 fdw.fdwname AS object_name,
+           		 'FOREIGN DATA WRAPPER' AS object_type,
+           		 'USAGE' AS privilege_type,
+             	 CASE WHEN
+                  	  -- object owner always has grant options
+                  	  pg_has_role(grantee.oid, fdw.fdwowner, 'USAGE')
+                  	  OR aclcontains(fdw.fdwacl,
+                       	             makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', true))
+                      THEN 'YES' ELSE 'NO' END AS is_grantable
 
-    UNION ALL
+          FROM pg_foreign_data_wrapper fdw,
+          	   pg_authid u_grantor,
+         	   (
+           	    SELECT oid, rolname FROM pg_authid
+           		UNION ALL
+           		SELECT 0::oid, 'PUBLIC'
+         	   ) AS grantee (oid, rolname)
 
-    /* foreign-data wrappers */
-    SELECT CAST(u_grantor.rolname AS sql_identifier) AS grantor,
-           CAST(grantee.rolname AS sql_identifier) AS grantee,
-           CAST(current_database() AS sql_identifier) AS object_catalog,
-           CAST('' AS sql_identifier) AS object_schema,
-           CAST(fdw.fdwname AS sql_identifier) AS object_name,
-           CAST('FOREIGN DATA WRAPPER' AS character_data) AS object_type,
-           CAST('USAGE' AS character_data) AS privilege_type,
-           CAST(
-             CASE WHEN
-                  -- object owner always has grant options
-                  pg_has_role(grantee.oid, fdw.fdwowner, 'USAGE')
-                  OR aclcontains(fdw.fdwacl,
-                                 makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', true))
-                  THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_grantable
+    	  WHERE aclcontains(fdw.fdwacl,
+                            makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', false))
+                AND (pg_has_role(u_grantor.oid, 'USAGE')
+                     OR pg_has_role(grantee.oid, 'USAGE')
+                     OR grantee.rolname = 'PUBLIC')
 
-    FROM pg_foreign_data_wrapper fdw,
-         pg_authid u_grantor,
-         (
-           SELECT oid, rolname FROM pg_authid
-           UNION ALL
-           SELECT 0::oid, 'PUBLIC'
-         ) AS grantee (oid, rolname)
+          UNION ALL
 
-    WHERE aclcontains(fdw.fdwacl,
-                      makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', false))
-          AND (pg_has_role(u_grantor.oid, 'USAGE')
-               OR pg_has_role(grantee.oid, 'USAGE')
-               OR grantee.rolname = 'PUBLIC')
+          /* foreign servers */
+    	  SELECT u_grantor.rolname AS grantor,
+           		 grantee.rolname AS grantee,
+           		 current_database() AS object_catalog,
+           		 '' AS object_schema,
+           		 srv.srvname AS object_name,
+           		 'FOREIGN SERVER' AS object_type,
+           		 'USAGE' AS privilege_type,
+                  CASE WHEN
+                        -- object owner always has grant options
+                        pg_has_role(grantee.oid, srv.srvowner, 'USAGE')
+                        OR aclcontains(srv.srvacl,
+                                       makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', true))
+                        THEN 'YES' ELSE 'NO' END AS is_grantable
 
-    UNION ALL
+          FROM pg_foreign_server srv,
+       	       pg_authid u_grantor,
+         	   (
+           	    SELECT oid, rolname FROM pg_authid
+           		UNION ALL
+           		SELECT 0::oid, 'PUBLIC'
+               ) AS grantee (oid, rolname)
 
-    /* foreign servers */
-    SELECT CAST(u_grantor.rolname AS sql_identifier) AS grantor,
-           CAST(grantee.rolname AS sql_identifier) AS grantee,
-           CAST(current_database() AS sql_identifier) AS object_catalog,
-           CAST('' AS sql_identifier) AS object_schema,
-           CAST(srv.srvname AS sql_identifier) AS object_name,
-           CAST('FOREIGN SERVER' AS character_data) AS object_type,
-           CAST('USAGE' AS character_data) AS privilege_type,
-           CAST(
-             CASE WHEN
-                  -- object owner always has grant options
-                  pg_has_role(grantee.oid, srv.srvowner, 'USAGE')
-                  OR aclcontains(srv.srvacl,
-                                 makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', true))
-                  THEN 'YES' ELSE 'NO' END AS yes_or_no) AS is_grantable
-
-    FROM pg_foreign_server srv,
-         pg_authid u_grantor,
-         (
-           SELECT oid, rolname FROM pg_authid
-           UNION ALL
-           SELECT 0::oid, 'PUBLIC'
-         ) AS grantee (oid, rolname)
-
-    WHERE aclcontains(srv.srvacl,
-                      makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', false))
-          AND (pg_has_role(u_grantor.oid, 'USAGE')
-               OR pg_has_role(grantee.oid, 'USAGE')
-               OR grantee.rolname = 'PUBLIC');
+    	  WHERE aclcontains(srv.srvacl,
+                            makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', false))
+                AND (pg_has_role(u_grantor.oid, 'USAGE')
+                     OR pg_has_role(grantee.oid, 'USAGE')
+                     OR grantee.rolname = 'PUBLIC')
+      ) subquery;
 
 GRANT SELECT ON usage_privileges TO PUBLIC;
 

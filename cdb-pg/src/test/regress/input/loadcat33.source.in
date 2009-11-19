@@ -15,6 +15,11 @@ alter table @gpupgradeschemaname@.pg_appendonly add column compresstype text;
 update @gpupgradeschemaname@.pg_appendonly set compresstype = 'quicklz', compresslevel = compresslevel - 10 where compresslevel > 10;
 update @gpupgradeschemaname@.pg_appendonly set compresstype = 'zlib' where compresslevel between 1 and 10;
 
+-- upgrade views to account for the new Range Table Entry (RTE) Format.
+--   ":forceDistRandom" only ever occurs in RTEs and is the last field
+--   NOTE: this effects All views, including user views
+update @gpupgradeschemaname@.pg_rewrite set ev_action = regexp_replace(ev_action, ':forceDistRandom (true|false)}', E':forceDistRandom \\1 :pseudocols <>}', 'g'), ev_qual = regexp_replace(ev_qual, ':forceDistRandom (true|false)}', E':forceDistRandom \\1 :pseudocols <>}', 'g');
+
 -- upgrade pg_partitions.parentpartitioname
 update @gpupgradeschemaname@.pg_rewrite set ev_action = replace(ev_action, 'parentpartitioname','parentpartitionname') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
 update @gpupgradeschemaname@.pg_attribute set attname = 'parentpartitionname' where attname = 'parentpartitioname' and attrelid = '@gpupgradeschemaname@.pg_partitions'::regclass;

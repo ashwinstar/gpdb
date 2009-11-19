@@ -58,6 +58,22 @@
 
    2) Adding new catalog tables:
 
+        **NOTE WELL**: Any new tables MUST have a fixed OID for the
+		entry in pg_type.  In order to accomplish this the value must
+		be inserted into the list of upgrade types at the bottom of
+		pg_type.h AND it must be added to the list of specially
+		handled cases inside of bootparse.y.
+
+		If you are adding a new Shared (cross-database) table then you
+		must make sure to update the IsSharedRelation function in
+		catalog.c.
+
+		After chaging any of the .h files in "include/catalog"
+		(including the pg_type.h changes from the above step) you must
+		update catversion.h do a make distclean and rerun
+		gpinitsystem. Otherwise you may update the rest of the files
+		below based on stale information.
+
   	    - regress/data/upgrade34/upg2_pg_class_toadd33.data
 
 		  This file is in pretty much the same format as pg_class.h.
@@ -70,7 +86,7 @@
 		- regress/data/upgrade34/upg2_pg_depend_toadd33.data
 
 		  This is the pg_depend entries for the new table (and
-		  indexes).  [check for relid in refobjic]
+		  indexes).  [check for relid in refobjid]
 
 		- regress/data/upgrade34/upg2_pg_index_toadd33.data
 
@@ -81,12 +97,6 @@
 		- regress/data/upgrade34/upg2_pg_type_toadd33.data
 
 		  This is the implementation type for the new table.
-
-        **NOTE WELL**: Any new tables MUST have a fixed OID for the
-		entry in pg_type.  In order to accomplish this the value must
-		be inserted into the list of upgrade types at the bottom of
-		pg_type.h AND it must be added to the list of specially
-		handled cases inside of bootparse.y.
 
   3) Altering existing catalog tables:
 

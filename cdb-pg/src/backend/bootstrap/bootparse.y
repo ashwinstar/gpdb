@@ -225,9 +225,6 @@ Boot_CreateStmt:
 						/* boot strap new table types for 3.3 */
 						switch ($6)
 						{
-							case TableSpaceRelationId:
-								typid = PG_TABLESPACE_OID;
-								break;
 							case GpInterfacesRelationId:
 								typid = GPINTERFACES_RELTYPE_OID;
 								break;
