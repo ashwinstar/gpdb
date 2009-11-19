@@ -1,0 +1,94 @@
+COMMAND NAME:  gpsuspend
+
+Pause and resume a running Greenplum Database
+
+******************************************************
+SYNOPSIS
+******************************************************
+
+gpsuspend --pause [--batchsize batchsize]
+
+gpsuspend --resume --pausefile pausefile_name [--batchsize batchsize]
+
+gpexpand -? | -h | --help
+
+Prerequisites:
+
+* You are logged in as the Greenplum Database superuser (gpadmin).
+
+* You are on the machine that is running the master database
+
+
+*******************************************************
+DESCRIPTION
+*******************************************************
+
+The gpsuspend utility can pause a running instance of Greenplum Database.
+
+The utility is first run in 'pause' mode which will pause the database.
+In 'pause' mode, the successful output of the command will print the 
+location of a generated pausefile which can be used to restore the
+system state.
+
+In 'resume' mode you must pass the location of the pause file which describes
+the list of segment hosts in a Greenplum database and can be used to resume
+the paused system
+
+
+********************************************************
+OPTIONS
+********************************************************
+
+
+-h (help)
+
+Displays the online help.
+
+--pause
+
+Sets the utility into 'pause' mode
+
+--resume
+
+Sets the utility into 'resume' mode
+
+--pausefile <pausefilename>
+
+This option is used in 'resume' mode for the utility to know the 
+location of the segments while the database is paused and inaccessible.
+The file is generated to the GPHOME directory during 'pause' mode.
+
+-B <batch_size>
+
+The number of worker threads for connecting to segment hosts.
+By making this number higher, more parallel ssh connections will be
+made in order to complete the job faster.
+
+--verbose | -v (verbose) 
+
+Verbose debugging output.
+
+-? | h (help)
+
+Displays the online help.
+
+
+*********************************************************
+EXAMPLES
+*********************************************************
+
+Pause a running Greenplum database:
+
+$ gpsuspend --pause
+
+
+Resume a running Greenplum database using a pausefile:
+
+$ gpsuspend --resume --pausefile /home/gpadmin/greenplum-db/./gp_pause.20091113.2158.dat
+
+
+**********************************************************
+SEE ALSO
+**********************************************************
+
+gpstart, gpstop

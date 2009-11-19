@@ -60,6 +60,19 @@ class GpDB:
                                             self.hostname,
                                             self.port,
                                             self.datadir)
+    @staticmethod
+    def get_gpdb_from_string(line):
+
+        fields = dbconn.parseLine(line)
+        content=fields[0]
+        definedprimary=fields[1]
+        dbid=int(fields[2])
+        isprimary=fields[3]
+        valid=fields[4]
+        hostname=fields[5]
+        port=int(fields[6])
+        datadir=fields[7]
+        return GpDB(content,definedprimary,dbid,isprimary,valid,hostname,port,datadir)
 
 
 class Segment:

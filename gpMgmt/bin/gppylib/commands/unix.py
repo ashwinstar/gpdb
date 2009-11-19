@@ -497,6 +497,25 @@ class Kill(Command):
         cmd.run(validateAfter=True) 
      
 
+#--------------kill children--------------
+class KillChildren(Command):
+    def __init__(self,name,pid,signal,ctxt=LOCAL,remoteHost=None):
+        self.pid=pid
+        self.signal=signal
+        cmdStr="%s -%s -P %s" % (findCmdInPath('pkill'), signal, pid)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+    @staticmethod
+    def local(name,pid,signal):
+        cmd=KillChildren(name,pid,signal)
+        cmd.run(validateAfter=True)
+            
+    @staticmethod
+    def remote(name,pid,signal,remote_host):
+        cmd=KillChildren(name,pid,signal,ctxt=REMOTE,remoteHost=remote_host)        
+        cmd.run(validateAfter=True) 
+     
+
 #--------------hostname ----------------------
 class Hostname(Command):
     def __init__(self, name, ctxt=LOCAL, remoteHost=None):

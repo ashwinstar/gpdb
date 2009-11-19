@@ -1,0 +1,204 @@
+#!/usr/bin/env python
+#
+# Copyright (c) Greenplum Inc 2009. All Rights Reserved. 
+#
+try:
+    
+    import os, sys
+    from optparse import Option, OptionParser 
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gparray import *
+    from gppylib.gplog import *
+    from gppylib.commands.unix import *
+    from gppylib.commands.gp import *
+    from gppylib.db import dbconn
+    from pygresql.pgdb import DatabaseError
+
+except ImportError, e:    
+    sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+EXECNAME = os.path.split(__file__)[-1]
+
+_help = [""""""
+
+]
+
+def parseargs():
+
+    parser = OptParser(option_class=OptChecker)
+
+    parser.setHelp(_help)
+
+    parser.remove_option('-h')
+    parser.add_option('-h', '-?', '--help', action='help', help='show this help message and exit')
+    parser.add_option('-v','--verbose', action='store_true', help='debug output.')
+
+    parser.add_option('--pause', action='store_true', help='pause greenplum db')
+    parser.add_option('--resume', action='store_true', help='resume greenplum db')
+
+    parser.add_option('--pausefile', type='string', help='pause file path')
+
+    parser.add_option('--batchsize', type='int', help='number of parallel processes to run connecting to other hosts')
+
+    parser.set_defaults(batchsize=16)
+
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+
+    # sanity check 
+    if options.pause and options.resume:
+        print "Select either --pause or --resume, see --help for more info"
+        parser.exit()
+
+    if (not options.pause) and (not options.resume):
+        print "Select either --pause or --resume, see --help for more info"
+        parser.exit()
+
+    if (not options.pausefile) and options.resume:
+        print "--pausefile must be specified with --resume";
+        parser.exit()
+
+    if options.pausefile and options.pause:
+        print "--pausefile cannot be specified with --pause";
+        parser.exit()
+
+    if (options.batchsize > 250 or options.batchsize < 1):
+        print "batchsize must be between 1 and 250"
+        parser.exit()
+
+    # master db setup
+    if options.pause:
+        try:
+            options.master_data_directory = get_masterdatadir()
+            options.gphome = get_gphome()
+        except GpError, msg:
+            logger.error(msg)
+            parser.exit()
+
+        if not os.path.exists(options.master_data_directory):
+            logger.error('Master data directory does not exist.')
+            parser.exit()
+
+
+    # generate a pause file name
+    if options.pause:
+        pausef = time.strftime("/gp_pause.%Y%m%d.%H%M.dat")
+        options.pausefile = options.gphome + pausef
+
+    return options
+
+def create_host_datadir_map(gparray):
+    """ create a dictionary that maps hostnames to \n seperated gp_configuration strings on that host """
+
+    hosts = dict()
+
+    for seg in gparray.getSegDbList():
+        if not seg.valid:
+            continue
+
+        if seg.hostname in hosts:
+            hosts[seg.hostname].append("\n")
+            hosts[seg.hostname].append( seg.get_gp_configuration_string() )
+        else:
+            hosts[seg.hostname]  = seg.get_gp_configuration_string()
+
+    return hosts
+
+def connectToSegmentHosts(hosts, doResume):
+
+    pool = WorkerPool(numWorkers=options.batchsize)
+    errorString = ""
+
+    try:
+        earlyexit = False
+        for h in hosts.keys():
+
+            cmd = GpSuspendSegmentsOnHost(name="seg " + h, gpconfigstrings=hosts[h], resume=doResume, ctxt=REMOTE, remoteHost=h)
+            pool.addCommand(cmd)
+
+        pool.join()
+        pool.check_results()
+        pool.haltWork()
+        pool.joinWorkers()
+
+    except Exception, e:
+        earlyexit = True
+        errorString = e.__str__()
+
+    if earlyexit:
+        logger.fatal('Failed to process all segments: ' + errorString)
+        logger.fatal('To ensure the system is not partially paused run resume.')
+        logger.info("to resume run: " + EXECNAME + " --resume --pausefile " + options.pausefile)
+        sys.exit(1)
+
+
+
+def suspend_greenplum(options):
+    """ method to suspend an instance of greenplum db """
+
+    try:
+        dburl = dbconn.DbURL()
+
+        logger.info("START: connecting to gp_configure table")
+        gparray = createGPDBFromDB(dburl,utility=True)
+        logger.info("DONE: connecting to gp_configure table")
+
+        logger.info("START: creating pause file " + options.pausefile)
+        dumpToFile(gparray, options.pausefile)
+        logger.info("DONE: creating pause file " + options.pausefile)
+
+    except DatabaseError, ex:
+        logger.error('Failed to connect to database, exiting without action.')
+        sys.exit(1)
+
+    hostMap = create_host_datadir_map(gparray)
+
+    logger.info("START: pausing the master postgres instance") 
+    pausePg(gparray.master)
+    logger.info("DONE: pausing the master postgres instance") 
+
+    logger.info("START: pausing the segment postgres instances") 
+    connectToSegmentHosts(hosts=hostMap, doResume=False)
+    logger.info("DONE: pausing the segment postgres instances") 
+
+    logger.info("to resume database run: " + EXECNAME + " --resume --pausefile " + options.pausefile)
+
+
+def resume_greenplum(options):
+    try:
+        logger.info("START: reading gpsuspend pausefile: " + options.pausefile)
+        gparray = createFromFile(options.pausefile)
+        logger.info("DONE: reading gpsuspend pausefile: " + options.pausefile)
+    except:
+        logger.error('Failed reading gpsuspend pausefile, check the file.')
+        sys.exit(1)
+
+    hostMap = create_host_datadir_map(gparray)
+
+    logger.info("START: resuming the segment postgres instances") 
+    connectToSegmentHosts(hosts=hostMap, doResume=True)
+    logger.info("DONE: resuming the segment postgres instances") 
+
+
+    logger.info("START: resuming the master postgres instance") 
+    resumePg(gparray.master)
+    logger.info("DONE: resuming the master postgres instance") 
+ 
+
+#------------------------------- Mainline --------------------------------
+ 
+logger = get_default_logger()
+setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
+
+options = parseargs()
+
+if options.verbose:
+    enable_verbose_logging()
+
+if options.pause:
+    suspend_greenplum(options)
+
+elif options.resume:
+    resume_greenplum(options)
+
+logger.info("--done--")

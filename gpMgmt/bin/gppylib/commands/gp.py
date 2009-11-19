@@ -442,6 +442,17 @@ class GpSegCheckLocaleAndConnect(Command):
         return (self.success,self.error_str)
 
         
+#-----------------------------------------------
+class GpSuspendSegmentsOnHost(Command):
+    def __init__(self, name, gpconfigstrings, resume, ctxt=LOCAL, remoteHost=None):                                  
+        if resume:
+            pauseOrResume = "--resume"
+        else:
+            pauseOrResume = "--pause"                                                                            
+
+        cmdStr="echo '%s' | $GPHOME/sbin/gpsuspend.py %s" % (gpconfigstrings, pauseOrResume)                         
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
 
 #-----------------------------------------------        
 def distribute_tarball(queue,list,tarball):
@@ -656,3 +667,26 @@ def read_postmaster_pidfile(datadir):
     f.close()
     return pid
     
+
+def pausePg(db):
+    """ first pause the postmaster, and then pause all the forked processes 
+        this runs locally only to prevent to many ssh commands for performance """
+
+    postmasterPID = read_postmaster_pidfile(db.datadir)
+    if postmasterPID == 0:
+        raise Exception, 'print "could not locate postmasterPID during pause'
+
+    Kill.local(name="pausep "+str(db.content), pid=postmasterPID, signal=signal.SIGSTOP)
+    KillChildren.local(name="pausec "+str(db.content), pid=postmasterPID, signal=signal.SIGSTOP)
+
+def resumePg(db):
+    """ first resume the forked processes and then resume the postmaster 
+        this runs locally only to prevent to many ssh commands for performance """
+
+    postmasterPID = read_postmaster_pidfile(db.datadir)
+    if postmasterPID == 0:
+        raise Exception, 'print "could not locate postmasterPID during resume'
+
+    KillChildren.local(name="pausec "+str(db.content), pid=postmasterPID, signal=signal.SIGCONT)
+    Kill.local(name="pausep "+str(db.content), pid=postmasterPID, signal=signal.SIGCONT)
+
