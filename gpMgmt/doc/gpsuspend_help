@@ -10,7 +10,7 @@ gpsuspend --pause [--batchsize batchsize]
 
 gpsuspend --resume --pausefile pausefile_name [--batchsize batchsize]
 
-gpexpand -? | -h | --help
+gpsuspend -? | -h | --help
 
 Prerequisites:
 
