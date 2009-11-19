@@ -170,7 +170,7 @@ static void elog_debug_linger(ErrorData *edata);
 static void setup_formatted_start_time(void);
 
 
-#if (!defined(__darwin__)) && (!defined(pg_on_solaris))
+#if !defined(pg_on_solaris)
 #if defined(__GLIBC__)
 #include <execinfo.h>
 #endif
@@ -396,9 +396,13 @@ errstart(int elevel, const char *filename, int lineno,
     edata->funcname = funcname;
     /* the default text domain is the backend's */
 	edata->domain = domain ? domain : PG_TEXTDOMAIN("postgres");
+	edata->omit_location = true;
     /* Select default errcode based on elevel */
     if (elevel >= ERROR)
+    {
         edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
+        edata->omit_location = false;
+    }
     else if (elevel == WARNING)
         edata->sqlerrcode = ERRCODE_WARNING;
     else
@@ -408,11 +412,11 @@ errstart(int elevel, const char *filename, int lineno,
     /* errno is saved here so that error parameter eval can't change it */
     edata->saved_errno = errno;
 
-#if (!defined(__darwin__))
+
 #if defined(__GLIBC__) || defined(pg_on_solaris)
     edata->stacktracesize = backtrace(edata->stacktracearray, 30);
 #endif
-#endif
+
 
     recursion_depth--;
     return true;
@@ -631,6 +635,12 @@ errcode(int sqlerrcode)
 
     edata->sqlerrcode = sqlerrcode;
 
+    /* Indicate that we want stack traces etc for internal errors */
+    if (sqlerrcode == ERRCODE_INTERNAL_ERROR)
+    	edata->omit_location = false;
+    else
+    	edata->omit_location = true;
+
     return 0;					/* return value does not matter */
 }
 
@@ -700,6 +710,7 @@ errcode_for_file_access(void)
             /* All else is classified as internal errors */
         default:
             edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
+            edata->omit_location = false;
             break;
     }
 
@@ -736,6 +747,7 @@ errcode_for_socket_access(void)
             /* All else is classified as internal errors */
         default:
             edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
+            edata->omit_location = false;
             break;
     }
 
@@ -2627,7 +2639,7 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
                   int stacksize, bool amsyslogger)
 {
 #ifndef WIN32
-#if (!defined(__darwin__) && !defined(_AIX))
+#if !defined(_AIX)
     int stack_no;
     const int SYMBOL_SIZE = 512;
     char symbol[SYMBOL_SIZE]; /* a reasonable size for a symbol */
@@ -2636,17 +2648,22 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
     {
         Dl_info dli;
         int symbol_len;
+
+
         FILE * fd;
+        bool addr2line_ok = false;
         char cmd[1024];
         char cmdresult[SYMBOL_SIZE];
         int cmdreslen;
-        bool addr2line_ok = false;
-#ifdef pg_on_solaris
-        const char * prog = "gaddr2line";
+
+#if defined(__darwin__)
+        const char * prog = "atos -o";
+#elif pg_on_solaris
+        const char * prog = "gaddr2line -s -e";
 #else
-        const char * prog = "addr2line";
+        const char * prog = "addr2line -s -e";
 #endif
-        snprintf(cmd,1024,"%s -s -e %s %p ",prog,my_exec_path,stackarray[stack_no]);
+        snprintf(cmd,1024,"%s %s %p ",prog,my_exec_path,stackarray[stack_no]);
 
         cmdresult[0] = '\0';
         fd = popen(cmd,"r");
@@ -2665,7 +2682,7 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
 
         if (fd != NULL)
         pclose(fd);
-        
+
 
         if (addr2line_ok)
         {
@@ -2850,7 +2867,6 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
     syslogger_write_int32(true, "", edata->lineno, amsyslogger, true); 
 
     /* stack trace */
-#if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
         
     if (edata->elevel >= ERROR &&
@@ -2864,13 +2880,10 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
     {
         
 #endif
-#endif
         append_stacktrace(NULL, NULL, 0, amsyslogger);
 
-#if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
     }
-#endif
 #endif
 
     /* EOL */
