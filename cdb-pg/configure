@@ -3821,6 +3821,15 @@ else
   fi
 fi
 
+# For GPDB, Use C99, rather than C89, compile rules
+if test "$GCC" = yes; then
+  if test "$ICC" = yes; then
+    CFLAGS="$CFLAGS -c99 "
+  else
+    CFLAGS="$CFLAGS -std=gnu99 "
+  fi
+fi
+
 # Some versions of GCC support some additional useful warning flags.
 # Check whether they are supported, and add them to CFLAGS if so.
 # ICC pretends to be GCC but it's lying; it doesn't support these flags,
