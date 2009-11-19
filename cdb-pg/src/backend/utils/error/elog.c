@@ -81,12 +81,20 @@
 
 #include "miscadmin.h"
 
-//#if defined(pg_on_solaris) || defined(__GLIBC__)
+/*
+ * dlfcn.h on OSX only has dladdr visible if _DARWIN_C_SOURCE is defined.
+ */
 #define _DARWIN_C_SOURCE 1
 #define _STDBOOL_H_
 #include <dlfcn.h>
+/*
+ * Argh... dlfcn.h on OSX pulls in stdbool.h, changing the type of bool from our
+ * definition (char) to gcc's definition (unsigned char if C99, int if not).
+ * For some reason the #define _STDBOOL_H_ isn't preventing this.  So, we need to undef bool
+ * to get back to our bool type.
+ */
 #undef bool
-//#endif
+
 
 #undef _
 #define _(x) err_gettext(x)
@@ -174,11 +182,12 @@ static void elog_debug_linger(ErrorData *edata);
 //static void setup_formatted_log_time(void);
 static void setup_formatted_start_time(void);
 
-
+/*
+ * OpenSolaris has this header, but Solaris 10 doesn't.
+ * Linux and OSX 10.5 have it.
+ */
 #if !defined(pg_on_solaris)
-#if defined(__GLIBC__)
 #include <execinfo.h>
-#endif
 #endif
 
 /*
@@ -417,11 +426,7 @@ errstart(int elevel, const char *filename, int lineno,
     /* errno is saved here so that error parameter eval can't change it */
     edata->saved_errno = errno;
 
-
-#if defined(__GLIBC__) || defined(pg_on_solaris)
     edata->stacktracesize = backtrace(edata->stacktracearray, 30);
-#endif
-
 
     recursion_depth--;
     return true;
@@ -2872,8 +2877,7 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
     syslogger_write_int32(true, "", edata->lineno, amsyslogger, true); 
 
     /* stack trace */
-#if defined(__GLIBC__) || defined(pg_on_solaris)
-        
+
     if (edata->elevel >= ERROR &&
         (edata->elevel == PANIC || !edata->omit_location) &&
         edata->stacktracesize > 0 &&
@@ -2883,13 +2887,8 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
     }
     else
     {
-        
-#endif
         append_stacktrace(NULL, NULL, 0, amsyslogger);
-
-#if defined(__GLIBC__) || defined(pg_on_solaris)
     }
-#endif
 
     /* EOL */
     if (amsyslogger)
@@ -3035,9 +3034,7 @@ write_message_to_server_log(int elevel,
     append_string_to_pipe_chunk(&buffer, filename);
         
     /* stacktrace */
-#if (!defined(__darwin__))
-#if defined(__GLIBC__) || defined(pg_on_solaris)
-        
+
     if (elevel >= ERROR &&
         (elevel == PANIC || !omit_location) &&
         stacktracesize > 0 &&
@@ -3047,16 +3044,8 @@ write_message_to_server_log(int elevel,
     }
     else
     {
-        
-#endif
-#endif
         append_stacktrace(&buffer, NULL, 0, false);
-
-#if (!defined(__darwin__))
-#if defined(__GLIBC__) || defined(pg_on_solaris)
     }
-#endif
-#endif	
 
     /* Send the last chunk */
     buffer.hdr.is_last = 't';
@@ -3227,8 +3216,7 @@ send_message_to_server_log(ErrorData *edata)
         appendStringInfoChar(&buf, '\n');
     }
 
-#if (!defined(__darwin__))
-#if defined(__GLIBC__) || defined(pg_on_solaris)
+
         
     if (edata->elevel >= ERROR &&
         (edata->elevel == PANIC || !edata->omit_location) &&
@@ -3250,8 +3238,7 @@ send_message_to_server_log(ErrorData *edata)
             free(strings);
         }
     }
-#endif
-#endif
+
 
 #ifdef HAVE_SYSLOG
     /* Write to syslog, if enabled */
