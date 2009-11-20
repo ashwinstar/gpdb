@@ -66,6 +66,12 @@ def parseargs():
         print "batchsize must be between 1 and 250"
         parser.exit()
 
+    # other validations
+    USER=os.getenv('USER')
+    if USER is None or USER is ' ':
+        sys.exit('Please set USER environment variable')
+
+
     # master db setup
     if options.pause:
         try:
@@ -97,9 +103,10 @@ def create_host_datadir_map(gparray):
             continue
 
         if seg.hostname in hosts:
-            hosts[seg.hostname].append("\n")
-            hosts[seg.hostname].append( seg.get_gp_configuration_string() )
+            # append next config string
+            hosts[seg.hostname] = hosts[seg.hostname] + "\n" + seg.get_gp_configuration_string()
         else:
+            # first config string for this host
             hosts[seg.hostname]  = seg.get_gp_configuration_string()
 
     return hosts
