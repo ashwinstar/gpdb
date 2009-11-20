@@ -289,3 +289,18 @@
 /* Define to activate features from IEEE Stds 1003.1-2001 */
 #define _POSIX_C_SOURCE 200112L
 #endif
+
+/*
+ * Solaris likes this to be defined if we define _XOPEN_SOURCE, otherwise
+ * they turn off anything they think is an extension to XOPEN
+ */
+#ifndef __EXTENSIONS__
+#define __EXTENSIONS__ 1
+#endif
+
+/*
+ * OSX (darwin) wants this if XOPEN_SOURCE is defined
+ */
+#ifndef _DARWIN_C_SOURCE
+#define _DARWIN_C_SOURCE 1
+#endif 
