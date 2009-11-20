@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/auth.c,v 1.183 2009/06/25 11:30:08 mha Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/auth.c,v 1.183.2.3 2009/10/16 22:08:42 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,7 +22,7 @@
 #include <sys/ucred.h>
 #endif
 #ifdef HAVE_UCRED_H
-# include <ucred.h>
+#include <ucred.h>
 #endif
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -40,7 +40,7 @@ int     getpeereid(int, uid_t *__restrict__, gid_t *__restrict__);
 #endif
 
 /*----------------------------------------------------------------
- * Global authentication functions 
+ * Global authentication functions
  *----------------------------------------------------------------
  */
 static void sendAuthRequest(Port *port, AuthRequest areq);
@@ -59,7 +59,7 @@ static int	recv_and_check_password_packet(Port *port);
 /* Standard TCP port number for Ident service.	Assigned by IANA */
 #define IDENT_PORT 113
 
-static int  authident(hbaPort *port);
+static int	authident(hbaPort *port);
 
 
 /*----------------------------------------------------------------
@@ -85,7 +85,6 @@ static int pam_passwd_conv_proc(int num_msg, struct pam_message **msg,
 static int pam_passwd_conv_proc(int num_msg, const struct pam_message ** msg,
                      struct pam_response ** resp, void *appdata_ptr);
 #endif
-
 
 static struct pam_conv pam_passw_conv = {
 	&pam_passwd_conv_proc,
@@ -147,7 +146,7 @@ bool		pg_krb_caseins_users;
  *----------------------------------------------------------------
  */
 #ifdef KRB5
-static int pg_krb5_recvauth(Port *port);
+static int	pg_krb5_recvauth(Port *port);
 
 #include <krb5.h>
 /* Some old versions of Kerberos do not include <com_err.h> in <krb5.h> */
@@ -162,7 +161,7 @@ static int	pg_krb5_initialised;
 static krb5_context pg_krb5_context;
 static krb5_keytab pg_krb5_keytab;
 static krb5_principal pg_krb5_server;
-#endif /* KRB5 */
+#endif   /* KRB5 */
 
 
 /*----------------------------------------------------------------
@@ -191,6 +190,21 @@ typedef		SECURITY_STATUS
 static int pg_SSPI_recvauth(Port *port);
 #endif
 
+
+/*
+ * Maximum accepted size of GSS and SSPI authentication tokens.
+ *
+ * Kerberos tickets are usually quite small, but the TGTs issued by Windows
+ * domain controllers include an authorization field known as the Privilege
+ * Attribute Certificate (PAC), which contains the user's Windows permissions
+ * (group memberships etc.). The PAC is copied into all tickets obtained on
+ * the basis of this TGT (even those issued by Unix realms which the Windows
+ * realm trusts), and can be several kB in size. The maximum token size
+ * accepted by Windows systems is determined by the MaxAuthToken Windows
+ * registry setting. Microsoft recommends that it is not set higher than
+ * 65535 bytes, so that seems like a reasonable limit for us as well.
+ */
+#define PG_MAX_AUTH_TOKEN_LENGTH	65535
 
 
 /*----------------------------------------------------------------
@@ -437,7 +451,6 @@ ClientAuthentication(Port *port)
 
 		case uaPAM:
 #ifdef USE_PAM
-			pam_port_cludge = port;
 			status = CheckPAMAuth(port, port->user_name, "");
 #else
 			Assert(false);
@@ -782,7 +795,7 @@ pg_krb5_recvauth(Port *port)
 			}
 		}
 	}
-	else if (port->hba->krb_realm&& strlen(port->hba->krb_realm))
+	else if (port->hba->krb_realm && strlen(port->hba->krb_realm))
 	{
 		elog(DEBUG2,
 			 "krb5 did not return realm but realm matching was requested");
@@ -903,8 +916,8 @@ pg_GSS_recvauth(Port *port)
 		 */
 		if (getenv("KRB5_KTNAME") == NULL)
 		{
-			size_t	kt_len = strlen(pg_krb_server_keyfile) + 14;
-			char   *kt_path = malloc(kt_len);
+			size_t		kt_len = strlen(pg_krb_server_keyfile) + 14;
+			char	   *kt_path = malloc(kt_len);
 
 			if (!kt_path)
 			{
@@ -953,7 +966,7 @@ pg_GSS_recvauth(Port *port)
 
 		/* Get the actual GSS token */
 		initStringInfo(&buf);
-		if (pq_getmessage(&buf, 2000))
+		if (pq_getmessage(&buf, PG_MAX_AUTH_TOKEN_LENGTH))
 		{
 			/* EOF - pq_getmessage already logged error */
 			pfree(buf.data);
@@ -1191,7 +1204,7 @@ pg_SSPI_recvauth(Port *port)
 
 		/* Get the actual SSPI token */
 		initStringInfo(&buf);
-		if (pq_getmessage(&buf, 2000))
+		if (pq_getmessage(&buf, PG_MAX_AUTH_TOKEN_LENGTH))
 		{
 			/* EOF - pq_getmessage already logged error */
 			pfree(buf.data);
@@ -1371,8 +1384,8 @@ pg_SSPI_recvauth(Port *port)
 	 */
 	if (port->hba->include_realm)
 	{
-		char   *namebuf;
-		int		retval;
+		char	   *namebuf;
+		int			retval;
 
 		namebuf = palloc(strlen(accountname) + strlen(domainname) + 2);
 		sprintf(namebuf, "%s@%s", accountname, domainname);
@@ -1713,9 +1726,9 @@ ident_unix(int sock, char *ident_user)
 	/* Solaris > 10 */
 	uid_t		uid;
 	struct passwd *pass;
-	ucred_t	   *ucred;
+	ucred_t    *ucred;
 
-	ucred = NULL; /* must be initialized to NULL */
+	ucred = NULL;				/* must be initialized to NULL */
 	if (getpeerucred(sock, &ucred) == -1)
 	{
 		ereport(LOG,
@@ -1888,61 +1901,31 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message ** msg,
 					 struct pam_response ** resp, void *appdata_ptr)
 #endif
 {
-	if (num_msg != 1 || msg[0]->msg_style != PAM_PROMPT_ECHO_OFF)
-	{
-		switch (msg[0]->msg_style)
-		{
-			case PAM_ERROR_MSG:
-				ereport(LOG,
-						(errmsg("error from underlying PAM layer: %s",
-								msg[0]->msg)));
-				return PAM_CONV_ERR;
-			default:
-				ereport(LOG,
-						(errmsg("unsupported PAM conversation %d/%s",
-								msg[0]->msg_style, msg[0]->msg)));
-				return PAM_CONV_ERR;
-		}
-	}
+	char	   *passwd;
+	struct pam_response *reply;
+	int			i;
 
-	if (!appdata_ptr)
+	if (appdata_ptr)
+		passwd = (char *) appdata_ptr;
+	else
 	{
 		/*
 		 * Workaround for Solaris 2.6 where the PAM library is broken and does
 		 * not pass appdata_ptr to the conversation routine
 		 */
-		appdata_ptr = pam_passwd;
+		passwd = pam_passwd;
 	}
 
-	/*
-	 * Password wasn't passed to PAM the first time around - let's go ask the
-	 * client to send a password, which we then stuff into PAM.
-	 */
-	if (strlen(appdata_ptr) == 0)
-	{
-		char	   *passwd;
+	*resp = NULL;				/* in case of error exit */
 
-		sendAuthRequest(pam_port_cludge, AUTH_REQ_PASSWORD);
-		passwd = recv_password_packet(pam_port_cludge);
-
-		if (passwd == NULL)
-			return PAM_CONV_ERR;	/* client didn't want to send password */
-
-		if (strlen(passwd) == 0)
-		{
-			ereport(LOG,
-					(errmsg("empty password returned by client")));
-			return PAM_CONV_ERR;
-		}
-		appdata_ptr = passwd;
-	}
+	if (num_msg <= 0 || num_msg > PAM_MAX_NUM_MSG)
+		return PAM_CONV_ERR;
 
 	/*
 	 * Explicitly not using palloc here - PAM will free this memory in
 	 * pam_end()
 	 */
-	*resp = calloc(num_msg, sizeof(struct pam_response));
-	if (!*resp)
+	if ((reply = calloc(num_msg, sizeof(struct pam_response))) == NULL)
 	{
 		ereport(LOG,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -1950,10 +1933,71 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message ** msg,
 		return PAM_CONV_ERR;
 	}
 
-	(*resp)[0].resp = strdup((char *) appdata_ptr);
-	(*resp)[0].resp_retcode = 0;
+	for (i = 0; i < num_msg; i++)
+	{
+		switch (msg[i]->msg_style)
+		{
+			case PAM_PROMPT_ECHO_OFF:
+				if (strlen(passwd) == 0)
+				{
+					/*
+					 * Password wasn't passed to PAM the first time around -
+					 * let's go ask the client to send a password, which we
+					 * then stuff into PAM.
+					 */
+					sendAuthRequest(pam_port_cludge, AUTH_REQ_PASSWORD);
+					passwd = recv_password_packet(pam_port_cludge);
+					if (passwd == NULL)
+					{
+						/*
+						 * Client didn't want to send password.  We
+						 * intentionally do not log anything about this.
+						 */
+						goto fail;
+					}
+					if (strlen(passwd) == 0)
+					{
+						ereport(LOG,
+								(errmsg("empty password returned by client")));
+						goto fail;
+					}
+				}
+				if ((reply[i].resp = strdup(passwd)) == NULL)
+					goto fail;
+				reply[i].resp_retcode = PAM_SUCCESS;
+				break;
+			case PAM_ERROR_MSG:
+				ereport(LOG,
+						(errmsg("error from underlying PAM layer: %s",
+								msg[i]->msg)));
+				/* FALL THROUGH */
+			case PAM_TEXT_INFO:
+				/* we don't bother to log TEXT_INFO messages */
+				if ((reply[i].resp = strdup("")) == NULL)
+					goto fail;
+				reply[i].resp_retcode = PAM_SUCCESS;
+				break;
+			default:
+				elog(LOG, "unsupported PAM conversation %d/\"%s\"",
+					 msg[i]->msg_style,
+					 msg[i]->msg ? msg[i]->msg : "(none)");
+				goto fail;
+		}
+	}
 
-	return ((*resp)[0].resp ? PAM_SUCCESS : PAM_CONV_ERR);
+	*resp = reply;
+	return PAM_SUCCESS;
+
+fail:
+	/* free up whatever we allocated */
+	for (i = 0; i < num_msg; i++)
+	{
+		if (reply[i].resp != NULL)
+			free(reply[i].resp);
+	}
+	free(reply);
+
+	return PAM_CONV_ERR;
 }
 
 
@@ -1967,10 +2011,12 @@ CheckPAMAuth(Port *port, char *user, char *password)
 	pam_handle_t *pamh = NULL;
 
 	/*
-	 * Apparently, Solaris 2.6 is broken, and needs ugly static variable
-	 * workaround
+	 * We can't entirely rely on PAM to pass through appdata --- it appears
+	 * not to work on at least Solaris 2.6.  So use these ugly static
+	 * variables instead.
 	 */
 	pam_passwd = password;
+	pam_port_cludge = port;
 
 	/*
 	 * Set the application data portion of the conversation struct This is
@@ -2073,7 +2119,7 @@ CheckLDAPAuth(Port *port)
 	int			ldapversion = LDAP_VERSION3;
 	char		fulluser[NAMEDATALEN + 256 + 1];
 
-	if (!port->hba->ldapserver|| port->hba->ldapserver[0] == '\0')
+	if (!port->hba->ldapserver || port->hba->ldapserver[0] == '\0')
 	{
 		ereport(LOG,
 				(errmsg("LDAP server not specified")));
