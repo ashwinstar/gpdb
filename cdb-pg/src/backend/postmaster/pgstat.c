@@ -308,7 +308,7 @@ static void pgstat_recv_funcpurge(PgStat_MsgFuncpurge *msg, int len);
 void
 pgstat_init(void)
 {
-	ACCEPT_TYPE_ARG3 alen;
+	socklen_t	alen;
 	struct addrinfo *addrs = NULL,
 			   *addr,
 				hints;
