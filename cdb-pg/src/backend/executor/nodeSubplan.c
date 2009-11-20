@@ -1067,12 +1067,18 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			ExecUpdateTransportState(planstate, queryDesc->estate->interconnect_context);
 
 			/*
-			 * MPP-7504/MPP-7448: we used to call
-			 * verify_shared_snapshot_ready here for all queries with
-			 * queryDesc->cursor_query. But now that gets called
-			 * inside the dispatcher because we may evaluate some
-			 * functions which recursively dispatch.
+			 * MPP-7504/MPP-7448: the pre-dispatch function evaluator
+			 * may mess up our snapshot-sync mechanism. So we've
+			 * called verify_shared_snapshot() down in the dispatcher.
 			 */
+			if (queryDesc->cursor_query)
+			{
+				/*
+				 * We rewind the segmateSync value since the InitPlan can
+				 * share the same value with its parent plan. See MPP-4504.
+				 */
+				DtxContextInfo_RewindSegmateSync();
+			}
 		}
 
 		/*
