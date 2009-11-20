@@ -471,6 +471,119 @@ check_xact_readonly(Node *parsetree)
 	}
 }
 
+/*
+ * Process one relation in a drop statement.
+ */
+static bool
+ProcessDropStatement(DropStmt *stmt)
+{
+	ListCell   *arg;
+	bool		dispatchDrop = true;
+
+	Assert(list_length(stmt->objects) == 1);
+
+	foreach(arg, stmt->objects)
+	{
+		List	   *names = (List *) lfirst(arg);
+		RangeVar   *rel;
+
+		/*
+		 * MPP-2879: We don't yet have locks, if we
+		 * noticed that we don't have permission to drop
+		 * on the QD, we *must* not dispatch -- we may be
+		 * racing other DDL. Multiple creates/drops racing
+		 * each other will produce very bad problems.
+		 */
+		switch (stmt->removeType)
+		{
+			case OBJECT_TABLE:
+				rel = makeRangeVarFromNameList(names);
+				if (CheckDropPermissions(rel, RELKIND_RELATION,
+										 stmt->missing_ok))
+					RemoveRelation(rel, stmt->behavior, stmt);
+				else
+					dispatchDrop = false;
+				break;
+
+			case OBJECT_EXTTABLE:
+				rel = makeRangeVarFromNameList(names);
+				if (CheckDropPermissions(rel, RELKIND_EXTERNAL,
+										 stmt->missing_ok))
+					RemoveRelation(rel, stmt->behavior, stmt);
+				else
+					dispatchDrop = false;
+				break;
+							
+
+			case OBJECT_SEQUENCE:
+				rel = makeRangeVarFromNameList(names);
+				if (CheckDropPermissions(rel, RELKIND_SEQUENCE,
+										 stmt->missing_ok))
+					RemoveRelation(rel, stmt->behavior, stmt);
+				else
+					dispatchDrop = false;
+				break;
+
+			case OBJECT_VIEW:
+				rel = makeRangeVarFromNameList(names);
+				if (CheckDropPermissions(rel, RELKIND_VIEW,
+										 stmt->missing_ok))
+					RemoveView(rel, stmt->behavior);
+				else
+					dispatchDrop = false;
+				break;
+
+			case OBJECT_INDEX:
+				rel = makeRangeVarFromNameList(names);
+				if (CheckDropPermissions(rel, RELKIND_INDEX,
+										 stmt->missing_ok))
+					RemoveIndex(rel, stmt->behavior);
+				else
+					dispatchDrop = false;
+				break;
+
+			case OBJECT_TYPE:
+				/* RemoveType does its own permissions checks */
+				RemoveType(names, stmt->behavior,
+						   stmt->missing_ok);
+				break;
+
+			case OBJECT_DOMAIN:
+
+				/*
+				 * RemoveDomain does its own permissions checks
+				 */
+				RemoveDomain(names, stmt->behavior,
+							 stmt->missing_ok);
+				break;
+
+			case OBJECT_CONVERSION:
+				DropConversionCommand(names, stmt->behavior,
+									  stmt->missing_ok);
+				break;
+
+			case OBJECT_SCHEMA:
+
+				/*
+				 * RemoveSchema does its own permissions checks
+				 */
+				RemoveSchema(names, stmt->behavior,
+							 stmt->missing_ok);
+				break;
+
+			default:
+				elog(ERROR, "unrecognized drop object type: %d",
+					 (int) stmt->removeType);
+				break;
+		}
+
+		/*
+		 * We used to need to do CommandCounterIncrement() here,
+		 * but now it's done inside performDeletion().
+		 */
+	}
+	return dispatchDrop;
+}
 
 /*
  * ProcessUtility
@@ -793,130 +906,33 @@ ProcessUtility(Node *parsetree,
 			{
 				DropStmt   *stmt = (DropStmt *) parsetree;
 				ListCell   *arg;
-				bool		dispatchDrop = true;
+				List       *objects;
+				bool       if_exists;
 
-				foreach(arg, stmt->objects)
+				if_exists = stmt->missing_ok;
+				objects = stmt->objects;
+
+				foreach(arg, objects)
 				{
-					List	   *names = (List *) lfirst(arg);
-					RangeVar   *rel;
+					List	   *names = (List *)lfirst(arg);
 
-					/*
-					 * MPP-2879: We don't yet have locks, if we
-					 * noticed that we don't have permission to drop
-					 * on the QD, we *must* not dispatch -- we may be
-					 * racing other DDL. Multiple creates/drops racing
-					 * each other will produce very bad problems.
-					 */
-					switch (stmt->removeType)
+					stmt->objects = NIL;
+					stmt->objects = lappend(stmt->objects, list_copy(names));
+					stmt->missing_ok = if_exists;
+
+					if (ProcessDropStatement(stmt))
 					{
-						case OBJECT_TABLE:
-							rel = makeRangeVarFromNameList(names);
-							if (CheckDropPermissions(rel, RELKIND_RELATION,
-													 stmt->missing_ok) &&
-								CheckDropRelStorage(rel, false))
-								RemoveRelation(rel, stmt->behavior, stmt);
-							else
-								dispatchDrop = false;
-							break;
-
-						case OBJECT_EXTTABLE:
-							rel = makeRangeVarFromNameList(names);
-							if (CheckDropPermissions(rel, RELKIND_RELATION,
-													 stmt->missing_ok) &&
-								CheckDropRelStorage(rel, true))
-								RemoveRelation(rel, stmt->behavior, stmt);
-							else
-								dispatchDrop = false;
-							break;
-
-
-						case OBJECT_SEQUENCE:
-							rel = makeRangeVarFromNameList(names);
-							if (CheckDropPermissions(rel, RELKIND_SEQUENCE,
-													 stmt->missing_ok))
-								RemoveRelation(rel, stmt->behavior, stmt);
-							else
-								dispatchDrop = false;
-							break;
-
-						case OBJECT_VIEW:
-							rel = makeRangeVarFromNameList(names);
-							if (CheckDropPermissions(rel, RELKIND_VIEW,
-													 stmt->missing_ok))
-								RemoveView(rel, stmt->behavior);
-							else
-								dispatchDrop = false;
-							break;
-
-						case OBJECT_INDEX:
-							rel = makeRangeVarFromNameList(names);
-							if (CheckDropPermissions(rel, RELKIND_INDEX,
-													 stmt->missing_ok))
-								RemoveIndex(rel, stmt->behavior);
-							else
-								dispatchDrop = false;
-							break;
-
-						case OBJECT_TYPE:
-							/* RemoveType does its own permissions checks */
-							RemoveType(names, stmt->behavior,
-									   stmt->missing_ok);
-							break;
-
-						case OBJECT_DOMAIN:
-
-							/*
-							 * RemoveDomain does its own permissions checks
-							 */
-							RemoveDomain(names, stmt->behavior,
-										 stmt->missing_ok);
-							break;
-
-						case OBJECT_CONVERSION:
-							DropConversionCommand(names, stmt->behavior,
-												  stmt->missing_ok);
-							break;
-
-						case OBJECT_SCHEMA:
-
-							/*
-							 * RemoveSchema does its own permissions checks
-							 */
-							RemoveSchema(names, stmt->behavior,
-										 stmt->missing_ok);
-							break;
-
-						case OBJECT_FILESPACE:
-							/* RemoveFileSpace checks permissions */
-							RemoveFileSpace(names, stmt->behavior, 
-											stmt->missing_ok);
-							break;
-
-						case OBJECT_TABLESPACE:
-							/* RemoveFileSpace checks permissions */
-							RemoveTableSpace(names, stmt->behavior, 
-											 stmt->missing_ok);
-							break;
-
-						default:
-							elog(ERROR, "unrecognized drop object type: %d",
-								 (int) stmt->removeType);
-							break;
+						/*
+						 * If we are the QD, dispatch this DROP command to all the QEs
+						 * NOTE: on the segments we convert all drop-statements into
+						 * drop-if-exists.
+						 */
+						if (Gp_role == GP_ROLE_DISPATCH)
+						{
+							stmt->missing_ok = true;
+							CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+						}
 					}
-
-					/*
-					 * We used to need to do CommandCounterIncrement() here,
-					 * but now it's done inside performDeletion().
-					 */
-				}
-
-				/*
-				 * If we are the QD, dispatch this DROP command to all the QEs
-				 */
-				if (Gp_role == GP_ROLE_DISPATCH && dispatchDrop)
-				{
-					stmt->missing_ok=true;
-					CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
 				}
 			}
 			break;
