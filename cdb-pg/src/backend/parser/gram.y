@@ -7770,28 +7770,28 @@ CreateConversionStmt:
 /*****************************************************************************
  *
  *		QUERY:
- *				cluster <index_name> on <qualified_name>
- *				cluster <qualified_name>
- *				cluster
+ *				CLUSTER [VERBOSE] <qualified_name> [ USING <index_name> ]
+ *				CLUSTER [VERBOSE]
+ *				CLUSTER [VERBOSE] <index_name> ON <qualified_name> (for pre-8.3)
  *
  *****************************************************************************/
 
 ClusterStmt:
-			CLUSTER index_name ON qualified_name
+			CLUSTER opt_verbose index_name ON qualified_name
 				{
 				   ClusterStmt *n = makeNode(ClusterStmt);
-				   n->relation = $4;
-				   n->indexname = $2;
+				   n->relation = $5;
+				   n->indexname = $3;
 				   $$ = (Node*)n;
 				}
-			| CLUSTER qualified_name
+			| CLUSTER opt_verbose qualified_name
 				{
 			       ClusterStmt *n = makeNode(ClusterStmt);
-				   n->relation = $2;
+				   n->relation = $3;
 				   n->indexname = NULL;
 				   $$ = (Node*)n;
 				}
-			| CLUSTER
+			| CLUSTER opt_verbose
 			    {
 				   ClusterStmt *n = makeNode(ClusterStmt);
 				   n->relation = NULL;
