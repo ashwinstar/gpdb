@@ -647,9 +647,11 @@ else
 	scp -r client/install/src/windows/* build@harpy:packaging/src/windows/
 	ssh build@harpy 'rm -rf packaging/$(notdir $(CONNECTIVITYINSTLOC))'
 	scp -r $(CONNECTIVITYINSTLOC) build@harpy:packaging/
-	ssh build@harpy 'cd packaging/src/windows/ && make PACKAGE=greenplum-$@ VERSION=$(VERSION)'
+	ssh build@harpy 'cd packaging/src/windows/ && make PACKAGE=greenplum-$@ VERSION=$(VERSION) SRCDIR=../../$(notdir $(CONNECTIVITYINSTLOC))'
 	scp build@harpy:packaging/greenplum-$@-$(VERSION)-WinXP-x86_32.msi .
 	chmod 755 greenplum-$@-$(VERSION)-WinXP-x86_32.msi
+	ssh build@harpy 'rm -rf packaging/src/windows'
+	ssh build@harpy 'rm -rf packaging/$(notdir $(CONNECTIVITYINSTLOC))'
 endif
 	# ---- create the pyodbc package(s) ----
 	for i in unixodbc-2.2.11 unixodbc-2.2.12 unixodbc-2.2.14 datadirect-5.1sp2 datadirect-5.2; do \
@@ -696,9 +698,11 @@ else
 	scp -r client/install/src/windows/* build@harpy:packaging/src/windows/
 	ssh build@harpy 'rm -rf packaging/$(notdir $(CLIENTINSTLOC))'
 	scp -r $(CLIENTINSTLOC) build@harpy:packaging/
-	ssh build@harpy 'cd packaging/src/windows/ && make PACKAGE=greenplum-$@ VERSION=$(VERSION)'
+	ssh build@harpy 'cd packaging/src/windows/ && make PACKAGE=greenplum-$@ VERSION=$(VERSION) SRCDIR=../../$(notdir $(CLIENTINSTLOC))'
 	scp build@harpy:packaging/greenplum-$@-$(VERSION)-WinXP-x86_32.msi .
 	chmod 755 greenplum-$@-$(VERSION)-WinXP-x86_32.msi
+	ssh build@harpy 'rm -rf packaging/src/windows'
+	ssh build@harpy 'rm -rf packaging/$(notdir $(CLIENTINSTLOC))'
 endif
 endif
 
@@ -754,9 +758,11 @@ else
 	scp -r client/install/src/windows/* build@harpy:packaging/src/windows/
 	ssh build@harpy 'rm -rf packaging/$(notdir $(LOADERSINSTLOC))'
 	scp -r $(LOADERSINSTLOC) build@harpy:packaging/
-	ssh build@harpy 'cd packaging/src/windows/ && make PACKAGE=greenplum-$@ VERSION=$(VERSION)'
+	ssh build@harpy 'cd packaging/src/windows/ && make PACKAGE=greenplum-$@ VERSION=$(VERSION) SRCDIR=../../$(notdir $(LOADERSINSTLOC))'
 	scp build@harpy:packaging/greenplum-$@-$(VERSION)-WinXP-x86_32.msi .
 	chmod 755 greenplum-$@-$(VERSION)-WinXP-x86_32.msi
+	ssh build@harpy 'rm -rf packaging/src/windows'
+	ssh build@harpy 'rm -rf packaging/$(notdir $(LOADERSINSTLOC))'
 endif
 endif
 
