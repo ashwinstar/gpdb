@@ -334,7 +334,12 @@ IsSharedRelation(Oid relationId)
 		relationId == GpPersistentDbDirsRelationId ||
 
 		/* MPP-6929: metadata tracking */
-		relationId == StatLastShOpRelationId)
+		relationId == StatLastShOpRelationId ||
+
+		/* MPP-6923: Resource Queue attribute flexibility */
+		relationId == ResourceTypeRelationId ||
+		relationId == ResQueueCapabilityRelationId 
+			)
 		return true;
 	/* These are their indexes (see indexing.h) */
 	if (relationId == AuthIdRolnameIndexId ||
@@ -372,7 +377,16 @@ IsSharedRelation(Oid relationId)
 
 		/* MPP-6929: metadata tracking */
 		relationId == StatLastShOpClassidObjidIndexId ||
-		relationId == StatLastShOpClassidObjidStaactionnameIndexId )
+		relationId == StatLastShOpClassidObjidStaactionnameIndexId ||
+
+		/* MPP-6923: Resource Queue attribute flexibility */
+		relationId == ResourceTypeOidIndexId ||
+		relationId == ResourceTypeRestypidIndexId ||
+		relationId == ResourceTypeResnameIndexId ||
+		relationId == ResQueueCapabilityOidIndexId ||
+		relationId == ResQueueCapabilityResqueuidIndexId ||
+		relationId == ResQueueCapabilityRestypidIndexId
+			)
 		return true;
 	/* These are their toast tables and toast indexes (see toasting.h) */
 	if (relationId == PgAuthidToastTable ||

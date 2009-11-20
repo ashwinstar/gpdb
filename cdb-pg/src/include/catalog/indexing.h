@@ -98,6 +98,20 @@ DECLARE_UNIQUE_INDEX(pg_resqueue_oid_index, 6027, on pg_resqueue using btree(oid
 DECLARE_UNIQUE_INDEX(pg_resqueue_rsqname_index, 6028, on pg_resqueue using btree(rsqname name_ops));
 #define ResQueueRsqnameIndexId	6028
 
+/* MPP-6923: Resource Queue attribute flexibility */
+DECLARE_UNIQUE_INDEX(pg_resourcetype_oid_index, 6061, on pg_resourcetype using btree(oid oid_ops));
+#define ResourceTypeOidIndexId	6061
+DECLARE_UNIQUE_INDEX(pg_resourcetype_restypid_index, 6062, on pg_resourcetype using btree(restypid int2_ops));
+#define ResourceTypeRestypidIndexId	6062
+DECLARE_UNIQUE_INDEX(pg_resourcetype_resname_index, 6063, on pg_resourcetype using btree(resname name_ops));
+#define ResourceTypeResnameIndexId	6063
+DECLARE_UNIQUE_INDEX(pg_resqueuecapability_oid_index, 6064, on pg_resqueuecapability using btree(oid oid_ops));
+#define ResQueueCapabilityOidIndexId	6064
+DECLARE_INDEX(pg_resqueuecapability_resqueueid_index, 6065, on pg_resqueuecapability using btree(resqueueid oid_ops));
+#define ResQueueCapabilityResqueuidIndexId	6065
+DECLARE_INDEX(pg_resqueuecapability_restypid_index, 6066, on pg_resqueuecapability using btree(restypid int2_ops));
+#define ResQueueCapabilityRestypidIndexId	6066
+
 DECLARE_UNIQUE_INDEX(pg_exttable_reloid_index, 6041, on pg_exttable using btree(reloid oid_ops));
 #define ExtTableRelOidIndexId  6041
 

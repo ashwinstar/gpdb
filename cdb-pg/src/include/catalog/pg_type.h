@@ -597,6 +597,13 @@ DATA(insert OID = 6443 ( gp_fault_strategy	    PGNSP PGUID -1 f c t \054 5039 0 
 DATA(insert OID = 6444 ( gp_san_config	    PGNSP PGUID -1 f c t \054 5035 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define GP_SAN_CONFIG_RELTYPE_OID 6444
 
+/* MPP-6923: Resource Queue attribute flexibility */
+DATA(insert OID = 6445 ( pg_resourcetype	    PGNSP PGUID -1 f c t \054 6059 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+#define PG_RESOURCETYPE_OID 6445
+DATA(insert OID = 6446 ( pg_resqueuecapability	    PGNSP PGUID -1 f c t \054 6060 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+#define PG_RESQUEUECAPABILITY_OID 6446
+
+
 /*
  * macros
  */

@@ -28,4 +28,12 @@ relname|relnamespace|reltype|relowner|relam|relfilenode|reltablespace|relpages|r
 6106|gp_segment_config_content_preferred_role_index|11|0|10|403|6106|1664|1|0|0|0|0|0|f|t|i|h|2|0|0|0|0|0|f|f|f|f|0|\N|\N
 6107|gp_segment_config_dbid_index|11|0|10|403|6107|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
 6111|gp_san_config_mountid_index|11|0|10|403|6111|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
+6059|pg_resourcetype|11|6445|10|0|6059|1664|1|0|0|0|0|0|t|t|r|h|2|0|0|0|0|0|t|f|f|f|897|{=r/@gpcurusername@}|\N
+6061|pg_resourcetype_oid_index|11|0|10|403|6061|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
+6062|pg_resourcetype_restypid_index|11|0|10|403|6062|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
+6063|pg_resourcetype_resname_index|11|0|10|403|6063|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
+6060|pg_resqueuecapability|11|6446|10|0|6060|1664|1|0|0|0|0|0|t|t|r|h|3|0|0|0|0|0|t|f|f|f|898|{=r/@gpcurusername@}|\N
+6064|pg_resqueuecapability_oid_index|11|0|10|403|6064|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
+6065|pg_resqueuecapability_resqueueid_index|11|0|10|403|6065|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
+6066|pg_resqueuecapability_restypid_index|11|0|10|403|6066|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
 \.

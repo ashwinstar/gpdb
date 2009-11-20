@@ -39,6 +39,7 @@
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_filespace_entry.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_resqueue.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
@@ -261,6 +262,14 @@ Boot_CreateStmt:
 								break;
 							case GpSegmentConfigRelationId:
 								typid = GP_SEGMENT_CONFIG_RELTYPE_OID;
+								break;
+
+							/* MPP-6923: ResQueue attribute flexibility */
+							case ResourceTypeRelationId:
+								typid = PG_RESOURCETYPE_OID;
+								break;
+							case ResQueueCapabilityRelationId:
+								typid = PG_RESQUEUECAPABILITY_OID;
 								break;
 
 							default:

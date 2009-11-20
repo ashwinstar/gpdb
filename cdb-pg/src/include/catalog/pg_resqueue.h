@@ -63,4 +63,53 @@ DATA(insert OID = 6055 ( pg_default 20 -1 f 0 ));
 
 #define DEFAULTRESQUEUE_OID 6055
 
+/* MPP-6923: Resource Queue attribute flexibility */
+
+#define ResourceTypeRelationId	6059
+CATALOG(pg_resourcetype,6059) BKI_SHARED_RELATION
+{
+	int2		restypid;		/* resource type id */
+	NameData	resname;		/* name of resource type */
+} FormData_pg_resourcetype;
+
+/* ----------------
+ *		Form_pg_resourcetype corresponds to a pointer to a tuple with
+ *		the format of pg_resourcetype relation.
+ * ----------------
+ */
+typedef FormData_pg_resourcetype *Form_pg_resourcetype;
+
+/* ----------------
+ *		compiler constants for pg_resourcetype
+ * ----------------
+ */
+#define Natts_pg_resourcetype					2
+#define Anum_pg_resourcetype_restypid			1
+#define Anum_pg_resourcetype_rsqname			2
+
+#define ResQueueCapabilityRelationId	6060
+CATALOG(pg_resqueuecapability,6060) BKI_SHARED_RELATION
+{
+	Oid			resqueueid;		/* OID of the queue with this capability */
+	int2		restypid;		/* resource type id (key to pg_resourcetype) */
+	text		ressetting;		/* resource setting (opaque type) */
+} FormData_pg_resqueuecapability;
+
+/* ----------------
+ *		Form_pg_resqueuecapability corresponds to a pointer to a tuple with
+ *		the format of pg_resqueuecapability relation.
+ * ----------------
+ */
+typedef FormData_pg_resqueuecapability *Form_pg_resqueuecapability;
+
+/* ----------------
+ *		compiler constants for pg_resqueuecapability
+ * ----------------
+ */
+#define Natts_pg_resqueuecapability					3
+#define Anum_pg_resqueuecapability_requeueid		1
+#define Anum_pg_resqueuecapability_restypid			2
+#define Anum_pg_resqueuecapability_ressetting		3
+
+
 #endif   /* PG_RESQUEUE_H */
