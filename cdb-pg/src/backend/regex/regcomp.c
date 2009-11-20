@@ -234,6 +234,7 @@ struct vars
 #define ISERR() VISERR(v)
 #define VERR(vv,e)	((vv)->nexttype = EOS, ((vv)->err) ? (vv)->err :\
 							((vv)->err = (e)))
+#undef ERR
 #define ERR(e)	VERR(v, e)		/* record an error */
 #define NOERR() {if (ISERR()) return;}	/* if error seen, return */
 #define NOERRN()	{if (ISERR()) return NULL;} /* NOERR with retval */
