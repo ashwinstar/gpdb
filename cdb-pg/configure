@@ -3823,16 +3823,12 @@ fi
 
 # For GPDB, Use C99, rather than C89, compile rules
 #
-# I set _XOPEN_SOURCE here, because on Solaris it changes
-# the datatype of the arguments to accept(), which means that we
-# need this set during configure, or configure will pick up the
-# wrong datatype.
 #
 if test "$GCC" = yes; then
   if test "$ICC" = yes; then
-    CFLAGS="$CFLAGS -c99 -D_XOPEN_SOURCE=600 "
+    CFLAGS="$CFLAGS -c99 "
   else
-    CFLAGS="$CFLAGS -std=gnu99 -D_XOPEN_SOURCE=600 "
+    CFLAGS="$CFLAGS -std=gnu99 "
   fi
 fi
 
