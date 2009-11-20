@@ -145,7 +145,7 @@ CreateQueue(CreateQueueStmt *stmt)
 	if(dignorelimit)
 	{
 		ignorelimit = (Cost) defGetNumeric(dignorelimit);
-		if (ignorelimit < 0)
+		if (!(ignorelimit == INVALID_RES_LIMIT_THRESHOLD || (ignorelimit > 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("ignore cost threshold cannot be less than %d or equal to 0", 
