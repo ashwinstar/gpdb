@@ -100,14 +100,12 @@ PLRDIR=greenplum-db$(RELEASE)-plr
 CLIENTDIR=greenplum-clients$(RELEASE)
 CONNECTIVITYDIR=greenplum-connectivity$(RELEASE)
 LOADERSDIR=greenplum-loaders$(RELEASE)
-PWXDIR=greenplum-pwx$(RELEASE)
 GPDOCDIR=$(CURDIR)/docs/release
 
 DISTPATH=$(GPROOT)/$(GPDIR)
 CLIENTDISTPATH=$(GPROOT)/$(CLIENTDIR)
 CONNECTIVITYDISTPATH=$(GPROOT)/$(CONNECTIVITYDIR)
 LOADERSDISTPATH=$(GPROOT)/$(LOADERSDIR)
-PWXDISTPATH=$(GPROOT)/$(PWXDIR)
 GPPERFMONDISTPATH=$(GPROOT)
 
 ifeq "$(DEVPATH)" ""
@@ -117,7 +115,6 @@ GPPERFMONDEVPATH=$(BLD_HOME)
 CLIENTDEVPATH=$(BLD_HOME)/$(CLIENTDIR)
 CONNECTIVITYDEVPATH=$(BLD_HOME)/$(CONNECTIVITYDIR)
 LOADERSDEVPATH=$(BLD_HOME)/$(LOADERSDIR)
-PWXDEVPATH=$(BLD_HOME)/$(PWXDIR)
 else
 # DEVPATH has been passed in as by the build scripts
 GPROOT_DEV=$(dir $(DEVPATH))
@@ -125,7 +122,6 @@ GPPERFMONDEVPATH=$(GPROOT_DEV)
 CLIENTDEVPATH=$(GPROOT_DEV)$(CLIENTDIR)
 CONNECTIVITYDEVPATH=$(GPROOT_DEV)$(CONNECTIVITYDIR)
 LOADERSDEVPATH=$(GPROOT_DEV)$(LOADERSDIR)
-PWXDEVPATH=$(GPROOT_DEV)$(PWXDIR)
 endif
 
 #ifeq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
@@ -293,7 +289,6 @@ define BUILD_STEPS
 	@$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
 	@$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
 	@$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
-	@$(MAKE) pwx INSTLOC=$(INSTLOC) PWXINSTLOC=$(PWXINSTLOC)
 	@$(MAKE) jetpack INSTLOC=$(INSTLOC)
 
 endef
@@ -346,7 +341,6 @@ define BUILD_STEPS
 	$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
 	$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
 	$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
-	$(MAKE) pwx INSTLOC=$(INSTLOC) PWXINSTLOC=$(PWXINSTLOC)
 	touch installcheck-good_SKIP
 endef
 endif
@@ -402,7 +396,6 @@ devel : INSTLOC=$(DEVPATH)
 devel : CLIENTINSTLOC=$(CLIENTDEVPATH)
 devel : CONNECTIVITYINSTLOC=$(CONNECTIVITYDEVPATH)
 devel : LOADERSINSTLOC=$(LOADERSDEVPATH)
-devel : PWXINSTLOC=$(PWXDEVPATH)
 devel : GPPERFMONINSTLOC=$(GPPERFMONDEVPATH)
 devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak --enable-depend
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
@@ -417,7 +410,6 @@ dist : INSTLOC=$(DISTPATH)
 dist : CLIENTINSTLOC=$(CLIENTDISTPATH)
 dist : CONNECTIVITYINSTLOC=$(CONNECTIVITYDISTPATH)
 dist : LOADERSINSTLOC=$(LOADERSDISTPATH)
-dist : PWXINSTLOC=$(PWXDISTPATH)
 dist : GPPERFMONINSTLOC=$(GPPERFMONDISTPATH)
 dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	$(BUILD_STEPS)
@@ -427,7 +419,6 @@ dist_prof : INSTLOC=$(DISTPATH)
 dist_prof : CLIENTINSTLOC=$(CLIENTDISTPATH)
 dist_prof : CONNECTIVITYINSTLOC=$(CONNECTIVITYDISTPATH)
 dist_prof : LOADERSINSTLOC=$(LOADERSDISTPATH)
-dist_prof : PWXINSTLOC=$(PWXDISTPATH)
 dist_prof : GPPERFMONINSTLOC=$(GPPERFMONDISTPATH)
 dist_prof : CONFIGFLAGS+= --enable-faultinjection 
 dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
@@ -436,7 +427,6 @@ dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 dist_faultinj : CLIENTINSTLOC=$(CLIENTDISTPATH)
 dist_faultinj : CONNECTIVITYINSTLOC=$(CONNECTIVITYDISTPATH)
 dist_faultinj : LOADERSINSTLOC=$(LOADERSDISTPATH)
-dist_faultinj : PWXINSTLOC=$(PWXDISTPATH)
 dist_faultinj : CONFIGFLAGS+= --enable-faultinjection --enable-debugbreak
 dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	$(BUILD_STEPS)
@@ -453,13 +443,11 @@ ifneq "$(GPROOT)" ""
 CLIENT_HOME_DIR=$(GPROOT)
 CONNECTIVITY_HOME_DIR=$(GPROOT)
 LOADERS_HOME_DIR=$(GPROOT)
-PWX_HOME_DIR=$(GPROOT)
 else
 CLIENT_HOME_DIR=$(BLD_HOME)
 CONNECTIVITY_HOME_DIR=$(BLD_HOME)
 dist_faultinj : CLIENTINSTLOC=$(CLIENTDISTPATH)
 LOADERS_HOME_DIR=$(BLD_HOME)
-PWX_HOME_DIR=$(BLD_HOME)
 endif
 
 CLIENTINSTLOC=$(CLIENT_HOME_DIR)/greenplum-clients
@@ -485,10 +473,6 @@ CONNECTIVITYINSTLOC_LIB=$(CONNECTIVITYINSTLOC)/lib
 CONNECTIVITYINSTLOC_INCLUDE=$(CONNECTIVITYINSTLOC)/include
 CONNECTIVITYINSTLOC_DOCS=$(CONNECTIVITYINSTLOC)/docs
 CONNECTIVITYINSTLOC_OPENSOURCE=$(CONNECTIVITYINSTLOC)/thirdparty
-
-PWXINSTLOC=$(PWX_HOME_DIR)/greenplum-pwx-devel
-PWXINSTLOC_BIN=$(PWXINSTLOC)/bin
-PWXINSTLOC_DOCS=$(PWXINSTLOC)/docs
 
 
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
@@ -767,32 +751,7 @@ endif
 endif
 
 pwx :
-ifeq "$(findstring pwx,$(BLD_TARGETS))" ""
-	# ---- build and packaging of the PWX package is currently disabled;
-	# ---- set BLD_TARGETS="pwx" to enable them.
-else
-ifneq "$(findstring win,$(BLD_ARCH))" "win"
-	# ---- create the installer ----
-	cd client/install/src/unix/ && \
-	  $(MAKE) TAR=$(TAR) VERSION=`perl -pe 's, ,-,g' ../../../../VERSION` $@ 
-else
-	# ---- copy binary fileset ----
-	mkdir -p $(PWXINSTLOC_BIN)
-	cp -rf client/install/src/windows/greenplum-pwx/* $(PWXINSTLOC_BIN)
-	# ---- copy docs fileset ----
-	mkdir -p $(PWXINSTLOC_DOCS)
-	cp -f client/docs/release/PWXGreenplum_UserGuide.pdf $(PWXINSTLOC_DOCS)
-	# ---- create the installer ----
-	ssh build@harpy 'rm -rf packaging/src/windows'
-	ssh build@harpy 'mkdir -p packaging/src/windows'
-	scp -r client/install/src/windows/* build@harpy:packaging/src/windows/
-	ssh build@harpy 'rm -rf packaging/$(notdir $(PWXINSTLOC))'
-	scp -r $(PWXINSTLOC) build@harpy:packaging/
-	ssh build@harpy 'cd packaging/src/windows/ && make PACKAGE=greenplum-$@ VERSION=$(VERSION)'
-	scp build@harpy:packaging/greenplum-$@-$(VERSION)-WinXP-x86_32.msi .
-	chmod 755 greenplum-$@-$(VERSION)-WinXP-x86_32.msi
-endif
-endif
+	# ---- build and packaging of the PWX package has been moved to //drivers/pwx/<branch>
 
 
 #---------------------------------------------------------------------
