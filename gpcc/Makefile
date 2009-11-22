@@ -33,7 +33,7 @@ SHELL=bash
 OPT=-g -O3
 LIBEVENT=libevent-1.4.3-stable
 OPENSSL=openssl-0.9.8h
-GP_VERSION=$$(< $(GPCC)/../VERSION)
+GP_VERSION:=$(shell cat $(GPCC)/../VERSION)
 
 # use gpcc/ext/ copies of libraries until prebuilt ones are ready
 ifeq "$(BLD_ARCH)" "win32"
