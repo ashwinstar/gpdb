@@ -11,16 +11,18 @@ CC=$(strip $(BLD_CC) $(BLD_CFLAGS))
 
 GPCC=$(CURDIR)
 CDBINCL=-I$(GPCC)/../cdb-pg/src/include
-GPFDISTFILES=fstream.c gfile.c gpfdist.c
 
 ifeq "$(BLD_ARCH)" "win32"
 override CC=$(strip /usr/local/mingw32/bin/mingw32-gcc $(BLD_CFLAGS))
 override BLD_CFLAGS += -L/usr/local/mingw32/mingw32/lib -I/usr/local/mingw32/mingw32/include -DWIN32 $(CDBINCL)/port/win32 $(CDBINCL)/port/win32_msvc -DFRONTEND
-override GPFDISTFILES += glob.c $(CURDIR)/../cdb-pg/src/port/dirent.c $(CURDIR)/../cdb-pg/src/port/strlcpy.c $(CURDIR)/../cdb-pg/src/port/win32error.c $(CURDIR)/../cdb-pg/src/port/snprintf.c
+GPFDISTFILES=gpfdist.c
+GPFDISTFILES_EXTRA=fstream.c gfile.c glob.c $(CURDIR)/../cdb-pg/src/port/dirent.c $(CURDIR)/../cdb-pg/src/port/strlcpy.c $(CURDIR)/../cdb-pg/src/port/win32error.c $(CURDIR)/../cdb-pg/src/port/snprintf.c
+GPFDISTOBJS_EXTRA=$(strip $(patsubst %.c,%.o,$(notdir $(GPFDISTFILES_EXTRA))))
 GPFDIST_INCLUDES=-I$(GPCC)/src/gpfdist/include
 GPFDIST_LIBS=-L$(CURDIR)/../cdb-pg/src/port -lpgport -lws2_32
 EXT_EXE=.exe
 else
+GPFDISTFILES=fstream.c gfile.c gpfdist.c
 GPFDIST_LIBS=-lz -lbz2
 endif
 
@@ -43,7 +45,8 @@ APRLIBS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --link-ld --libs)
 APULIBS= $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --link-ld --libs)
 CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
 ifeq "$(BLD_ARCH)" "win32"
-GPFDIST_CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags)
+GPFDIST_CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
+GPFDIST_CPPFLAGS_EXTRA=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags)
 else
 sol10_sparc_32_CPPFLAGS=-D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 sol9_sparc_32_CPPFLAGS=-D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
@@ -75,9 +78,14 @@ mkgpfdist: mkext
 	  ln -sf ../../../cdb-pg/src/backend/utils/misc/fstream/*.c .
 	mkdir -p src/gpfdist/include
 	perl -p -i -e 's,^prefix=.*$$,prefix="$(BLD_THIRDPARTY_DIR)",' $(BLD_THIRDPARTY_DIR)/bin/apr-1-config
+ifeq "$(BLD_ARCH)" "win32"
+	cd src/gpfdist/ && \
+	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(GPFDIST_CPPFLAGS_EXTRA) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -c \
+	  $(GPFDISTFILES_EXTRA)
+endif
 	cd src/gpfdist/ && \
 	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(GPFDIST_CPPFLAGS) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist$(EXT_EXE) \
-	  $(GPFDISTFILES) $(APRLIBS) -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
+	  $(GPFDISTFILES) $(GPFDISTOBJS_EXTRA) $(APRLIBS) -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
 	mkdir -p build/bin
 	cp -f src/gpfdist/gpfdist$(EXT_EXE) build/bin/
 
