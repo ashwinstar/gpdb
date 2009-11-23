@@ -782,6 +782,7 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
 				Assert( list_length(slice->directDispatch.contentIds) == 1);
 				appendStringInfo(str, " on content:%d)", linitial_int(slice->directDispatch.contentIds));
 			}
+			else appendStringInfo(str, ")");
 			break;
 
 		case GANGTYPE_MIRROR_WRITER:
