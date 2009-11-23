@@ -85,7 +85,6 @@ def parseargs():
     if USER is None or USER is ' ':
         sys.exit('Please set USER environment variable')
 
-
     # master db setup
     if options.pause:
         try:
@@ -139,19 +138,19 @@ def connectToSegmentHosts(hosts, doResume):
 
         pool.join()
         pool.check_results()
-        pool.haltWork()
-        pool.joinWorkers()
 
     except Exception, e:
         earlyexit = True
         errorString = e.__str__()
 
+    pool.haltWork()
+    pool.joinWorkers()
+
     if earlyexit:
         logger.fatal('Failed to process all segments: ' + errorString)
-        logger.fatal('To ensure the system is not partially paused run resume.')
-        logger.info("to resume run: " + EXECNAME + " --resume --pausefile " + options.pausefile)
-        sys.exit(1)
+        return False
 
+    return True
 
 
 def suspend_greenplum(options):
@@ -179,10 +178,12 @@ def suspend_greenplum(options):
     logger.info("DONE: pausing the master postgres instance") 
 
     logger.info("START: pausing the segment postgres instances") 
-    connectToSegmentHosts(hosts=hostMap, doResume=False)
-    logger.info("DONE: pausing the segment postgres instances") 
-
-    logger.info("to resume database run: " + EXECNAME + " --resume --pausefile " + options.pausefile)
+    if connectToSegmentHosts(hosts=hostMap, doResume=False):
+        logger.info("DONE: pausing the segment postgres instances") 
+        return True
+    else:
+        logger.info("pause of db was incomplete.")
+        return False
 
 
 def resume_greenplum(options):
@@ -191,20 +192,26 @@ def resume_greenplum(options):
         gparray = createFromFile(options.pausefile)
         logger.info("DONE: reading gpsuspend pausefile: " + options.pausefile)
     except:
-        logger.error('Failed reading gpsuspend pausefile, check the file.')
+        logger.critical('Failed reading gpsuspend pausefile.')
+        logger.info("To rerun resume run: " + EXECNAME + " --resume --pausefile " + options.pausefile)
+        logger.fatal('exiting early.')
         sys.exit(1)
 
     hostMap = create_host_datadir_map(gparray)
 
     logger.info("START: resuming the segment postgres instances") 
-    connectToSegmentHosts(hosts=hostMap, doResume=True)
-    logger.info("DONE: resuming the segment postgres instances") 
-
-
+    if connectToSegmentHosts(hosts=hostMap, doResume=True):
+        logger.info("DONE: resuming the segment postgres instances") 
+    else:
+        logger.fatal('failure issuing resume on a segment host')
+        logger.fatal("Could not resume all processes. Exiting early.")
+        logger.info("To rerun resume run: " + EXECNAME + " --resume --pausefile " + options.pausefile)
+        sys.exit(1)
+ 
     logger.info("START: resuming the master postgres instance") 
     resumePg(gparray.master)
     logger.info("DONE: resuming the master postgres instance") 
- 
+
 
 #------------------------------- Mainline --------------------------------
  
@@ -217,10 +224,16 @@ if options.verbose:
     enable_verbose_logging()
 
 if options.pause:
-    suspend_greenplum(options)
-    if options.interactive:
-        if waitForResumeCommand():
-            resume_greenplum(options)
+    if suspend_greenplum(options): # suspend operation succesful
+        if options.interactive:           
+            if waitForResumeCommand():
+                resume_greenplum(options)
+
+    else: # suspend operation failed
+        logger.critical("suspend failed, try to run a resume to ensure system is fully operational")
+        resume_greenplum(options) 
+        logger.critical("suspend was rolled back due to failure of suspend.  System is live.")
+        sys.exit(1);
 
 elif options.resume:
     resume_greenplum(options)
