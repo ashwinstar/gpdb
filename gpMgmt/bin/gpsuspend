@@ -12,6 +12,7 @@ try:
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
     from gppylib.db import dbconn
+    from gppylib.userinput import *
     from pygresql.pgdb import DatabaseError
 
 except ImportError, e:    
@@ -22,6 +23,17 @@ EXECNAME = os.path.split(__file__)[-1]
 _help = [""""""
 
 ]
+
+def waitForResumeCommand():
+    try:
+        reply = ask_string(None, "Database is paused. When you are ready, type a command below to resume or quit.", 'quit', ['quit','resume'])
+    except:
+        sys.exit(0)
+    if reply == 'resume':
+        return True
+    else:
+        return False
+
 
 def parseargs():
 
@@ -40,7 +52,9 @@ def parseargs():
 
     parser.add_option('--batchsize', type='int', help='number of parallel processes to run connecting to other hosts')
 
-    parser.set_defaults(batchsize=16)
+    parser.add_option('--noninteractive', action='store_false', dest='interactive', help='do not wait for user response in interactive mode')
+
+    parser.set_defaults(batchsize=16, interactive=True)
 
     # Parse the command line arguments
     (options, args) = parser.parse_args()
@@ -204,6 +218,9 @@ if options.verbose:
 
 if options.pause:
     suspend_greenplum(options)
+    if options.interactive:
+        if waitForResumeCommand():
+            resume_greenplum(options)
 
 elif options.resume:
     resume_greenplum(options)
