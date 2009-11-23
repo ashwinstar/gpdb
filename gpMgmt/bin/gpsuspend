@@ -174,7 +174,12 @@ def suspend_greenplum(options):
     hostMap = create_host_datadir_map(gparray)
 
     logger.info("START: pausing the master postgres instance") 
-    pausePg(gparray.master)
+    try:
+        pausePg(gparray.master)
+    except:
+        logger.critical("Could not pause master postgres instance.")
+        return False
+
     logger.info("DONE: pausing the master postgres instance") 
 
     logger.info("START: pausing the segment postgres instances") 
@@ -187,13 +192,15 @@ def suspend_greenplum(options):
 
 
 def resume_greenplum(options):
+    rerunmsg = "To rerun resume run: " + EXECNAME + " --resume --pausefile " + options.pausefile
+
     try:
         logger.info("START: reading gpsuspend pausefile: " + options.pausefile)
         gparray = createFromFile(options.pausefile)
         logger.info("DONE: reading gpsuspend pausefile: " + options.pausefile)
     except:
         logger.critical('Failed reading gpsuspend pausefile.')
-        logger.info("To rerun resume run: " + EXECNAME + " --resume --pausefile " + options.pausefile)
+        logger.info(rerunmsg)
         logger.fatal('exiting early.')
         sys.exit(1)
 
@@ -205,11 +212,18 @@ def resume_greenplum(options):
     else:
         logger.fatal('failure issuing resume on a segment host')
         logger.fatal("Could not resume all processes. Exiting early.")
-        logger.info("To rerun resume run: " + EXECNAME + " --resume --pausefile " + options.pausefile)
+        logger.info(rerunmsg)
         sys.exit(1)
  
     logger.info("START: resuming the master postgres instance") 
-    resumePg(gparray.master)
+
+    try:
+        resumePg(gparray.master)
+    except:
+        logger.fatal('resume failed to resume master postgres instance.')
+        logger.info(rerunmsg)
+        sys.exit(1)
+
     logger.info("DONE: resuming the master postgres instance") 
 
 
