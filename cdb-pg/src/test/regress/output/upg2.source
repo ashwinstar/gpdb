@@ -81,12 +81,35 @@ create table public.pg_tablespace(spcname name not null,
 								  spcmirlocations text[]
  								  ) with oids;
 -- These tables we only create so that the REINDEX statements wont error
-create table public.gp_configuration_history(foo text);
-create table public.gp_db_interfaces(foo text);
-create table public.gp_interfaces(foo text);
-create table public.pg_stat_last_operation(foo text);
+create table public.gp_configuration_history(like pg_catalog.gp_configuration_history);
+create table public.gp_db_interfaces(like pg_catalog.gp_db_interfaces);
+create table public.gp_interfaces(like pg_catalog.gp_interfaces);
+create table public.gp_persistent_rel_files(like pg_catalog.gp_persistent_rel_files);
+create table public.gp_san_config(like pg_catalog.gp_san_config);
+create table public.gp_segment_config(like pg_catalog.gp_segment_config);
+create table public.gp_fault_strategy(like pg_catalog.gp_fault_strategy);
+create table public.pg_appendonly_alter_column(like pg_catalog.pg_appendonly_alter_column);
 create table public.pg_filespace(like pg_catalog.pg_filespace) with oids;
-create unique index pg_filespace_fsname_index on public.pg_filespace (fsname);
+create table public.pg_filespace_entry(like pg_catalog.pg_filespace_entry);
+create table public.pg_foreign_data_wrapper(like pg_catalog.pg_foreign_data_wrapper);
+create table public.pg_foreign_server(like pg_catalog.pg_foreign_server);
+create table public.pg_resourcetype(like pg_catalog.pg_resourcetype) with oids;
+create table public.pg_resqueuecapability(like pg_catalog.pg_resqueuecapability);
+create table public.pg_stat_last_operation(like pg_catalog.pg_stat_last_operation);
+create table public.pg_stat_last_shoperation(like pg_catalog.pg_stat_last_shoperation);
+create table public.pg_user_mapping(like pg_catalog.pg_user_mapping);
+-- indexes
+create        index gp_db_interfaces_dbid_index on public.gp_db_interfaces(dbid);
+create unique index gp_interfaces_interface_index on public.gp_interfaces(interfaceid);
+create unique index pg_amproc_opc_proc_index on public.pg_amproc (amopclaid, amprocsubtype, amprocnum);
+create unique index pg_appendonly_alter_column_relid_index on public.pg_appendonly_alter_column(relid, changenum);
+create unique index pg_attribute_relid_attnum_index on public.pg_attribute(attrelid, attnum);
+create        index pg_depend_depender_index on public.pg_depend(classid, objid, objsubid);
+create unique index pg_filespace_fsname_index on public.pg_filespace(fsname);
+create unique index pg_filespace_entry_fsdb_index on public.pg_filespace_entry(fsefsoid,fsedbid);
+create unique index pg_operator_oid_index on public.pg_operator(oid);
+create unique index pg_resourcetype_oid_index on public.pg_resourcetype(oid);
+create unique index pg_resqueue_oid_index on public.pg_resqueue(oid);
 --
 -- 2. Build the 33 catalog
 --
@@ -1333,6 +1356,21 @@ from public.pg_class_v33 where oid < 10000 and relname !~ 'pg_toast';
 ---------+--------------+---------+----------+-------+---------------+---------------+---------------+---------------+---------------+-------------+-------------+---------+------------+----------+-----------+-------------+----------+----------+---------+------------+------------+-------------+----------------+------------
 (0 rows)
 
+-- compare old and new pg_type
+select oid, * from public.pg_type_v33 where oid < 10000
+except
+select oid, * from public.pg_type where oid < 10000;
+ oid | typname | typnamespace | typowner | typlen | typbyval | typtype | typisdefined | typdelim | typrelid | typelem | typinput | typoutput | typreceive | typsend | typanalyze | typalign | typstorage | typnotnull | typbasetype | typtypmod | typndims | typdefaultbin | typdefault 
+-----+---------+--------------+----------+--------+----------+---------+--------------+----------+----------+---------+----------+-----------+------------+---------+------------+----------+------------+------------+-------------+-----------+----------+---------------+------------
+(0 rows)
+
+select oid, * from public.pg_type where oid < 10000
+except
+select oid, * from public.pg_type_v33 where oid < 10000;
+ oid | typname | typnamespace | typowner | typlen | typbyval | typtype | typisdefined | typdelim | typrelid | typelem | typinput | typoutput | typreceive | typsend | typanalyze | typalign | typstorage | typnotnull | typbasetype | typtypmod | typndims | typdefaultbin | typdefault 
+-----+---------+--------------+----------+--------+----------+---------+--------------+----------+----------+---------+----------+-----------+------------+---------+------------+----------+------------+------------+-------------+-----------+----------+---------------+------------
+(0 rows)
+
 -- compare old and new pg_aggregate
 select * from public.pg_aggregate_v33 where aggfnoid::oid < 10000
 except
@@ -1606,7 +1644,13 @@ copy public.pg_operator from '@abs_srcdir@/data//upg2_pg_operator_toadd33.data' 
 -- fix up pg_tablespace, this is a shared table so the data changes are handled
 -- in loadcat34_sh, but the schema changes are stored in pg_class and pg_attribute
 -- which aren't shared so we must update the schema in every database.
-alter table public.pg_tablespace add column spcfsoid oid;
+--
+-- We can't simply use an alter statement because that would generate a toast table
+-- on a shared table, which is not allowed outside of bootstrap.  So instead we perform
+-- the modifications by hand.
+--
+insert into public.pg_attribute values(1213, 'spcfsoid', 26, -1, 4, 7, 0, -1, -1, 't', 'p', 'i', 'f', 'f', 'f', 't', 0);
+update public.pg_class set relnatts=relnatts+1 where oid='pg_catalog.pg_tablespace'::regclass;
 -- fix up pg_appendonly
 alter table public.pg_appendonly add column columnstore boolean;
 update public.pg_appendonly set columnstore='f';
@@ -1629,6 +1673,25 @@ update public.pg_operator set oprcode = 'pg_catalog.textne'::regproc where oid =
 --   last.
 --   NOTE: this effects All views, including user views
 update public.pg_rewrite set ev_action = regexp_replace(ev_action, ':forceDistRandom (true|false)}', E':forceDistRandom \\1 :pseudocols <>}', 'g'), ev_qual = regexp_replace(ev_qual, ':forceDistRandom (true|false)}', E':forceDistRandom \\1 :pseudocols <>}', 'g');
+-- Reindex normal tables (not shared tables)
+reindex table public.pg_amproc;
+reindex table public.pg_attribute;
+reindex table public.pg_appendonly;
+reindex table public.pg_appendonly_alter_column;
+reindex table public.pg_class;
+reindex table public.pg_depend;
+reindex table public.pg_description;
+reindex table public.pg_exttable;
+reindex table public.pg_foreign_data_wrapper;
+reindex table public.pg_foreign_server;
+reindex table public.pg_index;
+reindex table public.pg_namespace;
+reindex table public.pg_operator;
+reindex table public.pg_proc;
+reindex table public.pg_user_mapping;
+reindex table public.pg_rewrite;
+reindex table public.pg_stat_last_operation;
+reindex table public.pg_type;
 -- Create new 3.4 views in pg_catalog
 set search_path='pg_catalog';
 CREATE VIEW public.pg_user_mappings AS SELECT U.oid AS umid, S.oid AS srvid, S.srvname AS srvname, U.umuser AS umuser, CASE WHEN U.umuser = 0 THEN 'public' ELSE A.rolname END AS usename, CASE WHEN pg_has_role(S.srvowner, 'USAGE') OR has_server_privilege(S.oid, 'USAGE') THEN U.umoptions ELSE NULL END AS umoptions FROM pg_user_mapping U LEFT JOIN pg_authid A ON (A.oid = U.umuser) JOIN pg_foreign_server S ON (U.umserver = S.oid);
@@ -1690,85 +1753,7 @@ CREATE FUNCTION public.gpviewcopy(oid, oid) returns void language C as '$libdir/
 -- Update modified views in pg_catalog
 set search_path='pg_catalog';
 -- pg_catalog.pg_partitions
-CREATE TEMPORARY VIEW gp_migrator_staging_view AS
-select 
-schemaname,
-tablename, 
-partitionschemaname,
-partitiontablename,
-partitionname,
-parentpartitiontablename,
-parentpartitionname,
-partitiontype, 
-partitionlevel,
-case when (partitiontype != 'range') then NULL
-	 when (partitionnodefault > 0) then partitionrank
-	 when (partitionrank = 1) then NULL
-	 else  partitionrank - 1
-end as partitionrank,
-partitionposition,
-partitionlistvalues,
-partitionrangestart,
-case when (partitiontype = 'range') then partitionstartinclusive
-	 else NULL
-end as partitionstartinclusive,
-partitionrangeend,
-case when (partitiontype = 'range') then partitionendinclusive
-	else NULL
-end as partitionendinclusive,
-partitioneveryclause,
-parisdefault as partitionisdefault,
-partitionboundary
-from
-(
-select
-n.nspname as schemaname,
-cl.relname as tablename, 
-n2.nspname as partitionschemaname,
-cl2.relname as partitiontablename,
-pr1.parname as partitionname,
-cl3.relname as parentpartitiontablename,
-pr2.parname as parentpartitionname,
-case when pp.parkind = 'h' then 'hash' when pp.parkind = 'r' then 'range'
-	 when pp.parkind = 'l' then 'list' else null end as partitiontype, 
-pp.parlevel as partitionlevel,
-pr1.parruleord
-as partitionposition,
-CASE WHEN pp.parkind != 'r'::"char" OR pr1.parisdefault 
-	 THEN NULL::bigint
-     ELSE 
-	 	  rank() OVER(
-          		      PARTITION BY pp.oid, cl.relname, pp.parlevel, cl3.relname
-               	      ORDER BY pr1.parisdefault, pr1.parruleord) 
-     END AS partitionrank, 
-pg_get_expr(pr1.parlistvalues, pr1.parchildrelid) as partitionlistvalues,
-pg_get_expr(pr1.parrangestart, pr1.parchildrelid) as partitionrangestart,
-pr1.parrangestartincl as partitionstartinclusive,
-pg_get_expr(pr1.parrangeend, pr1.parchildrelid) as partitionrangeend,
-pr1.parrangeendincl as partitionendinclusive,
-pg_get_expr(pr1.parrangeevery, pr1.parchildrelid) as partitioneveryclause,
-min(pr1.parruleord) 
-    over (partition by pp.oid, cl.relname, pp.parlevel, cl3.relname 
-	order by pr1.parruleord) as partitionnodefault,
-pr1.parisdefault,
-pg_get_partition_rule_def(pr1.oid, true) as partitionboundary
-from 
-pg_namespace n,
-pg_namespace n2,
-pg_class cl,
-pg_class cl2, 
-pg_partition pp,
-pg_partition_rule pr1 left outer join pg_partition_rule pr2 
-   on(pr1.parparentrule = pr2.oid)
-left outer join pg_class cl3 on (pr2.parchildrelid = cl3.oid)
-where 
- pp.paristemplate = 'f' and
- pp.parrelid = cl.oid and 
- pr1.paroid = pp.oid and
- cl2.oid = pr1.parchildrelid and
- cl.relnamespace = n.oid and
- cl2.relnamespace = n2.oid
-) as p1;
+CREATE TEMPORARY VIEW gp_migrator_staging_view AS select schemaname, tablename, partitionschemaname, partitiontablename, partitionname, parentpartitiontablename, parentpartitionname,partitiontype, partitionlevel, case when (partitiontype != 'range') then NULL when (partitionnodefault > 0) then partitionrank when (partitionrank = 1) then NULL else  partitionrank - 1 end as partitionrank, partitionposition, partitionlistvalues, partitionrangestart, case when (partitiontype = 'range') then partitionstartinclusive else NULL end as partitionstartinclusive, partitionrangeend, case when (partitiontype = 'range') then partitionendinclusive	else NULL end as partitionendinclusive, partitioneveryclause, parisdefault as partitionisdefault, partitionboundary from (select n.nspname as schemaname, cl.relname as tablename, n2.nspname as partitionschemaname, cl2.relname as partitiontablename, pr1.parname as partitionname, cl3.relname as parentpartitiontablename, pr2.parname as parentpartitionname, case when pp.parkind = 'h' then 'hash' when pp.parkind = 'r' then 'range' when pp.parkind = 'l' then 'list' else null end as partitiontype, pp.parlevel as partitionlevel, pr1.parruleord as partitionposition, CASE WHEN pp.parkind != 'r'::"char" OR pr1.parisdefault THEN NULL::bigint ELSE rank() OVER(PARTITION BY pp.oid, cl.relname, pp.parlevel, cl3.relname ORDER BY pr1.parisdefault, pr1.parruleord) END AS partitionrank, pg_get_expr(pr1.parlistvalues, pr1.parchildrelid) as partitionlistvalues, pg_get_expr(pr1.parrangestart, pr1.parchildrelid) as partitionrangestart, pr1.parrangestartincl as partitionstartinclusive, pg_get_expr(pr1.parrangeend, pr1.parchildrelid) as partitionrangeend, pr1.parrangeendincl as partitionendinclusive, pg_get_expr(pr1.parrangeevery, pr1.parchildrelid) as partitioneveryclause, min(pr1.parruleord) over (partition by pp.oid, cl.relname, pp.parlevel, cl3.relname order by pr1.parruleord) as partitionnodefault, pr1.parisdefault, pg_get_partition_rule_def(pr1.oid, true) as partitionboundary from pg_namespace n, pg_namespace n2, pg_class cl, pg_class cl2, pg_partition pp, pg_partition_rule pr1 left outer join pg_partition_rule pr2 on(pr1.parparentrule = pr2.oid) left outer join pg_class cl3 on (pr2.parchildrelid = cl3.oid) where pp.paristemplate = 'f' and pp.parrelid = cl.oid and pr1.paroid = pp.oid and cl2.oid = pr1.parchildrelid and cl.relnamespace = n.oid and cl2.relnamespace = n2.oid) as p1;
 SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.pg_partitions'::regclass);
  gpviewcopy 
 ------------
@@ -1777,59 +1762,7 @@ SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.pg_partit
 
 DROP VIEW gp_migrator_staging_view;
 -- pg_catalog.pg_partition_templates
-CREATE TEMPORARY VIEW gp_migrator_staging_view AS
-select
-schemaname,
-tablename, 
-partitionname,
-partitiontype, 
-partitionlevel,
-case when (partitiontype != 'range') then NULL
-	 when (partitionnodefault > 0) then partitionrank
-	 when (partitionrank = 1) then NULL
-	 else  partitionrank - 1
-end as partitionrank,
-partitionposition,
-partitionlistvalues,
-partitionrangestart,
-case when (partitiontype = 'range') then partitionstartinclusive
-	 else NULL
-end as partitionstartinclusive,
-partitionrangeend,
-case when (partitiontype = 'range') then partitionendinclusive
-	else NULL
-end as partitionendinclusive,
-partitioneveryclause,
-parisdefault as partitionisdefault,
-partitionboundary
-from (
-select
-n.nspname as schemaname,
-cl.relname as tablename,
-pr1.parname as partitionname,
-p.parlevel as partitionlevel,
-pr1.parruleord as partitionposition,
-rank() over (partition by p.oid, cl.relname, p.parlevel 
-			 order by pr1.parruleord) as partitionrank,
-pg_get_expr(pr1.parlistvalues, p.parrelid) as partitionlistvalues,
-pg_get_expr(pr1.parrangestart, p.parrelid) as partitionrangestart,
-pr1.parrangestartincl as partitionstartinclusive,
-pg_get_expr(pr1.parrangeend, p.parrelid) as partitionrangeend,
-pr1.parrangeendincl as partitionendinclusive,
-pg_get_expr(pr1.parrangeevery, p.parrelid) as partitioneveryclause,
-min(pr1.parruleord) over (partition by p.oid, cl.relname, p.parlevel
-	order by pr1.parruleord) as partitionnodefault,
-pr1.parisdefault,
-case when p.parkind = 'h' then 'hash' when p.parkind = 'r' then 'range'
-	 when p.parkind = 'l' then 'list' else null end as partitiontype, 
-pg_get_partition_rule_def(pr1.oid, true) as partitionboundary
-from pg_namespace n, pg_class cl, pg_partition p, pg_partition_rule pr1
-where 
- p.parrelid = cl.oid and 
- pr1.paroid = p.oid and
- cl.relnamespace = n.oid and
- p.paristemplate = 't'
- ) p1;
+CREATE TEMPORARY VIEW gp_migrator_staging_view AS select schemaname, tablename, partitionname, partitiontype, partitionlevel, case when (partitiontype != 'range') then NULL when (partitionnodefault > 0) then partitionrank when (partitionrank = 1) then NULL else  partitionrank - 1 end as partitionrank, partitionposition, partitionlistvalues, partitionrangestart, case when (partitiontype = 'range') then partitionstartinclusive else NULL end as partitionstartinclusive, partitionrangeend, case when (partitiontype = 'range') then partitionendinclusive else NULL end as partitionendinclusive, partitioneveryclause, parisdefault as partitionisdefault, partitionboundary from ( select n.nspname as schemaname, cl.relname as tablename, pr1.parname as partitionname, p.parlevel as partitionlevel, pr1.parruleord as partitionposition, rank() over (partition by p.oid, cl.relname, p.parlevel order by pr1.parruleord) as partitionrank, pg_get_expr(pr1.parlistvalues, p.parrelid) as partitionlistvalues, pg_get_expr(pr1.parrangestart, p.parrelid) as partitionrangestart, pr1.parrangestartincl as partitionstartinclusive, pg_get_expr(pr1.parrangeend, p.parrelid) as partitionrangeend, pr1.parrangeendincl as partitionendinclusive, pg_get_expr(pr1.parrangeevery, p.parrelid) as partitioneveryclause, min(pr1.parruleord) over (partition by p.oid, cl.relname, p.parlevel order by pr1.parruleord) as partitionnodefault, pr1.parisdefault, case when p.parkind = 'h' then 'hash' when p.parkind = 'r' then 'range' when p.parkind = 'l' then 'list' else null end as partitiontype, pg_get_partition_rule_def(pr1.oid, true) as partitionboundary from pg_namespace n, pg_class cl, pg_partition p, pg_partition_rule pr1 where p.parrelid = cl.oid and pr1.paroid = p.oid and cl.relnamespace = n.oid and p.paristemplate = 't'  ) p1;
 SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.pg_partition_templates'::regclass);
  gpviewcopy 
 ------------
@@ -1840,32 +1773,7 @@ DROP VIEW gp_migrator_staging_view;
 -- Update modified views in information_schema
 set search_path='information_schema';
 -- information_schema.check_constraints
-CREATE TEMPORARY VIEW gp_migrator_staging_view AS
-    SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog,
-           CAST(rs.nspname AS sql_identifier) AS constraint_schema,
-           CAST(con.conname AS sql_identifier) AS constraint_name,
-           CAST(substring(pg_get_constraintdef(con.oid) from 7) AS character_data)
-             AS check_clause
-    FROM pg_constraint con
-           LEFT OUTER JOIN pg_namespace rs ON (rs.oid = con.connamespace)
-           LEFT OUTER JOIN pg_class c ON (c.oid = con.conrelid)
-           LEFT OUTER JOIN pg_type t ON (t.oid = con.contypid)
-    WHERE pg_has_role(coalesce(c.relowner, t.typowner), 'USAGE')
-      AND con.contype = 'c'
-    UNION
-    SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog,
-           CAST(n.nspname AS sql_identifier) AS constraint_schema,
-           CAST(CAST(n.oid AS text) || '_' || CAST(r.oid AS text) || '_' || CAST(a.attnum AS text) || '_not_null' AS sql_identifier) AS constraint_name,
-           CAST(a.attname || ' IS NOT NULL' AS character_data)
-             AS check_clause
-    FROM pg_namespace n, pg_class r, pg_attribute a
-    WHERE n.oid = r.relnamespace
-      AND r.oid = a.attrelid
-      AND a.attnum > 0
-      AND NOT a.attisdropped
-      AND a.attnotnull
-      AND r.relkind = 'r'
-      AND pg_has_role(r.relowner, 'USAGE');
+CREATE TEMPORARY VIEW gp_migrator_staging_view AS SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog, CAST(rs.nspname AS sql_identifier) AS constraint_schema, CAST(con.conname AS sql_identifier) AS constraint_name, CAST(substring(pg_get_constraintdef(con.oid) from 7) AS character_data) AS check_clause FROM pg_constraint con LEFT OUTER JOIN pg_namespace rs ON (rs.oid = con.connamespace) LEFT OUTER JOIN pg_class c ON (c.oid = con.conrelid) LEFT OUTER JOIN pg_type t ON (t.oid = con.contypid) WHERE pg_has_role(coalesce(c.relowner, t.typowner), 'USAGE') AND con.contype = 'c' UNION SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog, CAST(n.nspname AS sql_identifier) AS constraint_schema, CAST(CAST(n.oid AS text) || '_' || CAST(r.oid AS text) || '_' || CAST(a.attnum AS text) || '_not_null' AS sql_identifier) AS constraint_name, CAST(a.attname || ' IS NOT NULL' AS character_data) AS check_clause FROM pg_namespace n, pg_class r, pg_attribute a WHERE n.oid = r.relnamespace AND r.oid = a.attrelid AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND r.relkind = 'r' AND pg_has_role(r.relowner, 'USAGE');
 SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.check_constraints'::regclass);
  gpviewcopy 
 ------------
@@ -1874,58 +1782,7 @@ SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.check_con
 
 DROP VIEW gp_migrator_staging_view;
 -- information_schema.parameters
-CREATE TEMPORARY VIEW gp_migrator_staging_view AS
-    SELECT CAST(current_database() AS sql_identifier) AS specific_catalog,
-           CAST(n_nspname AS sql_identifier) AS specific_schema,
-           CAST(proname || '_' || CAST(p_oid AS text) AS sql_identifier) AS specific_name,
-           CAST((ss.x).n AS cardinal_number) AS ordinal_position,
-           CAST(
-             CASE WHEN proargmodes IS NULL THEN 'IN'
-                WHEN proargmodes[(ss.x).n] = 'i' THEN 'IN'
-                WHEN proargmodes[(ss.x).n] = 'o' THEN 'OUT'
-                WHEN proargmodes[(ss.x).n] = 'b' THEN 'INOUT'
-                WHEN proargmodes[(ss.x).n] = 'v' THEN 'IN'
-                WHEN proargmodes[(ss.x).n] = 't' THEN 'OUT'
-             END AS character_data) AS parameter_mode,
-           CAST('NO' AS character_data) AS is_result,
-           CAST('NO' AS character_data) AS as_locator,
-           CAST(NULLIF(proargnames[(ss.x).n], '') AS sql_identifier) AS parameter_name,
-           CAST(
-             CASE WHEN t.typelem <> 0 AND t.typlen = -1 THEN 'ARRAY'
-                  WHEN nt.nspname = 'pg_catalog' THEN format_type(t.oid, null)
-                  ELSE 'USER-DEFINED' END AS character_data)
-             AS data_type,
-           CAST(null AS cardinal_number) AS character_maximum_length,
-           CAST(null AS cardinal_number) AS character_octet_length,
-           CAST(null AS sql_identifier) AS character_set_catalog,
-           CAST(null AS sql_identifier) AS character_set_schema,
-           CAST(null AS sql_identifier) AS character_set_name,
-           CAST(null AS sql_identifier) AS collation_catalog,
-           CAST(null AS sql_identifier) AS collation_schema,
-           CAST(null AS sql_identifier) AS collation_name,
-           CAST(null AS cardinal_number) AS numeric_precision,
-           CAST(null AS cardinal_number) AS numeric_precision_radix,
-           CAST(null AS cardinal_number) AS numeric_scale,
-           CAST(null AS cardinal_number) AS datetime_precision,
-           CAST(null AS character_data) AS interval_type,
-           CAST(null AS character_data) AS interval_precision,
-           CAST(current_database() AS sql_identifier) AS udt_catalog,
-           CAST(nt.nspname AS sql_identifier) AS udt_schema,
-           CAST(t.typname AS sql_identifier) AS udt_name,
-           CAST(null AS sql_identifier) AS scope_catalog,
-           CAST(null AS sql_identifier) AS scope_schema,
-           CAST(null AS sql_identifier) AS scope_name,
-           CAST(null AS cardinal_number) AS maximum_cardinality,
-           CAST((ss.x).n AS sql_identifier) AS dtd_identifier
-    FROM pg_type t, pg_namespace nt,
-         (SELECT n.nspname AS n_nspname, p.proname, p.oid AS p_oid,
-                 p.proargnames, p.proargmodes,
-                 _pg_expandarray(coalesce(p.proallargtypes, p.proargtypes::oid[])) AS x
-          FROM pg_namespace n, pg_proc p
-          WHERE n.oid = p.pronamespace
-                AND (pg_has_role(p.proowner, 'USAGE') OR
-                     has_function_privilege(p.oid, 'EXECUTE'))) AS ss
-    WHERE t.oid = (ss.x).x AND t.typnamespace = nt.oid;
+CREATE TEMPORARY VIEW gp_migrator_staging_view AS SELECT CAST(current_database() AS sql_identifier) AS specific_catalog, CAST(n_nspname AS sql_identifier) AS specific_schema, CAST(proname || '_' || CAST(p_oid AS text) AS sql_identifier) AS specific_name, CAST((ss.x).n AS cardinal_number) AS ordinal_position, CAST( CASE WHEN proargmodes IS NULL THEN 'IN' WHEN proargmodes[(ss.x).n] = 'i' THEN 'IN' WHEN proargmodes[(ss.x).n] = 'o' THEN 'OUT' WHEN proargmodes[(ss.x).n] = 'b' THEN 'INOUT' WHEN proargmodes[(ss.x).n] = 'v' THEN 'IN' WHEN proargmodes[(ss.x).n] = 't' THEN 'OUT' END AS character_data) AS parameter_mode, CAST('NO' AS character_data) AS is_result, CAST('NO' AS character_data) AS as_locator, CAST(NULLIF(proargnames[(ss.x).n], '') AS sql_identifier) AS parameter_name, CAST( CASE WHEN t.typelem <> 0 AND t.typlen = -1 THEN 'ARRAY' WHEN nt.nspname = 'pg_catalog' THEN format_type(t.oid, null) ELSE 'USER-DEFINED' END AS character_data) AS data_type, CAST(null AS cardinal_number) AS character_maximum_length, CAST(null AS cardinal_number) AS character_octet_length, CAST(null AS sql_identifier) AS character_set_catalog, CAST(null AS sql_identifier) AS character_set_schema, CAST(null AS sql_identifier) AS character_set_name, CAST(null AS sql_identifier) AS collation_catalog, CAST(null AS sql_identifier) AS collation_schema, CAST(null AS sql_identifier) AS collation_name, CAST(null AS cardinal_number) AS numeric_precision, CAST(null AS cardinal_number) AS numeric_precision_radix, CAST(null AS cardinal_number) AS numeric_scale, CAST(null AS cardinal_number) AS datetime_precision, CAST(null AS character_data) AS interval_type, CAST(null AS character_data) AS interval_precision, CAST(current_database() AS sql_identifier) AS udt_catalog, CAST(nt.nspname AS sql_identifier) AS udt_schema, CAST(t.typname AS sql_identifier) AS udt_name, CAST(null AS sql_identifier) AS scope_catalog, CAST(null AS sql_identifier) AS scope_schema, CAST(null AS sql_identifier) AS scope_name, CAST(null AS cardinal_number) AS maximum_cardinality, CAST((ss.x).n AS sql_identifier) AS dtd_identifier FROM pg_type t, pg_namespace nt, ( SELECT n.nspname AS n_nspname, p.proname, p.oid AS p_oid, p.proargnames, p.proargmodes, _pg_expandarray(coalesce(p.proallargtypes, p.proargtypes::oid[])) AS x FROM pg_namespace n, pg_proc p WHERE n.oid = p.pronamespace AND (pg_has_role(p.proowner, 'USAGE') OR has_function_privilege(p.oid, 'EXECUTE'))) AS ss WHERE t.oid = (ss.x).x AND t.typnamespace = nt.oid;
 SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.parameters'::regclass);
  gpviewcopy 
 ------------
@@ -1934,69 +1791,7 @@ SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.parameter
 
 DROP VIEW gp_migrator_staging_view;
 -- information_schema.element_types
-CREATE TEMPORARY VIEW gp_migrator_staging_view AS
-    SELECT CAST(current_database() AS sql_identifier) AS object_catalog,
-           CAST(n.nspname AS sql_identifier) AS object_schema,
-           CAST(x.objname AS sql_identifier) AS object_name,
-           CAST(x.objtype AS character_data) AS object_type,
-           CAST(x.objdtdid AS sql_identifier) AS collection_type_identifier,
-           CAST(
-             CASE WHEN nbt.nspname = 'pg_catalog' THEN format_type(bt.oid, null)
-                  ELSE 'USER-DEFINED' END AS character_data) AS data_type,
-           CAST(null AS cardinal_number) AS character_maximum_length,
-           CAST(null AS cardinal_number) AS character_octet_length,
-           CAST(null AS sql_identifier) AS character_set_catalog,
-           CAST(null AS sql_identifier) AS character_set_schema,
-           CAST(null AS sql_identifier) AS character_set_name,
-           CAST(null AS sql_identifier) AS collation_catalog,
-           CAST(null AS sql_identifier) AS collation_schema,
-           CAST(null AS sql_identifier) AS collation_name,
-           CAST(null AS cardinal_number) AS numeric_precision,
-           CAST(null AS cardinal_number) AS numeric_precision_radix,
-           CAST(null AS cardinal_number) AS numeric_scale,
-           CAST(null AS cardinal_number) AS datetime_precision,
-           CAST(null AS character_data) AS interval_type,
-           CAST(null AS character_data) AS interval_precision,
-           CAST(null AS character_data) AS domain_default, 
-           CAST(current_database() AS sql_identifier) AS udt_catalog,
-           CAST(nbt.nspname AS sql_identifier) AS udt_schema,
-           CAST(bt.typname AS sql_identifier) AS udt_name,
-           CAST(null AS sql_identifier) AS scope_catalog,
-           CAST(null AS sql_identifier) AS scope_schema,
-           CAST(null AS sql_identifier) AS scope_name,
-           CAST(null AS cardinal_number) AS maximum_cardinality,
-           CAST('a' || CAST(x.objdtdid AS text) AS sql_identifier) AS dtd_identifier
-    FROM pg_namespace n, pg_type at, pg_namespace nbt, pg_type bt,
-         ( SELECT c.relnamespace, CAST(c.relname AS sql_identifier),
-                  'TABLE'::text, a.attnum, a.atttypid
-           FROM pg_class c, pg_attribute a
-           WHERE c.oid = a.attrelid
-                 AND c.relkind IN ('r', 'v')
-                 AND attnum > 0 AND NOT attisdropped
-           UNION ALL
-           SELECT t.typnamespace, CAST(t.typname AS sql_identifier),
-                  'DOMAIN'::text, 1, t.typbasetype
-           FROM pg_type t
-           WHERE t.typtype = 'd'
-           UNION ALL
-           SELECT pronamespace, CAST(proname || '_' || CAST(oid AS text) AS sql_identifier),
-                  'ROUTINE'::text, (ss.x).n, (ss.x).x
-           FROM (SELECT p.pronamespace, p.proname, p.oid,
-                        _pg_expandarray(coalesce(p.proallargtypes, p.proargtypes::oid[])) AS x
-                 FROM pg_proc p) AS ss
-           UNION ALL
-           SELECT p.pronamespace, CAST(p.proname || '_' || CAST(p.oid AS text) AS sql_identifier),
-                  'ROUTINE'::text, 0, p.prorettype
-           FROM pg_proc p
-         ) AS x (objschema, objname, objtype, objdtdid, objtypeid)
-    WHERE n.oid = x.objschema
-          AND at.oid = x.objtypeid
-          AND (at.typelem <> 0 AND at.typlen = -1)
-          AND at.typelem = bt.oid
-          AND nbt.oid = bt.typnamespace
-          AND (n.nspname, x.objname, x.objtype, CAST(x.objdtdid AS sql_identifier)) IN
-              ( SELECT object_schema, object_name, object_type, dtd_identifier
-                    FROM data_type_privileges );
+CREATE TEMPORARY VIEW gp_migrator_staging_view AS SELECT CAST(current_database() AS sql_identifier) AS object_catalog, CAST(n.nspname AS sql_identifier) AS object_schema, CAST(x.objname AS sql_identifier) AS object_name, CAST(x.objtype AS character_data) AS object_type, CAST(x.objdtdid AS sql_identifier) AS collection_type_identifier, CAST( CASE WHEN nbt.nspname = 'pg_catalog' THEN format_type(bt.oid, null) ELSE 'USER-DEFINED' END AS character_data) AS data_type, CAST(null AS cardinal_number) AS character_maximum_length, CAST(null AS cardinal_number) AS character_octet_length, CAST(null AS sql_identifier) AS character_set_catalog, CAST(null AS sql_identifier) AS character_set_schema, CAST(null AS sql_identifier) AS character_set_name, CAST(null AS sql_identifier) AS collation_catalog, CAST(null AS sql_identifier) AS collation_schema, CAST(null AS sql_identifier) AS collation_name, CAST(null AS cardinal_number) AS numeric_precision, CAST(null AS cardinal_number) AS numeric_precision_radix, CAST(null AS cardinal_number) AS numeric_scale, CAST(null AS cardinal_number) AS datetime_precision, CAST(null AS character_data) AS interval_type, CAST(null AS character_data) AS interval_precision, CAST(null AS character_data) AS domain_default, CAST(current_database() AS sql_identifier) AS udt_catalog, CAST(nbt.nspname AS sql_identifier) AS udt_schema, CAST(bt.typname AS sql_identifier) AS udt_name, CAST(null AS sql_identifier) AS scope_catalog, CAST(null AS sql_identifier) AS scope_schema, CAST(null AS sql_identifier) AS scope_name, CAST(null AS cardinal_number) AS maximum_cardinality, CAST('a' || CAST(x.objdtdid AS text) AS sql_identifier) AS dtd_identifier FROM pg_namespace n, pg_type at, pg_namespace nbt, pg_type bt, ( SELECT c.relnamespace, CAST(c.relname AS sql_identifier), 'TABLE'::text, a.attnum, a.atttypid FROM pg_class c, pg_attribute a WHERE c.oid = a.attrelid AND c.relkind IN ('r', 'v') AND attnum > 0 AND NOT attisdropped UNION ALL SELECT t.typnamespace, CAST(t.typname AS sql_identifier), 'DOMAIN'::text, 1, t.typbasetype FROM pg_type t WHERE t.typtype = 'd' UNION ALL SELECT pronamespace, CAST(proname || '_' || CAST(oid AS text) AS sql_identifier), 'ROUTINE'::text, (ss.x).n, (ss.x).x FROM (SELECT p.pronamespace, p.proname, p.oid, _pg_expandarray(coalesce(p.proallargtypes, p.proargtypes::oid[])) AS x FROM pg_proc p) AS ss UNION ALL SELECT p.pronamespace, CAST(p.proname || '_' || CAST(p.oid AS text) AS sql_identifier), 'ROUTINE'::text, 0, p.prorettype FROM pg_proc p) AS x (objschema, objname, objtype, objdtdid, objtypeid) WHERE n.oid = x.objschema AND at.oid = x.objtypeid AND (at.typelem <> 0 AND at.typlen = -1) AND at.typelem = bt.oid AND nbt.oid = bt.typnamespace AND (n.nspname, x.objname, x.objtype, CAST(x.objdtdid AS sql_identifier)) IN ( SELECT object_schema, object_name, object_type, dtd_identifier FROM data_type_privileges );
 SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.element_types'::regclass);
  gpviewcopy 
 ------------
@@ -2005,57 +1800,7 @@ SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.element_t
 
 DROP VIEW gp_migrator_staging_view;
 -- information_schema.role_usage_grants
-CREATE TEMPORARY VIEW gp_migrator_staging_view AS
-	SELECT CAST(grantor AS sql_identifier),
-	       CAST(grantee AS sql_identifier),
-		   CAST(object_catalog AS sql_identifier),
-		   CAST(object_schema AS sql_identifier),
-		   CAST(object_name AS sql_identifier),
-		   CAST(object_type as character_data),
-		   CAST(privilege_type as character_data),
-		   CAST(is_grantable as character_data)
-    FROM (SELECT u_grantor.rolname AS grantor,
-                 g_grantee.rolname AS grantee,
-                 current_database() AS object_catalog,
-				 '' AS object_schema,
-				 fdw.fdwname AS object_name,
-                 'FOREIGN DATA WRAPPER' AS object_type,
-                 'USAGE' AS privilege_type,
-                  CASE WHEN
-                      pg_has_role(g_grantee.oid, fdw.fdwowner, 'USAGE')
-                      OR aclcontains(fdw.fdwacl,
-                                     makeaclitem(g_grantee.oid, u_grantor.oid, 
-									             'USAGE', true))
-                      THEN 'YES' ELSE 'NO' END AS is_grantable
-    	  FROM pg_foreign_data_wrapper fdw,
-          	   pg_authid u_grantor,
-         	   pg_authid g_grantee
-    	  WHERE aclcontains(fdw.fdwacl,
-							makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', false))
-                AND (u_grantor.rolname IN (SELECT role_name FROM enabled_roles)
-               	OR g_grantee.rolname IN (SELECT role_name FROM enabled_roles))
-    	  UNION ALL
-    	  SELECT u_grantor.rolname AS grantor,
-                 g_grantee.rolname AS grantee,
-                 current_database() AS object_catalog,
-				 '' AS object_schema,
-				 srv.srvname AS object_name,
-                 'FOREIGN SERVER' AS object_type,
-                 'USAGE' AS privilege_type,
-                 CASE WHEN
-                      pg_has_role(g_grantee.oid, srv.srvowner, 'USAGE')
-                      OR aclcontains(srv.srvacl,
-                                     makeaclitem(g_grantee.oid, u_grantor.oid, 
-									             'USAGE', true))
-                      THEN 'YES' ELSE 'NO' END AS is_grantable
-          FROM pg_foreign_server srv,
-          	   pg_authid u_grantor,
-         	   pg_authid g_grantee
-    	  WHERE aclcontains(srv.srvacl,
-                          makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', false))
-          AND (u_grantor.rolname IN (SELECT role_name FROM enabled_roles)
-               OR g_grantee.rolname IN (SELECT role_name FROM enabled_roles))
-   ) subquery;
+CREATE TEMPORARY VIEW gp_migrator_staging_view AS SELECT CAST(grantor AS sql_identifier), CAST(grantee AS sql_identifier), CAST(object_catalog AS sql_identifier), CAST(object_schema AS sql_identifier), CAST(object_name AS sql_identifier), CAST(object_type as character_data), CAST(privilege_type as character_data), CAST(is_grantable as character_data) FROM (SELECT u_grantor.rolname AS grantor, g_grantee.rolname AS grantee, current_database() AS object_catalog, '' AS object_schema, fdw.fdwname AS object_name, 'FOREIGN DATA WRAPPER' AS object_type, 'USAGE' AS privilege_type, CASE WHEN pg_has_role(g_grantee.oid, fdw.fdwowner, 'USAGE') OR aclcontains(fdw.fdwacl, makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', true)) THEN 'YES' ELSE 'NO' END AS is_grantable FROM pg_foreign_data_wrapper fdw, pg_authid u_grantor, pg_authid g_grantee WHERE aclcontains(fdw.fdwacl, makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', false)) AND (u_grantor.rolname IN (SELECT role_name FROM enabled_roles) OR g_grantee.rolname IN (SELECT role_name FROM enabled_roles)) UNION ALL SELECT u_grantor.rolname AS grantor, g_grantee.rolname AS grantee, current_database() AS object_catalog, '' AS object_schema, srv.srvname AS object_name, 'FOREIGN SERVER' AS object_type, 'USAGE' AS privilege_type, CASE WHEN pg_has_role(g_grantee.oid, srv.srvowner, 'USAGE') OR aclcontains(srv.srvacl, makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', true)) THEN 'YES' ELSE 'NO' END AS is_grantable FROM pg_foreign_server srv, pg_authid u_grantor, pg_authid g_grantee WHERE aclcontains(srv.srvacl, makeaclitem(g_grantee.oid, u_grantor.oid, 'USAGE', false)) AND (u_grantor.rolname IN (SELECT role_name FROM enabled_roles) OR g_grantee.rolname IN (SELECT role_name FROM enabled_roles))) subquery;
 SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.role_usage_grants'::regclass);
  gpviewcopy 
 ------------
@@ -2064,64 +1809,7 @@ SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.role_usag
 
 DROP VIEW gp_migrator_staging_view;
 -- information_schema.table_constraints
-CREATE TEMPORARY VIEW gp_migrator_staging_view AS
-    SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog,
-           CAST(nc.nspname AS sql_identifier) AS constraint_schema,
-           CAST(c.conname AS sql_identifier) AS constraint_name,
-           CAST(current_database() AS sql_identifier) AS table_catalog,
-           CAST(nr.nspname AS sql_identifier) AS table_schema,
-           CAST(r.relname AS sql_identifier) AS table_name,
-           CAST(
-             CASE c.contype WHEN 'c' THEN 'CHECK'
-                            WHEN 'f' THEN 'FOREIGN KEY'
-                            WHEN 'p' THEN 'PRIMARY KEY'
-                            WHEN 'u' THEN 'UNIQUE' END
-             AS character_data) AS constraint_type,
-           CAST(CASE WHEN c.condeferrable THEN 'YES' ELSE 'NO' END AS character_data)
-             AS is_deferrable,
-           CAST(CASE WHEN c.condeferred THEN 'YES' ELSE 'NO' END AS character_data)
-             AS initially_deferred
-    FROM pg_namespace nc,
-         pg_namespace nr,
-         pg_constraint c,
-         pg_class r
-    WHERE nc.oid = c.connamespace AND nr.oid = r.relnamespace
-          AND c.conrelid = r.oid
-          AND r.relkind = 'r'
-          AND (NOT pg_is_other_temp_schema(nr.oid))
-          AND (pg_has_role(r.relowner, 'USAGE')
-               OR has_table_privilege(r.oid, 'INSERT')
-               OR has_table_privilege(r.oid, 'UPDATE')
-               OR has_table_privilege(r.oid, 'DELETE')
-               OR has_table_privilege(r.oid, 'REFERENCES')
-               OR has_table_privilege(r.oid, 'TRIGGER') )
-    UNION
-    SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog,
-           CAST(nr.nspname AS sql_identifier) AS constraint_schema,
-           CAST(CAST(nr.oid AS text) || '_' || CAST(r.oid AS text) || '_' || CAST(a.attnum AS text) || '_not_null' AS sql_identifier) AS constraint_name, -- XXX
-           CAST(current_database() AS sql_identifier) AS table_catalog,
-           CAST(nr.nspname AS sql_identifier) AS table_schema,
-           CAST(r.relname AS sql_identifier) AS table_name,
-           CAST('CHECK' AS character_data) AS constraint_type,
-           CAST('NO' AS character_data) AS is_deferrable,
-           CAST('NO' AS character_data) AS initially_deferred
-    FROM pg_namespace nr,
-         pg_class r,
-         pg_attribute a
-    WHERE nr.oid = r.relnamespace
-          AND r.oid = a.attrelid
-          AND a.attnotnull
-          AND a.attnum > 0
-          AND NOT a.attisdropped
-          AND r.relkind = 'r'
-          AND (NOT pg_is_other_temp_schema(nr.oid))
-          AND (pg_has_role(r.relowner, 'USAGE')
-               -- SELECT privilege omitted, per SQL standard
-               OR has_table_privilege(r.oid, 'INSERT')
-               OR has_table_privilege(r.oid, 'UPDATE')
-               OR has_table_privilege(r.oid, 'DELETE')
-               OR has_table_privilege(r.oid, 'REFERENCES')
-               OR has_table_privilege(r.oid, 'TRIGGER') );
+CREATE TEMPORARY VIEW gp_migrator_staging_view AS SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog, CAST(nc.nspname AS sql_identifier) AS constraint_schema, CAST(c.conname AS sql_identifier) AS constraint_name, CAST(current_database() AS sql_identifier) AS table_catalog, CAST(nr.nspname AS sql_identifier) AS table_schema, CAST(r.relname AS sql_identifier) AS table_name, CAST( CASE c.contype WHEN 'c' THEN 'CHECK' WHEN 'f' THEN 'FOREIGN KEY' WHEN 'p' THEN 'PRIMARY KEY' WHEN 'u' THEN 'UNIQUE' END AS character_data) AS constraint_type, CAST(CASE WHEN c.condeferrable THEN 'YES' ELSE 'NO' END AS character_data) AS is_deferrable, CAST(CASE WHEN c.condeferred THEN 'YES' ELSE 'NO' END AS character_data) AS initially_deferred FROM pg_namespace nc, pg_namespace nr, pg_constraint c, pg_class r WHERE nc.oid = c.connamespace AND nr.oid = r.relnamespace AND c.conrelid = r.oid AND r.relkind = 'r' AND (NOT pg_is_other_temp_schema(nr.oid)) AND (pg_has_role(r.relowner, 'USAGE') OR has_table_privilege(r.oid, 'INSERT') OR has_table_privilege(r.oid, 'UPDATE') OR has_table_privilege(r.oid, 'DELETE') OR has_table_privilege(r.oid, 'REFERENCES') OR has_table_privilege(r.oid, 'TRIGGER') ) UNION SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog, CAST(nr.nspname AS sql_identifier) AS constraint_schema, CAST(CAST(nr.oid AS text) || '_' || CAST(r.oid AS text) || '_' || CAST(a.attnum AS text) || '_not_null' AS sql_identifier) AS constraint_name, CAST(current_database() AS sql_identifier) AS table_catalog, CAST(nr.nspname AS sql_identifier) AS table_schema, CAST(r.relname AS sql_identifier) AS table_name, CAST('CHECK' AS character_data) AS constraint_type, CAST('NO' AS character_data) AS is_deferrable, CAST('NO' AS character_data) AS initially_deferred FROM pg_namespace nr, pg_class r, pg_attribute a WHERE nr.oid = r.relnamespace AND r.oid = a.attrelid AND a.attnotnull AND a.attnum > 0 AND NOT a.attisdropped AND r.relkind = 'r' AND (NOT pg_is_other_temp_schema(nr.oid)) AND (pg_has_role(r.relowner, 'USAGE') OR has_table_privilege(r.oid, 'INSERT') OR has_table_privilege(r.oid, 'UPDATE') OR has_table_privilege(r.oid, 'DELETE') OR has_table_privilege(r.oid, 'REFERENCES') OR has_table_privilege(r.oid, 'TRIGGER') ); 
 SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.table_constraints'::regclass);
  gpviewcopy 
 ------------
@@ -2130,80 +1818,7 @@ SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.table_con
 
 DROP VIEW gp_migrator_staging_view;
 -- information_schema.usage_privileges
-CREATE TEMPORARY VIEW gp_migrator_staging_view AS
-	SELECT CAST(grantor AS sql_identifier),
-	       CAST(grantee AS sql_identifier),
-		   CAST(object_catalog AS sql_identifier),
-		   CAST(object_schema AS sql_identifier),
-		   CAST(object_name AS sql_identifier),
-		   CAST(object_type as character_data),
-		   CAST(privilege_type as character_data),
-		   CAST(is_grantable as character_data)
-    FROM (SELECT u.rolname AS grantor,
-           	     'PUBLIC' AS grantee,
-           	     current_database() AS object_catalog,
-           	     n.nspname AS object_schema,
-           	     t.typname AS object_name,
-           	     'DOMAIN' AS object_type,
-           	     'USAGE' AS privilege_type,
-           	     'NO' AS is_grantable
-          FROM pg_authid u,
-          	   pg_namespace n,
-         	   pg_type t
-          WHERE u.oid = t.typowner
-          	    AND t.typnamespace = n.oid
-                AND t.typtype = 'd'
-    	  UNION ALL
-    	  SELECT u_grantor.rolname AS grantor,
-           		 grantee.rolname AS grantee,
-           		 current_database() AS object_catalog,
-           		 '' AS object_schema,
-           		 fdw.fdwname AS object_name,
-           		 'FOREIGN DATA WRAPPER' AS object_type,
-           		 'USAGE' AS privilege_type,
-             	 CASE WHEN
-                  	  pg_has_role(grantee.oid, fdw.fdwowner, 'USAGE')
-                  	  OR aclcontains(fdw.fdwacl,
-                       	             makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', true))
-                      THEN 'YES' ELSE 'NO' END AS is_grantable
-          FROM pg_foreign_data_wrapper fdw,
-          	   pg_authid u_grantor,
-         	   (
-           	    SELECT oid, rolname FROM pg_authid
-           		UNION ALL
-           		SELECT 0::oid, 'PUBLIC'
-         	   ) AS grantee (oid, rolname)
-    	  WHERE aclcontains(fdw.fdwacl,
-                            makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', false))
-                AND (pg_has_role(u_grantor.oid, 'USAGE')
-                     OR pg_has_role(grantee.oid, 'USAGE')
-                     OR grantee.rolname = 'PUBLIC')
-          UNION ALL
-    	  SELECT u_grantor.rolname AS grantor,
-           		 grantee.rolname AS grantee,
-           		 current_database() AS object_catalog,
-           		 '' AS object_schema,
-           		 srv.srvname AS object_name,
-           		 'FOREIGN SERVER' AS object_type,
-           		 'USAGE' AS privilege_type,
-                  CASE WHEN
-                        pg_has_role(grantee.oid, srv.srvowner, 'USAGE')
-                        OR aclcontains(srv.srvacl,
-                                       makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', true))
-                        THEN 'YES' ELSE 'NO' END AS is_grantable
-          FROM pg_foreign_server srv,
-       	       pg_authid u_grantor,
-         	   (
-           	    SELECT oid, rolname FROM pg_authid
-           		UNION ALL
-           		SELECT 0::oid, 'PUBLIC'
-               ) AS grantee (oid, rolname)
-    	  WHERE aclcontains(srv.srvacl,
-                            makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', false))
-                AND (pg_has_role(u_grantor.oid, 'USAGE')
-                     OR pg_has_role(grantee.oid, 'USAGE')
-                     OR grantee.rolname = 'PUBLIC')
-      ) subquery;
+CREATE TEMPORARY VIEW gp_migrator_staging_view AS SELECT CAST(grantor AS sql_identifier), CAST(grantee AS sql_identifier), CAST(object_catalog AS sql_identifier), CAST(object_schema AS sql_identifier), CAST(object_name AS sql_identifier), CAST(object_type as character_data), CAST(privilege_type as character_data), CAST(is_grantable as character_data) FROM (SELECT u.rolname AS grantor, 'PUBLIC' AS grantee, current_database() AS object_catalog, n.nspname AS object_schema, t.typname AS object_name, 'DOMAIN' AS object_type, 'USAGE' AS privilege_type, 'NO' AS is_grantable FROM pg_authid u, pg_namespace n, pg_type t WHERE u.oid = t.typowner AND t.typnamespace = n.oid AND t.typtype = 'd' UNION ALL SELECT u_grantor.rolname AS grantor, grantee.rolname AS grantee, current_database() AS object_catalog, '' AS object_schema, fdw.fdwname AS object_name, 'FOREIGN DATA WRAPPER' AS object_type, 'USAGE' AS privilege_type, CASE WHEN pg_has_role(grantee.oid, fdw.fdwowner, 'USAGE') OR aclcontains(fdw.fdwacl, makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', true)) THEN 'YES' ELSE 'NO' END AS is_grantable FROM pg_foreign_data_wrapper fdw, pg_authid u_grantor, ( SELECT oid, rolname FROM pg_authid UNION ALL SELECT 0::oid, 'PUBLIC' ) AS grantee (oid, rolname) WHERE aclcontains(fdw.fdwacl, makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', false)) AND (pg_has_role(u_grantor.oid, 'USAGE') OR pg_has_role(grantee.oid, 'USAGE') OR grantee.rolname = 'PUBLIC') UNION ALL SELECT u_grantor.rolname AS grantor, grantee.rolname AS grantee, current_database() AS object_catalog, '' AS object_schema, srv.srvname AS object_name, 'FOREIGN SERVER' AS object_type, 'USAGE' AS privilege_type, CASE WHEN pg_has_role(grantee.oid, srv.srvowner, 'USAGE') OR aclcontains(srv.srvacl, makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', true)) THEN 'YES' ELSE 'NO' END AS is_grantable FROM pg_foreign_server srv, pg_authid u_grantor, ( SELECT oid, rolname FROM pg_authid UNION ALL SELECT 0::oid, 'PUBLIC' ) AS grantee (oid, rolname) WHERE aclcontains(srv.srvacl, makeaclitem(grantee.oid, u_grantor.oid, 'USAGE', false)) AND (pg_has_role(u_grantor.oid, 'USAGE') OR pg_has_role(grantee.oid, 'USAGE') OR grantee.rolname = 'PUBLIC') ) subquery;
 SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.usage_privileges'::regclass);
  gpviewcopy 
 ------------
@@ -2212,36 +1827,7 @@ SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.usage_pri
 
 DROP VIEW gp_migrator_staging_view;
 -- information_schema.views
-CREATE TEMPORARY VIEW gp_migrator_staging_view AS
-    SELECT CAST(current_database() AS sql_identifier) AS table_catalog,
-           CAST(nc.nspname AS sql_identifier) AS table_schema,
-           CAST(c.relname AS sql_identifier) AS table_name,
-           CAST(
-             CASE WHEN pg_has_role(c.relowner, 'USAGE')
-                  THEN pg_get_viewdef(c.oid)
-                  ELSE null END
-             AS character_data) AS view_definition,
-           CAST('NONE' AS character_data) AS check_option,
-           CAST(
-             CASE WHEN EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = '2' AND is_instead)
-                   AND EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = '4' AND is_instead)
-                  THEN 'YES' ELSE 'NO' END
-             AS character_data) AS is_updatable,
-           CAST(
-             CASE WHEN EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = '3' AND is_instead)
-                  THEN 'YES' ELSE 'NO' END
-             AS character_data) AS is_insertable_into
-    FROM pg_namespace nc, pg_class c
-    WHERE c.relnamespace = nc.oid
-          AND c.relkind = 'v'
-          AND (NOT pg_is_other_temp_schema(nc.oid))
-          AND (pg_has_role(c.relowner, 'USAGE')
-               OR has_table_privilege(c.oid, 'SELECT')
-               OR has_table_privilege(c.oid, 'INSERT')
-               OR has_table_privilege(c.oid, 'UPDATE')
-               OR has_table_privilege(c.oid, 'DELETE')
-               OR has_table_privilege(c.oid, 'REFERENCES')
-               OR has_table_privilege(c.oid, 'TRIGGER') );
+CREATE TEMPORARY VIEW gp_migrator_staging_view AS SELECT CAST(current_database() AS sql_identifier) AS table_catalog, CAST(nc.nspname AS sql_identifier) AS table_schema, CAST(c.relname AS sql_identifier) AS table_name, CAST( CASE WHEN pg_has_role(c.relowner, 'USAGE') THEN pg_get_viewdef(c.oid) ELSE null END AS character_data) AS view_definition, CAST('NONE' AS character_data) AS check_option, CAST( CASE WHEN EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = '2' AND is_instead) AND EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = '4' AND is_instead) THEN 'YES' ELSE 'NO' END AS character_data) AS is_updatable, CAST( CASE WHEN EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = '3' AND is_instead) THEN 'YES' ELSE 'NO' END AS character_data) AS is_insertable_into FROM pg_namespace nc, pg_class c WHERE c.relnamespace = nc.oid AND c.relkind = 'v' AND (NOT pg_is_other_temp_schema(nc.oid)) AND (pg_has_role(c.relowner, 'USAGE') OR has_table_privilege(c.oid, 'SELECT') OR has_table_privilege(c.oid, 'INSERT') OR has_table_privilege(c.oid, 'UPDATE') OR has_table_privilege(c.oid, 'DELETE') OR has_table_privilege(c.oid, 'REFERENCES') OR has_table_privilege(c.oid, 'TRIGGER') ); 
 SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.views'::regclass);
  gpviewcopy 
 ------------
@@ -2249,20 +1835,23 @@ SELECT public.gpviewcopy('gp_migrator_staging_view'::regclass, 'public.views'::r
 (1 row)
 
 DROP VIEW gp_migrator_staging_view;
+-- We just messed with pg_rewrite, so we need to reindex it again.
+reindex table public.pg_rewrite;
 -- Restore original search path
 set search_path='public';
 DROP FUNCTION public.gpviewcopy(oid, oid);
 commit;
--- Reindex normal tables (not shared tables)
-reindex table public.pg_appendonly;
-reindex table public.pg_exttable;
-reindex table public.pg_stat_last_operation;
 -- end
+-- We updated the public.pg_attribute manually, but since we will
+-- be doing data operations we need to update in the real catalag too...
+alter table public.pg_tablespace add column spcfsoid oid;
 \i @abs_builddir@/sql/loadcat34_sh.sql
 begin;
 -- Updates for shared tables, these updates can only occur in ONE
 -- database (template0) otherwise we will end up with duplication
 -- issues.
+-- Reindex shared tables that were added during upgrade before we load data
+reindex table public.pg_filespace;
 -- Copy in the shared data
 copy public.pg_filespace from '@abs_srcdir@/data//upg2_pg_filespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 copy public.pg_shdescription from '@abs_srcdir@/data//upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
@@ -2272,14 +1861,24 @@ copy public.pg_resqueue from '@abs_srcdir@/data//upg2_pg_resqueue_toadd33.data' 
 update public.pg_authid u set rolresqueue=q.oid from pg_catalog.pg_resqueue q where q.rsqname='gp_default' and u.rolresqueue is null and not u.rolsuper;
 -- Assign the system tablespaces to the system filespace
 update public.pg_tablespace set spcfsoid=3052, spclocation=null, spcprilocations=null, spcmirlocations=null;
--- Commit
-commit;
 -- Reindex shared tables
-reindex table public.pg_tablespace;
-reindex table public.pg_filespace;
 reindex table public.gp_configuration_history;
 reindex table public.gp_db_interfaces;
+reindex table public.gp_fault_strategy;
+NOTICE:  table "gp_fault_strategy" has no indexes
 reindex table public.gp_interfaces;
+reindex table public.gp_san_config;
+reindex table public.gp_segment_config;
+reindex table public.pg_authid;
+reindex table public.pg_filespace;
+reindex table public.pg_filespace_entry;
+reindex table public.pg_resourcetype;
+reindex table public.pg_resqueue;
+reindex table public.pg_resqueuecapability;
+reindex table public.pg_shdescription;
+reindex table public.pg_stat_last_shoperation;
+reindex table public.pg_tablespace;
+commit;
 -- end
 -- 
 -- Some manual fixups.
@@ -2309,14 +1908,6 @@ insert into public.pg_attribute
   from pg_catalog.pg_attribute a
   where (attrelid, attnum) in ( ('public.pg_exttable'::regclass, 10) );
 update public.pg_class set relnatts=10 where oid = 'pg_catalog.pg_exttable'::regclass;
-insert into public.pg_attribute 
-  select 'pg_catalog.pg_tablespace'::regclass, a.attname, a.atttypid,
-    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
-    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
-    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
-  from pg_catalog.pg_attribute a
-  where (attrelid, attnum) in ( ('public.pg_tablespace'::regclass, 7) );
-update public.pg_class set relnatts=7 where oid = 'pg_catalog.pg_tablespace'::regclass;
 -- System views that have changed, update fake schema.
 --   We upgrade "public.viewname", which is a view defined in the _actual_
 --   catalog, we need to mirror these updates in the fake schema so that
@@ -2548,6 +2139,21 @@ select relname, relnamespace,
 from pg_catalog.pg_class where oid < 10000 and relname !~ 'pg_toast';
  relname | relnamespace | reltype | relowner | relam | reltablespace | reltoastrelid | reltoastidxid | relaosegrelid | relaosegidxid | relhasindex | relisshared | relkind | relstorage | relnatts | relchecks | reltriggers | relukeys | relfkeys | relrefs | relhasoids | relhaspkey | relhasrules | relhassubclass | reloptions 
 ---------+--------------+---------+----------+-------+---------------+---------------+---------------+---------------+---------------+-------------+-------------+---------+------------+----------+-----------+-------------+----------+----------+---------+------------+------------+-------------+----------------+------------
+(0 rows)
+
+-- compare old and new pg_type
+select oid, * from pg_catalog.pg_type where oid < 10000
+except
+select oid, * from public.pg_type where oid < 10000;
+ oid | typname | typnamespace | typowner | typlen | typbyval | typtype | typisdefined | typdelim | typrelid | typelem | typinput | typoutput | typreceive | typsend | typanalyze | typalign | typstorage | typnotnull | typbasetype | typtypmod | typndims | typdefaultbin | typdefault 
+-----+---------+--------------+----------+--------+----------+---------+--------------+----------+----------+---------+----------+-----------+------------+---------+------------+----------+------------+------------+-------------+-----------+----------+---------------+------------
+(0 rows)
+
+select oid, * from public.pg_type where oid < 10000
+except
+select oid, * from pg_catalog.pg_type where oid < 10000;
+ oid | typname | typnamespace | typowner | typlen | typbyval | typtype | typisdefined | typdelim | typrelid | typelem | typinput | typoutput | typreceive | typsend | typanalyze | typalign | typstorage | typnotnull | typbasetype | typtypmod | typndims | typdefaultbin | typdefault 
+-----+---------+--------------+----------+--------+----------+---------+--------------+----------+----------+---------+----------+-----------+------------+---------+------------+----------+------------+------------+-------------+-----------+----------+---------------+------------
 (0 rows)
 
 -- compare old and new pg_aggregate

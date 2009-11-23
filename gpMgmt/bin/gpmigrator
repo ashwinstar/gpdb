@@ -99,159 +99,6 @@ class CmdError(StandardError):
         return self.stderr
 
 #============================================================
-class MappingsWorker(Thread):
-    def __init__(self, upgrade, dir, mapfilename, oids):
-        self.dir = dir
-        self.oids = oids
-        self.errors = 0
-        self.upgrade = upgrade
-        self.mapfilename = mapfilename
-
-        Thread.__init__(self)
-
-    def run(self):
-        mapfile = open(self.mapfilename, 'w')
-        for oid, dboids in self.oids.iteritems():
-            dbname = dboids[0]
-            oids = dboids[1]
-            for o in oids:
-                # Check that the relfilenode actually exists! 
-                #   There is a bug that can cause diskfiles to go missing from
-                #   bitmap indices.  We want to generate a comprehensable error
-                #   message for these.
-                file = os.path.join(self.dir, 'base', str(oid), str(o['filenode']))
-                if not os.path.exists(file):
-                    # name is either "schema"."parentschema"."parent_name"_"kind"
-                    #      or        "schema"."name"."kind"
-                    # where the first form is used for objects that embed oids
-                    # in their names (append only segments, bitmap indexes)
-    
-                    kind = o['name'][-1:]
-                    name = o['name'][:-2]
-    
-                    if name[:14] == 'pg_bitmapindex':
-                        msg = "Bitmap index '%s'" % name[15:]
-                    elif name[:8] == 'pg_aoseg':
-                        msg = "Append only segment for '%s'" % name[9:]
-                    elif kind == 'a' or kind == 'r':
-                        msg = "Table '%s'" % name
-                    elif kind == 'i':
-                        msg = "Index '%s'" % name
-                    elif kind == 'S':
-                        msg = "Sequence '%s'" % name
-                    else:
-                        msg = "Object '%s'" % name
-                    msg += " missing relfile on segment '%s'\n" % self.upgrade.host
-                    logger.fatal(msg)
-                    logger.fatal('missing relfile: ' + file)
-                    self.errors += 1
-    
-                # Prefix each name with the database it's in
-                mapfile.write('%s.%s,%s,%s,%s,%s\n' %
-                              (dbname.encode('utf-8'), o['name'].encode('utf-8'),
-                               oid, 
-                               o['filenode'], 
-                               o['toast'], 
-                               o['toast_index']))
-
-
-        mapfile.close()
-
-class RemapOidWorker(Thread):
-    def __init__(self, mapspec, olddir, newdir, method):
-        self.mapspec = mapspec
-        self.olddir = olddir
-        self.newdir = newdir
-        self.method = method
-        self.errors = 0
-        self.errstr = ""
-        Thread.__init__(self)
-
-    def run(self):
-        # This wrapper around dowork ensures that if any error occurs then
-        # we will set the error fields for the thread in such a way that
-        # the main thread can detect that a failure occured.
-        try:
-            self.dowork()
-        except Exception, e:
-            self.errors += 1
-            self.errstr = str(e)
-
-    def dowork(self):
-        oldmapfile = open(self.mapspec+'_source_mapping', 'r')
-        newmapfile = open(self.mapspec+'_target_mapping', 'r')
-        for oldline in oldmapfile:
-            newline = newmapfile.next()
-
-            # trim off the newlines
-            oldline = oldline[0:-1]
-            newline = newline[0:-1]
-
-            (oldname, olddb, oldoid, oldtoast, oldtidx) = \
-                oldline.split(',')
-            (newname, newdb, newoid, newtoast, newtidx) = \
-                newline.split(',')                        
-
-            if oldname != newname:
-                self.errors += 1
-                self.errstr = "Mapping failure on %s" % oldname
-                raise UpgradeError(self.errstr)
-
-            def makemapping(name,olddb,oldoid,newdb,newoid,msg):
-                if oldoid == 'None' and newoid == 'None':
-                    return
-                if oldoid == 'None' or newoid == 'None':
-                    raise UpgradeError("Mapping failure on %s %s" % (name, msg))
-                mapping[os.path.join(olddb,oldoid)] = os.path.join(newdb, newoid)
-
-            mapping = {}
-            makemapping(oldname, olddb, oldoid, newdb, newoid, '')
-            makemapping(oldname, olddb, oldtoast, newdb, newtoast, 'toast')
-            makemapping(oldname, olddb, oldtidx, newdb, newtidx, 'toast index')
-
-            for oldoid in mapping:
-                newoid = mapping[oldoid]
-                oldfile = os.path.join(self.olddir, 'base', oldoid)
-                newfile = os.path.join(self.newdir, 'base', newoid)
-
-                # Both old and new file should exist
-                if not os.path.exists(oldfile):
-                    self.errors += 1
-                    self.errstr = oldfile + ' not found'
-                    raise UpgradeError(self.errstr)
-                # we don't want to test if the file exists if this
-                # is a transform style 'grade
-                if (self.method == 'dumprestore' and 
-                    not os.path.exists(newfile)):
-                    self.errors += 1
-                    self.errstr = newfile + ' not found'
-                    raise UpgradeError(self.errstr)
-
-                if os.path.exists(newfile):
-                    os.remove(newfile)
-                os.link(oldfile, newfile)
-
-                # Large tables will have additional extensions, these
-                # are named 'relfilenode.extension#'.
-                #
-                # Previously this just incremented until the extension wasn't 
-                # found, but this is not valid for AO tables which may have 
-                # gaps in the range [MPP-6526].  Since AO tables have a maximum
-                # of 127 extensions we use a hybrid aproach where we always
-                # check for the first 127 extension files, and then revert
-                # to the assumption that all extensions are contiguous and
-                # continue until we fail to find a given extension.
-                #
-                # [MPP-6880] Previous attempts at fixing [MPP-6526] using
-                # globbing proved too expensive.
-                ext = 0
-                exists = True
-                while (ext < 128 or exists):
-                    exists = os.path.exists(oldfile + '.' + str(ext))
-                    if (exists):
-                        os.link('%s.%s' % (oldfile, str(ext)), 
-                                '%s.%s' % (newfile, str(ext)))
-                    ext = ext + 1
         
 class Worker(Thread):
     def __init__(self, harness):
@@ -467,10 +314,10 @@ class GPVersion:
         else:
             upstr = "downgrade"
 
-        if self.version >= [3,2,0,0] and self.version <= MAIN:
+        if self.version >= [3,3,0,0] and self.version <= MAIN:
             return True
 
-        if self.version < [3,2,0,0]:
+        if self.version < [3,3,0,0]:
             raise UpgradeError(
                 "Greenplum Version '%s' is not supported for %s"
                 % (str(self), upstr))
@@ -493,7 +340,6 @@ class GPUpgrade:
     #   RMDIR     - Remove directories, run on every host
     #   CHKDIR    - Check directories, run on every host
     #   RESETXLOG - Syncronize xlogs
-    #   REMAPOID  - Link newdb to old oids, run on every host
     #   DEEPLINK  - Recursive hardlink
     #   EXTRACTCATFILES - build a list of catalog files to be copied
     #   BUILDSKEL - build a skeleton copy of the old system
@@ -501,8 +347,8 @@ class GPUpgrade:
     #   SETCATVERSION - set catalog version
     #   EXTRACTAOSEGS - get ao seg info
     #   GETHIGHESTOID - find the highest OID in the cluster
-    commands = ['SETSTATE', 'MKDIR', 'RMDIR', 'CHKDIR', 'RESETXLOG', 'MAPPINGS',
-                'REMAPOID', 'DEEPLINK', 'CHKDOWN', 'LOCKDOWN', 'UNLOCK',
+    commands = ['SETSTATE', 'MKDIR', 'RMDIR', 'CHKDIR', 'RESETXLOG',
+                'DEEPLINK', 'CHKDOWN', 'LOCKDOWN', 'UNLOCK',
                 'EXTRACTCATFILES', 'BUILDSKEL', 'TRANSFORMCAT',
                 'SETCATVERSION', 'EXTRACTAOSEGS', 'GETHIGHESTOID']
 
@@ -558,7 +404,6 @@ class GPUpgrade:
         self.newmaster  = None     # directory: workdir/upgrade/gp-1
         self.state      = None     # file:      backup/state
         self.config     = {}       # gp_init_config for new db
-        self.mappings   = None     # Mappings of old oid to new oids
         self.hosts      = []       # list of hosts
         self.segments   = []       # list of segments
         self.mirrors    = []       # list of mirrors
@@ -700,9 +545,6 @@ class GPUpgrade:
             parser.add_option('--internal-isupgrade', dest='upgrade',
                               action='store_true',
                               help=optparse.SUPPRESS_HELP)
-            parser.add_option('--force-dumprestore', dest='forcedumprestore',
-                              action='store_true',
-                              help=optparse.SUPPRESS_HELP)
             parser.add_option('--nocheckcat', dest='nocheckcat',
                               action='store_true',
                               help=optparse.SUPPRESS_HELP)
@@ -794,8 +636,7 @@ class GPUpgrade:
         self.faultinjection = options.faultinjection
 
         if self.cmd == 'MASTER':
-            if options.forcedumprestore:
-                self.method = "dumprestore"
+            self.method = "transform"  # Currently the only supported method
 
             today = date.today().strftime('%Y%m%d')
             if not os.path.isdir(self.logdir):
@@ -1663,15 +1504,6 @@ class GPUpgrade:
                 "Upgrade from %s to %s not supported. Target version should be Greenplum Database %s.%s" 
                 % (str(oldversion), str(newversion), MAIN[0], MAIN[1]))
 
-        # Determine method if it wasn't specified on the command line.
-        # Note, this should always result in "transform" since only support 
-        # upgrade from releases >= 3.2
-        if not self.method:
-            if (oldversion.isrelease("3.1") or newversion.isrelease("3.1")):
-                self.method = "dumprestore"
-            else:
-                self.method = "transform"
-
         logger.debug('Using %s method for migration' % self.method)
 
         # Compare old version catalog number with the catalog in 
@@ -1961,69 +1793,9 @@ This may be specified on the commandline with:
                          (item['hostname'], item['datadir']));
             raise UpgradeError('Cannot upgrade database with invalid segments')
 
-        # Upgrade will create the "pg_default" resource queue, error if it
-        # already exists
-        if (self.oldversion <= '3.3' and self.newversion >= '3.4.0.0'):
-            resqueue = self.Select(
-            '''
-               SELECT rsqname from pg_resqueue WHERE rsqname = 'pg_default'
-            ''', forceutility=True);
-            if len(resqueue) > 0:
-                raise UpgradeError('Resource queue "pg_default" already exists')
 
-        # It would be nice to keep this around and reuse it.  
-        # Instead we just issue this query a lot.
         logger.info('Creating list of databases')
         databases = self.Select("SELECT datname from pg_database WHERE datname != 'template0'")
-
-        if self.method == 'dumprestore':
-            # Look for dropped columns that we do not know how to deal with
-            #
-            # The query lists the dropped attributes for which no suitable reconstruction
-            # type exists in pg_type.  This will happen for user-defined types that have 
-            # been dropped.  (This query is compatible with a similar query used in pg_dump
-            # for finding a reconstruction match for dropped attributes with user-defined
-            # types.
-            logger.info('Checking for dropped columns')
-            for db in databases:
-                unsupportedDropped = self.Select( 
-                        '''
-                            SELECT 
-                                current_database() as database,
-                                pg_catalog.quote_ident(nspname) || '.' ||
-                                pg_catalog.quote_ident(relname) AS table,
-                                attnum,
-                                attlen,
-                                attbyval,
-                                attstorage,
-                                attalign,
-                                atttypmod,
-                                attndims,
-                                reltoastrelid != 0 AS istoasted
-                            FROM 
-                                pg_catalog.pg_attribute, 
-                                pg_catalog.pg_class, 
-                                pg_catalog.pg_namespace
-                            WHERE 
-                                  attisdropped
-                              AND attnum >= 0
-                              AND attrelid = pg_catalog.pg_class.oid
-                              AND relnamespace = pg_catalog.pg_namespace.oid
-                              AND (attlen, attbyval, attalign, attstorage) NOT IN 
-                                    (SELECT typlen, typbyval, typalign, typstorage 
-                                     FROM pg_catalog.pg_type 
-                                     WHERE typisdefined AND typtype ='b')
-                            ORDER BY
-                                attrelid, attnum;
-                        ''', db=db)
-                if unsupportedDropped:
-                    for row in unsupportedDropped:
-                        logger.fatal(
-                                 'Unrecognized dropped column in database "%(database)s" - table %(table)s '
-                                 '[%(attnum)d]: len=%(attlen)d, byval=%(attbyval)s, storage=%(attstorage)s, '
-                                 'align=%(attalign)s, typmod=%(atttypmod)d, ndims=%(attndims)d, istoasted=%(istoasted)s'
-                                 % row)
-                    raise UpgradeError("non-upgradable dropped columns detected")
 
         # Look for an existing user named MIGRATIONUSER
         logger.info('Checking gpmigrator user')
@@ -2033,48 +1805,10 @@ This may be specified on the commandline with:
         if upgradeuser[0] > 0:
             logger.warn("Database user '%s' already exists" % MIGRATIONUSER)
             self.Update('DROP USER ' + MIGRATIONUSER)
-            #raise UpgradeError("Database user 'gpmigrator' already exists")
 
-        # If this is a downgrade, verify that we have no objects that can not
-        # be downgraded:
-        #    - append only tables
-        #    - new style partitions
-        if (not self.upgrade 
-            and self.newversion < '3.2.0.0' 
-            and self.oldversion >= '3.2.0.0'):
-            logger.info('Checking for partitioning and append only tables')
-            c = 0
-            for db in databases:
-                c = self.Select('SELECT COUNT(*)::numeric FROM pg_partition', db=db)
-                if c[0] > 0:
-                    raise UpgradeError(
-'''
--------------------------------------------------------
-Cannot downgrade a database with 3.2 style partitioning     <<<<<
--------------------------------------------------------
-''')
-                c = self.Select("SELECT COUNT(*)::numeric FROM pg_appendonly", db=db)
-                if c[0] > 0:
-                    raise UpgradeError(
-'''
----------------------------------------------------
-Cannot downgrade a database with append only tables     <<<<<
----------------------------------------------------
-''')
 
-        if (not self.upgrade
-            and self.newversion < '3.3.0.0'
-            and self.oldversion >= '3.3.0.0'):
-            c = 0
-            for db in databases:
-                c = self.Select('SELECT COUNT(*)::numeric FROM pg_catalog.pg_aocs;', db=db)
-                if c[0] > 0:
-                    raise UpgradeError(
-'''
----------------------------------------------------
-Cannot downgrade a database with 3.3 column storage    <<<<<
----------------------------------------------------
-''')
+        if (not self.upgrade):
+            raise UpgradeError("Downgrade not supported")
 
         # Extract the information needed to construct a gp_init_config file
         logger.info('Extracting configuration information')
@@ -2470,209 +2204,6 @@ This issue must be resolved before upgrade can complete.
         # are done with the upgrade.
         return
  
-
-    #------------------------------------------------------------
-    def BuildMappings(self):
-        '''
-        Constructs the mappings of user objects to data files.
-        It is called twice over the course of the upgrade, the first time it
-        extracts mappings from the olddb, the second time it extracts mappings
-        from the new db and joins the two mappings together.
-
-        For the 3.2 -> 3.3 upgrade, the mappings should be identical so we just 
-        copy the source mapping to the target mapping.
-        '''
-        if self.cmd == 'MASTER':
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
-            [env, utility] = self.dbup
-            if (env == self.oldenv):
-                logger.info('Building original oid Mappings')
-                type = 'source'
-                datadirs = [ self.root ]
-            else:
-                logger.info('Building upgraded oid Mappings')
-                if self.method == "dumprestore":
-                    type = 'target'
-                    datadirs = [ os.path.join(self.workdir, UPGRADEDIR) ]
-                else:
-                    type = 'copy'
-                    datadirs = [ self.root ]
-
-            # Currently we only build target mappings on the dummy segment,
-            # for 3.1 -> 3.x upgrades, which resides on the same machine as
-            # the master, it will then copy for all other segments as needed
-            #
-            # Source mappings are still done by each actual segment.
-            # 
-            # For 3.2 -> 3.x, push the copy target to the segs
-            if type == 'source' or type == 'copy':
-                self.CallSlaves('MAPPINGS', self.config['SEG_PREFIX'], type)
-        else:
-            seg_prefix = self.option
-            type       = self.option2
-            datadirs   = self.datadirs
-
-        errors = 0
-        seg_re  = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)
-
-        threads = []
-        for d in datadirs:
-            for seg in os.listdir(d):
-                if seg_re.match(seg):
-                    
-                    # if this is a copy, exit early
-                    if type == 'copy':
-                        source = os.path.join(d, WORKDIR, '%s_source_mapping' % seg)
-                        target = os.path.join(d, WORKDIR, '%s_target_mapping' % seg)
-                        logger.debug('d = %s' % d)
-                        logger.debug("copying %s to %s" % (source, target))
-                        self.RunCmd("cp -f %s %s" % ( source, target ))
-                        continue
-
-                    # The directory for this segment
-                    # We keep both mapping files in the work directory
-                    dir = os.path.join(d, seg)
-                    if type == 'source':
-                        logdir = os.path.join(d, WORKDIR)
-                    else:
-                        logdir = os.path.split(d)[0]   # back up one directory
-                
-                    # Open the mapping file
-                    mapfilename = os.path.join(logdir, '%s_%s_mapping' % (seg, type))
-
-                    # Find the last line in the conf file that matches our
-                    # expression
-                    conf = os.path.join(dir, 'postgresql.conf')
-                    def getconf(x):
-                        conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
-                        conf_str = self.RunCmd('grep %s %s' % (x, conf))
-                        value = None
-                        for line in conf_str.split('\n'):
-                            match = conf_re.search(line)
-                            if match:
-                                value = int(match.group(1))
-                        return value
-
-                    # Find the port for this segment:
-                    port = getconf('port')
-                    if port == None:
-                        raise UpgradeError('Could not determine port from ' +
-                                           '%s/postgresql.conf' % dir)
-
-                    # Get a list of databases
-                    databases = self.Select(
-                    '''
-                       SELECT
-                          datname        as dbname,
-                          oid            as oid
-                       FROM pg_database 
-                       WHERE datname != 'template0'
-                       ORDER BY dbname
-                    ''', port=port)
-
-                    self.CheckClusterReady(databases, port)
-
-
-                    # Build up the list of mapping objects
-                    rks = ['a', 'r', 't', 'i', 'S']
-                    if self.method != "dumprestore":
-                        rks.append('o')
-
-                    rkstr = ', '.join(map(lambda x: "'%s'" % x, rks))
-
-                    oidmap = {}
-                    for db in databases:
-                        oidmap[db['oid']] = [db['dbname']]
-                        oids = self.Select(
-                        '''
-                           SELECT
-                              case when parent.oid is not null
-                                   then n.nspname || '.' || pn.nspname || '.' ||
-                                        parent.relname || '_' || c.relkind
-                                   else n.nspname || '.' || c.relname || '_' || c.relkind
-                              end as name,
-                              c.relfilenode as filenode,
-                              c2.relfilenode as toast,
-                              c3.relfilenode as toast_index
-                           FROM 
-                              pg_namespace n,
-                    (SELECT oid, *, 
-            substring(relname from '^(?:pg_bm_|pg_aoseg_)([0-9]+)') as parentoid
-                               from pg_class) c 
-                left outer join pg_class c2 on c.reltoastrelid=c2.oid
-                left outer join pg_class c3 on c2.reltoastidxid=c3.oid
-                left outer join pg_class parent on parent.oid = c.parentoid
-                left outer join pg_namespace pn on parent.relnamespace = pn.oid
-                           WHERE c.relkind in (%s)
-                             AND c.relnamespace = n.oid 
-                             AND n.nspname !~ 'pg_temp.*'
-                             AND n.nspname != 'pg_toast'
-                             AND n.nspname != 'pg_catalog'
-                             AND n.nspname != 'information_schema'
-                           ORDER BY name;
-                        ''' % rkstr, db=db['dbname'], port=port)
-
-                        oidmap[db['oid']].append(oids)
-
-                    t = MappingsWorker(self, dir, mapfilename, oidmap)
-                    t.start()
-                    logger.debug('started MappingsWorker thread: %s' % t.getName())
-                    threads.append(t)
-                    if len(threads) % PARALLELISM == 0:
-                        for th in threads:
-                            th.join()
-                            if th.errors:
-                                logger.fatal('error encountered in mappings thread')
-                        threads = []
-                        
-        # Wait for all threads to be done before proceding to next stage
-        for th in threads:
-            th.join()
-            if th.errors:
-                logger.fatal('error encountered in mappings thread')
-            threads = []
-
-        if errors > 0:
-            raise UpgradeError('You must drop or reindex malformed objects prior to upgrade')
-
-    #------------------------------------------------------------
-    def DumpStatistics(self):
-        '''
-        Executes queries and creates files in the upgrade directory 'pg_stat_*.csv'
-        '''
-
-        logger.info('Exporting Statistics')
-
-        databases = self.Select('''
-        SELECT datname from pg_database
-        WHERE datname != 'template0' 
-        ORDER BY datname''')
-
-        # Since COPY doesn't have an append option we write out N files
-        count = 1
-        for db in databases:
-            self.Update('''
-            COPY (
-              SELECT current_database(),        n.nspname,      c.relname,     
-                 t.typname,      c.relpages,    c.reltuples, 
-                 s.staattnum,    s.stanullfrac, s.stawidth,     s.stadistinct,
-                 s.stakind1,     s.stakind2,    s.stakind3,     s.stakind4,
-                 s.staop1::regoperator,         s.staop2::regoperator,
-                 s.staop3::regoperator,         s.staop4::regoperator,
-                 s.stanumbers1,  s.stanumbers2, s.stanumbers3,  s.stanumbers4,
-                 s.stavalues1,   s.stavalues2,  s.stavalues3,   s.stavalues4
-              FROM   pg_class c
-                     join pg_namespace n on (c.relnamespace = n.oid) 
-                     left outer join pg_attribute a on (c.oid = a.attrelid) 
-                     left outer join pg_type t on (a.atttypid = t.oid)
-                     left outer join pg_statistic s on (s.starelid = c.oid and s.staattnum = a .attnum)
-              WHERE  n.nspname !~ '(pg_.*|information_schema)'
-              ORDER BY n.nspname, c.relname, s.staattnum
-              ) to '%s/pg_stat_%d.csv' with CSV ESCAPE E'\\\\' ''' % \
-                            (self.workdir, count), db=db)
-            count += 1
-
-
     #------------------------------------------------------------
     def CheckCatalog(self):
         '''
@@ -2715,273 +2246,6 @@ This issue must be resolved before upgrade can complete.
                 raise UpgradeError('Catalog Check terminated by signal')
             if retcode > 0:
                 raise UpgradeError('Catalog Check Failed - see %s for details' % outfilename)
-
-    #------------------------------------------------------------
-    def DumpSchema(self):
-        '''
-        Runs pgdump_all to dump the schema.
-        Run on the master in utility mode.
-        '''
-        logger.info('Exporting schema')
-
-        locked = os.path.join(self.oldenv['MASTER_DATA_DIRECTORY'], 
-                              'pg_hba.conf'+LOCKEXT)
-        if os.path.exists(locked):
-            user = MIGRATIONUSER
-        else:
-            user = self.oldenv['USER']
-
-        # We use the environment of the most recent instance so that
-        # we always use the most recent version of pg_dumpall.
-        if self.upgrade:
-            env = self.newenv
-        else:
-            env = self.oldenv
-
-        cmd  = 'pg_dumpall'
-        cmd += ' -U %s' % user
-        cmd += ' -p %d' % self.masterport
-        cmd += ' -r -s --gp-syntax --gp-migrator > %s/pgdump.sql' % self.workdir
-        logger.debug('CMD: ' + cmd)
-        r = subprocess.call(cmd, env=env, shell=True)
-
-        if r:
-            raise UpgradeError('pg_dumpall exited with status %d' % r)
-
-
-    #------------------------------------------------------------
-    def InitNewDB(self):
-        '''
-        Create and configure the upgrade instance
-        '''
-        logger.info('Initializing upgraded cluster')
-        self.newenv['PGPORT'] = str(self.new_master_port)
-
-        arrayname = self.config['ARRAY_NAME']
-        mdir      = self.newmaster
-        mport     = self.new_master_port
-        segdir    = os.path.join(self.workdir, UPGRADEDIR, 'dummyseg')
-        segport   = self.new_port_base + 1
-        chkpoint  = self.config['CHECKPOINT_SEGMENTS']
-        encoding  = self.config['CLIENT_ENCODING']
-        locale    = self.config['LOCALE']
-        maxconn   = self.config['MAX_CONNECTIONS']
-
-        # Multiple layers of code (python/ssh/bash/python) combined with
-        # different os/ssh/shell versions make string escaping a big pain.
-        # If we detect that the array name contains anything that would make
-        # quoteing necessary we just punt.  It can be fixed after upgrade
-        # if needed.
-        array_re = re.compile('^\w+$')
-        if not array_re.match(arrayname):
-            arrayname = 'Greenplum_Database'
-        
-        # We create the master and one segment on the master host as 
-        # the initial configuration, then copy the segment to every
-        # host once it is ready.
-        logger.info('...master')
-        cmd = [os.path.join(libdir, 'gpinitsegment'),
-               '-A', arrayname,
-               '-D', mdir,
-               '-p', str(mport),
-               '-n', '1',
-               '-K', chkpoint,
-               '-E', encoding,
-               '-L', locale,
-               '-M', maxconn]
-        self.RunCmd(cmd, env=self.newenv)
-
-        logger.info('...segment')
-        cmd = [os.path.join(libdir, 'gpinitsegment'),
-               '-A', arrayname,
-               '-C', mdir,
-               '-D', segdir,
-               '-p', str(segport),
-               '-c', '0', 
-               '-i', '2', 
-               '-n', '1']
-        self.RunCmd(cmd, env=self.newenv)
-
-        # Shutdown won't work correctly until gp_configuration is correctly
-        # initialized, so we need some extra guards for cleanup.
-        logger.info('...adjusting configuration')
-        try:
-            # Write out an initial gp_configuration
-            cmd = 'pg_ctl -D %s -o "-p%s" -l %s.log start' % \
-                (mdir, mport, mdir)
-            self.RunCmd(cmd, env=self.newenv)
-
-            # Give it 20 seconds to startup, polling pg_controldata every second
-            # to see if startup has completed
-            count = 0
-            state = None
-            while state != 'in production':
-                count += 1
-                if (count > 20):
-                    raise UpgradeError("New master startup timeout")
-                sleep(1)
-                ctl = self.RunCmd('pg_controldata %s' % mdir, env=self.newenv)
-                for line in ctl.split('\n'):
-                    (field, value) = line.split(':')
-                    if field == 'Database cluster state':
-                        state = value.strip()
-                        break
-            
-            # Database is up
-            self.dbup = [self.newenv, True]
-            self.Update("INSERT INTO gp_configuration values (-1, 't', 1, 't', 't', '%s', %s, '%s')"
-                        % (self.host, mport, mdir), port=mport)
-            self.Update("INSERT INTO gp_configuration values ( 0, 't', 2, 't', 't', '%s', %s, '%s')"
-                        % (self.host, segport, segdir), port=mport)
-
-        except Exception, e:
-            cmd = 'pg_ctl -D %s -o "-p%s" stop' % (mdir, mport)
-            self.RunCmd(cmd, env=self.newenv)
-            raise e
-
-        # Startup the segment
-        self.dbup = [self.newenv, False]
-
-        cmd = 'pg_ctl -D %s -o "-p%s" -l %s.log start' % \
-            (segdir, segport, segdir)
-        self.RunCmd(cmd, env=self.newenv)
-
-        # Give it 20 seconds to startup, polling pg_controldata every second
-        # to see if startup has completed
-        count = 0
-        state = None
-        while state != 'in production':
-            count += 1
-            if (count > 20):
-                raise UpgradeError("New master startup timeout")
-            sleep(1)
-            ctl = self.RunCmd('pg_controldata %s' % segdir, env=self.newenv)
-            for line in ctl.split('\n'):
-                (field, value) = line.split(':')
-                if field == 'Database cluster state':
-                    state = value.strip()
-                    break
-
-    #------------------------------------------------------------
-    def ExpandSystem(self):
-        '''
-        Copies the dummyseg from the master node to all segments.
-        '''
-        
-        logger.info('Expanding cluster')
-        logger.info('...This may take a while')
-
-        try:
-            dummyseg = os.path.join(self.workdir, UPGRADEDIR, 'dummyseg')
-            filename = os.path.join(self.workdir, 'gp_config')
-            config = open(filename, 'r')
-            for line in config:
-                record = line.strip().split("\t")
-
-                content = record[0]
-                dbid    = record[2]
-                hostname = record[5]
-                port     = record[6]
-                datadir  = record[7]
-
-                (path, seg) = os.path.split(datadir)
-                workdir = os.path.join(path, WORKDIR)
-                datadir = os.path.join(workdir, UPGRADEDIR, seg)
-
-                if int(content) < 0:  
-                    continue   # skip master segments
-
-                cmd  = os.path.join(libdir, 'gpinitsegment')
-                cmd += ' -C %s:%s' % (self.host, dummyseg)
-                cmd += ' -A "%s"' % self.config['ARRAY_NAME']
-                cmd += ' -h %s' % hostname
-                cmd += ' -p %s' % port
-                cmd += ' -c %s' % content
-                cmd += ' -i %s' % dbid
-                cmd += ' -n %s' % len(self.segments)
-                cmd += ' -D %s' % datadir
-                cmd += ' -G %s' % self.newenv['GPHOME']
-
-                if not self.threadpool:
-                    self.threadpool = Harness(self, PARALLELISM)
-
-                self.threadpool.localCommand(cmd)
-
-                # And copy the target mapping file as well
-                cmd = 'scp %s %s:%s' % (
-                    os.path.join(self.workdir, 'dummyseg_target_mapping'),
-                    hostname, 
-                    os.path.join(workdir, seg+'_target_mapping')
-                    )
-                self.threadpool.localCommand(cmd)
-
-            # All processes launched, wait for them to finish
-            self.threadpool.wait()
-
-        except:
-            # Do something smart?
-            raise
-
-
-    #------------------------------------------------------------
-    def InitNewDB_old(self):
-        '''
-        Create and configure the upgrade instance
-        '''
-        logger.info('Initializing upgraded cluster')
-        logger.info('...This may take a while')
-
-        # with --prepare the down check is invalid
-        # self.CheckDown()
-
-        try:
-            self.dbup = [self.newenv, False]
-            cmd = 'gpinitsystem -a -I %s/gp_init_config' % self.workdir
-            pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
-                                   env=self.newenv, shell=True,
-                                   stdout=self.logfile, 
-                                   stderr=self.logfile, close_fds=True)
-
-            # Ignore interrupt requests until startup is done
-            error = None
-            retcode = None
-            while retcode == None:
-                try: 
-                    retcode = pid.wait();
-
-                except KeyboardInterrupt, e:
-                    if not self.interrupted:
-                        logger.fatal('***************************************')
-                        logger.fatal('SIGINT-: Upgrade Aborted')
-                        logger.fatal('***************************************')
-                        logger.info( 'Performing clean abort')
-                        self.interrupted = True
-                        error = e
-                    else:
-                        logger.info( 'SIGINT-: Still processing shutdown')
-
-            # If we recieved an interrupt, resignal it now that the startup is done
-            if error: 
-                raise error
-
-            if retcode < 0:
-                raise UpgradeError("gpinitsystem terminated by signal");
-            today = date.today().strftime('%Y%m%d')
-            logname = os.path.join(self.logdir, 'gpinitsystem_%s.log' % today)
-            if retcode == 1:
-                logger.warn('***************************************')
-                logger.warn('Warnings generated initializing upgraded cluster')
-                logger.warn('Check %s for detailed warnings' % logname)
-                logger.warn('***************************************')
-            if retcode > 1:
-                logger.fatal('***************************************')
-                logger.fatal('gpinitsystem failed with error code %d' % retcode)
-                logger.fatal('Check %s for detailed error' % logname)
-                logger.fatal('***************************************')
-                raise UpgradeError('gpinitsystem failed')
-        except OSError, e:
-            logger.fatal(str(e))
-            raise UpgradeError('gpinitsystem failed')
 
     #------------------------------------------------------------
     def ResetXLogs(self):
@@ -3083,266 +2347,6 @@ This issue must be resolved before upgrade can complete.
                                 self.RunCmd('cp -rf %s %s' % (oldlogs, newlogs))
 
     #------------------------------------------------------------
-    def ImportSchema(self):
-        self.CheckUp()
-        logger.info('Importing schema')
-        logger.info('...This may take a while')
-
-        error   = False
-        warning = False
-
-
-        locked = os.path.join(self.newenv['MASTER_DATA_DIRECTORY'],
-                              'pg_hba.conf'+LOCKEXT)
-        if os.path.exists(locked):
-            user = MIGRATIONUSER
-        else:
-            user = self.newenv['USER']
-
-        pipe = subprocess.Popen('psql -q -U %s -f %s/pgdump.sql template1' % 
-                                (user, self.workdir),
-                                env=self.newenv, shell=True,
-                                stdout=subprocess.PIPE, 
-                                stderr=subprocess.PIPE,
-                                close_fds=True)
-
-        msg_re  = re.compile('(?:psql:%s/pgdump.sql:(\d+): *)?([^:]*): *(.*)' % self.workdir)
-        user_re = re.compile('role ".*" already exists')
-        schema_re = re.compile('schema ".*" does not exist')
-        for line in pipe.stderr:
-            match = msg_re.match(line)
-            if match:
-                if match.group(1):
-                    line = '%s:  %s, at line %s' % (
-                        match.group(2), match.group(3), match.group(1) )
-                else:
-                    line = '%s:  %s' % ( match.group(2), match.group(3) )
-
-                # Check for expected safe errors
-                if (user_re.match(match.group(3)) or
-                    schema_re.match(match.group(3))):
-                    continue
-
-                # Handle unexpected errors
-                if (match.group(2) == 'WARNING' or 
-                    match.group(2) == 'DETAIL'  or
-                    match.group(2) == 'NOTICE'):
-                    warning = True
-                    level = 'WARN'
-                else:
-                    error = True
-                    level = 'FATAL'
-
-            else:
-                # should never happen
-                error = True
-                level = 'FATAL'
-
-            # If we've disabled schema checking then all schema errors 
-            # are converted to warnings
-            if not self.checkschema:
-                level = 'WARN'
-                error = False
-
-            if level == 'FATAL':
-                logger.fatal(line)
-            else:
-                logger.warn(line)
-
-        if error:
-            logger.fatal("Errors encountered loading '%s/pgdump.sql'" % self.workdir);
-            raise UpgradeError('Upgrade aborted due to Schema Import Failures')
-
-        if warning:
-            logger.warn('***************************************')
-            logger.warn("Warnings encountered loading '%s/pgdump.sql'" % self.workdir);
-            logger.warn('***************************************')
-
-
-        logger.info('Vacuuming catalog tables')
-        logger.info('...This may take a while')
-        databases = self.Select(
-            '''
-            SELECT datname FROM pg_database 
-            WHERE datname != 'template0'
-            ''')
-        for db in databases:
-            r = subprocess.call('psql -U %s -c "vacuum freeze" %s' % (user, db),
-                                env=self.newenv, shell=True,
-                                stdout=self.logfile, stderr=self.logfile,close_fds=True)
-            if r:
-                raise UpgradeError('Vacuum exited with status %d' % r)
-
-    #------------------------------------------------------------
-    def RestoreStatistics(self):
-        '''
-        Executes queries to rebuild the database statistics stored in 'pg_stat_*.csv'
-        '''
-
-        logger.info('Restoring statistics')
-        logger.info('...This may take a while')
-        
-        # Datatypes of the columns in pg_statistics, the last 4 columns,
-        # not included here, are anyarray and will be cast based on the
-        # datatype of the statisics column.
-        types = [ 'smallint',    'real',        'integer',     'real',
-                  'smallint',    'smallint',    'smallint',    'smallint',
-                  'regoperator', 'regoperator', 'regoperator', 'regoperator',
-                  'real[]',      'real[]',      'real[]',      'real[]' ]
-
-        def escape(str):
-            str = str.replace("\\", "\\\\")   # escape the escapes
-            str = str.replace("'",  "\\'")    # escape single quotes
-            return str
-
-        def cast(str, typ):
-            if len(str) == 0:
-                return "NULL::%s" % typ
-            else:
-                return "E'%s'::%s" % (escape(str), typ)
-
-        # The "vacuum freeze" we did after importing the schema did an analyze
-        # on all the empty tables resulting in statisics being generated.  
-        #
-        # We'll overwrite this for all tables that we previously had statistics
-        # on, but to preserve NOT having statistics on some tables we first have
-        # to clear statistics.
-        databases = self.Select("SELECT datname from pg_database WHERE datname != 'template0'")
-        for db in databases:
-            self.Update('''
-               UPDATE pg_class set relpages=0, reltuples=0
-               FROM pg_namespace n
-               WHERE relnamespace = n.oid and nspname !~ '(pg.*|information_schema)'
-               ''', db=db);
-        
-        # Now read the stat files and update statistics based on what was in previous
-        # catalog.
-        lastdb   = None
-        lastname = None
-        for file in os.listdir(self.workdir):
-            if file[0:8] == 'pg_stat_':
-                file = os.path.join(self.workdir, file)
-                reader = csv.reader(open(file), delimiter=',', escapechar='\\')
-
-                for row in reader:
-                    if len(row) < 1:
-                        continue
-
-                    db       = row[0]
-                    schema   = row[1]
-                    table    = row[2]
-                    kind     = row[3]
-                    relpages = row[4]
-                    reltups  = row[5]
-                    name     = '"%s"."%s"' % (escape(schema), escape(table))
-
-                    if db != lastdb:
-                        lastdb = db
-                        lastname = None
-
-                    if name != lastname:
-                        lastname = name
-                        sql  = "UPDATE pg_class\n"
-                        sql += "SET relpages = '%s'::int,\n" % relpages
-                        sql += "    reltuples = '%s'::real\n" % reltups
-                        sql += "WHERE oid = E'%s'::regclass;" % name
-                        try:
-                            self.Update(sql, db=db)
-                        except Exception, e:
-                            logger.warn(str(e))
-
-                    # Statistics where dumped with an outer join, if there are
-                    # records in pg_statistics then columns 6-17 will all be
-                    # non-null.  Row[6] is the column index (staattnum) if it
-                    # is null the rest will be null too and we can skip the 
-                    # insertion into pg_statistic
-                    if row[6] == None or row[6] == '':
-                        continue
-
-                    # If the base datatype is an array then the array form is
-                    # the same datatype, otherwise we need to use the array form
-                    # (ie, add a leading underscore)
-                    if kind[0] == "_":
-                        kind = kind[1:] + "[]"
-                    else:
-                        kind = kind + "[]"
-
-                    sql  = "INSERT INTO pg_statistic VALUES (\n"
-                    sql += "  E'%s'::regclass, \n" % name
-                    for i in range(16):
-                        sql += "  %s, \n" % cast(row[i+6], types[i])
-                    for i in range(3):
-                        sql += "  %s, \n" % cast(row[i+22], kind)
-                    sql += "  %s);" % cast(row[25], kind)
-                    try:
-                        self.Update(sql, db=db)
-                    except Exception, e:
-                        logger.warn(str(e))
-
-    #------------------------------------------------------------
-    def RemapOID(self):
-        '''
-        Remaps OIDs for the NEW database
-        '''
-
-        if self.cmd == 'MASTER':
-
-            logger.info('Remapping OIDs')
-
-            datadirs    = [self.root]
-            seg_prefix  = self.config['SEG_PREFIX'] + '-'
-
-            # they believe the mapping is valid.
-            self.CallSlaves('REMAPOID', self.config['SEG_PREFIX'])
-
-
-        else:
-            if self.cmd != 'REMAPOID': 
-                raise Exception(self.cmd + ' != REMAPOID]')
-
-            datadirs       = self.datadirs
-            seg_prefix     = self.option
-
-
-            # We should always have at least on data directory...
-            if len(self.datadirs) < 1:
-                return
-
-        # Both master and slave processes need to do mappings.
-        #   + On master this is just MASTER_DATA_DIR
-        #   + On slaves its the DATA_DIRECTORY and MIRROR_DATA_DIRECTORY
-
-        # Check the mapping in all data directories
-        def wait_for_threads(threads):
-            for t in threads:
-                t.join()
-                if t.errors:
-                    raise UpgradeError('FATAL',
-                        'error encountered in remap thread: %s' %
-                            t.errstr)
-
-        th = []
-        for d in datadirs:
-            # Find the segments for this directory, we base this on 
-            # directories under the upgrade directory that match
-            # the naming convention of the segments.
-            for file in os.listdir(d):
-                if re.compile('^%s\d+$' % seg_prefix).match(file):
-                    olddir  = os.path.join(d, file)
-                    newdir  = os.path.join(d, WORKDIR, UPGRADEDIR, file)
-                    
-                    # Read the mapping files to produce oid->oid pairs
-                    mapspec = os.path.join(d, WORKDIR, file)
-                    t = RemapOidWorker(mapspec, olddir, newdir, self.method)
-                    t.start()
-                    th.append(t)
-                    if (len(th) % PARALLELISM) == 0:
-                        wait_for_threads(th)
-                        th = []
-
-        wait_for_threads(th)
-
-    #------------------------------------------------------------
     def DeepLink(self, style):
         '''
         Makes a deep hard link copy of one directory into another
@@ -3405,13 +2409,13 @@ This issue must be resolved before upgrade can complete.
                     # Remove any files from the destination location
                     # Not including the target directory itself
                     # Also not including the workdir and contents
-                    if os.path.exists(destination):
-                        for file in os.listdir(destination):
+                    #if os.path.exists(destination):
+                    #    for file in os.listdir(destination):
                             # If the file/directory also exists in the source 
                             # then delete it in anticipation of receiving the 
                             # replacement.
-                            if os.path.exists(os.path.join(source, file)):
-                                self.RunCmd('rm -rf ' + os.path.join(destination, file))
+                    #        if os.path.exists(os.path.join(source, file)):
+                    #            self.RunCmd('rm -rf ' + os.path.join(destination, file))
 
                     # if the source contains a gpperfmon/data directory we need to
                     # check that it hasn't grown to ridiculous sizes.  If it has
@@ -3449,7 +2453,8 @@ This issue must be resolved before upgrade can complete.
                             oldfile = os.path.join(root, name)
                             newfile = os.path.join(newroot, name)
                             if os.path.exists(newfile):
-                                logger.warn('File exists ' + newfile)
+                                if style == 'BACKUP':
+                                    logger.warn('File exists ' + newfile)
                                 os.remove(newfile)
                             logger.debug('Linking file %s => %s ' % (oldfile, newfile))
                             os.link(oldfile, newfile)
@@ -3478,6 +2483,7 @@ This issue must be resolved before upgrade can complete.
         self.newenv['MASTER_DATA_DIRECTORY'] = \
             self.oldenv['MASTER_DATA_DIRECTORY']
 
+    #------------------------------------------------------------
     def TouchupConfig(self):
         '''
         Touch up the config for a transform method upgrade/downgrade
@@ -3494,38 +2500,6 @@ This issue must be resolved before upgrade can complete.
             datadir = regexp_replace(datadir, E'(%s-?\\\\d+)$',
             E'gpmigrator/upgrade/\\\\1');""" % self.config['SEG_PREFIX'])
         self.Update("VACUUM FREEZE gp_configuration")
-        self.Shutdown()
-
-    #------------------------------------------------------------
-    def RemapPorts(self):
-        '''
-        '''
-
-        # All the parameters we are interested in are integer values
-        conf = os.path.join(self.newmaster, 'postgresql.conf')
-        def getconf(x):
-            conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
-            conf_str = self.RunCmd('grep %s %s' % (x, conf))
-            value = None
-            for line in conf_str.split('\n'):
-                match = conf_re.search(line)
-                if match:
-                    value = int(match.group(1))
-            return value
-
-        # Find the port for this segment:
-        port = getconf('port')
-
-        self.Startup(self.newenv, utility=True)
-        logger.info('Adjusting upgrade ports')
-        self.Update('update gp_configuration set port=%s where content < 0'
-                    % self.masterport, port=port)
-        for s in self.segments:
-            self.Update('update gp_configuration set port=%s where dbid=%s'
-                        % (s['port'], s['dbid']), port=port)
-        for s in self.mirrors:
-            self.Update('update gp_configuration set port=%s where dbid=%s'
-                        % (s['port'], s['dbid']), port=port)
         self.Shutdown()
 
     #------------------------------------------------------------
@@ -3551,6 +2525,7 @@ This issue must be resolved before upgrade can complete.
                         (s['host'], s['datadir'],
                          s['host'], target))
 
+    #------------------------------------------------------------
     def ExtractCatFiles(self):
         '''
         Get the set of data files which are necessary to bring up a skeleton 
@@ -3803,6 +2778,7 @@ This issue must be resolved before upgrade can complete.
                     break
 
 
+    #------------------------------------------------------------
     def BuildSkel(self):
         '''
         Copy data files to build a skeleton database.
@@ -3952,12 +2928,16 @@ This issue must be resolved before upgrade can complete.
             f = open(procfile, 'r')
             first = True
             for line in f:
-                # OID is first col and is equal to the relfilenode at 
-                # this stage skip header
+                # at this stage skip header
                 if first:
                     first = False
                     continue
 
+                # If we find "\." then we are at the end of input
+                if line[0:2] == "\\.":
+                    break
+                
+                # OID is first col and is equal to the relfilenode
                 a = line.split('|')
                 oid = int(a[0])
                 # shared rel ?
@@ -4125,9 +3105,9 @@ This issue must be resolved before upgrade can complete.
                                   "upg2_pg_depend_toadd33.data",
                                   "upg2_pg_shdescription_toadd33.data.in",
                                   "upg2_pg_filespace_toadd33.data",
-                                  "upg2_pg_tablespace_toadd33.data"])
-
-
+                                  "upg2_pg_amproc_toadd33.data",
+                                  "upg2_pg_operator_toadd33.data",
+                                  "upg2_pg_resqueue_toadd33.data"])
 
             h = self.newhome
             
@@ -4177,10 +3157,10 @@ This issue must be resolved before upgrade can complete.
 
         logger.info('Modifying catalog version of skeleton cluster')
         releases = {"3.0": "200703112",
-             "3.1": "200712072",
-             "3.2": "200808253",
-             "3.3": "200905011",
-             "3.4": "200906191"}
+                    "3.1": "200712072",
+                    "3.2": "200808253",
+                    "3.3": "200905011",
+                    "3.4": "200910291"}
         
         self.CheckDown()
 
@@ -4465,234 +3445,85 @@ if __name__ == '__main__':
             if u.faultinjection == 4:
                 raise UpgradeError("faultinjection=%d" % u.faultinjection)
 
-            # different path for 3.1 to 3.2
-            if u.method == "dumprestore":
-    
-                if u.execute:
-                    u.Shutdown()
-                elif shutdown:
+            # transform case
+            if not u.execute:
+                if shutdown:
                     u.Shutdown()
     
-                # Make sure error handling doesn't shutdown the database if anything
-                # should fail.
-                u.dbup = None
-    
-                # Write configuration files for new db
-                # + Requires configuration info collected in ExtractInfo
-                # + Requires working directory on master node
-                if 'CONFIG_FILES' not in current_state:
-                    u.GenerateConfigFiles()
-                    u.SetState('CONFIG_FILES')
-        
-                # Initalize the new database
-                # + Requires working directories on all nodes
-                # + Requires generated configuration file
-                if ('INITDB' not in current_state):
-                    u.InitNewDB()
-                    u.SetState('INITDB')
-                    u.Shutdown()
-        
-                # Prepare done, anything done after this point may allow modifying
-                # the olddb
-                if not u.execute:
-                    logger.info('Preparation successfully completed')
-                    sys.exit(0)
-        
-                # Make sure that the database isn't running
-                u.CheckDown()
-        
-                # Set the ports for the upgrade server to the correct values
-                #  OLD METHOD - needs review
-                # if 'REMAP_PORTS' not in current_state:
-                #    u.RemapPorts()
-                #    u.SetState('REMAP_PORTS')
-        
-                # Start the database back up on all hosts so that we can 
-                # gather information from them.
-                if ('MAPPINGS' not in current_state   or
-                    'STATISTICS' not in current_state or
-                    'DUMP_SCHEMA' not in current_state):
-        
-                    u.Startup(u.oldenv)
-        
-                    # Build up Source database OID/relfile mappings
-                    # + Requires running old db on all hosts
-                    # + Requires created directories so we can store the mapping file
-                    # + Requires execution on all hosts
-                    # + Requires Lockdown
-                    if 'MAPPINGS' not in current_state:
-                        u.BuildMappings()
-                        u.SetState('MAPPINGS')
-                    if 'STATISTICS' not in current_state:
-                        u.DumpStatistics()
-                        u.SetState('STATISTICS')
-        
-                    # Call pg_dumpall and put results in a file
-                    # + Requires running old db
-                    # + Requires working directory on master node
-                    # + Requires Lockdown
-                    if 'DUMP_SCHEMA' not in current_state:
-                        u.DumpSchema()
-                        u.SetState('DUMP_SCHEMA')
-        
-                    # All information collected, shutdown old database
-                    u.Shutdown()
-                    
-                # Initalize the new database
-                # + Requires working directories on all nodes
-                # + Requires generated configuration file
-                #u.InitNewDB()
-        
-                # Lockdown the newDB
-                # + Requires the database to be up
-                # + Shuts the database down
-                if 'NEWDB_LOCKDOWN' not in current_state:
-                    u.Startup(u.newenv)
-                    u.SetupLockdown()
-                    u.Shutdown()
-                    u.SetState('NEWDB_LOCKDOWN')
-        
-                # Import schema and build the mappings
-                if ('IMPORT_SCHEMA' not in current_state or
-                    'MAPPINGS2' not in current_state):
-                    u.Startup(u.newenv)
-        
-                    if 'IMPORT_SCHEMA' not in current_state:
-                        u.ImportSchema()
-                        u.SetState('IMPORT_SCHEMA')
-        
-                    if 'MAPPINGS2' not in current_state:
-                        u.BuildMappings()
-                        u.SetState('MAPPINGS2')
-                    u.Shutdown()
-        
-        
-        
-                # Distribute the dummy seg to all the segments and re-adjust 
-                # gp_configuration on the master node.
-                if 'EXPAND_SYS' not in current_state:
-                    u.ExpandSystem()
-                    u.SetState('EXPAND_SYS')
-        
-                # Reset the Xlogs
-                if 'RESET_XLOGS' not in current_state:
-                    u.ResetXLogs()
-                    u.SetState('RESET_XLOGS')
-        
-                # Remap oids for the new database
-                # + Requires working directories on all hosts
-                # + Requires new db initialized
-                if 'REMAP_OID' not in current_state:
-                    u.RemapOID()
-                    u.SetState('REMAP_OID')
-        
-                # Confirm that the resync/remapping was successful
-                # + Restore statistics must either be after resetXlogs or
-                #   requires an additional vacuum step.
-                if 'RESTORE_STATISTICS' not in current_state:
-                    u.Startup(u.newenv, utility=True)
-                    u.RestoreStatistics()
-                    u.SetState('RESTORE_STATISTICS')
-                    u.Shutdown()
-    
-            else:
-                # transform case
-                if not u.execute:
-                    if shutdown:
-                        u.Shutdown()
-    
-                    logger.info('Preparation successfully completed')
-                    sys.exit(0)
+                logger.info('Preparation successfully completed')
+                sys.exit(0)
 
-                # Write configuration files 
-                # + Required for Revert() to work correctly
-                if 'CONFIG_FILES' not in current_state:
-                    u.new_master_port = u.config['MASTER_PORT']
-                    u.new_port_base   = u.config['PORT_BASE']
-                    if len(u.mirrors) > 0:
-                        u.new_mirror_port_base = u.config['MIRROR_PORT_BASE']
-                    u.GenerateConfigFiles()
-                    u.SetState('CONFIG_FILES')
+            # Write configuration files 
+            # + Required for Revert() to work correctly
+            if 'CONFIG_FILES' not in current_state:
+                u.new_master_port = u.config['MASTER_PORT']
+                u.new_port_base   = u.config['PORT_BASE']
+                if len(u.mirrors) > 0:
+                    u.new_mirror_port_base = u.config['MIRROR_PORT_BASE']
+                u.GenerateConfigFiles()
+                u.SetState('CONFIG_FILES')
     
-                # get the set of databases
-                db = u.Select('''select oid, datname from pg_database order by
-                                 datname''')
-                dbs = {}
-                for d in db:
-                    dbs[str(d['oid'])] = d['datname']
+            # get the set of databases
+            db = u.Select("select oid, datname from pg_database "
+                          "order by datname")
+            dbs = {}
+            for d in db:
+                dbs[str(d['oid'])] = d['datname']
+        
+            if 'EXTRACTCATFILES' not in current_state:
+                u.ExtractCatFiles()
+                u.SetState('EXTRACTCATFILES')
     
-                # business end
-                if 'MAPPINGS' not in current_state:
-                    u.BuildMappings()
-                    u.SetState('MAPPINGS')
+            if 'EXTRACTAOSEGS' not in current_state:
+                u.ExtractAosegs()
+                u.SetState('EXTRACTAOSEGS')
     
-                if 'EXTRACTCATFILES' not in current_state:
-                    u.ExtractCatFiles()
-                    u.SetState('EXTRACTCATFILES')
+            # All information collected, shutdown old database
+            u.Shutdown()
+
+            # Test failure
+            #  - unlock database
+            if u.faultinjection == 5:
+                raise UpgradeError("faultinjection=%d" % u.faultinjection)
     
-                if 'EXTRACTAOSEGS' not in current_state:
-                    u.ExtractAosegs()
-                    u.SetState('EXTRACTAOSEGS')
+            if 'GETHIGHESTOID' not in current_state:
+                u.GetHighestOid()
+                u.SetState('GETHIGHESTOID')
     
-                # All information collected, shutdown old database
+            if 'BUILDSKEL' not in current_state:
+                u.BuildSkel()
+                u.SetState('BUILDSKEL')
+    
+            sov = u.oldversion.major()
+            snv = u.newversion.major()
+            if 'SETCATVERSION' not in current_state:
+                u.SetCatVersion(sov, snv)
+                u.SetState('SETCATVERSION')
+    
+            if 'TRANSFORMCAT' not in current_state:
+                u.TransformDbs(dbs)
+                u.SetState('TRANSFORMCAT')
+    
+            u.TouchupConfig()
+
+            # Test failure
+            #  - unlock database
+            if u.faultinjection == 6:
+                raise UpgradeError("faultinjection=%d" % u.faultinjection)
+
+            # Lockdown the newDB
+            # + Requires the database to be up
+            # + Shuts the database down
+            if 'NEWDB_LOCKDOWN' not in current_state:
+                u.Startup(u.newenv)
+                u.SetupLockdown()
                 u.Shutdown()
-
-                # Test failure
-                #  - unlock database
-                if u.faultinjection == 5:
-                    raise UpgradeError("faultinjection=%d" % u.faultinjection)
+                u.SetState('NEWDB_LOCKDOWN')
     
-                if 'GETHIGHESTOID' not in current_state:
-                    u.GetHighestOid()
-                    u.SetState('GETHIGHESTOID')
-    
-                if 'BUILDSKEL' not in current_state:
-                    u.BuildSkel()
-                    u.SetState('BUILDSKEL')
-    
-                sov = u.oldversion.major()
-                snv = u.newversion.major()
-                if 'SETCATVERSION' not in current_state:
-                    u.SetCatVersion(sov, snv)
-                    u.SetState('SETCATVERSION')
-    
-                if 'TRANSFORMCAT' not in current_state:
-                    u.TransformDbs(dbs)
-                    u.SetState('TRANSFORMCAT')
-    
-                u.TouchupConfig()
-
-                # Test failure
-                #  - unlock database
-                if u.faultinjection == 6:
-                    raise UpgradeError("faultinjection=%d" % u.faultinjection)
-
-                # Lockdown the newDB
-                # + Requires the database to be up
-                # + Shuts the database down
-                if 'NEWDB_LOCKDOWN' not in current_state:
-                    u.Startup(u.newenv)
-                    u.SetupLockdown()
-                    u.Shutdown()
-                    u.SetState('NEWDB_LOCKDOWN')
-    
-                if 'MAPPINGS2' not in current_state:
-                    u.Startup(u.newenv)
-                    u.BuildMappings()
-                    u.SetState('MAPPINGS2')
-                    u.Shutdown()
-        
-                # Remap oids for the new database
-                # + Requires working directories on all hosts
-                # + Requires new db initialized
-                if 'REMAP_OID' not in current_state:
-                    u.RemapOID()
-                    u.SetState('REMAP_OID')
-    
-                # Test failure
-                #  - unlock database
-                if u.faultinjection == 7:
-                    raise UpgradeError("faultinjection=%d" % u.faultinjection)
+            # Test failure
+            #  - unlock database
+            if u.faultinjection == 7:
+                raise UpgradeError("faultinjection=%d" % u.faultinjection)
 
             if 'NEWDB_VALID' not in current_state:
                 u.SetState('NEWDB_VALID')
@@ -4853,10 +3684,6 @@ instructions to complete environment configuration
                 u.RemoveDirectories(True)
         elif u.cmd == 'RESETXLOG':
             u.ResetXLogs()
-        elif u.cmd == 'MAPPINGS':
-            u.BuildMappings()
-        elif u.cmd == 'REMAPOID':
-            u.RemapOID()
         elif u.cmd == 'DEEPLINK':
             u.DeepLink(u.option)
         elif u.cmd == 'EXTRACTCATFILES':

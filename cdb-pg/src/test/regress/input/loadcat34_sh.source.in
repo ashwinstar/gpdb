@@ -4,6 +4,9 @@ begin;
 -- database (template0) otherwise we will end up with duplication
 -- issues.
 
+-- Reindex shared tables that were added during upgrade before we load data
+reindex table @gpupgradeschemaname@.pg_filespace;
+
 -- Copy in the shared data
 copy @gpupgradeschemaname@.pg_filespace from '@gpupgradedatadir@/upg2_pg_filespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 copy @gpupgradeschemaname@.pg_shdescription from '@gpupgradedatadir@/upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
@@ -16,15 +19,22 @@ update @gpupgradeschemaname@.pg_authid u set rolresqueue=q.oid from pg_catalog.p
 -- Assign the system tablespaces to the system filespace
 update @gpupgradeschemaname@.pg_tablespace set spcfsoid=3052, spclocation=null, spcprilocations=null, spcmirlocations=null;
 
-
--- Commit
-commit;
-
 -- Reindex shared tables
-reindex table @gpupgradeschemaname@.pg_tablespace;
-reindex table @gpupgradeschemaname@.pg_filespace;
 reindex table @gpupgradeschemaname@.gp_configuration_history;
 reindex table @gpupgradeschemaname@.gp_db_interfaces;
+reindex table @gpupgradeschemaname@.gp_fault_strategy;
 reindex table @gpupgradeschemaname@.gp_interfaces;
+reindex table @gpupgradeschemaname@.gp_san_config;
+reindex table @gpupgradeschemaname@.gp_segment_config;
+reindex table @gpupgradeschemaname@.pg_authid;
+reindex table @gpupgradeschemaname@.pg_filespace;
+reindex table @gpupgradeschemaname@.pg_filespace_entry;
+reindex table @gpupgradeschemaname@.pg_resourcetype;
+reindex table @gpupgradeschemaname@.pg_resqueue;
+reindex table @gpupgradeschemaname@.pg_resqueuecapability;
+reindex table @gpupgradeschemaname@.pg_shdescription;
+reindex table @gpupgradeschemaname@.pg_stat_last_shoperation;
+reindex table @gpupgradeschemaname@.pg_tablespace;
 
+commit;
 -- end

@@ -28,6 +28,8 @@
 #include "bootstrap/bootstrap.h"
 #include "catalog/catalog.h"
 #include "catalog/gp_configuration.h"
+#include "catalog/gp_persistent_db_dirs.h"
+#include "catalog/gp_persistent_rel_files.h"
 #include "catalog/gp_san_config.h"
 #include "catalog/gp_segment_config.h"
 #include "catalog/heap.h"
@@ -38,11 +40,14 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_filespace_entry.h"
+#include "catalog/pg_foreign_data_wrapper.h"
+#include "catalog/pg_foreign_server.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_user_mapping.h"
 #include "catalog/toasting.h"
 #include "commands/defrem.h"
 #include "miscadmin.h"
@@ -253,7 +258,7 @@ Boot_CreateStmt:
 								typid = PG_STAT_LAST_SHOPERATION_OID;
 								break;
 
-								/* Three new configuration tables in 3.4 */
+							/* Three new configuration tables in 3.4 */
 							case GpSanConfigRelationId:
 								typid = GP_SAN_CONFIG_RELTYPE_OID;
 								break;
@@ -270,6 +275,25 @@ Boot_CreateStmt:
 								break;
 							case ResQueueCapabilityRelationId:
 								typid = PG_RESQUEUECAPABILITY_OID;
+								break;
+
+							/* Three new tables in 3.4 for foreign data */
+							case ForeignDataWrapperRelationId:
+								typid = PG_FOREIGN_DATA_WRAPPER_OID;
+								break;
+							case ForeignServerRelationId:
+								typid = PG_FOREIGN_SERVER_OID;
+								break;
+							case UserMappingRelationId:
+								typid = PG_USER_MAPPING_OID;
+								break;
+
+							/* Two new tables in 3.4 for persistent file ops */
+							case GpPersistentDbDirsRelationId:
+								typid = GP_PERSISTENT_DB_DIRS_OID;
+								break;
+							case GpPersistentRelFilesRelationId:
+								typid = GP_PERSISTENT_REL_FILES_OID;
 								break;
 
 							default:

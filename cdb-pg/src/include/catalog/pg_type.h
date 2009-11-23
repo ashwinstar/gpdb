@@ -603,6 +603,17 @@ DATA(insert OID = 6445 ( pg_resourcetype	    PGNSP PGUID -1 f c t \054 6059 0 re
 DATA(insert OID = 6446 ( pg_resqueuecapability	    PGNSP PGUID -1 f c t \054 6060 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define PG_RESQUEUECAPABILITY_OID 6446
 
+DATA(insert OID = 6447 (pg_foreign_data_wrapper PGNSP PGUID -1 f c t \054 2898 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define PG_FOREIGN_DATA_WRAPPER_OID 6447
+DATA(insert OID = 6448 (pg_foreign_server PGNSP PGUID -1 f c t \054 2899 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define PG_FOREIGN_SERVER_OID 6448
+DATA(insert OID = 6449 (pg_user_mapping PGNSP PGUID -1 f c t \054 2895 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define PG_USER_MAPPING_OID 6449
+
+DATA(insert OID = 6450 (gp_persistent_rel_files PGNSP PGUID -1 f c t \054 5037 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define GP_PERSISTENT_REL_FILES_OID 6450
+DATA(insert OID = 6451 (gp_persistent_db_dirs PGNSP PGUID -1 f c t \054 5038 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define GP_PERSISTENT_DB_DIRS_OID 6451
 
 /*
  * macros

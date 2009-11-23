@@ -20,6 +20,8 @@
  */
 #include "postgres.h"
 
+#include "miscadmin.h"
+
 #include "access/heapam.h"
 #include "access/sysattr.h"
 #include "catalog/indexing.h"
@@ -665,7 +667,25 @@ InitCatalogCachePhase2(void)
 	Assert(CacheInitialized);
 
 	for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
+	{
+		/*
+		 * In order for upgrade to work successfully we must be able to run
+		 * in single user mode with a catalog like the GP 3.2 catalog.  To
+		 * support this we must skip the optional syscache initialization
+		 * for catalog tables that did not exist in 3.2, otherwise we will
+		 * try to read the relation before we have created it and will fail 
+		 * to startup.
+		 */
+		if ((IsBootstrapProcessingMode() || IsInitProcessingMode()) &&
+			((cacheinfo[cacheId].reloid == ForeignDataWrapperRelationId) ||
+			 (cacheinfo[cacheId].reloid == ForeignServerRelationId) ||
+			 (cacheinfo[cacheId].reloid == UserMappingRelationId)))
+		{
+			continue;
+		}
+
 		InitCatCachePhase2(SysCache[cacheId], true);
+	}
 }
 
 
