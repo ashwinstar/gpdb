@@ -803,6 +803,7 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 static void *
 probeSegmentFromThread(void *arg)
 {
+	CdbComponentDatabaseInfo *segInfo;
 	struct threadWorkerInfo *worker_info;
 	int i;
 
@@ -812,7 +813,7 @@ probeSegmentFromThread(void *arg)
 	
 	for (;;)
 	{
-		CdbComponentDatabaseInfo *segInfo = NULL;
+		segInfo = NULL;
 
 		/*
 		 * Get a work item: find first un-tested segment, mark it
@@ -831,11 +832,17 @@ probeSegmentFromThread(void *arg)
 		}
 		pthread_mutex_unlock(&worker_thread_mutex);
 
-		if (i == worker_info->dbs->total_segment_dbs || shutdown_requested)
-		{
-			/* no work left to do */
+		/* no work left to do */
+		if (i == worker_info->dbs->total_segment_dbs)
 			break;
-		}
+
+		/* no segInfo ? */
+		if (segInfo == NULL)
+			break;
+
+		/* shutdown request ? bail-out. */
+		if (shutdown_requested)
+			break;
 
 		/* Got a segment to test, test it. */
 		if (!FtsTestOneSegment(segInfo, probeDatabase, probeUser))
