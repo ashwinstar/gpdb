@@ -507,13 +507,15 @@ ProcessDropStatement(DropStmt *stmt)
 
 			case OBJECT_EXTTABLE:
 				rel = makeRangeVarFromNameList(names);
-				if (CheckDropPermissions(rel, RELKIND_EXTERNAL,
-										 stmt->missing_ok))
+				if (CheckDropPermissions(rel, RELKIND_RELATION,
+										 stmt->missing_ok) &&
+					CheckDropRelStorage(rel, true))
+				{
 					RemoveRelation(rel, stmt->behavior, stmt);
+				}
 				else
 					dispatchDrop = false;
 				break;
-							
 
 			case OBJECT_SEQUENCE:
 				rel = makeRangeVarFromNameList(names);
