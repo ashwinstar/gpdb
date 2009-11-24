@@ -2671,6 +2671,9 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
     const char * prog = "addr2line -s -e";
 #endif
 
+    if (stacksize == 0)
+    	return;
+
     snprintf(cmd,1024,"%s %s ",prog,my_exec_path);
 
     for (stack_no = 0; stack_no < stacksize && stack_no < 100; stack_no++)
@@ -2685,7 +2688,6 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
 	fd = popen(cmd,"r");
 	if (fd != NULL && errno == 0)
 	{
-		//cmdreslen = fread(cmdresult,1,SYMBOL_SIZE,fd);
 		for (stack_no = 0; stack_no < stacksize && stack_no < 100; stack_no++)
 		{
 			cmdresult[stack_no][0] = '\0';
