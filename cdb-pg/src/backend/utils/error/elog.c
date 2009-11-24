@@ -2653,50 +2653,66 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
     int stack_no;
     const int SYMBOL_SIZE = 512;
     char symbol[SYMBOL_SIZE]; /* a reasonable size for a symbol */
-    
-    for (stack_no = 0; stack_no < stacksize; stack_no++)
-    {
-        Dl_info dli;
-        int symbol_len;
+    Dl_info dli;
+    int symbol_len;
 
 
-        FILE * fd;
-        bool addr2line_ok = false;
-        char cmd[1024];
-        char cmdresult[SYMBOL_SIZE];
-        int cmdreslen;
+    FILE * fd;
+    bool addr2line_ok = false;
+    char cmd[1024];
+    char cmdresult[SYMBOL_SIZE][100];
+    char addrtxt[20];
 
 #if defined(__darwin__)
-        const char * prog = "atos -o";
+    const char * prog = "atos -o";
 #elif pg_on_solaris
-        const char * prog = "gaddr2line -s -e";
+    const char * prog = "gaddr2line -s -e";
 #else
-        const char * prog = "addr2line -s -e";
+    const char * prog = "addr2line -s -e";
 #endif
-        snprintf(cmd,1024,"%s %s %p ",prog,my_exec_path,stackarray[stack_no]);
 
-        cmdresult[0] = '\0';
-        fd = popen(cmd,"r");
-        if (fd != NULL && errno == 0)
+    snprintf(cmd,1024,"%s %s ",prog,my_exec_path);
+
+    for (stack_no = 0; stack_no < stacksize && stack_no < 100; stack_no++)
+    {
+		snprintf(addrtxt,20,"%p ",stackarray[stack_no]);
+		if (strlen(addrtxt) + strlen(cmd) >= 1024)
+			break;
+		strcat(cmd,addrtxt);
+    }
+
+    cmdresult[0][0] = '\0';
+	fd = popen(cmd,"r");
+	if (fd != NULL && errno == 0)
+	{
+		//cmdreslen = fread(cmdresult,1,SYMBOL_SIZE,fd);
+		for (stack_no = 0; stack_no < stacksize && stack_no < 100; stack_no++)
+		{
+			cmdresult[stack_no][0] = '\0';
+			// Get one line of the result from addr2line (or atos)
+			fgets(cmdresult[stack_no],SYMBOL_SIZE,fd);
+			// Force it to be a valid string (in case it was too long)
+			cmdresult[stack_no][SYMBOL_SIZE-1] = '\0';
+			// Get rid of the newline at the end.
+			if (cmdresult[stack_no][strlen(cmdresult[stack_no])-1] == '\n')
+						cmdresult[stack_no][strlen(cmdresult[stack_no])-1] = '\0';
+		}
+	}
+
+	if (fd != NULL && errno == 0 && strlen(cmdresult[0]) > 1)
+	{
+		addr2line_ok = true;
+	}
+
+	if (fd != NULL)
+	    pclose(fd);
+
+    for (stack_no = 0; stack_no < stacksize; stack_no++)
+    {
+
+        if (addr2line_ok && stack_no < 100)
         {
-        	cmdreslen = fread(cmdresult,1,SYMBOL_SIZE,fd);
-        	cmdresult[cmdreslen] = '\0';
-        }
-
-        if (fd != NULL && errno == 0 && strlen(cmdresult) >1)
-        {
-        	addr2line_ok = true;
-        	if (cmdresult[strlen(cmdresult)-1] == '\n')
-        		cmdresult[strlen(cmdresult)-1] = '\0';
-        }
-
-        if (fd != NULL)
-        pclose(fd);
-
-
-        if (addr2line_ok)
-        {
-        	symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p %s\n",stack_no, stackarray[stack_no], cmdresult);
+        	symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p %s\n",stack_no, stackarray[stack_no], cmdresult[stack_no]);
         }
         else
         if (dladdr(stackarray[stack_no], &dli) != 0 &&
