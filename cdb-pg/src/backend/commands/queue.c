@@ -75,7 +75,6 @@ bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
 static 
 void AddUpdResqueueCapabilityEntryInternal(
 								  Oid			 queueid,
-								  Oid			 resTypeOid,
 								  int			 resTypeInt,
 								  char			*pResSetting,
 								  Relation		 rel,
@@ -153,10 +152,12 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		List	*pentry = NULL;
 
 		if (!GetResourceTypeByName(defel->defname, &resTypeInt, &resTypeOid))
-			elog(ERROR, "option \"%s\" not recognized",
-				 defel->defname);
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 "option \"%s\" is not a valid resource capability",
+					 defel->defname));
 
-		pentry = list_make3(makeInteger(resTypeOid), 
+		pentry = list_make2(
 							makeInteger(resTypeInt),
 							makeString(defGetString(defel)));
 
@@ -175,19 +176,14 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 	{
 		ListCell		*lc2;
 		List			*pentry		 = lfirst(lc);
-		Oid				 resTypeOid;
 		int				 resTypeInt;
 		Node			*pVal;
 		char			*pResSetting = "";
 		
-		Assert (3 == list_length(pentry));
+		Assert (2 == list_length(pentry));
 
 		lc2 = list_head(pentry);
 		
-		resTypeOid = intVal(lfirst(lc2));
-
-		lc2 = lnext(lc2);
-
 		resTypeInt = intVal(lfirst(lc2));
 
 		lc2 = lnext(lc2);
@@ -196,7 +192,6 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 
 		AddUpdResqueueCapabilityEntryInternal(
 				queueid,
-				resTypeOid,
 				resTypeInt,
 				pResSetting,
 				rel,
