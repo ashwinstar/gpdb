@@ -154,8 +154,8 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		if (!GetResourceTypeByName(defel->defname, &resTypeInt, &resTypeOid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 "option \"%s\" is not a valid resource capability",
-					 defel->defname));
+					 errmsg("option \"%s\" is not a valid resource type",
+							defel->defname)));
 
 		pentry = list_make2(
 							makeInteger(resTypeInt),
@@ -189,6 +189,8 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		lc2 = lnext(lc2);
 		
 		pVal = lfirst(lc2);
+
+		pResSetting = strVal(pVal);
 
 		AddUpdResqueueCapabilityEntryInternal(
 				queueid,
