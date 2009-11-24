@@ -238,10 +238,18 @@ if options.verbose:
     enable_verbose_logging()
 
 if options.pause:
+    resumeMsg = "To run resume run: " + EXECNAME + " --resume --pausefile " + options.pausefile
+
     if suspend_greenplum(options): # suspend operation succesful
+        if SYSTEM.getName() == "linux":
+            logger.info("If you plan to backup the database files on a Linux platform, it is advised to use xfs_freeze in the process.  Please consult your XFS documentation.")
         if options.interactive:           
             if waitForResumeCommand():
                 resume_greenplum(options)
+            else:
+                logger.info(resumeMsg)
+        else:
+            logger.info(resumeMsg)
 
     else: # suspend operation failed
         logger.critical("suspend failed, try to run a resume to ensure system is fully operational")
