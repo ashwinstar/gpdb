@@ -1114,6 +1114,16 @@ AlterQueueStmt:
 					n->options = $5;
 					$$ = (Node *)n;
 				 }
+			| ALTER RESOURCE QUEUE QueueId OptQueueList WITH definition
+				 {
+					AlterQueueStmt *n    = makeNode(AlterQueueStmt);
+					DefElem        *def1 = /* mark start of WITH items */
+						makeDefElem("withliststart", 
+									(Node *)makeInteger(TRUE));
+					n->queue = $4;
+					n->options = list_concat(lappend($5, def1), $7); 
+					$$ = (Node *)n;
+				 }
 		;
 
 /*****************************************************************************

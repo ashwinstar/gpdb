@@ -33,6 +33,7 @@
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
 
+/* MPP-6923: */
 static
 bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
 {
@@ -72,6 +73,7 @@ bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
 } /* end GetResourceTypeByName */
 
 
+/* MPP-6923: */
 static 
 void AddUpdResqueueCapabilityEntryInternal(
 								  Oid			 queueid,
@@ -96,6 +98,7 @@ void AddUpdResqueueCapabilityEntryInternal(
 
 	values[Anum_pg_resqueuecapability_ressetting - 1] = 
 			CStringGetTextDatum(pResSetting);
+	new_record_repl[Anum_pg_resqueuecapability_ressetting - 1]  = true;
 
 	if (HeapTupleIsValid(old_tuple))
 	{
@@ -121,7 +124,8 @@ void AddUpdResqueueCapabilityEntryInternal(
 
 
 } /* end AddUpdResqueueCapabilityEntryInternal */
-								  
+				
+/* MPP-6923: */				  
 static 
 void AlterResqueueCapabilityEntry(Node			*stmt,
 								  Oid			 queueid,
@@ -129,10 +133,9 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 {
 	ListCell	*lc;
 	List		*elems = NULL;
-/*	HeapTuple	 tuple;
-	ScanKeyData	 key[3];
+	HeapTuple	 tuple;
+	ScanKeyData	 key[1];
 	SysScanDesc	 scan;
-*/
 	Relation	 rel;
 
 	{
@@ -179,7 +182,8 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		int				 resTypeInt;
 		Node			*pVal;
 		char			*pResSetting = "";
-		
+		int				 ii;
+
 		Assert (2 == list_length(pentry));
 
 		lc2 = list_head(pentry);
@@ -192,16 +196,55 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 
 		pResSetting = strVal(pVal);
 
-		AddUpdResqueueCapabilityEntryInternal(
-				queueid,
-				resTypeInt,
-				pResSetting,
-				rel,
-				InvalidOid);
+		ScanKeyInit(&key[0],
+					Anum_pg_resqueuecapability_requeueid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(queueid));
 
-/*		systable_endscan(scan); */
+/*	ScanKeyInit(&key[1],
+				Anum_pg_statlastop_objid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int2GetDatum(resTypeInt));
+*/
 
-	}
+		scan = systable_beginscan(rel,
+								  ResQueueCapabilityResqueuidIndexId,
+								  /* XXX XXX XXX XXX : snapshotnow ? */
+								  true, SnapshotNow, 1, key);
+
+		ii = 0;
+
+		while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+		{
+			if (HeapTupleIsValid(tuple))
+			{
+				if (resTypeInt ==
+					((Form_pg_resqueuecapability) GETSTRUCT(tuple))->restypid)
+				{
+					/* found it -- update it */
+					AddUpdResqueueCapabilityEntryInternal(
+							queueid,
+							resTypeInt,
+							pResSetting,
+							rel,
+							tuple);
+
+					ii++;
+				}
+			}
+		}
+		systable_endscan(scan); 
+
+		if (!ii)
+			/* does not exist -- add it */
+			AddUpdResqueueCapabilityEntryInternal(
+					queueid,
+					resTypeInt,
+					pResSetting,
+					rel,
+					InvalidOid);
+
+	} /* end foreach elem */
 
 	heap_close(rel, RowExclusiveLock);
 	
