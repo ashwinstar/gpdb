@@ -152,8 +152,8 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 	for_each_cell(lc, initcell)
 	{
 		DefElem *defel	= (DefElem *) lfirst(lc);
-		Oid		 resTypeOid;
-		int		 resTypeInt;
+		Oid		 resTypeOid = InvalidOid;
+		int		 resTypeInt = 0;
 		List	*pentry = NULL;
 
 		if (!GetResourceTypeByName(defel->defname, &resTypeInt, &resTypeOid))
