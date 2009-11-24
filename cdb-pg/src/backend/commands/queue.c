@@ -158,7 +158,7 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 
 		pentry = list_make3(makeInteger(resTypeOid), 
 							makeInteger(resTypeInt),
-							defel->arg);
+							makeString(defGetString(defel)));
 
 		/* list of lists */
 		elems = lappend(elems, pentry);
@@ -193,16 +193,6 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		lc2 = lnext(lc2);
 		
 		pVal = lfirst(lc2);
-
-		if (pVal)
-		{
-			if (!IsA(pVal, String))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("capability argument must be a quoted string")
-								));
-			pResSetting = strVal(pVal);
-		}
 
 		AddUpdResqueueCapabilityEntryInternal(
 				queueid,
