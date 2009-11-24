@@ -138,10 +138,12 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 	SysScanDesc	 scan;
 	Relation	 rel;
 
+#ifdef USE_ASSERT_CHECKING
 	{
 		DefElem    *defel = (DefElem *) lfirst(initcell);
 		Assert(0 == strcmp(defel->defname, "withliststart"));
 	}
+#endif
 
 	initcell = lnext(initcell);
 
