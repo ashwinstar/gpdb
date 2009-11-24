@@ -1057,6 +1057,16 @@ CreateQueueStmt:
 					n->options = $5;
 					$$ = (Node *)n;
 				}
+			| CREATE RESOURCE QUEUE QueueId OptQueueList WITH definition
+				{
+					CreateQueueStmt *n    = makeNode(CreateQueueStmt);
+					DefElem         *def1 = /* mark start of WITH items */
+						makeDefElem("withliststart", 
+									(Node *)makeInteger(TRUE));
+					n->queue = $4;
+					n->options = list_concat(lappend($5, def1), $7); 
+					$$ = (Node *)n;
+				}
 		;
 
 /*
@@ -1092,7 +1102,7 @@ OptQueueElem:
 
 /*****************************************************************************
  *
- * Alter a postgrse Resource Queue
+ * Alter a postgres Resource Queue
  *
  *****************************************************************************/
 
@@ -1108,7 +1118,7 @@ AlterQueueStmt:
 
 /*****************************************************************************
  *
- * Drop a postgrse Resource Queue
+ * Drop a postgres Resource Queue
  *
  *****************************************************************************/
 

@@ -33,6 +33,193 @@
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
 
+static
+bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
+{
+	HeapTuple tuple;
+	ScanKeyData key[1];
+	SysScanDesc scan;
+	Relation rel;
+	bool bStat = false;
+
+	rel = heap_open(ResourceTypeRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_resourcetype_rsqname,
+				BTEqualStrategyNumber, 
+				F_NAMEEQ,
+				CStringGetDatum(pNameIn));
+	
+	scan = systable_beginscan(rel,
+							  ResourceTypeResnameIndexId,
+							  /* XXX XXX XXX XXX : snapshotnow ? */
+							  true, SnapshotNow, 1, key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		if (HeapTupleIsValid(tuple))
+		{
+			*pOidOut = HeapTupleGetOid(tuple);
+			*pTypeOut =
+					((Form_pg_resourcetype) GETSTRUCT(tuple))->restypid;
+			bStat = true;
+		}
+	}
+	systable_endscan(scan);
+	heap_close(rel, RowExclusiveLock);
+
+	return (bStat);
+} /* end GetResourceTypeByName */
+
+
+static 
+void AddUpdResqueueCapabilityEntryInternal(
+								  Oid			 queueid,
+								  Oid			 resTypeOid,
+								  int			 resTypeInt,
+								  char			*pResSetting,
+								  Relation		 rel,
+								  HeapTuple		 old_tuple)
+{
+	HeapTuple	new_tuple;
+	Datum		values[Natts_pg_resqueuecapability];
+	bool		isnull[Natts_pg_resqueuecapability];
+	bool		new_record_repl[Natts_pg_resqueuecapability];
+
+	MemSet(isnull, 0, sizeof(bool) * Natts_pg_resqueuecapability);
+	MemSet(new_record_repl, 0, sizeof(bool) * Natts_pg_resqueuecapability);
+
+	values[Anum_pg_resqueuecapability_requeueid - 1]  = 
+			ObjectIdGetDatum(queueid);
+	values[Anum_pg_resqueuecapability_restypid - 1]   = resTypeInt;
+
+	Assert(pResSetting);
+
+	values[Anum_pg_resqueuecapability_ressetting - 1] = 
+			CStringGetTextDatum(pResSetting);
+
+	if (HeapTupleIsValid(old_tuple))
+	{
+		new_tuple = heap_modify_tuple(old_tuple, 
+									  RelationGetDescr(rel), values,
+									  isnull, new_record_repl);
+
+		simple_heap_update(rel, &old_tuple->t_self, new_tuple);
+	}
+	else
+	{
+		Oid s1;
+
+		new_tuple = heap_form_tuple(RelationGetDescr(rel), values, isnull);
+
+		s1 = simple_heap_insert(rel, new_tuple);
+	}
+	/* keep the system catalog indexes current */
+	CatalogUpdateIndexes(rel, new_tuple);
+
+	if (HeapTupleIsValid(old_tuple))
+		heap_freetuple(new_tuple);
+
+
+} /* end AddUpdResqueueCapabilityEntryInternal */
+								  
+static 
+void AlterResqueueCapabilityEntry(Node			*stmt,
+								  Oid			 queueid,
+								  ListCell		*initcell)
+{
+	ListCell	*lc;
+	List		*elems = NULL;
+/*	HeapTuple	 tuple;
+	ScanKeyData	 key[3];
+	SysScanDesc	 scan;
+*/
+	Relation	 rel;
+
+	{
+		DefElem    *defel = (DefElem *) lfirst(initcell);
+		Assert(0 == strcmp(defel->defname, "withliststart"));
+	}
+
+	initcell = lnext(initcell);
+
+	/* build a list of valid entries first */
+
+	for_each_cell(lc, initcell)
+	{
+		DefElem *defel	= (DefElem *) lfirst(lc);
+		Oid		 resTypeOid;
+		int		 resTypeInt;
+		List	*pentry = NULL;
+
+		if (!GetResourceTypeByName(defel->defname, &resTypeInt, &resTypeOid))
+			elog(ERROR, "option \"%s\" not recognized",
+				 defel->defname);
+
+		pentry = list_make3(makeInteger(resTypeOid), 
+							makeInteger(resTypeInt),
+							defel->arg);
+
+		/* list of lists */
+		elems = lappend(elems, pentry);
+	}
+
+	/* could do additional validation here */
+
+
+	/* insert/update valid entries in pg_requeuecapability */
+
+	rel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
+
+	foreach(lc, elems)
+	{
+		ListCell		*lc2;
+		List			*pentry		 = lfirst(lc);
+		Oid				 resTypeOid;
+		int				 resTypeInt;
+		Node			*pVal;
+		char			*pResSetting = "";
+		
+		Assert (3 == list_length(pentry));
+
+		lc2 = list_head(pentry);
+		
+		resTypeOid = intVal(lfirst(lc2));
+
+		lc2 = lnext(lc2);
+
+		resTypeInt = intVal(lfirst(lc2));
+
+		lc2 = lnext(lc2);
+		
+		pVal = lfirst(lc2);
+
+		if (pVal)
+		{
+			if (!IsA(pVal, String))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("capability argument must be a quoted string")
+								));
+			pResSetting = strVal(pVal);
+		}
+
+		AddUpdResqueueCapabilityEntryInternal(
+				queueid,
+				resTypeOid,
+				resTypeInt,
+				pResSetting,
+				rel,
+				InvalidOid);
+
+/*		systable_endscan(scan); */
+
+	}
+
+	heap_close(rel, RowExclusiveLock);
+	
+
+} /* end AlterResqueueCapabilityEntry */
 
 /*
  * CREATE RESOURCE QUEUE
@@ -62,11 +249,11 @@ CreateQueue(CreateQueueStmt *stmt)
 	float4		ignorelimit = 0;
 
 	DefElem     *dactivelimit = NULL;
-	DefElem     *dcostlimit = NULL;
-	DefElem     *dovercommit = NULL;
+	DefElem     *dcostlimit	  = NULL;
+	DefElem     *dovercommit  = NULL;
 	DefElem     *dignorelimit = NULL;
-	bool		queueok = false;
-
+	bool		 queueok	  = false;
+	bool		 bWith		  = false;
 
 	/* Permission check - only superuser can create queues. */
 	if (!superuser())
@@ -110,6 +297,12 @@ CreateQueue(CreateQueueStmt *stmt)
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
 			dignorelimit = defel;
+		}
+		else if (strcmp(defel->defname, "withliststart") == 0)
+		{
+			/* marks start of WITH options... */
+			bWith = true;
+			break;
 		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
@@ -264,6 +457,10 @@ CreateQueue(CreateQueueStmt *stmt)
 	/* Finish up scan and close resource queue catalog. */
 	systable_endscan(rsqscan);
 
+	/* process the remainder of the WITH (...) list items */
+	if (bWith)
+			AlterResqueueCapabilityEntry((Node *)stmt, queueid, option);
+
 	CatalogUpdateIndexes(pg_resqueue_rel, tuple);
 
 	heap_close(pg_resqueue_rel, NoLock);
@@ -303,7 +500,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	DefElem     *dovercommit = NULL;
 	DefElem     *dignorelimit = NULL;
 	ResAlterQueueResult		queueok;
-
+	bool		 bWith		  = false;
 
 	/* Permission check - only superuser can alter queues. */
 	if (!superuser())
@@ -348,6 +545,12 @@ AlterQueue(AlterQueueStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dignorelimit = defel;
 		}
+		else if (strcmp(defel->defname, "withliststart") == 0)
+		{
+			/* marks start of WITH options... */
+			bWith = true;
+			break;
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -384,7 +587,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	if(dignorelimit)
 	{
 		ignorelimit = (Cost) defGetNumeric(dignorelimit);
-		if (ignorelimit < 0)
+		if (!(ignorelimit == INVALID_RES_LIMIT_THRESHOLD || (ignorelimit > 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("ignore cost threshold cannot be less than %d or equal to 0", 
@@ -504,6 +707,11 @@ AlterQueue(AlterQueueStmt *stmt)
 								 new_record_nulls, new_record_repl);
 
 	simple_heap_update(pg_resqueue_rel, &tuple->t_self, new_tuple);
+
+	/* process the remainder of the WITH (...) list items */
+	if (bWith)
+			AlterResqueueCapabilityEntry((Node *)stmt, queueid, option);
+
 	CatalogUpdateIndexes(pg_resqueue_rel, new_tuple);
 
 	heap_freetuple(new_tuple);
