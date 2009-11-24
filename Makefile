@@ -259,6 +259,7 @@ export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$(BLD_LD_LIBRARY_PATH)
 #$(warning $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE)))
 
 # how much of GPDB to build by platform (default is "full")
+rhel4_x86_32_GPDB_BUILDSET=partial
 aix5_ppc_64_GPDB_BUILDSET=partial
 aix5_ppc_32_GPDB_BUILDSET=partial
 sol10_x86_32_GPDB_BUILDSET=partial
