@@ -1,7 +1,7 @@
 --
 -- DISTRIBUTED TRANSACTIONS
 --
-SET debug_print_full_dtm=true;
+--SET debug_print_full_dtm=true;
 --
 -- start_matchsubs
 --
@@ -30,7 +30,7 @@ INSERT INTO distxact1_1 VALUES (7);
 INSERT INTO distxact1_1 VALUES (8);
 SET debug_abort_after_distributed_prepared = true;
 COMMIT;
-ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared (xact.c:2172)
+ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared (xact.c:2419)
 RESET debug_abort_after_distributed_prepared;
 SELECT * FROM distxact1_1;
  a 
@@ -58,7 +58,7 @@ SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "protocol";
 SET debug_dtm_action_protocol = "prepare";
 COMMIT;
-ERROR:  The distributed transaction 'Prepare' broadcast failed to one or more segments for gid = 1218658081-0000003451. (cdbtm.c:578)
+ERROR:  The distributed transaction 'Prepare' broadcast failed to one or more segments for gid = 1259106572-0000015083. (cdbtm.c:633)
 RESET debug_dtm_action;
 RESET debug_dtm_action_target;
 RESET debug_dtm_action_protocol;
@@ -88,20 +88,20 @@ SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "protocol";
 SET debug_dtm_action_protocol = "commit_prepared";
 COMMIT;
-WARNING:  The distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = 1218658081-0000003458.
+WARNING:  The distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = 1259106572-0000015090.
 NOTICE:  Releasing gangs for retry broadcast.
-NOTICE:  Retry of the distributed transaction 'Commit Prepared' broadcast succeeded to the segments for gid = 1218658081-0000003458.
+NOTICE:  Retry of the distributed transaction 'Commit Prepared' broadcast succeeded to the segments for gid = 1259106572-0000015090.
 SELECT * FROM distxact1_3;
  a  
 ----
- 32
- 36
- 33
- 37
- 34
  38
+ 32
  31
+ 33
+ 34
  35
+ 36
+ 37
 (8 rows)
 
 DROP TABLE distxact1_3;
@@ -129,10 +129,10 @@ SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "protocol";
 SET debug_dtm_action_protocol = "abort_prepared";
 COMMIT;
-WARNING:  The distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = 1218658081-0000003465.
+WARNING:  The distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = 1259106572-0000015097.
 NOTICE:  Releasing gangs for retry broadcast.
-NOTICE:  Retry of the distributed transaction 'Abort Prepared' broadcast succeeded to the segments for gid = 1218658081-0000003465.
-ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared (xact.c:2172)
+NOTICE:  Retry of the distributed transaction 'Abort Prepared' broadcast succeeded to the segments for gid = 1259106572-0000015097.
+ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared (xact.c:2419)
 SELECT * FROM distxact1_4;
  a 
 ---
@@ -149,14 +149,14 @@ RESET debug_dtm_action_protocol;
 --
 -- Invoke a failure during a CREATE TABLE command.  
 --
-SET debug_print_full_dtm=true;
+--SET debug_print_full_dtm=true;
 SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "sql";
 SET debug_dtm_action_sql_command_tag = "MPPEXEC UTILITY";
 CREATE TABLE distxact2_1 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  Raise ERROR for debug_dtm_action = 2, commandTag = MPPEXEC UTILITY (postgres.c:1093)  (seg1 minithump4:19003 pid=6195)
+ERROR:  Raise ERROR for debug_dtm_action = 2, commandTag = MPPEXEC UTILITY (postgres.c:1111)  (seg1 cmcdevitt-mac-pro.local:50002 pid=66019) (cdbdisp.c:1606)
 RESET debug_dtm_action_sql_command_tag;
 RESET debug_dtm_action;
 RESET debug_dtm_action_target;
@@ -179,7 +179,7 @@ SET debug_dtm_action_sql_command_tag = "MPPEXEC UTILITY";
 CREATE TABLE distxact2_2 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  Raise ERROR for debug_dtm_action = 3, commandTag = MPPEXEC UTILITY (postgres.c:1237)  (seg1 minithump4:19003 pid=6195)
+ERROR:  Raise ERROR for debug_dtm_action = 3, commandTag = MPPEXEC UTILITY (postgres.c:1255)  (seg1 cmcdevitt-mac-pro.local:50002 pid=66019) (cdbdisp.c:1606)
 RESET debug_dtm_action_sql_command_tag;
 RESET debug_dtm_action;
 RESET debug_dtm_action_target;
@@ -198,7 +198,7 @@ DROP TABLE distxact2_2;
 --
 -- Invoke a failure during a SAVEPOINT command.  
 --
-SET debug_print_full_dtm=true;
+--SET debug_print_full_dtm=true;
 SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "sql";
 SET debug_dtm_action_sql_command_tag = "SAVEPOINT";
@@ -207,9 +207,9 @@ CREATE TABLE distxact3_1 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 SAVEPOINT s;
-WARNING:  DTM error (gathered 4 results from cmd 'SAVEPOINT s')
-DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = SAVEPOINT (postgres.c:1487)  (seg1 minithump4:19003 pid=6195)
-ERROR:  Could not create a new savepoint (SAVEPOINT s) (xact.c:4078)
+WARNING:  DTM error (gathered 6 results from cmd 'SAVEPOINT s')
+DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = SAVEPOINT (postgres.c:1510)  (seg1 cmcdevitt-mac-pro.local:50002 pid=66019)
+ERROR:  Could not create a new savepoint (SAVEPOINT s) (xact.c:4367)
 ROLLBACK;
 RESET debug_dtm_action_sql_command_tag;
 RESET debug_dtm_action;
@@ -226,7 +226,7 @@ DROP TABLE distxact3_1;
 --
 -- Invoke a failure during a RELEASE SAVEPOINT command.  
 --
-SET debug_print_full_dtm=true;
+--SET debug_print_full_dtm=true;
 SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "sql";
 SET debug_dtm_action_sql_command_tag = "RELEASE";
@@ -244,9 +244,9 @@ INSERT INTO distxact3_2 VALUES (26);
 INSERT INTO distxact3_2 VALUES (27);
 INSERT INTO distxact3_2 VALUES (28);
 RELEASE SAVEPOINT s;
-WARNING:  DTM error (gathered 4 results from cmd 'RELEASE SAVEPOINT s')
-DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = RELEASE (postgres.c:1487)  (seg1 minithump4:19003 pid=6195)
-ERROR:  Could not release savepoint (RELEASE SAVEPOINT s) (xact.c:4210)
+WARNING:  DTM error (gathered 6 results from cmd 'RELEASE SAVEPOINT s')
+DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = RELEASE (postgres.c:1510)  (seg1 cmcdevitt-mac-pro.local:50002 pid=66019)
+ERROR:  Could not release savepoint (RELEASE SAVEPOINT s) (xact.c:4500)
 ROLLBACK;
 RESET debug_dtm_action_sql_command_tag;
 RESET debug_dtm_action;
@@ -263,7 +263,7 @@ DROP TABLE distxact3_2;
 --
 -- Invoke a failure during a ROLLBACK TO SAVEPOINT command.  
 --
-SET debug_print_full_dtm=true;
+--SET debug_print_full_dtm=true;
 SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "sql";
 SET debug_dtm_action_sql_command_tag = "ROLLBACK";
@@ -281,9 +281,9 @@ INSERT INTO distxact3_3 VALUES (36);
 INSERT INTO distxact3_3 VALUES (37);
 INSERT INTO distxact3_3 VALUES (38);
 ROLLBACK TO SAVEPOINT s;
-WARNING:  DTM error (gathered 4 results from cmd 'ROLLBACK TO SAVEPOINT s')
-DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = ROLLBACK (postgres.c:1487)  (seg1 minithump4:19003 pid=6195)
-ERROR:  Could not rollback to savepoint (ROLLBACK TO SAVEPOINT s) (xact.c:4390)
+WARNING:  DTM error (gathered 6 results from cmd 'ROLLBACK TO SAVEPOINT s')
+DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = ROLLBACK (postgres.c:1510)  (seg1 cmcdevitt-mac-pro.local:50002 pid=66019)
+ERROR:  Could not rollback to savepoint (ROLLBACK TO SAVEPOINT s) (xact.c:4680)
 ROLLBACK;
 RESET debug_dtm_action_sql_command_tag;
 RESET debug_dtm_action;

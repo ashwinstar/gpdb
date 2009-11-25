@@ -1,7 +1,7 @@
 --
 -- DISTRIBUTED TRANSACTIONS
 --
-SET debug_print_full_dtm=true;
+--SET debug_print_full_dtm=true;
 
 --
 -- start_matchsubs
@@ -119,7 +119,7 @@ RESET debug_dtm_action_protocol;
 --
 -- Invoke a failure during a CREATE TABLE command.  
 --
-SET debug_print_full_dtm=true;
+--SET debug_print_full_dtm=true;
 SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "sql";
 SET debug_dtm_action_sql_command_tag = "MPPEXEC UTILITY";
@@ -162,7 +162,7 @@ DROP TABLE distxact2_2;
 --
 -- Invoke a failure during a SAVEPOINT command.  
 --
-SET debug_print_full_dtm=true;
+--SET debug_print_full_dtm=true;
 SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "sql";
 SET debug_dtm_action_sql_command_tag = "SAVEPOINT";
@@ -184,7 +184,7 @@ DROP TABLE distxact3_1;
 --
 -- Invoke a failure during a RELEASE SAVEPOINT command.  
 --
-SET debug_print_full_dtm=true;
+--SET debug_print_full_dtm=true;
 SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "sql";
 SET debug_dtm_action_sql_command_tag = "RELEASE";
@@ -216,7 +216,7 @@ DROP TABLE distxact3_2;
 --
 -- Invoke a failure during a ROLLBACK TO SAVEPOINT command.  
 --
-SET debug_print_full_dtm=true;
+--SET debug_print_full_dtm=true;
 SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "sql";
 SET debug_dtm_action_sql_command_tag = "ROLLBACK";
