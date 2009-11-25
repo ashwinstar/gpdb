@@ -15,6 +15,8 @@
 #include "nodes/parsenodes.h"
 
 
+extern List * 
+GetResqueueCapabilityEntry(Oid  queueid);
 extern void CreateQueue(CreateQueueStmt *stmt);
 extern void AlterQueue(AlterQueueStmt *stmt);
 extern void DropQueue(DropQueueStmt *stmt);

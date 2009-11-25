@@ -510,6 +510,7 @@ static void MetaTrackAddUpdInternal(Oid			classid,
 	values[Anum_pg_statlastop_staactionname - 1] = NameGetDatum(&aname);
 
 	values[Anum_pg_statlastop_stasysid - 1] = ObjectIdGetDatum(relowner);
+	/* set this column to update */
 	new_record_repl[Anum_pg_statlastop_stasysid - 1] = true;
 
 	uname.data[0] = '\0';
@@ -537,12 +538,15 @@ static void MetaTrackAddUpdInternal(Oid			classid,
 	}
 
 	values[Anum_pg_statlastop_stausename - 1] = NameGetDatum(&uname);
+	/* set this column to update */
 	new_record_repl[Anum_pg_statlastop_stausename - 1] = true;
 
 	values[Anum_pg_statlastop_stasubtype - 1] = CStringGetTextDatum(subtype);
+	/* set this column to update */
 	new_record_repl[Anum_pg_statlastop_stasubtype - 1] = true;
 
 	values[Anum_pg_statlastop_statime - 1] = GetCurrentTimestamp();
+	/* set this column to update */
 	new_record_repl[Anum_pg_statlastop_statime - 1] = true;
 
 	if (HeapTupleIsValid(old_tuple))

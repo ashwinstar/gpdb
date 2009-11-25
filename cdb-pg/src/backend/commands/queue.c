@@ -98,6 +98,7 @@ void AddUpdResqueueCapabilityEntryInternal(
 
 	values[Anum_pg_resqueuecapability_ressetting - 1] = 
 			CStringGetTextDatum(pResSetting);
+	/* set this column to update */
 	new_record_repl[Anum_pg_resqueuecapability_ressetting - 1]  = true;
 
 	if (HeapTupleIsValid(old_tuple))
@@ -132,7 +133,7 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 								  ListCell		*initcell)
 {
 	ListCell	*lc;
-	List		*elems = NULL;
+	List		*elems = NIL;
 	HeapTuple	 tuple;
 	ScanKeyData	 key[1];
 	SysScanDesc	 scan;
@@ -151,10 +152,10 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 
 	for_each_cell(lc, initcell)
 	{
-		DefElem *defel	= (DefElem *) lfirst(lc);
+		DefElem *defel		= (DefElem *) lfirst(lc);
 		Oid		 resTypeOid = InvalidOid;
 		int		 resTypeInt = 0;
-		List	*pentry = NULL;
+		List	*pentry		= NIL;
 
 		if (!GetResourceTypeByName(defel->defname, &resTypeInt, &resTypeOid))
 			ereport(ERROR,
@@ -252,6 +253,72 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 	
 
 } /* end AlterResqueueCapabilityEntry */
+
+/* MPP-6923: */				  
+List * 
+GetResqueueCapabilityEntry(Oid  queueid)
+{
+	List		*elems = NIL;
+	HeapTuple	 tuple;
+	ScanKeyData	 key[1];
+	SysScanDesc	 scan;
+	Relation	 rel;
+	int			 ii;
+	TupleDesc	 tupdesc;
+
+	rel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
+
+	tupdesc = RelationGetDescr(rel);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_resqueuecapability_requeueid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(queueid));
+
+	scan = systable_beginscan(rel,
+							  ResQueueCapabilityResqueuidIndexId,
+							  /* XXX XXX XXX XXX : snapshotnow ? */
+							  true, SnapshotNow, 1, key);
+
+	ii = 0;
+	
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		if (HeapTupleIsValid(tuple))
+		{
+			List		*pentry		 = NIL;
+			int			 resTypeInt	 = 0;
+			text		*resSet_text = NULL;
+			Datum		 resSet_datum;
+			char		*resSetting	 = NULL;
+			bool		 isnull		 = false;
+
+			resTypeInt =
+					((Form_pg_resqueuecapability) GETSTRUCT(tuple))->restypid;
+
+			resSet_datum = heap_getattr(tuple,
+										Anum_pg_resqueuecapability_ressetting,
+										tupdesc,
+										&isnull);
+			Assert(!isnull);
+			resSet_text = DatumGetTextP(resSet_datum);
+			resSetting = DatumGetCString(DirectFunctionCall1(textout,
+					PointerGetDatum(resSet_text)));
+
+			pentry = list_make2(
+					makeInteger(resTypeInt),
+					makeString(resSetting));
+
+			/* list of lists */
+			elems = lappend(elems, pentry);
+		}
+	}
+	systable_endscan(scan); 
+
+	heap_close(rel, RowExclusiveLock);
+	
+	return (elems);
+} /* end GetResqueueCapabilityEntry */
 
 /*
  * CREATE RESOURCE QUEUE
