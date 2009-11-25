@@ -1511,6 +1511,8 @@ run_schedule(const char *schedule, test_function tfunc)
 		int			num_tests;
 		bool		inword;
 		int			i;
+		struct timeval start_time, end_time;
+		double		diff_secs;
 
 		line_num++;
 
@@ -1584,6 +1586,7 @@ run_schedule(const char *schedule, test_function tfunc)
 			exit_nicely(2);
 		}
 
+		gettimeofday(&start_time, NULL);
 		if (num_tests == 1)
 		{
 			status(_("test %-20s ... "), tests[0]);
@@ -1621,6 +1624,11 @@ run_schedule(const char *schedule, test_function tfunc)
 			wait_for_tests(pids, statuses, tests, num_tests);
 			status_end();
 		}
+		gettimeofday(&end_time, NULL);
+
+		diff_secs = (end_time.tv_usec - start_time.tv_usec);
+		diff_secs /= 1000000;
+		diff_secs += end_time.tv_sec - start_time.tv_sec;
 
 		/* Check results for all tests */
 		for (i = 0; i < num_tests; i++)
@@ -1679,12 +1687,14 @@ run_schedule(const char *schedule, test_function tfunc)
 				else
 				{
 					status(_("FAILED"));
+    				status(_(" runtime: %.2f seconds"), diff_secs);
 					fail_count++;
 				}
 			}
 			else
 			{
 				status(_("ok"));
+				status(_(" runtime: %.2f seconds"), diff_secs);
 				success_count++;
 			}
 
