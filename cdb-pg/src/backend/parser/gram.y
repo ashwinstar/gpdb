@@ -1120,8 +1120,41 @@ AlterQueueStmt:
 					DefElem        *def1 = /* mark start of WITH items */
 						makeDefElem("withliststart", 
 									(Node *)makeInteger(TRUE));
+					DefElem        *def2 = /* mark start of WITHOUT items */
+						makeDefElem("withoutliststart", 
+									(Node *)makeInteger(TRUE));
 					n->queue = $4;
 					n->options = list_concat(lappend($5, def1), $7); 
+					n->options = lappend(n->options, def2); 
+					$$ = (Node *)n;
+				 }
+			| ALTER RESOURCE QUEUE QueueId OptQueueList WITHOUT definition
+				 {
+					AlterQueueStmt *n    = makeNode(AlterQueueStmt);
+					DefElem        *def1 = /* mark start of WITH items */
+						makeDefElem("withliststart", 
+									(Node *)makeInteger(TRUE));
+					DefElem        *def2 = /* mark start of WITHOUT items */
+						makeDefElem("withoutliststart", 
+									(Node *)makeInteger(TRUE));
+					n->queue = $4;
+					n->options = lappend($5, def1); 
+					n->options = list_concat(lappend(n->options, def2), $7); 
+					$$ = (Node *)n;
+				 }
+			| ALTER RESOURCE QUEUE QueueId OptQueueList WITH definition 
+			  WITHOUT definition
+				 {
+					AlterQueueStmt *n    = makeNode(AlterQueueStmt);
+					DefElem        *def1 = /* mark start of WITH items */
+						makeDefElem("withliststart", 
+									(Node *)makeInteger(TRUE));
+					DefElem        *def2 = /* mark start of WITHOUT items */
+						makeDefElem("withoutliststart", 
+									(Node *)makeInteger(TRUE));
+					n->queue = $4;
+					n->options = list_concat(lappend($5, def1), $7); 
+					n->options = list_concat(lappend(n->options, def2), $9);
 					$$ = (Node *)n;
 				 }
 		;

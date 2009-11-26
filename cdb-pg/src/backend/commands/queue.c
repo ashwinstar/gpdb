@@ -33,7 +33,15 @@
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
 
-/* MPP-6923: */
+/* MPP-6923: 
+ * GetResourceTypeByName: find the named resource in pg_resourcetype
+ *
+ * Input: name of resource
+ * Output: resourcetypid (int2), oid of entry
+ *
+ * updates output and returns true if named resource found
+ *
+*/
 static
 bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
 {
@@ -74,6 +82,14 @@ bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
 
 
 /* MPP-6923: */
+/* AddUpdResqueueCapabilityEntryInternal:
+ *
+ * Internal function to add a new entry to pg_resqueuecapability, or
+ * update an existing one.  Key cols are queueid, restypint.  If
+ * old_tuple is set (ie not InvalidOid), the update the ressetting column,
+ * else insert a new row.
+ *
+ */
 static 
 void AddUpdResqueueCapabilityEntryInternal(
 								  Oid			 queueid,
@@ -133,11 +149,13 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 								  ListCell		*initcell)
 {
 	ListCell	*lc;
-	List		*elems = NIL;
+	List		*elems	   = NIL;
+	List		*dropelems = NIL;
 	HeapTuple	 tuple;
 	ScanKeyData	 key[1];
 	SysScanDesc	 scan;
 	Relation	 rel;
+	bool		 bWithout  = false;
 
 #ifdef USE_ASSERT_CHECKING
 	{
@@ -157,6 +175,12 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		int		 resTypeInt = 0;
 		List	*pentry		= NIL;
 
+		if (!bWithout && (strcmp(defel->defname, "withoutliststart") == 0))
+		{
+			bWithout = true;
+			goto L_loop_cont;
+		}
+
 		if (!GetResourceTypeByName(defel->defname, &resTypeInt, &resTypeOid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -168,7 +192,13 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 							makeString(defGetString(defel)));
 
 		/* list of lists */
-		elems = lappend(elems, pentry);
+		if (bWithout)
+			dropelems = lappend(dropelems, pentry);
+		else
+			elems = lappend(elems, pentry);
+
+	L_loop_cont:
+		resTypeInt = 0; /* make compiler happy */
 	}
 
 	/* could do additional validation here */
@@ -249,8 +279,65 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 
 	} /* end foreach elem */
 
+
+	/* drop these items here */
+
+	foreach(lc, dropelems)
+	{
+		ListCell		*lc2;
+		List			*pentry		 = lfirst(lc);
+		int				 resTypeInt;
+		Node			*pVal;
+		char			*pResSetting = "";
+		int				 ii;
+
+		Assert (2 == list_length(pentry));
+
+		lc2 = list_head(pentry);
+		
+		resTypeInt = intVal(lfirst(lc2));
+
+		lc2 = lnext(lc2);
+		
+		pVal = lfirst(lc2);
+
+		pResSetting = strVal(pVal);
+
+		ScanKeyInit(&key[0],
+					Anum_pg_resqueuecapability_requeueid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(queueid));
+
+/*	ScanKeyInit(&key[1],
+				Anum_pg_statlastop_objid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int2GetDatum(resTypeInt));
+*/
+
+		scan = systable_beginscan(rel,
+								  ResQueueCapabilityResqueuidIndexId,
+								  /* XXX XXX XXX XXX : snapshotnow ? */
+								  true, SnapshotNow, 1, key);
+
+		ii = 0;
+
+		while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+		{
+			if (HeapTupleIsValid(tuple))
+			{
+				if (resTypeInt ==
+					((Form_pg_resqueuecapability) GETSTRUCT(tuple))->restypid)
+				{
+					simple_heap_delete(rel, &tuple->t_self);
+					ii++;
+				}
+			}
+		}
+		systable_endscan(scan); 
+
+	} /* end foreach elem */
+
 	heap_close(rel, RowExclusiveLock);
-	
 
 } /* end AlterResqueueCapabilityEntry */
 
@@ -311,6 +398,8 @@ GetResqueueCapabilityEntry(Oid  queueid)
 
 			/* list of lists */
 			elems = lappend(elems, pentry);
+			
+			ii++;
 		}
 	}
 	systable_endscan(scan); 
@@ -733,6 +822,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	 * queue later.
 	 */
 	queueid = HeapTupleGetOid(tuple);
+
 	thresholds[RES_COUNT_LIMIT] = 
 		((Form_pg_resqueue) GETSTRUCT(tuple))->rsqcountlimit;
 	thresholds[RES_COST_LIMIT] = 
@@ -977,4 +1067,34 @@ DropQueue(DropQueueStmt *stmt)
 	systable_endscan(rsqscan);
 
 	heap_close(pg_resqueue_rel, NoLock);
+
+	/* MPP-6923: drop the extended attributes for this queue */	 
+	{
+		HeapTuple	 xtuple;
+		ScanKeyData	 xkey[1];
+		SysScanDesc	 xscan;
+		Relation	 xrel;
+
+		xrel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
+
+		ScanKeyInit(&xkey[0],
+					Anum_pg_resqueuecapability_requeueid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(queueid));
+
+		xscan = systable_beginscan(xrel,
+								   ResQueueCapabilityResqueuidIndexId,
+								   /* XXX XXX XXX XXX : snapshotnow ? */
+								   true, SnapshotNow, 1, xkey);
+		
+		while (HeapTupleIsValid(xtuple = systable_getnext(xscan)))
+		{
+			if (HeapTupleIsValid(xtuple))
+				simple_heap_delete(xrel, &xtuple->t_self);
+
+		}
+		systable_endscan(xscan); 
+		heap_close(xrel, RowExclusiveLock);
+	}
+
 }
