@@ -1687,14 +1687,14 @@ run_schedule(const char *schedule, test_function tfunc)
 				else
 				{
 					status(_("FAILED"));
-    				status(_(" runtime: %.2f seconds"), diff_secs);
+    				status(_(" (%.2f sec)"), diff_secs);
 					fail_count++;
 				}
 			}
 			else
 			{
 				status(_("ok"));
-				status(_(" runtime: %.2f seconds"), diff_secs);
+				status(_(" (%.2f sec)"), diff_secs);
 				success_count++;
 			}
 
