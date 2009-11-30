@@ -294,6 +294,13 @@ typedef struct StdRdOptions
 	((bool)(((relation)->rd_rel->relstorage == RELSTORAGE_AOCOLS)))
 
 /*
+ * RelationIsForeign
+ * 		True iff relation has foreign storage
+ */
+#define RelationIsForeign(relation) \
+	((bool)((relation)->rd_rel->relstorage == RELSTORAGE_FOREIGN))
+
+/*
  * RelationHasReferenceCountZero
  *		True iff relation reference count is zero.
  *

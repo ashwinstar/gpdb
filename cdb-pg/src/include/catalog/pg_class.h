@@ -164,13 +164,15 @@ DATA(insert OID = 3250    ( nb_classification PGNSP 3251 PGUID 0 3250 0 0 0 0 0 
  * RELSTORAGE_VIRTUAL - has virtual storage, meaning, relation has no
  *						data directly stored forit  (right now this
  *						relates to views and comp types).
- * RELSTORAGE_EXTERNAL	stored externally using external tables.
+ * RELSTORAGE_EXTERNAL-	stored externally using external tables.
+ * RELSTORAGE_FOREIGN - stored in another server.  
  */
 #define		  RELSTORAGE_HEAP	'h'
 #define		  RELSTORAGE_AOROWS	'a'
 #define 	  RELSTORAGE_AOCOLS	'c'
 #define		  RELSTORAGE_VIRTUAL	'v'
 #define		  RELSTORAGE_EXTERNAL 'x'
+#define		  RELSTORAGE_FOREIGN 'f'
 
 static inline bool relstorage_is_ao(char c)
 {
@@ -182,4 +184,8 @@ static inline bool relstorage_is_external(char c)
 	return c == RELSTORAGE_EXTERNAL;
 }
 
+static inline bool relstorage_is_foreign(char c)
+{
+	return c == RELSTORAGE_FOREIGN;
+}
 #endif   /* PG_CLASS_H */

@@ -26,6 +26,8 @@ extern Oid	DefineRelation(CreateStmt *stmt, char relkind, char relstorage);
 
 extern void	DefineExternalRelation(CreateExternalStmt *stmt);
 
+extern void DefineForeignRelation(CreateForeignStmt *createForeignStmt);
+
 extern void	DefinePartitionedRelation(CreateStmt *stmt, Oid reloid);
 
 extern void RemoveRelation(const RangeVar *relation, DropBehavior behavior,

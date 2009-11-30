@@ -794,8 +794,7 @@ describeOneTableDetails(const char *schemaname,
 	headers[1] = _("Type");
 	cols = 2;
 
-	if (tableinfo.relkind == 'r' || tableinfo.relkind == 'v' ||
-		tableinfo.relstorage == 'x')
+	if (tableinfo.relkind == 'r' || tableinfo.relkind == 'v')
 	{
 		show_modifiers = true;
 		cols++;
@@ -916,6 +915,9 @@ describeOneTableDetails(const char *schemaname,
 			else if(tableinfo.relstorage == 'x')
 				printfPQExpBuffer(&title, _("External table \"%s.%s\""),
 								  schemaname, relationname);
+			else if(tableinfo.relstorage == 'f')
+				printfPQExpBuffer(&title, _("Foreign table \"%s.%s\""),
+								  schemaname, relationname);			
 			else
 				printfPQExpBuffer(&title, _("Table \"%s.%s\""),
 								  schemaname, relationname);
@@ -1201,7 +1203,8 @@ describeOneTableDetails(const char *schemaname,
 					rule_count = 0,
 					trigger_count = 0,
 					inherits_count = 0,
-					aoinfo_count = 0;
+					aoinfo_count = 0,
+					foreigninfo_count = 0;
 		int			count_footers = 0;
 
 
@@ -1324,9 +1327,10 @@ describeOneTableDetails(const char *schemaname,
 		else
 			inherits_count = PQntuples(result6);
 
-		/* count and get Append Only footers */
 		if (tableinfo.relstorage == 'a' || tableinfo.relstorage == 'c')
 		{
+			/* count and get Append Only footers */
+			
 			aoinfo_count = 4; /* always have 4 footers: blocksize, compresstype, compresslevel and checksum */
 
 			printfPQExpBuffer(&buf,
@@ -1335,22 +1339,36 @@ describeOneTableDetails(const char *schemaname,
 							  "WHERE c.oid = a.relid AND c.oid = '%s'", oid);
 
 			result9 = PSQLexec(buf.data, false);
-			if (!result9)
-			{
-				PQclear(result1);
-				PQclear(result2);
-				PQclear(result3);
-				PQclear(result4);
-				PQclear(result5);
-				PQclear(result6);
-				goto error_return;
-			}
+		}
+		else if (tableinfo.relstorage == 'f')
+		{
+			/* count and get Foreign table footers */
+			
+			foreigninfo_count = 1; /* always have 1 footer: server name */
+
+			printfPQExpBuffer(&buf,
+							  "SELECT s.srvname\n"
+							  "FROM pg_catalog.pg_foreign_table f, pg_catalog.pg_class c, pg_catalog.pg_foreign_server s\n"
+							  "WHERE c.oid = f.reloid AND f.server = s.oid AND c.oid = '%s'", oid);
+			
+			result9 = PSQLexec(buf.data, false);
+		}
+		
+		if ((aoinfo_count > 0 || foreigninfo_count > 0) && !result9)
+		{
+			PQclear(result1);
+			PQclear(result2);
+			PQclear(result3);
+			PQclear(result4);
+			PQclear(result5);
+			PQclear(result6);
+			goto error_return;
 		}
 
-		footers = pg_malloc_zero((index_count + check_count + rule_count + trigger_count + foreignkey_count + inherits_count + aoinfo_count + 7 + 1)
-								 * sizeof(*footers));
+		footers = pg_malloc_zero((index_count + check_count + rule_count + trigger_count + foreignkey_count + 
+								  inherits_count + aoinfo_count + foreigninfo_count + 7 + 1) * sizeof(*footers));
 
-		/* print append only information */
+		/* print append only table information */
 		if (aoinfo_count > 0)
 		{
 			if(PQgetisnull(result9, 0, 0))
@@ -1364,6 +1382,13 @@ describeOneTableDetails(const char *schemaname,
 			printfPQExpBuffer(&buf, _("Block Size: %s"), PQgetvalue(result9, 0, 2));
 			footers[count_footers++] = pg_strdup(buf.data);
 			printfPQExpBuffer(&buf, _("Checksum: %s"), PQgetvalue(result9, 0, 3));
+			footers[count_footers++] = pg_strdup(buf.data);
+		}
+
+		/* print foreign table information */
+		if (foreigninfo_count > 0)
+		{
+			printfPQExpBuffer(&buf, _("Foreign Server: %s"), PQgetvalue(result9, 0, 0));
 			footers[count_footers++] = pg_strdup(buf.data);
 		}
 
@@ -1774,6 +1799,7 @@ describeRoles(const char *pattern, bool verbose)
  * v - views
  * s - sequences
  * S - system tables (pg_catalog)
+ * r - foreign tables
  * (any order of the above is fine)
  */
 bool
@@ -1786,13 +1812,14 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 	bool		showSeq = strchr(tabtypes, 's') != NULL;
 	bool		showSystem = strchr(tabtypes, 'S') != NULL;
 	bool		showExternal = strchr(tabtypes, 'x') != NULL;
+	bool		showForeign = strchr(tabtypes, 'r') != NULL;
 
 	PQExpBufferData buf;
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 
-	if (!(showTables || showIndexes || showViews || showSeq || showExternal))
-		showTables = showViews = showSeq = showExternal = true;
+	if (!(showTables || showIndexes || showViews || showSeq || showExternal || showForeign))
+		showTables = showViews = showSeq = showExternal = showForeign = true;
 
 	if (strchr(tabtypes, 'P') != NULL)
 	{
@@ -1819,8 +1846,8 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 	if (pset.sversion > 80206)
 		appendPQExpBuffer(&buf,
 				  ", CASE c.relstorage WHEN 'h' THEN '%s' WHEN 'x' THEN '%s' WHEN 'a' "
-				  "THEN '%s' WHEN 'v' THEN '%s' WHEN 'c' THEN '%s' END as \"%s\"\n",
-				  _("heap"), _("external"), _("append only"), _("none"), _("append only columnar"), _("Storage"));
+				  "THEN '%s' WHEN 'v' THEN '%s' WHEN 'c' THEN '%s' WHEN 'f' THEN '%s' END as \"%s\"\n",
+				  _("heap"), _("external"), _("append only"), _("none"), _("append only columnar"), _("foreign"), _("Storage"));
 
 	if (showIndexes)
 		appendPQExpBuffer(&buf,
@@ -1842,7 +1869,7 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 		   "\n     LEFT JOIN pg_catalog.pg_class c2 ON i.indrelid = c2.oid");
 
 	appendPQExpBuffer(&buf, "\nWHERE c.relkind IN (");
-	if (showTables || showExternal)
+	if (showTables || showExternal || showForeign)
 		appendPQExpBuffer(&buf, "'r',");
 	if (showViews)
 		appendPQExpBuffer(&buf, "'v',");
@@ -1860,6 +1887,8 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 		appendPQExpBuffer(&buf, "'h', 'a', 'c',");
 	if (showExternal)
 		appendPQExpBuffer(&buf, "'x',");
+	if (showForeign)
+		appendPQExpBuffer(&buf, "'f',");		
 	if (showViews)
 		appendPQExpBuffer(&buf, "'v',");
 	appendPQExpBuffer(&buf, "''");		/* dummy */

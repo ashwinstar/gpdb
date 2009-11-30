@@ -99,6 +99,8 @@ extern void CreateUserMapping(CreateUserMappingStmt *stmt);
 extern void AlterUserMapping(AlterUserMappingStmt *stmt);
 extern void RemoveUserMapping(DropUserMappingStmt *stmt);
 extern void RemoveUserMappingById(Oid umId);
+//extern void InsertForeignTableEntry(Oid relid, Oid serverid, Oid fdwid, List *options);
+//extern void RemoveForeignTableEntry(Oid relid);
 
 /* support routines in commands/define.c */
 

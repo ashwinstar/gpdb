@@ -1804,6 +1804,17 @@ _outCreateExternalStmt(StringInfo str, CreateExternalStmt *node)
 }
 
 static void
+_outCreateForeignStmt(StringInfo str, CreateForeignStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEFOREIGNSTMT");
+
+	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(tableElts);
+	WRITE_STRING_FIELD(srvname);
+	WRITE_NODE_FIELD(options);
+}
+
+static void
 _outIndexStmt(StringInfo str, IndexStmt *node)
 {
 	WRITE_NODE_TYPE("INDEXSTMT");
@@ -2766,6 +2777,7 @@ _outQuery(StringInfo str, Query *node)
 		{
 			case T_CreateStmt:
 			case T_CreateExternalStmt:
+			case T_CreateForeignStmt:
 			case T_DropStmt:
 			case T_DropPropertyStmt:
 			case T_TruncateStmt:
@@ -3760,6 +3772,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_CreateExternalStmt:
 				_outCreateExternalStmt(str, obj);
+				break;
+			case T_CreateForeignStmt:
+				_outCreateForeignStmt(str, obj);
 				break;
 			case T_PartitionBy:
 				_outPartitionBy(str, obj);

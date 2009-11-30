@@ -84,7 +84,7 @@ static const struct msgstrings msgstringarray[] = {
 		gettext_noop("table \"%s\" does not exist"),
 		gettext_noop("table \"%s\" does not exist, skipping"),
 		gettext_noop("\"%s\" is not a base table"),
-	gettext_noop("Use DROP TABLE to remove a table, or DROP EXTERNAL TABLE if external.")},
+	gettext_noop("Use DROP TABLE to remove a table, DROP EXTERNAL TABLE if external, or DROP FOREIGN TABLE if foreign.")},
 	{RELKIND_SEQUENCE,
 		ERRCODE_UNDEFINED_TABLE,
 		gettext_noop("sequence \"%s\" does not exist"),
@@ -227,17 +227,12 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 /*
  * CheckDropRelStorage
  * 
- * since external tables have recently become a RELKIND_RELATION, it
- * become impossible to catch a drop mismatch by looking at the relkind
- * in CheckDropPermissions (a mismatch is using DROP TABLE for an
- * external table, or DROP EXTERNAL TABLE for a base table). This routine
- * is here to catch this scenario. note that we error inline and not
- * using an error string messages array like in DropErrorMsgWrongType()
- * because we're dealing with 2 distinct objects here and it's pretty
- * straightforward.
+ * Catch a mismatch between the DROP object type requested and the
+ * actual object in the catalog. For example, if DROP EXTERNAL TABLE t
+ * was issue, verify that t is indeed an external table, error if not.
  */
 static bool
-CheckDropRelStorage(RangeVar *rel, bool externalstorage)
+CheckDropRelStorage(RangeVar *rel, ObjectType removeType)
 {
 	Oid			relOid;
 	HeapTuple	tuple;
@@ -256,20 +251,37 @@ CheckDropRelStorage(RangeVar *rel, bool externalstorage)
 
 	classform = (Form_pg_class) GETSTRUCT(tuple);
 
-	if (externalstorage && classform->relstorage != RELSTORAGE_EXTERNAL)
+	if ((removeType == OBJECT_EXTTABLE && classform->relstorage != RELSTORAGE_EXTERNAL) ||
+		(removeType == OBJECT_FOREIGNTABLE && classform->relstorage != RELSTORAGE_FOREIGN) ||	
+		(removeType == OBJECT_TABLE && (classform->relstorage == RELSTORAGE_EXTERNAL || 
+										classform->relstorage == RELSTORAGE_FOREIGN)))
+	{
+		/* we have a mismatch. format an error string and shoot */
+		
+		char *want_type;
+		char *hint;
+		
+		if (removeType == OBJECT_EXTTABLE)
+			want_type = pstrdup("an external");
+		else if (removeType == OBJECT_FOREIGNTABLE)
+			want_type = pstrdup("a foreign");
+		else
+			want_type = pstrdup("a base");
+
+		if (classform->relstorage == RELSTORAGE_EXTERNAL)
+			hint = pstrdup("Use DROP EXTERNAL TABLE to remove an external table");
+		else if (classform->relstorage == RELSTORAGE_FOREIGN)
+			hint = pstrdup("Use DROP FOREIGN TABLE to remove a foreign table");
+		else
+			hint = pstrdup("Use DROP TABLE to remove a base table");
+		
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is not an external table", rel->relname),
-				 errhint("Use DROP TABLE to remove a base table"),
+				 errmsg("\"%s\" is not %s table", rel->relname, want_type),
+				 errhint("%s", hint),
 				 errOmitLocation(true)));
+	}
 	
-	if (!externalstorage && classform->relstorage == RELSTORAGE_EXTERNAL) /* heap, ao */
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("\"%s\" is not a base table", rel->relname),
-					 errhint("Use DROP EXTERNAL TABLE to remove an external table"),
-					 errOmitLocation(true)));
-
 	ReleaseSysCache(tuple);
 
 	return true;
@@ -497,22 +509,13 @@ ProcessDropStatement(DropStmt *stmt)
 		switch (stmt->removeType)
 		{
 			case OBJECT_TABLE:
-				rel = makeRangeVarFromNameList(names);
-				if (CheckDropPermissions(rel, RELKIND_RELATION,
-										 stmt->missing_ok))
-					RemoveRelation(rel, stmt->behavior, stmt);
-				else
-					dispatchDrop = false;
-				break;
-
 			case OBJECT_EXTTABLE:
+			case OBJECT_FOREIGNTABLE:
 				rel = makeRangeVarFromNameList(names);
 				if (CheckDropPermissions(rel, RELKIND_RELATION,
 										 stmt->missing_ok) &&
-					CheckDropRelStorage(rel, true))
-				{
+					CheckDropRelStorage(rel, stmt->removeType))
 					RemoveRelation(rel, stmt->behavior, stmt);
-				}
 				else
 					dispatchDrop = false;
 				break;
@@ -820,7 +823,8 @@ ProcessUtility(Node *parsetree,
 							Assert(relStorage == RELSTORAGE_HEAP ||
 								   relStorage == RELSTORAGE_AOROWS ||
 								   relStorage == RELSTORAGE_AOCOLS ||
-								   relStorage == RELSTORAGE_EXTERNAL);
+								   relStorage == RELSTORAGE_EXTERNAL ||
+								   relStorage == RELSTORAGE_FOREIGN);
 					}
 				}
 
@@ -860,6 +864,10 @@ ProcessUtility(Node *parsetree,
 			DefineExternalRelation((CreateExternalStmt *) parsetree);
 			break;
 
+		case T_CreateForeignStmt:
+			DefineForeignRelation((CreateForeignStmt *) parsetree);
+			break;
+			
 		case T_CreateFileSpaceStmt:
 			CreateFileSpace((CreateFileSpaceStmt *) parsetree);
 			break;
@@ -1807,6 +1815,10 @@ CreateCommandTag(Node *parsetree)
 			tag = "CREATE EXTERNAL TABLE";
 			break;
 
+		case T_CreateForeignStmt:
+			tag = "CREATE FOREIGN TABLE";
+			break;
+		
 		case T_CreateFileSpaceStmt:
 			tag = "CREATE FILESPACE";
 			break;
@@ -1860,6 +1872,9 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_EXTTABLE:
 					tag = "DROP EXTERNAL TABLE";
 					break;
+				case OBJECT_FOREIGNTABLE:
+					tag = "DROP FOREIGN TABLE";
+					break;					
 				case OBJECT_SEQUENCE:
 					tag = "DROP SEQUENCE";
 					break;
@@ -2426,6 +2441,7 @@ GetCommandLogLevel(Node *parsetree)
 			break;
 
 		case T_CreateExternalStmt:
+		case T_CreateForeignStmt:
 			lev = LOGSTMT_DDL;
 			break;
 

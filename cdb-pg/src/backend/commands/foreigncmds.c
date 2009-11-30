@@ -19,7 +19,9 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_foreign_data_wrapper.h"
+#include "catalog/pg_foreign_table.h"
 #include "catalog/pg_foreign_server.h"
+#include "catalog/pg_foreign_table.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
@@ -31,6 +33,7 @@
 #include "parser/parse_func.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
@@ -1219,3 +1222,124 @@ RemoveUserMappingById(Oid umId)
 
 	heap_close(rel, RowExclusiveLock);
 }
+
+/*******************************************************************
+ * FOREIGN TABLE catalog manipulation
+ * 
+ * The foreign table API below is slightly different from the above
+ * API. FDW, SERVER, and MAPPING are objects by themselves, and
+ * creating/dropping/altering them is done directly on their
+ * respective catalog tables. FOREIGN TABLE, however, is different
+ * because the object is stored in pg_class and only the foreign
+ * specifics are stored in pg_foreign_table (much like the design of
+ * pg_exttable and pg_appendonly). So, instead of dealing with the
+ * statement as a whole, we leave it to tablecmds.c, which here we
+ * take care of physically inserting/altering/removing entries from
+ * pg_foreign_table upon request.
+ *******************************************************************/
+
+void
+InsertForeignTableEntry(Oid relid, char	*servername, List *options)
+{
+	Relation	rel;
+	Datum		tbloptions;
+	Datum		values[Natts_pg_foreign_table];
+	bool		nulls[Natts_pg_foreign_table];
+	HeapTuple	tuple;
+	Oid			srvId;
+	Oid			ownerId;
+	AclResult	aclresult;
+	ForeignServer *srv;
+	ForeignDataWrapper *fdw;
+
+	/* For now the owner cannot be specified on create. Use effective user ID. */
+	ownerId = GetUserId();
+
+	/* Check that the server exists. */
+	srv = GetForeignServerByName(servername, false);
+
+	/* Check we have at least USAGE permissions */
+	if (!pg_foreign_server_ownercheck(srv->serverid, ownerId))
+	{
+		aclresult = pg_foreign_server_aclcheck(srv->serverid, ownerId, ACL_USAGE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, ACL_KIND_FOREIGN_SERVER, servername);
+	}
+
+	fdw = GetForeignDataWrapper(srv->fdwid);
+	
+	/*
+	 * Insert tuple into pg_foreign_table.
+	 */
+	rel = heap_open(ForeignTableRelationId, RowExclusiveLock);
+
+	memset(values, 0, sizeof(values));
+	memset(nulls, false, sizeof(nulls));
+
+	values[Anum_pg_foreign_table_reloid - 1] = ObjectIdGetDatum(relid);
+	values[Anum_pg_foreign_table_server - 1] = ObjectIdGetDatum(srv->serverid);
+
+	/* Add server options */
+	tbloptions = transformGenericOptions(PointerGetDatum(NULL), 
+										 options,
+										 fdw->fdwvalidator);
+
+	if (PointerIsValid(DatumGetPointer(tbloptions)))
+		values[Anum_pg_foreign_table_tbloptions - 1] = tbloptions;
+	else
+		nulls[Anum_pg_foreign_table_tbloptions - 1] = true;
+
+	tuple = heap_form_tuple(rel->rd_att, values, nulls);
+
+	srvId = simple_heap_insert(rel, tuple);
+
+	CatalogUpdateIndexes(rel, tuple);
+	heap_freetuple(tuple);
+	heap_close(rel, NoLock);
+}
+
+/*
+ * Drop pg_foreign_table entry by OID.  This is called to clean up dependencies.
+ */
+void
+RemoveForeignTableEntry(Oid relid)
+{
+	Relation	pg_foreigntable_rel;
+	HeapTuple	tuple;
+	ScanKeyData	key;
+	SysScanDesc	foreignscan;
+
+	/*
+	 * now remove the pg_foreign_table entry
+	 */
+	pg_foreigntable_rel = heap_open(ForeignTableRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key,
+				Anum_pg_foreign_table_reloid,
+				BTEqualStrategyNumber,
+				F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	foreignscan = systable_beginscan(pg_foreigntable_rel, 
+									 ForeignTableRelOidIndexId, true,
+									 SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(foreignscan);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("foreign table object id \"%d\" does not exist",
+						relid)));
+
+	/*
+	 * Delete the external table entry from the catalog (pg_foreign_table).
+	 */
+	simple_heap_delete(pg_foreigntable_rel, &tuple->t_self);
+
+	/* Finish up scan and close pg_foreign_table catalog. */
+	systable_endscan(foreignscan);
+
+	heap_close(pg_foreigntable_rel, NoLock);
+}
+
+

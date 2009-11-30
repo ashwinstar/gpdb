@@ -1017,6 +1017,7 @@ typedef enum ObjectType
 	OBJECT_DOMAIN,
 	OBJECT_FDW,
 	OBJECT_FOREIGN_SERVER,
+	OBJECT_FOREIGNTABLE,
 	OBJECT_FUNCTION,
 	OBJECT_INDEX,
 	OBJECT_LANGUAGE,
@@ -1120,7 +1121,7 @@ typedef enum AlterTableType
 	AT_PartSetTemplate,			/* Set Subpartition Template */
 	AT_PartSplit,				/* Split */
 	AT_PartTruncate,			/* Truncate */
-	AT_PartAddInternal			/* CREATE TABLE time partition addition */
+	AT_PartAddInternal,			/* CREATE TABLE time partition addition */
 } AlterTableType;
 
 typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
@@ -1382,6 +1383,20 @@ typedef struct CreateExternalStmt
 	struct GpPolicy  *policy;	/* used for writable tables */
 	
 } CreateExternalStmt;
+
+/* ----------------------
+ *	Definitions for foreign tables
+ * ----------------------
+ */
+typedef struct CreateForeignStmt
+{
+	NodeTag		type;
+	RangeVar   *relation;		/* foreign relation to create */
+	List	   *tableElts;		/* column definitions (list of ColumnDef) */
+	char	   *srvname;		/* server name */
+	List	   *options;		/* generic options to foreign table */
+
+} CreateForeignStmt;
 
 /* ----------
  * Definitions for plain (non-FOREIGN KEY) constraints in CreateStmt

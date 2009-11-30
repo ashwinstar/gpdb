@@ -2660,6 +2660,19 @@ _copyCreateExternalStmt(CreateExternalStmt *from)
 	return newnode;
 }
 
+static CreateForeignStmt *
+_copyCreateForeignStmt(CreateForeignStmt *from)
+{
+	CreateForeignStmt *newnode = makeNode(CreateForeignStmt);
+
+	COPY_NODE_FIELD(relation);
+	COPY_NODE_FIELD(tableElts);
+	COPY_STRING_FIELD(srvname);
+	COPY_NODE_FIELD(options);
+
+	return newnode;
+}
+
 static InhRelation *
 _copyInhRelation(InhRelation *from)
 {
@@ -4096,6 +4109,9 @@ copyObject(void *from)
 		case T_CreateExternalStmt:
 			retval = _copyCreateExternalStmt(from);
 			break;
+		case T_CreateForeignStmt:
+			retval = _copyCreateForeignStmt(from);
+			break;			
 		case T_InhRelation:
 			retval = _copyInhRelation(from);
 			break;

@@ -35,6 +35,8 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_exttable.h"
+#include "catalog/pg_foreign_table.h"
+#include "catalog/pg_foreign_server.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_operator.h"
@@ -56,6 +58,7 @@
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
 #include "executor/executor.h"
+#include "foreign/foreign.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/print.h"
@@ -821,7 +824,7 @@ DefineRelation_int(CreateStmt *stmt,
 *		DefineExternalRelation
 *				Creates a new external relation.
 *
-* In here we first dispatch a normal DefineRelation() (with relkind
+* In here we first dispatch a normal DefineRelation() (with relstorage
 * external) in order to create the external relation entries in pg_class
 * pg_type etc. Then once this is done we dispatch ourselves (DefineExternalRelation)
 * in order to create the pg_exttable entry accross the gp array and we
@@ -1118,6 +1121,115 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 											 &mirrorResults,
 											 &dispatchThreads,
 											 "DefineExternalRelation");
+		}
+    }
+	PG_CATCH();
+	{
+        /* If dispatched, stop QEs and clean up after them. */
+        if (primaryResults)
+            cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
+
+        /* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	/*
+	 * We successfully completed our work.	Now check the results from the
+	 * qExecs, if dispatched.  This waits for them to all finish, and exits
+	 * via ereport(ERROR,...) if unsuccessful.
+	 */
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
+
+}
+
+extern void
+DefineForeignRelation(CreateForeignStmt *createForeignStmt)
+{
+	struct CdbDispatchResults *primaryResults = NULL;
+    struct CdbDispatchResults *mirrorResults = NULL;
+	CdbDispatchCmdThreads     *dispatchThreads = NULL;
+	CreateStmt				  *createStmt = makeNode(CreateStmt);
+	Oid						  reloid = 0;
+	bool					  shouldDispatch = (Gp_role == GP_ROLE_DISPATCH &&
+												IsNormalProcessingMode());
+	
+	/*
+	 * now set the parameters for keys/inheritance etc. Most of these are
+	 * uninteresting for external relations...
+	 */
+	createStmt->relation = createForeignStmt->relation;
+	createStmt->tableElts = createForeignStmt->tableElts;
+	createStmt->inhRelations = NIL;
+	createStmt->constraints = NIL;
+	createStmt->options = NIL;
+	createStmt->oncommit = ONCOMMIT_NOOP;
+	createStmt->tablespacename = NULL;
+	createStmt->policy = NULL; /* for now, we use "master only" type of distribution */
+	
+	/* (permissions are checked in foreigncmd.c:InsertForeignTableEntry() ) */
+
+    /*
+	 * First, create the pg_class and other regular relation catalog entries.
+	 * Under the covers this will dispatch a CREATE TABLE statement to all the
+	 * QEs.
+	 */
+	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+		reloid = DefineRelation(createStmt, RELKIND_RELATION, RELSTORAGE_FOREIGN);
+
+	/*
+	 * Now we take care of pg_foreign_table
+	 */
+    PG_TRY();
+    {
+    	ObjectAddress myself;
+    	ObjectAddress referenced;
+    	Oid	ownerId = GetUserId();
+    	ForeignServer *srv = GetForeignServerByName(createForeignStmt->srvname, false);
+    	
+		/*
+		 * get our pg_class foreign rel OID. If we're the QD we just created
+		 * it above. If we're a QE DefineRelation() was already dispatched to
+		 * us and therefore we have a local entry in pg_class. get the OID
+		 * from cache.
+		 */
+		if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+			Assert(reloid != InvalidOid);
+		else
+			reloid = RangeVarGetRelid(createForeignStmt->relation, true);
+
+		/* Add dependency on SERVER and owner */
+		myself.classId = RelationRelationId;
+		myself.objectId = reloid;
+		myself.objectSubId = 0;
+
+		referenced.classId = ForeignServerRelationId;
+		referenced.objectId = srv->serverid;
+		referenced.objectSubId = 0;
+		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+
+		recordDependencyOnOwner(RelationRelationId, reloid, ownerId);
+
+		/* create a pg_exttable entry for this foreign table.*/
+		InsertForeignTableEntry(reloid, 
+								createForeignStmt->srvname, 
+								createForeignStmt->options);
+				
+
+		if (shouldDispatch)
+		{
+
+			/* Dispatch the statement tree to all primary and mirror segdbs.
+			 * Doesn't wait for the QEs to finish execution.
+			 */
+			cdbdisp_dispatchUtilityStatement((Node *)createForeignStmt,
+											 true,      /* cancelOnError */
+											 true,      /* startTransaction */
+											 true,      /* withSnapshot */
+											 &primaryResults,
+											 &mirrorResults,
+											 &dispatchThreads,
+											 "DefineForeignRelation");
 		}
     }
 	PG_CATCH();
@@ -3128,6 +3240,123 @@ CheckTableNotInUse(Relation rel, const char *stmt)
 						stmt, RelationGetRelationName(rel))));
 }
 
+static
+void ATVerifyObject(AlterTableStmt *stmt, Relation rel)
+{
+
+	/* Nothing to check for ALTER INDEX */
+	if(stmt->relkind == OBJECT_INDEX)
+		return;
+	
+
+	/* 
+	 * Verify the object specified against relstorage in the catalog.
+	 * Enforce correct syntax usage. 
+	 */
+	if (RelationIsForeign(rel) && stmt->relkind != OBJECT_FOREIGNTABLE)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is a foreign table", RelationGetRelationName(rel)),
+				 errhint("Use ALTER FOREIGN TABLE instead"),
+				 errOmitLocation(true)));
+	else if (RelationIsExternal(rel) && stmt->relkind != OBJECT_EXTTABLE)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is an external table", RelationGetRelationName(rel)),
+				 errhint("Use ALTER EXTERNAL TABLE instead"),
+				 errOmitLocation(true)));
+	else if (!RelationIsExternal(rel) && !RelationIsForeign(rel) && stmt->relkind != OBJECT_TABLE)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is a base table", RelationGetRelationName(rel)),
+				 errhint("Use ALTER TABLE instead"),
+				 errOmitLocation(true)));
+	
+	/*
+	 * Check the ALTER command type is supported for this object
+	 */
+	if (RelationIsForeign(rel) || RelationIsExternal(rel))
+	{
+		ListCell *lcmd;
+		
+		foreach(lcmd, stmt->cmds)
+		{
+			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+
+			switch(cmd->subtype)
+			{
+				/* FOREIGN and EXTERNAL tables doesn't support the following AT */
+				case AT_ColumnDefault:		
+				case AT_DropNotNull:			
+				case AT_SetNotNull:			
+				case AT_SetStatistics:		
+				case AT_SetStorage:			
+				case AT_AddIndex:			
+				case AT_ReAddIndex:			
+				case AT_AddConstraint:		
+				case AT_ProcessedConstraint:	
+				case AT_DropConstraint:		
+				case AT_DropConstraintQuietly:			
+				case AT_ClusterOn:			
+				case AT_DropCluster:			
+				case AT_DropOids:			
+				case AT_SetTableSpace:		
+				case AT_SetRelOptions:		
+				case AT_ResetRelOptions:		
+				case AT_EnableTrig:			
+				case AT_DisableTrig:			
+				case AT_EnableTrigAll:		
+				case AT_DisableTrigAll:		
+				case AT_EnableTrigUser:		
+				case AT_DisableTrigUser:		
+				case AT_AddInherit:			
+				case AT_DropInherit:			
+				case AT_SetDistributedBy:	
+				case AT_PartAdd:				
+				case AT_PartAlter:			
+				case AT_PartCoalesce:		
+				case AT_PartDrop:			
+				case AT_PartExchange:		
+				case AT_PartMerge:			
+				case AT_PartModify:			
+				case AT_PartRename:			
+				case AT_PartSetTemplate:		
+				case AT_PartSplit:			
+				case AT_PartTruncate:		
+				case AT_PartAddInternal:		
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
+							 errmsg("Unsupported ALTER command for table type %s", 
+									 (RelationIsExternal(rel) ? "external" : "foreign")),
+							 errOmitLocation(true)));
+					break;
+				
+				case AT_AddColumn: /* check no constraint is added too */
+					if(((ColumnDef *) cmd->def)->constraints != NIL ||
+					   ((ColumnDef *) cmd->def)->is_not_null ||
+					   ((ColumnDef *) cmd->def)->raw_default)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
+								 errmsg("Unsupported ALTER command for table type %s. No constraints allowed.", 
+										 (RelationIsExternal(rel) ? "external" : "foreign")),
+								 errOmitLocation(true)));
+					break;
+					
+				default:
+					/* ALTER type supported */
+					break;
+			}
+			
+			
+		}
+
+	}
+
+	/* treat as a normall table */
+	//stmt->relkind = OBJECT_TABLE;
+	
+}
+
 /*
  * AlterTable
  *		Execute ALTER TABLE, which can be a list of subcommands
@@ -3167,6 +3396,8 @@ AlterTable(AlterTableStmt *stmt)
 	Relation rel = relation_openrv(stmt->relation, AccessExclusiveLock);
 	int			expected_refcnt;
 
+	ATVerifyObject(stmt, rel);
+	
 	/*
 	 * Disallow ALTER TABLE when the current backend has any open reference
 	 * to it besides the one we just got (such as an open cursor or active
@@ -5496,15 +5727,6 @@ ATSimplePermissions(Relation rel, bool allowView)
 					 errmsg("\"%s\" is not a table",
 							RelationGetRelationName(rel)),
 					 errOmitLocation(true)));
-	}
-	else if (RelationIsExternal(rel))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is an external relation and can't be altered",
-						RelationGetRelationName(rel)),
-				 errhint("drop the external relation and re-create it with your changes"),
-				 errOmitLocation(true)));
 	}
 
 	/* Permissions checks */

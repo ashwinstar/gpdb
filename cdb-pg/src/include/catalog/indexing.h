@@ -332,6 +332,9 @@ DECLARE_UNIQUE_INDEX(pg_user_mapping_oid_index, 3316, on pg_user_mapping using b
 DECLARE_UNIQUE_INDEX(pg_user_mapping_user_server_index, 3317, on pg_user_mapping using btree(umuser oid_ops, umserver oid_ops));
 #define UserMappingUserServerIndexId	3317
 
+DECLARE_UNIQUE_INDEX(pg_foreign_table_reloid_index, 3049, on pg_foreign_table using btree(reloid oid_ops));
+#define ForeignTableRelOidIndexId  3049
+
 /* last step of initialization script: build the indexes declared above */
 BUILD_INDICES
 

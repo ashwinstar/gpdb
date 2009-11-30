@@ -611,7 +611,6 @@ SET ROLE regress_test_role;
 DROP USER MAPPING FOR public SERVER s8;                     -- ERROR
 ERROR:  must be owner of foreign server s8
 RESET ROLE;
-DROP SERVER s7;
 \deu
    List of user mappings
  Server |     User name     
@@ -625,6 +624,62 @@ DROP SERVER s7;
  t1     | public
  t1     | regress_test_role
 (8 rows)
+
+-- CREATE FOREIGN TABLE
+CREATE FOREIGN TABLE ft(a int, b text) SERVER notexist; -- ERROR
+ERROR:  server "notexist" does not exist
+SET ROLE regress_test_role;
+CREATE FOREIGN TABLE ft1(a int, b text) SERVER s5;
+CREATE FOREIGN TABLE ft2(a int, b text) SERVER s6 OPTIONS (schemaname 'myschema', tablename 'mytable');
+CREATE FOREIGN TABLE ft3(a int, b text) SERVER s7;           -- ERROR
+ERROR:  permission denied for foreign server s7
+CREATE FOREIGN TABLE ft4(a int, b text) SERVER s8;           -- ERROR
+ERROR:  permission denied for foreign server s8
+RESET ROLE;
+DROP SERVER s7;
+\dr
+                  List of relations
+ Schema | Name | Type  |       Owner       | Storage 
+--------+------+-------+-------------------+---------
+ public | ft1  | table | regress_test_role | foreign
+ public | ft2  | table | regress_test_role | foreign
+(2 rows)
+
+-- ALTER FOREIGN TABLE (partial support)
+ALTER TABLE ft1 DROP COLUMN a;                               -- ERROR
+ERROR:  "ft1" is a foreign table
+HINT:  Use ALTER FOREIGN TABLE instead
+ALTER EXTERNAL TABLE ft1 DROP COLUMN a;                      -- ERROR
+ERROR:  "ft1" is a foreign table
+HINT:  Use ALTER FOREIGN TABLE instead
+ALTER FOREIGN TABLE ft1 DROP COLUMN a;
+ALTER FOREIGN TABLE ft1 ADD COLUMN newcol int NOT NULL;      -- ERROR
+ERROR:  Unsupported ALTER command for table type foreign
+ALTER FOREIGN TABLE ft1 ADD COLUMN newcol int;
+ALTER FOREIGN TABLE ft1 ALTER COLUMN newcol SET DEFAULT 1;   -- ERROR
+ERROR:  Unsupported ALTER command for table type foreign
+\dr+
+                         List of relations
+ Schema | Name | Type  |       Owner       | Storage | Description 
+--------+------+-------+-------------------+---------+-------------
+ public | ft1  | table | regress_test_role | foreign | 
+ public | ft2  | table | regress_test_role | foreign | 
+(2 rows)
+
+-- DROP FOREIGN TABLE
+DROP TABLE ft1;                                              -- ERROR
+ERROR:  "ft1" is not a base table
+HINT:  Use DROP FOREIGN TABLE to remove a foreign table
+DROP EXTERNAL TABLE ft1;                                     -- ERROR
+ERROR:  "ft1" is not an external table
+HINT:  Use DROP FOREIGN TABLE to remove a foreign table
+DROP FOREIGN TABLE ft1;
+\dr
+                  List of relations
+ Schema | Name | Type  |       Owner       | Storage 
+--------+------+-------+-------------------+---------
+ public | ft2  | table | regress_test_role | foreign
+(1 row)
 
 -- Information schema - still broken. ignore for now
 -- start_ignore
@@ -943,6 +998,8 @@ DROP ROLE regress_test_role;                                -- ERROR
 ERROR:  role "regress_test_role" cannot be dropped because some objects depend on it
 DETAIL:  access to server s4
 access to foreign-data wrapper foo
+owner of table ft2
+owner of table ft2
 owner of user mapping for regress_test_role
 owner of user mapping for regress_test_role
 owner of server s5
@@ -974,7 +1031,7 @@ DROP FOREIGN DATA WRAPPER postgresql CASCADE;
 DROP FOREIGN DATA WRAPPER dummy CASCADE;
 \c
 DROP ROLE foreign_data_user;
--- At this point we should have no wrappers, no servers, and no mappings.
+-- At this point we should have no wrappers, no servers, no foreign tables and no mappings.
 SELECT fdwname, fdwvalidator, fdwoptions FROM pg_foreign_data_wrapper;
  fdwname | fdwvalidator | fdwoptions 
 ---------+--------------+------------
@@ -988,5 +1045,10 @@ SELECT srvname, srvoptions FROM pg_foreign_server;
 SELECT * FROM pg_user_mapping;
  umuser | umserver | umoptions 
 --------+----------+-----------
+(0 rows)
+
+SELECT * FROM pg_foreign_table;
+ reloid | server | tbloptions 
+--------+--------+------------
 (0 rows)
 

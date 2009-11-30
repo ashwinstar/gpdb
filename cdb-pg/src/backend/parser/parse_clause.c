@@ -797,6 +797,14 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	rtindex = list_length(pstate->p_rtable);
 	Assert(rte == rt_fetch(rtindex, pstate->p_rtable));
 
+	/* special check for DML on foreign relations */
+	if(RelationIsForeign(pstate->p_target_relation))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("foreign tables are read only. cannot change \"%s\"",
+						 RelationGetRelationName(pstate->p_target_relation)),
+				 errOmitLocation(true)));
+	
 	/* special check for DML on external relations */
 	if(RelationIsExternal(pstate->p_target_relation))
 	{

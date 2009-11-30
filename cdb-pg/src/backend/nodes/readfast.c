@@ -1915,6 +1915,19 @@ _readCreateExternalStmt(const char ** str)
 	READ_DONE();
 }
 
+static CreateForeignStmt *
+_readCreateForeignStmt(const char ** str)
+{
+	READ_LOCALS(CreateForeignStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(tableElts);
+	READ_STRING_FIELD(srvname);
+	READ_NODE_FIELD(options);
+
+	READ_DONE();
+}
+
 static FkConstraint *
 _readFkConstraint(const char ** str)
 {
@@ -3736,6 +3749,9 @@ readNodeBinary(const char ** str)
 			case T_CreateExternalStmt:
 				return_value = _readCreateExternalStmt(str);
 				break;
+			case T_CreateForeignStmt:
+				return_value = _readCreateForeignStmt(str);
+				break;				
 			case T_IndexStmt:
 				return_value = _readIndexStmt(str);
 				break;

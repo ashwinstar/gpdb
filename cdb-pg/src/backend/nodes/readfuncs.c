@@ -1985,6 +1985,19 @@ _readCreateExternalStmt(void)
 	READ_DONE();
 }
 
+static CreateForeignStmt *
+_readCreateForeignStmt(void)
+{
+	READ_LOCALS(CreateForeignStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(tableElts);
+	READ_STRING_FIELD(srvname);
+	READ_NODE_FIELD(options);
+	
+	READ_DONE();
+}
+
 static FkConstraint *
 _outFkConstraint(void)
 {
@@ -3361,6 +3374,7 @@ static ParseNodeInfo infoAr[] =
 	{"CREATEEXTERNALSTMT", (ReadFn)_readCreateExternalStmt},
 	{"CREATEFDWSTMT", (ReadFn)_readCreateFdwStmt},
 	{"CREATEFOREIGNSERVERSTMT", (ReadFn)_readCreateForeignServerStmt},
+	{"CREATEFOREIGNSTMT", (ReadFn)_readCreateForeignStmt},	
 	{"CREATEUSERMAPPINGSTMT", (ReadFn)_readCreateUserMappingStmt},
 	{"CREATEFUNCSTMT", (ReadFn)_readCreateFunctionStmt},
 	{"CREATEOPCLASS", (ReadFn)_readCreateOpClassStmt},

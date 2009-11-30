@@ -609,6 +609,8 @@ DATA(insert OID = 6448 (pg_foreign_server PGNSP PGUID -1 f c t \054 2899 0 recor
 #define PG_FOREIGN_SERVER_OID 6448
 DATA(insert OID = 6449 (pg_user_mapping PGNSP PGUID -1 f c t \054 2895 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
 #define PG_USER_MAPPING_OID 6449
+DATA(insert OID = 6452 (pg_foreign_table PGNSP PGUID -1 f c t \054 2879 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define PG_FOREIGN_TABLE_OID 6452
 
 DATA(insert OID = 6450 (gp_persistent_rel_files PGNSP PGUID -1 f c t \054 5037 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
 #define GP_PERSISTENT_REL_FILES_OID 6450

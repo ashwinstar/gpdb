@@ -179,7 +179,8 @@ static TypeName *TableFuncTypeName(List *columns);
 		CreateDomainStmt CreateExternalStmt CreateFileSpaceStmt CreateGroupStmt
 		CreateOpClassStmt CreatePLangStmt
 		CreateQueueStmt CreateSchemaStmt CreateSeqStmt CreateStmt 
-		CreateTableSpaceStmt CreateFdwStmt CreateForeignServerStmt CreateAssertStmt CreateTrigStmt 
+		CreateTableSpaceStmt CreateFdwStmt CreateForeignServerStmt CreateForeignStmt 
+		CreateAssertStmt CreateTrigStmt 
 		CreateUserStmt CreateUserMappingStmt CreateRoleStmt
 		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt
 		DropGroupStmt DropOpClassStmt DropPLangStmt DropQueueStmt DropStmt
@@ -974,6 +975,7 @@ stmt :
 			| CreateFdwStmt
 			| CreateFileSpaceStmt
 			| CreateForeignServerStmt
+			| CreateForeignStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
 			| CreateOpClassStmt
@@ -1900,7 +1902,6 @@ CheckPointStmt:
 				}
 		;
 
-
 /*****************************************************************************
  *
  *	ALTER [ TABLE | INDEX ] variations
@@ -1914,6 +1915,22 @@ AlterTableStmt:
 					n->relation = $3;
 					n->cmds = $4;
 					n->relkind = OBJECT_TABLE;
+					$$ = (Node *)n;
+				}
+		|	ALTER EXTERNAL TABLE relation_expr alter_table_cmds
+				{
+					AlterTableStmt *n = makeNode(AlterTableStmt);
+					n->relation = $4;
+					n->cmds = $5;
+					n->relkind = OBJECT_EXTTABLE;
+					$$ = (Node *)n;
+				}
+		|	ALTER FOREIGN TABLE relation_expr alter_table_cmds
+				{
+					AlterTableStmt *n = makeNode(AlterTableStmt);
+					n->relation = $4;
+					n->cmds = $5;
+					n->relkind = OBJECT_FOREIGNTABLE;
 					$$ = (Node *)n;
 				}
 		|	ALTER INDEX relation_expr alter_rel_cmds
@@ -2131,7 +2148,6 @@ alter_table_cmd:
 					n->def = (Node *) list_make2($3, NULL);
 					$$ = (Node *)n;
 				}
-
 			| alter_table_partition_cmd
 				{
 					$$ = $1;
@@ -4299,6 +4315,26 @@ CreateAsElement:
 				}
 		;
 
+/*****************************************************************************
+ *
+ * 		QUERY:
+ *             CREATE FOREIGN TABLE relname SERVER srvname [OPTIONS]
+ * 		
+ *		NOTE: we use OptExtTableElementList, to enforce no constraints.
+ *****************************************************************************/
+
+CreateForeignStmt: CREATE FOREIGN OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
+				   SERVER name create_generic_options
+				{
+					CreateForeignStmt *n = makeNode(CreateForeignStmt);
+					n->relation = $5;
+					$5->istemp = $3;
+					n->tableElts = $7;
+					n->srvname = $10;
+					n->options = $11;
+					$$ = (Node *) n;
+				}
+		;
 
 /*****************************************************************************
  *
@@ -4817,6 +4853,7 @@ CreateTableSpaceStmt: CREATE TABLESPACE name OptOwner FILESPACE name
 				}
 		;
 
+
 /*****************************************************************************
  *
  * 		QUERY:
@@ -4892,7 +4929,7 @@ AlterFdwStmt: ALTER FOREIGN DATA_P WRAPPER name validator_clause alter_generic_o
 				}
 		;
 
-/* Options definition for CREATE FDW, SERVER and USER MAPPING */
+/* Options definition for CREATE FDW, SERVER, USER MAPPING and FOREIGN TABLE */
 create_generic_options:
 			OPTIONS '(' generic_option_list ')'			{ $$ = $3; }
 			| /*EMPTY*/									{ $$ = NIL; }
@@ -4909,7 +4946,7 @@ generic_option_list:
 				}
 		;
 
-/* Options definition for ALTER FDW, SERVER and USER MAPPING */
+/* Options definition for ALTER FDW, SERVER, USER MAPPING and FOREIGN TABLE */
 alter_generic_options:
 			OPTIONS	'(' alter_generic_option_list ')'		{ $$ = $3; }
 		;
@@ -5686,6 +5723,7 @@ drop_type:	TABLE									{ $$ = OBJECT_TABLE; }
 			| SCHEMA								{ $$ = OBJECT_SCHEMA; }
 			| FILESPACE								{ $$ = OBJECT_FILESPACE; }
 			| TABLESPACE							{ $$ = OBJECT_TABLESPACE; }
+			| FOREIGN TABLE							{ $$ = OBJECT_FOREIGNTABLE; }
 		;
 
 any_name_list:

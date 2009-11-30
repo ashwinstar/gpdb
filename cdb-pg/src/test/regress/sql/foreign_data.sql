@@ -251,8 +251,33 @@ CREATE USER MAPPING FOR public SERVER s8;
 SET ROLE regress_test_role;
 DROP USER MAPPING FOR public SERVER s8;                     -- ERROR
 RESET ROLE;
-DROP SERVER s7;
 \deu
+
+-- CREATE FOREIGN TABLE
+CREATE FOREIGN TABLE ft(a int, b text) SERVER notexist; -- ERROR
+SET ROLE regress_test_role;
+CREATE FOREIGN TABLE ft1(a int, b text) SERVER s5;
+CREATE FOREIGN TABLE ft2(a int, b text) SERVER s6 OPTIONS (schemaname 'myschema', tablename 'mytable');
+CREATE FOREIGN TABLE ft3(a int, b text) SERVER s7;           -- ERROR
+CREATE FOREIGN TABLE ft4(a int, b text) SERVER s8;           -- ERROR
+RESET ROLE;
+DROP SERVER s7;
+\dr
+
+-- ALTER FOREIGN TABLE (partial support)
+ALTER TABLE ft1 DROP COLUMN a;                               -- ERROR
+ALTER EXTERNAL TABLE ft1 DROP COLUMN a;                      -- ERROR
+ALTER FOREIGN TABLE ft1 DROP COLUMN a;
+ALTER FOREIGN TABLE ft1 ADD COLUMN newcol int NOT NULL;      -- ERROR
+ALTER FOREIGN TABLE ft1 ADD COLUMN newcol int;
+ALTER FOREIGN TABLE ft1 ALTER COLUMN newcol SET DEFAULT 1;   -- ERROR
+\dr+
+
+-- DROP FOREIGN TABLE
+DROP TABLE ft1;                                              -- ERROR
+DROP EXTERNAL TABLE ft1;                                     -- ERROR
+DROP FOREIGN TABLE ft1;
+\dr
 
 -- Information schema - still broken. ignore for now
 -- start_ignore
@@ -385,7 +410,8 @@ DROP FOREIGN DATA WRAPPER dummy CASCADE;
 \c
 DROP ROLE foreign_data_user;
 
--- At this point we should have no wrappers, no servers, and no mappings.
+-- At this point we should have no wrappers, no servers, no foreign tables and no mappings.
 SELECT fdwname, fdwvalidator, fdwoptions FROM pg_foreign_data_wrapper;
 SELECT srvname, srvoptions FROM pg_foreign_server;
 SELECT * FROM pg_user_mapping;
+SELECT * FROM pg_foreign_table;

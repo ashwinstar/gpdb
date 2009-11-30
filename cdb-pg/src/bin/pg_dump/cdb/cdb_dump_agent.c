@@ -1379,6 +1379,9 @@ getTableData(TableInfo *tblinfo, int numTables, bool oids)
 		/* Skip EXTERNAL TABLESs */
 		if (tblinfo[i].relstorage == RELSTORAGE_EXTERNAL)
 			continue;
+		/* Skip FOREIGN TABLESs */
+		if (tblinfo[i].relstorage == RELSTORAGE_FOREIGN)
+			continue;		
 		/* Skip SEQUENCEs (handled elsewhere) */
 		if (tblinfo[i].relkind == RELKIND_SEQUENCE)
 			continue;
@@ -4969,6 +4972,86 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		appendPQExpBuffer(q, ";\n");
 
+        PQclear(res);
+    }
+    else if(tbinfo->relstorage == RELSTORAGE_FOREIGN)
+    {
+		char	   *srvname = NULL;
+		char	   *tbloptions = NULL;
+		
+        reltypename = "TABLE";
+        
+        /*
+         * DROP must be fully qualified in case same name appears in
+         * pg_catalog
+         */
+        appendPQExpBuffer(delq, "DROP FOREIGN TABLE %s.",
+                          fmtId(tbinfo->dobj.namespace->dobj.name));
+        appendPQExpBuffer(delq, "%s;\n",
+                          fmtId(tbinfo->dobj.name));
+
+		/* Now get required information from pg_foreign_table */
+		appendPQExpBuffer(query,
+						  "SELECT s.srvname, array_to_string(ARRAY("
+															"SELECT option_name || ' ' || quote_literal(option_value) "
+															"FROM pg_options_to_table(f.tbloptions)), ', ') AS tbloptions "
+						  "FROM pg_catalog.pg_foreign_table f, pg_catalog.pg_class c, pg_catalog.pg_foreign_server s "
+						  "WHERE c.oid = f.reloid AND f.server = s.oid AND c.oid = '%u'::oid ",
+						  tbinfo->dobj.catId.oid);
+		
+        res = PQexec(g_conn, query->data);
+        check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+        if (PQntuples(res) != 1)
+        {
+            if (PQntuples(res) < 1)
+                write_msg(NULL, "query to obtain definition of foreign table "
+                          "\"%s\" returned no data\n",
+                          tbinfo->dobj.name);
+            else
+                write_msg(NULL, "query to obtain definition of foreign table "
+                          "\"%s\" returned more than one definition\n",
+                          tbinfo->dobj.name);
+            exit_nicely();
+
+        }
+
+        srvname = PQgetvalue(res, 0, 0);
+        if (!PQgetisnull(res, 0, 1))
+        	tbloptions = PQgetvalue(res, 0, 1);
+		
+		appendPQExpBuffer(q, "CREATE FOREIGN TABLE %s (", fmtId(tbinfo->dobj.name));
+		
+        actual_atts = 0;
+        for (j = 0; j < tbinfo->numatts; j++)
+        {
+            /* Is this one of the table's own attrs, and not dropped ? */
+            if (!tbinfo->inhAttrs[j] && !tbinfo->attisdropped[j])
+            {
+                /* Format properly if not first attr */
+                if (actual_atts > 0)
+                    appendPQExpBuffer(q, ",");
+                appendPQExpBuffer(q, "\n    ");
+
+                /* Attribute name */
+                appendPQExpBuffer(q, "%s ",
+                                  fmtId(tbinfo->attnames[j]));
+
+                /* Attribute type */
+                appendPQExpBuffer(q, "%s",
+                                  tbinfo->atttypnames[j]);
+
+                actual_atts++;
+            }
+        }
+
+        appendPQExpBuffer(q, "\n) ");
+		appendPQExpBuffer(q, "SERVER %s ", fmtId(srvname));
+
+		if (tbloptions)
+			appendPQExpBuffer(q, "OPTIONS (%s)", tbloptions);
+
+		appendPQExpBuffer(q, ";\n");
         PQclear(res);
     }
 	else

@@ -22,6 +22,8 @@ relname|relnamespace|reltype|relowner|relam|relfilenode|reltablespace|relpages|r
 2895|pg_user_mapping|11|6449|10|0|2895|0|1|0|0|0|0|0|t|f|r|h|3|0|0|0|0|0|t|f|f|f|848|{@gpcurusername@=arwdxt/@gpcurusername@}|\N
 2898|pg_foreign_data_wrapper|11|6447|10|0|2898|0|1|0|0|0|0|0|t|f|r|h|5|0|0|0|0|0|t|f|f|f|896|{=r/@gpcurusername@}|\N
 2899|pg_foreign_server|11|6448|10|0|2899|0|1|0|0|0|0|0|t|f|r|h|7|0|0|0|0|0|t|f|f|f|897|{=r/@gpcurusername@}|\N
+3049|pg_foreign_table_reloid_index|11|0|10|403|3049|0|1|0|0|0|0|0|f|f|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
+2879|pg_foreign_table|11|6452|10|0|2879|0|1|0|0|0|0|0|t|f|r|h|3|0|0|0|0|0|f|f|f|f|923|{=r/@gpcurusername@}|\N
 5035|gp_san_config|11|6444|10|0|5035|1664|1|0|0|0|0|0|t|t|r|h|9|0|0|0|0|0|f|f|f|f|900|{=r/@gpcurusername@}|\N
 5036|gp_segment_config|11|6442|10|0|5036|1664|1|0|0|0|0|0|t|t|r|h|12|0|0|0|0|0|f|f|f|f|898|{=r/@gpcurusername@}|\N
 5039|gp_fault_strategy|11|6443|10|0|5039|1664|1|0|0|0|0|0|f|t|r|h|1|0|0|0|0|0|f|f|f|f|899|{=r/@gpcurusername@}|\N

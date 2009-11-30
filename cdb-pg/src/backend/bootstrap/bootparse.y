@@ -42,6 +42,7 @@
 #include "catalog/pg_filespace_entry.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
+#include "catalog/pg_foreign_table.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_statistic.h"
@@ -277,7 +278,7 @@ Boot_CreateStmt:
 								typid = PG_RESQUEUECAPABILITY_OID;
 								break;
 
-							/* Three new tables in 3.4 for foreign data */
+							/* Four new tables in 3.4 for foreign data */
 							case ForeignDataWrapperRelationId:
 								typid = PG_FOREIGN_DATA_WRAPPER_OID;
 								break;
@@ -286,6 +287,9 @@ Boot_CreateStmt:
 								break;
 							case UserMappingRelationId:
 								typid = PG_USER_MAPPING_OID;
+								break;
+							case ForeignTableRelationId:
+								typid = PG_FOREIGN_TABLE_OID;
 								break;
 
 							/* Two new tables in 3.4 for persistent file ops */

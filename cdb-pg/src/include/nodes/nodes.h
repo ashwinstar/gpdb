@@ -380,9 +380,10 @@ typedef enum NodeTag
 	T_DropForeignServerStmt,
 	T_CreateUserMappingStmt,
 	T_AlterUserMappingStmt,
-	T_DropUserMappingStmt, /* 798 */
+	T_DropUserMappingStmt, 
+	T_CreateForeignStmt, /* 799 */
 
-	/* XXX: careful, we're almost at 800 */
+	/* XXX: careful, no more room! */
 	
 	T_A_Expr = 800,
 	T_ColumnRef,
