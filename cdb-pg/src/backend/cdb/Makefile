@@ -40,7 +40,7 @@ OBJS = cdbanalyze.o \
 	   cdbsetop.o cdbsreh.o cdbsrlz.o cdbsubplan.o cdbsubselect.o \
 	   cdbtargeteddispatch.o cdbthreadwork.o \
 	   cdbtimer.o \
-	   cdbtm.o \
+	   cdbtm.o cdbtmutils.o \
 	   cdbutil.o \
 	   cdbvars.o cdbvarblock.o \
 	   cdbworkfile.o
