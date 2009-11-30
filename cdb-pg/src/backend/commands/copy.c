@@ -154,7 +154,7 @@ line_buf_with_lineno.cursor = 0;
 if(cstate->errMode == ALL_OR_NOTHING) \
 { \
 	/* re-throw error and abort */ \
-	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
+	if(Gp_role == GP_ROLE_DISPATCH) \
 		cdbCopyEnd(cdbCopy); \
 	PG_RE_THROW(); \
 } \
@@ -172,7 +172,7 @@ else \
 	if(ERRCODE_TO_CATEGORY(elog_geterrcode()) != ERRCODE_DATA_EXCEPTION)\
 	{\
 		/* re-throw error and abort */ \
-		if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
+		if(Gp_role == GP_ROLE_DISPATCH) \
 			cdbCopyEnd(cdbCopy); \
 		PG_RE_THROW(); \
 	}\
@@ -185,7 +185,7 @@ else \
 	if(!elog_dismiss(DEBUG5)) \
 		PG_RE_THROW(); /* <-- hope to never get here! */ \
 \
-	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)\
+	if(Gp_role == GP_ROLE_DISPATCH)\
 	{\
 		Insist(cstate->err_loc_type == ROWNUM_ORIGINAL);\
 		cstate->cdbsreh->rawdata = (char *) palloc(strlen(cstate->line_buf.data) * \
@@ -300,7 +300,7 @@ if(IsRejectLimitReached(cstate->cdbsreh)) \
 		sprintf(finalmsg, "%s %s", rejectmsg_normal, cstate->cdbsreh->errmsg);\
 	}\
 \
-	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
+	if(Gp_role == GP_ROLE_DISPATCH) \
 		cdbCopyEnd(cdbCopy); \
 \
 	ereport(ERROR, \
@@ -1389,8 +1389,7 @@ DoCopy(const CopyStmt *stmt)
 	cstate->need_transcoding =
 		((cstate->client_encoding != GetDatabaseEncoding() ||
 		  pg_database_encoding_max_length() > 1) && !qe_copy_from);
-	if (Gp_role == GP_ROLE_DISPATCHAGENT)
-		cstate->need_transcoding = false;
+
 	cstate->encoding_embeds_ascii = (qe_copy_from ? false : PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding));
 	cstate->line_buf_converted = (Gp_role == GP_ROLE_EXECUTE ? true : false);
 	setEncodingConversionProc(cstate, pg_get_client_encoding(), !is_from);
@@ -1408,9 +1407,8 @@ DoCopy(const CopyStmt *stmt)
 	if (is_from)				/* copy from file to database */
 	{
 		bool		pipe = (cstate->filename == NULL);
-		bool		shouldDispatch = ((Gp_role == GP_ROLE_DISPATCH ||
-									   Gp_role == GP_ROLE_DISPATCHAGENT)
-									   && cstate->rel->rd_cdbpolicy != NULL);
+		bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH &&
+									  cstate->rel->rd_cdbpolicy != NULL);
 		char		relkind;
 
 		Assert(cstate->rel);
@@ -1666,8 +1664,7 @@ DoCopyTo(CopyState cstate)
 		 * doing COPY (SELECT) we just go straight to work, without
 		 * dispatching COPY commands to executors.
 		 */
-		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
-			&& cstate->rel && cstate->rel->rd_cdbpolicy)
+		if (Gp_role == GP_ROLE_DISPATCH && cstate->rel && cstate->rel->rd_cdbpolicy)
 			CopyToDispatch(cstate);
 		else
 			CopyTo(cstate);
@@ -1820,29 +1817,26 @@ CopyToDispatch(CopyState cstate)
 	 * Calling ereport() will leave the executors hanging in
 	 * COPY state.
 	 */
-	if (Gp_role != GP_ROLE_DISPATCHAGENT)
+	elog(DEBUG5, "COPY command sent to segdbs: %s", cdbcopy_cmd.data);
+
+	PG_TRY();
 	{
-		elog(DEBUG5, "COPY command sent to segdbs: %s", cdbcopy_cmd.data);
-
-		PG_TRY();
-		{
-			cdbCopyStart(cdbCopy, cdbcopy_cmd.data);
-		}
-		PG_CATCH();
-		{
-			/* get error message from CopyStart */
-			appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
-
-			/* TODO: end COPY in all the segdbs in progress */
-			cdbCopyEnd(cdbCopy);
-
-			ereport(LOG,
-					(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					 errmsg("%s", cdbcopy_err.data)));
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
+		cdbCopyStart(cdbCopy, cdbcopy_cmd.data);
 	}
+	PG_CATCH();
+	{
+		/* get error message from CopyStart */
+		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
+
+		/* TODO: end COPY in all the segdbs in progress */
+		cdbCopyEnd(cdbCopy);
+
+		ereport(LOG,
+				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				 errmsg("%s", cdbcopy_err.data)));
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	/* if a header has been requested send the line */
 	if (cstate->header_line)
@@ -2026,7 +2020,7 @@ CopyTo(CopyState cstate)
 	if (cstate->header_line)
 	{
 		/* header should not be printed in execute mode. */
-		if (Gp_role != GP_ROLE_EXECUTE && Gp_role != GP_ROLE_DISPATCHAGENT)
+		if (Gp_role != GP_ROLE_EXECUTE)
 		{
 		bool		hdr_delim = false;
 
@@ -2309,7 +2303,7 @@ static void CopyFromCreateDispatchCommand(CopyState cstate,
 	AttrNumber	extra_attr_count = 0; /* count extra attributes we add in the dispatcher COPY
 										 usually non constant defaults we pre-evaluate in here */
 
-	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 
 	/* append schema and tablename */
 	appendStringInfo(cdbcopy_cmd, "COPY %s.%s",
@@ -3292,9 +3286,10 @@ CopyFromDispatch(CopyState cstate)
 					 * policy should be PARTITIONED (normal tables) or
 					 * ENTRY
 					 */
-					Insist(Gp_role == GP_ROLE_DISPATCHAGENT ||
-						   (part_policy && part_policy->ptype !=
-							POLICYTYPE_UNDEFINED));
+					if (!part_policy || part_policy->ptype == POLICYTYPE_UNDEFINED)
+					{
+						elog(FATAL, "Bad or undefined policy. (%p)", part_policy);
+					}
 				}
 				PG_CATCH();
 				{
@@ -4958,7 +4953,7 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 				 * for the dispatcher - stop parsing once we have
 				 * all the hash field values. We don't need the rest.
 				 */
-				if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
+				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					if (attribute == cstate->last_hash_field)
 					{
@@ -5311,7 +5306,7 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 			 * for the dispatcher - stop parsing once we have
 			 * all the hash field values. We don't need the rest.
 			 */
-			if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				if (attribute == cstate->last_hash_field)
 					break;
@@ -5928,8 +5923,7 @@ copy_in_error_callback(void *arg)
 	/*
 	 * If we saved the error context from a QE in cdbcopy.c append it here.
 	 */
-	if((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
-			&& cstate->executor_err_context.len > 0)
+	if (Gp_role == GP_ROLE_DISPATCH && cstate->executor_err_context.len > 0)
 	{
 		errcontext("%s", cstate->executor_err_context.data);
 		pfree(buff_orig);
@@ -6359,460 +6353,6 @@ static bool CopyCheckIsLastLine(CopyState cstate)
 	}
 	
 	return false;
-}
-
-uint64
-DoCopyDispatchAgent(const CopyStmt *stmt)
-{
-	CopyState	cstate;
-	bool		is_from = stmt->is_from;
-
-
-	List	   *force_quote = NIL;
-	List	   *force_notnull = NIL;
-	ListCell   *option;
-	//TupleDesc   tupDesc;
-	//int         num_phys_attrs;
-	uint64      processed;
-	CdbCopy    *cdbCopy;
-
-	/* Allocate workspace and zero all fields */
-	cstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
-
-	/* Extract options from the statement node tree */
-	foreach(option, stmt->options)
-	{
-		DefElem    *defel = (DefElem *) lfirst(option);
-
-		if (strcmp(defel->defname, "binary") == 0)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("BINARY is not supported")));
-		}
-		else if (strcmp(defel->defname, "oids") == 0)
-		{
-			cstate->oids = intVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "delimiter") == 0)
-		{
-			cstate->delim = strVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "null") == 0)
-		{
-			cstate->null_print = strVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "csv") == 0)
-		{
-			cstate->csv_mode = intVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "header") == 0)
-		{
-			cstate->header_line = intVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "quote") == 0)
-		{
-			cstate->quote = strVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "escape") == 0)
-		{
-			cstate->escape = strVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "force_quote") == 0)
-		{
-			force_quote = (List *) defel->arg;
-		}
-		else if (strcmp(defel->defname, "force_notnull") == 0)
-		{
-			force_notnull = (List *) defel->arg;
-		}
-		else if (strcmp(defel->defname, "fill_missing_fields") == 0)
-		{
-			cstate->fill_missing = intVal(defel->arg);
-		}
-		else
-			elog(ERROR, "option \"%s\" not recognized",
-				 defel->defname);
-	}
-
-
-	/* Set defaults */
-
-	cstate->err_loc_type = ROWNUM_ORIGINAL;
-
-	cstate->escape_off = false;
-
-	if (!cstate->delim)
-		cstate->delim = cstate->csv_mode ? "," : "\t";
-
-	if (!cstate->null_print)
-		cstate->null_print = cstate->csv_mode ? "" : "\\N";
-
-	if (cstate->csv_mode)
-	{
-		if (!cstate->quote)
-			cstate->quote = "\"";
-		if (!cstate->escape)
-			cstate->escape = cstate->quote;
-	}
-
-	if (!cstate->csv_mode && !cstate->escape)
-		cstate->escape = "\\";			/* default escape for text mode */
-
-	cstate->cdbsreh = NULL; /* default - no SREH */
-	cstate->errMode = ALL_OR_NOTHING; /* default */
-
-	/* Set defaults */
-
-	cstate->err_loc_type = ROWNUM_ORIGINAL;
-
-	cstate->escape_off = false;
-
-	if (!cstate->delim)
-		cstate->delim = cstate->csv_mode ? "," : "\t";
-
-	if (!cstate->null_print)
-		cstate->null_print = cstate->csv_mode ? "" : "\\N";
-
-	if (cstate->csv_mode)
-	{
-		if (!cstate->quote)
-			cstate->quote = "\"";
-		if (!cstate->escape)
-			cstate->escape = cstate->quote;
-	}
-
-	if (!cstate->csv_mode && !cstate->escape)
-		cstate->escape = "\\";			/* default escape for text mode */
-
-#if 0
-	/*
-	 * Error handling setup
-	 */
-	if(stmt->sreh)
-	{
-		/* Single row error handling requested */
-		SingleRowErrorDesc *sreh;
-		sreh = (SingleRowErrorDesc *)stmt->sreh;
-
-		if (!is_from)
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY single row error handling only available using COPY FROM")));
-
-		if (sreh->errtable)
-		{
-			cstate->errMode = SREH_LOG;
-		}
-		else
-		{
-			cstate->errMode = SREH_IGNORE;
-			if (sreh->is_keep)
-				ereport(ERROR,
-						(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-						errmsg("KEEP may only be specified with a LOG INTO errortable clause")));
-
-		}
-
-		cstate->cdbsreh = makeCdbSreh(sreh->is_keep,
-									  sreh->reusing_existing_errtable,
-									  sreh->rejectlimit,
-									  sreh->is_limit_in_rows,
-									  sreh->errtable,
-									  stmt->filename,
-									  stmt->relation->relname);
-	}
-	else
-	{
-		/* No single row error handling requested. Use "all or nothing" */
-		cstate->cdbsreh = NULL; /* default - no SREH */
-		cstate->errMode = ALL_OR_NOTHING; /* default */
-	}
-#endif
-
-
-	elog(LOG,"DoCopyDispatchAgent starting");
-
-	/*
-	 * Set up variables to avoid per-attribute overhead.
-	 */
-	initStringInfo(&cstate->attribute_buf);
-	initStringInfo(&cstate->line_buf);
-	cstate->processed = 0;
-
-	/*
-	 * Set up encoding conversion info.
-	 */
-	cstate->client_encoding = GetDatabaseEncoding();
-	cstate->need_transcoding = false;
-	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
-	cstate->line_buf_converted = true;
-
-	cstate->copy_dest = COPY_NEW_FE;
-	cstate->filename = NULL; /* QE COPY always uses STDIN */
-	cstate->copy_file = NULL;
-	cstate->fe_msgbuf = NULL;
-	cstate->fe_eof = false;
-	cstate->eol_type = EOL_UNKNOWN;
-	cstate->cur_relname = NULL;
-	cstate->cur_lineno = 0;
-	cstate->cur_attname = NULL;
-	cstate->err_loc_type = ROWNUM_ORIGINAL;
-	cstate->in_quote = false;
-	cstate->last_was_esc = false;
-
-
-	/*
-	 * some greenplum db specific vars
-	 */
-	cstate->is_copy_in = (is_from ? true : false);
-	if (is_from)
-	{
-		cstate->error_on_executor = false;
-		initStringInfo(&(cstate->executor_err_context));
-	}
-
-	cdbCopy = makeCdbCopy(is_from);
-
-	if (is_from)				/* copy from file to database */
-	{
-
-		bool no_more_data = false;
-		bool		cur_row_rejected = false;
-		int original_lineno_for_qe = -1;
-		int target_seg = -1;
-		int total_rejeted_from_qes = 0;
-
-	    elog(DEBUG1,"Copy is from file to database");
-
-		ReceiveCopyBegin(cstate);
-
-		clear_relsize_cache();
-
-		cstate->err_loc_type = ROWNUM_EMBEDDED;
-
-		/* Set up data buffer to hold a chunk of data */
-		MemSet(cstate->raw_buf, ' ', RAW_BUF_SIZE * sizeof(char));
-		cstate->raw_buf[RAW_BUF_SIZE] = '\0';
-
-		no_more_data = false;		/* no more input data to read from file or FE */
-		cstate->line_done = true;
-		cstate->raw_buf_done = false;
-		RESET_LINEBUF;
-
-		do
-		{
-			size_t		bytesread = 0;
-
-			/* read a chunk of data into the buffer */
-			PG_TRY();
-			{
-				bytesread = CopyGetData(cstate, cstate->raw_buf, RAW_BUF_SIZE);
-				elog(DEBUG1,"CopyGetData, bytesread=%ld",(long)bytesread);
-			}
-			PG_CATCH();
-			{
-				/*
-				 * If we are here, we got some kind of communication error
-				 * with the client or a bad protocol message. clean up and
-				 * re-throw error. Note that we don't handle this error in
-				 * any special way in SREH mode as it's not a data error.
-				 */
-				cdbCopyEnd(cdbCopy);
-				PG_RE_THROW();
-			}
-			PG_END_TRY();
-
-			cstate->raw_buf_done = false;
-
-			/* set buffer pointers to beginning of the buffer */
-			cstate->begloc = cstate->raw_buf;
-			cstate->raw_buf_index = 0;
-
-			/*
-			 * continue if some bytes were read or if we didn't reach EOF. if we
-			 * both reached EOF _and_ no bytes were read, quit the loop we are
-			 * done
-			 */
-			if (bytesread > 0 || !cstate->fe_eof)
-			{
-
-				while (!cstate->raw_buf_done)
-				{
-
-
-					if (QueryCancelPending)
-					{
-						/* quit processing loop */
-						no_more_data = true;
-						break;
-					}
-
-						/* Get the line number of the first line of this data row */
-						//original_lineno_for_qe = cstate->cur_lineno + 1;
-
-
-						PG_TRY();
-						{
-							/* Actually read the line into memory here */
-							cstate->line_done = cstate->csv_mode ?
-								CopyReadLineCSV(cstate, bytesread) :
-								CopyReadLineText(cstate, bytesread);
-						}
-						PG_CATCH();
-						{
-							/* got here? encoding conversion/check error occured */
-							COPY_HANDLE_ERROR;
-						}
-						PG_END_TRY();
-
-						/* CopyReadLine moves the cursor past the line no and target info */
-						cstate->line_buf.cursor = 0;
-
-						if(!cstate->line_done)
-						{
-							/*
-							 * We did not finish reading a complete data line.
-							 *
-							 * If eof is not yet reached, we skip att parsing
-							 * and read more data. But if eof _was_ reached it means
-							 * that the original last data line is defective and
-							 * we want to catch that error later on.
-							 */
-							if (!cstate->fe_eof || cstate->end_marker)
-								break;
-						}
-
-						if (cstate->line_buf.len > 0)
-						{
-						char *lineno_delim = NULL;
-
-						/*
-						 * Line_buf may have already skipped an OID column if WITH OIDS defined,
-						 * so we need to start from cursor not always from beginning of linebuf.
-						 */
-						char *line_start = cstate->line_buf.data + cstate->line_buf.cursor;
-						int  lineno_str_len = 0;
-						bool primary = true;
-
-						lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
-						Insist(lineno_delim && (lineno_delim != line_start));
-						lineno_str_len = lineno_delim - line_start + 1;
-
-						/* change the lineno delim to null '\0' to look at the lineno */
-						*lineno_delim = '\0';
-						original_lineno_for_qe = atoi(line_start);
-
-						/* restore the line_buf byte */
-						*lineno_delim = COPY_METADATA_DELIM;
-
-						/* reposition line buf cursor to see real data (skip lineno) */
-						cstate->line_buf.cursor += lineno_str_len;
-
-						lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32); \
-						Assert(lineno_delim && (lineno_delim != line_start)); \
-						lineno_str_len = lineno_delim - line_start + 1; \
-						*lineno_delim = '\0';
-						cstate->line_buf_converted = atoi(line_start);
-						
-						*lineno_delim = COPY_METADATA_DELIM;
-						cstate->line_buf.cursor += lineno_str_len;
-						line_start = cstate->line_buf.data + cstate->line_buf.cursor;
-						
-						/* skip target_seg */
-						line_start = cstate->line_buf.data + cstate->line_buf.cursor;
-						lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
-						Insist(lineno_delim && (lineno_delim != line_start));
-						lineno_str_len = lineno_delim - line_start + 1;
-
-						/* change the lineno delim to null '\0' to look at the lineno */
-						*lineno_delim = '\0';
-						target_seg = atoi(line_start);
-						Assert(*(lineno_delim-1) == 'P' || *(lineno_delim-1) == 'M');
-						primary = *(lineno_delim-1) == 'P';
-
-						/* restore the line_buf byte */
-						*lineno_delim = COPY_METADATA_DELIM;
-
-						/* reposition line buf cursor to see real data (skip target_seg) */
-						cstate->line_buf.cursor += lineno_str_len;
-
-						Assert(target_seg >= 0 && target_seg <= 10000);
-
-						/* send unmodified data */
-						cdbCopySendDataSingle(cdbCopy,
-										target_seg,
-										cstate->line_buf.data,
-										cstate->line_buf.len, primary);
-						}
-
-					cstate->processed++;
-					RESET_LINEBUF;
-
-				}					/* end while(!raw_buf_done) */
-			}						/* end if (bytesread > 0 || !cstate->fe_eof) */
-			else
-				/* no bytes read, end of data */
-			{
-				no_more_data = true;
-			}
-		} while (!no_more_data);
-
-		Assert(cstate->fe_eof);
-
-		/*
-		 * Done reading input data and sending it off to the segment
-		 * databases Now we would like to end the copy command on
-		 * all segment databases across the cluster.
-		 */
-		total_rejeted_from_qes = cdbCopyEnd(cdbCopy);
-
-
-		//if(cstate->errMode != ALL_OR_NOTHING)
-		if(stmt->sreh)
-			SendNumRowsRejected(total_rejeted_from_qes);
-
-
-	}
-	else		/* copy from database to file */
-	{
-		cstate->fe_copy = true;
-
-		/* We use fe_msgbuf as a per-row buffer regardless of copy_dest */
-		cstate->fe_msgbuf = makeStringInfo();
-
-		while(true)
-		{
-
-			bool done;
-			bool copy_cancel = (QueryCancelPending ? true : false);
-
-			/* get a chunk of data rows from the QE's and relay to QD */
-			done = cdbCopyRelayData(cdbCopy, copy_cancel, &cstate->processed);
-
-			if(done)
-				break;
-		}
-
-		/* we can throw the error now if QueryCancelPending was set previously */
-		CHECK_FOR_INTERRUPTS();
-
-		SendCopyEnd(cstate);
-	}
-
-
-
-	if(cstate->cdbsreh)
-		destroyCdbSreh(cstate->cdbsreh);
-
-	/* Clean up storage (probably not really necessary) */
-	processed = cstate->processed;
-
-	pfree(cstate->attribute_buf.data);
-	pfree(cstate->line_buf.data);
-	pfree(cstate);
-
-	return processed;
 }
 
 /*

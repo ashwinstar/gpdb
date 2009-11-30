@@ -268,6 +268,4 @@ extern void limit_printout_length(StringInfo buf);
 extern void truncateEol(StringInfo buf, EolType	eol_type);
 extern void setEncodingConversionProc(CopyState cstate, int client_encoding, bool iswritable);
 
-extern uint64 DoCopyDispatchAgent(const CopyStmt *stmt);
-
 #endif   /* COPY_H */
