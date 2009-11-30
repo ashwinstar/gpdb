@@ -367,8 +367,19 @@ RelationIsVisible(Oid relid)
 	reltup = SearchSysCache(RELOID,
 							ObjectIdGetDatum(relid),
 							0, 0, 0);
+
 	if (!HeapTupleIsValid(reltup))
-		elog(ERROR, "cache lookup failed for relation %u", relid);
+	{
+		/* 
+		 * MPP-6982:
+		 * Note that the caller may not have gotten a lock on the relation.
+		 * Therefore, it is possible that the relation may have been dropped
+		 * by the time this method is called. Therefore, we simply return false
+		 * when we cannot find the relation in SysCache instead of erroring out.
+		 */
+		return false;
+	}
+
 	relform = (Form_pg_class) GETSTRUCT(reltup);
 
 	recomputeNamespacePath();
