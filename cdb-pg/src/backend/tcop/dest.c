@@ -164,7 +164,7 @@ EndCommand(const char *commandTag, CommandDest dest)
 	{
 		case DestRemote:
 		case DestRemoteExecute:
-			if ((Gp_role == GP_ROLE_EXECUTE && Gp_is_writer) || Gp_role == GP_ROLE_DISPATCHAGENT)
+			if (Gp_role == GP_ROLE_EXECUTE && Gp_is_writer)
 			{
 				/*
 				 * Extra information that indicates if the transaction made

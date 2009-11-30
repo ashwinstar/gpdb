@@ -244,16 +244,10 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 		portal->portalId = ResCreatePortalId(name);
 		portal->queueId = GetResQueueId();
 	}
-	
 
+	portal->is_cursor = false; /* default value */	
+	portal->dispatchagents = NULL;
 
-	portal->is_cursor = false; /* default value */
-	
-	if (strcmp(name,"")==0 && Gp_role == GP_ROLE_DISPATCH)
-		portal->dispatchagents = getUnamedPortalDispatchAgents();
-	else
-		portal->dispatchagents = NULL;
-	
 	/* put portal in table (sets portal->name) */
 	PortalHashTableInsert(portal, name);
 

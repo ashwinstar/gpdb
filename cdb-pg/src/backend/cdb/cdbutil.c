@@ -619,7 +619,7 @@ cdb_setup(void)
 	cdblink_setup();
 
 	/* If gp_role is UTILITY, skip this call. */
-	if (Gp_role != GP_ROLE_UTILITY  && Gp_role != GP_ROLE_DISPATCHAGENT)
+	if (Gp_role != GP_ROLE_UTILITY)
 	{
 		/* Initialize the Motion Layer IPC subsystem. */
 		InitMotionLayerIPC();
@@ -679,7 +679,7 @@ cdb_cleanup(int code __attribute__((unused)) , Datum arg __attribute__((unused))
 		}
 	}
 
-	if (Gp_role != GP_ROLE_UTILITY && Gp_role != GP_ROLE_DISPATCHAGENT)
+	if (Gp_role != GP_ROLE_UTILITY)
 	{
 		/* shutdown our listener socket */
 		CleanUpMotionLayerIPC();

@@ -2066,7 +2066,13 @@ retry1:
     else if (gpqdid)
     	cdbgang_parse_gpqdid_params(port, gpqdid);
     else if (gpdaid)
-    	cdbgang_parse_gpdaid_params(port, gpdaid);
+	{
+		ereport(FATAL,
+				(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+				 errSendAlert(true),
+				 errOmitLocation(true),
+				 errmsg("GPAgent deprecated.")));
+	}
 
 	/*
 	 * Done putting stuff in TopMemoryContext.

@@ -369,8 +369,7 @@ write_log(const char *fmt,...)
 	strcat(logprefix,"|");
 	sprintf(tempbuf,"con%d cmd%d",gp_session_id,gp_command_count);
 	strcat(logprefix,tempbuf);
-	if (Gp_role == GP_ROLE_DISPATCHAGENT)
-	   strcat(logprefix, " *DA*");
+
 	strcat(logprefix,"|");
 	strcat(logprefix,":-THREAD ");
 	if (pthread_equal(main_tid, pthread_self()))
@@ -487,7 +486,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 	MemoryContext oldContext;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(gp && gp->size > 0);
 	Assert(dispatchResults && dispatchResults->resultArray);
 
@@ -553,12 +552,6 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	db_descriptors_size = gp->size;
 	db_descriptors = gp->db_descriptors;
 	
-	if (gp_use_dispatch_agent && gp->dispatchagents != NULL)
-	{
-		db_descriptors_size = gp->dispatchagents->size;
-		db_descriptors = gp->dispatchagents->db_descriptors;
-	}
-	
 	/*
 	 * The most threads we could have is segdb_count / gp_connections_per_thread, rounded up.
 	 * This is equivalent to 1 + (segdb_count-1) / gp_connections_per_thread.
@@ -574,8 +567,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	segdbs_in_thread_pool = 0;
 	
 	Assert(db_descriptors_size <= largestGangsize());
-	
-	
+
 	if (gp_connections_per_thread == 0)
 		max_threads = 1;	/* one, not zero, because we need to allocate one param block */
 	else
@@ -1283,7 +1275,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: %s for gid = %s, direct content #: %d",
 		 dtxProtocolCommandLoggingStr, gid, direct->directed_dispatch ? direct->content[0] : -1);
 
-	Assert(dispatchToMirrors);	/* Dispatch agent assumes this for now */
+	Assert(dispatchToMirrors);
 
 	*badGangs = false;
 
@@ -1339,9 +1331,6 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 
 	primaryResults->writer_gang = primaryGang;
 
-	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
-		dispatchToMirrors = false;	/* The dispatch agent will handle sending to the mirrors */
-
 	if (dispatchToMirrors && mirrorGang)
 	{
         mirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
@@ -1358,11 +1347,9 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 						   primaryGang, primaryResults, -1, 1, direct);
 
 	/*
-	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
-	 * mirror gang.  So, we don't need to send it ourselves.
+	 * If we are the QD, we send to the mirror gang.
 	 */
-	
-	if (mirrorResults != NULL && mirrorGang != NULL && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
+	if (mirrorResults != NULL && mirrorGang != NULL)
 	{
 		cdbdisp_dispatchToGang(&dispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
@@ -1383,7 +1370,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 			 dtxProtocolCommandLoggingStr, gid);
 	}
 
-	resultSets = cdbdisp_returnResults(primaryResults,mirrorResults,errmsgbuf,numresults);
+	resultSets = cdbdisp_returnResults(primaryResults, mirrorResults, errmsgbuf, numresults);
 	
 	/* free memory allocated for the dispatch threads struct */
 	cdbdisp_destroyDispatchThreads(dispatchThreads);
@@ -1483,27 +1470,6 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	queryParms.serializedDtxContextInfo = 
 		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, false, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommand");
 
-	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && dispatchToMirrors && !dispatchToPrimaries)
-	{
-		/*
-		 * If we are the QD, and sending via Dispatch Agents, we want to send only
-		 * once.  The DA will send to the primary and/or mirror gang based on what we tell it.
-		 */
-		elog(DEBUG1,"mirror only dispatch");
-		
-		*pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-	    cdbdisp_dispatchToGang(pDispatchThreads, 
-							   GP_DISPATCH_COMMAND_TYPE_QUERY,
-							   &queryParms,
-							   mirrorGang, *pMirrorResults, -1, 1, DEFAULT_DISP_DIRECT);
-	    
-	    /*
-	     * make sure we don't dispatch again 
-	     */
-	    dispatchToPrimaries = false; 
-	    dispatchToMirrors = false;
-	}
-	
 	/*
      * Dispatch the command.
      */
@@ -1519,10 +1485,9 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	}
 
 	/*
-	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
-	 * mirror gang.  So, we don't need to send it ourselves.
+	 * If we are the QD, dispatch to the mirrors.
 	 */
-	if (dispatchToMirrors && mirrorGang && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
+	if (dispatchToMirrors && mirrorGang)
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
 		(*pMirrorResults)->writer_gang = mirrorGang;
@@ -1809,10 +1774,9 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 						   primaryGang, *pPrimaryResults, -1, gangCount, DEFAULT_DISP_DIRECT);
 
     /*
-	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
-	 * mirror gang.  So, we don't need to send it ourselves.
+	 * If we are the QD, dispatch to the mirror-gang.
 	 */
-	if (mirrorGang && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
+	if (mirrorGang)
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
 		(*pMirrorResults)->writer_gang = mirrorGang;
@@ -1822,20 +1786,14 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 							   mirrorGang, *pMirrorResults, -1, gangCount, DEFAULT_DISP_DIRECT);
     }
 
-	/*
-	 * TODO: Uh oh... We don't yet have a way to send to all the reader gangs
-	 * when we are using Dispatch Agents.
-	 */
-
-	if (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent)
-		foreach(le, readerGangs)
-		{
-			Gang  *rg = lfirst(le);
-			cdbdisp_dispatchToGang(pDispatchThreads, 
-								   GP_DISPATCH_COMMAND_TYPE_QUERY,
-								   &queryParms,
-								   rg, *pPrimaryResults, -1, gangCount, DEFAULT_DISP_DIRECT);
-		}
+	foreach(le, readerGangs)
+	{
+		Gang  *rg = lfirst(le);
+		cdbdisp_dispatchToGang(pDispatchThreads, 
+							   GP_DISPATCH_COMMAND_TYPE_QUERY,
+							   &queryParms,
+							   rg, *pPrimaryResults, -1, gangCount, DEFAULT_DISP_DIRECT);
+	}
 
 }	/* cdbdisp_dispatchCommandToAllGangs */
 
@@ -3446,9 +3404,9 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	
 	*pDispatchThreads = NULL;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 	
-	if (sliceTbl && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
+	if (sliceTbl)
 	{
 		Assert(rootIdx == 0 ||
 			   (rootIdx > sliceTbl->nMotions &&
@@ -3476,7 +3434,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 
 	/* Allocate result array for mirror gang. */
 	//if (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)
-	if (sliceTbl && sliceTbl->slices && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
+	if (sliceTbl && sliceTbl->slices)
 	{
 		Slice	   *slice = (Slice *) list_nth(sliceTbl->slices, rootIdx);
 
@@ -3566,31 +3524,29 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			primaryGang = slice->primaryGang;
 			mirrorGang = slice->mirrorGang;
 
-			Assert(primaryGang == NULL || Gp_role == GP_ROLE_DISPATCH);
-
 			/*
 			 * If we are on the dispatch agent, the gang pointers aren't filled in.
 			 * We must look them up by ID
 			 */
-			if (primaryGang == NULL || Gp_role == GP_ROLE_DISPATCHAGENT)
+			if (primaryGang == NULL)
 			{
 				elog(DEBUG2,"Dispatch %d, Gangs are %d and %d, type=%d",iSlice, slice->primary_gang_id,slice->mirror_gang_id,slice->gangType);
 				primaryGang = findGangById(slice->primary_gang_id);
 				if (slice->mirror_gang_id > 0)
 					mirrorGang = findGangById(slice->mirror_gang_id);
 
-				Assert(Gp_role == GP_ROLE_DISPATCHAGENT || primaryGang != NULL);
+				Assert(primaryGang != NULL);
 				if (primaryGang != NULL)
 					Assert(primaryGang->type == slice->gangType || primaryGang->type == GANGTYPE_PRIMARY_WRITER);
 
-				if (slice->mirror_gang_id >0)
-					Assert(Gp_role == GP_ROLE_DISPATCHAGENT || mirrorGang != NULL);
+				if (slice->mirror_gang_id > 0)
+					Assert(mirrorGang != NULL);
 
 				if (primaryGang == NULL && mirrorGang == NULL)
 					continue;
 			}
 
-			if ( slice->directDispatch.isDirectDispatch)
+			if (slice->directDispatch.isDirectDispatch)
 			{
 				direct.directed_dispatch = true;
 				direct.count = list_length( slice->directDispatch.contentIds );
@@ -3616,43 +3572,6 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				primaryGang = findGangById(pQueryParms->primary_gang_id);
 			if (pQueryParms->mirror_gang_id > 0)
 				mirrorGang = findGangById(pQueryParms->mirror_gang_id);
-		}
-
-		if (primaryGang == NULL && mirrorGang == NULL)
-		{
-			/*
-			 * When using dispatch agents, and we are on the QD, we just send the 
-			 * request to the dispatch agents... To get a list of dispatch agents,
-			 * just look in the primaryGang.
-			 * 
-			 * The dispatch agent will handle sending out based on the slice table.
-			 */
-			if (Gp_role == GP_ROLE_DISPATCHAGENT)
-			{
-				elog(WARNING,"*DA* Using default writer gang");
-				primaryGang = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);  /* we could use findGangById(1) here */
-			}
-			else
-			{
-				/* 
-				 * When sending from the QD with a slice table, and using Dispatch Agents,
-				 * we just get the primary gang to know where the dispatch agents live.
-				 */
-				elog(DEBUG5,"QD Using default writer gang");
-				primaryGang = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
-			}
-
-			mirrorGang = NULL;
-		}
-
-		if (primaryGang == NULL && mirrorGang != NULL && Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
-		{
-			/*
-			 * If we are the QD, and relying on dispatch agents, we only send once to the 
-			 * dispatch agents, and let them send to the primaries or mirrors or both, as
-			 * appropriate.
-			 */
-			primaryGang = mirrorGang;
 		}
 
 		Assert(primaryGang != NULL || mirrorGang != NULL);	/* Must have a gang to dispatch to */
@@ -3690,27 +3609,23 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		/*
 		 * dispatch the plan to our mirrorGang if we have one.
 		 * 
-		 *  
 		 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
 		 * mirror gang.  So, we don't need to send it ourselves.
 		 * 
 		 */
-		if (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent)
+		if (mirrorGang != NULL /*&& (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)*/)
 		{
-			if (mirrorGang != NULL /*&& (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)*/)
-			{
-				Assert(mirrorGang != NULL);	/* Must have a gang to dispatch to */
-				Assert(mirrorGang->size > 0);
-				Assert(pMirrorResults);
-				Assert((*pMirrorResults) && (*pMirrorResults)->resultArray);
+			Assert(mirrorGang != NULL);	/* Must have a gang to dispatch to */
+			Assert(mirrorGang->size > 0);
+			Assert(pMirrorResults);
+			Assert((*pMirrorResults) && (*pMirrorResults)->resultArray);
 
-				(*pMirrorResults)->writer_gang = mirrorGang;
+			(*pMirrorResults)->writer_gang = mirrorGang;
 
-				cdbdisp_dispatchToGang(pDispatchThreads,
-									   GP_DISPATCH_COMMAND_TYPE_QUERY,
-									   pQueryParms, mirrorGang, *pMirrorResults,
-									   si, sliceLim, &direct);
-			}
+			cdbdisp_dispatchToGang(pDispatchThreads,
+								   GP_DISPATCH_COMMAND_TYPE_QUERY,
+								   pQueryParms, mirrorGang, *pMirrorResults,
+								   si, sliceLim, &direct);
 		}
 	}
 
@@ -3849,7 +3764,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	
 	*pDispatchThreads = NULL;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(queryDesc != NULL && queryDesc->estate != NULL);
 
 	/*
@@ -4550,60 +4465,54 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 		
 		switch (pParms->mppDispatchCommandType)
 		{
-		case GP_DISPATCH_COMMAND_TYPE_QUERY:
+			case GP_DISPATCH_COMMAND_TYPE_QUERY:
 			{
 				DispatchCommandQueryParms *pQueryParms = &pParms->queryParms;
 
-				/* Leave query params if we are a dispatch agent. */
-				if (Gp_role != GP_ROLE_DISPATCHAGENT)
+				if (pQueryParms->strCommand)
 				{
-
-					if (pQueryParms->strCommand)
-					{
-						/* Caller frees if desired */
-						pQueryParms->strCommand = NULL;
-					}
+					/* Caller frees if desired */
+					pQueryParms->strCommand = NULL;
+				}
 					
-					if (pQueryParms->serializedDtxContextInfo)
-					{
-						if (i==0)
-							pfree(pQueryParms->serializedDtxContextInfo);
-						pQueryParms->serializedDtxContextInfo = NULL;
-					}
+				if (pQueryParms->serializedDtxContextInfo)
+				{
+					if (i==0)
+						pfree(pQueryParms->serializedDtxContextInfo);
+					pQueryParms->serializedDtxContextInfo = NULL;
+				}
 					
-					if (pQueryParms->serializedSliceInfo)
-					{
-						if (i==0)
-							pfree(pQueryParms->serializedSliceInfo);
-						pQueryParms->serializedSliceInfo = NULL;
-					}
+				if (pQueryParms->serializedSliceInfo)
+				{
+					if (i==0)
+						pfree(pQueryParms->serializedSliceInfo);
+					pQueryParms->serializedSliceInfo = NULL;
+				}
 					
-					if (pQueryParms->serializedQuerytree)
-					{
-						if (i==0)
-							pfree(pQueryParms->serializedQuerytree);
-						pQueryParms->serializedQuerytree = NULL;
-					}
+				if (pQueryParms->serializedQuerytree)
+				{
+					if (i==0)
+						pfree(pQueryParms->serializedQuerytree);
+					pQueryParms->serializedQuerytree = NULL;
+				}
 				
-					if (pQueryParms->serializedPlantree)
-					{
-						if (i==0)
-							pfree(pQueryParms->serializedPlantree);
-						pQueryParms->serializedPlantree = NULL;
-					}
+				if (pQueryParms->serializedPlantree)
+				{
+					if (i==0)
+						pfree(pQueryParms->serializedPlantree);
+					pQueryParms->serializedPlantree = NULL;
+				}
 					
-					if (pQueryParms->serializedParams)
-					{
-						if (i==0)
-							pfree(pQueryParms->serializedParams);
-						pQueryParms->serializedParams = NULL;
-					}
-
+				if (pQueryParms->serializedParams)
+				{
+					if (i==0)
+						pfree(pQueryParms->serializedParams);
+					pQueryParms->serializedParams = NULL;
 				}
 			}
 			break;
 		
-		case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+			case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 			{
 				DispatchCommandDtxProtocolParms *pDtxProtocolParms = &pParms->dtxProtocolParms;
 
@@ -4611,9 +4520,9 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 			}
 			break;
 
-		default:
-			elog(FATAL, "Unrecognized MPP dispatch command type: %d",
-				(int) pParms->mppDispatchCommandType);
+			default:
+				elog(FATAL, "Unrecognized MPP dispatch command type: %d",
+					 (int) pParms->mppDispatchCommandType);
 		}
 	}
 	

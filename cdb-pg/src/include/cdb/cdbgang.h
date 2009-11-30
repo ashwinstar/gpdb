@@ -118,9 +118,6 @@ reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB);
 extern void
 SetSeqServerInfo(struct QueryDesc *queryDesc);
 
-extern GpSegmentConnectionResponse *
-createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize);
-
 extern Gang * 
 findGangById(int gang_id);
 

@@ -5001,20 +5001,7 @@ TransactionInformationQEWriter(DistributedTransactionId *QEDistributedTransactio
 {
 	*QEDistributedTransactionId = QEDtxContextInfo.distributedXid;
 	*QECommandId = QEDtxContextInfo.curcid;
-	if (Gp_role == GP_ROLE_DISPATCHAGENT)
-	{
-		/*
-		 * Can't rely on IsTransactionDirty, because we aren't
-		 * really part of the transaction
-		 */
-		if (QEDtxContextInfo.distributedXid != 0 || 
-			QEDtxContextInfo.curcid != 0)
-			*QEDirty = true;
-		else
-			*QEDirty = false;
-	}
-	else
-		*QEDirty = IsTransactionDirty();
+	*QEDirty = IsTransactionDirty();
 }
 
 /*

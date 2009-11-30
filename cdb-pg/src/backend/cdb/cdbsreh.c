@@ -137,7 +137,7 @@ void HandleSingleRowError(CdbSreh *cdbsreh)
 	 * be the one to increment the number of errors there. we don't want to 
 	 * count the same error twice...
 	 */
-	if(!(cdbsreh->errtbl && (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)) )
+	if (!(cdbsreh->errtbl && (Gp_role == GP_ROLE_DISPATCH)))
 		cdbsreh->rejectcount++;
 	
 	/* 
@@ -156,7 +156,7 @@ void HandleSingleRowError(CdbSreh *cdbsreh)
 	 */
 	if(cdbsreh->errtbl)
 	{
-		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) 
+		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			cdbCopySendData(cdbsreh->cdbcopy, 
 							GetNextSegid(cdbsreh), 
@@ -381,7 +381,9 @@ void SendNumRowsRejected(int numrejected)
 {
 	StringInfoData buf;
 	
-	Insist(Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT);
+	if (Gp_role != GP_ROLE_EXECUTE)
+		elog(FATAL, "SendNumRowsRejected: called outside of execute context.");
+
 	pq_beginmessage(&buf, 'j'); /* 'j' is the msg code for rejected records */
 	pq_sendint(&buf, numrejected, 4);
 	pq_endmessage(&buf);	

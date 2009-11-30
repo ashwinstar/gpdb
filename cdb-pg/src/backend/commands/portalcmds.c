@@ -395,18 +395,6 @@ PortalCleanupHelper(Portal portal, volatile int *cleanupstate)
 	}
 
 	/* 
-	 * Terminate dispatch agent processes.  
-	 * DAs for unnamed portal can be kept and reused for next query. 
-	 */
-	if (portal->dispatchagents && portal->name && strcmp(portal->name,"") != 0)
-	{
-		struct DispatchAgentSet    *agents = portal->dispatchagents;
-
-		portal->dispatchagents = NULL;
-		disconnectAndDestroyDispatchAgents(agents);
-	}
-
-	/* 
 	 * If resource scheduling is enabled, release the resource lock. 
 	 */
 	if (portal->releaseResLock)
