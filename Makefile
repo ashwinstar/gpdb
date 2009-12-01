@@ -162,7 +162,16 @@ DEBUGFLAGS="$(strip $(CFLAGS_INLINE) $(CFLAGS_OPT) -g3 $(TRACE_GCC_FLAG))"
 #---------------------------------------------------------------------
 
 DEFPORT=5432
-rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu
+rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email
+rhel5_x86_64_CONFIGFLAGS=--enable-email
+sol10_x86_64_CONFIGFLAGS=--enable-email
+sol_x86_64_CONFIGFLAGS=--enable-email
+suse10_x64_64_CONFIGFLAGS=--enable-email
+linux_x64_64_CONFIGFLAGS=--enable-email
+osx104_x86_CONFIGFLAGS=--enable-email
+osx105_x86_CONFIGFLAGS=--enable-email
+osx106_x86_CONFIGFLAGS=--enable-email
+
 BLD_CONFIGFLAGS=$($(BLD_ARCH)_CONFIGFLAGS)
 
 aix5_ppc_64_ENABLE_THREAD_SAFETY=--enable-thread-safety
@@ -173,7 +182,7 @@ else
 BLD_ENABLE_THREAD_SAFETY=--enable-thread-safety
 endif
 
-CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) $(BLD_ENABLE_THREAD_SAFETY) --enable-email --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG) $(BLD_DEPLOYMENT_SETTING))
+CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) $(BLD_ENABLE_THREAD_SAFETY) --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG) $(BLD_DEPLOYMENT_SETTING)) 
 
 # PL/Python does not compile on Tiger, skipping it on AIX
 ifneq "$(findstring $(BLD_ARCH),aix5_ppc_64 aix5_ppc_32 osx104_x86)" ""
