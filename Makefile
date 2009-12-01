@@ -173,7 +173,7 @@ else
 BLD_ENABLE_THREAD_SAFETY=--enable-thread-safety
 endif
 
-CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) $(BLD_ENABLE_THREAD_SAFETY) --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG) $(BLD_DEPLOYMENT_SETTING))
+CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) $(BLD_ENABLE_THREAD_SAFETY) --enable-email --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG) $(BLD_DEPLOYMENT_SETTING))
 
 # PL/Python does not compile on Tiger, skipping it on AIX
 ifneq "$(findstring $(BLD_ARCH),aix5_ppc_64 aix5_ppc_32 osx104_x86)" ""
