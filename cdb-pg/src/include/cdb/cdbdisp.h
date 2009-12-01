@@ -82,6 +82,8 @@ typedef struct DispatchCommandDtxProtocolParms
 	DistributedTransactionId	gxid;
 	int							primary_gang_id;
 	int							mirror_gang_id;
+	char *argument;
+	int argumentLength;
 } DispatchCommandDtxProtocolParms;
 
 /*
@@ -279,7 +281,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand		dtxProtocolCommand,
 								   StringInfo    			errmsgbuf,
 								   int						*numresults,
 								   bool 					*badGangs,
-								   CdbDispatchDirectDesc *direct);
+								   CdbDispatchDirectDesc *direct,
+								   char *argument, int argumentLength );
 
 
 /*--------------------------------------------------------------------*/

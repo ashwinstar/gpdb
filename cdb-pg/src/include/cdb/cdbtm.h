@@ -87,6 +87,13 @@ typedef enum
 typedef enum
 {
 	DTX_PROTOCOL_COMMAND_NONE = 0,
+
+	/**
+	 * Instruct the QE to go into implied writer state if not already.  This
+	 *   is used when promoting a direct-dispatch transaction to a full-cluster
+	 *   transaction
+	 */
+	DTX_PROTOCOL_COMMAND_STAY_AT_OR_BECOME_IMPLIED_WRITER = 1,
 	DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED,
 	DTX_PROTOCOL_COMMAND_PREPARE,
 	DTX_PROTOCOL_COMMAND_ABORT_SOME_PREPARED,
@@ -318,8 +325,8 @@ extern void redoDistributedForgetCommitRecord(TMGXACT_LOG *gxact_log);
 extern void descDistributedCommitRecord(StringInfo buf, TMGXACT_LOG *gxact_log);
 extern void descDistributedForgetCommitRecord(StringInfo buf, TMGXACT_LOG *gxact_log);
 
-/* some plans are annotated with dispatch details which the DTM needs. */
-extern void setCurrentDtxTwoPhase(const char *debugCaller, const char *debugDetail, Node *p);
+/* @param p used because some plans are annotated with dispatch details which the DTM needs. */
+extern void dtmPreCommand(const char *debugCaller, const char *debugDetail, Node *p, bool needsTwoPhaseCommit, bool dispatchToPrimaries, bool dispatchToMirrors );
 extern bool isCurrentDtxTwoPhase(void);
 extern bool isCurrentDtxActive(void);
 
@@ -359,7 +366,7 @@ extern void finishDistributedTransactionContext (char *debugCaller, bool aborted
 extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					int flags,
 					const char *loggingStr, const char *gid, 
-					DistributedTransactionId gxid);
+					DistributedTransactionId gxid, DtxContextInfo *contextInfo);
 extern void doDtxPhase2Retry(void);
 extern void UtilityModeFindOrCreateDtmRedoFile(void);
 extern void UtilityModeCloseDtmRedoFile(void);

@@ -876,6 +876,8 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 				pParms->dtxProtocolParms.gxid = pDtxProtocolParms->gxid;
 				pParms->dtxProtocolParms.primary_gang_id = pDtxProtocolParms->primary_gang_id;
 				pParms->dtxProtocolParms.mirror_gang_id = pDtxProtocolParms->mirror_gang_id;
+				pParms->dtxProtocolParms.argument = pDtxProtocolParms->argument;
+				pParms->dtxProtocolParms.argumentLength = pDtxProtocolParms->argumentLength;
 			}
 			break;
 
@@ -1259,7 +1261,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 								   StringInfo errmsgbuf,
 								   int *numresults,
 								   bool *badGangs,
-								   CdbDispatchDirectDesc *direct)
+								   CdbDispatchDirectDesc *direct,
+								   char *argument, int argumentLength)
 {
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
@@ -1285,6 +1288,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	dtxProtocolParms.dtxProtocolCommandLoggingStr = dtxProtocolCommandLoggingStr;
 	memcpy(dtxProtocolParms.gid, gid, TMGIDSIZE);
 	dtxProtocolParms.gxid = gxid;
+	dtxProtocolParms.argument = argument;
+	dtxProtocolParms.argumentLength = argumentLength;
 	
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
@@ -1838,6 +1843,8 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 				pParms->dtxProtocolParms.gxid,
 				pParms->dtxProtocolParms.primary_gang_id,
 				pParms->dtxProtocolParms.mirror_gang_id,
+				pParms->dtxProtocolParms.argument,
+				pParms->dtxProtocolParms.argumentLength,
 				&pParms->query_text_len);
 		}
 		break;
@@ -3056,20 +3063,17 @@ CdbDoCommand(const char *strCommand,
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
 	CdbDispatchCmdThreads *dispatchThreads;
+	const bool withSnapshot = true;
 
 	Assert(dispatchToMirrors || dispatchToPrimaries);
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommand for command = '%s', needTwoPhase = %s",
 		 strCommand, (needTwoPhase ? "true" : "false"));
 
-	if (needTwoPhase)
-	{
-		/* Mark this txn as needing a two-phase distributed transaction */
-		setCurrentDtxTwoPhase("CdbDoCommand", strCommand, NULL);
-	}
+	dtmPreCommand("CdbDoCommand", strCommand, NULL, needTwoPhase, withSnapshot, false /* inCursor */);
 
 	cdbdisp_dispatchCommand(strCommand, NULL, 0, cancelOnError, needTwoPhase, 
-							/* withSnapshot */true, dispatchToMirrors, dispatchToPrimaries,
+							withSnapshot, dispatchToMirrors, dispatchToPrimaries,
 							&primaryResults, &mirrorResults, &dispatchThreads);
 
 	/*
@@ -3088,15 +3092,12 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
 	CdbDispatchCmdThreads *dispatchThreads;
+	const bool withSnapshot = true;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommandOnAllGangs for command = '%s', needTwoPhase = %s",
 		 strCommand, (needTwoPhase ? "true" : "false"));
 
-	if (needTwoPhase)
-	{
-		/* mark this txn as dirty */
-		setCurrentDtxTwoPhase("CdbDoCommandOnAllGangs", strCommand, NULL);
-	}
+	dtmPreCommand("CdbDoCommandOnAllGangs", strCommand, NULL, needTwoPhase, withSnapshot, false /* inCursor */ );
 
 	cdbdisp_dispatchCommandToAllGangs(strCommand, NULL, 0, NULL, 0, cancelOnError, needTwoPhase,
 							&primaryResults, &mirrorResults, &dispatchThreads);
@@ -4156,16 +4157,14 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	int			serializedQuerytree_len;
 	Query	   *q = makeNode(Query);
 	StringInfoData buffer;
-	bool 		dispatchToMirrors = true;
+	const bool 		dispatchToMirrors = true;
+	const bool dispatchToPrimaries = true;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement debug_query_string = %s (needTwoPhase = %s, debugCaller = %s)",
 	     debug_query_string, (needTwoPhase ? "true" : "false"), debugCaller);
 
-	if (needTwoPhase)
-	{
-		/* mark the dtx as dirty */
-		setCurrentDtxTwoPhase("cdbdisp_dispatchUtilityStatement", "(none)", NULL);
-	}
+	dtmPreCommand("cdbdisp_dispatchUtilityStatement", "(none)", NULL, needTwoPhase,
+			withSnapshot, false /* inCursor */ );
 	
 	initStringInfo(&buffer);
 
@@ -4197,7 +4196,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	Assert(serializedQuerytree != NULL);
 
 	cdbdisp_dispatchCommand(debug_query_string, serializedQuerytree, serializedQuerytree_len, cancelOnError, needTwoPhase,
-							withSnapshot, dispatchToMirrors, /* primaries */true, 
+							withSnapshot, dispatchToMirrors, dispatchToPrimaries,
 							pPrimaryResults, pMirrorResults, pDispatchThreads);
 
 }	/* cdbdisp_dispatchUtilityStatement */

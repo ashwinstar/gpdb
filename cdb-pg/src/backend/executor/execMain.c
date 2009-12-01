@@ -514,10 +514,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 * work for this query.
 			 */
 			needDtxTwoPhase = ExecutorSaysTransactionDoesWrites();
-			if (needDtxTwoPhase)
-			{
-				setCurrentDtxTwoPhase("ExecutorStart", "(none)", (Node *)queryDesc->plantree);
-			}
+			dtmPreCommand("ExecutorStart", "(none)", (Node *)queryDesc->plantree,
+					needDtxTwoPhase, true /* wantSnapshot */, queryDesc->cursor_query );
 
 			/*
 			 * First, see whether we need to pre-execute any initPlan subplans.

@@ -3753,7 +3753,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	 * MPP-6796/MPP-6801:
 	 *
 	 * I'm not exactly sure about the way this code uses
-	 * setCurrentDtxTwoPhase(). We call it twice, which may make sense
+	 * dtmPreCommand(). We call it twice, which may make sense
 	 * if we're going to be using separate transactions. Calling it
 	 * multiple times does no harm, but I find it confusing (are these
 	 * vacuum calls auto-committed ?).
@@ -3766,7 +3766,8 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	PG_TRY();
 	{
 		/* mark the dtx as dirty */
-		setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)", NULL);
+		dtmPreCommand("cdbdisp_dispatchCommand", "(none)", NULL,
+				true /* needs two-phase */, true /* withSnapshot */, false /* inCursor */);
 
 		cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
 								 true /* cancelOnError */, true /* needTwoPhase */,
@@ -3792,7 +3793,8 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		Assert(pszVacuum != NULL);
 
 		/* mark the dtx as dirty */
-		setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)", NULL);
+		dtmPreCommand("cdbdisp_dispatchCommand", "(none)", NULL,
+				true /* needs two-phase */, true /* withSnapshot */, false /* inCursor */);
 
 		cdbdisp_dispatchCommand("vacuum", pszVacuum, pszVacuum_len,
 								true /* cancelOnError */, true /* needTwoPhase */,

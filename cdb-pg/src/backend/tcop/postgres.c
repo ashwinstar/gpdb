@@ -1326,7 +1326,8 @@ exec_mpp_dtx_protocol_command(
 					int							flags,
 					const char *				loggingStr,
 					const char * 				gid,
-					DistributedTransactionId 	gxid)
+					DistributedTransactionId 	gxid,
+					DtxContextInfo 				*contextInfo)
 {
 	CommandDest dest = whereToSendOutput;
 	const char *commandTag = loggingStr;
@@ -1357,7 +1358,7 @@ exec_mpp_dtx_protocol_command(
 
 	BeginCommand(commandTag, dest);
 
-	performDtxProtocolCommand(dtxProtocolCommand, flags, loggingStr, gid, gxid);
+	performDtxProtocolCommand(dtxProtocolCommand, flags, loggingStr, gid, gxid, contextInfo);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command calling EndCommand for dtxProtocolCommand = %d (%s) gid = %s",
 		 dtxProtocolCommand, loggingStr, gid);
@@ -4665,6 +4666,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 					int	primary_gang_id;
 					int mirror_gang_id;
 					
+					int serializedSnapshotlen;
+					const char *serializedSnapshot;
+
 
 					elog(DEBUG1, "Message type %c received by from libpq, len = %d", firstchar, input_message.len); /* TODO: Remove this */
 					
@@ -4693,11 +4697,26 @@ PostgresMain(int argc, char *argv[], const char *username)
 					
 					mirror_gang_id = pq_getmsgint(&input_message, 4);
 
+					serializedSnapshotlen = pq_getmsgint(&input_message, 4);
+
+					/* read in the snapshot info/ DtxContext */
+					if (serializedSnapshotlen == 0)
+						serializedSnapshot = NULL;
+					else
+						serializedSnapshot = pq_getmsgbytes(&input_message,serializedSnapshotlen);
+
+					/*
+					 * This is for debugging.  Otherwise we don't need to deserialize this
+					 */
+					DtxContextInfo_Deserialize(
+							serializedSnapshot, serializedSnapshotlen,
+							&TempDtxContextInfo);
+
 					pq_getmsgend(&input_message);
 
 					// Do not touch DTX context.
 
-					exec_mpp_dtx_protocol_command(dtxProtocolCommand, flags, loggingStr, gid, gxid);
+					exec_mpp_dtx_protocol_command(dtxProtocolCommand, flags, loggingStr, gid, gxid, &TempDtxContextInfo);
 
 					send_ready_for_query = true;
 

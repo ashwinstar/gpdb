@@ -86,6 +86,7 @@ char* DtxProtocolCommandToString(DtxProtocolCommand command)
 	switch (command)
 	{
 		case DTX_PROTOCOL_COMMAND_NONE: return "None";
+		case DTX_PROTOCOL_COMMAND_STAY_AT_OR_BECOME_IMPLIED_WRITER: return "Distributed Force Implied Writer";
 		case DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED: return "Distributed Abort (No Prepared)";
 		case DTX_PROTOCOL_COMMAND_PREPARE: return "Distributed Prepare";
 		case DTX_PROTOCOL_COMMAND_ABORT_SOME_PREPARED: return "Distributed Abort (Some Prepared)";

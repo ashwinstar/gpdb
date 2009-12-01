@@ -72,16 +72,6 @@ static TMGXACT **shmGxactArray;
 
 /**
  * This pointer into shared memory is on the QD, and represents the current open transaction.
- *
- * This will be non-null in two cases:
- *
- * 1) Explicit transaction (user executes BEGIN sql statement)
- * 2) Implicit WRITING transaction (user runs an insert,update, etc. in auto-commit mode)
- *
- * BUT NOT WHEN:
- *
- * a) Implicit READONLY transaction (user runs a select in auto-commmit mode);
- *
  */
 static TMGXACT *currentGxact;
 
@@ -140,7 +130,8 @@ static void dumpRMOnlyDtx(HTAB *htab, StringInfoData *buff);
 
 static bool doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 										 char* gid, DistributedTransactionId gxid,
-										 bool dispatchToMirrors, bool *badGangs, bool raiseError, CdbDispatchDirectDesc *direct);
+										 bool dispatchToMirrors, bool *badGangs, bool raiseError, CdbDispatchDirectDesc *direct,
+										 char *serializedArgument, int serializedArgumentLen);
 static void doPrepareTransaction(void);
 static void doInsertForgetCommitted(void);
 static void doNotifyingCommitPrepared(void);
@@ -345,30 +336,54 @@ notifyCommittedDtxTransaction(void)
 	return;
 }
 
+static inline void
+copyDirectDispatchFromTransaction(CdbDispatchDirectDesc *dOut)
+{
+	if (currentGxact->directTransaction)
+	{
+		dOut->directed_dispatch = true;
+		dOut->count = 1;
+		dOut->content[0] = currentGxact->directTransactionContentId;
+	}
+	else
+	{
+		dOut->directed_dispatch = false;
+	}
+}
+
 /* 
- * Marks the current Distributed Transaction as needing to use the
- * 2 phase commit protocol.
+ * @param needsTwoPhaseCommit if true then marks the current Distributed Transaction as needing to use the
+ *       2 phase commit protocol.
  */
 void
-setCurrentDtxTwoPhase(const char *debugCaller, const char *debugDetail, Node *n)
+dtmPreCommand(const char *debugCaller, const char *debugDetail, Node *n,
+		bool needsTwoPhaseCommit, bool wantSnapshot, bool inCursor )
 {
+	int wasPromotedFromDirectDispatchContentId = -1;
+	const bool nodeSaysDirectDispatch = n != NULL &&
+			is_plan_node(n) &&
+			((Plan *)n)->directDispatch.isDirectDispatch;
+
 	Assert(debugCaller != NULL);
 	Assert(debugDetail != NULL);
 
+	/**
+	 * update the information about what segments are participating in the transaction
+	 */
 	if (currentGxact == NULL)
 	{
-		elog(ERROR, "DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail);
+		/* no open transaction so don't do anything */
 	}
 	else if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
 	{
 		/* Can we direct this transaction to a single content-id ? */
-		if (n != NULL && is_plan_node(n) && ((Plan *)n)->directDispatch.isDirectDispatch)
+		if (nodeSaysDirectDispatch)
 		{
 			currentGxact->directTransaction = true;
 			currentGxact->directTransactionContentId = linitial_int(((Plan *)n)->directDispatch.contentIds);
 
 			elog(DTM_DEBUG5,
-				 "setCurrentDtxTwoPhase going distributed (to content %d) for gid = %s (%s, detail = '%s')",
+				 "dtmPreCommand going distributed (to content %d) for gid = %s (%s, detail = '%s')",
 				 currentGxact->directTransactionContentId, currentGxact->gid, debugCaller, debugDetail);
 		}
 		else
@@ -376,25 +391,23 @@ setCurrentDtxTwoPhase(const char *debugCaller, const char *debugDetail, Node *n)
 			currentGxact->directTransaction = false;
 
 			elog(DTM_DEBUG5,
-				 "setCurrentDtxTwoPhase going distributed (all gangs) for gid = %s (%s, detail = '%s')",
+				 "dtmPreCommand going distributed (all gangs) for gid = %s (%s, detail = '%s')",
 				 currentGxact->gid, debugCaller, debugDetail);
 		}
-
-		setCurrentGxactState( DTX_STATE_ACTIVE_DISTRIBUTED );
 	}
 	else if (currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED)
 	{
 		bool wasDirected = currentGxact->directTransaction;
+		wasPromotedFromDirectDispatchContentId = wasDirected ? currentGxact->directTransactionContentId : -1;
 
 		/* Can we still direct this transaction to a single content-id ? */
 		if ( currentGxact->directTransaction)
 		{
 			currentGxact->directTransaction = false; // turn off, but may be restored below
 
-			if (n != NULL && is_plan_node(n) && ((Plan *)n)->directDispatch.isDirectDispatch)
+			if (nodeSaysDirectDispatch)
 			{
 				int contentId = linitial_int(((Plan *)n)->directDispatch.contentIds);
-
 				if ( contentId == currentGxact->directTransactionContentId)
 				{
 					// it was the same content!  Stay in a single direct transaction
@@ -403,17 +416,74 @@ setCurrentDtxTwoPhase(const char *debugCaller, const char *debugDetail, Node *n)
 			}
 		}
 
+		if ( currentGxact->directTransaction)
+		{
+			/** was not actually promoted */
+			wasPromotedFromDirectDispatchContentId = -1;
+		}
+
 		elog(DTM_DEBUG5,
-			 "setCurrentDtxTwoPhase gid = %s is already distributed (%s, detail = '%s'), (was %s : now %s)",
+			 "dtmPreCommand gid = %s is already distributed (%s, detail = '%s'), (was %s : now %s)",
 			 currentGxact->gid, debugCaller, debugDetail,
 			 wasDirected ? "directed" : "all gangs",
 			 currentGxact->directTransaction ? "directed" : "all gangs"
 		);
 	}
-	else
+
+	/**
+	 * If two-phase commit then begin transaction.
+	 */
+	if ( needsTwoPhaseCommit )
 	{
-		elog(ERROR, "DTM transaction is not active (state = %s, %s, detail = '%s')",
-			 DtxStateToString(currentGxact->state), debugCaller, debugDetail);
+		if (currentGxact == NULL)
+		{
+			elog(ERROR, "DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail);
+		}
+		else if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
+		{
+			setCurrentGxactState( DTX_STATE_ACTIVE_DISTRIBUTED );
+		}
+		else if (currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED)
+		{
+			/* already distributed, no need to change */
+		}
+		else
+		{
+			elog(ERROR, "DTM transaction is not active (state = %s, %s, detail = '%s')",
+				 DtxStateToString(currentGxact->state), debugCaller, debugDetail);
+		}
+	}
+
+	/**
+	 * If promotion from direct-dispatch to whole-cluster dispatch was done then tell about it.
+	 *
+	 * FUTURE: note that this is only needed if the query we are going to run would not itself
+	 *   do this (that is, if the query we are going to run is a read-only one)
+	 */
+	if ( currentGxact &&
+			currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED &&
+			wasPromotedFromDirectDispatchContentId != -1)
+	{
+		CdbDispatchDirectDesc direct = default_dispatch_direct_desc;
+		char *serializedDtxContextInfo;
+		int serializedDtxContextInfoLen;
+		bool badGangs, succeeded;
+
+		serializedDtxContextInfo = qdSerializeDtxContextInfo(&serializedDtxContextInfoLen, wantSnapshot, inCursor,
+				mppTxnOptions(true), "promoteTransactionIn_dtmPreCommand");
+
+		succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_STAY_AT_OR_BECOME_IMPLIED_WRITER, /* flags */ 0,
+												 currentGxact->gid, currentGxact->gxid,
+												 /* dispatchToMirrors */ true,
+												 &badGangs, /* raiseError */ false, &direct,
+												 serializedDtxContextInfo, serializedDtxContextInfoLen);
+
+		/* send a DTM command to others to tell them about the transaction */
+		if (!succeeded)
+		{
+			ereport(ERROR, (errmsg("Global transaction upgrade from single segment to entire cluster failed for gid = \"%s\" due to error",
+								   currentGxact->gid)));
+		}
 	}
 }
 
@@ -443,17 +513,6 @@ isCurrentDtxActive(void)
 	return (currentGxact != NULL);
 }
 
-static inline void
-handleDirectDispatch(bool directTransaction, CdbDispatchDirectDesc *d)
-{
-	if (directTransaction)
-	{
-		d->directed_dispatch = true;
-		d->count = 1;
-		d->content[0] = currentGxact->directTransactionContentId;
-	}
-}
-
 static void
 doPrepareTransaction(void)
 {
@@ -467,7 +526,7 @@ doPrepareTransaction(void)
 	 * state change as well; for good measure. */
 	HOLD_INTERRUPTS();
 
-	handleDirectDispatch(currentGxact->directTransaction, &direct);
+	copyDirectDispatchFromTransaction(&direct);
 
 	getTmLock();
 	Assert(currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED);
@@ -488,7 +547,7 @@ doPrepareTransaction(void)
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_PREPARE, /* flags */ 0, 
 											 currentGxact->gid, currentGxact->gxid,
 											 /* dispatchToMirrors */ true,
-											 &currentGxact->badPrepareGangs, /* raiseError */ false, &direct);
+											 &currentGxact->badPrepareGangs, /* raiseError */ false, &direct, NULL, 0);
 
 	/* Now we've cleaned up our dispatched statement, cancels are allowed again. */
 	RESUME_INTERRUPTS();
@@ -550,7 +609,7 @@ doNotifyingCommitPrepared(void)
 	
 	getTmLock();
 
-	handleDirectDispatch(currentGxact->directTransaction, &direct);
+	copyDirectDispatchFromTransaction(&direct);
 
 	Assert(currentGxact->state == DTX_STATE_FORCED_COMMITTED);
 	setCurrentGxactState( DTX_STATE_NOTIFYING_COMMIT_PREPARED );
@@ -558,7 +617,8 @@ doNotifyingCommitPrepared(void)
 
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, /* flags */ 0,  
 											 currentGxact->gid, currentGxact->gxid,
-											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
+											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+											 &direct, NULL, 0);
 	if (!succeeded)
 	{
 		elog(WARNING, "The distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.",
@@ -632,7 +692,7 @@ doNotifyingAbort(void)
 	       currentGxact->state == DTX_STATE_NOTIFYING_ABORT_PREPARED);
 	releaseTmLock();
 
-	handleDirectDispatch(currentGxact->directTransaction, &direct);
+	copyDirectDispatchFromTransaction(&direct);
 
 	if (currentGxact->state == DTX_STATE_NOTIFYING_ABORT_NO_PREPARED)
 	{
@@ -640,7 +700,8 @@ doNotifyingAbort(void)
 		{
 			succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED, /* flags */ 0,  
 													 currentGxact->gid, currentGxact->gxid,
-													 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
+													 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+													 &direct, NULL, 0);
 			if (!succeeded)
 			{
 				elog(WARNING, "The distributed transaction 'Abort' broadcast failed to one or more segments for gid = %s.",
@@ -693,7 +754,8 @@ doNotifyingAbort(void)
 		
 		succeeded = doDispatchDtxProtocolCommand(dtxProtocolCommand, /* flags */ 0,
 												 currentGxact->gid, currentGxact->gxid,
-												 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
+												 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+												 &direct, NULL, 0);
 		if (!succeeded)
 		{
 			elog(WARNING, "The distributed transaction '%s' broadcast failed to one or more segments for gid = %s.",
@@ -766,7 +828,7 @@ doDtxPhase2Retry(void)
 		return;
 	}
 
-	handleDirectDispatch(currentGxact->directTransaction, &direct);
+	copyDirectDispatchFromTransaction(&direct);
 
 	switch (currentGxact->state)
 	{
@@ -813,7 +875,8 @@ doDtxPhase2Retry(void)
 			
 				succeeded = doDispatchDtxProtocolCommand(dtxProtocolCommand, /* flags */ 0,  
 														 currentGxact->gid, currentGxact->gxid,
-														 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
+														 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+														 &direct, NULL, 0);
 				if (!succeeded)
 				{
 					elog(FATAL, "A retry of the distributed transaction '%s Prepared' broadcast failed to one or more segments for gid = %s.",
@@ -888,7 +951,8 @@ doNotifyCommittedInDoubt(char *gid)
 	/* UNDONE: Pass real gxid instead of InvalidDistributedTransactionId. */
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED, /* flags */ 0,
 											 gid, InvalidDistributedTransactionId,
-											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
+											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+											 &direct, NULL, 0);
 	if (!succeeded)
 	{
 		elog(FATAL, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", gid);
@@ -912,7 +976,8 @@ doAbortInDoubt(char *gid)
 	/* UNDONE: Pass real gxid instead of InvalidDistributedTransactionId. */
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED, /* flags */ 0,
 											 gid, InvalidDistributedTransactionId,
-											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false, &direct);
+											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+											 &direct, NULL, 0);
 	if (!succeeded)
 	{
 		elog(FATAL, "Crash recovery retry of the distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = %s.  System will retry again later", gid);
@@ -1703,7 +1768,9 @@ static bool
 doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 							 char* gid, DistributedTransactionId gxid,
 							 bool dispatchToMirrors, bool *badGangs, bool raiseError,
-							 CdbDispatchDirectDesc *direct)
+							 CdbDispatchDirectDesc *direct,
+							 char *serializedArgument,
+							 int serializedArgumentLen)
 {
 	int			i, resultCount, numOfFailed = 0;
 
@@ -1724,7 +1791,8 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 												 dtxProtocolCommandStr,
 												 gid, gxid,
 												 dispatchToMirrors,
-												 &errbuf, &resultCount, badGangs, direct);
+												 &errbuf, &resultCount, badGangs, direct,
+												 serializedArgument, serializedArgumentLen);
 
 	if (errbuf.len > 0)
 	{
@@ -3390,7 +3458,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 			
 				if (IsTransactionOrTransactionBlock())
 				{
-					elog(ERROR, "Starting an explict distributed transaction in segment -- cannot already be in a transaction");
+					elog(ERROR, "Starting an explicit distributed transaction in segment -- cannot already be in a transaction");
 				}
 
 				if (explicitBegin)
@@ -3568,7 +3636,8 @@ sendDtxExplicitBegin(void)
 	
 	rememberDtxExplicitBegin();
 	
-	setCurrentDtxTwoPhase("sendDtxExplicitBegin", "(none)", NULL);
+	dtmPreCommand("sendDtxExplicitBegin", "(none)", NULL,
+			/* is two-phase */ true, /* withSnapshot */ true, /* inCursor */ false );
 	
 	/* 
 	 * Be explicit about both the isolation level and the access mode
@@ -3582,9 +3651,9 @@ sendDtxExplicitBegin(void)
 	 * dispatch a DTX command, in the event of an error, this call
 	 * will either exit via elog()/ereport() or return false
 	 */
-	if (!dispatchDtxCommand(cmdbuf, /* dispatchToMirrors */ true, /* withSnapshot */ false, /* raiseError */ false))
+	if (!dispatchDtxCommand(cmdbuf, /* dispatchToMirrors */ true, false, /* raiseError */ false))
 	{
-		ereport(ERROR, (errmsg("Global transaction BEGIN failed failed for gid = \"%s\" due to error",
+		ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error",
 							   currentGxact->gid)));
 	}
 }
@@ -3602,6 +3671,9 @@ int dtxCurrentPhase1Count(void)
 	}
 }
 
+/**
+ * On the QD, run the Prepare operation.
+ */
 static void
 performDtxProtocolPrepare(const char *gid)
 {
@@ -3634,6 +3706,9 @@ performDtxProtocolPrepare(const char *gid)
 	LWLockRelease(TemporarySerializePreparesLock);
 }
 
+/**
+ * On the QD, run the Commit Prepared operation.
+ */
 static void
 performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound)
 {
@@ -3665,6 +3740,9 @@ performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound)
 	finishDistributedTransactionContext("performDtxProtocolCommitPrepared -- Commit Prepared", false);
 }
 
+/**
+ * On the QD, run the Abort Prepared operation.
+ */
 static void
 performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound)
 {
@@ -3695,11 +3773,15 @@ performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound)
 	finishDistributedTransactionContext("performDtxProtocolAbortPrepared -- Commit Prepared", true);
 }
 
+/**
+ * On the QD, handle a DtxProtocolCommand
+ */
 void
 performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 						  int flags  __attribute__((unused)) ,
 						  const char *loggingStr __attribute__((unused)) , const char *gid, 
-						  DistributedTransactionId gxid __attribute__((unused)) )
+						  DistributedTransactionId gxid __attribute__((unused)),
+						  DtxContextInfo *contextInfo)
 {
 	elog(DTM_DEBUG5,
 		 "performDtxProtocolCommand called with DTX protocol = %s, segment distribute transaction context: '%s'",
@@ -3707,6 +3789,32 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	
 	switch (dtxProtocolCommand)
 	{
+		case DTX_PROTOCOL_COMMAND_STAY_AT_OR_BECOME_IMPLIED_WRITER:
+			switch(DistributedTransactionContext)
+			{
+			case DTX_CONTEXT_LOCAL_ONLY:
+				/** convert to implicit_writer! */
+				setupQEDtxContext(contextInfo);
+				StartTransactionCommand();
+				break;
+			case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+				/** already the state we like */
+				break;
+			default:
+				if ( isQEContext() || isQDContext())
+				{
+					elog(FATAL, "Unexpected segment distributed transaction context: '%s'",
+						 DtxContextToString(DistributedTransactionContext));
+				}
+				else
+				{
+					elog(PANIC, "Unexpected segment distributed transaction context value: %d",
+						 (int) DistributedTransactionContext);
+				}
+				break;
+			}
+			break;
+
 		case DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED:
 			elog(DTM_DEBUG5,
 				 "performDtxProtocolCommand going to call AbortOutOfAnyTransaction for distributed transaction %s", gid);

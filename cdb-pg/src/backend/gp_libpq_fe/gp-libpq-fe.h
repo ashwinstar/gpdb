@@ -421,6 +421,8 @@ extern char *PQbuildGpDtxProtocolCommand(
 					  int   					gxid,
 					  int						primary_gang_id,
 					  int						mirror_gang_id,
+					  char*                     argument,
+					  int                       argumentLength,
 					  int         		    	*final_len);
 
 extern int PQsendGpQuery_shared(PGconn       *conn,
