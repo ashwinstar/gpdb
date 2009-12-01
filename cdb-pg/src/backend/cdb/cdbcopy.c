@@ -169,13 +169,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	/* dispatch copy command to both primary and mirror writer gangs */
 	
 	/*
-	 * We can't have the Dispatch Agents involved in parsing queries.
-	 * That would have them using the catcache, and taking locks on 
-	 * user relations, etc... Ugh
-	 * 
-	 * And there isn't really any reason for the QEs to do it in this case.
-	 * 
-	 * So let's parse the copy command into a query tree, serialize it, and
+	 * Let's parse the copy command into a query tree, serialize it, and
 	 * send it down to the QE or DA.
 	 * 
 	 * Note that we can't just use the original CopyStmt node in this routine,
@@ -285,40 +279,18 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
  */
 void
 cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
-				int nbytes, bool dontaddflag)
+				int nbytes)
 {
 	SegmentDatabaseDescriptor *q;
 	Gang	   *gp;
 	int			db;
 	int			result;
-	char *flagloc = NULL;
 
 	/* clean err message */
 	c->err_msg.len = 0;
 	c->err_msg.data[0] = '\0';
 	c->err_msg.cursor = 0;
- 
-	if (!dontaddflag)
-	{
-		char temp[60];
-		
-		/* Add mirror vs primary flag */
-		sprintf(temp,"%c%d %c", COPY_METADATA_DELIM,
-								 target_seg, 
-								 COPY_METADATA_DELIM);
-		flagloc = strstr(buffer,temp);
-		Assert(flagloc);
-		flagloc = strchr(flagloc+1, COPY_METADATA_DELIM);
-		Assert(flagloc);
-		Assert(*flagloc == COPY_METADATA_DELIM);
-		flagloc--;
-		Assert(*flagloc == ' ');
-		
-		/* NOTE!! note that another DELIM was added, for the buf_converted
-		 * metadata. if DA is ever enabled again, need to skip another delimiter
-		 * in the code above. I didn't do it because it's broken right now */
-	}
-	
+
 	
 	for (db = 0; db < c->mirror_map[target_seg]; db++)
 	{
@@ -330,14 +302,6 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 
 		q = getSegmentDescriptorFromGang(gp, target_seg);
 		
-		if (!dontaddflag && flagloc)
-		{
-			if (db == 0)
-				*flagloc = 'P';
-			else
-				*flagloc = 'M';
-		}
-
 		/* transmit the COPY data */
 		result = PQputCopyData(q->conn, buffer, nbytes);
 
@@ -894,13 +858,7 @@ cdbCopyEnd(CdbCopy *c)
 	gp = c->primary_writer;
 	db_descriptors = gp->db_descriptors;
 	size = gp->size;
-	
-	if (gp->dispatchagents)
-	{
-		db_descriptors = gp->dispatchagents->db_descriptors;
-		size = gp->dispatchagents->size;
-	}
-		
+			
 	/* results from each segment */
 	results = (int *)palloc0(sizeof(int) * size);
 
@@ -923,11 +881,7 @@ cdbCopyEnd(CdbCopy *c)
 	{
 		db_descriptors = gp->db_descriptors;
 		size = gp->size;
-	}
 
-		 
-	if (gp && c->primary_writer->dispatchagents == NULL)
-	{
 		for (seg = 0; seg < size; seg++)
 		{
 			q = &db_descriptors[seg];

@@ -161,7 +161,7 @@ void HandleSingleRowError(CdbSreh *cdbsreh)
 			cdbCopySendData(cdbsreh->cdbcopy, 
 							GetNextSegid(cdbsreh), 
 							cdbsreh->rawdata, 
-							strlen(cdbsreh->rawdata),true);
+							strlen(cdbsreh->rawdata));
 			
 		}
 		else

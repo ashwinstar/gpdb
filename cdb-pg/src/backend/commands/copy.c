@@ -192,12 +192,10 @@ else \
 												   sizeof(char) + 1 + 24); \
 \
 		rawdata_is_a_copy = true; \
-		sprintf(cstate->cdbsreh->rawdata, "%d%c%d%c%d%c%s", \
+		sprintf(cstate->cdbsreh->rawdata, "%d%c%d%c%s", \
 			    original_lineno_for_qe, \
 				COPY_METADATA_DELIM, \
 				cstate->line_buf_converted, \
-				COPY_METADATA_DELIM, \
-				target_seg, \
 				COPY_METADATA_DELIM, \
 				cstate->line_buf.data);	\
 	}\
@@ -3344,24 +3342,20 @@ CopyFromDispatch(CopyState cstate)
 				 * Send data row to all databases for this segment.
 				 * Also send the original row number with the data.
 				 * modify the data to look like:
-				 *    "<lineno>^<linebuf_converted>^<target_seg><space>^<data>"
-				 * The space will be filled in by cdbCopySendData with
-				 * P or M (primary or mirror)
+				 *    "<lineno>^<linebuf_converted>^<data>"
 				 */
-				appendStringInfo(&line_buf_with_lineno, "%d%c%d%c%d %c%s",
+				appendStringInfo(&line_buf_with_lineno, "%d%c%d%c%s",
 								 original_lineno_for_qe,
 								 COPY_METADATA_DELIM,
 								 cstate->line_buf_converted, \
 								 COPY_METADATA_DELIM, \
-								 target_seg,
-								 COPY_METADATA_DELIM,
 								 cstate->line_buf.data);
 				
 				/* send modified data */
 				cdbCopySendData(cdbCopy,
 								target_seg,
 								line_buf_with_lineno.data,
-								line_buf_with_lineno.len, false);
+								line_buf_with_lineno.len);
 
 				RESET_LINEBUF_WITH_LINENO;
 
@@ -3586,7 +3580,6 @@ CopyFrom(CopyState cstate)
 	bool		cur_row_rejected = false;
 	int			original_lineno_for_qe = 0; /* keep compiler happy (var referenced by macro) */
 	CdbCopy    *cdbCopy = NULL; /* never used... for compiling COPY_HANDLE_ERROR */
-	int			target_seg = -1; /* not used in utility mode */
 	tupDesc = RelationGetDescr(cstate->rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
@@ -5799,20 +5792,17 @@ value_len = md_delim - line_start + 1; \
  * row. Therefore the QD sends this information along with the data.
  * other metadata that the QD sends includes whether the data was
  * converted to server encoding (should always be the case, unless
- * encoding error happened and we're in error table mode) and some
- * dispatch agent info.
+ * encoding error happened and we're in error table mode).
  *
  * in:
- *    line_buf: <original_num>^<buf_converted>^<DA stuff>^<data for this row>
+ *    line_buf: <original_num>^<buf_converted>^<data for this row>
  *    lineno: ?
  *    line_buf_converted: ?
- *    DA info: ?
  *
  * out:
  *    line_buf: <data for this row>
  *    lineno: <original_num>
  *    line_buf_converted: <t/f>
- *    DA info: <target seg>
  */
 static
 void CopyExtractRowMetaData(CopyState cstate)
@@ -5842,14 +5832,6 @@ void CopyExtractRowMetaData(CopyState cstate)
 	cstate->line_buf_converted = atoi(line_start);
 	
 	*md_delim = COPY_METADATA_DELIM;
-	cstate->line_buf.cursor += value_len;
-	line_start = cstate->line_buf.data + cstate->line_buf.cursor;
-	
-	/* skip target_seg */
-	COPY_FIND_MD_DELIM;
-	*md_delim = COPY_METADATA_DELIM;
-	
-	/* reposition line buf cursor to see real data (skip target_seg) */
 	cstate->line_buf.cursor += value_len;
 }
 
@@ -5906,18 +5888,7 @@ copy_in_error_callback(void *arg)
 
 		value_len = lineno_delim - line_start + 1;
 		copy_of_line_buf.data += value_len; /* advance beyond line_buf_converted */
-		copy_of_line_buf.len -= value_len;
-		
-		/* skip target_seg */
-		line_start = copy_of_line_buf.data;
-		lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
-
-		if (lineno_delim && (lineno_delim != line_start))
-		{
-			value_len = lineno_delim - line_start + 1;
-			copy_of_line_buf.data += value_len; /* advance beyond target_seg */
-			copy_of_line_buf.len -= value_len;
-		}
+		copy_of_line_buf.len -= value_len;		
 	}
 
 	/*
@@ -6427,7 +6398,6 @@ void preProcessDataLine(CopyState cstate)
 		 * Extract various metadata sent to us from the QD COPY about this row:
 		 * 1) the original line number of the row.
 		 * 2) if the row was converted to server encoding or not
-		 * 3) some dispatch agent info.
 		 */
 		CopyExtractRowMetaData(cstate); /* sets cur_lineno internally */
 		
