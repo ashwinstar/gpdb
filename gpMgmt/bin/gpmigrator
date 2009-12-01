@@ -99,100 +99,6 @@ class CmdError(StandardError):
         return self.stderr
 
 #============================================================
-        
-class Worker(Thread):
-    def __init__(self, harness):
-        self.harness  = harness
-        self.problems = []
-        Thread.__init__(self)
-
-    # Note that we do not override Thread's __init__ method.
-    # The Queue module makes this not necessary.
-    def run(self):
-
-        # Have our thread serve "forever":
-        while True:
-
-            # Get a client out of the queue
-            task = self.harness.queue.get()
-
-            # tasks placed into the threadpool are tuples with the first
-            # element describing the directive.
-            if task != None:
-                try:
-                    if task[0] == 'EXIT':
-                        self.harness.queue.task_done()
-                        return
-
-#                    if task[0] == 'REMOTE':
-#                        host = task[1]
-#                        cmd  = task[2]
-#                 
-#                        # use paramiko to invoke SSH to run the command.
-#                        p = SSHClient()
-#                        p.load_system_host_keys()
-#                        p.connect(host)
-#                        (cin, cout, cerr) = p.exec_command(cmd)
-#                        raise UpgradeError('remote thread exec not implemented')
-
-                    elif task[0] == 'LOCAL':
-                        cmd  = task[1]
-                        pipe = subprocess.Popen(cmd, shell=True,
-                                                stdout=subprocess.PIPE,
-                                                stderr=subprocess.PIPE,
-                                                close_fds=True)
-                        result = pipe.communicate()
-                        if pipe.returncode:
-                            raise CmdError(str(cmd), result[0], result[1])
-
-                    else:
-                        raise UpgradeError('Unknown Worker directive: ' + str(task))
-                except BaseException, e:
-                    self.problems.append(e)
-                
-                 # Tell the queue that the task is done
-                sys.stderr.write('.')
-                self.harness.queue.task_done()
-
-class Harness():
-    def __init__(self, upgrader, size):
-        self.upgrader = upgrader
-        self.pool  = []
-        self.queue = Queue(size*2)
-        for x in range(size):
-            w = Worker(self)
-            w.start()
-            self.pool.append(w)
-
-    def __del__(self):
-        for w in self.pool:
-            self.queue.put(['EXIT'])
-        self.wait()
-
-    def remoteCommand(self, host, cmd):
-        self.queue.put(['REMOTE', host, cmd])
-
-    def localCommand(self, cmd):
-        self.queue.put(['LOCAL', cmd])
-
-    def wait(self):
-        failed = False
-
-        # Wait until the queue is empty and all tasks complete
-        self.queue.join()
-        sys.stderr.write('\n')
-
-        # Report any errors the threads encountered
-        for w in self.pool:
-            for e in w.problems:
-                logger.fatal(str(e))
-                failed = True
-            w.problems = []
-
-        if failed:
-            raise UpgradeError('Error encountered in threaded execution')
-
-#============================================================
 class GPVersion:
     '''
     The gpversion class is an abstraction of a given Greenplum release 
@@ -476,9 +382,6 @@ class GPUpgrade:
             # Find the SEG_PREFIX (everything except the trailing "-1" on
             # the masterdir)
             self.config['SEG_PREFIX'] = masterdir[:-2]
-
-            # Setup the pool of worker threads
-            #self.threadpool = Harness(self, PARALLELISM)
 
         else:
             self.oldenv = self.SetupEnv(self.oldhome, None)
@@ -2503,29 +2406,6 @@ This issue must be resolved before upgrade can complete.
         self.Shutdown()
 
     #------------------------------------------------------------
-    def CopyConfig(self):
-        '''
-        '''
-
-        # Also need to update the postgresql.conf files to match.  This is
-        # best accomplished by copying from the source instance.
-        self.RunCmd('cp -f %s %s' %
-                    (os.path.join(self.masterdir, 'postgresql.conf'),
-                     os.path.join(self.newmaster, 'postgresql.conf')))
-        for s in self.segments:
-            (datadir, seg) = os.path.split(s['datadir'])
-            target = os.path.join(datadir, WORKDIR, UPGRADEDIR, seg)
-            self.RunCmd('scp %s:%s/postgresql.conf %s:%s/.' %
-                        (s['host'], s['datadir'],
-                         s['host'], target))
-        for s in self.mirrors:
-            (datadir, seg) = os.path.split(s['datadir'])
-            target = os.path.join(datadir, WORKDIR, UPGRADEDIR, seg)
-            self.RunCmd('scp %s:%s/postgresql.conf %s:%s/.' %
-                        (s['host'], s['datadir'],
-                         s['host'], target))
-
-    #------------------------------------------------------------
     def ExtractCatFiles(self):
         '''
         Get the set of data files which are necessary to bring up a skeleton 
@@ -3126,6 +3006,7 @@ This issue must be resolved before upgrade can complete.
                          self.user)
 
         seg_re  = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)        
+        conf_re = re.compile('^(.*max_resource_queues\s*=\s*)(\d+)(.*)$')
         for d in datadirs:
             for seg in os.listdir(d):
                 if seg_re.match(seg):
@@ -3149,6 +3030,21 @@ This issue must be resolved before upgrade can complete.
                         logger.debug("ao upgrade %s" % f)
                         transform_db(dir, dbname, dboid, aofile)
                         
+                    # Rewrite postgresql.conf:
+                    #  - bump the max_resource_queues by +1
+                    #
+                    conf=os.path.join(dir, 'postgresql.conf')
+                    self.RunCmd('mv %s %s.bak' % (conf, conf))
+                    input=open(conf+'.bak', 'r')
+                    output=open(conf, 'w')
+                    for line in input:
+                        m = conf_re.match(line)
+                        if m:
+                            line = m.expand(r'\g<1>%s\g<3>\n' % 
+                                            str(int(m.group(2))+1))
+                        output.write(line)
+                    input.close()
+                    output.close()
 
     def SetCatVersion(self, frm, to):
         '''
