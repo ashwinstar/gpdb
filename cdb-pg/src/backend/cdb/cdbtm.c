@@ -138,7 +138,6 @@ static void dumpAllDtx(void);
 /* static void resolveInDoubtDtx(void); */
 static void dumpRMOnlyDtx(HTAB *htab, StringInfoData *buff);
 
-static void summarizeParticipation(void);
 static bool doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 										 char* gid, DistributedTransactionId gxid,
 										 bool dispatchToMirrors, bool *badGangs, bool raiseError, CdbDispatchDirectDesc *direct);
@@ -296,30 +295,6 @@ getDistributedTransactionIdentifier(char *id)
 
 	MemSet(id, 0, TMGIDSIZE);
 	return false;
-}
-
-
-/*
- * Called by prepareDtxTransaction.
- */
-static void
-summarizeParticipation(void)
-{
-	Assert(currentGxact != NULL);
-	Assert(currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED);
-
-	if (currentGxact->participationSummary != DTX_PARTICIPATION_SUMMARY_NONE)
-	{
-		elog(DTM_DEBUG5, "summarizeParticipation already called???");
-		return;
-	}
-
-	/* FUTURE: Collect information on whether particular segments were dirty */
-	currentGxact->participationSummary = DTX_PARTICIPATION_SUMMARY_MULTIPLE_SEGMENTS_DIRTY;
-
-	elog(DTM_DEBUG5, "summarizeParticipation participationSummary = \"%s\"",
-		 DtxParticipationSummaryToString(currentGxact->participationSummary));
-	
 }
 
 bool
@@ -983,30 +958,10 @@ prepareDtxTransaction(void)
 	
 	Assert(currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED);
 	
-	summarizeParticipation();
-
-	switch (currentGxact->participationSummary)
-	{
-	case DTX_PARTICIPATION_SUMMARY_ALL_READ_ONLY: 
-	case DTX_PARTICIPATION_SUMMARY_ONE_SEGMENT_DIRTY: 
-		elog(FATAL, "Dtx participation not implemented: %s",
-			 DtxParticipationSummaryToString(currentGxact->participationSummary));
-		break;
-		
-	case DTX_PARTICIPATION_SUMMARY_MULTIPLE_SEGMENTS_DIRTY: 
-		/*
-		 * Broadcast PREPARE TRANSACTION to segments.
-		 */
-		doPrepareTransaction();
-		break;
-		
-	default: 
-		elog(PANIC, "Unrecognized dtx participation summary: %d",
-			(int) currentGxact->participationSummary);
-		break;
-	}
-
-	return;
+	/*
+	 * Broadcast PREPARE TRANSACTION to segments.
+	 */
+	doPrepareTransaction();
 }
 
 /*
@@ -1925,8 +1880,6 @@ initGxact(TMGXACT * gxact)
 
 	gxact->retryPhase2RecursionStop = false;
 
-	gxact->participationSummary = DTX_PARTICIPATION_SUMMARY_NONE;
-
 	gxact->directTransaction = false;
 	gxact->directTransactionContentId = 0;
 }
@@ -2221,8 +2174,6 @@ createDtx(
 	 */
 	gxact->xminDistributedSnapshot = gxact->gxid;
 
-	Assert(gxact->participationSummary == DTX_PARTICIPATION_SUMMARY_NONE);
-	
 	setGxactState(gxact, DTX_STATE_ACTIVE_NOT_DISTRIBUTED);
 	
 	releaseTmLock();

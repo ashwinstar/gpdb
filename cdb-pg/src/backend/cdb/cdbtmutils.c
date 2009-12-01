@@ -81,19 +81,6 @@ char* DtxStateToString(DtxState state)
 	}
 }
 
-
-char* DtxParticipationSummaryToString(DtxParticipationSummary summary)
-{
-	switch (summary)
-	{
-		case DTX_PARTICIPATION_SUMMARY_NONE: return "None";
-		case DTX_PARTICIPATION_SUMMARY_ALL_READ_ONLY: return "All Read Only";
-		case DTX_PARTICIPATION_SUMMARY_ONE_SEGMENT_DIRTY: return "One Segment Dirty";
-		case DTX_PARTICIPATION_SUMMARY_MULTIPLE_SEGMENTS_DIRTY: return "Multiple Segments Dirty";
-		default: return "Unknown";
-	}
-}
-
 char* DtxProtocolCommandToString(DtxProtocolCommand command)
 {
 	switch (command)

@@ -80,15 +80,6 @@ typedef enum
 	DTX_STATE_CRASH_COMMITTED
 }	DtxState;
 
-/* DTX participation summary */
-typedef enum
-{
-	DTX_PARTICIPATION_SUMMARY_NONE = 0,
-	DTX_PARTICIPATION_SUMMARY_ALL_READ_ONLY,
-	DTX_PARTICIPATION_SUMMARY_ONE_SEGMENT_DIRTY,
-	DTX_PARTICIPATION_SUMMARY_MULTIPLE_SEGMENTS_DIRTY
-}	DtxParticipationSummary;
-
 /**
  * Transaction Management QD to QE protocol commands
  *
@@ -239,8 +230,6 @@ typedef struct TMGXACT
 
 	bool						retryPhase2RecursionStop;
 	
-	DtxParticipationSummary		participationSummary;
-
 	int							debugIndex;
 
 	bool						directTransaction;
@@ -300,7 +289,6 @@ extern volatile int *shmSegmentCount;
 extern volatile int *shmSegmentsStatesByteLen;
 
 extern char *DtxStateToString(DtxState state);
-extern char *DtxParticipationSummaryToString(DtxParticipationSummary summary);
 extern char *DtxProtocolCommandToString(DtxProtocolCommand command);
 extern char *DtxContextToString(DtxContext context);
 extern DistributedTransactionTimeStamp getDtxStartTime(void);
