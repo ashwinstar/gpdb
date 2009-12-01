@@ -142,17 +142,17 @@ typedef enum
 
 	/**
 	 * On a QE, this context means that the distributed transaction was opened explicitly
-	 *   by a BEGIN query statement.
+	 *   by a BEGIN query statement
 	 *
 	 * Note that this state can happen even if there are no writer queries (because this
-	 *   state is entered when the BEGIN statement is processed.
+	 *   state is entered when the BEGIN statement is processed).
 	 */
 	DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER,
 
 	/**
 	 * On a QE that is the root of a query, this context means that the
 	 *   distributed transaction was opened implicitly by a writing query
-	 *   in an auto-commit transaction
+	 *   in an auto-commit transaction, and this is the writing QE process
 	 *
 	 * Same as _AUTO_COMMIT_IMPLICIT except that we need a two-phase commit because
 	 *   of the dirty data.
