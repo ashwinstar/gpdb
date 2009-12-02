@@ -1173,8 +1173,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		 */
 		if (proc == MyProc ||
 			!TransactionIdIsNormal(xid) ||
-			TransactionIdFollowsOrEquals(xid, xmax) ||
-			proc->mppIsDispatchAgent)
+			TransactionIdFollowsOrEquals(xid, xmax))
 		{
 			continue;
 		}
