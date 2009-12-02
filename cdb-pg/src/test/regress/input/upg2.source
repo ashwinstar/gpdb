@@ -1146,7 +1146,19 @@ drop table
   public.gp_interfaces,
   public.pg_filespace,
   public.pg_tablespace,
-  public.pg_stat_last_operation;
+  public.pg_stat_last_operation,
+  public.gp_persistent_rel_files,
+  public.gp_san_config,
+  public.gp_segment_config,
+  public.gp_fault_strategy,
+  public.pg_appendonly_alter_column,
+  public.pg_filespace_entry,  
+  public.pg_foreign_data_wrapper,
+  public.pg_foreign_server,
+  public.pg_user_mapping,
+  public.pg_resourcetype,
+  public.pg_resqueuecapability,
+  public.pg_stat_last_shoperation;
 drop view
    public.pg_partitions,
    public.pg_partitions_v33,
