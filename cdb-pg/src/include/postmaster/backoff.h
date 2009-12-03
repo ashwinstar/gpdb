@@ -21,6 +21,7 @@ extern double gp_backoff_procs_per_segment;
 extern int gp_backoff_default_weight;
 
 extern void BackoffBackendEntryInit(int sessionid, int commandcount, int weight);
+extern void BackoffBackendEntryExit(void);
 extern void BackoffBackendTick(void);
 extern void BackoffStateInit(void);
 extern Datum gp_adjust_priority_int(PG_FUNCTION_ARGS);

@@ -1313,6 +1313,12 @@ exec_mpp_query(const char *query_string,
 	if (save_log_statement_stats)
 		ShowUsage("QUERY STATISTICS");
 
+	if (gp_enable_backoff)
+	{
+		BackoffBackendEntryExit();
+	}
+
+
 	debug_query_string = NULL;
 }
 

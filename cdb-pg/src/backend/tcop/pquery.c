@@ -434,6 +434,14 @@ ProcessQuery(Portal portal,
 
 	FreeSnapshot(ActiveSnapshot);
 	ActiveSnapshot = NULL;
+	
+	if (gp_enable_backoff 
+			&& Gp_role == GP_ROLE_DISPATCH 
+			&& gp_session_id > -1)
+	{
+		BackoffBackendEntryExit();
+	}
+
 }
 
 /*

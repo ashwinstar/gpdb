@@ -870,19 +870,27 @@ void BackoffStateInit()
 }
 
 /**
- * Invalidate the statement id corresponding to this backend so that it may
- * be eliminated from consideration by the sweeper early.
+ * This backend is done working on a statement.
  */
-static void BackoffStateAtExit(int code, Datum arg)
+void BackoffBackendEntryExit()
 {
 	if (MyBackendId >= 0
-			&& (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCH))
+			&& (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE))
 	{
 		BackoffBackendSharedEntry *se = myBackoffSharedEntry();
 		Assert(se);
 		setInvalid(&se->statementId);
 	}
-	return;
+	return;	
+}
+
+/**
+ * Invalidate the statement id corresponding to this backend so that it may
+ * be eliminated from consideration by the sweeper early.
+ */
+static void BackoffStateAtExit(int code, Datum arg)
+{
+	BackoffBackendEntryExit();
 }
 
 
