@@ -1270,7 +1270,7 @@ static Datum
 plperl_func_handler(PG_FUNCTION_ARGS)
 {
 	plperl_call_data *call_data = NULL;
-	FuncCallContext  *funcctx;
+	FuncCallContext  *funcctx = NULL;
 	ReturnSetInfo    *rsi;
 	SV		         *perlret;
 	Datum		      retval;
@@ -1408,6 +1408,8 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 	{
 		SV **svp = NULL;
 		AV *pla  = NULL;
+
+		Assert(funcctx);
 			
 		/* Get the next value from the array, then fall through */
 		pla = (AV *) SvRV(call_data->perlret);
