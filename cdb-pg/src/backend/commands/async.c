@@ -288,7 +288,7 @@ Async_Unlisten(const char *relname)
  *
  *		This is invoked by UNLISTEN * command, and also at backend exit.
  */
-static void
+void
 Async_UnlistenAll(void)
 {
 	if (Trace_notify)

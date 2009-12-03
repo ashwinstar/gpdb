@@ -279,7 +279,8 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 											 	  rtype,
 											 	  newrtype, typmod,
 									 			  COERCION_EXPLICIT,
-												  COERCE_IMPLICIT_CAST);
+												  COERCE_IMPLICIT_CAST,
+												  -1);
 				if (!PointerIsValid(expr))
 				{
 					ereport(ERROR,
@@ -1212,7 +1213,7 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 				}
 
 				/* Got the name of the table, now we need to build the RTE for the table. */
-				rel = makeRangeVar(schemaname, tablename);
+				rel = makeRangeVar(schemaname, tablename, arg_val->location);
 				rel->location = arg_val->location;
 
 				rte = addRangeTableEntry(pstate, rel, r->alias, false, true);
@@ -1446,9 +1447,9 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 		 *
 		 * Note: expandRTE returns new lists, safe for me to modify
 		 */
-		expandRTE(l_rte, l_rtindex, 0, false,
+		expandRTE(l_rte, l_rtindex, 0, false, -1,
 				  &l_colnames, &l_colvars);
-		expandRTE(r_rte, r_rtindex, 0, false,
+		expandRTE(r_rte, r_rtindex, 0, false, -1,
 				  &r_colnames, &r_colvars);
 
 		/*
@@ -1729,7 +1730,8 @@ buildMergedJoinVar(ParseState *pstate, JoinType jointype,
 	if (l_colvar->vartype != outcoltype)
 		l_node = coerce_type(pstate, (Node *) l_colvar, l_colvar->vartype,
 							 outcoltype, outcoltypmod,
-							 COERCION_IMPLICIT, COERCE_IMPLICIT_CAST);
+							 COERCION_IMPLICIT, COERCE_IMPLICIT_CAST,
+							 -1);
 	else if (l_colvar->vartypmod != outcoltypmod)
 		l_node = (Node *) makeRelabelType((Expr *) l_colvar,
 										  outcoltype, outcoltypmod,
@@ -1740,7 +1742,8 @@ buildMergedJoinVar(ParseState *pstate, JoinType jointype,
 	if (r_colvar->vartype != outcoltype)
 		r_node = coerce_type(pstate, (Node *) r_colvar, r_colvar->vartype,
 							 outcoltype, outcoltypmod,
-							 COERCION_IMPLICIT, COERCE_IMPLICIT_CAST);
+							 COERCION_IMPLICIT, COERCE_IMPLICIT_CAST,
+							 -1);
 	else if (r_colvar->vartypmod != outcoltypmod)
 		r_node = (Node *) makeRelabelType((Expr *) r_colvar,
 										  outcoltype, outcoltypmod,
@@ -2398,7 +2401,8 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 				tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
 												 restype, TEXTOID, -1,
 												 COERCION_IMPLICIT,
-												 COERCE_IMPLICIT_CAST);
+												 COERCE_IMPLICIT_CAST,
+												 -1);
 
 			/*
 			 * The tle_list will be used to match with the ORDER by element below.
@@ -2860,7 +2864,8 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 			tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
 											 restype, TEXTOID, -1,
 											 COERCION_IMPLICIT,
-											 COERCE_IMPLICIT_CAST);
+											 COERCE_IMPLICIT_CAST,
+											 -1);
 			restype = TEXTOID;
 		}
 

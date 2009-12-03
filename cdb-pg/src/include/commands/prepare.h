@@ -44,8 +44,9 @@ typedef struct
 
 
 /* Utility statements PREPARE, EXECUTE, DEALLOCATE, EXPLAIN EXECUTE */
-extern void PrepareQuery(PrepareStmt *stmt);
-extern void ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
+extern void PrepareQuery(PrepareStmt *stmt, const char *queryString);
+extern void ExecuteQuery(ExecuteStmt *stmt, const char *queryString, 
+             ParamListInfo params,
 			 DestReceiver *dest, char *completionTag);
 extern void DeallocateQuery(DeallocateStmt *stmt);
 extern void ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
@@ -57,7 +58,7 @@ extern void StorePreparedStatement(const char *stmt_name,
 					   NodeTag	   sourceTag,
 					   const char *commandTag,
 					   List *query_list,
-					   List *plan_list,
+					   List *stmt_list,
 					   List *argtype_list,
 					   bool from_sql);
 extern PreparedStatement *FetchPreparedStatement(const char *stmt_name,

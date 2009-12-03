@@ -1061,7 +1061,7 @@ initParseState(CopyState pstate, Relation relation,
 
 
 			errtbl_rv = makeRangeVar(get_namespace_name(get_rel_namespace(fmterrtbl)),
-									 get_rel_name(fmterrtbl));
+									 get_rel_name(fmterrtbl), -1);
 
 			if (rel->rd_createSubid != InvalidSubTransactionId)
 				curTxnCreatedErrtbl = true;

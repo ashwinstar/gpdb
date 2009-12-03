@@ -1011,6 +1011,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		 */
 		queryDesc = CreateQueryDesc(parsetree,
 									gbl_queryDesc->plantree,
+									"dummy",
 									gbl_queryDesc->snapshot,
 									gbl_queryDesc->crosscheck_snapshot,
 									NULL,		/* Null destination for the QE */

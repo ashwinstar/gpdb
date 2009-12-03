@@ -71,6 +71,10 @@ bool		Debug_print_prelim_plan;	/* Shall we log argument of
 
 bool		Debug_print_slice_table;	/* Shall we log the slice table? */
 
+bool		Debug_print_dispatch_plan;	/* Shall we log the plan we'll dispatch? */
+
+bool		Debug_print_plannedstmt;	/* Shall we log the final planned statement? */
+
 bool		gp_external_enable_exec = true; /* allow ext tables with EXECUTE */
 
 bool		gp_external_grant_privileges = false; /* allow creating http/gpfdist for non-su */

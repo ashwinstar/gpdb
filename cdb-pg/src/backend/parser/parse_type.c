@@ -48,7 +48,7 @@ LookupTypeName(ParseState *pstate, const TypeName *typname)
 	if (typname->pct_type)
 	{
 		/* Handle %TYPE reference to type of an existing field */
-		RangeVar   *rel = makeRangeVar(NULL, NULL);
+		RangeVar   *rel = makeRangeVar(NULL, NULL, typname->location);
 		char	   *field = NULL;
 		Oid			relid;
 		AttrNumber	attnum;

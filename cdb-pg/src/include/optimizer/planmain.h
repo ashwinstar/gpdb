@@ -4,8 +4,8 @@
  *	  prototypes for various files in optimizer/plan
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/optimizer/planmain.h,v 1.94 2006/07/26 00:34:48 momjian Exp $

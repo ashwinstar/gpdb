@@ -1602,6 +1602,7 @@ eval_const_expressions_mutator(Node *node,
 					else
 						pval = datumCopy(prm->value, typByVal, typLen);
 					return (Node *) makeConst(param->paramtype,
+											  -1,
 											  (int) typLen,
 											  pval,
 											  prm->isnull,
@@ -2129,7 +2130,7 @@ eval_const_expressions_mutator(Node *node,
 
 		/* If all the arguments were constant null, the result is just null */
 		if (newargs == NIL)
-			return (Node *) makeNullConst(coalesceexpr->coalescetype);
+			return (Node *) makeNullConst(coalesceexpr->coalescetype, -1);
 
 		newcoalesce = makeNode(CoalesceExpr);
 		newcoalesce->coalescetype = coalesceexpr->coalescetype;
@@ -2696,7 +2697,7 @@ evaluate_function(Oid funcid, Oid result_type, List *args,
 	 * function is not otherwise immutable.
 	 */
 	if (funcform->proisstrict && has_null_input)
-		return (Expr *) makeNullConst(result_type);
+		return (Expr *) makeNullConst(result_type, -1);
 
 	/*
 	 * Otherwise, can simplify only if all inputs are constants. (For a
@@ -3154,7 +3155,7 @@ evaluate_expr(Expr *expr, Oid result_type)
 	/*
 	 * Make the constant result node.
 	 */
-	return (Expr *) makeConst(result_type, resultTypLen,
+	return (Expr *) makeConst(result_type, -1, resultTypLen,
 							  const_val, const_is_null,
 							  resultTypByVal);
 }

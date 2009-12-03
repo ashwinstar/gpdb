@@ -120,6 +120,44 @@ CopyPlanFields(Plan *from, Plan *newnode)
 }
 
 /*
+ * _copyPlannedStmt 
+ */
+static PlannedStmt *
+_copyPlannedStmt(PlannedStmt *from)
+{
+	PlannedStmt   *newnode = makeNode(PlannedStmt);
+
+	COPY_SCALAR_FIELD(commandType);
+	COPY_SCALAR_FIELD(canSetTag);
+	COPY_SCALAR_FIELD(transientPlan);
+	
+	COPY_NODE_FIELD(queryTree); /* PSMERGE: Retire -- temporary use */
+	COPY_NODE_FIELD(planTree);
+	
+	COPY_NODE_FIELD(rtable);
+	
+	COPY_NODE_FIELD(resultRelations);
+	COPY_NODE_FIELD(utilityStmt);
+	COPY_NODE_FIELD(intoClause);
+	COPY_NODE_FIELD(subplans);
+	COPY_NODE_FIELD(rewindPlanIDs);
+	COPY_NODE_FIELD(returningLists);
+	
+	COPY_NODE_FIELD(result_partitions);
+	COPY_NODE_FIELD(result_aosegnos);
+	COPY_NODE_FIELD(rowMarks);
+	COPY_NODE_FIELD(relationOids);
+	COPY_SCALAR_FIELD(invalItems);
+	COPY_SCALAR_FIELD(nParamExec);
+	COPY_SCALAR_FIELD(nMotionNodes);
+	COPY_SCALAR_FIELD(nInitPlans);
+	
+	COPY_NODE_FIELD(sliceTable);
+	
+	return newnode;
+}
+
+/*
  * _copyPlan
  */
 static Plan *
@@ -917,6 +955,31 @@ _copyRangeVar(RangeVar *from)
 	COPY_NODE_FIELD(alias);
 	COPY_SCALAR_FIELD(location);    /*CDB*/
 
+	return newnode;
+}
+
+/*
+ * _copyIntoClause
+ */
+static IntoClause *
+_copyIntoClause(IntoClause *from)
+{
+	IntoClause *newnode = makeNode(IntoClause);
+	
+	COPY_NODE_FIELD(rel);
+	COPY_NODE_FIELD(colNames);
+	COPY_NODE_FIELD(options);
+	COPY_SCALAR_FIELD(onCommit);
+	COPY_STRING_FIELD(tableSpaceName);
+	COPY_SCALAR_FIELD(oidInfo.relOid);
+	COPY_SCALAR_FIELD(oidInfo.comptypeOid);
+	COPY_SCALAR_FIELD(oidInfo.toastOid);
+	COPY_SCALAR_FIELD(oidInfo.toastIndexOid);
+	COPY_SCALAR_FIELD(oidInfo.toastComptypeOid);
+	COPY_SCALAR_FIELD(oidInfo.aosegOid);
+	COPY_SCALAR_FIELD(oidInfo.aosegIndexOid);
+	COPY_SCALAR_FIELD(oidInfo.aosegComptypeOid);
+	
 	return newnode;
 }
 
@@ -3742,6 +3805,9 @@ copyObject(void *from)
 			/*
 			 * PLAN NODES
 			 */
+		case T_PlannedStmt:
+			retval = _copyPlannedStmt(from);
+			break;
 		case T_Plan:
 			retval = _copyPlan(from);
 			break;
@@ -3853,6 +3919,9 @@ copyObject(void *from)
 			break;
 		case T_RangeVar:
 			retval = _copyRangeVar(from);
+			break;
+		case T_IntoClause:
+			retval = _copyIntoClause(from);
 			break;
 		case T_Var:
 			retval = _copyVar(from);

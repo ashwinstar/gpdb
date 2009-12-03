@@ -10,8 +10,8 @@
  * the location.
  *
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/nodes/parsenodes.h,v 1.334 2006/11/05 22:42:10 tgl Exp $
@@ -42,19 +42,22 @@ typedef enum QuerySource
 	QSRC_PLANNER				/* added in planner by splicing parse tree */
 } QuerySource;
 
-
-typedef struct TableOidInfo
+/* Sort ordering options for ORDER BY and CREATE INDEX */
+typedef enum SortByDir
 {
-	Oid         relOid;			/* If the heap is (re-)created, create  with this relOid */
-	Oid         comptypeOid;
-	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
-	Oid		    toastIndexOid;	/* if toast table needed, use this for the relOid of the index */
-	Oid			toastComptypeOid;
-	Oid		    aosegOid;		/* if ao segment table needed, use this for the relOid of the aoseg table */
-	Oid		    aosegIndexOid;	/* if ao segment table needed, use this for the relOid of the aoseg index */
-	Oid			aosegComptypeOid;
+	SORTBY_DEFAULT,
+	SORTBY_ASC,
+	SORTBY_DESC,
+	SORTBY_USING				/* not allowed in CREATE INDEX ... */
+} SortByDir;
 
-} TableOidInfo;
+typedef enum SortByNulls
+{
+	SORTBY_NULLS_DEFAULT,
+	SORTBY_NULLS_FIRST,
+	SORTBY_NULLS_LAST
+} SortByNulls;
+
 
 /*
  * Grantable rights are encoded so that we can OR them together in a bitmask.
@@ -93,8 +96,13 @@ typedef uint32 AclMode;			/* a bitmask of privilege bits */
  *	  Parse analysis turns all statements into a Query tree (via transformStmt)
  *	  for further processing by the rewriter and planner.
  *
- *	  utility statements (i.e. non-optimizable statements) have the
+ *	  Utility statements (i.e. non-optimizable statements) have the
  *	  utilityStmt field set, and the Query itself is mostly dummy.
+ *	  DECLARE CURSOR is a special case: it is represented like a SELECT,
+ *	  but the original DeclareCursorStmt is stored in utilityStmt.
+ *
+ *	  Planning converts a Query tree into a Plan tree headed by a PlannedStmt
+ *	  node --- the Query structure is not used by the executor.
  */
 typedef struct Query
 {
@@ -106,8 +114,8 @@ typedef struct Query
 
 	bool		canSetTag;		/* do I set the command result tag? */
 
-	Node	   *utilityStmt;	/* non-null if this is a non-optimizable
-								 * statement */
+	Node	   *utilityStmt;	/* non-null if this is DECLARE CURSOR or a
+								 * non-optimizable statement */
 
 	int			resultRelation; /* rtable index of target relation for
 								 * INSERT/UPDATE/DELETE; 0 for SELECT */
@@ -143,7 +151,7 @@ typedef struct Query
 	 *    GroupingClause( ROLLUP, groupsets (GroupClause(b) --> GroupClause(c) ) ) -->
 	 *    GroupingClause( CUBE, groupsets (GroupClause(e) --> GroupClause(d) ) )
 	 */
-	List	   *groupClause;
+	List	   *groupClause;	/* a list of SortGroupClause's */
 
 	Node	   *havingQual;		/* qualifications applied to groups */
 
@@ -209,7 +217,9 @@ typedef struct Query
  *
  * For TypeName structures generated internally, it is often easier to
  * specify the type by OID than by name.  If "names" is NIL then the
- * actual type OID is given by typid, otherwise typid is unused.
+ * actual type OID is given by typeid, otherwise typeid is unused.
+ * Similarly, if "typmods" is NIL then the actual typmod is expected to
+ * be prespecified in typemod, otherwise typemod is unused.
  *
  * If pct_type is TRUE, then names is actually a field name and we look up
  * the type of that field.	Otherwise (the normal case), names is a type
@@ -223,7 +233,8 @@ typedef struct TypeName
 	bool		timezone;		/* timezone specified? */
 	bool		setof;			/* is a set? */
 	bool		pct_type;		/* %TYPE specified? */
-	int32		typmod;			/* type modifier */
+	List	   *typmods;		/* type modifier expression(s) */
+	int32		typmod;		/* prespecified type modifier */
 	List	   *arrayBounds;	/* array bounds */
 	int			location;		/* token location, or -1 if unknown */
 } TypeName;
@@ -319,7 +330,8 @@ typedef struct TypeCast
  * agg_star indicates we saw a 'foo(*)' construct, while agg_distinct
  * indicates we saw 'foo(DISTINCT ...)'.  In either case, the construct
  * *must* be an aggregate call.  Otherwise, it might be either an
- * aggregate or some other kind of function.
+ * aggregate or some other kind of function.  However, if OVER is present
+ * it had better be an aggregate or window function.
  */
 typedef struct FuncCall
 {
@@ -362,8 +374,18 @@ typedef struct A_Indirection
 {
 	NodeTag		type;
 	Node	   *arg;			/* the thing being selected from */
-	List	   *indirection;	/* subscripts and/or field names */
+	List	   *indirection;	/* subscripts and/or field names and/or * */
 } A_Indirection;
+
+/*
+ * A_ArrayExpr - an ARRAY[] construct
+ */
+typedef struct A_ArrayExpr
+{
+	NodeTag		type;
+	List	   *elements;		/* array element expressions */
+	int			location;		/* token location, or -1 if unknown */
+} A_ArrayExpr;
 
 /*
  * ResTarget -
@@ -387,7 +409,7 @@ typedef struct ResTarget
 {
 	NodeTag		type;
 	char	   *name;			/* column name or NULL */
-	List	   *indirection;	/* subscripts and field names, or NIL */
+	List	   *indirection;	/* subscripts, field names, and '*', or NIL */
 	Node	   *val;			/* the value expression to compute or assign */
 	int			location;		/* token location, or -1 if unknown */
 } ResTarget;
@@ -395,16 +417,13 @@ typedef struct ResTarget
 /*
  * SortBy - for ORDER BY clause
  */
-#define SORTBY_ASC		1
-#define SORTBY_DESC		2
-#define SORTBY_USING	3
-
 typedef struct SortBy
 {
 	NodeTag		type;
 	int			sortby_kind;	/* see codes above */
 	List	   *useOp;			/* name of op to use, if SORTBY_USING */
 	Node	   *node;			/* expression to sort on */
+	int			location;		/* operator location, or -1 if none/unknown */
 } SortBy;
 
 /*
@@ -967,6 +986,7 @@ typedef struct WindowSpecParse
 
 
 /* ----------------------
+ *		Set Operation node for post-analysis query trees
  *
  * After parse analysis, a SELECT with set operations is represented by a
  * top-level Query node containing the leaf SELECTs as subqueries in its
@@ -1121,7 +1141,7 @@ typedef enum AlterTableType
 	AT_PartSetTemplate,			/* Set Subpartition Template */
 	AT_PartSplit,				/* Split */
 	AT_PartTruncate,			/* Truncate */
-	AT_PartAddInternal,			/* CREATE TABLE time partition addition */
+	AT_PartAddInternal			/* CREATE TABLE time partition addition */
 } AlterTableType;
 
 typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */

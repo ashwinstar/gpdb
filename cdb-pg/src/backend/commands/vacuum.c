@@ -484,7 +484,7 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 					return;
 				}
 
-				vacstmt->relation = makeRangeVar(namespace_name, relname);
+				vacstmt->relation = makeRangeVar(namespace_name, relname, -1);
 			}
 
 			/*

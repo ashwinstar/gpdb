@@ -306,6 +306,10 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 
     /* CDB: Stash subquery jointree relids before flattening subqueries. */
     subroot->currlevel_relids = get_relids_in_jointree((Node *)subquery->jointree);
+	
+	/* CDB: Clear fallback, but just use segment count from parent. */
+	subroot->mpp_trying_fallback_plan = false;
+	subroot->cdbpath_segments = root->cdbpath_segments;
 
 	/*
 	 * Pull up any IN clauses within the subquery's WHERE, so that we don't

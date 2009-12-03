@@ -32,6 +32,7 @@
 
 #include "nodes/relation.h"
 #include "utils/datum.h"
+#include "catalog/gp_policy.h"
 
 
 /*
@@ -109,6 +110,25 @@ _equalRangeVar(RangeVar *a, RangeVar *b)
 	COMPARE_NODE_FIELD(alias);
 	/* do not compare 'location' field */
 
+	return true;
+}
+
+/* PSMERGE:
+ *
+ * NB Prior to introducting the IntoClause, only relOid, comptypeOid were
+ *    tested.  I assume this was an accident, but need to check.
+ */
+static bool
+_equalIntoClause(IntoClause *a, IntoClause *b)
+{
+	COMPARE_NODE_FIELD(rel);
+	COMPARE_NODE_FIELD(colNames);
+	COMPARE_NODE_FIELD(options);
+	COMPARE_SCALAR_FIELD(onCommit);
+	COMPARE_STRING_FIELD(tableSpaceName);
+	COMPARE_SCALAR_FIELD(oidInfo.relOid);
+	COMPARE_SCALAR_FIELD(oidInfo.comptypeOid);
+	
 	return true;
 }
 
@@ -2265,6 +2285,9 @@ equal(void *a, void *b)
 			break;
 		case T_RangeVar:
 			retval = _equalRangeVar(a, b);
+			break;
+		case T_IntoClause:
+			retval = _equalIntoClause(a, b);
 			break;
 		case T_Var:
 			retval = _equalVar(a, b);

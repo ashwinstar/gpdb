@@ -431,6 +431,28 @@ _readRangeVar(const char ** str)
 	READ_DONE();
 }
 
+static IntoClause *
+_readIntoClause(const char ** str)
+{
+	READ_LOCALS(IntoClause);
+	
+	READ_NODE_FIELD(rel);
+	READ_NODE_FIELD(colNames);
+	READ_NODE_FIELD(options);
+	READ_ENUM_FIELD(onCommit, OnCommitAction);
+	READ_STRING_FIELD(tableSpaceName);
+	READ_OID_FIELD(oidInfo.relOid);
+    READ_OID_FIELD(oidInfo.comptypeOid); 
+    READ_OID_FIELD(oidInfo.toastOid);
+    READ_OID_FIELD(oidInfo.toastIndexOid);
+    READ_OID_FIELD(oidInfo.toastComptypeOid);
+    READ_OID_FIELD(oidInfo.aosegOid);
+    READ_OID_FIELD(oidInfo.aosegIndexOid);
+    READ_OID_FIELD(oidInfo.aosegComptypeOid);
+
+	READ_DONE();
+}
+
 /*
  * _readVar
  */
@@ -2443,6 +2465,38 @@ _readConstraintsSetStmt(const char ** str)
 	READ_DONE();
 }
 
+/*
+ * _readPlannedStmt
+ */
+static PlannedStmt *
+_readPlannedStmt(const char ** str)
+{
+	READ_LOCALS(PlannedStmt);
+	READ_ENUM_FIELD(commandType, CmdType);
+	READ_BOOL_FIELD(canSetTag);
+	READ_BOOL_FIELD(transientPlan);
+	READ_NODE_FIELD(queryTree); /* PSMERGE: Retire -- temporary use */
+	READ_NODE_FIELD(planTree);
+	READ_NODE_FIELD(rtable);
+	READ_NODE_FIELD(resultRelations);
+	READ_NODE_FIELD(utilityStmt);
+	READ_NODE_FIELD(intoClause);
+	READ_NODE_FIELD(subplans);
+	READ_NODE_FIELD(rewindPlanIDs);
+	READ_NODE_FIELD(returningLists);
+	READ_NODE_FIELD(result_partitions);
+	READ_NODE_FIELD(result_aosegnos);
+	READ_NODE_FIELD(rowMarks);
+	READ_NODE_FIELD(relationOids);
+	READ_NODE_FIELD(invalItems);
+	READ_INT_FIELD(nParamExec);
+	READ_INT_FIELD(nMotionNodes);
+	READ_INT_FIELD(nInitPlans);
+	READ_NODE_FIELD(sliceTable);
+	
+	READ_DONE();
+}
+
 
 /*
  * _readPlan
@@ -3400,9 +3454,12 @@ readNodeBinary(const char ** str)
 
 	switch(nt)
 	{
-		case T_Plan:
-				return_value = _readPlan(str);
+			case T_PlannedStmt:
+				return_value = _readPlannedStmt(str);
 				break;
+			case T_Plan:
+					return_value = _readPlan(str);
+					break;
 			case T_Result:
 				return_value = _readResult(str);
 				break;
@@ -3507,6 +3564,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_RangeVar:
 				return_value = _readRangeVar(str);
+				break;
+			case T_IntoClause:
+				return_value = _readIntoClause(str);
 				break;
 			case T_Var:
 				return_value = _readVar(str);

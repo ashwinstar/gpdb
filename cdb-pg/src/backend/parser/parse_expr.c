@@ -137,7 +137,7 @@ transformExpr(ParseState *pstate, Node *expr)
 				A_Const    *con = (A_Const *) expr;
 				Value	   *val = &con->val;
 
-				result = (Node *) make_const(val);
+				result = (Node *) make_const(pstate, val, -1);
 				if (con->typname != NULL)
 					result = typecast_expression(pstate, result,
 												 con->typname);
@@ -672,7 +672,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					 * PostQUEL-inspired syntax.  The preferred form now is
 					 * "rel.*".
 					 */
-					if (refnameRangeTblEntry(pstate, NULL, name,
+					if (refnameRangeTblEntry(pstate, NULL, name, cref->location,
 											 &levels_up) != NULL)
 						node = transformWholeRowRef(pstate, NULL, name,
 													cref->location);
@@ -954,7 +954,7 @@ transformAExprAnd(ParseState *pstate, A_Expr *a)
 	rexpr = coerce_to_boolean(pstate, rexpr, "AND");
 
 	return (Node *) makeBoolExpr(AND_EXPR,
-								 list_make2(lexpr, rexpr));
+								 list_make2(lexpr, rexpr), a->location);
 }
 
 static Node *
@@ -967,7 +967,7 @@ transformAExprOr(ParseState *pstate, A_Expr *a)
 	rexpr = coerce_to_boolean(pstate, rexpr, "OR");
 
 	return (Node *) makeBoolExpr(OR_EXPR,
-								 list_make2(lexpr, rexpr));
+								 list_make2(lexpr, rexpr), a->location);
 }
 
 static Node *
@@ -978,7 +978,7 @@ transformAExprNot(ParseState *pstate, A_Expr *a)
 	rexpr = coerce_to_boolean(pstate, rexpr, "NOT");
 
 	return (Node *) makeBoolExpr(NOT_EXPR,
-								 list_make1(rexpr));
+								 list_make1(rexpr), a->location);
 }
 
 static Node *
@@ -1226,7 +1226,7 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 			result = cmp;
 		else
 			result = (Node *) makeBoolExpr(useOr ? OR_EXPR : AND_EXPR,
-										   list_make2(result, cmp));
+										   list_make2(result, cmp), a->location);
 	}
 
 	return result;
@@ -1738,12 +1738,11 @@ transformWholeRowRef(ParseState *pstate, char *schemaname, char *relname,
 
 	/* Look up the referenced RTE, creating it if needed */
 
-	rte = refnameRangeTblEntry(pstate, schemaname, relname,
+	rte = refnameRangeTblEntry(pstate, schemaname, relname, location,
 							   &sublevels_up);
 
 	if (rte == NULL)
-		rte = addImplicitRTE(pstate, makeRangeVar(schemaname, relname),
-							 location);
+		rte = addImplicitRTE(pstate, makeRangeVar(schemaname, relname, location), location);
 
 	vnum = RTERangeTablePosn(pstate, rte, &sublevels_up);
 
@@ -2263,7 +2262,8 @@ typecast_expression(ParseState *pstate, Node *expr, TypeName *typname)
 	expr = coerce_to_target_type(pstate, expr, inputType,
 								 targetType, typname->typmod,
 								 COERCION_EXPLICIT,
-								 COERCE_EXPLICIT_CAST);
+								 COERCE_EXPLICIT_CAST,
+								 -1);
 	if (expr == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_CANNOT_COERCE),
@@ -2476,9 +2476,9 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 	 * the system thinks BoolExpr is N-argument anyway.
 	 */
 	if (rctype == ROWCOMPARE_EQ)
-		return (Node *) makeBoolExpr(AND_EXPR, opexprs);
+		return (Node *) makeBoolExpr(AND_EXPR, opexprs, location);
 	if (rctype == ROWCOMPARE_NE)
-		return (Node *) makeBoolExpr(OR_EXPR, opexprs);
+		return (Node *) makeBoolExpr(OR_EXPR, opexprs, location);
 
 	/*
 	 * Otherwise we need to determine exactly which opclass to associate with
@@ -2580,7 +2580,7 @@ make_row_distinct_op(ParseState *pstate, List *opname,
 			result = cmp;
 		else
 			result = (Node *) makeBoolExpr(OR_EXPR,
-										   list_make2(result, cmp));
+										   list_make2(result, cmp), location);
 	}
 
 	if (result == NULL)

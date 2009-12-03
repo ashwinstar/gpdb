@@ -239,7 +239,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		 */
 		return coerce_type(pstate, linitial(fargs),
 						   actual_arg_types[0], rettype, -1,
-						   COERCION_EXPLICIT, COERCE_EXPLICIT_CALL);
+						   COERCION_EXPLICIT, COERCE_EXPLICIT_CALL,
+						   -1);
 	}
 	else if (fdresult == FUNCDETAIL_NORMAL)
 	{
@@ -1218,7 +1219,8 @@ make_fn_arguments(ParseState *pstate,
 												actual_arg_types[i],
 												declared_arg_types[i], -1,
 												COERCION_IMPLICIT,
-												COERCE_IMPLICIT_CAST);
+												COERCE_IMPLICIT_CAST,
+												-1);
 		}
 		i++;
 	}

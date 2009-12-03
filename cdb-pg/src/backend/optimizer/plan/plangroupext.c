@@ -2201,7 +2201,7 @@ replace_grouping_columns_mutator(Node *node, void *v_cxt)
 
 		if (!cxt->in_aggref)
 		{
-			null = makeNullConst(exprType((Node *)grpcol));
+			null = makeNullConst(exprType((Node *)grpcol), -1);
 			return (Node *)null;
 		}
 	}
@@ -2402,7 +2402,7 @@ add_repeat_node(Plan *result_plan, int repeat_count, uint64 grouping)
 
 	if (repeat_count >= 1)
 	{
-		repeatCountExpr = (Expr *)makeConst(INT4OID, sizeof(int32),
+		repeatCountExpr = (Expr *)makeConst(INT4OID, -1, sizeof(int32),
 											Int32GetDatum(repeat_count),
 											false, true);
 	}
@@ -2447,7 +2447,7 @@ add_repeat_node(Plan *result_plan, int repeat_count, uint64 grouping)
 				Assert(!no_exprs);
 				if (list_length(exp_ctx.list_exprs) == 0)
 				{
-					te->expr = (Expr *)makeNullConst(exprType((Node *)te->expr));
+					te->expr = (Expr *)makeNullConst(exprType((Node *)te->expr), -1);
 					continue;
 				}
 

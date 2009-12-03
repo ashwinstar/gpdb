@@ -4,7 +4,7 @@
  *	  Definitions for using the POSTGRES copy command.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/commands/copy.h,v 1.28 2006/08/30 23:34:22 tgl Exp $
@@ -250,7 +250,7 @@ extern void ValidateControlChars(bool copy, bool load, bool csv_mode, char *deli
 								 char *null_print, char *quote, char *escape,
 								 List *force_quote, List *force_notnull,
 								 bool header_line, bool fill_missing, int numcols);
-extern uint64 DoCopy(const CopyStmt *stmt);
+extern uint64 DoCopy(const CopyStmt *stmt, const char *queryString);
 
 extern DestReceiver *CreateCopyDestReceiver(void);
 

@@ -855,10 +855,11 @@ resolve_one_var(Var *var, ResolveNew_context *context)
 		{
 			/* Otherwise replace unmatched var with a null */
 			/* need coerce_to_domain in case of NOT NULL domain constraint */
-			return coerce_to_domain((Node *) makeNullConst(var->vartype),
+			return coerce_to_domain((Node *) makeNullConst(var->vartype, -1),
 									InvalidOid, -1,
 									var->vartype,
 									COERCE_IMPLICIT_CAST,
+									-1,
 									false,
 									false);
 		}
@@ -905,7 +906,7 @@ ResolveNew_mutator(Node *node, ResolveNew_context *context)
 				 * this is a JOIN), then omit dropped columns.
 				 */
 				expandRTE(context->target_rte,
-						  this_varno, this_varlevelsup,
+						  this_varno, this_varlevelsup, -1,
 						  (var->vartype != RECORDOID),
 						  NULL, &fields);
 				/* Adjust the generated per-field Vars... */

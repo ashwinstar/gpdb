@@ -1631,7 +1631,7 @@ get_typdefault(Oid typid)
 			datum = OidInputFunctionCall(type->typinput, strDefaultVal,
 										 getTypeIOParam(typeTuple), -1);
 			/* Build a Const node containing the value */
-			expr = (Node *) makeConst(typid,
+			expr = (Node *) makeConst(typid, -1,
 									  type->typlen,
 									  datum,
 									  false,

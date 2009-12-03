@@ -4,8 +4,8 @@
  *	  Definitions for planner's internal data structures.
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/nodes/relation.h,v 1.128.2.4 2007/08/31 01:44:14 tgl Exp $
@@ -21,6 +21,7 @@
 
 #include "access/sdir.h"
 #include "nodes/bitmapset.h"
+#include "nodes/params.h"
 #include "nodes/parsenodes.h"
 #include "storage/block.h"
 
@@ -58,6 +59,43 @@ typedef struct QualCost
 
 
 /*----------
+ * PlannerGlobal
+ *		Global information for planning/optimization
+ *
+ * PlannerGlobal holds state for an entire planner invocation; this state
+ * is shared across all levels of sub-Queries that exist in the command being
+ * planned.
+ *----------
+ */
+typedef struct PlannerGlobal
+{
+	NodeTag		type;
+
+	ParamListInfo boundParams;	/* Param values provided to planner() */
+
+	List	   *paramlist;		/* to keep track of cross-level Params */
+
+	List	   *subplans;		/* Plans for SubPlan nodes */
+
+	List	   *subrtables;		/* Rangetables for SubPlan nodes */
+
+	Bitmapset  *rewindPlanIDs;	/* indices of subplans that require REWIND */
+
+	List	   *finalrtable;	/* "flat" rangetable for executor */
+
+	List	   *relationOids;	/* OIDs of relations the plan depends on */
+
+	List	   *invalItems;		/* other dependencies, as PlanInvalItems */
+
+	bool		transientPlan;	/* redo plan when TransactionXmin changes? */
+} PlannerGlobal;
+
+/* macro for fetching the Plan associated with a SubPlan node */
+#define planner_subplan_get_plan(root, subplan) \
+	((Plan *) list_nth((root)->glob->subplans, (subplan)->plan_id - 1))
+
+
+/*----------
  * PlannerInfo
  *		Per-query information for planning/optimization
  *
@@ -73,6 +111,12 @@ typedef struct PlannerInfo
 
 	Query	   *parse;			/* the Query being planned */
 
+	PlannerGlobal *glob;		/* global info for current planner run */
+
+	Index		query_level;	/* 1 at the outermost Query */
+
+	struct PlannerInfo *parent_root; /* NULL at outermost Query */
+
 	/*
 	 * simple_rel_array holds pointers to "base rels" and "other rels" (see
 	 * comments for RelOptInfo for more info).	It is indexed by rangetable
@@ -82,6 +126,14 @@ typedef struct PlannerInfo
 	 */
 	struct RelOptInfo **simple_rel_array;		/* All 1-relation RelOptInfos */
 	int			simple_rel_array_size;	/* allocated size of array */
+
+	/*
+	 * simple_rte_array is the same length as simple_rel_array and holds
+	 * pointers to the associated rangetable entries.  This lets us avoid
+	 * rt_fetch(), which can be a bit slow once large inheritance sets have
+	 * been expanded.
+	 */
+	RangeTblEntry **simple_rte_array;	/* rangetable as an array */
 
 	/*
 	 * join_rel_list is a list of all join-relation RelOptInfos we have
@@ -94,6 +146,17 @@ typedef struct PlannerInfo
 	 */
 	List	   *join_rel_list;	/* list of join-relation RelOptInfos */
 	struct HTAB *join_rel_hash; /* optional hashtable for join relations */
+
+	/* PSMERGE: These fields were managed in Query */
+	/* PSMERGE: TODO They should be managed here for later installation
+	 *          in PlannedStmt.
+	 */
+	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
+	PartitionNode *result_partitions;	
+	List	   *returningLists; /* list of lists of TargetEntry, or NIL */
+	List	   *result_aosegnos;
+	
+	List	   *init_plans;		/* init SubPlans for query */
 
 	List	   *equi_key_list;	/* list of lists of equijoined PathKeyItems */
 
@@ -127,6 +190,8 @@ typedef struct PlannerInfo
 	List	   *group_pathkeys; /* groupClause pathkeys, if any */
 	List	   *sort_pathkeys;	/* sortClause pathkeys, if any */
 
+	MemoryContext planner_cxt;	/* context holding PlannerInfo */
+
 	double		total_table_pages;		/* # of pages in all tables of query */
 
 	double		tuple_fraction; /* tuple_fraction passed to query_planner */
@@ -139,7 +204,21 @@ typedef struct PlannerInfo
 
 	/* At the end to avoid breaking existing 8.2 add-ons */
 	List	   *initial_rels;	/* RelOptInfos we are now trying to join */
+	
+	/* GPDB "globals": */
+	bool		mpp_trying_fallback_plan;
+	int			cdbpath_segments;
 } PlannerInfo;
+
+
+/*
+ * In places where it's known that simple_rte_array[] must have been prepared
+ * already, we just index into it to fetch RTEs.  In code that might be
+ * executed before or after entering query_planner(), use this macro.
+ */
+#define planner_rt_fetch(rti, root) \
+	((root)->simple_rte_array ? (root)->simple_rte_array[rti] : \
+	 rt_fetch(rti, (root)->parse->rtable))
 
 
 /*----------
@@ -213,6 +292,7 @@ typedef struct PlannerInfo
  *		pages - number of disk pages in relation (zero if not a table)
  *		tuples - number of tuples in relation (not considering restrictions)
  *		subplan - plan for subquery (NULL if it's not a subquery)
+ *		subrtable - rangetable for subquery (NIL if it's not a subquery)
  *
  *		Note: for a subquery, tuples and subplan are not set immediately
  *		upon creation of the RelOptInfo object; they are filled in when
@@ -296,6 +376,7 @@ typedef struct RelOptInfo
     struct GpPolicy   *cdbpolicy;      /* distribution of stored tuples */
     bool        cdb_default_stats_used; /* true if ANALYZE needed */
 	struct Plan *subplan;		/* if subquery */
+	List	   *subrtable;		/* if subquery */
 
 	/* used by external scan */
 	List		*locationlist;

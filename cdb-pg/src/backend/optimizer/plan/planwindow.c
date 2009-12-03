@@ -2578,7 +2578,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 					AttrNumber agg_resno = agg_attrno++;
 					
 					/* Add target to window plan. */
-					tle = makeTargetEntry((Expr*)makeNullConst(ref->restype), 
+					tle = makeTargetEntry((Expr*)makeNullConst(ref->restype, -1),
 										  win_resno, 
 										  pstrdup("dummy"), 
 										  false);

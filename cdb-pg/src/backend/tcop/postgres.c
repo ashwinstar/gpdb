@@ -1217,6 +1217,7 @@ exec_mpp_query(const char *query_string,
 		 */
 		(void) PortalRun(portal,
 						 FETCH_ALL,
+						 true,
 						 receiver,
 						 receiver,
 						 completionTag);
@@ -1639,6 +1640,7 @@ exec_simple_query(const char *query_string)
 		 */
 		(void) PortalRun(portal,
 						 FETCH_ALL,
+						 true,
 						 receiver,
 						 receiver,
 						 completionTag);
@@ -2552,6 +2554,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 
 	completed = PortalRun(portal,
 						  max_rows,
+						  true,
 						  receiver,
 						  receiver,
 						  completionTag);
@@ -2669,7 +2672,7 @@ check_log_statement_cooked(List *parsetree_list)
 	{
 		Query	   *parsetree = (Query *) lfirst(parsetree_item);
 
-		if (GetQueryLogLevel(parsetree) <= log_statement)
+		if (GetQueryLogLevel((Node *)parsetree) <= log_statement)
 			return true;
 	}
 

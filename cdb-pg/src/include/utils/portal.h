@@ -137,7 +137,7 @@ typedef struct PortalData
 	Oid			queueId;		/* Oid of queue locking this portal */
 
 	/* The query or queries the portal will execute */
-	const char *sourceText;		/* text of query, if known (may be NULL) */
+	const char *sourceText;		/* text of query (as of PlannedStmt, never NULL) */
 	const char *commandTag;		/* command tag for original query */
 	List	   *parseTrees;		/* parse tree(s) */
 	List	   *planTrees;		/* plan tree(s) */

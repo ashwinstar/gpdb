@@ -108,7 +108,7 @@ static bool QueryIsRule = FALSE;
 
 static Node *makeAddPartitionCreateStmt(Node *n, Node *subSpec);
 static Node *makeColumnRef(char *colname, List *indirection, int location);
-static Node *makeTypeCast(Node *arg, TypeName *typname);
+static Node *makeTypeCast(Node *arg, TypeName *typname, int location);
 static Node *makeStringConst(char *str, TypeName *typname, int location);
 static Node *makeIntConst(int val, int location);
 static Node *makeFloatConst(char *str, int location);
@@ -1754,7 +1754,8 @@ zone_value:
 						if (($3 & ~(INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE))) != 0)
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
-									 errmsg("time zone interval must be HOUR or HOUR TO MINUTE")));
+									 errmsg("time zone interval must be HOUR or HOUR TO MINUTE"),
+									 scanner_errposition(@3)));
 						n->typname->typmod = INTERVAL_TYPMOD(INTERVAL_FULL_PRECISION, $3);
 					}
 					$$ = (Node *)n;
@@ -1765,8 +1766,8 @@ zone_value:
 					if ($3 < 0)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("INTERVAL(%d) precision must not be negative",
-										$3)));
+								 errmsg("INTERVAL(%d) precision must not be negative", $3),
+								 scanner_errposition(@3)));
 					if ($3 > MAX_INTERVAL_PRECISION)
 					{
 						ereport(WARNING,
@@ -3556,7 +3557,8 @@ key_match:  MATCH FULL
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("MATCH PARTIAL not yet implemented")));
+						 errmsg("MATCH PARTIAL not yet implemented"),
+						 scanner_errposition(@1)));
 				$$ = FKCONSTR_MATCH_PARTIAL;
 			}
 		| MATCH SIMPLE
@@ -3652,7 +3654,8 @@ OptTabPartitionStorageAttr: WITH definition TABLESPACE name
                     {
                         ereport(ERROR,
                                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                                 errmsg("TABLESPACE not supported")));
+                                 errmsg("TABLESPACE not supported"),
+                                 scanner_errposition(@1)));
                     }
 
                 }
@@ -3670,7 +3673,8 @@ OptTabPartitionStorageAttr: WITH definition TABLESPACE name
                     {
                         ereport(ERROR,
                                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                                 errmsg("TABLESPACE not supported")));
+                                 errmsg("TABLESPACE not supported"),
+                                 scanner_errposition(@1)));
                     }
 
 				}
@@ -3688,7 +3692,8 @@ OptTabPartitionStorageAttr: WITH definition TABLESPACE name
                     {
                         ereport(ERROR,
                                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                                 errmsg("TABLESPACE not supported")));
+                                 errmsg("TABLESPACE not supported"),
+                                 scanner_errposition(@1)));
                     }
 
 				}
@@ -3770,11 +3775,11 @@ TabSubPartitionElemList:
 tab_part_val_no_paran: AexprConst { $$ = $1; }
 			| CAST '(' tab_part_val AS Typename ')'
 				{ 
-					$$ = makeTypeCast($3, $5);
+					$$ = makeTypeCast($3, $5, @4);
 				}
 			| tab_part_val_no_paran TYPECAST Typename
 				{ 
-					$$ = makeTypeCast($1, $3); 
+					$$ = makeTypeCast($1, $3, @2); 
 				}
 			| '-' tab_part_val_no_paran { $$ = doNegate($2, @1); }
 		;
@@ -3783,7 +3788,7 @@ tab_part_val: tab_part_val_no_paran { $$ = $1; }
 			| '(' tab_part_val_no_paran ')' { $$ = $2; }
 			| '(' tab_part_val_no_paran ')' TYPECAST Typename
 				{ 
-					$$ = makeTypeCast($2, $5); 
+					$$ = makeTypeCast($2, $5, @4); 
 				}
 		; 
 		
@@ -4853,7 +4858,6 @@ CreateTableSpaceStmt: CREATE TABLESPACE name OptOwner FILESPACE name
 				}
 		;
 
-
 /*****************************************************************************
  *
  * 		QUERY:
@@ -5299,7 +5303,8 @@ ConstraintAttributeSpec:
 					if ($1 == 0 && $2 != 0)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE")));
+								 errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"),
+								 scanner_errposition(@1)));
 					$$ = $1 | $2;
 				}
 			| ConstraintTimeSpec
@@ -5314,7 +5319,8 @@ ConstraintAttributeSpec:
 					if ($2 == 0 && $1 != 0)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE")));
+								 errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"),
+								 scanner_errposition(@1)));
 					$$ = $1 | $2;
 				}
 			| /*EMPTY*/
@@ -5490,7 +5496,8 @@ DefineStmt:
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("improper qualified name (too many dotted names): %s",
-											NameListToString($3))));
+											NameListToString($3)),
+											scanner_errposition(@3)));
 							break;
 					}
 					n->typevar = r;
@@ -6807,7 +6814,8 @@ oper_argtypes:
 						   (errcode(ERRCODE_SYNTAX_ERROR),
 							errmsg("missing argument"),
 							errhint("Use NONE to denote the missing argument of a unary operator."),
-							errOmitLocation(true)));
+                            errOmitLocation(true),
+							scanner_errposition(@1)));
 				}
 			| Typename ',' Typename
 					{ $$ = list_make2($1, $3); }
@@ -8085,6 +8093,7 @@ ExecuteStmt: EXECUTE name execute_param_clause
 				EXECUTE name execute_param_clause
 				{
 					ExecuteStmt *n = makeNode(ExecuteStmt);
+					//IntoClause *i = makeNode(IntoClause);
 					n->name = $11;
 					n->params = $12;
 					$4->istemp = $2;
@@ -8324,7 +8333,8 @@ multiple_set_clause:
 					if (list_length($2) != list_length($5))
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("number of columns does not match number of values")));
+								 errmsg("number of columns does not match number of values"),
+								 scanner_errposition(@1)));
 					forboth(col_cell, $2, val_cell, $5)
 					{
 						ResTarget *res_col = (ResTarget *) lfirst(col_cell);
@@ -8730,7 +8740,8 @@ select_limit:
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("LIMIT #,# syntax is not supported"),
-							 errhint("Use separate LIMIT and OFFSET clauses.")));
+							 errhint("Use separate LIMIT and OFFSET clauses."),
+							 scanner_errposition(@1)));
 				}
 			/* SQL:2008 syntax variants */
 			| OFFSET select_offset_value2 row_or_rows
@@ -9146,12 +9157,14 @@ table_ref:	relation_expr
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("VALUES in FROM must have an alias"),
-								 errhint("For example, FROM (VALUES ...) [AS] foo.")));
+								 errhint("For example, FROM (VALUES ...) [AS] foo."),
+								 scanner_errposition(@1)));
 					else
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("subquery in FROM must have an alias"),
-								 errhint("For example, FROM (SELECT ...) [AS] foo.")));
+								 errhint("For example, FROM (SELECT ...) [AS] foo."),
+								 scanner_errposition(@1)));
 					$$ = NULL;
 				}
 			| select_with_parens alias_clause
@@ -9465,14 +9478,15 @@ SimpleTypename:
 					if ($3 < 0)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("INTERVAL(%d) precision must not be negative",
-										$3)));
+								 errmsg("INTERVAL(%d) precision must not be negative", $3),
+								 scanner_errposition(@3)));
 					if ($3 > MAX_INTERVAL_PRECISION)
 					{
 						ereport(WARNING,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 								 errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d",
-										$3, MAX_INTERVAL_PRECISION)));
+										$3, MAX_INTERVAL_PRECISION),
+								 scanner_errposition(@3)));
 						$3 = MAX_INTERVAL_PRECISION;
 					}
 					$$->typmod = INTERVAL_TYPMOD($3, $5);
@@ -9570,7 +9584,8 @@ opt_float:	'(' Iconst ')'
 					if ($2 < 1)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("precision for type float must be at least 1 bit")));
+								 errmsg("precision for type float must be at least 1 bit"),
+								 scanner_errposition(@2)));
 					else if ($2 <= 24)
 						$$ = SystemTypeName("float4");
 					else if ($2 <= 53)
@@ -9578,7 +9593,8 @@ opt_float:	'(' Iconst ')'
 					else
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("precision for type float must be less than 54 bits")));
+								 errmsg("precision for type float must be less than 54 bits"),
+								 scanner_errposition(@2)));
 				}
 			| /*EMPTY*/
 				{
@@ -9861,6 +9877,7 @@ ConstDatetime:
 						$3 = MAX_TIMESTAMP_PRECISION;
 					}
 					$$->typmod = $3;
+					$$->location = @1;
 				}
 			| TIMESTAMP opt_timezone
 				{
@@ -9872,6 +9889,7 @@ ConstDatetime:
 					 * - thomas 2001-09-06
 					 */
 					$$->timezone = $2;
+					$$->location = @1;
 				}
 			| TIME '(' Iconst ')' opt_timezone
 				{
@@ -9894,6 +9912,7 @@ ConstDatetime:
 						$3 = MAX_TIME_PRECISION;
 					}
 					$$->typmod = $3;
+					$$->location = @1;
 				}
 			| TIME opt_timezone
 				{
@@ -9901,11 +9920,16 @@ ConstDatetime:
 						$$ = SystemTypeName("timetz");
 					else
 						$$ = SystemTypeName("time");
+					$$->location = @1;
 				}
 		;
 
 ConstInterval:
-			INTERVAL								{ $$ = SystemTypeName("interval"); }
+			INTERVAL
+				{
+					$$ = SystemTypeName("interval");
+					$$->location = @1;
+				}
 		;
 
 opt_timezone:
@@ -9966,7 +9990,7 @@ opt_interval:
  */
 a_expr:		c_expr									{ $$ = $1; }
 			| a_expr TYPECAST Typename
-					{ $$ = makeTypeCast($1, $3); }
+					{ $$ = makeTypeCast($1, $3, @2); }
 			| a_expr AT TIME ZONE a_expr
 				{
 					FuncCall *n = makeNode(FuncCall);
@@ -10344,7 +10368,8 @@ a_expr:		c_expr									{ $$ = $1; }
 					 */
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("UNIQUE predicate is not yet implemented")));
+							 errmsg("UNIQUE predicate is not yet implemented"),
+							 scanner_errposition(@1)));
 				}
 		;
 
@@ -10360,7 +10385,7 @@ a_expr:		c_expr									{ $$ = $1; }
 b_expr:		c_expr
 				{ $$ = $1; }
 			| b_expr TYPECAST Typename
-				{ $$ = makeTypeCast($1, $3); }
+				{ $$ = makeTypeCast($1, $3, @2); }
 			| '+' b_expr					%prec UMINUS
 				{ $$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "+", NULL, $2, @1); }
 			| '-' b_expr					%prec UMINUS
@@ -10503,6 +10528,7 @@ c_expr:		columnref								{ $$ = $1; }
 					RowExpr *r = makeNode(RowExpr);
 					r->args = $1;
 					r->row_typeid = InvalidOid;	/* not analyzed yet */
+					r->location = @1;
 					$$ = (Node *)r;
 				}
 		;
@@ -10634,7 +10660,7 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 
 					d = SystemTypeName("date");
 
-					$$ = (Node *)makeTypeCast((Node *)s, d);
+					$$ = (Node *)makeTypeCast((Node *)s, d, -1);
 				}
 			| CURRENT_TIME
 				{
@@ -10651,7 +10677,7 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 
 					d = SystemTypeName("timetz");
 
-					$$ = (Node *)makeTypeCast((Node *)s, d);
+					$$ = (Node *)makeTypeCast((Node *)s, d, -1);
 				}
 			| CURRENT_TIME '(' Iconst ')'
 				{
@@ -10681,7 +10707,7 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					}
 					d->typmod = $3;
 
-					$$ = (Node *)makeTypeCast((Node *)s, d);
+					$$ = (Node *)makeTypeCast((Node *)s, d, -1);
 				}
 			| CURRENT_TIMESTAMP
 				{
@@ -10727,7 +10753,7 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					}
 					d->typmod = $3;
 
-					$$ = (Node *)makeTypeCast((Node *)s, d);
+					$$ = (Node *)makeTypeCast((Node *)s, d, -1);
 				}
 			| LOCALTIME
 				{
@@ -10744,7 +10770,7 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 
 					d = SystemTypeName("time");
 
-					$$ = (Node *)makeTypeCast((Node *)s, d);
+					$$ = (Node *)makeTypeCast((Node *)s, d, -1);
 				}
 			| LOCALTIME '(' Iconst ')'
 				{
@@ -10774,7 +10800,7 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					}
 					d->typmod = $3;
 
-					$$ = (Node *)makeTypeCast((Node *)s, d);
+					$$ = (Node *)makeTypeCast((Node *)s, d, -1);
 				}
 			| LOCALTIMESTAMP
 				{
@@ -10791,7 +10817,7 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 
 					d = SystemTypeName("timestamp");
 
-					$$ = (Node *)makeTypeCast((Node *)s, d);
+					$$ = (Node *)makeTypeCast((Node *)s, d, -1);
 				}
 			| LOCALTIMESTAMP '(' Iconst ')'
 				{
@@ -10822,7 +10848,7 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					}
 					d->typmod = $3;
 
-					$$ = (Node *)makeTypeCast((Node *)s, d);
+					$$ = (Node *)makeTypeCast((Node *)s, d, -1);
 				}
 			| CURRENT_ROLE
 				{
@@ -10893,7 +10919,7 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					$$ = (Node *)n;
 				}
 			| CAST '(' a_expr AS Typename ')'
-				{ $$ = makeTypeCast($3, $5); }
+				{ $$ = makeTypeCast($3, $5, @1); }
 			| EXTRACT '(' extract_list ')'
 				{
 					FuncCall *n = makeNode(FuncCall);
@@ -11285,7 +11311,7 @@ substr_list:
 					n->val.type = T_Integer;
 					n->val.val.ival = 1;
 					$$ = list_make3($1, (Node *) n,
-									makeTypeCast($2, SystemTypeName("int4")));
+									makeTypeCast($2, SystemTypeName("int4"), -1));
 				}
 			| expr_list
 				{
@@ -12564,7 +12590,7 @@ makeAddPartitionCreateStmt(Node *n, Node *subSpec)
 	CreateStmt        *ct        = makeNode(CreateStmt);
     PartitionBy       *pBy       = NULL;
 
-    ct->relation = makeRangeVar(NULL, "fake_partition_name");
+    ct->relation = makeRangeVar(NULL, "fake_partition_name", -1);
 
     /* in analyze.c, fill in tableelts with a list of inhrelation of
        the partition parent table, and fill in inhrelations with copy
@@ -12657,7 +12683,7 @@ makeColumnRef(char *colname, List *indirection, int location)
 }
 
 static Node *
-makeTypeCast(Node *arg, TypeName *typname)
+makeTypeCast(Node *arg, TypeName *typname, int location)
 {
 	/*
 	 * Simply generate a TypeCast node.
@@ -12669,6 +12695,7 @@ makeTypeCast(Node *arg, TypeName *typname)
 	TypeCast *n = makeNode(TypeCast);
 	n->arg = arg;
 	n->typname = typname;
+	n->location = location;
 	return (Node *) n;
 }
 
@@ -12680,6 +12707,7 @@ makeStringConst(char *str, TypeName *typname, int location)
 	n->val.type = T_String;
 	n->val.val.str = str;
 	n->typname = typname;
+	n->location = location;
 
 	return (Node *)n;
 }
@@ -12690,6 +12718,7 @@ makeIntConst(int val, int location)
 	A_Const *n = makeNode(A_Const);
 	n->val.type = T_Integer;
 	n->val.val.ival = val;
+	n->location = location;
 	n->typname = SystemTypeName("int4");
 
 	return (Node *)n;
@@ -12702,6 +12731,7 @@ makeFloatConst(char *str, int location)
 
 	n->val.type = T_Float;
 	n->val.val.str = str;
+	n->location = location;
 	n->typname = SystemTypeName("float8");
 
 	return (Node *)n;
@@ -12759,13 +12789,15 @@ makeOverlaps(List *largs, List *rargs, int location)
 	else if (list_length(largs) != 2)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("wrong number of parameters on left side of OVERLAPS expression")));
+				 errmsg("wrong number of parameters on left side of OVERLAPS expression"),
+				 scanner_errposition(location)));
 	if (list_length(rargs) == 1)
 		rargs = lappend(rargs, rargs);
 	else if (list_length(rargs) != 2)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("wrong number of parameters on right side of OVERLAPS expression")));
+				 errmsg("wrong number of parameters on right side of OVERLAPS expression"),
+				 scanner_errposition(location)));
 	n->args = list_concat(largs, rargs);
 	n->agg_star = FALSE;
 	n->agg_distinct = FALSE;
@@ -12870,7 +12902,8 @@ insertSelectOptions(SelectStmt *stmt,
 		if (stmt->sortClause)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("multiple ORDER BY clauses not allowed")));
+					 errmsg("multiple ORDER BY clauses not allowed"),
+					 scanner_errposition(exprLocation((Node *) sortClause))));
 		stmt->sortClause = sortClause;
 	}
 	/* We can handle multiple locking clauses, though */
@@ -12880,7 +12913,8 @@ insertSelectOptions(SelectStmt *stmt,
 		if (stmt->limitOffset)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("multiple OFFSET clauses not allowed")));
+					 errmsg("multiple OFFSET clauses not allowed"),
+					 scanner_errposition(exprLocation(limitOffset))));
 		stmt->limitOffset = limitOffset;
 	}
 	if (limitCount)
@@ -12888,7 +12922,8 @@ insertSelectOptions(SelectStmt *stmt,
 		if (stmt->limitCount)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("multiple LIMIT clauses not allowed")));
+					 errmsg("multiple LIMIT clauses not allowed"),
+					 scanner_errposition(exprLocation(limitCount))));
 		stmt->limitCount = limitCount;
 	}
 	if (withClause)
@@ -12988,6 +13023,9 @@ doNegate(Node *n, int location)
 	if (IsA(n, A_Const))
 	{
 		A_Const *con = (A_Const *)n;
+
+		/* report the constant's location as that of the '-' sign */
+		con->location = location;
 
 		if (con->val.type == T_Integer)
 		{

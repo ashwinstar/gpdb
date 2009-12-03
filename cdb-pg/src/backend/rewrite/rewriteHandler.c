@@ -220,7 +220,7 @@ AcquireRewriteLocks(Query *parsetree)
 							 * now-dropped type OID, but it doesn't really
 							 * matter what type the Const claims to be.
 							 */
-							aliasvar = (Var *) makeNullConst(INT4OID);
+							aliasvar = (Var *) makeNullConst(INT4OID, -1);
 						}
 					}
 					newaliasvars = lappend(newaliasvars, aliasvar);
@@ -711,6 +711,7 @@ rewriteTargetList(Query *parsetree, Relation target_relation,
 				else
 				{
 					new_expr = (Node *) makeConst(att_tup->atttypid,
+												  -1,
 												  att_tup->attlen,
 												  (Datum) 0,
 												  true, /* isnull */
@@ -720,6 +721,7 @@ rewriteTargetList(Query *parsetree, Relation target_relation,
 												InvalidOid, -1,
 												att_tup->atttypid,
 												COERCE_IMPLICIT_CAST,
+												-1,
 												false,
 												false);
 				}
@@ -953,7 +955,8 @@ build_column_default(Relation rel, int attrno)
 								 expr, exprtype,
 								 atttype, atttypmod,
 								 COERCION_ASSIGNMENT,
-								 COERCE_IMPLICIT_CAST);
+								 COERCE_IMPLICIT_CAST,
+								 -1);
 	if (expr == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -1050,6 +1053,7 @@ rewriteValuesRTE(RangeTblEntry *rte, Relation target_relation, List *attrnos)
 				if (!new_expr)
 				{
 					new_expr = (Node *) makeConst(att_tup->atttypid,
+												  -1,
 												  att_tup->attlen,
 												  (Datum) 0,
 												  true, /* isnull */
@@ -1059,6 +1063,7 @@ rewriteValuesRTE(RangeTblEntry *rte, Relation target_relation, List *attrnos)
 												InvalidOid, -1,
 												att_tup->atttypid,
 												COERCE_IMPLICIT_CAST,
+												-1,
 												false,
 												false);
 				}

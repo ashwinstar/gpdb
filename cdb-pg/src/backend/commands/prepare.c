@@ -54,7 +54,7 @@ static Datum build_regtype_array(List *oid_list);
  * Implements the 'PREPARE' utility statement.
  */
 void
-PrepareQuery(PrepareStmt *stmt)
+PrepareQuery(PrepareStmt *stmt, const char *queryString)
 {
 	const char *commandTag;
 	Query	   *query;
@@ -126,7 +126,7 @@ PrepareQuery(PrepareStmt *stmt)
 	 * we do have the string we got from the client, so use that.
 	 */
 	StorePreparedStatement(stmt->name,
-						   debug_query_string,
+						   queryString, /* WAS global debug_query_string, */
 						   srctag,
 						   commandTag,
 						   query_list,
@@ -137,9 +137,16 @@ PrepareQuery(PrepareStmt *stmt)
 
 /*
  * Implements the 'EXECUTE' utility statement.
+ *
+ * Note: this is one of very few places in the code that needs to deal with
+ * two query strings at once.  The passed-in queryString is that of the
+ * EXECUTE, which we might need for error reporting while processing the
+ * parameter expressions.  The query_string that we copy from the plan
+ * source is that of the original PREPARE.
  */
 void
-ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
+ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
+			 ParamListInfo params,
 			 DestReceiver *dest, char *completionTag)
 {
 	PreparedStatement *entry;
@@ -237,7 +244,12 @@ ExecuteQuery(ExecuteStmt *stmt, ParamListInfo params,
 	 */
 	PortalStart(portal, paramLI, ActiveSnapshot);
 
-	(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
+	(void) PortalRun(portal, 
+					FETCH_ALL, 
+					 true, /* PSMERGE: Effectively always top level. */
+					 dest, 
+					 dest, 
+					 completionTag);
 
 	PortalDrop(portal, false);
 
@@ -679,12 +691,12 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 			ActiveSnapshot->curcid = GetCurrentCommandId();
 
 			/* Create a QueryDesc requesting no output */
-			qdesc = CreateQueryDesc(query, plan,
+			qdesc = CreateQueryDesc(query, plan, entry->query_string,
 									ActiveSnapshot, InvalidSnapshot,
 									None_Receiver,
 									paramLI, stmt->analyze);
 
-			ExplainOnePlan(qdesc, stmt, tstate);
+			ExplainOnePlan(qdesc, stmt, entry->query_string, paramLI, tstate);
 		}
 
 		/* No need for CommandCounterIncrement, as ExplainOnePlan did it */

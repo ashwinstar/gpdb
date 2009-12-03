@@ -39,6 +39,7 @@
 #include "commands/tablecmds.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/plancat.h"
 #include "optimizer/var.h"
@@ -1050,7 +1051,9 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 		if (selectQuery->into)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("INSERT ... SELECT may not specify INTO")));
+					 errmsg("INSERT ... SELECT cannot specify INTO"),
+					 parser_errposition(pstate,
+						   exprLocation((Node *) selectQuery->into))));
 
 		/*
 		 * Make the source be a subquery in the INSERT's rangetable, and add
@@ -1078,7 +1081,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 		 * Otherwise this fails:  INSERT INTO foo SELECT 'bar', ... FROM baz
 		 *----------
 		 */
-		expandRTE(rte, rtr->rtindex, 0, false, NULL, &exprList);
+		expandRTE(rte, rtr->rtindex, 0, -1, false, NULL, &exprList);
 
 		/* Prepare row for assignment to target table */
 		exprList = transformInsertRow(pstate, exprList,
@@ -1120,7 +1123,9 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("VALUES lists must all be the same length")));
+						 errmsg("VALUES lists must all be the same length"),
+						 parser_errposition(pstate,
+											exprLocation((Node *) sublist))));
 			}
 
 			/* Prepare row for assignment to target table */
@@ -1170,7 +1175,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 		/*
 		 * Generate list of Vars referencing the RTE
 		 */
-		expandRTE(rte, rtr->rtindex, 0, false, NULL, &exprList);
+		expandRTE(rte, rtr->rtindex, 0, -1, false, NULL, &exprList);
 	}
 	else
 	{
@@ -1510,7 +1515,7 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	cxt.fkconstraints = NIL;
 	cxt.ixconstraints = NIL;
 	cxt.pkey = NULL;
-	
+
 	cxt.blist = NIL;
 	cxt.alist = NIL;
 
@@ -1777,7 +1782,7 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 		 * TABLE.
 		 */
 		seqstmt = makeNode(CreateSeqStmt);
-		seqstmt->sequence = makeRangeVar(snamespace, sname);
+		seqstmt->sequence = makeRangeVar(snamespace, sname, -1);
 		seqstmt->sequence->istemp = cxt->relation->istemp;
 		seqstmt->options = NIL;
 
@@ -1790,7 +1795,7 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 		 * done after this CREATE/ALTER TABLE.
 		 */
 		altseqstmt = makeNode(AlterSeqStmt);
-		altseqstmt->sequence = makeRangeVar(snamespace, sname);
+		altseqstmt->sequence = makeRangeVar(snamespace, sname, -1);
 		attnamelist = list_make3(makeString(snamespace),
 								 makeString(cxt->relation->relname),
 								 makeString(column->colname));
@@ -2006,7 +2011,7 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			p->nattrs = 0;
 			p->attrs[0] = 1;
 			
-			*policyp = p; 	
+			*policyp = p;
 		}
 		else
 		{
@@ -4348,7 +4353,7 @@ preprocess_range_spec(partValidationState *vstate)
 										   	-1);
 
 					/* XXX: typmod ? */
-					myend = makeConst(type->typid, len,
+					myend = makeConst(type->typid, type->typmod, len,
 									  datumCopy(res, typbyval, len),
 									  false, typbyval);
 
@@ -4399,7 +4404,7 @@ preprocess_range_spec(partValidationState *vstate)
 											NULL, NULL,
 											&typid, -1);
 
-					c = makeConst(typid, typlen, res, false, byval);
+					c = makeConst(typid, -1, typlen, res, false, byval);
 					pfree(lfirst(lceveryinc));
 					lfirst(lceveryinc) = c;
 				}
@@ -5331,7 +5336,8 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 	out = coerce_to_target_type(NULL, node, exprType(node),
 								typid, typmod,
 								COERCION_EXPLICIT,
-								COERCE_IMPLICIT_CAST);
+								COERCE_IMPLICIT_CAST,
+								-1);
 
 
 	/* MPP-3626: better error message */
@@ -5403,7 +5409,7 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 
 		pfree(out);
 
-		c = makeConst(typid, typeLen(typ), d, isnull,
+		c = makeConst(typid, -1, typeLen(typ), d, isnull,
 					  typeByVal(typ));
 		ReleaseSysCache(typ);
 		out = (Node *)c;
@@ -5415,7 +5421,8 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 		out = coerce_to_target_type(NULL, out, exprType(out),
 									typid, typmod,
 									COERCION_EXPLICIT,
-									COERCE_IMPLICIT_CAST);
+									COERCE_IMPLICIT_CAST,
+									-1);
 
 		/* be careful, we might just add the coercion function back in! */
 		if (IsA(out, FuncExpr) || IsA(out, OpExpr))
@@ -5896,14 +5903,15 @@ flatten_partition_val(Node *node, Oid target_type)
 		{
 			node = coerce_type(NULL, node, curtyp, target_type, typmod,
 							   COERCION_EXPLICIT,
-							   COERCE_IMPLICIT_CAST);
+							   COERCE_IMPLICIT_CAST,
+							   -1);
 
 			if (!PointerIsValid(node))
 				elog(ERROR, "could not coerce partitioning parameter");
 		}
 
 		res = partition_arg_get_val(node, &isnull);
-		c = makeConst(target_type, typlen, res, isnull, typbyval);
+		c = makeConst(target_type, typmod, typlen, res, isnull, typbyval);
 
 		return c;
 	}
@@ -6083,7 +6091,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 				int32 typmod;
 				Const *c;
 
-				c = makeConst(opexpr->opresulttype, typeLen(typ), res,
+				c = makeConst(opexpr->opresulttype, -1, typeLen(typ), res,
 							  isnull, typeByVal(typ));
 				ReleaseSysCache(typ);
 
@@ -6094,7 +6102,8 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 				e = (Expr *)coerce_type(NULL, (Node *)c, opexpr->opresulttype,
 										*restypid, typmod,
 										COERCION_EXPLICIT,
-										COERCE_IMPLICIT_CAST);
+										COERCE_IMPLICIT_CAST,
+										-1);
 
 				res = partition_arg_get_val((Node *)e, &isnull);
 			}
@@ -6246,7 +6255,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 					 parser_errposition(pstate, pBSpec->location)));
 		}
 
-		everyCnt = make_const(makeInteger(1));
+		everyCnt = make_const(pstate, makeInteger(1), -1);
 
 		pRI_Start = (PartitionRangeItem *)pBSpec->partStart;
 		pRI_End   = (PartitionRangeItem *)pBSpec->partEnd;
@@ -6317,13 +6326,15 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				n1t = transformExpr(pstate, n1);
 				n1t = coerce_type(NULL, n1t, exprType(n1t), coltypid,
 								  type->typmod,
-								  COERCION_EXPLICIT, COERCE_IMPLICIT_CAST);
+								  COERCION_EXPLICIT, COERCE_IMPLICIT_CAST,
+								  -1);
 				n1t = (Node *)flatten_partition_val(n1t, coltypid);
 
 				n2t = transformExpr(pstate, n2);
 				n2t = coerce_type(NULL, n2t, exprType(n2t), coltypid,
 								  type->typmod,
-								  COERCION_EXPLICIT, COERCE_IMPLICIT_CAST);
+								  COERCION_EXPLICIT, COERCE_IMPLICIT_CAST,
+								  -1);
 				n2t = (Node *)flatten_partition_val(n2t, coltypid);
 
 				n3t = transformExpr(pstate, n3);
@@ -6341,7 +6352,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 										NULL, NULL, &restypid,
 										((A_Const *)n3)->location);
 				typ = typeidType(restypid);
-				c = makeConst(restypid, typeLen(typ), res, false,
+				c = makeConst(restypid, -1, typeLen(typ), res, false,
 							  typeByVal(typ));
 				ReleaseSysCache(typ);
 
@@ -6356,7 +6367,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 											((A_Const *)pRI_Every->partEveryNum)->location);
 					pfree(c);
 					typ = typeidType(restypid);
-					c = makeConst(restypid, typeLen(typ), res, false,
+					c = makeConst(restypid, -1, typeLen(typ), res, false,
 								  typeByVal(typ));
 					ReleaseSysCache(typ);
 				}
@@ -6374,7 +6385,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 										&restypid,
 										((A_Const *)n1)->location);
 				typ = typeidType(restypid);
-				newend = makeConst(restypid, typeLen(typ), res, false,
+				newend = makeConst(restypid, -1, typeLen(typ), res, false,
 								   typeByVal(typ));
 				ReleaseSysCache(typ);
 
@@ -6423,7 +6434,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 												   ((A_Const *)n1)->location);
 
 						typ = typeidType(test_typid);
-						tmpconst = makeConst(test_typid, typeLen(typ), uncast,
+						tmpconst = makeConst(test_typid, -1, typeLen(typ), uncast,
 											 false, typeByVal(typ));
 						ReleaseSysCache(typ);
 
@@ -7630,7 +7641,7 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 				/* now just update the relation and index name fields */
 				chidx->relation =
 					makeRangeVar(get_namespace_name(RelationGetNamespace(crel)),
-								 RelationGetRelationName(crel));
+								 RelationGetRelationName(crel), -1);
 
 				elog(NOTICE, "building index for child partition \"%s\"",
 					 RelationGetRelationName(crel));
@@ -8924,7 +8935,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 	 * Generate a targetlist as though expanding "*"
 	 */
 	Assert(pstate->p_next_resno == 1);
-	qry->targetList = expandRelAttrs(pstate, rte, rtr->rtindex, 0);
+	qry->targetList = expandRelAttrs(pstate, rte, rtr->rtindex, 0, -1);
 
 	/*
 	 * The grammar allows attaching ORDER BY, LIMIT, and FOR UPDATE to a
@@ -9010,7 +9021,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 }
 
 /*
- * transformSetOperationsStmt -
+ * transformSetOperationStmt -
  *	  transforms a set-operations tree
  *
  * A set-operation tree is just a SELECT, but with UNION/INTERSECT/EXCEPT
@@ -9780,7 +9791,7 @@ transformAlterTable_all_PartitionStmt(
 				rv = makeRangeVar(
 						get_namespace_name(
 								RelationGetNamespace(rel)),
-						pstrdup(RelationGetRelationName(rel)));
+						pstrdup(RelationGetRelationName(rel)), -1);
 				heap_close(rel, AccessShareLock);
 				rel = NULL;
 				break;
@@ -10122,6 +10133,18 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 	return qry;
 }
 
+
+/*
+ * transformDeclareCursorStmt -
+ *	transform a DECLARE CURSOR Statement
+ *
+ * DECLARE CURSOR is a hybrid case: it's an optimizable statement (in fact not
+ * significantly different from a SELECT) as far as parsing/rewriting/planning
+ * are concerned, but it's not passed to the executor and so in that sense is
+ * a utility statement.  We transform it into a Query exactly as if it were
+ * a SELECT, then stick the original DeclareCursorStmt into the utilityStmt
+ * field to carry the cursor name and options.
+ */
 static Query *
 transformDeclareCursorStmt(ParseState *pstate, DeclareCursorStmt *stmt)
 {
@@ -10288,7 +10311,8 @@ transformExecuteStmt(ParseState *pstate, ExecuteStmt *stmt)
 			expr = coerce_to_target_type(pstate, expr, given_type_id,
 										 expected_type_id, -1,
 										 COERCION_ASSIGNMENT,
-										 COERCE_IMPLICIT_CAST);
+										 COERCE_IMPLICIT_CAST,
+										 -1);
 
 			if (expr == NULL)
 				ereport(ERROR,

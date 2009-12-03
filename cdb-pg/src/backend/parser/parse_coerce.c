@@ -74,7 +74,8 @@ Node *
 coerce_to_target_type(ParseState *pstate, Node *expr, Oid exprtype,
 					  Oid targettype, int32 targettypmod,
 					  CoercionContext ccontext,
-					  CoercionForm cformat)
+					  CoercionForm cformat,
+					  int location)
 {
 	Node	   *result;
 
@@ -83,7 +84,7 @@ coerce_to_target_type(ParseState *pstate, Node *expr, Oid exprtype,
 
 	result = coerce_type(pstate, expr, exprtype,
 						 targettype, targettypmod,
-						 ccontext, cformat);
+						 ccontext, cformat, location);
 
 	/*
 	 * If the target is a fixed-length type, it may need a length coercion as
@@ -123,7 +124,7 @@ coerce_to_target_type(ParseState *pstate, Node *expr, Oid exprtype,
 Node *
 coerce_type(ParseState *pstate, Node *node,
 			Oid inputTypeId, Oid targetTypeId, int32 targetTypeMod,
-			CoercionContext ccontext, CoercionForm cformat)
+			CoercionContext ccontext, CoercionForm cformat, int location)
 {
 	Node	   *result;
 	Oid			funcId;
@@ -243,7 +244,7 @@ coerce_type(ParseState *pstate, Node *node,
 			result = coerce_to_domain(result,
 									  baseTypeId, baseTypeMod,
 									  targetTypeId,
-									  cformat, false, false);
+									  cformat, location, false, false);
 
 		ReleaseSysCache(targetType);
 
@@ -344,10 +345,10 @@ coerce_type(ParseState *pstate, Node *node,
 			 * type we're casting to
 			 */
 			args = list_make3(fe,
-							  makeConst(OIDOID, sizeof(Oid),
+							  makeConst(OIDOID, -1, sizeof(Oid),
 										ObjectIdGetDatum(intypioparam),
 										false, true),
-							  makeConst(INT4OID, sizeof(int32),
+							  makeConst(INT4OID, -1, sizeof(int32),
 										Int32GetDatum(-1),
 										false, true));
 			fe = makeFuncExpr(infunc, targetTypeId, args, cformat);
@@ -386,7 +387,7 @@ coerce_type(ParseState *pstate, Node *node,
 			if (targetTypeId != baseTypeId)
 				result = coerce_to_domain(result, baseTypeId, baseTypeMod,
 										  targetTypeId,
-										  cformat, true,
+										  cformat, location, true,
 										  exprIsLengthCoercion(result,
 															   NULL));
 		}
@@ -402,7 +403,7 @@ coerce_type(ParseState *pstate, Node *node,
 			 * then we won't need a RelabelType node.
 			 */
 			result = coerce_to_domain(node, InvalidOid, -1, targetTypeId,
-									  cformat, false, false);
+									  cformat, location, false, false);
 			if (result == node)
 			{
 				/*
@@ -553,7 +554,7 @@ coerce_unknown_var(ParseState *pstate, Var *var,
 
 				targetexpr = coerce_type(subpstate, targetexpr, exprtype,
 										 targetTypeId, targetTypeMod,
-										 ccontext, cformat);
+										 ccontext, cformat, -1);
 
 				pfree(subpstate);
 				/* Substitute coerced expr into subquery's targetlist. */
@@ -826,7 +827,7 @@ can_coerce_type(int nargs, Oid *input_typeids, Oid *target_typeids,
  */
 Node *
 coerce_to_domain(Node *arg, Oid baseTypeId, int32 baseTypeMod, Oid typeId,
-				 CoercionForm cformat, bool hideInputCoercion,
+				 CoercionForm cformat, int location, bool hideInputCoercion,
 				 bool lengthCoercionDone)
 {
 	CoerceToDomain *result;
@@ -1005,6 +1006,7 @@ build_coercion_expression(Node *node, Oid funcId,
 	{
 		/* Pass target typmod as an int4 constant */
 		cons = makeConst(INT4OID,
+				         -1,
 						 sizeof(int32),
 						 Int32GetDatum(targetTypMod),
 						 false,
@@ -1017,6 +1019,7 @@ build_coercion_expression(Node *node, Oid funcId,
 	{
 		/* Pass it a boolean isExplicit parameter, too */
 		cons = makeConst(BOOLOID,
+						 -1,
 						 sizeof(bool),
 						 BoolGetDatum(isExplicit),
 						 false,
@@ -1066,7 +1069,7 @@ coerce_record_to_complex(ParseState *pstate, Node *node,
 		RangeTblEntry *rte;
 
 		rte = GetRTEByRangeTablePosn(pstate, rtindex, sublevels_up);
-		expandRTE(rte, rtindex, sublevels_up, false,
+		expandRTE(rte, rtindex, sublevels_up, -1, false,
 				  NULL, &args);
 	}
 	else
@@ -1092,7 +1095,7 @@ coerce_record_to_complex(ParseState *pstate, Node *node,
 			 * can't use atttypid here, but it doesn't really matter what type
 			 * the Const claims to be.
 			 */
-			newargs = lappend(newargs, makeNullConst(INT4OID));
+			newargs = lappend(newargs, makeNullConst(INT4OID, -1));
 			continue;
 		}
 
@@ -1111,7 +1114,8 @@ coerce_record_to_complex(ParseState *pstate, Node *node,
 									 tupdesc->attrs[i]->atttypid,
 									 tupdesc->attrs[i]->atttypmod,
 									 ccontext,
-									 COERCE_IMPLICIT_CAST);
+									 COERCE_IMPLICIT_CAST,
+									 -1);
 		if (expr == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_CANNOT_COERCE),
@@ -1164,7 +1168,8 @@ coerce_to_boolean(ParseState *pstate, Node *node,
 		node = coerce_to_target_type(pstate, node, inputTypeId,
 									 BOOLOID, -1,
 									 COERCION_ASSIGNMENT,
-									 COERCE_IMPLICIT_CAST);
+									 COERCE_IMPLICIT_CAST,
+									 -1);
 		if (node == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -1204,7 +1209,8 @@ coerce_to_integer(ParseState *pstate, Node *node,
 		node = coerce_to_target_type(pstate, node, inputTypeId,
 									 INT4OID, -1,
 									 COERCION_ASSIGNMENT,
-									 COERCE_IMPLICIT_CAST);
+									 COERCE_IMPLICIT_CAST,
+									 -1);
 		if (node == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -1244,7 +1250,8 @@ coerce_to_bigint(ParseState *pstate, Node *node,
 		node = coerce_to_target_type(pstate, node, inputTypeId,
 									 INT8OID, -1,
 									 COERCION_ASSIGNMENT,
-									 COERCE_IMPLICIT_CAST);
+									 COERCE_IMPLICIT_CAST,
+									 -1);
 		if (node == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -1367,7 +1374,7 @@ coerce_to_common_type(ParseState *pstate, Node *node,
 		return node;			/* no work */
 	if (can_coerce_type(1, &inputTypeId, &targetTypeId, COERCION_IMPLICIT))
 		node = coerce_type(pstate, node, inputTypeId, targetTypeId, -1,
-						   COERCION_IMPLICIT, COERCE_IMPLICIT_CAST);
+						   COERCION_IMPLICIT, COERCE_IMPLICIT_CAST, -1);
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_CANNOT_COERCE),

@@ -745,7 +745,7 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
         limitplan->plan.lefttree = subplan;
         limitplan->plan.righttree = NULL;
         limitplan->limitOffset = NULL;
-        limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int64),
+        limitplan->limitCount = (Node *)makeConst(INT8OID, -1, sizeof(int64),
                                                   Int64GetDatum(1),
                                                   false, true);
         return (Plan *)limitplan;

@@ -131,7 +131,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 		}
 		if (elem != NULL)
 		{
-			RangeVar   *rel = makeRangeVar(NULL, strVal(elem));
+			RangeVar   *rel = makeRangeVar(NULL, strVal(elem), -1);
 
 			constrrelid = RangeVarGetRelid(rel, true);
 		}

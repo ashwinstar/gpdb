@@ -4,8 +4,8 @@
  *	  header file for read.c and readfuncs.c. These functions are internal
  *	  to the stringToNode interface and should not be used by anyone else.
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/nodes/readfuncs.h,v 1.22 2006/03/05 15:58:57 momjian Exp $
@@ -17,7 +17,7 @@
 
 #include "nodes/nodes.h"
 
-/*-------------------------------------------------------------------------
+/*
  * prototypes for functions in read.c (the lisp token parser)
  */
 extern char *pg_strtok(int *length);

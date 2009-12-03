@@ -4,8 +4,8 @@
  *	  prototypes for optimizer/util/var.c.
  *
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/optimizer/var.h,v 1.34 2006/03/05 15:58:57 momjian Exp $

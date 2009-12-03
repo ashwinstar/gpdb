@@ -420,7 +420,7 @@ transformAssignedExpr(ParseState *pstate,
 			 * is not really a source value to work with. Insert a NULL
 			 * constant as the source value.
 			 */
-			colVar = (Node *) makeNullConst(attrtype);
+			colVar = (Node *) makeNullConst(attrtype, -1);
 		}
 		else
 		{
@@ -429,7 +429,7 @@ transformAssignedExpr(ParseState *pstate,
 			 */
 			colVar = (Node *) make_var(pstate,
 									   pstate->p_target_rangetblentry,
-									   attrno);
+									   attrno, location);
 		}
 
 		expr = (Expr *)
@@ -454,7 +454,8 @@ transformAssignedExpr(ParseState *pstate,
 								  (Node *) expr, type_id,
 								  attrtype, attrtypmod,
 								  COERCION_ASSIGNMENT,
-								  COERCE_IMPLICIT_CAST);
+								  COERCE_IMPLICIT_CAST,
+								  location);
 		if (expr == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -703,7 +704,8 @@ transformAssignmentIndirection(ParseState *pstate,
 								   rhs, exprType(rhs),
 								   targetTypeId, targetTypMod,
 								   COERCION_ASSIGNMENT,
-								   COERCE_IMPLICIT_CAST);
+								   COERCE_IMPLICIT_CAST,
+								   location);
 	if (result == NULL)
 	{
 		if (targetIsArray)
@@ -914,11 +916,10 @@ ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref,
 				break;
 		}
 
-		rte = refnameRangeTblEntry(pstate, schemaname, relname,
+		rte = refnameRangeTblEntry(pstate, schemaname, relname, cref->location,
 								   &sublevels_up);
 		if (rte == NULL)
-			rte = addImplicitRTE(pstate, makeRangeVar(schemaname, relname),
-								 cref->location);
+			rte = addImplicitRTE(pstate, makeRangeVar(schemaname, relname, cref->location), cref->location);
 
 		/* Require read access --- see comments in setTargetTable() */
 		rte->requiredPerms |= ACL_SELECT;
@@ -926,12 +927,12 @@ ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref,
 		rtindex = RTERangeTablePosn(pstate, rte, &sublevels_up);
 
 		if (targetlist)
-			return expandRelAttrs(pstate, rte, rtindex, sublevels_up);
+			return expandRelAttrs(pstate, rte, rtindex, sublevels_up, cref->location);
 		else
 		{
 			List	   *vars;
 
-			expandRTE(rte, rtindex, sublevels_up, false,
+			expandRTE(rte, rtindex, sublevels_up, cref->location, false,
 					  NULL, &vars);
 			return vars;
 		}
@@ -968,7 +969,7 @@ ExpandAllTables(ParseState *pstate)
 		rte->requiredPerms |= ACL_SELECT;
 
 		target = list_concat(target,
-							 expandRelAttrs(pstate, rte, rtindex, 0));
+							 expandRelAttrs(pstate, rte, rtindex, 0, -1));
 	}
 
 	return target;
@@ -1113,7 +1114,7 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 				   *lvar;
 		int			i;
 
-		expandRTE(rte, var->varno, 0, false,
+		expandRTE(rte, var->varno, 0, -1, false,
 				  &names, &vars);
 
 		tupleDesc = CreateTemplateTupleDesc(list_length(vars), false);

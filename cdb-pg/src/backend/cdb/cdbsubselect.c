@@ -199,7 +199,7 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
     {
         rnode = copyObject(subselect->limitCount);
         IncrementVarSublevelsUp(rnode, -1, 1);
-        lnode = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(0),
+        lnode = (Node *)makeConst(INT8OID, -1, sizeof(int64), Int64GetDatum(0),
                                   false, true);
         limitqual = (Node *)make_op(NULL, list_make1(makeString("<")),
                                     lnode, rnode, -1);
@@ -231,7 +231,7 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
         {
             lnode = copyObject(subselect->limitOffset);
             IncrementVarSublevelsUp(lnode, -1, 1);
-            rnode = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(1),
+            rnode = (Node *)makeConst(INT8OID, -1, sizeof(int64), Int64GetDatum(1),
                                       false, true);
             node = (Node *)make_op(NULL, list_make1(makeString("<")),
                                    lnode, rnode, -1);
@@ -278,7 +278,7 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
      */
     if (!contain_vars_of_level_or_above(sublink->subselect, 1))
     {
-        subselect->limitCount = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(1),
+        subselect->limitCount = (Node *)makeConst(INT8OID, -1, sizeof(int64), Int64GetDatum(1),
                                                   false, true);
         return make_and_qual(limitqual, (Node *)sublink);
     }
@@ -601,7 +601,7 @@ add_dummy_const(List *tlist)
 	Const	   *zconst;
 	int			resno;
 
-	zconst = makeConst(INT4OID, sizeof(int32), (Datum) 0,
+	zconst = makeConst(INT4OID, -1, sizeof(int32), (Datum) 0,
 					   false, true);	/* isnull, byval */
 	resno = list_length(tlist) + 1;
 	dummy = makeTargetEntry((Expr *) zconst,
@@ -704,9 +704,9 @@ add_join_rte(Query * parse, int l_rtindex, int r_rtindex, int join_type)
 	l_rte = rt_fetch(l_rtindex, parse->rtable);
 	r_rte = rt_fetch(r_rtindex, parse->rtable);
 
-	expandRTE(l_rte, l_rtindex, 0, false,
+	expandRTE(l_rte, l_rtindex, 0, -1, false,
 			  &l_colnames, &l_colvars);
-	expandRTE(r_rte, r_rtindex, 0, false,
+	expandRTE(r_rte, r_rtindex, 0, -1, false,
 			  &r_colnames, &r_colvars);
 
 	/* make list of column names and vars to be output by the join */
@@ -901,7 +901,7 @@ make_notin_quals(List *rtable, int j_rtindex, JoinType join_type)
 				   *j_colvars;
 
 		j_rte = rt_fetch(j_rtindex, rtable);
-		expandRTE(j_rte, j_rtindex, 0, false,
+		expandRTE(j_rte, j_rtindex, 0, -1, false,
 				  &j_colnames, &j_colvars);
 
 		null_test = makeNode(NullTest);

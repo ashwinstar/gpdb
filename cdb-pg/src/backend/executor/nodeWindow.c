@@ -5082,7 +5082,8 @@ coerceType(Expr* expr, Oid new_type)
 											 expr_type,
 											 new_type, expr_typmod,
 											 COERCION_EXPLICIT,
-											 COERCE_IMPLICIT_CAST);
+											 COERCE_IMPLICIT_CAST,
+											 -1);
 	}
 
 	return new_expr;
@@ -5205,7 +5206,8 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 		varexpr = (Expr *)coerce_to_target_type(NULL, (Node *)varexpr, 
 												ltype, opr->oprleft, vartypmod,
 												COERCION_EXPLICIT,
-												COERCE_IMPLICIT_CAST);
+												COERCE_IMPLICIT_CAST,
+												-1);
 	}
 	else
 		opr = ((Form_pg_operator) GETSTRUCT(tup));
@@ -5230,7 +5232,8 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 									 	  exprrestype,
 									 	  ltype, vartypmod,
 									 	  COERCION_EXPLICIT,
-										  COERCE_IMPLICIT_CAST);
+										  COERCE_IMPLICIT_CAST,
+										  -1);
 	}
 
 	Insist(PointerIsValid(expr));

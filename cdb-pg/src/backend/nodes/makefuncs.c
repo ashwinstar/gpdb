@@ -84,6 +84,9 @@ makeVar(Index varno,
 	var->varnoold = varno;
 	var->varoattno = varattno;
 
+	/* Likewise, we just set location to "unknown" here */
+	var->location = -1;
+
 	return var;
 }
 
@@ -142,6 +145,7 @@ flatCopyTargetEntry(TargetEntry *src_tle)
  */
 Const *
 makeConst(Oid consttype,
+		  int32 consttypmod,
 		  int constlen,
 		  Datum constvalue,
 		  bool constisnull,
@@ -154,22 +158,27 @@ makeConst(Oid consttype,
 	cnst->constvalue = constvalue;
 	cnst->constisnull = constisnull;
 	cnst->constbyval = constbyval;
+	cnst->location = -1;		/* "unknown" */
 
 	return cnst;
 }
 
 /*
  * makeNullConst -
- *	  creates a Const node representing a NULL of the specified type
+ *	  creates a Const node representing a NULL of the specified type/typmod
+ *
+ * This is a convenience routine that just saves a lookup of the type's
+ * storage properties.
  */
 Const *
-makeNullConst(Oid consttype)
+makeNullConst(Oid consttype, int consttypmod)
 {
 	int16		typLen;
 	bool		typByVal;
 
 	get_typlenbyval(consttype, &typLen, &typByVal);
 	return makeConst(consttype,
+					 consttypmod,
 					 (int) typLen,
 					 (Datum) 0,
 					 true,
@@ -184,7 +193,7 @@ Node *
 makeBoolConst(bool value, bool isnull)
 {
 	/* note that pg_type.h hardwires size of bool as 1 ... duplicate it */
-	return (Node *) makeConst(BOOLOID, 1, BoolGetDatum(value), isnull, true);
+	return (Node *) makeConst(BOOLOID, -1, 1, BoolGetDatum(value), isnull, true);
 }
 
 /*
@@ -192,12 +201,13 @@ makeBoolConst(bool value, bool isnull)
  *	  creates a BoolExpr node
  */
 Expr *
-makeBoolExpr(BoolExprType boolop, List *args)
+makeBoolExpr(BoolExprType boolop, List *args, int location)
 {
 	BoolExpr   *b = makeNode(BoolExpr);
 
 	b->boolop = boolop;
 	b->args = args;
+	b->location = location;
 
 	return (Expr *) b;
 }
@@ -232,6 +242,7 @@ makeRelabelType(Expr *arg, Oid rtype, int32 rtypmod, CoercionForm rformat)
 	r->resulttype = rtype;
 	r->resulttypmod = rtypmod;
 	r->relabelformat = rformat;
+	r->location = -1;
 
 	return r;
 }
@@ -241,7 +252,7 @@ makeRelabelType(Expr *arg, Oid rtype, int32 rtypmod, CoercionForm rformat)
  *	  creates a RangeVar node (rather oversimplified case)
  */
 RangeVar *
-makeRangeVar(char *schemaname, char *relname)
+makeRangeVar(char *schemaname, char *relname, int location)
 {
 	RangeVar   *r = makeNode(RangeVar);
 
@@ -251,7 +262,7 @@ makeRangeVar(char *schemaname, char *relname)
 	r->inhOpt = INH_DEFAULT;
 	r->istemp = false;
 	r->alias = NULL;
-	r->location = -1;   /*CDB*/
+	r->location = location;
 
 	return r;
 }
@@ -285,6 +296,7 @@ makeTypeNameFromNameList(List *names)
 	TypeName   *n = makeNode(TypeName);
 
 	n->names = names;
+	n->typmods = NIL;
 	n->typmod = -1;
 	n->location = -1;
 	return n;
@@ -322,6 +334,7 @@ makeFuncExpr(Oid funcid, Oid rettype, List *args, CoercionForm fformat)
 	funcexpr->funcretset = false;		/* only allowed case here */
 	funcexpr->funcformat = fformat;
 	funcexpr->args = args;
+	funcexpr->location = -1;
 
 	return funcexpr;
 }

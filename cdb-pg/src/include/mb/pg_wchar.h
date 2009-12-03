@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/mb/pg_wchar.h,v 1.84 2009/02/10 19:29:39 petere Exp $
+ * $PostgreSQL: pgsql/src/include/mb/pg_wchar.h,v 1.91 2009/06/11 14:49:11 momjian Exp $
  *
  *	NOTES
  *		This is used both by the backend and by libpq, but should not be
@@ -394,7 +394,7 @@ extern size_t wchar2char(char *to, const wchar_t *from, size_t tolen);
 extern size_t char2wchar(wchar_t *to, size_t tolen, const char *from, size_t fromlen);
 #endif
 
-extern void SetDefaultClientEncoding(void);
+extern void SetDefaultClientEncoding(void); /* Obsolete? */
 extern int	SetClientEncoding(int encoding, bool doit);
 extern void InitializeClientEncoding(void);
 extern int	pg_get_client_encoding(void);
@@ -416,8 +416,8 @@ extern unsigned char *pg_do_encoding_conversion(unsigned char *src, int len,
 
 extern char *pg_client_to_server(const char *s, int len);
 extern char *pg_server_to_client(const char *s, int len);
-extern char *pg_custom_to_server(const char *s, int len, int src_encoding, void *cep);
-extern char *pg_server_to_custom(const char *s, int len, int dest_encoding, void *cep);
+extern char *pg_custom_to_server(const char *s, int len, int src_encoding, void *cep); /* Obsolete? */
+extern char *pg_server_to_custom(const char *s, int len, int dest_encoding, void *cep); /* Obsolete? */
 
 extern unsigned short BIG5toCNS(unsigned short big5, unsigned char *lc);
 extern unsigned short CNStoBIG5(unsigned short cns, unsigned char lc);

@@ -277,6 +277,23 @@ extern bool Debug_print_prelim_plan;
  */
 extern bool Debug_print_slice_table;
 
+/* Parameter debug_print_dispatch_plan
+ *
+ * This run-time parameter is closely related to the PostgreSQL parameter
+ * debug_print_plan which, if true, causes the final plan to display on the
+ * server log prior to execution. In GPDB, some plan changes occur after
+ * planning just prior to dispatch. This parameter, if true, causes the
+ * dispatchable plan to display on the log.
+ */
+extern bool Debug_print_dispatch_plan;
+
+/* Parameter debug_print_plannedstmt
+ *
+ * This run-time parameter causes the PlannedStmt structure containing 
+ * the final plan to display on the server log prior to execution. 
+ */
+extern bool Debug_print_plannedstmt;
+
 /*
  * gp_external_enable_exec
  *

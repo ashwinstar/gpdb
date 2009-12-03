@@ -353,7 +353,7 @@ Boot_DeclareIndexStmt:
 				{
 					do_start();
 
-					DefineIndex(makeRangeVar(NULL, LexIDStr($6)),
+					DefineIndex(makeRangeVar(NULL, LexIDStr($6), -1),
 								LexIDStr($3),
 								$4,
 								LexIDStr($8),
@@ -372,7 +372,7 @@ Boot_DeclareUniqueIndexStmt:
 				{
 					do_start();
 
-					DefineIndex(makeRangeVar(NULL, LexIDStr($7)),
+					DefineIndex(makeRangeVar(NULL, LexIDStr($7), -1),
 								LexIDStr($4),
 								$5,
 								LexIDStr($9),

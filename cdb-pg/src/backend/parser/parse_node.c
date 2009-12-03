@@ -89,7 +89,7 @@ parser_errposition(ParseState *pstate, int location)
  *		Build a Var node for an attribute identified by RTE and attrno
  */
 Var *
-make_var(ParseState *pstate, RangeTblEntry *rte, int attrno)
+make_var(ParseState *pstate, RangeTblEntry *rte, int attrno, int location)
 {
 	int			vnum,
 				sublevels_up;
@@ -225,7 +225,8 @@ transformArraySubscripts(ParseState *pstate,
 												subexpr, exprType(subexpr),
 												INT4OID, -1,
 												COERCION_ASSIGNMENT,
-												COERCE_IMPLICIT_CAST);
+												COERCE_IMPLICIT_CAST,
+												-1);
 				if (subexpr == NULL)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -235,6 +236,7 @@ transformArraySubscripts(ParseState *pstate,
 			{
 				/* Make a constant 1 */
 				subexpr = (Node *) makeConst(INT4OID,
+											 -1,
 											 sizeof(int32),
 											 Int32GetDatum(1),
 											 false,
@@ -248,7 +250,8 @@ transformArraySubscripts(ParseState *pstate,
 										subexpr, exprType(subexpr),
 										INT4OID, -1,
 										COERCION_ASSIGNMENT,
-										COERCE_IMPLICIT_CAST);
+										COERCE_IMPLICIT_CAST,
+										-1);
 		if (subexpr == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -269,7 +272,8 @@ transformArraySubscripts(ParseState *pstate,
 										   assignFrom, typesource,
 										   typeneeded, elementTypMod,
 										   COERCION_ASSIGNMENT,
-										   COERCE_IMPLICIT_CAST);
+										   COERCE_IMPLICIT_CAST,
+										   -1);
 		if (assignFrom == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -314,7 +318,7 @@ transformArraySubscripts(ParseState *pstate,
  *	too many examples that fail if we try.
  */
 Const *
-make_const(Value *value)
+make_const(ParseState *pstate, Value *value, int location)
 {
 	Datum		val;
 	int64		val64;
@@ -399,6 +403,7 @@ make_const(Value *value)
 		case T_Null:
 			/* return a null const */
 			con = makeConst(UNKNOWNOID,
+							-1,
 							-2,
 							(Datum) 0,
 							true,
@@ -411,6 +416,7 @@ make_const(Value *value)
 	}
 
 	con = makeConst(typeid,
+			        -1,
 					typelen,
 					val,
 					false,

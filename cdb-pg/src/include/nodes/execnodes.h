@@ -336,7 +336,7 @@ typedef struct Slice
         GangType gangType;                /* What kind of gang does this slice need? */
         
         int gangSize;                        /* How many gang members needed?
-                                                         *  This should be either 1 or the # of segments in the cluster
+                                                         *
                                                          * This may seem redundant, but it is set before
                                                          * the process lists below and used to decide how
                                                          * to initialize them.

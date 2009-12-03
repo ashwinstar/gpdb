@@ -102,8 +102,10 @@ static bool can_execute_this_locally(const char *sql);
 bool		gp_use_snapshop_during_callback = true;
 
 /* used only in testing in test/libcdbtest ?? */
+#if 0 /* PSMERGE: Remove? */
 extern int
 			SPI_execute_cdb(const char *src, Plan * pPlan, Query * pQuery, bool read_only, int tcount);
+#endif /* PSMERGE: Remove? */
 
 
 bool
@@ -1572,7 +1574,7 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 				(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
 		/* translator: %s is name of a SQL command, eg INSERT */
 				 errmsg("cannot open %s query as cursor",
-						CreateQueryTag(queryTree))));
+						CreateCommandTag((Node*)queryTree))));
 	}
 
 	Assert(list_length(spiplan->qtlist) == 1);
@@ -1597,7 +1599,7 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				/* translator: %s is a SQL statement name */
 					   errmsg("%s is not allowed in a non-volatile function",
-							  CreateQueryTag(qry))));
+							  CreateCommandTag((Node*)qry))));
 		}
 	}
 
@@ -2855,8 +2857,12 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
 
 				if (queryTree->commandType == CMD_UTILITY)
 				{
-					ProcessUtility(queryTree->utilityStmt, paramLI,
-								   dest, NULL);
+					ProcessUtility(queryTree->utilityStmt,
+								   plan->query,
+								   paramLI,
+								   false, /* not top level */
+								   dest, 
+								   NULL);
 					/* Update "processed" if stmt returned tuples */
 					if (_SPI_current->tuptable)
 						_SPI_current->processed = _SPI_current->tuptable->alloced - _SPI_current->tuptable->free;
@@ -2864,7 +2870,7 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
 				}
 				else
 				{
-					qdesc = CreateQueryDesc(queryTree, planTree,
+					qdesc = CreateQueryDesc(queryTree, planTree, plan->query,
 											ActiveSnapshot,
 											crosscheck_snapshot,
 											dest,
@@ -3361,6 +3367,10 @@ _SPI_copy_plan(SPIPlanPtr plan, int location)
  * Which in turn, is only used for testing.  At the moment, libcdbtest doesn't appear to work,
  * so I don't think this is ever called.
  */
+/* PSMERGE: This cuts across API levels in a way that make it difficult for the merge
+ *          so we remove it for now.  Maybe for good. 
+ */
+#if 0 /* PSMERGE: Remove? */
 int
 SPI_execute_cdb(const char *src, Plan * pPlan, Query * pQuery, bool read_only, int tcount)
 {
@@ -3394,3 +3404,4 @@ SPI_execute_cdb(const char *src, Plan * pPlan, Query * pQuery, bool read_only, i
 	_SPI_end_call(true);
 	return res;
 }
+#endif /* PSMERGE: Remove? */

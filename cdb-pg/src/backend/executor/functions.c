@@ -49,6 +49,9 @@ typedef struct local_es
 	ExecStatus	status;
 	Query	   *query;
 	Plan	   *plan;
+#if 0
+	Node	   *stmt;			/* PlannedStmt or utility statement */
+#endif	
 	QueryDesc  *qd;				/* null unless status == RUN */
 } execution_state;
 
@@ -61,6 +64,8 @@ typedef struct local_es
  */
 typedef struct
 {
+	char	   *src;			/* function body text (for error msgs) */
+
 	Oid		   *argtypes;		/* resolved types of arguments */
 	Oid			rettype;		/* actual return type */
 	int16		typlen;			/* length of the return type */
@@ -158,7 +163,7 @@ init_sql_fcache(FmgrInfo *finfo)
 	Form_pg_proc procedureStruct;
 	SQLFunctionCachePtr fcache;
 	Oid		   *argOidVect;
-	char	   *src;
+	//char	   *src;
 	int			nargs;
 	List	   *queryTree_list;
 	Datum		tmp;
@@ -247,9 +252,9 @@ init_sql_fcache(FmgrInfo *finfo)
 						  &isNull);
 	if (isNull)
 		elog(ERROR, "null prosrc for function %u", foid);
-	src = DatumGetCString(DirectFunctionCall1(textout, tmp));
+	fcache->src = TextDatumGetCString(tmp);
 
-	queryTree_list = pg_parse_and_rewrite(src, argOidVect, nargs);
+	queryTree_list = pg_parse_and_rewrite(fcache->src, argOidVect, nargs);
 	
 	/*
 	 * If we have only SELECT statements with no FROM clauses, we should
@@ -358,7 +363,7 @@ init_sql_fcache(FmgrInfo *finfo)
 	fcache->func_state = init_execution_state(queryTree_list,
 											  fcache->readonly_func);
 
-	pfree(src);
+	//pfree(src);
 
 	ReleaseSysCache(procedureTuple);
 
@@ -388,7 +393,7 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 		snapshot = CopySnapshot(GetTransactionSnapshot());
 	}
 
-	es->qd = CreateQueryDesc(es->query, es->plan,
+	es->qd = CreateQueryDesc(es->query, es->plan, fcache->src,
 							 snapshot, InvalidSnapshot,
 							 None_Receiver,
 							 fcache->paramLI, false);
@@ -427,7 +432,9 @@ postquel_getnext(execution_state *es)
 
 		if (es->qd->operation == CMD_UTILITY)
 		{
-			ProcessUtility(es->qd->parsetree->utilityStmt, es->qd->params,
+			/* ProcessUtility needs the PlannedStmt for DECLARE CURSOR */
+			ProcessUtility(es->qd->parsetree->utilityStmt, "UTILITY STMT", es->qd->params,
+						   false, /* not top level */
 						   es->qd->dest, NULL);
 			result = NULL;
 		}

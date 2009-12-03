@@ -3299,7 +3299,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			/*
 			 * Make the constant result node.
 			 */
-			simple = (Expr *) makeConst(expr->funcresulttype, resultTypLen,
+			simple = (Expr *) makeConst(expr->funcresulttype, -1, resultTypLen,
 										const_val, const_is_null,
 										resultTypByVal);
 

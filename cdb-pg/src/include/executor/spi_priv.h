@@ -42,7 +42,7 @@ typedef struct _SPI_plan
 	const char *query;
 	/* List of List of querytrees; one sublist per original parsetree */
 	List	   *qtlist;
-	/* List of plan trees --- length == # of querytrees, but flat list */
+	/* List of PlannedStmt* --- length == # of querytrees, but flat list */
 	List	   *ptlist;
 	/* Argument types, if a prepared plan */
 	int			nargs;			/* number of plan arguments */

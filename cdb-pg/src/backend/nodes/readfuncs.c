@@ -560,6 +560,47 @@ _readRangeVar(void)
 	READ_DONE();
 }
 
+static IntoClause *
+_readIntoClause(void)
+{
+	READ_LOCALS(IntoClause);
+	
+	READ_NODE_FIELD(rel);
+	READ_NODE_FIELD(colNames);
+	READ_NODE_FIELD(options);
+	READ_ENUM_FIELD(onCommit, OnCommitAction);
+	READ_STRING_FIELD(tableSpaceName);
+	READ_OID_FIELD(oidInfo.relOid);
+    READ_OID_FIELD(oidInfo.comptypeOid); 
+    READ_OID_FIELD(oidInfo.toastOid);
+    READ_OID_FIELD(oidInfo.toastIndexOid);
+    READ_OID_FIELD(oidInfo.toastComptypeOid);
+    READ_OID_FIELD(oidInfo.aosegOid);
+    READ_OID_FIELD(oidInfo.aosegIndexOid);
+    READ_OID_FIELD(oidInfo.aosegComptypeOid);
+	/* policy not serialized */
+	
+	/* PSMERGE: This code carried over from 3.3, but is it needed?
+	 *
+	 * If the Query was a CTAS, and the CTAS was stored in the catalog 
+	 * as part of a rule, we don't want to remember the OIDs assigned 
+	 * in the past.  Not sure we can ever have that happen.
+	 */
+	Assert(local_node->oidInfo.relOid == InvalidOid);
+	
+	local_node->oidInfo.relOid = InvalidOid;
+	local_node->oidInfo.comptypeOid = InvalidOid;
+	local_node->oidInfo.toastOid = InvalidOid;
+	local_node->oidInfo.toastIndexOid = InvalidOid;
+	local_node->oidInfo.toastComptypeOid = InvalidOid;
+	local_node->oidInfo.aosegOid = InvalidOid;
+	local_node->oidInfo.aosegIndexOid = InvalidOid;
+	local_node->oidInfo.aosegComptypeOid = InvalidOid;
+	/* policy not serialized */
+	
+	READ_DONE();
+}
+
 /*
  * _readVar
  */
@@ -2498,6 +2539,38 @@ _readConstraintsSetStmt(void)
 	READ_DONE();
 }
 
+/*
+ * _readPlannedStmt
+ */
+static PlannedStmt *
+_readPlannedStmt(void)
+{
+	READ_LOCALS(PlannedStmt);
+	READ_ENUM_FIELD(commandType, CmdType);
+	READ_BOOL_FIELD(canSetTag);
+	READ_BOOL_FIELD(transientPlan);
+	READ_NODE_FIELD(queryTree); /* PSMERGE: Retire -- temporary use */
+	READ_NODE_FIELD(planTree);
+	READ_NODE_FIELD(rtable);
+	READ_NODE_FIELD(resultRelations);
+	READ_NODE_FIELD(utilityStmt);
+	READ_NODE_FIELD(intoClause);
+	READ_NODE_FIELD(subplans);
+	READ_NODE_FIELD(rewindPlanIDs);
+	READ_NODE_FIELD(returningLists);
+	READ_NODE_FIELD(result_partitions);
+	READ_NODE_FIELD(result_aosegnos);
+	READ_NODE_FIELD(rowMarks);
+	READ_NODE_FIELD(relationOids);
+	READ_NODE_FIELD(invalItems);
+	READ_INT_FIELD(nParamExec);
+	READ_INT_FIELD(nMotionNodes);
+	READ_INT_FIELD(nInitPlans);
+	READ_NODE_FIELD(sliceTable);
+	
+	READ_DONE();
+}
+
 
 /*
  * _readPlan
@@ -3426,6 +3499,7 @@ static ParseNodeInfo infoAr[] =
 	{"INDEXSCAN", (ReadFn)_readIndexScan},
 	{"INDEXSTMT", (ReadFn)_readIndexStmt},
 	{"INHERITPARTITION", (ReadFn)_readInheritPartitionCmd},
+	{"INTOCLAUSE", (ReadFn)_readIntoClause},
 	{"JOIN", (ReadFn)_readJoin},
 	{"JOINEXPR", (ReadFn)_readJoinExpr},
 	{"LIMIT", (ReadFn)_readLimit},
@@ -3445,6 +3519,7 @@ static ParseNodeInfo infoAr[] =
 	{"PGPARTRULE", (ReadFn)_readPgPartRule},
 	{"PARTITIONRULE", (ReadFn)_readPartitionRule},
 	{"PLAN", (ReadFn)_readPlan},
+	{"PLANNEDSTMT", (ReadFn)_readPlannedStmt},
 	{"PRIVGRANTEE", (ReadFn)_readPrivGrantee},
 	{"QUERY", (ReadFn)_readQuery},
 	{"RANGETBLREF", (ReadFn)_readRangeTblRef},

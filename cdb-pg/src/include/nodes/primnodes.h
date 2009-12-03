@@ -82,6 +82,20 @@ typedef struct RangeVar
 	int			location;		/* token location, or -1 if unknown */
 } RangeVar;
 
+
+typedef struct TableOidInfo
+	{
+			Oid         relOid;			/* If the heap is (re-)created, create  with this relOid */
+		Oid         comptypeOid;
+		Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
+		Oid		    toastIndexOid;	/* if toast table needed, use this for the relOid of the index */
+		Oid			toastComptypeOid;
+		Oid		    aosegOid;		/* if ao segment table needed, use this for the relOid of the aoseg table */
+		Oid		    aosegIndexOid;	/* if ao segment table needed, use this for the relOid of the aoseg index */
+		Oid			aosegComptypeOid;
+		
+	} TableOidInfo;
+
 /*
  * IntoClause - target information for SELECT INTO and CREATE TABLE AS
  */
@@ -94,6 +108,9 @@ typedef struct IntoClause
 	List	   *options;		/* options from WITH clause */
 	OnCommitAction onCommit;	/* what do we do at COMMIT? */
 	char	   *tableSpaceName; /* table space to use, or NULL */
+	
+	/* MPP */
+	TableOidInfo oidInfo;
 } IntoClause;
 
 
@@ -142,12 +159,9 @@ typedef struct Var
 								 * all */
 	Oid			vartype;		/* pg_type OID for the type of this var */
 	int32		vartypmod;		/* pg_attribute typmod value */
-	Index		varlevelsup;
-
-	/*
-	 * for subquery variables referencing outer relations; 0 in a normal var,
-	 * >0 means N levels up
-	 */
+	Index		varlevelsup;	/* for subquery variables referencing outer
+								 * relations; 0 in a normal var, >0 means N
+								 * levels up */
 	Index		varnoold;		/* original value of varno, for debugging */
 	AttrNumber	varoattno;		/* original value of varattno */
 	int			location;		/* token location, or -1 if unknown */
@@ -159,7 +173,8 @@ typedef struct Var
 typedef struct Const
 {
 	Expr		xpr;
-	Oid			consttype;		/* PG_TYPE OID of the constant's datatype */
+	Oid			consttype;		/* pg_type OID of the constant's datatype */
+	int32		consttypmod;	/* typmod value, if any */
 	int			constlen;		/* typlen of the constant's datatype */
 	Datum		constvalue;		/* the constant's value */
 	bool		constisnull;	/* whether the constant is null (if true,
@@ -188,6 +203,11 @@ typedef struct Const
  *				node's sub-select.  The column number is contained in the
  *				`paramid' field.  (This type of Param is converted to
  *				PARAM_EXEC during planning.)
+ *
+ * Note: currently, paramtypmod is valid for PARAM_SUBLINK Params, and for
+ * PARAM_EXEC Params generated from them; it is always -1 for PARAM_EXTERN
+ * params, since the APIs that supply values for such parameters don't carry
+ * any typmod info.
  * ----------------
  */
 typedef enum ParamKind
@@ -203,7 +223,8 @@ typedef struct Param
 	Expr		xpr;
 	ParamKind	paramkind;		/* kind of parameter. See above */
 	int			paramid;		/* numeric ID for parameter */
-	Oid			paramtype;		/* PG_TYPE OID of parameter's datatype */
+	Oid			paramtype;		/* pg_type OID of parameter's datatype */
+	int32		paramtypmod;	/* typmod value, if known */
 	int			location;		/* token location, or -1 if unknown */
 } Param;
 
@@ -326,6 +347,7 @@ typedef struct WindowRef
 	WinStage	winstage;		/* Stage of execution. */
 	Index		winlevel;		/* Position of corresponding WindowKey in
 								 * the Window node. */
+	int			location;		/* token location, or -1 if unknown */
 } WindowRef;
 
 
@@ -346,8 +368,9 @@ typedef struct WindowRef
  * reflowerindexpr must be the same length as refupperindexpr when it
  * is not NIL.
  *
- * Note: refrestype is NOT the element type, but the array type,
- * when doing subarray fetch or either type of store.
+ * Note: the result datatype is the element type when fetching a single
+ * element; but it is the array type when doing subarray fetch or either
+ * type of store.
  * ----------------
  */
 typedef struct ArrayRef
@@ -357,6 +380,7 @@ typedef struct ArrayRef
 								 * operation */
 	Oid			refarraytype;	/* type of the array proper */
 	Oid			refelemtype;	/* type of the array elements */
+	int32		reftypmod;		/* typmod of the array (and elements too) */
 	List	   *refupperindexpr;/* expressions that evaluate to upper array
 								 * indexes */
 	List	   *reflowerindexpr;/* expressions that evaluate to lower array
@@ -462,9 +486,11 @@ typedef struct ScalarArrayOpExpr
  *
  * Notice the arguments are given as a List.  For NOT, of course the list
  * must always have exactly one element.  For AND and OR, the executor can
- * handle any number of arguments.	The parser treats AND and OR as binary
- * and so it only produces two-element lists, but the optimizer will flatten
- * trees of AND and OR nodes to produce longer lists when possible.
+ * handle any number of arguments.	The parser generally treats AND and OR
+ * as binary and so it typically only produces two-element lists, but the
+ * optimizer will flatten trees of AND and OR nodes to produce longer lists
+ * when possible.  There are also a few special cases where more arguments
+ * can appear before optimization.
  */
 typedef enum BoolExprType
 {
@@ -491,6 +517,7 @@ typedef struct BoolExpr
  *	ROWCOMPARE_SUBLINK	(lefthand) op (SELECT ...)
  *	EXPR_SUBLINK		(SELECT with single targetlist item ...)
  *	ARRAY_SUBLINK		ARRAY(SELECT with single targetlist item ...)
+ *	CTE_SUBLINK			WITH query (never actually part of an expression)
  * For ALL, ANY, and ROWCOMPARE, the lefthand is a list of expressions of the
  * same length as the subselect's targetlist.  ROWCOMPARE will *always* have
  * a list with more than one entry; if the subselect has just one target
@@ -501,7 +528,7 @@ typedef struct BoolExpr
  * results.  ALL and ANY combine the per-row results using AND and OR
  * semantics respectively.
  * ARRAY requires just one target column, and creates an array of the target
- * column's type using one or more rows resulting from the subselect.
+ * column's type using any number of rows resulting from the subselect.
  *
  * SubLink is classed as an Expr node, but it is not actually executable;
  * it must be replaced in the expression tree by a SubPlan node during
@@ -517,6 +544,9 @@ typedef struct BoolExpr
  *
  * In EXISTS, EXPR, and ARRAY SubLinks, testexpr and operName are unused and
  * are always null.
+ *
+ * The CTE_SUBLINK case never occurs in actual SubLink nodes, but it is used
+ * in SubPlans generated for WITH subqueries.
  */
 typedef enum SubLinkType
 {
@@ -797,7 +827,7 @@ typedef struct RowExpr
 	 * parsetrees.	We must assume typmod -1 for a RowExpr node.
 	 */
 	CoercionForm row_format;	/* how to display this node */
-
+	List	   *colnames;		/* list of String, or NIL */
 	int			location;		/* token location, or -1 if unknown */
 } RowExpr;
 

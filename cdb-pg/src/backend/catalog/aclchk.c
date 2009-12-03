@@ -339,7 +339,7 @@ ExecuteGrantStmt(GrantStmt *stmt)
 			char *nspname = get_namespace_name(get_rel_namespace(rid));
 			char *relname = get_rel_name(rid);
 
-			rv = makeRangeVar(nspname, relname);
+			rv = makeRangeVar(nspname, relname, -1);
 			n = lappend(n, rv);
 		}
 

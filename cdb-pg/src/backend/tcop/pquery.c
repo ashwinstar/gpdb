@@ -81,6 +81,7 @@ static void DoPortalRewind(Portal portal);
 QueryDesc *
 CreateQueryDesc(Query *parsetree,
 				Plan *plantree,
+				const char *sourceText,
 				Snapshot snapshot,
 				Snapshot crosscheck_snapshot,
 				DestReceiver *dest,
@@ -180,11 +181,11 @@ ProcessQuery(Portal portal,
 	 * Create the QueryDesc object
 	 */
 	if (portal && portal->sourceTag == T_SelectStmt && gp_select_invisible)
-		queryDesc = CreateQueryDesc(parsetree, plan,
+		queryDesc = CreateQueryDesc(parsetree, plan, debug_query_string,
 									SnapshotAny, InvalidSnapshot,
 									dest, params, false);
 	else
-		queryDesc = CreateQueryDesc(parsetree, plan,
+		queryDesc = CreateQueryDesc(parsetree, plan, debug_query_string,
 									ActiveSnapshot, InvalidSnapshot,
 									dest, params, false);
 
@@ -372,7 +373,7 @@ ProcessQuery(Portal portal,
 				elog(DEBUG1, "converting delete into truncate on %s.%s", schemaName, relName);
 
 				/* we need a list of RangeVars */
-				truncRel = makeRangeVar(get_namespace_name(get_rel_namespace(truncOid)), get_rel_name(truncOid));
+				truncRel = makeRangeVar(get_namespace_name(get_rel_namespace(truncOid)), get_rel_name(truncOid), -1);
 				truncStmt->relations = lappend(truncStmt->relations, truncRel);
 
 				ExecuteTruncate(truncStmt);
@@ -640,6 +641,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				 */
 				queryDesc = CreateQueryDesc((Query *) linitial(portal->parseTrees),
 										(Plan *) linitial(portal->planTrees),
+												debug_query_string,
 											(gp_select_invisible ? SnapshotAny : ActiveSnapshot),
 											InvalidSnapshot,
 											None_Receiver,
@@ -872,7 +874,7 @@ PortalSetResultFormat(Portal portal, int nFormats, int16 *formats)
  * suspended due to exhaustion of the count parameter.
  */
 bool
-PortalRun(Portal portal, int64 count,
+PortalRun(Portal portal, int64 count, bool isTopLevel,
 		  DestReceiver *dest, DestReceiver *altdest,
 		  char *completionTag)
 {
@@ -1360,14 +1362,14 @@ PortalRunUtility(Portal portal, Query *query,
 	if (query->canSetTag)
 	{
 		/* utility statement can override default tag string */
-		ProcessUtility(utilityStmt, portal->portalParams, dest, completionTag);
+		ProcessUtility(utilityStmt, debug_query_string, portal->portalParams, true, dest, completionTag);
 		if (completionTag && completionTag[0] == '\0' && portal->commandTag)
 			strcpy(completionTag, portal->commandTag);	/* use the default */
 	}
 	else
 	{
 		/* utility added by rewrite cannot set tag */
-		ProcessUtility(utilityStmt, portal->portalParams, dest, NULL);
+		ProcessUtility(utilityStmt, debug_query_string, portal->portalParams, true, dest, NULL);
 	}
 
 	/* Some utility statements may change context on us */

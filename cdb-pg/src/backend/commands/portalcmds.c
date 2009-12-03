@@ -48,7 +48,8 @@ static void PortalCleanupHelper(Portal portal, volatile int *cleanupstate);
  *		Execute SQL DECLARE CURSOR command.
  */
 void
-PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
+PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params,
+		 const char *queryString, bool isTopLevel)
 {
 	List	   *rewritten;
 	Query	   *query;

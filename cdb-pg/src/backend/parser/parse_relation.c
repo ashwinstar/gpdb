@@ -89,6 +89,7 @@ RangeTblEntry *
 refnameRangeTblEntry(ParseState *pstate,
 					 const char *schemaname,
 					 const char *refname,
+					 int location,
 					 int *sublevels_up)
 {
 	Oid			relId = InvalidOid;
@@ -377,7 +378,7 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 								colname),
 						 errOmitLocation(true),
 						 parser_errposition(pstate, location)));
-			result = (Node *) make_var(pstate, rte, attnum);
+			result = (Node *) make_var(pstate, rte, attnum, location);
 			/* Require read access */
 			rte->requiredPerms |= ACL_SELECT;
 		}
@@ -405,7 +406,7 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 									 Int16GetDatum(attnum),
 									 0, 0))
 			{
-				result = (Node *) make_var(pstate, rte, attnum);
+				result = (Node *) make_var(pstate, rte, attnum, location);
 				/* Require read access */
 				rte->requiredPerms |= ACL_SELECT;
 			}
@@ -482,13 +483,13 @@ qualifiedNameToVar(ParseState *pstate,
 	RangeTblEntry *rte;
 	int			sublevels_up;
 
-	rte = refnameRangeTblEntry(pstate, schemaname, refname, &sublevels_up);
+	rte = refnameRangeTblEntry(pstate, schemaname, refname, location, &sublevels_up);
 
 	if (rte == NULL)
 	{
 		if (!implicitRTEOK)
 			return NULL;
-		rte = addImplicitRTE(pstate, makeRangeVar(schemaname, refname),
+		rte = addImplicitRTE(pstate, makeRangeVar(schemaname, refname, location),
 							 location);
 	}
 
@@ -1230,7 +1231,7 @@ addImplicitRTE(ParseState *pstate, RangeVar *relation, int location)
  */
 void
 expandRTE(RangeTblEntry *rte, int rtindex, int sublevels_up,
-		  bool include_dropped,
+		int location, bool include_dropped,
 		  List **colnames, List **colvars)
 {
 	int			varattno;
@@ -1499,7 +1500,7 @@ expandTupleDesc(TupleDesc tupdesc, Alias *eref,
 					 * can't use atttypid here, but it doesn't really matter
 					 * what type the Const claims to be.
 					 */
-					*colvars = lappend(*colvars, makeNullConst(INT4OID));
+					*colvars = lappend(*colvars, makeNullConst(INT4OID, -1));
 				}
 			}
 			continue;
@@ -1540,7 +1541,7 @@ expandTupleDesc(TupleDesc tupdesc, Alias *eref,
  */
 List *
 expandRelAttrs(ParseState *pstate, RangeTblEntry *rte,
-			   int rtindex, int sublevels_up)
+			   int rtindex, int sublevels_up, int location)
 {
 	List	   *names,
 			   *vars;
@@ -1548,7 +1549,7 @@ expandRelAttrs(ParseState *pstate, RangeTblEntry *rte,
 			   *var;
 	List	   *te_list = NIL;
 
-	expandRTE(rte, rtindex, sublevels_up, false,
+	expandRTE(rte, rtindex, sublevels_up, location, false,
 			  &names, &vars);
 
 	forboth(name, names, var, vars)
@@ -2062,7 +2063,7 @@ warnAutoRange(ParseState *pstate, RangeVar *relation, int location)
 	 */
 	if (rte && rte->alias &&
 		strcmp(rte->eref->aliasname, relation->relname) != 0 &&
-		refnameRangeTblEntry(pstate, NULL, rte->eref->aliasname,
+		refnameRangeTblEntry(pstate, NULL, rte->eref->aliasname, location,
 							 &sublevels_up) == rte)
 		badAlias = rte->eref->aliasname;
 

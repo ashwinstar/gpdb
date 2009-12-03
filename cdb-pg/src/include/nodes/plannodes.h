@@ -33,10 +33,111 @@ typedef struct DirectDispatchInfo
     List *contentIds;
 } DirectDispatchInfo;
 
- /* ----------------------------------------------------------------
+/* ----------------------------------------------------------------
  *						node definitions
  * ----------------------------------------------------------------
  */
+
+/* ----------------
+ *		PlannedStmt node
+ *
+ * The output of the planner is a Plan tree headed by a PlannedStmt node.
+ * PlannedStmt holds the "one time" information needed by the executor.
+ * ----------------
+ */
+typedef struct PlannedStmt
+	{
+		NodeTag		type;
+		
+		CmdType		commandType;	/* select|insert|update|delete */
+		
+		bool		canSetTag;		/* do I set the command result tag? */
+		
+		bool		transientPlan;	/* redo plan when TransactionXmin changes? */
+		
+		struct Query *queryTree;	/* PSMERGE: Retire -- temporary use */
+		
+		/* PSMERGE: Retire -- temporary use.
+		 *
+		 * Field qdContext is used to communicate memory context on the QD
+		 * from portal to dispatch, just until we move evalution of stable (and
+		 * sequence) functions out of dispatch.
+		 *
+		 * It is not copied or serialized!
+		 */
+		MemoryContext qdContext;
+		
+		struct Plan *planTree;		/* tree of Plan nodes */
+		
+		List	   *rtable;			/* list of RangeTblEntry nodes */
+		
+		/* rtable indexes of target relations for INSERT/UPDATE/DELETE */
+		List	   *resultRelations;	/* integer list of RT indexes, or NIL */
+		
+		Node	   *utilityStmt;	/* non-null if this is DECLARE CURSOR */
+		
+		IntoClause *intoClause;		/* target for SELECT INTO / CREATE TABLE AS */
+		
+		List	   *subplans;		/* Plan trees for SubPlan expressions */
+		
+		Bitmapset  *rewindPlanIDs;	/* indices of subplans that require REWIND */
+		
+		/*
+		 * If the query has a returningList then the planner will store a list of
+		 * processed targetlists (one per result relation) here.  We must have a
+		 * separate RETURNING targetlist for each result rel because column
+		 * numbers may vary within an inheritance tree.  In the targetlists, Vars
+		 * referencing the result relation will have their original varno and
+		 * varattno, while Vars referencing other rels will be converted to have
+		 * varno OUTER and varattno referencing a resjunk entry in the top plan
+		 * node's targetlist.
+		 */
+		List	   *returningLists; /* list of lists of TargetEntry, or NIL */
+		
+		/*
+		 * PSMERGE:
+		 *
+		 * If the resultRelation turns out to be the parent of an inheritance
+		 * tree, the planner will add all the child tables to the rtable and store
+		 * a list of the rtindexes of all the result relations here. This is done
+		 * at plan time, not parse time, since we don't want to commit to the
+		 * exact set of child tables at parse time.  XXX This field ought to go in
+		 * some sort of TopPlan plan node, not in the Query.
+		 */
+		struct PartitionNode *result_partitions;
+		
+		List	   *result_aosegnos; /* AO file 'seg' numbers for resultRels to use */
+		
+		List	   *rowMarks;		/* a list of RowMarkClause's */
+		
+		List	   *relationOids;	/* OIDs of relations the plan depends on */
+		
+		List	   *invalItems;		/* other dependencies, as PlanInvalItems */
+		
+		int			nParamExec;		/* number of PARAM_EXEC Params used */
+		
+		int			nMotionNodes;	/* number of Motion nodes in plan */
+		
+		int			nInitPlans;		/* number of initPlans in plan */
+		
+		/*
+		 * CDB: This allows the slice table to accompany the plan as it
+		 * moves around the executor. This is anoter plan tree global that
+		 * should be non-NULL only in the top node of a dispatchable tree.
+		 * It could (and should) move to a TopPlan node if we ever do that.
+		 *
+		 * Currently, the slice table should not be installed on the QD.
+		 * Rather is it shipped to QEs as a separate parameter to MPPEXEC.
+		 * The implementation of MPPEXEC, which runs on the QEs, installs
+		 * the slice table in the plan as required there.
+		 */
+		Node *sliceTable;
+	} PlannedStmt;
+
+/* macro for fetching the Plan associated with a SubPlan node */
+#define exec_subplan_get_plan(plannedstmt, subplan) \
+((Plan *) list_nth((plannedstmt)->subplans, (subplan)->plan_id - 1))
+
 
 /* ----------------
  *		Plan node
@@ -54,7 +155,7 @@ typedef struct Plan
 {
 	NodeTag		type;
 
-	/* Plan node id and parenet node id */
+	/* Plan node id and parent node id */
 	int 	plan_node_id;
 	int 	plan_parent_node_id;
 
@@ -377,20 +478,27 @@ typedef struct TidScan
  *		subquery scan node
  *
  * SubqueryScan is for scanning the output of a sub-query in the range table.
- * We need a special plan node above the sub-query's plan as a place to switch
- * execution contexts.	Although we are not scanning a physical relation,
- * we make this a descendant of Scan anyway for code-sharing purposes.
+ * We often need an extra plan node above the sub-query's plan to perform
+ * expression evaluations (which we can't push into the sub-query without
+ * risking changing its semantics).  Although we are not scanning a physical
+ * relation, we make this a descendant of Scan anyway for code-sharing
+ * purposes.
  *
  * Note: we store the sub-plan in the type-specific subplan field, not in
  * the generic lefttree field as you might expect.	This is because we do
  * not want plan-tree-traversal routines to recurse into the subplan without
  * knowing that they are changing Query contexts.
+ *
+ * Note: subrtable is used just to carry the subquery rangetable from
+ * createplan.c to setrefs.c; it should always be NIL by the time the
+ * executor sees the plan.
  * ----------------
  */
 typedef struct SubqueryScan
 {
 	Scan		scan;
 	Plan	   *subplan;
+	List	   *subrtable;		/* temporary workspace for planner */
 } SubqueryScan;
 
 /* ----------------
@@ -598,6 +706,7 @@ typedef struct Sort
 	int			numCols;		/* number of sort-key columns */
 	AttrNumber *sortColIdx;		/* their indexes in the target list */
 	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
     /* CDB */ /* add limit node, distinct */
 	Node	   *limitOffset;	/* OFFSET parameter, or NULL if none */
 	Node	   *limitCount;		/* COUNT parameter, or NULL if none */

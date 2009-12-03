@@ -4,8 +4,8 @@
  *	  Definitions for tagged nodes.
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/nodes/nodes.h,v 1.188 2006/09/28 20:51:42 tgl Exp $
@@ -183,6 +183,7 @@ typedef enum NodeTag
 	T_WindowKey,
 	T_Grouping,
 	T_GroupId,
+	T_IntoClause,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)
@@ -218,6 +219,7 @@ typedef enum NodeTag
 	 * TAGS FOR PLANNER NODES (relation.h)
 	 */
 	T_PlannerInfo = 500,
+	T_PlannerGlobal,
 	T_RelOptInfo,
 	T_IndexOptInfo,
 	T_Path,
@@ -283,6 +285,7 @@ typedef enum NodeTag
 	 * TAGS FOR PARSE TREE NODES (parsenodes.h)
 	 */
 	T_Query = 700,
+	T_PlannedStmt,
 	T_InsertStmt,
 	T_DeleteStmt,
 	T_UpdateStmt,
@@ -381,11 +384,11 @@ typedef enum NodeTag
 	T_CreateUserMappingStmt,
 	T_AlterUserMappingStmt,
 	T_DropUserMappingStmt, 
-	T_CreateForeignStmt, /* 799 */
+	T_CreateForeignStmt,
 
-	/* XXX: careful, no more room! */
+	/**/
 	
-	T_A_Expr = 800,
+	T_A_Expr = 850,
 	T_ColumnRef,
 	T_ParamRef,
 	T_A_Const,
@@ -458,6 +461,22 @@ typedef struct Node
  * !WARNING!: Avoid using newNode directly. You should be using the
  *	  macro makeNode.  eg. to create a Query node, use makeNode(Query)
  *
+ * Note: the size argument should always be a compile-time constant, so the
+ * apparent risk of multiple evaluation doesn't matter in practice.
+ */
+#ifdef __GNUC__
+
+/* With GCC, we can use a compound statement within an expression */
+#define newNode(size, tag) \
+({	Node   *_result; \
+	AssertMacro((size) >= sizeof(Node));		/* need the tag, at least */ \
+	_result = (Node *) palloc0fast(size); \
+	_result->type = (tag); \
+	_result; \
+})
+#else
+
+/*
  *	There is no way to dereference the palloc'ed pointer to assign the
  *	tag, and also return the pointer itself, so we need a holder variable.
  *	Fortunately, this macro isn't recursive so we just define
@@ -472,6 +491,8 @@ extern PGDLLIMPORT Node *newNodeMacroHolder;
 	newNodeMacroHolder->type = (tag), \
 	newNodeMacroHolder \
 )
+#endif   /* __GNUC__ */
+
 
 #define makeNode(_type_) 		((_type_ *) newNode(sizeof(_type_),T_##_type_))
 #define NodeSetTag(nodeptr,t)	(((Node*)(nodeptr))->type = (t))
@@ -557,12 +578,13 @@ typedef enum CmdType
 typedef enum JoinType
 {
 	/*
-	 * The canonical kinds of joins
+	 * The canonical kinds of joins according to the SQL JOIN syntax. Only
+	 * these codes can appear in parser output (e.g., JoinExpr nodes).
 	 */
 	JOIN_INNER,					/* matching tuple pairs only */
-	JOIN_LEFT,					/* pairs + unmatched outer tuples */
-	JOIN_FULL,					/* pairs + unmatched outer + unmatched inner */
-	JOIN_RIGHT,					/* pairs + unmatched inner tuples */
+	JOIN_LEFT,					/* pairs + unmatched LHS tuples */
+	JOIN_FULL,					/* pairs + unmatched LHS + unmatched RHS */
+	JOIN_RIGHT,					/* pairs + unmatched RHS tuples */
 
 	/*
 	 * These are used for queries like WHERE foo IN (SELECT bar FROM ...).

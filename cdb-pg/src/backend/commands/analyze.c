@@ -1102,7 +1102,7 @@ static Oid buildSampleTable(Oid relationOid,
 			quote_identifier(sampleTableName), 
 			*sampleTableRelTuples);
 
-	rangeVar = makeRangeVar(sampleSchemaName, sampleTableName);
+	rangeVar = makeRangeVar(sampleSchemaName, sampleTableName, -1);
 	sampleTableOid = RangeVarGetRelid(rangeVar, true);
 	
 	Assert(sampleTableOid != InvalidOid);

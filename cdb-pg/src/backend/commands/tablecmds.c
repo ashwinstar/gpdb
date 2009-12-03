@@ -1292,10 +1292,12 @@ DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
 		Assert(IsA(pUtl, Query));
         Assert(((Query *)pUtl)->commandType == CMD_UTILITY);
 
-		ProcessUtility(
-				(Node *)
-				(((Query *)pUtl)->utilityStmt),
-				NULL, dest, NULL);
+		ProcessUtility((Node *)(((Query *)pUtl)->utilityStmt),
+					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   NULL, 
+					   false, /* not top level */
+					   dest,
+					   NULL);
 
 	}
 }
@@ -2940,9 +2942,12 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 					lc2 = lnext(lc2);
 					renStmt->newname = (char *)lfirst(lc2);
 
-					ProcessUtility(
-							(Node *) renStmt,
-							NULL, dest, NULL);
+					ProcessUtility((Node *) renStmt,
+								   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+								   NULL, 
+								   false, /* not top level */
+								   dest, 
+								   NULL);
 					renamed++;
 				}
 
@@ -6219,14 +6224,15 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	{
 		Oid			basetype = getBaseType(typeOid);
 
-		defval = (Expr *) makeNullConst(basetype);
+		defval = (Expr *) makeNullConst(basetype, -1);
 		defval = (Expr *) coerce_to_target_type(NULL,
 												(Node *) defval,
 												basetype,
 												typeOid,
 												colDef->typname->typmod,
 												COERCION_ASSIGNMENT,
-												COERCE_IMPLICIT_CAST);
+												COERCE_IMPLICIT_CAST,
+												-1);
 		if (defval == NULL)		/* should not happen */
 			elog(ERROR, "failed to coerce base type to domain");
 	}
@@ -7007,7 +7013,7 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 			atc = makeNode(AlterTableCmd);
 
 			rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
-							  get_rel_name(relid));
+							  get_rel_name(relid), -1);
 			istmt->relation = rv;
 			if (prefix_match)
 			{
@@ -7039,7 +7045,12 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 
 			heap_close(crel, AccessShareLock); /* already locked master */
 
-			ProcessUtility((Node *)ats, NULL, dest, NULL);
+			ProcessUtility((Node *)ats, 
+						   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+						   NULL, 
+						   false, /* not top level */
+						   dest, 
+						   NULL);
 		}
 	}
 
@@ -7842,7 +7853,7 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 	 * Reconstruct a RangeVar for my relation (not passed in, unfortunately).
 	 */
 	myRel = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
-						 pstrdup(RelationGetRelationName(rel)));
+						 pstrdup(RelationGetRelationName(rel)), -1);
 
 	/*
 	 * Preset objectAddress fields
@@ -8085,7 +8096,6 @@ ATPrepDropConstraint(List **wqueue, Relation rel,
 		heap_close(masterrel, AccessShareLock);
 		list_free_deep(cons);
 	}
-
 }
 
 static void
@@ -8237,7 +8247,8 @@ ATPrepAlterColumnType(List **wqueue,
 									  transform, exprType(transform),
 									  targettype, typname->typmod,
 									  COERCION_ASSIGNMENT,
-									  COERCE_IMPLICIT_CAST);
+									  COERCE_IMPLICIT_CAST,
+									  -1);
 	if (transform == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -8369,7 +8380,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 										  defaultexpr, exprType(defaultexpr),
 											targettype, typname->typmod,
 											COERCION_ASSIGNMENT,
-											COERCE_IMPLICIT_CAST);
+											COERCE_IMPLICIT_CAST,
+											-1);
 		if (defaultexpr == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -10394,7 +10406,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	}
 
 	from_tbl = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
-							pstrdup(RelationGetRelationName(rel)));
+							pstrdup(RelationGetRelationName(rel)), -1);
 	from_tbl->inhOpt = INH_NO; /* MPP-5300: turn off inheritance -
 								* Otherwise, the data from the child
 								* tables is added to the parent!
@@ -10452,7 +10464,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	dest = CreateDestReceiver(DestIntoRel, NULL);
 
 	/* Create a QueryDesc requesting no output */
-	queryDesc = CreateQueryDesc(q, plan,
+	queryDesc = CreateQueryDesc(q, plan,  pstrdup("(internal SELECT INTO query)"),
 								ActiveSnapshot, InvalidSnapshot,
 								dest, NULL, false);
 	return queryDesc;
@@ -10526,7 +10538,7 @@ make_temp_table_name(Relation rel, BackendId id)
 	snprintf(tmpname, NAMEDATALEN, "pg_temp_%u_%i", RelationGetRelid(rel), id);
 	nspname = get_namespace_name(RelationGetNamespace(rel));
 
-	return makeRangeVar(nspname, pstrdup(tmpname));
+	return makeRangeVar(nspname, pstrdup(tmpname), -1);
 }
 
 /* Fill-in the names field of the given TypeName node with the name
@@ -10662,7 +10674,12 @@ build_hidden_type(Form_pg_attribute att)
 	parsetrees = parse_analyze((Node *)newtype, NULL, NULL, 0);
 	Assert(list_length(parsetrees) == 1);
 	q = (Query *)linitial(parsetrees);
-	ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+	ProcessUtility((Node *)q->utilityStmt, 
+				   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+				   NULL, 
+				   false, /* not top level */
+				   dest, 
+				   NULL);
 	CommandCounterIncrement();
 
 	/*
@@ -10672,7 +10689,12 @@ build_hidden_type(Form_pg_attribute att)
 	inputname = copyObject(linitial(iofunc->funcname));
 	parsetrees = parse_analyze((Node *)iofunc, NULL, NULL, 0);
 	q = (Query *)linitial(parsetrees);
-	ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+	ProcessUtility((Node *)q->utilityStmt, 
+				   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+				   NULL, 
+				   false, /* not top level */
+				   dest, 
+				   NULL);
 	CommandCounterIncrement();
 
 	/* and then output */
@@ -10681,7 +10703,12 @@ build_hidden_type(Form_pg_attribute att)
 	outputname = copyObject(linitial(iofunc->funcname));
 	parsetrees = parse_analyze((Node *)iofunc, NULL, NULL, 0);
 	q = (Query *)linitial(parsetrees);
-	ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+	ProcessUtility((Node *)q->utilityStmt,
+				   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+				   NULL, 
+				   false, /* not top level */
+				   dest, 
+				   NULL);
 	CommandCounterIncrement();
 
 	/* now build full type */
@@ -10722,7 +10749,12 @@ build_hidden_type(Form_pg_attribute att)
 #endif
 	parsetrees = parse_analyze((Node *)newtype, NULL, NULL, 0);
 	q = (Query *)linitial(parsetrees);
-	ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+	ProcessUtility((Node *)q->utilityStmt,
+				   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+				   NULL, 
+				   false, /* not top level */
+				   dest, 
+				   NULL);
 	CommandCounterIncrement();
 
 	typname = makeNode(TypeName);
@@ -10961,7 +10993,12 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 		parsetrees = parse_analyze((Node *)cs, NULL, NULL, 0);
 		Assert(list_length(parsetrees) == 1);
 		q = (Query *)linitial(parsetrees);
-		ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+		ProcessUtility((Node *)q->utilityStmt, 
+					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   NULL, 
+					   false, /* not top level */
+					   dest, 
+					   NULL);
 		CommandCounterIncrement();
 
 		/* should always be true */
@@ -10992,7 +11029,12 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 			parsetrees = parse_analyze((Node *)ats, NULL, NULL, 0);
 			Assert(list_length(parsetrees) == 1);
 			q = (Query *)linitial(parsetrees);
-			ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+			ProcessUtility((Node *)q->utilityStmt, 
+						   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+						   NULL, 
+						   false, /* not top level */
+						   dest, 
+						   NULL);
 			CommandCounterIncrement();
 		}
 	}
@@ -15162,7 +15204,7 @@ atpxPart_validate_spec(
 									makeRangeVar(
 											get_namespace_name(
 													RelationGetNamespace(rel)),
-									pstrdup(RelationGetRelationName(rel)))),
+									pstrdup(RelationGetRelationName(rel)), -1)),
 							false,
 							&inheritOids, &old_constraints, &parentOidCount);
 
@@ -15189,7 +15231,7 @@ atpxPart_validate_spec(
 	/* Note: pBy->partQuiet already set by caller */
 	pBy->parentRel =
 			makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
-						 pstrdup(RelationGetRelationName(rel)));
+						 pstrdup(RelationGetRelationName(rel)), -1);
 	pBy->location  = -1;
 	pBy->partDefault = NULL;
 	pBy->bKeepMe = true; /* nefarious: we need to keep the "top"
@@ -15303,7 +15345,7 @@ atpxPart_validate_spec(
 							makeRangeVar(
 									get_namespace_name(
 											RelationGetNamespace(rel)),
-									pstrdup(RelationGetRelationName(rel)));
+									pstrdup(RelationGetRelationName(rel)), -1);
 					pBy2->location  = -1;
 					pBy2->partDefault = NULL;
 
@@ -16559,7 +16601,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	ct->relation = makeRangeVar(
 			get_namespace_name(RelationGetNamespace(par_rel)),
-			RelationGetRelationName(par_rel));
+			RelationGetRelationName(par_rel), -1);
 
 	if (bOpenGap) /* might need a gap to insert the new partition */
 	{
@@ -16756,7 +16798,12 @@ atpxPartAddList(AlteredTableInfo *tab,
 			 * that get dispatched to the segments
 			 */
 			if (!bSetTemplate)
-				ProcessUtility(q->utilityStmt, NULL, dest, NULL);
+				ProcessUtility(q->utilityStmt, 
+							   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+							   NULL, 
+							   false, /* not top level */
+							   dest, 
+							   NULL);
 			else
 			{ /* setting subpartition template only */
 
@@ -17323,7 +17370,7 @@ ATPExecPartDrop(Relation rel,
 		namespace_name = get_namespace_name(rel2->rd_rel->relnamespace);
 
 		/* XXX XXX : don't need "relation" unless fix to use removerelation */
-		relation = makeRangeVar(namespace_name, prelname);
+		relation = makeRangeVar(namespace_name, prelname, -1);
 		relation->location = pc->location;
 
 		heap_close(rel2, NoLock);
@@ -17343,9 +17390,12 @@ ATPExecPartDrop(Relation rel,
 			ds->objects = list_make1(list_make2(makeString(namespace_name),
 												makeString(prelname)));
 
-		ProcessUtility(
-				(Node *) ds,
-				NULL, dest, NULL);
+		ProcessUtility((Node *) ds,
+					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   NULL, 
+					   false, /* not top level */
+					   dest, 
+					   NULL);
 
 		/* Notify of name if did not use name for partition id spec */
 		if (prule && prule->topRule && prule->topRule->children
@@ -17409,7 +17459,7 @@ exchange_part_inheritance(Oid oldrelid, Oid newrelid)
 	parent = heap_open(parentid, AccessShareLock); /* should be enough */
 	ATExecDropInherit(oldrel,
 			makeRangeVar(get_namespace_name(parent->rd_rel->relnamespace),
-					     RelationGetRelationName(parent)),
+					     RelationGetRelationName(parent), -1),
 			true);
 
 	inherit_parent(parent, newrel, true /* it's a partition */, NIL);
@@ -17819,7 +17869,7 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 		oldrel = heap_open(oldrelid, NoLock);
 		oldrelrv =
 			makeRangeVar(get_namespace_name(RelationGetNamespace(oldrel)),
-						 get_rel_name(oldrelid));
+						 get_rel_name(oldrelid), -1);
 		heap_close(oldrel, NoLock);
 
 		pc->partid = (Node *)oldrelrv;
@@ -17962,7 +18012,7 @@ ATPExecPartMerge(Relation rel,
 		 */
 		relrv1 = makeRangeVar(
 					get_namespace_name(prule1->topRule->parchildrelid),
-					get_rel_name(prule1->topRule->parchildrelid));
+					get_rel_name(prule1->topRule->parchildrelid), -1);
 
 		r1 = heap_openrv(relrv1, AccessExclusiveLock);
 
@@ -17972,7 +18022,7 @@ ATPExecPartMerge(Relation rel,
 
 		relrv2 = makeRangeVar(
 					get_namespace_name(prule2->topRule->parchildrelid),
-					get_rel_name(prule2->topRule->parchildrelid));
+					get_rel_name(prule2->topRule->parchildrelid), -1);
 
 		r2 = heap_openrv(relrv2, AccessExclusiveLock);
 
@@ -18788,7 +18838,7 @@ build_rename_part_recurse(PartitionRule *rule, const char *old_parentname,
 	relname = pstrdup(RelationGetRelationName(rel));
 
 	rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
-					  relname);
+					  relname, -1);
 
 	/* unlock, because we have a lock on the master */
 	heap_close(rel, AccessShareLock);
@@ -18991,7 +19041,7 @@ ATPExecPartRename(Relation rel,
 
 		renStmt->renameType = OBJECT_TABLE;
 		renStmt->relation = makeRangeVar(get_namespace_name(namespaceId),
-										 pstrdup(targetrelname));
+										 pstrdup(targetrelname), -1);
 
 		renStmt->subname = NULL;
 		renStmt->newname = relname;
@@ -19030,9 +19080,12 @@ ATPExecPartRename(Relation rel,
 
 		CommandCounterIncrement();
 
-		ProcessUtility(
-				(Node *) renStmt,
-				NULL, dest, NULL);
+		ProcessUtility((Node *) renStmt,
+					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   NULL,
+					   false, /* not top level */
+					   dest, 
+					   NULL);
 
 		/* process children if there are any */
 		if (renList)
@@ -19050,9 +19103,12 @@ ATPExecPartRename(Relation rel,
 				lc2 = lnext(lc2);
 				renStmt->newname = (char *)lfirst(lc2);
 
-				ProcessUtility(
-						(Node *) renStmt,
-						NULL, dest, NULL);
+				ProcessUtility((Node *) renStmt,
+							   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+							   NULL, 
+							   false, /* not top level */
+							   dest, 
+							   NULL);
 				renamed++;
 			}
 		}
@@ -19479,7 +19535,7 @@ ATPExecPartSplit(Relation rel,
 		heap_close(existrel, NoLock);
 
 		/* 1) Create temp table */
-		rv = makeRangeVar(nspname, relname);
+		rv = makeRangeVar(nspname, relname, -1);
 		inh->relation = copyObject(rv);
         inh->options = list_make3_int(CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
 									  CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS,
@@ -19488,14 +19544,19 @@ ATPExecPartSplit(Relation rel,
 
 		/* should be unique enough */
 		snprintf(tmpname, NAMEDATALEN, "pg_temp_%u", relid);
-		tmprv = makeRangeVar(nspname, tmpname);
+		tmprv = makeRangeVar(nspname, tmpname, -1);
 		ct->relation = tmprv;
 		ct->relKind = RELKIND_RELATION;
 		ct->ownerid = rel->rd_rel->relowner;
 		parsetrees = parse_analyze((Node *)ct, NULL, NULL, 0);
 
 		q = (Query *)linitial(parsetrees);
-		ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+		ProcessUtility((Node *)q->utilityStmt,
+					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   NULL,
+					   false, /* not top level */
+					   dest, 
+					   NULL);
 		CommandCounterIncrement();
 
 		/* get the oid of the temporary table */
@@ -19535,7 +19596,12 @@ ATPExecPartSplit(Relation rel,
 		q = (Query *)linitial(parsetrees);
 
 		heap_close(rel, NoLock);
-		ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+		ProcessUtility((Node *)q->utilityStmt,
+					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   NULL, 
+					   false, /* not top level */
+					   dest, 
+					   NULL);
 		rel = heap_open(relid, AccessExclusiveLock);
 		CommandCounterIncrement();
 
@@ -19588,7 +19654,12 @@ ATPExecPartSplit(Relation rel,
 		{
 			q = (Query *)lfirst(lc);
 
-			ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+			ProcessUtility((Node *)q->utilityStmt, 
+						   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+						   NULL, 
+						   false, /* not top level */
+						   dest, 
+						   NULL);
 		}
 
 		rel = heap_open(relid, AccessExclusiveLock);
@@ -19693,7 +19764,7 @@ ATPExecPartSplit(Relation rel,
 					parname = pstrdup(prule->topRule->parname);
 			}
 
-			mycs->relation = makeRangeVar(NULL, "fake_partition_name");
+			mycs->relation = makeRangeVar(NULL, "fake_partition_name", -1);
 			mycs->relKind = RELKIND_RELATION;
 			mypid->idtype = AT_AP_IDNone;
 			mypid->location = -1;
@@ -19913,7 +19984,12 @@ ATPExecPartSplit(Relation rel,
 			q = (Query *)linitial(parsetrees);
 
 			heap_close(rel, NoLock);
-			ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+			ProcessUtility((Node *)q->utilityStmt, 
+						   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+						   NULL, 
+						   false, /* not top level */
+						   dest, 
+						   NULL);
 			rel = heap_open(relid, AccessExclusiveLock);
 
 			/* make our change visible */
@@ -19976,7 +20052,7 @@ ATPExecPartSplit(Relation rel,
 
 				rva = makeRangeVar(
 							get_namespace_name(RelationGetNamespace(intoa)),
-						    get_rel_name(RelationGetRelid(intoa)));
+						    get_rel_name(RelationGetRelid(intoa)), -1);
 			}
 			else
 			{
@@ -19985,7 +20061,7 @@ ATPExecPartSplit(Relation rel,
 
 				rvb = makeRangeVar(
 							get_namespace_name(RelationGetNamespace(intob)),
-						    get_rel_name(RelationGetRelid(intob)));
+						    get_rel_name(RelationGetRelid(intob)), -1);
 
 			}
 		}
@@ -20272,7 +20348,7 @@ atpxTruncateList(Relation rel, PartitionNode *pNode)
 		rel = heap_open(rule->parchildrelid, AccessShareLock);
 
 		rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
-						  pstrdup(RelationGetRelationName(rel)));
+						  pstrdup(RelationGetRelationName(rel)), -1);
 
 		heap_close(rel, NoLock);
 
@@ -20291,7 +20367,7 @@ atpxTruncateList(Relation rel, PartitionNode *pNode)
 
 		rel = heap_open(rule->parchildrelid, AccessShareLock);
 		rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
-						  pstrdup(RelationGetRelationName(rel)));
+						  pstrdup(RelationGetRelationName(rel)), -1);
 
 		heap_close(rel, NoLock);
 
@@ -20326,7 +20402,7 @@ ATPExecPartTruncate(Relation rel,
 
 		rel2 = heap_open(prule->topRule->parchildrelid, AccessShareLock);
 		rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel2)),
-						  pstrdup(RelationGetRelationName(rel2)));
+						  pstrdup(RelationGetRelationName(rel2)), -1);
 
 		rv->location = pc->location;
 
@@ -20341,16 +20417,12 @@ ATPExecPartTruncate(Relation rel,
 
 		heap_close(rel2, NoLock);
 
-		ProcessUtility(
-				(Node *) ts,
-				NULL, dest, NULL);
-
-		/* MPP-6929: metadata tracking */
-		MetaTrackUpdObject(RelationRelationId,
-						   RelationGetRelid(rel),
-						   GetUserId(),
-						   "PARTITION", "TRUNCATE"
-				);
+		ProcessUtility( (Node *) ts,
+					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   NULL, 
+					   false, /* not top level */
+					   dest, 
+					   NULL);
 
 		/* Notify of name if did not use name for partition id spec */
 		if (prule && prule->topRule && prule->topRule->children

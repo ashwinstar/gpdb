@@ -908,7 +908,7 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
  * the table.
  */
 uint64
-DoCopy(const CopyStmt *stmt)
+DoCopy(const CopyStmt *stmt, const char *queryString)
 {
 	CopyState	cstate;
 	bool		is_from = stmt->is_from;
@@ -1300,7 +1300,7 @@ DoCopy(const CopyStmt *stmt)
 		((DR_copy *) dest)->cstate = cstate;
 
 		/* Create a QueryDesc requesting no output */
-		cstate->queryDesc = CreateQueryDesc(query, plan,
+		cstate->queryDesc = CreateQueryDesc(query, plan, queryString,
 											ActiveSnapshot, InvalidSnapshot,
 											dest, NULL, false);
 

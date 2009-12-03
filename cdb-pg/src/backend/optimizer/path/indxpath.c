@@ -3028,7 +3028,7 @@ network_prefix_quals(Node *leftop, Oid expr_op, Oid opclass, Datum rightop)
 
 	expr = make_opclause(opr1oid, BOOLOID, false,
 						 (Expr *) leftop,
-						 (Expr *) makeConst(datatype, -1, opr1right,
+						 (Expr *) makeConst(datatype, -1, -1, opr1right,
 											false, false));
 	result = list_make1(make_restrictinfo(expr, true, false, false, NULL));
 
@@ -3043,7 +3043,7 @@ network_prefix_quals(Node *leftop, Oid expr_op, Oid opclass, Datum rightop)
 
 	expr = make_opclause(opr2oid, BOOLOID, false,
 						 (Expr *) leftop,
-						 (Expr *) makeConst(datatype, -1, opr2right,
+						 (Expr *) makeConst(datatype, -1, -1, opr2right,
 											false, false));
 	result = lappend(result,
 					 make_restrictinfo(expr, true, false, false, NULL));
@@ -3083,6 +3083,6 @@ string_to_const(const char *str, Oid datatype)
 {
 	Datum		conval = string_to_datum(str, datatype);
 
-	return makeConst(datatype, ((datatype == NAMEOID) ? NAMEDATALEN : -1),
+	return makeConst(datatype, -1, ((datatype == NAMEOID) ? NAMEDATALEN : -1),
 					 conval, false, false);
 }

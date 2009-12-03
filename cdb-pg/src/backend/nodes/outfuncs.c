@@ -324,6 +324,38 @@ _outJoinPlanInfo(StringInfo str, Join *node)
 	WRITE_NODE_FIELD(joinqual);
 }
 
+static void
+_outPlannedStmt(StringInfo str, PlannedStmt *node)
+{
+	WRITE_NODE_TYPE("PLANNEDSTMT");
+	
+	WRITE_ENUM_FIELD(commandType, CmdType);
+	WRITE_BOOL_FIELD(canSetTag);
+	WRITE_BOOL_FIELD(transientPlan);
+	
+	WRITE_NODE_FIELD(queryTree); /* PSMERGE: Retire -- temporary use */
+	WRITE_NODE_FIELD(planTree);
+	
+	WRITE_NODE_FIELD(rtable);
+	
+	WRITE_NODE_FIELD(resultRelations);
+	WRITE_NODE_FIELD(utilityStmt);
+	WRITE_NODE_FIELD(intoClause);
+	WRITE_NODE_FIELD(subplans);
+	WRITE_NODE_FIELD(rewindPlanIDs);
+	WRITE_NODE_FIELD(returningLists);
+	
+	WRITE_NODE_FIELD(result_partitions);
+	WRITE_NODE_FIELD(result_aosegnos);
+	WRITE_NODE_FIELD(rowMarks);
+	WRITE_NODE_FIELD(relationOids);
+	WRITE_NODE_FIELD(invalItems);
+	WRITE_INT_FIELD(nParamExec);
+	WRITE_INT_FIELD(nMotionNodes);
+	WRITE_INT_FIELD(nInitPlans);
+	
+	WRITE_NODE_FIELD(sliceTable);
+}
 
 static void
 _outPlan(StringInfo str, Plan *node)
@@ -827,6 +859,26 @@ _outRangeVar(StringInfo str, RangeVar *node)
 	WRITE_BOOL_FIELD(istemp);
 	WRITE_NODE_FIELD(alias);
     WRITE_INT_FIELD(location);  /*CDB*/
+}
+
+static void
+_outIntoClause(StringInfo str, IntoClause *node)
+{
+	WRITE_NODE_TYPE("INTOCLAUSE");
+	
+	WRITE_NODE_FIELD(rel);
+	WRITE_NODE_FIELD(colNames);
+	WRITE_NODE_FIELD(options);
+	WRITE_ENUM_FIELD(onCommit, OnCommitAction);
+	WRITE_STRING_FIELD(tableSpaceName);
+	WRITE_OID_FIELD(oidInfo.relOid);
+	WRITE_OID_FIELD(oidInfo.comptypeOid);
+	WRITE_OID_FIELD(oidInfo.toastOid);
+	WRITE_OID_FIELD(oidInfo.toastIndexOid);
+	WRITE_OID_FIELD(oidInfo.toastComptypeOid);
+	WRITE_OID_FIELD(oidInfo.aosegOid);
+	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
+	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
 }
 
 static void
@@ -1527,6 +1579,22 @@ _outCdbMotionPath(StringInfo str, CdbMotionPath *node)
     _outPathInfo(str, &node->path);
 
     WRITE_NODE_FIELD(subpath);
+}
+
+static void
+_outPlannerGlobal(StringInfo str, PlannerGlobal *node)
+{
+	WRITE_NODE_TYPE("PLANNERGLOBAL");
+	
+	/* NB: this isn't a complete set of fields */
+	WRITE_NODE_FIELD(paramlist);
+	WRITE_NODE_FIELD(subplans);
+	WRITE_NODE_FIELD(subrtables);
+	WRITE_BITMAPSET_FIELD(rewindPlanIDs);
+	WRITE_NODE_FIELD(finalrtable);
+	WRITE_NODE_FIELD(relationOids);
+	WRITE_NODE_FIELD(invalItems);
+	WRITE_BOOL_FIELD(transientPlan);
 }
 
 static void
@@ -3418,6 +3486,9 @@ _outNode(StringInfo str, void *obj)
 		appendStringInfoChar(str, '{');
 		switch (nodeTag(obj))
 		{
+			case T_PlannedStmt:
+				_outPlannedStmt(str,obj);
+				break;
 			case T_Plan:
 				_outPlan(str, obj);
 				break;
@@ -3525,6 +3596,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_RangeVar:
 				_outRangeVar(str, obj);
+				break;
+			case T_IntoClause:
+				_outIntoClause(str, obj);
 				break;
 			case T_Var:
 				_outVar(str, obj);
@@ -3683,6 +3757,9 @@ _outNode(StringInfo str, void *obj)
             case T_CdbMotionPath:
                 _outCdbMotionPath(str, obj);
                 break;
+			case T_PlannerGlobal:
+				_outPlannerGlobal(str, obj);
+				break;
 			case T_PlannerInfo:
 				_outPlannerInfo(str, obj);
 				break;
@@ -3913,7 +3990,7 @@ _outNode(StringInfo str, void *obj)
 			case T_AlterDomainStmt:
 				_outAlterDomainStmt(str, obj);
 				break;
-				
+
 			case T_CreateFdwStmt:
 				_outCreateFdwStmt(str, obj);
 				break;

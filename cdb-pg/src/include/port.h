@@ -81,7 +81,7 @@ extern int find_other_exec(const char *argv0, const char *target,
 
 /* Windows security token manipulation (in exec.c) */
 #ifdef WIN32
-extern BOOL AddUserToDacl(HANDLE hProcess);
+extern BOOL AddUserToTokenDacl(HANDLE hToken);
 #endif
 
 
@@ -361,9 +361,7 @@ extern int	getopt(int nargc, char *const * nargv, const char *ostr);
 #endif
 
 #ifndef HAVE_ISINF
-#ifndef isinf
 extern int	isinf(double x);
-#endif
 #endif
 
 #ifndef HAVE_RINT

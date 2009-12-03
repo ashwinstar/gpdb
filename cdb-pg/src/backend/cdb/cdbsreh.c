@@ -256,7 +256,7 @@ void DropErrorTable(CdbSreh *cdbsreh)
 					 quote_identifier(RelationGetRelationName(cdbsreh->errtbl)));
 	
 	errtbl_rv = makeRangeVar(get_namespace_name(RelationGetNamespace(cdbsreh->errtbl)),
-							 RelationGetRelationName(cdbsreh->errtbl));
+							 RelationGetRelationName(cdbsreh->errtbl), -1);
 
 	/* DROP the relation on the QD */
 	RemoveRelation(errtbl_rv,DROP_RESTRICT, NULL);

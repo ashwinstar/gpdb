@@ -4,7 +4,7 @@
  *	  prototypes for restrictinfo.c.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/optimizer/restrictinfo.h,v 1.38.2.1 2007/07/31 19:53:50 tgl Exp $
@@ -16,6 +16,10 @@
 
 #include "nodes/relation.h"
 
+
+/* Convenience macro for the common case of a valid-everywhere qual */
+#define make_simple_restrictinfo(clause)  \
+	make_restrictinfo(clause, true, false, false, NULL)
 
 extern RestrictInfo *make_restrictinfo(Expr *clause,
 				  bool is_pushed_down,

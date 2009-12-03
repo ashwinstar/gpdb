@@ -56,6 +56,7 @@ typedef struct ExplainState
 } ExplainState;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
+							const char *queryString,
 				ParamListInfo params, TupOutputState *tstate);
 static void
 ExplainOnePlan_internal(QueryDesc      *queryDesc,
@@ -93,7 +94,8 @@ show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
  *	  execute an EXPLAIN command
  */
 void
-ExplainQuery(ExplainStmt *stmt, ParamListInfo params, DestReceiver *dest)
+ExplainQuery(ExplainStmt *stmt, const char *queryString,
+			 ParamListInfo params, DestReceiver *dest)
 {
 	Query	   *query = stmt->query;
 	TupOutputState *tstate;
@@ -117,7 +119,7 @@ ExplainQuery(ExplainStmt *stmt, ParamListInfo params, DestReceiver *dest)
 	{
 		/* Rewriter will not cope with utility statements */
 		if (query->utilityStmt && IsA(query->utilityStmt, DeclareCursorStmt))
-			ExplainOneQuery(query, stmt, params, tstate);
+			ExplainOneQuery(query, stmt, queryString, params, tstate);
 		else if (query->utilityStmt && IsA(query->utilityStmt, ExecuteStmt))
 			ExplainExecuteQuery(stmt, params, tstate);
 		else
@@ -144,7 +146,7 @@ ExplainQuery(ExplainStmt *stmt, ParamListInfo params, DestReceiver *dest)
 			/* Explain every plan */
 			foreach(l, rewritten)
 			{
-				ExplainOneQuery(lfirst(l), stmt, params, tstate);
+				ExplainOneQuery(lfirst(l), stmt, queryString, params, tstate);
 				/* put a blank line between plans */
 				if (lnext(l) != NULL)
 					do_text_output_oneline(tstate, "");
@@ -176,8 +178,8 @@ ExplainResultDesc(ExplainStmt *stmt)
  *	  print out the execution plan for one query
  */
 static void
-ExplainOneQuery(Query *query, ExplainStmt *stmt, ParamListInfo params,
-				TupOutputState *tstate)
+ExplainOneQuery(Query *query, ExplainStmt *stmt, const char *queryString,
+				ParamListInfo params, TupOutputState *tstate)
 {
 	Plan	   *plan;
 	QueryDesc  *queryDesc;
@@ -331,12 +333,12 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, ParamListInfo params,
 	ActiveSnapshot->curcid = GetCurrentCommandId();
 
 	/* Create a QueryDesc requesting no output */
-	queryDesc = CreateQueryDesc(query, plan,
+	queryDesc = CreateQueryDesc(query, plan, queryString,
 								ActiveSnapshot, InvalidSnapshot,
 								None_Receiver, params,
 								stmt->analyze);
 
-	ExplainOnePlan(queryDesc, stmt, tstate);
+	ExplainOnePlan(queryDesc, stmt, queryString, params, tstate);
 }
 
 /*
@@ -351,7 +353,9 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, ParamListInfo params,
  */
 void
 ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
-			   TupOutputState *tstate)
+		   const char *queryString,
+		   ParamListInfo params,
+		   TupOutputState *tstate)
 {
     MemoryContext   oldcxt = CurrentMemoryContext;
     MemoryContext   explaincxt;
@@ -1813,7 +1817,6 @@ show_grouping_keys(Plan        *plan,
     appendStringInfo(str, "  %s: ", qlabel);
 
     /* Generate deparse context */
-//	if (subplan && cdbpullup_exprHasSubplanRef((Expr *)subplan->targetlist))
 	if (cdbpullup_exprHasSubplanRef((Expr *)subplan->targetlist))
 	{
 		Node	   *outerctx;

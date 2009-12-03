@@ -4,7 +4,7 @@
  *	  prototypes for parse_relation.c.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/parser/parse_relation.h,v 1.55 2006/10/04 00:30:09 momjian Exp $
@@ -21,6 +21,7 @@ extern bool add_missing_from;
 extern RangeTblEntry *refnameRangeTblEntry(ParseState *pstate,
 					 const char *schemaname,
 					 const char *refname,
+					 int location,
 					 int *sublevels_up);
 extern void checkNameSpaceConflicts(ParseState *pstate, List *namespace1,
 						List *namespace2);
@@ -75,10 +76,10 @@ extern void addRTEtoQuery(ParseState *pstate, RangeTblEntry *rte,
 extern RangeTblEntry *addImplicitRTE(ParseState *pstate, RangeVar *relation,
 			   int location);
 extern void expandRTE(RangeTblEntry *rte, int rtindex, int sublevels_up,
-		  bool include_dropped,
+		  int location, bool include_dropped,
 		  List **colnames, List **colvars);
 extern List *expandRelAttrs(ParseState *pstate, RangeTblEntry *rte,
-			   int rtindex, int sublevels_up);
+			   int rtindex, int sublevels_up, int location);
 extern int	attnameAttNum(Relation rd, const char *attname, bool sysColOK);
 extern Name attnumAttName(Relation rd, int attid);
 extern Oid	attnumTypeId(Relation rd, int attid);

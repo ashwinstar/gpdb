@@ -1193,7 +1193,7 @@ cdbpath_dedup_fixup_baserel(Path *path, CdbpathDedupFixupContext *ctx)
     if (ctx->need_subplan_id)
     {
         /* Make a Const node containing the current subplan id. */
-        con = makeConst(INT4OID, sizeof(int32), Int32GetDatum(ctx->subplan_id),
+        con = makeConst(INT4OID, -1, sizeof(int32), Int32GetDatum(ctx->subplan_id),
                         false, true);
 
         /* Set up a pseudo column whose value will be the constant. */

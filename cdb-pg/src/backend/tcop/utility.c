@@ -606,9 +606,11 @@ ProcessDropStatement(DropStmt *stmt)
  */
 void
 ProcessUtility(Node *parsetree,
-			   ParamListInfo params,
-			   DestReceiver *dest,
-			   char *completionTag)
+		   	   const char *queryString,
+		       ParamListInfo params,
+		       bool isTopLevel,
+		       DestReceiver *dest,
+		       char *completionTag)
 {
 	check_xact_readonly(parsetree);
 	
@@ -770,7 +772,7 @@ ProcessUtility(Node *parsetree,
 			 * Portal (cursor) manipulation
 			 */
 		case T_DeclareCursorStmt:
-			PerformCursorOpen((DeclareCursorStmt *) parsetree, params);
+			PerformCursorOpen((DeclareCursorStmt *) parsetree, params, debug_query_string, true);
 			break;
 
 		case T_ClosePortalStmt:
@@ -790,7 +792,7 @@ ProcessUtility(Node *parsetree,
 			 * relation and attribute manipulation
 			 */
 		case T_CreateSchemaStmt:
-			CreateSchemaCommand((CreateSchemaStmt *) parsetree);
+			CreateSchemaCommand((CreateSchemaStmt *) parsetree, debug_query_string);
 			break;
 
 		case T_CreateStmt:
@@ -958,7 +960,7 @@ ProcessUtility(Node *parsetree,
 
 		case T_CopyStmt:
 			{
-				uint64		processed = DoCopy((CopyStmt *) parsetree);
+				uint64		processed = DoCopy((CopyStmt *) parsetree, debug_query_string);
 
 				if (completionTag)
 					snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
@@ -967,11 +969,11 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_PrepareStmt:
-			PrepareQuery((PrepareStmt *) parsetree);
+			PrepareQuery((PrepareStmt *) parsetree, debug_query_string);
 			break;
 
 		case T_ExecuteStmt:
-			ExecuteQuery((ExecuteStmt *) parsetree, params,
+			ExecuteQuery((ExecuteStmt *) parsetree, debug_query_string, params,
 						 dest, completionTag);
 			break;
 
@@ -1273,7 +1275,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ExplainStmt:
-			ExplainQuery((ExplainStmt *) parsetree, params, dest);
+			ExplainQuery((ExplainStmt *) parsetree, debug_query_string, params, dest);
 			break;
 
 		case T_VariableSetStmt:
@@ -2717,7 +2719,7 @@ GetCommandLogLevel(Node *parsetree)
 						Query	   *query = (Query *) lfirst(l);
 						LogStmtLevel stmt_lev;
 
-						stmt_lev = GetQueryLogLevel(query);
+						stmt_lev = GetQueryLogLevel((Node *)query);
 						lev = Min(lev, stmt_lev);
 					}
 				}
@@ -2735,7 +2737,7 @@ GetCommandLogLevel(Node *parsetree)
 			 * Query protocol), we might find an already-analyzed query within
 			 * a utility statement.  Cope.
 			 */
-			lev = GetQueryLogLevel((Query *) parsetree);
+			lev = GetQueryLogLevel((Node *) parsetree);
 			break;
 
 		default:
@@ -2756,11 +2758,13 @@ GetCommandLogLevel(Node *parsetree)
  * that has already been through parse analysis (and possibly further).
  */
 LogStmtLevel
-GetQueryLogLevel(Query *parsetree)
+GetQueryLogLevel(Node *stmt)
 {
 	LogStmtLevel lev;
+	Query * parsetree;
 
-	Assert(IsA(parsetree, Query));
+	Assert(IsA(stmt, Query));
+	parsetree = (Query *) stmt;
 
 	switch (parsetree->commandType)
 	{

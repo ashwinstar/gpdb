@@ -45,6 +45,33 @@ GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src)
 }	                            /* GpPolicyCopy */
 
 /*
+ * GpPolicyEqual -- Test equality of policies (by value only).
+ */
+bool
+GpPolicyEqual(const GpPolicy *lft, const GpPolicy *rgt)
+{
+	int	i;
+	
+	if (lft == rgt)
+	    return true;
+	
+	if (!lft || !rgt)
+		return false;
+	
+	if ( lft->ptype != rgt->ptype )
+	    return false;
+	
+	if ( lft->nattrs != rgt->nattrs )
+	    return false;
+	
+	for ( i = 0; i < lft->nattrs; i++ )
+	    if ( lft->attrs[i] != rgt->attrs[i] )
+	        return false;
+	
+	return true;
+}	                            /* GpPolicyEqual */
+
+/*
  * GpPolicyFetch
  *
  * Looks up a given Oid in the gp_distribution_policy table.

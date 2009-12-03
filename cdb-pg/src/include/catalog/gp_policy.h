@@ -72,6 +72,14 @@ struct GpPolicy
 GpPolicy *
 GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src);
 
+/* GpPolicyEqual
+ *
+ * A field-by-field comparison just to facilitate comparing IntoClause
+ * (which embeds this) in equalFuncs.c
+ */
+bool
+GpPolicyEqual(const GpPolicy *lft, const GpPolicy *rgt);
+
 /*
  * GpPolicyFetch
  *
