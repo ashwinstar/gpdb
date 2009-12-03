@@ -67,6 +67,7 @@ test: union
 test: case
 test: join
 test: aggregates
+test: direct_dispatch
 ignore: transactions
 test: distributed_transactions
 test: random

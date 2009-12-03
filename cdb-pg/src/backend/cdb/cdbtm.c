@@ -36,6 +36,8 @@
 
 #include "cdb/cdbllize.h"
 
+extern bool Test_print_direct_dispatch_info;
+
 #define DTM_DEBUG3 (Debug_print_full_dtm ? LOG : DEBUG3)
 #define DTM_DEBUG5 (Debug_print_full_dtm ? LOG : DEBUG5)
 
@@ -1781,6 +1783,12 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 
 	dtxProtocolCommandStr = DtxProtocolCommandToString(dtxProtocolCommand);
 
+	if ( Test_print_direct_dispatch_info )
+	{
+		if ( direct->directed_dispatch)
+			elog(INFO, "Distributed transaction command '%s' to SINGLE content", dtxProtocolCommandStr);
+		else elog(INFO, "Distributed transaction command '%s' to ALL contents", dtxProtocolCommandStr);
+	}
 	elog(DTM_DEBUG5,
 		 "dispatchDtxProtocolCommand: %d ('%s') willMirror: %s, direct content #: %d",
 		 dtxProtocolCommand, dtxProtocolCommandStr, dispatchToMirrors ? "yes" : "no",

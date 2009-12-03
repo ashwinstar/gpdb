@@ -59,6 +59,7 @@
 #include "commands/vacuum.h" /* VUpdatedStats */
 #include "cdb/cdbanalyze.h"  /* cdbanalyze_get_columnstats */
 
+extern bool Test_print_direct_dispatch_info;
 
 extern pthread_t main_tid;
 #ifndef _WIN32
@@ -3553,17 +3554,26 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				direct.count = list_length( slice->directDispatch.contentIds );
 				Assert(direct.count == 1); /* only support to single content right now.  If this changes then we need to change from a list to another structure to avoid n^2 cases */
 				direct.content[0] = linitial_int( slice->directDispatch.contentIds );
+
+				if ( Test_print_direct_dispatch_info )
+					elog(INFO, "Dispatch command to SINGLE content");
 			}
 			else
 			{
 				direct.directed_dispatch = false;
 				direct.count = 0;
+
+				if ( Test_print_direct_dispatch_info )
+					elog(INFO, "Dispatch command to ALL contents");
 			}
 		}
 		else
 		{
 			direct.directed_dispatch = false;
 			direct.count = 0;
+
+			if ( Test_print_direct_dispatch_info )
+				elog(INFO, "Dispatch command to ALL contents");
 
 			/*
 			 *  Non-sliced, used specified gangs

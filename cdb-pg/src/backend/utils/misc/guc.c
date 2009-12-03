@@ -228,6 +228,7 @@ bool 		Debug_appendonly_print_storage_headers = false;
 bool 		Debug_appendonly_print_verify_write_block = false;
 bool		Debug_appendonly_use_no_toast = false;
 bool 		Test_appendonly_override = false;
+bool		Test_print_direct_dispatch_info = false;
 bool 		gp_test_orientation_override = false;
 bool 		Test_checksum_override = false;
 bool		Test_enable_broken_quicklz3 = false;
@@ -2018,6 +2019,16 @@ false
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Test_appendonly_override,
+		false, NULL, NULL
+	},
+
+	{
+		{"test_print_direct_dispatch_info", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("For testing purposes, print information about direct dispatch decisions."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Test_print_direct_dispatch_info,
 		false, NULL, NULL
 	},
 		
