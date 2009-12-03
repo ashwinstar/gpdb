@@ -293,7 +293,7 @@ int gp_gpperfmon_send_interval = 1;
 bool		gp_enable_fast_sri=true;
 
 /* Enable single-mirror pair dispatch. */
-bool		gp_enable_direct_dispatch=false;
+bool		gp_enable_direct_dispatch=true;
 
 /* Disable logging while creating mapreduce objects */
 bool        gp_mapreduce_define=false;

@@ -682,7 +682,7 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Don't involve the whole cluster if it isn't needed.")
 		},
 		&gp_enable_direct_dispatch,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 	{
 		{"gp_enable_predicate_propagation", PGC_USERSET, QUERY_TUNING_OTHER,
