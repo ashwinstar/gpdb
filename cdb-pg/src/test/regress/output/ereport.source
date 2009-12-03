@@ -10250,58 +10250,61 @@ select * from get_ereport order by 1;
  paai: proclang:00000070:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  paai: proclang:00000071:  errmsg("must be superuser to create procedural language"), 
  paai: proclang:00000072:  errOmitLocation(true))); 
- paai: proclang:00000083:  ereport(ERROR, 
- paai: proclang:00000084:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- paai: proclang:00000085:  errmsg("language "%s" already exists", languageName), 
- paai: proclang:00000086:  errOmitLocation(true))); 
- paai: proclang:00000101:  ereport(NOTICE, 
- paai: proclang:00000102:  (errmsg("using pg_pltemplate information instead of CREATE LANGUAGE parameters"), 
- paai: proclang:00000103:  errOmitLocation(true))); 
- paai: proclang:00000116:  ereport(ERROR, 
- paai: proclang:00000117:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- paai: proclang:00000118:  errmsg("function %s must return type "language_handler"", 
- paai: proclang:00000119:  NameListToString(funcname)), 
- paai: proclang:00000120:  errOmitLocation(true))); 
- paai: proclang:00000192:  ereport(ERROR, 
- paai: proclang:00000193:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- paai: proclang:00000194:  errmsg("unsupported language "%s"", 
- paai: proclang:00000195:  languageName), 
- paai: proclang:00000196:  errhint("The supported languages are listed in the pg_pltemplate system catalog."), 
- paai: proclang:00000197:  errOmitLocation(true))); 
- paai: proclang:00000215:  ereport(WARNING, 
- paai: proclang:00000216:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- paai: proclang:00000217:  errmsg("changing return type of function %s from "opaque" to "language_handler"", 
- paai: proclang:00000218:  NameListToString(stmt->plhandler)), 
- paai: proclang:00000219:  errOmitLocation(true))); 
- paai: proclang:00000223:  ereport(ERROR, 
- paai: proclang:00000224:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- paai: proclang:00000225:  errmsg("function %s must return type "language_handler"", 
- paai: proclang:00000226:  NameListToString(stmt->plhandler)), 
- paai: proclang:00000227:  errOmitLocation(true))); 
- paai: proclang:00000406:  ereport(ERROR, 
- paai: proclang:00000407:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- paai: proclang:00000408:  errmsg("must be superuser to drop procedural language"), 
- paai: proclang:00000409:  errOmitLocation(true))); 
- paai: proclang:00000422:  ereport(ERROR, 
- paai: proclang:00000423:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- paai: proclang:00000424:  errmsg("language "%s" does not exist", languageName), 
- paai: proclang:00000425:  errOmitLocation(true))); 
- paai: proclang:00000427:  ereport(NOTICE, 
- paai: proclang:00000428:  (errmsg("language "%s" does not exist, skipping", 
- paai: proclang:00000429:  languageName), 
- paai: proclang:00000430:  errOmitLocation(true))); 
- paai: proclang:00000495:  ereport(ERROR, 
- paai: proclang:00000496:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- paai: proclang:00000497:  errmsg("language "%s" does not exist", oldname), 
- paai: proclang:00000498:  errOmitLocation(true))); 
- paai: proclang:00000504:  ereport(ERROR, 
- paai: proclang:00000505:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- paai: proclang:00000506:  errmsg("language "%s" already exists", newname), 
- paai: proclang:00000507:  errOmitLocation(true))); 
- paai: proclang:00000511:  ereport(ERROR, 
- paai: proclang:00000512:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- paai: proclang:00000513:  errmsg("must be superuser to rename procedural language"), 
- paai: proclang:00000514:  errOmitLocation(true))); 
+ paai: proclang:00000098:  ereport(NOTICE, 
+ paai: proclang:00000099:  (errmsg("language "plpgsql" already exists, skipping"))); 
+ paai: proclang:00000104:  ereport(ERROR, 
+ paai: proclang:00000105:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ paai: proclang:00000106:  errmsg("language "%s" already exists", languageName), 
+ paai: proclang:00000107:  errOmitLocation(true))); 
+ paai: proclang:00000124:  ereport(NOTICE, 
+ paai: proclang:00000125:  (errmsg("using pg_pltemplate information instead of " 
+ paai: proclang:00000126:  "CREATE LANGUAGE parameters"), 
+ paai: proclang:00000127:  errOmitLocation(true))); 
+ paai: proclang:00000140:  ereport(ERROR, 
+ paai: proclang:00000141:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ paai: proclang:00000142:  errmsg("function %s must return type "language_handler"", 
+ paai: proclang:00000143:  NameListToString(funcname)), 
+ paai: proclang:00000144:  errOmitLocation(true))); 
+ paai: proclang:00000216:  ereport(ERROR, 
+ paai: proclang:00000217:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ paai: proclang:00000218:  errmsg("unsupported language "%s"", 
+ paai: proclang:00000219:  languageName), 
+ paai: proclang:00000220:  errhint("The supported languages are listed in the pg_pltemplate system catalog."), 
+ paai: proclang:00000221:  errOmitLocation(true))); 
+ paai: proclang:00000239:  ereport(WARNING, 
+ paai: proclang:00000240:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ paai: proclang:00000241:  errmsg("changing return type of function %s from "opaque" to "language_handler"", 
+ paai: proclang:00000242:  NameListToString(stmt->plhandler)), 
+ paai: proclang:00000243:  errOmitLocation(true))); 
+ paai: proclang:00000247:  ereport(ERROR, 
+ paai: proclang:00000248:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ paai: proclang:00000249:  errmsg("function %s must return type "language_handler"", 
+ paai: proclang:00000250:  NameListToString(stmt->plhandler)), 
+ paai: proclang:00000251:  errOmitLocation(true))); 
+ paai: proclang:00000430:  ereport(ERROR, 
+ paai: proclang:00000431:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ paai: proclang:00000432:  errmsg("must be superuser to drop procedural language"), 
+ paai: proclang:00000433:  errOmitLocation(true))); 
+ paai: proclang:00000446:  ereport(ERROR, 
+ paai: proclang:00000447:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ paai: proclang:00000448:  errmsg("language "%s" does not exist", languageName), 
+ paai: proclang:00000449:  errOmitLocation(true))); 
+ paai: proclang:00000451:  ereport(NOTICE, 
+ paai: proclang:00000452:  (errmsg("language "%s" does not exist, skipping", 
+ paai: proclang:00000453:  languageName), 
+ paai: proclang:00000454:  errOmitLocation(true))); 
+ paai: proclang:00000519:  ereport(ERROR, 
+ paai: proclang:00000520:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ paai: proclang:00000521:  errmsg("language "%s" does not exist", oldname), 
+ paai: proclang:00000522:  errOmitLocation(true))); 
+ paai: proclang:00000528:  ereport(ERROR, 
+ paai: proclang:00000529:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ paai: proclang:00000530:  errmsg("language "%s" already exists", newname), 
+ paai: proclang:00000531:  errOmitLocation(true))); 
+ paai: proclang:00000535:  ereport(ERROR, 
+ paai: proclang:00000536:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ paai: proclang:00000537:  errmsg("must be superuser to rename procedural language"), 
+ paai: proclang:00000538:  errOmitLocation(true))); 
  paaj: parsexagg:00000086:  ereport(ERROR, 
  paaj: parsexagg:00000087:  (errcode(ERRCODE_GROUPING_ERROR), 
  paaj: parsexagg:00000088:  errmsg("aggregate function calls may not be nested"), 
@@ -17426,6 +17429,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000073:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000074:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000075:  str))); 
-(17366 rows)
+(17369 rows)
 
 drop external table get_ereport;

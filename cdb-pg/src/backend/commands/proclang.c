@@ -80,10 +80,33 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 	if (SearchSysCacheExists(LANGNAME,
 							 PointerGetDatum(languageName),
 							 0, 0, 0))
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("language \"%s\" already exists", languageName),
-						   errOmitLocation(true)));
+	{
+		/*
+		 * MPP-7563: special case plpgsql to omit a notice if it already exists
+		 * rather than an error.  This allows us to install plpgsql by default
+		 * while allowing it to be dropped and not create issues for 
+		 * dump/restore.  This should be phased out in a later releases if/when
+		 * plpgsql becomes a true internal language that can not be dropped.
+		 *
+		 * Note: hardcoding this on the name is semi-safe since we would ignore 
+		 * any handler functions anyways since plpgsql exists in pg_pltemplate.
+		 * Alternatively this logic could be extended to apply to all languages
+		 * in pg_pltemplate.
+		 */
+		if (strcmp(languageName, "plpgsql") == 0) 
+		{
+			ereport(NOTICE,
+					(errmsg("language \"plpgsql\" already exists, skipping")));
+			return;
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_OBJECT),
+					 errmsg("language \"%s\" already exists", languageName),
+					 errOmitLocation(true)));
+		}
+	}
 
 	/*
 	 * If we have template information for the language, ignore the supplied
@@ -98,9 +121,10 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 		 */
 		if (stmt->plhandler)
 			if (Gp_role != GP_ROLE_EXECUTE)
-			ereport(NOTICE,
-					(errmsg("using pg_pltemplate information instead of CREATE LANGUAGE parameters"),
-							   errOmitLocation(true)));
+				ereport(NOTICE,
+						(errmsg("using pg_pltemplate information instead of "
+								"CREATE LANGUAGE parameters"),
+						 errOmitLocation(true)));
 
 		/*
 		 * Find or create the handler function, which we force to be in the

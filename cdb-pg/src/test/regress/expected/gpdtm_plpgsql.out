@@ -250,7 +250,7 @@ select a.c1 from t1234 a, t3456 b where a.c1 = b.c1 order by b.c1;
 (4 rows)
 
 create language plpgsql;
-ERROR:  language "plpgsql" already exists
+NOTICE:  language "plpgsql" already exists, skipping
 drop table if exists foo;
 drop table if exists bar;
 NOTICE:  table "bar" does not exist, skipping
