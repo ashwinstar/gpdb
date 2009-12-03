@@ -1269,14 +1269,15 @@ plperl_call_perl_trigger_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo,
 static Datum
 plperl_func_handler(PG_FUNCTION_ARGS)
 {
-	plperl_call_data *call_data;
+	plperl_call_data *call_data = NULL;
+	FuncCallContext  *funcctx;
 	ReturnSetInfo    *rsi;
 	SV		         *perlret;
 	Datum		      retval;
 
 	rsi = (ReturnSetInfo *) fcinfo->resultinfo;
-	call_data = (plperl_call_data*) fcinfo->flinfo->fn_extra;
-	if (call_data == NULL)
+
+	if (SRF_IS_FIRSTCALL())
 	{ /* First call */
 		plperl_proc_desc *prodesc;
 
@@ -1311,33 +1312,23 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		 */
 		if (prodesc->fn_retisset)
 		{
-			TupleDesc	  td;
-			MemoryContext multi_call_ctx;
 			MemoryContext oldcontext;
+			TupleDesc	  td;
 
-			multi_call_ctx = AllocSetContextCreate(fcinfo->flinfo->fn_mcxt,
-												   "plperl multi-call context",
-												   ALLOCSET_SMALL_MINSIZE,
-												   ALLOCSET_SMALL_INITSIZE,
-												   ALLOCSET_SMALL_MAXSIZE);
-			call_data = (plperl_call_data*)
-				MemoryContextAllocZero(multi_call_ctx, sizeof(plperl_call_data));
-			call_data->multi_call_ctx = multi_call_ctx;
-			oldcontext = MemoryContextSwitchTo(call_data->multi_call_ctx);
+			funcctx = SRF_FIRSTCALL_INIT();
 
-			/* save the call context for cross call use */
-			fcinfo->flinfo->fn_extra = call_data;
+			oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
+			call_data = (plperl_call_data*) palloc0(sizeof(plperl_call_data));
+			funcctx->user_fctx = call_data;
+			
 			if (prodesc->fn_retistuple &&
 				get_call_result_type(fcinfo, NULL, &td) == TYPEFUNC_COMPOSITE)
 			{
 				call_data->attinmeta = TupleDescGetAttInMetadata(td);
 			}
 
-			MemoryContextSwitchTo(oldcontext);
-			
-			/* register cleanup if exprcontext is not run to completion */
-			
+			MemoryContextSwitchTo(oldcontext);			
 		}
 		else
 		{
@@ -1392,6 +1383,23 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 								"reference to array or use return_next")));
 			}			
 		}
+	} /* First call */
+
+	/* 
+	 * For non set-returning plperl functions call_data will have been 
+	 * initialized above.  For the set-returning functions it will have
+	 * been initialized above only for the First call into the function.
+	 * For every other call we need to pull call_data out of the user context,
+	 * which should in turn have been initialized on the first call.
+	 */
+	if (call_data == NULL)
+	{
+		funcctx = SRF_PERCALL_SETUP();
+		call_data = funcctx->user_fctx;
+
+		/* Should never occur */
+		if (!call_data)
+			elog(ERROR, "plperl null call_data");
 	}
 
 	perlret = call_data->perlret;
@@ -1406,7 +1414,6 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		svp = av_fetch(pla, call_data->nrows++, FALSE);
 		if (svp)
 		{
-			rsi->isDone = ExprMultipleResult;
 			perlret = *svp;
 			if (!SvOK(perlret))
 			{
@@ -1419,17 +1426,13 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		else
 		{
 			SvREFCNT_dec(call_data->perlret);
-			fcinfo->flinfo->fn_extra = NULL;
-			rsi->isDone = ExprEndResult;
-			PG_RETURN_NULL();
+			SRF_RETURN_DONE(funcctx);
 		}
 	}
 
 	if (!SvOK(perlret))
 	{
 		/* Return NULL if Perl code returned undef */
-		if (rsi && IsA(rsi, ReturnSetInfo))
-			rsi->isDone = ExprEndResult;
 		retval = InputFunctionCall(&call_data->prodesc->result_in_func, NULL,
 								   call_data->prodesc->result_typioparam, -1);
 		fcinfo->isnull = true;
@@ -1486,7 +1489,10 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 
 	restore_context(trusted_context);
 
-	return retval;
+	if (call_data->prodesc->fn_retisset)
+		SRF_RETURN_NEXT(funcctx, retval);
+	else
+		return retval;
 }
 
 
