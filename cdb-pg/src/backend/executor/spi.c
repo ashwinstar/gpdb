@@ -41,7 +41,7 @@
 #include "miscadmin.h"
 #include "commands/dbcommands.h"	/* get_database_name() */
 #include "postmaster/postmaster.h"		/* PostPortNumber */
-
+#include "postmaster/backoff.h"
 #include "nodes/print.h"
 
 /*
@@ -3089,6 +3089,28 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 		ResetUsage();
 #endif
 
+	/**
+	 * For backoff feature, need to attach the weight to the plantree.
+	 */
+	if (gp_enable_backoff 
+			&& queryDesc->plantree)
+	{
+		if (superuser())
+		{
+			queryDesc->plantree->backoff_weight = BackoffSuperuserStatementWeight();					
+
+		} else if (ActivePortal)
+		{
+			queryDesc->plantree->backoff_weight = ResourceQueueGetPriorityWeight(ActivePortal->queueId);					
+		}
+		else 
+		{
+			queryDesc->plantree->backoff_weight = gp_backoff_default_weight;
+		}
+
+		Assert(queryDesc->plantree->backoff_weight > 0);
+	}
+	
 	if (!cdbpathlocus_querysegmentcatalogs && fire_triggers)
 		AfterTriggerBeginQuery();
 

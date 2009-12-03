@@ -30,4 +30,7 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 2878|pg_terminate_backend|11|10|12|f|f|t|f|v|1|16|f|23|\N|\N|\N|pg_terminate_backend|-|\N
 2971|text|11|10|12|f|f|t|f|i|1|25|f|16|\N|\N|\N|booltext|-|\N
 5034|pg_get_partition_def|11|10|12|f|f|t|f|s|3|25|f|26 16 16|\N|\N|\N|pg_get_partition_def_ext2|-|\N
+5040|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 23|\N|\N|\N|gp_adjust_priority_int|-|\N
+5041|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 25|\N|\N|\N|gp_adjust_priority_value|-|\N
+5042|gp_list_backend_priorities|11|10|12|f|f|f|t|v|0|2249|f||\N|\N|\N|gp_list_backend_priorities|-|\N
 \.

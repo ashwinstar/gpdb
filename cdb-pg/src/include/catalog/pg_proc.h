@@ -4914,6 +4914,14 @@ DESCR("Greenplum fault testing only");
 DATA(insert OID = 5032 ( gp_statistics_estimate_reltuples_relpages_oid		PGNSP PGUID 12 f f t f v 1 1021 f "26" _null_ _null_ _null_ gp_statistics_estimate_reltuples_relpages_oid - _null_ ));
 DESCR("Return reltuples/relpages information for relation.");
 
+/* Backoff related */
+DATA(insert OID = 5040 (  gp_adjust_priority	PGNSP PGUID 12 f f t f v 3 23 f "23 23 23" _null_ _null_ _null_ gp_adjust_priority_int - _null_ ));
+DESCR("change weight of all the backends for a given session id");
+DATA(insert OID = 5041 (  gp_adjust_priority	PGNSP PGUID 12 f f t f v 3 23 f "23 23 25" _null_ _null_ _null_ gp_adjust_priority_value - _null_ ));
+DESCR("change weight of all the backends for a given session id");
+DATA(insert OID = 5042 (  gp_list_backend_priorities   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_list_backend_priorities - _null_ ));
+DESCR("list priorities of backends");
+
 /*
  * Symbolic values for provolatile column: these indicate whether the result
  * of a function is dependent *only* on the values of its explicit arguments,

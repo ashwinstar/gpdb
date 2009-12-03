@@ -39,14 +39,13 @@
 #include "utils/acl.h"
 #include "catalog/catalog.h"
 #include "postmaster/autovacuum.h"
-
+#include "postmaster/backoff.h"
 
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
  * if there are several).
  */
 Portal		ActivePortal = NULL;
-
 
 static void ProcessQuery(Portal portal,
 			 Query *parsetree,
@@ -213,7 +212,22 @@ ProcessQuery(Portal portal,
 	}
 
 	PortalSetStatus(portal, PORTAL_ACTIVE);
+	
+	if (gp_enable_backoff 
+			&& Gp_role == GP_ROLE_DISPATCH 
+			&& gp_session_id > -1)
+	{
+		if (superuser())
+		{
+			queryDesc->plantree->backoff_weight = BackoffSuperuserStatementWeight();					
 
+		} else
+		{
+			queryDesc->plantree->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);					
+		}
+		BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plantree->backoff_weight);
+	}
+	
 	/*
 	 * Set up to collect AFTER triggers
 	 */
@@ -655,6 +669,23 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				}
 
 				PortalSetStatus(portal, PORTAL_ACTIVE);
+				Assert(queryDesc->plantree);
+				
+				if (gp_enable_backoff 
+						&& Gp_role == GP_ROLE_DISPATCH 
+						&& gp_session_id > -1)
+				{
+					if (superuser())
+					{
+						queryDesc->plantree->backoff_weight = BackoffSuperuserStatementWeight();					
+
+					} else
+					{
+						queryDesc->plantree->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);					
+					}
+					BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plantree->backoff_weight);
+				}
+				
 				/*
 				 * We do *not* call AfterTriggerBeginQuery() here.	We assume
 				 * that a SELECT cannot queue any triggers.  It would be messy

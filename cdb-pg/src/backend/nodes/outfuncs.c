@@ -295,6 +295,8 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_NODE_FIELD(lefttree);
 	WRITE_NODE_FIELD(righttree);
 	WRITE_NODE_FIELD(initPlan);
+	
+    WRITE_INT_FIELD(backoff_weight);
 }
 
 /*
@@ -2871,7 +2873,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(result_partitions);
 	WRITE_NODE_FIELD(result_aosegnos);
 	WRITE_NODE_FIELD(returningLists); /* TODO Merge issue */
-
+	
 	WRITE_OID_FIELD(intoOidInfo.relOid);
 	WRITE_OID_FIELD(intoOidInfo.comptypeOid);
 	WRITE_OID_FIELD(intoOidInfo.toastOid);
@@ -2880,6 +2882,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_OID_FIELD(intoOidInfo.aosegOid);
 	WRITE_OID_FIELD(intoOidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(intoOidInfo.aosegComptypeOid);
+	
 }
 
 static void

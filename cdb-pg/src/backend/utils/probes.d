@@ -34,4 +34,7 @@ probe tuplesort__perform__sort();
 probe tuplesort__mergeonerun(int);
 probe tuplesort__dumptuples(int, int, int);
 probe tuplesort__switch__external(int);
+
+probe backoff__localcheck(int);
+probe backoff__globalcheck();
 };

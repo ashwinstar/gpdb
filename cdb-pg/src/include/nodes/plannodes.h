@@ -153,6 +153,11 @@ typedef struct Plan
 	 * the slice table in the plan as required there.
 	 */
 	Node *sliceTable;
+	
+	/**
+	 * Backoff weight;
+	 */
+	int	backoff_weight;
 } Plan;
 
 /* ----------------

@@ -133,6 +133,7 @@
 #include "postmaster/walredoserver.h"
 #include "postmaster/ddaserver.h"
 #include "postmaster/syslogger.h"
+#include "postmaster/backoff.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
@@ -196,6 +197,7 @@ typedef enum pmsub_type
 #endif
 	FtsProbeProc,
 	PerfmonProc,
+	BackoffProc,
 	MaxPMSubType
 } PMSubType;
 
@@ -374,6 +376,9 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 	{0, PerfmonProc,
 	(PMSubStartCallback*)&perfmon_start,
 	"perfmon process", PMSUBPROC_FLAG_QD, false},
+	{0, BackoffProc,
+	(PMSubStartCallback*)&backoff_start,
+	"sweeper process", PMSUBPROC_FLAG_QD_AND_QE, true},
 #ifdef DO_DDA_SERV
 	{0, DdaServerProc,
 	 (PMSubStartCallback*)&ddaserver_start,

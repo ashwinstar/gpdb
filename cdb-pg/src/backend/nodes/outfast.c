@@ -282,6 +282,7 @@ _outPlanInfo(StringInfo str, Plan *node)
     WRITE_NODE_FIELD(righttree);
     WRITE_NODE_FIELD(initPlan);
 
+    WRITE_INT_FIELD(backoff_weight);
     /*
      * Fields that are used only by the qDisp don't need to be serialized for
      * dispatching to qExecs:

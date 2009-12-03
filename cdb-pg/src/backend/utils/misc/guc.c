@@ -59,6 +59,7 @@
 #include "postmaster/bgwriter.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
+#include "postmaster/backoff.h"
 #include "storage/fd.h"
 #include "storage/freespace.h"
 #include "storage/bfz.h"
@@ -363,6 +364,15 @@ static char *gp_interconnect_type_str;
 /* should be static, but commands/variable.c needs to get at these */
 char	   *role_string;
 char	   *session_authorization_string;
+
+/* Backoff-related GUCs */
+bool gp_enable_backoff;
+int gp_backoff_local_counter_interval;
+int gp_backoff_sweeper_interval;
+int gp_backoff_backend_inactivity_timeout; 
+int gp_backoff_backend_grouping_timeout;	
+double gp_backoff_procs_per_segment;
+int gp_backoff_default_weight;
 
 
 /*
@@ -2195,6 +2205,15 @@ false
 		&gp_eager_hashtable_release,
 		true, NULL, NULL
 	},
+	{
+		{"gp_enable_backoff", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("Enables priority scheduling."),
+			NULL
+		},
+		&gp_enable_backoff,
+		false, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -3389,6 +3408,46 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_statistics_blocks_target,
 		25, 1, 1000, NULL, NULL
 	},
+	{
+		{"gp_backoff_local_interval", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("A measure of how often a backend process must consider backing off."),
+			NULL
+		},
+		&gp_backoff_local_counter_interval,
+		1000000, 100000, INT_MAX, NULL, NULL
+	},
+	{
+		{"gp_backoff_sweeper_interval", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("Frequency (in ms) at which sweeper process re-evaluates CPU shares."),
+			NULL
+		},
+		&gp_backoff_sweeper_interval,
+		1000, 500, 15000, NULL, NULL
+	},
+	{
+		{"gp_backoff_backend_inactivity_timeout", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("If a backend does not report to the backoff mechanism in this time (in ms), it is deemed inactive."),
+			NULL
+		},
+		&gp_backoff_backend_inactivity_timeout,
+		2000, 500, INT_MAX, NULL, NULL
+	},	
+	{
+		{"gp_backoff_backend_grouping_timeout", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("A backend gives up on finding a better group leader after this timeout (in ms)."),
+			NULL
+		},
+		&gp_backoff_backend_grouping_timeout,
+		1000, 1000, INT_MAX, NULL, NULL
+	},
+	{
+		{"gp_backoff_default_weight", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("Default weight when one cannot be associated with a query."),
+			NULL
+  		},
+		&gp_backoff_default_weight,
+		50, 1, INT_MAX, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -3579,6 +3638,14 @@ static struct config_real ConfigureNamesReal[] =
   		},
 		&gp_statistics_sampling_threshold,
 		20000.0, 0.0, DBL_MAX, NULL, NULL
+	},
+	{
+		{"gp_backoff_procs_per_segment", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("Number of processing units associated with a segment."),
+			NULL
+		},
+		&gp_backoff_procs_per_segment,
+		1.0, 0.1, 25.0, NULL, NULL
 	},
 
 /* End-of-list marker */

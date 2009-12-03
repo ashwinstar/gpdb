@@ -115,6 +115,8 @@ CopyPlanFields(Plan *from, Plan *newnode)
 
 	COPY_SCALAR_FIELD(directDispatch.isDirectDispatch);
 	COPY_NODE_FIELD(directDispatch.contentIds);
+
+	COPY_SCALAR_FIELD(backoff_weight);
 }
 
 /*

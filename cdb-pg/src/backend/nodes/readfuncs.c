@@ -273,6 +273,8 @@ _readQuery(void)
 	READ_NODE_FIELD(result_aosegnos);
 	READ_NODE_FIELD(returningLists);
 
+
+
 	/*
 	 * systems that we initdb's using prior versions don't have these field, so to avoid
 	 * making the developers do an initdb, we will check.
@@ -315,7 +317,6 @@ _readQuery(void)
 	local_node->intoOidInfo.aosegOid = InvalidOid;
 	local_node->intoOidInfo.aosegIndexOid = InvalidOid;
 	local_node->intoOidInfo.aosegComptypeOid = InvalidOid;
-
 
 	READ_DONE();
 }
@@ -3216,6 +3217,7 @@ void readPlanInfo(Plan *local_node)
     READ_NODE_FIELD(righttree);
     READ_NODE_FIELD(initPlan);
 
+    READ_INT_FIELD(backoff_weight);
     /*
      * Fields that are used only by the qDisp don't need to be serialized for
      * dispatching to qExecs (in outfast.c), and are not read here:

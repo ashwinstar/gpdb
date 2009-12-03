@@ -83,7 +83,7 @@
 #include "cdb/cdbdispatchresult.h"
 #include "utils/guc.h"
 #include "access/twophase.h"
-
+#include "postmaster/backoff.h"
 #include <pthread.h>
 
 #include "pgstat.h"
@@ -1005,8 +1005,18 @@ exec_mpp_query(const char *query_string,
 		Assert(plan->sliceTable == NULL);		/* Accept no imposters. */
 		plan->sliceTable = (Node *) sliceTable; /* Cache for CreateQueryDesc */
     }
-    	
     
+    if (gp_enable_backoff)
+    {
+    	if (plan && plan->backoff_weight > 0)
+    	{
+    		BackoffBackendEntryInit(gp_session_id, gp_command_count, plan->backoff_weight);
+    	}
+    	else
+    	{
+    		BackoffBackendEntryInit(gp_session_id, gp_command_count, gp_backoff_default_weight);
+    	}
+    }
 	
 	plantree_list = list_make1(plan);
 

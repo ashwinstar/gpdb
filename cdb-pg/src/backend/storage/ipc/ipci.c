@@ -44,6 +44,7 @@
 #include "cdb/cdbfts.h"
 #include "cdb/cdbtm.h"
 #include "utils/tqual.h"
+#include "postmaster/backoff.h"
 
 shmem_startup_hook_type shmem_startup_hook = NULL;
 
@@ -307,6 +308,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		ShmemBackendArrayAllocation();
 #endif
 
+	BackoffStateInit();
 	/*
 	 * Now give loadable modules a chance to set up their shmem allocations
 	 */
