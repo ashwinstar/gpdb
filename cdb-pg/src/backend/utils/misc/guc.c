@@ -2187,16 +2187,6 @@ false
 	},
 
 	{
-		/* MPP-6926 */
-		{"gp_enable_default_resource_queues", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Enable default resource queues"),
-			NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&gp_enable_default_resource_queues,
-		true, NULL, NULL
-	},
-	{
 		{"gp_eager_hashtable_release", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("This guc determines if a hash-join eagerly releases its hash table."),
 			NULL,

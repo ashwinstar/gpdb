@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# copyright (c) 2009
+# copyright (c) 2009, 2010
 # Author: Jeffrey I Cohen
 #
 #
@@ -27,7 +27,7 @@ Options:
     -connect         psql connect parameters
     -tablename       LIKE expression describing new tables
     -indexname       LIKE expression describing new indexes
-    -pretend         show data file updates, but don't modify the files
+    -preview         show data file updates, but don't modify the files
 
 =head1 OPTIONS
 
@@ -75,7 +75,7 @@ Options:
 
 	-indexname foo -indexname bar -indexname baz
 
-=item B<-pretend>
+=item B<-preview>
 
     Show data file updates, but don't modify the files.
 
@@ -90,7 +90,7 @@ regression test in accordance with the UPG2_README guidelines.
 
 Jeffrey I Cohen
 
-Copyright (c) 2009 GreenPlum.  All rights reserved.  
+Copyright (c) 2009, 2010 GreenPlum.  All rights reserved.  
 
 Address bug reports and comments to: jcohen@greenplum.com
 
@@ -101,7 +101,7 @@ my $glob_id = "";
 my $glob_connect;
 my $glob_tname;
 my $glob_iname;
-my $glob_pretend;
+my $glob_preview;
 
 BEGIN {
     my $man  = 0;
@@ -109,14 +109,14 @@ BEGIN {
     my $conn;
     my @tname;
     my @iname;
-	my $pretend = 0;
+	my $preview = 0;
 	
     GetOptions(
                'help|?' => \$help, man => \$man, 
                "connect=s" => \$conn,
                "tablename:s" => \@tname,
                "indexname:s" => \@iname,
-	 	       "pretend" => \$pretend
+	 	       "preview|pretend" => \$preview
                )
         or pod2usage(2);
 
@@ -124,7 +124,7 @@ BEGIN {
     pod2usage(-msg => $glob_id, -exitstatus => 1) if $help;
     pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
 
-	$glob_pretend = $pretend;
+	$glob_preview = $preview;
     $glob_connect = $conn;
 
     $glob_connect = '-p 11000 template1'
@@ -244,7 +244,7 @@ sub file_fixer
 #			if (exists($all_relid->{$rr->{$relid_colname}}));
     }
 
-	goto L_pretendo if $glob_pretend;
+	goto L_previewo if $glob_preview;
 
 	# must be read and writeable
 	die ("bad file: $file_name")
@@ -278,11 +278,11 @@ sub file_fixer
 	close $file_in;
 
 
-  L_pretendo:
+  L_previewo:
 
 	my $file_out;
 
-	if ($glob_pretend)
+	if ($glob_preview)
 	{
 		open $file_out, ">&STDOUT"     or die "Can't dup STDOUT: $!";
 
@@ -318,7 +318,7 @@ sub file_fixer
 
 	print $file_out "\\.\n";
 
-	print "\n\n" if ($glob_pretend);
+	print "\n\n" if ($glob_preview);
 
 	close $file_out;
  		
@@ -405,7 +405,7 @@ if (1)
 
 #	print $class_file, "\n";
 
-	goto L_pretendoo if $glob_pretend;
+	goto L_previewoo if $glob_preview;
 
 	die ("bad file")
 		unless (-r $class_file && -w $class_file);
@@ -434,11 +434,11 @@ if (1)
 
 	close $class_in;
 
-	L_pretendoo:
+	L_previewoo:
 
 	my $file_out;
 
-	if ($glob_pretend)
+	if ($glob_preview)
 	{
 		open $file_out, ">&STDOUT"     or die "Can't dup STDOUT: $!";
 
@@ -472,7 +472,7 @@ my @class_col_list = split(/\|/,
 
 	print $file_out "\\.\n";
 
-	print "\n\n" if ($glob_pretend);
+	print "\n\n" if ($glob_preview);
 
 	close $file_out;
 

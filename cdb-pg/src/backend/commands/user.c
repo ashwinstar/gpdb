@@ -272,16 +272,14 @@ CreateRole(CreateRoleStmt *stmt)
 	else
 	{
 		/* MPP-6926: resource queue required -- use default queue  */
-		if (gp_enable_default_resource_queues)
-		{
-			if (Gp_role == GP_ROLE_DISPATCH)
-				ereport(NOTICE,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("resource queue required -- using default resource queue \"%s\"",
-								GP_DEFAULT_RESOURCE_QUEUE_NAME)));
+		if (Gp_role == GP_ROLE_DISPATCH)
+			ereport(NOTICE,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("resource queue required -- "
+							"using default resource queue \"%s\"",
+							GP_DEFAULT_RESOURCE_QUEUE_NAME)));
 
-			resqueue = pstrdup(GP_DEFAULT_RESOURCE_QUEUE_NAME);
-		}
+		resqueue = pstrdup(GP_DEFAULT_RESOURCE_QUEUE_NAME);
 	}
 
 	/* Check some permissions first */
@@ -785,13 +783,14 @@ AlterRole(AlterRoleStmt *stmt)
 		Oid			queueid;
 
 		/* MPP-6926: NONE not supported -- use default queue  */
-		if (gp_enable_default_resource_queues && 
+		if (
 /*			( 0 == pg_strcasecmp(resqueue,"none"))) */
 			( 0 == strcmp(resqueue,"none")))
 		{
 			ereport(NOTICE,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("resource queue required -- using default resource queue \"%s\"",
+				 errmsg("resource queue required -- "
+						"using default resource queue \"%s\"",
 						GP_DEFAULT_RESOURCE_QUEUE_NAME)));
 
 			resqueue = pstrdup(GP_DEFAULT_RESOURCE_QUEUE_NAME);

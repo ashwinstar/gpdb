@@ -137,14 +137,6 @@ bool	gp_enable_slow_writer_testmode = false;
  */
 bool	gp_enable_delete_as_truncate = false;
 
-/*
- * gp_enable_default_resource_queues
- *
- * MPP-6926: put all users into a resource queue -- use the default
- * queue if no queue is specified for the role.
- */
-bool	gp_enable_default_resource_queues = true;
-
 /**
  * Hash-join node releases hash table when it returns last tuple.
  */

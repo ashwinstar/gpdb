@@ -244,7 +244,6 @@ extern bool           gp_enable_delete_as_truncate;
 /*
  * MPP-6926: Resource Queues on by default
  */
-extern bool           gp_enable_default_resource_queues;
 #define GP_DEFAULT_RESOURCE_QUEUE_NAME "pg_default"
 
 /**
