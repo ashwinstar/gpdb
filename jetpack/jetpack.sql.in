@@ -1116,6 +1116,39 @@ AS
 
 GRANT SELECT ON TABLE %%JETPACK_PREFIX%%resq_activity_by_queue TO public;
 
+--------------------------------------------------------------------------------
+-- @view: 
+--		%%JETPACK_PREFIX%%list_backend_priorities
+--
+-- @doc:
+--		Lists priorities associated with each backend executing currently.
+--		
+--------------------------------------------------------------------------------
+CREATE VIEW %%JETPACK_PREFIX%%list_backend_priorities
+AS
+   SELECT * FROM gp_list_backend_priorities() AS L(session_id int, command_count int, priority text, weight int);
+
+GRANT SELECT ON TABLE %%JETPACK_PREFIX%%list_backend_priorities TO public;
+
+--------------------------------------------------------------------------------
+-- @view: 
+--		%%JETPACK_PREFIX%%gp_statement_priorities
+--
+-- @doc:
+--		Lists priorities associated with each statement
+--		
+--------------------------------------------------------------------------------
+CREATE VIEW %%JETPACK_PREFIX%%statement_priorities
+AS
+   SELECT a.datname, a.usename, b.session_id, b.command_count, b.priority, b.weight, a.current_query
+   FROM 
+   	%%JETPACK_PREFIX%%list_backend_priorities b, pg_stat_activity a
+   WHERE
+	b.session_id = a.sess_id
+	AND a.current_query != '<IDLE>'
+	;
+
+GRANT SELECT ON TABLE %%JETPACK_PREFIX%%statement_priorities TO public;
 
 -- Finalize install
 COMMIT;
