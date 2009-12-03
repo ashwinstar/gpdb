@@ -1322,6 +1322,18 @@ heap_create_with_catalog(const char *relname,
 				doIt = false;
 		}
 
+		/* MPP-7576: don't track internal namespace tables */
+		switch (relnamespace) 
+		{
+			case PG_TOAST_NAMESPACE:
+			case PG_BITMAPINDEX_NAMESPACE:
+			case PG_AOSEGMENT_NAMESPACE:
+				doIt = false;
+				break;
+			default:
+				break;
+		}
+
 		/* MPP-6929: metadata tracking */
 		if (doIt)
 			MetaTrackAddObject(RelationRelationId,
@@ -1339,7 +1351,7 @@ heap_create_with_catalog(const char *relname,
 	heap_close(pg_class_desc, RowExclusiveLock);
 
 	return relid;
-}
+} /* end heap_create_with_catalog */
 
 
 /*

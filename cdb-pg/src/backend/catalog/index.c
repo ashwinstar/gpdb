@@ -38,6 +38,7 @@
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_type.h"
@@ -616,6 +617,32 @@ index_create(Oid heapRelationId,
 
 	/* done with pg_class */
 	heap_close(pg_class, RowExclusiveLock);
+
+
+	{/* MPP-7575: track index creation */
+		bool doIt = true;
+		char *subtyp = "INDEX";
+
+		/* MPP-7576: don't track internal namespace tables */
+		switch (namespaceId) 
+		{
+			case PG_TOAST_NAMESPACE:
+			case PG_BITMAPINDEX_NAMESPACE:
+			case PG_AOSEGMENT_NAMESPACE:
+				doIt = false;
+				break;
+			default:
+				break;
+		}
+
+		/* MPP-6929: metadata tracking */
+		if (doIt)
+			MetaTrackAddObject(RelationRelationId,
+							   RelationGetRelid(indexRelation),
+							   GetUserId(), /* not ownerid */
+							   "CREATE", subtyp
+					);
+	}
 
 	/*
 	 * now update the object id's of all the attribute tuple forms in the
