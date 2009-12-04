@@ -16,6 +16,7 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
+#include "catalog/heap.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_resqueue.h"
@@ -649,6 +650,13 @@ CreateQueue(CreateQueueStmt *stmt)
 	if (bWith)
 			AlterResqueueCapabilityEntry((Node *)stmt, queueid, option);
 
+	/* MPP-6929, MPP-7583: metadata tracking */
+	MetaTrackAddObject(ResQueueRelationId,
+					   queueid,
+					   GetUserId(), /* not ownerid */
+					   "CREATE", "RESOURCE QUEUE"
+					);
+
 	CatalogUpdateIndexes(pg_resqueue_rel, tuple);
 
 	heap_close(pg_resqueue_rel, NoLock);
@@ -946,6 +954,13 @@ AlterQueue(AlterQueueStmt *stmt)
 	/* Finish up scan and close resource queue catalog. */
 	systable_endscan(rsqscan);
 
+	/* MPP-6929, MPP-7583: metadata tracking */
+	MetaTrackUpdObject(ResQueueRelationId,
+					   queueid,
+					   GetUserId(), /* not ownerid */
+					   "ALTER", ""
+					);
+
 	heap_close(pg_resqueue_rel, NoLock);
 }
 
@@ -1067,6 +1082,10 @@ DropQueue(DropQueueStmt *stmt)
 	systable_endscan(rsqscan);
 
 	heap_close(pg_resqueue_rel, NoLock);
+
+	/* MPP-6929, MPP-7583: metadata tracking */
+	MetaTrackDropObject(ResQueueRelationId,
+						queueid);
 
 	/* MPP-6923: drop the extended attributes for this queue */	 
 	{

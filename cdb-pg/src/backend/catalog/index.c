@@ -978,6 +978,10 @@ index_drop(Oid indexId)
 	 */
 	DeleteRelationTuple(indexId);
 
+	/* MPP-6929: metadata tracking */
+	MetaTrackDropObject(RelationRelationId, 
+						indexId);
+
 	/*
 	 * We are presently too lazy to attempt to compute the new correct value
 	 * of relhasindex (the next VACUUM will fix it if necessary). So there is
