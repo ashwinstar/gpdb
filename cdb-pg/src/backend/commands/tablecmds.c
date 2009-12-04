@@ -3259,23 +3259,47 @@ void ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 	 * Enforce correct syntax usage. 
 	 */
 	if (RelationIsForeign(rel) && stmt->relkind != OBJECT_FOREIGNTABLE)
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is a foreign table", RelationGetRelationName(rel)),
 				 errhint("Use ALTER FOREIGN TABLE instead"),
 				 errOmitLocation(true)));
+	}
 	else if (RelationIsExternal(rel) && stmt->relkind != OBJECT_EXTTABLE)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is an external table", RelationGetRelationName(rel)),
-				 errhint("Use ALTER EXTERNAL TABLE instead"),
-				 errOmitLocation(true)));
+	{
+		/*
+		 * special case: in order to support 3.3 dumps with ALTER TABLE OWNER of
+		 * external tables, we will allow using ALTER TABLE (without EXTERNAL) 
+		 * temporarily, and use a deprecation warning. This should be removed
+		 * in future releases.
+		 */
+		if(stmt->relkind == OBJECT_TABLE)
+		{
+			if (Gp_role == GP_ROLE_DISPATCH) /* why are WARNINGs emitted from all segments? */
+				ereport(WARNING,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("\"%s\" is an external table. ALTER TABLE for external tables is deprecated.", RelationGetRelationName(rel)),
+						 errhint("Use ALTER EXTERNAL TABLE instead"),
+						 errOmitLocation(true)));						
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("\"%s\" is an external table", RelationGetRelationName(rel)),
+					 errhint("Use ALTER EXTERNAL TABLE instead"),
+					 errOmitLocation(true)));			
+		}
+	}
 	else if (!RelationIsExternal(rel) && !RelationIsForeign(rel) && stmt->relkind != OBJECT_TABLE)
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is a base table", RelationGetRelationName(rel)),
 				 errhint("Use ALTER TABLE instead"),
 				 errOmitLocation(true)));
+	}
 	
 	/*
 	 * Check the ALTER command type is supported for this object
