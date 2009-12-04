@@ -2058,6 +2058,10 @@ CreateCommandTag(Node *parsetree)
 
 				if (stmt->relkind == OBJECT_INDEX)
 					tag = "ALTER INDEX";
+				else if (stmt->relkind == OBJECT_FOREIGNTABLE)
+					tag = "ALTER FOREIGN TABLE";
+				else if (stmt->relkind == OBJECT_EXTTABLE)
+					tag = "ALTER EXTERNAL TABLE";
 				else
 					tag = "ALTER TABLE";
 			}

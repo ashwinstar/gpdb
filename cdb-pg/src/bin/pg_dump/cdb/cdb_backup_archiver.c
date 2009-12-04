@@ -289,7 +289,9 @@ for (te = AH->toc->next; te != AH->toc; te = te->next)
 		 */
 		if (ropt->noDataForFailedTables &&
 			AH->lastErrorTE == te &&
-			strcmp(te->desc, "TABLE") == 0)
+			(strcmp(te->desc, "TABLE") == 0 || 
+			 strcmp(te->desc, "EXTERNAL TABLE") == 0 ||
+			 strcmp(te->desc, "FOREIGN TABLE") == 0))
 		{
 			TocEntry   *tes;
 			
@@ -2032,6 +2034,8 @@ _tocEntryRequired(TocEntry *te, RestoreOptions *ropt, bool include_acls)
 	if (ropt->selTypes)
 	{
 		if (strcmp(te->desc, "TABLE") == 0 ||
+			strcmp(te->desc, "EXTNRNAL TABLE") == 0 ||
+			strcmp(te->desc, "FOREIGN TABLE") == 0 ||
 			strcmp(te->desc, "TABLE DATA") == 0)
 		{
 			if (!ropt->selTable)
@@ -2422,6 +2426,8 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te, ArchiveHandle *AH)
 	if (strcmp(type, "CONVERSION") == 0 ||
 		strcmp(type, "DOMAIN") == 0 ||
 		strcmp(type, "TABLE") == 0 ||
+		strcmp(type, "EXTERNAL TABLE") == 0 ||
+		strcmp(type, "FOREIGN TABLE") == 0 ||
 		strcmp(type, "TYPE") == 0)
 	{
 		appendPQExpBuffer(buf, "%s ", type);
@@ -2512,7 +2518,9 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 	_selectTablespace(AH, te->tablespace);
 	
 	/* Set up OID mode too */
-	if (strcmp(te->desc, "TABLE") == 0)
+	if (strcmp(te->desc, "TABLE") == 0 ||
+		strcmp(te->desc, "EXTERNAL TABLE") || 
+		strcmp(te->desc, "FOREIGN TABLE"))
 		_setWithOids(AH, te);
 	
 	/* Emit header comment for item */
@@ -2588,6 +2596,8 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 			strcmp(te->desc, "OPERATOR CLASS") == 0 ||
 			strcmp(te->desc, "SCHEMA") == 0 ||
 			strcmp(te->desc, "TABLE") == 0 ||
+			strcmp(te->desc, "EXTERNAL TABLE") == 0 ||
+			strcmp(te->desc, "FOREIGN TABLE") == 0 ||
 			strcmp(te->desc, "TYPE") == 0 ||
 			strcmp(te->desc, "VIEW") == 0 ||
 			strcmp(te->desc, "SEQUENCE") == 0)

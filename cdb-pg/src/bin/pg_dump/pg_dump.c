@@ -6999,7 +6999,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		bool		isweb = false;
 		bool		iswritable = false;
 
-        reltypename = "TABLE";
+        reltypename = "EXTERNAL TABLE";
         /*
          * DROP must be fully qualified in case same name appears in
          * pg_catalog
@@ -7228,7 +7228,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		char	   *srvname = NULL;
 		char	   *tbloptions = NULL;
 		
-        reltypename = "TABLE";
+        reltypename = "FOREIGN TABLE";
         
         /*
          * DROP must be fully qualified in case same name appears in
@@ -7686,7 +7686,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				 tbinfo->dobj.namespace->dobj.name,
 			(tbinfo->relkind == RELKIND_VIEW) ? NULL : tbinfo->reltablespace,
 				 tbinfo->rolname,
-			   (strcmp(reltypename, "TABLE") == 0) ? tbinfo->hasoids : false,
+			   (strcmp(reltypename, "TABLE") == 0 || 
+			    strcmp(reltypename, "EXTERNAL TABLE") == 0 || 
+			    strcmp(reltypename, "FOREIGN TABLE") == 0) ? tbinfo->hasoids : false,
 				 reltypename, q->data, delq->data, NULL,
 				 tbinfo->dobj.dependencies, tbinfo->dobj.nDeps,
 				 NULL, NULL);
