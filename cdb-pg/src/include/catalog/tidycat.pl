@@ -69,6 +69,7 @@ my $glob_faketab = 0;
 my $glob_tabstr = "\t";
 #my $glob_tabstr = " " x $glob_tabwidth; 
 my $glob_preview;
+my $glob_tmpdir = "/tmp";
 
 BEGIN {
     my $man  = 0;
@@ -795,6 +796,7 @@ sub fix_issharedrelation_function
 			unless ($vv->{with}->{shared});
 
 		$bigstr .= "\n\n";
+		$bigstr .= "/* relation id: $relid - $kk */\n";		
 		$bigstr .= "relationId == " . $vv->{CamelCaseRelationId} . " || ";
 		$bigstr .= "\n";
 	}
@@ -814,6 +816,7 @@ sub fix_issharedrelation_function
 		$indstr .= "\n\n";
 		for my $ind (@{$vv->{indexes}})
 		{
+			$indstr .= "/* relation id: $relid - $kk */\n";		
 			$indstr .= "relationId == " . $ind->{CamelCaseIndexId} . " || " ;
 			$indstr .= "\n";
 		}
@@ -859,6 +862,7 @@ sub fix_bootparse
 			unless (exists($vv->{with}->{reltype_oid}));
 
 		$bigstr .= "\n\n";
+		$bigstr .= "/* relation id: $relid - $kk */\n";		
 		$bigstr .=  bootparse_str($vv->{CamelCaseRelationId}, 
 								  $vv->{UppercaseReltypeOid});
 		$bigstr .= "\n\n";
@@ -903,6 +907,7 @@ sub formattypes
 
 		$vv->{UppercaseReltypeOid} = $uc_tname . "_RELTYPE_OID";
 
+		$bigstr .= "/* relation id: $relid - $kk */\n";		
 		$bigstr .= formattypedata($relid, $kk, $reltype_oid);
 		$bigstr .= 
 			"#define " . $uc_tname . "_RELTYPE_OID " . $reltype_oid . "\n";
@@ -945,10 +950,12 @@ sub formatindexes
 			}
 			if ($ind->{unique})
 			{
+				$bigstr .= "/* relation id: $relid - $kk */\n";
 				$bigstr .= "DECLARE_UNIQUE_INDEX(";
 			}
 			else
 			{
+				$bigstr .= "/* relation id: $relid - $kk */\n";
 				$bigstr .= "DECLARE_INDEX(";
 			}
 			my $indexid = $ind->{indexid};
@@ -1228,6 +1235,8 @@ if (1)
 	{
 		%alltabs = ();
 
+		my ($vol, $dirs, $basename) = File::Spec->splitpath($filnam);
+
 		my $elist = parsefile($filnam, 1);
 
 		my $buffil = bufferfile($filnam);
@@ -1243,7 +1252,14 @@ if (1)
 
 #	print Data::Dumper->Dump([%alltabs]);
 
-			print formattabs(\%alltabs);
+
+#			print formattabs(\%alltabs);
+
+			print $glob_tmpdir , "\n";
+
+			open my $file_out,
+				"> " . File::Spec->catfile($glob_tmpdir, $basename) or
+				die "Cannot open $basename for write in $glob_tmpdir";
 
 			my $gentext = [];
 
@@ -1268,6 +1284,12 @@ if (1)
 						@{$gentext});
 			}
 
+			# write the modified file to the tmpdir
+			print $file_out join("", @{$buffil});
+
+			close $file_out;
+
+
 			print formatindexes(\%alltabs);
 		
 			print formattypes(\%alltabs);
@@ -1276,7 +1298,6 @@ if (1)
 
 			print fix_bootparse(\%alltabs);
 
-			print "\n\n", join("", @{$buffil});
 
 		}
 	}

@@ -1302,6 +1302,22 @@ DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
 	}
 }
 
+/* Don't track internal namespaces for toast, bitmap, aoseg */
+#define METATRACK_VALIDNAMESPACE(namespaceId) \
+	(namespaceId != PG_TOAST_NAMESPACE &&	\
+	 namespaceId != PG_BITMAPINDEX_NAMESPACE && \
+	 namespaceId != PG_AOSEGMENT_NAMESPACE)
+
+/* check for valid namespace and valid relkind */
+static 
+bool
+MetaTrackValidKindNsp(Form_pg_class rd_rel)
+{
+	/* MPP-7599: watch out for toast indexes */
+	return (METATRACK_VALIDNAMESPACE(rd_rel->relnamespace)
+			&& MetaTrackValidRelkind(rd_rel->relkind));
+}
+
 /*
  * RemoveRelation
  *		Deletes a relation.
@@ -1460,6 +1476,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 {
 	List	   *rels = NIL;
 	List	   *relids = NIL;
+	List	   *meta_relids = NIL;
 	List	   *new_heap_oids = NIL;
 	List	   *new_toast_oids = NIL;
 	List	   *new_aoseg_oids = NIL;
@@ -1529,6 +1546,9 @@ ExecuteTruncate(TruncateStmt *stmt)
 		truncate_check_rel(rel);
 		rels = lappend(rels, rel);
 		relids = lappend_oid(relids, RelationGetRelid(rel));
+
+		if (MetaTrackValidKindNsp(rel->rd_rel))
+			meta_relids = lappend_oid(meta_relids, RelationGetRelid(rel));
 	}
 
 
@@ -1563,6 +1583,10 @@ ExecuteTruncate(TruncateStmt *stmt)
 				truncate_check_rel(rel);
 				rels = lappend(rels, rel);
 				relids = lappend_oid(relids, relid);
+
+				if (MetaTrackValidKindNsp(rel->rd_rel))
+					meta_relids = lappend_oid(meta_relids, 
+											  RelationGetRelid(rel));
 			}
 		}
 	}
@@ -1662,14 +1686,10 @@ ExecuteTruncate(TruncateStmt *stmt)
 			CdbDispatchUtilityStatement((Node *) stmt, "ExecuteTruncate");
 
 			/* MPP-6929: metadata tracking */
-			foreach(lc, relids)
+			foreach(lc, meta_relids)
 			{
 				Oid			a_relid = lfirst_oid(lc);
 
-				/* Note: don't need MetaTrackValidRelkind(relkind)
-				 * because truncate_check_rel does equivalent
-				 * check... 
-				 */
 				MetaTrackUpdObject(RelationRelationId,
 								   a_relid,
 								   GetUserId(),
@@ -2782,6 +2802,16 @@ renameatt(Oid myrelid,
 							   true, false);
 	}
 
+	/* MPP-6929, MPP-7600: metadata tracking */
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidKindNsp(targetrelation->rd_rel))
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(targetrelation),
+						   GetUserId(),
+						   "ALTER", "RENAME COLUMN"
+				);
+
+
 	relation_close(targetrelation, NoLock);		/* close rel but keep lock */
 }
 
@@ -2974,7 +3004,8 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(relkind))
+		&& (   MetaTrackValidRelkind(relkind)
+			&& METATRACK_VALIDNAMESPACE(namespaceId)))
 		MetaTrackUpdObject(RelationRelationId,
 						   myrelid,
 						   GetUserId(),
@@ -6284,7 +6315,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6407,7 +6438,7 @@ ATExecDropNotNull(Relation rel, const char *colName)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6470,7 +6501,7 @@ ATExecSetNotNull(AlteredTableInfo *tab, Relation rel,
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6531,7 +6562,7 @@ ATExecColumnDefault(Relation rel, const char *colName,
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6627,7 +6658,7 @@ ATExecSetStatistics(Relation rel, const char *colName, Node *newValue)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6710,7 +6741,7 @@ ATExecSetStorage(Relation rel, const char *colName, Node *newValue)
 	
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -6940,7 +6971,7 @@ ATExecDropColumn(Relation rel, const char *colName,
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -7080,7 +7111,7 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -7183,7 +7214,7 @@ ATExecAddConstraint(AlteredTableInfo *tab, Relation rel, Node *newConstraint)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -8149,7 +8180,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -8741,7 +8772,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -9133,7 +9164,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(tuple_class->relkind)
+		&& MetaTrackValidKindNsp(tuple_class)
 			)
 		MetaTrackUpdObject(RelationRelationId,
 						   relationOid,
@@ -9239,7 +9270,7 @@ ATExecClusterOn(Relation rel, const char *indexName)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -9260,7 +9291,7 @@ ATExecDropCluster(Relation rel)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -9421,7 +9452,7 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -9561,7 +9592,7 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -9674,7 +9705,7 @@ ATExecEnableDisableTrigger(Relation rel, char *trigname,
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
@@ -9872,7 +9903,7 @@ ATExecAddInherit(Relation child_rel, Node *node)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(child_rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(child_rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(child_rel),
 						   GetUserId(),
@@ -10313,7 +10344,7 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidRelkind(rel->rd_rel->relkind))
+		&& MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
