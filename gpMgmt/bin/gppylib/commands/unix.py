@@ -120,6 +120,9 @@ class GenericPlatform():
     
     def getTarCmd(self):
         return findCmdInPath('tar')
+
+    def getSadcCmd(self, interval, outfilename):
+        return None
         
 class LinuxPlatform(GenericPlatform):
     
@@ -136,6 +139,10 @@ class LinuxPlatform(GenericPlatform):
         # -P is for POSIX formatting.  Prevents error 
         # on lines that would wrap
         return findCmdInPath('df') + " -Pk"
+
+    def getSadcCmd(self, interval, outfilename):
+        cmd = "/usr/lib64/sa/sadc -F -d " + str(interval) + " " + outfilename
+        return cmd
             
 
 class SolarisPlatform(GenericPlatform):
@@ -154,6 +161,10 @@ class SolarisPlatform(GenericPlatform):
     
     def getTarCmd(self):
         return findCmdInPath('gtar')
+
+    def getSadcCmd(self, interval, outfilename):
+        cmd = "/usr/lib/sa/sadc " + str(interval) + " 100000 " + outfilename
+        return cmd
 
 
 class DarwinPlatform(GenericPlatform):
@@ -441,6 +452,23 @@ class RemoteCopy(Command):
         cmdStr="%s -r %s %s:%s" % (findCmdInPath('scp'),srcDirectory,dstHost,dstDirectory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
+class Scp(Command):
+    def __init__(self,name,srcFile, dstFile, srcHost=None, dstHost=None,recursive=False,ctxt=LOCAL,remoteHost=None):
+        cmdStr = findCmdInPath('scp') + " "
+
+        if recursive:
+            cmdStr = cmdStr + "-r "
+
+        if srcHost:
+            cmdStr = cmdStr + srcHost + ":"
+        cmdStr = cmdStr + srcFile + " "
+
+        if dstHost:
+            cmdStr = cmdStr + dstHost + ":"
+        cmdStr = cmdStr + dstFile
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+
 
 #-------------local copy------------------
 class LocalDirCopy(Command):
@@ -513,6 +541,33 @@ class KillChildren(Command):
     @staticmethod
     def remote(name,pid,signal,remote_host):
         cmd=KillChildren(name,pid,signal,ctxt=REMOTE,remoteHost=remote_host)        
+        cmd.run(validateAfter=True) 
+
+#--------------pkill----------------------
+class Pkill(Command):
+    def __init__(self,name,processname,signal=signal.SIGTERM,ctxt=LOCAL,remoteHost=None):
+        cmdStr="%s -%s %s" % (findCmdInPath('pkill'), signal, processname)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+
+#--------------sadc-----------------------
+class Sadc(Command):
+    def __init__(self,name, outfilename, interval=5, background=False, ctxt=LOCAL, remoteHost=None):
+
+        cmdStr = SYSTEM.getSadcCmd(interval, outfilename)
+        if background:
+            cmdStr = "rm " + outfilename + "; nohup " + cmdStr + "> /dev/null 2>&1 &"
+
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+    @staticmethod
+    def local(name, outfilename, interval, background):
+        cmd=Sadc(name, outfilename, interval, background)
+        cmd.run(validateAfter=True)
+            
+    @staticmethod
+    def remote(name, outfilename, interval, background, remote_host):
+        cmd=Sadc(name, outfilename, interval, background, ctxt=REMOTE, remoteHost=remote_host)        
         cmd.run(validateAfter=True) 
      
 
