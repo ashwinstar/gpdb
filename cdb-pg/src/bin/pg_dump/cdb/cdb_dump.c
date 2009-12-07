@@ -56,8 +56,7 @@ static void spinOffThreads( PGconn* pConn, InputOptions* pInputOpts, const Segme
 							ThreadParmArray* pParmAr );
 static void* threadProc(void *arg);
 static bool testPartitioningSupport(void);
-//static void getDatabaseConnections(PGconn *conn, PGconn ***conn_dbs, int *numberOfDbs, InputOptions *inputOpts);
-//static PGresult *executeQuery(PGconn *conn, const char *query);
+static void transformPassThroughParms(InputOptions* pInputOpts);
 
 /*
  * static and extern global variables left over from pg_dump
@@ -133,9 +132,9 @@ int main( int argc, char** argv)
 				   StringNotNull( inputOpts.pszPGPort, "5432"),
 				   StringNotNull( inputOpts.pszDBName, "?" ) );
 
-	master_db_conn = GetMasterConnection(pszProgName, inputOpts.pszDBName, inputOpts.pszPGHost,
-										 inputOpts.pszPGPort, inputOpts.pszUserName,
-										 bForcePassword, bIgnoreVersion, false);
+	master_db_conn = g_conn = GetMasterConnection(pszProgName, inputOpts.pszDBName, inputOpts.pszPGHost,
+												  inputOpts.pszPGPort, inputOpts.pszUserName,
+												  bForcePassword, bIgnoreVersion, false);
 	if ( master_db_conn == NULL )
 		goto cleanup;
 
@@ -143,6 +142,9 @@ int main( int argc, char** argv)
 	if ( !GetDumpSegmentDatabaseArray(master_db_conn, &segDBAr, inputOpts.actors, inputOpts.pszRawDumpSet, dataOnly, schemaOnly) )
 		goto cleanup;
 
+	/* make changes (if any) needed to be made before shipping options to the agents */
+	transformPassThroughParms(&inputOpts);
+	
 	/* Start a transaction (to be released in spinOffThreads)  */
 	if ( !startTransactionAndLock(master_db_conn) )
 		goto cleanup;
@@ -264,6 +266,69 @@ addPassThroughLongParm( const char *Parm, const char* pszValue, char* pszPassThr
 	}
 
 	return pszRtn;
+}
+
+/*
+ * Given an input option -t (include table) or -T (exclude table) check if this is
+ * a parent table of a partitioned table and if it is, add its children to the list
+ * as well (see MPP-7540).
+ */
+static void addChildrenToPassThrough(InputOptions* pInputOpts, char opt, SimpleOidList list)
+{
+	PQExpBuffer 		query = createPQExpBuffer();
+	PGresult   			*res;
+	SimpleOidListCell 	*cell;
+	int 				i;
+
+	/* if table oids were found, add children for all parent tables */
+	if (list.head != NULL)
+	{
+		for (cell = list.head; cell; cell = cell->next)
+		{
+			appendPQExpBuffer(query, "SELECT p.partitiontablename "
+									 "FROM pg_partitions p, pg_class c, pg_namespace n "
+									 "WHERE p.partitionschemaname = n.nspname "
+									 "AND n.oid = c.relnamespace "
+									 "AND c.relname = p.tablename "
+									 "AND c.oid ='%u'::pg_catalog.oid;", cell->val);
+
+			res = PQexec(g_conn, query->data);
+			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+			for (i = 0; i < PQntuples(res); i++)
+			{
+				char *childname = PQgetvalue(res, i, 0);
+				pInputOpts->pszPassThroughParms = addPassThroughParm(opt, childname, pInputOpts->pszPassThroughParms);
+			}
+
+			PQclear(res);
+			resetPQExpBuffer(query);
+		}
+	}
+		
+	destroyPQExpBuffer(query);
+}
+
+/*
+ * Any transformation of the input options that is passed down to the segdb dump
+ * agents should be done in here.
+ * 
+ * For now, there's only a partitioning related transformation, see addChildrenToPassThrough
+ * for more information.
+ */
+static void transformPassThroughParms(InputOptions* pInputOpts)
+{
+	
+	g_gp_supportsPartitioning = testPartitioningSupport();
+
+	if(g_gp_supportsPartitioning)
+	{
+		/* Expand table selection patterns into OID lists */
+		convert_patterns_to_oids();
+
+		addChildrenToPassThrough(pInputOpts, 't', table_include_oids);
+		addChildrenToPassThrough(pInputOpts, 'T', table_exclude_oids);
+	}
 }
 
 /*
@@ -405,9 +470,6 @@ bool startTransactionAndLock(PGconn* pMasterConn)
 	 * tables to be dumped.
 	 */
 	progname = pszProgName;
-	g_conn = pMasterConn;
-	g_gp_supportsPartitioning = testPartitioningSupport();
-	convert_patterns_to_oids();
 
 	/*
 	 * Now grab a lock on pg_class on the master to avoid colliding with concurrent 
