@@ -7,7 +7,7 @@ TODO: module docs
 """
 import sys
 import os
-
+import stat
 
 try: 
     from pygresql import pgdb
@@ -61,7 +61,63 @@ def parseLine(line):
     return row
 
 
+class Pgpass():
+    """ Class for handling .pgpass file.
+    """
+    entries = []
+    valid_pgpass = True
+    
+    def __init__(self):
+        HOME = os.getenv('HOME')
+        PGPASSFILE = os.getenv('PGPASSFILE', '%s/.pgpass' % HOME)
+        
+        if not os.path.exists(PGPASSFILE):
+            return
+        
+        st_info = os.stat(PGPASSFILE)
+        mode = str(oct(st_info[stat.ST_MODE] & 0777))
+        
+        if mode != "0600":
+            print 'WARNING: password file "%s" has group or world access; permissions should be u=rw (0600) or less' % PGPASSFILE
+            self.valid_pgpass = False
+            return
+        
+        try:
+            fp = open(PGPASSFILE, 'r')
+            try:
+                lineno = 1
+                for line in fp:
+                    try:
+                        (hostname, port, database, username, password) = line.strip().split(':')
+                        entry = {'hostname': hostname,
+                                 'port': port,
+                                 'database': database,
+                                 'username': username,
+                                 'password': password }
+                        self.entries.append(entry)
+                    except:
+                        print 'Invalid line in .pgpass file.  Line number %d' % lineno 
+                    lineno += 1
+            except IOError:
+                pass
+            finally:
+                if fp: fp.close()
+        except OSError:
+            pass
 
+    
+    def get_password(self, username, hostname, port, database):
+        for entry in self.entries:
+            if ((entry['hostname'] == hostname or entry['hostname'] == '*') and
+               (entry['port'] == port or entry['port'] == '*') and
+               (entry['database'] == database or entry['database'] == '*') and
+               (entry['username'] == username or entry['username'] == '*')):
+                return entry['password']
+        return None
+    
+    def pgpass_valid(self):
+        return self.valid_pgpass
+        
 
 class DbURL:
     """ DbURL is used to store all of the data required to get at a PG 

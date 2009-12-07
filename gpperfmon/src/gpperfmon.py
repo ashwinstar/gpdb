@@ -13,6 +13,7 @@ import socket
 import subprocess
 import shutil
 import ConfigParser
+from gppylib.db import dbconn
 
 GPPERFMONHOME=os.getenv('GPPERFMONHOME')
 if not GPPERFMONHOME:
@@ -53,64 +54,6 @@ Controls and configures the Greenplum Performance Monitor web server.
 
 _help = ("""
 """)
-
-
-class Pgpass():
-    """ Class for handling .pgpass file.
-    """
-    entries = []
-    valid_pgpass = True
-    
-    def __init__(self):
-        HOME = os.getenv('HOME')
-        PGPASSFILE = os.getenv('PGPASSFILE', '%s/.pgpass' % HOME)
-        
-        if not os.path.exists(PGPASSFILE):
-            return
-        
-        st_info = os.stat(PGPASSFILE)
-        mode = str(oct(st_info[stat.ST_MODE] & 0777))
-        
-        if mode != "0600":
-            print 'WARNING: password file "%s" has group or world access; permissions should be u=rw (0600) or less' % PGPASSFILE
-            self.valid_pgpass = False
-            return
-        
-        try:
-            fp = open(PGPASSFILE, 'r')
-            try:
-                lineno = 1
-                for line in fp:
-                    try:
-                        (hostname, port, database, username, password) = line.strip().split(':')
-                        entry = {'hostname': hostname,
-                                 'port': port,
-                                 'database': database,
-                                 'username': username,
-                                 'password': password }
-                        self.entries.append(entry)
-                    except:
-                        print 'Invalid line in .pgpass file.  Line number %d' % lineno 
-                    lineno += 1
-            except IOError:
-                pass
-            finally:
-                if fp: fp.close()
-        except OSError:
-            pass
-
-    
-    def get_password(self, username, hostname, port, database):
-        for entry in self.entries:
-            if ((entry['hostname'] == hostname or entry['hostname'] == '*') and
-               (entry['port'] == port or entry['port'] == '*') and
-               (entry['database'] == database or entry['database'] == '*') and
-               (entry['username'] == username or entry['username'] == '*')):
-                return entry['password']
-        return None
-    
-    def pgpass_valid(self):
-        return self.valid_pgpass
     
 #################
 def version():
@@ -216,7 +159,7 @@ def lighty_start(instance):
     res = 0
     cfg = ConfigParser.SafeConfigParser()
     
-    pgpass = Pgpass()
+    pgpass = dbconn.Pgpass()
     if not pgpass.pgpass_valid():
         print 'Error: .pgpass file not valid.  Unable to start instance'
         return 0
@@ -237,35 +180,40 @@ def lighty_start(instance):
         old_pgpassword = os.getenv('PGPASSWORD', '')
 
         # see if there are values in conf file
-        master_hostname = None
-        master_port = None
+        master_hostname = ''
+        master_port = ''
         try:
             master_hostname = cfg.get('WEB APP', 'master_hostname')
         except:
             pass
+        if master_hostname == '':
+            master_hostname = '127.0.0.1'
         
         try:
             master_port = cfg.get('WEB APP', 'master_port')
         except:
             pass
         
+        if master_port == '':
+            master_port = 5432
+
         if master_hostname:
             os.environ['PGHOST'] = master_hostname
             
         if master_port:
             os.environ['PGPORT'] = master_port
 
-        if old_pgpassword == '':
-            password = pgpass.get_password('gpmon', master_hostname, master_port, 'gpperfmon')
-            if password:
-                os.environ['PGPASSWORD'] = password
+        password = pgpass.get_password('gpmon', master_hostname, master_port, 'gpperfmon')
+        if not password:
+            password = old_pgpassword
+        os.environ['PGPASSWORD'] = password
 
         start_application('%s -f "%s" -m "%s"' % (LIGHTY_BIN, instance_info['lighttpd_conf_file'], os.path.join(GPPERFMONHOME, 'lib')))
         time.sleep(1)
         
         # restore the original values
         os.environ['PGHOST'] = old_pghost
-        os.environ['PGHOST'] = old_pgport
+        os.environ['PGPORT'] = old_pgport
         os.environ['PGPASSWORD'] = old_pgpassword
         
     return lighty_status(instance)
