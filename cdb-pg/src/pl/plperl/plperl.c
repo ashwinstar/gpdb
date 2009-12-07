@@ -1371,9 +1371,13 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		 */
 		if (prodesc->fn_retisset)
 		{
-			if (SvOK(call_data->perlret) &&
-				(SvTYPE(call_data->perlret) != SVt_RV ||
-				 SvTYPE(SvRV(call_data->perlret)) != SVt_PVAV))
+			if (!SvOK(call_data->perlret))
+			{
+				SRF_RETURN_DONE(funcctx);
+			}
+
+			if (SvTYPE(call_data->perlret) != SVt_RV ||
+				SvTYPE(SvRV(call_data->perlret)) != SVt_PVAV)
 			{
 				/* Not an arrayref */
 				SvREFCNT_dec(call_data->perlret);
@@ -1381,7 +1385,7 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("set-returning PL/Perl function must return "
 								"reference to array or use return_next")));
-			}			
+			}
 		}
 	} /* First call */
 
