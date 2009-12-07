@@ -14,25 +14,6 @@
  *      Author: siva
  */
 
-/**
- * Architecture specific stuff for atomic add and decrement. This needs to be the first because we redefine
- * some of the typedefs.
- */
-#ifdef __APPLE_CC__
-
-#include <libkern/OSAtomic.h>
-#define AtomicAdd32(ptr,v) OSAtomicAdd32(v, ptr)
-
-#elif defined(__sparc__)
-
-#include <atomic.h>
-#define AtomicAdd32(ptr, v) atomic_add_32(ptr, v);
-
-#else
-
-#define AtomicAdd32(ptr, v) __sync_fetch_and_add(ptr, v)
-
-#endif
 
 #include "postmaster/backoff.h"
 #include "postmaster/fork_process.h"
@@ -68,6 +49,50 @@
 #include "funcapi.h"
 #include "catalog/pg_type.h"
 #include "access/tuptoaster.h"
+
+
+/* Atomic increment operations
+ */
+#if defined(__sparc__)
+
+#include <atomic.h>
+#define AtomicAdd32(ptr, v) atomic_add_32((volatile uint32_t *)ptr, v)
+
+#elif defined(__i386) || defined(__x86_64__)
+
+#define AtomicAdd32(ptr, v) gp_atomic_add_32(ptr, v)
+void gp_atomic_add_32(volatile int *ptr, int inc);
+
+#endif
+
+
+
+
+/* TODO: flw - 12/06/2010: replaced __synch_fetch_and_add with inline
+ *				assembler since it isn't available on our build Linux/GCC combination;
+ *
+ *				Introduced to fix build break; see MPP-7603
+ */
+#if defined(__i386) || defined(__x86_64__)
+void gp_atomic_add_32(volatile int *ptr, int inc)
+{
+#if defined(__x86_64__)
+    asm volatile (
+				  "lock xaddl %1, %0\n"
+				  : /* no out */
+				  : "m" (*ptr), "r" (inc)
+				  );
+#elif defined(__i386)
+    asm volatile (
+				  "lock addl %1, %0\n"
+				  : "=m" (*ptr)
+				  : "r" (inc), "m" (*ptr)
+				  );
+#endif
+}
+#endif // __i386 || __x86_64__
+
+
 
 /* Enable for more debug info to be logged */
 /* #define BACKOFF_DEBUG */
@@ -289,7 +314,6 @@ static inline void SwitchGroupLeader(int newLeaderIndex)
 	BackoffBackendSharedEntry *myEntry = myBackoffSharedEntry();
 	BackoffBackendSharedEntry *oldLeaderEntry = NULL;
 	BackoffBackendSharedEntry *newLeaderEntry = NULL;
-	int ret = -1;
 
 	Assert(newLeaderIndex < myEntry->groupLeaderIndex);
 	Assert(newLeaderIndex >= 0 && newLeaderIndex < backoffSingleton->numEntries);
@@ -297,8 +321,8 @@ static inline void SwitchGroupLeader(int newLeaderIndex)
 	oldLeaderEntry = &backoffSingleton->backendEntries[myEntry->groupLeaderIndex]; 
 	newLeaderEntry = &backoffSingleton->backendEntries[newLeaderIndex];
 
-	ret = AtomicAdd32( &oldLeaderEntry->numFollowers, -1 );
-	ret = AtomicAdd32( &newLeaderEntry->numFollowers, 1 );
+	AtomicAdd32( &oldLeaderEntry->numFollowers, -1 );
+	AtomicAdd32( &newLeaderEntry->numFollowers, 1 );
 	myEntry->groupLeaderIndex = newLeaderIndex;
 }
 
@@ -1353,8 +1377,6 @@ int ResourceQueueGetPriorityWeight(Oid queueId)
 	List *entry = NULL;
 	ListCell *le = NULL;
 	int weight = gp_backoff_default_weight;
-	
-	Assert(queueId >= InvalidOid);
 	
 	if (queueId == InvalidOid)
 		return weight;
