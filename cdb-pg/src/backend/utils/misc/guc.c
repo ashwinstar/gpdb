@@ -374,6 +374,7 @@ int gp_backoff_backend_inactivity_timeout;
 int gp_backoff_backend_grouping_timeout;	
 double gp_backoff_procs_per_segment;
 int gp_backoff_default_weight;
+bool gp_debug_backoff = false;
 
 
 /*
@@ -1839,6 +1840,15 @@ false
 		},
 		&ResourceCleanupIdleGangs,
 		true, NULL, NULL
+	},
+
+	{
+		{"gp_debug_backoff", PGC_USERSET, RESOURCES_MGM,
+				gettext_noop("Print out debugging information about backoff calls."),
+				NULL
+	  		},
+	        &gp_debug_backoff,
+	        false, NULL, NULL
 	},
 
 	{

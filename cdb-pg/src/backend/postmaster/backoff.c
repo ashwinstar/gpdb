@@ -50,6 +50,7 @@
 #include "catalog/pg_type.h"
 #include "access/tuptoaster.h"
 
+extern bool gp_debug_backoff;
 
 /* Atomic increment operations
  */
@@ -550,6 +551,12 @@ static inline void BackoffBackend()
 #ifdef BACKOFF_DEBUG
 		elog(WARNING, "thissession = %d, thisProcTime = %f, totalTime = %f, targetusage = %f, cpuRatio = %f, change factor = %f, sleeptime = %f", se->statementId.sessionId, thisProcessTime, totalTime, se->targetUsage, cpuRatio, changeFactor, (double) le->lastSleepTime);
 #endif
+
+		if ( gp_debug_backoff)
+		{
+			elog(WARNING, "thissession = %d, thisProcTime = %f, totalTime = %f, targetusage = %f, cpuRatio = %f, change factor = %f, sleeptime = %f",
+					se->statementId.sessionId, thisProcessTime, totalTime, se->targetUsage, cpuRatio, changeFactor, (double) le->lastSleepTime);
+		}
 
 		memcpy( &le->lastUsage, &currentUsage, sizeof(currentUsage));
 		memcpy( &se->lastCheckTime, &currentTime, sizeof(currentTime));	
