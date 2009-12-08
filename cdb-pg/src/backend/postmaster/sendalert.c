@@ -77,7 +77,6 @@ static int handle_invalid_peer_certificate(long vfy_result);
 static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
 #endif
 
-static FILE * mylog = NULL;
 
 int send_alert_from_chunks(const PipeProtoChunk *chunk,
 		const PipeProtoChunk * saved_chunks_in)
@@ -88,9 +87,6 @@ int send_alert_from_chunks(const PipeProtoChunk *chunk,
 
 	CSVChunkStr chunkstr =
 	{ chunk, chunk->data + sizeof(GpErrorDataFixFields) };
-
-	if (mylog == NULL)
-			mylog = fopen("/tmp/mylog.log", "a");
 
 	memset(&errorData, 0, sizeof(errorData));
 
@@ -189,11 +185,6 @@ int send_alert(const GpErrorData * errorData)
 	int			success = 0;
 
 #endif
-	if (mylog == NULL)
-		mylog = fopen("/tmp/mylog.log", "a");
-
-	fprintf(mylog,"send_alert: %s: %s\n%s\n",errorData->error_severity, errorData->error_message, errorData->error_detail);
-	fflush(mylog);
 
 	elog(DEBUG2,"send_alert: %s: %s",errorData->error_severity, errorData->error_message);
 
@@ -344,7 +335,7 @@ int send_alert(const GpErrorData * errorData)
 		 * > 300 is errors
 		 */
 		status = smtp_message_transfer_status(message);
-		elog(status->code < 300 ? DEBUG1 : LOG, "overall transfer status: %d %s\n", status->code,
+		elog(status->code < 300 ? DEBUG1 : LOG, "overall transfer status: %d %s", status->code,
 				(status->text != NULL) ? status->text : "");
 
 		/*
@@ -359,7 +350,6 @@ int send_alert(const GpErrorData * errorData)
 	auth_destroy_context(authctx);
 
 	auth_client_exit();
-	fflush(mylog);
 #endif
 
 	return 0;
@@ -429,8 +419,6 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 		if (next_chunk->hdr.len > 0 && next_chunk->data[0] == '\0')
 		{
 			chunkstr->p++;
-			if (mylog)
-				fprintf(mylog, "chunkstr->p has empty string2\n");
 			move_to_next_chunk(chunkstr, saved_chunks);
 			return strdup("");
 		}
@@ -451,9 +439,6 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 	memcpy(out, chunkstr->p, wlen);
 	out[wlen] = '\0';
 	chunkstr->p += wlen;
-	if (out != NULL && mylog != NULL)
-	fprintf(mylog, "partial string: %s\n", out);
-	fflush(mylog);
 
 	while (chunkstr->p)
 	{
@@ -471,12 +456,7 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 			out = realloc(out, strlen(out) + wlen + 1);
 			strncat(out, chunkstr->p, wlen + 1); // include the null byte
 
-			fprintf(mylog, "new fragment string: %s\n", chunkstr->p);
-			fprintf(mylog, "new  string: %s\n", out);
-			fflush(mylog);
 			chunkstr->p += wlen + 1; // skip to start of next string.
-			fprintf(mylog, "next string: %s\n", chunkstr->p);
-			fflush(mylog);
 			return out;
 		}
 		else
@@ -485,9 +465,6 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 			out = realloc(out, newlen + 1);
 			strncat(out, chunkstr->p, wlen);
 			out[newlen] = '\0';
-
-			fprintf(mylog, "partial string: %s\n", out);
-			fflush(mylog);
 
 			chunkstr->p += wlen;
 		}
@@ -721,13 +698,9 @@ messagebody_cb(void **buf, int *len, void *arg)
 		{
 			*len = strlen(message);
 			alreadyreturned += *len;
-			fprintf(mylog, "message, without rn?: %.*s",*len, message);
-			fflush(mylog);
 		}
 		else
 		{
-			fprintf(mylog, "message finished, returning zero\n");
-			fflush(mylog);
 			*len = 0;
 			message = NULL;
 		}
@@ -764,20 +737,20 @@ static int authinteract(auth_client_request_t request, char **result,
 	{
 		if (request[i].flags & AUTH_PASS)
 		{
-			elog(DEBUG1, "authinteract asking for password: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
+			elog(DEBUG1, "authinteract asking for password: %s  %s%s",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
 					: "");
 			result[i] = email_smtp_password;
 		}
 		else if (request[i].flags & AUTH_USER)
 		{
-			elog(DEBUG1, "authinteract asking for username: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
+			elog(DEBUG1, "authinteract asking for username: %s  %s%s",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
 					: "");
 			result[i] = email_smtp_userid;
 
 		}
 		else if (request[i].flags & AUTH_REALM)
 		{
-			elog(LOG, "authinteract asking for realm: %s  %s%s\n",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
+			elog(LOG, "authinteract asking for realm: %s  %s%s",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
 					: "");
 			result[i] = "greenplum.com";
 
@@ -794,7 +767,7 @@ static int authinteract(auth_client_request_t request, char **result,
 static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)), void *arg  __attribute__((unused)))
 {
 
-	elog(LOG, "tlsinteract asking for tls password\n");
+	elog(LOG, "tlsinteract asking for tls password");
 
 	strcpy(buf, email_smtp_password);
 	return strlen(buf);
@@ -893,7 +866,7 @@ static int handle_invalid_peer_certificate(long vfy_result)
 	 */
 	if (vfy_result != X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY &&
 		vfy_result != X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN)
-		fprintf(mylog, "SMTP_EV_INVALID_PEER_CERTIFICATE: %ld: %s\n", vfy_result, k);
+		elog(DEBUG1, "SMTP_EV_INVALID_PEER_CERTIFICATE: %ld: %s", vfy_result, k);
 
 	return 1; /* Accept the problem and try to continue  */
 }
@@ -918,7 +891,7 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 
 			bits = va_arg(alist, long);
 			ok = va_arg(alist, int*);
-			fprintf(mylog,"WEAK_CIPHER bits=%ld\n",bits);
+			elog(DEBUG3,"WEAK_CIPHER bits=%ld",bits);
 			*ok = 1;
 		}
 		break;
@@ -935,7 +908,7 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	case SMTP_EV_NO_PEER_CERTIFICATE:
 		{
 			ok = va_arg(alist, int*);
-			fprintf(mylog,"NO PEER CERT\n");
+			elog(DEBUG3,"NO PEER CERT");
 			*ok = 1;
 		}
 		break;
@@ -949,7 +922,7 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	case SMTP_EV_NO_CLIENT_CERTIFICATE:
 		{
 			ok = va_arg(alist, int*);
-			fprintf(mylog,"NO CLIENT CERT\n");
+			elog(DEBUG2,"NO CLIENT CERT");
 			*ok = 1;
 		}
 		break;
@@ -972,9 +945,6 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 		if (msg != NULL)
 		status = smtp_reverse_path_status (msg);
 
-		if (status && status->code != 250 && status->text && rev_path)
-		fprintf(mylog,"EV_MAILSTATUS %d:  %s:  %s\n", status->code, rev_path,  status->text);
-
 		if (status && status->code != 0 && status->code != 250 && status->text != NULL)
 			elog(LOG,"EV_MAILSTATUS: SMTP server reports a problem %d:  %s:  %s", status->code, rev_path,  status->text);
 	}
@@ -989,11 +959,6 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 				if (rcpt != NULL)
 				status = smtp_recipient_status (rcpt);
 
-
-
-			if (status && status->code !=250 && status->text)
-				fprintf(mylog,"SMTP_EV_RCPTSTATUS status = %d %s\n",status->code, status->text);
-
 			if (status && status->code != 0 && status->code != 250 && status->text != NULL)
 				elog(LOG,"SMTP server reports a RCPTSTATUS problem %d: %s", status->code, status->text);
 		}
@@ -1005,7 +970,7 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 			int mlen;
 			msg = va_arg(alist, smtp_message_t);
 			mlen = va_arg(alist, int);
-			fprintf(mylog, "EV_MESSAGEDATA len = %d\n", mlen);
+			elog(DEBUG3, "EV_MESSAGEDATA len = %d", mlen);
 		}*/
 		break;
 	case SMTP_EV_MESSAGESENT:
@@ -1017,17 +982,12 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 			if (msg != NULL)
 			status = smtp_message_transfer_status (msg);
 
-
-
-		if (status && status->code !=250 && status->text)
-			fprintf(mylog,"SMTP_EV_MESSAGESENT status = %d %s\n",status->code, status->text);
-
 		if (status && status->code != 0 && status->code != 250 && status->text != NULL)
 			elog(LOG,"SMTP server reports a messagesent problem %d: %s", status->code, status->text);
 	}
 	break;
 	case SMTP_EV_DISCONNECT:
-		elog(DEBUG2, "EV_DISCONNECT\n");
+		elog(DEBUG2, "EV_DISCONNECT");
 		break;
 	default:
 		break;
