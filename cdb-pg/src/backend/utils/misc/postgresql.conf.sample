@@ -240,7 +240,7 @@
 					# JOINs
 #gp_segments_for_planner = 0     # if 0, actual number of segments is used
 
-#gp_enable_direct_dispatch = off
+#gp_enable_direct_dispatch = on
 
 #------------------------------------------------------------------------------
 # ERROR REPORTING AND LOGGING
