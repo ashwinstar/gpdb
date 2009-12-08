@@ -499,7 +499,7 @@ cdb_set_cheapest_dedup(PlannerInfo *root, RelOptInfo *rel)
 	Path               *save_cheapest_startup;
 	Path               *save_cheapest_total;
     Path               *subpath;
-    UniquePath         *upath;
+    UniquePath         *upath = NULL;
 
     /*
      * If rel has only 1 row, joining with it cannot produce duplicates.

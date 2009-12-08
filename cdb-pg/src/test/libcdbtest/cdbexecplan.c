@@ -51,11 +51,15 @@
 #include "cdbexecplan.h"
 
 // Added to spi.c
+#if 0 /* PSMERGE: Remove? */
 extern int  SPI_execute_cdb( const char *src, Plan* pPlan, Query* pQuery, bool read_only, int tcount);
+#endif /* PSMERGE: Remove? */
+
 
 /* general utility */
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
+#if 0 /* PSMERGE: Remove? */
 /*
  * cdb_exec_plan takes 3 arguments:
  * 	1) a serialized execution plan
@@ -118,6 +122,7 @@ cdb_exec_plan(PG_FUNCTION_ARGS)
 	
 	PG_RETURN_BOOL( bRtn );
 }
+#endif /* PSMERGE: Remove? */
 
 /*
  * cdb_serialize_plan takes 1 argument:
@@ -328,6 +333,7 @@ typedef struct
 	int rows;
 } QueryInfo;
 
+#if 0 /* PSMERGE: Remove? */
 /*
  * cdb_exec_indirect takes 1 argument:
  *  1) an SQL statement
@@ -538,6 +544,7 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 	
 	SRF_RETURN_DONE(funcctx);
 }
+#endif /* PSMERGE: Remove? */
 
 PG_FUNCTION_INFO_V1(cdb_test_mppexec);
 Datum

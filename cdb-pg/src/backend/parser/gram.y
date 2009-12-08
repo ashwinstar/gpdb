@@ -9533,30 +9533,37 @@ GenericType:
 Numeric:	INT_P
 				{
 					$$ = SystemTypeName("int4");
+					$$->location = @1;
 				}
 			| INTEGER
 				{
 					$$ = SystemTypeName("int4");
+					$$->location = @1;
 				}
 			| SMALLINT
 				{
 					$$ = SystemTypeName("int2");
+					$$->location = @1;
 				}
 			| BIGINT
 				{
 					$$ = SystemTypeName("int8");
+					$$->location = @1;
 				}
 			| REAL
 				{
 					$$ = SystemTypeName("float4");
+					$$->location = @1;
 				}
 			| FLOAT_P opt_float
 				{
 					$$ = $2;
+					$$->location = @1;
 				}
 			| DOUBLE_P PRECISION
 				{
 					$$ = SystemTypeName("float8");
+					$$->location = @1;
 				}
 			| DECIMAL_P opt_decimal
 				{
@@ -9576,11 +9583,16 @@ Numeric:	INT_P
 			| BOOLEAN_P
 				{
 					$$ = SystemTypeName("bool");
+					$$->location = @1;
 				}
 		;
 
 opt_float:	'(' Iconst ')'
 				{
+					/*
+					 * Check FLOAT() precision limits assuming IEEE floating
+					 * types - thomas 1997-09-18
+					 */
 					if ($2 < 1)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -9731,6 +9743,7 @@ BitWithoutLength:
 						$$ = SystemTypeName("bit");
 						$$->typmod = 1;
 					}
+					$$->location = @1;
 				}
 		;
 
