@@ -419,7 +419,8 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 	 * ininfo->sub_targetlist is filled with a list of Vars representing the
 	 * subselect outputs.
 	 */
-	return convert_testexpr(sublink->testexpr,
+	return convert_testexpr(root,
+							sublink->testexpr,
 							rtindex,
 							&ininfo->sub_targetlist,
 							subselect->targetList);
@@ -755,13 +756,14 @@ make_join_expr(Node *larg, int r_rtindex, int j_rtindex, int join_type)
 
 /* Convert subquery's test expr to a suitable predicate.*/
 static Node *
-make_join_on_quals(SubLink * sublink, int subquery_indx)
+make_join_on_quals(PlannerInfo *root, SubLink * sublink, int subquery_indx)
 {
 	Expr	   *join_pred;
 	Query	   *subselect = (Query *) sublink->subselect;
 	List	   *subtlist = NIL;
 
-	join_pred = (Expr *) convert_testexpr(sublink->testexpr,
+	join_pred = (Expr *) convert_testexpr(root,
+										  sublink->testexpr,
 										  subquery_indx,
 										  &subtlist,
 										  subselect->targetList);
@@ -956,7 +958,7 @@ convert_IN_to_antijoin(PlannerInfo * root, List **rtrlist_inout __attribute__((u
 
 			JoinExpr   *join_expr = make_join_expr(larg, subq_indx, join_indx, join_type);
 
-			join_expr->quals = make_join_on_quals(sublink, subq_indx);
+			join_expr->quals = make_join_on_quals(root, sublink, subq_indx);
 
 			if (nonnullable == false)
 					join_expr->quals = add_null_match_clause(join_expr->quals);

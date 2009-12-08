@@ -23,7 +23,7 @@ extern void get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 extern void get_external_relation_info(Oid relationObjectId, RelOptInfo *rel);
 
-extern bool relation_excluded_by_constraints(RelOptInfo *rel,
+extern bool relation_excluded_by_constraints(PlannerInfo *root, RelOptInfo *rel,
 								 RangeTblEntry *rte);
 
 extern List *build_physical_tlist(PlannerInfo *root, RelOptInfo *rel);

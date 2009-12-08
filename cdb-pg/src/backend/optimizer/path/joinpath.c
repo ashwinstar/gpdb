@@ -93,7 +93,7 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * sorted.
 	 */
 	if (enable_mergejoin ||
-        mpp_trying_fallback_plan ||
+        root->mpp_trying_fallback_plan ||
         jointype == JOIN_FULL)
 	    sort_inner_and_outer(root, joinrel, outerrel, innerrel,
 						     restrictlist, mergeclause_list, jointype);
@@ -131,7 +131,7 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * outer paths.  There's no need to consider any but the
 	 * cheapest-total-cost inner path, however.
 	 */
-	if (enable_hashjoin || mpp_trying_fallback_plan)
+	if (enable_hashjoin || root->mpp_trying_fallback_plan)
     {
 	    hashclause_list = hashclauses_for_join(restrictlist,
                                                outerrel,
@@ -396,7 +396,7 @@ match_unsorted_outer(PlannerInfo *root,
 			break;
 	}
 
-    if (!enable_nestloop && !mpp_trying_fallback_plan)
+    if (!enable_nestloop && !root->mpp_trying_fallback_plan)
         nestjoinOK = false;
 
     /*
@@ -420,7 +420,7 @@ match_unsorted_outer(PlannerInfo *root,
         }
 
         if (materialize_inner)
-			matpath = (Path *)create_material_path(innerrel, inner_cheapest_total);
+			matpath = (Path *)create_material_path(root, innerrel, inner_cheapest_total);
 
 		/*
 		 * Get the best innerjoin indexpaths (if any) for this outer rel.
@@ -543,7 +543,7 @@ match_unsorted_outer(PlannerInfo *root,
 		 * mergejoin path instead.
 		 */
 		if (mergeclauses == NIL ||
-            (!enable_mergejoin && !mpp_trying_fallback_plan))
+            (!enable_mergejoin && !root->mpp_trying_fallback_plan))
 		{
 			if (jointype == JOIN_FULL)
 				 /* okay to try for mergejoin */ ;
@@ -825,12 +825,12 @@ hash_inner_and_outer(PlannerInfo *root,
      */
     if (hjpath->jpath.jointype == JOIN_INNER &&
         gp_enable_hashjoin_size_heuristic &&
-        !mpp_trying_fallback_plan)
+        !root->mpp_trying_fallback_plan)
     {
         double  outersize = ExecHashRowSize(outerpath->parent->width) *
-                                cdbpath_rows(hjpath->jpath.outerjoinpath);
+                                cdbpath_rows(root, hjpath->jpath.outerjoinpath);
         double  innersize = ExecHashRowSize(innerpath->parent->width) *
-                                cdbpath_rows(hjpath->jpath.innerjoinpath);
+                                cdbpath_rows(root, hjpath->jpath.innerjoinpath);
 
         if (outersize >= innersize)
             add_path(root, joinrel, (Path *)hjpath);

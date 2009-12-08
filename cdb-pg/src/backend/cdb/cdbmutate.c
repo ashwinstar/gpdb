@@ -86,7 +86,8 @@ make_motion(Plan       *lefttree,
 static Node *apply_motion_mutator(Node *node, ApplyMotionState * context);
 
 static bool
-doesUpdateAffectPartitionCols(Plan         *plan,
+doesUpdateAffectPartitionCols(PlannerInfo  *root,
+							  Plan         *plan,
                               Query        *query);
 
 #if 0
@@ -232,7 +233,7 @@ directDispatchCalculateHash(Plan *plan, GpPolicy *targetPolicy)
  * ------------------------------------------------------------------------- *
  */
 Plan *
-apply_motion(Plan *plan, Query *query)
+apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 {
 	Plan				*result;
     ListCell			*cell;
@@ -745,7 +746,7 @@ apply_motion(Plan *plan, Query *query)
 				 * Make sure we are not updating any of the partitioning columns
 				 */
 				if (query->commandType == CMD_UPDATE &&
-					doesUpdateAffectPartitionCols(plan,query))
+					doesUpdateAffectPartitionCols(root, plan,query))
 				{
 					ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 									errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns"),
@@ -1432,7 +1433,8 @@ isAnyColChangedByUpdate(Index       targetvarno,
  * doesUpdateAffectPartitionCols
  */
 bool
-doesUpdateAffectPartitionCols(Plan         *plan,
+doesUpdateAffectPartitionCols(PlannerInfo  *root,
+							  Plan         *plan,
                               Query        *query)
 {
     Append     *append;
@@ -1440,7 +1442,7 @@ doesUpdateAffectPartitionCols(Plan         *plan,
     ListCell   *plancell;
     GpPolicy  *policy;
 
-    if (query->resultRelations == NIL)
+    if (root->resultRelations == NIL)
     {
 	    RangeTblEntry  *rte;
         Relation        relation;
@@ -1472,9 +1474,9 @@ doesUpdateAffectPartitionCols(Plan         *plan,
 
 	Insist(IsA(append, Append) &&
 	       append->isTarget &&
-           list_length(append->appendplans) == list_length(query->resultRelations));
+           list_length(append->appendplans) == list_length(root->resultRelations));
 
-    forboth(rticell, query->resultRelations,
+    forboth(rticell, root->resultRelations,
             plancell, append->appendplans)
     {
         int     rti = lfirst_int(rticell);

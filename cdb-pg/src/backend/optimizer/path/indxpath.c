@@ -1710,7 +1710,7 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	bitindexpaths = list_concat(bitindexpaths, list_copy(indexpaths));
 
     /* Exclude plain index paths if user doesn't want them. */
-    if (!enable_indexscan && !mpp_trying_fallback_plan)
+    if (!enable_indexscan && !root->mpp_trying_fallback_plan)
         indexpaths = NIL;
 
 	/*
@@ -1718,7 +1718,7 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	 * promising combination of bitmap index paths.
 	 */
 	if (bitindexpaths != NIL &&
-        (enable_bitmapscan || mpp_trying_fallback_plan))
+        (enable_bitmapscan || root->mpp_trying_fallback_plan))
 	{
 		Path	   *bitmapqual;
 		BitmapHeapPath *bpath;

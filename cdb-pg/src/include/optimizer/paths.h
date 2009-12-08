@@ -37,8 +37,6 @@ extern bool gp_enable_predicate_propagation;
 extern bool enable_geqo;
 extern int	geqo_threshold;
 
-extern bool mpp_trying_fallback_plan;
-
 extern RelOptInfo *make_one_rel(PlannerInfo *root, List *joinlist);
 
 #ifdef OPTIMIZER_DEBUG

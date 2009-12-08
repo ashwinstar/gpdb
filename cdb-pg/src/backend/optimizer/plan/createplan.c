@@ -111,7 +111,7 @@ static Node *fix_indexqual_operand(Node *node, IndexOptInfo *index,
 					  Oid *opclass);
 static List *get_switched_clauses(Relids innerrelids, List *clauses);
 static List *order_qual_clauses(PlannerInfo *root, List *clauses);
-static void copy_path_costsize(Plan *dest, Path *src);
+static void copy_path_costsize(PlannerInfo *root, Plan *dest, Path *src);
 static void copy_plan_costsize(Plan *dest, Plan *src);
 static SeqScan *make_seqscan(List *qptlist, List *qpqual, Index scanrelid);
 static AppendOnlyScan *make_appendonlyscan(List *qptlist, List *qpqual, Index scanrelid);
@@ -699,7 +699,7 @@ create_material_plan(CreatePlanContext *ctx, MaterialPath *best_path)
 
     plan->cdb_strict = best_path->cdb_strict;
 
-	copy_path_costsize(&plan->plan, (Path *) best_path);
+	copy_path_costsize(ctx->root, &plan->plan, (Path *) best_path);
 
 	return plan;
 }
@@ -739,7 +739,7 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 
         /* Top off the subplan with a LIMIT 1 node. */
         limitplan = makeNode(Limit);
-        copy_path_costsize(&limitplan->plan, &best_path->path);
+        copy_path_costsize(ctx->root, &limitplan->plan, &best_path->path);
         limitplan->plan.targetlist = subplan->targetlist;
         limitplan->plan.qual = NIL;
         limitplan->plan.lefttree = subplan;
@@ -867,7 +867,7 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 	}
 
 	/* Adjust output size estimate (other fields should be OK already) */
-	plan->plan_rows = cdbpath_rows((Path *)best_path);
+	plan->plan_rows = cdbpath_rows(ctx->root, (Path *)best_path);
 
 	return plan;
 }
@@ -907,7 +907,7 @@ create_motion_plan(CreatePlanContext *ctx, CdbMotionPath *path)
     /* Add motion operator. */
     motion = cdbpathtoplan_create_motion_plan(ctx->root, path, subplan);
 
-    copy_path_costsize(&motion->plan, (Path *)path);
+    copy_path_costsize(ctx->root, &motion->plan, (Path *)path);
     return (Plan *)motion;
 }                               /* create_motion_plan */
 
@@ -945,7 +945,7 @@ create_seqscan_plan(CreatePlanContext *ctx, Path *best_path,
 							 scan_clauses,
 							 scan_relid);
 
-	copy_path_costsize(&scan_plan->plan, best_path);
+	copy_path_costsize(ctx->root, &scan_plan->plan, best_path);
 
 	return scan_plan;
 }
@@ -976,7 +976,7 @@ create_appendonlyscan_plan(CreatePlanContext *ctx, Path *best_path,
 									scan_clauses,
 									scan_relid);
 	
-	copy_path_costsize(&scan_plan->scan.plan, best_path);
+	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
 	
 	return scan_plan;
 }
@@ -1007,7 +1007,7 @@ create_aocsscan_plan(CreatePlanContext *ctx, Path *best_path,
 									scan_clauses,
 									scan_relid);
 	
-	copy_path_costsize(&scan_plan->scan.plan, best_path);
+	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
 	
 	return scan_plan;
 }
@@ -1701,7 +1701,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 								  fmtErrTblOid,
 								  encoding);
 	
-	copy_path_costsize(&scan_plan->scan.plan, best_path);
+	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
 
 	pfree(segdb_file_map);
 
@@ -1851,7 +1851,7 @@ create_indexscan_plan(CreatePlanContext *ctx,
 							   indexsubtype,
 							   best_path->indexscandir);
 
-	copy_path_costsize(&scan_plan->scan.plan, &best_path->path);
+	copy_path_costsize(ctx->root, &scan_plan->scan.plan, &best_path->path);
 
 	return scan_plan;
 }
@@ -1962,7 +1962,7 @@ create_bitmap_scan_plan(CreatePlanContext *ctx,
 									 bitmapqualorig,
 									 baserelid);
 
-	copy_path_costsize(&scan_plan->scan.plan, &best_path->path);
+	copy_path_costsize(ctx->root, &scan_plan->scan.plan, &best_path->path);
 
 	return scan_plan;
 }
@@ -2185,7 +2185,7 @@ create_tidscan_plan(CreatePlanContext *ctx, TidPath *best_path,
 							 scan_relid,
 							 best_path->tidquals);
 
-	copy_path_costsize(&scan_plan->scan.plan, &best_path->path);
+	copy_path_costsize(ctx->root, &scan_plan->scan.plan, &best_path->path);
 
 	return scan_plan;
 }
@@ -2217,7 +2217,7 @@ create_subqueryscan_plan(CreatePlanContext *ctx, Path *best_path,
 								  scan_relid,
 								  best_path->parent->subplan);
 
-	copy_path_costsize(&scan_plan->scan.plan, best_path);
+	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
 
 	return scan_plan;
 }
@@ -2246,7 +2246,7 @@ create_functionscan_plan(CreatePlanContext *ctx, Path *best_path,
 
 	scan_plan = make_functionscan(tlist, scan_clauses, scan_relid);
 
-	copy_path_costsize(&scan_plan->scan.plan, best_path);
+	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
 
 	return scan_plan;
 }
@@ -2275,7 +2275,7 @@ create_valuesscan_plan(CreatePlanContext *ctx, Path *best_path,
 
 	scan_plan = make_valuesscan(tlist, scan_clauses, scan_relid);
 
-	copy_path_costsize(&scan_plan->scan.plan, best_path);
+	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
 
 	return scan_plan;
 }
@@ -2320,6 +2320,7 @@ create_nestloop_plan(CreatePlanContext *ctx,
 		
 		/* Set cost data */
 		cost_material(&matpath,
+					  ctx->root,
 					  inner_plan->total_cost,
 					  inner_plan->plan_rows,
 					  inner_plan->plan_width);
@@ -2437,7 +2438,7 @@ create_nestloop_plan(CreatePlanContext *ctx,
 							  inner_plan,
 							  best_path->jpath.jointype);
 
-	copy_path_costsize(&join_plan->join.plan, &best_path->jpath.path);
+	copy_path_costsize(ctx->root, &join_plan->join.plan, &best_path->jpath.path);
 
 	if (IsA(best_path->jpath.innerjoinpath, MaterialPath))
 	{
@@ -2575,7 +2576,7 @@ create_mergejoin_plan(CreatePlanContext *ctx,
 
 	join_plan->join.prefetch_inner = prefetch;
 
-	copy_path_costsize(&join_plan->join.plan, &best_path->jpath.path);
+	copy_path_costsize(ctx->root, &join_plan->join.plan, &best_path->jpath.path);
 
 	return join_plan;
 }
@@ -2667,7 +2668,7 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 		join_plan->join.prefetch_inner = true;
 	}
 
-	copy_path_costsize(&join_plan->join.plan, &best_path->jpath.path);
+	copy_path_costsize(ctx->root, &join_plan->join.plan, &best_path->jpath.path);
 
 	return join_plan;
 }
@@ -3014,13 +3015,13 @@ order_qual_clauses(PlannerInfo *root, List *clauses)
  * The executor won't use this info, but it's needed by EXPLAIN.
  */
 static void
-copy_path_costsize(Plan *dest, Path *src)
+copy_path_costsize(PlannerInfo *root, Plan *dest, Path *src)
 {
 	if (src)
 	{
 		dest->startup_cost = src->startup_cost;
 		dest->total_cost = src->total_cost;
-		dest->plan_rows = cdbpath_rows(src);
+		dest->plan_rows = cdbpath_rows(root, src);
 		dest->plan_width = src->parent->width;
 	}
 	else
@@ -4019,7 +4020,7 @@ make_material(Plan *lefttree)
  * until setrefs.c is run?
  */
 Plan *
-materialize_finished_plan(Plan *subplan)
+materialize_finished_plan(PlannerInfo *root, Plan *subplan)
 {
 	Plan	   *matplan;
 	Path		matpath;		/* dummy for result of cost_material */
@@ -4028,6 +4029,7 @@ materialize_finished_plan(Plan *subplan)
 
 	/* Set cost data */
 	cost_material(&matpath,
+				  root,
 				  subplan->total_cost,
 				  subplan->plan_rows,
 				  subplan->plan_width);
@@ -4113,7 +4115,7 @@ Plan *add_agg_cost(PlannerInfo *root, Plan *plan,
 
 	if (aggstrategy == AGG_HASHED)
 	{
-		if (!calcHashAggTableSizes(global_work_mem(),
+		if (!calcHashAggTableSizes(global_work_mem(root),
 								   numGroups,
 								   numAggs,
 								   /* The following estimate is very rough but good enough for planning. */

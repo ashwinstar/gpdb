@@ -60,9 +60,6 @@ bool        gp_enable_predicate_propagation = false;
 bool		enable_geqo = false;	/* just in case GUC doesn't set it */
 int			geqo_threshold;
 
-/* Other globals */
-bool        mpp_trying_fallback_plan;
-
 static void set_base_rel_pathlists(PlannerInfo *root);
 static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti);
 static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
@@ -281,7 +278,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 * set up a single dummy path for it.  (Rather than inventing a special
 	 * "dummy" path type, we represent this as an AppendPath with no members.)
 	 */
-	if (relation_excluded_by_constraints(rel, rte))
+	if (relation_excluded_by_constraints(root, rel, rte))
 	{
 		/* Reset output-rows estimate to 0 */
 		rel->rows = 0;
@@ -499,8 +496,8 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 * estimates.
 		 */
         rel->tuples += childrel->tuples;
-		rel->rows += cdbpath_rows(childrel->cheapest_total_path);
-		width_avg += cdbpath_rows(childrel->cheapest_total_path) * childrel->width;
+		rel->rows += cdbpath_rows(root, childrel->cheapest_total_path);
+		width_avg += cdbpath_rows(root, childrel->cheapest_total_path) * childrel->width;
 
 		forboth(parentvars, rel->reltargetlist,
 				childvars, childrel->reltargetlist)
@@ -582,6 +579,7 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	bool	   *differentTypes;
 	double		tuple_fraction;
 	List	   *pathkeys;
+	PlannerInfo *subroot;
 	List	   *subquery_pathkeys;
 	bool	   forceDistRand;
 	Path	   *subquery_path;
@@ -691,8 +689,9 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 			tuple_fraction = root->tuple_fraction;
 
 		/* Generate the plan for the subquery */
-		rel->subplan = subquery_planner(subquery, tuple_fraction,
-										&subquery_pathkeys);
+		rel->subplan = subquery_planner(root->glob, subquery, root, tuple_fraction,
+										&subroot);
+		subquery_pathkeys = subroot->query_pathkeys;
 	}
 	else
 	{
@@ -894,7 +893,7 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, 
 	int			lev;
 	RelOptInfo *rel;
 
-    mpp_trying_fallback_plan = fallback;
+    root->mpp_trying_fallback_plan = fallback;
 
 	/*
 	 * We employ a simple "dynamic programming" algorithm: we first find all
@@ -949,9 +948,9 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, 
 		/* If no paths found because enable_xxx=false, enable all & retry. */
 		if (!joinitems[lev] &&
 			gp_enable_fallback_plan &&
-			!mpp_trying_fallback_plan)
+			!root->mpp_trying_fallback_plan)
 		{
-			mpp_trying_fallback_plan = true;
+			root->mpp_trying_fallback_plan = true;
 			lev--;
 		}
 

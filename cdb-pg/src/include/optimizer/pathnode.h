@@ -74,7 +74,7 @@ extern TidPath *create_tidscan_path(PlannerInfo *root, RelOptInfo *rel,
 extern AppendPath *create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths);
 extern ResultPath *create_result_path(RelOptInfo *rel, Path *subpath,
 				   List *quals);
-extern MaterialPath *create_material_path(RelOptInfo *rel, Path *subpath);
+extern MaterialPath *create_material_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath);
 UniquePath *create_unique_exprlist_path(PlannerInfo    *root,
                                         Path           *subpath,
                                         List           *distinct_on_exprs);

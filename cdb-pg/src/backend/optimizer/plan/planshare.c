@@ -125,7 +125,7 @@ void incr_plan_nsharer_xslice(Plan *p)
 	}
 }
 
-static ShareInputScan *make_shareinputscan(Plan *inputplan) 
+static ShareInputScan *make_shareinputscan(PlannerInfo *root, Plan *inputplan) 
 {
 	ShareInputScan *sisc = NULL;
 	Path sipath;
@@ -147,7 +147,7 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
 	sisc->plan.qual = NIL;
 	sisc->plan.righttree = NULL;
 
-	cost_shareinputscan(&sipath, inputplan->total_cost, inputplan->plan_rows, inputplan->plan_width);
+	cost_shareinputscan(&sipath, root, inputplan->total_cost, inputplan->plan_rows, inputplan->plan_width);
 
 	sisc->plan.startup_cost = sipath.startup_cost;
 	sisc->plan.total_cost = sipath.total_cost; 
@@ -204,7 +204,7 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 		Material *m = make_material(common);
 		shared = (Plan *) m;
 
-		cost_material(&matpath, common->total_cost, common->plan_rows, common->plan_width);
+		cost_material(&matpath, root, common->total_cost, common->plan_rows, common->plan_width);
 		shared->startup_cost = matpath.startup_cost;
 		shared->total_cost = matpath.total_cost;
 		shared->plan_rows = common->plan_rows;
@@ -219,7 +219,7 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 
 	for(i=0; i<numpartners; ++i)
 	{
-		Plan *p = (Plan *) make_shareinputscan(shared);
+		Plan *p = (Plan *) make_shareinputscan(root, shared);
 		shared_nodes = lappend(shared_nodes, p);
 	}
 
@@ -232,20 +232,20 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
  * or should be duplicated, planner should compare the cost returned by this function 
  * against common->total_cost * numpartners.
  */
-Cost cost_share_plan(Plan *common, int numpartners)
+Cost cost_share_plan(Plan *common, PlannerInfo *root, int numpartners)
 {
 	Path sipath;
 	Path mapath;
 
 	if(IsA(common, Material) || IsA(common, Sort))
 	{
-		cost_shareinputscan(&sipath, common->total_cost, common->plan_rows, common->plan_width);
+		cost_shareinputscan(&sipath, root, common->total_cost, common->plan_rows, common->plan_width);
 
 		return common->total_cost + (sipath.total_cost - common->total_cost) * numpartners;
 	}
 
-	cost_material(&mapath, common->total_cost, common->plan_rows, common->plan_width);
-	cost_shareinputscan(&sipath, mapath.total_cost, common->plan_rows, common->plan_width);
+	cost_material(&mapath, root, common->total_cost, common->plan_rows, common->plan_width);
+	cost_shareinputscan(&sipath, root, mapath.total_cost, common->plan_rows, common->plan_width);
 
 	return mapath.total_cost + (sipath.total_cost - mapath.total_cost) * numpartners;
 }

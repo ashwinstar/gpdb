@@ -41,17 +41,13 @@ extern "C" {
 #undef small                    /*  but I want it for a variable name */
 #endif
 
-/* Globals */
-int         cdbpath_segments = 1; /* subquery_planner() updates this
-								   * based on getgpsegmentCount() and
-								   * gp_segments_for_planner */
 
 /*
  * cdbpath_cost_motion
  *    Fills in the cost estimate fields in a MotionPath node.
  */
 void
-cdbpath_cost_motion(CdbMotionPath *motionpath)
+cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath)
 {
     Path   *subpath = motionpath->subpath;
     Cost    cost_per_row;
@@ -62,8 +58,8 @@ cdbpath_cost_motion(CdbMotionPath *motionpath)
     cost_per_row = (gp_motion_cost_per_row > 0.0)
                     ? gp_motion_cost_per_row
                     : 2.0 * cpu_tuple_cost;
-    sendrows = cdbpath_rows(subpath);
-    recvrows = cdbpath_rows((Path *)motionpath);
+    sendrows = cdbpath_rows(root, subpath);
+    recvrows = cdbpath_rows(root, (Path *)motionpath);
     motioncost = cost_per_row * 0.5 * (sendrows + recvrows);
 
     motionpath->path.total_cost = motioncost + subpath->total_cost;
@@ -257,7 +253,7 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     pathnode->subpath = subpath;
 
     /* Cost of motion */
-    cdbpath_cost_motion(pathnode);
+    cdbpath_cost_motion(root, pathnode);
 
     /* Tell operators above us that slack may be needed for deadlock safety. */
     pathnode->path.motionHazard = true;
@@ -734,8 +730,8 @@ cdbpath_motion_for_join(PlannerInfo    *root,
     }
 
     /* Get rel sizes. */
-    outer.bytes = cdbpath_rows(outer.path) * outer.path->parent->width;
-    inner.bytes = cdbpath_rows(inner.path) * inner.path->parent->width;
+    outer.bytes = cdbpath_rows(root, outer.path) * outer.path->parent->width;
+    inner.bytes = cdbpath_rows(root, inner.path) * inner.path->parent->width;
 
     /*
      * Motion not needed if either source is everywhere (e.g. a constant).
@@ -816,7 +812,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
 
         /* Replicate single rel if cheaper than redistributing both rels. */
         else if (single->ok_to_replicate &&
-                 single->bytes * cdbpath_segments < single->bytes + other->bytes)
+                 single->bytes * root->cdbpath_segments < single->bytes + other->bytes)
             CdbPathLocus_MakeReplicated(&single->move_to);
 
         /* Redistribute both rels on equijoin cols. */
@@ -892,7 +888,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
          */
         else if (!small->require_existing_order &&
                  small->ok_to_replicate &&
-                 small->bytes * cdbpath_segments < large->bytes)
+                 small->bytes * root->cdbpath_segments < large->bytes)
             CdbPathLocus_MakeReplicated(&small->move_to);
 
         /* If joining on smaller rel's partitioning key, redistribute larger. */
@@ -906,7 +902,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
         /* Replicate smaller rel if cheaper than redistributing both rels. */
         else if (!small->require_existing_order &&
                  small->ok_to_replicate &&
-                 small->bytes * cdbpath_segments < large->bytes + small->bytes)
+                 small->bytes * root->cdbpath_segments < large->bytes + small->bytes)
             CdbPathLocus_MakeReplicated(&small->move_to);
 
         /* Redistribute both rels on equijoin cols. */
@@ -1243,7 +1239,7 @@ cdbpath_dedup_fixup_joinrel(JoinPath *joinpath, CdbpathDedupFixupContext *ctx)
         /* Which rel has more rows?  Put its row id vars in front. */
         if (outer_rowid_vars &&
             ctx->rowid_vars &&
-            cdbpath_rows(joinpath->outerjoinpath) >= cdbpath_rows(joinpath->innerjoinpath))
+            cdbpath_rows(ctx->root, joinpath->outerjoinpath) >= cdbpath_rows(ctx->root, joinpath->innerjoinpath))
             ctx->rowid_vars = list_concat(outer_rowid_vars, ctx->rowid_vars);
         else
             ctx->rowid_vars = list_concat(ctx->rowid_vars, outer_rowid_vars);

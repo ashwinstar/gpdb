@@ -830,6 +830,16 @@ pg_plan_queries(List *querytrees, ParamListInfo boundParams,
  *
  * Called in a qExec process to read and execute a query plan sent by
  * cdbdisp_dispatchPlan().
+ *
+ * query_string -- optional query text (C string).
+ * serializedQuerytree[len]  -- Query node or (NULL,0) if plan provided.
+ * serializedPlantree[len] -- PlannedStmt node, or (NULL,0) if query provided.
+ * serializedParms[len] -- optional parameters
+ * serializedSliceInfo[len] -- optional SliceTable
+ * localSlice -- slice table index
+ *
+ * Caller may supply either a Query (representing utility command) or
+ * a PlannedStmt (representing a planned DML command), but not both.
  */
 static void
 exec_mpp_query(const char *query_string, 
@@ -852,10 +862,8 @@ exec_mpp_query(const char *query_string,
     Slice      *slice = NULL;
 	ParamListInfo paramLI = NULL;
 	
-
 	Assert(Gp_role == GP_ROLE_EXECUTE);
 
-	
 	/* 
 	 * If we didn't get passed a query string, dummy something up for ps display and pg_stat_activity
 	 */
@@ -869,7 +877,6 @@ exec_mpp_query(const char *query_string,
 	debug_query_string = query_string;
 	
 	pgstat_report_activity(query_string);
-	
 	
 	/*
 	 * We use save_log_statement_stats so ShowUsage doesn't report incorrect
@@ -948,7 +955,7 @@ exec_mpp_query(const char *query_string,
 	}
 	
     /*
-	 * Deserialize the slice table.
+	 * Deserialize the slice table, if there is one, and set up the local slice.
 	 */
     if (serializedSliceInfo != NULL && serializedSliceInfolen > 0)
 	{
@@ -964,7 +971,6 @@ exec_mpp_query(const char *query_string,
 
         slice = (Slice *)list_nth(sliceTable->slices, sliceTable->localSlice);
         Insist(IsA(slice, Slice));
-
 
         /* Set global sliceid variable for elog. */
         currentSliceId = sliceTable->localSlice;
@@ -1020,6 +1026,9 @@ exec_mpp_query(const char *query_string,
 	
 	plantree_list = list_make1(plan);
 
+	/*
+	 * Get (possibly 0) parameters.
+	 */
     paramLI = NULL;
     if (serializedParams != NULL && serializedParamslen > 0)
     {
@@ -1217,7 +1226,7 @@ exec_mpp_query(const char *query_string,
 		 */
 		(void) PortalRun(portal,
 						 FETCH_ALL,
-						 true,
+						 true, /* PSMERGE: effectively always top level. */
 						 receiver,
 						 receiver,
 						 completionTag);
@@ -1334,7 +1343,7 @@ CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand)
 
 
 /*
- * exec_mpp_query
+ * exec_mpp_dtx_protocol_command
  *
  */
 static void
@@ -2554,7 +2563,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 
 	completed = PortalRun(portal,
 						  max_rows,
-						  true,
+						  true, /* always top level */
 						  receiver,
 						  receiver,
 						  completionTag);
@@ -2655,7 +2664,8 @@ check_log_statement_raw(List *raw_parsetree_list)
 
 /*
  * check_log_statement_cooked
- *		As above, but work from already-analyzed querytrees
+ *		As above, but work from already-analyzed querytrees or
+ *      PlannedStmt nodes.
  */
 static bool
 check_log_statement_cooked(List *parsetree_list)
@@ -3041,6 +3051,9 @@ IsTransactionExitStmt(Node *parsetree)
 	return false;
 }
 
+/*
+ * Yes, if this is a singleton list of Query wrapping a transaction ending statement.
+ */
 static bool
 IsTransactionExitStmtList(List *parseTrees)
 {
@@ -3048,6 +3061,9 @@ IsTransactionExitStmtList(List *parseTrees)
 	{
 		Query	   *query = (Query *) linitial(parseTrees);
 
+		if ( ! IsA(query, Query) )
+			return false;
+		
 		if (query->commandType == CMD_UTILITY &&
 			IsTransactionExitStmt(query->utilityStmt))
 			return true;
@@ -3062,7 +3078,8 @@ IsTransactionStmtList(List *parseTrees)
 	{
 		Query	   *query = (Query *) linitial(parseTrees);
 
-		if (query->commandType == CMD_UTILITY &&
+		if (IsA(query, Query) &&
+			query->commandType == CMD_UTILITY &&
 			query->utilityStmt && IsA(query->utilityStmt, TransactionStmt))
 			return true;
 	}

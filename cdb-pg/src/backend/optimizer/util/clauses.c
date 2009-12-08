@@ -50,6 +50,8 @@
 
 typedef struct
 {
+	ParamListInfo boundParams;
+	PlannerGlobal *glob;
 	List	   *active_fns;
 	Node	   *case_val;
 	bool		estimate;
@@ -1520,15 +1522,31 @@ rowtype_field_matches(Oid rowtypeid, int fieldnum,
  * We assume that the tree has already been type-checked and contains
  * only operators and functions that are reasonable to try to execute.
  *
+ * NOTE: "root" can be passed as NULL if the caller never wants to do any
+ * Param substitutions.
+ *
  * NOTE: the planner assumes that this will always flatten nested AND and
  * OR clauses into N-argument form.  See comments in prepqual.c.
+ *
+ * NOTE: another critical effect is that any function calls that require
+ * default arguments will be expanded.
  *--------------------
  */
 Node *
-eval_const_expressions(Node *node)
+eval_const_expressions(PlannerInfo *root, Node *node)
 {
 	eval_const_expressions_context context;
 
+	if (root)
+	{
+		context.boundParams = root->glob->boundParams;	/* bound Params */
+		context.glob = root->glob; /* for inlined-function dependencies */
+	}
+	else
+	{
+		context.boundParams = NULL;
+		context.glob = NULL;
+	}
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
 	context.estimate = false;	/* safe transformations only */
@@ -1552,10 +1570,11 @@ eval_const_expressions(Node *node)
  *--------------------
  */
 Node *
-estimate_expression_value(Node *node)
+estimate_expression_value(PlannerInfo *root, Node *node)
 {
 	eval_const_expressions_context context;
 
+	context.boundParams = root->glob->boundParams;		/* bound Params */
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
 	context.estimate = true;	/* unsafe transformations OK */
@@ -1574,11 +1593,11 @@ eval_const_expressions_mutator(Node *node,
 
 		/* Look to see if we've been given a value for this Param */
 		if (param->paramkind == PARAM_EXTERN &&
-			PlannerBoundParamList != NULL &&
+			context->boundParams != NULL &&
 			param->paramid > 0 &&
-			param->paramid <= PlannerBoundParamList->numParams)
+			param->paramid <= context->boundParams->numParams)
 		{
-			ParamExternData *prm = &PlannerBoundParamList->params[param->paramid - 1];
+			ParamExternData *prm = &context->boundParams->params[param->paramid - 1];
 
 			if (OidIsValid(prm->ptype))
 			{

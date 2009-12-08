@@ -86,7 +86,7 @@
  * Some Paths return less than the nominal number of rows of their parent
  * relations; join nodes need to do this to get the correct input count:
  */
-#define PATH_ROWS(path) (cdbpath_rows(path))
+#define PATH_ROWS(root, path) (cdbpath_rows((root), (path)))
 
 
 double		seq_page_cost = DEFAULT_SEQ_PAGE_COST;
@@ -1023,7 +1023,7 @@ cost_sort(Path *path, PlannerInfo *root,
 	Cost		startup_cost = input_cost;
 	Cost		run_cost = 0;
 	double		nbytes = relation_byte_size(tuples, width);
-	long		work_mem_bytes = (long) global_work_mem();
+	long		work_mem_bytes = (long) global_work_mem(root);
 
 	/*
 	 * We want to be sure the cost of a sort is never estimated as zero, even
@@ -1079,7 +1079,7 @@ cost_sort(Path *path, PlannerInfo *root,
  * to write it to disk, so the cost is much higher in that case.
  */
 void
-cost_material(Path *path,
+cost_material(Path *path, PlannerInfo *root,
 			  Cost input_cost, double tuples, int width)
 {
 	Cost		startup_cost = input_cost;
@@ -1087,7 +1087,7 @@ cost_material(Path *path,
 	double		nbytes = relation_byte_size(tuples, width);
 
 	/* disk costs */
-	if (nbytes > global_work_mem())
+	if (nbytes > global_work_mem(root))
 	{
 		double		npages = ceil(nbytes / BLCKSZ);
 
@@ -1197,7 +1197,7 @@ cost_agg(Path *path, PlannerInfo *root,
 			{
 				double spilled_bytes_for_batch =
 					(spilled_groups * hashentry_width) / hash_batches;
-				double partitions = spilled_bytes_for_batch / (global_work_mem());
+				double partitions = spilled_bytes_for_batch / (global_work_mem(root));
 				double tree_depth = 1;
 				if (partitions != 0)
 					tree_depth += ceil(log(partitions) / log(gp_hashagg_default_nbatches));
@@ -1302,7 +1302,7 @@ cost_window(Path *path, PlannerInfo *root,
  *   	less than material node.
  */
 void 
-cost_shareinputscan(Path *path, Cost sharecost, double tuples, int width)
+cost_shareinputscan(Path *path, PlannerInfo *root, Cost sharecost, double tuples, int width)
 {
 	double nbytes = relation_byte_size(tuples, width);
 	double npages = ceil(nbytes/BLCKSZ);
@@ -1311,7 +1311,7 @@ cost_shareinputscan(Path *path, Cost sharecost, double tuples, int width)
 	path->total_cost = sharecost;
 	
 	/* I/O cost */
-	if (nbytes > global_work_mem())
+	if (nbytes > global_work_mem(root))
 	{
 		path->total_cost += seq_page_cost * npages;
 	}
@@ -1333,7 +1333,7 @@ cost_shareinputscan(Path *path, Cost sharecost, double tuples, int width)
  * be prepared to recurse through Append nodes in case of an appendrel.
  */
 static double
-nestloop_inner_path_rows(Path *path)
+nestloop_inner_path_rows(PlannerInfo *root, Path *path)
 {
 	double		result;
 
@@ -1344,11 +1344,11 @@ nestloop_inner_path_rows(Path *path)
 		result = 0;
 		foreach(l, ((AppendPath *) path)->subpaths)
 		{
-			result += nestloop_inner_path_rows((Path *) lfirst(l));
+			result += nestloop_inner_path_rows(root, (Path *) lfirst(l));
 		}
 	}
 	else
-		result = PATH_ROWS(path);
+		result = PATH_ROWS(root, path);
 
 	return result;
 }
@@ -1369,8 +1369,8 @@ cost_nestloop(NestPath *path, PlannerInfo *root)
 	Cost		run_cost = 0;
 	Cost		cpu_per_tuple;
 	QualCost	restrict_qual_cost;
-	double		outer_path_rows = PATH_ROWS(outer_path);
-	double		inner_path_rows = nestloop_inner_path_rows(inner_path);
+	double		outer_path_rows = PATH_ROWS(root, outer_path);
+	double		inner_path_rows = nestloop_inner_path_rows(root, inner_path);
 	double		ntuples;
 	Selectivity joininfactor;
 
@@ -1453,8 +1453,8 @@ cost_mergejoin(MergePath *path, PlannerInfo *root)
 	QualCost	merge_qual_cost;
 	QualCost	qp_qual_cost;
 	RestrictInfo *firstclause;
-	double		outer_path_rows = PATH_ROWS(outer_path);
-	double		inner_path_rows = PATH_ROWS(inner_path);
+	double		outer_path_rows = PATH_ROWS(root, outer_path);
+	double		inner_path_rows = PATH_ROWS(root, inner_path);
 	double		outer_rows,
 				inner_rows;
 	double		mergejointuples,
@@ -1675,8 +1675,8 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 	QualCost	hash_qual_cost;
 	QualCost	qp_qual_cost;
 	double		hashjointuples;
-	double		outer_path_rows = PATH_ROWS(outer_path);
-	double		inner_path_rows = PATH_ROWS(inner_path);
+	double		outer_path_rows = PATH_ROWS(root, outer_path);
+	double		inner_path_rows = PATH_ROWS(root, inner_path);
 	int			num_hashclauses = list_length(hashclauses);
 	int			numbuckets;
 	int			numbatches;
@@ -1725,7 +1725,7 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 	/* Get hash table size that executor would use for inner relation */
 	hash_table_size(inner_path_rows,
 							inner_path->parent->width,
-							global_work_mem(),
+							global_work_mem(root),
 							&numbuckets,
 							&numbatches);
 	virtualbuckets = (double) numbuckets *(double) numbatches;
@@ -2597,16 +2597,40 @@ page_size(double tuples, int width)
 }
 
 /**
+ * Determine the number of segments the planner should use.  The result of this
+ * calculation is ordinarily saved in root->cdbpath_segments.  Functions that 
+ * need it in contexts in which root is not defined may call this function to
+ * derive it.
+ */
+int planner_segment_count(void)
+{
+	if ( Gp_role != GP_ROLE_DISPATCH )
+		return 1;
+	else if ( gp_segments_for_planner > 0 )
+		return gp_segments_for_planner;
+	else
+		return getgpsegmentCount();
+}
+
+/**
  * Determines the total amount of memory available. This method is to be used
  * during planning only. When planning in dispatch mode, it calculates total
  * memory as sum work_mem on segments. In utility mode, it returns work_mem.
  * Output:
  * 	total memory in bytes.
  */
-double global_work_mem(void)
+double global_work_mem(PlannerInfo *root)
 {
-	Assert(cdbpath_segments > 0);
-	return (double) work_mem * 1024L * cdbpath_segments;	
+	int segment_count;
+	if (root)
+	{
+		Assert(root->cdbpath_segments > 0);
+		segment_count = root->cdbpath_segments;	
+	}
+	else
+		segment_count = planner_segment_count();
+
+	return (double) work_mem * 1024L * segment_count;	
 }
 
 /* CDB -- The incremental cost functions below are for use outside the
@@ -2619,7 +2643,7 @@ double global_work_mem(void)
  *
  * Globals: seq_page_cost, cpu_operator_cost.
  */
-Cost incremental_hashjoin_cost(double rows, int inner_width, int outer_width, List *hashclauses)
+Cost incremental_hashjoin_cost(double rows, int inner_width, int outer_width, List *hashclauses, PlannerInfo *root)
 {
 	Cost startup_cost;
 	Cost run_cost;
@@ -2643,7 +2667,7 @@ Cost incremental_hashjoin_cost(double rows, int inner_width, int outer_width, Li
 	run_cost += cpu_operator_cost * num_hashclauses * rows;
 
 	/* Get hash table size that executor would use for inner relation */
-	hash_table_size(rows, inner_width, global_work_mem(), &numbuckets, &numbatches);
+	hash_table_size(rows, inner_width, global_work_mem(root), &numbuckets, &numbatches);
 	virtualbuckets = (double) numbuckets *(double) numbatches;
 
 	/*

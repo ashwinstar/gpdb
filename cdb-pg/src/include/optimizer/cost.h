@@ -86,7 +86,7 @@ extern void cost_valuesscan(Path *path, PlannerInfo *root,
 				RelOptInfo *baserel);
 extern void cost_sort(Path *path, PlannerInfo *root,
 		  List *pathkeys, Cost input_cost, double tuples, int width);
-extern void cost_material(Path *path,
+extern void cost_material(Path *path, PlannerInfo *root,
 			  Cost input_cost, double tuples, int width);
 extern void cost_agg(Path *path, PlannerInfo *root,
 					 AggStrategy aggstrategy, int numAggs,
@@ -102,7 +102,7 @@ extern void cost_window(Path *path, PlannerInfo *root,
 		   int numOrderCols,
 		   Cost input_startup_cost, Cost input_total_cost,
 		   double input_tuples);
-extern void cost_shareinputscan(Path *path, Cost sharecost, double ntuples, int width);
+extern void cost_shareinputscan(Path *path, PlannerInfo *root, Cost sharecost, double ntuples, int width);
 extern void cost_nestloop(NestPath *path, PlannerInfo *root);
 extern void cost_mergejoin(MergePath *path, PlannerInfo *root);
 extern void cost_hashjoin(HashPath *path, PlannerInfo *root);
@@ -120,7 +120,8 @@ extern void set_values_size_estimates(PlannerInfo *root, RelOptInfo *rel);
 /* Additional costsize.c prototypes for CDB incremental cost functions. */
 extern Cost incremental_hashjoin_cost(double rows, 
 									  int inner_width, int outer_width, 
-									  List *hashclauses);
+									  List *hashclauses,
+									  PlannerInfo *root);
 extern Cost incremental_mergejoin_cost(double rows, List *mergeclauses);
 
 /*
@@ -137,5 +138,6 @@ extern Selectivity clause_selectivity(PlannerInfo *root,
 				   int varRelid,
 				   JoinType jointype,
 				   bool use_damping);
-extern double global_work_mem(void);
+extern int planner_segment_count(void);
+extern double global_work_mem(PlannerInfo *root);
 #endif   /* COST_H */

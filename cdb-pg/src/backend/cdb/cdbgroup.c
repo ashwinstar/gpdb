@@ -240,8 +240,11 @@ typedef struct MppGroupContext
 	bool distinctkey_collocate;
 	List *current_pathkeys;
 
-	/* Indicate if root->parse has been changed during planning */
+	/* Indicate if root->parse has been changed during planning.  Carry in pointer
+	 * to root for miscellaneous globals. 
+	 */
 	bool querynode_changed;
+	PlannerInfo *root;
 	
 	/* Work space for aggregate/tlist deconstruction and reconstruction */
 	Index final_varno; /* input */
@@ -698,6 +701,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	ctx.is_grpext = is_grpext;
 	ctx.current_pathkeys = NIL; /* Initialize to be tidy. */
 	ctx.querynode_changed = false;
+	ctx.root = root;
 	
 	/* If we're to consider 3-phase plans, do some preparation.
 	 */
@@ -910,14 +914,14 @@ make_one_stage_agg_plan(PlannerInfo *root,
 			result_plan = (Plan*)make_motion_gather_to_QE(result_plan, (current_pathkeys != NIL));
 			result_plan->total_cost += 
 				incremental_motion_cost(result_plan->plan_rows, 
-										result_plan->plan_rows * cdbpath_segments);
+										result_plan->plan_rows * root->cdbpath_segments);
 			break;
 			
 	case MPP_GRP_PREP_FOCUS_QD:
 			result_plan = (Plan*)make_motion_gather_to_QD(result_plan, (current_pathkeys != NIL));	
 			result_plan->total_cost += 
 				incremental_motion_cost(result_plan->plan_rows, 
-										result_plan->plan_rows * cdbpath_segments);
+										result_plan->plan_rows * root->cdbpath_segments);
 			break;
 		
 	case MPP_GRP_PREP_HASH_DISTINCT:
@@ -1368,7 +1372,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		result_plan = (Plan*)make_motion_gather_to_QE(result_plan, false);
 		result_plan->total_cost += 
 			incremental_motion_cost(result_plan->plan_rows,
-									result_plan->plan_rows * cdbpath_segments);
+									result_plan->plan_rows * root->cdbpath_segments);
 		break;
 	
 	case MPP_GRP_TYPE_NONE:
@@ -1948,7 +1952,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 		result_plan = (Plan*)make_motion_gather_to_QE(result_plan, false);
 		result_plan->total_cost += 
 			incremental_motion_cost(result_plan->plan_rows,
-									result_plan->plan_rows * cdbpath_segments);
+									result_plan->plan_rows * root->cdbpath_segments);
 		break;
 	
 	case MPP_GRP_TYPE_NONE:
@@ -3995,8 +3999,8 @@ Cost cost_1phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 	case MPP_GRP_PREP_FOCUS_QD:
 		input_dummy.total_cost += 
 			incremental_motion_cost(input_dummy.plan_rows,
-									input_dummy.plan_rows * cdbpath_segments);
-		input_dummy.plan_rows = input_dummy.plan_rows * cdbpath_segments;
+									input_dummy.plan_rows * root->cdbpath_segments);
+		input_dummy.plan_rows = input_dummy.plan_rows * root->cdbpath_segments;
 		break;
 	default:	
 		break;
@@ -4182,7 +4186,7 @@ Cost cost_2phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 		case MPP_GRP_TYPE_PLAIN_2STAGE: /* Gather */
 			input_dummy.total_cost += 
 				incremental_motion_cost(input_dummy.plan_rows,
-										input_dummy.plan_rows *cdbpath_segments);
+										input_dummy.plan_rows *root->cdbpath_segments);
 			break;
 		default:
 		ereport(ERROR,
@@ -4306,7 +4310,7 @@ Cost cost_3phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 		 * XXX Do we need to override this if there are  volatile functions 
 		 * in the common plan?  Is this known, or do we need to search?
 		 */
-		share_cost = cost_share_plan(&dummy, ctx->numDistinctCols);
+		share_cost = cost_share_plan(&dummy, root, ctx->numDistinctCols);
 		reexec_cost = ctx->numDistinctCols * total_cost;
 		use_sharing = share_cost < reexec_cost;
 	}
@@ -4466,7 +4470,7 @@ void set_cost_of_join_strategies(MppGroupContext *ctx, Cost *hashjoin_cost, Cost
 		
 		mj_cost += incremental_mergejoin_cost(rows, mergeclauses);
 		if ( try_hashed )
-			hj_cost += incremental_hashjoin_cost(rows, inner_width, outer_width, hashclauses);
+			hj_cost += incremental_hashjoin_cost(rows, inner_width, outer_width, hashclauses, ctx->root);
 		
 		outer_width += dqa_width;
 	}

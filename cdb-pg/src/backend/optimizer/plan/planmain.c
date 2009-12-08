@@ -366,7 +366,7 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 			/* Figure cost for sorting */
 			cost_sort(&sort_path, root, root->query_pathkeys,
 					  cheapestpath->total_cost,
-					  cdbpath_rows(cheapestpath), final_rel->width);
+					  cdbpath_rows(root, cheapestpath), final_rel->width);
 		}
 
 		if (compare_fractional_path_costs(sortedpath, &sort_path,

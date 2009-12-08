@@ -172,7 +172,7 @@ extern Window *make_window(PlannerInfo *root, List *tlist,
 		   int numPartCols, AttrNumber *partColIdx, List *windowKeys,
 		   Plan *lefttree);
 extern Material *make_material(Plan *lefttree);
-extern Plan *materialize_finished_plan(Plan *subplan);
+extern Plan *materialize_finished_plan(PlannerInfo *root, Plan *subplan);
 extern Unique *make_unique(Plan *lefttree, List *distinctList);
 extern Limit *make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
 		   int64 offset_est, int64 count_est);

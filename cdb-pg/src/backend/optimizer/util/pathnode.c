@@ -572,11 +572,13 @@ cdb_set_cheapest_dedup(PlannerInfo *root, RelOptInfo *rel)
      */
     if (dedup->join_unique_ininfo)
     {
-    	Assert(dedup->join_unique_ininfo->sub_targetlist);
     	/* Top off the subpath with DISTINCT ON the result columns. */
+        if (rel->reltargetlist)
     	upath = create_unique_exprlist_path(root,
     			dedup->cheapest_total_path,
-    			dedup->join_unique_ininfo->sub_targetlist);
+                                                rel->reltargetlist);
+        else
+            upath = create_limit1_path(root, dedup->cheapest_total_path);
 
         /* Add to rel's main pathlist. */
         add_path(root, rel, (Path *)upath);
@@ -1600,7 +1602,7 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *quals)
  *	  pathnode.
  */
 MaterialPath *
-create_material_path(RelOptInfo *rel, Path *subpath)
+create_material_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
 {
 	MaterialPath *pathnode = makeNode(MaterialPath);
 
@@ -1617,8 +1619,9 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 	pathnode->subpath = subpath;
 
 	cost_material(&pathnode->path,
+				  root,
 				  subpath->total_cost,
-				  cdbpath_rows(subpath),
+				  cdbpath_rows(root, subpath),
 				  rel->width);
 
 	return pathnode;
@@ -1644,7 +1647,7 @@ create_unique_path(PlannerInfo *root,
     double      subpath_rows;
     bool        hashable = false;
 
-    subpath_rows = cdbpath_rows(subpath);
+    subpath_rows = cdbpath_rows(root, subpath);
 
     /* Allocate and partially initialize a UniquePath node. */
     pathnode = make_unique_path(subpath);
@@ -1705,7 +1708,7 @@ create_unique_path(PlannerInfo *root,
         hashable = true;
     if (distinct_on_rowid_relids)
         hashable = true;
-	if (hashable && (enable_hashagg || mpp_trying_fallback_plan))
+	if (hashable && (enable_hashagg || root->mpp_trying_fallback_plan))
 	{
 		/*
 		 * Estimate the overhead per hashtable entry at 64 bytes (same as in
@@ -1716,7 +1719,7 @@ create_unique_path(PlannerInfo *root,
         /*
          * CDB TODO: Hybrid hashed aggregation is not limited by work_mem.
          */
-        if (hashentrysize * pathnode->rows <= global_work_mem())
+        if (hashentrysize * pathnode->rows <= global_work_mem(root))
 		{
 			cost_agg(&agg_path, root,
 					 AGG_HASHED, 0,
@@ -1725,7 +1728,7 @@ create_unique_path(PlannerInfo *root,
 					 subpath->total_cost,
 					 rel->rows, 0.0, 0.0, hashentrysize, false);
 			if (agg_path.total_cost < sort_path.total_cost || 
-                (!enable_sort && !mpp_trying_fallback_plan))
+                (!enable_sort && !root->mpp_trying_fallback_plan))
             {
                 pathnode->umethod = UNIQUE_PATH_HASH;
 		        pathnode->path.startup_cost = agg_path.startup_cost;
@@ -1811,7 +1814,7 @@ create_unique_exprlist_path(PlannerInfo    *root,
 		{
             uniquepath = make_unique_path(subpath);
 			uniquepath->umethod = UNIQUE_PATH_NOOP;
-			uniquepath->rows = cdbpath_rows(subpath);
+			uniquepath->rows = cdbpath_rows(root, subpath);
             uniquepath->distinct_on_exprs = distinct_on_exprs;  /* share list */
 			return uniquepath;
 		}
@@ -1890,7 +1893,7 @@ create_unique_rowid_path(PlannerInfo *root,
         motionpath.path.parent = subpath->parent;
         motionpath.path.locus = uniquepath->path.locus;
         motionpath.subpath = subpath;
-        cdbpath_cost_motion(&motionpath);
+        cdbpath_cost_motion(root, &motionpath);
 
         /* Add MotionPath cost to UniquePath cost. */
         repartition_cost = motionpath.path.total_cost - subpath->total_cost;
@@ -2359,7 +2362,7 @@ create_nestloop_path(PlannerInfo *root,
 		{
 			/* NLs potentially rescan the inner; if our inner path
 			 * isn't rescannable we have to add a materialize node */
-			inner_path = (Path *)create_material_path(inner_path->parent, inner_path);
+			inner_path = (Path *)create_material_path(root, inner_path->parent, inner_path);
 
 			/* If we have motion on the outer, to avoid a deadlock; we
 			 * need to set cdb_strict. In order for materialize to
@@ -2483,7 +2486,7 @@ create_mergejoin_path(PlannerInfo *root,
 
     /* If user doesn't want sort, but this MJ requires a sort, fail. */
     if (!enable_sort &&
-        !mpp_trying_fallback_plan)
+        !root->mpp_trying_fallback_plan)
     {
         if (outersortkeys || innersortkeys)
             return NULL;
@@ -2505,7 +2508,7 @@ create_mergejoin_path(PlannerInfo *root,
 	if (innersortkeys == NIL &&
 		!ExecSupportsMarkRestore(inner_path->pathtype))
 		inner_path = (Path *)
-			create_material_path(inner_path->parent, inner_path);
+			create_material_path(root, inner_path->parent, inner_path);
 
 	pathnode->jpath.path.pathtype = T_MergeJoin;
 	pathnode->jpath.path.parent = joinrel;

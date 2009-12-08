@@ -32,10 +32,17 @@ extern ParamListInfo PlannerBoundParamList;		/* current boundParams */
 
 extern Plan *planner(Query *parse, bool isCursor, int cursorOptions,
 		ParamListInfo boundParams);
-extern Plan *subquery_planner(Query *parse, double tuple_fraction,
-				 List **subquery_pathkeys);
-extern bool choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
-								   Path *cheapest_path, Path *sorted_path,
-								   double dNumGroups, AggClauseCounts *agg_counts);
+extern Plan *subquery_planner(PlannerGlobal *glob,
+							  Query *parse,
+							  PlannerInfo *parent_root,
+							  double tuple_fraction,
+							  PlannerInfo **subroot);
+
+extern bool choose_hashed_grouping(PlannerInfo *root, 
+								   double tuple_fraction,
+								   Path *cheapest_path, 
+								   Path *sorted_path,
+								   double dNumGroups, 
+								   AggClauseCounts *agg_counts);
 
 #endif   /* PLANNER_H */

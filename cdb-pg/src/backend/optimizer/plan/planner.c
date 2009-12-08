@@ -110,36 +110,35 @@ Plan *
 planner(Query *parse, bool isCursor, int cursorOptions,
 		ParamListInfo boundParams)
 {
+	PlannerGlobal *glob;
 	double		tuple_fraction;
+	PlannerInfo *root;
 	Plan	   *result_plan;
-	Index		save_PlannerQueryLevel;
-	List	   *save_PlannerParamList;
-	ParamListInfo save_PlannerBoundParamList;
 	ApplyShareInputContext shareinput_context;
 
 	/*
 	 * The planner can be called recursively (an example is when
-	 * eval_const_expressions tries to pre-evaluate an SQL function). So,
-	 * these global state variables must be saved and restored.
+	 * eval_const_expressions tries to pre-evaluate an SQL function).
 	 *
-	 * Query level and the param list cannot be moved into the per-query
-	 * PlannerInfo structure since their whole purpose is communication across
-	 * multiple sub-queries. Also, boundParams is explicitly info from outside
-	 * the query, and so is likewise better handled as a global variable.
+	 * Set up global state for this planner invocation.  This data is needed
+	 * across all levels of sub-Query that might exist in the given command,
+	 * so we keep it in a separate struct that's linked to by each per-Query
+	 * PlannerInfo.
 	 *
-	 * Note we do NOT save and restore PlannerPlanId: it exists to assign
-	 * unique IDs to SubPlan nodes, and we want those IDs to be unique for the
-	 * life of a backend.  Also, PlannerInitPlan is saved/restored in
-	 * subquery_planner, not here.
+	 * PSMERGE: Some fields will be unused until later.
 	 */
-	save_PlannerQueryLevel = PlannerQueryLevel;
-	save_PlannerParamList = PlannerParamList;
-	save_PlannerBoundParamList = PlannerBoundParamList;
-
-	/* Initialize state for handling outer-level references and params */
-	PlannerQueryLevel = 0;		/* will be 1 in top-level subquery_planner */
-	PlannerParamList = NIL;
-	PlannerBoundParamList = boundParams;
+	glob = makeNode(PlannerGlobal);
+	
+	glob->boundParams = boundParams;
+	glob->paramlist = NIL;
+	glob->subplans = NIL;
+	glob->subrtables = NIL;
+	glob->rewindPlanIDs = NULL;
+	glob->finalrtable = NIL;
+	glob->relationOids = NIL;
+	glob->invalItems = NIL;
+	glob->transientPlan = false;
+	
 
 	/* Determine what fraction of the plan is likely to be scanned */
 	if (isCursor)
@@ -172,10 +171,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	}
 	
 	/* primary planning entry point (may recurse for subqueries) */
-	result_plan = subquery_planner(parse, tuple_fraction, NULL);
-
-	/* check we popped out the right number of levels */
-	Assert(PlannerQueryLevel == 0);
+	result_plan = subquery_planner(glob, parse, NULL, tuple_fraction, &root);
 
 	/*
 	 * If creating a plan for a scrollable cursor, make sure it can run
@@ -184,7 +180,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	if (isCursor && (cursorOptions & CURSOR_OPT_SCROLL))
 	{
 		if (!ExecSupportsBackwardScan(result_plan))
-			result_plan = materialize_finished_plan(result_plan);
+			result_plan = materialize_finished_plan(root, result_plan);
 	}
 
 
@@ -207,13 +203,13 @@ planner(Query *parse, bool isCursor, int cursorOptions,
                                           shareinput_context.sharedNodes);
 
 	/* executor wants to know total number of Params used overall */
-	result_plan->nParamExec = list_length(PlannerParamList);
+	result_plan->nParamExec = list_length(glob->paramlist);
 
 	if ( Gp_role == GP_ROLE_DISPATCH )
 	{
-		bool uses_correlation = has_correlation_params(PlannerParamList);
+		bool uses_correlation = has_correlation_params(glob->paramlist);
 		
-		result_plan = cdbparallelize(result_plan, parse,
+		result_plan = cdbparallelize(root, result_plan, parse,
 									isCursor, cursorOptions,
 									boundParams, uses_correlation);
 
@@ -222,11 +218,6 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 		 */
 		result_plan = apply_shareinput_xslice(result_plan, &shareinput_context);
 	}
-
-	/* restore state for outer planner, if any */
-	PlannerQueryLevel = save_PlannerQueryLevel;
-	PlannerParamList = save_PlannerParamList;
-	PlannerBoundParamList = save_PlannerBoundParamList;
 
 	result_plan = zap_trivial_result(result_plan);
 	return result_plan;
@@ -238,10 +229,16 @@ planner(Query *parse, bool isCursor, int cursorOptions,
  *	  Invokes the planner on a subquery.  We recurse to here for each
  *	  sub-SELECT found in the query tree.
  *
+ * glob is the global state for the current planner run.
  * parse is the querytree produced by the parser & rewriter.
+ * parent_root is the immediate parent Query's info (NULL at the top level).
+ * hasRecursion is true if this is a recursive WITH query.
  * tuple_fraction is the fraction of tuples we expect will be retrieved.
  * tuple_fraction is interpreted as explained for grouping_planner, below.
  *
+ * If subroot isn't NULL, we pass back the query's final PlannerInfo struct;
+ * among other things this tells the output sort ordering of the plan.
+ *  PSMERGE: BECOMES
  * If subquery_pathkeys isn't NULL, it receives a list of pathkeys indicating
  * the output sort ordering of the completed plan.
  *
@@ -258,42 +255,38 @@ planner(Query *parse, bool isCursor, int cursorOptions,
  *--------------------
  */
 Plan *
-subquery_planner(Query *parse, double tuple_fraction,
-				 List **subquery_pathkeys)
+subquery_planner(PlannerGlobal *glob,
+                 Query *parse, 
+				 PlannerInfo *parent_root,
+				 double tuple_fraction,
+				 PlannerInfo **subroot)
 {
-	List	   *saved_initplan = PlannerInitPlan;
 	int			saved_planid = PlannerPlanId;
 	PlannerInfo *root;
 	Plan	   *plan;
 	List	   *newHaving;
 	ListCell   *l;
 
-	/* Set up for a new level of subquery */
-	PlannerQueryLevel++;
-	PlannerInitPlan = NIL;
-
 	/* Create a PlannerInfo data structure for this subquery */
 	root = makeNode(PlannerInfo);
 	root->parse = parse;
+	root->glob = glob;
+	root->query_level = parent_root ? parent_root->query_level + 1 : 1;
+	root->parent_root = parent_root;
+	root->planner_cxt = CurrentMemoryContext;
+	root->init_plans = NIL;
+	// root->cte_plan_ids = NIL;
 	root->in_info_list = NIL;
 	root->append_rel_list = NIL;
 
     /* CDB: Initialize globals */
-    mpp_trying_fallback_plan = false;
-    if (Gp_role != GP_ROLE_DISPATCH)
-        cdbpath_segments = 1;
-    else
+    root->mpp_trying_fallback_plan = false;
+	root->cdbpath_segments = planner_segment_count();
+
+    if (Gp_role != GP_ROLE_DISPATCH && root->cdbpath_segments > 0)
     {
-        int segmentCount = getgpsegmentCount();
-
-        if (gp_segments_for_planner > 0)
-            cdbpath_segments = gp_segments_for_planner;
-        else
-            cdbpath_segments = segmentCount;
-
         /* Choose a segdb to which our singleton gangs should be dispatched. */
-        if (segmentCount > 0)
-            gp_singleton_segindex = gp_session_id % segmentCount;
+		gp_singleton_segindex = gp_session_id % root->cdbpath_segments;
     }
 
     /* CDB: Stash current query level's relids before pulling up subqueries. */
@@ -513,17 +506,12 @@ subquery_planner(Query *parse, double tuple_fraction,
 	 * initPlan list and extParam/allParam sets for plan nodes, and attach the
 	 * initPlans to the top plan node.
 	 */
-	if (PlannerPlanId != saved_planid || PlannerQueryLevel > 1)
-		SS_finalize_plan(plan, parse->rtable);
+	if (PlannerPlanId != saved_planid || root->query_level > 1)
+		SS_finalize_plan(root, plan, parse->rtable);
 
-	/* Return sort ordering info if caller wants it */
-	if (subquery_pathkeys)
-		*subquery_pathkeys = root->query_pathkeys;
-
-	/* Return to outer subquery context */
-	PlannerQueryLevel--;
-	PlannerInitPlan = saved_initplan;
-	/* we do NOT restore PlannerPlanId; that's not an oversight! */
+	/* Return internal info if caller wants it */
+	if (subroot)
+		*subroot = root;
 
 	return plan;
 }
@@ -577,8 +565,8 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	if (kind != EXPRKIND_VALUES &&
 		(root->parse->jointree->fromlist != NIL ||
 		 kind == EXPRKIND_QUAL ||
-		 PlannerQueryLevel > 1))
-		expr = eval_const_expressions(expr);
+		 root->query_level > 1))
+		expr = eval_const_expressions(root, expr);
 
 	/*
 	 * If it's a qual or havingQual, canonicalize it.
@@ -595,7 +583,7 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 
 	/* Expand SubLinks to SubPlans */
 	if (root->parse->hasSubLinks)
-		expr = SS_process_sublinks(expr, (kind == EXPRKIND_QUAL));
+		expr = SS_process_sublinks(root, expr, (kind == EXPRKIND_QUAL));
 
 	/*
 	 * XXX do not insert anything here unless you have grokked the comments in
@@ -603,8 +591,8 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	 */
 
 	/* Replace uplevel vars with Param nodes (this IS possible in VALUES) */
-	if (PlannerQueryLevel > 1)
-		expr = SS_replace_correlation_vars(expr);
+	if (root->query_level > 1)
+		expr = SS_replace_correlation_vars(root, expr);
 
 	/*
 	 * If it's a qual or havingQual, convert it to implicit-AND format. (We
@@ -797,8 +785,14 @@ inheritance_planner(PlannerInfo *root)
 		}
 	}
 
-	parse->resultRelations = resultRelations;
-	parse->returningLists = returningLists;
+	/* PSMERGE: These fields need to be set in both the query tree and
+	 *          in PlannerInfo for now.  Later we'd like to eliminate
+	 *          the scribbling on the Query.
+	 */
+	parse->resultRelations = resultRelations; /* PSMERGE: Retire */
+	parse->returningLists = returningLists; /* PSMERGE: Retire */
+	root->resultRelations = resultRelations;
+	root->returningLists = returningLists;
 
 	/* Mark result as unordered (probably unnecessary) */
 	root->query_pathkeys = NIL;
@@ -1970,7 +1964,7 @@ preprocess_limit(PlannerInfo *root, double tuple_fraction,
 	 */
 	if (parse->limitCount)
 	{
-		est = estimate_expression_value(parse->limitCount);
+		est = estimate_expression_value(root, parse->limitCount);
 		if (est && IsA(est, Const))
 		{
 			if (((Const *) est)->constisnull)
@@ -1996,7 +1990,7 @@ preprocess_limit(PlannerInfo *root, double tuple_fraction,
 
 	if (parse->limitOffset)
 	{
-		est = estimate_expression_value(parse->limitOffset);
+		est = estimate_expression_value(root, parse->limitOffset);
 		if (est && IsA(est, Const))
 		{
 			if (((Const *) est)->constisnull)
@@ -2180,7 +2174,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 		 */
 		if (cheapest_path->parent)
 		{
-			cheapest_path_rows = cdbpath_rows(cheapest_path);
+			cheapest_path_rows = cdbpath_rows(root, cheapest_path);
 			cheapest_path_width = cheapest_path->parent->width;
 		}
 		else
@@ -2200,7 +2194,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 		/* plus the per-hash-entry overhead */
 		hashentrysize += hash_agg_entry_size(agg_counts->numAggs);
 
-		hash_ok = calcHashAggTableSizes(global_work_mem(),
+		hash_ok = calcHashAggTableSizes(global_work_mem(root),
 								   dNumGroups,
 								   agg_counts->numAggs,
 								   /* The following estimate is very rough but good enough for planning. */

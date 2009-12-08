@@ -153,7 +153,8 @@ static bool loci_compatible(List *hashExpr1, List *hashExpr2);
  * ------------------------------------------------------------------------- *
  */
 Plan *
-cdbparallelize(Plan *plan,
+cdbparallelize(PlannerInfo *root,
+			   Plan *plan,
 			   Query *query,
 			   bool isCursor __attribute__((unused)) ,
 			   int cursorOptions __attribute__((unused)) ,
@@ -311,7 +312,7 @@ cdbparallelize(Plan *plan,
 		 * Implement the parallelizing directions in the Flow nodes attached
 		 * to the root plan node of each root slice of the plan.
 		 */
-		plan = apply_motion(plan, query);
+		plan = apply_motion(root, plan, query);
 	}
 
 

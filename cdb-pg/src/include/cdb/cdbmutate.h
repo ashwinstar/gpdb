@@ -22,7 +22,7 @@
 struct PlannerInfo;                         /* #include "nodes/relation.h" */
 struct RelOptInfo;                          /* #include "nodes/relation.h" */
 
-extern Plan *apply_motion(Plan *plan, Query *query);
+extern Plan *apply_motion(struct PlannerInfo *root, Plan *plan, Query *query);
 
 extern Motion *make_union_motion(Plan *lefttree, bool sendToSecondary,
 		                                int destSegIndex);

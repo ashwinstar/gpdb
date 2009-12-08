@@ -14,11 +14,8 @@
 
 #include "cdb/cdbvars.h"        /* getgpsegmentCount, gp_opt_segments, etc */
 
-/* Globals */
-extern int      cdbpath_segments;
-
 void
-cdbpath_cost_motion(CdbMotionPath *motionpath);
+cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath);
 
 Path *
 cdbpath_create_motion_path(PlannerInfo     *root,
@@ -47,7 +44,7 @@ cdbpath_dedup_fixup(PlannerInfo *root, Path *path);
  * Returns a Path's estimated number of result rows.
  */
 static inline double
-cdbpath_rows(Path *path)
+cdbpath_rows(PlannerInfo *root, Path *path)
 {
     double rows;
     Path  *p;
@@ -60,7 +57,7 @@ cdbpath_rows(Path *path)
 		: IsA(p, UniquePath)       ? ((UniquePath *)p)->rows
 		: (CdbPathLocus_IsBottleneck(path->locus) ||
 		   CdbPathLocus_IsReplicated(path->locus)) 
-		? path->parent->rows * cdbpath_segments
+		? path->parent->rows * root->cdbpath_segments
 		: path->parent->rows;
 
     return rows;
