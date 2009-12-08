@@ -605,8 +605,7 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 	}
 	if ( newRtable != NULL)
 	{
-		Assert(oldRtable != NULL);
-		data->rtable = oldRtable;
+		data->rtable = oldRtable; /* this may be NULL, because not all queries have relations in the rtable (such as generate_series from MPP-7608) */
 	}
 
 	return result;
