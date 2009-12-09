@@ -644,11 +644,6 @@ SetupSequenceServer(struct SliceTable *mySliceTable)
 		seqServerHost = mySliceTable->seqServerHost;
 		seqServerPort = mySliceTable->seqServerPort;
 	}
-
-	else
-	{
-		seqServerHost = NULL;
-	}
 }
 
 void

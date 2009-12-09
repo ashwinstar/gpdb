@@ -45,3 +45,10 @@ abort;
 
 set gp_enable_mk_sort = on;
 drop table if exists foo;
+
+set gp_interconnect_type=udp;
+create temp table gpic_test1 (timet numeric(16,6));
+create temp sequence gpic_snoid start 1;
+insert into gpic_test1 values (33.0),(33.0),(33.0);
+select nextval('gpic_snoid'),to_timestamp(timet) from gpic_test1;
+
