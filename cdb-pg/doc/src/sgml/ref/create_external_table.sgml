@@ -34,6 +34,7 @@ CREATE [READABLE] EXTERNAL TABLE table_name
                [( [HEADER]
                [QUOTE [AS] 'quote'] 
                [DELIMITER [AS] 'delimiter']
+			   [NULL [AS] 'null string']
                [FORCE NOT NULL column [, ...]]
                [ESCAPE [AS] 'escape']
                [FILL MISSING FIELDS] )]
@@ -59,6 +60,7 @@ CREATE [READABLE] EXTERNAL WEB TABLE table_name
                [( [HEADER]
                [QUOTE [AS] 'quote'] 
                [DELIMITER [AS] 'delimiter']
+			   [NULL [AS] 'null string']
                [FORCE NOT NULL column [, ...]]
                [ESCAPE [AS] 'escape']
                [FILL MISSING FIELDS] )]
@@ -79,6 +81,7 @@ CREATE WRITABLE EXTERNAL TABLE table_name
           | 'CSV'
                [([QUOTE [AS] 'quote'] 
                [DELIMITER [AS] 'delimiter']
+			   [NULL [AS] 'null string']
                [FORCE QUOTE column [, ...]] ]
                [ESCAPE [AS] 'escape'] )]
     [ ENCODING 'write_encoding' ]
