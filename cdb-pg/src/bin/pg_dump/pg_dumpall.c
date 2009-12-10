@@ -467,63 +467,166 @@ help(void)
 static void
 dumpResQueues(PGconn *conn)
 {
-	PQExpBuffer buf = createPQExpBuffer();
-	PGresult   *res;
-	int			i_rsqname,
-				i_rsqcountlimit,
-				i_rsqcostlimit,
-				i_rsqovercommit,
-				i_rsqignorecostlimit;
-	int			i;
+	PQExpBuffer	 buf		  = createPQExpBuffer();
+	PGresult	*res;
+	int			 i_rsqname, i_resname, i_ressetting;
+	int			 i;
+	char		*prev_rsqname = NULL;
+	bool		 bWith		  = false;
 
 	printfPQExpBuffer(buf,
-					  "SELECT rsqname, rsqcountlimit, rsqcostlimit, "
-					  "rsqovercommit, %s rsqignorecostlimit "
-					  "FROM pg_resqueue "
-					  "ORDER BY 1",
-					  ( server_version >= 80205 ? "" : "0 AS") );
+					  "SELECT rsqname, 'activelimit' as resname, "
+					  "rsqcountlimit::text as ressetting, "
+					  "1 as ord FROM pg_resqueue "
+					  "UNION "
+					  "SELECT rsqname, 'costlimit' as resname, "
+					  "rsqcostlimit::text as ressetting, "
+					  "2 as ord FROM pg_resqueue "
+					  "UNION "
+					  "SELECT  rsqname, 'overcommit' as resname, " 
+					  "case when rsqovercommit then '1' "
+					  "else '0' end as ressetting, "
+					  "3 as ord FROM pg_resqueue "
+					  "UNION "
+					  "SELECT rsqname, 'ignorecostlimit' as resname, "
+					  "%s as ressetting, "
+					  "4 as ord FROM pg_resqueue "
+					  "%s"
+					  "order by rsqname,  ord",
+					  ( server_version >= 80205 ? 
+						"rsqignorecostlimit::text" 
+						: "0 AS"),
+					  ( server_version >= 80214 ? 
+					  "UNION "
+					  "select rq.rsqname ,  rt.resname,  rc.ressetting, "
+					  "5 as ord from pg_resqueue rq,  pg_resourcetype rt, "
+					  "pg_resqueuecapability rc where "
+					  "rq.oid=rc.resqueueid and rc.restypid = rt.restypid "
+						: "")
+			);
+
 	res = executeQuery(conn, buf->data);
 
 	i_rsqname = PQfnumber(res, "rsqname");
-	i_rsqcountlimit = PQfnumber(res, "rsqcountlimit");
-	i_rsqcostlimit = PQfnumber(res, "rsqcostlimit");
-	i_rsqovercommit = PQfnumber(res, "rsqovercommit");
-	i_rsqignorecostlimit = PQfnumber(res, "rsqignorecostlimit");
+	i_resname = PQfnumber(res, "resname");
+	i_ressetting = PQfnumber(res, "ressetting");
 
 	if (PQntuples(res) > 0)
 		printf("--\n-- Resource Queues\n--\n\n");
 
+
+	/* settings for resource queue are spread over multiple rows, but
+	   sorted by queue name (and ranked in order of resname ) eg:
+
+	   rsqname    |     resname     | ressetting | ord 
+	   -----------+-----------------+------------+-----
+	   pg_default | activelimit     | 20         |   1
+	   pg_default | costlimit       | -1         |   2
+	   pg_default | overcommit      | 0          |   3
+	   pg_default | ignorecostlimit | 0          |   4
+
+	   This format lets us support an arbitrary number of
+	   resqueuecapability entries.  So watch for change of rsqname to
+	   switch to next CREATE statement.
+
+	*/
+
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		const char *rsqname;
+		const char *resname;
+		const char *ressetting;
 
-		rsqname = PQgetvalue(res, i, i_rsqname);
+		rsqname	   = PQgetvalue(res, i, i_rsqname);
+		resname	   = PQgetvalue(res, i, i_resname);
+		ressetting = PQgetvalue(res, i, i_ressetting);
 
-		resetPQExpBuffer(buf);
+		/* if first CREATE statement, or name changed... */
+		if (!prev_rsqname || (0 != strcmp(rsqname, prev_rsqname)))
+		{
+			if (prev_rsqname)
+			{
+				/* terminate the WITH if necessary */
+				if (bWith)
+					appendPQExpBuffer(buf, ") ");
 
-		appendPQExpBuffer(buf, "CREATE RESOURCE QUEUE %s", fmtId(rsqname));
+				appendPQExpBuffer(buf, ";\n");
+				
+				printf("%s", buf->data);
 
-		if (strcmp(PQgetvalue(res, i, i_rsqcountlimit), "-1") != 0)
-			appendPQExpBuffer(buf, " ACTIVE THRESHOLD %s",
-							  PQgetvalue(res, i, i_rsqcountlimit));
+				free (prev_rsqname);
+			}
 
+			bWith = false;
+			
+			/* save the name */
+			prev_rsqname = strdup(rsqname);
 
-		if (strcmp(PQgetvalue(res, i, i_rsqcostlimit), "-1") != 0)
-			appendPQExpBuffer(buf, " COST THRESHOLD %.2f",
-							  atof(PQgetvalue(res, i, i_rsqcostlimit)));
+			resetPQExpBuffer(buf);
 
-		if (strcmp(PQgetvalue(res, i, i_rsqignorecostlimit), "0") != 0)
-			appendPQExpBuffer(buf, " IGNORE THRESHOLD %.2f",
-							  atof(PQgetvalue(res, i, i_rsqignorecostlimit)));
+			/* MPP-6926: cannot DROP or CREATEdefault queue, so ALTER it  */
+			if (0 == strcmp(rsqname, "pg_default"))
+				appendPQExpBuffer(buf, "ALTER RESOURCE QUEUE %s", fmtId(rsqname));
+			else
+				appendPQExpBuffer(buf, "CREATE RESOURCE QUEUE %s", fmtId(rsqname));
+		}
 
-		if (strcmp(PQgetvalue(res, i, i_rsqovercommit), "t") == 0)
-			appendPQExpBuffer(buf, " OVERCOMMIT");
+		/* NOTE: currently 3.3-style, but will switch to one WITH clause... */
+
+		if (0 == strcmp("activelimit", resname))
+		{
+			if (strcmp(ressetting, "-1") != 0)
+				appendPQExpBuffer(buf, " ACTIVE THRESHOLD %s",
+								  ressetting);
+		}
+		else if (0 == strcmp("costlimit", resname))
+		{
+			if (strcmp(ressetting, "-1") != 0)
+				appendPQExpBuffer(buf, " COST THRESHOLD %.2f",
+								  atof(ressetting));
+		}
+		else if (0 == strcmp("ignorecostlimit", resname))
+		{
+			if (!((strcmp(ressetting, "-1") == 0)
+				  || (strcmp(ressetting, "0") == 0)))
+				appendPQExpBuffer(buf, " IGNORE THRESHOLD %.2f",
+								  atof(ressetting));
+		}
+		else if (0 == strcmp("overcommit", resname))
+		{
+			if (strcmp(ressetting, "1") == 0)
+				appendPQExpBuffer(buf, " OVERCOMMIT");
+			else
+				appendPQExpBuffer(buf, " NOOVERCOMMIT");
+		}
 		else
-			appendPQExpBuffer(buf, " NOOVERCOMMIT");
+		{
+			/* build the WITH clause */
+			if (bWith)
+				appendPQExpBuffer(buf, ",\n");
+			else
+			{
+				bWith = true;
+				appendPQExpBuffer(buf, "\n WITH (");
+			}
+			appendPQExpBuffer(buf, " %s=%s", resname, ressetting);				
+
+		}
+
+	} /* end for */
+
+	/* need to write out last statement */
+	if (prev_rsqname)
+	{
+		/* terminate the WITH if necessary */
+		if (bWith)
+			appendPQExpBuffer(buf, ") ");
 
 		appendPQExpBuffer(buf, ";\n");
 
 		printf("%s", buf->data);
+
+		free (prev_rsqname);
 	}
 
 	PQclear(res);
