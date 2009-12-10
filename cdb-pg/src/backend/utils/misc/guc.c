@@ -3425,7 +3425,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&gp_backoff_local_counter_interval,
-		1000000, 500, INT_MAX, NULL, NULL
+		500000, 500, INT_MAX, NULL, NULL
 	},
 	{
 		{"gp_backoff_sweeper_interval", PGC_POSTMASTER, RESOURCES_MGM,
