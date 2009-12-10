@@ -20,6 +20,7 @@
 #include "catalog/indexing.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_resqueue.h"
+#include "nodes/makefuncs.h"
 #include "cdb/cdbvars.h"
 #include "commands/defrem.h"
 #include "commands/queue.h"
@@ -33,6 +34,8 @@
 #include "utils/lsyscache.h"
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
+
+#define INVALID_RES_LIMIT_STRING		"-1"
 
 /* MPP-6923: 
  * GetResourceTypeByName: find the named resource in pg_resourcetype
@@ -181,6 +184,16 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 			bWithout = true;
 			goto L_loop_cont;
 		}
+
+		/* ignore the basic threshold entries -- should already be processed */
+		if (strcmp(defel->defname, "activelimit") == 0)
+			goto L_loop_cont;
+		if (strcmp(defel->defname, "costlimit") == 0)
+			goto L_loop_cont;
+		if (strcmp(defel->defname, "overcommit") == 0)
+			goto L_loop_cont;
+		if (strcmp(defel->defname, "ignorecostlimit") == 0)
+			goto L_loop_cont;
 
 		if (!GetResourceTypeByName(defel->defname, &resTypeInt, &resTypeOid))
 			ereport(ERROR,
@@ -426,6 +439,7 @@ CreateQueue(CreateQueueStmt *stmt)
 	Datum		new_record[Natts_pg_resqueue];
 	bool		new_record_nulls[Natts_pg_resqueue];
 	ListCell    *option;
+	ListCell    *pWithList = NULL;
 
 	/* thresholds for active and cost limiters. */
 	Cost		activelimit = INVALID_RES_LIMIT_THRESHOLD;	
@@ -489,13 +503,26 @@ CreateQueue(CreateQueueStmt *stmt)
 		}
 		else if (strcmp(defel->defname, "withliststart") == 0)
 		{
+			/* don't allow a "with list entry" with this defname... */
+			if (bWith)
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("option \"%s\" is not a valid resource type",
+							defel->defname)));
+
 			/* marks start of WITH options... */
+			pWithList = option;
 			bWith = true;
-			break;
 		}
 		else
-			elog(ERROR, "option \"%s\" not recognized",
-				 defel->defname);
+		{
+			/* silently ignore options on WITH list -- will deal with
+			 * them later in AlterResqueueCapabilityEntry 
+			 */
+			if (!bWith)
+				elog(ERROR, "option \"%s\" not recognized",
+					 defel->defname);
+		}
 	}
 
 	/* Perform range checks on the various thresholds.*/
@@ -648,7 +675,7 @@ CreateQueue(CreateQueueStmt *stmt)
 
 	/* process the remainder of the WITH (...) list items */
 	if (bWith)
-			AlterResqueueCapabilityEntry((Node *)stmt, queueid, option);
+		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList);
 
 	/* MPP-6929, MPP-7583: metadata tracking */
 	MetaTrackAddObject(ResQueueRelationId,
@@ -680,6 +707,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	bool		new_record_nulls[Natts_pg_resqueue];
 	bool		new_record_repl[Natts_pg_resqueue];
 	ListCell    *option;
+	ListCell    *pWithList = NULL;
 
 	/* thresholds for active and cost limiters. */
 	Cost		activelimit = INVALID_RES_LIMIT_THRESHOLD;
@@ -697,6 +725,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	DefElem     *dignorelimit = NULL;
 	ResAlterQueueResult		queueok;
 	bool		 bWith		  = false;
+	bool		 bWithOut	  = false;
 
 	/* Permission check - only superuser can alter queues. */
 	if (!superuser())
@@ -715,7 +744,12 @@ AlterQueue(AlterQueueStmt *stmt)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
-			dactivelimit = defel;
+			if (!bWithOut)
+				dactivelimit = defel;
+			else
+				dactivelimit = makeDefElem("activelimit", 
+										   (Node *)
+										   makeFloat(INVALID_RES_LIMIT_STRING));
 		}
 		else if (strcmp(defel->defname, "costlimit") == 0)
 		{
@@ -723,7 +757,13 @@ AlterQueue(AlterQueueStmt *stmt)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
-			dcostlimit = defel;
+			if (!bWithOut)
+				dcostlimit = defel;
+			else
+				dcostlimit = makeDefElem("costlimit", 
+										 (Node *)
+										 makeInteger(INVALID_RES_LIMIT_THRESHOLD));
+
 		}
 		else if (strcmp(defel->defname, "overcommit") == 0)
 		{
@@ -731,7 +771,13 @@ AlterQueue(AlterQueueStmt *stmt)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
-			dovercommit = defel;
+			if (!bWithOut)
+				dovercommit = defel;
+			else
+				dovercommit = makeDefElem("overcommit", 
+										  (Node *)
+										  makeInteger(FALSE));
+
 		}
 		else if (strcmp(defel->defname, "ignorecostlimit") == 0)
 		{
@@ -739,17 +785,48 @@ AlterQueue(AlterQueueStmt *stmt)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
-			dignorelimit = defel;
+			if (!bWithOut)
+				dignorelimit = defel;
+			else
+				dignorelimit = makeDefElem("ignorecostlimit", 
+										   (Node *)
+										   makeFloat(INVALID_RES_LIMIT_STRING));
+
 		}
 		else if (strcmp(defel->defname, "withliststart") == 0)
 		{
+			/* don't allow a "with list entry" with this defname... */
+			if (bWith)
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("option \"%s\" is not a valid resource type",
+							defel->defname)));
+
 			/* marks start of WITH options... */
+			pWithList = option;
 			bWith = true;
-			break;
+		}
+		else if (strcmp(defel->defname, "withoutliststart") == 0)
+		{
+			/* don't allow a "with out list entry" with this defname... */
+			if (!bWith || bWithOut)
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("option \"%s\" is not a valid resource type",
+							defel->defname)));
+
+			/* marks start of WITHOUT options... */
+			bWithOut = true;
 		}
 		else
-			elog(ERROR, "option \"%s\" not recognized",
-				 defel->defname);
+		{
+			/* silently ignore options on WITH list -- will deal with
+			 * them later in AlterResqueueCapabilityEntry 
+			 */
+			if (!bWith)
+				elog(ERROR, "option \"%s\" not recognized",
+					 defel->defname);
+		}
 	}
 
 	/* Perform range checks on the various thresholds. */
@@ -795,11 +872,22 @@ AlterQueue(AlterQueueStmt *stmt)
 	 * Check that at least one threshold is to be set.
 	 */
 	if (!dactivelimit && !dcostlimit && !dovercommit && !dignorelimit)
-		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("at least one threshold, overcommit or ignore limit must be specified"),
-						   errOmitLocation(true)));
+	{
+		ListCell		*initcell = pWithList;
 
+		if (bWith && initcell && lnext(initcell))
+		{
+			/* if have an item on the "with list", don't need to set a
+			 * threshold 
+			 */
+		}
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("at least one threshold, overcommit or ignore limit must be specified"),
+					 errOmitLocation(true)));
+
+	}
 
 	/*
 	 * Check the pg_resqueue relation to be certain the queue already
@@ -907,7 +995,7 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	/* process the remainder of the WITH (...) list items */
 	if (bWith)
-			AlterResqueueCapabilityEntry((Node *)stmt, queueid, option);
+		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList);
 
 	CatalogUpdateIndexes(pg_resqueue_rel, new_tuple);
 
