@@ -20,41 +20,70 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-CREATE EXTERNAL TABLE table_name ( column_name data_type [, ...]
-                                  | LIKE other_table )
+
+CREATE [READABLE] EXTERNAL TABLE table_name 
+     ( column_name data_type [, ...] | LIKE other_table )
       LOCATION ('file://seghost[:port]/path/file' [, ...])
           | ('gpfdist://filehost[:port]/file_pattern' [, ...])
-      FORMAT 'TEXT | CSV' 
-             [( [DELIMITER [AS] 'delimiter' | 'OFF']
+      FORMAT 'TEXT' 
+               [( [DELIMITER [AS] 'delimiter' | 'OFF']
                [NULL [AS] 'null string']
                [ESCAPE [AS] 'escape' | 'OFF']
-               [HEADER]
+               [FILL MISSING FIELDS] )]
+           | 'CSV'
+               [( [HEADER]
                [QUOTE [AS] 'quote'] 
+               [DELIMITER [AS] 'delimiter']
                [FORCE NOT NULL column [, ...]]
+               [ESCAPE [AS] 'escape']
                [FILL MISSING FIELDS] )]
      [ ENCODING 'encoding' ]
      [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
        [ROWS | PERCENT] ]
 
-CREATE EXTERNAL WEB TABLE table_name ( column_name data_type [, ...]
-                                       | LIKE other_table )
+
+CREATE [READABLE] EXTERNAL WEB TABLE table_name 
+     ( column_name data_type [, ...] | LIKE other_table )
       LOCATION ('http://webhost[:port]/path/file' [, ...])
     | EXECUTE 'command' [ON ALL 
                           | MASTER
                           | number_of_segments 
                           | HOST ['segment_hostname'] 
                           | SEGMENT segment_id ]
-      FORMAT 'TEXT | CSV' 
-             [( [DELIMITER [AS] 'delimiter' | 'OFF']
+      FORMAT 'TEXT' 
+               [( [DELIMITER [AS] 'delimiter' | 'OFF']
                [NULL [AS] 'null string']
                [ESCAPE [AS] 'escape' | 'OFF']
-               [HEADER]
+               [FILL MISSING FIELDS] )]
+           | 'CSV'
+               [( [HEADER]
                [QUOTE [AS] 'quote'] 
-               [FORCE NOT NULL column [, ...] )]
-               [FILL MISSING FIELDS]
+               [DELIMITER [AS] 'delimiter']
+               [FORCE NOT NULL column [, ...]]
+               [ESCAPE [AS] 'escape']
+               [FILL MISSING FIELDS] )]
      [ ENCODING 'encoding' ]
      [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
        [ROWS | PERCENT] ]
+
+
+CREATE WRITABLE EXTERNAL TABLE table_name
+    ( column_name data_type [, ...] | LIKE other_table )
+      LOCATION 
+       ('gpfdist://outputhost[:port]/file_pattern' [, ...])
+    | EXECUTE 'command' [ON ALL]
+    FORMAT 'TEXT' 
+               [( [DELIMITER [AS] 'delimiter']
+               [NULL [AS] 'null string']
+               [ESCAPE [AS] 'escape' | 'OFF'] )]
+          | 'CSV'
+               [([QUOTE [AS] 'quote'] 
+               [DELIMITER [AS] 'delimiter']
+               [FORCE QUOTE column [, ...]] ]
+               [ESCAPE [AS] 'escape'] )]
+    [ ENCODING 'write_encoding' ]
+    [ DISTRIBUTED BY (column, [ ... ] ) | DISTRIBUTED RANDOMLY ]
+ 
 </synopsis>
 
  </refsynopsisdiv>
