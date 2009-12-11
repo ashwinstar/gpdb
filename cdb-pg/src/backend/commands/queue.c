@@ -3,7 +3,7 @@
  * queue.c
  *	  Commands for manipulating resource queues.
  *
- * Copyright (c) 2006-2008, Greenplum inc.
+ * Copyright (c) 2006-2010, Greenplum inc.
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -49,11 +49,11 @@
 static
 bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
 {
-	HeapTuple tuple;
+	HeapTuple	tuple;
 	ScanKeyData key[1];
 	SysScanDesc scan;
-	Relation rel;
-	bool bStat = false;
+	Relation	rel;
+	bool		bStat = false;
 
 	rel = heap_open(ResourceTypeRelationId, RowExclusiveLock);
 
@@ -155,11 +155,13 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 	ListCell	*lc;
 	List		*elems	   = NIL;
 	List		*dropelems = NIL;
+	List		*dupcheck  = NIL;
 	HeapTuple	 tuple;
 	ScanKeyData	 key[1];
 	SysScanDesc	 scan;
 	Relation	 rel;
 	bool		 bWithout  = false;
+
 
 #ifdef USE_ASSERT_CHECKING
 	{
@@ -170,7 +172,7 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 
 	initcell = lnext(initcell);
 
-	/* build a list of valid entries first */
+	/* walk the original list and build a list of valid entries */
 
 	for_each_cell(lc, initcell)
 	{
@@ -178,6 +180,8 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		Oid		 resTypeOid = InvalidOid;
 		int		 resTypeInt = 0;
 		List	*pentry		= NIL;
+		Value	*pKeyVal	= NULL;
+		Value	*pStrVal	= NULL;
 
 		if (!bWithout && (strcmp(defel->defname, "withoutliststart") == 0))
 		{
@@ -201,11 +205,23 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 					 errmsg("option \"%s\" is not a valid resource type",
 							defel->defname)));
 
+		pKeyVal = makeString(defel->defname);
+		pStrVal = makeString(defGetString(defel));
+
+		/* check for duplicate key specifications */
+		if (list_member(dupcheck, pKeyVal))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("conflicting or redundant option for \"%s\"",
+							defel->defname)));
+
+		dupcheck = lappend(dupcheck, pKeyVal);
+
 		pentry = list_make2(
 							makeInteger(resTypeInt),
-							makeString(defGetString(defel)));
+							pStrVal);
 
-		/* list of lists */
+		/* list of lists - (resource type, resource setting) */
 		if (bWithout)
 			dropelems = lappend(dropelems, pentry);
 		else
