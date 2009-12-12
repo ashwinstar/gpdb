@@ -4957,12 +4957,22 @@ void GetNeededColumnsForScan(Node *expr, bool *mask, int n)
         {
                 case T_Var:
                         {
-                                Var *var = (Var *) expr;
-                                if(var->varattno > 0) 
-                                {
-                                        Assert(var->varattno <= n);
-                                        mask[var->varattno-1] = true;
-                                }
+							Var *var = (Var *) expr;
+							if(var->varattno > 0) 
+							{
+								Assert(var->varattno <= n);
+								mask[var->varattno-1] = true;
+							}
+							/*
+							 * If all attributes are included,
+							 * set all entries in mask to true.
+							 */
+							else if(var->varattno == 0)
+							{
+								int i;
+								for (i=0; i<n; i++)
+									mask[i] = true;
+							}
                         }
                         break;
                 case T_ArrayRef:
