@@ -237,7 +237,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	if (bitindexpaths != NIL)
 	{
 		Path	   *bitmapqual;
-		Path       *path;
+		Path       *path = NULL;
 
 		bitmapqual = choose_bitmap_and(root, rel, bitindexpaths, NULL);
 		switch(relstorage)
