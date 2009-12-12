@@ -327,7 +327,11 @@ AppendOnlyBlockDirectory_GetEntry(
 	Relation blkdirIdx = blockDirectory->blkdirIdx;
 	int numScanKeys = blockDirectory->numScanKeys;
 	ScanKey scanKeys = blockDirectory->scanKeys;
+	
+#ifdef USE_ASSERT_CHECKING
 	StrategyNumber *strategyNumbers = blockDirectory->strategyNumbers;
+#endif /* USE_ASSERT_CHECKING */
+
 	TupleDesc heapTupleDesc;
 	TupleDesc idxTupleDesc;
 	FileSegInfo *fsInfo = NULL;
@@ -488,7 +492,7 @@ AppendOnlyBlockDirectory_InsertEntry(
 	int lastEntryNo;
 #endif
 	
-	Assert(minipageInfo->numMinipageEntries <= NUM_MINIPAGE_ENTRIES);
+	Assert(minipageInfo->numMinipageEntries <= ( (int)NUM_MINIPAGE_ENTRIES ) );
 	
 	if (minipageInfo->numMinipageEntries == NUM_MINIPAGE_ENTRIES)
 	{
@@ -505,7 +509,7 @@ AppendOnlyBlockDirectory_InsertEntry(
 		minipageInfo->numMinipageEntries = 0;
 	}
 	
-	Assert(minipageInfo->numMinipageEntries < NUM_MINIPAGE_ENTRIES);
+	Assert(minipageInfo->numMinipageEntries < ( (int)NUM_MINIPAGE_ENTRIES ) );
 
 #ifdef USE_ASSERT_CHECKING
 	
@@ -613,13 +617,13 @@ copy_out_minipage(MinipagePerColumnGroup *minipageInfo,
 	value = (struct varlena *)
 		DatumGetPointer(minipage_value);
 	detoast_value = pg_detoast_datum(value);
-	Assert(VARSIZE(detoast_value) <= minipage_size(NUM_MINIPAGE_ENTRIES));
+	Assert( ( (int)VARSIZE(detoast_value) ) <= minipage_size(NUM_MINIPAGE_ENTRIES));
 
 	memcpy(minipageInfo->minipage, detoast_value, VARSIZE(detoast_value));
 	if (detoast_value != value)
 		pfree(detoast_value);
 	
-	Assert(minipageInfo->minipage->nEntry <= NUM_MINIPAGE_ENTRIES);
+	Assert(minipageInfo->minipage->nEntry <= ( (int)NUM_MINIPAGE_ENTRIES ) );
 	
 	minipageInfo->numMinipageEntries = minipageInfo->minipage->nEntry;
 }
@@ -717,7 +721,10 @@ load_last_minipage(AppendOnlyBlockDirectory *blockDirectory,
 	MemoryContext oldcxt;
 	int numScanKeys = blockDirectory->numScanKeys;
 	ScanKey scanKeys = blockDirectory->scanKeys;
+	
+#ifdef USE_ASSERT_CHECKING
 	StrategyNumber *strategyNumbers = blockDirectory->strategyNumbers;
+#endif /* USE_ASSERT_CHECKING */
 	
 	Assert(blockDirectory->aoRel != NULL);
 	Assert(blockDirectory->blkdirRel != NULL);
