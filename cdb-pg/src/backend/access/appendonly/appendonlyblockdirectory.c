@@ -647,7 +647,7 @@ extract_minipage(AppendOnlyBlockDirectory *blockDirectory,
 		&blockDirectory->minipages[columnGroupNo];
 	FileSegInfo *fsInfo = blockDirectory->currentSegmentFileInfo;
 	int64 eof;
-	int start, end, mid;
+	int start, end, mid=0;
 	bool found = false;
 	
 	heap_deform_tuple(tuple, tupleDesc, values, nulls);
