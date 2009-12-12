@@ -232,7 +232,7 @@ set_directoryentry_range(
 	MinipagePerColumnGroup *minipageInfo =
 		&blockDirectory->minipages[columnGroupNo];
 	FileSegInfo *fsInfo;
-	AOCSFileSegInfo *aocsFsInfo;
+	AOCSFileSegInfo *aocsFsInfo = NULL;
 	MinipageEntry *entry;
 	MinipageEntry *next_entry = NULL;
 	
