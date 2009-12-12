@@ -41,8 +41,8 @@ CATALOG(pg_class,1259) BKI_BOOTSTRAP
 	float4		reltuples;		/* # of tuples (not always up-to-date) */
 	Oid			reltoastrelid;	/* OID of toast table; 0 if none */
 	Oid			reltoastidxid;	/* if toast table, OID of chunk_id index */
-	Oid			relaosegrelid;	/* OID of aoseg table; 0 if none */
-	Oid			relaosegidxid;	/* if aoseg table, OID of segno index */
+    Oid			relaosegrelid;  /* OID of aoseg table; 0 if none */
+    Oid			relaosegidxid;  /* if aoseg table, OID of segno index */
 	bool		relhasindex;	/* T if has (or has had) any indexes */
 	bool		relisshared;	/* T if shared across databases */
 	char		relkind;		/* see RELKIND_xxx constants below */
@@ -152,6 +152,7 @@ DATA(insert OID = 3250    ( nb_classification PGNSP 3251 PGUID 0 3250 0 0 0 0 0 
 #define		  RELKIND_UNCATALOGED	  'u'		/* temporary heap */
 #define		  RELKIND_TOASTVALUE	  't'		/* moved off huge values */
 #define		  RELKIND_AOSEGMENTS	  'o'		/* AO segment files and eof's */
+#define		  RELKIND_AOBLOCKDIR	  'b'		/* AO block directory */
 #define		  RELKIND_VIEW		  'v'		/* view */
 #define		  RELKIND_COMPOSITE_TYPE  'c'		/* composite type */
 

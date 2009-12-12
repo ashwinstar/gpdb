@@ -4859,7 +4859,7 @@ declare
   rc int := 0;
 begin
 
-  execute 'select relname from pg_class where oid=(select relaosegrelid from pg_class where relname=''' || relname || ''')' into aosegname;
+  execute 'select relname from pg_class where oid=(select segrelid from pg_class, pg_appendonly where relname=''' || relname || ''' and relid = pg_class.oid)' into aosegname;
   if aosegname > 0 then
 	  execute 'select tupcount from pg_aoseg.' || aosegname into tupcount;
   end if;
@@ -5646,7 +5646,7 @@ select * from locktest;
 (14 rows)
 
 commit;
--- AO table (ao segments)
+-- AO table (ao segments, block directory)
 begin;
 -- creation
 create table g (i int, t text, n numeric)
@@ -5714,6 +5714,8 @@ select * from locktest;
  dropped table              | AccessExclusiveLock
  dropped table              | AccessExclusiveLock
  dropped table              | AccessExclusiveLock
+ dropped table              | AccessExclusiveLock
+ dropped table              | AccessExclusiveLock
  gp_distribution_policy     | RowExclusiveLock
  locktest                   | AccessShareLock
  pg_appendonly              | RowExclusiveLock
@@ -5726,7 +5728,7 @@ select * from locktest;
  pg_partition               | RowExclusiveLock
  pg_partition_rule          | RowExclusiveLock
  pg_type                    | RowExclusiveLock
-(17 rows)
+(19 rows)
 
 commit;
 -- Indexing

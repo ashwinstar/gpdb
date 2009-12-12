@@ -34,6 +34,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_index.h"
 #include "catalog/indexing.h"
+#include "catalog/gp_fastsequence.h"
 #include "commands/dbcommands.h"
 #include "commands/tablecmds.h"
 #include "commands/vacuum.h"
@@ -1034,7 +1035,8 @@ vac_update_datfrozenxid(void)
 		 */
 		if (classForm->relkind != RELKIND_RELATION &&
 			classForm->relkind != RELKIND_TOASTVALUE &&
-			classForm->relkind != RELKIND_AOSEGMENTS)
+			classForm->relkind != RELKIND_AOSEGMENTS &&
+			classForm->relkind != RELKIND_AOBLOCKDIR)
 			continue;
 
 		Assert(TransactionIdIsNormal(classForm->relfrozenxid));
@@ -1198,7 +1200,8 @@ static void
 vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_stats)
 {
 	Oid			toast_relid;
-	Oid			aoseg_relid;
+	Oid			aoseg_relid = InvalidOid;
+	Oid         aoblkdir_relid = InvalidOid;
 	Oid			save_userid;
 	bool		save_secdefcxt;
 
@@ -1212,7 +1215,10 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_s
 	 * Remember the relation's TOAST and AO segments relations for later
 	 */
 	toast_relid = onerel->rd_rel->reltoastrelid;
-	aoseg_relid = onerel->rd_rel->relaosegrelid;
+	if (RelationIsAoRows(onerel) ||
+		RelationIsAoCols(onerel))
+		GetAppendOnlyEntryAuxOids(RelationGetRelid(onerel), &aoseg_relid, NULL,
+								  &aoblkdir_relid, NULL);
 
 	/*
 	 * Switch to the table owner's userid, so that any index functions are
@@ -1232,7 +1238,14 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_s
 	 * Do the actual work --- either FULL or "lazy" vacuum
 	 */
 	if (vacstmt->full)
-		full_vacuum_rel(onerel, vacstmt, updated_stats);
+	{
+		/*
+		 * Do not vacuum full gp_fastsequence table.
+		 */
+		if (RelationGetRelid(onerel) != FastSequenceRelationId)
+			full_vacuum_rel(onerel, vacstmt, updated_stats);
+	}
+	
 	else
 		lazy_vacuum_rel(onerel, vacstmt, updated_stats);
 
@@ -1272,6 +1285,20 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_s
 
 			/* all done with this class, but hold lock until commit */
 			relation_close(aoseg_rel, NoLock);
+		}
+	}
+
+	/* do the same for an AO block directory table, if any */
+	if (aoblkdir_relid != InvalidOid)
+	{
+		Relation aoblkdir_rel = open_relation_and_check_permission(vacstmt, aoblkdir_relid,
+																   RELKIND_AOBLOCKDIR);
+		if (aoblkdir_rel != NULL)
+		{
+			vacuum_rel(aoblkdir_rel, vacstmt, lmode, updated_stats);
+
+			/* all done with this class, but hold lock until commit */
+			relation_close(aoblkdir_rel, NoLock);
 		}
 	}
 }

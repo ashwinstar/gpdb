@@ -26,7 +26,7 @@
 #include "parser/parse_oper.h"
 #include "utils/memutils.h"
 
-static void bmbuildCallback(Relation index,	HeapTuple htup, Datum *attdata,
+static void bmbuildCallback(Relation index,	ItemPointer tupleId, Datum *attdata,
 							bool *nulls, bool tupleIsAlive,	void *state);
 static bool words_get_match(BMBatchWords *words, BMIterateResult *result,
                             BlockNumber blockno, PagetableEntry *entry,
@@ -105,8 +105,8 @@ bmbuild(PG_FUNCTION_ARGS)
 	_bitmap_init_buildstate(index, &bmstate);
 
 	/* do the heap scan */
-	reltuples = IndexBuildHeapScan(heap, index, indexInfo,
-								   bmbuildCallback, (void *)&bmstate);
+	reltuples = IndexBuildScan(heap, index, indexInfo,
+							  bmbuildCallback, (void *)&bmstate);
 	/* clean up the build state */
 	_bitmap_cleanup_buildstate(index, &bmstate);
 
@@ -549,12 +549,12 @@ bmvacuumcleanup(PG_FUNCTION_ARGS)
  * Per-tuple callback from IndexBuildHeapScan
  */
 static void
-bmbuildCallback(Relation index, HeapTuple htup, Datum *attdata,
+bmbuildCallback(Relation index, ItemPointer tupleId, Datum *attdata,
 				bool *nulls, bool tupleIsAlive __attribute__((unused)),	void *state)
 {
 	BMBuildState *bstate = (BMBuildState *) state;
 
-	_bitmap_buildinsert(index, htup->t_self, attdata, nulls, bstate);
+	_bitmap_buildinsert(index, *tupleId, attdata, nulls, bstate);
 	bstate->ituples += 1;
 
 	if (((int)bstate->ituples) % 1000 == 0)
@@ -823,8 +823,8 @@ words_get_match(BMBatchWords *words, BMIterateResult *result,
 
 restart:
 	/* compute the first and last tid location for 'blockno' */
-	start = ((uint64)blockno) * BM_MAX_HTUP_PER_PAGE + 1;
-	end = ((uint64)(blockno + 1)) * BM_MAX_HTUP_PER_PAGE;
+	start = ((uint64)blockno) * BM_MAX_TUPLES_PER_PAGE + 1;
+	end = ((uint64)(blockno + 1)) * BM_MAX_TUPLES_PER_PAGE;
 	newwordno = 0;
 	hrlwordno = 0;
 
@@ -893,7 +893,7 @@ restart:
 				if(fillLength * BM_HRL_WORD_SIZE > end - result->nextTid)
 				{
 					result->nextTid += fillLength * BM_HRL_WORD_SIZE;
-					blockno = result->nextTid / BM_MAX_HTUP_PER_PAGE;
+					blockno = result->nextTid / BM_MAX_TUPLES_PER_PAGE;
 					goto restart;
 				}
 				result->nextTid += fillLength * BM_HRL_WORD_SIZE;
@@ -935,7 +935,7 @@ restart:
 		if(filllen * BM_HRL_WORD_SIZE > end - result->nextTid)
 		{
 			result->nextTid += filllen * BM_HRL_WORD_SIZE;
-			blockno = result->nextTid / BM_MAX_HTUP_PER_PAGE;
+			blockno = result->nextTid / BM_MAX_TUPLES_PER_PAGE;
 			result->lastScanWordNo++;
 			words->nwords--;
 			

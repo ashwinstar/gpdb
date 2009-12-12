@@ -511,6 +511,17 @@ _outBitmapHeapScan(StringInfo str, BitmapHeapScan *node)
 }
 
 static void
+_outBitmapAppendOnlyScan(StringInfo str, BitmapAppendOnlyScan *node)
+{
+	WRITE_NODE_TYPE("BITMAPAPPENDONLYSCAN");
+
+	_outScanInfo(str, (Scan *) node);
+
+	WRITE_NODE_FIELD(bitmapqualorig);
+	WRITE_BOOL_FIELD(isAORow);
+}
+
+static void
 _outTidScan(StringInfo str, TidScan *node)
 {
 	WRITE_NODE_TYPE("TIDSCAN");
@@ -1446,6 +1457,19 @@ _outBitmapHeapPath(StringInfo str, BitmapHeapPath *node)
 }
 
 static void
+_outBitmapAppendOnlyPath(StringInfo str, BitmapAppendOnlyPath *node)
+{
+	WRITE_NODE_TYPE("BITMAPAPPENDONLYPATH");
+
+	_outPathInfo(str, (Path *) node);
+
+	WRITE_NODE_FIELD(bitmapqual);
+	WRITE_BOOL_FIELD(isjoininner);
+	WRITE_FLOAT_FIELD(rows, "%.0f");
+	WRITE_BOOL_FIELD(isAORow);
+}
+
+static void
 _outBitmapAndPath(StringInfo str, BitmapAndPath *node)
 {
 	WRITE_NODE_TYPE("BITMAPANDPATH");
@@ -1839,6 +1863,9 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_OID_FIELD(oidInfo.aosegOid);
 	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirIndexOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 	WRITE_CHAR_FIELD(relKind);
 	WRITE_CHAR_FIELD(relStorage);
 	WRITE_BOOL_FIELD(is_part_child);
@@ -1985,6 +2012,7 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 	WRITE_NODE_FIELD(new_heap_oids);
 	WRITE_NODE_FIELD(new_toast_oids);
 	WRITE_NODE_FIELD(new_aoseg_oids);
+	WRITE_NODE_FIELD(new_aoblkdir_oids);
 	WRITE_NODE_FIELD(new_ind_oids);
 }
 
@@ -2008,6 +2036,9 @@ _outAlterTableStmt(StringInfo str, AlterTableStmt *node)
 		WRITE_OID_FIELD(oidInfo[m].aosegOid);
 		WRITE_OID_FIELD(oidInfo[m].aosegIndexOid);
 		WRITE_OID_FIELD(oidInfo[m].aosegComptypeOid);
+		WRITE_OID_FIELD(oidInfo[m].aoblkdirOid);
+		WRITE_OID_FIELD(oidInfo[m].aoblkdirIndexOid);
+		WRITE_OID_FIELD(oidInfo[m].aoblkdirComptypeOid);
 	}
 }
 
@@ -2169,6 +2200,9 @@ _outClusterStmt(StringInfo str, ClusterStmt *node)
 	WRITE_OID_FIELD(oidInfo.aosegOid);
 	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirIndexOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 	WRITE_NODE_FIELD(new_ind_oids);
 }
 
@@ -2942,15 +2976,20 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(result_aosegnos);
 	WRITE_NODE_FIELD(returningLists); /* TODO Merge issue */
 	
-	WRITE_OID_FIELD(intoOidInfo.relOid);
-	WRITE_OID_FIELD(intoOidInfo.comptypeOid);
-	WRITE_OID_FIELD(intoOidInfo.toastOid);
-	WRITE_OID_FIELD(intoOidInfo.toastIndexOid);
-	WRITE_OID_FIELD(intoOidInfo.toastComptypeOid);
-	WRITE_OID_FIELD(intoOidInfo.aosegOid);
-	WRITE_OID_FIELD(intoOidInfo.aosegIndexOid);
-	WRITE_OID_FIELD(intoOidInfo.aosegComptypeOid);
-	
+	/* 
+	 * IntoOidInfo is not written out in outfuncs because this is how we
+	 * store information in the catalog and the oids for a particular CTAS
+	 * are not apropriate to store in pg_rewrite.
+	 *
+	 * This is in contrast to readfast.c where this information must be
+	 * present for dispatch of CTAS to work correctly.
+	 *
+	 * intoPolicy is not written out in either outfuncs or outfast, it is
+	 * determined independenly on both QE and QD.
+	 *
+	 * A better design would be to remove both of the above from the parsetree
+	 * and store it in a separate executor context.
+	 */
 }
 
 static void
@@ -3531,6 +3570,9 @@ _outNode(StringInfo str, void *obj)
 			case T_BitmapHeapScan:
 				_outBitmapHeapScan(str, obj);
 				break;
+			case T_BitmapAppendOnlyScan:
+				_outBitmapAppendOnlyScan(str, obj);
+				break;
 			case T_TidScan:
 				_outTidScan(str, obj);
 				break;
@@ -3717,6 +3759,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_BitmapHeapPath:
 				_outBitmapHeapPath(str, obj);
+				break;
+			case T_BitmapAppendOnlyPath:
+				_outBitmapAppendOnlyPath(str, obj);
 				break;
 			case T_BitmapAndPath:
 				_outBitmapAndPath(str, obj);

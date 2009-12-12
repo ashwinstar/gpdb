@@ -271,8 +271,10 @@ tbm_add_tuples(HashBitmap *tbm, const ItemPointer tids, int ntids)
 					bitnum;
 
 		/* safety check to ensure we don't overrun bit array bounds */
-		if (off < 1 || off > MAX_TUPLES_PER_PAGE)
-			elog(ERROR, "tuple offset out of range: %u", off);
+
+		// UNDONE: Turn this off until we convert this module to AO TIDs.
+//		if (off < 1 || off > MAX_TUPLES_PER_PAGE)
+//			elog(ERROR, "tuple offset out of range: %u", off);
 
 		if (tbm_page_is_lossy(tbm, blk))
 			continue;			/* whole page is already marked */
@@ -1533,3 +1535,15 @@ tbm_bitmap_upd_instrument(Node *bm)
             Assert(0);
     }
 }                               /* tbm_bitmap_upd_instrument */
+
+void tbm_convert_appendonly_tid_in(AOTupleId *aoTid, ItemPointer psudeoHeapTid)
+{
+	// UNDONE: For now, just copy.
+	memcpy(psudeoHeapTid, aoTid, SizeOfIptrData);
+}
+
+void tbm_convert_appendonly_tid_out(ItemPointer psudeoHeapTid, AOTupleId *aoTid)
+{
+	// UNDONE: For now, just copy.
+	memcpy(aoTid, psudeoHeapTid, SizeOfIptrData);
+}

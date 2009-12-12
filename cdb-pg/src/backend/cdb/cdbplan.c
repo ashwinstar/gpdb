@@ -207,6 +207,7 @@ plan_tree_walker(Node *node,
 		case T_AppendOnlyScan:
 		case T_AOCSScan:
 		case T_BitmapHeapScan:
+		case T_BitmapAppendOnlyScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
 			if (walk_scan_node_fields((Scan *) node, walker, context))
@@ -737,6 +738,20 @@ plan_tree_mutator(Node *node,
 			break;
 		
 
+		case T_BitmapAppendOnlyScan:
+			{
+				BitmapAppendOnlyScan  *bmappendonlyscan = (BitmapAppendOnlyScan *) node;
+				BitmapAppendOnlyScan  *newbmappendonlyscan;
+
+				FLATCOPY(newbmappendonlyscan, bmappendonlyscan, BitmapAppendOnlyScan);
+				SCANMUTATE(newbmappendonlyscan, bmappendonlyscan);
+				
+				MUTATE(newbmappendonlyscan->bitmapqualorig, bmappendonlyscan->bitmapqualorig, List *);
+	
+				return (Node *) newbmappendonlyscan;
+			}
+			break;
+		
 		case T_TidScan:
 			{
 				TidScan    *tidscan = (TidScan *) node;

@@ -1420,6 +1420,30 @@ typedef struct BitmapHeapScanState
 } BitmapHeapScanState;
 
 /* ----------------
+ *	 BitmapAppendOnlyScanState information
+ *
+ *		bitmapqualorig	   execution state for bitmapqualorig expressions
+ *		tbm				   bitmap obtained from child index scan(s)
+ *		tbmres			   current-page data
+ * ----------------
+ */
+typedef struct BitmapAppendOnlyScanState
+{
+	ScanState		 ss;     /* its first field is NodeTag */
+
+	struct AppendOnlyFetchDescData	*baos_currentAOFetchDesc;
+	struct AOCSFetchDescData *baos_currentAOCSFetchDesc;
+	List	   *baos_bitmapqualorig;
+	Node  		*baos_tbm;
+	TBMIterateResult *baos_tbmres;
+	bool		baos_gotpage;
+	int			baos_cindex;
+	bool		baos_lossy;
+	int			baos_ntuples;
+	bool        isAORow; /* If this is for AO Row tables. */
+} BitmapAppendOnlyScanState;
+
+/* ----------------
  *         TidScanState information
  *
  *                NumTids                   number of tids in this scan

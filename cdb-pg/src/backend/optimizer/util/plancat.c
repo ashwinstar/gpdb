@@ -500,6 +500,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 		case RELKIND_INDEX:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
+		case RELKIND_AOBLOCKDIR:
 
 			/* skip external tables */
 			if(RelationIsExternal(rel))

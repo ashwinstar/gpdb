@@ -21,7 +21,7 @@ OBJS = execAmi.o execGrouping.o execHHashagg.o execJunk.o execMain.o \
        instrument.o \
        nodeAppend.o nodeAppendOnlyscan.o nodeAgg.o nodeAOCSScan.o \
        nodeBitmapAnd.o nodeBitmapOr.o \
-       nodeBitmapHeapscan.o nodeBitmapIndexscan.o \
+       nodeBitmapAppendOnlyscan.o nodeBitmapHeapscan.o nodeBitmapIndexscan.o \
        nodeExternalscan.o \
        nodeFunctionscan.o \
        nodeGroup.o \

@@ -30,6 +30,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/toasting.h"
 #include "catalog/aoseg.h"
+#include "catalog/aoblkdir.h"
 #include "commands/cluster.h"
 #include "commands/tablecmds.h"
 #include "miscadmin.h"
@@ -635,7 +636,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	 * all-new at this point).	We do not need CommandCounterIncrement()
 	 * because reindex_relation does it.
 	 */
-	reindex_relation(tableOid, false, false, &stmt->new_ind_oids,
+	reindex_relation(tableOid, false, false, false, &stmt->new_ind_oids,
 					 Gp_role == GP_ROLE_DISPATCH);
 }
 
@@ -655,8 +656,11 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	Oid			aOid = InvalidOid;
 	Oid			aiOid = InvalidOid;
 	Oid			*comptypeOid = NULL;
+	Oid         blkdirOid = InvalidOid;
+	Oid         blkdirIdxOid = InvalidOid;
 	Oid			*toastComptypeOid = NULL;
 	Oid			*aosegComptypeOid = NULL;
+	Oid			*aoblkdirComptypeOid = NULL;
 	HeapTuple	tuple;
 	Datum		reloptions;
 	bool		isNull;
@@ -693,11 +697,14 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 		oidInfo->toastIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
 		oidInfo->aosegOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
 		oidInfo->aosegIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+		oidInfo->aoblkdirOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+		oidInfo->aoblkdirIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
 
 		heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
 
 		oidInfo->toastComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
 		oidInfo->aosegComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+		oidInfo->aoblkdirComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
 
 		heap_close(pg_type_desc, RowExclusiveLock);
 
@@ -708,17 +715,23 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 		aiOid = oidInfo->aosegIndexOid;
 		aosegComptypeOid = &oidInfo->aosegComptypeOid;
 		comptypeOid = &oidInfo->comptypeOid;
+		blkdirOid = oidInfo->aoblkdirOid;
+		blkdirIdxOid = oidInfo->aoblkdirIndexOid;
+		aoblkdirComptypeOid = &oidInfo->aoblkdirComptypeOid;
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE && oidInfo != NULL)
 	{
 		toastComptypeOid = &oidInfo->toastComptypeOid;
 		aosegComptypeOid = &oidInfo->aosegComptypeOid;
+		aoblkdirComptypeOid = &oidInfo->aoblkdirComptypeOid;
 		comptypeOid = &oidInfo->comptypeOid;
 	    OIDNewHeap = oidInfo->relOid;
 	    tOid = oidInfo->toastOid;
 		tiOid = oidInfo->toastIndexOid;
 		aOid = oidInfo->aosegOid;
 		aiOid = oidInfo->aosegIndexOid;
+		blkdirOid = oidInfo->aoblkdirOid;
+		blkdirIdxOid = oidInfo->aoblkdirIndexOid;
 	}
 
 	/*
@@ -778,6 +791,8 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 									  toastComptypeOid, is_part);
 	AlterTableCreateAoSegTableWithOid(OIDNewHeap, aOid, aiOid,
 									  aosegComptypeOid, is_part);
+	AlterTableCreateAoBlkdirTableWithOid(OIDNewHeap, blkdirOid, blkdirIdxOid,
+										 aoblkdirComptypeOid, is_part);
 
 	heap_close(OldHeap, NoLock);
 
@@ -886,13 +901,64 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
 }
 
 /*
+ * Change dependency links for objects that are being swapped.
+ *
+ * 'tabletype' can be "TOAST table", "aoseg", "aoblkdir".
+ * It is used for printing error messages.
+ */
+static void
+changeDependencyLinks(Oid baseOid1, Oid baseOid2, Oid oid1, Oid oid2,
+					  const char *tabletype)
+{
+	ObjectAddress baseobject, newobject;
+	long		count;
+
+	/* Delete old dependencies */
+	if (oid1)
+	{
+		count = deleteDependencyRecordsFor(RelationRelationId, oid1);
+		if (count != 1)
+			elog(ERROR, "expected one dependency record for %s table, found %ld",
+				 tabletype, count);
+	}
+	
+	if (oid2)
+	{
+		count = deleteDependencyRecordsFor(RelationRelationId, oid2);
+		if (count != 1)
+			elog(ERROR, "expected one dependency record for %s table, found %ld",
+				 tabletype, count);
+	}
+
+	/* Register new dependencies */
+	baseobject.classId = RelationRelationId;
+	baseobject.objectSubId = 0;
+	newobject.classId = RelationRelationId;
+	newobject.objectSubId = 0;
+	
+	if (oid1)
+	{
+		baseobject.objectId = baseOid1;
+		newobject.objectId = oid1;
+		recordDependencyOn(&newobject, &baseobject, DEPENDENCY_INTERNAL);
+	}
+	
+	if (oid2)
+	{
+		baseobject.objectId = baseOid2;
+		newobject.objectId = oid2;
+		recordDependencyOn(&newobject, &baseobject, DEPENDENCY_INTERNAL);
+	}
+}
+
+/*
  * Swap the physical files of two given relations.
  *
  * We swap the physical identity (reltablespace and relfilenode) while
  * keeping the same logical identities of the two relations.
  *
  * Also swap any TOAST links, so that the toast data moves along with
- * the main-table data. GPDB: also swap aoseg links.
+ * the main-table data. GPDB: also swap aoseg, aoblkdir links.
  */
 void
 swap_relation_files(Oid r1, Oid r2, bool swap_stats)
@@ -904,6 +970,11 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 				relform2;
 	Oid			swaptemp;
 	CatalogIndexState indstate;
+	Oid segrelid1, segrelid2, segidxid1, segidxid2;
+	Oid blkdirrelid1, blkdirrelid2, blkdiridxid1, blkdiridxid2;
+
+	segrelid1 = segrelid2 = segidxid1 = segidxid2 = InvalidOid;
+	blkdirrelid1 = blkdirrelid2 = blkdiridxid1 = blkdiridxid2 = InvalidOid;
 
 	/* We need writable copies of both pg_class tuples. */
 	relRelation = heap_open(RelationRelationId, RowExclusiveLock);
@@ -922,6 +993,17 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 		elog(ERROR, "cache lookup failed for relation %u", r2);
 	relform2 = (Form_pg_class) GETSTRUCT(reltup2);
 
+	if (relform1->relstorage == RELSTORAGE_AOROWS ||
+		relform1->relstorage == RELSTORAGE_AOCOLS)
+	{
+		GetAppendOnlyEntryAuxOids(r1, &segrelid1, &segidxid1, &blkdirrelid1, &blkdiridxid1);
+	}
+	if (relform2->relstorage == RELSTORAGE_AOROWS ||
+		relform2->relstorage == RELSTORAGE_AOCOLS)
+	{
+		GetAppendOnlyEntryAuxOids(r2, &segrelid2, &segidxid2, &blkdirrelid2, &blkdiridxid2);
+	}
+
 	/*
 	 * Actually swap the fields in the two tuples
 	 */
@@ -937,11 +1019,37 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 	relform1->reltoastrelid = relform2->reltoastrelid;
 	relform2->reltoastrelid = swaptemp;
 
-	swaptemp = relform1->relaosegrelid;
-	relform1->relaosegrelid = relform2->relaosegrelid;
-	relform2->relaosegrelid = swaptemp;
+	/* we should not swap reltoastidxid */
 
-	/* we should not swap reltoastidxid nor relaosegidxid */
+	/*
+	 * Swap the AO auxiliary relations and their indexes. Unlike the toast
+	 * relations, we need to swap the index oids as well.
+	 */
+	if (relform1->relstorage == RELSTORAGE_AOROWS ||
+		relform1->relstorage == RELSTORAGE_AOCOLS ||
+		relform2->relstorage == RELSTORAGE_AOROWS ||
+		relform2->relstorage == RELSTORAGE_AOCOLS)
+	{
+		swaptemp = segrelid1;
+		segrelid1 = segrelid2;
+		segrelid2 = swaptemp;
+
+		swaptemp = segidxid1;
+		segidxid1 = segidxid2;
+		segidxid2 = swaptemp;
+
+		swaptemp = blkdirrelid1;
+		blkdirrelid1 = blkdirrelid2;
+		blkdirrelid2 = swaptemp;
+
+		swaptemp = blkdiridxid1;
+		blkdiridxid1 = blkdiridxid2;
+		blkdiridxid2 = swaptemp;
+
+		UpdateAppendOnlyEntryAuxOids(r1, segrelid1, segidxid1, blkdirrelid1, blkdiridxid1);
+		UpdateAppendOnlyEntryAuxOids(r2, segrelid2, segidxid2, blkdirrelid2, blkdiridxid2);
+	}
+	
 
 	/* swap size statistics too, since new rel has freshly-updated stats */
 	if (swap_stats)
@@ -984,47 +1092,9 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 	 */
 	if (relform1->reltoastrelid || relform2->reltoastrelid)
 	{
-		ObjectAddress baseobject,
-					toastobject;
-		long		count;
-
-		/* Delete old dependencies */
-		if (relform1->reltoastrelid)
-		{
-			count = deleteDependencyRecordsFor(RelationRelationId,
-											   relform1->reltoastrelid);
-			if (count != 1)
-				elog(ERROR, "expected one dependency record for TOAST table, found %ld",
-					 count);
-		}
-		if (relform2->reltoastrelid)
-		{
-			count = deleteDependencyRecordsFor(RelationRelationId,
-											   relform2->reltoastrelid);
-			if (count != 1)
-				elog(ERROR, "expected one dependency record for TOAST table, found %ld",
-					 count);
-		}
-
-		/* Register new dependencies */
-		baseobject.classId = RelationRelationId;
-		baseobject.objectSubId = 0;
-		toastobject.classId = RelationRelationId;
-		toastobject.objectSubId = 0;
-
-		if (relform1->reltoastrelid)
-		{
-			baseobject.objectId = r1;
-			toastobject.objectId = relform1->reltoastrelid;
-			recordDependencyOn(&toastobject, &baseobject, DEPENDENCY_INTERNAL);
-		}
-
-		if (relform2->reltoastrelid)
-		{
-			baseobject.objectId = r2;
-			toastobject.objectId = relform2->reltoastrelid;
-			recordDependencyOn(&toastobject, &baseobject, DEPENDENCY_INTERNAL);
-		}
+		changeDependencyLinks(r1, r2,
+							  relform1->reltoastrelid, relform2->reltoastrelid,
+							  "TOAST");
 	}
 
 	/*
@@ -1032,49 +1102,23 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 	 * change their dependency links to re-associate them with their new
 	 * owning relations.  Otherwise the wrong one will get dropped ...
 	 */
-	if (relform1->relaosegrelid || relform2->relaosegrelid)
+	if ((segrelid1 || segrelid2) && (segrelid1 != segrelid2))
 	{
-		ObjectAddress baseobject,
-					  aosegobject;
-		long		count;
+		changeDependencyLinks(r1, r2,
+							  segrelid1, segrelid2,
+							  "aoseg");
+	}
 
-		/* Delete old dependencies */
-		if (relform1->relaosegrelid)
-		{
-			count = deleteDependencyRecordsFor(RelationRelationId,
-											   relform1->relaosegrelid);
-			if (count != 1)
-				elog(ERROR, "expected one dependency record for aoseg table, found %ld",
-					 count);
-		}
-		if (relform2->relaosegrelid)
-		{
-			count = deleteDependencyRecordsFor(RelationRelationId,
-											   relform2->relaosegrelid);
-			if (count != 1)
-				elog(ERROR, "expected one dependency record for aoseg table, found %ld",
-					 count);
-		}
-
-		/* Register new dependencies */
-		baseobject.classId = RelationRelationId;
-		baseobject.objectSubId = 0;
-		aosegobject.classId = RelationRelationId;
-		aosegobject.objectSubId = 0;
-
-		if (relform1->relaosegrelid)
-		{
-			baseobject.objectId = r1;
-			aosegobject.objectId = relform1->relaosegrelid;
-			recordDependencyOn(&aosegobject, &baseobject, DEPENDENCY_INTERNAL);
-		}
-
-		if (relform2->relaosegrelid)
-		{
-			baseobject.objectId = r2;
-			aosegobject.objectId = relform2->relaosegrelid;
-			recordDependencyOn(&aosegobject, &baseobject, DEPENDENCY_INTERNAL);
-		}
+	/*
+	 * If we have ao block directory tables associated with the relations being swapped,
+	 * change their dependency links to re-associate them with their new
+	 * owning relations.  Otherwise the wrong one will get dropped ...
+	 */
+	if ((blkdirrelid1 || blkdirrelid2) && (blkdirrelid1 != blkdirrelid2))
+	{
+		changeDependencyLinks(r1, r2,
+							  blkdirrelid1, blkdirrelid2,
+							  "aoblkdir");
 	}
 
 	/*

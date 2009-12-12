@@ -59,7 +59,8 @@ typedef struct DatumStream
     AppendOnlyStorageAttributes ao_attr;
     AppendOnlyStorageRead *ao_read;
     AppendOnlyStorageWrite *ao_write;
-    
+	int64       blockFirstRowNum; /* the first row number for the current block */
+	
     /* current pointer and nullbit */
     int32 nth;		    /* Nth datum in the block */
     bool  has_null;		/* if we have null at all */
@@ -83,6 +84,28 @@ typedef struct DatumStream
     int64 eofUncompress;
 } DatumStream;
 
+/*
+ * A structure contains the state when fetching rows
+ * through datum stream.
+ */
+typedef struct DatumStreamFetchDescData
+{
+	DatumStream *datumStream;
+
+	CurrentSegmentFile currentSegmentFile;
+	
+	int64 scanNextFileOffset;
+	int64 scanNextRowNum;
+
+	int64 scanAfterFileOffset;
+	int64 scanLastRowNum;
+	
+	CurrentBlock currentBlock;
+	
+} DatumStreamFetchDescData;
+
+typedef DatumStreamFetchDescData *DatumStreamFetchDesc;
+
 /* Stream access method */
 extern int datumstream_get(DatumStream *ds, Datum *datum, bool *null);
 extern int datumstream_advance(DatumStream *ds);
@@ -99,5 +122,11 @@ extern void destroy_datumstream(DatumStream *ds);
 extern int64 datumstream_write_block(DatumStream *ds);
 extern int64 datumstream_write_lob(DatumStream *ds, Datum d);
 extern int datumstream_read_block(DatumStream *ds);
+extern void datumstream_find(DatumStream *datumStream,
+							 int32 rowNumInBlock);
+extern void datumstream_rewind_block(DatumStream *datumStream);
+extern bool datumstream_find_block(DatumStream *datumStream,
+								   DatumStreamFetchDesc datumStreamFetchDesc,
+								   int64 rowNum);
 
 #endif /* DATUM_STREAM_H */

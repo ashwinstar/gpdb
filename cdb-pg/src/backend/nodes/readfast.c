@@ -193,6 +193,9 @@ _readQuery(const char ** str)
     READ_OID_FIELD(intoOidInfo.aosegOid);
     READ_OID_FIELD(intoOidInfo.aosegIndexOid);
     READ_OID_FIELD(intoOidInfo.aosegComptypeOid);
+    READ_OID_FIELD(intoOidInfo.aoblkdirOid);
+    READ_OID_FIELD(intoOidInfo.aoblkdirIndexOid);
+    READ_OID_FIELD(intoOidInfo.aoblkdirComptypeOid);
 
 	local_node->intoPolicy = NULL;
 
@@ -685,6 +688,7 @@ _readTruncateStmt(const char ** str)
 	READ_NODE_FIELD(new_heap_oids);
 	READ_NODE_FIELD(new_toast_oids);
 	READ_NODE_FIELD(new_aoseg_oids);
+	READ_NODE_FIELD(new_aoblkdir_oids);
 	READ_NODE_FIELD(new_ind_oids);
 
 	READ_DONE();
@@ -714,6 +718,9 @@ _readAlterTableStmt(const char ** str)
 			READ_OID_FIELD(oidInfo[m].aosegOid);
 			READ_OID_FIELD(oidInfo[m].aosegIndexOid);
 			READ_OID_FIELD(oidInfo[m].aosegComptypeOid);
+			READ_OID_FIELD(oidInfo[m].aoblkdirOid);
+			READ_OID_FIELD(oidInfo[m].aoblkdirIndexOid);
+			READ_OID_FIELD(oidInfo[m].aoblkdirComptypeOid);
 		}
 	}
 
@@ -1717,6 +1724,9 @@ _readCreateStmt(const char ** str)
 	READ_OID_FIELD(oidInfo.aosegOid);
 	READ_OID_FIELD(oidInfo.aosegIndexOid);
 	READ_OID_FIELD(oidInfo.aosegComptypeOid);
+	READ_OID_FIELD(oidInfo.aoblkdirOid);
+	READ_OID_FIELD(oidInfo.aoblkdirIndexOid);
+	READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 	READ_CHAR_FIELD(relKind);
 	READ_CHAR_FIELD(relStorage);
 	READ_BOOL_FIELD(is_part_child);
@@ -1728,13 +1738,14 @@ _readCreateStmt(const char ** str)
 	 * during serialization/deserialization
 	 */
 	Assert(local_node->relKind == RELKIND_INDEX ||
-			local_node->relKind == RELKIND_RELATION ||
-			local_node->relKind == RELKIND_SEQUENCE ||
-			local_node->relKind == RELKIND_UNCATALOGED ||
-			local_node->relKind == RELKIND_TOASTVALUE ||
-			local_node->relKind == RELKIND_VIEW ||
-			local_node->relKind == RELKIND_COMPOSITE_TYPE ||
-		    local_node->relKind == RELKIND_AOSEGMENTS);
+		   local_node->relKind == RELKIND_RELATION ||
+		   local_node->relKind == RELKIND_SEQUENCE ||
+		   local_node->relKind == RELKIND_UNCATALOGED ||
+		   local_node->relKind == RELKIND_TOASTVALUE ||
+		   local_node->relKind == RELKIND_VIEW ||
+		   local_node->relKind == RELKIND_COMPOSITE_TYPE ||
+		   local_node->relKind == RELKIND_AOSEGMENTS ||
+		   local_node->relKind == RELKIND_AOBLOCKDIR);
 	Assert(local_node->oncommit <= ONCOMMIT_DROP);
 
 	READ_DONE();
@@ -2051,6 +2062,9 @@ _readClusterStmt(const char ** str)
 	READ_OID_FIELD(oidInfo.aosegOid);
 	READ_OID_FIELD(oidInfo.aosegIndexOid);
 	READ_OID_FIELD(oidInfo.aosegComptypeOid);
+	READ_OID_FIELD(oidInfo.aoblkdirOid);
+	READ_OID_FIELD(oidInfo.aoblkdirIndexOid);
+	READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 	READ_NODE_FIELD(new_ind_oids);
 
 	READ_DONE();
@@ -2716,6 +2730,18 @@ _readBitmapHeapScan(const char ** str)
 	READ_DONE();
 }
 
+static BitmapAppendOnlyScan *
+_readBitmapAppendOnlyScan(const char ** str)
+{
+	READ_LOCALS(BitmapAppendOnlyScan);
+
+	readScanInfo(str, (Scan *)local_node);
+
+	READ_NODE_FIELD(bitmapqualorig);
+	READ_BOOL_FIELD(isAORow);
+
+	READ_DONE();
+}
 
 /*
  * _readTidScan
@@ -3499,6 +3525,9 @@ readNodeBinary(const char ** str)
 			case T_BitmapHeapScan:
 				return_value = _readBitmapHeapScan(str);
 				break;
+			case T_BitmapAppendOnlyScan:
+				return_value = _readBitmapAppendOnlyScan(str);
+				break;
 			case T_TidScan:
 				return_value = _readTidScan(str);
 				break;
@@ -3685,6 +3714,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_BitmapHeapPath:
 				return_value = _readBitmapHeapPath(str);
+				break;
+			case T_BitmapAppendOnlyPath:
+				return_value = _readBitmapAppendOnlyPath(str);
 				break;
 			case T_BitmapAndPath:
 				return_value = _readBitmapAndPath(str);

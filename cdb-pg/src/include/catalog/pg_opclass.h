@@ -115,6 +115,7 @@ DATA(insert OID = 1978 (	403		int4_ops		PGNSP PGUID   23 t 0 ));
 #define INT4_BTREE_OPS_OID 1978
 DATA(insert OID = 1979 (	405		int4_ops		PGNSP PGUID   23 t 0 ));
 DATA(insert OID = 1980 (	403		int8_ops		PGNSP PGUID   20 t 0 ));
+#define INT8_BTREE_OPS_OID 1980
 DATA(insert OID = 1981 (	405		int8_ops		PGNSP PGUID   20 t 0 ));
 DATA(insert OID = 1982 (	403		interval_ops	PGNSP PGUID 1186 t 0 ));
 DATA(insert OID = 1983 (	405		interval_ops	PGNSP PGUID 1186 t 0 ));

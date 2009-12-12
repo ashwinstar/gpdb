@@ -70,9 +70,9 @@ extern int	MaxAppendOnlyTables;	/* Max # of concurrently used AO rels */
  */
 typedef struct AOSegfileStatus
 {
-	float8			tupcount;  		/* Total tupcount for this segno across   * 
+	int64			tupcount;  		/* Total tupcount for this segno across   * 
 									 * all segdbs 							  */
-	float8			tupsadded;		/* Num tuples added in this segno across  * 
+	int64			tupsadded;		/* Num tuples added in this segno across  * 
 									 * all segdbs in the current transaction  */
 	bool			inuse;	   		/* if true - segno is assigned right now. *
 									 * use another 							  */

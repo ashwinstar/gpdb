@@ -204,7 +204,7 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 		case T_SeqScan:
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
-                case T_AOCSScan:
+		case T_AOCSScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, ctxt);
 			fix_scanexpr_references(plan, &plan->targetlist, ctxt);
@@ -233,6 +233,13 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 			fix_scanexpr_references(plan, &plan->targetlist, ctxt);
 			fix_scanexpr_references(plan, &plan->qual, ctxt);
 			fix_scanexpr_references(plan, &((BitmapHeapScan *) plan)->bitmapqualorig, ctxt);
+			break;
+		case T_BitmapAppendOnlyScan:
+			if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
+				return cdb_insert_result_node(plan, ctxt);
+			fix_scanexpr_references(plan, &plan->targetlist, ctxt);
+			fix_scanexpr_references(plan, &plan->qual, ctxt);
+			fix_scanexpr_references(plan, &((BitmapAppendOnlyScan *) plan)->bitmapqualorig, ctxt);
 			break;
 		case T_TidScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
@@ -856,6 +863,13 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			adjust_expr_varnos((Node *) ((BitmapHeapScan *) plan)->bitmapqualorig,
 							   rtoffset);
 			break;
+		case T_BitmapAppendOnlyScan:
+			((BitmapAppendOnlyScan *) plan)->scan.scanrelid += rtoffset;
+			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
+			adjust_expr_varnos((Node *) plan->qual, rtoffset);
+			adjust_expr_varnos((Node *) ((BitmapAppendOnlyScan *) plan)->bitmapqualorig,
+							   rtoffset);
+			break;
 		case T_TidScan:
 			((TidScan *) plan)->scan.scanrelid += rtoffset;
 			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
@@ -1338,6 +1352,41 @@ set_inner_join_references(Plan *inner_plan, indexed_tlist *outer_itlist)
 		 * if they are duplicated in qpqual, so must test these independently.
 		 */
 		BitmapHeapScan *innerscan = (BitmapHeapScan *) inner_plan;
+		Index		innerrel = innerscan->scan.scanrelid;
+		List	   *bitmapqualorig = innerscan->bitmapqualorig;
+
+		/* only refs to outer vars get changed in the inner qual */
+		if (NumRelids((Node *) bitmapqualorig) > 1)
+			innerscan->bitmapqualorig = join_references(bitmapqualorig,
+														outer_itlist,
+														NULL,
+														innerrel);
+
+		/*
+		 * We must fix the inner qpqual too, if it has join clauses (this
+		 * could happen if special operators are involved: some indexquals may
+		 * get rechecked as qpquals).
+		 */
+		if (NumRelids((Node *) inner_plan->qual) > 1)
+			inner_plan->qual = join_references(inner_plan->qual,
+											   outer_itlist,
+											   NULL,
+											   innerrel);
+
+		/* Now recurse */
+		set_inner_join_references(inner_plan->lefttree,
+								  outer_itlist);
+	}
+	else if (IsA(inner_plan, BitmapAppendOnlyScan))
+	{
+		/*
+		 * The inner side is a bitmap scan plan.  Fix the top node, and
+		 * recurse to get the lower nodes.
+		 *
+		 * Note: create_bitmap_scan_plan removes clauses from bitmapqualorig
+		 * if they are duplicated in qpqual, so must test these independently.
+		 */
+		BitmapAppendOnlyScan *innerscan = (BitmapAppendOnlyScan *) inner_plan;
 		Index		innerrel = innerscan->scan.scanrelid;
 		List	   *bitmapqualorig = innerscan->bitmapqualorig;
 

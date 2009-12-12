@@ -101,7 +101,7 @@ _bitmap_next(IndexScanDesc scan, ScanDirection dir  __attribute__((unused)))
 			break;
 	}
 
-	Assert((nextTid % BM_MAX_HTUP_PER_PAGE) + 1 > 0);
+	Assert((nextTid % BM_MAX_TUPLES_PER_PAGE) + 1 > 0);
 
 	ItemPointerSet(&(scan->xs_ctup.t_self), BM_INT_GET_BLOCKNO(nextTid),
 				   BM_INT_GET_OFFSET(nextTid));

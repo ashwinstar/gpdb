@@ -1629,7 +1629,7 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
 					  BlockNumber lov_block, OffsetNumber off,
 					  uint64 tidnum, bool use_wal)
 {
-	uint64 zeros;
+	int64 zeros;
 	uint16 inserting_pos;
 	int16 bytes_used = 0;
 
@@ -1644,6 +1644,17 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
 	 * set bit.
 	 */
 	zeros = tidnum - buf->last_tid - 1;
+
+	/*
+	 * If zeros is less than 0, the incoming tids are not
+	 * sorted. Currently, this is not allowed.
+	 */
+	if (zeros < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("tids are not in order when building the bitmap index: "
+						"new tidnum " INT64_FORMAT ", last tidnum " INT64_FORMAT,
+						tidnum, buf->last_tid)));
 
 	if (zeros > 0)
 	{
@@ -2276,7 +2287,7 @@ _bitmap_buildinsert(Relation rel, ItemPointerData ht_ctid, Datum *attdata,
 	TupleDesc	tupDesc;
 	uint64		tidOffset;
 
-	Assert(ItemPointerGetOffsetNumber(&ht_ctid) <= BM_MAX_HTUP_PER_PAGE);
+	Assert(ItemPointerGetOffsetNumber(&ht_ctid) <= BM_MAX_TUPLES_PER_PAGE);
 
 	tidOffset = BM_IPTR_TO_INT(&ht_ctid); 
 
@@ -2307,7 +2318,7 @@ _bitmap_doinsert(Relation rel, ItemPointerData ht_ctid, Datum *attdata,
 	if (tupDesc->natts <= 0)
 		return ;
 
-	Assert(ItemPointerGetOffsetNumber(&ht_ctid) <= BM_MAX_HTUP_PER_PAGE);
+	Assert(ItemPointerGetOffsetNumber(&ht_ctid) <= BM_MAX_TUPLES_PER_PAGE);
 	tidOffset = BM_IPTR_TO_INT(&ht_ctid);
 
 	/* insert a new bit into the corresponding bitmap using the HRL scheme */

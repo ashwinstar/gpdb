@@ -29,6 +29,7 @@
 #include "nodes/pg_list.h"
 #include "storage/itemptr.h"
 #include "storage/bufpage.h"
+#include "access/appendonlytid.h"
 
 struct Instrumentation;                 /* #include "executor/instrument.h" */
 
@@ -39,7 +40,10 @@ struct Instrumentation;                 /* #include "executor/instrument.h" */
  * the per-page bitmaps variable size.	We just legislate that the size
  * is this:
  */
-#define MAX_TUPLES_PER_PAGE  MaxHeapTuplesPerPage
+
+// UNDONE: Until we convert TidBitmap to handle AO TIDS, lets raise this the 64k
+// #define MAX_TUPLES_PER_PAGE  MaxHeapTuplesPerPage
+#define MAX_TUPLES_PER_PAGE  65536
 
 /*
  * When we have to switch over to lossy storage, we use a data structure
@@ -168,5 +172,8 @@ extern bool bitmap_stream_iterate(StreamNode *n, PagetableEntry *e);
 extern void tbm_bitmap_free(Node *bm);
 extern void tbm_bitmap_set_instrument(Node *bm, struct Instrumentation *instr);
 extern void tbm_bitmap_upd_instrument(Node *bm);
+
+extern void tbm_convert_appendonly_tid_in(AOTupleId *aoTid, ItemPointer psudeoHeapTid);
+extern void tbm_convert_appendonly_tid_out(ItemPointer psudeoHeapTid, AOTupleId *aoTid);
 
 #endif   /* TIDBITMAP_H */

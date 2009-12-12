@@ -88,6 +88,7 @@
 #include "executor/nodeBitmapHeapscan.h"
 #include "executor/nodeBitmapIndexscan.h"
 #include "executor/nodeBitmapOr.h"
+#include "executor/nodeBitmapAppendOnlyscan.h"
 #include "executor/nodeExternalscan.h"
 #include "executor/nodeAppendOnlyscan.h"
 #include "executor/nodeAOCSScan.h"
@@ -215,6 +216,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		case T_BitmapHeapScan:
 			result = (PlanState *) ExecInitBitmapHeapScan((BitmapHeapScan *) node,
 														  estate, eflags);
+			break;
+
+		case T_BitmapAppendOnlyScan:
+			result = (PlanState *) ExecInitBitmapAppendOnlyScan((BitmapAppendOnlyScan*) node,
+														        estate, eflags);
 			break;
 
 		case T_TidScan:
@@ -420,6 +426,7 @@ ExecProcNode(PlanState *node)
 		&&Exec_Jmp_IndexScan,
 		&&Exec_Jmp_BitmapIndexScan,
 		&&Exec_Jmp_BitmapHeapScan,
+		&&Exec_Jmp_BitmapAppendOnlyScan,
 		&&Exec_Jmp_TidScan,
 		&&Exec_Jmp_SubqueryScan,
 		&&Exec_Jmp_FunctionScan,
@@ -504,6 +511,10 @@ Exec_Jmp_BitmapIndexScan:
 
 Exec_Jmp_BitmapHeapScan:
 	result = ExecBitmapHeapScan((BitmapHeapScanState *) node);
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_BitmapAppendOnlyScan:
+	result = ExecBitmapAppendOnlyScan((BitmapAppendOnlyScanState *) node);
 	goto Exec_Jmp_Done;
 
 Exec_Jmp_TidScan:
@@ -655,6 +666,10 @@ Exec_Jmp_Done:
 			result = ExecValuesScan((ValuesScanState *) node);
 			break;
 
+		case T_BitmapAppendOnlyScanState:
+			result = ExecBitmapAppendOnlyScan((BitmapAppendOnlyScanState *) node);
+			break;
+			
 			/*
 			 * join nodes
 			 */
@@ -851,6 +866,9 @@ ExecCountSlotsNode(Plan *node)
 		case T_BitmapHeapScan:
 			return ExecCountSlotsBitmapHeapScan((BitmapHeapScan *) node);
 
+		case T_BitmapAppendOnlyScan:
+			return ExecCountSlotsBitmapAppendOnlyScan((BitmapAppendOnlyScan*) node);
+			
 		case T_TidScan:
 			return ExecCountSlotsTidScan((TidScan *) node);
 
@@ -1073,6 +1091,9 @@ ExecEndNode(PlanState *node)
 			ExecEndBitmapHeapScan((BitmapHeapScanState *) node);
 			break;
 
+		case T_BitmapAppendOnlyScanState:
+			ExecEndBitmapAppendOnlyScan((BitmapAppendOnlyScanState *) node);
+			break;
 		case T_TidScanState:
 			ExecEndTidScan((TidScanState *) node);
 			break;
@@ -1227,6 +1248,10 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 			nameTag = "BitmapHeapScan";
 			break;
 
+		case T_BitmapAppendOnlyScanState:
+			nameTag = "BitmapAppendOnlyScan";
+			break;
+
 		case T_TidScanState:
 			nameTag = "TidScan";
 			break;
@@ -1242,7 +1267,7 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 		case T_ValuesScanState:
 			nameTag = "ValuesScan";
 			break;
-
+			
 			/*
 			 * join nodes
 			 */

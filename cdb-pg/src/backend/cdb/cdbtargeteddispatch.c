@@ -147,7 +147,8 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 
 	InitDirectDispatchCalculationInfo(&result);
 
-	if ( nodeTag((Node*)plan) == T_BitmapHeapScan)
+	if ( nodeTag((Node*)plan) == T_BitmapHeapScan ||
+		 nodeTag((Node*)plan) == T_BitmapAppendOnlyScan)
 	{
 		/* do not assert for bitmap heap scan --> it can have a child which is an index scan */
 		/* in fact, checking the quals for the bitmap heap scan are redundant with checking
@@ -517,6 +518,7 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 			case T_IndexScan:
 			case T_BitmapIndexScan:
 			case T_BitmapHeapScan:
+			case T_BitmapAppendOnlyScan:
 				/* we can determine the dispatch data to merge by looking at the relation begin scanned */
 				dispatchInfo = GetContentIdsFromPlanForSingleRelation(data->rtable, (Plan *)node, ((Scan*)node)->scanrelid);
 				break;

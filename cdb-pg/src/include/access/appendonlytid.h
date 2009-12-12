@@ -23,12 +23,10 @@
  * number is 0 (utility mode) and the lower part (6 bits) of the row number is 0, our AOTID's
  * last 16 bits will be non-zero because of the always on reserved bit.
  *
- * Out of the following 48 bits, the 38 leftmost
- * bits stand for the row within the segment file 
- * (Limit: 274 trillion (2^38) - 1), the next bit is reserved
- * and always ON, and the 9
- * rightmost bits stand for which segment file the 
- * tuple is in (Limit: 511 (2^9 - 1))
+ * Out of the following 48 bits, the 7 leftmost bits stand for which segment file the
+ * tuple is in (Limit: 128 (2^8)), the next 40 bits stand for the row within the
+ * segment file (Limit: 1099 trillion (2^40 - 1)), the last bit is reserved and always
+ * ON.
  *
  *
  * ***WARNING*** STRUCT PACKING ISSUE.
@@ -46,21 +44,22 @@ typedef struct AOTupleId
 
 } AOTupleId;
 
+#define AOTUPLEID_INIT {0,0}
    
-#define AOTupleIdGet_segmentFileNum(h)        (((h)->bytes_4_5&0x01FF)) // 9 bits
-#define AOTupleIdGet_makeHeapExecutorHappy(h) (((h)->bytes_4_5&0x0200)>>9) // 1 bit
+#define AOTupleIdGet_segmentFileNum(h)        ((((h)->bytes_0_3&0xFE000000)>>25)) // 7 bits
+#define AOTupleIdGet_makeHeapExecutorHappy(h) (((h)->bytes_4_5&0x0001)) // 1 bit
 #define AOTupleIdGet_rowNum(h) \
-          ((((uint64)((h)->bytes_0_3))<<6)|(((uint64)((h)->bytes_4_5&0xFC00))>>10))
-         /* top most 32 bits (all bytes_2_3) */  /* 6 top bits from bytes_4_5 */
+	((((uint64)((h)->bytes_0_3&0x01FFFFFF))<<15)|(((uint64)((h)->bytes_4_5&0xFFFE))>>1))
+         /* top most 25 bits */           /* 15 top bits from bytes_4_5 */
 
 /* ~_Init zeroes the 2 regular fields and sets the always on field to 1. */
-#define AOTupleIdInit_Init(h)                {(h)->bytes_0_3=0;(h)->bytes_4_5=0x0200;}
-#define AOTupleIdInit_segmentFileNum(h,e)    {(h)->bytes_4_5|=(0x01FF&((uint16)(e)));}
-#define AOTupleIdInit_rowNum(h,e)            {(h)->bytes_0_3|=((uint32)((INT64CONST(0x0000003FFFFFFFFF)&(e))>>6));\
-											  (h)->bytes_4_5|=((0x003F&((uint16)(e)))<<10);}
+#define AOTupleIdInit_Init(h)                {(h)->bytes_0_3=0;(h)->bytes_4_5=0x0001;}
+#define AOTupleIdInit_segmentFileNum(h,e)    {(h)->bytes_0_3|=(((uint32)(0x007F&((uint16)(e))))<<25);}
+#define AOTupleIdInit_rowNum(h,e)            {(h)->bytes_0_3|=((uint32)((INT64CONST(0x000000FFFFFFFFFF)&(e))>>15));\
+											  (h)->bytes_4_5|=((0x7FFF&((uint16)(e)))<<1);}
 
-#define AOTupleId_MaxRowNum            INT64CONST(274877906943) 		// 38 bits, or 274,877,906,943 (274 million  - 1).
-#define AOTupleId_MaxRowNum_CommaStr  "274,877,906,943"
+#define AOTupleId_MaxRowNum            INT64CONST(1099511627775) 		// 40 bits, or 1099511627775 (1099 million  - 1).
+#define AOTupleId_MaxRowNum_CommaStr  "1,099,511,627,775"
 
 #define AOTupleId_MaxSegmentFileNum    			127
 #define AOTupleId_MultiplierSegmentFileNum    	128	// Next up power of 2 as multiplier.

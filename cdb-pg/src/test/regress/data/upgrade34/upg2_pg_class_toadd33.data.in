@@ -38,4 +38,6 @@ relname|relnamespace|reltype|relowner|relam|relfilenode|reltablespace|relpages|r
 6064|pg_resqueuecapability_oid_index|11|0|10|403|6064|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
 6065|pg_resqueuecapability_resqueueid_index|11|0|10|403|6065|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
 6066|pg_resqueuecapability_restypid_index|11|0|10|403|6066|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
+5043|gp_fastsequence|11|6453|10|0|5043|0|1|0|0|0|0|0|t|f|r|h|3|0|0|0|0|0|f|f|f|f|0|{=r/@gpcurusername@}|\N
+6067|gp_fastsequence_objid_objmod_index|11|0|10|403|6067|0|1|0|0|0|0|0|f|f|i|h|2|0|0|0|0|0|f|f|f|f|0|\N|\N
 \.

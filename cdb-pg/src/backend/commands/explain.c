@@ -972,6 +972,12 @@ explain_outNode(StringInfo str,
 		case T_BitmapHeapScan:
 			pname = "Bitmap Heap Scan";
 			break;
+		case T_BitmapAppendOnlyScan:
+			if (((BitmapAppendOnlyScan *)plan)->isAORow)
+				pname = "Bitmap Append-Only Row-Oriented Scan";
+			else
+				pname = "Bitmap Append-Only Column-Oriented Scan";
+			break;
 		case T_TidScan:
 			pname = "Tid Scan";
 			break;
@@ -1107,6 +1113,7 @@ explain_outNode(StringInfo str,
 		case T_AppendOnlyScan:
 		case T_AOCSScan:
 		case T_BitmapHeapScan:
+		case T_BitmapAppendOnlyScan:
 		case T_TidScan:
 			if (((Scan *) plan)->scanrelid > 0)
 			{
@@ -1231,12 +1238,20 @@ explain_outNode(StringInfo str,
 						   str, indent, es);
 			break;
 		case T_BitmapHeapScan:
+		case T_BitmapAppendOnlyScan:
 			/* XXX do we want to show this in production? */
-			show_scan_qual(((BitmapHeapScan *) plan)->bitmapqualorig,
-						   "Recheck Cond",
-						   ((Scan *) plan)->scanrelid,
-						   outer_plan,
-						   str, indent, es);
+			if (nodeTag(plan) == T_BitmapHeapScan)
+				show_scan_qual(((BitmapHeapScan *) plan)->bitmapqualorig,
+							   "Recheck Cond",
+							   ((Scan *) plan)->scanrelid,
+							   outer_plan,
+							   str, indent, es);
+			else if (nodeTag(plan) == T_BitmapAppendOnlyScan)
+				show_scan_qual(((BitmapAppendOnlyScan *) plan)->bitmapqualorig,
+							   "Recheck Cond",
+							   ((Scan *) plan)->scanrelid,
+							   outer_plan,
+							   str, indent, es);
 			/* FALL THRU */
 		case T_SeqScan:
 		case T_ExternalScan:
@@ -1526,7 +1541,8 @@ explain_outNode(StringInfo str,
 		 */
 		explain_outNode(str, outerPlan(plan),
 						outerPlanState(planstate),
-						IsA(plan, BitmapHeapScan) ? outer_plan : NULL,
+						(IsA(plan, BitmapHeapScan) |
+						 IsA(plan, BitmapAppendOnlyScan)) ? outer_plan : NULL,
 						indent + 3, es);
 	}
     else if (skip_outer)

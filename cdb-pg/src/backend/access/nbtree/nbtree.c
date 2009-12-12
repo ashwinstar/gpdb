@@ -62,7 +62,7 @@ typedef struct
 
 
 static void btbuildCallback(Relation index,
-				HeapTuple htup,
+				ItemPointer tupleId,
 				Datum *values,
 				bool *isnull,
 				bool tupleIsAlive,
@@ -117,8 +117,8 @@ btbuild(PG_FUNCTION_ARGS)
 		buildstate.spool2 = _bt_spoolinit(index, false, true);
 
 	/* do the heap scan */
-	reltuples = IndexBuildHeapScan(heap, index, indexInfo,
-								   btbuildCallback, (void *) &buildstate);
+	reltuples = IndexBuildScan(heap, index, indexInfo,
+							   btbuildCallback, (void *) &buildstate);
 
 	/* okay, all heap tuples are indexed */
 	if (buildstate.spool2 && !buildstate.haveDead)
@@ -170,7 +170,7 @@ btbuild(PG_FUNCTION_ARGS)
  */
 static void
 btbuildCallback(Relation index,
-				HeapTuple htup,
+				ItemPointer tupleId,
 				Datum *values,
 				bool *isnull,
 				bool tupleIsAlive,
@@ -181,7 +181,7 @@ btbuildCallback(Relation index,
 
 	/* form an index tuple and point it at the heap tuple */
 	itup = index_form_tuple(RelationGetDescr(index), values, isnull);
-	itup->t_tid = htup->t_self;
+	itup->t_tid = *tupleId;
 
 	/*
 	 * insert the index tuple into the appropriate spool file for subsequent

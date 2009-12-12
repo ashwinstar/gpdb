@@ -675,8 +675,12 @@ insert into public.pg_attribute
     a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
     a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
   from pg_catalog.pg_attribute a
-  where (attrelid, attnum) in ( ('public.pg_appendonly'::regclass, 9) );
-update public.pg_class set relnatts=9 where oid = 'pg_catalog.pg_appendonly'::regclass;
+  where (attrelid, attnum) in ( values('public.pg_appendonly'::regclass, 9),
+							          ('public.pg_appendonly'::regclass, 10),
+							 		  ('public.pg_appendonly'::regclass, 11),
+							 		  ('public.pg_appendonly'::regclass, 12),
+							 		  ('public.pg_appendonly'::regclass, 13) );
+update public.pg_class set relnatts=13 where oid = 'pg_catalog.pg_appendonly'::regclass;
 insert into public.pg_attribute 
   select 'pg_catalog.pg_exttable'::regclass, a.attname, a.atttypid,
     a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
@@ -1003,9 +1007,9 @@ from public.pg_rewrite
 where nspname in ('pg_catalog', 'information_schema');
 
 -- compare old and new pg_appendonly
-select * from public.pg_appendonly where relid < 10000;
+select relid from public.pg_appendonly where relid < 10000;
 
-select * from pg_catalog.pg_appendonly where relid < 10000;
+select relid from pg_catalog.pg_appendonly where relid < 10000;
 
 -- compare old and new pg_exttable
 select * from public.pg_exttable where reloid < 10000;

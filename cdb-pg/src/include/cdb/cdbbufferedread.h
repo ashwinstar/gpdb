@@ -60,6 +60,13 @@ typedef struct BufferedRead
 	File 				 file;
     char				 *filePathName;
     int64                fileLen;
+
+	/*
+	 * Temporary limit support for random reading.
+	 */
+	bool				haveTemporaryLimitInEffect;
+	int64				temporaryLimitFileLen;
+
 } BufferedRead;
 
 /*
@@ -92,6 +99,22 @@ extern void BufferedReadSetFile(
     File 				 file,
     char				 *filePathName,
     int64                fileLen);
+
+/*
+ * Set a temporary read range in the current open segment file.
+ *
+ * The beginFileOffset must be to the beginning of an Append-Only Storage block.
+ *
+ * The afterFileOffset serves as the temporary EOF.  It will cause reads to return
+ * false (no more blocks) when reached.  It must be at the end of an Append-Only Storage
+ * block.
+ *
+ * When a read returns false (no more blocks), the temporary read range is forgotten.
+ */
+extern void BufferedReadSetTemporaryRange(
+    BufferedRead         *bufferedRead,
+	int64				  beginFileOffset,
+	int64				  afterFileOffset);
 
 /*
  * Return the position of the next read buffer in bytes.

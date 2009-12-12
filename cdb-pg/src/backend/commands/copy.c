@@ -4026,9 +4026,6 @@ CopyFrom(CopyState cstate)
 					
 					if (relstorage != RELSTORAGE_AOCOLS)
 					{
-						/* XXX TODO:
-						 * AOCS does not do constraint checking yet.
-						 */
 						/* Place tuple in tuple slot */
 						ExecStoreGenericTuple(tuple, slot, false);
 
@@ -4039,17 +4036,38 @@ CopyFrom(CopyState cstate)
 								ExecConstraints(resultRelInfo, slot, estate);
 					}
 
+					else
+					{
+						/* XXX TODO:
+						 * AOCS does not do constraint checking yet.
+						 */
+						ExecClearTuple(slot);
+						slot->PRIVATE_tts_values = values;
+						slot->PRIVATE_tts_isnull = nulls;
+						ExecStoreVirtualTuple(slot);
+					}
+
 					/*
 					 * OK, store the tuple and create index entries for it
 					 */
 					if (relstorage == RELSTORAGE_AOROWS)
 					{
+						Oid			tupleOid;
+						AOTupleId	aoTupleId;
+						
 						/* inserting into an append only relation */
-						appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple);
+						appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple, &tupleOid, &aoTupleId);
+						
+						if (resultRelInfo->ri_NumIndices > 0)
+							ExecInsertIndexTuples(slot, (ItemPointer)&aoTupleId, estate, false);
 					}
 					else if (relstorage == RELSTORAGE_AOCOLS)
 					{
-                        aocs_insert_values(resultRelInfo->ri_aocsInsertDesc, values, nulls);
+						AOTupleId aoTupleId;
+						
+                        aocs_insert_values(resultRelInfo->ri_aocsInsertDesc, values, nulls, &aoTupleId);
+						if (resultRelInfo->ri_NumIndices > 0)
+							ExecInsertIndexTuples(slot, (ItemPointer)&aoTupleId, estate, false);
 					}
 					else if (relstorage == RELSTORAGE_EXTERNAL)
 					{

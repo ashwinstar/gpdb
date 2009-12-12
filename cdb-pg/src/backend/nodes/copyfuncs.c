@@ -466,6 +466,28 @@ _copyBitmapHeapScan(BitmapHeapScan *from)
 }
 
 /*
+ * _copyBitmapAppendOnlyScan
+ */
+static BitmapAppendOnlyScan *
+_copyBitmapAppendOnlyScan(BitmapAppendOnlyScan *from)
+{
+	BitmapAppendOnlyScan *newnode = makeNode(BitmapAppendOnlyScan);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((Scan *) from, (Scan *) newnode);
+
+	/*
+	 * copy remainder of node
+	 */
+	COPY_NODE_FIELD(bitmapqualorig);
+	COPY_SCALAR_FIELD(isAORow);
+
+	return newnode;
+}
+
+/*
  * _copyTidScan
  */
 static TidScan *
@@ -2208,6 +2230,9 @@ _copyQuery(Query *from)
 	COPY_SCALAR_FIELD(intoOidInfo.aosegOid);
 	COPY_SCALAR_FIELD(intoOidInfo.aosegIndexOid);
 	COPY_SCALAR_FIELD(intoOidInfo.aosegComptypeOid);
+	COPY_SCALAR_FIELD(intoOidInfo.aoblkdirOid);
+	COPY_SCALAR_FIELD(intoOidInfo.aoblkdirIndexOid);
+	COPY_SCALAR_FIELD(intoOidInfo.aoblkdirComptypeOid);
 	if (from->intoPolicy)
 	{
 		COPY_POINTER_FIELD(intoPolicy,sizeof(GpPolicy) + from->intoPolicy->nattrs*sizeof(from->intoPolicy->attrs[0]));
@@ -3835,7 +3860,7 @@ copyObject(void *from)
 		case T_AppendOnlyScan:
 			retval = _copyAppendOnlyScan(from);
 			break;
-                case T_AOCSScan:
+		case T_AOCSScan:
 			retval = _copyAOCSScan(from);
                         break;
 		case T_ExternalScan:
@@ -3849,6 +3874,9 @@ copyObject(void *from)
 			break;
 		case T_BitmapHeapScan:
 			retval = _copyBitmapHeapScan(from);
+			break;
+		case T_BitmapAppendOnlyScan:
+			retval = _copyBitmapAppendOnlyScan(from);
 			break;
 		case T_TidScan:
 			retval = _copyTidScan(from);

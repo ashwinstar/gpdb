@@ -762,7 +762,8 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 		/* Consider only regular, toast and aosegment tables. */
 		if (classForm->relkind != RELKIND_RELATION &&
 			classForm->relkind != RELKIND_TOASTVALUE &&
-			classForm->relkind != RELKIND_AOSEGMENTS)
+			classForm->relkind != RELKIND_AOSEGMENTS &&
+			classForm->relkind != RELKIND_AOBLOCKDIR)
 			continue;
 
 		/*
@@ -1105,7 +1106,8 @@ test_rel_for_autovac(Oid relid, PgStat_StatTabEntry *tabentry,
 			*vacuum_tables = lappend(*vacuum_tables, tab);
 		}
 	}
-	else if (classForm->relkind != RELKIND_AOSEGMENTS)
+	else if (classForm->relkind != RELKIND_AOSEGMENTS &&
+			 classForm->relkind != RELKIND_AOBLOCKDIR)
 	{   
         if (classForm->relkind != RELKIND_TOASTVALUE)
             elog(ERROR,"Expected relkind to be 't' (toast), but was '%c'.",classForm->relkind);

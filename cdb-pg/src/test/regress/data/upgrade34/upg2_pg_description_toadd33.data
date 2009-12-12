@@ -34,4 +34,8 @@ objoid|classoid|objsubid|description
 5040|1255|0|change weight of all the backends for a given session id
 5041|1255|0|change weight of all the backends for a given session id
 5042|1255|0|list priorities of backends
+3302|1255|0|I/O
+3303|1255|0|I/O
+3304|1255|0|I/O
+3305|1255|0|I/O
 \.

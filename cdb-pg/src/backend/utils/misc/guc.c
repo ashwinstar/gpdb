@@ -227,6 +227,7 @@ bool 		Debug_appendonly_print_scan_tuple = false;
 bool 		Debug_appendonly_print_storage_headers = false;
 bool 		Debug_appendonly_print_verify_write_block = false;
 bool		Debug_appendonly_use_no_toast = false;
+bool 		Debug_appendonly_print_blockdirectory = false;
 bool 		Test_appendonly_override = false;
 bool		Test_print_direct_dispatch_info = false;
 bool 		gp_test_orientation_override = false;
@@ -1949,6 +1950,16 @@ false
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_print_tablespace,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_appendonly_print_blockdirectory", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only block directory."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_blockdirectory,
 		false, NULL, NULL
 	},
 

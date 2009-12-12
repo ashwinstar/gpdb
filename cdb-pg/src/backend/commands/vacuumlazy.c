@@ -967,12 +967,13 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	 */
 	if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		FileSegInfo *segfile_array = NULL;	/* array of all segfiles information */
+		FileSegInfo **segfile_array = NULL;	/* array of all segfiles information */
 		int total_segfiles;
 		int i;
+		AppendOnlyEntry *aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel));
 
 		/* Get information about all the file segments we need to scan */
-		segfile_array = GetAllFileSegInfo(aorel, SnapshotNow, &total_segfiles);
+		segfile_array = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
 
 		/*
 		 * For each fileseg, get a lock on it and truncate beyond eof. If
@@ -990,10 +991,10 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			File 			relfile;
 			char 			filenamepath[MAXPGPATH];
 
-			segno = segfile_array[i].segno;
+			segno = segfile_array[i]->segno;
 
 			/* get the eof and a lock */
-			fsinfo = GetFileSegInfoForVacuum(aorel, segno);
+			fsinfo = GetFileSegInfoForVacuum(aorel, aoEntry, segno);
 
 			if(!fsinfo)
 			{
@@ -1014,6 +1015,9 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 				fsinfo = NULL;
 			}
 		}
+
+		pfree(aoEntry);
+		FreeAllSegFileInfo(segfile_array, total_segfiles);
 	}
 	
 	ereport(elevel,
@@ -1033,16 +1037,14 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	BlockNumber nblocks = 0;
 	char	   *relname;
 	int64		num_tuples = 0;
-        int64           sz = 0;
+	int64           sz = 0;
 
-        int totalseg;
-        AOCSFileSegInfo **allseg;
-
+	int totalseg;
+	AOCSFileSegInfo **allseg;
+	AppendOnlyEntry *aoEntry;
+	
 	PGRUsage	ru0;
-
-        int i, j;
-
-
+	int i, j;
 		
 	pg_rusage_init(&ru0);
 	
@@ -1051,21 +1053,23 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			(errmsg("vacuuming \"%s.%s\"",
 					get_namespace_name(RelationGetNamespace(aorel)),
 					relname)));
+
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel));
 	
-        allseg = GetAllAOCSFileSegInfo(aorel, SnapshotNow, &totalseg);
-        for(i=0; i<totalseg; ++i)
-        {
-                num_tuples += allseg[i]->tupcount;
-                nblocks += allseg[i]->varblockcount;
-
-                for(j=0; j<allseg[i]->vpinfo.nEntry; ++j)
-                {
-                        AOCSVPInfoEntry *entry;
-                        entry = getAOCSVPEntry(allseg[i], j);
-
-                        sz += entry->eof;
-                }
-        }
+	allseg = GetAllAOCSFileSegInfo(aorel, aoEntry, SnapshotNow, &totalseg);
+	for(i=0; i<totalseg; ++i)
+	{
+		num_tuples += allseg[i]->tupcount;
+		nblocks += allseg[i]->varblockcount;
+		
+		for(j=0; j<allseg[i]->vpinfo.nEntry; ++j)
+		{
+			AOCSVPInfoEntry *entry;
+			entry = getAOCSVPEntry(allseg[i], j);
+			
+			sz += entry->eof;
+		}
+	}
 	nblocks = (uint32)RelationGuessNumberOfBlocks(sz);
                 
 	if(isVacFull)
@@ -1127,7 +1131,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			segno = allseg[i]->segno;
 
 			/* get the eof and a lock */
-			fsinfo = GetAOCSFileSegInfoForVacuum(aorel, segno);
+			fsinfo = GetAOCSFileSegInfoForVacuum(aorel, aoEntry, segno);
 
 			if(!fsinfo)
 			{
@@ -1136,22 +1140,22 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			}
 			else
 			{
-                                for(j=0; j<fsinfo->vpinfo.nEntry; ++j)
-                                {
-                                        int64 			segeof;
-                                        File 			relfile;
-                                        char 			filenamepath[MAXPGPATH];
-                                        AOCSVPInfoEntry *entry;
+				for(j=0; j<fsinfo->vpinfo.nEntry; ++j)
+				{
+					int64 			segeof;
+					File 			relfile;
+					char 			filenamepath[MAXPGPATH];
+					AOCSVPInfoEntry *entry;
 
-                                        entry = getAOCSVPEntry(fsinfo, j);
-                                        segeof = entry->eof;
+					entry = getAOCSVPEntry(fsinfo, j);
+					segeof = entry->eof;
 
-                                        /* Open and truncate the relation segfile beyond its eof */
-                                        MakeAOSegmentFileName(aorel, segno, j, filenamepath);
-                                        OpenAOSegmentFile(aorel, filenamepath, false, &relfile);
-                                        TruncateAOSegmentFile(relfile, aorel, segeof, elevel);
-                                        CloseAOSegmentFile(relfile, aorel, segno);
-                                }
+					/* Open and truncate the relation segfile beyond its eof */
+					MakeAOSegmentFileName(aorel, segno, j, filenamepath);
+					OpenAOSegmentFile(aorel, filenamepath, false, &relfile);
+					TruncateAOSegmentFile(relfile, aorel, segeof, elevel);
+					CloseAOSegmentFile(relfile, aorel, segno);
+				}
 
 				pfree(fsinfo);
 				fsinfo = NULL;
@@ -1164,12 +1168,14 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					relname, (double) num_tuples, nblocks,
 					(isVacFull ? "truncated unused data after eof." : ""))));
 
-        if(allseg)
-        {
-                for(i = 0; i<totalseg; ++i) 
-                        pfree(allseg[i]);
-                pfree(allseg);
-        }
+	pfree(aoEntry);
+
+	if(allseg)
+	{
+		for(i = 0; i<totalseg; ++i) 
+			pfree(allseg[i]);
+		pfree(allseg);
+	}
 }
 
 /*

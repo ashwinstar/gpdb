@@ -18,6 +18,8 @@
 #include "access/heapam.h"
 #include "access/nbtree.h"
 #include "access/transam.h"
+#include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbaocsam.h"
 #include "cdb/cdbvars.h"  /*Gp_is_primary*/
 #include "miscadmin.h"
 #include "utils/inval.h"
@@ -156,6 +158,82 @@ top:
 }
 
 /*
+ * _bt_ao_check_unique -- Check for violation of unique index constraint
+ *  for AO/CO tables.
+ *
+ * Returns InvalidTransactionId if there is no conflict, else an xact ID
+ * we must wait for to see if it commits a conflicting tuple.	If an actual
+ * conflict is detected, no return --- just ereport().
+ */
+static TransactionId
+_bt_ao_check_unique(Relation rel, Relation aoRel, ItemPointer tid)
+{
+	TransactionId xwait = InvalidTransactionId;
+	
+	Assert(RelationIsAoRows(aoRel) ||
+		   RelationIsAoCols(aoRel));
+	
+	if (RelationIsAoRows(aoRel))
+	{
+		AppendOnlyFetchDesc aoFetchDesc =
+			appendonly_fetch_init(aoRel, SnapshotDirty);
+
+		if (appendonly_fetch(aoFetchDesc, (AOTupleId*)tid, NULL))
+		{
+			xwait =
+				(TransactionIdIsValid(SnapshotDirty->xmin)) ?
+				SnapshotDirty->xmin : SnapshotDirty->xmax;
+
+			/*
+			 * If this tuple is not being updated by other transaction,
+			 * then we have a definite conflict. Ereport here.
+			 */
+			if (!TransactionIdIsValid(xwait))
+				ereport(ERROR,
+						(errcode(ERRCODE_UNIQUE_VIOLATION),
+						 errmsg("duplicate key violates unique constraint \"%s\"",
+								RelationGetRelationName(rel)),
+						 errOmitLocation(true)));
+		}
+	
+		appendonly_fetch_finish(aoFetchDesc);
+	}
+	else
+	{
+		TupleDesc tupleDesc = RelationGetDescr(aoRel);
+		bool *proj = palloc0(tupleDesc->natts * sizeof(bool));
+		AOCSFetchDesc aocsFetchDesc;
+		
+		/* Just set the first column */
+		proj[0] = true;
+		aocsFetchDesc =	aocs_fetch_init(aoRel, SnapshotDirty, proj);
+
+		if (aocs_fetch(aocsFetchDesc, (AOTupleId*)tid, NULL))
+		{
+			xwait =
+				(TransactionIdIsValid(SnapshotDirty->xmin)) ?
+				SnapshotDirty->xmin : SnapshotDirty->xmax;
+
+			/*
+			 * If this tuple is not being updated by other transaction,
+			 * then we have a definite conflict. Ereport here.
+			 */
+			if (!TransactionIdIsValid(xwait))
+				ereport(ERROR,
+						(errcode(ERRCODE_UNIQUE_VIOLATION),
+						 errmsg("duplicate key violates unique constraint \"%s\"",
+								RelationGetRelationName(rel)),
+						 errOmitLocation(true)));
+		}
+	
+		pfree(proj);
+		aocs_fetch_finish(aocsFetchDesc);
+	}
+
+	return xwait;
+}
+
+/*
  *	_bt_check_unique() -- Check for violation of unique index constraint
  *
  * Returns InvalidTransactionId if there is no conflict, else an xact ID
@@ -230,85 +308,102 @@ _bt_check_unique(Relation rel, IndexTuple itup, Relation heapRel,
 
 				/* okay, we gotta fetch the heap tuple ... */
 				curitup = (IndexTuple) PageGetItem(page, curitemid);
-				htup.t_self = curitup->t_tid;
-				if (heap_fetch(heapRel, SnapshotDirty, &htup, &hbuffer,
-							   true, NULL))
+
+				/*
+				 * If the parent relation is an AO/CO table, we have to find out
+				 * if this tuple is actually in the table.
+				 */
+				if (RelationIsAoRows(heapRel) || RelationIsAoCols(heapRel))
 				{
-					/* it is a duplicate */
 					TransactionId xwait =
-					(TransactionIdIsValid(SnapshotDirty->xmin)) ?
-					SnapshotDirty->xmin : SnapshotDirty->xmax;
+						_bt_ao_check_unique(rel, heapRel, &curitup->t_tid);
 
-					ReleaseBuffer(hbuffer);
-
-					/*
-					 * If this tuple is being updated by other transaction
-					 * then we have to wait for its commit/abort.
-					 */
 					if (TransactionIdIsValid(xwait))
-					{
-						if (nbuf != InvalidBuffer)
-							_bt_relbuf(rel, nbuf);
-						/* Tell _bt_doinsert to wait... */
 						return xwait;
-					}
-
-					/*
-					 * Otherwise we have a definite conflict.  But before
-					 * complaining, look to see if the tuple we want to insert
-					 * is itself now committed dead --- if so, don't complain.
-					 * This is a waste of time in normal scenarios but we must
-					 * do it to support CREATE INDEX CONCURRENTLY.
-					 */
-					htup.t_self = itup->t_tid;
-					if (heap_fetch(heapRel, SnapshotSelf, &htup, &hbuffer,
-								   false, NULL))
+				}
+					
+				else
+				{
+					htup.t_self = curitup->t_tid;
+					if (heap_fetch(heapRel, SnapshotDirty, &htup, &hbuffer,
+								   true, NULL))
 					{
-						/* Normal case --- it's still live */
+						/* it is a duplicate */
+						TransactionId xwait =
+							(TransactionIdIsValid(SnapshotDirty->xmin)) ?
+							SnapshotDirty->xmin : SnapshotDirty->xmax;
+
 						ReleaseBuffer(hbuffer);
+						
+						/*
+						 * If this tuple is being updated by other transaction
+						 * then we have to wait for its commit/abort.
+						 */
+						if (TransactionIdIsValid(xwait))
+						{
+							if (nbuf != InvalidBuffer)
+								_bt_relbuf(rel, nbuf);
+							/* Tell _bt_doinsert to wait... */
+							return xwait;
+						}
+						
+						/*
+						 * Otherwise we have a definite conflict.  But before
+						 * complaining, look to see if the tuple we want to insert
+						 * is itself now committed dead --- if so, don't complain.
+						 * This is a waste of time in normal scenarios but we must
+						 * do it to support CREATE INDEX CONCURRENTLY.
+						 */
+						htup.t_self = itup->t_tid;
+						if (heap_fetch(heapRel, SnapshotSelf, &htup, &hbuffer,
+									   false, NULL))
+						{
+							/* Normal case --- it's still live */
+							ReleaseBuffer(hbuffer);
+						}
+						else if (htup.t_data != NULL)
+						{
+							/*
+							 * It's been deleted, so no error, and no need to
+							 * continue searching
+							 */
+							break;
+						}
+						else
+						{
+							/* couldn't find the tuple?? */
+							elog(ERROR, "failed to fetch tuple being inserted");
+						}
+						
+						ereport(ERROR,
+								(errcode(ERRCODE_UNIQUE_VIOLATION),
+								 errmsg("duplicate key violates unique constraint \"%s\"",
+										RelationGetRelationName(rel)),
+								 errOmitLocation(true)));
 					}
 					else if (htup.t_data != NULL)
 					{
 						/*
-						 * It's been deleted, so no error, and no need to
-						 * continue searching
+						 * Hmm, if we can't see the tuple, maybe it can be marked
+						 * killed.	This logic should match index_getnext and
+						 * btgettuple.
 						 */
-						break;
+						LockBuffer(hbuffer, BUFFER_LOCK_SHARE);
+						if (HeapTupleSatisfiesVacuum(htup.t_data, RecentGlobalXmin,
+													 hbuffer, true) == HEAPTUPLE_DEAD)
+						{
+							curitemid->lp_flags |= LP_DELETE;
+							opaque->btpo_flags |= BTP_HAS_GARBAGE;
+							/* be sure to mark the proper buffer dirty... */
+							if (nbuf != InvalidBuffer)
+								SetBufferCommitInfoNeedsSave(nbuf);
+							else
+								SetBufferCommitInfoNeedsSave(buf);
+						}
+						LockBuffer(hbuffer, BUFFER_LOCK_UNLOCK);
 					}
-					else
-					{
-						/* couldn't find the tuple?? */
-						elog(ERROR, "failed to fetch tuple being inserted");
-					}
-
-					ereport(ERROR,
-							(errcode(ERRCODE_UNIQUE_VIOLATION),
-					errmsg("duplicate key violates unique constraint \"%s\"",
-						   RelationGetRelationName(rel)),
-					errOmitLocation(true)));
+					ReleaseBuffer(hbuffer);
 				}
-				else if (htup.t_data != NULL)
-				{
-					/*
-					 * Hmm, if we can't see the tuple, maybe it can be marked
-					 * killed.	This logic should match index_getnext and
-					 * btgettuple.
-					 */
-					LockBuffer(hbuffer, BUFFER_LOCK_SHARE);
-					if (HeapTupleSatisfiesVacuum(htup.t_data, RecentGlobalXmin,
-												 hbuffer, true) == HEAPTUPLE_DEAD)
-					{
-						curitemid->lp_flags |= LP_DELETE;
-						opaque->btpo_flags |= BTP_HAS_GARBAGE;
-						/* be sure to mark the proper buffer dirty... */
-						if (nbuf != InvalidBuffer)
-							SetBufferCommitInfoNeedsSave(nbuf);
-						else
-							SetBufferCommitInfoNeedsSave(buf);
-					}
-					LockBuffer(hbuffer, BUFFER_LOCK_UNLOCK);
-				}
-				ReleaseBuffer(hbuffer);
 			}
 		}
 

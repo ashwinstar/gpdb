@@ -33,4 +33,8 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 5040|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 23|\N|\N|\N|gp_adjust_priority_int|-|\N
 5041|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 25|\N|\N|\N|gp_adjust_priority_value|-|\N
 5042|gp_list_backend_priorities|11|10|12|f|f|f|t|v|0|2249|f||\N|\N|\N|gp_list_backend_priorities|-|\N
+3302|gpaotidin|11|10|12|f|f|t|f|i|1|3300|f|2275|\N|\N|\N|gpaotidin|-|\N
+3303|gpaotidout|11|10|12|f|f|t|f|i|1|2275|f|3300|\N|\N|\N|gpaotidout|-|\N
+3304|gpaotidrecv|11|10|12|f|f|t|f|i|1|3300|f|2281|\N|\N|\N|gpaotidrecv|-|\N
+3305|gpaotidsend|11|10|12|f|f|t|f|i|1|17|f|3300|\N|\N|\N|gpaotidsend|-|\N
 \.

@@ -2610,7 +2610,7 @@ declare
   rc int := 0;
 begin
 
-  execute 'select relname from pg_class where oid=(select relaosegrelid from pg_class where relname=''' || relname || ''')' into aosegname;
+  execute 'select relname from pg_class where oid=(select segrelid from pg_class, pg_appendonly where relname=''' || relname || ''' and relid = pg_class.oid)' into aosegname;
   if aosegname > 0 then
 	  execute 'select tupcount from pg_aoseg.' || aosegname into tupcount;
   end if;
@@ -2943,7 +2943,7 @@ drop table g;
 select * from locktest;
 commit;
 
--- AO table (ao segments)
+-- AO table (ao segments, block directory)
 begin;
 -- creation
 create table g (i int, t text, n numeric)

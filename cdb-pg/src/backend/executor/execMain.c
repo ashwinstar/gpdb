@@ -49,6 +49,7 @@
 #include "catalog/namespace.h"
 #include "catalog/toasting.h"
 #include "catalog/aoseg.h"
+#include "catalog/aoblkdir.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_type.h"
 #include "commands/tablecmds.h" /* XXX: temp for get_parts() */
@@ -348,6 +349,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			queryDesc->parsetree->intoOidInfo.aosegOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
 			queryDesc->parsetree->intoOidInfo.aosegIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
 			queryDesc->parsetree->intoOidInfo.aosegComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			queryDesc->parsetree->intoOidInfo.aoblkdirOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			queryDesc->parsetree->intoOidInfo.aoblkdirIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			queryDesc->parsetree->intoOidInfo.aoblkdirComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
 
 			heap_close(pg_class_desc, RowExclusiveLock);
 			heap_close(pg_type_desc, RowExclusiveLock);
@@ -1749,6 +1753,12 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 					 errmsg("cannot change AO segment listing relation \"%s\"",
 							RelationGetRelationName(resultRelationDesc))));
 			break;
+		case RELKIND_AOBLOCKDIR:
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("cannot change AO block directory relation \"%s\"",
+							RelationGetRelationName(resultRelationDesc))));
+			break;
 		case RELKIND_VIEW:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -2464,6 +2474,8 @@ ExecInsert(TupleTableSlot *slot,
 	Oid			newId;
 	Oid         sourceTableOid;
 
+	AOTupleId	aoTupleId = AOTUPLEID_INIT;
+
 	bool		rel_is_heap,
 				rel_is_aorows,
 				rel_is_aocols,
@@ -2613,7 +2625,7 @@ ExecInsert(TupleTableSlot *slot,
 
 		}
 
-		newId = appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple);
+		appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple, &newId, &aoTupleId);
 	}
 	else if (rel_is_aocols)
 	{
@@ -2624,6 +2636,7 @@ ExecInsert(TupleTableSlot *slot,
 		}
 
 		newId = aocs_insert(resultRelInfo->ri_aocsInsertDesc, slot);
+		aoTupleId = *((AOTupleId*)slot_get_ctid(slot));
 	}
 	else if (rel_is_external)
 	{
@@ -2665,7 +2678,15 @@ ExecInsert(TupleTableSlot *slot,
 	sourceTableOid = slot->tts_tableOid;
 	slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
 
-	if (!rel_is_aocols && !rel_is_aorows)
+	if (rel_is_aorows || rel_is_aocols)
+	{
+		/*
+		 * insert index entries for AO Row-Store tuple
+		 */
+		if (resultRelInfo->ri_NumIndices > 0)
+			ExecInsertIndexTuples(slot, (ItemPointer)&aoTupleId, estate, false);
+	}
+	else
 	{
 		setLastTid(&(((HeapTuple)tuple)->t_self));
 
@@ -3946,7 +3967,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 */
 	AlterTableCreateToastTableWithOid(intoRelationId, parseTree->intoOidInfo.toastOid, parseTree->intoOidInfo.toastIndexOid, &parseTree->intoOidInfo.toastComptypeOid, false);
 	AlterTableCreateAoSegTableWithOid(intoRelationId, parseTree->intoOidInfo.aosegOid, parseTree->intoOidInfo.aosegIndexOid, &parseTree->intoOidInfo.aosegComptypeOid, false);
-
+	AlterTableCreateAoBlkdirTableWithOid(intoRelationId, parseTree->intoOidInfo.aoblkdirOid, parseTree->intoOidInfo.aoblkdirIndexOid, &parseTree->intoOidInfo.aoblkdirComptypeOid, false);
 	/*
 	 * And open the constructed table for writing.
 	 */
@@ -4069,12 +4090,14 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	if (RelationIsAoRows(into_rel))
 	{
 		MemTuple	tuple = ExecCopySlotMemTuple(slot);
+		Oid			tupleOid;
+		AOTupleId	aoTupleId;
 
 		if (myState->ao_insertDesc == NULL)
 			myState->ao_insertDesc = appendonly_insert_init(into_rel,
 															RESERVED_SEGNO);
 
-		appendonly_insert(myState->ao_insertDesc, tuple);
+		appendonly_insert(myState->ao_insertDesc, tuple, &tupleOid, &aoTupleId);
 		pfree(tuple);
 	}
 	else if (RelationIsAoCols(into_rel))

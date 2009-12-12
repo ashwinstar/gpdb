@@ -462,6 +462,19 @@ typedef struct BitmapHeapScan
 } BitmapHeapScan;
 
 /* ----------------
+ *		bitmap append-only row-store scan node
+ *
+ * NOTE: This is a copy of BitmapHeapScan.
+ * ----------------
+ */
+typedef struct BitmapAppendOnlyScan
+{
+	Scan		scan;
+	List	   *bitmapqualorig; /* index quals, in standard expr form */
+	bool       isAORow; /* If this is for AO Row tables */
+} BitmapAppendOnlyScan;
+
+/* ----------------
  *		tid scan node
  *
  * tidquals is an implicitly OR'ed list of qual expressions of the form

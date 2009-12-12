@@ -49,7 +49,7 @@ AppendOnlyStorageFormat_ComputeBlockChecksum(
 
 	/*
 	 * The block checksum covers right after the header checksum through
-	 * the end of the whole block.
+	 * the end of the whole block (including the optional firstRowNum).
 	 */
 	dataOffset = headerLen + sizeof(pg_crc32);
 
@@ -73,9 +73,37 @@ AppendOnlyStorageFormat_HeaderLenNeeded(
 }
 
 static void
+AppendOnlyStorageFormat_AddFirstRowNum(
+	uint8			*headerPtr,
+	bool			usingChecksums,
+	int64			firstRowNum)
+{
+	AOBlockHeader 	*blockHeader = (AOBlockHeader*)headerPtr;
+	
+	int32		offsetToFirstRowNum;
+	int64		*firstRowNumPtr;
+
+	offsetToFirstRowNum = AO_HEADER_LEN;
+	if (usingChecksums) 
+		offsetToFirstRowNum += 2 * sizeof(pg_crc32); // Header and Block checksums.
+				
+	firstRowNumPtr = (int64*)&headerPtr[offsetToFirstRowNum];
+	*firstRowNumPtr = firstRowNum;
+	
+	if (Debug_appendonly_print_storage_headers)
+		elog(LOG,
+			 "Append-Only storage first row number header result: block_bytes_0_3 0x%X, block_bytes_4_7 0x%X, "
+			 "firstRowNum " INT64_FORMAT,
+			 blockHeader->block_bytes_0_3,
+			 blockHeader->block_bytes_4_7,
+			 firstRowNum);
+}
+
+static void
 AppendOnlyStorageFormat_AddBlockHeaderChecksums(
 	uint8			*headerPtr,
 	bool			isCompressed,
+	bool			hasFirstRowNum,
 	int32			dataLength,
 	int32			compressedLength)
 {
@@ -90,8 +118,10 @@ AppendOnlyStorageFormat_AddBlockHeaderChecksums(
 				sizeof(pg_crc32);			// Block checksum.
 				
 	overallBlockLen = headerLen +
-					  sizeof(pg_crc32) +	// Header checksum.
-	                  AOStorage_RoundUp(
+					  sizeof(pg_crc32);		// Header checksum.
+	if (hasFirstRowNum)
+		overallBlockLen += sizeof(int64);
+	overallBlockLen += AOStorage_RoundUp(
 	                        (isCompressed ? compressedLength : dataLength));
 	
 	/*
@@ -126,6 +156,8 @@ void
 AppendOnlyStorageFormat_MakeSmallContentHeader(
 	uint8			*headerPtr,
 	bool			usingChecksums,
+	bool			hasFirstRowNum,
+	int64			firstRowNum,
 	int				executorKind,
 	int				rowCount,
 	int32			dataLength,
@@ -140,9 +172,10 @@ AppendOnlyStorageFormat_MakeSmallContentHeader(
 
 	if (Debug_appendonly_print_storage_headers)
 		elog(LOG,
-			 "Append-Only storage make Small Content header parameters: wantChecksum = %s, executorKind = %d, "
+			 "Append-Only storage make Small Content header parameters: wantChecksum = %s, hasFirstRowNum %s, executorKind = %d, "
 			 "rowCount = %d, dataLength %d, compressedLength %d",
 			 (usingChecksums ? "true" : "false"),
+			 (hasFirstRowNum ? "true" : "false"),
 			 executorKind,
 			 rowCount,
 			 dataLength,
@@ -155,16 +188,37 @@ AppendOnlyStorageFormat_MakeSmallContentHeader(
 	AOBlockHeaderInit_executorBlockKind(blockHeader,executorKind);
 	AOBlockHeaderInit_rowCount(blockHeader,rowCount);
 	AOBlockHeaderInit_dataLength(blockHeader,dataLength);
-
+	AOBlockHeaderInit_hasFirstRowNum(blockHeader,hasFirstRowNum);
+	
 	isCompressed = (compressedLength > 0);
 	if (isCompressed)
 		AOBlockHeaderInit_compressedLength(blockHeader,compressedLength);
 
+	/*
+	 * Add the optional firstRowNum.
+	 *
+	 * NOTE: This is not part of the 8-byte (64-bit) header because it is so big.
+	 * NOTE: And, it is not covered by the header checksum because in order to
+	 * NOTE: determine if we should checksum more data we would need to examine
+	 * NOTE: the header data not verified by checksum yet...
+	 *
+	 * So, the firstRowNum is extra data between the header (and checksums) and
+	 * the content.  We must add it before computing the checksum.
+	 */
+	if (hasFirstRowNum)
+	{
+		AppendOnlyStorageFormat_AddFirstRowNum(
+											headerPtr,
+											usingChecksums,
+											firstRowNum);
+	}
+	
 	if (usingChecksums)
 	{
 		AppendOnlyStorageFormat_AddBlockHeaderChecksums(
 											headerPtr,
 											isCompressed,
+											hasFirstRowNum,
 											dataLength,
 											compressedLength);
 	}
@@ -176,6 +230,7 @@ AppendOnlyStorageFormat_MakeSmallContentHeader(
 				 blockHeader->block_bytes_0_3,
 				 blockHeader->block_bytes_4_7);
 	}
+
 }
 
 void
@@ -363,6 +418,8 @@ void
 AppendOnlyStorageFormat_MakeLargeContentHeader(
 	uint8			*headerPtr,
 	bool			usingChecksums,
+	bool			hasFirstRowNum,
+	int64			firstRowNum,
 	int				executorKind,
 	int				largeRowCount,
 	int32			largeContentLength)
@@ -390,12 +447,32 @@ AppendOnlyStorageFormat_MakeLargeContentHeader(
 	AOLargeContentHeaderInit_largeRowCount(largeContentHeader,largeRowCount);
 	AOLargeContentHeaderInit_largeContentLength(largeContentHeader,largeContentLength);
 
+	/*
+	 * Add the optional firstRowNum.
+	 *
+	 * NOTE: This is not part of the 8-byte (64-bit) header because it is so big.
+	 * NOTE: And, it is not covered by the header checksum because in order to
+	 * NOTE: determine if we should checksum more data we would need to examine
+	 * NOTE: the header data not verified by checksum yet...
+	 *
+	 * So, the firstRowNum is extra data between the header (and checksums) and
+	 * the content.  We must add it before computing the checksum.
+	 */
+	if (hasFirstRowNum)
+	{
+		AppendOnlyStorageFormat_AddFirstRowNum(
+											headerPtr,
+											usingChecksums,
+											firstRowNum);
+	}
+	
 	if (usingChecksums)
 	{
 		// UNDONE: Set 2nd checksum to 0 when there is no content???
 		AppendOnlyStorageFormat_AddBlockHeaderChecksums(
 											headerPtr,
 											/* isCompressed */ false,
+											/* hasFirstRowNum */ false,
 											/* dataLength */ 0,
 											/* compressedLength */ 0);
 	}
@@ -424,8 +501,9 @@ char *AppendOnlyStorageFormat_GetHeaderCheckErrorStr(void)
 AOHeaderCheckError
 AppendOnlyStorageFormat_GetHeaderInfo(
 	uint8			*headerPtr,
-	int				headerLen,
-	AoHeaderKind	*headerKind)
+	bool			usingChecksums,
+	AoHeaderKind	*headerKind,
+	int32			*actualHeaderLen)
 {
 	AOHeader 	*header;
 
@@ -468,6 +546,41 @@ AppendOnlyStorageFormat_GetHeaderInfo(
 			    header->header_bytes_0_3, header->header_bytes_4_7);
 		return AOHeaderCheckInvalidHeaderKind;
 	}
+
+	switch (*headerKind)
+	{
+	case AoHeaderKind_SmallContent:
+		{
+			AOBlockHeader	*blockHeader;
+
+			blockHeader = (AOBlockHeader*)headerPtr;
+
+			*actualHeaderLen = 
+						AO_HEADER_LEN + 
+						(usingChecksums ? 2 * sizeof(pg_crc32) : 0);
+			if (AOBlockHeaderGet_hasFirstRowNum(blockHeader))
+				(*actualHeaderLen) += sizeof(int64);
+		}
+		break;
+		
+	case AoHeaderKind_LargeContent:
+		{
+			AOLargeContentHeader	*largeContentHeader;
+
+			largeContentHeader = (AOLargeContentHeader*)headerPtr;
+
+			*actualHeaderLen = 
+						AO_HEADER_LEN + 
+						(usingChecksums ? 2 * sizeof(pg_crc32) : 0);
+			if (AOLargeContentHeaderGet_hasFirstRowNum(largeContentHeader))
+				(*actualHeaderLen) += sizeof(int64);
+		}
+		break;
+
+	default:
+		// UNDONE:
+		break;
+	}	
 	
 	return AOHeaderCheckOk;
 }
@@ -483,6 +596,7 @@ AppendOnlyStorageFormat_GetSmallContentHeaderInfo(
 	int32			*uncompressedLen,
 	int				*executorBlockKind,
 	bool			*hasFirstRowNum,
+	int64			*firstRowNum,
 	int				*rowCount,
 	bool			*isCompressed,
 	int32			*compressedLen)
@@ -497,8 +611,21 @@ AppendOnlyStorageFormat_GetSmallContentHeaderInfo(
 	*executorBlockKind = 	AOBlockHeaderGet_executorBlockKind(blockHeader);
 	*hasFirstRowNum	=		AOBlockHeaderGet_hasFirstRowNum(blockHeader);
 	*rowCount = 			AOBlockHeaderGet_rowCount(blockHeader);	
+
 	*offset =				AO_HEADER_LEN + 
 							(usingChecksums ? 2 * sizeof(pg_crc32) : 0);
+	if (*hasFirstRowNum)
+	{
+		int64	*firstRowNumPtr;
+
+		firstRowNumPtr = (int64*)&headerPtr[*offset];
+		*firstRowNum = *firstRowNumPtr;
+		
+		(*offset) += sizeof(int64);
+	}
+	else
+		*firstRowNum = INT64CONST(-1);
+	
 	if (*offset != headerLen)
 		elog(ERROR, "Content offset %d doesn't equal header length parameter %d",
 		     *offset,
@@ -583,9 +710,11 @@ AppendOnlyStorageFormat_GetLargeContentHeaderInfo(
 	int32			*largeContentLen,
 	int				*executorBlockKind,
 	bool			*hasFirstRowNum,
+	int64			*firstRowNum,
 	int				*largeRowCount)
 {
 	AOLargeContentHeader 	*largeContentHeader;
+	int32 offset;
 
 	Assert(headerPtr != NULL);
 
@@ -604,6 +733,25 @@ AppendOnlyStorageFormat_GetLargeContentHeaderInfo(
 		return AOHeaderCheckLargeContentLenIsZero;
 	}
 	
+	offset = AO_HEADER_LEN + 
+			 (usingChecksums ? 2 * sizeof(pg_crc32) : 0);
+	if (*hasFirstRowNum)
+	{
+		int64	*firstRowNumPtr;
+
+		firstRowNumPtr = (int64*)&headerPtr[offset];
+		*firstRowNum = *firstRowNumPtr;
+		
+		offset += sizeof(int64);
+	}
+	else
+		*firstRowNum = INT64CONST(-1);
+
+	if (offset != headerLen)
+		elog(ERROR, "Content offset %d doesn't equal header length parameter %d",
+		     offset,
+		     headerLen);
+
 	return AOHeaderCheckOk;
 }
 

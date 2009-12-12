@@ -34,7 +34,7 @@ typedef struct
 
 /* non-export function prototypes */
 static void gistbuildCallback(Relation index,
-				  HeapTuple htup,
+				  ItemPointer tupleId,
 				  Datum *values,
 				  bool *isnull,
 				  bool tupleIsAlive,
@@ -147,8 +147,8 @@ gistbuild(PG_FUNCTION_ARGS)
 	buildstate.tmpCtx = createTempGistContext();
 
 	/* do the heap scan */
-	reltuples = IndexBuildHeapScan(heap, index, indexInfo,
-								   gistbuildCallback, (void *) &buildstate);
+	reltuples = IndexBuildScan(heap, index, indexInfo,
+							   gistbuildCallback, (void *) &buildstate);
 
 	/* okay, all heap tuples are indexed */
 	MemoryContextDelete(buildstate.tmpCtx);
@@ -171,7 +171,7 @@ gistbuild(PG_FUNCTION_ARGS)
  */
 static void
 gistbuildCallback(Relation index,
-				  HeapTuple htup,
+				  ItemPointer tupleId,
 				  Datum *values,
 				  bool *isnull,
 				  bool tupleIsAlive __attribute__((unused)),
@@ -186,7 +186,7 @@ gistbuildCallback(Relation index,
 	/* form an index tuple and point it at the heap tuple */
 	itup = gistFormTuple(&buildstate->giststate, index,
 						 values, isnull, true /* size is currently bogus */ );
-	itup->t_tid = htup->t_self;
+	itup->t_tid = *tupleId;
 
 	/*
 	 * Since we already have the index relation locked, we call gistdoinsert

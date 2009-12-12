@@ -273,42 +273,15 @@ _readQuery(void)
 	READ_NODE_FIELD(result_aosegnos);
 	READ_NODE_FIELD(returningLists);
 
-
-
-	/*
-	 * systems that we initdb's using prior versions don't have these field, so to avoid
-	 * making the developers do an initdb, we will check.
+	/* 
+	 * IntoOidInfo is not written out during outfuncs.c because information 
+	 * about Oids for CTAS should not be stored in the catalog as part of
+	 * pg_rewrite (views/rules).  The oids will be determined during execution,
+	 * we fill them in here as InvalidOid.
 	 *
-	 * This shouldn't matter for anyone who does an initDB in the future (with our production 3.0 release).
-     */
-    if (pg_strtok_peek_fldname("intoOidInfo.relOid"))
-    {
-        READ_OID_FIELD(intoOidInfo.relOid);
-
-        READ_OID_FIELD(intoOidInfo.comptypeOid);
-
-        READ_OID_FIELD(intoOidInfo.toastOid);
-
-        READ_OID_FIELD(intoOidInfo.toastIndexOid);
-
-        READ_OID_FIELD(intoOidInfo.toastComptypeOid);
-
-        READ_OID_FIELD(intoOidInfo.aosegOid);
-
-        READ_OID_FIELD(intoOidInfo.aosegIndexOid);
-
-        READ_OID_FIELD(intoOidInfo.aosegComptypeOid);
-
-    }
-	local_node->intoPolicy = NULL;
-
-	/*
-	 * If the Query was a CTAS, and the CTAS was stored in the catalog as part of a rule, we
-	 * don't want to remember the OIDs assigned in the past.
-	 * Not sure we can ever have that happen.
+	 * A better design would be to remove the intoOidInfo from the Parse tree
+	 * altogether and only have it part of an execution context.
 	 */
-	Assert(local_node->intoOidInfo.relOid == InvalidOid);
-
 	local_node->intoOidInfo.relOid = InvalidOid;
 	local_node->intoOidInfo.comptypeOid = InvalidOid;
 	local_node->intoOidInfo.toastOid = InvalidOid;
@@ -317,6 +290,9 @@ _readQuery(void)
 	local_node->intoOidInfo.aosegOid = InvalidOid;
 	local_node->intoOidInfo.aosegIndexOid = InvalidOid;
 	local_node->intoOidInfo.aosegComptypeOid = InvalidOid;
+	local_node->intoOidInfo.aoblkdirOid = InvalidOid;
+	local_node->intoOidInfo.aoblkdirIndexOid = InvalidOid;
+	local_node->intoOidInfo.aoblkdirComptypeOid = InvalidOid;
 
 	READ_DONE();
 }
@@ -839,6 +815,9 @@ _readAlterTableStmt(void)
 			READ_OID_FIELD(oidInfo[m].aosegOid);
 			READ_OID_FIELD(oidInfo[m].aosegIndexOid);
 			READ_OID_FIELD(oidInfo[m].aosegComptypeOid);
+			READ_OID_FIELD(oidInfo[m].aoblkdirOid);
+			READ_OID_FIELD(oidInfo[m].aoblkdirIndexOid);
+			READ_OID_FIELD(oidInfo[m].aoblkdirComptypeOid);
 		}
 	}
 
@@ -1908,6 +1887,9 @@ _readCreateStmt(void)
 	READ_OID_FIELD(oidInfo.aosegOid);
 	READ_OID_FIELD(oidInfo.aosegIndexOid);
 	READ_OID_FIELD(oidInfo.aosegComptypeOid);
+	READ_OID_FIELD(oidInfo.aoblkdirOid);
+	READ_OID_FIELD(oidInfo.aoblkdirIndexOid);
+	READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 	READ_CHAR_FIELD(relKind);
 	READ_CHAR_FIELD(relStorage);
 	READ_BOOL_FIELD(is_part_child);
@@ -2142,6 +2124,9 @@ _readClusterStmt(void)
 	READ_OID_FIELD(oidInfo.aosegOid);
 	READ_OID_FIELD(oidInfo.aosegIndexOid);
 	READ_OID_FIELD(oidInfo.aosegComptypeOid);
+	READ_OID_FIELD(oidInfo.aoblkdirOid);
+	READ_OID_FIELD(oidInfo.aoblkdirIndexOid);
+	READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 	READ_NODE_FIELD(new_ind_oids);
 
 	READ_DONE();

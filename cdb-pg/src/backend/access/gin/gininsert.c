@@ -223,7 +223,7 @@ ginHeapTupleBulkInsert(GinBuildState *buildstate, Datum value, ItemPointer heapp
 }
 
 static void
-ginBuildCallback(Relation index, HeapTuple htup, Datum *values,
+ginBuildCallback(Relation index, ItemPointer tupleId, Datum *values,
 				 bool *isnull, bool tupleIsAlive __attribute__((unused)), void *state)
 {
 
@@ -235,7 +235,7 @@ ginBuildCallback(Relation index, HeapTuple htup, Datum *values,
 
 	oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
 
-	buildstate->indtuples += ginHeapTupleBulkInsert(buildstate, *values, &htup->t_self);
+	buildstate->indtuples += ginHeapTupleBulkInsert(buildstate, *values, tupleId);
 
 	/*
 	 * we use only half maintenance_work_mem, because there is some leaks
@@ -330,8 +330,8 @@ ginbuild(PG_FUNCTION_ARGS)
 	ginInitBA(&buildstate.accum);
 
 	/* do the heap scan */
-	reltuples = IndexBuildHeapScan(heap, index, indexInfo,
-								   ginBuildCallback, (void *) &buildstate);
+	reltuples = IndexBuildScan(heap, index, indexInfo,
+							   ginBuildCallback, (void *) &buildstate);
 
 	oldCtx = MemoryContextSwitchTo(buildstate.tmpCtx);
 	while ((list = ginGetEntry(&buildstate.accum, &entry, &nlist)) != NULL)

@@ -53,6 +53,7 @@ cdbpath_rows(PlannerInfo *root, Path *path)
 		: path;
 
 	rows = IsA(p, BitmapHeapPath)   ? ((BitmapHeapPath *)p)->rows
+		: IsA(p, BitmapAppendOnlyPath) ? ((BitmapAppendOnlyPath *)p)->rows
 		: IsA(p, IndexPath)        ? ((IndexPath *)p)->rows
 		: IsA(p, UniquePath)       ? ((UniquePath *)p)->rows
 		: (CdbPathLocus_IsBottleneck(path->locus) ||

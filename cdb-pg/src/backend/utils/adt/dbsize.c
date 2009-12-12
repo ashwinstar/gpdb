@@ -549,20 +549,23 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 
 /*
  *	Compute the on-disk size of files for the relation according to the
- *	stat function, including heap data, index data, toast data, and aoseg data.
+ *	stat function, including heap data, index data, toast data, aoseg data,
+ *  and aoblkdir data.
  */
 static int64
 calculate_total_relation_size(Oid Relid)
 {
 	Relation	heapRel;
 	Oid			toastOid;
-	Oid			aosegOid;
+	AppendOnlyEntry *aoEntry = NULL;
 	int64		size;
 	ListCell   *cell;
 
 	heapRel = relation_open(Relid, AccessShareLock);
 	toastOid = heapRel->rd_rel->reltoastrelid;
-	aosegOid = heapRel->rd_rel->relaosegrelid;
+
+	if (RelationIsAoRows(heapRel) || RelationIsAoCols(heapRel))
+		aoEntry = GetAppendOnlyEntry(Relid);
 	
 	/* Get the heap size */
 	if (Relid == 0 || heapRel->rd_node.relNode == 0)
@@ -594,8 +597,17 @@ calculate_total_relation_size(Oid Relid)
 	if (OidIsValid(toastOid))
 		size += calculate_total_relation_size(toastOid);
 
-	if (OidIsValid(aosegOid))
-		size += calculate_total_relation_size(aosegOid);
+	if (aoEntry != NULL)
+	{
+		Assert(OidIsValid(aoEntry->segrelid));
+		Assert(OidIsValid(aoEntry->blkdirrelid));
+		
+		size += calculate_total_relation_size(aoEntry->segrelid);
+		size += calculate_total_relation_size(aoEntry->blkdirrelid);
+	}
+
+	if (aoEntry != NULL)
+		pfree(aoEntry);
 
 	relation_close(heapRel, AccessShareLock);
 

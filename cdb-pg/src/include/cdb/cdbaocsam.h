@@ -14,17 +14,23 @@
 #include "access/sdir.h"
 #include "access/tupmacs.h"
 #include "access/xlogutils.h"
+#include "access/appendonlytid.h"
 #include "executor/tuptable.h"
 #include "nodes/primnodes.h"
 #include "storage/block.h"
 #include "storage/lmgr.h"
 #include "utils/rel.h"
 #include "utils/tqual.h"
+#include "cdb/cdbappendonlyblockdirectory.h"
+#include "cdb/cdbappendonlystoragelayer.h"
+#include "cdb/cdbappendonlystorageread.h"
+#include "cdb/cdbappendonlystoragewrite.h"
+#include "utils/datumstream.h"
 
 /*
- * AppendOnlyInsertDescData is used for inserting data into append-only
- * relations. It serves an equivalent purpose as AppendOnlyScanDescData
- * (relscan.h) only that the later is used for scanning append-only 
+ * AOCSInsertDescData is used for inserting data into append-only columnar
+ * relations. It serves an equivalent purpose as AOCSScanDescData
+ * only that the later is used for scanning append-only columnar
  * relations. 
  */
 struct DatumStream;
@@ -33,15 +39,22 @@ struct AOCSFileSegInfo;
 typedef struct AOCSInsertDescData
 {
 	Relation	aoi_rel;
+	AOCSFileSegInfo *fsInfo;
 	int64		insertCount;
 	int64		varblockCount;
+	int64       rowCount; /* total row count before insert */
+	int64       numSequences; /* total number of available sequences */
+	int64       lastSequence; /* last used sequence */
 	int32		cur_segno;
+	AppendOnlyEntry *aoEntry;
 
     CompressorType  compType;
 	int32 		compLevel;
     int32       blocksz;
 
 	struct DatumStream     **ds;
+
+	AppendOnlyBlockDirectory	blockDirectory;
 } AOCSInsertDescData;
 
 typedef AOCSInsertDescData *AOCSInsertDesc;
@@ -77,6 +90,36 @@ typedef struct AOCSScanDescData
 
 typedef AOCSScanDescData *AOCSScanDesc;
 
+/*
+ * Used for fetch individual tuples from specified by TID of append only relations 
+ * using the AO Block Directory.
+ */
+typedef struct AOCSFetchDescData
+{
+	Relation		relation;
+
+	MemoryContext	initContext;
+
+	int				totalSegfiles;
+	struct AOCSFileSegInfo **segmentFileInfo;
+	bool			*proj;
+	
+	char			*segmentFileName;
+	int				segmentFileNameMaxLen;
+	char            *basepath;
+
+	AppendOnlyStorageAttributes storageAttributes;
+	int32 blockSize;
+
+	AppendOnlyBlockDirectory	blockDirectory;
+
+	DatumStreamFetchDesc *datumStreamFetchDesc;
+
+	int64	skipBlockCount;
+
+} AOCSFetchDescData;
+
+typedef AOCSFetchDescData *AOCSFetchDesc;
 
 /* ----------------
  *		function prototypes for appendonly access method
@@ -88,12 +131,25 @@ extern void aocs_rescan(AOCSScanDesc scan, ScanKey key);
 extern void aocs_endscan(AOCSScanDesc scan);
 extern void aocs_getnext(AOCSScanDesc scan, ScanDirection direction, TupleTableSlot *slot);
 extern AOCSInsertDesc aocs_insert_init(Relation rel, int segno);
-extern Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool *null);
+extern Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool *null, AOTupleId *aoTupleId);
 static inline Oid aocs_insert(AOCSInsertDesc idesc, TupleTableSlot *slot)
 {
-        slot_getallattrs(slot);
-        return aocs_insert_values(idesc, slot_get_values(slot), slot_get_isnull(slot));
+	Oid oid;
+	AOTupleId aotid;
+	
+	slot_getallattrs(slot);
+	oid = aocs_insert_values(idesc, slot_get_values(slot), slot_get_isnull(slot), &aotid);
+	slot_set_ctid(slot, (ItemPointer)&aotid);
+
+	return oid;
 }
 extern void aocs_insert_finish(AOCSInsertDesc idesc);
+extern AOCSFetchDesc aocs_fetch_init(Relation relation,
+									 Snapshot snapshot,
+									 bool *proj);
+extern bool aocs_fetch(AOCSFetchDesc aocsFetchDesc,
+					   AOTupleId *aoTupleId,
+					   TupleTableSlot *slot);
+extern void aocs_fetch_finish(AOCSFetchDesc aocsFetchDesc);
 
 #endif   /* AOCSAM_H */

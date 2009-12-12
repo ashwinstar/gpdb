@@ -17,5 +17,6 @@ oid|typname|typnamespace|typowner|typlen|typbyval|typtype|typisdefined|typdelim|
 6449|pg_user_mapping|11|10|-1|f|c|t|,|2895|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
 6450|gp_persistent_rel_files|11|10|-1|f|c|t|,|5037|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
 6451|gp_persistent_db_dirs|11|10|-1|f|c|t|,|5038|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
-6452|pg_foreign_table|11 |10|-1|f|c|t|,|2879|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
+6452|pg_foreign_table|11|10|-1|f|c|t|,|2879|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
+6453|gp_fastsequence|11|10|-1|f|c|t|,|5043|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
 \.

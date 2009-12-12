@@ -30,6 +30,12 @@ typedef struct AppendOnlyStorageReadCurrent
 			 * The Append-Only Storage block kind.
 			 */
 
+	int32					actualHeaderLen;
+			/*
+			 * Actual header length that includes optional header information
+			 * (e.g. firstRowNum).
+			 */
+
 	int32					overallBlockLen;
 			/*
 			 * The byte length of the whole block.
@@ -137,9 +143,10 @@ typedef struct AppendOnlyStorageRead
 			 * The byte length of the current segment file being read.
 			 */
 					
-	int32	headerLen;
+	int32	minimumHeaderLen;
 			/*
-			 * The block header length based on the checkum attribute.
+			 * The minimum block header length based on the checkum attribute.
+			 * Does not include optional header data (e.g. firstRowNum).
 			 */
 	
 	char		 *segmentFileName;
@@ -180,7 +187,7 @@ typedef struct AppendOnlyStorageRead
  * Initialize AppendOnlyStorageRead.
  *
  * The AppendOnlyStorageRead data structure is initialized 
- * once for a read �session� and can be used to read 
+ * once for a read session and can be used to read 
  * Append-Only Storage Blocks from 1 or more segment files.
  *
  * The current file to read to is opened with the
@@ -253,6 +260,42 @@ extern void AppendOnlyStorageRead_OpenFile(
 				 * value to use as the read end of the segment
 				 * file.
 				 */
+
+/*
+ * Try opening the next segment file to read.
+ *
+ * This routine is responsible for seeking to the proper
+ * read location given the logical EOF.
+ */
+extern bool AppendOnlyStorageRead_TryOpenFile(
+	AppendOnlyStorageRead		*storageRead,
+
+    char				 		*filePathName,
+				/* The name of the segment file to open. */
+
+    int64                		logicalEof);
+				/*
+				 * The snapshot version of the EOF
+				 * value to use as the read end of the segment
+				 * file.
+				 */
+
+/*
+ * 
+ * Set a temporary read range in the current open segment file.
+ *
+ * The beginFileOffset must be to the beginning of an Append-Only Storage block.
+ *
+ * The afterFileOffset serves as the temporary EOF.  It will cause ~_GetBlockInfo to return
+ * false (no more blocks) when reached.  It must be at the end of an Append-Only Storage
+ * block.
+ *
+ * When ~_GetBlockInfo returns false (no more blocks), the temporary read range is forgotten.
+ */
+extern void AppendOnlyStorageRead_SetTemporaryRange(
+	AppendOnlyStorageRead		*storageRead,
+	int64						beginFileOffset,
+	int64						afterFileOffset);
 
 /*
  * Close the current segment file.
@@ -341,7 +384,13 @@ extern int64 AppendOnlyStorageRead_CurrentCompressedLen(
 	AppendOnlyStorageRead		*storageRead);
 
 /*
- * Get a pointer to the �small� non-compressed content.
+ * Return the overall block length of the current Append-Only Storage Block.
+ */
+extern int64 AppendOnlyStorageRead_OverallBlockLen(
+	AppendOnlyStorageRead		*storageRead);
+
+/*
+ * Get a pointer to the small non-compressed content.
  *
  * This interface provides a pointer directly into the 
  * read buffer for efficient data use.
@@ -351,7 +400,7 @@ extern uint8 *AppendOnlyStorageRead_GetBuffer(
 	AppendOnlyStorageRead		*storageRead);
 
 /*
- * Copy the �large� and/or decompressed content out.
+ * Copy the large and/or decompressed content out.
  *
  * The contentLen parameter value must match the contentLen
  * from the AppendOnlyStorageReadGetBlockInfo call.
@@ -364,6 +413,18 @@ extern void AppendOnlyStorageRead_Content(
 
 	int32						contentLen);
 			/* The byte length of the content. */
+
+/*
+ * Skip the current block found with ~_GetBlockInfo.
+ *
+ * Do not decompress the block contents.
+ *
+ * Call this routine instead of calling ~_GetBuffer or ~_Contents that look at contents. Useful
+ * when the desired row(s) are not within the row range of the current block.
+ *
+ */
+extern void AppendOnlyStorageRead_SkipCurrentBlock(
+	AppendOnlyStorageRead		*storageRead);
 
 extern int errcontext_appendonly_read_storage_block(AppendOnlyStorageRead *storageRead);
 

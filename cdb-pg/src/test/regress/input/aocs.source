@@ -238,6 +238,41 @@ COPY aowithoids FROM STDIN;
 SELECT * FROM aocswithoids ORDER BY a; -- this should show a,b only
 SELECT oideq(oid,-1) FROM aocswithoids; -- kind of stupid but checks that oid actually exists and is queriable. should always be 'f'
 
+-- INDEX
+CREATE INDEX tenk_aocs1_unique1 ON tenk_aocs1 USING btree(unique1 int4_ops);
+
+drop table if exists co;
+create table co (i int, j int, k varchar) with(appendonly=true, orientation=column);
+insert into co values (1,1,'a'), (2,2,'aa'), (3,3,'aaa'), (4,4,'aaaa'),
+	(5,5,'aaaaa'), (6,6,'aaaaaa'), (7,7,'aaaaaaa'), (8,8,'aaaaaaaa');
+create index co_j on co using btree(j);
+create index co_k on co using btree(k);
+create index co_jk on co using btree((j + length(k)));
+set enable_seqscan=off;
+select * from co where j = 2;
+insert into co values (9,1,'b'), (10,2,'bb'), (11,3,'bbb'), (12,4,'bbbb'),
+	(13,5,'aaaaa'), (14,6,'aaaaaa'), (15,7,'aaaaaaa'), (16,8,'aaaaaaaa');
+select * from co where j = 2;
+insert into co values (9,2,'b'), (10,2,'bb'), (11,2,'bbb'), (12,2,'bbbb'),
+	(13,5,'aaaaa'), (14,6,'aaaaaa'), (15,7,'aaaaaaa'), (16,8,'aaaaaaaa');
+select * from co where j = 2;
+
+drop table if exists co;
+create table co (i int, j int, k varchar) with(appendonly=true, orientation=column);
+insert into co values (1,1,'a'), (2,2,'aa'), (3,3,'aaa'), (4,4,'aaaa'),
+	(5,5,'aaaaa'), (6,6,'aaaaaa'), (7,7,'aaaaaaa'), (8,8,'aaaaaaaa');
+create index co_j on co using bitmap(j);
+create index co_k on co using bitmap(k);
+create index co_jk on co using bitmap((j + length(k)));
+set enable_seqscan=off;
+select * from co where j = 2;
+insert into co values (9,1,'b'), (10,2,'bb'), (11,3,'bbb'), (12,4,'bbbb'),
+	(13,5,'aaaaa'), (14,6,'aaaaaa'), (15,7,'aaaaaaa'), (16,8,'aaaaaaaa');
+select * from co where j = 2;
+insert into co values (9,2,'b'), (10,2,'bb'), (11,2,'bbb'), (12,2,'bbbb'),
+	(13,5,'aaaaa'), (14,6,'aaaaaa'), (15,7,'aaaaaaa'), (16,8,'aaaaaaaa');
+select * from co where j = 2;
+
 -------------------- 
 -- unsupported sql 
 --------------------
@@ -247,9 +282,6 @@ DELETE FROM tenk_aocs1 WHERE unique1 = 1;
 
 -- UPDATE (not supported)
 UPDATE tenk_aocs1 SET unique2 = 1 WHERE unique2 = 2;
-
--- CREATE INDEX (not supported)
-CREATE INDEX tenk_aocs1_unique1 ON tenk_aocs1 USING btree(unique1 int4_ops);
 
 -- ALTER
 ALTER TABLE tenk_aocs1 RENAME TO tenk_renamed;

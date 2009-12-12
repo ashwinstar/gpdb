@@ -68,13 +68,13 @@ typedef struct IndexInfoOpaque
 	Oid        indexRelfilenode;/* Oid for the relfilenode of the lov index in the bitmap index. */
 } IndexInfoOpaque;
 
-/* Typedef for callback function for IndexBuildHeapScan */
+/* Typedef for callback function for IndexBuildScan */
 typedef void (*IndexBuildCallback) (Relation index,
-												HeapTuple htup,
-												Datum *values,
-												bool *isnull,
-												bool tupleIsAlive,
-												void *state);
+									ItemPointer tupleId,
+									Datum *values,
+									bool *isnull,
+									bool tupleIsAlive,
+									void *state);
 
 
 extern Oid index_create(Oid heapRelationId,
@@ -110,7 +110,7 @@ extern void index_build(Relation heapRelation,
 			struct IndexInfo *indexInfo,
 			bool isprimary);
 
-extern double IndexBuildHeapScan(Relation heapRelation,
+extern double IndexBuildScan(Relation heapRelation,
 				   Relation indexRelation,
 				   struct IndexInfo *indexInfo,
 				   IndexBuildCallback callback,
@@ -119,7 +119,7 @@ extern double IndexBuildHeapScan(Relation heapRelation,
 extern void validate_index(Oid heapId, Oid indexId, Snapshot snapshot);
 
 extern Oid reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids);
-extern bool reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
+extern bool reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 							 List **oidmap, bool build_map);
 
 #endif   /* INDEX_H */

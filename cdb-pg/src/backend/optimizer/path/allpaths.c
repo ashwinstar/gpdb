@@ -258,6 +258,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
     List       *tidpathlist = NIL;
     Path       *seqpath;
     ListCell   *cell;
+	char		relstorage;
 
 	/* Mark rel with estimated output rows, width, etc */
 	set_baserel_size_estimates(root, rel);
@@ -310,8 +311,10 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
      * in a temporary list, then add them.
 	 */
 
+	relstorage = get_rel_relstorage(rte->relid);
+	
 	/* early exit for external and append only relations */
-	if(get_rel_relstorage(rte->relid) == RELSTORAGE_EXTERNAL)
+	if(relstorage == RELSTORAGE_EXTERNAL)
 	{
 		/*
 		 * If the relation is external, create an external path for
@@ -323,32 +326,39 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		set_cheapest(root, rel);
 		return;
 	}
-	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AOROWS)
+	else if(relstorage == RELSTORAGE_AOROWS)
 	{
-		/*
-		 * If the relation is append-only, create an append-only
-		 * path for it and select it (only append-only path is
-		 * considered for an append-only base rel).
-		 */
-		add_path(root, rel, (Path *) create_appendonly_path(root, rel));
-		set_cheapest(root, rel);
-		return;
+		seqpath = (Path *) create_appendonly_path(root, rel);
 	}
-	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AOCOLS)
+	else if(relstorage == RELSTORAGE_AOCOLS)
     {
-        add_path(root, rel, (Path *) create_aocs_path(root, rel));
-        set_cheapest(root, rel);
-        return;
+        seqpath = (Path *) create_aocs_path(root, rel);
     }
-
+	else
+	{
+		Assert(relstorage == RELSTORAGE_HEAP);
+		seqpath = create_seqscan_path(root, rel);
+	}
 
 	/* Consider sequential scan. */
-    seqpath = create_seqscan_path(root, rel);
     if (enable_seqscan)
         pathlist = lappend(pathlist, seqpath);
 
 	/* Consider index and bitmap scans */
-	create_index_paths(root, rel, &indexpathlist, &bitmappathlist);
+	create_index_paths(root, rel, relstorage, 
+					   &indexpathlist, &bitmappathlist);
+
+	/* 
+	 * Random access to Append-Only is slow because AO doesn't use the buffer pool and
+	 * we want to avoid decompressing blocks multiple times.  So, only consider bitmap
+	 * paths because they are processed in TID order.  The appendonlyam.c module will
+	 * optimize fetches in TID order by keeping the last decompressed block between fetch
+	 * calls.
+	 */
+	if (relstorage == RELSTORAGE_AOROWS ||
+		relstorage == RELSTORAGE_AOCOLS)
+		indexpathlist = NIL;
+
     if (indexpathlist && enable_indexscan)
         pathlist = list_concat(pathlist, indexpathlist);
     if (bitmappathlist && enable_bitmapscan)
@@ -1394,6 +1404,12 @@ print_path(PlannerInfo *root, Path *path, int indent)
 			break;
 		case T_BitmapHeapPath:
 			ptype = "BitmapHeapScan";
+			break;
+		case T_BitmapAppendOnlyPath:
+			if (((BitmapAppendOnlyPath *)path)->isAORow)
+				ptype = "BitmapAppendOnlyScan Row-oriented";
+			else
+				ptype = "BitmapAppendOnlyScan Column-oriented";
 			break;
 		case T_BitmapAndPath:
 			ptype = "BitmapAndPath";

@@ -15,6 +15,8 @@ extern int32 AppendOnlyStorageFormat_HeaderLenNeeded(
 extern void AppendOnlyStorageFormat_MakeSmallContentHeader(
 	uint8			*headerPtr,
 	bool			usingChecksums,
+	bool			hasFirstRowNum,
+	int64			firstRowNum,
 	int				executorKind,
 	int				rowCount,
 	int32			dataLength,
@@ -42,6 +44,8 @@ extern int errdetail_appendonly_storage_largecontent_header(
 extern void AppendOnlyStorageFormat_MakeLargeContentHeader(
 	uint8			*headerPtr,
 	bool			usingChecksums,
+	bool			hasFirstRowNum,
+	int64			firstRowNum,
 	int				executorKind,
 	int				largeRowCount,
 	int32			largeContentLength);
@@ -50,8 +54,9 @@ extern char *AppendOnlyStorageFormat_GetHeaderCheckErrorStr(void);
 
 extern AOHeaderCheckError AppendOnlyStorageFormat_GetHeaderInfo(
 	uint8			*headerPtr,
-	int				headerLen,
-	AoHeaderKind	*headerKind);
+	bool			usingChecksums,
+	AoHeaderKind	*headerKind,
+	int32			*actualHeaderLen);
 
 extern AOHeaderCheckError AppendOnlyStorageFormat_GetSmallContentHeaderInfo(
 	uint8			*headerPtr,
@@ -63,6 +68,7 @@ extern AOHeaderCheckError AppendOnlyStorageFormat_GetSmallContentHeaderInfo(
 	int32			*uncompressedLen,
 	int				*executorBlockKind,
 	bool			*hasFirstRowNum,
+	int64			*firstRowNum,
 	int				*rowCount,
 	bool			*isCompressed,
 	int32			*compressedLen);
@@ -80,6 +86,7 @@ extern AOHeaderCheckError AppendOnlyStorageFormat_GetLargeContentHeaderInfo(
 	int32			*largeContentLen,
 	int				*executorBlockKind,
 	bool			*hasFirstRowNum,
+	int64			*firstRowNum,
 	int				*largeRowCount);
 
 extern bool AppendOnlyStorageFormat_VerifyHeaderChecksum(

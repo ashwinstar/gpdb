@@ -1007,6 +1007,11 @@ finalize_plan(Plan *plan, List *rtable,
 							  &context);
 			break;
 
+		case T_BitmapAppendOnlyScan:
+			finalize_primnode((Node *) ((BitmapAppendOnlyScan *) plan)->bitmapqualorig,
+							  &context);
+			break;
+
 		case T_TidScan:
 			finalize_primnode((Node *) ((TidScan *) plan)->tidquals,
 							  &context);
@@ -1134,7 +1139,7 @@ finalize_plan(Plan *plan, List *rtable,
 		case T_Window:
 		case T_SeqScan:
 		case T_AppendOnlyScan:
-                case T_AOCSScan:
+		case T_AOCSScan:
 		case T_ExternalScan:
 		case T_Material:
 		case T_Sort:

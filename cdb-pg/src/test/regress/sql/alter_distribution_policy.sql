@@ -138,8 +138,8 @@ alter table pg_class set with(appendonly = true);
 create table atsdb (i int, j text) distributed by (j);
 insert into atsdb select i, i::text from generate_series(1, 10) i;
 alter table atsdb set with(appendonly = true);
-select relname, relaosegrelid != 0, reloptions from pg_class where oid =
-'atsdb'::regclass;
+select relname, segrelid != 0, reloptions from pg_class, pg_appendonly where pg_class.oid =
+'atsdb'::regclass and relid = pg_class.oid;
 select * from atsdb;
 drop table atsdb;
 
@@ -158,8 +158,8 @@ select * from distcheck where rel = 'atsdb';
 alter table atsdb drop column n;
 
 alter table atsdb set with(appendonly = true, compresslevel = 3);
-select relname, relaosegrelid != 0, reloptions from pg_class where oid = 
-'atsdb'::regclass;
+select relname, segrelid != 0, reloptions from pg_class, pg_appendonly where pg_class.oid = 
+'atsdb'::regclass and relid = pg_class.oid;
 
 select * from distcheck where rel = 'atsdb';
 
@@ -167,8 +167,8 @@ select * from atsdb;
 alter table atsdb set distributed by (j);
 
 select * from distcheck where rel = 'atsdb';
-select relname, relaosegrelid != 0, reloptions from pg_class where oid =
-'atsdb'::regclass;
+select relname, segrelid != 0, reloptions from pg_class, pg_appendonly where pg_class.oid =
+'atsdb'::regclass and relid = pg_class.oid;
 
 select * from atsdb;
 -- validate parameters

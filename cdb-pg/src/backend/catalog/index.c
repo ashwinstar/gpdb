@@ -62,6 +62,8 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbanalyze.h"
 #include "cdb/cdboidsync.h"
+#include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbaocsam.h"
 
 /* state info for validate_index bulkdelete callback */
 typedef struct
@@ -86,7 +88,7 @@ static void UpdateIndexRelation(Oid indexoid, Oid heapoid,
 					bool primary,
 					bool isvalid);
 static void index_update_stats(Relation rel, bool hasindex, bool isprimary,
-				   Oid reltoastidxid, Oid relaosegidxid, double reltuples);
+							   Oid reltoastidxid, double reltuples);
 static bool validate_index_callback(ItemPointer itemptr, void *opaque);
 static void validate_index_heapscan(Relation heapRelation,
 						Relation indexRelation,
@@ -94,6 +96,30 @@ static void validate_index_heapscan(Relation heapRelation,
 						Snapshot snapshot,
 						v_i_state *state);
 static Oid	IndexGetRelation(Oid indexId);
+static double IndexBuildHeapScan(Relation heapRelation,
+								 Relation indexRelation,
+								 struct IndexInfo *indexInfo,
+								 EState *estate,
+								 Snapshot snapshot,
+								 TransactionId OldestXmin,
+								 IndexBuildCallback callback,
+								 void *callback_state);
+static double IndexBuildAppendOnlyRowScan(Relation parentRelation,
+										  Relation indexRelation,
+										  struct IndexInfo *indexInfo,
+										  EState *estate,
+										  Snapshot snapshot,
+										  IndexBuildCallback callback,
+										  void *callback_state);
+static double IndexBuildAppendOnlyColScan(Relation parentRelation,
+										  Relation indexRelation,
+										  struct IndexInfo *indexInfo,
+										  EState *estate,
+										  Snapshot snapshot,
+										  IndexBuildCallback callback,
+										  void *callback_state);
+
+
 
 
 /*
@@ -861,7 +887,6 @@ index_create(Oid heapRelationId,
 						   true,
 						   isprimary,
 						   InvalidOid,
-						   InvalidOid,
 						   heapRelation->rd_rel->reltuples);
 		/* Make the above update visible */
 		CommandCounterIncrement();
@@ -1148,7 +1173,7 @@ FormIndexDatum(struct IndexInfo *indexInfo,
  */
 static void
 index_update_stats(Relation rel, bool hasindex, bool isprimary,
-				   Oid reltoastidxid, Oid relaosegidxid, double reltuples)
+				   Oid reltoastidxid, double reltuples)
 {
 	BlockNumber relpages = RelationGetNumberOfBlocks(rel);
 	Oid			relid = RelationGetRelid(rel);
@@ -1248,15 +1273,6 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
 		if (rd_rel->reltoastidxid != reltoastidxid)
 		{
 			rd_rel->reltoastidxid = reltoastidxid;
-			dirty = true;
-		}
-	}
-	if (OidIsValid(relaosegidxid))
-	{
-		Assert(rd_rel->relkind == RELKIND_AOSEGMENTS);
-		if (rd_rel->relaosegidxid != relaosegidxid)
-		{
-			rd_rel->relaosegidxid = relaosegidxid;
 			dirty = true;
 		}
 	}
@@ -1517,19 +1533,152 @@ index_build(Relation heapRelation,
 					   isprimary,
 					   (heapRelation->rd_rel->relkind == RELKIND_TOASTVALUE) ?
 					   RelationGetRelid(indexRelation) : InvalidOid,
-					   (heapRelation->rd_rel->relkind == RELKIND_AOSEGMENTS) ?
-					   RelationGetRelid(indexRelation) : InvalidOid,
 					   stats->heap_tuples);
+
+#if 0
+	/*
+	 * Update an AO segment or block directory index oid
+	 */
+	switch(heapRelation->rd_rel->relkind)
+	{
+		case RELKIND_AOSEGMENTS:
+			UpdateAppendOnlyEntryIdxid(RelationGetRelid(heapRelation),
+									   Anum_pg_appendonly_segidxid,
+									   RelationGetRelid(indexRelation));
+			break;
+		case RELKIND_AOBLOCKDIR:
+			UpdateAppendOnlyEntryIdxid(RelationGetRelid(heapRelation),
+									   Anum_pg_appendonly_blkdiridxid,
+									   RelationGetRelid(indexRelation));
+			break;
+		default:
+			/* do nothing */
+	}
+#endif
 
 	index_update_stats(indexRelation,
 					   false,
 					   false,
 					   InvalidOid,
-					   InvalidOid,
 					   stats->index_tuples);
 
 	/* Make the updated versions visible */
 	CommandCounterIncrement();
+}
+
+/*
+ * IndexBuildScan - scan the heap, or the append-only row, or the append-only
+ * column relation to find tuples to be indexed.
+ *
+ * This is called back from an access-method-specific index build procedure
+ * after the AM has done whatever setup it needs.  The parent relation
+ * is scanned to find tuples that should be entered into the index.  Each
+ * such tuple is passed to the AM's callback routine, which does the right
+ * things to add it to the new index.  After we return, the AM's index
+ * build procedure does whatever cleanup is needed; in particular, it should
+ * close the heap and index relations.
+ *
+ * The total count of heap tuples is returned.	This is for updating pg_class
+ * statistics.	(It's annoying not to be able to do that here, but we can't
+ * do it until after the relation is closed.)  Note that the index AM itself
+ * must keep track of the number of index tuples; we don't do so here because
+ * the AM might reject some of the tuples for its own reasons, such as being
+ * unable to store NULLs.
+ */
+double
+IndexBuildScan(Relation parentRelation,
+			   Relation indexRelation,
+			   struct IndexInfo *indexInfo,
+			   IndexBuildCallback callback,
+			   void *callback_state)
+{
+	TupleTableSlot *slot;
+	EState	   *estate;
+	ExprContext *econtext;
+	Snapshot	snapshot;
+	TransactionId OldestXmin;
+	double reltuples = 0;
+
+	/*
+	 * sanity checks
+	 */
+	Assert(OidIsValid(indexRelation->rd_rel->relam));
+
+	/*
+	 * Need an EState for evaluation of index expressions and partial-index
+	 * predicates.	Also a slot to hold the current tuple.
+	 */
+	estate = CreateExecutorState();
+	econtext = GetPerTupleExprContext(estate);
+	slot = MakeSingleTupleTableSlot(RelationGetDescr(parentRelation));
+
+	/* Arrange for econtext's scan tuple to be the tuple under test */
+	econtext->ecxt_scantuple = slot;
+
+	/*
+	 * Prepare for scan of the base relation.  In a normal index build, we use
+	 * SnapshotAny because we must retrieve all tuples and do our own time
+	 * qual checks (because we have to index RECENTLY_DEAD tuples). In a
+	 * concurrent build, we take a regular MVCC snapshot and index whatever's
+	 * live according to that.	During bootstrap we just use SnapshotNow.
+	 *
+	 * If the relation is an append-only table, we use a regular MVCC snapshot
+	 * and index what is actually in the table.
+	 */
+	if (IsBootstrapProcessingMode())
+	{
+		snapshot = SnapshotNow;
+		OldestXmin = InvalidTransactionId;		/* not used */
+	}
+	else if (indexInfo->ii_Concurrent ||
+			 RelationIsAoRows(parentRelation) ||
+			 RelationIsAoCols(parentRelation))
+	{
+		snapshot = CopySnapshot(GetTransactionSnapshot());
+		OldestXmin = InvalidTransactionId;		/* not used */
+	}
+	else
+	{
+		snapshot = SnapshotAny;
+		/* okay to ignore lazy VACUUMs here */
+		OldestXmin = GetOldestXmin(parentRelation->rd_rel->relisshared);
+	}
+
+	if (RelationIsHeap(parentRelation))
+		reltuples = IndexBuildHeapScan(parentRelation,
+									   indexRelation,
+									   indexInfo,
+									   estate,
+									   snapshot,
+									   OldestXmin,
+									   callback,
+									   callback_state);
+	
+	else if (RelationIsAoRows(parentRelation))
+		reltuples = IndexBuildAppendOnlyRowScan(parentRelation,
+												indexRelation,
+												indexInfo,
+												estate,
+												snapshot,
+												callback,
+												callback_state);
+	else if (RelationIsAoCols(parentRelation))
+		reltuples = IndexBuildAppendOnlyColScan(parentRelation,
+												indexRelation,
+												indexInfo,
+												estate,
+												snapshot,
+												callback,
+												callback_state);
+
+	ExecDropSingleTupleTableSlot(slot);
+	FreeExecutorState(estate);
+
+	/* These may have been pointing to the now-gone estate */
+	indexInfo->ii_ExpressionsState = NIL;
+	indexInfo->ii_PredicateState = NIL;
+
+	return reltuples;
 }
 
 
@@ -1551,10 +1700,13 @@ index_build(Relation heapRelation,
  * the AM might reject some of the tuples for its own reasons, such as being
  * unable to store NULLs.
  */
-double
+static double
 IndexBuildHeapScan(Relation heapRelation,
 				   Relation indexRelation,
 				   struct IndexInfo *indexInfo,
+				   EState *estate,
+				   Snapshot snapshot,
+				   TransactionId OldestXmin,
 				   IndexBuildCallback callback,
 				   void *callback_state)
 {
@@ -1563,57 +1715,17 @@ IndexBuildHeapScan(Relation heapRelation,
 	Datum		values[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
 	double		reltuples;
-	List	   *predicate;
-	TupleTableSlot *slot;
-	EState	   *estate;
+	List	   *predicate = NIL;
 	ExprContext *econtext;
-	Snapshot	snapshot;
-	TransactionId OldestXmin;
+	TupleTableSlot *slot;
 
-	/*
-	 * sanity checks
-	 */
-	Assert(OidIsValid(indexRelation->rd_rel->relam));
-
-	/*
-	 * Need an EState for evaluation of index expressions and partial-index
-	 * predicates.	Also a slot to hold the current tuple.
-	 */
-	estate = CreateExecutorState();
-	econtext = GetPerTupleExprContext(estate);
-	slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRelation));
-
-	/* Arrange for econtext's scan tuple to be the tuple under test */
-	econtext->ecxt_scantuple = slot;
+	Assert(estate->es_per_tuple_exprcontext != NULL);
+	econtext = estate->es_per_tuple_exprcontext;
+	slot = econtext->ecxt_scantuple;
 
 	/* Set up execution state for predicate, if any. */
 	predicate = (List *)
-		ExecPrepareExpr((Expr *) indexInfo->ii_Predicate,
-						estate);
-
-	/*
-	 * Prepare for scan of the base relation.  In a normal index build, we use
-	 * SnapshotAny because we must retrieve all tuples and do our own time
-	 * qual checks (because we have to index RECENTLY_DEAD tuples). In a
-	 * concurrent build, we take a regular MVCC snapshot and index whatever's
-	 * live according to that.	During bootstrap we just use SnapshotNow.
-	 */
-	if (IsBootstrapProcessingMode())
-	{
-		snapshot = SnapshotNow;
-		OldestXmin = InvalidTransactionId;		/* not used */
-	}
-	else if (indexInfo->ii_Concurrent)
-	{
-		snapshot = CopySnapshot(GetTransactionSnapshot());
-		OldestXmin = InvalidTransactionId;		/* not used */
-	}
-	else
-	{
-		snapshot = SnapshotAny;
-		/* okay to ignore lazy VACUUMs here */
-		OldestXmin = GetOldestXmin(heapRelation->rd_rel->relisshared);
-	}
+		ExecPrepareExpr((Expr *) indexInfo->ii_Predicate, estate);
 
 	scan = heap_beginscan(heapRelation, /* relation */
 						  snapshot,		/* seeself */
@@ -1760,23 +1872,184 @@ IndexBuildHeapScan(Relation heapRelation,
 		 */
 
 		/* Call the AM's callback routine to process the tuple */
-		callback(indexRelation, heapTuple, values, isnull, tupleIsAlive,
-				 callback_state);
+		callback(indexRelation, slot_get_ctid(slot),
+				 values, isnull, tupleIsAlive, callback_state);
 	}
 
 	heap_endscan(scan);
 
-	ExecDropSingleTupleTableSlot(slot);
-
-	FreeExecutorState(estate);
-
-	/* These may have been pointing to the now-gone estate */
-	indexInfo->ii_ExpressionsState = NIL;
-	indexInfo->ii_PredicateState = NIL;
-
 	return reltuples;
 }
 
+/*
+ * IndexBuildAppendOnlyRowScan - scan the Append-Only Row relation to find
+ * tuples to be indexed.
+ */
+static double
+IndexBuildAppendOnlyRowScan(Relation parentRelation,
+							Relation indexRelation,
+							struct IndexInfo *indexInfo,
+							EState *estate,
+							Snapshot snapshot,
+							IndexBuildCallback callback,
+							void *callback_state)
+{
+	List *predicate = NIL;
+	ExprContext *econtext;
+	struct AppendOnlyScanDescData *aoscan;
+	TupleTableSlot *slot;
+	double reltuples = 0;
+	Datum		values[INDEX_MAX_KEYS];
+	bool		isnull[INDEX_MAX_KEYS];
+	
+	Assert(estate->es_per_tuple_exprcontext != NULL);
+	econtext = estate->es_per_tuple_exprcontext;
+	slot = econtext->ecxt_scantuple;
+
+	/* Set up execution state for predicate, if any */
+	predicate = (List *)
+		ExecPrepareExpr((Expr *)indexInfo->ii_Predicate, estate);
+	
+	aoscan = appendonly_beginscan(parentRelation,
+								  snapshot,
+								  0,
+								  NULL);
+
+	while (appendonly_getnext(aoscan, ForwardScanDirection, slot) != NULL)
+	{
+		CHECK_FOR_INTERRUPTS();
+
+		reltuples++;
+
+		MemoryContextReset(econtext->ecxt_per_tuple_memory);
+		
+		if (predicate != NIL)
+		{
+			if (!ExecQual(predicate, econtext, false))
+				continue;
+		}
+		
+		/*
+		 * For the current heap tuple, extract all the attributes we use in
+		 * this index, and note which are null.  This also performs evaluation
+		 * of any expressions needed.
+		 */
+		FormIndexDatum(indexInfo,
+					   slot,
+					   estate,
+					   values,
+					   isnull);
+
+		/*
+		 * You'd think we should go ahead and build the index tuple here, but
+		 * some index AMs want to do further processing on the data first.	So
+		 * pass the values[] and isnull[] arrays, instead.
+		 */
+		Assert(ItemPointerIsValid(slot_get_ctid(slot)));
+		
+		/* Call the AM's callback routine to process the tuple */
+		callback(indexRelation, slot_get_ctid(slot),
+				 values, isnull, true, callback_state);
+	}
+	
+	appendonly_endscan(aoscan);
+	
+	return reltuples;
+}
+
+/*
+ * IndexBuildAppendOnlyColScan - scan the appendonly columnar relation to
+ * find tuples to be indexed.
+ */
+static double
+IndexBuildAppendOnlyColScan(Relation parentRelation,
+							Relation indexRelation,
+							struct IndexInfo *indexInfo,
+							EState *estate,
+							Snapshot snapshot,
+							IndexBuildCallback callback,
+							void *callback_state)
+{
+	List *predicate = NIL;
+	ExprContext *econtext;
+	struct AOCSScanDescData *aocsscan;
+	TupleTableSlot *slot;
+	double reltuples = 0;
+	bool *proj;
+	int attno;
+	Datum		values[INDEX_MAX_KEYS];
+	bool		isnull[INDEX_MAX_KEYS];
+
+	Assert(estate->es_per_tuple_exprcontext != NULL);
+	econtext = estate->es_per_tuple_exprcontext;
+	slot = econtext->ecxt_scantuple;
+
+	/* Set up execution state for predicate, if any */
+	predicate = (List *)
+		ExecPrepareExpr((Expr *)indexInfo->ii_Predicate, estate);
+
+	/*
+	 * In Append-Only Columnar relation, only index keys need to be scanned.
+	 * We mark those columns before starting the scan.
+	 */
+	Assert(parentRelation->rd_att != NULL);
+	proj = palloc0(parentRelation->rd_att->natts * sizeof(bool));
+	for (attno = 0; attno < indexInfo->ii_NumIndexAttrs; attno++)
+	{
+		Assert(indexInfo->ii_KeyAttrNumbers[attno] <= parentRelation->rd_att->natts);
+		/* Skip expression */
+		if (indexInfo->ii_KeyAttrNumbers[attno] > 0)
+			proj[indexInfo->ii_KeyAttrNumbers[attno] - 1] = true;
+	}
+	
+	GetNeededColumnsForScan((Node *)indexInfo->ii_Expressions,
+							proj,
+							parentRelation->rd_att->natts);
+
+	aocsscan = aocs_beginscan(parentRelation, snapshot, 0, NULL, proj);
+
+	while (true)
+	{
+		CHECK_FOR_INTERRUPTS();
+		
+		aocs_getnext(aocsscan, ForwardScanDirection, slot);
+		if (TupIsNull(slot))
+			break;
+
+		reltuples++;
+		
+		MemoryContextReset(econtext->ecxt_per_tuple_memory);
+		
+		if (predicate != NIL)
+		{
+			if (!ExecQual(predicate, econtext, false))
+				continue;
+		}
+
+		/*
+		 * For the current heap tuple, extract all the attributes we use in
+		 * this index, and note which are null.  This also performs evaluation
+		 * of any expressions needed.
+		 */
+		FormIndexDatum(indexInfo,
+					   slot,
+					   estate,
+					   values,
+					   isnull);
+
+		Assert(ItemPointerIsValid(slot_get_ctid(slot)));
+
+		callback(indexRelation, slot_get_ctid(slot),
+				 values, isnull, true, callback_state);
+		
+	}
+
+	pfree(proj);
+	
+	aocs_endscan(aocsscan);
+
+	return reltuples;
+}
 
 /*
  * validate_index - support code for concurrent index builds
@@ -2328,12 +2601,13 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
  * new relfilenode specified in the map.
  */
 bool
-reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
+reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 				 List **oidmap, bool build_map)
 {
 	Relation	rel;
 	Oid			toast_relid;
-	Oid			aoseg_relid;
+	Oid			aoseg_relid = InvalidOid;
+	Oid         aoblkdir_relid = InvalidOid;
 	bool		is_pg_class;
 	bool		result;
 	List	   *indexIds,
@@ -2347,7 +2621,6 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 	rel = heap_open(relid, ShareLock);
 
 	toast_relid = rel->rd_rel->reltoastrelid;
-	aoseg_relid = rel->rd_rel->relaosegrelid;
 
 	/*
 	 * Get the list of index OIDs for this relation.  (We trust to the
@@ -2463,18 +2736,27 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 	 * still hold the lock on the master table.
 	 */
 	if (toast_too && OidIsValid(toast_relid))
-		result |= reindex_relation(toast_relid, false, false, oidmap, build_map);
+		result |= reindex_relation(toast_relid, false, false, false, oidmap, build_map);
+
+	if ((aoseg_too || aoblkdir_too) &&
+		(RelationIsAoRows(rel) || RelationIsAoCols(rel)))
+	{
+		GetAppendOnlyEntryAuxOids(relid, &aoseg_relid, NULL, &aoblkdir_relid, NULL);
+	}
 
 	/*
 	 * If an AO rel has a secondary segment list rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (aoseg_too && OidIsValid(aoseg_relid))
-	{
-		Assert(RelationIsAoRows(rel) || RelationIsAoCols(rel));
-		result |= reindex_relation(aoseg_relid, false, false, oidmap, build_map);
-	}
+		result |= reindex_relation(aoseg_relid, false, false, false, oidmap, build_map);
 
+	/*
+	 * If an AO rel has a secondary block directory rel, reindex that too while we
+	 * still hold the lock on the master table.
+	 */
+	if (aoblkdir_too && OidIsValid(aoblkdir_relid))
+		result |= reindex_relation(aoblkdir_relid, false, false, false, oidmap, build_map);
 
 	return result;
 }

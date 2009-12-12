@@ -69,9 +69,12 @@ typedef BMMetaPageData *BMMetaPage;
  * of BM_HRL_WORD_SIZE because we can then bits for heap
  * tuples in different heap pages are stored in different words.
  * This makes it easier during the search.
+ *
+ * Because the tid value for AO tables can be more than MaxHeapTuplesPerPage,
+ * we use the maximum possible offset number here.
  */
-#define BM_MAX_HTUP_PER_PAGE \
-	((((MaxHeapTuplesPerPage - 1) / BM_HRL_WORD_SIZE) + 1) * \
+#define BM_MAX_TUPLES_PER_PAGE \
+	(((((1 << (8 * sizeof(OffsetNumber))) - 1) / BM_HRL_WORD_SIZE) + 1) * \
 	BM_HRL_WORD_SIZE)
 
 /*
@@ -134,7 +137,7 @@ typedef struct BMLOVItemData
 	 * A tid location represents the index position for a bit in a
 	 * bitmap vector, which is conceptualized as an array
 	 * of bits. This value -- the index position starts from 1, and
-     * is calculated through (block#)*BM_MAX_HTUP_PER_PAGE + (offset#),
+     * is calculated through (block#)*BM_MAX_TUPLES_PER_PAGE + (offset#),
 	 * where (block#) and (offset#) are from the heap tuple ctid.
 	 * This value is used while updating a bit in the middle of
 	 * its bitmap vector. When moving the last complete word to
@@ -333,14 +336,14 @@ typedef struct BMTidBuildBuf
  */
 
 #define BM_IPTR_TO_INT(iptr) \
-	((uint64)ItemPointerGetBlockNumber(iptr) * BM_MAX_HTUP_PER_PAGE + \
+	((uint64)ItemPointerGetBlockNumber(iptr) * BM_MAX_TUPLES_PER_PAGE + \
 		(uint64)ItemPointerGetOffsetNumber(iptr))
 
 #define BM_INT_GET_BLOCKNO(i) \
-	((i - 1)/BM_MAX_HTUP_PER_PAGE)
+	((i - 1)/BM_MAX_TUPLES_PER_PAGE)
 
 #define BM_INT_GET_OFFSET(i) \
-	(((i - 1) % BM_MAX_HTUP_PER_PAGE) + 1)
+	(((i - 1) % BM_MAX_TUPLES_PER_PAGE) + 1)
 
 
 /*

@@ -469,6 +469,80 @@ SELECT oideq(oid,-1) FROM aocswithoids; -- kind of stupid but checks that oid ac
 -------
 (0 rows)
 
+-- INDEX
+CREATE INDEX tenk_aocs1_unique1 ON tenk_aocs1 USING btree(unique1 int4_ops);
+drop table if exists co;
+create table co (i int, j int, k varchar) with(appendonly=true, orientation=column);
+insert into co values (1,1,'a'), (2,2,'aa'), (3,3,'aaa'), (4,4,'aaaa'),
+	(5,5,'aaaaa'), (6,6,'aaaaaa'), (7,7,'aaaaaaa'), (8,8,'aaaaaaaa');
+create index co_j on co using btree(j);
+create index co_k on co using btree(k);
+create index co_jk on co using btree((j + length(k)));
+set enable_seqscan=off;
+select * from co where j = 2;
+ i | j | k  
+---+---+----
+ 2 | 2 | aa
+(1 row)
+
+insert into co values (9,1,'b'), (10,2,'bb'), (11,3,'bbb'), (12,4,'bbbb'),
+	(13,5,'aaaaa'), (14,6,'aaaaaa'), (15,7,'aaaaaaa'), (16,8,'aaaaaaaa');
+select * from co where j = 2;
+ i  | j | k  
+----+---+----
+  2 | 2 | aa
+ 10 | 2 | bb
+(2 rows)
+
+insert into co values (9,2,'b'), (10,2,'bb'), (11,2,'bbb'), (12,2,'bbbb'),
+	(13,5,'aaaaa'), (14,6,'aaaaaa'), (15,7,'aaaaaaa'), (16,8,'aaaaaaaa');
+select * from co where j = 2;
+ i  | j |  k   
+----+---+------
+ 11 | 2 | bbb
+  9 | 2 | b
+ 12 | 2 | bbbb
+  2 | 2 | aa
+ 10 | 2 | bb
+ 10 | 2 | bb
+(6 rows)
+
+drop table if exists co;
+create table co (i int, j int, k varchar) with(appendonly=true, orientation=column);
+insert into co values (1,1,'a'), (2,2,'aa'), (3,3,'aaa'), (4,4,'aaaa'),
+	(5,5,'aaaaa'), (6,6,'aaaaaa'), (7,7,'aaaaaaa'), (8,8,'aaaaaaaa');
+create index co_j on co using bitmap(j);
+create index co_k on co using bitmap(k);
+create index co_jk on co using bitmap((j + length(k)));
+set enable_seqscan=off;
+select * from co where j = 2;
+ i | j | k  
+---+---+----
+ 2 | 2 | aa
+(1 row)
+
+insert into co values (9,1,'b'), (10,2,'bb'), (11,3,'bbb'), (12,4,'bbbb'),
+	(13,5,'aaaaa'), (14,6,'aaaaaa'), (15,7,'aaaaaaa'), (16,8,'aaaaaaaa');
+select * from co where j = 2;
+ i  | j | k  
+----+---+----
+  2 | 2 | aa
+ 10 | 2 | bb
+(2 rows)
+
+insert into co values (9,2,'b'), (10,2,'bb'), (11,2,'bbb'), (12,2,'bbbb'),
+	(13,5,'aaaaa'), (14,6,'aaaaaa'), (15,7,'aaaaaaa'), (16,8,'aaaaaaaa');
+select * from co where j = 2;
+ i  | j |  k   
+----+---+------
+ 11 | 2 | bbb
+  9 | 2 | b
+ 12 | 2 | bbbb
+  2 | 2 | aa
+ 10 | 2 | bb
+ 10 | 2 | bb
+(6 rows)
+
 -------------------- 
 -- unsupported sql 
 --------------------
@@ -478,9 +552,6 @@ ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg2 mi
 -- UPDATE (not supported)
 UPDATE tenk_aocs1 SET unique2 = 1 WHERE unique2 = 2;
 ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 minithump4:19002 pid=14833)
--- CREATE INDEX (not supported)
-CREATE INDEX tenk_aocs1_unique1 ON tenk_aocs1 USING btree(unique1 int4_ops);
-ERROR:  cannot create indexes on append only tables yet.
 -- ALTER
 ALTER TABLE tenk_aocs1 RENAME TO tenk_renamed;
 ALTER TABLE tenk_renamed ADD COLUMN newcol int default 10;
@@ -501,8 +572,8 @@ CREATE TABLE syscoltest(a int) WITH (appendonly=true, orientation=column);
 INSERT INTO syscoltest VALUES(1);
 SELECT ctid FROM syscoltest;
    ctid   
-----------
- (0,2561)
+---------
+ (512,3)
 (1 row)
 
 DROP TABLE syscoltest;

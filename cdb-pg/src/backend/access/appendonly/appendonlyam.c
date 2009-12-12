@@ -52,6 +52,7 @@
 #include "catalog/catalog.h"
 #include "catalog/pg_appendonly.h"
 #include "catalog/namespace.h"
+#include "catalog/gp_fastsequence.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbappendonlyam.h"
 #include "miscadmin.h"
@@ -174,7 +175,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	while(scan->aos_segfiles_processed < scan->aos_total_segfiles)
 	{
 		/* still have more segment files to read. get info of the next one */
-		FileSegInfo *fsinfo = &scan->aos_segfile_arr[scan->aos_segfiles_processed];
+		FileSegInfo *fsinfo = scan->aos_segfile_arr[scan->aos_segfiles_processed];
 		segno = fsinfo->segno;
 		eof = (int64)fsinfo->eof;
 		
@@ -317,15 +318,15 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	Assert(strlen(aoInsertDesc->appendFilePathName) + 1 <= aoInsertDesc->appendFilePathNameMaxLen);
 
 	/* get the information for the file segment we insert into */
-	fsinfo = GetFileSegInfoForWrite(aoInsertDesc->aoi_rel,
-									aoInsertDesc->cur_segno);
-	
+	aoInsertDesc->fsInfo = GetFileSegInfoForWrite(aoInsertDesc->aoi_rel,
+												  aoInsertDesc->aoEntry,
+												  aoInsertDesc->cur_segno);
+	fsinfo = aoInsertDesc->fsInfo;
 	Assert(fsinfo);
 	eof = (int64)fsinfo->eof;
 	eof_uncompressed = (int64)fsinfo->eof_uncompressed;
 	varblockcount = (int64)fsinfo->varblockcount;
-	pfree(fsinfo);
-	fsinfo = NULL;
+	aoInsertDesc->rowCount = fsinfo->tupcount;
 
 	AppendOnlyStorageWrite_OpenFile(
 							&aoInsertDesc->storageWrite,
@@ -343,6 +344,18 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	 */
 	aoInsertDesc->bufferCount = varblockcount;
 
+	/*
+	 * XXX We assume that the fast sequence entries has been setup for
+	 * the AO segment files. This is always true for newly-created AO
+	 * tables. However, we need to make sure that the upgrader adds
+	 * such entries for AO tables created in 3.3.
+	 */
+	if (!ItemPointerIsValid(&aoInsertDesc->fsInfo->sequence_tid))
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Fast sequence entry for AO table %d segno %d "
+						"does not exist", RelationGetRelid(aoInsertDesc->aoi_rel),
+						aoInsertDesc->cur_segno)));
 }
 
 /*
@@ -374,11 +387,15 @@ CloseWritableFileSeg(AppendOnlyInsertDesc aoInsertDesc)
 	 * Update the AO segment info table with our new eof
 	 */
 	UpdateFileSegInfo(aoInsertDesc->aoi_rel, 
+					  aoInsertDesc->aoEntry,
 					  aoInsertDesc->cur_segno,
 					  fileLen,
 					  fileLen_uncompressed,
 					  aoInsertDesc->insertCount,
 					  aoInsertDesc->varblockCount);
+
+	pfree(aoInsertDesc->fsInfo);
+	aoInsertDesc->fsInfo = NULL;
 
 	if (Debug_appendonly_print_insert)
 		elog(LOG, 
@@ -828,9 +845,7 @@ AppendOnlyExecutorReadBlock_ScanNextTuple(
 	return NULL;	// No match.
 }
 
-#ifdef FetchTuple
-
-static MemTuple
+static bool
 AppendOnlyExecutorReadBlock_FetchTuple(
 	AppendOnlyExecutorReadBlock		*executorReadBlock,
 	int64							rowNum,
@@ -845,9 +860,12 @@ AppendOnlyExecutorReadBlock_FetchTuple(
 	Assert(rowNum <= 
 		   executorReadBlock->blockFirstRowNum +
 		   executorReadBlock->rowCount - 1);
-	
+
+	/*
+	 * Get 0-based index to tuple.
+	 */
 	itemNum = 
-		(int)(rowNum - executorReadBlock->blockFirstRowNum + INT64CONST(1));
+		(int)(rowNum - executorReadBlock->blockFirstRowNum);
 
 	switch (executorReadBlock->executorBlockKind)
 	{
@@ -872,13 +890,13 @@ AppendOnlyExecutorReadBlock_FetchTuple(
 												nkeys,
 												key,
 												slot))
-				return tuple;
+				return true;
 		}
 		break;
 	
 	case AoExecutorBlockKind_SingleRow:
 		{
-			Assert(itemNum == 1);
+			Assert(itemNum == 0);
 			Assert (executorReadBlock->singleRow != NULL);
 			Assert(executorReadBlock->singleRowLen != 0);
 				
@@ -892,7 +910,7 @@ AppendOnlyExecutorReadBlock_FetchTuple(
 												nkeys,
 												key,
 												slot))
-				return tuple;
+				return true;
 		}
 		break;
 		
@@ -902,10 +920,8 @@ AppendOnlyExecutorReadBlock_FetchTuple(
 		break;
 	}
 
-	return NULL;	// No match.
+	return false;	// No match.
 }
-
-#endif
 
 //------------------------------------------------------------------------------
 
@@ -1022,9 +1038,12 @@ setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 	Assert(aoInsertDesc->nonCompressedData == NULL);
 	Assert(!AppendOnlyStorageWrite_IsBufferAllocated(&aoInsertDesc->storageWrite));
 
+	/* Set the firstRowNum for the block */
+	AppendOnlyStorageWrite_SetFirstRowNum(&aoInsertDesc->storageWrite,
+										  aoInsertDesc->blockFirstRowNum);
+
 	if(!aoInsertDesc->shouldCompress)
 	{
-
 		aoInsertDesc->nonCompressedData =
 			AppendOnlyStorageWrite_GetBuffer(&aoInsertDesc->storageWrite);
 		
@@ -1054,7 +1073,7 @@ setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 	}
 	
 	aoInsertDesc->bufferCount++;
-	aoInsertDesc->blockFirstRowNum = aoInsertDesc->insertCount + 1;
+	aoInsertDesc->blockFirstRowNum = aoInsertDesc->lastSequence + 1;
 }
 
 
@@ -1152,6 +1171,14 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 							itemCount);
 	}
 	
+	/* Insert an entry to the block directory */
+	AppendOnlyBlockDirectory_InsertEntry(
+		&aoInsertDesc->blockDirectory,
+		0,
+		aoInsertDesc->blockFirstRowNum,
+		AppendOnlyStorageWrite_LastWriteBeginPosition(&aoInsertDesc->storageWrite),
+		itemCount);
+	
 	Assert(aoInsertDesc->nonCompressedData == NULL);
 	Assert(!AppendOnlyStorageWrite_IsBufferAllocated(&aoInsertDesc->storageWrite));
 }
@@ -1244,7 +1271,7 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	/*
 	 * Get information about all the file segments we need to scan
 	 */
-	scan->aos_segfile_arr = GetAllFileSegInfo(relation, snapshot, &scan->aos_total_segfiles);
+	scan->aos_segfile_arr = GetAllFileSegInfo(relation, aoentry, snapshot, &scan->aos_total_segfiles);
 		
 	/*
 	 * we do this here instead of in initscan() because appendonly_rescan also calls
@@ -1349,6 +1376,513 @@ appendonly_getnext(AppendOnlyScanDesc scan, ScanDirection direction, TupleTableS
 	return tup;
 }
 
+static void
+closeFetchSegmentFile(
+	AppendOnlyFetchDesc aoFetchDesc)
+{
+	Assert(aoFetchDesc->currentSegmentFile.isOpen);
+
+	AppendOnlyStorageRead_CloseFile(&aoFetchDesc->storageRead);
+
+	aoFetchDesc->currentSegmentFile.isOpen = false;
+}
+
+static bool
+openFetchSegmentFile(
+	AppendOnlyFetchDesc aoFetchDesc,
+	int					openSegmentFileNum)
+{
+	int		i;
+	
+	FileSegInfo	*fsInfo;
+	int			segmentFileNum;
+	int64		logicalEof;
+	
+	Assert(!aoFetchDesc->currentSegmentFile.isOpen);
+	
+	i = 0;
+	while (true)
+	{
+		if (i >= aoFetchDesc->totalSegfiles)
+			return false;	// Segment file not visible in catalog information.
+			
+		fsInfo = aoFetchDesc->segmentFileInfo[i];
+		segmentFileNum = fsInfo->segno;
+		if (openSegmentFileNum == segmentFileNum)
+		{
+			logicalEof = (int64)fsInfo->eof;
+			break;
+		}
+		i++;
+	}
+
+	MakeAOSegmentFileName(
+			aoFetchDesc->relation, 
+			openSegmentFileNum, -1, 
+			aoFetchDesc->segmentFileName);
+	Assert(strlen(aoFetchDesc->segmentFileName) + 1 <=
+		   aoFetchDesc->segmentFileNameMaxLen);
+
+	// UNDONE: Appropriate to use Try here?
+	if (!AppendOnlyStorageRead_TryOpenFile(
+						&aoFetchDesc->storageRead,
+						aoFetchDesc->segmentFileName, 
+						logicalEof))
+		return false;
+
+	aoFetchDesc->currentSegmentFile.num = openSegmentFileNum;
+	aoFetchDesc->currentSegmentFile.logicalEof = logicalEof;
+
+	aoFetchDesc->currentSegmentFile.isOpen = true;
+
+	return true;
+}
+
+static bool
+fetchNextBlock(
+	AppendOnlyFetchDesc aoFetchDesc)
+{
+	AppendOnlyExecutorReadBlock *executorReadBlock = 
+										&aoFetchDesc->executorReadBlock;
+	
+	/*
+	 * Try to read next block.
+	 */
+	if (!AppendOnlyExecutorReadBlock_GetBlockInfo(
+			&aoFetchDesc->storageRead,
+			&aoFetchDesc->executorReadBlock))
+		return false;	// Hit end of range.
+
+	/*
+	 * Unpack information into member variables.
+	 */
+	aoFetchDesc->currentBlock.have = true;
+	aoFetchDesc->currentBlock.fileOffset =
+				executorReadBlock->headerOffsetInFile;
+	aoFetchDesc->currentBlock.overallBlockLen =
+				AppendOnlyStorageRead_OverallBlockLen(
+										&aoFetchDesc->storageRead);
+	aoFetchDesc->currentBlock.firstRowNum = 
+				executorReadBlock->blockFirstRowNum;
+	aoFetchDesc->currentBlock.lastRowNum = 
+				executorReadBlock->blockFirstRowNum +
+				executorReadBlock->rowCount - 1;
+
+	aoFetchDesc->currentBlock.isCompressed =
+				executorReadBlock->isCompressed;
+	aoFetchDesc->currentBlock.isLargeContent =
+				executorReadBlock->isLarge;
+
+	aoFetchDesc->currentBlock.gotContents = false;
+
+	return true;
+}
+
+static bool
+fetchFromCurrentBlock(
+	AppendOnlyFetchDesc aoFetchDesc,
+	int64				rowNum,
+	TupleTableSlot 		*slot)
+{
+	Assert(aoFetchDesc->currentBlock.have);
+	Assert(rowNum >= aoFetchDesc->currentBlock.firstRowNum);
+	Assert(rowNum <= aoFetchDesc->currentBlock.lastRowNum);
+
+	if (!aoFetchDesc->currentBlock.gotContents)
+	{
+		/*
+		 * Do decompression if necessary and get contents.
+		 */
+		AppendOnlyExecutorReadBlock_GetContents(
+						&aoFetchDesc->executorReadBlock);
+		
+		aoFetchDesc->currentBlock.gotContents = true;
+	}
+
+	return AppendOnlyExecutorReadBlock_FetchTuple(
+							&aoFetchDesc->executorReadBlock,
+							rowNum,
+							/* nkeys */ 0,
+							/* key */ NULL,
+							slot);
+}
+
+static void
+positionFirstBlockOfRange(
+	AppendOnlyFetchDesc aoFetchDesc)
+{
+	AppendOnlyBlockDirectoryEntry_GetBeginRange(
+				&aoFetchDesc->currentBlock.blockDirectoryEntry,
+				&aoFetchDesc->scanNextFileOffset,
+				&aoFetchDesc->scanNextRowNum);
+}
+
+static void
+positionLimitToEndOfRange(
+	AppendOnlyFetchDesc aoFetchDesc)
+{
+	AppendOnlyBlockDirectoryEntry_GetEndRange(
+				&aoFetchDesc->currentBlock.blockDirectoryEntry,
+				&aoFetchDesc->scanAfterFileOffset,
+				&aoFetchDesc->scanLastRowNum);
+}
+
+
+static void
+positionSkipCurrentBlock(
+	AppendOnlyFetchDesc aoFetchDesc)
+{
+	aoFetchDesc->scanNextFileOffset = 
+		aoFetchDesc->currentBlock.fileOffset + 
+		aoFetchDesc->currentBlock.overallBlockLen;
+	
+	aoFetchDesc->scanNextRowNum = aoFetchDesc->currentBlock.lastRowNum + 1;
+}
+
+/*
+ * Scan through blocks to find row.
+ *
+ * If row is not represented in any of the blocks covered by the Block Directory, then the row
+ * falls into a row gap.  The row must have been aborted or deleted and reclaimed.
+ */
+static bool
+scanToFetchTuple(
+	AppendOnlyFetchDesc aoFetchDesc,
+	int64				rowNum,
+	TupleTableSlot 		*slot)
+{
+	if (aoFetchDesc->scanNextFileOffset >=
+		aoFetchDesc->scanAfterFileOffset)
+		return false;	// No more blocks requested for range.
+
+	if (aoFetchDesc->currentSegmentFile.logicalEof ==
+		aoFetchDesc->scanNextFileOffset)
+		return false;	// No more blocks in this file.
+
+	if (aoFetchDesc->currentSegmentFile.logicalEof <
+		aoFetchDesc->scanNextFileOffset)
+		return false;	// UNDONE: Why does our next scan position go beyond logical EOF?
+
+	/*
+	 * Temporarily restrict our reading to just the range.
+	 */
+	AppendOnlyStorageRead_SetTemporaryRange(
+		&aoFetchDesc->storageRead,
+		aoFetchDesc->scanNextFileOffset,
+		aoFetchDesc->scanAfterFileOffset);
+	AppendOnlyExecutionReadBlock_SetSegmentFileNum(
+		&aoFetchDesc->executorReadBlock,
+		aoFetchDesc->currentSegmentFile.num);
+	AppendOnlyExecutionReadBlock_SetPositionInfo(
+		&aoFetchDesc->executorReadBlock,
+		aoFetchDesc->scanNextRowNum);
+
+	aoFetchDesc->skipBlockCount = 0;
+	while (true)
+	{
+		/*
+		 * Fetch block starting at scanNextFileOffset.
+		 */
+		if (!fetchNextBlock(aoFetchDesc))
+			return false;	// No more blocks.
+
+		/*
+		 * Examine new current block header information.
+		 */
+		if (rowNum < aoFetchDesc->currentBlock.firstRowNum)
+			return false;	// Row fell in gap between blocks.
+
+		if (rowNum <= aoFetchDesc->currentBlock.lastRowNum)
+			return fetchFromCurrentBlock(aoFetchDesc, rowNum, slot);
+
+		/*
+		 * Update information to get next block.
+		 */
+		Assert(!aoFetchDesc->currentBlock.gotContents);
+		AppendOnlyExecutionReadBlock_FinishedScanBlock(
+									&aoFetchDesc->executorReadBlock);
+
+		AppendOnlyStorageRead_SkipCurrentBlock( 
+									&aoFetchDesc->storageRead);
+		aoFetchDesc->skipBlockCount++;
+	}
+}
+
+
+AppendOnlyFetchDesc 
+appendonly_fetch_init(
+	Relation 	relation,
+	Snapshot 	snapshot)
+{
+	AppendOnlyFetchDesc	aoFetchDesc;
+	AppendOnlyEntry		*aoentry;
+	
+	AppendOnlyStorageAttributes *attr;
+	
+	/*
+	 * increment relation ref count while scanning relation
+	 *
+	 * This is just to make really sure the relcache entry won't go away while
+	 * the scan has a pointer to it.  Caller should be holding the rel open
+	 * anyway, so this is redundant in all normal scenarios...
+	 */
+	RelationIncrementReferenceCount(relation);
+
+	/*
+	 * allocate scan descriptor
+	 */
+	aoFetchDesc = (AppendOnlyFetchDesc) palloc0(sizeof(AppendOnlyFetchDescData));
+
+	aoFetchDesc->relation = relation;
+
+	aoFetchDesc->initContext = CurrentMemoryContext;
+	
+	aoFetchDesc->segmentFileNameMaxLen = AOSegmentFilePathNameLen(relation) + 1;
+	aoFetchDesc->segmentFileName = 
+						(char*)palloc(aoFetchDesc->segmentFileNameMaxLen);
+	aoFetchDesc->segmentFileName[0] = '\0';
+
+	/*
+	 * Get the pg_appendonly information for this table
+	 */
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
+
+	/*
+	 * Fill in Append-Only Storage layer attributes.
+	 */
+	attr = &aoFetchDesc->storageAttributes;
+
+	/*
+	 * These attributes describe the AppendOnly format to be scanned.
+	 */
+	attr->compress			= (aoentry->compresslevel > 0 ? true : false);
+	attr->compressType		= CompressorStrToType(
+											aoentry->compresstype, 
+											aoentry->compresslevel);
+	attr->compressLevel 	= aoentry->compresslevel;
+	attr->checksum			= aoentry->checksum;
+	attr->use32BitAlignment = true;    // Old-style 32-bit alignment of storage blocks.
+	attr->safeFSWriteSize	= aoentry->safefswritesize;
+
+	aoFetchDesc->usableBlockSize = 
+				AppendOnlyStorage_GetUsableBlockSize(aoentry->blocksize);
+	
+	/*
+	 * Get information about all the file segments we need to scan
+	 */
+	aoFetchDesc->segmentFileInfo = 
+						GetAllFileSegInfo(
+									relation, 
+									aoentry,
+									snapshot, 
+									&aoFetchDesc->totalSegfiles);
+
+	AppendOnlyStorageRead_Init(
+						&aoFetchDesc->storageRead,
+						aoFetchDesc->initContext,
+						aoFetchDesc->usableBlockSize,
+						NameStr(aoFetchDesc->relation->rd_rel->relname),
+						&aoFetchDesc->storageAttributes);
+	
+	AppendOnlyExecutorReadBlock_Init(
+						&aoFetchDesc->executorReadBlock,
+						aoFetchDesc->relation,
+						aoFetchDesc->initContext,
+						&aoFetchDesc->storageRead,
+						aoFetchDesc->usableBlockSize);
+
+	AppendOnlyBlockDirectory_Init_forSearch(
+						&aoFetchDesc->blockDirectory,
+						aoentry,
+						aoFetchDesc->segmentFileInfo,
+						aoFetchDesc->totalSegfiles,
+						aoFetchDesc->relation,
+						1,
+						false);
+
+	return aoFetchDesc;
+
+}
+
+/*
+ * appendonly_fetch -- fetch the tuple for a given tid.
+ *
+ * If the 'slot' is not NULL, the fetched tuple will be assigned to the slot.
+ *
+ * Return true if such a tuple is found. Otherwise, return false.
+ */
+bool
+appendonly_fetch(
+	AppendOnlyFetchDesc 	aoFetchDesc,
+	AOTupleId 				*aoTupleId,
+	TupleTableSlot 			*slot)
+{
+	int		segmentFileNum = AOTupleIdGet_segmentFileNum(aoTupleId);
+	int64 	rowNum = AOTupleIdGet_rowNum(aoTupleId);
+	
+	/*
+	 * Do we have a current block?  If it has the requested tuple,
+	 * that would be a great performance optimization.
+	 */
+	if (aoFetchDesc->currentBlock.have)
+	{
+		if (segmentFileNum == aoFetchDesc->currentSegmentFile.num)
+		{
+			if (rowNum >= aoFetchDesc->currentBlock.firstRowNum &&
+				rowNum <= aoFetchDesc->currentBlock.lastRowNum)
+				return fetchFromCurrentBlock(aoFetchDesc, rowNum, slot);
+
+			/*
+			 * Otherwize, if the current Block Directory entry covers the request tuples,
+			 * lets use its information as another performance optimization.
+			 */
+			if (AppendOnlyBlockDirectoryEntry_RangeHasRow(
+							&aoFetchDesc->currentBlock.blockDirectoryEntry,
+							rowNum))
+			{
+				/*
+				 * The tuple is covered by the current Block Directory entry, but is it
+				 * before or after our current block?
+				 */
+				if (rowNum < aoFetchDesc->currentBlock.firstRowNum)
+				{
+#ifdef USE_ASSERT_CHECKING
+					ereport(WARNING,
+							(errmsg("Append-only fetch requires scan prior blocks: "
+									"segmentFileNum %d, rowNum " INT64_FORMAT ", "
+									"currentBlock.firstRowNum " INT64_FORMAT,
+									segmentFileNum, rowNum,
+									aoFetchDesc->currentBlock.firstRowNum)));
+#endif
+					/*
+					 * Set scan range to prior blocks.
+					 */
+					positionFirstBlockOfRange(aoFetchDesc);
+
+					// Set limit to before current block.
+					aoFetchDesc->scanAfterFileOffset = 
+									aoFetchDesc->currentBlock.fileOffset;
+
+					aoFetchDesc->scanLastRowNum = 
+									aoFetchDesc->currentBlock.firstRowNum - 1;
+				}
+				else
+				{
+					/*
+					 * Set scan range to following blocks.
+					 */
+					positionSkipCurrentBlock(aoFetchDesc);
+
+					positionLimitToEndOfRange(aoFetchDesc);
+				}
+
+				return scanToFetchTuple(aoFetchDesc, rowNum, slot);
+			}
+		}
+	}
+
+//	resetCurrentBlockInfo(aoFetchDesc);
+
+	/*
+	 * Open or switch open, if necessary.
+	 */
+	if (aoFetchDesc->currentSegmentFile.isOpen &&
+		segmentFileNum != aoFetchDesc->currentSegmentFile.num)
+	{
+#ifdef USE_ASSERT_CHECKING
+		if (segmentFileNum < aoFetchDesc->currentSegmentFile.num)
+			ereport(WARNING,
+					(errmsg("Append-only fetch requires scan prior segment file: "
+							"segmentFileNum %d, rowNum " INT64_FORMAT
+							", currentSegmentFileNum %d",
+							segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num)));
+#endif
+		closeFetchSegmentFile(aoFetchDesc);
+
+		Assert(!aoFetchDesc->currentSegmentFile.isOpen);
+	}
+
+	if (!aoFetchDesc->currentSegmentFile.isOpen)
+	{
+		if (!openFetchSegmentFile(
+					aoFetchDesc,
+					segmentFileNum))
+		{
+			if (slot != NULL)
+				ExecClearTuple(slot);
+			return false;	// Segment file not in aoseg table..
+							// Must be aborted or deleted and reclaimed.
+		}
+	}
+
+	/*
+	 * Need to get the Block Directory entry that covers the TID.
+	 */
+	if (!AppendOnlyBlockDirectory_GetEntry(
+									&aoFetchDesc->blockDirectory,
+									aoTupleId,
+									0,
+									&aoFetchDesc->currentBlock.blockDirectoryEntry))
+	{
+		if (slot != NULL)
+			ExecClearTuple(slot);
+		return false;	// Row not represented in Block Directory.
+						// Must be aborted or deleted and reclaimed.
+	}
+
+	/*
+	 * Set scan range covered by new Block Directory entry.
+	 */
+	positionFirstBlockOfRange(aoFetchDesc);
+	
+	positionLimitToEndOfRange(aoFetchDesc);
+
+	return scanToFetchTuple(aoFetchDesc, rowNum, slot);
+
+}
+
+void
+appendonly_fetch_detail(
+	AppendOnlyFetchDesc 		aoFetchDesc, 
+	AppendOnlyFetchDetail 		*aoFetchDetail)
+{
+	aoFetchDetail->rangeFileOffset = 
+			aoFetchDesc->currentBlock.blockDirectoryEntry.range.fileOffset;
+	aoFetchDetail->rangeFirstRowNum = 
+			aoFetchDesc->currentBlock.blockDirectoryEntry.range.firstRowNum;
+	aoFetchDetail->rangeAfterFileOffset = 
+			aoFetchDesc->currentBlock.blockDirectoryEntry.range.afterFileOffset;
+	aoFetchDetail->rangeLastRowNum = 
+			aoFetchDesc->currentBlock.blockDirectoryEntry.range.lastRowNum;
+
+	aoFetchDetail->skipBlockCount = aoFetchDesc->skipBlockCount;
+
+	aoFetchDetail->blockFileOffset = aoFetchDesc->currentBlock.fileOffset;
+	aoFetchDetail->blockOverallLen = aoFetchDesc->currentBlock.overallBlockLen;
+	aoFetchDetail->blockFirstRowNum = aoFetchDesc->currentBlock.firstRowNum;
+	aoFetchDetail->blockLastRowNum = aoFetchDesc->currentBlock.lastRowNum;
+	aoFetchDetail->isCompressed = aoFetchDesc->currentBlock.isCompressed;
+	aoFetchDetail->isLargeContent = aoFetchDesc->currentBlock.isLargeContent;
+}
+
+void 
+appendonly_fetch_finish(AppendOnlyFetchDesc aoFetchDesc)
+{
+	RelationDecrementReferenceCount(aoFetchDesc->relation);
+	
+	AppendOnlyStorageRead_CloseFile(&aoFetchDesc->storageRead);
+
+	AppendOnlyStorageRead_FinishSession(&aoFetchDesc->storageRead);
+
+	AppendOnlyBlockDirectory_End_forSearch(&aoFetchDesc->blockDirectory);
+	
+	pfree(aoFetchDesc->segmentFileName);
+	
+	// UNDONE: More?
+
+	pfree(aoFetchDesc);
+}
+
 /*
  * appendonly_insert_init
  *
@@ -1365,6 +1899,7 @@ appendonly_insert_init(Relation rel, int segno)
 	AppendOnlyInsertDesc	aoInsertDesc;
 	AppendOnlyEntry			*aoentry;
 	int						maxtupsize;
+	int64 firstSequence = 0;
 
 	AppendOnlyStorageAttributes *attr;
 		
@@ -1391,10 +1926,12 @@ appendonly_insert_init(Relation rel, int segno)
 	aoInsertDesc->blockFirstRowNum = 0;
 	aoInsertDesc->insertCount = 0;
 	aoInsertDesc->varblockCount = 0;
+	aoInsertDesc->rowCount = 0;
 	
 	Assert(segno >= 0);
 	aoInsertDesc->cur_segno = segno;
-
+	aoInsertDesc->aoEntry = aoentry;
+	
 	/*
 	 * Adding a NOTOAST table attribute in 3.3.3 would require a catalog change,
 	 * so in the interim we will test this with a GUC.
@@ -1434,27 +1971,56 @@ appendonly_insert_init(Relation rel, int segno)
 		     (aoentry->compresstype ? aoentry->compresstype : "<none>"),
 		     attr->compressLevel);
 
-	aoInsertDesc->fixedHeaderLen = 
-		AppendOnlyStorageWrite_FixedHeaderLen(&aoInsertDesc->storageWrite);
+	/*
+	 * Temporarily set the firstRowNum for the block so that we can
+	 * calculate the correct header length.
+	 */
+	AppendOnlyStorageWrite_SetFirstRowNum(&aoInsertDesc->storageWrite,
+										  1);
+
+	aoInsertDesc->completeHeaderLen = 
+		AppendOnlyStorageWrite_CompleteHeaderLen(&aoInsertDesc->storageWrite);
 
 	aoInsertDesc->maxDataLen = 
 						aoInsertDesc->usableBlockSize -
-						aoInsertDesc->fixedHeaderLen;
+						aoInsertDesc->completeHeaderLen;
 	
 	aoInsertDesc->tempSpaceLen = aoInsertDesc->usableBlockSize / 8; /* TODO - come up with a more efficient calculation */
 	aoInsertDesc->tempSpace = (uint8 *) palloc(aoInsertDesc->tempSpaceLen * sizeof(uint8));
 	maxtupsize = aoInsertDesc->maxDataLen - VARBLOCK_HEADER_LEN - 4;
 	aoInsertDesc->toast_tuple_threshold = maxtupsize / 4; /* see tuptoaster.h for more information */
 	aoInsertDesc->toast_tuple_target = maxtupsize / 4;
-
+	
 	/* open our current relation file segment for write */
 	SetCurrentFileSegForWrite(aoInsertDesc);
 	
 	Assert(aoInsertDesc->tempSpaceLen > 0);
 
+	/*
+	 * Obtain the next list of fast sequences if there is an index for
+	 * this relation.
+	 */
+	aoInsertDesc->numSequences = 0;
+	if (aoInsertDesc->aoi_rel->rd_rel->relhasindex)
+	{
+		firstSequence =
+			GetFastSequencesByTid(&aoInsertDesc->fsInfo->sequence_tid,
+								  aoInsertDesc->rowCount + 1,
+								  NUM_FAST_SEQUENCES);
+		aoInsertDesc->numSequences = NUM_FAST_SEQUENCES;
+	}
+	/* Set last_sequence value */
+	aoInsertDesc->lastSequence = aoInsertDesc->rowCount;
+	
+	if (aoInsertDesc->lastSequence + 1 < firstSequence)
+		aoInsertDesc->lastSequence = firstSequence - 1;
+
 	setupNextWriteBlock(aoInsertDesc);
 
-	pfree(aoentry);
+	/* Initialize the block directory. */
+	AppendOnlyBlockDirectory_Init_forInsert(
+		&(aoInsertDesc->blockDirectory), aoentry, aoInsertDesc->fsInfo, aoInsertDesc->lastSequence,
+		rel, segno, 1, false);
 
 	return aoInsertDesc;
 }
@@ -1470,18 +2036,21 @@ appendonly_insert_init(Relation rel, int segno)
  * - tuples inserted into varblocks, not via the postgresql buf/page manager.
  * - no need to pin buffers.
  *
- * The return value is the OID assigned to the tuple (either here or by the
- * caller), or InvalidOid if no OID.  The header fields of *tup are updated
- * to match the stored tuple;  
- */
-Oid
-appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
-{
+  * The output parameter tupleOid is the OID assigned to the tuple (either here or by the
+  * caller), or InvalidOid if no OID.  The header fields of *tup are updated
+  * to match the stored tuple;	
+  */
+ void
+ appendonly_insert(
+	 AppendOnlyInsertDesc aoInsertDesc, 
+	 MemTuple instup, 
+	 Oid *tupleOid, 
+	 AOTupleId *aoTupleId)
+ {
 	Relation		 relation = aoInsertDesc->aoi_rel;
 	VarBlockByteLen	 itemLen;
 	uint8			*itemPtr;
 	MemTuple 		 tup = NULL;
-	Oid 			retOid;
 	bool			need_toast;
 	bool			isLargeContent;
 
@@ -1665,23 +2234,44 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	}
 	
 	aoInsertDesc->insertCount++;
+	aoInsertDesc->lastSequence++;
+	if (aoInsertDesc->numSequences > 0)
+		(aoInsertDesc->numSequences)--;
+
+	Assert(aoInsertDesc->numSequences >= 0);
+	
 	pgstat_count_heap_insert(relation);
 
-	retOid = MemTupleGetOid(tup, aoInsertDesc->mt_bind);
+	*tupleOid = MemTupleGetOid(tup, aoInsertDesc->mt_bind);
 
+	AOTupleIdInit_Init(aoTupleId);
+	AOTupleIdInit_segmentFileNum(aoTupleId, aoInsertDesc->cur_segno);
+	AOTupleIdInit_rowNum(aoTupleId, aoInsertDesc->lastSequence);
+
+	/*
+	 * If this relation has indexes, and the allocated fast sequence numbers
+	 * is used up, we request for a next list of fast sequence numbers.
+	 */
+	if (aoInsertDesc->aoi_rel->rd_rel->relhasindex &&
+		aoInsertDesc->numSequences == 0)
+	{
+		int64 firstSequence;
+		Assert(ItemPointerIsValid(&aoInsertDesc->fsInfo->sequence_tid));
+		
+		firstSequence =
+			GetFastSequencesByTid(&aoInsertDesc->fsInfo->sequence_tid,
+								  aoInsertDesc->lastSequence + 1,
+								  NUM_FAST_SEQUENCES);
+		Assert(firstSequence == aoInsertDesc->lastSequence + 1);
+		aoInsertDesc->numSequences = NUM_FAST_SEQUENCES;
+	}
+	
 	if (Debug_appendonly_print_insert_tuple)
 	{
-		AOTupleId 	aoTupleId;
-		int64		rowNum = (int64)aoInsertDesc->insertCount;
-		
-		AOTupleIdInit_Init(&aoTupleId);
-		AOTupleIdInit_segmentFileNum(&aoTupleId, aoInsertDesc->cur_segno);
-		AOTupleIdInit_rowNum(&aoTupleId, rowNum);
-		
 		elog(LOG,"Append-only insert tuple for table '%s' "
 		     "(AOTupleId %s, memtuple length %d, isLargeRow %s, block count " INT64_FORMAT ")",
 		     NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
-		     AOTupleIdToString(&aoTupleId),
+		     AOTupleIdToString(aoTupleId),
 		     itemLen,
 		     (isLargeContent ? "true" : "false"),
 		     aoInsertDesc->bufferCount);
@@ -1689,8 +2279,6 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	
 	if(tup != instup)
 		pfree(tup);
-
-	return retOid;
 }
 
 /*
@@ -1709,8 +2297,11 @@ appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 	
 	CloseWritableFileSeg(aoInsertDesc);
 
+	AppendOnlyBlockDirectory_End_forInsert(&(aoInsertDesc->blockDirectory));
+
 	AppendOnlyStorageWrite_FinishSession(&aoInsertDesc->storageWrite);
-	
+
+	pfree(aoInsertDesc->aoEntry);
 	pfree(aoInsertDesc);
 }
 

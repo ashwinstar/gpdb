@@ -84,6 +84,12 @@ void BufferedReadInit(
 	 */
 	bufferedRead->file = -1;
     bufferedRead->fileLen = 0;
+
+	/*
+	 * Temporary limit support for random reading.
+	 */
+	bufferedRead->haveTemporaryLimitInEffect = false;
+	bufferedRead->temporaryLimitFileLen = 0;
 }
 
 /*
@@ -112,6 +118,9 @@ void BufferedReadSetFile(
 	bufferedRead->file = file;
     bufferedRead->filePathName = filePathName;
     bufferedRead->fileLen = fileLen;
+
+	bufferedRead->haveTemporaryLimitInEffect = false;
+	bufferedRead->temporaryLimitFileLen = 0;
 
 	if (fileLen > 0)
 	{
@@ -187,6 +196,7 @@ static uint8 *BufferedReadUseBeforeBuffer(
     int32              maxReadAheadLen,
     int32              *nextBufferLen)
 {
+	int64 inEffectFileLen;
 	int64 nextPosition;
 	int64 remainingFileLen;
 	int32 nextReadLen;
@@ -196,12 +206,17 @@ static uint8 *BufferedReadUseBeforeBuffer(
 
 	Assert(bufferedRead->largeReadLen - bufferedRead->bufferOffset > 0);
 	
+	if (bufferedRead->haveTemporaryLimitInEffect)
+		inEffectFileLen = bufferedRead->temporaryLimitFileLen;
+	else
+		inEffectFileLen = bufferedRead->fileLen;
+
 	/*
 	 * Requesting more data than in the current read.
 	 */		
 	nextPosition = bufferedRead->largeReadPosition + bufferedRead->largeReadLen;
 	
-	if (nextPosition == bufferedRead->fileLen)
+	if (nextPosition == inEffectFileLen)
 	{
 		/*
 		 * No more file to read.
@@ -214,7 +229,7 @@ static uint8 *BufferedReadUseBeforeBuffer(
 		return &bufferedRead->largeReadMemory[bufferedRead->bufferOffset];
 	}
 
-	remainingFileLen = bufferedRead->fileLen - 
+	remainingFileLen = inEffectFileLen - 
 	                   nextPosition;
 	if (remainingFileLen > bufferedRead->maxLargeReadLen)
 		nextReadLen = bufferedRead->maxLargeReadLen;
@@ -258,6 +273,106 @@ static uint8 *BufferedReadUseBeforeBuffer(
 }
 
 /*
+ * Set a temporary read range in the current open segment file.
+ *
+ * The beginFileOffset must be to the beginning of an Append-Only Storage block.
+ *
+ * The afterFileOffset serves as the temporary EOF.  It will cause reads to return
+ * false (no more blocks) when reached.  It must be at the end of an Append-Only Storage
+ * block.
+ *
+ * When a read returns false (no more blocks), the temporary read range is forgotten.
+ */
+void BufferedReadSetTemporaryRange(
+    BufferedRead         *bufferedRead,
+	int64				  beginFileOffset,
+	int64				  afterFileOffset)
+{
+	bool	newReadNeeded;
+	int64	largeReadAfterPos;
+
+	Assert(bufferedRead != NULL);
+	Assert(bufferedRead->file >= 0);
+
+	/*
+	 * Forget any current read buffer length (but not the offset!).
+	 */
+	bufferedRead->bufferLen = 0;
+
+	newReadNeeded = false;
+	largeReadAfterPos = bufferedRead->largeReadPosition +
+						bufferedRead->largeReadLen;
+	if (bufferedRead->bufferOffset < 0)
+	{
+		int64	virtualLargeReadBeginPos;
+		
+		virtualLargeReadBeginPos = bufferedRead->largeReadPosition +
+								   bufferedRead->bufferOffset;
+
+		if (beginFileOffset >= virtualLargeReadBeginPos &&
+			beginFileOffset < largeReadAfterPos)
+		{
+			/*
+			 * Our temporary read begin position is within our before buffer and
+			 * current read.
+			 */
+			bufferedRead->bufferOffset = 
+								(int32)(beginFileOffset -
+										bufferedRead->largeReadPosition);
+		}
+		else
+			newReadNeeded = true;
+	}
+	else
+	{
+		if (beginFileOffset >= bufferedRead->largeReadPosition &&
+			beginFileOffset < largeReadAfterPos)
+		{
+			/*
+			 * Our temporary read begin position is within our current read.
+			 */
+			bufferedRead->bufferOffset = 
+								(int32)(beginFileOffset -
+										bufferedRead->largeReadPosition);
+		}
+		else
+		{
+			newReadNeeded = true;
+
+			/* Seek to the requested beginning position */
+			if (beginFileOffset > largeReadAfterPos)
+			{
+				int64 seekOffset = beginFileOffset - largeReadAfterPos;
+				int64 seekPos = FileSeek(bufferedRead->file, seekOffset, SEEK_CUR);
+				Assert(seekPos == beginFileOffset);
+			}
+		}
+	}
+
+	if (newReadNeeded)
+	{
+		int64	remainingFileLen;
+
+		bufferedRead->bufferOffset = 0;
+
+		remainingFileLen = afterFileOffset - beginFileOffset;
+		if (remainingFileLen > bufferedRead->maxLargeReadLen)
+			bufferedRead->largeReadLen = bufferedRead->maxLargeReadLen;
+		else
+			bufferedRead->largeReadLen = (int32)remainingFileLen;
+
+		bufferedRead->largeReadPosition = beginFileOffset;
+
+		if (bufferedRead->largeReadLen > 0)
+			BufferedReadIo(bufferedRead);
+	}
+
+	bufferedRead->haveTemporaryLimitInEffect = true;
+	bufferedRead->temporaryLimitFileLen = afterFileOffset;
+	
+}
+
+/*
  * Return the position of the next read in bytes.
  */
 int64 
@@ -288,6 +403,8 @@ uint8 *BufferedReadGetNextBuffer(
     int32              maxReadAheadLen,
     int32              *nextBufferLen)
 {
+	int64	inEffectFileLen;
+
 	Assert(bufferedRead != NULL);
 	Assert(bufferedRead->file >= 0);
 	Assert(maxReadAheadLen > 0);
@@ -299,23 +416,28 @@ uint8 *BufferedReadGetNextBuffer(
 		elog(ERROR, "Read ahead length %d is greater than maximum buffer length %d",
 		     maxReadAheadLen, bufferedRead->maxBufferLen);
 	}
-	
 
-	if (bufferedRead->largeReadPosition == bufferedRead->fileLen)
-	{
-		/*
-		 * At end of file.
-		 */
-		*nextBufferLen = 0;
-		return NULL;
-	}
-	
+	if (bufferedRead->haveTemporaryLimitInEffect)
+		inEffectFileLen = bufferedRead->temporaryLimitFileLen;
+	else
+		inEffectFileLen = bufferedRead->fileLen;
+
 	/*
 	 * Finish previous buffer.
 	 */
 	bufferedRead->bufferOffset += bufferedRead->bufferLen;
 	bufferedRead->bufferLen = 0;
 
+	if (bufferedRead->largeReadPosition == inEffectFileLen)
+	{
+		/*
+		 * At end of file.
+		 */
+		*nextBufferLen = 0;
+		bufferedRead->haveTemporaryLimitInEffect = false;
+		return NULL;
+	}
+	
 	/*
 	 * Any more left in current read?
 	 */
@@ -329,7 +451,7 @@ uint8 *BufferedReadGetNextBuffer(
 		bufferedRead->largeReadPosition += bufferedRead->largeReadLen;
 		bufferedRead->bufferOffset = 0;
 		
-		remainingFileLen = bufferedRead->fileLen - 
+		remainingFileLen = inEffectFileLen - 
 		                   bufferedRead->largeReadPosition;
 		if (remainingFileLen > bufferedRead->maxLargeReadLen)
 			bufferedRead->largeReadLen = bufferedRead->maxLargeReadLen;
@@ -341,6 +463,7 @@ uint8 *BufferedReadGetNextBuffer(
 			 * At end of file.
 			 */
 			*nextBufferLen = 0;
+			bufferedRead->haveTemporaryLimitInEffect = false;
 			return NULL;
 		}
 
@@ -353,6 +476,7 @@ uint8 *BufferedReadGetNextBuffer(
 
 		Assert(bufferedRead->bufferOffset == 0);
 		Assert(bufferedRead->bufferLen > 0);
+
 		*nextBufferLen = bufferedRead->bufferLen;
 		return bufferedRead->largeReadMemory;
 	}
@@ -373,9 +497,9 @@ uint8 *BufferedReadGetNextBuffer(
 	/*
 	 * We can satisify request from current read.
 	 */
-	bufferedRead->bufferLen = maxReadAheadLen;
-	
+	bufferedRead->bufferLen = maxReadAheadLen;	
 	Assert(bufferedRead->bufferLen > 0);
+
 	*nextBufferLen = bufferedRead->bufferLen;
 	return &bufferedRead->largeReadMemory[bufferedRead->bufferOffset];
 }

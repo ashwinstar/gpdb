@@ -7,11 +7,12 @@
 #ifndef AOCS_SEGFILES_H
 #define AOCS_SEGFILES_H
 
-#define Natts_pg_aocsseg 4
+#define Natts_pg_aocsseg 5
 #define Anum_pg_aocs_segno 1
 #define Anum_pg_aocs_tupcount 2
 #define Anum_pg_aocs_varblockcount 3
 #define Anum_pg_aocs_vpinfo 4
+#define Anum_pg_aocs_sequence_tid 5
 
 typedef struct AOCSVPInfoEntry
 {
@@ -43,14 +44,23 @@ static inline AOCSVPInfo *create_aocs_vpinfo(int nvp)
         return vpinfo;
 }
 
+/*
+ * Descriptor of a single AO Col relation file segment.
+ *
+ * Note that the first three variables should be the same as
+ * the AO Row relation file segment (see FileSegInfo). This is
+ * implicitly used by the block directory to obtain those info
+ * using the same structure -- FileSegInfo.
+ */
 typedef struct AOCSFileSegInfo
 {
-        int32 segno;
-        int64 tupcount;
-        int64 varblockcount;
+	int32 segno;
+	int64 tupcount;
+	int64 varblockcount;
+	ItemPointerData sequence_tid;
 
-        /* Must be last */
-        AOCSVPInfo vpinfo;
+	/* Must be last */
+	AOCSVPInfo vpinfo;
 } AOCSFileSegInfo;
 
 static inline int aocsfileseginfo_size(int nvp)
@@ -67,17 +77,17 @@ static inline AOCSVPInfoEntry *getAOCSVPEntry(AOCSFileSegInfo *psinfo, int vp)
 
 struct AOCSInsertDescData;
 
-extern AOCSFileSegInfo *GetAOCSFileSegInfoForRead(Relation prel, int32 segno);
-extern AOCSFileSegInfo *GetAOCSFileSegInfoForWrite(Relation prel, int32 segno);
-extern AOCSFileSegInfo *GetAOCSFileSegInfoForVacuum(Relation prel, int32 segno);
+extern AOCSFileSegInfo *GetAOCSFileSegInfoForRead(Relation prel, AppendOnlyEntry *aoEntry, int32 segno);
+extern AOCSFileSegInfo *GetAOCSFileSegInfoForWrite(Relation prel, AppendOnlyEntry *aoEntry, int32 segno);
+extern AOCSFileSegInfo *GetAOCSFileSegInfoForVacuum(Relation prel, AppendOnlyEntry *aoEntry, int32 segno);
 
-extern AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel, Snapshot snapshot, int *totalseg);
+extern AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel, AppendOnlyEntry *aoEntry, Snapshot snapshot, int *totalseg);
 
 extern int64 GetAOCSTotalBytes(Relation parentrel);
 
-extern void InsertInitialAOCSFileSegInfo(Relation parentrel, int32 segno, int32 nvp); 
+extern void InsertInitialAOCSFileSegInfo(Oid segrelid, int32 segno, int32 nvp); 
 extern void UpdateAOCSFileSegInfo(struct AOCSInsertDescData *desc);
-extern void AOCSFileSegInfoAddCount(Relation prel, int32 segno, int64 tupadded, int64 varblockadded); 
+extern void AOCSFileSegInfoAddCount(Relation prel, AppendOnlyEntry *aoEntry, int32 segno, int64 tupadded, int64 varblockadded); 
 
 extern Datum gp_update_aocol_master_stats_internal(Relation parentrel);
 extern Datum aocol_compression_ratio_internal(Relation parentrel);

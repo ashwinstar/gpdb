@@ -31,7 +31,7 @@ typedef struct
 } HashBuildState;
 
 static void hashbuildCallback(Relation index,
-				  HeapTuple htup,
+				  ItemPointer tupleId,
 				  Datum *values,
 				  bool *isnull,
 				  bool tupleIsAlive,
@@ -66,8 +66,8 @@ hashbuild(PG_FUNCTION_ARGS)
 	buildstate.indtuples = 0;
 
 	/* do the heap scan */
-	reltuples = IndexBuildHeapScan(heap, index, indexInfo,
-								   hashbuildCallback, (void *) &buildstate);
+	reltuples = IndexBuildScan(heap, index, indexInfo,
+							   hashbuildCallback, (void *) &buildstate);
 
 	/*
 	 * Return statistics
@@ -85,7 +85,7 @@ hashbuild(PG_FUNCTION_ARGS)
  */
 static void
 hashbuildCallback(Relation index,
-				  HeapTuple htup,
+				  ItemPointer tupleId,
 				  Datum *values,
 				  bool *isnull,
 				  bool tupleIsAlive __attribute__((unused)),
@@ -96,7 +96,7 @@ hashbuildCallback(Relation index,
 
 	/* form an index tuple and point it at the heap tuple */
 	itup = index_form_tuple(RelationGetDescr(index), values, isnull);
-	itup->t_tid = htup->t_self;
+	itup->t_tid = *tupleId;
 
 	/* Hash indexes don't index nulls, see notes in hashinsert */
 	if (IndexTupleHasNulls(itup))

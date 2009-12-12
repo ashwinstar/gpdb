@@ -14,6 +14,8 @@
 
 #include "access/tupmacs.h"
 #include "access/tuptoaster.h"
+#include "cdb/cdbappendonlyblockdirectory.h"
+#include "cdb/cdbappendonlystoragelayer.h"
 #include "cdb/cdbappendonlystorageread.h"
 #include "cdb/cdbappendonlystoragewrite.h"
 #include "utils/datumstream.h"
@@ -306,6 +308,12 @@ DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 
         acc->ao_write = palloc0(sizeof(AppendOnlyStorageWrite));
         AppendOnlyStorageWrite_Init(acc->ao_write, NULL, maxsz, relname, &acc->ao_attr);
 
+		/*
+		 * Temporarily set the firstRowNum for the block so that we can
+		 * calculate the correct header length.
+		 */
+		AppendOnlyStorageWrite_SetFirstRowNum(acc->ao_write, 1);
+
         acc->npbufsz = MAXDATUM_PER_AOCS_BLOCK / 8;
         acc->npbuf = palloc0(acc->npbufsz);
 
@@ -414,6 +422,13 @@ int64 datumstream_write_block(DatumStream *acc)
     if (acc->nth == 0)
         return 0;
 
+	/*
+	 * Set the BlockFirstRowNum. Need to set this before
+	 * calling AppendOnlyStorageWrite_GetBuffer.
+	 */
+	AppendOnlyStorageWrite_SetFirstRowNum(acc->ao_write,
+										  acc->blockFirstRowNum);
+
     /* Has to got something to write */
     /* First fill in header info */
     buffer = (char *) AppendOnlyStorageWrite_GetBuffer(acc->ao_write);
@@ -466,6 +481,10 @@ int64 datumstream_write_lob(DatumStream *acc, Datum d)
 
     Assert(acc && !acc->is_reader && !acc->ao_read && acc->ao_write);
 
+	/* Set the BlockFirstRowNum */
+	AppendOnlyStorageWrite_SetFirstRowNum(acc->ao_write,
+										  acc->blockFirstRowNum);
+
     AppendOnlyStorageWrite_Content(acc->ao_write,
         (uint8 *) va,
         VARSIZE_ANY(va),
@@ -481,32 +500,44 @@ int64 datumstream_write_lob(DatumStream *acc, Datum d)
     return VARSIZE_ANY(va); 
 }
 
-int datumstream_read_block(DatumStream *acc)
+static bool
+datumstream_read_block_info(DatumStream *acc,
+							int32 *contentLen,
+							int *execBlockKind,
+							int64 *firstRow,
+							int *rowCnt,
+							bool *isLarge,
+							bool *isCompressed)
 {
-    int32 contentLen = 0;
-    int execBlockKind = 0;
-    int64 firstRow = 0;
-    int rowCnt = 0;
-    bool isLarge = 0;
-    bool isCompressed = 0;
-    char *buffer = NULL;
-
-    bool readOK = false;
-    
+	bool readOK = false;
+	
     Assert(acc && acc->is_reader && acc->ao_read && !acc->ao_write);
-    
+
     readOK = AppendOnlyStorageRead_GetBlockInfo(acc->ao_read,
-            &contentLen,
-            &execBlockKind,
-            &firstRow,
-            &rowCnt,
-            &isLarge,
-            &isCompressed
+            contentLen,
+            execBlockKind,
+            firstRow,
+            rowCnt,
+            isLarge,
+            isCompressed
             );
 
-    if (!readOK)
-        return -1;
+	return readOK;
+}
 
+static void
+datumstream_read_block_content(DatumStream *acc,
+							   int32 contentLen,
+							   int execBlockKind,
+							   int64 firstRow,
+							   int rowCnt,
+							   bool isLarge,
+							   bool isCompressed)
+{
+    char *buffer = NULL;
+
+    Assert(acc && acc->is_reader && acc->ao_read && !acc->ao_write);
+	
     if (execBlockKind == AOCSBK_BLOCK) 
     {
         Assert(!isLarge);
@@ -580,7 +611,176 @@ int datumstream_read_block(DatumStream *acc)
         acc->has_null = false;
         acc->datump = acc->lobbuf;
     }
+}
+
+
+int datumstream_read_block(DatumStream *acc)
+{
+    int32 contentLen = 0;
+    int execBlockKind = 0;
+    int64 firstRow = 0;
+    int rowCnt = 0;
+    bool isLarge = 0;
+    bool isCompressed = 0;
+
+    bool readOK = false;
+    
+    Assert(acc && acc->is_reader && acc->ao_read && !acc->ao_write);
+    
+    readOK = AppendOnlyStorageRead_GetBlockInfo(acc->ao_read,
+												&contentLen,
+												&execBlockKind,
+												&firstRow,
+												&rowCnt,
+												&isLarge,
+												&isCompressed);
+
+    if (!readOK)
+        return -1;
+
+	datumstream_read_block_content(acc,
+								   contentLen,
+								   execBlockKind,
+								   firstRow,
+								   rowCnt,
+								   isLarge,
+								   isCompressed);
 
     return 0;
 }
 
+void
+datumstream_rewind_block(DatumStream *datumStream)
+{
+	datumStream->nth = -1;
+	datumStream->datump = datumStream->lobbuf;
+
+	if (datumStream->block != NULL)
+	{
+		char *buffer = (char *)datumStream->block;
+		buffer += sizeof(DatumStreamBlock);
+		datumStream->nullp = buffer;
+		datumStream->datump = buffer + datumStream->block->nullsz;
+		datumStream->nullbit = 1;
+	}
+}
+
+/*
+ * Find the specified row in the current block.
+ *
+ * Note that the values for rowNumInBlock starts with 0.
+ */
+void
+datumstream_find(DatumStream *datumStream,
+				 int32 rowNumInBlock)
+{
+	/*
+	 * if reading a tuple that is prior to the tuple that the datum stream
+	 * is pointing to now, reset the datum stream pointers.
+	 */
+	if (rowNumInBlock < datumStream->nth)
+		datumstream_rewind_block(datumStream);
+
+	Assert(rowNumInBlock >= datumStream->nth ||
+		   datumStream->nth == -1);
+
+	/*
+	 * Find the right row in the block.
+	 */
+	while (rowNumInBlock > datumStream->nth)
+	{
+		int status;
+		
+		status = datumstream_advance(datumStream);
+		Assert(status != 0);
+	}
+
+	Assert(rowNumInBlock == datumStream->nth);
+}
+
+/*
+ * Find the block that contains the given row.
+ */
+bool
+datumstream_find_block(DatumStream *datumStream,
+					   DatumStreamFetchDesc datumStreamFetchDesc,
+					   int64 rowNum)
+{
+	int32 contentLen = 0;
+	int execBlockKind = 0;
+	int64 firstRow = 0;
+    int rowCnt = 0;
+    bool isLarge = 0;
+    bool isCompressed = 0;
+
+	Assert(datumStreamFetchDesc->datumStream == datumStream);
+	
+	if (datumStreamFetchDesc->scanNextFileOffset >=
+		datumStreamFetchDesc->scanAfterFileOffset)
+		return false; // No more blocks requested for range
+	
+	if (datumStreamFetchDesc->currentSegmentFile.logicalEof ==
+		datumStreamFetchDesc->scanNextFileOffset)
+		return false; // No more blocks requested for range
+	
+	if (datumStreamFetchDesc->currentSegmentFile.logicalEof <
+		datumStreamFetchDesc->scanNextFileOffset)
+		return false;	// UNDONE: Why does our next scan position go beyond logical EOF?
+
+	Assert(datumStream->is_reader);
+	Assert(datumStream->ao_read && !datumStream->ao_write);
+
+	AppendOnlyStorageRead_SetTemporaryRange(
+		datumStream->ao_read,
+		datumStreamFetchDesc->scanNextFileOffset,
+		datumStreamFetchDesc->scanAfterFileOffset);
+
+	while(true)
+	{
+		if (!datumstream_read_block_info(datumStream,
+										 &contentLen,
+										 &execBlockKind,
+										 &firstRow,
+										 &rowCnt,
+										 &isLarge,
+										 &isCompressed))
+			return false;
+
+		/*
+		 * Update the current block info.
+		 */
+		datumStreamFetchDesc->currentBlock.have = true;
+		datumStreamFetchDesc->currentBlock.fileOffset =
+			AppendOnlyStorageRead_CurrentHeaderOffsetInFile(
+				datumStream->ao_read);
+		datumStreamFetchDesc->currentBlock.overallBlockLen =
+			AppendOnlyStorageRead_OverallBlockLen (datumStream->ao_read);
+		datumStreamFetchDesc->currentBlock.firstRowNum =
+			(firstRow != -1) ? firstRow : datumStreamFetchDesc->scanNextRowNum;
+		datumStreamFetchDesc->currentBlock.lastRowNum =
+			datumStreamFetchDesc->currentBlock.firstRowNum + rowCnt - 1;
+		datumStreamFetchDesc->currentBlock.isCompressed =
+			isCompressed;
+		datumStreamFetchDesc->currentBlock.isLargeContent = isLarge;
+		
+		if (rowNum < datumStreamFetchDesc->currentBlock.firstRowNum)
+			return false;
+
+		if (rowNum <= datumStreamFetchDesc->currentBlock.lastRowNum)
+		{
+			/* Find the block that contains the row. We are done. */
+			datumstream_read_block_content(datumStream,
+										   contentLen,
+										   execBlockKind,
+										   firstRow,
+										   rowCnt,
+										   isLarge,
+										   isCompressed);
+			break;
+		}
+		
+		AppendOnlyStorageRead_SkipCurrentBlock(datumStream->ao_read);
+	}
+
+	return true;
+}

@@ -2389,6 +2389,8 @@ static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4
     AOCSFileSegInfo	**aocsInfo = NULL;
     int				nsegs = 0;
     double			totalBytes = 0;
+	AppendOnlyEntry *aoEntry;
+	
 	/**
 	 * Ensure that the right kind of relation with the right type of storage is passed to us.
 	 */
@@ -2399,7 +2401,8 @@ static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4
 	*relpages = 0.0;
 	
     /* get table level statistics from the pg_aoseg table */
-    aocsInfo = GetAllAOCSFileSegInfo(rel, SnapshotNow, &nsegs);
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel));
+    aocsInfo = GetAllAOCSFileSegInfo(rel, aoEntry, SnapshotNow, &nsegs);
     if (aocsInfo)
     {
     	int i = 0;
@@ -2421,6 +2424,8 @@ static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4
     	 */
     	*relpages = RelationGuessNumberOfBlocks(totalBytes);
     }
+
+	pfree(aoEntry);
 	  
 	return;
 }

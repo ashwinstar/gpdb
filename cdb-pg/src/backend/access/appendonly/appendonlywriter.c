@@ -151,57 +151,56 @@ static bool
 AORelCreateHashEntry(Oid relid)
 {
 	bool			exists = false;
-	FileSegInfo		*allsfinfo,
-					*onesfinfo;
+	FileSegInfo		**allfsinfo;
 	int				i;
 	int				total_segfiles = 0;
-	AORelHashEntry	aoentry = NULL;
+	AORelHashEntry	aoHashEntry = NULL;
 	Relation		aorel;
 
 	Insist(Gp_role == GP_ROLE_DISPATCH);
 
-	aoentry = AppendOnlyRelHashNew(relid, &exists);
+	aoHashEntry = AppendOnlyRelHashNew(relid, &exists);
 
 	/* Does an entry for this relation exists already? exit early */
 	if(exists)
 		return true;
 
 	/*
-	 * If the new aoentry pointer is NULL, then we are out of allowed # of
+	 * If the new aoHashEntry pointer is NULL, then we are out of allowed # of
 	 * AO tables used for write concurrently, and don't have any unused entries
 	 * to free
 	 */
-	if (!aoentry)
+	if (!aoHashEntry)
 	{
 		Assert(AppendOnlyWriter->num_existing_aorels >= MaxAppendOnlyTables);
 		return false;
 	}
 
 
-	Insist(aoentry->relid == relid);
-	aoentry->txns_using_rel = 0;
+	Insist(aoHashEntry->relid == relid);
+	aoHashEntry->txns_using_rel = 0;
 	
 	/*
 	 * Initialize all segfile array to zero
 	 */
 	for (i = 0 ; i < MAX_AOREL_CONCURRENCY ; i++)
 	{
-		aoentry->relsegfiles[i].inuse = false;
-		aoentry->relsegfiles[i].xid = InvalidTransactionId;
-		aoentry->relsegfiles[i].isfull = false;
-		aoentry->relsegfiles[i].tupcount = 0;
-		aoentry->relsegfiles[i].tupsadded = 0;
+		aoHashEntry->relsegfiles[i].inuse = false;
+		aoHashEntry->relsegfiles[i].xid = InvalidTransactionId;
+		aoHashEntry->relsegfiles[i].isfull = false;
+		aoHashEntry->relsegfiles[i].tupcount = 0;
+		aoHashEntry->relsegfiles[i].tupsadded = 0;
 
 	}
 
 	/*
 	 * Segment file number 0 is reserved for utility mode operations.
 	 */
-	aoentry->relsegfiles[RESERVED_SEGNO].inuse = true;
-	aoentry->relsegfiles[RESERVED_SEGNO].xid = InvalidTransactionId;
-	aoentry->relsegfiles[RESERVED_SEGNO].isfull = true;
-	aoentry->relsegfiles[RESERVED_SEGNO].tupcount = 0;
-	aoentry->relsegfiles[RESERVED_SEGNO].tupsadded = 0;
+	aoHashEntry->relsegfiles[RESERVED_SEGNO].inuse = true;
+	aoHashEntry->relsegfiles[RESERVED_SEGNO].xid = InvalidTransactionId;
+	aoHashEntry->relsegfiles[RESERVED_SEGNO].isfull = true;
+	aoHashEntry->relsegfiles[RESERVED_SEGNO].tupcount = 0;
+	aoHashEntry->relsegfiles[RESERVED_SEGNO].tupsadded = 0;
 
 	/*
 	 * Now get all the segment files information for this relation
@@ -209,10 +208,12 @@ AORelCreateHashEntry(Oid relid)
 	 * in this hash entry.
 	 */
 	aorel = heap_open(relid, RowExclusiveLock);
-	allsfinfo = GetAllFileSegInfo(aorel, SnapshotNow, &total_segfiles);
+	{
+		AppendOnlyEntry *aoEntry = GetAppendOnlyEntry(relid);
+		allfsinfo = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
+		pfree(aoEntry);
+	}
 	heap_close(aorel, RowExclusiveLock);
-
-	onesfinfo = allsfinfo;
 
 	/*
 	 * update the tupcount of each 'segment' file in the append
@@ -220,15 +221,14 @@ AORelCreateHashEntry(Oid relid)
 	 */
 	for (i = 0 ; i < total_segfiles; i++)
 	{
-		aoentry->relsegfiles[onesfinfo->segno].tupcount = onesfinfo->tupcount;
-		onesfinfo++;
+		aoHashEntry->relsegfiles[allfsinfo[i]->segno].tupcount = allfsinfo[i]->tupcount;
 	}
 
 	/* record the fact that another hash entry is now taken */
 	AppendOnlyWriter->num_existing_aorels++;
 
-	if(allsfinfo)
-		pfree(allsfinfo);
+	if(allfsinfo)
+		pfree(allfsinfo);
 
 	if (Debug_appendonly_print_insert)
 		ereport(LOG, (errmsg("Created a hash entry for append-only "
@@ -419,7 +419,7 @@ AppendOnlyRelHashNew(Oid relid, bool *exists)
  * rows we don't allow inserting more data into it anymore.
  */
 static
-float8  segfileMaxRowThreshold(void)
+int64  segfileMaxRowThreshold(void)
 {
 	int64 maxallowed = (int64)AOTupleId_MaxRowNum;
 
@@ -428,8 +428,7 @@ float8  segfileMaxRowThreshold(void)
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("int64 out of range")));
 
-	return 	(SEGFILE_CAPACITY_THRESHOLD *
-			DatumGetFloat8(DirectFunctionCall1(i8tod, maxallowed)));
+	return 	(SEGFILE_CAPACITY_THRESHOLD * maxallowed);
 }
 
 /*
@@ -655,8 +654,8 @@ List *assignPerRelSegno(List *all_relids)
  */
 void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 {
-	float8			tupcount_float8;
-	AORelHashEntry	aoentry = NULL;
+	AORelHashEntry	aoHashEntry = NULL;
+	AppendOnlyEntry *aoEntry = NULL;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(segno >= 0);
@@ -666,34 +665,34 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 							"with " INT64_FORMAT " new tuples for segno %d",
 							RelationGetRelid(parentrel), (int64)tupcount, segno)));
 
-	/* convert the tup count to float8 */
 	if((int64) tupcount < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount)));
 
-	tupcount_float8 = DatumGetFloat8(DirectFunctionCall1(i8tod, (int64) tupcount));
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel));
+	Assert(aoEntry != NULL);
 
 	if(RelationIsAoRows(parentrel))
 	{
 		FileSegInfo		*fsinfo;
 
 		/* get the information for the file segment we inserted into */
-        fsinfo = GetFileSegInfoForWrite(parentrel, segno);
+        fsinfo = GetFileSegInfoForWrite(parentrel, aoEntry, segno);
         Assert(fsinfo);
 
         /*
          * Update the master AO segment info table with correct tuple count total
          */
-        UpdateFileSegInfo(parentrel, segno, 0, 0, tupcount_float8, 0);
+        UpdateFileSegInfo(parentrel, aoEntry, segno, 0, 0, tupcount, 0);
         pfree(fsinfo);
 	}
     else
     {
     	/* AO column store */
     	Assert(RelationIsAoCols(parentrel));
-    	GetAOCSFileSegInfoForWrite(parentrel, segno);
-    	AOCSFileSegInfoAddCount(parentrel, segno, tupcount, 0);
+    	GetAOCSFileSegInfoForWrite(parentrel, aoEntry, segno);
+    	AOCSFileSegInfoAddCount(parentrel, aoEntry, segno, tupcount, 0);
     }
 
 	/*
@@ -702,9 +701,10 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 	 * (or will get discarded if it aborts). We don't need to do the same
 	 * trick for the aoseg table since MVCC protects us there in case we abort.
 	 */
-	aoentry = AORelGetHashEntry(RelationGetRelid(parentrel));
-	aoentry->relsegfiles[segno].tupsadded += tupcount_float8;
+	aoHashEntry = AORelGetHashEntry(RelationGetRelid(parentrel));
+	aoHashEntry->relsegfiles[segno].tupsadded += tupcount;
 
+	pfree(aoEntry);
 }
 
 

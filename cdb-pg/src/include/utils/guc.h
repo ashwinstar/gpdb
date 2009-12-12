@@ -129,6 +129,7 @@ extern bool Debug_appendonly_print_scan_tuple;
 extern bool Debug_appendonly_print_storage_headers;
 extern bool Debug_appendonly_print_verify_write_block;
 extern bool Debug_appendonly_use_no_toast;
+extern bool Debug_appendonly_print_blockdirectory;
 extern bool Test_appendonly_override;
 extern bool	Test_enable_broken_quicklz3;
 extern bool gp_test_orientation_override;

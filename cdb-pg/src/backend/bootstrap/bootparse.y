@@ -30,6 +30,7 @@
 #include "catalog/gp_configuration.h"
 #include "catalog/gp_persistent_db_dirs.h"
 #include "catalog/gp_persistent_rel_files.h"
+#include "catalog/gp_fastsequence.h"
 #include "catalog/gp_san_config.h"
 #include "catalog/gp_segment_config.h"
 #include "catalog/heap.h"
@@ -298,6 +299,11 @@ Boot_CreateStmt:
 								break;
 							case GpPersistentRelFilesRelationId:
 								typid = GP_PERSISTENT_REL_FILES_OID;
+								break;
+
+							/* New table in 3.4 for AO index */
+							case FastSequenceRelationId:
+								typid = GP_FASTSEQUENCE_OID;
 								break;
 
 /* TIDYCAT_BEGIN_CODEGEN 

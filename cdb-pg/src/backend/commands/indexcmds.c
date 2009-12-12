@@ -176,12 +176,6 @@ DefineIndex(RangeVar *heapRelation,
 	relationId = RelationGetRelid(rel);
 	namespaceId = RelationGetNamespace(rel);
 
-	if(RelationIsAoRows(rel) || RelationIsAoCols(rel))
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-				 errmsg("cannot create indexes on append only tables yet."),
-						   errOmitLocation(true)));
-
 	if(RelationIsExternal(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
@@ -1438,7 +1432,7 @@ ReindexTable(ReindexStmt *stmt)
 
 	ReleaseSysCache(tuple);
 
-	if (!reindex_relation(heapOid, true, true, &stmt->new_ind_oids,
+	if (!reindex_relation(heapOid, true, true, true, &stmt->new_ind_oids,
 						  Gp_role == GP_ROLE_DISPATCH))
 	{
 		if (Gp_role != GP_ROLE_EXECUTE)
@@ -1568,7 +1562,7 @@ ReindexDatabase(ReindexStmt *stmt)
 		StartTransactionCommand();
 		/* functions in indexes may want a snapshot set */
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-		if (reindex_relation(relid, true, true, NULL, false))
+		if (reindex_relation(relid, true, true, true, NULL, false))
 			ereport(NOTICE,
 					(errmsg("table \"%s\" was reindexed",
 							get_rel_name(relid))));

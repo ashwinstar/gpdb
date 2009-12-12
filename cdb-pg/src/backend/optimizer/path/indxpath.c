@@ -156,7 +156,8 @@ static Const *string_to_const(const char *str, Oid datatype);
  * (*pindexpathlist or *pbitmappathlist) belonging to the caller.
  */
 void
-create_index_paths(PlannerInfo *root, RelOptInfo *rel,
+create_index_paths(PlannerInfo *root, RelOptInfo *rel, 
+				   char relstorage,
                    List **pindexpathlist, List **pbitmappathlist)
 {
 	List	   *indexpaths;
@@ -236,11 +237,25 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	if (bitindexpaths != NIL)
 	{
 		Path	   *bitmapqual;
-		BitmapHeapPath *bpath;
+		Path       *path;
 
 		bitmapqual = choose_bitmap_and(root, rel, bitindexpaths, NULL);
-		bpath = create_bitmap_heap_path(root, rel, bitmapqual, NULL);
-		*pbitmappathlist = lappend(*pbitmappathlist, bpath);
+		switch(relstorage)
+		{
+			case RELSTORAGE_HEAP:
+				path = (Path*)create_bitmap_heap_path(root, rel, bitmapqual, NULL);
+				break;
+			case RELSTORAGE_AOROWS:
+				path = (Path*)create_bitmap_appendonly_path(root, rel, bitmapqual, NULL, true);
+				break;
+			case RELSTORAGE_AOCOLS:
+				path = (Path*)create_bitmap_appendonly_path(root, rel, bitmapqual, NULL, false);
+				break;
+			default:
+				elog(ERROR, "unrecognized relstorage type %d for using bitmap scan path",
+					 relstorage);
+		}
+		*pbitmappathlist = lappend(*pbitmappathlist, path);
 	}
 }
 

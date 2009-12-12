@@ -93,7 +93,9 @@ typedef struct TableOidInfo
 		Oid		    aosegOid;		/* if ao segment table needed, use this for the relOid of the aoseg table */
 		Oid		    aosegIndexOid;	/* if ao segment table needed, use this for the relOid of the aoseg index */
 		Oid			aosegComptypeOid;
-		
+	Oid		    aoblkdirOid;		/* if ao blkdir table needed, use this for the relOid of the aoblkdir table */
+	Oid		    aoblkdirIndexOid;	/* if ao blkdir table needed, use this for the relOid of the aoblkdir index */
+	Oid			aoblkdirComptypeOid;
 	} TableOidInfo;
 
 /*

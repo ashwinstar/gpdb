@@ -16,6 +16,7 @@ copy @gpupgradeschemaname@.pg_namespace from '@gpupgradedatadir@/upg2_pg_namespa
 copy @gpupgradeschemaname@.pg_description from '@gpupgradedatadir@/upg2_pg_description_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_depend from '@gpupgradedatadir@/upg2_pg_depend_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_operator from '@gpupgradedatadir@/upg2_pg_operator_toadd33.data' oids null E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_cast from'@gpupgradedatadir@/upg2_pg_cast_toadd33.data' null E'\\N' csv delimiter '|' header;
 
 -- fix up pg_tablespace, this is a shared table so the data changes are handled
 -- in loadcat34_sh, but the schema changes are stored in pg_class and pg_attribute
@@ -32,6 +33,14 @@ update @gpupgradeschemaname@.pg_class set relnatts=relnatts+1 where oid='pg_cata
 alter table @gpupgradeschemaname@.pg_appendonly add column columnstore boolean;
 update @gpupgradeschemaname@.pg_appendonly set columnstore='f';
 alter table @gpupgradeschemaname@.pg_appendonly alter column columnstore set not null;
+alter table @gpupgradeschemaname@.pg_appendonly add column segrelid oid;
+update @gpupgradeschemaname@.pg_appendonly set segrelid=0;
+alter table @gpupgradeschemaname@.pg_appendonly add column segidxid oid;
+update @gpupgradeschemaname@.pg_appendonly set segidxid=0;
+alter table @gpupgradeschemaname@.pg_appendonly add column blkdirrelid oid;
+update @gpupgradeschemaname@.pg_appendonly set blkdirrelid=0;
+alter table @gpupgradeschemaname@.pg_appendonly add column blkdiridxid oid;
+update @gpupgradeschemaname@.pg_appendonly set blkdiridxid=0;
 
 -- fix up pg_exttable
 alter table @gpupgradeschemaname@.pg_exttable add column writable boolean;
@@ -53,6 +62,11 @@ update @gpupgradeschemaname@.pg_operator set oprcode = 'pg_catalog.textne'::regp
 --   last.
 --   NOTE: this effects All views, including user views
 update @gpupgradeschemaname@.pg_rewrite set ev_action = regexp_replace(ev_action, ':forceDistRandom (true|false)}', E':forceDistRandom \\1 :pseudocols <>}', 'g'), ev_qual = regexp_replace(ev_qual, ':forceDistRandom (true|false)}', E':forceDistRandom \\1 :pseudocols <>}', 'g');
+
+-- upgrade views to account for removing the intoOidInfo 
+-- NOTE: this effects All views, including user views
+update @gpupgradeschemaname@.pg_rewrite set ev_action = regexp_replace(ev_action, E' :intoOidInfo.relOid -?\\d+ :intoOidInfo.comptypeOid -?\\d+ :intoOidInfo.toastOid -?\\d+ :intoOidInfo.toastIndexOid -?\\d+ :intoOidInfo.toastComptypeOid -?\\d+ :intoOidInfo.aosegOid -?\\d+ :intoOidInfo.aosegIndexOid -?\\d+ :intoOidInfo.aosegComptypeOid -?\\d+}', E'}', 'g'), ev_qual = regexp_replace(ev_qual, E' :intoOidInfo.relOid -?\\d+ :intoOidInfo.comptypeOid -?\\d+ :intoOidInfo.toastOid -?\\d+ :intoOidInfo.toastIndexOid -?\\d+ :intoOidInfo.toastComptypeOid -?\\d+ :intoOidInfo.aosegOid -?\\d+ :intoOidInfo.aosegIndexOid -?\\d+ :intoOidInfo.aosegComptypeOid -?\\d+}', E'}', 'g');
+
 
 -- Reindex normal tables (not shared tables)
 reindex table @gpupgradeschemaname@.pg_amproc;

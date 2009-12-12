@@ -25,6 +25,7 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_appendonly.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/builtins.h"
@@ -92,10 +93,8 @@ static bool
 create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptypeOid)
 {
 	Oid			relOid = RelationGetRelid(rel);
-	HeapTuple	reltup;
 	TupleDesc	tupdesc;
 	bool		shared_relation;
-	Relation	class_rel;
 	Oid			aoseg_relid;
 	Oid			aoseg_idxid;
 	char		aoseg_relname[NAMEDATALEN];
@@ -105,23 +104,27 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 	ObjectAddress baseobject,
 				aosegobject;
 
+	/*
+	 * Check to see whether the table actually needs an aoseg table.
+	 */
+	if (!needs_aoseg_table(rel))
+		return false;
+
 	shared_relation = rel->rd_rel->relisshared;
 
 	/* can't have shared AO tables after initdb */
 	/* TODO: disallow it at CREATE TABLE time */
 	Assert(!(shared_relation && !IsBootstrapProcessingMode()) );
 
+	GetAppendOnlyEntryAuxOids(relOid, &aoseg_relid, &aoseg_idxid, NULL, NULL);
+
 	/*
 	 * Was a aoseg table already created?
 	 */
-	if (rel->rd_rel->relaosegrelid != InvalidOid)
+	if (aoseg_relid != InvalidOid)
+	{
 		return false;
-
-	/*
-	 * Check to see whether the table actually needs an aoseg table.
-	 */
-	if (!needs_aoseg_table(rel))
-		return false;
+	}
 
 	if(RelationIsAoRows(rel))
 	{
@@ -135,26 +138,30 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 				"pg_aoseg_%u_index", relOid);
 
                 /* this is pretty painful...  need a tuple descriptor */
-                tupdesc = CreateTemplateTupleDesc(5, false);
+                tupdesc = CreateTemplateTupleDesc(6, false);
                 TupleDescInitEntry(tupdesc, (AttrNumber) 1,
                                 "segno",
                                 INT4OID,
                                 -1, 0);
                 TupleDescInitEntry(tupdesc, (AttrNumber) 2,
                                 "eof",
-                                FLOAT8OID,
+                                INT8OID,
                                 -1, 0);
                 TupleDescInitEntry(tupdesc, (AttrNumber) 3,
                                 "tupcount",
-                                FLOAT8OID,
+                                INT8OID,
                                 -1, 0);
                 TupleDescInitEntry(tupdesc, (AttrNumber) 4,
                                 "varblockcount",
-                                FLOAT8OID,
+                                INT8OID,
                                 -1, 0);
                 TupleDescInitEntry(tupdesc, (AttrNumber) 5,
                                 "eofuncompressed",
-                                FLOAT8OID,
+                                INT8OID,
+                                -1, 0);
+               TupleDescInitEntry(tupdesc, (AttrNumber) 6,
+                                "sequence_tid",
+                                TIDOID,
                                 -1, 0);
 	}
 	else
@@ -191,26 +198,31 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
          * tupcount bigint 		-- total tup
          * varblockcount bigint,	-- total varblock
          * vpinfo varbinary(max)        -- vertial partition info encoded in bianry.
+		 * sequence_tid,       -- the tid of the last row number
          */
 
-        tupdesc = CreateTemplateTupleDesc(4, false);
+        tupdesc = CreateTemplateTupleDesc(5, false);
 
         TupleDescInitEntry(tupdesc, (AttrNumber) 1,
-                "segno",
-                INT4OID,
-                -1, 0);
+						   "segno",
+						   INT4OID,
+						   -1, 0);
         TupleDescInitEntry(tupdesc, (AttrNumber) 2,
-                "tupcount",
-                INT8OID,
-                -1, 0);
+						   "tupcount",
+						   INT8OID,
+						   -1, 0);
         TupleDescInitEntry(tupdesc, (AttrNumber) 3,
-                "varblockcount",
-                INT8OID,
-                -1, 0);
+						   "varblockcount",
+						   INT8OID,
+						   -1, 0);
         TupleDescInitEntry(tupdesc, (AttrNumber) 4,
-                "vpinfo",
-                VARBITOID,
-                -1, 0);
+						   "vpinfo",
+						   VARBITOID,
+						   -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+						   "sequence_tid",
+						   TIDOID,
+						   -1, 0);
     }
 
 	/*
@@ -270,28 +282,10 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 	UnlockRelationOid(aoseg_idxid, AccessExclusiveLock);
 
 	/*
-	 * Store the aoseg table's OID in the parent relation's pg_class row
+	 * Store the aoseg table's OID in the parent relation's pg_appendonly row
 	 */
-	class_rel = heap_open(RelationRelationId, RowExclusiveLock);
-
-	reltup = SearchSysCacheCopy(RELOID,
-								ObjectIdGetDatum(relOid),
-								0, 0, 0);
-	if (!HeapTupleIsValid(reltup))
-		elog(ERROR, "cache lookup failed for relation %u", relOid);
-
-	((Form_pg_class) GETSTRUCT(reltup))->relaosegrelid = aoseg_relid;
-
-
-	/* normal case, use a transactional update */
-	simple_heap_update(class_rel, &reltup->t_self, reltup);
-
-	/* Keep catalog indexes current */
-	CatalogUpdateIndexes(class_rel, reltup);
-
-	heap_freetuple(reltup);
-
-	heap_close(class_rel, RowExclusiveLock);
+	UpdateAppendOnlyEntryAuxOids(relOid, aoseg_relid, aoseg_idxid,
+								 InvalidOid, InvalidOid);
 
 	/*
 	 * Register dependency from the aoseg table to the master, so that the

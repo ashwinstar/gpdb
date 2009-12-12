@@ -616,6 +616,8 @@ DATA(insert OID = 6450 (gp_persistent_rel_files PGNSP PGUID -1 f c t \054 5037 0
 #define GP_PERSISTENT_REL_FILES_OID 6450
 DATA(insert OID = 6451 (gp_persistent_db_dirs PGNSP PGUID -1 f c t \054 5038 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
 #define GP_PERSISTENT_DB_DIRS_OID 6451
+DATA(insert OID = 6453 (gp_fastsequence PGNSP PGUID -1 f c t \054 5043 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define GP_FASTSEQUENCE_OID 6453
 
 /* TIDYCAT_BEGIN_CODEGEN 
 */

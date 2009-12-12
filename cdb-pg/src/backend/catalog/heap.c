@@ -59,6 +59,7 @@
 #include "catalog/pg_partition_rule.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
+#include "catalog/gp_fastsequence.h"
 #include "commands/tablecmds.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
@@ -949,6 +950,7 @@ AddNewRelationTuple(Relation pg_class_desc,
 		case RELKIND_INDEX:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
+		case RELKIND_AOBLOCKDIR:
 			/* The relation is real, but as yet empty */
 			new_rel_reltup->relpages = 0;
 			new_rel_reltup->reltuples = 0;
@@ -976,7 +978,8 @@ AddNewRelationTuple(Relation pg_class_desc,
 	/* Initialize relfrozenxid */
 	if (relkind == RELKIND_RELATION ||
 		relkind == RELKIND_TOASTVALUE ||
-		relkind == RELKIND_AOSEGMENTS)
+		relkind == RELKIND_AOSEGMENTS ||
+		relkind == RELKIND_AOBLOCKDIR)
 	{
 		/*
 		 * Initialize to the minimum XID that could put tuples in the table.
@@ -1234,7 +1237,11 @@ heap_create_with_catalog(const char *relname,
 							  stdRdOptions->compresslevel,
 							  stdRdOptions->checksum,
                               stdRdOptions->columnstore,
-							  stdRdOptions->compresstype);
+							  stdRdOptions->compresstype,
+							  InvalidOid,
+							  InvalidOid,
+							  InvalidOid,
+							  InvalidOid);
 	}
 
 
@@ -2641,6 +2648,8 @@ heap_truncate(List *relids)
 		Relation	rel;
 		Oid			toastrelid;
 		Oid			aosegrelid;
+		Oid         aoblkdirrelid;
+		AppendOnlyEntry *aoEntry = NULL;
 
 		rel = heap_open(rid, AccessExclusiveLock);
 		relations = lappend(relations, rel);
@@ -2653,14 +2662,28 @@ heap_truncate(List *relids)
 			relations = lappend(relations, rel);
 		}
 
-		/* If there is an aoseg table, add it to the list too */
-		aosegrelid = rel->rd_rel->relaosegrelid;
-		if (OidIsValid(aosegrelid))
+		if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
 		{
-			rel = heap_open(aosegrelid, AccessExclusiveLock);
-			relations = lappend(relations, rel);
-		}
+			aoEntry = GetAppendOnlyEntry(rid);
 
+			/* If there is an aoseg table, add it to the list too */
+			aosegrelid = aoEntry->segrelid;
+			if (OidIsValid(aosegrelid))
+			{
+				rel = heap_open(aosegrelid, AccessExclusiveLock);
+				relations = lappend(relations, rel);
+			}
+
+			/* If there is an aoblkdir table, add it to the list too */
+			aoblkdirrelid = aoEntry->blkdirrelid;
+			if (OidIsValid(aoblkdirrelid))
+			{
+				rel = heap_open(aoblkdirrelid, AccessExclusiveLock);
+				relations = lappend(relations, rel);
+			}
+
+			pfree(aoEntry);
+		}
 	}
 
 	/* Don't allow truncate on tables that are referenced by foreign keys */

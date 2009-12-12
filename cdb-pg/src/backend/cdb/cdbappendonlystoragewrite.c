@@ -703,6 +703,16 @@ bool AppendOnlyStorageWrite_IsBufferAllocated(
 }
 
 /*
+ * Return the beginning of the last write position of
+ * the write buffer.
+ */
+int64 AppendOnlyStorageWrite_LastWriteBeginPosition(
+	AppendOnlyStorageWrite *storageWrite)
+{
+	return storageWrite->lastWriteBeginPosition;
+}
+
+/*
  * Return the position of the current write buffer.
  */
 int64 AppendOnlyStorageWrite_CurrentPosition(
@@ -745,6 +755,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 	
 	AOHeaderCheckError	checkError;
 	AoHeaderKind	    headerKind;
+	int32				actualHeaderLen;
 	int32				offset;
 	int32				uncompressedLen;
 	bool				isCompressed;
@@ -752,6 +763,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 	int32				compressedLen;
 	int					executorBlockKind;
 	bool				hasFirstRowNum;
+	int64				firstRowNum;
 	int					rowCount;
 	pg_crc32			storedChecksum;
 	pg_crc32			computedChecksum;
@@ -790,9 +802,10 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 	 * Check the (basic) header information.
 	 */
 	checkError = AppendOnlyStorageFormat_GetHeaderInfo(
-											header,
-											storageWrite->currentCompleteHeaderLen,
-											&headerKind);
+													header,
+													storageWrite->storageAttributes.checksum,
+													&headerKind,
+													&actualHeaderLen);
 	if (checkError != AOHeaderCheckOk)
 		ereport(ERROR, 
 				(errmsg("Verify block during write found bad append-only storage header. Header check error %d, detail '%s'",
@@ -810,7 +823,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 		checkError = 
 			AppendOnlyStorageFormat_GetSmallContentHeaderInfo(
 								header,
-								storageWrite->currentCompleteHeaderLen,
+								actualHeaderLen,
 								storageWrite->storageAttributes.checksum,
 								bufferLen,
 								&overallBlockLen,
@@ -818,6 +831,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 								&uncompressedLen,
 								&executorBlockKind,
 								&hasFirstRowNum,
+								&firstRowNum,
 								&rowCount,
 								&isCompressed,
 								&compressedLen);
@@ -924,11 +938,12 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 		 */
 		checkError = AppendOnlyStorageFormat_GetLargeContentHeaderInfo(
 												header,
-												storageWrite->currentCompleteHeaderLen,
+												actualHeaderLen,
 												storageWrite->storageAttributes.checksum,
 												&uncompressedLen,
 												&executorBlockKind,
 												&hasFirstRowNum,
+												&firstRowNum,
 												&rowCount);
 		if (checkError != AOHeaderCheckOk)
 			ereport(ERROR, 
@@ -1061,6 +1076,8 @@ AppendOnlyStorageWrite_CompressAppend(
 		AppendOnlyStorageFormat_MakeSmallContentHeader(
 									header,
 									storageWrite->storageAttributes.checksum,
+									storageWrite->isFirstRowNumSet,
+									storageWrite->firstRowNum,
 									executorBlockKind,
 									itemCount,
 									sourceLen,
@@ -1117,6 +1134,8 @@ AppendOnlyStorageWrite_CompressAppend(
 		AppendOnlyStorageFormat_MakeSmallContentHeader(
 								header,
 								storageWrite->storageAttributes.checksum,
+								storageWrite->isFirstRowNumSet,
+								storageWrite->firstRowNum,
 								executorBlockKind,
 								itemCount,
 								sourceLen,
@@ -1187,8 +1206,17 @@ void AppendOnlyStorageWrite_FinishBuffer(
 	
 	Assert(storageWrite->currentCompleteHeaderLen > 0);
 
-	Assert(contentLen <= 
-		   storageWrite->maxBufferLen - storageWrite->currentCompleteHeaderLen);
+	if (contentLen > 
+		   storageWrite->maxBufferLen - storageWrite->currentCompleteHeaderLen)
+		elog(ERROR,
+			 "Append-only content too large AO storage block (table '%s', "
+			 "content length = %d, maximum buffer length %d, complete header length %d, first row number is set %s)",
+			 storageWrite->relationName,
+			 contentLen,
+			 storageWrite->maxBufferLen,
+			 storageWrite->currentCompleteHeaderLen,
+			 (storageWrite->isFirstRowNumSet ? "true" : "false"));
+		
 
 	headerOffsetInFile = BufferedAppendCurrentBufferPosition(&storageWrite->bufferedAppend);
 	
@@ -1216,6 +1244,8 @@ void AppendOnlyStorageWrite_FinishBuffer(
 		AppendOnlyStorageFormat_MakeSmallContentHeader(
 								nonCompressedHeader,
 								storageWrite->storageAttributes.checksum,
+								storageWrite->isFirstRowNumSet,
+								storageWrite->firstRowNum,
 								executorBlockKind,
 								rowCount,
 								contentLen,
@@ -1248,11 +1278,14 @@ void AppendOnlyStorageWrite_FinishBuffer(
 					rowCount,
 					/* expectedCompressedLen */ 0);
 
+		storageWrite->lastWriteBeginPosition =
+			BufferedAppendNextBufferPosition(&(storageWrite->bufferedAppend));
+
 		BufferedAppendFinishBuffer(
 					&storageWrite->bufferedAppend,
 					bufferLen,
 					uncompressedlen);
-		
+
 		// Declare it finished.
 		storageWrite->currentCompleteHeaderLen = 0;
 		
@@ -1294,6 +1327,9 @@ void AppendOnlyStorageWrite_FinishBuffer(
 					rowCount,
 					compressedLen);
 		
+		storageWrite->lastWriteBeginPosition =
+			BufferedAppendNextBufferPosition(&(storageWrite->bufferedAppend));
+
 		/*
 		 * Finish the current buffer by specifying the used length.
 		 */
@@ -1395,6 +1431,9 @@ void AppendOnlyStorageWrite_Content(
 				content,
 				contentLen);
 
+			storageWrite->lastWriteBeginPosition =
+				BufferedAppendNextBufferPosition(&(storageWrite->bufferedAppend));
+
 			AppendOnlyStorageWrite_FinishBuffer(
 				storageWrite,
 				contentLen,
@@ -1427,6 +1466,9 @@ void AppendOnlyStorageWrite_Content(
 						rowCount,
 						compressedLen);
 			
+			storageWrite->lastWriteBeginPosition =
+				BufferedAppendNextBufferPosition(&(storageWrite->bufferedAppend));
+
 			/*
 			 * Finish the current buffer by specifying the used length.
 			 */
@@ -1467,6 +1509,8 @@ void AppendOnlyStorageWrite_Content(
 		AppendOnlyStorageFormat_MakeLargeContentHeader(
 								largeContentHeader,
 								storageWrite->storageAttributes.checksum,
+								storageWrite->isFirstRowNumSet,
+								storageWrite->firstRowNum,
 								executorBlockKind,
 								rowCount,
 								contentLen);
@@ -1476,6 +1520,9 @@ void AppendOnlyStorageWrite_Content(
 							largeContentHeaderLen,
 							largeContentHeaderLen);
 		
+		storageWrite->lastWriteBeginPosition =
+			BufferedAppendNextBufferPosition(&(storageWrite->bufferedAppend));
+
 		// Declare it finished.
 		storageWrite->currentCompleteHeaderLen = 0;
 
