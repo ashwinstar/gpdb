@@ -37,6 +37,8 @@ execute E'(find @abs_srcdir@/../.. -name \'*.c\'  | xargs perl @gpwhich_get_erep
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
+-- start_headers_ignore
+
 -- return filename:linenumber: c source line
 select * from get_ereport order by 1;
 

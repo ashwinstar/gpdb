@@ -213,6 +213,15 @@ command can use the -I flag to ignore lines with this prefix.
 
   Ends the ignored region that started with "start_ignore"
 
+=item -- start_headers_ignore
+
+Similar to the command-line "ignore_headers", ignore differences in
+column naming and format widths.
+
+=item -- end_headers_ignore
+
+  Ends the "headers ignored" region that started with "start_headers_ignore"
+
 =item -- start_equiv
 
 Begin an "equivalent" region, and treat contents according to the
@@ -1539,6 +1548,11 @@ EOF_formatfix
             $equiv_expected_rows = undef;
         }
 
+        if ($ini =~ m/\-\-\s*end\_head(er|ers|ing|ings)\_ignore\s*$/i)
+        {
+            $glob_ignore_headers = 0;
+        }
+
         if ($getrows) # getting rows from SELECT output
         {
             # special case for copy select
@@ -1598,6 +1612,11 @@ EOF_formatfix
             {
                 $equiv_expected_rows = [];
                 $directive->{make_equiv_expected} = 1;
+            }
+
+            if ($ini =~ m/\-\-\s*start\_head(er|ers|ing|ings)\_ignore\s*$/i)
+            {
+                $glob_ignore_headers = 1;
             }
 
             # Note: \d is for the psql "describe"

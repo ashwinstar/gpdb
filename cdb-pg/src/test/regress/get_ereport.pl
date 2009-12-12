@@ -250,7 +250,8 @@ if (1)
 
 					if ($bFullname)
 					{
-						print "GP_IGNORE: ", $filnam, " - ", 
+						# add prefix for sorting, but still get ignored
+						print "aaaaa GP_IGNORE: ", $filnam, " - ", 
 						$orig_filnam, "\n";
 					}
 
