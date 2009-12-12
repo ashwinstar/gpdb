@@ -17,6 +17,31 @@ create table direct_test_two_column
 )
 distributed by (key1, key2);
 
+create table direct_test_bitmap  as select '2008-02-01'::DATE AS DT,
+        case when j <= 996
+                then 0
+        when j<= 998 then 2
+        when j<=999 then 3
+        when i%10000 < 9000 then 4
+        when i%10000 < 9800 then 5
+        when i % 10000 <= 9998 then 5 else 6
+        end as ind,
+        (i*1017-j)::bigint as s from generate_series(1,10) i, generate_series(1,10) j distributed by (dt);
+create index direct_test_bitmap_idx on direct_test_bitmap using bitmap (ind, dt);
+
+CREATE TABLE direct_test_partition (trans_id int, date date, amount decimal(9,2), region text, primary key(trans_id)) DISTRIBUTED BY (trans_id) PARTITION BY RANGE (date) (START (date '2008-01-01') INCLUSIVE END (date '2009-01-01') EXCLUSIVE EVERY (INTERVAL '1month') );
+
+create table direct_test_range_partition (a int, b int, c int, d int) partition by range(d) (start(1) end(10) every(1));
+insert into direct_test_range_partition select i, i+1, i+2, i+3 from generate_series(1, 2) i;
+
+create table direct_test_type_real (real1 real, smallint1 smallint, boolean1 boolean, int1 int, double1 double precision, date1 date, numeric1 numeric) distributed by (real1);
+create table direct_test_type_smallint (real1 real, smallint1 smallint, boolean1 boolean, int1 int, double1 double precision, date1 date, numeric1 numeric) distributed by (smallint1);
+create table direct_test_type_boolean (real1 real, smallint1 smallint, boolean1 boolean, int1 int, double1 double precision, date1 date, numeric1 numeric) distributed by (boolean1);
+create table direct_test_type_int (real1 real, smallint1 smallint, boolean1 boolean, int1 int, double1 double precision, date1 date, numeric1 numeric) distributed by (int1);
+create table direct_test_type_double (real1 real, smallint1 smallint, boolean1 boolean, int1 int, double1 double precision, date1 date, numeric1 numeric) distributed by (double1);
+create table direct_test_type_date (real1 real, smallint1 smallint, boolean1 boolean, int1 int, double1 double precision, date1 date, numeric1 numeric) distributed by (date1);
+create table direct_test_type_numeric (real1 real, smallint1 smallint, boolean1 boolean, int1 int, double1 double precision, date1 date, numeric1 numeric) distributed by (numeric1);
+
 -- enable printing of printing info
 set test_print_direct_dispatch_info=on;
 
@@ -95,8 +120,37 @@ insert into direct_test values (2,100);
 insert into direct_test values (3,100);
 rollback;
 
+-------------------
+-- MPP-7634: bitmap index scan
+--
+select count(*) from direct_test_bitmap where dt='2008-02-05';
+select count(*) from direct_test_bitmap where dt='2008-02-01';
 ----------------------------------------------------------------------------------
+-- MPP-7637: partitioned table
+--
+insert into direct_test_partition values (1,'2008-01-02',1,'usa');
+select * from direct_test_partition where trans_id =1;
 ----------------------------------------------------------------------------------
+-- MPP-7638: range table partition
+--
+select count(*) from direct_test_range_partition where a =1;
+----------------------------------------------------------------------------------
+-- MPP-7643: various types
+--
+insert into direct_test_type_real values (8,8,true,8,8,'2008-08-08',8.8);
+insert into direct_test_type_smallint values (8,8,true,8,8,'2008-08-08',8.8);
+insert into direct_test_type_boolean values (8,8,true,8,8,'2008-08-08',8.8);
+insert into direct_test_type_int values (8,8,true,8,8,'2008-08-08',8.8);
+insert into direct_test_type_double values (8,8,true,8,8,'2008-08-08',8.8);
+insert into direct_test_type_date values (8,8,true,8,8,'2008-08-08',8.8);
+insert into direct_test_type_numeric values (8,8,true,8,8,'2008-08-08',8.8);
+
+select * from direct_test_type_real where real1 = 8::real;
+select * from direct_test_type_smallint where smallint1 = 8::smallint;
+select * from direct_test_type_int where int1 = 8;
+select * from direct_test_type_double where double1 = 8;
+select * from direct_test_type_date where date1 = '2008-08-08';
+select * from direct_test_type_numeric where numeric1 = 8.8;
 ----------------------------------------------------------------------------------
 -- Prepared statements
 --  do same as above ones but using prepared statements, verify data goes to the right spot
@@ -111,3 +165,16 @@ rollback;
 --  do same as above but using cursors
 
 
+-- cleanup
+set test_print_direct_dispatch_info=off;
+drop table direct_test;
+drop table direct_test_two_column;
+drop table direct_test_bitmap;
+drop table direct_test_partition;
+drop table direct_test_range_partition;
+drop table direct_test_type_real;
+drop table direct_test_type_smallint;
+drop table direct_test_type_int;
+drop table direct_test_type_double;
+drop table direct_test_type_date;
+drop table direct_test_type_numeric;

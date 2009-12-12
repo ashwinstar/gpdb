@@ -182,7 +182,7 @@ directDispatchCalculateHash(Plan *plan, GpPolicy *targetPolicy)
 
 			if (!IsA(tle->expr, Const))
 			{
-				/* Probably this is type-coerced ? can't calculate this currently */
+				/* the planner could not simplify this */
 				directDispatch = false;
 				break;
 			}

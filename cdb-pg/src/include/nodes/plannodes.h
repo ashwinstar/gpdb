@@ -433,7 +433,9 @@ typedef struct IndexScan
  *
  * In a BitmapIndexScan plan node, the targetlist and qual fields are
  * not used and are always NIL.  The indexqualorig field is unused at
- * run time too, but is saved for the benefit of EXPLAIN.
+ * run time too, but is saved for the benefit of EXPLAIN, as well
+ * as for the use of the planner when doing clause examination on plans
+ * (such as for targeted dispatch)
  * ----------------
  */
 typedef struct BitmapIndexScan

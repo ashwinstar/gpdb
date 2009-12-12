@@ -4,11 +4,6 @@
  *	  Assign targeted dispatching information to a plan
  *
  * Copyright (c) 2004-2009, Greenplum inc
- *
- *	         $Id: //cdb2/main/cdb-pg/src/backend/cdb/cdbmutate.c#141 $
- *       $Change: 37101 $
- *     $DateTime: 2009/09/01 13:49:08 $
- *       $Author: cwhipkey $
  *-------------------------------------------------------------------------
  */
 
@@ -89,6 +84,9 @@ typedef struct ContentIdAssignmentData
 
 	/* for use when constructing the output data structure */
 	MemoryContext memoryContextForOutput;
+
+	/* of Plan*  */
+	List *allSlices;
 } ContentIdAssignmentData;
 
 static bool AssignContentIdsToPlanData_Walker(Node *node, void *context);
@@ -136,7 +134,7 @@ DisableTargetedDispatch( DirectDispatchCalculationInfo *data)
  * helper function for AssignContentIdsFromUpdateDeleteQualification
  */
 static DirectDispatchCalculationInfo
-GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableIndex)
+GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableIndex, Node *qualification)
 {
 	GpPolicy  *policy = NULL;
 	PartitionKeyInfo *parts = NULL;
@@ -212,11 +210,11 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 			var = makeVar(rangeTableIndex, policy->attrs[i], parts[i].attr->atttypid, parts[i].attr->atttypmod, 0);
 
 			/**
-			 * Note that right now we only examine the plan qual.  This is okay because if there are other
+			 * Note that right now we only examine the given qual.  This is okay because if there are other
 			 *   quals on the plan then those would be ANDed with the qual, which can only narrow our choice
 			 *   of segment and not expand it.
 			 */
-			pvs = DeterminePossibleValueSet((Node*)plan->qual, (Node *)var );
+			pvs = DeterminePossibleValueSet(qualification, (Node *)var );
 
 			if ( pvs.isAnyValuePossible)
 			{
@@ -364,6 +362,7 @@ ShouldPrintTestMessages()
  * Otherwise, overrides any previous direct dispatch data on the given node and updates it
  *   with the targeted dispatch info from the ContentIdAssignmentData
  *
+ * @param isFromTopRoot is this being finalized on the topmost node of the tree, or on a lower motion node?
  */
 static void
 FinalizeDirectDispatchDataForSlice(Node *node, ContentIdAssignmentData *data, bool isFromTopRoot)
@@ -375,6 +374,8 @@ FinalizeDirectDispatchDataForSlice(Node *node, ContentIdAssignmentData *data, bo
 	if ( is_plan_node(node))
 	{
 		Plan *plan = (Plan*)node;
+
+		data->allSlices = lappend(data->allSlices, plan);
 
 		if ( plan->directDispatch.contentIds != NULL)
 		{
@@ -501,8 +502,7 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 				}
 				break;
 			case T_Result:
-				/* disallow here because I haven't examined structure fully: so be conservative */
-				DisableTargetedDispatch(&dispatchInfo);
+				/* no change to dispatchInfo --> just iterate children */
 				break;
 			case T_Append:
 				/* no change to dispatchInfo --> just iterate children */
@@ -511,16 +511,39 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 			case T_BitmapOr:
 				/* no change to dispatchInfo --> just iterate children */
 				break;
-			case T_SeqScan:
-			case T_ExternalScan:
-			case T_AppendOnlyScan:
-			case T_AOCSScan:
-			case T_IndexScan:
-			case T_BitmapIndexScan:
 			case T_BitmapHeapScan:
 			case T_BitmapAppendOnlyScan:
+				/* no change to dispatchInfo --> just iterate children */
+				break;
+			case T_SeqScan:
+			case T_AppendOnlyScan:
+			case T_AOCSScan:
 				/* we can determine the dispatch data to merge by looking at the relation begin scanned */
-				dispatchInfo = GetContentIdsFromPlanForSingleRelation(data->rtable, (Plan *)node, ((Scan*)node)->scanrelid);
+				dispatchInfo = GetContentIdsFromPlanForSingleRelation(data->rtable, (Plan *)node, ((Scan*)node)->scanrelid,
+						(Node*) ((Plan*)node)->qual);
+				break;
+
+			case T_ExternalScan:
+				DisableTargetedDispatch(&dispatchInfo); /* not sure about external tables ... so disable */
+				break;
+
+			case T_IndexScan:
+				{
+					IndexScan *indexScan = (IndexScan*)node;
+
+					/* we can determine the dispatch data to merge by looking at the relation begin scanned */
+					dispatchInfo = GetContentIdsFromPlanForSingleRelation(data->rtable, (Plan *)node, ((Scan*)node)->scanrelid,
+							(Node*) indexScan->indexqualorig); // must use _orig_ qual!
+				}
+				break;
+			case T_BitmapIndexScan:
+				{
+					BitmapIndexScan *bitmapScan = (BitmapIndexScan*)node;
+
+					/* we can determine the dispatch data to merge by looking at the relation begin scanned */
+					dispatchInfo = GetContentIdsFromPlanForSingleRelation(data->rtable, (Plan *)node, ((Scan*)node)->scanrelid,
+						(Node*) bitmapScan->indexqualorig); // must use original qual!
+				}
 				break;
 			case T_SubqueryScan:
 				/**
@@ -638,6 +661,7 @@ AssignContentIdsToPlanData(Query *query, Plan *plan)
 	data.memoryContextForOutput = oldContext;
 	data.sliceStack = list_make1(ddcr);
 	data.rtable = query->rtable;
+	data.allSlices = NULL;
 
 	/* Do it! */
 	AssignContentIdsToPlanData_Walker((Node*)plan, &data);
@@ -646,6 +670,25 @@ AssignContentIdsToPlanData(Query *query, Plan *plan)
 	if ( ! IsA(plan, SubPlan) && ! IsA(plan, Motion))
 	{
 		FinalizeDirectDispatchDataForSlice((Node*)plan, &data, true);
+	}
+
+	/* now check to see if we are multi-slice.  If so then we will
+	 *   disable the direct dispatch (because it's not working right
+	 *   now -- see MPP-7630)
+	 */
+	if ( list_length(data.allSlices) > 2 )
+	{
+		ListCell *cell;
+		foreach(cell, data.allSlices)
+		{
+			Plan *plan = (Plan *) lfirst(cell);
+			plan->directDispatch.isDirectDispatch = false;
+			if ( plan->directDispatch.contentIds)
+			{
+				list_free(plan->directDispatch.contentIds);
+				plan->directDispatch.contentIds = NULL;
+			}
+		}
 	}
 
 	/* cleanup */

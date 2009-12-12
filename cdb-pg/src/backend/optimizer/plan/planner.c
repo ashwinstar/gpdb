@@ -552,21 +552,32 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	 * with AND directly under AND, nor OR directly under OR.
 	 *
 	 * Because this is a relatively expensive process, we skip it when the
-	 * query is trivial, such as "SELECT 2+2;" or "INSERT ... VALUES()". The
+	 * query is trivial, such as "SELECT 2+2;". The
 	 * expression will only be evaluated once anyway, so no point in
 	 * pre-simplifying; we can't execute it any faster than the executor can,
 	 * and we will waste cycles copying the tree.  Notice however that we
 	 * still must do it for quals (to get AND/OR flatness); and if we are in a
 	 * subquery we should not assume it will be done only once.
 	 *
-	 * For VALUES lists we never do this at all, again on the grounds that we
-	 * should optimize for one-time evaluation.
+	 * However, if targeted dispatch is enabled then we WILL optimize
+	 *           VALUES lists because targeted dispatch will benefit from this
+	 *           -- it IS more expensive to evaluate it on the executor
+	 *           without doing it first in the planner because the planner
+	 *           may determine that only a single segment is required!
 	 */
-	if (kind != EXPRKIND_VALUES &&
-		(root->parse->jointree->fromlist != NIL ||
-		 kind == EXPRKIND_QUAL ||
-		 root->query_level > 1))
+	if (kind != EXPRKIND_VALUES && (
+			root->parse->jointree->fromlist != NIL ||
+			kind == EXPRKIND_QUAL ||
+
+			/* note that we could optimize the direct dispatch case
+			 *   by only doing the simplification for the distribution
+			 *   key columns.
+			 */
+			(gp_enable_direct_dispatch && kind == EXPRKIND_TARGET ) ||
+			root->query_level > 1))
+	{
 		expr = eval_const_expressions(root, expr);
+	}
 
 	/*
 	 * If it's a qual or havingQual, canonicalize it.
