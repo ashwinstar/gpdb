@@ -80,6 +80,7 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 static void
 cdb_default_stats_warning_for_index(Oid reloid, Oid indexoid);
 
+extern BlockNumber RelationGuessNumberOfBlocks(double totalbytes);
 
 /*
  * get_relation_info -
@@ -505,9 +506,21 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 			/* skip external tables */
 			if(RelationIsExternal(rel))
 				break;
-
-			/* it has storage, ok to call the smgr */
-			curpages = RelationGetNumberOfBlocks(rel);
+			
+			if(RelationIsAoRows(rel) || RelationIsAoCols(rel))
+			{
+				/* MPP-7629 */
+				FileSegTotals	*fstotal = GetSegFilesTotals(rel);
+				
+				Assert(fstotal);
+				curpages = RelationGuessNumberOfBlocks((double)fstotal->totalbytes);
+				pfree(fstotal);
+			}
+			else
+			{
+				/* it has storage, ok to call the smgr */
+				curpages = RelationGetNumberOfBlocks(rel);
+			}
 
 			/*
 			 * HACK: if the relation has never yet been vacuumed, use a
