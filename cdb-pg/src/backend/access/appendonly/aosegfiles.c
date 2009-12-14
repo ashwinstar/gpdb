@@ -926,7 +926,7 @@ gp_update_aorow_master_stats_internal(Relation parentrel)
 	pfree(aoEntry);
 	pfree(sqlstmt.data);
 
-	PG_RETURN_INT64(total_count);
+	PG_RETURN_FLOAT8((float8)total_count);
 }
 
 /*
@@ -1216,6 +1216,7 @@ get_ao_distribution_name(PG_FUNCTION_ARGS)
 	if (SRF_IS_FIRSTCALL())
 	{
 		bool 			connected = false;
+		Oid segrelid = InvalidOid;
 
 		funcctx = SRF_FIRSTCALL_INIT();
 
@@ -1245,11 +1246,15 @@ get_ao_distribution_name(PG_FUNCTION_ARGS)
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("'%s' is not an append-only relation",
 							RelationGetRelationName(parentrel))));
+		
+		GetAppendOnlyEntryAuxOids(RelationGetRelid(parentrel), &segrelid,
+								  NULL, NULL, NULL);
+		Assert(OidIsValid(segrelid));
 
 		/*
 		 * get the name of the aoseg relation
 		 */
-		aosegrel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
+		aosegrel = heap_open(segrelid, AccessShareLock);
 		snprintf(aoseg_relname, 32, "%s", RelationGetRelationName(aosegrel));
 		heap_close(aosegrel, AccessShareLock);
 
