@@ -1046,8 +1046,14 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 		blkdiridxid1 = blkdiridxid2;
 		blkdiridxid2 = swaptemp;
 
-		UpdateAppendOnlyEntryAuxOids(r1, segrelid1, segidxid1, blkdirrelid1, blkdiridxid1);
-		UpdateAppendOnlyEntryAuxOids(r2, segrelid2, segidxid2, blkdirrelid2, blkdiridxid2);
+		if (relform1->relstorage == RELSTORAGE_AOROWS ||
+			relform1->relstorage == RELSTORAGE_AOCOLS)
+			UpdateAppendOnlyEntryAuxOids(r1, segrelid1, segidxid1, blkdirrelid1, blkdiridxid1);
+
+
+		if (relform2->relstorage == RELSTORAGE_AOROWS ||
+			relform2->relstorage == RELSTORAGE_AOCOLS)
+			UpdateAppendOnlyEntryAuxOids(r2, segrelid2, segidxid2, blkdirrelid2, blkdiridxid2);
 	}
 	
 
