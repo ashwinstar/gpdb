@@ -489,8 +489,9 @@ class LocalDirCopy(Command):
 class CreateTar(Command):
     def __init__(self,name,srcDirectory,dstTarFile,ctxt=LOCAL,remoteHost=None):
         self.srcDirectory=srcDirectory
-        self.dstTarFile=dstTarFile        
-        cmdStr="%s cvPf %s -C %s  ." % (findCmdInPath('tar'), self.dstTarFile,srcDirectory)
+        self.dstTarFile=dstTarFile
+        tarCmd = SYSTEM.getTarCmd()
+        cmdStr="%s cvPf %s -C %s  ." % (tarCmd, self.dstTarFile,srcDirectory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     
