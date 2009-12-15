@@ -3,14 +3,41 @@
 Usage: gpdetective <option> [dbname]
 
     -?         : Print usage and exit
-        -v         : Print version and exit
+    -v         : Print version and exit
     -h host    : DB host name
     -p port    : DB port number
     -P passwd  : DB password
     -U uname   : DB User Name
 
-        --start_date=number       : Log start date (number of days ago)
-        --start_date="YYYY-MM-DD" : Log start date (explicit date)
+    --start_date=number       : Log start date (number of days ago)
+    --start_date="YYYY-MM-DD" : Log start date (explicit date)
+    --end_date="YYY-MM-DD"    : Log end date (explicit date)
+
+    --diagnostics=a[ll],n[one],s[tate],o[s],c[atalog] 
+         : Defines which diagnostics to run (default is "all")
+
+    --logs=a[ll],n[none,<list> 
+         : Defines the list of segment log file dbid's to retrieve 
+             a[ll]  = all segments and mirrors  (the default) 
+             n[one] = no segments and mirrors
+             <list> = [n | n-m[,n | n-m]...] where n and m are integers. (e.g. 0,1-4,8,11)
+
+    --core=t[rue]|f[alse]
+         : Determines whether or not core files are retrieved (default is true).
+ 
+    --pg_dumpall=t[rue]|f[alse]  
+         : Option to run pg_dumpall (default is true)
+ 
+    --pg_dump_options="<options>"
+         : A list of valid pg_dump options (e.g. "-t public.table1 database1")
+
+    --tempdir="temp dir"      
+         : Temporary directory used by gpdetective 
+           The default is determined by the $TEMP, $TMP and $TMPDIR environment variables.
+
+    --connect=t[rue]|f[alse]  
+         : If connect is false, then retrieve only information that can be 
+           obtained without making a connection to the database (default is true).
 
 '''
 #============================================================
@@ -71,6 +98,15 @@ def which (filename):
             return f
     return None
 
+#============================================================
+def truth (option, val):
+    if val.lower() == 't' or val.lower() == 'true':
+        return True
+    elif val.lower() == 'f' or val.lower() == 'false':
+        return False
+    else:
+        usage('Error: Invalid option for %: %s' % (option, val))
+
 
 #============================================================
 class GPDetective:
@@ -85,13 +121,26 @@ class GPDetective:
     errlog = None       # Error log
     tardir = None       # name of the produced tarball
     error  = None
-    start_date = None
+    start_date      = None
+    end_date        = None
+    log_list        = None
+    pg_dump_options = None
+    rungpstate    = True
+    runpg_dumpall = True
+    rungpcheckos  = True
+    rungpcheckcat = True
+    runcore       = True
+    runsegmentlog = True
+    runconnected  = True
 
     # Configuration information
+    tempdir   = None    # Temporary directory for gathering information
     masterdir = None    # Master Directory, assumed on this host
+    backupmasterhostdir   = None    # backup (mirror) Master Directory
+    backupmasterhostname  = None    # backup (mirror) Master host name
     hosts     = []      # list of all segment hosts
-    segments  = []      # list of all segments
-    mirrors   = []      # list of all mirror segments
+    segments  = []      # list of all segments (tuple with "dbid" and "hostname:datadir")  
+    mirrors   = []      # list of all mirror segments (tuple with "dbid" and "hostname:datadir")
     databases = []      # list of all databases (except template)
 
     #------------------------------------------------------------
@@ -119,15 +168,41 @@ class GPDetective:
         try:
             (options, args) = getopt.getopt(sys.argv[1:], 
                                             '?h:p:P:U:vV',
-                                            ['version', 'start_date='])
+                                            [ 'version'
+                                            , 'start_date='
+                                            , 'end_date='
+                                            , 'connect='
+                                            , 'pg_dump_options='
+                                            , 'tempdir='
+                                            , 'diagnostics='
+                                            , 'logs='
+                                            , 'pg_dumpall='
+                                            , 'cores='
+                                            ])
             for (switch, val) in options:
                 if   switch == '-?':       usage(0)
                 if   switch[1] in 'vV' or switch == '--version':
                     print 'gpdetective ' + __version__
                     sys.exit(0)
+                elif switch == '--connect':
+                    self.runconnected = truth(switch, val)
                 elif switch == '--start_date':
                     self.start_date = val
-                elif switch[1] in 'hpPU':  
+                elif switch == '--end_date':
+                    self.end_date = val
+                elif switch == '--pg_dump_options':
+                    self.pg_dump_options = val
+                elif switch == '--tempdir':
+                    self.tempdir = val
+                elif switch == '--diagnostics':
+                    self.handleDiagnosticParameterList(val)
+                elif switch == '--logs':
+                    self.log_list = self.handleSegmentParameterList(val)
+                elif switch == '--pg_dumpall':
+                    self.runpg_dumpall = truth(switch, val)
+                elif switch == '--cores':
+                    self.runcore = truth(switch, val)
+                elif switch[1] in 'hpPU':
                     self.opt[switch] = val
         except Exception, e:
             usage('Error: ' + str(e))
@@ -152,13 +227,14 @@ class GPDetective:
         except ValueError: exit('Error: Could not determine PORT')
 
         # Connect to master
-        try:
-            self.master = self.connect(db=self.db, utility=True)
-        except:
-            print "Error: Could not connect to the master database:",
-            print " %s@%s:%s" % (self.opt['-U'], self.opt['-h'], self.opt['-p'])
-            print "Please specify the correct host or start the master in admin mode"
-            exit(1)
+        if self.runconnected == True:
+          try:
+              self.master = self.connect(db=self.db, utility=True)
+          except:
+              print "Error: Could not connect to the master database:",
+              print " %s@%s:%s" % (self.opt['-U'], self.opt['-h'], self.opt['-p'])
+              print "Please specify the correct host or start the master in admin mode"
+              exit(1)
 
         # Setup the log directory
         self.mklogdir()
@@ -191,6 +267,96 @@ class GPDetective:
                 print "Aborting"
         else:
             print "Done"
+
+
+    #------------------------------------------------------------
+    def handleDiagnosticParameterList(self, diagnostics):
+        '''
+        All diagnostics are done by default. 
+        If the user specifies option(s), then all diagnostic options are set 
+        to false (i.e. not done), and individual diagnostics are are set to
+        true (i.e. turned on) if the user specified their corresponding option. 
+        '''
+        if diagnostics == None:
+           usage('Error: Missing diagnostic options.')           
+
+        diagnosticsNoSpaces = diagnostics.replace(' ', '')
+        diagList = diagnosticsNoSpaces.split(',')
+        if len(diagList) == 1: 
+           if diagList[0] == 'a' or diagList[0] == 'all':
+              # One diagnostic 'all' implies all diagnostics (the defalut)
+              return
+           elif diagList[0] == 'n' or diagList[0] == 'none':
+              # One diagnostic 'none' implies turn off everyting.
+              self.rungpstate    = False
+              self.rungpcheckos  = False
+              self.rungpcheckcat = False
+              return
+        
+        # If we got this far, turn everything off.
+        self.rungpstate    = False
+        self.rungpcheckos  = False
+        self.rungpcheckcat = False
+
+        # Go through the list, and selectively turn on the corresponding diagnostic
+        for diag in diagList:
+            if diag == 'a' or diag == 'all' or diag == 'n' or diag == 'none':
+               usage('Error: "%s" must be only diagnostics option.' % diag) 
+            elif diag == 's' or diag == 'state':
+               self.rungpstate = True
+            elif diag == 'o' or diag == 'os':
+               self.rungpcheckos = True
+            elif diag == 'c' or diag == 'catalog':
+               self.rungpcheckcat = True
+            else:
+               usage('Error: Unrecognized diagnostic option: %s' % diag)
+
+
+    #------------------------------------------------------------
+    def handleSegmentParameterList(self, segs):
+        '''
+        The segs parameter is of the form 
+           a[ll]
+           n[one]
+           [n | n-m[,n | n-m]...] where n and m are integers.
+
+        Return a list of integers that correspond to the list of entries in segs.
+        (e.g. segs = "1, 2, 5-10, 14". Return [1,2,5,6,7,8,9,10,14], and set
+        runsegmentlog  to True or False.
+        '''
+        returnList   = []
+        segsNoSpaces = ""
+        inRange = False
+
+        if segs == None:
+           usage('Error: Missing segs options.')
+
+        segsNoSpaces = segs.replace(" ", "")
+        segList = segsNoSpaces.split(',')
+        if len(segList) == 1:
+           if segList[0] == 'a' or segList[0] == 'all':
+              # One option 'all' implies all segments and mirrors (the defalut)
+              self.runsegmentlog = True
+              return
+           elif segList[0] == 'n' or segList[0] == 'none':
+              # One option 'none' implies turn off everyting.
+              self.runsegmentlog  = False
+              return
+
+        try:
+           for element in segList:
+              if element.isdigit() == True:
+                 returnList.append(int(element))
+              else:
+                  subRange = element.split('-')
+                  for i in range(int(subRange[0]) , int(subRange[1]) + 1): 
+                     returnList.append(i)
+           returnList.sort()
+        except Exception, e:
+           print 'Error in segment dbid list' 
+           raise e
+
+        return returnList
 
     #------------------------------------------------------------
     def checkPath(self):
@@ -229,6 +395,9 @@ class GPDetective:
         '''
         Execute a shell command and dumps the results to the
         specified file.
+
+        "cmd" can be a list or string.
+
         '''
         self.errlog.write('localhost$ ')
         for i in cmd: self.errlog.write(str(i) + ' ')
@@ -238,13 +407,20 @@ class GPDetective:
         if filename:
             file = open(filename, 'w')
             file.write('localhost$ ')
-            for i in cmd: file.write(str(i) + ' ')
+            if isinstance(cmd, str):
+               file.write(cmd)
+            else:
+               for i in cmd: file.write(str(i) + ' ')
             file.write("\n")
             file.flush()
         else:
             file = self.errlog
         try:
-            subprocess.call(cmd, stdout=file, stderr=self.errlog)
+            if isinstance(cmd, str):
+               p = subprocess.Popen(cmd, stdout=file, shell=True, stderr=self.errlog)
+               p.wait()
+            else:
+               subprocess.call(cmd, stdout=file, stderr=self.errlog)
         except Exception, e:
             self.errlog.write("Error: " + str(e) + "\n");
             self.errlog.flush()
@@ -365,6 +541,7 @@ class GPDetective:
             x = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.errlog)
         return str(x.communicate()[0].strip())
 
+    #------------------------------------------------------------
     def log(self, test):
         '''
         Logs the start of a test
@@ -382,6 +559,17 @@ class GPDetective:
         '''
         self.log('getConfiguration')
 
+        os.mkdir('master')
+
+        if self.runconnected == False:
+           # Assume we are running on the master,
+           # and try to get the location of the master directory
+           self.opt['-h'] = self.runCmd('uname -n') 
+           self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
+           return
+
+        os.mkdir('backupmaster')
+
         # Master directory
         rows = self.select(
         '''
@@ -391,6 +579,17 @@ class GPDetective:
         ''')
         self.opt['-h'] = rows[0][0]
         self.masterdir = rows[0][1]
+
+        # Backup (mirror) Master directory
+        rows = self.select(
+        '''
+           SELECT hostname, datadir
+           FROM   gp_configuration
+           WHERE  content < 0 AND NOT definedprimary
+        ''')
+        if len(rows) > 0:
+           self.backupmasterhostname  = rows[0][0]
+           self.backupmasterhostdir   = rows[0][1]
 
         # List of hosts
         self.hosts = self.select(
@@ -403,14 +602,14 @@ class GPDetective:
         # list of segments
         self.segments = self.select(
         '''
-           SELECT hostname || ':' || datadir FROM gp_configuration
+           SELECT dbid, hostname || ':' || datadir FROM gp_configuration
            WHERE  content >= 0  AND  definedprimary
         ''')
 
         # list of mirrors
         self.mirrors = self.select(
         '''
-           SELECT hostname || ':' || datadir FROM gp_configuration
+           SELECT dbid, hostname || ':' || datadir FROM gp_configuration
            WHERE  content >= 0  AND  not definedprimary
         ''')
 
@@ -422,7 +621,6 @@ class GPDetective:
         ''')
 
         self.writeArray('hosts', self.hosts)
-        os.mkdir('master')
         for host in self.hosts:
            os.mkdir(host)
         self.writeSelect('config.log', 
@@ -430,6 +628,11 @@ class GPDetective:
            SELECT * from gp_configuration
         ''')
         
+        self.writeSelect('config_history.log',
+        '''                                                                                                                                              
+           SELECT * from gp_configuration_history                                                                                                                
+        ''')
+
         self.writeSelect('config_history.log', 
         '''
             SELECT * FROM gp_configuration_history
@@ -488,18 +691,26 @@ class GPDetective:
             SELECT * FROM pg_catalog.pg_stat_database            
         ''')
 
+        self.writeSelect('pg_roles.log',
+        '''
+            SELECT * FROM pg_catalog.pg_roles
+        ''')
+
+
     
     #------------------------------------------------------------
     def get_timeopt(self):
+        opt = ''
         if self.start_date:
             if self.start_date.find('-') == -1:
                 start = datetime.date.today() - datetime.timedelta(days=int(self.start_date))
                 opt = '--begin %s' % str(start)
             else:
                 opt = '--begin %s' % self.start_date
-        else:
-            opt=''
+        if self.end_date:
+            opt = opt + ' --end %s' % self.end_date
         return opt
+
         
         
     #------------------------------------------------------------
@@ -515,34 +726,32 @@ class GPDetective:
             return False
 
     
-    
-    #------------------------------------------------------------    
-    def grabSegmentLog(self,hostname,segdb,seglog,dst_file,time_opt):
-        myfile = open(dst_file, 'w')       
+   #------------------------------------------------------------                                                                                                    
+    def grabLog(self, hostname, loglocation, dst_file, time_opt):
+        myfile = open(dst_file, 'w')
         try:
-            cmdstr = "gplogfilter --quiet %s %s 2>&1" % (time_opt,seglog)
-            segcmd="ssh %s \"%s %s\" " % (hostname,SRC_GPPATH,cmdstr)
-            p=subprocess.Popen(segcmd,stdout=myfile,shell=True)            
+            cmdstr = "gplogfilter --quiet %s %s 2>&1" % (time_opt,loglocation)
+            cmd="ssh %s \"%s %s\" " % (hostname,SRC_GPPATH,cmdstr)
+            p = subprocess.Popen(cmd, stdout=myfile,shell=True)
             p.wait()
             if p.returncode == 0:
                 found = True
             else:
-                self.log('could not find the segment log on host: %s in dir: %s' % (hostname,seglog))
+                self.log('could not find the log on host: %s in dir: %s' % (hostname,loglocation))
                 myfile.close()
                 f = open(dst_file,'r')
                 str=f.readlines()
                 self.log('command returned: %s' % str)
                 f.close()
                 found = False
-        except OSError,e:
-            self.log('' + str(e))            
-            found = False    
+        except OSError, e:
+            self.log('' + str(e))
+            found = False
 
         myfile.close()
         return found
-        
 
-    
+
     #------------------------------------------------------------
     def copyLogs(self):
         '''
@@ -553,17 +762,17 @@ class GPDetective:
         self.log('copyLogs')
 
         # Grab master log and postgresql.conf
+        #
         path_re = re.compile('/([^/]*)$')
         m = path_re.search(self.masterdir)
         
         time_opt=self.get_timeopt()
         hostname=m.group(1)
-        
-        
-        logfile= self.masterdir + '/pg_log/*'        
+
+        logfile= self.masterdir + '/pg_log/*'
         dst_file = 'master/%s_rotated.log' % hostname
         if not self.grabMasterLog(logfile,dst_file,time_opt):
-            os.remove(dst_file)
+           os.remove(dst_file)
         
         self.runCmd(['scp', '%s/postgresql.conf' % self.masterdir,
                      'master/postgresql.conf'])
@@ -572,23 +781,60 @@ class GPDetective:
         self.runCmd(['scp', '%s/global/pg_auth' % self.masterdir,
                      'master/pg_pgauth'])
 
+        
+        # Grab backup master log and postgresql.conf
+        #                    host  : fullpath / filename
+        host_rx = re.compile('(.*)/([^/]*)')
+        if self.runconnected == True and self.backupmasterhostdir != None and self.backupmasterhostname != None:
+           m = host_rx.search(self.backupmasterhostdir)
+           backupmaster_out_name='backupmaster/%s_rotated.log' % m.group(2)
+           backupmasterlog = "%s/%s/pg_log/*" % m.group(1,2)
+           if not self.grabLog( self.backupmasterhostname
+                              , backupmasterlog
+                              , backupmaster_out_name
+                              , time_opt
+                              ):
+               os.remove(backupmaster_out_name)
+
+           self.runCmd(['scp', '-q',
+                        '%s/postgresql.conf' % str(self.backupmasterhostname + ':' + self.backupmasterhostdir),
+                        'backupmaster/postgresql_%s.conf' % m.group(2)])
+        
+
         # Grab segment logs and postgresql.conf
         #                    host  : fullpath / filename
-        host_rx = re.compile('(.*)\:(.*)/([^/]*)')                        
-        for seg in self.segments:
-            m = host_rx.search(seg)
-            
-            hostname = m.group(1)            
-            out_name='%s/%s_rotated.log' % (m.group(1,3))            
-            seglog = "%s/%s/pg_log/*" % m.group(2,3)
-            if not self.grabSegmentLog(hostname,seg,seglog,out_name,time_opt):
-                os.remove(out_name)
-            
-            
-            self.runCmd(['scp', '-q',
-                         '%s/postgresql.conf' % seg,
-                         '%s/postgresql_%s.conf' % m.group(1,3)])
+        host_rx = re.compile('(.*)\:(.*)/([^/]*)')
+        if self.runsegmentlog == True and self.runconnected == True:
+           for seg in self.segments:
+               if self.log_list != None and int(seg[0]) not in self.log_list:
+                  continue
+               m = host_rx.search(seg[1])
+               hostname = m.group(1)            
+               out_name='%s/%s_rotated.log' % (m.group(1,3))            
+               seglog = "%s/%s/pg_log/*" % m.group(2,3)
+               if not self.grabLog(hostname,seglog,out_name,time_opt):
+                   os.remove(out_name)
+               self.runCmd(['scp', '-q',
+                            '%s/postgresql.conf' % seg[1],
+                            '%s/postgresql_%s.conf' % m.group(1,3)])
         
+        # Grab backup (mirror) segment logs and postgresql.conf
+        #                    host  : fullpath / filename
+        host_rx = re.compile('(.*)\:(.*)/([^/]*)')
+        if self.runsegmentlog == True and self.runconnected == True:
+           for mir in self.mirrors:
+               if self.log_list != None and int(mir[0]) not in self.log_list:
+                     continue
+               m = host_rx.search(mir[1])
+               hostname = m.group(1)
+               out_name = '%s/%s_rotated_mirror.log' % (m.group(1,3))
+               mirlog   = "%s/%s/pg_log/*" % m.group(2,3)
+               if not self.grabLog(hostname,mirlog,out_name,time_opt):
+                   os.remove(out_name)
+               self.runCmd(['scp', '-q',
+                            '%s/postgresql.conf' % mir[1],
+                            '%s/postgresql_%s_mirror.conf' % m.group(1,3)])
+
         #3 grab gpAdminLogs
         adminLogsDir=os.path.expanduser("~") + "/gpAdminLogs/"
         self.runCmd(['cp', '-R', adminLogsDir , 'master/gpAdminLogs'])
@@ -602,22 +848,25 @@ class GPDetective:
         '''
         self.log('systemInfo')
 
-        self.writeCmd('gpstate_mirrors.log',        ['gpstate', '-m'])
-        self.writeCmd('gpstate_standby_master.log', ['gpstate', '-f'])
+        if self.rungpstate == True and self.runconnected == True:
+           self.writeCmd('gpstate_mirrors.log',        ['gpstate', '-m'])
+           self.writeCmd('gpstate_standby_master.log', ['gpstate', '-f'])
 #        self.writeCmd('gpstate_master.log',         
 #                      ['gpstate', '-d', self.masterdir])
 
-        self.writeCmd('gpcheckos_master.log',   
-                      ['gpcheckos', '-vm', '-h', self.opt['-h']])
-        self.writeCmd('gpcheckos_segments.log', 
-                      ['gpcheckos', '-vf', 'hosts'])
-
+        if self.rungpcheckos == True:
+           self.writeCmd('gpcheckos_master.log',   
+                         ['gpcheckos', '-vm', '-h', self.opt['-h']])
+           if self.runconnected == True:
+              self.writeCmd('gpcheckos_segments.log', 
+                            ['gpcheckos', '-vf', 'hosts'])
+        
 
     #------------------------------------------------------------
     def checkCatalog(self):
         '''
         1. Run gpcheckcat
-        2. pg_dump all databases
+        2. pg_dump all databases or pg_dump using command specified in pg_dump_options
         3. Run other catalog queries
         '''
         self.log('checkCatalog')
@@ -628,22 +877,19 @@ class GPDetective:
         if self.opt['-U']: checkcat.extend(['-U', str(self.opt['-U'])])
         if self.opt['-P']: checkcat.extend(['-P', str(self.opt['-P'])])
 
-        checkdb = [libdir + '/gpcheckdb']
-        if self.opt['-h']: checkdb.extend(['-h', str(self.opt['-h'])])
-        if self.opt['-p']: checkdb.extend(['-p', str(self.opt['-p'])])
-        if self.opt['-U']: checkdb.extend(['-U', str(self.opt['-U'])])
-        checkdb.append('-d')
+        if self.rungpcheckcat == True:
+           for db in self.databases:
+              checkcat.append(db)
+              self.writeCmd('gpcheckcat_' + db + '.log', checkcat)
+              checkcat.pop()
 
-        for db in self.databases:
-            checkcat.append(db)
-            checkdb.append(db)
-            self.writeCmd('gpcheckcat_' + db + '.log', checkcat)
-            self.writeCmd('gpcheckdb_' + db + '.log', checkdb)
-            checkcat.pop()
-            checkdb.pop()
-
-        self.writeCmd('pg_dumpall.log', 
-                      ['pg_dumpall', '--schema-only', '--gp-syntax']);
+        if self.runpg_dumpall == True and self.pg_dump_options == None:
+            self.writeCmd('pg_dumpall.log', 
+                         ['pg_dumpall', '--schema-only', '--gp-syntax']);
+        if self.pg_dump_options != None:
+            self.writeCmd( 'pg_dump.log'
+                         , 'pg_dump' + ' --schema-only' + ' --gp-syntax ' + self.pg_dump_options
+                         );
 
         self.writeSelect('catalog_q1.log', 
         '''
@@ -681,6 +927,7 @@ class GPDetective:
              AND  a.attnum = s.staattnum 
           ORDER BY 1, 2
         ''')
+
 
     #------------------------------------------------------------
     def crashReport(self):
@@ -747,6 +994,8 @@ class GPDetective:
             if len(core_path) > 0:
                 cores = self.runCmd('ls -1 ' + core_path + core_pattern, host)
                 cores = cores.split('\n')
+                # If there are no cores, we end up with a list with one empty item. Remove it.
+                cores.remove('')
             else:
                 # cores inconvienently dumped into process directory,
                 # so go look in the relevant locations
@@ -755,11 +1004,11 @@ class GPDetective:
                     dir = '%s %s/%s' % (dir, self.masterdir, core_pattern)
 
                 for seg in self.segments:
-                    (shost, sdir) = seg.split(':')
+                    (shost, sdir) = seg[1].split(':')
                     if shost == host:
                         dir = '%s %s/%s' % (dir, sdir, core_pattern)
                 for seg in self.mirrors:
-                    (shost, sdir) = seg.split(':')
+                    (shost, sdir) = seg[1].split(':')
                     if shost == host:
                         dir = '%s %s/%s' % (dir, sdir, core_pattern)
                 cores = self.runCmd('ls -1 ' + dir, host)
@@ -793,7 +1042,7 @@ class GPDetective:
         '''
         Creates the temporary directory and cds to that location
         '''
-        self.logdir = tempfile.mkdtemp()
+        self.logdir = tempfile.mkdtemp(dir=self.tempdir)
         os.chdir(self.logdir)
         timestamp = self.runCmd('date +%Y%m%d%H%M%S')
         self.tardir = 'gpdetective' + timestamp.strip()
@@ -832,8 +1081,10 @@ try:
     try:    
         d.copyLogs()
         d.systemInfo()
-        d.checkCatalog()
-        d.crashReport()
+        if d.runconnected == True:
+           d.checkCatalog()
+        if d.runcore == True:
+           d.crashReport()
         d.finishup()
     except Exception, e:
         print 'ERROR: %s' % e
