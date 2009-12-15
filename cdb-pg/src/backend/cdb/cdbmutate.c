@@ -483,7 +483,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
                     Insist(focusPlan(plan, true, false, false));
 			}
 			
-			needToAssignDirectDispatchContentIds = gp_enable_direct_dispatch;
+			needToAssignDirectDispatchContentIds = gp_enable_direct_dispatch && ! query->into;
 			break;
 
 		case CMD_INSERT:
