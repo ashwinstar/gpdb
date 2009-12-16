@@ -20,7 +20,7 @@ LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
 
 
-SNMPFLAGS=-I. -I./RDBMS-MIB_src $(shell net-snmp-config --cflags)
+SNMPFLAGS=-I. -I./RDBMS-MIB_src $(shell net-snmp-config --cflags) -fgnu89-inline
 AGENTLIBS=$(shell net-snmp-config --agent-libs)
 
 override CPPFLAGS := -DFRONTEND -DDEF_PGPORT=$(DEF_PGPORT) -I$(libpq_srcdir) $(CPPFLAGS) $(SNMPFLAGS)
