@@ -17,7 +17,7 @@ DIRS = initdb ipcclean pg_ctl pg_dump \
 	psql scripts pg_config pg_controldata pg_resetxlog \
 	gpmapreduce gpupgrade 
 	
-ifeq ($(USE_SNMP), 1)
+ifeq ($(enable_snmp),yes)
 DIRS+=gpsnmpd
 endif
 
