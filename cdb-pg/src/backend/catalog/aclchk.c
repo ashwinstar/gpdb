@@ -683,25 +683,28 @@ ExecGrant_Relation(InternalGrant *istmt)
 
 	foreach(cell, istmt->objects)
 	{
-		Oid			relOid = lfirst_oid(cell);
-		Datum		aclDatum;
-		Form_pg_class pg_class_tuple;
-		bool		isNull;
-		AclMode		avail_goptions;
-		AclMode		this_privileges;
-		Acl		   *old_acl;
-		Acl		   *new_acl;
-		Oid			grantorId;
-		Oid			ownerId = InvalidOid;
-		HeapTuple	tuple;
-		HeapTuple	newtuple;
-		Datum		values[Natts_pg_class];
-		bool		nulls[Natts_pg_class];
-		bool		replaces[Natts_pg_class];
-		int			nnewmembers;
-		Oid		   *newmembers;
-		int			noldmembers = 0;
-		Oid		   *oldmembers;
+		Oid				 relOid		 = lfirst_oid(cell);
+		Datum			 aclDatum;
+		Form_pg_class	 pg_class_tuple;
+		bool			 isNull;
+		AclMode			 avail_goptions;
+		AclMode			 this_privileges;
+		Acl				*old_acl;
+		Acl				*new_acl;
+		Oid				 grantorId;
+		Oid				 ownerId	 = InvalidOid;
+		HeapTuple		 tuple;
+		HeapTuple		 newtuple;
+		Datum			 values[Natts_pg_class];
+		bool			 nulls[Natts_pg_class];
+		bool			 replaces[Natts_pg_class];
+		int				 nnewmembers;
+		Oid				*newmembers;
+		int				 noldmembers = 0;
+		Oid				*oldmembers;
+		bool			 bTemp;
+
+		bTemp = false;
 
 		tuple = SearchSysCache(RELOID,
 							   ObjectIdGetDatum(relOid),
@@ -798,9 +801,10 @@ ExecGrant_Relation(InternalGrant *istmt)
 					if (this_privileges & ~((AclMode) ACL_ALL_RIGHTS_SEQUENCE))
 					{
 						/*
-						 * Mention the object name because the user needs to know
-						 * which operations succeeded.	This is required because
-						 * WARNING allows the command to continue.
+						 * Mention the object name because the user
+						 * needs to know which operations
+						 * succeeded. This is required because WARNING
+						 * allows the command to continue.
 						 */
 						ereport(WARNING,
 								(errcode(ERRCODE_INVALID_GRANT_OPERATION),
@@ -814,10 +818,10 @@ ExecGrant_Relation(InternalGrant *istmt)
 					if (this_privileges & ~((AclMode) ACL_ALL_RIGHTS_RELATION))
 	
 						/*
-						 * USAGE is the only permission supported by sequences but
-						 * not by non-sequences.  Don't mention the object name
-						 * because we didn't in the combined TABLE | SEQUENCE
-						 * check.
+						 * USAGE is the only permission supported by
+						 * sequences but not by non-sequences.  Don't
+						 * mention the object name because we didn't
+						 * in the combined TABLE | SEQUENCE check.
 						 */
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_GRANT_OPERATION),
@@ -826,8 +830,8 @@ ExecGrant_Relation(InternalGrant *istmt)
 			}
 	
 			/*
-			 * Get owner ID and working copy of existing ACL. If there's no ACL,
-			 * substitute the proper default.
+			 * Get owner ID and working copy of existing ACL. If
+			 * there's no ACL, substitute the proper default.
 			 */
 			ownerId = pg_class_tuple->relowner;
 			aclDatum = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_relacl,
@@ -845,8 +849,9 @@ ExecGrant_Relation(InternalGrant *istmt)
 								&grantorId, &avail_goptions);
 
 			/*
-			 * Restrict the privileges to what we can actually grant, and emit the
-			 * standards-mandated warning and error messages.
+			 * Restrict the privileges to what we can actually grant,
+			 * and emit the standards-mandated warning and error
+			 * messages.
 			 */
 			this_privileges =
 				restrict_and_check_grant(istmt->is_grant, avail_goptions,
@@ -859,8 +864,8 @@ ExecGrant_Relation(InternalGrant *istmt)
 			/*
 			 * Generate new ACL.
 			 *
-			 * We need the members of both old and new ACLs so we can correct the
-			 * shared dependency information.
+			 * We need the members of both old and new ACLs so we can
+			 * correct the shared dependency information.
 			 */
 			noldmembers = aclmembers(old_acl, &oldmembers);
 	
@@ -884,9 +889,15 @@ ExecGrant_Relation(InternalGrant *istmt)
 										 values, nulls, replaces);
 
 		simple_heap_update(relation, &newtuple->t_self, newtuple);
+		
+		/* MPP-7572: Don't track metadata if table in any
+		 * temporary namespace
+		 */
+		bTemp = isAnyTempNamespace(pg_class_tuple->relnamespace);
 
 		/* MPP-6929: metadata tracking */
-		if ((Gp_role == GP_ROLE_DISPATCH)
+		if (!bTemp && 
+			(Gp_role == GP_ROLE_DISPATCH)
 			&& (
 				(pg_class_tuple->relkind == RELKIND_INDEX) ||
 				(pg_class_tuple->relkind == RELKIND_RELATION) ||

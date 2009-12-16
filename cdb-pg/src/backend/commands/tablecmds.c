@@ -1315,16 +1315,20 @@ DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
 #define METATRACK_VALIDNAMESPACE(namespaceId) \
 	(namespaceId != PG_TOAST_NAMESPACE &&	\
 	 namespaceId != PG_BITMAPINDEX_NAMESPACE && \
-	 namespaceId != PG_AOSEGMENT_NAMESPACE)
+	 namespaceId != PG_AOSEGMENT_NAMESPACE )
 
 /* check for valid namespace and valid relkind */
 static 
 bool
 MetaTrackValidKindNsp(Form_pg_class rd_rel)
 {
+	Oid nsp = rd_rel->relnamespace;
+
 	/* MPP-7599: watch out for toast indexes */
-	return (METATRACK_VALIDNAMESPACE(rd_rel->relnamespace)
-			&& MetaTrackValidRelkind(rd_rel->relkind));
+	return (METATRACK_VALIDNAMESPACE(nsp)
+			&& MetaTrackValidRelkind(rd_rel->relkind)
+			/* MPP-7572: not valid if in any temporary namespace */
+			&& (!(isAnyTempNamespace(nsp))));
 }
 
 /*
@@ -3044,7 +3048,9 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
 		&& (   MetaTrackValidRelkind(relkind)
-			&& METATRACK_VALIDNAMESPACE(namespaceId)))
+			&& METATRACK_VALIDNAMESPACE(namespaceId)
+			   && (!(isAnyTempNamespace(namespaceId)))
+				))
 		MetaTrackUpdObject(RelationRelationId,
 						   myrelid,
 						   GetUserId(),

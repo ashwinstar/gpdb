@@ -360,16 +360,19 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 		
 	foreach (le1, lRelOids)
 	{
-		Oid candidateOid = InvalidOid;
-		Relation	candidateRelation = NULL;
+		Oid				candidateOid	  = InvalidOid;
+		Relation		candidateRelation = NULL;
+		bool			bTemp;
+
+		bTemp = false;
 		
 		Assert(analyzeStatementContext == CurrentMemoryContext);
 
 		if (bUseOwnXacts)
 		{
 			/**
-			 * We use a different transaction per relation so that we may release
-			 * locks on relations as soon as possible.
+			 * We use a different transaction per relation so that we
+			 * may release locks on relations as soon as possible.
 			 */
 			setupRegularDtxContext();
 			StartTransactionCommand();
@@ -390,6 +393,12 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 				/*
 				 * We have permission to ANALYZE.
 				 */
+
+				/* MPP-7572: Don't track metadata if table in any
+				 * temporary namespace
+				 */
+				bTemp = isAnyTempNamespace(
+						candidateRelation->rd_rel->relnamespace);
 				
 				if (candidateRelation->rd_rel->relkind != RELKIND_RELATION)
 				{
@@ -436,7 +445,7 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 					relation_close(candidateRelation, NoLock);
 
 					/* MPP-6929: metadata tracking */
-					if (Gp_role == GP_ROLE_DISPATCH)
+					if (!bTemp && (Gp_role == GP_ROLE_DISPATCH))
 					{
 						char *asubtype = "";
 

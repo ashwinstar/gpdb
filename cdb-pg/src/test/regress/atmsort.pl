@@ -229,7 +229,7 @@ specified --do_equiv option.  Normally, the results are ignored.  The
 "--do_equiv=make" option replaces the contents of all queries in the
 equivalent region with the results of the first query.  If
 "--do_equiv=compare" option is specified, the region is processed
-according to the stanard query formatting rules.
+according to the standard query formatting rules.
 
 =item -- end_equiv
 

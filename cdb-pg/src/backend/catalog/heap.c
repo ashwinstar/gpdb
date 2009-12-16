@@ -47,6 +47,7 @@
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_appendonly.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_authid.h"
@@ -1340,6 +1341,10 @@ heap_create_with_catalog(const char *relname,
 			default:
 				break;
 		}
+
+		/* MPP-7572: not valid if in any temporary namespace */
+		if (doIt)
+			doIt = (!(isAnyTempNamespace(relnamespace)));
 
 		/* MPP-6929: metadata tracking */
 		if (doIt)

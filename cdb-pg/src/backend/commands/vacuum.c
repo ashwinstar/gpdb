@@ -422,11 +422,14 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 		 */
 		foreach(cur, relations)
 		{
-			Oid			relid = lfirst_oid(cur);
-			Relation    onerel;
-			LOCKMODE    lmode = NoLock;
-			LockRelId	onerelid;
-			MemoryContext oldctx;
+			Oid					relid = lfirst_oid(cur);
+			Relation			onerel;
+			LOCKMODE			lmode = NoLock;
+			LockRelId			onerelid;
+			MemoryContext		oldctx;
+			bool				bTemp;
+
+			bTemp = false;
 			
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
@@ -461,6 +464,11 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 				continue;
 			}
 
+			/* MPP-7572: Don't track metadata if table in any
+			 * temporary namespace
+			 */
+			bTemp = isAnyTempNamespace(get_rel_namespace(relid));
+
 			/*
 			 * Modify the Vacuum statement to vacuum an individual
 			 * relation. This ensures that only one relation will be
@@ -470,8 +478,9 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 			 */
 			if (list_length(relations) > 1 || vacstmt->relation == NULL)
 			{
-				char *namespace_name = get_namespace_name(get_rel_namespace(relid));
-				char *relname = get_rel_name(relid);
+				char	*relname		= get_rel_name(relid);
+				char	*namespace_name = 
+						get_namespace_name(get_rel_namespace(relid));
 
 				if (relname == NULL)
 				{
@@ -564,7 +573,7 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 			relation_close(onerel, NoLock);
 
 			/* MPP-6929: metadata tracking */
-			if (Gp_role == GP_ROLE_DISPATCH)
+			if (!bTemp && (Gp_role == GP_ROLE_DISPATCH))
 			{
 				char *vsubtype = ""; /* NOFULL */
 
