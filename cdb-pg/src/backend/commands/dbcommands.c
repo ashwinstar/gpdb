@@ -1216,6 +1216,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 		{
 			appendStringInfo(&buffer, "RESET \"%s\"", stmt->variable);
 		}
+		else
 		{
 			ListCell   *l;
 	

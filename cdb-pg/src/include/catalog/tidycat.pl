@@ -1460,6 +1460,11 @@ if (1)
 
 	my ($vol0, $dirs0, $base0) = File::Spec->splitpath($0);
 
+	# make sure have a directory for tidypath location
+	$dirs0 = File::Spec->rel2abs(".") unless (length($dirs0));
+
+#	print "dirs0: $dirs0\n";
+
 	my $tmp_indexing = File::Spec->catfile($glob_tmpdir, "indexing.h");
 	my $fil_indexing = File::Spec->catfile($dirs0, "indexing.h");
 	my $buf_indexing;
@@ -1571,6 +1576,8 @@ if (1)
 		close $file_out;
 
 	} # end for filnam
+
+#	print "tmp: $tmp_indexing\tfil: $fil_indexing\n";
 
 	fixup_generated_code ("indexing.h", $fil_indexing, $tmp_indexing,
 		\@arr_indexing, $verzion, $nnow)
