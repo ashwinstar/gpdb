@@ -1545,6 +1545,12 @@ isAnyTempNamespace(Oid namespaceId)
 	bool		result;
 	char	   *nspname;
 
+	/* Metadata tracking: don't check at bootstrap (before
+	 * pg_namespace is loaded 
+	 */
+	if (IsBootstrapProcessingMode())
+		return false;
+
 	/* If the namespace name starts with "pg_temp_", say "true" */
 	nspname = get_namespace_name(namespaceId);
 	if (!nspname)
