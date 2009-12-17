@@ -519,8 +519,11 @@ create table ao (i int, j int, k varchar) with(appendonly=true);
 insert into ao values (1,1,'a'), (2,2,'aa'), (3,3,'aaa'), (4,4,'aaaa'),
 	(5,5,'aaaaa'), (6,6,'aaaaaa'), (7,7,'aaaaaaa'), (8,8,'aaaaaaaa');
 create index ao_j on ao using bitmap(j);
+ERROR:  bitmap indexes are not supported on append-only tables
 create index ao_k on ao using bitmap(k);
+ERROR:  bitmap indexes are not supported on append-only tables
 create index ao_jk on ao using bitmap((j + length(k)));
+ERROR:  bitmap indexes are not supported on append-only tables
 set enable_seqscan=off;
 select * from ao where j = 2;
  i | j | k  
@@ -582,8 +585,8 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 INSERT INTO syscoltest VALUES(1);
 SELECT ctid FROM syscoltest;
    ctid   
----------
- (512,3)
+------------------
+ (33554432,32769)
 (1 row)
 
 DROP TABLE syscoltest;

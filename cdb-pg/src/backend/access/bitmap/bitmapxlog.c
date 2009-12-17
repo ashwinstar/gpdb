@@ -445,24 +445,22 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 			nextBuffer = XLogReadBuffer(reln, xlrec->bm_next_blkno, true);
 			nextPage = BufferGetPage(nextBuffer);
 
-			Assert(PageIsNew(nextPage));
-
 			_bitmap_init_bitmappage(reln, nextBuffer);
 
 			if (xlrec->bm_is_first)
 			{
 				lovItem->bm_lov_head = BufferGetBlockNumber(bitmapBuffer);
 				lovItem->bm_lov_tail = lovItem->bm_lov_head;
-
+				
 				PageSetLSN(lovPage, lsn);
 				PageSetTLI(lovPage, ThisTimeLineID);
-
+				
 				_bitmap_wrtbuf(lovBuffer);
 			}
-
+			
 			else
 				_bitmap_relbuf(lovBuffer);
-
+			
 			PageSetLSN(nextPage, lsn);
 			PageSetTLI(nextPage, ThisTimeLineID);
 
@@ -571,13 +569,11 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 			{
 				secondBuffer = XLogReadBuffer(reln, xlrec->bm_second_blkno, true);
 				secondPage = BufferGetPage(secondBuffer);
-				if (PageIsNew(secondPage))
-					_bitmap_init_bitmappage(reln, secondBuffer);
+				_bitmap_init_bitmappage(reln, secondBuffer);
 
 				secondOpaque =
 					(BMBitmapOpaque)PageGetSpecialPointer(secondPage);
 				secondBitmap = (BMBitmap) PageGetContents(secondPage);
-				Assert(XLByteLT(PageGetLSN(secondPage), lsn));
 			}
 
 			memcpy(firstBitmap->cwords, xlrec->bm_first_cwords,

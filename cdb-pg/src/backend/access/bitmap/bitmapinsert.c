@@ -67,7 +67,7 @@ static void updatesetbit_inpage(Relation rel, uint64 tidnum,
 								Buffer lovBuffer, OffsetNumber lovOffset,
 								Buffer bitmapBuffer, uint64 firstTidNumber,
 								bool use_wal);
-static void insertsetbit(Relation rel, Buffer lovBuffer, OffsetNumber lovOffset,
+static void insertsetbit(Relation rel, BlockNumber lovBlock, OffsetNumber lovOffset,
 			 			 uint64 tidnum, BMTIDBuffer *buf, bool use_wal);
 static uint64 getnumbits(BM_HRL_WORD *contentWords, 
 					     BM_HRL_WORD *headerWords, uint32 nwords);
@@ -1692,6 +1692,8 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
 		{
 			BM_HRL_WORD 	numOfFillWords;
 
+			CHECK_FOR_INTERRUPTS();
+
 			if (numOfTotalFillWords >= MAX_FILL_LENGTH)
 				numOfFillWords = MAX_FILL_LENGTH;
 			else
@@ -1704,7 +1706,7 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
 			bytes_used += mergewords(buf, true);
 
 			numOfTotalFillWords -= numOfFillWords;
-			zeros -= numOfFillWords * BM_HRL_WORD_SIZE;
+			zeros -= ((uint64)numOfFillWords * BM_HRL_WORD_SIZE);
 		}
 	}
 
@@ -1906,14 +1908,13 @@ _bitmap_free_tidbuf(BMTIDBuffer* buf)
 
 /*
  * insertsetbit() -- insert a given set bit into a bitmap
- * 	specified by lovBuffer.
- *
- * lovBuffer is pinned and locked.
+ * 	specified by lovBlock and lovOffset.
  */
 static void
-insertsetbit(Relation rel, Buffer lovBuffer, OffsetNumber lovOffset,
+insertsetbit(Relation rel, BlockNumber lovBlock, OffsetNumber lovOffset,
 			 uint64 tidnum, BMTIDBuffer *buf, bool use_wal)
 {
+	Buffer lovBuffer = _bitmap_getbuf(rel, lovBlock, BM_WRITE);
 	Page		lovPage = BufferGetPage(lovBuffer);
 	BMLOVItem	lovItem = (BMLOVItem) PageGetItem(lovPage, 
 								PageGetItemId(lovPage, lovOffset));
@@ -1950,15 +1951,25 @@ insertsetbit(Relation rel, Buffer lovBuffer, OffsetNumber lovOffset,
 		 */
 		updatesetbit(rel, lovBuffer, lovOffset, tidnum, use_wal);
 
+		_bitmap_relbuf(lovBuffer);
 		return;
 	}
 
 	/*
+	 * Need to release lovBuffer before calling buf_add_tid_with_fill,
+	 * since we may require an exclusive lock on the same buffer to free
+	 * up space.
+	 */
+	_bitmap_relbuf(lovBuffer);
+	
+	/*
 	 * To insert this new set bit, we also need to add all zeros between
 	 * this set bit and last set bit. We construct all new words here.
 	 */
-	buf_add_tid_with_fill(rel, buf, lovBuffer, lovOffset, tidnum, use_wal);
+	buf_add_tid_with_fill(rel, buf, lovBlock, lovOffset, tidnum, use_wal);
 	
+	lovBuffer = _bitmap_getbuf(rel, lovBlock, BM_WRITE);
+
 	/*
 	 * If there are only updates to the last bitmap complete word and
 	 * last bitmp word, we simply needs to update the lov buffer.
@@ -1981,6 +1992,8 @@ insertsetbit(Relation rel, Buffer lovBuffer, OffsetNumber lovOffset,
 				(rel, lovBuffer, lovOffset, lovItem);
 		
 		END_CRIT_SECTION();
+
+		_bitmap_relbuf(lovBuffer);
 		return;
 	}
 
@@ -1990,6 +2003,7 @@ insertsetbit(Relation rel, Buffer lovBuffer, OffsetNumber lovOffset,
 	 */
 	_bitmap_write_new_bitmapwords(rel, lovBuffer, lovOffset,
 								  buf, use_wal);
+	_bitmap_relbuf(lovBuffer);
 }
 
 /*
@@ -2199,7 +2213,6 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 	bool			blockNull, offsetNull;
 	bool			allNulls = true;
 	int 			attno;
-	Buffer          lovBuffer;
 
 	BMTIDBuffer     buf;
 	MemSet(&buf, 0, sizeof(buf));
@@ -2270,9 +2283,7 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 	 * LOV item that points to the bitmap page, to which we will
 	 * append the set bit.
 	 */
-	lovBuffer = _bitmap_getbuf(rel, lovBlock, BM_WRITE);
-	insertsetbit(rel, lovBuffer, lovOffset, tidnum, &buf, use_wal);
-	_bitmap_relbuf(lovBuffer);
+	insertsetbit(rel, lovBlock, lovOffset, tidnum, &buf, use_wal);
 
 	_bitmap_free_tidbuf(&buf);
 }

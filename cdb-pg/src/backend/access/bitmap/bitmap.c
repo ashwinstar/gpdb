@@ -1,3 +1,4 @@
+
 /*-------------------------------------------------------------------------
  *
  * bitmap.c
@@ -63,6 +64,11 @@ bmbuild(PG_FUNCTION_ARGS)
 	Oid heapOid = InvalidOid;
 	Oid indexRelfilenode = InvalidOid;
 	Oid heapRelfilenode = InvalidOid;
+
+	if (RelationIsAoRows(heap) || RelationIsAoCols(heap))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("bitmap indexes are not supported on append-only tables")));
 
 	if (indexInfo->ii_Concurrent)
 		elog(ERROR, "CONCURRENTLY is not supported when creating bitmap indexes");
@@ -663,6 +669,9 @@ pull_stream(StreamNode *self, PagetableEntry *e)
 	while(true)
 	{
 		bool found;
+
+		CHECK_FOR_INTERRUPTS();
+		
 		if (scanPos != NULL)
 			res = _bitmap_nextbatchwords(scan, ForwardScanDirection);
 		else
@@ -837,6 +846,7 @@ restart:
 		result->lastScanWordNo = 0;
 		if (result->nextTid < end)
 			return false;
+		
 		else
 			return true;
 	}
@@ -858,7 +868,7 @@ restart:
 
 		if (IS_FILL_WORD(words->hwords, result->lastScanWordNo))
 		{
-			uint32	fillLength;
+			uint64	fillLength;
 			
 			if (word == 0)
 				fillLength = 1;
@@ -920,7 +930,7 @@ restart:
 	if (IS_FILL_WORD(words->hwords, result->lastScanWordNo) &&
 		GET_FILL_BIT(words->cwords[result->lastScanWordNo]) == 0)
 	{
-		uint32 filllen;
+		uint64 filllen;
 		BM_HRL_WORD word = words->cwords[result->lastScanWordNo];
 
 		if(word == 0)

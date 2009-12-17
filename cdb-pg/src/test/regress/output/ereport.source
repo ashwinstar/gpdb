@@ -28,7 +28,7 @@
 -- *********************************************************************
 -- *********************************************************************
 CREATE EXTERNAL WEB TABLE get_ereport (x text)
-execute E'(find @abs_builddir@/../.. -name \'*.c\'  | xargs perl @gpwhich_get_ereport.pl@ -quiet -lax -fullname )' 
+execute E'(find @abs_srcdir@/../.. -name \'*.c\'  | xargs perl @gpwhich_get_ereport.pl@ -quiet -lax -fullname )' 
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 -- start_headers_ignore
@@ -36,353 +36,353 @@ FORMAT 'text' (delimiter '|');
 select * from get_ereport order by 1;
                                                                                                                 x                                                                                                                
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- aaaaa GP_IGNORE: aaad: acl - @abs_builddir@/../../backend/utils/adt/acl.c
- aaaaa GP_IGNORE: aaae: aomd - @abs_builddir@/../../backend/access/appendonly/aomd.c
- aaaaa GP_IGNORE: aaae: auth - @abs_builddir@/../../backend/libpq/auth.c
- aaaaa GP_IGNORE: aaaf: aclid - @abs_builddir@/../../pl/pljava/src/C/pljava/type/AclId.c
- aaaaa GP_IGNORE: aaaf: ascii - @abs_builddir@/../../backend/utils/adt/ascii.c
- aaaaa GP_IGNORE: aaaf: async - @abs_builddir@/../../backend/commands/async.c
- aaaaa GP_IGNORE: aaag: aclchk - @abs_builddir@/../../backend/catalog/aclchk.c
- aaaaa GP_IGNORE: aaah: analyze - @abs_builddir@/../../backend/commands/analyze.c
- aaaaa GP_IGNORE: aaah: analyze - @abs_builddir@/../../backend/parser/analyze.c
- aaaaa GP_IGNORE: aaai: allpaths - @abs_builddir@/../../backend/optimizer/path/allpaths.c
- aaaaa GP_IGNORE: aaai: aoblkdir - @abs_builddir@/../../backend/catalog/aoblkdir.c
- aaaaa GP_IGNORE: aaba: aosegfiles - @abs_builddir@/../../backend/access/appendonly/aosegfiles.c
- aaaaa GP_IGNORE: aaba: arrayfuncs - @abs_builddir@/../../backend/utils/adt/arrayfuncs.c
- aaaaa GP_IGNORE: aaba: arrayutils - @abs_builddir@/../../backend/utils/adt/arrayutils.c
- aaaaa GP_IGNORE: aaba: autovacuum - @abs_builddir@/../../backend/postmaster/autovacuum.c
- aaaaa GP_IGNORE: aabc: aocssegfiles - @abs_builddir@/../../backend/access/aocs/aocssegfiles.c
- aaaaa GP_IGNORE: aabc: appendonlyam - @abs_builddir@/../../backend/access/appendonly/appendonlyam.c
- aaaaa GP_IGNORE: aabd: aggregatecmds - @abs_builddir@/../../backend/commands/aggregatecmds.c
- aaaaa GP_IGNORE: aabd: appendonlytid - @abs_builddir@/../../backend/access/appendonly/appendonlytid.c
- aaaaa GP_IGNORE: aabf: arrayxuserfuncs - @abs_builddir@/../../backend/utils/adt/array_userfuncs.c
- aaaaa GP_IGNORE: aabg: appendonlywriter - @abs_builddir@/../../backend/access/appendonly/appendonlywriter.c
- aaaaa GP_IGNORE: baae: bool - @abs_builddir@/../../backend/utils/adt/bool.c
- aaaaa GP_IGNORE: baaf: bayes - @abs_builddir@/../../backend/utils/stat/bayes.c
- aaaaa GP_IGNORE: baag: bitmap - @abs_builddir@/../../backend/access/bitmap/bitmap.c
- aaaaa GP_IGNORE: baag: bufmgr - @abs_builddir@/../../backend/storage/buffer/bufmgr.c
- aaaaa GP_IGNORE: baah: backend - @abs_builddir@/../../pl/pljava/src/C/pljava/Backend.c
- aaaaa GP_IGNORE: baah: backoff - @abs_builddir@/../../backend/postmaster/backoff.c
- aaaaa GP_IGNORE: baah: bufpage - @abs_builddir@/../../backend/storage/page/bufpage.c
- aaaaa GP_IGNORE: baai: bgwriter - @abs_builddir@/../../backend/postmaster/bgwriter.c
- aaaaa GP_IGNORE: baai: bufxinit - @abs_builddir@/../../backend/storage/buffer/buf_init.c
- aaaaa GP_IGNORE: baaj: bexsecure - @abs_builddir@/../../backend/libpq/be-secure.c
- aaaaa GP_IGNORE: baba: bexfsstubs - @abs_builddir@/../../backend/libpq/be-fsstubs.c
- aaaaa GP_IGNORE: baba: bitmapxlog - @abs_builddir@/../../backend/access/bitmap/bitmapxlog.c
- aaaaa GP_IGNORE: babb: bitmappages - @abs_builddir@/../../backend/access/bitmap/bitmappages.c
- aaaaa GP_IGNORE: babc: bitmapinsert - @abs_builddir@/../../backend/access/bitmap/bitmapinsert.c
- aaaaa GP_IGNORE: caae: cash - @abs_builddir@/../../backend/utils/adt/cash.c
- aaaaa GP_IGNORE: caae: char - @abs_builddir@/../../backend/utils/adt/char.c
- aaaaa GP_IGNORE: caae: conv - @abs_builddir@/../../backend/utils/mb/conv.c
- aaaaa GP_IGNORE: caae: copy - @abs_builddir@/../../backend/commands/copy.c
- aaaaa GP_IGNORE: caaf: cdbtm - @abs_builddir@/../../backend/cdb/cdbtm.c
- aaaaa GP_IGNORE: caag: cdbcat - @abs_builddir@/../../backend/cdb/cdbcat.c
- aaaaa GP_IGNORE: caag: cdbfts - @abs_builddir@/../../backend/cdb/cdbfts.c
- aaaaa GP_IGNORE: caag: cdboid - @abs_builddir@/../../test/libcdbtest/cdboid.c
- aaaaa GP_IGNORE: caah: cdbdisp - @abs_builddir@/../../backend/cdb/cdbdisp.c
- aaaaa GP_IGNORE: caah: cdbgang - @abs_builddir@/../../backend/cdb/cdbgang.c
- aaaaa GP_IGNORE: caah: cdbhash - @abs_builddir@/../../backend/cdb/cdbhash.c
- aaaaa GP_IGNORE: caah: cdblink - @abs_builddir@/../../backend/cdb/cdblink.c
- aaaaa GP_IGNORE: caah: cdbpath - @abs_builddir@/../../backend/cdb/cdbpath.c
- aaaaa GP_IGNORE: caah: cdbsreh - @abs_builddir@/../../backend/cdb/cdbsreh.c
- aaaaa GP_IGNORE: caah: cdbutil - @abs_builddir@/../../backend/cdb/cdbutil.c
- aaaaa GP_IGNORE: caah: cdbvars - @abs_builddir@/../../backend/cdb/cdbvars.c
- aaaaa GP_IGNORE: caah: clauses - @abs_builddir@/../../backend/optimizer/util/clauses.c
- aaaaa GP_IGNORE: caah: cluster - @abs_builddir@/../../backend/commands/cluster.c
- aaaaa GP_IGNORE: caah: comment - @abs_builddir@/../../backend/commands/comment.c
- aaaaa GP_IGNORE: caah: complex - @abs_builddir@/../../tutorial/complex.c
- aaaaa GP_IGNORE: caah: copydir - @abs_builddir@/../../port/copydir.c
- aaaaa GP_IGNORE: caai: cdbgroup - @abs_builddir@/../../backend/cdb/cdbgroup.c
- aaaaa GP_IGNORE: caai: cdbllize - @abs_builddir@/../../backend/cdb/cdbllize.c
- aaaaa GP_IGNORE: caai: cdbsetop - @abs_builddir@/../../backend/cdb/cdbsetop.c
- aaaaa GP_IGNORE: caaj: cdbbackup - @abs_builddir@/../../backend/cdb/cdbbackup.c
- aaaaa GP_IGNORE: caaj: cdbmotion - @abs_builddir@/../../backend/cdb/motion/cdbmotion.c
- aaaaa GP_IGNORE: caaj: cdbmutate - @abs_builddir@/../../backend/cdb/cdbmutate.c
- aaaaa GP_IGNORE: caaj: chklocale - @abs_builddir@/../../port/chklocale.c
- aaaaa GP_IGNORE: caaj: composite - @abs_builddir@/../../pl/pljava/src/C/pljava/type/Composite.c
- aaaaa GP_IGNORE: caba: cdbcellbuf - @abs_builddir@/../../backend/cdb/cdbcellbuf.c
- aaaaa GP_IGNORE: caba: cdbexplain - @abs_builddir@/../../backend/cdb/cdbexplain.c
- aaaaa GP_IGNORE: caba: cdblogsync - @abs_builddir@/../../backend/cdb/cdblogsync.c
- aaaaa GP_IGNORE: caba: cdboidsync - @abs_builddir@/../../backend/cdb/cdboidsync.c
- aaaaa GP_IGNORE: caba: cdbrelsize - @abs_builddir@/../../backend/cdb/cdbrelsize.c
- aaaaa GP_IGNORE: caba: cdbsubplan - @abs_builddir@/../../backend/cdb/cdbsubplan.c
- aaaaa GP_IGNORE: caba: createplan - @abs_builddir@/../../backend/optimizer/plan/createplan.c
- aaaaa GP_IGNORE: cabb: cdbchunkbuf - @abs_builddir@/../../backend/cdb/cdbchunkbuf.c
- aaaaa GP_IGNORE: cabb: cdbexecplan - @abs_builddir@/../../test/libcdbtest/cdbexecplan.c
- aaaaa GP_IGNORE: cabb: cdbheaptest - @abs_builddir@/../../test/libcdbtest/cdbheaptest.c
- aaaaa GP_IGNORE: cabb: cdbworkfile - @abs_builddir@/../../backend/cdb/cdbworkfile.c
- aaaaa GP_IGNORE: cabc: cdbshowalias - @abs_builddir@/../../test/libcdbtest/cdbshowalias.c
- aaaaa GP_IGNORE: cabc: cdbsubselect - @abs_builddir@/../../backend/cdb/cdbsubselect.c
- aaaaa GP_IGNORE: cabe: conversioncmds - @abs_builddir@/../../backend/commands/conversioncmds.c
- aaaaa GP_IGNORE: cabf: cdbbufferedread - @abs_builddir@/../../backend/cdb/cdbbufferedread.c
- aaaaa GP_IGNORE: cabh: cdbbufferedappend - @abs_builddir@/../../backend/cdb/cdbbufferedappend.c
- aaaaa GP_IGNORE: cabh: cdbdispatchresult - @abs_builddir@/../../backend/cdb/cdbdispatchresult.c
- aaaaa GP_IGNORE: cabh: cdbdtxcontextinfo - @abs_builddir@/../../backend/cdb/cdbdtxcontextinfo.c
- aaaaa GP_IGNORE: cacc: cdbdistributedsnapshot - @abs_builddir@/../../backend/cdb/cdbdistributedsnapshot.c
- aaaaa GP_IGNORE: cace: cdbappendonlystorageread - @abs_builddir@/../../backend/cdb/cdbappendonlystorageread.c
- aaaaa GP_IGNORE: cacf: cdbappendonlystoragewrite - @abs_builddir@/../../backend/cdb/cdbappendonlystoragewrite.c
- aaaaa GP_IGNORE: daae: date - @abs_builddir@/../../backend/utils/adt/date.c
- aaaaa GP_IGNORE: daaf: datum - @abs_builddir@/../../backend/utils/adt/datum.c
- aaaaa GP_IGNORE: daaf: dfmgr - @abs_builddir@/../../backend/utils/fmgr/dfmgr.c
- aaaaa GP_IGNORE: daag: dbsize - @abs_builddir@/../../backend/utils/adt/dbsize.c
- aaaaa GP_IGNORE: daag: define - @abs_builddir@/../../backend/commands/define.c
- aaaaa GP_IGNORE: daag: dirmod - @abs_builddir@/../../port/dirmod.c
- aaaaa GP_IGNORE: daah: domains - @abs_builddir@/../../backend/utils/adt/domains.c
- aaaaa GP_IGNORE: daai: datetime - @abs_builddir@/../../backend/utils/adt/datetime.c
- aaaaa GP_IGNORE: daai: deadlock - @abs_builddir@/../../backend/storage/lmgr/deadlock.c
- aaaaa GP_IGNORE: daai: dynahash - @abs_builddir@/../../backend/utils/hash/dynahash.c
- aaaaa GP_IGNORE: daaj: ddaserver - @abs_builddir@/../../backend/postmaster/ddaserver.c
- aaaaa GP_IGNORE: daba: dbcommands - @abs_builddir@/../../backend/commands/dbcommands.c
- aaaaa GP_IGNORE: daba: dependency - @abs_builddir@/../../backend/catalog/dependency.c
- aaaaa GP_IGNORE: eaae: elog - @abs_builddir@/../../backend/utils/error/elog.c
- aaaaa GP_IGNORE: eaag: encode - @abs_builddir@/../../backend/utils/adt/encode.c
- aaaaa GP_IGNORE: eaah: execami - @abs_builddir@/../../backend/executor/execAmi.c
- aaaaa GP_IGNORE: eaah: explain - @abs_builddir@/../../backend/commands/explain.c
- aaaaa GP_IGNORE: eaai: encnames - @abs_builddir@/../../backend/utils/mb/encnames.c
- aaaaa GP_IGNORE: eaai: encnames - @abs_builddir@/../../bin/initdb/encnames.c
- aaaaa GP_IGNORE: eaai: encnames - @abs_builddir@/../../interfaces/libpq/encnames.c
- aaaaa GP_IGNORE: eaai: execmain - @abs_builddir@/../../backend/executor/execMain.c
- aaaaa GP_IGNORE: eaai: execqual - @abs_builddir@/../../backend/executor/execQual.c
- aaaaa GP_IGNORE: eaaj: exception - @abs_builddir@/../../pl/pljava/src/C/pljava/Exception.c
- aaaaa GP_IGNORE: eabc: exechhashagg - @abs_builddir@/../../backend/executor/execHHashagg.c
- aaaaa GP_IGNORE: faac: fd - @abs_builddir@/../../backend/storage/file/fd.c
- aaaaa GP_IGNORE: faae: fmgr - @abs_builddir@/../../backend/utils/fmgr/fmgr.c
- aaaaa GP_IGNORE: faaf: float - @abs_builddir@/../../backend/utils/adt/float.c
- aaaaa GP_IGNORE: faag: fileam - @abs_builddir@/../../backend/access/external/fileam.c
- aaaaa GP_IGNORE: faah: foreign - @abs_builddir@/../../backend/foreign/foreign.c
- aaaaa GP_IGNORE: faah: funcapi - @abs_builddir@/../../backend/utils/fmgr/funcapi.c
- aaaaa GP_IGNORE: faai: fastpath - @abs_builddir@/../../backend/tcop/fastpath.c
- aaaaa GP_IGNORE: faai: freelist - @abs_builddir@/../../backend/storage/buffer/freelist.c
- aaaaa GP_IGNORE: faai: ftsprobe - @abs_builddir@/../../backend/postmaster/ftsprobe.c
- aaaaa GP_IGNORE: faai: function - @abs_builddir@/../../pl/pljava/src/C/pljava/Function.c
- aaaaa GP_IGNORE: faaj: filespace - @abs_builddir@/../../backend/commands/filespace.c
- aaaaa GP_IGNORE: faaj: flatfiles - @abs_builddir@/../../backend/utils/init/flatfiles.c
- aaaaa GP_IGNORE: faaj: freespace - @abs_builddir@/../../backend/storage/freespace/freespace.c
- aaaaa GP_IGNORE: faaj: functions - @abs_builddir@/../../backend/executor/functions.c
- aaaaa GP_IGNORE: faba: formatting - @abs_builddir@/../../backend/utils/adt/formatting.c
- aaaaa GP_IGNORE: fabb: foreigncmds - @abs_builddir@/../../backend/commands/foreigncmds.c
- aaaaa GP_IGNORE: fabc: functioncmds - @abs_builddir@/../../backend/commands/functioncmds.c
- aaaaa GP_IGNORE: gaad: guc - @abs_builddir@/../../backend/utils/misc/guc.c
- aaaaa GP_IGNORE: gaae: gram - @abs_builddir@/../../backend/parser/gram.c
- aaaaa GP_IGNORE: gaah: genfile - @abs_builddir@/../../backend/utils/adt/genfile.c
- aaaaa GP_IGNORE: gaah: geoxops - @abs_builddir@/../../backend/utils/adt/geo_ops.c
- aaaaa GP_IGNORE: gaah: ginscan - @abs_builddir@/../../backend/access/gin/ginscan.c
- aaaaa GP_IGNORE: gaai: gistutil - @abs_builddir@/../../backend/access/gist/gistutil.c
- aaaaa GP_IGNORE: gaai: gpviewcp - @abs_builddir@/../../bin/gpupgrade/gpviewcp.c
- aaaaa GP_IGNORE: gaai: gucxfile - @abs_builddir@/../../backend/utils/misc/guc-file.c
- aaaaa GP_IGNORE: gaba: gistvacuum - @abs_builddir@/../../backend/access/gist/gistvacuum.c
- aaaaa GP_IGNORE: gabb: gpxcompress - @abs_builddir@/../../backend/storage/file/gp_compress.c
- aaaaa GP_IGNORE: gabc: ginarrayproc - @abs_builddir@/../../backend/access/gin/ginarrayproc.c
- aaaaa GP_IGNORE: gabf: gpxfastsequence - @abs_builddir@/../../backend/catalog/gp_fastsequence.c
- aaaaa GP_IGNORE: haad: hio - @abs_builddir@/../../backend/access/heap/hio.c
- aaaaa GP_IGNORE: haae: heap - @abs_builddir@/../../backend/catalog/heap.c
- aaaaa GP_IGNORE: haag: heapam - @abs_builddir@/../../backend/access/heap/heapam.c
- aaaaa GP_IGNORE: haai: hashovfl - @abs_builddir@/../../backend/access/hash/hashovfl.c
- aaaaa GP_IGNORE: haai: hashutil - @abs_builddir@/../../backend/access/hash/hashutil.c
- aaaaa GP_IGNORE: haaj: heaptuple - @abs_builddir@/../../backend/access/common/heaptuple.c
- aaaaa GP_IGNORE: haba: hashinsert - @abs_builddir@/../../backend/access/hash/hashinsert.c
- aaaaa GP_IGNORE: haba: hashsearch - @abs_builddir@/../../backend/access/hash/hashsearch.c
- aaaaa GP_IGNORE: iaad: int - @abs_builddir@/../../backend/utils/adt/int.c
- aaaaa GP_IGNORE: iaad: ipc - @abs_builddir@/../../backend/storage/ipc/ipc.c
- aaaaa GP_IGNORE: iaaf: index - @abs_builddir@/../../backend/catalog/index.c
- aaaaa GP_IGNORE: iaag: icxtcp - @abs_builddir@/../../backend/cdb/motion/ic_tcp.c
- aaaaa GP_IGNORE: iaag: icxudp - @abs_builddir@/../../backend/cdb/motion/ic_udp.c
- aaaaa GP_IGNORE: iaah: indexam - @abs_builddir@/../../backend/access/index/indexam.c
- aaaaa GP_IGNORE: iaah: invxapi - @abs_builddir@/../../backend/storage/large_object/inv_api.c
- aaaaa GP_IGNORE: iaai: inteight - @abs_builddir@/../../backend/utils/adt/int8.c
- aaaaa GP_IGNORE: iaai: ipcfuncs - @abs_builddir@/../../test/libcdbtest/ipcfuncs.c
- aaaaa GP_IGNORE: iaaj: icxcommon - @abs_builddir@/../../backend/cdb/motion/ic_common.c
- aaaaa GP_IGNORE: iaaj: indexcmds - @abs_builddir@/../../backend/commands/indexcmds.c
- aaaaa GP_IGNORE: iaaj: initsplan - @abs_builddir@/../../backend/optimizer/plan/initsplan.c
- aaaaa GP_IGNORE: iaba: indextuple - @abs_builddir@/../../backend/access/common/indextuple.c
- aaaaa GP_IGNORE: jaai: joinpath - @abs_builddir@/../../backend/optimizer/path/joinpath.c
- aaaaa GP_IGNORE: laae: like - @abs_builddir@/../../backend/utils/adt/like.c
- aaaaa GP_IGNORE: laae: lmgr - @abs_builddir@/../../backend/storage/lmgr/lmgr.c
- aaaaa GP_IGNORE: laae: lock - @abs_builddir@/../../backend/storage/lmgr/lock.c
- aaaaa GP_IGNORE: laag: lwlock - @abs_builddir@/../../backend/storage/lmgr/lwlock.c
- aaaaa GP_IGNORE: laah: logtape - @abs_builddir@/../../backend/utils/sort/logtape.c
- aaaaa GP_IGNORE: laai: localbuf - @abs_builddir@/../../backend/storage/buffer/localbuf.c
- aaaaa GP_IGNORE: laai: lockcmds - @abs_builddir@/../../backend/commands/lockcmds.c
- aaaaa GP_IGNORE: laaj: lsyscache - @abs_builddir@/../../backend/utils/cache/lsyscache.c
- aaaaa GP_IGNORE: laba: likexmatch - @abs_builddir@/../../backend/utils/adt/like_match.c
- aaaaa GP_IGNORE: maac: md - @abs_builddir@/../../backend/storage/smgr/md.c
- aaaaa GP_IGNORE: maad: mac - @abs_builddir@/../../backend/utils/adt/mac.c
- aaaaa GP_IGNORE: maae: mcxt - @abs_builddir@/../../backend/utils/mmgr/mcxt.c
- aaaaa GP_IGNORE: maae: misc - @abs_builddir@/../../backend/utils/adt/misc.c
- aaaaa GP_IGNORE: maag: matrix - @abs_builddir@/../../backend/utils/adt/matrix.c
- aaaaa GP_IGNORE: maah: mbutils - @abs_builddir@/../../backend/utils/mb/mbutils.c
- aaaaa GP_IGNORE: maah: memprot - @abs_builddir@/../../backend/utils/mmgr/memprot.c
- aaaaa GP_IGNORE: maai: miscinit - @abs_builddir@/../../backend/utils/init/miscinit.c
- aaaaa GP_IGNORE: mabb: mingwcompat - @abs_builddir@/../../backend/port/win32/mingwcompat.c
- aaaaa GP_IGNORE: mabc: mlipcxaccess - @abs_builddir@/../../test/libcdbtest/mlipc_access.c
- aaaaa GP_IGNORE: naae: name - @abs_builddir@/../../backend/utils/adt/name.c
- aaaaa GP_IGNORE: naag: notxin - @abs_builddir@/../../backend/utils/adt/not_in.c
- aaaaa GP_IGNORE: naah: nbtpage - @abs_builddir@/../../backend/access/nbtree/nbtpage.c
- aaaaa GP_IGNORE: naah: nbtsort - @abs_builddir@/../../backend/access/nbtree/nbtsort.c
- aaaaa GP_IGNORE: naah: network - @abs_builddir@/../../backend/utils/adt/network.c
- aaaaa GP_IGNORE: naah: nodeagg - @abs_builddir@/../../backend/executor/nodeAgg.c
- aaaaa GP_IGNORE: naah: numeric - @abs_builddir@/../../backend/utils/adt/numeric.c
- aaaaa GP_IGNORE: naai: nabstime - @abs_builddir@/../../backend/utils/adt/nabstime.c
- aaaaa GP_IGNORE: naai: nextstep - @abs_builddir@/../../backend/port/dynloader/nextstep.c
- aaaaa GP_IGNORE: naai: numutils - @abs_builddir@/../../backend/utils/adt/numutils.c
- aaaaa GP_IGNORE: naaj: namespace - @abs_builddir@/../../backend/catalog/namespace.c
- aaaaa GP_IGNORE: naaj: nbtinsert - @abs_builddir@/../../backend/access/nbtree/nbtinsert.c
- aaaaa GP_IGNORE: naba: nodemotion - @abs_builddir@/../../backend/executor/nodeMotion.c
- aaaaa GP_IGNORE: naba: nodewindow - @abs_builddir@/../../backend/executor/nodeWindow.c
- aaaaa GP_IGNORE: nabb: nodesubplan - @abs_builddir@/../../backend/executor/nodeSubplan.c
- aaaaa GP_IGNORE: nabc: nodehashjoin - @abs_builddir@/../../backend/executor/nodeHashjoin.c
- aaaaa GP_IGNORE: nabd: nodemergejoin - @abs_builddir@/../../backend/executor/nodeMergejoin.c
- aaaaa GP_IGNORE: nabg: nodefunctionscan - @abs_builddir@/../../backend/executor/nodeFunctionscan.c
- aaaaa GP_IGNORE: nabi: nodeshareinputscan - @abs_builddir@/../../backend/executor/nodeShareInputScan.c
- aaaaa GP_IGNORE: nabj: nodebitmapindexscan - @abs_builddir@/../../backend/executor/nodeBitmapIndexscan.c
- aaaaa GP_IGNORE: oaad: oid - @abs_builddir@/../../backend/utils/adt/oid.c
- aaaaa GP_IGNORE: oabb: opclasscmds - @abs_builddir@/../../backend/commands/opclasscmds.c
- aaaaa GP_IGNORE: oabc: operatorcmds - @abs_builddir@/../../backend/commands/operatorcmds.c
- aaaaa GP_IGNORE: oabd: oraclexcompat - @abs_builddir@/../../backend/utils/adt/oracle_compat.c
- aaaaa GP_IGNORE: paad: plr - @abs_builddir@/../../pl/plr/plr.c
- aaaaa GP_IGNORE: paae: pgtz - @abs_builddir@/../../timezone/pgtz.c
- aaaaa GP_IGNORE: paae: pinv - @abs_builddir@/../../backend/utils/stat/pinv.c
- aaaaa GP_IGNORE: paae: proc - @abs_builddir@/../../backend/storage/lmgr/proc.c
- aaaaa GP_IGNORE: paaf: pivot - @abs_builddir@/../../backend/utils/adt/pivot.c
- aaaaa GP_IGNORE: paaf: pltcl - @abs_builddir@/../../pl/tcl/pltcl.c
- aaaaa GP_IGNORE: paag: pgarch - @abs_builddir@/../../backend/postmaster/pgarch.c
- aaaaa GP_IGNORE: paag: pgstat - @abs_builddir@/../../backend/postmaster/pgstat.c
- aaaaa GP_IGNORE: paag: plperl - @abs_builddir@/../../pl/plperl/plperl.c
- aaaaa GP_IGNORE: paag: pquery - @abs_builddir@/../../backend/tcop/pquery.c
- aaaaa GP_IGNORE: paah: pgxproc - @abs_builddir@/../../backend/catalog/pg_proc.c
- aaaaa GP_IGNORE: paah: pgxsema - @abs_builddir@/../../backend/port/pg_sema.c
- aaaaa GP_IGNORE: paah: pgxtype - @abs_builddir@/../../backend/catalog/pg_type.c
- aaaaa GP_IGNORE: paah: plancat - @abs_builddir@/../../backend/optimizer/util/plancat.c
- aaaaa GP_IGNORE: paah: planner - @abs_builddir@/../../backend/optimizer/plan/planner.c
- aaaaa GP_IGNORE: paah: plxcomp - @abs_builddir@/../../pl/plpgsql/src/pl_comp.c
- aaaaa GP_IGNORE: paah: plxexec - @abs_builddir@/../../pl/plpgsql/src/pl_exec.c
- aaaaa GP_IGNORE: paah: plxgram - @abs_builddir@/../../pl/plpgsql/src/pl_gram.c
- aaaaa GP_IGNORE: paah: plxscan - @abs_builddir@/../../pl/plpgsql/src/pl_scan.c
- aaaaa GP_IGNORE: paah: prepare - @abs_builddir@/../../backend/commands/prepare.c
- aaaaa GP_IGNORE: paai: pathnode - @abs_builddir@/../../backend/optimizer/util/pathnode.c
- aaaaa GP_IGNORE: paai: pgobject - @abs_builddir@/../../pl/pljava/src/C/pljava/PgObject.c
- aaaaa GP_IGNORE: paai: pgxshmem - @abs_builddir@/../../backend/port/pg_shmem.c
- aaaaa GP_IGNORE: paai: plpython - @abs_builddir@/../../pl/plpython/plpython.c
- aaaaa GP_IGNORE: paai: plxfuncs - @abs_builddir@/../../pl/plpgsql/src/pl_funcs.c
- aaaaa GP_IGNORE: paai: postgres - @abs_builddir@/../../backend/tcop/postgres.c
- aaaaa GP_IGNORE: paai: postinit - @abs_builddir@/../../backend/utils/init/postinit.c
- aaaaa GP_IGNORE: paai: pqformat - @abs_builddir@/../../backend/libpq/pqformat.c
- aaaaa GP_IGNORE: paai: predtest - @abs_builddir@/../../backend/optimizer/util/predtest.c
- aaaaa GP_IGNORE: paai: printtup - @abs_builddir@/../../backend/access/common/printtup.c
- aaaaa GP_IGNORE: paai: proclang - @abs_builddir@/../../backend/commands/proclang.c
- aaaaa GP_IGNORE: paaj: parsexagg - @abs_builddir@/../../backend/parser/parse_agg.c
- aaaaa GP_IGNORE: paaj: pgxdepend - @abs_builddir@/../../backend/catalog/pg_depend.c
- aaaaa GP_IGNORE: paaj: portalmem - @abs_builddir@/../../backend/utils/mmgr/portalmem.c
- aaaaa GP_IGNORE: paaj: preptlist - @abs_builddir@/../../backend/optimizer/prep/preptlist.c
- aaaaa GP_IGNORE: paaj: procarray - @abs_builddir@/../../backend/storage/ipc/procarray.c
- aaaaa GP_IGNORE: paba: parsexexpr - @abs_builddir@/../../backend/parser/parse_expr.c
- aaaaa GP_IGNORE: paba: parsexfunc - @abs_builddir@/../../backend/parser/parse_func.c
- aaaaa GP_IGNORE: paba: parsexnode - @abs_builddir@/../../backend/parser/parse_node.c
- aaaaa GP_IGNORE: paba: parsexoper - @abs_builddir@/../../backend/parser/parse_oper.c
- aaaaa GP_IGNORE: paba: parsextype - @abs_builddir@/../../backend/parser/parse_type.c
- aaaaa GP_IGNORE: paba: planwindow - @abs_builddir@/../../backend/optimizer/plan/planwindow.c
- aaaaa GP_IGNORE: paba: plxhandler - @abs_builddir@/../../pl/plpgsql/src/pl_handler.c
- aaaaa GP_IGNORE: paba: portalcmds - @abs_builddir@/../../backend/commands/portalcmds.c
- aaaaa GP_IGNORE: paba: postmaster - @abs_builddir@/../../backend/postmaster/postmaster.c
- aaaaa GP_IGNORE: pabb: pgstatfuncs - @abs_builddir@/../../backend/utils/adt/pgstatfuncs.c
- aaaaa GP_IGNORE: pabb: pgxexttable - @abs_builddir@/../../backend/catalog/pg_exttable.c
- aaaaa GP_IGNORE: pabb: pgxoperator - @abs_builddir@/../../backend/catalog/pg_operator.c
- aaaaa GP_IGNORE: pabb: pgxshdepend - @abs_builddir@/../../backend/catalog/pg_shdepend.c
- aaaaa GP_IGNORE: pabb: pseudotypes - @abs_builddir@/../../backend/utils/adt/pseudotypes.c
- aaaaa GP_IGNORE: pabc: parsexclause - @abs_builddir@/../../backend/parser/parse_clause.c
- aaaaa GP_IGNORE: pabc: parsexcoerce - @abs_builddir@/../../backend/parser/parse_coerce.c
- aaaaa GP_IGNORE: pabc: parsextarget - @abs_builddir@/../../backend/parser/parse_target.c
- aaaaa GP_IGNORE: pabc: pgxaggregate - @abs_builddir@/../../backend/catalog/pg_aggregate.c
- aaaaa GP_IGNORE: pabc: pgxnamespace - @abs_builddir@/../../backend/catalog/pg_namespace.c
- aaaaa GP_IGNORE: pabc: pgxuserfuncs - @abs_builddir@/../../pl/plr/pg_userfuncs.c
- aaaaa GP_IGNORE: pabd: parsexutilcmd - @abs_builddir@/../../backend/parser/parse_utilcmd.c
- aaaaa GP_IGNORE: pabd: pgxappendonly - @abs_builddir@/../../backend/catalog/pg_appendonly.c
- aaaaa GP_IGNORE: pabd: pgxconversion - @abs_builddir@/../../backend/catalog/pg_conversion.c
- aaaaa GP_IGNORE: pabd: pgxconversion - @abs_builddir@/../../pl/plr/pg_conversion.c
- aaaaa GP_IGNORE: pabe: parsexrelation - @abs_builddir@/../../backend/parser/parse_relation.c
- aaaaa GP_IGNORE: pabe: pgxlargeobject - @abs_builddir@/../../backend/catalog/pg_largeobject.c
- aaaaa GP_IGNORE: pabi: pgxbackendxsupport - @abs_builddir@/../../pl/plr/pg_backend_support.c
- aaaaa GP_IGNORE: qaaf: queue - @abs_builddir@/../../backend/commands/queue.c
- aaaaa GP_IGNORE: qaba: quicklzone - @abs_builddir@/../../backend/storage/file/quicklz1.c
- aaaaa GP_IGNORE: qabc: quicklzthree - @abs_builddir@/../../backend/storage/file/quicklz3.c
- aaaaa GP_IGNORE: raae: read - @abs_builddir@/../../backend/nodes/read.c
- aaaaa GP_IGNORE: raag: regexp - @abs_builddir@/../../backend/utils/adt/regexp.c
- aaaaa GP_IGNORE: raah: regproc - @abs_builddir@/../../backend/utils/adt/regproc.c
- aaaaa GP_IGNORE: raah: regress - @abs_builddir@/../../backend/utils/stat/regress.c
- aaaaa GP_IGNORE: raah: regress - @abs_builddir@/../../test/regress/regress.c
- aaaaa GP_IGNORE: raah: relnode - @abs_builddir@/../../backend/optimizer/util/relnode.c
- aaaaa GP_IGNORE: raai: relcache - @abs_builddir@/../../backend/utils/cache/relcache.c
- aaaaa GP_IGNORE: raai: resqueue - @abs_builddir@/../../backend/utils/resscheduler/resqueue.c
- aaaaa GP_IGNORE: raai: rowtypes - @abs_builddir@/../../backend/utils/adt/rowtypes.c
- aaaaa GP_IGNORE: raaj: readfuncs - @abs_builddir@/../../backend/nodes/readfuncs.c
- aaaaa GP_IGNORE: raaj: ruleutils - @abs_builddir@/../../backend/utils/adt/ruleutils.c
- aaaaa GP_IGNORE: raba: reloptions - @abs_builddir@/../../backend/access/common/reloptions.c
- aaaaa GP_IGNORE: rabb: rixtriggers - @abs_builddir@/../../backend/utils/adt/ri_triggers.c
- aaaaa GP_IGNORE: rabc: resscheduler - @abs_builddir@/../../backend/utils/resscheduler/resscheduler.c
- aaaaa GP_IGNORE: rabc: rewritemanip - @abs_builddir@/../../backend/rewrite/rewriteManip.c
- aaaaa GP_IGNORE: rabd: rewritedefine - @abs_builddir@/../../backend/rewrite/rewriteDefine.c
- aaaaa GP_IGNORE: rabd: rewriteremove - @abs_builddir@/../../backend/rewrite/rewriteRemove.c
- aaaaa GP_IGNORE: rabe: rewritehandler - @abs_builddir@/../../backend/rewrite/rewriteHandler.c
- aaaaa GP_IGNORE: saad: spi - @abs_builddir@/../../backend/executor/spi.c
- aaaaa GP_IGNORE: saad: spi - @abs_builddir@/../../pl/pljava/src/C/pljava/SPI.c
- aaaaa GP_IGNORE: saae: scan - @abs_builddir@/../../backend/parser/scan.c
- aaaaa GP_IGNORE: saae: slru - @abs_builddir@/../../backend/access/transam/slru.c
- aaaaa GP_IGNORE: saae: smgr - @abs_builddir@/../../backend/storage/smgr/smgr.c
- aaaaa GP_IGNORE: saaf: shmem - @abs_builddir@/../../backend/storage/ipc/shmem.c
- aaaaa GP_IGNORE: saag: signal - @abs_builddir@/../../backend/port/win32/signal.c
- aaaaa GP_IGNORE: saag: sinval - @abs_builddir@/../../backend/storage/ipc/sinval.c
- aaaaa GP_IGNORE: saag: socket - @abs_builddir@/../../backend/port/win32/socket.c
- aaaaa GP_IGNORE: saah: scansup - @abs_builddir@/../../backend/parser/scansup.c
- aaaaa GP_IGNORE: saah: service - @abs_builddir@/../../backend/postmaster/service.c
- aaaaa GP_IGNORE: saai: selfuncs - @abs_builddir@/../../backend/utils/adt/selfuncs.c
- aaaaa GP_IGNORE: saai: sequence - @abs_builddir@/../../backend/commands/sequence.c
- aaaaa GP_IGNORE: saaj: seqserver - @abs_builddir@/../../backend/postmaster/seqserver.c
- aaaaa GP_IGNORE: saaj: syslogger - @abs_builddir@/../../backend/postmaster/syslogger.c
- aaaaa GP_IGNORE: saaj: sysvxsema - @abs_builddir@/../../backend/port/sysv_sema.c
- aaaaa GP_IGNORE: saba: schemacmds - @abs_builddir@/../../backend/commands/schemacmds.c
- aaaaa GP_IGNORE: saba: stringinfo - @abs_builddir@/../../backend/lib/stringinfo.c
- aaaaa GP_IGNORE: saba: sysvxshmem - @abs_builddir@/../../backend/port/sysv_shmem.c
- aaaaa GP_IGNORE: taad: tid - @abs_builddir@/../../backend/utils/adt/tid.c
- aaaaa GP_IGNORE: taae: type - @abs_builddir@/../../pl/pljava/src/C/pljava/type/Type.c
- aaaaa GP_IGNORE: taaf: timer - @abs_builddir@/../../backend/port/win32/timer.c
- aaaaa GP_IGNORE: taaf: tqual - @abs_builddir@/../../backend/utils/time/tqual.c
- aaaaa GP_IGNORE: taag: tupser - @abs_builddir@/../../backend/cdb/motion/tupser.c
- aaaaa GP_IGNORE: taah: trigger - @abs_builddir@/../../backend/commands/trigger.c
- aaaaa GP_IGNORE: taah: tupdesc - @abs_builddir@/../../backend/access/common/tupdesc.c
- aaaaa GP_IGNORE: taai: toasting - @abs_builddir@/../../backend/catalog/toasting.c
- aaaaa GP_IGNORE: taai: twophase - @abs_builddir@/../../backend/access/transam/twophase.c
- aaaaa GP_IGNORE: taai: typcache - @abs_builddir@/../../backend/utils/cache/typcache.c
- aaaaa GP_IGNORE: taai: typecmds - @abs_builddir@/../../backend/commands/typecmds.c
- aaaaa GP_IGNORE: taaj: tablecmds - @abs_builddir@/../../backend/commands/tablecmds.c
- aaaaa GP_IGNORE: taaj: timestamp - @abs_builddir@/../../backend/utils/adt/timestamp.c
- aaaaa GP_IGNORE: taaj: tuplesort - @abs_builddir@/../../backend/utils/sort/tuplesort.c
- aaaaa GP_IGNORE: taba: tablespace - @abs_builddir@/../../backend/commands/tablespace.c
- aaaaa GP_IGNORE: tabd: tuplestorenew - @abs_builddir@/../../backend/utils/sort/tuplestorenew.c
- aaaaa GP_IGNORE: tabg: tuplesortxmkheap - @abs_builddir@/../../backend/utils/sort/tuplesort_mkheap.c
- aaaaa GP_IGNORE: tabh: tuplesortxmkqsort - @abs_builddir@/../../backend/utils/sort/tuplesort_mkqsort.c
- aaaaa GP_IGNORE: uaad: udt - @abs_builddir@/../../pl/pljava/src/C/pljava/type/UDT.c
- aaaaa GP_IGNORE: uaad: url - @abs_builddir@/../../backend/access/external/url.c
- aaaaa GP_IGNORE: uaae: user - @abs_builddir@/../../backend/commands/user.c
- aaaaa GP_IGNORE: uaah: utility - @abs_builddir@/../../backend/tcop/utility.c
- aaaaa GP_IGNORE: uaaj: uriparser - @abs_builddir@/../../backend/utils/misc/uriparser.c
- aaaaa GP_IGNORE: uabg: utfeightxandxwin - @abs_builddir@/../../backend/utils/mb/conversion_procs/utf8_and_win/utf8_and_win.c
- aaaaa GP_IGNORE: uade: utfeightxandxisoeighteightfivenine - @abs_builddir@/../../backend/utils/mb/conversion_procs/utf8_and_iso8859/utf8_and_iso8859.c
- aaaaa GP_IGNORE: vaae: view - @abs_builddir@/../../backend/commands/view.c
- aaaaa GP_IGNORE: vaag: vacuum - @abs_builddir@/../../backend/commands/vacuum.c
- aaaaa GP_IGNORE: vaag: varbit - @abs_builddir@/../../backend/utils/adt/varbit.c
- aaaaa GP_IGNORE: vaag: varsup - @abs_builddir@/../../backend/access/transam/varsup.c
- aaaaa GP_IGNORE: vaah: varchar - @abs_builddir@/../../backend/utils/adt/varchar.c
- aaaaa GP_IGNORE: vaah: varlena - @abs_builddir@/../../backend/utils/adt/varlena.c
- aaaaa GP_IGNORE: vaai: variable - @abs_builddir@/../../backend/commands/variable.c
- aaaaa GP_IGNORE: vaba: vacuumlazy - @abs_builddir@/../../backend/commands/vacuumlazy.c
- aaaaa GP_IGNORE: waaf: wchar - @abs_builddir@/../../backend/utils/mb/wchar.c
- aaaaa GP_IGNORE: waaf: wchar - @abs_builddir@/../../interfaces/libpq/wchar.c
- aaaaa GP_IGNORE: wabd: walsendserver - @abs_builddir@/../../backend/postmaster/walsendserver.c
- aaaaa GP_IGNORE: wabg: winthreetwoxsema - @abs_builddir@/../../backend/port/win32_sema.c
- aaaaa GP_IGNORE: wabh: winthreetwoxshmem - @abs_builddir@/../../backend/port/win32_shmem.c
- aaaaa GP_IGNORE: xaae: xact - @abs_builddir@/../../backend/access/transam/xact.c
- aaaaa GP_IGNORE: xaae: xlog - @abs_builddir@/../../backend/access/transam/xlog.c
- aaaaa GP_IGNORE: xaah: xlogloc - @abs_builddir@/../../backend/access/transam/xlogloc.c
+ aaaaa GP_IGNORE: aaad: acl - @abs_srcdir@/../../backend/utils/adt/acl.c
+ aaaaa GP_IGNORE: aaae: aomd - @abs_srcdir@/../../backend/access/appendonly/aomd.c
+ aaaaa GP_IGNORE: aaae: auth - @abs_srcdir@/../../backend/libpq/auth.c
+ aaaaa GP_IGNORE: aaaf: aclid - @abs_srcdir@/../../pl/pljava/src/C/pljava/type/AclId.c
+ aaaaa GP_IGNORE: aaaf: ascii - @abs_srcdir@/../../backend/utils/adt/ascii.c
+ aaaaa GP_IGNORE: aaaf: async - @abs_srcdir@/../../backend/commands/async.c
+ aaaaa GP_IGNORE: aaag: aclchk - @abs_srcdir@/../../backend/catalog/aclchk.c
+ aaaaa GP_IGNORE: aaah: analyze - @abs_srcdir@/../../backend/commands/analyze.c
+ aaaaa GP_IGNORE: aaah: analyze - @abs_srcdir@/../../backend/parser/analyze.c
+ aaaaa GP_IGNORE: aaai: allpaths - @abs_srcdir@/../../backend/optimizer/path/allpaths.c
+ aaaaa GP_IGNORE: aaai: aoblkdir - @abs_srcdir@/../../backend/catalog/aoblkdir.c
+ aaaaa GP_IGNORE: aaba: aosegfiles - @abs_srcdir@/../../backend/access/appendonly/aosegfiles.c
+ aaaaa GP_IGNORE: aaba: arrayfuncs - @abs_srcdir@/../../backend/utils/adt/arrayfuncs.c
+ aaaaa GP_IGNORE: aaba: arrayutils - @abs_srcdir@/../../backend/utils/adt/arrayutils.c
+ aaaaa GP_IGNORE: aaba: autovacuum - @abs_srcdir@/../../backend/postmaster/autovacuum.c
+ aaaaa GP_IGNORE: aabc: aocssegfiles - @abs_srcdir@/../../backend/access/aocs/aocssegfiles.c
+ aaaaa GP_IGNORE: aabc: appendonlyam - @abs_srcdir@/../../backend/access/appendonly/appendonlyam.c
+ aaaaa GP_IGNORE: aabd: aggregatecmds - @abs_srcdir@/../../backend/commands/aggregatecmds.c
+ aaaaa GP_IGNORE: aabd: appendonlytid - @abs_srcdir@/../../backend/access/appendonly/appendonlytid.c
+ aaaaa GP_IGNORE: aabf: arrayxuserfuncs - @abs_srcdir@/../../backend/utils/adt/array_userfuncs.c
+ aaaaa GP_IGNORE: aabg: appendonlywriter - @abs_srcdir@/../../backend/access/appendonly/appendonlywriter.c
+ aaaaa GP_IGNORE: baae: bool - @abs_srcdir@/../../backend/utils/adt/bool.c
+ aaaaa GP_IGNORE: baaf: bayes - @abs_srcdir@/../../backend/utils/stat/bayes.c
+ aaaaa GP_IGNORE: baag: bitmap - @abs_srcdir@/../../backend/access/bitmap/bitmap.c
+ aaaaa GP_IGNORE: baag: bufmgr - @abs_srcdir@/../../backend/storage/buffer/bufmgr.c
+ aaaaa GP_IGNORE: baah: backend - @abs_srcdir@/../../pl/pljava/src/C/pljava/Backend.c
+ aaaaa GP_IGNORE: baah: backoff - @abs_srcdir@/../../backend/postmaster/backoff.c
+ aaaaa GP_IGNORE: baah: bufpage - @abs_srcdir@/../../backend/storage/page/bufpage.c
+ aaaaa GP_IGNORE: baai: bgwriter - @abs_srcdir@/../../backend/postmaster/bgwriter.c
+ aaaaa GP_IGNORE: baai: bufxinit - @abs_srcdir@/../../backend/storage/buffer/buf_init.c
+ aaaaa GP_IGNORE: baaj: bexsecure - @abs_srcdir@/../../backend/libpq/be-secure.c
+ aaaaa GP_IGNORE: baba: bexfsstubs - @abs_srcdir@/../../backend/libpq/be-fsstubs.c
+ aaaaa GP_IGNORE: baba: bitmapxlog - @abs_srcdir@/../../backend/access/bitmap/bitmapxlog.c
+ aaaaa GP_IGNORE: babb: bitmappages - @abs_srcdir@/../../backend/access/bitmap/bitmappages.c
+ aaaaa GP_IGNORE: babc: bitmapinsert - @abs_srcdir@/../../backend/access/bitmap/bitmapinsert.c
+ aaaaa GP_IGNORE: caae: cash - @abs_srcdir@/../../backend/utils/adt/cash.c
+ aaaaa GP_IGNORE: caae: char - @abs_srcdir@/../../backend/utils/adt/char.c
+ aaaaa GP_IGNORE: caae: conv - @abs_srcdir@/../../backend/utils/mb/conv.c
+ aaaaa GP_IGNORE: caae: copy - @abs_srcdir@/../../backend/commands/copy.c
+ aaaaa GP_IGNORE: caaf: cdbtm - @abs_srcdir@/../../backend/cdb/cdbtm.c
+ aaaaa GP_IGNORE: caag: cdbcat - @abs_srcdir@/../../backend/cdb/cdbcat.c
+ aaaaa GP_IGNORE: caag: cdbfts - @abs_srcdir@/../../backend/cdb/cdbfts.c
+ aaaaa GP_IGNORE: caag: cdboid - @abs_srcdir@/../../test/libcdbtest/cdboid.c
+ aaaaa GP_IGNORE: caah: cdbdisp - @abs_srcdir@/../../backend/cdb/cdbdisp.c
+ aaaaa GP_IGNORE: caah: cdbgang - @abs_srcdir@/../../backend/cdb/cdbgang.c
+ aaaaa GP_IGNORE: caah: cdbhash - @abs_srcdir@/../../backend/cdb/cdbhash.c
+ aaaaa GP_IGNORE: caah: cdblink - @abs_srcdir@/../../backend/cdb/cdblink.c
+ aaaaa GP_IGNORE: caah: cdbpath - @abs_srcdir@/../../backend/cdb/cdbpath.c
+ aaaaa GP_IGNORE: caah: cdbsreh - @abs_srcdir@/../../backend/cdb/cdbsreh.c
+ aaaaa GP_IGNORE: caah: cdbutil - @abs_srcdir@/../../backend/cdb/cdbutil.c
+ aaaaa GP_IGNORE: caah: cdbvars - @abs_srcdir@/../../backend/cdb/cdbvars.c
+ aaaaa GP_IGNORE: caah: clauses - @abs_srcdir@/../../backend/optimizer/util/clauses.c
+ aaaaa GP_IGNORE: caah: cluster - @abs_srcdir@/../../backend/commands/cluster.c
+ aaaaa GP_IGNORE: caah: comment - @abs_srcdir@/../../backend/commands/comment.c
+ aaaaa GP_IGNORE: caah: complex - @abs_srcdir@/../../tutorial/complex.c
+ aaaaa GP_IGNORE: caah: copydir - @abs_srcdir@/../../port/copydir.c
+ aaaaa GP_IGNORE: caai: cdbgroup - @abs_srcdir@/../../backend/cdb/cdbgroup.c
+ aaaaa GP_IGNORE: caai: cdbllize - @abs_srcdir@/../../backend/cdb/cdbllize.c
+ aaaaa GP_IGNORE: caai: cdbsetop - @abs_srcdir@/../../backend/cdb/cdbsetop.c
+ aaaaa GP_IGNORE: caaj: cdbbackup - @abs_srcdir@/../../backend/cdb/cdbbackup.c
+ aaaaa GP_IGNORE: caaj: cdbmotion - @abs_srcdir@/../../backend/cdb/motion/cdbmotion.c
+ aaaaa GP_IGNORE: caaj: cdbmutate - @abs_srcdir@/../../backend/cdb/cdbmutate.c
+ aaaaa GP_IGNORE: caaj: chklocale - @abs_srcdir@/../../port/chklocale.c
+ aaaaa GP_IGNORE: caaj: composite - @abs_srcdir@/../../pl/pljava/src/C/pljava/type/Composite.c
+ aaaaa GP_IGNORE: caba: cdbcellbuf - @abs_srcdir@/../../backend/cdb/cdbcellbuf.c
+ aaaaa GP_IGNORE: caba: cdbexplain - @abs_srcdir@/../../backend/cdb/cdbexplain.c
+ aaaaa GP_IGNORE: caba: cdblogsync - @abs_srcdir@/../../backend/cdb/cdblogsync.c
+ aaaaa GP_IGNORE: caba: cdboidsync - @abs_srcdir@/../../backend/cdb/cdboidsync.c
+ aaaaa GP_IGNORE: caba: cdbrelsize - @abs_srcdir@/../../backend/cdb/cdbrelsize.c
+ aaaaa GP_IGNORE: caba: cdbsubplan - @abs_srcdir@/../../backend/cdb/cdbsubplan.c
+ aaaaa GP_IGNORE: caba: createplan - @abs_srcdir@/../../backend/optimizer/plan/createplan.c
+ aaaaa GP_IGNORE: cabb: cdbchunkbuf - @abs_srcdir@/../../backend/cdb/cdbchunkbuf.c
+ aaaaa GP_IGNORE: cabb: cdbexecplan - @abs_srcdir@/../../test/libcdbtest/cdbexecplan.c
+ aaaaa GP_IGNORE: cabb: cdbheaptest - @abs_srcdir@/../../test/libcdbtest/cdbheaptest.c
+ aaaaa GP_IGNORE: cabb: cdbworkfile - @abs_srcdir@/../../backend/cdb/cdbworkfile.c
+ aaaaa GP_IGNORE: cabc: cdbshowalias - @abs_srcdir@/../../test/libcdbtest/cdbshowalias.c
+ aaaaa GP_IGNORE: cabc: cdbsubselect - @abs_srcdir@/../../backend/cdb/cdbsubselect.c
+ aaaaa GP_IGNORE: cabe: conversioncmds - @abs_srcdir@/../../backend/commands/conversioncmds.c
+ aaaaa GP_IGNORE: cabf: cdbbufferedread - @abs_srcdir@/../../backend/cdb/cdbbufferedread.c
+ aaaaa GP_IGNORE: cabh: cdbbufferedappend - @abs_srcdir@/../../backend/cdb/cdbbufferedappend.c
+ aaaaa GP_IGNORE: cabh: cdbdispatchresult - @abs_srcdir@/../../backend/cdb/cdbdispatchresult.c
+ aaaaa GP_IGNORE: cabh: cdbdtxcontextinfo - @abs_srcdir@/../../backend/cdb/cdbdtxcontextinfo.c
+ aaaaa GP_IGNORE: cacc: cdbdistributedsnapshot - @abs_srcdir@/../../backend/cdb/cdbdistributedsnapshot.c
+ aaaaa GP_IGNORE: cace: cdbappendonlystorageread - @abs_srcdir@/../../backend/cdb/cdbappendonlystorageread.c
+ aaaaa GP_IGNORE: cacf: cdbappendonlystoragewrite - @abs_srcdir@/../../backend/cdb/cdbappendonlystoragewrite.c
+ aaaaa GP_IGNORE: daae: date - @abs_srcdir@/../../backend/utils/adt/date.c
+ aaaaa GP_IGNORE: daaf: datum - @abs_srcdir@/../../backend/utils/adt/datum.c
+ aaaaa GP_IGNORE: daaf: dfmgr - @abs_srcdir@/../../backend/utils/fmgr/dfmgr.c
+ aaaaa GP_IGNORE: daag: dbsize - @abs_srcdir@/../../backend/utils/adt/dbsize.c
+ aaaaa GP_IGNORE: daag: define - @abs_srcdir@/../../backend/commands/define.c
+ aaaaa GP_IGNORE: daag: dirmod - @abs_srcdir@/../../port/dirmod.c
+ aaaaa GP_IGNORE: daah: domains - @abs_srcdir@/../../backend/utils/adt/domains.c
+ aaaaa GP_IGNORE: daai: datetime - @abs_srcdir@/../../backend/utils/adt/datetime.c
+ aaaaa GP_IGNORE: daai: deadlock - @abs_srcdir@/../../backend/storage/lmgr/deadlock.c
+ aaaaa GP_IGNORE: daai: dynahash - @abs_srcdir@/../../backend/utils/hash/dynahash.c
+ aaaaa GP_IGNORE: daaj: ddaserver - @abs_srcdir@/../../backend/postmaster/ddaserver.c
+ aaaaa GP_IGNORE: daba: dbcommands - @abs_srcdir@/../../backend/commands/dbcommands.c
+ aaaaa GP_IGNORE: daba: dependency - @abs_srcdir@/../../backend/catalog/dependency.c
+ aaaaa GP_IGNORE: eaae: elog - @abs_srcdir@/../../backend/utils/error/elog.c
+ aaaaa GP_IGNORE: eaag: encode - @abs_srcdir@/../../backend/utils/adt/encode.c
+ aaaaa GP_IGNORE: eaah: execami - @abs_srcdir@/../../backend/executor/execAmi.c
+ aaaaa GP_IGNORE: eaah: explain - @abs_srcdir@/../../backend/commands/explain.c
+ aaaaa GP_IGNORE: eaai: encnames - @abs_srcdir@/../../backend/utils/mb/encnames.c
+ aaaaa GP_IGNORE: eaai: encnames - @abs_srcdir@/../../bin/initdb/encnames.c
+ aaaaa GP_IGNORE: eaai: encnames - @abs_srcdir@/../../interfaces/libpq/encnames.c
+ aaaaa GP_IGNORE: eaai: execmain - @abs_srcdir@/../../backend/executor/execMain.c
+ aaaaa GP_IGNORE: eaai: execqual - @abs_srcdir@/../../backend/executor/execQual.c
+ aaaaa GP_IGNORE: eaaj: exception - @abs_srcdir@/../../pl/pljava/src/C/pljava/Exception.c
+ aaaaa GP_IGNORE: eabc: exechhashagg - @abs_srcdir@/../../backend/executor/execHHashagg.c
+ aaaaa GP_IGNORE: faac: fd - @abs_srcdir@/../../backend/storage/file/fd.c
+ aaaaa GP_IGNORE: faae: fmgr - @abs_srcdir@/../../backend/utils/fmgr/fmgr.c
+ aaaaa GP_IGNORE: faaf: float - @abs_srcdir@/../../backend/utils/adt/float.c
+ aaaaa GP_IGNORE: faag: fileam - @abs_srcdir@/../../backend/access/external/fileam.c
+ aaaaa GP_IGNORE: faah: foreign - @abs_srcdir@/../../backend/foreign/foreign.c
+ aaaaa GP_IGNORE: faah: funcapi - @abs_srcdir@/../../backend/utils/fmgr/funcapi.c
+ aaaaa GP_IGNORE: faai: fastpath - @abs_srcdir@/../../backend/tcop/fastpath.c
+ aaaaa GP_IGNORE: faai: freelist - @abs_srcdir@/../../backend/storage/buffer/freelist.c
+ aaaaa GP_IGNORE: faai: ftsprobe - @abs_srcdir@/../../backend/postmaster/ftsprobe.c
+ aaaaa GP_IGNORE: faai: function - @abs_srcdir@/../../pl/pljava/src/C/pljava/Function.c
+ aaaaa GP_IGNORE: faaj: filespace - @abs_srcdir@/../../backend/commands/filespace.c
+ aaaaa GP_IGNORE: faaj: flatfiles - @abs_srcdir@/../../backend/utils/init/flatfiles.c
+ aaaaa GP_IGNORE: faaj: freespace - @abs_srcdir@/../../backend/storage/freespace/freespace.c
+ aaaaa GP_IGNORE: faaj: functions - @abs_srcdir@/../../backend/executor/functions.c
+ aaaaa GP_IGNORE: faba: formatting - @abs_srcdir@/../../backend/utils/adt/formatting.c
+ aaaaa GP_IGNORE: fabb: foreigncmds - @abs_srcdir@/../../backend/commands/foreigncmds.c
+ aaaaa GP_IGNORE: fabc: functioncmds - @abs_srcdir@/../../backend/commands/functioncmds.c
+ aaaaa GP_IGNORE: gaad: guc - @abs_srcdir@/../../backend/utils/misc/guc.c
+ aaaaa GP_IGNORE: gaae: gram - @abs_srcdir@/../../backend/parser/gram.c
+ aaaaa GP_IGNORE: gaah: genfile - @abs_srcdir@/../../backend/utils/adt/genfile.c
+ aaaaa GP_IGNORE: gaah: geoxops - @abs_srcdir@/../../backend/utils/adt/geo_ops.c
+ aaaaa GP_IGNORE: gaah: ginscan - @abs_srcdir@/../../backend/access/gin/ginscan.c
+ aaaaa GP_IGNORE: gaai: gistutil - @abs_srcdir@/../../backend/access/gist/gistutil.c
+ aaaaa GP_IGNORE: gaai: gpviewcp - @abs_srcdir@/../../bin/gpupgrade/gpviewcp.c
+ aaaaa GP_IGNORE: gaai: gucxfile - @abs_srcdir@/../../backend/utils/misc/guc-file.c
+ aaaaa GP_IGNORE: gaba: gistvacuum - @abs_srcdir@/../../backend/access/gist/gistvacuum.c
+ aaaaa GP_IGNORE: gabb: gpxcompress - @abs_srcdir@/../../backend/storage/file/gp_compress.c
+ aaaaa GP_IGNORE: gabc: ginarrayproc - @abs_srcdir@/../../backend/access/gin/ginarrayproc.c
+ aaaaa GP_IGNORE: gabf: gpxfastsequence - @abs_srcdir@/../../backend/catalog/gp_fastsequence.c
+ aaaaa GP_IGNORE: haad: hio - @abs_srcdir@/../../backend/access/heap/hio.c
+ aaaaa GP_IGNORE: haae: heap - @abs_srcdir@/../../backend/catalog/heap.c
+ aaaaa GP_IGNORE: haag: heapam - @abs_srcdir@/../../backend/access/heap/heapam.c
+ aaaaa GP_IGNORE: haai: hashovfl - @abs_srcdir@/../../backend/access/hash/hashovfl.c
+ aaaaa GP_IGNORE: haai: hashutil - @abs_srcdir@/../../backend/access/hash/hashutil.c
+ aaaaa GP_IGNORE: haaj: heaptuple - @abs_srcdir@/../../backend/access/common/heaptuple.c
+ aaaaa GP_IGNORE: haba: hashinsert - @abs_srcdir@/../../backend/access/hash/hashinsert.c
+ aaaaa GP_IGNORE: haba: hashsearch - @abs_srcdir@/../../backend/access/hash/hashsearch.c
+ aaaaa GP_IGNORE: iaad: int - @abs_srcdir@/../../backend/utils/adt/int.c
+ aaaaa GP_IGNORE: iaad: ipc - @abs_srcdir@/../../backend/storage/ipc/ipc.c
+ aaaaa GP_IGNORE: iaaf: index - @abs_srcdir@/../../backend/catalog/index.c
+ aaaaa GP_IGNORE: iaag: icxtcp - @abs_srcdir@/../../backend/cdb/motion/ic_tcp.c
+ aaaaa GP_IGNORE: iaag: icxudp - @abs_srcdir@/../../backend/cdb/motion/ic_udp.c
+ aaaaa GP_IGNORE: iaah: indexam - @abs_srcdir@/../../backend/access/index/indexam.c
+ aaaaa GP_IGNORE: iaah: invxapi - @abs_srcdir@/../../backend/storage/large_object/inv_api.c
+ aaaaa GP_IGNORE: iaai: inteight - @abs_srcdir@/../../backend/utils/adt/int8.c
+ aaaaa GP_IGNORE: iaai: ipcfuncs - @abs_srcdir@/../../test/libcdbtest/ipcfuncs.c
+ aaaaa GP_IGNORE: iaaj: icxcommon - @abs_srcdir@/../../backend/cdb/motion/ic_common.c
+ aaaaa GP_IGNORE: iaaj: indexcmds - @abs_srcdir@/../../backend/commands/indexcmds.c
+ aaaaa GP_IGNORE: iaaj: initsplan - @abs_srcdir@/../../backend/optimizer/plan/initsplan.c
+ aaaaa GP_IGNORE: iaba: indextuple - @abs_srcdir@/../../backend/access/common/indextuple.c
+ aaaaa GP_IGNORE: jaai: joinpath - @abs_srcdir@/../../backend/optimizer/path/joinpath.c
+ aaaaa GP_IGNORE: laae: like - @abs_srcdir@/../../backend/utils/adt/like.c
+ aaaaa GP_IGNORE: laae: lmgr - @abs_srcdir@/../../backend/storage/lmgr/lmgr.c
+ aaaaa GP_IGNORE: laae: lock - @abs_srcdir@/../../backend/storage/lmgr/lock.c
+ aaaaa GP_IGNORE: laag: lwlock - @abs_srcdir@/../../backend/storage/lmgr/lwlock.c
+ aaaaa GP_IGNORE: laah: logtape - @abs_srcdir@/../../backend/utils/sort/logtape.c
+ aaaaa GP_IGNORE: laai: localbuf - @abs_srcdir@/../../backend/storage/buffer/localbuf.c
+ aaaaa GP_IGNORE: laai: lockcmds - @abs_srcdir@/../../backend/commands/lockcmds.c
+ aaaaa GP_IGNORE: laaj: lsyscache - @abs_srcdir@/../../backend/utils/cache/lsyscache.c
+ aaaaa GP_IGNORE: laba: likexmatch - @abs_srcdir@/../../backend/utils/adt/like_match.c
+ aaaaa GP_IGNORE: maac: md - @abs_srcdir@/../../backend/storage/smgr/md.c
+ aaaaa GP_IGNORE: maad: mac - @abs_srcdir@/../../backend/utils/adt/mac.c
+ aaaaa GP_IGNORE: maae: mcxt - @abs_srcdir@/../../backend/utils/mmgr/mcxt.c
+ aaaaa GP_IGNORE: maae: misc - @abs_srcdir@/../../backend/utils/adt/misc.c
+ aaaaa GP_IGNORE: maag: matrix - @abs_srcdir@/../../backend/utils/adt/matrix.c
+ aaaaa GP_IGNORE: maah: mbutils - @abs_srcdir@/../../backend/utils/mb/mbutils.c
+ aaaaa GP_IGNORE: maah: memprot - @abs_srcdir@/../../backend/utils/mmgr/memprot.c
+ aaaaa GP_IGNORE: maai: miscinit - @abs_srcdir@/../../backend/utils/init/miscinit.c
+ aaaaa GP_IGNORE: mabb: mingwcompat - @abs_srcdir@/../../backend/port/win32/mingwcompat.c
+ aaaaa GP_IGNORE: mabc: mlipcxaccess - @abs_srcdir@/../../test/libcdbtest/mlipc_access.c
+ aaaaa GP_IGNORE: naae: name - @abs_srcdir@/../../backend/utils/adt/name.c
+ aaaaa GP_IGNORE: naag: notxin - @abs_srcdir@/../../backend/utils/adt/not_in.c
+ aaaaa GP_IGNORE: naah: nbtpage - @abs_srcdir@/../../backend/access/nbtree/nbtpage.c
+ aaaaa GP_IGNORE: naah: nbtsort - @abs_srcdir@/../../backend/access/nbtree/nbtsort.c
+ aaaaa GP_IGNORE: naah: network - @abs_srcdir@/../../backend/utils/adt/network.c
+ aaaaa GP_IGNORE: naah: nodeagg - @abs_srcdir@/../../backend/executor/nodeAgg.c
+ aaaaa GP_IGNORE: naah: numeric - @abs_srcdir@/../../backend/utils/adt/numeric.c
+ aaaaa GP_IGNORE: naai: nabstime - @abs_srcdir@/../../backend/utils/adt/nabstime.c
+ aaaaa GP_IGNORE: naai: nextstep - @abs_srcdir@/../../backend/port/dynloader/nextstep.c
+ aaaaa GP_IGNORE: naai: numutils - @abs_srcdir@/../../backend/utils/adt/numutils.c
+ aaaaa GP_IGNORE: naaj: namespace - @abs_srcdir@/../../backend/catalog/namespace.c
+ aaaaa GP_IGNORE: naaj: nbtinsert - @abs_srcdir@/../../backend/access/nbtree/nbtinsert.c
+ aaaaa GP_IGNORE: naba: nodemotion - @abs_srcdir@/../../backend/executor/nodeMotion.c
+ aaaaa GP_IGNORE: naba: nodewindow - @abs_srcdir@/../../backend/executor/nodeWindow.c
+ aaaaa GP_IGNORE: nabb: nodesubplan - @abs_srcdir@/../../backend/executor/nodeSubplan.c
+ aaaaa GP_IGNORE: nabc: nodehashjoin - @abs_srcdir@/../../backend/executor/nodeHashjoin.c
+ aaaaa GP_IGNORE: nabd: nodemergejoin - @abs_srcdir@/../../backend/executor/nodeMergejoin.c
+ aaaaa GP_IGNORE: nabg: nodefunctionscan - @abs_srcdir@/../../backend/executor/nodeFunctionscan.c
+ aaaaa GP_IGNORE: nabi: nodeshareinputscan - @abs_srcdir@/../../backend/executor/nodeShareInputScan.c
+ aaaaa GP_IGNORE: nabj: nodebitmapindexscan - @abs_srcdir@/../../backend/executor/nodeBitmapIndexscan.c
+ aaaaa GP_IGNORE: oaad: oid - @abs_srcdir@/../../backend/utils/adt/oid.c
+ aaaaa GP_IGNORE: oabb: opclasscmds - @abs_srcdir@/../../backend/commands/opclasscmds.c
+ aaaaa GP_IGNORE: oabc: operatorcmds - @abs_srcdir@/../../backend/commands/operatorcmds.c
+ aaaaa GP_IGNORE: oabd: oraclexcompat - @abs_srcdir@/../../backend/utils/adt/oracle_compat.c
+ aaaaa GP_IGNORE: paad: plr - @abs_srcdir@/../../pl/plr/plr.c
+ aaaaa GP_IGNORE: paae: pgtz - @abs_srcdir@/../../timezone/pgtz.c
+ aaaaa GP_IGNORE: paae: pinv - @abs_srcdir@/../../backend/utils/stat/pinv.c
+ aaaaa GP_IGNORE: paae: proc - @abs_srcdir@/../../backend/storage/lmgr/proc.c
+ aaaaa GP_IGNORE: paaf: pivot - @abs_srcdir@/../../backend/utils/adt/pivot.c
+ aaaaa GP_IGNORE: paaf: pltcl - @abs_srcdir@/../../pl/tcl/pltcl.c
+ aaaaa GP_IGNORE: paag: pgarch - @abs_srcdir@/../../backend/postmaster/pgarch.c
+ aaaaa GP_IGNORE: paag: pgstat - @abs_srcdir@/../../backend/postmaster/pgstat.c
+ aaaaa GP_IGNORE: paag: plperl - @abs_srcdir@/../../pl/plperl/plperl.c
+ aaaaa GP_IGNORE: paag: pquery - @abs_srcdir@/../../backend/tcop/pquery.c
+ aaaaa GP_IGNORE: paah: pgxproc - @abs_srcdir@/../../backend/catalog/pg_proc.c
+ aaaaa GP_IGNORE: paah: pgxsema - @abs_srcdir@/../../backend/port/pg_sema.c
+ aaaaa GP_IGNORE: paah: pgxtype - @abs_srcdir@/../../backend/catalog/pg_type.c
+ aaaaa GP_IGNORE: paah: plancat - @abs_srcdir@/../../backend/optimizer/util/plancat.c
+ aaaaa GP_IGNORE: paah: planner - @abs_srcdir@/../../backend/optimizer/plan/planner.c
+ aaaaa GP_IGNORE: paah: plxcomp - @abs_srcdir@/../../pl/plpgsql/src/pl_comp.c
+ aaaaa GP_IGNORE: paah: plxexec - @abs_srcdir@/../../pl/plpgsql/src/pl_exec.c
+ aaaaa GP_IGNORE: paah: plxgram - @abs_srcdir@/../../pl/plpgsql/src/pl_gram.c
+ aaaaa GP_IGNORE: paah: plxscan - @abs_srcdir@/../../pl/plpgsql/src/pl_scan.c
+ aaaaa GP_IGNORE: paah: prepare - @abs_srcdir@/../../backend/commands/prepare.c
+ aaaaa GP_IGNORE: paai: pathnode - @abs_srcdir@/../../backend/optimizer/util/pathnode.c
+ aaaaa GP_IGNORE: paai: pgobject - @abs_srcdir@/../../pl/pljava/src/C/pljava/PgObject.c
+ aaaaa GP_IGNORE: paai: pgxshmem - @abs_srcdir@/../../backend/port/pg_shmem.c
+ aaaaa GP_IGNORE: paai: plpython - @abs_srcdir@/../../pl/plpython/plpython.c
+ aaaaa GP_IGNORE: paai: plxfuncs - @abs_srcdir@/../../pl/plpgsql/src/pl_funcs.c
+ aaaaa GP_IGNORE: paai: postgres - @abs_srcdir@/../../backend/tcop/postgres.c
+ aaaaa GP_IGNORE: paai: postinit - @abs_srcdir@/../../backend/utils/init/postinit.c
+ aaaaa GP_IGNORE: paai: pqformat - @abs_srcdir@/../../backend/libpq/pqformat.c
+ aaaaa GP_IGNORE: paai: predtest - @abs_srcdir@/../../backend/optimizer/util/predtest.c
+ aaaaa GP_IGNORE: paai: printtup - @abs_srcdir@/../../backend/access/common/printtup.c
+ aaaaa GP_IGNORE: paai: proclang - @abs_srcdir@/../../backend/commands/proclang.c
+ aaaaa GP_IGNORE: paaj: parsexagg - @abs_srcdir@/../../backend/parser/parse_agg.c
+ aaaaa GP_IGNORE: paaj: pgxdepend - @abs_srcdir@/../../backend/catalog/pg_depend.c
+ aaaaa GP_IGNORE: paaj: portalmem - @abs_srcdir@/../../backend/utils/mmgr/portalmem.c
+ aaaaa GP_IGNORE: paaj: preptlist - @abs_srcdir@/../../backend/optimizer/prep/preptlist.c
+ aaaaa GP_IGNORE: paaj: procarray - @abs_srcdir@/../../backend/storage/ipc/procarray.c
+ aaaaa GP_IGNORE: paba: parsexexpr - @abs_srcdir@/../../backend/parser/parse_expr.c
+ aaaaa GP_IGNORE: paba: parsexfunc - @abs_srcdir@/../../backend/parser/parse_func.c
+ aaaaa GP_IGNORE: paba: parsexnode - @abs_srcdir@/../../backend/parser/parse_node.c
+ aaaaa GP_IGNORE: paba: parsexoper - @abs_srcdir@/../../backend/parser/parse_oper.c
+ aaaaa GP_IGNORE: paba: parsextype - @abs_srcdir@/../../backend/parser/parse_type.c
+ aaaaa GP_IGNORE: paba: planwindow - @abs_srcdir@/../../backend/optimizer/plan/planwindow.c
+ aaaaa GP_IGNORE: paba: plxhandler - @abs_srcdir@/../../pl/plpgsql/src/pl_handler.c
+ aaaaa GP_IGNORE: paba: portalcmds - @abs_srcdir@/../../backend/commands/portalcmds.c
+ aaaaa GP_IGNORE: paba: postmaster - @abs_srcdir@/../../backend/postmaster/postmaster.c
+ aaaaa GP_IGNORE: pabb: pgstatfuncs - @abs_srcdir@/../../backend/utils/adt/pgstatfuncs.c
+ aaaaa GP_IGNORE: pabb: pgxexttable - @abs_srcdir@/../../backend/catalog/pg_exttable.c
+ aaaaa GP_IGNORE: pabb: pgxoperator - @abs_srcdir@/../../backend/catalog/pg_operator.c
+ aaaaa GP_IGNORE: pabb: pgxshdepend - @abs_srcdir@/../../backend/catalog/pg_shdepend.c
+ aaaaa GP_IGNORE: pabb: pseudotypes - @abs_srcdir@/../../backend/utils/adt/pseudotypes.c
+ aaaaa GP_IGNORE: pabc: parsexclause - @abs_srcdir@/../../backend/parser/parse_clause.c
+ aaaaa GP_IGNORE: pabc: parsexcoerce - @abs_srcdir@/../../backend/parser/parse_coerce.c
+ aaaaa GP_IGNORE: pabc: parsextarget - @abs_srcdir@/../../backend/parser/parse_target.c
+ aaaaa GP_IGNORE: pabc: pgxaggregate - @abs_srcdir@/../../backend/catalog/pg_aggregate.c
+ aaaaa GP_IGNORE: pabc: pgxnamespace - @abs_srcdir@/../../backend/catalog/pg_namespace.c
+ aaaaa GP_IGNORE: pabc: pgxuserfuncs - @abs_srcdir@/../../pl/plr/pg_userfuncs.c
+ aaaaa GP_IGNORE: pabd: parsexutilcmd - @abs_srcdir@/../../backend/parser/parse_utilcmd.c
+ aaaaa GP_IGNORE: pabd: pgxappendonly - @abs_srcdir@/../../backend/catalog/pg_appendonly.c
+ aaaaa GP_IGNORE: pabd: pgxconversion - @abs_srcdir@/../../backend/catalog/pg_conversion.c
+ aaaaa GP_IGNORE: pabd: pgxconversion - @abs_srcdir@/../../pl/plr/pg_conversion.c
+ aaaaa GP_IGNORE: pabe: parsexrelation - @abs_srcdir@/../../backend/parser/parse_relation.c
+ aaaaa GP_IGNORE: pabe: pgxlargeobject - @abs_srcdir@/../../backend/catalog/pg_largeobject.c
+ aaaaa GP_IGNORE: pabi: pgxbackendxsupport - @abs_srcdir@/../../pl/plr/pg_backend_support.c
+ aaaaa GP_IGNORE: qaaf: queue - @abs_srcdir@/../../backend/commands/queue.c
+ aaaaa GP_IGNORE: qaba: quicklzone - @abs_srcdir@/../../backend/storage/file/quicklz1.c
+ aaaaa GP_IGNORE: qabc: quicklzthree - @abs_srcdir@/../../backend/storage/file/quicklz3.c
+ aaaaa GP_IGNORE: raae: read - @abs_srcdir@/../../backend/nodes/read.c
+ aaaaa GP_IGNORE: raag: regexp - @abs_srcdir@/../../backend/utils/adt/regexp.c
+ aaaaa GP_IGNORE: raah: regproc - @abs_srcdir@/../../backend/utils/adt/regproc.c
+ aaaaa GP_IGNORE: raah: regress - @abs_srcdir@/../../backend/utils/stat/regress.c
+ aaaaa GP_IGNORE: raah: regress - @abs_srcdir@/../../test/regress/regress.c
+ aaaaa GP_IGNORE: raah: relnode - @abs_srcdir@/../../backend/optimizer/util/relnode.c
+ aaaaa GP_IGNORE: raai: relcache - @abs_srcdir@/../../backend/utils/cache/relcache.c
+ aaaaa GP_IGNORE: raai: resqueue - @abs_srcdir@/../../backend/utils/resscheduler/resqueue.c
+ aaaaa GP_IGNORE: raai: rowtypes - @abs_srcdir@/../../backend/utils/adt/rowtypes.c
+ aaaaa GP_IGNORE: raaj: readfuncs - @abs_srcdir@/../../backend/nodes/readfuncs.c
+ aaaaa GP_IGNORE: raaj: ruleutils - @abs_srcdir@/../../backend/utils/adt/ruleutils.c
+ aaaaa GP_IGNORE: raba: reloptions - @abs_srcdir@/../../backend/access/common/reloptions.c
+ aaaaa GP_IGNORE: rabb: rixtriggers - @abs_srcdir@/../../backend/utils/adt/ri_triggers.c
+ aaaaa GP_IGNORE: rabc: resscheduler - @abs_srcdir@/../../backend/utils/resscheduler/resscheduler.c
+ aaaaa GP_IGNORE: rabc: rewritemanip - @abs_srcdir@/../../backend/rewrite/rewriteManip.c
+ aaaaa GP_IGNORE: rabd: rewritedefine - @abs_srcdir@/../../backend/rewrite/rewriteDefine.c
+ aaaaa GP_IGNORE: rabd: rewriteremove - @abs_srcdir@/../../backend/rewrite/rewriteRemove.c
+ aaaaa GP_IGNORE: rabe: rewritehandler - @abs_srcdir@/../../backend/rewrite/rewriteHandler.c
+ aaaaa GP_IGNORE: saad: spi - @abs_srcdir@/../../backend/executor/spi.c
+ aaaaa GP_IGNORE: saad: spi - @abs_srcdir@/../../pl/pljava/src/C/pljava/SPI.c
+ aaaaa GP_IGNORE: saae: scan - @abs_srcdir@/../../backend/parser/scan.c
+ aaaaa GP_IGNORE: saae: slru - @abs_srcdir@/../../backend/access/transam/slru.c
+ aaaaa GP_IGNORE: saae: smgr - @abs_srcdir@/../../backend/storage/smgr/smgr.c
+ aaaaa GP_IGNORE: saaf: shmem - @abs_srcdir@/../../backend/storage/ipc/shmem.c
+ aaaaa GP_IGNORE: saag: signal - @abs_srcdir@/../../backend/port/win32/signal.c
+ aaaaa GP_IGNORE: saag: sinval - @abs_srcdir@/../../backend/storage/ipc/sinval.c
+ aaaaa GP_IGNORE: saag: socket - @abs_srcdir@/../../backend/port/win32/socket.c
+ aaaaa GP_IGNORE: saah: scansup - @abs_srcdir@/../../backend/parser/scansup.c
+ aaaaa GP_IGNORE: saah: service - @abs_srcdir@/../../backend/postmaster/service.c
+ aaaaa GP_IGNORE: saai: selfuncs - @abs_srcdir@/../../backend/utils/adt/selfuncs.c
+ aaaaa GP_IGNORE: saai: sequence - @abs_srcdir@/../../backend/commands/sequence.c
+ aaaaa GP_IGNORE: saaj: seqserver - @abs_srcdir@/../../backend/postmaster/seqserver.c
+ aaaaa GP_IGNORE: saaj: syslogger - @abs_srcdir@/../../backend/postmaster/syslogger.c
+ aaaaa GP_IGNORE: saaj: sysvxsema - @abs_srcdir@/../../backend/port/sysv_sema.c
+ aaaaa GP_IGNORE: saba: schemacmds - @abs_srcdir@/../../backend/commands/schemacmds.c
+ aaaaa GP_IGNORE: saba: stringinfo - @abs_srcdir@/../../backend/lib/stringinfo.c
+ aaaaa GP_IGNORE: saba: sysvxshmem - @abs_srcdir@/../../backend/port/sysv_shmem.c
+ aaaaa GP_IGNORE: taad: tid - @abs_srcdir@/../../backend/utils/adt/tid.c
+ aaaaa GP_IGNORE: taae: type - @abs_srcdir@/../../pl/pljava/src/C/pljava/type/Type.c
+ aaaaa GP_IGNORE: taaf: timer - @abs_srcdir@/../../backend/port/win32/timer.c
+ aaaaa GP_IGNORE: taaf: tqual - @abs_srcdir@/../../backend/utils/time/tqual.c
+ aaaaa GP_IGNORE: taag: tupser - @abs_srcdir@/../../backend/cdb/motion/tupser.c
+ aaaaa GP_IGNORE: taah: trigger - @abs_srcdir@/../../backend/commands/trigger.c
+ aaaaa GP_IGNORE: taah: tupdesc - @abs_srcdir@/../../backend/access/common/tupdesc.c
+ aaaaa GP_IGNORE: taai: toasting - @abs_srcdir@/../../backend/catalog/toasting.c
+ aaaaa GP_IGNORE: taai: twophase - @abs_srcdir@/../../backend/access/transam/twophase.c
+ aaaaa GP_IGNORE: taai: typcache - @abs_srcdir@/../../backend/utils/cache/typcache.c
+ aaaaa GP_IGNORE: taai: typecmds - @abs_srcdir@/../../backend/commands/typecmds.c
+ aaaaa GP_IGNORE: taaj: tablecmds - @abs_srcdir@/../../backend/commands/tablecmds.c
+ aaaaa GP_IGNORE: taaj: timestamp - @abs_srcdir@/../../backend/utils/adt/timestamp.c
+ aaaaa GP_IGNORE: taaj: tuplesort - @abs_srcdir@/../../backend/utils/sort/tuplesort.c
+ aaaaa GP_IGNORE: taba: tablespace - @abs_srcdir@/../../backend/commands/tablespace.c
+ aaaaa GP_IGNORE: tabd: tuplestorenew - @abs_srcdir@/../../backend/utils/sort/tuplestorenew.c
+ aaaaa GP_IGNORE: tabg: tuplesortxmkheap - @abs_srcdir@/../../backend/utils/sort/tuplesort_mkheap.c
+ aaaaa GP_IGNORE: tabh: tuplesortxmkqsort - @abs_srcdir@/../../backend/utils/sort/tuplesort_mkqsort.c
+ aaaaa GP_IGNORE: uaad: udt - @abs_srcdir@/../../pl/pljava/src/C/pljava/type/UDT.c
+ aaaaa GP_IGNORE: uaad: url - @abs_srcdir@/../../backend/access/external/url.c
+ aaaaa GP_IGNORE: uaae: user - @abs_srcdir@/../../backend/commands/user.c
+ aaaaa GP_IGNORE: uaah: utility - @abs_srcdir@/../../backend/tcop/utility.c
+ aaaaa GP_IGNORE: uaaj: uriparser - @abs_srcdir@/../../backend/utils/misc/uriparser.c
+ aaaaa GP_IGNORE: uabg: utfeightxandxwin - @abs_srcdir@/../../backend/utils/mb/conversion_procs/utf8_and_win/utf8_and_win.c
+ aaaaa GP_IGNORE: uade: utfeightxandxisoeighteightfivenine - @abs_srcdir@/../../backend/utils/mb/conversion_procs/utf8_and_iso8859/utf8_and_iso8859.c
+ aaaaa GP_IGNORE: vaae: view - @abs_srcdir@/../../backend/commands/view.c
+ aaaaa GP_IGNORE: vaag: vacuum - @abs_srcdir@/../../backend/commands/vacuum.c
+ aaaaa GP_IGNORE: vaag: varbit - @abs_srcdir@/../../backend/utils/adt/varbit.c
+ aaaaa GP_IGNORE: vaag: varsup - @abs_srcdir@/../../backend/access/transam/varsup.c
+ aaaaa GP_IGNORE: vaah: varchar - @abs_srcdir@/../../backend/utils/adt/varchar.c
+ aaaaa GP_IGNORE: vaah: varlena - @abs_srcdir@/../../backend/utils/adt/varlena.c
+ aaaaa GP_IGNORE: vaai: variable - @abs_srcdir@/../../backend/commands/variable.c
+ aaaaa GP_IGNORE: vaba: vacuumlazy - @abs_srcdir@/../../backend/commands/vacuumlazy.c
+ aaaaa GP_IGNORE: waaf: wchar - @abs_srcdir@/../../backend/utils/mb/wchar.c
+ aaaaa GP_IGNORE: waaf: wchar - @abs_srcdir@/../../interfaces/libpq/wchar.c
+ aaaaa GP_IGNORE: wabd: walsendserver - @abs_srcdir@/../../backend/postmaster/walsendserver.c
+ aaaaa GP_IGNORE: wabg: winthreetwoxsema - @abs_srcdir@/../../backend/port/win32_sema.c
+ aaaaa GP_IGNORE: wabh: winthreetwoxshmem - @abs_srcdir@/../../backend/port/win32_shmem.c
+ aaaaa GP_IGNORE: xaae: xact - @abs_srcdir@/../../backend/access/transam/xact.c
+ aaaaa GP_IGNORE: xaae: xlog - @abs_srcdir@/../../backend/access/transam/xlog.c
+ aaaaa GP_IGNORE: xaah: xlogloc - @abs_srcdir@/../../backend/access/transam/xlogloc.c
  aaad: acl:00000155:  ereport(ERROR, 
  aaad: acl:00000156:  (errcode(ERRCODE_NAME_TOO_LONG), 
  aaad: acl:00000157:  errmsg("identifier too long"), 
@@ -2147,14 +2147,17 @@ select * from get_ereport order by 1;
  baaf: bayes:00000396:  ereport(ERROR, 
  baaf: bayes:00000397:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  baaf: bayes:00000398:  errmsg("nb_classify: mismatched inter-row input lengths"))); 
- baag: bitmap:00000072:  ereport (ERROR, 
- baag: bitmap:00000073:  (errcode(ERRCODE_INDEX_CORRUPTED), 
- baag: bitmap:00000074:  errmsg("index "%s" already contains data", 
- baag: bitmap:00000075:  RelationGetRelationName(index)))); 
- baag: bitmap:00000088:  ereport(ERROR, 
- baag: bitmap:00000089:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- baag: bitmap:00000090:  errmsg("oids for bitmap index "%s" do not exist", 
- baag: bitmap:00000091:  RelationGetRelationName(index)))); 
+ baag: bitmap:00000069:  ereport(ERROR, 
+ baag: bitmap:00000070:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ baag: bitmap:00000071:  errmsg("bitmap indexes are not supported on append-only tables"))); 
+ baag: bitmap:00000078:  ereport (ERROR, 
+ baag: bitmap:00000079:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+ baag: bitmap:00000080:  errmsg("index "%s" already contains data", 
+ baag: bitmap:00000081:  RelationGetRelationName(index)))); 
+ baag: bitmap:00000094:  ereport(ERROR, 
+ baag: bitmap:00000095:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ baag: bitmap:00000096:  errmsg("oids for bitmap index "%s" do not exist", 
+ baag: bitmap:00000097:  RelationGetRelationName(index)))); 
  baag: bufmgr:00000108:  ereport(ERROR, 
  baag: bufmgr:00000109:  (errmsg("Unable to set memory level to %d, error %d, block size %d, ptr %ld", protectionLevel, 
  baag: bufmgr:00000110:  errno, BLCKSZ, (long int) BufHdrGetBlock(bufHdr)))); 
@@ -6811,19 +6814,19 @@ select * from get_ereport order by 1;
  gaai: gpviewcp:00000212:  errmsg("gpviewcopy(): views are not compatible"), 
  gaai: gpviewcp:00000213:  errhint("attnum %d: alignent mismatch %c != %c", attnum, 
  gaai: gpviewcp:00000214:  source_att->attalign, target_att->attalign))); 
- gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- gaai: gucxfile:00000543:  
- gaai: gucxfile:00000544: enum { 
- gaai: gucxfile:00000545:  GUC_ID = 1, 
- gaai: gucxfile:00000546:  GUC_STRING = 2, 
- gaai: gucxfile:00000547:  GUC_INTEGER = 3, 
- gaai: gucxfile:00000548:  GUC_REAL = 4, 
- gaai: gucxfile:00000549:  GUC_EQUALS = 5, 
- gaai: gucxfile:00000550:  GUC_UNQUOTED_STRING = 6, 
- gaai: gucxfile:00000551:  GUC_QUALIFIED_ID = 7, 
- gaai: gucxfile:00000552:  GUC_EOL = 99, 
- gaai: gucxfile:00000553:  GUC_ERROR = 100 
- gaai: gucxfile:00000554: }; 
+ gaai: gucxfile:00000478: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ gaai: gucxfile:00000479:  
+ gaai: gucxfile:00000480: enum { 
+ gaai: gucxfile:00000481:  GUC_ID = 1, 
+ gaai: gucxfile:00000482:  GUC_STRING = 2, 
+ gaai: gucxfile:00000483:  GUC_INTEGER = 3, 
+ gaai: gucxfile:00000484:  GUC_REAL = 4, 
+ gaai: gucxfile:00000485:  GUC_EQUALS = 5, 
+ gaai: gucxfile:00000486:  GUC_UNQUOTED_STRING = 6, 
+ gaai: gucxfile:00000487:  GUC_QUALIFIED_ID = 7, 
+ gaai: gucxfile:00000488:  GUC_EOL = 99, 
+ gaai: gucxfile:00000489:  GUC_ERROR = 100 
+ gaai: gucxfile:00000490: }; 
  gaba: gistvacuum:00000569:  ereport(NOTICE, 
  gaba: gistvacuum:00000570:  (errmsg("index "%s" needs VACUUM FULL or REINDEX to finish crash recovery", 
  gaba: gistvacuum:00000571:  RelationGetRelationName(rel)))); 
@@ -8696,14 +8699,14 @@ select * from get_ereport order by 1;
  naaj: namespace:00001457:  (errcode(ERRCODE_SYNTAX_ERROR), 
  naaj: namespace:00001458:  errmsg("improper relation name (too many dotted names): %s", 
  naaj: namespace:00001459:  NameListToString(names)))); 
- naaj: namespace:00001859:  ereport(ERROR, 
- naaj: namespace:00001860:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- naaj: namespace:00001861:  errmsg("permission denied to create temporary tables in database "%s"", 
- naaj: namespace:00001862:  get_database_name(MyDatabaseId)))); 
- naaj: namespace:00002219:  ereport(ERROR, 
- naaj: namespace:00002220:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
- naaj: namespace:00002221:  errmsg("temporary table schema removed while session " 
- naaj: namespace:00002222:  "still in progress"))); 
+ naaj: namespace:00001865:  ereport(ERROR, 
+ naaj: namespace:00001866:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ naaj: namespace:00001867:  errmsg("permission denied to create temporary tables in database "%s"", 
+ naaj: namespace:00001868:  get_database_name(MyDatabaseId)))); 
+ naaj: namespace:00002225:  ereport(ERROR, 
+ naaj: namespace:00002226:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+ naaj: namespace:00002227:  errmsg("temporary table schema removed while session " 
+ naaj: namespace:00002228:  "still in progress"))); 
  naaj: nbtinsert:00000192:  ereport(ERROR, 
  naaj: nbtinsert:00000193:  (errcode(ERRCODE_UNIQUE_VIOLATION), 
  naaj: nbtinsert:00000194:  errmsg("duplicate key violates unique constraint "%s"", 
@@ -9894,35 +9897,35 @@ select * from get_ereport order by 1;
  paah: plxgram:00004389:  (errcode(ERRCODE_SYNTAX_ERROR), 
  paah: plxgram:00004390:  errmsg("end label "%s" differs from block's label "%s"", 
  paah: plxgram:00004391:  end_label, start_label))); 
- paah: plxscan:00000858: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- paah: plxscan:00000859:  
- paah: plxscan:00000860: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
- paah: plxscan:00000861: #if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35) 
- paah: plxscan:00000862: int plpgsql_base_yyget_lineno (void); 
- paah: plxscan:00001587:  ereport(ERROR, 
- paah: plxscan:00001588:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001589:  errmsg("unterminated quoted identifier"))); 
- paah: plxscan:00001638:  ereport(ERROR, 
- paah: plxscan:00001639:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001640:  errmsg("unterminated comment"))); 
- paah: plxscan:00001708:  ereport(ERROR, 
- paah: plxscan:00001709:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001710:  errmsg("unterminated string"))); 
- paah: plxscan:00001764:  ereport(ERROR, 
- paah: plxscan:00001765:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001766:  errmsg("unterminated dollar-quoted string"))); 
- paah: plxscan:00002784:  ereport(ERROR, 
- paah: plxscan:00002785:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002786:  /* translator: %s is typically "syntax error" */ 
- paah: plxscan:00002787:  errmsg("%s at end of input", message), 
- paah: plxscan:00002788:  internalerrposition(cursorpos), 
- paah: plxscan:00002789:  internalerrquery(scanstr))); 
- paah: plxscan:00002793:  ereport(ERROR, 
- paah: plxscan:00002794:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002795:  /* translator: first %s is typically "syntax error" */ 
- paah: plxscan:00002796:  errmsg("%s at or near "%s"", message, loc), 
- paah: plxscan:00002797:  internalerrposition(cursorpos), 
- paah: plxscan:00002798:  internalerrquery(scanstr))); 
+ paah: plxscan:00000794: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ paah: plxscan:00000795:  
+ paah: plxscan:00000796: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
+ paah: plxscan:00000797: #if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35) 
+ paah: plxscan:00000798: int plpgsql_base_yyget_lineno (void); 
+ paah: plxscan:00001514:  ereport(ERROR, 
+ paah: plxscan:00001515:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001516:  errmsg("unterminated quoted identifier"))); 
+ paah: plxscan:00001563:  ereport(ERROR, 
+ paah: plxscan:00001564:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001565:  errmsg("unterminated comment"))); 
+ paah: plxscan:00001632:  ereport(ERROR, 
+ paah: plxscan:00001633:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001634:  errmsg("unterminated string"))); 
+ paah: plxscan:00001687:  ereport(ERROR, 
+ paah: plxscan:00001688:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001689:  errmsg("unterminated dollar-quoted string"))); 
+ paah: plxscan:00002641:  ereport(ERROR, 
+ paah: plxscan:00002642:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00002643:  /* translator: %s is typically "syntax error" */ 
+ paah: plxscan:00002644:  errmsg("%s at end of input", message), 
+ paah: plxscan:00002645:  internalerrposition(cursorpos), 
+ paah: plxscan:00002646:  internalerrquery(scanstr))); 
+ paah: plxscan:00002650:  ereport(ERROR, 
+ paah: plxscan:00002651:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00002652:  /* translator: first %s is typically "syntax error" */ 
+ paah: plxscan:00002653:  errmsg("%s at or near "%s"", message, loc), 
+ paah: plxscan:00002654:  internalerrposition(cursorpos), 
+ paah: plxscan:00002655:  internalerrquery(scanstr))); 
  paah: prepare:00000070:  ereport(ERROR, 
  paah: prepare:00000071:  (errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION), 
  paah: prepare:00000072:  errmsg("invalid statement name: must not be empty"))); 
@@ -13058,55 +13061,55 @@ select * from get_ereport order by 1;
  saad: spi:00003058:  (errcode(ERRCODE_WARNING), 
  saad: spi:00003059:  errmsg("A stable or volatile function is used as if it is immutable"), 
  saad: spi:00003060:  errhint("The function should be declared as stable or volatile in create function statement."))); 
- saae: scan:00014199: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- saae: scan:00014200:  
- saae: scan:00014201: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
- saae: scan:00014202: static char *dolqstart; /* current $foo$ quote start string */ 
- saae: scan:00014203:  
- saae: scan:00014204: /* 
- saae: scan:00014205:  * GUC variables. This is a DIRECT violation of the warning given at the 
- saae: scan:00014206:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
- saae: scan:00014827:  ereport(ERROR, 
- saae: scan:00014828:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saae: scan:00014829:  errmsg("unsafe use of string constant with Unicode escapes"), 
- saae: scan:00014830:  errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."), 
- saae: scan:00014831:  lexer_errposition())); 
- saae: scan:00014911:  ereport(ERROR, 
- saae: scan:00014912:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00014913:  errmsg("unsafe use of \' in a string literal"), 
- saae: scan:00014914:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
- saae: scan:00014915:  errOmitLocation(true), 
- saae: scan:00014916:  lexer_errposition())); 
- saae: scan:00016337:  ereport(ERROR, 
- saae: scan:00016338:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00016339:  /* translator: %s is typically the translation of "syntax error" */ 
- saae: scan:00016340:  errmsg("%s at end of input", _(message)), 
- saae: scan:00016341:  errOmitLocation(true), 
- saae: scan:00016342:  lexer_errposition())); 
- saae: scan:00016346:  ereport(ERROR, 
- saae: scan:00016347:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00016348:  /* translator: first %s is typically the translation of "syntax error" */ 
- saae: scan:00016349:  errmsg("%s at or near "%s"", _(message), loc), 
- saae: scan:00016350:  errOmitLocation(true), 
- saae: scan:00016351:  lexer_errposition())); 
- saae: scan:00016577:  ereport(WARNING, 
- saae: scan:00016578:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016579:  errmsg("nonstandard use of \' in a string literal"), 
- saae: scan:00016580:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
- saae: scan:00016581:  errOmitLocation(true), 
- saae: scan:00016582:  lexer_errposition())); 
- saae: scan:00016588:  ereport(WARNING, 
- saae: scan:00016589:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016590:  errmsg("nonstandard use of \\ in a string literal"), 
- saae: scan:00016591:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
- saae: scan:00016592:  errOmitLocation(true), 
- saae: scan:00016593:  lexer_errposition())); 
- saae: scan:00016604:  ereport(WARNING, 
- saae: scan:00016605:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016606:  errmsg("nonstandard use of escape in a string literal"), 
- saae: scan:00016607:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
- saae: scan:00016608:  errOmitLocation(true), 
- saae: scan:00016609:  lexer_errposition())); 
+ saae: scan:00014143: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ saae: scan:00014144:  
+ saae: scan:00014145: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
+ saae: scan:00014146: static char *dolqstart; /* current $foo$ quote start string */ 
+ saae: scan:00014147:  
+ saae: scan:00014148: /* 
+ saae: scan:00014149:  * GUC variables. This is a DIRECT violation of the warning given at the 
+ saae: scan:00014150:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
+ saae: scan:00014763:  ereport(ERROR, 
+ saae: scan:00014764:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saae: scan:00014765:  errmsg("unsafe use of string constant with Unicode escapes"), 
+ saae: scan:00014766:  errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."), 
+ saae: scan:00014767:  lexer_errposition())); 
+ saae: scan:00014840:  ereport(ERROR, 
+ saae: scan:00014841:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00014842:  errmsg("unsafe use of \' in a string literal"), 
+ saae: scan:00014843:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
+ saae: scan:00014844:  errOmitLocation(true), 
+ saae: scan:00014845:  lexer_errposition())); 
+ saae: scan:00016197:  ereport(ERROR, 
+ saae: scan:00016198:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00016199:  /* translator: %s is typically the translation of "syntax error" */ 
+ saae: scan:00016200:  errmsg("%s at end of input", _(message)), 
+ saae: scan:00016201:  errOmitLocation(true), 
+ saae: scan:00016202:  lexer_errposition())); 
+ saae: scan:00016206:  ereport(ERROR, 
+ saae: scan:00016207:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00016208:  /* translator: first %s is typically the translation of "syntax error" */ 
+ saae: scan:00016209:  errmsg("%s at or near "%s"", _(message), loc), 
+ saae: scan:00016210:  errOmitLocation(true), 
+ saae: scan:00016211:  lexer_errposition())); 
+ saae: scan:00016437:  ereport(WARNING, 
+ saae: scan:00016438:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016439:  errmsg("nonstandard use of \' in a string literal"), 
+ saae: scan:00016440:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
+ saae: scan:00016441:  errOmitLocation(true), 
+ saae: scan:00016442:  lexer_errposition())); 
+ saae: scan:00016448:  ereport(WARNING, 
+ saae: scan:00016449:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016450:  errmsg("nonstandard use of \\ in a string literal"), 
+ saae: scan:00016451:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
+ saae: scan:00016452:  errOmitLocation(true), 
+ saae: scan:00016453:  lexer_errposition())); 
+ saae: scan:00016464:  ereport(WARNING, 
+ saae: scan:00016465:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016466:  errmsg("nonstandard use of escape in a string literal"), 
+ saae: scan:00016467:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
+ saae: scan:00016468:  errOmitLocation(true), 
+ saae: scan:00016469:  lexer_errposition())); 
  saae: slru:00000755:  ereport(ERROR, 
  saae: slru:00000756:  (errcode_for_file_access(), 
  saae: slru:00000757:  errmsg("could not access status of transaction %u", xid), 
@@ -13370,18 +13373,18 @@ select * from get_ereport order by 1;
  saah: service:00001401:  serviceConfig->title, 
  saah: service:00001402:  strerror(errno)), 
  saah: service:00001403:  errdetail("error during getsockname() call (error:%d).", errno))); 
- saai: selfuncs:00003940:  ereport(ERROR, 
- saai: selfuncs:00003941:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saai: selfuncs:00003942:  errmsg("case insensitive matching not supported on type bytea"))); 
- saai: selfuncs:00004046:  ereport(ERROR, 
- saai: selfuncs:00004047:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saai: selfuncs:00004048:  errmsg("regular-expression matching not supported on type bytea"))); 
- saai: selfuncs:00004369:  ereport(ERROR, 
- saai: selfuncs:00004370:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saai: selfuncs:00004371:  errmsg("case insensitive matching not supported on type bytea"))); 
- saai: selfuncs:00004536:  ereport(ERROR, 
- saai: selfuncs:00004537:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saai: selfuncs:00004538:  errmsg("regular-expression matching not supported on type bytea"))); 
+ saai: selfuncs:00003941:  ereport(ERROR, 
+ saai: selfuncs:00003942:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saai: selfuncs:00003943:  errmsg("case insensitive matching not supported on type bytea"))); 
+ saai: selfuncs:00004047:  ereport(ERROR, 
+ saai: selfuncs:00004048:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saai: selfuncs:00004049:  errmsg("regular-expression matching not supported on type bytea"))); 
+ saai: selfuncs:00004370:  ereport(ERROR, 
+ saai: selfuncs:00004371:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saai: selfuncs:00004372:  errmsg("case insensitive matching not supported on type bytea"))); 
+ saai: selfuncs:00004537:  ereport(ERROR, 
+ saai: selfuncs:00004538:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saai: selfuncs:00004539:  errmsg("regular-expression matching not supported on type bytea"))); 
  saai: sequence:00000519:  ereport(ERROR, 
  saai: sequence:00000520:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  saai: sequence:00000521:  errmsg("permission denied for sequence %s", 
@@ -17619,6 +17622,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000073:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000074:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000075:  str))); 
-(17558 rows)
+(17561 rows)
 
 drop external table get_ereport;

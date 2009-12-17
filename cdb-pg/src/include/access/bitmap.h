@@ -27,7 +27,11 @@
 #define BM_WRITE	BUFFER_LOCK_EXCLUSIVE
 #define BM_NOLOCK	(-1)
 
-/* the size in bits of a hybrid run-length(HRL) word */
+/*
+ * The size in bits of a hybrid run-length(HRL) word.
+ * If you change this, you should change the type for
+ * a HRL word as well.
+ */
 #define BM_HRL_WORD_SIZE		16
 
 /* the type for a HRL word */
@@ -73,9 +77,15 @@ typedef BMMetaPageData *BMMetaPage;
  * Because the tid value for AO tables can be more than MaxHeapTuplesPerPage,
  * we use the maximum possible offset number here.
  */
+#if 0
 #define BM_MAX_TUPLES_PER_PAGE \
 	(((((1 << (8 * sizeof(OffsetNumber))) - 1) / BM_HRL_WORD_SIZE) + 1) * \
 	BM_HRL_WORD_SIZE)
+#else
+#define BM_MAX_TUPLES_PER_PAGE \
+	((((MaxHeapTuplesPerPage - 1) / BM_HRL_WORD_SIZE) + 1) * \
+	BM_HRL_WORD_SIZE)
+#endif
 
 /*
  * LOV (List Of Values) page -- pages to store a list of distinct
