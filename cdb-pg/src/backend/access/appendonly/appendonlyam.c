@@ -611,15 +611,11 @@ AppendOnlyExecutorReadBlock_GetBlockInfo(
 	AppendOnlyStorageRead			*storageRead,
 	AppendOnlyExecutorReadBlock		*executorReadBlock)
 {
-	int64	blockHeaderFirstRowNum;
-				// This wil be INT64CONST(-1) the block header doesn't contain
-				// the block first row number.
-
 	if (!AppendOnlyStorageRead_GetBlockInfo(
 									storageRead,
 									&executorReadBlock->dataLen,
 									&executorReadBlock->executorBlockKind,
-									&blockHeaderFirstRowNum,
+									&executorReadBlock->blockFirstRowNum,
 									&executorReadBlock->rowCount,
 									&executorReadBlock->isLarge,
 									&executorReadBlock->isCompressed))
@@ -630,7 +626,7 @@ AppendOnlyExecutorReadBlock_GetBlockInfo(
 	executorReadBlock->headerOffsetInFile = 
 		AppendOnlyStorageRead_CurrentHeaderOffsetInFile(storageRead);
 
-	// UNDONE: Check blockHeaderFirstRowNum
+	// UNDONE: Check blockFirstRowNum
 
 	return true;
 }
@@ -1039,6 +1035,7 @@ setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 	Assert(!AppendOnlyStorageWrite_IsBufferAllocated(&aoInsertDesc->storageWrite));
 
 	/* Set the firstRowNum for the block */
+	aoInsertDesc->blockFirstRowNum = aoInsertDesc->lastSequence + 1;
 	AppendOnlyStorageWrite_SetFirstRowNum(&aoInsertDesc->storageWrite,
 										  aoInsertDesc->blockFirstRowNum);
 
@@ -1073,7 +1070,6 @@ setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 	}
 	
 	aoInsertDesc->bufferCount++;
-	aoInsertDesc->blockFirstRowNum = aoInsertDesc->lastSequence + 1;
 }
 
 

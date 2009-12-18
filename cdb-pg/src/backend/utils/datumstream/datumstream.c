@@ -522,6 +522,8 @@ datumstream_read_block_info(DatumStream *acc,
             isCompressed
             );
 
+	acc->blockFirstRowNum = *firstRow;
+
 	return readOK;
 }
 
@@ -634,6 +636,8 @@ int datumstream_read_block(DatumStream *acc)
 												&rowCnt,
 												&isLarge,
 												&isCompressed);
+
+	acc->blockFirstRowNum = firstRow;
 
     if (!readOK)
         return -1;

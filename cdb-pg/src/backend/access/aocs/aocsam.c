@@ -276,6 +276,7 @@ void aocs_getnext(AOCSScanDesc scan, ScanDirection direction, TupleTableSlot *sl
     Datum *d = slot_get_values(slot);
     bool *null = slot_get_isnull(slot);
 	AOTupleId aoTupleId;
+	int64 rowNum = INT64CONST(-1);
 
     int err = 0;
     int i; 
@@ -323,6 +324,15 @@ ReadNext:
                     err = datumstream_advance(scan->ds[i]);
                     Assert(err > 0);
                 }
+
+				if (rowNum == INT64CONST(-1) &&
+					scan->ds[i]->blockFirstRowNum != INT64CONST(-1))
+				{
+					Assert(scan->ds[i]->blockFirstRowNum > 0);
+					rowNum = scan->ds[i]->blockFirstRowNum +
+						scan->ds[i]->nth;
+					
+				}
             }
         }
 
@@ -331,7 +341,14 @@ ReadNext:
 									 scan->seginfo[scan->cur_seg]->segno);
 		
 		scan->cur_seg_row++;
-        AOTupleIdInit_rowNum(&aoTupleId, scan->cur_seg_row);
+		if (rowNum == INT64CONST(-1))
+		{
+			AOTupleIdInit_rowNum(&aoTupleId, scan->cur_seg_row);
+		}
+		else
+		{
+			AOTupleIdInit_rowNum(&aoTupleId, rowNum);
+		}
 
         /* OK, I got the tuple.  Read it out */
         Assert(scan->cur_seg >= 0 && scan->cur_seg < scan->total_seg);
