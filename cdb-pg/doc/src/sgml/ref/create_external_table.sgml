@@ -72,7 +72,7 @@ CREATE [READABLE] EXTERNAL WEB TABLE table_name
 CREATE WRITABLE EXTERNAL TABLE table_name
     ( column_name data_type [, ...] | LIKE other_table )
       LOCATION 
-       ('gpfdist://outputhost[:port]/file_pattern' [, ...])
+       ('gpfdist://outputhost[:port]/filename' [, ...])
     | EXECUTE 'command' [ON ALL]
     FORMAT 'TEXT' 
                [( [DELIMITER [AS] 'delimiter']
