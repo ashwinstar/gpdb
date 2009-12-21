@@ -11,7 +11,7 @@ Usage: gpdetective <option> [dbname]
 
     --start_date=number       : Log start date (number of days ago)
     --start_date="YYYY-MM-DD" : Log start date (explicit date)
-    --end_date="YYY-MM-DD"    : Log end date (explicit date)
+    --end_date="YYYY-MM-DD"   : Log end date (ends at 00:00:00 on end_date)
 
     --diagnostics=a[ll],n[one],s[tate],o[s],c[atalog] 
          : Defines which diagnostics to run (default is "all")
