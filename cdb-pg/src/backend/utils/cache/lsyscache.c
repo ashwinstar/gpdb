@@ -655,16 +655,19 @@ op_input_types(Oid opno, Oid *lefttype, Oid *righttype)
 {
 	HeapTuple	tp;
 	Form_pg_operator optup;
+	*lefttype = InvalidOid;
+	*righttype = InvalidOid;
 
 	tp = SearchSysCache(OPEROID,
 						ObjectIdGetDatum(opno),
 						0, 0, 0);
-	if (!HeapTupleIsValid(tp))	/* shouldn't happen */
-		elog(ERROR, "cache lookup failed for operator %u", opno);
-	optup = (Form_pg_operator) GETSTRUCT(tp);
-	*lefttype = optup->oprleft;
-	*righttype = optup->oprright;
-	ReleaseSysCache(tp);
+	if (HeapTupleIsValid(tp))
+	{
+		optup = (Form_pg_operator) GETSTRUCT(tp);
+		*lefttype = optup->oprleft;
+		*righttype = optup->oprright;
+		ReleaseSysCache(tp);
+	}
 }
 
 /*
