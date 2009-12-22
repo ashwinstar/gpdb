@@ -1,0 +1,168 @@
+#!/usr/bin/env python
+#
+# Copyright (c) Greenplum Inc 2009. All Rights Reserved. 
+
+'''
+USAGE:   gpaddconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY_TOADD [--value CONFIG_ENTRY_VALUE] [--removeonly] [--verbose] [--debug]
+
+# set the shared_buffers setting to 250MB
+EXAMPLE: gpaddconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB
+
+# comment out all instances of the shared_buffers setting
+EXAMPLE: gpaddconfig --directory /data/master/gp-1 --entry shared_buffers --removeonly
+
+where the entry will be set to the value specified by appending the entry to the end of all postgresql.conf files
+where all previous instances of the entry in postgresql.conf will be commented out
+where --removeonly will only comment out the entry and not add it to the postgresql.conf files
+'''
+
+try:
+    
+    import os, sys
+    from optparse import Option, OptionParser 
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gparray import *
+    from gppylib.gphostcache import *
+    from gppylib.gplog import *
+    from gppylib.commands.unix import *
+    from gppylib.commands.gp import *
+    from gppylib.db import dbconn
+    from gppylib.userinput import *
+
+except ImportError, e:    
+    sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+EXECNAME = os.path.split(__file__)[-1]
+
+def parseargs():
+
+    parser = OptParser(option_class=OptChecker, usage=__doc__)
+
+    parser.remove_option('-h')
+    parser.add_option('-h','--help', action='store_true')
+    parser.add_option('--verbose', action='store_true')
+    parser.add_option('--debug', action='store_true')
+    parser.add_option('-e', '--entry', type='string')
+    parser.add_option('-v', '--value', type='string')
+    parser.add_option('-d', '--directory', type='string')
+    parser.add_option('-r', '--removeonly', action='store_true')
+    (options, args) = parser.parse_args()
+
+    if options.help:
+        print __doc__
+        sys.exit(1)
+
+    # sanity check 
+    if not options.entry:
+        print "--entry is a required command line.  Check the usage below:"
+        print __doc__
+        parser.exit()
+
+    if not options.directory:
+        print "--directory is a required command line.  Check the usage below:"
+        print __doc__
+        parser.exit()
+
+    if (not options.removeonly and not options.value) or (options.removeonly and options.value):
+        print "--value or --removeonly must be specified.  Check the usage below:"
+        print __doc__
+        parser.exit()
+
+    # other validations
+    USER=os.getenv('USER')
+    if USER is None or USER is ' ':
+        logger.error('USER environment variable must be set.')
+        parser.exit()
+
+    if not os.path.exists(options.directory):
+        logger.error('Master data directory does not exist.')
+        parser.exit()
+
+    return options
+
+def userConfirm():
+    if not ask_yesno('', "Are you sure you want to ignore unreachable hosts?",'N'):                            
+        logger.info("User Aborted. Exiting...")
+        sys.exit(0)
+
+#------------------------------- Mainline --------------------------------
+ 
+logger = get_default_logger()
+setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
+
+options = parseargs()
+
+if options.debug:
+    enable_verbose_logging()
+
+try:
+    dburl = dbconn.DbURL()
+
+    logger.info("START: connecting to gp_configure table")
+    gparray = createGPDBFromDB(dburl,utility=True)
+    logger.info("DONE: connecting to gp_configure table")
+
+except DatabaseError, ex:
+    logger.error('Failed to connect to database, exiting without action. This script can only be run when the database is up.')
+    sys.exit(1)
+
+pool = WorkerPool()
+failedPings = ping_segment_hosts(gparray,pool)
+
+if len(failedPings):
+    for i in failedPings:
+        logger.warning('unreachable host: ' + i.hostname)
+    userConfirm()
+
+hostCache = GpHostCache(gparray, pool, failedPings)
+
+try:
+
+    for h in hostCache.get_hosts():
+        directory_string = None
+        usabelHostname = None
+
+        for seg in h.dbs:
+
+            if directory_string:
+                directory_string = directory_string + "\n" + seg.datadir
+            else:
+                directory_string = seg.datadir
+                usableHostname = seg.hostname
+        
+            if options.verbose:
+                msg = "normalized_host=%s host=%s dir=%s" % (h.hostname, seg.hostname, seg.datadir)
+                logger.info(msg)
+    
+        cmd = GpAddConfigScript(h.hostname, directory_string, options.entry, options.value, options.removeonly, ctxt=REMOTE, remoteHost=usableHostname)
+        pool.addCommand(cmd)
+
+    if options.verbose:
+        msg = "normalized_host=%s host=%s dir=%s" % (gparray.master.hostname, gparray.master.hostname, gparray.master.datadir)
+        logger.info(msg)
+
+    cmd = GpAddConfigScript("master", gparray.master.datadir, options.entry, options.value, options.removeonly, ctxt=REMOTE, remoteHost=gparray.master.hostname)
+    pool.addCommand(cmd)
+
+    pool.join()
+    items = pool.getCompletedItems()
+    failure = False
+    for i in items:
+        if not i.was_successful():
+            logger.error('failed updating the postgresql.conf files on host: ' + i.remoteHost)
+            failure = True
+        
+    pool.check_results()
+
+except Exception, e:
+    logger.error('errors in job:')
+    logger.error(e.__str__())
+    logger.error('exiting early')
+
+pool.haltWork()
+pool.joinWorkers()
+
+if failure:
+    logger.error('finished with errors')
+else:
+    logger.info("completed successfully")

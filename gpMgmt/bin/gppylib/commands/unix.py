@@ -341,6 +341,21 @@ class MakeDirectory(Command):
         mkdirCmd.run(validateAfter=True)
         
         
+#-------------append------------------
+class AppendTextToFile(Command):
+    
+    def __init__(self,name,file,text,ctxt=LOCAL,remoteHost=None):    
+        cmdStr="echo '%s' >> %s" %  (text, file)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+#-------------inline perl replace------
+class InlinePerlReplace(Command):
+    
+    def __init__(self, name, fromStr, toStr, file, ctxt=LOCAL,remoteHost=None):    
+        cmdStr="%s -pi.bak -e's/%s/%s/g' %s" % (findCmdInPath('perl'), fromStr, toStr, file)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+
 #-------------rmdir------------------
 class RemoveDirectory(Command):
     
@@ -557,7 +572,7 @@ class Sadc(Command):
 
         cmdStr = SYSTEM.getSadcCmd(interval, outfilename)
         if background:
-            cmdStr = "rm " + outfilename + "; nohup " + cmdStr + "> /dev/null 2>&1 &"
+            cmdStr = "rm " + outfilename + "; nohup " + cmdStr + " < /dev/null > /dev/null 2>&1 &"
 
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 

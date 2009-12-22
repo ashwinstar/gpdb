@@ -453,6 +453,17 @@ class GpSuspendSegmentsOnHost(Command):
         cmdStr="echo '%s' | $GPHOME/sbin/gpsuspend.py %s" % (gpconfigstrings, pauseOrResume)                         
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
+#-----------------------------------------------
+class GpAddConfigScript(Command):
+    def __init__(self, name, directorystring, entry, value=None, removeonly=False, ctxt=LOCAL, remoteHost=None):                                  
+        cmdStr="echo '%s' | $GPHOME/sbin/gpaddconfig.py --entry %s" % (directorystring, entry)
+        if value:
+            cmdStr = cmdStr + " --value " + value
+        if removeonly:
+            cmdStr = cmdStr + " --removeonly "
+
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
 
 #-----------------------------------------------        
 def distribute_tarball(queue,list,tarball):
