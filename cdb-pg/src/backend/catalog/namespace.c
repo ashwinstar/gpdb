@@ -1918,6 +1918,14 @@ InitTempTableNamespace(void)
 bool
 ExistsCommittedTempNamespace(void)
 {
+	/*
+	 * WARNING:  ExistCommittedTempNamespace() requires that the caller be in
+	 * a portal, because it relies on there being a valid ResourceOwner,
+	 * which is needed if you want to call syscache or catcache. (ugh).
+	 *
+	 * TempNameSpaceValid does use GetSysCacheOid()
+	 *
+	 */
 	return TempNamespaceValid(false) &&
 		   (myTempNamespaceSubID == InvalidSubTransactionId);
 }
@@ -2210,6 +2218,11 @@ TempNamespaceValid(bool error_if_removed)
 		return false;
 	else
 	{
+		/*
+		 * Warning:  To use the syscache, there must be a valid ResourceOwner.
+		 * This implies we must be in a Portal, and if we are in a Portal, we are in
+		 * a transaction.  So you can't use this if we are currently idle.
+		 */
 		myTempNamespace = GetSysCacheOid(NAMESPACEOID,
 									 	 ObjectIdGetDatum(myTempNamespace),
 									 	 0, 0, 0);
