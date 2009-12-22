@@ -300,8 +300,6 @@ hashgetmulti(PG_FUNCTION_ARGS)
 	if (BufferIsValid(so->hashso_curbuf))
 		_hash_chgbufaccess(rel, so->hashso_curbuf, HASH_READ, HASH_NOLOCK);
 
-	tbm_begin_iterate(hashBitmap);
-
 	if(n && IsA(n, StreamBitmap))
 	{
 		stream_add_node((StreamBitmap *)n,
