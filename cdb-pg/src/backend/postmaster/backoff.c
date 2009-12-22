@@ -774,7 +774,7 @@ void BackoffSweeper()
 		bool found = true;
 		int numIterations = 0;
 		double CPUAvailable = numProcsPerSegment();
-		double maxCPU = Max(1.0, numProcsPerSegment());	/* Maximum CPU that a backend can get */
+		double maxCPU = Min(1.0, numProcsPerSegment());	/* Maximum CPU that a backend can get */
 
 		Assert(maxCPU > 0.0);
 		
