@@ -28,6 +28,7 @@ try:
     from gppylib.commands.gp import *
     from gppylib.db import dbconn
     from gppylib.userinput import *
+    from pygresql.pgdb import DatabaseError
 
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
