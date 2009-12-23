@@ -10,10 +10,6 @@
  *
  * $PostgreSQL: pgsql/src/include/nodes/nodes.h,v 1.188 2006/09/28 20:51:42 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef NODES_H
