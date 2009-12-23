@@ -2244,6 +2244,15 @@ TempNamespaceValid(bool error_if_removed)
 }
 
 /*
+ * GPDB: Special just for cdbgang use
+ */
+bool
+TempNamespaceOidIsValid(void)
+{
+	return OidIsValid(myTempNamespace);
+}
+
+/*
  * Fetch the active search path. The return value is a palloc'ed list
  * of OIDs; the caller is responsible for freeing this storage as
  * appropriate.

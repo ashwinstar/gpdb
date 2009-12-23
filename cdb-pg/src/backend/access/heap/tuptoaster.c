@@ -10,10 +10,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/access/heap/tuptoaster.c,v 1.66.2.1 2007/02/04 20:00:49 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *
  * INTERFACE ROUTINES
  *		toast_insert_or_update -

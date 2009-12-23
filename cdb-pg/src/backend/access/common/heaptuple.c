@@ -53,10 +53,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/access/common/heaptuple.c,v 1.112 2006/11/23 05:27:18 neilc Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 

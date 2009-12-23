@@ -10,10 +10,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/access/heap/heapam.c,v 1.223 2007/01/05 22:19:22 momjian Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *
  * INTERFACE ROUTINES
  *		relation_open	- open any relation by relation OID
