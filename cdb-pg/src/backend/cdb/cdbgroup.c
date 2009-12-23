@@ -2349,7 +2349,7 @@ List *make_subplan_tlist(List *tlist, Node *havingQual,
 			foreach(sl, sub_tlist)
 			{
 				sub_tle = (TargetEntry *) lfirst(sl);
-				if (equal(expr, sub_tle->expr))
+				if (equal(expr, sub_tle->expr) && (sub_tle->ressortgroupref == 0))
 					break;
 			}
 			if (!sl)

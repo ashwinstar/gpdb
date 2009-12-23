@@ -2443,7 +2443,8 @@ make_subplanTargetList(PlannerInfo *root,
 			foreach(sl, sub_tlist)
 			{
 				sub_tle = (TargetEntry *) lfirst(sl);
-				if (equal(groupexpr, sub_tle->expr))
+				if (equal(groupexpr, sub_tle->expr) 
+						&& (sub_tle->ressortgroupref == 0))
 					break;
 			}
 			if (!sl)
