@@ -8,7 +8,6 @@
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
- *    $Id$
  *	  $PostgreSQL: pgsql/src/backend/commands/explain.c,v 1.152 2006/10/04 00:29:51 momjian Exp $
  *
  *-------------------------------------------------------------------------

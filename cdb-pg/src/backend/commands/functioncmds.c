@@ -11,10 +11,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/commands/functioncmds.c,v 1.80 2006/10/06 17:13:58 petere Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *
  * DESCRIPTION
  *	  These routines take the parse tree and pick out the

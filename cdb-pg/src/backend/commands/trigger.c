@@ -9,10 +9,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/commands/trigger.c,v 1.210.2.4 2007/08/15 19:15:55 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
