@@ -6,9 +6,6 @@
  *
  * Copyright (c) 2007-2008, Greenplum inc *
  *
- * IDENTIFICATION
- *	  $Id$
- *
  *-------------------------------------------------------------------------
  */
 #ifndef NODEWINDOW_H

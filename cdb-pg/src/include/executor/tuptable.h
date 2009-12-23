@@ -9,10 +9,6 @@
  *
  * $PostgreSQL: pgsql/src/include/executor/tuptable.h,v 1.36 2006/10/04 00:30:08 momjian Exp $
  *
- * $Id$
- * $Change$
- * $DateTime$
- * $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef TUPTABLE_H
