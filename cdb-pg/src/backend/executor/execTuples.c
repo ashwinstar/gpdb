@@ -17,10 +17,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/execTuples.c,v 1.98 2006/10/04 00:29:52 momjian Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 /*
