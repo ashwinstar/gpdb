@@ -10,11 +10,7 @@
  *
  * $PostgreSQL: pgsql/src/include/nodes/execnodes.h,v 1.161.2.2 2007/04/26 23:24:57 tgl Exp $
  *
- *         $Id$
- *     $Change$
- *   $DateTime$
- *     $Author$
-  *-------------------------------------------------------------------------
+ *-------------------------------------------------------------------------
  */
 #ifndef EXECNODES_H
 #define EXECNODES_H

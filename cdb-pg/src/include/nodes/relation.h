@@ -10,10 +10,6 @@
  *
  * $PostgreSQL: pgsql/src/include/nodes/relation.h,v 1.128.2.4 2007/08/31 01:44:14 tgl Exp $
  *
- *         $Id$
- *     $Change$
- *   $DateTime$
- *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef RELATION_H
@@ -146,10 +142,9 @@ typedef struct PlannerInfo
 	 */
 	List	   *join_rel_list;	/* list of join-relation RelOptInfos */
 	struct HTAB *join_rel_hash; /* optional hashtable for join relations */
-
-	/* PSMERGE: These fields were managed in Query */
-	/* PSMERGE: TODO They should be managed here for later installation
-	 *          in PlannedStmt.
+	
+	/* Note:  Prior to 3.4, these fields were in the Query node.  Now they
+	 *        are managed here for later installation in PlannedStmt.
 	 */
 	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
 	PartitionNode *result_partitions;	
