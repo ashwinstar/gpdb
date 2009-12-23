@@ -12,10 +12,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/setrefs.c,v 1.126.2.1 2007/02/16 03:49:10 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"

@@ -11,10 +11,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planner.c,v 1.209 2006/10/04 00:29:54 momjian Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -139,7 +135,6 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	glob->invalItems = NIL;
 	glob->transientPlan = false;
 	
-
 	/* Determine what fraction of the plan is likely to be scanned */
 	if (isCursor)
 	{

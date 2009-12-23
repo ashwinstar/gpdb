@@ -1238,8 +1238,9 @@ finalize_primnode(Node *node, finalize_primnode_context *context)
  *
  * We assume the plan hasn't been put through SS_finalize_plan.
  *
- * PSMERGE: We treat root->init_plans like the old PlannerInitPlan global
- *          here, just until we rewrite setrefs.c
+ * For now we treat root->init_plans like the old PlannerInitPlan global here.
+ *
+ * TODO Rewrite setrefs.c and revisit. (PSMERGE).
  */
 Param *
 SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
