@@ -5,9 +5,6 @@
  *
  * Copyright (c) 2004-2008, Greenplum inc
  *
- * IDENTIFICATION
- *	  $Id$
- *
  * NOTES
  *	See src/backend/optimizer/util/clauses.c for background information
  *
