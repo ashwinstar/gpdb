@@ -25,10 +25,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/prepunion.c,v 1.134.2.1 2007/07/12 18:27:09 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
