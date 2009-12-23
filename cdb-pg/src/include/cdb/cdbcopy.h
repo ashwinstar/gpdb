@@ -7,9 +7,6 @@
 *
 * Copyright (c) 2005-2008, Greenplum inc
 *
-* IDENTIFICATION
-*	 $Id$
-*
 *--------------------------------------------------------------------------
 */
 #ifndef CDBCOPY_H

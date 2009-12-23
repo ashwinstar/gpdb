@@ -5,10 +5,6 @@
  *
  * Copyright (c) 2003-2008, Greenplum inc
  *
- *
- * IDENTIFICATION
- *	  $Id$
- *
  * NOTES
  *	  See src/backend/utils/misc/guc.c for variable external specification.
  *
