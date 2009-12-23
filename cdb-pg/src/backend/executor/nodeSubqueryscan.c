@@ -15,10 +15,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubqueryscan.c,v 1.32.2.2 2006/12/26 21:37:28 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 /*
