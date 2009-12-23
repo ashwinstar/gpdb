@@ -10,10 +10,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/commands/opclasscmds.c,v 1.49 2006/10/04 00:29:51 momjian Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
