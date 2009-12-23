@@ -60,7 +60,7 @@ static void estimate_rel_size(Relation rel, int32 *attr_widths,
 				  BlockNumber *pages, double *tuples);
 static List *get_relation_constraints(PlannerInfo *root,
 									  Oid relationObjectId, RelOptInfo *rel,
-						 bool include_notnull);
+									  bool include_notnull);
 
 static void
 estimate_tuple_width(Relation   rel,

@@ -11,10 +11,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/util/relnode.c,v 1.83.2.1 2007/07/31 19:53:50 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
