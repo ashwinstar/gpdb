@@ -5,8 +5,6 @@
  *
  * Copyright (c) 2005-2008, Greenplum inc
  *
- *	$Id$
- *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -2074,8 +2072,36 @@ cleanupGang(Gang *gp)
 	return true;
 }
 
+static bool NeedResetSession = false;
+static bool NeedSessionIdChange = false;
+static Oid	OldTempNamespace = InvalidOid;
+
+/*
+ * cleanupIdleReaderGangs() and cleanupAllIdleGangs().
+ *
+ * These two routines are used when a session has been idle for a while (waiting for the
+ * client to send us SQL to execute).  The idea is to consume less resources while sitting idle.
+ *
+ * The expectation is that if the session is logged on, but nobody is sending us work to do,
+ * we want to free up whatever resources we can.  Usually it means there is a human being at the
+ * other end of the connection, and that person has walked away from their terminal, or just hasn't
+ * decided what to do next.  We could be idle for a very long time (many hours).
+ *
+ * Of course, freeing gangs means that the next time the user does send in an SQL statement,
+ * we need to allocate gangs (at least the writer gang) to do anything.  This entails extra work,
+ * so we don't want to do this if we don't think the session has gone idle.
+ *
+ * Only call these routines from an idle session.
+ *
+ * These routines are called from the sigalarm signal handler (hopefully that is safe to do).
+ *
+ */
+
 /*
  * Destroy all idle (i.e available) reader gangs.
+ * It is always safe to get rid of the reader gangs.
+ *
+ * call only from an idle session.
  */
 void
 cleanupIdleReaderGangs(void)
@@ -2087,6 +2113,62 @@ cleanupIdleReaderGangs(void)
 
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG4, "cleanupIdleReaderGangs done");
+
+	return;
+}
+
+/*
+ * Destroy all gangs to free all resources on the segDBs, if it is possible (safe) to do so.
+ *
+ * Call only from an idle session.
+ */
+void
+cleanupAllIdleGangs(void)
+{
+	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+		elog(DEBUG4, "cleanupAllIdleGangs beginning");
+
+	/*
+	 * It's always safe to get rid of the reader gangs.
+	 *
+	 * Since we are idle, any reader gangs will be available but not allocated.
+	 */
+	disconnectAndDestroyAllReaderGangs(false);
+
+	/*
+	 * If we are in a transaction, we can't release the writer gang, as this will abort the transaction.
+	 */
+	if (!IsTransactionOrTransactionBlock())
+	{
+		/*
+		 * if we have a TempNameSpace, we can't release the writer gang, as this would drop any temp tables we own.
+		 *
+		 * This test really should be "do we have any temp tables", not "do we have a temp schema", but I'm still trying to figure
+		 * out how to test for that.  In general, we only create a temp schema if there was a create temp table statement, and
+		 * most of the time people are too lazy to drop their temp tables prior to session end, so 90% of the time this will be OK.
+		 * And when we get it wrong, it just means we don't free the writer gang when we could have.
+		 *
+		 * Better yet would be to have the QD control the dropping of the temp tables, and not doing it by letting each segment
+		 * drop it's part of the temp table independently.
+		 */
+		if (TempNamespaceOidIsValid())
+		{
+			/*
+			 * Get rid of ALL gangs... Readers, mirror writer, and primary writer.  After this, we have no
+			 * resources being consumed on the segDBs at all.
+			 */
+			disconnectAndDestroyAllGangs();
+			/*
+			 * Our session wasn't destroyed due to an fatal error or FTS action, so we don't need to
+			 * do anything special.  Specifically, we DON'T want to act like we are now in a new session,
+			 * since that would be confusing in the log.
+			 */
+			NeedResetSession = false;
+		}
+	}
+
+	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+		elog(DEBUG4, "cleanupAllIdleGangs done");
 
 	return;
 }
@@ -2668,9 +2750,6 @@ disconnectAndDestroyAllReaderGangs(bool destroyAllocated)
 	availableReaderGangs1 = NIL;
 }
 
-static bool NeedResetSession = false;
-static bool NeedSessionIdChange = false;
-static Oid	OldTempNamespace = InvalidOid;
 
 /*
  * Drop any temporary tables associated with the current session and
@@ -2760,7 +2839,13 @@ resetSessionForPrimaryGangLoss(void)
 		NeedResetSession = true;
 		NeedSessionIdChange = true;
 
-		if (CurrentResourceOwner != NULL && ExistsCommittedTempNamespace())
+		/*
+		 * WARNING:  ExistCommittedTempNamespace() requires that the caller be in
+		 * a transaction and a portal, because it relies on there being a valid ResourceOwner,
+		 * which is needed if you want to call syscache or catcache. (ugh).
+		 *
+		 */
+		if (ExistsCommittedTempNamespace())
 		{
 			/*
 			 * Here we indicate we don't have a temporary table namespace

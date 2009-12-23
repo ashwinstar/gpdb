@@ -4,8 +4,6 @@
  *
  * Copyright (c) 2005-2008, Greenplum inc
  *
- * $Id$
- *
  *-------------------------------------------------------------------------
  */
 #ifndef _CDBGANG_H_
@@ -124,8 +122,22 @@ findGangById(int gang_id);
 extern bool
 cleanupGang(Gang * gp);
 
+
+/*
+ * cleanupIdleReaderGangs() and cleanupAllIdleGangs().
+ *
+ * These two routines are used when a session has been idle for a while (waiting for the
+ * client to send us SQL to execute).  The idea is to consume less resources while sitting idle.
+ *
+ * Only call these from an idle session.
+ */
 extern void
 cleanupIdleReaderGangs(void);
+
+extern void
+cleanupAllIdleGangs(void);
+
+/**/
 
 extern void
 cleanupPortalGangs(Portal portal);
