@@ -84,19 +84,19 @@ typedef struct RangeVar
 
 
 typedef struct TableOidInfo
-	{
-			Oid         relOid;			/* If the heap is (re-)created, create  with this relOid */
-		Oid         comptypeOid;
-		Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
-		Oid		    toastIndexOid;	/* if toast table needed, use this for the relOid of the index */
-		Oid			toastComptypeOid;
-		Oid		    aosegOid;		/* if ao segment table needed, use this for the relOid of the aoseg table */
-		Oid		    aosegIndexOid;	/* if ao segment table needed, use this for the relOid of the aoseg index */
-		Oid			aosegComptypeOid;
+{
+	Oid         relOid;			/* If the heap is (re-)created, create  with this relOid */
+	Oid         comptypeOid;
+	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
+	Oid		    toastIndexOid;	/* if toast table needed, use this for the relOid of the index */
+	Oid			toastComptypeOid;
+	Oid		    aosegOid;		/* if ao segment table needed, use this for the relOid of the aoseg table */
+	Oid		    aosegIndexOid;	/* if ao segment table needed, use this for the relOid of the aoseg index */
+	Oid			aosegComptypeOid;
 	Oid		    aoblkdirOid;		/* if ao blkdir table needed, use this for the relOid of the aoblkdir table */
 	Oid		    aoblkdirIndexOid;	/* if ao blkdir table needed, use this for the relOid of the aoblkdir index */
 	Oid			aoblkdirComptypeOid;
-	} TableOidInfo;
+} TableOidInfo;
 
 /*
  * IntoClause - target information for SELECT INTO and CREATE TABLE AS
