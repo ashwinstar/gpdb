@@ -10,10 +10,6 @@
  *
  * $PostgreSQL: pgsql/src/include/optimizer/pathnode.h,v 1.72 2006/10/04 00:30:09 momjian Exp $
  *
- *         $Id$
- *     $Change$
- *   $DateTime$
- *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef PATHNODE_H

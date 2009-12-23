@@ -10,10 +10,6 @@
  *
  * $PostgreSQL: pgsql/src/include/optimizer/prep.h,v 1.57.2.1 2008/11/11 18:13:54 tgl Exp $
  *
- *         $Id$
- *     $Change$
- *   $DateTime$
- *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef PREP_H
