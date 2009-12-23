@@ -11,10 +11,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef RESSCHEDULER_H

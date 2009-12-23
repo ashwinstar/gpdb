@@ -4,8 +4,6 @@
  *
  * Lock subsystems two-phase state file hooks.
  *
- * $Id$
- *
  *-------------------------------------------------------------------------
  */
 #ifndef LOCKRMGR_H_
