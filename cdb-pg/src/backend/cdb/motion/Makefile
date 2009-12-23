@@ -3,9 +3,6 @@
 # Makefile--
 #    Makefile for motion (CDB2)
 #
-# IDENTIFICATION
-#    $Header$
-#
 #-------------------------------------------------------------------------
 
 

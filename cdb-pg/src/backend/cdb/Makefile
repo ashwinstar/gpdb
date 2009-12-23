@@ -1,10 +1,7 @@
 #-------------------------------------------------------------------------
 #
 # Makefile--
-#    Makefile for cdb (CDB2)
-#
-# IDENTIFICATION
-#    $Header$
+#    Makefile for cdb (GPDB specific routines)
 #
 #-------------------------------------------------------------------------
 

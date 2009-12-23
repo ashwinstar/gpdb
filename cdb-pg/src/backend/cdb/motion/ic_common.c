@@ -4,14 +4,6 @@
  *
  * Copyright (c) 2005-2008, Greenplum
  *
- * IDENTIFICATION:
- *	   $Id$
- *
- *
- * $File$
- * $Change$
- * $Author$
- * $DateTime$
  * Reviewers: jzhang, tkordas
  *-------------------------------------------------------------------------
  */

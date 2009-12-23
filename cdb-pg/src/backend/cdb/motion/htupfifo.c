@@ -5,13 +5,6 @@
  *
  * Copyright (c) 2005-2008, Greenplum inc
  *
- * IDENTIFICATION
- *	   $Id$
- *
- * $File$
- * $Change$
- * $Author$
- * $DateTime$
  * Reviewers: tkordas
  *-------------------------------------------------------------------------
  */
