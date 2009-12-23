@@ -7,9 +7,6 @@
  *
  * Copyright (c) 2007-2008, Greenplum inc
  *
- * IDENTIFICATION
- *	  $Id$
- *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
  *	  information from the DATA() statements.

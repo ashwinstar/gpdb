@@ -9,10 +9,6 @@
  *
  * $PostgreSQL: pgsql/src/include/access/heapam.h,v 1.117 2006/11/05 22:42:10 tgl Exp $
  *
- *         $Id$
- *     $Change$
- *   $DateTime$
- *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef HEAPAM_H

@@ -3,10 +3,6 @@
  *
  * Copyright (c) 2008, Greenplum inc
  *
- *         $Id$
- *     $Change$
- *   $DateTime$
- *     $Author$
  */
 #ifndef MEM_TUP_H
 #define MEM_TUP_H

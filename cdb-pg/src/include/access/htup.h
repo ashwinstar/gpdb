@@ -10,10 +10,6 @@
  *
  * $PostgreSQL: pgsql/src/include/access/htup.h,v 1.87 2006/11/05 22:42:10 tgl Exp $
  *
- *         $Id$
- *     $Change$
- *   $DateTime$
- *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef HTUP_H

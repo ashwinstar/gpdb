@@ -9,10 +9,6 @@
  *
  * $PostgreSQL: pgsql/src/include/access/relscan.h,v 1.50 2006/10/04 00:30:07 momjian Exp $
  *
- *         $Id$
- *     $Change$
- *   $DateTime$
- *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef RELSCAN_H
