@@ -30,10 +30,6 @@
  *
  * plr.h
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  */
 #ifndef PLR_H
 #define PLR_H
