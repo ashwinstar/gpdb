@@ -2151,7 +2151,7 @@ cleanupAllIdleGangs(void)
 		 * Better yet would be to have the QD control the dropping of the temp tables, and not doing it by letting each segment
 		 * drop it's part of the temp table independently.
 		 */
-		if (TempNamespaceOidIsValid())
+		if (!TempNamespaceOidIsValid())
 		{
 			/*
 			 * Get rid of ALL gangs... Readers, mirror writer, and primary writer.  After this, we have no
@@ -2165,7 +2165,13 @@ cleanupAllIdleGangs(void)
 			 */
 			NeedResetSession = false;
 		}
+		else
+			if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+				elog(DEBUG4,"TempNameSpaceOid is valid, can't free writer");
 	}
+	else
+		if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+			elog(DEBUG4,"We are in a transaction, can't free writer");
 
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG4, "cleanupAllIdleGangs done");
