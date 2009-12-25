@@ -18,10 +18,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/utils/adt/selfuncs.c,v 1.214.2.6 2007/08/31 23:35:29 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 

@@ -14,8 +14,8 @@
  * optimizable statements.
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	$PostgreSQL: pgsql/src/backend/parser/analyze.c,v 1.353.2.1 2007/06/20 18:21:08 tgl Exp $
@@ -742,8 +742,8 @@ transformStmt(ParseState *pstate, Node *parseTree,
 		default:
 
 			/*
-			 * other statements don't require any transformation-- just return
-			 * the original parsetree, yea!
+			 * other statements don't require any transformation; just return
+			 * the original parsetree with a Query node plastered on top.
 			 */
 			result = makeNode(Query);
 			result->commandType = CMD_UTILITY;
@@ -1048,12 +1048,12 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 
 		Assert(IsA(selectQuery, Query));
 		Assert(selectQuery->commandType == CMD_SELECT);
-		if (selectQuery->into)
+		if (selectQuery->intoClause)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("INSERT ... SELECT cannot specify INTO"),
 					 parser_errposition(pstate,
-						   exprLocation((Node *) selectQuery->into))));
+						   exprLocation((Node *) selectQuery->intoClause))));
 
 		/*
 		 * Make the source be a subquery in the INSERT's rangetable, and add
@@ -8501,10 +8501,7 @@ transformGroupedWindows(Query *qry)
 	subq->utilityStmt = qry->utilityStmt;
 	subq->resultRelation = 0;
 	subq->canSetTag = true;
-	subq->into = NULL;
-	subq->intoOptions = NIL;
-	subq->intoOnCommit = ONCOMMIT_NOOP;
-	subq->intoTableSpaceName = NULL;
+	subq->intoClause = NULL;
 	subq->hasAggs = false;
 	/* hasWindFuncs is covered later */
 	subq->hasSubLinks = qry->hasSubLinks; /* If qry has them, we do now */
@@ -8762,15 +8759,17 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
     pstate->p_breadcrumb.node = NULL;
 
 	/* handle any SELECT INTO/CREATE TABLE AS spec */
+	qry->intoClause = NULL;
 	if (stmt->into)
 	{
-		qry->into = stmt->into;
+		qry->intoClause = makeNode(IntoClause);
+		qry->intoClause->rel = stmt->into;
 		if (stmt->intoColNames)
 			applyColumnNames(qry->targetList, stmt->intoColNames);
-		qry->intoOptions = copyObject(stmt->intoOptions);
-		qry->intoOnCommit = stmt->intoOnCommit;
-		qry->intoTableSpaceName = stmt->intoTableSpaceName;
-/* XXX XXX:		qry->partitionBy = stmt->partitionBy; */
+		qry->intoClause->options = copyObject(stmt->intoOptions);
+		qry->intoClause->onCommit = stmt->intoOnCommit;
+		qry->intoClause->tableSpaceName = stmt->intoTableSpaceName;
+		/* XXX XXX:		qry->partitionBy = stmt->partitionBy; */
 	}
 
 	/*
@@ -8964,14 +8963,16 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 		setQryDistributionPolicy(stmt, qry);
 
 	/* handle any CREATE TABLE AS spec */
+	qry->intoClause = NULL;
 	if (stmt->into)
 	{
-		qry->into = stmt->into;
+		qry->intoClause = makeNode(IntoClause);
+		qry->intoClause->rel = stmt->into;
 		if (stmt->intoColNames)
 			applyColumnNames(qry->targetList, stmt->intoColNames);
-		qry->intoOptions = copyObject(stmt->intoOptions);
-		qry->intoOnCommit = stmt->intoOnCommit;
-		qry->intoTableSpaceName = stmt->intoTableSpaceName;
+		qry->intoClause->options = copyObject(stmt->intoOptions);
+		qry->intoClause->onCommit = stmt->intoOnCommit;
+		qry->intoClause->tableSpaceName = stmt->intoTableSpaceName;
 	}
 
 	/*
@@ -9069,13 +9070,15 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 		leftmostSelect = leftmostSelect->larg;
 	Assert(leftmostSelect && IsA(leftmostSelect, SelectStmt) &&
 		   leftmostSelect->larg == NULL);
+	qry->intoClause = NULL;
 	if (leftmostSelect->into)
 	{
-		qry->into = leftmostSelect->into;
+		qry->intoClause = makeNode(IntoClause);
+		qry->intoClause->rel = leftmostSelect->into;
 		intoColNames = leftmostSelect->intoColNames;
-		qry->intoOptions = copyObject(leftmostSelect->intoOptions);
-		qry->intoOnCommit = leftmostSelect->intoOnCommit;
-		qry->intoTableSpaceName = leftmostSelect->intoTableSpaceName;
+		qry->intoClause->options = copyObject(leftmostSelect->intoOptions);
+		qry->intoClause->onCommit = leftmostSelect->intoOnCommit;
+		qry->intoClause->tableSpaceName = leftmostSelect->intoTableSpaceName;
 	}
 
 	/* clear this to prevent complaints in transformSetOperationTree() */
@@ -9122,7 +9125,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	Assert(leftmostQuery != NULL);
 
 	/* Copy transformed distribution policy to query */
-	if (qry->into)
+	if (qry->intoClause)
 		qry->intoPolicy = leftmostQuery->intoPolicy;
 
 	/*
@@ -10164,22 +10167,30 @@ transformDeclareCursorStmt(ParseState *pstate, DeclareCursorStmt *stmt)
 				(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
 				 errmsg("cannot specify both SCROLL and NO SCROLL")));
 
-	stmt->query = (Node *) transformStmt(pstate, stmt->query,
-										 &extras_before, &extras_after);
+	result = transformStmt(pstate, stmt->query,
+									&extras_before, &extras_after);
 
 	/* Shouldn't get any extras, since grammar only allows SelectStmt */
 	if (extras_before || extras_after)
 		elog(ERROR, "unexpected extra stuff in cursor statement");
-	if (!IsA(stmt->query, Query) ||
-		((Query *) stmt->query)->commandType != CMD_SELECT)
-		elog(ERROR, "unexpected non-SELECT command in cursor statement");
+	
+	/* Grammar should not have allowed anything but SELECT */
+	if (!IsA(result, Query) ||
+		result->commandType != CMD_SELECT ||
+		result->utilityStmt != NULL)
+		elog(ERROR, "unexpected non-SELECT command in DECLARE CURSOR");
 
 	/* But we must explicitly disallow DECLARE CURSOR ... SELECT INTO */
-	if (((Query *) stmt->query)->into)
+	if (result->intoClause)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
-				 errmsg("DECLARE CURSOR may not specify INTO")));
-
+				 errmsg("DECLARE CURSOR cannot specify INTO")));
+	
+	/* We won't need the raw querytree any more */
+	stmt->query = NULL;
+	
+	result->utilityStmt = (Node *) stmt;
+	
 	return result;
 }
 
@@ -10898,7 +10909,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 		if (stmt->distributedBy->length == 1 && (list_head(stmt->distributedBy) == NULL || linitial(stmt->distributedBy) == NULL))
 		{
 			/* distributed randomly */
-			qry->intoPolicy = policy;
+			qry->intoPolicy = policy; 
 		}
 		else
 		foreach(keys, stmt->distributedBy)
@@ -11120,6 +11131,7 @@ transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 		createStmt->oncommit = ONCOMMIT_NOOP;
 		createStmt->tablespacename = NULL;
 		createStmt->relKind = RELKIND_RELATION;
+		createStmt->relStorage = RELSTORAGE_HEAP;
 		createStmt->distributedBy = list_make1(NULL); /* DISTRIBUTED RANDOMLY */
 
 

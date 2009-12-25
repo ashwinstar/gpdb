@@ -151,8 +151,7 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 {
 	PreparedStatement *entry;
 	char	   *query_string;
-	List	   *query_list,
-			   *plan_list;
+	List	   *stmt_list;
 	MemoryContext qcontext;
 	ParamListInfo paramLI = NULL;
 	EState	   *estate = NULL;
@@ -162,11 +161,9 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 	entry = FetchPreparedStatement(stmt->name, true);
 
 	query_string = entry->query_string;
-	query_list = entry->query_list;
-	plan_list = entry->plan_list;
+	stmt_list = entry->stmt_list;
+		
 	qcontext = entry->context;
-
-	Assert(list_length(query_list) == list_length(plan_list));
 
 	/* Evaluate parameters, if any */
 	if (entry->argtype_list != NIL)
@@ -194,39 +191,48 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 	if (stmt->into)
 	{
 		MemoryContext oldContext;
-		Query	   *query;
+		PlannedStmt	 *pstmt;
+
+		if (list_length(stmt_list) != 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("prepared statement is not a SELECT")));
 
 		oldContext = MemoryContextSwitchTo(PortalGetHeapMemory(portal));
 
 		if (query_string)
 			query_string = pstrdup(query_string);
-		query_list = copyObject(query_list);
-		plan_list = copyObject(plan_list);
+		stmt_list = copyObject(stmt_list);
 		qcontext = PortalGetHeapMemory(portal);
-
-		if (list_length(query_list) != 1)
+		pstmt = (PlannedStmt *) linitial(stmt_list);
+		pstmt->qdContext = qcontext;
+		if (pstmt->commandType != CMD_SELECT)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("prepared statement is not a SELECT"),
 							   errOmitLocation(true)));
-		query = (Query *) linitial(query_list);
-		if (query->commandType != CMD_SELECT)
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("prepared statement is not a SELECT"),
-							   errOmitLocation(true)));
-		query->into = copyObject(stmt->into);
-		query->intoOptions = copyObject(stmt->intoOptions);
-		query->intoOnCommit = stmt->into_on_commit;
-		if (stmt->into_tbl_space)
-			query->intoTableSpaceName = pstrdup(stmt->into_tbl_space);
 
+		pstmt->intoClause = copyObject(stmt->into);
+
+		/* TODO Find a way to eliminate this reference to the temporary queryTree
+		 *      field of PlannedStmt.  (PSMERGE)
+		 * But, for now, this is how we convey into and intoPolicy.
+		 */
+		{
+			Query *query = pstmt->queryTree;
+			
+			query->intoClause = pstmt->intoClause; 
+			
+			/* TODO Check this.  Is it legitimate to assign a constant default policy
+			 *                   without even checking the relation?
+			 */
+			query->intoPolicy = palloc0(sizeof(GpPolicy)- sizeof(query->intoPolicy->attrs)
+										+ 255 * sizeof(query->intoPolicy->attrs[0]));
+			query->intoPolicy->nattrs = 1;			
+			query->intoPolicy->ptype = POLICYTYPE_PARTITIONED;
+			query->intoPolicy->attrs[0] = 1;
+		}
 		
-		query->intoPolicy = palloc0(sizeof(GpPolicy)- sizeof(query->intoPolicy->attrs) + 255 * sizeof(query->intoPolicy->attrs[0]));
-		query->intoPolicy->nattrs = 1;			
-		query->intoPolicy->ptype = POLICYTYPE_PARTITIONED;
-		query->intoPolicy->attrs[0] = 1;
-
 		MemoryContextSwitchTo(oldContext);
 	}
 
@@ -235,8 +241,7 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 					  query_string,
 					  entry->sourceTag,
 					  entry->commandTag,
-					  query_list,
-					  plan_list,
+					  stmt_list,
 					  qcontext);
 
 	/*
@@ -246,7 +251,7 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 
 	(void) PortalRun(portal, 
 					FETCH_ALL, 
-					 true, /* PSMERGE: Effectively always top level. */
+					 true, /* Effectively always top level. */
 					 dest, 
 					 dest, 
 					 completionTag);
@@ -345,7 +350,7 @@ StorePreparedStatement(const char *stmt_name,
 					   NodeTag	   sourceTag,
 					   const char *commandTag,
 					   List *query_list,
-					   List *plan_list,
+					   List *stmt_list,
 					   List *argtype_list,
 					   bool from_sql)
 {
@@ -385,8 +390,30 @@ StorePreparedStatement(const char *stmt_name,
 	 * incomplete (ie corrupt) hashtable entry.
 	 */
 	qstring = query_string ? pstrdup(query_string) : NULL;
-	query_list = (List *) copyObject(query_list);
-	plan_list = (List *) copyObject(plan_list);
+	query_list = (List *)copyObject(query_list);
+	/* We don't copy the list directly, like this,
+	 *     stmt_list = (List *) copyObject(stmt_list);
+	 * because we want to propagate the memory context into the PlannedStmt node
+	 * since dispatch may modify the query tree.
+	 *
+	 * TODO Simplify this when plan modification is moved out of dispatch.
+	 */
+	{
+		ListCell *lc;
+		List* new_list = NIL;
+		foreach (lc, stmt_list)
+		{
+			Node *node = copyObject(lfirst(lc));
+			if (IsA(node, PlannedStmt))
+			{
+				PlannedStmt *ps = (PlannedStmt*) node;
+				ps->qdContext = entrycxt;
+			}
+			new_list = lappend(new_list, node);
+		}
+		stmt_list = new_list;
+	}
+	
 	argtype_list = list_copy(argtype_list);
 
 	/* Now we can add entry to hash table */
@@ -405,7 +432,7 @@ StorePreparedStatement(const char *stmt_name,
 	entry->sourceTag = sourceTag;
 	entry->commandTag = commandTag;
 	entry->query_list = query_list;
-	entry->plan_list = plan_list;
+	entry->stmt_list = stmt_list;
 	entry->argtype_list = argtype_list;
 	entry->context = entrycxt;
 	entry->prepare_time = GetCurrentStatementStartTimestamp();
@@ -477,7 +504,7 @@ FetchPreparedStatementResultDesc(PreparedStatement *stmt)
 			return ExecCleanTypeFromTL(query->targetList, false);
 
 		case PORTAL_ONE_RETURNING:
-			query = PortalListGetPrimaryQuery(stmt->query_list);
+			query = (Query *) PortalListGetPrimaryStmt(stmt->query_list);
 			return ExecCleanTypeFromTL(query->returningList, false);
 
 		case PORTAL_UTIL_SELECT:
@@ -534,7 +561,7 @@ FetchPreparedStatementTargetList(PreparedStatement *stmt)
 	if (strategy == PORTAL_ONE_SELECT)
 		return ((Query *) linitial(stmt->query_list))->targetList;
 	if (strategy == PORTAL_ONE_RETURNING)
-		return (PortalListGetPrimaryQuery(stmt->query_list))->returningList;
+		return ((Query *)(PortalListGetPrimaryStmt(stmt->query_list)))->returningList;
 	if (strategy == PORTAL_UTIL_SELECT)
 	{
 		Node	   *utilityStmt;
@@ -619,7 +646,7 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 	ListCell   *q,
 			   *p;
 	List	   *query_list,
-			   *plan_list;
+			   *stmt_list;
 	ParamListInfo paramLI = NULL;
 	EState	   *estate = NULL;
 
@@ -628,11 +655,6 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 
 	/* Look it up in the hash table */
 	entry = FetchPreparedStatement(execstmt->name, true);
-
-	query_list = entry->query_list;
-	plan_list = entry->plan_list;
-
-	Assert(list_length(query_list) == list_length(plan_list));
 
 	/* Evaluate parameters, if any */
 	if (entry->argtype_list != NIL)
@@ -646,13 +668,23 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 		paramLI = EvaluateParams(estate, execstmt->params,
 								 entry->argtype_list);
 	}
+	
+	query_list = entry->query_list;
+	stmt_list = entry->stmt_list;
+	
+	Assert(list_length(query_list) == list_length(stmt_list));
 
 	/* Explain each query */
-	forboth(q, query_list, p, plan_list)
+	forboth(q, query_list, p, stmt_list)
 	{
-		Query	   *query = (Query *) lfirst(q);
-		Plan	   *plan = (Plan *) lfirst(p);
-		bool		is_last_query;
+		PlannedStmt *plannedstmt;
+		Query *query;
+		Plan *plan;
+		bool is_last_query;
+		
+		query = (Query *) lfirst(q);
+		plannedstmt = (PlannedStmt*) lfirst(p);
+		plan = plannedstmt->planTree;
 
 		is_last_query = (lnext(p) == NULL);
 
@@ -678,7 +710,12 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 				/* Copy the query so we can modify it */
 				query = copyObject(query);
 
-				query->into = execstmt->into;
+				if ( execstmt->into )
+				{
+					Assert(query->intoClause == NULL);
+					query->intoClause = makeNode(IntoClause);
+					query->intoClause->rel = execstmt->into->rel;
+				}
 			}
 
 			/*
@@ -691,12 +728,12 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 			ActiveSnapshot->curcid = GetCurrentCommandId();
 
 			/* Create a QueryDesc requesting no output */
-			qdesc = CreateQueryDesc(query, plan, entry->query_string,
+			qdesc = CreateQueryDesc(plannedstmt, entry->query_string,
 									ActiveSnapshot, InvalidSnapshot,
 									None_Receiver,
 									paramLI, stmt->analyze);
 
-			ExplainOnePlan(qdesc, stmt, entry->query_string, paramLI, tstate);
+			ExplainOnePlan(qdesc, stmt, "EXECUTE", params, tstate);
 		}
 
 		/* No need for CommandCounterIncrement, as ExplainOnePlan did it */

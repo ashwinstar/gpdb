@@ -58,6 +58,9 @@
 /* GUC parameter */
 double cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
 
+/* Hook for plugins to get control in planner() */
+planner_hook_type planner_hook = NULL;
+
 ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 
 
@@ -101,17 +104,45 @@ static void sort_canonical_gs_list(List *gs, int *p_nsets, Bitmapset ***p_sets);
  *
  *	   Query optimizer entry point
  *
+ * To support loadable plugins that monitor or modify planner behavior,
+ * we provide a hook variable that lets a plugin get control before and
+ * after the standard planning process.  The plugin would normally call
+ * standard_planner().
+ *
+ * Note to plugin authors: standard_planner() scribbles on its Query input,
+ * so you'd better copy that data structure if you want to plan more than once.
+ *
  *****************************************************************************/
-Plan *
+
+PlannedStmt * 
 planner(Query *parse, bool isCursor, int cursorOptions,
 		ParamListInfo boundParams)
 {
+	PlannedStmt *result;
+	
+	if (planner_hook)
+		result = (*planner_hook) (parse, isCursor, cursorOptions, boundParams);
+	else
+		result = standard_planner(parse, isCursor, cursorOptions, boundParams);
+	return result;
+}
+
+PlannedStmt *
+standard_planner(Query *parse, bool isCursor, int cursorOptions,
+			ParamListInfo boundParams)
+{
+	PlannedStmt *result;
 	PlannerGlobal *glob;
 	double		tuple_fraction;
 	PlannerInfo *root;
-	Plan	   *result_plan;
+	Plan	   *top_plan;
 	ApplyShareInputContext shareinput_context;
 
+	/* Cursor options may come from caller or from DECLARE CURSOR stmt */
+	if (parse->utilityStmt &&
+		IsA(parse->utilityStmt, DeclareCursorStmt))
+		cursorOptions |= ((DeclareCursorStmt *) parse->utilityStmt)->options;
+	
 	/*
 	 * The planner can be called recursively (an example is when
 	 * eval_const_expressions tries to pre-evaluate an SQL function).
@@ -121,7 +152,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	 * so we keep it in a separate struct that's linked to by each per-Query
 	 * PlannerInfo.
 	 *
-	 * PSMERGE: Some fields will be unused until later.
+	 * TODO Some fields will be unused until PlannedStmt support is complete.
 	 */
 	glob = makeNode(PlannerGlobal);
 	
@@ -166,7 +197,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	}
 	
 	/* primary planning entry point (may recurse for subqueries) */
-	result_plan = subquery_planner(glob, parse, NULL, tuple_fraction, &root);
+	top_plan = subquery_planner(glob, parse, NULL, tuple_fraction, &root);
 
 	/*
 	 * If creating a plan for a scrollable cursor, make sure it can run
@@ -174,8 +205,8 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	 */
 	if (isCursor && (cursorOptions & CURSOR_OPT_SCROLL))
 	{
-		if (!ExecSupportsBackwardScan(result_plan))
-			result_plan = materialize_finished_plan(root, result_plan);
+		if (!ExecSupportsBackwardScan(top_plan))
+			top_plan = materialize_finished_plan(root, top_plan);
 	}
 
 
@@ -190,32 +221,65 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	shareinput_context.sliceMarks = NULL;
 	shareinput_context.motStack = NULL;
 
-	result_plan = apply_shareinput_dag_to_tree(result_plan, &shareinput_context); 
+	top_plan = apply_shareinput_dag_to_tree(top_plan, &shareinput_context); 
 
-	/* final cleanup of the plan */
-	result_plan = set_plan_references_qry(result_plan,
+	/* final cleanup of the plan
+	 *
+	 * In PG (probably due to different handling of initplans and CTEs) this is a loop on 
+	 * glob->subplans and glob->subrtables. Here, for now, we have preserved the GPDB,
+	 * approach.
+	 *
+	 * TODO Revisit as part of completion of PlannedStmt.  (PSMERGE)
+	 */
+	top_plan = set_plan_references_qry(top_plan,
                                           parse,
                                           shareinput_context.sharedNodes);
 
 	/* executor wants to know total number of Params used overall */
-	result_plan->nParamExec = list_length(glob->paramlist);
+	top_plan->nParamExec = list_length(glob->paramlist);
 
 	if ( Gp_role == GP_ROLE_DISPATCH )
 	{
 		bool uses_correlation = has_correlation_params(glob->paramlist);
 		
-		result_plan = cdbparallelize(root, result_plan, parse,
+		top_plan = cdbparallelize(root, top_plan, parse,
 									isCursor, cursorOptions,
 									boundParams, uses_correlation);
 
 		/* cdbparallelize may create additional slices that may affect share input.
 		 * need to mark material nodes that are split acrossed multi slices.
 		 */
-		result_plan = apply_shareinput_xslice(result_plan, &shareinput_context);
+		top_plan = apply_shareinput_xslice(top_plan, &shareinput_context);
 	}
 
-	result_plan = zap_trivial_result(result_plan);
-	return result_plan;
+	top_plan = zap_trivial_result(top_plan);
+	
+	/* build the PlannedStmt result */
+	result = makeNode(PlannedStmt);
+	
+	result->commandType = parse->commandType;
+	result->canSetTag = parse->canSetTag;
+	result->transientPlan = glob->transientPlan;
+	result->queryTree = parse; /* TODO Retire eventually. (PSMERGE) */
+	result->planTree = top_plan;
+	result->rtable = glob->finalrtable;
+	result->resultRelations = root->resultRelations;
+	result->utilityStmt = parse->utilityStmt;
+	result->intoClause = parse->intoClause;
+	result->subplans = glob->subplans;
+	result->rewindPlanIDs = glob->rewindPlanIDs;
+	result->returningLists = root->returningLists;
+	result->result_partitions = root->result_partitions;
+	result->result_aosegnos = root->result_aosegnos;
+	result->rowMarks = parse->rowMarks;
+	result->relationOids = glob->relationOids;
+	result->invalItems = glob->invalItems;
+	result->nParamExec = list_length(glob->paramlist);
+	result->nMotionNodes = top_plan->nMotionNodes;
+	result->nInitPlans = top_plan->nInitPlans;
+	
+	Assert(result->utilityStmt == NULL || IsA(result->utilityStmt, DeclareCursorStmt));
+	return result;
 }
 
 
@@ -233,9 +297,6 @@ planner(Query *parse, bool isCursor, int cursorOptions,
  *
  * If subroot isn't NULL, we pass back the query's final PlannerInfo struct;
  * among other things this tells the output sort ordering of the plan.
- *  PSMERGE: BECOMES
- * If subquery_pathkeys isn't NULL, it receives a list of pathkeys indicating
- * the output sort ordering of the completed plan.
  *
  * Basically, this routine does the stuff that should only be done once
  * per Query object.  It then calls grouping_planner.  At one time,
@@ -251,7 +312,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
  */
 Plan *
 subquery_planner(PlannerGlobal *glob,
-                 Query *parse, 
+				 Query *parse, 
 				 PlannerInfo *parent_root,
 				 double tuple_fraction,
 				 PlannerInfo **subroot)
@@ -277,7 +338,7 @@ subquery_planner(PlannerGlobal *glob,
     /* CDB: Initialize globals */
     root->mpp_trying_fallback_plan = false;
 	root->cdbpath_segments = planner_segment_count();
-
+	
     if (Gp_role != GP_ROLE_DISPATCH && root->cdbpath_segments > 0)
     {
         /* Choose a segdb to which our singleton gangs should be dispatched. */
@@ -507,7 +568,7 @@ subquery_planner(PlannerGlobal *glob,
 	/* Return internal info if caller wants it */
 	if (subroot)
 		*subroot = root;
-
+	
 	return plan;
 }
 
@@ -707,6 +768,8 @@ inheritance_planner(PlannerInfo *root)
 		subroot.parse = (Query *)
 			adjust_appendrel_attrs((Node *) parse,
 								   appinfo);
+		subroot.returningLists = NIL;
+		subroot.init_plans = NIL;
 		subroot.in_info_list = (List *)
 			adjust_appendrel_attrs((Node *) root->in_info_list,
 								   appinfo);
@@ -785,9 +848,9 @@ inheritance_planner(PlannerInfo *root)
 		/* Build list of per-relation RETURNING targetlists */
 		if (parse->returningList)
 		{
-			Assert(list_length(subroot.parse->returningLists) == 1);
+			Assert(list_length(subroot.returningLists) == 1);
 			returningLists = list_concat(returningLists,
-										 subroot.parse->returningLists);
+										 subroot.returningLists);
 		}
 	}
 
@@ -1783,9 +1846,11 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		rlist = set_returning_clause_references(parse->returningList,
 												result_plan,
 												parse->resultRelation);
-		parse->returningLists = list_make1(rlist);
+		root->returningLists = list_make1(rlist);
 	}
-
+	else
+		root->returningLists = NIL;
+	
 	/*
 	 * Return the actual output ordering in query_pathkeys for possible use by
 	 * an outer query level.

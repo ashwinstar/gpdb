@@ -9,13 +9,6 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
- * IDENTIFICATION
- *	  $PostgreSQL: $
- *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"

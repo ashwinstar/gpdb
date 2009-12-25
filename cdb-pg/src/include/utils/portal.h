@@ -139,8 +139,7 @@ typedef struct PortalData
 	/* The query or queries the portal will execute */
 	const char *sourceText;		/* text of query (as of PlannedStmt, never NULL) */
 	const char *commandTag;		/* command tag for original query */
-	List	   *parseTrees;		/* parse tree(s) */
-	List	   *planTrees;		/* plan tree(s) */
+	List	   *stmts;			/* PlannedStmts and/or utility Querys */
 	MemoryContext queryContext; /* where the parse trees live */
 
 	/*
@@ -218,7 +217,7 @@ extern void PortalSetStatus(PortalData *p, PortalStatus s);
  */
 #define PortalGetQueryDesc(portal)	((portal)->queryDesc)
 #define PortalGetHeapMemory(portal) ((portal)->heap)
-#define PortalGetPrimaryQuery(portal) PortalListGetPrimaryQuery((portal)->parseTrees)
+#define PortalGetPrimaryStmt(portal) PortalListGetPrimaryStmt((portal)->stmts)
 
 
 /* Prototypes for functions in utils/mmgr/portalmem.c */
@@ -245,10 +244,11 @@ extern void PortalDefineQuery(Portal portal,
 				  const char *sourceText,
 				  NodeTag	  sourceTag,
 				  const char *commandTag,
-				  List *parseTrees,
-				  List *planTrees,
+				  List *stmts,
+//				  List *parseTrees,
+//				  List *planTrees,
 				  MemoryContext queryContext);
-extern Query *PortalListGetPrimaryQuery(List *parseTrees);
+extern Node *PortalListGetPrimaryStmt(List *stmts);
 extern void PortalCreateHoldStore(Portal portal);
 extern void AtExitCleanup_ResPortals(void);
 extern void TotalResPortalIncrements(int pid, Oid queueid,

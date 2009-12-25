@@ -5,9 +5,6 @@
  *
  * Copyright (c) 2005-2008, Greenplum inc
  *
- * IDENTIFICATION
- *	  $Id$
- *
  * NOTES
  *
  *-------------------------------------------------------------------------
@@ -208,7 +205,7 @@ cdbparallelize(PlannerInfo *root,
 	switch (query->commandType)
 	{
 		case CMD_SELECT:
-			if (query->into)
+			if (query->intoClause)
 			{
 				/* SELECT INTO always created partitioned tables. */
 				context->resultSegments = true;	

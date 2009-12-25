@@ -340,6 +340,8 @@ static void ATExecSetDistributedBy(Relation rel, Node *node,
 static PartStatus rel_part_status(Oid relid);
 static bool can_implement_dist_on_part(Relation rel, List *dist_cnames);
 
+static const char* synthetic_sql = "(internally generated SQL command)";
+
 /* ALTER TABLE ... PARTITION */
 static char *
 ChoosePartitionName(const char *tablename, int partDepth,
@@ -1302,7 +1304,7 @@ DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
         Assert(((Query *)pUtl)->commandType == CMD_UTILITY);
 
 		ProcessUtility((Node *)(((Query *)pUtl)->utilityStmt),
-					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   synthetic_sql,
 					   NULL, 
 					   false, /* not top level */
 					   dest,
@@ -3016,7 +3018,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 					renStmt->newname = (char *)lfirst(lc2);
 
 					ProcessUtility((Node *) renStmt,
-								   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+								   synthetic_sql,
 								   NULL, 
 								   false, /* not top level */
 								   dest, 
@@ -7153,7 +7155,7 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 			heap_close(crel, AccessShareLock); /* already locked master */
 
 			ProcessUtility((Node *)ats, 
-						   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+						   synthetic_sql,
 						   NULL, 
 						   false, /* not top level */
 						   dest, 
@@ -10514,7 +10516,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	List	*parsetrees;
 	RangeVar *from_tbl;
 	List *rewritten;
-	Plan *plan;
+	PlannedStmt *stmt;
 	DestReceiver *dest;
 	QueryDesc *queryDesc;
 	List *wo = NIL;
@@ -10580,7 +10582,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	Assert(q->commandType == CMD_SELECT || q->commandType == CMD_INSERT);
 
 	/* plan the query */
-	plan = planner(q, false, 0, NULL);
+	stmt = planner(q, false, 0, NULL);
 
 	/*
 	 * Update snapshot command ID to ensure this query sees results of any
@@ -10592,7 +10594,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	dest = CreateDestReceiver(DestIntoRel, NULL);
 
 	/* Create a QueryDesc requesting no output */
-	queryDesc = CreateQueryDesc(q, plan,  pstrdup("(internal SELECT INTO query)"),
+	queryDesc = CreateQueryDesc(stmt,  pstrdup("(internal SELECT INTO query)"),
 								ActiveSnapshot, InvalidSnapshot,
 								dest, NULL, false);
 	return queryDesc;
@@ -10803,7 +10805,7 @@ build_hidden_type(Form_pg_attribute att)
 	Assert(list_length(parsetrees) == 1);
 	q = (Query *)linitial(parsetrees);
 	ProcessUtility((Node *)q->utilityStmt, 
-				   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+				   synthetic_sql,
 				   NULL, 
 				   false, /* not top level */
 				   dest, 
@@ -10818,7 +10820,7 @@ build_hidden_type(Form_pg_attribute att)
 	parsetrees = parse_analyze((Node *)iofunc, NULL, NULL, 0);
 	q = (Query *)linitial(parsetrees);
 	ProcessUtility((Node *)q->utilityStmt, 
-				   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+				   synthetic_sql,
 				   NULL, 
 				   false, /* not top level */
 				   dest, 
@@ -10832,7 +10834,7 @@ build_hidden_type(Form_pg_attribute att)
 	parsetrees = parse_analyze((Node *)iofunc, NULL, NULL, 0);
 	q = (Query *)linitial(parsetrees);
 	ProcessUtility((Node *)q->utilityStmt,
-				   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+				   synthetic_sql,
 				   NULL, 
 				   false, /* not top level */
 				   dest, 
@@ -10878,7 +10880,7 @@ build_hidden_type(Form_pg_attribute att)
 	parsetrees = parse_analyze((Node *)newtype, NULL, NULL, 0);
 	q = (Query *)linitial(parsetrees);
 	ProcessUtility((Node *)q->utilityStmt,
-				   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+				   synthetic_sql,
 				   NULL, 
 				   false, /* not top level */
 				   dest, 
@@ -11122,7 +11124,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 		Assert(list_length(parsetrees) == 1);
 		q = (Query *)linitial(parsetrees);
 		ProcessUtility((Node *)q->utilityStmt, 
-					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   synthetic_sql,
 					   NULL, 
 					   false, /* not top level */
 					   dest, 
@@ -11158,7 +11160,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 			Assert(list_length(parsetrees) == 1);
 			q = (Query *)linitial(parsetrees);
 			ProcessUtility((Node *)q->utilityStmt, 
-						   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+						   synthetic_sql,
 						   NULL, 
 						   false, /* not top level */
 						   dest, 
@@ -16953,7 +16955,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 			 */
 			if (!bSetTemplate)
 				ProcessUtility(q->utilityStmt, 
-							   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+							   synthetic_sql,
 							   NULL, 
 							   false, /* not top level */
 							   dest, 
@@ -17545,7 +17547,7 @@ ATPExecPartDrop(Relation rel,
 												makeString(prelname)));
 
 		ProcessUtility((Node *) ds,
-					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   synthetic_sql,
 					   NULL, 
 					   false, /* not top level */
 					   dest, 
@@ -19235,7 +19237,7 @@ ATPExecPartRename(Relation rel,
 		CommandCounterIncrement();
 
 		ProcessUtility((Node *) renStmt,
-					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   synthetic_sql,
 					   NULL,
 					   false, /* not top level */
 					   dest, 
@@ -19258,7 +19260,7 @@ ATPExecPartRename(Relation rel,
 				renStmt->newname = (char *)lfirst(lc2);
 
 				ProcessUtility((Node *) renStmt,
-							   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+							   synthetic_sql,
 							   NULL, 
 							   false, /* not top level */
 							   dest, 
@@ -19706,7 +19708,7 @@ ATPExecPartSplit(Relation rel,
 
 		q = (Query *)linitial(parsetrees);
 		ProcessUtility((Node *)q->utilityStmt,
-					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   synthetic_sql,
 					   NULL,
 					   false, /* not top level */
 					   dest, 
@@ -19751,7 +19753,7 @@ ATPExecPartSplit(Relation rel,
 
 		heap_close(rel, NoLock);
 		ProcessUtility((Node *)q->utilityStmt,
-					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   synthetic_sql,
 					   NULL, 
 					   false, /* not top level */
 					   dest, 
@@ -19809,7 +19811,7 @@ ATPExecPartSplit(Relation rel,
 			q = (Query *)lfirst(lc);
 
 			ProcessUtility((Node *)q->utilityStmt, 
-						   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+						   synthetic_sql,
 						   NULL, 
 						   false, /* not top level */
 						   dest, 
@@ -20139,7 +20141,7 @@ ATPExecPartSplit(Relation rel,
 
 			heap_close(rel, NoLock);
 			ProcessUtility((Node *)q->utilityStmt, 
-						   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+						   synthetic_sql,
 						   NULL, 
 						   false, /* not top level */
 						   dest, 
@@ -20574,7 +20576,7 @@ ATPExecPartTruncate(Relation rel,
 		heap_close(rel2, NoLock);
 
 		ProcessUtility( (Node *) ts,
-					   "(PSMERGE: placeholder for synthetic call in tablecmds.c)",
+					   synthetic_sql,
 					   NULL, 
 					   false, /* not top level */
 					   dest, 

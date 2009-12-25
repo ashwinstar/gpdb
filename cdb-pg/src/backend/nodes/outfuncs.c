@@ -11,10 +11,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/nodes/outfuncs.c,v 1.285.2.4 2007/08/31 01:44:14 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *
  * NOTES
  *	  Every node type that can appear in stored rules' parsetrees *must*
@@ -333,7 +329,7 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_BOOL_FIELD(canSetTag);
 	WRITE_BOOL_FIELD(transientPlan);
 	
-	WRITE_NODE_FIELD(queryTree); /* PSMERGE: Retire -- temporary use */
+	WRITE_NODE_FIELD(queryTree); /* TODO Remove eventually. (PSMERGE) */
 	WRITE_NODE_FIELD(planTree);
 	
 	WRITE_NODE_FIELD(rtable);
@@ -2951,10 +2947,7 @@ _outQuery(StringInfo str, Query *node)
 		appendStringInfoLiteral(str, " :utilityStmt <>");
 
 	WRITE_INT_FIELD(resultRelation);
-	WRITE_NODE_FIELD(into);
-	WRITE_NODE_FIELD(intoOptions);
-	WRITE_ENUM_FIELD(intoOnCommit, OnCommitAction);
-	WRITE_STRING_FIELD(intoTableSpaceName);
+	WRITE_NODE_FIELD(intoClause);
 	WRITE_BOOL_FIELD(hasAggs);
 	WRITE_BOOL_FIELD(hasWindFuncs);
 	WRITE_BOOL_FIELD(hasSubLinks);
@@ -2975,21 +2968,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(result_partitions);
 	WRITE_NODE_FIELD(result_aosegnos);
 	WRITE_NODE_FIELD(returningLists); /* TODO Merge issue */
-	
-	/* 
-	 * IntoOidInfo is not written out in outfuncs because this is how we
-	 * store information in the catalog and the oids for a particular CTAS
-	 * are not apropriate to store in pg_rewrite.
-	 *
-	 * This is in contrast to readfast.c where this information must be
-	 * present for dispatch of CTAS to work correctly.
-	 *
-	 * intoPolicy is not written out in either outfuncs or outfast, it is
-	 * determined independenly on both QE and QD.
-	 *
-	 * A better design would be to remove both of the above from the parsetree
-	 * and store it in a separate executor context.
-	 */
+	/* Don't serialize policy */
 }
 
 static void

@@ -41,20 +41,15 @@ typedef struct QueryDesc
 {
 	/* These fields are provided by CreateQueryDesc */
 	CmdType		operation;		/* CMD_SELECT, CMD_UPDATE, etc. */
-#if 1
-	Query	   *parsetree;		/* rewritten parsetree */
-	Plan	   *plantree;		/* planner's output */
-#else
-    PlannedStmt *plannedstmt;	/* planner's output, or null if utility */
+	PlannedStmt *plannedstmt;	/* planner's output, or null if utility */
 	Node	   *utilitystmt;	/* utility statement, or null */
 	const char *sourceText;		/* source text of the query */
-#endif
 	Snapshot	snapshot;		/* snapshot to use for query */
 	Snapshot	crosscheck_snapshot;	/* crosscheck for RI update/delete */
 	DestReceiver *dest;			/* the destination for tuple output */
 	ParamListInfo params;		/* param values being passed in */
 	bool		doInstrument;	/* TRUE requests runtime instrumentation */
-
+	
 	/* These fields are set by ExecutorStart */
 	TupleDesc	tupDesc;		/* descriptor for result tuples */
 	struct EState      *estate;			/* executor's query-wide state */
@@ -66,20 +61,20 @@ typedef struct QueryDesc
 	bool		cursor_query;   /* does this query service a cursor? */
 	char		*portal_name;	/* NULL for unnamed portal */
 	
-    /* CDB: EXPLAIN ANALYZE statistics */
-    struct CdbExplain_ShowStatCtx  *showstatctx;
-
+	/* CDB: EXPLAIN ANALYZE statistics */
+	struct CdbExplain_ShowStatCtx  *showstatctx;
+	
 	/* Gpmon */
 	gpmon_packet_t *gpmon_pkt;
 	
 	/* This is always set NULL by the core system, but plugins can change it */
 	struct Instrumentation *totaltime;	/* total time spent in ExecutorRun */
-	
+
 } QueryDesc;
 
 /* in pquery.c */
-extern QueryDesc *CreateQueryDesc(Query *parsetree, Plan *plantree,
-				const char *sourceText,
+extern QueryDesc *CreateQueryDesc(PlannedStmt *plannedstmt,
+								  const char *sourceText,
 				Snapshot snapshot,
 				Snapshot crosscheck_snapshot,
 				DestReceiver *dest,

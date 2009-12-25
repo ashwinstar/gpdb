@@ -10,10 +10,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/utils/adt/rowtypes.c,v 1.17 2006/07/14 14:52:24 momjian Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"

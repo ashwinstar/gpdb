@@ -942,6 +942,75 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
  * are converted into PARAM_EXEC_REMOTE parameters, I had to add a parameter to this
  * function: ParamListInfo p.  This may be NULL in the non-dispatch case.
  */
+
+/* Helper: SubplanQueryDesc derives a QueryDesc for use by the subplan. */
+static QueryDesc *SubplanQueryDesc(QueryDesc * qd)
+{
+	QueryDesc *subqd = NULL;
+	Query *query = NULL;
+	IntoClause *ic = NULL;
+	PlannedStmt *substmt = NULL;
+	PlannedStmt *stmt = qd->plannedstmt;
+	
+	Assert(stmt != NULL);
+	
+	/* Fake a Query node to hold the range table.  This is a stopgap and shouldn't
+	 * be necessary once full PlannedStmt support is in place. (PSMERGE)
+	 *
+	 * TODO Get rid of this stopgap!
+	 */
+	
+	/*
+	 * MPP-2869 and MPP-2859, single-row parameter-subquery inside
+	 * CTAS: we don't want to create the the table during the
+	 * initPlan execution. */
+	Assert(qd->plannedstmt->intoClause == qd->plannedstmt->queryTree->intoClause);
+	ic = qd->plannedstmt->queryTree->intoClause;
+	qd->plannedstmt->queryTree->intoClause = NULL;
+	query = copyObject(qd->plannedstmt->queryTree);
+	qd->plannedstmt->queryTree->intoClause = ic;
+	
+	
+	/* build the PlannedStmt substmt */
+	substmt = makeNode(PlannedStmt);
+	
+	substmt->commandType = stmt->commandType;
+	substmt->canSetTag = stmt->canSetTag;
+	substmt->transientPlan = stmt->transientPlan;
+	substmt->queryTree = query; /* temporary, see comment above */
+	substmt->planTree = stmt->planTree;
+	substmt->rtable = stmt->rtable;
+	substmt->resultRelations = stmt->resultRelations;
+	substmt->utilityStmt = stmt->utilityStmt;
+	substmt->intoClause = NULL;
+	substmt->subplans = stmt->subplans;
+	substmt->rewindPlanIDs = stmt->rewindPlanIDs;
+	substmt->returningLists = stmt->returningLists;
+	substmt->rowMarks = stmt->rowMarks;
+	substmt->relationOids = stmt->relationOids;
+	substmt->invalItems = stmt->invalItems;
+	substmt->nParamExec = stmt->nParamExec;
+	substmt->nMotionNodes = stmt->nMotionNodes;
+	substmt->nInitPlans = stmt->nInitPlans;
+	
+	
+	/*
+	 * Fake a QueryDesc stucture for CdbDispatchPlan call. It should
+	 * look like the one passed in as the argument which carries the
+	 * global query, plan, parameters, and slice table, and specifies
+	 * the initplan root of interest.
+	 */
+	subqd = CreateQueryDesc(substmt,
+							pstrdup("(internal SELECT query for initplan)"),
+							qd->snapshot,
+							qd->crosscheck_snapshot,
+							NULL,		/* Null destination for the QE */
+							qd->params,
+							qd->doInstrument);
+	
+	return subqd;
+}
+
 void
 ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_queryDesc)
 {
@@ -955,7 +1024,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	ArrayBuildState *astate = NULL;
     Size        savepeakspace = MemoryContextGetPeakSpace(planstate->state->es_query_cxt);
 
-	Query	   *query;
 	QueryDesc  *queryDesc = NULL;
 
 	struct CdbDispatchCmdThreads  *dispatchThreads = NULL; 
@@ -985,38 +1053,13 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	 */
 	if (shouldDispatch)
 	{
-		Query *parsetree=NULL;
-
-		/* Fake a Query node to hold the range table. */
-		query = makeNode(Query);
-		query->rtable = subplan->rtable;
-		query->commandType = CMD_SELECT;
-
-		/* MPP-2869 and MPP-2859, single-row parameter-subquery inside
-		 * CTAS: we don't want to create the the table during the
-		 * initPlan execution. */
-		if (gbl_queryDesc->parsetree->into)
-		{
-			parsetree = copyObject(gbl_queryDesc->parsetree);
-			parsetree->into = NULL;
-		}
-		else
-			parsetree = gbl_queryDesc->parsetree;
-
 		/*
 		 * Fake a QueryDesc stucture for CdbDispatchPlan call. It should
 		 * look like the one passed in as the argument which carries the
 		 * global query, plan, parameters, and slice table, and specifies
 		 * the initplan root of interest.
 		 */
-		queryDesc = CreateQueryDesc(parsetree,
-									gbl_queryDesc->plantree,
-									"dummy",
-									gbl_queryDesc->snapshot,
-									gbl_queryDesc->crosscheck_snapshot,
-									NULL,		/* Null destination for the QE */
-									gbl_queryDesc->params,
-									gbl_queryDesc->doInstrument);
+		queryDesc = SubplanQueryDesc(gbl_queryDesc);
 
         /* 
          * CDB TODO: Should this use CreateSubExecutorState()?  

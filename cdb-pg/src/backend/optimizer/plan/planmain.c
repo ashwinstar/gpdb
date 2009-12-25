@@ -91,6 +91,7 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	Path	   *sortedpath;
 	Index		rti;
 	double		total_pages;
+	ListCell   *lc;
 
 	/* Make tuple_fraction accessible to lower-level routines */
 	root->tuple_fraction = tuple_fraction;
@@ -128,7 +129,21 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	root->full_join_clauses = NIL;
 	root->oj_info_list = NIL;
 	root->initial_rels = NIL;
-
+	
+	/*
+	 * Make a flattened version of the rangetable for faster access (this is
+	 * OK because the rangetable won't change any more).
+	 */
+	root->simple_rte_array = (RangeTblEntry **)
+	palloc0(root->simple_rel_array_size * sizeof(RangeTblEntry *));
+	rti = 1;
+	foreach(lc, parse->rtable)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+		
+		root->simple_rte_array[rti++] = rte;
+	}
+	
 	/*
 	 * Construct RelOptInfo nodes for all base relations in query, and
 	 * indirectly for all appendrel member relations ("other rels").  This

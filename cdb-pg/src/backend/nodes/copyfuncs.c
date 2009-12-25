@@ -18,10 +18,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/nodes/copyfuncs.c,v 1.353.2.2 2007/08/31 01:44:14 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -131,7 +127,10 @@ _copyPlannedStmt(PlannedStmt *from)
 	COPY_SCALAR_FIELD(canSetTag);
 	COPY_SCALAR_FIELD(transientPlan);
 	
-	COPY_NODE_FIELD(queryTree); /* PSMERGE: Retire -- temporary use */
+	/* TO DO Remove the queryTree field when PlannedStmt support is
+	 *       complete. (PSMERGE)
+	 */
+	COPY_NODE_FIELD(queryTree);
 	COPY_NODE_FIELD(planTree);
 	
 	COPY_NODE_FIELD(rtable);
@@ -2200,10 +2199,7 @@ _copyQuery(Query *from)
 	COPY_SCALAR_FIELD(canSetTag);
 	COPY_NODE_FIELD(utilityStmt);
 	COPY_SCALAR_FIELD(resultRelation);
-	COPY_NODE_FIELD(into);
-	COPY_NODE_FIELD(intoOptions);
-	COPY_SCALAR_FIELD(intoOnCommit);
-	COPY_STRING_FIELD(intoTableSpaceName);
+	COPY_NODE_FIELD(intoClause);
 	COPY_SCALAR_FIELD(hasAggs);
 	COPY_SCALAR_FIELD(hasWindFuncs);
 	COPY_SCALAR_FIELD(hasSubLinks);
@@ -2222,17 +2218,6 @@ _copyQuery(Query *from)
 	COPY_NODE_FIELD(setOperations);
 	COPY_NODE_FIELD(resultRelations);
 	COPY_NODE_FIELD(returningLists);
-	COPY_SCALAR_FIELD(intoOidInfo.relOid);
-	COPY_SCALAR_FIELD(intoOidInfo.comptypeOid);
-	COPY_SCALAR_FIELD(intoOidInfo.toastOid);
-	COPY_SCALAR_FIELD(intoOidInfo.toastIndexOid);
-	COPY_SCALAR_FIELD(intoOidInfo.toastComptypeOid);
-	COPY_SCALAR_FIELD(intoOidInfo.aosegOid);
-	COPY_SCALAR_FIELD(intoOidInfo.aosegIndexOid);
-	COPY_SCALAR_FIELD(intoOidInfo.aosegComptypeOid);
-	COPY_SCALAR_FIELD(intoOidInfo.aoblkdirOid);
-	COPY_SCALAR_FIELD(intoOidInfo.aoblkdirIndexOid);
-	COPY_SCALAR_FIELD(intoOidInfo.aoblkdirComptypeOid);
 	if (from->intoPolicy)
 	{
 		COPY_POINTER_FIELD(intoPolicy,sizeof(GpPolicy) + from->intoPolicy->nattrs*sizeof(from->intoPolicy->attrs[0]));
@@ -3603,9 +3588,6 @@ _copyExecuteStmt(ExecuteStmt *from)
 
 	COPY_STRING_FIELD(name);
 	COPY_NODE_FIELD(into);
-	COPY_NODE_FIELD(intoOptions);
-	COPY_SCALAR_FIELD(into_on_commit);
-	COPY_STRING_FIELD(into_tbl_space);
 	COPY_NODE_FIELD(params);
 
 	return newnode;

@@ -3386,10 +3386,7 @@ RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *
 	subquery->querySource = QSRC_PLANNER;
 	subquery->canSetTag = false;
 	subquery->resultRelation = 0;
-	subquery->into = NULL;
-	subquery->intoOptions = NIL;
-	subquery->intoOnCommit = ONCOMMIT_NOOP;
-	subquery->intoTableSpaceName = NULL;
+	subquery->intoClause = NULL;
 	
 	subquery->rtable = copyObject(subquery->rtable);
 

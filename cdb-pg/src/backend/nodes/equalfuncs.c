@@ -113,10 +113,13 @@ _equalRangeVar(RangeVar *a, RangeVar *b)
 	return true;
 }
 
-/* PSMERGE:
+/* 
+ * Records information about the target of a CTAS (SELECT ... INTO). 
+ * This node type first appears in 3.4 as part of the preparation for 
+ * PlannedStmt support.
  *
  * NB Prior to introducting the IntoClause, only relOid, comptypeOid were
- *    tested.  I assume this was an accident, but need to check.
+ *    tested for equality
  */
 static bool
 _equalIntoClause(IntoClause *a, IntoClause *b)
@@ -726,10 +729,7 @@ _equalQuery(Query *a, Query *b)
 	COMPARE_SCALAR_FIELD(canSetTag);
 	COMPARE_NODE_FIELD(utilityStmt);
 	COMPARE_SCALAR_FIELD(resultRelation);
-	COMPARE_NODE_FIELD(into);
-	COMPARE_NODE_FIELD(intoOptions);
-	COMPARE_SCALAR_FIELD(intoOnCommit);
-	COMPARE_STRING_FIELD(intoTableSpaceName);
+	COMPARE_NODE_FIELD(intoClause);
 	COMPARE_SCALAR_FIELD(hasAggs);
 	COMPARE_SCALAR_FIELD(hasWindFuncs);
 	COMPARE_SCALAR_FIELD(hasSubLinks);
@@ -746,11 +746,19 @@ _equalQuery(Query *a, Query *b)
 	COMPARE_NODE_FIELD(limitCount);
 	COMPARE_NODE_FIELD(rowMarks);
 	COMPARE_NODE_FIELD(setOperations);
+	
+	/* Prior to 3.4 these fields were compared.
 	COMPARE_NODE_FIELD(resultRelations);
 	COMPARE_NODE_FIELD(returningLists);
-	COMPARE_SCALAR_FIELD(intoOidInfo.relOid);
-	COMPARE_SCALAR_FIELD(intoOidInfo.comptypeOid);
-	COMPARE_SCALAR_FIELD(intoPolicy);
+	 * now they are unused.
+	 */
+	
+	/* Prior to 3.4 this test was
+	 *     COMPARE_SCALAR_FIELD(intoPolicy); 
+	 * Maybe GpPolicy should be a Node?
+	 */
+	if (! GpPolicyEqual(a->intoPolicy, b->intoPolicy) )
+		return false;
 
 	return true;
 }
@@ -1776,9 +1784,6 @@ _equalExecuteStmt(ExecuteStmt *a, ExecuteStmt *b)
 {
 	COMPARE_STRING_FIELD(name);
 	COMPARE_NODE_FIELD(into);
-	COMPARE_NODE_FIELD(intoOptions);
-	COMPARE_SCALAR_FIELD(into_on_commit);
-	COMPARE_STRING_FIELD(into_tbl_space);
 	COMPARE_NODE_FIELD(params);
 
 	return true;

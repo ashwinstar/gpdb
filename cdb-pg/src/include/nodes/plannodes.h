@@ -55,15 +55,21 @@ typedef struct PlannedStmt
 		
 		bool		transientPlan;	/* redo plan when TransactionXmin changes? */
 		
-		struct Query *queryTree;	/* PSMERGE: Retire -- temporary use */
+		/* The query tree is carried in PlannedStmt just until PlannedStmt support is
+		 * complete.  It's principle use is to carry the top level range table that,
+		 * ultimately goes in PlannedStmt.
+		 * 
+		 * TODO Remove queryTree (PSMERGE).
+		 */
+		struct Query *queryTree;
 		
-		/* PSMERGE: Retire -- temporary use.
+		/* Field qdContext communicates memory context on the QD  from portal to 
+		 * dispatch.  
 		 *
-		 * Field qdContext is used to communicate memory context on the QD
-		 * from portal to dispatch, just until we move evalution of stable (and
-		 * sequence) functions out of dispatch.
+		 * TODO Remove the field once evaluation of stable (and sequence) functions 
+		 *      moves out of dispatch and into the executor.
 		 *
-		 * It is not copied or serialized!
+		 * Do not copy or serialize.
 		 */
 		MemoryContext qdContext;
 		
@@ -95,14 +101,11 @@ typedef struct PlannedStmt
 		List	   *returningLists; /* list of lists of TargetEntry, or NIL */
 		
 		/*
-		 * PSMERGE:
-		 *
 		 * If the resultRelation turns out to be the parent of an inheritance
 		 * tree, the planner will add all the child tables to the rtable and store
 		 * a list of the rtindexes of all the result relations here. This is done
 		 * at plan time, not parse time, since we don't want to commit to the
-		 * exact set of child tables at parse time.  XXX This field ought to go in
-		 * some sort of TopPlan plan node, not in the Query.
+		 * exact set of child tables at parse time. This field used to be in Query.
 		 */
 		struct PartitionNode *result_partitions;
 		
@@ -195,31 +198,22 @@ typedef struct Plan
 	 */
 	Bitmapset  *extParam;
 	Bitmapset  *allParam;
-
-	/*
-	 * We really need in some TopPlan node to store range table and
-	 * resultRelation from Query there and get rid of Query itself from
-	 * Executor. Some other stuff like below could be put there, too.
-	 */
-	int			nParamExec;		/* Number of them in entire query. This is to
-								 * get Executor know about how many PARAM_EXEC
-								 * there are in query plan. */
-
+	
+	int			nParamExec;		/* PSMERGE: moved to PlannedStmt */
+	
 	/*
 	 * MPP needs to keep track of the characteristics of flow of output
 	 * tuple of Plan nodes.
-	 *
-	 * Flow description. Initially NULL. Set during parallelization.
 	 */
-	Flow		*flow;
-
+	Flow		*flow;			/* Flow description.  Initially NULL.
+	 * Set during parallelization.
+	 */
+	
 	/*
 	 * CDB:  How should this plan tree be dispatched?  Initially this is set
 	 * to DISPATCH_UNDETERMINED and, in non-root nodes, may remain so.
 	 * However, in Plan nodes at the root of any separately dispatchable plan
-	 * fragment, it must be set to a specific dispatch type.  This field
-	 * is another candidate for a hypothetical TopPlan node as mentioned
-	 * above.
+	 * fragment, it must be set to a specific dispatch type.
 	 */
 	DispatchMethod dispatch;
 

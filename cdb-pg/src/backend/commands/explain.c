@@ -27,7 +27,6 @@
 #include "optimizer/var.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteHandler.h"
-#include "tcop/utility.h"               /* CreateQueryTag() */
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -56,7 +55,7 @@ typedef struct ExplainState
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
 							const char *queryString,
-				ParamListInfo params, TupOutputState *tstate);
+							ParamListInfo params, TupOutputState *tstate);
 static void
 ExplainOnePlan_internal(QueryDesc      *queryDesc,
                         ExplainStmt    *stmt,
@@ -180,8 +179,8 @@ static void
 ExplainOneQuery(Query *query, ExplainStmt *stmt, const char *queryString,
 				ParamListInfo params, TupOutputState *tstate)
 {
-	Plan	   *plan;
-	QueryDesc  *queryDesc;
+	PlannedStmt	*pstmt;
+	QueryDesc	*queryDesc;
 	bool		isCursor = false;
 	int			cursorOptions = 0;
 
@@ -222,7 +221,7 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, const char *queryString,
 	}
 
 	/* plan the query */
-	plan = planner(query, isCursor, cursorOptions, params);
+	pstmt = planner(query, isCursor, cursorOptions, params);
 	
 #ifdef USE_FORCE_PLAN
 	/* if we force the plan, we will do substitution here */
@@ -332,7 +331,7 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, const char *queryString,
 	ActiveSnapshot->curcid = GetCurrentCommandId();
 
 	/* Create a QueryDesc requesting no output */
-	queryDesc = CreateQueryDesc(query, plan, queryString,
+	queryDesc = CreateQueryDesc(pstmt, queryString,
 								ActiveSnapshot, InvalidSnapshot,
 								None_Receiver, params,
 								stmt->analyze);
@@ -352,9 +351,9 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, const char *queryString,
  */
 void
 ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
-		   const char *queryString,
-		   ParamListInfo params,
-		   TupOutputState *tstate)
+			   const char *queryString,
+			   ParamListInfo params,
+			   TupOutputState *tstate)
 {
     MemoryContext   oldcxt = CurrentMemoryContext;
     MemoryContext   explaincxt;
@@ -495,7 +494,7 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
                                      es->showstatctx);
 	}
 
-	es->rtable = queryDesc->parsetree->rtable;
+	es->rtable = queryDesc->plannedstmt->queryTree->rtable;
 
     if (stmt->verbose)
 	{
@@ -521,19 +520,19 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
         /* Switch to EXPLAIN memory context. */
         MemoryContextSwitchTo(es->explaincxt);
 
-		if (queryDesc->plantree && estate->es_sliceTable)
+		if (queryDesc->plannedstmt->planTree && estate->es_sliceTable)
 		{
         	Node   *saved_es_sliceTable;
 
 			/* Little two-step to get EXPLAIN VERBOSE to show slice table. */
-			saved_es_sliceTable = queryDesc->plantree->sliceTable;		/* probably NULL */
-			queryDesc->plantree->sliceTable = (Node *) queryDesc->estate->es_sliceTable;
-			s = nodeToString(queryDesc->plantree);
-			queryDesc->plantree->sliceTable = saved_es_sliceTable;
+			saved_es_sliceTable = queryDesc->plannedstmt->planTree->sliceTable;		/* probably NULL */
+			queryDesc->plannedstmt->planTree->sliceTable = (Node *) queryDesc->estate->es_sliceTable;
+			s = nodeToString(queryDesc->plannedstmt->planTree);
+			queryDesc->plannedstmt->planTree->sliceTable = saved_es_sliceTable;
 		}
 		else
 		{
-			s = nodeToString(queryDesc->plantree);
+			s = nodeToString(queryDesc->plannedstmt->planTree);
 		}
 
 		if (s)
@@ -562,7 +561,7 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
      */
     PG_TRY();
     {
-	    explain_outNode(buf, queryDesc->plantree, queryDesc->planstate,
+	    explain_outNode(buf, queryDesc->plannedstmt->planTree, queryDesc->planstate,
 					    NULL, 0, es);
     }
     PG_CATCH();

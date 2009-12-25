@@ -27,8 +27,6 @@ extern TupleDesc UtilityTupleDescriptor(Node *parsetree);
 
 extern const char *CreateCommandTag(Node *parsetree);
 
-extern const char *CreateQueryTag(Query *parsetree); /* Obsolete */
-
 extern LogStmtLevel GetCommandLogLevel(Node *parsetree);
 
 extern LogStmtLevel GetQueryLogLevel(Node *node);

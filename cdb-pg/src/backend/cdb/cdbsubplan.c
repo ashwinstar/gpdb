@@ -65,13 +65,13 @@ preprocess_initplans(QueryDesc *queryDesc)
 	ParamListInfo originalPli,
 				augmentedPli;
 	int			i;
-	Plan	   *plan = queryDesc->plantree;
+//	Plan	   *plan = queryDesc->plantree;
 	EState	   *estate = queryDesc->estate;
 	int			originalRoot,
                 originalSlice,
 				rootIndex;
 
-	if (plan->nParamExec == 0)
+	if (queryDesc->plannedstmt->nParamExec == 0)
 		return;
 
 	originalPli = queryDesc->params;
@@ -87,7 +87,7 @@ preprocess_initplans(QueryDesc *queryDesc)
 	 * order, i.e. if a subplan x has a sublan y, then y will come before x in
 	 * the es_param_exec_vals array.
 	 */
-	for (i = 0; i < plan->nParamExec; i++)
+	for (i = 0; i < queryDesc->plannedstmt->nParamExec; i++)
 	{
 		ParamExecData *prm;
 		SubPlanState *sps;
@@ -103,13 +103,15 @@ preprocess_initplans(QueryDesc *queryDesc)
 		 *
 		 * TODO Some of the work of addRemoteExecParamsToParmList could be
 		 *		factored out of the loop.
+		 *
+		 * TODO Update range table reference when PlannedStmt support is 
+		 *      complete.  (PSMERGE)
 		 */
 		augmentedPli = addRemoteExecParamsToParamList(
-													  queryDesc->plantree,
-													  queryDesc->parsetree->rtable,
-													  originalPli,
-												  estate->es_param_exec_vals,
-													  plan->nParamExec
+													  queryDesc->plannedstmt->planTree,
+													  queryDesc->plannedstmt->queryTree->rtable,													  originalPli,
+													  estate->es_param_exec_vals,
+													  queryDesc->plannedstmt->nParamExec
 			);
 
 		if (sps != NULL)
@@ -119,8 +121,8 @@ preprocess_initplans(QueryDesc *queryDesc)
             Assert(IsA(subplan, SubPlan) &&
                    subplan->qDispSliceId > 0);
 
-			sps->planstate->plan->nParamExec = plan->nParamExec;
-			sps->planstate->plan->nMotionNodes = plan->nMotionNodes;
+			sps->planstate->plan->nParamExec = queryDesc->plannedstmt->nParamExec;
+			sps->planstate->plan->nMotionNodes = queryDesc->plannedstmt->nMotionNodes;
 			sps->planstate->plan->dispatch = DISPATCH_PARALLEL;
 
 			/*

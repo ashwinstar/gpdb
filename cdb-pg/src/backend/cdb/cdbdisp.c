@@ -3752,17 +3752,17 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 					 struct CdbDispatchCmdThreads ** pDispatchThreads)		/* OUT */
 {
 	 
-	char	   *squery,
-		*splan,
+	char 	*splan,
 		*ssliceinfo,
 		*sparams;
-	int			squery_len,
-		splan_len,
+
+	int 	splan_len,
 		ssliceinfo_len,
 		sparams_len;
 	SliceTable *sliceTbl;
 	int			rootIdx;
 	int			oldLocalSlice;
+	PlannedStmt	   *stmt;
 	bool		is_SRI;
 	
 	DispatchCommandQueryParms queryParms;
@@ -3794,6 +3794,13 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	oldLocalSlice = sliceTbl->localSlice;
 
 	/*
+	 * This function is called only for planned statements.
+	 */
+	stmt = queryDesc->plannedstmt;
+	Assert(stmt);
+
+
+	/*
 	 * Let's evaluate STABLE functions now, so we get consistent values on the QEs
 	 *
 	 * Also, if this is a single-row INSERT statement, let's evaluate
@@ -3806,15 +3813,16 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	if (queryDesc->operation == CMD_INSERT)
 	{
-		Assert(queryDesc->parsetree->commandType == CMD_INSERT);
+		Assert(stmt->commandType == CMD_INSERT);
 
-		if (queryDesc->parsetree->jointree != NULL)
-			if (queryDesc->parsetree->jointree->fromlist == NIL)
-				is_SRI = true;
-		
-		if (queryDesc->operation == CMD_INSERT && !is_SRI)
-			clear_relsize_cache();
+		/* We might look for constant input relation (instead of SRI), but I'm afraid
+		 * that wouldn't scale.
+		 */
+		is_SRI = IsA(stmt->planTree, Result) && stmt->planTree->lefttree == NULL;
 	}
+
+	if (!is_SRI)
+		clear_relsize_cache();
 
 	if (queryDesc->operation == CMD_INSERT ||
 		queryDesc->operation == CMD_SELECT ||
@@ -3825,25 +3833,24 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		MemoryContext oldContext;
 		List * savetargets = NIL;
 		Plan * oldplan = NULL;
-
-		/*
-		 * The Query tree doesn't have to be mutated here, since it isn't used during
-		 * the execution.
-		 */
-		savetargets = NIL;
 		
-		if (is_plan_node((Node *)queryDesc->plantree) &&
-			!is_projection_capable_plan((Plan *)queryDesc->plantree))
+		if (is_plan_node((Node *)stmt->planTree) &&
+			!is_projection_capable_plan(stmt->planTree))
 		{
-			/*
-			 * don't do targetlists in nodes where the targetlist isn't used.  Hide them from the mutator
+			/* Don't do targetlists in nodes where the targetlist isn't used.
+			 * Hide them from the mutator
 			 */
-			savetargets = queryDesc->plantree->targetlist;
-			queryDesc->plantree->targetlist = NIL;
-			oldplan = queryDesc->plantree;
+			savetargets = stmt->planTree->targetlist;
+			stmt->planTree->targetlist = NIL;
+			oldplan = stmt->planTree; /* in case root mutates */
 		}
 
 		oldContext = CurrentMemoryContext;
+		if ( stmt->qdContext ) /* Temporary! See comment in PlannedStmt. */
+		{
+			oldContext = MemoryContextSwitchTo(stmt->qdContext);
+		}
+		else /*  */
 		if (CurrentMemoryContext == TopMemoryContext || CurrentMemoryContext == DispatchContext)
 		{
 			/*
@@ -3856,19 +3863,17 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 				oldContext = MemoryContextSwitchTo(MessageContext);
 		}
 
-		/* NOTE: as a side-effect this may dispatch functions ... */
-		queryDesc->plantree = (Plan *) make_plan_constant((Node *) queryDesc->plantree, is_SRI);
+		stmt->planTree = (Plan *) make_plan_constant((Node *) stmt->planTree, is_SRI);
 
 		/* 
 		 * It's fine to use plan_tree_mutator() because it calls
 		 * expression_tree_mutator recursively
 		 */
-		queryDesc->parsetree = (Query *)make_plan_constant((Node *)queryDesc->parsetree, is_SRI);
 
 		if (savetargets != NIL)
 		{
-			queryDesc->plantree->targetlist = savetargets;
-			oldplan->targetlist = savetargets;
+			stmt->planTree->targetlist = savetargets;
+			oldplan->targetlist = savetargets; /* in case root mutated */
 		}
 
 		MemoryContextSwitchTo(oldContext);
@@ -3892,14 +3897,14 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		verify_shared_snapshot_ready();
 
 	/*
-	 * serialized plan and query trees. Note that we're called for a single
+	 * serialized plan tree. Note that we're called for a single
 	 * slice tree (corresponding to an initPlan or the main plan), so the
 	 * parameters are fixed and we can include them in the prefix.
 	 */
-	squery = serializeNode((Node *) queryDesc->parsetree, &squery_len);
-	splan = serializeNode((Node *) queryDesc->plantree, &splan_len);
+	splan = serializeNode((Node *) queryDesc->plannedstmt, &splan_len);
 
-	Assert(squery != NULL && splan != NULL);
+	Assert(splan != NULL && splan_len > 0);
+
 
 	/*
 	 */
@@ -3972,9 +3977,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	ssliceinfo = serializeNode((Node *) sliceTbl, &ssliceinfo_len);
 	
 	MemSet(&queryParms, 0, sizeof(queryParms));
-	queryParms.strCommand = debug_query_string;
-	queryParms.serializedQuerytree = squery;
-	queryParms.serializedQuerytreelen = squery_len;
+	queryParms.strCommand = queryDesc->sourceText;
+	queryParms.serializedQuerytree = NULL;
+	queryParms.serializedQuerytreelen = 0;
 	queryParms.serializedPlantree = splan;
 	queryParms.serializedPlantreelen = splan_len;
 	queryParms.serializedParams = sparams;

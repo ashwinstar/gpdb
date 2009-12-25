@@ -29,10 +29,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/execMain.c,v 1.280.2.2 2007/02/02 00:07:27 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -240,9 +236,11 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
 
-	Assert(queryDesc->parsetree->intoPolicy == NULL || queryDesc->parsetree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
-
-	/**
+	/* TODO Use of Query tree deprecated. (PSMERGE) */
+	Assert(queryDesc->plannedstmt->queryTree->intoPolicy == NULL 
+		   || queryDesc->plannedstmt->queryTree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
+    
+    /**
 	 * Perfmon related stuff.
 	 */
 	if (gp_enable_gpperfmon 
@@ -257,7 +255,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * planned to non-temporary tables.  EXPLAIN is considered read-only.
 	 */
 	if ((XactReadOnly || Gp_role == GP_ROLE_DISPATCH) && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
-		ExecCheckXactReadOnly(queryDesc->parsetree);
+		ExecCheckXactReadOnly(queryDesc->plannedstmt->queryTree); /* TODO Use of Query tree deprecated. (PSMERGE) */
 
 	/*
 	 * Build EState, switch into per-query memory context for startup.
@@ -272,9 +270,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 */
 	estate->es_param_list_info = queryDesc->params;
 
-	if (queryDesc->plantree->nParamExec > 0)
+	if (queryDesc->plannedstmt->nParamExec > 0)
 		estate->es_param_exec_vals = (ParamExecData *)
-			palloc0(queryDesc->plantree->nParamExec * sizeof(ParamExecData));
+			palloc0(queryDesc->plannedstmt->nParamExec * sizeof(ParamExecData));
 
 	/*
 	 * Copy other important information into the EState
@@ -294,7 +292,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	/*
 	 * Handling of the Slice table depends on context.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
+	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL) 
 	{
 		/*
          * If this is a cursor query - before starting the portal, we need to
@@ -313,10 +311,10 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		}
 
 		/* Set up blank slice table to be filled in during InitPlan. */
-		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nInitPlans);
+		InitSliceTable(estate, queryDesc->plannedstmt->nMotionNodes, queryDesc->plannedstmt->nInitPlans);
 
 		/* Copy direct dispatch decisions out of the plan and into the slice table.  Must be done after slice table is built */
-		CopyDirectDispatchFromPlanToSliceTable(queryDesc->plantree, estate );
+		CopyDirectDispatchFromPlanToSliceTable(queryDesc->plannedstmt->planTree, estate );
 
         /* Pass EXPLAIN ANALYZE flag to qExecs. */
         estate->es_sliceTable->doInstrument = queryDesc->doInstrument;
@@ -325,7 +323,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		currentSliceId = estate->es_cur_slice_idx;
 
 		/* Determin OIDs for into relation, if any */
-		if (queryDesc->parsetree->into != NULL)
+		if (queryDesc->plannedstmt->intoClause != NULL)
 		{
 			Relation	pg_class_desc;
 			Relation	pg_type_desc;
@@ -338,21 +336,21 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 			pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 
+			queryDesc->plannedstmt->intoClause->oidInfo.relOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			elog(DEBUG3, "ExecutorStart assigned new intoOidInfo.relOid = %d",
+				 queryDesc->plannedstmt->intoClause->oidInfo.relOid);
 
-			queryDesc->parsetree->intoOidInfo.relOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			elog(DEBUG3,"ExecutorStart assigned new intoOidInfo.relOid = %d",queryDesc->parsetree->intoOidInfo.relOid);
-
-			queryDesc->parsetree->intoOidInfo.comptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
-			queryDesc->parsetree->intoOidInfo.toastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->parsetree->intoOidInfo.toastIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->parsetree->intoOidInfo.toastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
-			queryDesc->parsetree->intoOidInfo.aosegOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->parsetree->intoOidInfo.aosegIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->parsetree->intoOidInfo.aosegComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
-			queryDesc->parsetree->intoOidInfo.aoblkdirOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->parsetree->intoOidInfo.aoblkdirIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->parsetree->intoOidInfo.aoblkdirComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
-
+			queryDesc->plannedstmt->intoClause->oidInfo.comptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			queryDesc->plannedstmt->intoClause->oidInfo.toastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			queryDesc->plannedstmt->intoClause->oidInfo.toastIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			queryDesc->plannedstmt->intoClause->oidInfo.toastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			queryDesc->plannedstmt->intoClause->oidInfo.aosegOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			queryDesc->plannedstmt->intoClause->oidInfo.aosegIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			queryDesc->plannedstmt->intoClause->oidInfo.aosegComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			queryDesc->plannedstmt->intoClause->oidInfo.aoblkdirOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			queryDesc->plannedstmt->intoClause->oidInfo.aoblkdirIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			queryDesc->plannedstmt->intoClause->oidInfo.aoblkdirComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			
 			heap_close(pg_class_desc, RowExclusiveLock);
 			heap_close(pg_type_desc, RowExclusiveLock);
 
@@ -364,17 +362,17 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 * Set up blank map (motionID -> MotionState*) to be filled in during
 		 * InitPlan
 		 */
-		estate->es_slice_map = (MotionState **) palloc0((1 + queryDesc->plantree->nMotionNodes) * sizeof(MotionState *));
+		estate->es_slice_map = (MotionState **) palloc0((1 + queryDesc->plannedstmt->nMotionNodes) * sizeof(MotionState *));
 
 		estate->es_sharenode = (List **) palloc0(sizeof(List *));
 
         /* qDisp should have sent us a slice table via MPPEXEC */
-		if (queryDesc->plantree != NULL && queryDesc->plantree->sliceTable != NULL)
+		if (queryDesc->plannedstmt != NULL && queryDesc->plannedstmt->sliceTable != NULL)
 		{
         	SliceTable *sliceTable;
         	Slice	   *slice;
 
-            sliceTable = (SliceTable *)queryDesc->plantree->sliceTable;
+            sliceTable = (SliceTable *)queryDesc->plannedstmt->sliceTable;
             Assert(IsA(sliceTable, SliceTable));
             slice = (Slice *)list_nth(sliceTable->slices, sliceTable->localSlice);
             Assert(IsA(slice, Slice));
@@ -394,13 +392,13 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		/* InitPlan() will acquire locks by walking the entire plan
 		 * tree -- we'd like to avoid acquiring the locks until
 		 * *after* we've set up the interconnect */
-		if (queryDesc->plantree->nMotionNodes > 0)
+		if (queryDesc->plannedstmt->nMotionNodes > 0)
 		{
 			int i;
 
 			PG_TRY();
 			{
-				for (i=1; i <= queryDesc->plantree->nMotionNodes; i++)
+				for (i=1; i <= queryDesc->plannedstmt->nMotionNodes; i++)
 				{
 					InitMotionLayerNode(estate->motionlayer_context, i);
 				}
@@ -429,7 +427,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 */
 		InitPlan(queryDesc, eflags);
 
-		if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
+		if (Gp_role == GP_ROLE_DISPATCH && 
+			queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
 		{
 			/* Assign gang descriptions to the root slices of the slice forest. */
 			InitRootSlices(queryDesc);
@@ -500,7 +499,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 * Are we going to dispatch this plan parallel?  Only if we're running as
 		 * a QD and the plan is a parallel plan.
 		 */
-		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL && !(eflags & EXEC_FLAG_EXPLAIN_ONLY);
+		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && 
+							queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL && 
+							!(eflags & EXEC_FLAG_EXPLAIN_ONLY);
 
 		/*
 		 * if in dispatch mode, time to serialize plan and query
@@ -518,13 +519,13 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 * work for this query.
 			 */
 			needDtxTwoPhase = ExecutorSaysTransactionDoesWrites();
-			dtmPreCommand("ExecutorStart", "(none)", (Node *)queryDesc->plantree,
+			dtmPreCommand("ExecutorStart", "(none)", (Node *)queryDesc->plannedstmt->planTree,
 					needDtxTwoPhase, true /* wantSnapshot */, queryDesc->cursor_query );
 
 			/*
 			 * First, see whether we need to pre-execute any initPlan subplans.
 			 */
-			if (queryDesc->plantree->nParamExec > 0)
+			if (queryDesc->plannedstmt->planTree->nParamExec > 0)
 			{
 				preprocess_initplans(queryDesc);
 
@@ -532,11 +533,11 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				 * Copy the values of the preprocessed subplans to the
 				 * external parameters.
 				 */
-				queryDesc->params = addRemoteExecParamsToParamList(queryDesc->plantree,
-																   queryDesc->parsetree->rtable,
+				queryDesc->params = addRemoteExecParamsToParamList(queryDesc->plannedstmt->planTree,
+																   queryDesc->plannedstmt->queryTree->rtable,
 																   queryDesc->params,
 																   queryDesc->estate->es_param_exec_vals,
-																   queryDesc->plantree->nParamExec);
+																   queryDesc->plannedstmt->nParamExec);
 			}
 
 			/*
@@ -580,6 +581,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			SetupSequenceServer(estate->es_sliceTable);
 
 			/* Run a root slice. */
+			/* TODO Can we use nMotionNodes from PlannedStmt and remove it from Plan? (PSMERGE) */
 			if (queryDesc->planstate->plan->nMotionNodes > 0 && !estate->es_interconnect_is_setup)
 			{
 				estate->es_interconnect_is_setup = true;
@@ -703,7 +705,7 @@ ExecutorRun(QueryDesc *queryDesc,
 	estate->es_lastoid = InvalidOid;
 
 	sendTuples = (operation == CMD_SELECT ||
-				  queryDesc->parsetree->returningList);
+				  queryDesc->plannedstmt->queryTree->returningList);
 
 	if (sendTuples)
 		(*dest->rStartup) (dest, operation, queryDesc->tupDesc);
@@ -914,7 +916,7 @@ ExecutorEnd(QueryDesc *queryDesc)
 	/*
 	 * Release any gangs we may have assigned.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
+	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
 		ReleaseGangs(queryDesc);
 
 	/*
@@ -1094,9 +1096,10 @@ ExecCheckXactReadOnly(Query *parsetree)
 	/*
 	 * CREATE TABLE AS or SELECT INTO?
 	 */
-	if (parsetree->into != NULL)
+	if (parsetree->intoClause != NULL)
 	{
-		if (parsetree->into->istemp)
+		Assert(parsetree->intoClause->rel);
+		if (parsetree->intoClause->rel->istemp)
 			changesTempTables = true;
 		else
 			goto fail;
@@ -1187,16 +1190,17 @@ static void
 InitPlan(QueryDesc *queryDesc, int eflags)
 {
 	CmdType		operation = queryDesc->operation;
-	Query	   *parseTree = queryDesc->parsetree;
-	Plan	   *plan = queryDesc->plantree;
+	PlannedStmt *stmt = queryDesc->plannedstmt;
 	EState	   *estate = queryDesc->estate;
 	PlanState  *planstate;
 	List	   *rangeTable;
 	TupleDesc	tupType;
 	ListCell   *l;
-	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
+	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && stmt->planTree->dispatch == DISPATCH_PARALLEL;
 
-	Assert(parseTree->intoPolicy == NULL || parseTree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
+	/* TODO Use of Query tree deprecated. (PSMERGE) */
+	Assert(stmt->queryTree->intoPolicy == NULL 
+		   || stmt->queryTree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 	/*
 	 * Do permissions checks.  It's sufficient to examine the query's top
 	 * rangetable here --- subplan RTEs will be checked during
@@ -1229,7 +1233,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 		ListCell   *l;
 
-		foreach(l, parseTree->rtable)
+		foreach(l, stmt->queryTree->rtable)
 		{
 			RangeTblEntry *rte = lfirst(l);
 
@@ -1251,12 +1255,12 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		}
 	}
 	else
-		ExecCheckRTPerms(parseTree->rtable);
+		ExecCheckRTPerms(stmt->queryTree->rtable);
 
 	/*
 	 * get information from query descriptor
 	 */
-	rangeTable = parseTree->rtable;
+	rangeTable = stmt->queryTree->rtable; /* TODO Use of Query tree deprecated. (PSMERGE) */
 
 	/*
 	 * initialize the node's execution state
@@ -1270,9 +1274,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * the actual updating, since it's where we learn things, such as if the row needs to
 	 * contain OIDs or not.
 	 */
-	if (parseTree->resultRelation)
+	if (stmt->queryTree->resultRelation) /* TODO Use of Query tree deprecated. (PSMERGE) */
 	{
-		List	   *resultRelations = parseTree->resultRelations;
+		List	   *resultRelations = stmt->resultRelations;
 		int			numResultRelations;
 		ResultRelInfo *resultRelInfos;
 
@@ -1280,7 +1284,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		{
 			/*
 			 * Multiple result relations (due to inheritance)
-			 * parseTree->resultRelations identifies them all
+			 * stmt->resultRelations identifies them all
 			 */
 			ResultRelInfo *resultRelInfo;
 
@@ -1303,12 +1307,12 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		else
 		{
 			/*
-			 * Single result relation identified by parseTree->resultRelation
+			 * Single result relation identified by stmt->queryTree->resultRelation
 			 */
 			numResultRelations = 1;
 			resultRelInfos = (ResultRelInfo *) palloc(sizeof(ResultRelInfo));
 			initResultRelInfo(resultRelInfos,
-							  parseTree->resultRelation,
+							  stmt->queryTree->resultRelation,
 							  rangeTable,
 							  operation,
 							  estate->es_instrument,
@@ -1329,12 +1333,12 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 		if (Gp_role == GP_ROLE_EXECUTE)
 		{
-			estate->es_result_partitions = parseTree->result_partitions;
-			estate->es_result_aosegnos = parseTree->result_aosegnos;
+			estate->es_result_partitions = stmt->result_partitions;
+			estate->es_result_aosegnos = stmt->result_aosegnos;
 		}
 		else
 		{
-			Oid 	 relid = getrelid(parseTree->resultRelation, rangeTable);
+			Oid 	 relid = getrelid(stmt->queryTree->resultRelation, rangeTable);
 			Relation tmp = heap_open(relid, NoLock);
 			List 	*all_relids = NIL;
 
@@ -1349,8 +1353,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 			estate->es_result_aosegnos = assignPerRelSegno(all_relids);
 
-			parseTree->result_partitions = estate->es_result_partitions;
-			parseTree->result_aosegnos = estate->es_result_aosegnos;
+			stmt->result_partitions = estate->es_result_partitions;
+			stmt->result_aosegnos = estate->es_result_aosegnos;
 			heap_close(tmp, NoLock);
 
 			/* Set any QD resultrels segno, just in case. The QEs set their own in ExecInsert(). */
@@ -1400,17 +1404,17 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * correct tuple descriptors.  (Other SELECT INTO stuff comes later.)
 	 */
 	estate->es_select_into = false;
-	if (operation == CMD_SELECT && parseTree->into != NULL)
+	if (operation == CMD_SELECT && stmt->queryTree->intoClause != NULL)
 	{
 		estate->es_select_into = true;
-		estate->es_into_oids = interpretOidsOption(parseTree->intoOptions);
+		estate->es_into_oids = interpretOidsOption(stmt->queryTree->intoClause->options);
 	}
 
 	/*
 	 * Have to lock relations selected FOR UPDATE/FOR SHARE
 	 */
 	estate->es_rowMarks = NIL;
-	foreach(l, parseTree->rowMarks)
+	foreach(l, stmt->queryTree->rowMarks)
 	{
 		RowMarkClause *rc = (RowMarkClause *) lfirst(l);
 		Oid			relid = getrelid(rc->rti, rangeTable);
@@ -1445,15 +1449,15 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * trigger output tuples.
 	 */
 	{
-		int			nSlots = ExecCountSlotsNode(plan);
+		int			nSlots = ExecCountSlotsNode(stmt->planTree);
 
-		if (parseTree->resultRelations != NIL)
-			nSlots += list_length(parseTree->resultRelations);
+		if (stmt->resultRelations != NIL)
+			nSlots += list_length(stmt->resultRelations);
 		else
 			nSlots += 1;
 		if (operation != CMD_SELECT)
 			nSlots++;			/* for es_trig_tuple_slot */
-		if (parseTree->returningLists)
+		if (stmt->returningLists)
 			nSlots++;			/* for RETURNING projection */
 
 		estate->es_tupleTable = ExecCreateTupleTable(nSlots);
@@ -1464,7 +1468,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	}
 
 	/* mark EvalPlanQual not active */
-	estate->es_topPlan = plan;
+	estate->es_topPlan = stmt->planTree;
 	estate->es_evalPlanQual = NULL;
 	estate->es_evTupleNull = NULL;
 	estate->es_evTuple = NULL;
@@ -1475,7 +1479,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * tree.  This opens files, allocates storage and leaves us ready to start
 	 * processing tuples.
 	 */
-	planstate = ExecInitNode(plan, estate, eflags);
+	planstate = ExecInitNode(stmt->planTree, estate, eflags);
 
 	/*
 	 * Get the tuple descriptor describing the type of tuples to return. (this
@@ -1503,7 +1507,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		{
 			case CMD_SELECT:
 			case CMD_INSERT:
-				foreach(tlist, plan->targetlist)
+				foreach(tlist, stmt->planTree->targetlist)
 				{
 					TargetEntry *tle = (TargetEntry *) lfirst(tlist);
 
@@ -1533,7 +1537,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			 * junk filter.  Note this is only possible for UPDATE/DELETE, so
 			 * we can't be fooled by some needing a filter and some not.
 			 */
-			if (parseTree->resultRelations != NIL)
+			if (stmt->resultRelations != NIL)
 			{
 				PlanState **appendplans;
 				int			as_nplans;
@@ -1541,8 +1545,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 				int			i;
 
 				/* Top plan had better be an Append here. */
-				Assert(IsA(plan, Append));
-				Assert(((Append *) plan)->isTarget);
+				Assert(IsA(stmt->planTree, Append));
+				Assert(((Append *) stmt->planTree)->isTarget);
 				Assert(IsA(planstate, AppendState));
 				appendplans = ((AppendState *) planstate)->appendplans;
 				as_nplans = ((AppendState *) planstate)->as_nplans;
@@ -1605,7 +1609,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	/*
 	 * Initialize RETURNING projections if needed.
 	 */
-	if (parseTree->returningLists)
+	if (stmt->returningLists)
 	{
 		TupleTableSlot *slot;
 		ExprContext *econtext;
@@ -1615,7 +1619,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		 * We set QueryDesc.tupDesc to be the RETURNING rowtype in this case.
 		 * We assume all the sublists will generate the same output tupdesc.
 		 */
-		tupType = ExecTypeFromTL((List *) linitial(parseTree->returningLists),
+		tupType = ExecTypeFromTL((List *) linitial(stmt->returningLists),
 								 false);
 
 		/* Set up a slot for the output of the RETURNING projection(s) */
@@ -1628,9 +1632,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		 * Build a projection for each result rel.	Note that any SubPlans in
 		 * the RETURNING lists get attached to the topmost plan node.
 		 */
-		Assert(list_length(parseTree->returningLists) == estate->es_num_result_relations);
+		Assert(list_length(stmt->returningLists) == estate->es_num_result_relations);
 		resultRelInfo = estate->es_result_relations;
-		foreach(l, parseTree->returningLists)
+		foreach(l, stmt->returningLists)
 		{
 			List	   *rlist = (List *) lfirst(l);
 			List	   *rliststate;
@@ -3842,7 +3846,8 @@ typedef struct
 static void
 OpenIntoRel(QueryDesc *queryDesc)
 {
-	Query	   *parseTree = queryDesc->parsetree;
+	Query	   *parseTree;
+	IntoClause *intoClause;
 	EState	   *estate = queryDesc->estate;
 	Relation	intoRelationDesc;
 	char	   *intoName;
@@ -3858,70 +3863,74 @@ OpenIntoRel(QueryDesc *queryDesc)
 	DR_intorel *myState;
     Oid         intoOid;
     Oid         intoComptypeOid;
-    GpPolicy   *targetPolicy = parseTree->intoPolicy;
+    GpPolicy   *targetPolicy;
 	int			safefswritesize = gp_safefswritesize;
-
+	
+	parseTree = queryDesc->plannedstmt->queryTree; /* TODO Use of Query tree deprecated. (PSMERGE) */
+	targetPolicy = parseTree->intoPolicy; /* TODO Need to shift this into PlannedStmt. (PSMERGE) */
+	intoClause = queryDesc->plannedstmt->intoClause;
 	/*
 	 * Check consistency of arguments
 	 */
-	if (parseTree->intoOnCommit != ONCOMMIT_NOOP && !parseTree->into->istemp)
+	Insist(intoClause);
+	Assert(equal(intoClause->rel, parseTree->intoClause->rel));
+	if (intoClause->onCommit != ONCOMMIT_NOOP && !intoClause->rel->istemp)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("ON COMMIT can only be used on temporary tables"),
 				 errOmitLocation(true)));
-
+	
 	/* MPP specific stuff */
-	intoName = parseTree->into->relname;
-    intoOid = parseTree->intoOidInfo.relOid;
-    intoComptypeOid = parseTree->intoOidInfo.comptypeOid;
-
+    intoOid = intoClause->oidInfo.relOid;
+    intoComptypeOid = intoClause->oidInfo.comptypeOid;
+	
 	/*
 	 * Find namespace to create in, check its permissions
 	 */
-	intoName = parseTree->into->relname;
-	namespaceId = RangeVarGetCreationNamespace(parseTree->into);
-
+	intoName = intoClause->rel->relname;
+	namespaceId = RangeVarGetCreationNamespace(intoClause->rel);
+	
 	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(),
 									  ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
 					   get_namespace_name(namespaceId));
-
+	
 	/*
 	 * Select tablespace to use.  If not specified, use default_tablespace
 	 * (which may in turn default to database's default).
 	 */
-	if (parseTree->intoTableSpaceName)
+	if (intoClause->tableSpaceName)
 	{
-		tablespaceId = get_tablespace_oid(parseTree->intoTableSpaceName);
+		tablespaceId = get_tablespace_oid(intoClause->tableSpaceName);
 		if (!OidIsValid(tablespaceId))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("tablespace \"%s\" does not exist",
-							parseTree->intoTableSpaceName)));
+							intoClause->tableSpaceName)));
 	}
 	else
 	{
 		tablespaceId = GetDefaultTablespace();
 		/* note InvalidOid is OK in this case */
 	}
-
+	
 	/* Check permissions except when using the database's default space */
 	if (OidIsValid(tablespaceId))
 	{
 		AclResult	aclresult;
-
+		
 		aclresult = pg_tablespace_aclcheck(tablespaceId, GetUserId(),
 										   ACL_CREATE);
-
+		
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, ACL_KIND_TABLESPACE,
 						   get_tablespace_name(tablespaceId));
 	}
-
+	
 	/* Parse and validate any reloptions */
-	reloptions = transformRelOptions((Datum) 0, parseTree->intoOptions, true, false);
-
+	reloptions = transformRelOptions((Datum) 0, intoClause->options, true, false);
+	
 	/* get the relstorage (heap or AO tables) */
 	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, true);
 	heap_test_override_reloptions(relkind, stdRdOptions, &safefswritesize);
@@ -3929,10 +3938,10 @@ OpenIntoRel(QueryDesc *queryDesc)
 		relstorage = stdRdOptions->columnstore ? RELSTORAGE_AOCOLS : RELSTORAGE_AOROWS;
 	else
 		relstorage = RELSTORAGE_HEAP;
-
+	
 	/* have to copy the actual tupdesc to get rid of any constraints */
 	tupdesc = CreateTupleDescCopy(queryDesc->tupDesc);
-
+	
 	/* Now we can actually create the new relation */
 	intoRelationId = heap_create_with_catalog(intoName,
 											  namespaceId,
@@ -3945,37 +3954,49 @@ OpenIntoRel(QueryDesc *queryDesc)
 											  false,
 											  true,
 											  0,
-											  parseTree->intoOnCommit,
+											  intoClause->onCommit,
 											  targetPolicy,  	/* MPP */
 											  reloptions,
 											  allowSystemTableMods,
 											  &intoComptypeOid 	/* MPP */);
-
+	
 	FreeTupleDesc(tupdesc);
-
+	
 	/*
 	 * Advance command counter so that the newly-created relation's catalog
 	 * tuples will be visible to heap_open.
 	 */
 	CommandCounterIncrement();
-
+	
 	/*
 	 * If necessary, create a TOAST table for the new relation, or an Append
 	 * Only segment table. Note that AlterTableCreateXXXTable ends with
 	 * CommandCounterIncrement(), so that the new tables will be visible for
 	 * insertion.
 	 */
-	AlterTableCreateToastTableWithOid(intoRelationId, parseTree->intoOidInfo.toastOid, parseTree->intoOidInfo.toastIndexOid, &parseTree->intoOidInfo.toastComptypeOid, false);
-	AlterTableCreateAoSegTableWithOid(intoRelationId, parseTree->intoOidInfo.aosegOid, parseTree->intoOidInfo.aosegIndexOid, &parseTree->intoOidInfo.aosegComptypeOid, false);
-	AlterTableCreateAoBlkdirTableWithOid(intoRelationId, parseTree->intoOidInfo.aoblkdirOid, parseTree->intoOidInfo.aoblkdirIndexOid, &parseTree->intoOidInfo.aoblkdirComptypeOid, false);
+	AlterTableCreateToastTableWithOid(intoRelationId, 
+									  intoClause->oidInfo.toastOid, 
+									  intoClause->oidInfo.toastIndexOid, 
+									  &intoClause->oidInfo.toastComptypeOid, 
+									  false);
+	AlterTableCreateAoSegTableWithOid(intoRelationId, 
+									  intoClause->oidInfo.aosegOid, 
+									  intoClause->oidInfo.aosegIndexOid,
+									  &intoClause->oidInfo.aosegComptypeOid, 
+									  false);
+	AlterTableCreateAoBlkdirTableWithOid(intoRelationId, 
+                                      intoClause->oidInfo.aoblkdirOid, 
+                                      intoClause->oidInfo.aoblkdirIndexOid, 
+                                      &intoClause->oidInfo.aoblkdirComptypeOid, 
+                                      false);
 	/*
 	 * And open the constructed table for writing.
 	 */
 	intoRelationDesc = heap_open(intoRelationId, AccessExclusiveLock);
-
+	
 	/* use_wal off requires rd_targblock be initially invalid */
 	Assert(intoRelationDesc->rd_targblock == InvalidBlockNumber);
-
+	
 	/*
 	 * We can skip WAL-logging the insertions, unless PITR is in use.
 	 *
@@ -3987,7 +4008,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 */
 	estate->es_into_relation_use_wal = (relstorage_is_ao(relstorage) ? false : XLogArchivingActive());
 	estate->es_into_relation_descriptor = intoRelationDesc;
-
+	
 	/*
 	 * Now replace the query's DestReceiver with one for SELECT INTO
 	 */

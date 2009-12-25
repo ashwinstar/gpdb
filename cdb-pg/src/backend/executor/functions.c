@@ -47,11 +47,7 @@ typedef struct local_es
 {
 	struct local_es *next;
 	ExecStatus	status;
-	Query	   *query;
-	Plan	   *plan;
-#if 0
 	Node	   *stmt;			/* PlannedStmt or utility statement */
-#endif	
 	QueryDesc  *qd;				/* null unless status == RUN */
 } execution_state;
 
@@ -87,10 +83,11 @@ typedef SQLFunctionCache *SQLFunctionCachePtr;
 
 /* non-export function prototypes */
 static execution_state *init_execution_state(List *queryTree_list,
+					 SQLFunctionCache *fcache,
 					 bool readonly_func);
 static void init_sql_fcache(FmgrInfo *finfo);
 static void postquel_start(execution_state *es, SQLFunctionCachePtr fcache);
-static TupleTableSlot *postquel_getnext(execution_state *es);
+static TupleTableSlot * postquel_getnext(execution_state *es, SQLFunctionCachePtr fcache);
 static void postquel_end(execution_state *es);
 static void postquel_sub_params(SQLFunctionCachePtr fcache,
 					FunctionCallInfo fcinfo);
@@ -103,7 +100,7 @@ static void ShutdownSQLFunction(Datum arg);
 
 
 static execution_state *
-init_execution_state(List *queryTree_list, bool readonly_func)
+init_execution_state(List *queryTree_list, SQLFunctionCache *fcache, bool readonly_func)
 {
 	execution_state *firstes = NULL;
 	execution_state *preves = NULL;
@@ -111,29 +108,31 @@ init_execution_state(List *queryTree_list, bool readonly_func)
 
 	foreach(qtl_item, queryTree_list)
 	{
-		Query	   *queryTree = lfirst(qtl_item);
-		Plan	   *planTree;
+		Query	   *queryTree = (Query *) lfirst(qtl_item);
+		Node	   *stmt;
 		execution_state *newes;
 
+		Assert(IsA(queryTree, Query));
+
+		if (queryTree->commandType == CMD_UTILITY)
+			stmt = queryTree->utilityStmt;
+		else
+			stmt = (Node *) pg_plan_query(queryTree, NULL);
+
 		/* Precheck all commands for validity in a function */
-		if (queryTree->commandType == CMD_UTILITY &&
-			IsA(queryTree->utilityStmt, TransactionStmt))
+		if (IsA(stmt, TransactionStmt))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			/* translator: %s is a SQL statement name */
 					 errmsg("%s is not allowed in a SQL function",
-							CreateQueryTag(queryTree)),
-									errOmitLocation(true)));
+							CreateCommandTag(stmt))));
 
-		if (readonly_func && !QueryIsReadOnly(queryTree))
+		if (readonly_func && !readonly_func)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			/* translator: %s is a SQL statement name */
 					 errmsg("%s is not allowed in a non-volatile function",
-							CreateQueryTag(queryTree)),
-									errOmitLocation(true)));
-
-		planTree = pg_plan_query(queryTree, NULL);
+							CreateCommandTag(stmt))));
 
 		newes = (execution_state *) palloc(sizeof(execution_state));
 		if (preves)
@@ -143,8 +142,7 @@ init_execution_state(List *queryTree_list, bool readonly_func)
 
 		newes->next = NULL;
 		newes->status = F_EXEC_START;
-		newes->query = queryTree;
-		newes->plan = planTree;
+		newes->stmt = stmt;
 		newes->qd = NULL;
 
 		preves = newes;
@@ -163,7 +161,6 @@ init_sql_fcache(FmgrInfo *finfo)
 	Form_pg_proc procedureStruct;
 	SQLFunctionCachePtr fcache;
 	Oid		   *argOidVect;
-	//char	   *src;
 	int			nargs;
 	List	   *queryTree_list;
 	Datum		tmp;
@@ -282,7 +279,7 @@ init_sql_fcache(FmgrInfo *finfo)
 					can_run_local = false;
 					break;
 				}
-				else if (q->into != NULL || q ->setOperations != NULL || q->resultRelation > 0)
+				else if (q->intoClause != NULL || q ->setOperations != NULL || q->resultRelation > 0)
 				{
 					can_run_local = false;
 					break;
@@ -361,9 +358,8 @@ init_sql_fcache(FmgrInfo *finfo)
 
 	/* Finally, plan the queries */
 	fcache->func_state = init_execution_state(queryTree_list,
+											  fcache,
 											  fcache->readonly_func);
-
-	//pfree(src);
 
 	ReleaseSysCache(procedureTuple);
 
@@ -393,15 +389,23 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 		snapshot = CopySnapshot(GetTransactionSnapshot());
 	}
 
-	es->qd = CreateQueryDesc(es->query, es->plan, fcache->src,
-							 snapshot, InvalidSnapshot,
-							 None_Receiver,
-							 fcache->paramLI, false);
+	if (IsA(es->stmt, PlannedStmt))
+		es->qd = CreateQueryDesc((PlannedStmt *) es->stmt,
+								 fcache->src,
+								 snapshot, InvalidSnapshot,
+								 None_Receiver,
+								 fcache->paramLI, false);
+	else
+		es->qd = CreateUtilityQueryDesc(es->stmt,
+										fcache->src,
+										snapshot,
+										None_Receiver,
+										fcache->paramLI);
 
 	/* We assume we don't need to set up ActiveSnapshot for ExecutorStart */
 
 	/* Utility commands don't need Executor. */
-	if (es->qd->operation != CMD_UTILITY)
+	if (es->qd->utilitystmt == NULL)
 	{
 		/*
 		 * Only set up to collect queued triggers if it's not a SELECT.
@@ -418,7 +422,7 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 }
 
 static TupleTableSlot *
-postquel_getnext(execution_state *es)
+postquel_getnext(execution_state *es, SQLFunctionCachePtr fcache)
 {
 	TupleTableSlot *result;
 	Snapshot	saveActiveSnapshot;
@@ -430,10 +434,14 @@ postquel_getnext(execution_state *es)
 	{
 		ActiveSnapshot = es->qd->snapshot;
 
-		if (es->qd->operation == CMD_UTILITY)
+		if (es->qd->utilitystmt != NULL)
 		{
 			/* ProcessUtility needs the PlannedStmt for DECLARE CURSOR */
-			ProcessUtility(es->qd->parsetree->utilityStmt, "UTILITY STMT", es->qd->params,
+			ProcessUtility((es->qd->plannedstmt ?
+							(Node *) es->qd->plannedstmt :
+							es->qd->utilitystmt), 
+						   fcache->src,
+						   es->qd->params,
 						   false, /* not top level */
 						   es->qd->dest, NULL);
 			result = NULL;
@@ -448,7 +456,7 @@ postquel_getnext(execution_state *es)
 			 */
 			if (LAST_POSTQUEL_COMMAND(es) &&
 				es->qd->operation == CMD_SELECT &&
-				es->qd->parsetree->into == NULL)
+				es->qd->plannedstmt->intoClause == NULL)
 				count = 1L;
 			else
 				count = 0L;
@@ -478,7 +486,7 @@ postquel_end(execution_state *es)
 	es->status = F_EXEC_DONE;
 
 	/* Utility commands don't need Executor. */
-	if (es->qd->operation != CMD_UTILITY)
+	if (es->qd->utilitystmt == NULL)
 	{
 		/* Make our snapshot the active one for any called functions */
 		saveActiveSnapshot = ActiveSnapshot;
@@ -554,7 +562,7 @@ postquel_execute(execution_state *es,
 	if (es->status == F_EXEC_START)
 		postquel_start(es, fcache);
 
-	slot = postquel_getnext(es);
+	slot = postquel_getnext(es, fcache);
 
 	if (TupIsNull(slot))
 	{
@@ -989,7 +997,9 @@ check_sql_fn_retval(Oid func_id, Oid rettype, List *queryTreeList,
 	 * Note: eventually replace this test with QueryReturnsTuples?  We'd need
 	 * a more general method of determining the output type, though.
 	 */
-	if (!(parse->commandType == CMD_SELECT && parse->into == NULL))
+	if (!(parse->commandType == CMD_SELECT && 
+		  parse->intoClause == NULL &&
+		  parse->utilityStmt == NULL))
 	{
 		if (rettype != VOIDOID)
 			ereport(ERROR,

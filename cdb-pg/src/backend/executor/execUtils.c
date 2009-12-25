@@ -1457,7 +1457,7 @@ InitRootSlices(QueryDesc *queryDesc)
 			{
 				case CMD_SELECT:
 					Assert(slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0);
-					if (queryDesc->parsetree->into != NULL)
+					if (queryDesc->plannedstmt->intoClause != NULL)
 					{
 						slice->gangType = GANGTYPE_PRIMARY_WRITER;
 						slice->gangSize = getgpsegmentCount();

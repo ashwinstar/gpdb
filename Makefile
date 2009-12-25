@@ -1,10 +1,6 @@
 #---------------------------------------------------------------------
 # Makefile for Greenplum Database
 #
-#             $Id$
-#         $Change$
-#       $DateTime$
-#         $Author$
 #---------------------------------------------------------------------
 
 # keep the default target above any targets from included makefiles

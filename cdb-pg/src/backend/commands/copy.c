@@ -1232,7 +1232,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 	{
 		Query	   *query = stmt->query;
 		List	   *rewritten;
-		Plan	   *plan;
+		PlannedStmt	 *plannedstmt;
 		DestReceiver *dest;
 
 		Assert(query);
@@ -1246,7 +1246,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 					 errmsg("COPY (SELECT) WITH OIDS is not supported"),
 					 errOmitLocation(true)));
 
-		if (query->into)
+		if (query->intoClause)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY (SELECT INTO) is not supported"),
@@ -1284,7 +1284,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		Assert(query->commandType == CMD_SELECT);
 
 		/* plan the query */
-		plan = planner(query, false, 0, NULL);
+		plannedstmt = planner(query, false, 0, NULL);
 
 		/*
 		 * Update snapshot command ID to ensure this query sees results of any
@@ -1300,7 +1300,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		((DR_copy *) dest)->cstate = cstate;
 
 		/* Create a QueryDesc requesting no output */
-		cstate->queryDesc = CreateQueryDesc(query, plan, queryString,
+		cstate->queryDesc = CreateQueryDesc(plannedstmt, queryString,
 											ActiveSnapshot, InvalidSnapshot,
 											dest, NULL, false);
 

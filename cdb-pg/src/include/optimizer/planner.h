@@ -28,10 +28,18 @@ typedef PlannedStmt *(*planner_hook_type) (Query *parse,
 
 extern PGDLLIMPORT planner_hook_type planner_hook;
 
-extern ParamListInfo PlannerBoundParamList;		/* current boundParams */
+extern ParamListInfo PlannerBoundParamList;	 /* current boundParams */
 
-extern Plan *planner(Query *parse, bool isCursor, int cursorOptions,
-		ParamListInfo boundParams);
+extern PlannedStmt *planner(Query *parse,
+							bool isCursor,
+							int cursorOptions,
+							ParamListInfo boundParams);
+
+extern PlannedStmt *standard_planner(Query *parse,
+									 bool isCursor,
+									 int cursorOptions,
+									 ParamListInfo boundParams);
+
 extern Plan *subquery_planner(PlannerGlobal *glob,
 							  Query *parse,
 							  PlannerInfo *parent_root,

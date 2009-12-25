@@ -14,10 +14,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.97.2.1 2007/04/26 23:24:57 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -154,29 +150,45 @@ GetPortalByName(const char *name)
 }
 
 /*
- * PortalListGetPrimaryQuery
- *		Get the "primary" Query within a portal, ie, the one marked canSetTag.
+ * PortalListGetPrimaryStmt
+ *		Get the "primary" stmt within a portal, ie, the one marked canSetTag.
  *
- * Returns NULL if no such Query.  If multiple Query structs within the
+ * Returns NULL if no such stmt.  If multiple PlannedStmt structs within the
  * portal are marked canSetTag, returns the first one.	Neither of these
  * cases should occur in present usages of this function.
  *
- * Note: the reason this is just handed a List is so that prepared statements
- * can share the code.	For use with a portal, use PortalGetPrimaryQuery
- * rather than calling this directly.
+ * Copes if given a list of Querys --- can't happen in a portal, but may
+ * occur elsewhere, e.g., PreparedStatement handling or, eventually,
+ * plan caching.
+ *
+ * For use with a portal, use PortalGetPrimaryStmt rather than calling this 
+ * directly.
  */
-Query *
-PortalListGetPrimaryQuery(List *parseTrees)
+Node *
+PortalListGetPrimaryStmt(List *stmts)
 {
 	ListCell   *lc;
 
-	foreach(lc, parseTrees)
+	foreach(lc, stmts)
 	{
-		Query	   *query = (Query *) lfirst(lc);
+		Node	   *stmt = (Node *) lfirst(lc);
 
-		Assert(IsA(query, Query));
-		if (query->canSetTag)
-			return query;
+		if (IsA(stmt, PlannedStmt))
+		{
+			if (((PlannedStmt *)stmt)->canSetTag)
+				return stmt;
+		}
+		else if (IsA(stmt, Query))
+		{
+			if (((Query *) stmt)->canSetTag)
+				return stmt;
+		}
+		else
+		{
+			/* Utility stmts are assumed canSetTag if they're the only stmt */
+			if (list_length(stmts) == 1)
+				return stmt;
+		}
 	}
 	return NULL;
 }
@@ -244,10 +256,8 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 		portal->portalId = ResCreatePortalId(name);
 		portal->queueId = GetResQueueId();
 	}
-
 	portal->is_cursor = false; /* default value */	
 	portal->dispatchagents = NULL;
-
 	/* put portal in table (sets portal->name) */
 	PortalHashTableInsert(portal, name);
 
@@ -286,14 +296,17 @@ CreateNewPortal(void)
  * PortalDefineQuery
  *		A simple subroutine to establish a portal's query.
  *
- * Notes: commandTag shall be NULL if and only if the original query string
- * (before rewriting) was an empty string.	Also, the passed commandTag must
- * be a pointer to a constant string, since it is not copied.  The caller is
- * responsible for ensuring that the passed sourceText (if any), parse and
- * plan trees have adequate lifetime.  Also, queryContext must accurately
- * describe the location of the parse and plan trees.
- * The souce (i.e original parsetree is passed in - only used if rource
- * scheduling is enabled.
+ * Notes: Caller MUST supply a sourceText string; it is no longer okay
+ * to pass NULL.  (If you really don't have source text, pass a constant 
+ * string, e.g., "(query not available)".) 
+ *
+ * commandTag shall be NULL if and only if the original query string
+ * (before rewriting) was an empty string.	Also, commandTag must be a
+ * pointer to a constant string, since it is not copied.  
+ *
+ * The caller is responsible for ensuring that the passed prepStmtName
+ * (if not NULL) and sourceText have adequate lifetime. Also, queryContext 
+ * must accurately  describe the location of the stmt list contents.
  */
 void
 PortalDefineQuery(Portal portal,
@@ -301,23 +314,20 @@ PortalDefineQuery(Portal portal,
 				  const char *sourceText,
 				  NodeTag	  sourceTag,
 				  const char *commandTag,
-				  List *parseTrees,
-				  List *planTrees,
+				  List *stmts,
 				  MemoryContext queryContext)
 {
 	AssertArg(PortalIsValid(portal));
 	AssertState(portal->queryContext == NULL);	/* else defined already */
-
-	Assert(list_length(parseTrees) == list_length(planTrees));
-
-	Assert(commandTag != NULL || parseTrees == NIL);
-
+	
+	AssertArg(sourceText != NULL);
+	AssertArg(commandTag != NULL || stmts == NIL);
+	
 	portal->prepStmtName = prepStmtName;
 	portal->sourceText = sourceText;
 	portal->sourceTag = sourceTag;
 	portal->commandTag = commandTag;
-	portal->parseTrees = parseTrees;
-	portal->planTrees = planTrees;
+	portal->stmts = stmts;
 	portal->queryContext = queryContext;
 }
 

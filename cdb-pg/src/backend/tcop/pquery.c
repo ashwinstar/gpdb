@@ -11,10 +11,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/tcop/pquery.c,v 1.111.2.1 2007/02/18 19:49:30 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -48,19 +44,18 @@
 Portal		ActivePortal = NULL;
 
 static void ProcessQuery(Portal portal,
-			 Query *parsetree,
-			 Plan *plan,
+			 PlannedStmt *stmt,
              ParamListInfo params,
 			 DestReceiver *dest,
 			 char *completionTag);
-static void FillPortalStore(Portal portal);
+static void FillPortalStore(Portal portal, bool isTopLevel);
 static uint64 RunFromStore(Portal portal, ScanDirection direction, int64 count,
 			 DestReceiver *dest);
 static int64 PortalRunSelect(Portal portal, bool forward, int64 count,
 				DestReceiver *dest);
-static void PortalRunUtility(Portal portal, Query *query,
+static void PortalRunUtility(Portal portal, Node *utilityStmt, bool isTopLevel,
 				 DestReceiver *dest, char *completionTag);
-static void PortalRunMulti(Portal portal,
+static void PortalRunMulti(Portal portal, bool isTopLevel,
 			   DestReceiver *dest, DestReceiver *altdest,
 			   char *completionTag);
 static int64 DoPortalRunFetch(Portal portal,
@@ -79,8 +74,7 @@ static void DoPortalRewind(Portal portal);
  * will handle plan slicing.
  */
 QueryDesc *
-CreateQueryDesc(Query *parsetree,
-				Plan *plantree,
+CreateQueryDesc(PlannedStmt *plannedstmt,
 				const char *sourceText,
 				Snapshot snapshot,
 				Snapshot crosscheck_snapshot,
@@ -90,9 +84,10 @@ CreateQueryDesc(Query *parsetree,
 {
 	QueryDesc  *qd = (QueryDesc *) palloc(sizeof(QueryDesc));
 
-	qd->operation = parsetree->commandType;		/* operation */
-	qd->parsetree = parsetree;	/* parse tree */
-	qd->plantree = plantree;	/* plan */
+	qd->operation = plannedstmt->commandType;	/* operation */
+	qd->plannedstmt = plannedstmt;		/* plan */
+	qd->utilitystmt = plannedstmt->utilityStmt; /* in case DECLARE CURSOR */
+	qd->sourceText = sourceText;		/* query text */
 	qd->snapshot = snapshot;	/* snapshot */
 	qd->crosscheck_snapshot = crosscheck_snapshot;		/* RI check snapshot */
 	qd->dest = dest;			/* output dest */
@@ -118,6 +113,39 @@ CreateQueryDesc(Query *parsetree,
 		gpmon_qlog_packet_init(qd->gpmon_pkt);
 	}
 
+	return qd;
+}
+
+/*
+ * CreateUtilityQueryDesc
+ */
+QueryDesc *
+CreateUtilityQueryDesc(Node *utilitystmt,
+					   const char *sourceText,
+					   Snapshot snapshot,
+					   DestReceiver *dest,
+					   ParamListInfo params)
+{
+	QueryDesc  *qd = (QueryDesc *) palloc(sizeof(QueryDesc));
+	
+	qd->operation = CMD_UTILITY;	/* operation */
+	qd->plannedstmt = NULL;
+	qd->utilitystmt = utilitystmt;		/* utility command */
+	qd->sourceText = sourceText;		/* query text */
+	qd->snapshot = snapshot;	/* snapshot */
+	qd->crosscheck_snapshot = InvalidSnapshot;	/* RI check snapshot */
+	qd->dest = dest;			/* output dest */
+	qd->params = params;		/* parameter values passed into query */
+	qd->doInstrument = false;	/* uninteresting for utilities */
+	
+	/* null these fields until set by ExecutorStart */
+	qd->tupDesc = NULL;
+	qd->estate = NULL;
+	qd->planstate = NULL;
+	
+	qd->cursor_query = false; /* default value */
+	qd->portal_name = NULL;
+	
 	return qd;
 }
 
@@ -154,13 +182,11 @@ FreeQueryDesc(QueryDesc *qdesc)
  */
 static void
 ProcessQuery(Portal portal,
-			 Query *parsetree,
-			 Plan *plan,
+			 PlannedStmt *stmt,
              ParamListInfo params,
 			 DestReceiver *dest,
 			 char *completionTag)
 {
-	int			operation = parsetree->commandType;
 	QueryDesc  *queryDesc;
 	Oid			truncOid = InvalidOid;
 	
@@ -176,16 +202,18 @@ ProcessQuery(Portal portal,
 	 * caller will take care of restoring ActiveSnapshot on exit/error.
 	 */
 	ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-
+	
 	/*
 	 * Create the QueryDesc object
 	 */
-	if (portal && portal->sourceTag == T_SelectStmt && gp_select_invisible)
-		queryDesc = CreateQueryDesc(parsetree, plan, debug_query_string,
+	Assert(portal);
+	
+	if (portal->sourceTag == T_SelectStmt && gp_select_invisible)
+		queryDesc = CreateQueryDesc(stmt, portal->sourceText,
 									SnapshotAny, InvalidSnapshot,
 									dest, params, false);
 	else
-		queryDesc = CreateQueryDesc(parsetree, plan, debug_query_string,
+		queryDesc = CreateQueryDesc(stmt, portal->sourceText,
 									ActiveSnapshot, InvalidSnapshot,
 									dest, params, false);
 
@@ -202,31 +230,32 @@ ProcessQuery(Portal portal,
 	 * Skip if this query is added by the rewriter or
 	 * we are superuser. Additionally we only lock parallel plan queries.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && portal && 
+	if (Gp_role == GP_ROLE_DISPATCH && 
 		ResourceScheduler && 
 		(!ResourceSelectOnly || portal->sourceTag == T_SelectStmt) && 
-		parsetree->canSetTag && !superuser() &&
-		queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
+		stmt->canSetTag && !superuser() &&
+		queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
 	{
 		PortalSetStatus(portal, PORTAL_QUEUE);
-		portal->releaseResLock = ResLockPortal(portal, queryDesc->plantree);
+		portal->releaseResLock = ResLockPortal(portal, queryDesc->plannedstmt->planTree);
 	}
 
 	PortalSetStatus(portal, PORTAL_ACTIVE);
 	
+
 	if (gp_enable_backoff 
 			&& Gp_role == GP_ROLE_DISPATCH 
 			&& gp_session_id > -1)
 	{
 		if (superuser())
 		{
-			queryDesc->plantree->backoff_weight = BackoffSuperuserStatementWeight();					
+			queryDesc->plannedstmt->planTree->backoff_weight = BackoffSuperuserStatementWeight();
 
 		} else
 		{
-			queryDesc->plantree->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);					
+			queryDesc->plannedstmt->planTree->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);
 		}
-		BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plantree->backoff_weight);
+		BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->planTree->backoff_weight);
 	}
 	
 	/*
@@ -264,23 +293,24 @@ ProcessQuery(Portal portal,
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH &&
 		gp_enable_delete_as_truncate &&
-		queryDesc->plantree->dispatch == DISPATCH_PARALLEL &&
+		queryDesc->plannedstmt->planTree != NULL &&
+		queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL &&
 		queryDesc->operation == CMD_DELETE &&
-		queryDesc->parsetree->resultRelation == 1 &&
-		list_length(queryDesc->parsetree->rtable) == 1 /* not partitioned */ && 
-		queryDesc->plantree != NULL)
+		queryDesc->plannedstmt->queryTree->resultRelation == 1 && /* Use of query tree deprecated. (PSMERGE) */
+		list_length(queryDesc->plannedstmt->queryTree->rtable) == 1 /* not partitioned */ 
+		)
 	{
 		RangeTblEntry *rte;
 
-		rte = linitial(queryDesc->parsetree->rtable);
+		rte = linitial(queryDesc->plannedstmt->queryTree->rtable); /* Use of query tree deprecated. (PSMERGE) */
 		/*
 		 * if the delete command we just ran had no qualifiers and
 		 * was against a simple table, it is nice to be able to
 		 * substitute a truncate-command.
 		 */
-		if (queryDesc->plantree->qual == NULL &&
-			queryDesc->plantree->lefttree == NULL &&
-			queryDesc->plantree->righttree == NULL)
+		if (queryDesc->plannedstmt->planTree->qual == NULL &&
+			queryDesc->plannedstmt->planTree->lefttree == NULL &&
+			queryDesc->plannedstmt->planTree->righttree == NULL)
 		{
 			Relation truncRel;
 
@@ -320,7 +350,7 @@ ProcessQuery(Portal portal,
 	{
 		Oid			lastOid;
 
-		switch (operation)
+		switch (stmt->commandType)
 		{
 			case CMD_SELECT:
 				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
@@ -380,28 +410,32 @@ ProcessQuery(Portal portal,
 			}
 		}
 	
-		switch (parsetree->commandType)
+		/* TODO Remove references to the range table in the Query tree, when we switch
+		 *      to carrying the range table in the PlannedStmt, i.e., there should be
+		 *      no references to  stmt->queryTree->resultRelation.  (PSMERGE)
+		 */
+		switch (stmt->commandType)
 		{
 			case CMD_SELECT:
-				if (parsetree->into != NULL)
+				if (stmt->intoClause != NULL)
 				{
 					/* CTAS */
-					relationOid = parsetree->intoOidInfo.relOid;
+					relationOid = stmt->intoClause->oidInfo.relOid;
 					cmdType = AUTOSTATS_CMDTYPE_CTAS;
 				}
 				break;
 			case CMD_INSERT:
-				rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
+				rte = rt_fetch(stmt->queryTree->resultRelation, stmt->queryTree->rtable);
 				relationOid = rte->relid;
 				cmdType = AUTOSTATS_CMDTYPE_INSERT;
 				break;
 			case CMD_UPDATE:
-				rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
+				rte = rt_fetch(stmt->queryTree->resultRelation, stmt->queryTree->rtable);
 				relationOid = rte->relid;
 				cmdType = AUTOSTATS_CMDTYPE_UPDATE;
 				break;
 			case CMD_DELETE:
-				rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
+				rte = rt_fetch(stmt->queryTree->resultRelation, stmt->queryTree->rtable);
 				relationOid = rte->relid;
 				cmdType = AUTOSTATS_CMDTYPE_DELETE;
 				break;
@@ -412,8 +446,11 @@ ProcessQuery(Portal portal,
 		/* MPP-4407. Logging number of tuples modified. */
 		if (relationOid != InvalidOid)
 		{
+			/* Use of query tree deprecated. (PSMERGE) 
+			 * TODO Find another way to dig log info out of stmt!!! 
+			 */
 			if (cmdType < AUTOSTATS_CMDTYPE_SENTINEL &&			
-				GetCommandLogLevel((Node *) parsetree) <= log_statement)
+				GetCommandLogLevel((Node *) stmt->queryTree) <= log_statement)
 			{
 				elog(DEBUG1, "type_of_statement = %s dboid = %d tableoid = %d num_tuples_modified = %u", 
 					 autostats_cmdtype_to_string(cmdType), 
@@ -449,10 +486,12 @@ ProcessQuery(Portal portal,
  * ChoosePortalStrategy
  *		Select portal execution strategy given the intended query list.
  *
+ * The list elements can be Querys, PlannedStmts, or utility statements.
+ *
  * See the comments in portal.h.
  */
 PortalStrategy
-ChoosePortalStrategy(List *parseTrees)
+ChoosePortalStrategy(List *stmts)
 {
 	int			nSetTag;
 	ListCell   *lc;
@@ -462,24 +501,49 @@ ChoosePortalStrategy(List *parseTrees)
 	 * single-Query-struct case, since there are no rewrite rules that can add
 	 * auxiliary queries to a SELECT or a utility command.
 	 */
-	if (list_length(parseTrees) == 1)
+	if (list_length(stmts) == 1)
 	{
-		Query	   *query = (Query *) linitial(parseTrees);
+		Node	   *stmt = (Node*) linitial(stmts);
 
-		Assert(IsA(query, Query));
-		if (query->canSetTag)
+		if (IsA(stmt, Query))
 		{
-			if (query->commandType == CMD_SELECT &&
-				query->into == NULL)
-				return PORTAL_ONE_SELECT;
-			if (query->commandType == CMD_UTILITY &&
-				query->utilityStmt != NULL)
+			Query	   *query = (Query*)stmt;
+			
+			if (query->canSetTag)
 			{
-				if (UtilityReturnsTuples(query->utilityStmt))
-					return PORTAL_UTIL_SELECT;
-				/* it can't be ONE_RETURNING, so give up */
-				return PORTAL_MULTI_QUERY;
+				if (query->commandType == CMD_SELECT &&
+					query->utilityStmt == NULL &&
+					query->intoClause == NULL)
+					return PORTAL_ONE_SELECT;
+				if (query->commandType == CMD_UTILITY &&
+					query->utilityStmt != NULL)
+				{
+					if (UtilityReturnsTuples(query->utilityStmt))
+						return PORTAL_UTIL_SELECT;
+					/* it can't be ONE_RETURNING, so give up */
+					return PORTAL_MULTI_QUERY;
+				}
 			}
+		}
+		else if (IsA(stmt, PlannedStmt))
+		{
+			PlannedStmt *pstmt = (PlannedStmt *) stmt;
+			
+			if (pstmt->canSetTag)
+			{
+				if (pstmt->commandType == CMD_SELECT &&
+					pstmt->utilityStmt == NULL &&
+					pstmt->intoClause == NULL)
+					return PORTAL_ONE_SELECT;
+			}
+		}
+		else
+		{
+			/* must be a utility command; assume it's canSetTag */
+			if (UtilityReturnsTuples(stmt))
+				return PORTAL_UTIL_SELECT;
+			/* it can't be ONE_RETURNING, so give up */
+			return PORTAL_MULTI_QUERY;
 		}
 	}
 
@@ -489,18 +553,35 @@ ChoosePortalStrategy(List *parseTrees)
 	 * it has a RETURNING list.
 	 */
 	nSetTag = 0;
-	foreach(lc, parseTrees)
+	foreach(lc, stmts)
 	{
-		Query	   *query = (Query *) lfirst(lc);
-
-		Assert(IsA(query, Query));
-		if (query->canSetTag)
+		Node	   *stmt = (Node*) lfirst(lc);
+		
+		if (IsA(stmt, Query))
 		{
-			if (++nSetTag > 1)
-				return PORTAL_MULTI_QUERY;		/* no need to look further */
-			if (query->returningList == NIL)
-				return PORTAL_MULTI_QUERY;		/* no need to look further */
+			Query	   *query = (Query *) stmt;
+			
+			if (query->canSetTag)
+			{
+				if (++nSetTag > 1)
+					return PORTAL_MULTI_QUERY;	/* no need to look further */
+				if (query->returningList == NIL)
+					return PORTAL_MULTI_QUERY;	/* no need to look further */
+			}
 		}
+		else if (IsA(stmt, PlannedStmt))
+		{
+			PlannedStmt *pstmt = (PlannedStmt *) stmt;
+			
+			if (pstmt->canSetTag)
+			{
+				if (++nSetTag > 1)
+					return PORTAL_MULTI_QUERY;	/* no need to look further */
+				if (pstmt->returningLists == NIL)
+					return PORTAL_MULTI_QUERY;	/* no need to look further */
+			}
+		}
+		/* otherwise, utility command, assumed not canSetTag */
 	}
 	if (nSetTag == 1)
 		return PORTAL_ONE_RETURNING;
@@ -522,41 +603,81 @@ ChoosePortalStrategy(List *parseTrees)
 List *
 FetchPortalTargetList(Portal portal)
 {
-	if (portal->strategy == PORTAL_ONE_SELECT)
-		return ((Query *) linitial(portal->parseTrees))->targetList;
-	if (portal->strategy == PORTAL_ONE_RETURNING)
-		return (PortalGetPrimaryQuery(portal))->returningList;
-	if (portal->strategy == PORTAL_UTIL_SELECT)
+	/* no point in looking if we determined it doesn't return tuples */
+	if (portal->strategy == PORTAL_MULTI_QUERY)
+		return NIL;
+	/* get the primary statement and find out what it returns */
+	return FetchStatementTargetList(PortalGetPrimaryStmt(portal));
+}
+
+/*
+ * FetchStatementTargetList
+ *		Given a statement that returns tuples, extract the query targetlist.
+ *		Returns NIL if the statement doesn't have a determinable targetlist.
+ *
+ * This can be applied to a Query, a PlannedStmt, or a utility statement.
+ * That's more general than portals need, but useful.
+ *
+ * Note: do not modify the result.
+ *
+ * XXX be careful to keep this in sync with UtilityReturnsTuples.
+ */
+List *
+FetchStatementTargetList(Node *stmt)
+{
+	if (stmt == NULL)
+		return NIL;
+	if (IsA(stmt, Query))
 	{
-		Node	   *utilityStmt;
-
-		utilityStmt = ((Query *) linitial(portal->parseTrees))->utilityStmt;
-		switch (nodeTag(utilityStmt))
+		Query	   *query = (Query *) stmt;
+		
+		if (query->commandType == CMD_UTILITY &&
+			query->utilityStmt != NULL)
 		{
-			case T_FetchStmt:
-				{
-					FetchStmt  *substmt = (FetchStmt *) utilityStmt;
-					Portal		subportal;
-
-					Assert(!substmt->ismove);
-					subportal = GetPortalByName(substmt->portalname);
-					Assert(PortalIsValid(subportal));
-					return FetchPortalTargetList(subportal);
-				}
-
-			case T_ExecuteStmt:
-				{
-					ExecuteStmt *substmt = (ExecuteStmt *) utilityStmt;
-					PreparedStatement *entry;
-
-					Assert(!substmt->into);
-					entry = FetchPreparedStatement(substmt->name, true);
-					return FetchPreparedStatementTargetList(entry);
-				}
-
-			default:
-				break;
+			/* transfer attention to utility statement */
+			stmt = query->utilityStmt;
 		}
+		else
+		{
+			if (query->commandType == CMD_SELECT &&
+				query->utilityStmt == NULL &&
+				query->intoClause == NULL)
+				return query->targetList;
+			if (query->returningList)
+				return query->returningList;
+			return NIL;
+		}
+	}
+	if (IsA(stmt, PlannedStmt))
+	{
+		PlannedStmt *pstmt = (PlannedStmt *) stmt;
+		
+		if (pstmt->commandType == CMD_SELECT &&
+			pstmt->utilityStmt == NULL &&
+			pstmt->intoClause == NULL)
+			return pstmt->planTree->targetlist;
+		if (pstmt->returningLists)
+			return (List *) linitial(pstmt->returningLists);
+		return NIL;
+	}
+	if (IsA(stmt, FetchStmt))
+	{
+		FetchStmt  *fstmt = (FetchStmt *) stmt;
+		Portal		subportal;
+		
+		Assert(!fstmt->ismove);
+		subportal = GetPortalByName(fstmt->portalname);
+		Assert(PortalIsValid(subportal));
+		return FetchPortalTargetList(subportal);
+	}
+	if (IsA(stmt, ExecuteStmt))
+	{
+		ExecuteStmt *estmt = (ExecuteStmt *) stmt;
+		PreparedStatement *entry;
+		
+		Assert(!estmt->into);
+		entry = FetchPreparedStatement(estmt->name, true);
+		return FetchPreparedStatementTargetList(entry);
 	}
 	return NIL;
 }
@@ -617,7 +738,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 		/*
 		 * Determine the portal execution strategy
 		 */
-		portal->strategy = ChoosePortalStrategy(portal->parseTrees);
+		portal->strategy = ChoosePortalStrategy(portal->stmts);
 
 		/*
 		 * Fire her up according to the strategy
@@ -639,9 +760,8 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				 * Create QueryDesc in portal's context; for the moment, set
 				 * the destination to DestNone.
 				 */
-				queryDesc = CreateQueryDesc((Query *) linitial(portal->parseTrees),
-										(Plan *) linitial(portal->planTrees),
-												debug_query_string,
+				queryDesc = CreateQueryDesc((PlannedStmt *) linitial(portal->stmts),
+											portal->sourceText,
 											(gp_select_invisible ? SnapshotAny : ActiveSnapshot),
 											InvalidSnapshot,
 											None_Receiver,
@@ -672,14 +792,13 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				 */
 				if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && 
 						!superuser() &&
-						queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
+						queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
 				{
 					PortalSetStatus(portal, PORTAL_QUEUE);
-					portal->releaseResLock = ResLockPortal(portal, queryDesc->plantree);
+					portal->releaseResLock = ResLockPortal(portal, queryDesc->plannedstmt->planTree);
 				}
 
 				PortalSetStatus(portal, PORTAL_ACTIVE);
-				Assert(queryDesc->plantree);
 				
 				if (gp_enable_backoff 
 						&& Gp_role == GP_ROLE_DISPATCH 
@@ -687,13 +806,13 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				{
 					if (superuser())
 					{
-						queryDesc->plantree->backoff_weight = BackoffSuperuserStatementWeight();					
+						queryDesc->plannedstmt->planTree->backoff_weight = BackoffSuperuserStatementWeight();
 
 					} else
 					{
-						queryDesc->plantree->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);					
+						queryDesc->plannedstmt->planTree->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);
 					}
-					BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plantree->backoff_weight);
+					BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->planTree->backoff_weight);
 				}
 				
 				/*
@@ -742,9 +861,17 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				 * We don't start the executor until we are told to run the
 				 * portal.	We do need to set up the result tupdesc.
 				 */
+			{
+				PlannedStmt *pstmt;
+				
+				pstmt = (PlannedStmt *) PortalGetPrimaryStmt(portal);
+				Assert(IsA(pstmt, PlannedStmt));
+				Assert(pstmt->returningLists);
 				portal->tupDesc =
-					ExecCleanTypeFromTL((PortalGetPrimaryQuery(portal))->returningList, false);
-
+					ExecCleanTypeFromTL((List *) linitial(pstmt->returningLists),
+									false);
+			}
+				
 				/*
 				 * Reset cursor position data to "start of query"
 				 */
@@ -761,7 +888,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				 * take care of it if needed.
 				 */
 				portal->tupDesc =
-					UtilityTupleDescriptor(((Query *) linitial(portal->parseTrees))->utilityStmt);
+					UtilityTupleDescriptor(linitial(portal->stmts));
 
 				/*
 				 * Reset cursor position data to "start of query"
@@ -970,7 +1097,7 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 			     * results in the portal's tuplestore.
 			     */
 			    if (!portal->holdStore)
-				    FillPortalStore(portal);
+				    FillPortalStore(portal, isTopLevel);
 
 			    /*
 			     * Now fetch desired portion of results.
@@ -991,7 +1118,8 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 				break;
 
 			case PORTAL_MULTI_QUERY:
-				PortalRunMulti(portal, dest, altdest, completionTag);
+				PortalRunMulti(portal, isTopLevel, 
+							   dest, altdest, completionTag);
 
 				/* Prevent portal's commands from being re-executed */
 				PortalSetStatus(portal, PORTAL_DONE);
@@ -1209,7 +1337,7 @@ PortalRunSelect(Portal portal,
  * This is used for PORTAL_ONE_RETURNING and PORTAL_UTIL_SELECT cases only.
  */
 static void
-FillPortalStore(Portal portal)
+FillPortalStore(Portal portal, bool isTopLevel)
 {
 	DestReceiver *treceiver;
 	char		completionTag[COMPLETION_TAG_BUFSIZE];
@@ -1228,12 +1356,13 @@ FillPortalStore(Portal portal)
 			 * MULTI_QUERY case, but send the primary query's output to the
 			 * tuplestore. Auxiliary query outputs are discarded.
 			 */
-			PortalRunMulti(portal, treceiver, None_Receiver, completionTag);
+			PortalRunMulti(portal, isTopLevel, 
+						   treceiver, None_Receiver, completionTag);
 			break;
 
 		case PORTAL_UTIL_SELECT:
-			PortalRunUtility(portal, linitial(portal->parseTrees),
-							 treceiver, completionTag);
+			PortalRunUtility(portal, linitial(portal->stmts),
+							 isTopLevel, treceiver, completionTag);
 			break;
 
 		default:
@@ -1321,11 +1450,9 @@ RunFromStore(Portal portal, ScanDirection direction, int64 count,
  *		Execute a utility statement inside a portal.
  */
 static void
-PortalRunUtility(Portal portal, Query *query,
+PortalRunUtility(Portal portal, Node *utilityStmt, bool isTopLevel,
 				 DestReceiver *dest, char *completionTag)
 {
-	Node	   *utilityStmt = query->utilityStmt;
-
 	ereport(DEBUG3,
 			(errmsg_internal("ProcessUtility")));
 
@@ -1359,17 +1486,27 @@ PortalRunUtility(Portal portal, Query *query,
 	else
 		ActiveSnapshot = NULL;
 
-	if (query->canSetTag)
+	if ( isTopLevel )
 	{
 		/* utility statement can override default tag string */
-		ProcessUtility(utilityStmt, debug_query_string, portal->portalParams, true, dest, completionTag);
+		ProcessUtility(utilityStmt, 
+					   portal->sourceText ? portal->sourceText : "(Source text for portal is not available)",
+					   portal->portalParams,
+					   isTopLevel,
+					   dest, 
+					   completionTag);
 		if (completionTag && completionTag[0] == '\0' && portal->commandTag)
 			strcpy(completionTag, portal->commandTag);	/* use the default */
 	}
 	else
 	{
 		/* utility added by rewrite cannot set tag */
-		ProcessUtility(utilityStmt, debug_query_string, portal->portalParams, true, dest, NULL);
+		ProcessUtility(utilityStmt, 
+					   portal->sourceText ? portal->sourceText : "(Source text for portal is not available)",
+					   portal->portalParams, 
+					   isTopLevel,
+					   dest, 
+					   NULL);
 	}
 
 	/* Some utility statements may change context on us */
@@ -1386,12 +1523,11 @@ PortalRunUtility(Portal portal, Query *query,
  *		or non-SELECT-like queries)
  */
 static void
-PortalRunMulti(Portal portal,
+PortalRunMulti(Portal portal, bool isTopLevel,
 			   DestReceiver *dest, DestReceiver *altdest,
 			   char *completionTag)
 {
-	ListCell   *querylist_item;
-	ListCell   *planlist_item;
+	ListCell   *stmtlist_item;
 
 	/*
 	 * If the destination is DestRemoteExecute, change to DestNone.  The
@@ -1412,60 +1548,68 @@ PortalRunMulti(Portal portal,
 	 * Loop to handle the individual queries generated from a single parsetree
 	 * by analysis and rewrite.
 	 */
-	forboth(querylist_item, portal->parseTrees,
-			planlist_item, portal->planTrees)
+	foreach(stmtlist_item, portal->stmts)
 	{
-		Query	   *query = (Query *) lfirst(querylist_item);
-		Plan	   *plan = (Plan *) lfirst(planlist_item);
+		Node *stmt = lfirst(stmtlist_item);
 
 		/*
 		 * If we got a cancel signal in prior command, quit
 		 */
 		CHECK_FOR_INTERRUPTS();
 
-		if (query->commandType == CMD_UTILITY)
-		{
-			/*
-			 * process utility functions (create, destroy, etc..)
-			 */
-			Assert(plan == NULL);
-
-			PortalRunUtility(portal, query,
-							 query->canSetTag ? dest : altdest,
-							 completionTag);
-		}
-		else
+		if (IsA(stmt, PlannedStmt) &&
+			((PlannedStmt *) stmt)->utilityStmt == NULL)
 		{
 			/*
 			 * process a plannable query.
 			 */
+			PlannedStmt *pstmt = (PlannedStmt *) stmt;
+			
 			if (log_executor_stats)
 				ResetUsage();
-
-			if (query->canSetTag)
+			
+			if (pstmt->canSetTag)
 			{
 				/* statement can set tag string */
-				ProcessQuery(portal, query, plan,
+				ProcessQuery(portal, pstmt,
 							 portal->portalParams,
 							 dest, completionTag);
 			}
 			else
 			{
 				/* stmt added by rewrite cannot set tag */
-				ProcessQuery(portal, query, plan,
+				ProcessQuery(portal, pstmt,
 							 portal->portalParams,
 							 altdest, NULL);
 			}
-
+			
 			if (log_executor_stats)
 				ShowUsage("EXECUTOR STATISTICS");
 		}
+		else
+		{
+			/*
+			 * process utility functions (create, destroy, etc..)
+			 *
+			 * These are assumed canSetTag if they're the only stmt in the
+			 * portal, with the following exception:
+			 *
+			 *  A COPY FROM that specifies a non-existent error table, will
+			 *  be transformed (parse_analyze) into a (CreateStmt, CopyStmt).
+			 *  XXX Maybe this should be treated like DECLARE CURSOR?
+			 */
+			if (list_length(portal->stmts) == 1 || portal->sourceTag == T_CopyStmt)
+				PortalRunUtility(portal, stmt, isTopLevel, dest, completionTag);
+			else
+				PortalRunUtility(portal, stmt, isTopLevel, altdest, NULL);
+		}
+		
 
 		/*
 		 * Increment command counter between queries, but not after the last
 		 * one.
 		 */
-		if (lnext(planlist_item) != NULL)
+		if (lnext(stmtlist_item) != NULL)
 			CommandCounterIncrement();
 
 		/*
@@ -1562,7 +1706,7 @@ PortalRunFetch(Portal portal,
 				 */
 				if (!portal->holdStore)
 				{
-					FillPortalStore(portal);
+					FillPortalStore(portal, false /* isTopLevel */ );
 				}
 
 				/*

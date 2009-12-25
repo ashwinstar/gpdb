@@ -160,10 +160,7 @@ _readQuery(const char ** str)
 	READ_BOOL_FIELD(canSetTag);
 	READ_NODE_FIELD(utilityStmt);
 	READ_INT_FIELD(resultRelation);
-	READ_NODE_FIELD(into);
-	READ_NODE_FIELD(intoOptions);
-	READ_ENUM_FIELD(intoOnCommit, OnCommitAction);
-	READ_STRING_FIELD(intoTableSpaceName);
+	READ_NODE_FIELD(intoClause); 
 	READ_BOOL_FIELD(hasAggs);
 	READ_BOOL_FIELD(hasWindFuncs);
 	READ_BOOL_FIELD(hasSubLinks);
@@ -184,20 +181,7 @@ _readQuery(const char ** str)
 	READ_NODE_FIELD(result_partitions);
 	READ_NODE_FIELD(result_aosegnos);
 	READ_NODE_FIELD(returningLists);
-
-    READ_OID_FIELD(intoOidInfo.relOid);
-    READ_OID_FIELD(intoOidInfo.comptypeOid);
-    READ_OID_FIELD(intoOidInfo.toastOid);
-    READ_OID_FIELD(intoOidInfo.toastIndexOid);
-    READ_OID_FIELD(intoOidInfo.toastComptypeOid);
-    READ_OID_FIELD(intoOidInfo.aosegOid);
-    READ_OID_FIELD(intoOidInfo.aosegIndexOid);
-    READ_OID_FIELD(intoOidInfo.aosegComptypeOid);
-    READ_OID_FIELD(intoOidInfo.aoblkdirOid);
-    READ_OID_FIELD(intoOidInfo.aoblkdirIndexOid);
-    READ_OID_FIELD(intoOidInfo.aoblkdirComptypeOid);
-
-	local_node->intoPolicy = NULL;
+	/* policy not serialized */
 
 	READ_DONE();
 }
@@ -452,6 +436,9 @@ _readIntoClause(const char ** str)
     READ_OID_FIELD(oidInfo.aosegOid);
     READ_OID_FIELD(oidInfo.aosegIndexOid);
     READ_OID_FIELD(oidInfo.aosegComptypeOid);
+    READ_OID_FIELD(oidInfo.aoblkdirOid);
+    READ_OID_FIELD(oidInfo.aoblkdirIndexOid);
+    READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 
 	READ_DONE();
 }
@@ -2489,7 +2476,7 @@ _readPlannedStmt(const char ** str)
 	READ_ENUM_FIELD(commandType, CmdType);
 	READ_BOOL_FIELD(canSetTag);
 	READ_BOOL_FIELD(transientPlan);
-	READ_NODE_FIELD(queryTree); /* PSMERGE: Retire -- temporary use */
+	READ_NODE_FIELD(queryTree); /* TODO Remove eventually. (PSMERGE) */
 	READ_NODE_FIELD(planTree);
 	READ_NODE_FIELD(rtable);
 	READ_NODE_FIELD(resultRelations);

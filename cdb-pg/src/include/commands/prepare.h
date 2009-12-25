@@ -34,8 +34,8 @@ typedef struct
 	char	   *query_string;	/* text of query, or NULL */
 	NodeTag		sourceTag;		/* Original statement NodeTag */
 	const char *commandTag;		/* command tag (a constant!), or NULL */
-	List	   *query_list;		/* list of queries, rewritten */
-	List	   *plan_list;		/* list of plans */
+	List	   *query_list;		/* list of queries, rewritten, in case of replan */
+	List	   *stmt_list;		/* list of PlannedStmt nodes */
 	List	   *argtype_list;	/* list of parameter type OIDs */
 	TimestampTz prepare_time;	/* the time when the stmt was prepared */
 	bool		from_sql;		/* stmt prepared via SQL, not FE/BE protocol? */

@@ -9,10 +9,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/spi.c,v 1.165.2.4 2007/08/15 19:15:55 tgl Exp $
  *
- *			  $Id$
- *		  $Change$
- *		$DateTime$
- *		  $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -101,11 +97,14 @@ static bool can_execute_this_locally(const char *sql);
 
 bool		gp_use_snapshop_during_callback = true;
 
-/* used only in testing in test/libcdbtest ?? */
-#if 0 /* PSMERGE: Remove? */
-extern int
-			SPI_execute_cdb(const char *src, Plan * pPlan, Query * pQuery, bool read_only, int tcount);
-#endif /* PSMERGE: Remove? */
+/* Apparently used only in test/libcdbtest (??)  Removed for 3.4.
+ * To reinstate, this must be updated for PlannedStmt. 
+ */
+#if 0
+extern int SPI_execute_cdb(const char *src, 
+						   Plan * pPlan, Query * pQuery, 
+						   bool read_only, int tcount);
+#endif
 
 
 bool
@@ -1565,7 +1564,7 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
 					 errmsg("cannot open multi-query plan as cursor")));
-		queryTree = PortalListGetPrimaryQuery((List *) linitial(spiplan->qtlist));
+		queryTree = (Query *) PortalListGetPrimaryStmt((List *) linitial(spiplan->qtlist));
 		if (queryTree == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
@@ -1669,8 +1668,7 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 					  NULL,		/* no statement name */
 					  spiplan->query,
 					  T_SelectStmt,
-					  CreateQueryTag(PortalListGetPrimaryQuery(qtlist)),
-					  qtlist,
+					  CreateCommandTag(PortalListGetPrimaryStmt(qtlist)),
 					  ptlist,
 					  PortalGetHeapMemory(portal));
 
@@ -1680,11 +1678,18 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 	 * Set up options for portal.
 	 */
 	portal->cursorOptions &= ~(CURSOR_OPT_SCROLL | CURSOR_OPT_NO_SCROLL);
-	if (list_length(ptlist) == 1 &&
-		ExecSupportsBackwardScan((Plan *) linitial(ptlist)))
-		portal->cursorOptions |= CURSOR_OPT_SCROLL;
-	else
-		portal->cursorOptions |= CURSOR_OPT_NO_SCROLL;
+	{
+		int option = CURSOR_OPT_NO_SCROLL;
+		
+		if ( list_length(ptlist) == 1 )
+		{
+			PlannedStmt *stmt = (PlannedStmt *)linitial(ptlist);
+			if ( stmt && stmt->planTree && 
+				ExecSupportsBackwardScan(stmt->planTree) )
+				option = CURSOR_OPT_SCROLL;
+		}
+		portal->cursorOptions |= option;
+	}
 
 	/*
 	 * Greenplum Database needs this
@@ -2114,9 +2119,13 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 	 * We save the querytrees from each raw parsetree as a separate sublist.
 	 * This allows _SPI_execute_plan() to know where the boundaries between
 	 * original queries fall.
+	 *
+	 * TO DO Find a cleaner way to find query boundaries.  We retained this
+	 *       approach when implementing the ground work for PlannedStmt in
+	 *       order minimize changes.
 	 */
-	query_list_list = NIL;
-	plan_list = NIL;
+	query_list_list = NIL; /* a list of list of rewritten Query nodes. */
+	plan_list = NIL; /* a list of PlannedStmt nodes. */
 
 	foreach(list_item, raw_parsetree_list)
 	{
@@ -2776,11 +2785,11 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
 			foreach(query_list_item, query_list)
 			{
 				Query	   *queryTree = (Query *) lfirst(query_list_item);
-				Plan	   *planTree;
+				PlannedStmt *stmt;
 				QueryDesc  *qdesc;
 				DestReceiver *dest;
 
-				planTree = lfirst(plan_list_item);
+				stmt = (PlannedStmt*)lfirst(plan_list_item);
 				plan_list_item = lnext(plan_list_item);
 
 				_SPI_current->processed = 0;
@@ -2818,7 +2827,7 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					/* translator: %s is a SQL statement name */
 					   errmsg("%s is not allowed in a non-volatile function",
-							  CreateQueryTag(queryTree))));
+							  CreateCommandTag((Node*)queryTree))));
 
 				/*
 				 * If not read-only mode, advance the command counter before
@@ -2870,7 +2879,9 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
 				}
 				else
 				{
-					qdesc = CreateQueryDesc(queryTree, planTree, plan->query,
+					Assert(stmt); /* s.b. NULL only for utility command */
+					
+					qdesc = CreateQueryDesc(stmt, plan->query,
 											ActiveSnapshot,
 											crosscheck_snapshot,
 											dest,
@@ -3010,7 +3021,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 	switch (operation)
 	{
 		case CMD_SELECT:
-			if (queryDesc->parsetree->into)		/* select into table? */
+			if (queryDesc->plannedstmt->intoClause)		/* select into table? */
 				res = SPI_OK_SELINTO;
 			else if (queryDesc->dest->mydest != DestSPI)
 			{
@@ -3028,8 +3039,8 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
              */
             if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler &&
                     !superuser() && 
-                    queryDesc->plantree &&
-                    queryDesc->plantree->dispatch == DISPATCH_PARALLEL 
+                    queryDesc->plannedstmt->planTree &&
+                    queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL 
                )
             {
 
@@ -3062,26 +3073,29 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
                 else if (!ActivePortal->releaseResLock)
                 {
                     PortalSetStatus(ActivePortal, PORTAL_QUEUE);
-                    ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc->plantree);
+                    ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc->plannedstmt->planTree);
                     PortalSetStatus(ActivePortal, PORTAL_ACTIVE);
                 }
             }
 
 			break;
+		/* TODO Find a better way to indicate "returning".  When PlannedStmt support is finished, the
+		 *      queryTree field will be gone.
+		 */
 		case CMD_INSERT:
-			if (queryDesc->parsetree->returningList)
+			if (queryDesc->plannedstmt->queryTree->returningList) /* Use of query tree deprecated. (PSMERGE) */
 				res = SPI_OK_INSERT_RETURNING;
 			else
 				res = SPI_OK_INSERT;
 			break;
 		case CMD_DELETE:
-			if (queryDesc->parsetree->returningList)
+			if (queryDesc->plannedstmt->queryTree->returningList) /* Use of query tree deprecated. (PSMERGE) */
 				res = SPI_OK_DELETE_RETURNING;
 			else
 				res = SPI_OK_DELETE;
 			break;
 		case CMD_UPDATE:
-			if (queryDesc->parsetree->returningList)
+			if (queryDesc->plannedstmt->queryTree->returningList) /* Use of query tree deprecated. (PSMERGE) */
 				res = SPI_OK_UPDATE_RETURNING;
 			else
 				res = SPI_OK_UPDATE;
@@ -3099,22 +3113,22 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 	 * For backoff feature, need to attach the weight to the plantree.
 	 */
 	if (gp_enable_backoff 
-			&& queryDesc->plantree)
+			&& queryDesc->plannedstmt->planTree)
 	{
 		if (superuser())
 		{
-			queryDesc->plantree->backoff_weight = BackoffSuperuserStatementWeight();					
+			queryDesc->plannedstmt->planTree->backoff_weight = BackoffSuperuserStatementWeight();					
 
 		} else if (ActivePortal)
 		{
-			queryDesc->plantree->backoff_weight = ResourceQueueGetPriorityWeight(ActivePortal->queueId);					
+			queryDesc->plannedstmt->planTree->backoff_weight = ResourceQueueGetPriorityWeight(ActivePortal->queueId);					
 		}
 		else 
 		{
-			queryDesc->plantree->backoff_weight = gp_backoff_default_weight;
+			queryDesc->plannedstmt->planTree->backoff_weight = gp_backoff_default_weight;
 		}
 
-		Assert(queryDesc->plantree->backoff_weight > 0);
+		Assert(queryDesc->plannedstmt->planTree->backoff_weight > 0);
 	}
 	
 	if (!cdbpathlocus_querysegmentcatalogs && fire_triggers)
@@ -3126,8 +3140,9 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 
 	_SPI_current->processed = queryDesc->estate->es_processed;
 	_SPI_current->lastoid = queryDesc->estate->es_lastoid;
-
-	if ((res == SPI_OK_SELECT || queryDesc->parsetree->returningList) &&
+	
+	/* Use of query tree deprecated. (PSMERGE) */
+	if ((res == SPI_OK_SELECT || queryDesc->plannedstmt->queryTree->returningList) && 
 		queryDesc->dest->mydest == DestSPI)
 	{
 		if (_SPI_checktuples())
@@ -3344,7 +3359,28 @@ _SPI_copy_plan(SPIPlanPtr plan, int location)
 	newplan->plancxt = plancxt;
 	newplan->query = pstrdup(plan->query);
 	newplan->qtlist = (List *) copyObject(plan->qtlist);
-	newplan->ptlist = (List *) copyObject(plan->ptlist);
+	/* We don't copy the list directly, like this,
+	 *     newplan->ptlist = (List *) copyObject(plan->ptlist);
+	 * because we want to propagate the memory context into to PlannedStmt 
+	 * nodes for dispatch.  
+	 *
+	 * TO DO Simplify this when dispatch no longer modifies the Plan.
+	 */
+	{
+		ListCell *lc;
+		newplan->ptlist = NIL;
+		foreach (lc, plan->ptlist)
+		{
+			Node *node = copyObject(lfirst(lc));
+			if (IsA(node, PlannedStmt))
+			{
+				PlannedStmt *ps = (PlannedStmt*) node;
+				ps->qdContext = plancxt;
+			}
+			newplan->ptlist = lappend(newplan->ptlist, node);
+		}
+	}
+	
 	newplan->nargs = plan->nargs;
 	if (plan->nargs > 0)
 	{
@@ -3361,16 +3397,15 @@ _SPI_copy_plan(SPIPlanPtr plan, int location)
 	return newplan;
 }
 
+#if 0
 /*
- * This is apparently only used by libcdbtest, in cdbexecplan.c
+ * This is apparently only used by libcdbtest, in cdbexecplan.c, which in turn, is only 
+ * used for testing.  At the moment, libcdbtest doesn't appear to work,  so I don't think 
+ * this is ever called.
  *
- * Which in turn, is only used for testing.  At the moment, libcdbtest doesn't appear to work,
- * so I don't think this is ever called.
+ * Since it cuts across API levels in a way that makes it difficult for PlannedStmt
+ * support, we remove it for 3.4.  To reinstate, it must be modified.  (PSMERGE)
  */
-/* PSMERGE: This cuts across API levels in a way that make it difficult for the merge
- *          so we remove it for now.  Maybe for good. 
- */
-#if 0 /* PSMERGE: Remove? */
 int
 SPI_execute_cdb(const char *src, Plan * pPlan, Query * pQuery, bool read_only, int tcount)
 {
@@ -3404,4 +3439,4 @@ SPI_execute_cdb(const char *src, Plan * pPlan, Query * pQuery, bool read_only, i
 	_SPI_end_call(true);
 	return res;
 }
-#endif /* PSMERGE: Remove? */
+#endif

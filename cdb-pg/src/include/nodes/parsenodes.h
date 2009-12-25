@@ -16,10 +16,6 @@
  *
  * $PostgreSQL: pgsql/src/include/nodes/parsenodes.h,v 1.334 2006/11/05 22:42:10 tgl Exp $
  *
- *         $Id$
- *     $Change$
- *   $DateTime$
- *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef PARSENODES_H
@@ -102,101 +98,86 @@ typedef uint32 AclMode;			/* a bitmask of privilege bits */
  *	  but the original DeclareCursorStmt is stored in utilityStmt.
  *
  *	  Planning converts a Query tree into a Plan tree headed by a PlannedStmt
- *	  node --- the Query structure is not used by the executor.
+ *	  node.  Eventually, the Query tree will not used by the executor.
+ *    Currently, however, the Query structure is carried by the PlannedStmt.
+ *
+ *    TODO Update the preceding comment, when PlannedStmt support is complete.
  */
 typedef struct Query
 {
-	NodeTag		type;
-
-	CmdType		commandType;	/* select|insert|update|delete|utility */
-
-	QuerySource querySource;	/* where did I come from? */
-
-	bool		canSetTag;		/* do I set the command result tag? */
-
-	Node	   *utilityStmt;	/* non-null if this is DECLARE CURSOR or a
+		NodeTag		type;
+		
+		CmdType		commandType;	/* select|insert|update|delete|utility */
+		
+		QuerySource querySource;	/* where did I come from? */
+		
+		bool		canSetTag;		/* do I set the command result tag? */
+		
+		Node	   *utilityStmt;	/* non-null if this is DECLARE CURSOR or a
 								 * non-optimizable statement */
+		
+		int			resultRelation; /* rtable index of target relation for
+									 * INSERT/UPDATE/DELETE; 0 for SELECT */
+		
+		IntoClause *intoClause;		/* target for SELECT INTO / CREATE TABLE AS */
+		
+		bool		hasAggs;		/* has aggregates in tlist or havingQual */
+		bool		hasWindFuncs;	/* has window function(s) in target list */
+		bool		hasSubLinks;	/* has subquery SubLink */
+		
+		List	   *rtable;			/* list of range table entries */
+		FromExpr   *jointree;		/* table join tree (FROM and WHERE clauses) */
+		
+		List	   *targetList;		/* target list (of TargetEntry) */
+		
+		List	   *returningList;	/* return-values list (of TargetEntry) */
+		
+		/*
+		 * A list of GroupClauses or GroupingClauses.  The order of
+		 * GroupClauses or GroupingClauses are based on input
+		 * queries. However, in each grouping set, all GroupClauses will
+		 * appear in front of GroupingClauses. See the following GROUP BY
+		 * clause:
+		 *
+		 *   GROUP BY ROLLUP(b,c),a, CUBE(e,d)
+		 *
+		 * the result list can be roughly represented as follows.
+		 *
+		 *    GroupClause(a) -->
+		 *    GroupingClause( ROLLUP, groupsets (GroupClause(b) --> GroupClause(c) ) ) -->
+		 *    GroupingClause( CUBE, groupsets (GroupClause(e) --> GroupClause(d) ) )
+		 */
+		List	   *groupClause;
+		
+		Node	   *havingQual;		/* qualifications applied to groups */
+		
+		List	   *windowClause;	/* defined window specifications */
+		
+		List	   *distinctClause; /* a list of SortGroupClause's */
+		
+		List	   *sortClause;		/* a list of SortGroupClause's */
+		
+		Node	   *limitOffset;	/* # of result tuples to skip (int8 expr) */
+		Node	   *limitCount;		/* # of result tuples to return (int8 expr) */
+		
+		List	   *rowMarks;		/* a list of RowMarkClause's */
+		
+		Node	   *setOperations;	/* set-operation tree if this is top level of
+									 * a UNION/INTERSECT/EXCEPT query */
 
-	int			resultRelation; /* rtable index of target relation for
-								 * INSERT/UPDATE/DELETE; 0 for SELECT */
-
-	RangeVar   *into;			/* target relation for SELECT INTO */
-	List	   *intoOptions;	/* options from WITH clause */
-	OnCommitAction intoOnCommit;	/* what do we do at COMMIT? */
-	char	   *intoTableSpaceName;		/* table space to use, or NULL */
-
-	bool		hasAggs;		/* has aggregates in tlist or havingQual */
-	bool		hasWindFuncs;	/* has window function(s) in target list */
-	bool		hasSubLinks;	/* has subquery SubLink */
-
-	List	   *rtable;			/* list of range table entries */
-	FromExpr   *jointree;		/* table join tree (FROM and WHERE clauses) */
-
-	List	   *targetList;		/* target list (of TargetEntry) */
-
-	List	   *returningList;	/* return-values list (of TargetEntry) */
-
-	/*
-	 * A list of GroupClauses or GroupingClauses.  The order of
-	 * GroupClauses or GroupingClauses are based on input
-	 * queries. However, in each grouping set, all GroupClauses will
-	 * appear in front of GroupingClauses. See the following GROUP BY
-	 * clause:
-	 *
-	 *   GROUP BY ROLLUP(b,c),a, CUBE(e,d)
-	 *
-	 * the result list can be roughly represented as follows.
-	 *
-	 *    GroupClause(a) -->
-	 *    GroupingClause( ROLLUP, groupsets (GroupClause(b) --> GroupClause(c) ) ) -->
-	 *    GroupingClause( CUBE, groupsets (GroupClause(e) --> GroupClause(d) ) )
-	 */
-	List	   *groupClause;	/* a list of SortGroupClause's */
-
-	Node	   *havingQual;		/* qualifications applied to groups */
-
-	List	   *windowClause;	/* defined window specifications */
-
-	List	   *distinctClause; /* a list of SortClause's */
-
-	List	   *sortClause;		/* a list of SortClause's */
-
-	Node	   *limitOffset;	/* # of result tuples to skip (int8 expr) */
-	Node	   *limitCount;		/* # of result tuples to return (int8 expr) */
-
-	List	   *rowMarks;		/* a list of RowMarkClause's */
-
-	Node	   *setOperations;	/* set-operation tree if this is top level of
-								 * a UNION/INTERSECT/EXCEPT query */
-
-	/*
-	 * If the resultRelation turns out to be the parent of an inheritance
-	 * tree, the planner will add all the child tables to the rtable and store
-	 * a list of the rtindexes of all the result relations here. This is done
-	 * at plan time, not parse time, since we don't want to commit to the
-	 * exact set of child tables at parse time.  XXX This field ought to go in
-	 * some sort of TopPlan plan node, not in the Query.
-	 */
-	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
-	PartitionNode *result_partitions;
-	List	   *result_aosegnos; /* AO file 'seg' numbers for resultRels to use */
-
-	/*
-	 * If the query has a returningList then the planner will store a list of
-	 * processed targetlists (one per result relation) here.  We must have a
-	 * separate RETURNING targetlist for each result rel because column
-	 * numbers may vary within an inheritance tree.  In the targetlists, Vars
-	 * referencing the result relation will have their original varno and
-	 * varattno, while Vars referencing other rels will be converted to have
-	 * varno OUTER and varattno referencing a resjunk entry in the top plan
-	 * node's targetlist.  XXX This field ought to go in some sort of TopPlan
-	 * plan node, not in the Query.
-	 */
-	List	   *returningLists; /* list of lists of TargetEntry, or NIL */
-
-	TableOidInfo	intoOidInfo;  /* MPP */
-
-	struct GpPolicy  *intoPolicy;			/* MPP. Used only on the QD... Doesn't need to be serialized */
+	/* TODO Consider removing these, but be careful since we need to read old formats
+	 *      for, e.g., catalog upgrade. 
+	 */		
+		List	   *resultRelations;		/* Unused. Now in PlannedStmt. (PSMERGE) */
+		PartitionNode *result_partitions;	/* Unused. Now in PlannedStmt. (PSMERGE) */
+		List	   *result_aosegnos;		/* Unused. Now in PlannedStmt. (PSMERGE) */
+		List	   *returningLists; 		/* Unused. Now in PlannedStmt. (PSMERGE) */
+		
+		/* MPP: Used only on QD. Don't serialize.
+		 *      Holds the result distribution policy for SELECT ... INTO and
+		 *      set operations.
+		 */
+		struct GpPolicy  *intoPolicy;
 } Query;
 
 /****************************************************************************
@@ -234,7 +215,7 @@ typedef struct TypeName
 	bool		setof;			/* is a set? */
 	bool		pct_type;		/* %TYPE specified? */
 	List	   *typmods;		/* type modifier expression(s) */
-	int32		typmod;		/* prespecified type modifier */
+	int32		typmod;			/* prespecified type modifier */
 	List	   *arrayBounds;	/* array bounds */
 	int			location;		/* token location, or -1 if unknown */
 } TypeName;
@@ -2551,10 +2532,11 @@ typedef struct ExecuteStmt
 {
 	NodeTag		type;
 	char	   *name;			/* The name of the plan to execute */
-	RangeVar   *into;			/* Optional table to store results in */
-	List	   *intoOptions;	/* Options from WITH clause */
-	OnCommitAction into_on_commit;		/* What do we do at COMMIT? */
-	char	   *into_tbl_space; /* Tablespace to use, or NULL */
+	IntoClause *into;			/* CTAS target or NULL */
+//	RangeVar   *into;			/* Optional table to store results in */
+//	List	   *intoOptions;	/* Options from WITH clause */
+//	OnCommitAction into_on_commit;		/* What do we do at COMMIT? */
+//	char	   *into_tbl_space; /* Tablespace to use, or NULL */
 	List	   *params;			/* Values to assign to parameters */
 } ExecuteStmt;
 

@@ -231,6 +231,35 @@
 #define nullable_string(token,length)  \
 	((length) == 0 ? NULL : debackslash(token, length))
 
+/* The following READ_..._VALUE macros mimic the corresponding READ_..._FIELD
+ * macros above, but produce the value read (with appropriate type) instead of 
+ * assigning it to a field of local_node.  They are expressions, not statements.  
+ *
+ * Note that the fldname parameter is not used, but retained is for symmetry. 
+ * These macros exist only to simplify supporting old node formats.
+ */
+
+/* Return the value of a simple scalar field (written as ":fldname value") */
+#define READ_SCALAR_VALUE(fldname, conversion) \
+	( \
+		token = pg_strtok(&length),		/* skip :fldname */ \
+		token = pg_strtok(&length),		/* get field value */ \
+		(conversion) \
+	)
+
+/* Return the value of  an enumerated-type field that was written as an integer code */
+#define READ_ENUM_VALUE(fldname, enumtype)  READ_SCALAR_VALUE(fldname, (enumtype)atoi(token))
+
+/* Return the value of  a character-string field */
+#define READ_STRING_VALUE(fldname)  READ_SCALAR_VALUE(fldname, nullable_string(token, length))
+
+/* Return the value of  a Node field */
+#define READ_NODE_VALUE(fldname) \
+	( \
+		token = pg_strtok(&length),		/* skip :fldname */ \
+		nodeRead(NULL, 0) \
+	)
+
 
 static Datum readDatum(bool typbyval);
 
@@ -248,10 +277,48 @@ _readQuery(void)
 	READ_BOOL_FIELD(canSetTag);
 	READ_NODE_FIELD(utilityStmt);
 	READ_INT_FIELD(resultRelation);
-	READ_NODE_FIELD(into);
-	READ_NODE_FIELD(intoOptions);
-	READ_ENUM_FIELD(intoOnCommit, OnCommitAction);
-	READ_STRING_FIELD(intoTableSpaceName);
+	
+	if ( ! pg_strtok_peek_fldname("intoClause"))
+	{
+		/* If the Query node was written with 3.3 or earlier, there is no intoClause,
+		 * but its content lies in several now-absent fields that we must scan over.
+		 *
+		 * Though we can't have a view defined on a SELECT ... INTO ... query,
+		 * there may be some other rule (?) that has these fields defined.
+		 */
+		RangeVar *rv = READ_NODE_VALUE(into);
+		List *op = READ_NODE_VALUE(intoOptions);
+		OnCommitAction oc = READ_ENUM_VALUE(intoOnCommit, OnCommitAction);
+		char * ts = READ_STRING_VALUE(intoTableSpaceName);
+		
+		if ( rv == NULL && op == NIL && oc == ONCOMMIT_NOOP && ts == NULL )
+		{
+			/* Nothing to say. */
+			local_node->intoClause = NULL;
+		}
+		else
+		{
+			local_node->intoClause = makeNode(IntoClause);
+			local_node->intoClause->rel = rv;
+			local_node->intoClause->options = op;
+			local_node->intoClause->onCommit = oc;
+			local_node->intoClause->tableSpaceName = ts;
+			local_node->intoClause->oidInfo.relOid = InvalidOid;
+			local_node->intoClause->oidInfo.comptypeOid = InvalidOid;
+			local_node->intoClause->oidInfo.toastOid = InvalidOid;
+			local_node->intoClause->oidInfo.toastIndexOid = InvalidOid;
+			local_node->intoClause->oidInfo.toastComptypeOid = InvalidOid;
+			local_node->intoClause->oidInfo.aosegOid = InvalidOid;
+			local_node->intoClause->oidInfo.aosegIndexOid = InvalidOid;
+			local_node->intoClause->oidInfo.aosegComptypeOid = InvalidOid;
+		}
+	}
+	else
+	{
+		/* Post 3.3, it's easier. */
+		READ_NODE_FIELD(intoClause);
+	}
+	
 	READ_BOOL_FIELD(hasAggs);
 	READ_BOOL_FIELD(hasWindFuncs);
 	READ_BOOL_FIELD(hasSubLinks);
@@ -273,26 +340,27 @@ _readQuery(void)
 	READ_NODE_FIELD(result_aosegnos);
 	READ_NODE_FIELD(returningLists);
 
-	/* 
-	 * IntoOidInfo is not written out during outfuncs.c because information 
-	 * about Oids for CTAS should not be stored in the catalog as part of
-	 * pg_rewrite (views/rules).  The oids will be determined during execution,
-	 * we fill them in here as InvalidOid.
-	 *
-	 * A better design would be to remove the intoOidInfo from the Parse tree
-	 * altogether and only have it part of an execution context.
-	 */
-	local_node->intoOidInfo.relOid = InvalidOid;
-	local_node->intoOidInfo.comptypeOid = InvalidOid;
-	local_node->intoOidInfo.toastOid = InvalidOid;
-	local_node->intoOidInfo.toastIndexOid = InvalidOid;
-	local_node->intoOidInfo.toastComptypeOid = InvalidOid;
-	local_node->intoOidInfo.aosegOid = InvalidOid;
-	local_node->intoOidInfo.aosegIndexOid = InvalidOid;
-	local_node->intoOidInfo.aosegComptypeOid = InvalidOid;
-	local_node->intoOidInfo.aoblkdirOid = InvalidOid;
-	local_node->intoOidInfo.aoblkdirIndexOid = InvalidOid;
-	local_node->intoOidInfo.aoblkdirComptypeOid = InvalidOid;
+    /* In some earlier releases (including 3.3) a TableOidInfo was held in the 
+     * Query node.  Maybe some values got stored in the catalog as part of a 
+     * rule (possible?)  Maybe the Query was a CTAS. In any case, we don't want 
+     * to remember the OIDs assigned in the past.
+     *
+     * Now TableOidInfo is in the node's intoClause. As noted, we don't actually 
+     * need the values but, if they exist, we need scan over them.
+     */
+    if (pg_strtok_peek_fldname("intoOidInfo.relOid"))
+    {
+        READ_SCALAR_VALUE(intoOidInfo.relOid, InvalidOid);
+        READ_SCALAR_VALUE(intoOidInfo.comptypeOid, InvalidOid);
+        READ_SCALAR_VALUE(intoOidInfo.toastOid, InvalidOid);
+        READ_SCALAR_VALUE(intoOidInfo.toastIndexOid, InvalidOid);
+        READ_SCALAR_VALUE(intoOidInfo.toastComptypeOid, InvalidOid);
+        READ_SCALAR_VALUE(intoOidInfo.aosegOid, InvalidOid);
+        READ_SCALAR_VALUE(intoOidInfo.aosegIndexOid, InvalidOid);
+        READ_SCALAR_VALUE(intoOidInfo.aosegComptypeOid, InvalidOid);
+    }
+
+	local_node->intoPolicy = NULL;
 
 	READ_DONE();
 }
@@ -556,7 +624,7 @@ _readIntoClause(void)
     READ_OID_FIELD(oidInfo.aosegComptypeOid);
 	/* policy not serialized */
 	
-	/* PSMERGE: This code carried over from 3.3, but is it needed?
+	/* Is this code, carried over from 3.3, actually needed?
 	 *
 	 * If the Query was a CTAS, and the CTAS was stored in the catalog 
 	 * as part of a rule, we don't want to remember the OIDs assigned 
@@ -572,6 +640,10 @@ _readIntoClause(void)
 	local_node->oidInfo.aosegOid = InvalidOid;
 	local_node->oidInfo.aosegIndexOid = InvalidOid;
 	local_node->oidInfo.aosegComptypeOid = InvalidOid;
+	local_node->oidInfo.aoblkdirOid = InvalidOid;
+	local_node->oidInfo.aoblkdirIndexOid = InvalidOid;
+	local_node->oidInfo.aoblkdirComptypeOid = InvalidOid;
+	
 	/* policy not serialized */
 	
 	READ_DONE();
@@ -2534,7 +2606,7 @@ _readPlannedStmt(void)
 	READ_ENUM_FIELD(commandType, CmdType);
 	READ_BOOL_FIELD(canSetTag);
 	READ_BOOL_FIELD(transientPlan);
-	READ_NODE_FIELD(queryTree); /* PSMERGE: Retire -- temporary use */
+	READ_NODE_FIELD(queryTree); /* TODO Remove eventually. (PSMERGE) */
 	READ_NODE_FIELD(planTree);
 	READ_NODE_FIELD(rtable);
 	READ_NODE_FIELD(resultRelations);

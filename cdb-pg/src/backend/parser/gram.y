@@ -8093,14 +8093,15 @@ ExecuteStmt: EXECUTE name execute_param_clause
 				EXECUTE name execute_param_clause
 				{
 					ExecuteStmt *n = makeNode(ExecuteStmt);
-					//IntoClause *i = makeNode(IntoClause);
+					IntoClause *i = makeNode(IntoClause);
 					n->name = $11;
 					n->params = $12;
 					$4->istemp = $2;
-					n->into = $4;
-					n->intoOptions = $6;
-					n->into_on_commit = $7;
-					n->into_tbl_space = $8;
+					n->into = i;
+					i->rel = $4;
+					i->options = $6;
+					i->onCommit = $7;
+					i->tableSpaceName = $8;
 					if ($5)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

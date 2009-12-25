@@ -5,10 +5,6 @@
  *
  * Copyright (c) 2004-2008, Greenplum inc
  *
- *	         $Id$
- *       $Change$
- *     $DateTime$
- *       $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -279,7 +275,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 		case CMD_SELECT:
 			
 
-			if (query->into)
+			if (query->intoClause)
 			{
 				List   *hashExpr;
 				ListCell *exp1;
@@ -449,7 +445,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 			}
 			
-			if (plan->flow->flotype == FLOW_PARTITIONED && !query->into)
+			if (plan->flow->flotype == FLOW_PARTITIONED && !query->intoClause)
 			{
 			    /*
                  * Query result needs to be brought back to the QD.
@@ -482,8 +478,8 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
                 else
                     Insist(focusPlan(plan, true, false, false));
 			}
-			
-			needToAssignDirectDispatchContentIds = gp_enable_direct_dispatch && ! query->into;
+			// TODO: Is the test for the IntoCause needed here?  the PSMERGE branch didn't have it.
+			needToAssignDirectDispatchContentIds = gp_enable_direct_dispatch && ! query->intoClause;
 			break;
 
 		case CMD_INSERT:

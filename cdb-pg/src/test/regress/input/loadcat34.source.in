@@ -63,9 +63,9 @@ update @gpupgradeschemaname@.pg_operator set oprcode = 'pg_catalog.textne'::regp
 --   NOTE: this effects All views, including user views
 update @gpupgradeschemaname@.pg_rewrite set ev_action = regexp_replace(ev_action, ':forceDistRandom (true|false)}', E':forceDistRandom \\1 :pseudocols <>}', 'g'), ev_qual = regexp_replace(ev_qual, ':forceDistRandom (true|false)}', E':forceDistRandom \\1 :pseudocols <>}', 'g');
 
--- upgrade views to account for removing the intoOidInfo 
--- NOTE: this effects All views, including user views
-update @gpupgradeschemaname@.pg_rewrite set ev_action = regexp_replace(ev_action, E' :intoOidInfo.relOid -?\\d+ :intoOidInfo.comptypeOid -?\\d+ :intoOidInfo.toastOid -?\\d+ :intoOidInfo.toastIndexOid -?\\d+ :intoOidInfo.toastComptypeOid -?\\d+ :intoOidInfo.aosegOid -?\\d+ :intoOidInfo.aosegIndexOid -?\\d+ :intoOidInfo.aosegComptypeOid -?\\d+}', E'}', 'g'), ev_qual = regexp_replace(ev_qual, E' :intoOidInfo.relOid -?\\d+ :intoOidInfo.comptypeOid -?\\d+ :intoOidInfo.toastOid -?\\d+ :intoOidInfo.toastIndexOid -?\\d+ :intoOidInfo.toastComptypeOid -?\\d+ :intoOidInfo.aosegOid -?\\d+ :intoOidInfo.aosegIndexOid -?\\d+ :intoOidInfo.aosegComptypeOid -?\\d+}', E'}', 'g');
+-- upgrade views to account for prepared statement work
+CREATE FUNCTION public.gpviewreparse(text) returns text language C as '$libdir/gpupgrade', 'gpviewreparse' STRICT IMMUTABLE;
+update @gpupgradeschemaname@.pg_rewrite set ev_action = public.gpviewreparse(ev_action), ev_qual = public.gpviewreparse(ev_qual);
 
 
 -- Reindex normal tables (not shared tables)

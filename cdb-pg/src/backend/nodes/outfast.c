@@ -325,7 +325,7 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_BOOL_FIELD(canSetTag);
 	WRITE_BOOL_FIELD(transientPlan);
 	
-	WRITE_NODE_FIELD(queryTree); /* PSMERGE: Retire -- temporary use */
+	WRITE_NODE_FIELD(queryTree); /* TODO Remove eventually. (PSMERGE) */
 	WRITE_NODE_FIELD(planTree);
 	
 	WRITE_NODE_FIELD(rtable);
@@ -846,6 +846,9 @@ _outIntoClause(StringInfo str, IntoClause *node)
 	WRITE_OID_FIELD(oidInfo.aosegOid);
 	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirIndexOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 }
 
 static void
@@ -2732,10 +2735,7 @@ _outQuery(StringInfo str, Query *node)
 
 	WRITE_NODE_FIELD(utilityStmt);
 	WRITE_INT_FIELD(resultRelation);
-	WRITE_NODE_FIELD(into);
-	WRITE_NODE_FIELD(intoOptions);
-	WRITE_ENUM_FIELD(intoOnCommit, OnCommitAction);
-	WRITE_STRING_FIELD(intoTableSpaceName);
+	WRITE_NODE_FIELD(intoClause);
 	WRITE_BOOL_FIELD(hasAggs);
 	WRITE_BOOL_FIELD(hasWindFuncs);
 	WRITE_BOOL_FIELD(hasSubLinks);
@@ -2756,19 +2756,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(result_partitions);
 	WRITE_NODE_FIELD(result_aosegnos);
 	WRITE_NODE_FIELD(returningLists);
-
-	WRITE_OID_FIELD(intoOidInfo.relOid);
-	WRITE_OID_FIELD(intoOidInfo.comptypeOid);
-	WRITE_OID_FIELD(intoOidInfo.toastOid);
-	WRITE_OID_FIELD(intoOidInfo.toastIndexOid);
-	WRITE_OID_FIELD(intoOidInfo.toastComptypeOid);
-	WRITE_OID_FIELD(intoOidInfo.aosegOid);
-	WRITE_OID_FIELD(intoOidInfo.aosegIndexOid);
-	WRITE_OID_FIELD(intoOidInfo.aosegComptypeOid);
-	WRITE_OID_FIELD(intoOidInfo.aoblkdirOid);
-	WRITE_OID_FIELD(intoOidInfo.aoblkdirIndexOid);
-	WRITE_OID_FIELD(intoOidInfo.aoblkdirComptypeOid);
-
+	/* Don't serialize policy */
 }
 
 static void

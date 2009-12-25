@@ -40,10 +40,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.505.2.3 2007/02/11 15:12:21 mha Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *
  * NOTES
  *

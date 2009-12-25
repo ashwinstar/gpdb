@@ -548,7 +548,7 @@ is_simple_subquery(Query *subquery)
 	 */
 	if (!IsA(subquery, Query) ||
 		subquery->commandType != CMD_SELECT ||
-		subquery->into != NULL)
+		subquery->intoClause != NULL)
 		elog(ERROR, "subquery is bogus");
 
 	/*

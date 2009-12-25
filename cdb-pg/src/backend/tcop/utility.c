@@ -338,7 +338,7 @@ QueryIsReadOnly(Query *parsetree)
 	switch (parsetree->commandType)
 	{
 		case CMD_SELECT:
-			if (parsetree->into != NULL)
+			if (parsetree->intoClause != NULL)
 				return false;	/* SELECT INTO */
 			else if (parsetree->rowMarks != NIL)
 				return false;	/* SELECT FOR UPDATE/SHARE */
@@ -771,9 +771,20 @@ ProcessUtility(Node *parsetree,
 
 			/*
 			 * Portal (cursor) manipulation
+			 *
+			 * Note: DECLARE CURSOR is processed mostly as a SELECT, and
+			 * therefore what we will get here is a PlannedStmt not a bare
+			 * DeclareCursorStmt.
 			 */
-		case T_DeclareCursorStmt:
-			PerformCursorOpen((DeclareCursorStmt *) parsetree, params, debug_query_string, true);
+		case T_PlannedStmt:
+		{
+			PlannedStmt *stmt = (PlannedStmt *) parsetree;
+
+			if (stmt->utilityStmt == NULL ||
+				!IsA(stmt->utilityStmt, DeclareCursorStmt))
+				elog(ERROR, "non-DECLARE CURSOR PlannedStmt passed to ProcessUtility");
+			PerformCursorOpen(stmt, params, queryString, isTopLevel);
+		}
 			break;
 
 		case T_ClosePortalStmt:
@@ -793,7 +804,7 @@ ProcessUtility(Node *parsetree,
 			 * relation and attribute manipulation
 			 */
 		case T_CreateSchemaStmt:
-			CreateSchemaCommand((CreateSchemaStmt *) parsetree, debug_query_string);
+			CreateSchemaCommand((CreateSchemaStmt *) parsetree, queryString);
 			break;
 
 		case T_CreateStmt:
@@ -1688,7 +1699,7 @@ QueryReturnsTuples(Query *parsetree)
 	{
 		case CMD_SELECT:
 			/* returns tuples ... unless it's SELECT INTO */
-			if (parsetree->into == NULL)
+			if (parsetree->intoClause == NULL)
 				return true;
 			break;
 		case CMD_INSERT:
@@ -2329,6 +2340,51 @@ CreateCommandTag(Node *parsetree)
 		case T_DeallocateStmt:
 			tag = "DEALLOCATE";
 			break;
+		
+		case T_Query: /* used to be function CreateQueryTag */
+			{
+				Query *query = (Query*)parsetree;
+				
+				switch (query->commandType)
+				{
+					case CMD_SELECT:
+						
+						/*
+						 * We take a little extra care here so that the result will be
+						 * useful for complaints about read-only statements
+						 */
+						if (query->intoClause != NULL)
+							tag = "SELECT INTO";
+						else if (query->rowMarks != NIL)
+						{
+							if (((RowMarkClause *) linitial(query->rowMarks))->forUpdate)
+								tag = "SELECT FOR UPDATE";
+							else
+								tag = "SELECT FOR SHARE";
+						}
+						else
+							tag = "SELECT";
+						break;
+					case CMD_UPDATE:
+						tag = "UPDATE";
+						break;
+					case CMD_INSERT:
+						tag = "INSERT";
+						break;
+					case CMD_DELETE:
+						tag = "DELETE";
+						break;
+					case CMD_UTILITY:
+						tag = CreateCommandTag(query->utilityStmt);
+						break;
+					default:
+						elog(WARNING, "unrecognized commandType: %d",
+							 (int) query->commandType);
+						tag = "???";
+						break;
+				}
+			}
+			break;
 
 		default:
 			Assert(false);
@@ -2340,63 +2396,6 @@ CreateCommandTag(Node *parsetree)
 
 	return tag;
 }
-
-/*
- * CreateQueryTag
- *		utility to get a string representation of a Query operation.
- *
- * This is exactly like CreateCommandTag, except it works on a Query
- * that has already been through parse analysis (and possibly further).
- */
-const char *
-CreateQueryTag(Query *parsetree)
-{
-	const char *tag;
-
-	Assert(IsA(parsetree, Query));
-
-	switch (parsetree->commandType)
-	{
-		case CMD_SELECT:
-
-			/*
-			 * We take a little extra care here so that the result will be
-			 * useful for complaints about read-only statements
-			 */
-			if (parsetree->into != NULL)
-				tag = "SELECT INTO";
-			else if (parsetree->rowMarks != NIL)
-			{
-				if (((RowMarkClause *) linitial(parsetree->rowMarks))->forUpdate)
-					tag = "SELECT FOR UPDATE";
-				else
-					tag = "SELECT FOR SHARE";
-			}
-			else
-				tag = "SELECT";
-			break;
-		case CMD_UPDATE:
-			tag = "UPDATE";
-			break;
-		case CMD_INSERT:
-			tag = "INSERT";
-			break;
-		case CMD_DELETE:
-			tag = "DELETE";
-			break;
-		case CMD_UTILITY:
-			tag = CreateCommandTag(parsetree->utilityStmt);
-			break;
-		default:
-			elog(WARNING, "unrecognized commandType: %d",
-				 (int) parsetree->commandType);
-			tag = "???";
-			break;
-	}
-
-	return tag;
-}
-
 
 /*
  * GetCommandLogLevel
@@ -2781,7 +2780,7 @@ GetQueryLogLevel(Node *stmt)
 	switch (parsetree->commandType)
 	{
 		case CMD_SELECT:
-			if (parsetree->into != NULL)
+			if (parsetree->intoClause != NULL)
 				lev = LOGSTMT_DDL;		/* CREATE AS, SELECT INTO */
 			else
 				lev = LOGSTMT_ALL;

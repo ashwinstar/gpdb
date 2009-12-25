@@ -29,7 +29,10 @@
 /* Extensibility Magic */
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(gpviewcopy);
+PG_FUNCTION_INFO_V1(gpviewreparse);
+
 Datum gpviewcopy(PG_FUNCTION_ARGS);
+Datum gpviewreparse(PG_FUNCTION_ARGS);
 
 /* ----------
  * void gpviewcopy(oid source, oid target)
@@ -66,7 +69,7 @@ gpviewcopy(PG_FUNCTION_ARGS)
 	if (PG_NARGS() != 2)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("gpviewcopy(): called with %d arguments",
+				 errmsg("gpviewcopy(): called with %hd arguments",
 						PG_NARGS())));
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		ereport(ERROR,
@@ -309,4 +312,42 @@ gpviewcopy(PG_FUNCTION_ARGS)
 	heap_close(rel, RowExclusiveLock);
 
 	PG_RETURN_VOID();
+}
+
+
+/* ----------
+ * void gpviewreparse(text source)
+ *   1) Deparse source view
+ *   2) Return a reparse of the source view
+ *
+ * The above should prove that the new code can read the old view format
+ * and when it writes it out again it should be in the new format.
+ * ----------
+ */
+Datum
+gpviewreparse(PG_FUNCTION_ARGS)
+{
+	char *source_text;
+	char *result_text;
+	List *parsetree;         
+
+
+	/* Validate input arguments */
+	if (PG_NARGS() != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("gpviewreparse(): called with %hd arguments",
+						PG_NARGS())));
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	/* 
+	 * Convert input to a parsetree, and the parsetree back to text in
+	 * the new format.
+	 */
+	source_text = TextDatumGetCString(PG_GETARG_DATUM(0));
+	parsetree = (List *) stringToNode(source_text);
+	result_text = nodeToString(parsetree);
+
+	PG_RETURN_DATUM(CStringGetTextDatum(result_text));
 }

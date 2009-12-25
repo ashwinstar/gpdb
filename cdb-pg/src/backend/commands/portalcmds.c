@@ -15,10 +15,6 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/commands/portalcmds.c,v 1.57.2.1 2007/02/06 22:49:30 tgl Exp $
  *
- *            $Id$
- *        $Change$
- *      $DateTime$
- *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -48,20 +44,21 @@ static void PortalCleanupHelper(Portal portal, volatile int *cleanupstate);
  *		Execute SQL DECLARE CURSOR command.
  */
 void
-PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params,
-		 const char *queryString, bool isTopLevel)
-{
-	List	   *rewritten;
-	Query	   *query;
-	Plan	   *plan;
-	Portal		portal;
-	MemoryContext oldContext;
-
+PerformCursorOpen(PlannedStmt *stmt, ParamListInfo params,
+				  const char *queryString, bool isTopLevel)
+{	
+	DeclareCursorStmt *cstmt = (DeclareCursorStmt *) stmt->utilityStmt;
+	Portal			portal;
+	MemoryContext	oldContext;
+	
+	if (cstmt == NULL || !IsA(cstmt, DeclareCursorStmt))
+		elog(ERROR, "PerformCursorOpen called for non-cursor query");
+	
 	/*
 	 * Disallow empty-string cursor name (conflicts with protocol-level
 	 * unnamed portal).
 	 */
-	if (!stmt->portalname || stmt->portalname[0] == '\0')
+	if (!cstmt->portalname || cstmt->portalname[0] == '\0')
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_CURSOR_NAME),
 				 errmsg("invalid cursor name: must not be empty")));
@@ -71,8 +68,8 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params,
 	 * been executed inside a transaction block (or else, it would have no
 	 * user-visible effect).
 	 */
-	if (!(stmt->options & CURSOR_OPT_HOLD))
-		RequireTransactionChain((void *) stmt, "DECLARE CURSOR");
+	if (!(cstmt->options & CURSOR_OPT_HOLD))
+		RequireTransactionChain((void *) cstmt, "DECLARE CURSOR");
 
 	/*
 	 * Allow using the SCROLL keyword even though we don't support its
@@ -81,74 +78,39 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params,
 	 * 
 	 * for information see: MPP-5305 and BIT-93
 	 */
-	if (stmt->options & CURSOR_OPT_SCROLL)
+	if (cstmt->options & CURSOR_OPT_SCROLL)
 	{
 		/*ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
 				 errmsg("scrollable cursors are not yet supported in Greenplum Database")));*/
 
-		stmt->options -= CURSOR_OPT_SCROLL;
+		cstmt->options -= CURSOR_OPT_SCROLL;
 	}
 
-	stmt->options |= CURSOR_OPT_NO_SCROLL;
+	cstmt->options |= CURSOR_OPT_NO_SCROLL;
 	
-	Assert(!(stmt->options & CURSOR_OPT_SCROLL && stmt->options & CURSOR_OPT_NO_SCROLL));
-	
-	/*
-	 * Because the planner is not cool about not scribbling on its input, we
-	 * make a preliminary copy of the source querytree.  This prevents
-	 * problems in the case that the DECLARE CURSOR is in a portal and is
-	 * executed repeatedly.  XXX the planner really shouldn't modify its input
-	 * ... FIXME someday.
-	 */
-	query = copyObject(stmt->query);
+	Assert(!(cstmt->options & CURSOR_OPT_SCROLL && cstmt->options & CURSOR_OPT_NO_SCROLL));
 
 	/*
-	 * The query has been through parse analysis, but not rewriting or
-	 * planning as yet.  Note that the grammar ensured we have a SELECT query,
-	 * so we are not expecting rule rewriting to do anything strange.
+	 * Create a portal and copy the plan and queryString into its memory.
 	 */
-	AcquireRewriteLocks(query);
-	rewritten = QueryRewrite(query);
-	if (list_length(rewritten) != 1 || !IsA(linitial(rewritten), Query))
-		elog(ERROR, "unexpected rewrite result");
-	query = (Query *) linitial(rewritten);
-	if (query->commandType != CMD_SELECT)
-		elog(ERROR, "unexpected rewrite result");
-
-	if (query->into)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
-				 errmsg("DECLARE CURSOR may not specify INTO")));
-	if (query->rowMarks != NIL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			  errmsg("DECLARE CURSOR ... FOR UPDATE/SHARE is not supported"),
-				 errdetail("Cursors must be READ ONLY.")));
-
-	plan = planner(query, true, stmt->options, params);
-
-	/*
-	 * Create a portal and copy the query and plan into its memory context.
-	 */
-	portal = CreatePortal(stmt->portalname, false, false);
+	portal = CreatePortal(cstmt->portalname, false, false);
 
 	oldContext = MemoryContextSwitchTo(PortalGetHeapMemory(portal));
 
-	query = copyObject(query);
-	plan = copyObject(plan);
-
-	/*
-	 * XXX: debug_query_string is wrong here: the user might have submitted
-	 * multiple semicolon delimited queries.
-	 */
+	stmt = copyObject(stmt);
+	stmt->utilityStmt = NULL;	/* make it look like plain SELECT */
+	
+	stmt->qdContext = PortalGetHeapMemory(portal); /* Temporary! See comment in PlannedStmt. */
+	
+	queryString = pstrdup(queryString);
+	
 	PortalDefineQuery(portal,
-					  NULL,		/* unfortunately don't have sourceText */
-					  debug_query_string ? pstrdup(debug_query_string) : NULL,
+					  NULL,
+					  queryString,
 					  T_DeclareCursorStmt,
 					  "SELECT", /* cursor's query is always a SELECT */
-					  list_make1(query),
-					  list_make1(plan),
+					  list_make1(stmt),
 					  PortalGetHeapMemory(portal));
 	
 	portal->is_cursor = true; /* mark this portal as a cursor */
@@ -164,7 +126,7 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params,
 
 	MemoryContextSwitchTo(oldContext);
 
-	portal->cursorOptions = stmt->options;
+	portal->cursorOptions = cstmt->options;
 
 	/*
 	 * Set up options for portal.

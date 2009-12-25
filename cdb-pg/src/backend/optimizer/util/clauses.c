@@ -2884,7 +2884,7 @@ inline_function(Oid funcid, Oid result_type, List *args,
 	 */
 	if (!IsA(querytree, Query) ||
 		querytree->commandType != CMD_SELECT ||
-		querytree->into ||
+		querytree->intoClause ||
 		querytree->hasAggs ||
 		querytree->hasSubLinks ||
 		querytree->rtable ||

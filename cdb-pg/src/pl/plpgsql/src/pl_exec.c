@@ -4682,6 +4682,7 @@ static void
 exec_simple_check_plan(PLpgSQL_expr *expr)
 {
 	_SPI_plan  *spi_plan = (_SPI_plan *) expr->plan;
+	PlannedStmt *stmt;
 	Plan	   *plan;
 	TargetEntry *tle;
 
@@ -4694,7 +4695,8 @@ exec_simple_check_plan(PLpgSQL_expr *expr)
 	if (list_length(spi_plan->ptlist) != 1)
 		return;
 
-	plan = (Plan *) linitial(spi_plan->ptlist);
+	stmt = (PlannedStmt *) linitial(spi_plan->ptlist);
+	plan = stmt ? stmt->planTree : NULL;
 
 	/*
 	 * 2. It must be a RESULT plan --> no scan's required
