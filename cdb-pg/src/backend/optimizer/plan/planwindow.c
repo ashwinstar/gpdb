@@ -4057,7 +4057,7 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 	subquery->commandType = CMD_SELECT;
 	subquery->querySource = QSRC_PLANNER;
 	subquery->canSetTag = false;
-	subquery->intoOnCommit = ONCOMMIT_NOOP;
+	subquery->intoClause = NULL;
 	subquery->rtable = list_make1(rte);	
 	rtr = makeNode(RangeTblRef);
 	rtr->rtindex = varno;
@@ -4071,9 +4071,7 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 	
 	subquery->utilityStmt = NULL;
 	subquery->resultRelation = 0;
-	subquery->into = NULL;
-	subquery->intoOptions = NIL;
-	subquery->intoTableSpaceName = NULL;
+	subquery->intoClause = NULL;
 	subquery->hasAggs = false;
 	subquery->hasWindFuncs = false;
 	subquery->hasSubLinks = false;
@@ -4088,8 +4086,6 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 	subquery->setOperations = NULL;
 	subquery->resultRelations = NIL;
 	subquery->returningLists = NIL;
-	subquery->intoOidInfo = InvalidOid;
-	subquery->intoPolicy = NULL;
 	
 	... */
 
@@ -4204,15 +4200,13 @@ Query *copy_common_subquery(Query *original, List *targetList)
 	common->commandType = CMD_SELECT;
 	common->querySource = QSRC_PLANNER;
 	common->canSetTag = false;
-	common->intoOnCommit = ONCOMMIT_NOOP;
+	common->intoClause = NULL;
 	common->windowClause = copyObject(original->windowClause);
 	
 	/* The rest is "blank". */
 	common->resultRelation = 0;
 	common->utilityStmt = NULL;
-	common->into = NULL;
-	common->intoOptions = NIL;
-	common->intoTableSpaceName = NULL;
+	common->intoClause = NULL;
 	common->hasWindFuncs = false;
 	common->hasSubLinks = false; /* XXX */
 	common->returningList = NIL;
@@ -4223,8 +4217,6 @@ Query *copy_common_subquery(Query *original, List *targetList)
 	common->rowMarks = NIL;
 	common->resultRelations = NIL;
 	common->returningLists = NIL;
-	memset(&common->intoOidInfo, 0, sizeof(common->intoOidInfo));
-	common->intoPolicy = NULL;
 	
 	return common;
 }
