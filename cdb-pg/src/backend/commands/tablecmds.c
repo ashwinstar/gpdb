@@ -4415,6 +4415,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 														l1);
 						}
 					}
+					else
+						pc->arg1 = (Node *)lappend((List *)pc->arg1, l1);
 				}
 
 				at = lsecond((List *)pc->arg1);
