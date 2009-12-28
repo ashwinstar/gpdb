@@ -196,8 +196,7 @@ class GpHostCache():
         '''
         failed_segs=[]
         for key in self.gphost_map.keys():
-            gphost=self.gphost_map[key]
-            p = unix.Ping('ping',gphost.dbs[0].hostname)
+            p = unix.Ping('ping',key)
             pool.addCommand(p)
         
         pool.join()
