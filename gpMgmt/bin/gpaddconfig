@@ -198,13 +198,13 @@ if len(failedPings):
         logger.warning('unreachable host: ' + i.hostname)
     userConfirm()
 
-hostCache = GpHostCache(gparray, pool, failedPings)
-
 try:
+
+    hostCache = GpHostCache(gparray, pool, failedPings)
+    hostCache.ping_hosts(logger, pool) # substibtute usable names
 
     for h in hostCache.get_hosts():
         directory_string = None
-        usabelHostname = None
 
         for seg in h.dbs:
 
@@ -212,11 +212,10 @@ try:
                 directory_string = directory_string + "\n" + seg.datadir
             else:
                 directory_string = seg.datadir
-                usableHostname = seg.hostname
         
             verbosePrint(options, h.hostname, seg.hostname, seg.datadir)
     
-        cmd = GpAddConfigScript(h.hostname, directory_string, options.entry, options.value, options.removeonly, ctxt=REMOTE, remoteHost=usableHostname)
+        cmd = GpAddConfigScript(h.hostname, directory_string, options.entry, options.value, options.removeonly, ctxt=REMOTE, remoteHost=h.hostname)
         pool.addCommand(cmd)
 
     verbosePrint(options, gparray.master.hostname, gparray.master.hostname, gparray.master.datadir)
