@@ -3,13 +3,20 @@
 # Copyright (c) Greenplum Inc 2009. All Rights Reserved. 
 
 '''
-USAGE:   gpaddconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY_TOADD [--value CONFIG_ENTRY_VALUE] [--removeonly] [--verbose] [--debug]
+USAGE:   gpaddconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY_TOADD [--value CONFIG_ENTRY_VALUE] [--removeonly] [--skipvalidation] [--list] [--verbose] [--debug] [--help]
 
 # set the shared_buffers setting to 250MB
 EXAMPLE: gpaddconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB
 
 # comment out all instances of the shared_buffers setting
 EXAMPLE: gpaddconfig --directory /data/master/gp-1 --entry shared_buffers --removeonly
+
+# same examples using short form options
+EXAMPLE: gpaddconfig -d /data/master/gp-1 -e shared_buffers -v 250MB
+EXAMPLE: gpaddconfig -d /data/master/gp-1 -e shared_buffers -r
+
+# show all available gucs
+EXAMPLE gpaddconfig -d /data/master/gp-1 --list
 
 where the entry will be set to the value specified by appending the entry to the end of all postgresql.conf files
 where all previous instances of the entry in postgresql.conf will be commented out
@@ -42,11 +49,13 @@ def parseargs():
     parser.remove_option('-h')
     parser.add_option('-h','--help', action='store_true')
     parser.add_option('--verbose', action='store_true')
+    parser.add_option('--skipvalidation', action='store_true')
     parser.add_option('--debug', action='store_true')
     parser.add_option('-e', '--entry', type='string')
     parser.add_option('-v', '--value', type='string')
     parser.add_option('-d', '--directory', type='string')
     parser.add_option('-r', '--removeonly', action='store_true')
+    parser.add_option('-l', '--list', action='store_true')
     (options, args) = parser.parse_args()
 
     if options.help:
@@ -54,22 +63,11 @@ def parseargs():
         sys.exit(1)
 
     # sanity check 
-    if not options.entry:
-        print "--entry is a required command line.  Check the usage below:"
-        print __doc__
-        parser.exit()
-
     if not options.directory:
         print "--directory is a required command line.  Check the usage below:"
         print __doc__
         parser.exit()
 
-    if (not options.removeonly and not options.value) or (options.removeonly and options.value):
-        print "--value or --removeonly must be specified.  Check the usage below:"
-        print __doc__
-        parser.exit()
-
-    # other validations
     USER=os.getenv('USER')
     if USER is None or USER is ' ':
         logger.error('USER environment variable must be set.')
@@ -79,12 +77,72 @@ def parseargs():
         logger.error('Master data directory does not exist.')
         parser.exit()
 
+    if options.list:
+        doList()
+        parser.exit()
+
+    if not options.entry:
+        print "--entry is a required command line.  Check the usage below:"
+        print __doc__
+        parser.exit()
+
+    if (not options.removeonly and not options.value) or (options.removeonly and options.value):
+        print "--value or --removeonly must be specified.  Check the usage below:"
+        print __doc__
+        parser.exit()
+
     return options
+
+class GucQuery:
+    def __init__(self, name=None):
+        self.query = 'SELECT name, setting, unit, short_desc, context, vartype, min_val, max_val FROM pg_settings'
+        if name:
+            self.query = self.query + " where name = '" + name + "'"
+
+class Guc:
+    def __init__(self,row): 
+        self.name = row[0]
+        self.setting = row[1]
+        self.unit = row[2]
+        self.short_desc = row[3]
+        self.context = row[4]
+        self.vartype = row[5]
+        self.min_val = row[6]
+        self.max_val = row[7]
+
+    def validate(self, newval):
+        # todo add code here...
+        # be careful 128KB in postgresql.conf is translated into 32KB units
+        return True
+
+    def Print(self):
+        print "[name: %s] [setting: %s] [unit: %s] [context: %s] [vartype: %s] [min_val: %s] [max_val: %s]" % (self.name, self.setting, self.unit, self.context, self.vartype, self.min_val, self.max_val)
 
 def userConfirm():
     if not ask_yesno('', "Are you sure you want to ignore unreachable hosts?",'N'):                            
         logger.info("User Aborted. Exiting...")
         sys.exit(0)
+
+def verbosePrint(options, normalized_hostname, hostname, directory):
+    if options.verbose:
+        msg = "normalized_host=%s host=%s dir=%s" % (normalized_hostname, hostname, directory)
+        logger.info(msg)
+
+def doList():
+    try:
+        dburl = dbconn.DbURL()
+        conn = dbconn.connect(dburl, True)
+        rows = dbconn.execSQL(conn, GucQuery().query)
+
+        for row in rows:
+            guc = Guc(row)
+            guc.Print()
+    
+        conn.close()
+
+    except DatabaseError, ex:
+        logger.error('Failed to connect to database, this script can only be run when the database is up.')
+
 
 #------------------------------- Mainline --------------------------------
  
@@ -99,11 +157,36 @@ if options.debug:
 try:
     dburl = dbconn.DbURL()
 
-    logger.info("START: connecting to gp_configure table")
     gparray = createGPDBFromDB(dburl,utility=True)
-    logger.info("DONE: connecting to gp_configure table")
+
+    if not options.skipvalidation and not options.removeonly:
+
+        conn = dbconn.connect(dburl, True)
+    
+        rows = dbconn.execSQL(conn, GucQuery(options.entry).query)
+
+        guc = None
+
+        for row in rows:
+            if guc:
+                logger.fatal("more than 1 GUC matches: " + options.entry)
+                sys.exit(1)
+
+            guc = Guc(row)
+    
+        if not guc:
+            logger.fatal("not a valid GUC: " + options.entry)
+            sys.exit(1)
+    
+        conn.close()
+    
+        if options.value:
+            if not guc.validate(options.value):
+                logger.fatal("new GUC value failed validation")
+                sys.exit(1)
 
 except DatabaseError, ex:
+    logger.error(ex.__str__())
     logger.error('Failed to connect to database, exiting without action. This script can only be run when the database is up.')
     sys.exit(1)
 
@@ -131,19 +214,19 @@ try:
                 directory_string = seg.datadir
                 usableHostname = seg.hostname
         
-            if options.verbose:
-                msg = "normalized_host=%s host=%s dir=%s" % (h.hostname, seg.hostname, seg.datadir)
-                logger.info(msg)
+            verbosePrint(options, h.hostname, seg.hostname, seg.datadir)
     
         cmd = GpAddConfigScript(h.hostname, directory_string, options.entry, options.value, options.removeonly, ctxt=REMOTE, remoteHost=usableHostname)
         pool.addCommand(cmd)
 
-    if options.verbose:
-        msg = "normalized_host=%s host=%s dir=%s" % (gparray.master.hostname, gparray.master.hostname, gparray.master.datadir)
-        logger.info(msg)
-
+    verbosePrint(options, gparray.master.hostname, gparray.master.hostname, gparray.master.datadir)
     cmd = GpAddConfigScript("master", gparray.master.datadir, options.entry, options.value, options.removeonly, ctxt=REMOTE, remoteHost=gparray.master.hostname)
     pool.addCommand(cmd)
+
+    if gparray.standbyMaster:
+        verbosePrint(options, gparray.standbyMaster.hostname, gparray.standbyMaster.hostname, gparray.standbyMaster.datadir)
+        cmd = GpAddConfigScript("standbymaster", gparray.standbyMaster.datadir, options.entry, options.value, options.removeonly, ctxt=REMOTE, remoteHost=gparray.standbyMaster.hostname)
+        pool.addCommand(cmd)
 
     pool.join()
     items = pool.getCompletedItems()
