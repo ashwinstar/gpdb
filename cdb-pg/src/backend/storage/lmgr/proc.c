@@ -1344,21 +1344,48 @@ disable_sig_alarm(bool is_statement_timeout)
 	return true;
 }
 
-extern void resetSessionForPrimaryGangLoss(void);
 /*
- * If we have waited a while for client input,
- * release any gangs we have to free resources.
+ * We get here when a session has been idle for a while (waiting for the
+ * client to send us SQL to execute).  The idea is to consume less resources while sitting idle,
+ * so we can support more sessions being logged on.
+ *
+ * The expectation is that if the session is logged on, but nobody is sending us work to do,
+ * we want to free up whatever resources we can.  Usually it means there is a human being at the
+ * other end of the connection, and that person has walked away from their terminal, or just hasn't
+ * decided what to do next.  We could be idle for a very long time (many hours).
+ *
+ * Of course, freeing gangs means that the next time the user does send in an SQL statement,
+ * we need to allocate gangs (at least the writer gang) to do anything.  This entails extra work,
+ * so we don't want to do this if we don't think the session has gone idle.
+ *
+ * We can call cleanupIdleReaderGangs() to just free some resources, or cleanupAllIdleGangs() to
+ * free up everything possible on the segDB side.  At the moment, I can't find a reason to
+ * use cleanupIdleReaderGangs(), but it we wanted to, we would have two timeouts:  The first
+ * when we free the reader gangs, and the second later time free the writer gang.
+ * My current thinking is that it is better to free all the gangs as soon as we decide
+ * the session is idle.
+ *
+ * P.s:  Is there anything we can free up on the master (QD) side?  I can't think of anything.
+ *
  */
 static void
 HandleClientWaitTimeout(void)
 {
 	elog(DEBUG2,"HandleClientWaitTimeout");
-	cleanupIdleReaderGangs();
-	if (!IsTransactionOrTransactionBlock())
+	/*
+	 * cancel the timer, as there is no reason we need it to go off again.
+	 */
+	disable_sig_alarm(false);
+	/*
+	 * Free gangs to free up resources on the segDBs.
+	 */
+	if (gangsExist())
 	{
-		//disconnectAndDestroyAllGangs();
+		cleanupAllIdleGangs();
 	}
+
 }
+
 /*
  * Check for statement timeout.  If the timeout time has come,
  * trigger a query-cancel interrupt; if not, reschedule the SIGALRM
@@ -1419,7 +1446,13 @@ CheckStatementTimeout(void)
 	return true;
 }
 
+/*
+ * need DoingCommandRead to be extern so we can test it here.
+ * Or would it be better to have some routine to call to get the
+ * value of the bool?  This is simpler.
+ */
 extern bool DoingCommandRead;
+
 /*
  * Signal handler for SIGALRM
  *
@@ -1433,7 +1466,14 @@ handle_sig_alarm(SIGNAL_ARGS)
 {
 	int			save_errno = errno;
 
-	if (deadlock_timeout_active)
+	/*
+	 * Idle session timeout shares with the deadlock timeout.
+	 * If DoingCommandRead is true, we are deciding the session is idle
+	 * In that case, we can't possibly be in a deadlock, so no point
+	 * in running the deadlock detection.
+	 */
+
+	if (deadlock_timeout_active && !DoingCommandRead)
 	{
 		deadlock_timeout_active = false;
 		CheckDeadLock();
@@ -1442,8 +1482,15 @@ handle_sig_alarm(SIGNAL_ARGS)
 	if (statement_timeout_active)
 		(void) CheckStatementTimeout();
 
+	/*
+	 * If we are DoingCommandRead, it means we are sitting idle waiting for
+	 * the user to send us some SQL.
+	 */
 	if (DoingCommandRead)
+	{
 		(void) HandleClientWaitTimeout();
+		deadlock_timeout_active = false;
+	}
 
 
 	errno = save_errno;
