@@ -7402,6 +7402,43 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			relname = pWithTname;
 			prtstr[0] = '\0';
 		}
+		else if (pStoreAttr && ((AlterPartitionCmd *)pStoreAttr)->arg1)
+		{
+			/* MPP-6297, MPP-7661, MPP-7514: check for WITH
+			 * (tablename=name) clause (AGAIN!) because the pWithTname
+			 * is only set for an EVERY clause, and we might not have
+			 * an EVERY clause. 
+			 */
+
+			ListCell *prev_lc = NULL;
+			ListCell *def_lc  = NULL;
+			List *pWithList = (List *)
+					(((AlterPartitionCmd *)pStoreAttr)->arg1);
+
+			foreach(def_lc, pWithList)
+			{
+				DefElem *pDef = (DefElem *)lfirst(def_lc);
+
+				/* get the tablename from the WITH, then remove this
+				 * element from the list */
+				if (0 == strcmp(pDef->defname, "tablename"))
+				{
+					/* if the string isn't quoted you get a typename ? */
+					if (!IsA(pDef->arg, String))
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("invalid tablename specification")));
+
+					relname = pstrdup(defGetString(pDef));
+					prtstr[0] = '\0';
+					pWithList = list_delete_cell(pWithList, def_lc, prev_lc);
+					((AlterPartitionCmd *)pStoreAttr)->arg1 = 
+							(Node *)pWithList;
+					break;
+				}
+				prev_lc = def_lc;
+			} /* end foreach */
+		}
 
 		if (strlen(prtstr))
 			relname = ChooseRelationName(cxt->relation->relname,

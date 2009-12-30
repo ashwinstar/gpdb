@@ -1255,286 +1255,289 @@ select * from get_ereport order by 1;
  aaah: analyze:00007366:  "with subpartition template"), 
  aaah: analyze:00007367:  errOmitLocation(true), 
  aaah: analyze:00007368:  parser_errposition(pstate, psubBy->location))); 
- aaah: analyze:00007796:  ereport(ERROR, 
- aaah: analyze:00007797:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- aaah: analyze:00007798:  errmsg("index expression may not return a set"), 
- aaah: analyze:00007799:  errOmitLocation(true))); 
- aaah: analyze:00007889:  ereport(ERROR, 
- aaah: analyze:00007890:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- aaah: analyze:00007891:  errmsg("rule WHERE condition may not contain references to other relations"), 
- aaah: analyze:00007892:  errOmitLocation(true))); 
- aaah: analyze:00007896:  ereport(ERROR, 
- aaah: analyze:00007897:  (errcode(ERRCODE_GROUPING_ERROR), 
- aaah: analyze:00007898:  errmsg("cannot use aggregate function in rule WHERE condition"), 
- aaah: analyze:00007899:  errOmitLocation(true))); 
- aaah: analyze:00007902:  ereport(ERROR, 
- aaah: analyze:00007903:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00007904:  errmsg("cannot use window function in rule WHERE condition"), 
- aaah: analyze:00007905:  errOmitLocation(true))); 
- aaah: analyze:00007973:  ereport(ERROR, 
- aaah: analyze:00007974:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- aaah: analyze:00007975:  errmsg("rules with WHERE conditions may only have SELECT, INSERT, UPDATE, or DELETE actions"), 
- aaah: analyze:00007976:  errOmitLocation(true))); 
- aaah: analyze:00007992:  ereport(ERROR, 
- aaah: analyze:00007993:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00007994:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
- aaah: analyze:00007995:  errOmitLocation(true))); 
- aaah: analyze:00008011:  ereport(ERROR, 
- aaah: analyze:00008012:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- aaah: analyze:00008013:  errmsg("ON SELECT rule may not use OLD"), 
- aaah: analyze:00008014:  errOmitLocation(true))); 
- aaah: analyze:00008016:  ereport(ERROR, 
- aaah: analyze:00008017:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- aaah: analyze:00008018:  errmsg("ON SELECT rule may not use NEW"), 
- aaah: analyze:00008019:  errOmitLocation(true))); 
- aaah: analyze:00008026:  ereport(ERROR, 
- aaah: analyze:00008027:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- aaah: analyze:00008028:  errmsg("ON INSERT rule may not use OLD"), 
- aaah: analyze:00008029:  errOmitLocation(true))); 
- aaah: analyze:00008033:  ereport(ERROR, 
- aaah: analyze:00008034:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- aaah: analyze:00008035:  errmsg("ON DELETE rule may not use NEW"), 
- aaah: analyze:00008036:  errOmitLocation(true))); 
- aaah: analyze:00008067:  ereport(ERROR, 
- aaah: analyze:00008068:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00008069:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
- aaah: analyze:00008070:  errOmitLocation(true))); 
- aaah: analyze:00008468:  ereport(ERROR, 
- aaah: analyze:00008469:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aaah: analyze:00008470:  errmsg("error in building sortref mapping for sortClause"), 
- aaah: analyze:00008471:  errOmitLocation(true))); 
- aaah: analyze:00008475:  ereport(ERROR, 
- aaah: analyze:00008476:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aaah: analyze:00008477:  errmsg("error in building sortref mapping for distinctClause"), 
- aaah: analyze:00008478:  errOmitLocation(true))); 
- aaah: analyze:00008482:  ereport(ERROR, 
- aaah: analyze:00008483:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aaah: analyze:00008484:  errmsg("error in building sortref mapping for groupClause"), 
- aaah: analyze:00008485:  errOmitLocation(true))); 
- aaah: analyze:00008489:  ereport(ERROR, 
- aaah: analyze:00008490:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aaah: analyze:00008491:  errmsg("error in building sortref mapping for windowClause"), 
- aaah: analyze:00008492:  errOmitLocation(true))); 
- aaah: analyze:00008906:  ereport(ERROR, 
- aaah: analyze:00008907:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00008908:  errmsg("VALUES lists must all be the same length"), 
- aaah: analyze:00008909:  errOmitLocation(true))); 
- aaah: analyze:00008920:  ereport(ERROR, 
- aaah: analyze:00008921:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00008922:  errmsg("DEFAULT can only appear in a VALUES list within INSERT"), 
- aaah: analyze:00008923:  errOmitLocation(true))); 
- aaah: analyze:00008992:  ereport(ERROR, 
- aaah: analyze:00008993:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00008994:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"), 
- aaah: analyze:00008995:  errOmitLocation(true))); 
- aaah: analyze:00009020:  ereport(ERROR, 
- aaah: analyze:00009021:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00009022:  errmsg("VALUES must not contain table references"), 
- aaah: analyze:00009023:  errOmitLocation(true))); 
- aaah: analyze:00009033:  ereport(ERROR, 
- aaah: analyze:00009034:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00009035:  errmsg("VALUES must not contain OLD or NEW references"), 
- aaah: analyze:00009036:  errhint("Use SELECT ... UNION ALL ... instead."), 
- aaah: analyze:00009037:  errOmitLocation(true))); 
- aaah: analyze:00009045:  ereport(ERROR, 
- aaah: analyze:00009046:  (errcode(ERRCODE_GROUPING_ERROR), 
- aaah: analyze:00009047:  errmsg("cannot use aggregate function in VALUES"), 
- aaah: analyze:00009048:  errOmitLocation(true))); 
- aaah: analyze:00009051:  ereport(ERROR, 
- aaah: analyze:00009052:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00009053:  errmsg("cannot use window function in VALUES"), 
- aaah: analyze:00009054:  errOmitLocation(true))); 
- aaah: analyze:00009139:  ereport(ERROR, 
- aaah: analyze:00009140:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00009141:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
- aaah: analyze:00009142:  errOmitLocation(true))); 
- aaah: analyze:00009257:  ereport(ERROR, 
- aaah: analyze:00009258:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00009259:  errmsg("ORDER BY on a UNION/INTERSECT/EXCEPT result must be on one of the result columns"), 
- aaah: analyze:00009260:  errOmitLocation(true))); 
- aaah: analyze:00009314:  ereport(ERROR, 
- aaah: analyze:00009315:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00009316:  errmsg("INTO is only allowed on first SELECT of UNION/INTERSECT/EXCEPT"), 
- aaah: analyze:00009317:  errOmitLocation(true))); 
- aaah: analyze:00009320:  ereport(ERROR, 
- aaah: analyze:00009321:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00009322:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
- aaah: analyze:00009323:  errOmitLocation(true))); 
- aaah: analyze:00009377:  ereport(ERROR, 
- aaah: analyze:00009378:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- aaah: analyze:00009379:  errmsg("UNION/INTERSECT/EXCEPT member statement may not refer to other relations of same query level"), 
- aaah: analyze:00009380:  errOmitLocation(true))); 
- aaah: analyze:00009436:  ereport(ERROR, 
- aaah: analyze:00009437:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00009438:  errmsg("each %s query must have the same number of columns", 
- aaah: analyze:00009439:  context), 
- aaah: analyze:00009440:  errOmitLocation(true))); 
- aaah: analyze:00009551:  ereport(ERROR, 
- aaah: analyze:00009552:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00009553:  errmsg("CREATE TABLE AS specifies too many column names"), 
- aaah: analyze:00009554:  errOmitLocation(true))); 
- aaah: analyze:00009596:  ereport(ERROR, 
- aaah: analyze:00009597:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00009598:  errmsg("The RETURNING clause of the UPDATE statement is not " 
- aaah: analyze:00009599:  "supported in this version of Greenplum Database."), 
- aaah: analyze:00009600:  errOmitLocation(true))); 
- aaah: analyze:00009631:  ereport(ERROR, 
- aaah: analyze:00009632:  (errcode(ERRCODE_GROUPING_ERROR), 
- aaah: analyze:00009633:  errmsg("cannot use aggregate function in UPDATE"), 
- aaah: analyze:00009634:  errOmitLocation(true))); 
- aaah: analyze:00009637:  ereport(ERROR, 
- aaah: analyze:00009638:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00009639:  errmsg("cannot use window function in UPDATE"), 
- aaah: analyze:00009640:  errOmitLocation(true))); 
- aaah: analyze:00009683:  ereport(ERROR, 
- aaah: analyze:00009684:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- aaah: analyze:00009685:  errmsg("column "%s" of relation "%s" does not exist", 
- aaah: analyze:00009686:  origTarget->name, 
- aaah: analyze:00009687:  RelationGetRelationName(pstate->p_target_relation)), 
- aaah: analyze:00009688:  errOmitLocation(true), 
- aaah: analyze:00009689:  parser_errposition(pstate, origTarget->location))); 
- aaah: analyze:00009749:  ereport(ERROR, 
- aaah: analyze:00009750:  (errcode(ERRCODE_GROUPING_ERROR), 
- aaah: analyze:00009751:  errmsg("cannot use aggregate function in RETURNING"))); 
- aaah: analyze:00009754:  ereport(ERROR, 
- aaah: analyze:00009755:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00009756:  errmsg("cannot use window function in RETURNING"))); 
- aaah: analyze:00009761:  ereport(ERROR, 
- aaah: analyze:00009762:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00009763:  errmsg("RETURNING may not contain references to other relations"))); 
- aaah: analyze:00009817:  ereport(ERROR, 
- aaah: analyze:00009818:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaah: analyze:00009819:  errmsg("%s is not partitioned", 
- aaah: analyze:00009820:  lrelname))); 
- aaah: analyze:00010201:  ereport(ERROR, 
- aaah: analyze:00010202:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
- aaah: analyze:00010203:  errmsg("cannot specify both SCROLL and NO SCROLL"))); 
- aaah: analyze:00010220:  ereport(ERROR, 
- aaah: analyze:00010221:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
- aaah: analyze:00010222:  errmsg("DECLARE CURSOR cannot specify INTO"))); 
- aaah: analyze:00010291:  ereport(ERROR, 
- aaah: analyze:00010292:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
- aaah: analyze:00010293:  errmsg("could not determine data type of parameter $%d", 
- aaah: analyze:00010294:  i + 1))); 
- aaah: analyze:00010324:  ereport(ERROR, 
- aaah: analyze:00010325:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010326:  errmsg("wrong number of parameters for prepared statement "%s"", 
- aaah: analyze:00010327:  stmt->name), 
- aaah: analyze:00010328:  errdetail("Expected %d parameters but got %d.", 
- aaah: analyze:00010329:  nexpected, nparams), 
- aaah: analyze:00010330:  errOmitLocation(true))); 
- aaah: analyze:00010342:  ereport(ERROR, 
- aaah: analyze:00010343:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010344:  errmsg("cannot use subquery in EXECUTE parameter"))); 
- aaah: analyze:00010346:  ereport(ERROR, 
- aaah: analyze:00010347:  (errcode(ERRCODE_GROUPING_ERROR), 
- aaah: analyze:00010348:  errmsg("cannot use aggregate function in EXECUTE parameter"))); 
- aaah: analyze:00010350:  ereport(ERROR, 
- aaah: analyze:00010351:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010352:  errmsg("cannot use window function in EXECUTE parameter"))); 
- aaah: analyze:00010364:  ereport(ERROR, 
- aaah: analyze:00010365:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- aaah: analyze:00010366:  errmsg("parameter $%d of type %s cannot be coerced to the expected type %s", 
- aaah: analyze:00010367:  i, 
- aaah: analyze:00010368:  format_type_be(given_type_id), 
- aaah: analyze:00010369:  format_type_be(expected_type_id)), 
- aaah: analyze:00010370:  errhint("You will need to rewrite or cast the expression."), 
- aaah: analyze:00010371:  errOmitLocation(true))); 
- aaah: analyze:00010386:  ereport(ERROR, 
- aaah: analyze:00010387:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010388:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
- aaah: analyze:00010390:  ereport(ERROR, 
- aaah: analyze:00010391:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010392:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with DISTINCT clause"))); 
- aaah: analyze:00010394:  ereport(ERROR, 
- aaah: analyze:00010395:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010396:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with GROUP BY clause"))); 
- aaah: analyze:00010398:  ereport(ERROR, 
- aaah: analyze:00010399:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010400:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with HAVING clause"))); 
- aaah: analyze:00010402:  ereport(ERROR, 
- aaah: analyze:00010403:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010404:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with aggregate functions"))); 
- aaah: analyze:00010406:  ereport(ERROR, 
- aaah: analyze:00010407:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010408:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with window functions"))); 
- aaah: analyze:00010449:  ereport(ERROR, 
- aaah: analyze:00010450:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010451:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
- aaah: analyze:00010489:  ereport(ERROR, 
- aaah: analyze:00010490:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010491:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
- aaah: analyze:00010506:  ereport(ERROR, 
- aaah: analyze:00010507:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010508:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a join"))); 
- aaah: analyze:00010511:  ereport(ERROR, 
- aaah: analyze:00010512:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010513:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to NEW or OLD"))); 
- aaah: analyze:00010516:  ereport(ERROR, 
- aaah: analyze:00010517:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010518:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a function"))); 
- aaah: analyze:00010521:  ereport(ERROR, 
- aaah: analyze:00010522:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010523:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"))); 
- aaah: analyze:00010534:  ereport(ERROR, 
- aaah: analyze:00010535:  (errcode(ERRCODE_UNDEFINED_TABLE), 
- aaah: analyze:00010536:  errmsg("relation "%s" in FOR UPDATE/SHARE clause not found in FROM clause", 
- aaah: analyze:00010537:  relname))); 
- aaah: analyze:00010614:  ereport(ERROR, 
- aaah: analyze:00010615:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010616:  errmsg("misplaced DEFERRABLE clause"))); 
- aaah: analyze:00010618:  ereport(ERROR, 
- aaah: analyze:00010619:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010620:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
- aaah: analyze:00010627:  ereport(ERROR, 
- aaah: analyze:00010628:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010629:  errmsg("misplaced NOT DEFERRABLE clause"))); 
- aaah: analyze:00010631:  ereport(ERROR, 
- aaah: analyze:00010632:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010633:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
- aaah: analyze:00010638:  ereport(ERROR, 
- aaah: analyze:00010639:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010640:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
- aaah: analyze:00010645:  ereport(ERROR, 
- aaah: analyze:00010646:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010647:  errmsg("misplaced INITIALLY DEFERRED clause"))); 
- aaah: analyze:00010649:  ereport(ERROR, 
- aaah: analyze:00010650:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010651:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
- aaah: analyze:00010661:  ereport(ERROR, 
- aaah: analyze:00010662:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010663:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+ aaah: analyze:00007428:  ereport(ERROR, 
+ aaah: analyze:00007429:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00007430:  errmsg("invalid tablename specification"))); 
+ aaah: analyze:00007833:  ereport(ERROR, 
+ aaah: analyze:00007834:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ aaah: analyze:00007835:  errmsg("index expression may not return a set"), 
+ aaah: analyze:00007836:  errOmitLocation(true))); 
+ aaah: analyze:00007926:  ereport(ERROR, 
+ aaah: analyze:00007927:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ aaah: analyze:00007928:  errmsg("rule WHERE condition may not contain references to other relations"), 
+ aaah: analyze:00007929:  errOmitLocation(true))); 
+ aaah: analyze:00007933:  ereport(ERROR, 
+ aaah: analyze:00007934:  (errcode(ERRCODE_GROUPING_ERROR), 
+ aaah: analyze:00007935:  errmsg("cannot use aggregate function in rule WHERE condition"), 
+ aaah: analyze:00007936:  errOmitLocation(true))); 
+ aaah: analyze:00007939:  ereport(ERROR, 
+ aaah: analyze:00007940:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00007941:  errmsg("cannot use window function in rule WHERE condition"), 
+ aaah: analyze:00007942:  errOmitLocation(true))); 
+ aaah: analyze:00008010:  ereport(ERROR, 
+ aaah: analyze:00008011:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ aaah: analyze:00008012:  errmsg("rules with WHERE conditions may only have SELECT, INSERT, UPDATE, or DELETE actions"), 
+ aaah: analyze:00008013:  errOmitLocation(true))); 
+ aaah: analyze:00008029:  ereport(ERROR, 
+ aaah: analyze:00008030:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00008031:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
+ aaah: analyze:00008032:  errOmitLocation(true))); 
+ aaah: analyze:00008048:  ereport(ERROR, 
+ aaah: analyze:00008049:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ aaah: analyze:00008050:  errmsg("ON SELECT rule may not use OLD"), 
+ aaah: analyze:00008051:  errOmitLocation(true))); 
+ aaah: analyze:00008053:  ereport(ERROR, 
+ aaah: analyze:00008054:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ aaah: analyze:00008055:  errmsg("ON SELECT rule may not use NEW"), 
+ aaah: analyze:00008056:  errOmitLocation(true))); 
+ aaah: analyze:00008063:  ereport(ERROR, 
+ aaah: analyze:00008064:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ aaah: analyze:00008065:  errmsg("ON INSERT rule may not use OLD"), 
+ aaah: analyze:00008066:  errOmitLocation(true))); 
+ aaah: analyze:00008070:  ereport(ERROR, 
+ aaah: analyze:00008071:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ aaah: analyze:00008072:  errmsg("ON DELETE rule may not use NEW"), 
+ aaah: analyze:00008073:  errOmitLocation(true))); 
+ aaah: analyze:00008104:  ereport(ERROR, 
+ aaah: analyze:00008105:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00008106:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
+ aaah: analyze:00008107:  errOmitLocation(true))); 
+ aaah: analyze:00008505:  ereport(ERROR, 
+ aaah: analyze:00008506:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aaah: analyze:00008507:  errmsg("error in building sortref mapping for sortClause"), 
+ aaah: analyze:00008508:  errOmitLocation(true))); 
+ aaah: analyze:00008512:  ereport(ERROR, 
+ aaah: analyze:00008513:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aaah: analyze:00008514:  errmsg("error in building sortref mapping for distinctClause"), 
+ aaah: analyze:00008515:  errOmitLocation(true))); 
+ aaah: analyze:00008519:  ereport(ERROR, 
+ aaah: analyze:00008520:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aaah: analyze:00008521:  errmsg("error in building sortref mapping for groupClause"), 
+ aaah: analyze:00008522:  errOmitLocation(true))); 
+ aaah: analyze:00008526:  ereport(ERROR, 
+ aaah: analyze:00008527:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aaah: analyze:00008528:  errmsg("error in building sortref mapping for windowClause"), 
+ aaah: analyze:00008529:  errOmitLocation(true))); 
+ aaah: analyze:00008943:  ereport(ERROR, 
+ aaah: analyze:00008944:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00008945:  errmsg("VALUES lists must all be the same length"), 
+ aaah: analyze:00008946:  errOmitLocation(true))); 
+ aaah: analyze:00008957:  ereport(ERROR, 
+ aaah: analyze:00008958:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00008959:  errmsg("DEFAULT can only appear in a VALUES list within INSERT"), 
+ aaah: analyze:00008960:  errOmitLocation(true))); 
+ aaah: analyze:00009029:  ereport(ERROR, 
+ aaah: analyze:00009030:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00009031:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"), 
+ aaah: analyze:00009032:  errOmitLocation(true))); 
+ aaah: analyze:00009057:  ereport(ERROR, 
+ aaah: analyze:00009058:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00009059:  errmsg("VALUES must not contain table references"), 
+ aaah: analyze:00009060:  errOmitLocation(true))); 
+ aaah: analyze:00009070:  ereport(ERROR, 
+ aaah: analyze:00009071:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00009072:  errmsg("VALUES must not contain OLD or NEW references"), 
+ aaah: analyze:00009073:  errhint("Use SELECT ... UNION ALL ... instead."), 
+ aaah: analyze:00009074:  errOmitLocation(true))); 
+ aaah: analyze:00009082:  ereport(ERROR, 
+ aaah: analyze:00009083:  (errcode(ERRCODE_GROUPING_ERROR), 
+ aaah: analyze:00009084:  errmsg("cannot use aggregate function in VALUES"), 
+ aaah: analyze:00009085:  errOmitLocation(true))); 
+ aaah: analyze:00009088:  ereport(ERROR, 
+ aaah: analyze:00009089:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00009090:  errmsg("cannot use window function in VALUES"), 
+ aaah: analyze:00009091:  errOmitLocation(true))); 
+ aaah: analyze:00009176:  ereport(ERROR, 
+ aaah: analyze:00009177:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00009178:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
+ aaah: analyze:00009179:  errOmitLocation(true))); 
+ aaah: analyze:00009294:  ereport(ERROR, 
+ aaah: analyze:00009295:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00009296:  errmsg("ORDER BY on a UNION/INTERSECT/EXCEPT result must be on one of the result columns"), 
+ aaah: analyze:00009297:  errOmitLocation(true))); 
+ aaah: analyze:00009351:  ereport(ERROR, 
+ aaah: analyze:00009352:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00009353:  errmsg("INTO is only allowed on first SELECT of UNION/INTERSECT/EXCEPT"), 
+ aaah: analyze:00009354:  errOmitLocation(true))); 
+ aaah: analyze:00009357:  ereport(ERROR, 
+ aaah: analyze:00009358:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00009359:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
+ aaah: analyze:00009360:  errOmitLocation(true))); 
+ aaah: analyze:00009414:  ereport(ERROR, 
+ aaah: analyze:00009415:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ aaah: analyze:00009416:  errmsg("UNION/INTERSECT/EXCEPT member statement may not refer to other relations of same query level"), 
+ aaah: analyze:00009417:  errOmitLocation(true))); 
+ aaah: analyze:00009473:  ereport(ERROR, 
+ aaah: analyze:00009474:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00009475:  errmsg("each %s query must have the same number of columns", 
+ aaah: analyze:00009476:  context), 
+ aaah: analyze:00009477:  errOmitLocation(true))); 
+ aaah: analyze:00009588:  ereport(ERROR, 
+ aaah: analyze:00009589:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00009590:  errmsg("CREATE TABLE AS specifies too many column names"), 
+ aaah: analyze:00009591:  errOmitLocation(true))); 
+ aaah: analyze:00009633:  ereport(ERROR, 
+ aaah: analyze:00009634:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00009635:  errmsg("The RETURNING clause of the UPDATE statement is not " 
+ aaah: analyze:00009636:  "supported in this version of Greenplum Database."), 
+ aaah: analyze:00009637:  errOmitLocation(true))); 
+ aaah: analyze:00009668:  ereport(ERROR, 
+ aaah: analyze:00009669:  (errcode(ERRCODE_GROUPING_ERROR), 
+ aaah: analyze:00009670:  errmsg("cannot use aggregate function in UPDATE"), 
+ aaah: analyze:00009671:  errOmitLocation(true))); 
+ aaah: analyze:00009674:  ereport(ERROR, 
+ aaah: analyze:00009675:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00009676:  errmsg("cannot use window function in UPDATE"), 
+ aaah: analyze:00009677:  errOmitLocation(true))); 
+ aaah: analyze:00009720:  ereport(ERROR, 
+ aaah: analyze:00009721:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ aaah: analyze:00009722:  errmsg("column "%s" of relation "%s" does not exist", 
+ aaah: analyze:00009723:  origTarget->name, 
+ aaah: analyze:00009724:  RelationGetRelationName(pstate->p_target_relation)), 
+ aaah: analyze:00009725:  errOmitLocation(true), 
+ aaah: analyze:00009726:  parser_errposition(pstate, origTarget->location))); 
+ aaah: analyze:00009786:  ereport(ERROR, 
+ aaah: analyze:00009787:  (errcode(ERRCODE_GROUPING_ERROR), 
+ aaah: analyze:00009788:  errmsg("cannot use aggregate function in RETURNING"))); 
+ aaah: analyze:00009791:  ereport(ERROR, 
+ aaah: analyze:00009792:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00009793:  errmsg("cannot use window function in RETURNING"))); 
+ aaah: analyze:00009798:  ereport(ERROR, 
+ aaah: analyze:00009799:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00009800:  errmsg("RETURNING may not contain references to other relations"))); 
+ aaah: analyze:00009854:  ereport(ERROR, 
+ aaah: analyze:00009855:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaah: analyze:00009856:  errmsg("%s is not partitioned", 
+ aaah: analyze:00009857:  lrelname))); 
+ aaah: analyze:00010238:  ereport(ERROR, 
+ aaah: analyze:00010239:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+ aaah: analyze:00010240:  errmsg("cannot specify both SCROLL and NO SCROLL"))); 
+ aaah: analyze:00010257:  ereport(ERROR, 
+ aaah: analyze:00010258:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+ aaah: analyze:00010259:  errmsg("DECLARE CURSOR cannot specify INTO"))); 
+ aaah: analyze:00010328:  ereport(ERROR, 
+ aaah: analyze:00010329:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
+ aaah: analyze:00010330:  errmsg("could not determine data type of parameter $%d", 
+ aaah: analyze:00010331:  i + 1))); 
+ aaah: analyze:00010361:  ereport(ERROR, 
+ aaah: analyze:00010362:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00010363:  errmsg("wrong number of parameters for prepared statement "%s"", 
+ aaah: analyze:00010364:  stmt->name), 
+ aaah: analyze:00010365:  errdetail("Expected %d parameters but got %d.", 
+ aaah: analyze:00010366:  nexpected, nparams), 
+ aaah: analyze:00010367:  errOmitLocation(true))); 
+ aaah: analyze:00010379:  ereport(ERROR, 
+ aaah: analyze:00010380:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010381:  errmsg("cannot use subquery in EXECUTE parameter"))); 
+ aaah: analyze:00010383:  ereport(ERROR, 
+ aaah: analyze:00010384:  (errcode(ERRCODE_GROUPING_ERROR), 
+ aaah: analyze:00010385:  errmsg("cannot use aggregate function in EXECUTE parameter"))); 
+ aaah: analyze:00010387:  ereport(ERROR, 
+ aaah: analyze:00010388:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00010389:  errmsg("cannot use window function in EXECUTE parameter"))); 
+ aaah: analyze:00010401:  ereport(ERROR, 
+ aaah: analyze:00010402:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ aaah: analyze:00010403:  errmsg("parameter $%d of type %s cannot be coerced to the expected type %s", 
+ aaah: analyze:00010404:  i, 
+ aaah: analyze:00010405:  format_type_be(given_type_id), 
+ aaah: analyze:00010406:  format_type_be(expected_type_id)), 
+ aaah: analyze:00010407:  errhint("You will need to rewrite or cast the expression."), 
+ aaah: analyze:00010408:  errOmitLocation(true))); 
+ aaah: analyze:00010423:  ereport(ERROR, 
+ aaah: analyze:00010424:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010425:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
+ aaah: analyze:00010427:  ereport(ERROR, 
+ aaah: analyze:00010428:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010429:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with DISTINCT clause"))); 
+ aaah: analyze:00010431:  ereport(ERROR, 
+ aaah: analyze:00010432:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010433:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with GROUP BY clause"))); 
+ aaah: analyze:00010435:  ereport(ERROR, 
+ aaah: analyze:00010436:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010437:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with HAVING clause"))); 
+ aaah: analyze:00010439:  ereport(ERROR, 
+ aaah: analyze:00010440:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010441:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with aggregate functions"))); 
+ aaah: analyze:00010443:  ereport(ERROR, 
+ aaah: analyze:00010444:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010445:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with window functions"))); 
+ aaah: analyze:00010486:  ereport(ERROR, 
+ aaah: analyze:00010487:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010488:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
+ aaah: analyze:00010526:  ereport(ERROR, 
+ aaah: analyze:00010527:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010528:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
+ aaah: analyze:00010543:  ereport(ERROR, 
+ aaah: analyze:00010544:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010545:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a join"))); 
+ aaah: analyze:00010548:  ereport(ERROR, 
+ aaah: analyze:00010549:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010550:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to NEW or OLD"))); 
+ aaah: analyze:00010553:  ereport(ERROR, 
+ aaah: analyze:00010554:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010555:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a function"))); 
+ aaah: analyze:00010558:  ereport(ERROR, 
+ aaah: analyze:00010559:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00010560:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"))); 
+ aaah: analyze:00010571:  ereport(ERROR, 
+ aaah: analyze:00010572:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+ aaah: analyze:00010573:  errmsg("relation "%s" in FOR UPDATE/SHARE clause not found in FROM clause", 
+ aaah: analyze:00010574:  relname))); 
+ aaah: analyze:00010651:  ereport(ERROR, 
+ aaah: analyze:00010652:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00010653:  errmsg("misplaced DEFERRABLE clause"))); 
+ aaah: analyze:00010655:  ereport(ERROR, 
+ aaah: analyze:00010656:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00010657:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
+ aaah: analyze:00010664:  ereport(ERROR, 
+ aaah: analyze:00010665:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00010666:  errmsg("misplaced NOT DEFERRABLE clause"))); 
  aaah: analyze:00010668:  ereport(ERROR, 
  aaah: analyze:00010669:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010670:  errmsg("misplaced INITIALLY IMMEDIATE clause"))); 
- aaah: analyze:00010672:  ereport(ERROR, 
- aaah: analyze:00010673:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaah: analyze:00010674:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
- aaah: analyze:00010721:  ereport(ERROR, 
- aaah: analyze:00010722:  (errcode(ERRCODE_INVALID_SCHEMA_DEFINITION), 
- aaah: analyze:00010723:  errmsg("CREATE specifies a schema (%s) " 
- aaah: analyze:00010724:  "different from the one being created (%s)", 
- aaah: analyze:00010725:  *stmt_schema_name, context_schema))); 
- aaah: analyze:00010895:  ereport(ERROR, 
- aaah: analyze:00010896:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
- aaah: analyze:00010897:  errmsg("there is no parameter $%d", paramno))); 
- aaah: analyze:00010900:  ereport(ERROR, 
- aaah: analyze:00010901:  (errcode(ERRCODE_AMBIGUOUS_PARAMETER), 
- aaah: analyze:00010902:  errmsg("could not determine data type of parameter $%d", 
- aaah: analyze:00010903:  paramno))); 
- aaah: analyze:00010977:  ereport(ERROR, 
- aaah: analyze:00010978:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- aaah: analyze:00010979:  errmsg("type "%s" can't be a part of a distribution key", 
- aaah: analyze:00010980:  strVal(linitial(column->typname->names))))); 
- aaah: analyze:00010994:  ereport(ERROR, 
- aaah: analyze:00010995:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- aaah: analyze:00010996:  errmsg("column "%s" named in DISTRIBUTED BY " 
- aaah: analyze:00010997:  "clause does not exist", 
- aaah: analyze:00010998:  key), 
- aaah: analyze:00010999:  errOmitLocation(true))); 
- aaah: analyze:00011100:  ereport(NOTICE, 
- aaah: analyze:00011101:  (errmsg("Error table "%s" does not exist. Auto generating an " 
- aaah: analyze:00011102:  "error table with the same name", sreh->errtable->relname))); 
+ aaah: analyze:00010670:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
+ aaah: analyze:00010675:  ereport(ERROR, 
+ aaah: analyze:00010676:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00010677:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+ aaah: analyze:00010682:  ereport(ERROR, 
+ aaah: analyze:00010683:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00010684:  errmsg("misplaced INITIALLY DEFERRED clause"))); 
+ aaah: analyze:00010686:  ereport(ERROR, 
+ aaah: analyze:00010687:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00010688:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
+ aaah: analyze:00010698:  ereport(ERROR, 
+ aaah: analyze:00010699:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00010700:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+ aaah: analyze:00010705:  ereport(ERROR, 
+ aaah: analyze:00010706:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00010707:  errmsg("misplaced INITIALLY IMMEDIATE clause"))); 
+ aaah: analyze:00010709:  ereport(ERROR, 
+ aaah: analyze:00010710:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaah: analyze:00010711:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
+ aaah: analyze:00010758:  ereport(ERROR, 
+ aaah: analyze:00010759:  (errcode(ERRCODE_INVALID_SCHEMA_DEFINITION), 
+ aaah: analyze:00010760:  errmsg("CREATE specifies a schema (%s) " 
+ aaah: analyze:00010761:  "different from the one being created (%s)", 
+ aaah: analyze:00010762:  *stmt_schema_name, context_schema))); 
+ aaah: analyze:00010932:  ereport(ERROR, 
+ aaah: analyze:00010933:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
+ aaah: analyze:00010934:  errmsg("there is no parameter $%d", paramno))); 
+ aaah: analyze:00010937:  ereport(ERROR, 
+ aaah: analyze:00010938:  (errcode(ERRCODE_AMBIGUOUS_PARAMETER), 
+ aaah: analyze:00010939:  errmsg("could not determine data type of parameter $%d", 
+ aaah: analyze:00010940:  paramno))); 
+ aaah: analyze:00011014:  ereport(ERROR, 
+ aaah: analyze:00011015:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ aaah: analyze:00011016:  errmsg("type "%s" can't be a part of a distribution key", 
+ aaah: analyze:00011017:  strVal(linitial(column->typname->names))))); 
+ aaah: analyze:00011031:  ereport(ERROR, 
+ aaah: analyze:00011032:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ aaah: analyze:00011033:  errmsg("column "%s" named in DISTRIBUTED BY " 
+ aaah: analyze:00011034:  "clause does not exist", 
+ aaah: analyze:00011035:  key), 
+ aaah: analyze:00011036:  errOmitLocation(true))); 
+ aaah: analyze:00011137:  ereport(NOTICE, 
+ aaah: analyze:00011138:  (errmsg("Error table "%s" does not exist. Auto generating an " 
+ aaah: analyze:00011139:  "error table with the same name", sreh->errtable->relname))); 
  aaai: allpaths:00000417:  ereport(ERROR, 
  aaai: allpaths:00000418:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  aaai: allpaths:00000419:  errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries"))); 
@@ -17615,6 +17618,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000073:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000074:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000075:  str))); 
-(17554 rows)
+(17557 rows)
 
 drop external table get_ereport;
