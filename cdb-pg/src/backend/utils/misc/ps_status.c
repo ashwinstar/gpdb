@@ -34,8 +34,8 @@
 #include "cdb/cdbvars.h"        /* Gp_role, Gp_segment, currentSliceId */
 
 extern char **environ;
+extern int PostPortNumber;
 bool		update_process_title = true;
-
 
 /*
  * Alternative ways of updating ps display:
@@ -271,7 +271,7 @@ void
 init_ps_display(const char *username, const char *dbname,
 				const char *host_info, const char *initial_str)
 {
-    Assert(username);
+	Assert(username);
     Assert(dbname);
     Assert(host_info);
 	
@@ -321,12 +321,12 @@ init_ps_display(const char *username, const char *dbname,
      * line
      */
     snprintf(ps_buffer, ps_buffer_size,
-             "%s %s %s ",
-             username, dbname, host_info);
+             "port %5d, %s %s %s ",
+             PostPortNumber, username, dbname, host_info);
 #else
     snprintf(ps_buffer, ps_buffer_size,
-             "postgres: %s %s %s ",
-             username, dbname, host_info);
+             "postgres: port %5d, %s %s %s ",
+             PostPortNumber, username, dbname, host_info);
 #endif
 
     ps_buffer_fixed_size = strlen(ps_buffer);
