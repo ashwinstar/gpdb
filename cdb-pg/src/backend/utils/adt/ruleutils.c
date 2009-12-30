@@ -6236,7 +6236,10 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 				if (!bLeafTablename && rule->parrangeevery)
 				{
 					if (!strlen(rule->parname))
+					{
 						first_every_rule = rule;
+						prev_rule		 = NULL;
+					}
 					else
 					{
 						/* MPP-7232: check if name was not generated
@@ -6248,6 +6251,7 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 						{
 							parrank = 2;
 							first_every_rule = rule;
+							prev_rule		 = NULL;
 						}
 						else
 							parrank = 0;
@@ -6270,6 +6274,11 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 					 */
 					if (rule->parname && strlen(rule->parname) && !parname1)
 						estat = false;
+
+					/* note that the case of an unnamed partition in a
+					 * block of named every partitions is handled by
+					 * check_next_every_name... 
+					 */
 				}
 
 				if (estat && parname1)
@@ -6286,6 +6295,26 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 						parname1 = NULL;
 					}
 				}
+
+				/* ensure that start and end have opposite
+				 * inclusivity, ie start is always inclusive and end
+				 * is always exclusive, with exceptions for the first
+				 * every rule start (which can be exclusive) and the
+				 * last every rule end (which can be inclusive).
+				 */
+				if (estat)
+					estat = (rule->parrangestartincl == true);
+				if (estat && prev_rule)
+					estat = (prev_rule->parrangeendincl == false);
+
+				/* finally, make sure that the start value matches the
+				 * previous end, ie look for "holes" where a partition
+				 * might have been dropped in the middle of an EVERY
+				 * range...
+				 */
+				if (estat && prev_rule)
+					estat = equal(rule->parrangestart,
+								  prev_rule->parrangeend);
 
 				if (estat)
 				{
@@ -6320,23 +6349,23 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 							/* MPP-7232: check if name was not generated
 							 * by EVERY
 							 */
+								
+							if (parname1)
+							{
+								pfree(parname1);
+								parname1 = NULL;
+							}
 
-								if (parname1)
-								{
-									pfree(parname1);
-									parname1 = NULL;
-								}
+							parname1 = 
+									check_first_every_name(rule->parname);
 
-								parname1 = 
-										check_first_every_name(rule->parname);
-
-								if (parname1)
-								{
-									parrank = 2;
-									prev_rule = first_every_rule = rule;
-								}
-								else
-									parrank = 0;
+							if (parname1)
+							{
+								parrank = 2;
+								prev_rule = first_every_rule = rule;
+							}
+							else
+								parrank = 0;
 						}
 
 						if (first_every_rule)

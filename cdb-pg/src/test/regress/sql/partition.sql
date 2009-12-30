@@ -3477,3 +3477,144 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
 
 drop table mpp6297;
+
+-- more with basic cases
+create table mpp6297 
+(a int, 
+b int) 
+partition by range (b)
+(
+start (1) end (10) every (1),
+end (11)		
+);
+
+-- note that the partition from 10 to 11 is *not* part of every
+select 
+pg_get_partition_def(
+(select oid from pg_class 
+where relname='mpp6297')::pg_catalog.oid, true);
+
+alter table mpp6297 drop partition for (rank(3));
+
+-- note that the every clause splits into two parts: 1-3 and 4-10
+select
+pg_get_partition_def(
+(select oid from pg_class
+where relname='mpp6297')::pg_catalog.oid, true);
+
+-- this isn't legal (but it would be nice)
+alter table mpp6297 add partition start (3) end (4) every (1);
+
+-- this is legal but it doesn't fix the EVERY clause
+alter table mpp6297 add partition start (3) end (4) ;
+
+-- note that the every clause is still splits into two parts: 1-3 and
+-- 4-10, because the new partition from 3 to 4 doesn't have an EVERY
+-- attribute
+select
+pg_get_partition_def(
+(select oid from pg_class
+where relname='mpp6297')::pg_catalog.oid, true);
+
+drop table mpp6297;
+
+-- similarly, we can merge adjacent EVERY clauses if they match
+
+create table mpp6297 
+(a int, 
+b int) 
+partition by range (b)
+(
+start (1) end (5) every (1),
+start (5) end (10) every (1)
+);
+
+-- note that there is only a single every from 1-10
+select 
+pg_get_partition_def(
+(select oid from pg_class 
+where relname='mpp6297')::pg_catalog.oid, true);
+
+drop table mpp6297;
+
+-- we cannot merge adjacent EVERY clauses if inclusivity/exclusivity is wrong
+create table mpp6297 
+(a int, 
+b int) 
+partition by range (b)
+(
+start (1) end (5) every (1),
+start (5) exclusive end (10) every (1)
+);
+
+-- two every clauses for this case
+select 
+pg_get_partition_def(
+(select oid from pg_class 
+where relname='mpp6297')::pg_catalog.oid, true);
+
+drop table mpp6297;
+
+-- more fun with inclusivity/exclusivity (normal case)
+create table mpp6297 
+(a int, 
+b int) 
+partition by range (b)
+(
+start (1) inclusive end (10) exclusive every (1)
+);
+
+-- note that inclusive and exclusive attributes aren't listed here (because
+-- default behavior)
+select 
+pg_get_partition_def(
+(select oid from pg_class 
+where relname='mpp6297')::pg_catalog.oid, true);
+
+drop table mpp6297;
+
+-- more fun with inclusivity/exclusivity (abnormal case)
+create table mpp6297 
+(a int, 
+b int) 
+partition by range (b)
+(
+start (1) exclusive end (10) inclusive every (1)
+);
+
+-- note that inclusive and exclusive attributes are listed here 
+select 
+pg_get_partition_def(
+(select oid from pg_class 
+where relname='mpp6297')::pg_catalog.oid, true);
+
+alter table mpp6297 drop partition for (rank(3));
+
+-- note that the every clause splits into two parts: 1-3 and 4-10 (and
+-- inclusive/exclusive is listed correctly)
+select
+pg_get_partition_def(
+(select oid from pg_class
+where relname='mpp6297')::pg_catalog.oid, true);
+
+drop table mpp6297;
+
+-- we cannot merge adjacent EVERY clauses, even though the
+-- inclusivity/exclusivity matches, because it is different from the
+-- normal start inclusive/end exclusive
+create table mpp6297 
+(a int, 
+b int) 
+partition by range (b)
+(
+start (1) end (5) inclusive every (1),
+start (5) exclusive end (10) every (1)
+);
+
+-- two every clauses for this case
+select 
+pg_get_partition_def(
+(select oid from pg_class 
+where relname='mpp6297')::pg_catalog.oid, true);
+
+drop table mpp6297;
