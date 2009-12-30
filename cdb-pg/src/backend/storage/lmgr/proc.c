@@ -56,6 +56,7 @@
 /* GUC variables */
 int			DeadlockTimeout = 1000;
 int			StatementTimeout = 0;
+int			IdleSessionGangTimeout = 18000;
 
 /* Pointer to this process's PGPROC struct, if any */
 PGPROC	   *MyProc = NULL;

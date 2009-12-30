@@ -4461,8 +4461,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 			 * This means giving the end user enough time to type in the next SQL statement
 			 *
 			 */
-			if (gangsExist())
-				if (!enable_sig_alarm( 12000 /* ms */, false))
+			if (IdleSessionGangTimeout > 0 && gangsExist())
+				if (!enable_sig_alarm( IdleSessionGangTimeout /* ms */, false))
 					elog(FATAL, "could not set timer for client wait timeout");
 		}
 
