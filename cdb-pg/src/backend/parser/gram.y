@@ -2213,6 +2213,7 @@ table_partition_modify:
                     bs->partEnd   = $2;
                     bs->partEvery = $3;
                     bs->everyGenList = NIL; 
+                    bs->pWithTnameStr = NULL;
                     bs->location  = @1;
 
                     pc->partid = NULL;
@@ -2241,6 +2242,7 @@ table_partition_modify:
                     bs->partEnd   = $1;
                     bs->partEvery = $2;
                     bs->everyGenList = NIL; 
+                    bs->pWithTnameStr = NULL;
                     bs->location  = @1;
 
                     pc->partid = NULL;
@@ -3891,6 +3893,7 @@ TabPartitionBoundarySpec:
                         n->partEnd   = $2;
                         n->partEvery = $3;
                         n->everyGenList = NIL; 
+						n->pWithTnameStr = NULL;
                         n->location  = @1;
                         $$ = (Node *)n;
 				}
@@ -3902,6 +3905,7 @@ TabPartitionBoundarySpec:
                         n->partEnd   = $1;
                         n->partEvery = $2;
                         n->everyGenList = NIL; 
+						n->pWithTnameStr = NULL;
                         n->location  = @1;
                         $$ = (Node *)n;
 				}

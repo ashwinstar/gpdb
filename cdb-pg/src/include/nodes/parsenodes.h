@@ -1574,6 +1574,8 @@ typedef struct PartitionBoundSpec
 	Node			   *partEnd;		/* end */
 	Node 			   *partEvery;		/* every specification */
 	List 			   *everyGenList;	/* generated EVERY partitions */
+	/* MPP-6297: check for WITH (tablename=name) clause */
+	char			   *pWithTnameStr;	/* and disable EVERY if tname set */
 	int					location;		/* token location, or -1 if unknown */
 } PartitionBoundSpec;
 

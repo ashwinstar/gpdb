@@ -14,7 +14,7 @@
  * optimizable statements.
  *
  *
- * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -4189,9 +4189,12 @@ preprocess_range_spec(partValidationState *vstate)
 	 */
 	foreach(lc, spec->partElem)
 	{
-		PartitionElem *el = lfirst(lc);
+		PartitionElem	*el			= lfirst(lc);
 		PartitionBoundSpec *pbs = (PartitionBoundSpec *)el->boundSpec;
-		ListCell *lc2;
+
+		Node			*pStoreAttr	= NULL;
+		ListCell		*lc2;
+		bool			 bTablename = false;
 
 		/* we might not have a boundary spec if user just specified DEFAULT */
 		if (!pbs)
@@ -4202,9 +4205,19 @@ preprocess_range_spec(partValidationState *vstate)
 
 		pbs = (PartitionBoundSpec *)transformExpr(pstate, (Node *)pbs);
 
-		if (pbs->partEvery)
+		pStoreAttr = el->storeAttr;
+
+		/* MPP-6297: check for WITH (tablename=name) clause 
+		 * [only for dump/restore, set deep in the guts of
+		 * partition_range_every...]
+		 */
+		bTablename = (NULL != pbs->pWithTnameStr);
+
+		if (!bTablename && pbs->partEvery)
 		{
-			/* the start expression might come from a previous end expression */
+			/* the start expression might come from a previous end
+			 * expression 
+			 */
 			List *start = NIL;
 			List *curstart = NIL;
 			List *end = ((PartitionRangeItem *)pbs->partEnd)->partRangeVal;
@@ -6172,21 +6185,23 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 
 	for ( ; lc; ) /* foreach */
 	{
-		PartitionElem		*pElem = (PartitionElem *)lfirst(lc);
-		PartitionBoundSpec	*pBSpec = NULL;
-		int					 numCols  = 0;
-		int					 colCnt   = 0;
-		Const				*everyCnt;
-		PartitionRangeItem	*pRI_Start = NULL;
-		PartitionRangeItem	*pRI_End   = NULL;
-		PartitionRangeItem	*pRI_Every = NULL;
-		ListCell			*lc_Start = NULL;
-		ListCell			*lc_End   = NULL;
-		ListCell			*lc_Every = NULL;
-		List *allNewCols;
-		List *allNewPartns = NIL;
-		List *lastval = NIL;
-		bool do_every_param_test = true;
+		PartitionElem			*pElem = (PartitionElem *)lfirst(lc);
+
+		PartitionBoundSpec		*pBSpec				 = NULL;
+		int						 numCols			 = 0;
+		int						 colCnt				 = 0;
+		Const					*everyCnt;
+		PartitionRangeItem		*pRI_Start			 = NULL;
+		PartitionRangeItem		*pRI_End			 = NULL;
+		PartitionRangeItem		*pRI_Every			 = NULL;
+		ListCell				*lc_Start			 = NULL;
+		ListCell				*lc_End				 = NULL;
+		ListCell				*lc_Every			 = NULL;
+		Node					*pStoreAttr			 = NULL;
+		List					*allNewCols;
+		List					*allNewPartns		 = NIL;
+		List					*lastval			 = NIL;
+		bool					 do_every_param_test = true;
 
 		pBSpec = NULL;
 
@@ -6200,6 +6215,8 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 
 			if (!pBSpec)
 				goto l_EveryLoopEnd;
+
+			pStoreAttr = pElem->storeAttr;
 
 			if (pElem->partName)
 			{
@@ -6254,6 +6271,45 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 									errOmitLocation(true),
 					 parser_errposition(pstate, pBSpec->location)));
 		}
+
+		/* MPP-6297: check for WITH (tablename=name) clause 
+		 * [magic to make dump/restore work by ignoring EVERY] 
+		 */
+		if (pStoreAttr && ((AlterPartitionCmd *)pStoreAttr)->arg1)
+		{
+			ListCell *prev_lc = NULL;
+			ListCell *def_lc  = NULL;
+			List *pWithList = (List *)
+					(((AlterPartitionCmd *)pStoreAttr)->arg1);
+			bool bTablename = false;
+
+			foreach(def_lc, pWithList)
+			{
+				DefElem *pDef = (DefElem *)lfirst(def_lc);
+
+				/* get the tablename from the WITH, then remove this
+				 * element from the list */
+				if (0 == strcmp(pDef->defname, "tablename"))
+				{
+					/* if the string isn't quoted you get a typename ? */
+					if (!IsA(pDef->arg, String))
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("invalid tablename specification")));
+
+					bTablename = true;
+					pBSpec->pWithTnameStr = pstrdup(defGetString(pDef));
+					pWithList = list_delete_cell(pWithList, def_lc, prev_lc);
+					((AlterPartitionCmd *)pStoreAttr)->arg1 = 
+							(Node *)pWithList;
+					break;
+				}
+				prev_lc = def_lc;
+			} /* end foreach */
+
+			if (bTablename)
+				goto l_EveryLoopEnd;
+		}		
 
 		everyCnt = make_const(pstate, makeInteger(1), -1);
 
@@ -7196,6 +7252,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	{
 		PartitionBy	*newSub = NULL;
 		PartitionElem *pElem = lc ? (PartitionElem *)lfirst(lc) : NULL;
+
 		Node					*pRuleCatalog = NULL;
 		Node					*pPostCreate  = NULL;
 		Node					*pConstraint  = NULL;
@@ -7205,6 +7262,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		Node					*every		  = NULL;
 		PartitionBy				*curPby		  = NULL;
 		bool					 bQuiet		  = false;
+		char					*pWithTname	  = NULL;
 
 		/* silence partition name messages if really generating a
 		 * subpartition template
@@ -7218,8 +7276,9 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 			if (pElem->boundSpec && IsA(pElem->boundSpec, PartitionBoundSpec))
 			{
-				pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
-				every = pBSpec->partEvery;
+				pBSpec	   = (PartitionBoundSpec *)pElem->boundSpec;
+				every	   = pBSpec->partEvery;
+				pWithTname = pBSpec->pWithTnameStr;
 
 				if (prevEvery && every)
 				{
@@ -7334,38 +7393,14 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		else
 			snprintf(prtstr, sizeof(prtstr), "prt_%d", partno + 1);
 
-		/* MPP-6297: check for WITH (tablename=name) clause */
-		if (pStoreAttr && ((AlterPartitionCmd *)pStoreAttr)->arg1)
+		/* MPP-6297: check for WITH (tablename=name) clause 
+		 * [only for dump/restore, set deep in the guts of
+		 * partition_range_every...]
+		 */
+		if (pWithTname)
 		{
-			ListCell *prev_lc = NULL;
-			ListCell *def_lc  = NULL;
-			List *pWithList = (List *)
-					(((AlterPartitionCmd *)pStoreAttr)->arg1);
-
-			foreach(def_lc, pWithList)
-			{
-				DefElem *pDef = (DefElem *)lfirst(def_lc);
-
-				/* get the tablename from the WITH, then remove this
-				 * element from the list */
-				if (0 == strcmp(pDef->defname, "tablename"))
-				{
-					/* if the string isn't quoted you get a typename ? */
-					if (!IsA(pDef->arg, String))
-						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("invalid tablename specification")));
-
-					relname = pstrdup(strVal(pDef->arg));
-					prtstr[0] = '\0';
-					pWithList = list_delete_cell(pWithList, def_lc, prev_lc);
-					((AlterPartitionCmd *)pStoreAttr)->arg1 = 
-							(Node *)pWithList;
-					break;
-				}
-				prev_lc = def_lc;
-			} /* end foreach */
-			
+			relname = pWithTname;
+			prtstr[0] = '\0';
 		}
 
 		if (strlen(prtstr))

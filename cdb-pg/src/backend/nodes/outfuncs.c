@@ -2425,6 +2425,7 @@ _outPartitionBoundSpec(StringInfo str, PartitionBoundSpec *node)
 	WRITE_NODE_FIELD(partEnd);
 	WRITE_NODE_FIELD(partEvery);
 	WRITE_NODE_FIELD(everyGenList);
+	WRITE_STRING_FIELD(pWithTnameStr);
 	WRITE_INT_FIELD(location);
 }
 

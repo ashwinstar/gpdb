@@ -3406,3 +3406,74 @@ select schemaname, tablename, indexname from pg_indexes where schemaname = 'publ
 alter table it add primary key(i);
 select schemaname, tablename, indexname from pg_indexes where schemaname = 'public' and tablename like 'it%';
 drop table it;
+
+
+-- MPP-6297: test special WITH(tablename=...) syntax for dump/restore
+
+-- original table was:
+-- PARTITION BY RANGE(l_commitdate) 
+-- (
+--     PARTITION p1 
+--       START ('1992-01-31'::date) END ('1995-04-30'::date) 
+--       EVERY ('1 year 1 mon'::interval)
+-- )
+
+-- dump used to give a definition like this:
+
+-- without the WITH(tablename=...), the vagaries of EVERY arithmetic
+-- create >3 partitions
+CREATE TABLE mpp6297 ( l_orderkey bigint,
+l_commitdate date
+)
+distributed BY (l_orderkey) PARTITION BY RANGE(l_commitdate)
+(
+PARTITION p1_1 START ('1992-01-31'::date) END ('1993-02-28'::date)
+EVERY ('1 year 1 mon'::interval)
+,
+PARTITION p1_2 START ('1993-02-28'::date) END ('1994-03-31'::date)
+EVERY ('1 year 1 mon'::interval)
+,
+PARTITION p1_3 START ('1994-03-31'::date) END ('1995-04-30'::date)
+EVERY ('1 year 1 mon'::interval)
+);
+
+-- should be a single partition def for p1 from 1/31 to 4/30, but
+-- shows 4 partitions instead
+select partitiontablename, partitionname, 
+partitionrangestart, partitionrangeend, partitioneveryclause
+from pg_partitions
+where tablename like 'mpp6297%' order by partitionrank;
+
+select 
+pg_get_partition_def(
+(select oid from pg_class 
+where relname='mpp6297')::pg_catalog.oid, true);
+
+drop table mpp6297;
+
+
+-- when WITH(tablename=...) is specified, the EVERY is stored as an
+-- attribute, but not expanded into additional partitions
+CREATE TABLE mpp6297 ( l_orderkey bigint,
+l_commitdate date
+)
+distributed BY (l_orderkey) PARTITION BY RANGE(l_commitdate)
+(
+PARTITION p1_1 START ('1992-01-31'::date) END ('1993-02-28'::date)
+EVERY ('1 year 1 mon'::interval)
+WITH (tablename='mpp6297_1_prt_p1_1'),
+PARTITION p1_2 START ('1993-02-28'::date) END ('1994-03-31'::date)
+EVERY ('1 year 1 mon'::interval)
+WITH (tablename='mpp6297_1_prt_p1_2'),
+PARTITION p1_3 START ('1994-03-31'::date) END ('1995-04-30'::date)
+EVERY ('1 year 1 mon'::interval)
+WITH (tablename='mpp6297_1_prt_p1_3')
+);
+
+-- should be a single partition def for p1 from 1/31 to 4/30, as intended
+select 
+pg_get_partition_def(
+(select oid from pg_class 
+where relname='mpp6297')::pg_catalog.oid, true);
+
+drop table mpp6297;
