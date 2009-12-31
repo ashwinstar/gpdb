@@ -232,7 +232,9 @@ extern int	CTimeZone;
 
 extern bool enableFsync;
 extern bool allowSystemTableMods;
+extern PGDLLIMPORT int planner_work_mem;
 extern PGDLLIMPORT int work_mem;
+extern PGDLLIMPORT int max_work_mem;
 extern PGDLLIMPORT int maintenance_work_mem;
 
 extern int	VacuumCostPageHit;

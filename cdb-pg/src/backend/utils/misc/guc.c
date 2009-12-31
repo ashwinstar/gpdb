@@ -2482,6 +2482,19 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"planner_work_mem", PGC_USERSET, RESOURCES_MEM,
+			gettext_noop("Sets the maximum memory to be used for query workspaces, "
+						 "used in the planner only."),
+			gettext_noop("The planner considers this much memory may be used by each internal "
+						 "sort operation and hash table before switching to "
+						 "temporary disk files."),
+			GUC_UNIT_KB | GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&planner_work_mem,
+        32768, 2 * BLCKSZ / 1024, MAX_KILOBYTES, NULL, NULL
+	},
+
+	{
 		{"work_mem", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum memory to be used for query workspaces."),
 			gettext_noop("This much memory may be used by each internal "
@@ -2495,6 +2508,16 @@ static struct config_int ConfigureNamesInt[] =
 #else
 		32768, 8 * BLCKSZ / 1024, MAX_KILOBYTES, NULL, NULL
 #endif
+	},
+
+	{
+		{"max_work_mem", PGC_USERSET, RESOURCES_MEM,
+		 	gettext_noop("Sets the maximum value for work_mem setting."),
+		 	NULL,
+			GUC_UNIT_KB | GUC_GPDB_ADDOPT
+		},
+		&max_work_mem,
+		1024000, 8 * BLCKSZ / 1024, MAX_KILOBYTES, NULL, NULL
 	},
 
 	{
@@ -6390,6 +6413,34 @@ set_config_option(const char *name, const char *value,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 								 errmsg("%d is outside the valid range for parameter \"%s\" (%d .. %d)",
 										newval, name, conf->min, conf->max)));
+						return false;
+					}
+
+					/*
+					 * If this is for "work_mem", its value also has to be smaller than or equal to
+					 * max_work_mem setting.
+					 */
+					if (strcmp(conf->gen.name, "work_mem") == 0 &&
+						newval > max_work_mem)
+					{
+						ereport(elevel,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("%d is outside the valid range for parameter \"%s\" (%d .. %d)",
+										newval, name, conf->min, max_work_mem)));
+						return false;
+					}
+					
+					/*
+					 * If this is for "max_work_mem", its value has to be greater than or equal to
+					 * current work_mem setting.
+					 */
+					if (strcmp(conf->gen.name, "max_work_mem") == 0 &&
+						newval < work_mem)
+					{
+						ereport(elevel,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("%d is outside the valid range for parameter \"%s\" (%d .. %d)",
+										newval, name, work_mem, conf->max)));
 						return false;
 					}
 				}

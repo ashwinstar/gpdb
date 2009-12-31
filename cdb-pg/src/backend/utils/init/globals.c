@@ -97,7 +97,9 @@ int			CTimeZone = 0;
 
 bool		enableFsync = true;
 bool		allowSystemTableMods = false;
+int			planner_work_mem = 32768;
 int			work_mem = 32768;
+int			max_work_mem = 1024000;
 int			maintenance_work_mem = 65536;
 
 /* Primary determinants of sizes of shared-memory structures: */

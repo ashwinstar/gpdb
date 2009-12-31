@@ -2828,7 +2828,7 @@ double global_work_mem(PlannerInfo *root)
 	else
 		segment_count = planner_segment_count();
 
-	return (double) work_mem * 1024L * segment_count;	
+	return (double) planner_work_mem * 1024L * segment_count;	
 }
 
 /* CDB -- The incremental cost functions below are for use outside the
