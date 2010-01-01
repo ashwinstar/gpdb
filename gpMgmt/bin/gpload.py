@@ -507,59 +507,154 @@ def is_keyword(tab):
     else:
         return False
 
-def quote_ident(tab):
-    safe = True
 
-    l = len(tab)
-    i = 0
-    while i < l:
-        if not (tab[i] == '_' and tab[i] >= 'a' and tab[i] <= 'z'):
-            safe = False
-            break
-        i += 1
-
-    if safe:
-        # see if it is a keyword
-        if not is_keyword(tab):
-            return tab
-
-    return '"' + tab.replace('"', '""') + '"'
-
-def build_safe_table_name(conn, tab, into_cols = None):
+def caseInsensitiveDictLookup(key, dictionary):
     """
-    quote any multibyte, capitalised or keyword table names. Break
-    up schema.table too.
+    Do a case insensitive dictionary lookup. Return the dictionary value if found,
+    or None if not found.                                                                                                               
     """
-    to_quote = []
-    if tab[0] == '"':
-        # user did it for us
-        return tab
+    for entry in dictionary:
+        if entry.lower() == key.lower():
+           return dictionary[entry]
+    return None
 
-    if into_cols and re.search("\W", tab):
-        # Before proceeding, see if this is just an expression 
-        # such as orderkey + 1. To do so, we see if there's a reference
-        # to an into column in the clause
-        # only do it if this isn't an exact known col name
-        f = filter(lambda x:x[0] == tab, into_cols)
-        if not f:
-            for colname, type, map, a in into_cols:
-                reg = "(?<=[^\w])%s(?=[^\w])" % colname
-                stab = " %s " % tab
-                r = re.compile(reg)
-                if re.search(reg, stab):
-                    return tab
 
-    i = tab.find('.')
-    if i >= 0:
-        to_quote.append(tab[:i])
-        to_quote.append(tab[i + 1:])
+
+def sqlIdentifierCompare(x, y):
+    """                                                                                                            
+    Compare x and y as SQL identifiers. Use SQL rules for comparing delimited
+    and non-delimited identifiers. Return True if they are equivalent or False
+    if they are not equivalent.
+    """
+    if x == None or y == None:
+       return False
+
+    if isDelimited(x):
+       x = quote_unident(x)
     else:
-        to_quote.append(tab)
+       x = x.lower()
+    if isDelimited(y):
+       y = quote_unident(y)
+    else:
+       y = y.lower()
 
-    res = []
-    for t in to_quote:
-        res.append(quote_ident(t))
-    return '.'.join(res)
+    if x == y:
+       return True
+    else:
+       return False
+
+
+def isDelimited(value):
+    """
+    This method simply checks to see if the user supplied value has delimiters.
+    That is, if it starts and ends with double-quotes, then it is delimited.
+    """
+    if len(value) < 2:
+       return False
+    if value[0] == '"' and value[-1] == '"':
+       return True
+    else:
+       return False
+
+
+def convertListToDelimited(identifiers):
+    """
+    This method will convert a list of identifiers, which may be a mix of
+    delimited and non-delimited identifiers, and return a list of 
+    delimited identifiers.
+    """
+    returnList = []
+
+    for id in identifiers:
+        if isDelimited(id) == False:
+           id = id.lower()
+           returnList.append(quote_ident(id))
+        else:
+           returnList.append(id)
+    return returnList
+
+
+
+def splitUpMultipartIdentifier(id):
+    """
+    Given a sql identifer like sch.tab, return a list of its
+    individual elements (e.g.  sch.tab would return ['sch','tab']
+    """
+    returnList = []
+
+    elementList = splitIntoLiteralsAndNonLiterals(id, quoteValue='"')
+    # If there is a leading empty string, remove it.
+    if elementList[0] == ' ':
+       elementList.pop(0)
+
+    # Remove the dots, and split up undelimited multipart names
+    for e in elementList:
+        if e != '.':
+           if e[0] != '"':
+              subElementList = e.split('.')
+           else:
+              subElementList = [e]
+           for se in subElementList:
+               # remove any empty elements
+               if se != '':
+                  returnList.append(se)
+
+    return returnList    
+
+
+def splitIntoLiteralsAndNonLiterals(str1, quoteValue="'"):
+    """
+    Break the string (str1) into a list of literals and non-literals where every
+    even number element is a non-literal and every odd number element is a literal.
+    The delimiter between literals and non-literals is the quoteValue, so this
+    function will not take into account any modifiers on a literal (e.g. E'adf').
+    """
+    returnList = []
+
+    if len(str1) > 1 and str1[0] == quoteValue:
+       # Always start with a non-literal
+       str1 = ' ' + str1
+
+    inLiteral = False
+    i = 0
+    tokenStart = 0
+    while i < len(str1):
+        if str1[i] == quoteValue:
+           if inLiteral == False:
+              # We are at start of literal
+              inLiteral = True
+              returnList.append(str1[tokenStart:i])
+              tokenStart = i
+           elif i + 1 < len(str1) and str1[i+1] == quoteValue:
+              # We are in a literal and found quote quote, so skip over it
+              i = i + 1
+           else:
+              # We are at the end of a literal or end of str1
+              returnList.append(str1[tokenStart:i+1])
+              tokenStart = i + 1
+              inLiteral = False
+        i = i + 1
+    if tokenStart < len(str1):
+       returnList.append(str1[tokenStart:])
+    return returnList
+
+
+def quote_ident(val):
+    """
+    This method returns a new string replacing " with "",
+    and adding a " at the start and end of the string.
+    """
+    return '"' + val.replace('"', '""') + '"'
+
+
+def quote_unident(val):
+    """
+    This method returns a new string replacing "" with ",
+    and  removing the " at the start and end of the string.
+    """
+    val = val[1:-1]
+    return val.replace('""', '"')
+
 
 def notice_processor(self):
     theNotices = self.db.notices()
@@ -811,6 +906,25 @@ def yaml_walk(gp, node, crumb):
         pass
 
 
+def changeToUnicode(a):
+    """
+    Change every entry in a list or dictionary to a unicode item
+    """
+    if type(a) == list:
+        return map(changeToUnicode,a)
+    if type(a) == dict:
+        b = dict()
+        for key,value in a.iteritems():
+            if type(key) == str:
+                key = unicode(key)                                                                  
+            b[key] = changeToUnicode(value)
+        return b
+    if type(a) == str:
+        a = unicode(a)
+    return a
+
+
+
 def dictKeyToLower(a):
     """
     down case all entries in a list or dict
@@ -866,6 +980,7 @@ class gpload:
                         datetime.date.today().strftime('%Y%m%d') + '.log')
 
         self.name = 'gpload%s_%d'%(str(time.time()).replace('.','_'),os.getpid())
+        self.tempTableName = quote_ident('temp_' + self.name)
 
         # SQL to run in order to undo our temporary work
         self.cleanupSql = []
@@ -956,6 +1071,7 @@ class gpload:
             doc = f.read()
             self.config = yaml.load(doc)
 
+            self.configOriginal = changeToUnicode(self.config)
             self.config = dictKeyToLower(self.config)
             ver = self.getconfig('version', unicode, extraStuff = ' tag')
             if ver != '1.0.0.1':
@@ -1029,7 +1145,7 @@ class gpload:
             self.exitValue = 2;
             sys.exit(self.exitValue)
 
-    def getconfig(self, a, typ=None, default='error', extraStuff=''):
+    def getconfig(self, a, typ=None, default='error', extraStuff='', returnOriginal=False):
         """
         Look for a config entry, via a column delimited string. a:b:c points to
         
@@ -1038,9 +1154,16 @@ class gpload:
                 c
 
         Make sure that end point is of type 'typ' when not set to None.
+ 
+        If returnOriginal is False, the return value will be in lower case, 
+        else the return value will be in its original form (i.e. the case that
+        the user specified in their yaml file).
         """
         self.log(self.DEBUG, "getting config for " + a)
-        config = self.config
+        if returnOriginal == True:
+           config = self.configOriginal
+        else:
+           config = self.config
         for s in a.split(':'):
             self.log(self.DEBUG, "trying " + s)
             index = 1
@@ -1054,12 +1177,14 @@ class gpload:
                 config = [config]
 
             for c in config:
-                if type(c)==dict and s in c:
-                    index -= 1
-                    if not index:
-                        self.log(self.DEBUG, "found " + s)
-                        config = c[s]
-                        break
+                if type(c)==dict:
+                    temp = caseInsensitiveDictLookup(s, c)
+                    if temp != None:
+                       index -= 1
+                       if not index:
+                           self.log(self.DEBUG, "found " + s)
+                           config = temp
+                           break
             else:
                 if default=='error':
                     self.log(self.ERROR,
@@ -1093,11 +1218,23 @@ class gpload:
 
         # ensure output is of type list
         self.getconfig('gpload:output', list)
-        self.table = self.getconfig('gpload:output:table', unicode)
+
+        # The user supplied table name can be completely or partially delimited,
+        # and it can be a one or two part name. Get the originally supplied name
+        # and parse it into its delimited one or two part name.
+        self.schemaTable = self.getconfig('gpload:output:table', unicode, returnOriginal=True)
+        schemaTableList  = splitUpMultipartIdentifier(self.schemaTable)
+        schemaTableList  = convertListToDelimited(schemaTableList)
+        if len(schemaTableList) == 2:
+           self.schema = schemaTableList[0]
+           self.table  = schemaTableList[1]
+        else:
+           self.schema = None
+           self.table  = schemaTableList[0]
 
         # Precendence for configuration: command line > config file > env
         # variable
-        
+
         # host to connect to
         if not self.options.h:
             self.options.h = self.getconfig('host', unicode, None)
@@ -1313,6 +1450,7 @@ class gpload:
                 pass
         f.close()
 
+
     def setup_connection(self, recurse = 0):
         """
         Connect to the backend
@@ -1359,7 +1497,7 @@ class gpload:
                     self.options.p))
 
     def read_columns(self):
-        columns = self.getconfig('gpload:input:columns',list,None)
+        columns = self.getconfig('gpload:input:columns',list,None, returnOriginal=True)
         if columns != None:
             self.from_cols_from_user = True # user specified from columns
             self.from_columns = []
@@ -1394,7 +1532,7 @@ class gpload:
         for name, typ, map, hasseq in self.from_columns:
             if typ == None:
                 self.log(self.ERROR, 'column "%s" has no type ' % name +
-                       'and does not appear in target table "%s"' % self.table)
+                       'and does not appear in target table "%s"' % self.schemaTable)
         self.log(self.DEBUG, 'from columns are:')
         for c in self.from_columns:
             name = c[0]
@@ -1404,12 +1542,12 @@ class gpload:
 
 
     def read_table_metadata(self):
-        tableSchema = 'public'
-        tableName = self.table
-        i = tableName.find('.')
-        if i>=0:
-            tableSchema = tableName[:i]
-            tableName = tableName[i+1:]
+        # KAS Note to self. If schema is specified, then probably should use PostgreSQL rules for defining it.
+        tableName = quote_unident(self.table)
+        if self.schema != None:
+           tableSchema = quote_unident(self.schema)
+        else:
+           tableSchema = 'public'
         queryString = """select *, data_type in ('int4', 'bigint') and 
                                column_default ~ E'nextval\\\\(.*regclass' as 
                                has_sequence 
@@ -1442,7 +1580,8 @@ class gpload:
                     stuff2.append(unicode(row[a]))
             if stuff2:
                 ct += '('+','.join(stuff2)+')'
-            name = unicode(row['column_name']).lower()
+            name = unicode(row['column_name'])
+            name = quote_ident(name)
             if row['has_sequence'] == True:
                 has_seq = True
             else:
@@ -1465,45 +1604,40 @@ class gpload:
                self.log(self.ERROR, 'table %s.%s does not exist in database %s'% (tableSchema, tableName, self.options.d))
 
     def read_mapping(self):
-        mapping = self.getconfig('gpload:output:mapping',dict,None)
+        mapping = self.getconfig('gpload:output:mapping',dict,None, returnOriginal=True)
 
         if mapping:
             for key,value in mapping.iteritems():
                 if type(key) != unicode or type(value) != unicode:
                     self.log(self.ERROR,'gpload:output:mapping must be a ' +
                                         'mapping from strings to strings')
-                try:
-                    i = map(lambda a:a[0],self.into_columns).index(key)
-                except ValueError:
+                found = False
+                for a in self.into_columns:
+                    if sqlIdentifierCompare(a[0], key) == True:
+                       a[2] = value
+                       found = True
+                       break
+                if found == False:
                     self.log(self.ERROR,'%s in mapping is not in table %s'% \
-                                    (key, self.table))
-                self.into_columns[i][2] = value.lower()
+                                    (key, self.schemaTable))
         else:
-
             # Now, map anything yet to be mapped to itself, picking up on those
             # columns which are not found in the table.
             for x in self.from_columns:
+                # Check to see if it already has a mapping value
                 i = filter(lambda a:a[2] == x[0], self.into_columns)
                 if not i:
-                    i = filter(lambda a:a[0] == x[0], self.into_columns)
+                    # Check to see if the target column names match the input column names.
+                    for a in self.into_columns:
+                        if sqlIdentifierCompare(a[0], x[0]) == True:
+                           i = a
+                           found = True
+                           break
                     if i:
-                        i = i[0]
                         if i[2] == None: i[2] = i[0]
                     else:
                         self.log(self.ERROR, 'no mapping for input column ' +
                                  '"%s" to output table' % x[0])
-
-#        for a in self.from_columns:
-#                if a[0] in map(lambda a:a[0],self.into_columns):
-#                    b = filter(lambda x:x[0] == a[0], self.into_columns)
-#                    print b
-#                    b = b[0]
-#                    b[2] = b[0]
-#                    self.log(self.LOG, "mapping %s to itself" % b[0])
-#                else:
-#                    # There is a difference between the input columns and
-#                    # the table's column layout. We do not have a mapping
-#                    # from the user so give up
         for name,typ,mapto,seq in self.into_columns:
             self.log(self.DEBUG,'%s: %s = %s'%(name,typ,mapto))
 
@@ -1511,7 +1645,7 @@ class gpload:
         self.error_table = self.getconfig('gpload:input:error_table', unicode,
                                           None)
         format = self.getconfig('gpload:input:format', unicode, 'text').lower()
-        sql = "create external table ext_%s"%self.name
+        sql = "create external table ext_%s" % self.name
 
         if not self.from_cols_from_user:
             # don't put values serial columns
@@ -1520,7 +1654,7 @@ class gpload:
         else:
             from_cols = self.from_columns
 
-        sql += "(%s)"%','.join(map(lambda a:'%s %s' % (build_safe_table_name(self.db, a[0]), a[1]), from_cols))
+        sql += "(%s)" % ','.join(map(lambda a:'%s %s' % (a[0], a[1]), from_cols))
 
         sql += "location(%s)"%','.join(map(quote,self.locations))
         sql += "format%s("%quote(format)
@@ -1613,8 +1747,8 @@ class gpload:
             cols = filter(lambda a:a[3] == False, cols)
 
         sql = 'INSERT INTO %s' % dest
-        sql += ' (%s)'%','.join(map(lambda a:build_safe_table_name(self.db,a[0]),cols))
-        sql += ' SELECT %s '%','.join(map(lambda a:build_safe_table_name(self.db,a[2], self.from_columns), cols))
+        sql += ' (%s)'%','.join(map(lambda a:a[0], cols))
+        sql += ' SELECT %s '%','.join(map(lambda a:a[2], cols))
         sql += ' FROM ext_%s'%self.name
 
         # cktan: progress thread is not reliable. revisit later.
@@ -1638,14 +1772,16 @@ class gpload:
 
     def do_method_insert(self):
         self.create_external_table()
-        self.do_insert(self.table_quoted)
+        self.do_insert(self.schemaTable)
 
     def map_stuff(self,config,format,index):
         lis = []
-        for i in self.getconfig(config,list):
+        theList = self.getconfig(config,list)
+        theList = convertListToDelimited(theList)
+        for i in theList:
             if type(i) != unicode and type(i) != str:
                 self.log(self.ERROR,'%s must be a sequence of strings'%config)
-            j = self.into_columns_dict.get(i.lower())
+            j = self.into_columns_dict.get(i)
             if not j:
                 self.log(self.ERROR,'column %s in %s does not exist'%(i,config))
             if not j[index]:
@@ -1661,30 +1797,48 @@ class gpload:
         """
         UPDATE case
         """
-        sql = 'update %s into_table ' % self.table_quoted
+        sql = 'update %s into_table ' % self.schemaTable
+        sql += 'set %s '%','.join(self.map_stuff('gpload:output:update_columns',(lambda x,y:'%s=from_table.%s' % (x, y)),index))
+        sql += 'from %s from_table' % fromname
 
-        sql += 'set %s '%','.join(self.map_stuff('gpload:output:update_columns',lambda x,y:'%s=from_table.%s' % (build_safe_table_name(self.db, x), build_safe_table_name(self.db, y)),index))
-
-        sql += 'from %s from_table' % build_safe_table_name(self.db, fromname)
-
-        match = self.map_stuff('gpload:output:match_columns',
-                    lambda x,y:'into_table.%s=from_table.%s' % \
-                    (build_safe_table_name(self.db, x),
-                     build_safe_table_name(self.db, y)), index)
+        match = self.map_stuff('gpload:output:match_columns'
+                              , lambda x,y:'into_table.%s=from_table.%s' % (x, y)
+                              , index)
 
         update_condition = self.getconfig('gpload:output:update_condition',
                             unicode, None)
         if update_condition:
-            # place table alias infront of column references
-
+            #
+            # Place the table alias infront of column references.
+            #
+            # The following logic is not bullet proof. It may not work
+            # correctly if the user uses an identifier in both its 
+            # delimited and un-delimited format (e.g. where c1 < 7 and "c1" > 2)
+            # Better lexing and parsing needs to be done here to fix all cases.
+            #
             update_condition = ' ' + update_condition + ' '
             for name, type, mapto, seq in self.into_columns:
                 regexp = '(?<=[^\w])%s(?=[^\w])' % name
                 self.log(self.DEBUG, 'update_condition re: ' + regexp)
-                update_condition = re.sub(regexp,
-                                    self.fix_update_cond,
-                                    update_condition)
-
+                temp_update_condition = update_condition
+                updateConditionList = splitIntoLiteralsAndNonLiterals(update_condition)
+                skip = False
+                newUpdateConditionList = []
+                update_condition = ''
+                for uc in updateConditionList:
+                    if skip == False:
+                       uc = re.sub(regexp, self.fix_update_cond, uc)
+                       skip = True
+                    update_condition = update_condition + uc 
+                if update_condition == temp_update_condition:
+                   # see if column can be undelimited, and try again.
+                   if len(name) > 2 and name[1:-1] == name[1:-1].lower():
+                      regexp = '(?<=[^\w])%s(?=[^\w])' % name[1:-1]
+                      self.log(self.DEBUG, 'update_condition undelimited re: ' + regexp)
+                      update_condition = re.sub( regexp
+                                               , self.fix_update_cond
+                                               , update_condition
+                                               )
             self.log(self.DEBUG, "updated update_condition to %s" %
                          update_condition)
             match.append(update_condition)
@@ -1698,7 +1852,7 @@ class gpload:
 
     def get_table_dist_key(self):
         sql = "select attname from pg_attribute a, gp_distribution_policy p "+\
-              "where a.attrelid = '" + self.table + "'::regclass and " + \
+              "where a.attrelid = '" + self.schemaTable + "'::regclass and " + \
               "a.attrelid = " + \
               "p.localoid and a.attnum = any (p.attrnums);"
         resultList = self.db.query(sql.encode('utf-8')).getresult()
@@ -1716,25 +1870,36 @@ class gpload:
         match_columns must be equal to the distribution key as we do not
         support UPDATE ... FROM unless this is the case.
         '''
-
-        distkey = set(self.get_table_dist_key())
+        distKeyList = self.get_table_dist_key()
+        distkey = set()
+        for dk in distKeyList:
+            distkey.add(quote_ident(dk)) 
 
         if len(distkey) == 0: # randomly distributed
-            self.log(self.ERROR, 'table "' + self.table + '" is ' +
+            self.log(self.ERROR, 'table "' + self.schemaTable + '" is ' +
                         'distributed randomly and ' +
                         'therefore does not support update or merge via gpload')
 
         self.distkey = distkey
         # update_columns better not be in distkey
-        update_columns = set(self.getconfig('gpload:output:update_columns', 
-                                            list))
+        updateColumnList = self.getconfig('gpload:output:update_columns'
+                                          , list
+                                          , returnOriginal=True
+                                          )
+        update_columns = convertListToDelimited(updateColumnList)
+        update_columns = set(update_columns)
         a = distkey.intersection(update_columns)
         if len(a):
             self.log(self.ERROR, 'update_columns cannot reference column(s) ' +
                         'in distribution key (%s)' % ', '.join(str(distkey)))
 
         # remember, match_columns might be a superset of the key
-        match_columns = set(self.getconfig('gpload:output:match_columns', list))
+        matchColumnList = self.getconfig('gpload:output:match_columns'
+                                        , list
+                                        , returnOriginal=True
+                                        )
+        match_columns = convertListToDelimited(matchColumnList)
+        match_columns = set(match_columns)
         a = distkey.intersection(match_columns)
         if a != distkey:
             self.log(self.ERROR, 
@@ -1751,7 +1916,7 @@ class gpload:
         # it would be tempting to use LIKE here but we cannot as it
         # inherits NOT NULL and other constraints from the target table
         # which might not actually be violated by this update 
-        sql = 'create temp table temp_%s' % self.name
+        sql = 'create temp table %s' % self.tempTableName
         if not self.from_cols_from_user:
             # don't put values serial columns
             from_cols = filter(lambda a: a[3] != True,
@@ -1759,8 +1924,7 @@ class gpload:
         else:
             from_cols = self.from_columns
         
-        cols = map(lambda a:'%s %s' %
-                   (build_safe_table_name(self.db, a[0]), a[1]), from_cols)
+        cols = map(lambda a:'%s %s' % (a[0], a[1]), from_cols)
 
         sql += "(%s)" % ','.join(cols)
         # make sure we set the correct distribution policy
@@ -1770,33 +1934,35 @@ class gpload:
         self.log(self.LOG, sql)
 
         if not self.options.D:
-            self.cleanupSql.append('drop table if exists temp_%s'%self.name)
+            self.cleanupSql.append('drop table if exists %s' % self.tempTableName)
             self.db.query(sql.encode('utf-8'))
 
         self.create_external_table()
-        self.do_insert('temp_%s' % self.name)
-        self.do_update('temp_%s' % self.name, 0)
+        self.do_insert(self.tempTableName)
+        # These rows are inserted temporarily for processing, so set inserted rows back to zero.
+        self.rowsInserted = 0
+        self.do_update(self.tempTableName, 0)
 
     def do_method_merge(self):
         """insert data not already in the table, update remaining items"""
 
         self.table_supports_update()
 
-        sql = 'create temp table temp_%s(like %s)'%(self.name,self.table_quoted)
+        sql = 'create temp table %s(like %s)' % (self.tempTableName, self.schemaTable)
         self.log(self.DEBUG, sql)
         if not self.options.D:
-            self.cleanupSql.append('drop table if exists temp_%s'%self.name)
+            self.cleanupSql.append('drop table if exists %s' % self.tempTableName)
             self.db.query(sql.encode('utf-8'))
         self.create_external_table()
-        self.do_insert('temp_%s' % self.name)
-        self.do_update('temp_%s' % self.name,0)
-        sql = 'insert into %s(' % self.table_quoted
+        self.do_insert(self.tempTableName)
+        self.do_update(self.tempTableName, 0)
+        sql = 'insert into %s(' % self.schemaTable
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
         matchColumns = self.getconfig('gpload:output:match_columns',list)
-        sql += 'select %s '%','.join(map(lambda a:'from_table.%s' % build_safe_table_name(self.db, a[0]),self.into_columns))
+        sql += 'select %s '%','.join(map(lambda a:'from_table.%s' % a[0], self.into_columns))
         sql += 'from(select *,row_number()over(partition by %s)as gpload_row_number '%','.join(matchColumns)
-        sql += 'from temp_%s)as from_table '%self.name
-        sql += 'left outer join %s into_table ' % self.table_quoted
+        sql += 'from %s)as from_table '%self.tempTableName
+        sql += 'left outer join %s into_table ' % self.schemaTable
         sql += 'on %s '%' and '.join(match)
         where = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s is null'%x,0)
         sql += 'where %s '%' and '.join(where)
@@ -1816,10 +1982,10 @@ class gpload:
             self.log(self.LOG, "Truncate table")
             if not self.options.D:
                 try:
-                    truncateSQLtext = "truncate %s" % self.table_quoted
+                    truncateSQLtext = "truncate %s" % self.schemaTable
                     self.db.query(truncateSQLtext.encode('utf-8'))
                 except Exception, e:
-                    self.log(self.ERROR, 'could not execute truncate target %s: %s' % (self.table_quoted, str(p)))
+                    self.log(self.ERROR, 'could not execute truncate target %s: %s' % (self.schemaTable, str(p)))
 
         # sql pre or post processing?
         sql = self.getconfig('gpload:sql', list, default=None)
@@ -1861,7 +2027,6 @@ class gpload:
         start = time.time()
         self.read_config()
         self.setup_connection()
-        self.table_quoted = build_safe_table_name(self.db, self.table)
         self.read_table_metadata()
         self.read_columns()
         self.read_mapping()
