@@ -88,16 +88,18 @@ def usage(exitarg = None):
 ###############################
 
 def getversion():
-    db = connect2(GV.cfg[1])
+    versions = ["3.1", "3.2", "3.3", "3.4", "main"]
+    db = connect()
     curs = db.query('''
-    select regexp_replace(version(), E'.*PostgreSQL \([^ ]*\).*Greenplum.*',
-    E'\\\\1') as ver;''')
+    select regexp_replace(version(), 
+       E'.*PostgreSQL [^ ]+ .Greenplum Database ([1-9]+.[0-9]+|main).*', 
+       E'\\\\1') as ver;''')
 
     row = curs.getresult()[0]
     version = row[0]
 
     logger.debug('got version %s' % version)
-    if not (version in ("8.2.6", "8.2.9", "8.2.10", "8.2.13", "8.2.14")):
+    if not (version in versions):
         usage('Error: only Greenplum database 3.1, 3.2, 3.3 and 3.4 are supported')
 
     return version
@@ -445,10 +447,18 @@ def checkPGType():
 def checkPGExtTable():
     logger.info('-----------------------------------')
     logger.info('Checking pg_exttable ...')
-    qry = '''SELECT reloid
-         FROM pg_exttable te left outer join 
-              pg_class tc on (te.reloid = tc.oid and tc.relstorage = 'x')
-        WHERE tc.oid is NULL'''
+
+    if GV.version < "3.4":
+        qry = '''SELECT reloid
+             FROM pg_exttable te left outer join 
+                  pg_class tc on (te.reloid = tc.oid and tc.relkind = 'x')
+             WHERE tc.oid is NULL'''
+    else:
+        qry = '''SELECT reloid
+             FROM pg_exttable te left outer join 
+                  pg_class tc on (te.reloid = tc.oid and tc.relstorage = 'x')
+             WHERE tc.oid is NULL'''
+
     err = connect2run(qry, ('reloid',))
     if not err:
         logger.info('[OK] pg_exttable')
@@ -1051,8 +1061,9 @@ def checkOwners():
 
     logger.info('-----------------------------------')
     logger.info('Checking table ownership')
-    if not (GV.version == "8.2.13" or GV.version == "8.2.10"):
+    if GV.version < "3.3":
         logger.info('Skipping...')
+        return
 
     db = connect2(GV.cfg[1], utilityMode=False)
     qry = '''
@@ -1087,8 +1098,8 @@ def closeDbs():
 if __name__ == '__main__':
 
     parseCommandLine()
-    GV.cfg = getGPConfiguration()
     GV.version = getversion()
+    GV.cfg = getGPConfiguration()
     
     # turn on toast table check for 3.2
     if GV.opt['-o'] == False and not GV.version == "8.2.6":
