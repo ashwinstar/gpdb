@@ -53,6 +53,8 @@ typedef struct ExplainState
     StringInfoData  workbuf;        /* a scratch buffer */
 } ExplainState;
 
+extern bool Test_print_direct_dispatch_info;
+
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
 							const char *queryString,
 							ParamListInfo params, TupOutputState *tstate);
@@ -86,10 +88,6 @@ static void
 show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 			     const char *qlabel,
                  StringInfo str, int indent, ExplainState *es);
-
-/* disabled for now, since direct dispatch can turn off at unexpected times.
-#define SHOW_DIRECT_DISPATCH_CONTENT_IDS
-*/
 
 /*
  * ExplainQuery -
@@ -782,14 +780,14 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
 		case GANGTYPE_PRIMARY_WRITER:
 		case GANGTYPE_PRIMARY_READER:
 			appendStringInfo(str, "  (slice%d", sliceId);
-#ifdef SHOW_DIRECT_DISPATCH_CONTENT_IDS
-			if ( slice->directDispatch.isDirectDispatch )
+
+			if ( Test_print_direct_dispatch_info &&
+			     slice->directDispatch.isDirectDispatch )
 			{
 				Assert( list_length(slice->directDispatch.contentIds) == 1);
 				appendStringInfo(str, " on content:%d)", linitial_int(slice->directDispatch.contentIds));
 			}
 			else
-#endif // SHOW_DIRECT_DISPATCH_CONTENT_IDS
 			{
 				appendStringInfo(str, ")");
 			}
@@ -1071,12 +1069,14 @@ explain_outNode(StringInfo str,
                 int         nSenders = slice->numGangMembersToBeActive;
 				int         nReceivers = 0;
 
-#ifndef SHOW_DIRECT_DISPATCH_CONTENT_IDS
-                if ( slice->directDispatch.isDirectDispatch && slice->gangSize != 1 )
+				if ( ! Test_print_direct_dispatch_info)
 				{
-                	nSenders = getgpsegmentCount();
+					/* restore full # of segments if not printing direct dispatch info */
+					if (  slice->directDispatch.isDirectDispatch && slice->gangSize != 1 )
+					{
+						nSenders = getgpsegmentCount();
+					}
 				}
-#endif // SHOW_DIRECT_DISPATCH_CONTENT_IDS
 
 				switch (pMotion->motionType)
 				{
