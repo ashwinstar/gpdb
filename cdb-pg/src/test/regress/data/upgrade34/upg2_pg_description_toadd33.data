@@ -1,18 +1,10 @@
 objoid|classoid|objsubid|description
-9998|1255|0|convert an object name to oid.
-9999|1255|0|Greenplum fault testing only
-5032|1255|0|Return reltuples/relpages information for relation.
-3302|1255|0|I/O
-3303|1255|0|I/O
-3304|1255|0|I/O
-3305|1255|0|I/O
-3312|1255|0|I/O
-3313|1255|0|I/O
-3314|1255|0|I/O
-3315|1255|0|I/O
-3300|1247|0|(segment file num, row number), logical location of append-only tuple
-3310|1247|0|(h/h) -- the hexadecimal xlogid and xrecoff of an XLOG location
+820|1255|0|returns the currently executing query
+821|1255|0|list of SQL keywords
+822|1255|0|returns the type of the argument
+2878|1255|0|terminate a server process
 2896|1255|0|convert generic options array to name/value table
+2971|1255|0|convert boolean to text
 3112|1255|0|user privilege on foreign data wrapper by username, foreign data wrapper name
 3113|1255|0|user privilege on foreign data wrapper by username, foreign data wrapper oid
 3114|1255|0|user privilege on foreign data wrapper by user oid, foreign data wrapper name
@@ -25,17 +17,21 @@ objoid|classoid|objsubid|description
 3121|1255|0|user privilege on server by user oid, server oid
 3122|1255|0|current user privilege on server by server name
 3123|1255|0|current user privilege on server by server oid
-820|1255|0|returns the currently executing query
-821|1255|0|list of SQL keywords
-822|1255|0|returns the type of the argument
-2878|1255|0|terminate a server process
-2971|1255|0|convert boolean to text
-5034|1255|0|partition configuration for a given relation
-5040|1255|0|change weight of all the backends for a given session id
-5041|1255|0|change weight of all the backends for a given session id
-5042|1255|0|list priorities of backends
 3302|1255|0|I/O
 3303|1255|0|I/O
 3304|1255|0|I/O
 3305|1255|0|I/O
+3312|1255|0|I/O
+3313|1255|0|I/O
+3314|1255|0|I/O
+3315|1255|0|I/O
+3300|1247|0|(segment file num, row number), logical location of append-only tuple
+3310|1247|0|(h/h) -- the hexadecimal xlogid and xrecoff of an XLOG location
+5032|1255|0|Return reltuples/relpages information for relation.
+5034|1255|0|partition configuration for a given relation
+5040|1255|0|change weight of all the backends for a given session id
+5041|1255|0|change weight of all the backends for a given session id
+5042|1255|0|list priorities of backends
+9998|1255|0|convert an object name to oid.
+9999|1255|0|Greenplum fault testing only
 \.

@@ -1225,7 +1225,7 @@ from public.pg_attribute a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-except
+except all
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute_v33 a,
      public.pg_class_v33 c,
@@ -1244,7 +1244,7 @@ from public.pg_attribute_v33 a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-except
+except all
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute a,
      public.pg_class c,
@@ -1258,14 +1258,14 @@ from public.pg_attribute a,
 
 -- compare old and new pg_index
 select * from public.pg_index_v33 where indexrelid < 10000
-except
+except all
 select * from public.pg_index where indexrelid < 10000;
  indexrelid | indrelid | indnatts | indisunique | indisprimary | indisclustered | indisvalid | indkey | indclass | indexprs | indpred 
 ------------+----------+----------+-------------+--------------+----------------+------------+--------+----------+----------+---------
 (0 rows)
 
 select * from public.pg_index where indexrelid < 10000
-except
+except all
 select * from public.pg_index_v33 where indexrelid < 10000;
  indexrelid | indrelid | indnatts | indisunique | indisprimary | indisclustered | indisvalid | indkey | indclass | indexprs | indpred 
 ------------+----------+----------+-------------+--------------+----------------+------------+--------+----------+----------+---------
@@ -1277,7 +1277,7 @@ select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
        proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
        prosrc, probin
 from public.pg_proc_v33 where oid < 10000
-except
+except all
 select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
        proisstrict, proretset, provolatile, pronargs, prorettype,
        proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
@@ -1292,7 +1292,7 @@ select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
        proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
        prosrc, probin
 from public.pg_proc where oid < 10000
-except
+except all
 select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
        proisstrict, proretset, provolatile, pronargs, prorettype,
        proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
@@ -1304,14 +1304,14 @@ from public.pg_proc_v33 where oid < 10000;
 
 -- compare old and new pg_operator
 select * from public.pg_operator_v33 where oid < 10000
-except
+except all
 select * from public.pg_operator where oid < 10000;
  oprname | oprnamespace | oprowner | oprkind | oprcanhash | oprleft | oprright | oprresult | oprcom | oprnegate | oprlsortop | oprrsortop | oprltcmpop | oprgtcmpop | oprcode | oprrest | oprjoin 
 ---------+--------------+----------+---------+------------+---------+----------+-----------+--------+-----------+------------+------------+------------+------------+---------+---------+---------
 (0 rows)
 
 select * from public.pg_operator where oid < 10000
-except
+except all
 select * from public.pg_operator_v33 where oid < 10000;
  oprname | oprnamespace | oprowner | oprkind | oprcanhash | oprleft | oprright | oprresult | oprcom | oprnegate | oprlsortop | oprrsortop | oprltcmpop | oprgtcmpop | oprcode | oprrest | oprjoin 
 ---------+--------------+----------+---------+------------+---------+----------+-----------+--------+-----------+------------+------------+------------+------------+---------+---------+---------
@@ -1325,7 +1325,7 @@ select relname, relnamespace,
 	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
 	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class_v33 where oid < 10000 and relname !~ 'pg_toast'
-except
+except all
 select relname, relnamespace, 
 	   case when reltype > 10000 then 10000 else reltype end as reltype,
        relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
@@ -1344,7 +1344,7 @@ select relname, relnamespace,
 	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
 	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class where oid < 10000 and relname !~ 'pg_toast'
-except
+except all
 select relname, relnamespace, 
 	   case when reltype > 10000 then 10000 else reltype end as reltype,
        relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
@@ -1358,14 +1358,14 @@ from public.pg_class_v33 where oid < 10000 and relname !~ 'pg_toast';
 
 -- compare old and new pg_type
 select oid, * from public.pg_type_v33 where oid < 10000
-except
+except all
 select oid, * from public.pg_type where oid < 10000;
  oid | typname | typnamespace | typowner | typlen | typbyval | typtype | typisdefined | typdelim | typrelid | typelem | typinput | typoutput | typreceive | typsend | typanalyze | typalign | typstorage | typnotnull | typbasetype | typtypmod | typndims | typdefaultbin | typdefault 
 -----+---------+--------------+----------+--------+----------+---------+--------------+----------+----------+---------+----------+-----------+------------+---------+------------+----------+------------+------------+-------------+-----------+----------+---------------+------------
 (0 rows)
 
 select oid, * from public.pg_type where oid < 10000
-except
+except all
 select oid, * from public.pg_type_v33 where oid < 10000;
  oid | typname | typnamespace | typowner | typlen | typbyval | typtype | typisdefined | typdelim | typrelid | typelem | typinput | typoutput | typreceive | typsend | typanalyze | typalign | typstorage | typnotnull | typbasetype | typtypmod | typndims | typdefaultbin | typdefault 
 -----+---------+--------------+----------+--------+----------+---------+--------------+----------+----------+---------+----------+-----------+------------+---------+------------+----------+------------+------------+-------------+-----------+----------+---------------+------------
@@ -1373,14 +1373,14 @@ select oid, * from public.pg_type_v33 where oid < 10000;
 
 -- compare old and new pg_aggregate
 select * from public.pg_aggregate_v33 where aggfnoid::oid < 10000
-except
+except all
 select * from public.pg_aggregate where aggfnoid::oid < 10000;
  aggfnoid | aggtransfn | agginvtransfn | aggprelimfn | agginvprelimfn | aggfinalfn | aggsortop | aggtranstype | agginitval 
 ----------+------------+---------------+-------------+----------------+------------+-----------+--------------+------------
 (0 rows)
 
 select * from public.pg_aggregate where aggfnoid::oid < 10000
-except
+except all
 select * from public.pg_aggregate_v33 where aggfnoid::oid < 10000;
  aggfnoid | aggtransfn | agginvtransfn | aggprelimfn | agginvprelimfn | aggfinalfn | aggsortop | aggtranstype | agginitval 
 ----------+------------+---------------+-------------+----------------+------------+-----------+--------------+------------
@@ -1388,14 +1388,14 @@ select * from public.pg_aggregate_v33 where aggfnoid::oid < 10000;
 
 -- pg_namespace
 select oid, nspname, nspowner from public.pg_namespace_v33 where oid < 10000
-except
+except all
 select oid, nspname, nspowner from public.pg_namespace where oid < 10000;
  oid | nspname | nspowner 
 -----+---------+----------
 (0 rows)
 
 select oid, nspname, nspowner from public.pg_namespace where oid < 10000 
-except
+except all
 select oid, nspname, nspowner from public.pg_namespace_v33 where oid < 10000;
  oid | nspname | nspowner 
 -----+---------+----------
@@ -1403,14 +1403,14 @@ select oid, nspname, nspowner from public.pg_namespace_v33 where oid < 10000;
 
 -- pg_conversion
 select * from public.pg_conversion_v33
-except
+except all
 select * from public.pg_conversion;
  conname | connamespace | conowner | conforencoding | contoencoding | conproc | condefault 
 ---------+--------------+----------+----------------+---------------+---------+------------
 (0 rows)
 
 select * from public.pg_conversion
-except
+except all
 select * from public.pg_conversion_v33;
  conname | connamespace | conowner | conforencoding | contoencoding | conproc | condefault 
 ---------+--------------+----------+----------------+---------------+---------+------------
@@ -1418,14 +1418,14 @@ select * from public.pg_conversion_v33;
 
 -- pg_description
 select * from public.pg_description_v33 where objoid < 10000
-except
+except all
 select * from public.pg_description where objoid < 10000;
  objoid | classoid | objsubid | description 
 --------+----------+----------+-------------
 (0 rows)
 
 select * from public.pg_description where objoid < 10000
-except
+except all
 select * from public.pg_description_v33 where objoid < 10000;
  objoid | classoid | objsubid | description 
 --------+----------+----------+-------------
@@ -1433,14 +1433,14 @@ select * from public.pg_description_v33 where objoid < 10000;
 
 -- pg_depend
 select * from public.pg_depend_v33 where objid < 10000 and refobjid < 10000
-except
+except all
 select * from public.pg_depend where objid < 10000 and refobjid < 10000;
  classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype 
 ---------+-------+----------+------------+----------+-------------+---------
 (0 rows)
 
 select * from public.pg_depend where objid < 10000 and refobjid < 10000
-except
+except all
 select * from public.pg_depend_v33 where objid < 10000 and refobjid < 10000;
  classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype 
 ---------+-------+----------+------------+----------+-------------+---------
@@ -1448,14 +1448,14 @@ select * from public.pg_depend_v33 where objid < 10000 and refobjid < 10000;
 
 -- pg_shdescription
 select * from public.pg_shdescription_v33 where objoid < 10000
-except
+except all
 select * from public.pg_shdescription where objoid < 10000;
  objoid | classoid | description 
 --------+----------+-------------
 (0 rows)
 
 select * from public.pg_shdescription where objoid < 10000
-except
+except all
 select * from public.pg_shdescription_v33 where objoid < 10000;
  objoid | classoid | description 
 --------+----------+-------------
@@ -1463,14 +1463,14 @@ select * from public.pg_shdescription_v33 where objoid < 10000;
 
 -- pg_shdepend
 select * from public.pg_shdepend_v33 where objid < 10000 and refobjid < 10000
-except
+except all
 select * from public.pg_shdepend where objid < 10000 and refobjid < 10000;
  dbid | classid | objid | refclassid | refobjid | deptype 
 ------+---------+-------+------------+----------+---------
 (0 rows)
 
 select * from public.pg_shdepend where objid < 10000 and refobjid < 10000
-except
+except all
 select * from public.pg_shdepend_v33 where objid < 10000 and refobjid < 10000;
  dbid | classid | objid | refclassid | refobjid | deptype 
 ------+---------+-------+------------+----------+---------
@@ -1561,14 +1561,14 @@ select * from public.pg_resqueue_v33 where oid < 10000;
 
 -- compare old and new pg_cast
 select * from public.pg_cast
-except
+except all
 select * from public.pg_cast_v33;
  castsource | casttarget | castfunc | castcontext 
 ------------+------------+----------+-------------
 (0 rows)
 
 select * from public.pg_cast_v33
-except
+except all
 select * from public.pg_cast;
  castsource | casttarget | castfunc | castcontext 
 ------------+------------+----------+-------------
@@ -1576,14 +1576,14 @@ select * from public.pg_cast;
 
 -- pg_opclass
 select * from public.pg_opclass
-except
+except all
 select * from public.pg_opclass_v33;
  opcamid | opcname | opcnamespace | opcowner | opcintype | opcdefault | opckeytype 
 ---------+---------+--------------+----------+-----------+------------+------------
 (0 rows)
 
 select * from public.pg_opclass_v33
-except
+except all
 select * from public.pg_opclass;
  opcamid | opcname | opcnamespace | opcowner | opcintype | opcdefault | opckeytype 
 ---------+---------+--------------+----------+-----------+------------+------------
@@ -1591,14 +1591,14 @@ select * from public.pg_opclass;
 
 -- pg_amproc
 select * from public.pg_amproc
-except
+except all
 select * from public.pg_amproc_v33;
  amopclaid | amprocsubtype | amprocnum | amproc 
 -----------+---------------+-----------+--------
 (0 rows)
 
 select * from public.pg_amproc_v33
-except
+except all
 select * from public.pg_amproc;
  amopclaid | amprocsubtype | amprocnum | amproc 
 -----------+---------------+-----------+--------
@@ -1606,14 +1606,14 @@ select * from public.pg_amproc;
 
 -- pg_amop
 select * from public.pg_amop
-except
+except all
 select * from public.pg_amop_v33;
  amopclaid | amopsubtype | amopstrategy | amopreqcheck | amopopr 
 -----------+-------------+--------------+--------------+---------
 (0 rows)
 
 select * from public.pg_amop_v33
-except
+except all
 select * from public.pg_amop;
  amopclaid | amopsubtype | amopstrategy | amopreqcheck | amopopr 
 -----------+-------------+--------------+--------------+---------
@@ -2026,7 +2026,7 @@ from public.pg_attribute a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-except
+except all
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from pg_catalog.pg_attribute a,
      pg_catalog.pg_class c,
@@ -2045,7 +2045,7 @@ from pg_catalog.pg_attribute a,
      where c.oid = a.attrelid and a.attnum > 0
      and t.oid = a.atttypid
      and c.oid < 10000
-except
+except all
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from public.pg_attribute a,
      public.pg_class c,
@@ -2059,14 +2059,14 @@ from public.pg_attribute a,
 
 -- compare old and new pg_index
 select * from pg_catalog.pg_index where indexrelid < 10000
-except
+except all
 select * from public.pg_index where indexrelid < 10000;
  indexrelid | indrelid | indnatts | indisunique | indisprimary | indisclustered | indisvalid | indkey | indclass | indexprs | indpred 
 ------------+----------+----------+-------------+--------------+----------------+------------+--------+----------+----------+---------
 (0 rows)
 
 select * from public.pg_index where indexrelid < 10000
-except
+except all
 select * from pg_catalog.pg_index where indexrelid < 10000;
  indexrelid | indrelid | indnatts | indisunique | indisprimary | indisclustered | indisvalid | indkey | indclass | indexprs | indpred 
 ------------+----------+----------+-------------+--------------+----------------+------------+--------+----------+----------+---------
@@ -2078,7 +2078,7 @@ select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
        proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
        prosrc, probin
 from pg_catalog.pg_proc where oid < 10000
-except
+except all
 select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
        proisstrict, proretset, provolatile, pronargs, prorettype,
        proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
@@ -2093,7 +2093,7 @@ select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
        proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
        prosrc, probin
 from public.pg_proc where oid < 10000
-except
+except all
 select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
        proisstrict, proretset, provolatile, pronargs, prorettype,
        proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
@@ -2105,14 +2105,14 @@ from pg_catalog.pg_proc where oid < 10000;
 
 -- compare old and new pg_operator
 select * from pg_catalog.pg_operator where oid < 10000
-except
+except all
 select * from public.pg_operator where oid < 10000;
  oprname | oprnamespace | oprowner | oprkind | oprcanhash | oprleft | oprright | oprresult | oprcom | oprnegate | oprlsortop | oprrsortop | oprltcmpop | oprgtcmpop | oprcode | oprrest | oprjoin 
 ---------+--------------+----------+---------+------------+---------+----------+-----------+--------+-----------+------------+------------+------------+------------+---------+---------+---------
 (0 rows)
 
 select * from public.pg_operator where oid < 10000
-except
+except all
 select * from pg_catalog.pg_operator where oid < 10000;
  oprname | oprnamespace | oprowner | oprkind | oprcanhash | oprleft | oprright | oprresult | oprcom | oprnegate | oprlsortop | oprrsortop | oprltcmpop | oprgtcmpop | oprcode | oprrest | oprjoin 
 ---------+--------------+----------+---------+------------+---------+----------+-----------+--------+-----------+------------+------------+------------+------------+---------+---------+---------
@@ -2126,7 +2126,7 @@ select relname, relnamespace,
 	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
 	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from pg_catalog.pg_class where oid < 10000 and relname !~ 'pg_toast'
-except
+except all
 select relname, relnamespace, 
 	   case when reltype > 10000 then 10000 else reltype end as reltype,
        relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
@@ -2145,7 +2145,7 @@ select relname, relnamespace,
 	   relstorage, relnatts, relchecks, reltriggers, relukeys, relfkeys, 
 	   relrefs, relhasoids, relhaspkey, relhasrules, relhassubclass, reloptions
 from public.pg_class where oid < 10000 and relname !~ 'pg_toast'
-except
+except all
 select relname, relnamespace, 
 	   case when reltype > 10000 then 10000 else reltype end as reltype,
        relowner, relam, reltablespace, reltoastrelid, reltoastidxid, 
@@ -2159,14 +2159,14 @@ from pg_catalog.pg_class where oid < 10000 and relname !~ 'pg_toast';
 
 -- compare old and new pg_type
 select oid, * from pg_catalog.pg_type where oid < 10000
-except
+except all
 select oid, * from public.pg_type where oid < 10000;
  oid | typname | typnamespace | typowner | typlen | typbyval | typtype | typisdefined | typdelim | typrelid | typelem | typinput | typoutput | typreceive | typsend | typanalyze | typalign | typstorage | typnotnull | typbasetype | typtypmod | typndims | typdefaultbin | typdefault 
 -----+---------+--------------+----------+--------+----------+---------+--------------+----------+----------+---------+----------+-----------+------------+---------+------------+----------+------------+------------+-------------+-----------+----------+---------------+------------
 (0 rows)
 
 select oid, * from public.pg_type where oid < 10000
-except
+except all
 select oid, * from pg_catalog.pg_type where oid < 10000;
  oid | typname | typnamespace | typowner | typlen | typbyval | typtype | typisdefined | typdelim | typrelid | typelem | typinput | typoutput | typreceive | typsend | typanalyze | typalign | typstorage | typnotnull | typbasetype | typtypmod | typndims | typdefaultbin | typdefault 
 -----+---------+--------------+----------+--------+----------+---------+--------------+----------+----------+---------+----------+-----------+------------+---------+------------+----------+------------+------------+-------------+-----------+----------+---------------+------------
@@ -2174,14 +2174,14 @@ select oid, * from pg_catalog.pg_type where oid < 10000;
 
 -- compare old and new pg_aggregate
 select * from pg_catalog.pg_aggregate where aggfnoid::oid < 10000
-except
+except all
 select * from public.pg_aggregate where aggfnoid::oid < 10000;
  aggfnoid | aggtransfn | agginvtransfn | aggprelimfn | agginvprelimfn | aggfinalfn | aggsortop | aggtranstype | agginitval 
 ----------+------------+---------------+-------------+----------------+------------+-----------+--------------+------------
 (0 rows)
 
 select * from public.pg_aggregate where aggfnoid::oid < 10000
-except
+except all
 select * from pg_catalog.pg_aggregate where aggfnoid::oid < 10000;
  aggfnoid | aggtransfn | agginvtransfn | aggprelimfn | agginvprelimfn | aggfinalfn | aggsortop | aggtranstype | agginitval 
 ----------+------------+---------------+-------------+----------------+------------+-----------+--------------+------------
@@ -2189,14 +2189,14 @@ select * from pg_catalog.pg_aggregate where aggfnoid::oid < 10000;
 
 -- pg_namespace
 select oid, nspname, nspowner from pg_catalog.pg_namespace where oid < 10000
-except
+except all
 select oid, nspname, nspowner from public.pg_namespace where oid < 10000;
  oid | nspname | nspowner 
 -----+---------+----------
 (0 rows)
 
 select oid, nspname, nspowner from public.pg_namespace where oid < 10000 
-except
+except all
 select oid, nspname, nspowner from pg_catalog.pg_namespace where oid < 10000;
  oid | nspname | nspowner 
 -----+---------+----------
@@ -2204,14 +2204,14 @@ select oid, nspname, nspowner from pg_catalog.pg_namespace where oid < 10000;
 
 -- pg_conversion
 select * from pg_catalog.pg_conversion
-except
+except all
 select * from public.pg_conversion;
  conname | connamespace | conowner | conforencoding | contoencoding | conproc | condefault 
 ---------+--------------+----------+----------------+---------------+---------+------------
 (0 rows)
 
 select * from public.pg_conversion
-except
+except all
 select * from pg_catalog.pg_conversion;
  conname | connamespace | conowner | conforencoding | contoencoding | conproc | condefault 
 ---------+--------------+----------+----------------+---------------+---------+------------
@@ -2219,14 +2219,14 @@ select * from pg_catalog.pg_conversion;
 
 -- pg_description
 select * from pg_catalog.pg_description where objoid < 10000
-except
+except all
 select * from public.pg_description where objoid < 10000;
  objoid | classoid | objsubid | description 
 --------+----------+----------+-------------
 (0 rows)
 
 select * from public.pg_description where objoid < 10000
-except
+except all
 select * from pg_catalog.pg_description where objoid < 10000;
  objoid | classoid | objsubid | description 
 --------+----------+----------+-------------
@@ -2234,14 +2234,14 @@ select * from pg_catalog.pg_description where objoid < 10000;
 
 -- pg_depend
 select * from pg_catalog.pg_depend where objid < 10000 and refobjid < 10000
-except
+except all
 select * from public.pg_depend where objid < 10000 and refobjid < 10000;
  classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype 
 ---------+-------+----------+------------+----------+-------------+---------
 (0 rows)
 
 select * from public.pg_depend where objid < 10000 and refobjid < 10000
-except
+except all
 select * from pg_catalog.pg_depend where objid < 10000 and refobjid < 10000;
  classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype 
 ---------+-------+----------+------------+----------+-------------+---------
@@ -2249,14 +2249,14 @@ select * from pg_catalog.pg_depend where objid < 10000 and refobjid < 10000;
 
 -- pg_shdescription
 select * from pg_catalog.pg_shdescription where objoid < 10000
-except
+except all
 select * from public.pg_shdescription where objoid < 10000;
  objoid | classoid | description 
 --------+----------+-------------
 (0 rows)
 
 select * from public.pg_shdescription where objoid < 10000
-except
+except all
 select * from pg_catalog.pg_shdescription where objoid < 10000;
  objoid | classoid | description 
 --------+----------+-------------
@@ -2264,14 +2264,14 @@ select * from pg_catalog.pg_shdescription where objoid < 10000;
 
 -- pg_shdepend
 select * from pg_catalog.pg_shdepend where objid < 10000 and refobjid < 10000
-except
+except all
 select * from public.pg_shdepend where objid < 10000 and refobjid < 10000;
  dbid | classid | objid | refclassid | refobjid | deptype 
 ------+---------+-------+------------+----------+---------
 (0 rows)
 
 select * from public.pg_shdepend where objid < 10000 and refobjid < 10000
-except
+except all
 select * from pg_catalog.pg_shdepend where objid < 10000 and refobjid < 10000;
  dbid | classid | objid | refclassid | refobjid | deptype 
 ------+---------+-------+------------+----------+---------
@@ -2352,14 +2352,14 @@ select * from pg_catalog.pg_exttable where reloid < 10000;
 
 -- compare old and new pg_resqueue
 select * from pg_catalog.pg_resqueue where oid < 10000
-except
+except all
 select * from public.pg_resqueue where oid < 10000;
  rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
 ---------+---------------+--------------+---------------+--------------------
 (0 rows)
 
 select * from public.pg_resqueue where oid < 10000
-except
+except all
 select * from pg_catalog.pg_resqueue where oid < 10000;
  rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
 ---------+---------------+--------------+---------------+--------------------
@@ -2367,14 +2367,14 @@ select * from pg_catalog.pg_resqueue where oid < 10000;
 
 -- compare old and new pg_cast
 select * from pg_catalog.pg_cast
-except
+except all
 select * from public.pg_cast;
  castsource | casttarget | castfunc | castcontext 
 ------------+------------+----------+-------------
 (0 rows)
 
 select * from public.pg_cast
-except
+except all
 select * from pg_catalog.pg_cast;
  castsource | casttarget | castfunc | castcontext 
 ------------+------------+----------+-------------
@@ -2382,14 +2382,14 @@ select * from pg_catalog.pg_cast;
 
 -- pg_opclass
 select * from pg_catalog.pg_opclass
-except
+except all
 select * from public.pg_opclass;
  opcamid | opcname | opcnamespace | opcowner | opcintype | opcdefault | opckeytype 
 ---------+---------+--------------+----------+-----------+------------+------------
 (0 rows)
 
 select * from public.pg_opclass
-except
+except all
 select * from pg_catalog.pg_opclass;
  opcamid | opcname | opcnamespace | opcowner | opcintype | opcdefault | opckeytype 
 ---------+---------+--------------+----------+-----------+------------+------------
@@ -2397,14 +2397,14 @@ select * from pg_catalog.pg_opclass;
 
 -- pg_amproc
 select * from pg_catalog.pg_amproc
-except
+except all
 select * from public.pg_amproc;
  amopclaid | amprocsubtype | amprocnum | amproc 
 -----------+---------------+-----------+--------
 (0 rows)
 
 select * from public.pg_amproc
-except
+except all
 select * from pg_catalog.pg_amproc;
  amopclaid | amprocsubtype | amprocnum | amproc 
 -----------+---------------+-----------+--------
@@ -2412,14 +2412,14 @@ select * from pg_catalog.pg_amproc;
 
 -- pg_amop
 select * from pg_catalog.pg_amop
-except
+except all
 select * from public.pg_amop;
  amopclaid | amopsubtype | amopstrategy | amopreqcheck | amopopr 
 -----------+-------------+--------------+--------------+---------
 (0 rows)
 
 select * from public.pg_amop
-except
+except all
 select * from pg_catalog.pg_amop;
  amopclaid | amopsubtype | amopstrategy | amopreqcheck | amopopr 
 -----------+-------------+--------------+--------------+---------
@@ -2427,14 +2427,14 @@ select * from pg_catalog.pg_amop;
 
 -- pg_tablespace
 select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace
-except
+except all
 select oid, spcname, spcowner, spcfsoid from public.pg_tablespace;
  oid | spcname | spcowner | spcfsoid 
 -----+---------+----------+----------
 (0 rows)
 
 select oid, spcname, spcowner, spcfsoid from public.pg_tablespace
-except
+except all
 select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace;
  oid | spcname | spcowner | spcfsoid 
 -----+---------+----------+----------

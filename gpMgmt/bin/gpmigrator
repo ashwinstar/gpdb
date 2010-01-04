@@ -2976,6 +2976,7 @@ This issue must be resolved before upgrade can complete.
                 runfiles.extend(["loadcat34.source.in",
                                  "loadcat34_sh.source.in"])
                 datafiles.extend(["upg2_pg_class_toadd33.data.in",
+                                  "upg2_pg_cast_toadd33.data",
                                   "upg2_pg_attribute_toadd33.data.in",
                                   "upg2_pg_type_toadd33.data.in",
                                   "upg2_pg_index_toadd33.data.in",
@@ -3045,6 +3046,7 @@ This issue must be resolved before upgrade can complete.
                         output.write(line)
                     input.close()
                     output.close()
+
 
     def SetCatVersion(self, frm, to):
         '''

@@ -1,16 +1,11 @@
 oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|proretset|provolatile|pronargs|prorettype|proiswin|proargtypes|proallargtypes|proargmodes|proargnames|prosrc|probin|proacl
-9900|aocsvpinfo_decode|11|10|12|f|f|t|f|i|3|20|f|1562 23 23|\N|\N|\N|aocsvpinfo_decode|-|\N
-9998|pg_objname_to_oid|11|10|12|f|f|t|f|i|1|26|f|25|\N|\N|\N|pg_objname_to_oid|-|\N
-5032|gp_statistics_estimate_reltuples_relpages_oid|11|10|12|f|f|t|f|v|1|1021|f|26|\N|\N|\N|gp_statistics_estimate_reltuples_relpages_oid|-|\N
-3302|gpaotidin|11|10|12|f|f|t|f|i|1|3300|f|2275|\N|\N|\N|gpaotidin|-|\N
-3303|gpaotidout|11|10|12|f|f|t|f|i|1|2275|f|3300|\N|\N|\N|gpaotidout|-|\N
-3304|gpaotidrecv|11|10|12|f|f|t|f|i|1|3300|f|2281|\N|\N|\N|gpaotidrecv|-|\N
-3305|gpaotidsend|11|10|12|f|f|t|f|i|1|17|f|3300|\N|\N|\N|gpaotidsend|-|\N
-3312|gpxloglocin|11|10|12|f|f|t|f|i|1|3310|f|2275|\N|\N|\N|gpxloglocin|-|\N
-3313|gpxloglocout|11|10|12|f|f|t|f|i|1|2275|f|3310|\N|\N|\N|gpxloglocout|-|\N
-3314|gpxloglocrecv|11|10|12|f|f|t|f|i|1|3310|f|2281|\N|\N|\N|gpxloglocrecv|-|\N
-3315|gpxloglocsend|11|10|12|f|f|t|f|i|1|17|f|3310|\N|\N|\N|gpxloglocsend|-|\N
+820|current_query|11|10|12|f|f|f|f|v|0|25|f||\N|\N|\N|current_query|-|\N
+821|pg_get_keywords|11|10|12|f|f|t|t|s|0|2249|f||{25,18,25}|{o,o,o}|{word,catcode,catdesc}|pg_get_keywords|-|\N
+822|pg_typeof|11|10|12|f|f|f|f|s|1|2206|f|2276|\N|\N|\N|pg_typeof|-|\N
+2878|pg_terminate_backend|11|10|12|f|f|t|f|v|1|16|f|23|\N|\N|\N|pg_terminate_backend|-|\N
+2971|text|11|10|12|f|f|t|f|i|1|25|f|16|\N|\N|\N|booltext|-|\N
 2896|pg_options_to_table|11|10|12|f|f|t|t|s|1|2249|f|1009|{1009,25,25}|{i,o,o}|{options_array,option_name,option_value}|pg_options_to_table|-|\N
+2897|gpdb_fdw_validator|11|10|12|f|f|t|f|i|2|16|f|1009 26|\N|\N|\N|gpdb_fdw_validator|-|\N
 3112|has_foreign_data_wrapper_privilege|11|10|12|f|f|t|f|s|3|16|f|19 25 25|\N|\N|\N|has_foreign_data_wrapper_privilege_name_name|-|\N
 3113|has_foreign_data_wrapper_privilege|11|10|12|f|f|t|f|s|3|16|f|19 26 25|\N|\N|\N|has_foreign_data_wrapper_privilege_name_id|-|\N
 3114|has_foreign_data_wrapper_privilege|11|10|12|f|f|t|f|s|3|16|f|26 25 25|\N|\N|\N|has_foreign_data_wrapper_privilege_id_name|-|\N
@@ -23,18 +18,19 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 3121|has_server_privilege|11|10|12|f|f|t|f|s|3|16|f|26 26 25|\N|\N|\N|has_server_privilege_id_id|-|\N
 3122|has_server_privilege|11|10|12|f|f|t|f|s|2|16|f|25 25|\N|\N|\N|has_server_privilege_name|-|\N
 3123|has_server_privilege|11|10|12|f|f|t|f|s|2|16|f|26 25|\N|\N|\N|has_server_privilege_id|-|\N
-2897|gpdb_fdw_validator|11|10|12|f|f|t|f|i|2|16|f|1009 26|\N|\N|\N|gpdb_fdw_validator|-|\N
-820|current_query|11|10|12|f|f|f|f|v|0|25|f||\N|\N|\N|current_query|-|\N
-821|pg_get_keywords|11|10|12|f|f|t|t|s|0|2249|f||{25,18,25}|{o,o,o}|{word,catcode,catdesc}|pg_get_keywords|-|\N
-822|pg_typeof|11|10|12|f|f|f|f|s|1|2206|f|2276|\N|\N|\N|pg_typeof|-|\N
-2878|pg_terminate_backend|11|10|12|f|f|t|f|v|1|16|f|23|\N|\N|\N|pg_terminate_backend|-|\N
-2971|text|11|10|12|f|f|t|f|i|1|25|f|16|\N|\N|\N|booltext|-|\N
-5034|pg_get_partition_def|11|10|12|f|f|t|f|s|3|25|f|26 16 16|\N|\N|\N|pg_get_partition_def_ext2|-|\N
-5040|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 23|\N|\N|\N|gp_adjust_priority_int|-|\N
-5041|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 25|\N|\N|\N|gp_adjust_priority_value|-|\N
-5042|gp_list_backend_priorities|11|10|12|f|f|f|t|v|0|2249|f||\N|\N|\N|gp_list_backend_priorities|-|\N
 3302|gpaotidin|11|10|12|f|f|t|f|i|1|3300|f|2275|\N|\N|\N|gpaotidin|-|\N
 3303|gpaotidout|11|10|12|f|f|t|f|i|1|2275|f|3300|\N|\N|\N|gpaotidout|-|\N
 3304|gpaotidrecv|11|10|12|f|f|t|f|i|1|3300|f|2281|\N|\N|\N|gpaotidrecv|-|\N
 3305|gpaotidsend|11|10|12|f|f|t|f|i|1|17|f|3300|\N|\N|\N|gpaotidsend|-|\N
+3312|gpxloglocin|11|10|12|f|f|t|f|i|1|3310|f|2275|\N|\N|\N|gpxloglocin|-|\N
+3313|gpxloglocout|11|10|12|f|f|t|f|i|1|2275|f|3310|\N|\N|\N|gpxloglocout|-|\N
+3314|gpxloglocrecv|11|10|12|f|f|t|f|i|1|3310|f|2281|\N|\N|\N|gpxloglocrecv|-|\N
+3315|gpxloglocsend|11|10|12|f|f|t|f|i|1|17|f|3310|\N|\N|\N|gpxloglocsend|-|\N
+5032|gp_statistics_estimate_reltuples_relpages_oid|11|10|12|f|f|t|f|v|1|1021|f|26|\N|\N|\N|gp_statistics_estimate_reltuples_relpages_oid|-|\N
+5034|pg_get_partition_def|11|10|12|f|f|t|f|s|3|25|f|26 16 16|\N|\N|\N|pg_get_partition_def_ext2|-|\N
+5040|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 23|\N|\N|\N|gp_adjust_priority_int|-|\N
+5041|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 25|\N|\N|\N|gp_adjust_priority_value|-|\N
+5042|gp_list_backend_priorities|11|10|12|f|f|f|t|v|0|2249|f||\N|\N|\N|gp_list_backend_priorities|-|\N
+9900|aocsvpinfo_decode|11|10|12|f|f|t|f|i|3|20|f|1562 23 23|\N|\N|\N|aocsvpinfo_decode|-|\N
+9998|pg_objname_to_oid|11|10|12|f|f|t|f|i|1|26|f|25|\N|\N|\N|pg_objname_to_oid|-|\N
 \.
