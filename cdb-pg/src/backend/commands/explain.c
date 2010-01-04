@@ -87,6 +87,10 @@ show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 			     const char *qlabel,
                  StringInfo str, int indent, ExplainState *es);
 
+/* disabled for now, since direct dispatch can turn off at unexpected times.
+#define SHOW_DIRECT_DISPATCH_CONTENT_IDS
+*/
+
 /*
  * ExplainQuery -
  *	  execute an EXPLAIN command
@@ -768,7 +772,6 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
 	SliceTable *sliceTable = planstate->state->es_sliceTable;
 	Slice *slice = (Slice *)list_nth(sliceTable->slices, sliceId);
 
-
 	switch (slice->gangType)
 	{
 		case GANGTYPE_UNALLOCATED:
@@ -779,12 +782,17 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
 		case GANGTYPE_PRIMARY_WRITER:
 		case GANGTYPE_PRIMARY_READER:
 			appendStringInfo(str, "  (slice%d", sliceId);
+#ifdef SHOW_DIRECT_DISPATCH_CONTENT_IDS
 			if ( slice->directDispatch.isDirectDispatch )
 			{
 				Assert( list_length(slice->directDispatch.contentIds) == 1);
 				appendStringInfo(str, " on content:%d)", linitial_int(slice->directDispatch.contentIds));
 			}
-			else appendStringInfo(str, ")");
+			else
+#endif // SHOW_DIRECT_DISPATCH_CONTENT_IDS
+			{
+				appendStringInfo(str, ")");
+			}
 			break;
 
 		case GANGTYPE_MIRROR_WRITER:
@@ -1061,8 +1069,15 @@ explain_outNode(StringInfo str,
 				Slice *slice = (Slice *)list_nth(sliceTable->slices, pMotion->motionID);
 
                 int         nSenders = slice->numGangMembersToBeActive;
+				int         nReceivers = 0;
 
-				int         nReceivers = 0; 
+#ifndef SHOW_DIRECT_DISPATCH_CONTENT_IDS
+                if ( slice->directDispatch.isDirectDispatch && slice->gangSize != 1 )
+				{
+                	nSenders = getgpsegmentCount();
+				}
+#endif // SHOW_DIRECT_DISPATCH_CONTENT_IDS
+
 				switch (pMotion->motionType)
 				{
 					case MOTIONTYPE_HASH:
