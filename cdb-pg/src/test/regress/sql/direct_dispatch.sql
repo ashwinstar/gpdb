@@ -88,6 +88,17 @@ delete from direct_test_two_column where key1 = 100 and key2 = 101;
 -- verify
 select * from direct_test_two_column order by key1, key2, value;
 
+-- expression single-row insert
+-- DO direct dispatch
+insert into direct_test (key, value) values ('123',123123);
+insert into direct_test (key, value) values (sqrt(100*10*10),123123);
+--
+-- should get 100 and 123 as the values
+--
+select * from direct_test where value = 123123 order by key;
+
+delete from direct_test where value = 123123;
+
 --------------------------------------------------------------------------------
 -- Multiple row update, where clause lists multiple values which hash differently so no direct dispatch
 --
