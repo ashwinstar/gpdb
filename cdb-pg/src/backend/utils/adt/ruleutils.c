@@ -2795,7 +2795,7 @@ get_rte_for_var(Var *var, int levelsup, deparse_context *context,
 		rte = rt_fetch(var->varnoold, dpns->rtable);
 		*attno = var->varoattno;
 	}
-	else if (var->varno == dpns->outer_varno)
+	else if (var->varno == dpns->outer_varno || var->varno == 0)
 		rte = dpns->outer_rte;
 	else if (var->varno == dpns->inner_varno)
 		rte = dpns->inner_rte;
