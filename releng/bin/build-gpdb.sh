@@ -53,8 +53,6 @@ if [ x"$1" = "x" ] ; then
     exit 1
 fi
 
-exit 1
-
 WORKDIR=`pwd`
 PRODUCT="GPDB"
 ARCHIVE_HOST="intranet"
@@ -67,21 +65,23 @@ GCC_VERSION=`gcc --version | grep GCC`
 BUILD_START_DATE=`date`
 
 #Calc the branch 
-#grep ^T CVS/Tag > /dev/null 2>&1
-BRANCH=`awk '{print $4}' .buildbot-sourcedata  | sed "s,[',\,],,g"`
-if [ $? -ne 0 ] ; then
-    echo "Error getting branch from .buildbot-sourcedata"
-    exit 1
+
+if [ -z "${BRANCH}" ]; then
+    BRANCH=`awk '{print $4}' .buildbot-sourcedata  | sed "s,[',\,],,g"`
+    if [ $? -ne 0 ] ; then
+        echo "Error getting branch from .buildbot-sourcedata"
+        exit 1
+    fi
 fi
 
-if [ -f /releng/bin/gcc ] && [ "${BRANCH}" = "main" ] || [ "${BRANCH}" = "Release-3_4-branch" ] || [ "${BRANCH}" = "Release-3_4_filerep-branch" ] || [ "${BRANCH}" = "Release-3_3-branch" ] || [ "${BRANCH}" = "Release-3_2_0_0_EAP1-branch" ] || [ "${BRANCH}" = "Release-3_2_0_0_EAP2-branch" ] || [ "${BRANCH}" = "Release-3_2-branch" ] || [ "${BRANCH}" = "Release-3_2_clients-branch" ] || [ "${BRANCH}" = "Release-3_2_0_6_clients-branch" ] ; then
+if [ -f /releng/bin/gcc ] && [ "${BRANCH}" = "main" ]; then
     echo `date` "Setting path to use /releng/bin/gcc"
     echo "export PATH=/releng/bin:$PATH"
     export PATH=/releng/bin:$PATH
     echo ""
 fi
 
-if [ "${BRANCH}" = "main" ] || [ "${BRANCH}" = "Release-3_4-branch" ] || [ "${BRANCH}" = "Release-3_4_filerep-branch" ] || [ "${BRANCH}" = "Release-3_3-branch" ] || [ "${BRANCH}" = "Release-3_2_0_0_EAP1-branch" ] || [ "${BRANCH}" = "Release-3_2_0_0_EAP2-branch" ] || [ "${BRANCH}" = "Release-3_2-branch" ] || [ "${BRANCH}" = "Release-3_2_clients-branch" ] || [ "${BRANCH}" = "Release-3_2_0_6_clients-branch" ] ; then
+if [ "${BRANCH}" = "main" ]; then
     echo "`date` -- INFO: Setting default R_HOME value"
     #Default
     RHOME="/releng/lib/R"
@@ -215,11 +215,11 @@ generateBuildIDInfo() {
 setBuildDbPath() {
     echo `date` "Setting up path to run buildDB.py"
     TMP_PATH=${PATH}
-    export PATH=${BLD_ROOT}/build_tools/python-2.5/bin:${PATH}
+    export PATH=${HOME}/build_tools/python-2.5/bin:${PATH}
     TMP_LD_LIBRARY_PATH=${LD_LIBRARY_PATH}
-    export LD_LIBRARY_PATH=${BLD_ROOT}/build_tools/pg-8.2.4/lib:${LD_LIBRARY_PATH}
+    export LD_LIBRARY_PATH=${HOME}/build_tools/pg-8.2.4/lib:${LD_LIBRARY_PATH}
     TMP_DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH} 
-    export DYLD_LIBRARY_PATH=${BLD_ROOT}/build_tools/pg-8.2.4/lib:${DYLD_LIBRARY_PATH}
+    export DYLD_LIBRARY_PATH=${HOME}/build_tools/pg-8.2.4/lib:${DYLD_LIBRARY_PATH}
     echo ""
 }
 
@@ -514,6 +514,9 @@ buildTestUpdate() {
     echo "cd buildDB"
     cd buildDB
 
+    ## testing
+    exit 1
+
     BUILD_DB_OPTS="-p 5432 -h intranet -d cdbunit -u postgres"
 
     echo "./buildDB.py ${BUILD_DB_OPTS} build ${BUILD_INFO}"
@@ -531,7 +534,7 @@ buildTestUpdate() {
 
 setBuildTestPath() {
     #The python in ~/build_tools/python-2.5 has pygresql
-    BUILD_TOOLS=${BLD_ROOT}/build_tools
+    BUILD_TOOLS=${HOME}/build_tools
     TMP_PATH=${PATH}
     export PATH=${BUILD_TOOLS}/python-2.5/bin:${PATH}
     TMP_LD_LIBRARY_PATH=${LD_LIBRARY_PATH}
