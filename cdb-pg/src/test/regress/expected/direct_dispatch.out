@@ -432,6 +432,188 @@ INFO:  Dispatch command to ALL contents
 INFO:  Dispatch command to SINGLE content
 INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
 INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+------------------------------------
+-- int28, int82, etc. checks
+set test_print_direct_dispatch_info=off;
+CREATE TABLE direct_test_type_int2 (id int2) DISTRIBUTED BY (id);
+CREATE TABLE direct_test_type_int4 (id int4) DISTRIBUTED BY (id);
+CREATE TABLE direct_test_type_int8 (id int8) DISTRIBUTED BY (id);
+INSERT INTO direct_test_type_int2 VALUES (1);
+INSERT INTO direct_test_type_int4 VALUES (1);
+INSERT INTO direct_test_type_int8 VALUES (1);
+set test_print_direct_dispatch_info=on;
+SELECT * FROM direct_test_type_int2 WHERE id = 1::int2;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int2 WHERE id = 1::int4;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int2 WHERE id = 1::int8;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+(0 rows)
+
+SELECT * FROM direct_test_type_int2 WHERE 1::int2 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int2 WHERE 1::int4 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+(0 rows)
+
+SELECT * FROM direct_test_type_int2 WHERE 1::int8 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+(0 rows)
+
+SELECT * FROM direct_test_type_int4 WHERE id = 1::int2;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int4 WHERE id = 1::int4;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int4 WHERE id = 1::int8;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int4 WHERE 1::int2 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int4 WHERE 1::int4 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int4 WHERE 1::int8 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int8 WHERE id = 1::int2;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int8 WHERE id = 1::int4;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int8 WHERE id = 1::int8;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int8 WHERE 1::int2 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int8 WHERE 1::int4 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM direct_test_type_int8 WHERE 1::int8 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
+-- overflow test
+SELECT * FROM direct_test_type_int2 WHERE id = 32768::int4;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+(0 rows)
+
+SELECT * FROM direct_test_type_int2 WHERE id = -32769::int4;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+(0 rows)
+
+SELECT * FROM direct_test_type_int2 WHERE 32768::int4 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+(0 rows)
+
+SELECT * FROM direct_test_type_int2 WHERE -32769::int4 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+(0 rows)
+
+SELECT * FROM direct_test_type_int2 WHERE id = 2147483648::int8;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+(0 rows)
+
+SELECT * FROM direct_test_type_int2 WHERE id = -2147483649::int8;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+(0 rows)
+
+SELECT * FROM direct_test_type_int2 WHERE 2147483648::int8 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+(0 rows)
+
+SELECT * FROM direct_test_type_int2 WHERE -2147483649::int8 = id;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+(0 rows)
+
 -- cleanup
 set test_print_direct_dispatch_info=off;
 drop table direct_test;
@@ -447,3 +629,6 @@ drop table direct_test_type_date;
 drop table direct_test_type_numeric;
 drop table foo;
 drop table bar;
+drop table direct_test_type_int2;
+drop table direct_test_type_int4;
+drop table direct_test_type_int8;

@@ -90,6 +90,7 @@ typedef FormData_pg_operator *Form_pg_operator;
  */
 
 DATA(insert OID =  15 ( "="		   PGNSP PGUID b f	23	20	16 416	36	97 412	37	76 int48eq eqsel eqjoinsel ));
+#define Int48EqualOperator 15
 DATA(insert OID =  36 ( "<>"	   PGNSP PGUID b f	23	20	16 417	15	 0	 0	 0	 0 int48ne neqsel neqjoinsel ));
 DATA(insert OID =  37 ( "<"		   PGNSP PGUID b f	23	20	16 419	82	 0	 0	 0	 0 int48lt scalarltsel scalarltjoinsel ));
 DATA(insert OID =  76 ( ">"		   PGNSP PGUID b f	23	20	16 418	80	 0	 0	 0	 0 int48gt scalargtsel scalargtjoinsel ));
@@ -147,6 +148,7 @@ DATA(insert OID = 414 ( "<="	   PGNSP PGUID b f	20	20	16 415 413 0 0 0 0 int8le 
 DATA(insert OID = 415 ( ">="	   PGNSP PGUID b f	20	20	16 414 412 0 0 0 0 int8ge scalargtsel scalargtjoinsel ));
 
 DATA(insert OID = 416 ( "="		   PGNSP PGUID b f	20	23	16	15 417 412 97 418 419 int84eq eqsel eqjoinsel ));
+#define Int84EqualOperator 416
 DATA(insert OID = 417 ( "<>"	   PGNSP PGUID b f	20	23	16	36 416 0 0 0 0 int84ne neqsel neqjoinsel ));
 DATA(insert OID = 418 ( "<"		   PGNSP PGUID b f	20	23	16	76 430 0 0 0 0 int84lt scalarltsel scalarltjoinsel ));
 DATA(insert OID = 419 ( ">"		   PGNSP PGUID b f	20	23	16	37 420 0 0 0 0 int84gt scalargtsel scalargtjoinsel ));
@@ -202,7 +204,11 @@ DATA(insert OID = 529 (  "%"	   PGNSP PGUID b f	21	21	21	 0	 0	0  0   0   0 int2
 DATA(insert OID = 530 (  "%"	   PGNSP PGUID b f	23	23	23	 0	 0	0  0   0   0 int4mod - - ));
 DATA(insert OID = 531 (  "<>"	   PGNSP PGUID b f	25	25	16 531	98	0	0	0	0 textne neqsel neqjoinsel ));
 DATA(insert OID = 532 (  "="	   PGNSP PGUID b f	21	23	16 533 538	 95  97 534 536 int24eq eqsel eqjoinsel ));
+#define Int24EqualOperator 532
+
 DATA(insert OID = 533 (  "="	   PGNSP PGUID b f	23	21	16 532 539	 97  95 535 537 int42eq eqsel eqjoinsel ));
+#define Int42EqualOperator 533
+
 DATA(insert OID = 534 (  "<"	   PGNSP PGUID b f	21	23	16 537 542	0  0   0   0 int24lt scalarltsel scalarltjoinsel ));
 DATA(insert OID = 535 (  "<"	   PGNSP PGUID b f	23	21	16 536 543	0  0   0   0 int42lt scalarltsel scalarltjoinsel ));
 DATA(insert OID = 536 (  ">"	   PGNSP PGUID b f	21	23	16 535 540	0  0   0   0 int24gt scalargtsel scalargtjoinsel ));
@@ -742,13 +748,18 @@ DATA(insert OID = 1809 (  ">="	  PGNSP PGUID b f 1562 1562 16 1808 1806	0	 0	 0	
 DATA(insert OID = 1849 (  "+"	   PGNSP PGUID b f 1186 1083 1083	 1800 0 0 0 0 0 interval_pl_time - - ));
 
 DATA(insert OID = 1862 ( "="	   PGNSP PGUID b f	21	20	16 1868  1863  95 412 1864 1865 int28eq eqsel eqjoinsel ));
+#define Int28EqualOperator 1862
+
 DATA(insert OID = 1863 ( "<>"	   PGNSP PGUID b f	21	20	16 1869  1862	0	0	0	0 int28ne neqsel neqjoinsel ));
+
 DATA(insert OID = 1864 ( "<"	   PGNSP PGUID b f	21	20	16 1871  1867	0	0	0	0 int28lt scalarltsel scalarltjoinsel ));
 DATA(insert OID = 1865 ( ">"	   PGNSP PGUID b f	21	20	16 1870  1866	0	0	0	0 int28gt scalargtsel scalargtjoinsel ));
 DATA(insert OID = 1866 ( "<="	   PGNSP PGUID b f	21	20	16 1873  1865	0	0	0	0 int28le scalarltsel scalarltjoinsel ));
 DATA(insert OID = 1867 ( ">="	   PGNSP PGUID b f	21	20	16 1872  1864	0	0	0	0 int28ge scalargtsel scalargtjoinsel ));
 
 DATA(insert OID = 1868 ( "="	   PGNSP PGUID b f	20	21	16	1862 1869 412 95 1870 1871 int82eq eqsel eqjoinsel ));
+#define Int82EqualOperator 1868
+
 DATA(insert OID = 1869 ( "<>"	   PGNSP PGUID b f	20	21	16	1863 1868	0  0   0   0 int82ne neqsel neqjoinsel ));
 DATA(insert OID = 1870 ( "<"	   PGNSP PGUID b f	20	21	16	1865 1873	0  0   0   0 int82lt scalarltsel scalarltjoinsel ));
 DATA(insert OID = 1871 ( ">"	   PGNSP PGUID b f	20	21	16	1864 1872	0  0   0   0 int82gt scalargtsel scalargtjoinsel ));

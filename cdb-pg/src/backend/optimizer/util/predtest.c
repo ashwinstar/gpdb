@@ -17,6 +17,7 @@
 
 #include "catalog/pg_amop.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -28,6 +29,7 @@
 #include "utils/syscache.h"
 #include "cdb/cdbhash.h"
 #include "access/hash.h"
+#include "nodes/makefuncs.h"
 
 /*
  * Proof attempts involving many AND or OR branches are likely to require
@@ -37,6 +39,11 @@
  * AND/OR flattened!)  XXX is it worth exposing this as a GUC knob?
  */
 #define MAX_BRANCHES_TO_TEST    100
+
+#define INT16MAX (32767)
+#define INT16MIN (32768)
+#define INT32MAX (2147483647)
+#define INT32MIN (-2147483648)
 
 /*
  * To avoid redundant coding in predicate_implied_by_recurse and
@@ -1752,6 +1759,22 @@ AddValue(PossibleValueSet *pvs, Const *valueToCopy)
 	}
 }
 
+static void
+SetToNoValuesPossible(PossibleValueSet *pvs)
+{
+	if ( pvs->memoryContext )
+	{
+		MemoryContextDelete(pvs->memoryContext);
+	}
+	pvs->memoryContext = AllocSetContextCreate(CurrentMemoryContext,
+												   "PossibleValueSet",
+												   ALLOCSET_DEFAULT_MINSIZE,
+												   ALLOCSET_DEFAULT_INITSIZE,
+												   ALLOCSET_DEFAULT_MAXSIZE);
+	pvs->set = CreateNodeSetHashTable(pvs->memoryContext);
+	pvs->isAnyValuePossible = false;
+}
+
 /**
  * basic operation on PossibleValueSet:  remove a value from the set field of PossibleValueSet
  */
@@ -1917,6 +1940,7 @@ TryProcessEqualityNodeForPossibleValues(OpExpr *expr, Node *variable, PossibleVa
 {
 	Node *leftop, *rightop, *varExpr;
     Const *constExpr;
+    bool constOnRight;
 
 	InitPossibleValueSetData(resultOut);
 
@@ -1925,26 +1949,28 @@ TryProcessEqualityNodeForPossibleValues(OpExpr *expr, Node *variable, PossibleVa
 	if (!leftop || !rightop)
 		return false;
 
-	/* check if it's equality operation */
-	if ( ! is_builtin_true_equality_between_same_type(expr->opno))
-	{
-		return false;
-	}
-
 	/* check if one operand is a constant */
 	if ( IsA(rightop, Const))
 	{
 		varExpr = leftop;
 		constExpr = (Const *) rightop;
+		constOnRight = true;
 	}
 	else if ( IsA(leftop, Const))
 	{
 		constExpr = (Const *) leftop;
 		varExpr = rightop;
+		constOnRight = false;
 	}
 	else
 	{
 		/** not a constant?  Learned nothing */
+		return false;
+	}
+
+	if ( constExpr->constisnull)
+	{
+		/* null doesn't help us */
 		return false;
 	}
 
@@ -1962,22 +1988,165 @@ TryProcessEqualityNodeForPossibleValues(OpExpr *expr, Node *variable, PossibleVa
 		return false;
 	}
 
-	if ( isGreenplumDbHashable(constExpr->consttype))
+	/* check if it's equality operation */
+	if ( is_builtin_true_equality_between_same_type(expr->opno))
 	{
-		/**
-		 * Found a constant match!
-		 */
-		resultOut->isAnyValuePossible = false;
-		AddValue(resultOut, constExpr);
+		if ( isGreenplumDbHashable(constExpr->consttype))
+		{
+			/**
+			 * Found a constant match!
+			 */
+			resultOut->isAnyValuePossible = false;
+			AddValue(resultOut, constExpr);
+		}
+		else
+		{
+			/**
+			 * Not cdb hashable, can't determine the value
+			 */
+			resultOut->isAnyValuePossible = true;
+		}
+		return true;
 	}
 	else
 	{
-		/**
-		 * Not cdb hashable, can't determine the value
-		 */
-		resultOut->isAnyValuePossible = true;
+		Oid consttype;
+		Datum constvalue;
+
+		/* try to handle equality between differently-sized integer types */
+		bool isOverflow = false;
+		switch ( expr->opno )
+		{
+			case Int84EqualOperator:
+			case Int48EqualOperator:
+			{
+				bool bigOnRight = expr->opno == Int48EqualOperator;
+				if ( constOnRight == bigOnRight )
+				{
+					// convert large constant to small
+					int64 val =  DatumGetInt64(constExpr->constvalue);
+
+					if ( val > INT32MAX || val < INT32MIN )
+					{
+						isOverflow = true;
+					}
+					else
+					{
+						consttype = INT4OID;
+						constvalue = Int32GetDatum((int32)val);
+					}
+				}
+				else
+				{
+					// convert small constant to small
+					int32 val =  DatumGetInt32(constExpr->constvalue);
+
+					consttype = INT8OID;
+					constvalue = Int64GetDatum(val);
+				}
+				break;
+			}
+			case Int24EqualOperator:
+			case Int42EqualOperator:
+			{
+				bool bigOnRight = expr->opno == Int24EqualOperator;
+				if ( constOnRight == bigOnRight )
+				{
+					// convert large constant to small
+					int32 val =  DatumGetInt32(constExpr->constvalue);
+
+					if ( val > INT16MAX || val < INT16MIN )
+					{
+						isOverflow = true;
+					}
+					else
+					{
+						consttype = INT2OID;
+						constvalue = Int16GetDatum((int16)val);
+					}
+				}
+				else
+				{
+					// convert small constant to small
+					int16 val =  DatumGetInt16(constExpr->constvalue);
+
+					consttype = INT4OID;
+					constvalue = Int32GetDatum(val);
+				}
+				break;
+			}
+			case Int28EqualOperator:
+			case Int82EqualOperator:
+			{
+				bool bigOnRight = expr->opno == Int28EqualOperator;
+				if ( constOnRight == bigOnRight )
+				{
+					// convert large constant to small
+					int64 val =  DatumGetInt64(constExpr->constvalue);
+
+					if ( val > INT16MAX || val < INT16MIN )
+					{
+						isOverflow = true;
+					}
+					else
+					{
+						consttype = INT2OID;
+						constvalue = Int16GetDatum((int16)val);
+					}
+				}
+				else
+				{
+					// convert small constant to small
+					int16 val =  DatumGetInt16(constExpr->constvalue);
+
+					consttype = INT8OID;
+					constvalue = Int64GetDatum(val);
+				}
+				break;
+			}
+			default:
+				/* not a useful operator ... */
+				return false;
+		}
+
+		if ( isOverflow )
+		{
+			SetToNoValuesPossible(resultOut);
+		}
+		else
+		{
+			/* okay, got a new constant value .. set it and done!*/
+			Const *newConst;
+			int constlen;
+
+			Assert(isGreenplumDbHashable(consttype));
+
+			switch ( consttype)
+			{
+				case INT8OID:
+					constlen = sizeof(int64);
+					break;
+				case INT4OID:
+					constlen = sizeof(int32);
+					break;
+				case INT2OID:
+					constlen = sizeof(int16);
+					break;
+				default:
+					Assert(!"unreachable");
+			}
+
+			newConst = makeConst(consttype, /* consttypmod */ 0, constlen, constvalue,
+				/* constisnull */ false, /* constbyval */ true);
+
+
+			resultOut->isAnyValuePossible = false;
+			AddValue(resultOut, newConst);
+
+			pfree(newConst);
+		}
+		return true;
 	}
-	return true;
 }
 
 /**

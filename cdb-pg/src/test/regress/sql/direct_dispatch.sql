@@ -204,6 +204,57 @@ delete from foo where id = (select max(id2) from bar where id1 = 5);
 delete from foo where id * id = (select max(id2) from bar where id1 = 5) AND id = 3;
 delete from foo where id * id = (select max(id2) from bar) AND id = 3;
 
+
+------------------------------------
+-- int28, int82, etc. checks
+set test_print_direct_dispatch_info=off;
+CREATE TABLE direct_test_type_int2 (id int2) DISTRIBUTED BY (id);
+CREATE TABLE direct_test_type_int4 (id int4) DISTRIBUTED BY (id);
+CREATE TABLE direct_test_type_int8 (id int8) DISTRIBUTED BY (id);
+
+INSERT INTO direct_test_type_int2 VALUES (1);
+INSERT INTO direct_test_type_int4 VALUES (1);
+INSERT INTO direct_test_type_int8 VALUES (1);
+
+set test_print_direct_dispatch_info=on;
+
+SELECT * FROM direct_test_type_int2 WHERE id = 1::int2;
+SELECT * FROM direct_test_type_int2 WHERE id = 1::int4;
+SELECT * FROM direct_test_type_int2 WHERE id = 1::int8;
+
+SELECT * FROM direct_test_type_int2 WHERE 1::int2 = id;
+SELECT * FROM direct_test_type_int2 WHERE 1::int4 = id;
+SELECT * FROM direct_test_type_int2 WHERE 1::int8 = id;
+
+SELECT * FROM direct_test_type_int4 WHERE id = 1::int2;
+SELECT * FROM direct_test_type_int4 WHERE id = 1::int4;
+SELECT * FROM direct_test_type_int4 WHERE id = 1::int8;
+
+SELECT * FROM direct_test_type_int4 WHERE 1::int2 = id;
+SELECT * FROM direct_test_type_int4 WHERE 1::int4 = id;
+SELECT * FROM direct_test_type_int4 WHERE 1::int8 = id;
+
+SELECT * FROM direct_test_type_int8 WHERE id = 1::int2;
+SELECT * FROM direct_test_type_int8 WHERE id = 1::int4;
+SELECT * FROM direct_test_type_int8 WHERE id = 1::int8;
+
+SELECT * FROM direct_test_type_int8 WHERE 1::int2 = id;
+SELECT * FROM direct_test_type_int8 WHERE 1::int4 = id;
+SELECT * FROM direct_test_type_int8 WHERE 1::int8 = id;
+
+-- overflow test
+SELECT * FROM direct_test_type_int2 WHERE id = 32768::int4;
+SELECT * FROM direct_test_type_int2 WHERE id = -32769::int4;
+
+SELECT * FROM direct_test_type_int2 WHERE 32768::int4 = id;
+SELECT * FROM direct_test_type_int2 WHERE -32769::int4 = id;
+
+SELECT * FROM direct_test_type_int2 WHERE id = 2147483648::int8;
+SELECT * FROM direct_test_type_int2 WHERE id = -2147483649::int8;
+SELECT * FROM direct_test_type_int2 WHERE 2147483648::int8 = id;
+SELECT * FROM direct_test_type_int2 WHERE -2147483649::int8 = id;
+
+
 -- cleanup
 set test_print_direct_dispatch_info=off;
 drop table direct_test;
@@ -219,3 +270,6 @@ drop table direct_test_type_date;
 drop table direct_test_type_numeric;
 drop table foo;
 drop table bar;
+drop table direct_test_type_int2;
+drop table direct_test_type_int4;
+drop table direct_test_type_int8;
