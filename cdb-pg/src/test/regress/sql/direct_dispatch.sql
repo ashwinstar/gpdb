@@ -194,6 +194,11 @@ SELECT * FROM foo WHERE id IN
     (SELECT id2 FROM (SELECT id1, id2 FROM bar WHERE bar.id1 = 1 UNION
                       SELECT id1, id2 FROM bar WHERE bar.id1 = 2) AS s) ORDER BY 1;
 
+-- simple one using an expression on the variable
+SELECT * from foo WHERE id * id = 1;
+SELECT * from foo WHERE id * id = 1 OR id = 1;
+SELECT * from foo where id * id = 1 AND id = 1;
+
 -- cleanup
 set test_print_direct_dispatch_info=off;
 drop table direct_test;

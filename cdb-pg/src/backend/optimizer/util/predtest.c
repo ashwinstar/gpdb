@@ -104,9 +104,9 @@ static void RemoveValue(PossibleValueSet *pvs, Const *value);
 static bool ContainsValue(PossibleValueSet *pvs, Const *value);
 static void AddUnmatchingValues( PossibleValueSet *pvs, PossibleValueSet *toCheck );
 static void RemoveUnmatchingValues(PossibleValueSet *pvs, PossibleValueSet *toCheck);
-static PossibleValueSet ProcessAndClause( PredIterInfoData *clauseInfo, Node *clause, Node *variable);
-static PossibleValueSet ProcessOrClause( PredIterInfoData *clauseInfo, Node *clause, Node *variable);
-static bool TryProcessEqualityNode(OpExpr *expr, Node *variable, PossibleValueSet *resultOut );
+static PossibleValueSet ProcessAndClauseForPossibleValues( PredIterInfoData *clauseInfo, Node *clause, Node *variable);
+static PossibleValueSet ProcessOrClauseForPossibleValues( PredIterInfoData *clauseInfo, Node *clause, Node *variable);
+static bool TryProcessEqualityNodeForPossibleValues(OpExpr *expr, Node *variable, PossibleValueSet *resultOut );
 
 
 /*
@@ -1655,6 +1655,13 @@ InitPossibleValueSetData(PossibleValueSet *pvs)
 	pvs->isAnyValuePossible = true;
 }
 
+/**
+ * Take the values from the given PossibleValueSet and return them as an allocated array.
+ *
+ * @param pvs the set to turn into an array
+ * @param numValuesOut receives the length of the returned array
+ * @return the array of Node objects
+ */
 Node **
 GetPossibleValuesAsArray( PossibleValueSet *pvs, int *numValuesOut )
 {
@@ -1820,8 +1827,11 @@ RemoveUnmatchingValues(PossibleValueSet *pvs, PossibleValueSet *toCheck)
 	list_free(toRemove);
 }
 
+/**
+ * Process an AND clause -- this can do a INTERSECTION between sets learned from child clauses
+ */
 static PossibleValueSet
-ProcessAndClause( PredIterInfoData *clauseInfo, Node *clause, Node *variable)
+ProcessAndClauseForPossibleValues( PredIterInfoData *clauseInfo, Node *clause, Node *variable)
 {
 	PossibleValueSet result;
 	InitPossibleValueSetData(&result);
@@ -1855,8 +1865,11 @@ ProcessAndClause( PredIterInfoData *clauseInfo, Node *clause, Node *variable)
 	return result;
 }
 
+/**
+ * Process an OR clause -- this can do a UNION between sets learned from child clauses
+ */
 static PossibleValueSet
-ProcessOrClause( PredIterInfoData *clauseInfo, Node *clause, Node *variable)
+ProcessOrClauseForPossibleValues( PredIterInfoData *clauseInfo, Node *clause, Node *variable)
 {
 	PossibleValueSet result;
 	InitPossibleValueSetData(&result);
@@ -1893,9 +1906,14 @@ ProcessOrClause( PredIterInfoData *clauseInfo, Node *clause, Node *variable)
 }
 
 /**
+ * Check to see if the given OpExpr is a valid equality between the listed variable and a constant.
+ *
+ * @param expr the expression to check for being a valid quality
+ * @param variable the varaible to look for
+ * @param resultOut will be updated with the modified values
  */
 static bool
-TryProcessEqualityNode(OpExpr *expr, Node *variable, PossibleValueSet *resultOut )
+TryProcessEqualityNodeForPossibleValues(OpExpr *expr, Node *variable, PossibleValueSet *resultOut )
 {
 	Node *leftop, *rightop, *varExpr;
     Const *constExpr;
@@ -1924,7 +1942,11 @@ TryProcessEqualityNode(OpExpr *expr, Node *variable, PossibleValueSet *resultOut
 		constExpr = (Const *) leftop;
 		varExpr = rightop;
 	}
-	else return false;
+	else
+	{
+		/** not a constant?  Learned nothing */
+		return false;
+	}
 
 	if ( IsA(varExpr, RelabelType))
 	{
@@ -1933,24 +1955,41 @@ TryProcessEqualityNode(OpExpr *expr, Node *variable, PossibleValueSet *resultOut
 	}
 
 	if ( ! equal(varExpr, variable))
+	{
+		/**
+		 * Not talking about our variable?  Learned nothing
+		 */
 		return false;
+	}
 
 	if ( isGreenplumDbHashable(constExpr->consttype))
 	{
+		/**
+		 * Found a constant match!
+		 */
 		resultOut->isAnyValuePossible = false;
 		AddValue(resultOut, constExpr);
 	}
 	else
 	{
+		/**
+		 * Not cdb hashable, can't determine the value
+		 */
 		resultOut->isAnyValuePossible = true;
 	}
 	return true;
 }
 
 /**
+ *
+ * Get the possible values of variable, as determined by the given qualification clause
+ *
+ * Note that only variables whose type is greenplumDbHashtable will return an actual finite set of values.  All others
+ *    will go to the default behavior -- return that any value is possible
+ *
  * Note that if there are two variables to check, you must call this twice.  This then means that
  *    if the two variables are dependent you won't learn of that -- you only know that the set of
- *    possible values is within the cross-product of the two variables's sets
+ *    possible values is within the cross-product of the two variables' sets
  */
 PossibleValueSet
 DeterminePossibleValueSet( Node *clause, Node *variable)
@@ -1967,12 +2006,12 @@ DeterminePossibleValueSet( Node *clause, Node *variable)
 	switch (predicate_classify(clause, &clauseInfo))
 	{
 		case CLASS_AND:
-			return ProcessAndClause(&clauseInfo, clause, variable);
+			return ProcessAndClauseForPossibleValues(&clauseInfo, clause, variable);
 		case CLASS_OR:
-			return ProcessOrClause(&clauseInfo, clause, variable);
+			return ProcessOrClauseForPossibleValues(&clauseInfo, clause, variable);
 		case CLASS_ATOM:
 			if (IsA(clause, OpExpr) &&
-				TryProcessEqualityNode((OpExpr*)clause, variable, &result))
+				TryProcessEqualityNodeForPossibleValues((OpExpr*)clause, variable, &result))
 			{
 				return result;
 			}

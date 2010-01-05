@@ -392,6 +392,28 @@ INFO:  Dispatch command to ALL contents
   1
 (1 row)
 
+-- simple one using an expression on the variable
+SELECT * from foo WHERE id * id = 1;
+INFO:  Dispatch command to ALL contents
+ id 
+----
+  1
+(1 row)
+
+SELECT * from foo WHERE id * id = 1 OR id = 1;
+INFO:  Dispatch command to ALL contents
+ id 
+----
+  1
+(1 row)
+
+SELECT * from foo where id * id = 1 AND id = 1;
+INFO:  Dispatch command to SINGLE content
+ id 
+----
+  1
+(1 row)
+
 -- cleanup
 set test_print_direct_dispatch_info=off;
 drop table direct_test;
