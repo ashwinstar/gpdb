@@ -519,7 +519,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 * work for this query.
 			 */
 			needDtxTwoPhase = ExecutorSaysTransactionDoesWrites();
-			dtmPreCommand("ExecutorStart", "(none)", (Node *)queryDesc->plannedstmt->planTree,
+			dtmPreCommand("ExecutorStart", "(none)", queryDesc->plannedstmt,
 					needDtxTwoPhase, true /* wantSnapshot */, queryDesc->cursor_query );
 
 			/*

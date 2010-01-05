@@ -351,18 +351,54 @@ copyDirectDispatchFromTransaction(CdbDispatchDirectDesc *dOut)
 	}
 }
 
+static bool
+GetRootNodeIsDirectDispatch(PlannedStmt *stmt)
+{
+	if ( stmt == NULL )
+		return false;
+
+	if ( stmt->planTree == NULL)
+		return false;
+
+	return stmt->planTree->directDispatch.isDirectDispatch;
+}
+
+/**
+ * note that the ability to look at the root node of a plan in order to determine
+ *    direct dispatch overall depends on the way we assign direct dispatch.  Parent slices are
+ *    never more directed than child slices.  This could be fixed with an iteration over all slices and
+ *    combine from every slice.
+ *
+ * return true IFF the directDispatch data stored in n should be applied to the transaction
+ */
+static bool
+GetPlannedStmtDirectDispatch_AndUsingNodeIsSufficient(PlannedStmt *stmt)
+{
+	if ( ! GetRootNodeIsDirectDispatch(stmt))
+		return false;
+
+	/*
+	 * now look at number initplans .. we do something simple.  ANY initPlans means we don't do directDispatch
+	 *  at the dtm level.  It's technically possible that the initPlan and the node share the same
+	 *  direct dispatch set but we don't bother right now.
+	 */
+	if ( stmt->nInitPlans > 0 )
+		return false;
+
+	return true;
+}
+
 /* 
  * @param needsTwoPhaseCommit if true then marks the current Distributed Transaction as needing to use the
  *       2 phase commit protocol.
  */
 void
-dtmPreCommand(const char *debugCaller, const char *debugDetail, Node *n,
+dtmPreCommand(const char *debugCaller, const char *debugDetail, PlannedStmt *stmt,
 		bool needsTwoPhaseCommit, bool wantSnapshot, bool inCursor )
 {
-	int wasPromotedFromDirectDispatchContentId = -1;
-	const bool nodeSaysDirectDispatch = n != NULL &&
-			is_plan_node(n) &&
-			((Plan *)n)->directDispatch.isDirectDispatch;
+	bool needsPromotionFromDirectDispatch = false;
+	const bool rootNodeIsDirectDispatch = GetRootNodeIsDirectDispatch(stmt);
+	const bool nodeSaysDirectDispatch = GetPlannedStmtDirectDispatch_AndUsingNodeIsSufficient(stmt);
 
 	Assert(debugCaller != NULL);
 	Assert(debugDetail != NULL);
@@ -380,7 +416,7 @@ dtmPreCommand(const char *debugCaller, const char *debugDetail, Node *n,
 		if (nodeSaysDirectDispatch)
 		{
 			currentGxact->directTransaction = true;
-			currentGxact->directTransactionContentId = linitial_int(((Plan *)n)->directDispatch.contentIds);
+			currentGxact->directTransactionContentId = linitial_int(stmt->planTree->directDispatch.contentIds);
 
 			elog(DTM_DEBUG5,
 				 "dtmPreCommand going distributed (to content %d) for gid = %s (%s, detail = '%s')",
@@ -390,6 +426,12 @@ dtmPreCommand(const char *debugCaller, const char *debugDetail, Node *n,
 		{
 			currentGxact->directTransaction = false;
 
+			if ( rootNodeIsDirectDispatch )
+			{
+			 	/* implicit write on the root, but some initPlan was to all contents...so send explicit start */ 
+				needsPromotionFromDirectDispatch = true;
+			}
+
 			elog(DTM_DEBUG5,
 				 "dtmPreCommand going distributed (all gangs) for gid = %s (%s, detail = '%s')",
 				 currentGxact->gid, debugCaller, debugDetail);
@@ -398,7 +440,7 @@ dtmPreCommand(const char *debugCaller, const char *debugDetail, Node *n,
 	else if (currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED)
 	{
 		bool wasDirected = currentGxact->directTransaction;
-		wasPromotedFromDirectDispatchContentId = wasDirected ? currentGxact->directTransactionContentId : -1;
+		int wasPromotedFromDirectDispatchContentId = wasDirected ? currentGxact->directTransactionContentId : -1;
 
 		/* Can we still direct this transaction to a single content-id ? */
 		if ( currentGxact->directTransaction)
@@ -407,7 +449,7 @@ dtmPreCommand(const char *debugCaller, const char *debugDetail, Node *n,
 
 			if (nodeSaysDirectDispatch)
 			{
-				int contentId = linitial_int(((Plan *)n)->directDispatch.contentIds);
+				int contentId = linitial_int(stmt->planTree->directDispatch.contentIds);
 				if ( contentId == currentGxact->directTransactionContentId)
 				{
 					// it was the same content!  Stay in a single direct transaction
@@ -421,6 +463,9 @@ dtmPreCommand(const char *debugCaller, const char *debugDetail, Node *n,
 			/** was not actually promoted */
 			wasPromotedFromDirectDispatchContentId = -1;
 		}
+
+		if ( wasPromotedFromDirectDispatchContentId != -1 )
+			needsPromotionFromDirectDispatch = true;
 
 		elog(DTM_DEBUG5,
 			 "dtmPreCommand gid = %s is already distributed (%s, detail = '%s'), (was %s : now %s)",
@@ -462,7 +507,7 @@ dtmPreCommand(const char *debugCaller, const char *debugDetail, Node *n,
 	 */
 	if ( currentGxact &&
 			currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED &&
-			wasPromotedFromDirectDispatchContentId != -1)
+			needsPromotionFromDirectDispatch)
 	{
 		CdbDispatchDirectDesc direct = default_dispatch_direct_desc;
 		char *serializedDtxContextInfo;

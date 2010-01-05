@@ -201,6 +201,8 @@ SELECT * from foo where id * id = 1 AND id = 1;
 
 -- init plan to see how transaction escalation happens
 delete from foo where id = (select max(id2) from bar where id1 = 5);
+delete from foo where id * id = (select max(id2) from bar where id1 = 5) AND id = 3;
+delete from foo where id * id = (select max(id2) from bar) AND id = 3;
 
 -- cleanup
 set test_print_direct_dispatch_info=off;

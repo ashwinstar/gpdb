@@ -420,6 +420,18 @@ INFO:  Dispatch command to SINGLE content
 INFO:  Dispatch command to ALL contents
 INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
 INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+delete from foo where id * id = (select max(id2) from bar where id1 = 5) AND id = 3;
+INFO:  Distributed transaction command 'Distributed Force Implied Writer' to ALL contents
+INFO:  Dispatch command to SINGLE content
+INFO:  Dispatch command to SINGLE content
+INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+delete from foo where id * id = (select max(id2) from bar) AND id = 3;
+INFO:  Distributed transaction command 'Distributed Force Implied Writer' to ALL contents
+INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
+INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
 -- cleanup
 set test_print_direct_dispatch_info=off;
 drop table direct_test;

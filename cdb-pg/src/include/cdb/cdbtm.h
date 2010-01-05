@@ -15,6 +15,7 @@
 #include "cdb/cdblocaldistribxact.h"
 #include "cdb/cdbdtxcontextinfo.h"
 #include "cdb/cdbpublic.h"
+#include "nodes/plannodes.h"
 
 /**
  * DTX states, used to track the state of the distributed transaction
@@ -325,8 +326,9 @@ extern void redoDistributedForgetCommitRecord(TMGXACT_LOG *gxact_log);
 extern void descDistributedCommitRecord(StringInfo buf, TMGXACT_LOG *gxact_log);
 extern void descDistributedForgetCommitRecord(StringInfo buf, TMGXACT_LOG *gxact_log);
 
-/* @param p used because some plans are annotated with dispatch details which the DTM needs. */
-extern void dtmPreCommand(const char *debugCaller, const char *debugDetail, Node *p, bool needsTwoPhaseCommit, bool dispatchToPrimaries, bool dispatchToMirrors );
+/* @param stmt used because some plans are annotated with dispatch details which the DTM needs. */
+extern void dtmPreCommand(const char *debugCaller, const char *debugDetail, PlannedStmt *stmt,
+							bool needsTwoPhaseCommit, bool dispatchToPrimaries, bool dispatchToMirrors );
 extern bool isCurrentDtxTwoPhase(void);
 extern bool isCurrentDtxActive(void);
 
