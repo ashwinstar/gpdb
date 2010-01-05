@@ -9,14 +9,14 @@ set -x
 #This script performs an MPP build
 
 #Pick up some platform defines
-PLATFORM_DEFS=${BLD_ROOT}/bin/lib/platform_defines.sh
+PLATFORM_DEFS=${BLD_ROOT}/releng/lib/platform_defines.sh
 if [ -r ${PLATFORM_DEFS} ] ; then
     . ${PLATFORM_DEFS}
 else
     echo "${PLATFORM_DEFS} does not appear to exist."
 fi
 
-PERFORCE_DEFS=${BLD_ROOT}/bin/lib/perforce_defines.sh
+PERFORCE_DEFS=${BLD_ROOT}/releng/lib/perforce_defines.sh
 if [ -r ${PERFORCE_DEFS} ] ; then
     . ${PERFORCE_DEFS}
 else
