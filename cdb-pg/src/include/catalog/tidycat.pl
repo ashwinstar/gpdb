@@ -187,6 +187,8 @@ Note that IsSharedRelation is only updated for shared tables.
 
 And Boot_CreateStmt in bootparse.y:
 
+And pg_type.h:
+
 
 =head1 AUTHORS
 
@@ -603,7 +605,9 @@ sub parsetab
 
 		# build the common comment tag 
 		# (of the form /* relation id: nnn - tablename date */ ) 
-		# This comment is affixed to generated code
+		# This comment is affixed to generated code (and is used as a
+		# marker to find these entries when we need to cleanout
+		# duplicates)
 
 		$alltabs->{$tname}->{relid_comment_tag} = 
 			"/* relation id: " .
@@ -665,6 +669,7 @@ sub parsetab
 
 #	print "bigstr: ", $bigstr, "\n";
 	
+	return $tname;
 
 } # end parsetab
 
@@ -672,6 +677,7 @@ sub parsetab
 sub parsetabdef
 {
 	my ($alltabs, $bigstr) = @_;
+	my @keys;
 
 	my @statements = split(';', $bigstr);
 
@@ -681,13 +687,15 @@ sub parsetabdef
 	{
 		if ($stat =~ m/^\s*create\s+table/is)
 		{
-			parsetab($alltabs, $stat);
+			push @keys, parsetab($alltabs, $stat);
 		}
 		elsif ($stat =~ m/^\s*create\s+(unique\s+)?index/is)
 		{
 			parseindex($alltabs, $stat);
 		}
 	}
+
+	return @keys;
 
 } # end parsetabdef
 
@@ -951,15 +959,26 @@ sub fix_issharedrelation_function
 {
 	my $alltabs = shift;
 	my $bigstr = "";
+	my %relidh;
 
-	for my $kk (sort (keys (%{$alltabs})))
+	# nicer to sort by relid (vs tablename)
+	while (my ($jj, $ww) = each(%{$alltabs}))
 	{
+		$relidh{$ww->{with}->{relid}} = $jj;
+	}
+
+#	for my $kk (sort (keys (%{$alltabs})))
+	for my $jj (sort {$a <=> $b} (keys (%relidh)))
+	{
+		my $kk = $relidh{$jj};
 		my $vv = $alltabs->{$kk};
 		my $relid = $vv->{with}->{relid};
 		my $rct   = $vv->{relid_comment_tag}; # standard comment
 
 		next
 			unless ($vv->{with}->{shared});
+
+#		print "iss: ", Data::Dumper->Dump([$vv]), "\n";
 
 		$bigstr .= "\n\n";
 		$bigstr .= $rct;
@@ -969,8 +988,9 @@ sub fix_issharedrelation_function
 
 	my $indstr = "";
 
-	for my $kk (sort (keys (%{$alltabs})))
+	for my $jj (sort {$a <=> $b} (keys (%relidh)))
 	{
+		my $kk = $relidh{$jj};
 		my $vv = $alltabs->{$kk};
 		my $relid = $vv->{with}->{relid};
 		my $rct   = $vv->{relid_comment_tag}; # standard comment
@@ -1020,9 +1040,18 @@ sub fix_bootparse
 {
 	my $alltabs = shift;
 	my $bigstr = "";
+	my %relidh;
 
-	for my $kk (sort (keys (%{$alltabs})))
+	# nicer to sort by relid (vs tablename)
+	while (my ($jj, $ww) = each(%{$alltabs}))
 	{
+		$relidh{$ww->{with}->{relid}} = $jj;
+	}
+
+#	for my $kk (sort (keys (%{$alltabs})))
+	for my $jj (sort {$a <=> $b} (keys (%relidh)))
+	{
+		my $kk = $relidh{$jj};
 		my $vv = $alltabs->{$kk};
 		my $relid = $vv->{with}->{relid};
 		my $rct   = $vv->{relid_comment_tag}; # standard comment
@@ -1061,9 +1090,18 @@ sub formattypes
 {
 	my $alltabs = shift;
 	my $bigstr = "";
+	my %relidh;
 
-	for my $kk (sort (keys (%{$alltabs})))
+	# nicer to sort by relid (vs tablename)
+	while (my ($jj, $ww) = each(%{$alltabs}))
 	{
+		$relidh{$ww->{with}->{relid}} = $jj;
+	}
+
+#	for my $kk (sort (keys (%{$alltabs})))
+	for my $jj (sort {$a <=> $b} (keys (%relidh)))
+	{
+		my $kk = $relidh{$jj};
 		my $vv = $alltabs->{$kk};
 		my $relid = $vv->{with}->{relid};
 		my $rct   = $vv->{relid_comment_tag}; # standard comment
@@ -1080,7 +1118,7 @@ sub formattypes
 		$bigstr .= $rct;
 		$bigstr .= formattypedata($relid, $kk, $reltype_oid);
 		$bigstr .= 
-			"#define " . $uc_tname . "_RELTYPE_OID " . $reltype_oid . "\n";
+			"#define " . $uc_tname . "_RELTYPE_OID " . $reltype_oid . "\n\n\n";
 	}
 
 	return $bigstr;
@@ -1090,9 +1128,18 @@ sub formatindexes
 {
 	my $alltabs = shift;
 	my $bigstr = "";
+	my %relidh;
 
-	for my $kk (sort (keys (%{$alltabs})))
+	# nicer to sort by relid (vs tablename)
+	while (my ($jj, $ww) = each(%{$alltabs}))
 	{
+		$relidh{$ww->{with}->{relid}} = $jj;
+	}
+
+#	for my $kk (sort (keys (%{$alltabs})))
+	for my $jj (sort {$a <=> $b} (keys (%relidh)))
+	{
+		my $kk = $relidh{$jj};
 		my $vv = $alltabs->{$kk};
 		my $relid = $vv->{with}->{relid};
 		my $rct   = $vv->{relid_comment_tag}; # standard comment
@@ -1120,6 +1167,8 @@ sub formatindexes
 				}
 				$icolist .= $cols->[0] . " " . $cols->[1];
 			}
+			$iname .= "_index";
+
 			if ($ind->{unique})
 			{
 				$bigstr .= $rct;
@@ -1140,7 +1189,7 @@ sub formatindexes
 
 			my $ccdef = "#define " . $camelname . "IndexId";
 
-			$bigstr .= simpletabalign($ccdef, $indexid) . "\n\n";
+			$bigstr .= simpletabalign($ccdef, $indexid) . "\n\n\n";
 
 		}
 	}
@@ -1148,12 +1197,12 @@ sub formatindexes
 	return $bigstr;
 }
 
-sub formattabs
+sub formattab
 {
-	my $alltabs = shift;
+	my ($alltabs, $keys) = @_;
 	my $bigstr = "";
 
-	for my $kk (sort (keys (%{$alltabs})))
+	for my $kk (@{$keys})
 	{
 		my $vv = $alltabs->{$kk};
 		my $relid = $vv->{with}->{relid};
@@ -1212,6 +1261,20 @@ sub formattabs
 
 		$bigstr .= formatcolconst($kk, $vv->{cols});
 
+	}
+
+	return $bigstr;
+
+} # end formattab
+
+sub formattabs
+{
+	my $alltabs = shift;
+	my $bigstr = "";
+
+	for my $kk (sort (keys (%{$alltabs})))
+	{
+		$bigstr .= formattab($alltabs, [$kk]);
 	}
 
 	return $bigstr;
@@ -1390,13 +1453,15 @@ sub clean_duplicate_entries
 	my ($alltabs, $basename, $gen_code) = @_;
 
 	return $gen_code
-		unless ($basename =~ m/^(indexing\.h|catalog\.c ind|catalog\.c tab|bootparse\.y)$/);
+		unless ($basename =~ m/^(indexing\.h|catalog\.c ind|catalog\.c tab|bootparse\.y|pg\_type\.h)$/);
 
 	my $skiplines = 0;
 
 	# skip N lines of generated code for duplicate entries
 	$skiplines = 2 
 		if ($basename =~ m/indexing/);
+	$skiplines = 2 
+		if ($basename =~ m/pg\_type/);
 	$skiplines = 1
 		if ($basename =~ m/catalog.*ind/);
 	$skiplines = 1
@@ -1605,18 +1670,25 @@ if (1)
 			
 #	print $bigstr, "\n";
 
-			parsetabdef(\%alltabs, $bigstr);
+			# tricky bit here: might have multiple CREATE table
+			# statements in a tidycat definition entry, and multiple
+			# tidycat defs in a single file.  So build the list of all
+			# table definitions in alltabs, but extract the set of
+			# keys (tablenames) for the current entry in parsetabdef,
+			# so we can feed that to formattab and generate the code
+			# for just the current entry.
+
+			my @keys = parsetabdef(\%alltabs, $bigstr);
 
 #	print Data::Dumper->Dump([%alltabs]);
 
-
-#			print formattabs(\%alltabs);
+#			print "fff:", formattabs(\%alltabs);
 
 			my $gentext = [];
 
 			push @{$gentext}, split(/(\n)/, $gen_hdr_str);
 
-			push @{$gentext}, split(/(\n)/, formattabs(\%alltabs));
+			push @{$gentext}, split(/(\n)/, formattab(\%alltabs, \@keys));
 
 			push @{$gentext}, "\n\n/* TIDYCAT_END_CODEGEN */\n";
 
@@ -1673,6 +1745,11 @@ if (1)
 						  "indexing.h", $fil_indexing, $tmp_indexing,
 		\@arr_indexing, $verzion, $nnow)
 		if (scalar(@arr_indexing));
+
+	fixup_generated_code (\%alltabs, 
+						  "pg_type.h", $fil_pg_type, $tmp_pg_type,
+		\@arr_pg_type, $verzion, $nnow)
+		if (scalar(@arr_pg_type));
 
 #	print Data::Dumper->Dump(\@arr_catalogc_tab), "\n";
 
