@@ -414,6 +414,12 @@ INFO:  Dispatch command to SINGLE content
   1
 (1 row)
 
+-- init plan to see how transaction escalation happens
+delete from foo where id = (select max(id2) from bar where id1 = 5);
+INFO:  Dispatch command to SINGLE content
+INFO:  Dispatch command to ALL contents
+INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
 -- cleanup
 set test_print_direct_dispatch_info=off;
 drop table direct_test;

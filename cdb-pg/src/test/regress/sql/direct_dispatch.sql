@@ -199,6 +199,9 @@ SELECT * from foo WHERE id * id = 1;
 SELECT * from foo WHERE id * id = 1 OR id = 1;
 SELECT * from foo where id * id = 1 AND id = 1;
 
+-- init plan to see how transaction escalation happens
+delete from foo where id = (select max(id2) from bar where id1 = 5);
+
 -- cleanup
 set test_print_direct_dispatch_info=off;
 drop table direct_test;
