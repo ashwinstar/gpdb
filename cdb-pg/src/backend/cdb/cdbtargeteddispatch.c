@@ -671,6 +671,10 @@ AssignContentIdsToPlanData(Query *query, Plan *plan)
 	 */
 	if ( list_length(data.allSlices) > 2 )
 	{
+		/*
+		 * NOTE!!!  When this is fixed, make a test for subquery initPlan and qual case
+		 *  (hitting code in AssignContentIdsToPlanData_SubqueryScan)
+		 */
 		ListCell *cell;
 		foreach(cell, data.allSlices)
 		{
