@@ -2,6 +2,8 @@
 ## ======================================================================
 ## ======================================================================
 
+set -x
+
 #This script performs an MPP build
 
 #Pick up some platform defines
@@ -48,6 +50,8 @@ if [ x"$1" = "x" ] ; then
     echo "Valid arguments are optimized, debug."
     exit 1
 fi
+
+exit 1
 
 WORKDIR=`pwd`
 PRODUCT="GPDB"
