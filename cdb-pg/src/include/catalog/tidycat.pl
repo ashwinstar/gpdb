@@ -19,7 +19,7 @@ B<tidycat.pl> - generate catalog entries
 
 =head1 SYNOPSIS
 
-B<ct> [options] 
+B<tidycat.pl> [options] <filename> [<filename>...]
 
 Options:
 
@@ -601,6 +601,16 @@ sub parsetab
 		die "no relid for table $tname"
 			unless (exists($alltabs->{$tname}->{with}->{relid}));
 
+		# build the common comment tag 
+		# (of the form /* relation id: nnn - tablename date */ ) 
+		# This comment is affixed to generated code
+
+		$alltabs->{$tname}->{relid_comment_tag} = 
+			"/* relation id: " .
+			$alltabs->{$tname}->{with}->{relid} .
+			" - $tname " .
+			yyyy_mm_dd() . " */\n";
+
 		if (exists($alltabs->{$tname}->{with}->{shared}))
 		{
 			$alltabs->{$tname}->{with}->{shared} =
@@ -844,10 +854,10 @@ sub formatcols
 	# with embedded tabs to align them, nicely, then unshift the
 	# append values and combined length back into original array,
 	# resulting in:
-	#  ["val1<tabs>val2", len1+<tabs>+len2, val3, len3]
+	#  ["val1<tabs>val2", len1+<tab widths>+len2, val3, len3]
 	#
 	# So now we just feed this array back into tabalign to get:
-	#  ["val1<tabs>val2<tabs>val3", len1+<tabs>+len2+<tabs>+len3]
+	#  ["val1<tabs>val2<tabs>val3", len1+<tab widths>+len2+<tab widths>+len3]
 
 	for my $coldef (@{$allcol})
 	{
@@ -941,18 +951,18 @@ sub fix_issharedrelation_function
 {
 	my $alltabs = shift;
 	my $bigstr = "";
-	my $ymd = yyyy_mm_dd();
 
 	for my $kk (sort (keys (%{$alltabs})))
 	{
 		my $vv = $alltabs->{$kk};
 		my $relid = $vv->{with}->{relid};
+		my $rct   = $vv->{relid_comment_tag}; # standard comment
 
 		next
 			unless ($vv->{with}->{shared});
 
 		$bigstr .= "\n\n";
-		$bigstr .= "/* relation id: $relid - $kk $ymd */\n";		
+		$bigstr .= $rct;
 		$bigstr .= "relationId == " . $vv->{CamelCaseRelationId} . " || ";
 		$bigstr .= "\n";
 	}
@@ -963,6 +973,7 @@ sub fix_issharedrelation_function
 	{
 		my $vv = $alltabs->{$kk};
 		my $relid = $vv->{with}->{relid};
+		my $rct   = $vv->{relid_comment_tag}; # standard comment
 
 		next
 			unless ($vv->{with}->{shared});
@@ -970,9 +981,10 @@ sub fix_issharedrelation_function
 		next unless (exists($vv->{indexes}));
 
 		$indstr .= "\n\n";
+
 		for my $ind (@{$vv->{indexes}})
 		{
-			$indstr .= "/* relation id: $relid - $kk $ymd */\n";		
+			$indstr .= $rct;
 			$indstr .= "relationId == " . $ind->{CamelCaseIndexId} . " || " ;
 			$indstr .= "\n";
 		}
@@ -1008,18 +1020,18 @@ sub fix_bootparse
 {
 	my $alltabs = shift;
 	my $bigstr = "";
-	my $ymd = yyyy_mm_dd();
 
 	for my $kk (sort (keys (%{$alltabs})))
 	{
 		my $vv = $alltabs->{$kk};
 		my $relid = $vv->{with}->{relid};
+		my $rct   = $vv->{relid_comment_tag}; # standard comment
 
 		next
 			unless (exists($vv->{with}->{reltype_oid}));
 
 		$bigstr .= "\n\n";
-		$bigstr .= "/* relation id: $relid - $kk $ymd */\n";		
+		$bigstr .= $rct;
 		$bigstr .=  bootparse_str($vv->{CamelCaseRelationId}, 
 								  $vv->{UppercaseReltypeOid});
 		$bigstr .= "\n\n";
@@ -1049,12 +1061,12 @@ sub formattypes
 {
 	my $alltabs = shift;
 	my $bigstr = "";
-	my $ymd = yyyy_mm_dd();
 
 	for my $kk (sort (keys (%{$alltabs})))
 	{
 		my $vv = $alltabs->{$kk};
 		my $relid = $vv->{with}->{relid};
+		my $rct   = $vv->{relid_comment_tag}; # standard comment
 
 		next
 			unless (exists($vv->{with}->{reltype_oid}));
@@ -1065,7 +1077,7 @@ sub formattypes
 
 		$vv->{UppercaseReltypeOid} = $uc_tname . "_RELTYPE_OID";
 
-		$bigstr .= "/* relation id: $relid - $kk $ymd */\n";		
+		$bigstr .= $rct;
 		$bigstr .= formattypedata($relid, $kk, $reltype_oid);
 		$bigstr .= 
 			"#define " . $uc_tname . "_RELTYPE_OID " . $reltype_oid . "\n";
@@ -1073,16 +1085,17 @@ sub formattypes
 
 	return $bigstr;
 }
+
 sub formatindexes
 {
 	my $alltabs = shift;
 	my $bigstr = "";
-	my $ymd = yyyy_mm_dd();
 
 	for my $kk (sort (keys (%{$alltabs})))
 	{
 		my $vv = $alltabs->{$kk};
 		my $relid = $vv->{with}->{relid};
+		my $rct   = $vv->{relid_comment_tag}; # standard comment
 
 		next unless (exists($vv->{indexes}));
 
@@ -1109,12 +1122,12 @@ sub formatindexes
 			}
 			if ($ind->{unique})
 			{
-				$bigstr .= "/* relation id: $relid - $kk $ymd */\n";
+				$bigstr .= $rct;
 				$bigstr .= "DECLARE_UNIQUE_INDEX(";
 			}
 			else
 			{
-				$bigstr .= "/* relation id: $relid - $kk $ymd */\n";
+				$bigstr .= $rct;
 				$bigstr .= "DECLARE_INDEX(";
 			}
 			my $indexid = $ind->{indexid};
@@ -1369,9 +1382,82 @@ sub bufferfile
 	return $buflist;
 }
 
+# We may already have previously generated code for a relation.  Need
+# to filter it out to eliminate duplicate definitions.  Note that this
+# only works as long as the relid does not change.
+sub clean_duplicate_entries
+{
+	my ($alltabs, $basename, $gen_code) = @_;
+
+	return $gen_code
+		unless ($basename =~ m/^(indexing\.h|catalog\.c ind|catalog\.c tab|bootparse\.y)$/);
+
+	my $skiplines = 0;
+
+	# skip N lines of generated code for duplicate entries
+	$skiplines = 2 
+		if ($basename =~ m/indexing/);
+	$skiplines = 1
+		if ($basename =~ m/catalog.*ind/);
+	$skiplines = 1
+		if ($basename =~ m/catalog.*tab/);
+	$skiplines = 3
+		if ($basename =~ m/bootparse/);
+
+	for my $kk (sort (keys (%{$alltabs})))
+	{
+		my $vv = $alltabs->{$kk};
+		my $relid = $vv->{with}->{relid};
+		my $rct   = $vv->{relid_comment_tag}; # standard comment
+
+		$rct = '/* relation id: ' . $relid;
+
+		next # no match for current relation
+			unless ($gen_code =~ m/$rct\s+/);
+
+		next # don't cleanup unless have lines to skip...
+			unless ($skiplines);
+
+		my @foo = split (/\n/, $gen_code);
+
+		my @baz;
+
+		while (scalar(@foo))
+		{
+			my $lin = shift @foo;
+			
+			# iter by line, but skip the line which matches the
+			# "relation id" comment
+			if ($lin !~ m/$rct\s+/)
+			{
+				push @baz, $lin;
+			}
+			else
+			{
+#				print "skip: $lin\n";
+
+				# and the subsequent N generated lines after the comment
+				for my $ii (1..$skiplines)
+				{
+#					print "skip: ",
+					shift @foo
+						if (scalar(@foo));
+#					print "\n";
+				} # end for
+			}
+		} # end while foo
+			
+		$gen_code = join ("\n", @baz);
+
+	} # end for kk
+
+	return $gen_code;
+
+} # end clean_duplicate_entries
+
 sub fixup_generated_code
 {
-	my ($basename, $fullname, $tmpname, $new_gen_list, 
+	my ($alltabs, $basename, $fullname, $tmpname, $new_gen_list, 
 		$verzion, $nnow,
 		$fixup_ref) = @_;
 
@@ -1405,6 +1491,10 @@ sub fixup_generated_code
 	my $entry = $elist->[$elist_index - 1];
 
 	my $bigstr = $entry->{def};
+
+	$bigstr = clean_duplicate_entries($alltabs, $basename, $bigstr);
+
+#	print "bigstr: ", $bigstr, "XXX\n";
 
 	my $genstr = "Generated by " . $verzion;
 
@@ -1579,7 +1669,8 @@ if (1)
 
 #	print "tmp: $tmp_indexing\tfil: $fil_indexing\n";
 
-	fixup_generated_code ("indexing.h", $fil_indexing, $tmp_indexing,
+	fixup_generated_code (\%alltabs, 
+						  "indexing.h", $fil_indexing, $tmp_indexing,
 		\@arr_indexing, $verzion, $nnow)
 		if (scalar(@arr_indexing));
 
@@ -1592,18 +1683,21 @@ if (1)
 	my $catc_ref;
 
 	$catc_ref = 
-		fixup_generated_code ("catalog.c ind", $fil_catalogc, $tmp_catalogc,
+		fixup_generated_code (\%alltabs, 
+							  "catalog.c ind", $fil_catalogc, $tmp_catalogc,
 							  \@arr_catalogc_ind, $verzion, $nnow)
 		if (scalar(@arr_catalogc_ind));
 
 	# catalog.c IsSharedRelation table entries
-	fixup_generated_code ("catalog.c tab", $fil_catalogc, $tmp_catalogc,
-		\@arr_catalogc_tab, $verzion, $nnow, $catc_ref)
+	fixup_generated_code (\%alltabs, 
+						  "catalog.c tab", $fil_catalogc, $tmp_catalogc,
+						  \@arr_catalogc_tab, $verzion, $nnow, $catc_ref)
 		if (scalar(@arr_catalogc_tab));
 
 	# bootparse.y static type entries
-	fixup_generated_code ("bootparse.y", $fil_bootparse, $tmp_bootparse,
-		\@arr_bootparse, $verzion, $nnow)
+	fixup_generated_code (\%alltabs, 
+						  "bootparse.y", $fil_bootparse, $tmp_bootparse,
+						  \@arr_bootparse, $verzion, $nnow)
 		if (scalar(@arr_bootparse));
 
 
