@@ -1,9 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * cdbtargeteddispatch.c
- *	  Assign targeted dispatching information to a plan
- *
- * Copyright (c) 2004-2009, Greenplum inc
+ * Copyright (c) 2009, Greenplum inc
  *-------------------------------------------------------------------------
  */
 
@@ -23,7 +20,6 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbdisp.h"
-#include "cdb/cdbfts.h"         /* isFTSEnabled() */
 #include "cdb/cdbhash.h"        /* isGreenplumDbHashable() */
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
@@ -35,15 +31,7 @@
 
 #define PRINT_DISPATCH_DECISIONS_STRING ("print_dispatch_decisions")
 
-/**
- * test cases needed:
- *   # basic cases
- *   # subquery in the select list or the predicate: make sure we assign that one properly
- *   # select portion as part of larger plan
- *   # bitmap scans (including and/or)
- */
-
-static char *gp_test_options = ""; //PRINT_DISPATCH_DECISIONS_STRING; // todo: make GUC instead
+static char *gp_test_options = ""; //PRINT_DISPATCH_DECISIONS_STRING;
 
 /**
  * Used when building up all of the composite distribution keys.
@@ -62,13 +50,20 @@ typedef struct PartitionKeyInfo
 typedef struct DirectDispatchCalculationInfo
 {
 	/*
-	 * in this use of the  DirectDispatchInfo structure, a NULL contentIds means that
+	 * In this use of the  DirectDispatchInfo structure, a NULL contentIds means that
 	 *    ANY contentID is valid (when dd->isDirectDispatch is true)
-	 * note also that we don't free dd->contentIds.  We let memory context cleanup handle that.
+	 *
+	 * Note also that we don't free dd->contentIds.  We let memory context cleanup handle that.
 	 */
 	DirectDispatchInfo dd;
+
+	/**
+	 * Have any calculations been processed and used to update dd ?  If false then
+	 *    no, and dd should be considered uninitialized.
+	 */
 	bool haveProcessedAnyCalculations;
-} DirectDispatchCalculationInfo;
+}
+DirectDispatchCalculationInfo;
 
 /**
  * ContentIdAssignmentData: used as the context parameter to the plan walking function that assigns
@@ -76,16 +71,25 @@ typedef struct DirectDispatchCalculationInfo
  */
 typedef struct ContentIdAssignmentData
 {
-	/* the range table! note, for subqueries will the range table be the same throughout?  */
+	/**
+	 * the range table!  
+	 */
 	List *rtable;
 
-	/* of DirectDispatchCalculationInfo pointers */
+	/**
+	 * of DirectDispatchCalculationInfo*
+	 */
 	List *sliceStack;
 
-	/* for use when constructing the output data structure */
+	/*
+	 * For use when constructing the output data structure -- objects in the output
+	 *   structure will be allocated in this memory context
+	 */
 	MemoryContext memoryContextForOutput;
 
-	/* of Plan*  */
+	/**
+	 * of Plan*
+	 */
 	List *allSlices;
 } ContentIdAssignmentData;
 
@@ -95,8 +99,8 @@ static bool AssignContentIdsToPlanData_Walker(Node *node, void *context);
  * Add the given constant to the given hash, properly checking for null and
  *   using the constant's type and value otherwise
  */
-static inline
-void cdbhashconstvalue(CdbHash *h, Const *c)
+static
+void CdbHashConstValue(CdbHash *h, Const *c)
 {
 	if ( c->constisnull)
 	{
@@ -265,7 +269,7 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 
 					if ( IsA(val, Const))
 					{
-						cdbhashconstvalue(h, (Const*) val);
+						CdbHashConstValue(h, (Const*) val);
 					}
 					else
 					{
@@ -377,11 +381,7 @@ FinalizeDirectDispatchDataForSlice(Node *node, ContentIdAssignmentData *data, bo
 
 		data->allSlices = lappend(data->allSlices, plan);
 
-		if ( plan->directDispatch.contentIds != NULL)
-		{
-			list_free(plan->directDispatch.contentIds);
-			plan->directDispatch.contentIds = NULL;
-		}
+		freeListAndNull(&plan->directDispatch.contentIds);
 
 		if ( ddcr->haveProcessedAnyCalculations)
 		{
@@ -445,7 +445,6 @@ AssignContentIdsToPlanData_SubqueryScan(Node *node, void *context)
 
 	/**
 	 * (from code for MPP-1980 elsewhere)
-	 * todo: how to trigger this test case?
 	 */
 	result = AssignContentIdsToPlanData_Walker((Node*)(subqueryScan->scan.plan.targetlist), context);
 	Assert(!result);
@@ -628,9 +627,12 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 	{
 		FinalizeDirectDispatchDataForSlice(node, data, false);
 	}
+
 	if ( newRtable != NULL)
 	{
-		data->rtable = oldRtable; /* this may be NULL, because not all queries have relations in the rtable (such as generate_series from MPP-7608) */
+		/* note that oldRTable may be NULL because not all queries have
+		 *   relations in the rtable (such as generate_series from MPP-7608) */
+		data->rtable = oldRtable;
 	}
 
 	return result;
@@ -644,21 +646,13 @@ void
 AssignContentIdsToPlanData(Query *query, Plan *plan)
 {
 	ContentIdAssignmentData data;
-	MemoryContext oldContext, tmpContext;
-	DirectDispatchCalculationInfo *ddcr;
 
 	/* setup */
-	tmpContext = AllocSetContextCreate(CurrentMemoryContext,
-									   "AssignContentIdsToPlanData",
-									   ALLOCSET_SMALL_MINSIZE,
-									   ALLOCSET_SMALL_INITSIZE,
-									   ALLOCSET_SMALL_MAXSIZE);
-	oldContext = MemoryContextSwitchTo(tmpContext);
-
-	ddcr = palloc(sizeof(DirectDispatchCalculationInfo));
+	SwitchedMemoryContext mem = AllocSetCreateDefaultContextInCurrentAndSwitchTo("AssignContentIdsToPlanData");
+	DirectDispatchCalculationInfo *ddcr = palloc(sizeof(DirectDispatchCalculationInfo));
 	InitDirectDispatchCalculationInfo(ddcr);
 
-	data.memoryContextForOutput = oldContext;
+	data.memoryContextForOutput = mem.oldContext;
 	data.sliceStack = list_make1(ddcr);
 	data.rtable = query->rtable;
 	data.allSlices = NULL;
@@ -666,15 +660,14 @@ AssignContentIdsToPlanData(Query *query, Plan *plan)
 	/* Do it! */
 	AssignContentIdsToPlanData_Walker((Node*)plan, &data);
 
-	/** todo: this is hacky peek-ahead...find a cleaner way to do this */
 	if ( ! IsA(plan, SubPlan) && ! IsA(plan, Motion))
 	{
+		/* subplan and motion will already have been finalized */
 		FinalizeDirectDispatchDataForSlice((Node*)plan, &data, true);
 	}
 
-	/* now check to see if we are multi-slice.  If so then we will
-	 *   disable the direct dispatch (because it's not working right
-	 *   now -- see MPP-7630)
+	/* now check to see if we are multi-slice.  If so then we will disable the direct dispatch
+	 *     (because it's not working right now -- see MPP-7630)
 	 */
 	if ( list_length(data.allSlices) > 2 )
 	{
@@ -683,15 +676,9 @@ AssignContentIdsToPlanData(Query *query, Plan *plan)
 		{
 			Plan *plan = (Plan *) lfirst(cell);
 			plan->directDispatch.isDirectDispatch = false;
-			if ( plan->directDispatch.contentIds)
-			{
-				list_free(plan->directDispatch.contentIds);
-				plan->directDispatch.contentIds = NULL;
-			}
+			freeListAndNull(&plan->directDispatch.contentIds);
 		}
 	}
 
-	/* cleanup */
-	MemoryContextSwitchTo(oldContext);
-	MemoryContextDelete(tmpContext);
+	DeleteAndRestoreSwitchedMemoryContext(mem);
 }

@@ -171,10 +171,28 @@ select * from direct_test_type_numeric where numeric1 = 8.8;
 -- todo: FIX PREPARE  prepare test_update (int) as update direct_test set value = 'boo' where key = $1;
 -- execute test_update(2);
 
------------------
--- Cursors
---  do same as above but using cursors
 
+------------------------
+-- A subquery
+--
+set test_print_direct_dispatch_info=off;
+CREATE TEMP TABLE foo (id integer) DISTRIBUTED BY (id);
+CREATE TEMP TABLE bar (id1 integer, id2 integer) DISTRIBUTED by (id1);
+
+INSERT INTO foo VALUES (1);
+
+INSERT INTO bar VALUES (1, 1);
+INSERT INTO bar VALUES (2, 2);
+INSERT INTO bar VALUES (3, 1);
+
+set test_print_direct_dispatch_info=on;
+SELECT * FROM foo WHERE id IN
+    (SELECT id2 FROM (SELECT DISTINCT id1, id2 FROM bar WHERE bar.id1 = 1) AS s) ORDER BY 1;
+--
+-- this one will NOT do direct dispatch because it is a many slice query and those are disabled right now
+SELECT * FROM foo WHERE id IN
+    (SELECT id2 FROM (SELECT id1, id2 FROM bar WHERE bar.id1 = 1 UNION
+                      SELECT id1, id2 FROM bar WHERE bar.id1 = 2) AS s) ORDER BY 1;
 
 -- cleanup
 set test_print_direct_dispatch_info=off;
@@ -189,3 +207,5 @@ drop table direct_test_type_int;
 drop table direct_test_type_double;
 drop table direct_test_type_date;
 drop table direct_test_type_numeric;
+drop table foo;
+drop table bar;

@@ -1,16 +1,17 @@
 /*-------------------------------------------------------------------------
  *
- * cdbllize.h
- *	  definitions for cdbmutate.c utilities
+ * The targeted dispatch code will use query information to assign content ids
+ *    to the root node of a plan, when that information is calculatable.  
  *
- * Copyright (c) 2005-2008, Greenplum inc
+ * For example, in the query select * from t1 where t1.distribution_key = 100
  *
+ * Then it is known that t1.distribution_key must equal 100, and so the content
+ *    id can be calculated from that.
  *
- * IDENTIFICATION
- *	         $Id: //cdb2/main/cdb-pg/src/include/cdb/cdbmutate.h#41 $
- *       $Change: 29753 $
- *     $DateTime: 2008/11/17 11:31:51 $
- *       $Author: ftian $
+ * See MPP-6939 for more information.
+ *
+ * Copyright (c) 2009, Greenplum inc
+ *
  *-------------------------------------------------------------------------
  */
 #ifndef CDBTARGETEDDISPATCH_H
@@ -19,6 +20,10 @@
 #include "nodes/plannodes.h"
 #include "nodes/parsenodes.h"
 
+/**
+ * @param query the query that produced the given plan
+ * @param plan the plan to augment with directDispatch info (in its directDispatch field)
+ */
 extern void AssignContentIdsToPlanData(Query *query, Plan *plan);
 
 #endif   /* CDBTARGETEDDISPATCH_H */

@@ -335,4 +335,19 @@ extern List *list_copy_tail(List *list, int nskip);
 extern int	length(List *list);
 #endif   /* ENABLE_LIST_COMPAT */
 
+/**
+ * If listPtrPtr is non-NULL, and *listPtrPtr is non-NULL then free the list and set *listPtrPtr to NULL
+ *
+ * @param listPtr a ptr to a list object.  May be NULL, and may also point to NULL
+ */
+static inline
+void freeListAndNull(List **listPtrPtr)
+{
+	if ( listPtrPtr && *listPtrPtr)
+	{
+		list_free(*listPtrPtr);
+		*listPtrPtr = NULL;
+	}
+}
+
 #endif   /* PG_LIST_H */
