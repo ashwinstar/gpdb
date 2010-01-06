@@ -849,6 +849,16 @@ static void session_detach(request_t* r)
 
 			session_free(session);
 		}
+		else if(!session->is_get && session->nrequest == 0)
+		{
+			/* 
+			 * free the session if this is a POST request 
+			 * and it's the last request for this session. 
+			 * this is needed in order to make sure to close
+			 * the out file when we're done writing. 
+			 */
+			session_free(session);
+		}
 	}
 }
 
