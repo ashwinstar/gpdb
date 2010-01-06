@@ -437,12 +437,23 @@ calculate_relation_size(Relation rel)
     return totalsize;
 }
 
+
 Datum
 pg_relation_size_oid(PG_FUNCTION_ARGS)
 {
 	Oid			relOid = PG_GETARG_OID(0);
 	Relation	rel;
 	int64		size = 0;
+	
+	/**
+	 * This function is peculiar in that it does its own dispatching.
+	 * It does not work on entry db since we do not support dispatching
+	 * from entry-db currently.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE && Gp_segment == -1)
+	{
+		elog(ERROR, "This query is not currently supported by GPDB.");
+	}
 
 	rel = relation_open(relOid, AccessShareLock);
 	
@@ -488,6 +499,16 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 	RangeVar   *relrv;
 	Relation	rel;
 	int64		size;
+	
+	/**
+	 * This function is peculiar in that it does its own dispatching.
+	 * It does not work on entry db since we do not support dispatching
+	 * from entry-db currently.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE && Gp_segment == -1)
+	{
+		elog(ERROR, "This query is not currently supported by GPDB.");
+	}
 	
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	
