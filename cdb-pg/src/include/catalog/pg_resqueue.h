@@ -167,6 +167,9 @@ typedef FormData_pg_resourcetype *Form_pg_resourcetype;
 
 /* TIDYCAT_END_CODEGEN */
 
+/* Create entry in pg_resourcetype for PRIORITY */
+DATA(insert OID = 6454  ( 1 priority ));
+
 /* TIDYCAT_BEGINDEF
 
    CREATE TABLE pg_resqueuecapability

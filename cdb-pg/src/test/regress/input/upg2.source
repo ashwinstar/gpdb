@@ -1030,6 +1030,15 @@ select * from public.pg_resqueue where oid < 10000
 except all
 select * from pg_catalog.pg_resqueue where oid < 10000;
 
+-- compare old and new pg_resourcetype
+select * from pg_catalog.pg_resourcetype where oid < 10000
+except all
+select * from public.pg_resourcetype where oid < 10000;
+
+select * from public.pg_resourcetype where oid < 10000
+except all
+select * from pg_catalog.pg_resourcetype where oid < 10000;
+
 -- compare old and new pg_cast
 select * from pg_catalog.pg_cast
 except all
@@ -1098,6 +1107,7 @@ FROM (          SELECT oid FROM pg_catalog.pg_authid
       UNION ALL SELECT oid FROM pg_catalog.pg_conversion
       UNION ALL SELECT oid FROM pg_catalog.pg_tablespace
       UNION ALL SELECT oid FROM pg_catalog.pg_resqueue
+      UNION ALL SELECT oid FROM pg_catalog.pg_resourcetype
       UNION ALL SELECT oid FROM pg_catalog.pg_partition
       UNION ALL SELECT oid FROM pg_catalog.pg_partition_rule
       UNION ALL SELECT oid FROM pg_catalog.pg_database

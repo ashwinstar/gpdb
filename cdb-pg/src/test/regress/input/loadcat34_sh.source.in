@@ -12,6 +12,7 @@ copy @gpupgradeschemaname@.pg_filespace from '@gpupgradedatadir@/upg2_pg_filespa
 copy @gpupgradeschemaname@.pg_shdescription from '@gpupgradedatadir@/upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_resqueue from '@gpupgradedatadir@/upg2_pg_resqueue_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 -- add resourcetype and resqueuecapability here if necessary
+copy @gpupgradeschemaname@.pg_resourcetype from '@gpupgradedatadir@/upg2_pg_resourcetype_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 
 -- Assign users without queues to the default queue
 update @gpupgradeschemaname@.pg_authid u set rolresqueue=q.oid from pg_catalog.pg_resqueue q where q.rsqname='gp_default' and u.rolresqueue is null and not u.rolsuper;

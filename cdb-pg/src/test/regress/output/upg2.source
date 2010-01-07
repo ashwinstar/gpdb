@@ -194,7 +194,7 @@ COPY public.pg_opclass
   from '@abs_srcdir@/data/pg_opclass32.data' with oids csv header;
 COPY public.pg_tablespace
   from '@abs_srcdir@/data/pg_tablespace32.data' with oids csv header;
-\i @abs_srcdir@/sql/upg2_viewdefs_32.sql
+\i @abs_builddir@/sql/upg2_viewdefs_32.sql
 -- The 32 version of various system and information_schema views
 --
 -- PG_CATALOG views
@@ -1726,42 +1726,42 @@ reindex table public.gp_fastsequence;
 set search_path='pg_catalog';
 CREATE VIEW public.pg_user_mappings AS SELECT U.oid AS umid, S.oid AS srvid, S.srvname AS srvname, U.umuser AS umuser, CASE WHEN U.umuser = 0 THEN 'public' ELSE A.rolname END AS usename, CASE WHEN pg_has_role(S.srvowner, 'USAGE') OR has_server_privilege(S.oid, 'USAGE') THEN U.umoptions ELSE NULL END AS umoptions FROM pg_user_mapping U LEFT JOIN pg_authid A ON (A.oid = U.umuser) JOIN pg_foreign_server S ON (U.umserver = S.oid);
 REVOKE ALL on public.pg_user_mappings FROM public;
-ALTER TABLE public.pg_user_mappings OWNER TO @gpcurusername@;
+ALTER TABLE public.pg_user_mappings OWNER TO jcohen;
 -- Create new 3.4 views in information_schema
 set search_path='information_schema';
 --  Base view for foreign-data-wrappers (no grant)
 CREATE VIEW public._pg_foreign_data_wrappers AS SELECT w.oid, w.fdwowner, w.fdwoptions, CAST(current_database() AS sql_identifier) AS foreign_data_wrapper_catalog, CAST(fdwname AS sql_identifier) AS foreign_data_wrapper_name, CAST(u.rolname AS sql_identifier) AS authorization_identifier, CAST('c' AS character_data) AS foreign_data_wrapper_language FROM pg_foreign_data_wrapper w, pg_authid u WHERE u.oid = w.fdwowner AND (pg_has_role(fdwowner, 'USAGE') OR has_foreign_data_wrapper_privilege(w.oid, 'USAGE'));
-ALTER TABLE public._pg_foreign_data_wrappers OWNER TO @gpcurusername@;
+ALTER TABLE public._pg_foreign_data_wrappers OWNER TO jcohen;
 -- Foreign-data-wrapper-options
 CREATE VIEW public.foreign_data_wrapper_options AS SELECT foreign_data_wrapper_catalog, foreign_data_wrapper_name, CAST((pg_options_to_table(w.fdwoptions)).option_name AS sql_identifier) AS option_name, CAST((pg_options_to_table(w.fdwoptions)).option_value AS character_data) AS option_value FROM _pg_foreign_data_wrappers w;
 GRANT SELECT ON public.foreign_data_wrapper_options TO PUBLIC;
-ALTER TABLE public.foreign_data_wrapper_options OWNER TO @gpcurusername@;
+ALTER TABLE public.foreign_data_wrapper_options OWNER TO jcohen;
 -- Foreign-data-wrappers
 CREATE VIEW public.foreign_data_wrappers AS SELECT foreign_data_wrapper_catalog, foreign_data_wrapper_name, authorization_identifier, CAST(NULL AS character_data) AS library_name, foreign_data_wrapper_language FROM _pg_foreign_data_wrappers w;
 GRANT SELECT ON public.foreign_data_wrappers TO PUBLIC;
-ALTER TABLE public.foreign_data_wrappers OWNER TO @gpcurusername@;
+ALTER TABLE public.foreign_data_wrappers OWNER TO jcohen;
 -- Base view for foreign-servers (no grant)
 CREATE VIEW public._pg_foreign_servers AS SELECT s.oid, s.srvoptions, CAST(current_database() AS sql_identifier) AS foreign_server_catalog, CAST(srvname AS sql_identifier) AS foreign_server_name, CAST(current_database() AS sql_identifier) AS foreign_data_wrapper_catalog, CAST(w.fdwname AS sql_identifier) AS foreign_data_wrapper_name, CAST(srvtype AS character_data) AS foreign_server_type, CAST(srvversion AS character_data) AS foreign_server_version, CAST(u.rolname AS sql_identifier) AS authorization_identifier FROM pg_foreign_server s, pg_foreign_data_wrapper w, pg_authid u WHERE w.oid = s.srvfdw AND u.oid = s.srvowner AND (pg_has_role(s.srvowner, 'USAGE') OR has_server_privilege(s.oid, 'USAGE'));
-ALTER TABLE public._pg_foreign_servers OWNER TO @gpcurusername@;
+ALTER TABLE public._pg_foreign_servers OWNER TO jcohen;
 -- Foreign-server-options
 CREATE VIEW public.foreign_server_options AS SELECT foreign_server_catalog, foreign_server_name, CAST((pg_options_to_table(s.srvoptions)).option_name AS sql_identifier) AS option_name, CAST((pg_options_to_table(s.srvoptions)).option_value AS character_data) AS option_value FROM _pg_foreign_servers s;
 GRANT SELECT ON TABLE public.foreign_server_options TO PUBLIC;
-ALTER TABLE public.foreign_server_options OWNER TO @gpcurusername@;
+ALTER TABLE public.foreign_server_options OWNER TO jcohen;
 -- Foreign-servers
 CREATE VIEW public.foreign_servers AS SELECT foreign_server_catalog, foreign_server_name, foreign_data_wrapper_catalog, foreign_data_wrapper_name, foreign_server_type, foreign_server_version, authorization_identifier FROM _pg_foreign_servers;
 GRANT SELECT ON public.foreign_servers TO PUBLIC;
-ALTER TABLE public.foreign_servers OWNER TO @gpcurusername@;
+ALTER TABLE public.foreign_servers OWNER TO jcohen;
 -- Base view for user-mappings
 CREATE VIEW public._pg_user_mappings AS SELECT um.oid, um.umoptions, um.umuser, CAST(COALESCE(u.rolname,'PUBLIC') AS sql_identifier ) AS authorization_identifier, s.foreign_server_catalog, s.foreign_server_name, s.authorization_identifier AS srvowner FROM pg_user_mapping um LEFT JOIN pg_authid u ON (u.oid = um.umuser), public._pg_foreign_servers s WHERE s.oid = um.umserver;
-ALTER TABLE public._pg_user_mappings OWNER TO @gpcurusername@;
+ALTER TABLE public._pg_user_mappings OWNER TO jcohen;
 -- user_mapping_options
 CREATE VIEW public.user_mapping_options AS SELECT authorization_identifier, foreign_server_catalog, foreign_server_name, CAST((pg_options_to_table(um.umoptions)).option_name AS sql_identifier) AS option_name, CAST(CASE WHEN (umuser <> 0 AND authorization_identifier = current_user) OR (umuser = 0 AND pg_has_role(srvowner, 'USAGE')) OR (SELECT rolsuper FROM pg_authid WHERE rolname = current_user) THEN (pg_options_to_table(um.umoptions)).option_value ELSE NULL END AS character_data) AS option_value FROM public._pg_user_mappings um;
 GRANT SELECT ON public.user_mapping_options TO PUBLIC;
-ALTER TABLE public.user_mapping_options OWNER TO @gpcurusername@;
+ALTER TABLE public.user_mapping_options OWNER TO jcohen;
 -- user_mappings
 CREATE VIEW public.user_mappings AS SELECT authorization_identifier, foreign_server_catalog, foreign_server_name FROM _pg_user_mappings;
 GRANT SELECT ON public.user_mappings TO PUBLIC;
-ALTER TABLE public.user_mappings OWNER TO @gpcurusername@;
+ALTER TABLE public.user_mappings OWNER TO jcohen;
 -- 
 -- Modifying existing catalog views is more complicated than creating new views.
 -- To handle this we create a new view with the new definition then update the old
@@ -1887,6 +1887,7 @@ copy public.pg_filespace from '@abs_srcdir@/data//upg2_pg_filespace_toadd33.data
 copy public.pg_shdescription from '@abs_srcdir@/data//upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy public.pg_resqueue from '@abs_srcdir@/data//upg2_pg_resqueue_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 -- add resourcetype and resqueuecapability here if necessary
+copy public.pg_resourcetype from '@abs_srcdir@/data//upg2_pg_resourcetype_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 -- Assign users without queues to the default queue
 update public.pg_authid u set rolresqueue=q.oid from pg_catalog.pg_resqueue q where q.rsqname='gp_default' and u.rolresqueue is null and not u.rolsuper;
 -- Assign the system tablespaces to the system filespace
@@ -1895,7 +1896,7 @@ update public.pg_tablespace set spcfsoid=3052, spclocation=null, spcprilocations
 reindex table public.gp_configuration_history;
 reindex table public.gp_db_interfaces;
 reindex table public.gp_fault_strategy;
-NOTICE:  table "gp_fault_strategy" has no indexes
+psql:@abs_builddir@/sql/loadcat34_sh.sql:26: NOTICE:  table "gp_fault_strategy" has no indexes
 reindex table public.gp_interfaces;
 reindex table public.gp_san_config;
 reindex table public.gp_segment_config;
@@ -2375,6 +2376,21 @@ select * from pg_catalog.pg_resqueue where oid < 10000;
 ---------+---------------+--------------+---------------+--------------------
 (0 rows)
 
+-- compare old and new pg_resourcetype
+select * from pg_catalog.pg_resourcetype where oid < 10000
+except all
+select * from public.pg_resourcetype where oid < 10000;
+ restypid | resname 
+----------+---------
+(0 rows)
+
+select * from public.pg_resourcetype where oid < 10000
+except all
+select * from pg_catalog.pg_resourcetype where oid < 10000;
+ restypid | resname 
+----------+---------
+(0 rows)
+
 -- compare old and new pg_cast
 select * from pg_catalog.pg_cast
 except all
@@ -2472,6 +2488,7 @@ FROM (          SELECT oid FROM pg_catalog.pg_authid
       UNION ALL SELECT oid FROM pg_catalog.pg_conversion
       UNION ALL SELECT oid FROM pg_catalog.pg_tablespace
       UNION ALL SELECT oid FROM pg_catalog.pg_resqueue
+      UNION ALL SELECT oid FROM pg_catalog.pg_resourcetype
       UNION ALL SELECT oid FROM pg_catalog.pg_partition
       UNION ALL SELECT oid FROM pg_catalog.pg_partition_rule
       UNION ALL SELECT oid FROM pg_catalog.pg_database
