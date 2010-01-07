@@ -574,6 +574,11 @@ def webui_upgrade():
         print 'Error - MASTER_DATA_DIRECTORY environment variable not set.'
         sys.exit(1)
         
+    if not os.path.exists(os.path.join(master_data_directory, 'gpperfmon')):
+        print 'Error - Unable to locate a previously installed version of gpperfmon.'
+        print '        The gpperfmon directory does not exist in the MASTER_DATA_DIRECTORY'
+        sys.exit(1)
+        
     gpperfmon_loc = os.path.dirname(os.path.abspath(os.path.join(sys.argv[0], '..')))
     
     if gpperfmon_loc != GPPERFMONHOME:
