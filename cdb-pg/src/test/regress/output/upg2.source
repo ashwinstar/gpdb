@@ -98,6 +98,7 @@ create table public.pg_resqueuecapability(like pg_catalog.pg_resqueuecapability)
 create table public.pg_stat_last_operation(like pg_catalog.pg_stat_last_operation);
 create table public.pg_stat_last_shoperation(like pg_catalog.pg_stat_last_shoperation);
 create table public.pg_user_mapping(like pg_catalog.pg_user_mapping);
+create table public.gp_fastsequence(like pg_catalog.gp_fastsequence);
 -- indexes
 create        index gp_db_interfaces_dbid_index on public.gp_db_interfaces(dbid);
 create unique index gp_interfaces_interface_index on public.gp_interfaces(interfaceid);
@@ -110,6 +111,7 @@ create unique index pg_filespace_entry_fsdb_index on public.pg_filespace_entry(f
 create unique index pg_operator_oid_index on public.pg_operator(oid);
 create unique index pg_resourcetype_oid_index on public.pg_resourcetype(oid);
 create unique index pg_resqueue_oid_index on public.pg_resqueue(oid);
+create unique index gp_fastsequence_objid_objmod_index on public.gp_fastsequence(objid, objmod);
 --
 -- 2. Build the 33 catalog
 --
@@ -1619,6 +1621,15 @@ select * from public.pg_amop;
 -----------+-------------+--------------+--------------+---------
 (0 rows)
 
+-- 
+-- Some manual fixups.
+--   The loadcat below will added some colums to our "public" versions of the
+--   catalogs, but this updated the "public.pg_attribute".  Perform the logical
+--   operations on the real object so that the columns actually exist when we
+--   try to manipulate the table in loadcat.sh
+--
+-- WARNING: DO NOT ADD ACTUAL CATALOG UPGRADE LOGIC HERE!
+alter table public.pg_exttable add column writable boolean;
 --
 -- 7. Run the scripts that upgrade from 33->34
 --      phase 1:  loadcat34
@@ -1654,20 +1665,26 @@ insert into public.pg_attribute values(1213, 'spcfsoid', 26, -1, 4, 7, 0, -1, -1
 update public.pg_class set relnatts=relnatts+1 where oid='pg_catalog.pg_tablespace'::regclass;
 -- fix up pg_appendonly
 alter table public.pg_appendonly add column columnstore boolean;
-update public.pg_appendonly set columnstore='f';
-alter table public.pg_appendonly alter column columnstore set not null;
 alter table public.pg_appendonly add column segrelid oid;
-update public.pg_appendonly set segrelid=0;
 alter table public.pg_appendonly add column segidxid oid;
-update public.pg_appendonly set segidxid=0;
 alter table public.pg_appendonly add column blkdirrelid oid;
-update public.pg_appendonly set blkdirrelid=0;
 alter table public.pg_appendonly add column blkdiridxid oid;
-update public.pg_appendonly set blkdiridxid=0;
--- fix up pg_exttable
-alter table public.pg_exttable add column writable boolean;
+-- fill in the new columns based on pg_class
+update public.pg_appendonly set (columnstore, segrelid, segidxid, blkdirrelid, blkdiridxid) = ('f', a.relaosegrelid, b.relaosegidxid, 0, 0) from public.pg_class a left join public.pg_class b on (a.relaosegrelid=b.oid) where a.oid=relid;
+-- Now that the data is filled in add the constraints
+alter table public.pg_appendonly alter column columnstore set not null;
+-- and clear out the now irrelevant entries from pg_class
+update public.pg_class set relaosegrelid=0, relaosegidxid=0 where relaosegrelid != 0 or relaosegidxid != 0;
+-- fix up pg_exttable: we don't go through "alter" since this would create a toast table that doesn't normally exist.
+-- new entry already added to pg_attribute in the copy
+-- fix relnatts in pg_class
+update public.pg_class set relnatts=10 where oid='pg_catalog.pg_exttable'::regclass;
+-- set all existing tables to readable external tables
 update public.pg_exttable set writable='f';
+-- now that the data is filled in add the constraints
 alter table public.pg_exttable alter column writable set not null;
+-- update pg_class for external table changes
+update public.pg_class set relkind='r', relstorage = 'x' where relkind='x' and relstorage='v';
 -- fix up pg_proc and pg_operator to replace "text_pattern_eq" with "texteq"
 update public.pg_proc set prosrc = 'texteq' where oid = 2162;
 update public.pg_proc set prosrc = 'texteq' where oid = 2176;
@@ -1704,6 +1721,7 @@ reindex table public.pg_user_mapping;
 reindex table public.pg_rewrite;
 reindex table public.pg_stat_last_operation;
 reindex table public.pg_type;
+reindex table public.gp_fastsequence;
 -- Create new 3.4 views in pg_catalog
 set search_path='pg_catalog';
 CREATE VIEW public.pg_user_mappings AS SELECT U.oid AS umid, S.oid AS srvid, S.srvname AS srvname, U.umuser AS umuser, CASE WHEN U.umuser = 0 THEN 'public' ELSE A.rolname END AS usename, CASE WHEN pg_has_role(S.srvowner, 'USAGE') OR has_server_privilege(S.oid, 'USAGE') THEN U.umoptions ELSE NULL END AS umoptions FROM pg_user_mapping U LEFT JOIN pg_authid A ON (A.oid = U.umuser) JOIN pg_foreign_server S ON (U.umserver = S.oid);
@@ -1916,14 +1934,6 @@ insert into public.pg_attribute
 							 		  ('public.pg_appendonly'::regclass, 12),
 							 		  ('public.pg_appendonly'::regclass, 13) );
 update public.pg_class set relnatts=13 where oid = 'pg_catalog.pg_appendonly'::regclass;
-insert into public.pg_attribute 
-  select 'pg_catalog.pg_exttable'::regclass, a.attname, a.atttypid,
-    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
-    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
-    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
-  from pg_catalog.pg_attribute a
-  where (attrelid, attnum) in ( ('public.pg_exttable'::regclass, 10) );
-update public.pg_class set relnatts=10 where oid = 'pg_catalog.pg_exttable'::regclass;
 -- System views that have changed, update fake schema.
 --   We upgrade "public.viewname", which is a view defined in the _actual_
 --   catalog, we need to mirror these updates in the fake schema so that
@@ -2534,7 +2544,8 @@ drop table
   public.pg_user_mapping,
   public.pg_resourcetype,
   public.pg_resqueuecapability,
-  public.pg_stat_last_shoperation;
+  public.pg_stat_last_shoperation,
+  public.gp_fastsequence;
 drop view
    public.pg_partitions,
    public.pg_partitions_v33,

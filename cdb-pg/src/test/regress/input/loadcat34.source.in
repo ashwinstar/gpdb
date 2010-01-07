@@ -31,21 +31,30 @@ update @gpupgradeschemaname@.pg_class set relnatts=relnatts+1 where oid='pg_cata
 
 -- fix up pg_appendonly
 alter table @gpupgradeschemaname@.pg_appendonly add column columnstore boolean;
-update @gpupgradeschemaname@.pg_appendonly set columnstore='f';
-alter table @gpupgradeschemaname@.pg_appendonly alter column columnstore set not null;
 alter table @gpupgradeschemaname@.pg_appendonly add column segrelid oid;
-update @gpupgradeschemaname@.pg_appendonly set segrelid=0;
 alter table @gpupgradeschemaname@.pg_appendonly add column segidxid oid;
-update @gpupgradeschemaname@.pg_appendonly set segidxid=0;
 alter table @gpupgradeschemaname@.pg_appendonly add column blkdirrelid oid;
-update @gpupgradeschemaname@.pg_appendonly set blkdirrelid=0;
 alter table @gpupgradeschemaname@.pg_appendonly add column blkdiridxid oid;
-update @gpupgradeschemaname@.pg_appendonly set blkdiridxid=0;
 
--- fix up pg_exttable
-alter table @gpupgradeschemaname@.pg_exttable add column writable boolean;
+-- fill in the new columns based on pg_class
+update @gpupgradeschemaname@.pg_appendonly set (columnstore, segrelid, segidxid, blkdirrelid, blkdiridxid) = ('f', a.relaosegrelid, b.relaosegidxid, 0, 0) from @gpupgradeschemaname@.pg_class a left join @gpupgradeschemaname@.pg_class b on (a.relaosegrelid=b.oid) where a.oid=relid;
+
+-- Now that the data is filled in add the constraints
+alter table @gpupgradeschemaname@.pg_appendonly alter column columnstore set not null;
+
+-- and clear out the now irrelevant entries from pg_class
+update @gpupgradeschemaname@.pg_class set relaosegrelid=0, relaosegidxid=0 where relaosegrelid != 0 or relaosegidxid != 0;
+
+-- fix up pg_exttable: we don't go through "alter" since this would create a toast table that doesn't normally exist.
+-- new entry already added to pg_attribute in the copy
+-- fix relnatts in pg_class
+update @gpupgradeschemaname@.pg_class set relnatts=10 where oid='pg_catalog.pg_exttable'::regclass;
+-- set all existing tables to readable external tables
 update @gpupgradeschemaname@.pg_exttable set writable='f';
+-- now that the data is filled in add the constraints
 alter table @gpupgradeschemaname@.pg_exttable alter column writable set not null;
+-- update pg_class for external table changes
+update @gpupgradeschemaname@.pg_class set relkind='r', relstorage = 'x' where relkind='x' and relstorage='v';
 
 -- fix up pg_proc and pg_operator to replace "text_pattern_eq" with "texteq"
 update @gpupgradeschemaname@.pg_proc set prosrc = 'texteq' where oid = 2162;
@@ -87,6 +96,7 @@ reindex table @gpupgradeschemaname@.pg_user_mapping;
 reindex table @gpupgradeschemaname@.pg_rewrite;
 reindex table @gpupgradeschemaname@.pg_stat_last_operation;
 reindex table @gpupgradeschemaname@.pg_type;
+reindex table @gpupgradeschemaname@.gp_fastsequence;
 
 -- Create new 3.4 views in pg_catalog
 set search_path='pg_catalog';

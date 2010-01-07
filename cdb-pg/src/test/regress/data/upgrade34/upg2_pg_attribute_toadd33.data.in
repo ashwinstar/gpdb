@@ -228,6 +228,7 @@ attrelid|attname|atttypid|attstattarget|attlen|attnum|attndims|attcacheoff|attty
 5043|cmax|29|0|4|-6|0|-1|-1|t|p|i|t|f|f|t|0
 5043|tableoid|26|0|4|-7|0|-1|-1|t|p|i|t|f|f|t|0
 5043|gp_segment_id|23|0|4|-8|0|-1|-1|t|p|i|t|f|f|t|0
+6040|writable|16|-1|1|10|0|-1|-1|t|p|c|f|f|f|t|0
 6067|objid|26|-1|4|1|0|-1|-1|t|p|i|f|f|f|t|0
 6067|objmod|20|-1|8|2|0|-1|-1|t|p|d|f|f|f|t|0
 \.

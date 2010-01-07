@@ -104,6 +104,7 @@ create table public.pg_resqueuecapability(like pg_catalog.pg_resqueuecapability)
 create table public.pg_stat_last_operation(like pg_catalog.pg_stat_last_operation);
 create table public.pg_stat_last_shoperation(like pg_catalog.pg_stat_last_shoperation);
 create table public.pg_user_mapping(like pg_catalog.pg_user_mapping);
+create table public.gp_fastsequence(like pg_catalog.gp_fastsequence);
 
 -- indexes
 create        index gp_db_interfaces_dbid_index on public.gp_db_interfaces(dbid);
@@ -117,6 +118,7 @@ create unique index pg_filespace_entry_fsdb_index on public.pg_filespace_entry(f
 create unique index pg_operator_oid_index on public.pg_operator(oid);
 create unique index pg_resourcetype_oid_index on public.pg_resourcetype(oid);
 create unique index pg_resqueue_oid_index on public.pg_resqueue(oid);
+create unique index gp_fastsequence_objid_objmod_index on public.gp_fastsequence(objid, objmod);
 
 --
 -- 2. Build the 33 catalog
@@ -644,6 +646,17 @@ select * from public.pg_amop_v33
 except all
 select * from public.pg_amop;
 
+-- 
+-- Some manual fixups.
+--   The loadcat below will added some colums to our "public" versions of the
+--   catalogs, but this updated the "public.pg_attribute".  Perform the logical
+--   operations on the real object so that the columns actually exist when we
+--   try to manipulate the table in loadcat.sh
+--
+-- WARNING: DO NOT ADD ACTUAL CATALOG UPGRADE LOGIC HERE!
+alter table public.pg_exttable add column writable boolean;
+
+
 --
 -- 7. Run the scripts that upgrade from 33->34
 --      phase 1:  loadcat34
@@ -681,14 +694,6 @@ insert into public.pg_attribute
 							 		  ('public.pg_appendonly'::regclass, 12),
 							 		  ('public.pg_appendonly'::regclass, 13) );
 update public.pg_class set relnatts=13 where oid = 'pg_catalog.pg_appendonly'::regclass;
-insert into public.pg_attribute 
-  select 'pg_catalog.pg_exttable'::regclass, a.attname, a.atttypid,
-    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
-    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
-    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
-  from pg_catalog.pg_attribute a
-  where (attrelid, attnum) in ( ('public.pg_exttable'::regclass, 10) );
-update public.pg_class set relnatts=10 where oid = 'pg_catalog.pg_exttable'::regclass;
 
 -- System views that have changed, update fake schema.
 --   We upgrade "public.viewname", which is a view defined in the _actual_
@@ -1162,7 +1167,8 @@ drop table
   public.pg_user_mapping,
   public.pg_resourcetype,
   public.pg_resqueuecapability,
-  public.pg_stat_last_shoperation;
+  public.pg_stat_last_shoperation,
+  public.gp_fastsequence;
 drop view
    public.pg_partitions,
    public.pg_partitions_v33,
