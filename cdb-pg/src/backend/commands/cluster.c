@@ -58,7 +58,7 @@ typedef struct
 } RelToCluster;
 
 
-static void cluster_rel(RelToCluster *rv, bool recheck, ClusterStmt *stmt);
+static void cluster_rel(RelToCluster *rv, bool recheck, ClusterStmt *stmt, bool printError);
 static void rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt);
 static void copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex);
 static List *get_tables_to_cluster(MemoryContext cluster_context);
@@ -175,7 +175,7 @@ cluster(ClusterStmt *stmt)
 		heap_close(rel, NoLock);
 
 		/* Do the job */
-		cluster_rel(&rvtc, false, stmt);
+		cluster_rel(&rvtc, false, stmt, true);
 
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
@@ -232,7 +232,7 @@ cluster(ClusterStmt *stmt)
 			if (Gp_role == GP_ROLE_DISPATCH)
 				stmt->new_ind_oids = NIL; /* reset OID map for each iteration */
 
-			cluster_rel(rvtc, true, stmt);
+			cluster_rel(rvtc, true, stmt, false);
 
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
@@ -270,9 +270,13 @@ cluster(ClusterStmt *stmt)
  * same way we do for the relation.  Since we are effectively bulk-loading
  * the new table, it's better to create the indexes afterwards than to fill
  * them incrementally while we load the table.
+ *
+ * Note that we don't support clustering on an AO table. If printError is true,
+ * this function errors out when the relation is an AO table. Otherwise,
+ * this functions prints out a warning message when the relation is an AO table.
  */
 static void
-cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt)
+cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError)
 {
 	Relation	OldHeap;
 
@@ -291,6 +295,23 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt)
 	if (!OldHeap)
 		return;
 
+	/*
+	 * We don't support cluster on an AO table. We print out
+	 * a warning/error to the user, and simply return.
+	 */
+	if (RelationIsAoRows(OldHeap) || RelationIsAoCols(OldHeap))
+	{
+		int elevel = WARNING;
+		
+		if (printError)
+			elevel = ERROR;
+		
+		ereport(elevel,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("clustering an AO table '%s' is not supported",
+						RelationGetRelationName(OldHeap))));
+	}
+	
 	/*
 	 * Since we may open a new transaction for each relation, we have to check
 	 * that the relation still is what we think it is.
