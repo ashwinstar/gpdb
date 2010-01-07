@@ -172,22 +172,44 @@ and comments follow established conventions.
 Additional modifications are made to indexing.h:
 
   /* relation id: 9991 - pg_foobar 20091208 */
-  DECLARE_UNIQUE_INDEX(pg_foobar_oid, 9993, on pg_foobar using btree(oid oid_ops));
+  DECLARE_UNIQUE_INDEX(pg_foobar_oid_index, 9993, on pg_foobar using btree(oid oid_ops));
   #define FooBarOidIndexId 9993
 
   /* relation id: 9991 - pg_foobar 20091208 */
-  DECLARE_INDEX(pg_foobar_fooname, 9994, on pg_foobar using btree(fooname name_ops));
+  DECLARE_INDEX(pg_foobar_fooname_index, 9994, on pg_foobar using btree(fooname name_ops));
   #define FooBarFoonameIndexId 9994
 
 
-
 And the function IsSharedRelation() in catalog.c:
+  bool 
+  IsSharedRelation(Oid relationId)
+  {
+      /* These are the shared catalogs (look for BKI_SHARED_RELATION) */
+      if (relationId == AuthIdRelationId ||
+	(...much code...)
+  /* relation id: 9991 - pg_foobar 20100105 */
+  relationId == FooBarRelationId ||
 
 Note that IsSharedRelation is only updated for shared tables.
 
 And Boot_CreateStmt in bootparse.y:
 
+  Boot_CreateStmt:
+	  	  XCREATE optbootstrap optsharedrelation optwithoutoids boot_ident oidspec LPAREN
+				{
+	(...much code...)
+  /* relation id: 9991 - pg_foobar 20100105 */
+                            case FooBarRelationId:
+                                typid = PG_FOOBAR_RELTYPE_OID;
+                                break;
+
 And pg_type.h:
+
+  /* relation id: 9991 - pg_foobar 20100105 */
+  DATA(insert OID = 9992 ( pg_foobar      PGNSP PGUID -1 f c t \054 9991 0 
+	   record_in record_out record_recv record_send - d x f 0 -1 0 
+       _null_ _null_ ));
+  #define PG_FOOBAR_RELTYPE_OID 9992
 
 
 =head1 AUTHORS

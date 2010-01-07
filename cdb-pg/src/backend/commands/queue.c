@@ -58,7 +58,7 @@ bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
 	rel = heap_open(ResourceTypeRelationId, RowExclusiveLock);
 
 	ScanKeyInit(&key[0],
-				Anum_pg_resourcetype_rsqname,
+				Anum_pg_resourcetype_resname,
 				BTEqualStrategyNumber, 
 				F_NAMEEQ,
 				CStringGetDatum(pNameIn));
@@ -110,7 +110,7 @@ void AddUpdResqueueCapabilityEntryInternal(
 	MemSet(isnull, 0, sizeof(bool) * Natts_pg_resqueuecapability);
 	MemSet(new_record_repl, 0, sizeof(bool) * Natts_pg_resqueuecapability);
 
-	values[Anum_pg_resqueuecapability_requeueid - 1]  = 
+	values[Anum_pg_resqueuecapability_resqueueid - 1]  = 
 			ObjectIdGetDatum(queueid);
 	values[Anum_pg_resqueuecapability_restypid - 1]   = resTypeInt;
 
@@ -234,7 +234,7 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 	/* could do additional validation here */
 
 
-	/* insert/update valid entries in pg_requeuecapability */
+	/* insert/update valid entries in pg_resqueuecapability */
 
 	rel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
 
@@ -260,7 +260,7 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		pResSetting = strVal(pVal);
 
 		ScanKeyInit(&key[0],
-					Anum_pg_resqueuecapability_requeueid,
+					Anum_pg_resqueuecapability_resqueueid,
 					BTEqualStrategyNumber, F_OIDEQ,
 					ObjectIdGetDatum(queueid));
 
@@ -271,7 +271,7 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 */
 
 		scan = systable_beginscan(rel,
-								  ResQueueCapabilityResqueuidIndexId,
+								  ResQueueCapabilityResqueueidIndexId,
 								  /* XXX XXX XXX XXX : snapshotnow ? */
 								  true, SnapshotNow, 1, key);
 
@@ -334,7 +334,7 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		pResSetting = strVal(pVal);
 
 		ScanKeyInit(&key[0],
-					Anum_pg_resqueuecapability_requeueid,
+					Anum_pg_resqueuecapability_resqueueid,
 					BTEqualStrategyNumber, F_OIDEQ,
 					ObjectIdGetDatum(queueid));
 
@@ -345,7 +345,7 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 */
 
 		scan = systable_beginscan(rel,
-								  ResQueueCapabilityResqueuidIndexId,
+								  ResQueueCapabilityResqueueidIndexId,
 								  /* XXX XXX XXX XXX : snapshotnow ? */
 								  true, SnapshotNow, 1, key);
 
@@ -388,12 +388,12 @@ GetResqueueCapabilityEntry(Oid  queueid)
 	tupdesc = RelationGetDescr(rel);
 
 	ScanKeyInit(&key[0],
-				Anum_pg_resqueuecapability_requeueid,
+				Anum_pg_resqueuecapability_resqueueid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(queueid));
 
 	scan = systable_beginscan(rel,
-							  ResQueueCapabilityResqueuidIndexId,
+							  ResQueueCapabilityResqueueidIndexId,
 							  /* XXX XXX XXX XXX : snapshotnow ? */
 							  true, SnapshotNow, 1, key);
 
@@ -1201,12 +1201,12 @@ DropQueue(DropQueueStmt *stmt)
 		xrel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
 
 		ScanKeyInit(&xkey[0],
-					Anum_pg_resqueuecapability_requeueid,
+					Anum_pg_resqueuecapability_resqueueid,
 					BTEqualStrategyNumber, F_OIDEQ,
 					ObjectIdGetDatum(queueid));
 
 		xscan = systable_beginscan(xrel,
-								   ResQueueCapabilityResqueuidIndexId,
+								   ResQueueCapabilityResqueueidIndexId,
 								   /* XXX XXX XXX XXX : snapshotnow ? */
 								   true, SnapshotNow, 1, xkey);
 		
