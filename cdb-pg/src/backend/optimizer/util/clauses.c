@@ -3297,6 +3297,7 @@ expression_tree_walker(Node *node,
 	switch (nodeTag(node))
 	{
 		case T_Var:
+		case T_A_Const:
 		case T_Const:
 		case T_Param:
 		case T_CoerceToDomainValue:
@@ -3577,6 +3578,14 @@ expression_tree_walker(Node *node,
 				/* do nothing */
 			}
 			break;
+		case T_TypeCast:
+			{
+				TypeCast *tc = (TypeCast *)node;
+
+				if (expression_tree_walker((Node*) tc->arg, walker, context))
+					return true;
+			}
+			break;
 		case T_WindowSpec:
 			{
 				WindowSpec *wspec = (WindowSpec *)node;
@@ -3620,7 +3629,7 @@ expression_tree_walker(Node *node,
 			break;
 	}
 	return false;
-}
+} /* end expression_tree_walker */
 
 /*
  * query_tree_walker --- initiate a walk of a Query's expressions
