@@ -344,6 +344,15 @@
 #gp_log_interconnect = terse            # off, terse, verbose, debug
                                         # logging of Greenplum interconnect 
 										# events
+
+
+#------------------------------------------------------------------------------
+# PERFORMANCE MONITOR
+#------------------------------------------------------------------------------
+
+#gp_enable_gpperfmon=on		# Enable the performance monitor
+#gpperfmon_port=8888		# Port used the the performance monitor daemons
+
 										
 #------------------------------------------------------------------------------
 # EMAIL ALERTS
