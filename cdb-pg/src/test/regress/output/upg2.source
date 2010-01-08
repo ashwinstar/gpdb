@@ -1726,48 +1726,48 @@ reindex table public.gp_fastsequence;
 set search_path='pg_catalog';
 CREATE VIEW public.pg_user_mappings AS SELECT U.oid AS umid, S.oid AS srvid, S.srvname AS srvname, U.umuser AS umuser, CASE WHEN U.umuser = 0 THEN 'public' ELSE A.rolname END AS usename, CASE WHEN pg_has_role(S.srvowner, 'USAGE') OR has_server_privilege(S.oid, 'USAGE') THEN U.umoptions ELSE NULL END AS umoptions FROM pg_user_mapping U LEFT JOIN pg_authid A ON (A.oid = U.umuser) JOIN pg_foreign_server S ON (U.umserver = S.oid);
 REVOKE ALL on public.pg_user_mappings FROM public;
-ALTER TABLE public.pg_user_mappings OWNER TO jcohen;
+ALTER TABLE public.pg_user_mappings OWNER TO @gpcurusername@;
 CREATE VIEW public.pg_stat_operations AS SELECT  'pg_authid' AS classname,  a.rolname AS objname,  c.objid, CASE WHEN  ((b.oid = c.stasysid) AND (b.rolname = c.stausename) ) THEN 'CURRENT'  WHEN  (b.rolname != c.stausename) THEN 'CHANGED' ELSE 'DROPPED' END AS usestatus,  CASE WHEN b.rolname IS NULL THEN c.stausename ELSE b.rolname END AS usename,  c.staactionname AS actionname,  c.stasubtype AS subtype, c.statime  FROM  pg_authid a,  (pg_authid b FULL JOIN pg_stat_last_shoperation c ON ((b.oid = c.stasysid))) WHERE ((a.oid = c.objid) AND (c.classid = (SELECT pg_class.oid FROM pg_class WHERE (pg_class.relname = 'pg_authid'::name)))) UNION  SELECT  'pg_class' AS classname,  a.relname AS objname,  c.objid,  CASE WHEN  ((b.oid = c.stasysid) AND (b.rolname = c.stausename) ) THEN 'CURRENT'  WHEN  (b.rolname != c.stausename)  THEN 'CHANGED' ELSE 'DROPPED' END AS usestatus,  CASE WHEN b.rolname IS NULL THEN c.stausename ELSE b.rolname END AS usename,  c.staactionname AS actionname,  c.stasubtype AS subtype, c.statime  FROM pg_class a, (pg_authid b FULL JOIN  pg_stat_last_operation c ON ((b.oid = c.stasysid))) WHERE ((a.oid = c.objid) AND (c.classid = (SELECT pg_class.oid FROM pg_class WHERE ((pg_class.relname = 'pg_class'::name) AND (pg_class.relnamespace = (SELECT pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname = 'pg_catalog'::name))))))) union SELECT 'pg_database' AS classname, a.datname AS objname, c.objid,  CASE WHEN  ((b.oid = c.stasysid) AND (b.rolname = c.stausename) ) THEN 'CURRENT'  WHEN  (b.rolname != c.stausename) THEN 'CHANGED' ELSE 'DROPPED' END AS usestatus,  CASE WHEN b.rolname IS NULL THEN c.stausename ELSE b.rolname END AS usename,  c.staactionname AS actionname,  c.stasubtype AS subtype, c.statime FROM pg_database a, (pg_authid b FULL JOIN pg_stat_last_shoperation c ON ((b.oid = c.stasysid))) WHERE ((a.oid = c.objid) AND (c.classid = (SELECT pg_class.oid FROM pg_class WHERE ((pg_class.relname = 'pg_database'::name) AND (pg_class.relnamespace = (SELECT pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname = 'pg_catalog'::name))))))) UNION  SELECT 'pg_resqueue' AS classname, a.rsqname as objname, c.objid, CASE WHEN  ((b.oid = c.stasysid) AND (b.rolname = c.stausename) ) THEN 'CURRENT'  WHEN  (b.rolname != c.stausename) THEN 'CHANGED' ELSE 'DROPPED' END AS usestatus,  CASE WHEN b.rolname IS NULL THEN c.stausename ELSE b.rolname END AS usename,  c.staactionname AS actionname,  c.stasubtype AS subtype, c.statime  FROM pg_resqueue a, (pg_authid b FULL JOIN pg_stat_last_shoperation c ON ((b.oid = c.stasysid))) WHERE ((a.oid = c.objid) AND (c.classid = (SELECT pg_class.oid FROM pg_class WHERE ((pg_class.relname = 'pg_resqueue'::name) AND (pg_class.relnamespace = (SELECT pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname = 'pg_catalog'::name))))))) ORDER BY 8;  
 REVOKE ALL on public.pg_stat_operations FROM public;
-ALTER TABLE public.pg_stat_operations OWNER TO jcohen;
+ALTER TABLE public.pg_stat_operations OWNER TO @gpcurusername@;
 CREATE VIEW public.pg_stat_partition_operations AS SELECT pso.*, CASE WHEN  pr.parlevel IS NOT NULL  THEN pr.parlevel  ELSE pr2.parlevel END AS partitionlevel, pcns.relname AS parenttablename, pcns.nspname AS parentschemaname, pr.parrelid AS parent_relid FROM (pg_stat_operations pso LEFT OUTER JOIN pg_partition_rule ppr ON pso.objid=ppr.parchildrelid LEFT OUTER JOIN pg_partition pr ON pr.oid = ppr.paroid) LEFT OUTER JOIN  (SELECT MIN(parlevel) AS parlevel, parrelid FROM  pg_partition prx GROUP BY parrelid ) AS pr2 ON pr2.parrelid = pso.objid LEFT OUTER JOIN  ( SELECT pc.oid, * FROM pg_class AS pc FULL JOIN pg_namespace AS ns  ON ns.oid = pc.relnamespace) AS pcns ON pcns.oid = pr.parrelid ;  
 REVOKE ALL on public.pg_stat_partition_operations FROM public;
-ALTER TABLE public.pg_stat_partition_operations OWNER TO jcohen;
+ALTER TABLE public.pg_stat_partition_operations OWNER TO @gpcurusername@;
 -- Create new 3.4 views in information_schema
 set search_path='information_schema';
 --  Base view for foreign-data-wrappers (no grant)
 CREATE VIEW public._pg_foreign_data_wrappers AS SELECT w.oid, w.fdwowner, w.fdwoptions, CAST(current_database() AS sql_identifier) AS foreign_data_wrapper_catalog, CAST(fdwname AS sql_identifier) AS foreign_data_wrapper_name, CAST(u.rolname AS sql_identifier) AS authorization_identifier, CAST('c' AS character_data) AS foreign_data_wrapper_language FROM pg_foreign_data_wrapper w, pg_authid u WHERE u.oid = w.fdwowner AND (pg_has_role(fdwowner, 'USAGE') OR has_foreign_data_wrapper_privilege(w.oid, 'USAGE'));
-ALTER TABLE public._pg_foreign_data_wrappers OWNER TO jcohen;
+ALTER TABLE public._pg_foreign_data_wrappers OWNER TO @gpcurusername@;
 -- Foreign-data-wrapper-options
 CREATE VIEW public.foreign_data_wrapper_options AS SELECT foreign_data_wrapper_catalog, foreign_data_wrapper_name, CAST((pg_options_to_table(w.fdwoptions)).option_name AS sql_identifier) AS option_name, CAST((pg_options_to_table(w.fdwoptions)).option_value AS character_data) AS option_value FROM _pg_foreign_data_wrappers w;
 GRANT SELECT ON public.foreign_data_wrapper_options TO PUBLIC;
-ALTER TABLE public.foreign_data_wrapper_options OWNER TO jcohen;
+ALTER TABLE public.foreign_data_wrapper_options OWNER TO @gpcurusername@;
 -- Foreign-data-wrappers
 CREATE VIEW public.foreign_data_wrappers AS SELECT foreign_data_wrapper_catalog, foreign_data_wrapper_name, authorization_identifier, CAST(NULL AS character_data) AS library_name, foreign_data_wrapper_language FROM _pg_foreign_data_wrappers w;
 GRANT SELECT ON public.foreign_data_wrappers TO PUBLIC;
-ALTER TABLE public.foreign_data_wrappers OWNER TO jcohen;
+ALTER TABLE public.foreign_data_wrappers OWNER TO @gpcurusername@;
 -- Base view for foreign-servers (no grant)
 CREATE VIEW public._pg_foreign_servers AS SELECT s.oid, s.srvoptions, CAST(current_database() AS sql_identifier) AS foreign_server_catalog, CAST(srvname AS sql_identifier) AS foreign_server_name, CAST(current_database() AS sql_identifier) AS foreign_data_wrapper_catalog, CAST(w.fdwname AS sql_identifier) AS foreign_data_wrapper_name, CAST(srvtype AS character_data) AS foreign_server_type, CAST(srvversion AS character_data) AS foreign_server_version, CAST(u.rolname AS sql_identifier) AS authorization_identifier FROM pg_foreign_server s, pg_foreign_data_wrapper w, pg_authid u WHERE w.oid = s.srvfdw AND u.oid = s.srvowner AND (pg_has_role(s.srvowner, 'USAGE') OR has_server_privilege(s.oid, 'USAGE'));
-ALTER TABLE public._pg_foreign_servers OWNER TO jcohen;
+ALTER TABLE public._pg_foreign_servers OWNER TO @gpcurusername@;
 -- Foreign-server-options
 CREATE VIEW public.foreign_server_options AS SELECT foreign_server_catalog, foreign_server_name, CAST((pg_options_to_table(s.srvoptions)).option_name AS sql_identifier) AS option_name, CAST((pg_options_to_table(s.srvoptions)).option_value AS character_data) AS option_value FROM _pg_foreign_servers s;
 GRANT SELECT ON TABLE public.foreign_server_options TO PUBLIC;
-ALTER TABLE public.foreign_server_options OWNER TO jcohen;
+ALTER TABLE public.foreign_server_options OWNER TO @gpcurusername@;
 -- Foreign-servers
 CREATE VIEW public.foreign_servers AS SELECT foreign_server_catalog, foreign_server_name, foreign_data_wrapper_catalog, foreign_data_wrapper_name, foreign_server_type, foreign_server_version, authorization_identifier FROM _pg_foreign_servers;
 GRANT SELECT ON public.foreign_servers TO PUBLIC;
-ALTER TABLE public.foreign_servers OWNER TO jcohen;
+ALTER TABLE public.foreign_servers OWNER TO @gpcurusername@;
 -- Base view for user-mappings
 CREATE VIEW public._pg_user_mappings AS SELECT um.oid, um.umoptions, um.umuser, CAST(COALESCE(u.rolname,'PUBLIC') AS sql_identifier ) AS authorization_identifier, s.foreign_server_catalog, s.foreign_server_name, s.authorization_identifier AS srvowner FROM pg_user_mapping um LEFT JOIN pg_authid u ON (u.oid = um.umuser), public._pg_foreign_servers s WHERE s.oid = um.umserver;
-ALTER TABLE public._pg_user_mappings OWNER TO jcohen;
+ALTER TABLE public._pg_user_mappings OWNER TO @gpcurusername@;
 -- user_mapping_options
 CREATE VIEW public.user_mapping_options AS SELECT authorization_identifier, foreign_server_catalog, foreign_server_name, CAST((pg_options_to_table(um.umoptions)).option_name AS sql_identifier) AS option_name, CAST(CASE WHEN (umuser <> 0 AND authorization_identifier = current_user) OR (umuser = 0 AND pg_has_role(srvowner, 'USAGE')) OR (SELECT rolsuper FROM pg_authid WHERE rolname = current_user) THEN (pg_options_to_table(um.umoptions)).option_value ELSE NULL END AS character_data) AS option_value FROM public._pg_user_mappings um;
 GRANT SELECT ON public.user_mapping_options TO PUBLIC;
-ALTER TABLE public.user_mapping_options OWNER TO jcohen;
+ALTER TABLE public.user_mapping_options OWNER TO @gpcurusername@;
 -- user_mappings
 CREATE VIEW public.user_mappings AS SELECT authorization_identifier, foreign_server_catalog, foreign_server_name FROM _pg_user_mappings;
 GRANT SELECT ON public.user_mappings TO PUBLIC;
-ALTER TABLE public.user_mappings OWNER TO jcohen;
+ALTER TABLE public.user_mappings OWNER TO @gpcurusername@;
 -- 
 -- Modifying existing catalog views is more complicated than creating new views.
 -- To handle this we create a new view with the new definition then update the old
