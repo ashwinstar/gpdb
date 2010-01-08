@@ -16,10 +16,7 @@ static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
 
 	conn = PQconnectdb(connstr);
 	if (PQstatus(conn) != CONNECTION_OK)
-	{
-		/* TODO: remove the fatal here? */
-		gpmon_fatal(FLINE, "GPDB connect error: %s\n", PQerrorMessage(conn));
-	}
+		return PQerrorMessage(conn);
 
 	TR1(("Query: %s\n", query));
 
@@ -27,12 +24,27 @@ static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
 	res = PQexec(conn, query);
 	status = PQresultStatus(res);
 	if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK)
-	{
 		return PQerrorMessage(conn);
-	}
 
 	*pres = res;
 	return 0;
+}
+
+int gpdb_validate_gpperfmon(void)
+{
+	/* Check db */
+	if (!gpdb_gpperfmon_db_exists())
+		return 0;
+
+	/* check post */
+	if (!gpdb_get_gpmon_port())
+		return 0;
+
+	/* check external tables are accessable by gpmon user */
+	if (!gpdb_validate_ext_table_access())
+		return 0;
+
+	return 1;
 }
 
 int gpdb_gpperfmon_db_exists(void)
@@ -87,6 +99,31 @@ int gpdb_gpperfmon_enabled(void)
 	return enabled;
 }
 
+int gpdb_validate_ext_table_access(void)
+{
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	const char* QUERY = "select * from master_data_dir";
+	int rowcount;
+	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
+	int res = 0;
+	if (errmsg)
+	{
+		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
+	}
+	else
+	{
+		rowcount = PQntuples(result);
+		if (rowcount > 0)
+			res = 1;
+	}
+
+	PQclear(result);
+	PQfinish(conn);
+
+	return res;
+}
+
 int gpdb_get_gpmon_port(void)
 {
 	PGconn* conn = 0;
@@ -99,16 +136,18 @@ int gpdb_get_gpmon_port(void)
 	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
 	if (errmsg)
 	{
-		gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
+		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
 	}
-
-	rowcount = PQntuples(result);
-	if (rowcount > 0)
+	else
 	{
-		curport = PQgetvalue(result, 0, 0);
-		if (curport)
+		rowcount = PQntuples(result);
+		if (rowcount > 0)
 		{
-			port = atoi(curport);
+			curport = PQgetvalue(result, 0, 0);
+			if (curport)
+			{
+				port = atoi(curport);
+			}
 		}
 	}
 	PQclear(result);
@@ -116,7 +155,7 @@ int gpdb_get_gpmon_port(void)
 
 	if (!port)
 	{
-		gpmon_fatal(FLINE, "Unable to retrieve gpperfmon_port GUC from GPDB\n");
+		gpmon_warning(FLINE, "Unable to retrieve gpperfmon_port GUC from GPDB\n");
 	}
 	return port;
 }
@@ -136,39 +175,44 @@ void gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datadirvec,
 	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
 	if (errmsg)
 	{
-		gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
+		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
+		*hostcnt = 0;
+		*hostvec = NULL;
+		*datadirvec = NULL;
 	}
-
-	rowcount = PQntuples(result);
-	if (rowcount > 0)
+	else
 	{
-		vec = apr_pcalloc(pool, sizeof(char*) * (1 + rowcount));
-		CHECKMEM(vec);
-		vec2 = apr_pcalloc(pool, sizeof(char*) * (1 + rowcount));
-		CHECKMEM(vec2);
-
-		for (i = 0; i < rowcount; i++)
+		rowcount = PQntuples(result);
+		if (rowcount > 0)
 		{
-			char* p = PQgetvalue(result, i, 0);
-			char* datadir = PQgetvalue(result, i, 1);
-			if (!p || !datadir)
-				continue;
-			p = apr_pstrdup(pool, p);
-			CHECKMEM(p);
-			datadir = apr_pstrdup(pool, datadir);
-			CHECKMEM(datadir);
-			p = gpmon_trim(p);
-			datadir = gpmon_trim(datadir);
-			vec[cnt] = p;
-			vec2[cnt++] = datadir;
+			vec = apr_pcalloc(pool, sizeof(char*) * (1 + rowcount));
+			CHECKMEM(vec);
+			vec2 = apr_pcalloc(pool, sizeof(char*) * (1 + rowcount));
+			CHECKMEM(vec2);
+
+			for (i = 0; i < rowcount; i++)
+			{
+				char* p = PQgetvalue(result, i, 0);
+				char* datadir = PQgetvalue(result, i, 1);
+				if (!p || !datadir)
+					continue;
+				p = apr_pstrdup(pool, p);
+				CHECKMEM(p);
+				datadir = apr_pstrdup(pool, datadir);
+				CHECKMEM(datadir);
+				p = gpmon_trim(p);
+				datadir = gpmon_trim(datadir);
+				vec[cnt] = p;
+				vec2[cnt++] = datadir;
+			}
 		}
+		*hostcnt = cnt;
+		*hostvec = vec;
+		*datadirvec = vec2;
 	}
+
 	PQclear(result);
 	PQfinish(conn);
-
-	*hostcnt = cnt;
-	*hostvec = vec;
-	*datadirvec = vec2;
 }
 
 void gpdb_get_config_md5(unsigned char md5[APR_MD5_DIGESTSIZE])
@@ -185,25 +229,28 @@ void gpdb_get_config_md5(unsigned char md5[APR_MD5_DIGESTSIZE])
 	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
 	if (errmsg)
 	{
-		gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
+		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
+		memset(md5, 0, APR_MD5_DIGESTSIZE);
 	}
-
-	if (0 != (e = apr_md5_init(&ctx)))
+	else
 	{
-		gpmon_fatalx(FLINE, e, "apr_md5_init failed");
-	}
-
-	rowcount = PQntuples(result);
-	for (i = 0; i < rowcount; i++)
-	{
-		const char* p = PQgetvalue(result, i, 0);
-		if (p)
+		if (0 != (e = apr_md5_init(&ctx)))
 		{
-			if (0 != (e = apr_md5_update(&ctx, p, strlen(p))))
-				gpmon_fatalx(FLINE, e, "apr_md5_update failed");
+			gpmon_warningx(FLINE, e, "apr_md5_init failed");
 		}
+
+		rowcount = PQntuples(result);
+		for (i = 0; i < rowcount; i++)
+		{
+			const char* p = PQgetvalue(result, i, 0);
+			if (p)
+			{
+				if (0 != (e = apr_md5_update(&ctx, p, strlen(p))))
+					gpmon_warningx(FLINE, e, "apr_md5_update failed");
+			}
+		}
+		apr_md5_final(md5, &ctx);
 	}
-	apr_md5_final(md5, &ctx);
 	PQclear(result);
 	PQfinish(conn);
 }
@@ -219,26 +266,30 @@ void gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_pool_t* pool)
 	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
 	if (errmsg)
 	{
-		gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
+		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
 	}
-
-	rowcount = PQntuples(result);
-	if (rowcount > 0)
+	else
 	{
-		hname = PQgetvalue(result, 0, 0);
-		dir = PQgetvalue(result, 0, 1);
+		rowcount = PQntuples(result);
+		if (rowcount > 0)
+		{
+			hname = PQgetvalue(result, 0, 0);
+			dir = PQgetvalue(result, 0, 1);
+		}
+
+		if (!hname || !dir)
+		{
+			gpmon_warning(FLINE, "unable to get master data directory");
+		}
+		else
+		{
+			hname = apr_pstrdup(pool, gpmon_trim(hname));
+			CHECKMEM(hname);
+
+			dir = apr_pstrdup(pool, gpmon_trim(dir));
+			CHECKMEM(dir);
+		}
 	}
-
-	if (!hname || !dir)
-	{
-		gpmon_fatal(FLINE, "unable to get master data directory");
-	}
-
-	hname = apr_pstrdup(pool, gpmon_trim(hname));
-	CHECKMEM(hname);
-
-	dir = apr_pstrdup(pool, gpmon_trim(dir));
-	CHECKMEM(dir);
 
 	PQclear(result);
 	PQfinish(conn);

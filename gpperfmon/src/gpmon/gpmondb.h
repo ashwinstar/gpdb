@@ -4,10 +4,22 @@
 #include "apr_general.h"
 #include "apr_md5.h"
 
+
+/**
+ * Validate the the gpperfmon database is correct and
+ * gpmon user has correct access.
+ */
+APR_DECLARE(int) gpdb_validate_gpperfmon(void);
+
 /**
  * Check if gpperfmon database exists.
  */
 APR_DECLARE(int) gpdb_gpperfmon_db_exists(void);
+
+/**
+ * Check if gpmon user has access to ext tables
+ */
+APR_DECLARE(int) gpdb_validate_ext_table_access(void);
 
 /**
  * Check if perfmon is enabled

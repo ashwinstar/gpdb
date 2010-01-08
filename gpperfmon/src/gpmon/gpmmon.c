@@ -981,19 +981,19 @@ int main(int argc, const char* const argv[])
 	for (;;)
 	{
 		int i = 0;
-		int db_exists = 0;
+		int gpperfmon_valid = 0;
 
 		if (ax.exit)
 			exit(0);
 
-		db_exists = gpdb_gpperfmon_db_exists();
-		if (!db_exists)
+		gpperfmon_valid = gpdb_validate_gpperfmon();
+		if (!gpperfmon_valid)
 		{
 			/* Don't want to fill up the log with these messages,
 			 * so only log it once every 5 minutes */
 			if (db_check_count % 5 == 0)
-				fprintf(stderr, "Performance Monitor - gpperfmon database does not exist.  "
-						"Unable to log monitored data.\n");
+				fprintf(stderr, "Performance Monitor - There was a problem "
+								"accessing the gpperfmon database.");
 
 			db_check_count += 1;
 
