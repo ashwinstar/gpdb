@@ -1,6 +1,7 @@
 /*
  * PostgreSQL System Views
  *
+ * Copyright (c) 2006-2010, Greenplum inc.
  * Copyright (c) 1996-2006, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/backend/catalog/system_views.sql,v 1.32 2006/11/24 21:18:42 tgl Exp $
@@ -590,3 +591,130 @@ where
 
 REVOKE ALL on pg_user_mapping FROM public;
 
+-- metadata tracking
+CREATE VIEW pg_stat_operations
+AS
+SELECT 
+'pg_authid' AS classname, 
+a.rolname AS objname, 
+c.objid,
+CASE WHEN 
+((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
+THEN 'CURRENT'
+ WHEN 
+(b.rolname != c.stausename)
+THEN 'CHANGED'
+ELSE 'DROPPED' END AS usestatus, 
+CASE WHEN b.rolname IS NULL THEN c.stausename
+ELSE b.rolname END AS usename, 
+c.staactionname AS actionname, 
+c.stasubtype AS subtype,
+--
+c.statime 
+FROM 
+pg_authid a, 
+(pg_authid b FULL JOIN
+pg_stat_last_shoperation c ON ((b.oid = c.stasysid))) WHERE ((a.oid
+= c.objid) AND (c.classid = (SELECT pg_class.oid FROM pg_class WHERE
+(pg_class.relname = 'pg_authid'::name))))
+UNION 
+SELECT 
+'pg_class' AS classname, 
+a.relname AS objname, 
+c.objid, 
+CASE WHEN 
+((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
+THEN 'CURRENT'
+ WHEN 
+(b.rolname != c.stausename) 
+THEN 'CHANGED'
+ELSE 'DROPPED' END AS usestatus, 
+CASE WHEN b.rolname IS NULL THEN c.stausename
+ELSE b.rolname END AS usename, 
+c.staactionname AS actionname, 
+c.stasubtype AS subtype,
+--
+c.statime 
+FROM pg_class
+a, (pg_authid b FULL JOIN 
+pg_stat_last_operation c ON ((b.oid =
+c.stasysid))) WHERE ((a.oid = c.objid) AND (c.classid = (SELECT
+pg_class.oid FROM pg_class WHERE ((pg_class.relname =
+'pg_class'::name) AND (pg_class.relnamespace = (SELECT
+pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname =
+'pg_catalog'::name)))))))
+union
+SELECT
+'pg_database' AS classname, a.datname AS objname, c.objid, 
+CASE WHEN 
+((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
+THEN 'CURRENT'
+ WHEN 
+(b.rolname != c.stausename)
+THEN 'CHANGED'
+ELSE 'DROPPED' END AS usestatus, 
+CASE WHEN b.rolname IS NULL THEN c.stausename
+ELSE b.rolname END AS usename, 
+c.staactionname AS actionname, 
+c.stasubtype AS subtype,
+--
+c.statime
+FROM pg_database a, (pg_authid b FULL JOIN pg_stat_last_shoperation c ON
+((b.oid = c.stasysid))) WHERE ((a.oid = c.objid) AND (c.classid =
+(SELECT pg_class.oid FROM pg_class WHERE ((pg_class.relname =
+'pg_database'::name) AND (pg_class.relnamespace = (SELECT
+pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname =
+'pg_catalog'::name)))))))
+UNION 
+SELECT 'pg_resqueue' AS classname,
+a.rsqname as objname,
+c.objid,
+CASE WHEN 
+((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
+THEN 'CURRENT'
+ WHEN 
+(b.rolname != c.stausename)
+THEN 'CHANGED'
+ELSE 'DROPPED' END AS usestatus, 
+CASE WHEN b.rolname IS NULL THEN c.stausename
+ELSE b.rolname END AS usename, 
+c.staactionname AS actionname, 
+c.stasubtype AS subtype,
+--
+c.statime 
+FROM pg_resqueue a, (pg_authid
+b FULL JOIN pg_stat_last_shoperation c ON ((b.oid = c.stasysid)))
+WHERE ((a.oid = c.objid) AND (c.classid = (SELECT pg_class.oid FROM
+pg_class WHERE ((pg_class.relname = 'pg_resqueue'::name) AND
+(pg_class.relnamespace = (SELECT pg_namespace.oid FROM pg_namespace
+WHERE (pg_namespace.nspname = 'pg_catalog'::name))))))) ORDER BY 8;
+
+CREATE VIEW
+pg_stat_partition_operations
+AS
+SELECT pso.*,
+CASE WHEN  pr.parlevel IS NOT NULL 
+THEN pr.parlevel 
+ELSE pr2.parlevel END AS partitionlevel,
+pcns.relname AS parenttablename,
+pcns.nspname AS parentschemaname,
+pr.parrelid AS parent_relid
+FROM
+(pg_stat_operations pso
+LEFT OUTER JOIN
+pg_partition_rule ppr
+ON pso.objid=ppr.parchildrelid
+LEFT OUTER JOIN
+pg_partition pr
+ON pr.oid = ppr.paroid) LEFT OUTER JOIN 
+--
+-- only want lowest parlevel for parenttable
+--
+(SELECT MIN(parlevel) AS parlevel, parrelid FROM 
+pg_partition prx GROUP BY parrelid ) AS pr2
+ON pr2.parrelid = pso.objid
+LEFT OUTER JOIN 
+( SELECT pc.oid, * FROM pg_class AS pc FULL JOIN pg_namespace AS ns 
+ON ns.oid = pc.relnamespace) AS pcns
+ON pcns.oid = pr.parrelid
+;

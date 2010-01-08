@@ -737,7 +737,9 @@ insert into public.pg_rewrite
 	 'public._pg_user_mappings'::regclass,
 	 'public.user_mapping_options'::regclass,
 	 'public.user_mappings'::regclass,
-	 'public.pg_user_mappings'::regclass
+	 'public.pg_user_mappings'::regclass,
+	 'public.pg_stat_operations'::regclass,
+	 'public.pg_stat_partition_operations'::regclass
   );
 -- add views created in pg_catalog to public.pg_class
 copy ( 
@@ -749,7 +751,9 @@ copy (
 		 relfrozenxid, relacl, reloptions
   from pg_catalog.pg_class
   where oid in (
-	 'public.pg_user_mappings'::regclass
+	 'public.pg_user_mappings'::regclass,
+	 'public.pg_stat_operations'::regclass,
+	 'public.pg_stat_partition_operations'::regclass
 )) to '/tmp/pg_class';
 copy public.pg_class from '/tmp/pg_class' with oids;
 -- add views created in information_schema to public.pg_class
