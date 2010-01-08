@@ -446,11 +446,8 @@ ProcessQuery(Portal portal,
 		/* MPP-4407. Logging number of tuples modified. */
 		if (relationOid != InvalidOid)
 		{
-			/* Use of query tree deprecated. (PSMERGE) 
-			 * TODO Find another way to dig log info out of stmt!!! 
-			 */
 			if (cmdType < AUTOSTATS_CMDTYPE_SENTINEL &&			
-				GetCommandLogLevel((Node *) stmt->queryTree) <= log_statement)
+				GetPlannedStmtLogLevel(stmt) <= log_statement)
 			{
 				elog(DEBUG1, "type_of_statement = %s dboid = %d tableoid = %d num_tuples_modified = %u", 
 					 autostats_cmdtype_to_string(cmdType), 

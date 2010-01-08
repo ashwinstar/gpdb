@@ -31,6 +31,8 @@ extern LogStmtLevel GetCommandLogLevel(Node *parsetree);
 
 extern LogStmtLevel GetQueryLogLevel(Node *node);
 
+extern LogStmtLevel GetPlannedStmtLogLevel(PlannedStmt * stmt);
+
 extern bool QueryReturnsTuples(Query *parsetree);
 
 extern bool QueryIsReadOnly(Query *parsetree);

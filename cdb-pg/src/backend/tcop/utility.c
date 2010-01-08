@@ -2805,3 +2805,49 @@ GetQueryLogLevel(Node *stmt)
 
 	return lev;
 }
+
+/*
+ * GetPlannedStmtLogLevel
+ *		utility to get the minimum log_statement level for a PlannedStmt.
+ *
+ * This is exactly like GetCommandLogLevel, except it works on a PlannedStmt.
+ */
+LogStmtLevel
+GetPlannedStmtLogLevel(PlannedStmt * stmt)
+{
+	LogStmtLevel lev;
+		
+	switch (stmt->commandType)
+	{
+		case CMD_SELECT:
+			if ( stmt->utilityStmt != NULL )
+			{
+				if ( stmt->intoClause != NULL )
+					elog(WARNING, "into specified on utility statement type: %d",
+						 (int) stmt->utilityStmt->type);
+				if ( ! IsA(stmt->utilityStmt, DeclareCursorStmt) )
+					elog(WARNING, "unexpected utility statement type: %d",
+						 (int) stmt->utilityStmt->type);
+				lev = LOGSTMT_ALL;
+			}
+			else if (stmt->intoClause != NULL)
+				lev = LOGSTMT_DDL;		/* CREATE AS, SELECT INTO */
+			else
+				lev = LOGSTMT_ALL;
+			break;
+			
+		case CMD_UPDATE:
+		case CMD_INSERT:
+		case CMD_DELETE:
+			lev = LOGSTMT_MOD;
+			break;
+			
+		default:
+			elog(WARNING, "expected commandType: %d",
+				 (int) stmt->commandType);
+			lev = LOGSTMT_ALL;
+			break;
+	}
+	
+	return lev;
+}
