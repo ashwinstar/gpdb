@@ -1414,7 +1414,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * Have to lock relations selected FOR UPDATE/FOR SHARE
 	 */
 	estate->es_rowMarks = NIL;
-	foreach(l, stmt->queryTree->rowMarks)
+	foreach(l, stmt->rowMarks)
 	{
 		RowMarkClause *rc = (RowMarkClause *) lfirst(l);
 		Oid			relid = getrelid(rc->rti, rangeTable);
