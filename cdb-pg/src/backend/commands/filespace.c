@@ -3,7 +3,7 @@
  * filespace.c
  *	  Commands to manipulate filespaces
  *
- * Copyright (c) 2009-2009 Greenplum Inc
+ * Copyright (c) 2009-2010 Greenplum Inc
  *
  *-------------------------------------------------------------------------
  */
@@ -17,6 +17,7 @@
 
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
+#include "catalog/heap.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_filespace_entry.h"
@@ -303,6 +304,13 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		/* Dispatch to segments */
 		stmt->fsoid = fsoid;  /* Already Asserted OidIsValid */
 		CdbDispatchUtilityStatement((Node *) stmt, "CreateFilespaceCommand");
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackAddObject(FileSpaceRelationId,
+						   fsoid,
+						   GetUserId(),
+						   "CREATE", "FILESPACE"
+				);
 	}
 }
 
@@ -395,7 +403,13 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 	 * Note: no need for dispatch, that is handled in utility.c
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
+	{
 		DeleteFilespaceEntryTuples(fsoid);
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackDropObject(FileSpaceRelationId,
+							fsoid);
+	}
 }
 
 /* 
@@ -474,7 +488,7 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 	HeapTuple	      tup;
 
 	/*
-	 * This was from a generic AltrStmt node which allows for fully qaulified
+	 * This was from a generic AltrStmt node which allows for fully qualified
 	 * object names, but filespaces don't exist inside schemas so fully
 	 * qualified names are a syntax error.
 	 */
@@ -544,6 +558,15 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 		newtuple = heap_modify_tuple(tup, tupdesc, values, nulls, replace);
 
 		simple_heap_update(rel, &newtuple->t_self, newtuple);
+
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackUpdObject(FileSpaceRelationId,
+							   fsoid,
+							   GetUserId(),
+							   "ALTER", "OWNER"
+					);
+
 		CatalogUpdateIndexes(rel, newtuple);
 
 		heap_freetuple(newtuple);
@@ -622,6 +645,15 @@ RenameFileSpace(const char *oldname, const char *newname)
 	namestrcpy(&(newform->fsname), newname);
 
 	simple_heap_update(rel, &newtuple->t_self, newtuple);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(FileSpaceRelationId,
+						   fsoid,
+						   GetUserId(),
+						   "ALTER", "RENAME"
+				);
+
 	CatalogUpdateIndexes(rel, newtuple);
 
 	heap_close(rel, RowExclusiveLock);

@@ -32,6 +32,7 @@
  * and munge the system catalogs of the new database.
  *
  *
+ * Copyright (c) 2005-2010 Greenplum Inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -49,6 +50,7 @@
 #include <sys/stat.h>
 
 #include "access/heapam.h"
+#include "catalog/heap.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
@@ -362,6 +364,14 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	{
 		stmt->tsoid = tablespaceoid;
 		CdbDispatchUtilityStatement((Node *) stmt, "CreateTablespaceCommand");
+
+		/* MPP-6929: metadata tracking */
+		MetaTrackAddObject(TableSpaceRelationId,
+						   tablespaceoid,
+						   GetUserId(),
+						   "CREATE", "TABLESPACE"
+				);
+
 	}
 }
 
@@ -463,6 +473,11 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	 * they will be deleted as well.
 	 */
 	deleteSharedDependencyRecordsFor(TableSpaceRelationId, tablespaceoid);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackDropObject(TableSpaceRelationId, 
+							tablespaceoid);
 
 	/*
 	 * Acquire TablespaceCreateLock to ensure that no TablespaceCreateDbspace
@@ -754,12 +769,13 @@ directory_is_empty(const char *path)
 void
 RenameTableSpace(const char *oldname, const char *newname)
 {
-	Relation	rel;
-	ScanKeyData entry[1];
+	Relation	 rel;
+	Oid			 tablespaceoid;
+	ScanKeyData	 entry[1];
 	HeapScanDesc scan;
-	HeapTuple	tup;
-	HeapTuple	newtuple;
-	Form_pg_tablespace newform;
+	HeapTuple	 tup;
+	HeapTuple	 newtuple;
+	Form_pg_tablespace	newform;
 
 	/* Search pg_tablespace */
 	rel = heap_open(TableSpaceRelationId, RowExclusiveLock);
@@ -782,7 +798,8 @@ RenameTableSpace(const char *oldname, const char *newname)
 	heap_endscan(scan);
 
 	/* Must be owner */
-	if (!pg_tablespace_ownercheck(HeapTupleGetOid(newtuple), GetUserId()))
+	tablespaceoid = HeapTupleGetOid(newtuple);
+	if (!pg_tablespace_ownercheck(tablespaceoid, GetUserId()))
 		aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_TABLESPACE, oldname);
 
 	/* Validate new name */
@@ -811,6 +828,15 @@ RenameTableSpace(const char *oldname, const char *newname)
 	namestrcpy(&(newform->spcname), newname);
 
 	simple_heap_update(rel, &newtuple->t_self, newtuple);
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(TableSpaceRelationId,
+						   tablespaceoid,
+						   GetUserId(),
+						   "ALTER", "RENAME"
+				);
+
 	CatalogUpdateIndexes(rel, newtuple);
 
 	heap_close(rel, NoLock);
@@ -823,6 +849,7 @@ void
 AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 {
 	Relation	rel;
+	Oid			tablespaceoid;
 	ScanKeyData entry[1];
 	HeapScanDesc scandesc;
 	Form_pg_tablespace spcForm;
@@ -842,6 +869,7 @@ AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablespace \"%s\" does not exist", name)));
 
+	tablespaceoid = HeapTupleGetOid(tup);
 	spcForm = (Form_pg_tablespace) GETSTRUCT(tup);
 
 	/*
@@ -859,7 +887,7 @@ AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 		HeapTuple	newtuple;
 
 		/* Otherwise, must be owner of the existing object */
-		if (!pg_tablespace_ownercheck(HeapTupleGetOid(tup), GetUserId()))
+		if (!pg_tablespace_ownercheck(tablespaceoid, GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TABLESPACE,
 						   name);
 
@@ -901,6 +929,15 @@ AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
 
 		simple_heap_update(rel, &newtuple->t_self, newtuple);
+
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackUpdObject(TableSpaceRelationId,
+							   tablespaceoid,
+							   GetUserId(),
+							   "ALTER", "OWNER"
+					);
+
 		CatalogUpdateIndexes(rel, newtuple);
 
 		heap_freetuple(newtuple);
