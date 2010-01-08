@@ -1084,11 +1084,11 @@ OptQueueElem:
 				{
 					$$ = makeDefElem("activelimit", (Node *)$3);
 				}
-			| COST THRESHOLD FloatOnly
+			| COST THRESHOLD NumericOnly /* enforce float type in queue.c */
 				{
 					$$ = makeDefElem("costlimit", (Node *)$3);
 				}
-			| IGNORE_P THRESHOLD FloatOnly
+			| IGNORE_P THRESHOLD NumericOnly /* enforce float type in queue.c */
 				{
 					$$ = makeDefElem("ignorecostlimit", (Node *)$3);
 				}
