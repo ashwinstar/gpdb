@@ -1404,10 +1404,10 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * correct tuple descriptors.  (Other SELECT INTO stuff comes later.)
 	 */
 	estate->es_select_into = false;
-	if (operation == CMD_SELECT && stmt->queryTree->intoClause != NULL)
+	if (operation == CMD_SELECT && stmt->intoClause != NULL)
 	{
 		estate->es_select_into = true;
-		estate->es_into_oids = interpretOidsOption(stmt->queryTree->intoClause->options);
+		estate->es_into_oids = interpretOidsOption(stmt->intoClause->options);
 	}
 
 	/*
@@ -3846,7 +3846,6 @@ typedef struct
 static void
 OpenIntoRel(QueryDesc *queryDesc)
 {
-	Query	   *parseTree;
 	IntoClause *intoClause;
 	EState	   *estate = queryDesc->estate;
 	Relation	intoRelationDesc;
@@ -3866,14 +3865,12 @@ OpenIntoRel(QueryDesc *queryDesc)
     GpPolicy   *targetPolicy;
 	int			safefswritesize = gp_safefswritesize;
 	
-	parseTree = queryDesc->plannedstmt->queryTree; /* TODO Use of Query tree deprecated. (PSMERGE) */
-	targetPolicy = parseTree->intoPolicy; /* TODO Need to shift this into PlannedStmt. (PSMERGE) */
+	targetPolicy = queryDesc->plannedstmt->queryTree->intoPolicy; /* TODO Need to shift this into PlannedStmt. (PSMERGE) */
 	intoClause = queryDesc->plannedstmt->intoClause;
 	/*
 	 * Check consistency of arguments
 	 */
 	Insist(intoClause);
-	Assert(equal(intoClause->rel, parseTree->intoClause->rel));
 	if (intoClause->onCommit != ONCOMMIT_NOOP && !intoClause->rel->istemp)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),

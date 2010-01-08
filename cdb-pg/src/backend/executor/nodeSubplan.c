@@ -948,28 +948,23 @@ static QueryDesc *SubplanQueryDesc(QueryDesc * qd)
 {
 	QueryDesc *subqd = NULL;
 	Query *query = NULL;
-	IntoClause *ic = NULL;
 	PlannedStmt *substmt = NULL;
 	PlannedStmt *stmt = qd->plannedstmt;
 	
 	Assert(stmt != NULL);
+	
+	/*
+	 * MPP-2869 and MPP-2859, single-row parameter-subquery inside
+	 * CTAS: we don't want to create the the table during the
+	 * initPlan execution. */
 	
 	/* Fake a Query node to hold the range table.  This is a stopgap and shouldn't
 	 * be necessary once full PlannedStmt support is in place. (PSMERGE)
 	 *
 	 * TODO Get rid of this stopgap!
 	 */
-	
-	/*
-	 * MPP-2869 and MPP-2859, single-row parameter-subquery inside
-	 * CTAS: we don't want to create the the table during the
-	 * initPlan execution. */
-	Assert(qd->plannedstmt->intoClause == qd->plannedstmt->queryTree->intoClause);
-	ic = qd->plannedstmt->queryTree->intoClause;
-	qd->plannedstmt->queryTree->intoClause = NULL;
+	qd->plannedstmt->queryTree->intoClause = NULL; /* no longer of interest */
 	query = copyObject(qd->plannedstmt->queryTree);
-	qd->plannedstmt->queryTree->intoClause = ic;
-	
 	
 	/* build the PlannedStmt substmt */
 	substmt = makeNode(PlannedStmt);
