@@ -1888,6 +1888,7 @@ begin;
 -- issues.
 -- Reindex shared tables that were added during upgrade before we load data
 reindex table public.pg_filespace;
+reindex table public.pg_resourcetype;
 -- Copy in the shared data
 copy public.pg_filespace from '@abs_srcdir@/data//upg2_pg_filespace_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 copy public.pg_shdescription from '@abs_srcdir@/data//upg2_pg_shdescription_toadd33.data' null as E'\\N' csv delimiter '|' header;

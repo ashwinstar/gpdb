@@ -2988,7 +2988,8 @@ This issue must be resolved before upgrade can complete.
                                   "upg2_pg_filespace_toadd33.data",
                                   "upg2_pg_amproc_toadd33.data",
                                   "upg2_pg_operator_toadd33.data",
-                                  "upg2_pg_resqueue_toadd33.data"])
+                                  "upg2_pg_resqueue_toadd33.data",
+                                  "upg2_pg_resourcetype_toadd33.data"])
 
             h = self.newhome
             
