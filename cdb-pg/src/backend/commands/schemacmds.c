@@ -3,7 +3,7 @@
  * schemacmds.c
  *	  schema creation/manipulation commands
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -18,6 +18,7 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
+#include "catalog/heap.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_namespace.h"
@@ -118,6 +119,13 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
             CdbDispatchUtilityStatement((Node *)stmt, "CreateSchemaCommand");
 		}
 
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackAddObject(NamespaceRelationId,
+							   namespaceId,
+							   saved_uid,
+							   "CREATE", "SCHEMA"
+					);
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
@@ -236,6 +244,11 @@ RemoveSchema(List *names, DropBehavior behavior, bool missing_ok)
 
 	performDeletion(&object, behavior);
 
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackDropObject(NamespaceRelationId,
+							namespaceId);
+
 }
 
 
@@ -271,6 +284,7 @@ void
 RenameSchema(const char *oldname, const char *newname)
 {
 	HeapTuple	tup;
+	Oid			nsoid;
 	Relation	rel;
 	AclResult	aclresult;
 
@@ -294,7 +308,8 @@ RenameSchema(const char *oldname, const char *newname)
 				 errmsg("schema \"%s\" already exists", newname)));
 
 	/* must be owner */
-	if (!pg_namespace_ownercheck(HeapTupleGetOid(tup), GetUserId()))
+	nsoid = HeapTupleGetOid(tup);
+	if (!pg_namespace_ownercheck(nsoid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_NAMESPACE,
 					   oldname);
 
@@ -313,6 +328,15 @@ RenameSchema(const char *oldname, const char *newname)
 	/* rename */
 	namestrcpy(&(((Form_pg_namespace) GETSTRUCT(tup))->nspname), newname);
 	simple_heap_update(rel, &tup->t_self, tup);
+	
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(NamespaceRelationId,
+						   nsoid,
+						   GetUserId(),
+						   "ALTER", "RENAME"
+				);
+
 	CatalogUpdateIndexes(rel, tup);
 
 	heap_close(rel, NoLock);
@@ -391,9 +415,11 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		bool		isNull;
 		HeapTuple	newtuple;
 		AclResult	aclresult;
+		Oid			nsoid;
 
 		/* Otherwise, must be owner of the existing object */
-		if (!pg_namespace_ownercheck(HeapTupleGetOid(tup), GetUserId()))
+		nsoid = HeapTupleGetOid(tup);
+		if (!pg_namespace_ownercheck(nsoid, GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_NAMESPACE,
 						   NameStr(nspForm->nspname));
 
@@ -439,6 +465,15 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
 
 		simple_heap_update(rel, &newtuple->t_self, newtuple);
+
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackUpdObject(NamespaceRelationId,
+							   nsoid,
+							   GetUserId(),
+							   "ALTER", "OWNER"
+					);
+
 		CatalogUpdateIndexes(rel, newtuple);
 
 		heap_freetuple(newtuple);
