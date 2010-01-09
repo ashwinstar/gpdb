@@ -1029,6 +1029,15 @@ ExecGrant_Database(InternalGrant *istmt)
 
 		simple_heap_update(relation, &newtuple->t_self, newtuple);
 
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackUpdObject(DatabaseRelationId,
+							   datId,
+							   GetUserId(), /* not grantorId, */
+							   "PRIVILEGE", 
+							   (istmt->is_grant) ? "GRANT" : "REVOKE"
+					);
+
 		/* keep the catalog indexes up to date */
 		CatalogUpdateIndexes(relation, newtuple);
 
@@ -1624,6 +1633,14 @@ ExecGrant_Namespace(InternalGrant *istmt)
 
 		simple_heap_update(relation, &newtuple->t_self, newtuple);
 
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackUpdObject(NamespaceRelationId,
+							   nspid,
+							   GetUserId(), /* not grantorId, */
+							   "PRIVILEGE", 
+							   (istmt->is_grant) ? "GRANT" : "REVOKE"
+					);
 		/* keep the catalog indexes up to date */
 		CatalogUpdateIndexes(relation, newtuple);
 
@@ -1746,6 +1763,15 @@ ExecGrant_Tablespace(InternalGrant *istmt)
 									 nulls, replaces);
 
 		simple_heap_update(relation, &newtuple->t_self, newtuple);
+
+		/* MPP-6929: metadata tracking */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			MetaTrackUpdObject(TableSpaceRelationId,
+							   tblId,
+							   GetUserId(), /* not grantorId, */
+							   "PRIVILEGE", 
+							   (istmt->is_grant) ? "GRANT" : "REVOKE"
+					);
 
 		/* keep the catalog indexes up to date */
 		CatalogUpdateIndexes(relation, newtuple);

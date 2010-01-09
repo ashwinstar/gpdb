@@ -552,7 +552,7 @@ createdb_int(CreatedbStmt *stmt,
 	if (Gp_role == GP_ROLE_DISPATCH)
 		MetaTrackAddObject(DatabaseRelationId,
 						   dboid,
-						   datdba, /* GetUserId() ? */
+						   GetUserId(),
 						   "CREATE", "DATABASE"
 				);
 
