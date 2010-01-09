@@ -288,8 +288,12 @@ components installed and configured.  This name is also used to control
 specific instances of the Greenplum Performance monitors web UI.  Instance
 names cannot contain spaces."""
     
-    instance_name = ask_input(help, 'Please enter a new instance name', '', 'default', len_nospace_validator, None)
+    instance_name = ask_input(help, 'Please enter a new instance name.  Entering an existing\n'
+                                    'instance name will reconfigure that instance', '', 
+                                    'default', len_nospace_validator, None)
     instance_info = get_instance_info(instance_name)
+
+    reconfigure = os.path.exists(instance_info['root_dir'])
 
     # defaults for webapi
     server_name_default = '[server name to display]'
@@ -323,6 +327,7 @@ a hostname.
     setup_instance_directory(instance_name)
 
     enable_ssl = 'disable'
+    use_existing_cert = False
     
     #TODO: check available ports?
     lighty_port = 28080
@@ -344,12 +349,19 @@ that SSL be enabled."""
 
     yn = ask_yesno(help, '\nDo you want to enable SSL for the Web API', 'Y')
     if yn:
-        ret = generate_cert(os.path.join(instance_info['ui_conf_dir'], 'cert.pem'))
-        if ret:
-            enable_ssl = 'enable'
-            ssl_cert = os.path.join(instance_info['ui_conf_dir'], 'cert.pem')
-        else:
-            print 'Failed to generate SSL certificate.  SSL will be disabled.'
+        enable_ssl = 'enable'
+        if os.path.exists(os.path.join(instance_info['ui_conf_dir'], 'cert.pem')):
+            use_existing_cert = ask_yesno(None, '\nFound an existing SSL certificate.  Do you want to use the existing certificate?', 'Y')
+
+
+    if enable_ssl == 'enable':
+        if not use_existing_cert:
+            ret = generate_cert(os.path.join(instance_info['ui_conf_dir'], 'cert.pem'))
+            if not ret:
+                print 'Failed to generate SSL certificate.  SSL will be disabled.'
+                enable_ssl = 'disable'
+        
+        ssl_cert = os.path.join(instance_info['ui_conf_dir'], 'cert.pem')
 
     lighty_conf = generate_lighty_conf(instance_info, lighty_port, lighty_access_log, lighty_error_log,
                                        os.path.join(instance_info['web_root_dir'], 'gpmonws.py'), 
@@ -381,13 +393,20 @@ that SSL be enabled."""
     else:
         webui_url = 'http://'
     webui_url = webui_url + socket.gethostname() + ':' + str(lighty_port) + '/'
-    #TODO: print the instance name.
+    
+    
     print '\nGreenplum Performance Monitor UI configuration is now complete.  If'
     print 'at a later date you want to change certain parameters, you can '
     print 'either re-run \'gpperfmon --setup\' or edit the configuration file'
     print 'located at ' + instance_info['ui_conf_file'] + '.'
-    print '\nYou can now start the web UI for this instance by running'
-    print '\'gpperfmon --start "' + instance_info['name'] + '"\'.'
+    if not reconfigure:
+        print '\nYou can now start the web UI for this instance by running'
+        print '\'gpperfmon --start "' + instance_info['name'] + '"\'.'
+    else:
+        print '\nRestarting web UI instance %s...' % instance_info['name']
+        lighty_restart(instance_info['name'])
+        print 'Done.'
+        
     print 'The web UI for this instance is available at %s' % webui_url
       
     
