@@ -34,6 +34,7 @@ test: select_into select_distinct select_distinct_on select_having subselect uni
 ignore: select_implicit
 ignore: transactions
 test: direct_dispatch
+test: partition_pruning_with_fn
 test: distributed_transactions
 ignore: portals
 ignore: arrays

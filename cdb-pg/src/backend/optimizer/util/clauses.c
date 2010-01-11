@@ -666,6 +666,16 @@ contain_mutable_functions_walker(Node *node, void *context)
 {
 	if (node == NULL)
 		return false;
+
+    /* the functions in predtest.c handle expressions and
+     * RestrictInfo objects -- so make this function handle
+     * them too for convenience */
+    if (IsA(node, RestrictInfo))
+    {
+        RestrictInfo * info = (RestrictInfo *) node;
+        return contain_mutable_functions_walker((Node*)info->clause, context);
+    }
+
 	if (IsA(node, FuncExpr))
 	{
 		FuncExpr   *expr = (FuncExpr *) node;
@@ -2084,6 +2094,41 @@ eval_const_expressions_mutator(Node *node,
 			return copyObject(context->case_val);
 		else
 			return copyObject(node);
+	}
+
+	if (IsA(node, ScalarArrayOpExpr ))
+	{
+        ScalarArrayOpExpr *saop;
+        Node *scalar;
+        Node *values;
+
+        saop = (ScalarArrayOpExpr *) expression_tree_mutator(node, eval_const_expressions_mutator,
+								   (void *) context);
+
+        Assert( IsA(saop, ScalarArrayOpExpr));
+        Assert( list_length(saop->args) == 2);
+
+        scalar = (Node *) linitial(saop->args);
+        values = (Node *) lsecond(saop->args);
+
+        if ( IsA(scalar, Const) && IsA(values, Const))
+        {
+            Node *result = (Node *) evaluate_expr( (Expr *) saop, BOOLOID);
+            Assert(IsA(result, Const));
+            return result;
+        }
+
+        /* note a couple things:
+         *
+         * 1) If values is not a constant (it could be an ArrayExpr) then that means
+         *    the ArrayExpr could not be reduced to a constant ...
+         * 2) We could further improve this by, for OR scalar array ops, extract only the Const values
+         *    from the array and make a constant out of those to evaluate.  If it evaluates to true then
+         *    we can return true, otherwise we can return a new ScalarArrayOpExpr with values being
+         *    only the non-Const values.  This seems overkill: I think      a in (1,2,3,x,y,z)    is rare
+         */
+
+        return (Node *) saop; /* this has been walked and is a new one */
 	}
 	if (IsA(node, ArrayExpr))
 	{

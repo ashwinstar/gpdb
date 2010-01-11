@@ -31,6 +31,8 @@
 #include "access/hash.h"
 #include "nodes/makefuncs.h"
 
+#include "catalog/pg_operator.h"
+#include "optimizer/paths.h"
 /*
  * Proof attempts involving many AND or OR branches are likely to require
  * O(N^2) time, and more often than not fail anyway.  So we set an arbitrary
@@ -44,6 +46,8 @@
 #define INT16MIN (-32768)
 #define INT32MAX (2147483647)
 #define INT32MIN (-2147483648)
+
+static const bool kUseFnEvaluationForPredicates = true;
 
 /*
  * To avoid redundant coding in predicate_implied_by_recurse and
@@ -84,7 +88,6 @@ typedef struct PredIterInfoData
 		(info).cleanup_fn(&(info)); \
 	} while (0)
 
-
 static bool predicate_implied_by_recurse(Node *clause, Node *predicate);
 static bool predicate_refuted_by_recurse(Node *clause, Node *predicate);
 static PredClass predicate_classify(Node *clause, PredIterInfo info);
@@ -115,6 +118,7 @@ static PossibleValueSet ProcessAndClauseForPossibleValues( PredIterInfoData *cla
 static PossibleValueSet ProcessOrClauseForPossibleValues( PredIterInfoData *clauseInfo, Node *clause, Node *variable);
 static bool TryProcessEqualityNodeForPossibleValues(OpExpr *expr, Node *variable, PossibleValueSet *resultOut );
 
+static bool simple_equality_predicate_implied_or_refuted(Node *clause, Node *predicate, bool checkImpliedInsteadOfRefuted);
 
 /*
  * predicate_implied_by
@@ -144,8 +148,16 @@ predicate_implied_by(List *predicate_list, List *restrictinfo_list)
 		return false;			/* no restriction: implication must fail */
 
 	/* Otherwise, away we go ... */
-	return predicate_implied_by_recurse((Node *) restrictinfo_list,
-										(Node *) predicate_list);
+	if ( predicate_implied_by_recurse((Node *) restrictinfo_list,
+										(Node *) predicate_list))
+    {
+        return true;
+    }
+
+    if ( ! kUseFnEvaluationForPredicates )
+        return false;
+    return simple_equality_predicate_implied_or_refuted((Node *) restrictinfo_list,
+										(Node *) predicate_list, true);
 }
 
 /*
@@ -185,8 +197,16 @@ predicate_refuted_by(List *predicate_list, List *restrictinfo_list)
 		return false;			/* no restriction: refutation must fail */
 
 	/* Otherwise, away we go ... */
-	return predicate_refuted_by_recurse((Node *) restrictinfo_list,
-										(Node *) predicate_list);
+	if ( predicate_refuted_by_recurse((Node *) restrictinfo_list,
+										(Node *) predicate_list))
+    {
+        return true;
+    }
+
+    if ( ! kUseFnEvaluationForPredicates )
+        return false;
+    return simple_equality_predicate_implied_or_refuted((Node *) restrictinfo_list,
+										(Node *) predicate_list, false);
 }
 
 /*----------
@@ -1110,6 +1130,157 @@ predicate_refuted_by_simple_clause(Expr *predicate, Node *clause)
 	return btree_predicate_proof(predicate, clause, true);
 }
 
+/**
+ * If n is a List, then return an AND tree of the nodes of the list
+ * Otherwise return n.
+ */
+static Node *
+convertToExplicitAndsShallowly( Node *n)
+{
+    if ( IsA(n, List))
+    {
+        ListCell *cell;
+        List *list = (List*)n;
+        Node *result = NULL;
+
+        Assert(list_length(list) != 0 );
+
+        foreach( cell, list )
+        {
+            Node *value = (Node*) lfirst(cell);
+            if ( result == NULL)
+            {
+                result = value;
+            }
+            else
+            {
+                result = (Node *) makeBoolExpr(AND_EXPR, list_make2(result, value), -1 /* parse location */);
+            }
+        }
+        return result;
+    }
+    else return n;
+}
+
+/**
+ * Check to see if the predicate is expr=constant or constant=expr.  In that case, try to evaluate the clause
+ *   by replacing every occurence of expr with the constant.  If the clause can then be reduced to a
+ *   single boolean value, the boolean value tells whether the clause is always true or always false, given the
+ *   predicate.
+ *
+ * Returns true only if evaluation was possible.  In that case, and only that case, *resultOut will be filled with
+ *   whether the clause evaluates to true or false
+ */
+static bool
+simple_equality_predicate_implied_or_refuted(Node *clause, Node *predicate, bool checkImpliedInsteadOfRefuted)
+{
+	OpExpr *predicateExpr;
+	Node *leftPredicateOp, *rightPredicateOp;
+    Node *constExprInPredicate, *varExprInPredicate;
+	List *list;
+
+    /* BEGIN inspecting the predicate: this only works for a simple equality predicate */
+    if ( nodeTag(predicate) != T_List )
+        return false;
+
+    if ( clause == predicate )
+        return false; /* don't both doing for self-refutation ... let normal behavior handle that */
+
+    list = (List *) predicate;
+    if ( list_length(list) != 1 )
+        return false;
+
+    predicate = linitial(list);
+	if ( ! is_opclause(predicate))
+		return false;
+
+	predicateExpr = (OpExpr*) predicate;
+	leftPredicateOp = get_leftop((Expr*)predicate);
+	rightPredicateOp = get_rightop((Expr*)predicate);
+	if (!leftPredicateOp || !rightPredicateOp)
+		return false;
+
+	/* check if it's equality operation */
+	if ( ! is_builtin_true_equality_between_same_type(predicateExpr->opno))
+		return false;
+
+	/* check if one operand is a constant */
+	if ( IsA(rightPredicateOp, Const))
+	{
+		varExprInPredicate = leftPredicateOp;
+		constExprInPredicate = rightPredicateOp;
+	}
+	else if ( IsA(leftPredicateOp, Const))
+	{
+		constExprInPredicate = leftPredicateOp;
+		varExprInPredicate = rightPredicateOp;
+	}
+	else
+	{
+	    return false;
+	}
+
+    if ( IsA(varExprInPredicate, RelabelType))
+    {
+        RelabelType *rt = (RelabelType*) varExprInPredicate;
+        varExprInPredicate = (Node*) rt->arg;
+    }
+
+    if ( ! IsA(varExprInPredicate, Var))
+    {
+        /* for now, this code is targeting predicates used in value partitions ...
+         *   so don't apply it for other expressions.  This check can probably
+         *   simply be removed and some test cases built. */
+        return false;
+    }
+    
+    /* DONE inspecting the predicate */
+
+	/* clause may have non-immutable functions...don't eval if that's the case:
+	 *
+	 * Note that since we are replacing elements of the clause that match
+	 *   varExprInPredicate, there is no need to also check varExprInPredicate
+	 *   for mutable functions (note that this is only relevant when the
+	 *   earlier check for varExprInPredicate being a Var is removed.
+	 */
+	if ( contain_mutable_functions(clause))
+		return false;
+
+	/* now do the evaluation */
+	{
+		Node *newClause, *reducedExpression;
+		ReplaceExpressionMutatorReplacement replacement;
+		bool result = false;
+		SwitchedMemoryContext memContext;
+
+		replacement.replaceThis = varExprInPredicate;
+		replacement.withThis = constExprInPredicate;
+        replacement.numReplacementsDone = 0;
+
+        memContext = AllocSetCreateDefaultContextInCurrentAndSwitchTo( "Predtest");
+
+		newClause = replace_expression_mutator(clause, &replacement);
+
+        if ( replacement.numReplacementsDone > 0)
+        {
+            newClause = convertToExplicitAndsShallowly(newClause);
+            reducedExpression = eval_const_expressions(NULL, newClause);
+
+            if ( IsA(reducedExpression, Const ))
+            {
+                Const *c = (Const *) reducedExpression;
+                if ( c->consttype == BOOLOID &&
+                     ! c->constisnull )
+                {
+                    result = DatumGetBool(c->constvalue) == checkImpliedInsteadOfRefuted;
+                }
+            }
+        }
+
+        DeleteAndRestoreSwitchedMemoryContext(memContext);
+        return result;
+	}
+}
 
 /*
  * If clause asserts the non-truth of a subclause, return that subclause;

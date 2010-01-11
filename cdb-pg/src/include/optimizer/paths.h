@@ -135,7 +135,19 @@ extern void add_equijoined_keys_to_list(List **ptrToList,
 
 extern bool exprs_known_equal(PlannerInfo *root, Node *item1, Node *item2);
 extern void generate_implied_equalities(PlannerInfo *root);
+
+
+typedef struct
+{
+    Node *replaceThis;
+    Node *withThis;
+    int numReplacementsDone;
+} ReplaceExpressionMutatorReplacement;
+
+/* context is ReplaceExpressionMutatorReplacement pointer */
+extern Node * replace_expression_mutator(Node *node, void *context);
 extern void generate_implied_quals(PlannerInfo *root);
+
 extern List *canonicalize_pathkeys(PlannerInfo *root, List *pathkeys);
 extern PathKeysComparison compare_pathkeys(List *keys1, List *keys2);
 extern bool pathkeys_contained_in(List *keys1, List *keys2);

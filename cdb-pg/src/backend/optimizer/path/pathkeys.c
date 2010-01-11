@@ -299,35 +299,37 @@ qual_may_have_node_replaced_walker(Node *node, Node *checkForNode)
             qual_may_have_node_replaced_walker, checkForNode);
 }
 
-typedef struct
-{
-    Node *replaceThis;
-    Node *withThis;
-} ImpliedQualMutatorReplacement;
-
 /**
- * implied_quals_mutator
+ * replace_expression_mutator
  *
  * Copy an expression tree, but replace all occurrences of one node with
  *   another.
  *
  * The replacement is passed in the context as a pointer to
- *    ImpliedQualMutatorReplacement
+ *    ReplaceExpressionMutatorReplacement
  *
+ * context should be ReplaceExpressionMutatorReplacement*
  */
-static Node * 
-implied_quals_mutator (Node *node, void *context)
+Node *
+replace_expression_mutator(Node *node, void *context)
 {
-    ImpliedQualMutatorReplacement * repl;
+    ReplaceExpressionMutatorReplacement * repl;
     if (node == NULL)
         return NULL;
 
-    repl = (ImpliedQualMutatorReplacement*) context;
+    if ( IsA(node, RestrictInfo))
+    {
+        RestrictInfo *info = (RestrictInfo *) node;
+        return replace_expression_mutator((Node*) info->clause, context);
+    }
+
+    repl = (ReplaceExpressionMutatorReplacement*) context;
     if ( equal(node, repl->replaceThis))
     {
+        repl->numReplacementsDone++;
         return copyObject(repl->withThis);
     }
-    return expression_tree_mutator(node, implied_quals_mutator, (void *) context);
+    return expression_tree_mutator(node, replace_expression_mutator, (void *) context);
 }
 
 /**
@@ -483,6 +485,8 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
 
             /* walk the restrictInfo, checking that the only non-constant
              * value it refers to is the node for this equivalence item.
+             *
+             * stable functions are okay to clone...at runtime they will all have same value
 			 */
             clause = (Node *)restrictinfo->clause;
             if ( contain_volatile_functions(clause) ||
@@ -498,7 +502,7 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
                 BMS_Membership item2Membership;
                 Node *newClause;
                 PathKeyItem *item2;
-                ImpliedQualMutatorReplacement repl;
+                ReplaceExpressionMutatorReplacement repl;
                 bool belowOuterJoin;
 
                 if ( i1 == i2 )
@@ -541,7 +545,8 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
 				 */
                 repl.replaceThis = item1->key;
                 repl.withThis = item2->key;
-                newClause = (Node*) implied_quals_mutator(
+                repl.numReplacementsDone = 0;
+                newClause = (Node*) replace_expression_mutator(
                     (Node*)restrictinfo->clause, &repl);
 
                 distribute_qual_to_rels(root, newClause,
