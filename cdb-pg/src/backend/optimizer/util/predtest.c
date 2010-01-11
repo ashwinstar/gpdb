@@ -2288,7 +2288,7 @@ TryProcessEqualityNodeForPossibleValues(OpExpr *expr, Node *variable, PossibleVa
 		{
 			/* okay, got a new constant value .. set it and done!*/
 			Const *newConst;
-			int constlen;
+			int constlen = 0;
 
 			Assert(isGreenplumDbHashable(consttype));
 
