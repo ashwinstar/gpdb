@@ -122,12 +122,16 @@ typedef struct PlannedStmt
 		int			nMotionNodes;	/* number of Motion nodes in plan */
 		
 		int			nInitPlans;		/* number of initPlans in plan */
+
+		/* GPDB: Used only on QD. Don't serialize.  Cloned from top Query node
+		 *       at the end of planning.  Holds the result distribution policy 
+		 *       for SELECT ... INTO and set operations.
+		 */
+		struct GpPolicy  *intoPolicy;
 		
 		/*
-		 * CDB: This allows the slice table to accompany the plan as it
-		 * moves around the executor. This is anoter plan tree global that
-		 * should be non-NULL only in the top node of a dispatchable tree.
-		 * It could (and should) move to a TopPlan node if we ever do that.
+		 * GPDB: This allows the slice table to accompany the plan as it
+		 * moves around the executor.
 		 *
 		 * Currently, the slice table should not be installed on the QD.
 		 * Rather is it shipped to QEs as a separate parameter to MPPEXEC.

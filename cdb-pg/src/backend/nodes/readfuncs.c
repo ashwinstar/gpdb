@@ -2623,6 +2623,7 @@ _readPlannedStmt(void)
 	READ_INT_FIELD(nParamExec);
 	READ_INT_FIELD(nMotionNodes);
 	READ_INT_FIELD(nInitPlans);
+	local_node->intoPolicy = NULL; /* not serialized in outfuncs.c */
 	READ_NODE_FIELD(sliceTable);
 	
 	READ_DONE();

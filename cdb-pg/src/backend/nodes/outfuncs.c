@@ -350,6 +350,7 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_INT_FIELD(nMotionNodes);
 	WRITE_INT_FIELD(nInitPlans);
 	
+	/* Don't serialize policy */
 	WRITE_NODE_FIELD(sliceTable);
 }
 

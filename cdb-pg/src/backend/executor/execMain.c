@@ -236,9 +236,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
 
-	/* TODO Use of Query tree deprecated. (PSMERGE) */
-	Assert(queryDesc->plannedstmt->queryTree->intoPolicy == NULL 
-		   || queryDesc->plannedstmt->queryTree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
+	Assert(queryDesc->plannedstmt->intoPolicy == NULL 
+		   || queryDesc->plannedstmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
     
     /**
 	 * Perfmon related stuff.
@@ -1198,9 +1197,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	ListCell   *l;
 	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && stmt->planTree->dispatch == DISPATCH_PARALLEL;
 
-	/* TODO Use of Query tree deprecated. (PSMERGE) */
-	Assert(stmt->queryTree->intoPolicy == NULL 
-		   || stmt->queryTree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
+	Assert(stmt->intoPolicy == NULL 
+		   || stmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 	/*
 	 * Do permissions checks.  It's sufficient to examine the query's top
 	 * rangetable here --- subplan RTEs will be checked during
@@ -3865,7 +3863,7 @@ OpenIntoRel(QueryDesc *queryDesc)
     GpPolicy   *targetPolicy;
 	int			safefswritesize = gp_safefswritesize;
 	
-	targetPolicy = queryDesc->plannedstmt->queryTree->intoPolicy; /* TODO Need to shift this into PlannedStmt. (PSMERGE) */
+	targetPolicy = queryDesc->plannedstmt->intoPolicy;
 	intoClause = queryDesc->plannedstmt->intoClause;
 	/*
 	 * Check consistency of arguments

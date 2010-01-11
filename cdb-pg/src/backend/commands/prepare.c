@@ -214,24 +214,14 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 
 		pstmt->intoClause = copyObject(stmt->into);
 
-		/* TODO Find a way to eliminate this reference to the temporary queryTree
-		 *      field of PlannedStmt.  (PSMERGE)
-		 * But, for now, this is how we convey into and intoPolicy.
+		/* XXX  Is it legitimate to assign a constant default policy without 
+		 *      even checking the relation?
 		 */
-		{
-			Query *query = pstmt->queryTree;
-			
-			query->intoClause = pstmt->intoClause; 
-			
-			/* TODO Check this.  Is it legitimate to assign a constant default policy
-			 *                   without even checking the relation?
-			 */
-			query->intoPolicy = palloc0(sizeof(GpPolicy)- sizeof(query->intoPolicy->attrs)
-										+ 255 * sizeof(query->intoPolicy->attrs[0]));
-			query->intoPolicy->nattrs = 1;			
-			query->intoPolicy->ptype = POLICYTYPE_PARTITIONED;
-			query->intoPolicy->attrs[0] = 1;
-		}
+		pstmt->intoPolicy = palloc0(sizeof(GpPolicy)- sizeof(pstmt->intoPolicy->attrs)
+									+ 255 * sizeof(pstmt->intoPolicy->attrs[0]));
+		pstmt->intoPolicy->nattrs = 1;			
+		pstmt->intoPolicy->ptype = POLICYTYPE_PARTITIONED;
+		pstmt->intoPolicy->attrs[0] = 1;
 		
 		MemoryContextSwitchTo(oldContext);
 	}

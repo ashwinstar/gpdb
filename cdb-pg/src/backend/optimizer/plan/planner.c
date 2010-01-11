@@ -54,6 +54,7 @@
 #include "cdb/cdbsubselect.h"   /* cdbsubselect_flatten_sublinks() */
 
 #include "utils/debugbreak.h"
+#include "catalog/gp_policy.h"
 
 /* GUC parameter */
 double cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
@@ -277,6 +278,7 @@ standard_planner(Query *parse, bool isCursor, int cursorOptions,
 	result->nParamExec = list_length(glob->paramlist);
 	result->nMotionNodes = top_plan->nMotionNodes;
 	result->nInitPlans = top_plan->nInitPlans;
+	result->intoPolicy = GpPolicyCopy(CurrentMemoryContext, parse->intoPolicy);
 	
 	Assert(result->utilityStmt == NULL || IsA(result->utilityStmt, DeclareCursorStmt));
 	return result;

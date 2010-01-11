@@ -151,6 +151,12 @@ _copyPlannedStmt(PlannedStmt *from)
 	COPY_SCALAR_FIELD(nMotionNodes);
 	COPY_SCALAR_FIELD(nInitPlans);
 	
+	if (from->intoPolicy)
+	{
+		COPY_POINTER_FIELD(intoPolicy,sizeof(GpPolicy) + from->intoPolicy->nattrs*sizeof(from->intoPolicy->attrs[0]));
+	}
+	else
+		newnode->intoPolicy = NULL;
 	COPY_NODE_FIELD(sliceTable);
 	
 	return newnode;
