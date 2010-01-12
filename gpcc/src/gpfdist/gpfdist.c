@@ -222,6 +222,7 @@ struct session_t
 	int 			is_error;	/* error flag */
 	int 			nrequest;	/* # requests attached to this session */
 	int				is_get;     /* true for GET, false for POST */
+	int				should_end;	/* a "final" req came in. we need to close */
 	apr_time_t		mtime; 		/* time when nrequest was modified */
 };
 
@@ -240,6 +241,7 @@ struct request_t
 	session_t* 		session; 	/* the session this request is attached to */
 	int 			gp_proto; 	/* the protocol to use, sent from client */
 	int				is_get;     /* true for GET, false for POST */
+	int				is_final;	/* the final POST request. a signal from client to end session */
 
 	struct
 	{
@@ -849,13 +851,17 @@ static void session_detach(request_t* r)
 
 			session_free(session);
 		}
-		else if(!session->is_get && session->nrequest == 0)
+		else if(!session->is_get && session->should_end && session->nrequest == 0)
 		{
 			/* 
 			 * free the session if this is a POST request 
-			 * and it's the last request for this session. 
+			 * and it's the last request for this session,
+			 * and the client signaled us that it's the end
+			 * of operation. 
+			 * 
 			 * this is needed in order to make sure to close
-			 * the out file when we're done writing. 
+			 * the out file when we're done writing. (only
+			 * in write operations, not in read).
 			 */
 			session_free(session);
 		}
@@ -941,6 +947,20 @@ static int session_attach(request_t* r)
 		/* remove any outdated sessions*/
 		sessions_cleanup();
 
+		/* 
+		 * this is the special WET "session-end" request. Another similar
+		 * request must have already came in from another segdb and finished
+		 * the session we were at. we don't want to create a new session now,
+		 * so just exit instead
+		 */
+		if (r->is_final)
+		{
+			gprint("got a final write request. skipping session creation\n");
+			http_empty(r);
+			request_end(r, 0, 0);
+			return -1;
+		}
+
 		if (apr_pool_create(&pool, gcb.pool))
 		{
 			gwarning(FLINE, "out of memory");
@@ -1000,6 +1020,7 @@ static int session_attach(request_t* r)
 		session->fstream = fstream;
 		session->pool = pool;
 		session->is_get = r->is_get;
+		session->should_end = r->is_final; /* should be false */
 
 		if (session->tid == 0 || session->path == 0 || session->key == 0)
 		{
@@ -1047,6 +1068,7 @@ static int session_attach(request_t* r)
 
 	/* one more request for session */
 	session->nrequest++;
+	session->should_end = r->is_final;
 	session->mtime = apr_time_now();
 	r->session = session;
 	
@@ -1169,7 +1191,7 @@ static void do_read_request(int fd, short event, void* arg)
 	char*		p = NULL;
 	char*		pp = NULL;
 	char*		path = NULL;
-
+	
 	/* If we timeout, close the request. */
 	if (event & EV_TIMEOUT)
 	{
@@ -1382,7 +1404,8 @@ static void do_accept(int fd, short event, void* arg)
 
 	r->in.hbufmax = 1024 * 4; /* 4K for reading the headers */
 	r->in.hbuf = apr_palloc(pool, r->in.hbufmax);
-
+	r->is_final = 0;	/* initialize */
+	
 	addr = ntohl(a.sin_addr.s_addr);
 	r->peer = apr_psprintf(r->pool, "%d.%d.%d.%d", (addr >> 24) & 0xff,
 						  (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
@@ -1796,6 +1819,17 @@ static void handle_post_request(request_t *r, int header_end)
 	int data_bytes_in_req = 0;
 	int wrote = 0;
 	
+	/* 
+	 * If this request is an "end-flag" (has GP-DONE header set)
+	 * it has already set the is_done flag in the session, telling
+	 * the session that is get close all file and free itself in when
+	 * the last request of the session is finishing.
+	 * we send our success response and end the request, no need to
+	 * process anything here.
+	 */
+	if(r->is_final)
+		goto done_processing_request;
+
 	for(i = 0 ; i < h_count ; i++)
 	{
 		/* the request include a "Expect: 100-continue" header? */
@@ -1916,6 +1950,8 @@ static void handle_post_request(request_t *r, int header_end)
 
 	}
 
+done_processing_request:
+
 	/* send our success response and end the request */
 	if (0 != http_ok(r))
 		request_end(r, 1, 0);
@@ -2032,7 +2068,8 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 	int 		i;
 
 	r->csvopt = "";
-
+	r->is_final = 0;
+	
 	for (i = 0; i < r->in.req->hc; i++)
 	{
 		if (0 == strcmp("X-GP-XID", r->in.req->hname[i]))
@@ -2045,6 +2082,8 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 			r->csvopt = r->in.req->hvalue[i];
 		else if (0 == strcmp("X-GP-PROTO", r->in.req->hname[i]))
 			gp_proto = r->in.req->hvalue[i];
+		else if (0 == strcmp("X-GP-DONE", r->in.req->hname[i]))
+			r->is_final = 1;
 	}
 
 	r->gp_proto = strtol(gp_proto, 0, 0);

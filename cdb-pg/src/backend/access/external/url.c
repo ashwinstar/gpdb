@@ -61,6 +61,7 @@ static char *interpretError(int exitCode, char *buf, size_t buflen, char *err, s
 static const char *getSignalNameFromCode(int signo);
 static int popen_with_stderr(int *rwepipe, const char *exe, bool forwrite);
 static int pclose_with_stderr(int pid, int *rwepipe, char *buf, int len);
+static void gp_proto0_write_done(URL_FILE *file);
 
 
 /* we use a global one for convenience */
@@ -760,7 +761,9 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 		file->u.curl.x_httpheader = NULL;
 		if (set_httpheader(file, "X-GP-XID", ev->GP_XID) ||
 			set_httpheader(file, "X-GP-CID", ev->GP_CID) ||
-			set_httpheader(file, "X-GP-SN", ev->GP_SN))
+			set_httpheader(file, "X-GP-SN", ev->GP_SN) ||
+			set_httpheader(file, "X-GP-SEGMENT-ID", ev->GP_SEGMENT_ID) ||
+			set_httpheader(file, "X-GP-SEGMENT-COUNT", ev->GP_SEGMENT_COUNT))
 		{
 			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: some header value is too long");
@@ -787,10 +790,8 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			   set_httpheader(file, "X-GP_SEG_DATADIR", ev->GP_SEG_DATADIR) ||
 			   set_httpheader(file, "X-GP-DATABASE", ev->GP_DATABASE) ||
 			   set_httpheader(file, "X-GP-USER", ev->GP_USER) ||
-			   set_httpheader(file, "X-GP-SEGMENT-ID", ev->GP_SEGMENT_ID) ||
 			   set_httpheader(file, "X-GP-SEG-PORT", ev->GP_SEG_PORT) ||
-			   set_httpheader(file, "X-GP-SESSION-ID", ev->GP_SESSION_ID) ||
-			   set_httpheader(file, "X-GP-SEGMENT-COUNT", ev->GP_SEGMENT_COUNT))
+			   set_httpheader(file, "X-GP-SESSION-ID", ev->GP_SESSION_ID))
 			{
 				url_fclose(file, false, pstate->cur_relname);
 				elog(ERROR, "internal error: some header value is too long");
@@ -944,6 +945,13 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 			break;
 
 		case CFTYPE_CURL:
+			
+			/*
+			 * if WET, send a final "I'm done" request from this segment.
+			 */
+			if(file->u.curl.for_write)
+				gp_proto0_write_done(file);
+			
 			if (file->u.curl.x_httpheader)
 			{
 				curl_slist_free_all(file->u.curl.x_httpheader);
@@ -1344,6 +1352,32 @@ static void gp_proto0_write(URL_FILE *file, CopyState pstate)
 
 }
 
+/*
+ * Send an empty POST request, with an added X-GP-DONE header.
+ */
+static void gp_proto0_write_done(URL_FILE *file)
+{
+    int 	e;
+
+	set_httpheader(file, "X-GP-DONE", "1");
+
+	/* use empty message */
+	if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_POSTFIELDS, "")))
+	{
+		elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)",
+			 file->u.curl.curl_url,
+			 e, curl_easy_strerror(e));
+	}
+
+    /* post away! */
+    if (CURLE_OK != (e = curl_easy_perform(file->u.curl.handle)))
+	{
+		elog(ERROR, "%s error: %s",
+			 file->u.curl.curl_url,
+			 curl_easy_strerror(e));
+	}
+
+}
 
 static size_t curl_fread(char *buf, int bufsz, URL_FILE* file, CopyState pstate)
 {

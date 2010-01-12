@@ -463,7 +463,7 @@ gfile_open(gfile_t *fd, const char *fpath, int for_write, int *response_code,
 		do
 		{
 			if (for_write)
-				fd->fd.filefd = open(fpath, O_WRONLY | O_CREAT | O_BINARY | O_APPEND, S_IRUSR | S_IWUSR);
+				fd->fd.filefd = open(fpath, O_WRONLY | O_CREAT | O_BINARY | O_APPEND | O_SYNC, S_IRUSR | S_IWUSR);
 			else
 				fd->fd.filefd = open(fpath, O_RDONLY | O_BINARY);
 		}
@@ -544,7 +544,10 @@ gfile_close(gfile_t*fd)
 			int i;
 
 			do
+			{
+				//fsync(fd->fd.filefd);
 				i = close(fd->fd.filefd);
+			}
 			while (i < 0 && errno == EINTR);
 
 			if (e == 0)
