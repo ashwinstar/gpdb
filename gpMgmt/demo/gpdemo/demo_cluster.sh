@@ -83,21 +83,24 @@ cleanDemo(){
             ${PG_CTL_PATH} -D ${eDir} stop
         fi
     done
-    # Remove the files and directories created
-    if [ -f hostfile ];  then
-        echo "Deleting hostfile"
-        rm -f hostfile
-    fi
-    if [ -f clusterConfigFile ];  then
-        echo "Deleting clusterConfigFile"
-        rm -f clusterConfigFile
-    fi
-    if [ -d ${DATADIRS} ];  then
-        echo "Deleting ${DATADIRS}"
-        rm -rf ${DATADIRS}
-    fi
-    if [ -d logs ];  then
-        rm -rf logs
+
+    # Remove the files and directories created; allow test harnesses to disable this
+    if [ "${GPDEMO_DESTRUCTIVE_CLEAN}" != "false" ]; then
+        if [ -f hostfile ];  then
+            echo "Deleting hostfile"
+            rm -f hostfile
+        fi
+        if [ -f clusterConfigFile ];  then
+            echo "Deleting clusterConfigFile"
+            rm -f clusterConfigFile
+        fi
+        if [ -d ${DATADIRS} ];  then
+            echo "Deleting ${DATADIRS}"
+            rm -rf ${DATADIRS}
+        fi
+        if [ -d logs ];  then
+            rm -rf logs
+        fi
     fi
 }
 
