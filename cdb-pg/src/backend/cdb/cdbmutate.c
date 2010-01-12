@@ -2233,7 +2233,7 @@ static Plan *gpmon_peekplannode(ApplyShareInputContext *ctxt)
 	return ctxt->planNodes == NULL ? NULL : linitial(ctxt->planNodes);
 }
 
-static bool shareinput_mutator_gpmon(Node *node, ApplyShareInputContext *ctxt, bool fPop)
+static bool assign_plannode_id_walker(Node *node, ApplyShareInputContext *ctxt, bool fPop)
 {
 	Plan *p = (Plan *) node;
 	Plan *parent;
@@ -2264,7 +2264,7 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 	ctxt->motStack = NULL;
 	ctxt->qdShares = NULL;
 	ctxt->qdSlices = NULL;
-	ctxt->planNodes = NULL;
+	ctxt->planNodes = NIL;
 	ctxt->nextPlanId = 0;
 
 	shareinput_pushmot(ctxt, 0);
@@ -2278,13 +2278,24 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 	shareinput_walker(shareinput_mutator_xslice_2, (Node *) plan, ctxt); 
 	shareinput_walker(shareinput_mutator_xslice_3, (Node *) plan, ctxt); 
 
-	/* 
-	 * Generate a plan node id for each node.  Used by gpmon. 
-	 */
-	leftdeep_walker(shareinput_mutator_gpmon, (Node *) plan, ctxt);
-	
 	return plan;
 }
+
+/* 
+ * assign_plannode_id - Assign an id for each plan node.  Used by gpmon. 
+ */
+void assign_plannode_id(Plan *plan)
+{
+	ApplyShareInputContext ctxt;
+
+	/* We only care about planNodes and nextPlanId, so initialize them. */
+	ctxt.planNodes = NIL;
+	ctxt.nextPlanId = 0;
+	
+	leftdeep_walker(assign_plannode_id_walker, (Node *) plan, &ctxt);
+	
+}
+
 
 static bool can_zap_result(Result *res)
 {
