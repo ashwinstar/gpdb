@@ -274,11 +274,17 @@ CreateRole(CreateRoleStmt *stmt)
 	{
 		/* MPP-6926: resource queue required -- use default queue  */
 		if (Gp_role == GP_ROLE_DISPATCH)
-			ereport(NOTICE,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("resource queue required -- "
-							"using default resource queue \"%s\"",
-							GP_DEFAULT_RESOURCE_QUEUE_NAME)));
+		{
+			/* MPP-7587: don't complain if you CREATE a superuser,
+			 * who doesn't use the queue 
+			 */
+			if (!issuper)
+				ereport(NOTICE,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("resource queue required -- "
+								"using default resource queue \"%s\"",
+								GP_DEFAULT_RESOURCE_QUEUE_NAME)));
+		}
 
 		resqueue = pstrdup(GP_DEFAULT_RESOURCE_QUEUE_NAME);
 	}
@@ -390,10 +396,16 @@ CreateRole(CreateRoleStmt *stmt)
 		ObjectIdGetDatum(queueid);
 
 		if (!ResourceScheduler)
-			ereport(WARNING,
-				(errmsg("resource scheduling is disabled"),
-				 errhint("To enable set resource_scheduler=on"),
-						   errOmitLocation(true)));
+		{
+			/* MPP-7587: don't complain if you CREATE a superuser,
+			 * who doesn't use the queue 
+			 */
+			if (!issuper)
+				ereport(WARNING,
+						(errmsg("resource scheduling is disabled"),
+						 errhint("To enable set resource_scheduler=on"),
+						 errOmitLocation(true)));
+		}
 	}
 	else
 		new_record_nulls[Anum_pg_authid_rolresqueue - 1] = true;
@@ -485,39 +497,41 @@ CreateRole(CreateRoleStmt *stmt)
 void
 AlterRole(AlterRoleStmt *stmt)
 {
-	Datum		new_record[Natts_pg_authid];
-	bool		new_record_nulls[Natts_pg_authid];
-	bool		new_record_repl[Natts_pg_authid];
-	Relation	pg_authid_rel;
-	TupleDesc	pg_authid_dsc;
-	HeapTuple	tuple,
-				new_tuple;
-	ListCell   *option;
-	char	   *password = NULL;	/* user password */
-	bool		encrypt_password = Password_encryption; /* encrypt password? */
-	char		encrypted_password[MD5_PASSWD_LEN + 1];
-	int			issuper = -1;	/* Make the user a superuser? */
-	int			inherit = -1;	/* Auto inherit privileges? */
-	int			createrole = -1;	/* Can this user create roles? */
-	int			createdb = -1;	/* Can the user create databases? */
-	int			canlogin = -1;	/* Can this user login? */
-	int			connlimit = -1; /* maximum connections allowed */
-	char	   *resqueue = NULL;		/* resource queue for this role */
-	List	   *rolemembers = NIL;		/* roles to be added/removed */
-	char	   *validUntil = NULL;		/* time the login is valid until */
-	DefElem    *dpassword = NULL;
-	DefElem    *dresqueue = NULL;
-	DefElem    *dissuper = NULL;
-	DefElem    *dinherit = NULL;
-	DefElem    *dcreaterole = NULL;
-	DefElem    *dcreatedb = NULL;
-	DefElem    *dcanlogin = NULL;
-	DefElem    *dconnlimit = NULL;
-	DefElem    *drolemembers = NULL;
-	DefElem    *dvalidUntil = NULL;
-	Oid			roleid;
-	char	   *alter_subtype = ""; /* metadata tracking: kind of
-									   redundant to say "role" */
+	Datum		 new_record[Natts_pg_authid];
+	bool		 new_record_nulls[Natts_pg_authid];
+	bool		 new_record_repl[Natts_pg_authid];
+	Relation	 pg_authid_rel;
+	TupleDesc	 pg_authid_dsc;
+	HeapTuple	 tuple,
+				 new_tuple;
+	ListCell	*option;
+	char		*password	   = NULL;	/* user password */
+	bool		 encrypt_password 
+							   = Password_encryption; /* encrypt password? */
+	char		 encrypted_password[MD5_PASSWD_LEN + 1];
+	int			 issuper	   = -1;	/* Make the user a superuser? */
+	int			 inherit	   = -1;	/* Auto inherit privileges? */
+	int			 createrole	   = -1;	/* Can this user create roles? */
+	int			 createdb	   = -1;	/* Can the user create databases? */
+	int			 canlogin	   = -1;	/* Can this user login? */
+	int			 connlimit	   = -1;	/* maximum connections allowed */
+	char		*resqueue	   = NULL;	/* resource queue for this role */
+	List		*rolemembers   = NIL;	/* roles to be added/removed */
+	char		*validUntil	   = NULL;	/* time the login is valid until */
+	DefElem		*dpassword	   = NULL;
+	DefElem		*dresqueue	   = NULL;
+	DefElem		*dissuper	   = NULL;
+	DefElem		*dinherit	   = NULL;
+	DefElem		*dcreaterole   = NULL;
+	DefElem		*dcreatedb	   = NULL;
+	DefElem		*dcanlogin	   = NULL;
+	DefElem		*dconnlimit	   = NULL;
+	DefElem		*drolemembers  = NULL;
+	DefElem		*dvalidUntil   = NULL;
+	Oid			 roleid;
+	bool		 bWas_super	   = false;	/* Was the user a superuser? */
+	char		*alter_subtype = "";	/* metadata tracking: kind of
+										   redundant to say "role" */
 
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
@@ -667,6 +681,8 @@ AlterRole(AlterRoleStmt *stmt)
 	 * To mess with a superuser you gotta be superuser; else you need
 	 * createrole, or just want to change your own password
 	 */
+
+	bWas_super = ((Form_pg_authid) GETSTRUCT(tuple))->rolsuper;
 	if (((Form_pg_authid) GETSTRUCT(tuple))->rolsuper || issuper >= 0)
 	{
 		if (!superuser())
@@ -713,6 +729,8 @@ AlterRole(AlterRoleStmt *stmt)
 
 		new_record[Anum_pg_authid_rolcatupdate - 1] = BoolGetDatum(issuper > 0);
 		new_record_repl[Anum_pg_authid_rolcatupdate - 1] = true;
+
+		bWas_super = (issuper > 0); /* get current superuser status */
 	}
 
 	if (inherit >= 0)
@@ -790,12 +808,16 @@ AlterRole(AlterRoleStmt *stmt)
 /*			( 0 == pg_strcasecmp(resqueue,"none"))) */
 			( 0 == strcmp(resqueue,"none")))
 		{
-			ereport(NOTICE,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("resource queue required -- "
-						"using default resource queue \"%s\"",
-						GP_DEFAULT_RESOURCE_QUEUE_NAME)));
-
+			/* MPP-7587: don't complain if you ALTER a superuser,
+			 * who doesn't use the queue 
+			 */
+			if (!bWas_super)
+				ereport(NOTICE,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("resource queue required -- "
+								"using default resource queue \"%s\"",
+								GP_DEFAULT_RESOURCE_QUEUE_NAME)));
+			
 			resqueue = pstrdup(GP_DEFAULT_RESOURCE_QUEUE_NAME);
 		}
 
@@ -818,10 +840,16 @@ AlterRole(AlterRoleStmt *stmt)
 		new_record_repl[Anum_pg_authid_rolresqueue - 1] = true;
 
 		if (!ResourceScheduler)
-			ereport(WARNING,
-				(errmsg("resource scheduling is disabled"),
-				 errhint("To enable set resource_scheduler=on"),
-						   errOmitLocation(true)));
+		{
+			/* MPP-7587: don't complain if you ALTER a superuser,
+			 * who doesn't use the queue 
+			 */
+			if (!bWas_super)
+				ereport(WARNING,
+						(errmsg("resource scheduling is disabled"),
+						 errhint("To enable set resource_scheduler=on"),
+						 errOmitLocation(true)));
+		}
 	}
 
 

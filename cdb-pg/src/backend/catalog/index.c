@@ -2608,11 +2608,13 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 			doIt = (!(isAnyTempNamespace(namespaceId)));
 
 		/* MPP-6929: metadata tracking */
+		/* MPP-7587: treat as a VACUUM operation, since the index is
+		 * rebuilt */
 		if (doIt)
 			MetaTrackUpdObject(RelationRelationId,
 							   indexId,
 							   GetUserId(), /* not ownerid */
-							   "ALTER", subtyp
+							   "VACUUM", subtyp
 					);
 	}
 
