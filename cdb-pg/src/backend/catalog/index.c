@@ -645,9 +645,9 @@ index_create(Oid heapRelationId,
 	heap_close(pg_class, RowExclusiveLock);
 
 
-	{/* MPP-7575: track index creation */
-		bool doIt = true;
-		char *subtyp = "INDEX";
+	{							/* MPP-7575: track index creation */
+		bool	 doIt	= true;
+		char	*subtyp = "INDEX";
 
 		/* MPP-7576: don't track internal namespace tables */
 		switch (namespaceId) 
@@ -660,6 +660,9 @@ index_create(Oid heapRelationId,
 			default:
 				break;
 		}
+
+		if (doIt)
+			doIt = (!(isAnyTempNamespace(namespaceId)));
 
 		/* MPP-6929: metadata tracking */
 		if (doIt)
@@ -2430,14 +2433,15 @@ IndexGetRelation(Oid indexId)
 Oid
 reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 {
-	Relation	iRel,
-				heapRelation,
-				pg_index;
-	Oid			heapId;
-	bool		inplace;
-	HeapTuple	indexTuple;
-	Form_pg_index indexForm;
-	Oid 		retrelfilenode;
+	Relation		iRel,
+					heapRelation,
+					pg_index;
+	Oid				heapId;
+	bool			inplace;
+	HeapTuple		indexTuple;
+	Form_pg_index	indexForm;
+	Oid				retrelfilenode;
+	Oid				namespaceId;
 
 	/*
 	 * Open and lock the parent heap relation.	ShareLock is sufficient since
@@ -2445,6 +2449,8 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 	 */
 	heapId = IndexGetRelation(indexId);
 	heapRelation = heap_open(heapId, ShareLock);
+
+	namespaceId = RelationGetNamespace(heapRelation);
 
 	/*
 	 * Open the target index relation and get an exclusive lock on it, to
@@ -2581,6 +2587,35 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 		CatalogUpdateIndexes(pg_index, indexTuple);
 	}
 	heap_close(pg_index, RowExclusiveLock);
+
+	{
+		bool	 doIt	= true;
+		char	*subtyp = "REINDEX";
+
+		/* MPP-7576: don't track internal namespace tables */
+		switch (namespaceId) 
+		{
+			case PG_TOAST_NAMESPACE:
+			case PG_BITMAPINDEX_NAMESPACE:
+			case PG_AOSEGMENT_NAMESPACE:
+				doIt = false;
+				break;
+			default:
+				break;
+		}
+
+		if (doIt)
+			doIt = (!(isAnyTempNamespace(namespaceId)));
+
+		/* MPP-6929: metadata tracking */
+		if (doIt)
+			MetaTrackUpdObject(RelationRelationId,
+							   indexId,
+							   GetUserId(), /* not ownerid */
+							   "ALTER", subtyp
+					);
+	}
+
 
 	/* Close rels, but keep locks */
 	index_close(iRel, NoLock);

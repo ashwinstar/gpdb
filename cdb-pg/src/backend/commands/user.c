@@ -3,6 +3,7 @@
  * user.c
  *	  Commands for manipulating roles (formerly called users).
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -515,6 +516,8 @@ AlterRole(AlterRoleStmt *stmt)
 	DefElem    *drolemembers = NULL;
 	DefElem    *dvalidUntil = NULL;
 	Oid			roleid;
+	char	   *alter_subtype = ""; /* metadata tracking: kind of
+									   redundant to say "role" */
 
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
@@ -832,14 +835,6 @@ AlterRole(AlterRoleStmt *stmt)
 	ReleaseSysCache(tuple);
 	heap_freetuple(new_tuple);
 
-	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
-		MetaTrackUpdObject(AuthIdRelationId,
-						   roleid,
-						   GetUserId(),
-						   "ALTER", "" /* kind of redundant to say "role" */
-				);
-
 	/*
 	 * Advance command counter so we can see new record; else tests in
 	 * AddRoleMems may fail.
@@ -848,13 +843,29 @@ AlterRole(AlterRoleStmt *stmt)
 		CommandCounterIncrement();
 
 	if (stmt->action == +1)		/* add members to role */
+	{
+		if (rolemembers)
+			alter_subtype = "ADD USER";
 		AddRoleMems(stmt->role, roleid,
 					rolemembers, roleNamesToIds(rolemembers),
 					GetUserId(), false);
+	}
 	else if (stmt->action == -1)	/* drop members from role */
+	{
+		if (rolemembers)
+			alter_subtype = "DROP USER";
 		DelRoleMems(stmt->role, roleid,
 					rolemembers, roleNamesToIds(rolemembers),
 					false);
+	}
+
+	/* MPP-6929: metadata tracking */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(AuthIdRelationId,
+						   roleid,
+						   GetUserId(),
+						   "ALTER", alter_subtype
+				);
 
 	/*
 	 * Close pg_authid, but keep lock till commit (this is important to
@@ -887,6 +898,7 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 	Datum		repl_val[Natts_pg_authid];
 	bool		repl_null[Natts_pg_authid];
 	bool		repl_repl[Natts_pg_authid];
+	char	   *alter_subtype = "SET"; /* metadata tracking */
 
 	valuestr = flatten_set_variable_args(stmt->variable, stmt->value);
 
@@ -927,6 +939,8 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 
 	if (strcmp(stmt->variable, "all") == 0 && valuestr == NULL)
 	{
+		alter_subtype = "RESET ALL";
+
 		/* RESET ALL, so just set rolconfig to null */
 		repl_null[Anum_pg_authid_rolconfig - 1] = true;
 		repl_val[Anum_pg_authid_rolconfig - 1] = (Datum) 0;
@@ -948,7 +962,10 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		if (valuestr)
 			array = GUCArrayAdd(array, stmt->variable, valuestr);
 		else
+		{
+			alter_subtype = "RESET";
 			array = GUCArrayDelete(array, stmt->variable);
+		}
 
 		if (array)
 			repl_val[Anum_pg_authid_rolconfig - 1] = PointerGetDatum(array);
@@ -967,7 +984,7 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		MetaTrackUpdObject(AuthIdRelationId,
 						   HeapTupleGetOid(oldtuple),
 						   GetUserId(),
-						   "ALTER", "SET"
+						   "ALTER", alter_subtype
 				);
 
 	ReleaseSysCache(oldtuple);

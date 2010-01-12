@@ -8,7 +8,7 @@
  * stepping on each others' toes.  Formerly we used table-level locks
  * on pg_database, but that's too coarse-grained.
  *
- * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1118,6 +1118,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	bool		repl_null[Natts_pg_database];
 	bool		repl_repl[Natts_pg_database];
 	Oid			dboid = InvalidOid;
+	char	   *alter_subtype = "SET"; /* metadata tracking */
 
 	valuestr = flatten_set_variable_args(stmt->variable, stmt->value);
 
@@ -1150,6 +1151,8 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 
 	if (strcmp(stmt->variable, "all") == 0 && valuestr == NULL)
 	{
+		alter_subtype = "RESET ALL";
+
 		/* RESET ALL, so just set datconfig to null */
 		repl_null[Anum_pg_database_datconfig - 1] = true;
 		repl_val[Anum_pg_database_datconfig - 1] = (Datum) 0;
@@ -1170,7 +1173,10 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 		if (valuestr)
 			a = GUCArrayAdd(a, stmt->variable, valuestr);
 		else
+		{
+			alter_subtype = "RESET";
 			a = GUCArrayDelete(a, stmt->variable);
+		}
 
 		if (a)
 			repl_val[Anum_pg_database_datconfig - 1] = PointerGetDatum(a);
@@ -1188,7 +1194,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 		MetaTrackUpdObject(DatabaseRelationId,
 						   dboid,
 						   GetUserId(),
-						   "ALTER", "SET"
+						   "ALTER", alter_subtype
 				);
 
 	/* Update indexes */

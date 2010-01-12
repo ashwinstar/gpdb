@@ -19,6 +19,7 @@
 #include "access/transam.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
+#include "catalog/heap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -135,7 +136,6 @@ DefineSequence(CreateSeqStmt *seq)
 	bool		null[SEQ_COL_LASTCOL];
 	int			i;
 	NameData	name;
-
 
 	bool shouldDispatch =  Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
@@ -377,15 +377,16 @@ DefineSequence(CreateSeqStmt *seq)
 void
 AlterSequence(AlterSeqStmt *stmt)
 {
-	Oid			relid;
-	SeqTable	elm;
-	Relation	seqrel;
-	Buffer		buf;
-	Page		page;
-	Form_pg_sequence seq;
-	FormData_pg_sequence new;
-	List	   *owned_by;
-	int64		save_increment;
+	Oid							 relid;
+	SeqTable					 elm;
+	Relation					 seqrel;
+	Buffer						 buf;
+	Page						 page;
+	Form_pg_sequence			 seq;
+	FormData_pg_sequence		 new;
+	List						*owned_by;
+	int64						 save_increment;
+	bool						 bSeqIsTemp = false;
 
 	/* open and AccessShareLock sequence */
 	relid = RangeVarGetRelid(stmt->sequence, false);
@@ -431,7 +432,10 @@ AlterSequence(AlterSeqStmt *stmt)
 	MarkBufferDirty(buf);
 
 	/* XLOG stuff */
-	if (!seqrel->rd_istemp)
+
+	bSeqIsTemp = seqrel->rd_istemp;
+
+	if (!bSeqIsTemp)
 	{
 		xl_seq_rec	xlrec;
 		XLogRecPtr	recptr;
@@ -468,6 +472,17 @@ AlterSequence(AlterSeqStmt *stmt)
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *)stmt, "AlterSequence");
+
+		if (!bSeqIsTemp)
+		{
+			/* MPP-6929: metadata tracking */
+			MetaTrackUpdObject(RelationRelationId,
+							   relid,
+							   GetUserId(),
+							   "ALTER", ""
+					);
+		}
+
 	}
 }
 
