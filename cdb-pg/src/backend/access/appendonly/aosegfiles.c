@@ -74,7 +74,7 @@ InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry,
 
 	InsertFastSequenceEntry(aoEntry->segrelid,
 							(int64)segno,
-							1,
+							0,
 							&tid);
 
 	/*

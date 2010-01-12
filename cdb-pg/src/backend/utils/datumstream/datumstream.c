@@ -314,7 +314,7 @@ DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 
 		 */
 		AppendOnlyStorageWrite_SetFirstRowNum(acc->ao_write, 1);
 
-        acc->npbufsz = MAXDATUM_PER_AOCS_BLOCK / 8;
+        acc->npbufsz = (MAXDATUM_PER_AOCS_BLOCK + 1) / 8;
         acc->npbuf = palloc0(acc->npbufsz);
 
         acc->dpbufsz = acc->maxsz;
@@ -579,6 +579,8 @@ datumstream_read_block_content(DatumStream *acc,
         acc->nullp = buffer; 
         acc->nullbit = 1;
         acc->datump = buffer + acc->block->nullsz; 
+
+		Assert(acc->block->ndatum == rowCnt);
     }
     else
     {

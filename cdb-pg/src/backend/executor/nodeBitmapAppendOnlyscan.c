@@ -489,6 +489,17 @@ ExecInitBitmapAppendOnlyScan(BitmapAppendOnlyScan *node, EState *estate, int efl
 
 	scanstate->ss.ss_currentRelation = currentRelation;
 
+	/*
+	 * get the scan type from the relation descriptor.
+	 */
+	ExecAssignScanType(&scanstate->ss, RelationGetDescr(currentRelation));
+
+	/*
+	 * Initialize result tuple type and projection info.
+	 */
+	ExecAssignResultTypeFromTL(&scanstate->ss.ps);
+	ExecAssignScanProjectionInfo(&scanstate->ss);
+
 	if (node->isAORow)
 	{
 		scanstate->baos_currentAOFetchDesc = 
@@ -506,33 +517,28 @@ ExecInitBitmapAppendOnlyScan(BitmapAppendOnlyScan *node, EState *estate, int efl
 
 		/*
 		 * Obtain the projection.
-		 *
-		 * XXX scan all columns for now.
 		 */
 		Assert(currentRelation->rd_att != NULL);
 		
 		proj = (bool *)palloc0(sizeof(bool) * currentRelation->rd_att->natts);
-		for (colno = 0; colno < currentRelation->rd_att->natts; colno++)
+
+		GetNeededColumnsForScan((Node *) node->scan.plan.targetlist, proj, currentRelation->rd_att->natts);
+		GetNeededColumnsForScan((Node *) node->scan.plan.qual, proj, currentRelation->rd_att->natts);
+                
+		/* At least project one column */
+		for(colno = 0; colno < currentRelation->rd_att->natts; colno++)
 		{
-			proj[colno] = 1;
+			if(proj[colno])
+				break;
 		}
+		
+		if(colno == currentRelation->rd_att->natts)
+			proj[0] = true;
 		
 		scanstate->baos_currentAOCSFetchDesc =
 			aocs_fetch_init(currentRelation, estate->es_snapshot, proj);
 	}
 	
-
-	/*
-	 * get the scan type from the relation descriptor.
-	 */
-	ExecAssignScanType(&scanstate->ss, RelationGetDescr(currentRelation));
-
-	/*
-	 * Initialize result tuple type and projection info.
-	 */
-	ExecAssignResultTypeFromTL(&scanstate->ss.ps);
-	ExecAssignScanProjectionInfo(&scanstate->ss);
-
 	/*
 	 * initialize child nodes
 	 *

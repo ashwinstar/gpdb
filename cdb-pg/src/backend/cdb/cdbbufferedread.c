@@ -338,24 +338,24 @@ void BufferedReadSetTemporaryRange(
 		else
 		{
 			newReadNeeded = true;
-
-			/* Seek to the requested beginning position */
-			if (beginFileOffset > largeReadAfterPos)
-			{
-				int64 seekOffset = beginFileOffset - largeReadAfterPos;
-				int64 seekPos = FileSeek(bufferedRead->file, seekOffset, SEEK_CUR);
-				if (seekPos != beginFileOffset)
-					ereport(ERROR, (errcode_for_file_access(),
-							errmsg("unable to seek to position for file \"%s\" (errcode %d)",
-							       bufferedRead->filePathName,
-								   errno)));
-			}
 		}
 	}
 
 	if (newReadNeeded)
 	{
 		int64	remainingFileLen;
+
+		/* Seek to the requested beginning position */
+		if (beginFileOffset > largeReadAfterPos)
+		{
+			int64 seekOffset = beginFileOffset - largeReadAfterPos;
+			int64 seekPos = FileSeek(bufferedRead->file, seekOffset, SEEK_CUR);
+			if (seekPos != beginFileOffset)
+				ereport(ERROR, (errcode_for_file_access(),
+								errmsg("unable to seek to position for file \"%s\" (errcode %d)",
+									   bufferedRead->filePathName,
+									   errno)));
+		}
 
 		bufferedRead->bufferOffset = 0;
 

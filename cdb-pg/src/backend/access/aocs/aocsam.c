@@ -495,25 +495,43 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
 			int itemCount = idesc->ds[i]->nth;
 			
             datumstream_write_block(idesc->ds[i]);
+			if (itemCount > 0)
+			{
+				/* Insert an entry to the block directory */
+				Assert(idesc->ds[i]->ao_write != NULL);
+				AppendOnlyBlockDirectory_InsertEntry(
+					&idesc->blockDirectory,
+					i,
+					idesc->ds[i]->blockFirstRowNum,
+					AppendOnlyStorageWrite_LastWriteBeginPosition(idesc->ds[i]->ao_write),
+					itemCount);
+				
+				/* Set blockFirstRowNum to the next row number.*/
+				idesc->ds[i]->blockFirstRowNum = idesc->lastSequence + 1;
+			}
+			
             err = datumstream_put(idesc->ds[i], d[i], null[i]);
             if (err < 0)
             {
                 Assert(!null[i]);
                 err = datumstream_write_lob(idesc->ds[i], d[i]);
                 Assert(err >= 0);
+
+				itemCount = idesc->ds[i]->nth;
+				
+				/* Insert an entry to the block directory */
+				Assert(idesc->ds[i]->ao_write != NULL);
+				AppendOnlyBlockDirectory_InsertEntry(
+					&idesc->blockDirectory,
+					i,
+					idesc->ds[i]->blockFirstRowNum,
+					AppendOnlyStorageWrite_LastWriteBeginPosition(idesc->ds[i]->ao_write),
+					itemCount);
+				
+				/* Set blockFirstRowNum to the next row number.*/
+				idesc->ds[i]->blockFirstRowNum = idesc->lastSequence + 1;
             }
 
-			/* Insert an entry to the block directory */
-			Assert(idesc->ds[i]->ao_write != NULL);
-			AppendOnlyBlockDirectory_InsertEntry(
-				&idesc->blockDirectory,
-				i,
-				idesc->ds[i]->blockFirstRowNum,
-				AppendOnlyStorageWrite_LastWriteBeginPosition(idesc->ds[i]->ao_write),
-				itemCount);
-
-			/* Set blockFirstRowNum to the next row number.*/
-			idesc->ds[i]->blockFirstRowNum = idesc->lastSequence + 1;
         }
     }
 

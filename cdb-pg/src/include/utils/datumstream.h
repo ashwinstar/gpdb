@@ -34,8 +34,12 @@ enum {
  *
  * It could be uint16 (64K), but the negative numbers have not
  * be carefully debugged.
+ *
+ * This number also needs to be not greater than
+ * AOBlockHeader_MaxRowCount. Since AOBlockHeader_MaxRowCount is
+ * 14-bit, we just use it here.
  */
-#define MAXDATUM_PER_AOCS_BLOCK 32000
+#define MAXDATUM_PER_AOCS_BLOCK AOBlockHeader_MaxRowCount
 
 typedef struct DatumStream
 {
