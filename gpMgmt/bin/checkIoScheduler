@@ -1,0 +1,1 @@
+for i in /sys/block/sd?; do echo "${i} | `cat ${i}/queue/scheduler`"; done
