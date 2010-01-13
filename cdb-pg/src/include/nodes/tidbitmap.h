@@ -63,8 +63,8 @@ struct Instrumentation;                 /* #include "executor/instrument.h" */
 #define PAGES_PER_CHUNK  (BLCKSZ / 32)
 
 /* The bitmap unit size can be adjusted by changing these declarations: */
-#define TBM_BITS_PER_BITMAPWORD 32
-typedef uint32 tbm_bitmapword;		/* must be an unsigned type */
+#define TBM_BITS_PER_BITMAPWORD 64
+typedef uint64 tbm_bitmapword;		/* must be an unsigned type */
 
 /* number of active words for an exact page: */
 #define WORDS_PER_PAGE	((MAX_TUPLES_PER_PAGE - 1) / TBM_BITS_PER_BITMAPWORD + 1)

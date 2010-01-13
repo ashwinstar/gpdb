@@ -65,11 +65,6 @@ bmbuild(PG_FUNCTION_ARGS)
 	Oid indexRelfilenode = InvalidOid;
 	Oid heapRelfilenode = InvalidOid;
 
-	if (RelationIsAoRows(heap) || RelationIsAoCols(heap))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("bitmap indexes are not supported on append-only tables")));
-
 	if (indexInfo->ii_Concurrent)
 		elog(ERROR, "CONCURRENTLY is not supported when creating bitmap indexes");
 

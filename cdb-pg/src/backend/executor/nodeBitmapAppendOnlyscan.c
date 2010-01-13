@@ -136,10 +136,10 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 
 	for (;;)
 	{
+		CHECK_FOR_INTERRUPTS();
+
 		if (!node->baos_gotpage)
 		{
-			CHECK_FOR_INTERRUPTS();
-
 			/*
 			 * Obtain the next psuedo-heap-page-info with item bit-map.  Later, we'll
 			 * convert the (psuedo) heap block number and item number to an

@@ -211,8 +211,7 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 				return;
 			}
 
-			metapage = (BMMetaPage)
-				PageGetContents(BufferGetPage(metabuf));
+			metapage = _bitmap_get_metapage_data(reln, metabuf);
 
 			metapage->bm_lov_lastpage = xlrec->bm_lov_blkno;
 
@@ -257,6 +256,8 @@ _bitmap_xlog_insert_meta(XLogRecPtr lsn, XLogRecord *record)
 	{
 		metapage = (BMMetaPage)PageGetContents(mp);
 
+		metapage->bm_magic = BITMAP_MAGIC;
+		metapage->bm_version = BITMAP_VERSION;
 		metapage->bm_lov_heapId = xlrec->bm_lov_heapId;
 		metapage->bm_lov_indexId = xlrec->bm_lov_indexId;
 		metapage->bm_lov_lastpage = xlrec->bm_lov_lastpage;
@@ -499,7 +500,7 @@ _bitmap_xlog_updateword(XLogRecPtr lsn, XLogRecord *record)
 		return;
 
 	elog(DEBUG1, "_bitmap_xlog_updateword: (blkno, word_no, cword, hword)="
-		 "(%d, %d, %d, %d)", xlrec->bm_blkno,
+		 "(%d, %d, " INT64_FORMAT ", " INT64_FORMAT ")", xlrec->bm_blkno,
 		 xlrec->bm_word_no, xlrec->bm_cword,
 		 xlrec->bm_hword);
 

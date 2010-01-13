@@ -393,7 +393,7 @@ _bitmap_findbitmaps(IndexScanDesc scan, ScanDirection dir  __attribute__((unused
 	}
 
 	metabuf = _bitmap_getbuf(scan->indexRelation, BM_METAPAGE, BM_READ);
-	metapage = (BMMetaPage)PageGetContents(BufferGetPage(metabuf));
+	metapage = _bitmap_get_metapage_data(scan->indexRelation, metabuf);
 
 	/*
 	 * If the values for these keys are all NULL, the bitmap vector

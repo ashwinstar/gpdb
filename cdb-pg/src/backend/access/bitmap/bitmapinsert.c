@@ -343,7 +343,7 @@ updatesetbit_inword(BM_HRL_WORD word, uint64 updateBitLoc,
 
 	if (numBits > usedNumBits)
 	{
-		int fill_length;
+		BM_HRL_WORD fill_length;
 		Assert((numBits - usedNumBits) % BM_HRL_WORD_SIZE == 0);
 		fill_length = (numBits - usedNumBits) / BM_HRL_WORD_SIZE;
 
@@ -459,9 +459,22 @@ shift_header_bits(BM_HRL_WORD* words, uint32 numOfBits,
 	tmpWord = ((BM_HRL_WORD)(words[startWordNo]<<
 				(startLoc%BM_HRL_WORD_SIZE)))>>(startLoc%BM_HRL_WORD_SIZE);
 
-	words[startWordNo] = ((BM_HRL_WORD)(words[startWordNo]>>
-			(BM_HRL_WORD_SIZE-startLoc%BM_HRL_WORD_SIZE)))<<
+	/*
+	 * When startLoc%BM_HRL_WORD_SIZE is 0, we want to shift all 64 bits.
+	 * There is no way to use the bit-shifting to shift all 64 bits out
+	 * of a 64-bit integer. So just simply set the word to 0.
+	 * Otherwise, use bit-shifting to shift out the bits after 'startLoc'.
+	 */
+	if (startLoc%BM_HRL_WORD_SIZE > 0)
+	{
+		words[startWordNo] = ((BM_HRL_WORD)(words[startWordNo]>>
+											(BM_HRL_WORD_SIZE-startLoc%BM_HRL_WORD_SIZE)))<<
 			(BM_HRL_WORD_SIZE-startLoc%BM_HRL_WORD_SIZE);
+	}
+	else
+	{
+		words[startWordNo] = 0;
+	}
 
 	numOfFinalShiftingBits = numOfShiftingBits;
 	if (BM_HRL_WORD_SIZE - startLoc % BM_HRL_WORD_SIZE < numOfShiftingBits)
@@ -650,7 +663,7 @@ updatesetbit_inpage(Relation rel, uint64 tidnum,
 	bitNo = 0;
 
 #ifdef DEBUG_BITMAP
-	elog(LOG, "bitmapOpaque->bm_last_tid_location=%lld",
+	elog(LOG, "bitmapOpaque->bm_last_tid_location=" INT64_FORMAT,
 		 bitmapOpaque->bm_last_tid_location);
 #endif
 
@@ -849,14 +862,14 @@ updatesetbit_inpage(Relation rel, uint64 tidnum,
 	}
 
 #ifdef DEBUG_BITMAP
-	elog(LOG, "blockno=%d, old bm_last_tid_location=%lld",
+	elog(LOG, "blockno=%d, old bm_last_tid_location=" INT64_FORMAT,
 		 BufferGetBlockNumber(bitmapBuffer), bitmapOpaque->bm_last_tid_location);
 #endif
 	bitmapOpaque->bm_last_tid_location -=
 		getnumbits(words_left.cwords, words_left.hwords, words_left.curword);
 
 #ifdef DEBUG_BITMAP
-	elog(LOG, "blockno=%d, new bm_last_tid_location=%lld",
+	elog(LOG, "blockno=%d, new bm_last_tid_location=" INT64_FORMAT,
 		 BufferGetBlockNumber(bitmapBuffer), bitmapOpaque->bm_last_tid_location);
 #endif
 	
@@ -949,7 +962,8 @@ findbitmappage(Relation rel, BMLOVItem lovitem,
 #endif
 	elog(ERROR, "Can not find the bitmap page containing tid=%lld, nextBlockNo=%d,"
 		 " lov_head=%d, lov_tail=%d, firstTidNumber=%lld, last_tid_location=%lld,"
-		 " last_setbit=%lld, last_compword=%d, last_word=%d, headerbits=%d",
+		 " last_setbit=%lld, last_compword=" INT64_FORMAT ", last_word=" INT64_FORMAT
+		 ", headerbits=%d",
 		 (long long)tidnum, nextBlockNo, lovitem->bm_lov_head, lovitem->bm_lov_tail,
 		 (long long) *firstTidNumberP,  (long long)lovitem->bm_last_tid_location, (long long) lovitem->bm_last_setbit,
 		 lovitem->bm_last_compword, lovitem->bm_last_word, lovitem->lov_words_header);
@@ -992,7 +1006,7 @@ verify_bitmappages(Relation rel, BMLOVItem lovitem)
 
 		if (bitmapOpaque->bm_last_tid_location != tidnum)
 		{
-			elog(ERROR, "bm_last_tid_location=%lld, tidnum=%lld",
+			elog(ERROR, "bm_last_tid_location=" INT64_FORMAT ", tidnum=" INT64_FORMAT,
                  bitmapOpaque->bm_last_tid_location, tidnum);
 		}
 
@@ -1354,13 +1368,13 @@ _bitmap_write_bitmapwords(Buffer bitmapBuffer, BMTIDBuffer* buf)
 
 #ifdef DEBUG_BITMAP
 	{
-		elog(WARNING, "blockno=%d, old last_tid_location=%lld, "
-			 "new last_tid_location=%lld, "
-			 "first last_tid=%lld, "
-			 "last_compword=%d, "
+		elog(WARNING, "blockno=%d, old last_tid_location=" INT64_FORMAT ", "
+			 "new last_tid_location=" INT64_FORMAT ", "
+			 "first last_tid=" INT64_FORMAT ", "
+			 "last_compword=" INT64_FORMAT ", "
 			 "is_last_compword_fill=%s, "
-			 "last_word=%d, "
-			 "last_setbit=%lld",
+			 "last_word=" INT64_FORMAT ", "
+			 "last_setbit=" INT64_FORMAT,
 			 BufferGetBlockNumber(bitmapBuffer),
 			 bitmapPageOpaque->bm_last_tid_location,
 			 buf->last_tids[startWordNo + words_written-1],
@@ -1400,7 +1414,6 @@ create_lovitem(Relation rel, Buffer metabuf, uint64 tidnum,
 			   Relation lovHeap, Relation lovIndex, BlockNumber *lovBlockP, 
 			   OffsetNumber *lovOffsetP, bool use_wal)
 {
-	Page			mp;
 	BMMetaPage		metapage;
 	Buffer			currLovBuffer;
 	Page			currLovPage;
@@ -1414,8 +1427,7 @@ create_lovitem(Relation rel, Buffer metabuf, uint64 tidnum,
 	numOfAttrs = tupDesc->natts;
 
 	/* Get the last LOV page. Meta page should be locked. */
-	mp = BufferGetPage(metabuf);
-	metapage = (BMMetaPage) PageGetContents(mp);
+	metapage = _bitmap_get_metapage_data(rel, metabuf);
 	*lovBlockP = metapage->bm_lov_lastpage;
 
 	currLovBuffer = _bitmap_getbuf(rel, *lovBlockP, BM_WRITE);
@@ -1635,7 +1647,8 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
 
 #ifdef DEBUG_BITMAP
 	elog(WARNING, "buf_add_tid_with_fill: lov_blockno=%d, "
-		 "buf->last_tid=%lld, tidnum=%lld, last_compword=%d, last_word=%d",
+		 "buf->last_tid=" INT64_FORMAT ", tidnum=" INT64_FORMAT 
+		 ", last_compword=" INT64_FORMAT ", last_word=" INT64_FORMAT,
 		 lov_block, buf->last_tid, tidnum, buf->last_compword, buf->last_word);
 #endif
 
@@ -1741,7 +1754,7 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
 #ifdef DEBUG_BITMAP
 	if (buf->curword > 0)
 	{
-		int bits_in_last_compword = BM_HRL_WORD_SIZE;
+		int64 bits_in_last_compword = BM_HRL_WORD_SIZE;
 		if (buf->is_last_compword_fill)
 			bits_in_last_compword = FILL_LENGTH(buf->last_compword) * BM_HRL_WORD_SIZE;
 		if (buf->last_tid - buf->last_tid % BM_HRL_WORD_SIZE - bits_in_last_compword !=
@@ -2334,7 +2347,7 @@ _bitmap_doinsert(Relation rel, ItemPointerData ht_ctid, Datum *attdata,
 
 	/* insert a new bit into the corresponding bitmap using the HRL scheme */
 	metabuf = _bitmap_getbuf(rel, BM_METAPAGE, BM_READ);
-	metapage = (BMMetaPage)PageGetContents(BufferGetPage(metabuf));
+	metapage = _bitmap_get_metapage_data(rel, metabuf);
 	_bitmap_open_lov_heapandindex(rel, metapage, &lovHeap, &lovIndex, 
 								  RowExclusiveLock);
 

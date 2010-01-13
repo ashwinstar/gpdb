@@ -32,12 +32,15 @@
  * If you change this, you should change the type for
  * a HRL word as well.
  */
-#define BM_HRL_WORD_SIZE		16
+#define BM_HRL_WORD_SIZE		64
 
 /* the type for a HRL word */
-typedef uint16			BM_HRL_WORD;
+typedef uint64			BM_HRL_WORD;
 
 #define BM_HRL_WORD_LEFTMOST	(BM_HRL_WORD_SIZE-1)
+
+#define BITMAP_VERSION 2
+#define BITMAP_MAGIC 0x4249544D
 
 /*
  * Metapage, always the first page (page 0) in the index.
@@ -46,6 +49,14 @@ typedef uint16			BM_HRL_WORD;
  */
 typedef struct BMMetaPageData 
 {
+	/*
+	 * The magic and version of the bitmap index. Using the Oid type is to
+	 * overcome the problem that the version is not stored in
+	 * the index before GPDB 3.4.
+	 */
+	Oid         bm_magic;
+	Oid         bm_version;         /* the version of the index */
+
 	/*
 	 * The relation ids for a heap and a btree on this heap. They are
 	 * used to speed up finding the bitmap vector for given attribute
@@ -77,15 +88,9 @@ typedef BMMetaPageData *BMMetaPage;
  * Because the tid value for AO tables can be more than MaxHeapTuplesPerPage,
  * we use the maximum possible offset number here.
  */
-#if 0
 #define BM_MAX_TUPLES_PER_PAGE \
 	(((((1 << (8 * sizeof(OffsetNumber))) - 1) / BM_HRL_WORD_SIZE) + 1) * \
 	BM_HRL_WORD_SIZE)
-#else
-#define BM_MAX_TUPLES_PER_PAGE \
-	((((MaxHeapTuplesPerPage - 1) / BM_HRL_WORD_SIZE) + 1) * \
-	BM_HRL_WORD_SIZE)
-#endif
 
 /*
  * LOV (List Of Values) page -- pages to store a list of distinct
@@ -750,6 +755,7 @@ extern uint16 _bitmap_free_tidbuf(BMTIDBuffer* buf);
 
 /* bitmaputil.c */
 extern BMLOVItem _bitmap_formitem(uint64 currTidNumber);
+extern BMMetaPage _bitmap_get_metapage_data(Relation rel, Buffer metabuf);
 extern void _bitmap_init_batchwords(BMBatchWords* words,
 									uint32	maxNumOfWords,
 									MemoryContext mcxt);

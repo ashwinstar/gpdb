@@ -55,7 +55,7 @@ _bitmap_formitem(uint64 currTidNumber)
 	}
 	else
 	{
-		uint32		numOfTotalFillWords;
+		uint64		numOfTotalFillWords;
 		BM_HRL_WORD	numOfFillWords;
 
 		numOfTotalFillWords = (currTidNumber-1)/BM_HRL_WORD_SIZE;
@@ -73,6 +73,37 @@ _bitmap_formitem(uint64 currTidNumber)
 
 	return bmitem;
 }
+
+/*
+ * _bitmap_get_metapage_data() -- return the metadata info stored
+ * in the given metapage buffer.
+ */
+BMMetaPage
+_bitmap_get_metapage_data(Relation rel, Buffer metabuf)
+{
+	Page page;
+	BMMetaPage metapage;
+	
+	page = BufferGetPage(metabuf);
+	metapage = (BMMetaPage)PageGetContents(page);
+
+	/*
+	 * If this metapage is from the pre 3.4 version of the bitmap
+	 * index, we print "require to reindex" message, and error
+	 * out.
+	 */
+	if (metapage->bm_version != BITMAP_VERSION)
+	{
+		ereport(ERROR,
+				(0,
+				 errmsg("The disk format for %s is not valid for this version of "
+						"Greenplum Database. Use REINDEX %s to update this index",
+						RelationGetRelationName(rel), RelationGetRelationName(rel))));
+	}
+
+	return metapage;
+}
+
 
 /*
  * _bitmap_init_batchwords() -- initialize a BMBatchWords in a given
@@ -240,7 +271,7 @@ _bitmap_findnexttids(BMBatchWords *words, BMIterateResult *result,
 			((IS_FILL_WORD(words->hwords, result->lastScanWordNo) && 
 			  GET_FILL_BIT(word) == 0) || word == 0))
 		{
-			uint32	fillLength;
+			BM_HRL_WORD	fillLength;
 			if (word == 0)
 				fillLength = 1;
 			else
@@ -256,7 +287,7 @@ _bitmap_findnexttids(BMBatchWords *words, BMIterateResult *result,
 		else if (IS_FILL_WORD(words->hwords, result->lastScanWordNo)
 				 && GET_FILL_BIT(word) == 1)
 		{
-			uint32	nfillwords = FILL_LENGTH(word);
+			uint64	nfillwords = FILL_LENGTH(word);
 			uint8 	bitNo;
 
 			while (result->numOfTids + BM_HRL_WORD_SIZE <= maxTids &&
@@ -953,7 +984,7 @@ _bitmap_log_updateword(Relation rel, Buffer bitmapBuffer, int word_no)
 	xlBitmapWord.bm_hword = bitmap->hwords[word_no/BM_HRL_WORD_SIZE];
 
 	elog(DEBUG1, "_bitmap_log_updateword: (blkno, word_no, cword, hword)="
-		 "(%d, %d, %d, %d)", xlBitmapWord.bm_blkno,
+		 "(%d, %d, " INT64_FORMAT ", " INT64_FORMAT ")", xlBitmapWord.bm_blkno,
 		 xlBitmapWord.bm_word_no, xlBitmapWord.bm_cword,
 		 xlBitmapWord.bm_hword);
 

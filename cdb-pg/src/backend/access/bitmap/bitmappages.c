@@ -165,7 +165,6 @@ _bitmap_init_bitmappage(Relation rel __attribute__((unused)), Buffer buf)
 void
 _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
 {
-	Page		page;
 	BMMetaPage	mp;
 	HASHCTL		hash_ctl;
 	int			hash_flags;
@@ -182,8 +181,7 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
 	bmstate->bm_tidLocsBuffer->max_lov_block = InvalidBlockNumber;
 
 	metabuf = _bitmap_getbuf(index, BM_METAPAGE, BM_READ);
-	page = BufferGetPage(metabuf);
-	mp = (BMMetaPage) PageGetContents(page);
+	mp = _bitmap_get_metapage_data(index, metabuf);
 	_bitmap_open_lov_heapandindex(index, mp, &(bmstate->bm_lov_heap),
 								  &(bmstate->bm_lov_index), 
 								  RowExclusiveLock);
@@ -368,7 +366,9 @@ _bitmap_init(Relation rel, Oid comptypeOid,
 	/* initialize the metapage */
 	PageInit(page, BufferGetPageSize(metabuf), 0);
 	metapage = (BMMetaPage) PageGetContents(page);
-
+	
+	metapage->bm_magic = BITMAP_MAGIC;
+	metapage->bm_version = BITMAP_VERSION;
 	metapage->bm_lov_heapId = heapOid;
 	metapage->bm_lov_indexId = indexOid;
 
