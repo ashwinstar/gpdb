@@ -935,31 +935,31 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 			if (Gp_role == GP_ROLE_EXECUTE)
 			{
 				ParamListInfo paramInfo = econtext->ecxt_param_list_info;
-				int ni, nx = paramInfo->numParams;
-
-				/* if we're in a subquery, we may not have a valid
-				 * topPlan ptr!  and in the case of a subquery, we'll
-				 * have the correct unadjusted parameter index */
-				if (econtext->ecxt_estate->es_topPlan != NULL)
-					ni = econtext->ecxt_estate->es_topPlan->nParamExec;
-				else
-					ni = nx;
-
-				if (paramInfo && thisParamId <= ni )
-				{
-					ParamExternData *prm = &paramInfo->params[thisParamId+nx-ni];
-		
-					if (OidIsValid(prm->ptype))
-					{
-						*isNull = prm->isnull;
-						return prm->value;
-					}
-				 
-				}
+				Plan *subPlan = NULL;
+				int nx = -1;
+				int ni = -1;
+				Assert(paramInfo);
 				
-				prm->isnull = true;
-				prm->execPlan = NULL;
+				nx = paramInfo->numParams;
+				Assert(prm->execPlan);
+				subPlan = ((SubPlan *)((SubPlanState *) prm->execPlan)->xprstate.expr)->plan;
+				Assert(subPlan);
+				ni =  subPlan->nParamExec;
 
+				if (thisParamId < ni )
+				{
+					ParamExternData *prmExt = &paramInfo->params[nx-ni + thisParamId];
+					Assert(OidIsValid(prmExt->ptype));
+					*isNull = prmExt->isnull;
+					return prmExt->value;
+				}
+				else
+				{
+					/* Parameter not evaluated yet, so go do it */
+					ExecSetParamPlan(prm->execPlan, econtext, NULL);
+					/* ExecSetParamPlan should have processed this param... */
+					Assert(prm->execPlan == NULL);
+				}
 			}
 			else
 			{
