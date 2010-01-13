@@ -20,7 +20,9 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> [ ACTIVE THRESHOLD <replaceable class="PARAMETER">integer</replaceable>] [ COST THRESHOLD <replaceable class="PARAMETER">float</replaceable> ] [ IGNORE THRESHOLD  <replaceable class="PARAMETER">float</replaceable> ] [ NOOVERCOMMIT | OVERCOMMIT ]  [WITH (PRIORITY={MIN|LOW|MEDIUM|HIGH|MAX})]
+CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITH (ACTIVELIMIT=<replaceable class="PARAMETER">integer</replaceable> [COSTLIMIT=<replaceable class="PARAMETER">float</replaceable> [OVERCOMMIT=<replaceable class="PARAMETER">TRUE</replaceable> | <replaceable class="PARAMETER">FALSE</replaceable>] [IGNORECOSTLIMIT=<replaceable class="PARAMETER">float</replaceable>]] [PRIORITY={<replaceable class="PARAMETER">MIN</replaceable>|<replaceable class="PARAMETER">LOW</replaceable>|<replaceable class="PARAMETER">MEDIUM</replaceable>|<replaceable class="PARAMETER">HIGH</replaceable>|<replaceable class="PARAMETER">MAX</replaceable>}]) 
+
+CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITH (COSTLIMIT=<replaceable class="PARAMETER">float</replaceable> [OVERCOMMIT=<replaceable class="PARAMETER">TRUE</replaceable> | <replaceable class="PARAMETER">FALSE</replaceable>] [IGNORECOSTLIMIT=<replaceable class="PARAMETER">float</replaceable>] [ACTIVELIMIT=<replaceable class="PARAMETER">integer</replaceable>] [PRIORITY={<replaceable class="PARAMETER">MIN</replaceable>|<replaceable class="PARAMETER">LOW</replaceable>|<replaceable class="PARAMETER">MEDIUM</replaceable>|<replaceable class="PARAMETER">HIGH</replaceable>|<replaceable class="PARAMETER">MAX</replaceable>}]) 
 </synopsis>
  </refsynopsisdiv>
 
@@ -62,56 +64,55 @@ CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> [ ACTIVE
      </varlistentry>
 
      <varlistentry>
-      <term><literal>ACTIVE THRESHOLD</literal> <replaceable class="parameter">integer</replaceable></term>
+      <term><literal>ACTIVELIMIT</literal> <replaceable class="parameter">integer</replaceable></term>
        <listitem>
        <para>
-        Resource queues with an <literal>ACTIVE THRESHOLD</literal> 
+        Resource queues with an <literal>ACTIVELIMIT</literal> 
         limit the number of queries that can be executed by roles assigned 
         to that queue. It controls the number of active queries that are 
-        allowed to run at the same time. The value for <literal>ACTIVE THRESHOLD</literal> 
+        allowed to run at the same time. The value for <literal>ACTIVELIMIT</literal> 
         should be an integer greater than 0. If a value is not defined for 
-        <literal>ACTIVE THRESHOLD</literal>, it is set to -1 by default (meaning no limit).
+        <literal>ACTIVELIMIT</literal>, it is set to -1 by default (meaning no limit).
       </para>
       </listitem>
      </varlistentry>
 
      <varlistentry>
-      <term><literal>COST THRESHOLD</literal> <replaceable class="parameter">float</replaceable></term>
+      <term><literal>COSTLIMIT</literal> <replaceable class="parameter">float</replaceable></term>
        <listitem>
        <para>
-        Resource queues with a <literal>COST THRESHOLD</literal> limit the total cost of 
+        Resource queues with a <literal>COSTLIMIT</literal> limit the total cost of 
         queries that can be executed by roles assigned to that queue. Cost 
         is measured in the estimated total cost for the query as determined 
         by the query planner (as shown in the <command>EXPLAIN</command> output for a query). 
         Therefore, an administrator must be familiar with the queries typically 
         executed on the system in order to set an appropriate cost threshold for 
         a queue. Cost is measured in units of disk page fetches; 1.0 equals one 
-        sequential disk page read. The value for <literal>COST THRESHOLD</literal> 
+        sequential disk page read. The value for <literal>COSTLIMIT</literal> 
         is specified as a floating point number (for example 100.0) or can also be 
         specified as an exponent (for example 1e+2). If a value is not defined 
-        for <literal>COST THRESHOLD</literal>, it is set to -1 by default 
+        for <literal>COSTLIMIT</literal>, it is set to -1 by default 
         (meaning no limit).
        </para>
       </listitem>
      </varlistentry>
 
      <varlistentry>
-      <term><literal>IGNORE THRESHOLD</literal> <replaceable class="parameter">float</replaceable></term>
+      <term><literal>IGNORECOSTLIMIT</literal> <replaceable class="parameter">float</replaceable></term>
        <listitem>
        <para>
-        If a Resource queue has <literal>IGNORE THRESHOLD</literal> &gt; 0 
-        any query whose cost is &lt; this value s not queued i.e it is ignored
+        If a Resource queue has an <literal>IGNORECOSTLIMIT</literal> &gt; 0 
+        any query whose cost is &lt; this value is not queued i.e it is ignored
         for resource scheduling purposes.
        </para>
 
        <para>
-        A value of 0.0 means all no queries are ignored. This is the default.
+        A value of -1.0 means all queries are ignored. This is the default.
        </para>
       </listitem>
      </varlistentry>
 
      <varlistentry>
-      <term><literal>NOOVERCOMMIT</literal></term>
       <term><literal>OVERCOMMIT</literal></term>
        <listitem>
        <para>
@@ -120,9 +121,9 @@ CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> [ ACTIVE
        larger than the queue's <literal>cost threshold</literal> to execute.
        </para>
        <para>
-       In the default <literal>NOOVERCOMMIT</literal> case, such statements
+       In the default <literal>OVERCOMMIT=FALSE</literal> case, such statements
        produce an error. If <literal>OVERCOMMIT</literal> is set for the 
-       queue, then they will be allowed to run when there is no other
+       queue, then they will be allowed to run when there are no other
        statements in the queue.
        </para>
        </listitem>
@@ -166,14 +167,14 @@ CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> [ ACTIVE
   <para>
    Create a resource queue with an active query limit of 20:
 <programlisting>
-CREATE RESOURCE QUEUE myqueue ACTIVE THRESHOLD 20;
+CREATE RESOURCE QUEUE myqueue WITH (ACTIVELIMIT=20);
 </programlisting>
   </para>
 
   <para>
    Create a resource queue with a query cost limit of 3000.0:
 <programlisting>
-CREATE RESOURCE QUEUE webusers COST THRESHOLD 3000.0;
+CREATE RESOURCE QUEUE webusers WITH (COSTLIMIT=3000.0);
 </programlisting>
   </para>
 
@@ -181,14 +182,14 @@ CREATE RESOURCE QUEUE webusers COST THRESHOLD 3000.0;
    Create a resource queue with a query cost limit of 3 to the 10th power (or 30000000000.0):
 
 <programlisting>
-CREATE RESOURCE QUEUE myqueue COST THRESHOLD 3e+10;
+CREATE RESOURCE QUEUE myqueue WITH (COSTLIMIT 3e+10);
 </programlisting>
   </para>
 
   <para> 
    Create a resource queue with both an active query limit and a query cost limit:
 <programlisting>
-CREATE RESOURCE QUEUE myqueue ACTIVE THRESHOLD 30 COST THRESHOLD 5000.00;
+CREATE RESOURCE QUEUE myqueue ITH (ACTIVELIMIT=30, COSTLIMIT=5000.00);
 </programlisting>
   </para>
  </refsect1>
