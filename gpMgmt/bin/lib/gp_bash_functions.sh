@@ -1843,7 +1843,6 @@ esac
 
 
 GP_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/lib
-PY_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/ext/python/lib
 SHARE_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/share
 SCRIPTS_DIR=`$DIRNAME \` $DIRNAME $INITDB\``/bin
 
@@ -1852,7 +1851,6 @@ SCRIPTS_DIR=`$DIRNAME \` $DIRNAME $INITDB\``/bin
 # we setup some EXPORT foo='blah' commands for when we dispatch to segments and standby master
 ##
 EXPORT_GPHOME='export GPHOME='$GPHOME
-EXPORT_PYBIN='export PATH='${GPHOME}'/ext/python/bin:$PATH'
 if [ x"$LIB_TYPE" == x"LD_LIBRARY_PATH" ]; then
     EXPORT_LIB_PATH="export LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 else
