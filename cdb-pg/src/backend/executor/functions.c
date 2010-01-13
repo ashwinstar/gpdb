@@ -324,15 +324,6 @@ init_sql_fcache(FmgrInfo *finfo)
 			else 
 				elog(ERROR,"SQL function %s cannot be executed from the segment databases",NameStr(procedureStruct->proname));		
 		}
-		
-		if (!Gp_is_primary)
-		{
-			if (procedureStruct->provolatile == PROVOLATILE_VOLATILE)
-				elog(ERROR,"Volatile SQL function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
-			else if (procedureStruct->provolatile == PROVOLATILE_STABLE)
-				elog(ERROR,"Stable SQL function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
-		}
-
 	}
 
 	/*

@@ -3177,13 +3177,10 @@ _readSlice(const char ** str)
 	READ_BOOL_FIELD(directDispatch.isDirectDispatch);
 	READ_NODE_FIELD(directDispatch.contentIds); /* List of int index */
 	READ_DUMMY_FIELD(primaryGang, NULL);
-	READ_DUMMY_FIELD(mirrorGang, NULL);
 	READ_INT_FIELD(primary_gang_id);
-	READ_INT_FIELD(mirror_gang_id);
 	READ_INT_FIELD(parentIndex); /* List of int index */
 	READ_NODE_FIELD(children); /* List of int index */
 	READ_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
-	READ_NODE_FIELD(mirrorProcesses); /* List of (CDBProcess *) */
 
 	READ_DONE();
 }

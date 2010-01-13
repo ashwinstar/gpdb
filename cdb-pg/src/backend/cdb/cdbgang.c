@@ -63,7 +63,7 @@ static Gang *buildGangDefinition(GangType type, int gang_id, int size, int conte
 
 static bool isTargetPortal(const char *p1, const char *p2);
 
-static int	addOptions(PQExpBufferData *buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser);
+static int	addOptions(PQExpBufferData *buffer, bool iswriter, int segindex, bool i_am_superuser);
 
 extern void resetSessionForPrimaryGangLoss(void);
 
@@ -165,6 +165,8 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 	Assert(CurrentResourceOwner != NULL);
 
+	Assert(type != GANGTYPE_MIRROR_WRITER);
+
 	if (portal_name != 0)
 	{
 		/* Using a named portal */
@@ -189,12 +191,6 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	oldContext = MemoryContextSwitchTo(GangContext);
 
 	newGangDefinition = buildGangDefinition(type, gang_id, size, content, portal_name);
-
-	if (type == GANGTYPE_MIRROR_WRITER && newGangDefinition == NULL)
-	{
-		MemoryContextSwitchTo(oldContext);
-		return NULL;			/* System is not configured with mirrors */
-	}
 
 	Assert(newGangDefinition != NULL);
 
@@ -433,21 +429,18 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 */
 	if (successful_connections != newGangDefinition->size)
 	{
-		if ((type != GANGTYPE_MIRROR_WRITER && mirroringNotConfigured) || !isFTSEnabled())
+		for (i = 0; i < segdb_count; i++)
 		{
-			for (i = 0; i < segdb_count; i++)
-			{
-				segdbDesc = &newGangDefinition->db_descriptors[i];
+			segdbDesc = &newGangDefinition->db_descriptors[i];
 
-				if (segdbDesc->conn != NULL)
-					continue;
+			if (segdbDesc->conn != NULL)
+				continue;
 
-				/* clean the gang before error out */
-				disconnectAndDestroyGang(newGangDefinition);
+			/* clean the gang before error out */
+			disconnectAndDestroyGang(newGangDefinition);
 
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("All segment databases are unavailable")));
-			}
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("All segment databases are unavailable")));
 		}
 	}
 
@@ -482,7 +475,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		disconnectAndDestroyGang(newGangDefinition);
 		CheckForResetSession();
 
-		elog((errorOut ? ERROR : WARNING), "Greenplum Database detected segment failure(s), system is reconnected in %s mode", isFtsReadOnlySet() ? "read-only" : "read-write");
+		elog((errorOut ? ERROR : WARNING), "Greenplum Database detected segment failure(s), system is reconnected");
 
 		newGangDefinition = NULL;
 	}
@@ -504,11 +497,12 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	CdbComponentDatabaseInfo *p;
 
 	int			seg_count = 0;
-	int			last_segindex = -1;
 	int			i;
 
 	Assert(CurrentMemoryContext == GangContext);
 	Assert(size > 0);
+
+	Assert(type != GANGTYPE_MIRROR_WRITER);
 
 	/*
 	 * Get the structure representing the configured segment
@@ -545,10 +539,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 				elog(LOG, "Starting %d qExec processes for primary writer gang%s%s%s",
 					 size, pn1, pn2, pn3);
 				break;
-			case GANGTYPE_MIRROR_WRITER:
-				elog(LOG, "Starting %d qExec processes for mirror writer gang%s%s%s",
-					 size, pn1, pn2, pn3);
-				break;
 			case GANGTYPE_ENTRYDB_READER:
 				elog(LOG, "Starting 1 qExec process for entry db reader gang%s%s%s",
 					 pn1, pn2, pn3);
@@ -569,10 +559,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	}
 
 	newGangDefinition->all_valid_segdbs_connected = false;
-
-	/* retry transient failed dbs */
-	if (type == GANGTYPE_PRIMARY_WRITER)
-		FtsEvaluateTransientState();
 
 	/*
 	 * MPP-2613
@@ -639,141 +625,43 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 										  sizeof(SegmentDatabaseDescriptor));
 
 	Assert(cdb_component_dbs->total_segment_dbs > 0);
-
-	/*
-	 * Pass through each segment database in segment_dbs
-	 * and Count up databases per segment_index.  Use this to initialize
-	 * the fields in ClusterDefn->segment_descriptors
-	 */
-
 	/*
 	 * We loop through the segment_db_info.  Each item has a segindex.
 	 * They are sorted by segindex, and there can be > 1 segment_db_info for
 	 * a given segindex (currently, there can be 1 or 2)
 	 */
-
 	for (i = 0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
 		p = &cdb_component_dbs->segment_db_info[i];
 
-		if (i == 0 || (p->segindex != last_segindex))
+		if (type == GANGTYPE_PRIMARY_READER && size == 1) /* handle singleton readers separately */
 		{
-			int			j = i;
-
-			/*
-			 * We have a new segindex.	Advance segDesc, and set count to 1.
-			 */
-			if (p->definedprimary && type == GANGTYPE_MIRROR_WRITER)
+			if (size == 1) /* singleton reader */
 			{
-				j++;
-
-				if (cdb_component_dbs->segment_db_info[j].segindex == p->segindex &&
-					!cdb_component_dbs->segment_db_info[j].definedprimary)
-				{
-					p = &cdb_component_dbs->segment_db_info[j];
-					i = j;
-				}
-				else
-				{
-					return NULL;
-				}
-			}
-			else if ((!p->definedprimary && !p->isprimary))
-			{
-				j++;
-
-				if (cdb_component_dbs->segment_db_info[j].segindex == p->segindex &&
-					cdb_component_dbs->segment_db_info[j].definedprimary)
-				{
-					/*
-					 * Do we want to change p ?
-					 */
-					p = &cdb_component_dbs->segment_db_info[j];
-					i = j;
-				}
-				else
-				{
-					elog(FATAL, "building Gang: Primary and mirror both unavailable for segment %d (i %d j %d)", p->segindex, i, j);
+				if (content != p->segindex)
 					continue;
-				}
+
+				/* Got our singleton */
+				segdbDesc = &newGangDefinition->db_descriptors[seg_count];
+				cdbconn_initSegmentDescriptor(segdbDesc, p);
+				seg_count++;
+				break;
 			}
-
-			if (p->valid)
+		}
+		else /* GANGTYPE_PRIMARY_WRITER or (GANGTYPE_PRIMARY_READER AND N-READER) */
+		{
+			if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 			{
-				if (type == GANGTYPE_MIRROR_WRITER && p->isprimary)
-				{
-					/*
-					 * this segdb has been used by primary gang, can not be used
-					 * * by mirror gang again
-					 */
-					CondSetMPPReadonly();
-				}
-				else if (type == GANGTYPE_PRIMARY_READER && size == 1 &&
-						 content != p->segindex)
-				{
-					last_segindex = p->segindex;
-					continue;
-				}
-				else if (type == GANGTYPE_PRIMARY_WRITER && !p->isprimary)
-				{
-					/*
-					 * this should not happen, or the pgdatabase info is wrong.
-					 */
-					elog(LOG, "Warning, potential wrong Greenplum Database configuration.");
-					CondSetMPPReadonly();
-				}
-				else
-				{
-					segdbDesc = &newGangDefinition->db_descriptors[seg_count];
-
-					cdbconn_initSegmentDescriptor(segdbDesc,
-												  p);
-
-					seg_count++;
-					if (type == GANGTYPE_PRIMARY_READER && size == 1)
-						/* we are done */
-						break;
-				}
-				last_segindex = p->segindex;
+				segdbDesc = &newGangDefinition->db_descriptors[seg_count];
+				cdbconn_initSegmentDescriptor(segdbDesc, p);
+				seg_count++;
 			}
 			else
 			{
-				CondSetMPPReadonly();
+				/* can't add a mirror to our gang. */
+				continue;
 			}
 		}
-		else
-		{
-			/*
-			 * We have another segdb for the same segindex.  Bump up the count.
-			 * It should never go above 2, since we can only have 1 secondary
-			 * segdb in the current design.
-			 */
-			/*
-			 * segDesc->db_count++;
-			 * Assert( segDesc->db_count <= 2 );
-			 */
-		}
-	}
-
-	/*
-	 * Mirror-writer-gangs may have gang definitions with 0 or more
-	 * segments -- 0 segments for clusters which don't have mirrors --
-	 * fewer than N for a cluster operating with failed segments.
-	 */
-	if (type == GANGTYPE_MIRROR_WRITER)
-	{
-		/* if no mirrors active, return NULL. */
-		if (seg_count == 0)
-		{
-			disableFTS();
-			mirroringNotConfigured = true;
-			return NULL;
-		}
-
-		elog(DEBUG1, "buildGangDefinition: newGangDefinition size %d seg_count %d", newGangDefinition->size, seg_count);
-		newGangDefinition->size = seg_count;
-
-		return newGangDefinition;
 	}
 
 	/*
@@ -793,7 +681,10 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 		elog(ERROR, "Not all primary segment instances are active and connected");
 		/* not reached */
 	}
-
+#if 0
+	elog(NOTICE, "DEBUG ME %u", (unsigned int)getpid());
+	pg_usleep(10000000);
+#endif
 	return newGangDefinition;
 }
 
@@ -980,11 +871,13 @@ addOneOption(PQExpBufferData *buffer, struct config_generic * guc)
  * will be able to print a nice error message.
  */
 static int
-addOptions(PQExpBufferData *buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser)
+addOptions(PQExpBufferData *buffer, bool iswriter, int segindex, bool i_am_superuser)
 {
 	struct config_generic **gucs = get_guc_variables();
 	int			ngucs = get_num_guc_variables();
 	int			i;
+
+	write_log("addOptions: iswriter %d segindex %d", iswriter, segindex);
 
 	appendPQExpBufferStr(buffer, "options='");
 
@@ -993,9 +886,6 @@ addOptions(PQExpBufferData *buffer, bool iswriter, int segindex, bool isprimary,
 		appendPQExpBufferStr(buffer, " -c gp_is_writer=true");
 
 	appendPQExpBuffer(buffer, " -c gp_segment=%d", segindex);
-
-	if (!isprimary)
-		appendPQExpBuffer(buffer, " -c gp_is_primary=false");
 
 	/* GUCs need special handling */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1117,8 +1007,8 @@ thread_DoConnect(void *arg)
 		build_gpqeid_params(&buffer);
 
 		err = addOptions(&buffer,
-						 (pParms->type == GANGTYPE_PRIMARY_WRITER || pParms->type == GANGTYPE_MIRROR_WRITER),
-						 q->segindex, q->isprimary, pParms->i_am_superuser);
+						 (pParms->type == GANGTYPE_PRIMARY_WRITER),
+						 q->segindex, pParms->i_am_superuser);
 
 		if (err <= 0)
 		{
@@ -1368,9 +1258,12 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 
 	Gang	   *gp = NULL;
 
-	Insist(Gp_role == GP_ROLE_DISPATCH);
+	if (Gp_role != GP_ROLE_DISPATCH)
+		elog(FATAL, "allocateGang: called with Gp_role %d", Gp_role);
 
-	if (type == GANGTYPE_PRIMARY_WRITER || type == GANGTYPE_MIRROR_WRITER)
+	Assert(type != GANGTYPE_MIRROR_WRITER);
+
+	if (type == GANGTYPE_PRIMARY_WRITER)
 		return allocateWriterGang(type);
 
 	if (!IsTransactionOrTransactionBlock())
@@ -1523,7 +1416,6 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 			break;
 
 		case GANGTYPE_PRIMARY_WRITER:
-		case GANGTYPE_MIRROR_WRITER:
 		case GANGTYPE_UNALLOCATED:
 		default:
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
@@ -1544,9 +1436,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	MemoryContextSwitchTo(oldContext);
 	if (gp == NULL)
 	{
-		if (type != GANGTYPE_MIRROR_WRITER || !mirroringNotConfigured)
-			elog(ERROR, "No %s gang allocated",
-				 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
+		elog(ERROR, "No primary gang allocated");
 	}
 
 	if (gp != NULL)
@@ -1564,26 +1454,21 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 Gang *
 allocateWriterGang(GangType type)
 {
-	Gang	   *writer_gang;
+	Gang	   *writer_gang = NULL;
 	MemoryContext oldContext;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
-
-	Assert(type == GANGTYPE_PRIMARY_WRITER ||
-		   type == GANGTYPE_MIRROR_WRITER);
+	Assert(type == GANGTYPE_PRIMARY_WRITER);
 
 	if (type == GANGTYPE_PRIMARY_WRITER)
 		writer_gang = primaryWriterGang;
-	else
-		writer_gang = mirrorWriterGang;
 
 	/*
 	 * First, we look for an unallocated but created gang of the right type
 	 * if it exists, we return it.
 	 * Else, we create a new gang
 	 */
-	if ((type == GANGTYPE_PRIMARY_WRITER && writer_gang == NULL) ||
-		(type == GANGTYPE_MIRROR_WRITER && writer_gang == NULL && !mirroringNotConfigured))
+	if (type == GANGTYPE_PRIMARY_WRITER && writer_gang == NULL)
 	{
 		int			nsegdb;
 		int			attempts;
@@ -1613,9 +1498,7 @@ allocateWriterGang(GangType type)
 		for (attempts = 0; (attempts < CREATE_GANG_RETRIES && writer_gang == NULL); attempts++)
 		{
 			writer_gang =
-				createGang(type,
-						   (type == GANGTYPE_PRIMARY_WRITER) ? PRIMARY_WRITER_GANG_ID : MIRROR_WRITER_GANG_ID,
-						   nsegdb, -1, NULL);
+				createGang(type, PRIMARY_WRITER_GANG_ID, nsegdb, -1, NULL);
 		}
 
 		MemoryContextSwitchTo(oldContext);
@@ -1623,16 +1506,13 @@ allocateWriterGang(GangType type)
 	else
 	{
 		if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-			elog(DEBUG4, "Reusing an existing %s writer gang",
-				 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
+			elog(DEBUG4, "Reusing an existing primary writer gang");
 	}
 
 	if (writer_gang == NULL)
 	{
-		if (type == GANGTYPE_PRIMARY_WRITER ||
-			(type == GANGTYPE_MIRROR_WRITER && !mirroringNotConfigured))
-			elog(ERROR, "No %s gang allocated",
-				 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
+		if (type == GANGTYPE_PRIMARY_WRITER)
+			elog(ERROR, "No primary gang allocated");
 		else
 			return NULL;
 	}
@@ -1650,8 +1530,6 @@ allocateWriterGang(GangType type)
 
 	if (type == GANGTYPE_PRIMARY_WRITER)
 		primaryWriterGang = writer_gang;
-	else
-		mirrorWriterGang = writer_gang;
 
 	return writer_gang;
 }
@@ -1673,6 +1551,7 @@ findGangById(int gang_id)
 {
 	if (primaryWriterGang && primaryWriterGang->gang_id == gang_id)
 		return primaryWriterGang;
+
 	if (mirrorWriterGang && mirrorWriterGang->gang_id == gang_id)
 		return mirrorWriterGang;
 
@@ -1786,8 +1665,9 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 	int			i;
 	List	   *list = NIL;
 
-	Assert((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && Gp_is_primary);
+	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
 	Assert(gang != NULL);
+
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG3, "getCdbProcessList slice%d gangtype=%d gangsize=%d",
 			 sliceIndex, gang->type, gang->size);
@@ -1795,11 +1675,8 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 	if (gang != NULL && gang->type != GANGTYPE_UNALLOCATED)
 	{
 		CdbComponentDatabaseInfo *qeinfo;
-		bool		primary;
 		int			k = 0;
 		int			listsize = 0;
-
-		primary = (gang->type != GANGTYPE_MIRROR_WRITER);
 
 		for (i = 0; i < gang->size; i++)
 		{
@@ -1834,8 +1711,7 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 			 *
 			 */
 			if (gang->size > 1 ||
-				gang->type == GANGTYPE_PRIMARY_WRITER ||
-				gang->type == GANGTYPE_MIRROR_WRITER)
+				gang->type == GANGTYPE_PRIMARY_WRITER)
 			{
 				while (segdbDesc->segindex > listsize)
 				{
@@ -1875,10 +1751,9 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 			process->routeid = k++;
 
 			if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE || DEBUG4 >= log_min_messages)
-				elog(DEBUG1, "Gang assignment (gang_id %d): slice%d %s%d %s:%d pid=%d",
+				elog(DEBUG1, "Gang assignment (gang_id %d): slice%d seg%d %s:%d pid=%d",
 					 gang->gang_id,
 					 sliceIndex,
-					 gang->type == GANGTYPE_MIRROR_WRITER ? "mir" : "seg",
 					 process->contentid,
 					 process->listenerAddr,
 					 process->listenerPort,
@@ -1893,8 +1768,7 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 			elog(ERROR, "Primary gang smaller than number of segments");
 
 		if (gang->size > 1 ||
-			gang->type == GANGTYPE_PRIMARY_WRITER ||
-			gang->type == GANGTYPE_MIRROR_WRITER)
+			gang->type == GANGTYPE_PRIMARY_WRITER)
 		{
 			while (listsize < getgpsegmentCount())
 			{
@@ -1922,7 +1796,8 @@ getCdbProcessesForQD(int isPrimary)
 	CdbComponentDatabaseInfo *qdinfo;
 	CdbProcess *proc;
 
-	Assert((Gp_role == GP_ROLE_DISPATCH) && Gp_is_primary);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+
 	if (!isPrimary)
 	{
 		elog(FATAL, "getCdbProcessesForQD: unsupported request for master mirror process");
@@ -1937,7 +1812,8 @@ getCdbProcessesForQD(int isPrimary)
 
 	qdinfo = &(cdb_component_dbs->entry_db_info[0]);
 
-	Assert(qdinfo->segindex == -1 && qdinfo->isprimary);
+	Assert(qdinfo->segindex == -1);
+	Assert(SEGMENT_IS_ACTIVE_PRIMARY(qdinfo));
 	Assert(qdinfo->hostip != NULL);
 
 	proc = makeNode(CdbProcess);
@@ -2480,7 +2356,6 @@ disconnectAndDestroyGang(Gang *gp)
 		cdbconn_termSegmentDescriptor(segdbDesc);
 	}
 
-
 	/*
 	 * when we get rid of the primary writer gang we MUST also get rid of the reader
 	 * gangs due to the shared local snapshot code that is shared between
@@ -2489,15 +2364,9 @@ disconnectAndDestroyGang(Gang *gp)
 	if (gp->type == GANGTYPE_PRIMARY_WRITER)
 	{
 		disconnectAndDestroyAllReaderGangs(true);
-		if (mirrorWriterGang)
-		{
-			disconnectAndDestroyGang(mirrorWriterGang);
-			mirrorWriterGang = NULL;
-		}
 
 		resetSessionForPrimaryGangLoss();
 	}
-
 
 	/*
 	 * Discard the segment array and the cluster descriptor
@@ -2558,16 +2427,6 @@ freeGangsForPortal(char *portal_name)
 			disconnectAndDestroyAllGangs();
 
 			elog(LOG, "freeGangsForPortal: Bad primary writer gang");
-			elog(ERROR, "GPDB detected segment reconfiguration.");
-			return;
-		}
-		if (!cleanupGang(mirrorWriterGang))
-		{
-			mirrorWriterGang = NULL;	/* cleanupGang called
-										 * disconnectAndDestroyGang() already */
-			disconnectAndDestroyAllGangs();
-
-			elog(LOG, "freeGangsForPortal: Bad mirror writer gang");
 			elog(ERROR, "GPDB detected segment reconfiguration.");
 			return;
 		}
@@ -2885,9 +2744,6 @@ disconnectAndDestroyAllGangs(void)
 	/* for now, destroy all readers, regardless of the portal that owns them */
 	disconnectAndDestroyAllReaderGangs(true);
 
-	disconnectAndDestroyGang(mirrorWriterGang);
-	mirrorWriterGang = NULL;
-
 	disconnectAndDestroyGang(primaryWriterGang);
 	primaryWriterGang = NULL;
 
@@ -3026,25 +2882,6 @@ detectFailedConnections(void)
 			fullScan = false;
 		}
 	}
-
-	/*
-	 * check mirror gang
-	 */
-	if (mirrorWriterGang != NULL)
-	{
-		for (i = 0; i < mirrorWriterGang->size; i++)
-		{
-			segInfo = mirrorWriterGang->db_descriptors[i].segment_database_info;
-
-			/*
-			 * Note: the probe process is responsible for doing the
-			 * actual marking of the segments.
-			 */
-			FtsTestConnection(segInfo, fullScan);
-			fullScan = false;
-		}
-	}
-
 }
 
 CdbComponentDatabases *
@@ -3058,7 +2895,6 @@ bool
 gangsExist(void)
 {
 	return (primaryWriterGang != NULL ||
-			mirrorWriterGang != NULL ||
 			allocatedReaderGangsN != NIL ||
 			availableReaderGangsN != NIL ||
 			allocatedReaderGangs1 != NIL ||
@@ -3082,15 +2918,15 @@ SetSeqServerInfo(struct QueryDesc * queryDesc)
 
 	Assert(IsA(sliceTable, SliceTable) && sliceTable->seqServerHost == NULL);
 
-	if (Gp_role != GP_ROLE_DISPATCH || !Gp_is_primary)
+	if (Gp_role != GP_ROLE_DISPATCH)
 	{
 		elog(FATAL, "SetSeqServerInfo: unsupported request");
 	}
 
 	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
 
-	Assert(qdinfo->segindex == -1 && qdinfo->isprimary);
-
+	Assert(qdinfo->segindex == -1);
+	Assert(SEGMENT_IS_ACTIVE_PRIMARY(qdinfo));
 	Assert(qdinfo->hostip != NULL);
 
 	sliceTable->seqServerHost = pstrdup(qdinfo->hostip);

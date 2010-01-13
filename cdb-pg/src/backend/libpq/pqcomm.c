@@ -803,6 +803,66 @@ pq_recvbuf(void)
 	}
 }
 
+/**
+ *
+ * Can only be called for non-SSL connections (such as file replication connections).
+ *
+ * Wait for at least one byte of data to be available, or for the
+ *   socket to be in error.
+ *
+ * return true if we have data or a socket error, false if the function
+ *   call was interrupted
+ */
+bool
+pq_waitForDataUsingSelect(void)
+{
+	if ( PqRecvPointer < PqRecvLength)
+	{
+		/* we already have data in the buffer ... so done */
+		return true;
+	}
+
+	if ( MyProcPort->ssl )
+	{
+		elog(ERROR, "SSL connection cannot be used with pq_waitForDataUsingSelect");
+		return true; /* unreachable */
+	}
+	else
+	{
+		/* todo MIRRORING: use pqSocketPoll? */
+		int sock = MyProcPort->sock;
+		for ( ;; )
+		{
+			fd_set toRead;
+			fd_set haveError;
+			int numSockets;
+
+			FD_ZERO(&toRead);
+			FD_ZERO(&haveError);
+
+			FD_SET(sock, &toRead);
+			FD_SET(sock, &haveError);
+
+			errno = 0;
+			numSockets = select(sock+1, &toRead, NULL /* toWrite */, &haveError, NULL );
+
+			if ( errno == EINTR)
+			{
+				return false;
+			}
+			else if (errno != 0 )
+			{
+				elog(FATAL, "select failed: %m");
+			}
+			else if ( numSockets > 0 )
+			{
+				/* the socket has data to read or is in error so break out */
+				return true;
+			}
+		}
+	}
+}
+
 /* --------------------------------
  *		pq_getbyte	- get a single byte from connection, or return EOF
  * --------------------------------

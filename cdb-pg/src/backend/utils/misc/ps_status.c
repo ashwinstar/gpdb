@@ -390,9 +390,7 @@ set_ps_display(const char *activity, bool force)
     /* Which segment is accessed by this qExec? */
     if (Gp_role == GP_ROLE_EXECUTE &&
         Gp_segment >= -1)
-        cp += snprintf(cp, ep-cp, "%s%d ",
-                       Gp_is_primary ? "seg" : "mir",
-                       Gp_segment);
+        cp += snprintf(cp, ep-cp, "seg%d ", Gp_segment);
 
     /* Add count of commands received from client session. */
     if (gp_command_count > 0)

@@ -89,9 +89,6 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdboidsync.h"
 
-extern bool isFtsReadOnlySet(void);
-extern void FtsEvaluateTransientState(void);
-
 extern bool cdbpathlocus_querysegmentcatalogs;
 
 typedef struct evalPlanQual
@@ -487,8 +484,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				elog_node_display(DEBUG3, "slice table", estate->es_sliceTable, true);
 
 			if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-				elog(DEBUG1, "%s%d executing slice%d under root slice%d",
-					 (Gp_is_primary ? "seg" : "mir"),
+				elog(DEBUG1, "seg%d executing slice%d under root slice%d",
 					 Gp_segment,
 					 estate->es_cur_slice_idx,
 					 estate->es_cur_root_idx);
@@ -498,9 +494,16 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 * Are we going to dispatch this plan parallel?  Only if we're running as
 		 * a QD and the plan is a parallel plan.
 		 */
-		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && 
-							queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL && 
-							!(eflags & EXEC_FLAG_EXPLAIN_ONLY);
+		if (Gp_role == GP_ROLE_DISPATCH &&
+			queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL && 
+			!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
+		{
+			shouldDispatch = true;
+		}
+		else
+		{
+			shouldDispatch = false;
+		}
 
 		/*
 		 * if in dispatch mode, time to serialize plan and query
@@ -545,7 +548,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
              * finish unless an error is detected before all slices have been
              * dispatched.
 			 */
-			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, &estate->primaryResults, &estate->mirrorResults, &estate->dispatchThreads);
+			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, &estate->primaryResults, &estate->dispatchThreads);
 		}
 
 		/*
@@ -1159,17 +1162,7 @@ ExecCheckXactReadOnly(Query *parsetree)
 	return;
 
 fail:
-	if (isFtsReadOnlySet())
-	{
-		FtsEvaluateTransientState();
-		if (isFtsReadOnlySet())
-			ereport(ERROR,
-					(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
-					 errmsg("Fault tolerance system has marked array read-only")));
-		else
-			goto fail;
-	}
-	else if (XactReadOnly)
+	if (XactReadOnly)
 		ereport(ERROR,
 				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 				 errmsg("transaction is read-only")));

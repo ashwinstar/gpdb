@@ -64,8 +64,6 @@ cdblink_setup(void)
 	if (Gp_role == GP_ROLE_UTILITY)
 		return;
 
-	getGpId();
-
 	return;
 }
 
@@ -83,28 +81,16 @@ getgpsegmentCount(void)
 	{
 		if (GpIdentity.numsegments <= 0)
 		{
-			elog(DEBUG5, "getgpsegmentCount called when Gp_role == utility. returning zero segments.");
-			return 0;
-		}
+            elog(DEBUG5, "getgpsegmentCount called when Gp_role == utility. returning zero segments.");
+            return 0;
+	    }
 
 		elog(DEBUG1, "getgpsegmentCount called when Gp_role == utility, but is relying on gp_id info");
 
 	}
 
-	if (Gp_role == GP_ROLE_EXECUTE)
-	{
-		if (GpIdentity.numsegments <= 0)
-		{
-			elog(DEBUG5, "getgpsegmentCount called when Gp_role == execute. returning zero segments.");
-			return 0;
-		}
-		elog(DEBUG1, "getgpsegmentCount called when Gp_role == execute, but is relying on gp_id info");
-	}
-	
+	verifyGpIdentityIsSet();
 	Assert(GpIdentity.numsegments > 0);
-
-	/* Assert( Gp_role != GP_ROLE_UTILITY ); */
-
 	return GpIdentity.numsegments;
 }
 
@@ -163,7 +149,7 @@ buildMirrorQDDefinition(void)
 	 */
 
 	
-	if (mirrorDb->isprimary || 
+	if (SEGMENT_IS_ACTIVE_PRIMARY(mirrorDb) || 
 		(strcmp(mirrorDb->hostname, entryDb->hostname) == 0 && !Debug_permit_same_host_standby))
 	{
 		/* We are running as the mirror! When running as the

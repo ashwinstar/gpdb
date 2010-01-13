@@ -1294,78 +1294,6 @@ verifyFtsSyncCount(void)
 	return (local_fts_statusVersion == ftsProbeInfo->fts_statusVersion);
 }
 
-/* apply transient state to segdb state */
-CdbComponentDatabases *
-applyTransientState(CdbComponentDatabases *cdb_component_dbs)
-{
-	int			i;
-	CdbComponentDatabaseInfo *segDbInfo;
-
-	ftsLock();
-	if (ftsProbeInfo->fts_probePid == 0)
-	{
-		ftsUnlock();
-		return cdb_component_dbs;
-	}
-
-	for (i = 0; i < cdb_component_dbs->total_segment_dbs; i++)
-	{
-		segDbInfo = &cdb_component_dbs->segment_db_info[i];
-
-		segDbInfo->valid = FTS_STATUS_ISALIVE(segDbInfo->dbid, ftsProbeInfo->fts_status);
-		segDbInfo->isprimary = FTS_STATUS_ISPRIMARY(segDbInfo->dbid, ftsProbeInfo->fts_status);
-
-#ifdef USE_FAULT_INJECTION
-		if (gp_fault_inject_segment_failure && gp_fault_inject_segment_failure_segment_id == segDbInfo->segindex)
-		{
-			segDbInfo->valid = false;
-			if (*ftsAction == FTS_READONLY)
-				*ftsReadOnlyFlag = true;
-		}
-#endif
-	}
-	ftsUnlock();
-
-	return cdb_component_dbs;
-}
-
-/*
- * Re-test transient failed state:
- *
- * What this actually does is find the first segment that is down, if none are down
- * it just resets the transient state array, it tests the first one found if it is
- * still down, then it leaves things alone.
- *
- * If all segments are up, the transient state array gets cleared, and the readonly flag
- * is set to "not read only" (read-write).
- */
-void
-FtsEvaluateTransientState(void)
-{
-	int			i;
-	CdbComponentDatabases *cdb_component_dbs;
-	CdbComponentDatabaseInfo *segDbInfo;
-
-	cdb_component_dbs = getComponentDatabases();
-
-	for (i = 0; i < cdb_component_dbs->total_segment_dbs; i++)
-	{
-		segDbInfo = &cdb_component_dbs->segment_db_info[i];
-
-		if (!FtsTestConnection(segDbInfo, false))
-		{
-			return;
-		}
-	}
-
-	/*
-	 * If things have recently been marked read-write we may have
-	 * deferred recovery work that needs doing.
-	 */
-	if (!*ftsReadOnlyFlag)
-		cdbtm_performDeferredRecovery();
-}
-
 bool
 isFtsReadOnlySet(void)
 {
@@ -1436,7 +1364,8 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	ftsQDMirrorInfo->port = dbinfo->port;
 
 	ftsQDMirrorInfo->dbid = dbinfo->dbid;
-	ftsQDMirrorInfo->valid = dbinfo->valid;
+
+	//ftsQDMirrorInfo->valid = dbinfo->valid;
 
 	/*
 	 * Connect to our WAL Send server, but not under lock.
@@ -1454,10 +1383,10 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_MASTERMIRRORING;
 	elog(NOTICE, "Master mirroring synchronizing");
 
-	gettimeofday(&ftsQDMirrorInfo->lastLogTimeVal, NULL);
+	/* Get the log message time from the NOTICE we just issued. */
 
-											// Get the log message time
-											// from the NOTICE we just issued.
+	gettimeofday(&ftsQDMirrorInfo->lastLogTimeVal, NULL);
+										
 	LWLockRelease(ftsQDMirrorLock);
 
 	connectedToWalSendServer = WalSendServerClientConnect(/* complain */ true);

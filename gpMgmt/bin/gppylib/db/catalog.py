@@ -7,12 +7,10 @@
 """
 import copy
 
-
 import dbconn
 from  gppylib import gplog
 
 logger=gplog.get_default_logger()
-
 
 class CatalogError(Exception): pass
 
@@ -25,7 +23,6 @@ def basicSQLExec(conn,sql):
     finally:
         if cursor:
             cursor.close()
-
 
 def getSessionGUC(conn,gucname):
     sql = "SHOW %s" % gucname
@@ -68,9 +65,7 @@ def cancelBackendPIDs(conn):
             (SELECT procpid FROM pg_stat_activity WHERE procpid != pg_backend_pid()) as s;
         """
     rows = basicSQLExec(conn,sql)
-    
-        
-    
+
 def getCollationSettings(conn):
     sql = """ 
     SELECT current_setting('lc_collate') as lc_collate,
@@ -81,7 +76,6 @@ def getCollationSettings(conn):
     
     return (rows[0][0],rows[0][1],rows[0][2])
 
-        
 def doesSchemaExist(conn,schemaname):
     sql = "SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname = '%s'" % schemaname        
     cursor=None
@@ -196,64 +190,7 @@ class CatalogTable():
     def get_update_sql(self):
         raise CatalogError("Programmer Error!  subclasses should override")
     
-    
-
-class GpIdTable(CatalogTable):
-    """ pg_catalog.gp_id Table
-    
-    template1=# \d pg_catalog.gp_id
-          Table "pg_catalog.gp_id"
-       Column    |   Type   | Modifiers 
-    -------------+----------+-----------
-     gpname      | name     | not null
-     numsegments | smallint | not null
-     dbid        | smallint | not null
-     content     | smallint | not null
-    Tablespace: "pg_global"
-
-    """
-    gpname=None
-    numsegments=-1
-    dbid=-1
-    content=-100
-    
-    def __init__(self,conn):
-        try:
-            cursor=conn.cursor()
-            cursor.execute(self.get_select_sql())
-            if cursor.rowcount != 1:
-                raise CatalogError("pgcatalog.gp_id had unexpected row count "\
-                                   "of: %d.  Was expecting 1." % cursor.rowcount)
-            row = cursor.fetchone()
-            self.gpname = row[0]
-            self.numsegments = int(row[1])
-            self.dbid = int(row[2])
-            self.content = int(row[3])
-            
-        finally:
-            if cursor: cursor.close()
-    
-    
-    def set(self,dbid=None,content=None,numsegments=None):
-        if dbid is not None:
-            self.dbid = dbid
-        if content is not None:
-            self.content = content
-        if numsegments is not None:
-            self.numsegments = numsegments
-            
-            
-    def get_select_sql(self):
-        return "SELECT * FROM pg_catalog.gp_id"
-    
-    
-    def get_update_sql(self):
-        return "UPDATE pg_catalog.gp_id SET gpname = '%s', numsegments = %d, "\
-               "dbid = %d, content=%d" % (self.gpname,self.numsegments,self.dbid,self.content) 
-    
-
-
-class GpVersionAtInitdbTable(CatalogTable):  
+class GpVersionAtInitdbTable(CatalogTable):
     """ pg_catalog.gp_version_at_initdb
     
     template1=# \d pg_catalog.gp_version_at_initdb;
@@ -291,46 +228,75 @@ class GpVersionAtInitdbTable(CatalogTable):
 
 
 class GpConfigurationTable(CatalogTable):
-    """pg_catalog.gp_configuration
-    
-template1=# \d gp_configuration
-  Table "pg_catalog.gp_configuration"
-     Column     |   Type   | Modifiers 
-----------------+----------+-----------
- content        | smallint | not null
- definedprimary | boolean  | not null
- dbid           | smallint | not null
- isprimary      | boolean  | not null
- valid          | boolean  | not null
- hostname       | name     | not null
- port           | integer  | not null
- datadir        | text     | 
+    """pg_catalog.gp_segment_configuration
+
+postgres=# \d gp_segment_configuration
+  Table "pg_catalog.gp_segment_configuration"
+     Column       |    Type    | Modifiers 
+------------------+------------+-----------
+ dbid             | smallint   | not null
+ content          | smallint   | not null
+ role             | "char"     | not null
+ preferred_role   | "char"     | not null
+ mode             | "char"     | not null
+ status           | "char"     | not null
+ hostname         | name       | not null
+ address          | name       | not null
+ port             | integer    | not null
+ replication_port | integer    | 
+ san_mounts       | int2vector | 
 Indexes:
-    "gp_configuration_content_definedprimary_index" UNIQUE, btree (content, definedprimary), tablespace "pg_global"
-    "gp_configuration_dbid_index" UNIQUE, btree (dbid), tablespace "pg_global"
+    "gp_segment_config_content_preferred_role_index" UNIQUE, btree (content, preferred_role), tablespace "pg_global"
+    "gp_segment_config_dbid_index" UNIQUE, btree (dbid), tablespace "pg_global"
 Tablespace: "pg_global"
 
     """
     
-    
+    @staticmethod
+    def deleteAllRows(conn):
+        try:
+            cursor=conn.cursor()
+            cursor.execute("DELETE FROM gp_segment_configuration")
+            cursor.execute("DELETE FROM pg_filespace_entry")
+            conn.commit()
+        finally:
+            if cursor: cursor.close()
+
+# XXX: THIS IS OBVIOUSLY BROKEN IN 3.4!
     @staticmethod
     def addRows(conn,segments):
         try:
             cursor=conn.cursor()
             
             for seg in segments:
-                sql = """INSERT INTO pg_catalog.gp_configuration(content, definedprimary, dbid, isprimary,                 
-                                                                valid, hostname, port, datadir)
-                         VALUES (%d, \'%s\', %d, \'%s\', \'t\', \'%s\', %d, \'%s\')
-                """ % (seg.content, seg.definedprimary,seg.dbid, seg.isprimary,seg.hostname,
-                       seg.port, seg.datadir)
+                if seg.replicationPort:
+                    replicationPort = str(seg.replicationPort)
+                else:
+                    replicationPort = 'null'
+
+                sql = """
+                   INSERT INTO pg_catalog.gp_segment_configuration(
+                       content, definedprimary, dbid, isprimary, valid, 
+                       hostname, port, replication_port)
+                   VALUES (%d, \'%s\', %d, \'%s\', \'t\', \'%s\', %d)
+                """ % (seg.content, seg.definedprimary,seg.dbid, 
+                       seg.isprimary, seg.hostname, seg.port,
+                       replicationPort)
                 cursor.execute(sql)
+                
+                # Add the filespace information for this segment.
+                system_filespace = 3052
+                sql = """
+                   INSERT into pg_catalog.pg_filespace_entry(
+                       fsefsoid, fsedbid, fselocation)
+                   VALUES (%d, %d, \'%s\')
+                """ % (system_filespace, seg.dbid, seg.datadir)
+                cursor.execute(sql)
+
             conn.commit()
         finally:
             if cursor: cursor.close()        
 #TODO:
 class GpMasterMirroring(CatalogTable):  pass
 class GpDistributionPolicy(CatalogTable): pass
-    
-
         

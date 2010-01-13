@@ -27,29 +27,6 @@ class catalogTestCase(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
         pass
-    
-    
-    def test_gpid(self):
-        logger.info("test_gpid")
-        orig_gpid_table = catalog.GpIdTable(self.conn)        
-        self.assertEquals(orig_gpid_table.content,-1)
-        
-        test_gpid_table = catalog.GpIdTable(self.conn)
-        test_gpid_table.gpname="name of my cluster"
-        test_gpid_table.numsegments=100
-        test_gpid_table.dbid=200
-        test_gpid_table.content=300
-        
-        test_gpid_table.update_db(self.conn)
-        
-        new_gpid_table = catalog.GpIdTable(self.conn)
-        self.validate_gpid_table(test_gpid_table,new_gpid_table)
-        
-        orig_gpid_table.update_db(self.conn)
-        new_gpid_table = catalog.GpIdTable(self.conn)
-        self.validate_gpid_table(orig_gpid_table,new_gpid_table)
-        
-        pass
 
     def test_versionatinitdb(self):
         logger.info("test_versionatinitdb")

@@ -7,6 +7,7 @@
 TODO: docs!
 """
 import os
+import pickle
 
 from gppylib.gplog import *
 from gppylib.db import dbconn
@@ -59,7 +60,7 @@ class PySync(Command):
 
 #-----------------------------------------------
 class MasterStart(Command):
-    def __init__(self, name, dataDir, port, restrictedMode=False,max_connections=1,
+    def __init__(self, name, dataDir, port, dbid, numContentsInCluster, restrictedMode=False,max_connections=1,
                  disableMasterMirror=False,utilityMode=False, ctxt=LOCAL, remoteHost=None):
         self.dataDir=dataDir
         self.port=port
@@ -74,8 +75,8 @@ class MasterStart(Command):
         else:
             gp_mode_flags=" -E "    
             
-        cmdfrags=["$GPHOME/bin/pg_ctl -w -D %s  -l %s/pg_log/startup.log -o \" %s %s -i -p %s --silent-mode=true" %\
-                  (dataDir,dataDir,standby,gp_mode_flags,port)]
+        cmdfrags=["$GPHOME/bin/pg_ctl -w -D %s -l %s/pg_log/startup.log -o \" %s %s -i -M master -p %s -b %s -C -1 -z %s --silent-mode=true" % \
+                  (dataDir,dataDir,standby,gp_mode_flags,port,dbid,numContentsInCluster)]
         
         
         if restrictedMode:
@@ -89,9 +90,9 @@ class MasterStart(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
-    def local(name,dataDir,port,restrictedMode=False,max_connections=1,
+    def local(name,dataDir,port,dbid, numContentsInCluster, restrictedMode=False,max_connections=1,
                  disableMasterMirror=False,utilityMode=False):
-        cmd=MasterStart(name,dataDir,port,restrictedMode,max_connections,disableMasterMirror,utilityMode)
+        cmd=MasterStart(name,dataDir,port,dbid, numContentsInCluster, restrictedMode,max_connections,disableMasterMirror,utilityMode)
         cmd.run(validateAfter=True)
 
 #-----------------------------------------------
@@ -105,34 +106,83 @@ class MasterStop(Command):
     def local(name,dataDir):
         cmd=MasterStop(name,dataDir)
         cmd.run(validateAfter=True)
-        
+
+#-------------------------------------------------------------------------
+#
+# SegmentToStart: contains the arguments to start a SINGLE segment using SegmentStart command
+#  dataDir : the data directory of the segment
+#  port : the postmaster port to listen on
+#  dbId : the database id, as listed in configuration table
+#  contentId : the content id, as listed in configuration table
+#  numContentsInCluster : the number of contents in the database cluster
+#  mirroringMode : the mirroring mode to be passed to startup (like quiescent or mirrorless)
+#  noWait : do not have the pg_ctl utility poll waiting for database startup to finish
+#
+class SegmentToStart:
+    def __init__(self, segDataDir, segPort, segDbId, segContentId, segNumContentsInCluster, mirroringMode, noWait):
+        self.dataDir = segDataDir
+        self.port = segPort
+        self.dbId = segDbId
+        self.contentId = segContentId
+        self.numContentsInCluster = segNumContentsInCluster
+        self.mirroringMode = mirroringMode
+        self.noWait = noWait
         
 #-----------------------------------------------        
 class SegmentStart(Command):      
-    def __init__(self, name, dataDir, utilityMode=False, nowait=False,port=None,ctxt=LOCAL, remoteHost=None):
-        self.dataDir=dataDir
-        cmdfrags=['$GPHOME/bin/pg_ctl -D %s -l %s/pg_log/startup.log ' % (dataDir,dataDir)]
-        portOption = ""
-        if port:
-            portOption = "-p %s" % port
-        if not nowait:
+    def __init__(self, name, segmentToStart, utilityMode=False, ctxt=LOCAL, remoteHost=None):
+
+        cmdfrags=['$GPHOME/bin/pg_ctl -D %s -l %s/pg_log/startup.log ' % (segmentToStart.dataDir,segmentToStart.dataDir)]
+
+        if not segmentToStart.noWait:
             cmdfrags.append('-w')
-        if utilityMode:
-            cmdfrags.append("-o '-i -c gp_role=utility %s --silent-mode=true' start 2>&1" % portOption)
-        else:
-            cmdfrags.append("-o '-i %s --silent-mode=true' start 2>&1" % portOption)
+
+        portStr = ""
+        if segmentToStart.port:
+            portStr = "-p %s" % segmentToStart.port
+
+        utilityModeStr = ""
+        if ( utilityMode ):
+            utilityModeStr = "-c gp_role=utility"
+
+        cmdfrags.append("-o '-i %s %s --silent-mode=true -M %s -b %s -C %s -z %s' start 2>&1" % \
+                        (portStr, utilityModeStr, segmentToStart.mirroringMode, \
+                            segmentToStart.dbId, \
+                            segmentToStart.contentId, \
+                            segmentToStart.numContentsInCluster))
         self.cmdStr=' '.join(cmdfrags)
+        
+        Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
+    
+    @staticmethod
+    def local(name, segmentToStart, utilityMode=False):
+        cmd=SegmentStart(name,segmentToStart,utilityMode)
+        cmd.run(validateAfter=True)
+    
+    @staticmethod
+    def remote(name,remoteHost, segmentToStart, utilityMode=False ):
+        cmd=SegmentStart(name, segmentToStart, utilityMode, ctxt=REMOTE, remoteHost=remoteHost)
+        cmd.run(validateAfter=True)
+
+#-----------------------------------------------
+class SendFilerepTransitionMessage(Command):
+    def __init__(self, name, inputFile, port=None,ctxt=LOCAL, remoteHost=None):
+        if not remoteHost:
+            remoteHost = "localhost"
+        self.cmdStr='$GPHOME/bin/gp_primarymirror -h %s -p %s -i %s' % (remoteHost,port,inputFile)
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     
     @staticmethod
-    def local(name,dataDir,utilityMode=False,nowait=False,port=None):
-        cmd=SegmentStart(name,dataDir,utilityMode,nowait,port)
+    def local(name,inputFile,port=None,remoteHost=None):
+        cmd=SendFilerepTransitionMessage(name, inputFile, port, LOCAL, remoteHost)
         cmd.run(validateAfter=True)
+        return cmd
     
     @staticmethod
-    def remote(name,remoteHost,dataDir,utilityMode=False,nowait=False,port=None):
-        cmd=SegmentStart(name,dataDir,utilityMode,nowait,port,ctxt=REMOTE, remoteHost=remoteHost)
+    def remote(name,remoteHost,inputFile,port=None):
+        cmd=SendFilerepTransitionMessage(name, inputFile, port, REMOTE, remoteHost)
         cmd.run(validateAfter=True)
+        return cmd
 
 #-----------------------------------------------        
 class SegmentStop(Command):
@@ -150,12 +200,35 @@ class SegmentStop(Command):
 
 #-----------------------------------------------
 class GpSegStartCmd(Command):
-    def __init__(self, name, gphome, gphost, collatelist, gpversion,verbose=False,ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, gphost, collatelist, gpversion,isMirrorless, numContentsInCluster,
+                 verbose=False,ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.gphost=gphost
         self.dblist=gphost.dbs
         self.dirlist=[]
         for db in self.dblist:
+            self.dirlist.append(db.datadir + ':' + str(db.port) + ':' + str(db.dbid) + ':' + \
+                                    str(db.content) + ':' + str(numContentsInCluster))
+            
+        dirstr=" -D ".join(self.dirlist)        
+        colstr=":".join(collatelist)
+        if verbose:
+            setverbose=" -v "
+        else:
+            setverbose=""
+
+        mode = "mirrorless" if isMirrorless else "quiescent"
+        cmdStr="$GPHOME/sbin/gpsegstart.py %s -D %s -C %s -M %s -V '%s'" % (setverbose,dirstr,colstr,mode,gpversion)
+        
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+class GpSegChangeMirrorModeCmd(Command):
+    def __init__(self, name, gphome, gphost, collatelist, gpversion, dbs, targetMode, transitionMessageFilePath,verbose=False,ctxt=LOCAL, remoteHost=None):
+        self.gphome=gphome
+        self.gphost=gphost
+        self.dblist=dbs
+        self.dirlist=[]
+        for db in dbs:
             self.dirlist.append(db.datadir + ':' + str(db.port))
             
         dirstr=" -D ".join(self.dirlist)        
@@ -165,24 +238,21 @@ class GpSegStartCmd(Command):
         else:
             setverbose=""
             
-        cmdStr="$GPHOME/sbin/gpsegstart.py %s -D %s -C %s -V '%s'" % (setverbose,dirstr,colstr,gpversion)
+        cmdStr="$GPHOME/sbin/gpsegtoprimaryormirror.py %s -D %s -C %s -M %s -t %s -V '%s'" % (setverbose,dirstr,colstr,targetMode,transitionMessageFilePath,gpversion)
         
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
-
-
 #-----------------------------------------------
 class GpSegStopCmd(Command):
-    def __init__(self, name, gphome, gphost, version,mode,verbose=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, gphost, version,mode,dbs,verbose=False, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.gphost=gphost
         self.dblist=gphost.dbs
         self.dirportlist=[]
         self.mode=mode
         self.version=version
-        for db in self.dblist:
+        for db in dbs:
             self.dirportlist.append(db.datadir + ':' + str(db.port))
-            
             
         dirstr=" -D ".join(self.dirportlist)
         if verbose:
@@ -378,7 +448,6 @@ class GpVersion(Command):
         cmd.run(validateAfter=True)
         return cmd.get_version()
     
-    
 #-----------------------------------------------
 class GpSegCheckLocaleAndConnect(Command):
     def __init__(self,name,datadir,port,expected_lc_collate,expected_lc_monetary,expected_lc_numeric):
@@ -395,11 +464,23 @@ class GpSegCheckLocaleAndConnect(Command):
     
     
     def run(self,validateAfter=False):
+        
         dburl = dbconn.DbURL(port=self.port,dbname='template1')
         
         logger.debug("%s connecting to %s" % (self.datadir,dburl))
-        conn = dbconn.connect(dburl, utility=True)
-            
+        
+        conn = None
+        while conn is None:
+            try:
+                conn = dbconn.connect(dburl, utility=True)
+            except Exception, ex:
+                (exType,exValue,exTraceback) = sys.exc_info()
+                # todo MIRRORING: this is bogus because it doesn't handle internationalization.  Should make gpmirrortransition option that just checks if the db has started...then we can wait for it to finish starting
+                if str(exValue).strip() == 'FATAL:  the database system is starting up':
+                    conn = None
+                    time.sleep(1) # wait 1 second to try again
+                else:
+                    raise ex
         (lc_collate,lc_monetary,lc_numeric)=catalog.getCollationSettings(conn)
         if lc_collate != self.expected_lc_collate:                    
             self.error_str+="Segment's value of lc_collate does not match the master.\n" \
@@ -420,7 +501,7 @@ class GpSegCheckLocaleAndConnect(Command):
                               "Actual value %s" % (self.datadir, seg_datadir)        
         conn.close()
         logger.debug("%s connection closed" % self.datadir)
-        
+    
         if len(self.error_str) == 0:
             self.success = True
         else:

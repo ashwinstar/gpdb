@@ -42,6 +42,8 @@ import subprocess                        # Calling external processes
 import socket                            # getfqdn()
 import traceback                         # exception logging
 try:
+    from gppylib.db import dbconn
+    from gppylib.db import catalog
     from pygresql import pg              # Database interaction
     from gppylib.gplog import *          # Greenplum logging facility
 except ImportError, e:
@@ -303,13 +305,17 @@ class GPSegment():
     '''
 
     # --------------------------------------------------------------------
-    def __init__(self, dbid, content, primary, nic, datadir):
+    def __init__(self, tuple):
+        # tuple is based on dbconn.getConfig:
+        (dbid, content, role, prefrole, mode, status, hostname, address,
+         port, datadir, repport) = tuple
+
         (location, name) = os.path.split(datadir)
         self.parent   = None         # points to GPHost
         self.dbid     = dbid
         self.content  = content
-        self.primary  = (primary == True or primary == 't')
-        self.nic      = nic
+        self.primary  = (role == 'p')
+        self.nic      = address
         self.datadir  = datadir
         self.location = location
         self.name     = name
@@ -332,10 +338,10 @@ class GPSegment():
     #  + Segment
     #     + primary
     #     + mirror
-    def isleader(self):   return self.content < 0
+    def isQD(self):       return self.content < 0
+    def isQE(self):       return self.content >= 0
     def ismaster(self):   return self.content < 0 and self.primary
     def isstandby(self):  return self.content < 0 and not self.primary
-    def issegment(self):  return self.content >= 0
     def isprimary(self):  return self.content >= 0 and self.primary
     def ismirror(self):   return self.content >= 0 and not self.primary
 
@@ -623,7 +629,7 @@ class GPFilespace:
         self.config     = None # {} host configuration groups
         self.db         = None # pygresql.pgobject 
 
-        self.db = self.connect()
+        self.connect()
         self.get_configuration()
         
     # --------------------------------------------------------------------
@@ -642,16 +648,23 @@ class GPFilespace:
           X = GPFilespace(options)
           connection = X.connect()
         '''
+
+        # If we are already connected simply return
+        if self.db:
+            return
     
         try:
             user = self.options.username
             host = self.options.host 
             port = self.options.port
             db   = 'template1'
-            conn = pg.connect(user=user, host=host, dbname=db, port=port)
+            dburl = dbconn.DbURL(username=user, hostname=host, 
+                                 port=port, dbname=db)
+            conn = dbconn.connect(dburl)
 
             q = "SELECT usesuper FROM pg_user where usename = user"
-            is_super = (conn.query(q).getresult()[0][0] == 't')
+            rows = catalog.basicSQLExec(conn, q)
+            is_super = rows[0][0]
 
         except Exception, e:
             raise GPDatabaseError(str(e))
@@ -660,7 +673,7 @@ class GPFilespace:
             error = "gpfilespace requires database superuser privledges"
             raise GPPrivilegeError(error)
 
-        return conn
+        self.db = conn
 
 
     # --------------------------------------------------------------------
@@ -682,15 +695,12 @@ class GPFilespace:
         '''
 
         # We should already have a connection, but if not establish one.
-        if (not self.db or self.db.status != 1):
-            self.db = self.connect()
+        self.connect()
 
         try:
-            conn = self.db
-
-            q = "SELECT dbid, content, isprimary, hostname, datadir " \
-                "FROM gp_configuration "
-            gp_config = conn.query(q).getresult()
+            logger.info("getting config")
+            gp_config = dbconn.getConfig(self.db)
+            logger.info(str(gp_config))
         except Exception, e:
             raise GPDatabaseError(str(e))
 
@@ -704,8 +714,7 @@ class GPFilespace:
         # Loop through configuration and add segments to datastructures
         # We save the costly hostname lookup step until later.
         for tuple in gp_config:
-            (dbid, content, primary, nic, datadir) = tuple
-            seg = GPSegment(dbid, content, primary, nic, datadir)
+            seg = GPSegment(tuple)
 
             # Keep the primary master is at the front of the list
             if seg.ismaster():  
@@ -713,7 +722,7 @@ class GPFilespace:
             elif seg.isstandby(): self.master.append(seg)
 
             # Segment hash includes primary, mirror, and master segments
-            self.segments[dbid] = seg
+            self.segments[seg.dbid] = seg
 
         logger.debug('Configuration contains %d segments' % len(self.segments))
 
@@ -1117,9 +1126,10 @@ To add this filespace to the database please run the command:
         logger.info(q);
 
         print "Connecting to database"
-        conn = self.connect()
+        self.connect()
         try:
-            conn.query(q)
+            cursor = dbconn.execSQL(self.db, q)
+            self.db.commit()  # Should move into execSQL ?
         except Exception, e:
             raise GPDatabaseError(str(e))
         

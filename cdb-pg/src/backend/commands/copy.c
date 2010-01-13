@@ -151,10 +151,10 @@ line_buf_with_lineno.cursor = 0;
  * changing me? take a look at FILEAM_HANDLE_ERROR in fileam.c as well.
  */
 #define COPY_HANDLE_ERROR \
-if(cstate->errMode == ALL_OR_NOTHING) \
+if (cstate->errMode == ALL_OR_NOTHING) \
 { \
 	/* re-throw error and abort */ \
-	if(Gp_role == GP_ROLE_DISPATCH) \
+	if (Gp_role == GP_ROLE_DISPATCH) \
 		cdbCopyEnd(cdbCopy); \
 	PG_RE_THROW(); \
 } \
@@ -169,10 +169,10 @@ else \
 	cur_row_rejected = true; \
 \
 	/* SREH must only handle data errors. all other errors must not be caught */\
-	if(ERRCODE_TO_CATEGORY(elog_geterrcode()) != ERRCODE_DATA_EXCEPTION)\
+	if (ERRCODE_TO_CATEGORY(elog_geterrcode()) != ERRCODE_DATA_EXCEPTION)\
 	{\
 		/* re-throw error and abort */ \
-		if(Gp_role == GP_ROLE_DISPATCH) \
+		if (Gp_role == GP_ROLE_DISPATCH) \
 			cdbCopyEnd(cdbCopy); \
 		PG_RE_THROW(); \
 	}\
@@ -182,10 +182,10 @@ else \
 	edata = CopyErrorData();\
 	MemoryContextSwitchTo(oldcontext);\
 \
-	if(!elog_dismiss(DEBUG5)) \
+	if (!elog_dismiss(DEBUG5)) \
 		PG_RE_THROW(); /* <-- hope to never get here! */ \
 \
-	if(Gp_role == GP_ROLE_DISPATCH)\
+	if (Gp_role == GP_ROLE_DISPATCH)\
 	{\
 		Insist(cstate->err_loc_type == ROWNUM_ORIGINAL);\
 		cstate->cdbsreh->rawdata = (char *) palloc(strlen(cstate->line_buf.data) * \
@@ -202,10 +202,10 @@ else \
 	else\
 	{\
 		/* truncate trailing eol chars if we need to store this row in errtbl */ \
-		if(cstate->cdbsreh->errtbl) \
+		if (cstate->cdbsreh->errtbl) \
 			truncateEol(&cstate->line_buf, cstate->eol_type); \
 \
-		if(Gp_role == GP_ROLE_EXECUTE)\
+		if (Gp_role == GP_ROLE_EXECUTE)\
 		{\
 			/* if line has embedded rownum, update the cursor to the pos right after */ \
 			Insist(cstate->err_loc_type == ROWNUM_EMBEDDED);\
@@ -241,9 +241,9 @@ else \
 	HandleSingleRowError(cstate->cdbsreh); \
 \
 	/* cleanup any extra memory copies we made */\
-	if(rawdata_is_a_copy) \
+	if (rawdata_is_a_copy) \
 		pfree(cstate->cdbsreh->rawdata); \
-	if(errmsg_is_a_copy && !IsRejectLimitReached(cstate->cdbsreh)) \
+	if (errmsg_is_a_copy && !IsRejectLimitReached(cstate->cdbsreh)) \
 		pfree(cstate->cdbsreh->errmsg); \
 }
 
@@ -266,14 +266,14 @@ cstate->cur_attname = NULL;\
 continue; /* move on to the next data line */
 
 #define IF_REJECT_LIMIT_REACHED_ABORT \
-if(IsRejectLimitReached(cstate->cdbsreh)) \
+if (IsRejectLimitReached(cstate->cdbsreh)) \
 {\
 	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
 	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
 	char *rejectmsg_csv_unparsable = "Input includes invalid CSV data that corrupts the ability to parse data rows. This usually means several unescaped embedded QUOTE characters. Data is not parsable.Last error was:";\
 	char *finalmsg;\
 \
-	if(FIRST_1000_BAD(cstate->cdbsreh))\
+	if (FIRST_1000_BAD(cstate->cdbsreh))\
 	{\
 		/* the special "first 1000 are bad" case */\
 		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
@@ -281,7 +281,7 @@ if(IsRejectLimitReached(cstate->cdbsreh)) \
 									* sizeof(char)); \
 		sprintf(finalmsg, "%s %s", rejectmsg_allbad, cstate->cdbsreh->errmsg);\
 	}\
-	else if(CSV_IS_UNPARSABLE(cstate->cdbsreh))\
+	else if (CSV_IS_UNPARSABLE(cstate->cdbsreh))\
 	{\
 		/* the special "csv un-parsable" case */\
 		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
@@ -298,7 +298,7 @@ if(IsRejectLimitReached(cstate->cdbsreh)) \
 		sprintf(finalmsg, "%s %s", rejectmsg_normal, cstate->cdbsreh->errmsg);\
 	}\
 \
-	if(Gp_role == GP_ROLE_DISPATCH) \
+	if (Gp_role == GP_ROLE_DISPATCH) \
 		cdbCopyEnd(cdbCopy); \
 \
 	ereport(ERROR, \
@@ -418,7 +418,7 @@ SendCopyEnd(CopyState cstate)
 static void
 CopySendData(CopyState cstate, const void *databuf, int datasize)
 {
-	if(!cstate->is_copy_in) /* copy out */
+	if (!cstate->is_copy_in) /* copy out */
 	{
 		appendBinaryStringInfo(cstate->fe_msgbuf, (char *) databuf, datasize);
 	}
@@ -693,7 +693,7 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 	 * delimiter to be an ASCII character (like postgresql. For more info
 	 * on this see discussion and comments in MPP-3756).
 	 */
-	if(pg_database_encoding_max_length() == 1)
+	if (pg_database_encoding_max_length() == 1)
 	{
 		/* single byte encoding such as ascii, latinx and other */
 		if (strlen(delim) != 1 && !delim_off)
@@ -704,7 +704,7 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 	else
 	{
 		/* multi byte encoding such as utf8 */
-		if((strlen(delim) != 1 || IS_HIGHBIT_SET(delim[0])) && !delim_off )
+		if ((strlen(delim) != 1 || IS_HIGHBIT_SET(delim[0])) && !delim_off )
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("delimiter must be a single ASCII character, or \'off\'")));
@@ -748,7 +748,7 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("delimiter cannot be \"%s\"", delim)));
 
-	if(delim_off)
+	if (delim_off)
 	{
 
 		/*
@@ -758,12 +758,12 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 		 * are ways to work around this but for now it's not important and
 		 * we simply don't support it.
 		 */
-		if(copy)
+		if (copy)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("Using no delimiter is only supported for external tables")));
 
-		if(num_columns != 1)
+		if (num_columns != 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("Using no delimiter is only possible for a single column table")));
@@ -6363,14 +6363,14 @@ void setEncodingConversionProc(CopyState cstate, int client_encoding, bool iswri
 	 * COPY FROM and RET: convert from client to server
 	 * COPY TO   and WET: convert from server to client
 	 */
-	if(iswritable)
+	if (iswritable)
 		conversion_proc = FindDefaultConversionProc(GetDatabaseEncoding(),
 													client_encoding);
 	else		
 		conversion_proc = FindDefaultConversionProc(client_encoding,
 												    GetDatabaseEncoding());
 	
-	if(OidIsValid(conversion_proc))
+	if (OidIsValid(conversion_proc))
 	{
 		/* conversion proc found */
 		cstate->enc_conversion_proc = palloc(sizeof(FmgrInfo));

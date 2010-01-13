@@ -15,32 +15,40 @@ from gppylib.db import dbconn
 
 class GpDB:
     content=-2
-    definedprimary=False
+    preferred_role=''
     dbid=-2
-    isprimary=False
-    valid=False
+    role=''
+    mode=''
+    status=''
+    valid=True
     hostname=None
     port=0
     datadir=None
+    replicationPort=None
     
-    def __init__(self,content,definedprimary,dbid,isprimary,valid,hostname,port,datadir):
+    def __init__(self,content,preferred_role,dbid,role,mode,status,hostname,port,datadir,replicationPort):
         self.content=content
-        self.definedprimary=definedprimary
+        self.preferred_role=preferred_role
         self.dbid=dbid
-        self.isprimary=isprimary
-        self.valid=valid
+        self.role=role
+        self.mode=mode
+        self.status=status
         self.hostname=hostname
         self.port=port
         self.datadir=datadir
-    
+        self.replicationPort=replicationPort
+        
     def __str__(self):
-        return "%s:%s:content=%s:dbid=%s:valid=%s" % (self.hostname,self.datadir,self.content,self.dbid,self.valid)
+        return "%s:%s:content=%s:dbid=%s" % (self.hostname,self.datadir,self.content,self.dbid)
    
     def __repr__(self):
         return self.__str__()
     
     def get_hostname(self):
         return self.hostname
+
+    def get_role(self):
+        return self.role
     
     def get_datadir(self):
         return self.datadir
@@ -52,17 +60,17 @@ class GpDB:
             return "Invalid"
 
     def get_gp_configuration_string(self):
-        return '%d|%s|%d|%s|%s|%s|%d|%s' % ( self.content,
-                                            't' if self.definedprimary else 'f',
+        return '%d|%s|%d|%s|%s|%d|%s|%s' % (self.content,
+                                            self.preferred_role,
                                             self.dbid,
-                                            't' if self.isprimary else 'f',
-                                            't' if self.valid else 'f',
+                                            self.role,
                                             self.hostname,
                                             self.port,
-                                            self.datadir)
+                                            self.datadir,
+                                            "%d" % self.replicationPort if self.replicationPort is not None else "none")
+
     @staticmethod
     def get_gpdb_from_string(line):
-
         fields = dbconn.parseLine(line)
         content=fields[0]
         definedprimary=fields[1]
@@ -73,7 +81,6 @@ class GpDB:
         port=int(fields[6])
         datadir=fields[7]
         return GpDB(content,definedprimary,dbid,isprimary,valid,hostname,port,datadir)
-
 
 class Segment:
     """ Used to represent all of the SegmentDBs with the same contentID.  Today this
@@ -165,8 +172,6 @@ def dumpToFile(gparray, filename):
         raise
     finally:
         if fp: fp.close()
-
-
 
 def createFromGpInitFile(intputFile):
     """TODO: """
@@ -281,8 +286,7 @@ class GpArray:
     standbyMaster=None
     segments=None
     expansionSegments=None
-    
-    
+
     def __init__(self,rows):
         """TODO: """
         
@@ -290,17 +294,21 @@ class GpArray:
         self.segments=[]
         self.expansionSegments=[]
         self.numPrimarySegments = 0
-        
-        for row in rows:         
-            content=row[0]
-            definedprimary=row[1]
-            dbid=int(row[2])
-            isprimary=row[3]
-            valid=row[4]
-            hostname=row[5]
-            port=int(row[6])
-            datadir=row[7]
-            
+
+        for current_row in rows:
+            segdb = dbconn.parseListIntoTuple(current_row)
+
+            content = int(segdb.content)
+            preferred_role = segdb.preferred_role
+            dbid = int(segdb.dbid)
+            role = segdb.role
+            mode = segdb.mode
+            status = segdb.status
+            hostname = segdb.hostname
+            address = segdb.address
+            port = int(segdb.port)
+            datadir = segdb.datadir
+            replicationPort = segdb.replicationPort
             
             if self.master is None and content is not -1:
                 logger.error("FATAL - no master dbs defined!")
@@ -309,29 +317,28 @@ class GpArray:
             #TODO: what about dbids???
             
             if content is -1:
-                if definedprimary is True:
-                    self.master = GpDB(-1,definedprimary,dbid,isprimary,valid,
-                                           hostname,port,datadir)
+                if preferred_role == 'p':
+                    self.master = GpDB(content,preferred_role,dbid,role,mode,status,
+                                       hostname,port,datadir,replicationPort)
                 else:
-                    self.standbyMaster = GpDB(-1,definedprimary,dbid,isprimary,valid,
-                                                  hostname,port,datadir)
+                    self.standbyMaster = GpDB(content,preferred_role,dbid,role,mode,status,
+                                                  hostname,port,datadir,replicationPort)
             else:
-                segdb = GpDB(content,definedprimary,dbid,
-                             isprimary,valid,hostname,port,datadir)
+                segdb = GpDB(content,preferred_role,dbid, role, mode, status,
+                             hostname,port,datadir,replicationPort)
 
                 
                 if len(self.segments) <= content:
                     self.segments.insert(content, Segment())
                 
                 seg = self.segments[content]                
-                if definedprimary is True:                    
+                if preferred_role == 'p':                    
                     seg.addPrimary(segdb)
                     self.numPrimarySegments += 1
                 else:             
                     seg.addMirror(segdb)
         self.numSegments=len(self.segments)
-        
-    
+
     def getDbList(self, includeExpansionSegs=False):
         """Return a list of all GpDb objects that make up the array"""
         list=[]
@@ -363,6 +370,13 @@ class GpArray:
             list.extend(seg.get_dbs())
         return list
     
+    def getSegmentContainingDb(self, db):
+        for seg in self.segments:
+            for segDb in seg.get_dbs():
+                if db.dbid == segDb.dbid:
+                    return seg
+        return None
+
     def get_invalid_segdbs(self):
         list=[]
         for seg in self.segments:
@@ -383,8 +397,7 @@ class GpArray:
             for db in seg.mirrorDBs:
                 if db.valid:
                     list.append(db)
-        return list
-        
+        return list        
         
     def get_hostlist(self, includeMaster=True):
         list=[]
@@ -401,13 +414,12 @@ class GpArray:
         self.queue.haltWork()
         self.queue.join()
         logger.debug("finished cleanup")
-   
-   
+
     def get_max_dbid(self,includeExpansionSegs=False):
         """Returns the maximum dbid in the array.  If includeExpansionSegs
         is True, this includes the expansion segment array in the search"""
         dbid = 0
-        
+
         for db in self.getDbList(includeExpansionSegs):
             if db.dbid > dbid:
                 dbid = db.dbid
@@ -515,7 +527,7 @@ class GpArray:
         (seg0_hostname, inf_num) = get_host_interface(seg0_hostname)
         
         for db in self.getDbList():
-            if db.definedprimary and db.content != -1 and \
+            if db.preferred_role == 'p' and db.content != -1 and \
                 db.get_hostname().startswith(seg0_hostname):
                 
                 primary_datadirs.append(db.datadir[:db.datadir.rfind('/')])
@@ -530,7 +542,7 @@ class GpArray:
         (seg0_hostname, inf_num) = get_host_interface(seg0_hostname)
 
         for db in self.getDbList():
-            if not db.definedprimary and db.content != -1 and \
+            if db.preferred_role != 'p' and db.content != -1 and \
                 db.get_hostname().startswith(seg0_hostname):
                 mirror_datadirs.append(db.datadir[:db.datadir.rfind('/')])
         
@@ -560,8 +572,8 @@ class GpArray:
             queue.addCommand(untar_cmd)
         queue.join()
         queue.check_results()        
-            
-    
+
+
     def createArray(self):
         hosts=self.get_hostlist()
         self.queue=WorkerPool(numWorkers=4)
@@ -581,14 +593,14 @@ class GpArray:
         pass
     
     
-    def addExpansionSeg(self, content, definedprimary, dbid, isprimary, hostname, port, datadir):
+    def addExpansionSeg(self, content, preferred_role, dbid, role, hostname, port, datadir):
         """ Adds a segment to the gparray as an expansion segment.
         """
         if (content <= self.segments[-1].get_dbs()[0].content):
             raise Exception('Invalid content ID for expansion segment')
         
-        segdb = GpDB(content,definedprimary,dbid,isprimary,
-                     True,hostname,port,datadir)
+        segdb = GpDB(content,preferred_role,dbid,role,'','',
+                     hostname,port,datadir)
         
         seglen = len(self.segments)
         expseglen = len(self.expansionSegments)
@@ -601,14 +613,13 @@ class GpArray:
             self.expansionSegments[expseg_index] = Segment()
 
         seg = self.expansionSegments[expseg_index]
-        if definedprimary is True: 
+        if preferred_role == 'p':
             if seg.primaryDB:
                 raise Exception('Duplicate content id for primary segment')                   
             seg.addPrimary(segdb)
         else:             
             seg.addMirror(segdb)
-    
-            
+
     def validateExpansionSegs(self):
         """ Checks the segments added for various inconsistencies and errors.
         """

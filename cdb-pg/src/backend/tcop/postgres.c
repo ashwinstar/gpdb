@@ -1334,8 +1334,7 @@ CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand)
 {
 	return (Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_PROTOCOL &&
 			Debug_dtm_action_protocol == dtxProtocolCommand &&
-			Debug_dtm_action_segment == Gp_segment &&
-			Debug_dtm_action_primary == Gp_is_primary);
+			Debug_dtm_action_segment == Gp_segment);
 }
 
 
@@ -1402,9 +1401,8 @@ CheckDebugDtmActionSqlCommandTag(const char *sqlCommandTag)
 	bool result;
 
 	result = (Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_SQL &&
-			strcmp(Debug_dtm_action_sql_command_tag, sqlCommandTag) == 0 &&
-			Debug_dtm_action_segment == Gp_segment &&
-			Debug_dtm_action_primary == Gp_is_primary);
+			  strcmp(Debug_dtm_action_sql_command_tag, sqlCommandTag) == 0 &&
+			  Debug_dtm_action_segment == Gp_segment);
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"CheckDebugDtmActionSqlCommandTag Debug_dtm_action_target = %d, Debug_dtm_action_sql_command_tag = '%s' check '%s', Debug_dtm_action_segment = %d, Debug_dtm_action_primary = %s, result = %s.",
 		Debug_dtm_action_target, 
@@ -4538,7 +4536,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 					int		localSlice;
 					int		rootIdx;
 					int		primary_gang_id;
-					int		mirror_gang_id;
 					TimestampTz statementStart;
 					Oid 	suid;
 					Oid 	ouid;
@@ -4572,7 +4569,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 					rootIdx = pq_getmsgint(&input_message, 4);
 					
 					primary_gang_id = pq_getmsgint(&input_message, 4);
-					mirror_gang_id = pq_getmsgint(&input_message, 4);
 					
 					statementStart = pq_getmsgint64(&input_message);
 					/*
@@ -4716,8 +4712,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					DistributedTransactionId gxid;
 					int	primary_gang_id;
-					int mirror_gang_id;
-					
 					int serializedSnapshotlen;
 					const char *serializedSnapshot;
 
@@ -4747,8 +4741,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 					
 					primary_gang_id = pq_getmsgint(&input_message, 4);
 					
-					mirror_gang_id = pq_getmsgint(&input_message, 4);
-
 					serializedSnapshotlen = pq_getmsgint(&input_message, 4);
 
 					/* read in the snapshot info/ DtxContext */

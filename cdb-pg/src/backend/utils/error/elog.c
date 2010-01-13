@@ -2402,9 +2402,7 @@ log_line_prefix(StringInfo buf)
                 if (gp_command_count > 0)
                     appendStringInfo(buf, "cmd%d ", gp_command_count);
                 if (Gp_role == GP_ROLE_EXECUTE)
-                    appendStringInfo(buf, "%s%d ",
-                                     Gp_is_primary ? "seg" : "mir",
-                                     Gp_segment);
+                    appendStringInfo(buf, "seg%d ", Gp_segment);
                 if (currentSliceId > 0)
                     appendStringInfo(buf, "slice%d ", currentSliceId);
                 if (Gp_role == GP_ROLE_DISPATCHAGENT)
@@ -2416,7 +2414,7 @@ log_line_prefix(StringInfo buf)
             case 'P':
                 if( Gp_role == GP_ROLE_EXECUTE )
                 {
-                    appendStringInfoChar(buf, Gp_is_primary?'P':'M');
+                    appendStringInfoChar(buf, 'P');
                 }
                 break;
             case 'R':
@@ -2836,7 +2834,7 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
     /* GPDB specific options */
     syslogger_write_int32(true, "con", gp_session_id, amsyslogger, true); 
     syslogger_write_int32(true, "cmd", gp_command_count, amsyslogger, true); 
-    syslogger_write_int32(false, Gp_is_primary ? "seg" : "mir", Gp_segment, amsyslogger, true); 
+    syslogger_write_int32(false, "seg", Gp_segment, amsyslogger, true); 
     syslogger_write_int32(true, "slice", currentSliceId, amsyslogger, true); 
     {
         DistributedTransactionId dist_trans_id;
@@ -2971,7 +2969,7 @@ write_message_to_server_log(int elevel,
         (MyProcPort == NULL) ? 0 : (pg_time_t)timestamptz_to_time_t(MyProcPort->SessionStartTime);
     fix_fields.send_alert = send_alert ? 't' : 'f';
     fix_fields.omit_location = omit_location ? 't' : 'f';
-    fix_fields.gp_is_primary = Gp_is_primary ? 't' : 'f';
+    fix_fields.gp_is_primary = 't';
     fix_fields.gp_session_id = gp_session_id;
     fix_fields.gp_command_count = gp_command_count;
     fix_fields.gp_segment_id = Gp_segment;

@@ -70,7 +70,7 @@ struct FtsQDMirrorInfo
 	uint16			port;
 
 	/*
-	 * Used to update or delete the standby row of gp_configuration.
+	 * Used to update or delete the standby row of gp_segment_config.
 	 */
 	int2			dbid;
 	bool			valid;
@@ -168,8 +168,6 @@ extern void enableQDMirroring(char *message, char *detail);
 extern char *QDMirroringStateString(void);
 extern char *QDMirroringDisabledReasonString(void);
 
-extern CdbComponentDatabases *applyTransientState(CdbComponentDatabases *);
-extern void FtsEvaluateTransientState(void);
 extern bool isFtsReadOnlySet(void);
 
 extern void FtsUpdateROStatus(bool value);

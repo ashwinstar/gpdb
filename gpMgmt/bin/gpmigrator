@@ -143,8 +143,18 @@ class GPVersion:
                 v = str(v)
 
             # Convert a string into a list, split by '.'
+            #
+            # It would be possible to make the code tollerant of unusual 
+            # versions such as 3.4.0.0_EAP1, but it is generally dangerous to 
+            # support upgrade on EAP releases or other unusual versions that 
+            # have not undergone testing.  It is better to hard code any 
+            # unusual versions that we knows should work.  
+            #
+            # Currently the list of unusual versions consists of "main" and 
+            # "3.4.filerep"
+            # 
             if isinstance(v, str):
-                if v == 'main':
+                if v in ['main', '3.4.filerep']:
                     v = MAIN
                 else:
                     v = v.replace(' dev', '')
@@ -1685,11 +1695,20 @@ This may be specified on the commandline with:
 
         # Determine if there are any invalid segments
         logger.info('Checking that all segments are valid')
-        invalid = self.Select(
-        '''
-           SELECT hostname, datadir FROM gp_configuration
-           WHERE not valid
-        ''', forceutility=True)
+        if self.oldversion < '3.4':
+            qry = '''
+              SELECT hostname, datadir FROM gp_configuration
+              WHERE not valid
+            '''
+        else:
+            qry = '''
+              SELECT hostname, fselocation as datadir
+              FROM gp_configuration 
+              JOIN pg_filespace_entry ON (fsedbid = dbid)
+              JOIN pg_filespace fs ON (fsefsoid = fs.oid)
+              WHERE not valid and fsname = 'pg_system'
+           '''
+        invalid = self.Select(qry, forceutility=True)
         if len(invalid) > 0:
             for item in invalid:
                 logger.fatal('INVALID SEGMENT: %s:/%s' % 
@@ -1715,12 +1734,24 @@ This may be specified on the commandline with:
 
         # Extract the information needed to construct a gp_init_config file
         logger.info('Extracting configuration information')
-        gp_config = self.Select(
-        '''
-           SELECT content::numeric, definedprimary, dbid::numeric, hostname, port::numeric, datadir 
-           FROM gp_configuration 
-           ORDER BY content
-        ''')
+        if self.oldversion < '3.4':
+            qry = '''
+              SELECT content::numeric, definedprimary, dbid::numeric, 
+                     hostname, port::numeric, datadir 
+              FROM gp_configuration 
+              ORDER BY content
+            '''
+        else:
+            qry = '''
+              SELECT content::numeric, definedprimary, dbid::numeric, 
+                     hostname, port::numeric, fselocation as datadir 
+              FROM gp_configuration 
+              JOIN pg_filespace_entry on (fsedbid = dbid)
+              JOIN pg_filespace fs on (fsefsoid = fs.oid)
+              WHERE fsname = 'pg_system'
+              ORDER BY content
+            '''
+        gp_config = self.Select(qry)
 
         # check multi-home and get the hostname
         h = {}
@@ -2373,15 +2404,12 @@ This issue must be resolved before upgrade can complete.
         # We can do this in utility mode since the master host is the only
         # host that contains gp_configuration information
         self.Startup(self.newenv, utility=True)
-        logger.info('Adjusting gp_configuration')
-
-        # gp_configuration needs to point back to the original directory locations.
-        # All the information should be stored in gp_config
-        self.Update("DELETE FROM gp_configuration")
-        self.Update("COPY gp_configuration FROM '%s/gp_config'" % self.workdir) 
-        self.Update("VACUUM FREEZE gp_configuration")
-        self.Update("UPDATE gp_id SET numsegments = %d" % len(self.segments))
-        self.Update("VACUUM FREEZE gp_id")
+        logger.info('Adjusting configuration')
+        self.Update("""
+           UPDATE pg_filespace_entry SET fselocation =
+              regexp_replace(fselocation, E'/gpmigrator/upgrade/','/')
+        """)
+        self.Update("VACUUM FREEZE pg_filespace_entry")
         self.Shutdown()
         self.newenv['MASTER_DATA_DIRECTORY'] = \
             self.oldenv['MASTER_DATA_DIRECTORY']
@@ -2395,14 +2423,15 @@ This issue must be resolved before upgrade can complete.
         # We can do this in utility mode since the master host is the only
         # host that contains gp_configuration information
         self.Startup(self.newenv, utility=True)
-        logger.info('Adjusting gp_configuration')
+        logger.info('Adjusting configuration')
 
-        # gp_configuration needs to point back to the original directory locations.
-        # All the information should be stored in gp_config
-        self.Update("""UPDATE gp_configuration SET
-            datadir = regexp_replace(datadir, E'(%s-?\\\\d+)$',
-            E'gpmigrator/upgrade/\\\\1');""" % self.config['SEG_PREFIX'])
-        self.Update("VACUUM FREEZE gp_configuration")
+        # Move datadirectory location to gpmigrator/upgrade subdirectories
+        self.Update("""
+            UPDATE pg_filespace_entry SET fselocation =
+               regexp_replace(fselocation, E'(/[^/]*)$', 
+                              E'/gpmigrator/upgrade\\\\1')
+            """)
+        self.Update("VACUUM FREEZE pg_filespace_entry")
         self.Shutdown()
 
     #------------------------------------------------------------

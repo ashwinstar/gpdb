@@ -23,11 +23,11 @@ typedef FormData_gp_fault_strategy *Form_gp_fault_strategy;
  *
  * Stores info for failover using SAN.
  */
-#define GpSanConfigRelationName		"gp_san_config"
+#define GpSanConfigRelationName		"gp_san_configuration"
 
 #define GpSanConfigRelationId 5035
 
-CATALOG(gp_san_config,5035) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
+CATALOG(gp_san_configuration,5035) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 {
 	int2		mountid;
 	char		active_host;

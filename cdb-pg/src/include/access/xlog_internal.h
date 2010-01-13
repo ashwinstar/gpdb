@@ -193,6 +193,8 @@ typedef XLogLongPageHeaderData *XLogLongPageHeader;
  */
 #define XLOGDIR				"pg_xlog"
 #define XLOG_CONTROL_FILE	"global/pg_control"
+#define XLOG_CONTROL_FILE_SUBDIR	"global"
+#define XLOG_CONTROL_FILE_SIMPLE	"pg_control"
 
 /*
  * These macros encapsulate knowledge about the exact layout of XLog file

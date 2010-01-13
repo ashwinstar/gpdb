@@ -442,7 +442,6 @@ main(int argc, char **argv)
     SegDB.dbid        = g_sourceDBID;
     SegDB.role		  = g_role;
     SegDB.port        = opts->pgport ? atoi( opts->pgport ) : 5432;
-    SegDB.isValid     = true;
     SegDB.pszHost     = opts->pghost ? strdup(opts->pghost) : NULL;
     SegDB.pszDBName   = opts->dbname ? strdup(opts->dbname) : NULL;
     SegDB.pszDBUser   = opts->username ? strdup(opts->username) : NULL;

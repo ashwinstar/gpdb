@@ -23,10 +23,12 @@
 #include <limits.h>
 #include <unistd.h>
 #include <sys/stat.h>
+
 #ifdef HAVE_SYSLOG
 #include <syslog.h>
 #endif
 
+#include <signal.h>
 
 #include "access/gin.h"
 #include "access/transam.h"
@@ -37,6 +39,7 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbfilerep.h"
 #include "cdb/tupchunk.h"
 #include "commands/async.h"
 #include "commands/vacuum.h"
@@ -146,6 +149,12 @@ static const char *assign_syslog_ident(const char *ident,
 
 static const char *assign_defaultxactisolevel(const char *newval, bool doit,
 						   GucSource source);
+static const char *assign_debug_persistent_relation_print_level(const char *newval,
+						bool doit, GucSource source);
+static const char *assign_debug_persistent_recovery_print_level(const char *newval,
+						bool doit, GucSource source);
+static const char *assign_debug_database_command_print_level(const char *newval,
+						bool doit, GucSource source);
 static const char *assign_log_min_messages(const char *newval, bool doit,
 						GucSource source);
 static const char *assign_client_min_messages(const char *newval,
@@ -243,7 +252,15 @@ bool 		gp_appendonly_verify_write_block = false;
 bool		Debug_appendonly_rezero_quicklz_compress_scratch = false;
 bool		Debug_appendonly_rezero_quicklz_decompress_scratch = false;
 bool		Debug_appendonly_guard_end_quicklz_scratch = false;
+bool		Debug_filerep_skip_persistent_free_list = false;
+bool		Debug_persistent_skip_startup_pass_2 = false;
 bool 		gp_local_distributed_cache_stats = false;
+bool		Debug_persistent_print = false;
+int			Debug_persistent_print_level = LOG;
+bool		Debug_persistent_recovery_print = false;
+int			Debug_persistent_recovery_print_level = LOG;
+bool		Debug_database_command_print = false;
+int			Debug_database_command_print_level = LOG;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -323,6 +340,9 @@ char	   *email_to;
  */
 static char *gp_hashagg_compress_spill_files_str;
 static char *client_min_messages_str;
+static char *Debug_persistent_print_level_str;
+static char *Debug_persistent_recovery_print_level_str;
+static char *Debug_database_command_print_level_str;
 static char *log_min_messages_str;
 static char *log_error_verbosity_str;
 static char *log_statement_str;
@@ -360,6 +380,7 @@ static int	block_size;
 static bool integer_datetimes;
 //static bool standard_conforming_strings;
 static char *gp_log_gang_str;
+static char *gp_log_fts_str;
 static char *gp_log_interconnect_str;
 static char *gp_interconnect_type_str;
 
@@ -1645,6 +1666,26 @@ false
 	},
 				
 	{
+		{"debug_filerep_skip_persistent_free_list", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Don't use persistent free list."),
+		 NULL,
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&Debug_filerep_skip_persistent_free_list,
+		false, NULL, NULL
+	},
+			
+	{
+		{"debug_persistent_skip_startup_pass_2", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Don't use persistent free list."),
+		 NULL,
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&Debug_persistent_skip_startup_pass_2,
+		false, NULL, NULL
+	},
+								
+	{
 		{"gp_cost_hashjoin_chainwalk", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Enable the cost for walking the chain in the hash join"),
 			NULL,
@@ -1652,16 +1693,6 @@ false
 		},
 		&gp_cost_hashjoin_chainwalk,
 		false, NULL, NULL
-	},
-
-	{
-		{"gp_is_primary", PGC_BACKEND, GP_WORKER_IDENTITY,
-			gettext_noop("Reports session type as primary or mirror."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
-		},
-		&Gp_is_primary,
-		true, NULL, NULL
 	},
 
     {
@@ -2032,7 +2063,38 @@ false
 		&Debug_appendonly_use_no_toast,
 		false, NULL, NULL
 	},
+				
+	{
+		{"debug_persistent_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print persistent file-system object debugging information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_persistent_print,
+		false, NULL, NULL
+	},
+
 					
+	{
+		{"debug_persistent_recovery_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print persistent recovery debugging information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_persistent_recovery_print,
+		false, NULL, NULL
+	},
+		
+	{
+		{"debug_database_command_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print database command debugging information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_database_command_print,
+		false, NULL, NULL
+	},
+		
 	{
 		{"test_appendonly_override", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("For testing purposes, change the default of the appendonly create table option."),
@@ -2888,6 +2950,36 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"gp_dbid", PGC_POSTMASTER, PRESET_OPTIONS,
+			gettext_noop("The dbid used by this server."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&GpIdentity.dbid,
+		-1, INT_MIN, INT_MAX, NULL, NULL
+	},
+
+    {
+		{"gp_contentid", PGC_POSTMASTER, PRESET_OPTIONS,
+			gettext_noop("The contentid used by this server."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&GpIdentity.segindex,
+		-1, -1, INT_MAX, NULL, NULL
+	},
+
+    {
+		{"gp_num_contents_in_cluster", PGC_POSTMASTER, PRESET_OPTIONS,
+			gettext_noop("Sets the number of segments in the cluster."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&GpIdentity.numsegments,
+		-1, -1, INT_MAX, NULL, NULL
+	},
+
+	{
 		{"gp_max_csv_line_length", PGC_USERSET, EXTERNAL_TABLES,
 			gettext_noop("Maximum allowed length of a csv input data row in bytes"),
 			NULL,
@@ -3117,7 +3209,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL | GUC_UNIT_S | GUC_GPDB_ADDOPT
 		},
 		&gp_debug_linger,
-		45, 0, 3600, NULL, NULL
+		120, 0, 3600, NULL, NULL
 #else
 		{"gp_debug_linger", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Number of seconds for QD/QE process to linger upon fatal internal error."),
@@ -3504,6 +3596,51 @@ static struct config_int ConfigureNamesInt[] =
 		50, 1, INT_MAX, NULL, NULL
 	},
 
+	{
+		{"file_rep_message_body_length", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Size (in bytes) for FileRep message body."),
+			NULL
+		},
+		&file_rep_message_body_length,
+		32768, 32768, 262144, NULL, NULL
+	},
+
+	{
+		{"file_rep_buffer_size", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Size (in bytes) for FileRep shared memory."),
+			NULL
+		},
+		&file_rep_buffer_size,
+		2097152, 1048576, 16777216, NULL, NULL
+	},
+
+	{
+		{"file_rep_ack_buffer_size", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Size (in bytes) for FileRepAck shared memory."),
+			NULL
+		},
+		&file_rep_ack_buffer_size,
+		524288, 131072, 1048576, NULL, NULL
+	},
+
+	{
+		{"file_rep_retry", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Number of retries to insert message in shared memory before fault is reported."),
+			NULL
+		},
+		&file_rep_retry,
+		300, 1, 3000, NULL, NULL
+	},
+
+	{
+		{"file_rep_min_data_before_flush", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Size (in bytes) that a FileRep buffer must reach before the client flushes the data."),
+			NULL
+		},
+		&file_rep_min_data_before_flush,
+		128*1024, 8*1024, 16*1024*1024, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL
@@ -3773,7 +3910,43 @@ static struct config_string ConfigureNamesString[] =
 		&log_min_messages_str,
 		"warning", assign_log_min_messages, NULL
 	},
+		
+	{
+		{"debug_persistent_relation_print_level", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the persistent relation debug message levels that are logged."),
+			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, DEBUG1, "
+			"INFO, NOTICE, WARNING, ERROR, LOG, FATAL, and PANIC. Each level "
+						 "includes all the levels that follow it."),
+			GUC_GPDB_ADDOPT
+		},
+		&Debug_persistent_print_level_str,
+		"log", assign_debug_persistent_relation_print_level, NULL
+	},
 
+	{
+		{"debug_persistent_recovery_print_level", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the persistent recovery debug message levels that are logged."),
+			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, DEBUG1, "
+			"INFO, NOTICE, WARNING, ERROR, LOG, FATAL, and PANIC. Each level "
+						 "includes all the levels that follow it."),
+			GUC_GPDB_ADDOPT
+		},
+		&Debug_persistent_recovery_print_level_str,
+		"log", assign_debug_persistent_recovery_print_level, NULL
+	},
+		
+	{
+		{"debug_database_command_error_level", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the database command debug message levels that are logged."),
+			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, DEBUG1, "
+			"INFO, NOTICE, WARNING, ERROR, LOG, FATAL, and PANIC. Each level "
+						 "includes all the levels that follow it."),
+			GUC_GPDB_ADDOPT
+		},
+		&Debug_database_command_print_level_str,
+		"log", assign_debug_database_command_print_level, NULL
+	},
+					
  	{
 		{"IntervalStyle", PGC_USERSET, CLIENT_CONN_LOCALE,
 			gettext_noop("Sets the display format for interval values."),
@@ -4291,6 +4464,15 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&gp_log_gang_str,
 		"terse", gpvars_assign_gp_log_gang, gpvars_show_gp_log_gang
+	},
+
+	{
+		{"gp_log_fts", PGC_POSTMASTER, LOGGING_WHAT,
+			gettext_noop("Sets the verbosity of logged messages pertaining to fault probing."),
+			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\"."),
+		},
+		&gp_log_fts_str,
+		"terse", gpvars_assign_gp_log_fts, gpvars_show_gp_log_fts
 	},
 
 	{
@@ -8687,6 +8869,27 @@ assign_defaultxactisolevel(const char *newval, bool doit, GucSource source)
 	else
 		return NULL;
 	return newval;
+}
+
+static const char *
+assign_debug_persistent_relation_print_level(const char *newval,
+						bool doit, GucSource source)
+{
+	return (assign_msglvl(&Debug_persistent_print_level, newval, doit, source));
+}
+
+static const char *
+assign_debug_persistent_recovery_print_level(const char *newval,
+						bool doit, GucSource source)
+{
+	return (assign_msglvl(&Debug_persistent_recovery_print_level, newval, doit, source));
+}
+
+static const char *
+assign_debug_database_command_print_level(const char *newval,
+						bool doit, GucSource source)
+{
+	return (assign_msglvl(&Debug_database_command_print_level, newval, doit, source));
 }
 
 static const char *

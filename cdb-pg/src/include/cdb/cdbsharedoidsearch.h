@@ -1,0 +1,152 @@
+/*-------------------------------------------------------------------------
+ *
+ * cdbsharedoidsearch.h
+ *
+ * Copyright (c) 2009-2010, Greenplum inc
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifndef CDBSHAREDOIDSEARCH_H
+#define CDBSHAREDOIDSEARCH_H
+
+#include "utils/palloc.h"
+#include "storage/fd.h"
+#include "cdb/cdbshareddoublylinked.h"
+#include "cdb/cdbsharedoidsearch.h"
+
+
+typedef struct SharedOidSearchFreeObjPool
+{
+	SharedListBase		listBase;
+
+	SharedDoublyLinkedHead		freeList;
+} SharedOidSearchFreeObjPool;
+
+typedef struct SharedOidSearchHashBucket
+{
+	SharedDoublyLinkedHead	bucketListHead;
+} SharedOidSearchHashBucket;
+
+typedef struct SharedOidSearchObjHeader
+{
+	struct
+	{
+		SharedDoubleLinks	links;
+
+		int16	pinCount;
+
+		bool	isDeleted;
+	} private;
+
+	Oid	oid1;
+	Oid oid2;
+
+	uint8	clientData[0];
+} SharedOidSearchObjHeader;
+
+typedef struct SharedOidSearchDescr
+{
+	struct
+	{
+		int32		tableLen;
+
+		int32		hashSize;
+
+		SharedOidSearchFreeObjPool		freePool;
+	} private;
+} SharedOidSearchDescr;
+
+typedef struct SharedOidSearchTable
+{
+	struct
+	{
+		SharedOidSearchDescr *descr;
+
+		SharedOidSearchHashBucket	buckets[1];
+	} private;
+} SharedOidSearchTable;
+
+typedef enum SharedOidSearchAddResult
+{
+	SharedOidSearchAddResult_None = 0,
+	SharedOidSearchAddResult_Ok = 1,
+	SharedOidSearchAddResult_Exists = 2,
+	SharedOidSearchAddResult_NoMemory = 3,
+	MaxSharedOidSearchAddResult /* must always be last */
+} SharedOidSearchAddResult;
+
+
+// -----------------------------------------------------------------------------
+// Initialize
+// -----------------------------------------------------------------------------
+
+extern void SharedOidSearch_InitDescr(
+	SharedOidSearchDescr *descr,
+				/* The template of shared search tables to initialize. */
+
+	int32 tableLen,
+				/* The byte length of the search table. */
+
+	int32 hashSize,
+				/* The hash array size */
+
+	uint8 *sharedMem,
+				/* The shared-memory to use. */
+
+	int32 sharedMemLen,
+				/* The byte length of the shared-memory. */
+
+	int32 objectLen);
+				/* 
+				 * The total length of the objects that includes the embedded header
+				 * SharedOidSearchObjHeader.
+				 */
+
+static inline int32 SharedOidSearch_TableLen(
+	int32 hashSize)
+				/* The hash array size */
+{
+	return offsetof(SharedOidSearchTable,private.buckets) +
+		   hashSize*sizeof(SharedOidSearchHashBucket);
+}
+				
+
+extern void SharedOidSearch_InitTable(
+	SharedOidSearchTable *table,
+				/* The shared search tables to initialize. */
+	
+	SharedOidSearchDescr *descr);
+				/* The template of shared search tables. */
+
+// -----------------------------------------------------------------------------
+// Add, Find, Probe, Iterate, and Delete
+// -----------------------------------------------------------------------------
+
+extern SharedOidSearchAddResult SharedOidSearch_Add(
+	SharedOidSearchTable 		*table,
+	Oid 						oid1,
+	Oid 						oid2,
+	SharedOidSearchObjHeader	**header);
+
+extern SharedOidSearchObjHeader *SharedOidSearch_Find(
+	SharedOidSearchTable 	*table,
+	Oid 					oid1,
+	Oid 					oid2);
+
+extern SharedOidSearchObjHeader *SharedOidSearch_Probe(
+	SharedOidSearchTable 	*table,
+	Oid 					oid1);
+
+extern void SharedOidSearch_Iterate(
+	SharedOidSearchTable 		*table,
+	SharedOidSearchObjHeader	**header);
+
+extern void SharedOidSearch_ReleaseIterator(
+		SharedOidSearchTable		*table,
+		SharedOidSearchObjHeader	**header);
+
+extern void SharedOidSearch_Delete(
+	SharedOidSearchTable 		*table,
+	SharedOidSearchObjHeader	*header);
+																																																																
+#endif   /* CDBSHAREDOIDSEARCH_H */

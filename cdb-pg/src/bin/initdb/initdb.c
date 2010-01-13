@@ -63,7 +63,14 @@
 #include "mb/pg_wchar.h"
 #include "getaddrinfo.h"
 #include "getopt_long.h"
+#include "postgres.h"
 #include "miscadmin.h"
+
+#include "catalog/pg_tablespace.h"
+#include "catalog/pg_database.h"
+#include "catalog/pg_class.h"
+#include "storage/relfilenode.h"
+#include "access/persistentfilesysobjname.h"
 
 #ifndef HAVE_INT_OPTRESET
 int			optreset;
@@ -94,6 +101,7 @@ static char *pwfilename = NULL;
 static char *authmethod = "";
 static bool debug = false;
 static bool noclean = false;
+static bool forMirrorOnly = false;
 static bool show_setting = false;
 static char *xlog_dir = "";
 
@@ -241,6 +249,24 @@ do { \
 		output_failed = true, output_errno = errno; \
 } while (0)
 
+#define PG_CMD_PRINTF3(fmt, arg1, arg2, arg3) \
+		do { \
+			if (fprintf(cmdfd, fmt, arg1, arg2, arg3) < 0 || fflush(cmdfd) < 0) \
+				output_failed = true, output_errno = errno; \
+		} while (0)
+		
+#define PG_CMD_PRINTF4(fmt, arg1, arg2, arg3, arg4) \
+	do { \
+		if (fprintf(cmdfd, fmt, arg1, arg2, arg3, arg4) < 0 || fflush(cmdfd) < 0) \
+			output_failed = true, output_errno = errno; \
+	} while (0)
+	
+#define PG_CMD_PRINTF5(fmt, arg1, arg2, arg3, arg4, arg5) \
+			do { \
+				if (fprintf(cmdfd, fmt, arg1, arg2, arg3, arg4, arg5) < 0 || fflush(cmdfd) < 0) \
+					output_failed = true, output_errno = errno; \
+			} while (0)
+			
 #ifndef WIN32
 #define QUOTE_PATH	""
 #define DIR_SEP "/"
@@ -2128,6 +2154,83 @@ setup_cdb_schema(void)
 	check_ok();
 }
 
+/*
+ * Load persistent tables from pg_class, etc.
+ */
+static void
+setup_gp_persistent_tables(void)
+{
+	PG_CMD_DECL;
+
+	fputs(_("loading file-system persistent tables for template1 ... "), stdout);
+	fflush(stdout);
+
+	snprintf(cmd, sizeof(cmd),
+			 "\"%s\" %s template1 >%s",
+			 backend_exec, backend_options,
+			 DEVNULL);
+
+	PG_CMD_OPEN;
+	
+	PG_CMD_PUTS("SELECT gp_persistent_build_db();\n");
+
+#ifdef suppress
+
+    PG_CMD_PRINTF2("SELECT gp_persistent_tablespace_node_add(%u::oid, %d::smallint);\n",
+				   GLOBALTABLESPACE_OID,
+				   PersistentFileSysState_Created);
+
+    PG_CMD_PRINTF2("SELECT gp_persistent_tablespace_node_add(%u::oid, %d::smallint);\n",
+				   DEFAULTTABLESPACE_OID,
+				   PersistentFileSysState_Created);
+
+    PG_CMD_PRINTF2("SELECT gp_persistent_database_node_add(%u::oid, 0::oid, %d::smallint);\n",
+				   GLOBALTABLESPACE_OID,
+				   PersistentFileSysState_Created);
+
+    PG_CMD_PRINTF1("SELECT gp_persistent_database_node_add(subq.tablespace_oid, subq.database_oid, %u::smallint) "
+		           "   FROM "
+		           "   (SELECT dattablespace as tablespace_oid, oid as database_oid "
+                   "        FROM pg_database) subq;\n",
+                   PersistentFileSysState_Created);
+
+	PG_CMD_PRINTF4("SELECT gp_persistent_relation_node_add(subq.tablespace_oid, subq.database_oid, subq.relfilenode_oid, %u::smallint) "
+				   "   FROM "
+				   "   (SELECT cl.reltablespace as tablespace_oid, 0 as database_oid, cl.relfilenode as relfilenode_oid "
+	   			   "        FROM pg_class as cl "
+	   			   "        WHERE cl.reltablespace = %u AND (cl.relkind <> '%c' AND cl.relkind <> '%c') "
+		   		   "        ORDER BY tablespace_oid, database_oid, relfilenode_oid) as subq;\n",
+				   PersistentFileSysState_Created,
+				   GLOBALTABLESPACE_OID,
+				   RELKIND_VIEW,
+				   RELKIND_COMPOSITE_TYPE);
+
+	PG_CMD_PRINTF5("SELECT gp_persistent_relation_node_add(subq.tablespace_oid, subq.database_oid, subq.relfilenode_oid, %u::smallint) "
+				   "   FROM "
+				   "   (SELECT %u as tablespace_oid, %u as database_oid, cl.relfilenode as relfilenode_oid "
+				   "		FROM pg_class as cl "
+				   "		WHERE cl.reltablespace = 0 AND (cl.relkind <> '%c' AND cl.relkind <> '%c') "
+				   "		ORDER BY tablespace_oid, database_oid, relfilenode_oid) as subq;\n",
+				   PersistentFileSysState_Created,
+				   DEFAULTTABLESPACE_OID,
+				   TemplateDbOid,
+				   RELKIND_VIEW,
+				   RELKIND_COMPOSITE_TYPE);
+
+	// NOTE: The following query works because we are working with the shared-global tables
+	// NOTE: and one database -- template1.
+
+	PG_CMD_PUTS("INSERT INTO gp_relation_node "
+				"	 (SELECT per.tablespace_oid as tablespace_oid, per.relfilenode_oid as relfilenode_oid, "
+				"            per.ctid as persistent_tid, per.persistent_serial_num as persisent_serial_num "
+				"	  FROM gp_persistent_relation_node AS per);\n ");
+
+#endif
+
+	PG_CMD_CLOSE;
+
+	check_ok();
+}
 
 
 /*
@@ -2689,6 +2792,7 @@ usage(const char *progname)
 	printf(_("  -s, --show                show internal settings\n"));
 	printf(_("  -L DIRECTORY              where to find the input files\n"));
 	printf(_("  -n, --noclean             do not clean up after errors\n"));
+	printf(_("  -m, --formirror           only create data needed to start the backend in mirror mode\n"));
 	printf(_("\nIf the data directory is not specified, the environment variable PGDATA\n"
 			 "is used.\n"));
 	printf(_("\nReport bugs to <pgsql-bugs@postgresql.org>.\n"));
@@ -2785,7 +2889,7 @@ main(int argc, char *argv[])
 
 	/* process command-line options */
 
-	while ((c = getopt_long(argc, argv, "dD:E:L:nU:WA:sX:", long_options, &option_index)) != -1)
+	while ((c = getopt_long(argc, argv, "dD:E:L:mnU:WA:sX:", long_options, &option_index)) != -1)
 	{
         const char *optname;
         char        shortopt[2];
@@ -2826,6 +2930,9 @@ main(int argc, char *argv[])
 			case 'd':
 				debug = true;
 				printf(_("Running in debug mode.\n"));
+				break;
+			case 'm':
+				forMirrorOnly = true;
 				break;
 			case 'n':
 				noclean = true;
@@ -3365,40 +3472,49 @@ main(int argc, char *argv[])
 	/* Now create all the text config files */
 	setup_config();
 
-	/* Bootstrap template1 */
-	bootstrap_template1(short_version);
+	if ( ! forMirrorOnly)
+	{
+		/* Bootstrap template1 */
+		bootstrap_template1(short_version);
 
-	/*
-	 * Make the per-database PG_VERSION for template1 only after init'ing it
-	 */
-	set_short_version(short_version, "base/1");
+		/*
+		 * Make the per-database PG_VERSION for template1 only after init'ing it
+		 */
+		set_short_version(short_version, "base/1");
 
-	/* Create the stuff we don't need to use bootstrap mode for */
+		/* Create the stuff we don't need to use bootstrap mode for */
 
-	setup_auth();
-	if (pwprompt || pwfilename)
-		get_set_pwd();
+		/*
+		 * Must be the first thing we do on template1 to make sure we capture all
+		 * relation creates.
+		 */
+		setup_gp_persistent_tables();
 
-	setup_depend();
+		setup_auth();
+		if (pwprompt || pwfilename)
+			get_set_pwd();
 
-	setup_sysviews();
+		setup_depend();
 
-	setup_description();
+		setup_sysviews();
 
-	setup_conversion();
+		setup_description();
 
-	setup_privileges();
+		setup_conversion();
 
-	setup_schema();
+		setup_privileges();
 
-	/* sets up the Greenplum Database admin schema */
-	setup_cdb_schema();
+		setup_schema();
 
-	vacuum_db();
+		/* sets up the Greenplum Database admin schema */
+		setup_cdb_schema();
 
-	make_template0();
+		vacuum_db();
 
-	make_postgres();
+		make_template0();
+
+		make_postgres();
+	}
 
 	if (authwarning != NULL)
 		fprintf(stderr, "%s", authwarning);

@@ -55,7 +55,7 @@ get_max_oid_from_segDBs(void)
 	
 	initStringInfo(&errbuf);
 
-	results = cdbdisp_dispatchRMCommand(buffer.data, true, false, &errbuf, &resultCount);
+	results = cdbdisp_dispatchRMCommand(buffer.data, true, &errbuf, &resultCount);
 
 	if (errbuf.len > 0)
 		ereport(ERROR, (errmsg("pg_highest_oid error (gathered %d results from cmd '%s')", resultCount, buffer.data),

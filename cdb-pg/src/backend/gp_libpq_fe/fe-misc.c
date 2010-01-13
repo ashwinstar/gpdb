@@ -528,18 +528,11 @@ pqPutMsgBytes(const void *buf, size_t len, PGconn *conn)
 	return 0;
 }
 
-/*
- * pqPutMsgEnd: finish constructing a message and possibly send it
- *
- * Returns 0 on success, EOF on error
- *
- * We don't actually send anything here unless we've accumulated at least
- * 8K worth of data (the typical size of a pipe buffer on Unix systems).
- * This avoids sending small partial packets.  The caller must use pqFlush
- * when it's important to flush all the data out to the server.
+/**
+ * Same as pqPutMsgEnd except that data is NEVER flushed.
  */
-int
-pqPutMsgEnd(PGconn *conn)
+void
+pqPutMsgEndNoAutoFlush(PGconn *conn)
 {
 	if (conn->Pfdebug)
 		fprintf(conn->Pfdebug, "To backend> Msg complete, length %u\n",
@@ -556,6 +549,22 @@ pqPutMsgEnd(PGconn *conn)
 
 	/* Make message eligible to send */
 	conn->outCount = conn->outMsgEnd;
+}
+
+/*
+ * pqPutMsgEnd: finish constructing a message and possibly send it
+ *
+ * Returns 0 on success, EOF on error
+ *
+ * We don't actually send anything here unless we've accumulated at least
+ * 8K worth of data (the typical size of a pipe buffer on Unix systems).
+ * This avoids sending small partial packets.  The caller must use pqFlush
+ * when it's important to flush all the data out to the server.
+ */
+int
+pqPutMsgEnd(PGconn *conn)
+{
+	pqPutMsgEndNoAutoFlush(conn);
 
 	if (conn->outCount >= 8192)
 	{

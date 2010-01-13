@@ -97,7 +97,7 @@ def usage(exitarg):
 
 ################
 def print_version():
-    print '%s version $Revision$' % script_name
+    print '%s version main build dev' % script_name
     sys.exit(0)
 
 ################
@@ -188,8 +188,8 @@ def info_text():
 def gp_fault_action(db):
     db.execute('show gp_fault_action')
     fault_action_row = db.read_tuple()
-    return fault_action_row[0]
-    
+    #return fault_action_row[0]
+    return 'continue'    
 
 ################
 #   config file 
@@ -225,16 +225,16 @@ def parseMirrorConfig():
         
 ################
 def get_minmax_port(db):
-    db.execute("select max(port) from gp_configuration where content<>-1 and definedprimary='t'")
+    db.execute("select max(port) from gp_segment_configuration where content<>-1 and preferred_role='p'")
     row = db.read_tuple()
     max_pri_port = row[0]    
-    db.execute("select min(port) from gp_configuration where content<>-1 and definedprimary='t'")
+    db.execute("select min(port) from gp_segment_configuration where content<>-1 and preferred_role='p'")
     row = db.read_tuple()
     min_pri_port = row[0]    
-    db.execute("select max(port) from gp_configuration where content<>-1 and definedprimary='f'")
+    db.execute("select max(port) from gp_segment_configuration where content<>-1 and preferred_role='m'")
     row = db.read_tuple()
     max_mir_port = row[0]    
-    db.execute("select min(port) from gp_configuration where content<>-1 and definedprimary='f'")
+    db.execute("select min(port) from gp_segment_configuration where content<>-1 and preferred_role='m'")
     row = db.read_tuple()
     min_mir_port = row[0]    
     return (min_pri_port, max_pri_port, min_mir_port, max_mir_port)
@@ -245,11 +245,11 @@ def get_fail_count_type(db, failed_dbids):
     mir_fail_count = 0
 
     for dbid in failed_dbids:
-        db.execute("select definedprimary from %s as _gp_pg_view where dbid=%d" % (ENV.GP_PG_VIEW, dbid))
+        db.execute("select preferred_role from gp_segment_configuration where dbid=%d" % (dbid))
         r = db.read_tuple()
-        isPrimary = r[0]
+        prefRole = r[0]
 
-        if isPrimary:
+        if prefRole == 'p':
             pri_fail_count += 1
         else:
             mir_fail_count += 1
@@ -302,7 +302,7 @@ def chk_pool_host(db, failed_dbids):
     (pri_fail_count, mir_fail_count) = get_fail_count_type(db, failed_dbids)
     
     # Check for directores in use
-    db.execute("select distinct hostname from gp_configuration where content<>-1")
+    db.execute("select distinct hostname from gp_segment_configuration where content<>-1")
     hostlist = [ r[0] for r in db.iterate_tuple() ]
     hostname = {}
     for host in hostlist:
@@ -326,16 +326,28 @@ def chk_pool_host(db, failed_dbids):
     else:
         predicate = "hostname='%s'" % opt['-p']
 
-    db.execute("select datadir from gp_configuration where definedprimary='t' and (%s)" %  (predicate))
+    qry = '''
+      SELECT fselocaction as datadir
+      FROM   pg_filespace_entry JOIN gp_segment_configuration on (dbid = fsedbid)
+      WHERE  fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+        AND  preferred_role='p' and (%s)
+    ''' % predicate
+    db.execute(qry)
     pri_pool_host_in_use = [ r[0] for r in db.iterate_tuple() ]
     gpmlib.log_info('Pool host %s active primary segment count = %d' % (opt['-p'], len(pri_pool_host_in_use)))
 
-    db.execute("select datadir from gp_configuration where definedprimary='f' and (%s)" %  (predicate))    
+    qry = '''
+      SELECT fselocaction as datadir
+      FROM   pg_filespace_entry JOIN gp_segment_configuration on (dbid = fsedbid)
+      WHERE  fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+        AND  preferred_role='m' and (%s)
+    ''' % predicate
+    db.execute(qry)
     mir_pool_host_in_use = [ r[0] for r in db.iterate_tuple() ]
     gpmlib.log_info('Pool host %s active mirror segment count = %d' % (opt['-p'], len(mir_pool_host_in_use)))
     
     # Get number of primary and mirror segments on a standard host
-    db.execute("select count(distinct port) from gp_configuration where definedprimary='t' and content<>-1")
+    db.execute("select count(distinct port) from gp_segment_configuration where preferred_role = 'p' and content<>-1")
     r = db.read_tuple()
     pool_host_limit = r[0]
 
@@ -365,11 +377,23 @@ def chk_pool_host(db, failed_dbids):
     gpmlib.log_info('Greenplum instance segment prefix is %s' % seg_prefix)
     gpmlib.log_info('Obtaining a list of primary segment datadir prefixes')
 
-    db.execute("select datadir from gp_configuration where content<>-1 and definedprimary='t'")
+    qry = '''
+      SELECT fselocaction as datadir
+      FROM   pg_filespace_entry JOIN gp_segment_configuration on (dbid = fsedbid)
+      WHERE  fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+        AND  preferred_role='p' and content <> -1 and (%s)
+    ''' % predicate
+    db.execute(qry)
     pri_datadir_prefix = [ os.path.dirname(x[0]) for x in db.iterate_tuple()]
     pri_datadir_prefix = gpmlib.unique(pri_datadir_prefix)
 
-    db.execute("select datadir from gp_configuration where content<>-1 and definedprimary='f'")
+    qry = '''
+      SELECT fselocaction as datadir
+      FROM   pg_filespace_entry JOIN gp_segment_configuration on (dbid = fsedbid)
+      WHERE  fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+        AND  preferred_role='m' and content <> -1 and (%s)
+    ''' % predicate
+    db.execute(qry)
     mir_datadir_prefix = [ os.path.dirname(x[0]) for x in db.iterate_tuple()]
     mir_datadir_prefix = gpmlib.unique(mir_datadir_prefix)
     
@@ -396,7 +420,7 @@ def chk_pool_host(db, failed_dbids):
 #     1. get the free primary/mirror directory by get_free_dir()
 #     2. get the free port by get_free_port()
 #     3. create a pool_failed_instance with new_host, new_dir and new_port
-#     4. save the tuple (new_host, new_dir, new_port, failed_qe['dbid']) and update gp_configuration after recovery
+#     4. save the tuple (new_host, new_dir, new_port, failed_qe['dbid']) and update gp_segment_configuration after recovery
 #
 #  return (update_sql, pool_failed_instance_array)
 #
@@ -413,8 +437,8 @@ def pool_host_dir_validation(db, failed_instance_array, pri_pool_host_in_use, mi
     update_sql = []
     new_host = opt['-p']
     for failed_qe in failed_instance_array:
-        seg_type = failed_qe['definedprimary']
-        if seg_type:
+        seg_type = failed_qe['preferred_role']
+        if seg_type == 'p':
             # primary segment
             new_dir = get_free_dir(failed_qe, pri_pool_host_in_use, pri_datadir_prefix)
             pri_pool_host_in_use.append(new_dir)
@@ -427,7 +451,7 @@ def pool_host_dir_validation(db, failed_instance_array, pri_pool_host_in_use, mi
             new_port = get_free_port(db, failed_qe, new_host, min_mir_port, max_mir_port, pool_port_in_use)
             pool_port_in_use.append(new_port)
 
-        # save the tuple and update gp_configuration after recovery (see pool_catalog_update)
+        # save the tuple and update gp_segment_configuration after recovery (see pool_catalog_update)
         update_sql.append((new_host, new_dir, new_port, failed_qe['dbid']))
         
         a = {}
@@ -436,7 +460,7 @@ def pool_host_dir_validation(db, failed_instance_array, pri_pool_host_in_use, mi
         a['datadir'] = new_dir
         a['dbid'] = failed_qe['dbid']
         a['content'] = failed_qe['content']
-        a['definedprimary'] = failed_qe['definedprimary']
+        a['preferred_role'] = failed_qe['preferred_role']
         pool_failed_instance_array.append(a)
 
     return (update_sql, pool_failed_instance_array)
@@ -511,7 +535,7 @@ def get_free_dir(failed_qe, dir_used_list, dir_chk_list):
 
 def get_free_port(db, failed_qe, host, min_port, max_port, port_in_use):
 
-    db.execute("select count(*) from gp_configuration where hostname=$1 and port=$2", 
+    db.execute("select count(*) from gp_segment_configuration where hostname=$1 and port=$2", 
                host, failed_qe['port'])
     r = db.read_tuple()
     free_count = r[0]
@@ -527,7 +551,7 @@ def get_free_port(db, failed_qe, host, min_port, max_port, port_in_use):
     else:
         free_port = 0
         for p in range(min_port, max_port):
-            db.execute("select count(*) from gp_configuration where hostname=$1 and port=$2", 
+            db.execute("select count(*) from gp_segment_configuration where hostname=$1 and port=$2", 
                        host, p)
             r = db.read_tuple()
             free_count = r[0]
@@ -706,12 +730,14 @@ def update_gp_conf(mirrors):
                                options='-c gp_session_role=utility')
 
         # update Greenplum database configuration
+        system_filespace = 3052
         for m in mirrors:
             history_message = "GPRECOVERSEG: content %d, dbid %d, hostname %s, port %s, datadir %s" % (m['content'], m['dbid'], m['hostname'], m['port'], m['datadir'])
             db.execute("insert into gp_configuration_history values(now(), $1, $2)", m['dbid'], history_message)
-            db.execute("insert into gp_configuration values($1, $2, $3, $4, $5, $6, $7, $8)",
-                       m['content'], False, m['dbid'], False, True, 
-                       m['hostname'], m['port'], m['datadir'])
+            # XXX: is this insert correct ? When do we end up here anyhow ?
+            db.execute("insert into gp_segment_configuration values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, null)",
+                       m['dbid'], m['content'], 'm', 'm', 's', 'u', m['port'], m['hostname'], m['hostname'], m['replication_port'])
+            db.execute("insert into pg_filespace_entry values($1, $2, $3)", system_filespace, m['dbid'], m['datadir'])
         
     except pg8000.errors.InterfaceError, e:
         gpmlib.error(e)
@@ -809,7 +835,7 @@ def get_datadirs(ndatadir):
 
 ################                                      
 def get_failed_dbids(db):
-    db.execute("select dbid from %s as _gp_pg_view where valid=$1" % ENV.GP_PG_VIEW, False)
+    db.execute("select dbid from gp_segment_configuration where status <> 'u' OR mode <> 's'")
     dbids = [r[0] for r in db.iterate_tuple()]
     return dbids
 
@@ -823,7 +849,9 @@ def chk_separate_host(db, mir_type_num, failed_dbids):
 
     if mir_type_num == ENV.MIRROR_MULTI_HOME_GROUP_TYPE and opt['-p']:
         # group mirror type is separate hosts, check to see if pool host is active
-        db.execute("select distinct(definedprimary) from gp_configuration where hostname='%s'" % opt['-p'])
+        db.execute("select distinct(preferred_role) from gp_segment_configuration where hostname='%s'" % opt['-p'])
+
+        # XXX: type_active ??
         type_active = [ r[0] for r in db.iterate_tuple() ]
         if len(type_active) == 0:
             gpmlib.log_info('Mirror type is separate hosts, no active segments on pool host')
@@ -833,9 +861,9 @@ def chk_separate_host(db, mir_type_num, failed_dbids):
             mir_count = 0
             
             for dbid in failed_dbids:
-                db.execute("select definedprimary from gp_configuration where dbid=%d" % dbid)
+                db.execute("select preferred_role from gp_segment_configuration where dbid=%d" % dbid)
                 r = db.read_tuple()
-                if r[0]:
+                if r[0] == 'p':
                     pri_count += 1
                 else:
                     mir_count += 1
@@ -867,23 +895,34 @@ def get_mirror_details(db, failed_dbids):
 
     failed_instance_array = []
     active_instance_array = []
-
+ 
     for dbid in failed_dbids:
-        db.execute("select definedprimary, hostname, port, datadir, dbid, content from gp_configuration where dbid=%d" % dbid)
+        qry = '''
+          SELECT preferred_role, hostname, port, fselocation as datadir, dbid, content 
+          FROM   gp_segment_configuration JOIN pg_filespace_entry on (dbid=fsedbid)
+          WHERE  fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+            AND  dbid=%d
+        ''' % dbid
+        db.execute(qry)
         r = db.read_dict()
         failed_content = r['content']
         failed_instance_array.append(r)
 
-        db.execute('''select dbid from %s as _gp_pg_view where content in 
-                      (select content from %s as _gp_pg_view2 where dbid = %d) 
-                      and dbid <> %d''' % (ENV.GP_PG_VIEW, ENV.GP_PG_VIEW, dbid, dbid))
+        db.execute('''select dbid from gp_segment_configuration where content in 
+                      (select content from gp_segment_configuration where dbid = %d) 
+                      and dbid <> %d''' % (dbid, dbid))
         r = db.read_tuple()
         active_dbid = r[0]
 
-        db.execute('''select definedprimary, hostname, port, datadir, dbid, content from gp_configuration 
-                      where valid='t' and 
-                      content in (select content from gp_configuration where dbid=%d) 
-                      and dbid <> %d''' % (active_dbid, dbid))
+        qry = '''
+          SELECT preferred_role, hostname, port, fselocation as datadir, dbid, content 
+          FROM   gp_segment_configuration JOIN pg_filespace_entry on (dbid=fsedbid)
+          WHERE  fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+            AND  status = 'u' AND mode = 's'
+            AND content in (select content from gp_segment_configuration where dbid=%d) 
+            AND dbid <> %d
+        ''' % (active_dbid, dbid)
+        db.execute(qry)
 
         r = db.read_dict()
         if r is None:
@@ -933,22 +972,32 @@ def chk_pool_dir_available(db, failed_dbids):
     seg_prefix = gpmlib.get_gp_prefix(os.environ.get('MASTER_DATA_DIRECTORY'))
     gpmlib.log_info('Greenplum instance segment prefix is %s' % seg_prefix)
 
-    db.execute('''select hostname, port, datadir, dbid from gp_configuration where 
-                  datadir like '%s%%' and content<>-1''' % 
-               (os.path.join(pri_pool_dir, seg_prefix)))
+    qry = '''
+      SELECT hostname, port, fselocation as datadir, dbid
+      FROM   gp_segment_configuration JOIN pg_filespace_entry on (dbid=fsedbid)
+      WHERE  fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+        AND  fselocation like '%s%%'
+        AND  content <>1
+    ''' % (os.path.join(pri_pool_dir, seg_prefix))
+    db.execute(qry)
 
     active_pri_pool_array = [ x for x in db.iterate_dict() ]
     gpmlib.log_info('There are %d primary directory pools active' % len(active_pri_pool_array))
-    
-    db.execute('''select hostname, port, datadir, dbid from gp_configuration where 
-                  datadir like '%s%%' and content<>-1''' % 
-               (os.path.join(mir_pool_dir, seg_prefix)))
+
+    qry = '''
+      SELECT hostname, port, fselocation as datadir, dbid
+      FROM   gp_segment_configuration JOIN pg_filespace_entry on (dbid=fsedbid)
+      WHERE  fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+        AND  fselocation like '%s%%'
+        AND  content <>1
+    ''' % (os.path.join(mir_pool_dir, seg_prefix))
+    db.execute(qry)
 
     active_mir_pool_array = [ x for x in db.iterate_dict() ]
     gpmlib.log_info('There are %d mirror directory pools active' % len(active_mir_pool_array))    
 
     # maximum pool directory usage will be defined by number of primary QE hosts in the array
-    db.execute("select count(distinct(hostname)) from gp_configuration where content<>-1 and definedprimary='t'")
+    db.execute("select count(distinct(hostname)) from gp_segment_configuration where content<>-1 and preferred_role='p'")
     r = db.read_tuple()
     pool_dir_limit = r[0]
 
@@ -1015,12 +1064,12 @@ def pool_dir_validation(db, failed_instance_array):
 
     (min_pri_port, max_pri_port, min_mir_port, max_mir_port) =  get_minmax_port(db)
 
-    db.execute('''select distinct(hostname) from gp_configuration
-                where content<>-1 and definedprimary='t' order by hostname''')
+    db.execute('''select distinct(hostname) from gp_segment_configuration
+                where content<>-1 and preferred_role='p' order by hostname''')
     pri_pool_dir_host_array = [ x[0] for x in db.iterate_tuple() ]
 
-    db.execute('''select distinct(hostname) from gp_configuration
-                where content<>-1 and definedprimary='f' order by hostname''')
+    db.execute('''select distinct(hostname) from gp_segment_configuration
+                where content<>-1 and preferred_role='m' order by hostname''')
     mir_pool_dir_host_array = [ x[0] for x in db.iterate_tuple() ]
     
     pri_pool_dir_host_chk_array = []
@@ -1045,7 +1094,7 @@ def pool_dir_validation(db, failed_instance_array):
     pool_failed_instance_array = []
     update_sql = []
     for failed_qe in failed_instance_array:
-        if failed_qe['definedprimary']:
+        if failed_qe['preferred_role'] == 'p':
             # primary segment
             new_host = get_host(db, failed_qe, pri_pool_dir_host_chk_array, 
                                 mir_pool_dir_host_chk_array, pri_used, mir_used)
@@ -1065,7 +1114,7 @@ def pool_dir_validation(db, failed_instance_array):
                 new_port = max_mir_port + 1
             mir_used.append(new_host)            
 
-        # save the tuple and update gp_configuration after recovery (see pool_catalog_update)
+        # save the tuple and update gp_segment_configuration after recovery (see pool_catalog_update)
         update_sql.append((new_host, new_dir, new_port, failed_qe['dbid']))
 
         a = {}
@@ -1074,7 +1123,7 @@ def pool_dir_validation(db, failed_instance_array):
         a['datadir'] = new_dir
         a['dbid'] = failed_qe['dbid']
         a['content'] = failed_qe['content']
-        a['definedprimary'] = failed_qe['definedprimary']
+        a['preferred_role'] = failed_qe['preferred_role']
         pool_failed_instance_array.append(a)        
 
     return (update_sql, pool_failed_instance_array)
@@ -1125,15 +1174,15 @@ def get_host(db, failed_qe, pri_pool_dir_host_chk_array,
     pri_pool_dir = dir[0]
     mir_pool_dir = dir[1]
 
-    db.execute("select hostname from gp_configuration where content=$1 and definedprimary<> $2",
-               failed_qe['content'], failed_qe['definedprimary'])
+    db.execute("select hostname from gp_segment_configuration where content=$1 and preferred_role<>$2",
+               failed_qe['content'], failed_qe['preferred_role'])
     r = db.read_tuple()
     partner_host = r[0]
 
     gpmlib.log_info('Partner host for %s is %s' % (failed_qe['hostname'], partner_host))
     new_host = None
 
-    if failed_qe['definedprimary']:
+    if failed_qe['preferred_role'] == 'p':
         chk_partner_array = pri_pool_dir_host_chk_array
         dir_chk = pri_pool_dir
         used = pri_used
@@ -1151,8 +1200,13 @@ def get_host(db, failed_qe, pri_pool_dir_host_chk_array,
         if not found:
             if chk_host != partner_host:
                 gpmlib.log_info('Checking host %s to see if pool directory active')
-                db.execute('''select count(*) from gp_configuration where hostname=$1 and datadir like $2''', 
-                           chk_host, '%s%%' % dir_chk)
+                qry = '''
+                   SELECT count(*)
+                   FROM   gp_segment_configuration JOIN pg_filespace_entry on (dbid=fsedbid)
+                   WHERE  fsefsoid = (SELECT oid from pg_filespace where fsname='pg_system')
+                     AND  hostname=$1 and fselocation like $2
+                '''
+                db.execute(qry, chk_host, '%s%%' % dir_chk)
                 r = db.read_tuple()
                 is_used = r[0]
 
@@ -1166,8 +1220,13 @@ def get_host(db, failed_qe, pri_pool_dir_host_chk_array,
 
 
     if new_host is None:
-        db.execute('''select count(*) from gp_configuration where hostname=$1 and datadir like $2''',
-                   partner_host, '%s%%' % dir_chk)
+        qry = '''
+              SELECT count(*)
+              FROM   gp_segment_configuration JOIN pg_filespace_entry on (dbid=fsedbid)
+              WHERE  fsefsoid = (SELECT oid from pg_filespace where fsname='pg_system')
+                AND  hostname=$1 and fselocation like $2
+              '''
+        db.execute(qry, partner_host, '%s%%' % dir_chk)
         r = db.read_tuple()
         is_used = r[0]
         if is_used == 0:
@@ -1208,9 +1267,13 @@ def force_recover(db):
             gpmlib.fatal('Option -z string %s incorrect' % opt['-z'])
         
         # Obtain hostname for segment instance directory that is to be recovered
-        db.execute("select count(*) from gp_configuration where datadir=$1 and hostname=$2",
-                   failed_dir,
-                   failed_host)
+        qry = '''
+              SELECT count(*)
+              FROM   gp_segment_configuration JOIN pg_filespace_entry on (dbid=fsedbid)
+              WHERE  fsefsoid = (SELECT oid from pg_filespace where fsname='pg_system')
+                AND  hostname=$1 and fselocation like $2
+              '''
+        db.execute(qry, failed_dir, failed_host)
         r = db.read_tuple()
         failed_instance_count = r[0]
         if failed_instance_count == 0:
@@ -1218,10 +1281,15 @@ def force_recover(db):
         if failed_instance_count > 1:
             gpmlib.fatal('Found multiple records for %s for host %s' % (failed_dir, failed_host))
                 
-        db.execute("select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration where datadir=$1 and hostname=$2",
-                   failed_dir, failed_host)
+        qry = '''
+              SELECT preferred_role, hostname, port, fselocation as datadir, dbid, content, mode, status
+              FROM   gp_segment_configuration JOIN pg_filespace_entry on (dbid=fsedbid)
+              WHERE  fsefsoid = (SELECT oid from pg_filespace where fsname='pg_system')
+                AND  fselocation=$1 and hostname=$2
+              '''
+        db.execute(qry, failed_dir, failed_host)
     else:
-        db.execute("select count(*) from gp_configuration where dbid=$1", opt['-S'])
+        db.execute("select count(*) from gp_segment_configuration where dbid=$1", opt['-S'])
         r = db.read_tuple()
         failed_instance_count = r[0]
         if failed_instance_count == 0:
@@ -1229,18 +1297,31 @@ def force_recover(db):
         if failed_instance_count > 1:
             gpmlib.fatal('Found multiple records for dbid %d' % opt['-S'])
                 
-        db.execute("select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration where dbid=$1", opt['-S'])        
+        qry = '''
+              SELECT preferred_role, hostname, port, fselocation as datadir, dbid,
+                     content, mode, status
+              FROM   gp_segment_configuration JOIN pg_filespace_entry on (dbid=fsedbid)
+              WHERE  fsefsoid = (SELECT oid from pg_filespace where fsname='pg_system')
+                AND  dbid=$1
+              '''
+        db.execute(qry, opt['-S'])
 
     failed_instance_array = [ x for x in db.iterate_dict() ]
     failed_dbids = [ x['dbid'] for x in failed_instance_array]
-    db.execute('''select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration 
-                  where dbid<> %d and 
-                  content in (select content from gp_configuration where dbid=%d)''' %
-               (failed_dbids[0], failed_dbids[0]))
+    qry = '''
+          SELECT preferred_role, hostname, port, fselocation as datadir, dbid, content, mode, status
+          FROM   gp_segment_configuration JOIN pg_filespace_entry on (dbid=fsedbid)
+          WHERE  fsefsoid = (SELECT oid from pg_filespace where fsname='pg_system')
+            AND  content in (select content from gp_segment_configuration where dbid=%d)
+            AND  dbid=<> %d 
+          ''' % (failed_dbids[0], failed_dbids[0])
+    db.execute(qry)
+               
     active_instance_array = [ x for x in db.iterate_dict() ]
     if len(active_instance_array) != 1:
         gpmlib.fatal('Did not locate 1 recovery segment instance, obtained %d active segment' % len(active_instance_array))
     for x in active_instance_array:
+        # XXX: valid needs changing.
         if x['valid'] == False:
             gpmlib.fatal('Recovery segment instance (%d) is invalid' % x['dbid'])
 
@@ -1345,10 +1426,14 @@ def stop_database(failed_instance_array):
 
 ################                                      
 def pool_catalog_update(db, update_sql):
-    for sql in update_sql:                                                                                                            
-        history_message = "GPRECOVERSEG: set hostname %s port %d datadir %s where dbid %d" % (sql[0], sql[2], sql[1], sql[3])
-        db.execute("insert into gp_configuration_history values (now(), $1, $2", sql[3], history_message)
-        db.execute("update gp_configuration set hostname=$1, datadir=$2, port=$3 where dbid=$4", sql[0], sql[1], sql[2], sql[3])
+    for sql in update_sql:
+        (hostname, datadir, port, dbid) = sql
+        system_filespace = 3052
+
+        history_message = "GPRECOVERSEG: set hostname %s port %d datadir %s where dbid %d" % (hostname, port, datadir, dbid)
+        db.execute("insert into gp_configuration_history values (now(), $1, $2", dbid, history_message)
+        db.execute("update gp_segment_configuration set hostname=$1, datadir=$2, port=$3 where dbid=$4", hostname, datadir, port, dbid)
+        db.execute("update pg_filespace_entry set fselocation=$1 where dbid=$2 and fsefsoid=$3", datadir, dbid, system_filespace)
 
 ################
 def update_status(db, recovered_qes):
@@ -1360,9 +1445,11 @@ def update_status(db, recovered_qes):
                          qe['port']))
         try:
             db.begin()
+            # XXX: need some updates here.
             db.execute("insert into gp_configuration_history values (now(), $1, 'GPRECOVERSEG: set valid=t')", int(qe['dbid']))
-            db.execute("update gp_configuration set valid = 't' where dbid = CAST(%d AS smallint)" % qe['dbid'])
-            db.execute("update gp_configuration set isprimary = definedprimary where content = CAST(%d AS smallint)" % qe['content'])
+            #db.execute("update gp_segment_configuration set valid = 't' where dbid = CAST(%d AS smallint)" % qe['dbid'])
+            db.execute("update gp_segment_configuration set mode='s', status ='u' where dbid = CAST(%d AS smallint)" % qe['dbid'])
+            db.execute("update gp_segment_configuration set role = preferred_role where content = CAST(%d AS smallint)" % qe['content'])
             db.commit()
         except (pg8000.errors.InterfaceError, pg8000.errors.ProgrammingError), e:
             gpmlib.log_warn('Unable to mark dbid %d as valid.' % int(qe['dbid']))
@@ -1401,8 +1488,8 @@ def reset_qe_connect(db):
             buf.write('|')
         gpmlib.log_info(buf.getvalue())
 
-    gpmlib.log_info('Dump of gp_configuration ********************************************')
-    db.execute('select * from gp_configuration')
+    gpmlib.log_info('Dump of gp_segment_configuration ********************************************')
+    db.execute('select * from gp_segment_configuration')
     for r in db.iterate_tuple():
         buf = StringIO.StringIO()
         for x in r:
@@ -1432,11 +1519,19 @@ def parse_config(db):
                 cfg = failed_qe[0].split(':')
                 if len(cfg) != 3:
                     gpmlib.fatal('config file format error. %s' % line)
-                db.execute('''select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration where hostname=$1 and port=$2 and datadir=$3''',
-                           cfg[0].strip(), int(cfg[1]), cfg[2].strip())
+                qry = '''
+                      SELECT preferred_role, hostname, port, 
+                             fselocation as datadir, dbid, content, mode, status
+                      FROM   gp_segment_configuration 
+                      JOIN   pg_filespace_entry ON (dbid=fsedbid)
+                      WHERE fsefsoid = (select oid from pg_filespace 
+                                        where fsname='pg_system')
+                        AND hostname=$1 AND port=$2 AND fselocation=$3
+                '''
+                db.execute(qry, cfg[0].strip(), int(cfg[1]), cfg[2].strip())
                 r = db.read_dict()
                 if r is None:
-                    gpmlib.fatal('Segment %s not found' % line)                
+                    gpmlib.fatal('Segment %s not found' % line)
                 failed_instance_array.append(r)
             else:
                 gpmlib.fatal('Config file format error')
@@ -1459,11 +1554,18 @@ def parse_config(db):
     failed_dbids = [ x['dbid'] for x in failed_instance_array]
 
     for failed_dbid in failed_dbids:
-        db.execute('''select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration 
-                  where dbid<> %d and 
-                  content in (select content from gp_configuration where dbid=%d)''' %
-                   (failed_dbid, failed_dbid))  
+        qry = '''
+           SELECT preferred_role, hostname, port, fselocation as datadir, 
+                  content, mode, status
+           FROM gp_segment_configuration join pg_filespace_entry on (dbid = fsedbid)
+           WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+             AND dbid <> %d
+             AND content in (select content from gp_segment_configuration where dbid=%d)
+        ''' % (failed_dbid, failed_dbid)
+        db.execute(qry)
         r = db.read_dict()
+
+        # XXX: valid needs changing.
         if r['valid'] == False:
             gpmlib.fatal('Recovery segment instance (%d) is invalid' % r['dbid'])
         active_instance_array.append(r)
@@ -1549,7 +1651,7 @@ try:
         multi_home = gpmlib.chk_multi_home(hosts)
 
         # get gp_fault_action
-        fault_action =  gp_fault_action(db)
+        fault_action = gp_fault_action(db)
         if fault_action != 'readonly' and fault_action != 'continue':
             gpmlib.log_fatal('Parameter gp_fault_action is not set to either readonly or continue')
             gpmlib.log_fatal('Greenplum fault tolerance is not set')
@@ -1607,7 +1709,6 @@ try:
                     gpmlib.log_info('    gprecoverseg -F')
                     sys.exit(0)
 
-
             # pool host opt['-p']
             if opt['-p']:
                 (pri_pool_host_in_use, mir_pool_host_in_use, pri_datadir_prefix, mir_datadir_prefix) = chk_pool_host(db, failed_dbids)
@@ -1624,7 +1725,6 @@ try:
                 print_config(failed_instance_array, active_instance_array, pool_failed_instance_array)
                 gpmlib.log_info('Configuration file output to %s successfully.' % opt['-o'])
                 sys.exit(0)
-
 
         if len(failed_dbids) == 0:
             gpmlib.log_info('No invalid segment instances located')
@@ -1668,7 +1768,9 @@ try:
                 db.begin()
                 history_message = "GPRECOVERSEG: marking segment as invalid due to forced recovery while in read-only mode."
                 db.execute("insert into gp_configuration_history values(now(), $1, $2)", qe['dbid'], history_message)
-                db.execute("UPDATE gp_configuration SET valid = 'f' where dbid = CAST(%d AS smallint)" % qe['dbid'])
+                # XXX: is this update correct ?
+                #db.execute("UPDATE gp_segment_configuration SET valid = 'f' where dbid = CAST(%d AS smallint)" % qe['dbid'])
+                db.execute("UPDATE gp_segment_configuration SET mode='s', status ='u' where dbid = CAST(%d AS smallint)" % qe['dbid'])
                 db.commit()
             
 
@@ -1681,14 +1783,20 @@ try:
         db.close()
         db = None
 
+    gpmlib.log_info('Testing access')
+
     # test access
     test_access(failed_array, active_instance_array)
     
     # stop database or failed instances
     stop_database(failed_instance_array)
 
+    gpmlib.log_info('Stopped database')
+
     # recover data
     (success, completed, failed, total, recovered_qes) = recover_data(failed_instance_array, active_instance_array, pool_failed_instance_array)
+
+    gpmlib.log_info('Recovered data %s' % success)
 
     # start master QD in admin mode if force restart
     if opt['-f']:
@@ -1703,7 +1811,6 @@ try:
 
         if opt['-p'] or opt['-s']:
             pool_catalog_update(db, update_sql)
-
 
         if opt['-f']:
             # update status of recovered segments

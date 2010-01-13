@@ -394,14 +394,17 @@ def create_mirrors(qes, mirrors):
 
 ################
 def update_gp_conf(db, mirrors):
+    system_filespace = 3052
 
     # update Greenplum database configuration
     for m in mirrors:
         history_message = "GPADDMIRRORS: content %d, dbid %d, hostname %s, port %s, datadir %s" % (m['content'], m['dbid'], m['hostname'], m['port'], m['datadir'])
         db.execute("insert into gp_configuration_history values(now(), $1, $2)", m['dbid'], history_message)
-        db.execute("insert into gp_configuration values($1, $2, $3, $4, $5, $6, $7, $8)",
+        db.execute("insert into gp_configuration values($1, $2, $3, $4, $5, $6, $7, null)",
                    m['content'], False, m['dbid'], False, True, 
-                   m['hostname'], m['port'], m['datadir'])
+                   m['hostname'], m['port'])
+        db.execute("insert into pg_filespace_entry values($1, $2, $3)",
+                   system_filespace, m['dbid'], m['datadir'])
 
 ################
 def display_param(master_datadir, master_port, qes, mirrors, multi_home):
@@ -496,7 +499,13 @@ def get_standby_count(db):
     return len(c)
 
 def get_standby_details(db):
-    db.execute("select hostname, datadir, port, valid, definedprimary from gp_configuration where content=-1 and dbid<>1")
+    qry = '''
+      SELECT hostname, fselocation as datadir, port, valid, definedprimary
+      FROM gp_configuration join pg_filespace_entry on (dbid = fsedbid)
+      WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+        AND content=-1 and dbid <> 1
+    '''
+    db.execute(qry)
     return db.read_dict()
 
 ################                           

@@ -394,7 +394,6 @@ extern char *PQbuildGpQueryString(const char  *command,
 								   int			localSlice,
 								   int			rootIdx,
 								   int		   	primary_gang_id,
-								   int		   	mirror_gang_id,
 /* Ugly, because c.h might not be included in all files that use this */
 #ifdef HAVE_INT64	
 								   int64
@@ -420,7 +419,6 @@ extern char *PQbuildGpDtxProtocolCommand(
 					  char*						gid,
 					  int   					gxid,
 					  int						primary_gang_id,
-					  int						mirror_gang_id,
 					  char*                     argument,
 					  int                       argumentLength,
 					  int         		    	*final_len);

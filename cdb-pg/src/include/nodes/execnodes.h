@@ -313,23 +313,25 @@ typedef struct ResultRelInfo
  */
 typedef struct Slice
 {
-        NodeTag type;
+	NodeTag type;
         
-        int sliceIndex;                        /* The index in the global slice table of this
-                                                         * slice.  The root slice of the main plan is
-                                                         * always 0. Slices that have senders at their
-                                                         * local root have a sliceIndex equal to the
-                                                         * motionID of their sender Motion.
-                                                         *
-                                                         * Undefined slices should have this set to
-                                                         * -1.
-                                                         */
+	int sliceIndex;		/*
+						 * The index in the global slice table of this
+						 * slice.  The root slice of the main plan is
+						 * always 0. Slices that have senders at their
+						 * local root have a sliceIndex equal to the
+						 * motionID of their sender Motion.
+						 *
+						 * Undefined slices should have this set to
+						 * -1.
+						 */
         
-        int rootIndex;                        /* The root slice of the slice tree of which
-                                                         * this slice is a part.
-                                                         */
+	int rootIndex;		/*
+						 * The root slice of the slice tree of which
+						 * this slice is a part.
+						 */
                                                         
-        GangType gangType;                /* What kind of gang does this slice need? */
+	GangType gangType;	/* What kind of gang does this slice need? */
         
         int gangSize;                        /* How many gang members needed?
                                                          *
@@ -346,57 +348,44 @@ typedef struct Slice
          * directDispatch->isDirectDispatch should ONLY be set for a slice when it requires an n-gang.
          */
         DirectDispatchInfo directDispatch;
-                                                        
-        struct Gang *primaryGang;
-        struct Gang *mirrorGang;
-                            /* These are significant ONLY in the master
-                                                         * slice table on the QD where they are used to
-                                                         * note the gangs assigned by the the executor
-                                                         * factory during gang allocation.
-                                                         * They correspond to the CDBProcessLists below.
-                                                         */
+
+	struct Gang *primaryGang;
         
-        int          primary_gang_id;
-        int   mirror_gang_id;
-                                                        /*
-                                                         * So the Dispatch Agent can know what gang we are
-                                                         * talking about
-                                                         */
+	int          primary_gang_id; /* tell dispatch agents which gang we're talking about.*/
+
                                                         
-        int         parentIndex;         /* the index of parent in global slice table (origin 0)
-                                                         * or -1 if this is root slice.
-                                                         */
+	int         parentIndex;	/*
+								 * the index of parent in global slice table (origin 0)
+								 * or -1 if this is root slice.
+								 */
                                                         
-        List *children;                        /* An integer list of indices in the global slice
-                                                         * table (origin  0) of the child slices of
-                                                         * this slice, or -1 if this is a leaf slice.
-                                                         * A child slice corresponds to a receiving
-                                                         * motion in this slice.
-                                                         */
+	List *children;				/*
+								 * An integer list of indices in the global slice
+								 * table (origin  0) of the child slices of
+								 * this slice, or -1 if this is a leaf slice.
+								 * A child slice corresponds to a receiving
+								 * motion in this slice.
+								 */
         
-        List *primaryProcesses;        /* A list of CDBProcess nodes corresponding to
-                                                         * the worker processes allocated to implement
-                                                         * this plan slice.
-                                                         *
-                                                         * The number of processes must agree with the
-                                                         * the plan slice to be implemented.  In MPP 2
-                                                         * the possibilities are 1 for a slice that
-                                                         * operates on a single stream of tuples (e.g.,
-                                                         * the receiver of a fixed motion, a 1-gang), or
-                                                         * the number of segments (e.g., a parallel
-                                                         * operation or the receiver of the results of a
-                                                         * parallel operation, an N-gang).
-                                                         *
-                                                         * The processes of an N-gang must be in hash
-                                                         * value order -- a hash value of H used to direct
-                                                         * an input tuple to this slice will direct it to
-                                                         * the H+1st process in the list.
-                                                         */
-                                                        
-        List *mirrorProcesses;        /* A list of CDBProcess nodes corresponding to
-                                                         * the mirrors of the primaryProcesses list entries,
-                                                         * or NIL if no mirroring is needed in this slice.
-                                                         */
+	List *primaryProcesses;		/*
+								 * A list of CDBProcess nodes corresponding to
+								 * the worker processes allocated to implement
+								 * this plan slice.
+								 *
+								 * The number of processes must agree with the
+								 * the plan slice to be implemented.  In MPP 2
+								 * the possibilities are 1 for a slice that
+								 * operates on a single stream of tuples (e.g.,
+								 * the receiver of a fixed motion, a 1-gang), or
+								 * the number of segments (e.g., a parallel
+								 * operation or the receiver of the results of a
+								 * parallel operation, an N-gang).
+								 *
+								 * The processes of an N-gang must be in hash
+								 * value order -- a hash value of H used to direct
+								 * an input tuple to this slice will direct it to
+								 * the H+1st process in the list.
+								 */
 } Slice;
 
 /* The SliceTable is a list of Slice structures organized into root slices
@@ -414,36 +403,35 @@ typedef struct Slice
  */
 typedef struct SliceTable
 {
-        NodeTag type;
+	NodeTag type;
         
-        int nMotions;                /* The number Motion nodes in the entire plan */
-        int nSubplans;                /* The number of subplan slices allocated */
-        int localSlice;                /* Index of the slice to execute. */
-         List *slices;                /* List of slices */
-        char *seqServerHost;        /* If non-null, sequence server host name. */
-        int seqServerPort;                /* If seqServerHost non-null, sequence server port. */
-    bool    doInstrument;   /* true => collect stats for EXPLAIN ANALYZE */
-
-        uint32 ic_instance_id;
+	int	nMotions;				/* The number Motion nodes in the entire plan */
+	int nSubplans;				/* The number of subplan slices allocated */
+	int localSlice;				/* Index of the slice to execute. */
+	List *slices;				/* List of slices */
+	char *seqServerHost;		/* If non-null, sequence server host name. */
+	int seqServerPort;			/* If seqServerHost non-null, sequence server port. */
+    bool    doInstrument;		/* true => collect stats for EXPLAIN ANALYZE */
+	uint32 ic_instance_id;
 } SliceTable;
 
 typedef struct ShareNodeEntry
 {
-        NodeTag type;
+	NodeTag type;
 
-        Node *sharePlan;
-        Node *shareState;
+	Node *sharePlan;
+	Node *shareState;
 } ShareNodeEntry;
 
 typedef struct PartitionState
 {
-        NodeTag type;
+	NodeTag type;
 
-        AttrNumber max_partition_attr;
-        int result_partition_array_size; /* max elements of result relation array */
-        HTAB *result_partition_hash;
-        MemoryContext part_cxt;
-        void **amstate; /* access method specific lookup, one for each level */
+	AttrNumber max_partition_attr;
+	int result_partition_array_size; /* max elements of result relation array */
+	HTAB *result_partition_hash;
+	MemoryContext part_cxt;
+	void **amstate; /* access method specific lookup, one for each level */
 } PartitionState;
 
 /* ----------------
@@ -454,113 +442,112 @@ typedef struct PartitionState
  */
 typedef struct EState
 {
-        NodeTag                type;
+	NodeTag                type;
 
-        /* Basic state for all query types: */
-        ScanDirection es_direction; /* current scan direction */
-        Snapshot        es_snapshot;        /* time qual to use */
-        Snapshot        es_crosscheck_snapshot; /* crosscheck time qual for RI */
-		List	   *es_range_table; /* List of RangeTblEntry */
+	/* Basic state for all query types: */
+	ScanDirection es_direction; /* current scan direction */
+	Snapshot        es_snapshot;        /* time qual to use */
+	Snapshot        es_crosscheck_snapshot; /* crosscheck time qual for RI */
+	List	   *es_range_table; /* List of RangeTblEntry */
 
-        /* Info about target table for insert/update/delete queries: */
-        ResultRelInfo *es_result_relations; /* array of ResultRelInfos */
-        int                        es_num_result_relations;                /* length of array */
-        ResultRelInfo *es_result_relation_info;                /* currently active array elt */
-        JunkFilter *es_junkFilter;        /* currently active junk filter */
+	/* Info about target table for insert/update/delete queries: */
+	ResultRelInfo *es_result_relations; /* array of ResultRelInfos */
+	int                        es_num_result_relations;                /* length of array */
+	ResultRelInfo *es_result_relation_info;                /* currently active array elt */
+	JunkFilter *es_junkFilter;        /* currently active junk filter */
 
-        /* partitioning info for target relation */
-        PartitionNode *es_result_partitions;
+	/* partitioning info for target relation */
+	PartitionNode *es_result_partitions;
 
-        /* AO fileseg info for target relation */
-        List                *es_result_aosegnos;
+	/* AO fileseg info for target relation */
+	List                *es_result_aosegnos;
         
-        TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
+	TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
 
-        Relation        es_into_relation_descriptor;        /* for SELECT INTO */
-        bool                es_into_relation_use_wal;
+	Relation        es_into_relation_descriptor;        /* for SELECT INTO */
+	bool                es_into_relation_use_wal;
 
-        /* Parameter info: */
-        ParamListInfo es_param_list_info;        /* values of external params */
-        ParamExecData *es_param_exec_vals;        /* values of internal params */
+	/* Parameter info: */
+	ParamListInfo es_param_list_info;        /* values of external params */
+	ParamExecData *es_param_exec_vals;        /* values of internal params */
 
-        /* Other working state: */
-        MemoryContext es_query_cxt; /* per-query context in which EState lives */
+	/* Other working state: */
+	MemoryContext es_query_cxt; /* per-query context in which EState lives */
 
-        TupleTable        es_tupleTable;        /* Array of TupleTableSlots */
+	TupleTable        es_tupleTable;        /* Array of TupleTableSlots */
 
-        uint64                es_processed;        /* # of tuples processed */
-        Oid                        es_lastoid;                /* last oid processed (by INSERT) */
-        List           *es_rowMarks;        /* not good place, but there is no other */
+	uint64                es_processed;        /* # of tuples processed */
+	Oid                        es_lastoid;                /* last oid processed (by INSERT) */
+	List           *es_rowMarks;        /* not good place, but there is no other */
 
-        bool                es_is_subquery;        /* true if subquery (es_query_cxt not mine) */
+	bool                es_is_subquery;        /* true if subquery (es_query_cxt not mine) */
 
-        bool                es_instrument;        /* true requests runtime instrumentation */
-        bool                es_select_into; /* true if doing SELECT INTO */
-        bool                es_into_oids;        /* true to generate OIDs in SELECT INTO */
+	bool                es_instrument;        /* true requests runtime instrumentation */
+	bool                es_select_into; /* true if doing SELECT INTO */
+	bool                es_into_oids;        /* true to generate OIDs in SELECT INTO */
 
-        List           *es_exprcontexts;        /* List of ExprContexts within EState */
+	List           *es_exprcontexts;        /* List of ExprContexts within EState */
 
-        /*
-         * this ExprContext is for per-output-tuple operations, such as constraint
-         * checks and index-value computations.  It will be reset for each output
-         * tuple.  Note that it will be created only if needed.
-         */
-        ExprContext *es_per_tuple_exprcontext;
+	/*
+	 * this ExprContext is for per-output-tuple operations, such as constraint
+	 * checks and index-value computations.  It will be reset for each output
+	 * tuple.  Note that it will be created only if needed.
+	 */
+	ExprContext *es_per_tuple_exprcontext;
 
-        /* Below is to re-evaluate plan qual in READ COMMITTED mode */
-        Plan           *es_topPlan;                /* link to top of plan tree */
-        struct evalPlanQual *es_evalPlanQual;                /* chain of PlanQual states */
-        bool           *es_evTupleNull; /* local array of EPQ status */
-        HeapTuple  *es_evTuple;                /* shared array of EPQ substitute tuples */
-        bool                es_useEvalPlan; /* evaluating EPQ tuples? */
+	/* Below is to re-evaluate plan qual in READ COMMITTED mode */
+	Plan           *es_topPlan;                /* link to top of plan tree */
+	struct evalPlanQual *es_evalPlanQual;                /* chain of PlanQual states */
+	bool           *es_evTupleNull; /* local array of EPQ status */
+	HeapTuple  *es_evTuple;                /* shared array of EPQ substitute tuples */
+	bool                es_useEvalPlan; /* evaluating EPQ tuples? */
         
-        /* Additions for MPP plan slicing. */
-        int es_cur_root_idx;
-        int es_cur_slice_idx;
-         SliceTable *es_sliceTable;
-        struct MotionState **es_slice_map;
+	/* Additions for MPP plan slicing. */
+	int es_cur_root_idx;
+	int es_cur_slice_idx;
+	SliceTable *es_sliceTable;
+	struct MotionState **es_slice_map;
         
-        /* Data structure for node sharing */
-        List **es_sharenode;
+	/* Data structure for node sharing */
+	List **es_sharenode;
 
-        int active_recv_id;
-        void *motionlayer_context;  /* Motion Layer state */
-        struct ChunkTransportState *interconnect_context; /* Interconnect state */
+	int active_recv_id;
+	void *motionlayer_context;  /* Motion Layer state */
+	struct ChunkTransportState *interconnect_context; /* Interconnect state */
         
-        /* MPP used resources */
-        bool es_interconnect_is_setup;   /* is interconnect set-up?    */
-        bool es_seqserver_is_setup;      /* is sequence server set-up? */
+	/* MPP used resources */
+	bool es_interconnect_is_setup;   /* is interconnect set-up?    */
+	bool es_seqserver_is_setup;      /* is sequence server set-up? */
         
-        bool es_got_eos;                                /* was end-of-stream recieved? */
+	bool es_got_eos;                                /* was end-of-stream recieved? */
 
-        bool cancelUnfinished;                /* when we're cleaning up, we need to make sure that we know it */
+	bool cancelUnfinished;                /* when we're cleaning up, we need to make sure that we know it */
 
     /* results from qExec processes */
     struct CdbDispatchResults  *primaryResults;
-    struct CdbDispatchResults  *mirrorResults;
 
-        /* dispatch threads for this command */
-        struct CdbDispatchCmdThreads  *dispatchThreads;
+	/* dispatch threads for this command */
+	struct CdbDispatchCmdThreads  *dispatchThreads;
 
     /* CDB: EXPLAIN ANALYZE statistics */
     struct CdbExplain_ShowStatCtx  *showstatctx;
         
-        /* CDB: INSERT state */
-        struct HeapInsertDesc *es_HeapInsertDesc;
+	/* CDB: INSERT state */
+	struct HeapInsertDesc *es_HeapInsertDesc;
 
-        /* CDB: partitioning state info */
-        PartitionState *es_partition_state;
+	/* CDB: partitioning state info */
+	PartitionState *es_partition_state;
 } EState;
 
 
 /* es_rowMarks is a list of these structs: */
 typedef struct ExecRowMark
 {
-        Relation        relation;                /* opened and RowShareLock'd relation */
-        Index                rti;                        /* its range table index */
-        bool                forUpdate;                /* true = FOR UPDATE, false = FOR SHARE */
-        bool                noWait;                        /* NOWAIT option */
-        char                resname[32];        /* name for its ctid junk attribute */
+	Relation	relation;		/* opened and RowShareLock'd relation */
+	Index		rti;			/* its range table index */
+	bool		forUpdate;		/* true = FOR UPDATE, false = FOR SHARE */
+	bool		noWait;			/* NOWAIT option */
+	char		resname[32];	/* name for its ctid junk attribute */
 } ExecRowMark;
 
 
@@ -575,23 +562,23 @@ typedef struct TupleHashTableData *TupleHashTable;
 
 typedef struct TupleHashEntryData
 {
-        /* firstTuple must be the first field in this struct! */
-        MemTuple firstTuple;        /* copy of first tuple in this group */
-        /* there may be additional data beyond the end of this struct */
+	/* firstTuple must be the first field in this struct! */
+	MemTuple firstTuple;		/* copy of first tuple in this group */
+	/* there may be additional data beyond the end of this struct */
 } TupleHashEntryData;                        /* VARIABLE LENGTH STRUCT */
 
 typedef struct TupleHashTableData
 {
-        HTAB           *hashtab;                /* underlying dynahash table */
-        int                        numCols;                /* number of columns in lookup key */
-        AttrNumber *keyColIdx;                /* attr numbers of key columns */
-        FmgrInfo   *eqfunctions;        /* lookup data for comparison functions */
-        FmgrInfo   *hashfunctions;        /* lookup data for hash functions */
-        MemoryContext tablecxt;                /* memory context containing table */
-        MemoryContext tempcxt;                /* context for function evaluations */
-        Size                entrysize;                /* actual size to make each hash entry */
-        TupleTableSlot *tableslot;        /* slot for referencing table entries */
-        TupleTableSlot *inputslot;        /* current input tuple's slot */
+	HTAB		*hashtab;		/* underlying dynahash table */
+	int			numCols;		/* number of columns in lookup key */
+	AttrNumber *keyColIdx;		/* attr numbers of key columns */
+	FmgrInfo   *eqfunctions;	/* lookup data for comparison functions */
+	FmgrInfo   *hashfunctions;	/* lookup data for hash functions */
+	MemoryContext tablecxt;		/* memory context containing table */
+	MemoryContext tempcxt;		/* context for function evaluations */
+	Size		entrysize;		/* actual size to make each hash entry */
+	TupleTableSlot *tableslot;	/* slot for referencing table entries */
+	TupleTableSlot *inputslot;	/* current input tuple's slot */
 } TupleHashTableData;
 
 typedef HASH_SEQ_STATUS TupleHashIterator;
@@ -616,26 +603,26 @@ typedef HASH_SEQ_STATUS TupleHashIterator;
 /* Abstraction of different memory management calls */
 typedef struct MemoryManagerContainer
 {
-        void *manager; /* memory manager instance */
-        void *(*alloc)(void *manager, Size len);
-        void (*free)(void *manager, void *pointer);
-        /*
-         * If existing space is too small, the realloced space is how many
-         * times of the existing one.
-         */
-        int realloc_ratio;
+	void *manager; /* memory manager instance */
+	void *(*alloc)(void *manager, Size len);
+	void (*free)(void *manager, void *pointer);
+	/*
+	 * If existing space is too small, the realloced space is how many
+	 * times of the existing one.
+	 */
+	int realloc_ratio;
 } MemoryManagerContainer;
 
 static inline void *cxt_alloc(void *manager, Size len)
 {
-        return MemoryContextAlloc((MemoryContext)manager, len);
+	return MemoryContextAlloc((MemoryContext)manager, len);
 }
 
 static inline void cxt_free(void *manager, void *pointer)
 {
     UnusedArg(manager);
-        if (pointer != NULL)
-                pfree(pointer);
+	if (pointer != NULL)
+		pfree(pointer);
 }
 
 #if 0
@@ -664,7 +651,7 @@ static inline void chunkbuf_free(void *manager, void *pointer)
 
 static inline void *mpool_cxt_alloc(void *manager, Size len)
 {
-        return mpool_alloc((MPool *)manager, len);
+	return mpool_alloc((MPool *)manager, len);
 }
 
 
@@ -696,15 +683,15 @@ static inline void *mpool_cxt_alloc(void *manager, Size len)
 typedef struct ExprState ExprState;
 
 typedef Datum (*ExprStateEvalFunc) (ExprState *expression,
-                                                                                                ExprContext *econtext,
-                                                                                                bool *isNull,
-                                                                                                ExprDoneCond *isDone);
+									ExprContext *econtext,
+									bool *isNull,
+									ExprDoneCond *isDone);
 
 struct ExprState
 {
-        NodeTag                type;
-        Expr           *expr;                        /* associated Expr node */
-        ExprStateEvalFunc evalfunc; /* routine to run to execute node */
+	NodeTag				type;
+	Expr				*expr;			/* associated Expr node */
+	ExprStateEvalFunc	evalfunc;		/* routine to run to execute node */
 };
 
 /* ----------------
@@ -716,8 +703,8 @@ struct ExprState
  */
 typedef struct GenericExprState
 {
-        ExprState        xprstate;
-        ExprState  *arg;                        /* state of my child node */
+	ExprState	xprstate;
+	ExprState	*arg;	/* state of my child node */
 } GenericExprState;
 
 /* ----------------
@@ -726,9 +713,9 @@ typedef struct GenericExprState
  */
 typedef struct AggrefExprState
 {
-        ExprState        xprstate;
-        List           *args;                        /* states of argument expressions */
-        int                        aggno;                        /* ID number for agg within its plan node */
+	ExprState	xprstate;
+	List		*args;	/* states of argument expressions */
+	int			aggno;	/* ID number for agg within its plan node */
 } AggrefExprState;
 
 /*
@@ -738,9 +725,9 @@ typedef struct AggrefExprState
  */
 typedef struct GroupingFuncExprState
 {
-        ExprState  xprstate;
-        List          *args;
-        int        ngrpcols;   /* number of unique grouping attributes */
+	ExprState  xprstate;
+	List          *args;
+	int        ngrpcols;   /* number of unique grouping attributes */
 } GroupingFuncExprState;
 
 /* ----------------
@@ -749,15 +736,15 @@ typedef struct GroupingFuncExprState
  */
 typedef struct WindowRefExprState
 {
-        ExprState        xprstate;
-        struct WindowState *windowstate; /* reflect parent window state */
-        List           *args;                        /* states of argument expressions */
-        bool           *argtypbyval;        /* pg_type.typbyval for each argument */
-        int16           *argtyplen;                /* pg_type.typlen of each argument */
-        int                        refno;                        /* index in window state's wrxstates list */
-        int                        funcno;                        /* index in window state's func_state array */
-        // bool                isAgg;                        /* aggregate-derived? */
-        char                winkind;                /* pg_window.winkind */
+	ExprState        xprstate;
+	struct WindowState *windowstate; /* reflect parent window state */
+	List           *args;                        /* states of argument expressions */
+	bool           *argtypbyval;        /* pg_type.typbyval for each argument */
+	int16           *argtyplen;                /* pg_type.typlen of each argument */
+	int                        refno;                        /* index in window state's wrxstates list */
+	int                        funcno;                        /* index in window state's func_state array */
+	// bool                isAgg;                        /* aggregate-derived? */
+	char                winkind;                /* pg_window.winkind */
 } WindowRefExprState;
 
 /* ----------------
@@ -770,15 +757,15 @@ typedef struct WindowRefExprState
  */
 typedef struct ArrayRefExprState
 {
-        ExprState        xprstate;
-        List           *refupperindexpr;        /* states for child nodes */
-        List           *reflowerindexpr;
-        ExprState  *refexpr;
-        ExprState  *refassgnexpr;
-        int16                refattrlength;        /* typlen of array type */
-        int16                refelemlength;        /* typlen of the array element type */
-        bool                refelembyval;        /* is the element type pass-by-value? */
-        char                refelemalign;        /* typalign of the element type */
+	ExprState        xprstate;
+	List           *refupperindexpr;        /* states for child nodes */
+	List           *reflowerindexpr;
+	ExprState  *refexpr;
+	ExprState  *refassgnexpr;
+	int16                refattrlength;        /* typlen of array type */
+	int16                refelemlength;        /* typlen of the array element type */
+	bool                refelembyval;        /* is the element type pass-by-value? */
+	char                refelemalign;        /* typalign of the element type */
 } ArrayRefExprState;
 
 /* ----------------
@@ -791,50 +778,50 @@ typedef struct ArrayRefExprState
  */
 typedef struct FuncExprState
 {
-        ExprState        xprstate;
-        List           *args;                        /* states of argument expressions */
+	ExprState        xprstate;
+	List           *args;                        /* states of argument expressions */
 
-        /*
-         * Function manager's lookup info for the target function.  If func.fn_oid
-         * is InvalidOid, we haven't initialized it yet.
-         */
-        FmgrInfo        func;
+	/*
+	 * Function manager's lookup info for the target function.  If func.fn_oid
+	 * is InvalidOid, we haven't initialized it yet.
+	 */
+	FmgrInfo        func;
 
-        /*
-         * We also need to store argument values across calls when evaluating a
-         * function-returning-set.
-         *
-         * setArgsValid is true when we are evaluating a set-valued function and
-         * we are in the middle of a call series; we want to pass the same
-         * argument values to the function again (and again, until it returns
-         * ExprEndResult).
-         */
-        bool                setArgsValid;
+	/*
+	 * We also need to store argument values across calls when evaluating a
+	 * function-returning-set.
+	 *
+	 * setArgsValid is true when we are evaluating a set-valued function and
+	 * we are in the middle of a call series; we want to pass the same
+	 * argument values to the function again (and again, until it returns
+	 * ExprEndResult).
+	 */
+	bool                setArgsValid;
 
-        /*
-         * Flag to remember whether we found a set-valued argument to the
-         * function. This causes the function result to be a set as well. Valid
-         * only when setArgsValid is true.
-         */
-        bool                setHasSetArg;        /* some argument returns a set */
+	/*
+	 * Flag to remember whether we found a set-valued argument to the
+	 * function. This causes the function result to be a set as well. Valid
+	 * only when setArgsValid is true.
+	 */
+	bool                setHasSetArg;        /* some argument returns a set */
 
-        /*
-         * Flag to remember whether we have registered a shutdown callback for
-         * this FuncExprState.        We do so only if setArgsValid has been true at
-         * least once (since all the callback is for is to clear setArgsValid).
-         */
-        bool                shutdown_reg;        /* a shutdown callback is registered */
+	/*
+	 * Flag to remember whether we have registered a shutdown callback for
+	 * this FuncExprState.        We do so only if setArgsValid has been true at
+	 * least once (since all the callback is for is to clear setArgsValid).
+	 */
+	bool                shutdown_reg;        /* a shutdown callback is registered */
 
-        /*
-         * Current argument data for a set-valued function; contains valid data
-         * only if setArgsValid is true.
-         */
-        FunctionCallInfoData setArgs;
+	/*
+	 * Current argument data for a set-valued function; contains valid data
+	 * only if setArgsValid is true.
+	 */
+	FunctionCallInfoData setArgs;
 
-        /* Fast Path */
-        ExprState *fp_arg[2];
-        Datum            fp_datum[2];
-        bool            fp_null[2];
+	/* Fast Path */
+	ExprState *fp_arg[2];
+	Datum            fp_datum[2];
+	bool            fp_null[2];
 } FuncExprState;
 
 /* ----------------
@@ -845,17 +832,17 @@ typedef struct FuncExprState
  */
 typedef struct ScalarArrayOpExprState
 {
-        FuncExprState fxprstate;
-        /* Cached info about array element type */
-        Oid                        element_type;
-        int16                typlen;
-        bool                typbyval;
-        char                typalign;
+	FuncExprState fxprstate;
+	/* Cached info about array element type */
+	Oid                        element_type;
+	int16                typlen;
+	bool                typbyval;
+	char                typalign;
 
-        /* Fast path x in ('A', 'B', 'C') */
-        int         fp_n;
-        int         *fp_len;
-        Datum         *fp_datum;
+	/* Fast path x in ('A', 'B', 'C') */
+	int         fp_n;
+	int         *fp_len;
+	Datum         *fp_datum;
 } ScalarArrayOpExprState;
 
 /* ----------------
@@ -874,26 +861,26 @@ typedef struct BoolExprState
  */
 typedef struct SubPlanState
 {
-        ExprState        xprstate;
-        EState           *sub_estate;                /* subselect plan has its own EState */
-        struct PlanState *planstate;        /* subselect plan's state tree */
-        ExprState  *testexpr;                /* state of combining expression */
-        List           *args;                        /* states of argument expression(s) */
-        bool                needShutdown;        /* TRUE = need to shutdown subplan */
+	ExprState        xprstate;
+	EState           *sub_estate;                /* subselect plan has its own EState */
+	struct PlanState *planstate;        /* subselect plan's state tree */
+	ExprState  *testexpr;                /* state of combining expression */
+	List           *args;                        /* states of argument expression(s) */
+	bool                needShutdown;        /* TRUE = need to shutdown subplan */
 
-        MemTuple        curTuple;                /* copy of most recent tuple from subplan */
-        /* these are used when hashing the subselect's output: */
-        ProjectionInfo *projLeft;        /* for projecting lefthand exprs */
-        ProjectionInfo *projRight;        /* for projecting subselect output */
-        TupleHashTable hashtable;        /* hash table for no-nulls subselect rows */
-        TupleHashTable hashnulls;        /* hash table for rows with null(s) */
-        bool                havehashrows;        /* TRUE if hashtable is not empty */
-        bool                havenullrows;        /* TRUE if hashnulls is not empty */
-        MemoryContext tablecxt;                /* memory context containing tables */
-        ExprContext *innerecontext; /* working context for comparisons */
-        AttrNumber *keyColIdx;                /* control data for hash tables */
-        FmgrInfo   *eqfunctions;        /* comparison functions for hash tables */
-        FmgrInfo   *hashfunctions;        /* lookup data for hash functions */
+	MemTuple        curTuple;                /* copy of most recent tuple from subplan */
+	/* these are used when hashing the subselect's output: */
+	ProjectionInfo *projLeft;        /* for projecting lefthand exprs */
+	ProjectionInfo *projRight;        /* for projecting subselect output */
+	TupleHashTable hashtable;        /* hash table for no-nulls subselect rows */
+	TupleHashTable hashnulls;        /* hash table for rows with null(s) */
+	bool                havehashrows;        /* TRUE if hashtable is not empty */
+	bool                havenullrows;        /* TRUE if hashnulls is not empty */
+	MemoryContext tablecxt;                /* memory context containing tables */
+	ExprContext *innerecontext; /* working context for comparisons */
+	AttrNumber *keyColIdx;                /* control data for hash tables */
+	FmgrInfo   *eqfunctions;        /* comparison functions for hash tables */
+	FmgrInfo   *hashfunctions;        /* lookup data for hash functions */
     struct StringInfoData  *cdbextratextbuf;    /* to pass text to cdbexplain */
 } SubPlanState;
 

@@ -167,12 +167,12 @@ QUICK_DATABASE_STATUS () {
 	if [ $FAULT_ACTION == "readonly" ];then
 		VALID_PG_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(*) from gp_pgdatabase where valid='t' and content<>-1;"`
 		ERROR_CHK $? "obtain valid count" 2
-		INVALID_PG_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname, datadir from gp_configuration a, gp_pgdatabase b where a.dbid=b.dbid and b.valid='f' and b.content<>-1;"`)
+		INVALID_PG_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname, datadir from gp_segment_configuration a, gp_pgdatabase b where a.dbid=b.dbid and b.valid='f' and b.content<>-1;"`)
 		ERROR_CHK $? "obtain invalid count" 2
 	else
-		VALID_CONFIG_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(*) from gp_configuration where valid='t' and content<>-1;"`
+		VALID_CONFIG_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(*) from gp_segment_configuration where status='u' and content<>-1;"`
 		ERROR_CHK $? "obtain valid count" 2
-		INVALID_CONFIG_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname, datadir from gp_configuration where valid='f' and content<>-1;"`)
+		INVALID_CONFIG_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname, datadir from gp_segment_configuration where status != 'u' and content<>-1;"`)
 		ERROR_CHK $? "obtain invalid count" 2
 	fi
 	LOG_MSG "[INFO]:-Quick Greenplum database status from Master instance only" 1

@@ -173,7 +173,6 @@ main(int argc, char **argv)
 		 * If any AO table data was restored, update the master AO statistics
 		 */
 		updateAppendOnlyStats(pConn);
-
 	}
 
 
@@ -249,9 +248,9 @@ static void usage(void)
 	printf(("  --gp-i                  ignore error\n"));
 	printf(("  --gp-k=KEY              date time backup key from gp_backup run\n"));
 	printf(("  --gp-r=REPORTFILEDIR    directory where report file is placed\n"));
-	printf(("  --gp-l=FILELOCATIONS    backup files are on (a)ll databases, (p)rimaries only (default)\n"));
-	printf(("                           or (i)ndividual segdb (must be followed with a list of dbid's\n"));
-	printf(("                           where backups are located. For example: --gp-l=i[10,12,15]\n"));
+	printf(("  --gp-l=FILELOCATIONS    backup files are on (p)rimaries only (default)\n"));
+	printf(("                          or (i)ndividual segdb (must be followed with a list of dbid's\n"));
+	printf(("                          where backups are located. For example: --gp-l=i[10,12,15]\n"));
 
 	//printf(("\nIf no input file name is supplied, then standard input is used.\n\n"));
 	//printf(("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
@@ -324,7 +323,7 @@ bool fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	/* Initialize option fields  */
 	memset( pInputOpts, 0, sizeof(InputOptions) );
 
-	pInputOpts->actors	= SET_ALL; /* always restore all */
+	pInputOpts->actors	= SET_NO_MIRRORS; /* restore primaries only. mirrors will get sync'ed automatically */
 	pInputOpts->backupLocation = FILE_ON_PRIMARIES;
 	pInputOpts->bOnErrorStop	= true;
 
@@ -633,12 +632,7 @@ bool fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 			case 9:
 
 				/* gp-l backup file location */
-				if ( strcasecmp( optarg, "a") == 0 )
-				{
-					pInputOpts->backupLocation = FILE_ON_ALL;
-					pInputOpts->pszRawDumpSet = NULL;
-				}
-				else if ( strcasecmp( optarg, "p") == 0 )
+				if ( strcasecmp( optarg, "p") == 0 )
 				{
 					pInputOpts->backupLocation = FILE_ON_PRIMARIES;
 					pInputOpts->pszRawDumpSet = NULL;
@@ -650,7 +644,7 @@ bool fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				}
 				else
 				{
-					mpp_err_msg_cache(logError, pszProgName,  "invalid gp-l option %s.  Must be a (all), p (primaries only), or i[dbid list] for \"individual\".\n", optarg);
+					mpp_err_msg_cache(logError, pszProgName,  "invalid gp-l option %s.  Must be p (on primary segments), or i[dbid list] for \"individual\".\n", optarg);
 					return false;
 				}
 				break;
@@ -1320,7 +1314,7 @@ void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const RestorePairAr
 		pParm->bSuccess		= false;
 
         /* exclude master node */
-        if (pParm->pTargetSegDBData->role == ROLE_MASTER || !pParm->pTargetSegDBData->isValid)
+        if (pParm->pTargetSegDBData->role == ROLE_MASTER)
             continue;
 
 		mpp_err_msg(logInfo, pszProgName, "Creating thread to restore dbid %d (%s:%d) from backup file on dbid %d (%s:%d)\n",
@@ -1508,14 +1502,11 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 		if ( pszMsg == NULL )
 			pszMsg = "";
 
-		appendPQExpBuffer(reportBuf, "\tRestore of %s on dbid %d (%s:%d) from file on dbid %d (%s:%d) %s: %s%s%s\n",
+		appendPQExpBuffer(reportBuf, "\tRestore of %s on dbid %d (%s:%d) from %s: %s%s%s\n",
 				pParm->pTargetSegDBData->pszDBName,
 				pParm->pTargetSegDBData->dbid,
 				StringNotNull( pParm->pTargetSegDBData->pszHost, "localhost"),
 				pParm->pTargetSegDBData->port,
-				pParm->pSourceSegDBData->dbid,
-				StringNotNull( pParm->pSourceSegDBData->pszHost, "localhost"),
-				pParm->pSourceSegDBData->port,
 				StringNotNull( pParm->pszRemoteBackupPath, ""),
 				pszStatus,
 				pszMsg,

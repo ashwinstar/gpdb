@@ -15,6 +15,7 @@
 
 #include "storage/lwlock.h"
 
+#define CLOG_DIR "pg_clog"
 
 /*
  * Page status codes.  Note that these do not include the "dirty" bit.
@@ -118,5 +119,6 @@ extern void SimpleLruFlush(SlruCtl ctl, bool checkpoint);
 extern void SimpleLruTruncate(SlruCtl ctl, int cutoffPage, bool lockHeld);
 extern bool SlruScanDirectory(SlruCtl ctl, int cutoffPage, bool doDeletions);
 extern bool SimpleLruPageExists(SlruCtl ctl, int pageno);
+extern int SlruRecoverMirror(void);
 
 #endif   /* SLRU_H */

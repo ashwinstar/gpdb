@@ -1,8 +1,0 @@
-#!/bin/sh
-for a in data/*/pid
-do
-    test -f "$a" && kill -9 `cat "$a"`
-done
-rm -rf data
-mkdir data
-python -u bin/updownupdown.pyc "$@"

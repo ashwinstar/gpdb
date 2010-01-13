@@ -31,6 +31,10 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 5040|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 23|\N|\N|\N|gp_adjust_priority_int|-|\N
 5041|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 25|\N|\N|\N|gp_adjust_priority_value|-|\N
 5042|gp_list_backend_priorities|11|10|12|f|f|f|t|v|0|2249|f||\N|\N|\N|gp_list_backend_priorities|-|\N
+7175|gp_persistent_database_node_add|11|10|12|f|f|f|f|v|3|23|f|26 26 21|\N|\N|\N|gp_persistent_database_node_add|-|\N
+7176|gp_persistent_relation_node_add|11|10|12|f|f|f|f|v|4|23|f|26 26 26 21|\N|\N|\N|gp_persistent_relation_node_add|-|\N
+7177|gp_persistent_tablespace_node_add|11|10|12|f|f|f|f|v|2|23|f|26 21|\N|\N|\N|gp_persistent_tablespace_node_add|-|\N
+7178|gp_persistent_build_db|11|10|12|f|f|f|f|v|0|23|f||\N|\N|\N|gp_persistent_build_db|-|\N
 9900|aocsvpinfo_decode|11|10|12|f|f|t|f|i|3|20|f|1562 23 23|\N|\N|\N|aocsvpinfo_decode|-|\N
 9998|pg_objname_to_oid|11|10|12|f|f|t|f|i|1|26|f|25|\N|\N|\N|pg_objname_to_oid|-|\N
 \.

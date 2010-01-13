@@ -74,6 +74,9 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbutil.h"
+#include "access/persistentfilesysobjname.h"
+#include "cdb/cdbpersistentrelation.h"
+#include "cdb/cdbmirroredfilesysobj.h"
 
 
 
@@ -142,7 +145,17 @@ TablespaceCreateDbspace(Oid spcNode, Oid dbNode, bool isRedo)
 			}
 			else
 			{
+				DbDirNode justInTimeDbDirNode;
+				ItemPointerData persistentTid;
+				
 				/* OK, go for it */
+				justInTimeDbDirNode.tablespace = spcNode;
+				justInTimeDbDirNode.database = dbNode;
+				PersistentDatabase_JustInTimeCreate(
+										&justInTimeDbDirNode,
+										&persistentTid,
+										/* flushToXLog */ true);
+				
 				if (mkdir(dir, S_IRWXU) < 0)
 				{
 					char	   *parentdir;
@@ -319,6 +332,9 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	/* We keep the lock on pg_tablespace until commit */
 	heap_close(rel, NoLock);
 
+	/* Create the persistent directory for the tablespace */
+	MirroredFileSysObj_CreateTablespaceDir(tablespaceoid);
+
 	/*
 	 * Record dependency on owner 
 	 *
@@ -337,28 +353,6 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	 * directories by PG version.
 	 */
 	// set_short_version(sublocation);
-
-
-	/* Record the filesystem change in XLOG */
-#if 0
-	{
-		xl_tblspc_create_rec xlrec;
-		XLogRecData rdata[2];
-
-		xlrec.ts_id = tablespaceoid;
-		rdata[0].data = (char *) &xlrec;
-		rdata[0].len = offsetof(xl_tblspc_create_rec, ts_path);
-		rdata[0].buffer = InvalidBuffer;
-		rdata[0].next = &(rdata[1]);
-
-		rdata[1].data = (char *) location;
-		rdata[1].len = strlen(location) + 1;
-		rdata[1].buffer = InvalidBuffer;
-		rdata[1].next = NULL;
-
-		(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_CREATE, rdata);
-	}
-#endif
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -383,12 +377,14 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 void
 RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 {
-	char	   *tablespacename;
+	char	    *tablespacename;
 	HeapScanDesc scandesc;
-	Relation	rel;
-	HeapTuple	tuple;
-	ScanKeyData entry[1];
-	Oid			tablespaceoid;
+	Relation	 rel;
+	HeapTuple	 tuple;
+	ScanKeyData  entry[1];
+	Oid			 tablespaceoid;
+	int32        count;
+	RelFileNode  relfilenode;
 
 	/* don't call this in a transaction block */
 	// PreventTransactionChain((void *) stmt, "DROP TABLESPACE");
@@ -455,6 +451,14 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 		aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_TABLESPACE,
 					   tablespacename);
 
+	/* 
+	 * Check for any databases or relations defined in this tablespace, this 
+	 * is logically the same as checkSharedDependencies, however we don't 
+	 * actually track these in pg_shdepend, instead we lookup this information 
+	 * in the gp_persistent_database/relation_node tables.
+	 */
+	/* ... */
+
 	/*
 	 * Remove the pg_tablespace tuple (this will roll back if we fail below)
 	 */
@@ -469,7 +473,7 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	/*
 	 * Remove dependency on owner.
 	 *
-	 * If shared dependencies are addded between filespace <=> tablespace
+	 * If shared dependencies are added between filespace <=> tablespace
 	 * they will be deleted as well.
 	 */
 	deleteSharedDependencyRecordsFor(TableSpaceRelationId, tablespaceoid);
@@ -485,40 +489,33 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	 */
 	LWLockAcquire(TablespaceCreateLock, LW_EXCLUSIVE);
 
-	/*
-	 * Try to remove the physical infrastructure.
+	/* 
+	 * Check for any relations still defined in the tablespace.
 	 */
-	#if 0
-	if (!remove_tablespace_directories(tablespaceoid, false, location))
+	PersistentRelation_CheckTablespace(tablespaceoid, &count, &relfilenode);
+	if (count > 0)
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("tablespace \"%s\" is not empty",
-						tablespacename)));
-
-	/* Record the filesystem change in XLOG */
-	{
-		xl_tblspc_drop_rec xlrec;
-		XLogRecData rdata[2];
-
-		xlrec.ts_id = tablespaceoid;
-		rdata[0].data = (char *) &xlrec;
-		rdata[0].len = offsetof(xl_tblspc_drop_rec, ts_path);
-		rdata[0].buffer = InvalidBuffer;
-		rdata[0].next = &(rdata[1]);
-
-		rdata[1].data = (char *) location;
-		rdata[1].len = strlen(location) + 1;
-		rdata[1].buffer = InvalidBuffer;
-		rdata[1].next = NULL;
-
-		(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_DROP, rdata);
+				 errmsg("tablespace \"%s\" is not empty", tablespacename)));
 	}
-	#endif
+
+	/*
+	 * Try to remove the physical infrastructure.
+	 * 
+	 * Note: This only schedules the delete, the delete won't actually occur
+	 * until after the transaction has comitted.  This should however do 
+	 * everything it can to assure that the delete will occur sucessfully,
+	 * e.g. check permissions etc.
+	 */
+	MirroredFileSysObj_ScheduleDropTablespaceDir(tablespaceoid);
 
 	/*
 	 * Note: because we checked that the tablespace was empty, there should be
 	 * no need to worry about flushing shared buffers or free space map
 	 * entries for relations in the tablespace.
+	 *
+	 * CHECK THIS, also check if the lock makes any sense in this context.
 	 */
 
 	/*
@@ -667,10 +664,8 @@ remove_tablespace_directories(Oid tablespaceoid, bool redo, char *phys)
 	 * location; remove the per-segment location that we built at
 	 * CreateTablespace() time */
  	tempstr = palloc(MAXPGPATH);
- 	if (Gp_is_primary)
-		sprintf(tempstr,"%s/seg%d",phys,Gp_segment);
-	else
-		sprintf(tempstr,"%s/mir%d",phys,Gp_segment);
+
+	sprintf(tempstr,"%s/seg%d",phys,Gp_segment);
 	
 	if (rmdir(tempstr) < 0)
 		ereport(ERROR,
@@ -1140,10 +1135,8 @@ tblspc_redo(XLogRecPtr lsn, XLogRecord *record)
 
 		/* Create segment subdirectory. */
 	 	sublocation = palloc(MAXPGPATH);
- 		if (Gp_is_primary)
-			sprintf(sublocation,"%s/seg%d",location,Gp_segment);
-		else
-			sprintf(sublocation,"%s/mir%d",location,Gp_segment);
+
+		sprintf(sublocation,"%s/seg%d",location,Gp_segment);
 	
 		if (mkdir(sublocation, 0700) != 0)
 			ereport(ERROR,

@@ -583,9 +583,11 @@ class GPDetective:
         # Master directory
         rows = self.select(
         '''
-           SELECT hostname, datadir 
-           FROM   gp_configuration 
-           WHERE  content = -1  AND definedprimary
+           SELECT hostname, fselocation 
+           FROM   gp_segment_configuration
+           LEFT JOIN pg_filespace_entry on (fsedbid=dbid)
+           LEFT JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
+           WHERE  content = -1  AND preferred_role = 'p'
         ''')
         self.opt['-h'] = rows[0][0]
         self.masterdir = rows[0][1]
@@ -593,9 +595,11 @@ class GPDetective:
         # Backup (mirror) Master directory
         rows = self.select(
         '''
-           SELECT hostname, datadir
-           FROM   gp_configuration
-           WHERE  content < 0 AND NOT definedprimary
+           SELECT hostname, fselocation 
+           FROM   gp_segment_configuration
+           LEFT JOIN pg_filespace_entry on (fsedbid=dbid)
+           LEFT JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
+           WHERE  content < 0 AND preferred_role != 'p'
         ''')
         if len(rows) > 0:
            self.backupmasterhostname  = rows[0][0]
@@ -605,22 +609,28 @@ class GPDetective:
         self.hosts = self.select(
         '''
            SELECT distinct hostname
-           FROM   gp_configuration
+           FROM   gp_segment_configuration
            WHERE  content >= 0
         ''')
 
         # list of segments
         self.segments = self.select(
         '''
-           SELECT dbid, hostname || ':' || datadir FROM gp_configuration
-           WHERE  content >= 0  AND  definedprimary
+           SELECT dbid, hostname || ':' || fselocation
+           FROM   gp_segment_configuration
+           LEFT JOIN pg_filespace_entry on (fsedbid=dbid)
+           LEFT JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
+           WHERE  content >= 0  AND  preferred_role = 'p'
         ''')
 
         # list of mirrors
         self.mirrors = self.select(
         '''
-           SELECT dbid, hostname || ':' || datadir FROM gp_configuration
-           WHERE  content >= 0  AND  not definedprimary
+           SELECT dbid, hostname || ':' || fselocation
+           FROM   gp_segment_configuration
+           LEFT JOIN pg_filespace_entry on (fsedbid=dbid)
+           LEFT JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
+           WHERE  content >= 0  AND  preferred_role != 'p'
         ''')
 
         # list of databases
@@ -635,12 +645,12 @@ class GPDetective:
            os.mkdir(host)
         self.writeSelect('config.log', 
         '''
-           SELECT * from gp_configuration
+           SELECT * from gp_segment_configuration
         ''')
         
         self.writeSelect('config_history.log',
-        '''                                                                                                                                              
-           SELECT * from gp_configuration_history                                                                                                                
+        '''
+           SELECT * from gp_configuration_history
         ''')
 
         self.writeSelect('config_history.log', 
@@ -705,6 +715,17 @@ class GPDetective:
         '''
             SELECT * FROM pg_catalog.pg_roles
         ''')
+
+        self.writeSelect('pg_filespace.log',
+        '''
+            SELECT * FROM pg_catalog.pg_filespace
+        ''')
+
+        self.writeSelect('pg_filespace_entry.log',
+        '''
+            SELECT * FROM pg_catalog.pg_filespace_entry
+        ''')
+        
 
 
     
@@ -1004,8 +1025,10 @@ class GPDetective:
             if len(core_path) > 0:
                 cores = self.runCmd('ls -1 ' + core_path + core_pattern, host)
                 cores = cores.split('\n')
+
                 # If there are no cores, we end up with a list with one empty item. Remove it.
-                cores.remove('')
+                if '' in cores:
+                    cores.remove('')
             else:
                 # cores inconvienently dumped into process directory,
                 # so go look in the relevant locations

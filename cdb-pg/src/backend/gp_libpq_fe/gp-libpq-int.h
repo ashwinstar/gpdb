@@ -506,6 +506,7 @@ extern int64 pqGetInt64(int64 *result, PGconn *conn);
 extern int	pqPutInt(int value, size_t bytes, PGconn *conn);
 extern int	pqPutMsgStart(char msg_type, bool force_len, PGconn *conn);
 extern int	pqPutMsgEnd(PGconn *conn);
+extern void pqPutMsgEndNoAutoFlush(PGconn *conn);
 extern int	pqReadData(PGconn *conn);
 extern int	pqFlush(PGconn *conn);
 extern int	pqWait(int forRead, int forWrite, PGconn *conn);

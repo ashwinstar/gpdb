@@ -18,6 +18,10 @@
 #include <fcntl.h>
 #include <sys/file.h>
 #include <glob.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
 
 #include "access/appendonlywriter.h" 
 #include "catalog/catalog.h"
@@ -27,6 +31,7 @@
 #include "storage/smgr.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
+#include "cdb/cdbmirroredbufferpool.h"
 
 
 /* interval for calling AbsorbFsyncRequests in mdsync */
@@ -79,7 +84,7 @@
  *	per segment.  But note the md_fd pointer can be NULL, indicating
  *	relation not open.
  *
- *	Also note that mdfd_chain == NULL does not necessarily mean the relation
+ *	Also note that mdmir_chain == NULL does not necessarily mean the relation
  *	doesn't have another segment after this one; we may just not have
  *	opened the next segment yet.  (We could not have "all segments are
  *	in the chain" as an invariant anyway, since another backend could
@@ -94,14 +99,15 @@
  *	code has not been tested in a long time and is probably bit-rotted.
  */
 
-typedef struct _MdfdVec
+typedef struct _MdMirVec
 {
-	File		mdfd_vfd;		/* fd number in fd.c's pool */
-	BlockNumber mdfd_segno;		/* segment number, from 0 */
+	MirroredBufferPoolOpen		mdmir_open;
+
+	BlockNumber mdmir_segno;		/* segment number, from 0 */
 #ifndef LET_OS_MANAGE_FILESIZE	/* for large relations */
-	struct _MdfdVec *mdfd_chain;	/* next segment, or NULL */
+	struct _MdMirVec *mdmir_chain;	/* next segment, or NULL */
 #endif
-} MdfdVec;
+} MdMirVec;
 
 static MemoryContext MdCxt;		/* context for all md.c allocations */
 
@@ -138,17 +144,17 @@ static CycleCtr mdsync_cycle_ctr = 0;
 
 
 /* local routines */
-static MdfdVec *mdopen(SMgrRelation reln, bool allowNotFound);
-static bool register_dirty_segment(SMgrRelation reln, MdfdVec *seg);
-static MdfdVec *_fdvec_alloc(void);
+static MdMirVec *mdopen(SMgrRelation reln, bool allowNotFound);
+static bool register_dirty_segment(SMgrRelation reln, MdMirVec *seg);
+static MdMirVec *_mirvec_alloc(void);
 
 #ifndef LET_OS_MANAGE_FILESIZE
-static MdfdVec *_mdfd_openseg(SMgrRelation reln, BlockNumber segno,
+static MdMirVec *_mdmir_openseg(SMgrRelation reln, BlockNumber segno,
 			  int oflags);
 #endif
-static MdfdVec *_mdfd_getseg(SMgrRelation reln, BlockNumber blkno,
+static MdMirVec *_mdmir_getseg(SMgrRelation reln, BlockNumber blkno,
 			 bool allowNotFound);
-static BlockNumber _mdnblocks(File file, Size blcksz);
+static BlockNumber _mdnblocks(MirroredBufferPoolOpen *mirroredOpen, Size blcksz);
 
 
 /*
@@ -188,6 +194,47 @@ mdinit(void)
 }
 
 /*
+ *	mdcreatetablespacedir() -- Create a new tablespace directory on magnetic disk.
+ *
+ * If isRedo is true, it's okay for the tablespace directory to exist already.
+ */
+bool
+mdcreatetablespacedir(Oid tablespace, bool isRedo)
+{
+	char	   *path;
+
+	path = GetTablespacePath(tablespace);
+
+	if (mkdir(path, 0700) != 0)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+/*
+ *	mdcreatedbdir() -- Create a new database directory on magnetic disk.
+ *
+ * If isRedo is true, it's okay for the database directory to exist already.
+ */
+bool
+mdcreatedbdir(DbDirNode *dbDirNode, bool isRedo)
+{
+	char	   *path;
+
+	path = GetDatabasePath(dbDirNode->database, dbDirNode->tablespace);
+
+	if (mkdir(path, 0700) != 0)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+
+/*
  *	mdcreate() -- Create a new relation on magnetic disk.
  *
  * If isRedo is true, it's okay for the relation to exist already.
@@ -195,19 +242,19 @@ mdinit(void)
 bool
 mdcreate(SMgrRelation reln, bool isRedo)
 {
-	char	   *path;
-	File		fd;
+	MirroredBufferPoolOpen		mirroredOpen;
 
-	if (isRedo && reln->md_fd != NULL)
+	if (isRedo && reln->md_mirvec != NULL)
 		return true;			/* created and opened already... */
 
-	Assert(reln->md_fd == NULL);
-
-	path = relpath(reln->smgr_rnode);
-
-	fd = PathNameOpenFile(path, O_RDWR | O_CREAT | O_EXCL | PG_BINARY, 0600);
-
-	if (fd < 0)
+	Assert(reln->md_mirvec == NULL);
+	
+	if (!MirroredBufferPool_Open(
+					&mirroredOpen,
+					&reln->smgr_rnode,
+					/* segmentFileNum */ 0,
+					O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
+					0600))
 	{
 		int			save_errno = errno;
 
@@ -218,10 +265,14 @@ mdcreate(SMgrRelation reln, bool isRedo)
 		 * already, even if isRedo is not set.	(See also mdopen)
 		 */
 		if (isRedo || IsBootstrapProcessingMode())
-			fd = PathNameOpenFile(path, O_RDWR | PG_BINARY, 0600);
-		if (fd < 0)
+			MirroredBufferPool_Open(
+						&mirroredOpen,
+						&reln->smgr_rnode,
+						/* segmentFileNum */ 0,
+						O_RDWR | PG_BINARY,
+						0600);
+		if (!MirroredBufferPool_IsActive(&mirroredOpen))
 		{
-			pfree(path);
 			/* be sure to return the error reported by create, not open */
 			errno = save_errno;
 			return false;
@@ -229,14 +280,12 @@ mdcreate(SMgrRelation reln, bool isRedo)
 		errno = 0;
 	}
 
-	pfree(path);
+	reln->md_mirvec = _mirvec_alloc();
 
-	reln->md_fd = _fdvec_alloc();
-
-	reln->md_fd->mdfd_vfd = fd;
-	reln->md_fd->mdfd_segno = 0;
+	reln->md_mirvec->mdmir_open = mirroredOpen;
+	reln->md_mirvec->mdmir_segno = 0;
 #ifndef LET_OS_MANAGE_FILESIZE
-	reln->md_fd->mdfd_chain = NULL;
+	reln->md_mirvec->mdmir_chain = NULL;
 #endif
 
 	return true;
@@ -255,7 +304,6 @@ mdunlink(RelFileNode rnode, bool isRedo)
 {
 	bool		status = true;
 	int			save_errno = 0;
-	char	   *path;
 
 	/*
 	 * We have to clean out any pending fsync requests for the doomed relation,
@@ -263,10 +311,8 @@ mdunlink(RelFileNode rnode, bool isRedo)
 	 */
 	ForgetRelationFsyncRequests(rnode);
 
-	path = relpath(rnode);
-
 	/* Delete the first segment, or only segment if not doing segmenting */
-	if (unlink(path) < 0)
+	if (!MirroredBufferPool_Drop(&rnode, 0))
 	{
 		if (!isRedo || errno != ENOENT)
 		{
@@ -282,11 +328,20 @@ mdunlink(RelFileNode rnode, bool isRedo)
          */
 	if (status)
 	{
+		// UNDONE: Probably should have mirror do pattern  match, too.
+		// UNDONE:
+				char	   *path;
+
                 char tmp[MAXPGPATH];
+				int constantPrefixLen;
                 int i;
                 glob_t g;
 
+				path = relpath(rnode);
+
                 sprintf(tmp, "%s.*", path);
+				constantPrefixLen = strlen(tmp) - 1;
+
                 i = glob(tmp, 0, 0, &g);
 
                 /* glob success */
@@ -295,7 +350,16 @@ mdunlink(RelFileNode rnode, bool isRedo)
                         size_t n;
                         for(n=0; n<g.gl_pathc; ++n)
                         {
-                                if((unlink(g.gl_pathv[n])) < 0)
+								char *match = g.gl_pathv[n];
+								int scanCount;
+								int segmentFileNum;
+
+								if (strncmp(match, tmp, constantPrefixLen) != 0)
+									elog(ERROR, "File name pattern problem");
+
+								scanCount = sscanf(&match[constantPrefixLen], "%u", &segmentFileNum);
+							
+                                if(!MirroredBufferPool_Drop(&rnode, segmentFileNum))
                                 {
                                         status = false;
                                         save_errno = errno;
@@ -305,14 +369,60 @@ mdunlink(RelFileNode rnode, bool isRedo)
 
                         globfree(&g);
                 }
+				pfree(path);
         }
 #endif
 
-	pfree(path);
 
 	errno = save_errno;
 	return status;
 }
+
+/*
+ *	mdrmtablespacedir() -- Remove a tablespace directory on magnetic disk.
+ *
+ * If isRedo is true, it's okay for the tablespace directory to exist already.
+ */
+bool
+mdrmtablespacedir(Oid tablespace, bool isRedo)
+{
+	// Don't use GetDatabasePath since it uses palloc and we don't know the
+	// memory context here...
+	char	   path[MAXPGPATH];
+
+	CopyTablespacePath(
+			path, MAXPGPATH,
+			tablespace);
+
+	/*
+	 * We've removed all relations, so all that is left are PG* files and work files.
+	 */
+	return rmtree(path, true);
+}
+
+
+/*
+ *	mdrmbdir() -- Remove a database directory on magnetic disk.
+ *
+ * If isRedo is true, it's okay for the database directory to exist already.
+ */
+bool
+mdrmdbdir(DbDirNode *dbDirNode, bool isRedo)
+{
+	// Don't use GetDatabasePath since it uses palloc and we don't know the
+	// memory context here...
+	char	   path[MAXPGPATH];
+
+	CopyDatabasePath(
+			path, MAXPGPATH,
+			dbDirNode->database, dbDirNode->tablespace);
+
+	/*
+	 * We've removed all relations, so all that is left are PG* files and work files.
+	 */
+	return rmtree(path, true);
+}
+
 
 /*
  *	mdextend() -- Add a block to the specified relation.
@@ -328,10 +438,12 @@ bool
 mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 {
 	long		seekpos;
+#ifdef suppress
 	int			nbytes;
-	MdfdVec    *v;
+#endif
+	MdMirVec    *v;
 
-	v = _mdfd_getseg(reln, blocknum, false);
+	v = _mdmir_getseg(reln, blocknum, false);
 
 #ifndef LET_OS_MANAGE_FILESIZE
 	seekpos = (long) (BLCKSZ * (blocknum % ((BlockNumber) RELSEG_SIZE)));
@@ -349,6 +461,16 @@ mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 	 * to dump another buffer of the same file to make room for the new page's
 	 * buffer.
 	 */
+
+	if (!MirroredBufferPool_Write(
+							&v->mdmir_open,
+							seekpos,
+							buffer,
+							BLCKSZ))
+		return false;
+
+#ifdef suppress
+	// UNDONE: What do we do with this partial write / truncate back madness????
 	if (FileSeek(v->mdfd_vfd, seekpos, SEEK_SET) != seekpos)
 		return false;
 
@@ -365,6 +487,7 @@ mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 		}
 		return false;
 	}
+#endif
 
 	if (!isTemp)
 	{
@@ -373,7 +496,7 @@ mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 	}
 
 #ifndef LET_OS_MANAGE_FILESIZE
-	Assert(_mdnblocks(v->mdfd_vfd, BLCKSZ) <= ((BlockNumber) RELSEG_SIZE));
+	Assert(_mdnblocks(&v->mdmir_open, BLCKSZ) <= ((BlockNumber) RELSEG_SIZE));
 #endif
 
 	return true;
@@ -385,22 +508,22 @@ mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
  *
  * Note we only open the first segment, when there are multiple segments.
  */
-static MdfdVec *
+static MdMirVec *
 mdopen(SMgrRelation reln, bool allowNotFound)
 {
-	MdfdVec    *mdfd;
-	char	   *path;
-	File		fd;
+	MdMirVec    *v;
+	MirroredBufferPoolOpen		mirroredOpen;
 
 	/* No work if already open */
-	if (reln->md_fd)
-		return reln->md_fd;
+	if (reln->md_mirvec)
+		return reln->md_mirvec;
 
-	path = relpath(reln->smgr_rnode);
-
-	fd = PathNameOpenFile(path, O_RDWR | PG_BINARY, 0600);
-
-	if (fd < 0)
+	if (!MirroredBufferPool_Open(
+				&mirroredOpen,
+				&reln->smgr_rnode,
+				/* segmentFileNum */ 0,
+				O_RDWR | PG_BINARY,
+				0600))
 	{
 		/*
 		 * During bootstrap, there are cases where a system relation will be
@@ -409,10 +532,14 @@ mdopen(SMgrRelation reln, bool allowNotFound)
 		 * substitute for mdcreate() in bootstrap mode only. (See mdcreate)
 		 */
 		if (IsBootstrapProcessingMode())
-			fd = PathNameOpenFile(path, O_RDWR | O_CREAT | O_EXCL | PG_BINARY, 0600);
-		if (fd < 0)
+			MirroredBufferPool_Open(
+					&mirroredOpen,
+					&reln->smgr_rnode,
+					/* segmentFileNum */ 0,
+					O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
+					0600);
+		if (!MirroredBufferPool_IsActive(&mirroredOpen))
 		{
-			pfree(path);
 			if (allowNotFound && FILE_POSSIBLY_DELETED(errno))
 				return NULL;
 			ereport(ERROR,
@@ -424,18 +551,16 @@ mdopen(SMgrRelation reln, bool allowNotFound)
 		}
 	}
 
-	pfree(path);
+	reln->md_mirvec = v = _mirvec_alloc();
 
-	reln->md_fd = mdfd = _fdvec_alloc();
-
-	mdfd->mdfd_vfd = fd;
-	mdfd->mdfd_segno = 0;
+	v->mdmir_open = mirroredOpen;
+	v->mdmir_segno = 0;
 #ifndef LET_OS_MANAGE_FILESIZE
-	mdfd->mdfd_chain = NULL;
-	Assert(_mdnblocks(fd, BLCKSZ) <= ((BlockNumber) RELSEG_SIZE));
+	v->mdmir_chain = NULL;
+	Assert(_mdnblocks(&v->mdmir_open, BLCKSZ) <= ((BlockNumber) RELSEG_SIZE));
 #endif
 
-	return mdfd;
+	return v;
 }
 
 /*
@@ -446,29 +571,29 @@ mdopen(SMgrRelation reln, bool allowNotFound)
 bool
 mdclose(SMgrRelation reln)
 {
-	MdfdVec    *v = reln->md_fd;
+	MdMirVec    *v = reln->md_mirvec;
 
 	/* No work if already closed */
 	if (v == NULL)
 		return true;
 
-	reln->md_fd = NULL;			/* prevent dangling pointer after error */
+	reln->md_mirvec = NULL;			/* prevent dangling pointer after error */
 
 #ifndef LET_OS_MANAGE_FILESIZE
 	while (v != NULL)
 	{
-		MdfdVec    *ov = v;
+		MdMirVec    *ov = v;
 
 		/* if not closed already */
-		if (v->mdfd_vfd >= 0)
-			FileClose(v->mdfd_vfd);
+		if (MirroredBufferPool_IsActive(&v->mdmir_open))
+			MirroredBufferPool_Close(&v->mdmir_open);
 		/* Now free vector */
-		v = v->mdfd_chain;
+		v = v->mdmir_chain;
 		pfree(ov);
 	}
 #else
-	if (v->mdfd_vfd >= 0)
-		FileClose(v->mdfd_vfd);
+	if (MirroredBufferPool_IsActive(&v->mdmir_open))
+		MirroredBufferPool_Close(&v->mdmir_open);
 	pfree(v);
 #endif
 
@@ -484,9 +609,9 @@ mdread(SMgrRelation reln, BlockNumber blocknum, char *buffer)
 	bool		status;
 	long		seekpos;
 	int			nbytes;
-	MdfdVec    *v;
+	MdMirVec    *v;
 
-	v = _mdfd_getseg(reln, blocknum, false);
+	v = _mdmir_getseg(reln, blocknum, false);
 
 #ifndef LET_OS_MANAGE_FILESIZE
 	seekpos = (long) (BLCKSZ * (blocknum % ((BlockNumber) RELSEG_SIZE)));
@@ -495,11 +620,15 @@ mdread(SMgrRelation reln, BlockNumber blocknum, char *buffer)
 	seekpos = (long) (BLCKSZ * (blocknum));
 #endif
 
-	if (FileSeek(v->mdfd_vfd, seekpos, SEEK_SET) != seekpos)
+	if (MirroredBufferPool_SeekSet(&v->mdmir_open, seekpos) != seekpos)
 		return false;
 
 	status = true;
-	if ((nbytes = FileRead(v->mdfd_vfd, buffer, BLCKSZ)) != BLCKSZ)
+	if ((nbytes = MirroredBufferPool_Read(
+								&v->mdmir_open,
+								seekpos,
+								buffer, 
+								BLCKSZ)) != BLCKSZ)
 	{
 		/*
 		 * If we are at or past EOF, return zeroes without complaining. Also
@@ -526,9 +655,9 @@ bool
 mdwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 {
 	long		seekpos;
-	MdfdVec    *v;
+	MdMirVec    *v;
 
-	v = _mdfd_getseg(reln, blocknum, false);
+	v = _mdmir_getseg(reln, blocknum, false);
 
 #ifndef LET_OS_MANAGE_FILESIZE
 	seekpos = (long) (BLCKSZ * (blocknum % ((BlockNumber) RELSEG_SIZE)));
@@ -537,10 +666,11 @@ mdwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 	seekpos = (long) (BLCKSZ * (blocknum));
 #endif
 
-	if (FileSeek(v->mdfd_vfd, seekpos, SEEK_SET) != seekpos)
-		return false;
-
-	if (FileWrite(v->mdfd_vfd, buffer, BLCKSZ) != BLCKSZ)
+	if (!MirroredBufferPool_Write(
+							&v->mdmir_open,
+							seekpos,
+							buffer,
+							BLCKSZ))
 		return false;
 
 	if (!isTemp)
@@ -556,7 +686,7 @@ mdwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
  *	mdnblocks() -- Get the number of blocks stored in a relation.
  *
  *		Important side effect: all active segments of the relation are opened
- *		and added to the mdfd_chain list.  If this routine has not been
+ *		and added to the mdmir_chain list.  If this routine has not been
  *		called, then only segments up to the last one actually touched
  *		are present in the chain.
  *
@@ -565,7 +695,7 @@ mdwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 BlockNumber
 mdnblocks(SMgrRelation reln)
 {
-	MdfdVec    *v = mdopen(reln, false);
+	MdMirVec    *v = mdopen(reln, false);
 
 #ifndef LET_OS_MANAGE_FILESIZE
 	BlockNumber nblocks;
@@ -583,15 +713,15 @@ mdnblocks(SMgrRelation reln)
 	 * flush, it could have segment chain entries for inactive segments;
 	 * that's OK because the bgwriter never needs to compute relation size.)
 	 */
-	while (v->mdfd_chain != NULL)
+	while (v->mdmir_chain != NULL)
 	{
 		segno++;
-		v = v->mdfd_chain;
+		v = v->mdmir_chain;
 	}
 
 	for (;;)
 	{
-		nblocks = _mdnblocks(v->mdfd_vfd, BLCKSZ);
+		nblocks = _mdnblocks(&v->mdmir_open, BLCKSZ);
 		if (nblocks > ((BlockNumber) RELSEG_SIZE))
 			elog(FATAL, "segment too big");
 		if (nblocks < ((BlockNumber) RELSEG_SIZE))
@@ -602,7 +732,7 @@ mdnblocks(SMgrRelation reln)
 		 */
 		segno++;
 
-		if (v->mdfd_chain == NULL)
+		if (v->mdmir_chain == NULL)
 		{
 			/*
 			 * Because we pass O_CREAT, we will create the next segment (with
@@ -610,15 +740,15 @@ mdnblocks(SMgrRelation reln)
 			 * RELSEG_SIZE.  While perhaps not strictly necessary, this keeps
 			 * the logic simple.
 			 */
-			v->mdfd_chain = _mdfd_openseg(reln, segno, O_CREAT);
-			if (v->mdfd_chain == NULL)
+			v->mdmir_chain = _mdmir_openseg(reln, segno, O_CREAT);
+			if (v->mdmir_chain == NULL)
 				return InvalidBlockNumber;		/* failed? */
 		}
 
-		v = v->mdfd_chain;
+		v = v->mdmir_chain;
 	}
 #else
-	return _mdnblocks(v->mdfd_vfd, BLCKSZ);
+	return _mdnblocks(&v->mdmir_open, BLCKSZ);
 #endif
 }
 
@@ -630,7 +760,7 @@ mdnblocks(SMgrRelation reln)
 BlockNumber
 mdtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 {
-	MdfdVec    *v;
+	MdMirVec    *v;
 	BlockNumber curnblk;
 
 #ifndef LET_OS_MANAGE_FILESIZE
@@ -655,24 +785,24 @@ mdtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 	priorblocks = 0;
 	while (v != NULL)
 	{
-		MdfdVec    *ov = v;
+		MdMirVec    *ov = v;
 
 		if (priorblocks > nblocks)
 		{
 			/*
 			 * This segment is no longer active (and has already been
-			 * unlinked from the mdfd_chain). We truncate the file, but do
+			 * unlinked from the mdmir_chain). We truncate the file, but do
 			 * not delete it, for reasons explained in the header comments.
 			 */
-			if (FileTruncate(v->mdfd_vfd, 0) < 0)
+			if (!MirroredBufferPool_Truncate(&v->mdmir_open, 0))
 				return InvalidBlockNumber;
 			if (!isTemp)
 			{
 				if (!register_dirty_segment(reln, v))
 					return InvalidBlockNumber;
 			}
-			v = v->mdfd_chain;
-			Assert(ov != reln->md_fd);	/* we never drop the 1st segment */
+			v = v->mdmir_chain;
+			Assert(ov != reln->md_mirvec);	/* we never drop the 1st segment */
 			pfree(ov);
 		}
 		else if (priorblocks + ((BlockNumber) RELSEG_SIZE) > nblocks)
@@ -687,15 +817,15 @@ mdtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 			 */
 			BlockNumber lastsegblocks = nblocks - priorblocks;
 
-			if (FileTruncate(v->mdfd_vfd, lastsegblocks * BLCKSZ) < 0)
+			if (!MirroredBufferPool_Truncate(&v->mdmir_open, lastsegblocks * BLCKSZ) < 0)
 				return InvalidBlockNumber;
 			if (!isTemp)
 			{
 				if (!register_dirty_segment(reln, v))
 					return InvalidBlockNumber;
 			}
-			v = v->mdfd_chain;
-			ov->mdfd_chain = NULL;
+			v = v->mdmir_chain;
+			ov->mdmir_chain = NULL;
 		}
 		else
 		{
@@ -703,12 +833,12 @@ mdtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 			 * We still need this segment and 0 or more blocks beyond it, so
 			 * nothing to do here.
 			 */
-			v = v->mdfd_chain;
+			v = v->mdmir_chain;
 		}
 		priorblocks += RELSEG_SIZE;
 	}
 #else
-	if (FileTruncate(v->mdfd_vfd, nblocks * BLCKSZ) < 0)
+	if (!MirroredBufferPool_Truncate(&v->mdmir_open, nblocks * BLCKSZ) < 0)
 		return InvalidBlockNumber;
 	if (!isTemp)
 	{
@@ -729,7 +859,7 @@ mdtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 bool
 mdimmedsync(SMgrRelation reln)
 {
-	MdfdVec    *v;
+	MdMirVec    *v;
 	BlockNumber curnblk;
 
 	/*
@@ -745,12 +875,12 @@ mdimmedsync(SMgrRelation reln)
 #ifndef LET_OS_MANAGE_FILESIZE
 	while (v != NULL)
 	{
-		if (FileSync(v->mdfd_vfd) < 0)
+		if (!MirroredBufferPool_Flush(&v->mdmir_open))
 			return false;
-		v = v->mdfd_chain;
+		v = v->mdmir_chain;
 	}
 #else
-	if (FileSync(v->mdfd_vfd) < 0)
+	if (!MirroredBufferPool_Flush(&v->mdmir_open) < 0)
 		return false;
 #endif
 
@@ -876,7 +1006,7 @@ mdsync(void)
 			for (failures = 0; ; failures++)	/* loop exits at "break" */
 			{
 				SMgrRelation reln;
-				MdfdVec    *seg;
+				MdMirVec    *seg;
 
 				/*
 				 * Find or create an smgr hash entry for this relation. This
@@ -903,11 +1033,11 @@ mdsync(void)
 				 * during FileSync, since fd.c might have closed the file
 				 * behind our back.
 				 */
-				seg = _mdfd_getseg(reln,
+				seg = _mdmir_getseg(reln,
 								   entry->tag.segno * ((BlockNumber) RELSEG_SIZE),
 								   true);
 				if (seg != NULL &&
-					FileSync(seg->mdfd_vfd) >= 0)
+					MirroredBufferPool_Flush(&seg->mdmir_open))
 					break;		/* success; break out of retry loop */
 
 				/*
@@ -977,21 +1107,21 @@ mdsync(void)
  * valid for error reporting.
  */
 static bool
-register_dirty_segment(SMgrRelation reln, MdfdVec *seg)
+register_dirty_segment(SMgrRelation reln, MdMirVec *seg)
 {
 	if (pendingOpsTable)
 	{
 		/* push it into local pending-ops table */
-		RememberFsyncRequest(reln->smgr_rnode, seg->mdfd_segno);
+		RememberFsyncRequest(reln->smgr_rnode, seg->mdmir_segno);
 		return true;
 	}
 	else
 	{
-		if (ForwardFsyncRequest(reln->smgr_rnode, seg->mdfd_segno))
+		if (ForwardFsyncRequest(reln->smgr_rnode, seg->mdmir_segno))
 			return true;
 	}
 
-	if (FileSync(seg->mdfd_vfd) < 0)
+	if (!MirroredBufferPool_Flush(&seg->mdmir_open))
 		return false;
 	return true;
 }
@@ -1144,12 +1274,12 @@ ForgetDatabaseFsyncRequests(Oid dbid)
 
 
 /*
- *	_fdvec_alloc() -- Make a MdfdVec object.
+ *	_mirvec_alloc() -- Make a MdfdVec object.
  */
-static MdfdVec *
-_fdvec_alloc(void)
+static MdMirVec *
+_mirvec_alloc(void)
 {
-	return (MdfdVec *) MemoryContextAlloc(MdCxt, sizeof(MdfdVec));
+	return (MdMirVec *) MemoryContextAllocZero(MdCxt, sizeof(MdMirVec));
 }
 
 #ifndef LET_OS_MANAGE_FILESIZE
@@ -1158,42 +1288,32 @@ _fdvec_alloc(void)
  * Open the specified segment of the relation,
  * and make a MdfdVec object for it.  Returns NULL on failure.
  */
-static MdfdVec *
-_mdfd_openseg(SMgrRelation reln, BlockNumber segno, int oflags)
+static MdMirVec *
+_mdmir_openseg(SMgrRelation reln, BlockNumber segno, int oflags)
 {
-	MdfdVec    *v;
-	int			fd;
-	char	   *path,
-			   *fullpath;
+	MdMirVec    *v;
 
-	path = relpath(reln->smgr_rnode);
-
-	if (segno > 0)
-	{
-		/* be sure we have enough space for the '.segno' */
-		fullpath = (char *) palloc(strlen(path) + 12);
-		sprintf(fullpath, "%s.%u", path, segno);
-		pfree(path);
-	}
-	else
-		fullpath = path;
+	MirroredBufferPoolOpen		mirroredOpen;
 
 	/* open the file */
-	fd = PathNameOpenFile(fullpath, O_RDWR | PG_BINARY | oflags, 0600);
+	MirroredBufferPool_Open(
+					&mirroredOpen,
+					&reln->smgr_rnode,
+					segno,
+					O_RDWR | PG_BINARY | oflags,
+					0600);
 
-	pfree(fullpath);
-
-	if (fd < 0)
+	if (!MirroredBufferPool_IsActive(&mirroredOpen))
 		return NULL;
 
 	/* allocate an mdfdvec entry for it */
-	v = _fdvec_alloc();
+	v = _mirvec_alloc();
 
 	/* fill the entry */
-	v->mdfd_vfd = fd;
-	v->mdfd_segno = segno;
-	v->mdfd_chain = NULL;
-	Assert(_mdnblocks(fd, BLCKSZ) <= ((BlockNumber) RELSEG_SIZE));
+	v->mdmir_open = mirroredOpen;
+	v->mdmir_segno = segno;
+	v->mdmir_chain = NULL;
+	Assert(_mdnblocks(&v->mdmir_open, BLCKSZ) <= ((BlockNumber) RELSEG_SIZE));
 
 	/* all done */
 	return v;
@@ -1205,10 +1325,10 @@ _mdfd_openseg(SMgrRelation reln, BlockNumber segno, int oflags)
  *		specified block.  ereport's on failure.
  *		(Optionally, can return NULL instead of ereport for ENOENT.)
  */
-static MdfdVec *
-_mdfd_getseg(SMgrRelation reln, BlockNumber blkno, bool allowNotFound)
+static MdMirVec *
+_mdmir_getseg(SMgrRelation reln, BlockNumber blkno, bool allowNotFound)
 {
-	MdfdVec    *v = mdopen(reln, allowNotFound);
+	MdMirVec    *v = mdopen(reln, allowNotFound);
 
 #ifndef LET_OS_MANAGE_FILESIZE
 	BlockNumber segstogo;
@@ -1221,7 +1341,7 @@ _mdfd_getseg(SMgrRelation reln, BlockNumber blkno, bool allowNotFound)
 		 segstogo > 0;
 		 nextsegno++, segstogo--)
 	{
-		if (v->mdfd_chain == NULL)
+		if (v->mdmir_chain == NULL)
 		{
 			/*
 			 * We will create the next segment only if the target block is
@@ -1241,10 +1361,10 @@ _mdfd_getseg(SMgrRelation reln, BlockNumber blkno, bool allowNotFound)
 			 * want to go ahead and create the segments so we can finish out
 			 * the replay.
 			 */
-			v->mdfd_chain = _mdfd_openseg(reln,
+			v->mdmir_chain = _mdmir_openseg(reln,
 										  nextsegno,
 								(segstogo == 1 || InRecovery) ? O_CREAT : 0);
-			if (v->mdfd_chain == NULL)
+			if (v->mdmir_chain == NULL)
 			{
 				if (allowNotFound && FILE_POSSIBLY_DELETED(errno))
 					return NULL;
@@ -1258,7 +1378,7 @@ _mdfd_getseg(SMgrRelation reln, BlockNumber blkno, bool allowNotFound)
 								blkno)));
 			}
 		}
-		v = v->mdfd_chain;
+		v = v->mdmir_chain;
 	}
 #endif
 
@@ -1269,11 +1389,14 @@ _mdfd_getseg(SMgrRelation reln, BlockNumber blkno, bool allowNotFound)
  * Get number of blocks present in a single disk file
  */
 static BlockNumber
-_mdnblocks(File file, Size blcksz)
+_mdnblocks(MirroredBufferPoolOpen *mirroredOpen, Size blcksz)
 {
 	long		len;
 
-	len = FileSeek(file, 0L, SEEK_END);
+	Assert(mirroredOpen != NULL);
+	Assert(MirroredBufferPool_IsActive(mirroredOpen));
+	
+	len = MirroredBufferPool_SeekEnd(mirroredOpen);
 	if (len < 0)
 		return 0;				/* on failure, assume file is empty */
 	return (BlockNumber) (len / blcksz);

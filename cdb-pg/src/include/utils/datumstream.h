@@ -118,7 +118,13 @@ extern int datumstream_put(DatumStream *ds, Datum d, bool n);
 /* ctor and dtor */
 extern DatumStream *create_datumstream(CompressorType compType, int32 compLv, int32 maxsz, 
         Form_pg_attribute attr, char *relname, bool isreader);
-extern void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncompressed);
+extern void datumstream_open_file(
+		DatumStream *ds, 
+		char *fn, 
+		int64 eof, 
+		int64 eofUncompressed,
+		RelFileNode relFileNode,
+		int32	segmentFileNum);
 extern void datumstream_close_file(DatumStream *ds); 
 extern void destroy_datumstream(DatumStream *ds);
 

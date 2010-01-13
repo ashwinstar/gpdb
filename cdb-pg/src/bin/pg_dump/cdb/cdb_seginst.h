@@ -26,8 +26,6 @@ typedef struct segment_database
 	int4	content;
     SegRole	role;             /* is it a master database or just any segdb? */        
     int4	port;             
-    bool	isValid;          /* true iff cdb_seg.primary_inst == contentid */
-	bool	isPrimary;
     char*	pszHost; 
 	char*	pszDBName;          
     char*	pszDBUser;        
@@ -45,7 +43,7 @@ typedef struct segment_database
 typedef struct restore_pair
 {
 	SegmentDatabase		segdb_source; /* segdb where backup file is located at */
-	SegmentDatabase		segdb_target; /* segdb we want to restore. same as target or its mirror */
+	SegmentDatabase		segdb_target; /* segdb we want to restore. same as source or its mirror */
 	
 } RestorePair;
 
@@ -70,14 +68,12 @@ typedef struct segment_database_restore_pair_array
  */
 typedef enum actor_set
 {
-	SET_ALL,        /* master, primaries and mirrors */
-	SET_NO_MIRRORS, 
+	SET_NO_MIRRORS,
 	SET_INDIVIDUAL
 } ActorSet;
 
 typedef enum backup_file_location
 {
-	FILE_ON_ALL,
 	FILE_ON_PRIMARIES,
 	FILE_ON_INDIVIDUAL
 } BackupLoc;

@@ -590,11 +590,11 @@ DATA(insert OID = 6440 ( pg_stat_last_operation	    PGNSP PGUID -1 f c t \054 60
 #define PG_STAT_LAST_OPERATION_OID 6440
 DATA(insert OID = 6441 ( pg_stat_last_shoperation	    PGNSP PGUID -1 f c t \054 6056 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define PG_STAT_LAST_SHOPERATION_OID 6441
-DATA(insert OID = 6442 ( gp_segment_config	    PGNSP PGUID -1 f c t \054 5036 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 6442 ( gp_segment_configuration	    PGNSP PGUID -1 f c t \054 5036 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define GP_SEGMENT_CONFIG_RELTYPE_OID 6442
 DATA(insert OID = 6443 ( gp_fault_strategy	    PGNSP PGUID -1 f c t \054 5039 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define GP_FAULT_STRATEGY_RELTYPE_OID 6443
-DATA(insert OID = 6444 ( gp_san_config	    PGNSP PGUID -1 f c t \054 5035 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 6444 ( gp_san_configuration	    PGNSP PGUID -1 f c t \054 5035 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define GP_SAN_CONFIG_RELTYPE_OID 6444
 
 DATA(insert OID = 6447 (pg_foreign_data_wrapper PGNSP PGUID -1 f c t \054 2898 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
@@ -605,11 +605,6 @@ DATA(insert OID = 6449 (pg_user_mapping PGNSP PGUID -1 f c t \054 2895 0 record_
 #define PG_USER_MAPPING_OID 6449
 DATA(insert OID = 6452 (pg_foreign_table PGNSP PGUID -1 f c t \054 2879 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
 #define PG_FOREIGN_TABLE_OID 6452
-
-DATA(insert OID = 6450 (gp_persistent_rel_files PGNSP PGUID -1 f c t \054 5037 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
-#define GP_PERSISTENT_REL_FILES_OID 6450
-DATA(insert OID = 6451 (gp_persistent_db_dirs PGNSP PGUID -1 f c t \054 5038 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
-#define GP_PERSISTENT_DB_DIRS_OID 6451
 DATA(insert OID = 6453 (gp_fastsequence PGNSP PGUID -1 f c t \054 5043 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
 #define GP_FASTSEQUENCE_OID 6453
 
@@ -629,6 +624,20 @@ DATA(insert OID = 6446 ( pg_resqueuecapability	    PGNSP PGUID -1 f c t \054 606
 #define PG_RESQUEUECAPABILITY_RELTYPE_OID 6446
 
 /* TIDYCAT_END_CODEGEN */
+
+DATA(insert OID = 6990 (gp_persistent_relation_node PGNSP PGUID -1 f c t \054 5090 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define GP_PERSISTENT_RELATION_NODE_OID 6990
+DATA(insert OID = 6991 (gp_persistent_database_node PGNSP PGUID -1 f c t \054 5091 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define GP_PERSISTENT_DATABASE_NODE_OID 6991
+DATA(insert OID = 6992 (gp_persistent_tablespace_node PGNSP PGUID -1 f c t \054 5092 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define GP_PERSISTENT_TABLESPACE_NODE_OID 6992
+DATA(insert OID = 6993 (gp_persistent_filespace_node PGNSP PGUID -1 f c t \054 5093 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define GP_PERSISTENT_FILESPACE_NODE_OID 6993
+DATA(insert OID = 6994 (gp_relation_node PGNSP PGUID -1 f c t \054 5094 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define GP_RELATION_NODE_OID 6994
+DATA(insert OID = 6995 (gp_global_sequence PGNSP PGUID -1 f c t \054 5096 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define GP_GLOBAL_SEQUENCE_OID 6995
+
 
 /*
  * macros

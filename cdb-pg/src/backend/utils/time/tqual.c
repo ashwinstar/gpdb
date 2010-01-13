@@ -604,65 +604,37 @@ dumpSharedLocalSnapshot_forCursor(void)
 
 #define FileWriteOK(file, ptr, size) (BufFileWrite(file, ptr, size) == size)
 
+#define FileWriteFieldWithCount(count, file, field) \
+    if (BufFileWrite((file), &(field), sizeof(field)) != sizeof(field)) break; \
+    count += sizeof(field);
+
 	do
 	{
 		/* Write our length as zero. (we'll fix it later). */
 		count = 0;
-		if (!FileWriteOK(f, &count, sizeof(count)))
-			break;
-		count += sizeof(count);
 
-		if (!FileWriteOK(f, &src->pid, sizeof(src->pid)))
-			break;
-		count += sizeof(src->pid);
-
-		if (!FileWriteOK(f, &src->xid, sizeof(src->xid)))
-			break;
-		count += sizeof(src->xid);
-
-		if (!FileWriteOK(f, &src->cid, sizeof(src->cid)))
-			break;
-		count += sizeof(src->cid);
-
-		if (!FileWriteOK(f, &src->startTimestamp, sizeof(src->startTimestamp)))
-			break;
-		count += sizeof(src->startTimestamp);
-
-		if (!FileWriteOK(f, &src->subcnt, sizeof(src->subcnt)))
-			break;
-		count += sizeof(src->subcnt);
+		FileWriteFieldWithCount(count, f, count); /* write count itself */
+		FileWriteFieldWithCount(count, f, src->pid);
+		FileWriteFieldWithCount(count, f, src->xid);
+		FileWriteFieldWithCount(count, f, src->cid);
+		FileWriteFieldWithCount(count, f, src->startTimestamp);
+		FileWriteFieldWithCount(count, f, src->subcnt);
 
 		if (!FileWriteOK(f, &src->subxids, xipEntryCount * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId)))
 			break;
 		count += xipEntryCount * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId);
 
-		if (!FileWriteOK(f, &src->combocidcnt, sizeof(src->combocidcnt)))
-			break;
-		count += sizeof(src->combocidcnt);
-
-		if (!FileWriteOK(f, &src->combocids, sizeof(src->combocids)))
-			break;
-		count += sizeof(src->combocids);
-
-		if (!FileWriteOK(f, &src->snapshot.xmin, sizeof(src->snapshot.xmin)))
-			break;
-		count += sizeof(src->snapshot.xmin);
-
-		if (!FileWriteOK(f, &src->snapshot.xmax, sizeof(src->snapshot.xmax)))
-			break;
-		count += sizeof(src->snapshot.xmax);
-
-		if (!FileWriteOK(f, &src->snapshot.xcnt, sizeof(src->snapshot.xcnt)))
-			break;
-		count += sizeof(src->snapshot.xcnt);
+		FileWriteFieldWithCount(count, f, src->combocidcnt);
+		FileWriteFieldWithCount(count, f, src->combocids);
+		FileWriteFieldWithCount(count, f, src->snapshot.xmin);
+		FileWriteFieldWithCount(count, f, src->snapshot.xmax);
+		FileWriteFieldWithCount(count, f, src->snapshot.xcnt);
 
 		if (!FileWriteOK(f, &src->snapshot.xip, xipEntryCount * sizeof(TransactionId)))
 			break;
 		count += xipEntryCount * sizeof(TransactionId);
 
-		if (!FileWriteOK(f, &src->snapshot.curcid, sizeof(src->snapshot.curcid)))
-			break;
-		count += sizeof(src->snapshot.curcid);
+		FileWriteFieldWithCount(count, f, src->snapshot.curcid);
 
 		/*
 		 * THE STUFF IN THE SHARED LOCAL VERSION OF 

@@ -14,6 +14,8 @@
  */
 #include "postgres.h"
 
+#include <signal.h>
+
 #include "access/clog.h"
 #include "access/heapam.h"
 #include "access/multixact.h"
@@ -22,13 +24,19 @@
 #include "access/twophase.h"
 #include "access/distributedlog.h"
 #include "access/appendonlywriter.h"
+#include "cdb/cdbfilerep.h"
+#include "cdb/cdbfilerepprimaryack.h"
 #include "cdb/cdblocaldistribxact.h"
+#include "cdb/cdbpersistenttablespace.h"
+#include "cdb/cdbpersistentdatabase.h"
+#include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/postmaster.h"
+#include "postmaster/primary_mirror_mode.h"
 #include "postmaster/seqserver.h"
 #include "postmaster/walredoserver.h"
 #include "postmaster/walsendserver.h"
@@ -147,17 +155,31 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, SharedSnapshotShmemSize());
 		size = add_size(size, SInvalShmemSize());
 		size = add_size(size, PMSignalShmemSize());
+		size = add_size(size, primaryMirrorModeShmemSize());
 		size = add_size(size, FreeSpaceShmemSize());
-		size = add_size(size, BgWriterShmemSize());
 		//size = add_size(size, AutoVacuumShmemSize());
 		size = add_size(size, FtsShmemSize());
 		size = add_size(size, tmShmemSize());
 		size = add_size(size, SeqServerShmemSize());
 		size = add_size(size, WalSendServerShmemSize());
 		size = add_size(size, WalRedoServerShmemSize());
+		size = add_size(size, PersistentTablespace_ShmemSize());
+		size = add_size(size, PersistentDatabase_ShmemSize());
+		size = add_size(size, PersistentRelation_ShmemSize());
+		if (GPIsSegmentDatabase()) {
+			size = add_size(size, FileRep_ShmemSize());
+			size = add_size(size, FileRepAck_ShmemSize());
+			size = add_size(size, FileRepAckPrimary_ShmemSize());
+		}
+
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
 #endif
+
+		elog(LOG, "Size not including the buffer pool %lu",
+			 (unsigned long) size);
+
+		size = add_size(size, BgWriterShmemSize());
 
 		/* freeze the addin request size and include it */
 		addin_request_allowed = false;
@@ -166,7 +188,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		/* might as well round it off to a multiple of a typical page size */
 		size = add_size(size, BLCKSZ - (size % BLCKSZ));
 
-		elog(DEBUG3, "invoking IpcMemoryCreate(size=%lu)",
+		elog(LOG, "invoking IpcMemoryCreate(size = %lu)",
 			 (unsigned long) size);
 
 		/*
@@ -240,7 +262,11 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		InitAppendOnlyWriter();
-	
+
+	PersistentTablespace_ShmemInit();
+	PersistentDatabase_ShmemInit();
+	PersistentRelation_ShmemInit();
+
 	/*
 	 * Set up resource schedular
 	 */
@@ -288,11 +314,19 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 * Set up interprocess signaling mechanisms
 	 */
 	PMSignalShmemInit();
+	primaryMirrorModeShmemInit();
 	BgWriterShmemInit();
 	//AutoVacuumShmemInit();
 	SeqServerShmemInit();
 	WalSendServerShmemInit();
 	WalRedoServerShmemInit();
+
+	if (GPIsSegmentDatabase()) {
+	
+		FileRep_ShmemInit();
+		FileRepAck_ShmemInit();
+		FileRepAckPrimary_ShmemInit();
+	}
 
 	/*
 	 * Set up other modules that need some shared memory space

@@ -16,6 +16,7 @@
 #define HEAP_H
 
 #include "parser/parse_node.h"
+#include "catalog/gp_persistent.h"
 
 
 typedef struct RawColumnDefault
@@ -71,6 +72,23 @@ extern void InsertPgClassTuple(Relation pg_class_desc,
 				   Relation new_rel_desc,
 				   Oid new_rel_oid,
 				   Datum reloptions);
+
+extern void InsertGpRelationNodeTuple(
+	Relation 		gp_relation_node,
+	Oid				relationId,
+	Oid 			tablespace,
+	Oid				relation,
+	ItemPointer		persistentTid,
+	int64			persistentSerialNum);
+extern void UpdateGpRelationNodeTuple(
+		Relation	gp_relation_node,
+		HeapTuple	tuple,
+		Oid			tablespace,
+		Oid 		relation,
+		ItemPointer persistentTid,
+		int64		persistentSerialNum);
+extern void DeleteGpRelationNodeTuple(
+		Relation relation);
 
 extern List *AddRelationRawConstraints(Relation rel,
 						  List *rawColDefaults,

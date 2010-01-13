@@ -39,10 +39,6 @@ void FreeSegmentDatabaseArray( SegmentDatabaseArray* pSegDBAr )
 			
 		if ( pSegDB->pszHost != NULL )
 			free( pSegDB->pszHost );
-        /*
-		if ( pSegDB->pszDBName != NULL )
-			free( pSegDB->pszDBName );
-         */
 	}
 
 	if ( pSegDBAr->pData != NULL )
@@ -69,9 +65,7 @@ void FreeRestorePairArray( RestorePairArray* restorePairAr )
  * It then uses the set specification fo filter out any instid, segid combinations
  * that don't match the set.  bExcludeHead = true is used for restoring, because
  * the head is restored first seperately from the rest of the databases. 
- /
-*/
-
+ */
 bool GetDumpSegmentDatabaseArray(PGconn* pConn, 
 								 SegmentDatabaseArray* pSegDBAr, 
 								 ActorSet actors, 
@@ -86,8 +80,6 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 	int count;
 	int i_dbid;
 	int i_content;
-    int i_isvalid;
-    int i_isprimary;
 	int i_host;
 	int i_port;
 	int i;
@@ -101,13 +93,11 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 	appendPQExpBuffer(pQry,  "SELECT" 
 							   " dbid," 
 							   " content,"  
-							   " valid,"
-							   " isPrimary,"
 							   " hostname,"
 							   " port"
 							 " FROM"
-							   " gp_configuration"
-							 " WHERE valid = 't'");
+							   " gp_segment_configuration"
+							 " WHERE role='p'");
 
 	pRes = PQexec(pConn, pQry->data);
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK)
@@ -142,14 +132,12 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 	/* get the column numbers */
 	i_dbid		= PQfnumber(pRes, "dbid");
 	i_content	= PQfnumber(pRes, "content");
-	i_isvalid	= PQfnumber(pRes, "valid");
 	i_host		= PQfnumber(pRes, "hostname");
 	i_port		= PQfnumber(pRes, "port");
-    i_isprimary = PQfnumber(pRes, "isPrimary");
 
 	/* 
-	 * if an individul set of dbid's was requested to be dumped, 
-	 * parse it and check that it realy exists and is valid 
+	 * if an individual set of dbid's was requested to be dumped, 
+	 * parse it and check that it really exists and is a primary segment.
 	 */
 	if (actors == SET_INDIVIDUAL)
 	{
@@ -159,7 +147,7 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 		
 		if(dbidset == NULL)
 		{
-			mpp_err_msg("ERROR", "gp_dump","Unable to allocate memory for Greenplum dbidset information\n");
+			mpp_err_msg("ERROR", "gp_dump","Unable to allocate memory for Greenplum dbid set information\n");
 			bRtn = false;
 			goto cleanup;
 		}
@@ -190,8 +178,8 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 			
 			if(!match)
 			{
-				mpp_err_msg("ERROR", "gp_dump","Dbid %d is not a correct Greenplum segment databases entry, or is currently invalid. "
-							"consult gp_configuration and the isvalid flag\n", dbidset[i]);
+				mpp_err_msg("ERROR", "gp_dump","dbid %d is not a correct Greenplum segment databases "
+							"entry, or is not a primary segment\n ", dbidset[i]);
 				bRtn = false;
 				goto cleanup;
 			}
@@ -200,18 +188,13 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 	
 	mpp_err_msg("INFO", "gp_dump","Preparing to dump the following segments:\n");
 	
-	/* Read through the results set.  */
+	/* Read through the results set (all primary segments) */
 	x = 0;
 	for ( i = 0; i < ntups; i++ )
 	{
 		int dbid	= atoi(PQgetvalue(pRes, i, i_dbid));
 		int content	= atoi(PQgetvalue(pRes, i, i_content));
-		bool isprimary = ((strcmp(PQgetvalue(pRes, i, i_isprimary), "t") == 0) ? true : false);
         bool should_dump = false;
-		
-		/* if we want primaries only - skip all mirrors */
-		if (actors == SET_NO_MIRRORS && !isprimary)
-           continue;
 		
 		/* in dataOnly we don't dump master information */
 		if(dataOnly && content == -1 && actors != SET_INDIVIDUAL)
@@ -221,10 +204,6 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 		if(schemaOnly && content != -1 && actors != SET_INDIVIDUAL)
 			continue;
 
-		/* we never want to dump the warm standby master */
-		if(content == -1 && !isprimary)
-			continue;
-		
 		if(actors == SET_INDIVIDUAL)
 		{
 			should_dump = false;
@@ -238,14 +217,12 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 			if(!should_dump)
 				continue;
 		}
-		
+				
 		pSegDB = &pSegDBAr->pData[x++];
 		pSegDB->dbid = dbid; 
 		pSegDB->content	= content;
 		pSegDB->role = (content == -1 ? ROLE_MASTER : ROLE_SEGDB);
 		pSegDB->port = atoi(PQgetvalue(pRes, i, i_port));
-		pSegDB->isValid	= (strcmp(PQgetvalue(pRes, i, i_isvalid), "t") == 0 );
-		pSegDB->isPrimary = isprimary;
 		pSegDB->pszHost	= strdup(PQgetvalue(pRes, i, i_host));
         pSegDB->pszDBName = PQdb(pConn);
 		pSegDB->pszDBUser = PQuser(pConn);
@@ -254,8 +231,7 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 		if(pSegDB->role == ROLE_MASTER)
 			mpp_err_msg("INFO", "gp_dump", "Master (dbid 1)\n");
 		else
-			mpp_err_msg("INFO", "gp_dump", "%s segment %d (dbid %d)\n", 
-						(pSegDB->isPrimary ? "Primary" : "Mirror"),
+			mpp_err_msg("INFO", "gp_dump", "Segment %d (dbid %d)\n", 
 						pSegDB->content,
 						pSegDB->dbid);
 	}
@@ -285,8 +261,6 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	int count;
 	int i_dbid;
 	int i_content;
-    int i_isvalid;
-    int i_isprimary;
 	int i_host;
 	int i_port;
 	int i;
@@ -296,20 +270,17 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	int	*dbidset = NULL;
 	SegmentDatabase* sourceSegDB;
 	SegmentDatabase* targetSegDB;
-	SegmentDatabase* prevSourceSegDB;
 	
 	pQry = createPQExpBuffer();
 	appendPQExpBuffer(pQry,  "SELECT" 
 					  " dbid," 
 					  " content,"  
-					  " valid,"
-					  " isPrimary,"
 					  " hostname,"
 					  " port"
 					  " FROM"
-					  " gp_configuration"
-					  " WHERE valid = 't'" 
-					  " ORDER BY content, isPrimary DESC"
+					  " gp_segment_configuration"
+					  " WHERE role='p'" 
+					  " ORDER BY content DESC"
 					  );
 	
 	pRes = PQexec(pConn, pQry->data);
@@ -344,10 +315,8 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	/* get the column numbers */
 	i_dbid		= PQfnumber(pRes, "dbid");
 	i_content	= PQfnumber(pRes, "content");
-	i_isvalid	= PQfnumber(pRes, "valid");
 	i_host		= PQfnumber(pRes, "hostname");
 	i_port		= PQfnumber(pRes, "port");
-    i_isprimary = PQfnumber(pRes, "isPrimary");
 	
 	/* 
 	 * if the dump file is on individual databases, 
@@ -392,8 +361,8 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 			
 			if(!match)
 			{
-				mpp_err_msg("ERROR", "gp_restore","Dbid %d is not a correct Greenplum segment databases entry, or is currently invalid. "
-							"consult gp_configuration and the isvalid flag\n", dbidset[i]);
+				mpp_err_msg("ERROR", "gp_restore","dbid %d is not a primary Greenplum segment databases entry\n", 
+							dbidset[i]);
 				bRtn = false;
 				goto cleanup;
 			}
@@ -408,15 +377,10 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	{
 		int dbid		= atoi(PQgetvalue(pRes, i, i_dbid));
 		int contentid	= atoi(PQgetvalue(pRes, i, i_content));
-		int isprimary	= (strcmp(PQgetvalue(pRes, i, i_isprimary), "t") == 0);
 		bool should_restore = false;
 		
 		/* if dataOnly don't restore the master (table definitions) */
 		if(dataOnly && contentid == -1)
-			continue;
-		
-		/* we never want to restore the warm standby master */
-		if(contentid == -1 && !isprimary)
 			continue;
 				
 		if(backupLocation == FILE_ON_INDIVIDUAL)
@@ -433,139 +397,43 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 				continue;
 		}
 		
-		/* we restore all segDBs (unless backupLoc=INDIVIDUAL), so mark this one as a target */
 		targetSegDB = &restorePairAr->pData[x].segdb_target; 
 		targetSegDB->dbid		= dbid; 
 		targetSegDB->role		= (contentid == -1 ? ROLE_MASTER : ROLE_SEGDB);
 		targetSegDB->port		= atoi(PQgetvalue(pRes, i, i_port));
-		targetSegDB->isValid	= ( strcmp(PQgetvalue(pRes, i, i_isvalid), "t") == 0 );
 		targetSegDB->pszHost	= strdup(PQgetvalue(pRes, i, i_host));
         targetSegDB->pszDBName = PQdb(pConn);
 		targetSegDB->pszDBUser = PQuser(pConn);
 		targetSegDB->pszDBPswd = PQpass(pConn);
+				
+		sourceSegDB = &restorePairAr->pData[x].segdb_source;
+		sourceSegDB->dbid		= targetSegDB->dbid;  
+		sourceSegDB->role		= targetSegDB->role;
+		sourceSegDB->port		= targetSegDB->port;
+		sourceSegDB->pszHost	= targetSegDB->pszHost;
+		sourceSegDB->pszDBName  = targetSegDB->pszDBName;
+		sourceSegDB->pszDBUser  = targetSegDB->pszDBUser;
+		if(targetSegDB->pszDBPswd)
+			sourceSegDB->pszDBPswd  = targetSegDB->pszDBPswd;
 		
 		if(targetSegDB->role == ROLE_MASTER)
 			mpp_err_msg("INFO", "gp_restore", "Master (dbid 1)\n");
 		else
-			mpp_err_msg("INFO", "gp_restore", "%s segment %d (dbid %d)\n", 
-						(isprimary ? "Primary" : "Mirror"),
+			mpp_err_msg("INFO", "gp_restore", "Segment %d (dbid %d)\n", 
 						contentid,
 						targetSegDB->dbid);
 		
-		sourceSegDB = &restorePairAr->pData[x].segdb_source;
-		
-		if(backupLocation == FILE_ON_PRIMARIES && !isprimary)
-		{
-			/* 
-			 * if this is a mirror, and backup files are only on the 
-			 * primary nodes, make the primary for this content (previous
-			 * tuple in the result set) the source for this seg db backup.
-			 */
-			prevSourceSegDB = &restorePairAr->pData[x - 1].segdb_source;
-			sourceSegDB->dbid		= prevSourceSegDB->dbid;  
-			sourceSegDB->role		= prevSourceSegDB->role;
-			sourceSegDB->port		= prevSourceSegDB->port;
-			sourceSegDB->isValid	= prevSourceSegDB->isValid;
-			sourceSegDB->pszHost	= prevSourceSegDB->pszHost;
-			sourceSegDB->pszDBName  = prevSourceSegDB->pszDBName;
-			sourceSegDB->pszDBUser  = prevSourceSegDB->pszDBUser;	
-			if(prevSourceSegDB->pszDBPswd)
-				sourceSegDB->pszDBPswd  = prevSourceSegDB->pszDBPswd;		
-
-		}
-		else
-		{
-			/* 
-			 * the source is the same as the target segDB. Backup file
-			 * is on the segdb we want to backup. 
-			 */
-			sourceSegDB->dbid		= targetSegDB->dbid;  
-			sourceSegDB->role		= targetSegDB->role;
-			sourceSegDB->port		= targetSegDB->port;
-			sourceSegDB->isValid	= targetSegDB->isValid;
-			sourceSegDB->pszHost	= targetSegDB->pszHost;
-			sourceSegDB->pszDBName  = targetSegDB->pszDBName;
-			sourceSegDB->pszDBUser  = targetSegDB->pszDBUser;
-			if(targetSegDB->pszDBPswd)
-				sourceSegDB->pszDBPswd  = targetSegDB->pszDBPswd;
-		}
-		
 		x++;
-
 	}
 	
 	/* set the count to be the number that passed the set inclusion test */
 	restorePairAr->count = x;
 	
 cleanup:
-		//FreeCDBSegArray( &SegAr );
-		if ( pQry != NULL )
-			destroyPQExpBuffer(pQry);
+	if ( pQry != NULL )
+		destroyPQExpBuffer(pQry);
 	if ( pRes != NULL )
 		PQclear(pRes);
 	
 	return bRtn;
 }
-
-/* cmpInstSeg: This function compares two InstSeg objects.  
- * The sorting is by instType, instVal, segType, segVal 
- */
-/*
-int cmpInstSeg( const void* l, const void* r )
-{
-	int cmp;
-	InstSeg* lhs = (InstSeg*) l;
-	InstSeg* rhs = (InstSeg*) r;
-	
-	// Sort based on instType, instVal, segType, segVal
-	if ( lhs->instVal.val_type < rhs->instVal.val_type )
-		return -1;
-	if ( lhs->instVal.val_type > rhs->instVal.val_type )
-		return 1;
-	
-	switch( lhs->instVal.val_type )
- 	{
-		case DEFN_TYPE_ID:
-			if ( lhs->instVal.val_id < rhs->instVal.val_id )
-				return -1;
-			if ( lhs->instVal.val_id > rhs->instVal.val_id )
-				return 1;
-			break;
-		case DEFN_TYPE_ALL:
-			break;
-		case DEFN_TYPE_HOST:
-			assert( lhs->instVal.val_pszHost != NULL && rhs->instVal.val_pszHost != NULL );
-			cmp = strcmp( lhs->instVal.val_pszHost, rhs->instVal.val_pszHost );
-			if ( cmp != 0 )
-				return cmp;
-			break;
-		default:
-			assert(0);
-			return 0;
-	}
-	
-	if ( lhs->segVal.val_type < rhs->segVal.val_type )
-		return -1;
-	if ( lhs->segVal.val_type > rhs->segVal.val_type )
-		return 1;
-	
-	switch( lhs->segVal.val_type )
-	{
-		case DEFN_TYPE_ID:
-			if ( lhs->segVal.val_id < rhs->segVal.val_id )
-				return -1;
-			if ( lhs->segVal.val_id > rhs->segVal.val_id )
-				return 1;
-			break;
-		case DEFN_TYPE_ALL:
-			break;
-		default:
-			assert(0);
-			return 0;
-	}
-	
-	return 0;
-}
-*/
-
-

@@ -58,6 +58,7 @@ FormatAOSegmentFileName(
 							char *basepath, 
 							int segno, 
 							int col, 
+							int32 *fileSegNo,
 							char *filepathname)
 {
 	int	pseudoSegNo;
@@ -79,7 +80,8 @@ FormatAOSegmentFileName(
 		 */
 		pseudoSegNo = (col*AOTupleId_MultiplierSegmentFileNum) + segno;
 	}
-
+	
+	*fileSegNo = pseudoSegNo;
 
 	if (pseudoSegNo > 0)
 	{
@@ -102,11 +104,12 @@ MakeAOSegmentFileName(
 							char *filepathname)
 {
 	char	*basepath;
+	int32	fileSegNo;
 	
 	/* Get base path for this relation file */
 	basepath = relpath(rel->rd_node);
 
-	FormatAOSegmentFileName(basepath, segno, col, filepathname);
+	FormatAOSegmentFileName(basepath, segno, col, &fileSegNo, filepathname);
 
 	pfree(basepath);
 }

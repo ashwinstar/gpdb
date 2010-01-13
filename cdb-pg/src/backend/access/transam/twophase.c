@@ -63,6 +63,12 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 
+#include "cdb/cdbpersistentrelation.h"
+#include "cdb/cdbmirroredflatfile.h"
+#include "cdb/cdbmirroredfilesysobj.h"
+#include "cdb/cdbpersistentfilesysobj.h"
+
+
 
 /*
  * Directory where Two-phase commit files reside within PGDATA
@@ -145,13 +151,11 @@ static void RecordTransactionCommitPrepared(TransactionId xid,
 								const char *gid,
 								int nchildren,
 								TransactionId *children,
-								int nrels,
-								RelFileNode *rels);
+								PersistentEndXactRecObjects *persistentPrepareObjects);
 static void RecordTransactionAbortPrepared(TransactionId xid,
 							   int nchildren,
 							   TransactionId *children,
-							   int nrels,
-							   RelFileNode *rels);
+							   PersistentEndXactRecObjects *persistentPrepareObjects);
 static void ProcessRecords(char *bufptr, TransactionId xid,
 			   const TwoPhaseCallback callbacks[]);
 
@@ -722,6 +726,8 @@ TwoPhaseGetDummyProc(TransactionId xid)
 
 #define TwoPhaseFilePath(path, xid) \
 	snprintf(path, MAXPGPATH, TWOPHASE_DIR "/%08X", xid)
+#define TwoPhaseSimpleFileName(path, xid) \
+		snprintf(path, MAXPGPATH, "/%08X", xid)
 
 /*
  * 2PC state file format:
@@ -752,8 +758,8 @@ typedef struct TwoPhaseFileHeader
 	TimestampTz prepared_at;	/* time of preparation */
 	Oid			owner;			/* user running the transaction */
 	int32		nsubxacts;		/* number of following subxact XIDs */
-	int32		ncommitrels;	/* number of delete-on-commit rels */
-	int32		nabortrels;		/* number of delete-on-abort rels */
+	int16		persistentPrepareObjectCount;	
+								/* number of PersistentEndXactRec style objects */
 	char		gid[GIDSIZE];	/* GID for transaction */
 } TwoPhaseFileHeader;
 
@@ -827,8 +833,9 @@ StartPrepare(GlobalTransaction gxact)
 	TransactionId xid = gxact->proc.xid;
 	TwoPhaseFileHeader hdr;
 	TransactionId *children;
-	RelFileNode *commitrels;
-	RelFileNode *abortrels;
+
+	int32						persistentPrepareSerializeLen;
+	PersistentEndXactRecObjects persistentPrepareObjects;
 
 	/* Initialize linked list */
 	records.head = palloc0(sizeof(XLogRecData));
@@ -851,8 +858,11 @@ StartPrepare(GlobalTransaction gxact)
 	hdr.prepared_at = gxact->prepared_at;
 	hdr.owner = gxact->owner;
 	hdr.nsubxacts = xactGetCommittedChildren(&children);
-	hdr.ncommitrels = smgrGetPendingDeletes(true, &commitrels);
-	hdr.nabortrels = smgrGetPendingDeletes(false, &abortrels);
+	persistentPrepareSerializeLen =
+			PersistentEndXactRec_FetchObjectsFromSmgr(
+										&persistentPrepareObjects,
+										EndXactRecKind_Prepare,
+										&hdr.persistentPrepareObjectCount);
 	StrNCpy(hdr.gid, gxact->gid, GIDSIZE);
 
 	save_state_data(&hdr, sizeof(TwoPhaseFileHeader));
@@ -865,15 +875,28 @@ StartPrepare(GlobalTransaction gxact)
 		GXactLoadSubxactData(gxact, hdr.nsubxacts, children);
 		pfree(children);
 	}
-	if (hdr.ncommitrels > 0)
+	if (hdr.persistentPrepareObjectCount > 0)
 	{
-		save_state_data(commitrels, hdr.ncommitrels * sizeof(RelFileNode));
-		pfree(commitrels);
-	}
-	if (hdr.nabortrels > 0)
-	{
-		save_state_data(abortrels, hdr.nabortrels * sizeof(RelFileNode));
-		pfree(abortrels);
+		char *persistentPrepareBuffer;
+		int16 objectCount;
+
+		Assert(persistentPrepareSerializeLen > 0);
+		persistentPrepareBuffer = 
+					(char*)palloc(persistentPrepareSerializeLen);
+		
+		PersistentEndXactRec_Serialize(
+								&persistentPrepareObjects,
+								EndXactRecKind_Prepare,
+								&objectCount,
+								(uint8*)persistentPrepareBuffer,
+								persistentPrepareSerializeLen);
+		
+		if (Debug_persistent_print)
+			PersistentEndXactRec_Print("StartPrepare", &persistentPrepareObjects);
+		
+		save_state_data(persistentPrepareBuffer, persistentPrepareSerializeLen);
+
+		pfree(persistentPrepareBuffer);
 	}
 }
 
@@ -887,11 +910,13 @@ EndPrepare(GlobalTransaction gxact)
 {
 	TransactionId xid = gxact->proc.xid;
 	TwoPhaseFileHeader *hdr;
-	char		path[MAXPGPATH];
+	char		simpleFileName[MAXPGPATH];
 	XLogRecData *record;
 	pg_crc32	statefile_crc;
 	pg_crc32	bogus_crc;
-	int			fd;
+	int32		crcPosition;
+
+	MirroredFlatFileOpen	mirroredOpen;
 
 	/* Add the end sentinel to the list of 2PC records */
 	RegisterTwoPhaseRecord(TWOPHASE_RM_END_ID, 0,
@@ -919,16 +944,16 @@ EndPrepare(GlobalTransaction gxact)
 	 * critical section, though, it doesn't matter since any failure causes
 	 * PANIC anyway.
 	 */
-	TwoPhaseFilePath(path, xid);
+	TwoPhaseSimpleFileName(simpleFileName, xid);
 
-	fd = BasicOpenFile(path,
-					   O_CREAT | O_EXCL | O_WRONLY | PG_BINARY,
-					   S_IRUSR | S_IWUSR);
-	if (fd < 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not create two-phase state file \"%s\": %m",
-						path)));
+	MirroredFlatFile_Open(
+					&mirroredOpen,
+					TWOPHASE_DIR,
+					simpleFileName,
+					O_CREAT | O_EXCL | O_WRONLY | PG_BINARY,
+					S_IRUSR | S_IWUSR,
+					/* suppressError */ false,
+					/*isMirrorRecovery */ false);
 
 	/* Write data to file, and calculate CRC as we pass over it */
 	INIT_CRC32(statefile_crc);
@@ -936,13 +961,11 @@ EndPrepare(GlobalTransaction gxact)
 	for (record = records.head; record != NULL; record = record->next)
 	{
 		COMP_CRC32(statefile_crc, record->data, record->len);
-		if ((write(fd, record->data, record->len)) != record->len)
-		{
-			close(fd);
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not write two-phase state file: %m")));
-		}
+		MirroredFlatFile_Append(
+						&mirroredOpen,
+						record->data,
+						record->len,
+						/* suppressError */ false);
 	}
 
 	FIN_CRC32(statefile_crc);
@@ -951,24 +974,14 @@ EndPrepare(GlobalTransaction gxact)
 	 * Write a deliberately bogus CRC to the state file; this is just paranoia
 	 * to catch the case where four more bytes will run us out of disk space.
 	 */
+	crcPosition = MirroredFlatFile_GetAppendPosition(&mirroredOpen);
 	bogus_crc = ~statefile_crc;
 
-	if ((write(fd, &bogus_crc, sizeof(pg_crc32))) != sizeof(pg_crc32))
-	{
-		close(fd);
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write two-phase state file: %m")));
-	}
-
-	/* Back up to prepare for rewriting the CRC */
-	if (lseek(fd, -((off_t) sizeof(pg_crc32)), SEEK_CUR) < 0)
-	{
-		close(fd);
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not seek in two-phase state file: %m")));
-	}
+	MirroredFlatFile_Append(
+					&mirroredOpen,
+					&bogus_crc,
+					sizeof(pg_crc32),
+					/* suppressError */ false);
 
 	/*
 	 * The state file isn't valid yet, because we haven't written the correct
@@ -1002,18 +1015,15 @@ EndPrepare(GlobalTransaction gxact)
 	/* If we crash now, we have prepared: WAL replay will fix things */
 
 	/* write correct CRC and close file */
-	if ((write(fd, &statefile_crc, sizeof(pg_crc32))) != sizeof(pg_crc32))
-	{
-		close(fd);
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write two-phase state file: %m")));
-	}
+	MirroredFlatFile_Write(
+					&mirroredOpen,
+					crcPosition,
+					&statefile_crc, 
+					sizeof(pg_crc32),
+					/* suppressError */ false);
 
-	if (close(fd) != 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not close two-phase state file: %m")));
+	// NOTE: The next checkpoint will flush this file to disk.
+	MirroredFlatFile_Close(&mirroredOpen);
 
 	/*
 	 * Mark the prepared transaction as valid.	As soon as xact.c marks MyProc
@@ -1210,11 +1220,12 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	TransactionId xid;
 	char	   *buf;
 	char	   *bufptr;
+	char	   *dummy;
 	TwoPhaseFileHeader *hdr;
 	TransactionId *children;
-	RelFileNode *commitrels;
-	RelFileNode *abortrels;
-	int			i;
+
+	PersistentEndXactRecObjects persistentPrepareObjects;
+	int32 deserializeLen;
 
 	/*
 	 * Validate the GID, and lock the GXACT to ensure that two backends do not
@@ -1249,10 +1260,27 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	bufptr = buf + MAXALIGN(sizeof(TwoPhaseFileHeader));
 	children = (TransactionId *) bufptr;
 	bufptr += MAXALIGN(hdr->nsubxacts * sizeof(TransactionId));
-	commitrels = (RelFileNode *) bufptr;
-	bufptr += MAXALIGN(hdr->ncommitrels * sizeof(RelFileNode));
-	abortrels = (RelFileNode *) bufptr;
-	bufptr += MAXALIGN(hdr->nabortrels * sizeof(RelFileNode));
+
+	/*
+	 * Although we return the end of the PersistentEndXactRec object, we really want the
+	 * rounded-up aligned next buffer.  So, that is why we compute the deserialized length
+	 * and calculated the next buffer with it.
+	 */
+	deserializeLen =
+			PersistentEndXactRec_DeserializeLen(
+										(uint8*)bufptr,
+										hdr->persistentPrepareObjectCount);
+
+	PersistentEndXactRec_Deserialize(
+								(uint8*)bufptr,
+								hdr->persistentPrepareObjectCount,
+								&persistentPrepareObjects,
+								(uint8**)&dummy);
+
+	if (Debug_persistent_print)
+		PersistentEndXactRec_Print("FinishPreparedTransaction", &persistentPrepareObjects);
+
+	bufptr += MAXALIGN(deserializeLen);
 
 	/*
 	 * The order of operations here is critical: make the XLOG entry for
@@ -1266,11 +1294,11 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 		RecordTransactionCommitPrepared(xid, 
 										gid,
 										hdr->nsubxacts, children,
-										hdr->ncommitrels, commitrels);
+										&persistentPrepareObjects);
 	else
 		RecordTransactionAbortPrepared(xid,
 									   hdr->nsubxacts, children,
-									   hdr->nabortrels, abortrels);
+									   &persistentPrepareObjects);
 
 	ProcArrayRemove(&gxact->proc, /* forPrepare */ true, isCommit);
 
@@ -1290,16 +1318,10 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	 *
 	 * NB: this code knows that we couldn't be dropping any temp rels ...
 	 */
-	if (isCommit)
-	{
-		for (i = 0; i < hdr->ncommitrels; i++)
-			smgrdounlink(smgropen(commitrels[i]), false, false);
-	}
-	else
-	{
-		for (i = 0; i < hdr->nabortrels; i++)
-			smgrdounlink(smgropen(abortrels[i]), false, false);
-	}
+
+	PersistentFileSysObj_EndXactAction(
+							&persistentPrepareObjects,
+							isCommit);
 
 	/* And now do the callbacks */
 	if (isCommit)
@@ -1354,15 +1376,27 @@ ProcessRecords(char *bufptr, TransactionId xid,
 void
 RemoveTwoPhaseFile(TransactionId xid, bool giveWarning)
 {
-	char		path[MAXPGPATH];
+	char		simpleFileName[MAXPGPATH];
 
-	TwoPhaseFilePath(path, xid);
-	if (unlink(path))
+	TwoPhaseSimpleFileName(simpleFileName, xid);
+	if (MirroredFlatFile_Drop(
+						TWOPHASE_DIR,
+						simpleFileName, 
+						/* suppressError */ true,
+						/*isMirrorRecovery */ false))
+	{
 		if (errno != ENOENT || giveWarning)
+		{
+			char		path[MAXPGPATH];
+
+			TwoPhaseFilePath(path, xid);
+			
 			ereport(WARNING,
 					(errcode_for_file_access(),
 					 errmsg("could not remove two-phase state file \"%s\": %m",
 							path)));
+		}
+	}
 }
 
 /*
@@ -1373,58 +1407,48 @@ RemoveTwoPhaseFile(TransactionId xid, bool giveWarning)
 void
 RecreateTwoPhaseFile(TransactionId xid, void *content, int len)
 {
-	char		path[MAXPGPATH];
+	char		simpleFileName[MAXPGPATH];
 	pg_crc32	statefile_crc;
-	int			fd;
+
+	MirroredFlatFileOpen	mirroredOpen;
 
 	/* Recompute CRC */
 	INIT_CRC32(statefile_crc);
 	COMP_CRC32(statefile_crc, content, len);
 	FIN_CRC32(statefile_crc);
 
-	TwoPhaseFilePath(path, xid);
+	TwoPhaseSimpleFileName(simpleFileName, xid);
 
-	fd = BasicOpenFile(path,
-					   O_CREAT | O_TRUNC | O_WRONLY | PG_BINARY,
-					   S_IRUSR | S_IWUSR);
-	if (fd < 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not recreate two-phase state file \"%s\": %m",
-						path)));
+	MirroredFlatFile_Open(
+					&mirroredOpen,
+					TWOPHASE_DIR,
+					simpleFileName,
+					O_CREAT | O_TRUNC | O_WRONLY | PG_BINARY,
+					S_IRUSR | S_IWUSR,
+					/* suppressError */ false,
+					/*isMirrorRecovery */ false);
 
 	/* Write content and CRC */
-	if (write(fd, content, len) != len)
-	{
-		close(fd);
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write two-phase state file: %m")));
-	}
-	if (write(fd, &statefile_crc, sizeof(pg_crc32)) != sizeof(pg_crc32))
-	{
-		close(fd);
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write two-phase state file: %m")));
-	}
+	// UNDONE: Should MirroredFlatFile close the file on error?
+	MirroredFlatFile_Append(
+						&mirroredOpen,
+						content,
+						len,
+						/* suppressError */ false);
+	MirroredFlatFile_Append(
+						&mirroredOpen,
+						&statefile_crc,
+						sizeof(pg_crc32),
+						/* suppressError */ false);
 
 	/*
 	 * We must fsync the file because the end-of-replay checkpoint will not do
 	 * so, there being no GXACT in shared memory yet to tell it to.
 	 */
-	if (pg_fsync(fd) != 0)
-	{
-		close(fd);
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not fsync two-phase state file: %m")));
-	}
-
-	if (close(fd) != 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not close two-phase state file: %m")));
+	MirroredFlatFile_Flush(
+					&mirroredOpen,
+					/* suppressError */ false);
+	MirroredFlatFile_Close(&mirroredOpen);
 }
 
 /*
@@ -1449,7 +1473,7 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 {
 	TransactionId *xids;
 	int			nxids;
-	char		path[MAXPGPATH];
+	char		simpleFileName[MAXPGPATH];
 	int			i;
 
 	/*
@@ -1484,13 +1508,22 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 	for (i = 0; i < nxids; i++)
 	{
 		TransactionId xid = xids[i];
-		int			fd;
 
-		TwoPhaseFilePath(path, xid);
+		MirroredFlatFileOpen	mirroredOpen;
 
-		fd = BasicOpenFile(path, O_RDWR | PG_BINARY, 0);
-		if (fd < 0)
+		TwoPhaseSimpleFileName(simpleFileName, xid);
+
+		if (MirroredFlatFile_Open(
+							&mirroredOpen,
+							TWOPHASE_DIR,
+							simpleFileName,
+							O_RDWR | PG_BINARY, 
+							0,
+							/* suppressError */ true,
+							/*isMirrorRecovery */ false))
 		{
+			char		path[MAXPGPATH];
+
 			if (errno == ENOENT)
 			{
 				/* OK if gxact is no longer valid */
@@ -1499,26 +1532,20 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 				/* Restore errno in case it was changed */
 				errno = ENOENT;
 			}
+
+			TwoPhaseFilePath(path, xid);
+			
 			ereport(ERROR,
 					(errcode_for_file_access(),
 					 errmsg("could not open two-phase state file \"%s\": %m",
 							path)));
 		}
 
-		if (pg_fsync(fd) != 0)
-		{
-			close(fd);
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not fsync two-phase state file \"%s\": %m",
-							path)));
-		}
+		MirroredFlatFile_Flush(
+						&mirroredOpen,
+						/* suppressError */ false);
 
-		if (close(fd) != 0)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not close two-phase state file \"%s\": %m",
-							path)));
+		MirroredFlatFile_Close(&mirroredOpen);
 	}
 
 	pfree(xids);
@@ -1655,6 +1682,8 @@ RecoverPreparedTransactions(void)
 	DIR		   *cldir;
 	struct dirent *clde;
 
+	PersistentEndXactRecObjects persistentPrepareObjects;
+
 	LocalDistribXactRef localDistribXactRef;
 
 	snprintf(dir, MAXPGPATH, "%s", TWOPHASE_DIR);
@@ -1708,8 +1737,15 @@ RecoverPreparedTransactions(void)
 			bufptr = buf + MAXALIGN(sizeof(TwoPhaseFileHeader));
 			subxids = (TransactionId *) bufptr;
 			bufptr += MAXALIGN(hdr->nsubxacts * sizeof(TransactionId));
-			bufptr += MAXALIGN(hdr->ncommitrels * sizeof(RelFileNode));
-			bufptr += MAXALIGN(hdr->nabortrels * sizeof(RelFileNode));
+			
+			PersistentEndXactRec_Deserialize(
+										(uint8*)bufptr,
+										hdr->persistentPrepareObjectCount,
+										&persistentPrepareObjects,
+										(uint8**)&bufptr);
+
+			if (Debug_persistent_print)
+				PersistentEndXactRec_Print("RecoverPreparedTransactions", &persistentPrepareObjects);
 
 			/*
 			 * Reconstruct subtrans state for the transaction --- needed
@@ -1786,9 +1822,11 @@ RecordTransactionCommitPrepared(TransactionId xid,
 								const char *gid,
 								int nchildren,
 								TransactionId *children,
-								int nrels,
-								RelFileNode *rels)
+								PersistentEndXactRecObjects *persistentPrepareObjects)
 {
+	int16	persistentCommitObjectCount;
+	char	*persistentCommitBuffer = NULL;
+
 	XLogRecData rdata[3];
 	int			lastrdata = 0;
 	xl_xact_commit_prepared xlrec;
@@ -1796,7 +1834,16 @@ RecordTransactionCommitPrepared(TransactionId xid,
 
 	DistributedTransactionTimeStamp	distribTimeStamp;
 	DistributedTransactionId 		distribXid;
-	
+
+	/*
+	 * Look at the prepare information with respect to a commit.
+	 */
+	persistentCommitObjectCount =
+					PersistentEndXactRec_ObjectCount(
+										persistentPrepareObjects,
+										EndXactRecKind_Commit);
+
+
 	START_CRIT_SECTION();
 
 	/* See notes in RecordTransactionCommit */
@@ -1805,17 +1852,39 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	/* Emit the XLOG commit record */
 	xlrec.xid = xid;
 	xlrec.crec.xtime = time(NULL);
-	xlrec.crec.nrels = nrels;
+	xlrec.crec.persistentCommitObjectCount = persistentCommitObjectCount;
 	xlrec.crec.nsubxacts = nchildren;
 	rdata[0].data = (char *) (&xlrec);
 	rdata[0].len = MinSizeOfXactCommitPrepared;
 	rdata[0].buffer = InvalidBuffer;
-	/* dump rels to delete */
-	if (nrels > 0)
+	/* dump persistent commit objects */
+	if (persistentCommitObjectCount > 0)
 	{
+		int32 persistentCommitSerializeLen;
+		int16 objectCount;
+		
+		persistentCommitSerializeLen =
+				PersistentEndXactRec_SerializeLen(
+										persistentPrepareObjects,
+										EndXactRecKind_Commit);
+		
+		Assert(persistentCommitSerializeLen > 0);
+		persistentCommitBuffer = 
+					(char*)palloc(persistentCommitSerializeLen);
+		
+		PersistentEndXactRec_Serialize(
+								persistentPrepareObjects,
+								EndXactRecKind_Commit,
+								&objectCount,
+								(uint8*)persistentCommitBuffer,
+								persistentCommitSerializeLen);
+		
+		if (Debug_persistent_print)
+			PersistentEndXactRec_Print("RecordTransactionCommitPrepared", persistentPrepareObjects);
+
 		rdata[0].next = &(rdata[1]);
-		rdata[1].data = (char *) rels;
-		rdata[1].len = nrels * sizeof(RelFileNode);
+		rdata[1].data = persistentCommitBuffer;
+		rdata[1].len = persistentCommitSerializeLen;
 		rdata[1].buffer = InvalidBuffer;
 		lastrdata = 1;
 	}
@@ -1868,6 +1937,9 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	LWLockRelease(CheckpointStartLock);
 
 	END_CRIT_SECTION();
+
+	if (persistentCommitBuffer != NULL)
+		pfree(persistentCommitBuffer);
 }
 
 /*
@@ -1882,9 +1954,11 @@ static void
 RecordTransactionAbortPrepared(TransactionId xid,
 							   int nchildren,
 							   TransactionId *children,
-							   int nrels,
-							   RelFileNode *rels)
+							   PersistentEndXactRecObjects *persistentPrepareObjects)
 {
+	int16	persistentAbortObjectCount;
+	char	*persistentAbortBuffer = NULL;
+
 	XLogRecData rdata[3];
 	int			lastrdata = 0;
 	xl_xact_abort_prepared xlrec;
@@ -1898,22 +1972,52 @@ RecordTransactionAbortPrepared(TransactionId xid,
 		elog(PANIC, "cannot abort transaction %u, it was already committed",
 			 xid);
 
+	/*
+	 * Look at the prepare information with respect to an abort.
+	 */
+	persistentAbortObjectCount =
+					PersistentEndXactRec_ObjectCount(
+										persistentPrepareObjects,
+										EndXactRecKind_Abort);
+
 	START_CRIT_SECTION();
 
 	/* Emit the XLOG abort record */
 	xlrec.xid = xid;
 	xlrec.arec.xtime = time(NULL);
-	xlrec.arec.nrels = nrels;
+	xlrec.arec.persistentAbortObjectCount = persistentAbortObjectCount;
 	xlrec.arec.nsubxacts = nchildren;
 	rdata[0].data = (char *) (&xlrec);
 	rdata[0].len = MinSizeOfXactAbortPrepared;
 	rdata[0].buffer = InvalidBuffer;
-	/* dump rels to delete */
-	if (nrels > 0)
+	/* dump persistent abort objects */
+	if (persistentAbortObjectCount > 0)
 	{
+		int32 persistentAbortSerializeLen;
+		int16 objectCount;
+		
+		persistentAbortSerializeLen =
+				PersistentEndXactRec_SerializeLen(
+										persistentPrepareObjects,
+										EndXactRecKind_Abort);
+		
+		Assert(persistentAbortSerializeLen > 0);
+		persistentAbortBuffer = 
+					(char*)palloc(persistentAbortSerializeLen);
+		
+		PersistentEndXactRec_Serialize(
+								persistentPrepareObjects,
+								EndXactRecKind_Abort,
+								&objectCount,
+								(uint8*)persistentAbortBuffer,
+								persistentAbortSerializeLen);
+		
+		if (Debug_persistent_print)
+			PersistentEndXactRec_Print("RecordTransactionAbortPrepared", persistentPrepareObjects);
+
 		rdata[0].next = &(rdata[1]);
-		rdata[1].data = (char *) rels;
-		rdata[1].len = nrels * sizeof(RelFileNode);
+		rdata[1].data = persistentAbortBuffer;
+		rdata[1].len = persistentAbortSerializeLen;
 		rdata[1].buffer = InvalidBuffer;
 		lastrdata = 1;
 	}
@@ -1943,4 +2047,32 @@ RecordTransactionAbortPrepared(TransactionId xid,
 	TransactionIdAbortTree(nchildren, children);
 
 	END_CRIT_SECTION();
+
+	if (persistentAbortBuffer != NULL)
+		pfree(persistentAbortBuffer);
+
+}
+
+int
+TwoPhaseRecoverMirror(void)
+{
+	DIR				*cldir;
+	struct dirent	*clde;
+	int				retval = 0;
+
+	cldir = AllocateDir(TWOPHASE_DIR);
+	while ((clde = ReadDir(cldir, TWOPHASE_DIR)) != NULL) {
+		if (strlen(clde->d_name) == 8 &&
+			strspn(clde->d_name, "0123456789ABCDEF") == 8) {
+			
+			retval = MirrorFlatFile(TWOPHASE_DIR, clde->d_name);
+			
+			if (retval != 0)
+				break;
+			
+		}
+	}
+	FreeDir(cldir);
+	
+	return retval;
 }

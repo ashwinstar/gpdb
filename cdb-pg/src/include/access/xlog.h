@@ -150,6 +150,8 @@ extern bool XLOG_DEBUG;
 #endif
 
 extern XLogRecPtr XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata);
+extern XLogRecPtr XLogInsert_OverrideXid(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId overrideXid);
+extern XLogRecPtr XLogLastInsertEndLoc(void);
 extern void XLogFlush(XLogRecPtr RecPtr);
 
 extern void xlog_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record);
@@ -160,6 +162,8 @@ extern Size XLOGShmemSize(void);
 extern void XLOGShmemInit(void);
 extern void BootStrapXLOG(void);
 extern void StartupXLOG(void);
+extern bool XLogStartupPass2Needed(void);
+extern void StartupXLOG_Pass2(void);
 extern void ShutdownXLOG(int code, Datum arg);
 extern void InitXLOGAccess(void);
 extern void CreateCheckPoint(bool shutdown, bool force);
@@ -175,6 +179,7 @@ extern bool XLogQDMirrorPositionToEnd(void);
 extern bool XLogQDMirrorCatchup(XLogRecPtr *flushedLocation);
 extern bool XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation, struct timeval *timeout, bool *shutdownGlobal);
 extern void XLogRemoveStandbyLogs(uint32 log, uint32 seg, int *nsegsremoved);
+extern void XLog_OutRec(StringInfo buf, XLogRecord *record);
 extern void XLogPrintLogNames(void);
 extern char *XLogLocationToString(XLogRecPtr *loc);
 extern char *XLogLocationToString2(XLogRecPtr *loc);
@@ -187,7 +192,14 @@ extern char *XLogLocationToString3_Long(XLogRecPtr *loc);
 extern char *XLogLocationToString4_Long(XLogRecPtr *loc);
 extern char *XLogLocationToString5_Long(XLogRecPtr *loc);
 
-extern void StartupProcessMain(void);
+extern void StartupProcessMain(bool pass2);
 
+extern int XLogReconcileEofPrimary(void);
+
+extern int XLogReconcileEofMirror(
+					   XLogRecPtr	primaryEof,
+					   XLogRecPtr	*mirrorEof);
+
+extern int XLogRecoverMirrorControlFile(void);
 
 #endif   /* XLOG_H */

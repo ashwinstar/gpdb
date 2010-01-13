@@ -55,6 +55,7 @@
 #include "catalog/pg_partition.h"
 #include "catalog/pg_partition_rule.h"
 #include "catalog/pg_statistic.h"
+#include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/gp_fastsequence.h"
 #include "commands/tablecmds.h"
@@ -75,6 +76,8 @@
 
 #include "cdb/cdbvars.h"
 
+#include "cdb/cdbmirroredfilesysobj.h"
+
 static void MetaTrackAddUpdInternal(Oid			classid, 
 									Oid			objoid, 
 									Oid			relowner,
@@ -82,6 +85,8 @@ static void MetaTrackAddUpdInternal(Oid			classid,
 									char*		subtype,
 									Relation	rel,
 									HeapTuple	old_tuple);
+
+
 
 static void AddNewRelationTuple(Relation pg_class_desc,
 					Relation new_rel_desc,
@@ -320,7 +325,26 @@ heap_create(const char *relname,
 	{
 		Assert(rel->rd_smgr == NULL);
 		RelationOpenSmgr(rel);
-		smgrcreate(rel->rd_smgr, rel->rd_isLocalBuf, false);
+
+		/*
+		 * We save the persistent TID and serial number in pg_class so we
+		 * can supply them to the Storage Manager if the object is subsequently
+		 * dropped.
+		 */
+		MirroredFileSysObj_CreateRelFile(
+								rel->rd_smgr,
+								&rel->rd_relationnodeinfo.persistentTid,
+								&rel->rd_relationnodeinfo.persistentSerialNum,
+								rel->rd_isLocalBuf);
+
+		rel->rd_relationnodeinfo.isPresent = true;
+
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+			     "heap_create: '%s' persistent TID %s and serial number " INT64_FORMAT " for CREATE",
+				 relpath(rel->rd_smgr->smgr_rnode),
+				 ItemPointerToString(&rel->rd_relationnodeinfo.persistentTid),
+				 rel->rd_relationnodeinfo.persistentSerialNum);
 	}
 
 	return rel;
@@ -1050,6 +1074,138 @@ AddNewRelationType(const char *typeName,
 				   false);		/* Type NOT NULL */
 }
 
+void
+InsertGpRelationNodeTuple(
+	Relation 		gp_relation_node,
+	Oid				relationId,
+	Oid 			tablespace,
+	Oid				relation,
+	ItemPointer		persistentTid,
+	int64			persistentSerialNum)
+{
+	Datum		values[Natts_gp_relation_node];
+	bool		nulls[Natts_gp_relation_node];
+	HeapTuple	tuple;
+
+
+	memset(values, 0, sizeof(values));
+	memset(nulls, false, sizeof(nulls));
+
+	if (tablespace == 0)
+		tablespace = DEFAULTTABLESPACE_OID;
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "InsertGpRelationNodeTuple: Inserting tablespace %u, relation %u, serial number " INT64_FORMAT ", TID %s",
+			 tablespace,
+			 relation,
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
+
+#if suppress
+	// ****** TEMPORARY ***********
+	{
+		HeapTuple	checkTuple;
+
+		ItemPointerData		checkPersistentTid;
+		int64				checkPersistentSerialNum;
+		
+		checkTuple = FetchGpRelationNodeTuple(
+								gp_relation_node,
+								relationId,
+								tablespace, 
+								relationNode,
+								&checkPersistentTid,
+								&checkPersistentSerialNum);
+		if (HeapTupleIsValid(checkTuple))
+			elog(ERROR, "For new gp_relation_node insert for relation %u, tablespace %u, relation file node %u already exists! "
+				 "(persistent TID %s, persistent serial number " INT64_FORMAT ")", 
+			     relationId, 
+				 tablespace,
+			     relationNode,
+				 ItemPointerToString(&checkPersistentTid),
+				 checkPersistentSerialNum);
+	}
+	// ****** TEMPORARY ***********
+#endif
+
+	values[Anum_gp_relation_node_tablespace_oid - 1] = ObjectIdGetDatum(tablespace);
+	values[Anum_gp_relation_node_relfilenode_oid - 1] = ObjectIdGetDatum(relation);
+	values[Anum_gp_relation_node_persistent_tid- 1] = PointerGetDatum(persistentTid);
+	values[Anum_gp_relation_node_persistent_serial_num - 1] = Int64GetDatum(persistentSerialNum);
+
+	tuple = heap_form_tuple(RelationGetDescr(gp_relation_node), values, nulls);
+
+	/* finally insert the new tuple, update the indexes, and clean up */
+	simple_heap_insert(gp_relation_node, tuple);
+
+	CatalogUpdateIndexes(gp_relation_node, tuple);
+
+	heap_freetuple(tuple);
+}
+
+void
+UpdateGpRelationNodeTuple(
+	Relation 	gp_relation_node,
+	HeapTuple 	tuple,
+	Oid			tablespace,
+	Oid			relation,
+	ItemPointer persistentTid,
+	int64 		persistentSerialNum)
+{
+	Datum		repl_val[Natts_gp_relation_node];
+	bool		repl_null[Natts_gp_relation_node];
+	bool		repl_repl[Natts_gp_relation_node];
+	HeapTuple	newtuple;
+
+	if (tablespace == 0)
+		tablespace = DEFAULTTABLESPACE_OID;
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "UpdateGpRelationNodeTuple: Updating tablespace %u, relation %u, serial number " INT64_FORMAT " at TID %s",
+			 tablespace,
+			 relation,
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
+
+	memset(repl_val, 0, sizeof(repl_val));
+	memset(repl_null, false, sizeof(repl_null));
+	memset(repl_repl, true, sizeof(repl_null));
+
+	repl_val[Anum_gp_relation_node_tablespace_oid - 1] = ObjectIdGetDatum(tablespace);
+	repl_val[Anum_gp_relation_node_relfilenode_oid - 1] = ObjectIdGetDatum(relation);
+	repl_val[Anum_gp_relation_node_persistent_tid- 1] = PointerGetDatum(persistentTid);
+	repl_val[Anum_gp_relation_node_persistent_serial_num - 1] = Int64GetDatum(persistentSerialNum);
+
+	newtuple = heap_modify_tuple(tuple, RelationGetDescr(gp_relation_node), repl_val, repl_null, repl_repl);
+	
+	simple_heap_update(gp_relation_node, &newtuple->t_self, newtuple);
+
+	CatalogUpdateIndexes(gp_relation_node, newtuple);
+
+	heap_freetuple(newtuple);
+}
+
+
+static void
+AddNewRelationNodeTuple(
+						Relation gp_relation_node,
+						Relation new_rel)
+{
+	if (new_rel->rd_relationnodeinfo.isPresent)
+	{
+		InsertGpRelationNodeTuple(
+							gp_relation_node,
+							new_rel->rd_id,
+							new_rel->rd_rel->reltablespace,
+							new_rel->rd_rel->relfilenode,
+							&new_rel->rd_relationnodeinfo.persistentTid,
+							new_rel->rd_relationnodeinfo.persistentSerialNum);
+							
+	}
+}
+
 /* --------------------------------
  *		heap_create_with_catalog
  *
@@ -1075,6 +1231,7 @@ heap_create_with_catalog(const char *relname,
 						 Oid *comptypeOid)
 {
 	Relation	pg_class_desc;
+	Relation	gp_relation_node_desc;
 	Relation	new_rel_desc;
 	Oid			new_type_oid;
 	bool		appendOnlyRel;
@@ -1082,6 +1239,11 @@ heap_create_with_catalog(const char *relname,
 	int			safefswritesize = gp_safefswritesize;
 
 	pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+
+	if (!IsBootstrapProcessingMode())
+		gp_relation_node_desc = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
+	else
+		gp_relation_node_desc = NULL;
 
 	/*
 	 * sanity checks
@@ -1222,6 +1384,15 @@ heap_create_with_catalog(const char *relname,
 						relkind,
 						relstorage,
 						reloptions);
+
+	if (gp_relation_node_desc != NULL)
+	{
+		AddNewRelationNodeTuple(gp_relation_node_desc,
+			                    new_rel_desc);
+
+		heap_close(gp_relation_node_desc, RowExclusiveLock);
+	}
+
 
 	/*
 	 * if this is an append-only relation, add an entry in pg_appendonly.
@@ -1534,6 +1705,40 @@ DeleteAttributeTuples(Oid relid)
 	heap_close(attrel, RowExclusiveLock);
 }
 
+void
+DeleteGpRelationNodeTuple(
+	Relation relation)
+{
+	Relation	gp_relation_node;
+	Oid			tablespace;
+	HeapTuple	tuple;
+
+	Assert(relation->rd_relationnodeinfo.isPresent);
+
+	/* Grab an appropriate lock on the pg_class relation */
+	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
+
+	tablespace = relation->rd_rel->reltablespace;
+	if (tablespace == 0)
+		tablespace = DEFAULTTABLESPACE_OID;
+
+	tuple = ScanGpRelationNodeTuple(
+						gp_relation_node,
+						tablespace, 
+						relation->rd_rel->relfilenode);
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "could not find node tuple for relation %u, tablespace %u, relation file node %u",
+			 RelationGetRelid(relation),
+			 tablespace,
+			 relation->rd_rel->relfilenode);
+
+	/* delete the relation tuple from pg_class, and finish up */
+	simple_heap_delete(gp_relation_node, &tuple->t_self);
+
+	heap_close(gp_relation_node, RowExclusiveLock);
+}
+
+
 /*
  *		RemoveAttributeById
  *
@@ -1802,7 +2007,22 @@ heap_drop_with_catalog(Oid relid)
 		!RelationIsExternal(rel))
 	{
 		RelationOpenSmgr(rel);
-		smgrscheduleunlink(rel->rd_smgr, rel->rd_isLocalBuf);
+		RelationFetchGpRelationNode(rel);
+		Assert(rel->rd_relationnodeinfo.isPresent);
+		MirroredFileSysObj_ScheduleDropRelFile(
+										rel->rd_smgr,
+										&rel->rd_relationnodeinfo.persistentTid,
+										rel->rd_relationnodeinfo.persistentSerialNum,
+										rel->rd_isLocalBuf);
+
+		DeleteGpRelationNodeTuple(rel);
+
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+			     "heap_drop_with_catalog: '%s' persistent TID %s and serial number " INT64_FORMAT " for DROP",
+				 relpath(rel->rd_node),
+				 ItemPointerToString(&rel->rd_relationnodeinfo.persistentTid),
+				 rel->rd_relationnodeinfo.persistentSerialNum);
 	}
 
 	/*

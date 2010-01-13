@@ -5,7 +5,7 @@ import os
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib.commands.gp import ModifyPostgresqlConfSetting, SegmentStart, SegmentStop, Chmod
+from gppylib.commands.gp import ModifyPostgresqlConfSetting, SegmentStart, SegmentStop, SegmentToStart
 from gppylib.db import dbconn
 from gppylib.db import catalog
 from gppylib.commands import unix
@@ -92,8 +92,11 @@ class ConfExpSegCmd(Command):
                     
             # start up segment in utility
             logger.info("starting expansion segment (datadir: %s, port: %s)" % (self.datadir, self.port))
-            startCmd = SegmentStart('Start expansion segment', 
-                                    self.datadir, utilityMode=True)
+
+            # use dummy values for dbid, contentid, and numSegmentsInCluster since we are connecting in utility mode
+            # SegmentToStart takes dataDir, port, dbId, contentId, numContentsInCluster, mirroringMode, noWait
+            segmentToStart = SegmentToStart(self.datadir, self.port, -1, -1, 0, "mirrorless", false)
+            startCmd = SegmentStart('Start expansion segment', segmentToStart, utilityMode=True)
             try:
                 startCmd.run(validateAfter=True)
             except:

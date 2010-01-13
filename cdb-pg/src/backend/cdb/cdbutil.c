@@ -28,6 +28,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "catalog/gp_configuration.h"
+#include "catalog/gp_segment_config.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdblink.h"
@@ -60,169 +61,6 @@ struct segment_ip_cache_entry {
 };
 
 /*
- * getGpId() causes the gp_id table's singleton row to be read into a global structure
- * This is called from cdblink_setup().
- * The global variable is named GpIdentity, and is declared in cdbvars.h and defined in cdbvars.c.
- * There is one member variable that is a string.  It is allocated from the TopMemoryContext
- * because this information is intended to last for the life of the connection.
- * This call is made whether the database is an entry database or a segment database.
- */
-void
-getGpId(void)
-{
-	Relation	gp_id_rel;
-	HeapTuple	gp_id_tuple = NULL;
-	HeapScanDesc gp_id_scan;
-	bool		isNull;
-	Datum		attr;
-	Name		gpname;
-	MemoryContext oldContext;
-	MemoryContext permanentContext = TopMemoryContext;
-
-	if (Gp_role == GP_ROLE_UTILITY)
-		elog(DEBUG1, "WARNING: called getGpId when in utility mode");
-
-	if (Gp_role == GP_ROLE_DISPATCH && Gp_segment < -1)
-		Gp_segment = -1;
-	else if (Gp_role == GP_ROLE_DISPATCHAGENT && Gp_segment < -2)
-		Gp_segment = -2;
-
-	/*
-	 * Release storage for the cdbname if not NULL
-	 */
-	if (GpIdentity.gpname != NULL)
-	{
-		pfree(GpIdentity.gpname);
-		GpIdentity.gpname = NULL;
-	}
-
-	/*
-	 * Open the gp_id table relation
-	 */
-	gp_id_rel = heap_open(GpIdRelationId, AccessShareLock);
-
-	/*
-	 * Read the one row table gp_id.
-	 * We currently require that this be there or else we ereport an ERROR.
-	 */
-	gp_id_scan = heap_beginscan(gp_id_rel, SnapshotNow, 0, NULL);
-	gp_id_tuple = heap_getnext(gp_id_scan, ForwardScanDirection);
-	if (!HeapTupleIsValid(gp_id_tuple))
-	{
-		ereport(WARNING,
-				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("No rows found in pg_catalog.%s.",
-						GpIdRelationName)));
-		heap_endscan(gp_id_scan);
-		heap_close(gp_id_rel, AccessShareLock);
-		return;
-	}
-
-	/*
-	 * Grab the fields that we need from gp_id
-	 */
-
-	/*
-	 * gpname
-	 */
-	attr = heap_getattr(gp_id_tuple, Anum_gp_id_gpname, gp_id_rel->rd_att, &isNull);
-	Assert(!isNull);
-	gpname = DatumGetName(attr);
-
-	/*
-	 * Switch to the TopMemoryContext for the cdbname, so it lasts for the life
-	 * of the connection.  It is released in freeGpId, which is called from
-	 * cdblink_disconnect().
-	 */
-	oldContext = MemoryContextSwitchTo(permanentContext);
-	GpIdentity.gpname = pstrdup(gpname->data);
-	MemoryContextSwitchTo(oldContext);
-
-	/*
-	 * numsegments
-	 */
-	attr = heap_getattr(gp_id_tuple, Anum_gp_id_numsegments, gp_id_rel->rd_att, &isNull);
-	Assert(!isNull);
-	GpIdentity.numsegments = DatumGetInt16(attr);
-
-	/*
-	 * dbid
-	 */
-	attr = heap_getattr(gp_id_tuple, Anum_gp_id_dbid, gp_id_rel->rd_att, &isNull);
-	Assert(!isNull);
-	GpIdentity.dbid = DatumGetInt16(attr);
-
-	/*
-	 * content
-	 */
-	attr = heap_getattr(gp_id_tuple, Anum_gp_id_content, gp_id_rel->rd_att, &isNull);
-	Assert(!isNull);
-	GpIdentity.segindex = DatumGetInt16(attr);
-
-	/*
-	 * End the heapscan and close the relation that we opened.
-	 */
-	heap_endscan(gp_id_scan);
-	heap_close(gp_id_rel, AccessShareLock);
-
-	/*
-	 * Validate the gp_role against the content.
-	 * If the role is DISPATCH, we must be an entry database,
-	 * If the role is EXECUTE, we can be either a segment database or an
-     * entry database.
-	 */
-	if (Gp_role == GP_ROLE_DISPATCH && GpIdentity.segindex >= 0)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				 errmsg("Cannot have a Gp_role of dispatch when connected to a segment database.")));
-	}
-
-	if (Gp_role != GP_ROLE_UTILITY && GpIdentity.segindex != Gp_segment)
-	{
-		if (Gp_segment < -1)
-		{
-			Gp_segment = GpIdentity.segindex;
-			ereport(WARNING,
-					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("gp_id segindex not same as Gp_segment.")));
-		}
-		else
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("gp_id segindex not same as Gp_segment.")));
-		}
-	}
-
-}
-
-/*
- * freeGpId() causes the global variable holding the gp_id table's singleton row to be
- * reinitialized to empty, releasing memory that was allocated when it was loaded.
- * It is called from cdblink_disconnect().
- */
-void
-freeGpId(void)
-{
-	if (GpIdentity.gpname != NULL)
-	{
-		pfree(GpIdentity.gpname);
-		GpIdentity.gpname = NULL;
-	}
-
-	if (Gp_role == GP_ROLE_DISPATCH && segment_ip_cache_htab != NULL)
-	{
-		hash_destroy(segment_ip_cache_htab);
-		segment_ip_cache_htab = NULL;
-	}
-
-	GpIdentity.numsegments = 0;
-	GpIdentity.dbid = -1;
-	GpIdentity.segindex = -999;
-}
-
-/*
  * getCdbComponentDatabases
  *
  *
@@ -232,11 +70,12 @@ freeGpId(void)
 CdbComponentDatabases *
 getCdbComponentInfo(bool DNSLookupAsError)
 {
+	CdbComponentDatabaseInfo *pOld = NULL;
 	CdbComponentDatabases *component_databases = NULL;
 
-	Relation	gp_configuration_rel;
-	HeapTuple	gp_configuration_tuple = NULL;
-	HeapScanDesc gp_configuration_scan;
+	Relation gp_seg_config_rel;
+	HeapTuple gp_seg_config_tuple = NULL;
+	HeapScanDesc gp_seg_config_scan;
 
 	/*
 	 * Initial size for info arrays.
@@ -255,9 +94,11 @@ getCdbComponentInfo(bool DNSLookupAsError)
 	 */
 	int			dbid;
 	int			content;
-	bool		isprimary;
-	bool		valid;
-	bool		definedprimary;
+
+	char		role;
+	char		preferred_role;
+	char		mode = 0;
+	char		status = 0;
 
 	int			i;
 	int			x = 0;
@@ -277,11 +118,11 @@ getCdbComponentInfo(bool DNSLookupAsError)
 	component_databases->entry_db_info =
 		(CdbComponentDatabaseInfo *) palloc0(sizeof(CdbComponentDatabaseInfo) * entry_array_size);
 
-	gp_configuration_rel = heap_open(GpConfigurationRelationId, AccessShareLock);
+	gp_seg_config_rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
 
-	gp_configuration_scan = heap_beginscan(gp_configuration_rel, SnapshotNow, 0, NULL);
+	gp_seg_config_scan = heap_beginscan(gp_seg_config_rel, SnapshotNow, 0, NULL);
 
-	while (HeapTupleIsValid(gp_configuration_tuple = heap_getnext(gp_configuration_scan, ForwardScanDirection)))
+	while (HeapTupleIsValid(gp_seg_config_tuple = heap_getnext(gp_seg_config_scan, ForwardScanDirection)))
 	{
 		/*
 		 * Grab the fields that we need from gp_configuration.  We do
@@ -292,51 +133,56 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		CdbComponentDatabaseInfo *pRow;
 
 		/*
-		 * content
-		 */
-		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_content, gp_configuration_rel->rd_att, &isNull);
-		Assert(!isNull);
-		content = DatumGetInt16(attr);
-
-		/*
 		 * dbid
 		 */
-		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_dbid, gp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_config_dbid, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
 		dbid = DatumGetInt16(attr);
 
 		/*
-		 * definedprimary
+		 * content
 		 */
-		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_definedprimary, gp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_config_content, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
-		definedprimary = DatumGetBool(attr);
+		content = DatumGetInt16(attr);
 
 		/*
-		 * isprimary
+		 * role
 		 */
-		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_isprimary, gp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_config_role, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
-		isprimary = DatumGetBool(attr);
+		role = DatumGetChar(attr);
 
 		/*
-		 * valid
+		 * preferred-role
 		 */
-		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_valid, gp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_config_preferred_role, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
-		valid = DatumGetBool(attr);
+		preferred_role = DatumGetChar(attr);
 
 		/*
-		 * Determine which array to place this rows data in: content or segment, based on the content field.
+		 * mode
 		 */
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_config_mode, gp_seg_config_rel->rd_att, &isNull);
+		Assert(!isNull);
+		mode = DatumGetChar(attr);
 
+		/*
+		 * status
+		 */
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_config_status, gp_seg_config_rel->rd_att, &isNull);
+		Assert(!isNull);
+		status = DatumGetChar(attr);
+
+		/*
+		 * Determine which array to place this rows data in: entry or
+		 * segment, based on the content field.
+		 */
 		if (content >= 0)
 		{
 			/* if we have a dbid bigger than our array we'll have to grow the array. (MPP-2104) */
 			if (dbid >= segment_array_size || component_databases->total_segment_dbs >= segment_array_size)
 			{
-				CdbComponentDatabaseInfo *pOld;
-
 				/*
 				 * Expand CdbComponentDatabaseInfo array if we've used up currently allocated space
 				 */
@@ -353,8 +199,6 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		{
 			if (component_databases->total_entry_dbs >= entry_array_size)
 			{
-				CdbComponentDatabaseInfo *pOld;
-
 				/*
 				 * Expand CdbComponentDatabaseInfo array if we've used up currently allocated space
 				 */
@@ -370,46 +214,55 @@ getCdbComponentInfo(bool DNSLookupAsError)
 
 		pRow->dbid = dbid;
 		pRow->segindex = content;
-		pRow->isprimary = isprimary;
-		pRow->valid = valid;
-		pRow->definedprimary = definedprimary;
-
-#ifdef USE_FAULT_INJECTION
-		if (gp_fault_inject_segment_failure && gp_fault_inject_segment_failure_segment_id == pRow->segindex)
-		{
-			pRow->valid = false;
-			elog(LOG, "Insert a failure to segment %d", gp_fault_inject_segment_failure_segment_id);
-		}
-#endif
+		pRow->role = role;
+		pRow->preferred_role = preferred_role;
+		pRow->mode = mode;
+		pRow->status = status;
 
 		/*
 		 * hostname
 		 */
-		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_hostname, gp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_config_hostname, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
-		pRow->hostname = pstrdup(DatumGetCString(attr));
+		pRow->hostname = TextDatumGetCString(attr);
+
+		/*
+		 * address
+		 */
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_config_address, gp_seg_config_rel->rd_att, &isNull);
+		Assert(!isNull);
+		pRow->address = TextDatumGetCString(attr);
 		
 		/*
 		 * port
 		 */
-		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_port, gp_configuration_rel->rd_att, &isNull);
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_config_port, gp_seg_config_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->port = DatumGetInt32(attr);
 
 		/*
-		 * datadir
+		 * Filerep_port
 		 */
-		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_datadir, gp_configuration_rel->rd_att, &isNull);
-		Assert(!isNull);
-		pRow->datadir = DatumGetCString(DirectFunctionCall1(textout, attr));
-
+		attr = heap_getattr(gp_seg_config_tuple, Anum_gp_segment_config_replication_port, gp_seg_config_rel->rd_att, &isNull);
+		if (!isNull)
+			pRow->filerep_port = DatumGetInt32(attr);
+		else
+			pRow->filerep_port = -1;
 
 		getAddressesForDBid(pRow, DNSLookupAsError ? ERROR : LOG);
 		pRow->hostip = pRow->hostaddrs[0];
 	}
 
 	/*
-	 * Validate that there exists at least one entry and one segment database in the configuration
+	 * We're done with the catalog entries, cleanup them up, closing
+	 * all the relations we opened.
+	 */
+	heap_endscan(gp_seg_config_scan);
+	heap_close(gp_seg_config_rel, AccessShareLock);
+
+	/*
+	 * Validate that there exists at least one entry and one segment
+	 * database in the configuration
 	 */
 	if (component_databases->total_segment_dbs == 0)
 	{
@@ -448,14 +301,6 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		}
 	}
 
-
-	if (GpIdentity.numsegments <= 0)	/* gp_id not available or not read in yet */
-	{
-		GpIdentity.numsegments = component_databases->total_segments;
-		GpIdentity.segindex = -1;
-		GpIdentity.dbid = 1;
-	}
-
 	/*
 	 *	Validate that gp_numsegments == segment_databases->total_segment_dbs
 	 */
@@ -483,13 +328,13 @@ getCdbComponentInfo(bool DNSLookupAsError)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("Cannot locate entry database represented by gp_id row in gp_configuration: dbid %d content %d",
+				 errmsg("Cannot locate entry database represented by this db in gp_segment_configuration: dbid %d content %d",
 						GpIdentity.dbid, Gp_segment)));
 	}
 
 	/*
 	 * Now validate that the segindexes for the segment databases are
-	 * between 0 and GpIdentity.numsegments-1 inclusive, and that we
+	 * between 0 and (GpIdentity.numsegments - 1) inclusive, and that we
 	 * hit them all. Since it's sorted, this is relatively easy.
 	 */
 	x = 0;
@@ -508,25 +353,18 @@ getCdbComponentInfo(bool DNSLookupAsError)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_EXCEPTION),
-						 errmsg("Content values not valid in gp_configuration table.  They must be in the range 0 to %d inclusive",
-								getgpsegmentCount() - 1)));
+						 errmsg("Content values not valid in %s table.  They must be in the range 0 to %d inclusive",
+								GpSegmentConfigRelationName, getgpsegmentCount() - 1)));
 			}
 		}
 		if (this_segindex != i)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_EXCEPTION),
-					 errmsg("Content values not valid in gp_configuration table.  They must be in the range 0 to %d inclusive",
-							getgpsegmentCount() - 1)));
+					 errmsg("Content values not valid in %s table.  They must be in the range 0 to %d inclusive",
+							GpSegmentConfigRelationName, getgpsegmentCount() - 1)));
 		}
 	}
-
-	/*
-	 * Cleanup invoves ending the heap scan of gp_configuration, and closing all the relations we opened.
-	 */
-	heap_endscan(gp_configuration_scan);
-
-	heap_close(gp_configuration_rel, AccessShareLock);
 
 	return component_databases;
 }
@@ -541,7 +379,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
 CdbComponentDatabases *
 getCdbComponentDatabases(void)
 {
-	return applyTransientState(getCdbComponentInfo(true));
+	return getCdbComponentInfo(true);
 }
 
 
@@ -599,8 +437,8 @@ freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi)
 	if (cdi->hostname != NULL)
 		pfree(cdi->hostname);
 
-	if (cdi->datadir != NULL)
-		pfree(cdi->datadir);
+	if (cdi->address != NULL)
+		pfree(cdi->address);
 }
 
 /*
@@ -650,12 +488,13 @@ cdb_setup(void)
 
 
 /*
- * performs all necessary cleanup required when leaving Greenplum Database mode.  This is also
- * called when the process exits.
+ * performs all necessary cleanup required when leaving Greenplum
+ * Database mode.  This is also called when the process exits.
  *
  * NOTE: the arguments to this function are here only so that we can
- *		 register it with on_proc_exit().  These parameters should not be
- *		 used since there are some callers to this that pass them as NULL.
+ *		 register it with on_proc_exit().  These parameters should not
+ *		 be used since there are some callers to this that pass them
+ *		 as NULL.
  *
  */
 void
@@ -698,7 +537,18 @@ CdbComponentDatabaseInfoCompare(const void *p1, const void *p2)
 	int			cmp = obj1->segindex - obj2->segindex;
 
 	if (cmp == 0)
-		cmp = (int) obj2->isprimary - (int) obj1->isprimary;
+	{
+		int obj2cmp=0;
+		int obj1cmp=0;
+
+		if (SEGMENT_IS_ACTIVE_PRIMARY(obj2))
+			obj2cmp = 1;
+
+		if (SEGMENT_IS_ACTIVE_PRIMARY(obj1))
+			obj1cmp = 1;
+
+		cmp = obj2cmp - obj1cmp;
+	}
 
 	return cmp;
 }
@@ -1086,11 +936,24 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel)
 	/* fallback to using hostname */
 	memset(c->hostaddrs, 0, COMPONENT_DBS_MAX_ADDRS * sizeof(char *));
 
-	/* add an entry, using the hostname as fallback. */
-	name = getDnsCachedAddress(c->hostname, c->port, elevel);
+	/*
+	 * add an entry, using the first the "address" and then the
+	 * "hostname" as fallback.
+	 */
+	name = getDnsCachedAddress(c->address, c->port, elevel);
 
 	if (name)
+	{
 		c->hostaddrs[0] = pstrdup(name);
+		return;
+	}
+
+	/* now the hostname. */
+	name = getDnsCachedAddress(c->hostname, c->port, elevel);
+	if (name)
+	{
+		c->hostaddrs[0] = pstrdup(name);
+	}
 	else
 		c->hostaddrs[0] = NULL;
 

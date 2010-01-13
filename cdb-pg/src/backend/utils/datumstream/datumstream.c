@@ -364,7 +364,7 @@ void destroy_datumstream(DatumStream *ds)
     pfree(ds);
 }
 
-void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncompressed)
+void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncompressed, RelFileNode relFileNode, int32 segmentFileNum)
 {
     ds->eof = eof;
     ds->eofUncompress = eofUncompressed;
@@ -380,7 +380,13 @@ void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncomp
     else
     {
         Assert(ds->ao_write && !ds->ao_read);
-        AppendOnlyStorageWrite_OpenFile(ds->ao_write, fn, eof, eofUncompressed);
+        AppendOnlyStorageWrite_OpenFile(
+			ds->ao_write, 
+			fn, 
+			eof, 	
+			eofUncompressed,
+			relFileNode,
+			segmentFileNum);
         ds->maxdatasz = ds->maxsz - AppendOnlyStorageWrite_CompleteHeaderLen(ds->ao_write) - sizeof(DatumStreamBlock);
     }
 

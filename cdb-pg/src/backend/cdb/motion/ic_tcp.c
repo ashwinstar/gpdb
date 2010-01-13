@@ -125,25 +125,6 @@ WSAPoll(
 /* our timeout value for select() and other socket operations. */
 static struct timeval tval;
 
-static inline int
-timeval_delta_ms(struct timeval t1, struct timeval t0)
-{
-    int tdiff = (t1.tv_usec - t0.tv_usec + 500) / 1000;
-
-    if (t1.tv_sec != t0.tv_sec)
-        tdiff += 1000 * (t1.tv_sec - t0.tv_sec);
-    return  tdiff;
-}
-
-static inline int
-gettime_elapsed_ms(struct timeval t0)
-{
-    struct timeval  t1;
-
-    gettimeofday(&t1, NULL);
-    return timeval_delta_ms(t1, t0);
-}
-
 static inline MotionConn *
 getMotionConn(ChunkTransportStateEntry *pEntry, int iConn)
 {
@@ -497,8 +478,7 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 	pEntry = createChunkTransportState(transportStates,
 									   sendSlice,
 									   recvSlice,
-									   list_length(recvSlice->primaryProcesses),
-									   list_length(recvSlice->mirrorProcesses));
+									   list_length(recvSlice->primaryProcesses));
 	
 	/*
 	 * Setup a MotionConn entry for each of our outbound connections.
@@ -508,19 +488,6 @@ startOutgoingConnections(ChunkTransportState *transportStates,
     conn = pEntry->conns;
 
     foreach(cell, recvSlice->primaryProcesses)
-	{
-        cdbProc = (CdbProcess *)lfirst(cell);
-        if (cdbProc)
-		{
-            conn->cdbProc = cdbProc;
-            conn->pBuff = palloc(Gp_max_packet_size);
-            conn->state = mcsSetupOutgoingConnection;
-            (*pOutgoingCount)++;
-		}
-        conn++;
-	}
-
-	foreach(cell, recvSlice->mirrorProcesses)
 	{
         cdbProc = (CdbProcess *)lfirst(cell);
         if (cdbProc)
@@ -1308,7 +1275,7 @@ SetupTCPInterconnect(EState *estate)
 		aSlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, childId);
 		numProcs = list_length(aSlice->primaryProcesses);
 
-		pEntry = createChunkTransportState(estate->interconnect_context, aSlice, mySlice, numProcs, 0);
+		pEntry = createChunkTransportState(estate->interconnect_context, aSlice, mySlice, numProcs);
 
 		/* let cdbmotion now how many receivers to expect. */
 		setExpectedReceivers(estate->motionlayer_context, childId, numProcs);

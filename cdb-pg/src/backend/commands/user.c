@@ -1074,10 +1074,7 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 			pfree(rawname);
 			list_free(namelist);
 		}
-	
-		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
-					 /* mirrors */ true, /* primaries */ true);
-
+		CdbDoCommand(buffer.data, false, /*start txn*/ true);
 	} /* end if dispatch */
 }
 

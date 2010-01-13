@@ -29,13 +29,17 @@
 #include "bootstrap/bootstrap.h"
 #include "catalog/index.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbfilerepprimary.h"
+#include "cdb/cdbfilerep.h"
 #include "cdb/cdbvars.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "postmaster/bgwriter.h"
+#include "postmaster/primary_mirror_mode.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
+#include "storage/pmsignal.h"
 #include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
@@ -199,7 +203,6 @@ typedef struct _IndexList
 
 static IndexList *ILHead = NULL;
 
-
 /*
  *	 AuxiliaryProcessMain
  *
@@ -339,9 +342,15 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			case StartupProcess:
 				statmsg = "startup process";
 				break;
+			case StartupPass2Process:
+				statmsg = "startup pass 2 process";
+				break;
 			case BgWriterProcess:
 				statmsg = "writer process";
 				break;
+			case FilerepProcess:
+				statmsg = "filerep process";
+				break;				
 			default:
 				statmsg = "??? process";
 				break;
@@ -382,7 +391,12 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	 * InitPostgres pushups, but there are a couple of things that need to get
 	 * lit up even in an auxiliary process.
 	 */
-	if (IsUnderPostmaster)
+	/*
+	 * FileRep Main process does not use LWLock and so PGPROC is not required 
+	 * to be initialized.
+	 * It is temporary fix to handle that here as an exception.
+	 */
+	if (IsUnderPostmaster && auxType != FilerepProcess)
 	{
 		/*
 		 * Create a PGPROC so we can use LWLocks.  In the EXEC_BACKEND case,
@@ -420,7 +434,12 @@ AuxiliaryProcessMain(int argc, char *argv[])
 
 		case StartupProcess:
 			/* don't set signals, startup process has its own agenda */
-			StartupProcessMain();
+			StartupProcessMain(/* pass2 */ false);
+			proc_exit(1);		/* should never return */
+
+		case StartupPass2Process:
+			/* don't set signals, startup process has its own agenda */
+			StartupProcessMain(/* pass2 */ true);
 			proc_exit(1);		/* should never return */
 
 		case BgWriterProcess:
@@ -428,6 +447,10 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			InitXLOGAccess();
 			BackgroundWriterMain();
 			proc_exit(1);		/* should never return */
+
+		case FilerepProcess:
+			FileRep_Main();
+			proc_exit(1); /* should never return */
 
 		default:
 			elog(PANIC, "unrecognized process type: %d", auxType);

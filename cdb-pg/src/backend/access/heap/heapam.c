@@ -1642,7 +1642,7 @@ heap_logpage(Relation rel, Buffer buf)
  * MUST BE CALLED IN CRITICAL SECTION!
  */
 static void
-heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup)
+heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup, bool isFrozen)
 {
 	xl_heap_insert xlrec;
 	xl_heap_header xlhdr;
@@ -1694,7 +1694,10 @@ heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup)
 		rdata[1].buffer = rdata[2].buffer = InvalidBuffer;
 	}
 
-	recptr = XLogInsert(RM_HEAP_ID, info, rdata);
+	if (!isFrozen)
+		recptr = XLogInsert(RM_HEAP_ID, info, rdata);
+	else
+		recptr = XLogInsert_OverrideXid(RM_HEAP_ID, info, rdata, FrozenTransactionId);
 
 	PageSetLSN(page, recptr);
 	PageSetTLI(page, ThisTimeLineID);
@@ -2017,7 +2020,7 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 		RelationPutHeapTuple(ins->hi_rel, buffer, heaptup);
 		MarkBufferDirty(buffer);
 		if (ins->hi_use_wal)
-			heap_log_tuple_insert(ins->hi_rel, buffer, heaptup);
+			heap_log_tuple_insert(ins->hi_rel, buffer, heaptup, /* isFrozen */false);
 
 		END_CRIT_SECTION();
 
@@ -2090,6 +2093,7 @@ Oid
 heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 			bool use_wal, bool use_fsm, TransactionId xid)
 {
+	bool		isFrozen = (xid == FrozenTransactionId);
 	HeapTuple	heaptup;
 	Buffer		buffer;
 
@@ -2120,6 +2124,8 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	}
 
 	tup->t_data->t_infomask &= ~(HEAP_XACT_MASK);
+	if (isFrozen)
+		tup->t_data->t_infomask |= HEAP_XMIN_COMMITTED;
 	tup->t_data->t_infomask |= HEAP_XMAX_INVALID;
 	HeapTupleHeaderSetXmin(tup->t_data, xid);
 	HeapTupleHeaderSetCmin(tup->t_data, cid);
@@ -2155,7 +2161,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	}
 	else if (use_wal)
 	{
-		heap_log_tuple_insert(relation, buffer, heaptup);
+		heap_log_tuple_insert(relation, buffer, heaptup, isFrozen);
 	}
 
 	END_CRIT_SECTION();
@@ -2211,10 +2217,22 @@ simple_heap_insert(Relation relation, HeapTuple tup)
 Oid
 frozen_heap_insert(Relation relation, HeapTuple tup)
 {
-	tup->t_data->t_infomask |= HEAP_XMIN_COMMITTED;
 	return heap_insert(relation, tup, GetCurrentCommandId(),
 					   true, true, FrozenTransactionId);
 }
+
+Oid
+frozen_heap_insert_directed(
+	Relation 		relation, 
+	HeapTuple 		tup, 
+	BlockNumber 	blockNum)
+{
+	relation->rd_targblock = blockNum;
+	return heap_insert(relation, tup, GetCurrentCommandId(),
+					   /* use_wal */ true, /* use_fsm */ false, 
+					   FrozenTransactionId);
+}
+
 
 /*
  *	heap_delete - delete a tuple
@@ -4692,6 +4710,66 @@ heap_desc(StringInfo buf, uint8 xl_info, char *rec)
 	}
 	else
 		appendStringInfo(buf, "UNKNOWN");
+}
+
+void heap_redo_get_rnode(
+	XLogRecord 		*record,
+	RelFileNode		*relFileNode)
+{
+	uint8		info = record->xl_info & ~XLR_INFO_MASK;
+	void*		data = XLogRecGetData(record);
+
+	info &= XLOG_HEAP_OPMASK;
+	if (info == XLOG_HEAP_INSERT)
+	{
+		xl_heap_insert *xlrec = (xl_heap_insert *) data;
+
+		*relFileNode = xlrec->target.node;
+	}
+	else if (info == XLOG_HEAP_DELETE)
+	{
+		xl_heap_delete *xlrec = (xl_heap_delete *) data;
+
+		*relFileNode = xlrec->target.node;
+	}
+	else if (info == XLOG_HEAP_UPDATE)
+	{
+		xl_heap_update *xlrec = (xl_heap_update *) data;
+
+		*relFileNode = xlrec->target.node;
+	}
+	else if (info == XLOG_HEAP_MOVE)
+	{
+		xl_heap_update *xlrec = (xl_heap_update *) data;
+
+		*relFileNode = xlrec->target.node;
+	}
+	else if (info == XLOG_HEAP_CLEAN)
+	{
+		xl_heap_clean *xlrec = (xl_heap_clean *) data;
+
+		*relFileNode = xlrec->node;
+	}
+	else if (info == XLOG_HEAP_NEWPAGE)
+	{
+		xl_heap_newpage *xlrec = (xl_heap_newpage *) data;
+
+		*relFileNode = xlrec->node;
+	}
+	else if (info == XLOG_HEAP_LOCK)
+	{
+		xl_heap_lock *xlrec = (xl_heap_lock *) data;
+
+		*relFileNode = xlrec->target.node;
+	}
+	else if (info == XLOG_HEAP_INPLACE)
+	{
+		xl_heap_inplace *xlrec = (xl_heap_inplace *) data;
+
+		*relFileNode = xlrec->target.node;
+	}
+	else
+		elog(PANIC, "heap_redo_get_rnode: unknown op code %u", info);
 }
 
 void

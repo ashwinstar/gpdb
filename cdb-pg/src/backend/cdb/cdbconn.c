@@ -500,21 +500,15 @@ cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
     /* Format the identity of the segment db. */
     if (q->segindex >= 0)
     {
-        appendPQExpBuffer(scratchbuf, "%s%d",
-                          q->isprimary ? "seg" : "mir",
-                          q->segindex);
+        appendPQExpBuffer(scratchbuf, "seg%d", q->segindex);
 
         /* Format the slice index. */
         if (sliceIndex > 0)
             appendPQExpBuffer(scratchbuf, " slice%d", sliceIndex);
     }
     else
-    	if (q->segindex == -2)
-    		appendPQExpBuffer(scratchbuf,
-                    q->isprimary ? "*DA*" : "mirror *DA*???");
-    	else
         appendPQExpBuffer(scratchbuf,
-                          q->isprimary ? "entry db" : "mirror entry db");
+                          SEGMENT_IS_ACTIVE_PRIMARY(q) ? "entry db" : "mirror entry db");
 
     /* Format the connection info. */
     appendPQExpBuffer(scratchbuf, " %s:%d",

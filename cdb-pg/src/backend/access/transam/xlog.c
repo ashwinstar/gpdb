@@ -33,9 +33,12 @@
 #include "access/xact.h"
 #include "access/xlog_internal.h"
 #include "access/xlogutils.h"
+#include "catalog/catalog.h"
 #include "catalog/catversion.h"
 #include "catalog/pg_control.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_database.h"
+#include "catalog/pg_tablespace.h"
 #include "funcapi.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
@@ -58,10 +61,17 @@
 #include "utils/ps_status.h"
 #include "utils/resscheduler.h"
 #include "pg_trace.h"
+#include "utils/catcache.h"
+#include "utils/syscache.h"
+#include "storage/backendid.h"
+#include "storage/sinval.h"
 
 #include "cdb/cdblink.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbpersistentrelation.h"
+#include "cdb/cdbmirroredflatfile.h"
+#include "cdb/cdbpersistentrecovery.h"
 
 // Avoid trying to pull in cdbfts.h
 extern bool isQDMirroringPendingCatchup(void);
@@ -420,6 +430,13 @@ typedef struct XLogCtlData
 	XLogRecPtr	lastCheckpointLoc;
 	XLogRecPtr	lastCheckpointEndLoc;
 
+	/*
+	 * Save the redo range used in Pass 1 recovery so it can be used in Pass 2.
+	 */
+	bool		pass2Needed;
+	XLogRecPtr	pass1StartLoc;
+	XLogRecPtr	pass1LastLoc;
+	
 } XLogCtlData;
 
 static XLogCtlData *XLogCtl = NULL;
@@ -483,7 +500,7 @@ static XLogwrtResult LogwrtResult = {{0, 0}, {0, 0}};
  * openLogId/openLogSeg identify the segment.  These variables are only
  * used to write the XLOG, and so will normally refer to the active segment.
  */
-static int	openLogFile = -1;
+static MirroredFlatFileOpen	mirroredLogFileOpen = MirroredFlatFileOpen_Init;  
 static uint32 openLogId = 0;
 static uint32 openLogSeg = 0;
 static uint32 openLogOff = 0;
@@ -534,17 +551,22 @@ static void exitArchiveRecovery(TimeLineID endTLI,
 					uint32 endLogId, uint32 endLogSeg);
 static bool recoveryStopsHere(XLogRecord *record, bool *includeThis);
 static void CheckPointGuts(XLogRecPtr checkPointRedo);
-
+static void Checkpoint_RecoveryPass1(XLogRecPtr checkPointRedo);
 static bool XLogCheckBuffer(XLogRecData *rdata, bool doPageWrites,
 				XLogRecPtr *lsn, BkpBlock *bkpb);
 static bool AdvanceXLInsertBuffer(bool new_segment);
 static void XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch);
-static int XLogFileInit(uint32 log, uint32 seg,
+static void XLogFileInit(
+			 MirroredFlatFileOpen *mirroredOpen,
+			 uint32 log, uint32 seg,
 			 bool *use_existent, bool use_lock);
 static bool InstallXLogFileSegment(uint32 *log, uint32 *seg, char *tmppath,
 					   bool find_free, int *max_advance,
-					   bool use_lock);
-static int	XLogFileOpen(uint32 log, uint32 seg);
+					   bool use_lock, char *tmpsimpleFileName);
+static void XLogFileOpen(
+				MirroredFlatFileOpen *mirroredOpen,
+				uint32 log, 
+				uint32 seg);
 static int	XLogFileRead(uint32 log, uint32 seg, int emode);
 static void XLogFileClose(void);
 static bool RestoreArchivedFile(char *path, const char *xlogfname,
@@ -565,11 +587,13 @@ static void writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 static void ControlFileWatcherSaveInitial(void);
 static void ControlFileWatcherCheckForChange(void);
 static bool XLogGetWriteAndFlushedLoc(XLogRecPtr *writeLoc, XLogRecPtr *flushedLoc);
+static XLogRecPtr XLogInsert_Internal(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId headerXid);
 static void WriteControlFile(void);
 static void ReadControlFile(void);
 static char *str_time(pg_time_t tnow);
-static void xlog_outrec(StringInfo buf, XLogRecord *record);
+#ifdef suppress
 static void issue_xlog_fsync(void);
+#endif
 static void pg_start_backup_callback(int code, Datum arg);
 static bool read_backup_label(XLogRecPtr *checkPointLoc,
 				  XLogRecPtr *minRecoveryLoc);
@@ -582,6 +606,17 @@ static bool XLogQDMirrorWaitForResponse(bool waitForever);
 
 static void CloseReadRecord(void);
 
+static int XLogGetEof(XLogRecPtr *eofRecPtr);
+
+static	int XLogFillZero(
+				 uint32	logId,
+				 uint32	seg,
+				 uint32	startOffset,
+				 uint32	endOffset);
+
+static int XLogReconcileEofInternal(
+							 XLogRecPtr	startLocation,
+							 XLogRecPtr	endLocation);
 /*
  * Insert an XLOG record having the specified RMID and info bytes,
  * with the body of the record being the data chunk(s) described by
@@ -600,6 +635,20 @@ static void CloseReadRecord(void);
 XLogRecPtr
 XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata)
 {
+	return XLogInsert_Internal(rmid, info, rdata, GetCurrentTransactionIdIfAny());
+}
+
+XLogRecPtr
+XLogInsert_OverrideXid(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId overrideXid)
+{
+	return XLogInsert_Internal(rmid, info, rdata, overrideXid);
+}
+
+
+static XLogRecPtr
+XLogInsert_Internal(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId headerXid)
+{
+
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
 	XLogRecord *record;
 	XLogContRecord *contrecord;
@@ -1018,7 +1067,7 @@ begin:;
 
 	record = (XLogRecord *) Insert->currpos;
 	record->xl_prev = Insert->PrevRecord;
-	record->xl_xid = GetCurrentTransactionIdIfAny();
+	record->xl_xid = headerXid;
 	record->xl_tot_len = SizeOfXLogRecord + write_len;
 	record->xl_len = len;		/* doesn't include backup blocks */
 	record->xl_info = info;
@@ -1038,7 +1087,7 @@ begin:;
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "INSERT @ %X/%X: ",
 						 RecPtr.xlogid, RecPtr.xrecoff);
-		xlog_outrec(&buf, record);
+		XLog_OutRec(&buf, record);
 		if (rdata->data != NULL)
 		{
 			appendStringInfo(&buf, " - ");
@@ -1055,7 +1104,7 @@ begin:;
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "INSERT @ %s: ",
 						 XLogLocationToString(&RecPtr));
-		xlog_outrec(&buf, record);
+		XLog_OutRec(&buf, record);
 		if (rdata->data != NULL)
 		{
 			appendStringInfo(&buf, " - ");
@@ -1233,6 +1282,12 @@ begin:;
 	END_CRIT_SECTION();
 
 	return RecPtr;
+}
+
+XLogRecPtr 
+XLogLastInsertEndLoc(void)
+{
+	return ProcLastRecEnd;
 }
 
 /*
@@ -2053,14 +2108,17 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 			 * pages here (since we dump what we have at segment end).
 			 */
 			Assert(npages == 0);
-			if (openLogFile >= 0)
+			if (MirroredFlatFile_IsActive(&mirroredLogFileOpen))
 				XLogFileClose();
 			XLByteToPrevSeg(LogwrtResult.Write, openLogId, openLogSeg);
 
 			/* create/use new log file */
 			use_existent = true;
-			openLogFile = XLogFileInit(openLogId, openLogSeg,
-									   &use_existent, true);
+
+			XLogFileInit(
+					&mirroredLogFileOpen,
+					openLogId, openLogSeg,
+					&use_existent, true);
 			openLogOff = 0;
 
 			/* update pg_control, unless someone else already did */
@@ -2115,10 +2173,13 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 		}
 
 		/* Make sure we have the current logfile open */
-		if (openLogFile < 0)
+		if (!MirroredFlatFile_IsActive(&mirroredLogFileOpen))
 		{
 			XLByteToPrevSeg(LogwrtResult.Write, openLogId, openLogSeg);
-			openLogFile = XLogFileOpen(openLogId, openLogSeg);
+			XLogFileOpen(
+					&mirroredLogFileOpen,
+					openLogId, 
+					openLogSeg);
 			openLogOff = 0;
 		}
 
@@ -2152,24 +2213,19 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 			/* Need to seek in the file? */
 			if (openLogOff != startoffset)
 			{
-				if (lseek(openLogFile, (off_t) startoffset, SEEK_SET) < 0)
-					ereport(PANIC,
-							(errcode_for_file_access(),
-							 errmsg("could not seek in log file %u, "
-									"segment %u to offset %u: %m",
-									openLogId, openLogSeg, startoffset)));
 				openLogOff = startoffset;
 			}
 
 			/* OK to write the page(s) */
 			from = XLogCtl->pages + startidx * (Size) XLOG_BLCKSZ;
 			nbytes = npages * (Size) XLOG_BLCKSZ;
-			errno = 0;
-			if (write(openLogFile, from, nbytes) != nbytes)
+			if (MirroredFlatFile_Write(
+							&mirroredLogFileOpen,
+							openLogOff,
+							from,
+							nbytes,
+							/* suppressError */ true))
 			{
-				/* if write didn't set errno, assume no disk space */
-				if (errno == 0)
-					errno = ENOSPC;
 				ereport(PANIC,
 						(errcode_for_file_access(),
 						 errmsg("could not write to log file %u, segment %u "
@@ -2213,7 +2269,10 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 			 */
 			if (finishing_seg || (xlog_switch && last_iteration))
 			{
-				issue_xlog_fsync();
+				if (MirroredFlatFile_IsActive(&mirroredLogFileOpen))
+					MirroredFlatFile_Flush(
+									&mirroredLogFileOpen,
+									/* suppressError */ false);
 				
 				elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
 					 "XLogWrite (#1): flush loc %s; write loc %s",
@@ -2259,16 +2318,22 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 		 */
 		if (sync_method != SYNC_METHOD_OPEN)
 		{
-			if (openLogFile >= 0 &&
+			if (MirroredFlatFile_IsActive(&mirroredLogFileOpen) &&
 				!XLByteInPrevSeg(LogwrtResult.Write, openLogId, openLogSeg))
 				XLogFileClose();
-			if (openLogFile < 0)
+			if (!MirroredFlatFile_IsActive(&mirroredLogFileOpen))
 			{
 				XLByteToPrevSeg(LogwrtResult.Write, openLogId, openLogSeg);
-				openLogFile = XLogFileOpen(openLogId, openLogSeg);
+				XLogFileOpen(
+						&mirroredLogFileOpen,
+						openLogId, 
+						openLogSeg);
 				openLogOff = 0;
 			}
-			issue_xlog_fsync();
+			if (MirroredFlatFile_IsActive(&mirroredLogFileOpen))
+				MirroredFlatFile_Flush(
+								&mirroredLogFileOpen,
+								/* suppressError */ false);
 			
 			elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
 				 "XLogWrite (#2): flush loc %s; write loc %s",
@@ -2470,30 +2535,44 @@ XLogFlush(XLogRecPtr record)
  * take down the system on failure).  They will promote to PANIC if we are
  * in a critical section.
  */
-static int
-XLogFileInit(uint32 log, uint32 seg,
-			 bool *use_existent, bool use_lock)
+static void
+XLogFileInit(
+	MirroredFlatFileOpen *mirroredOpen,
+	uint32 log, uint32 seg,
+	bool *use_existent, bool use_lock)
 {
-	char		path[MAXPGPATH];
+	char		simpleFileName[MAXPGPATH];
+	char		tmpsimple[MAXPGPATH];
 	char		tmppath[MAXPGPATH];
+
+	MirroredFlatFileOpen tmpMirroredOpen;
+
 	char		zbuffer[XLOG_BLCKSZ];
 	uint32		installed_log;
 	uint32		installed_seg;
 	int			max_advance;
-	int			fd;
 	int			nbytes;
 
-	XLogFilePath(path, ThisTimeLineID, log, seg);
+	XLogFileName(simpleFileName, ThisTimeLineID, log, seg);
 
 	/*
 	 * Try to use existent file (checkpoint maker may have created it already)
 	 */
 	if (*use_existent)
 	{
-		fd = BasicOpenFile(path, O_RDWR | PG_BINARY | XLOG_SYNC_BIT,
-						   S_IRUSR | S_IWUSR);
-		if (fd < 0)
+		if (MirroredFlatFile_Open(
+							mirroredOpen,
+							XLOGDIR,
+							simpleFileName,
+							O_RDWR | PG_BINARY | XLOG_SYNC_BIT,
+						    S_IRUSR | S_IWUSR,
+						    /* suppressError */ true,
+							/*isMirrorRecovery */ false))
 		{
+			char		path[MAXPGPATH];
+			
+			XLogFilePath(path, ThisTimeLineID, log, seg);
+
 			if (errno != ENOENT)
 				ereport(ERROR,
 						(errcode_for_file_access(),
@@ -2501,7 +2580,7 @@ XLogFileInit(uint32 log, uint32 seg,
 								path, log, seg)));
 		}
 		else
-			return fd;
+			return;
 	}
 
 	/*
@@ -2510,17 +2589,24 @@ XLogFileInit(uint32 log, uint32 seg,
 	 * pre-creating an extra log segment.  That seems OK, and better than
 	 * holding the lock throughout this lengthy process.
 	 */
-	snprintf(tmppath, MAXPGPATH, XLOGDIR "/xlogtemp.%d", (int) getpid());
+	snprintf(tmpsimple, MAXPGPATH, "xlogtemp.%d", (int) getpid());
+	snprintf(tmppath, MAXPGPATH, XLOGDIR "/%s", tmpsimple);
 
-	unlink(tmppath);
+	MirroredFlatFile_Drop(
+						  XLOGDIR,
+						  tmpsimple,
+						  /* suppressError */ true,
+						  /*isMirrorRecovery */ false);
 
 	/* do not use XLOG_SYNC_BIT here --- want to fsync only at end of fill */
-	fd = BasicOpenFile(tmppath, O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
-					   S_IRUSR | S_IWUSR);
-	if (fd < 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not create file \"%s\": %m", tmppath)));
+	MirroredFlatFile_Open(
+						&tmpMirroredOpen,
+						XLOGDIR,
+						tmpsimple,
+						O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
+					    S_IRUSR | S_IWUSR,
+					    /* suppressError */ false,
+						/*isMirrorRecovery */ false);
 
 	/*
 	 * Zero-fill the file.	We have to do this the hard way to ensure that all
@@ -2535,14 +2621,23 @@ XLogFileInit(uint32 log, uint32 seg,
 	for (nbytes = 0; nbytes < XLogSegSize; nbytes += sizeof(zbuffer))
 	{
 		errno = 0;
-		if ((int) write(fd, zbuffer, sizeof(zbuffer)) != (int) sizeof(zbuffer))
+		if (MirroredFlatFile_Append(
+							&tmpMirroredOpen,
+							zbuffer,
+							sizeof(zbuffer),
+							/* suppressError */ true))
 		{
 			int			save_errno = errno;
 
 			/*
 			 * If we fail to make the file, delete it to release disk space
 			 */
-			unlink(tmppath);
+			MirroredFlatFile_Drop(
+							XLOGDIR,
+							tmpsimple,
+							/* suppressError */ false,
+							/*isMirrorRecovery */ false);
+
 			/* if write didn't set errno, assume problem is no disk space */
 			errno = save_errno ? save_errno : ENOSPC;
 
@@ -2552,15 +2647,11 @@ XLogFileInit(uint32 log, uint32 seg,
 		}
 	}
 
-	if (pg_fsync(fd) != 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not fsync file \"%s\": %m", tmppath)));
+	MirroredFlatFile_Flush(
+				&tmpMirroredOpen,
+				/* suppressError */ false);
 
-	if (close(fd))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not close file \"%s\": %m", tmppath)));
+	MirroredFlatFile_Close(&tmpMirroredOpen);
 
 	/*
 	 * Now move the segment into place with its final name.
@@ -2575,25 +2666,28 @@ XLogFileInit(uint32 log, uint32 seg,
 	max_advance = XLOGfileslop;
 	if (!InstallXLogFileSegment(&installed_log, &installed_seg, tmppath,
 								*use_existent, &max_advance,
-								use_lock))
+								use_lock, tmpsimple))
 	{
 		/* No need for any more future segments... */
-		unlink(tmppath);
+		MirroredFlatFile_Drop(
+						XLOGDIR,
+						tmpsimple,
+						/* suppressError */ false,
+						/*isMirrorRecovery */ false);
 	}
 
 	/* Set flag to tell caller there was no existent file */
 	*use_existent = false;
 
 	/* Now open original target segment (might not be file I just made) */
-	fd = BasicOpenFile(path, O_RDWR | PG_BINARY | XLOG_SYNC_BIT,
-					   S_IRUSR | S_IWUSR);
-	if (fd < 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-		   errmsg("could not open file \"%s\" (log file %u, segment %u): %m",
-				  path, log, seg)));
-
-	return fd;
+	MirroredFlatFile_Open(
+						mirroredOpen,
+						XLOGDIR,
+						simpleFileName,
+						O_RDWR | PG_BINARY | XLOG_SYNC_BIT,
+					    S_IRUSR | S_IWUSR,
+					    /* suppressError */ false,
+						/*isMirrorRecovery */ false);
 }
 
 /*
@@ -2696,7 +2790,7 @@ XLogFileCopy(uint32 log, uint32 seg,
 	/*
 	 * Now move the segment into place with its final name.
 	 */
-	if (!InstallXLogFileSegment(&log, &seg, tmppath, false, NULL, false))
+	if (!InstallXLogFileSegment(&log, &seg, tmppath, false, NULL, false, NULL))
 		elog(ERROR, "InstallXLogFileSegment should not have failed");
 }
 
@@ -2733,13 +2827,19 @@ XLogFileCopy(uint32 log, uint32 seg,
 static bool
 InstallXLogFileSegment(uint32 *log, uint32 *seg, char *tmppath,
 					   bool find_free, int *max_advance,
-					   bool use_lock)
+					   bool use_lock, char* tmpsimpleFileName)
 {
 	char		path[MAXPGPATH];
+	char		simpleFileName[MAXPGPATH];
 	struct stat stat_buf;
-
+	int retval = 0; 
+	
+	errno = 0;
+	
+	XLogFileName(simpleFileName, ThisTimeLineID, *log, *seg);
+	
 	XLogFilePath(path, ThisTimeLineID, *log, *seg);
-
+	
 	/*
 	 * We want to be sure that only one process does this at a time.
 	 */
@@ -2749,7 +2849,16 @@ InstallXLogFileSegment(uint32 *log, uint32 *seg, char *tmppath,
 	if (!find_free)
 	{
 		/* Force installation: get rid of any pre-existing segment file */
-		unlink(path);
+		if (tmpsimpleFileName) {
+
+			MirroredFlatFile_Drop(
+								  XLOGDIR,
+								  simpleFileName,
+								  /* suppressError */ true,
+								  /*isMirrorRecovery */ false);
+		} else {
+			unlink(path);
+		}
 	}
 	else
 	{
@@ -2765,6 +2874,8 @@ InstallXLogFileSegment(uint32 *log, uint32 *seg, char *tmppath,
 			}
 			NextLogSeg(*log, *seg);
 			(*max_advance)--;
+			
+			XLogFileName(simpleFileName, ThisTimeLineID, *log, *seg);
 			XLogFilePath(path, ThisTimeLineID, *log, *seg);
 		}
 	}
@@ -2775,14 +2886,48 @@ InstallXLogFileSegment(uint32 *log, uint32 *seg, char *tmppath,
 	 * rename() is an acceptable substitute except for the truly paranoid.
 	 */
 #if HAVE_WORKING_LINK
-	if (link(tmppath, path) < 0)
+	
+	if (tmpsimpleFileName) {
+		retval = MirroredFlatFile_Rename(
+										 XLOGDIR,
+										 /* old name */ tmpsimpleFileName,
+										 /* new name */ simpleFileName,
+										 /* suppressError */ false,
+										 /* isMirrorRecovery */ false);
+	} else {
+		retval = link(tmppath, path);
+	}
+	
+	if (retval < 0)	
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not link file \"%s\" to \"%s\" (initialization of log file %u, segment %u): %m",
 						tmppath, path, *log, *seg)));
-	unlink(tmppath);
+
+	if (tmpsimpleFileName) {
+
+		MirroredFlatFile_Drop(
+						  XLOGDIR,
+						  tmpsimpleFileName,
+						  /* suppressError */ true,
+						  /*isMirrorRecovery */ false);
+	} else {
+		unlink(tmppath);
+	}
+	
 #else
-	if (rename(tmppath, path) < 0)
+	if (tmpsimpleFileName) {
+		retval = MirroredFlatFile_Rename(
+						  XLOGDIR,
+						  /* old name */ tmpsimpleFileName,
+						  /* new name */ simpleFileName,
+						  /* suppressError */ false,
+							/* isMirrorRecovery */ false);
+	} else {
+		retval = rename(tmppath, path);
+	}
+	
+	if (retval < 0)
 	{
 #ifdef WIN32
 #if !defined(__CYGWIN__)
@@ -2813,23 +2958,34 @@ InstallXLogFileSegment(uint32 *log, uint32 *seg, char *tmppath,
 /*
  * Open a pre-existing logfile segment for writing.
  */
-static int
-XLogFileOpen(uint32 log, uint32 seg)
+static void
+XLogFileOpen(
+	MirroredFlatFileOpen *mirroredOpen,
+	uint32 log, 
+	uint32 seg)
 {
-	char		path[MAXPGPATH];
-	int			fd;
+	char		simpleFileName[MAXPGPATH];
 
-	XLogFilePath(path, ThisTimeLineID, log, seg);
+	XLogFileName(simpleFileName, ThisTimeLineID, log, seg);
 
-	fd = BasicOpenFile(path, O_RDWR | PG_BINARY | XLOG_SYNC_BIT,
-					   S_IRUSR | S_IWUSR);
-	if (fd < 0)
+	if (MirroredFlatFile_Open(
+					mirroredOpen,
+					XLOGDIR,
+					simpleFileName,
+					O_RDWR | PG_BINARY | XLOG_SYNC_BIT,
+					S_IRUSR | S_IWUSR,
+					/* suppressError */ false,
+					/*isMirrorRecovery */ false))
+	{
+		char		path[MAXPGPATH];
+
+		XLogFileName(path, ThisTimeLineID, log, seg);
+
 		ereport(PANIC,
 				(errcode_for_file_access(),
 		   errmsg("could not open file \"%s\" (log file %u, segment %u): %m",
 				  path, log, seg)));
-
-	return fd;
+	}
 }
 
 /*
@@ -2902,7 +3058,7 @@ XLogFileRead(uint32 log, uint32 seg, int emode)
 static void
 XLogFileClose(void)
 {
-	Assert(openLogFile >= 0);
+	Assert(MirroredFlatFile_IsActive(&mirroredLogFileOpen));
 
 	/*
 	 * posix_fadvise is problematic on many platforms: on older x86 Linux it
@@ -2929,12 +3085,7 @@ XLogFileClose(void)
 #endif
 #endif   /* NOT_USED */
 
-	if (close(openLogFile))
-		ereport(PANIC,
-				(errcode_for_file_access(),
-				 errmsg("could not close log file %u, segment %u: %m",
-						openLogId, openLogSeg)));
-	openLogFile = -1;
+	MirroredFlatFile_Close(&mirroredLogFileOpen);
 }
 
 /*
@@ -3154,7 +3305,9 @@ PreallocXlogFiles(XLogRecPtr endptr)
 	int			nsegsadded = 0;
 	uint32		_logId;
 	uint32		_logSeg;
-	int			lf;
+
+	MirroredFlatFileOpen	mirroredOpen;
+
 	bool		use_existent;
 
 	XLByteToPrevSeg(endptr, _logId, _logSeg);
@@ -3163,8 +3316,10 @@ PreallocXlogFiles(XLogRecPtr endptr)
 	{
 		NextLogSeg(_logId, _logSeg);
 		use_existent = true;
-		lf = XLogFileInit(_logId, _logSeg, &use_existent, true);
-		close(lf);
+		XLogFileInit(
+			&mirroredOpen,
+			_logId, _logSeg, &use_existent, true);
+		MirroredFlatFile_Close(&mirroredOpen);
 		if (!use_existent)
 			nsegsadded++;
 	}
@@ -3235,7 +3390,7 @@ MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
 				 */
 				if (InstallXLogFileSegment(&endlogId, &endlogSeg, path,
 										   true, &max_advance,
-										   true))
+										   true, xlde->d_name))
 				{
 					ereport(DEBUG2,
 							(errmsg("recycled transaction log file \"%s\"",
@@ -3251,10 +3406,16 @@ MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
 				else
 				{
 					/* No need for any more future segments... */
-					ereport(DEBUG2,
+					ereport(DEBUG2, 
 							(errmsg("removing transaction log file \"%s\"",
 									xlde->d_name)));
-					unlink(path);
+
+					MirroredFlatFile_Drop(
+										  XLOGDIR,
+										  xlde->d_name,
+										  /* suppressError */ true,
+										  /*isMirrorRecovery */ false);
+					
 					(*nsegsremoved)++;
 				}
 
@@ -4484,7 +4645,8 @@ ControlFileWatcherCheckForChange(void)
 static void
 WriteControlFile(void)
 {
-	int			fd;
+	MirroredFlatFileOpen	mirroredOpen;
+
 	char		buffer[PG_CONTROL_SIZE];		/* need not be aligned */
 	char	   *localeptr;
 
@@ -4543,35 +4705,27 @@ WriteControlFile(void)
 	memset(buffer, 0, PG_CONTROL_SIZE);
 	memcpy(buffer, ControlFile, sizeof(ControlFileData));
 
-	fd = BasicOpenFile(XLOG_CONTROL_FILE,
-					   O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
-					   S_IRUSR | S_IWUSR);
-	if (fd < 0)
-		ereport(PANIC,
-				(errcode_for_file_access(),
-				 errmsg("could not create control file \"%s\": %m",
-						XLOG_CONTROL_FILE)));
+	MirroredFlatFile_Open(
+					&mirroredOpen,
+					XLOG_CONTROL_FILE_SUBDIR,
+					XLOG_CONTROL_FILE_SIMPLE,
+					O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
+					S_IRUSR | S_IWUSR,
+					/* suppressError */ false,
+					/*isMirrorRecovery */ false);
+				
+	MirroredFlatFile_Write(
+					&mirroredOpen,
+					0,
+					buffer,
+					PG_CONTROL_SIZE,
+					/* suppressError */ false);
 
-	errno = 0;
-	if (write(fd, buffer, PG_CONTROL_SIZE) != PG_CONTROL_SIZE)
-	{
-		/* if write didn't set errno, assume problem is no disk space */
-		if (errno == 0)
-			errno = ENOSPC;
-		ereport(PANIC,
-				(errcode_for_file_access(),
-				 errmsg("could not write to control file: %m")));
-	}
+	MirroredFlatFile_Flush(
+					&mirroredOpen,
+					/* suppressError */ false);
 
-	if (pg_fsync(fd) != 0)
-		ereport(PANIC,
-				(errcode_for_file_access(),
-				 errmsg("could not fsync control file: %m")));
-
-	if (close(fd))
-		ereport(PANIC,
-				(errcode_for_file_access(),
-				 errmsg("could not close control file: %m")));
+	MirroredFlatFile_Close(&mirroredOpen);
 
 	ControlFileWatcherSaveInitial();
 }
@@ -4769,7 +4923,7 @@ XLogGetWriteAndFlushedLoc(XLogRecPtr *writeLoc, XLogRecPtr *flushedLoc)
 void
 UpdateControlFile(void)
 {
-	int			fd;
+	MirroredFlatFileOpen	mirroredOpen;
 
 	INIT_CRC32(ControlFile->crc);
 	COMP_CRC32(ControlFile->crc,
@@ -4777,35 +4931,27 @@ UpdateControlFile(void)
 			   offsetof(ControlFileData, crc));
 	FIN_CRC32(ControlFile->crc);
 
-	fd = BasicOpenFile(XLOG_CONTROL_FILE,
-					   O_RDWR | PG_BINARY,
-					   S_IRUSR | S_IWUSR);
-	if (fd < 0)
-		ereport(PANIC,
-				(errcode_for_file_access(),
-				 errmsg("could not open control file \"%s\": %m",
-						XLOG_CONTROL_FILE)));
+	MirroredFlatFile_Open(
+					&mirroredOpen,
+					XLOG_CONTROL_FILE_SUBDIR,
+					XLOG_CONTROL_FILE_SIMPLE,
+					O_RDWR | PG_BINARY,
+					S_IRUSR | S_IWUSR,
+					/* suppressError */ false,
+					/*isMirrorRecovery */ false);
+				
+	MirroredFlatFile_Write(
+					&mirroredOpen,
+					0,
+					ControlFile,
+					PG_CONTROL_SIZE,
+					/* suppressError */ false);
 
-	errno = 0;
-	if (write(fd, ControlFile, sizeof(ControlFileData)) != sizeof(ControlFileData))
-	{
-		/* if write didn't set errno, assume problem is no disk space */
-		if (errno == 0)
-			errno = ENOSPC;
-		ereport(PANIC,
-				(errcode_for_file_access(),
-				 errmsg("could not write to control file: %m")));
-	}
+	MirroredFlatFile_Flush(
+					&mirroredOpen,
+					/* suppressError */ false);
 
-	if (pg_fsync(fd) != 0)
-		ereport(PANIC,
-				(errcode_for_file_access(),
-				 errmsg("could not fsync control file: %m")));
-
-	if (close(fd))
-		ereport(PANIC,
-				(errcode_for_file_access(),
-				 errmsg("could not close control file: %m")));
+	MirroredFlatFile_Close(&mirroredOpen);
 	
 	Assert (ControlFileWatcher->watcherInitialized);
 
@@ -4995,31 +5141,32 @@ BootStrapXLOG(void)
 
 	/* Create first XLOG segment file */
 	use_existent = false;
-	openLogFile = XLogFileInit(0, 0, &use_existent, false);
+	XLogFileInit(
+		&mirroredLogFileOpen,
+		0, 0, &use_existent, false);
 
 	/* Write the first page with the initial record */
 	errno = 0;
-	if (write(openLogFile, page, XLOG_BLCKSZ) != XLOG_BLCKSZ)
+	if (MirroredFlatFile_Append(
+			&mirroredLogFileOpen, 
+			page, 
+			XLOG_BLCKSZ,
+			/* suppressError */ true))
 	{
-		/* if write didn't set errno, assume problem is no disk space */
-		if (errno == 0)
-			errno = ENOSPC;
 		ereport(PANIC,
 				(errcode_for_file_access(),
 			  errmsg("could not write bootstrap transaction log file: %m")));
 	}
 
-	if (pg_fsync(openLogFile) != 0)
+	if (MirroredFlatFile_Flush(
+			&mirroredLogFileOpen,
+			/* suppressError */ true))
 		ereport(PANIC,
 				(errcode_for_file_access(),
 			  errmsg("could not fsync bootstrap transaction log file: %m")));
 
-	if (close(openLogFile))
-		ereport(PANIC,
-				(errcode_for_file_access(),
-			  errmsg("could not close bootstrap transaction log file: %m")));
-
-	openLogFile = -1;
+	MirroredFlatFile_Close(
+			&mirroredLogFileOpen);
 
 	/* Now create pg_control */
 
@@ -5559,6 +5706,40 @@ printEndOfXLogFile(XLogRecPtr	*loc)
 	CloseReadRecord();
 }
 
+static void
+StartupXLOG_InProduction(void)
+{
+	/*
+	 * Perform a checkpoint to update all our recovery activity to disk.
+	 *
+	 * Note that we write a shutdown checkpoint rather than an on-line
+	 * one. This is not particularly critical, but since we may be
+	 * assigning a new TLI, using a shutdown checkpoint allows us to have
+	 * the rule that TLI only changes in shutdown checkpoints, which
+	 * allows some extra error checking in xlog_redo.
+	 */
+	CreateCheckPoint(true, true);
+
+	ControlFile->state = DB_IN_PRODUCTION;
+	ControlFile->time = time(NULL);
+	UpdateControlFile();
+
+	ereport(LOG,
+			(errmsg("database system is ready")));
+	
+	{
+		char version[512];
+
+		strcpy(version, PG_VERSION_STR " compiled on " __DATE__ " " __TIME__);
+		
+#ifdef USE_ASSERT_CHECKING
+		strcat(version, " (with assert checking)");
+#endif 
+		ereport(LOG,(errmsg(version)));
+		
+	}
+}
+
 /*
  * This must be called ONCE during postmaster or standalone-backend startup
  */
@@ -5894,6 +6075,9 @@ StartupXLOG(void)
 					(errmsg("redo starts at %X/%X",
 							ReadRecPtr.xlogid, ReadRecPtr.xrecoff)));
 
+			XLogCtl->pass1StartLoc = ReadRecPtr;
+			XLogCtl->pass2Needed = true;
+			
 			/*
 			 * main redo apply loop
 			 */
@@ -5908,7 +6092,7 @@ StartupXLOG(void)
 					appendStringInfo(&buf, "REDO @ %X/%X; LSN %X/%X: ",
 									 ReadRecPtr.xlogid, ReadRecPtr.xrecoff,
 									 EndRecPtr.xlogid, EndRecPtr.xrecoff);
-					xlog_outrec(&buf, record);
+					XLog_OutRec(&buf, record);
 					appendStringInfo(&buf, " - ");
 					RmgrTable[record->xl_rmid].rm_desc(&buf,
 													   record->xl_info,
@@ -5925,7 +6109,7 @@ StartupXLOG(void)
 					appendStringInfo(&buf, "REDO @ %s; LSN %s: ",
 									 XLogLocationToString(&ReadRecPtr),
 									 XLogLocationToString2(&EndRecPtr));
-					xlog_outrec(&buf, record);
+					XLog_OutRec(&buf, record);
 					appendStringInfo(&buf, " - ");
 					RmgrTable[record->xl_rmid].rm_desc(&buf,
 													   record->xl_info,
@@ -5975,7 +6159,6 @@ StartupXLOG(void)
 			/*
 			 * end of main redo apply loop
 			 */
-
 			ereport(LOG,
 					(errmsg("redo done at %X/%X",
 							ReadRecPtr.xlogid, ReadRecPtr.xrecoff)));
@@ -6000,6 +6183,8 @@ StartupXLOG(void)
 	elog(LOG,"end of transaction log location is %s",
 		 XLogLocationToString(&EndOfLog));
 	
+	XLogCtl->pass1LastLoc = ReadRecPtr;
+
 	/*
 	 * Complain if we did not roll forward far enough to render the backup
 	 * dump consistent.
@@ -6059,7 +6244,10 @@ StartupXLOG(void)
 	 */
 	openLogId = endLogId;
 	openLogSeg = endLogSeg;
-	openLogFile = XLogFileOpen(openLogId, openLogSeg);
+	XLogFileOpen(
+			&mirroredLogFileOpen,
+			openLogId, 
+			openLogSeg);
 	openLogOff = 0;
 	ControlFile->logId = openLogId;
 	ControlFile->logSeg = openLogSeg + 1;
@@ -6136,6 +6324,14 @@ StartupXLOG(void)
 		pgstat_reset_all();
 
 		/*
+		 * We are not finished with Pass 2, so we do not do a 
+		 * shutdown checkpoint here as we did in the past.
+		 *
+		 * We only flush out the Resource Managers.
+		 */
+		Checkpoint_RecoveryPass1(XLogCtl->pass1LastLoc);
+#if suppress
+		/*
 		 * Perform a checkpoint to update all our recovery activity to disk.
 		 *
 		 * Note that we write a shutdown checkpoint rather than an on-line
@@ -6145,6 +6341,7 @@ StartupXLOG(void)
 		 * allows some extra error checking in xlog_redo.
 		 */
 		CreateCheckPoint(true, true);
+#endif
 
 		/*
 		 * Close down recovery environment
@@ -6161,13 +6358,15 @@ StartupXLOG(void)
 	(void) PreallocXlogFiles(EndOfLog);
 
 	/*
-	 * Okay, we're officially UP.
+	 * Okay, we're finished with Pass 1.
 	 */
 	InRecovery = false;
 
-	ControlFile->state = DB_IN_PRODUCTION;
-	ControlFile->time = time(NULL);
-	UpdateControlFile();
+	// UNDONE: Moving this.  If we have a pass 2, it must wait until that pass is complete.
+	// UNDONE:  What are the implications?
+//	ControlFile->state = DB_IN_PRODUCTION;
+//	ControlFile->time = time(NULL);
+//	UpdateControlFile();
 
 	/* start the archive_timeout timer running */
 	XLogCtl->Write.lastSegSwitchTime = ControlFile->time;
@@ -6187,19 +6386,21 @@ StartupXLOG(void)
 	/* Reload shared-memory state for prepared transactions */
 	RecoverPreparedTransactions();
 
-	ereport(LOG,
-			(errmsg("database system is ready")));
-	
+	if (!XLogCtl->pass2Needed)
 	{
-		char version[512];
-
-		strcpy(version, PG_VERSION_STR " compiled on " __DATE__ " " __TIME__);
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "Startup Pass 2 not needed");
 		
-#ifdef USE_ASSERT_CHECKING
-		strcat(version, " (with assert checking)");
-#endif 
-		ereport(LOG,(errmsg(version)));
-		
+		StartupXLOG_InProduction();
+	}
+	else
+	{
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level,
+				 "End of Startup Pass 1.  Pass 2 start transaction log location is %s, end location %s",
+				 XLogLocationToString(&XLogCtl->pass1StartLoc),
+				 XLogLocationToString2(&XLogCtl->pass1LastLoc));
 	}
 
 	/* Shut down readFile facility, free space */
@@ -6219,6 +6420,102 @@ StartupXLOG(void)
 		readRecordBuf = NULL;
 		readRecordBufSize = 0;
 	}
+}
+
+bool XLogStartupPass2Needed(void)
+{
+	Assert(XLogCtl != NULL);
+	return XLogCtl->pass2Needed;
+}
+
+/*
+ * This must be called ONCE during postmaster or standalone-backend startup
+ */
+void
+StartupXLOG_Pass2(void)
+{
+	XLogRecord *record;
+	
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+		     "Entering StartupXLOG_Pass2");
+
+	/*
+	 * Read control file and verify XLOG status looks valid.
+	 *
+	 */
+	ReadControlFile();
+
+	if (ControlFile->logSeg == 0 ||
+		ControlFile->state < DB_SHUTDOWNED ||
+		ControlFile->state > DB_IN_PRODUCTION ||
+		!XRecOffIsValid(ControlFile->checkPoint.xrecoff))
+		ereport(FATAL,
+				(errmsg("Startup Pass 2: control file contains invalid data")));
+
+	recoveryTargetTLI = ControlFile->checkPointCopy.ThisTimeLineID;
+		
+	/* Now we can determine the list of expected TLIs */
+	expectedTLIs = readTimeLineHistory(recoveryTargetTLI);
+	
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level,
+		     "ControlFile with recoveryTargetTLI %u, transaction log to start location is %s",
+			 recoveryTargetTLI, 
+			 XLogLocationToString(&XLogCtl->pass1StartLoc));
+
+	if (!Debug_persistent_skip_startup_pass_2)
+	{
+		record = ReadRecord(&XLogCtl->pass1StartLoc, PANIC);
+
+		/*
+		 * Pass 2 XLOG scan
+		 */
+		while (true)
+		{
+			PersistentRecovery_HandleXLogRec(ReadRecPtr, EndRecPtr, record);
+
+			if (XLByteEQ(ReadRecPtr, XLogCtl->pass1LastLoc))
+				break;
+
+			Assert(XLByteLE(ReadRecPtr,XLogCtl->pass1LastLoc));
+
+			record = ReadRecord(NULL, PANIC);
+		}
+
+		PersistentRecovery_Scan();
+		
+		PersistentRecovery_CrashAbort();
+		
+		PersistentRecovery_Update();
+		
+		PersistentRecovery_Drop();
+	}
+
+	StartupXLOG_InProduction();
+
+	/* Shut down readFile facility, free space */
+	if (readFile >= 0)
+	{
+		close(readFile);
+		readFile = -1;
+	}
+	if (readBuf)
+	{
+		free(readBuf);
+		readBuf = NULL;
+	}
+	if (readRecordBuf)
+	{
+		free(readRecordBuf);
+		readRecordBuf = NULL;
+		readRecordBufSize = 0;
+	}
+
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "Exiting StartupXLOG_Pass2");
 }
 
 /*
@@ -6535,7 +6832,7 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 			appendStringInfo(&buf, "apply @ %s; LSN %s: ",
 							 XLogLocationToString(&ReadRecPtr),
 							 XLogLocationToString2(&EndRecPtr));
-			xlog_outrec(&buf, record);
+			XLog_OutRec(&buf, record);
 			appendStringInfo(&buf, " - ");
 			RmgrTable[record->xl_rmid].rm_desc(&buf,
 											   record->xl_info,
@@ -7214,6 +7511,11 @@ CheckPointGuts(XLogRecPtr checkPointRedo)
 	CheckPointTwoPhase(checkPointRedo);
 }
 
+static void Checkpoint_RecoveryPass1(XLogRecPtr checkPointRedo)
+{
+	CheckPointGuts(checkPointRedo);
+}
+
 /*
  * Set a recovery restart point if appropriate
  *
@@ -7476,8 +7778,8 @@ xlog_desc(StringInfo buf, uint8 xl_info, char *rec)
 		appendStringInfo(buf, "UNKNOWN");
 }
 
-static void
-xlog_outrec(StringInfo buf, XLogRecord *record)
+void
+XLog_OutRec(StringInfo buf, XLogRecord *record)
 {
 	int			i;
 
@@ -7551,9 +7853,11 @@ assign_xlog_sync_method(const char *method, bool doit, GucSource source __attrib
 		 * changing, close the log file so it will be reopened (with new flag
 		 * bit) at next use.
 		 */
-		if (openLogFile >= 0)
+		if (MirroredFlatFile_IsActive(&mirroredLogFileOpen))
 		{
-			if (pg_fsync(openLogFile) != 0)
+			if (MirroredFlatFile_Flush(
+								&mirroredLogFileOpen,
+								/* suppressError */ true))
 				ereport(PANIC,
 						(errcode_for_file_access(),
 						 errmsg("could not fsync log file %u, segment %u: %m",
@@ -7568,7 +7872,7 @@ assign_xlog_sync_method(const char *method, bool doit, GucSource source __attrib
 	return method;
 }
 
-
+#ifdef suppress
 /*
  * Issue appropriate kind of fsync (if any) on the current XLOG output file
  */
@@ -7610,7 +7914,7 @@ issue_xlog_fsync(void)
 			break;
 	}
 }
-
+#endif
 
 /*
  * pg_start_backup: set up for taking an on-line backup dump
@@ -8400,9 +8704,13 @@ StartupProcShutdownHandler(SIGNAL_ARGS __attribute__((unused)))
 	proc_exit(1);
 }
 
+extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
+
+static char *knownDatabase = "postgres";
+
 /* Main entry point for startup process */
 void
-StartupProcessMain(void)
+StartupProcessMain(bool pass2)
 {
 	/*
 	 * If possible, make this process a group leader, so that the postmaster
@@ -8439,12 +8747,98 @@ StartupProcessMain(void)
 	 */
 	PG_SETMASK(&UnBlockSig);
 
-	StartupXLOG();	
+	if (!pass2)
+	{
+		StartupXLOG();	
 
-	BuildFlatFiles(false);
-	
-	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
-		InitResQueues();
+		BuildFlatFiles(false);
+		
+		if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
+			InitResQueues();
+	}
+	else
+	{
+		char	   *fullpath;
+
+		/*
+		 * NOTE: The following initialization logic was borrrowed from ftsprobe.
+		 */
+		SetProcessingMode(InitProcessing);
+
+		/*
+		 * Create a resource owner to keep track of our resources (currently only
+		 * buffer pins).
+		 */
+		CurrentResourceOwner = ResourceOwnerCreate(NULL, "Startup Pass 2");
+		
+		/*
+		 * NOTE: AuxiliaryProcessMain has already called:
+		 * NOTE:      BaseInit,
+		 * NOTE:      InitAuxiliaryProcess instead of InitProcess, and
+		 * NOTE:      InitBufferPoolBackend.
+		 */
+
+		InitXLOGAccess();
+		
+		SetProcessingMode(NormalProcessing);
+		
+		/*
+		 * In order to access the catalog, we need a database, and a
+		 * tablespace; our access to the heap is going to be slightly
+		 * limited, so we'll just use some defaults.
+		 */
+		MyDatabaseId = TemplateDbOid;
+		MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
+
+		if (!FindMyDatabase(knownDatabase, &MyDatabaseId, &MyDatabaseTableSpace))
+			ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE),
+				errmsg("database 'postgres' does not exist")));
+
+		fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
+
+		SetDatabasePath(fullpath);
+
+		/*
+		 * Finish filling in the PGPROC struct, and add it to the ProcArray. (We
+		 * need to know MyDatabaseId before we can do this, since it's entered
+		 * into the PGPROC struct.)
+		 *
+		 * Once I have done this, I am visible to other backends!
+		 */
+		InitProcessPhase2();
+
+		/*
+		 * Initialize my entry in the shared-invalidation manager's array of
+		 * per-backend data.
+		 *
+		 * Sets up MyBackendId, a unique backend identifier.
+		 */
+		MyBackendId = InvalidBackendId;
+
+		InitBackendSharedInvalidationState();
+
+		if (MyBackendId > MaxBackends || MyBackendId <= 0)
+			elog(FATAL, "bad backend id: %d", MyBackendId);
+
+		/*
+		 * bufmgr needs another initialization call too
+		 */
+		InitBufferPoolBackend();
+
+		/* heap access requires the rel-cache */
+		RelationCacheInitialize();
+		InitCatalogCache();
+
+		/*
+		 * It's now possible to do real access to the system catalogs.
+		 *
+		 * Load relcache entries for the system catalogs.  This must create at
+		 * least the minimum set of "nailed-in" cache entries.
+		 */
+		RelationCacheInitializePhase2();	
+		
+		StartupXLOG_Pass2();
+	}
 
 	/*
 	 * Exit normally. Exit code 0 tells postmaster that we completed
@@ -8452,4 +8846,395 @@ StartupProcessMain(void)
 	 */
 	proc_exit(0);
 }
+
+/*
+ *
+ */
+static
+int XLogGetEof(XLogRecPtr *eofRecPtr)
+{
+	int	status = STATUS_OK;
+	
+	XLogRecPtr	redoCheckpointLoc;
+	CheckPoint	redoCheckpoint;
+	
+	XLogRecPtr	startLoc;
+
+	XLogRecord	*record;
+	XLogRecPtr	LastRec;
+		
+	XLogGetStandbyRecoveryStart("get checkpoint location",
+								&redoCheckpointLoc,
+								&redoCheckpoint);
+	
+	startLoc = redoCheckpoint.redo;
+	
+	elog(LOG, "scan forward starting at restart location to determine end location");
+		
+	elog(LOG, "scan with ThisTimeLineID %u, location %s",
+			 ThisTimeLineID, 
+			 XLogLocationToString(&startLoc));
+		
+	CloseReadRecord();
+		
+	record = ReadRecord(&startLoc, DEBUG1);
+	if (record == NULL)	{
+			elog(ERROR," couldn't read start location %s",
+				 XLogLocationToString(&startLoc));
+		status = STATUS_ERROR;
+	}
+		
+	do
+	{
+		LastRec = ReadRecPtr;
+		
+		record = ReadRecord(NULL, DEBUG1);
+	} while (record != NULL);
+	
+	record = ReadRecord(&LastRec, ERROR);
+	*eofRecPtr = EndRecPtr; 
+	
+	CloseReadRecord();
+	
+	return status;
+}
+
+/*
+ *
+ */
+static
+int XLogReconcileEofInternal(
+					XLogRecPtr	startLocation,
+					XLogRecPtr	endLocation)
+{
+	
+	uint32		startLogId;
+	uint32		startSeg;
+	
+	uint32		endLogId;
+	uint32		endSeg;
+	
+	uint32		logId;
+	uint32		seg;
+	
+	uint32		startOffset;
+	uint32		endOffset;
+	
+	int			status = STATUS_OK;
+	
+	Assert(XLByteLT(startLocation, endLocation));
+	
+	XLByteToSeg(startLocation, startLogId, startSeg);
+	XLByteToSeg(endLocation, endLogId, endSeg);
+
+	logId = startLogId;
+	seg = startSeg;
+	
+	while (1) {
+
+		if (logId == startLogId && seg == startSeg)
+			startOffset = startLocation.xrecoff % XLogSegSize;
+		else
+			startOffset = 0;
+		
+		if (logId == endLogId && seg == endSeg)
+			endOffset = endLocation.xrecoff % XLogSegSize;
+		else
+			endOffset = XLogSegSize;
+		
+		elog(LOG, "XLogReconcileEofInternal() logId %u seg %u start:%d end:%d xlogsize:%d", 
+			 logId, seg, startOffset, endOffset, XLogSegSize);
+		
+		status = XLogFillZero(logId, seg, startOffset, endOffset);
+		if (status != STATUS_OK) {
+			break;
+		}
+		
+		if (logId == endLogId && seg == endSeg)
+			break;
+		
+		NextLogSeg(logId, seg);
+		elog(DEBUG1, "next logId %u seg %u", logId, seg);
+	}
+	
+	return STATUS_OK;
+}
+	
+static
+int XLogFillZero(
+				 uint32	logId,
+				 uint32	seg,
+				 uint32	startOffset,
+				 uint32	endOffset)
+{
+	char		path[MAXPGPATH];
+	char		fname[MAXPGPATH];
+	char		zbuffer[XLOG_BLCKSZ];
+	
+	int			fd = 0;
+	uint32		offset = startOffset;
+	Size		writeLen = 0;
+	
+	int			status = STATUS_OK;
+			
+	Assert(startOffset < endOffset);
+	
+	errno = 0;
+	
+	XLogFileName(fname, ThisTimeLineID, logId, seg);
+	elog(LOG, "opening logid %d seg %d file %s", logId, seg, fname);
+	
+	/* the first time or file is changed */
+	if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, fname) >= MAXPGPATH) {
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("could not create xlog file \"%s/%s\"",
+						XLOGDIR, fname)));
+		return STATUS_ERROR;
+	}
+	
+	fd = open(path, O_RDWR, 0);
+	if (fd < 0) {
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not open xlog file \"%s\" : %m",
+							path)));
+			return STATUS_ERROR;
+	}
+			
+	if (ftruncate(fd, startOffset) < 0) {
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("could not truncate xlog file \"%s\" to position \"%d\" : %m",
+						path, startOffset)));
+		status = STATUS_ERROR;
+		goto exit;
+	}		
+	
+	if (lseek(fd, (off_t) startOffset, SEEK_SET) < 0) {
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("could not seek xlog file \"%s\" to position \"%d\" : %m",
+						path, startOffset)));
+		status = STATUS_ERROR;
+		goto exit;
+	}
+
+	/*
+	 * Zero-fill the file.	We have to do this the hard way to ensure that all
+	 * the file space has really been allocated --- on platforms that allow
+	 * "holes" in files, just seeking to the end doesn't allocate intermediate
+	 * space.  This way, we know that we have all the space and (after the
+	 * fsync below) that all the indirect blocks are down on disk.	Therefore,
+	 * fdatasync(2) or O_DSYNC will be sufficient to sync future writes to the
+	 * log file.
+	 */
+	MemSet(zbuffer, 0, sizeof(zbuffer));
+
+	while (1) {
+		errno = 0;
+		writeLen = (Size) Min(XLOG_BLCKSZ - (offset % XLOG_BLCKSZ), endOffset - offset);
+
+		if ((int) write(fd, zbuffer, writeLen) != (int) writeLen) {
+			int			save_errno = errno;
+			
+			/*
+			 * If we fail to make the file, delete it to release disk space
+			 */
+			
+			/* if write didn't set errno, assume problem is no disk space */
+			errno = save_errno ? save_errno : ENOSPC;
+			
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not write to file \"%s\": %m", path)));
+			status = STATUS_ERROR;
+			goto exit;
+		}
+		offset += writeLen;
+		if (offset >= endOffset) {
+			break;
+		}
+	}
+	
+	if (pg_fsync(fd) != 0) {
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("could not fsync file \"%s\": %m", path)));
+		status = STATUS_ERROR;
+	}
+
+exit:
+	if (fd > 0) {
+		if (close(fd)) {
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not close file \"%s\": %m", path)));
+			status = STATUS_ERROR;
+		}
+	}
+
+	return status;
+}
+
+
+/*
+ *
+ *		a) get logical XLog EOF on primary
+ *		b) send logical XLog EOF to mirror
+ *		c) if mirror ahead then reconcile XLog EOF on mirror
+ *		d) if primary ahead then reconcile XLog EOF on primary
+ */
+int
+XLogReconcileEofPrimary(void)
+{
+	XLogRecPtr	primaryEof = {0, 0};
+	XLogRecPtr	mirrorEof;
+	
+	uint32		logId;
+	uint32		seg;
+	
+	char		simpleFileName[MAXPGPATH];
+	
+	int			status = STATUS_OK;
+	
+	status = XLogGetEof(&primaryEof);
+	
+	if (status != STATUS_OK) {
+		return status;
+	}
+	
+	XLByteToSeg(primaryEof, logId, seg);
+	
+	XLogFileName(simpleFileName, ThisTimeLineID, logId, seg);
+	
+	status = MirroredFlatFile_ReconcileXLogEof(
+						  XLOGDIR,
+						  simpleFileName,
+						  primaryEof,
+						  &mirrorEof);
+	
+	if (status != STATUS_OK) {
+		return status;
+	}
+	
+	if (XLByteEQ(primaryEof, mirrorEof)) {
+		elog(LOG, "primary and mirror XLog EOF match");
+		return STATUS_OK;
+	}
+	
+	if (XLByteLT(primaryEof, mirrorEof)) {
+		elog(LOG, "primary is behind. XLog was truncated on mirror.");
+		return STATUS_OK;
+	}
+	
+	elog(LOG, "mirror is behind. XLog will be truncated on primary.");
+		
+	status = XLogReconcileEofInternal(
+						mirrorEof,
+						primaryEof);
+	
+	return status;
+}
+
+/*
+ *
+ */
+int
+XLogReconcileEofMirror(
+		XLogRecPtr	primaryEof,
+		XLogRecPtr	*mirrorEof)
+{
+	XLogRecPtr	mirrorEofLocal = {0, 0};
+	int			status = STATUS_OK;
+	
+	status = XLogGetEof(&mirrorEofLocal);
+	
+	*mirrorEof = mirrorEofLocal;
+	
+	if (status != STATUS_OK) {
+		return status;
+	}
+
+		
+	if (XLByteEQ(primaryEof, mirrorEofLocal)) {
+		elog(LOG, "primary and mirror XLog EOF match");
+		return STATUS_OK;
+	}
+		
+	if (! XLByteLT(primaryEof, mirrorEofLocal)) {
+		elog(LOG, "Mirror is behind. XLog will be truncated on primary.");
+		return STATUS_OK;
+	}
+			
+	elog(LOG, "Primary is behind. XLog will be truncated on mirror.");
+		
+	status = XLogReconcileEofInternal(
+						  primaryEof,
+						  mirrorEofLocal);
+	
+	if (status != STATUS_OK) {
+		return status;
+	}
+	
+	return status;
+}
+
+/*
+ * The routine recovers flat file on mirror side.
+ *		a) It drops control file on mirror..
+ *		b) It copies control file from primary to mirror.
+ *
+ * Status is not returned, If an error occurs segmentState will be set to Fault.
+ */
+int
+XLogRecoverMirrorControlFile(void)
+{
+	MirroredFlatFileOpen	mirroredOpen;
+	int						retval = 0;
+	
+	while (1) {
+		retval = MirroredFlatFile_Drop(
+							  XLOG_CONTROL_FILE_SUBDIR,
+							  XLOG_CONTROL_FILE_SIMPLE,
+							  /* suppressError */ false,
+							  /*isMirrorRecovery */ TRUE);
+		if (retval != 0)
+			break;
+
+		ReadControlFile();
+
+		retval = MirroredFlatFile_Open(
+							  &mirroredOpen,
+							  XLOG_CONTROL_FILE_SUBDIR,
+							  XLOG_CONTROL_FILE_SIMPLE,
+							  O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
+							  S_IRUSR | S_IWUSR,
+							  /* suppressError */ false,
+							  /*isMirrorRecovery */ TRUE);
+		if (retval != 0)
+			break;
+
+		retval = MirroredFlatFile_Write(
+							   &mirroredOpen,
+							   0,
+							   ControlFile,
+							   PG_CONTROL_SIZE,
+							   /* suppressError */ false);
+		if (retval != 0)
+			break;
+
+		retval = MirroredFlatFile_Flush(
+							   &mirroredOpen,
+							   /* suppressError */ false);
+		if (retval != 0)
+			break;
+
+		MirroredFlatFile_Close(&mirroredOpen);
+		break;
+	} // while(1)
+	
+	return retval;
+}
+
 

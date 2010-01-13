@@ -42,7 +42,6 @@ SEG_PREFIX=gp
 
 PORT_BASE=50000
 
-
 # This specifies the data storage location(s) where the script will 
 # create the primary segment data directories. The script creates a 
 # unique data directory for each segment instance. If you want multiple 
@@ -133,10 +132,29 @@ ENCODING=UNICODE
 # The base port number on which mirror segment instances will be 
 # started on a segment host. If a host has multiple mirror segment 
 # instances, the base port number will be incremented by one for 
-# each additional mirror segment instance started on that host. 
-# Be sure to use a different number than the primary PORT_BASE.
+# each additional mirror segment instance started on that host.
+# Be sure to use a different number than the primary PORT_BASE,
+# REPLICATION_PORT_BASE, and MIRROR_REPLICATION_PORT_BASE.
 
 #MIRROR_PORT_BASE=60000
+
+# The base port number on which primary segment instances' file
+# replication process (used by mirroring) will be started. If a host 
+# has multiple mirror segment instances, the base port number will be 
+# incremented by one for each additional mirror segment instance started 
+# on that host. Be sure to use a different number than the primary PORT_BASE,
+# MIRROR_PORT_BASE, and MIRROR_REPLICATION_BASE.
+
+#REPLICATION_PORT_BASE=53000
+
+# The base port number on which mirror segment instances' file
+# replication process (used by mirroring) will be started. If a host 
+# has multiple mirror segment instances, the base port number will be 
+# incremented by one for each additional mirror segment instance started 
+# on that host. Be sure to use a different number than the primary PORT_BASE,
+# MIRROR_PORT_BASE, and REPLICATION_PORT_BASE.
+
+#MIRROR_REPLICATION_PORT_BASE=63000
 
 # The data directory where mirror segment instances will be
 # created on a host. There must be the same number of data directories 

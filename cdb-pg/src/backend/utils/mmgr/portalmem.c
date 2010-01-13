@@ -1059,10 +1059,7 @@ CdbShutdownPortals(void)
 		/* active portal, shut it down */
 		if (es->dispatchThreads)
 		{
-			struct CdbDispatchResults  *pr = es->primaryResults;
-            struct CdbDispatchResults  *mr = es->mirrorResults;
-
-			CdbCheckDispatchResult(pr, mr, es->dispatchThreads, true);   /* cancel any QEs still running */
+			CdbCheckDispatchResult(es->primaryResults, es->dispatchThreads, true);   /* cancel any QEs still running */
 		}
 	}
 }

@@ -42,8 +42,6 @@ bool		gp_set_read_only;	/* Staging area for guc.c */
 GpRoleValue Gp_session_role;	/* Role paid by this Greenplum Database backend */
 char	   *gp_session_role_string;	/* Staging area for guc.c */
 
-bool		Gp_is_primary;		/* Is this session primary (or mirror) */
-
 bool		Gp_is_writer; 		/* is this qExec a "writer" process. */
 
 int 		gp_session_id;    /* global unique id for session. */
@@ -333,16 +331,23 @@ int         gp_singleton_segindex;
 bool        gp_cost_hashjoin_chainwalk = false;
 
 /* ----------------
- * The single row from gp_id for this database is held in this variable,
- * which is initialized in cdbutil.c in the function
- * getGpId(), which is called from cdblink_setup()
- * for both dispatch and execute modes.
+ * This variable is initialized by the postmaster from command line arguments
  *
- * Any code needing the  "numsegments"
+ * Any code needing the "numsegments"
  * can simply #include cdbvars.h, and use GpIdentity.numsegments
  */
-GpId		GpIdentity = {NULL, 0, -1, -999};
+#define UNINITIALIZED_GP_IDENTITY_VALUE (-10000)
+GpId GpIdentity = {UNINITIALIZED_GP_IDENTITY_VALUE, UNINITIALIZED_GP_IDENTITY_VALUE, UNINITIALIZED_GP_IDENTITY_VALUE};
 
+void verifyGpIdentityIsSet(void)
+{
+    if ( GpIdentity.numsegments == UNINITIALIZED_GP_IDENTITY_VALUE ||
+         GpIdentity.dbid == UNINITIALIZED_GP_IDENTITY_VALUE ||
+         GpIdentity.segindex == UNINITIALIZED_GP_IDENTITY_VALUE)
+     {
+        elog(ERROR, "GpIdentity is not set");
+     }
+}
 
 /*
  * Keep track of a few dispatch-related  statistics:
@@ -666,6 +671,20 @@ show_gp_connections_per_thread(void)
 GpVars_Verbosity   gp_log_gang;
 
 /*
+ * gp_log_fts (string)
+ *
+ * What kind of messages should the fault-prober log ?
+ * "OFF"     -> only errors are logged
+ * "TERSE"   -> terse logging of routine events
+ * "VERBOSE" -> gang allocation per command is logged
+ * "DEBUG"   -> additional events are logged at severity level DEBUG1 to DEBUG5
+ *
+ * The messages that are enabled by the TERSE and VERBOSE settings are
+ * written with a severity level of LOG.
+ */
+GpVars_Verbosity   gp_log_fts;
+
+/*
  * gp_log_interconnect (string)
  *
  * Should connections between internal processes be logged?  (qDisp/qExec/etc)
@@ -747,6 +766,27 @@ gpvars_show_gp_log_gang(void)
 	return gpvars_verbosity_to_string(gp_log_gang);
 }                               /* gpvars_show_gp_log_gangs */
 
+/*
+ * gpvars_assign_gp_log_fts
+ * gpvars_show_gp_log_fts
+ */
+const char *
+gpvars_assign_gp_log_fts(const char *newval, bool doit, GucSource source __attribute__((unused)) )
+{
+	GpVars_Verbosity v = gpvars_string_to_verbosity(newval);
+
+	if (v == GPVARS_VERBOSITY_UNDEFINED)
+        return NULL;
+	if (doit)
+		gp_log_fts = v;
+	return newval;
+}                               /* gpvars_assign_gp_log_fts */
+
+const char *
+gpvars_show_gp_log_fts(void)
+{
+	return gpvars_verbosity_to_string(gp_log_fts);
+}                               /* gpvars_show_gp_log_fts */
 
 /*
  * gpvars_assign_gp_log_interconnect

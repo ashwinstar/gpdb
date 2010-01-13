@@ -18,6 +18,7 @@ from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRE
 
 try:
     import figleaf
+    import pickle
     
     from gppylib.db import dbconn
     from gppylib.gpparseopts import OptParser, OptChecker
@@ -41,9 +42,7 @@ description = ("""
 Starts a GPDB Array.
 """)
 
-_help = [""""""
-
-]
+_help = [""" """]
 
 EXECNAME = os.path.split(__file__)[-1]
 
@@ -53,7 +52,7 @@ DEFAULT_NUM_WORKERS=64
 class GpStartError(Exception): pass
 
 #---------------------------------------------------------------
-class SegStartStatus():
+class SegStartStatus:
     """Tracks result of trying to start an individual segment database"""
     def __init__(self,db,started=False,reason=None,failedCmd=None):
         self.db=db
@@ -69,7 +68,7 @@ class SegStartStatus():
             return "DBID:%d  FAILED  host:'%s' datadir:'%s' with reason:'%s'" % (self.db.dbid,self.db.hostname,self.db.datadir,self.reason)
         
 #---------------------------------------------------------------
-class GpStart():
+class GpStart:
     
     ######
     def __init__(self,restricted,start_standby,master_datadir,parallel=DEFAULT_NUM_WORKERS,quiet=False,masteronly=False,
@@ -133,12 +132,16 @@ class GpStart():
         self.dburl = dbconn.DbURL(port=self.port,dbname='template1')
         self.conn = dbconn.connect(self.dburl, utility=True)
         self.ftsmode = catalog.getSessionGUC(self.conn,'gp_fault_action')
-        probe_interval = catalog.getSessionGUC(self.conn,'gp_fts_probe_interval')                        
+        probe_interval = catalog.getSessionGUC(self.conn,'gp_fts_probe_interval')
+
+        system_filespace = 3052
         sql = '''
         SELECT p.dbid,p.isprimary,p.content,p.valid,p.definedprimary,c.hostname,c.port,c.datadir 
-        FROM pg_catalog.gp_pgdatabase p, pg_catalog.gp_configuration c 
+        FROM pg_catalog.gp_pgdatabase p, pg_catalog.gp_configuration c,
+             pg_catalog.pg_filespace_entry fse
         WHERE p.valid = 'f' AND p.dbid = c.dbid
-        '''
+          AND c.dbid = fse.fsedbid and fse.fsoid = %d
+        ''' % (system_filespace)
         rows = catalog.basicSQLExec(self.conn,sql)
         self.conn.close()
         
@@ -345,8 +348,10 @@ class GpStart():
     
     ######
     def _startMaster(self):    
-        logger.info("Starting Master instance in admin mode")    
-        cmd=gp.MasterStart('master in utility mode',self.master_datadir,self.port,utilityMode=True)
+        logger.info("Starting Master instance in admin mode")
+        dbid = -1;
+        numContentsInCluster = 0;
+        cmd=gp.MasterStart('master in utility mode',self.master_datadir,self.port,dbid, numContentsInCluster,utilityMode=True)
         cmd.run()
         
         if cmd.get_results().rc != 0:
@@ -386,19 +391,40 @@ class GpStart():
         if os.path.exists(self.master_datadir + "/gpexpand.status") and not self.restricted:            
             raise GpStartError("Found a System Expansion Setup in progress. Please run 'gpexpand --rollback'")
         
-        
         self.standby_was_started = self._start_standby()                
         self._prepare_segment_start()           
-        self._start_segments()                
-        self._process_segment_start()
-        self._print_segment_start()
+        
+        if self.gparray.get_mirroring_enabled():
+            # bring up mirrors and primaries in quiesced mode
+            self._start_segments()
+            self._process_segment_start()
+        
+            (primaryDbs, mirrorDbs) = self._determineAvailableMirrorsAndPrimaries()
 
-        #make sure we have at least one segment per content
-        if not self._verify_enough_segments(self.success_seg_status,self.gparray):
-            # go through and remove any segments that we did start so that we keep everything
-            # shutdown cleanly
-            self._shutdown_segments(self.success_seg_status)
-            raise GpStartError("Do not have enough valid segments to start the array.")
+            # convert quiesced mirrors to real mirrors and primaries to real primaries
+            self.success_seg_status = []
+            
+            self._convert_quiesced_segments(False, mirrorDbs)
+            self._process_segment_start()
+            self._convert_quiesced_segments(True, primaryDbs)
+            self._process_segment_start()
+            
+            # todo MIRRORING: check to see which conversions worked, get some results back from the segments
+            # todo MIRRORING: update configuration with the actual mirror/primary dbs used and their states
+            
+        else:
+            # bring up primaries in mirrorless mode
+            self._start_segments()
+            self._process_segment_start()
+            
+            self._print_segment_start()
+            
+            #make sure we have at least one segment per content
+            if not self._verify_enough_segments(self.success_seg_status,self.gparray):
+                # go through and remove any segments that we did start so that we keep everything
+                # shutdown cleanly
+                self._shutdown_segments(self.success_seg_status)
+                raise GpStartError("Do not have enough valid segments to start the array.")
         
         self._start_final_master()        
         self.cleanup()
@@ -408,6 +434,45 @@ class GpStart():
         else:
             return False
     
+    def _determineAvailableMirrorsAndPrimaries(self):
+        mirrorDbs = []
+        primaryDbs = []
+
+        # content_dict_XXX will contain the services that did start up
+        content_dict_primaries={}
+        content_dict_mirrors={}
+        for seg in self.success_seg_status:                        
+            if (seg.db.role == 'p'):
+                content_dict_primaries[seg.db.content]=seg.db
+            else:
+                content_dict_mirrors[seg.db.content]=seg.db
+        
+        # find the list of all content 
+        required_content_dict={}
+        for db in self.gparray.getSegDbList():
+            required_content_dict[db.content] = True
+        
+        keys = required_content_dict.keys()
+        keys.sort()
+        for contentId in keys:
+            if content_dict_primaries.get(contentId,None):
+                logger.debug("Will use specified primary for %s" % contentId)
+                primaryDbs.append(content_dict_primaries[contentId])
+                if content_dict_mirrors[contentId]:
+                    mirrorDbs.append(content_dict_mirrors[contentId])
+            elif content_dict_mirrors.get(contentId,None):                
+                logger.debug("Will use specified mirror for %s" % contentId)
+                primaryDbs.append(content_dict_mirrors[contentId])
+            else:
+                # missing a primary and mirror
+                logger.error("No segment started for content: %d" % contentId)
+                logger.info("dumping success segments: %s" % [s.__str__() for s in self.success_seg_status])
+                logger.info("dumping primary mapping: %s" % ['%s: %s' % (k, content_dict_primaries[k].__str__()) for k in content_dict_primaries])
+                logger.info("dumping mirror mapping: %s" % ['%s: %s' % (k, content_dict_mirrors[k].__str__()) for k in content_dict_mirrors])
+                self._shutdown_segments(self.success_seg_status)
+                raise GpStartError("Do not have enough valid segments to start the array.")
+        
+        return (primaryDbs, mirrorDbs)
     
     ######
     def _prepare_segment_start(self):
@@ -431,8 +496,6 @@ class GpStart():
             
         self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool,invalid_segs)                
         self.hostcache.print_contents(logger)
-        
-        
               
     ####    
     def _verify_enough_segments(self,success_seg_status,gparray):
@@ -481,17 +544,116 @@ class GpStart():
                                (db.dbid,db.content,db.hostname,db.datadir) )
         return invalid_segs        
         
-    
+
+    def _convert_quiesced_segments(self,doPrimaries,dbs):
+        if doPrimaries:
+            segType = "primary segment"
+            targetMode = "primary";
+        else:
+            segType = "mirror segment"
+            targetMode = "mirror"
+        
+        logger.info("Commencing parallel %s conversion, please wait..." % segType)
+        
+        ###############################################
+        # for each host, create + transfer the transition arguments file
+        dispatch_count=0
+        
+        for gphost in self.hostcache.get_hosts():
+            
+            # this data is pickled just below and loaded in gpsegtoprimaryormirror.py (look for pickle.load)
+            hostData = {}
+            hostData["targetMode"] = targetMode
+            hostData["dbsByPort"] = {}
+            for db in gphost.dbs:
+                seg = self.gparray.getSegmentContainingDb(db)
+                peer = None
+                for potentialPeer in seg.get_dbs():
+                    if potentialPeer.dbid != db.dbid:
+                        peer = potentialPeer
+                # todo MIRRORING error handling on this peer checking
+                
+                dbData = {}
+                dbData["dbid"] = db.dbid
+                dbData["mode"] = db.mode
+                dbData["hostName"] = db.hostname
+                dbData["hostPort"] = db.replicationPort
+                dbData["peerName"] = peer.hostname
+                dbData["peerPort"] = peer.replicationPort
+                hostData["dbsByPort"][db.port] = dbData
+            
+            hostname=gphost.dbs[0].hostname
+            remoteConversionFile = os.path.join(gphost.dbs[0].datadir, "gpstart_mirror_args")
+            localConversionFile = os.path.join(self.master_datadir, "gpstart_mirror_args_%s" % dispatch_count)
+            
+            logger.debug("Creating local conversion arguments file: %s " % (localConversionFile))
+            f = open(localConversionFile, "w")
+            pickle.dump(hostData, f)
+            f.close()
+            
+            logger.debug("Distributing conversion arguments to host: %s " % (hostname))
+            cmd=unix.RemoteCopy("copy conversion arguments",localConversionFile,hostname,remoteConversionFile)
+            self.pool.addCommand(cmd)
+            dispatch_count+=1
+            
+        self.pool.wait_and_printdots(dispatch_count,self.quiet)
+        
+        # todo MIRRORING check to make sure all file transition copying worked
+        self.pool.empty_completed_items()
+        
+        # clean up the local conversion files
+        dispatch_count = 0
+        for gphost in self.hostcache.get_hosts():
+            localConversionFile = os.path.join(self.master_datadir, "gpstart_mirror_args_%s" % dispatch_count)
+            logger.debug("Deleting local conversion arguments file: %s " % (localConversionFile))
+            os.remove(localConversionFile)
+            dispatch_count+=1
+
+        ###############
+		# now request the mirror mode change
+        dispatch_count=0
+        allDbIds = {}
+        for db in dbs:
+            allDbIds[db.dbid] = True
+        
+        for gphost in self.hostcache.get_hosts():
+            dbsThisHost = []
+            for db in gphost.dbs:
+                if allDbIds.get(db.dbid):
+                    dbsThisHost.append(db)
+        
+            hostname=gphost.dbs[0].hostname                
+            logger.debug("Dispatching command to convert segments on host: %s " % (hostname))
+            remoteConversionFile = os.path.join(gphost.dbs[0].datadir, "gpstart_mirror_args")
+            cmd=gp.GpSegChangeMirrorModeCmd("remote segment mirror mode conversion on host '%s'" % hostname, self.gphome, gphost, 
+                                 [self.lc_collate,self.lc_monetary,self.lc_numeric], self.gpversion,
+                                 dbsThisHost, targetMode, remoteConversionFile, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
+            self.pool.addCommand(cmd)
+            dispatch_count+=1
+            
+        self.pool.wait_and_printdots(dispatch_count,self.quiet)    
+        pass
+
+    def _calculate_num_contents_in_cluster(self):
+        content_dict = {}
+        for db in self.gparray.getSegDbList():
+            content_dict[db.content] = True
+        return len(content_dict)
+
     ######
     def _start_segments(self):
         logger.info("Commencing parallel segment instance startup, please wait...")
         dispatch_count=0
-        
+
+        numContentsInCluster = self._calculate_num_contents_in_cluster()
+
         for gphost in self.hostcache.get_hosts():
             hostname=gphost.dbs[0].hostname                
-            logger.debug("Dispatching command to start segments on host: %s " % (hostname))
+            logger.debug("Dispatching command to start segments on host: %s, with %s contents in cluster" % (hostname, numContentsInCluster))
             cmd=gp.GpSegStartCmd("remote segment starts on host '%s'" % hostname, self.gphome, gphost, 
                                  [self.lc_collate,self.lc_monetary,self.lc_numeric],self.gpversion,
+                                 not self.gparray.get_mirroring_enabled(),
+                                 numContentsInCluster,
                                  verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
             self.pool.addCommand(cmd)
             dispatch_count+=1
@@ -502,6 +664,8 @@ class GpStart():
     
     ######  
     def _shutdown_segments(self,success_seg_status):
+        
+        # todo MIRRORING: this needs to shutdown in proper order (call fn from gpstop)
         logger.info("Commencing parallel segment instance shutdown, please wait...")
         dispatch_count=0
         for gphost in self.hostcache.get_hosts():
@@ -511,7 +675,7 @@ class GpStart():
             #TODO:  future optimization would be to only stop the segments that we actually started.
             logger.debug("Dispatching command to shutdown segments on host: %s" % hostname)
             cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % hostname, self.gphome, gphost,self.gpversion,
-                                mode='immediate', verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
+                                mode='immediate', dbs=dblist, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
             self.pool.addCommand(cmd)
             dispatch_count+=1
         
@@ -622,7 +786,10 @@ class GpStart():
         else:
             restrict_txt = ""
         logger.info("Starting Master instance %s directory %s %s" % (self.gparray.master.hostname,self.master_datadir,restrict_txt))
+
+        numContentsInCluster = self._calculate_num_contents_in_cluster()
         gp.MasterStart.local("Starting Master instance",self.master_datadir,self.port,
+                             self.gparray.master.dbid, numContentsInCluster,
                              restrictedMode=self.restricted,max_connections=self.max_connections,
                              disableMasterMirror=(not self.start_standby) )
         
@@ -658,7 +825,7 @@ class GpStart():
     ######
     def _start_standby(self):
         ''' used to start the standbymaster if necessary.  
-        
+                
             returns if the standby master was started or not
         '''
         if self.start_standby and self.gparray.standbyMaster is not None:

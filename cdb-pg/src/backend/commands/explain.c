@@ -472,7 +472,7 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
         PG_TRY();
         {
             if (estate->primaryResults)
-                CdbCheckDispatchResult(estate->primaryResults, estate->mirrorResults, estate->dispatchThreads, false);	
+                CdbCheckDispatchResult(estate->primaryResults, estate->dispatchThreads, false);	
         }
         PG_CATCH();
         {

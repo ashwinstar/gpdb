@@ -31,6 +31,10 @@
 
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "access/heapam.h"
 #include "access/transam.h"
@@ -51,6 +55,8 @@
 #include "utils/relcache.h"
 #include "utils/resowner.h"
 
+#include "cdb/cdbmirroredflatfile.h"
+
 
 /* Actual names of the flat files (within $PGDATA) */
 #define DATABASE_FLAT_FILE	"global/pg_database"
@@ -59,7 +65,6 @@
 /* Info bits in a flatfiles 2PC record */
 #define FF_BIT_DATABASE 1
 #define FF_BIT_AUTH		2
-
 
 /*
  * The need-to-update-files flags are SubTransactionIds that show
@@ -125,7 +130,7 @@ auth_getflatfilename(void)
 	return pstrdup(AUTH_FLAT_FILE);
 }
 
-
+#ifdef suppress
 /*
  *	fputs_quote
  *
@@ -145,6 +150,30 @@ fputs_quote(const char *str, FILE *fp)
 	}
 	fputc('"', fp);
 }
+#endif
+
+/*
+ *	fputs_quote
+ *
+ *	Outputs string in quotes, with double-quotes duplicated.
+ *	We could use quote_ident(), but that expects a TEXT argument.
+ */
+static char*
+sputs_quote(const char *str, char *buffer)
+{
+	*buffer++ = '"';
+	while (*str)
+	{
+		*buffer++ = *str;
+		if (*str == '"')
+			*buffer++ = '"';
+		str++;
+	}
+	*buffer++ = '"';
+
+	return buffer;
+}
+
 
 /*
  * name_okay
@@ -176,16 +205,27 @@ name_okay(const char *str)
 static void
 write_database_file(Relation drel, bool startup)
 {
+#ifdef suppress
 	char	   *filename,
 			   *tempname;
 	int			bufsize;
 	FILE	   *fp;
 	mode_t		oumask;
+#endif
+	char		buffer[100];
+	char		*bp;
+
 	HeapScanDesc scan;
 	HeapTuple	tuple;
 	NameData	oldest_datname;
 	TransactionId oldest_datfrozenxid = InvalidTransactionId;
 
+	MirroredFlatFileOpen	mirroredOpen;
+
+	// UNDONE: For Online Resync MILESONE 1, we are writing the file directly rather
+	// UNDONE: doing the rename stuff.  We'll have to revisit this...
+	// UNDONE
+#ifdef suppress
 	/*
 	 * Create a temporary filename to be renamed later.  This prevents the
 	 * backend from clobbering the flat file while the postmaster might be
@@ -204,7 +244,15 @@ write_database_file(Relation drel, bool startup)
 				(errcode_for_file_access(),
 				 errmsg("could not write to temporary file \"%s\": %m",
 						tempname)));
-
+#endif
+	MirroredFlatFile_Open(
+					&mirroredOpen,
+					"global",
+					"pg_database",
+					O_CREAT | O_TRUNC | O_WRONLY | PG_BINARY,
+					S_IRUSR | S_IWUSR,
+					/* suppressError */ false,
+					/*isMirrorRecovery */ false);
 	/*
 	 * Read pg_database and write the file.
 	 */
@@ -252,9 +300,17 @@ write_database_file(Relation drel, bool startup)
 		 * The xids are not needed for backend startup, but are of use to
 		 * autovacuum, and might also be helpful for forensic purposes.
 		 */
-		fputs_quote(datname, fp);
-		fprintf(fp, " %u %u %u\n",
+//		fputs_quote(datname, fp);
+		bp = sputs_quote(datname, buffer);
+//		fprintf(fp, " %u %u %u\n",
+//				datoid, dattablespace, datfrozenxid);
+		sprintf(bp, " %u %u %u\n",
 				datoid, dattablespace, datfrozenxid);
+		MirroredFlatFile_Append(
+						&mirroredOpen,
+						buffer,
+						strlen(buffer),
+						/* suppressError */ false);
 
 		/*
 		 * Also clear relcache init file for each DB if starting up.
@@ -269,6 +325,7 @@ write_database_file(Relation drel, bool startup)
 	}
 	heap_endscan(scan);
 
+#ifdef suppress
 	if (FreeFile(fp))
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -284,6 +341,9 @@ write_database_file(Relation drel, bool startup)
 				(errcode_for_file_access(),
 				 errmsg("could not rename file \"%s\" to \"%s\": %m",
 						tempname, filename)));
+#endif
+	MirroredFlatFile_Flush(&mirroredOpen, /* suppressError */ false);
+	MirroredFlatFile_Close(&mirroredOpen);
 
 	/*
 	 * Set the transaction ID wrap limit using the oldest datfrozenxid
@@ -371,12 +431,19 @@ mem_compar(const void *a, const void *b)
 static void
 write_auth_file(Relation rel_authid, Relation rel_authmem)
 {
+#ifdef suppress
 	char	   *filename,
 			   *tempname;
 	int			bufsize;
+#endif
+	char		buffer[1000];
+	char		*bp;
+
 	BlockNumber totalblocks;
+#ifdef suppress
 	FILE	   *fp;
 	mode_t		oumask;
+#endif
 	HeapScanDesc scan;
 	HeapTuple	tuple;
 	int			curr_role = 0;
@@ -386,7 +453,13 @@ write_auth_file(Relation rel_authid, Relation rel_authmem)
 	int			est_rows;
 	auth_entry *auth_info;
 	authmem_entry *authmem_info;
+	
+	MirroredFlatFileOpen	mirroredOpen;
 
+	// UNDONE: For Online Resync MILESONE 1, we are writing the file directly rather
+	// UNDONE: doing the rename stuff.	We'll have to revisit this...
+	// UNDONE
+#ifdef suppress
 	/*
 	 * Create a temporary filename to be renamed later.  This prevents the
 	 * backend from clobbering the flat file while the postmaster might be
@@ -405,6 +478,15 @@ write_auth_file(Relation rel_authid, Relation rel_authmem)
 				(errcode_for_file_access(),
 				 errmsg("could not write to temporary file \"%s\": %m",
 						tempname)));
+#endif
+	MirroredFlatFile_Open(
+					&mirroredOpen,
+					"global",
+					"pg_auth",
+					O_CREAT | O_TRUNC | O_WRONLY | PG_BINARY,
+					S_IRUSR | S_IWUSR,
+					/* suppressError */ false,
+					/*isMirrorRecovery */ false);
 
 	/*
 	 * Read pg_authid and fill temporary data structures.  Note we must read
@@ -640,22 +722,38 @@ write_auth_file(Relation rel_authid, Relation rel_authmem)
 		{
 			ListCell   *mem;
 
-			fputs_quote(arole->rolname, fp);
-			fputs(" ", fp);
-			fputs_quote(arole->rolpassword, fp);
-			fputs(" ", fp);
-			fputs_quote(arole->rolvaliduntil, fp);
+//			fputs_quote(arole->rolname, fp);
+			bp = sputs_quote(arole->rolname, buffer);
+//			fputs(" ", fp);
+			*bp++ = ' ';
+//			fputs_quote(arole->rolpassword, fp);
+			bp = sputs_quote(arole->rolpassword, bp);
+//			fputs(" ", fp);
+			*bp++ = ' ';
+//			fputs_quote(arole->rolvaliduntil, fp);
+			bp = sputs_quote(arole->rolvaliduntil, bp);
 
 			foreach(mem, arole->member_of)
 			{
-				fputs(" ", fp);
-				fputs_quote((char *) lfirst(mem), fp);
+//				fputs(" ", fp);
+				*bp++ = ' ';
+//				fputs_quote((char *) lfirst(mem), fp);
+				bp = sputs_quote((char *) lfirst(mem), bp);
 			}
 
-			fputs("\n", fp);
+//			fputs("\n", fp);
+			*bp++ = '\n';
+			*bp++ = '\0';
+
+			MirroredFlatFile_Append(
+							&mirroredOpen,
+							buffer,
+							strlen(buffer),
+							/* suppressError */ false);
 		}
 	}
 
+#ifdef suppress
 	if (FreeFile(fp))
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -671,6 +769,9 @@ write_auth_file(Relation rel_authid, Relation rel_authmem)
 				(errcode_for_file_access(),
 				 errmsg("could not rename file \"%s\" to \"%s\": %m",
 						tempname, filename)));
+#endif
+	MirroredFlatFile_Flush(&mirroredOpen, /* suppressError */ false);
+	MirroredFlatFile_Close(&mirroredOpen);
 }
 
 
@@ -971,3 +1072,27 @@ flatfile_twophase_postcommit(TransactionId xid, uint16 info,
 	if (info & FF_BIT_AUTH)
 		auth_file_update_needed();
 }
+
+/*
+ * The routine recovers flat file on mirror side.
+ *		a) It drops pg_database and pg_auth file on mirror..
+ *		b) It copies pg_database and pg_auth from primary to mirror.
+ *
+ * Status is not returned, If an error occurs segmentState will be set to Fault.
+ */
+int
+FlatFilesRecoverMirror(void)
+{
+	int retval = 0;
+	
+	retval = MirrorFlatFile("global", "pg_database");
+	
+	if (retval != 0)
+		return retval;
+	
+	retval = MirrorFlatFile("global", "pg_auth");
+	
+	return retval;
+}
+
+

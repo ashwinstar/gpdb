@@ -28,8 +28,8 @@
 #include "bootstrap/bootstrap.h"
 #include "catalog/catalog.h"
 #include "catalog/gp_configuration.h"
-#include "catalog/gp_persistent_db_dirs.h"
-#include "catalog/gp_persistent_rel_files.h"
+#include "catalog/gp_persistent.h"
+#include "catalog/gp_global_sequence.h"
 #include "catalog/gp_fastsequence.h"
 #include "catalog/gp_san_config.h"
 #include "catalog/gp_segment_config.h"
@@ -285,12 +285,24 @@ Boot_CreateStmt:
 								typid = PG_FOREIGN_TABLE_OID;
 								break;
 
-							/* Two new tables in 3.4 for persistent file ops */
-							case GpPersistentDbDirsRelationId:
-								typid = GP_PERSISTENT_DB_DIRS_OID;
+							/* new tables in 3.4 for persistent file ops */
+							case GpPersistentRelationNodeRelationId:
+								typid = GP_PERSISTENT_RELATION_NODE_OID;
 								break;
-							case GpPersistentRelFilesRelationId:
-								typid = GP_PERSISTENT_REL_FILES_OID;
+							case GpPersistentDatabaseNodeRelationId:
+								typid = GP_PERSISTENT_DATABASE_NODE_OID;
+								break;
+							case GpPersistentTablespaceNodeRelationId:
+								typid = GP_PERSISTENT_TABLESPACE_NODE_OID;
+								break;
+							case GpPersistentFilespaceNodeRelationId:
+								typid = GP_PERSISTENT_FILESPACE_NODE_OID;
+								break;
+							case GpRelationNodeRelationId:
+								typid = GP_RELATION_NODE_OID;
+								break;
+							case GpGlobalSequenceRelationId:
+								typid = GP_GLOBAL_SEQUENCE_OID;
 								break;
 
 							/* New table in 3.4 for AO index */

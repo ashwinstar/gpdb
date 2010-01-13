@@ -31,9 +31,9 @@ typedef struct SegmentDatabaseDescriptor
 	/* segindex
 	 *
 	 * Identifies the segment this group of databases is serving.  This is the
-	 * segindex assigned to the segment in gp_configuration
+	 * segindex assigned to the segment in gp_segment_config
 	 */
-	int4         			segindex;
+	int4         			segindex; /* this is actually the *content-id* */
 	
     /* conn
 	 *

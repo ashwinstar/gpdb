@@ -1,0 +1,263 @@
+/*-------------------------------------------------------------------------
+ *
+ * cdbpersistentdatabase.h
+ *
+ * Copyright (c) 2009-2010, Greenplum inc
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifndef CDBPERSISTENTDATABASE_H
+#define CDBPERSISTENTDATABASE_H
+
+#include "utils/palloc.h"
+#include "storage/fd.h"
+#include "storage/itemptr.h"
+#include "cdb/cdbsharedoidsearch.h"
+#include "access/persistentfilesysobjname.h"
+
+typedef struct DatabaseEntryData
+{
+	Oid	database;
+
+	SharedOidSearchTable	*databaseDirSearchTable;
+	
+	/*
+	 * Variable length data for the table.  Must be last.
+	 */
+	uint8 data[0];
+} DatabaseEntryData;
+typedef DatabaseEntryData *DatabaseEntry;
+
+static inline int32 DatabaseEntry_Size(
+	int32			databaseHashSize,
+
+	int32			relationHashSize)
+{
+	return offsetof(DatabaseEntryData,data) + 
+		   SharedOidSearch_TableLen(databaseHashSize);
+}
+
+static inline void DatabaseEntry_SetTablePtr(
+	DatabaseEntry	databaseEntry,
+
+	int32			databaseHashSize)
+{
+	databaseEntry->databaseDirSearchTable =
+			(SharedOidSearchTable*)
+				((uint8*)databaseEntry + offsetof(DatabaseEntryData,data));
+}
+
+
+typedef struct DatabaseDirEntryData
+{
+	SharedOidSearchObjHeader	header;
+					/* Search header.  Must be the first field */
+
+	PersistentFileSysState	state;
+	int64					serialNum;
+	TransactionId			parentXid;
+	ItemPointerData 		presistentTid;
+	
+} DatabaseDirEntryData;
+typedef DatabaseDirEntryData *DatabaseDirEntry;
+
+
+
+/*
+ * This module is for generic relation file create and drop.
+ *
+ * For create, it makes the file-system create of an empty file fully transactional so
+ * the relation file will be deleted even on system crash.  The relation file could be a heap,
+ * index, or append-only (row- or column-store).
+ */
+
+// -----------------------------------------------------------------------------
+// Create 
+// -----------------------------------------------------------------------------
+
+/*
+ * Generate a unique relation OID within a database.
+ *
+ * If the master is doing this in the context of the GPDB cluster, then the relation OID will be
+ * unique across the segments.
+ */
+extern bool PersistentDatabase_CheckWhetherOidInUse(
+		Oid 		databaseOid);
+					/* The database OID. */
+
+extern DatabaseEntry PersistentDatabase_FindUnderLock(
+	Oid 		databaseOid);
+
+extern DatabaseEntry PersistentDatabase_Find(
+	Oid 		databaseOid);
+
+extern bool PersistentDatabase_FindDirUnderLock(
+	DbDirNode				*dbDirNode,
+
+	DatabaseEntry			*databaseEntry,
+	
+	DatabaseDirEntry		*databaseDirEntry);	
+
+extern bool PersistentDatabase_FindDir(
+	DbDirNode				*dbDirNode,
+
+	DatabaseEntry			*databaseEntry,
+	
+	DatabaseDirEntry		*databaseDirEntry);
+
+extern DatabaseDirEntry PersistentDatabase_FindDirInDb(
+		DatabaseEntry			databaseEntry,
+		
+		DbDirNode				*dbDirNode);
+
+// -----------------------------------------------------------------------------
+// Iterate	
+// -----------------------------------------------------------------------------
+				
+extern void PersistentDatabase_IterateInit(void);
+
+extern bool PersistentDatabase_IterateNext(
+	DatabaseEntry			*databaseEntry);
+
+extern void PersistentDatabase_IterateClose(void);
+
+
+extern void PersistentDatabase_DirIterateInit(
+	DatabaseEntry			databaseEntry);
+
+extern bool PersistentDatabase_DirIterateNext(
+	DbDirNode				*dbDirNode,
+	PersistentFileSysState	*state);
+
+extern void PersistentDatabase_DirIterateClose(void);
+
+// -----------------------------------------------------------------------------
+// Scan	
+// -----------------------------------------------------------------------------
+
+extern void PersistentDatabase_InitScanUnderLock(void);
+
+// -----------------------------------------------------------------------------
+// aaa	
+// -----------------------------------------------------------------------------
+
+/*
+ * Indicate we intend to create a relation file as part of the current transaction.
+ *
+ * An XLOG IntentToCreate record is generated that will guard the subsequent file-system
+ * create in case the transaction aborts.
+ *
+ * After 1 or more calls to this routine to mark intention about relation files that are going
+ * to be created, call ~_DoPendingCreates to do the actual file-system creates.  (See its
+ * note on XLOG flushing).
+ */
+extern void PersistentDatabase_MarkCreatePending(
+	DbDirNode 		*dbDirNode,
+				/* The tablespace and database OIDs for the create. */
+
+	ItemPointer		persistentTid,
+				/* TID of the gp_persistent_rel_files tuple for the rel file */
+
+	bool			flushToXLog);
+				/* When true, the XLOG record for this change will be flushed to disk. */
+
+extern void PersistentDatabase_AddCreated(
+	DbDirNode		*dbDirNode,
+				/* The tablespace and database OIDs for the create. */
+
+	ItemPointer 	persistentTid,
+				/* TID of the gp_persistent_rel_files tuple for the rel file */
+
+	bool			flushToXLog);
+				/* When true, the XLOG record for this change will be flushed to disk. */
+					
+// -----------------------------------------------------------------------------
+// Transaction End	
+// -----------------------------------------------------------------------------
+				
+/*
+ * Indicate the transaction commited and the relation is officially created.
+ */
+extern void PersistentDatabase_Created(
+	DbDirNode		*dbDirNode,
+				/* The tablespace and database OIDs for the created relation. */
+				
+	ItemPointer 	persistentTid,
+				/* TID of the gp_persistent_rel_files tuple for the rel file */
+				
+	int64			serialNum);
+				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+					
+/*
+ * Indicate we intend to drop a relation file as part of the current transaction.
+ *
+ * This relation file to drop will be listed inside a commit, distributed commit, a distributed 
+ * prepared, and distributed commit prepared XOG records.
+ *
+ * For any of the commit type records, once that XLOG record is flushed then the actual
+ * file-system delete will occur.  The flush guarantees the action will be retried after system
+ * crash.
+ */
+extern void PersistentDatabase_MarkDropPending(
+	DbDirNode		*dbDirNode,
+				/* The tablespace and database OIDs for the drop. */
+				
+	ItemPointer 	persistentTid,
+				/* TID of the gp_persistent_rel_files tuple for the rel file */
+							
+	int64			serialNum);
+				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+
+/*
+ * Indicate we are aborting the create of a relation file.
+ *
+ * This state will make sure the relation gets dropped after a system crash.
+ */
+extern void PersistentDatabase_MarkAbortingCreate(
+	DbDirNode		*dbDirNode,
+				/* The tablespace and database OIDs for the aborting create. */
+							
+	ItemPointer 	persistentTid,
+				/* TID of the gp_persistent_rel_files tuple for the rel file */
+							
+	int64			serialNum);
+				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+					
+/*
+ * Indicate we phsyicalled removed the relation file.
+ */
+extern void PersistentDatabase_Dropped(
+	DbDirNode		*dbDirNode,
+				/* The tablespace and database OIDs for the dropped relation. */
+				
+	ItemPointer 	persistentTid,
+				/* TID of the gp_persistent_rel_files tuple for the rel file */
+							
+	int64			serialNum);
+				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+	
+extern void PersistentDatabase_JustInTimeCreate(
+	DbDirNode		*dbDirNode,
+				
+	ItemPointer 	persistentTid,
+				/* TID of the gp_persistent_rel_files tuple for the rel file */
+								
+	bool			flushToXLog);
+				/* When true, the XLOG record for this change will be flushed to disk. */
+	
+// -----------------------------------------------------------------------------
+// Shmem and Startup/Shutdown
+// -----------------------------------------------------------------------------
+				
+/*
+ * Return the required shared-memory size for this module.
+ */
+extern Size PersistentDatabase_ShmemSize(void);
+								
+/*
+ * Initialize the shared-memory for this module.
+ */
+extern void PersistentDatabase_ShmemInit(void);
+																																																																
+#endif   /* CDBPERSISTENTDATABASE_H */
+

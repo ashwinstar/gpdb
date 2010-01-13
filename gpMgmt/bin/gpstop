@@ -309,24 +309,48 @@ class GpStop():
         invalid_segs=self.gparray.get_invalid_segdbs() 
         for seg in invalid_segs:
             logger.warning("Not processing %s directory %s marked invalid <<<<<" % (seg.hostname,seg.datadir)) 
+        
+        if self.gparray.get_mirroring_enabled():
+            # stop primaries
+            logger.info("Commencing parallel primary segment instance shutdown, please wait...")
+            self._stopseg_cmds(True,False)
+            primary_success_seg_status=self._process_segment_stop(failed_seg_status)    
             
-        self._stopseg_cmds()                
-        success_seg_status=self._process_segment_stop(failed_seg_status)    
-        self._print_segment_stop(segs,failed_seg_status,success_seg_status)            
+            # todo MIRRORING: if a primary fails to stop what do we do?
+            
+            # stop mirrors
+            logger.info("Commencing parallel mirror segment instance shutdown, please wait...")
+            self._stopseg_cmds(False,True)
+            mirror_success_seg_status=self._process_segment_stop(failed_seg_status)    
+            
+            success_seg_status = primary_success_seg_status + mirror_success_seg_status
+            self._print_segment_stop(segs,failed_seg_status,success_seg_status)            
+
+        else:
+            logger.info("Commencing parallel segment instance shutdown, please wait...")
+            self._stopseg_cmds(True,True) # second arg shouldn't matter
+            success_seg_status=self._process_segment_stop(failed_seg_status)    
+            self._print_segment_stop(segs,failed_seg_status,success_seg_status)
+            
         pass
     
-    
     ######
-    def _stopseg_cmds(self):
-        logger.info("Commencing parallel segment instance shutdown, please wait...")
+    def _stopseg_cmds(self, includePrimaries, includeMirrors):
         dispatch_count=0
         
         for gphost in self.hostcache.get_hosts():
+            dbs = []
+            for db in gphost.dbs:
+                if db.get_role() == 'p'and includePrimaries:
+                    dbs.append(db)
+                elif db.get_role() != 'p' and includeMirrors:
+                    dbs.append(db)
+            
             hostname=gphost.dbs[0].hostname                            
                 
-            logger.debug("Dispatching command to shutdown segments on host: %s" % hostname)
+            logger.debug("Dispatching command to shutdown %d segments on host: %s" % (len(dbs), hostname))
             cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % hostname, self.gphome, gphost,self.gpversion,
-                                mode=self.mode, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
+                                mode=self.mode, dbs=dbs, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
             self.pool.addCommand(cmd)
             dispatch_count+=1
         

@@ -279,7 +279,6 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->es_got_eos = false;
 	estate->cancelUnfinished = false;
 	estate->primaryResults = NULL;
-	estate->mirrorResults = NULL;
 	estate->dispatchThreads = NULL;
 
 	/*
@@ -1402,13 +1401,10 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 		slice->directDispatch.isDirectDispatch = false;
 		slice->directDispatch.contentIds = NIL;
 		slice->primaryGang = NULL;
-		slice->mirrorGang = NULL;
 		slice->primary_gang_id = 0;
-		slice->mirror_gang_id = 0;
 		slice->parentIndex = -1;
 		slice->children = NIL;
 		slice->primaryProcesses = NIL;
-		slice->mirrorProcesses = NIL;
 
 		table->slices = lappend(table->slices, slice);
 	}
@@ -1507,7 +1503,6 @@ typedef struct SliceReq
 	Gang	  **vecNgangs;
 	Gang	  **vec1gangs_primary_reader;
 	Gang	  **vec1gangs_entrydb_reader;
-	Gang	   *mirrorWriterGang;
 	bool		writer;
 
 }	SliceReq;
@@ -1596,11 +1591,8 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 			if (i == 0 && !queryDesc->cursor_query)
 			{
 				inv.vecNgangs[i] = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
+
 				Assert(inv.vecNgangs[i] != NULL);
-				if (inv.writer)
-				{
-					inv.mirrorWriterGang = allocateWriterGang(GANGTYPE_MIRROR_WRITER);
-				}
 			}
 			else
 			{
@@ -1670,7 +1662,6 @@ InitSliceReq(SliceReq * req)
 	req->vecNgangs = NULL;
 	req->vec1gangs_primary_reader = NULL;
 	req->vec1gangs_entrydb_reader = NULL;
-	req->mirrorWriterGang = NULL;
 }
 
 void
@@ -1826,19 +1817,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			slice->primaryGang = req->vecNgangs[req->nxtNgang];
 			Assert(slice->primaryGang != NULL);
 			slice->primary_gang_id = slice->primaryGang->gang_id;
-			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-                                                        slice->sliceIndex,
-                                                        &slice->directDispatch);
-			slice->mirrorGang = req->mirrorWriterGang;
-			if (slice->mirrorGang != NULL)
-			{
-				slice->mirror_gang_id = slice->mirrorGang->gang_id;
-				slice->mirrorProcesses = getCdbProcessList(slice->mirrorGang,
-                                                        slice->sliceIndex,
-                                                        &slice->directDispatch);
-			}
-			else
-				slice->mirrorProcesses = NIL;
+			slice->primaryProcesses = getCdbProcessList(slice->primaryGang, slice->sliceIndex, &slice->directDispatch);
 
 			req->nxtNgang++;
 			break;
@@ -1937,10 +1916,10 @@ sliceRunsOnQE(Slice * slice)
  */
 GpExecIdentity
 getGpExecIdentity(QueryDesc *queryDesc,
-				   ScanDirection direction,
-				   EState	   *estate)
+				  ScanDirection direction,
+				  EState	   *estate)
 {
-	Slice              *currentSlice;
+	Slice *currentSlice;
 
 	currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
 	if (currentSlice)
@@ -1992,7 +1971,6 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	if (estate->primaryResults)
 	{
 		CdbDispatchResults *pr = estate->primaryResults;
-		CdbDispatchResults *mr = estate->mirrorResults;
 		CdbDispatchCmdThreads  *dThreads = estate->dispatchThreads;
 		HTAB 			   *aopartcounts = NULL;
 
@@ -2010,7 +1988,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		/*
 		 * Wait for completion of all QEs.
 		 */
-		CdbCheckDispatchResult(pr, mr, dThreads, estate->cancelUnfinished);
+		CdbCheckDispatchResult(pr, dThreads, estate->cancelUnfinished);
 
 		/* If top slice was delegated to QEs, get num of rows processed. */
 		if (sliceRunsOnQE(currentSlice))
@@ -2070,9 +2048,8 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		 * NB: This call doesn't wait, because we already waited above.
 		 */
 		estate->primaryResults = NULL;
-		estate->mirrorResults = NULL;
 		estate->dispatchThreads = NULL;
-		cdbdisp_finishCommand(pr, mr, dThreads, NULL, NULL);
+		cdbdisp_finishCommand(pr, dThreads, NULL, NULL);
 	}
 
 	/* Teardown the Sequence Server */
@@ -2125,9 +2102,8 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 		if (estate->es_interconnect_is_setup && !estate->es_got_eos)
 			ExecSquelchNode(queryDesc->planstate);
 
-		cdbdisp_handleError(estate->primaryResults, estate->mirrorResults, estate->dispatchThreads);
+		cdbdisp_handleError(estate->primaryResults, estate->dispatchThreads);
 		estate->primaryResults = NULL;
-		estate->mirrorResults = NULL;
 		estate->dispatchThreads = NULL;
 	}
 

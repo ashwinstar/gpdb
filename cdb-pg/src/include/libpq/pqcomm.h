@@ -162,7 +162,6 @@ extern bool Db_user_namespace;
 
 typedef uint32 AuthRequest;
 
-
 /*
  * A client can also send a cancel-current-operation request to the postmaster.
  * This is uglier than sending it directly to the client's backend, but it
@@ -181,11 +180,23 @@ typedef struct CancelRequestPacket
 	uint32		cancelAuthCode; /* secret key to authorize cancel */
 } CancelRequestPacket;
 
-
 /*
  * A client can also start by sending a SSL negotiation request, to get a
  * secure channel.
  */
 #define NEGOTIATE_SSL_CODE PG_PROTOCOL(1234,5679)
+
+/*
+ * Filerep Add a pre-startup message primary-mirror-transition-request,
+ * and a primary-mirror-transition-query
+ */
+#define PRIMARY_MIRROR_TRANSITION_REQUEST_CODE PG_PROTOCOL(1234,5680)
+#define PRIMARY_MIRROR_TRANSITION_QUERY_CODE PG_PROTOCOL(1234,5681)
+
+typedef struct PrimaryMirrorTransitionPacket
+{
+	MsgType protocolCode;
+	uint32 dataLength;
+} PrimaryMirrorTransitionPacket;
 
 #endif   /* PQCOMM_H */

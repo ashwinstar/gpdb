@@ -453,7 +453,7 @@ external_insert_init(Relation rel)
 	 */	
 	extInsertDesc  = (ExternalInsertDesc) palloc0(sizeof(ExternalInsertDescData));
 	extInsertDesc->ext_rel = rel;
-	extInsertDesc->ext_noop = !Gp_is_primary || Gp_role == GP_ROLE_DISPATCH;
+	extInsertDesc->ext_noop = (Gp_role == GP_ROLE_DISPATCH);
 	
 	if(extentry->command)
 	{

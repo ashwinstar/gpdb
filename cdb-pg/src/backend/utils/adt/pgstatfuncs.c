@@ -779,11 +779,9 @@ pg_renice_session(PG_FUNCTION_ARGS)
 		/*
 		 * Ok, it exists, dispatch the command to the segDBs.
 		 */
-
 		sprintf(cmd, "select pg_renice_session(%d,%d)", session_id, niceamount);
 
-		results = cdbdisp_dispatchRMCommand(cmd, true, true, &errbuf,
-				&resultCount);
+		results = cdbdisp_dispatchRMCommand(cmd, true, &errbuf, &resultCount);
 
 		if (errbuf.len > 0)
 			ereport(ERROR,(

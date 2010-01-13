@@ -400,25 +400,6 @@ CleanupMotionUDP(void)
  * INLINE FUNCTIONS
  */
 
-static inline int
-timeval_delta_ms(struct timeval t1, struct timeval t0)
-{
-    int tdiff = (t1.tv_usec - t0.tv_usec + 500) / 1000;
-
-    if (t1.tv_sec != t0.tv_sec)
-        tdiff += 1000 * (t1.tv_sec - t0.tv_sec);
-    return  tdiff;
-}
-
-static inline int
-gettime_elapsed_ms(struct timeval t0)
-{
-    struct timeval  t1;
-
-    gettimeofday(&t1, NULL);
-    return timeval_delta_ms(t1, t0);
-}
-
 #ifdef USE_ASSERT_CHECKING
 static inline bool
 testmode_drop(int percent)
@@ -569,15 +550,15 @@ conn_delhash(MotionConn *conn)
 }
 
 /*
- * If the caller tells us that mirrors may be involved (xmit only),
- * we further disambiguate (MPP-4194).
+ * With the new mirroring scheme, the interconnect is no longer involved:
+ * we don't have to disambiguate anymore.
  *
  * NOTE: the icpkthdr field dstListenerPort is used for disambiguation.
  * on receivers it may not match the actual port (it may have an extra bit
  * set (1<<31)).
  */
 static MotionConn *
-findConnByHeader(struct icpkthdr *hdr, bool mirrorsPossible)
+findConnByHeader(struct icpkthdr *hdr)
 {
 	uint32 hashcode;
 	struct conn_htab_bin *bin;
@@ -589,14 +570,6 @@ findConnByHeader(struct icpkthdr *hdr, bool mirrorsPossible)
 	{
 		if (CONN_HASH_MATCH(&bin->conn->conn_info, hdr))
 		{
-			/* MPP-4194: disambiguate mirror connection collisions */
-			if (mirrorsPossible)
-			{
-				/* the dstlistenerPorts should also match */
-				if (hdr->dstListenerPort != bin->conn->conn_info.dstListenerPort)
-					continue;
-			}
-
 			ret = bin->conn;
 
 			if (DEBUG5 >= log_min_messages)
@@ -858,8 +831,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	pEntry = createChunkTransportState(transportStates,
 									   sendSlice,
 									   recvSlice,
-									   list_length(recvSlice->primaryProcesses),
-									   list_length(recvSlice->mirrorProcesses));
+									   list_length(recvSlice->primaryProcesses));
 	
 	Assert(pEntry && pEntry->valid);
 	/*
@@ -885,27 +857,6 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
             (*pOutgoingCount)++;
 		}
 
-        conn++;
-	}
-
-	/* NOTE: we don't reset conn here -- we're walking down the second
-	 * half of the connection-list */
-	i = 0;
-	foreach(cell, recvSlice->mirrorProcesses)
-	{
-        cdbProc = (CdbProcess *)lfirst(cell);
-        if (cdbProc)
-		{
-            conn->cdbProc = cdbProc;
-            conn->ping = palloc(Gp_max_packet_size);
-            conn->pong = palloc(Gp_max_packet_size);
-            conn->pBuff = conn->ping;
-			conn->activeXmit = NULL;
-            conn->state = mcsSetupOutgoingConnection;
-			conn->isMirror = true;
-			conn->route = i++;
-            (*pOutgoingCount)++;
-		}
         conn++;
 	}
 
@@ -1261,7 +1212,7 @@ SetupUDPInterconnect(EState *estate)
 			 mySlice->sliceIndex, childId);
 #endif
 
-		pEntry = createChunkTransportState(estate->interconnect_context, aSlice, mySlice, numProcs, 0);
+		pEntry = createChunkTransportState(estate->interconnect_context, aSlice, mySlice, numProcs);
 
 		Assert(pEntry);
 		Assert(pEntry->valid);
@@ -1488,7 +1439,7 @@ SetupUDPInterconnect(EState *estate)
 						 pkt.motNodeId, pkt.srcContentId, pkt.srcPid, pkt.seq, pkt.icId, gp_interconnect_id);
 				}
 
-				conn = findConnByHeader(&pkt, true);
+				conn = findConnByHeader(&pkt);
 				if (conn != NULL)
 				{
 					if (conn->state == mcsSetupOutgoingConnection)
@@ -1764,7 +1715,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 			elog(DEBUG3, "Interconnect seg%d slice%d closing connections to slice%d (%d peers)",
 				 Gp_segment, mySlice->sliceIndex, mySlice->parentIndex,
-				 list_length(parentSlice->primaryProcesses) + list_length(parentSlice->mirrorProcesses));
+				 list_length(parentSlice->primaryProcesses));
 
 		/* in the olden days, we required that the error case
 		 * successfully transmit and end-of-stream message here. But
@@ -2344,7 +2295,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 		{
 			/* packet is for me */
 
-			ackConn = findConnByHeader(&pkt, true);
+			ackConn = findConnByHeader(&pkt);
 
 			if (ackConn == NULL)
 			{
@@ -3095,7 +3046,7 @@ ic_rx_thread_func(void *arg)
 
 			pthread_mutex_lock(&rx_thread_mutex);
 
-			conn = findConnByHeader(pkt, false);
+			conn = findConnByHeader(pkt);
 			if (conn != NULL)
 			{
 				/* Is this a connection request ? */

@@ -577,6 +577,20 @@ ProcessDropStatement(DropStmt *stmt)
 							 stmt->missing_ok);
 				break;
 
+			case OBJECT_FILESPACE:
+				/*
+				 * RemoveFileSpace does its own permissions checks
+				 */
+				RemoveFileSpace(names, stmt->behavior, stmt->missing_ok);
+				break;
+
+			case OBJECT_TABLESPACE:
+				/*
+				 * RemoveTableSpace does its own permissions checks
+				 */
+				RemoveTableSpace(names, stmt->behavior, stmt->missing_ok);
+				break;
+
 			default:
 				elog(ERROR, "unrecognized drop object type: %d",
 					 (int) stmt->removeType);
@@ -1279,8 +1293,7 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "LOAD '%s'", stmt->filename);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false,
-								 /* mirrors */ true, /* primaries */ true);
+					CdbDoCommand(buffer.data, false, /*no txn*/ false);
 				}
 			}
 			break;
@@ -1372,8 +1385,7 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "RESET %s", n->name);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false,
-								 /* mirrors */ true, /* primaries */ true);
+					CdbDoCommand(buffer.data, false, /*no txn*/ false);
 				}
 			}
 			break;
@@ -1490,7 +1502,7 @@ ProcessUtility(Node *parsetree,
 						 errmsg("must be superuser to do CHECKPOINT")));
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				CdbDoCommand("CHECKPOINT", false, false, /* mirrors */ true, /* primaries */ true);
+				CdbDoCommand("CHECKPOINT", false, false);
 			}
 			RequestCheckpoint(true, false);
 			break;
@@ -1538,8 +1550,7 @@ ProcessUtility(Node *parsetree,
 						else
 							appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
 
-						CdbDoCommand(buffer.data, false, /*no txn*/ false,
-									 /* mirrors */ true, /* primaries */ true);
+						CdbDoCommand(buffer.data, false, /*no txn*/ false);
 					}
 				}
 			}

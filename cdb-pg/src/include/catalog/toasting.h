@@ -63,5 +63,12 @@ DECLARE_TOAST(pg_database, 2844, 2845);
 DECLARE_TOAST(pg_shdescription, 2846, 2847);
 #define PgShdescriptionToastTable 2846
 #define PgShdescriptionToastIndex 2847
+DECLARE_TOAST(gp_segment_configuration, 2900, 2901);
+#define GpSegmentConfigToastTable 2900
+#define GpSegmentConfigToastIndex 2901
+DECLARE_TOAST(pg_filespace_entry, 2902, 2903);
+#define PgFilespaceEntryToastTable 2902
+#define PgFilespaceEntryToastIndex 2903
+
 
 #endif   /* TOASTING_H */

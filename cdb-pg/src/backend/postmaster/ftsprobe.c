@@ -48,17 +48,36 @@
 #include "utils/fmgroids.h"
 #include "utils/ps_status.h"
 
+#include "utils/builtins.h"
+
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_filespace.h"
+#include "catalog/pg_filespace_entry.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/catalog.h"
+
+#include "catalog/gp_san_config.h"
+#include "catalog/gp_segment_config.h"
 
 #include "storage/backendid.h"
 
 #include "pgtime.h"
+
+#include "executor/spi.h"
+#include "postmaster/primary_mirror_mode.h"
+
+#include "cdb/ml_ipc.h" /* gettime_elapsed_ms */
+
+#ifdef HAVE_POLL_H
+#include <poll.h>
+#endif
+#ifdef HAVE_SYS_POLL_H
+#include <sys/poll.h>
+#endif
 
 /*
  * FUNCTION PROTOTYPES
@@ -71,6 +90,8 @@ NON_EXEC_STATIC void FtsProbeMain(int argc, char *argv[]);
 
 static void FtsProbeLoop(void);
 static bool FtsTestOneSegment(CdbComponentDatabaseInfo *failedDBInfo, char *dbName, char *userName);
+
+static char FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo);
 
 static void retrieveUserAndDb(char **probeUser);
 static bool probeSegments(CdbComponentDatabases *cdb_component_dbs);
@@ -86,6 +107,10 @@ static volatile bool rescan_requested = false;
 
 static char *probeUser = NULL;
 static char *probeDatabase = "postgres";
+
+static char failover_strategy='n';
+
+static CdbComponentDatabases *cdb_component_dbs = NULL;
 
 /*
  * macros for manipulations of fts-probe bitmaps
@@ -106,20 +131,29 @@ static char *probeDatabase = "postgres";
 
 typedef uint64 fts_bitmap_t[FTS_BM_WORD_COUNT];
 
-static bool probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_bitmap_t map);
+static bool probePublishUpdate(fts_bitmap_t map);
 
 struct segmentStatusChange {
 	int	dbid;
 	int16 segindex;
 	uint8 oldStatus;
 	uint8 newStatus;
-	bool persist;
 };
 
 static PGconn *openSelfConn(CdbComponentDatabaseInfo *entryDB);
 static void closeSelfConn(PGconn *conn);
-static void addChangeHistory(PGconn *conn, struct segmentStatusChange *change, char *time_str);
+static void addChangeHistory(PGconn *conn, struct segmentStatusChange *change, int changeCount, char *time_str);
 static void probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
+
+static void getGpFailover_strategy(char *strategy);
+static void SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
+
+static void Filerep_mode_update(int dbid, char *mode, char status);
+static void Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
+
+static void getMounts_forDbid(int dbid, List **mountp);
+
+static void startSegment_forDbid(int dbid);
 
 /*
  * Main entry point for ftsprobe process.
@@ -391,13 +425,8 @@ FtsProbeMain(int argc, char *argv[])
 
 void FtsProbeLoop(void)
 {
-	struct timeval tv;
 	int		i;
 	bool	updated_bitmap, processing_fullscan;
-	CdbComponentDatabases *cdb_component_dbs = NULL;
-
-	tv.tv_usec = 0;
-	tv.tv_sec = gp_fts_probe_interval;
 
 	cdb_component_dbs = getCdbComponentInfo(false);
 	ftsLock();
@@ -407,11 +436,22 @@ void FtsProbeLoop(void)
 		uint8	segStatus;
 
 		segStatus = 0;
+
+#if 0
 		if (segInfo->valid)
 			segStatus |= FTS_STATUS_ALIVE;
 		if (segInfo->isprimary)
 			segStatus |= FTS_STATUS_PRIMARY;
 		if (segInfo->definedprimary)
+			segStatus |= FTS_STATUS_DEFINEDPRIMARY;
+#endif
+		if (SEGMENT_IS_ALIVE(segInfo))
+			segStatus |= FTS_STATUS_ALIVE;
+
+		if (SEGMENT_IS_ACTIVE_PRIMARY(segInfo))
+			segStatus |= FTS_STATUS_PRIMARY; 
+
+		if (segInfo->preferred_role == 'p')
 			segStatus |= FTS_STATUS_DEFINEDPRIMARY;
 
 		ftsProbeInfo->fts_status[segInfo->dbid] = segStatus;
@@ -442,6 +482,8 @@ void FtsProbeLoop(void)
 
 		cdb_component_dbs = getCdbComponentInfo(false);
 
+		getGpFailover_strategy(&failover_strategy);
+
 		elog(DEBUG3, "Ftsprober: starting %sscan with %d dbids with %d content-ids",
 			 (processing_fullscan ? "full " : ""),
 			 cdb_component_dbs->total_segment_dbs,
@@ -470,6 +512,8 @@ void FtsProbeLoop(void)
 		/* if no full-scan has been requested, we can sleep. */
 		if (ftsProbeInfo->fts_probeScanRequested < ftsProbeInfo->fts_statusVersion)
 		{
+			struct timeval tv;
+
 			tv.tv_usec = 0;
 			tv.tv_sec = gp_fts_probe_interval;
 
@@ -485,6 +529,86 @@ void FtsProbeLoop(void)
 }
 
 /*
+ * Wrapper for catalog lookup for a super user appropriate for FTS probing. We
+ * want to use the bootstrap super user as a priority, because it seems more
+ * obvious for users and probably hasn't been messed with. If it has been (might
+ * have been removed, or modified in other ways), find another which can login
+ * and which has not expired yet.
+ */
+static char *
+find_user(bool try_bootstrap)
+{
+	char *suser = NULL;
+	Relation auth_rel;
+	HeapTuple	auth_tup;
+	HeapScanDesc auth_scan;
+	ScanKeyData key[3];
+	bool	isNull;
+
+	ScanKeyInit(&key[0],
+				Anum_pg_authid_rolsuper,
+				BTEqualStrategyNumber, F_BOOLEQ,
+                BoolGetDatum(true));
+
+	ScanKeyInit(&key[1],
+				Anum_pg_authid_rolcanlogin,
+				BTEqualStrategyNumber, F_BOOLEQ,
+                BoolGetDatum(true));
+
+	if (try_bootstrap)
+	{
+		ScanKeyInit(&key[2],
+					ObjectIdAttributeNumber,
+					BTEqualStrategyNumber, F_OIDEQ,
+            	    ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID));
+	}
+
+	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
+	auth_scan = heap_beginscan(auth_rel, SnapshotNow, try_bootstrap ? 3 : 2, key);
+	while (HeapTupleIsValid(auth_tup = heap_getnext(auth_scan, ForwardScanDirection)))
+	{
+		Datum	attrName;
+		Datum	attrNameOid;
+		Oid		userOid;
+		Datum	validuntil;
+
+		validuntil = heap_getattr(auth_tup, Anum_pg_authid_rolvaliduntil, auth_rel->rd_att, &isNull);
+		/* we actually want it to be NULL, that means always valid */
+		if (!isNull)
+			continue;
+
+		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, auth_rel->rd_att, &isNull);
+		Assert(!isNull);
+		suser = pstrdup(DatumGetCString(attrName));
+
+		attrNameOid = heap_getattr(auth_tup, ObjectIdAttributeNumber, auth_rel->rd_att, &isNull);
+		Assert(!isNull);
+		userOid = DatumGetObjectId(attrNameOid);
+
+		SetSessionUserId(userOid, true);
+	}
+	heap_endscan(auth_scan);
+	heap_close(auth_rel, AccessShareLock);
+	return suser;
+}
+
+/*
+ * Get a user for the FTS prober to connect as
+ */
+static void
+retrieveUserAndDb(char **probeUser)
+{
+	Assert(probeUser != NULL);
+
+	/* first, let's try the bootstrap super user */
+	*probeUser = find_user(true);
+	if (!(*probeUser))
+		*probeUser = find_user(false);
+
+	Assert(*probeUser != NULL);
+}
+
+/*
  * This is called from several different threads: ONLY USE THREADSAFE FUNCTIONS INSIDE.
  */
 static bool
@@ -495,6 +619,13 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 	int			msgLen;
 	bool		ret = true;
 	PQExpBuffer	buffer = createPQExpBuffer();
+
+	ret = FtsTestOneSegmentNew(dbInfo);
+
+	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+		write_log("tested segment %d, got result: %s", dbInfo->dbid, ret ? "GOOD" : "BAD");
+				
+	return ret;
 
 	/*
 	 * This connects in UTILITY mode: we assume that if we detect a
@@ -549,7 +680,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 
 		if (DEBUG3 >= log_min_messages)
 		{
-			write_log("FtsTestConnection: connection failed with message ('%s':%d)",
+			write_log("FtsTestOneSegment: connection failed with message ('%s':%d)",
 					  errorMsg, msgLen);
 		}
 
@@ -578,7 +709,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 		{
 			/* non-fatal connection errors are ignored */
 			if (DEBUG3 >= log_min_messages)
-				write_log("FtsTestConnection: nonfatal error, ignoring (%d, '%s':%d)", PQsocket(conn), errorMsg, msgLen);
+				write_log("FtsTestOneSegment: nonfatal error, ignoring (%d, '%s':%d)", PQsocket(conn), errorMsg, msgLen);
 
 			ret = true;
 			break;
@@ -621,84 +752,330 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 	return ret;
 }
 
+enum probe_state_t { CONNECTING, CONNECTED, REQUEST_SENT, RESPONSE_READY };
+
 /*
- * Wrapper for catalog lookup for a super user appropriate for FTS probing. We
- * want to use the bootstrap super user as a priority, because it seems more
- * obvious for users and probably hasn't been messed with. If it has been (might
- * have been removed, or modified in other ways), find another which can login
- * and which has not expired yet.
+ * This is called from several different threads: ONLY USE THREADSAFE FUNCTIONS INSIDE.
  */
-static char *
-find_user(bool try_bootstrap)
+static char
+FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 {
-	char *suser = NULL;
-	Relation auth_rel;
-	HeapTuple	auth_tup;
-	HeapScanDesc auth_scan;
-	ScanKeyData key[3];
-	bool	isNull;
-	ScanKeyInit(&key[0],
-				Anum_pg_authid_rolsuper,
-				BTEqualStrategyNumber, F_BOOLEQ,
-                BoolGetDatum(true));
+	bool	done=false, ret = true;
+	enum	probe_state_t probe_state = CONNECTING;
 
-	ScanKeyInit(&key[1],
-				Anum_pg_authid_rolcanlogin,
-				BTEqualStrategyNumber, F_BOOLEQ,
-                BoolGetDatum(true));
+	int		n, fd;
+	struct sockaddr_in  saddr;
 
-	if (try_bootstrap)
+	struct timeval  startTime;
+	int             elapsed_ms = 0;
+
+	char	buf[32]; /* big enough for the message we're expecting */
+	int		offset = 0;
+	int		remainder = sizeof(buf);
+
+	fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (fd < 0)
 	{
-		ScanKeyInit(&key[2],
-					ObjectIdAttributeNumber,
-					BTEqualStrategyNumber, F_OIDEQ,
-            	    ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID));
+		/* something happened ? */
+		write_log("Couldn't get socket to start probe.");
+		return true;
 	}
 
-	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
-	auth_scan = heap_beginscan(auth_rel, SnapshotNow, try_bootstrap ? 3 : 2, key);
-	while (HeapTupleIsValid(auth_tup = heap_getnext(auth_scan, ForwardScanDirection)))
+    if (!pg_set_noblock(fd))
 	{
-		Datum	attrName;
-		Datum	attrNameOid;
-		Oid		userOid;
-		Datum	validuntil;
-
-		validuntil = heap_getattr(auth_tup, Anum_pg_authid_rolvaliduntil, auth_rel->rd_att, &isNull);
-		/* we actually want it to be NULL, that means always valid */
-		if (!isNull)
-			continue;
-
-		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, auth_rel->rd_att, &isNull);
-		Assert(!isNull);
-		suser = pstrdup(DatumGetCString(attrName));
-
-		attrNameOid = heap_getattr(auth_tup, ObjectIdAttributeNumber, auth_rel->rd_att, &isNull);
-		Assert(!isNull);
-		userOid = DatumGetObjectId(attrNameOid);
-
-		SetSessionUserId(userOid, true);
+		/* something happened ? */
+		write_log("Couldn't mark socket non-blocking.");
+		close(fd);
+		return true;
 	}
-	heap_endscan(auth_scan);
-	heap_close(auth_rel, AccessShareLock);
-	return suser;
+
+    /*
+     * Get ipaddr to connect to.
+     */
+    MemSet(&saddr, 0, sizeof(saddr));
+    saddr.sin_family = AF_INET;
+    if ((n = inet_net_pton(AF_INET, dbInfo->hostip, &saddr.sin_addr, sizeof(saddr.sin_addr))) < 1)
+    {
+		/* something happened ? */
+		write_log("Couldn't get IP-address of probe target.");
+		close(fd);
+		return true;
+    }
+    saddr.sin_port = htons((unsigned short)dbInfo->port);
+
+	/* Connect to dbInfo->hostip */
+	n = connect(fd, (struct sockaddr *) &saddr, sizeof(saddr));
+	if (n == 0 ||
+		(n < 0 && (errno == EINPROGRESS || errno == EWOULDBLOCK)))
+	{
+		/* normal */
+	}
+	else
+	{
+		/* something happened ? */
+		write_log("Connect() failure. %d", errno);
+		close(fd);
+		return false;
+	}
+
+  	gettimeofday(&startTime, NULL);
+
+	for (;;)
+	{
+		int		timeout;
+		struct pollfd nfd;
+
+		switch (probe_state)
+		{
+			case CONNECTING:
+				nfd.fd = fd;
+				nfd.events = POLLOUT;
+				timeout = 10000;
+
+				n = poll(&nfd, 1, timeout);
+				if (n == 0)
+				{
+					break;
+				}
+				else if (n == 1 && (nfd.events & POLLOUT))
+				{
+					/* advance state, send request */
+					probe_state = CONNECTED;
+					continue;
+				}
+				else /* if (n < 0) */
+				{
+					/* error on poll ? EINTR ? */
+					if (errno == EINTR)
+					{
+						/*
+						 * assume that our target is up -- we'll have
+						 * to pick up any failure on the next probe
+						 */
+						ret = true;
+						done = true;
+					}
+				}
+				break;
+
+			case CONNECTED:
+			{
+				/* Send the status request-startup-packet (see pqcomm.h, and bin/gpmirrortransition.c) */
+				int sent=0;
+				char *sendp;
+
+				struct
+				{
+					uint32		packetlen;
+					PrimaryMirrorTransitionPacket payload;
+				} tqp;
+
+				tqp.packetlen = htonl((uint32) sizeof(tqp));
+				tqp.payload.protocolCode = (MsgType) htonl(PRIMARY_MIRROR_TRANSITION_QUERY_CODE);
+				tqp.payload.dataLength = 0;
+
+				sendp = (char *)&tqp;
+				while (sent < sizeof(tqp))
+				{
+					n = send(fd, sendp, sizeof(tqp) - sent, 0);
+					if (n < 0)
+					{
+						if (errno == EINTR)
+						{
+							/*
+							 * assume that our target is up -- we'll have
+							 * to pick up any failure on the next probe
+							 */
+							ret = true;
+						}
+						else
+						{
+							/* errors other than signals: assume that the target is down. */
+							ret = false;
+						}
+						break;
+					}
+					else
+					{
+						sendp += n;
+						sent += n;
+					}
+				}
+				if (sent == sizeof(tqp))
+				{
+					/* advance state, sent request, wait on response */
+					probe_state = REQUEST_SENT;
+					continue;
+				}
+				else
+				{
+					/* any failure to advance means that we must be done. */
+					done = true;
+				}
+				break;
+			}
+
+			case REQUEST_SENT:
+				nfd.fd = fd;
+				nfd.events = POLLIN;
+				timeout = 10000;
+
+				n = poll(&nfd, 1, timeout);
+				if (n == 0)
+				{
+					break;
+				}
+				else if (n == 1 && (nfd.events & POLLIN))
+				{
+					/* advance state, send request */
+					probe_state = RESPONSE_READY;
+					continue;
+				}
+				else /* if (n < 0) */
+				{
+					/* error on poll ? EINTR ? */
+					if (errno == EINTR)
+					{
+						/*
+						 * assume that our target is up -- we'll have
+						 * to pick up any failure on the next probe
+						 */
+						ret = true;
+						done = true;
+					}
+				}
+				break;
+			case RESPONSE_READY:
+			{
+				/* Read a message back from our peer. */
+
+				/* If status is OK, then we're all done. */
+				n = recv(fd, buf + offset, remainder, 0 /* flags */);
+
+				if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+					write_log("RESPONSE_READY: read %d offset %d remainder %d", n, offset, remainder);
+
+				if (n == 0)
+				{
+					/* peer gave up on us ? */
+					ret = false;
+					done = true;
+					break;
+				}
+				else if (n < 0)
+				{
+					if (errno == EAGAIN)
+					{
+						/* need to wait on more data ? (essentially we're rewinding our state) */
+						probe_state = REQUEST_SENT;
+						continue;
+					}
+					ret = false;
+					done = true;
+					break;
+				}
+				else
+				{
+					PrimaryMirrorMode pm_mode;
+					SegmentState_e s_state;
+					DataState_e d_state;
+					uint32 msg_int;
+
+					offset += n;
+					remainder -= n;
+
+					/* got legit data */
+					if (offset < 16)
+					{
+						/* need to wait on more data ? (essentially we're rewinding our state) */
+						probe_state = REQUEST_SENT;
+						continue;
+					}
+
+					memcpy(&msg_int, buf, 4);
+					if (ntohl(msg_int) != 16)
+					{
+						write_log("Probe protocol violation got length %d", ntohl(msg_int));
+						ret = false;
+						done = true;
+						break;
+					}
+
+					memcpy(&msg_int, buf+4, 4);
+					if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+						write_log("first message int %d", ntohl(msg_int));
+					pm_mode = (PrimaryMirrorMode)ntohl(msg_int);
+
+					memcpy(&msg_int, buf+8, 4);
+					if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+						write_log("second message int %d", ntohl(msg_int));
+					s_state = (SegmentState_e)ntohl(msg_int);
+
+					memcpy(&msg_int, buf+12, 4);
+					if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+						write_log("second message int %d", ntohl(msg_int));
+					d_state = (DataState_e)ntohl(msg_int);
+
+					if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+						write_log("Probe result %s %s %s", getMirrorModeLabel(pm_mode),
+								  getSegmentStateLabel(s_state), getDataStateLabel(d_state));
+
+					ret = true;
+					done = true;
+					break;
+				}
+
+				/*
+				 * If status is not OK, then we need to act on the result (either
+				 * this segment is down, or its mirror is down)
+				 */
+			}
+			default:
+				ret = false;
+				done = true;
+				break;
+		}
+
+		if (done)
+			break;
+
+		/* If connection takes more than the gp_segment_connect_timeout, we fail. */
+		elapsed_ms = gettime_elapsed_ms(startTime);
+		if (elapsed_ms > gp_segment_connect_timeout * 1000)
+		{
+			ret = false;
+			done = true;
+			break;
+		}
+	}
+
+	/* we're done, slam everything shut. */
+	shutdown(fd, SHUT_RDWR);
+	close(fd);
+
+	return ret;
 }
 
-
-/*
- * Get a user for the FTS prober to connect as
- */
-static void
-retrieveUserAndDb(char **probeUser)
+static inline bool
+segmentToProbe(CdbComponentDatabaseInfo *segInfo, char failover_strategy)
 {
-	Assert(probeUser != NULL);
+	switch (failover_strategy)
+	{
+		case 'f':
+			if (SEGMENT_IS_ACTIVE_MIRROR(segInfo) && SEGMENT_IS_ALIVE(segInfo))
+				return true;
+			/* fallthrough */
+		case 'n':
+		case 's':
+			if (SEGMENT_IS_ACTIVE_PRIMARY(segInfo))
+				return true;
+			break;
+		default:			
+			write_log("segmentToProbe: invalid failover strategy (%c)", failover_strategy);
+			break;
+	}
 
-	/* first, let's try the bootstrap super user */
-	*probeUser = find_user(true);
-	if (!(*probeUser))
-		*probeUser = find_user(false);
-
-	Assert(*probeUser != NULL);
+	return false;
 }
 
 pthread_t *threads=NULL;
@@ -719,6 +1096,9 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 	int i;
 	bool updated_bitmap = false;
 
+	if (cdb_component_dbs == NULL)
+		return false;
+
 	memset(segments_alive, 0, sizeof(segments_alive));
 
 	/* single threaded */
@@ -732,11 +1112,12 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 				break;
 
 			/* if this is worth scanning, then scan it. */
-			if (segInfo->valid)
+			if (segmentToProbe(segInfo, failover_strategy))
 			{
 				if (!FtsTestOneSegment(segInfo, probeDatabase, probeUser))
 				{
-					elog(LOG, "Found a fault with a segment %d segment-dbid %d", segInfo->segindex, segInfo->dbid);
+					if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+						elog(LOG, "Found a fault with a segment %d segment-dbid %d", segInfo->segindex, segInfo->dbid);
 					FTS_BM_CLR(segInfo->dbid, segments_alive);
 				}
 				else
@@ -759,7 +1140,7 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 		{
 			segInfo = &cdb_component_dbs->segment_db_info[i];
 
-			if (segInfo->valid)
+			if (segmentToProbe(segInfo, failover_strategy))
 				FTS_BM_SET(segInfo->dbid, segments_to_scan);
 			else
 				FTS_BM_CLR(segInfo->dbid, segments_to_scan);
@@ -795,7 +1176,7 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 	 * Now we've completed the scan, update shared-memory. if we
 	 * change anything, we return true.
 	 */
-	updated_bitmap = probePublishUpdateToSharedMemory(cdb_component_dbs, segments_alive);
+	updated_bitmap = probePublishUpdate(segments_alive);
 
 	return updated_bitmap;
 }
@@ -847,7 +1228,8 @@ probeSegmentFromThread(void *arg)
 		/* Got a segment to test, test it. */
 		if (!FtsTestOneSegment(segInfo, probeDatabase, probeUser))
 		{
-			write_log("Found a fault with a segment %d segment-dbid %d", segInfo->segindex, segInfo->dbid);
+			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+				write_log("Found a fault with a segment %d segment-dbid %d", segInfo->segindex, segInfo->dbid);
 
 			/* the FTS_BM_CLR/FTS_BM_SET macros potentially can stomp on each other. */
 			pthread_mutex_lock(&worker_thread_mutex);
@@ -889,7 +1271,7 @@ getMirrorEntryByContent(CdbComponentDatabases *cdb_component_dbs, int content, i
 }
 
 static bool
-probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_bitmap_t map)
+probePublishUpdate(fts_bitmap_t map)
 {
 	bool at_least_one_failure=false;
 	bool updated_bitmap=false;
@@ -910,12 +1292,17 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 	{
 		CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
 
-		if (segInfo->valid)
+		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+			elog(LOG, "probePublishUpdate: dbid %d", segInfo->dbid);
+
+		/* We're an active segment ? */
+		if (segmentToProbe(segInfo, failover_strategy))
 		{
 			int primaryChange;
 			int mirrorChange;
 			uint8 segStatus;
 
+			/* We're no longer responding to probes ? */
 			if (!FTS_BM_TEST(segInfo->dbid, segments_alive))
 			{
 				at_least_one_failure = true;
@@ -941,125 +1328,38 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 					changes[primaryChange].oldStatus = segStatus;
 					changes[primaryChange].newStatus = segStatus & ~FTS_STATUS_ALIVE;
 
-					if (*ftsAction == FTS_READONLY)
+					if (mirror)
 					{
-						/*
-						 * In readonly mode, we never persistently mark segments down
-						 */
-						changes[primaryChange].persist = false;
-					}
-					else
-					{
-						/*
-						 * MPP-5135, MPP-1601: we don't want to mark the segment down if:
-						 *   1) there is no mirror
-						 *   2) there is a mirror, but the mirror is already marked down.
-						 */
-						if (mirror != NULL &&
-							FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
-						{
-							changes[primaryChange].persist = true;
-						}
-						else
-							changes[primaryChange].persist = false;
+						if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+							elog(LOG, "probePublishUpdate: dbid %d has mirror %d", segInfo->dbid, mirror->dbid);
 					}
 
+					/*
+					 * If we have a mirror, we need to update it (even if it was already primary!)
+					 */
 					if (mirror != NULL &&
-						segStatus & FTS_STATUS_PRIMARY &&
-						segStatus & FTS_STATUS_DEFINEDPRIMARY)
+						FTS_BM_TEST(mirror->dbid, segments_alive) &&
+						FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
 					{
-						if (!FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
-						{
-							/* mirror is down! */
-						}
-						else
-						{
-							/* update the mirror too */
-							mirrorChange = changeEntries;
-							changes = (struct segmentStatusChange *)
-								repalloc(changes, (changeEntries + 1)*sizeof(struct segmentStatusChange));
-							changeEntries++;
+						/* update the mirror too */
+						mirrorChange = changeEntries;
+						changes = (struct segmentStatusChange *)
+							repalloc(changes, (changeEntries + 1)*sizeof(struct segmentStatusChange));
+						changeEntries++;
 
-							segStatus = ftsProbeInfo->fts_status[mirror->dbid];
-							changes[mirrorChange].dbid = mirror->dbid;
-							changes[mirrorChange].segindex = mirror->segindex;
-							changes[mirrorChange].oldStatus = segStatus;
-							changes[mirrorChange].newStatus = segStatus | FTS_STATUS_PRIMARY;
+						segStatus = ftsProbeInfo->fts_status[mirror->dbid];
+						changes[mirrorChange].dbid = mirror->dbid;
+						changes[mirrorChange].segindex = mirror->segindex;
+						changes[mirrorChange].oldStatus = segStatus;
+						changes[mirrorChange].newStatus = segStatus | FTS_STATUS_PRIMARY;
 
-							if (*ftsAction == FTS_READONLY)
-								changes[mirrorChange].persist = false;
-							else
-							{
-								changes[mirrorChange].persist = true;
-							}
-
-							/* update primary */
-							changes[primaryChange].newStatus &= ~FTS_STATUS_PRIMARY;
-						}
+						/* update primary */
+						changes[primaryChange].newStatus &= ~FTS_STATUS_PRIMARY;
 					}
 
 					updated_bitmap = true;
 				}
 				/* was already marked down, no change. */
-			}
-			else
-			{
-				/* segment is up. if marked down in shmem, need to revert (failback to primary) */
-				if (!FTS_STATUS_ISALIVE(segInfo->dbid, ftsProbeInfo->fts_status))
-				{
-					/*
-					 * A segment is *up* but is marked down in shmem: this
-					 * can only happen with fault-action readonly.
-					 */
-					if (*ftsAction != FTS_READONLY)
-					{
-						elog(LOG, "segment with dbid %d is up, but marked down in shmem (prober %d me %d)",
-							 segInfo->dbid, ftsProbeInfo->fts_probePid, MyProcPid);
-					}
-					Assert(*ftsAction == FTS_READONLY);
-
-					primaryChange = changeEntries;
-					if (changes)
-						changes = (struct segmentStatusChange *)
-							repalloc(changes, (changeEntries + 1)*sizeof(struct segmentStatusChange));
-					else
-						changes = (struct segmentStatusChange *)palloc(sizeof(struct segmentStatusChange));
-					changeEntries++;
-
-					segStatus = ftsProbeInfo->fts_status[segInfo->dbid];
-					changes[primaryChange].dbid = segInfo->dbid;
-					changes[primaryChange].segindex = segInfo->segindex;
-					changes[primaryChange].oldStatus = segStatus;
-					changes[primaryChange].newStatus = segStatus | FTS_STATUS_ALIVE;
-					changes[primaryChange].persist = false;
-
-					primary = segInfo;
-					mirror = getMirrorEntryByContent(cdb_component_dbs, segInfo->segindex, segInfo->dbid);
-
-					if (mirror != NULL &&
-						segStatus & FTS_STATUS_DEFINEDPRIMARY &&
-						!(segStatus & FTS_STATUS_PRIMARY))
-					{
-							/* update the mirror too */
-							mirrorChange = changeEntries;
-							changes = (struct segmentStatusChange *)
-								repalloc(changes, (changeEntries + 1)*sizeof(struct segmentStatusChange));
-							changeEntries++;
-
-							segStatus = ftsProbeInfo->fts_status[mirror->dbid];
-							changes[mirrorChange].dbid = mirror->dbid;
-							changes[mirrorChange].segindex = mirror->segindex;
-							changes[mirrorChange].oldStatus = segStatus;
-							changes[mirrorChange].newStatus = segStatus & ~FTS_STATUS_PRIMARY;
-							changes[mirrorChange].persist = false;
-
-							/* update primary */
-							changes[primaryChange].newStatus |= FTS_STATUS_PRIMARY;
-					}
-
-					updated_bitmap = true;
-				}
-				/* was already marked up, no change */
 			}
 		}
 		else
@@ -1082,48 +1382,51 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 	{
 		CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
 
+		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+			elog(LOG, "probePublishUpdate: Changes is not null");
+
 		if (entryDB->dbid != GpIdentity.dbid)
 		{
-			elog(LOG, "ftsProbe: advancing to second entryDB.");
+			if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+				elog(LOG, "ftsProbe: advancing to second entryDB.");
 			entryDB = entryDB + 1;
 		}
 
 		entryConn = openSelfConn(entryDB);
 		Assert(entryConn != NULL);
-	}
 
-	/* Now we're going to apply the changelist we just generated. */
-	ftsLock();
+		/* Now we're going to apply the changelist we just generated. */
+		ftsLock();
+		
+		if (failover_strategy == 'n')
+		{
+			/* no fault strategy ? */
+		}
+		else if (failover_strategy == 'f')
+		{
+			/* FILEREP response */
+			Filerep_Failover(entryConn, changes, changeEntries, timestamp_str);
+		}
+		else if (failover_strategy == 's')
+		{
+			/* SAN response */
+			SAN_Failover(entryConn, changes, changeEntries, timestamp_str);
+		}
 
-	/* first apply updates to shmem. */
-	for (i=0; i < changeEntries; i++)
-	{
-		addChangeHistory(entryConn, &changes[i], timestamp_str);
-		ftsProbeInfo->fts_status[changes[i].dbid] = changes[i].newStatus;
-	}
-
-	/*
-	 * We're in read-only mode, so we need to update the global "readonly" status
-	 */
-	FtsUpdateROStatus(at_least_one_failure);
-
-	/* If we're in "continue" mode, mark the heap copy persistently */
-	if (*ftsAction != FTS_READONLY && updated_bitmap)
-	{
-		elog(LOG, "calling probeUpdate with changes %p entries %d", changes, changeEntries);
-
+		addChangeHistory(entryConn, changes, changeEntries, timestamp_str);
 		probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
-	}
-	else
-		elog(DEBUG2, "did not not update config (%s)", updated_bitmap ? "bitmap updated" : "bitmap not updated");
 
-	ftsUnlock();
+		ftsUnlock();
 
-	if (changes != NULL)
-	{
 		closeSelfConn(entryConn);
 
 		pfree(changes);
+	}
+
+	if (updated_bitmap)
+	{
+		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+			elog(LOG, "probePublishUpdate: found changes.");
 	}
 	
 	return updated_bitmap;
@@ -1246,8 +1549,9 @@ closeSelfConn(PGconn *conn)
 }
 
 static void
-addChangeHistory(PGconn *entryConn, struct segmentStatusChange *change, char *time_str)
+addChangeHistory(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str)
 {
+	int i;
 	int count;
 	char cmd[200];
 
@@ -1256,41 +1560,44 @@ addChangeHistory(PGconn *entryConn, struct segmentStatusChange *change, char *ti
 	bool	valid;
 	bool	primary;
 
-	Assert(change != NULL);
+	Assert(changes != NULL);
 	Assert(time_str != NULL);
 
-	valid   = (change->newStatus & FTS_STATUS_ALIVE) ? true : false;
-	primary = (change->newStatus & FTS_STATUS_PRIMARY) ? true : false;
-
-	count = snprintf(cmd, sizeof(cmd),
-					 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d fault mode %s marking as valid=%c isprimary=%c persist=%c')",
-					 time_str, change->dbid, change->segindex,
-					 (*ftsAction != FTS_READONLY) ? "\"RW\"" : "\"RO\"",
-					 valid ? 't' : 'f',
-					 primary ? 't' : 'f',
-					 change->persist ? 't' : 'f');
-
-	if (count >= sizeof(cmd))
+	for (i=0; i < changeCount; i++)
 	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: could not invalidate invalid node in config: format command string failure dbid %d", change->dbid)));
-	}
+		struct segmentStatusChange *change = &changes[i];
 
-	rs = PQexec(entryConn, cmd);
-	if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-	{
-		char	*error_message = strdup(PQerrorMessage(entryConn));
+		valid   = (change->newStatus & FTS_STATUS_ALIVE) ? true : false;
+		primary = (change->newStatus & FTS_STATUS_PRIMARY) ? true : false;
 
-		if (!error_message)
-			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-							errmsg("FTS: out of memory")));
+		count = snprintf(cmd, sizeof(cmd),
+						 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d fault marking as %s role %c')",
+						 time_str, change->dbid, change->segindex,
+						 valid ? "UP" : "DOWN",
+						 primary ? 'p' : 'm');
 
-		PQclear(rs);
-		PQfinish(entryConn);
-		entryConn = NULL;
+		if (count >= sizeof(cmd))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid)));
+		}
 
-		elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);
+		rs = PQexec(entryConn, cmd);
+		if (PQresultStatus(rs) != PGRES_COMMAND_OK)
+		{
+			char	*error_message = strdup(PQerrorMessage(entryConn));
+
+			if (!error_message)
+				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+								errmsg("FTS: out of memory")));
+
+			PQclear(rs);
+			PQfinish(entryConn);
+			entryConn = NULL;
+
+			elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);
+		}
 	}
 }
 
@@ -1319,16 +1626,14 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 	{
 		for (i=0; i < changeCount; i++)
 		{
-			if (!changes[i].persist)
-				continue;
-
 			valid   = (changes[i].newStatus & FTS_STATUS_ALIVE) ? true : false;
 			primary = (changes[i].newStatus & FTS_STATUS_PRIMARY) ? true : false;
 
 			count = snprintf(cmd, sizeof(cmd),
-							 "update gp_configuration set valid='%c', isprimary='%c' where dbid=CAST(%d AS SMALLINT)",
-							 valid ? 't' : 'f',	 
-							 primary ? 't' : 'f',	 
+							 "update %s set role='%c', status='%c' where dbid=CAST(%d AS SMALLINT)",
+							 GpSegmentConfigRelationName,
+							 primary ? 'p' : 'm',
+							 valid ? 'u' : 'd',
 							 changes[i].dbid);
 
 			if (count >= sizeof(cmd))
@@ -1338,6 +1643,8 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 						 errmsg("FTS: could not invalidate invalid node in config: format command string failure dbid %d", changes[i].dbid)));
 				break;
 			}
+
+			ftsProbeInfo->fts_status[changes[i].dbid] = changes[i].newStatus;
 
 			rs = PQexec(entryConn, cmd);
 			if (PQresultStatus(rs) != PGRES_COMMAND_OK)
@@ -1372,4 +1679,485 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 
 		elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);
 	}
+}
+
+static void
+getGpFailover_strategy(char *strategy)
+{
+	Relation	strategy_rel;
+	HeapTuple	strategy_tup;
+	HeapScanDesc strategy_scan;
+	bool	isNull=true;
+
+	Assert(strategy != NULL);
+
+	strategy_rel = heap_open(GpFaultStrategyId, AccessShareLock);
+	strategy_scan = heap_beginscan(strategy_rel, SnapshotNow, 0, NULL);
+
+	while (HeapTupleIsValid(strategy_tup = heap_getnext(strategy_scan, ForwardScanDirection)))
+	{
+		Datum	strategy_datum;
+
+		strategy_datum = heap_getattr(strategy_tup, Anum_gp_fault_strategy_fault_strategy, strategy_rel->rd_att, &isNull);
+
+		if (isNull)
+			break;
+
+		*strategy = DatumGetChar(strategy_datum);
+	}
+
+	heap_endscan(strategy_scan);
+	heap_close(strategy_rel, AccessShareLock);
+
+	return;
+}
+
+/*
+ *
+ *
+primary
+c
+cwhipkey-mbp.local
+55001
+cwhipkey-mbp.local
+65001
+Which means:
+
+primary            : segment should be a primary (mirror is the other relevant option for prober, I think, but you
+can see the full list in primary_mirror_mode.*'s decipherPrimaryMirrorModeArgument).  Note that if other modes are
+passed, the fields below should not be specified because they are not relevant.
+
+c                  : corresponds to status field in gp_configuration (in this case, changelogging)
+cwhipkey-mbp.local : host address
+55001              : host port
+cwhipkey-mbp.local : peer's address (mirror's address if I'm primary, or vice versa)
+65001              : peer's port
+
+ * gp_primarymirror -h <hostname> -p <postmaster_port> 
+ */
+static void
+Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str)
+{
+	int i;
+
+	/*
+	 * For each failed primary segment:
+	 *   1) Convert the mirror into primary.
+	 *
+	 * For each failed mirror segment:
+	 *   1) Convert the primary into change-logging.
+	 */
+	for (i=0; i < changeCount; i++)
+	{
+		bool new_alive, old_alive;
+		bool new_pri, old_pri;
+
+		new_alive = (changes[i].newStatus & FTS_STATUS_ALIVE ? true : false);
+		old_alive = (changes[i].oldStatus & FTS_STATUS_ALIVE ? true : false);
+
+		new_pri = (changes[i].newStatus & FTS_STATUS_PRIMARY ? true : false);
+		old_pri = (changes[i].oldStatus & FTS_STATUS_PRIMARY ? true : false);
+
+		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		{
+			elog(LOG, "Filerep_Failover: change %d of %d dbid %d alive %d/%d primary %d/%d", i+1, changeCount, changes[i].dbid, new_alive, old_alive, new_pri, old_pri);
+		}
+
+		if (!new_alive && old_alive)
+		{
+			/*
+			 * this is a segment that went down, nothing to tell it, it doesn't
+			 * matter whether it was primary or mirror here.
+			 *
+			 * Nothing to do here.
+			 */
+			Assert(!new_pri);
+		}
+		else if (new_alive && !old_alive)
+		{
+			/* this is a segment that came back up ? Nothing to do here. */
+			Assert(!old_pri);
+		}
+		else if (new_alive && old_alive)
+		{
+			/* this is a segment that may require a mode-change */
+			if (old_pri && !new_pri)
+			{
+				/* demote primary to mirror ?! Nothing to do here. */
+			}
+			else if (new_pri && !old_pri)
+			{
+				/* promote mirror to primary */
+				Filerep_mode_update(changes[i].dbid, "primary", 'c');
+			}
+			else if (old_pri && new_pri)
+			{
+				/* convert to change-logging ? or mirrorless ? */
+				Filerep_mode_update(changes[i].dbid, "primary", 'c');
+			}
+		}
+	}
+}
+
+static void
+Filerep_get_hosts_by_dbid(int dbid, char **hostname_p, int *host_port_p, int *host_filerep_port_p, char **peer_name_p, int *peer_port_p)
+{
+	bool found;
+	int i;
+	int content_id=-1;
+
+	Assert(dbid >= 0);
+	Assert(hostname_p != NULL);
+	Assert(host_port_p != NULL);
+	Assert(host_filerep_port_p != NULL);
+	Assert(peer_name_p != NULL);
+	Assert(peer_port_p != NULL);
+
+	found = false;
+
+	/*
+	 * We're going to scan the segment-dbs array twice.
+	 *
+	 * On the first pass we get our dbid, on the second pass we get our mirror-peer.
+	 */
+ 	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
+	{
+		CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
+
+		if (segInfo->dbid == dbid)
+		{
+			*hostname_p = segInfo->address;
+			*host_port_p = segInfo->port;
+			*host_filerep_port_p = segInfo->filerep_port;
+			content_id = segInfo->segindex;
+			found = true;
+			break;
+		}
+	}
+
+	if (!found)
+	{
+		elog(FATAL, "Filerep_get_hosts_by_dbid: could not find entry for dbid %d", dbid);
+	}
+
+	found = false;
+
+	/* second pass, find the mirror-peer */
+ 	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
+	{
+		CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
+
+		if (segInfo->segindex == content_id && segInfo->dbid != dbid)
+		{
+			*peer_name_p = segInfo->address;
+			*peer_port_p = segInfo->filerep_port;
+			found = true;
+			break;
+		}
+	}
+
+	if (!found)
+	{
+		elog(LOG, "Could not find mirror-peer for dbid %d", dbid);
+		*peer_name_p = NULL;
+		*peer_port_p = -1;
+	}
+}
+
+static void
+Filerep_mode_update(int dbid, char *mode, char status)
+{
+	int f = -1;
+	char tmp_filename[35];
+
+	ssize_t res;
+
+	char port_buf[10];
+	char *seg_addr = NULL;
+	char *peer_addr = NULL;
+	int seg_pm_port = -1, seg_rep_port = -1, peer_rep_port = -1;
+
+	Assert(dbid >= 0);
+	Assert(mode != NULL);
+
+	Filerep_get_hosts_by_dbid(dbid, &seg_addr, &seg_pm_port, &seg_rep_port, &peer_addr, &peer_rep_port);
+
+	snprintf(tmp_filename, sizeof(tmp_filename), "/tmp/ftsprobe_command_XXXXXX");
+	f = mkstemp(tmp_filename);
+	if (f < 0)
+	{
+		elog(FATAL, "Failed to create command file '%s': %m", tmp_filename);
+	}
+
+	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+		elog(LOG, "Filerep_Failover: tmp filename is '%s'", tmp_filename);
+
+	do
+	{
+#define FILEREP_WRITE(res, f, buf) {int len = strlen(buf); res = write(f, buf, len); if (res != len) break;}
+
+		FILEREP_WRITE(res, f, mode);
+		FILEREP_WRITE(res, f, "\n");
+
+		res = write(f, &status, 1);
+		if (res != 1)
+			break;
+
+		FILEREP_WRITE(res, f, "\n");
+		FILEREP_WRITE(res, f, seg_addr);
+		FILEREP_WRITE(res, f, "\n");
+
+		snprintf(port_buf, sizeof(port_buf), "%d", seg_rep_port);
+
+		FILEREP_WRITE(res, f, port_buf);
+		FILEREP_WRITE(res, f, "\n");
+
+		FILEREP_WRITE(res, f, peer_addr);
+		FILEREP_WRITE(res, f, "\n");
+
+		snprintf(port_buf, sizeof(port_buf), "%d", peer_rep_port);
+		FILEREP_WRITE(res, f, port_buf);
+		FILEREP_WRITE(res, f, "\n");
+
+		close(f);
+
+		/* issue the command to change modes */
+		{
+			char	cmd[1024];
+			int		cmd_status;
+
+			sprintf(cmd, "gp_primarymirror -h %s -p %d -i %s", seg_addr, seg_pm_port, tmp_filename);
+
+			if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+				elog(LOG, "gp_primarymirror command is [%s]", cmd);
+
+			cmd_status = system(cmd);
+
+			unlink(tmp_filename);
+
+			if (cmd_status == -1)
+			{
+				elog(ERROR, "Could not issue command: %m");
+			}
+			else if (cmd_status != 0)
+			{
+				elog(ERROR, "gp_primarymirror failed!");
+			}
+		}
+
+		return;
+	} while (0);
+
+	/* An error occurred while writing the command-file */
+
+	close(f);
+	unlink(tmp_filename);
+	elog(FATAL, "Could not write to %s", tmp_filename);
+}
+
+static void
+SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str)
+{
+	List *mps=NIL;
+	ListCell *cell;
+	int i;
+
+	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+		elog(LOG, "SAN_Failover: got %d changes", changeCount);
+
+	/*
+	 * For each failed segment:
+	 *   1) Find the mount-point.
+	 *   2) Clean it up on the primary (if possible).
+	 *   3) Mount it on the failover.
+	 *   4) Start all segments using the mount-point on their failover location.
+	 */
+	for (i=0; i < changeCount; i++)
+	{
+		bool new_status, old_status;
+
+		new_status = (changes[i].newStatus & FTS_STATUS_ALIVE ? true : false);
+		old_status = (changes[i].oldStatus & FTS_STATUS_ALIVE ? true : false);
+
+		if (!new_status && old_status)
+		{
+			getMounts_forDbid(changes[i].dbid, &mps);
+			/* mps is our deduped list of mountpoints */
+
+			Assert(list_length(mps) > 0);
+		}
+	}
+
+	/* fix up the mountpoints (the list has no duplicates) */
+	foreach(cell, mps)
+	{
+		int mpid = lfirst_int(cell);
+
+		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+			elog(LOG, "mpid %d", mpid);
+	}
+
+	/* Now we're ready to start up the failover segments */
+	for (i=0; i < changeCount; i++)
+	{
+		bool new_status, old_status;
+
+		new_status = (changes[i].newStatus & FTS_STATUS_PRIMARY ? true : false);
+		old_status = (changes[i].oldStatus & FTS_STATUS_PRIMARY ? true : false);
+
+		if (new_status && !old_status)
+		{
+			startSegment_forDbid(changes[i].dbid);
+		}
+	}
+}
+
+/*
+ * Generate a list of the mountpoints that we have to work on.
+ * Duplicates are eliminated by using list_append_unique_int()
+ */
+static void
+getMounts_forDbid(int dbid, List **mountp)
+{
+	Relation	conf_rel;
+	HeapTuple	conf_tup;
+	HeapScanDesc conf_scan;
+	bool	isNull=true;
+
+	ScanKeyData key[1];
+
+	Assert(dbid > 0);
+
+	ScanKeyInit(&key[0],
+				Anum_gp_segment_config_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum((int16)dbid));
+
+	conf_rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
+	conf_scan = heap_beginscan(conf_rel, SnapshotNow, 1, key);
+
+	while (HeapTupleIsValid(conf_tup = heap_getnext(conf_scan, ForwardScanDirection)))
+	{
+		int i;
+		int2vector *san_mounts_v;
+		Datum	tup_dbid;
+		Datum	conf_datum;
+
+		tup_dbid = heap_getattr(conf_tup, Anum_gp_segment_config_dbid, conf_rel->rd_att, &isNull);
+		Assert(!isNull); /* primary key better not be null ! */
+
+		if ((int)DatumGetInt16(tup_dbid) != dbid)
+		{
+			elog(ERROR, "getMounts_forDbid: failed dbid lookup in segment configuration");
+		}
+
+		/* got our dbid, get our array of mountpoints. */
+		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_san_mounts, conf_rel->rd_att, &isNull);
+
+		if (isNull)
+			continue; /* Can this happen ? */
+
+		san_mounts_v = DatumGetPointer(conf_datum);
+		Assert(san_mounts_v != NULL);
+
+		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+			elog(LOG, "Got our vector of mountpoints length %d", san_mounts_v->dim1);
+		for (i=0; i < san_mounts_v->dim1; i++)
+		{
+			*mountp = list_append_unique_int(*mountp, san_mounts_v->values[i]);
+		}
+		break;
+	}
+
+	heap_endscan(conf_scan);
+	heap_close(conf_rel, AccessShareLock);
+}
+
+static void
+startSegment_forDbid(int dbid)
+{
+	Relation	conf_rel, fse_rel;
+	HeapTuple	conf_tup, fse_tup;
+	HeapScanDesc conf_scan, fse_scan;
+	ScanKeyData  fse_scankey[2];
+
+	bool	isNull=true;
+
+	ScanKeyData key[1];
+
+	Assert(dbid > 0);
+
+	ScanKeyInit(&key[0],
+				Anum_gp_segment_config_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum((int16)dbid));
+
+	conf_rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
+	fse_rel  = heap_open(FileSpaceEntryRelationId, AccessShareLock);
+	conf_scan = heap_beginscan(conf_rel, SnapshotNow, 1, key);
+
+	while (HeapTupleIsValid(conf_tup = heap_getnext(conf_scan, ForwardScanDirection)))
+	{
+		Datum	conf_datum;
+		char	*host;
+		char	*dir;
+		int4	port;
+		char	cmd[1024];
+
+		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_dbid, conf_rel->rd_att, &isNull);
+		Assert(!isNull); /* primary key better not be null ! */
+
+		if ((int)DatumGetInt16(conf_datum) != dbid)
+		{
+			elog(ERROR, "startSegment_forDbid: failed dbid lookup in segment configuration");
+		}
+
+		/* got our dbid, get our array of mountpoints. */
+		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_address, conf_rel->rd_att, &isNull);
+		Assert(!isNull);
+		host = DatumGetCString(conf_datum);
+
+		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_port, conf_rel->rd_att, &isNull);
+		Assert(!isNull);
+		port = DatumGetInt32(conf_datum);
+
+		/* Find the set of data-directories for all filespaces */
+		/* Note: currently only fetches the pg_system filespace */
+		ScanKeyInit(&fse_scankey[0], 
+					Anum_pg_filespace_entry_fsedbid,
+					BTEqualStrategyNumber, F_INT4EQ,
+					Int32GetDatum((int32) dbid));  /* Current dbid */
+		ScanKeyInit(&fse_scankey[1], 
+					Anum_pg_filespace_entry_fsefsoid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(SYSTEMFILESPACE_OID));  /* pg_system filespace */
+		fse_scan = heap_beginscan(fse_rel, SnapshotNow, 2, fse_scankey);
+		fse_tup = heap_getnext(fse_scan, ForwardScanDirection);
+
+		if (!HeapTupleIsValid(fse_tup))
+			elog(ERROR, "filespace lookup failure for dbid %d", dbid);
+
+		conf_datum = heap_getattr(fse_tup, Anum_pg_filespace_entry_fselocation, fse_rel->rd_att, &isNull);
+
+		Assert(!isNull);
+		dir = DatumGetCString(DirectFunctionCall1(textout, conf_datum));
+
+		heap_endscan(fse_scan);
+
+		/* Startup the segment */
+		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+			elog(LOG, "Starting %s:%s:%d", host, dir, port);
+
+		sprintf(cmd, "ssh %s \"pg_ctl -w -D %s -l %s/pg_log/startup.log -o '-i -p %d --silent-mode=true -M mirrorless' start 2>&1 \" ",
+				host, dir, dir, port);
+
+		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+			elog(LOG, "command is [%s]", cmd);
+		system(cmd);
+
+		break;
+	}
+
+	heap_endscan(conf_scan);
+	heap_close(conf_rel, AccessShareLock);
 }

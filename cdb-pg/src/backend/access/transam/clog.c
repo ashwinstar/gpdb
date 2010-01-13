@@ -274,7 +274,7 @@ CLOGShmemInit(void)
 {
 	ClogCtl->PagePrecedes = CLOGPagePrecedes;
 	SimpleLruInit(ClogCtl, "CLOG Ctl", NUM_CLOG_BUFFERS,
-				  CLogControlLock, "pg_clog");
+				  CLogControlLock, CLOG_DIR);
 }
 
 /*

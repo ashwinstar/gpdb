@@ -221,9 +221,6 @@ typedef struct CdbDispatchResults
 
     int                 sliceCapacity;  /* num of slots in sliceMap */
 
-	/* see cdbdisp_markDispatchMelee() */
-	struct CdbDispatchResults	*peerMelee;
-
 	/* MPP-6253: during dispatch, it is important to check to see that
 	 * the writer gang isn't already doing something -- this is an
 	 * important, missing sanity check */
@@ -236,13 +233,6 @@ CdbDispatchResults *
 cdbdisp_makeDispatchResults(int     resultCapacity,
                             int     sliceCapacity,
                             bool    cancelOnError);
-
-
-/* For cancellation to work properly, we need to "cross-couple" the
- * primary and mirror gangs, so they can check each other's status
- * during the dispatcher "melee" check (see cdbdisp.c:handleSelectTimeout()) */
-void
-cdbdisp_markDispatchMelee(CdbDispatchResults *pri, CdbDispatchResults *mir);
 
 /* Clean up and free a CdbDispatchResults object. */
 void
@@ -307,8 +297,7 @@ int
 cdbdisp_sqlstate_to_errcode(const char *sqlstate);
 
 char *
-cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
-					 CdbDispatchResults *pMirrorResults);
+cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults);
 
 /*--------------------------------------------------------------------*/
 

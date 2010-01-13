@@ -19,6 +19,8 @@
 #include "fmgr.h"
 #include "storage/block.h"
 #include "storage/relfilenode.h"
+#include "storage/dbdirnode.h"
+#include "access/persistentendxactrec.h"
 
 
 /*
@@ -52,7 +54,7 @@ typedef struct SMgrRelationData
 	 */
 	int			smgr_which;		/* storage manager selector */
 
-	struct _MdfdVec *md_fd;		/* for md.c; NULL if not open */
+	struct _MdMirVec *md_mirvec;		/* for md.c; NULL if not open */
 } SMgrRelationData;
 
 typedef SMgrRelationData *SMgrRelation;
@@ -64,9 +66,16 @@ extern void smgrsetowner(SMgrRelation *owner, SMgrRelation reln);
 extern void smgrclose(SMgrRelation reln);
 extern void smgrcloseall(void);
 extern void smgrclosenode(RelFileNode rnode);
-extern void smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo);
-extern void smgrscheduleunlink(SMgrRelation reln, bool isLocalBuf);
+extern void smgrcreatetablespacedir(Oid tablespace, bool isRedo);
+extern void smgrcreatedbdir(DbDirNode *dbDirNode, bool isRedo);
+extern void smgrcreatepending(RelFileNode 	relFileNode, ItemPointer persistentTid, int64 *persistentSerialNum, bool isLocalBuf, bool flushToXLog);
+extern void smgrcreate(SMgrRelation reln, ItemPointer persistentTid, int64 *persistentSerialNum, bool isLocalBuf, bool isRedo);
+extern void smgrscheduleunlink(SMgrRelation reln, ItemPointer persistentTid, int64 persistentSerialNum, bool isLocalBuf);
 extern void smgrdounlink(SMgrRelation reln, bool isLocalBuf, bool isRedo);
+extern void smgrschedulermtablespacedir(Oid tablespace);
+extern void smgrschedulermdbdir(DbDirNode *dropDbDirNode);
+extern void smgrdormtablespacedir(Oid tablespace, bool isRedo);
+extern void smgrdormdbdir(DbDirNode *dropDbDirNode, bool isRedo);
 extern void smgrextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		   bool isTemp);
 extern void smgrread(SMgrRelation reln, BlockNumber blocknum, char *buffer);
@@ -76,11 +85,11 @@ extern BlockNumber smgrnblocks(SMgrRelation reln);
 extern BlockNumber smgrtruncate(SMgrRelation reln, BlockNumber nblocks,
 			 bool isTemp, bool isLocalBuf);
 extern void smgrimmedsync(SMgrRelation reln);
-extern void smgrDoPendingDeletes(bool isCommit);
-extern int	smgrGetPendingDeletes(bool forCommit, RelFileNode **ptr);
+extern int	smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr);
 extern bool	smgrIsPendingDeletes(bool forCommit);
 extern void AtSubCommit_smgr(void);
 extern void AtSubAbort_smgr(void);
+extern void AtEOXact_smgr(bool forCommit);
 extern void PostPrepare_smgr(void);
 extern void smgrcommit(void);
 extern void smgrabort(void);
@@ -95,8 +104,12 @@ extern void smgr_desc(StringInfo buf, uint8 xl_info, char *rec);
 /* in md.c */
 extern bool mdinit(void);
 extern bool mdclose(SMgrRelation reln);
+extern bool mdcreatetablespacedir(Oid tablespace, bool isRedo);
+extern bool mdcreatedbdir(DbDirNode *dbDirNode, bool isRedo);
 extern bool mdcreate(SMgrRelation reln, bool isRedo);
 extern bool mdunlink(RelFileNode rnode, bool isRedo);
+extern bool mdrmtablespacedir(Oid tablespace, bool isRedo);
+extern bool mdrmdbdir(DbDirNode *dbDirNode, bool isRedo);
 extern bool mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		 bool isTemp);
 extern bool mdread(SMgrRelation reln, BlockNumber blocknum, char *buffer);

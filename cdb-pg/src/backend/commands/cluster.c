@@ -31,6 +31,7 @@
 #include "catalog/toasting.h"
 #include "catalog/aoseg.h"
 #include "catalog/aoblkdir.h"
+#include "catalog/pg_tablespace.h"
 #include "commands/cluster.h"
 #include "commands/tablecmds.h"
 #include "miscadmin.h"
@@ -985,10 +986,19 @@ void
 swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 {
 	Relation	relRelation;
+	Relation	relNodeRelation;
 	HeapTuple	reltup1,
 				reltup2;
 	Form_pg_class relform1,
 				relform2;
+	Oid			tablespace1,
+				tablespace2;
+	HeapTuple	relNodeTuple1,
+				relNodeTuple2;
+	ItemPointerData persistentTid1,
+					persistentTid2;
+	int64		persistentSerialNum1,
+				persistentSerialNum2;
 	Oid			swaptemp;
 	CatalogIndexState indstate;
 	Oid segrelid1, segrelid2, segidxid1, segidxid2;
@@ -997,8 +1007,13 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 	segrelid1 = segrelid2 = segidxid1 = segidxid2 = InvalidOid;
 	blkdirrelid1 = blkdirrelid2 = blkdiridxid1 = blkdiridxid2 = InvalidOid;
 
-	/* We need writable copies of both pg_class tuples. */
+	/* 
+	 * We need writable copies of both pg_class tuples, and both 
+	 * gp_relation_node tuples.
+	 */
+
 	relRelation = heap_open(RelationRelationId, RowExclusiveLock);
+	relNodeRelation = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
 	reltup1 = SearchSysCacheCopy(RELOID,
 								 ObjectIdGetDatum(r1),
@@ -1007,12 +1022,40 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 		elog(ERROR, "cache lookup failed for relation %u", r1);
 	relform1 = (Form_pg_class) GETSTRUCT(reltup1);
 
+	tablespace1 = relform1->reltablespace;
+	if (tablespace1 == 0)
+		tablespace1 = DEFAULTTABLESPACE_OID;
+	relNodeTuple1 = FetchGpRelationNodeTuple(
+								relNodeRelation,
+								r1,
+								tablespace1, 
+								relform1->relfilenode, 
+								&persistentTid1,
+								&persistentSerialNum1);
+	if (!HeapTupleIsValid(relNodeTuple1))
+		elog(ERROR, "scan lookup failed for relation %u, reltablespace %u, relfilenode %u", 
+		     r1, tablespace1, relform1->relfilenode);
+
 	reltup2 = SearchSysCacheCopy(RELOID,
 								 ObjectIdGetDatum(r2),
 								 0, 0, 0);
 	if (!HeapTupleIsValid(reltup2))
 		elog(ERROR, "cache lookup failed for relation %u", r2);
 	relform2 = (Form_pg_class) GETSTRUCT(reltup2);
+	
+	tablespace2 = relform2->reltablespace;
+	if (tablespace2 == 0)
+		tablespace2 = DEFAULTTABLESPACE_OID;
+	relNodeTuple2 = FetchGpRelationNodeTuple(
+								relNodeRelation,
+								r2,
+								tablespace2, 
+								relform2->relfilenode, 
+								&persistentTid2,
+								&persistentSerialNum2);
+	if (!HeapTupleIsValid(relNodeTuple2))
+		elog(ERROR, "scan lookup failed for relation %u, reltablespace %u, relfilenode %u", 
+		     r2, tablespace2, relform2->relfilenode);
 
 	if (relform1->relstorage == RELSTORAGE_AOROWS ||
 		relform1->relstorage == RELSTORAGE_AOCOLS)
@@ -1092,8 +1135,7 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 		relform1->reltuples = relform2->reltuples;
 		relform2->reltuples = swap_tuples;
 	}
-
-	/* Update the tuples in pg_class */
+	
 	simple_heap_update(relRelation, &reltup1->t_self, reltup1);
 	simple_heap_update(relRelation, &reltup2->t_self, reltup2);
 
@@ -1102,6 +1144,34 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 	CatalogIndexInsert(indstate, reltup1);
 	CatalogIndexInsert(indstate, reltup2);
 	CatalogCloseIndexes(indstate);
+
+	/* 
+	 * Update gp_relation_node table and index.
+	 * 
+	 * We cannot swap using UpdateGpRelationNodeTuple, so we have to delete both and
+	 * then insert.
+	 */
+	
+	simple_heap_delete(relNodeRelation, &relNodeTuple1->t_self);
+	simple_heap_delete(relNodeRelation, &relNodeTuple2->t_self);
+
+	CommandCounterIncrement();
+
+	InsertGpRelationNodeTuple(
+					relNodeRelation,
+					r1,
+					relform1->reltablespace,	/* Already swapped */
+					relform1->relfilenode,		/* Already swapped */
+					&persistentTid2,
+					persistentSerialNum2);
+	InsertGpRelationNodeTuple(
+					relNodeRelation,
+					r2,
+					relform2->reltablespace,	/* Already swapped */
+					relform2->relfilenode,		/* Already swapped */
+					&persistentTid1,
+					persistentSerialNum1);
+
 
 	/*
 	 * If we have toast tables associated with the relations being swapped,
@@ -1169,6 +1239,7 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 	heap_freetuple(reltup2);
 
 	heap_close(relRelation, RowExclusiveLock);
+	heap_close(relNodeRelation, RowExclusiveLock);
 }
 
 /*

@@ -52,4 +52,6 @@ GRANT SELECT ON gp_distributed_log TO PUBLIC;
 ------------------------------------------------------------------
 CREATE LANGUAGE plpgsql;
 
+CREATE RESOURCE QUEUE gp_default ACTIVE THRESHOLD 20;
+
 RESET log_min_messages;

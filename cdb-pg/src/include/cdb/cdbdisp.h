@@ -64,7 +64,6 @@ typedef struct DispatchCommandQueryParms
 	 * Used by dispatch agent if NOT using sliced execution
 	 */
 	int			primary_gang_id;
-	int			mirror_gang_id;
 
 } DispatchCommandQueryParms;
 
@@ -79,7 +78,6 @@ typedef struct DispatchCommandDtxProtocolParms
 	char						gid[TMGIDSIZE];
 	DistributedTransactionId	gxid;
 	int							primary_gang_id;
-	int							mirror_gang_id;
 	char *argument;
 	int argumentLength;
 } DispatchCommandDtxProtocolParms;
@@ -223,20 +221,19 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads	**dispatchThreads,
  * 'cancelOnError' true and are not yet idle will be canceled.
  */
 void
-CdbCheckDispatchResult(struct CdbDispatchResults *pri, struct CdbDispatchResults *mir, 
-					   struct CdbDispatchCmdThreads *dispatchThreads, bool cancelUnfinishedWork);
+CdbCheckDispatchResult(struct CdbDispatchResults *pri,
+					   struct CdbDispatchCmdThreads *dispatchThreads,
+					   bool cancelUnfinishedWork);
 
 /*--------------------------------------------------------------------*/
 
 struct pg_result **
 cdbdisp_returnResults(struct CdbDispatchResults *primaryResults,
-						struct CdbDispatchResults *mirrorResults,
 						StringInfo errmsgbuf,
 						int *numresults);
 /*
  * cdbdisp_dispatchRMCommand:
- * Sends a non-cancelable command to all segment dbs, primary (and mirrors
- * if requested).
+ * Sends a non-cancelable command to all segment dbs, primary
  *
  * Returns a malloc'ed array containing the PGresult objects thus
  * produced; the caller must PQclear() them and free() the array.
@@ -249,7 +246,6 @@ cdbdisp_returnResults(struct CdbDispatchResults *primaryResults,
 struct pg_result **             /* returns ptr to array of PGresult ptrs */
 cdbdisp_dispatchRMCommand(const char   *strCommand,
 						  bool			withSnapshot,
-						  bool			dispatchToMirrors,
                           StringInfo    errmsgbuf,
                           int			*numresults);
 
@@ -258,8 +254,7 @@ cdbdisp_dispatchRMCommand(const char   *strCommand,
 
 /*
  * cdbdisp_dispatchDtxProtocolCommand:
- * Sends a non-cancelable command to all segment dbs, primary (and mirrors
- * if requested).
+ * Sends a non-cancelable command to all segment dbs, primary
  *
  * Returns a malloc'ed array containing the PGresult objects thus
  * produced; the caller must PQclear() them and free() the array.
@@ -275,7 +270,6 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand		dtxProtocolCommand,
 								   char						*dtxProtocolCommandLoggingStr,
 								   char						*gid,
 								   DistributedTransactionId	gxid,
-								   bool						dispatchToMirrors,
 								   StringInfo    			errmsgbuf,
 								   int						*numresults,
 								   bool 					*badGangs,
@@ -299,7 +293,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand		dtxProtocolCommand,
  * be dispatched should be done inside of a global transaction or not.
  *
  * The CdbDispatchResults objects allocated for the command
- * are returned in *pPrimaryResults and *pMirrorResults.
+ * are returned in *pPrimaryResults
  * The caller, after calling CdbCheckDispatchResult(), can
  * examine the CdbDispatchResults objects, can keep them as
  * long as needed, and ultimately must free them with
@@ -319,10 +313,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
                         bool                        cancelOnError,
                         bool						needTwoPhase,
                         bool						withSnapshot,
-                        bool						dispatchToMirrors,
-						bool						dispatchToPrimaries,
                         struct CdbDispatchResults **pPrimaryResults,    /* OUT */
-                        struct CdbDispatchResults **pMirrorResults,		/* OUT */
 						struct CdbDispatchCmdThreads **pDispatchThreads);  /* OUT */
 
 /* Wait for all QEs to finish, then report any errors from the given
@@ -334,10 +325,8 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
  */
 void
 cdbdisp_finishCommand(struct CdbDispatchResults    *primaryResults,
-                      struct CdbDispatchResults    *mirrorResults,
 					  struct CdbDispatchCmdThreads *dispatchThreads,
 					  void (*handle_results_callback)(struct CdbDispatchResults *primaryResults,
-													  struct CdbDispatchResults *mirrorResults,
 													  void *ctx),
 					  void *ctx);
 
@@ -357,7 +346,6 @@ cdbdisp_finishCommand(struct CdbDispatchResults    *primaryResults,
  */
 void
 cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
-				    struct CdbDispatchResults  *mirrorResults,
 					struct CdbDispatchCmdThreads *dispatchThreads);
 
 /*
@@ -371,8 +359,7 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
  * transaction or not.
  */
 void
-CdbDoCommand(const char *strCommand, bool cancelOnError, bool needTwoPhase, bool dispatchToMirrors, bool dispatchToPrimaries);
-
+CdbDoCommand(const char *strCommand, bool cancelOnError, bool needTwoPhase);
 
 /*
  * Special for sending SET commands that change GUC variables, so they go to all
@@ -389,14 +376,13 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  bool cancelOnError,
 				  SliceTable *sliceTbl,
 				  struct CdbDispatchResults **pPrimaryResults,		/* OUT */
-				  struct CdbDispatchResults **pMirrorResults,       /* OUT */
 				  struct CdbDispatchCmdThreads **pDispatchThreads); 		/* OUT */
 
 /* Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.
  *
  * The CdbDispatchResults objects allocated for the plan are
- * returned in *pPrimaryResults and (if needed) *pMirrorResults.
+ * returned in *pPrimaryResults
  * The caller, after calling CdbCheckDispatchResult(), can
  * examine the CdbDispatchResults objects, can keep them as
  * long as needed, and ultimately must free them with
@@ -414,11 +400,10 @@ cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
                      bool                           planRequiresTxn,
                      bool                           cancelOnError,
                      struct CdbDispatchResults    **pPrimaryResults,  /* OUT */
-                     struct CdbDispatchResults    **pMirrorResults,   /* OUT */
 					 struct CdbDispatchCmdThreads **pDispatchThreads); /* OUT */
 
 /* Dispatch a command - already parsed and in the form of a Node
- * tree - to all primary and mirror segdbs.  Does not wait for
+ * tree - to all primary segdbs.  Does not wait for
  * completion.  Does not start a global transaction.
  *
  *
@@ -437,12 +422,11 @@ cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
                                  bool			needTwoPhase,
                                  bool			withSnapshot,
                                  struct CdbDispatchResults    **pPrimaryResults,
-                                 struct CdbDispatchResults    **pMirrorResults,
 								 struct CdbDispatchCmdThreads ** pDispatchThreads,
 								 char* debugCaller __attribute__((unused)) );
 
 /* Dispatch a command - already parsed and in the form of a Node
- * tree - to all primary and mirror segdbs, and wait for completion.
+ * tree - to all primary segdbs, and wait for completion.
  * Starts a global transaction first, if not already started.
  * If not all QEs in the given gang(s) executed the command successfully,
  * throws an error and does not return.
@@ -469,7 +453,7 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads);
 /* used to take the current Transaction Snapshot and serialized a version of it
  * into the static variable serializedDtxContextInfo */
 char *
-qdSerializeDtxContextInfo(int * size, bool wantSnapshot, bool inCursor, int txnOptions, char* debugCaller);
+qdSerializeDtxContextInfo(int * size, bool wantSnapshot, bool inCursor, int txnOptions, char *debugCaller);
 
 
 /* this is used for dire cleanup emergencies (in portalmem.c) */

@@ -130,19 +130,6 @@ extern bool gp_version_mismatch_error;	/* Enforce same-version on QD&QE. */
 
 extern bool gp_set_proc_affinity; /* try to bind postmaster to a processor */
 
-/* Parameter gp_is_primary
- *
- * This run_time parameter indicates whether session is associated with the
- * primary copy of its database's content or with a mirror.  It defaults to
- * true (primary), but may be specified as false using a connect option, e.g,
- *
- *	  PGOPTIONS='-c gp_is_primary=false' psql test
- *
- * Though it will ordinarily be set by a QD connecting to a QE, rather than
- * directly.  It may not be reset in a running session.
- */
-extern bool Gp_is_primary;
-
 /* Parameter Gp_is_writer
  *
  * This run_time parameter indicates whether session is a qExec that is a
@@ -562,10 +549,25 @@ extern bool gp_enable_direct_dispatch;
  */
 extern GpVars_Verbosity    gp_log_gang;
 
-const char *
-gpvars_assign_gp_log_gang(const char *newval, bool doit, GucSource source);
-const char *
-gpvars_show_gp_log_gang(void);
+const char *gpvars_assign_gp_log_gang(const char *newval, bool doit, GucSource source);
+const char *gpvars_show_gp_log_gang(void);
+
+/*
+ * gp_log_fts (string)
+ *
+ * What kind of messages should be logged by the fault-prober
+ * "OFF"     -> only errors are logged
+ * "TERSE"   -> terse logging of routine events
+ * "VERBOSE" -> more messages
+ * "DEBUG"   -> additional events are logged at severity level DEBUG1 to DEBUG5
+ *
+ * The messages that are enabled by the TERSE and VERBOSE settings are
+ * written with a severity level of LOG.
+ */
+extern GpVars_Verbosity    gp_log_fts;
+
+const char *gpvars_assign_gp_log_fts(const char *newval, bool doit, GucSource source);
+const char *gpvars_show_gp_log_fts(void);
 
 /*
  * gp_log_interconnect (string)
@@ -581,10 +583,8 @@ gpvars_show_gp_log_gang(void);
  */
 extern GpVars_Verbosity    gp_log_interconnect;
 
-const char *
-gpvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source __attribute__((unused)) );
-const char *
-gpvars_show_gp_log_interconnect(void);
+const char *gpvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source __attribute__((unused)) );
+const char *gpvars_show_gp_log_interconnect(void);
 
 
 /* --------------------------------------------------------------------------------------------------
@@ -983,17 +983,13 @@ extern bool gp_cost_hashjoin_chainwalk;
 extern int cdb_total_slices;
 extern int cdb_max_slices;
 
-/* --------------------------------------------------------------------------------------------------
- * Structure for row of gp_id table
- */
 typedef struct GpId
 {
-	char	   *gpname;		/* array of SegmentDatabaseInfo's for segment
-								 * databases */
 	int4		numsegments;	/* count of distinct segindexes */
 	int4		dbid;			/* the dbid of this database */
 	int4		segindex;		/* content indicator: -1 for entry database,
-								 * 0, ..., n-1 for segment database */
+								 * 0, ..., n-1 for segment database *
+								 * a primary and its mirror have the same segIndex */
 } GpId;
 
 /* --------------------------------------------------------------------------------------------------
@@ -1022,6 +1018,8 @@ extern SeqServerControlBlock *seqServerCtl;
  * Thread-safe routine to write to the log
  */
 extern void write_log(const char *fmt,...) __attribute__((format(printf, 1, 2)));
+
+extern void verifyGpIdentityIsSet(void);
 
 /* wire off SET WITH() for alter table distributed by */
 extern bool gp_disable_atsdb_set_with;

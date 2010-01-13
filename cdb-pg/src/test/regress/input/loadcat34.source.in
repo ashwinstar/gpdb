@@ -76,7 +76,6 @@ update @gpupgradeschemaname@.pg_rewrite set ev_action = regexp_replace(ev_action
 CREATE FUNCTION public.gpviewreparse(text) returns text language C as '$libdir/gpupgrade', 'gpviewreparse' STRICT IMMUTABLE;
 update @gpupgradeschemaname@.pg_rewrite set ev_action = public.gpviewreparse(ev_action), ev_qual = public.gpviewreparse(ev_qual);
 
-
 -- Reindex normal tables (not shared tables)
 reindex table @gpupgradeschemaname@.pg_amproc;
 reindex table @gpupgradeschemaname@.pg_attribute;
@@ -97,6 +96,19 @@ reindex table @gpupgradeschemaname@.pg_rewrite;
 reindex table @gpupgradeschemaname@.pg_stat_last_operation;
 reindex table @gpupgradeschemaname@.pg_type;
 reindex table @gpupgradeschemaname@.gp_fastsequence;
+reindex table @gpupgradeschemaname@.gp_relation_node;
+
+commit;
+
+-- Populate gp_persistent tables:
+--   Must be called after REINDEX statements
+--   This is expected to fail in upg2 because the persistent tables are already populated.
+--   It may be nice to allow it to be callable in a populated database...
+insert into @gpupgradeschemaname@.gp_global_sequence select 0 from generate_series(1,15);
+select gp_persistent_build_db();
+
+begin;
+
 
 -- Create new 3.4 views in pg_catalog
 set search_path='pg_catalog';

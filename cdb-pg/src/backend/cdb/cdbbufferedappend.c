@@ -125,6 +125,7 @@ static void BufferedAppendWrite(
 {
 	int32 writeLen;
 	uint8 *largeWriteMemory;
+	int	actualLen;
 
 	writeLen = bufferedAppend->largeWriteLen;
 	Assert(bufferedAppend->largeWriteLen > 0);
@@ -152,20 +153,13 @@ static void BufferedAppendWrite(
 
 	while (writeLen > 0) 
 	{
-		int actualLen = FileWrite(
-							bufferedAppend->file,
-							(char*)largeWriteMemory,
-							writeLen);
 
-		if (actualLen == 0) 
-			ereport(ERROR, (errcode_for_file_access(),
-							errmsg("no disk space for file \"%s\"",
-							       bufferedAppend->filePathName)));
-		else if (actualLen < 0)
-			ereport(ERROR, (errcode_for_file_access(),
-							errmsg("unable to write file \"%s\" (errcode %d)", 
-								   bufferedAppend->filePathName,
-								   errno)));
+		MirroredAppendOnly_Append(&bufferedAppend->mirroredOpen,
+					(char*)largeWriteMemory,
+					writeLen);
+					   
+		actualLen = writeLen;
+
 		writeLen -= actualLen;
 		largeWriteMemory += actualLen;
 	}

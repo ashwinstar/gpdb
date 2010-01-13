@@ -204,27 +204,7 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 		finfo->fn_addr = fbp->func;
 		finfo->fn_oid = functionId;
 		
-		if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary)
-		{
-			/*
-			 * These built-in functions don't work if we are on a mirror, since
-			 * they won't give the same result as the primary gets.
-			 * 
-			 * Skip the fastpath return, so they will be detected below.
-			 * 
-			 */
-			if (functionId != 274 /* timeofday */ &&
-				functionId != 1574 /* nextval */ &&
-				functionId != 1575 /* currval */ &&
-				functionId != 1576 /* setval */ &&
-				functionId != 1598 /* random */ &&
-				functionId != 1765 /* setval */ &&
-				functionId != 2559 /* lastval */
-				)
-			return;
-		}
-		else
-			return;
+		return;
 	}
 
 	/* Otherwise we need the pg_proc entry */
@@ -239,19 +219,6 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 	finfo->fn_strict = procedureStruct->proisstrict;
 	finfo->fn_retset = procedureStruct->proretset;
 	
-	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary && procedureStruct->provolatile != PROVOLATILE_IMMUTABLE)
-	{
-		if (strstr(NameStr(procedureStruct->proname),"_validator")!=0 && 
-			strstr(NameStr(procedureStruct->proname),"_call_handler")!=0)
-		{
-			if (procedureStruct->provolatile == PROVOLATILE_VOLATILE)
-				elog(ERROR,"Volatile function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
-			if (procedureStruct->provolatile == PROVOLATILE_STABLE)
-				elog(ERROR,"Stable function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
-				
-		}
-	}
-
 	if (procedureStruct->prosecdef && !ignore_security)
 	{
 		finfo->fn_addr = fmgr_security_definer;

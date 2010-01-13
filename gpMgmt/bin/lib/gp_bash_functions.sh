@@ -219,8 +219,15 @@ PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_gp_additions
 RECOVER_FLAG=/tmp/active_recovery_in_progress
 SCHEMA_FILE=cdb_schema.sql
 DEFAULTDB=template1
-CONFIG_TABLE=gp_configuration
-GP_ID_TABLE=gp_id
+
+CONFIG_TABLE="(SELECT dbid, content, role, preferred_role, mode, status,
+               hostname, address, port, fselocation as datadir,
+               replication_port, san_mounts
+        FROM gp_segment_configuration
+        JOIN pg_filespace_entry ON (dbid = fsedbid)
+        JOIN pg_filespace fs ON (fs.oid = fsefsoid)
+        WHERE fsname = 'pg_system')"
+
 GP_PG_VIEW="(SELECT l.dbid, l.isprimary, l.content, l.\"valid\",
 		l.definedprimary FROM gp_pgdatabase() l(dbid smallint,
 		isprimary boolean, content smallint, \"valid\" boolean,
@@ -368,7 +375,7 @@ ERROR_EXIT () {
 
 READ_CHK () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	NROWS=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT -d "$DEFAULTDB" -c" select * from $CONFIG_TABLE where port<0;"`
+	NROWS=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT -d "$DEFAULTDB" -c" select * from $CONFIG_TABLE a where port<0;"`
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		READ_COUNT=0
@@ -761,10 +768,12 @@ CREATE_SPREAD_MIRROR_ARRAY () {
 		QE_M_NAME=`$ECHO ${QE_PRIMARY_ARRAY[$VECTOR]}|$AWK -F":" '{print $1}'`
 		GP_M_DIR=${MIRROR_DATA_DIRECTORY[$SEG_PROCESSED]}
 		P_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $2}'`
+		P_REPL_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $6}'`
 		((GP_M_PORT=$P_PORT+$MIRROR_OFFSET))
+		((M_REPL_PORT=$P_REPL_PORT+$MIRROR_REPLICATION_PORT_OFFSET))
 		M_CONTENT=`$ECHO $QE_LINE|$AWK -F":" '{print $5}'`
 		M_SEG=`$ECHO $QE_LINE|$AWK -F":" '{print $3}'|$AWK -F"/" '{print $NF}'`
-		QE_MIRROR_ARRAY=(${QE_MIRROR_ARRAY[@]} ${QE_M_NAME}:${GP_M_PORT}:${GP_M_DIR}/${M_SEG}:${DBID_COUNT}:${M_CONTENT})
+		QE_MIRROR_ARRAY=(${QE_MIRROR_ARRAY[@]} ${QE_M_NAME}:${GP_M_PORT}:${GP_M_DIR}/${M_SEG}:${DBID_COUNT}:${M_CONTENT}:${M_REPL_PORT})
 		POSTGRES_PORT_CHK $GP_M_PORT $QE_M_NAME
 		((DBID_COUNT=$DBID_COUNT+1))
 		((SEG_PROCESSED=$SEG_PROCESSED+1))
@@ -778,7 +787,7 @@ GET_MAX_LEN () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Formatting output, please wait..." 1
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-	LEN_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -F" " -A -t -q -p  $MASTER_PORT -d "$DEFAULTDB" -c"select max(length(hostname))+1, max(length(port))+1, max(length(datadir))+1, max(length(content))+1, max(length(dbid)) from $CONFIG_TABLE where content<>-1;"`)
+	LEN_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -F" " -A -t -q -p  $MASTER_PORT -d "$DEFAULTDB" -c"select max(length(hostname))+1, max(length(port))+1, max(length(datadir))+1, max(length(content))+1, max(length(dbid)) from $CONFIG_TABLE a where content<>-1;"`)
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -813,11 +822,13 @@ CREATE_GROUP_MIRROR_ARRAY () {
 		((DIR_VECTOR=$DIR_VECTOR+1))
 		M_CONTENT=`$ECHO $QE_LINE|$AWK -F":" '{print $5}'`
 		P_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $2}'`
+		P_REPL_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $6}'`
 		((GP_M_PORT=$P_PORT+$MIRROR_OFFSET))
+		((M_REPL_PORT=$P_REPL_PORT+$MIRROR_REPLICATION_PORT_OFFSET))
 		if [ $PRI_HOST_COUNT -eq 1 ];then
 			QE_M_NAME=`$ECHO $QE_LINE|$AWK -F":" '{print $1}'`
 		fi
-		QE_MIRROR_ARRAY=(${QE_MIRROR_ARRAY[@]} ${QE_M_NAME}:${GP_M_PORT}:${GP_M_DIR}:${DBID_COUNT}:${M_CONTENT})
+		QE_MIRROR_ARRAY=(${QE_MIRROR_ARRAY[@]} ${QE_M_NAME}:${GP_M_PORT}:${GP_M_DIR}:${DBID_COUNT}:${M_CONTENT}:${M_REPL_PORT})
 		POSTGRES_PORT_CHK $GP_M_PORT $QE_M_NAME
 		((DBID_COUNT=$DBID_COUNT+1))
 		if [ $HOST_VECTOR -gt $MAX_ARRAY ];then
@@ -1180,7 +1191,7 @@ GET_QD_DB_NAME () {
 			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"$GPLISTDATABASEQTY " 2>/dev/null|$GREP -v postgres|$GREP -v template0|$HEAD -1|$CUT -d"|" -f1`
 			ERROR_CHK $? "obtain database name" 2
 		fi
-		MASTER_DIR_CHK=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select 1 from ${CONFIG_TABLE};"|$WC -l`
+		MASTER_DIR_CHK=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select 1 from ${CONFIG_TABLE} a;"|$WC -l`
 		if [ $MASTER_DIR_CHK -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY value of $MASTER_DATA_DIRECTORY is incorrect" 2;fi
 		if [ x"" == x"$QD_DBNAME" ]; then
@@ -1193,7 +1204,7 @@ GET_QD_DB_NAME () {
 GET_STANDBY_COUNT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QD_DB_NAME
-	STANDBY_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select 1 from $CONFIG_TABLE where content=-1 and dbid<>1 ;"|$WC -l`
+	STANDBY_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select 1 from $CONFIG_TABLE a where content=-1 and dbid<>1 ;"|$WC -l`
 	ERROR_CHK $? "obtain standby master host count" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -1201,7 +1212,7 @@ GET_STANDBY_COUNT () {
 GET_STANDBY_DETAILS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QD_DB_NAME
-	STANDBY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select hostname, datadir, port, valid, definedprimary from $CONFIG_TABLE where content=-1 and dbid<>1"`) > /dev/null 2>&1
+	STANDBY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select hostname, datadir, port, mode, status, preferred_role, role from $CONFIG_TABLE a where content=-1 and dbid<>1"`) > /dev/null 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then
 		LOG_MSG "[INFO]:-Unable to obtain standby master details, error code $RETVAL returned" 1
@@ -1249,7 +1260,7 @@ GET_DB_LIST () {
 
 CHK_MIRRORS_CONFIGURED () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MIRROR_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE where content<>-1;"`
+	MIRROR_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE a where content<>-1;"`
 	ERROR_CHK $? "obtain mirror count from master instance" 2
 	LOG_MSG "[INFO]:-Obtained $MIRROR_COUNT as check value"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -1261,16 +1272,16 @@ GET_MIRROR_TYPE () {
 	if [ $MIRROR_COUNT -eq 1 ];then
 		MIR_TYPE="No Mirror";MIR_TYPE_NUM=0
 	else
-		SEP_COUNT=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(distinct hostname)/(select count(distinct hostname) from $CONFIG_TABLE where definedprimary='t' and content<>-1) from $CONFIG_TABLE where content<>-1;"`
+		SEP_COUNT=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(distinct hostname)/(select count(distinct hostname) from $CONFIG_TABLE a where preferred_role = 'p' and content<>-1) from $CONFIG_TABLE a where content<>-1;"`
 		if [ $SEP_COUNT -eq 2 ];then
 			SEP_TEXT="[Separate array]"
 		else
 			SEP_TEXT="[Shared array]"
 		fi
 		#Get number of primary hosts
-		NUM_SEG_HOSTS=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(distinct(hostname)) from $CONFIG_TABLE where content<>-1;"`
+		NUM_SEG_HOSTS=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(distinct(hostname)) from $CONFIG_TABLE a where content<>-1;"`
 		#Get the primary and mirror hostnames for the first segment instance host
-		FIRST_PRI_MIR_ARRAY=(`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname, content from $CONFIG_TABLE where content>-1 and content<(select max(port)-min(port)+1 from $CONFIG_TABLE where content<>-1 and definedprimary='t') order by content,dbid;"|$TR '\n' ' '`)
+		FIRST_PRI_MIR_ARRAY=(`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname, content from $CONFIG_TABLE a where content>-1 and content<(select max(port)-min(port)+1 from $CONFIG_TABLE a where content<>-1 and preferred_role='p') order by content,dbid;"|$TR '\n' ' '`)
 		((SEG_PER_HOST=${#FIRST_PRI_MIR_ARRAY[@]}/2))
 		CHK_MULTI_HOME
 		if [ $MULTI_HOME -eq 0 ];then
@@ -1287,7 +1298,7 @@ GET_MIRROR_TYPE () {
 				MIR_HOST=`$ECHO ${FIRST_PRI_MIR_ARRAY[@]}|$TR ' ' '\n'|$GREP "|${J}$"|$AWK -F"|" '{print $1}'|$TAIL -1`
 				PRI_HOST=`$ECHO ${FIRST_PRI_MIR_ARRAY[@]}|$TR ' ' '\n'|$GREP "|${J}$"|$AWK -F"|" '{print $1}'|$HEAD -1`
 				#MIR_H_HOST=`$ECHO ${MULTI_ARRAY[@]}|$TR ' ' '\n'|$GREP "${MIR_HOST}:"|$SORT -u|$AWK -F":" '{print $2}'`
-				MIR_H_CONFIG_HOST=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE where hostname<>'${PRI_HOST}' and content=${J};"`
+				MIR_H_CONFIG_HOST=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE a where hostname<>'${PRI_HOST}' and content=${J};"`
 				MIR_H_HOST=`$TRUSTED_SHELL $MIR_H_CONFIG_HOST "$HOSTNAME"|$AWK '{print $1}'`
 				#MIR_HOST_VAL=`$TRUSTED_SHELL $MIR_HOST "$HOSTNAME"`
 				MIR_H_NAME_ARRAY=(${MIR_H_NAME_ARRAY[@]} $MIR_H_HOST)
@@ -1308,7 +1319,7 @@ GET_MIRROR_TYPE () {
 GET_QE_PRIMARY_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_PRIMARY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and  a.definedprimary='t' order by a.content;" 2>/dev/null`) > /dev/null 2>&1
+		QE_PRIMARY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and  a.preferred_role = 'p' order by a.content;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -1514,74 +1525,14 @@ STANDBY_CATALOG_UPDATE () {
 	MASTER_STANDBY_HOSTNAME=$1;shift
 	MASTER_STANDBY_DATA_DIRECTORY=$1;shift
 	MASTER_STANDBY_PORT=$1
-	STANDBY_HOST_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"select distinct hostname from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}';"|$WC -l`
+	STANDBY_HOST_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"select distinct hostname from $CONFIG_TABLE a where hostname='${MASTER_STANDBY_HOSTNAME}';"|$WC -l`
 	ERROR_CHK $? "obtain standby host count" 2
-        LOG_MSG "[INFO]:-Creating new $CONFIG_TABLE record for ${MASTER_STANDBY_HOSTNAME}"
-        MAX_DB_ID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"select max(dbid)+1 from $CONFIG_TABLE;"`
-	ERROR_CHK $? "obtain max dbid from $CONFIG_TABLE" 2
-        $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"insert into $CONFIG_TABLE (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${MAX_DB_ID},'f',-1,'t','f','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}');"
-        ERROR_CHK $? "add standby host $CONFIG_TABLE record" 2
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-START_SYNC_PROCESS () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ $# -ne 3 ];then ERROR_EXIT "[FATAL]:-Expected 3 parameters got $# " 2;fi
-	MASTER_STANDBY_HOSTNAME=$1;shift
-	MASTER_STANDBY_DATA_DIRECTORY=$1;shift
-	MASTER_STANDBY_PORT=$1
-	#Check to see if already have a process running on this port
-	GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT ${MASTER_STANDBY_HOSTNAME}
-	if [ $PID -ne 0 ];then
-		LOG_MSG "[INFO]:-Standby Master sync process active, will shutdown"
-		STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY
-	fi
-	LOG_MSG "[INFO]:-Starting gpsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME}" 1
-#        $TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "exec $GPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -i  >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &"
-        $TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "$EXPORT_LIB_PATH;exec $GPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -i  >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &"
-	$SLEEP 3 #Wait to ensure process has time to start
-	GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT ${MASTER_STANDBY_HOSTNAME}
-	if [ $PID -eq 0 ];then
-		LOG_MSG "[WARN]:-Failed to start sync process on ${MASTER_STANDBY_HOSTNAME}" 1
-		EXIT_STATUS=1
-	else
-		LOG_MSG "[INFO]:-Successfully started sync process on ${MASTER_STANDBY_HOSTNAME} PID=$PID"
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-STOP_SYNC_PROCESS () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ $# -ne 2 ];then ERROR_EXIT "[FATAL]:-Expected 2 parameters got $# " 2;fi
-	MASTER_STANDBY_HOSTNAME=$1;shift
-	MASTER_STANDBY_DATA_DIRECTORY=$1
-	LOG_MSG "[INFO]:-Stopping gpsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME} mode = fast and wait = on" 1
-	$TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "$EXPORT_LIB_PATH;$PG_CTL stop -D $MASTER_STANDBY_DATA_DIRECTORY -m fast"
-	RETVAL=$?
-	ERROR_CHK $RETVAL "fast shutdown of sync process on ${MASTER_STANDBY_HOSTNAME}" 1
-	STATUS_OUTPUT=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$EXPORT_LIB_PATH; ($PG_CTL -D $MASTER_STANDBY_DATA_DIRECTORY status) 2>&1"`
-	if [ `$ECHO $STATUS_OUTPUT | $GREP -c "pg_ctl: server is running"` -eq 1 ];then
-		# Issue a NoWait fast stop
-		LOG_MSG "[WARN]:-Process gpsyncmaster still running, will issue fast shutdown with nowait" 1
-		$TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "$EXPORT_LIB_PATH;$PG_CTL stop -D $MASTER_STANDBY_DATA_DIRECTORY -m fast -W"
-		RETVAL=$?
-		ERROR_CHK $RETVAL "fast shutdown of sync process on ${MASTER_ERROR_CHK_HOSTNAME}" 1
-		$SLEEP 5  # Wait for 5 seconds and see if the shutdown completed.
-		STATUS_OUTPUT=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$EXPORT_LIB_PATH; ($PG_CTL -D $MASTER_STANDBY_DATA_DIRECTORY status) 2>&1"`
-		if [ `$ECHO $STATUS_OUTPUT | $GREP -c "pg_ctl: server is running"` -eq 1 ];then
-			LOG_MSG "[WARN]: Using immediate option to stop sync process since fast option did not finish in 5 seconds" 1
-			$TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "$EXPORT_LIB_PATH;$PG_CTL stop -D $MASTER_STANDBY_DATA_DIRECTORY -m immediate"
-			RETVAL=$?
-			ERROR_CHK $RETVAL "immediate shutdown of sync process on ${MASTER_STANDBY_HOSTNAME}" 1
-		else
-			if [ `$ECHO $STATUS_OUTPUT | $GREP -c "pg_ctl: no server running"` -eq 0 ];then
-				LOG_MSG "Status returned from check reads $STATUS_OUTPUT" 1
-				LOG_MSG "[WARN]: Unable to execute pg_ctl status on ${MASTER_STANDBY_HOSTNAME} to check on sync process" 1
-			fi
-		fi
-	else
-		LOG_MSG "[INFO]:-Successfully shutdown sync process on ${MASTER_STANDBY_HOSTNAME}" 1
-	fi
+        LOG_MSG "[INFO]:-Creating new gp_configuration record for ${MASTER_STANDBY_HOSTNAME}"
+        MAX_DB_ID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"select max(dbid)+1 from $CONFIG_TABLE a;"`
+	ERROR_CHK $? "obtain max dbid from gp_configuration" 2
+        $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"insert into gp_segment_configuration (dbid, content, role, preferred_role, mode, status, hostname, address, port) values (${MAX_DB_ID},-1,'m', 'm', 'u', 's', '${MASTER_STANDBY_HOSTNAME}','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT});"
+        $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"insert into pg_filespace_entry (fsefsoid, fsedbid, fselocation) values (3052, ${MAX_DB_ID},'${MASTER_STANDBY_DATADIR}');"
+        ERROR_CHK $? "add standby host gp_configuration record" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

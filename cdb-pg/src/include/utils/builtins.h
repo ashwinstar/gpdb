@@ -1068,4 +1068,16 @@ extern Datum float8_mregr_r2(PG_FUNCTION_ARGS);
 /* utils/stat/pinv.c */
 Datum pseudoinverse(PG_FUNCTION_ARGS);
 
+/* cdb/cdbpersistentrelation.c */
+Datum gp_persistent_relation_node_add(PG_FUNCTION_ARGS);
+
+/* cdb/cdbpersistentdatabase.c */
+Datum gp_persistent_database_node_add(PG_FUNCTION_ARGS);
+
+/* cdb/cdbpersistenttablespace.c */
+Datum gp_persistent_tablespace_node_add(PG_FUNCTION_ARGS);
+
+/* cdb/cdbpersistentbuild.c */
+Datum gp_persistent_build_db(PG_FUNCTION_ARGS);
+
 #endif   /* BUILTINS_H */

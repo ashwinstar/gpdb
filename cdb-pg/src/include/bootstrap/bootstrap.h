@@ -71,8 +71,10 @@ typedef enum
 	CheckerProcess,
 	BootstrapProcess,
 	StartupProcess,
+	StartupPass2Process,
 	BgWriterProcess,
-	WalWriterProcess
+	WalWriterProcess,
+	FilerepProcess
 } AuxProcType;
 
 #endif   /* BOOTSTRAP_H */

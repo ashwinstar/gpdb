@@ -3244,7 +3244,6 @@ DATA(insert OID = 2971 (  text				PGNSP PGUID 12 f f t f i 1 25 f "16" _null_ _n
 DESCR("convert boolean to text");
 
 
-
 /* Aggregates (moved here from pg_aggregate for 7.3) */
 
 DATA(insert OID = 2100 (  avg				PGNSP PGUID 12 t f f f i 1 1700 f "20" _null_ _null_ _null_  aggregate_dummy - _null_ ));
@@ -4829,6 +4828,14 @@ DATA(insert OID = 7173 (  gp_update_ao_master_stats    PGNSP PGUID 12 f f f f v 
 DESCR("append only tables utility function");
 DATA(insert OID = 7174 (  gp_update_ao_master_stats    PGNSP PGUID 12 f f f f v 1 701 f "25" _null_ _null_ _null_ gp_update_ao_master_stats_name  - _null_  ));
 DESCR("append only tables utility function");
+DATA(insert OID = 7175 (  gp_persistent_database_node_add    PGNSP PGUID 12 f f f f v 3 23 f "26 26 21" _null_ _null_ _null_ gp_persistent_database_node_add  - _null_  ));
+DESCR("add entry to gp_persistent_database_node");
+DATA(insert OID = 7176 (  gp_persistent_relation_node_add    PGNSP PGUID 12 f f f f v 4 23 f "26 26 26 21" _null_ _null_ _null_ gp_persistent_relation_node_add  - _null_  ));
+DESCR("add entry to persistent_relation_node");
+DATA(insert OID = 7177 (  gp_persistent_tablespace_node_add    PGNSP PGUID 12 f f f f v 2 23 f "26 21" _null_ _null_ _null_ gp_persistent_tablespace_node_add  - _null_  ));
+DESCR("add entry to gp_persistent_tablespace_node");
+DATA(insert OID = 7178 (  gp_persistent_build_db    PGNSP PGUID 12 f f f f v 0 23 f "" _null_ _null_ _null_ gp_persistent_build_db  - _null_  ));
+DESCR("populate the persistent tables and gp_relation_node for the current database");
 
 /* GIN array support */
 DATA(insert OID = 2743 (  ginarrayextract	 PGNSP PGUID 12 f f t f i 2 2281 f "2277 2281" _null_ _null_ _null_	ginarrayextract - _null_ ));

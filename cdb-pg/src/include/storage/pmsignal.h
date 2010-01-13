@@ -33,7 +33,10 @@ typedef enum
 	PMSIGNAL_START_AUTOVAC_WORKER,		/* start an autovacuum worker */
 
 	PMSIGNAL_START_AUTOVAC,
-	
+	PMSIGNAL_FILEREP_STATE_CHANGE,	      /* filerep is reporting state change */ 
+
+	PMSIGNAL_PRIMARY_MIRROR_TRANSITION_RECEIVED, /* a primary mirror transition has been received by a backend */
+
 	NUM_PMSIGNALS				/* Must be last value of enum! */
 } PMSignalReason;
 

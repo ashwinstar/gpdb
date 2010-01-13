@@ -46,21 +46,22 @@
  * Open the segment file for a specified column
  * associated with the datum stream.
  */
-static void open_datumstream_segfile(char *basepath,
+static void open_datumstream_segfile(char *basepath, RelFileNode node,
 									 AOCSFileSegInfo *segInfo,
 									 DatumStream *ds,
 									 int colNo)
 {
 	int segNo = segInfo->segno;
-    char fn[MAXPGPATH];
+	char fn[MAXPGPATH];
+	int32	fileSegNo;
 	
 	AOCSVPInfoEntry *e = getAOCSVPEntry(segInfo, colNo);
 
-	FormatAOSegmentFileName(basepath, segNo, colNo, fn);
+	FormatAOSegmentFileName(basepath, segNo, colNo, &fileSegNo, fn);
 	Assert(strlen(fn) + 1 <= MAXPGPATH);
 
 	Assert(ds);
-	datumstream_open_file(ds, fn, e->eof, e->eof_uncompressed); 
+	datumstream_open_file(ds, fn, e->eof, e->eof_uncompressed, node, fileSegNo);
 }
 
 /*
@@ -84,10 +85,10 @@ static void open_all_datumstream_segfiles(Relation rel,
     for(i=0; i<nvp; ++i)
     {
         if (proj[i])
-		{
-			open_datumstream_segfile(basepath, segInfo, ds[i], i);
+	{
+			open_datumstream_segfile(basepath, rel->rd_node, segInfo, ds[i], i);
 			datumstream_read_block(ds[i]);
-		}
+	}
     }
 
     pfree(basepath);
@@ -376,6 +377,7 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 {
     char *basepath = relpath(desc->aoi_rel->rd_node);
     char fn[MAXPGPATH];
+	int32	fileSegNo;
 
     AOCSFileSegInfo *seginfo;
 
@@ -397,10 +399,12 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
     {
         AOCSVPInfoEntry *e = getAOCSVPEntry(seginfo, i);
 
-		FormatAOSegmentFileName(basepath, seginfo->segno, i, fn);
+		FormatAOSegmentFileName(basepath, seginfo->segno, i, &fileSegNo, fn);
 		Assert(strlen(fn) + 1 <= MAXPGPATH);
 
-        datumstream_open_file(desc->ds[i], fn, e->eof, e->eof_uncompressed);
+        datumstream_open_file(desc->ds[i], fn, e->eof, e->eof_uncompressed,
+				desc->aoi_rel->rd_node,
+				fileSegNo); 
     }
 
     pfree(basepath);
@@ -727,7 +731,7 @@ openFetchSegmentFile(AOCSFetchDesc aocsFetchDesc,
 		i++;
 	}
 
-	open_datumstream_segfile(aocsFetchDesc->basepath,
+	open_datumstream_segfile(aocsFetchDesc->basepath, aocsFetchDesc->relation->rd_node,
 							 fsInfo,
 							 datumStreamFetchDesc->datumStream,
 							 colNo);

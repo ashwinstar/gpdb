@@ -1071,7 +1071,6 @@ PQbuildGpQueryString(const char  *command,
 					  int		   localSlice,
 					  int		   rootIdx,
 					  int		   primary_gang_id,
-					  int		   mirror_gang_id,
 					  int64		   currentStatementStartTimestamp,
 					  Oid			sessionUserId,
 					  bool			sessionUserIsSuper,
@@ -1144,10 +1143,13 @@ PQbuildGpQueryString(const char  *command,
 	tmp = htonl(primary_gang_id);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
-	
+
+	/* REMOVED MIRROR GANG */
+#if 0	
 	tmp = htonl(mirror_gang_id);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
+#endif
 	
 	/* High order half first, since we're doing MSB-first */
 	n32 = (uint32) (currentStatementStartTimestamp >> 32);
@@ -1258,7 +1260,6 @@ PQbuildGpDtxProtocolCommand(
 					  char*						gid,
 					  int   					gxid,
 					  int						primary_gang_id,
-					  int						mirror_gang_id,
 					  char*                     argument,
 					  int                       argumentLength,
 					  int         		    	*final_len)
@@ -1321,10 +1322,13 @@ PQbuildGpDtxProtocolCommand(
 	tmp = htonl(primary_gang_id);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
-	
+
+	/* REMOVED MIRROR GANG */
+#if 0
 	tmp = htonl(mirror_gang_id);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
+#endif
 	
 	tmp = htonl(argumentLength);
 	memcpy(pos, &tmp, 4);

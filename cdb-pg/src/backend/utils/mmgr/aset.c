@@ -1373,8 +1373,8 @@ AllocSetCheck(MemoryContext context)
 			if (dsize != 0xFFFFFFFF && dsize != 0
                     && dsize < chsize && *chdata_end != 0x7E)
 			{
-				Assert(!"Memory context error");
-				elog(WARNING, "problem in alloc set %s: detected write past chunk end in block %p, chunk %p (%s:%d)",
+//				Assert(!"Memory context error");
+				elog(ERROR, "problem in alloc set %s: detected write past chunk end in block %p, chunk %p (%s:%d)",
 						name, block, chunk, CDB_MCXT_WHERE(&set->header));
 			}
 

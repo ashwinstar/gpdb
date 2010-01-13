@@ -13,7 +13,7 @@ insert into U(segid, a, b) select gp_segment_id, * from T;
 select * from U where segid <> gp_segment_id; -- should return 0 rows
 
 -- Hash doesn't work quite like this.
--- (numsegments is in gp_id).
+-- (numsegments can come from something like in jetpack.sql's __gp_number_of_segments view).
 --select * from T where gp_segment_id <> a % numsegments; -- should return 0 rows
 
 create table W(segid int, a int) distributed by (a);

@@ -69,6 +69,10 @@ The tokens are:
  from the gp_configuration table and replaces all 
  instances of the token @hostname@.
 
+=item gphome
+
+ location of the greenplum installation
+
 =item ps_pidfirst
 
  generate a long ps listing with the pid first, equivalent to 
@@ -251,7 +255,7 @@ if (1)
 
 #    $psql_str .= " -c \'\\d $glob_tab \'";
 
-    $psql_str .= " -c \'select * from gp_configuration \'";
+    $psql_str .= " -c \'select content, role, status, hostname from gp_segment_configuration \'";
 
 #    print $psql_str, "\n";
 
@@ -267,12 +271,11 @@ if (1)
 
     for my $rowh (@{$mpp_config_table})
     {
-        if (($rowh->{1} == 0) && # content (seg 0)
-            ($rowh->{2} =~ m/t/) && # defined primary
-            ($rowh->{4} =~ m/t/) && # isprimary
-            ($rowh->{5} =~ m/t/)) # valid
+        if (($rowh->{1} == 0) &&     # content (seg 0)
+            ($rowh->{2} =~ m/p/) &&  # role = primary
+            ($rowh->{3} =~ m/u/))    # status = up
         {
-            $hostname = $rowh->{6};
+            $hostname = $rowh->{4};  # hostname
             last;
         }
         
@@ -285,7 +288,7 @@ if (1)
     $psql_str .= $glob_connect
         if (defined($glob_connect));
 
-    $psql_str .= " -c \'select count(*) from gp_configuration where content != -1 and isprimary = true \'";
+    $psql_str .= " -c \"select count(*) from gp_segment_configuration where content != -1 and preferred_role = 'p' \"";
 
     $tabdef = `$psql_str`;
 
@@ -309,6 +312,9 @@ if (1)
 	my $schema = '\\@gpupgradeschemaname\\@';
 	my $infoschema = '\\@gpinfoschemaname\\@';
 	my $ugdir = '\\@gpupgradedatadir\\@';
+	my $gphomeexp = '\\@gphome\\@';
+
+	my $gphome = $ENV{GPHOME};
 
     my $locps   = 'ps axww';
     if ($^O !~ /darwin|mac|osx/i)
@@ -351,7 +357,7 @@ if (1)
 	chomp $curdir;
 
 #    print "$filnam\n";
-    system "perl -i -ple \' s/$hostexp/$hostname/gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; s/$infoschema/public/gm; s,$ugdir,$curdir/data/,gm; \' $filnam\n";
+    system "perl -i -ple \' s/$hostexp/$hostname/gm; s,$gphomeexp,$gphome,gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; s/$infoschema/public/gm; s,$ugdir,$curdir/data/,gm; \' $filnam\n";
 
     # replace all "which" expressions with binary
     if (defined($gpwhich_all) && length($gpwhich_all))

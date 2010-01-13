@@ -769,11 +769,6 @@ currval_oid(PG_FUNCTION_ARGS)
 				 errmsg("currval() not supported")));
 	}
 
-	if (Gp_role == GP_ROLE_EXECUTE  && !Gp_is_primary)
-	{
-		elog(ERROR,"currval() cannot be used in this statement when mirroring is active");
-	}
-
 	/* open and AccessShareLock sequence */
 	init_sequence(relid, &elm, &seqrel);
 
@@ -1532,11 +1527,6 @@ cdb_sequence_nextval_proxy(Oid      tablespaceid,
                            int64   *pcached,
                            int64   *pincrement)
 {
-
-    if (!Gp_is_primary)
-        elog(ERROR,"nextval() cannot be used in this statement when mirroring is active");
-
-
     sendSequenceRequest(GetSeqServerFD(),
     					dbid,
     					tablespaceid,
@@ -1546,8 +1536,6 @@ cdb_sequence_nextval_proxy(Oid      tablespaceid,
     					plast,
     					pcached,
     					pincrement);
-
-
 
 }                               /* cdb_sequence_server_nextval */
 

@@ -249,6 +249,11 @@
 /* #define WAL_DEBUG */
 
 /*
+ * Enable debugging print statements for filerep-related operations.
+ */
+/* #define FILEREP_DEBUG */
+
+/*
  * Enable tracing of resource consumption during sort operations;
  * see also the trace_sort GUC var.  For 8.1 this is enabled by default.
  */

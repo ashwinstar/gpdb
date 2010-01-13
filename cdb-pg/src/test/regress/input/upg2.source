@@ -1,3 +1,4 @@
+-- -*- mode: sql; -*-
 --
 -- upgrade 2
 --
@@ -6,6 +7,11 @@
 -- Load in data which represents the difference between the 3.2 catalog,
 -- 3.3 catalog, and 3.4 catalogs
 --
+
+-- start_matchsubs
+-- m|base/\d+|
+-- s|base/\d+|base/OID|
+-- end_matchsubs
 
 --
 -- save the catalog info for previous revision
@@ -87,12 +93,12 @@ create table public.pg_tablespace(spcname name not null,
  								  ) with oids;
 
 -- These tables we only create so that the REINDEX statements wont error
+create table public.gp_configuration as select * from pg_catalog.gp_configuration;
 create table public.gp_configuration_history(like pg_catalog.gp_configuration_history);
 create table public.gp_db_interfaces(like pg_catalog.gp_db_interfaces);
 create table public.gp_interfaces(like pg_catalog.gp_interfaces);
-create table public.gp_persistent_rel_files(like pg_catalog.gp_persistent_rel_files);
-create table public.gp_san_config(like pg_catalog.gp_san_config);
-create table public.gp_segment_config(like pg_catalog.gp_segment_config);
+create table public.gp_san_configuration(like pg_catalog.gp_san_configuration);
+create table public.gp_segment_configuration(like pg_catalog.gp_segment_configuration);
 create table public.gp_fault_strategy(like pg_catalog.gp_fault_strategy);
 create table public.pg_appendonly_alter_column(like pg_catalog.pg_appendonly_alter_column);
 create table public.pg_filespace(like pg_catalog.pg_filespace) with oids;
@@ -105,8 +111,11 @@ create table public.pg_stat_last_operation(like pg_catalog.pg_stat_last_operatio
 create table public.pg_stat_last_shoperation(like pg_catalog.pg_stat_last_shoperation);
 create table public.pg_user_mapping(like pg_catalog.pg_user_mapping);
 create table public.gp_fastsequence(like pg_catalog.gp_fastsequence);
+create table public.gp_global_sequence(like pg_catalog.gp_global_sequence);
+create table public.gp_relation_node(like pg_catalog.gp_relation_node);
 
 -- indexes
+create unique index gp_configuration_content_definedprimary_index on public.gp_configuration(content, definedprimary);
 create        index gp_db_interfaces_dbid_index on public.gp_db_interfaces(dbid);
 create unique index gp_interfaces_interface_index on public.gp_interfaces(interfaceid);
 create unique index pg_amproc_opc_proc_index on public.pg_amproc (amopclaid, amprocsubtype, amprocnum);
@@ -119,6 +128,7 @@ create unique index pg_operator_oid_index on public.pg_operator(oid);
 create unique index pg_resourcetype_oid_index on public.pg_resourcetype(oid);
 create unique index pg_resqueue_oid_index on public.pg_resqueue(oid);
 create unique index gp_fastsequence_objid_objmod_index on public.gp_fastsequence(objid, objmod);
+create unique index gp_relation_node_index on public.gp_relation_node(tablespace_oid, relfilenode_oid);
 
 --
 -- 2. Build the 33 catalog
@@ -1170,9 +1180,8 @@ drop table
   public.pg_filespace,
   public.pg_tablespace,
   public.pg_stat_last_operation,
-  public.gp_persistent_rel_files,
-  public.gp_san_config,
-  public.gp_segment_config,
+  public.gp_san_configuration,
+  public.gp_segment_configuration,
   public.gp_fault_strategy,
   public.pg_appendonly_alter_column,
   public.pg_filespace_entry,

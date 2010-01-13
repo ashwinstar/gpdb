@@ -25,6 +25,7 @@
 #include "storage/block.h"
 #include "storage/relfilenode.h"
 #include "utils/relcache.h"
+#include "catalog/gp_persistent.h"
 
 
 /*
@@ -113,6 +114,13 @@ typedef struct RelationAmInfo
 	FmgrInfo	amoptions;
 } RelationAmInfo;
 
+typedef struct RelationNodeInfo
+{
+	bool	isPresent;
+
+	ItemPointerData		persistentTid;
+	int64				persistentSerialNum;
+} RelationNodeInfo;
 
 /*
  * Here are the contents of a relation cache entry.
@@ -191,6 +199,11 @@ typedef struct RelationData
 	List	   *rd_indpred;		/* index predicate tree, if any */
 	void	   *rd_amcache;		/* available for use by index AM */
 
+	/*
+	 * Physical file-system information.
+	 */
+	struct RelationNodeInfo rd_relationnodeinfo;
+								/* Values from gp_relation_node, if present */
 
 	/* use "struct" here to avoid needing to include pgstat.h: */
 	struct PgStat_TableStatus *pgstat_info;		/* statistics collection area */

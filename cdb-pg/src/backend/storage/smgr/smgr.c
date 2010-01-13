@@ -20,17 +20,33 @@
 
 #include "access/xact.h"
 #include "access/xlogutils.h"
+#include "catalog/catalog.h"
 #include "commands/tablespace.h"
 #include "storage/bufmgr.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
+#include "access/persistentfilesysobjname.h"
+#include "cdb/cdbpersistenttablespace.h"
+#include "cdb/cdbpersistentdatabase.h"
+#include "cdb/cdbpersistentrelation.h"
+#include "cdb/cdbmirroredfilesysobj.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 #include "storage/smgr.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
+#include "utils/guc.h"
 
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/indexing.h"
+
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <glob.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 /*
  * This struct of function pointers defines the API between smgr.c and
@@ -47,8 +63,12 @@ typedef struct f_smgr
 	bool		(*smgr_init) (void);	/* may be NULL */
 	bool		(*smgr_shutdown) (void);		/* may be NULL */
 	bool		(*smgr_close) (SMgrRelation reln);
+	bool		(*smgr_createtablespacedir) (Oid tablespace, bool isRedo);
+	bool		(*smgr_createdbdir) (DbDirNode *dbDirNode, bool isRedo);
 	bool		(*smgr_create) (SMgrRelation reln, bool isRedo);
 	bool		(*smgr_unlink) (RelFileNode rnode, bool isRedo);
+	bool		(*smgr_rmtablespacedir) (Oid tablespace, bool isRedo);
+	bool		(*smgr_rmdbdir) (DbDirNode *dbDirNode, bool isRedo);
 	bool		(*smgr_extend) (SMgrRelation reln, BlockNumber blocknum,
 											char *buffer, bool isTemp);
 	bool		(*smgr_read) (SMgrRelation reln, BlockNumber blocknum,
@@ -67,7 +87,7 @@ typedef struct f_smgr
 
 static const f_smgr smgrsw[] = {
 	/* magnetic disk */
-	{mdinit, NULL, mdclose, mdcreate, mdunlink, mdextend,
+	{mdinit, NULL, mdclose, mdcreatetablespacedir, mdcreatedbdir, mdcreate, mdunlink, mdrmtablespacedir, mdrmdbdir, mdextend,
 		mdread, mdwrite, mdnblocks, mdtruncate, mdimmedsync,
 		NULL, NULL, mdsync
 	}
@@ -100,19 +120,26 @@ static HTAB *SMgrRelationHash = NULL;
  * unbetimes.  It'd probably be OK to keep it in TopTransactionContext,
  * but I'm being paranoid.
  */
-
-typedef struct PendingRelDelete
+typedef struct PendingDelete
 {
-	RelFileNode relnode;		/* relation that may need to be deleted */
+	PersistentFileSysObjName fsObjName;		
+							/* File-system object that may need to be deleted */
+
 	int			which;			/* which storage manager? */
 	bool		isLocalBuf;	    /* CDB: true => uses local buffer mgr */
 	bool		atCommit;		/* T=delete at commit; F=delete at abort */
+	bool		sameTransCreateDrop; /* Collapsed create-delete? */
+	ItemPointerData persistentTid;
+	int64		persistentSerialNum;
 	int			nestLevel;		/* xact nesting level of request */
-	struct PendingRelDelete *next;		/* linked-list link */
-} PendingRelDelete;
+	struct PendingDelete *next;		/* linked-list link */
+} PendingDelete;
 
-static PendingRelDelete *pendingDeletes = NULL; /* head of linked list */
+static PendingDelete *pendingDeletes = NULL; /* head of linked list */
+static int pendingDeletesCount = 0;
+static bool pendingDeletesSorted = false;
 
+typedef PendingDelete *PendingDeletePtr;
 
 /*
  * Declarations for smgr-related XLOG records
@@ -226,7 +253,7 @@ smgropen(RelFileNode rnode)
 		/* hash_search already filled in the lookup key */
 		reln->smgr_owner = NULL;
 		reln->smgr_which = 0;	/* we only have md.c at present */
-		reln->md_fd = NULL;		/* mark it not open */
+		reln->md_mirvec = NULL;		/* mark it not open */
 	}
 
 	return reln;
@@ -330,6 +357,141 @@ smgrclosenode(RelFileNode rnode)
 }
 
 /*
+ *	smgrcreatetablespacedir() -- Create a new tablespace directory.
+ *
+ */
+void
+smgrcreatetablespacedir(Oid tablespace, bool isRedo)
+{
+	PendingDelete *pending; 
+	
+	if (!isRedo)
+	{
+		/* Add the relation to the list of stuff to delete at abort */
+		pending = (PendingDelete *)
+			MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
+		
+		PersistentFileSysObjName_SetTablespaceDir(&pending->fsObjName,tablespace);
+
+		pending->which = 0;  // We only have 1 today.
+		pending->isLocalBuf = false;
+		pending->atCommit = false;	/* delete if abort */
+		pending->sameTransCreateDrop = false;
+		pending->nestLevel = GetCurrentTransactionNestLevel();
+		pending->next = pendingDeletes;
+		pendingDeletes = pending;
+		pendingDeletesCount++;
+		pendingDeletesSorted = false;
+		
+		// UNDONE: For now, ~_MarkCreatePending will do the XLOG Insert and XLOG Flush
+		// UNDONE: of the PendingCreate 
+		// UNDONE: We'll improve performance later by moving the XLOG Insert sooner...
+		// UNDONE: and flushing later...
+		PersistentTablespace_MarkCreatePending(
+									pending->fsObjName.variant.tablespace,
+									&pending->persistentTid,
+									/* flushToXLog */ true);
+
+	}
+	
+	if (!(*(smgrsw[0].smgr_createtablespacedir)) (tablespace, isRedo))
+	{
+	    ereport(ERROR,
+			(errcode_for_file_access(),
+			 errmsg("could not create tablespace directory %u: %m",
+					tablespace)));
+	}
+}
+
+/*
+ *	smgrcreatedbdir() -- Create a new database directory.
+ *
+ */
+void
+smgrcreatedbdir(DbDirNode *dbDirNode, bool isRedo)
+{
+	PendingDelete *pending; 
+	Oid tablespace;
+	Oid database;
+
+	tablespace = dbDirNode->tablespace;
+	database = dbDirNode->database;
+	
+	if (!isRedo)
+	{
+		/* Add the relation to the list of stuff to delete at abort */
+		pending = (PendingDelete *)
+			MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
+		
+		PersistentFileSysObjName_SetDatabaseDir(&pending->fsObjName,tablespace,database);
+
+		pending->which = 0;  // We only have 1 today.
+		pending->isLocalBuf = false;
+		pending->atCommit = false;	/* delete if abort */
+		pending->sameTransCreateDrop = false;
+		pending->nestLevel = GetCurrentTransactionNestLevel();
+		pending->next = pendingDeletes;
+		pendingDeletes = pending;
+		pendingDeletesCount++;
+		pendingDeletesSorted = false;
+		
+		// UNDONE: For now, ~_MarkCreatePending will do the XLOG Insert and XLOG Flush
+		// UNDONE: of the PendingCreate 
+		// UNDONE: We'll improve performance later by moving the XLOG Insert sooner...
+		// UNDONE: and flushing later...
+		PersistentDatabase_MarkCreatePending(
+									&pending->fsObjName.variant.dbDirNode,
+									&pending->persistentTid,
+									/* flushToXLog */ true);
+
+	}
+	
+	if (!(*(smgrsw[0].smgr_createdbdir)) (dbDirNode, isRedo))
+	{
+	    ereport(ERROR,
+			(errcode_for_file_access(),
+			 errmsg("could not create database directory %u/%u: %m",
+					tablespace,
+					database)));
+	}
+}
+
+
+void smgrcreatepending(
+	RelFileNode		relFileNode, 
+	ItemPointer		persistentTid,
+	int64			*persistentSerialNum,
+	bool			isLocalBuf,
+	bool			flushToXLog)
+{
+	PendingDelete *pending;
+
+	PersistentRelation_AddCreatePending(
+								&relFileNode,
+								persistentTid,
+								persistentSerialNum,
+								flushToXLog);
+	
+	/* Add the relation to the list of stuff to delete at abort */
+	pending = (PendingDelete *)
+		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
+	
+	PersistentFileSysObjName_SetRelationFile(&pending->fsObjName,&relFileNode);
+	
+	pending->which = 0;  // We only have 1 today.
+	pending->isLocalBuf = isLocalBuf;	/*CDB*/
+	pending->atCommit = false;	/* delete if abort */
+	pending->sameTransCreateDrop = false;
+	pending->nestLevel = GetCurrentTransactionNestLevel();
+	pending->persistentTid = *persistentTid;
+	pending->persistentSerialNum = *persistentSerialNum;
+	pending->next = pendingDeletes;
+	pendingDeletes = pending;
+	pendingDeletesCount++;
+	pendingDeletesSorted = false;
+}
+
+/*
  *	smgrcreate() -- Create a new relation.
  *
  *		Given an already-created (but presumably unused) SMgrRelation,
@@ -337,17 +499,17 @@ smgrclosenode(RelFileNode rnode)
  *
  *		If isRedo is true, it is okay for the underlying file to exist
  *		already because we are in a WAL replay sequence.  In this case
- *		we should make no PendingRelDelete entry; the WAL sequence will
+ *		we should make no PendingDelete entry; the WAL sequence will
  *		tell whether to drop the file.
  */
 void
-smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo)
+smgrcreate(
+	SMgrRelation reln, 
+	ItemPointer persistentTid, 
+	int64 *persistentSerialNum,
+	bool isLocalBuf, 
+	bool isRedo)
 {
-	XLogRecPtr	lsn;
-	XLogRecData rdata;
-	xl_smgr_create xlrec;
-	PendingRelDelete *pending;
-
 	/*
 	 * We may be using the target table space for the first time in this
 	 * database, so create a per-database subdirectory if needed.
@@ -361,52 +523,49 @@ smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo)
 							reln->smgr_rnode.dbNode,
 							isRedo);
 
+
+	if (!isRedo)
+	{
+		XLogRecPtr	lsn;
+		XLogRecData rdata;
+		xl_smgr_create xlrec;
+	
+		// UNDONE: When PersistentFileSysObj is fully up, we can get rid of this XLOG record.
+		/*
+		 * Make a non-transactional XLOG entry showing the file creation. It's
+		 * non-transactional because we should replay it whether the transaction
+		 * commits or not; if not, the file will be dropped at abort time.
+		 */
+		xlrec.rnode = reln->smgr_rnode;
+
+		rdata.data = (char *) &xlrec;
+		rdata.len = sizeof(xlrec);
+		rdata.buffer = InvalidBuffer;
+		rdata.next = NULL;
+
+		lsn = XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE | XLOG_NO_TRAN, &rdata);
+
+		// UNDONE: For now, ~_MarkCreatePending will do the XLOG Insert and XLOG Flush
+		// UNDONE: of the PendingCreate 
+		// UNDONE: We'll improve performance later by moving the XLOG Insert sooner...
+		// UNDONE: and flushing later...
+		smgrcreatepending(
+					reln->smgr_rnode, 
+					persistentTid,
+					persistentSerialNum,
+					isLocalBuf,
+					/* flushToXLog */ true);
+	}
+	
 	if (!(*(smgrsw[reln->smgr_which].smgr_create)) (reln, isRedo))
 	{
-		/* 
-		 * Special code for allowing upgrade from Greenplum Database 2.2 to 2.3.
-		 */
-		if (errno==EEXIST && reln->smgr_rnode.spcNode == GLOBALTABLESPACE_OID && reln->smgr_rnode.dbNode == 0 && 
-			(reln->smgr_rnode.relNode == ResQueueRelationId || reln->smgr_rnode.relNode == ResQueueOidIndexId || reln->smgr_rnode.relNode == ResQueueRsqnameIndexId || reln->smgr_rnode.relNode == AuthIdRolResQueueIndexId) )
-		{
-			isRedo = true;
-		}
-		else
-		    ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not create relation %u/%u/%u: %m",
-						reln->smgr_rnode.spcNode,
-						reln->smgr_rnode.dbNode,
-						reln->smgr_rnode.relNode)));
+	    ereport(ERROR,
+			(errcode_for_file_access(),
+			 errmsg("could not create relation %u/%u/%u: %m",
+					reln->smgr_rnode.spcNode,
+					reln->smgr_rnode.dbNode,
+					reln->smgr_rnode.relNode)));
 	}
-
-	if (isRedo)
-		return;
-
-	/*
-	 * Make a non-transactional XLOG entry showing the file creation. It's
-	 * non-transactional because we should replay it whether the transaction
-	 * commits or not; if not, the file will be dropped at abort time.
-	 */
-	xlrec.rnode = reln->smgr_rnode;
-
-	rdata.data = (char *) &xlrec;
-	rdata.len = sizeof(xlrec);
-	rdata.buffer = InvalidBuffer;
-	rdata.next = NULL;
-
-	lsn = XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE | XLOG_NO_TRAN, &rdata);
-
-	/* Add the relation to the list of stuff to delete at abort */
-	pending = (PendingRelDelete *)
-		MemoryContextAlloc(TopMemoryContext, sizeof(PendingRelDelete));
-	pending->relnode = reln->smgr_rnode;
-	pending->which = reln->smgr_which;
-	pending->isLocalBuf = isLocalBuf;   /*CDB*/
-	pending->atCommit = false;	/* delete if abort */
-	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->next = pendingDeletes;
-	pendingDeletes = pending;
 }
 
 /*
@@ -418,30 +577,31 @@ smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo)
  * This also implies smgrclose() on the SMgrRelation object.
  */
 void
-smgrscheduleunlink(SMgrRelation reln, bool isLocalBuf)
+smgrscheduleunlink(
+	SMgrRelation reln,
+	ItemPointer persistentTid,
+	int64 persistentSerialNum,
+	bool isLocalBuf)
 {
-	PendingRelDelete *pending;
+	PendingDelete *pending;
 
 	/* Add the relation to the list of stuff to delete at commit */
-	pending = (PendingRelDelete *)
-		MemoryContextAlloc(TopMemoryContext, sizeof(PendingRelDelete));
-	pending->relnode = reln->smgr_rnode;
+	pending = (PendingDelete *)
+		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
+
+	PersistentFileSysObjName_SetRelationFile(&pending->fsObjName,&reln->smgr_rnode);
+
 	pending->which = reln->smgr_which;
 	pending->isLocalBuf = isLocalBuf;   /*CDB*/
 	pending->atCommit = true;	/* delete if commit */
+	pending->sameTransCreateDrop = false;
+	pending->persistentTid = *persistentTid;
+	pending->persistentSerialNum = persistentSerialNum;
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->next = pendingDeletes;
 	pendingDeletes = pending;
-
-	/*
-	 * NOTE: if the relation was created in this transaction, it will now be
-	 * present in the pending-delete list twice, once with atCommit true and
-	 * once with atCommit false.  Hence, it will be physically deleted at end
-	 * of xact in either case (and the other entry will be ignored by
-	 * smgrDoPendingDeletes, so no error will occur).  We could instead remove
-	 * the existing list entry and delete the physical file immediately, but
-	 * for now I'll keep the logic simple.
-	 */
+	pendingDeletesCount++;
+	pendingDeletesSorted = false;
 
 	/* Now close the file and throw away the hashtable entry */
 	smgrclose(reln);
@@ -509,6 +669,118 @@ smgr_internal_unlink(RelFileNode rnode, int which, bool isLocalBuf, bool isRedo)
 						rnode.dbNode,
 						rnode.relNode)));
 }
+
+/*
+ *	smgrschedulermtablespacedir() -- Schedule removing a tablespace directory at xact commit.
+ *
+ *		The tablespace directory is marked to be removed from the store if we
+ *		successfully commit the current transaction.
+ */
+void
+smgrschedulermtablespacedir(Oid tablespace)
+{
+	PendingDelete *pending;
+
+	/* Add the database directory to the list of stuff to delete at commit */
+	pending = (PendingDelete *)
+		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
+	
+	PersistentFileSysObjName_SetTablespaceDir(&pending->fsObjName,tablespace);
+	
+	pending->which = 0;  // We only have 1 today.
+	pending->isLocalBuf = false;
+	pending->atCommit = true;	/* delete if commit */
+	pending->sameTransCreateDrop = false;
+	pending->nestLevel = GetCurrentTransactionNestLevel();
+	pending->next = pendingDeletes;
+	pendingDeletes = pending;
+	pendingDeletesCount++;
+	pendingDeletesSorted = false;
+}
+
+/*
+ *	smgrschedulermdbdir() -- Schedule removing a DB directory at xact commit.
+ *
+ *		The database directory is marked to be removed from the store if we
+ *		successfully commit the current transaction.
+ */
+void
+smgrschedulermdbdir(DbDirNode *dropDbDirNode)
+{
+	PendingDelete *pending;
+	Oid tablespace;
+	Oid database;
+
+	/* Add the database directory to the list of stuff to delete at commit */
+	pending = (PendingDelete *)
+		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
+
+	tablespace = dropDbDirNode->tablespace;
+	database = dropDbDirNode->database;
+	
+	PersistentFileSysObjName_SetDatabaseDir(&pending->fsObjName,tablespace,database);
+	
+	pending->which = 0;  // We only have 1 today.
+	pending->isLocalBuf = false;
+	pending->atCommit = true;	/* delete if commit */
+	pending->sameTransCreateDrop = false;
+	pending->nestLevel = GetCurrentTransactionNestLevel();
+	pending->next = pendingDeletes;
+	pendingDeletes = pending;
+	pendingDeletesCount++;
+	pendingDeletesSorted = false;
+}
+
+/*
+ * Shared subroutine that actually does the rmdir of a database directory ...
+ */
+static void
+smgr_internal_rmtablespacedir(Oid tablespace, int which, bool isRedo)
+{
+	/*
+	 * And remove the physical tablespace directory.
+	 *
+	 * Note: we treat deletion failure as a WARNING, not an error, because
+	 * we've already decided to commit or abort the current xact.
+	 */
+	if (!(*(smgrsw[which].smgr_rmtablespacedir)) (tablespace, isRedo))
+		ereport(WARNING,
+				(errcode_for_file_access(),
+				 errmsg("could not remove tablespace directory %u: %m",
+						tablespace)));
+}
+void
+smgrdormtablespacedir(Oid tablespace, bool isRedo)
+{
+	smgr_internal_rmtablespacedir(tablespace, 0, isRedo);
+}
+
+/*
+ * Shared subroutine that actually does the rmdir of a database directory ...
+ */
+static void
+smgr_internal_rmdbdir(DbDirNode *dropDbDirNode, int which, bool isRedo)
+{
+	/*
+	 * And remove the physical database directory.
+	 *
+	 * Note: we treat deletion failure as a WARNING, not an error, because
+	 * we've already decided to commit or abort the current xact.
+	 */
+	if (!(*(smgrsw[which].smgr_rmdbdir)) (dropDbDirNode, isRedo))
+		ereport(WARNING,
+				(errcode_for_file_access(),
+				 errmsg("could not remove database directory %u/%u: %m",
+						dropDbDirNode->tablespace,
+						dropDbDirNode->database)));
+}
+
+void
+smgrdormdbdir(DbDirNode *dropDbDirNode, bool isRedo)
+{
+	smgr_internal_rmdbdir(dropDbDirNode, 0, isRedo);
+}
+
 
 /*
  *	smgrextend() -- Add a new block to a file.
@@ -708,6 +980,14 @@ smgrimmedsync(SMgrRelation reln)
 						reln->smgr_rnode.relNode)));
 }
 
+static void
+PendingDelete_Free(
+	PendingDelete **ele)
+{
+	pfree(*ele);
+
+	*ele = NULL;
+}
 
 /*
  *	PostPrepare_smgr -- Clean up after a successful PREPARE
@@ -719,33 +999,336 @@ smgrimmedsync(SMgrRelation reln)
 void
 PostPrepare_smgr(void)
 {
-	PendingRelDelete *pending;
-	PendingRelDelete *next;
+	PendingDelete *pending;
+	PendingDelete *next;
 
 	for (pending = pendingDeletes; pending != NULL; pending = next)
 	{
 		next = pending->next;
 		pendingDeletes = next;
+
+		pendingDeletesCount--;
+
 		/* must explicitly free the list entry */
-		pfree(pending);
+		PendingDelete_Free(&pending);
 	}
+
+	Assert(pendingDeletesCount == 0);
+	pendingDeletesSorted = false;
 }
 
 
+static void
+smgrDoDeleteActions(
+	PendingDelete 	**list,
+	int					*listCount,
+	bool				forCommit)
+{
+	PendingDelete *current;
+	int entryIndex;
+	bool doDelete;
+
+	entryIndex = 0;
+	while (true)
+	{
+		/*
+		 * Keep adjusting the list to maintain its integrity.
+		 */
+		current = *list;
+		if (current == NULL)
+			break;
+		
+ 		Assert(*listCount > 0);
+		(*listCount)--;
+
+		*list = current->next;
+
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Storage Manager: Do delete action for list entry #%d: '%s' (forCommit %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
+				 entryIndex,
+				 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
+				 (forCommit ? "true" : "false"),
+				 current->nestLevel,
+				 ItemPointerToString(&current->persistentTid),
+				 current->persistentSerialNum,
+				 (current->sameTransCreateDrop ? "true" : "false"));
+
+		doDelete = false;	// Assume.
+		if (forCommit)
+		{
+			/*
+			 * Do commit processing.
+			 */
+			if (current->atCommit)
+			{
+				/*
+				 * DROP on commit.
+				 */
+				PersistentFileSysObj_MarkDropPending(
+								&current->fsObjName,
+								&current->persistentTid,
+								current->persistentSerialNum);
+
+				doDelete = true;
+			}
+			else
+			{
+				PersistentFileSysObj_Created(
+								&current->fsObjName,
+								&current->persistentTid,
+								current->persistentSerialNum);
+			}
+		}
+		else
+		{
+			/*
+			 * Do abort processing.
+			 */
+			if (!current->atCommit || current->sameTransCreateDrop)
+			{
+				/*
+				 * Abort the CREATE, or 
+				 * delete the same transaction CREATE-DROP.
+				 */
+				PersistentFileSysObj_MarkAbortingCreate(
+								&current->fsObjName,
+								&current->persistentTid,
+								current->persistentSerialNum);
+
+				doDelete = true;
+			}
+		}
+
+		if (doDelete)
+		{
+			/*
+			 * UNDONE: Need to guard this for failure and continue to mark items
+			 * UNDONE: drop pending...
+			 * UNDONE: And handle other file-system object types...
+			 */
+			PersistentFileSysObj_Drop(
+							&current->fsObjName,
+							&current->persistentTid,
+							current->persistentSerialNum,
+							/* isRedo */ false);
+		}
+
+		/* must explicitly free the list entry */
+		PendingDelete_Free(&current);
+
+		entryIndex++;
+
+		
+	}
+
+	Assert(*listCount == 0);
+	Assert(*list == NULL);
+}
+
 /*
- *	smgrDoPendingDeletes() -- Take care of relation deletes at end of xact.
- *
- * This also runs when aborting a subxact; we want to clean up a failed
- * subxact immediately.
+ * A compare function for 2 PendingDelete.
  */
-void
-smgrDoPendingDeletes(bool isCommit)
+static int
+PendingDelete_Compare(const PendingDelete *entry1, const PendingDelete *entry2)
+{
+	int cmp;
+
+	cmp = PersistentFileSysObjName_Compare(
+								&entry1->fsObjName, 
+								&entry2->fsObjName);
+	if (cmp == 0)
+	{
+		/*
+		 * Sort CREATE before DROP for detecting same transaction create-drops.
+		 */
+		if (entry1->atCommit == entry2->atCommit)
+			return 0;
+		else if (entry1->atCommit)
+			return 1;
+		else
+			return -1;
+	}
+	else 
+		return cmp;
+}
+
+/*
+ * A compare function for array of PendingDeletePtr for use with qsort.
+ */
+static int
+PendingDeletePtr_Compare(const void *p1, const void *p2)
+{
+	const PendingDeletePtr *entry1Ptr = (PendingDeletePtr *) p1;
+	const PendingDeletePtr *entry2Ptr = (PendingDeletePtr *) p2;
+	const PendingDelete *entry1 = *entry1Ptr;
+	const PendingDelete *entry2 = *entry2Ptr;
+
+	return PendingDelete_Compare(entry1, entry2);
+}
+
+static void
+smgrSortDeletesList(
+	PendingDelete 	**list, 
+	int 			*listCount,
+	int				nestLevel)
+{
+	PendingDeletePtr *ptrArray;
+	PendingDelete *current;
+	int i;
+	PendingDelete *prev;
+	int collapseCount;
+
+	if (*listCount == 0)
+		return;
+
+	ptrArray = 
+			(PendingDeletePtr*)
+						palloc(*listCount * sizeof(PendingDeletePtr));
+	
+
+	i = 0;
+	for (current = *list; current != NULL; current = current->next)
+	{
+		ptrArray[i++] = current;
+	}
+	Assert(i == *listCount);
+
+	/*
+	 * Sort the list.
+	 *
+	 * Supports the collapsing of same transaction create-deletes and to be able
+	 * to process relations before database directories, etc.
+	 */
+	qsort(
+		ptrArray,
+		*listCount, 
+		sizeof(PendingDeletePtr),
+		PendingDeletePtr_Compare);
+
+	/*
+	 * Collapse same transaction create-drops and re-link list.
+	 */
+	*list = ptrArray[0];
+	prev = ptrArray[0];
+	collapseCount = 0;
+	i = 0;
+	while (true)
+	{
+		i++;	// Start processing elements after the first one.
+
+		if (i == *listCount)
+		{
+			prev->next = NULL;
+			break;
+		}
+
+		current = ptrArray[i];
+
+		/*
+		 * Only do CREATE-DROP collapsing when both are at or below the requested
+		 * transaction nest level.
+		 */
+		if (current->nestLevel >= nestLevel &&
+			prev->nestLevel >= nestLevel &&
+			(PersistentFileSysObjName_Compare(
+								&prev->fsObjName, 
+								&current->fsObjName) == 0))
+		{
+			if (prev->atCommit)
+				elog(ERROR, "Expected a CREATE for file-system object name '%s'",
+					PersistentFileSysObjName_ObjectName(&prev->fsObjName));
+			if (!current->atCommit)
+				elog(ERROR, "Expected a DROP for file-system object name '%s'",
+					PersistentFileSysObjName_ObjectName(&current->fsObjName));
+
+			prev->atCommit = true;				// Make the CREATE a DROP.
+			prev->sameTransCreateDrop = true;	// Don't ignore DROP on abort.
+			collapseCount++;
+
+			if (Debug_persistent_print)
+				elog(Debug_persistent_print_level, 
+					 "Storage Manager: CREATE (transaction level %d) - DROP (transaction level %d) collapse for %s, filter transaction level %d, TID %s, serial " INT64_FORMAT,
+					 current->nestLevel,
+					 prev->nestLevel,
+					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
+					 nestLevel,
+					 ItemPointerToString(&current->persistentTid),
+					 current->persistentSerialNum);
+			
+			PendingDelete_Free(&current);
+
+			// Don't advance prev pointer.
+		}
+		else
+		{
+			// Re-link.
+			prev->next = current;
+			
+			prev = current;
+		}
+	}
+
+	pfree(ptrArray);
+
+	/*
+	 * Adjust count.
+	 */
+	(*listCount) -= collapseCount;
+
+
+
+	// UNDONE: Put this under DEBUG ifdef
+	{
+		PendingDelete	*check; 
+		PendingDelete	*checkPrev;
+		int checkCount;
+
+		checkPrev = NULL;
+		checkCount = 0;
+		for (check = *list; check != NULL; check = check->next)
+		{
+			checkCount++;
+			if (checkPrev != NULL)
+			{
+				int cmp;
+			
+				cmp = PendingDelete_Compare(
+										checkPrev,
+										check);
+				if (cmp >= 0)
+					elog(ERROR, "Not sorted correctly ('%s' >= '%s')",
+						 PersistentFileSysObjName_ObjectName(&checkPrev->fsObjName),
+						 PersistentFileSysObjName_ObjectName(&check->fsObjName));
+					
+			}
+
+			checkPrev = check;
+		}
+
+		if (checkCount != *listCount)
+			elog(ERROR, "List count does not match (expected %d, found %d)",
+			     *listCount, checkCount);
+	}
+}
+
+/*
+ *	smgrSubTransAbort() -- Take care of relation deletes on sub-transaction abort.
+ *
+ * We want to clean up a failed subxact immediately.
+ */
+static void
+smgrSubTransAbort(void)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
-	PendingRelDelete *pending;
-	PendingRelDelete *prev;
-	PendingRelDelete *next;
+	PendingDelete *pending;
+	PendingDelete *prev;
+	PendingDelete *next;
+	PendingDelete *subTransList;
+	int			subTransCount;
 
+	subTransList = NULL;
+	subTransCount = 0;
 	prev = NULL;
 	for (pending = pendingDeletes; pending != NULL; pending = next)
 	{
@@ -757,22 +1340,44 @@ smgrDoPendingDeletes(bool isCommit)
 		}
 		else
 		{
-			/* unlink list entry first, so we don't retry on failure */
 			if (prev)
 				prev->next = next;
 			else
 				pendingDeletes = next;
-			/* do deletion if called for */
-			if (pending->atCommit == isCommit)
-				smgr_internal_unlink(pending->relnode,
-									 pending->which,
-									 pending->isLocalBuf,
-									 false);
-			/* must explicitly free the list entry */
-			pfree(pending);
+
+			pendingDeletesCount--;
+
+			// Move to sub-transaction list.
+			pending->next = subTransList;
+			subTransList = pending;
+
+			subTransCount++;
+
 			/* prev does not change */
 		}
 	}
+
+	/*
+	 * Sort the list in relation, database directory, tablespace, etc order.
+	 * And, collapse same transaction create-deletes.
+	 */
+	smgrSortDeletesList(
+					&subTransList, 
+					&subTransCount,
+					nestLevel);
+
+	pendingDeletesSorted = (nestLevel <= 1);
+
+	/*
+	 * Do abort actions for the sub-transaction's creates and deletes.
+	 */
+	smgrDoDeleteActions(
+					&subTransList, 
+					&subTransCount,
+					/* forCommit */ false);
+
+	Assert(subTransList == NULL);
+	Assert(subTransCount == 0);
 }
 
 /*
@@ -786,17 +1391,33 @@ smgrDoPendingDeletes(bool isCommit)
  * by upper-level transactions.
  */
 int
-smgrGetPendingDeletes(bool forCommit, RelFileNode **ptr)
+smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
 	int			nrels;
-	RelFileNode *rptr;
-	PendingRelDelete *pending;
+	PersistentEndXactFsObj *rptr;
+	PendingDelete *pending;
+	int			entryIndex;
 
+	if (!pendingDeletesSorted)
+	{
+		/*
+		 * Sort the list in relation, database directory, tablespace, etc order.
+		 * And, collapse same transaction create-deletes.
+		 */
+		smgrSortDeletesList(
+						&pendingDeletes, 
+						&pendingDeletesCount,
+						nestLevel);
+
+		pendingDeletesSorted = (nestLevel <= 1);
+	}
+	
 	nrels = 0;
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
-		if (pending->nestLevel >= nestLevel && pending->atCommit == forCommit)
+		if (pending->nestLevel >= nestLevel && 
+			pending->atCommit == forCommit)
 			nrels++;
 	}
 	if (nrels == 0)
@@ -804,12 +1425,45 @@ smgrGetPendingDeletes(bool forCommit, RelFileNode **ptr)
 		*ptr = NULL;
 		return 0;
 	}
-	rptr = (RelFileNode *) palloc(nrels * sizeof(RelFileNode));
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "Storage Manager: Get list entries (forCommit %s, current transaction nest level %d",
+			 (forCommit ? "true" : "false"),
+			 nestLevel);
+
+	rptr = (PersistentEndXactFsObj *) 
+							palloc(nrels * sizeof(PersistentEndXactFsObj));
 	*ptr = rptr;
+	entryIndex = 0;
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
-		if (pending->nestLevel >= nestLevel && pending->atCommit == forCommit)
-			*rptr++ = pending->relnode;
+		bool returned;
+
+		returned = false;
+		if (pending->nestLevel >= nestLevel && 
+			pending->atCommit == forCommit)
+		{
+			rptr->fsObjName = pending->fsObjName;
+			rptr->persistentTid = pending->persistentTid;
+			rptr->persistentSerialNum = pending->persistentSerialNum;
+
+			rptr++;
+			returned = true;
+		}
+
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Storage Manager: Get list entry #%d: '%s' (forCommit %s, returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
+				 entryIndex,
+				 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
+				 (forCommit ? "true" : "false"),
+				 (returned ? "true" : "false"),
+				 pending->nestLevel,
+				 ItemPointerToString(&pending->persistentTid),
+				 pending->persistentSerialNum,
+				 (pending->sameTransCreateDrop ? "true" : "false"));
+		entryIndex++;
 	}
 	return nrels;
 }
@@ -824,7 +1478,7 @@ bool
 smgrIsPendingDeletes(bool forCommit)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
-	PendingRelDelete *pending;
+	PendingDelete *pending;
 
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
@@ -845,7 +1499,7 @@ void
 AtSubCommit_smgr(void)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
-	PendingRelDelete *pending;
+	PendingDelete *pending;
 
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
@@ -864,7 +1518,49 @@ AtSubCommit_smgr(void)
 void
 AtSubAbort_smgr(void)
 {
-	smgrDoPendingDeletes(false);
+	smgrSubTransAbort();
+}
+
+/*
+ * AtEOXact_smgr() --- Take care of transaction end.
+ *
+ * For commit:
+ *   1) Physically unlink any relations that were dropped.
+ *   2) Change CreatePending relations to Created.
+ *
+ * ELSE for abort:
+ *   1) Change CreatePending relations to DropPending
+ *   2) Physicaly unlink the aborted creates.
+ */
+void
+AtEOXact_smgr(bool forCommit)
+{
+	/*
+	 * Sort the list in relation, database directory, tablespace, etc order.
+	 * And, collapse same transaction create-deletes.
+	 */
+	if (!pendingDeletesSorted)
+	{
+		smgrSortDeletesList(
+						&pendingDeletes, 
+						&pendingDeletesCount,
+						/* nestLevel */ 0);
+
+		pendingDeletesSorted = true;
+	}
+
+	/*
+	 * Do abort actions for the sub-transaction's creates and deletes.
+	 */
+	smgrDoDeleteActions(
+					&pendingDeletes, 
+					&pendingDeletesCount,
+					forCommit);
+
+
+	Assert(pendingDeletes == NULL);
+	Assert(pendingDeletesCount == 0);
+	pendingDeletesSorted = false;
 }
 
 /*
@@ -935,6 +1631,7 @@ void
 smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
+	ItemPointerData persistentTid;
 
 	if (info == XLOG_SMGR_CREATE)
 	{
@@ -942,7 +1639,8 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 		SMgrRelation reln;
 
 		reln = smgropen(xlrec->rnode);
-		smgrcreate(reln, false, true);
+		// UNDONE: What about the persistent rel files table???
+		smgrcreate(reln, &persistentTid, 0, false, true);
 	}
 	else if (info == XLOG_SMGR_TRUNCATE)
 	{
@@ -958,7 +1656,8 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 		 * XLogOpenRelation, we prefer to recreate the rel and replay the
 		 * log as best we can until the drop is seen.
 		 */
-		smgrcreate(reln, false, true);
+		// UNDONE: What about the persistent rel files table???
+		smgrcreate(reln, &persistentTid, 0, false, true);
 
 		/* Can't use smgrtruncate because it would try to xlog */
 

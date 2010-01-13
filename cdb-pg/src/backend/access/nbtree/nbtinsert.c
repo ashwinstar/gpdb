@@ -129,16 +129,7 @@ top:
 
 		xwait = _bt_check_unique(rel, itup, heapRel, buf, itup_scankey);
 
-		
-		if( Gp_session_role==GP_ROLE_EXECUTE && !Gp_is_primary)
-		{
-			/* MPP: If we are a mirror than we will avoid waiting on XID
-			 * in order to prevent global deadlock.  See MPP-1380.  This should 
-			 * be ok because the primary segment will notice the unique violation
-			 * and error out.
-			 */
-		}
-		else if (TransactionIdIsValid(xwait) )
+		if (TransactionIdIsValid(xwait) )
 		{
 			/* Have to wait for the other guy ... */
 			_bt_relbuf(rel, buf);

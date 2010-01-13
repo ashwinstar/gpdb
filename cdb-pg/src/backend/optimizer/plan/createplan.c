@@ -1092,8 +1092,6 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	bool			*skip_map = NULL;
 	bool			should_skip_randomly = false;
 
-	
-	
 	/* it should be an external rel... */
 	Assert(scan_relid > 0);
 	Assert(rel->rtekind == RTE_RELATION);
@@ -1110,7 +1108,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	{
 		CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 		
-		if(p->isprimary && p->valid)
+		if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 			total_primaries++;
 	}
 	
@@ -1249,11 +1247,11 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				 * the external location list for the same host gets assigned
 				 * the segdb with the lowest index for this host.
 				 */			
-				if(p->isprimary && p->valid)	
+				if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 				{
 					if(uri->protocol == URI_FILE)
 					{
-						if(pg_strcasecmp(uri->hostname, p->hostname) != 0)
+						if (pg_strcasecmp(uri->hostname, p->hostname) != 0)
 							continue;
 					}
 										
@@ -1425,7 +1423,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				 * 1) This segdb is a valid primary.
 				 * 2) An external file wasn't already assigned to it. 
 				 */			
-				if(p->isprimary && p->valid)	
+				if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 				{
 					/*
 					 * skip this segdb if skip_map for this seg
@@ -1510,7 +1508,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
 				
-				if(p->isprimary && p->valid)	
+				if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 					segdb_file_map[segind] = pstrdup(prefixed_command);					
 			}
 			
@@ -1527,7 +1525,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
 				
-				if(p->isprimary && p->valid)	
+				if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 				{
 					bool	host_taken = false;
 					
@@ -1535,7 +1533,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 					{
 						const char	*hostname = (char *) strVal(lfirst(lc));
 						
-						if(pg_strcasecmp(hostname, p->hostname) == 0)
+						if (pg_strcasecmp(hostname, p->hostname) == 0)
 						{
 							host_taken = true;
 							break;
@@ -1547,22 +1545,18 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 					 * and add this hostname to the list so that we don't use
 					 * segs on this host again.
 					 */
-					if(!host_taken)
+					if (!host_taken)
 					{
 						segdb_file_map[segind] = pstrdup(prefixed_command);
 						visited_hosts = lappend(visited_hosts, 
-												makeString(pstrdup(p->hostname)));				
-
+												makeString(pstrdup(p->hostname)));
 					}
 				}
-				
 			}
-			
 		}
 		else if(strncmp(on_clause, "HOST:", strlen("HOST:")) == 0)
 		{
 			/* all segs on the specified host get copy of the command */
-			
 			char	*hostname = on_clause + strlen("HOST:");
 
 			for (i = 0; i < db_info->total_segment_dbs; i++)
@@ -1570,15 +1564,15 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
 				
-				if(p->isprimary && p->valid && 
-				   pg_strcasecmp(hostname, p->hostname) == 0)	
+				if (SEGMENT_IS_ACTIVE_PRIMARY(p) &&
+					pg_strcasecmp(hostname, p->hostname) == 0)
 				{
 					segdb_file_map[segind] = pstrdup(prefixed_command);
 					match_found = true;
 				}
 			}
-				
-			if(!match_found)
+
+			if (!match_found)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						 errmsg("Could not assign a segment database for "
@@ -1598,7 +1592,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
 				
-				if(p->isprimary && p->valid && segind == target_segid)	
+				if (SEGMENT_IS_ACTIVE_PRIMARY(p) && segind == target_segid)	
 				{
 					segdb_file_map[segind] = pstrdup(prefixed_command);
 					match_found = true;
@@ -1635,7 +1629,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
 				
-				if(p->isprimary && p->valid)	
+				if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 				{
 					Assert(segind < total_primaries);
 					if(skip_map[segind])

@@ -227,7 +227,9 @@ extern void AppendOnlyStorageWrite_OpenFile(
 				 * if necessary.  Otherwise, it must already
 				 * exist.
 				 */
-	int64						fileLen_uncompressed);
+	int64						fileLen_uncompressed,
+	RelFileNode					relFileNode,
+	int32						segmentFileNum);
 
 /*
  * Flush and close the current segment file.

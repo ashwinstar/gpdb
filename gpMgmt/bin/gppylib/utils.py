@@ -32,6 +32,12 @@ def createFromSingleHostFile(inputFile):
     return rows
 
 #############
+def toNonNoneString(value) :
+    if value is None:
+        return ""
+    return str(value)
+
+#############
 def parseSingleFile(line):
     ph=None 
     if re.search(r"^#", line):

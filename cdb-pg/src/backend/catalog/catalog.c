@@ -44,8 +44,8 @@
 #include "catalog/gp_san_config.h"
 
 #include "catalog/gp_master_mirroring.h"
-#include "catalog/gp_persistent_rel_files.h"
-#include "catalog/gp_persistent_db_dirs.h"
+#include "catalog/gp_persistent.h"
+#include "catalog/gp_global_sequence.h"
 #include "catalog/gp_id.h"
 #include "catalog/gp_version.h"
 #include "catalog/toasting.h"
@@ -98,6 +98,30 @@ relpath(RelFileNode rnode)
 	return path;
 }
 
+void
+CopyRelPath(char *target, int targetMaxLen, RelFileNode rnode)
+{
+	if (rnode.spcNode == GLOBALTABLESPACE_OID)
+	{
+		/* Shared system relations live in {datadir}/global */
+		Assert(rnode.dbNode == 0);
+		snprintf(target, targetMaxLen, "global/%u",
+				 rnode.relNode);
+	}
+	else if (rnode.spcNode == DEFAULTTABLESPACE_OID)
+	{
+		/* The default tablespace is {datadir}/base */
+		snprintf(target, targetMaxLen, "base/%u/%u",
+				 rnode.dbNode, rnode.relNode);
+	}
+	else
+	{
+		/* All other tablespaces are accessed via symlinks */
+		snprintf(target, targetMaxLen, "pg_tblspc/%u/%u/%u",
+				 rnode.spcNode, rnode.dbNode, rnode.relNode);
+	}
+}
+
 /*
  * GetDatabasePath			- construct path to a database dir
  *
@@ -137,6 +161,90 @@ GetDatabasePath(Oid dbNode, Oid spcNode)
 	}
 	return path;
 }
+
+void
+CopyDatabasePath(char *target, int targetMaxLen, Oid dbNode, Oid spcNode)
+{
+	if (spcNode == GLOBALTABLESPACE_OID)
+	{
+		/* Shared system relations live in {datadir}/global */
+		Assert(dbNode == 0);
+		snprintf(target, targetMaxLen, "global");
+	}
+	else if (spcNode == DEFAULTTABLESPACE_OID)
+	{
+		/* The default tablespace is {datadir}/base */
+		snprintf(target, targetMaxLen, "base/%u",
+				 dbNode);
+	}
+	else
+	{
+		/* All other tablespaces are accessed via symlinks */
+		snprintf(target, targetMaxLen, "pg_tblspc/%u/%u",
+				 spcNode, dbNode);
+	}
+}
+
+/*
+ * GetTablespacePath			- construct path to a tablespace dir
+ *
+ * Result is a palloc'd string.
+ *
+ * XXX this must agree with relpath()!
+ */
+char *
+GetTablespacePath(Oid spcNode)
+{
+	int			pathlen;
+	char	   *path;
+
+	if (spcNode == GLOBALTABLESPACE_OID)
+	{
+		/* Shared system relations live in {datadir}/global */
+		pathlen = 6 + 1;
+		path = (char *) palloc(pathlen);
+		strcpy(path, "global");	// This one is a little strange...
+	}
+	else if (spcNode == DEFAULTTABLESPACE_OID)
+	{
+		/* The default tablespace is {datadir}/base */
+		pathlen = 5 + 1;
+		path = (char *) palloc(pathlen);
+		strcpy(path, "base");
+	}
+	else
+	{
+		/* All other tablespaces are accessed via symlinks */
+		pathlen = 10 + OIDCHARS + 1;
+		path = (char *) palloc(pathlen);
+		snprintf(path, pathlen, "pg_tblspc/%u",
+				 spcNode);
+	}
+	return path;
+}
+
+void
+CopyTablespacePath(char *target, int targetMaxLen, Oid spcNode)
+{
+	if (spcNode == GLOBALTABLESPACE_OID)
+	{
+		/* Shared system relations live in {datadir}/global */
+		strcpy(target, "global");
+	}
+	else if (spcNode == DEFAULTTABLESPACE_OID)
+	{
+		/* The default tablespace is {datadir}/base */
+		strcpy(target, "base");
+	}
+	else
+	{
+		/* All other tablespaces are accessed via symlinks */
+		snprintf(target, targetMaxLen, "pg_tblspc/%u",
+				 spcNode);
+	}
+}
+
+
 
 
 /*
@@ -328,8 +436,12 @@ IsSharedRelation(Oid relationId)
 		relationId == GpSanConfigRelationId ||
 
 		relationId == GpMasterMirroringRelationId ||
-		relationId == GpPersistentRelFilesRelationId ||
-		relationId == GpPersistentDbDirsRelationId ||
+
+		relationId == GpPersistentRelationNodeRelationId ||
+		relationId == GpPersistentDatabaseNodeRelationId ||
+		relationId == GpPersistentTablespaceNodeRelationId ||
+		relationId == GpPersistentFilespaceNodeRelationId ||
+		relationId == GpGlobalSequenceRelationId ||
 
 		/* MPP-6929: metadata tracking */
 		relationId == StatLastShOpRelationId ||
@@ -353,6 +465,7 @@ relationId == ResQueueCapabilityRelationId ||
 /* TIDYCAT_END_CODEGEN */
 		0 /* OR ZERO */
 			)
+
 		return true;
 	/* These are their indexes (see indexing.h) */
 	if (relationId == AuthIdRolnameIndexId ||
@@ -427,7 +540,11 @@ relationId == ResQueueCapabilityRestypidIndexId ||
 		relationId == PgDatabaseToastTable ||
 		relationId == PgDatabaseToastIndex ||
 		relationId == PgShdescriptionToastTable ||
-		relationId == PgShdescriptionToastIndex )
+		relationId == PgShdescriptionToastIndex ||
+		relationId == GpSegmentConfigToastTable ||
+		relationId == GpSegmentConfigToastIndex ||
+		relationId == PgFilespaceEntryToastTable ||
+		relationId == PgFilespaceEntryToastIndex)
 		return true;
 	return false;
 }

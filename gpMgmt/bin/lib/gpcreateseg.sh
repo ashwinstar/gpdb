@@ -43,9 +43,9 @@ unset VERBOSE
 unset PG_CONF_ADD_FILE
 # MPP database specific parameters
 GP_USER=$USER_NAME
-# System table names
 GP_TBL=gp_id
-GP_CONFIGURATION_TBL=gp_configuration
+# System table names
+GP_CONFIGURATION_TBL=gp_segment_configuration
 EXIT_STATUS=0
 # ED_FILE search text values
 PORT_TXT="#port"
@@ -93,39 +93,57 @@ PARA_EXIT () {
 }
 
 PROCESS_QE () {
-		LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
-		LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $GP_HOSTNAME"
-		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS" >> $LOG_FILE 2>&1
-		RETVAL=$?
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -rf $GP_DIR > /dev/null 2>&1\""
-		BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTNAME\""
-		PARA_EXIT $RETVAL "to start segment instance database $GP_HOSTNAME $GP_DIR"
-		LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_CONF"
-		$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${GP_DIR}/$PG_CONF"
-		RETVAL=$?
-		PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
-		$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO \"#----------------------\" >> ${GP_DIR}/$PG_CONF"
-		RETVAL=$?
-		PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
-		ED_FILE ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0 $GP_HOSTNAME
-		PARA_EXIT $RETVAL "Update port number to $GP_PORT"
-		ED_FILE ${GP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $GP_HOSTNAME
-		PARA_EXIT $RETVAL "Update listen address"
-		ED_FILE ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTNAME
-		PARA_EXIT $RETVAL "Update checkpoint segments"
 
-		
-		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
-			LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"
-			for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
-			do
-				LOG_MSG "[INFO][$INST_COUNT]:-Adding config $NEW_PARAM to segment"
-				SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-				ED_FILE ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $GP_HOSTNAME
-				PARA_EXIT $RETVAL "Update $PG_CONF $SEARCH_TXT $NEW_PARAM"
-			done
-		fi
-		LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_HBA"
+	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $GP_HOSTNAME"
+
+	MIRROR_ONLY_INITDB_OPTION=
+	if [ x"" != x"$COPY_FROM_PRIMARY_HOSTNAME" ]; then
+		MIRROR_ONLY_INITDB_OPTION=-m
+	fi	
+
+	$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB $MIRROR_ONLY_INITDB_OPTION -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS" >> $LOG_FILE 2>&1
+	RETVAL=$?
+	BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -rf $GP_DIR > /dev/null 2>&1\""
+	BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTNAME\""
+	PARA_EXIT $RETVAL "to start segment instance database $GP_HOSTNAME $GP_DIR"
+
+	# on mirror, copy data from primary
+    if [ x"" != x"$COPY_FROM_PRIMARY_HOSTNAME" ]; then
+        LOG_MSG "[INFO]:-Copying data for mirror on ${GP_HOSTNAME} using remote copy from primary ${COPY_FROM_PRIMARY_HOSTNAME} ..." 1
+        RUN_COMMAND_REMOTE ${COPY_FROM_PRIMARY_HOSTNAME} "${EXPORT_GPHOME}; ${GPHOME}/bin/lib/pysync.py -x pg_log -x postgresql.conf -x postmaster.pid ${COPY_FROM_PRIMARY_DIR} ${GP_HOSTNAME}:${GP_DIR}"
+        PARA_EXIT $? "remote copy of segment data directory to ${GP_HOSTNAME}"
+	fi
+
+	# Configure postgresql.conf
+	LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_CONF"
+	$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO \"#MPP Specific parameters\" >> ${GP_DIR}/$PG_CONF"
+	RETVAL=$?
+	PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
+	$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO \"#----------------------\" >> ${GP_DIR}/$PG_CONF"
+	RETVAL=$?
+	PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
+	ED_FILE ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0 $GP_HOSTNAME
+	PARA_EXIT $RETVAL "Update port number to $GP_PORT"
+	ED_FILE ${GP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $GP_HOSTNAME
+	PARA_EXIT $RETVAL "Update listen address"
+	ED_FILE ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTNAME
+	PARA_EXIT $RETVAL "Update checkpoint segments"
+
+	if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
+		LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"
+		for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
+		do
+			LOG_MSG "[INFO][$INST_COUNT]:-Adding config $NEW_PARAM to segment"
+			SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
+			ED_FILE ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $GP_HOSTNAME
+			PARA_EXIT $RETVAL "Update $PG_CONF $SEARCH_TXT $NEW_PARAM"
+		done
+	fi
+
+	# Configuring PG_HBA  -- on mirror, only need to add local addresses (skip the other addresses)
+	LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_HBA"
+        if [ x"" = x"$COPY_FROM_PRIMARY_HOSTNAME" ]; then
 		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 		do
 			$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
@@ -141,31 +159,50 @@ PROCESS_QE () {
 		fi
 		for QE_IP in "${QE_IP_ARRAY[@]}"
 		do
-				$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${GP_DIR}/$PG_HBA"
-				PARA_EXIT $? "Update $PG_HBA for segment IP address ${QE_IP}"
+			$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${GP_DIR}/$PG_HBA"
+			PARA_EXIT $? "Update $PG_HBA for segment IP address ${QE_IP}"
 		done
-		# Add all local IPV6 addresses
-		SEGMENT_IPV6_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTNAME "$IFCONFIG $IFCONFIG_TXT |$GREP inet6|$CUT -d' ' -f2"`)
-		for ADDR in "${SEGMENT_IPV6_LOCAL_ADDRESS_ALL[@]}"
-		do
-			$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host     all          $USER_NAME         $ADDR/128       trust >> ${GP_DIR}/$PG_HBA"
-		done
+	fi
+
+	# Add all local IPV6 addresses
+	SEGMENT_IPV6_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTNAME "$IFCONFIG $IFCONFIG_TXT |$GREP inet6|$CUT -d' ' -f2"`)
+	for ADDR in "${SEGMENT_IPV6_LOCAL_ADDRESS_ALL[@]}"
+	do
+		$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host     all          $USER_NAME         $ADDR/128       trust >> ${GP_DIR}/$PG_HBA"
+	done
 		
-		
-		LOG_MSG "[INFO][$INST_COUNT]:-Starting Functioning instance on segment ${GP_HOSTNAME}"
-		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT}\" start" >> $LOG_FILE 2>&1
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-			BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
-			BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
-			$TRUSTED_SHELL ${GP_HOSTNAME} "$CAT ${GP_DIR}/pg_log/startup.log "|$TEE -a $LOG_FILE
-			PARA_EXIT $RETVAL "Start segment Mirror instance database"
-		fi	
+        if [ x"" = x"$COPY_FROM_PRIMARY_HOSTNAME" ]; then
+ 		# Primary: start the segment to fill in configuration
+		START_QE
+		UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 1 $GP_HOSTNAME
+		STOP_QE
+	fi
+
+	LOG_MSG "[INFO]:-[$INST_COUNT]-End Function $FUNCNAME"
+}
+
+STOP_QE() {
+        # we don't add backout commands here.  We could get double-stop calls since the same QE is sometimes started, stopped, and restarted.  But hopefully that's okay
+
+        LOG_MSG "[INFO]:-Start Function $FUNCNAME" 1
+        LOG_MSG "[INFO]:-Stopping instance on segment ${GP_HOSTNAME}:${GP_PORT}" 1
+        $TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT}\" stop"
+        LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+START_QE() {
+	LOG_MSG "[INFO][$INST_COUNT]:-Starting Functioning instance on segment ${GP_HOSTNAME}"
+	$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT} -M mirrorless -b ${GP_DBID} -C ${GP_CONTENT} -z 0\" start" >> $LOG_FILE 2>&1
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ]; then
 		BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
-		LOG_MSG "[INFO][$INST_COUNT]:-Successfully started segment instance on $GP_HOSTNAME"
-		UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 1 $GP_HOSTNAME
-		LOG_MSG "[INFO]:-[$INST_COUNT]-End Function $FUNCNAME"
+		$TRUSTED_SHELL ${GP_HOSTNAME} "$CAT ${GP_DIR}/pg_log/startup.log "|$TEE -a $LOG_FILE
+		PARA_EXIT $RETVAL "Start segment instance database"
+	fi	
+	BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
+	BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
+	LOG_MSG "[INFO][$INST_COUNT]:-Successfully started segment instance on $GP_HOSTNAME"
 }
 
 UPDATE_MPP () {
@@ -179,11 +216,11 @@ UPDATE_MPP () {
                 TYPE=$6
                 U_HOST=$7
                 if [ $TYPE -eq 0 ]; then
-                                $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT -d "$U_DB" -c "insert into $GP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
-                                PARA_EXIT $? "add $U_DBID to Master gp_id"
+                    $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT -d "$U_DB" -c "insert into $GP_TBL values ('${U_MPPNAME}',-1,-1,-1);" >> $LOG_FILE 2>&1
+                    PARA_EXIT $? "add $U_DBID to Master gp_id"
                 else
-                                $TRUSTED_SHELL $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT -d \"$U_DB\" -c \"insert into $GP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" " >> $LOG_FILE 2>&1
-				PARA_EXIT $? "add $U_DBID to Master gp_id"
+                    $TRUSTED_SHELL $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT -d \"$U_DB\" -c \"insert into $GP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',-1,-1,-1);\" " >> $LOG_FILE 2>&1
+    				PARA_EXIT $? "add $U_DBID to Master gp_id"
                 fi
                 LOG_MSG "[INFO][$INST_COUNT]:-Successfully updated GPDB system table"
                 LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
@@ -211,7 +248,15 @@ TYPE=$1;shift
 case $TYPE in
 	1 )
 		SEGMENT_LINE=$1;shift		#String used to build segment instance
+                COPY_FROM_PRIMARY_SEGMENT_LINE=$1;shift # String used to build primary segment instance from which to copy data
+		if [ x"IS_PRIMARY" != x"$COPY_FROM_PRIMARY_SEGMENT_LINE" ]; then
+			SET_VAR $COPY_FROM_PRIMARY_SEGMENT_LINE
+			COPY_FROM_PRIMARY_HOSTNAME=$GP_HOSTNAME
+			COPY_FROM_PRIMARY_DIR=$GP_DIR
+			COPY_FROM_PRIMARY_PORT=$GP_PORT
+		fi
 		SET_VAR $SEGMENT_LINE
+
 		INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
 		BACKOUT_FILE=/tmp/gpsegcreate.sh_backout.$$
 		LOG_FILE=$1;shift		#Central logging file

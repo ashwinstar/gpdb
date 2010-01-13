@@ -1,0 +1,223 @@
+/*
+ *  cdbfilerepprimary.h
+ *  
+ *
+ *  Copyright 2009-2010, Greenplum Inc. All rights reserved.
+ *
+ */
+
+#ifndef CDBFILEREPPRIMARY_H
+#define CDBFILEREPPRIMARY_H
+
+#include "cdb/cdbfilerep.h"
+
+
+
+/*
+ * Responsibilities of this module!!!
+ *
+ * Construct Message
+ * Send Messages to Mirror
+ */
+
+
+
+// -----------------------------------------------------------------------------
+// Construct Messages for Open, Flush, Close, and Write 
+// -----------------------------------------------------------------------------
+
+/*
+ * Open
+ *		Construct Message Header for open operation
+ *		Construct Message Header CRC
+ *		Insert Message into Mirror Messages Shared Memory
+ *
+ * Output
+ *		The routine returns status (error code or ok) 
+ */
+extern int FileRepPrimary_MirrorOpen(
+	FileRepIdentifier_u	fileRepIdentifier,
+		/* */
+		
+	FileRepRelationType_e fileRepRelationType,
+		/* */
+	int64				logicalEof,
+		/* it is used only for Append Only */							 
+	int					fileFlags,
+
+	int					fileMode);
+
+/*
+ * Flush
+ *		Construct Message Header for synchronous flush operation
+ *		Construct Message Header CRC
+ *		Insert Message into Mirror Messages Shared Memory
+ *
+ * Output
+ *		The routine returns status (error code or ok) 
+ */
+extern int FileRepPrimary_MirrorFlush(
+	FileRepIdentifier_u	fileRepIdentifier,
+		/* */
+									  
+	FileRepRelationType_e fileRepRelationType);
+		/* */
+
+/*
+ * Close
+ *		Construct Message Header for close operation
+ *		Construct Message Header CRC
+ *		Insert Message into Mirror Messages Shared Memory
+ *
+ * Output
+ *		The routine returns status (error code or ok) 
+ */
+extern int FileRepPrimary_MirrorClose(
+	  FileRepIdentifier_u	fileRepIdentifier,
+		/* */
+	  
+	  FileRepRelationType_e fileRepRelationType);
+		/* */
+/*
+ * Flush And Close
+ *		Construct Message Header for flush and close operation
+ *		Construct Message Header CRC
+ *		Insert Message into Mirror Messages Shared Memory
+ *
+ * Output
+ *		The routine returns status (error code or ok) 
+ */
+extern int FileRepPrimary_MirrorFlushAndClose(
+					  FileRepIdentifier_u	fileRepIdentifier,
+						/* */
+					  
+					  FileRepRelationType_e fileRepRelationType);
+						/* */
+
+/*
+ * Truncate
+ *		Construct Message Header for flush and close operation
+ *		Construct Message Header CRC
+ *		Insert Message into Mirror Messages Shared Memory
+ *
+ * Output
+ *		The routine returns status (error code or ok) 
+ */
+extern int FileRepPrimary_MirrorTruncate(
+			  FileRepIdentifier_u	fileRepIdentifier,
+				/* */
+			  
+			  FileRepRelationType_e fileRepRelationType,
+				/* */
+
+			  int32 position);
+				/* */
+
+/*
+ * Reconcile
+ *
+ */
+extern int FileRepPrimary_ReconcileXLogEof(
+				FileRepIdentifier_u		fileRepIdentifier,
+									   
+									   
+				FileRepRelationType_e	fileRepRelationType,
+									   
+									   
+				XLogRecPtr				primaryXLogEof);
+
+/*
+ * Rename
+ */
+extern int FileRepPrimary_MirrorRename(
+								FileRepIdentifier_u		oldFileRepIdentifier,
+								FileRepIdentifier_u		newFileRepIdentifier,
+								FileRepRelationType_e	fileRepRelationType);
+
+/*
+ * Write
+ *		Construct Message Header for write operation
+ *		Issue memcpy() to construct Message Body
+ *		Calculate CRC for message body
+ *		Calculate CRC for message header
+ *		Insert Message into Mirror Messages Shared Memory
+ *
+ * Output
+ *		The routine returns status (error code or ok) 
+ */
+extern int FileRepPrimary_MirrorWrite(
+	FileRepIdentifier_u	fileRepIdentifier,
+		/* */
+		
+    FileRepRelationType_e	fileRepRelationType,
+		/* */
+									  
+    int32					offset,
+		/* */
+									  
+    char					*data, 
+		/* */
+									  
+    uint32					dataLength,
+		/* */
+									  
+    XLogRecPtr				lsn);
+		/* */
+
+// -----------------------------------------------------------------------------
+// Construct Messages for Create and drop of file and dir
+// -----------------------------------------------------------------------------
+
+/*
+ * Create
+ *		Construct Message Header for create operation (file or dir)
+ *		Construct Message Header CRC
+ *		Insert Message into Mirror Messages Shared Memory
+ *
+ * Output
+ *		The routine returns status (error code or ok) 
+ */
+extern int FileRepPrimary_MirrorCreate(
+	FileRepIdentifier_u	fileRepIdentifier,
+		/* file or dir to be created */
+									 
+	 FileRepRelationType_e fileRepRelationType);
+		/* FileRepRelationTypeFile or FileRepRelationTypeDir */
+
+/*
+ * Drop
+ *		Construct Message Header for drop operation (file or dir)
+ *		Construct Message Header CRC
+ *		Insert Message into Mirror Messages Shared Memory
+ *
+ * Output
+ *		The routine returns status (error code or ok) 
+ */
+
+extern int FileRepPrimary_MirrorDrop(
+	FileRepIdentifier_u	fileRepIdentifier,
+		/* file or dir to be removed */
+									 
+	FileRepRelationType_e fileRepRelationType);								 
+		/* FileRepRelationTypeFile or FileRepRelationTypeDir */
+
+extern bool FileRepPrimary_IsOperationCompleted(
+	FileRepIdentifier_u	fileRepIdentifier,
+		/* identifier of the operation */
+				 
+	FileRepRelationType_e fileRepRelationType);								 
+		/* type on which operation was performed */
+
+extern XLogRecPtr FileRepPrimary_GetMirrorXLogEof(void);
+
+// -----------------------------------------------------------------------------
+// SENDER THREAD
+// -----------------------------------------------------------------------------
+
+/*
+ *
+ */
+extern void FileRepPrimary_StartSender(void);
+
+#endif   /* CDBFILEREPPRIMARY_H */
+

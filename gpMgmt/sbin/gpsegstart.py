@@ -58,12 +58,14 @@ class SegStartStatus():
     
     def __str__(self):
         return "STATUS--DIR:%s--STARTED:%s--REASON:%s" % (self.datadir,self.started,self.reason)
-    
+
+
 #-------------------------------------------------------------------------    
-class GpSegStart():
+class GpSegStart:
     ######
-    def __init__(self,dblist,gpversion,collation):
+    def __init__(self,dblist,gpversion,collation,mirroringMode):
         self.dblist=dblist
+        self.mirroringMode = mirroringMode
         self.expected_gpversion=gpversion
         # There is an issue with python 2.6.2 on linux that can cause start to 
         # hang if it is multithreaded.
@@ -95,34 +97,42 @@ class GpSegStart():
     def start(self): 
         results=[]
         failures=False
-        dirportmap = {}
+        directoryToSegStartDataMap = {}
+        
+        if self.mirroringMode == 'quiescent':
+            nowait = True
+        else:
+            nowait = False
 
         for itm in self.dblist:
-            (dir, port) = itm.split(':')
-            dirportmap[dir] = port
+            (segDataDir, segPort, segDbId, segContentId, segNumContentsInCluster) = itm.split(':')
+            seg = gp.SegmentToStart(segDataDir, segPort, segDbId, segContentId, segNumContentsInCluster,
+                                    self.mirroringMode, nowait)
+            directoryToSegStartDataMap[seg.dataDir] = seg
 
-        for dir in dirportmap.keys():
+        # validate that the directories all exist and run recovery startup if needed
+        for dir in directoryToSegStartDataMap.keys():
             if os.path.isdir(dir):
                 if not os.path.exists(dir + '/pg_log'):
                     os.mkdir(dir + '/pg_log')
                     
                 if os.path.exists(dir + '/postmaster.pid'):
                     logger.warning("postmaster.pid file exists, checking if recovery startup required")
-                    res = gp.recovery_startup(dir)
+                    res = gp.recovery_startup(dir) # todo MIRRORING -- pass dbId, contentId, etc into recovery startup?
                     if res:
                         results.append(SegStartStatus(dir,False,res))
-                        del dirportmap[dir]
+                        del directoryToSegStartDataMap[dir]
                         failures=True                                              
             else:
                 logger.info("Segment data directory does not exist for: '%s'" % dir)
                 results.append(SegStartStatus(dir,False,"segment data directory does not exist"))
-                del dirportmap[dir]
+                del directoryToSegStartDataMap[dir]
                 failures=True      
         
-            
+        # now do the start
         logger.info("Starting segments...")       
-        for dir, port in dirportmap.iteritems():
-            cmd=gp.SegmentStart("Starting seg at dir %s" % dir, dir, port=port)
+        for dir, segmentToStart in directoryToSegStartDataMap.iteritems():
+            cmd=gp.SegmentStart("Starting seg at dir %s" % dir, segmentToStart)
             self.pool.addCommand(cmd)  
               
         self.pool.join()
@@ -134,34 +144,38 @@ class GpSegStart():
                 #TODO: read in last entries in startup.log
                 status=SegStartStatus(cmd.dataDir,False,"PG_CTL failed.\nstdout:%s\nstderr:%s\n" % (res.stdout,res.stderr))
                 results.append(status)
-                del dirportmap[cmd.dataDir]
+                del directoryToSegStartDataMap[cmd.dataDir]
                 failures=True
         
         self.pool.empty_completed_items()
-        
-        logger.info("Validating segments...")
-        for datadir,port in dirportmap.iteritems():
-            cmd = gp.GpSegCheckLocaleAndConnect('check on %s' % datadir,
+    
+        if self.mirroringMode == 'quiescent' or self.mirroringMode == 'mirror':
+            # todo MIRRORING: figure out a way to validate even in quiescent or mirror mode -- 
+            # we are currently not waiting at all when starting in quiescent mode
+            for datadir,segmentToStart in directoryToSegStartDataMap.iteritems():
+                results.append(SegStartStatus(datadir,True,"Start Succeeded"))
+        else:
+            logger.info("Validating segments...")
+            for datadir,segmentToStart in directoryToSegStartDataMap.iteritems():
+                cmd = gp.GpSegCheckLocaleAndConnect('check on %s' % datadir,
                                                 datadir,
-                                                port,
+                                                segmentToStart.port,
                                                 self.expected_lc_collate,
                                                 self.expected_lc_monetary,
                                                 self.expected_lc_numeric)
-            self.pool.addCommand(cmd)
-        
-        self.pool.join()
-        
-        cmds=self.pool.getCompletedItems()
-        for cmd in cmds:
-            (success,error_str)=cmd.getResults()
+                self.pool.addCommand(cmd)
             
-            if success:
-                results.append(SegStartStatus(cmd.datadir,True,"Start Succeeded"))
-            else:
-                results.append(SegStartStatus(cmd.datadir,False,error_str))
-                               
-                              
+            self.pool.join()
         
+            cmds=self.pool.getCompletedItems()
+            for cmd in cmds:
+                (success,error_str)=cmd.getResults()
+            
+                if success:
+                    results.append(SegStartStatus(cmd.datadir,True,"Start Succeeded"))
+                else:
+                    results.append(SegStartStatus(cmd.datadir,False,error_str))
+    
         
         #Log the results!
         status = '\nCOMMAND RESULTS\n'
@@ -191,7 +205,8 @@ def parseargs():
     parser.add_option('-q', '--quiet', action='store_true',help='suppress status messages')
     parser.add_option("-C", "--collation", type="string", 
                         help="values for lc_collate, lc_monetary, lc_numeric separated by :")
-    parser.add_option("-D","--datadir",dest="dblist", action="append", type="string")
+    parser.add_option("-D","--dblist",dest="dblist", action="append", type="string")
+    parser.add_option("-M","--mirroringmode",dest="mirroringMode", type="string")
     parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
                         help="expected software version")      
 
@@ -227,7 +242,7 @@ def main():
         
         logger.info("options.gpversion: %s" % options.gpversion )
         
-        gpsegstart = GpSegStart(options.dblist,options.gpversion,options.collation)
+        gpsegstart = GpSegStart(options.dblist,options.gpversion,options.collation,options.mirroringMode)
         
         failures = gpsegstart.start()
         

@@ -8,6 +8,7 @@ TODO: module docs
 import sys
 import os
 import stat
+from collections import namedtuple
 
 try: 
     from pygresql import pgdb
@@ -18,26 +19,40 @@ from gppylib import gplog
 
 logger = gplog.get_default_logger()
 
+# Here's where we create our named-tuple.
+# we'll access our fields based on the field name.
+SegmentTuple = namedtuple("SegmentTuple", "dbid content role preferred_role mode status hostname address port datadir replicationPort")
 
 class ConnectionError(StandardError): pass
 
 
 #TODO: find a better home for this
-gpconfig_Query = '''SELECT content, definedprimary, dbid, isprimary,
-                           valid, hostname, port, datadir
-                    FROM pg_catalog.gp_configuration
-                    ORDER BY content, definedprimary DESC '''
+#gpconfig_Query = '''SELECT content, definedprimary, dbid, isprimary,
+#                           valid, hostname, port, datadir
+#                    FROM pg_catalog.gp_configuration
+#                    ORDER BY content, definedprimary DESC '''
+gpconfig_Query = '''
+  SELECT dbid, content, role, preferred_role, mode, status, hostname, address, port, 
+        fselocation as datadir, replication_port
+  FROM pg_catalog.gp_segment_configuration
+  JOIN pg_catalog.pg_filespace_entry on (dbid = fsedbid)
+  JOIN pg_catalog.pg_filespace fs on (fsefsoid = fs.oid and fsname='pg_system')
+  ORDER BY content, preferred_role DESC
+'''
 
 def getConfig(conn):
     return execSQL(conn,gpconfig_Query)
 
+gpfailover_Query = '''SELECT fault_strategy FROM gp_fault_strategy'''
+
+def getFaultStrategy(conn):
+    return execSQL(conn,gpfailover_Query)
 
 def parseBool(val):
     if val == 't':
         return True
     else:
         return False
-
 
 def parseRow(row):
     pass
@@ -47,19 +62,17 @@ def parseRow(row):
     #row['valid'] = GpConfig.parseBool(row['valid'])
     #print "row valid2? " + str(row['valid'])
 
+def parseListIntoTuple(fields):
+    return(SegmentTuple(dbid=int(fields[0]), content=int(fields[1]), role=fields[2],
+                       preferred_role=fields[3], mode=fields[4], status=fields[5],
+                       hostname=fields[6], address=fields[7], port=int(fields[8]), datadir=fields[9],
+                       replicationPort=fields[10]))
+
+# We return a named-tuple
 def parseLine(line):
     fields=line.split('|')
-    row=[]
-    row.append(int(fields[0]))
-    row.append(parseBool(fields[1]))
-    row.append(int(fields[2]))
-    row.append(parseBool(fields[3]))
-    row.append(parseBool(fields[4]))
-    row.append(fields[5])
-    row.append(int(fields[6]))
-    row.append(fields[7].rstrip('\n'))
-    return row
 
+    return parseListIntoTuple(fields)
 
 class Pgpass():
     """ Class for handling .pgpass file.
@@ -118,7 +131,6 @@ class Pgpass():
     def pgpass_valid(self):
         return self.valid_pgpass
         
-
 class DbURL:
     """ DbURL is used to store all of the data required to get at a PG 
         or GP database.
@@ -128,8 +140,7 @@ class DbURL:
     pgport=5432
     pgdb='template1'
     pguser='username'
-    pgpass='pass'
-    
+    pgpass='pass'    
 
     def __init__(self,hostname=None,port=0,dbname=None,username=None,password=None):
         

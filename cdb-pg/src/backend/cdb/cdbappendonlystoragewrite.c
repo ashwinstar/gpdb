@@ -222,6 +222,12 @@ void AppendOnlyStorageWrite_Init(
 
 	storageWrite->isActive = true;
 
+	storageWrite->bufferedAppend.mirroredOpen.isActive = FALSE; 
+	storageWrite->bufferedAppend.mirroredOpen.segmentFileNum = 0; 
+	storageWrite->bufferedAppend.mirroredOpen.primaryFile = -1; 
+
+
+
 }
 
 /*
@@ -310,7 +316,10 @@ void AppendOnlyStorageWrite_OpenFile(
 				 * if necessary.  Otherwise, it must already
 				 * exist.
 				 */
-	int64						fileLen_uncompressed)
+	int64						fileLen_uncompressed,
+
+	RelFileNode					relFileNode,
+	int32						segmentFileNum)
 {
 	int		fileFlags = O_RDWR | PG_BINARY;
 	int		fileMode = 0600;
@@ -332,11 +341,19 @@ void AppendOnlyStorageWrite_OpenFile(
 	
 	Assert(filePathName != NULL);
 	// UNDONE: Range check logicalEof
-
+	
 	/*
 	 * Open or create the file for write.
 	 */	
-	file = PathNameOpenFile(filePathName, fileFlags, fileMode);
+	MirroredAppendOnly_Open(&storageWrite->bufferedAppend.mirroredOpen, 
+				&relFileNode,
+				segmentFileNum,
+				logicalEof,
+				fileFlags,
+				fileMode);
+
+	file = storageWrite->bufferedAppend.mirroredOpen.primaryFile;
+
 	if(file < 0)
 	{
 		if(logicalEof > 0)
@@ -352,7 +369,15 @@ void AppendOnlyStorageWrite_OpenFile(
 		{
 			/* File doesn't exist.  Attempt to create it. */
 			fileFlags |= O_CREAT;
-			file = PathNameOpenFile(filePathName, fileFlags, fileMode);
+
+			MirroredAppendOnly_Open(&storageWrite->bufferedAppend.mirroredOpen, 
+						&relFileNode,
+						segmentFileNum,
+						logicalEof,
+						fileFlags,
+						fileMode);
+
+			file = storageWrite->bufferedAppend.mirroredOpen.primaryFile;
 
 			if(file < 0)
 				ereport(ERROR,
@@ -369,7 +394,8 @@ void AppendOnlyStorageWrite_OpenFile(
 	seekResult = FileSeek(file, logicalEof, SEEK_SET);
 	if (seekResult != logicalEof)
 	{
-		FileClose(file);
+		MirroredAppendOnly_Close(&storageWrite->bufferedAppend.mirroredOpen);
+
         ereport(ERROR, 
 				(errcode(ERRCODE_IO_ERROR),
 			     errmsg("Append-only Storage Write error on segment file '%s' for relation '%s'.  FileSeek offset = " INT64_FORMAT ".  Error code = %d (%s)",
@@ -521,10 +547,8 @@ void AppendOnlyStorageWrite_FlushAndCloseFile(
 	 * We must take care of fsynching to disk ourselves since
 	 * the fd API won't do it for us.
 	 */
-	FileSync(storageWrite->file);
-	
-	FileClose(storageWrite->file);
-	
+
+	MirroredAppendOnly_FlushAndClose(&storageWrite->bufferedAppend.mirroredOpen);
 	storageWrite->file = -1;
 }
 

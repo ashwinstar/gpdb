@@ -218,16 +218,15 @@ PRE_RESTORE_CHECKS () {
 	FAULT_ACTION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"show gp_fault_action;"`
 	ERROR_CHK $? "obtain array fault action value" 2
 	#Check for any failures
-	FAIL_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(*) from $GP_PG_VIEW as _gp_pg_view where content<>-1 and valid='f';"`
-	ERROR_CHK $? "obtain invalid segment count" 2
+	FAIL_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(*) from $GP_PG_VIEW as _gp_pg_view where content<>-1 and isprimary='t' and valid='f';"`
+	ERROR_CHK $? "obtain invalid primary segment count" 2
 	if [ $FAULT_ACTION == "readonly" ] && [ $FAIL_COUNT -ne 0 ];then
-		LOG_MSG "[FATAL]:-There are $FAIL_COUNT segment instance databases marked as invalid" 1
+		LOG_MSG "[FATAL]:-There are $FAIL_COUNT primary segment databases marked as invalid" 1
 		LOG_MSG "[FATAL]:-Array fault action is set to readonly, unable to initiate a restore" 1
 		LOG_MSG "[INFO]:-Use $GPRECOVERSEG utility to recover failed segment instances database" 1
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	fi
-	TOTAL_PRIMARY_SEGMENTS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(*) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
-	((TOTAL_SEGMENTS=$TOTAL_PRIMARY_SEGMENTS*2))
+	TOTAL_PRIMARY_SEGMENTS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(*) from $CONFIG_TABLE where content<>-1 and preferred_role='p';"`
 	ERROR_CHK $? "obtain number of primary segments" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -612,11 +611,10 @@ SET_VAR () {
 CHK_SEGMENT_DUMP_FILES () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Expected dump file name is gp_dump_0_${DBID}_${TIMESTAMP}[.gz]
-	MIRROR_DUMP_COUNT=0
 	PRIMARY_DUMP_COUNT=0
 	DUMP_FILE_COUNT=0
 	SEG_INVALID_COUNT=0
-	for QE_LINE in "${QE_ARRAY[@]}"
+	for QE_LINE in "${PRIMARY_QE_ARRAY[@]}"
 	do
 		SET_VAR $QE_LINE
 		if [ x"" != x"$DB_FILE_HOST" ];then
@@ -637,9 +635,7 @@ CHK_SEGMENT_DUMP_FILES () {
 				PRI_DBID_LIST="$PRI_DBID_LIST $SEG_DBID"
 				PRI_CONTENT_LIST="$PRI_CONTENT_LIST $SEG_CONTENT"
 			else
-				((MIRROR_DUMP_COUNT=$MIRROR_DUMP_COUNT+1))
-				MIR_DBID_LIST="$MIR_DBID_LIST $SEG_DBID"
-				MIR_CONTENT_LIST="$MIR_CONTENT_LIST $SEG_CONTENT"
+				ERROR_EXIT "[FATAL]:-Internal Error: searched for mirror dump files." 2
 			fi
 			if [ $SEG_VALID == "f" ];then
 				ERROR_EXIT "[FATAL]:-Host $CHK_HOSTNAME dir $SEG_DATADIR dbid $SEG_DBID marked as invalid" 2
@@ -665,55 +661,18 @@ CHK_SEGMENT_DUMP_FILES () {
 VALIDATE_DBID_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Obtained dbid list $DBID_LIST"
-	((TOTAL_DUMP_COUNT=$PRIMARY_DUMP_COUNT+$MIRROR_DUMP_COUNT))
-	TOTAL_SEG=${#QE_ARRAY[@]}
-	#Mirror only restore check
-	if [ $PRIMARY_DUMP_COUNT -eq 0 ];then
-		RESTORE_TYPE="Mirror only"
-		if [ $MIRROR_DUMP_COUNT -ne $TOTAL_PRI ];then
-			ERROR_EXIT "[FATAL]:-Mirror only dump file set, expected $TOTAL_PRI dump files, located $MIRROR_DUMP_COUNT" 2
-		fi
-		RESTORE_NUM=2
-	fi
-	#Primary only restore check
-	if [ $MIRROR_DUMP_COUNT -eq 0 ];then
-		RESTORE_TYPE="Primary only"
-		if [ $PRIMARY_DUMP_COUNT -ne $TOTAL_PRI ];then
-			ERROR_EXIT "[FATAL]:-Primary only dump file set, expected $TOTAL_PRI dump files, located $PRIMARY_DUMP_COUNT" 2
-		fi
+	((TOTAL_DUMP_COUNT=$PRIMARY_DUMP_COUNT))
+	TOTAL_SEG=${#PRIMARY_QE_ARRAY[@]}
+	#all primaries or combination restore check
+	if [ $TOTAL_DUMP_COUNT -eq $TOTAL_PRIMARY_SEGMENTS ];then
+		#Have all primaries dump file set
+		RESTORE_TYPE="All segments"
 		RESTORE_NUM=1
-	fi
-	#Full or combination restore check
-	if [ $PRIMARY_DUMP_COUNT -ne 0 ] && [ $MIRROR_DUMP_COUNT -ne 0 ];then
-		if [ $TOTAL_DUMP_COUNT -eq $TOTAL_SEGMENTS ];then
-			#Have a full primary/mirror dump file set
-			RESTORE_TYPE="Primary/Mirror Full"
-			RESTORE_NUM=3
-		else
-			#Have a mismatch, which could be due to a segment instance recovery, 
-			LOG_MSG "[WARN]:-Possible full Primary and Mirror restore, expected $TOTAL_SEG dump files, located $TOTAL_DUMP_COUNT" 1
-			LOG_MSG "[INFO]:-Checking to see if can locate sufficient dump files to create a valid restore file set" 1
-			if [ $MIRROR_DUMP_COUNT -eq $TOTAL_PRIMARY_SEGMENTS ];then
-				LOG_MSG "[INFO]:-Located a full mirror dump file set, switching to mirror only recovery" 1
-				RESTORE_TYPE="Mirror only [Changed due to missing dump files]"
-				DBID_LIST="1${MIR_DBID_LIST}"
-				CONTENT_LIST="-1${MIR_CONTENT_LIST}"
-				RESTORE_NUM=2
-			else
-				if [ $PRIMARY_DUMP_COUNT -eq $TOTAL_PRIMARY_SEGMENTS ];then
-					LOG_MSG "[INFO]:-Located a full primary dump file set, switching to primary only recovery" 1
-					RESTORE_TYPE="Primary only [Changed due to missing dump files]"
-					DBID_LIST="1${PRI_DBID_LIST}"
-					CONTENT_LIST="-1${PRI_CONTENT_LIST}"
-					RESTORE_NUM=1
-				else
-					LOG_MSG "[WARN]:-Do not have either a full dump file set for mirror or primary segments"
-					RESTORE_TYPE="Primary/Mirror partial [Changed due to missing dump files]"
-					FIND_VALID_RESTORE_SET
-					RESTORE_NUM=4
-				fi
-			fi
-		fi	
+	else
+		LOG_MSG "[WARN]:-Do not have a full primary dump file set for all primary segments"
+		RESTORE_TYPE="Partial [Changed due to missing dump files]"
+		FIND_VALID_RESTORE_SET
+		RESTORE_NUM=2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -812,7 +771,7 @@ GATHER_INFO () {
 	#Get the current gp_fault_action setting
 	FAIL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"show gp_fault_action;"`
 	ERROR_CHK $? "obtain GPDB fault action setting" 2
-	TOTAL_PRI=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select count(*) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
+	TOTAL_PRI=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select count(*) from $CONFIG_TABLE where content<>-1 and preferred_role='p';"`
 	ERROR_CHK $? "obtain total number of primary segment hosts" 2
 	#Now get name of database we are going to restore
 	if [ x"" = x"$DB_FILE_HOST" ];then
@@ -830,7 +789,7 @@ GATHER_INFO () {
 	else
 		ERROR_EXIT "[FATAL]:-Dump file ${CREATEDB_PREFIX}${RESTORE_TIMESTAMP} does not exist on Master" 2
 	fi
-	QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary, a.dbid, a.content from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 order by a.content;" 2>/dev/null`) > /dev/null 2>&1
+	PRIMARY_QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary, a.dbid, a.content from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 order by a.content;" 2>/dev/null`) > /dev/null 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Failed to get segment details from database "$DEFAULTDB"" 2
@@ -854,15 +813,7 @@ BUILD_RESTORE_LINE () {
 		1) #Primary only database restore
 		   RESTORE_LINE="$RESTORE_LINE --gp-k=$RESTORE_TIMESTAMP --gp-r=$GP_RESTORE_DIR --gp-l=p"
 		   ;;
-		2) #Mirror only database restore
-		   LOG_MSG "[INFO]:-Re-configuring for primary restore" 1
-		   SWITCH_TO_PRIMARY
-		   RESTORE_LINE="$RESTORE_LINE --gp-k=$RESTORE_TIMESTAMP --gp-r=$GP_RESTORE_DIR --gp-l=p"
-		   ;;
-		3) #Primary/Mirror full
-		   RESTORE_LINE="$RESTORE_LINE --gp-k=$RESTORE_TIMESTAMP --gp-r=$GP_RESTORE_DIR --gp-l=a"
-		   ;;
-		4) #Mixed restore  
+		2) #Mixed restore  
 		   LOG_MSG "[INFO]:-Re-configuring for primary restore" 1
 		   SWITCH_TO_PRIMARY
 		   RESTORE_LINE="$RESTORE_LINE --gp-k=$RESTORE_TIMESTAMP --gp-r=$GP_RESTORE_DIR --gp-l=p"
@@ -886,7 +837,7 @@ SWITCH_TO_PRIMARY () {
 	for DBID in ${DBID_LIST[@]}
 	do
 		LOG_MSG "[INFO]:-Processing DBID = $DBID"
-		IS_MIRROR=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select definedprimary from $CONFIG_TABLE where dbid=$DBID;"`
+		IS_MIRROR=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select case when preferred_role='p' then 'f' else 't' end from $CONFIG_TABLE where dbid=$DBID;"`
 		if [ $IS_MIRROR == 'f' ];then
 			M_HOST=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE where dbid=$DBID;"`
 			M_CONTENT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select content from $CONFIG_TABLE where dbid=$DBID;"`
@@ -1044,7 +995,7 @@ GP_RESTORE_TABLE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Create a fake timestamp for restore dump files
 	TABLE_TIMESTAMP=`$DATE +%Y%m%d%H%M%S`
-	BATCH_LIMIT=${#QE_ARRAY[@]}
+	BATCH_LIMIT=${#PRIMARY_QE_ARRAY[@]}
 	#Get segment details from the contents of DBID_LIST
 	DBID_TXT=`$ECHO $DBID_LIST|$TR ' ' ','`
 	TAB_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname, datadir, dbid from $CONFIG_TABLE where dbid in (${DBID_TXT}) and content<>-1 order by port;"`)

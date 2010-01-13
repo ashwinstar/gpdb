@@ -74,8 +74,6 @@ gp_pgdatabase__(PG_FUNCTION_ARGS)
 		mystatus = (Working_State *) palloc(sizeof(Working_State));
 		funcctx->user_fctx = (void *) mystatus;
 
-		FtsEvaluateTransientState();
-
 		mystatus->cdb_component_dbs = getCdbComponentDatabases();
 		mystatus->currIdx = 0;
 
@@ -107,11 +105,11 @@ gp_pgdatabase__(PG_FUNCTION_ARGS)
 		MemSet(nulls, false, sizeof(nulls));
 
 		values[0] = UInt16GetDatum(db->dbid);
-		values[1] = BoolGetDatum(db->isprimary);
+		values[1] = BoolGetDatum(SEGMENT_IS_ACTIVE_PRIMARY(db));
 		values[2] = UInt16GetDatum(db->segindex);
 
-		values[3] = BoolGetDatum(db->valid);
-		values[4] = BoolGetDatum(db->definedprimary);
+		values[3] = BoolGetDatum(SEGMENT_IS_ACTIVE_PRIMARY(db));
+		values[4] = BoolGetDatum(db->preferred_role == 'p');
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);

@@ -23,6 +23,8 @@
 #include "storage/smgr.h"
 #include "utils/hsearch.h"
 
+#include "cdb/cdbmirroredfilesysobj.h"
+
 
 /*
  * During XLOG replay, we may see XLOG records for incremental updates of
@@ -408,6 +410,8 @@ XLogOpenRelation(RelFileNode rnode)
 	XLogRelDesc *res;
 	XLogRelCacheEntry *hentry;
 	bool		found;
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
 
 	hentry = (XLogRelCacheEntry *)
 		hash_search(_xlrelcache, (void *) &rnode, HASH_FIND, NULL);
@@ -458,7 +462,17 @@ XLogOpenRelation(RelFileNode rnode)
 		 * during a crash.	Better to write the data until we are actually
 		 * told to delete the file.)
 		 */
-		smgrcreate(res->reldata.rd_smgr, res->reldata.rd_isLocalBuf, true);
+		// UNDONE: What about the persistent rel files table???
+		smgrcreate(
+			res->reldata.rd_smgr, 
+			&persistentTid, 
+			&persistentSerialNum,
+			res->reldata.rd_isLocalBuf, 
+			true);
+		// UNDONE: This condition should not occur anymore.
+//		MirroredFileSysObj_CreateRelFile(
+//									res->reldata.rd_smgr,
+//									res->reldata.rd_isLocalBuf);
 	}
 
 	res->moreRecently = &(_xlrelarr[0]);

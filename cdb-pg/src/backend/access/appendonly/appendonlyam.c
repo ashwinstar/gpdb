@@ -332,7 +332,9 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 							&aoInsertDesc->storageWrite,
 							aoInsertDesc->appendFilePathName,
 							eof,
-							eof_uncompressed);
+							eof_uncompressed,
+							aoInsertDesc->aoi_rel->rd_node,
+							aoInsertDesc->cur_segno);
 
 	/* reset counts */
 	aoInsertDesc->insertCount = 0;

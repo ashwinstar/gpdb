@@ -1025,11 +1025,9 @@ gp_adjust_priority_int(PG_FUNCTION_ARGS)
 		/*
 		 * Ok, it exists, dispatch the command to the segDBs.
 		 */
-
 		sprintf(cmd, "select gp_adjust_priority(%d,%d,%d)", session_id, command_count, wt);
 
-		results = cdbdisp_dispatchRMCommand(cmd, true, true, &errbuf,
-				&resultCount);
+		results = cdbdisp_dispatchRMCommand(cmd, true, &errbuf, &resultCount);
 
 		if (errbuf.len > 0)
 			ereport(ERROR,(

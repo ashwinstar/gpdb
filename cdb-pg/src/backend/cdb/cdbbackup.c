@@ -79,7 +79,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	itimers 	savetimers;
 
 
-	getGpId();
+	verifyGpIdentityIsSet();
 	instid = (GpIdentity.segindex == -1) ? 1 : 0;	/* dispatch node */
 	segid = GpIdentity.dbid;
 
@@ -315,7 +315,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 	bool		is_file_compressed; /* is the dump file ending with '.gz'*/
 	itimers 	savetimers;
 
-	getGpId();
+	verifyGpIdentityIsSet();
 	instid = (GpIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = GpIdentity.dbid;
 
@@ -973,7 +973,7 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_com
 	int			len;
 	char	   *pszBackupFileName;
 
-	getGpId();
+	verifyGpIdentityIsSet();
 	instid = (GpIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = GpIdentity.dbid;
 
@@ -1037,7 +1037,7 @@ formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBac
 	int			len;
 	char	   *pszFileName;
 
-	getGpId();
+	verifyGpIdentityIsSet();
 	instid = (GpIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = GpIdentity.dbid;
 

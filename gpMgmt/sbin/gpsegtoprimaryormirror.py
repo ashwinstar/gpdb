@@ -1,0 +1,264 @@
+#!/usr/bin/env python
+#
+# Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
+#
+#
+# Internal Use Function.
+#
+import os, sys
+
+progname = os.path.split(sys.argv[0])[-1]
+
+if sys.version_info < (2, 5, 0):
+    sys.exit(
+'''Error: %s is supported on Python versions 2.5 or greater
+Please upgrade python installed on this machine.''' % progname)
+
+
+from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
+
+import figleaf
+import pickle
+
+from gppylib.gpparseopts import OptParser, OptChecker
+from gppylib import gplog
+from gppylib import gparray
+from gppylib.commands import base
+from gppylib.commands import unix
+from gppylib.commands import gp
+from gppylib.commands import pg
+from gppylib.db import catalog
+from gppylib.db import dbconn
+from gppylib import pgconf
+
+
+description = (""" 
+This utility is NOT SUPPORTED and is for internal-use only.
+
+Changes the primary/mirror state on a set of one or more segment databases.
+""")
+
+_help = ["""
+Utility should only be used by other GP utilities.  
+
+Return codes:
+  0 - All segments modified successfully
+  1 - At least one segment was not modified successfully
+  2 - Fatal error to script during startup.  unknown state.
+
+"""]
+
+EXECNAME = os.path.split(__file__)[-1]
+
+#-------------------------------------------------------------------------
+class SegToPrimaryMirrorStatus():
+    def __init__(self,datadir,modified,reason):
+        self.datadir=datadir
+        self.modified=modified
+        self.reason=reason
+    
+    def __str__(self):
+        return "STATUS--DIR:%s--MODIFIED:%s--REASON:%s" % (self.datadir,self.modified,self.reason)
+    
+#-------------------------------------------------------------------------    
+class GpSegToPrimaryMirror():
+    ######
+    def __init__(self,dblist,gpversion,collation,targetMirroringMode,transitionMessageFile):
+        self.dblist=dblist
+        self.expected_gpversion=gpversion
+        # There is an issue with python 2.6.2 on linux that can cause start to 
+        # hang if it is multithreaded.
+        if unix.curr_platform == unix.LINUX:
+            self.pool = base.WorkerPool(numWorkers=1)
+        else:
+            self.pool = base.WorkerPool(numWorkers=len(dblist))
+        self.expected_lc_collate=None
+        self.expected_lc_monetary=None
+        self.expected_lc_numeric=None
+        self.targetMirroringMode = targetMirroringMode
+        self.transitionMessageFile = transitionMessageFile
+        
+        self.gphome=os.path.abspath(os.pardir)
+        
+        self.actual_gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
+        if self.actual_gpversion != self.expected_gpversion:
+            raise Exception("Local Software Version does not match what is expected.\n"
+                            "The local software version is: '%s'\n"
+                            "But we were expecting it to be: '%s'\n"
+                            "Please review and correct" % (self.actual_gpversion,self.expected_gpversion))
+        
+        collation_strings=collation.split(':')
+        if len(collation_strings) != 3:
+            raise Exception("Invalid collation string specified!")
+        (self.expected_lc_collate,self.expected_lc_monetary,self.expected_lc_numeric)=collation_strings
+
+        pass
+
+    ######
+    def start(self): 
+        results=[]
+        failures=False
+        dirportmap = {}
+
+        for itm in self.dblist:
+            (dir, port) = itm.split(':')
+            dirportmap[dir] = port
+        
+        # this was pickled inside gpstart (look for pickle.dump)
+        f = open(self.transitionMessageFile, "r")
+        transitionData = pickle.load(f)
+        f.close()
+            
+        logger.info("Changing segments...")       
+        for dir, port in dirportmap.iteritems():
+            dbData = transitionData["dbsByPort"][int(port)]
+            targetMode = transitionData["targetMode"]
+            
+            transitionArgumentsArr = []
+            transitionArgumentsArr.append(targetMode)
+            if targetMode == 'mirror' or targetMode == 'primary':
+                transitionArgumentsArr.append( dbData["mode"])
+                transitionArgumentsArr.append( dbData["hostName"])
+                transitionArgumentsArr.append( "%d" % dbData["hostPort"])
+                transitionArgumentsArr.append( dbData["peerName"])
+                transitionArgumentsArr.append( "%d" % dbData["peerPort"])
+
+            transitionArguments = "\n".join(transitionArgumentsArr) + "\n"
+
+            # write arguments to input file
+            inputFile = os.path.join( dir, "gpstart_mirror_segargs" )
+            f = open(inputFile, 'w')
+            f.write(transitionArguments)
+            f.close()
+
+            cmd=gp.SendFilerepTransitionMessage("Changing seg at dir %s" % dir, inputFile, port=port)
+            self.pool.addCommand(cmd)  
+              
+        self.pool.join()
+        
+        cmds=self.pool.getCompletedItems()
+        for cmd in cmds:
+            res=cmd.get_results()
+            if res.rc != 0:
+                #TODO: read in last entries in startup.log
+                status=SegToPrimaryMirrorStatus(cmd.dataDir,False,"conversion failed.\nstdout:%s\nstderr:%s\n" % (res.stdout,res.stderr))
+                results.append(status)
+                del dirportmap[cmd.dataDir]
+                failures=True
+        
+        if self.targetMirroringMode == 'primary':
+            self.pool.empty_completed_items()
+            for datadir,port in dirportmap.iteritems():
+                cmd = gp.GpSegCheckLocaleAndConnect('check on %s' % datadir,
+                                                datadir,
+                                                port,
+                                                self.expected_lc_collate,
+                                                self.expected_lc_monetary,
+                                                self.expected_lc_numeric)
+                self.pool.addCommand(cmd)
+            self.pool.join()
+            
+            cmds=self.pool.getCompletedItems()
+            for cmd in cmds:
+                (success,error_str)=cmd.getResults()
+                
+                if success:
+                    results.append(SegToPrimaryMirrorStatus(cmd.datadir,True,"Conversion Succeeded"))
+                else:
+                    results.append(SegToPrimaryMirrorStatus(cmd.datadir,False,error_str))
+        else:
+            for datadir,port in dirportmap.iteritems():
+                results.append(SegToPrimaryMirrorStatus(datadir,True,"Conversion Succeeded"))
+                
+        #Log the results!
+        status = '\nCOMMAND RESULTS\n'
+        
+        for result in results:
+            status += str(result) + "\n"
+        
+        logger.info(status)
+        
+        return failures
+    
+    def cleanup(self):
+        if self.pool:
+            self.pool.haltWork()
+    
+#-------------------------------------------------------------------------
+def parseargs():
+    parser = OptParser(option_class=OptChecker,
+                description=' '.join(description.split()),
+                version='%prog version $Revision: #1 $')
+    parser.setHelp(_help)
+    parser.set_usage('%prog [--help] [options] ')
+    parser.remove_option('-h')
+    
+    parser.add_option('-h', '-?', '--help', action='help',help='show this help message and exit')
+    parser.add_option('-v','--verbose', action='store_true',help='debug output.')
+    parser.add_option('-q', '--quiet', action='store_true',help='suppress status messages')
+    parser.add_option("-C", "--collation", type="string", 
+                        help="values for lc_collate, lc_monetary, lc_numeric separated by :")
+    parser.add_option("-D","--datadir",dest="dblist", action="append", type="string")
+    parser.add_option("-t","--transitionMessageFile",dest="transitionMessageFile", type="string")
+    parser.add_option("-M","--mirroringMode",dest="mirroringMode", type="string")
+    parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
+                    help="expected software version")      
+    
+    parser.set_defaults(verbose=False, filters=[], slice=(None, None))
+    
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+        
+    return options, args
+
+
+
+#-------------------------------------------------------------------------
+    
+def main():
+    use_figleaf=os.getenv('USE_FIGLEAF', None)
+    
+    if use_figleaf:
+        figleaf.start()
+    conversionCmd=None
+    
+    try:
+        gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),nonuser=True)
+        
+        options, args = parseargs()
+        
+        if options.verbose:
+            gplog.enable_verbose_logging()        
+        if options.quiet:
+            gplog.quiet_stdout_logging()
+
+        logger.info("Starting gpsegtoprimaryormirror with args: %s" % ' '.join(sys.argv[1:]))
+        
+        conversionCmd = GpSegToPrimaryMirror(options.dblist,options.gpversion,options.collation,options.mirroringMode,options.transitionMessageFile)
+        
+        failures = conversionCmd.start()
+        
+        if failures:
+            sys.exit(1)
+        else:    
+            sys.exit(0)
+
+    except Exception, e:
+        logger.exception("gpsegtoprimaryormirror failed. (Reason=%s) exiting..." % e)
+        sys.exit(2)
+    except KeyboardInterrupt:
+        sys.exit('\nUser Interrupted')
+    finally:
+        if conversionCmd:
+            conversionCmd.cleanup()
+        if use_figleaf:
+            figleaf.stop()
+            figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
+
+
+#------------------------------------------------------------------------- 
+logger = gplog.get_default_logger()    
+if __name__ == '__main__':
+    main()
+
+ 

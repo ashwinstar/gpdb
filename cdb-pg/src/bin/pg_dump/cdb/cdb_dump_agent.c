@@ -123,8 +123,6 @@ char		g_comment_end[10];
 /* flag to turn on/off dollar quoting */
 static int	disable_dollar_quoting = 0;
 
-static int	skipcat = 0;			/* if true, don't dump gp_ catalog tables */ 
-
 /* MPP Additions start */
 static SegmentDatabase g_SegDB;
 //static int             plainText = 0;
@@ -220,12 +218,10 @@ extern void   makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg );
 static void*  monitorThreadProc(void *arg  __attribute__((unused)));
 static void   myHandler(int signo);
 static void   addDistributedBy(PQExpBuffer q, TableInfo *tbinfo, int actual_atts);
-static char*  formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
 static char*  formCDatabaseFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
 static char*  formGenericFilePathName( char *keyword, char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
 static void   dumpMain(bool oids, const char* dumpencoding, int outputBlobs, int plainText, RestoreOptions *ropt);
 static void   dumpDatabaseDefinition(void);
-static void   dumpGreenplumCatalog(bool oids, const char* dumpencoding, int outputBlobs, int plainText, RestoreOptions *ropt);
 static void   installSignalHandlers(void);
 extern void   reset(void);
 /* MPP additions end */
@@ -306,7 +302,6 @@ main(int argc, char **argv)
 	{"disable-dollar-quoting", no_argument, &disable_dollar_quoting, 1},
 	{"disable-triggers", no_argument, &disable_triggers, 1},
 	{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
-	{"gp-catalog-skip", no_argument, &skipcat, 1},
 	{NULL, 0, NULL, 0}
 	};
 	int			optindex;
@@ -463,8 +458,6 @@ main(int argc, char **argv)
 					disable_triggers = 1;
 				else if (strcmp(optarg, "use-set-session-authorization") == 0)
 					use_setsessauth = 1;
-				else if (strcmp(optarg, "gp-catalog-skip") == 0)
-					skipcat = 1;
 				else
 				{
 					fprintf(stderr,
@@ -597,7 +590,6 @@ main(int argc, char **argv)
 	g_SegDB.dbid        = g_dbID;
     g_SegDB.role        = g_role;
     g_SegDB.port        = pgport ? atoi(pgport) : 5432;
-    g_SegDB.isValid     = true;
     g_SegDB.pszHost     = pghost ? strdup(pghost) : NULL;
     g_SegDB.pszDBName   = dbname ? strdup(dbname) : NULL;
     g_SegDB.pszDBUser   = username ? strdup(username) : NULL;
@@ -777,25 +769,14 @@ main(int argc, char **argv)
 	CloseArchive(g_fout);
 
 	/* 
-	 * Dump catalog and create db functions into 2 new separate dump
-	 * files IFF this is the master node and data-only option is not set.
+	 * Dump CREATE DATABASE statement into a new dump file IFF 
+	 * this is the master node and data-only option is not set.
 	 */
     if (g_role == ROLE_MASTER && !dataOnly)
     {
 		mpp_err_msg( logInfo, progname, "Dumping CREATE DATABASE statement for database \"%s\"\n", g_conn->dbName);
 		dumpDatabaseDefinition();
-		
-		if(!skipcat)
-		{
-			mpp_err_msg( logInfo, progname, "Dumping Greenplum Database catalog for database \"%s\"\n", g_conn->dbName);
-	        dumpGreenplumCatalog(oids, dumpencoding, outputBlobs, plainText, ropt);			
-		}
-		else
-			mpp_err_msg( logInfo, progname, "Skipping Greenplum Database catalog for database \"%s\"\n", g_conn->dbName);
-
-        mpp_err_msg( logInfo, progname, "Additional master dumps completed\n");
     }
-
 
 	/*
 	 * Make sure to report that we are done.
@@ -6558,11 +6539,6 @@ static void addDistributedBy(PQExpBuffer q, TableInfo *tbinfo, int	actual_atts)
 
 }
 
-char* formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID )
-{
-    return formGenericFilePathName( "catalog", pszBackupDirectory, pszBackupKey, pszInstID, pszSegID );
-}
-
 char* formCDatabaseFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID )
 {
     return formGenericFilePathName( "cdatabase", pszBackupDirectory, pszBackupKey, pszInstID, pszSegID );
@@ -6724,64 +6700,6 @@ dumpDatabaseDefinition()
 	destroyPQExpBuffer(creaQry);
 }
 
-/*
- * dumpGreenplumCatalog
- * 
- * this function dumps the greenplum catalog tables into a file named gp_catalog_<key>.
- */
-void dumpGreenplumCatalog(bool oids, const char* dumpencoding, int outputBlobs, int plainText, RestoreOptions *ropt)
-{
-    char* 	backupFileName;
-    bool	save_schemaOnly = schemaOnly;
-    char*	save_ropt_filename = (ropt->filename ? ropt->filename : NULL);
-    
-    backupFileName = formCatalogFilePathName(g_pszCDBOutputDirectory,
-											 g_CDBDumpKey, 
-											 g_role, 
-											 g_dbID);
-
-    /*
-     * We temporarily modify these globals to fit the specifics of
-     * the catalog dump. We will revert to the original values after
-     * dumping, although not strictly necessary.
-     */
-    schemaOnly = false;
-    dataOnly = true;
-    g_gp_catalog_only = true;
-	ropt->filename = backupFileName;
-	
-	/* set the new filename as the new archive target */
-	g_fout = CreateArchive(backupFileName, archNull, 0);
-	
-	if (!g_fout)
-	{
-		mpp_err_msg(logError, progname, "could not open gp_catalog output file \"%s\" for writing\n", backupFileName);
-		exit_nicely();
-	}
-
-	/* Let the archiver know how noisy to be */
-	g_fout->verbose = g_verbose;
-	g_fout->minRemoteVersion = 80200;	/* we can handle back to 8.2 */
-	g_fout->maxRemoteVersion = parse_version(PG_VERSION);
-	if (g_fout->maxRemoteVersion < 0)
-	{
-		mpp_err_msg(logError, progname, "could not parse version string \"%s\"\n", PG_VERSION);
-		exit_nicely();
-	}
-	
-	dumpMain(oids, dumpencoding, outputBlobs, plainText, ropt);
-
-	reset();
-
-	/* cleanup */
-	CloseArchive(g_fout);
-	
-	/* revert to original values of globals, for sake of cleanness */
-    schemaOnly = save_schemaOnly;
-    dataOnly = false;
-    ropt->filename = (save_ropt_filename ? save_ropt_filename : NULL);
-
-}
 
 
 static int

@@ -103,6 +103,8 @@
 #include "cdb/cdboidsync.h"
 #include "cdb/cdbsreh.h"
 
+#include "cdb/cdbmirroredfilesysobj.h"
+
 typedef enum
 {
 	PART_STATUS_NONE,	/* a regular table */
@@ -399,7 +401,6 @@ static char transformFormatType(char *formatname);
 static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols, bool iswritable);
 static Oid DefineRelation_int(CreateStmt *stmt, char relkind, char relstorage,
 							  struct CdbDispatchResults **pPrimaryResults,
-							  struct CdbDispatchResults **pMirrorResults,
 							  struct CdbDispatchCmdThreads **pDispatchThreads);
 static void ATExecPartAddInternal(Relation rel, Node *def);
 static void exchange_part_rule(Oid oldrelid, Oid newrelid);
@@ -437,7 +438,6 @@ Oid
 DefineRelation(CreateStmt *stmt, char relkind, char relstorage)
 {
     struct CdbDispatchResults *primaryResults = NULL;
-    struct CdbDispatchResults *mirrorResults = NULL;
 	CdbDispatchCmdThreads     *dispatchThreads = NULL;
 
     Oid reloid = 0;
@@ -445,13 +445,13 @@ DefineRelation(CreateStmt *stmt, char relkind, char relstorage)
 
     PG_TRY();
     {
-        reloid = DefineRelation_int(stmt, relkind, relstorage, &primaryResults, &mirrorResults, &dispatchThreads);
+        reloid = DefineRelation_int(stmt, relkind, relstorage, &primaryResults, &dispatchThreads);
     }
 	PG_CATCH();
 	{
         /* If dispatched, stop QEs and clean up after them. */
         if (primaryResults)
-            cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
+            cdbdisp_handleError(primaryResults, dispatchThreads);
 
         /* Carry on with error handling. */
 		PG_RE_THROW();
@@ -463,7 +463,7 @@ DefineRelation(CreateStmt *stmt, char relkind, char relstorage)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
+	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
 
     return reloid;
 }
@@ -474,7 +474,6 @@ DefineRelation_int(CreateStmt *stmt,
                    char relkind,
                    char relstorage,
                    struct CdbDispatchResults **pPrimaryResults,
-                   struct CdbDispatchResults **pMirrorResults,
 				   struct CdbDispatchCmdThreads **pDispatchThreads)
 {
 	char		relname[NAMEDATALEN];
@@ -816,7 +815,6 @@ DefineRelation_int(CreateStmt *stmt,
 										 true,      /* startTransaction */
 										 true,      /* withSnapshot */
 										 pPrimaryResults,
-										 pMirrorResults,
 										 pDispatchThreads,
 										 "DefineRelation_int");
 
@@ -851,7 +849,6 @@ extern void
 DefineExternalRelation(CreateExternalStmt *createExtStmt)
 {
 	struct CdbDispatchResults *primaryResults = NULL;
-    struct CdbDispatchResults *mirrorResults = NULL;
 	CdbDispatchCmdThreads     *dispatchThreads = NULL;
 	CreateStmt				  *createStmt = makeNode(CreateStmt);
 	ExtTableTypeDesc 		  *exttypeDesc = (ExtTableTypeDesc *)createExtStmt->exttypedesc;
@@ -1121,7 +1118,8 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 		if (shouldDispatch)
 		{
 
-			/* Dispatch the statement tree to all primary and mirror segdbs.
+			/*
+			 * Dispatch the statement tree to all primary segdbs.
 			 * Doesn't wait for the QEs to finish execution.
 			 */
 			cdbdisp_dispatchUtilityStatement((Node *)createExtStmt,
@@ -1129,7 +1127,6 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 											 true,      /* startTransaction */
 											 true,      /* withSnapshot */
 											 &primaryResults,
-											 &mirrorResults,
 											 &dispatchThreads,
 											 "DefineExternalRelation");
 		}
@@ -1138,7 +1135,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	{
         /* If dispatched, stop QEs and clean up after them. */
         if (primaryResults)
-            cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
+            cdbdisp_handleError(primaryResults, dispatchThreads);
 
         /* Carry on with error handling. */
 		PG_RE_THROW();
@@ -1150,15 +1147,13 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
-
+	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
 }
 
 extern void
 DefineForeignRelation(CreateForeignStmt *createForeignStmt)
 {
 	struct CdbDispatchResults *primaryResults = NULL;
-    struct CdbDispatchResults *mirrorResults = NULL;
 	CdbDispatchCmdThreads     *dispatchThreads = NULL;
 	CreateStmt				  *createStmt = makeNode(CreateStmt);
 	Oid						  reloid = 0;
@@ -1238,7 +1233,6 @@ DefineForeignRelation(CreateForeignStmt *createForeignStmt)
 											 true,      /* startTransaction */
 											 true,      /* withSnapshot */
 											 &primaryResults,
-											 &mirrorResults,
 											 &dispatchThreads,
 											 "DefineForeignRelation");
 		}
@@ -1247,7 +1241,7 @@ DefineForeignRelation(CreateForeignStmt *createForeignStmt)
 	{
         /* If dispatched, stop QEs and clean up after them. */
         if (primaryResults)
-            cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
+            cdbdisp_handleError(primaryResults, dispatchThreads);
 
         /* Carry on with error handling. */
 		PG_RE_THROW();
@@ -1259,7 +1253,7 @@ DefineForeignRelation(CreateForeignStmt *createForeignStmt)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
+	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
 
 }
 
@@ -9548,11 +9542,16 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 	Oid			relaoblkdirrelid = InvalidOid;
 	Oid			relaoblkdiridxid = InvalidOid;
 	Oid           newrelfilenode;
+	ItemPointerData newPersistentTid;
+	int64 newPersistentSerialNum;
 	RelFileNode newrnode;
 	SMgrRelation dstrel;
 	Relation	pg_class;
 	HeapTuple	tuple;
 	Form_pg_class rd_rel;
+	Relation	gp_relation_node;
+	Oid			tablespace;
+	HeapTuple	nodeTuple;
 
 	/*
 	 * Need lock here in case we are recursing to toast table or index
@@ -9598,7 +9597,7 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 		GetAppendOnlyEntryAuxOids(tableOid, &relaosegrelid, &relaosegidxid,
 								  &relaoblkdirrelid, &relaoblkdiridxid);
 
-	/* Get a modifiable copy of the relation's pg_class row */
+	/* Fetch relation's pg_class row */
 	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
 
 	tuple = SearchSysCacheCopy(RELOID,
@@ -9607,6 +9606,23 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", tableOid);
 	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
+
+	tablespace = rd_rel->reltablespace;
+	if (tablespace == 0)
+		tablespace = DEFAULTTABLESPACE_OID;
+
+	/* Fetch relation's gp_relation_node row */
+	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
+
+	nodeTuple = ScanGpRelationNodeTuple(
+							gp_relation_node,
+							tablespace, 
+							rd_rel->relfilenode);
+	if (!HeapTupleIsValid(nodeTuple))
+		elog(ERROR, "cache lookup failed for relation %u, tablespace %u, relation file node %u", 
+		     tableOid, 
+		     tablespace,
+		     rd_rel->relfilenode);
 
 	/*
 	 * Relfilenodes are not unique across tablespaces, so we need to allocate
@@ -9623,14 +9639,40 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 	newrnode.spcNode = newTableSpace;
 
 	dstrel = smgropen(newrnode);
-	smgrcreate(dstrel, rel->rd_isLocalBuf, false);
+	MirroredFileSysObj_CreateRelFile(
+								dstrel,
+								&newPersistentTid,
+								&newPersistentSerialNum,
+								rel->rd_isLocalBuf);
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "ALTER TABLE SET TABLESPACE: Create for '%s' "
+			 "persistent TID %s and serial number " INT64_FORMAT,
+			 relpath(newrnode),
+			 ItemPointerToString(&newPersistentTid),
+			 newPersistentSerialNum);
 
 	/* copy relation data to the new physical file */
 	copy_relation_data(rel, dstrel);
 
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "ALTER TABLE SET TABLESPACE: Scheduling drop for '%s' "
+			 "persistent TID %s and serial number " INT64_FORMAT,
+			 relpath(rel->rd_smgr->smgr_rnode),
+			 ItemPointerToString(&rel->rd_relationnodeinfo.persistentTid),
+			 rel->rd_relationnodeinfo.persistentSerialNum);
+
 	/* schedule unlinking old physical file */
 	RelationOpenSmgr(rel);
-	smgrscheduleunlink(rel->rd_smgr, rel->rd_isLocalBuf);
+	RelationFetchGpRelationNode(rel);
+	Assert(rel->rd_relationnodeinfo.isPresent);
+	MirroredFileSysObj_ScheduleDropRelFile(
+									rel->rd_smgr,
+									&rel->rd_relationnodeinfo.persistentTid,
+									rel->rd_relationnodeinfo.persistentSerialNum,
+									rel->rd_isLocalBuf);
 
 	/*
 	 * Now drop smgr references.  The source was already dropped by
@@ -9648,7 +9690,16 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 
 	heap_close(pg_class, RowExclusiveLock);
 
-	relation_close(rel, NoLock);
+	/* Update gp_relation_node row. */
+	UpdateGpRelationNodeTuple(
+						gp_relation_node,
+						nodeTuple,
+						newTableSpace,
+						newrelfilenode,
+						&newPersistentTid,
+						newPersistentSerialNum);
+
+	heap_close(gp_relation_node, RowExclusiveLock);
 
 	/* Make sure the reltablespace change is visible */
 	CommandCounterIncrement();
@@ -9675,6 +9726,8 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 						   GetUserId(),
 						   "ALTER", "SET TABLESPACE"
 				);
+
+	relation_close(rel, NoLock);
 }
 
 /*

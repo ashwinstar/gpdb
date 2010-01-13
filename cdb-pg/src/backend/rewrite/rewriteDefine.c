@@ -33,6 +33,7 @@
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbmirroredfilesysobj.h"
 
 
 static void checkRuleResultList(List *targetList, TupleDesc resultDesc,
@@ -445,7 +446,13 @@ DefineQueryRewrite(RuleStmt *stmt)
 	if (RelisBecomingView)
 	{
 		RelationOpenSmgr(event_relation);
-		smgrscheduleunlink(event_relation->rd_smgr, event_relation->rd_isLocalBuf);
+		RelationFetchGpRelationNode(event_relation);
+		Assert(event_relation->rd_relationnodeinfo.isPresent);
+		MirroredFileSysObj_ScheduleDropRelFile(
+								event_relation->rd_smgr, 
+								&event_relation->rd_relationnodeinfo.persistentTid,
+								event_relation->rd_relationnodeinfo.persistentSerialNum,
+								event_relation->rd_isLocalBuf);
 	}
 
 	/* Close rel, but keep lock till commit... */

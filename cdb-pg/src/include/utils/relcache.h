@@ -16,8 +16,10 @@
 #define RELCACHE_H
 
 #include "access/tupdesc.h"
+#include "access/htup.h"
 #include "nodes/bitmapset.h"
 #include "nodes/pg_list.h"
+#include "catalog/pg_class.h"
 
 
 typedef struct RelationData *Relation;
@@ -49,13 +51,25 @@ extern void RelationSetIndexList(Relation relation,
 					 List *indexIds, Oid oidIndex);
 
 extern void RelationInitIndexAccessInfo(Relation relation);
+extern HeapTuple ScanGpRelationNodeTuple(
+	Relation 	gp_relation_node,
+	Oid			tablespace,
+	Oid 		relationNode);
+extern HeapTuple FetchGpRelationNodeTuple(
+	Relation 		gp_relation_node,
+	Oid				relationId,
+	Oid				tablespace,
+	Oid 			relationNode,
+	ItemPointer		persistentTid,
+	int64			*persistentSerialNum);
+extern void RelationFetchGpRelationNode(Relation relation);
 
 /*
  * Routines for backend startup
  */
 extern void RelationCacheInitialize(void);
 extern void RelationCacheInitializePhase2(void);
-
+	
 /*
  * Routine to create a relcache entry for an about-to-be-created relation
  */

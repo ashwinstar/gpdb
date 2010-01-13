@@ -810,14 +810,12 @@ ChunkTransportStateEntry *
 createChunkTransportState(ChunkTransportState *transportStates,
 						  Slice *sendSlice,
 						  Slice *recvSlice,
-						  int numPrimaryConns,
-						  int numMirrorConns)
+						  int numPrimaryConns)
 {
 	ChunkTransportStateEntry *pEntry;
     int         motNodeID;
 	int			i;
 
-    Assert(numMirrorConns == 0 || numMirrorConns == numPrimaryConns);
     Assert(recvSlice &&
            IsA(recvSlice, Slice) &&
            recvSlice->sliceIndex >= 0);
@@ -850,7 +848,7 @@ createChunkTransportState(ChunkTransportState *transportStates,
 	pEntry->valid = true;
 
 	pEntry->motNodeId = motNodeID;
-    pEntry->numConns = numPrimaryConns + numMirrorConns;
+    pEntry->numConns = numPrimaryConns;
 	pEntry->numPrimaryConns = numPrimaryConns;
 	pEntry->highReadSock = 0;
     pEntry->scanStart = 0;

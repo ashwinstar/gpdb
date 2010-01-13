@@ -141,9 +141,12 @@ class GpSegCopy:
             templatePort = s.getsockname()[1]
             s.close()
             logger.debug('Using port %d for segment template cleanup.' % templatePort)
-            
-            SegmentStart.local('segcopy schema only segment start', 
-                               self.dstDir, utilityMode=True, port=templatePort)
+
+            # use dummy values for dbid, contentid, and numSegmentsInCluster since we are connecting in utility mode
+            # SegmentToStart takes dataDir, port, dbId, contentId, numContentsInCluster, mirroringMode, noWait
+            segmentToStart = gp.SegmentToStart( self.dstDir, templatePort, -1, -1, 0, "mirrorless", false )
+
+            SegmentStart.local('segcopy schema only segment start', segmentToStart, utilityMode=True)
 
             dburl = dbconn.DbURL(hostname=self.dstHost,port=templatePort)
             logger.info("connecting to database: %s" % dburl)
@@ -152,10 +155,12 @@ class GpSegCopy:
             db_list = catalog.getDatabaseList(conn)
             catalog_names = [
                            'pg_catalog.gp_configuration', 
+						   'pg_catalog.gp_segment_configuration',
                            'pg_catalog.gp_distribution_policy',
                            'pg_catalog.pg_partition',
                            'pg_catalog.pg_partition_rule',
                            'pg_catalog.gp_master_mirroring',
+                           'pg_catalog.pg_filespace_entry',
                            ]
             
             conn.close()

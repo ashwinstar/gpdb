@@ -18,6 +18,7 @@
 #include "nodes/pg_list.h"
 #include "storage/relfilenode.h"
 #include "utils/timestamp.h"
+#include "access/persistentendxactrec.h"
 
 #include "cdb/cdbpublic.h"
 
@@ -85,26 +86,36 @@ typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
 typedef struct xl_xact_commit
 {
 	time_t		xtime;
-	int			nrels;			/* number of RelFileNodes */
+
+	int16		persistentCommitObjectCount;	
+								/* number of PersistentEndXactRec style objects */
+
 	int			nsubxacts;		/* number of subtransaction XIDs */
-	/* Array of RelFileNode(s) to drop at commit */
-	RelFileNode xnodes[1];		/* VARIABLE LENGTH ARRAY */
+
+	/* PersistentEndXactRec style objects for commit */
+	uint8 data[0];		/* VARIABLE LENGTH ARRAY */
+
 	/* ARRAY OF COMMITTED SUBTRANSACTION XIDs FOLLOWS */
 } xl_xact_commit;
 
-#define MinSizeOfXactCommit offsetof(xl_xact_commit, xnodes)
+#define MinSizeOfXactCommit offsetof(xl_xact_commit, data)
 
 typedef struct xl_xact_abort
 {
 	time_t		xtime;
-	int			nrels;			/* number of RelFileNodes */
+
+	int16		persistentAbortObjectCount;	
+								/* number of PersistentEndXactRec style objects */
+
 	int			nsubxacts;		/* number of subtransaction XIDs */
-	/* Array of RelFileNode(s) to drop at abort */
-	RelFileNode xnodes[1];		/* VARIABLE LENGTH ARRAY */
-	/* ARRAY OF ABORTED SUBTRANSACTION XIDs FOLLOWS */
+	
+	/* PersistentEndXactRec style objects for abort */
+	uint8 data[0];		/* VARIABLE LENGTH ARRAY */
+	
+	/* ARRAY OF COMMITTED SUBTRANSACTION XIDs FOLLOWS */
 } xl_xact_abort;
 
-#define MinSizeOfXactAbort offsetof(xl_xact_abort, xnodes)
+#define MinSizeOfXactAbort offsetof(xl_xact_abort, data)
 
 /*
  * COMMIT_PREPARED and ABORT_PREPARED are identical to COMMIT/ABORT records
@@ -120,7 +131,7 @@ typedef struct xl_xact_commit_prepared
 	/* MORE DATA FOLLOWS AT END OF STRUCT */
 } xl_xact_commit_prepared;
 
-#define MinSizeOfXactCommitPrepared offsetof(xl_xact_commit_prepared, crec.xnodes)
+#define MinSizeOfXactCommitPrepared offsetof(xl_xact_commit_prepared, crec.data)
 
 typedef struct xl_xact_abort_prepared
 {
@@ -129,7 +140,7 @@ typedef struct xl_xact_abort_prepared
 	/* MORE DATA FOLLOWS AT END OF STRUCT */
 } xl_xact_abort_prepared;
 
-#define MinSizeOfXactAbortPrepared offsetof(xl_xact_abort_prepared, arec.xnodes)
+#define MinSizeOfXactAbortPrepared offsetof(xl_xact_abort_prepared, arec.data)
 
 /* 
  * xl_xact_distributed_forget - moved to cdb/cdbtm.h 
@@ -144,6 +155,14 @@ typedef struct xl_xact_distributed_forget
  * we can move away from a static length SharedSnapshot structure.
  */
 #define MaxGpSavePoints 100
+
+typedef enum
+{
+	XACT_INFOKIND_NONE = 0,
+	XACT_INFOKIND_COMMIT,
+	XACT_INFOKIND_ABORT,
+	XACT_INFOKIND_PREPARE
+} XactInfoKind;
 
 /* ----------------
  *		extern definitions
@@ -211,10 +230,20 @@ extern void UnregisterSubXactCallback(SubXactCallback callback, void *arg);
 
 extern void RecordTransactionCommit(void);
 extern void RecordDistributedForgetCommitted(struct TMGXACT_LOG *gxact_log);
+extern void RecordCrashTransactionAbortRecord(
+	TransactionId				xid,
+	PersistentEndXactRecObjects *persistentAbortObjects);
 
 extern int	xactGetCommittedChildren(TransactionId **ptr);
 
 extern void xact_redo(XLogRecPtr lsn, XLogRecord *record);
+extern bool xact_redo_get_info(
+		XLogRecord					*record,
+		XactInfoKind				*infoKind,
+		TransactionId				*xid,
+		PersistentEndXactRecObjects *persistentObjects,
+		TransactionId				**subXids,
+		int 						*subXidCount);
 extern void xact_desc(StringInfo buf, uint8 xl_info, char *rec);
 extern const char *IsoLevelAsUpperString(int IsoLevel);
 

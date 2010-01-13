@@ -15,6 +15,7 @@
 
 #include "postgres.h"
 #include "storage/fd.h"
+#include "cdb/cdbmirroredappendonly.h"
 
 typedef struct BufferedAppend
 {
@@ -65,6 +66,9 @@ typedef struct BufferedAppend
     int64				 fileLen_uncompressed; /* for calculating compress ratio */
 
 	int64				initialSetFilePosition;
+
+	MirroredAppendOnlyOpen		mirroredOpen;
+
 } BufferedAppend;
 
 /*

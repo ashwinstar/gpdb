@@ -786,7 +786,6 @@ cdbdisp_makeDispatchResults(int     resultCapacity,
     results->iFirstError = -1;
     results->errcode = 0;
     results->cancelOnError = cancelOnError;
-	results->peerMelee = NULL;
 
     results->sliceMap = NULL;
     results->sliceCapacity = sliceCapacity;
@@ -798,26 +797,6 @@ cdbdisp_makeDispatchResults(int     resultCapacity,
 
     return results;
 }                               /* cdbdisp_makeDispatchResults */
-
-/*
- * cdbdisp_markDispatchMelee: connect the error-recovery melee
- * structures of a primary with its mirror, and vice versa.
- *
- * This cross-connection is used by the code in
- * cdbdisp.c:handleSelectTimeout() to propagate cancels between
- * primary and mirror gangs.
- */
-void
-cdbdisp_markDispatchMelee(CdbDispatchResults *pri, CdbDispatchResults *mir)
-{
-	Assert(pri != NULL);
-	Assert(mir != NULL);
-
-	pri->peerMelee = mir;
-	mir->peerMelee = pri;
-
-	return;
-}
 
 /*
  * cdbdisp_destroyDispatchResults:
@@ -1164,8 +1143,7 @@ cdbdisp_sqlstate_to_errcode(const char *sqlstate)
  * up to the QD.
  */
 char *
-cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
-					 CdbDispatchResults *pMirrorResults)
+cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults)
 {
 	
 	int i;
@@ -1209,27 +1187,9 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		}
 	}
 	
-	/* No Primary Results?  look in mirror */
-	if (completionTag == NULL && pMirrorResults && pMirrorResults->resultCount > 0)
-	{
-		dispatchResult = &pMirrorResults->resultArray[0];
-		if (dispatchResult)
-		{
-			if (dispatchResult->resultbuf) 
-			{
-				Assert(dispatchResult->resultbuf->data);
-				p = ((struct pg_result **)dispatchResult->resultbuf->data)[0];
-				Assert(p);
-				completionTag = palloc0(COMPLETION_TAG_BUFSIZE);
-				strcpy(completionTag,p->cmdStatus);
-			}
-		}
-	}
-	 
 	/*
 	 * Not only the results need to get relayed.  Also the DTX info
 	 */
-
 	if (p && p->QEWriter_HaveInfo)
 	{
 		elog(DEBUG3,"First result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
@@ -1349,8 +1309,6 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 			
 			for (j = 0; j<nr; j++)
 			{
-				
-				
 				p = ((struct pg_result **)dispatchResult->resultbuf->data)[j];
 				
 				/*
@@ -1439,84 +1397,6 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		}
 		cdbdisp_destroyDispatchResults(gangResults);
 	}
-
-	/* Collect results from mirror gang. */
-	gangResults = pMirrorResults;
-	if (gangResults)
-	{
-		for (i = 0; i < gangResults->resultCount; ++i)
-		{
-			int nr;
-			int j;
-			dispatchResult = &gangResults->resultArray[i];
-
-			/* Append error messages. */
-			cdbdisp_relayDispatchResult(dispatchResult);
-			
-			nr = dispatchResult->resultbuf->len/sizeof(struct pg_result *);
-			
-			for (j = 0; j<nr; j++)
-			{
-				p = ((struct pg_result **)dispatchResult->resultbuf->data)[j];
-				/*
-				 * if the command was sent to the mirrors, we need to relay any
-				 * result tuples back from the mirror gangs as well
-				 */
-				if (PQresultStatus(p) == PGRES_TUPLES_OK)
-				{
-					int m,k;
-					int nRows = PQntuples(p);
-					for (k=0; k<nRows; k++)
-					{
-						initStringInfo(&buf);
-						/*
-						 * Prepare a DataRow message
-						 */
-						pq_beginmessage(&buf, 'D');
-
-						pq_sendint(&buf, nfields, 2);
-
-						for (m=0; m<nfields; m++)
-						{
-							char * v = PQgetvalue(p, k, m);
-							pq_sendcountedtext(&buf, v, strlen(v), false);
-						}
-						
-						pq_endmessage(&buf);
-					}
-
-				}
-				if (p->QEWriter_HaveInfo)
-				{
-					if (QEDtxContextInfo.distributedXid != p->QEWriter_DistributedTransactionId ||
-							QEDtxContextInfo.curcid != p->QEWriter_CommandId)
-					{
-						elog(DEBUG2,"mirror result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
-								p->QEWriter_CommandId,p->QEWriter_Dirty);
-						QEDtxContextInfo.distributedXid = p->QEWriter_DistributedTransactionId;
-						QEDtxContextInfo.curcid = p->QEWriter_CommandId;
-						
-					}
-					if (p->QEWriter_Dirty)
-					{
-						if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.curcid == 0)
-							elog(NOTICE,"Mirror segment reported it is dirty, but segment DtxContextInfo doesn't have a distributed xid");
-
-						/*
-						 * Don't mark our local transaction dirty, because this slows us down
-						 * because EndTransaction will try to write to the WAL.
-						 * DAs shouldn't write to the WAL.
-						 * 
-						 */
-						/* MyXactMadeXLogEntry = true;   // marks our transaction as dirty*/
-					}
-				}
-				
-			}
-
-		}
-		cdbdisp_destroyDispatchResults(gangResults);
-	}
 	
 	/*
 	 * If any of the QEs say they modified tuples, we need to relay that
@@ -1545,10 +1425,6 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		elog(DEBUG2,"relayresults is done. completionTag %s ",completionTag);
 	else
 		elog(DEBUG2,"relayresults is done.  No completion Tag");
-	
-	//if (errmsgbuf.len > 0)
-	//	ereport(ERROR, (errmsg("%s", errmsgbuf.data)));
-
 	
 	return completionTag;
 }

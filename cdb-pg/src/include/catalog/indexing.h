@@ -245,9 +245,9 @@ DECLARE_UNIQUE_INDEX(gp_configuration_dbid_index, 6102, on gp_configuration usin
 DECLARE_UNIQUE_INDEX(gp_policy_localoid_index, 6103, on gp_distribution_policy using btree(localoid oid_ops));
 #define GpPolicyLocalOidIndexId  6103
 
-DECLARE_UNIQUE_INDEX(gp_segment_config_content_preferred_role_index, 6106, on gp_segment_config using btree(content int2_ops, preferred_role char_ops));
+DECLARE_UNIQUE_INDEX(gp_segment_config_content_preferred_role_index, 6106, on gp_segment_configuration using btree(content int2_ops, preferred_role char_ops));
 #define GpSegmentConfigContentPreferredroleIndexId  6106
-DECLARE_UNIQUE_INDEX(gp_segment_config_dbid_index, 6107, on gp_segment_config using btree(dbid int2_ops));
+DECLARE_UNIQUE_INDEX(gp_segment_config_dbid_index, 6107, on gp_segment_configuration using btree(dbid int2_ops));
 #define GpSegmentConfigDbidIndexId  6107
 
 DECLARE_INDEX(gp_db_interfaces_dbid_index, 6108, on gp_db_interfaces using btree(dbid int2_ops));
@@ -255,7 +255,7 @@ DECLARE_INDEX(gp_db_interfaces_dbid_index, 6108, on gp_db_interfaces using btree
 DECLARE_UNIQUE_INDEX(gp_interfaces_interface_index, 6109, on gp_interfaces using btree(interfaceid int2_ops));
 #define GpInterfacesIndexId  6109
 
-DECLARE_UNIQUE_INDEX(gp_san_config_mountid_index, 6111, on gp_san_config using btree(mountid int2_ops));
+DECLARE_UNIQUE_INDEX(gp_san_config_mountid_index, 6111, on gp_san_configuration using btree(mountid int2_ops));
 #define GpSanConfigMountidIndexId  6111
 
 DECLARE_UNIQUE_INDEX(pg_window_fnoid_index, 5005, on pg_window using btree(winfnoid oid_ops));
@@ -283,6 +283,9 @@ DECLARE_INDEX(pg_partition_rule_paroid_parentrule_ruleord_index, 5026, on pg_par
 #define PartitionRuleParoidParentRuleOrdIndexId 5026
 DECLARE_UNIQUE_INDEX(pg_appendonly_alter_column_relid_index, 5031, on pg_appendonly_alter_column using btree(relid oid_ops, changenum int4_ops));
 #define AppendOnlyAlterColumnRelidIndexId  5031
+
+DECLARE_UNIQUE_INDEX(gp_relation_node_index, 5095, on gp_relation_node using btree(tablespace_oid oid_ops, relfilenode_oid oid_ops));
+#define GpRelationNodeOidIndexId  5095
 
 /* MPP-6929: metadata tracking */
 DECLARE_INDEX(pg_statlastop_classid_objid_index, 6053, on pg_stat_last_operation using btree(classid oid_ops, objid oid_ops));

@@ -13,7 +13,6 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/gp_configuration.h"
 #include "catalog/gp_id.h"
 #include "catalog/gp_policy.h"
 

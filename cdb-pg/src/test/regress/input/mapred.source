@@ -122,7 +122,7 @@ CREATE OR REPLACE FUNCTION mapreduce(file text) returns setof text as $$
 import subprocess
 
 rv = plpy.execute("select hostname, port, user as user, " +
-   " current_database() as db from gp_configuration where content=-1")
+   " current_database() as db from gp_segment_configuration where content=-1")
 
 cmd = ['@gpwhich_gpmapreduce@',
        '--host=%s' % rv[0]['hostname'],
@@ -141,7 +141,7 @@ CREATE OR REPLACE FUNCTION mapreduce(file text, keys text) returns setof text as
 import subprocess
 
 rv = plpy.execute("select hostname, port, user as user, " +
-   " current_database() as db from gp_configuration where content=-1")
+   " current_database() as db from gp_segment_configuration where content=-1")
 
 cmd = ['@gpwhich_gpmapreduce@',
        '--host=%s' % rv[0]['hostname'],

@@ -33,7 +33,10 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_attribute.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_class.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_tablespace.h"
 #include "commands/comment.h"
@@ -61,6 +64,15 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
+#include "cdb/cdbpersistentdatabase.h"
+#include "cdb/cdbpersistentrelation.h"
+#include "cdb/cdbmirroredfilesysobj.h"
+#include "cdb/cdbmirroredbulkrelation.h"
+#include "cdb/cdbmirroredflatfile.h"
+#include "cdb/cdbdatabaseinfo.h"
+#include "cdb/cdbdirectopen.h"
+
+#include "utils/pg_rusage.h"
 
 typedef struct
 {
@@ -69,21 +81,425 @@ typedef struct
 } createdb_failure_params;
 
 /* non-export function prototypes */
-static void createdb_failure_callback(int code, Datum arg);
 static bool get_db_info(const char *name, LOCKMODE lockmode,
 			Oid *dbIdP, Oid *ownerIdP,
 			int *encodingP, bool *dbIsTemplateP, bool *dbAllowConnP,
 			Oid *dbLastSysOidP, TransactionId *dbFrozenXidP,
 			Oid *dbTablespace);
 static bool have_createdb_privilege(void);
-static void remove_dbtablespaces(Oid db_id);
 static bool check_db_file_conflict(Oid db_id);
 
 static void createdb_int(CreatedbStmt *stmt,
              			 struct CdbDispatchResults **pPrimaryResults,
-             			 struct CdbDispatchResults **pMirrorResults,
 			 			 struct CdbDispatchCmdThreads **pDispatchThreads);
-static void gp_cleanup_createdb(const char *dbname);
+
+
+/*
+ * write out the PG_VERSION file in the new destination directory
+ * UNDONE: Copied from tablespace.c -- make one common version...
+ */
+static void
+set_short_version(DbDirNode *dbDirNode)
+{
+	char	   *short_version;
+	bool		gotdot = false;
+	int			end;
+
+	MirroredFlatFileOpen	mirroredOpen;
+
+	char		buffer[100];
+
+	/* Construct short version string (should match initdb.c) */
+	short_version = pstrdup(PG_VERSION);
+
+	for (end = 0; short_version[end] != '\0'; end++)
+	{
+		if (short_version[end] == '.')
+		{
+			Assert(end != 0);
+			if (gotdot)
+				break;
+			else
+				gotdot = true;
+		}
+		else if (short_version[end] < '0' || short_version[end] > '9')
+		{
+			/* gone past digits and dots */
+			break;
+		}
+	}
+	Assert(end > 0 && short_version[end - 1] != '.' && gotdot);
+	short_version[end] = '\0';
+
+	MirroredFlatFile_OpenInDbDir(
+							&mirroredOpen,
+							dbDirNode,
+							"PG_VERSION",
+							O_CREAT | O_WRONLY | PG_BINARY,
+							S_IRUSR | S_IWUSR,
+							/* suppressError */ false);
+
+	sprintf(buffer, "%s\n", short_version);
+	MirroredFlatFile_Append(
+					&mirroredOpen,
+					buffer,
+					strlen(buffer),
+					/* suppressError */ false);
+
+	MirroredFlatFile_Flush(&mirroredOpen, /* suppressError */ false);
+	MirroredFlatFile_Close(&mirroredOpen);
+
+	pfree(short_version);
+}
+
+/*
+ * Create target database directories (under transaction).
+ */
+static void create_target_directories(
+	DatabaseInfo 			*info,
+
+	Oid						sourceDefaultTablespace,
+
+	Oid						destDefaultTablespace,
+
+	Oid						destDatabase)
+{
+	int t;
+
+	for (t = 0; t < info->tablespacesCount; t++)
+	{
+		Oid tablespace = info->tablespaces[t];
+		DbDirNode dbDirNode;
+
+		if (tablespace == sourceDefaultTablespace)
+			tablespace = destDefaultTablespace;
+
+		dbDirNode.tablespace = tablespace;
+		dbDirNode.database = destDatabase;
+		
+		MirroredFileSysObj_CreateDbDir(&dbDirNode);
+
+		set_short_version(&dbDirNode);
+	}
+}
+
+static void make_dst_relfilenode(
+	TablespaceRelFile		*srcTablespaceRelFile,
+	
+	Oid						srcDefaultTablespace,
+
+	Oid						dstDefaultTablespace,
+
+	Oid						dstDatabase,
+
+	RelFileNode				*dstRelFileNode)
+{
+	Oid tablespace = srcTablespaceRelFile->tablespace;
+	
+	if (tablespace == srcDefaultTablespace)
+		tablespace = dstDefaultTablespace;
+	
+	dstRelFileNode->spcNode = tablespace;
+	
+	dstRelFileNode->dbNode = dstDatabase;
+	
+	dstRelFileNode->relNode = srcTablespaceRelFile->relation;
+}
+
+typedef struct StoredRelationPersistentInfo
+{
+	ItemPointerData		tid;
+
+	int32				serialNum;
+} StoredRelationPersistentInfo;
+
+// -----------------------------------------------------------------------------
+// Open/Close pg_class Relation 
+// -----------------------------------------------------------------------------
+
+/*
+ * This HUGE MAGIC DEFINE expands into module globals and two routines:
+ *     DbCommand_PgClassOpen
+ *     PersistentDatabaseRel_Close
+ * It allows for opening the relation without going through pg_class, etc.
+ */
+static FormData_pg_class 
+			DbCommand_GpRelationNodePgClass = 
+						{Class_gp_relation_node};
+
+static FormData_pg_attribute 
+			DbCommand_GpRelationNodeAttrArray[Natts_gp_relation_node] =
+							{Schema_gp_relation_node};
+
+static Form_pg_attribute 
+			DbCommand_GpRelationNodeAttrPtrArray[Natts_gp_relation_node];
+
+DirectOpenDefine(DbCommand_GpRelationNode,\
+DbCommand_GpRelationNodePgClass,Natts_gp_relation_node,\
+DbCommand_GpRelationNodeAttrArray,DbCommand_GpRelationNodeAttrPtrArray,\
+GpRelationNodeRelationId,GpRelationNodeRelType,false);
+
+static void update_gp_relation_node(
+	Oid						dstDefaultTablespace,
+	Oid						dstDatabase,
+	ItemPointer				gpRelationNodeTid,
+	Oid						tablespace,
+	Oid						relationNode,
+	ItemPointer				persistentTid,
+	int64					persistentSerialNum)
+{
+	Relation gpRelationNodeRel;
+	HeapTupleData	tuple;
+	Buffer			buffer;
+
+	bool			nulls[Natts_gp_relation_node];
+	Datum			values[Natts_gp_relation_node];
+
+	Oid				verifyTablespace;
+	Oid				verifyRelationNode;
+	
+	Datum			repl_val[Natts_gp_relation_node];
+	bool			repl_null[Natts_gp_relation_node];
+	bool			repl_repl[Natts_gp_relation_node];
+	HeapTuple		newtuple;
+
+	gpRelationNodeRel = DbCommand_GpRelationNodeOpen(dstDefaultTablespace, dstDatabase);
+
+	tuple.t_self = *gpRelationNodeTid;
+	
+	if (!heap_fetch(gpRelationNodeRel, SnapshotAny,
+					&tuple, &buffer, false, NULL))
+		elog(ERROR, "Failed to fetch gp_relation_node tuple at TID %s",
+			 ItemPointerToString(&tuple.t_self));
+	
+	heap_deform_tuple(&tuple, RelationGetDescr(gpRelationNodeRel), values, nulls);
+	
+	Assert(!nulls[Anum_gp_relation_node_tablespace_oid - 1]);
+	verifyTablespace = DatumGetObjectId(values[Anum_gp_relation_node_tablespace_oid - 1]);
+
+	Assert(verifyTablespace == tablespace);
+
+	Assert(!nulls[Anum_gp_relation_node_relfilenode_oid - 1]);
+	verifyRelationNode = DatumGetObjectId(values[Anum_gp_relation_node_relfilenode_oid - 1]);
+
+	Assert(verifyRelationNode == relationNode);
+
+	memset(repl_val, 0, sizeof(repl_val));
+	memset(repl_null, false, sizeof(repl_null));
+	memset(repl_repl, 0, sizeof(repl_null));
+	
+	repl_val[Anum_gp_relation_node_persistent_tid - 1] = PointerGetDatum(persistentTid);
+	repl_repl[Anum_gp_relation_node_persistent_tid - 1] = true;
+	repl_val[Anum_gp_relation_node_persistent_serial_num - 1] = Int64GetDatum(persistentSerialNum);
+	repl_repl[Anum_gp_relation_node_persistent_serial_num - 1] = true;
+	
+	newtuple = heap_modify_tuple(&tuple, RelationGetDescr(gpRelationNodeRel), repl_val, repl_null, repl_repl);
+	
+	simple_heap_update(gpRelationNodeRel, &newtuple->t_self, newtuple);
+	
+	heap_freetuple(newtuple);
+
+	ReleaseBuffer(buffer);
+
+	DbCommand_GpRelationNodeClose(gpRelationNodeRel);
+}
+
+static void create_pending_relations(
+	DatabaseInfo 			*info,
+
+	Oid						srcDefaultTablespace,
+
+	Oid						dstDefaultTablespace,
+
+	Oid						dstDatabase,
+
+	GpRelationNode 			*newGpRelationNodes)
+{
+	int sr;
+
+	for (sr = 0; sr < info->pgClassStoredRelationsCount; sr++)
+	{
+		RelFileNode dstRelFileNode;
+
+		make_dst_relfilenode(
+						&info->pgClassStoredRelations[sr].tablespaceRelFile,
+						srcDefaultTablespace,
+						dstDefaultTablespace,
+						dstDatabase,
+						&dstRelFileNode);
+
+		smgrcreatepending(
+					dstRelFileNode, 
+					&newGpRelationNodes[sr].persistentTid,
+					&newGpRelationNodes[sr].persistentSerialNum,
+					/* isLocalBuf */ false,
+					/* flushToXLog */ false);
+
+		newGpRelationNodes[sr].tablespaceRelFile = info->gpRelationNodes[sr].tablespaceRelFile;
+
+		if (Debug_database_command_print)
+			elog(Debug_database_command_print_level, 
+			     "newGpRelationNodes: Tablespace %u, relation %u node information (persistent TID %s, perstent serial number " INT64_FORMAT ")",
+				 newGpRelationNodes[sr].tablespaceRelFile.tablespace, 
+				 newGpRelationNodes[sr].tablespaceRelFile.relation, 
+				 ItemPointerToString(&newGpRelationNodes[sr].persistentTid),
+				 newGpRelationNodes[sr].persistentSerialNum);
+	}
+	
+}
+
+static void copy_relation_segment_file(
+	RelFileNode 	*srcRelFileNode,
+	RelFileNode		*dstRelFileNode,
+	int32			segmentFileNum,
+	bool			isBufferPoolRelation,
+	char			*buffer)
+{
+	char srcFileName[MAXPGPATH];
+	char dstFileName[MAXPGPATH];
+	char extension[12];
+
+	File		srcFile;
+
+	SMgrRelation	dstrel=NULL;
+	MirroredBulkRelationOpen mirroredDstOpen;
+
+	int32		blkno;
+
+	int 		nbytes;
+
+	CopyRelPath(srcFileName, MAXPGPATH, *srcRelFileNode);
+	CopyRelPath(dstFileName, MAXPGPATH, *dstRelFileNode);
+	if (segmentFileNum > 0)
+	{
+		sprintf(extension, ".%u", segmentFileNum);
+		strcat(srcFileName, extension);
+		strcat(dstFileName, extension);
+	}
+
+	/*
+	 * Open the files
+	 */
+	srcFile = PathNameOpenFile(srcFileName, O_RDONLY | PG_BINARY, 0);
+	if (srcFile < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\": %m", srcFileName)));
+
+	if (isBufferPoolRelation)
+	{
+		dstrel = smgropen(*dstRelFileNode);
+
+		if (segmentFileNum == 0)
+			MirroredFileSysObj_CreateOnlyRelFile(
+											dstrel,
+											/* isLocalBuf */ false);
+	}
+	else
+	{
+		MirroredBulkRelation_Open(
+								&mirroredDstOpen,
+								dstFileName,
+								O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
+								S_IRUSR | S_IWUSR,
+								dstRelFileNode,
+								segmentFileNum);
+	}
+	
+	/*
+	 * Do the data copying.
+	 */
+	blkno = segmentFileNum * RELSEG_SIZE;
+	for (;;)
+	{
+		nbytes = FileRead(srcFile, buffer, BLCKSZ);
+		if (nbytes < 0)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not read file \"%s\": %m", srcFileName)));
+		if (nbytes == 0)
+			break;
+
+		if (isBufferPoolRelation)
+		{
+			xl_heap_newpage xlrec;
+			XLogRecPtr	recptr;
+			XLogRecData rdata[2];
+
+			/*
+			 * We XLOG buffer pool relations for 2 reasons:
+			 *
+			 *   1) To support master mirroring which replays the XLOG to the
+			 *       standby master.
+			 *   2) Better CREATE DATABASE performance.  If we fsync each file
+			 *       as we copy, it slows things down.
+			 */
+		
+			/* NO ELOG(ERROR) from here till newpage op is logged */
+			START_CRIT_SECTION();
+		
+			xlrec.node = dstrel->smgr_rnode;
+			xlrec.blkno = blkno;
+		
+			rdata[0].data = (char *) &xlrec;
+			rdata[0].len = SizeOfHeapNewpage;
+			rdata[0].buffer = InvalidBuffer;
+			rdata[0].next = &(rdata[1]);
+		
+			rdata[1].data = (char *) buffer;
+			rdata[1].len = BLCKSZ;
+			rdata[1].buffer = InvalidBuffer;
+			rdata[1].next = NULL;
+		
+			recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_NEWPAGE, rdata);
+		
+			PageSetLSN(buffer, recptr);
+			PageSetTLI(buffer, ThisTimeLineID);
+		
+			END_CRIT_SECTION();
+
+			smgrwrite(dstrel, blkno, buffer, false);
+		}
+		else
+		{
+			MirroredBulkRelation_Append(
+								&mirroredDstOpen,
+								buffer,
+								nbytes);
+		}
+		blkno++;
+	}
+
+	if (isBufferPoolRelation)
+	{
+		/*
+		 * Do not fsync.  Let the buffer pool push the pages out since we have XLOG'd
+		 * the new pages.
+		 */
+		smgrclose(dstrel);
+	}
+	else
+	{
+		MirroredBulkRelation_FlushAndClose(&mirroredDstOpen);
+	}
+
+	FileClose(srcFile);
+}
+
+// -----------------------------------------------------------------------------
+
+typedef struct CreateDbStoredRelation
+{
+	RelFileNode 		srcRelFileNode;
+
+	RelFileNode 		dstRelFileNode;
+
+	ItemPointerData 	persistentTid;
+			/* Resulting TID of the gp_persistent_rel_files tuple for the rel file */
+				
+} CreateDbStoredRelation;
+
+// -----------------------------------------------------------------------------
 
 /*
  * CREATE DATABASE
@@ -92,93 +508,17 @@ void
 createdb(CreatedbStmt *stmt)
 {
     struct CdbDispatchResults *primaryResults = NULL;
-    struct CdbDispatchResults *mirrorResults = NULL;
 	CdbDispatchCmdThreads *dispatchThreads = NULL;
 
-    PG_TRY();
-    {
-        createdb_int(stmt, &primaryResults, &mirrorResults, &dispatchThreads);
-    }
-	PG_CATCH();
-	{
-        /* If dispatched, stop QEs and clean up after them. */
-        if (primaryResults)
-		{
-            cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
-			gp_cleanup_createdb(stmt->dbname);
-		}
-
-		/* Carry on with error handling. */
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	/*
-	 * We successfully completed our work.	Now check the results from the
-	 * qExecs, if dispatched.  This waits for them to all finish, and exits
-	 * via ereport(ERROR,...) if unsuccessful.
-	 */
-	PG_TRY();
-	{
-		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
-	}
-	PG_CATCH();
-	{
-		gp_cleanup_createdb(stmt->dbname);
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-}
-
-void
-gp_cleanup_createdb(const char *dbname)
-{
-	bool cleanup_error = FALSE;
-    struct CdbDispatchResults *primaryResults = NULL;
-    struct CdbDispatchResults *mirrorResults = NULL;
-	CdbDispatchCmdThreads *dispatchThreads = NULL;
-
-	DropdbStmt *stmt = makeNode(DropdbStmt);
-	stmt->dbname = (char*)dbname;
-	stmt->missing_ok = TRUE;
-	
-	ereport(DEBUG1,(errmsg("Cleaning up failed creation of database \"%s\"", dbname)));
-	
-    PG_TRY();
-    {
-		cdbdisp_dispatchUtilityStatement((Node*)stmt, true, false /* twophase */, false /* snapshot */, &primaryResults, &mirrorResults, &dispatchThreads, "gp_cleanup_createdb");
-    }
-	PG_CATCH();
-	{
-        /* If dispatched, stop QEs and clean up after them. */
-        if (primaryResults)
-            cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
-
-		/* Carry on with error handling. */
-		elog_dismiss(DEBUG1);
-		cleanup_error = TRUE;
-	}
-	PG_END_TRY();
-
-	/*
-	 * We completed our work. Check the results from the  qExecs, if 
-	 * dispatched and not already checked in the CATCH block.  This 
-	 * waits for the QEs to finish, and exits via ereport(ERROR,...) 
-	 if unsuccessful, however, we expect success since this is the 
-	 * "forgiving" form of DROP DATABASE.
-	 */
-	if ( ! cleanup_error )
-		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
+    createdb_int(stmt, &primaryResults, &dispatchThreads);
+	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
 }
 
 static void
 createdb_int(CreatedbStmt *stmt,
              struct CdbDispatchResults    **pPrimaryResults,
-             struct CdbDispatchResults    **pMirrorResults,
-			 struct CdbDispatchCmdThreads        **pDispatchThreads)
+			 struct CdbDispatchCmdThreads **pDispatchThreads)
 {
-	HeapScanDesc scan;
-	Relation	rel;
 	Oid			src_dboid = InvalidOid;
 	Oid			src_owner;
 	int			src_encoding = -1;
@@ -205,7 +545,6 @@ createdb_int(CreatedbStmt *stmt,
 	const char *dbtemplate = NULL;
 	int			encoding = -1;
 	int			dbconnlimit = -1;
-	createdb_failure_params fparms;
 
 	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH);
 
@@ -214,8 +553,14 @@ createdb_int(CreatedbStmt *stmt,
 			elog(NOTICE, " Create database dispatch in bootstrap mode!");
 
 
-	/* don't call this in a transaction block */
-	PreventTransactionChain((void *) stmt, "CREATE DATABASE");
+	if (Gp_role != GP_ROLE_EXECUTE)
+	{
+		/*
+		 * Don't allow master tp call this in a transaction block.  Segments are ok as
+		 * distributed transaction participants. 
+		 */
+		PreventTransactionChain((void *) stmt, "CREATE DATABASE");
+	}
 
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
@@ -484,18 +829,18 @@ createdb_int(CreatedbStmt *stmt,
 	{
 		elog(DEBUG5, "shouldDispatch = true, dbOid = %d", dboid);
 
-        /* Dispatch the command to all primary and mirror segdbs.
-         * Doesn't start a global transaction.
-         * Doesn't wait for the QEs to finish execution.
-         */
+        /* 
+              * Dispatch the command to all primary segments.
+              *
+              * Doesn't wait for the QEs to finish execution.
+              */
         cdbdisp_dispatchUtilityStatement((Node *)stmt,
                                          true,      /* cancelOnError */
-                                         false,      /* startTransaction */
-                                         false,      /* withSnapshot */
-                                         pPrimaryResults,
-                                         pMirrorResults,
-										 pDispatchThreads,
-										 "createdb_int");
+                                     	 true,      /* startTransaction */
+                                     	 true,      /* withSnapshot */
+                                     	 pPrimaryResults,
+									 	 pDispatchThreads,
+									 	 "createdb_int");
 	}
 
 	/*
@@ -563,144 +908,184 @@ createdb_int(CreatedbStmt *stmt,
 	 */
 	BufferSync();
 
-	/*
-	 * Once we start copying subdirectories, we need to be able to clean 'em
-	 * up if we fail.  Use an ENSURE block to make sure this happens.  (This
-	 * is not a 100% solution, because of the possibility of failure during
-	 * transaction commit after we leave this routine, but it should handle
-	 * most scenarios.)
-	 */
-	fparms.src_dboid = src_dboid;
-	fparms.dest_dboid = dboid;
-	PG_ENSURE_ERROR_CLEANUP(createdb_failure_callback,
-							PointerGetDatum(&fparms));
 	{
+		PGRUsage	ru_start;
+		DatabaseInfo *info;
+		GpRelationNode *newGpRelationNodes;
+		int rsf;
+		int sr;
+		int grn;
+		char *buffer;
+
 		/*
-		 * Iterate through all tablespaces of the template database, and copy
-		 * each one to the new database.
+		 * Collect information of source database's relations.
 		 */
-		rel = heap_open(TableSpaceRelationId, AccessShareLock);
-		scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
-		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		if (Debug_database_command_print)
+			pg_rusage_init(&ru_start);
+
+		info = DatabaseInfo_Collect(src_dboid, src_deftablespace);
+		
+		if (Debug_database_command_print)
+			elog(NOTICE, "collect phase: %s",
+				 pg_rusage_show(&ru_start));
+
+		if (Debug_database_command_print)
+			DatabaseInfo_Trace(info);
+
+		/*
+		 * Verify integrity of databae information.
+		 */
+		if (Debug_database_command_print)
+			pg_rusage_init(&ru_start);
+
+		DatabaseInfo_Check(info);
+
+		if (Debug_database_command_print)
+			elog(NOTICE, "check phase: %s",
+				 pg_rusage_show(&ru_start));
+
+		if (Debug_database_command_print)
+			pg_rusage_init(&ru_start);
+
+		/*
+		 * Create target database directories (under transaction).
+		 */
+		create_target_directories(
+								info,
+								src_deftablespace,
+								dst_deftablespace,
+								dboid);
+
+		if (Debug_database_command_print)
+			elog(NOTICE, "created db dirs phase: %s",
+				 pg_rusage_show(&ru_start));
+
+
+		/*
+		 * Before we physically copy the relation files, we need the CreatePending
+		 * intent information in gp_persistent_rel_files to provide for automatic cleanup
+		 * in case the transaction aborts.
+		 */
+		if (Debug_database_command_print)
+			pg_rusage_init(&ru_start);
+
+		newGpRelationNodes = 
+						palloc(info->pgClassStoredRelationsCount* 
+						       sizeof(GpRelationNode));
+
+		create_pending_relations(
+								info,
+								src_deftablespace,
+								dst_deftablespace,
+								dboid,
+								newGpRelationNodes);
+							
+		if (Debug_database_command_print)
+			elog(NOTICE, "create pending phase: %s",
+				 pg_rusage_show(&ru_start));
+
+		/*
+		 * Push all gp_persistent_rel_files tuples to disk.
+		 */
+		if (Debug_database_command_print)
+				pg_rusage_init(&ru_start);
+			
+		PersistentRelation_FlushXLog();
+
+		if (Debug_database_command_print)
+			elog(NOTICE, "flush xlog phase: %s",
+				 pg_rusage_show(&ru_start));
+
+		/*
+		 * Create each physical destination relation segment file and copy the data.
+		 */
+		if (Debug_database_command_print)
+			pg_rusage_init(&ru_start);
+		
+		/* Use palloc to ensure we get a maxaligned buffer */		
+		buffer = palloc(BLCKSZ);
+
+		sr = 0;
+		for (rsf = 0; rsf < info->relSegFilesCount; rsf++)
 		{
-			Oid			srctablespace = HeapTupleGetOid(tuple);
-			Oid			dsttablespace;
-			char	   *srcpath;
-			char	   *dstpath;
-			struct stat st;
+			RelFileNode srcRelFileNode;
+			RelFileNode dstRelFileNode;
 
-			/* No need to copy global tablespace */
-			if (srctablespace == GLOBALTABLESPACE_OID)
-				continue;
-
-			srcpath = GetDatabasePath(src_dboid, srctablespace);
-
-			if (stat(srcpath, &st) < 0 || !S_ISDIR(st.st_mode) ||
-				directory_is_empty(srcpath))
+			if (TablespaceRelFile_Compare(
+					&info->relSegFiles[rsf].tablespaceRelFile,
+					&info->pgClassStoredRelations[sr].tablespaceRelFile) != 0)
 			{
-				/* Assume we can ignore it */
-				pfree(srcpath);
-				continue;
+				sr++;
+
+				// UNDONE
+				Assert(sr < info->pgClassStoredRelationsCount);
+				Assert(TablespaceRelFile_Compare(
+					&info->relSegFiles[rsf].tablespaceRelFile,
+					&info->pgClassStoredRelations[sr].tablespaceRelFile) == 0);
 			}
-
-			if (srctablespace == src_deftablespace)
-				dsttablespace = dst_deftablespace;
-			else
-				dsttablespace = srctablespace;
-
-			dstpath = GetDatabasePath(dboid, dsttablespace);
-
-			/*
-			 * Copy this subdirectory to the new location
-			 *
-			 * We don't need to copy subdirectories
-			 */
-			copydir(srcpath, dstpath, false);
-
-			/* Record the filesystem change in XLOG */
-			{
-				xl_dbase_create_rec xlrec;
-				XLogRecData rdata[1];
-
-				xlrec.db_id = dboid;
-				xlrec.tablespace_id = dsttablespace;
-				xlrec.src_db_id = src_dboid;
-				xlrec.src_tablespace_id = srctablespace;
-
-				rdata[0].data = (char *) &xlrec;
-				rdata[0].len = sizeof(xl_dbase_create_rec);
-				rdata[0].buffer = InvalidBuffer;
-				rdata[0].next = NULL;
-
-				(void) XLogInsert(RM_DBASE_ID, XLOG_DBASE_CREATE, rdata);
-			}
+				    
+			
+			srcRelFileNode.spcNode =
+					info->relSegFiles[rsf].tablespaceRelFile.tablespace;
+			srcRelFileNode.dbNode = info->database;
+			srcRelFileNode.relNode = 
+					info->relSegFiles[rsf].tablespaceRelFile.relation;
+			
+			make_dst_relfilenode(
+							&info->relSegFiles[rsf].tablespaceRelFile,
+							src_deftablespace,
+							dst_deftablespace,
+							dboid,
+							&dstRelFileNode);
+			
+			copy_relation_segment_file(
+					&srcRelFileNode,
+					&dstRelFileNode,
+					info->relSegFiles[rsf].segmentFileNum,
+					info->pgClassStoredRelations[sr].isBufferPoolRelation,
+					buffer);
+			
 		}
-		heap_endscan(scan);
-		heap_close(rel, AccessShareLock);
 
-		/*
-		 * We force a checkpoint before committing.  This effectively means
-		 * that committed XLOG_DBASE_CREATE operations will never need to be
-		 * replayed (at least not in ordinary crash recovery; we still have to
-		 * make the XLOG entry for the benefit of PITR operations). This
-		 * avoids two nasty scenarios:
-		 *
-		 * #1: When PITR is off, we don't XLOG the contents of newly created
-		 * indexes; therefore the drop-and-recreate-whole-directory behavior
-		 * of DBASE_CREATE replay would lose such indexes.
-		 *
-		 * #2: Since we have to recopy the source database during DBASE_CREATE
-		 * replay, we run the risk of copying changes in it that were
-		 * committed after the original CREATE DATABASE command but before the
-		 * system crash that led to the replay.  This is at least unexpected
-		 * and at worst could lead to inconsistencies, eg duplicate table
-		 * names.
-		 *
-		 * (Both of these were real bugs in releases 8.0 through 8.0.3.)
-		 *
-		 * In PITR replay, the first of these isn't an issue, and the second
-		 * is only a risk if the CREATE DATABASE and subsequent template
-		 * database change both occur while a base backup is being taken.
-		 * There doesn't seem to be much we can do about that except document
-		 * it as a limitation.
-		 *
-		 * Perhaps if we ever implement CREATE DATABASE in a less cheesy way,
-		 * we can avoid this.
-		 */
-		RequestCheckpoint(true, false);
+		pfree(buffer);
 
-		/*
-		 * Close pg_database, but keep lock till commit (this is important to
-		 * prevent any risk of deadlock failure while updating flat file)
-		 */
-		heap_close(pg_database_rel, NoLock);
+		if (Debug_database_command_print)
+			elog(NOTICE, "copy stored relations phase: %s",
+				 pg_rusage_show(&ru_start));
 
-		/*
-		 * Set flag to update flat database file at commit.
-		 */
-		database_file_update_needed();
+		sr = 0;
+		for (grn = 0; grn < info->gpRelationNodesCount; grn++)
+		{
+			Assert (info->pgClassStoredRelations[sr].tablespaceRelFile.tablespace ==
+				    info->gpRelationNodes[grn].tablespaceRelFile.tablespace);
+	
+			Assert (info->pgClassStoredRelations[sr].tablespaceRelFile.relation ==
+				    info->gpRelationNodes[grn].tablespaceRelFile.relation);
+	
+			update_gp_relation_node(
+						dst_deftablespace,
+						dboid,
+						&info->gpRelationNodes[grn].gpRelationNodeTid,
+						newGpRelationNodes[sr].tablespaceRelFile.tablespace,
+						info->gpRelationNodes[grn].tablespaceRelFile.relation,
+						&newGpRelationNodes[sr].persistentTid,
+						newGpRelationNodes[sr].persistentSerialNum);
+
+			sr++;
+		}
 	}
-	PG_END_ENSURE_ERROR_CLEANUP(createdb_failure_callback,
-								PointerGetDatum(&fparms));
-}
-
-/* Error cleanup callback for createdb */
-static void
-createdb_failure_callback(int code, Datum arg)
-{
-	createdb_failure_params *fparms = (createdb_failure_params *) DatumGetPointer(arg);
 
 	/*
-	 * Release lock on source database before doing recursive remove. This is
-	 * not essential but it seems desirable to release the lock as soon as
-	 * possible.
+	 * Close pg_database, but keep lock till commit (this is important to
+	 * prevent any risk of deadlock failure while updating flat file)
 	 */
-	UnlockSharedObject(DatabaseRelationId, fparms->src_dboid, 0, ShareLock);
+	heap_close(pg_database_rel, NoLock);
 
-	/* Throw away any successfully copied subdirectories */
-	remove_dbtablespaces(fparms->dest_dboid);
+	/*
+	 * Set flag to update flat database file at commit.
+	 */
+	database_file_update_needed();
 }
-
 
 /*
  * DROP DATABASE
@@ -710,12 +1095,20 @@ dropdb(const char *dbname, bool missing_ok)
 {
 	Oid			db_id = InvalidOid;
 	bool		db_istemplate = true;
+	Oid			defaultTablespace = InvalidOid;
 	Relation	pgdbrel;
 	HeapTuple	tup;
 
-	PreventTransactionChain((void *) dbname, "DROP DATABASE");
-
 	AssertArg(dbname);
+
+	if (Gp_role != GP_ROLE_EXECUTE)
+	{
+		/*
+		 * Don't allow master tp call this in a transaction block.  Segments are ok as
+		 * distributed transaction participants. 
+		 */
+		PreventTransactionChain((void *) dbname, "DROP DATABASE");
+	}
 
 	if (strcmp(dbname, get_database_name(MyDatabaseId)) == 0)
 		ereport(ERROR,
@@ -732,7 +1125,7 @@ dropdb(const char *dbname, bool missing_ok)
 	pgdbrel = heap_open(DatabaseRelationId, RowExclusiveLock);
 
 	if (!get_db_info(dbname, AccessExclusiveLock, &db_id, NULL, NULL,
-					 &db_istemplate, NULL, NULL, NULL, NULL))
+					 &db_istemplate, NULL, NULL, NULL, &defaultTablespace))
 	{
 		if (!missing_ok)
 		{
@@ -799,9 +1192,6 @@ dropdb(const char *dbname, bool missing_ok)
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-
-
-
 		StringInfoData buffer;
 
 		initStringInfo(&buffer);
@@ -809,10 +1199,10 @@ dropdb(const char *dbname, bool missing_ok)
 		appendStringInfo(&buffer, "DROP DATABASE IF EXISTS \"%s\"", dbname);
 
 
-
-		CdbDoCommand(buffer.data, false, /*no txn */ false, 
-					 /* mirrors */ true, /* primaries */ true);
-
+		/*
+		 * Do the DROP DATABASE as part of a distributed transaction.
+		 */
+		CdbDoCommand(buffer.data, true, true);
 	}
 
 	/*
@@ -839,13 +1229,6 @@ dropdb(const char *dbname, bool missing_ok)
 	dropDatabaseDependencies(db_id);
 
 	/*
-	 * Drop pages for this database that are in the shared buffer cache. This
-	 * is important to ensure that no remaining backend tries to write out a
-	 * dirty buffer to the dead database later...
-	 */
-	DropDatabaseBuffers(db_id);
-
-	/*
 	 * Tell the stats collector to forget it immediately, too.
 	 */
 	pgstat_drop_database(db_id);
@@ -861,23 +1244,97 @@ dropdb(const char *dbname, bool missing_ok)
 	FreeSpaceMapForgetDatabase(db_id);
 
 	/*
-	 * Tell bgwriter to forget any pending fsync requests for files in the
-	 * database; else it'll fail at next checkpoint.
-	 */
-	ForgetDatabaseFsyncRequests(db_id);
-
-	/*
-	 * Force a checkpoint to make sure the bgwriter has received the message
-	 * sent by ForgetDatabaseFsyncRequests. On Windows, this also ensures that
-	 * the bgwriter doesn't hold any open files, which would cause rmdir() to
-	 * fail.
+	 * Force a checkpoint to make sure the bgwriter to push all pages to disk.
 	 */
 	RequestCheckpoint(true, false);
 
+	
 	/*
-	 * Remove all tablespace subdirs belonging to the database.
+	 * Collect information on the database's relations from pg_class and from scanning
+	 * the file-system directories.
+	 *
+	 * Schedule the relation files and database directories for deletion at transaction
+	 * commit.
 	 */
-	remove_dbtablespaces(db_id);
+	{
+		DatabaseEntry databaseEntry;
+
+		DatabaseInfo *info;
+		int grn;
+
+		DbDirNode dbDirNode;
+		PersistentFileSysState state;
+
+		databaseEntry = PersistentDatabase_Find(db_id);
+		if (databaseEntry == NULL)
+			elog(ERROR, "Expected to find a persistent database entry for id %u",
+			     db_id);
+
+		info = DatabaseInfo_Collect(db_id, defaultTablespace);
+		
+		if (Debug_database_command_print)
+			DatabaseInfo_Trace(info);
+
+		/*
+		 * Verify the relation information from pg_class matches what we found on disk.
+		 */
+		DatabaseInfo_Check(info);
+
+		/*
+		 * Schedule relation file deletes for transaction commit.
+		 */
+		for (grn = 0; grn < info->gpRelationNodesCount; grn++)
+		{
+			PgClassStoredRelation *stored = &info->pgClassStoredRelations[grn];
+			GpRelationNode *physNode = &info->gpRelationNodes[grn];
+			
+			RelFileNode relFileNode;
+			SMgrRelation smgrOpen;
+
+			Assert (stored->tablespaceRelFile.tablespace ==
+				    physNode->tablespaceRelFile.tablespace);
+	
+			Assert (stored->tablespaceRelFile.relation ==
+				    physNode->tablespaceRelFile.relation);
+
+			if (stored->tablespaceRelFile.tablespace ==
+				GLOBALTABLESPACE_OID)
+				continue;
+			
+			relFileNode.spcNode = stored->tablespaceRelFile.tablespace;
+			relFileNode.dbNode = db_id;
+			relFileNode.relNode = stored->tablespaceRelFile.relation;
+			
+			smgrOpen = smgropen(relFileNode);
+			
+			/*
+			 * Schedule the relation drop.
+			 *
+			 * Give SMGR open to MirroredFileSysObj module.
+			 */
+			MirroredFileSysObj_ScheduleDropRelFile(
+								smgrOpen,
+								&physNode->persistentTid,
+								physNode->persistentSerialNum,
+								/* isLocalBuf */ false);
+		
+		}
+
+		/*
+		 * Schedule all persistent database directory removals for transaction commit.
+		 */
+		PersistentDatabase_DirIterateInit(databaseEntry);
+		while (PersistentDatabase_DirIterateNext(
+										&dbDirNode,
+										&state))
+		{
+			// UNDONE: Error out if not in Created state.
+			if (state != PersistentFileSysState_Created)
+				continue;
+	
+			MirroredFileSysObj_ScheduleDropDbDir(&dbDirNode);
+		}
+	}
 
 	/*
 	 * Close pg_database, but keep lock till commit (this is important to
@@ -1090,9 +1547,7 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 
 		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" CONNECTION LIMIT %d", stmt->dbname, connlimit);
 
-		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
-					 /* mirrors */ true, /* primaries */ true);
-
+		CdbDoCommand(buffer.data, false, /*start txn*/ true);
 	}
 
 	/*
@@ -1110,7 +1565,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 {
 	char	   *valuestr;
 	HeapTuple	tuple,
-				newtuple;
+		newtuple;
 	Relation	rel;
 	ScanKeyData scankey;
 	SysScanDesc scan;
@@ -1255,14 +1710,10 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 						appendStringInfo(&buffer, "%s", quote_identifier(strVal(&arg->val)));
 				}
 			}
-				
-			
-		
-		}
-	
-		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
-					 /* mirrors */ true, /* primaries */ true);
 
+		}
+
+		CdbDoCommand(buffer.data, false, /*start txn*/ true);
 	}
 
 	/*
@@ -1540,68 +1991,6 @@ have_createdb_privilege(void)
 		ReleaseSysCache(utup);
 	}
 	return result;
-}
-
-/*
- * Remove tablespace directories
- *
- * We don't know what tablespaces db_id is using, so iterate through all
- * tablespaces removing <tablespace>/db_id
- */
-static void
-remove_dbtablespaces(Oid db_id)
-{
-	Relation	rel;
-	HeapScanDesc scan;
-	HeapTuple	tuple;
-
-	rel = heap_open(TableSpaceRelationId, AccessShareLock);
-	scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-	{
-		Oid			dsttablespace = HeapTupleGetOid(tuple);
-		char	   *dstpath;
-		struct stat st;
-
-		/* Don't mess with the global tablespace */
-		if (dsttablespace == GLOBALTABLESPACE_OID)
-			continue;
-
-		dstpath = GetDatabasePath(db_id, dsttablespace);
-
-		if (lstat(dstpath, &st) < 0 || !S_ISDIR(st.st_mode))
-		{
-			/* Assume we can ignore it */
-			pfree(dstpath);
-			continue;
-		}
-
-		if (!rmtree(dstpath, true))
-			ereport(WARNING,
-					(errmsg("could not remove database directory \"%s\"",
-							dstpath)));
-
-		/* Record the filesystem change in XLOG */
-		{
-			xl_dbase_drop_rec xlrec;
-			XLogRecData rdata[1];
-
-			xlrec.db_id = db_id;
-			xlrec.tablespace_id = dsttablespace;
-
-			rdata[0].data = (char *) &xlrec;
-			rdata[0].len = sizeof(xl_dbase_drop_rec);
-			rdata[0].buffer = InvalidBuffer;
-			rdata[0].next = NULL;
-
-			(void) XLogInsert(RM_DBASE_ID, XLOG_DBASE_DROP, rdata);
-		}
-
-		pfree(dstpath);
-	}
-
-	heap_endscan(scan);
-	heap_close(rel, AccessShareLock);
 }
 
 /*

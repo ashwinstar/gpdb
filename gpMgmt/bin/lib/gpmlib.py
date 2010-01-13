@@ -540,9 +540,13 @@ def chk_multi_home(hostlist, full=True):
     
 #############
 def get_qe_details(db, order_by = "dbid"):
-    db.execute('''select a.hostname, a.datadir, a.port, b.valid, b.definedprimary, a.dbid, a.content 
-from gp_configuration a, %s b where a.dbid=b.dbid and a.content <> -1 order by a.%s''' % 
-               (ENV.GP_PG_VIEW, order_by))
+    db.execute('''
+select a.hostname, fse.fselocation as datadir, a.port, b.valid, 
+       b.definedprimary, a.dbid, a.content 
+  from gp_segment_configuration a, gp_pgdatabase b, pg_filespace_entry fse 
+ where a.dbid=b.dbid and fsedbid=a.dbid 
+   and fsefsoid = (select oid from pg_filespace where fsname='pg_system') 
+   and a.content <> -1 order by a.%s''' % order_by)
     rows = [ r for r in db.iterate_dict() ]
     return rows
 
@@ -550,7 +554,7 @@ from gp_configuration a, %s b where a.dbid=b.dbid and a.content <> -1 order by a
 #############
 def chk_mirrors_configured(db):
 
-    db.execute('select count(dbid)/count(distinct(content)) from gp_configuration where content<>-1')
+    db.execute('select count(dbid)/count(distinct(content)) from gp_segment_configuration where content<>-1')
     r = db.read_tuple()
     return r[0] == 2
 
@@ -560,7 +564,7 @@ def get_mirror_type(db, multi_home):
         mir_type = 'No Mirror'
         mir_type_num = ENV.MIRROR_NULL_TYPE
     else:
-        db.execute("select count(distinct hostname)/(select count(distinct hostname) from gp_configuration where definedprimary='t' and content<>-1) from gp_configuration where content<>-1")
+        db.execute("select count(distinct hostname)/(select count(distinct hostname) from gp_segment_configuration where preferred_role='p' and content<>-1) from gp_segment_configuration where content<>-1")
         r = db.read_tuple()
         sep_count = r[0]
         if sep_count == 2:
@@ -569,11 +573,11 @@ def get_mirror_type(db, multi_home):
             sep_text = '[Shared array]'
 
         # get number of primary hosts
-        db.execute("select count(distinct(hostname)) from gp_configuration where content<>-1")
+        db.execute("select count(distinct(hostname)) from gp_segment_configuration where content<>-1")
         r = db.read_tuple()
         num_seg_hosts = r[0]
         # get the primary and mirror hostnames for the first segment instance host
-        db.execute("select hostname, content, definedprimary from gp_configuration where content>-1 and content<(select max(port)-min(port)+1 from gp_configuration where content<>-1 and definedprimary='t') order by content,dbid")
+        db.execute("select hostname, content, preferred_role='p' as definedprimary from gp_segment_configuration where content>-1 and content<(select max(port)-min(port)+1 from gp_segment_configuration where content<>-1 and preferred_role='p') order by content,dbid")
         first_pri_mir_array = [ x for x in db.iterate_dict() ]
         first_pri_array = filter(lambda (x): x['definedprimary'] == True, first_pri_mir_array)
         first_mir_array = filter(lambda (x): x['definedprimary'] == False, first_pri_mir_array)
@@ -590,7 +594,7 @@ def get_mirror_type(db, multi_home):
             mir_array = []
             for i in range(seg_per_host):
                 pri_host = first_pri_array[i]['hostname']
-                db.execute("select hostname from gp_configuration where isprimary = 'f' and content = %d" % (i))
+                db.execute("select hostname from gp_segment_configuration where preferred_role = 'm' and content = %d" % (i))
                 r = db.read_tuple()
                 mir_host = r[0]
                 (ok, out) = run('%s "hostname"' % (gplib.ssh_prefix(host=mir_host)))
@@ -792,7 +796,10 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile,
     log_info('create pg_log directory')
     cmd = makeCommand('mkdir %s/pg_log' % dst_cfg['datadir'])
     (ok, out) = run_warn('%s "%s"' % (gplib.ssh_prefix(host=dst_cfg['hostname']),cmd))
-    
+
+
+    log_info('sync segment datadir=%s port=%d on host %s succeeded' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname']))
+    return True    
     
     log_info('start segment datadir=%s port=%d on %s' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname']))
     cmd = makeCommand('env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w -D %s -l %s/pg_log/startup.log -o \\"-i -p %d \\" start 2>&1' %
@@ -804,25 +811,8 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile,
     if not ok:
         fatal('failed to start mirror segment %s:%s in admin mode' % (dst_cfg['hostname'], dst_cfg['datadir']))
 
-    # update gp_id table
-    log_info('update gp_id with segment id = %d' % dst_cfg['dbid'])
-    db = None
-    try:
-        try:
-            db = pg8000.Connection(host=dst_cfg['hostname'], port=dst_cfg['port'], 
-                                   user=ENV.USER, database=ENV.DBNAME, 
-                                   options='-c gp_session_role=utility')
-            
-            db.execute('update gp_id set dbid=%d where dbid <> %d' % (dst_cfg['dbid'], dst_cfg['dbid'])) 
-            
-        except pg8000.errors.InterfaceError, e:
-            fatal(e)
-        except pg8000.errors.ProgrammingError, e:
-            fatal(e)
-    finally:
-        if db:
-            db.close()
-            db = None
+    # update dbid, contentid data
+    #  -- todo MIRRORING this needs to update the dbid, contentid, etc. files on the machine itself
 
     if force_stop:
         # stop mirror segment

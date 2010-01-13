@@ -20,6 +20,7 @@ FormatAOSegmentFileName(
 							char *basepath, 
 							int segno, 
 							int col, 
+							int32 *fileSegNo,
 							char *filepathname);
 
 extern void

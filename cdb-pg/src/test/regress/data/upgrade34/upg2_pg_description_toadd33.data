@@ -32,6 +32,10 @@ objoid|classoid|objsubid|description
 5040|1255|0|change weight of all the backends for a given session id
 5041|1255|0|change weight of all the backends for a given session id
 5042|1255|0|list priorities of backends
+7175|1255|0|add entry to gp_persistent_database_node
+7176|1255|0|add entry to persistent_relation_node
+7177|1255|0|add entry to gp_persistent_tablespace_node
+7178|1255|0|populate the persistent tables and gp_relation_node for the current database
 9998|1255|0|convert an object name to oid.
 9999|1255|0|Greenplum fault testing only
 \.

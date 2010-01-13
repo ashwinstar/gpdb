@@ -772,6 +772,7 @@ ResourceOwnerForgetRelationRef(ResourceOwner owner, Relation rel)
 static void
 PrintRelCacheLeakWarning(Relation rel)
 {
+//	pg_usleep(120 * 1000000L);
 	elog(WARNING, "relcache reference leak: relation \"%s\" not closed",
 		 RelationGetRelationName(rel));
 }

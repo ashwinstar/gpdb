@@ -43,9 +43,7 @@ makeCdbCopy(bool is_copy_in)
 
 	/* fresh start */
 	c->total_segs = 0;
-	c->mirror_map = NULL;
 	c->primary_writer = NULL;
-	c->mirror_writer = NULL;
 	c->remote_data_err = false;	
 	c->io_errors = false;
 	c->copy_in = is_copy_in;
@@ -62,19 +60,6 @@ makeCdbCopy(bool is_copy_in)
 
 	Assert(c->total_segs >= 0);
 
-	/*
-	 * Initialize mirror (secondary) database count for each segment.
-	 * mirror_map is indexed by segment number and will contain the
-	 * number of databases for this segment (1 if there is only a
-	 * primary or 2 if a mirror exists).
-	 */
-	c->mirror_map = (int *) palloc(c->total_segs * sizeof(int));
-
-	for (seg = 0; seg < c->total_segs; seg++)
-	{
-		c->mirror_map[seg] = cdbCopyGetDbCount(c->total_segs, seg);
-	}
-
 	/* Initialize the state of each segment database */
 	c->segdb_state = (SegDbState **) palloc((c->total_segs) * sizeof(SegDbState *));
 
@@ -82,17 +67,10 @@ makeCdbCopy(bool is_copy_in)
 	{
 		c->segdb_state[seg] = (SegDbState *) palloc(2 * sizeof(SegDbState));
 		c->segdb_state[seg][0] = SEGDB_IDLE;	/* Primary can't be OUT */
-		
-		/* we are interested in mirrors only for copy_in */
-		if (c->copy_in)
-			c->segdb_state[seg][1] = (c->mirror_map[seg] == 1 ? SEGDB_OUT : SEGDB_IDLE);
-		else
-			c->segdb_state[seg][1] = SEGDB_OUT;
 	}
 
 	/* init gangs */
 	c->primary_writer = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
-	c->mirror_writer = allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 	
 	/* init seg list for copy out */
 	if (!c->copy_in)
@@ -105,28 +83,6 @@ makeCdbCopy(bool is_copy_in)
 	return c;
 }
 
-/*
- * returns the number of segment databases for a given segment.
- */
-int
-cdbCopyGetDbCount(int total_segs, int seg)
-{
-	int			i;
-
-	Gang	   *gp = allocateWriterGang(GANGTYPE_MIRROR_WRITER);
-
-	if (gp == NULL)
-		return 1;
-
-	for (i = 0; i < gp->size; i++)
-	{
-		if (gp->db_descriptors[i].segindex == seg)
-			return 2;
-	}
-
-	return 1;
-}
-
 
 /*
  * starts a copy command on a specific segment database.
@@ -137,10 +93,8 @@ void
 cdbCopyStart(CdbCopy *c, char *copyCmd)
 {
 	int			seg;
-	int			db;
 	MemoryContext oldcontext;
 	CdbDispatchResults *primaryResults;
-	CdbDispatchResults *mirrorResults;
 	CdbDispatchCmdThreads *dispatchThreads;
 	List	   *parsetree_list;
 	Node	   *parsetree = NULL;
@@ -240,9 +194,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 								false 		/* cancelonError */, 
 								c->copy_in 	/* need2phase */, 
 								true 		/* withSnapshot */, 
-								c->copy_in 	/* dispatchToMirrors */, 
-								true 		/* dispatchToPrimaries */,
-								&primaryResults, &mirrorResults, &dispatchThreads);
+								&primaryResults, &dispatchThreads);
 
 	/*  MPP-3017: insert a call like this to expand the timing, and
 	 *  then play with cancellation during a COPY command:
@@ -254,16 +206,12 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	 * Wait for all QEs to finish. If not all of our QEs were successful,
 	 * report the error and throw up.
 	 */
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
-	
-	
+	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+
 	/* fill in CdbCopy structure */
 	for (seg = 0; seg < c->total_segs; seg++)
 	{
-		for (db = 0; db < c->mirror_map[seg]; db++)
-		{
-			c->segdb_state[seg][db] = SEGDB_COPY;	/* we be jammin! */
-		}
+		c->segdb_state[seg][0] = SEGDB_COPY;	/* we be jammin! */
 	}
 
 	return;
@@ -279,42 +227,37 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 {
 	SegmentDatabaseDescriptor *q;
 	Gang	   *gp;
-	int			db;
 	int			result;
 
 	/* clean err message */
 	c->err_msg.len = 0;
 	c->err_msg.data[0] = '\0';
 	c->err_msg.cursor = 0;
+		/*
+		 * NOTE!! note that another DELIM was added, for the buf_converted
+		 * in the code above. I didn't do it because it's broken right now
+		 */
 
-	
-	for (db = 0; db < c->mirror_map[target_seg]; db++)
-	{
+	gp = c->primary_writer;
 
-		if (db == 0)
-			gp = c->primary_writer;
-		else
-			gp = c->mirror_writer;
-
-		q = getSegmentDescriptorFromGang(gp, target_seg);
+	q = getSegmentDescriptorFromGang(gp, target_seg);
 		
-		/* transmit the COPY data */
-		result = PQputCopyData(q->conn, buffer, nbytes);
+	/* transmit the COPY data */
+	result = PQputCopyData(q->conn, buffer, nbytes);
 
-		if (result != 1)
-		{
-			if (result == 0)
-				appendStringInfo(&(c->err_msg),
-								 "Failed to send data to %s segment %d, attempt blocked\n",
-								 (db == 0 ? "primary" : "mirror"), target_seg);
+	if (result != 1)
+	{
+		if (result == 0)
+			appendStringInfo(&(c->err_msg),
+							 "Failed to send data to segment %d, attempt blocked\n",
+							 target_seg);
 
-			if (result == -1)
-				appendStringInfo(&(c->err_msg),
-								 "Failed to send data to %s segment %d: %s\n",
-								 (db == 0 ? "primary" : "mirror"), target_seg, PQerrorMessage(q->conn));
+		if (result == -1)
+			appendStringInfo(&(c->err_msg),
+							 "Failed to send data to segment %d: %s\n",
+							 target_seg, PQerrorMessage(q->conn));
 
-			c->io_errors = true;
-		}
+		c->io_errors = true;
 	}
 }
 
@@ -324,7 +267,7 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
  */
 void
 cdbCopySendDataSingle(CdbCopy *c, int target_seg, const char *buffer,
-				int nbytes, bool primary)
+				int nbytes)
 {
 	SegmentDatabaseDescriptor *q;
 	Gang	   *gp;
@@ -335,33 +278,27 @@ cdbCopySendDataSingle(CdbCopy *c, int target_seg, const char *buffer,
 	c->err_msg.data[0] = '\0';
 	c->err_msg.cursor = 0;
  
-	
-
-	if (primary)
-		gp = c->primary_writer;
-	else
-		gp = c->mirror_writer;
+	gp = c->primary_writer;
 	
 	Assert(gp);
 
 	q = getSegmentDescriptorFromGang(gp, target_seg);
 
 	/* transmit the COPY data */
-	elog(DEBUG4,"PQputCopyData to %s segment %d\n",
-									 (primary ? "primary" : "mirror"), target_seg);
+	elog(DEBUG4,"PQputCopyData to segment %d\n", target_seg);
 	result = PQputCopyData(q->conn, buffer, nbytes);
 
 	if (result != 1)
 	{
 		if (result == 0)
 			appendStringInfo(&(c->err_msg),
-							 "Failed to send data to %s segment %d, attempt blocked\n",
-							 (primary ? "primary" : "mirror"), target_seg);
+							 "Failed to send data to segment %d, attempt blocked\n",
+							 target_seg);
 
 		if (result == -1)
 			appendStringInfo(&(c->err_msg),
-							 "Failed to send data to %s segment %d: %s\n",
-							 (primary ? "primary" : "mirror"), target_seg, PQerrorMessage(q->conn));
+							 "Failed to send data to segment %d: %s\n",
+							 target_seg, PQerrorMessage(q->conn));
 
 		c->io_errors = true;
 	}
@@ -652,9 +589,7 @@ processCopyEndResults(CdbCopy *c,
 					  int *results,
 					  int size,
 					  SegmentDatabaseDescriptor **failedSegDBs,
-					  bool is_primary,
 					  bool *err_header,
-					  bool *primary_had_error,
 					  bool *first_error,
 					  int *failed_count,
 					  int *total_rows_rejected)
@@ -685,8 +620,7 @@ processCopyEndResults(CdbCopy *c,
 								 "Failed to complete COPY on the following:\n");
 			*err_header = true;
 
-			appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, attempt blocked\n", 
-							 (q->segment_database_info->isprimary ? "primary" : "mirror"),
+			appendStringInfo(&(c->err_msg), "primary segment %d, dbid %d, attempt blocked\n", 
 							 seg, q->segment_database_info->dbid);
 			c->io_errors = true;
 		}
@@ -700,14 +634,11 @@ processCopyEndResults(CdbCopy *c,
 		 */
 		while ((res = PQgetResult(q->conn)) != NULL && PQstatus(q->conn) != CONNECTION_BAD)
 		{
-			elog(DEBUG1,"PQgetResult got status %d %s %d    ",
-				 PQresultStatus(res), is_primary ? "seg" : "mir", q->segindex);
+			elog(DEBUG1,"PQgetResult got status %d seg %d    ",
+				 PQresultStatus(res), q->segindex);
 			/* if the COPY command had a data error */
 			if (PQresultStatus(res) == PGRES_FATAL_ERROR)
 			{
-				if (is_primary)
-					*primary_had_error = true;
-				
 				/* 
 				 * Always append error from the primary. Append error from 
 				 * mirror only if its primary didn't have an error. 
@@ -718,8 +649,7 @@ processCopyEndResults(CdbCopy *c,
 				 * We get the error message in pieces so that we could append
 				 * whoami to the primary error message only.
 				 */
-				if ((is_primary && *first_error) ||
-					(!is_primary && !primary_had_error && *first_error))
+				if (*first_error)
 				{
 					char   *pri = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
 					char   *dtl = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
@@ -757,37 +687,30 @@ processCopyEndResults(CdbCopy *c,
 				result = PQputCopyEnd(q->conn, NULL);
 			}
 
-			if (is_primary && PQresultStatus(res) == PGRES_COPY_OUT)
+			if (PQresultStatus(res) == PGRES_COPY_OUT)
 			{
 				elog(LOG,"Segment still in copy out, cleaning retrying the putCopyEnd");
 				result = PQputCopyEnd(q->conn, NULL);
 			}
 
 			/* in SREH mode, check if this seg rejected (how many) rows */
-			if (is_primary && res->numRejected > 0)
+			if (res->numRejected > 0)
 				segment_rows_rejected = res->numRejected;
 				
 			/* Get AO tuple counts */
-			if (is_primary)
-				c->aotupcounts = process_aotupcounts(c->partitions,
-													 c->aotupcounts, 
-													 res->aotupcounts,
-													 res->naotupcounts);
+			c->aotupcounts = process_aotupcounts(c->partitions, c->aotupcounts, res->aotupcounts, res->naotupcounts);
 			/* free the PGresult object */
 			PQclear(res);
 		}
 
 		/* Finished with this segment db. */
-		if (is_primary)
-			c->segdb_state[seg][0] = SEGDB_DONE;
-		else
-			c->segdb_state[seg][1] = SEGDB_DONE;
+		c->segdb_state[seg][0] = SEGDB_DONE;
 
 		/* 
 		 * add number of rows rejected from this segment to the 
 		 * total of rejected rows. Only count from primary segs.
 		 */
-		if (is_primary && segment_rows_rejected > 0)
+		if (segment_rows_rejected > 0)
 			*total_rows_rejected += segment_rows_rejected;
 		
 		segment_rows_rejected = 0;
@@ -802,8 +725,7 @@ processCopyEndResults(CdbCopy *c,
 			
 			/* command error */
 			c->io_errors = true;
-			appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, with error: %s\n",
-							 is_primary ? "primary" : "mirror",
+			appendStringInfo(&(c->err_msg), "Primary segment %d, dbid %d, with error: %s\n",
 							 seg, q->segment_database_info->dbid, PQerrorMessage(q->conn));
 			
 			/* Free the PGconn object. */
@@ -839,10 +761,10 @@ cdbCopyEnd(CdbCopy *c)
 	int			failed_count = 0;
 	int			total_rows_rejected = 0; /* total num rows rejected by all QEs */
 	bool		err_header = false;
-	bool		primary_had_error = false; /* flag to consolidate pri/mir errors */
 	bool		first_error = true;
 	struct	SegmentDatabaseDescriptor *db_descriptors;
 	int size;
+
 	/* clean err message */
 	c->err_msg.len = 0;
 	c->err_msg.data[0] = '\0';
@@ -867,31 +789,8 @@ cdbCopyEnd(CdbCopy *c)
 	}
 
 	processCopyEndResults(c, db_descriptors, results, size,
-						  failedSegDBs, true, &err_header,
-						  &primary_had_error, &first_error,
-						  &failed_count, &total_rows_rejected);
-	
-	gp = c->mirror_writer;
-	size = 0;
-	if (gp)
-	{
-		db_descriptors = gp->db_descriptors;
-		size = gp->size;
-
-		for (seg = 0; seg < size; seg++)
-		{
-			q = &db_descriptors[seg];
-			
-			/* end this COPY command */
-			results[seg] = PQputCopyEnd(q->conn, NULL);
-		}
-
-
-		processCopyEndResults(c, db_descriptors, results, size,
-							  failedSegDBs, false, &err_header,
-							  &primary_had_error, &first_error,
-							  &failed_count, &total_rows_rejected);
-	}
+						  failedSegDBs, &err_header,
+						  &first_error, &failed_count, &total_rows_rejected);
 
 	/* If lost contact with segment db, try to reconnect. */
 	if (failed_count > 0)

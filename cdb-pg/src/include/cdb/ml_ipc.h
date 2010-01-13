@@ -193,6 +193,26 @@ extern TupleChunkListItem RecvTupleChunkFrom(ChunkTransportState *transportState
 											 int16 motNodeID, 
 											 int16 srcRoute);
 
+/* Some really simple, but handy functions for dealing with time-intervals. */
+static inline int
+timeval_delta_ms(struct timeval t1, struct timeval t0)
+{
+    int tdiff = (t1.tv_usec - t0.tv_usec + 500) / 1000;
+
+    if (t1.tv_sec != t0.tv_sec)
+        tdiff += 1000 * (t1.tv_sec - t0.tv_sec);
+    return  tdiff;
+}
+
+static inline int
+gettime_elapsed_ms(struct timeval t0)
+{
+    struct timeval  t1;
+
+    gettimeofday(&t1, NULL);
+    return timeval_delta_ms(t1, t0);
+}
+
 /* The DeregisterReadInterest() function is used to specify that we are no
  * longer interested in reading from the specified srcRoute. After calling this
  * function, we should no longer ever return TupleChunks from this srcRoute
@@ -295,8 +315,7 @@ extern void putTransportDirectBuffer(ChunkTransportState *transportStates,
 extern ChunkTransportStateEntry *createChunkTransportState(ChunkTransportState *transportStates,
 														   Slice *sendSlice,
 														   Slice *recvSlice,
-														   int numPrimaryConns,
-														   int numMirrorConns);
+														   int numPrimaryConns);
 
 extern ChunkTransportStateEntry *removeChunkTransportState(ChunkTransportState *transportStates,
 														   int16 motNodeID);

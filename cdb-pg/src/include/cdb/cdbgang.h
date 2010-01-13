@@ -62,7 +62,6 @@ typedef struct GpSegmentConnectionInfo
 	//char	hostip[32];			// Do we need this?
 	int4	port;
 	int2	segindex;
-	bool	isprimary;
 } GpSegmentConnectionInfo;
 
 typedef struct GpSegmentConnectionInfoSet

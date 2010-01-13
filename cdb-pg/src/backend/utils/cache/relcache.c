@@ -47,6 +47,7 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_rewrite.h"
+#include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "commands/trigger.h"
 #include "miscadmin.h"
@@ -68,6 +69,7 @@
 #include "cdb/cdbcat.h"         /* GpPolicy */
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"        /* Gp_role */
+#include "cdb/cdbmirroredflatfile.h"
 
 
 /*
@@ -188,12 +190,13 @@ static void RelationReloadClassinfo(Relation relation);
 static void RelationFlushRelation(Relation relation);
 static bool load_relcache_init_file(void);
 static void write_relcache_init_file(void);
-static void write_item(const void *data, Size len, FILE *fp);
+// static void write_item(const void *data, Size len, FILE *fp);
+static void write_item(const void *data, Size len, MirroredFlatFileOpen *mirroredOpen);
 
 static void formrdesc(const char *relationName, Oid relationReltype,
 		  bool hasoids, int natts, FormData_pg_attribute *att);
 
-static HeapTuple ScanPgRelation(Oid targetRelId, bool indexOK);
+static HeapTuple ScanPgRelation(Oid targetRelId, bool indexOK, Relation *pg_class_relation);
 static Relation AllocateRelationDesc(Relation relation, Form_pg_class relp);
 static void RelationParseRelOptions(Relation relation, HeapTuple tuple);
 static void RelationBuildTupleDesc(Relation relation);
@@ -228,7 +231,7 @@ static OpClassCacheEnt *LookupOpclassInfo(Oid operatorClassOid,
  *		and must eventually be freed with heap_freetuple.
  */
 static HeapTuple
-ScanPgRelation(Oid targetRelId, bool indexOK)
+ScanPgRelation(Oid targetRelId, bool indexOK, Relation *pg_class_relation)
 {
 	HeapTuple	pg_class_tuple;
 	Relation	pg_class_desc;
@@ -265,9 +268,174 @@ ScanPgRelation(Oid targetRelId, bool indexOK)
 
 	/* all done */
 	systable_endscan(pg_class_scan);
-	heap_close(pg_class_desc, AccessShareLock);
+
+	if (pg_class_relation == NULL)
+		heap_close(pg_class_desc, AccessShareLock);
+	else
+		*pg_class_relation = pg_class_desc;
 
 	return pg_class_tuple;
+}
+
+HeapTuple
+ScanGpRelationNodeTuple(
+	Relation 	gp_relation_node,
+	Oid			tablespace,
+	Oid 		relationNode)
+{
+	HeapTuple	tuple;
+	SysScanDesc scan;
+	ScanKeyData key[2];
+
+	Assert (tablespace != 0);
+	Assert (relationNode != 0);
+
+	/*
+	 * form a scan key
+	 */
+	ScanKeyInit(&key[0],
+				Anum_gp_relation_node_tablespace_oid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(tablespace));
+	ScanKeyInit(&key[1],
+				Anum_gp_relation_node_relfilenode_oid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relationNode));
+
+	/*
+	 * Open pg_class and fetch a tuple.  Force heap scan if we haven't yet
+	 * built the critical relcache entries (this includes initdb and startup
+	 * without a pg_internal.init file).  The caller can also force a heap
+	 * scan by setting indexOK == false.
+	 */
+	scan = systable_beginscan(gp_relation_node, GpRelationNodeOidIndexId,
+									   /* indexOK */ true,
+									   SnapshotNow,
+									   2, key);
+
+	tuple = systable_getnext(scan);
+
+	/*
+	 * Must copy tuple before releasing buffer.
+	 */
+	if (HeapTupleIsValid(tuple))
+		tuple = heap_copytuple(tuple);
+
+	/* all done */
+	systable_endscan(scan);
+
+	return tuple;
+}
+
+HeapTuple
+FetchGpRelationNodeTuple(
+	Relation 		gp_relation_node,
+	Oid				relationId,
+	Oid				tablespace,
+	Oid 			relationNode,
+	ItemPointer		persistentTid,
+	int64			*persistentSerialNum)
+{
+	HeapTuple tuple;
+	
+	bool			nulls[Natts_gp_relation_node];
+	Datum			values[Natts_gp_relation_node];
+	
+	Oid actualTablespace;
+	Oid actualRelationNode;
+	
+	Assert (relationId != 0);
+	if (tablespace == 0)
+		tablespace = DEFAULTTABLESPACE_OID;
+	Assert (relationNode != 0);
+	
+	tuple = ScanGpRelationNodeTuple(
+					gp_relation_node,
+					tablespace, 
+					relationNode);
+	
+	/*
+	 * if no such tuple exists, return NULL
+	 */
+	if (!HeapTupleIsValid(tuple))
+	{
+		MemSet(persistentTid, 0, sizeof(ItemPointerData));
+		*persistentSerialNum = 0;
+		return tuple;
+	}
+	
+	heap_deform_tuple(tuple, RelationGetDescr(gp_relation_node), values, nulls);
+	
+	Assert(!nulls[Anum_gp_relation_node_tablespace_oid - 1]);
+	actualTablespace = DatumGetObjectId(values[Anum_gp_relation_node_tablespace_oid - 1]);
+	if (actualTablespace != tablespace)
+		elog(FATAL, "Mismatch in node tuple for gp_relation_node for relation %u, reltablespace %u, tablespace %u",
+			 relationId, 
+			 tablespace,
+			 actualTablespace);
+		
+	Assert(!nulls[Anum_gp_relation_node_relfilenode_oid - 1]);
+	actualRelationNode = DatumGetObjectId(values[Anum_gp_relation_node_relfilenode_oid - 1]);
+	if (actualRelationNode != relationNode)
+		elog(FATAL, "Mismatch in node tuple for gp_relation_node for relation %u, relfilenode %u, relation node %u",
+			 relationId, 
+			 relationNode,
+			 actualRelationNode);
+		
+	Assert(!nulls[Anum_gp_relation_node_persistent_tid - 1]);
+	*persistentTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_relation_node_persistent_tid - 1]));
+		
+	Assert(!nulls[Anum_gp_relation_node_persistent_serial_num - 1]);
+	*persistentSerialNum = DatumGetInt64(values[Anum_gp_relation_node_persistent_serial_num - 1]);
+	
+	return tuple;
+}
+
+void
+RelationFetchGpRelationNode(
+	Relation relation)
+{
+	if (!relation->rd_relationnodeinfo.isPresent)
+	{
+		Oid tablespace;
+		Oid relationNode;
+
+		Relation gp_relation_node;
+		HeapTuple tuple;
+
+		tablespace = relation->rd_rel->reltablespace;
+		if (tablespace == 0)
+			tablespace = DEFAULTTABLESPACE_OID;
+		relationNode = relation->rd_rel->relfilenode;
+
+		gp_relation_node = heap_open(GpRelationNodeRelationId, AccessShareLock);
+
+		tuple = FetchGpRelationNodeTuple(
+							gp_relation_node,
+							/* relationId */ relation->rd_node.relNode,
+							tablespace,
+							relationNode,
+							&relation->rd_relationnodeinfo.persistentTid,
+							&relation->rd_relationnodeinfo.persistentSerialNum);
+
+		/*
+		 * if no such tuple exists, return NULL
+		 */
+		if (!HeapTupleIsValid(tuple))
+		{
+			elog(ERROR, "Did not find node tuple in gp_relation_node for relation %u, tablespace %u, relation node %u",
+			     relation->rd_node.relNode,
+			     tablespace,
+			     relationNode);
+		}
+
+		relation->rd_relationnodeinfo.isPresent = true;
+
+		heap_freetuple(tuple);
+
+		heap_close(gp_relation_node, AccessShareLock);
+	}
+
 }
 
 /*
@@ -322,6 +490,12 @@ AllocateRelationDesc(Relation relation, Form_pg_class relp)
 
 	/* initialize relation tuple form */
 	relation->rd_rel = relationForm;
+
+	/*
+	 * This part MUST be remain as a fetch on demand, otherwise you end up
+	 * needing it to open pg_class and then relation_open does infinite recursion...
+	 */
+	relation->rd_relationnodeinfo.isPresent = false;
 
 	/* and allocate attribute tuple form storage */
 	relation->rd_att = CreateTemplateTupleDesc(relationForm->relnatts,
@@ -776,7 +950,6 @@ equalRuleLocks(RuleLock *rlock1, RuleLock *rlock2)
 	return true;
 }
 
-
 /*
  *		RelationBuildDesc
  *
@@ -795,6 +968,7 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
 {
 	Relation	relation;
 	Oid			relid;
+	Relation    pg_class_relation;
 	HeapTuple	pg_class_tuple;
 	Form_pg_class relp;
 	MemoryContext oldcxt;
@@ -802,7 +976,7 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
 	/*
 	 * find the tuple in pg_class corresponding to the given relation id
 	 */
-	pg_class_tuple = ScanPgRelation(targetRelId, true);
+	pg_class_tuple = ScanPgRelation(targetRelId, true, &pg_class_relation);
 
 	/*
 	 * if no such tuple exists, return NULL
@@ -815,10 +989,11 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
 	 */
 	relid = HeapTupleGetOid(pg_class_tuple);
 	relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
+	heap_close(pg_class_relation, AccessShareLock);
 
 	/*
 	 * allocate storage for the relation descriptor, and copy pg_class_tuple
-	 * to relation->rd_rel.
+	 * to relation->rd_rel and new fields into relation->rd_newfields.
 	 */
 	relation = AllocateRelationDesc(oldrelation, relp);
 
@@ -1358,6 +1533,11 @@ formrdesc(const char *relationName, Oid relationReltype,
 	relation->rd_rel->relnatts = (int16) natts;
 
 	/*
+	 * Physical file-system information.
+	 */
+	relation->rd_relationnodeinfo.isPresent = false;
+	
+	/*
 	 * initialize attribute tuple form
 	 *
 	 * Unlike the case with the relation tuple, this data had better be right
@@ -1587,7 +1767,7 @@ RelationReloadClassinfo(Relation relation)
 	 * for pg_class_oid_index ...
 	 */
 	indexOK = (RelationGetRelid(relation) != ClassOidIndexId);
-	pg_class_tuple = ScanPgRelation(RelationGetRelid(relation), indexOK);
+	pg_class_tuple = ScanPgRelation(RelationGetRelid(relation), indexOK, NULL);
 	if (!HeapTupleIsValid(pg_class_tuple))
 		elog(ERROR, "could not find pg_class tuple for index %u",
 			 RelationGetRelid(relation));
@@ -2309,6 +2489,12 @@ RelationBuildLocalRelation(const char *relname,
 	rel->rd_rel->reltype = InvalidOid;
 	/* needed when bootstrapping: */
 	rel->rd_rel->relowner = BOOTSTRAP_SUPERUSERID;
+
+	/*
+	 * Create zeroed-out gp_relation_node data.  It will be filled in when the
+	 * disk file is created.
+	 */
+	rel->rd_relationnodeinfo.isPresent = false;
 
 	/*
 	 * Insert relation physical and logical identifiers (OIDs) into the right
@@ -3474,15 +3660,23 @@ read_failed:
 static void
 write_relcache_init_file(void)
 {
+#ifdef suppress
 	FILE	   *fp;
 	char		tempfilename[MAXPGPATH];
 	char		finalfilename[MAXPGPATH];
+#endif
 	int			magic;
 	HASH_SEQ_STATUS status;
 	RelIdCacheEnt *idhentry;
 	MemoryContext oldcxt;
 	int			i;
 
+	MirroredFlatFileOpen	mirroredOpen;
+
+	// UNDONE: For Online Resync MILESONE 1, we are writing the file directly rather
+	// UNDONE: doing the rename stuff.	We'll have to revisit this...
+	// UNDONE
+#ifdef suppress
 	/*
 	 * We must write a temporary file and rename it into place. Otherwise,
 	 * another backend starting at about the same time might crash trying to
@@ -3509,14 +3703,29 @@ write_relcache_init_file(void)
 			  errdetail("Continuing anyway, but there's something wrong.")));
 		return;
 	}
+#endif
+	// UNDONE: For tablespaces to work, this needs to pass the DbDirNode...
+	MirroredFlatFile_Open(
+					&mirroredOpen,
+					DatabasePath,
+					RELCACHE_INIT_FILENAME,
+					O_CREAT | O_TRUNC | O_WRONLY | PG_BINARY,
+					S_IRUSR | S_IWUSR,
+					/* suppressError */ false,
+					/*isMirrorRecovery */ false);
 
 	/*
 	 * Write a magic number to serve as a file version identifier.	We can
 	 * change the magic number whenever the relcache layout changes.
 	 */
 	magic = RELCACHE_INIT_FILEMAGIC;
-	if (fwrite(&magic, 1, sizeof(magic), fp) != sizeof(magic))
-		elog(FATAL, "could not write init file");
+//	if (fwrite(&magic, 1, sizeof(magic), fp) != sizeof(magic))
+//		elog(FATAL, "could not write init file");
+	MirroredFlatFile_Append(
+						&mirroredOpen,
+						&magic, 
+						sizeof(magic),
+						/* suppressError */ false);
 
 	/*
 	 * Write all the reldescs (in no particular order).
@@ -3531,21 +3740,27 @@ write_relcache_init_file(void)
 		Form_pg_class relform = rel->rd_rel;
 
 		/* first write the relcache entry proper */
-		write_item(rel, sizeof(RelationData), fp);
+//		write_item(rel, sizeof(RelationData), fp);
+		write_item(rel, sizeof(RelationData), &mirroredOpen);
 
 		/* next write the relation tuple form */
-		write_item(relform, CLASS_TUPLE_SIZE, fp);
+//		write_item(relform, CLASS_TUPLE_SIZE, fp);
+		write_item(relform, CLASS_TUPLE_SIZE, &mirroredOpen);
 
 		/* next, do all the attribute tuple form data entries */
 		for (i = 0; i < relform->relnatts; i++)
 		{
-			write_item(rel->rd_att->attrs[i], ATTRIBUTE_TUPLE_SIZE, fp);
+//			write_item(rel->rd_att->attrs[i], ATTRIBUTE_TUPLE_SIZE, fp);
+			write_item(rel->rd_att->attrs[i], ATTRIBUTE_TUPLE_SIZE, &mirroredOpen);
 		}
 
 		/* next, do the access method specific field */
+//		write_item(rel->rd_options,
+//				   (rel->rd_options ? VARSIZE(rel->rd_options) : 0),
+//				   fp);
 		write_item(rel->rd_options,
 				   (rel->rd_options ? VARSIZE(rel->rd_options) : 0),
-				   fp);
+				   &mirroredOpen);
 
 		/* If it's an index, there's more to do */
 		if (rel->rd_rel->relkind == RELKIND_INDEX)
@@ -3554,22 +3769,32 @@ write_relcache_init_file(void)
 
 			/* write the pg_index tuple */
 			/* we assume this was created by heap_copytuple! */
+//			write_item(rel->rd_indextuple,
+//					   HEAPTUPLESIZE + rel->rd_indextuple->t_len,
+//					   fp);
 			write_item(rel->rd_indextuple,
 					   HEAPTUPLESIZE + rel->rd_indextuple->t_len,
-					   fp);
+					   &mirroredOpen);
 
 			/* next, write the access method tuple form */
-			write_item(am, sizeof(FormData_pg_am), fp);
+//			write_item(am, sizeof(FormData_pg_am), fp);
+			write_item(am, sizeof(FormData_pg_am), &mirroredOpen);
 
 			/* next, write the vector of operator OIDs */
+//			write_item(rel->rd_operator,
+//					   relform->relnatts * (am->amstrategies * sizeof(Oid)),
+//					   fp);
 			write_item(rel->rd_operator,
 					   relform->relnatts * (am->amstrategies * sizeof(Oid)),
-					   fp);
+					   &mirroredOpen);
 
 			/* finally, write the vector of support procedures */
+//			write_item(rel->rd_support,
+//				  relform->relnatts * (am->amsupport * sizeof(RegProcedure)),
+//					   fp);
 			write_item(rel->rd_support,
 				  relform->relnatts * (am->amsupport * sizeof(RegProcedure)),
-					   fp);
+					   &mirroredOpen);
 		}
 
 		/* also make a list of their OIDs, for RelationIdIsInInitFile */
@@ -3579,9 +3804,15 @@ write_relcache_init_file(void)
 		MemoryContextSwitchTo(oldcxt);
 	}
 
+#ifdef suppress
 	if (FreeFile(fp))
 		elog(FATAL, "could not write init file");
+#endif
+	MirroredFlatFile_Flush(&mirroredOpen, /* suppressError */ false);
+	MirroredFlatFile_Close(&mirroredOpen);
 
+// UNDONE: Yikes!  We've been overwriting the file!!
+#ifdef suppress
 	/*
 	 * Now we have to check whether the data we've so painstakingly
 	 * accumulated is already obsolete due to someone else's just-committed
@@ -3623,16 +3854,28 @@ write_relcache_init_file(void)
 	}
 
 	LWLockRelease(RelCacheInitLock);
+#endif
 }
 
 /* write a chunk of data preceded by its length */
 static void
-write_item(const void *data, Size len, FILE *fp)
+// write_item(const void *data, Size len, FILE *fp)
+write_item(const void *data, Size len, MirroredFlatFileOpen *mirroredOpen)
 {
-	if (fwrite(&len, 1, sizeof(len), fp) != sizeof(len))
-		elog(FATAL, "could not write init file");
-	if (fwrite(data, 1, len, fp) != len)
-		elog(FATAL, "could not write init file");
+//	if (fwrite(&len, 1, sizeof(len), fp) != sizeof(len))
+//		elog(FATAL, "could not write init file");
+	MirroredFlatFile_Append(
+						mirroredOpen,
+						&len, 
+						sizeof(len),
+						/* suppressError */ false);
+//	if (fwrite(data, 1, len, fp) != len)
+//		elog(FATAL, "could not write init file");
+	MirroredFlatFile_Append(
+						mirroredOpen,
+						(void*)data, 
+						(int)len,
+						/* suppressError */ false);
 }
 
 /*

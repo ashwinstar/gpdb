@@ -926,12 +926,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				break;
 			case 5:
 				/* gp-s backup set specification */
-				if ( strcasecmp( optarg, "a") == 0 )
-				{
-					pInputOpts->actors = SET_ALL;
-					pInputOpts->pszRawDumpSet = NULL;
-				}
-				else if ( strcasecmp( optarg, "p") == 0 )
+				if ( strcasecmp( optarg, "p") == 0 )
 				{
 					pInputOpts->actors = SET_NO_MIRRORS;
 					pInputOpts->pszRawDumpSet = NULL;
@@ -943,7 +938,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				}
 				else
 				{
-					mpp_err_msg_cache(logError, pszProgName, "invalid gp-s option %s.  Must be a for \"all\", p for \"primaries only\", or i[dbid list] for \"individual\".\n", optarg);
+					mpp_err_msg_cache(logError, pszProgName, "invalid gp-s option %s.  Must be p for \"all primary segments\", or i[dbid list] for \"individual\".\n", optarg);
 					goto cleanup;
 				}
 
@@ -1139,9 +1134,9 @@ void help(const char *pszProgName)
 	printf(("  --gp-c                  use gzip for in-line compression\n"));
 	printf(("  --gp-d=BACKUPFILEDIR    directory where backup files are placed\n"));
 	printf(("  --gp-r=REPORTFILEDIR    directory where report file is placed\n"));
-	printf(("  --gp-s=BACKUPSET        backup set indicator - (a)ll, or (p)rimaries only (default)\n"));
-	printf(("                           or (i)ndividual segdb (must be followed with a list of dbid's\n"));
-	printf(("                           to dump. For example: --gp-s=i[10,12,15]\n"));
+	printf(("  --gp-s=BACKUPSET        backup set indicator - (p)rimaries only (default)\n"));
+	printf(("                          or (i)ndividual segdb (must be followed with a list of dbids\n"));
+	printf(("                          of primary segments to dump. For example: --gp-s=i[10,12,14]\n"));
 
 	printf(("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
@@ -1308,15 +1303,11 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 		pSegDB->role = ROLE_MASTER;
 		pSegDB->port = (inputopts.pszPGPort ? atoi(inputopts.pszPGPort) : 0);
 		pSegDB->pszDBName = (inputopts.pszDBName ? inputopts.pszDBName : "unknown");
-		pSegDB->isValid	= true;
-		pSegDB->isPrimary = true;
 		pSegDB->pszHost	= inputopts.pszPGHost;
 		pSegDB->pszDBUser = NULL;
 		pSegDB->pszDBPswd = NULL;
 
 		p->pTargetSegDBData = pSegDB;
-
-
 	}
 
 	/*
@@ -1395,8 +1386,7 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 		if(pParm->pTargetSegDBData->role == ROLE_MASTER)
 			appendPQExpBuffer(reportBuf, "\tMaster ");
 		else
-			appendPQExpBuffer(reportBuf, "\t%s segment %d ", (pParm->pTargetSegDBData->isPrimary ? "Primary" : "Mirror"),
-					 pParm->pTargetSegDBData->content);
+			appendPQExpBuffer(reportBuf, "\tsegment %d ", pParm->pTargetSegDBData->content);
 
 		appendPQExpBuffer(reportBuf, "(dbid %d) Host %s Port %d Database %s BackupFile %s: %s %s%s\n",
 				pParm->pTargetSegDBData->dbid,
@@ -1485,12 +1475,6 @@ void spinOffThreads(PGconn* pConn,
 		pParm->pTargetSegDBData = &psegDBAr->pData[i];
 		pParm->pOptionsData = pInputOpts;
 		pParm->bSuccess		= false;
-
-        if (!pParm->pTargetSegDBData->isValid)
-        {
-            decrementFinishedLaunchCount();
-            continue;
-        }
 
 		mpp_msg( logInfo, pszProgName, "Creating thread to backup dbid %d: host %s port %d database %s\n",
 					   pParm->pTargetSegDBData->dbid,
@@ -1819,8 +1803,7 @@ void* threadProc(void *arg)
 				/* this historically reported "failed to set transaction level serializable" */
 				pParm->pszErrorMsg = MakeString( "backup failed before being able to begin the backup transaction. "
 												 "there are various reasons that may cause this to happen. Please "
-												 "inspect the server log of dbid %d on host %s and the correctness "
-												 "of all the gp_id tables\n."
+												 "inspect the server log of dbid %d on host %s\n "
 												 "Detail from remote status file: %s\n",
 												 pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost"),
 												 ReadBackendBackupFile( pConn, pInputOpts->pszBackupDirectory,

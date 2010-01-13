@@ -1432,13 +1432,16 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         if not os.path.exists(backupFile):
             raise ExpansionError('gp_configuration backup file %s does not exist' % backupFile)
         
+        # Create a new gpArray from the backup file
+        array = createFromFile(backupFile)
+
+        # Update the catalog with the contents of the backup
         restore_conn = dbconn.connect(self.dburl, utility=True)
-        dbconn.execSQL(restore_conn, 'DELETE FROM gp_configuration')
-        dbconn.execSQL(restore_conn, 'COPY gp_configuration FROM \'%s\' WITH DELIMITER \'|\'' % backupFile)
+        catalog.GpConfigurationTable.deleteAllRows(restore_conn)
+        catalog.GpConfigurationTable.addRows(restore_conn, array.getDbList())
         dbconn.execSQL(restore_conn, 'UPDATE gp_id SET numsegments=%s' % originalPrimaryCount)
         restore_conn.commit()
         restore_conn.close()
-
     
     def start_prepare(self):
         """Inserts into gpexpand.status that expansion preparation has started."""

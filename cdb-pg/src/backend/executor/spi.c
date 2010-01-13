@@ -205,12 +205,8 @@ can_execute_this_locally(const char *src)
 	/*
 	 * Ok, we have an SQL statement, that probably can only be dispatched by the QD
 	 */
-
 	if (!gp_enable_functions)
 		elog(ERROR, "Functions that execute SQL statements from the segDBs are not yet supported");
-
-	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary && !is_a_select)
-		elog(ERROR, "Functions that execute non-SELECT SQL statements from the mirrorDBs are not supported");
 
 	return false;
 }
@@ -2179,8 +2175,6 @@ _SPI_execute_plan_remote(_SPI_plan * plan, Datum *Values, const char *Nulls,
 	elog(DEBUG1, "_SPI_execute_plan via QD: %s", plan->query);
 	if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		if (!Gp_is_primary)
-			elog(DEBUG1, "Stored procedure running on mirror...");
 		if (!Gp_is_writer)
 			elog(DEBUG1, "Stored procedure running in reader gang.");
 	}
@@ -2381,7 +2375,7 @@ _SPI_execute_plan_remote(_SPI_plan * plan, Datum *Values, const char *Nulls,
 			query, strlen(query) + 1,
 			NULL, 0, NULL, 0, NULL, 0, NULL, 0,
 			serializedSnapshot, serializedSnapshotlen,
-			0 /* unused flag */ , gp_command_count, -1 /* localSlice */ , 0 /* rootIdx */ , 1 /* primaryGang */ , 0 /* mirrorGang */ ,
+			0 /* unused flag */ , gp_command_count, -1 /* localSlice */ , 0 /* rootIdx */ , 1 /* primaryGang */ ,
 			GetCurrentStatementStartTimestamp(),
 			GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
 			&query_text_len);

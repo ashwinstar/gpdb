@@ -1515,7 +1515,7 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	cxt.fkconstraints = NIL;
 	cxt.ixconstraints = NIL;
 	cxt.pkey = NULL;
-
+	
 	cxt.blist = NIL;
 	cxt.alist = NIL;
 
@@ -2011,7 +2011,7 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			p->nattrs = 0;
 			p->attrs[0] = 1;
 			
-			*policyp = p;
+			*policyp = p; 
 		}
 		else
 		{

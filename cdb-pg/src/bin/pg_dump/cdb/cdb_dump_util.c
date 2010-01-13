@@ -200,7 +200,6 @@ PGconn* GetMasterConnection(const char* progName,
 	masterDB.dbid		= 0;
 	masterDB.role		= 0;
 	masterDB.port		= pgport ? atoi(pgport) : 5432;
-	masterDB.isValid	= true;
 	masterDB.pszHost	= (char *)pghost;
 	masterDB.pszDBName	= (char *)dbname;
 	masterDB.pszDBUser	= (char *)username;

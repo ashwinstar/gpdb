@@ -1841,7 +1841,6 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 	results = cdbdisp_dispatchDtxProtocolCommand(dtxProtocolCommand, flags,
 												 dtxProtocolCommandStr,
 												 gid, gxid,
-												 dispatchToMirrors,
 												 &errbuf, &resultCount, badGangs, direct,
 												 serializedArgument, serializedArgumentLen);
 
@@ -1913,7 +1912,6 @@ dispatchDtxCommand(const char *cmd, bool dispatchToMirrors, bool withSnapshot, b
 
 	initStringInfo(&errbuf);
 	results = cdbdisp_dispatchRMCommand(cmd, withSnapshot,
-										dispatchToMirrors,
 										&errbuf, &resultCount);
 
 	if (errbuf.len > 0)
@@ -2889,9 +2887,7 @@ determineSegmentMaxDistributedXid(void)
 	
 	initStringInfo(&errbuf);
 
-	results = cdbdisp_dispatchRMCommand(buffer.data, 
-		                                /* Snapshot */ false, 
-		                                /* DispatchToMirrors */ true, 
+	results = cdbdisp_dispatchRMCommand(buffer.data, /* Snapshot */ false, 
 		                                &errbuf, &resultCount);
 
 	if (errbuf.len > 0)
@@ -2964,7 +2960,6 @@ determineSegmentMaxDistributedXid(void)
 static HTAB *
 gatherRMInDoubtTransactions(void)
 {
-	bool		dispatchToMirrors = true;
 	PGresult  **pgresultSets = NULL;
 	StringInfoData errmsgbuf;
 	const char *cmdbuf = "select gid from pg_prepared_xacts";
@@ -2982,9 +2977,7 @@ gatherRMInDoubtTransactions(void)
 	initStringInfo(&errmsgbuf);
 
 	/* call to all QE to get in-doubt transactions */
-	pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf,
-											 /* withSnapshot */false,
-											 dispatchToMirrors,
+	pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf, /* withSnapshot */false,
 											 &errmsgbuf, NULL);
 
 	/* display error messages */
@@ -3203,7 +3196,7 @@ void verify_shared_snapshot_ready(void)
 {
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDoCommand("set gp_write_shared_snapshot=true", true, true, true, true);
+		CdbDoCommand("set gp_write_shared_snapshot=true", true, true);
 
 		/*
 		 * To keep our readers in sync (since they will be dispatched

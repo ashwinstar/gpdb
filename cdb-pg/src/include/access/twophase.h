@@ -51,4 +51,6 @@ extern void CheckPointTwoPhase(XLogRecPtr redo_horizon);
 
 extern bool FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound);
 
+extern int TwoPhaseRecoverMirror(void);
+
 #endif   /* TWOPHASE_H */

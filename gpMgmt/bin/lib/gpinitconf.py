@@ -114,7 +114,14 @@ def gpconf():
                                database=ENV.DBNAME,
                                options='-c gp_session_role=utility')
         
-        db.execute('select * from gp_configuration')
+        query = """
+           SELECT content, preferred_role = 'p' as definedprimary, dbid, role = 'p' as isprimary, hostname, port, fselocation as datadir
+           FROM gp_segment_configuration
+           JOIN pg_filespace_entry ON (dbid = fsedbid)
+           WHERE fsefsoid = (SELECT oid FROM pg_filespace 
+                             WHERE fsname = 'pg_system')
+        """
+        db.execute(query)
         gpconf = [ r for r  in db.iterate_dict() ] 
 
         master = filter(lambda(x): x['content'] < 0 and x['definedprimary'], gpconf)[0]

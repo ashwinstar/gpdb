@@ -213,6 +213,7 @@ extern bool heap_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 
 extern Oid	simple_heap_insert(Relation relation, HeapTuple tup);
 extern Oid frozen_heap_insert(Relation relation, HeapTuple tup);
+extern Oid frozen_heap_insert_directed(Relation relation, HeapTuple tup, BlockNumber blockNum);
 extern void simple_heap_delete(Relation relation, ItemPointer tid);
 extern void simple_heap_update(Relation relation, ItemPointer otid,
 				   HeapTuple tup);
@@ -223,6 +224,9 @@ extern void heap_restrpos(HeapScanDesc scan);
 
 extern void heap_redo(XLogRecPtr lsn, XLogRecord *rptr);
 extern void heap_desc(StringInfo buf, uint8 xl_info, char *rec);
+extern void heap_redo_get_rnode(
+	XLogRecord 		*record,
+	RelFileNode		*relFileNode);
 extern void heap2_redo(XLogRecPtr lsn, XLogRecord *rptr);
 extern void heap2_desc(StringInfo buf, uint8 xl_info, char *rec);
 

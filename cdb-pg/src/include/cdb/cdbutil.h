@@ -31,19 +31,25 @@ typedef struct CdbComponentDatabaseInfo
 	int16		dbid;			/* the dbid of this database */
 	int16		segindex;		/* content indicator: -1 for entry database,
 								 * 0, ..., n-1 for segment database */
-	bool		isprimary;		/* true if this is the primary segment, false
-								 * if it's the secondary */
-	bool		valid;			/* true if this segdb is up */
-	bool		definedprimary; /* true if this seg db is originally defined
-								 * as primary */
+
+	char		role;			/* primary, master, mirror, master-standby */
+	char		preferred_role; /* what role would we "like" to have this segment in ? */
+	char		mode;
+	char		status;
+
 	char	   *hostname;		/* name or ip address of host machine */
+	char	   *address;		/* ip address of host machine */
+
 	char	   *hostip;			/* cached lookup of name */
 	int32		port;			/* port that instance is listening on */
-	char	   *datadir;		/* directory where instance was initialized
-								 * into */
+	int32		filerep_port;  	/* port that instance filerep is listening on */
+
 	char	   *hostaddrs[COMPONENT_DBS_MAX_ADDRS];	/* cached lookup of names */	
 } CdbComponentDatabaseInfo;
 
+#define SEGMENT_IS_ACTIVE_MIRROR(p) ((p)->role == 'm' ? true : false)
+#define SEGMENT_IS_ACTIVE_PRIMARY(p) ((p)->role == 'p' ? true : false)
+#define SEGMENT_IS_ALIVE(p) ((p)->status == 'u' ? true : false)
 
 /* --------------------------------------------------------------------------------------------------
  * Structure for return value from getCdbSegmentDatabases()
@@ -105,19 +111,6 @@ extern CdbComponentDatabases *getCdbComponentDatabases(void);
  * getCdbComponentDatabases().
  */
 extern void freeCdbComponentDatabases(CdbComponentDatabases *pDBs);
-
-/*
- * getGpId() causes the gp_id table's singleton row to be read into a global structure
- * This is called from cdblink_setup().
- * The global variable is declared in cdbvars.h and defined in cdbvars.c.
- */
-extern void getGpId(void);
-
-/*
- * freeGpId() causes the global variable holding the gp_id table's singleton row to be
- * reinitialized to empty, releasing memory that was allocated when it was loaded.
- */
-extern void freeGpId(void);
 
 // UNDONE: This was a private procedure... are there any issues in making it public???
 /*

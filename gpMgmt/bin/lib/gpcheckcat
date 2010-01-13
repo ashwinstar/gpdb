@@ -270,7 +270,21 @@ def formatErr(c, col, row):
 def getGPConfiguration():
     cfg = {}
     db = connect()
-    curs = db.query("select * from gp_configuration")
+    if GV.version < "3.4":
+        qry = '''
+           SELECT content, definedprimary, dbid, isprimary, hostname, port, 
+                  datadir
+           FROM gp_configuration
+        '''
+    else:
+        qry = '''
+            SELECT content, preferred_role = 'p' as definedprimary, 
+                   dbid, role = 'p' as isprimary, hostname, port, 
+                   fselocation as datadir
+            FROM gp_segment_configuration JOIN pg_filespace_entry on (dbid = fsedbid)
+            WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+        '''
+    curs = db.query(qry)
     for row in curs.dictresult():
         if row['content'] == -1 and row['isprimary'] != 't':
             continue    # skip standby master

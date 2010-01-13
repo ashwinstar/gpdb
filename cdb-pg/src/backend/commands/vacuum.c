@@ -246,7 +246,6 @@ static void vacuumStatement(VacuumStmt *vacstmt, List *relids);
 
 static void
 vacuum_combine_stats(CdbDispatchResults *primaryResults,
-						 CdbDispatchResults *mirrorResults,
 						 void *ctx);
 
 /****************************************************************************
@@ -335,9 +334,6 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum messages aren't interesting from the QD */
-
-	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary)
-		elevel = DEBUG2; /* the mirrors usually just repeat what the primaries say */
 
 	/*
 	 * We cannot run VACUUM inside a user transaction block; if we were inside
@@ -3754,7 +3750,6 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 
 	/* should these be marked volatile ? */
 	struct CdbDispatchResults *primaryResults=NULL;
-	struct CdbDispatchResults *mirrorResults=NULL;
 	CdbDispatchCmdThreads *dispatchThreads=NULL;
 
 	volatile int disp_phase=0;
@@ -3807,8 +3802,8 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 
 		cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
 								 true /* cancelOnError */, true /* needTwoPhase */,
-								 true /* withSnapshot */, false /* mirrors */, true /* primaries */,
-								 &primaryResults, &mirrorResults, &dispatchThreads);
+								 true /* withSnapshot */,
+								 &primaryResults, &dispatchThreads);
 
 		disp_phase = 1;
 
@@ -3821,26 +3816,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		 * NOTE: this has the side-effect of calling pfree() on
 		 * pszVacuum! (we re-serialize for our mirrors below).
 		 */
-		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, vacuum_combine_stats, ctx);
-
-		disp_phase = 2;
-
-		pszVacuum = serializeNode((Node *) q, &pszVacuum_len);
-		Assert(pszVacuum != NULL);
-
-		/* mark the dtx as dirty */
-		dtmPreCommand("cdbdisp_dispatchCommand", "(none)", NULL,
-				true /* needs two-phase */, true /* withSnapshot */, false /* inCursor */);
-
-		cdbdisp_dispatchCommand("vacuum", pszVacuum, pszVacuum_len,
-								true /* cancelOnError */, true /* needTwoPhase */,
-								true /* withSnapshot */, true /* mirrors */, false /* primaries */,
-								&primaryResults, &mirrorResults, &dispatchThreads);
-		disp_phase = 3;
-
-		elog(DEBUG2, "Sent %s command to mirror QEs",  "vacuum" );
-
-		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, ctx);
+		cdbdisp_finishCommand(primaryResults, dispatchThreads, vacuum_combine_stats, ctx);
 	}
 	PG_CATCH();
 	{
@@ -3856,13 +3832,6 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 			case 1:
 				disp_msg = "primary completion";
 				break;
-			case 2:
-				disp_msg = "mirror dispatch";
-				dispatch_inflight = true;
-				break;
-			case 3:
-				disp_msg = "mirror completion";
-				break;
 			default:
 				disp_msg = "unknown";
 				break;
@@ -3875,7 +3844,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		 * two dispatch operations above.
 		 */
 		if (dispatch_inflight)
-		cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
+			cdbdisp_handleError(primaryResults, dispatchThreads);
 
 		PG_RE_THROW();
 	}
@@ -4112,7 +4081,6 @@ get_oids_for_bitmap(List *all_extra_oids, Relation Irel,
  */
 void
 vacuum_combine_stats(CdbDispatchResults *primaryResults,
-						 CdbDispatchResults *mirrorResults,
 						 void *ctx)
 {
 	int result_no;
