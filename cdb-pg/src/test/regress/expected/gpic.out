@@ -157,3 +157,85 @@ select nextval('gpic_snoid'),to_timestamp(timet) from gpic_test1;
        3 | Wed Dec 31 16:00:33 1969 PST
 (3 rows)
 
+-- TEST for MPP-7835: directed dispatch interaction with TCP-IC
+DROP TABLE IF EXISTS MWV_CDetail_TABLE;
+NOTICE:  table "mwv_cdetail_table" does not exist, skipping
+CREATE TABLE MWV_CDetail_TABLE(
+ ATTRIBUTE066 DATE,
+ ATTRIBUTE084 TIMESTAMP,
+ ATTRIBUTE097 BYTEA,
+ ATTRIBUTE096 BIGINT,
+ ATTRIBUTE032 VARCHAR (3),
+ ATTRIBUTE031 VARCHAR (20),
+ ATTRIBUTE151 VARCHAR (4000),
+ ATTRIBUTE037 VARCHAR (4000),
+ ATTRIBUTE047 VARCHAR (2048)
+)
+with (appendonly=true, orientation=column, compresstype=quicklz)
+distributed by (attribute066)
+partition by range (attribute066)
+(start (date '2009-10-01') inclusive end (date '2009-12-31') inclusive every (interval '1 week'));
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_1" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_2" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_3" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_4" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_5" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_6" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_7" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_8" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_9" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_10" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_11" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_12" for table "mwv_cdetail_table"
+NOTICE:  CREATE TABLE will create partition "mwv_cdetail_table_1_prt_13" for table "mwv_cdetail_table"
+set gp_enable_direct_dispatch=off;
+set gp_interconnect_type=tcp;
+SELECT
+  ATTRIBUTE066,ATTRIBUTE032 ,ATTRIBUTE031
+ ,COUNT(*) AS CNT
+FROM 
+  MWV_CDETAIL_TABLE
+WHERE ATTRIBUTE066 = '2009-12-31'::date - 1
+GROUP BY ATTRIBUTE066,ATTRIBUTE032 ,ATTRIBUTE031;
+ attribute066 | attribute032 | attribute031 | cnt 
+--------------+--------------+--------------+-----
+(0 rows)
+
+set gp_enable_direct_dispatch=on;
+SELECT
+  ATTRIBUTE066,ATTRIBUTE032 ,ATTRIBUTE031
+ ,COUNT(*) AS CNT
+FROM 
+  MWV_CDETAIL_TABLE
+WHERE ATTRIBUTE066 = '2009-12-31'::date - 1
+GROUP BY ATTRIBUTE066,ATTRIBUTE032 ,ATTRIBUTE031;
+ attribute066 | attribute032 | attribute031 | cnt 
+--------------+--------------+--------------+-----
+(0 rows)
+
+set gp_enable_direct_dispatch=off;
+set gp_interconnect_type=udp;
+SELECT
+  ATTRIBUTE066,ATTRIBUTE032 ,ATTRIBUTE031
+ ,COUNT(*) AS CNT
+FROM 
+  MWV_CDETAIL_TABLE
+WHERE ATTRIBUTE066 = '2009-12-31'::date - 1
+GROUP BY ATTRIBUTE066,ATTRIBUTE032 ,ATTRIBUTE031;
+ attribute066 | attribute032 | attribute031 | cnt 
+--------------+--------------+--------------+-----
+(0 rows)
+
+set gp_enable_direct_dispatch=on;
+SELECT
+  ATTRIBUTE066,ATTRIBUTE032 ,ATTRIBUTE031
+ ,COUNT(*) AS CNT
+FROM 
+  MWV_CDETAIL_TABLE
+WHERE ATTRIBUTE066 = '2009-12-31'::date - 1
+GROUP BY ATTRIBUTE066,ATTRIBUTE032 ,ATTRIBUTE031;
+ attribute066 | attribute032 | attribute031 | cnt 
+--------------+--------------+--------------+-----
+(0 rows)
+
+DROP TABLE IF EXISTS MWV_CDetail_TABLE;

@@ -1264,23 +1264,37 @@ SetupTCPInterconnect(EState *estate)
 	/* now we'll do some setup for each of our Receiving Motion Nodes. */
 	foreach(cell, mySlice->children)
 	{
-		int			numProcs;
+		int			totalNumProcs, activeNumProcs;
 		int			childId = lfirst_int(cell);
-	    ChunkTransportStateEntry *pEntry;
+		ChunkTransportStateEntry *pEntry;
 
 #ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG5, "Setting up RECEIVING motion node %d", childId);
 #endif
 
 		aSlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, childId);
-		numProcs = list_length(aSlice->primaryProcesses);
 
-		pEntry = createChunkTransportState(estate->interconnect_context, aSlice, mySlice, numProcs);
+		/*
+		 * If we're using directed-dispatch we have dummy
+		 * primary-process entries, so we count the entries.
+		 */
+		activeNumProcs = 0;
+		totalNumProcs = list_length(aSlice->primaryProcesses);
+		for (i=0; i < totalNumProcs; i++)
+		{
+			CdbProcess *cdbProc;
+
+			cdbProc = list_nth(aSlice->primaryProcesses, i);
+			if (cdbProc)
+				activeNumProcs++;
+		}
+
+		pEntry = createChunkTransportState(estate->interconnect_context, aSlice, mySlice, totalNumProcs);
 
 		/* let cdbmotion now how many receivers to expect. */
-		setExpectedReceivers(estate->motionlayer_context, childId, numProcs);
+		setExpectedReceivers(estate->motionlayer_context, childId, activeNumProcs);
 
-		expectedTotalIncoming += pEntry->numConns;
+		expectedTotalIncoming += activeNumProcs;
 	}
 
     if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
