@@ -927,50 +927,22 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 		 * PARAM_EXEC params (internal executor parameters) are stored in the
 		 * ecxt_param_exec_vals array, and can be accessed by array index.
 		 */
-		ParamExecData *prm;
-
-		prm = &(econtext->ecxt_param_exec_vals[thisParamId]);
-		if (prm->execPlan != NULL)
+		ParamExecData *prmExec = &(econtext->ecxt_param_exec_vals[thisParamId]);
+		
+		/* 
+		 * Maybe this parameter has already been evaluated. If so, execPlan
+		 * would be NULL.
+		 */
+		if (prmExec->execPlan != NULL)
 		{
-			if (Gp_role == GP_ROLE_EXECUTE)
-			{
-				ParamListInfo paramInfo = econtext->ecxt_param_list_info;
-				Plan *subPlan = NULL;
-				int nx = -1;
-				int ni = -1;
-				Assert(paramInfo);
-				
-				nx = paramInfo->numParams;
-				Assert(prm->execPlan);
-				subPlan = ((SubPlan *)((SubPlanState *) prm->execPlan)->xprstate.expr)->plan;
-				Assert(subPlan);
-				ni =  subPlan->nParamExec;
-
-				if (thisParamId < ni )
-				{
-					ParamExternData *prmExt = &paramInfo->params[nx-ni + thisParamId];
-					Assert(OidIsValid(prmExt->ptype));
-					*isNull = prmExt->isnull;
-					return prmExt->value;
-				}
-				else
-				{
-					/* Parameter not evaluated yet, so go do it */
-					ExecSetParamPlan(prm->execPlan, econtext, NULL);
-					/* ExecSetParamPlan should have processed this param... */
-					Assert(prm->execPlan == NULL);
-				}
-			}
-			else
-			{
-				/* Parameter not evaluated yet, so go do it */
-				ExecSetParamPlan(prm->execPlan, econtext, NULL);
-				/* ExecSetParamPlan should have processed this param... */
-				Assert(prm->execPlan == NULL);
-			}
+			/* Parameter not evaluated yet, so go do it */
+			ExecSetParamPlan(prmExec->execPlan, econtext, NULL);
+			/* ExecSetParamPlan should have processed this param... */
+			Assert(prmExec->execPlan == NULL);
 		}
-		*isNull = prm->isnull;
-		return prm->value;
+		
+		*isNull = prmExec->isnull;
+		return prmExec->value;
 	}
 	else
 	{

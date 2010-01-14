@@ -750,9 +750,54 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 		foreach(lst, subplan->setParam)
 		{
 			int			paramid = lfirst_int(lst);
-			ParamExecData *prm = &(estate->es_param_exec_vals[paramid]);
+			ParamExecData *prmExec = &(estate->es_param_exec_vals[paramid]);
+			
+			/**
+			 * Has this parameter been already 
+			 * evaluated as part of preprocess_initplan()? If so,
+			 * we shouldn't re-evaluate it. If it has been evaluated,
+			 * we will simply substitute the actual value from
+			 * the external parameters.
+			 */
+			if (Gp_role == GP_ROLE_EXECUTE
+					&& paramid < subplan->plan->nParamExec)
+			{	
+				ParamListInfo paramInfo = estate->es_param_list_info;
+				ParamExternData *prmExt = NULL;
+				Param *paramExpression = NULL;
+				int extParamIndex = -1;
+				
+				Assert(paramInfo);
+				Assert(paramInfo->numParams > 0);
+				
+				/* 
+				 * To locate the value of this pre-evaluated parameter, we need to find
+				 * its location in the external parameter list.  
+				 */
+				extParamIndex = paramInfo->numParams - subplan->plan->nParamExec + paramid;
 
-			prm->execPlan = node;
+				/* Ensure that the plan is actually an initplan */
+				Assert(subplan->is_initplan && "Subplan is not an initplan. Parameter has not been evaluated in preprocess_initplan.");
+				
+				prmExt = &paramInfo->params[extParamIndex];
+				
+				/* Some more sanity checks */
+				paramExpression = (Param *) subplan;
+				Assert(paramExpression->paramtype == prmExt->ptype && "Parameter types don't match!");
+				Assert(paramExpression->paramkind == PARAM_EXEC && "Wrong kind of parameter!");
+				
+				/* Make sure the types are valid */
+				Assert(OidIsValid(prmExt->ptype) && "Invalid Oid for pre-evaluated parameter.");				
+				
+				/** Hurray! Copy value from external parameter and don't bother setting up execPlan. */
+				prmExec->execPlan = NULL;
+				prmExec->isnull = prmExt->isnull;
+				prmExec->value = prmExt->value;
+			}
+			else
+			{
+				prmExec->execPlan = node;
+			}
 		}
 	}
 
