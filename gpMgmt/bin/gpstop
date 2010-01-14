@@ -18,7 +18,6 @@ from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRE
 try:
     import figleaf
 
-    from gppylib.db import dbconn
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
     from gppylib.db import dbconn
@@ -179,10 +178,7 @@ class GpStop():
         
         logger.info("Obtaining Segment details from master...")
         self.dburl = dbconn.DbURL(port=self.port,dbname='template1')
-        conn = dbconn.connect(self.dburl, utility=True)
-        rows = dbconn.getConfig(conn)
-        self.gparray = gparray.GpArray(rows)        
-        conn.close()
+        self.gparray = gparray.createGPDBFromDB(self.dburl, utility=True)
     
         
     ######
@@ -296,10 +292,10 @@ class GpStop():
         self.pool = base.WorkerPool(numWorkers=workers)
         
         segs = self.gparray.getSegDbList()
-                        
+
         #read in the hostcache file and make sure we can ping everybody
         failed_pings=gphostcache.ping_segment_hosts(self.gparray,self.pool)
-        for db in failed_pings:            
+        for db in failed_pings:
             logger.warning("Skipping startup of segdb on %s directory %s Ping Failed <<<<<<" % (db.hostname,db.datadir))
             failed_seg_status.append(SegStopStatus(db,False,'Failed to Ping on host: %s' % db.hostname))
             

@@ -23,7 +23,6 @@ try:
     from gppylib.db import dbconn
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
-    from gppylib.db import dbconn
     from gppylib import gparray
     from gppylib import gphostcache
     from gppylib import userinput
@@ -134,30 +133,22 @@ class GpStart:
         self.ftsmode = catalog.getSessionGUC(self.conn,'gp_fault_action')
         probe_interval = catalog.getSessionGUC(self.conn,'gp_fts_probe_interval')
 
-        system_filespace = 3052
-        sql = '''
-        SELECT p.dbid,p.isprimary,p.content,p.valid,p.definedprimary,c.hostname,c.port,c.datadir 
-        FROM pg_catalog.gp_pgdatabase p, pg_catalog.gp_configuration c,
-             pg_catalog.pg_filespace_entry fse
-        WHERE p.valid = 'f' AND p.dbid = c.dbid
-          AND c.dbid = fse.fsedbid and fse.fsoid = %d
-        ''' % (system_filespace)
-        rows = catalog.basicSQLExec(self.conn,sql)
-        self.conn.close()
-        
-        total_count=len(rows)
-        started = 0
-        
         if self.ftsmode != 'readonly':
             raise Exception('gpstart --recover can only be run when gp_fault_action=readonly')
         
-        
-        downed_segs=[] 
-        for row in rows:
-            (dbid,isprimary,content,valid,definedprimary,hostname,port,datadir)=row
+        array = gparray.createGPDBFromDB(self.dburl, utility=True)
+        downed_segs = array.get_invalid_segdbs()
+
+        # Log information about invalid segments
+        for seg in downed_segs:
+            dbid     = seg.dbid
+            hostname = seg.get_hostname()
+            datadir  = seg.get_datadir()
             logger.info("Found offline segment with dbid=%d on host: %s datadirectory: %s" % (dbid,hostname,datadir))
-            downed_segs.append(gparray.GpDB(content,definedprimary,dbid,isprimary,valid,hostname,port,datadir))
-        
+
+        # Attempt to restart downed segments
+        total_count=len(downed_segs)
+        started = 0        
         for seg in downed_segs:
             logger.info("Attempting to restart segment on host: %s datadir: %s " % (seg.hostname,seg.datadir))
             logger.info("Trying to ping host: %s" % seg.hostname )
@@ -362,11 +353,10 @@ class GpStart:
         
         logger.info("Obtaining Segment details from master...")
         self.dburl = dbconn.DbURL(port=self.port,dbname='template1')
-        self.conn = dbconn.connect(self.dburl, utility=True)
-        rows = dbconn.getConfig(self.conn)
-        self.gparray = gparray.GpArray(rows)
-        
+        self.gparray = gparray.createGPDBFromDB(self.dburl, utility=True)
+
         logger.debug("Gathering collation settings...")
+        self.conn = dbconn.connect(self.dburl, utility=True)
         (self.lc_collate,self.lc_monetary,self.lc_numeric)=catalog.getCollationSettings(self.conn)
         
         self.ftsmode = catalog.getSessionGUC(self.conn,'gp_fault_action')

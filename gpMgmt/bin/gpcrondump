@@ -242,7 +242,7 @@ GET_DUMP_DIR () {
 
 CHK_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		CHK_DIR_TARGET=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select hostname, datadir, port from $CONFIG_TABLE where dbid=${DBID};"`
+		CHK_DIR_TARGET=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select hostname, datadir, port from $CONFIG_TABLE a where dbid=${DBID};"`
 		ERROR_CHK $? "obtained host datadir and port for DBID $DBID" 2
 		DIR_HOST=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f1`
 		DIR=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f2`
