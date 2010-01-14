@@ -3566,7 +3566,8 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	int			ocount = 0;
 	TableOidInfo * oids = NULL;
 	bool is_partition = false;
-
+	bool is_data_remote = (RelationIsExternal(rel) || RelationIsForeign(rel));
+	
 	cdb_sync_oid_to_segments();
 
 	/* Phase 1: preliminary examination of commands, create work queue */
@@ -3605,10 +3606,13 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	/* Phase 2: update system catalogs */
 	ATRewriteCatalogs(&wqueue, ocount, oids);
 
-	/* Phase 3: scan/rewrite tables as needed */
-	ATRewriteTables(&wqueue, ocount, oids);
+	/* Phase 3: scan/rewrite tables as needed. if data is external, no need to rewrite nor add toast */
+	if(!is_data_remote)
+	{
+		ATRewriteTables(&wqueue, ocount, oids);
 
-	ATAddToastIfNeeded(&wqueue, ocount, oids);
+		ATAddToastIfNeeded(&wqueue, ocount, oids);		
+	}
 
 }
 
