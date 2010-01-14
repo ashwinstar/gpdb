@@ -64,9 +64,14 @@ def parseargs():
 
     # sanity check 
     if not options.directory:
-        print "--directory is a required command line.  Check the usage below:"
-        print __doc__
-        parser.exit()
+        
+        d = os.getenv('MASTER_DATA_DIRECTORY')
+        if (d):
+            options.directory = d
+        else:
+            print "--directory is a required command line.  Check the usage below:"
+            print __doc__
+            parser.exit()
 
     USER=os.getenv('USER')
     if USER is None or USER is ' ':
