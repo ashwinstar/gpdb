@@ -4669,6 +4669,19 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 				escapec = '\0';
 	bool		csv = false;
 
+	/*
+	 * CSV special case. See MPP-7819.
+	 * 
+	 * this functions may change the in_quote value while processing.
+	 * this is ok as we need to keep state in case we don't find EOL
+	 * in this buffer and need to be called again to continue searching.
+	 * BUT if EOL *was* found we must reset to the state we had since 
+	 * we are about to reprocess this buffer again in CopyReadLineCSV
+	 * from the same starting point as we are in right now. 
+	 */
+	bool save_inquote = cstate->in_quote;
+	bool save_lastwas = cstate->last_was_esc;
+
 	if (cstate->quote)					/* CSV format */
 	{
 		csv = true;
@@ -4701,8 +4714,8 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 				cstate->eol_ch[0] = '\n';
 				cstate->eol_ch[1] = '\0';
 
-				cstate->in_quote = false;
-				cstate->last_was_esc = false;
+				cstate->in_quote = save_inquote; /* see comment at declaration */
+				cstate->last_was_esc = save_lastwas;
 				return true;
 			}
 		}
@@ -4723,8 +4736,8 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 					cstate->eol_ch[1] = '\0';
 				}
 
-				cstate->in_quote = false;
-				cstate->last_was_esc = false;
+				cstate->in_quote = save_inquote; /* see comment at declaration */
+				cstate->last_was_esc = save_lastwas;
 				return true;
 			}
 		}
