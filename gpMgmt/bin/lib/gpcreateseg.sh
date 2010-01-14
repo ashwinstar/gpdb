@@ -254,9 +254,16 @@ case $TYPE in
 			COPY_FROM_PRIMARY_HOSTNAME=$GP_HOSTNAME
 			COPY_FROM_PRIMARY_DIR=$GP_DIR
 			COPY_FROM_PRIMARY_PORT=$GP_PORT
+            COPY_FROM_PRIMARY_CONTENT=$GP_CONTENT
 		fi
 		SET_VAR $SEGMENT_LINE
 
+        if [ x"IS_PRIMARY" != x"$COPY_FROM_PRIMARY_SEGMENT_LINE" ]; then
+            if [ x"$GP_CONTENT" != x"$COPY_FROM_PRIMARY_CONTENT" ]; then
+                $ECHO "[FATAL]:-mismatch between content id and primary content id" 
+		        exit 2
+            fi
+        fi
 		INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
 		BACKOUT_FILE=/tmp/gpsegcreate.sh_backout.$$
 		LOG_FILE=$1;shift		#Central logging file
