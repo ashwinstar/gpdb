@@ -715,6 +715,7 @@ static int read_conf_file(char *conffile)
 	opt.d = min_detailed_query_time;
 	opt.harvest_interval = 120;
 	opt.max_log_size = 0;
+	opt.log_dir = strdup(DEFAULT_GPMMON_LOGDIR);
 
 	if (!fp)
 	{
@@ -1007,12 +1008,27 @@ int main(int argc, const char* const argv[])
 
 	getconfig();
 	read_conf_file(opt.conf_file);
+
+    /* redirect output to log_file */
 	{
+        if (gpmon_recursive_mkdir(opt.log_dir))
+        {
+            fprintf(stderr, "\ncannot create directory %s/%s", ax.master_data_directory, opt.log_dir);
+            gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s/%s", ax.master_data_directory, opt.log_dir);
+        }
+
 		char log_file[MAXPATHLEN + 1];
 		snprintf(log_file, MAXPATHLEN, "%s/%s", opt.log_dir, "gpmmon.log");
-		freopen(log_file, "w", stderr);
-		freopen(log_file, "w", stdout);
+		if (!freopen(log_file, "w", stdout)){
+            fprintf(stderr, "\nPerformance Monitor -- failed to open perfmon log file %s\n", log_file);
+		    gpmon_fatal(FLINE, "\nfailed (1) to open perfmon log file %s\n", log_file);
+        }
+		if (!freopen(log_file, "w", stderr)){
+		    gpmon_fatal(FLINE, "\nfailed (2) to open perfmon log file %s\n", log_file);
+        }
 	}
+
+
 	/* check port */
 	if (!(0 < ax.port && ax.port < (1 << 16)))
 	{
@@ -1033,26 +1049,16 @@ int main(int argc, const char* const argv[])
 	/* start up gpperfmon directory */
 	{
 		char work_dir[MAXPATHLEN+1] = {0};
-		char *pdir = work_dir;
-
 		strncpy(work_dir, GPMON_DIR, MAXPATHLEN);
 		work_dir[MAXPATHLEN] = 0;
 
-		while (*pdir)
-		{
-			if (*pdir == '/')
-			{
-				*pdir = 0;
-				if (-1 == mkdir(work_dir, 0700) && EEXIST != errno)
-				{
-					gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
-							"cannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
-				}
-				*pdir = '/';
-			}
-			pdir++;
-		}
+        if (gpmon_recursive_mkdir(work_dir))
+        {
+            fprintf(stderr, "\ncannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
+            gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
+        }
 	}
+
 
 	gpmmon_main();
 
@@ -1083,7 +1089,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 	htab = apr_hash_make(pool);
 	CHECKMEM(htab);
 
-	/* Connect to database, get segment hosts from gp_configuration */
+	/* Connect to database, get segment hosts from gp_segment_configuration */
 	gpdb_get_hostlist(&host_count, &hosts, &data_dirs, ax.pool);
 
 	for (i = 0; i < host_count; i++)
@@ -1097,7 +1103,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 
 	if (apr_is_empty_array(hostarray))
 	{
-		gpmon_fatal(FLINE, "No valid hosts in gp_configuration.");
+		gpmon_fatal(FLINE, "No valid hosts in gp_segment_configuration.");
 	}
 
 	/* popen ssh hostname, put host_t entries into htab to

@@ -9,6 +9,7 @@
 #include "gpmon/gpmon.h"
 
 #define BATCH 8
+#define DEFAULT_GPMMON_LOGDIR "gpperfmon/logs"
 
 #define GPPERFMON_VERSIONX APR_STRINGIFY(GPPERFMON_VERSION)
 
@@ -53,6 +54,9 @@ extern apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt);
 
 /* strings */
 extern char* gpmon_trim(char* s);
+
+/* file manip */
+extern int gpmon_recursive_mkdir(char* work_dir);
 
 /* datetime, e.g. 2004-02-14  23:50:02 */
 extern char* gpmon_datetime(apr_time_t t, char str[24]);

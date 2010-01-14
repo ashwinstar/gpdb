@@ -42,7 +42,7 @@ APR_DECLARE(void) gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datad
 /**
  *  Get the MD5 of the gp_configuration
  */
-APR_DECLARE(void) gpdb_get_config_md5(unsigned char md5[APR_MD5_DIGESTSIZE]);
+/*APR_DECLARE(void) gpdb_get_config_md5(unsigned char md5[APR_MD5_DIGESTSIZE]); */
 
 /**
  *  Get the master data directory in the GPDB.

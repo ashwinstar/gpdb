@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include "gpmonlib.h"
 #include "apr_time.h"
 #include "apr_queue.h"
@@ -293,4 +294,31 @@ apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 	fscanf(fp, "%d", &status);
 	fclose(fp);
 	return status;
+}
+
+int gpmon_recursive_mkdir(char* work_dir)
+{
+    char *pdir = work_dir;
+    while (*pdir)
+    {
+        if (*pdir == '/')
+        {
+            *pdir = 0;
+            fprintf(stderr, "\nmkdir %s\n", work_dir);
+            if (-1 == mkdir(work_dir, 0700) && EEXIST != errno)
+            {
+                return 1;
+            }
+            *pdir = '/';
+        }
+        pdir++;
+    }
+
+    fprintf(stderr, "\nmkdir %s\n", work_dir);
+    if (-1 == mkdir(work_dir, 0700) && EEXIST != errno)
+    {
+        return 1;
+    }
+
+    return 0;
 }
