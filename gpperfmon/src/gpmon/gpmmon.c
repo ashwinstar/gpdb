@@ -940,6 +940,16 @@ static void parse_command_line(int argc, const char* const argv[])
 	apr_pool_destroy(pool);
 }
 
+void interuptable_sleep(unsigned int seconds)
+{
+    int i;
+    for (i = 0; i < seconds && !ax.exit; i++)
+	    apr_sleep(apr_time_from_sec(1));
+
+    if (ax.exit)
+        exit(0);
+}
+
 int main(int argc, const char* const argv[])
 {
 	int db_check_count = 0;
@@ -951,6 +961,7 @@ int main(int argc, const char* const argv[])
 	if (apr_initialize())
 	{
 		fprintf(stderr, "Performance Monitor - Internal error, failed to initialize APR.\n");
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		exit(1);
 	}
 
@@ -969,6 +980,7 @@ int main(int argc, const char* const argv[])
 		(signal(SIGHUP, SIGHUP_handler) == SIG_ERR) ||
 		(signal(SIGUSR2, SIGUSR2_handler) == SIG_ERR))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatal(FLINE, "Failed to set signal handlers\n");
 	}
 
@@ -981,7 +993,6 @@ int main(int argc, const char* const argv[])
 	 * hang around until it does or we get a stop request */
 	for (;;)
 	{
-		int i = 0;
 		int gpperfmon_valid = 0;
 
 		if (ax.exit)
@@ -998,9 +1009,7 @@ int main(int argc, const char* const argv[])
 
 			db_check_count += 1;
 
-			/* split up sleeps so we can handle stop requests promptly. */
-			for (i = 0; i < 60 && !ax.exit; i++)
-				apr_sleep(apr_time_from_sec(1));
+            interuptable_sleep(60); // sleep to prevent loop of forking process and failing
 		}
 		else
 			break;
@@ -1013,7 +1022,8 @@ int main(int argc, const char* const argv[])
 	{
         if (gpmon_recursive_mkdir(opt.log_dir))
         {
-            fprintf(stderr, "\ncannot create directory %s/%s", ax.master_data_directory, opt.log_dir);
+            fprintf(stderr, "\nPerformance Monitor -- cannot create directory %s/%s", ax.master_data_directory, opt.log_dir);
+            interuptable_sleep(30); // sleep to prevent loop of forking process and failing
             gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s/%s", ax.master_data_directory, opt.log_dir);
         }
 
@@ -1021,9 +1031,11 @@ int main(int argc, const char* const argv[])
 		snprintf(log_file, MAXPATHLEN, "%s/%s", opt.log_dir, "gpmmon.log");
 		if (!freopen(log_file, "w", stdout)){
             fprintf(stderr, "\nPerformance Monitor -- failed to open perfmon log file %s\n", log_file);
+            interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		    gpmon_fatal(FLINE, "\nfailed (1) to open perfmon log file %s\n", log_file);
         }
 		if (!freopen(log_file, "w", stderr)){
+            interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		    gpmon_fatal(FLINE, "\nfailed (2) to open perfmon log file %s\n", log_file);
         }
 	}
@@ -1055,6 +1067,7 @@ int main(int argc, const char* const argv[])
         if (gpmon_recursive_mkdir(work_dir))
         {
             fprintf(stderr, "\ncannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
+            interuptable_sleep(30); // sleep to prevent loop of forking process and failing
             gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
         }
 	}
