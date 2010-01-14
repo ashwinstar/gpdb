@@ -304,7 +304,6 @@ int gpmon_recursive_mkdir(char* work_dir)
         if (*pdir == '/')
         {
             *pdir = 0;
-            fprintf(stderr, "\nmkdir %s\n", work_dir);
             if (-1 == mkdir(work_dir, 0700) && EEXIST != errno)
             {
                 return 1;
@@ -314,7 +313,6 @@ int gpmon_recursive_mkdir(char* work_dir)
         pdir++;
     }
 
-    fprintf(stderr, "\nmkdir %s\n", work_dir);
     if (-1 == mkdir(work_dir, 0700) && EEXIST != errno)
     {
         return 1;
