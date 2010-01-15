@@ -142,9 +142,9 @@ class GpSegStart:
             res=cmd.get_results()
             if res.rc != 0:
                 #TODO: read in last entries in startup.log
-                status=SegStartStatus(cmd.dataDir,False,"PG_CTL failed.\nstdout:%s\nstderr:%s\n" % (res.stdout,res.stderr))
+                status=SegStartStatus(cmd.segmentToStart.dataDir,False,"PG_CTL failed.\nstdout:%s\nstderr:%s\n" % (res.stdout,res.stderr))
                 results.append(status)
-                del directoryToSegStartDataMap[cmd.dataDir]
+                del directoryToSegStartDataMap[cmd.segmentToStart.dataDir]
                 failures=True
         
         self.pool.empty_completed_items()
@@ -172,9 +172,9 @@ class GpSegStart:
                 (success,error_str)=cmd.getResults()
             
                 if success:
-                    results.append(SegStartStatus(cmd.datadir,True,"Start Succeeded"))
+                    results.append(SegStartStatus(cmd.segmentToStart.dataDir,True,"Start Succeeded"))
                 else:
-                    results.append(SegStartStatus(cmd.datadir,False,error_str))
+                    results.append(SegStartStatus(cmd.segmentToStart.dataDir,False,error_str))
     
         
         #Log the results!

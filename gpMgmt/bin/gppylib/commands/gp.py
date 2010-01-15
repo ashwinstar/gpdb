@@ -132,6 +132,7 @@ class SegmentToStart:
 class SegmentStart(Command):      
     def __init__(self, name, segmentToStart, utilityMode=False, ctxt=LOCAL, remoteHost=None):
 
+        self.segmentToStart = segmentToStart
         cmdfrags=['$GPHOME/bin/pg_ctl -D %s -l %s/pg_log/startup.log ' % (segmentToStart.dataDir,segmentToStart.dataDir)]
 
         if not segmentToStart.noWait:
