@@ -30,7 +30,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-
+#include "catalog/namespace.h"
+#include "catalog/pg_namespace.h"
 #include "cdb/cdbvars.h"
 
 /*
@@ -166,7 +167,6 @@ init_sql_fcache(FmgrInfo *finfo)
 	Datum		tmp;
 	bool		isNull;
 	ListCell * list_item;
-	bool	can_run_local = true;
 
 	fcache = (SQLFunctionCachePtr) palloc0(sizeof(SQLFunctionCache));
 
@@ -180,6 +180,7 @@ init_sql_fcache(FmgrInfo *finfo)
 		elog(ERROR, "cache lookup failed for function %u", foid);
 	procedureStruct = (Form_pg_proc) GETSTRUCT(procedureTuple);
 
+	
 	/*
 	 * get the result type from the procedure tuple, and check for polymorphic
 	 * result type; if so, find out the actual result type.
@@ -253,6 +254,7 @@ init_sql_fcache(FmgrInfo *finfo)
 
 	queryTree_list = pg_parse_and_rewrite(fcache->src, argOidVect, nargs);
 	
+
 	/*
 	 * If we have only SELECT statements with no FROM clauses, we should
 	 * be able to execute them locally, even on the QE.  Most often, this is something 
@@ -268,54 +270,50 @@ init_sql_fcache(FmgrInfo *finfo)
 	 */
 	if (Gp_role == GP_ROLE_EXECUTE)
 	{
+		bool canRunLocal = true;
+		
 		foreach(list_item, queryTree_list)
 		{
 			Node	   *parsetree = (Node *) lfirst(list_item);
 			if (IsA(parsetree,Query))
 			{
 				Query * q = (Query *)parsetree;
-				if (q->commandType != CMD_SELECT)
+				if (q->commandType != CMD_SELECT 
+						|| q->intoClause != NULL 
+						|| q->resultRelation > 0)
 				{
-					can_run_local = false;
+					canRunLocal = false;
 					break;
 				}
-				else if (q->intoClause != NULL || q ->setOperations != NULL || q->resultRelation > 0)
-				{
-					can_run_local = false;
-					break;
-                }
-				if (q->rtable != NULL)
+				else if (q->rtable != NULL)
 				{
 					ListCell * f;
 					foreach(f,q->rtable)
 					{
 						Node * fr = (Node *) lfirst(f);
-						RangeVar * r;
-						if (!IsA(fr,RangeVar))
+						if (IsA(fr,RangeVar))
 						{
-							can_run_local = false;
-							break;
-						}
-						r = (RangeVar *)fr;
-						if (r->schemaname && strcmp(r->schemaname,"pg_catalog")!=0)
-							can_run_local = false;
-						if (r->schemaname==NULL && r->relname && strncmp(r->relname,"pg_",3)!=0)
-							can_run_local = false;
+							RangeVar * r = (RangeVar *)fr;
+							Oid relid = RangeVarGetRelid(r, false);
+							Oid namespaceid = get_rel_namespace(relid);
 							
-						if (!can_run_local)
-							break;
+							if (namespaceid != PG_CATALOG_NAMESPACE)
+							{
+								canRunLocal = false;
+								break;
+							}
+						}
 					}
 				}
 			}
 			else
 			{
-				can_run_local = false;
+				canRunLocal = false;
 				break;
-			}
-				
+			}		
 		}
-			
-		if (!can_run_local)
+		
+		if (!canRunLocal)
 		{
 			if (procedureStruct->provolatile == PROVOLATILE_VOLATILE)
 				elog(ERROR,"Volatile SQL function %s cannot be executed from the segment databases",NameStr(procedureStruct->proname));	

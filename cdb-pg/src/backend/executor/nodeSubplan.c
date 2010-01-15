@@ -764,7 +764,6 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 			{	
 				ParamListInfo paramInfo = estate->es_param_list_info;
 				ParamExternData *prmExt = NULL;
-				Param *paramExpression = NULL;
 				int extParamIndex = -1;
 				
 				Assert(paramInfo);
@@ -780,12 +779,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 				Assert(subplan->is_initplan && "Subplan is not an initplan. Parameter has not been evaluated in preprocess_initplan.");
 				
 				prmExt = &paramInfo->params[extParamIndex];
-				
-				/* Some more sanity checks */
-				paramExpression = (Param *) subplan;
-				Assert(paramExpression->paramtype == prmExt->ptype && "Parameter types don't match!");
-				Assert(paramExpression->paramkind == PARAM_EXEC && "Wrong kind of parameter!");
-				
+								
 				/* Make sure the types are valid */
 				Assert(OidIsValid(prmExt->ptype) && "Invalid Oid for pre-evaluated parameter.");				
 				

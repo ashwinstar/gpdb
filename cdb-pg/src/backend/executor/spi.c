@@ -39,6 +39,8 @@
 #include "postmaster/postmaster.h"		/* PostPortNumber */
 #include "postmaster/backoff.h"
 #include "nodes/print.h"
+#include "catalog/namespace.h"
+#include "catalog/pg_namespace.h"
 
 /*
  * Update the legacy 32-bit processed counter, but handle overflow.
@@ -113,7 +115,6 @@ can_execute_this_locally(const char *src)
 	List	   *raw_parsetree_list;
 	ListCell   *list_item;
 	bool		can_run_local = true;
-	bool		is_a_select = true;
 
 	/*
 	 * Utility mode never uses (or needs) the special callback code
@@ -153,47 +154,39 @@ can_execute_this_locally(const char *src)
 		{
 			SelectStmt *s = (SelectStmt *) parsetree;
 
-			if (s->into != NULL || s->op != SETOP_NONE)
+			if (s->into != NULL)
 			{
 				can_run_local = false;
 				break;
 			}
-
-			if (s->fromClause != NULL)
+			else if (s->fromClause != NULL)
 			{
 				ListCell   *f;
 
 				foreach(f, s->fromClause)
 				{
 					Node	   *fr = (Node *) lfirst(f);
-					RangeVar   *r;
 
-					if (!IsA(fr, RangeVar))
+					if (IsA(fr, RangeVar))
 					{
-						can_run_local = false;
-						break;
+						RangeVar * r = (RangeVar *)fr;
+						Oid relid = RangeVarGetRelid(r, false);
+						Oid namespaceid = get_rel_namespace(relid);
+						
+						if (namespaceid != PG_CATALOG_NAMESPACE)
+						{
+							can_run_local = false;
+							break;
+						}
 					}
-					r = (RangeVar *) fr;
-					if (r->schemaname && strcmp(r->schemaname, "pg_catalog") != 0)
-						can_run_local = false;
-					if (r->schemaname == NULL && r->relname && strncmp(r->relname, "pg_", 3) != 0)
-						can_run_local = false;
-
-					if (!can_run_local)
-						break;
 				}
-
 			}
 		}
 		else
 		{
 			can_run_local = false;
-			is_a_select = false;
-		}
-
-		if (!can_run_local)
 			break;
-
+		}
 	}
 
 	elog(DEBUG1, "SPI running SQL, local=%d:  %s", can_run_local, src);
