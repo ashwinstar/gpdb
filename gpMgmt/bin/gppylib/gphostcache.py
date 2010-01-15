@@ -103,8 +103,8 @@ class GpHostCache():
                 elif self.hostcache[interface] is None:
                     self.hostcache[interface] = hostname
                 elif self.hostcache[interface] != hostname:
-                    logger.warn("inconsistent hostname '%s' for interface '%s' and expected hostname %s" % \
-                                (self.hostcache[interface], interface, hostname))                
+                    logger.warn("inconsistent hostname '%s' for interface '%s' and expected hostname '%s'" % \
+                                (self.hostcache[interface], interface, hostname))
                     inconsistent.append(interface)
 
         # Clear out any inconsistent hostnames to force a recheck.
