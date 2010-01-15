@@ -263,25 +263,36 @@ Tablespace: "pg_global"
             if cursor: cursor.close()
 
 # XXX: THIS IS OBVIOUSLY BROKEN IN 3.4!
+#      BUT, is now fixed for FileRep branch (not fixed for File Spaces or SAN).                                                                     
     @staticmethod
     def addRows(conn,segments):
         try:
             cursor=conn.cursor()
-            
+
             for seg in segments:
-                if seg.replicationPort:
+                print '*** replicationPort before = ' + str(seg.replicationPort)
+                if seg.replicationPort != None:
                     replicationPort = str(seg.replicationPort)
+                    if replicationPort.isdigit() == False:
+                       replicationPort = 'null'
                 else:
                     replicationPort = 'null'
-
+                print '*** replicationPort after = ' + str(replicationPort)
                 sql = """
-                   INSERT INTO pg_catalog.gp_segment_configuration(
-                       content, definedprimary, dbid, isprimary, valid, 
-                       hostname, port, replication_port)
-                   VALUES (%d, \'%s\', %d, \'%s\', \'t\', \'%s\', %d)
-                """ % (seg.content, seg.definedprimary,seg.dbid, 
-                       seg.isprimary, seg.hostname, seg.port,
-                       replicationPort)
+                    INSERT INTO pg_catalog.gp_segment_configuration
+                       ( dbid         , content        , role         , preferred_role
+                       , mode         , status         , port         , hostname
+                       , address      , replication_port
+                       )
+                    VALUES
+                       ( %d           , %d              , \'%s\'       , \'%s\'
+                       , \'%s\'       , \'%s\'          , %d           , \'%s\'                                                                     
+                       , \'%s\'       , %s
+                       )
+                """ %  ( int(seg.dbid), int(seg.content), seg.role     , seg.preferred_role
+                       , seg.mode     , seg.status      , int(seg.port), seg.hostname
+                       , seg.hostname , replicationPort
+                       )
                 cursor.execute(sql)
                 
                 # Add the filespace information for this segment.

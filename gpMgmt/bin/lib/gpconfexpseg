@@ -95,7 +95,7 @@ class ConfExpSegCmd(Command):
 
             # use dummy values for dbid, contentid, and numSegmentsInCluster since we are connecting in utility mode
             # SegmentToStart takes dataDir, port, dbId, contentId, numContentsInCluster, mirroringMode, noWait
-            segmentToStart = SegmentToStart(self.datadir, self.port, -1, -1, 0, "mirrorless", false)
+            segmentToStart = SegmentToStart(self.datadir, self.port, -1, -1, 0, "mirrorless", False)
             startCmd = SegmentStart('Start expansion segment', segmentToStart, utilityMode=True)
             try:
                 startCmd.run(validateAfter=True)
@@ -122,17 +122,6 @@ class ConfExpSegCmd(Command):
                     logger.error(startCmd.get_results())
                     raise
             
-            # update gp_id
-            dbUrl = dbconn.DbURL(hostname='127.0.0.1', port=self.port,dbname='template1')
-            conn = dbconn.connect(dbUrl, utility=True)
-            
-            gpid_tbl = catalog.GpIdTable(conn)
-            gpid_tbl.set(dbid=self.dbid,content=int(self.content),numsegments=self.numsegs)
-            dbconn.execSQL(conn,gpid_tbl.get_update_sql())
-            
-            conn.commit()
-            conn.close()
-
             # stop segment
             logger.info("stopping expansion segment")
             stopCmd = SegmentStop('Stop expansion segment', self.datadir)

@@ -709,7 +709,7 @@ class SegmentTemplate:
         self.logger.info('Configuring new segments')
         newPrimaryCount = 0;
         for seg in self.gparray.getExpansionSegDbList():
-            if seg.definedprimary and seg.content != -1:             
+            if seg.role == 'p' and seg.content != -1:             
                 newPrimaryCount += 1
         
         newPrimaryCount += self.gparray.get_primary_count()
@@ -1153,7 +1153,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             outfile.write("%s:%d:%s:%d:%d:%s\n" % (db.hostname, db.port, 
                                                    db.datadir, db.dbid, 
                                                    db.content, 
-                                                   't' if db.isprimary else 'f')) 
+                                                   db.preferred_role)) 
         
         outfile.close()
         
@@ -1177,10 +1177,10 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                     if l.strip().startswith('#') or l.strip() == '':
                         continue
                         
-                    hostname,port,datadir,dbid,contentId,definedprimary = l.strip().split(':')
-                    # content, definedprimary, dbid, isprimary, hostname, port, datadir
-                    self.gparray.addExpansionSeg(int(contentId), parseTrueFalse(definedprimary), int(dbid),
-                                                 parseTrueFalse(definedprimary), hostname.strip(), int(port),
+                    hostname,port,datadir,dbid,contentId,role = l.strip().split(':')
+                    # content, role, dbid, preferred_role, hostname, port, datadir
+                    self.gparray.addExpansionSeg(int(contentId), role, int(dbid),
+                                                 role, hostname.strip(), int(port),
                                                  os.path.abspath(datadir.strip()))
                     line += 1
             except ValueError:
@@ -1273,7 +1273,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         # Update the gp_id of original segments
         self.newPrimaryCount = 0;
         for seg in self.gparray.getExpansionSegDbList():
-            if seg.definedprimary and seg.content != -1: 
+            if seg.role == 'p' and seg.content != -1: 
                 self.newPrimaryCount += 1
                 
         self.newPrimaryCount += self.gparray.get_primary_count()

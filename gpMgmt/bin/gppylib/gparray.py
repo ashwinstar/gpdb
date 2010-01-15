@@ -26,7 +26,7 @@ class GpDB:
     datadir=None
     replicationPort=None
     
-    def __init__(self,content,preferred_role,dbid,role,mode,status,hostname,port,datadir,replicationPort):
+    def __init__(self,content,preferred_role,dbid,role,mode,status,hostname,address,port,datadir,replicationPort):
         self.content=content
         self.preferred_role=preferred_role
         self.dbid=dbid
@@ -34,6 +34,7 @@ class GpDB:
         self.mode=mode
         self.status=status
         self.hostname=hostname
+        self.address=address
         self.port=port
         self.datadir=datadir
         self.replicationPort=replicationPort
@@ -60,27 +61,49 @@ class GpDB:
             return "Invalid"
 
     def get_gp_configuration_string(self):
-        return '%d|%s|%d|%s|%s|%d|%s|%s' % (self.content,
-                                            self.preferred_role,
-                                            self.dbid,
-                                            self.role,
-                                            self.hostname,
-                                            self.port,
-                                            self.datadir,
-                                            "%d" % self.replicationPort if self.replicationPort is not None else "none")
+        """                                                                                                                                         
+        The format is as follows                                                                                                                    
+          dbid | content | role | preferred_role | mode | status | hostname | address | port | address | replication_port
+        """
+
+        if self.replicationPort == None:
+           repPort = ''
+        else:
+           repPort = self.replicationPort
+
+        tempStr = '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' % ( str(self.dbid)
+                                                       , str(self.content)
+                                                       , str(self.role)
+                                                       , str(self.preferred_role)
+                                                       , str(self.mode)
+                                                       , str(self.status)
+                                                       , str(self.hostname)
+                                                       , str(self.address)
+                                                       , str(self.port)
+                                                       , str(self.address)
+                                                       , str(repPort)
+                                                       )
+        return tempStr
+
 
     @staticmethod
     def get_gpdb_from_string(line):
         fields = dbconn.parseLine(line)
-        content=fields[0]
-        definedprimary=fields[1]
-        dbid=int(fields[2])
-        isprimary=fields[3]
-        valid=fields[4]
-        hostname=fields[5]
-        port=int(fields[6])
-        datadir=fields[7]
-        return GpDB(content,definedprimary,dbid,isprimary,valid,hostname,port,datadir)
+
+        content         = fields[0]
+        preferred_role  = fields[1]
+        dbid            = fields[2]
+        role            = fields[3]
+        mode            = fields[4]
+        status          = fields[5]
+        hostname        = fields[6]
+        address         = fields[7]
+        port            = fields[8]
+        datadir         = fields[9]
+        replicationPort = fields[10]
+
+        return GpDB(content, preferred_role, dbid, role, mode, status, hostname, address, port, datadir, replicationPort)
+
 
 class Segment:
     """ Used to represent all of the SegmentDBs with the same contentID.  Today this
@@ -315,19 +338,17 @@ class GpArray:
                 sys.exit(1)
                 
             #TODO: what about dbids???
-            
+      
             if content is -1:
                 if preferred_role == 'p':
-                    self.master = GpDB(content,preferred_role,dbid,role,mode,status,
-                                       hostname,port,datadir,replicationPort)
+                    self.master = GpDB( content, preferred_role, dbid, role, mode,status,
+                                        hostname, address, port, datadir,replicationPort)
                 else:
-                    self.standbyMaster = GpDB(content,preferred_role,dbid,role,mode,status,
-                                                  hostname,port,datadir,replicationPort)
+                    self.standbyMaster = GpDB( content, preferred_role, dbid, role, mode,status,
+                                                  hostname, address, port,datadir, replicationPort)
             else:
-                segdb = GpDB(content,preferred_role,dbid, role, mode, status,
-                             hostname,port,datadir,replicationPort)
-
-                
+                segdb = GpDB( content, preferred_role, dbid, role, mode, status,
+                             hostname, address, port,datadir, replicationPort)
                 if len(self.segments) <= content:
                     self.segments.insert(content, Segment())
                 
@@ -598,10 +619,20 @@ class GpArray:
         """
         if (content <= self.segments[-1].get_dbs()[0].content):
             raise Exception('Invalid content ID for expansion segment')
-        
-        segdb = GpDB(content,preferred_role,dbid,role,'','',
-                     hostname,port,datadir)
-        
+
+        segdb = GpDB( content
+                    , preferred_role
+                    , dbid
+                    , role
+                    , ''
+                    , ''
+                    , hostname
+                    , hostname
+                    , port
+                    , datadir
+                    , replicationPort=None  # This needs to be fixed to support the new mirrors                                                     
+                    )        
+
         seglen = len(self.segments)
         expseglen = len(self.expansionSegments)
         
@@ -643,7 +674,11 @@ class GpArray:
             
             for segdb in seg.get_dbs():
                 dbids.append(segdb.dbid)
-                content.append((segdb.content, segdb.isprimary))
+                if segdb.role == 'p':
+                   isprimary = True
+                else:
+                   isprimary = False
+                content.append((segdb.content, isprimary))
             
             # mirror count correct for this content id?
             if mirrors_per_segment > 0:
@@ -814,7 +849,7 @@ class GpArray:
             new_datadir = row[7][:row[7].rfind(str(row[0]))]
             if row[1] == 't':
                 new_datadir += ('%d' % curr_content)
-                self.addExpansionSeg(curr_content, True, curr_dbid, 
+                self.addExpansionSeg(curr_content, 'p', curr_dbid, 
                                         True, hostname, int(row[6]), new_datadir)
                 # The content id was adjusted, so we need to save it for the mirror
                 mirror_dict[row[0]] = curr_content
@@ -822,7 +857,7 @@ class GpArray:
             else:
                 new_content = mirror_dict[row[0]]
                 new_datadir += ('%d' % new_content)
-                self.addExpansionSeg(new_content, False, curr_dbid, 
+                self.addExpansionSeg(new_content, 'm', curr_dbid, 
                                      False, hostname, int(row[6]), new_datadir)
             curr_dbid += 1           
 #------------------------------- Mainline --------------------------------

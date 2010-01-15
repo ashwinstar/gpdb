@@ -144,7 +144,7 @@ class GpSegCopy:
 
             # use dummy values for dbid, contentid, and numSegmentsInCluster since we are connecting in utility mode
             # SegmentToStart takes dataDir, port, dbId, contentId, numContentsInCluster, mirroringMode, noWait
-            segmentToStart = gp.SegmentToStart( self.dstDir, templatePort, -1, -1, 0, "mirrorless", false )
+            segmentToStart = SegmentToStart( self.dstDir, templatePort, -1, -1, 0, "mirrorless", False )
 
             SegmentStart.local('segcopy schema only segment start', segmentToStart, utilityMode=True)
 
