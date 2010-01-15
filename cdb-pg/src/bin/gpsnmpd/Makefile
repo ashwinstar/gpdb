@@ -27,7 +27,7 @@ CFLAGS += -Wno-error
 #
 # instead try to "wing it"
 SNMPFLAGS=-I. -I./RDBMS-MIB_src $(CFLAGS)
-AGENTLIBS=-lnetsnmpagent -lnetsnmphelpers -lnetsnmpmibs -lnetsnmp -lnsl -lsocket -lelf -lpthread
+AGENTLIBS=-lnetsnmpagent -lnetsnmphelpers -lnetsnmpmibs -lnetsnmp 
 
 
 override CPPFLAGS := -DFRONTEND -DDEF_PGPORT=$(DEF_PGPORT) -I$(libpq_srcdir) $(CPPFLAGS) $(SNMPFLAGS)
