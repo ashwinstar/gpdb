@@ -165,9 +165,9 @@ sol10_x86_64_CONFIGFLAGS=--enable-email
 sol_x86_64_CONFIGFLAGS=--enable-email
 suse10_x86_64_CONFIGFLAGS=--enable-email
 linux_x64_64_CONFIGFLAGS=--enable-email
-osx104_x86_CONFIGFLAGS=--enable-email
-osx105_x86_CONFIGFLAGS=--enable-email
-osx106_x86_CONFIGFLAGS=--enable-email
+osx104_x86_CONFIGFLAGS=--enable-email --enable-snmp
+osx105_x86_CONFIGFLAGS=--enable-email --enable-snmp
+osx106_x86_CONFIGFLAGS=--enable-email --enable-snmp
 
 BLD_CONFIGFLAGS=$($(BLD_ARCH)_CONFIGFLAGS)
 
