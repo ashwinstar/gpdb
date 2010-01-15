@@ -158,6 +158,9 @@ typedef struct
 	char peerAddress[PM_MAX_HOST_NAME_LENGTH+1];
 	int peerPort;
 
+    /* a unique identifer for logging, will be filled in by the call to requestTransition... */
+	int transitionNumber;
+
 	/* note that if more fields are added here, must be sure to update the no-op check in primary_mirror_mode.c */
 } PrimaryMirrorModeTransitionArguments;
 
