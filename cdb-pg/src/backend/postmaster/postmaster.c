@@ -3494,7 +3494,6 @@ static void do_reaper()
 					pmState = PM_WAIT_DEAD_END;
 
 				signal_filerep_to_shutdown();
-				ExitPostmaster(0);
 			}
 			else
 			{
