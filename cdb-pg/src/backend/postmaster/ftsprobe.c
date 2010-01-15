@@ -618,7 +618,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 	char		*errorMsg;
 	int			msgLen;
 	bool		ret = true;
-	PQExpBuffer	buffer = createPQExpBuffer();
+	PQExpBuffer	buffer;
 
 	ret = FtsTestOneSegmentNew(dbInfo);
 
@@ -627,12 +627,15 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 				
 	return ret;
 
-	/*
-	 * This connects in UTILITY mode: we assume that if we detect a
-	 * fault using a utility-mode connection that we're detecting
-	 * something that the execute connections would also care about.
-	 */
-	initPQExpBuffer(buffer);
+	/* Old probe code starts here */
+
+	buffer = createPQExpBuffer();
+
+	if (buffer == NULL)
+	{
+		write_log("FTSPROBE: allocation failed, assuming probe target is alive.");
+		return true;
+	}
 
 	/*
 	 * Build the connection string
@@ -748,7 +751,9 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 	} while (0);
 
 	PQfinish(conn);
-	free(buffer->data);
+
+	destroyPQExpBuffer(buffer);
+
 	return ret;
 }
 
@@ -1445,7 +1450,12 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 
 	entryBuffer = createPQExpBuffer();
 
-	initPQExpBuffer(entryBuffer);
+	if (entryBuffer == NULL)
+	{
+		elog(FATAL, "FTSPROBE: failed to create self-connection buffer.");
+		/* never reached */
+		return true;
+	}
 
 	appendPQExpBuffer(entryBuffer, "options='-c gp_session_role=UTILITY' ");
 

@@ -641,6 +641,12 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		/* Initialize the QE's CdbDispatchResult object. */
 		qeResult = cdbdisp_makeResult(dispatchResults, segdbDesc, sliceIndex);
 
+		if (qeResult == NULL)
+		{
+			dispatchResults->writer_gang->dispatcherActive = true;
+			elog(FATAL, "cdbdisp_dispatchToGang: allocation failed, cannot dispatch");
+		}
+
 		/* Transfer any connection errors from segdbDesc. */
 		if (segdbDesc->errcode ||
 			segdbDesc->error_message.len)

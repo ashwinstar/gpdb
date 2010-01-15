@@ -387,6 +387,13 @@ QDMirroringUpdate(
 
 		entryBuffer = createPQExpBuffer();
 
+		if (entryBuffer == NULL)
+		{
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("QDMirroringUpdate: out of memory")));
+			/* not reached. */
+		}
+
 		/*
 		 * initialize libpq connection buffer, we only need to initialize it
 		 * once.
@@ -414,7 +421,7 @@ QDMirroringUpdate(
 								errmsg("QDMirroringUpdate: out of memory")));
 			}
 
-			free(entryBuffer->data);
+			destroyPQExpBuffer(entryBuffer);
 			PQfinish((PGconn *)entryConn);
 			entryConn = NULL;
 			elog(FATAL, "QDMirroringUpdate: setting segDB state failed, error connecting to entry db, error: %s", error_message);
@@ -561,7 +568,7 @@ QDMirroringUpdate(
 
 		PQclear((PGresult *)rs);
 		PQfinish((PGconn *)entryConn);
-		free(entryBuffer->data);
+		destroyPQExpBuffer(entryBuffer);
 
 		CommitTransactionCommand();
 	}
@@ -569,7 +576,7 @@ QDMirroringUpdate(
 	{
 		PQclear((PGresult *)rs);
 		PQfinish((PGconn *)entryConn);
-		free(entryBuffer->data);
+		destroyPQExpBuffer(entryBuffer);
 
 		AbortCurrentTransaction();
 	}

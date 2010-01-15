@@ -28,8 +28,8 @@ static PGconn	*conn = NULL;
  */
 int 
 FileRepConnClient_EstablishConnection(
-			char	*hostAddress,
-			int		port)
+	char	*hostAddress,
+	int		port)
 {
 	int			status = STATUS_OK;
 	PQExpBuffer	buffer = NULL;
@@ -37,15 +37,16 @@ FileRepConnClient_EstablishConnection(
 /*	FileRepConnClient_CloseConnection();*/
 	
 	buffer = createPQExpBuffer();
-	
-	initPQExpBuffer(buffer);
 
-	appendPQExpBuffer(buffer, "host=%s ", hostAddress);
-	
+	if (buffer == NULL)
+	{
+		/* XXX: allocation failed. Is this the right thing to do ? */
+		return STATUS_ERROR;
+	}
+
+	appendPQExpBuffer(buffer, "host=%s ", hostAddress);	
 	appendPQExpBuffer(buffer, "port=%d ", port);
-	
 	appendPQExpBuffer(buffer, "dbname=postgres ");
-
 	appendPQExpBuffer(buffer, "connect_timeout=%d", gp_segment_connect_timeout);
 	
 	conn = PQconnectdb(buffer->data);

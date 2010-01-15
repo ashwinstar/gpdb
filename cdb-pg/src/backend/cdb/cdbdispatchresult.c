@@ -73,7 +73,8 @@ oneTrailingNewlinePQ(PQExpBuffer buf)
 
 /*--------------------------------------------------------------------*/
 
-/* Create a CdbDispatchResult object, appending it to the
+/*
+ * Create a CdbDispatchResult object, appending it to the
  * resultArray of a given CdbDispatchResults object.
  */
 CdbDispatchResult *
@@ -99,6 +100,12 @@ cdbdisp_makeResult(struct CdbDispatchResults           *meleeResults,
     dispatchResult->resultbuf = createPQExpBuffer();
     dispatchResult->error_message = NULL;
 	dispatchResult->numrowsrejected = 0;
+
+	if (dispatchResult->resultbuf == NULL)
+	{
+		/* caller is responsible for cleanup -- can't elog(ERROR, ...) from here. */
+		return NULL;
+	}
 
     /* Reset summary indicators. */
     cdbdisp_resetResult(dispatchResult);
@@ -299,7 +306,15 @@ cdbdisp_appendMessage(CdbDispatchResult    *dispatchResult,
      * Insert newline between previous message and new one.
      */
     if (!dispatchResult->error_message)
+	{
         dispatchResult->error_message = createPQExpBuffer();
+
+		if (dispatchResult->error_message == NULL)
+		{
+			write_log("cdbdisp_appendMessage: allocation failed, can't save error-message.");
+			return;
+		}
+	}
     else
         oneTrailingNewlinePQ(dispatchResult->error_message);
 
