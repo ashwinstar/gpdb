@@ -327,7 +327,7 @@ rdbmsDbParamTable_cache_load(netsnmp_container *container)
     }
 
     DEBUGMSGT(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_cache_load",
-               "inserted %d records\n", count));
+               "inserted %ld records\n", count));
 
     PQclear(qryRes);
     return errorCode;

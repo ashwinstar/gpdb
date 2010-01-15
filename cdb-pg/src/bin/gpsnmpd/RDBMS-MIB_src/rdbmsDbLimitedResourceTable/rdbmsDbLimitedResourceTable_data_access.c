@@ -239,7 +239,7 @@ rdbmsDbLimitedResourceTable_cache_load(netsnmp_container *container)
     }
 
     DEBUGMSGT(("verbose:rdbmsDbLimitedResourceTable:rdbmsDbLimitedResourceTable_cache_load",
-               "inserted %d records\n", count));
+               "inserted %ld records\n", count));
 
     PQclear(pg_db_qry);
     return errorCode;

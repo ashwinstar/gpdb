@@ -4,6 +4,9 @@
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <net-snmp/library/snmp_assert.h>
 #include <time.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include "customquery.h"
 #include "query_reader.h"
 
@@ -150,15 +153,25 @@ alloc_custom_query(char *table_name, char *query_text, oid *table_oid, int oid_l
     query->cache_timeout = -1;
     query->my_handler = NULL;
 
-    i = strnlen(table_name, CQ_MAX_LEN);
-    query->table_name = strndup(table_name, i);
+    i = strlen(table_name);
+    if (i > CQ_MAX_LEN)
+	i = CQ_MAX_LEN;
+    query->table_name = malloc(i+1);
+    query->table_name[i] = '\0';
+    strncpy(query->table_name, table_name, i);
+    
     if (query->table_name == NULL) {
         free_query(query);
         return NULL;
     }
+    
+    i = strlen(query_text);
+    if (i > CQ_MAX_LEN)
+        i = CQ_MAX_LEN;
+    query->query_text = malloc(i+1);
+    query->query_text[i] = '\0';
+    strncpy(query->query_text, query_text, i);
 
-    i = strnlen(query_text, CQ_MAX_LEN);
-    query->query_text = strndup(query_text, i);
     if (query->query_text == NULL) {
         free_query(query);
         return NULL;

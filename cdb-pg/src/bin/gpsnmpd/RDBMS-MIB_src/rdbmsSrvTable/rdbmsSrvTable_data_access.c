@@ -240,7 +240,7 @@ rdbmsSrvTable_cache_load(netsnmp_container *container)
 
 
     DEBUGMSGT(("verbose:rdbmsSrvTable:rdbmsSrvTable_cache_load",
-               "inserted %d records\n", count));
+               "inserted %ld records\n", count));
 
     return MFD_SUCCESS;
 } /* rdbmsSrvTable_cache_load */
