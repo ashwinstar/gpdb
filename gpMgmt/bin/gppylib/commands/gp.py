@@ -167,10 +167,11 @@ class SegmentStart(Command):
 
 #-----------------------------------------------
 class SendFilerepTransitionMessage(Command):
-    def __init__(self, name, inputFile, port=None,ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, inputFile, port=None,ctxt=LOCAL, remoteHost=None, dataDir=None):
         if not remoteHost:
             remoteHost = "localhost"
         self.cmdStr='$GPHOME/bin/gp_primarymirror -h %s -p %s -i %s' % (remoteHost,port,inputFile)
+        self.dataDir = dataDir
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     
     @staticmethod

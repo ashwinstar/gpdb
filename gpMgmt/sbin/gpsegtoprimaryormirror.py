@@ -131,7 +131,7 @@ class GpSegToPrimaryMirror():
             f.write(transitionArguments)
             f.close()
 
-            cmd=gp.SendFilerepTransitionMessage("Changing seg at dir %s" % dir, inputFile, port=port)
+            cmd=gp.SendFilerepTransitionMessage("Changing seg at dir %s" % dir, inputFile, port=port, dataDir=dir)
             self.pool.addCommand(cmd)  
               
         self.pool.join()
