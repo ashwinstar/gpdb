@@ -19,9 +19,16 @@ LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
 # This program isn't interactive, so doesn't need these
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
 
+CFLAGS += -Wno-error
 
-SNMPFLAGS=-I. -I./RDBMS-MIB_src $(shell net-snmp-config --cflags) -fgnu89-inline
-AGENTLIBS=$(shell net-snmp-config --agent-libs)
+# we pick up the wrong net-snmp-config here  with lots of references to /home/build/hridenour/dev
+#SNMPFLAGS=-I. -I./RDBMS-MIB_src $(shell ../../../../ext/bin/net-snmp-config --cflags) 
+#AGENTLIBS=$(shell net-snmp-config --agent-libs)
+#
+# instead try to "wing it"
+SNMPFLAGS=-I. -I./RDBMS-MIB_src $(CFLAGS)
+AGENTLIBS=-lnetsnmpagent -lnetsnmphelpers -lnetsnmpmibs -lnetsnmp -lnsl -lsocket -lelf -lpthread
+
 
 override CPPFLAGS := -DFRONTEND -DDEF_PGPORT=$(DEF_PGPORT) -I$(libpq_srcdir) $(CPPFLAGS) $(SNMPFLAGS)
 LIBS +=  $(AGENTLIBS) -lyaml
