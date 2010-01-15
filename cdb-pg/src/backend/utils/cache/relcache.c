@@ -190,8 +190,7 @@ static void RelationReloadClassinfo(Relation relation);
 static void RelationFlushRelation(Relation relation);
 static bool load_relcache_init_file(void);
 static void write_relcache_init_file(void);
-// static void write_item(const void *data, Size len, FILE *fp);
-static void write_item(const void *data, Size len, MirroredFlatFileOpen *mirroredOpen);
+static void write_item(const void *data, Size len, FILE *fp);
 
 static void formrdesc(const char *relationName, Oid relationReltype,
 		  bool hasoids, int natts, FormData_pg_attribute *att);
@@ -3660,23 +3659,15 @@ read_failed:
 static void
 write_relcache_init_file(void)
 {
-#ifdef suppress
 	FILE	   *fp;
 	char		tempfilename[MAXPGPATH];
 	char		finalfilename[MAXPGPATH];
-#endif
 	int			magic;
 	HASH_SEQ_STATUS status;
 	RelIdCacheEnt *idhentry;
 	MemoryContext oldcxt;
 	int			i;
 
-	MirroredFlatFileOpen	mirroredOpen;
-
-	// UNDONE: For Online Resync MILESONE 1, we are writing the file directly rather
-	// UNDONE: doing the rename stuff.	We'll have to revisit this...
-	// UNDONE
-#ifdef suppress
 	/*
 	 * We must write a temporary file and rename it into place. Otherwise,
 	 * another backend starting at about the same time might crash trying to
@@ -3703,29 +3694,14 @@ write_relcache_init_file(void)
 			  errdetail("Continuing anyway, but there's something wrong.")));
 		return;
 	}
-#endif
-	// UNDONE: For tablespaces to work, this needs to pass the DbDirNode...
-	MirroredFlatFile_Open(
-					&mirroredOpen,
-					DatabasePath,
-					RELCACHE_INIT_FILENAME,
-					O_CREAT | O_TRUNC | O_WRONLY | PG_BINARY,
-					S_IRUSR | S_IWUSR,
-					/* suppressError */ false,
-					/*isMirrorRecovery */ false);
 
 	/*
 	 * Write a magic number to serve as a file version identifier.	We can
 	 * change the magic number whenever the relcache layout changes.
 	 */
 	magic = RELCACHE_INIT_FILEMAGIC;
-//	if (fwrite(&magic, 1, sizeof(magic), fp) != sizeof(magic))
-//		elog(FATAL, "could not write init file");
-	MirroredFlatFile_Append(
-						&mirroredOpen,
-						&magic, 
-						sizeof(magic),
-						/* suppressError */ false);
+	if (fwrite(&magic, 1, sizeof(magic), fp) != sizeof(magic))
+		elog(FATAL, "could not write init file");
 
 	/*
 	 * Write all the reldescs (in no particular order).
@@ -3740,27 +3716,21 @@ write_relcache_init_file(void)
 		Form_pg_class relform = rel->rd_rel;
 
 		/* first write the relcache entry proper */
-//		write_item(rel, sizeof(RelationData), fp);
-		write_item(rel, sizeof(RelationData), &mirroredOpen);
+		write_item(rel, sizeof(RelationData), fp);
 
 		/* next write the relation tuple form */
-//		write_item(relform, CLASS_TUPLE_SIZE, fp);
-		write_item(relform, CLASS_TUPLE_SIZE, &mirroredOpen);
+		write_item(relform, CLASS_TUPLE_SIZE, fp);
 
 		/* next, do all the attribute tuple form data entries */
 		for (i = 0; i < relform->relnatts; i++)
 		{
-//			write_item(rel->rd_att->attrs[i], ATTRIBUTE_TUPLE_SIZE, fp);
-			write_item(rel->rd_att->attrs[i], ATTRIBUTE_TUPLE_SIZE, &mirroredOpen);
+			write_item(rel->rd_att->attrs[i], ATTRIBUTE_TUPLE_SIZE, fp);
 		}
 
 		/* next, do the access method specific field */
-//		write_item(rel->rd_options,
-//				   (rel->rd_options ? VARSIZE(rel->rd_options) : 0),
-//				   fp);
 		write_item(rel->rd_options,
 				   (rel->rd_options ? VARSIZE(rel->rd_options) : 0),
-				   &mirroredOpen);
+				   fp);
 
 		/* If it's an index, there's more to do */
 		if (rel->rd_rel->relkind == RELKIND_INDEX)
@@ -3769,32 +3739,22 @@ write_relcache_init_file(void)
 
 			/* write the pg_index tuple */
 			/* we assume this was created by heap_copytuple! */
-//			write_item(rel->rd_indextuple,
-//					   HEAPTUPLESIZE + rel->rd_indextuple->t_len,
-//					   fp);
 			write_item(rel->rd_indextuple,
 					   HEAPTUPLESIZE + rel->rd_indextuple->t_len,
-					   &mirroredOpen);
+					   fp);
 
 			/* next, write the access method tuple form */
-//			write_item(am, sizeof(FormData_pg_am), fp);
-			write_item(am, sizeof(FormData_pg_am), &mirroredOpen);
+			write_item(am, sizeof(FormData_pg_am), fp);
 
 			/* next, write the vector of operator OIDs */
-//			write_item(rel->rd_operator,
-//					   relform->relnatts * (am->amstrategies * sizeof(Oid)),
-//					   fp);
 			write_item(rel->rd_operator,
 					   relform->relnatts * (am->amstrategies * sizeof(Oid)),
-					   &mirroredOpen);
+					   fp);
 
 			/* finally, write the vector of support procedures */
-//			write_item(rel->rd_support,
-//				  relform->relnatts * (am->amsupport * sizeof(RegProcedure)),
-//					   fp);
 			write_item(rel->rd_support,
 				  relform->relnatts * (am->amsupport * sizeof(RegProcedure)),
-					   &mirroredOpen);
+					   fp);
 		}
 
 		/* also make a list of their OIDs, for RelationIdIsInInitFile */
@@ -3804,15 +3764,9 @@ write_relcache_init_file(void)
 		MemoryContextSwitchTo(oldcxt);
 	}
 
-#ifdef suppress
 	if (FreeFile(fp))
 		elog(FATAL, "could not write init file");
-#endif
-	MirroredFlatFile_Flush(&mirroredOpen, /* suppressError */ false);
-	MirroredFlatFile_Close(&mirroredOpen);
 
-// UNDONE: Yikes!  We've been overwriting the file!!
-#ifdef suppress
 	/*
 	 * Now we have to check whether the data we've so painstakingly
 	 * accumulated is already obsolete due to someone else's just-committed
@@ -3854,28 +3808,16 @@ write_relcache_init_file(void)
 	}
 
 	LWLockRelease(RelCacheInitLock);
-#endif
 }
 
 /* write a chunk of data preceded by its length */
 static void
-// write_item(const void *data, Size len, FILE *fp)
-write_item(const void *data, Size len, MirroredFlatFileOpen *mirroredOpen)
+write_item(const void *data, Size len, FILE *fp)
 {
-//	if (fwrite(&len, 1, sizeof(len), fp) != sizeof(len))
-//		elog(FATAL, "could not write init file");
-	MirroredFlatFile_Append(
-						mirroredOpen,
-						&len, 
-						sizeof(len),
-						/* suppressError */ false);
-//	if (fwrite(data, 1, len, fp) != len)
-//		elog(FATAL, "could not write init file");
-	MirroredFlatFile_Append(
-						mirroredOpen,
-						(void*)data, 
-						(int)len,
-						/* suppressError */ false);
+	if (fwrite(&len, 1, sizeof(len), fp) != sizeof(len))
+		elog(FATAL, "could not write init file");
+	if (fwrite(data, 1, len, fp) != len)
+		elog(FATAL, "could not write init file");
 }
 
 /*
