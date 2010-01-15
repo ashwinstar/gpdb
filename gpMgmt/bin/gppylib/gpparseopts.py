@@ -8,8 +8,6 @@ Standard set of helper functions for gp utilities for parsing command line optio
 
 
 """
-import gzip
-import locale
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 import os
 import os.path
@@ -19,11 +17,6 @@ import sys
 from logfilter import MatchRegex, NoMatchRegex, filterize, MatchColumns
 from gppylib.datetimeutils import str_to_datetime, str_to_duration, DatetimeValueError
 
-
-
-def _setcase(option, opt, value, parser):
-    global _case
-    _case = value
 
 #----------------------- Command line option parser ----------------------
 
@@ -36,23 +29,23 @@ class OptParser(OptionParser):
     # method so our help can have paragraphs.
     def format_help(self, *args):
         msg = OptionParser.format_help(self, *args)
-        help = [self.formatter.format_description(' '.join(s.split()))
+        helptup = [self.formatter.format_description(' '.join(s.split()))
                 for s in self.helpStr]
-        msg = '\n'.join([msg] + help)
+        msg = '\n'.join([msg] + helptup)
         return msg
 
     def setHelp(self,helpStr):
         self.helpStr=helpStr
     
         
-    def print_help(self, file=None):
+    def print_help(self, outfile=None):
         helpFileStr=self.read_helpfile()
         if helpFileStr:
-            if file is None:
-                file = sys.stdout
-            file.write(helpFileStr)
+            if outfile is None:
+                outfile = sys.stdout
+            outfile.write(helpFileStr)
         else:
-            OptionParser.print_help(self,file)
+            OptionParser.print_help(self,outfile)
             
     
     def read_helpfile(self):
@@ -71,20 +64,21 @@ class OptParser(OptionParser):
         
 class OptChecker(Option):
     # Teach optparse to accept types 'datetime', 'duration', 'regex', 'literal'
+    @staticmethod
     def datetimeCheck(option, opt, value):
         try:
             return str_to_datetime(value)
         except DatetimeValueError, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e.description))
             
-            
+    @staticmethod            
     def durationCheck(option, opt, value):
         try:
             return str_to_duration(value, signed=False)
         except DatetimeValueError, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e.description))
             
-            
+    @staticmethod            
     def regexCheck(option, opt, value):
         # value is a string to be compiled as a regular expression pattern
         global _case
@@ -97,6 +91,7 @@ class OptChecker(Option):
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e))
             
             
+    @staticmethod
     def literalCheck(option, opt, value):
         # value is a string to be matched literally; return compiled regex
         return option.regexCheck(opt, re.escape(value))
@@ -116,7 +111,7 @@ class OptChecker(Option):
         filterlist.append(filterize(Filter, value, *args))
     
     def brief_help(self, dest, opt, value, values, parser, Filter, *args):
-        OptionParser.print_help(parser,None)  
+        OptionParser.print_help(parser,None)
         parser.exit()
         
     def optionalSecondArgAction(self, dest, opt, value, values, parser, *args):

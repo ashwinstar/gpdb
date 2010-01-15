@@ -12,12 +12,8 @@
 """
 
 import os, sys
-from gppylib.gpcheckosCmd import *
-from gppylib.utils import *
-from gppylib.stringUtil import *
-from gppylib.commands.gpcheckosUnix import *
-from gppylib.gpcheckosSql import *
 from socket import gethostname
+
 
 progname = os.path.split(sys.argv[0])[-1]
 
@@ -37,11 +33,16 @@ from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRE
 try:
     import figleaf
 
+
+    from gppylib.gpcheckosCmd import *
+    from gppylib.utils import *
+    from gppylib.stringUtil import *
+    from gppylib.commands.gpcheckosUnix import *
+    from gppylib.gpcheckosSql import *
     from gppylib.db import dbconn
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
-    from gppylib.db import dbconn
-    from gppylib import gparray
+    from gppylib.gparray import *
     from gppylib import gphostcache
     from gppylib import userinput
     from gppylib.db import catalog
@@ -130,10 +131,10 @@ class Gpcheckos():
         try:
             hostsQueue =WorkerPool()
             dburl = dbconn.DbURL(gethostname(), username='gpadmin')
-            gparray = createGPDBFromDB(dburl,utility=True)
+            gparray = GpArray.initFromCatalog(dburl,utility=True)
             failedPings = ping_segment_hosts(gparray,hostsQueue)
             hostCache = GpHostCache(gparray, hostsQueue, failedPings)
-            hostCache.ping_hosts(logger, hostsQueue) 
+            hostCache.ping_hosts(hostsQueue) 
             self.gphosts = hostCache.get_hostnames()
             self.numSegmentPerHost =   gparray.numPrimarySegments / len(self.gphosts)
             hostsQueue.join

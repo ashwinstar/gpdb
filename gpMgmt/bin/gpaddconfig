@@ -28,7 +28,7 @@ try:
     import os, sys
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
-    from gppylib.gparray import *
+    from gppylib.gparray import GpArray
     from gppylib.gphostcache import *
     from gppylib.gplog import *
     from gppylib.commands.unix import *
@@ -162,7 +162,7 @@ if options.debug:
 try:
     dburl = dbconn.DbURL()
 
-    gparray = createGPDBFromDB(dburl,utility=True)
+    gparray = GpArray.initFromCatalog(dburl,utility=True)
 
     if not options.skipvalidation and not options.removeonly:
 
@@ -206,7 +206,7 @@ if len(failedPings):
 try:
 
     hostCache = GpHostCache(gparray, pool, failedPings)
-    hostCache.ping_hosts(logger, pool) # substibtute usable names
+    hostCache.ping_hosts(pool) # substibtute usable names
 
     for h in hostCache.get_hosts():
         directory_string = None

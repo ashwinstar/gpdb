@@ -42,7 +42,7 @@ Module contents:
     spiffInterval() - get begin/end datetime given any subset of begin/end/duration
 """
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime
 import re
 import sys
 import time
@@ -165,8 +165,8 @@ def FilterLogEntries(iterable,
                 iterable = NoMatchRegex(iterable, regex)
 
         # Append caller's filters to the pipeline.
-        for filter in filters:
-            iterable = filter(iterable)
+        for func in filters:
+            iterable = func(iterable)
 
         # Collect match/filter statistics
         if verbose and iterable is not (spyMid or countIn):
@@ -212,12 +212,12 @@ def FilterLogEntries(iterable,
             return
 
         # Unfiltered input statistics
-        range = spyIn.str_range()
+        srange = spyIn.str_range()
         msg = '       in: %7d lines' % spyIn.lines
         if countIn:
             msg += ', %7d log entries' % countIn.count()
-        if range:
-            msg += '; timestamps from %s to %s' % range
+        if srange:
+            msg += '; timestamps from %s to %s' % srange
         else:
             msg += '; no timestamps found'
         if not spyIn.eod:
@@ -226,31 +226,31 @@ def FilterLogEntries(iterable,
 
         # Entries where begin <= timestamp < end
         if spyMid:
-            range = spyMid.str_range()
+            srange = spyMid.str_range()
             msg = '  time ok: %7d lines' % spyMid.lines
             if spyMid.groups:
                 msg += ', %7d log entries' % spyMid.groups
-            if range:
-                msg += '; timestamps from %s to %s' % range
+            if srange:
+                msg += '; timestamps from %s to %s' % srange
             print >>msgfile, msg
 
         # After applying include/exclude/filters
         if spyMatch:
-            range = spyMatch.str_range()
+            srange = spyMatch.str_range()
             msg = '    match: %7d lines' % spyMatch.lines
             if spyMatch.groups:
                 msg += ', %7d log entries' % spyMatch.groups
-            if range:
-                msg += '; timestamps from %s to %s' % range
+            if srange:
+                msg += '; timestamps from %s to %s' % srange
             print >>msgfile, msg
 
         # Final output statistics
-        range = spyOut.str_range()
+        srange = spyOut.str_range()
         msg = '      out: %7d lines' % spyOut.lines
         if countOut:
             msg += ', %7d log entries' % countOut.count()
-        if range:
-            msg += '; timestamps from %s to %s' % range
+        if srange:
+            msg += '; timestamps from %s to %s' % srange
         print >>msgfile, msg
 
     
@@ -273,8 +273,7 @@ class CsvFlatten(object):
         #we need to make a minor format change to the log level field so that
         # our single regex will match both.
         item[16] = item[16] + ": "
-        str = '|'.join(item) + "\n"
-        return str
+        return '|'.join(item) + "\n"
 
 
 #------------------------------- Spying --------------------------------
@@ -622,7 +621,7 @@ def NoMatchRegex(iterable, regex):
             print s
     """
     if isinstance(regex, basestring):
-        exclude = re.compile(regex)
+        regex = re.compile(regex)
 
     # Yield items in which no match is found for the 'exclude' pattern.
     for item in iterable:

@@ -21,9 +21,7 @@ import os
 import select
 import subprocess
 import time
-import logging
-
-import gplog
+from gppylib import gplog
 
 
 logger=gplog.get_default_logger()
@@ -58,7 +56,7 @@ class Popen(subprocess.Popen):
                 self.stdin.close()
                 
         while not (terminated or self.cancelRequested):
-            terminated = self._check_status(output,error)
+            terminated = self._check_status()
 
             if not terminated:
                 self._read_files(timeout,output,error)
@@ -87,8 +85,8 @@ class Popen(subprocess.Popen):
         """ sets stdout and stderr  fd's to be non-blocking.
         The fcntl throws an IOError if these calls fail. 
         """        
-        rv = fcntl.fcntl(self.stdout, fcntl.F_SETFL, os.O_NDELAY | os.O_NONBLOCK)
-        rv = fcntl.fcntl(self.stderr, fcntl.F_SETFL, os.O_NDELAY | os.O_NONBLOCK)
+        fcntl.fcntl(self.stdout, fcntl.F_SETFL, os.O_NDELAY | os.O_NONBLOCK)
+        fcntl.fcntl(self.stderr, fcntl.F_SETFL, os.O_NDELAY | os.O_NONBLOCK)
 
                 
     def _postprocess_outputs(self,output,error):
@@ -105,7 +103,7 @@ class Popen(subprocess.Popen):
         if self.universal_newlines and hasattr(file, 'newlines'):
             if output:
                 output = self._translate_newlines(output)
-            if stderr:
+            if error:
                 error = self._translate_newlines(error)    
         return (output,error)
     
@@ -125,7 +123,7 @@ class Popen(subprocess.Popen):
             error.append(os.read(self.stderr.fileno(),8192))
 
 
-    def _check_status(self,stdout,stderr):
+    def _check_status(self):
         terminated=False
         """Another possibility for the below line would be to try and capture
         rusage information.  Perhaps that type of call would be an external

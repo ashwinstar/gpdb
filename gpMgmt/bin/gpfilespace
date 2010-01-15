@@ -44,7 +44,8 @@ import traceback                         # exception logging
 try:
     from gppylib.db import dbconn
     from gppylib.db import catalog
-    from pygresql import pg              # Database interaction
+    from pygresql   import pg            # Database interaction
+    from gppylib.gparray import *        # Greenplum Array datastructures
     from gppylib.gplog import *          # Greenplum logging facility
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
@@ -297,92 +298,6 @@ def checkdirs(host, parents, paths):
 
 
 # ============================================================================
-class GPSegment():
-    '''
-    GPSegment()
-
-    Simple abstraction of a Greenplum Segment.
-    '''
-
-    # --------------------------------------------------------------------
-    def __init__(self, tuple):
-        # tuple is based on dbconn.getConfig:
-        (dbid, content, role, prefrole, mode, status, hostname, address,
-         port, datadir, repport) = tuple
-
-        (location, name) = os.path.split(datadir)
-        self.parent   = None         # points to GPHost
-        self.dbid     = dbid
-        self.content  = content
-        self.primary  = (role == 'p')
-        self.nic      = address
-        self.datadir  = datadir
-        self.location = location
-        self.name     = name
-        self.path     = None         # Path for the new filespace
-
-    # --------------------------------------------------------------------
-    def __str__(self):
-        return ":".join([self.nic, self.datadir])
-
-    # --------------------------------------------------------------------
-    def __repr__(self):
-        x = (self.dbid, self.content, self.primary, self.nic, self.datadir)
-        return str(x)
-
-    # --------------------------------------------------------------------
-    # Six simple helper functions to identify what role a segment plays:
-    #  + Leader
-    #     + master
-    #     + standby master
-    #  + Segment
-    #     + primary
-    #     + mirror
-    def isQD(self):       return self.content < 0
-    def isQE(self):       return self.content >= 0
-    def ismaster(self):   return self.content < 0 and self.primary
-    def isstandby(self):  return self.content < 0 and not self.primary
-    def isprimary(self):  return self.content >= 0 and self.primary
-    def ismirror(self):   return self.content >= 0 and not self.primary
-
-    # --------------------------------------------------------------------
-    def set_host(self, parent):  
-        self.parent = parent
-
-    # --------------------------------------------------------------------
-    def set_path(self, path):    
-        '''
-        set_path(path)
-
-        Is used to indicate the path that the current filespace should be
-        created under.  It should include both the original location specified
-        at config time as well as the unique identifier for the segment.
-
-        Throws:
-          GPError - when a path has already been specified for this segment.
-        '''
-        if not self.path:
-            self.path = path
-        else:
-            raise GPError("Duplicate path set for dbid %d" % self.dbid)
-
-    # --------------------------------------------------------------------
-    def hostname(self):
-        '''
-        hostname()
-
-        Returns the hostname that this segment is on - distinct from the
-        NIC specified in gp_configuration.
-
-        Looks the value up in the parent GPHost, otherwise simply returns
-        the nic (maybe it should do something else for this case?) 
-        '''
-        if self.parent:
-            return self.parent.hostname
-        else:
-            return self.nic
-
-# ============================================================================
 class GPHost():
     '''
     GPHost()
@@ -421,7 +336,6 @@ class GPHost():
         '''
         Adds a new segment to the host
         '''
-        segment.set_host(self)
         self.segments.append(segment)
 
     # --------------------------------------------------------------------
@@ -436,14 +350,14 @@ class GPHost():
         '''
         Returns a list of primary segments on this host
         '''
-        return filter(GPSegment.isprimary, self.segments)
+        return filter(lambda x: x.isPrimary(), self.segments)
 
     # --------------------------------------------------------------------
     def mirrors(self):
         '''
         Returns a list of mirror segments on this host
         '''
-        return filter(GPSegment.ismirror, self.segments)
+        return filter(lambda x: x.isMirror(), self.segments)
 
     # --------------------------------------------------------------------
     def dircheck(self, dir, primary=None):
@@ -471,7 +385,8 @@ class GPHost():
         # Note: all paths have gone through os.path.normpath(), which means
         # no trailing "/" characters.
         for d in self.segments:
-            cdir = os.path.join(dir, d.name)
+            name = os.path.split(d.get_datadir())[1]
+            cdir = os.path.join(dir, name)
 
             # If the directories are one and the same
             if cdir == d.datadir:
@@ -487,9 +402,9 @@ class GPHost():
 
         # determine which directories we are checking
         if primary == True:
-            segdirs = map(lambda x: os.path.join(dir, x.name), self.primaries())
+            segdirs = map(lambda x: os.path.join(dir, os.path.split(x.get_datadir())[1]), self.primaries())
         elif primary == False:
-            segdirs = map(lambda x: os.path.join(dir, x.name), self.mirrors())
+            segdirs = map(lambda x: os.path.join(dir, os.path.split(x.get_datadir())[1]), self.mirrors())
         else:
             segdirs = []
 
@@ -506,7 +421,7 @@ class GPHost():
         '''
 
         # Get the list of all specified paths and their parent directories
-        paths   = map(lambda x: x.path, self.segments)
+        paths   = map(lambda x: x.get_pending_filespace(), self.segments)
         parents = map(lambda x: os.path.split(x)[0], paths)
 
         # Check the host that we have no duplicate paths, if we are
@@ -545,8 +460,8 @@ class GPConfig:
 
         # We generate unique identifications based on the sorted 
         # "locations" of the primary and mirror segments
-        plocations = map(lambda x: x.location, primaries)
-        mlocations = map(lambda x: x.location, mirrors)
+        plocations = map(lambda x: os.path.split(x.get_datadir())[0], primaries)
+        mlocations = map(lambda x: os.path.split(x.get_datadir())[0], mirrors)
         plocations.sort()
         mlocations.sort()
         
@@ -623,11 +538,12 @@ class GPFilespace:
         self.fspacename = options.name
         self.dir        = options.output
         self.master     = None # [] list of master segments
-        self.segments   = None # {} dbid => GPSegment resolution
+        self.segments   = None # {} dbid => GpDB resolution
         self.hosts      = None # {} hostname => GPHost resolution
         self.nics       = None # {} nic => hostname resolution
         self.config     = None # {} host configuration groups
         self.db         = None # pygresql.pgobject 
+        self.dburl      = None
 
         self.connect()
         self.get_configuration()
@@ -673,7 +589,8 @@ class GPFilespace:
             error = "gpfilespace requires database superuser privledges"
             raise GPPrivilegeError(error)
 
-        self.db = conn
+        self.dburl = dburl
+        self.db    = conn
 
 
     # --------------------------------------------------------------------
@@ -682,8 +599,8 @@ class GPFilespace:
         GPFilespace::get_configuration()
         
         Extracts gp_configuration from the database and uses it to populate:
-          self.segments = hash of segments {dbid: GPSegment()}
-          self.master   = list of master segments [GPSegment()]
+          self.segments = hash of segments {dbid: GpDB()}
+          self.master   = list of master segments [GpDB()]
 
         If any existing configuration groups or host lists are present they
         will be obliterated, but we will keep any existing nic->hostname
@@ -699,12 +616,11 @@ class GPFilespace:
 
         try:
             logger.info("getting config")
-            gp_config = dbconn.getConfig(self.db)
-            logger.info(str(gp_config))
+            array = GpArray.initFromCatalog(self.dburl)
         except Exception, e:
             raise GPDatabaseError(str(e))
 
-        # These have pointers to the old GPSegments so they must be destroyed
+        # These have pointers to the old GpDB so they must be destroyed
         # before we populate the new structures.
         self.master   = []
         self.segments = {}
@@ -713,16 +629,15 @@ class GPFilespace:
 
         # Loop through configuration and add segments to datastructures
         # We save the costly hostname lookup step until later.
-        for tuple in gp_config:
-            seg = GPSegment(tuple)
+        for seg in array.getDbList():
 
             # Keep the primary master is at the front of the list
-            if seg.ismaster():  
+            if seg.isMaster():  
                 self.master.insert(0, seg)
-            elif seg.isstandby(): self.master.append(seg)
+            elif seg.isStandby(): self.master.append(seg)
 
             # Segment hash includes primary, mirror, and master segments
-            self.segments[seg.dbid] = seg
+            self.segments[seg.get_dbid()] = seg
 
         logger.debug('Configuration contains %d segments' % len(self.segments))
 
@@ -766,7 +681,7 @@ class GPFilespace:
         # Loop through all the segments to get the nics
         for dbid in self.segments:
             seg = self.segments[dbid]
-            nic = seg.nic
+            nic = seg.get_address()
             if nic not in self.nics:
                 # need to improve this
                 for i in range(CLUSTERSIZE):  ## DEBUG: mimic a large cluster
@@ -938,8 +853,9 @@ class GPFilespace:
 
         # Get a location for the master, this directory applies both to
         # the master and the standby master, like a regular datadir.
+        masterhost = self.hosts[self.master[0].get_hostname()]
         print "\nPlease specify location for the master directory"
-        masterdir = getdir("Master> ", [self.master[0].parent])
+        masterdir = getdir("Master> ", [masterhost])
         logger.debug("Master> %s" % masterdir)
 
         # Write out the information to a configuration file
@@ -951,11 +867,12 @@ class GPFilespace:
         f.write('filespace:%s\n' % fspacename)
 
         def writeseg(seg, loc):
-            f.write(seg.hostname())
+            name = os.path.split(seg.get_datadir())[1]
+            f.write(seg.get_hostname())
             f.write(':')
             f.write(str(seg.dbid))
             f.write(':')
-            f.write(os.path.join(loc, seg.name))  # new prefix needed?
+            f.write(os.path.join(loc, name))  # new prefix needed?
             f.write('\n')
 
         # Write out location for master nodes
@@ -1057,7 +974,7 @@ To add this filespace to the database please run the command:
             # It is required that a single nic->hostname must be consistent 
             # within the config file.  
             #
-            nic = seg.nic
+            nic = seg.get_address()
             if nic not in self.nics:
                 self.nics[nic] = host
             elif self.nics[nic] != host:
@@ -1071,7 +988,7 @@ To add this filespace to the database please run the command:
             # Assign the path for the segment, will throw GPError if the
             # segment already has a path associated with it.
             try:
-                seg.set_path(path)
+                seg.add_filespace(path)
             except GPError, e:
                 raise GPError("Duplicate path set for dbid %d at line %d: %s"
                               % (dbid, lineno, line))
@@ -1083,7 +1000,7 @@ To add this filespace to the database please run the command:
         # for every segment!
         for dbid in self.segments:
             seg = self.segments[dbid]
-            if not seg.path:
+            if not seg.get_pending_filespace():
                 raise GPError("No path specified for dbid: %d" % seg.dbid)
 
         logger.debug('nics: ' + str(self.nics))
@@ -1117,7 +1034,7 @@ To add this filespace to the database please run the command:
         dbids = self.segments.keys()
         dbids.sort()
         for dbid in dbids:
-            q += "  %d: '%s',\n" % (dbid, self.segments[dbid].path)
+            q += "  %d: '%s',\n" % (dbid, self.segments[dbid].get_pending_filespace())
         
         # We have an extra "," in the above, strip it out and add in
         # the end paren instead

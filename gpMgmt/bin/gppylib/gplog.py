@@ -36,10 +36,9 @@ def get_default_logger():
     return LOGGER
 
 def get_unittest_logger():
-    global LOGGER,SOUT_HANDLER
+    global LOGGER, SOUT_HANDLER
     if LOGGER is None:
         LOGGER = logging.getLogger('default')
-        f = get_default_formatter()
         filename="unittest.log"
         set_file_logging(filename)
     return LOGGER
@@ -92,7 +91,7 @@ def get_logfile():
 #------------------------------- Private --------------------------------    
 
 def set_file_logging(filename): 
-    global LOGGER,SOUT_HANDLER,FILENAME
+    global LOGGER,SOUT_HANDLER,FILENAME,FILE_HANDLER
     FILENAME=filename   
     FILE_HANDLER = logging.FileHandler( filename, 'a')
     FILE_HANDLER.setFormatter(get_default_formatter())
@@ -106,7 +105,7 @@ def get_default_formatter():
 def enable_gpadmin_logging(name,logdir=None):
     global FILE_HANDLER
         
-    logger = get_default_logger()
+    get_default_logger()
     now = datetime.date.today()
     
     if logdir is None:
@@ -119,5 +118,4 @@ def enable_gpadmin_logging(name,logdir=None):
         os.mkdir(gpadmin_logs_dir)
     
     filename = "%s/%s_%s.log" % (gpadmin_logs_dir,name, now.strftime("%Y%m%d"))
-    set_file_logging(filename)    
-    pass
+    set_file_logging(filename)

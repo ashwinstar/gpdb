@@ -22,7 +22,7 @@ try:
     from gppylib.gplog import *
     from gppylib.db import dbconn
     from gppylib.db import catalog
-    from gppylib import gparray
+    from gppylib.gparray import GpArray
     from gppylib import gphostcache
     from gppylib import userinput
     from gppylib import pgconf
@@ -178,7 +178,7 @@ class GpStop():
         
         logger.info("Obtaining Segment details from master...")
         self.dburl = dbconn.DbURL(port=self.port,dbname='template1')
-        self.gparray = gparray.createGPDBFromDB(self.dburl, utility=True)
+        self.gparray = GpArray.initFromCatalog(self.dburl, utility=True)
     
         
     ######
@@ -300,7 +300,7 @@ class GpStop():
             failed_seg_status.append(SegStopStatus(db,False,'Failed to Ping on host: %s' % db.hostname))
             
         self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool,failed_pings)                
-        self.hostcache.print_contents(logger)
+        self.hostcache.log_contents()
                                    
         invalid_segs=self.gparray.get_invalid_segdbs() 
         for seg in invalid_segs:

@@ -19,9 +19,8 @@ try:
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
-_help = [""""""
-
-]
+_help = ["""
+"""]
 
 def parseargs():
 
@@ -70,7 +69,7 @@ def getSegmentsFromStdin():
 
     while line:
 
-        dblist.append( GpDB.get_gpdb_from_string(line) )
+        dblist.append( GpDB.initFromString(line) )
 
         line = sys.stdin.readline()
 

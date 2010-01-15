@@ -17,7 +17,7 @@ try:
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
     from gppylib.commands.pg import PgControlData
-    from gppylib.gparray import *
+    from gppylib.gparray import GpArray, get_host_interface
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
     from gppylib.db import dbconn
@@ -709,7 +709,7 @@ class SegmentTemplate:
         self.logger.info('Configuring new segments')
         newPrimaryCount = 0;
         for seg in self.gparray.getExpansionSegDbList():
-            if seg.role == 'p' and seg.content != -1:             
+            if seg.isPrimary():             
                 newPrimaryCount += 1
         
         newPrimaryCount += self.gparray.get_primary_count()
@@ -1112,7 +1112,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             elif status[0] == 'UPDATE_MASTER_STARTED':
                 self.logger.info('Rolling back master update')
                 self.restore_master()
-                self.gparray = createGPDBFromDB(dburl,utility=True)
+                self.gparray = GpArray.initFromCatalog(dburl, utility=True)
 
             elif status[0] == 'SETUP_EXPANSION_SCHEMA_STARTED':
                 cleanSchema = True
@@ -1273,7 +1273,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         # Update the gp_id of original segments
         self.newPrimaryCount = 0;
         for seg in self.gparray.getExpansionSegDbList():
-            if seg.role == 'p' and seg.content != -1: 
+            if seg.isPrimary(): 
                 self.newPrimaryCount += 1
                 
         self.newPrimaryCount += self.gparray.get_primary_count()
@@ -1322,7 +1322,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         self.logger.info('Restoring original segments')
         gp_configuration_backup_file = self.statusLogger.get_gp_configuration_backup();
         if gp_configuration_backup_file:
-            originalArray = createFromFile(self.statusLogger.get_gp_configuration_backup())
+            originalArray = GpArray.initFromFile(self.statusLogger.get_gp_configuration_backup())
         else:
             originalArray = self.gparray
         
@@ -1392,7 +1392,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
     def update_master(self):
         """ Updates the gp_configuration catalog table on the master
         to include the expansion segments"""
-        dumpToFile(gparray, options.master_data_directory + '/gpexpand.gp_configuration')
+        gparray.dumpToFile(options.master_data_directory + '/gpexpand.gp_configuration')
         self.statusLogger.set_status('UPDATE_MASTER_STARTED', 
                                      options.master_data_directory + '/gpexpand.gp_configuration')
 
@@ -1474,7 +1474,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         
         if not self.conn:
             self.conn = dbconn.connect(self.dburl)
-            self.gparray = createGPDBFromDB(self.dburl)
+            self.gparray = GpArray.initFromCatalog(self.dburl)
         
         nowStr = datetime.datetime.now()
         statusSQL = "INSERT INTO %s.%s VALUES ( 'SETUP', '%s' ) " % (gpexpand_schema,status_table,nowStr)
@@ -2276,7 +2276,7 @@ try:
     
     # Get array configuration
     try:
-        gparray = createGPDBFromDB(dburl,utility=True)
+        gparray = GpArray.initFromCatalog(dburl,utility=True)
     except DatabaseError, ex:
         logger.error('Failed to connect to database.  Make sure the')
         logger.error('Greenplum instance you wish to expand is running')

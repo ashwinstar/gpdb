@@ -21,7 +21,6 @@ Example:
 import os
 import os.path
 import re
-import sys
 
 # Max recursion level for postgresql.conf include directives.
 # The max value is 10 in the postgres code, so it's the same here.
@@ -40,15 +39,15 @@ def readfile(filename='postgresql.conf', defaultpath=None):
             defaultpath = os.getcwd()
         filename = os.path.normpath(os.path.join(defaultpath, filename))
 
-    file = open(filename)
+    fp = open(filename)
     try:
         dictionary = gucdict()
-        dictionary.populate(file, filename)
+        dictionary.populate(fp, filename)
         return dictionary
     except Exception:
         raise
     finally:
-        file.close()
+        fp.close()
 
 
 class gucdict(dict):
@@ -88,10 +87,10 @@ class gucdict(dict):
                         incfilename = value.strip("'")
                         if not incfilename.startswith('/') and filename != '':
                             incfilename = '%s/%s' % (filename[0:filename.rfind('/')], incfilename)
-                        file = open(incfilename)
-                        self.populate(file, incfilename, recurLevel+1)
-                        file.close()
-                    except IOError, ex:
+                        fp = open(incfilename)
+                        self.populate(fp, incfilename, recurLevel+1)
+                        fp.close()
+                    except IOError:
                         raise Exception('File %s included from %s:%d does not exist' % (incfilename, filename, linenumber))
                 else:
                     self[name.lower()] = setting(name, value, filename, linenumber, pos)
@@ -244,7 +243,7 @@ class setting(object):
             except ValueError:
                 pass
             return int(float(t[0]) * m)
-        except ValueError, IndexError:
+        except (ValueError, IndexError):
             raise self.ConfigurationError('Value should be integer or float '
                                           'with optional suffix kB, MB, or GB '
                                           '(kB is default).')
@@ -263,7 +262,7 @@ class setting(object):
                 i = ['ms', 's', 'min', 'h', 'd'].index(t[1])
                 m = (1, 1000, 60*1000, 3600*1000, 24*3600*1000)[i]
             return int(t[0], 0) * m / u
-        except ValueError, IndexError:
+        except (ValueError, IndexError):
             raise self.ConfigurationError('Value should be integer with '
                                           'optional suffix ms, s, min, h, or d '
                                           '(%s is default).' % unit)

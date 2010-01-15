@@ -40,14 +40,13 @@ logger = gplog.get_default_logger()
 
 
 class GpHost:
-    def __init__(self,hostname):
-        self.hostname=hostname
+    def __init__(self, hostname):
+        self.hostname = hostname
         self.dbs=[]
-        pass    
     
     def addDB(self,db):
         self.dbs.append(db)
-        
+
     def __str__(self):
         dirlist=[]
         for db in self.dbs:
@@ -57,102 +56,113 @@ class GpHost:
 
 class GpHostCache():
     
-    def __init__(self,gparray,pool,skiplist=None):
+    def __init__(self, gparray, pool, skiplist=None):
         self.gparray=gparray
-        self.hostcache={}
-        self.gphost_map={}
+        self.hostcache={}         # interface -> hostname
+        self.gphost_map={}        # hostname -> GpHost
         
-        #these are any db's that should be skipped.
-        self.skipmap={}
+        # these are any db's that should be skipped.
+        skipmap={}
         for db in skiplist:
-            self.skipmap[db.dbid]=db
+            skipmap[db.dbid]=db
         
-        failed_hosts=self._readfile(pool)
-        
-        pass
-    
-    
-    def _readfile(self,pool):
-        failed_hosts=[]
-        
+        # Read the .gphostcache file if it exists
+        #   Todo: handle failure more cleanly Should be able to deal with:
+        #     - lack of permissions on file
+        #     - file in unexpected format
         if os.path.isfile(CACHEFILE):
-            #file exists so we read it in.
             try:
-                file = open(CACHEFILE, 'r')
-                
-                for line in file:
-                    (interface,hostname)=line.split(':')
-                    self.hostcache[interface.strip()]=hostname.strip()                    
-            except IOError:
-                raise Exception(' file %s not found' % path)                    
-            finally:
-                file.close()
+                fp = open(CACHEFILE, 'r')
+                for line in fp:
+                    (interface, hostname) = line.split(':')
+                    self.hostcache[interface.strip()]=hostname.strip()
+            except Exception, e:
+                logger.warn(str(e))
+                logger.warn("Error reading file '%s'" % CACHEFILE)
         
-        #now we go through our gparray and create a set of GpHost to store all of
-        # the segment dbs in.
-        pending_cmds={}  
-        for seg in self.gparray.segments:
-            for db in seg.get_dbs():
-                #we process both valid and invalid db's 
-                if db.dbid not in self.skipmap:              
-                    if db.hostname in self.hostcache:                        
-                        normalized_hostname=self.hostcache[db.hostname]
-                        self._add_hostname(normalized_hostname,db)
-                    else:
-                        #we don't have an entry, so farm off a command to figure it out.
-                        # we just queue up the commands here and let the pool start to 
-                        # execute them.  later we'll process through and farm the results.
-                        cmd=unix.Hostname('host lookup',ctxt=base.REMOTE,remoteHost=db.hostname)
-                        pool.addCommand(cmd)
-                        pending_cmds[cmd]=db
-                        pass
-        
-                    
-                    
-        #go through all of the pending commands and process them.  
-        #  we'll also append to our hostcache file as needed so that we don't have
-        #  to do this work nexttime.
-        hosts_added={}
+        # Go through the gparray and build the interface->hostname lookup table
+        #
+        # As Greeenplum 3.4 we have both interface and hostname information in
+        # the catalog, so the gparray should be able to supply all of the 
+        # information.  
+        #
+        # However if we have initialized from an old catalog, or from a flatfile
+        # then the interface->hostname mapping may not be available.  In this 
+        # case we still want to run this pass first so that we don't lookup 
+        # a given interface more than once.
+        inconsistent = []
+        for db in self.gparray.getSegDbList():
+            if db.dbid not in skipmap:
+                interface = db.get_address()
+                hostname  = db.get_hostname()
+
+                # If we don't have this mapping yet set it, otherwise we 
+                # simply validate consistency.
+                if interface not in self.hostcache:
+                    self.hostcache[interface] = hostname
+                elif self.hostcache[interface] is None:
+                    self.hostcache[interface] = hostname
+                elif self.hostcache[interface] != hostname:
+                    logger.warn("inconsistent hostname for %s" % interface)
+                    inconsistent.append(interface)
+
+        # Clear out any inconsistent hostnames to force a recheck.
+        for i in inconsistent:
+            self.hostcache[i] = None
+
+        # Lookup any hostnames that we don't have answers for:
+        pending_cmds={}
+        for interface in self.hostcache:
+            if self.hostcache[interface] is None:
+                logger.debug("hostname lookup for %s" % interface)
+                cmd=unix.Hostname('host lookup', ctxt=base.REMOTE, remoteHost=interface)
+                pool.addCommand(cmd)
+                pending_cmds[interface] = cmd
+
+        # Fetch the results out of the WorkerPool
         if len(pending_cmds) > 0:
-            #make sure we let all the commands finish.
             pool.join()
+
+            for interface in pending_cmds:
+                cmd = pending_cmds[interface]
+
+                # Make sure the command completed successfully
+                if cmd.get_results().rc != 0:
+                    logger.warn("Failed to resolve hostname for %s" % interface)
+                    continue
+
+                self.hostcache[interface] = cmd.get_hostname()
+
+            pool.empty_completed_items()
+
+        # Build up the GpHosts using our interface->hostname lookup
+        for db in self.gparray.getSegDbList():        
+            interface = db.get_address()
+            hostname  = self.hostcache[interface]   # should set the db?
+            if hostname not in self.gphost_map:
+                self.gphost_map[hostname] = GpHost(hostname)
+            self.gphost_map[hostname].addDB(db)
+
+        # Try to update the hostcache file if we executed any hostname commands
+        if len(pending_cmds) > 0:
             try:
-                file=open(CACHEFILE, 'a')
+                fp = open(CACHEFILE, 'w')
                 
-                for key in pending_cmds.keys():
-                    cmd=key
-                    db=pending_cmds[key]
-                    
-                    #make sure the command completed succesfully.
-                    if cmd.get_results().rc != 0:                    
-                        self._add_hostname(db.hostname, db)
-                    else:
-                        normalized_hostname = cmd.get_hostname()
-                        self._add_hostname(normalized_hostname,db)      
-                        if db.hostname not in hosts_added:              
-                            file.write("%s:%s\n" % (db.hostname,normalized_hostname))
-                            hosts_added[db.hostname]=True
-            except IOError:
-                raise Exception(' file %s not found' % path)        
-            finally:
-                file.close()    
-        pool.empty_completed_items()
-        return failed_hosts
-            
+                for interface in sorted(self.hostcache.keys()):
+                    hostname = self.hostcache[interface]
+
+                    # skip any dangling references we still have
+                    if not hostname:
+                        continue
+                    fp.write("%s:%s\n" % (interface, hostname))
+
+                fp.close()
+            except Exception, e:
+                logger.warn(str(e))
+                logger.warn("Failed to write file '%s'" % CACHEFILE)
+                
     ######
-    def _add_hostname(self,normalized_hostname,db):
-        if normalized_hostname in self.gphost_map:
-            gphost=self.gphost_map[normalized_hostname]
-            gphost.addDB(db)
-            return False
-        else:
-            gphost=GpHost(normalized_hostname)
-            gphost.addDB(db)
-            self.gphost_map[normalized_hostname]=gphost
-            return True
-    
-    ######
-    def print_contents(self,logger):
+    def log_contents(self):
         logger.debug("Construct host-->datadirs mapping:")
         
         entries=[]
@@ -164,11 +174,11 @@ class GpHostCache():
     
     ######
     def get_hostnames(self):
-        list=[]
+        hosts=[]
         for key in self.gphost_map.keys():
             gphost=self.gphost_map[key]
-            list.append(gphost.hostname)
-        return list
+            hosts.append(gphost.hostname)
+        return hosts
     
     ######
     def get_hosts(self):
@@ -182,15 +192,12 @@ class GpHostCache():
         else:
             raise Exception("map does not contain host: " % hostname)
    
-    ######
-    def remove_host(self,gphost):
-        if self.gphost_map.has_key(gphost):             
-            del self.hostdict[host]
-
     #####
-    def ping_hosts(self,logger,pool):
-        ''' go through all of the gphosts and try and ping all of the hosts.  if any fail
-        then go back to using the interface names for those segments.  
+    def ping_hosts(self, pool):
+        ''' 
+        go through all of the gphosts and try and ping all of the hosts. 
+        If any fail then go back to using the interface names for those 
+        segments.  
         
         throws an Exception if still can't ping on the interface names. 
         '''

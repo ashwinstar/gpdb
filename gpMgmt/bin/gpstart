@@ -14,16 +14,14 @@ Please upgrade python installed on this machine.''' % progname)
 import time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
-
-
 try:
     import figleaf
     import pickle
     
     from gppylib.db import dbconn
     from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gparray import GpArray
     from gppylib.gplog import *
-    from gppylib import gparray
     from gppylib import gphostcache
     from gppylib import userinput
     from gppylib.db import catalog
@@ -136,7 +134,7 @@ class GpStart:
         if self.ftsmode != 'readonly':
             raise Exception('gpstart --recover can only be run when gp_fault_action=readonly')
         
-        array = gparray.createGPDBFromDB(self.dburl, utility=True)
+        array = GpArray.initFromCatalog(self.dburl, utility=True)
         downed_segs = array.get_invalid_segdbs()
 
         # Log information about invalid segments
@@ -353,7 +351,7 @@ class GpStart:
         
         logger.info("Obtaining Segment details from master...")
         self.dburl = dbconn.DbURL(port=self.port,dbname='template1')
-        self.gparray = gparray.createGPDBFromDB(self.dburl, utility=True)
+        self.gparray = GpArray.initFromCatalog(self.dburl, utility=True)
 
         logger.debug("Gathering collation settings...")
         self.conn = dbconn.connect(self.dburl, utility=True)
@@ -485,7 +483,7 @@ class GpStart:
         invalid_segs.extend(failed_pings)
             
         self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool,invalid_segs)                
-        self.hostcache.print_contents(logger)
+        self.hostcache.log_contents()
               
     ####    
     def _verify_enough_segments(self,success_seg_status,gparray):
