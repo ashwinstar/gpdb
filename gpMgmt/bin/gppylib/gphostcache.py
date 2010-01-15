@@ -96,14 +96,14 @@ class GpHostCache():
                 interface = db.get_address()
                 hostname  = db.get_hostname()
 
-                # If we don't have this mapping yet set it, otherwise we 
+                # If we don't have this mapping yet set it, otherwise we
                 # simply validate consistency.
                 if interface not in self.hostcache:
                     self.hostcache[interface] = hostname
                 elif self.hostcache[interface] is None:
                     self.hostcache[interface] = hostname
                 elif self.hostcache[interface] != hostname:
-                    logger.warn("inconsistent hostname for %s" % interface)
+                    logger.warn("inconsistent hostname '%s' for interface '%s'" % (hostname, interface))
                     inconsistent.append(interface)
 
         # Clear out any inconsistent hostnames to force a recheck.
