@@ -976,7 +976,7 @@ exec_mpp_query(const char *query_string,
 		 */
 		plan->sliceTable = (Node *) sliceTable; /* Cache for CreateQueryDesc */
     }
-    if (gp_enable_backoff)
+    if (gp_enable_resqueue_priority)
     {
     	if (plan && plan->planTree->backoff_weight > 0)
     	{
@@ -984,7 +984,7 @@ exec_mpp_query(const char *query_string,
     	}
     	else
     	{
-    		BackoffBackendEntryInit(gp_session_id, gp_command_count, gp_backoff_default_weight);
+    		BackoffBackendEntryInit(gp_session_id, gp_command_count, gp_resqueue_priority_default_weight);
     	}
     }
 	
@@ -1320,7 +1320,7 @@ exec_mpp_query(const char *query_string,
 		ShowUsage("QUERY STATISTICS");
 	
 
-	if (gp_enable_backoff)
+	if (gp_enable_resqueue_priority)
 	{
 		BackoffBackendEntryExit();
 	}

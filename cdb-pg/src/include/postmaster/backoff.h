@@ -12,13 +12,13 @@
 #include "storage/proc.h"
 
 /* GUCs */
-extern bool gp_enable_backoff;
-extern int gp_backoff_local_counter_interval;
-extern int gp_backoff_sweeper_interval;
-extern int gp_backoff_backend_inactivity_timeout;
-extern int gp_backoff_backend_grouping_timeout;
-extern double gp_backoff_procs_per_segment;
-extern int gp_backoff_default_weight;
+extern bool gp_enable_resqueue_priority;
+extern int gp_resqueue_priority_local_interval;
+extern int gp_resqueue_priority_sweeper_interval;
+extern int gp_resqueue_priority_inactivity_timeout;
+extern int gp_resqueue_priority_grouping_timeout;
+extern double gp_resqueue_priority_cpucores_per_segment;
+extern int gp_resqueue_priority_default_weight;
 
 extern void BackoffBackendEntryInit(int sessionid, int commandcount, int weight);
 extern void BackoffBackendEntryExit(void);

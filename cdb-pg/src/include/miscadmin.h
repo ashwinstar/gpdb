@@ -79,7 +79,7 @@ extern PGDLLIMPORT volatile uint32 CritSectionCount;
 /* in tcop/postgres.c */
 extern void ProcessInterrupts(void);
 extern void BackoffBackendTick(void);
-extern bool gp_enable_backoff;
+extern bool gp_enable_resqueue_priority;
 
 #ifndef WIN32
 
@@ -87,7 +87,7 @@ extern bool gp_enable_backoff;
 do { \
 	if (InterruptPending) \
 		ProcessInterrupts(); \
-	if (gp_enable_backoff)	\
+	if (gp_enable_resqueue_priority)	\
 		BackoffBackendTick(); \
 } while(0)
 #else							/* WIN32 */

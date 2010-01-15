@@ -50,7 +50,7 @@
 #include "catalog/pg_type.h"
 #include "access/tuptoaster.h"
 
-extern bool gp_debug_backoff;
+extern bool gp_debug_resqueue_priority;
 
 /* Atomic increment operations
  */
@@ -344,7 +344,7 @@ static inline bool groupingTimeExpired()
 				TIMEVAL_DIFF_USEC(le->lastUsage.ru_utime, le->startUsage.ru_utime)
 				+ TIMEVAL_DIFF_USEC(le->lastUsage.ru_stime, le->startUsage.ru_stime);
 
-		if (elapsedTimeForStatement > gp_backoff_backend_grouping_timeout * 1000.0)
+		if (elapsedTimeForStatement > gp_resqueue_priority_grouping_timeout * 1000.0)
 		{
 			le->groupingTimeExpired = true;
 			return true;
@@ -484,10 +484,10 @@ void BackoffBackendEntryInit(int sessionid, int commandcount, int weight)
  */
 static inline double numProcsPerSegment()
 {
-	Assert(gp_enable_backoff);
+	Assert(gp_enable_resqueue_priority);
 	Assert(backoffSingleton);
-	Assert(gp_backoff_procs_per_segment > 0);
-	return gp_backoff_procs_per_segment;
+	Assert(gp_resqueue_priority_cpucores_per_segment > 0);
+	return gp_resqueue_priority_cpucores_per_segment;
 }
 
 
@@ -552,7 +552,7 @@ static inline void BackoffBackend()
 		elog(WARNING, "thissession = %d, thisProcTime = %f, totalTime = %f, targetusage = %f, cpuRatio = %f, change factor = %f, sleeptime = %f", se->statementId.sessionId, thisProcessTime, totalTime, se->targetUsage, cpuRatio, changeFactor, (double) le->lastSleepTime);
 #endif
 
-		if ( gp_debug_backoff)
+		if ( gp_debug_resqueue_priority)
 		{
 			elog(WARNING, "thissession = %d, thisProcTime = %f, totalTime = %f, targetusage = %f, cpuRatio = %f, change factor = %f, sleeptime = %f",
 					se->statementId.sessionId, thisProcessTime, totalTime, se->targetUsage, cpuRatio, changeFactor, (double) le->lastSleepTime);
@@ -567,7 +567,7 @@ static inline void BackoffBackend()
 			 * Sleeping happens in chunks so that the backend may exit early from its sleep if the sweeper requests it to.
 			 */
 			int j =0;
-			long sleepInterval = ((long) gp_backoff_sweeper_interval) * 1000L;
+			long sleepInterval = ((long) gp_resqueue_priority_sweeper_interval) * 1000L;
 			int numIterations = (int) (le->lastSleepTime / sleepInterval);
 			double leftOver = (double) ((long) le->lastSleepTime % sleepInterval);
 			for (j=0;j<numIterations;j++)
@@ -610,7 +610,7 @@ void BackoffBackendTick()
 	BackoffBackendSharedEntry *se = NULL;
 	StatementId currentStatementId = {gp_session_id, gp_command_count};
 
-	Assert(gp_enable_backoff);
+	Assert(gp_enable_resqueue_priority);
 
 	if (!(Gp_role == GP_ROLE_DISPATCH 
 			|| Gp_role == GP_ROLE_EXECUTE)
@@ -652,12 +652,12 @@ void BackoffBackendTick()
 	}
 
 	Assert(le->inTick == false);
-	Assert(le->counter < gp_backoff_local_counter_interval);
+	Assert(le->counter < gp_resqueue_priority_local_interval);
 
 	le->inTick = true;
 
 	le->counter ++;
-	if (le->counter == gp_backoff_local_counter_interval)
+	if (le->counter == gp_resqueue_priority_local_interval)
 	{
 		le->counter = 0;
 		/* Enough time has passed. Perform backoff. */
@@ -667,7 +667,7 @@ void BackoffBackendTick()
 
 	le->inTick = false;
 
-	Assert(le->counter < gp_backoff_local_counter_interval);
+	Assert(le->counter < gp_resqueue_priority_local_interval);
 	Assert(le->inTick == false);
 }
 
@@ -716,7 +716,7 @@ void BackoffSweeper()
 		{
 			Assert(se->weight > 0);
 			if (TIMEVAL_DIFF_USEC(currentTime, se->lastCheckTime) 
-					<  gp_backoff_backend_inactivity_timeout * 1000.0)
+					<  gp_resqueue_priority_inactivity_timeout * 1000.0)
 			{
 				/* This is an active backend. Need to maintain count at group leader */
 				BackoffBackendSharedEntry *gl = getBackoffEntryRW(se->groupLeaderIndex);
@@ -978,7 +978,7 @@ gp_adjust_priority_int(PG_FUNCTION_ARGS)
 	int numfound = 0;	
 	StatementId sid;
 
-	if (!gp_enable_backoff)
+	if (!gp_enable_resqueue_priority)
 		elog(ERROR, "Query prioritization is disabled.");
 
 	if (!superuser())
@@ -1229,12 +1229,12 @@ void BackoffSweeperLoop(void)
 		elog(WARNING, "Performing global action");
 #endif
 
-		if (gp_enable_backoff)
+		if (gp_enable_resqueue_priority)
 			BackoffSweeper();
 
-		Assert(gp_backoff_sweeper_interval > 0.0);
+		Assert(gp_resqueue_priority_sweeper_interval > 0.0);
 		/* Sleep a while. */
-		pg_usleep(gp_backoff_sweeper_interval * 1000.0);
+		pg_usleep(gp_resqueue_priority_sweeper_interval * 1000.0);
 	} /* end server loop */
 
 	return;
@@ -1381,7 +1381,7 @@ int ResourceQueueGetPriorityWeight(Oid queueId)
 	List *capabilitiesList = NULL;
 	List *entry = NULL;
 	ListCell *le = NULL;
-	int weight = gp_backoff_default_weight;
+	int weight = gp_resqueue_priority_default_weight;
 	
 	if (queueId == InvalidOid)
 		return weight;
@@ -1467,7 +1467,7 @@ static char *BackoffPriorityIntToValue(int weight)
 
 	Assert(p);
 	
-	if (weight == gp_backoff_default_weight)
+	if (weight == gp_resqueue_priority_default_weight)
 	{
 		return pstrdup("DEFAULT");
 	}

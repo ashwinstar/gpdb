@@ -243,7 +243,7 @@ ProcessQuery(Portal portal,
 	PortalSetStatus(portal, PORTAL_ACTIVE);
 	
 
-	if (gp_enable_backoff 
+	if (gp_enable_resqueue_priority 
 			&& Gp_role == GP_ROLE_DISPATCH 
 			&& gp_session_id > -1)
 	{
@@ -470,7 +470,7 @@ ProcessQuery(Portal portal,
 	FreeSnapshot(ActiveSnapshot);
 	ActiveSnapshot = NULL;
 	
-	if (gp_enable_backoff 
+	if (gp_enable_resqueue_priority 
 			&& Gp_role == GP_ROLE_DISPATCH 
 			&& gp_session_id > -1)
 	{
@@ -797,7 +797,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 
 				PortalSetStatus(portal, PORTAL_ACTIVE);
 				
-				if (gp_enable_backoff 
+				if (gp_enable_resqueue_priority 
 						&& Gp_role == GP_ROLE_DISPATCH 
 						&& gp_session_id > -1)
 				{

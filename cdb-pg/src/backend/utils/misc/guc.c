@@ -389,14 +389,14 @@ char	   *role_string;
 char	   *session_authorization_string;
 
 /* Backoff-related GUCs */
-bool gp_enable_backoff;
-int gp_backoff_local_counter_interval;
-int gp_backoff_sweeper_interval;
-int gp_backoff_backend_inactivity_timeout; 
-int gp_backoff_backend_grouping_timeout;	
-double gp_backoff_procs_per_segment;
-int gp_backoff_default_weight;
-bool gp_debug_backoff = false;
+bool gp_enable_resqueue_priority;
+int gp_resqueue_priority_local_interval;
+int gp_resqueue_priority_sweeper_interval;
+int gp_resqueue_priority_inactivity_timeout; 
+int gp_resqueue_priority_grouping_timeout;	
+double gp_resqueue_priority_cpucores_per_segment;
+int gp_resqueue_priority_default_weight;
+bool gp_debug_resqueue_priority = false;
 
 
 /*
@@ -1875,12 +1875,13 @@ false
 	},
 
 	{
-		{"gp_debug_backoff", PGC_USERSET, RESOURCES_MGM,
-				gettext_noop("Print out debugging information about backoff calls."),
-				NULL
-	  		},
-	        &gp_debug_backoff,
-	        false, NULL, NULL
+		{"gp_debug_resqueue_priority", PGC_USERSET, RESOURCES_MGM,
+			gettext_noop("Print out debugging information about backoff calls."),
+			NULL,
+			GUC_NO_SHOW_ALL
+			},
+		&gp_debug_resqueue_priority,
+		false, NULL, NULL
 	},
 
 	{
@@ -2290,11 +2291,11 @@ false
 		true, NULL, NULL
 	},
 	{
-		{"gp_enable_backoff", PGC_POSTMASTER, RESOURCES_MGM,
+		{"gp_enable_resqueue_priority", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("Enables priority scheduling."),
 			NULL
 		},
-		&gp_enable_backoff,
+		&gp_enable_resqueue_priority,
 		false, NULL, NULL
 	},
 
@@ -3556,43 +3557,46 @@ static struct config_int ConfigureNamesInt[] =
 		25, 1, 1000, NULL, NULL
 	},
 	{
-		{"gp_backoff_local_interval", PGC_POSTMASTER, RESOURCES_MGM,
+		{"gp_resqueue_priority_local_interval", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("A measure of how often a backend process must consider backing off."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL
 		},
-		&gp_backoff_local_counter_interval,
+		&gp_resqueue_priority_local_interval,
 		500000, 500, INT_MAX, NULL, NULL
 	},
 	{
-		{"gp_backoff_sweeper_interval", PGC_POSTMASTER, RESOURCES_MGM,
+		{"gp_resqueue_priority_sweeper_interval", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("Frequency (in ms) at which sweeper process re-evaluates CPU shares."),
 			NULL
 		},
-		&gp_backoff_sweeper_interval,
+		&gp_resqueue_priority_sweeper_interval,
 		1000, 500, 15000, NULL, NULL
 	},
 	{
-		{"gp_backoff_backend_inactivity_timeout", PGC_POSTMASTER, RESOURCES_MGM,
-			gettext_noop("If a backend does not report to the backoff mechanism in this time (in ms), it is deemed inactive."),
-			NULL
+		{"gp_resqueue_priority_inactivity_timeout", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("If a backend does not report progress in this time (in ms), it is deemed inactive."),
+			NULL,
+			GUC_NO_SHOW_ALL
 		},
-		&gp_backoff_backend_inactivity_timeout,
+		&gp_resqueue_priority_inactivity_timeout,
 		2000, 500, INT_MAX, NULL, NULL
 	},	
 	{
-		{"gp_backoff_backend_grouping_timeout", PGC_POSTMASTER, RESOURCES_MGM,
+		{"gp_resqueue_priority_grouping_timeout", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("A backend gives up on finding a better group leader after this timeout (in ms)."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL
 		},
-		&gp_backoff_backend_grouping_timeout,
+		&gp_resqueue_priority_grouping_timeout,
 		1000, 1000, INT_MAX, NULL, NULL
 	},
 	{
-		{"gp_backoff_default_weight", PGC_POSTMASTER, RESOURCES_MGM,
+		{"gp_resqueue_priority_default_weight", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("Default weight when one cannot be associated with a query."),
 			NULL
   		},
-		&gp_backoff_default_weight,
+		&gp_resqueue_priority_default_weight,
 		50, 1, INT_MAX, NULL, NULL
 	},
 
@@ -3832,11 +3836,11 @@ static struct config_real ConfigureNamesReal[] =
 		20000.0, 0.0, DBL_MAX, NULL, NULL
 	},
 	{
-		{"gp_backoff_procs_per_segment", PGC_POSTMASTER, RESOURCES_MGM,
+		{"gp_resqueue_priority_cpucores_per_segment", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("Number of processing units associated with a segment."),
 			NULL
 		},
-		&gp_backoff_procs_per_segment,
+		&gp_resqueue_priority_cpucores_per_segment,
 		1.0, 0.1, 25.0, NULL, NULL
 	},
 
