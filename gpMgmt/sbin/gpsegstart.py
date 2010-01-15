@@ -172,9 +172,9 @@ class GpSegStart:
                 (success,error_str)=cmd.getResults()
             
                 if success:
-                    results.append(SegStartStatus(cmd.dataDir,True,"Start Succeeded"))
+                    results.append(SegStartStatus(cmd.datadir,True,"Start Succeeded"))
                 else:
-                    results.append(SegStartStatus(cmd.dataDir,False,error_str))
+                    results.append(SegStartStatus(cmd.datadir,False,error_str))
     
         
         #Log the results!
