@@ -37,7 +37,7 @@ relname|relnamespace|reltype|relowner|relam|relfilenode|reltablespace|relpages|r
 6056|pg_stat_last_shoperation|11|6441|10|0|6056|1664|1|0|0|0|0|0|t|t|r|h|7|0|0|0|0|0|f|f|f|f|879|{=r/@gpcurusername@}|\N
 6057|pg_statlastshop_classid_objid_index|11|0|10|403|6057|1664|1|0|0|0|0|0|f|t|i|h|2|0|0|0|0|0|f|f|f|f|0|\N|\N
 6058|pg_statlastshop_classid_objid_staactionname_index|11|0|10|403|6058|1664|1|0|0|0|0|0|f|t|i|h|3|0|0|0|0|0|f|f|f|f|0|\N|\N
-6059|pg_resourcetype|11|6445|10|0|6059|1664|1|0|0|0|0|0|t|t|r|h|2|0|0|0|0|0|t|f|f|f|897|{=r/@gpcurusername@}|\N
+6059|pg_resourcetype|11|6445|10|0|6059|1664|1|5|0|0|0|0|t|t|r|h|7|0|0|0|0|0|t|f|f|f|911|{=r/@gpcurusername@}|\N
 6060|pg_resqueuecapability|11|6446|10|0|6060|1664|1|0|0|0|0|0|t|t|r|h|3|0|0|0|0|0|t|f|f|f|898|{=r/@gpcurusername@}|\N
 6061|pg_resourcetype_oid_index|11|0|10|403|6061|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N
 6062|pg_resourcetype_restypid_index|11|0|10|403|6062|1664|1|0|0|0|0|0|f|t|i|h|1|0|0|0|0|0|f|f|f|f|0|\N|\N

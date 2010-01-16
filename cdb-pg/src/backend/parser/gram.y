@@ -1082,23 +1082,28 @@ OptQueueList:
 OptQueueElem:
 			ACTIVE THRESHOLD NumericOnly
 				{
-					$$ = makeDefElem("activelimit", (Node *)$3);
+					/* was "activelimit" */
+					$$ = makeDefElem("active_statements", (Node *)$3);
 				}
 			| COST THRESHOLD NumericOnly /* enforce float type in queue.c */
 				{
-					$$ = makeDefElem("costlimit", (Node *)$3);
+					/* was "costlimit" */
+					$$ = makeDefElem("max_cost", (Node *)$3);
 				}
 			| IGNORE_P THRESHOLD NumericOnly /* enforce float type in queue.c */
 				{
-					$$ = makeDefElem("ignorecostlimit", (Node *)$3);
+					/* was "ignorecostlimit" */
+					$$ = makeDefElem("min_cost", (Node *)$3);
 				}
 			| OVERCOMMIT
 				{
-					$$ = makeDefElem("overcommit", (Node *)makeInteger(TRUE));
+					/* was "overcommit" */
+					$$ = makeDefElem("cost_overcommit", (Node *)makeInteger(TRUE));
 				}
 			| NOOVERCOMMIT
 				{
-					$$ = makeDefElem("overcommit", (Node *)makeInteger(FALSE));
+					/* was "overcommit" */
+					$$ = makeDefElem("cost_overcommit", (Node *)makeInteger(FALSE));
 				}
 		;
 

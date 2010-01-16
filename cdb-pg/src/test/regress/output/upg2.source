@@ -1739,7 +1739,7 @@ commit;
 --   It may be nice to allow it to be callable in a populated database...
 insert into public.gp_global_sequence select 0 from generate_series(1,15);
 select gp_persistent_build_db();
-psql:@abs_builddir@/sql/loadcat34.sql:108: ERROR:  Persistent database entry 'base/19025' already exists in state 'Created' (cdbpersistentdatabase.c:745)
+psql:@abs_builddir@/sql/loadcat34.sql:108: ERROR:  Persistent database entry 'base/131816' already exists in state 'Created' (cdbpersistentdatabase.c:747)
 begin;
 -- Create new 3.4 views in pg_catalog
 set search_path='pg_catalog';
@@ -1923,7 +1923,7 @@ update public.pg_tablespace set spcfsoid=3052, spclocation=null, spcprilocations
 reindex table public.gp_configuration_history;
 reindex table public.gp_db_interfaces;
 reindex table public.gp_fault_strategy;
-psql:@abs_builddir@/sql/loadcat34_sh.sql:27: NOTICE:  table "gp_fault_strategy" has no indexes
+psql:@abs_builddir@/sql/loadcat34_sh.sql:29: NOTICE:  table "gp_fault_strategy" has no indexes
 reindex table public.gp_interfaces;
 reindex table public.gp_san_configuration;
 reindex table public.gp_segment_configuration;
@@ -2417,15 +2417,15 @@ select * from pg_catalog.pg_resqueue where oid < 10000;
 select * from pg_catalog.pg_resourcetype where oid < 10000
 except all
 select * from public.pg_resourcetype where oid < 10000;
- restypid | resname 
-----------+---------
+ restypid | resname | resrequired | reshasdefault | reshasdisable | resdefaultsetting | resdisabledsetting 
+----------+---------+-------------+---------------+---------------+-------------------+--------------------
 (0 rows)
 
 select * from public.pg_resourcetype where oid < 10000
 except all
 select * from pg_catalog.pg_resourcetype where oid < 10000;
- restypid | resname 
-----------+---------
+ restypid | resname | resrequired | reshasdefault | reshasdisable | resdefaultsetting | resdisabledsetting 
+----------+---------+-------------+---------------+---------------+-------------------+--------------------
 (0 rows)
 
 -- compare old and new pg_cast

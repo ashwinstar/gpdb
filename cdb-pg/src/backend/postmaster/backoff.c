@@ -1,19 +1,31 @@
-/*
+/*-------------------------------------------------------------------------
+ *
  * Backoff.c
+ *    Query Prioritization 
  * 
- * This file contains functions that implement the Query Prioritization feature. Query prioritization is implemented
- * by employing a 'backing off' technique where each backend sleeps to let some other backend use the CPU. A sweeper
- * process identifies backends that are making active progress and determines what the relative CPU usage should be.
- * Please see the design doc in docs/design/queryprioritization/QueryPrioritization.docx for details.
+ * Copyright (c) 2009-2010, Greenplum inc.
+ *
+ * This file contains functions that implement the Query Prioritization 
+ * feature. Query prioritization is implemented by employing a
+ * 'backing off' technique where each backend sleeps to let some other
+ * backend use the CPU. A sweeper process identifies backends that are
+ * making active progress and determines what the relative CPU usage
+ * should be.
+ * Please see the design doc in
+ * docs/design/queryprioritization/QueryPrioritization.docx for
+ * details.
  * 
- * BackoffBackendTick() - a CHECK_FOR_INTERRUPTS() call in a backend leads to a backend 'tick'. If enough 'ticks'
- * 						  elapse, then the backend considers a backoff.
+ * BackoffBackendTick() - a CHECK_FOR_INTERRUPTS() call in a backend
+ * 						  leads to a backend 'tick'. If enough 'ticks'
+ * 						  elapse, then the backend considers a
+ * 						  backoff.
  * BackoffSweeper() 	- workhorse for the sweeper process
  * 
  *  Created on: Oct 21, 2009
  *      Author: siva
- */
-
+ *
+ *-------------------------------------------------------------------------
+*/
 
 #include "postmaster/backoff.h"
 #include "postmaster/fork_process.h"
@@ -42,6 +54,7 @@
 #include "tcop/tcopprot.h"
 #include "storage/pmsignal.h"			/* PostmasterIsAlive */
 #include "catalog/pg_database.h"
+#include "catalog/pg_resqueue.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/catalog.h"
 #include "storage/sinval.h"
@@ -1398,7 +1411,7 @@ int ResourceQueueGetPriorityWeight(Oid queueId)
 		Assert(entry);
 		key = (Value *) linitial(entry);
 		Assert(key->type == T_Integer); /* This is resource type id */
-		if (intVal(key) == 1)
+		if (intVal(key) == PG_RESRCTYPE_PRIORITY)
 		{
 			Value *val = lsecond(entry);
 			Assert(val->type == T_String);

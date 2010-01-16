@@ -190,13 +190,13 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		}
 
 		/* ignore the basic threshold entries -- should already be processed */
-		if (strcmp(defel->defname, "activelimit") == 0)
+		if (strcmp(defel->defname, "active_statements") == 0)
 			goto L_loop_cont;
-		if (strcmp(defel->defname, "costlimit") == 0)
+		if (strcmp(defel->defname, "max_cost") == 0)
 			goto L_loop_cont;
-		if (strcmp(defel->defname, "overcommit") == 0)
+		if (strcmp(defel->defname, "cost_overcommit") == 0)
 			goto L_loop_cont;
-		if (strcmp(defel->defname, "ignorecostlimit") == 0)
+		if (strcmp(defel->defname, "min_cost") == 0)
 			goto L_loop_cont;
 
 		if (!GetResourceTypeByName(defel->defname, &resTypeInt, &resTypeOid))
@@ -485,7 +485,7 @@ CreateQueue(CreateQueueStmt *stmt)
 	{
 		DefElem    *defel = (DefElem *) lfirst(option);
 
-		if (strcmp(defel->defname, "activelimit") == 0)
+		if (strcmp(defel->defname, "active_statements") == 0)
 		{
 			if (dactivelimit)
 				ereport(ERROR,
@@ -493,7 +493,7 @@ CreateQueue(CreateQueueStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dactivelimit = defel;
 		}
-		else if (strcmp(defel->defname, "costlimit") == 0)
+		else if (strcmp(defel->defname, "max_cost") == 0)
 		{
 			if (dcostlimit)
 				ereport(ERROR,
@@ -501,7 +501,7 @@ CreateQueue(CreateQueueStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dcostlimit = defel;
 		}
-		else if (strcmp(defel->defname, "overcommit") == 0)
+		else if (strcmp(defel->defname, "cost_overcommit") == 0)
 		{
 			if (dovercommit)
 				ereport(ERROR,
@@ -509,7 +509,7 @@ CreateQueue(CreateQueueStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dovercommit = defel;
 		}
-		else if (strcmp(defel->defname, "ignorecostlimit") == 0)
+		else if (strcmp(defel->defname, "min_cost") == 0)
 		{
 			if (dignorelimit)
 				ereport(ERROR,
@@ -754,7 +754,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	{
 		DefElem    *defel = (DefElem *) lfirst(option);
 
-		if (strcmp(defel->defname, "activelimit") == 0)
+		if (strcmp(defel->defname, "active_statements") == 0)
 		{
 			if (dactivelimit)
 				ereport(ERROR,
@@ -763,11 +763,11 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dactivelimit = defel;
 			else
-				dactivelimit = makeDefElem("activelimit", 
+				dactivelimit = makeDefElem("active_statements", 
 										   (Node *)
 										   makeFloat(INVALID_RES_LIMIT_STRING));
 		}
-		else if (strcmp(defel->defname, "costlimit") == 0)
+		else if (strcmp(defel->defname, "max_cost") == 0)
 		{
 			if (dcostlimit)
 				ereport(ERROR,
@@ -776,12 +776,12 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dcostlimit = defel;
 			else
-				dcostlimit = makeDefElem("costlimit", 
+				dcostlimit = makeDefElem("max_cost", 
 										 (Node *)
 										 makeInteger(INVALID_RES_LIMIT_THRESHOLD));
 
 		}
-		else if (strcmp(defel->defname, "overcommit") == 0)
+		else if (strcmp(defel->defname, "cost_overcommit") == 0)
 		{
 			if (dovercommit)
 				ereport(ERROR,
@@ -790,12 +790,12 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dovercommit = defel;
 			else
-				dovercommit = makeDefElem("overcommit", 
+				dovercommit = makeDefElem("cost_overcommit", 
 										  (Node *)
 										  makeInteger(FALSE));
 
 		}
-		else if (strcmp(defel->defname, "ignorecostlimit") == 0)
+		else if (strcmp(defel->defname, "min_cost") == 0)
 		{
 			if (dignorelimit)
 				ereport(ERROR,
@@ -804,7 +804,7 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dignorelimit = defel;
 			else
-				dignorelimit = makeDefElem("ignorecostlimit", 
+				dignorelimit = makeDefElem("min_cost", 
 										   (Node *)
 										   makeFloat(INVALID_RES_LIMIT_STRING));
 
