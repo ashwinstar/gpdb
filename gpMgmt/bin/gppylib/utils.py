@@ -37,6 +37,16 @@ def toNonNoneString(value) :
         return ""
     return str(value)
 
+#
+# if value is None then an exception is raised
+#
+# otherwise value is returned
+#
+def checkNotNone(label, value):
+    if value is None:
+        raise Exception( label + " is None")
+    return value
+
 #############
 def parseSingleFile(line):
     ph=None 

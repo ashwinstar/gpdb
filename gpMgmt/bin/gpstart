@@ -393,12 +393,10 @@ class GpStart:
             self.success_seg_status = []
             
             self._convert_quiesced_segments(False, mirrorDbs)
-            self._process_segment_start()
+            self._process_segment_start() # todo: process conversion results correctly
             self._convert_quiesced_segments(True, primaryDbs)
             self._process_segment_start()
-            
             # todo MIRRORING: check to see which conversions worked, get some results back from the segments
-            # todo MIRRORING: update configuration with the actual mirror/primary dbs used and their states
             
         else:
             # bring up primaries in mirrorless mode
