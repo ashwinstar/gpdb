@@ -462,6 +462,10 @@ gfile_open(gfile_t *fd, const char *fpath, int for_write, int *response_code,
 	{
 		do
 		{
+            		int syncFlag = 0;
+#ifndef WIN32
+			syncFlag = O_SYNC;
+#endif
 			if (for_write)
 				fd->fd.filefd = open(fpath, O_WRONLY | O_CREAT | O_BINARY | O_APPEND | O_SYNC, S_IRUSR | S_IWUSR);
 			else
