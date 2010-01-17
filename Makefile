@@ -163,7 +163,7 @@ rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email
 rhel5_x86_64_CONFIGFLAGS=--enable-email
 sol10_x86_64_CONFIGFLAGS=--enable-email
 sol_x86_64_CONFIGFLAGS=--enable-email
-suse10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
+suse10_x86_64_CONFIGFLAGS=--enable-email
 linux_x64_64_CONFIGFLAGS=--enable-email
 osx104_x86_CONFIGFLAGS=--enable-email
 osx105_x86_CONFIGFLAGS=--enable-email --enable-snmp	
