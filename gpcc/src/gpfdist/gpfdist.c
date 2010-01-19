@@ -217,13 +217,16 @@ struct session_t
 	apr_pool_t* 	pool;
 	const char* 	key;
 	const char* 	tid;
-	const char* 	path;		/* path requeested */
+	const char* 	path;			/* path requested */
 	fstream_t* 		fstream;
-	int 			is_error;	/* error flag */
-	int 			nrequest;	/* # requests attached to this session */
-	int				is_get;     /* true for GET, false for POST */
-	int				should_end;	/* a "final" req came in. we need to close */
-	apr_time_t		mtime; 		/* time when nrequest was modified */
+	int 			is_error;		/* error flag */
+	int 			nrequest;		/* # requests attached to this session */
+	int				is_get;     	/* true for GET, false for POST */
+	int*			active_segids;	/* array indexed by segid. used for write operations
+									   to indicate which segdbs are writing and when each
+									   is done (sent a final request) */
+	int				maxsegs; 		/* same as request->totalsegs. length of active_segs arr */
+	apr_time_t		mtime; 			/* time when nrequest was modified */
 };
 
 /*  An http request */
@@ -242,6 +245,8 @@ struct request_t
 	int 			gp_proto; 	/* the protocol to use, sent from client */
 	int				is_get;     /* true for GET, false for POST */
 	int				is_final;	/* the final POST request. a signal from client to end session */
+	int				segid;		/* the segment id of the segdb with the request */
+	int				totalsegs;	/* the total number of segdbs */
 
 	struct
 	{
@@ -268,6 +273,8 @@ static int session_attach(request_t* r);
 static void session_detach(request_t* r);
 static void session_end(session_t* s, int error);
 static void session_free(session_t* s);
+static void session_active_segs_dump(session_t* session);
+static int session_active_segs_isempty(session_t* session);
 static int request_validate(request_t *r);
 static int request_set_path(request_t *r, const char* d, char* p, char* pp, char* path);
 static int request_parse_gp_headers(request_t *r, int opt_g);
@@ -851,17 +858,18 @@ static void session_detach(request_t* r)
 
 			session_free(session);
 		}
-		else if(!session->is_get && session->should_end && session->nrequest == 0)
+		else if(!session->is_get && 
+				session->nrequest == 0 && 
+				session_active_segs_isempty(session))
 		{
 			/* 
-			 * free the session if this is a POST request 
-			 * and it's the last request for this session,
-			 * and the client signaled us that it's the end
-			 * of operation. 
+			 * free the session if this is a POST request and it's 
+			 * the last request for this session (we can tell is all
+			 * segments sent a "done" request by calling session_active_isempty.
+			 * (nrequest == 0 test isn't sufficient by itself).
 			 * 
-			 * this is needed in order to make sure to close
-			 * the out file when we're done writing. (only
-			 * in write operations, not in read).
+			 * this is needed in order to make sure to close the out file 
+			 * when we're done writing. (only in write operations, not in read).
 			 */
 			session_free(session);
 		}
@@ -1013,6 +1021,14 @@ static int session_attach(request_t* r)
 
 		memset(session, 0, sizeof(*session));
 
+		/* allocate active_segdb array (session member) */
+		session->active_segids = (int *) apr_palloc(pool, sizeof(int) * r->totalsegs);
+		
+		if (session->active_segids == 0)
+			gfatal(FLINE, "out of memory when allocating active_segids array");
+		
+		memset(session->active_segids, 0, sizeof(int) * r->totalsegs);
+		
 		/* initialize session values */
 		session->tid = apr_pstrdup(pool, r->tid);
 		session->path = apr_pstrdup(pool, r->path);
@@ -1020,12 +1036,11 @@ static int session_attach(request_t* r)
 		session->fstream = fstream;
 		session->pool = pool;
 		session->is_get = r->is_get;
-		session->should_end = r->is_final; /* should be false */
-
+		session->active_segids[r->segid] = 1; /* mark this segid as active */
+		session->maxsegs = r->totalsegs;
+		
 		if (session->tid == 0 || session->path == 0 || session->key == 0)
-		{
 			gfatal(FLINE, "out of memory");
-		}
 
 		/* insert into hashtable */
 		apr_hash_set(gcb.session.tab, session->key, APR_HASH_KEY_STRING, session);
@@ -1068,11 +1083,52 @@ static int session_attach(request_t* r)
 
 	/* one more request for session */
 	session->nrequest++;
-	session->should_end = r->is_final;
+	session->active_segids[r->segid] = !r->is_final;
 	session->mtime = apr_time_now();
 	r->session = session;
 	
+	if(!session->is_get)
+		session_active_segs_dump(session);
+	
 	return 0;
+}
+
+/*
+ * Dump all the segdb ids that currently participate
+ * in this session.
+ */
+static void session_active_segs_dump(session_t* session)
+{
+	if(opt.v)
+	{
+		int i = 0;
+		
+		gprint("active segids in session: ");
+		
+		for (i = 0 ; i < session->maxsegs ; i++)
+		{
+			if(session->active_segids[i] == 1)
+				printf("%d ", i);
+		}
+		printf("\n");
+	}
+}
+
+/*
+ * Is there any segdb still sending us data? or are
+ * all of them done already? if empty all are done.
+ */
+static int session_active_segs_isempty(session_t* session)
+{
+	int i = 0;
+		
+	for (i = 0 ; i < session->maxsegs ; i++)
+	{
+		if(session->active_segids[i] == 1)
+			return 0; /* not empty */
+	}
+	
+	return 1; /* empty */
 }
 
 /*
@@ -1820,12 +1876,10 @@ static void handle_post_request(request_t *r, int header_end)
 	int wrote = 0;
 	
 	/* 
-	 * If this request is an "end-flag" (has GP-DONE header set)
-	 * it has already set the is_done flag in the session, telling
-	 * the session that is get close all file and free itself in when
-	 * the last request of the session is finishing.
-	 * we send our success response and end the request, no need to
-	 * process anything here.
+	 * If this request is a "done" request (has GP-DONE header set)
+	 * it has already marked this segment as inactive in this session.
+	 * This is all that a "done" request should do. no data to process.
+	 * we send our success response and end the request.
 	 */
 	if(r->is_final)
 		goto done_processing_request;
@@ -2084,6 +2138,10 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 			gp_proto = r->in.req->hvalue[i];
 		else if (0 == strcmp("X-GP-DONE", r->in.req->hname[i]))
 			r->is_final = 1;
+		else if (0 == strcmp("X-GP-SEGMENT-COUNT", r->in.req->hname[i]))
+			r->totalsegs = atoi(r->in.req->hvalue[i]);
+		else if (0 == strcmp("X-GP-SEGMENT-ID", r->in.req->hname[i]))
+			r->segid = atoi(r->in.req->hvalue[i]);
 	}
 
 	r->gp_proto = strtol(gp_proto, 0, 0);
@@ -2124,6 +2182,7 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 
 	return 0;
 }
+
 /*
  * gpfdist main
  *
