@@ -2135,7 +2135,8 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 				if (policy != NULL)
 				{
 					int attr_ofst = 0;
-					Assert(policy->nattrs > 0 && "there is one or more distribution attributes");
+
+					Assert(policy->nattrs >= 0 && "the number of distribution attributes is not negative");
 
 					/* Iterate over all distribution attribute offsets */
 					for (attr_ofst = 0; attr_ofst < policy->nattrs; attr_ofst++)
