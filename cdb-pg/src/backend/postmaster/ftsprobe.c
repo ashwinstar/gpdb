@@ -89,9 +89,8 @@ static pid_t ftsprobe_forkexec(void);
 NON_EXEC_STATIC void FtsProbeMain(int argc, char *argv[]);
 
 static void FtsProbeLoop(void);
-static bool FtsTestOneSegment(CdbComponentDatabaseInfo *failedDBInfo, char *dbName, char *userName);
 
-static char FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo);
+static char FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo);
 
 static void retrieveUserAndDb(char **probeUser);
 static bool probeSegments(CdbComponentDatabases *cdb_component_dbs);
@@ -112,26 +111,7 @@ static char failover_strategy='n';
 
 static CdbComponentDatabases *cdb_component_dbs = NULL;
 
-/*
- * macros for manipulations of fts-probe bitmaps
- * bitmaps are based on uint64.
- *
- * Note: it would be nice if we had atomic bit-ops for the
- * multithreaded probe, but we when manipulating these from
- * multithreaded code it is important to have a lock.
- */
-#define FTS_BM_WORD_COUNT ((FTS_MAX_DBS) / 64) /* one bit per db, 64-bit "words" */
-#define FTS_BM_WORD(id) ((id)>>6)
-#define FTS_BM_BIT(id) ((uint64)1 << ((id) & 0x3f))
-
-#define FTS_BM_SET(id, bm) ((bm)[FTS_BM_WORD(id)] = ((bm)[FTS_BM_WORD(id)]) | FTS_BM_BIT(id))
-#define FTS_BM_CLR(id, bm) ((bm)[FTS_BM_WORD(id)] &= ~FTS_BM_BIT(id))
-
-#define FTS_BM_TEST(id, bm) (((bm)[FTS_BM_WORD(id)] & FTS_BM_BIT(id)) ? true : false)
-
-typedef uint64 fts_bitmap_t[FTS_BM_WORD_COUNT];
-
-static bool probePublishUpdate(fts_bitmap_t map);
+static bool probePublishUpdate(uint8 *scan_status);
 
 struct segmentStatusChange {
 	int	dbid;
@@ -608,154 +588,11 @@ retrieveUserAndDb(char **probeUser)
 	Assert(*probeUser != NULL);
 }
 
-/*
- * This is called from several different threads: ONLY USE THREADSAFE FUNCTIONS INSIDE.
- */
-static bool
-FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName)
-{
-   	PGconn		*conn;
-	char		*errorMsg;
-	int			msgLen;
-	bool		ret = true;
-	PQExpBuffer	buffer;
+#define PROBE_SEGMENT	(0x80)
+#define PROBE_PENDING	(0x40)
+#define PROBE_DONE		(0x20)
 
-	ret = FtsTestOneSegmentNew(dbInfo);
-
-	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-		write_log("tested segment %d, got result: %s", dbInfo->dbid, ret ? "GOOD" : "BAD");
-				
-	return ret;
-
-	/* Old probe code starts here */
-
-	buffer = createPQExpBuffer();
-
-	if (buffer == NULL)
-	{
-		write_log("FTSPROBE: allocation failed, assuming probe target is alive.");
-		return true;
-	}
-
-	/*
-	 * Build the connection string
-	 */
-	appendPQExpBuffer(buffer, "options='-c gp_session_role=UTILITY' ");
-
-	if (dbInfo->hostname == NULL)
-		appendPQExpBufferStr(buffer, "host='' ");
-	else if (isdigit(dbInfo->hostname[0]))
-		appendPQExpBuffer(buffer, "hostaddr=%s ", dbInfo->hostname);
-	else
-		appendPQExpBuffer(buffer, "host=%s ", dbInfo->hostname);
-
-	appendPQExpBuffer(buffer, "port=%u ", dbInfo->port);
-	appendPQExpBuffer(buffer, "dbname=%s ", dbName);
-	appendPQExpBuffer(buffer, "user=%s ", userName);
-	appendPQExpBuffer(buffer, "connect_timeout=%d ", gp_segment_connect_timeout);
-
-	conn = PQconnectdb(buffer->data);
-
-	do
-	{
-		if (PQstatus(conn) == CONNECTION_OK)
-		{
-			ret = true;
-			break;
-		} 
-		else if (PQstatus(conn) != CONNECTION_BAD)
-		{
-			/* Don't use elog, it's not thread-safe */
-			write_log("FTS: test connection status unknown, dbid %d dbname %s error message %s (%d)",
-					  dbInfo->dbid, dbName, PQerrorMessage(conn), PQstatus(conn));
-			ret = true;
-			break;
-		}
-
-		errorMsg = PQerrorMessage(conn);
-		if (errorMsg == NULL)
-		{
-			write_log("FTS: test connection can't parse error message");
-			errorMsg = "";
-		}
-
-		msgLen = strlen(errorMsg);
-
-		if (DEBUG3 >= log_min_messages)
-		{
-			write_log("FtsTestOneSegment: connection failed with message ('%s':%d)",
-					  errorMsg, msgLen);
-		}
-
-		/*
-		 * If we get a network error (do we really need a
-		 * comprehensive list here ?) or a "FATAL" database error,
-		 * then it is a real error, otherwise it isn't. See
-		 * fe-connect.c for the details: all fatal network error start
-		 * with "could not":
-		 *
-		 * "could not create" -- socket error
-		 * "could not translate" -- DNS error
-		 * "could not connect" -- network error
-		 * "could not get" -- getsockopt error
-		 * "could not set" -- setsockopt error
-		 * "could not send" -- libpq protocol error
-		 *
-		 * MPP-5751: some timeouts (real failures) fail to set a real
-		 * message, so we check msgLen for that case. If we don't have
-		 * a message, assume that this is a real failure.
-		 */
-		if (msgLen > 0 &&
-			strstr(errorMsg, "FATAL:") == NULL &&
-			strstr(errorMsg, "could not ") == NULL &&
-			strcmp(errorMsg, "timeout expired\n") != 0)
-		{
-			/* non-fatal connection errors are ignored */
-			if (DEBUG3 >= log_min_messages)
-				write_log("FtsTestOneSegment: nonfatal error, ignoring (%d, '%s':%d)", PQsocket(conn), errorMsg, msgLen);
-
-			ret = true;
-			break;
-		}
-
-		if (strstr(errorMsg, "the database system is starting up") != NULL)
-		{
-			/* don't consider this a failure, essentially we want to force a retry here */
-			ret = true;
-			break;
-		}
-
-		/*
-		 * MPP-4980 (and others): These are just indications that the
-		 * system is busy, not that we're down.
-		 */
-		if (strstr(errorMsg, "Out of memory") != NULL ||
-			strstr(errorMsg, "could not fork new process") != NULL ||
-			strstr(errorMsg, "connection limit exceeded for non-superusers") != NULL ||
-			strstr(errorMsg, "too many clients already") != NULL)
-		{
-			/* don't consider this a failure, essentially we want to force a retry here */
-			ret = true;
-			break;
-		}
-
-		/* This is a real failure for which a reconfigure may be warranted */
-		if (msgLen > 0)
-			write_log("FTS: test connection failed, dbid %d dbname %s error message '%s':%d",
-					  dbInfo->dbid, dbName, errorMsg, msgLen);
-		else
-			write_log("FTS: test connection failed, dbid %d dbname %s: Segment Connect Timeout (timeout set to %d)",
-					  dbInfo->dbid, dbName, gp_segment_connect_timeout);
-
-		ret = false;
-	} while (0);
-
-	PQfinish(conn);
-
-	destroyPQExpBuffer(buffer);
-
-	return ret;
-}
+#define PROBE_ALIVE		(0x01)
 
 enum probe_state_t { CONNECTING, CONNECTED, REQUEST_SENT, RESPONSE_READY };
 
@@ -763,9 +600,10 @@ enum probe_state_t { CONNECTING, CONNECTED, REQUEST_SENT, RESPONSE_READY };
  * This is called from several different threads: ONLY USE THREADSAFE FUNCTIONS INSIDE.
  */
 static char
-FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
+FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 {
-	bool	done=false, ret = true;
+	bool	done=false;
+	char	ret;
 	enum	probe_state_t probe_state = CONNECTING;
 
 	int		n, fd;
@@ -783,7 +621,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 	{
 		/* something happened ? */
 		write_log("Couldn't get socket to start probe.");
-		return true;
+		return (PROBE_DONE | PROBE_ALIVE);
 	}
 
     if (!pg_set_noblock(fd))
@@ -791,7 +629,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 		/* something happened ? */
 		write_log("Couldn't mark socket non-blocking.");
 		close(fd);
-		return true;
+		return (PROBE_DONE | PROBE_ALIVE);
 	}
 
     /*
@@ -804,7 +642,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 		/* something happened ? */
 		write_log("Couldn't get IP-address of probe target.");
 		close(fd);
-		return true;
+		return (PROBE_DONE | PROBE_ALIVE); /* alive */
     }
     saddr.sin_port = htons((unsigned short)dbInfo->port);
 
@@ -820,7 +658,8 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 		/* something happened ? */
 		write_log("Connect() failure. %d", errno);
 		close(fd);
-		return false;
+
+		return PROBE_DONE; /* NOT alive */
 	}
 
   	gettimeofday(&startTime, NULL);
@@ -857,7 +696,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 						 * assume that our target is up -- we'll have
 						 * to pick up any failure on the next probe
 						 */
-						ret = true;
+						ret = PROBE_ALIVE;
 						done = true;
 					}
 				}
@@ -891,12 +730,12 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 							 * assume that our target is up -- we'll have
 							 * to pick up any failure on the next probe
 							 */
-							ret = true;
+							ret = PROBE_ALIVE;
 						}
 						else
 						{
 							/* errors other than signals: assume that the target is down. */
-							ret = false;
+							ret = 0;
 						}
 						break;
 					}
@@ -945,7 +784,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 						 * assume that our target is up -- we'll have
 						 * to pick up any failure on the next probe
 						 */
-						ret = true;
+						ret = PROBE_ALIVE;
 						done = true;
 					}
 				}
@@ -963,7 +802,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 				if (n == 0)
 				{
 					/* peer gave up on us ? */
-					ret = false;
+					ret = 0;
 					done = true;
 					break;
 				}
@@ -975,7 +814,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 						probe_state = REQUEST_SENT;
 						continue;
 					}
-					ret = false;
+					ret = 0;
 					done = true;
 					break;
 				}
@@ -1001,7 +840,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 					if (ntohl(msg_int) != 16)
 					{
 						write_log("Probe protocol violation got length %d", ntohl(msg_int));
-						ret = false;
+						ret = 0;
 						done = true;
 						break;
 					}
@@ -1025,7 +864,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 						write_log("Probe result %s %s %s", getMirrorModeLabel(pm_mode),
 								  getSegmentStateLabel(s_state), getDataStateLabel(d_state));
 
-					ret = true;
+					ret = PROBE_ALIVE;
 					done = true;
 					break;
 				}
@@ -1036,7 +875,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 				 */
 			}
 			default:
-				ret = false;
+				ret = 0;
 				done = true;
 				break;
 		}
@@ -1048,7 +887,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 		elapsed_ms = gettime_elapsed_ms(startTime);
 		if (elapsed_ms > gp_segment_connect_timeout * 1000)
 		{
-			ret = false;
+			ret = 0;
 			done = true;
 			break;
 		}
@@ -1058,7 +897,7 @@ FtsTestOneSegmentNew(CdbComponentDatabaseInfo *dbInfo)
 	shutdown(fd, SHUT_RDWR);
 	close(fd);
 
-	return ret;
+	return (PROBE_DONE | ret);
 }
 
 static inline bool
@@ -1087,13 +926,15 @@ pthread_t *threads=NULL;
 static pthread_mutex_t	worker_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct threadWorkerInfo {
-	uint64 *workToDo;
-	uint64 *segments_alive;
+	uint8		*scan_status;
 	CdbComponentDatabases *dbs;
 };
 
-static uint64 segments_to_scan[2048]; /* dbid bitmap 64k segments, with mirrors */
-static uint64 segments_alive[2048]; /* dbid bitmap 64k segments, with mirrors */
+/*
+ * one byte of status for each segment, dbids are int2, so we can represent a max
+ * of 32
+ */
+static uint8 scan_status[32768];
 
 static bool
 probeSegments(CdbComponentDatabases *cdb_component_dbs)
@@ -1104,7 +945,7 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 	if (cdb_component_dbs == NULL)
 		return false;
 
-	memset(segments_alive, 0, sizeof(segments_alive));
+	memset(scan_status, 0, sizeof(scan_status));
 
 	/* single threaded */
 	if (gp_fts_probe_threadcount == 1)
@@ -1119,14 +960,13 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 			/* if this is worth scanning, then scan it. */
 			if (segmentToProbe(segInfo, failover_strategy))
 			{
-				if (!FtsTestOneSegment(segInfo, probeDatabase, probeUser))
+				scan_status[segInfo->dbid] = FtsTestOneSegment(segInfo);
+
+				if ((scan_status[segInfo->dbid] & PROBE_ALIVE) == 0)
 				{
 					if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 						elog(LOG, "Found a fault with a segment %d segment-dbid %d", segInfo->segindex, segInfo->dbid);
-					FTS_BM_CLR(segInfo->dbid, segments_alive);
 				}
-				else
-					FTS_BM_SET(segInfo->dbid, segments_alive);
 			}
 		}
 	}
@@ -1146,13 +986,16 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 			segInfo = &cdb_component_dbs->segment_db_info[i];
 
 			if (segmentToProbe(segInfo, failover_strategy))
-				FTS_BM_SET(segInfo->dbid, segments_to_scan);
+			{
+				scan_status[segInfo->dbid] |= PROBE_SEGMENT;
+			}
 			else
-				FTS_BM_CLR(segInfo->dbid, segments_to_scan);
+			{
+				scan_status[segInfo->dbid] |= PROBE_DONE;
+			}
 		}
 
-		worker_info.workToDo = segments_to_scan;
-		worker_info.segments_alive = segments_alive;
+		worker_info.scan_status = scan_status;
 		worker_info.dbs = cdb_component_dbs;
 
 		threads = (pthread_t *)palloc(workers * sizeof(pthread_t));
@@ -1181,7 +1024,7 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 	 * Now we've completed the scan, update shared-memory. if we
 	 * change anything, we return true.
 	 */
-	updated_bitmap = probePublishUpdate(segments_alive);
+	updated_bitmap = probePublishUpdate(scan_status);
 
 	return updated_bitmap;
 }
@@ -1192,6 +1035,7 @@ probeSegmentFromThread(void *arg)
 	CdbComponentDatabaseInfo *segInfo;
 	struct threadWorkerInfo *worker_info;
 	int i;
+	char probe_result;
 
 	worker_info = (struct threadWorkerInfo *)arg;
 
@@ -1210,10 +1054,9 @@ probeSegmentFromThread(void *arg)
 		{
 			segInfo = &worker_info->dbs->segment_db_info[i];
 
-			if (FTS_BM_TEST(segInfo->dbid, worker_info->workToDo))
+			if ((worker_info->scan_status[segInfo->dbid] & PROBE_SEGMENT) == PROBE_SEGMENT)
 			{
-				FTS_BM_CLR(segInfo->dbid, worker_info->workToDo);
-				break;
+				worker_info->scan_status[segInfo->dbid] = PROBE_PENDING;
 			}
 		}
 		pthread_mutex_unlock(&worker_thread_mutex);
@@ -1231,26 +1074,16 @@ probeSegmentFromThread(void *arg)
 			break;
 
 		/* Got a segment to test, test it. */
-		if (!FtsTestOneSegment(segInfo, probeDatabase, probeUser))
+
+		probe_result = FtsTestOneSegment(segInfo);
+		if ((probe_result & PROBE_ALIVE) == 0)
 		{
 			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-				write_log("Found a fault with a segment %d segment-dbid %d", segInfo->segindex, segInfo->dbid);
-
-			/* the FTS_BM_CLR/FTS_BM_SET macros potentially can stomp on each other. */
-			pthread_mutex_lock(&worker_thread_mutex);
-
-			FTS_BM_CLR(segInfo->dbid, worker_info->segments_alive);
-
-			pthread_mutex_unlock(&worker_thread_mutex);
+				write_log("Found a fault with a segment %d segment-dbid %d (status 0x%x)", segInfo->segindex, segInfo->dbid, probe_result);
 		}
-		else
-		{
-			pthread_mutex_lock(&worker_thread_mutex);
-
-			FTS_BM_SET(segInfo->dbid, worker_info->segments_alive);
-
-			pthread_mutex_unlock(&worker_thread_mutex);
-		}
+		pthread_mutex_lock(&worker_thread_mutex);
+		worker_info->scan_status[segInfo->dbid] = probe_result;
+		pthread_mutex_unlock(&worker_thread_mutex);
 	}
 
 	return NULL;
@@ -1276,9 +1109,8 @@ getMirrorEntryByContent(CdbComponentDatabases *cdb_component_dbs, int content, i
 }
 
 static bool
-probePublishUpdate(fts_bitmap_t map)
+probePublishUpdate(uint8 *probe_results)
 {
-	bool at_least_one_failure=false;
 	bool updated_bitmap=false;
 	int i;
 
@@ -1308,10 +1140,8 @@ probePublishUpdate(fts_bitmap_t map)
 			uint8 segStatus;
 
 			/* We're no longer responding to probes ? */
-			if (!FTS_BM_TEST(segInfo->dbid, segments_alive))
+			if ((probe_results[segInfo->dbid] & PROBE_ALIVE) == 0)
 			{
-				at_least_one_failure = true;
-
 				/* segment is down. was it already marked down ? */
 				if (FTS_STATUS_ISALIVE(segInfo->dbid, ftsProbeInfo->fts_status))
 				{
@@ -1343,7 +1173,7 @@ probePublishUpdate(fts_bitmap_t map)
 					 * If we have a mirror, we need to update it (even if it was already primary!)
 					 */
 					if (mirror != NULL &&
-						FTS_BM_TEST(mirror->dbid, segments_alive) &&
+						((probe_results[segInfo->dbid] & PROBE_ALIVE) == PROBE_ALIVE) &&
 						FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
 					{
 						/* update the mirror too */
@@ -1367,8 +1197,6 @@ probePublishUpdate(fts_bitmap_t map)
 				/* was already marked down, no change. */
 			}
 		}
-		else
-			at_least_one_failure = true;
 	}
 
 	/* We're going to use these timestamps below. */
@@ -1489,7 +1317,7 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
 							errmsg("FTS: out of memory")));
 
-		free(entryBuffer->data);
+		destroyPQExpBuffer(entryBuffer);
 		PQfinish(entryConn);
 		entryConn = NULL;
 
@@ -1511,14 +1339,14 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
 							errmsg("FTS: out of memory")));
 
-		free(entryBuffer->data);
+		destroyPQExpBuffer(entryBuffer);
 		PQfinish(entryConn);
 		entryConn = NULL;
 
 		elog(FATAL, "FTS: error connecting to entry db, could not start transaction error: %s", error_message);
 	}
 
-	free(entryBuffer->data);
+	destroyPQExpBuffer(entryBuffer);
 
 	return entryConn;
 }
