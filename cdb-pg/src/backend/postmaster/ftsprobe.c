@@ -1074,6 +1074,7 @@ probeSegmentFromThread(void *arg)
 			if ((worker_info->scan_status[segInfo->dbid] & PROBE_SEGMENT) == PROBE_SEGMENT)
 			{
 				worker_info->scan_status[segInfo->dbid] = PROBE_PENDING;
+				break;
 			}
 		}
 		pthread_mutex_unlock(&worker_thread_mutex);
