@@ -603,7 +603,7 @@ static char
 FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 {
 	bool	done=false;
-	char	ret;
+	char	ret = 0;
 	enum	probe_state_t probe_state = CONNECTING;
 
 	int		n, fd;
