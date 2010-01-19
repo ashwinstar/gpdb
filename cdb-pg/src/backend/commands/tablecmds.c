@@ -241,7 +241,7 @@ typedef struct part_rule_cxt
 
 static void truncate_check_rel(Relation rel);
 static List *MergeAttributes(List *schema, List *supers, bool istemp,
-				List **supOids, List **supconstr, int *supOidCount);
+				List **supOids, List **supconstr, int *supOidCount, GpPolicy *policy);
 static void MergeConstraintsIntoExisting(Relation child_rel, Relation parent_rel);
 static void MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel, List *inhAttrNameList,
 										bool is_partition);
@@ -575,11 +575,12 @@ DefineRelation_int(CreateStmt *stmt,
 
 	/*
 	 * Look up inheritance ancestors and generate relation schema, including
-	 * inherited attributes.
+	 * inherited attributes. Update the offsets of the distribution attributes
+	 * in GpPolicy if necessary.
 	 */
 	schema = MergeAttributes(schema, stmt->inhRelations,
 							 stmt->relation->istemp,
-							 &inheritOids, &old_constraints, &parentOidCount);
+							 &inheritOids, &old_constraints, &parentOidCount, stmt->policy);
 
 	/*
 	 * Create a relation descriptor from the relation schema and create the
@@ -1897,12 +1898,15 @@ truncate_check_rel(Relation rel)
  *		of ColumnDef's.) It is destructively changed.
  * 'supers' is a list of names (as RangeVar nodes) of parent relations.
  * 'istemp' is TRUE if we are creating a temp relation.
+ * 'GpPolicy *' is NULL if the distribution policy is not to be updated
  *
  * Output arguments:
  * 'supOids' receives a list of the OIDs of the parent relations.
  * 'supconstr' receives a list of constraints belonging to the parents,
  *		updated as necessary to be valid for the child.
  * 'supOidCount' is set to the number of parents that have OID columns.
+ * 'GpPolicy' is updated with the offsets of the distribution
+ *      attributes in the new schema
  *
  * Return value:
  * Completed schema list.
@@ -1948,7 +1952,7 @@ truncate_check_rel(Relation rel)
  */
 static List *
 MergeAttributes(List *schema, List *supers, bool istemp,
-				List **supOids, List **supconstr, int *supOidCount)
+				List **supOids, List **supconstr, int *supOidCount, GpPolicy *policy)
 {
 	ListCell   *entry;
 	List	   *inhSchema = NIL;
@@ -2124,6 +2128,27 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 				def->is_not_null |= attribute->attnotnull;
 				/* Default and other constraints are handled below */
 				newattno[parent_attno - 1] = exist_attno;
+
+				/*
+				 * Update GpPolicy
+				 */
+				if (policy != NULL)
+				{
+					Assert(policy->nattrs > 0 && "there is one or more distribution attributes");
+
+					int attr_ofst = 0;
+					/* Iterate over all distribution attribute offsets */
+					for (attr_ofst = 0; attr_ofst < policy->nattrs; attr_ofst++)
+					{
+						/* Check if any distribution attribute has higher offset than the current */
+						if (policy->attrs[attr_ofst] > child_attno)
+						{
+							Assert(policy->attrs[attr_ofst] > 0 && "index should not become negative");
+							policy->attrs[attr_ofst]--;
+						}
+					}
+				}
+
 			}
 			else
 			{
@@ -15421,7 +15446,7 @@ atpxPart_validate_spec(
 													RelationGetNamespace(rel)),
 									pstrdup(RelationGetRelationName(rel)), -1)),
 							false,
-							&inheritOids, &old_constraints, &parentOidCount);
+							&inheritOids, &old_constraints, &parentOidCount, NULL);
 
 	pcxt->columns = schema;
 
