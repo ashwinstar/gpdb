@@ -3839,11 +3839,6 @@ fi
 
 if test "$GCC" = yes -a "$ICC" = no; then
   CFLAGS="$CFLAGS -Wall -Wmissing-prototypes -Wpointer-arith "
-  # These work in some but not all gcc versions
-    { $as_echo "$as_me:$LINENO: checking if $CC supports -Wdeclaration-after-statement" >&5
-$as_echo_n "checking if $CC supports -Wdeclaration-after-statement... " >&6; }
-pgac_save_CFLAGS=$CFLAGS
-CFLAGS="$pgac_save_CFLAGS -Wdeclaration-after-statement"
 cat >conftest.$ac_ext <<_ACEOF
 /* confdefs.h.  */
 _ACEOF
@@ -29827,7 +29822,8 @@ $debug ||
 if test -n "$CONFIG_FILES"; then
 
 
-ac_cr=''
+ac_cr='
+'
 ac_cs_awk_cr=`$AWK 'BEGIN { print "a\rb" }' </dev/null 2>/dev/null`
 if test "$ac_cs_awk_cr" = "a${ac_cr}b"; then
   ac_cs_awk_cr='\\r'
