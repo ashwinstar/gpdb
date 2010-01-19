@@ -996,6 +996,7 @@ typedef struct GpId
  * Global variable declaration for the data for the single row of gp_id table
  */
 extern GpId GpIdentity;
+#define UNINITIALIZED_GP_IDENTITY_VALUE (-10000)
 
 
 /* Stores the listener port that this process uses to listen for incoming

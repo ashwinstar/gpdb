@@ -2957,7 +2957,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&GpIdentity.dbid,
-		-1, INT_MIN, INT_MAX, NULL, NULL
+		UNINITIALIZED_GP_IDENTITY_VALUE, INT_MIN, INT_MAX, NULL, NULL
 	},
 
     {
@@ -2967,7 +2967,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&GpIdentity.segindex,
-		-1, -1, INT_MAX, NULL, NULL
+		UNINITIALIZED_GP_IDENTITY_VALUE, INT_MIN, INT_MAX, NULL, NULL
 	},
 
     {
@@ -2977,7 +2977,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&GpIdentity.numsegments,
-		-1, -1, INT_MAX, NULL, NULL
+		UNINITIALIZED_GP_IDENTITY_VALUE, INT_MIN, INT_MAX, NULL, NULL
 	},
 
 	{

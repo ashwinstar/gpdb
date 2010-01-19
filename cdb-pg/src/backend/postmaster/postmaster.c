@@ -979,21 +979,26 @@ PostmasterMain(int argc, char *argv[])
 	{
 	    ereport(FATAL,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("dbid (from 'b' option) is not specified or is invalid (must be >= 0, or >= -1 in utility mode)")));
+             errmsg("dbid (from -b option) is not specified or is invalid.  This value must be >= 0, or >= -1 in utility mode.  "
+             "The dbid value to pass can be determined from this server's entry in the segment configuration; it may be -1 if running in utility mode.")));
 	}
 
     if ( GpIdentity.segindex < -1 ) /* -1 is okay -- that means the master */
 	{
 	    ereport(FATAL,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("contentid (from 'C' option) is not specified or is invalid (must be >= -1)")));
+             errmsg("contentid (from -C option) is not specified or is invalid.  This value must be >= -1.  "
+             "The contentid value to pass can be determined this server's entry in the segment configuration; it may be -1 for a master, or in utility mode."
+             )));
 	}
 
 	if ( GpIdentity.numsegments < 0 )
 	{
 	    ereport(FATAL,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("numContentsInCluster (from 'z' option) is not specified or is invalid (must be >= 0)")));
+             errmsg("numContentsInCluster (from -z option) is not specified or is invalid.  This value must be >= 0.  "
+                "The value to pass can be determined by determining the number of primary segments in the cluster."
+             )));
 	}
 
 	/*
