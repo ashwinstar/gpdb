@@ -767,6 +767,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 				n = poll(&nfd, 1, timeout);
 				if (n == 0)
 				{
+					/* timeout */
 					break;
 				}
 				else if (n == 1 && (nfd.events & POLLIN))
@@ -885,6 +886,9 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 
 		/* If connection takes more than the gp_segment_connect_timeout, we fail. */
 		elapsed_ms = gettime_elapsed_ms(startTime);
+
+		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+			write_log("Probe elapsed time: %d milliseconds", elapsed_ms);
 		if (elapsed_ms > gp_segment_connect_timeout * 1000)
 		{
 			ret = 0;
@@ -991,7 +995,7 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 			}
 			else
 			{
-				scan_status[segInfo->dbid] |= PROBE_DONE;
+				scan_status[segInfo->dbid] |= PROBE_DONE & PROBE_ALIVE;
 			}
 		}
 
@@ -1019,6 +1023,19 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 	/* if we're shutting down, just exit. */
 	if (shutdown_requested)
 		return false;
+
+	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+	{
+		elog(LOG, "probeSegments, complete results look like:");
+		for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
+		{
+			CdbComponentDatabaseInfo *segInfo = NULL;
+
+			segInfo = &cdb_component_dbs->segment_db_info[i];
+
+			elog(LOG, "segment dbid %d status 0x%x", segInfo->dbid, scan_status[segInfo->dbid]);
+		}
+	}
 
 	/*
 	 * Now we've completed the scan, update shared-memory. if we
@@ -1170,10 +1187,11 @@ probePublishUpdate(uint8 *probe_results)
 					}
 
 					/*
-					 * If we have a mirror, we need to update it (even if it was already primary!)
+					 * If we have a mirror (which is alive), we need
+					 * to update it (even if it was already primary!)
 					 */
 					if (mirror != NULL &&
-						((probe_results[segInfo->dbid] & PROBE_ALIVE) == PROBE_ALIVE) &&
+						((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE) &&
 						FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
 					{
 						/* update the mirror too */
@@ -1609,12 +1627,14 @@ Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int cha
 			 *
 			 * Nothing to do here.
 			 */
-			Assert(!new_pri);
+			if (new_pri)
+				elog(FATAL, "Segment with dbid %d failed *and* was marked as the new primary!", changes[i].dbid);
 		}
 		else if (new_alive && !old_alive)
 		{
 			/* this is a segment that came back up ? Nothing to do here. */
-			Assert(!old_pri);
+			if (old_pri)
+				elog(FATAL, "Segment with dbid %d came back from the dead *and* was marked as the old primary!", changes[i].dbid);
 		}
 		else if (new_alive && old_alive)
 		{
