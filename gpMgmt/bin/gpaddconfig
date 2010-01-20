@@ -3,16 +3,20 @@
 # Copyright (c) Greenplum Inc 2009. All Rights Reserved. 
 
 '''
-USAGE:   gpaddconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY_TOADD [--value CONFIG_ENTRY_VALUE] [--removeonly] [--skipvalidation] [--list] [--verbose] [--debug] [--help]
+USAGE:   gpaddconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY_TOADD [--value CONFIG_ENTRY_VALUE] [--mastervalue CONFIG_ENTRY_VALUE] [--removeonly] [--skipvalidation] [--list] [--verbose] [--debug] [--help] 
 
 # set the shared_buffers setting to 250MB
 EXAMPLE: gpaddconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB
+
+# set the shared_buffers setting to 250MB on segs and 100MB on master
+EXAMPLE: gpaddconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB --mastervalue 100MB
 
 # comment out all instances of the shared_buffers setting
 EXAMPLE: gpaddconfig --directory /data/master/gp-1 --entry shared_buffers --removeonly
 
 # same examples using short form options
 EXAMPLE: gpaddconfig -d /data/master/gp-1 -e shared_buffers -v 250MB
+EXAMPLE: gpaddconfig -d /data/master/gp-1 -e shared_buffers -v 250MB -m 100MB
 EXAMPLE: gpaddconfig -d /data/master/gp-1 -e shared_buffers -r
 
 # show all available gucs
@@ -53,6 +57,7 @@ def parseargs():
     parser.add_option('--debug', action='store_true')
     parser.add_option('-e', '--entry', type='string')
     parser.add_option('-v', '--value', type='string')
+    parser.add_option('-m', '--mastervalue', type='string')
     parser.add_option('-d', '--directory', type='string')
     parser.add_option('-r', '--removeonly', action='store_true')
     parser.add_option('-l', '--list', action='store_true')
@@ -95,6 +100,9 @@ def parseargs():
         print "--value or --removeonly must be specified.  Check the usage below:"
         print __doc__
         parser.exit()
+
+    if options.value and (not options.mastervalue):
+        options.mastervalue = options.value
 
     return options
 
@@ -224,12 +232,12 @@ try:
         pool.addCommand(cmd)
 
     verbosePrint(options, gparray.master.hostname, gparray.master.hostname, gparray.master.datadir)
-    cmd = GpAddConfigScript("master", gparray.master.datadir, options.entry, options.value, options.removeonly, ctxt=REMOTE, remoteHost=gparray.master.hostname)
+    cmd = GpAddConfigScript("master", gparray.master.datadir, options.entry, options.mastervalue, options.removeonly, ctxt=REMOTE, remoteHost=gparray.master.hostname)
     pool.addCommand(cmd)
 
     if gparray.standbyMaster:
         verbosePrint(options, gparray.standbyMaster.hostname, gparray.standbyMaster.hostname, gparray.standbyMaster.datadir)
-        cmd = GpAddConfigScript("standbymaster", gparray.standbyMaster.datadir, options.entry, options.value, options.removeonly, ctxt=REMOTE, remoteHost=gparray.standbyMaster.hostname)
+        cmd = GpAddConfigScript("standbymaster", gparray.standbyMaster.datadir, options.entry, options.mastervalue, options.removeonly, ctxt=REMOTE, remoteHost=gparray.standbyMaster.hostname)
         pool.addCommand(cmd)
 
     pool.join()
