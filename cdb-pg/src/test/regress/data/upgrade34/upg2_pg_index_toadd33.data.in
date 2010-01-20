@@ -18,8 +18,8 @@ indexrelid|indrelid|indnatts|indisunique|indisprimary|indisclustered|indisvalid|
 6057|6056|2|f|f|f|t|1 2|1989 1989|\N|\N
 6058|6056|3|t|f|f|t|1 2 3|1989 1989 1986|\N|\N
 6061|6059|1|t|f|f|t|-2|1989|\N|\N
-6062|6059|1|t|f|f|t|1|1976|\N|\N
-6063|6059|1|t|f|f|t|2|1986|\N|\N
+6062|6059|1|t|f|f|t|2|1976|\N|\N
+6063|6059|1|t|f|f|t|1|1986|\N|\N
 6064|6060|1|t|f|f|t|-2|1989|\N|\N
 6065|6060|1|f|f|f|t|1|1989|\N|\N
 6066|6060|1|f|f|f|t|2|1976|\N|\N

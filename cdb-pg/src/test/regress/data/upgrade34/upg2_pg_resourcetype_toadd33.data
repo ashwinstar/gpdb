@@ -1,7 +1,7 @@
-restypid|resname|resrequired|reshasdefault|reshasdisable|resdefaultsetting|resdisabledsetting
-6454|1|active_statements|f|t|t|-1|-1
-6455|2|max_cost|f|t|t|-1|-1
-6456|3|min_cost|f|t|t|-1|-1
-6457|4|cost_overcommit|f|t|t|-1|-1
-6458|5|priority|f|t|f|medium|\N
+resname|restypid|resrequired|reshasdefault|reshasdisable|resdefaultsetting|resdisabledsetting
+6454|active_statements|1|f|t|t|-1|-1
+6455|max_cost|2|f|t|t|-1|-1
+6456|min_cost|3|f|t|t|-1|-1
+6457|cost_overcommit|4|f|t|t|-1|-1
+6458|priority|5|f|t|f|medium|\N
 \.

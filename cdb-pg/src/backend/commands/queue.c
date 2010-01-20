@@ -84,6 +84,72 @@ bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
 	return (bStat);
 } /* end GetResourceTypeByName */
 
+static 
+bool ValidPriority(char			*pResSetting)
+{
+	char *priority_vals[] = {"MAX",
+							 "HIGH",
+							 "MEDIUM",
+							 "LOW",
+							 "MIN",
+							 NULL};
+	int ii				  = 0;
+
+	char *pval = priority_vals[ii]; 
+
+	while (pval)
+	{
+		if (0 == pg_strcasecmp(pval, pResSetting))
+			return true;
+		pval = priority_vals[++ii]; 
+	}
+	return false;
+}
+
+/* ValidateResqueueCapabilityEntry
+ *
+ * Validate the resource setting for a pg_resqueuecapability entry.
+ * Insert calls to separate per-resourcetype validation functions
+ * here.
+ */
+static
+void ValidateResqueueCapabilityEntry(int			 resTypeInt,
+									 char			*pResSetting)
+{
+	bool		 bValid = true;
+	char		*restyp = "unknown";
+
+	switch(resTypeInt)
+	{
+		case PG_RESRCTYPE_ACTIVE_STATEMENTS:/* rsqcountlimit: count  */
+		case PG_RESRCTYPE_MAX_COST:			/* rsqcostlimit: max_cost */
+		case PG_RESRCTYPE_MIN_COST:			/* rsqignorecostlimit: min_cost */
+		case PG_RESRCTYPE_COST_OVERCOMMIT:	/* rsqovercommit: cost_overcommit*/
+			break;
+
+		/* start of "pg_resourcetype" entries... */
+		case PG_RESRCTYPE_PRIORITY:			/* backoff.c: priority queue */
+			bValid = ValidPriority(pResSetting);
+			restyp = "PRIORITY";
+			break;				
+
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("unknown resource type \"%d\"",
+							resTypeInt)));
+
+			break;
+	}
+	
+	if (!bValid)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Invalid parameter value \"%s\" for "
+						"resource type \"%s\"",
+						pResSetting, restyp)));
+
+}
 
 /* MPP-6923: */
 /* AddUpdResqueueCapabilityEntryInternal:
@@ -121,6 +187,8 @@ void AddUpdResqueueCapabilityEntryInternal(
 	/* set this column to update */
 	new_record_repl[Anum_pg_resqueuecapability_ressetting - 1]  = true;
 
+	ValidateResqueueCapabilityEntry(resTypeInt, pResSetting);
+
 	if (HeapTupleIsValid(old_tuple))
 	{
 		new_tuple = heap_modify_tuple(old_tuple, 
@@ -143,14 +211,14 @@ void AddUpdResqueueCapabilityEntryInternal(
 	if (HeapTupleIsValid(old_tuple))
 		heap_freetuple(new_tuple);
 
-
 } /* end AddUpdResqueueCapabilityEntryInternal */
 				
 /* MPP-6923: */				  
 static 
 void AlterResqueueCapabilityEntry(Node			*stmt,
 								  Oid			 queueid,
-								  ListCell		*initcell)
+								  ListCell		*initcell,
+								  bool			 bCreate)
 {
 	ListCell	*lc;
 	List		*elems	   = NIL;
@@ -161,7 +229,7 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 	SysScanDesc	 scan;
 	Relation	 rel;
 	bool		 bWithout  = false;
-
+	TupleDesc	 tupdesc;
 
 #ifdef USE_ASSERT_CHECKING
 	{
@@ -186,6 +254,10 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		if (!bWithout && (strcmp(defel->defname, "withoutliststart") == 0))
 		{
 			bWithout = true;
+
+			rel = heap_open(ResourceTypeRelationId, RowExclusiveLock);
+			tupdesc = RelationGetDescr(rel);
+
 			goto L_loop_cont;
 		}
 
@@ -206,7 +278,86 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 							defel->defname)));
 
 		pKeyVal = makeString(defel->defname);
-		pStrVal = makeString(defGetString(defel));
+
+		/* WITHOUT clause value determined in pg_resourcetype */
+		if (!bWithout)
+			pStrVal = makeString(defGetString(defel));
+		else
+		{
+			pStrVal = NULL; /* if NULL, delete entry from
+							 * pg_resqueuecapability 
+							 */
+
+			ScanKeyInit(&key[0],
+						Anum_pg_resourcetype_restypid,
+						BTEqualStrategyNumber, 
+						F_INT2EQ,
+						Int16GetDatum(resTypeInt));
+	
+			scan = systable_beginscan(rel,
+									  ResourceTypeRestypidIndexId,
+									  /* XXX XXX XXX XXX : snapshotnow ? */
+									  true, SnapshotNow, 1, key);
+
+			while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+			{
+				text	*shutoff_text	  = NULL;
+				char	*shutoff_str	  = NULL;
+				Datum	 shutoff_datum;
+				bool	 isnull			  = false;
+				Form_pg_resourcetype rtyp = 
+						(Form_pg_resourcetype)GETSTRUCT(tuple);
+
+				if (!rtyp->reshasdisable)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("option \"%s\" cannot be disabled",
+									defel->defname)));
+				}
+
+				/* required type must have a default value if it can
+				 * be disabled 
+				 */
+				if (!rtyp->reshasdefault)
+				{
+					if (!rtyp->resrequired)
+						/* optional resource without a default is
+						 * turned off by removing entry from
+						 * pg_resqueuecapability 
+						 */
+						break;
+					else
+					{
+						/* XXX XXX */
+						Assert(0);
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("required option \"%s\" cannot be disabled",
+										defel->defname)));
+					}
+				}
+
+				/* get the shutoff string */
+				shutoff_datum = 
+						heap_getattr(tuple,
+									 Anum_pg_resourcetype_resdisabledsetting,
+									 tupdesc,
+									 &isnull);
+				Assert(!isnull);
+				shutoff_text = DatumGetTextP(shutoff_datum);
+				shutoff_str = 
+						DatumGetCString(
+								DirectFunctionCall1(
+										textout,
+										PointerGetDatum(shutoff_text)));
+
+				pStrVal = makeString(shutoff_str);
+					
+				break;
+			} /* end while heaptuple is valid */
+			systable_endscan(scan);
+		}
 
 		/* check for duplicate key specifications */
 		if (list_member(dupcheck, pKeyVal))
@@ -223,7 +374,16 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 
 		/* list of lists - (resource type, resource setting) */
 		if (bWithout)
-			dropelems = lappend(dropelems, pentry);
+		{
+			/* if the "without" entry has an "off" value, then treat
+			 * it as a regular "with" item and update it in
+			 * pg_resqueuecapability, else remove its entry
+			 */
+			if (!pStrVal)
+				dropelems = lappend(dropelems, pentry);
+			else
+				elems = lappend(elems, pentry);
+		}
 		else
 			elems = lappend(elems, pentry);
 
@@ -231,8 +391,85 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		resTypeInt = 0; /* make compiler happy */
 	}
 
-	/* could do additional validation here */
+	if (bWithout)
+		heap_close(rel, RowExclusiveLock); /* close pg_resourcetype */
 
+	if (bCreate)
+	{
+		/* If creating a new resource queue, check pg_resourcetype for
+		 * optional types that have a default value.  Check for
+		 * corresponding match in dupcheck -- if no entry then add the
+		 * one to the WITH list (elems) with the default. 
+		 */
+		rel = heap_open(ResourceTypeRelationId, RowExclusiveLock);
+		tupdesc = RelationGetDescr(rel);
+
+		/* Note: key is empty - scan entire table */
+
+		scan = systable_beginscan(rel,
+								  ResourceTypeRestypidIndexId,
+								  /* XXX XXX XXX XXX : snapshotnow ? */
+								  true, SnapshotNow, 0, key);
+
+		while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+		{
+			List	*pentry			  = NIL;
+			Value	*pResnameVal	  = NULL;
+			text	*default_text	  = NULL;
+			char	*default_str	  = NULL;
+			Datum	 default_datum;
+			bool	 isnull			  = false;
+			Form_pg_resourcetype rtyp = 
+					(Form_pg_resourcetype)GETSTRUCT(tuple);
+
+			/* only interested in resources types with default value */
+			if (!rtyp->reshasdefault)
+				continue;
+
+			/* Note: ignore the dummy entries for active_statements,
+			 * max_cost, etc 
+			 */
+			if (rtyp->restypid < PG_RESRCTYPE_PRIORITY)
+				continue;
+
+			/* if resource has a default value, see if it was already
+			 * specified 
+			 */
+			pResnameVal = makeString(NameStr(rtyp->resname));
+
+			if (list_member(dupcheck, pResnameVal))
+				continue;
+
+			/* resource was not specified, so add its default value to
+			 * the WITH list 
+			 */
+
+			/* get the default string */
+			default_datum = 
+					heap_getattr(tuple,
+								 Anum_pg_resourcetype_resdefaultsetting,
+								 tupdesc,
+								 &isnull);
+			Assert(!isnull);
+			default_text = DatumGetTextP(default_datum);
+			default_str = 
+					DatumGetCString(
+							DirectFunctionCall1(
+									textout,
+									PointerGetDatum(default_text)));
+
+			/* add the new entry to dupcheck and WITH elems */
+			dupcheck = lappend(dupcheck, pResnameVal);
+
+			pentry = list_make2(makeInteger(rtyp->restypid),
+								makeString(default_str));
+
+			elems = lappend(elems, pentry);
+		} /* end while heaptuple is valid */
+		systable_endscan(scan);
+
+		heap_close(rel, RowExclusiveLock); /* close pg_resourcetype */
+	} /* end if bCreate */
 
 	/* insert/update valid entries in pg_resqueuecapability */
 
@@ -263,12 +500,6 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 					Anum_pg_resqueuecapability_resqueueid,
 					BTEqualStrategyNumber, F_OIDEQ,
 					ObjectIdGetDatum(queueid));
-
-/*	ScanKeyInit(&key[1],
-				Anum_pg_statlastop_objid,
-				BTEqualStrategyNumber, F_INT2EQ,
-				Int2GetDatum(resTypeInt));
-*/
 
 		scan = systable_beginscan(rel,
 								  ResQueueCapabilityResqueueidIndexId,
@@ -318,7 +549,6 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		List			*pentry		 = lfirst(lc);
 		int				 resTypeInt;
 		Node			*pVal;
-		char			*pResSetting = "";
 		int				 ii;
 
 		Assert (2 == list_length(pentry));
@@ -331,18 +561,10 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 		
 		pVal = lfirst(lc2);
 
-		pResSetting = strVal(pVal);
-
 		ScanKeyInit(&key[0],
 					Anum_pg_resqueuecapability_resqueueid,
 					BTEqualStrategyNumber, F_OIDEQ,
 					ObjectIdGetDatum(queueid));
-
-/*	ScanKeyInit(&key[1],
-				Anum_pg_statlastop_objid,
-				BTEqualStrategyNumber, F_INT2EQ,
-				Int2GetDatum(resTypeInt));
-*/
 
 		scan = systable_beginscan(rel,
 								  ResQueueCapabilityResqueueidIndexId,
@@ -358,6 +580,7 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 				if (resTypeInt ==
 					((Form_pg_resqueuecapability) GETSTRUCT(tuple))->restypid)
 				{
+					/* no "off" setting -- just remove entry */
 					simple_heap_delete(rel, &tuple->t_self);
 					ii++;
 				}
@@ -691,7 +914,7 @@ CreateQueue(CreateQueueStmt *stmt)
 
 	/* process the remainder of the WITH (...) list items */
 	if (bWith)
-		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList);
+		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList, true);
 
 	/* MPP-6929, MPP-7583: metadata tracking */
 	MetaTrackAddObject(ResQueueRelationId,
@@ -1011,7 +1234,7 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	/* process the remainder of the WITH (...) list items */
 	if (bWith)
-		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList);
+		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList, false);
 
 	CatalogUpdateIndexes(pg_resqueue_rel, new_tuple);
 

@@ -1739,7 +1739,7 @@ commit;
 --   It may be nice to allow it to be callable in a populated database...
 insert into public.gp_global_sequence select 0 from generate_series(1,15);
 select gp_persistent_build_db();
-psql:@abs_builddir@/sql/loadcat34.sql:108: ERROR:  Persistent database entry 'base/131816' already exists in state 'Created' (cdbpersistentdatabase.c:747)
+psql:@abs_builddir@/sql/loadcat34.sql:108: ERROR:  Persistent database entry 'base/245608' already exists in state 'Created' (cdbpersistentdatabase.c:747)
 begin;
 -- Create new 3.4 views in pg_catalog
 set search_path='pg_catalog';
@@ -2417,15 +2417,15 @@ select * from pg_catalog.pg_resqueue where oid < 10000;
 select * from pg_catalog.pg_resourcetype where oid < 10000
 except all
 select * from public.pg_resourcetype where oid < 10000;
- restypid | resname | resrequired | reshasdefault | reshasdisable | resdefaultsetting | resdisabledsetting 
-----------+---------+-------------+---------------+---------------+-------------------+--------------------
+ resname | restypid | resrequired | reshasdefault | reshasdisable | resdefaultsetting | resdisabledsetting 
+---------+----------+-------------+---------------+---------------+-------------------+--------------------
 (0 rows)
 
 select * from public.pg_resourcetype where oid < 10000
 except all
 select * from pg_catalog.pg_resourcetype where oid < 10000;
- restypid | resname | resrequired | reshasdefault | reshasdisable | resdefaultsetting | resdisabledsetting 
-----------+---------+-------------+---------------+---------------+-------------------+--------------------
+ resname | restypid | resrequired | reshasdefault | reshasdisable | resdefaultsetting | resdisabledsetting 
+---------+----------+-------------+---------------+---------------+-------------------+--------------------
 (0 rows)
 
 -- compare old and new pg_cast
