@@ -161,7 +161,7 @@ can_execute_this_locally(const char *src)
 			}
 			else if (s->fromClause != NULL)
 			{
-				ListCell   *f;
+				ListCell   *f = NULL;
 
 				foreach(f, s->fromClause)
 				{
@@ -179,13 +179,8 @@ can_execute_this_locally(const char *src)
 							break;
 						}
 					}
-				}
+				} /* foreach */
 			}
-		}
-		else
-		{
-			can_run_local = false;
-			break;
 		}
 	}
 

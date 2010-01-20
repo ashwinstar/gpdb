@@ -152,7 +152,6 @@ init_execution_state(List *queryTree_list, SQLFunctionCache *fcache, bool readon
 	return firstes;
 }
 
-
 static void
 init_sql_fcache(FmgrInfo *finfo)
 {
@@ -271,7 +270,6 @@ init_sql_fcache(FmgrInfo *finfo)
 	if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		bool canRunLocal = true;
-		
 		foreach(list_item, queryTree_list)
 		{
 			Node	   *parsetree = (Node *) lfirst(list_item);
@@ -287,22 +285,35 @@ init_sql_fcache(FmgrInfo *finfo)
 				}
 				else if (q->rtable != NULL)
 				{
-					ListCell * f;
+					ListCell * f = NULL;
 					foreach(f,q->rtable)
 					{
-						Node * fr = (Node *) lfirst(f);
-						if (IsA(fr,RangeVar))
+						RangeTblEntry *rte = NULL;
+						Oid namespaceId = InvalidOid;
+						
+						Assert(IsA(lfirst(f), RangeTblEntry));
+
+						rte = (RangeTblEntry *) lfirst(f);
+						
+						/** 
+						 * We allow segments to access local catalogs.
+						 */
+						
+						switch(rte->rtekind)
 						{
-							RangeVar * r = (RangeVar *)fr;
-							Oid relid = RangeVarGetRelid(r, false);
-							Oid namespaceid = get_rel_namespace(relid);
-							
-							if (namespaceid != PG_CATALOG_NAMESPACE)
-							{
+							case RTE_RELATION:
+								namespaceId = get_rel_namespace(rte->relid);
+
+								if (namespaceId != PG_CATALOG_NAMESPACE)
+								{
+									canRunLocal = false;
+									break;
+								}
+
+							default:
 								canRunLocal = false;
 								break;
-							}
-						}
+						} /* switch */
 					}
 				}
 			}
