@@ -385,7 +385,7 @@ class GpStart:
         if self.gparray.get_mirroring_enabled():
             # bring up mirrors and primaries in quiesced mode
             self._start_segments()
-            self._process_segment_start()
+            self._process_segment_start_or_transition()
         
             (primaryDbs, mirrorDbs) = self._determineAvailableMirrorsAndPrimaries()
 
@@ -393,15 +393,15 @@ class GpStart:
             self.success_seg_status = []
             
             self._convert_quiesced_segments(False, mirrorDbs)
-            self._process_segment_start() # todo: process conversion results correctly
+            self._process_segment_start_or_transition()
             self._convert_quiesced_segments(True, primaryDbs)
-            self._process_segment_start()
-            # todo MIRRORING: check to see which conversions worked, get some results back from the segments
-            
+            self._process_segment_start_or_transition()
+
+            self._print_segment_start()
         else:
             # bring up primaries in mirrorless mode
             self._start_segments()
-            self._process_segment_start()
+            self._process_segment_start_or_transition()
             
             self._print_segment_start()
             
@@ -670,17 +670,18 @@ class GpStart:
 
     
     ######
-    def _process_segment_start(self):
-        ''' go through all of the gpsegstart commands and figure out what happened
+    def _process_segment_start_or_transition(self):
+        ''' go through all of the gpsegstart or transition commands and figure out what happened
         '''
         logger.info("Process results...")
         cmds=self.pool.getCompletedItems()
         for cmd in cmds:
-            if cmd.get_results().rc == 0 or cmd.get_results().rc == 1:                            
+            # error code 0 mean all good, 1 means it ran but at least one thing failed
+            if cmd.get_results().rc == 0 or cmd.get_results().rc == 1:
                 cmdout = cmd.get_results().stdout
                 lines=cmdout.split('\n')
-                
-                for line in lines:                    
+
+                for line in lines:
                     if line.startswith("STATUS"):
                         fields=line.split('--')
                         dir = fields[1].split(':')[1]
@@ -701,7 +702,6 @@ class GpStart:
             else:                
                 for db in cmd.dblist:
                     self.failed_seg_status.append( SegStartStatus(db,started=False,reason=cmd.get_results(),failedCmd=cmd))
-                    
         self.pool.empty_completed_items()
 
              
