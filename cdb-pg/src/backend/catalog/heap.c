@@ -2866,7 +2866,7 @@ heap_truncate(List *relids)
 	foreach(cell, relids)
 	{
 		Oid			rid = lfirst_oid(cell);
-		Relation	rel;
+		Relation	rel, trel;
 		Oid			toastrelid;
 		Oid			aosegrelid;
 		Oid         aoblkdirrelid;
@@ -2879,8 +2879,8 @@ heap_truncate(List *relids)
 		toastrelid = rel->rd_rel->reltoastrelid;
 		if (OidIsValid(toastrelid))
 		{
-			rel = heap_open(toastrelid, AccessExclusiveLock);
-			relations = lappend(relations, rel);
+			trel = heap_open(toastrelid, AccessExclusiveLock);
+			relations = lappend(relations, trel);
 		}
 
 		if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
