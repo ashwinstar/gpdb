@@ -145,3 +145,5 @@ explain select * from ds_4 where month_id::int in (200801, 1,55,6,6,6,6,66,565,6
                Filter: month_id::integer = ANY ('{200801,1,55,6,6,6,6,66,565,65,65,200803}'::integer[])
 (8 rows)
 
+-- cleanup
+drop table ds_4;

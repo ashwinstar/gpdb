@@ -53,3 +53,6 @@ explain select * from ds_4 where case when month_id::int = 200800 then count_vas
 
 -- do one that matches a couple partitions
 explain select * from ds_4 where month_id::int in (200801, 1,55,6,6,6,6,66,565,65,65,200803);
+
+-- cleanup
+drop table ds_4;
