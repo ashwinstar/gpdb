@@ -9,8 +9,7 @@ Please upgrade python installed on this machine.''' % gProgramName)
 import figleaf
 from gppylib import gplog
 from gppylib.commands import unix
-from gppylib.system import configurationInterface
-from gppylib.system import configurationImplGpdb
+from gppylib.system import configurationInterface, configurationImplGpdb, fileSystemInterface, fileSystemImplOs
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 gExecutableName = os.path.split(__file__)[-1]
@@ -36,6 +35,7 @@ def getProgramName():
 def simple_main( createOptionParserFn, createCommandFn) :
     logger = gplog.get_default_logger()
     configurationInterface.registerConfigurationProvider( configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
+    fileSystemInterface.registerFileSystemProvider( fileSystemImplOs.GpFileSystemProviderUsingOs())
     use_figleaf=os.getenv('USE_FIGLEAF', None)
 
     if use_figleaf:

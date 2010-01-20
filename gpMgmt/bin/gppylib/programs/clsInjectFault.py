@@ -15,7 +15,6 @@ from gppylib.mainUtils import *
 import time
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
-from tempfile import NamedTemporaryFile
 
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib.utils import toNonNoneString
@@ -27,8 +26,7 @@ from gppylib.commands import gp
 from gppylib.commands import pg
 from gppylib.db import catalog
 from gppylib.db import dbconn
-from gppylib.system import configurationImplGpdb as systemConf
-from gppylib.system import configurationInterface as configInterface
+from gppylib.system import configurationInterface, fileSystemInterface
 from gppylib import pgconf
 from gppylib.test.testUtils import testOutput
 
@@ -114,7 +112,7 @@ class GpInjectFaultProgram:
         #
         # load from master db
         #
-        conf = configInterface.getConfigurationProvider().initializeProvider(self.options.masterPort, False)
+        conf = configurationInterface.getConfigurationProvider().initializeProvider(self.options.masterPort, False)
         segments = conf.loadSystemConfig().getDbList()
 
         #
@@ -154,7 +152,7 @@ class GpInjectFaultProgram:
     # write string to a temporary file that will be deleted on completion
     #
     def writeToTempFile(self, str):
-        inputFile = NamedTemporaryFile('w', delete=True)
+        inputFile = fileSystemInterface.getFileSystemProvider().createNamedTemporaryFile()
         inputFile.write(str)
         inputFile.flush()
         return inputFile
