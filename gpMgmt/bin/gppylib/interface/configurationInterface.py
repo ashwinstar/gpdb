@@ -10,7 +10,7 @@ This file defines the interface that can be used to
    as well as the data object returned by the
 
 """
-import os
+import os, copy
 
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
@@ -61,11 +61,12 @@ class ConfigurationForSystem :
 
     # all of the segments, including master and QEs, etc. marked as dirty has been changed since last fetched from
     #   or updated in the configuration provider
-    __segments=[]
+    __segments=None
 
     #   we don't support deleting segments right now    __segmentsToDelete=None
 
     def __init__(self):
+        self.__segments=[]
         pass
 
     def addSegment(self, segment) :
@@ -251,6 +252,9 @@ class ConfigurationForSegment :
 
     def isSegmentAMaster(self):
         return self.__contentId == -1
+
+    def copy(self):
+        return copy.copy(self) # a shallow copy is sufficent right now
 
 #
 # Management of registered configuration provider.  Right now it

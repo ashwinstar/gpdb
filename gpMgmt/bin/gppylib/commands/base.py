@@ -287,17 +287,27 @@ LOCAL=1
 REMOTE=2
 RMI=3
 
-        
+gExecutionContextFactory = None
+
+#
+# @param factory needs to have a createExecutionContext(self, execution_context_id, remoteHost, stdin) function
+#
+def setExecutionContextFactory(factory):
+    global gExecutionContextFactory
+    gExecutionContextFactory = factory
+
 def createExecutionContext(execution_context_id,remoteHost,stdin):
-        if execution_context_id == LOCAL:
-            return LocalExecutionContext(stdin)
-        elif execution_context_id == REMOTE:
-            if remoteHost is None:
-                raise Exception("Programmer Error.  Specified REMOTE execution context but didn't provide a remoteHost")
-            return RemoteExecutionContext(remoteHost,stdin)
-        elif execution_context_id == RMI:
-            return RMIExecutionContext()
-        
+    if gExecutionContextFactory is not None:
+        return gExecutionContextFactory.createExecutionContext(execution_context_id, remoteHost, stdin)
+    elif execution_context_id == LOCAL:
+        return LocalExecutionContext(stdin)
+    elif execution_context_id == REMOTE:
+        if remoteHost is None:
+            raise Exception("Programmer Error.  Specified REMOTE execution context but didn't provide a remoteHost")
+        return RemoteExecutionContext(remoteHost,stdin)
+    elif execution_context_id == RMI:
+        return RMIExecutionContext()
+
         
 class ExecutionContext():
     """ An ExecutionContext defines where and how to execute the Command and how to 
@@ -315,7 +325,7 @@ class ExecutionContext():
     
     def cancel(self):
         pass
-    
+
 
 class LocalExecutionContext(ExecutionContext):
     proc=None

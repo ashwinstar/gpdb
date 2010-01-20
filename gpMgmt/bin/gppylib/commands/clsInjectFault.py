@@ -12,8 +12,7 @@
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
 
-
-import os, sys, time
+import time
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 from tempfile import NamedTemporaryFile
@@ -31,6 +30,7 @@ from gppylib.db import dbconn
 from gppylib.implementationGpdb import configurationImplGpdb as systemConf
 from gppylib.interface import configurationInterface as configInterface
 from gppylib import pgconf
+from gppylib.test.testUtils import testOutput
 
 logger = gplog.get_default_logger()
 
@@ -163,6 +163,7 @@ class InjectFaultProgram:
 
         inputFile = self.writeToTempFile(messageText)
         logger.info("Injecting fault on %d segment(s)", len(segments))
+        testOutput("Injecting fault on %d segment(s)" % len(segments))
 
         # run the command in serial to each target
         for segment in segments :

@@ -13,6 +13,8 @@ This file defines the interface that can be used to
 """
 import os
 
+import copy
+
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
 from gppylib.interface.configurationInterface import *
@@ -21,7 +23,11 @@ from gppylib.db import dbconn
 logger = get_default_logger()
 
 class ConfigurationProviderForTesting(ConfigurationProvider) :
+
+    __testSegments=None
+
     def __init__(self):
+        self.__testSegments=[]
         pass
 
     #
@@ -33,7 +39,7 @@ class ConfigurationProviderForTesting(ConfigurationProvider) :
     def initializeProvider( self, masterDbUrl, useUtilityMode ) :
         # verify here to match what the true one will require
         checkNotNone("masterDbUrl", masterDbUrl)
-        checkNotNoneBoolean("useUtilityMode", useUtilityMode)
+        checkNotNone("useUtilityMode", useUtilityMode)
         return self
 
     #
@@ -42,11 +48,23 @@ class ConfigurationProviderForTesting(ConfigurationProvider) :
     # Returns a new ConfigurationForSystem object
     #
     def loadSystemConfig( self ) :
-        pass
+        result = ConfigurationForSystem()
+        for segment in self.__testSegments:
+            result.addSegment( segment.copy())
+        return result
 
     #
     # Update the configuration for the given segments in the underlying configuration store
     #   to match the current values
     #
     def updateSystemConfig( self, systemConfiguration ) :
-        pass
+        self.__testSegments = []
+        for segment in systemConfiguration.getSegmentList():
+            self.addTestSegment(segment)
+
+    #
+    # add a test segment.  The segment is COPIED before adding
+    #
+    def addTestSegment(self, configForSegment):
+        self.__testSegments.append(configForSegment.copy())
+

@@ -1,4 +1,4 @@
-import os, sys
+import os, sys, traceback
 
 gProgramName = os.path.split(sys.argv[0])[-1]
 if sys.version_info < (2, 5, 0):
@@ -14,6 +14,13 @@ from gppylib.implementationGpdb import configurationImplGpdb as systemConf
 
 gExecutableName = os.path.split(__file__)[-1]
 
+# Throw this out to main to have the message printed with
+class ProgramArgumentValidationException(Exception):
+    pass
+
+class ExceptionNoStackTraceNeeded(Exception):
+    pass
+    
 def getProgramName():
     global gProgramName
     return gProgramName
@@ -35,6 +42,7 @@ def simple_main( createOptionParserFn, createCommandFn) :
     commandObject=None
     parser = None
 
+    # NOTE: if this logic is changed then also change test_main in testUtils.py
     try:
         gplog.setup_tool_logging(gExecutableName,unix.getLocalHostname(),unix.getUserName(),nonuser=False)
 
@@ -45,7 +53,7 @@ def simple_main( createOptionParserFn, createCommandFn) :
             gplog.enable_verbose_logging()
         if options.quiet:
             gplog.quiet_stdout_logging()
-
+            
         logger.info("Starting %s with args: %s" % (gProgramName, ' '.join(sys.argv[1:])))
 
         commandObject = createCommandFn(options, args)
@@ -71,10 +79,3 @@ def simple_main( createOptionParserFn, createCommandFn) :
         if use_figleaf:
             figleaf.stop()
             figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
-
-# Throw this out to main to have the message printed with  
-class ProgramArgumentValidationException(Exception):
-    pass
-
-class ExceptionNoStackTraceNeeded(Exception):
-    pass
