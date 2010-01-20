@@ -16,6 +16,8 @@
 #include "storage/itemptr.h"
 #include "utils/rel.h"
 
+#define PersistentStoreSharedData_StaticInit {false,0,0,{{0,0},0},{{0,0},0}}
+
 typedef struct PersistentStoreSharedData
 {
 	bool	needToScanIntoSharedMemory;
@@ -33,15 +35,15 @@ typedef struct PersistentStoreSharedData
 typedef Relation (*PersistentStoreOpenRel) (void);
 typedef void (*PersistentStoreCloseRel) (Relation relation);
 typedef bool (*PersistentStoreScanTupleCallback) (
-								PersistentFsObjType 	fsObjType,
+								int 					token,
 								ItemPointer 			persistentTid,
 								int64					persistentSerialNum,
 								Datum					*values);
 
+#define PersistentStoreData_StaticInit {0,NULL,NULL,NULL,0,0,0}
+
 typedef struct PersistentStoreData
 {
-	PersistentFsObjType 		fsObjType;
-
 	GpGlobalSequence			gpGlobalSequence;
 
 	PersistentStoreOpenRel		openRel;
@@ -63,8 +65,6 @@ extern void PersistentStore_InitShared(
 extern void PersistentStore_Init(
 	PersistentStoreData 		*storeData,
 
-	PersistentFsObjType 		fsObjType,
-
 	GpGlobalSequence			gpGlobalSequence,
 	
 	PersistentStoreOpenRel		openRel,
@@ -82,17 +82,23 @@ extern void PersistentStore_Init(
 extern void PersistentStore_InitScanUnderLock(
 	PersistentStoreData 		*storeData,
 
-	PersistentStoreSharedData 	*storeSharedData);
+	PersistentStoreSharedData 	*storeSharedData,
+
+	int							token);
 
 extern void PersistentStore_InitScan(
 	PersistentStoreData 		*storeData,
 
-	PersistentStoreSharedData 	*storeSharedData);
+	PersistentStoreSharedData 	*storeSharedData,
+
+	int							token);
 
 extern void PersistentStore_Scan(
 	PersistentStoreData 		*storeData,
 
 	PersistentStoreSharedData	*storeSharedData,
+
+	int							token,
 
 	PersistentStoreScanTupleCallback	scanTupleCallback);
 

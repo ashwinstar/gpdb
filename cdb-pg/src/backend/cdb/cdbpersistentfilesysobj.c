@@ -144,7 +144,6 @@ void PersistentFileSysObj_Init(
 	case PersistentFsObjType_RelationFile:
 		PersistentStore_Init(
 						storeData,
-						fsObjType,
 						GpGlobalSequence_PersistentRelation,
 						PersistentFileSysObj_RelationOpenShared,
 						PersistentFileSysObj_RelationClose,
@@ -157,7 +156,6 @@ void PersistentFileSysObj_Init(
 	case PersistentFsObjType_DatabaseDir:
 		PersistentStore_Init(
 						storeData,
-						fsObjType,
 						GpGlobalSequence_PersistentDatabase,
 						PersistentFileSysObj_DatabaseOpenShared,
 						PersistentFileSysObj_DatabaseClose,
@@ -170,7 +168,6 @@ void PersistentFileSysObj_Init(
 	case PersistentFsObjType_TablespaceDir:
 		PersistentStore_Init(
 						storeData,
-						fsObjType,
 						GpGlobalSequence_PersistentTablespace,
 						PersistentFileSysObj_TablespaceOpenShared,
 						PersistentFileSysObj_TablespaceClose,
@@ -183,7 +180,6 @@ void PersistentFileSysObj_Init(
 	case PersistentFsObjType_FilespaceDir:
 		PersistentStore_Init(
 						storeData,
-						fsObjType,
 						GpGlobalSequence_PersistentFilespace,
 						PersistentFileSysObj_FilespaceOpenShared,
 						PersistentFileSysObj_FilespaceClose,
@@ -206,7 +202,8 @@ void PersistentFileSysObj_InitScanUnderLock(
 {
 	PersistentStore_InitScanUnderLock(
 					&fileSysObjData->storeData,
-					&fileSysObjSharedData->storeSharedData);
+					&fileSysObjSharedData->storeSharedData,
+					fileSysObjData->fsObjType);
 }
 
 void PersistentFileSysObj_InitScan(
@@ -216,7 +213,8 @@ void PersistentFileSysObj_InitScan(
 {
 	PersistentStore_InitScan(
 					&fileSysObjData->storeData,
-					&fileSysObjSharedData->storeSharedData);
+					&fileSysObjSharedData->storeSharedData,
+					fileSysObjData->fsObjType);
 }
 
 void PersistentFileSysObj_FlushXLog(void)
@@ -395,6 +393,7 @@ void PersistentFileSysObj_Scan(
 	PersistentStore_Scan(
 					&fileSysObjData->storeData,
 					&fileSysObjSharedData->storeSharedData,
+					/* token */ fileSysObjData->fsObjType,
 					scanTupleCallback);
 					
 }

@@ -17,6 +17,8 @@
 #include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbpersistentdatabase.h"
 
+#define PersistentFileSysObjSharedData_StaticInit {PersistentStoreSharedData_StaticInit}
+
 typedef struct PersistentFileSysObjSharedData
 {
 
@@ -24,9 +26,10 @@ typedef struct PersistentFileSysObjSharedData
 
 } PersistentFileSysObjSharedData;
 
+#define PersistentFileSysObjData_StaticInit {0,PersistentStoreData_StaticInit}
+
 typedef struct PersistentFileSysObjData
 {
-
 	PersistentFsObjType		fsObjType;
 
 	PersistentStoreData		storeData;

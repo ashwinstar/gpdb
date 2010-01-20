@@ -53,6 +53,7 @@ typedef struct PersistentRelationSharedData
 
 } PersistentRelationSharedData;
 
+#define PersistentRelationData_StaticInit {PersistentFileSysObjData_StaticInit}
 
 typedef struct PersistentRelationData
 {
@@ -65,14 +66,17 @@ typedef struct PersistentRelationData
 /*
  * Global Variables
  */
-PersistentRelationSharedData	*persistentRelationSharedData;
+PersistentRelationSharedData	*persistentRelationSharedData = NULL;
 
-PersistentRelationData	persistentRelationData;
+PersistentRelationData	persistentRelationData = PersistentRelationData_StaticInit;
 
 
 static void PersistentRelation_InitScanUnderLock(void)
 {
 	PersistentDatabase_InitScanUnderLock();
+
+	if (persistentRelationSharedData == NULL)
+		elog(PANIC, "Persistent relation information shared-memory not setup");
 
 	PersistentFileSysObj_InitScanUnderLock(
 						&persistentRelationData.fileSysObjData,
@@ -151,7 +155,7 @@ static int32 persistentRelationCheckTablespaceUseCount;
 static RelFileNode persistentRelationCheckTablespaceRelFileNode;
 
 static bool PersistentRelation_CheckTablespaceScanTupleCallback(
-	PersistentFsObjType 	fsObjType,
+	int 					token,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -163,7 +167,7 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
 	
-	Assert(fsObjType == PersistentFsObjType_RelationFile);
+	Assert(token == PersistentFsObjType_RelationFile);
 
 	GpPersistentRelationNode_GetValues(
 									values,

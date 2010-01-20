@@ -648,12 +648,12 @@ PersistentRecovery_AddScanEntry(
 	}
 }
 
-static PersistentFileSysObjSharedData	persistentRecoveryFileSysObjSharedData;
-static PersistentFileSysObjData			persistentRecoveryFileSysObjData;
-static int								persistentRecoveryCount;
+static PersistentFileSysObjSharedData	persistentRecoveryFileSysObjSharedData = PersistentFileSysObjSharedData_StaticInit;
+static PersistentFileSysObjData			persistentRecoveryFileSysObjData = PersistentFileSysObjData_StaticInit;
+static int								persistentRecoveryCount = 0;
 
 static bool PersistentRecovery_ScanTupleCallback(
-	PersistentFsObjType 	fsObjType,
+	int 					token,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -674,7 +674,7 @@ static bool PersistentRecovery_ScanTupleCallback(
 	Assert(serialNum == persistentSerialNum);
 
 	PersistentRecovery_AddScanEntry(
-							fsObjType,
+							(PersistentFsObjType)token,
 							persistentTid,
 							&fsObjName,
 							state,

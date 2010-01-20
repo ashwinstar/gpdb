@@ -63,6 +63,8 @@ typedef struct PersistentDatabaseSharedData
 
 } PersistentDatabaseSharedData;
 
+#define PersistentDatabaseData_StaticInit {PersistentFileSysObjData_StaticInit}
+
 typedef struct PersistentDatabaseData
 {
 
@@ -73,10 +75,10 @@ typedef struct PersistentDatabaseData
 /*
  * Global Variables
  */
-PersistentDatabaseSharedData	*persistentDatabaseSharedData;
-static HTAB *persistentDatabaseSharedHashTable;
+PersistentDatabaseSharedData	*persistentDatabaseSharedData = NULL;
+static HTAB *persistentDatabaseSharedHashTable = NULL;
 
-PersistentDatabaseData	persistentDatabaseData;
+PersistentDatabaseData	persistentDatabaseData = PersistentDatabaseData_StaticInit;
 
 static void PersistentDatabase_InitScan(void);
 
@@ -238,7 +240,7 @@ DatabaseDirEntry PersistentDatabase_FindDirInDb(
 // -----------------------------------------------------------------------------
 
 static bool PersistentDatabase_ScanTupleCallback(
-	PersistentFsObjType 	fsObjType,
+	int 					token,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -254,7 +256,7 @@ static bool PersistentDatabase_ScanTupleCallback(
 	SharedOidSearchAddResult addResult;
 	DatabaseDirEntry databaseDirEntry;
 
-	Assert(fsObjType == PersistentFsObjType_DatabaseDir);
+	Assert(token == PersistentFsObjType_DatabaseDir);
 
 	GpPersistentDatabaseNode_GetValues(
 									values,
@@ -295,6 +297,9 @@ static bool PersistentDatabase_ScanTupleCallback(
 
 void PersistentDatabase_InitScanUnderLock(void)
 {
+	if (persistentDatabaseSharedData == NULL)
+		elog(PANIC, "Persistent database information shared-memory not setup");
+
 	PersistentFileSysObj_InitScanUnderLock(
 					&persistentDatabaseData.fileSysObjData,
 					&persistentDatabaseSharedData->fileSysObjSharedData);

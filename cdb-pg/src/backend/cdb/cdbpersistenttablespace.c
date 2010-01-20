@@ -50,6 +50,8 @@ typedef struct PersistentTablespaceSharedData
 
 } PersistentTablespaceSharedData;
 
+#define PersistentTablespaceData_StaticInit {PersistentFileSysObjData_StaticInit}
+
 typedef struct PersistentTablespaceData
 {
 
@@ -73,10 +75,10 @@ typedef TablespaceDirEntryData *TablespaceDirEntry;
 /*
  * Global Variables
  */
-PersistentTablespaceSharedData	*persistentTablespaceSharedData;
-static HTAB *persistentTablespaceSharedHashTable;
+PersistentTablespaceSharedData	*persistentTablespaceSharedData = NULL;
+static HTAB *persistentTablespaceSharedHashTable = NULL;
 
-PersistentTablespaceData	persistentTablespaceData;
+PersistentTablespaceData	persistentTablespaceData = PersistentTablespaceData_StaticInit;
 
 static void PersistentTablespace_InitScan(void);
 
@@ -150,7 +152,7 @@ PersistentTablespace_RemoveDirUnderLock(
 // -----------------------------------------------------------------------------
 
 static bool PersistentTablespace_ScanTupleCallback(
-	PersistentFsObjType 	fsObjType,
+	int 					token,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -164,7 +166,7 @@ static bool PersistentTablespace_ScanTupleCallback(
 	
 	TablespaceDirEntry tablespaceDirEntry;
 
-	Assert(fsObjType == PersistentFsObjType_TablespaceDir);
+	Assert(token == PersistentFsObjType_TablespaceDir);
 
 	GpPersistentTablespaceNode_GetValues(
 									values,
@@ -190,6 +192,9 @@ static bool PersistentTablespace_ScanTupleCallback(
 
 static void PersistentTablespace_InitScanUnderLock(void)
 {
+	if (persistentTablespaceSharedData == NULL)
+		elog(PANIC, "Persistent tablespace information shared-memory not setup");
+
 	PersistentFileSysObj_InitScanUnderLock(
 					&persistentTablespaceData.fileSysObjData,
 					&persistentTablespaceSharedData->fileSysObjSharedData);
@@ -210,7 +215,7 @@ static Oid persistentTablespaceCheck;
 static bool persistentTablespaceCheckFound;
 
 static bool PersistentTablespace_CheckScanTupleCallback(
-	PersistentFsObjType 	fsObjType,
+	int 					token,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -222,7 +227,7 @@ static bool PersistentTablespace_CheckScanTupleCallback(
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
 	
-	Assert(fsObjType == PersistentFsObjType_TablespaceDir);
+	Assert(token == PersistentFsObjType_TablespaceDir);
 
 	GpPersistentTablespaceNode_GetValues(
 									values,
