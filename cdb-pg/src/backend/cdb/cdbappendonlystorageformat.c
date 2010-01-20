@@ -446,6 +446,7 @@ AppendOnlyStorageFormat_MakeLargeContentHeader(
 	AOLargeContentHeaderInit_executorBlockKind(largeContentHeader,executorKind);
 	AOLargeContentHeaderInit_largeRowCount(largeContentHeader,largeRowCount);
 	AOLargeContentHeaderInit_largeContentLength(largeContentHeader,largeContentLength);
+	AOLargeContentHeaderInit_hasFirstRowNum(largeContentHeader,hasFirstRowNum);
 
 	/*
 	 * Add the optional firstRowNum.

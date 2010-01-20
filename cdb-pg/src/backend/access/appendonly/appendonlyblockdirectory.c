@@ -475,6 +475,8 @@ AppendOnlyBlockDirectory_GetEntry(
  * in-memory minipage. If the minipage is full, it is written to the block
  * directory relation on disk. After that, the new entry is added to the
  * new in-memory minipage.
+ *
+ * If rowCount is 0, simple return false.
  */
 bool
 AppendOnlyBlockDirectory_InsertEntry(
@@ -491,6 +493,9 @@ AppendOnlyBlockDirectory_InsertEntry(
 #ifdef USE_ASSERT_CHECKING
 	int lastEntryNo;
 #endif
+
+	if (rowCount == 0)
+		return false;
 	
 	Assert(minipageInfo->numMinipageEntries <= ( (int)NUM_MINIPAGE_ENTRIES ) );
 	

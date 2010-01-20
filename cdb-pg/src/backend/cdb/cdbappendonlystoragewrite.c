@@ -1519,6 +1519,9 @@ void AppendOnlyStorageWrite_Content(
 		 * Write the "Large" content in fragments.
 		 */
 
+		storageWrite->lastWriteBeginPosition =
+			BufferedAppendNextBufferPosition(&(storageWrite->bufferedAppend));
+
 		/*
 		 * First is a LargeContent header-only block that has the "large" content length and
 		 * "large" row count.
@@ -1544,9 +1547,6 @@ void AppendOnlyStorageWrite_Content(
 							largeContentHeaderLen,
 							largeContentHeaderLen);
 		
-		storageWrite->lastWriteBeginPosition =
-			BufferedAppendNextBufferPosition(&(storageWrite->bufferedAppend));
-
 		// Declare it finished.
 		storageWrite->currentCompleteHeaderLen = 0;
 
