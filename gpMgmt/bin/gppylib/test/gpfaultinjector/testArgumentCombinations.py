@@ -100,5 +100,9 @@ table10
 :END File 0"""
     )
 
+
+## TODO: test alternate argument forms (--xxx instead of -y)
+## TODO: test sync/async mode!!!  Will need to be able to dynamically adjust return codes of test commands!
+
 # All done tests
 printTestResults()
