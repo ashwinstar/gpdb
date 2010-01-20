@@ -65,6 +65,7 @@ GPSEGINITSB=${WORKDIR}/lib/gpseginitsb.sh
 REMOVE_STANDBY=0
 RESTART_GPDB_AFTER_DELETE=1
 GPSTOP_MODE_OPTION=
+GP_ID_TABLE=gp_id
 #******************************************************************************
 # Functions
 #******************************************************************************
