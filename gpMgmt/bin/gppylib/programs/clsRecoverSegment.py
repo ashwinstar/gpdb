@@ -77,7 +77,7 @@ class GpRecoverSegmentProgram:
             self.__options.spareDataDirectory is not None:
             raise ExceptionNoStackTraceNeeded("not implemented") # todo MIRRORING
 
-        downMirrors = [seg for seg in systemConfig.getSegmentList() if \
+        downMirrors = [seg for seg in systemConfig.getDbList() if \
                                     seg.getSegmentRole() == 'm' and seg.getSegmentStatus() != 'u']
 
         if len(downMirrors) == 0:
@@ -139,7 +139,7 @@ class GpRecoverSegmentProgram:
         self.pauseFaultProber()
 
         systemConfig = confProvider.loadSystemConfig()
-        segments = systemConfig.getSegmentList()
+        segments = systemConfig.getDbList()
 
         # check that we actually have mirrors
         if len([seg for seg in segments if seg.getSegmentPreferredRole() == 'm']) == 0 :

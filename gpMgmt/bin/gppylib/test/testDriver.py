@@ -3,6 +3,7 @@ import sys
 from gppylib.gplog import *
 from gppylib.system.configurationInterface import *
 from gppylib.system.configurationImplTest import GpConfigurationProviderForTesting
+from gppylib.gparray import GpDB
 
 logger = get_default_logger()
 
@@ -34,24 +35,34 @@ class TestDriver:
         conf = GpConfigurationProviderForTesting()
         for line in lines[2:len(lines)]:
             row = [s.strip() for s in line.strip().split("|")]
-            
-            segment = ConfigurationForSegment()
-            segment.setSegmentDbId(int(row[0]))
-            segment.setSegmentContentId(int(row[1]))
-            segment.setSegmentRole(row[2])
-            segment.setSegmentPreferredRole(row[3])
-            segment.setSegmentMode(row[4])
-            segment.setSegmentStatus(row[5])
-            segment.setSegmentHostName(row[6])
-            segment.setSegmentAddress(row[7])
-            segment.setSegmentPort(int(row[8]))
-            segment.setSegmentDataDirectory(row[9])
-            segment.setSegmentReplicationPort(None if row[10] == "" else int(row[10]))
 
-            segment.resetSegmentDirtyBit()
-            segment.markSegmentCreatedInDb()
+
+            dbId = int(row[0])
+            contentId = int(row[1])
+            role = row[2]
+            preferredRole = row[3]
+            mode = row[4]
+            status = row[5]
+            hostName = row[6]
+            address = row[7]
+            port = int(row[8])
+            dataDirectory = row[9]
+            replicationPort = None if row[10] == "" else int(row[10])
+
+            segment = GpDB(content=contentId,
+                           preferred_role=preferredRole,
+                           dbid=dbId,
+                           role=role,
+                           mode=mode,
+                           status=status,
+                           hostname=hostName,
+                           address=address,
+                           port=port,
+                           datadir=dataDirectory,
+                           replicationPort=replicationPort)
 
             conf.addTestSegment(segment)
+
         registerConfigurationProvider( conf)
         pass
 

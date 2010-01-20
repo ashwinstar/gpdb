@@ -15,6 +15,7 @@ import os
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
 from gppylib.system.configurationInterface import *
+from gppylib.gparray import GpArray, GpDB
 from gppylib.db import dbconn
 from gppylib.mainUtils import *
 
@@ -51,7 +52,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
     #
     # Load all segment information from the configuration source.
     #
-    # Returns a new ConfigurationForSystem object
+    # Returns a new GpArray object
     #
     def loadSystemConfig( self ) :
         checkNotNone("masterDbUrl", self.__masterDbUrl) # ensure initialized called
@@ -71,26 +72,35 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         configurationRows = dbconn.execSQL(conn, sql)
         conn.close()
 
-        result = ConfigurationForSystem()
+        segments = []
         for row in configurationRows:
-            segment = ConfigurationForSegment()
+            dbId = int(row[0])
+            contentId = int(row[1])
+            role = row[2]
+            preferredRole = row[3]
+            mode = row[4]
+            status = row[5]
+            hostName = row[6]
+            address = row[7]
+            port = int(row[8])
+            dataDirectory = row[9]
+            replicationPort = None if row[10] is None else int(row[10])
 
-            segment.setSegmentDbId(int(row[0]))
-            segment.setSegmentContentId(int(row[1]))
-            segment.setSegmentRole(row[2])
-            segment.setSegmentPreferredRole(row[3])
-            segment.setSegmentMode(row[4])
-            segment.setSegmentStatus(row[5])
-            segment.setSegmentHostName(row[6])
-            segment.setSegmentAddress(row[7])
-            segment.setSegmentPort(int(row[8]))
-            segment.setSegmentDataDirectory(row[9])
-            segment.setSegmentReplicationPort(None if row[10] is None else int(row[10]))
+            segment = GpDB(content=contentId,
+                           preferred_role=preferredRole,
+                           dbid=dbId,
+                           role=role,
+                           mode=mode,
+                           status=status,
+                           hostname=hostName,
+                           address=address,
+                           port=port,
+                           datadir=dataDirectory,
+                           replicationPort=replicationPort)
 
-            segment.resetSegmentDirtyBit()
-            segment.markSegmentCreatedInDb()
+            segments.append(segment)
 
-            result.addSegment(segment)
+        result = GpArray(segments)        
 
         return result
 
@@ -103,7 +113,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
     def updateSystemConfig( self, systemConfiguration ) :
         checkNotNone("masterDbUrl", self.__masterDbUrl) # ensure initialized called
 
-        toAddOrUpdate = [x for x in systemConfiguration.getSegmentList() if x.getSegmentIsDirty()]
+        toAddOrUpdate = [x for x in systemConfiguration.getDbList()] #  if x.getSegmentIsDirty()]
 
         if len(toAddOrUpdate) == 0:
             return
@@ -117,6 +127,8 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         # Need to figure out the interaction of scripts with fault prober
         #
         for seg in toAddOrUpdate:
+            if seg is not None:
+                raise Exception("not implement: isCreatedInDb not tracked yet")
             if seg.isCreatedInDb:
                 # run an update
                 sql = "UPDATE pg_catalog.gp_segment_configuration\n" + \

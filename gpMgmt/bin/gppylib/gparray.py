@@ -2,6 +2,8 @@
 #
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
 #
+from gppylib.utils import checkNotNone
+from gppylib.utils import checkNotNone
 """
   gparray.py:
 
@@ -15,6 +17,7 @@
 
 # ============================================================================
 from datetime import date
+import copy
 
 from gppylib    import gplog
 from gppylib.db import dbconn
@@ -218,7 +221,121 @@ class GpDB:
         '''
         return self.datadir
 
-        
+
+    #############################
+    # getters
+    #
+    def getSegmentDbId(self):
+        return checkNotNone("dbId", self.dbid)
+
+    def getSegmentContentId(self):
+        return checkNotNone("contentId", self.content)
+
+    def getSegmentRole(self):
+        return checkNotNone("role", self.role)
+
+    def getSegmentPreferredRole(self):
+        return checkNotNone("preferredRole", self.preferred_role)
+
+    def getSegmentMode(self):
+        return checkNotNone("mode", self.mode)
+
+    def getSegmentStatus(self):
+        return checkNotNone("status", self.status)
+
+    #
+    # Return the postmaster __port
+    #
+    def getSegmentPort(self):
+        return checkNotNone("port", self.port)
+
+    def getSegmentReplicationPort(self):
+        # is Nullable (so can return None)
+        return self.replicationPort
+
+    def getSegmentHostName(self):
+        # is Nullable (so can return None)
+        return self.hostname
+
+    def getSegmentAddress(self):
+        # is Nullable (so can return None)
+        return self.address
+
+    def getSegmentDataDirectory(self):
+        return checkNotNone("dataDirectory", self.datadir)
+
+    #############################
+    # setSegmentters
+    #
+    def setSegmentDbId(self, dbId):
+        checkNotNone("dbId", dbId)
+        self.__dbId = dbId
+
+    def setSegmentContentId(self, contentId):
+        checkNotNone("contentId", contentId)
+        if contentId < -1:
+            raise Exception("Invalid content id %s" % contentId)
+        self.__contentId = contentId
+
+    def setSegmentRole(self, role):
+        checkNotNone("role", role)
+
+        if role != 'm' and role != 'p':
+            raise Exception("Invalid role '%s'" % role)
+
+        self.__role = role
+
+    def setSegmentPreferredRole(self, preferredRole):
+        checkNotNone("preferredRole", preferredRole)
+
+        if preferredRole != 'm' and preferredRole != 'p':
+            raise Exception("Invalid preferredRole '%s'" % preferredRole)
+
+        self.__preferredRole = preferredRole
+
+    def setSegmentMode(self, mode):
+        checkNotNone("mode", mode)
+
+        if mode != 's' and mode != 'c' and mode != 'r':
+            raise Exception("Invalid mode '%s'" % mode)
+
+        self.__mode = mode
+
+    def setSegmentStatus(self, status):
+        checkNotNone("status", status)
+
+        if status != 'd' and status != 'u':
+            raise Exception("Invalid status '%s'" % status)
+
+        self.__status = status
+
+    #
+    # Return the postmaster port
+    #
+    def setSegmentPort(self, port):
+        checkNotNone("port", port)
+        self.__port = port
+
+    def setSegmentReplicationPort(self, replicationPort):
+        # None is allowed -- don't check
+        self.__replicationPort = replicationPort
+
+    def setSegmentHostName(self, hostName):
+        # None is allowed -- don't check
+        self.__hostName = hostName
+
+    def setSegmentAddress(self, address):
+        # None is allowed -- don't check
+        self.__address = address
+
+    def setSegmentDataDirectory(self, dataDirectory):
+        checkNotNone("dataDirectory", dataDirectory)
+        self.__dataDirectory = dataDirectory
+
+    def copy(self):
+        return copy.copy(self) # a shallow copy is sufficent right now
+
+
 
     # --------------------------------------------------------------------
     # Extension to support gpfilespace:
@@ -411,18 +528,13 @@ class GpArray:
     via a configuration file.
     """
 
-    # Local Variables
-    numSegments       = 0
-    master            = None
-    standbyMaster     = None
-    segments          = None
-    expansionSegments = None
-
     # --------------------------------------------------------------------
     def __init__(self, segments):
         """TODO: """
-        
-        self.segments=[]
+
+        self.master = None
+        self.standbyMaster = None
+        self.segments = []
         self.expansionSegments=[]
         self.numPrimarySegments = 0
 
@@ -466,8 +578,6 @@ class GpArray:
         if self.master is None:
             logger.error("FATAL - no master dbs defined!")
             raise Exception("Error: GpArray() - no master dbs defined")
-
-        self.numSegments = len(self.segments)
 
     # --------------------------------------------------------------------
     @staticmethod

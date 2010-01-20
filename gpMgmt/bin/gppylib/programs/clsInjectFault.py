@@ -115,12 +115,12 @@ class GpInjectFaultProgram:
         # load from master db
         #
         conf = configInterface.getConfigurationProvider().initializeProvider(self.options.masterPort, False)
-        segments = conf.loadSystemConfig().getSegmentList()
+        segments = conf.loadSystemConfig().getDbList()
 
         #
         # prune gpArray according to filter settings
         #
-        segments = [seg for seg in segments if not seg.isSegmentAMaster()]
+        segments = [seg for seg in segments if seg.isQE()]
         if targetHost is not None:
             segments = [seg for seg in segments if seg.getSegmentHostName() == targetHost]
 

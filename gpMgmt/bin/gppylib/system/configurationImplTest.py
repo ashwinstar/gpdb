@@ -2,6 +2,7 @@
 #
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
+from gppylib.gparray import GpArray
 
 """
 
@@ -43,13 +44,13 @@ class GpConfigurationProviderForTesting(GpConfigurationProvider) :
     #
     # Load all segment information from the configuration source.
     #
-    # Returns a new ConfigurationForSystem object
+    # Returns a new GpArray object
     #
     def loadSystemConfig( self ) :
-        result = ConfigurationForSystem()
+        segments = []
         for segment in self.__testSegments:
-            result.addSegment( segment.copy())
-        return result
+            segments.append(segment.copy())
+        return GpArray(segments)
 
     #
     # Update the configuration for the given segments in the underlying configuration store
@@ -57,7 +58,7 @@ class GpConfigurationProviderForTesting(GpConfigurationProvider) :
     #
     def updateSystemConfig( self, systemConfiguration ) :
         self.__testSegments = []
-        for segment in systemConfiguration.getSegmentList():
+        for segment in systemConfiguration.getDbList():
             self.addTestSegment(segment)
 
     #
