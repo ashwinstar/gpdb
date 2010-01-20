@@ -2,7 +2,7 @@ import sys
 
 from gppylib.gplog import *
 from gppylib.system.configurationInterface import *
-from gppylib.system.configurationImplTest import GpConfigurationProviderForTesting
+from gppylib.system import configurationImplTest, fileSystemImplTest, fileSystemInterface
 from gppylib.gparray import GpDB
 
 logger = get_default_logger()
@@ -10,8 +10,9 @@ logger = get_default_logger()
 class TestDriver:
 
     def __init__(self):
+        self.__configurationProvider = None
+        self.__fileSystemProvider = None
         pass
-
 
     #
     #
@@ -32,7 +33,7 @@ class TestDriver:
         
         assert len(lines[1].split("+")) == len(lines[0].split("|")) # verify header is listed
 
-        conf = GpConfigurationProviderForTesting()
+        self.__configurationProvider = configurationImplTest.GpConfigurationProviderForTesting()
         for line in lines[2:len(lines)]:
             row = [s.strip() for s in line.strip().split("|")]
 
@@ -61,10 +62,19 @@ class TestDriver:
                            datadir=dataDirectory,
                            replicationPort=replicationPort)
 
-            conf.addTestSegment(segment)
+            self.__configurationProvider.addTestSegment(segment)
 
-        registerConfigurationProvider( conf)
+        registerConfigurationProvider( self.__configurationProvider )
+
+        self.__fileSystemProvider = fileSystemImplTest.GpFileSystemProviderForTest()
+        fileSystemInterface.registerFileSystemProvider(self.__fileSystemProvider)
         pass
+
+    def getFileSystem(self):
+        return self.__fileSystemProvider
+
+    def getConfiguration(self):
+        return self.__fileSystemProvider
 
         
     def initOneHostConfiguration(self):

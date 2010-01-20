@@ -26,10 +26,17 @@ class GpFileSystemProvider :
         pass
 
     #
+    # Shutdown the file system provider
+    #
+    def destroy(self):
+        pass
+
+    #
     # Create a temporary file for output.  This temporary file will be automatically deleted on cleanup
     #
     def createNamedTemporaryFile( self ) :
         raise Exception("not implemented")
+
 
 #
 # Management of registered configuration provider.  Right now it
@@ -40,7 +47,12 @@ class GpFileSystemProvider :
 gProvider = None
 def registerFileSystemProvider(provider):
     global gProvider
-    gProvider = checkNotNone("New global fileSystemProvider", provider)
+    checkNotNone("New global fileSystemProvider", provider)
+
+    if gProvider is not None:
+        gProvider.destroy()
+
+    gProvider = provider
 
 def getFileSystemProvider():
     global gProvider

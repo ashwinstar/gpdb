@@ -104,7 +104,7 @@ def resetTestResults():
 
     gTestResults = []
 
-def test_main( testName, newProgramArgs, createOptionParserFn, createCommandFn, expectedOutput) :
+def test_main( testName, newProgramArgs, createOptionParserFn, createCommandFn, extraOutputGenerators, expectedOutput) :
     global gTestOutput
 
     # update args
@@ -147,6 +147,10 @@ def test_main( testName, newProgramArgs, createOptionParserFn, createCommandFn, 
         # clean up test settings
         sys.argv = previousArgs
         setExecutionContextFactory(None)
+
+    if extraOutputGenerators is not None:
+        for gen in extraOutputGenerators:
+            gen.generate()
 
     finishTest(expectedOutput)
 

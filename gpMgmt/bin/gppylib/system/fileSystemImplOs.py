@@ -28,9 +28,18 @@ class GpFileSystemProviderUsingOs :
         pass
 
     #
+    # Shutdown the file system provider
+    #
+    def destroy(self):
+        pass
+
+    #
     # Create a temporary file
     #
     # returns self
+    #
+    # todo MIRRORING I don't quite understand the description of NamedTemporaryFile's limitation with regard
+    #      to opening the file again
     #
     def createNamedTemporaryFile( self ) :
         return NamedTemporaryFile('w', delete=True)

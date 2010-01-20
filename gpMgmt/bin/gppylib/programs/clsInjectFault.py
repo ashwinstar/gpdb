@@ -272,7 +272,7 @@ class GpInjectFaultProgram:
                          help='type of fault')
         addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,
                             metavar="<sleepTime>",
-                            help="For 'sleep' faults, the amount of time for the sleep.  Defaults to 10.")
+                            help="For 'sleep' faults, the amount of time for the sleep.  Defaults to %default.")
         addTo.add_option('-f','--fault_name', dest="faultName", type='string', metavar="<name>",
                          help='faultName')
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
@@ -288,7 +288,7 @@ class GpInjectFaultProgram:
         addTo.add_option("-o", "--occurrence", dest="numOccurrences", type="int", default=1,
                          metavar="numOccurrences",
                          help="The number of occurrence of the DDL statement with the database name" \
-                         " and the table name before fault is triggered.")
+                         " and the table name before fault is triggered.  Defaults to %default.")
 
         parser.set_defaults()
         return parser
