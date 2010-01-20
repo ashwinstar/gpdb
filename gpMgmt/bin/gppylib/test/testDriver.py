@@ -1,8 +1,8 @@
 import sys
 
 from gppylib.gplog import *
-from gppylib.interface.configurationInterface import *
-from gppylib.implementationTest.configurationImplTest import ConfigurationProviderForTesting
+from gppylib.system.configurationInterface import *
+from gppylib.system.configurationImplTest import GpConfigurationProviderForTesting
 
 logger = get_default_logger()
 
@@ -31,7 +31,7 @@ class TestDriver:
         
         assert len(lines[1].split("+")) == len(lines[0].split("|")) # verify header is listed
 
-        conf = ConfigurationProviderForTesting()
+        conf = GpConfigurationProviderForTesting()
         for line in lines[2:len(lines)]:
             row = [s.strip() for s in line.strip().split("|")]
             

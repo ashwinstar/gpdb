@@ -30,7 +30,7 @@ from gppylib.commands import gp
 from gppylib.commands import pg
 from gppylib.db import catalog
 from gppylib.db import dbconn
-from gppylib.interface import configurationInterface as configInterface
+from gppylib.system import configurationInterface as configInterface
 from gppylib import pgconf
 
 logger = gplog.get_default_logger()

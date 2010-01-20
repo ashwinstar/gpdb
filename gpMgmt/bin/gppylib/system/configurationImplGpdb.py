@@ -14,21 +14,21 @@ import os
 
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
-from gppylib.interface.configurationInterface import *
+from gppylib.system.configurationInterface import *
 from gppylib.db import dbconn
 from gppylib.mainUtils import *
 
 logger = get_default_logger()
 
 #
-# An implementation of ConfigurationProvider will provide functionality
+# An implementation of GpConfigurationProvider will provide functionality
 #   to fetch and update gpdb system configuration information (as stored in the database)
 #
 #
 # Note that the client of this is assuming that the database data is not changed by
 #   another party between the time segment data is loaded and when it is updated
 #
-class ConfigurationProviderUsingGpdbCatalog(ConfigurationProvider) :
+class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
     def __init__(self):
         pass
 

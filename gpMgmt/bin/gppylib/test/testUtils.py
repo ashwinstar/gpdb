@@ -15,8 +15,8 @@ import figleaf
 from gppylib.commands.base import setExecutionContextFactory, ExecutionContext,CommandResult
 from gppylib import gplog
 from gppylib.commands import unix
-from gppylib.interface import configurationInterface as configInterface
-from gppylib.implementationGpdb import configurationImplGpdb as systemConf
+from gppylib.system import configurationInterface as configInterface
+from gppylib.system import configurationImplGpdb as systemConf
 
 class TestExecutionContext(ExecutionContext):
 

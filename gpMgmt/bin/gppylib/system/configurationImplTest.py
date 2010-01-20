@@ -17,14 +17,12 @@ import copy
 
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
-from gppylib.interface.configurationInterface import *
+from gppylib.system.configurationInterface import *
 from gppylib.db import dbconn
 
 logger = get_default_logger()
 
-class ConfigurationProviderForTesting(ConfigurationProvider) :
-
-    __testSegments=None
+class GpConfigurationProviderForTesting(GpConfigurationProvider) :
 
     def __init__(self):
         self.__testSegments=[]

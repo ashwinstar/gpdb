@@ -9,8 +9,8 @@ Please upgrade python installed on this machine.''' % gProgramName)
 import figleaf
 from gppylib import gplog
 from gppylib.commands import unix
-from gppylib.interface import configurationInterface as configInterface
-from gppylib.implementationGpdb import configurationImplGpdb as systemConf
+from gppylib.system import configurationInterface
+from gppylib.system import configurationImplGpdb
 
 gExecutableName = os.path.split(__file__)[-1]
 
@@ -34,7 +34,7 @@ def getProgramName():
 #
 def simple_main( createOptionParserFn, createCommandFn) :
     logger = gplog.get_default_logger()
-    configInterface.registerConfigurationProvider( systemConf.ConfigurationProviderUsingGpdbCatalog())
+    configurationInterface.registerConfigurationProvider( configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
     use_figleaf=os.getenv('USE_FIGLEAF', None)
 
     if use_figleaf:

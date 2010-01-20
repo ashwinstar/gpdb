@@ -20,10 +20,10 @@ logger = get_default_logger()
 #
 # todo MIRRORING: use enumerations (does python have them) for mode, status, etc. 
 #
-# An implementation of ConfigurationProvider will provide functionality
+# An implementation of GpConfigurationProvider will provide functionality
 #   to fetch and update gpdb system configuration information (as stored in the database)
 #
-class ConfigurationProvider :
+class GpConfigurationProvider :
     def __init__(self):
         pass
 
@@ -54,7 +54,7 @@ class ConfigurationProvider :
         pass
 
 #
-# This is the data structure that will be returned by a ConfigurationProvider
+# This is the data structure that will be returned by a GpConfigurationProvider
 #
 #
 class ConfigurationForSystem :
