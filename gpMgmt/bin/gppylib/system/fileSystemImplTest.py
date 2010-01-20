@@ -15,6 +15,7 @@ import os
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
 from tempfile import NamedTemporaryFile
+from gppylib.system.fileSystemInterface import GpFileSystemProvider
 
 logger = get_default_logger()
 
@@ -22,7 +23,7 @@ logger = get_default_logger()
 # List of future improvements:
 #
 #
-class GpTempFileForTesting:
+class GpTempFileForTesting(GpFileSystemProvider):
 
     def __init__(self, path):
         checkNotNone("path", path)

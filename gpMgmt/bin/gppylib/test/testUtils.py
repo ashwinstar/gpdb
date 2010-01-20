@@ -18,6 +18,13 @@ from gppylib.commands import unix
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system import configurationImplGpdb as systemConf
 
+# todo: find proper home for this
+gCommandLineToCommandSimulator = {}
+def clearCommandSimulators():
+    gCommandLineToCommandSimulator = {}
+def addCommandSimulator(commandLine, simulator ):
+    gCommandLineToCommandSimulator[commandLine] = simulator
+
 class TestExecutionContext(ExecutionContext):
 
     # todo: clean this up (make private), but only when completed in LocalExecutionContext is inspected
@@ -31,7 +38,12 @@ class TestExecutionContext(ExecutionContext):
 
     def execute(self,cmd):
         testOutput("exec %s" % cmd.cmdStr)
-        (rc,stdoutValue,stderrValue) = (0, [], []) # todo: fetch desired output values from a lookup table or callback or something 
+
+        simulator = gCommandLineToCommandSimulator.get(cmd.cmdStr)
+        if simulator is None:
+            (rc,stdoutValue,stderrValue) = (0, [], [])
+        else:
+            (rc,stdoutValue,stderrValue) = simulator.simulate(cmd.cmdStr)
 
         self.completed=True
 
@@ -65,6 +77,7 @@ def finishTest(expectedOutputStr):
     if output == expectedOutputStr:
         gTestResults.append((gTestName, True, None))
     else:
+        # todo: on diff, produce a nicer diff output for large strings!
         msg = "Test %s failed.  EXPECTED OUTPUT (surrounding triple quotes added by this output):\n\"\"\"%s\"\"\"\n\n" \
             "ACTUAL OUTPUT (surrounding triple quotes added by this output):\n\"\"\"%s\"\"\"" % (gTestName, expectedOutputStr, output)
         gTestResults.append((gTestName, False,msg))

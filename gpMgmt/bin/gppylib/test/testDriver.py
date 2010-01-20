@@ -2,7 +2,7 @@ import sys
 
 from gppylib.gplog import *
 from gppylib.system.configurationInterface import *
-from gppylib.system import configurationImplTest, fileSystemImplTest, fileSystemInterface
+from gppylib.system import configurationImplTest, fileSystemImplTest, fileSystemInterface, osInterface, osImplTest
 from gppylib.gparray import GpDB
 
 logger = get_default_logger()
@@ -68,6 +68,7 @@ class TestDriver:
 
         self.__fileSystemProvider = fileSystemImplTest.GpFileSystemProviderForTest()
         fileSystemInterface.registerFileSystemProvider(self.__fileSystemProvider)
+        osInterface.registerOsProvider(osImplTest.GpOsProviderForTest())
         pass
 
     def getFileSystem(self):

@@ -12,8 +12,6 @@
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
 
-import time
-
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 from gppylib.gpparseopts import OptParser, OptChecker
@@ -26,7 +24,7 @@ from gppylib.commands import gp
 from gppylib.commands import pg
 from gppylib.db import catalog
 from gppylib.db import dbconn
-from gppylib.system import configurationInterface, fileSystemInterface
+from gppylib.system import configurationInterface, fileSystemInterface, osInterface
 from gppylib import pgconf
 from gppylib.test.testUtils import testOutput
 
@@ -181,7 +179,7 @@ class GpInjectFaultProgram:
         logger.info("Awaiting fault on %d segment(s)", len(segments))
         while len(segments) > 0 :
             logger.info("Sleeping %.2f seconds " % sleepTimeSec)
-            time.sleep(sleepTimeSec)
+            osInterface.getOsProvider().sleep(sleepTimeSec)
 
             segmentsForNextPass = []
             for segment in segments:
