@@ -205,6 +205,11 @@ static const char *assign_gp_log_format(const char *value, bool doit,
 static bool dummy_autovac=false;
 static bool assign_autovacuum_warning(bool newval, bool doit, GucSource source);
 
+/* Helper function for guc setter */
+extern const char *gpvars_assign_gp_resqueue_priority_default_value(const char *newval, 
+		bool doit, 
+		GucSource source __attribute__((unused)) );
+
 /*
  * GUC option variables that are exported from this module
  */
@@ -395,7 +400,7 @@ int gp_resqueue_priority_sweeper_interval;
 int gp_resqueue_priority_inactivity_timeout; 
 int gp_resqueue_priority_grouping_timeout;	
 double gp_resqueue_priority_cpucores_per_segment;
-int gp_resqueue_priority_default_weight;
+char* gp_resqueue_priority_default_value;
 bool gp_debug_resqueue_priority = false;
 
 
@@ -3591,14 +3596,6 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_resqueue_priority_grouping_timeout,
 		1000, 1000, INT_MAX, NULL, NULL
 	},
-	{
-		{"gp_resqueue_priority_default_weight", PGC_POSTMASTER, RESOURCES_MGM,
-			gettext_noop("Default weight when one cannot be associated with a query."),
-			NULL
-  		},
-		&gp_resqueue_priority_default_weight,
-		50, 1, INT_MAX, NULL, NULL
-	},
 
 	{
 		{"file_rep_message_body_length", PGC_POSTMASTER, DEVELOPER_OPTIONS,
@@ -4566,6 +4563,16 @@ static struct config_string ConfigureNamesString[] =
 		&gp_autostats_mode_string,
 		"none", gpvars_assign_gp_autostats_mode, gpvars_show_gp_autostats_mode
 	},
+	{
+		{"gp_resqueue_priority_default_value", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("Default weight when one cannot be associated with a statement."),
+			NULL,
+			GUC_NO_SHOW_ALL
+  		},
+		&gp_resqueue_priority_default_value,
+		"MEDIUM", gpvars_assign_gp_resqueue_priority_default_value, NULL
+	},
+
 
 #if USE_EMAIL
 	{

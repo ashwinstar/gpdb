@@ -3112,7 +3112,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 		}
 		else 
 		{
-			queryDesc->plannedstmt->planTree->backoff_weight = gp_resqueue_priority_default_weight;
+			queryDesc->plannedstmt->planTree->backoff_weight = BackoffDefaultWeight();
 		}
 
 		Assert(queryDesc->plannedstmt->planTree->backoff_weight > 0);

@@ -18,7 +18,7 @@ extern int gp_resqueue_priority_sweeper_interval;
 extern int gp_resqueue_priority_inactivity_timeout;
 extern int gp_resqueue_priority_grouping_timeout;
 extern double gp_resqueue_priority_cpucores_per_segment;
-extern int gp_resqueue_priority_default_weight;
+extern char* gp_resqueue_priority_default_value;
 
 extern void BackoffBackendEntryInit(int sessionid, int commandcount, int weight);
 extern void BackoffBackendEntryExit(void);
@@ -32,5 +32,6 @@ extern int backoff_start(void);
 
 extern int BackoffSuperuserStatementWeight(void);
 extern int ResourceQueueGetPriorityWeight(Oid queueId);
+extern int BackoffDefaultWeight(void);
 
 #endif /* BACKOFF_H_ */

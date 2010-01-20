@@ -984,7 +984,7 @@ exec_mpp_query(const char *query_string,
     	}
     	else
     	{
-    		BackoffBackendEntryInit(gp_session_id, gp_command_count, gp_resqueue_priority_default_weight);
+    		BackoffBackendEntryInit(gp_session_id, gp_command_count, BackoffDefaultWeight());
     	}
     }
 	

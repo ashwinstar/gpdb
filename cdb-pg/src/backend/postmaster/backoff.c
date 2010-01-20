@@ -240,6 +240,14 @@ static int BackoffPriorityValueToInt(const char *priorityVal);
 static char *BackoffPriorityIntToValue(int weight);
 extern List *GetResqueueCapabilityEntry(Oid  queueid);
 
+/*
+ * Helper method that verifies setting of default priority guc.
+ */
+const char *gpvars_assign_gp_resqueue_priority_default_value(const char *newval, 
+		bool doit, 
+		GucSource source __attribute__((unused)) );
+
+
 /* Extern declarations */
 extern Datum textin(PG_FUNCTION_ARGS);
 extern Datum textout(PG_FUNCTION_ARGS);
@@ -1386,6 +1394,16 @@ int BackoffSuperuserStatementWeight()
 }
 
 /**
+ * Integer value for default weight.
+ */
+int BackoffDefaultWeight()
+{
+	int wt = BackoffPriorityValueToInt(gp_resqueue_priority_default_value);
+	Assert(wt > 0);
+	return wt;
+}
+
+/**
  * Get weight associated with queue. See queue.c. 
  * TODO: tidy up interface.
  */
@@ -1394,7 +1412,7 @@ int ResourceQueueGetPriorityWeight(Oid queueId)
 	List *capabilitiesList = NULL;
 	List *entry = NULL;
 	ListCell *le = NULL;
-	int weight = gp_resqueue_priority_default_weight;
+	int weight = BackoffDefaultWeight();
 	
 	if (queueId == InvalidOid)
 		return weight;
@@ -1415,8 +1433,6 @@ int ResourceQueueGetPriorityWeight(Oid queueId)
 		{
 			Value *val = lsecond(entry);
 			Assert(val->type == T_String);
-			/* TODO: need a enum or something */
-			
 			weight = BackoffPriorityValueToInt(strVal(val));
 		}
 	}
@@ -1464,7 +1480,7 @@ static int BackoffPriorityValueToInt(const char *priorityVal)
 		elog(ERROR, "Invalid priority value.");
 	}
 	
-	Assert(p->weight > 0.0);
+	Assert(p->weight > 0);
 	
 	return p->weight;
 }
@@ -1479,12 +1495,7 @@ static char *BackoffPriorityIntToValue(int weight)
 	const PriorityMapping *p = priority_map;
 
 	Assert(p);
-	
-	if (weight == gp_resqueue_priority_default_weight)
-	{
-		return pstrdup("DEFAULT");
-	}
-	
+		
 	while (p->priorityVal != NULL && (p->weight != weight))
 	{
 		p = p + 1;
@@ -1498,4 +1509,21 @@ static char *BackoffPriorityIntToValue(int weight)
 	}
 	
 	return pstrdup("NON-STANDARD");	
+}
+
+/*
+ * Helper method that verifies setting of default priority guc.
+ */
+const char *gpvars_assign_gp_resqueue_priority_default_value(const char *newval, 
+		bool doit, 
+		GucSource source __attribute__((unused)) )
+{
+	if (doit)
+	{
+		int wt = -1;
+		wt = BackoffPriorityValueToInt(newval); /* This will throw an error if bad value is specified */
+		Assert(wt > 0);
+	}
+
+	return newval;
 }
