@@ -11,6 +11,7 @@ from gppylib import gplog
 from gppylib.commands import unix
 from gppylib.system import configurationInterface
 from gppylib.system import configurationImplGpdb
+from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 gExecutableName = os.path.split(__file__)[-1]
 
@@ -79,3 +80,24 @@ def simple_main( createOptionParserFn, createCommandFn) :
         if use_figleaf:
             figleaf.stop()
             figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
+
+def addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption):
+    parser.set_usage('%prog [--help] [options] ')
+    parser.remove_option('-h')
+
+    addTo = parser
+    addTo.add_option('-h', '-?', '--help', action='help',
+                      help='show this help message and exit')
+
+    addTo = OptionGroup(parser, "Logging Options")
+    parser.add_option_group(addTo)
+    addTo.add_option('-v','--verbose', action='store_true', 
+                      help='debug output.')
+    addTo.add_option('-q', '--quiet', action='store_true',
+                      help='suppress status messages')
+    addTo.add_option("-l", None, dest="logfileDirectory", metavar="<directory>", type="string",
+                  help="Logfile directory")
+
+    if includeNonInteractiveOption:
+        addTo.add_option('-a', dest="interactive" , action='store_false', default=True,
+                    help="quiet mode, do not require user input for confirmations")

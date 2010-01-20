@@ -185,45 +185,37 @@ class GpRecoverSegmentProgram:
                     description=' '.join(description.split()),
                     version='%prog version $Revision: #1 $')
         parser.setHelp(help)
-        parser.set_usage('%prog [--help] [options] ')
-        parser.remove_option('-h')
 
-        addTo = parser
-        addTo.add_option('-h', '-?', '--help', action='help',
-                          help='show this help message and exit')
-
-        addTo = OptionGroup(parser, "Logging Options")
-        parser.add_option_group(addTo)
-        addTo.add_option('-v','--verbose', action='store_true',
-                          help='debug output.')
-        addTo.add_option('-q', '--quiet', action='store_true',
-                          help='suppress status messages')
-        addTo.add_option("-l", None, dest="logfileDirectory", type="string",
-                      help="Logfile directory")
-        addTo.add_option('-a', dest="interactive" , action='store_false', default=True,
-                        help="quiet mode, do not require user input for confirmations")
+        addStandardLoggingAndHelpOptions(parser, True)
 
         addTo = OptionGroup(parser, "Recovery Source Options")
         parser.add_option_group(addTo)
         addTo.add_option("-i", None, dest="recoveryConfigFile", type="string",
+                         metavar="<configFile>",
                       help="Recovery configuration file")
-        addTo.add_option("-o", None, dest="outputSampleConfigFile", type="string",
+        addTo.add_option("-o", None, dest="outputSampleConfigFile",
+                         metavar="<configFile>", type="string",
                       help="Sample configuration file name to output")
-        addTo.add_option("-S", None, dest="forceRecoverySegmentDbId", type="int",
+        addTo.add_option("-S", None, dest="forceRecoverySegmentDbId",
+                         metavar="<dbid>", type="int",
                      help="Primary segment dbid to force recovery")
-        addTo.add_option("-z", None, dest="forceRecoverySegmentDataDirAndHost", type="string",
+        addTo.add_option("-z", None, dest="forceRecoverySegmentDataDirAndHost",
+                         metavar="<dataDirAndHost>", type="string",
                      help="Primary segment data dir and host to force recovery")
 
         addTo = OptionGroup(parser, "Recovery Destination Options")
         parser.add_option_group(addTo)
         addTo.add_option("-p", None, dest="newRecoverHost", type="string",
+                         metavar="<targetHost>",
                       help="Spare new host to which to recover segments")
         addTo.add_option("-s", None, dest="spareDataDirectory", type="string",
+                         metavar="<targetDirectory>",
                       help="Spare data directories on current hosts")
 
         addTo = OptionGroup(parser, "Recovery Destination Options")
         parser.add_option_group(addTo)
         addTo.add_option("-B", None, dest="parallelDegree", type="int", default=4,
+                         metavar="<parallelDegree>",
                       help="Max # of workers to use for recovering segments")
 
         # todo: parallel degree sanity checks + defaults from gpstart
@@ -239,5 +231,5 @@ class GpRecoverSegmentProgram:
         if len(args) > 0 :
             raise ProgramArgumentValidationException(\
                             "too many arguments: only options may be specified") # todo MIRRORING: print help instead (as gpstart)
-        return RecoverSegmentProgram(options)
+        return GpRecoverSegmentProgram(options)
 

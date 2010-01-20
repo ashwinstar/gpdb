@@ -236,56 +236,59 @@ class GpInjectFaultProgram:
         """]
 
         parser = OptParser(option_class=OptChecker,
-                    description=' '.join(description.split()),
+                    description='  '.join(description.split()),
                     version='%prog version $Revision: #1 $')
         parser.setHelp(help)
-        parser.set_usage('%prog [--help] [options] ')
-        parser.remove_option('-h')
 
-        addTo = parser
-        addTo.add_option('-h', '-?', '--help', action='help',
-                          help='show this help message and exit')
-        addTo.add_option('-v','--verbose', action='store_true',
-                          help='debug output.')
-        addTo.add_option('-q', '--quiet', action='store_true',
-                          help='suppress status messages')
+        addStandardLoggingAndHelpOptions(parser, False)
 
         # these options are used to determine the target segments
         addTo = OptionGroup(parser, 'Target Segment Options: ')
         parser.add_option_group(addTo)
-        addTo.add_option('-r', '--role', dest="targetRole", type='string',
+        addTo.add_option('-r', '--role', dest="targetRole", type='string', metavar="<role>",
                          help="Role of segments to target: primary, mirror, or primary_mirror")
-        addTo.add_option("-s", "--seg_dbid", dest="targetDbId", type="string",
+        addTo.add_option("-s", "--seg_dbid", dest="targetDbId", type="string", metavar="<dbid>",
                          help="The segment  dbid on which fault should be set and triggered.")
-        addTo.add_option("-H", "--host", dest="targetHost", type="string",
+        addTo.add_option("-H", "--host", dest="targetHost", type="string", metavar="<host>",
                          help="The hostname on which fault should be set and triggered.")
+
+        #
+        # todo: get master_port from the MASTER_DATA_DIRECTORY
+        #
         addTo.add_option("-p", "--master_port", dest="masterPort",  type="int", default=5432,
+                         metavar="<masterPort>",
                          help="The port number of the master database on localhost, " \
                          "used to fetch the segment configuration.")
 
         addTo = OptionGroup(parser, 'Client Polling Options: ')
         parser.add_option_group(addTo)
         addTo.add_option('-m', '--mode', dest="syncMode", type='string', default="async",
+                         metavar="<syncMode>",
                          help="Synchronization mode : sync (client waits for fault to occur)" \
                          " or async (client only sets fault request on server)")
 
         # these options are used to build the message for the segments
         addTo = OptionGroup(parser, 'Fault Options: ')
         parser.add_option_group(addTo)
-        addTo.add_option('-y','--type', dest="type", type='string',
+        addTo.add_option('-y','--type', dest="type", type='string', metavar="<type>",
                          help='type of fault')
-        addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,\
-                         help="For 'sleep' faults, the amount of time for the sleep.  Defaults to 10.")
-        addTo.add_option('-f','--fault_name', dest="faultName", type='string',
+        addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,
+                            metavar="<sleepTime>",
+                            help="For 'sleep' faults, the amount of time for the sleep.  Defaults to 10.")
+        addTo.add_option('-f','--fault_name', dest="faultName", type='string', metavar="<name>",
                          help='faultName')
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
+                         metavar="ddlStatement",
                          help="The DDL statement on which fault should be set and triggered " \
                          "(i.e. create database, drop database, create table, drop table)")
         addTo.add_option("-d", "--database_name", dest="databaseName", type="string",
+                         metavar="databaseName",
                          help="The database name on which fault should be set and triggered.")
         addTo.add_option("-t", "--table_name", dest="tableName", type="string",
+                         metavar="tableName",
                          help="The table name on which fault should be set and triggered.")
         addTo.add_option("-o", "--occurrence", dest="numOccurrences", type="int", default=1,
+                         metavar="numOccurrences",
                          help="The number of occurrence of the DDL statement with the database name" \
                          " and the table name before fault is triggered.")
 
