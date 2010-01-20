@@ -10,9 +10,9 @@
 #
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
-from gppylib.commands.clsRecoverSegment import *
+from gppylib.programs.clsRecoverSegment import *
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
-    simple_main( RecoverSegmentProgram.createParser, RecoverSegmentProgram.createCommand)
+    simple_main( GpRecoverSegmentProgram.createParser, GpRecoverSegmentProgram.createProgram)
 

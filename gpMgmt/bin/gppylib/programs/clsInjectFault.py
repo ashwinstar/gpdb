@@ -35,7 +35,7 @@ from gppylib.test.testUtils import testOutput
 logger = gplog.get_default_logger()
 
 #-------------------------------------------------------------------------
-class InjectFaultProgram:
+class GpInjectFaultProgram:
     #
     # Constructor:
     #
@@ -293,8 +293,8 @@ class InjectFaultProgram:
         return parser
 
     @staticmethod
-    def createCommand(options, args):
+    def createProgram(options, args):
         if len(args) > 0 :
             raise ProgramArgumentValidationException(\
                             "too many arguments: only options may be specified")
-        return InjectFaultProgram(options)
+        return GpInjectFaultProgram(options)

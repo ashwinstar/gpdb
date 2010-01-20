@@ -2,13 +2,13 @@
 #
 #
 from gppylib.test.testDriver import TestDriver
-from gppylib.commands.clsInjectFault import InjectFaultProgram
+from gppylib.programs.clsInjectFault import GpInjectFaultProgram
 from gppylib.mainUtils import *
 from gppylib.test.testUtils import *
 
 programName = sys.argv[0]
-parserFn = InjectFaultProgram.createParser
-commandFn = InjectFaultProgram.createCommand
+parserFn = GpInjectFaultProgram.createParser
+commandFn = GpInjectFaultProgram.createProgram
 
 
 # First test: no arguments.

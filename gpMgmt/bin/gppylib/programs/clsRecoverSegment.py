@@ -36,7 +36,7 @@ from gppylib import pgconf
 logger = gplog.get_default_logger()
 
 #-------------------------------------------------------------------------
-class RecoverSegmentProgram:
+class GpRecoverSegmentProgram:
 
 #
     # Constructor:
@@ -235,7 +235,7 @@ class RecoverSegmentProgram:
         return parser
 
     @staticmethod
-    def createCommand(options, args):
+    def createProgram(options, args):
         if len(args) > 0 :
             raise ProgramArgumentValidationException(\
                             "too many arguments: only options may be specified") # todo MIRRORING: print help instead (as gpstart)

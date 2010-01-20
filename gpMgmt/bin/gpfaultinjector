@@ -9,9 +9,9 @@
 from gppylib.mainUtils import *
 
 # now reset of imports
-from gppylib.commands.clsInjectFault import *
+from gppylib.programs.clsInjectFault import *
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
-    simple_main( InjectFaultProgram.createParser, InjectFaultProgram.createCommand)
+    simple_main( GpInjectFaultProgram.createParser, GpInjectFaultProgram.createProgram)
 
