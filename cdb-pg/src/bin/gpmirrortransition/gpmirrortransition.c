@@ -224,9 +224,13 @@ sendMessage(struct addrinfo *addr, void *data, int dataLength)
 		}
 
 		buf[offset] = '\0';
-		if ( strcmp(data, "success") != 0)
+        fprintf(stderr, "%s\n", data);
+
+		/* Anything equal to success or STARTING with success: is considered success */
+		if ( strcmp(data, "Success") != 0 &&
+		     strncmp(data, "Success:", 8) != 0
+		)
 		{
-			fprintf(stderr, "%s\n", data);
 			goto errReturn;
 		}
 	}
@@ -389,6 +393,5 @@ main(int argc, char **argv)
 	if (! sendMessage(addrList, msg, msgLen))
 		return 1;
 
-	fprintf(stderr, "Success\n");
 	return 0;
 }
