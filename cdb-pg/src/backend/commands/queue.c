@@ -227,9 +227,9 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 	HeapTuple	 tuple;
 	ScanKeyData	 key[1];
 	SysScanDesc	 scan;
-	Relation	 rel;
+	Relation	 rel	   = NULL;;
 	bool		 bWithout  = false;
-	TupleDesc	 tupdesc;
+	TupleDesc	 tupdesc   = NULL;
 
 #ifdef USE_ASSERT_CHECKING
 	{
