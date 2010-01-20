@@ -188,11 +188,13 @@ static void PersistentStore_DoInitScan(
 									&persistentSerialNum,
 									&previousFreeTid);
 
-//		elog(WARNING, 
-//			 "PersistentStore_DoInitScan: TID %s, serial number " INT64_FORMAT ", previous free TID %s",
-//			 ItemPointerToString(&tuple->t_self),
-//			 persistentSerialNum, 
-//			 ItemPointerToString2(&previousFreeTid));
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "PersistentStore_DoInitScan (%s): TID %s, serial number " INT64_FORMAT ", previous free TID %s",
+			 PersistentFileSysObjName_TypeName(storeData->fsObjType),
+			 ItemPointerToString(&tuple->t_self),
+			 persistentSerialNum, 
+			 ItemPointerToString2(&previousFreeTid));
 		
 		if (ItemPointerCompare(&previousFreeTid, &zeroTid) != 0)
 		{
@@ -229,6 +231,14 @@ static void PersistentStore_DoInitScan(
 		     storeSharedData->maxInUseSerialNum);
 
 	storeSharedData->maxInUseSerialNum = globalSequenceNum;
+	
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "PersistentStore_DoInitScan (%s): maximum in-use serial number " INT64_FORMAT ", maximum free order number " INT64_FORMAT ", free TID %s",
+			 PersistentFileSysObjName_TypeName(storeData->fsObjType),
+			 storeSharedData->maxInUseSerialNum, 
+			 storeSharedData->maxFreeOrderNum, 
+			 ItemPointerToString2(&storeSharedData->freeTid));
 }
 
 void PersistentStore_InitScanUnderLock(
@@ -573,6 +583,13 @@ static bool PersistentStore_GetFreeTuple(
 
 	MemSet(freeTid, 0, sizeof(ItemPointerData));
 
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "PersistentStore_GetFreeTuple (%s): Enter: maximum free order number " INT64_FORMAT ", free TID %s",
+			 PersistentFileSysObjName_TypeName(storeData->fsObjType),
+			 storeSharedData->maxFreeOrderNum, 
+			 ItemPointerToString2(&storeSharedData->freeTid));
+
 	if (storeSharedData->maxFreeOrderNum == 0)
 	{
 		return false;	// No free tuples.
@@ -617,6 +634,13 @@ static bool PersistentStore_GetFreeTuple(
 	pfree(values);
 
 	heap_freetuple(tupleCopy);
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "PersistentStore_GetFreeTuple (%s): Exit: maximum free order number " INT64_FORMAT ", free TID %s",
+			 PersistentFileSysObjName_TypeName(storeData->fsObjType),
+			 storeSharedData->maxFreeOrderNum, 
+			 ItemPointerToString2(&storeSharedData->freeTid));
 
 	return true;
 }
