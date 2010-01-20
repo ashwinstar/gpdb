@@ -2507,7 +2507,7 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 	switch(result)
 	{
 		case PMTransitionSuccess:
-			sendPrimaryMirrorTransitionResult("success");
+			sendPrimaryMirrorTransitionResult("Success");
 			break;
 		default:
 		{
