@@ -30,7 +30,7 @@ class GpDB:
     GpDB class representing configuration information for
     a single dbid within a Greenplum Array.
     """
-    
+
     # --------------------------------------------------------------------
     def __init__(self, content, preferred_role, dbid, role, mode, status,
                  hostname, address, port, datadir, replicationPort):
@@ -538,6 +538,8 @@ class GpArray:
         self.expansionSegments=[]
         self.numPrimarySegments = 0
 
+        self.strategy = 'n'
+
         for segdb in segments:
 
             # Handle QD nodes
@@ -585,8 +587,13 @@ class GpArray:
         """
         Factory method, initializes a GpArray from provided database URL
         """
-        conn = dbconn.connect(dbURL,utility)
-        rows = dbconn.execSQL(conn, '''
+        conn = dbconn.connect(dbURL, utility)
+
+        strategy_rows = dbconn.execSQL(conn, '''
+           SELECT fault_strategy FROM gp_fault_strategy
+        ''')
+
+        config_rows = dbconn.execSQL(conn, '''
            SELECT dbid, content, role, preferred_role, mode, status, hostname, 
                address, port, fselocation as datadir, replication_port
            FROM pg_catalog.gp_segment_configuration
@@ -595,10 +602,11 @@ class GpArray:
              on (fsefsoid = fs.oid and fsname='pg_system')
            ORDER BY content, preferred_role DESC
         ''')
+
         conn.close()
 
         segments = []
-        for row in rows:
+        for row in config_rows:
             # Extract fields from the row
             (dbid, content, role, preferred_role, mode, status, hostname, 
              address, port, datadir, replicationPort) = row
@@ -610,7 +618,14 @@ class GpArray:
             # append it to the list of segments
             segments.append(seg)
 
-        return GpArray(segments)
+        for strategy_row in strategy_rows:
+            (strategy) = strategy_row
+            break
+
+        array = GpArray(segments)
+        array.strategy = strategy
+
+        return array
 
     # --------------------------------------------------------------------
     @staticmethod
@@ -697,6 +712,19 @@ class GpArray:
             for db in seg.mirrorDBs:
                 if not db.valid:
                     dbs.append(db)
+        return dbs
+
+    # --------------------------------------------------------------------
+    def get_inactive_mirrors_segdbs(self):
+        dbs=[]
+
+        if self.strategy[0] != 's':
+            return dbs
+
+        for seg in self.segments:
+            segdb = seg.primaryDB
+            for db in seg.mirrorDBs:
+                dbs.append(db)
         return dbs
 
     # --------------------------------------------------------------------    

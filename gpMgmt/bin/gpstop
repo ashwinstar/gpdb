@@ -305,8 +305,8 @@ class GpStop():
         invalid_segs=self.gparray.get_invalid_segdbs() 
         for seg in invalid_segs:
             logger.warning("Not processing %s directory %s marked invalid <<<<<" % (seg.hostname,seg.datadir)) 
-        
-        if self.gparray.get_mirroring_enabled():
+
+        if self.gparray.get_mirroring_enabled() and self.gparray.strategy[0] == 'f':        
             # stop primaries
             logger.info("Commencing parallel primary segment instance shutdown, please wait...")
             self._stopseg_cmds(True,False)
@@ -324,10 +324,12 @@ class GpStop():
 
         else:
             logger.info("Commencing parallel segment instance shutdown, please wait...")
-            self._stopseg_cmds(True,True) # second arg shouldn't matter
-            success_seg_status=self._process_segment_stop(failed_seg_status)    
-            self._print_segment_stop(segs,failed_seg_status,success_seg_status)
-            
+
+            stopMirrors = not (self.gparray.strategy[0] == 's')
+
+            self._stopseg_cmds(True, stopMirrors) # second arg shouldn't matter
+            success_seg_status = self._process_segment_stop(failed_seg_status)    
+            self._print_segment_stop(segs,failed_seg_status,success_seg_status)            
         pass
     
     ######
@@ -500,7 +502,7 @@ class GpStop():
 def parseargs():
     parser = OptParser(option_class=OptChecker,
                 description=' '.join(description.split()),
-                version='%prog version $Revision: #12 $')
+                version='%prog version $Revision$')
     parser.setHelp(_help)
     parser.set_usage('%prog [--version] [--help] [options] ')
     parser.remove_option('-h')

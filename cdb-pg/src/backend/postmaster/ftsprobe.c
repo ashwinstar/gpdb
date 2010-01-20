@@ -1153,6 +1153,7 @@ probePublishUpdate(uint8 *probe_results)
 		/* We're an active segment ? */
 		if (segmentToProbe(segInfo, failover_strategy))
 		{
+			bool updateMirror = false;
 			int primaryChange;
 			int mirrorChange;
 			uint8 segStatus;
@@ -1181,19 +1182,35 @@ probePublishUpdate(uint8 *probe_results)
 					changes[primaryChange].oldStatus = segStatus;
 					changes[primaryChange].newStatus = segStatus & ~FTS_STATUS_ALIVE;
 
-					if (mirror)
-					{
-						if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-							elog(LOG, "probePublishUpdate: dbid %d has mirror %d", segInfo->dbid, mirror->dbid);
-					}
-
 					/*
 					 * If we have a mirror (which is alive), we need
 					 * to update it (even if it was already primary!)
+					 *
+					 * Things are slightly complicated by the differences between
+					 * Filerep and SAN-failover strategies.
 					 */
-					if (mirror != NULL &&
-						((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE) &&
-						FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
+					if (mirror != NULL)
+					{
+						if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+							elog(LOG, "probePublishUpdate: dbid %d has mirror %d", segInfo->dbid, mirror->dbid);
+
+						if (failover_strategy == 'f')
+						{
+							if (((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE) &&
+								FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
+							{
+								updateMirror = true;
+							}
+						}
+						else if (failover_strategy == 's')
+						{
+							if (FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
+							{
+								updateMirror = true;
+							}
+						}
+					}
+					if (updateMirror)
 					{
 						/* update the mirror too */
 						mirrorChange = changeEntries;

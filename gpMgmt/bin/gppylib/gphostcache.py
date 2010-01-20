@@ -60,7 +60,7 @@ class GpHostCache():
         self.gparray=gparray
         self.hostcache={}         # interface -> hostname
         self.gphost_map={}        # hostname -> GpHost
-        
+
         # these are any db's that should be skipped.
         skipmap={}
         for db in skiplist:
@@ -137,11 +137,15 @@ class GpHostCache():
             pool.empty_completed_items()
 
         # Build up the GpHosts using our interface->hostname lookup
-        for db in self.gparray.getSegDbList():        
+        for db in self.gparray.getSegDbList():
+            # skip this dbid ?
+            if db.dbid in skipmap:
+                continue
             interface = db.get_address()
             hostname  = self.hostcache[interface]   # should set the db?
             if hostname not in self.gphost_map:
                 self.gphost_map[hostname] = GpHost(hostname)
+
             self.gphost_map[hostname].addDB(db)
 
         # Try to update the hostcache file if we executed any hostname commands
