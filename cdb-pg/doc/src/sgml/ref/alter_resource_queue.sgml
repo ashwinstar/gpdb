@@ -20,8 +20,24 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-ALTER RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITH ([ACTIVELIMIT=<replaceable class="PARAMETER">integer</replaceable>] [COSTLIMIT=<replaceable class="PARAMETER">float</replaceable>] [OVERCOMMIT=<replaceable class="PARAMETER">TRUE</replaceable> | <replaceable class="PARAMETER">FALSE</replaceable>] [IGNORECOSTLIMIT=<replaceable class="PARAMETER">float</replaceable>] [PRIORITY={<replaceable class="PARAMETER">MIN</replaceable>|<replaceable class="PARAMETER">LOW</replaceable>|<replaceable class="PARAMETER">MEDIUM</replaceable>|<replaceable class="PARAMETER">HIGH</replaceable>|<replaceable class="PARAMETER">MAX</replaceable>}]) 
+ALTER RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITH ( queue_attribute=value [, ... ] ) 
 
+where queue_attribute is:
+
+ACTIVE_STATEMENTS=<replaceable class="PARAMETER">integer</replaceable>
+MAX_COST=<replaceable class="PARAMETER">float</replaceable> 
+COST_OVERCOMMIT=<replaceable class="PARAMETER">TRUE</replaceable> | <replaceable class="PARAMETER">FALSE</replaceable>
+MIN_COST=<replaceable class="PARAMETER">float</replaceable>
+PRIORITY={<replaceable class="PARAMETER">MIN</replaceable>|<replaceable class="PARAMETER">LOW</replaceable>|<replaceable class="PARAMETER">MEDIUM</replaceable>|<replaceable class="PARAMETER">HIGH</replaceable>|<replaceable class="PARAMETER">MAX</replaceable>} 
+
+ALTER RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITHOUT ( queue_attribute=value [, ... ] ) 
+
+where queue_attribute is:
+
+ACTIVE_STATEMENTS=<replaceable class="PARAMETER">integer</replaceable>
+MAX_COST=<replaceable class="PARAMETER">float</replaceable> 
+COST_OVERCOMMIT=<replaceable class="PARAMETER">TRUE</replaceable> | <replaceable class="PARAMETER">FALSE</replaceable>
+MIN_COST=<replaceable class="PARAMETER">float</replaceable>
 </synopsis>
  </refsynopsisdiv>
 
@@ -33,8 +49,8 @@ ALTER RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITH ([AC
    attributes of a resource queue that was previously created with the 
    <command>CREATE RESOURCE QUEUE</command> command. To change the roles
    assigned to a resource queue, use the <command>ALTER ROLE</command>.
-   A resource queue must have either an <literal>ACTIVELIMIT</literal> 
-   or a <literal>COSTLIMIT</literal> defined (or it can have both).  
+   A resource queue must have either an <literal>ACTIVE_STATEMENTS</literal> 
+   or a <literal>MAX_COST</literal> defined (or it can have both).  
    You must be a database superuser to use this command.
   </para>
 
@@ -54,43 +70,43 @@ ALTER RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITH ([AC
      </varlistentry>
 
      <varlistentry>
-      <term><literal>ACTIVELIMIT</literal> <replaceable class="parameter">integer</replaceable></term>
+      <term><literal>ACTIVE_STATEMENTS</literal> <replaceable class="parameter">integer</replaceable></term>
        <listitem>
        <para>
-        Resource queues with an <literal>ACTIVELIMIT</literal> 
+        Resource queues with an <literal>ACTIVE_STATEMENTS</literal> threshold
         limit the number of queries that can be executed by roles assigned 
         to that queue. It controls the number of active queries that are 
-        allowed to run at the same time. The value for <literal>ACTIVELIMIT</literal> 
+        allowed to run at the same time. The value for <literal>ACTIVE_STATEMENTS</literal> 
         should be an integer greater than 0, or -1. A setting of -1 means no 
-        <literal>ACTIVELIMIT</literal> limit.
+        <literal>ACTIVE_STATEMENTS</literal> limit.
       </para>
       </listitem>
      </varlistentry>
 
      <varlistentry>
-      <term><literal>COSTLIMIT</literal> <replaceable class="parameter">float</replaceable></term>
+      <term><literal>MAX_COST</literal> <replaceable class="parameter">float</replaceable></term>
        <listitem>
        <para>
-        Resource queues with a <literal>COSTLIMIT</literal> limit the total cost of 
+        Resource queues with a <literal>MAX_COST</literal> limit the total cost of 
         queries that can be executed by roles assigned to that queue. Cost 
         is measured in the estimated total cost for the query as determined 
         by the query planner (as shown in the <command>EXPLAIN</command> output for a query). 
         Therefore, an administrator must be familiar with the queries typically 
         executed on the system in order to set an appropriate cost threshold for 
         a queue. Cost is measured in units of disk page fetches; 1.0 equals one 
-        sequential disk page read. The value for <literal>COSTLIMIT</literal> 
+        sequential disk page read. The value for <literal>MAX_COST</literal> 
         is specified as a floating point number (for example 100.0) or can also be 
         specified as an exponent (for example 1e+2). A value of -1.0 means no
-        <literal>COSTLIMIT</literal> limit.
+        <literal>MAX_COST</literal> limit.
        </para>
       </listitem>
      </varlistentry>
 
      <varlistentry>
-      <term><literal>IGNORECOSTLIMIT</literal> <replaceable class="parameter">float</replaceable></term>
+      <term><literal>MIN_COST</literal> <replaceable class="parameter">float</replaceable></term>
        <listitem>
        <para>
-        If a Resource queue has <literal>IGNORECOSTLIMIT</literal> &gt; 0 
+        If a Resource queue has <literal>MIN_COST</literal> &gt; 0 
         any query whose cost is &lt; this value s not queued i.e it is ignored
         for resource scheduling purposes.
        </para>
@@ -102,7 +118,7 @@ ALTER RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITH ([AC
      </varlistentry>
 
      <varlistentry>
-      <term><literal>OVERCOMMIT</literal></term>
+      <term><literal>COST_OVERCOMMIT</literal></term>
        <listitem>
        <para>
        These clauses determine whether the <literal>resource queue</literal>
@@ -110,8 +126,8 @@ ALTER RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITH ([AC
        larger than the queue's <literal>costlimit</literal> to execute.
        </para>
        <para>
-       In the default <literal>OVERCOMMIT=FALSE</literal> case, such statements
-       produce an error. If <literal>OVERCOMMIT</literal> is enabled for the 
+       In the default <literal>COST_OVERCOMMIT=FALSE</literal> case, such statements
+       produce an error. If <literal>COST_OVERCOMMIT</literal> is enabled for the 
        queue, then they will be allowed to run when there are no other
        statements in the queue.
        </para>
@@ -161,7 +177,7 @@ ALTER RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITH ([AC
   <para>
    Set a resource queue's active query limit to 20:
 <programlisting>
-ALTER RESOURCE QUEUE myqueue WITH (ACTIVELIMIT=20);
+ALTER RESOURCE QUEUE myqueue WITH (ACTIVE_STATEMENTS=20);
 </programlisting>
   </para>
 
@@ -183,7 +199,7 @@ ALTER RESOURCE QUEUE powerusers WITH (COSTLIMIT=-1.0);
   <para> 
    Change both the active query and cost limits for a resource queue:
 <programlisting>
-ALTER RESOURCE QUEUE myqueue WITH (ACTIVELIMIT=30, COSTLIMIT=5000.00);
+ALTER RESOURCE QUEUE myqueue WITH (ACTIVE_STATEMENTS=30, MAX_COST=5000.00);
 </programlisting>
   </para>
  </refsect1>
