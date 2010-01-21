@@ -2,8 +2,6 @@
 #
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
 #
-from gppylib.utils import checkNotNone
-from gppylib.utils import checkNotNone
 """
   gparray.py:
 
@@ -19,16 +17,28 @@ from gppylib.utils import checkNotNone
 from datetime import date
 import copy
 
+from gppylib.utils import checkNotNone
 from gppylib    import gplog
 from gppylib.db import dbconn
 
 logger = gplog.get_default_logger()
 
+SYSTEM_FILESPACE = 3052        # oid of the system filespace
+
+ROLE_PRIMARY = 'p'
+ROLE_MIRROR  = 'm'
+VALID_ROLES  = [ROLE_PRIMARY, ROLE_MIRROR]
+
+STATUS_UP    = 'u'
+STATUS_DOWN  = 'd'
+VALID_STATUS = [STATUS_UP, STATUS_DOWN]
+
+
 # ============================================================================
 class GpDB:
     """
-    GpDB class representing configuration information for
-    a single dbid within a Greenplum Array.
+    GpDB class representing configuration information for a single dbid 
+    within a Greenplum Array.
     """
 
     # --------------------------------------------------------------------
@@ -52,8 +62,13 @@ class GpDB:
         self.datadir=datadir
         self.replicationPort=replicationPort
 
+        # Filespace mappings for this segment
+        #   Todo: Handle self.datadir more cleanly
+        #   Todo: Handle initialization more cleanly
+        self.__filespaces = { SYSTEM_FILESPACE: datadir }
+
         # Pending filespace creation
-        self._pending_filespace = None
+        self.__pending_filespace = None
 
         # Todo: Remove old dead code
         self.valid = (status == 'u')
@@ -76,7 +91,17 @@ class GpDB:
         Construct a string representation of class, must be sufficient
         information to call initFromString on the result.
         """
-        return '%d|%d|%s|%s|%s|%s|%s|%s|%d|%s|%s' % (
+        
+        # Note: this doesn't currently handle "pending filespaces", but
+        # this is not currently required since gpfilespace is the only code
+        # that generates pending filespaces and it never serializes a gparray
+        # object.
+        filespaces = []
+        for fsoid in self.__filespaces:
+            if fsoid not in [SYSTEM_FILESPACE]:
+                filespaces.append("%d:%s" % (fsoid, self.__filespaces[fsoid]))
+        
+        return '%d|%d|%s|%s|%s|%s|%s|%s|%d|%s|%s|%s' % (
             self.dbid,
             self.content,
             self.role,
@@ -86,8 +111,10 @@ class GpDB:
             self.hostname,
             self.address,
             self.port,
+            self.replicationPort,
             self.datadir,
-            self.replicationPort)
+            ','.join(filespaces)  # this is rather ugly
+            )
 
     # --------------------------------------------------------------------
     @staticmethod
@@ -111,17 +138,18 @@ class GpDB:
             address         = tup[5]
             port            = tup[6]
             datadir         = tup[7]
+            filespaces      = ""
 
             # Calculate new fields from old ones
-            preferred_role  = 'p' if definedprimary else 'm'
-            role            = 'p' if isprimary else 'm'
+            preferred_role  = ROLE_PRIMARY if definedprimary else ROLE_MIRROR
+            role            = ROLE_PRIMARY if isprimary else ROLE_MIRROR
             hostname        = address                 # fixme
             mode            = 's'                     # ???
-            status          = 'u' if valid else 'd'
+            status          = STATUS_UP if valid else STATUS_DOWN
             replicationPort = None
 
-        # New format: 11 fields
-        elif len(tup) == 11:
+        # New format: 12 fields
+        elif len(tup) == 12:
             # This describes the gp_segment_configuration catalog (3.4+)
             dbid            = tup[0]
             content         = tup[1]
@@ -132,13 +160,15 @@ class GpDB:
             hostname        = tup[6]
             address         = tup[7]
             port            = tup[8]
-            datadir         = tup[9]   # from the pg_filespace_entry table
-            replicationPort = tup[10]
+            replicationPort = tup[9]
+            datadir         = tup[10]  # from the pg_filespace_entry table
+            filespaces      = tup[11]
 
         else:
             raise Exception("GpDB unknown input format: %s" % s)
 
-        return GpDB(content         = content, 
+        # Initialize segment without filespace information
+        gpdb = GpDB(content         = content, 
                     preferred_role  = preferred_role, 
                     dbid            = dbid, 
                     role            = role, 
@@ -150,81 +180,61 @@ class GpDB:
                     datadir         = datadir, 
                     replicationPort = replicationPort)
 
+        # Add in filespace information, if present
+        for fs in filespaces.split(","):
+            if fs == "":
+                continue
+            (fsoid, fselocation) = fs.split(":")
+            gpdb.addSegmentFilespace(fsoid, fselocation)
+
+        # Return the completed segment
+        return gpdb
+
+
+    # --------------------------------------------------------------------
+    def copy(self):
+        """
+        Creates a copy of the segment
+
+        Notes: a shallow copy is sufficent right now
+        """
+        return copy.copy(self)
+
+
     # --------------------------------------------------------------------
     # Six simple helper functions to identify what role a segment plays:
-    #  + QD
+    #  + QD (Query Dispatcher)
     #     + master
     #     + standby master
-    #  + QE
+    #  + QE (Query Executor)
     #     + primary
     #     + mirror
     # --------------------------------------------------------------------    
-    def isQD(self):
+    def isSegmentQD(self):
         return self.content < 0
 
-    def isMaster(self):
-        return self.content < 0 and self.preferred_role == 'p'
+    def isSegmentMaster(self, current_role=False):
+        role = self.role if current_role else self.preferred_role
+        return self.content < 0 and role == ROLE_PRIMARY
 
-    def isStandby(self):
-        return self.content < 0 and self.preferred_role == 'm'
+    def isSegmentStandby(self, current_role=False):
+        role = self.role if current_role else self.preferred_role
+        return self.content < 0 and role == ROLE_MIRROR
 
-    def isQE(self):
+    def isSegmentQE(self):
         return self.content >= 0
 
-    def isPrimary(self):
-        return self.content >= 0 and self.preferred_role == 'p'
+    def isSegmentPrimary(self, current_role=False):
+        role = self.role if current_role else self.preferred_role
+        return self.content >= 0 and role == ROLE_PRIMARY
 
-    def isMirror(self):
-        return self.content >= 0 and self.preferred_role == 'm'
-       
+    def isSegmentMirror(self, current_role=False):
+        role = self.role if current_role else self.preferred_role
+        return self.content >= 0 and role == ROLE_MIRROR
 
     # --------------------------------------------------------------------
-    # Simple access methods
-    #
-    #   Using access methods rather than letting other code pull private
-    #   variables directly allows more easily adapt the internals of the
-    #   class to changes to the underlying catalog.
-    # --------------------------------------------------------------------
-    def get_dbid(self):
-        return self.dbid
-
-    def get_content(self):
-        return self.content
-
-    def get_address(self):
-        return self.address
-
-    def get_hostname(self):
-        return self.hostname
-
-    def get_role(self):
-        return self.role
-
-    def get_status(self):
-        """
-        Called by gpstart to report segment status after startup
-        """
-        if self.status == 'u':
-            return "Valid"
-        else:
-            return "Invalid"
-    
-    def get_datadir(self):
-        '''
-        Return the primary datadirectory location for the segment.
-
-        Note: the datadirectory is just one of the filespace locations
-        associated with the segment, calling code should be carefull not 
-        to assume that this is the only directory location for this segment.
-
-        Todo: open question - should this always return a list?
-        '''
-        return self.datadir
-
-
-    #############################
     # getters
-    #
+    # --------------------------------------------------------------------
     def getSegmentDbId(self):
         return checkNotNone("dbId", self.dbid)
 
@@ -243,30 +253,65 @@ class GpDB:
     def getSegmentStatus(self):
         return checkNotNone("status", self.status)
 
-    #
-    # Return the postmaster __port
-    #
     def getSegmentPort(self):
+        """
+        Returns the listening port for the postmaster for this segment.
+
+        Note: With file replication the postmaster will not be active for
+        mirrors so nothing will be listening on this port, instead the
+        "replicationPort" is used for primary-mirror communication.
+        """
         return checkNotNone("port", self.port)
 
     def getSegmentReplicationPort(self):
-        # is Nullable (so can return None)
+        """
+        Returns the replicationPort for the segment, this is the port used for
+        communication between the primary and mirror for file replication.
+
+        Note: is Nullable (so can return None)
+        """
         return self.replicationPort
 
     def getSegmentHostName(self):
-        # is Nullable (so can return None)
+        """
+        Returns the actual `hostname` for the host
+
+        Note: use getSegmentAddress for the network address to use
+        Note: is Nullable (so can return None)
+        """
         return self.hostname
 
     def getSegmentAddress(self):
-        # is Nullable (so can return None)
+        """
+        Returns the network address to use to contact the segment.
+
+        Note: is Nullable (so can return None)
+        """
         return self.address
 
     def getSegmentDataDirectory(self):
+        """
+        Return the primary datadirectory location for the segment.
+
+        Note: the datadirectory is just one of the filespace locations
+        associated with the segment, calling code should be carefull not 
+        to assume that this is the only directory location for this segment.
+
+        Todo: evaluate callers of this function to see if they should really
+        be dealing with a list of filespaces.
+        """
         return checkNotNone("dataDirectory", self.datadir)
 
-    #############################
-    # setSegmentters
-    #
+    def getSegmentFilespaces(self):
+        """
+        Returns the filespace dictionary of oid->path pairs
+        """
+        return self.__filespaces        
+
+
+    # --------------------------------------------------------------------
+    # setters
+    # --------------------------------------------------------------------
     def setSegmentDbId(self, dbId):
         checkNotNone("dbId", dbId)
         self.__dbId = dbId
@@ -280,7 +325,7 @@ class GpDB:
     def setSegmentRole(self, role):
         checkNotNone("role", role)
 
-        if role != 'm' and role != 'p':
+        if role not in VALID_ROLES:
             raise Exception("Invalid role '%s'" % role)
 
         self.__role = role
@@ -288,7 +333,7 @@ class GpDB:
     def setSegmentPreferredRole(self, preferredRole):
         checkNotNone("preferredRole", preferredRole)
 
-        if preferredRole != 'm' and preferredRole != 'p':
+        if preferredRole not in VALID_ROLES:
             raise Exception("Invalid preferredRole '%s'" % preferredRole)
 
         self.__preferredRole = preferredRole
@@ -304,14 +349,11 @@ class GpDB:
     def setSegmentStatus(self, status):
         checkNotNone("status", status)
 
-        if status != 'd' and status != 'u':
+        if status not in VALID_STATUS:
             raise Exception("Invalid status '%s'" % status)
 
         self.__status = status
 
-    #
-    # Return the postmaster port
-    #
     def setSegmentPort(self, port):
         checkNotNone("port", port)
         self.__port = port
@@ -332,36 +374,44 @@ class GpDB:
         checkNotNone("dataDirectory", dataDirectory)
         self.__dataDirectory = dataDirectory
 
-    def copy(self):
-        return copy.copy(self) # a shallow copy is sufficent right now
-
-
-
-    # --------------------------------------------------------------------
-    # Extension to support gpfilespace:
-    #    + add_filespace(path)
-    #    + get_pending_filespace()
-    #
-    # A filespace location will be added to every GpDB in the array and then 
-    # checks will be run to make sure that everything is valid.
-    # --------------------------------------------------------------------
-    def add_filespace(self, path):
+    def addSegmentFilespace(self, oid, path):
         """
-        Add a path for a pending filespace creation, 
+        Add a filespace path for this segment.
         
         Throws: 
            Exception - if a path has already been specified for this segment.
         """
-        if not self._pending_filespace:
-            self._pending_filespace = path
-        else:
-            raise Exception("Duplicate filespace path for dbid %d" % self.dbid)
 
-    def get_pending_filespace(self):
+        # gpfilespace adds a special filespace with oid=None to indicate
+        # the filespace that it is currently building, since the filespace
+        # does not yet exist there is no valid value that could be used.
+        if oid == None:
+            if self.__pending_filespace:
+                raise Exception("Duplicate filespace path for dbid %d" % 
+                                self.dbid)
+            self.__pending_filespace = path
+            return
+        
+        # oids should always be integer values > 0
+        oid = int(oid)
+        assert(oid > 0)
+
+        # The more usual case just sets the filespace in the filespace 
+        # dictionary
+        if oid in self.__filespaces:
+            raise Exception("Duplicate filespace path for "
+                            "dbid %d filespace %d" % (self.dbid, oid))
+        self.__filespaces[oid] = path
+
+
+    def getSegmentPendingFilespace(self):
         """
         Returns the pending filespace location for this segment
+        (called by gpfilespace)
         """
-        return self._pending_filespace
+        return self.__pending_filespace
+        
+
 
 
 # ============================================================================
@@ -412,7 +462,7 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
     
     dbid = 0
     content = 0
-    #primaries
+
     for host in hostlist:
         isprimary='t'
         port=primary_portbase        
@@ -543,28 +593,29 @@ class GpArray:
         for segdb in segments:
 
             # Handle QD nodes
-            if segdb.isMaster():
+            if segdb.isSegmentMaster():
                 if self.master != None:
                     logger.error("multiple master dbs defined")
                     raise Exception("GpArray - multiple master dbs defined")
                 self.master = segdb
 
-            elif segdb.isStandby():
+            elif segdb.isSegmentStandby():
                 if self.standbyMaster != None:
                     logger.error("multiple standy master dbs defined")
                     raise Exception("GpArray - multiple standby master dbs defined")
                 self.standbyMaster = segdb
 
             # Handle regular segments
-            elif segdb.isQE():
-                
+            elif segdb.isSegmentQE():
+                content = segdb.getSegmentContentId()
+
                 # Todo: Relax the requirement that the segdbs must be sorted 
                 # in content order.
-                if len(self.segments) <= segdb.content:
-                    self.segments.insert(segdb.content, Segment())
+                if len(self.segments) <= content:
+                    self.segments.insert(content, Segment())
                 
-                seg = self.segments[segdb.content]
-                if segdb.isPrimary():
+                seg = self.segments[content]
+                if segdb.isSegmentPrimary():
                     seg.addPrimary(segdb)
                     self.numPrimarySegments += 1
                 else:
@@ -595,28 +646,34 @@ class GpArray:
 
         config_rows = dbconn.execSQL(conn, '''
            SELECT dbid, content, role, preferred_role, mode, status, hostname, 
-               address, port, fselocation as datadir, replication_port
+               address, port, replication_port, fs.oid, fselocation
            FROM pg_catalog.gp_segment_configuration
            JOIN pg_catalog.pg_filespace_entry on (dbid = fsedbid)
-           JOIN pg_catalog.pg_filespace fs 
-             on (fsefsoid = fs.oid and fsname='pg_system')
-           ORDER BY content, preferred_role DESC
+           JOIN pg_catalog.pg_filespace fs on (fsefsoid = fs.oid)
+           ORDER BY content, preferred_role DESC, fs.oid
         ''')
 
         conn.close()
 
+        # Todo: add checks that all segments should have the same filespaces?
         segments = []
+        seg = None
         for row in config_rows:
+
             # Extract fields from the row
             (dbid, content, role, preferred_role, mode, status, hostname, 
-             address, port, datadir, replicationPort) = row
+             address, port, replicationPort, fsoid, fslocation) = row
             
-            # Build a segment with the information
-            seg = GpDB(content, preferred_role, dbid, role, mode, status, 
-                       hostname, address, port, datadir, replicationPort)
-
-            # append it to the list of segments
-            segments.append(seg)
+            # The query returns all the filespaces for a segment on separate
+            # rows.  If this row is the same dbid as the previous row simply
+            # add this filespace to the existing list, otherwise create a
+            # new segment.
+            if seg and seg.getSegmentDbId() == dbid:
+                seg.addSegmentFilespace(fsoid, fslocation)
+            else:
+                seg = GpDB(content, preferred_role, dbid, role, mode, status, 
+                           hostname, address, port, fslocation, replicationPort)
+                segments.append(seg)
 
         for strategy_row in strategy_rows:
             (strategy) = strategy_row
@@ -698,7 +755,7 @@ class GpArray:
     def getSegmentContainingDb(self, db):
         for seg in self.segments:
             for segDb in seg.get_dbs():
-                if db.dbid == segDb.dbid:
+                if db.getSegmentDbId() == segDb.getSegmentDbId():
                     return seg
         return None
 
@@ -757,8 +814,8 @@ class GpArray:
         dbid = 0
 
         for db in self.getDbList(includeExpansionSegs):
-            if db.dbid > dbid:
-                dbid = db.dbid
+            if db.getSegmentDbId() > dbid:
+                dbid = db.getSegmentDbId()
         
         return dbid
 
@@ -862,7 +919,7 @@ class GpArray:
         """Returns True is mirrors are defined"""
         return len(self.segments[0].mirrorDBs) != 0
 
-    # --------------------------------------------------------------------        
+    # --------------------------------------------------------------------
     def get_primary_root_datadirs(self):
         """
         Returns a list of primary data directories minus the <prefix><contentid>
@@ -874,34 +931,41 @@ class GpArray:
         NOTE 2: 
            The determination of hostname is based on faulty logic
         """
+
         primary_datadirs = []
 
-        seg0_hostname = self.segments[0].primaryDB.get_hostname()
+        seg0_hostname = self.segments[0].primaryDB.getSegmentAddress()
         (seg0_hostname, inf_num) = get_host_interface(seg0_hostname)
         
         for db in self.getDbList():
-            if db.isPrimary() and db.get_hostname().startswith(seg0_hostname):
+            if db.isSegmentPrimary() and db.getSegmentAddress().startswith(seg0_hostname):
                 primary_datadirs.append(db.datadir[:db.datadir.rfind('/')])
         
         return primary_datadirs
 
     # --------------------------------------------------------------------    
     def get_mirror_root_datadirs(self):
-        """Returns a list of mirror data directories minus the <prefix><contentid>"""
+        """
+        Returns a list of mirror data directories minus the <prefix><contentid>
+        """
+
         mirror_datadirs = []
 
-        seg0_hostname = self.segments[0].primaryDB.get_hostname()
+        seg0_hostname = self.segments[0].primaryDB.getSegmentAddress()
         (seg0_hostname, inf_num) = get_host_interface(seg0_hostname)
 
         for db in self.getDbList():
-            if db.isMirror() and db.get_hostname().startswith(seg0_hostname):
+            if db.isSegmentMirror() and db.getSegmentAddress().startswith(seg0_hostname):
                 mirror_datadirs.append(db.datadir[:db.datadir.rfind('/')])
         
         return mirror_datadirs
 
     # --------------------------------------------------------------------    
     def get_datadir_prefix(self):
-        """Returns the prefix portion of <prefix><contentid>"""
+        """
+        Returns the prefix portion of <prefix><contentid>
+        """
+
         start_last_dir = self.master.datadir.rfind('/') + 1
         start_dir_content = self.master.datadir.rfind('-')
         prefix = self.master.datadir[start_last_dir:start_dir_content]
@@ -943,9 +1007,9 @@ class GpArray:
             self.expansionSegments[expseg_index] = Segment()
 
         seg = self.expansionSegments[expseg_index]
-        if preferred_role == 'p':
+        if preferred_role == ROLE_PRIMARY:
             if seg.primaryDB:
-                raise Exception('Duplicate content id for primary segment')                   
+                raise Exception('Duplicate content id for primary segment')
             seg.addPrimary(segdb)
         else:             
             seg.addMirror(segdb)
@@ -973,12 +1037,12 @@ class GpArray:
             expansion_seg_count += 1
             
             for segdb in seg.get_dbs():
-                dbids.append(segdb.dbid)
-                if segdb.role == 'p':
+                dbids.append(segdb.getSegmentDbId())
+                if segdb.getSegmentRole() == ROLE_PRIMARY:
                    isprimary = True
                 else:
                    isprimary = False
-                content.append((segdb.content, isprimary))
+                content.append((segdb.getSegmentContentId(), isprimary))
             
             # mirror count correct for this content id?
             if mirrors_per_segment > 0:
@@ -1017,11 +1081,12 @@ class GpArray:
         datadirs = {}
         used_ports = {}
         for db in self.getDbList(True):
-            (hostname,inf) = get_host_interface(db.get_hostname())
-            datadir = db.get_datadir()
+            datadir = db.getSegmentDataDirectory()
+            hostname = db.getSegmentHostName()
+            port = db.getSegmentPort()
             if datadirs.has_key(hostname):
                 if datadir in datadirs[hostname]:
-                    raise Exception('Data directory %s used multiple time on host %s' % (datadir, db.hostname))
+                    raise Exception('Data directory %s used multiple time on host %s' % (datadir, hostname))
                 else:
                     datadirs[hostname].append(datadir)
             else:
@@ -1029,7 +1094,7 @@ class GpArray:
                 datadirs[hostname].append(datadir)
             if used_ports.has_key(hostname):
                 if db.port in used_ports[hostname]:
-                    raise Exception('Port %d is used multiple times on host %s' % (db.port, db.get_hostname()))
+                    raise Exception('Port %d is used multiple times on host %s' % (port, hostname))
                 else:
                     used_ports[hostname].append(db.port)
             else:
@@ -1098,7 +1163,7 @@ class GpArray:
         hosts = []
         # Get all the hosts to add the data dirs to
         for seg in self.getSegDbList(True):
-            host = seg.get_hostname()
+            host = seg.getSegmentHostName()
             
             # If we have interface numbers, strip them so we only add data
             # dirs once per node

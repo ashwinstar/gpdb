@@ -350,14 +350,14 @@ class GPHost():
         '''
         Returns a list of primary segments on this host
         '''
-        return filter(lambda x: x.isPrimary(), self.segments)
+        return filter(lambda x: x.isSegmentPrimary(), self.segments)
 
     # --------------------------------------------------------------------
     def mirrors(self):
         '''
         Returns a list of mirror segments on this host
         '''
-        return filter(lambda x: x.isMirror(), self.segments)
+        return filter(lambda x: x.isSegmentMirror(), self.segments)
 
     # --------------------------------------------------------------------
     def dircheck(self, dir, primary=None):
@@ -385,7 +385,7 @@ class GPHost():
         # Note: all paths have gone through os.path.normpath(), which means
         # no trailing "/" characters.
         for d in self.segments:
-            name = os.path.split(d.get_datadir())[1]
+            name = os.path.split(d.getSegmentDataDirectory())[1]
             cdir = os.path.join(dir, name)
 
             # If the directories are one and the same
@@ -402,9 +402,9 @@ class GPHost():
 
         # determine which directories we are checking
         if primary == True:
-            segdirs = map(lambda x: os.path.join(dir, os.path.split(x.get_datadir())[1]), self.primaries())
+            segdirs = map(lambda x: os.path.join(dir, os.path.split(x.getSegmentDataDirectory())[1]), self.primaries())
         elif primary == False:
-            segdirs = map(lambda x: os.path.join(dir, os.path.split(x.get_datadir())[1]), self.mirrors())
+            segdirs = map(lambda x: os.path.join(dir, os.path.split(x.getSegmentDataDirectory())[1]), self.mirrors())
         else:
             segdirs = []
 
@@ -421,7 +421,7 @@ class GPHost():
         '''
 
         # Get the list of all specified paths and their parent directories
-        paths   = map(lambda x: x.get_pending_filespace(), self.segments)
+        paths   = map(lambda x: x.getSegmentPendingFilespace(), self.segments)
         parents = map(lambda x: os.path.split(x)[0], paths)
 
         # Check the host that we have no duplicate paths, if we are
@@ -460,8 +460,8 @@ class GPConfig:
 
         # We generate unique identifications based on the sorted 
         # "locations" of the primary and mirror segments
-        plocations = map(lambda x: os.path.split(x.get_datadir())[0], primaries)
-        mlocations = map(lambda x: os.path.split(x.get_datadir())[0], mirrors)
+        plocations = map(lambda x: os.path.split(x.getSegmentDataDirectory())[0], primaries)
+        mlocations = map(lambda x: os.path.split(x.getSegmentDataDirectory())[0], mirrors)
         plocations.sort()
         mlocations.sort()
         
@@ -632,12 +632,12 @@ class GPFilespace:
         for seg in array.getDbList():
 
             # Keep the primary master is at the front of the list
-            if seg.isMaster():  
+            if seg.isSegmentMaster():  
                 self.master.insert(0, seg)
-            elif seg.isStandby(): self.master.append(seg)
+            elif seg.isSegmentStandby(): self.master.append(seg)
 
             # Segment hash includes primary, mirror, and master segments
-            self.segments[seg.get_dbid()] = seg
+            self.segments[seg.getSegmentDbId()] = seg
 
         logger.debug('Configuration contains %d segments' % len(self.segments))
 
@@ -681,7 +681,7 @@ class GPFilespace:
         # Loop through all the segments to get the nics
         for dbid in self.segments:
             seg = self.segments[dbid]
-            nic = seg.get_address()
+            nic = seg.getSegmentAddress()
             if nic not in self.nics:
                 # need to improve this
                 for i in range(CLUSTERSIZE):  ## DEBUG: mimic a large cluster
@@ -853,7 +853,7 @@ class GPFilespace:
 
         # Get a location for the master, this directory applies both to
         # the master and the standby master, like a regular datadir.
-        masterhost = self.hosts[self.master[0].get_hostname()]
+        masterhost = self.hosts[self.master[0].getSegmentHostName()]
         print "\nPlease specify location for the master directory"
         masterdir = getdir("Master> ", [masterhost])
         logger.debug("Master> %s" % masterdir)
@@ -867,8 +867,8 @@ class GPFilespace:
         f.write('filespace:%s\n' % fspacename)
 
         def writeseg(seg, loc):
-            name = os.path.split(seg.get_datadir())[1]
-            f.write(seg.get_hostname())
+            name = os.path.split(seg.getSegmentDataDirectory())[1]
+            f.write(seg.getSegmentHostName())
             f.write(':')
             f.write(str(seg.dbid))
             f.write(':')
@@ -974,7 +974,7 @@ To add this filespace to the database please run the command:
             # It is required that a single nic->hostname must be consistent 
             # within the config file.  
             #
-            nic = seg.get_address()
+            nic = seg.getSegmentAddress()
             if nic not in self.nics:
                 self.nics[nic] = host
             elif self.nics[nic] != host:
@@ -988,7 +988,7 @@ To add this filespace to the database please run the command:
             # Assign the path for the segment, will throw GPError if the
             # segment already has a path associated with it.
             try:
-                seg.add_filespace(path)
+                seg.addSegmentFilespace(None, path)
             except GPError, e:
                 raise GPError("Duplicate path set for dbid %d at line %d: %s"
                               % (dbid, lineno, line))
@@ -1000,7 +1000,7 @@ To add this filespace to the database please run the command:
         # for every segment!
         for dbid in self.segments:
             seg = self.segments[dbid]
-            if not seg.get_pending_filespace():
+            if not seg.getSegmentPendingFilespace():
                 raise GPError("No path specified for dbid: %d" % seg.dbid)
 
         logger.debug('nics: ' + str(self.nics))
@@ -1034,7 +1034,7 @@ To add this filespace to the database please run the command:
         dbids = self.segments.keys()
         dbids.sort()
         for dbid in dbids:
-            q += "  %d: '%s',\n" % (dbid, self.segments[dbid].get_pending_filespace())
+            q += "  %d: '%s',\n" % (dbid, self.segments[dbid].getSegmentPendingFilespace())
         
         # We have an extra "," in the above, strip it out and add in
         # the end paren instead

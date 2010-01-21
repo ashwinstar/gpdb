@@ -116,7 +116,7 @@ class GpInjectFaultProgram:
         #
         # prune gpArray according to filter settings
         #
-        segments = [seg for seg in segments if seg.isQE()]
+        segments = [seg for seg in segments if seg.isSegmentQE()]
         if targetHost is not None:
             segments = [seg for seg in segments if seg.getSegmentHostName() == targetHost]
 

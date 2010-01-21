@@ -64,7 +64,7 @@ class GpHostCache():
         # these are any db's that should be skipped.
         skipmap={}
         for db in skiplist:
-            skipmap[db.dbid]=db
+            skipmap[db.getSegmentDbId()]=db
         
         # Read the .gphostcache file if it exists
         #   Todo: handle failure more cleanly Should be able to deal with:
@@ -92,9 +92,9 @@ class GpHostCache():
         # a given interface more than once.
         inconsistent = []
         for db in self.gparray.getSegDbList():
-            if db.dbid not in skipmap:
-                interface = db.get_address()
-                hostname  = db.get_hostname()
+            if db.getSegmentDbId() not in skipmap:
+                interface = db.getSegmentAddress()
+                hostname  = db.getSegmentHostName()
 
                 # If we don't have this mapping yet set it, otherwise we
                 # simply validate consistency.
@@ -139,9 +139,9 @@ class GpHostCache():
         # Build up the GpHosts using our interface->hostname lookup
         for db in self.gparray.getSegDbList():
             # skip this dbid ?
-            if db.dbid in skipmap:
+            if db.getSegmentDbId() in skipmap:
                 continue
-            interface = db.get_address()
+            interface = db.getSegmentAddress()
             hostname  = self.hostcache[interface]   # should set the db?
             if hostname not in self.gphost_map:
                 self.gphost_map[hostname] = GpHost(hostname)
@@ -228,13 +228,16 @@ class GpHostCache():
                 alternateHost=None
                 
                 for db in dblist:
-                    pingCmd = unix.Ping("dbid: %d" % db.dbid,db.hostname)
+                    dbid = db.getSegmentDbId()
+                    hostname = db.getSegmentHostName()
+
+                    pingCmd = unix.Ping("dbid: %d" % dbid, hostname)
                     pingCmd.run()
                     if pingCmd.get_results().rc == 0:
-                        alternateHost=db.hostname
+                        alternateHost=hostname
                         break
                     else:
-                        logger.warning("Ping to host: '%s' FAILED" % db.hostname)
+                        logger.warning("Ping to host: '%s' FAILED" % hostname)
                         logger.debug("  ping details: %s" % pingCmd)
                 
                 if alternateHost:
@@ -256,9 +259,11 @@ def ping_segment_hosts(gparray,pool):
 
     pool.empty_completed_items()
     for db in gparray.get_valid_segdbs():
-        if db.hostname not in hosts_pinged:
-            pool.addCommand(unix.Ping('ping test',db.hostname,obj=db))
-            hosts_pinged[db.hostname]=db                             
+        hostname = db.getSegmentHostName()
+
+        if hostname not in hosts_pinged:
+            pool.addCommand(unix.Ping('ping test',hostname,obj=db))
+            hosts_pinged[hostname]=db                             
                                  
     pool.join()        
     cmds=pool.getCompletedItems()
@@ -266,6 +271,6 @@ def ping_segment_hosts(gparray,pool):
     for cmd in cmds:
         if cmd.get_results().rc != 0:
             failedSegs.append(cmd.obj)                        
-            logger.info("Ping to host: '%s' FAILED" % cmd.obj.hostname)
+            logger.info("Ping to host: '%s' FAILED" % cmd.obj.getSegmentHostName())
     return failedSegs
         

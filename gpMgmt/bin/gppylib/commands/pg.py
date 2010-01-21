@@ -48,7 +48,7 @@ GPHOME=os.environ.get('GPHOME')
 class InitDB(Command):
     def __init__(self,name,db,ctxt=LOCAL,remoteHost=None):
         self.db=db
-        self.cmdStr="$GPHOME/bin/initdb %s" % (db.get_datadir()) 
+        self.cmdStr="$GPHOME/bin/initdb %s" % (db.getSegmentDataDirectory())
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -64,7 +64,7 @@ class InitDB(Command):
 class DbStatus(Command):
     def __init__(self,name,db,ctxt=LOCAL,remoteHost=None):
         self.db=db        
-        self.cmdStr="$GPHOME/bin/pg_ctl -D %s status" % (self.db.datadir)
+        self.cmdStr="$GPHOME/bin/pg_ctl -D %s status" % (db.getSegmentDataDirectory())
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
     def is_running(self):
@@ -90,7 +90,7 @@ class DbStatus(Command):
 class ReloadDbConf(Command):
     def __init__(self,name,db,ctxt=LOCAL,remoteHost=None):
         self.db=db
-        cmdStr="$GPHOME/bin/pg_ctl reload -D %s" % (self.db.datadir)
+        cmdStr="$GPHOME/bin/pg_ctl reload -D %s" % (db.getSegmentDataDirectory())
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -176,9 +176,11 @@ def getProcWithParent(host,targetParentPID,procname):
 
 
 def getPostmasterPID(db):
-    cmdStr="ps -ef | grep 'postgres -D %s' | grep -v grep" % (db.datadir)
+    datadir = db.getSegmentDataDirectory()
+    hostname = db.getSegmentHostName()
+    cmdStr="ps -ef | grep 'postgres -D %s' | grep -v grep" % datadir
     name="get postmaster"
-    cmd=Command(name,cmdStr,ctxt=REMOTE,remoteHost=db.hostname)
+    cmd=Command(name,cmdStr,ctxt=REMOTE,remoteHost=hostname)
     cmd.run(validateAfter=True)
     logger.critical(cmd.cmdStr)
     logger.critical(cmd.get_results().printResult())
@@ -190,7 +192,8 @@ def killPostmaster(db,signal):
 
 def getSeqServerPID(db):
     postmaster_pid=getPostmasterPID(db)    
-    return getProcWithParent(db.hostname,postmaster_pid,"seqserver")
+    hostname=db.getSegmentHostName()
+    return getProcWithParent(hostname,postmaster_pid,"seqserver")
     
 def killSeqServer(db,signal):
     return killPgProc(db,"seqserver",signal)
@@ -198,7 +201,8 @@ def killSeqServer(db,signal):
 
 def getBgWriterPID(db):
     postmaster_pid=getPostmasterPID(db)    
-    return getProcWithParent(db.hostname,postmaster_pid,"postgres: writer process")
+    hostname=db.getSegmentHostName()
+    return getProcWithParent(hostname,postmaster_pid,"postgres: writer process")
         
 def killBgWriter(db,signal):
     return killPgProc(db, "postgres: writer process",signal)
@@ -206,35 +210,39 @@ def killBgWriter(db,signal):
     
 def getStatsCollectorPID(db):
     postmaster_pid=getPostmasterPID(db)    
-    return getProcWithParent(db.hostname,postmaster_pid,"postgres: stats collector")
+    hostname=db.getSegmentHostName()
+    return getProcWithParent(hostname,postmaster_pid,"postgres: stats collector")
     
 def killStatsCollector(db,signal):
     return killPgProc(db,"postgres: stats collector",signal)
 
 def getWALSendServerPID(db):
     postmaster_pid=getPostmasterPID(db)    
-    return getProcWithParent(db.hostname,postmaster_pid,"postgres: WAL Send Server")
+    hostname=db.getSegmentHostName()
+    return getProcWithParent(hostname,postmaster_pid,"postgres: WAL Send Server")
 
 def killWALSendServer(db,signal):
     return killPgProc(db,"postgres: WAL Send Server",signal)
 
 def getFTSProbePID(db):
     postmaster_pid=getPostmasterPID(db)    
-    return getProcWithParent(db.hostname,postmaster_pid,"postgres: ftsprobe process")
+    hostname=db.getSegmentHostName()
+    return getProcWithParent(hostname,postmaster_pid,"postgres: ftsprobe process")
 
 def killFTSProbe(db,signal):
     return killPgProc(db,"postgres: ftsprobe process",signal)
 
 def killPgProc(db,procname,signal):
     postmasterPID=getPostmasterPID(db)
+    hostname=db.getSegmentHostName()
     if procname == "postmaster":
         procPID = postmasterPID
         parentPID = 0
     else:
-        (parentPID,procPID)=getProcWithParent(db.hostname,postmasterPID,procname)
+        (parentPID,procPID)=getProcWithParent(hostname,postmasterPID,procname)
     if procPID == 0:
         raise Exception("Invalid PID: '0' to kill.  parent postmaster PID: %s" % postmasterPID)
-    cmd=Kill.remote("kill "+procname,procPID,signal,db.hostname)
+    cmd=Kill.remote("kill "+procname,procPID,signal,hostname)
     return (parentPID,procPID)
 
 class PgControlData(Command):

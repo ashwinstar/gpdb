@@ -339,9 +339,10 @@ class GpStop():
         for gphost in self.hostcache.get_hosts():
             dbs = []
             for db in gphost.dbs:
-                if db.get_role() == 'p'and includePrimaries:
+                role = db.getSegmentRole()
+                if role == 'p' and includePrimaries:
                     dbs.append(db)
-                elif db.get_role() != 'p' and includeMirrors:
+                elif role != 'p' and includeMirrors:
                     dbs.append(db)
             
             hostname=gphost.dbs[0].hostname                            
@@ -476,8 +477,12 @@ class GpStop():
         
         format_string=self._get_format_string()
         logger.info(format_string % ("Host","Datadir","Port","Status"))
-        for db in self.gparray.getSegDbList():                
-            logger.info(format_string % (db.hostname,db.datadir,db.port,db.get_status()))
+        for db in self.gparray.getSegDbList():
+            hostname = db.getSegmentHostName()
+            datadir = db.getSegmentDataDirectory()
+            port = db.getSegmentPort()
+            status = db.getSegmentStatus()
+            logger.info(format_string % (hostname, datadir, port, status))
     
     
     ######

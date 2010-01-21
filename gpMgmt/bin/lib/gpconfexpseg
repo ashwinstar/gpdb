@@ -5,13 +5,14 @@ import os
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib.commands.gp import ModifyPostgresqlConfSetting, SegmentStart, SegmentStop, SegmentToStart
+from gppylib.commands.gp import ModifyPostgresqlConfSetting, SegmentStart, SegmentStop
 from gppylib.db import dbconn
 from gppylib.db import catalog
 from gppylib.commands import unix
 from gppylib.commands.pg import DbStatus
 from gppylib import gplog
 from gppylib.commands.base import *
+from gppylib.gparray import GpDB
 from time import sleep
 
 description = (""" 
@@ -93,10 +94,26 @@ class ConfExpSegCmd(Command):
             # start up segment in utility
             logger.info("starting expansion segment (datadir: %s, port: %s)" % (self.datadir, self.port))
 
-            # use dummy values for dbid, contentid, and numSegmentsInCluster since we are connecting in utility mode
-            # SegmentToStart takes dataDir, port, dbId, contentId, numContentsInCluster, mirroringMode, noWait
-            segmentToStart = SegmentToStart(self.datadir, self.port, -1, -1, 0, "mirrorless", False)
-            startCmd = SegmentStart('Start expansion segment', segmentToStart, utilityMode=True)
+            # use dummy values for dbid, contentid, and numSegmentsInCluster 
+            # since we are connecting in utility mode
+            # Todo: fix for tablespaces
+            seg = GpDB(content = -1,
+                       preferred_role = 'p',
+                       dbid = -1,
+                       role = 'p',
+                       mode = 's',
+                       status = 'u',
+                       hostname = 'localhost',
+                       address = 'localhost',
+                       port = self.port,
+                       datadir = self.datadir,
+                       replicationPort = None,
+                       )
+
+            startCmd = SegmentStart('StartExpansionsegment', seg, 
+                                    numContentsInCluster = 0,
+                                    mirroringMode = 'mirrorless',
+                                    utilityMode=True)
             try:
                 startCmd.run(validateAfter=True)
             except:

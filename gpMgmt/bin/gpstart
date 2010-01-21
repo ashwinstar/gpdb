@@ -59,17 +59,26 @@ class SegStartStatus:
         
     
     def __str__(self):
+        dbid     = self.db.getSegmentDbId()
+        hostname = self.db.getSegmentHostName()
+        datadir  = self.db.getSegmentDataDirectory()
+        reason   = self.reason
+
         if self.started:
-            return "DBID:%d  STARTED" % self.db.dbid
+            return "DBID:%d  STARTED" % dbid
         else:
-            return "DBID:%d  FAILED  host:'%s' datadir:'%s' with reason:'%s'" % (self.db.dbid,self.db.hostname,self.db.datadir,self.reason)
+            return "DBID:%d  FAILED  host:'%s' datadir:'%s' with reason:'%s'" % (
+                dbid, hostname, datadir, reason)
         
 #---------------------------------------------------------------
 class GpStart:
 
     ######
-    def __init__(self,restricted,start_standby,master_datadir,parallel=DEFAULT_NUM_WORKERS,quiet=False,masteronly=False,
-                  interactive=False):
+    def __init__(self, restricted, start_standby, master_datadir,
+                 parallel=DEFAULT_NUM_WORKERS,
+                 quiet=False,
+                 masteronly=False,
+                 interactive=False):
         self.restricted=restricted
         self.start_standby=start_standby        
         self.pool = None
@@ -115,11 +124,20 @@ class GpStart:
 
     ######
     def recover(self):
-        ''' Attempts to start any downed segments and bring them back into the GPDB array.
+        ''' 
+        Attempts to start any downed segments and bring them back into the GPDB 
+        array.
         
         This is only to be used in read-only mode.          
         
         '''
+
+        # Recover only worked in read-only mode, and thus is not really apropriate
+        # with 3.4 filerep, and/or it needs to be reworked for the new method.
+        #
+        # Todo: determine the fate of this function and either remove the dead code
+        # or rework to a new method.
+        raise Exception("gpstart --recover no longer supported")
 
         self._basic_setup()
 
@@ -137,36 +155,43 @@ class GpStart:
 
         # Log information about invalid segments
         for seg in downed_segs:
-            dbid     = seg.dbid
-            hostname = seg.get_hostname()
-            datadir  = seg.get_datadir()
+            dbid     = seg.getSegmentDbId()
+            hostname = seg.getSegmentHostName()
+            datadir  = seg.getSegmentDataDirectory()
             logger.info("Found offline segment with dbid=%d on host: %s datadirectory: %s" % (dbid,hostname,datadir))
 
         # Attempt to restart downed segments
         total_count=len(downed_segs)
         started = 0        
         for seg in downed_segs:
-            logger.info("Attempting to restart segment on host: %s datadir: %s " % (seg.hostname,seg.datadir))
-            logger.info("Trying to ping host: %s" % seg.hostname )
-            cmd = unix.Ping('ping test',seg.hostname)
+            hostname = seg.getSegmentHostName()
+            datadir  = seg.getSegmentDataDirectory()
+
+            logger.info("Attempting to restart segment on host: %s datadir: %s " % (hostname, datadir))
+            logger.info("Trying to ping host: %s" % hostname )
+            cmd = unix.Ping('ping test', hostname)
             cmd.run()
 
             if cmd.get_results().rc == 0:
                 logger.info("Ping successful. Attempting to bring up the segment database...")
                 #if we can ping it, lets try and start it.
-                start_cmd=gp.SegmentStart('start seg',seg.datadir,utilityMode=False,nowait=False,port=seg.port,ctxt=base.REMOTE, remoteHost=seg.hostname)
+
+                # FIXME: This is not the correct interface to start a segment.
+                # Specifically we still need vaules for numContentsInCluster and mirroringMode
+                start_cmd=gp.SegmentStart('start seg', seg, utilityMode=False, 
+                                          ctxt=base.REMOTE, remoteHost=hostname)
                 start_cmd.run()
 
                 logger.debug(start_cmd.get_results())
 
                 if start_cmd.get_results().rc == 0:
-                    logger.info("SUCCESS... was able to start segment on host: %s datadir: %s" % (seg.hostname,seg.datadir))
+                    logger.info("SUCCESS... was able to start segment on host: %s datadir: %s" % (hostname, datadir))
                     started += 1
                 else:
-                    logger.warning("FAIL... unable to start segment on host: %s datadir: %s " % (seg.hostname,seg.datadir))
+                    logger.warning("FAIL... unable to start segment on host: %s datadir: %s " % (hostname, datadir))
                 pass
             else:
-                logger.warning("FAIL... Unable to ping host: %s.  Cannot start segment on host: %s " % seg.hostname,seg.datadir)
+                logger.warning("FAIL... Unable to ping host: %s.  Cannot start segment on host: %s " % hostname, datadir)
 
         logger.info("----------------------------------------------------")
         logger.info("Successfully started %d of %d downed segment instances." % (started,total_count))
@@ -278,7 +303,7 @@ class GpStart:
         tmpfile_exists = os.path.exists(lockfile)
 
         if tmpfile_exists:
-            logger.info("Clearing Master instance lock files")        
+            logger.info("Clearing Master instance lock files")
             os.remove(lockfile)
         pass
 
@@ -304,8 +329,12 @@ class GpStart:
 
         format_string=self._get_format_string()
         logger.info(format_string % ("Host","Datadir","Port","Status"))
-        for db in self.gparray.getSegDbList():                
-            logger.info(format_string % (db.hostname,db.datadir,db.port,db.get_status()))
+        for db in self.gparray.getSegDbList():
+            hostname = db.getSegmentHostName()
+            datadir = db.getSegmentDataDirectory()
+            port = db.getSegmentPort()
+            status = db.getSegmentStatus()
+            logger.info(format_string % (hostname, datadir, port, status))
 
     ######
     def _get_format_string(self):
@@ -419,10 +448,10 @@ class GpStart:
         content_dict_primaries={}
         content_dict_mirrors={}
         for seg in self.success_seg_status:                        
-            if (seg.db.role == 'p'):
-                content_dict_primaries[seg.db.content]=seg.db
+            if (seg.db.getSegmentRole() == 'p'):
+                content_dict_primaries[seg.db.getSegmentContentId()]=seg.db
             else:
-                content_dict_mirrors[seg.db.content]=seg.db
+                content_dict_mirrors[seg.db.getSegmentContentId()]=seg.db
 
         # find the list of all content 
         required_content_dict={}
@@ -461,7 +490,9 @@ class GpStart:
 
         invalid_segs=self.gparray.get_invalid_segdbs() 
         for seg in invalid_segs:
-            logger.warning("Skipping startup of segdb on %s directory %s marked invalid <<<<<" % (seg.hostname,seg.datadir)) 
+            hostname = seg.getSegmentHostName()
+            datadir = seg.getSegmentDataDirectory()
+            logger.warning("Skipping startup of segdb on %s directory %s marked invalid <<<<<" % (hostname, datadir)) 
 
         inactive_mirrors=self.gparray.get_inactive_mirrors_segdbs()
         if len(inactive_mirrors) > 0:
@@ -469,9 +500,11 @@ class GpStart:
 
         #read in the hostcache file and make sure we can ping everybody
         failed_pings=gphostcache.ping_segment_hosts(self.gparray,self.pool)
-        for db in failed_pings:            
-            logger.warning("Skipping startup of segdb on %s directory %s Ping Failed <<<<<<" % (db.hostname,db.datadir))
-            self.failed_seg_status.append(SegStartStatus(db,False,'Failed to Ping on host: %s' % db.hostname))
+        for db in failed_pings:
+            hostname = db.getSegmentHostName()
+            datadir = db.getSegmentDataDirectory()
+            logger.warning("Skipping startup of segdb on %s directory %s Ping Failed <<<<<<" % (hostname,datadir))
+            self.failed_seg_status.append(SegStartStatus(db,False,'Failed to Ping on host: %s' % hostname))
 
         invalid_segs.extend(failed_pings)
         invalid_segs.extend(inactive_mirrors)
@@ -630,15 +663,19 @@ class GpStart:
 
         numContentsInCluster = self._calculate_num_contents_in_cluster()
 
-        for gphost in self.hostcache.get_hosts():
-            hostname=gphost.dbs[0].hostname                
-            logger.debug("Dispatching command to start segments on host: %s, with %s contents in cluster" % (hostname, numContentsInCluster))
+        locale = [self.lc_collate, self.lc_monetary, self.lc_numeric]
 
-            cmd = gp.GpSegStartCmd("remote segment starts on host '%s'" % hostname, self.gphome, gphost, 
-                                   [self.lc_collate,self.lc_monetary,self.lc_numeric],self.gpversion,
-                                   not withMirrors,
-                                   numContentsInCluster,
-                                   verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
+        for gphost in self.hostcache.get_hosts():
+            hostname=gphost.hostname
+            logger.debug("Dispatching command to start segments on host: %s, with %s contents in cluster" % (hostname, numContentsInCluster))
+            cmd=gp.GpSegStartCmd("remote segment starts on host '%s'" % 
+                                 hostname, self.gphome, gphost, locale,
+                                 self.gpversion,
+                                 not withMirrors,
+                                 numContentsInCluster,
+                                 verbose=logging_is_verbose(),
+                                 ctxt=base.REMOTE,
+                                 remoteHost=hostname)
             self.pool.addCommand(cmd)
             dispatch_count+=1
 
@@ -693,9 +730,9 @@ class GpStart:
                         else:
                             success=True
 
-                        for db in cmd.dblist:                     
+                        for db in cmd.dblist:
                             if db.datadir == dir:
-                                if success:                                                         
+                                if success:
                                     self.success_seg_status.append( SegStartStatus(db,started=True,reason=reasonStr,failedCmd=cmd) )
                                 else:
                                     self.failed_seg_status.append( SegStartStatus(db,started=False,reason=reasonStr,failedCmd=cmd) )                        

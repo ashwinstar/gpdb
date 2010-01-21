@@ -14,6 +14,7 @@ from gppylib.gplog import *
 from gppylib.commands.unix import *
 from gppylib.commands.base import *
 from gppylib.commands.gp import *
+from gppylib.gparray import *
 from gppylib.db import dbconn, catalog
 import pysync
 
@@ -142,11 +143,25 @@ class GpSegCopy:
             s.close()
             logger.debug('Using port %d for segment template cleanup.' % templatePort)
 
-            # use dummy values for dbid, contentid, and numSegmentsInCluster since we are connecting in utility mode
-            # SegmentToStart takes dataDir, port, dbId, contentId, numContentsInCluster, mirroringMode, noWait
-            segmentToStart = SegmentToStart( self.dstDir, templatePort, -1, -1, 0, "mirrorless", False )
+            # use dummy values for dbid, contentid, and numSegmentsInCluster 
+            # since we are connecting in utility mode
+            seg = GpDB(content = -1,
+                       preferred_role = ROLE_PRIMARY,
+                       dbid = -1,
+                       role = ROLE_PRIMARY,
+                       mode = 's',
+                       status = STATUS_UP,
+                       hostname = self.dstHost,
+                       address = self.dstHost,
+                       port = templatePort,
+                       datadir = self.dstDir,
+                       replicationPort = None,
+                       )
 
-            SegmentStart.local('segcopy schema only segment start', segmentToStart, utilityMode=True)
+            SegmentStart.local('segcopy schema only segment start', seg, 
+                               numContentsInCluster = 0,
+                               mirroringMode = 'mirrorless',
+                               utilityMode=True)
 
             dburl = dbconn.DbURL(hostname=self.dstHost,port=templatePort)
             logger.info("connecting to database: %s" % dburl)
@@ -155,7 +170,7 @@ class GpSegCopy:
             db_list = catalog.getDatabaseList(conn)
             catalog_names = [
                            'pg_catalog.gp_configuration', 
-						   'pg_catalog.gp_segment_configuration',
+                           'pg_catalog.gp_segment_configuration',
                            'pg_catalog.gp_distribution_policy',
                            'pg_catalog.pg_partition',
                            'pg_catalog.pg_partition_rule',
