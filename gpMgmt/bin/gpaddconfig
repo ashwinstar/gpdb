@@ -3,7 +3,7 @@
 # Copyright (c) Greenplum Inc 2009. All Rights Reserved. 
 
 '''
-USAGE:   gpaddconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY_TOADD [--value CONFIG_ENTRY_VALUE] [--mastervalue CONFIG_ENTRY_VALUE] [--removeonly] [--skipvalidation] [--list] [--verbose] [--debug] [--help] 
+USAGE:   gpaddconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY_TOADD [--value CONFIG_ENTRY_VALUE] [--mastervalue CONFIG_ENTRY_VALUE] [--removeonly] [--skipvalidation] [--list] [--show] [--verbose] [--debug] [--help] 
 
 # set the shared_buffers setting to 250MB
 EXAMPLE: gpaddconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB
@@ -21,6 +21,9 @@ EXAMPLE: gpaddconfig -d /data/master/gp-1 -e shared_buffers -r
 
 # show all available gucs
 EXAMPLE gpaddconfig -d /data/master/gp-1 --list
+
+# show values of a particular guc on all nodes
+EXAMPLE gpaddconfig -d /data/master/gp-1 --show max_connections
 
 where the entry will be set to the value specified by appending the entry to the end of all postgresql.conf files
 where all previous instances of the entry in postgresql.conf will be commented out
@@ -61,6 +64,7 @@ def parseargs():
     parser.add_option('-d', '--directory', type='string')
     parser.add_option('-r', '--removeonly', action='store_true')
     parser.add_option('-l', '--list', action='store_true')
+    parser.add_option('-s', '--show', type='string')
     (options, args) = parser.parse_args()
 
     if options.help:
@@ -91,6 +95,10 @@ def parseargs():
         doList()
         parser.exit()
 
+    if options.show:
+        doShow(options.show)
+        parser.exit()
+
     if not options.entry:
         print "--entry is a required command line.  Check the usage below:"
         print __doc__
@@ -105,6 +113,19 @@ def parseargs():
         options.mastervalue = options.value
 
     return options
+
+class JetPackQuery:
+    def __init__(self, name):
+        self.query = "select * from gp_jetpack.gp_param_setting('%s')" % name
+
+class JetPackGuc:
+    def __init__(self,row): 
+        self.context = row[0]
+        self.name = row[1]
+        self.value = row[2]
+
+    def Print(self):
+        print "[context: %s] [name: %s] [value: %s]" % (self.context, self.name, self.value)
 
 class GucQuery:
     def __init__(self, name=None):
@@ -129,7 +150,7 @@ class Guc:
         return True
 
     def Print(self):
-        print "[name: %s] [setting: %s] [unit: %s] [context: %s] [vartype: %s] [min_val: %s] [max_val: %s]" % (self.name, self.setting, self.unit, self.context, self.vartype, self.min_val, self.max_val)
+        print "[name: %s] [unit: %s] [context: %s] [vartype: %s] [min_val: %s] [max_val: %s]" % (self.name, self.unit, self.context, self.vartype, self.min_val, self.max_val)
 
 def userConfirm():
     if not ask_yesno('', "Are you sure you want to ignore unreachable hosts?",'N'):                            
@@ -155,6 +176,53 @@ def doList():
 
     except DatabaseError, ex:
         logger.error('Failed to connect to database, this script can only be run when the database is up.')
+
+def doShow(gucname):
+    try:
+        dburl = dbconn.DbURL()
+        conn = dbconn.connect(dburl, False)
+        query = JetPackQuery(gucname).query
+        rows = dbconn.execSQL(conn, query)
+
+        mastervalue = None
+        value = None
+        valid = True
+
+        for row in rows:
+            guc = JetPackGuc(row)
+
+            if guc.context == -1:
+                mastervalue = guc.value
+
+            elif not value:
+                value = guc.value
+
+            elif value == guc.value:
+                pass
+        
+            else:
+                valid = False
+                break
+
+        if valid:
+            print "Values on all segments are consistent"
+            print "GUC          : %s" % gucname
+            print "Master  value: %s" % mastervalue
+            print "Segment value: %s" % value
+        
+        else:
+            print "WARNING: GUCS ARE OUT OF SYNC: "
+
+            rows = dbconn.execSQL(conn, query)
+            for row in rows:
+                guc = JetPackGuc(row)
+                guc.Print()
+
+        conn.close()
+
+    except DatabaseError, ex:
+        logger.error('Failed to retrieve GUC information, make sure that JetPack is installed and that the database is up')
+
 
 
 #------------------------------- Mainline --------------------------------
