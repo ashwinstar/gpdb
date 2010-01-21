@@ -172,10 +172,7 @@ class GpInjectFaultProgram:
 
             # now validate ourselves
             if cmd.results.rc != 0:
-                msg = cmd.results.stderr
-                if msg.startswith("Failure:"):
-                    raise ExceptionNoStackTraceNeeded(msg[len("Failure:"):].strip())
-                raise Exception("injection failed : %s" % msg)
+                raise ExceptionNoStackTraceNeeded("Injection Failed: %s" % cmd.results.stderr)
         inputFile.close()
 
     def waitForFaults(self, segments, statusQueryText ):
