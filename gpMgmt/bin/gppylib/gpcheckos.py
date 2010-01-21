@@ -5,7 +5,7 @@
     SRC_HOST = is used to check ntp, most cases it's the master host and defaults to mdw 
 """
 
-import os, sys, getopt, re, string, shutil
+import os, sys, getopt, re, string, shutil,platform
 from xml.dom import minidom
 from gppylib.gpcheckosXml import *
 from gppylib.gpcheckosVo  import *
@@ -21,17 +21,6 @@ def printWarning(str):
     print "--------"
 
 progname = os.path.split(sys.argv[0])[-1]
-#nixGetEthCmd="ifconfig |grep eth |awk '{printf( \"%s:\",$1 ) }'"
-#nixCheckFirewall4RH="chkconfig --list |awk '/iptables/ {print $5\";\"$7}'"
-#nixCheckFirewall6RH="chkconfig --list |awk '/ip6tables/ {print $5\";\"$7}'"
-#nixCheckCpuSpeed="chkconfig --list |awk '/cpuspeed/ {print $5\";\"$7}'"
-#nixCheckIoSchedRH="grep deadline /boot/grub/grub.conf"
-#nixCheckMemoryTotal="grep MemTotal  /proc/meminfo |awk '{print $2}'"
-#nixCheckSwapTotal="free |awk '/Swap/ {print $2}'"
-#nixCheckBlockdevRH="grep blockdev /etc/rc.local |awk '{print $3}'"
-#nixCheckBlockdevSuSE="grep blockdev /etc/after.local |awk '{print $3}'"
-#nixGetCpuCoreCount="grep processor /proc/cpuinfo |wc -l"
-#nixGetCpuMHz="grep MHz /proc/cpuinfo |awk '{print $4}'"
 
 from optparse import Option, OptionGroup, OptionParser
 try:
@@ -96,8 +85,13 @@ class GpCheckOs001(Command):
         #"stop ntpd for testing
         # do not run ntp check on the source host, just 
         # make sure the service is up
+        ntpD = None
+        if (getOs() == "CentOS"): 
+     	    ntpD="ntpd"
+        elif (getOs() == "SuSE"):
+     	    ntpD="ntp"
         if getLocalHostname() == self.srcHost:
-            cmd = ServiceDaemon("service daemon","ntpd","start")
+            cmd = ServiceDaemon("service daemon",ntpD,"start")
             cmd.run()
             if (cmd.get_results().rc != 0):
                 print cmd.get_results().stderr
@@ -105,7 +99,7 @@ class GpCheckOs001(Command):
                 print cmd.get_results().stdout
         # run ntp check on the specified host
         else:
-            cmd = ServiceDaemon("service daemon","ntpd","stop")
+            cmd = ServiceDaemon("service daemon",ntpD,"stop")
             cmd.run()
             print "\nChecking ntpdate using server %s"%(self.srcHost)
             cmd = Ntpdate("ntpdate",self.srcHost)
@@ -117,7 +111,7 @@ class GpCheckOs001(Command):
 
             #start ntpd after testing
             print "finished ntpdate testing restarting ntpd "
-            cmd = ServiceDaemon("service daemon","ntpd","start")
+            cmd = ServiceDaemon("service daemon",ntpD,"start")
             cmd.run()
             if (cmd.get_results().rc != 0):
                 printWarning ( "%s NOTE: this test fails because ntp server requires time to synchronize." \
@@ -194,13 +188,21 @@ class GpCheckOs001(Command):
         if (getOs() == "CentOS"): 
             if self.runCmdStatus(nixCheckFirewall4RH) == 0 :
                 printWarning ("ipv4 firewall is on, please turn off with /etc/init.d/iptables off then run chkconfig iptables off")
+            else: 
+                print("ipv4 firewall [OK]")
             if self.runCmdStatus(nixCheckFirewall6RH) == 0 :
                 printWarning( "ipv6 firewall is on, please turn off with /etc/init.d/iptables off then run chkconfig iptables off")
+            else: 
+                print("ipv6 firewall [OK]")
         elif(getOs() == "SuSE"):
             if self.runCmdStatus(nixCheckFirewallSuSEInit) == 0:
-                printWarning ("ipv4 firewall is on, please turn off with /etc/init.d/SuSEFirewall2_init off then run chkconfig SuSEFirewall2_init off")
+                printWarning ("SuSE  firewall Init is on, please turn off with /etc/init.d/SuSEFirewall2_init off then run chkconfig SuSEFirewall2_init off")
+            else:
+                print("SusE firewall init disabled [OK]")
             if self.runCmdStatus(nixCheckFirewallSuSESetup) == 0:
-                printWarning( "ipv6 firewall is on, please turn off with /etc/init.d/SuSEFirewall2_setup off then run chkconfig SuSEFirewall2_setup off")
+                printWarning( "SuSE firewall setup is on, please turn off with /etc/init.d/SuSEFirewall2_setup off then run chkconfig SuSEFirewall2_setup off")
+            else:
+                print("SuSE firewall setup disabled [OK]")
 
     def checkCpuSpeed(self): 
         print "\nChecking cpu speed daemons .........."
@@ -208,16 +210,21 @@ class GpCheckOs001(Command):
             cpuSpeed= self.runCmd(nixCheckCpuSpeedRH) 
             if re.search('on', cpuSpeed):
                 printWarning ("cpu speed daemon is on, please turn off with /etc/init.d/cpuspeed off then run chkconfig cpuspeed off")
+            else:
+                print("cpuspeed disabled [OK]")
         elif (getOs() == "SuSE"):
             cpuSpeed = self.runCmd(nixCheckCpuSpeedSuSE)
             if re.search('on', cpuSpeed):
                 printWarning("cpu speed daemon is on, please turn off with /etc/init.d/powersaved off then run chkconfig powersaved off")
+            else:
+                print("SuSE powersaved disabled [OK]")
+         
                              
         MHzs=self.runCmd(nixGetCpuMHz).rstrip('\n').split('\n')
         for index, MHz in enumerate(MHzs):
             
             if MHz != self.baseline.cpuMHz[index]:
-                printWarning ("cpuspeed %s is different than the baseline %s on core %s" \
+                printWarning ("cpuspeed %s is different than the baseline %s on core %s"% \
                               (MHz, self.baseline.cpuMHz[index], index))
             else:
                 print "cpu%s speed is %s [OK]"%(index, MHz)
@@ -241,18 +248,37 @@ class GpCheckOs001(Command):
 
     def checkBlockdev(self):   
         print "\nChecking blockdev settings.........."
+        
         if (getOs() == "CentOS"): 
             setra = self.runCmd(nixCheckBlockdevRH)
             if not setra:
                 printWarning ("device read ahead not found in /etc/rc.local.  please add /sbin/blockdev --setra 16384 /dev/<device_name> to /etc/rc.local")
             else:
                 print "readahead settings rc.local is OK"
+	    
+
         elif (getOs() == "SuSE"): 
             setra = self.runCmd(nixCheckBlockdevSuSE)
             if not setra:
                 printWarning ("device read ahead not found in /etc/after.local.  please add /sbin/blockdev --setra 16384 /dev/<devices_name> to /etc/after.local")
             else:
                 print "readahead setting in after.local is OK"
+	
+        print "\nChecking read ahead in sysfs......."
+	if platform.system() == 'Linux':
+            cmd = anyCommand("any Command", nixGetBlockdev)
+            cmd.run()
+            sds=self.print_result(cmd).split("\n")
+            for sd in sds:
+                s,i =sd.split("|")
+                #p = re.compile('(\[)(\d+)(\])')
+                #m=p.search(i)
+                if long(i) != 8192:
+                    printWarning("current readahead for %s is %sK, please set it to 8192K or 16384 blocks with blockdev command" \
+		                 %(s,i))
+		else:
+		    print("current readahead for %s is %sK...[OK]"%(s,i))
+ 
     def checkLimits(self,vos):
         fd=None
         fp=None
