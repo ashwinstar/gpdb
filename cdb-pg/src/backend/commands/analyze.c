@@ -3,15 +3,18 @@
  * analyze.c
  *	  the Postgres statistics generator
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * The new ANALYZE implementation uses routine query processing capabilities of GPDB
- * to compute statistics on relations.  It differs from old ANALYZE functionally in that
- * it computes global statistics which improves cardinalities of join/group-by operations.
- * It uses SPI under the covers to issue queries. The main point of entry is the
- * function analyzeStatement. This function does the heavy lifting of setting up transactions
- * and getting locks.
+ * The new ANALYZE implementation uses routine query processing
+ * capabilities of GPDB to compute statistics on relations.  It
+ * differs from old ANALYZE functionally in that it computes global
+ * statistics which improves cardinalities of join/group-by
+ * operations.
+ * It uses SPI under the covers to issue queries. The main point of
+ * entry is the function analyzeStatement. This function does the
+ * heavy lifting of setting up transactions and getting locks.
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/commands/analyze.c,v 1.101 2006/11/05 22:42:08 tgl Exp $
@@ -394,11 +397,32 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 				 * We have permission to ANALYZE.
 				 */
 
+				/* MPP-7576: don't track internal namespace tables */
+				switch (candidateRelation->rd_rel->relnamespace)
+				{
+					case PG_CATALOG_NAMESPACE:
+						/* MPP-7773: don't track objects in system namespace
+						 * if modifying system tables (eg during upgrade)  
+						 */
+						if (allowSystemTableMods)
+							bTemp = true;
+						break;
+
+					case PG_TOAST_NAMESPACE:
+					case PG_BITMAPINDEX_NAMESPACE:
+					case PG_AOSEGMENT_NAMESPACE:
+						bTemp = true;
+						break;
+					default:
+						break;
+				}
+
 				/* MPP-7572: Don't track metadata if table in any
 				 * temporary namespace
 				 */
-				bTemp = isAnyTempNamespace(
-						candidateRelation->rd_rel->relnamespace);
+				if (!bTemp)
+					bTemp = isAnyTempNamespace(
+							candidateRelation->rd_rel->relnamespace);
 				
 				if (candidateRelation->rd_rel->relkind != RELKIND_RELATION)
 				{

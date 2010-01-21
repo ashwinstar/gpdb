@@ -1321,6 +1321,15 @@ MetaTrackValidKindNsp(Form_pg_class rd_rel)
 {
 	Oid nsp = rd_rel->relnamespace;
 
+	if (PG_CATALOG_NAMESPACE == nsp)
+	{
+		/* MPP-7773: don't track objects in system namespace
+		 * if modifying system tables (eg during upgrade)  
+		 */
+		if (allowSystemTableMods)
+			return (false);
+	}
+
 	/* MPP-7599: watch out for toast indexes */
 	return (METATRACK_VALIDNAMESPACE(nsp)
 			&& MetaTrackValidRelkind(rd_rel->relkind)
@@ -3069,6 +3078,11 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& 
+		/* MPP-7773: don't track objects in system namespace
+		 * if modifying system tables (eg during upgrade)  
+		 */
+		( ! ( (PG_CATALOG_NAMESPACE == namespaceId) && (allowSystemTableMods)))
 		&& (   MetaTrackValidRelkind(relkind)
 			&& METATRACK_VALIDNAMESPACE(namespaceId)
 			   && (!(isAnyTempNamespace(namespaceId)))

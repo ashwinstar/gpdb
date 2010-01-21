@@ -2740,6 +2740,14 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 		/* MPP-7576: don't track internal namespace tables */
 		switch (namespaceId) 
 		{
+			case PG_CATALOG_NAMESPACE:
+				/* MPP-7773: don't track objects in system namespace
+				 * if modifying system tables (eg during upgrade)  
+				 */
+				if (allowSystemTableMods)
+					doIt = false;
+				break;
+
 			case PG_TOAST_NAMESPACE:
 			case PG_BITMAPINDEX_NAMESPACE:
 			case PG_AOSEGMENT_NAMESPACE:

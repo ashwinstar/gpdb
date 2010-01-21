@@ -8,7 +8,7 @@
  * vacuumlazy.c and analyze.c for the rest of the code for the latter two.
  *
  *
- * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -34,6 +34,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_index.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/gp_fastsequence.h"
 #include "commands/dbcommands.h"
 #include "commands/tablecmds.h"
@@ -460,10 +461,31 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 				continue;
 			}
 
+			/* MPP-7576: don't track internal namespace tables */
+			switch (get_rel_namespace(relid))
+			{
+				case PG_CATALOG_NAMESPACE:
+					/* MPP-7773: don't track objects in system namespace
+					 * if modifying system tables (eg during upgrade)  
+					 */
+					if (allowSystemTableMods)
+						bTemp = true;
+					break;
+
+				case PG_TOAST_NAMESPACE:
+				case PG_BITMAPINDEX_NAMESPACE:
+				case PG_AOSEGMENT_NAMESPACE:
+					bTemp = true;
+					break;
+				default:
+					break;
+			}
+
 			/* MPP-7572: Don't track metadata if table in any
 			 * temporary namespace
 			 */
-			bTemp = isAnyTempNamespace(get_rel_namespace(relid));
+			if (!bTemp)
+				bTemp = isAnyTempNamespace(get_rel_namespace(relid));
 
 			/*
 			 * Modify the Vacuum statement to vacuum an individual
