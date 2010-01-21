@@ -11,6 +11,10 @@
 -- start_matchsubs
 -- m|base/\d+|
 -- s|base/\d+|base/OID|
+--
+-- m/ERROR:.*Persistent database entry.*already exists in state/
+-- s/\.c\:\d+\)/\.c\:SOME_LINE\)/
+--
 -- end_matchsubs
 
 --

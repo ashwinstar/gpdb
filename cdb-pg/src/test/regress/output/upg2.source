@@ -9,6 +9,10 @@
 -- start_matchsubs
 -- m|base/\d+|
 -- s|base/\d+|base/OID|
+--
+-- m/ERROR:.*Persistent database entry.*already exists in state/
+-- s/\.c\:\d+\)/\.c\:SOME_LINE\)/
+--
 -- end_matchsubs
 --
 -- save the catalog info for previous revision
@@ -1739,7 +1743,7 @@ commit;
 --   It may be nice to allow it to be callable in a populated database...
 insert into public.gp_global_sequence select 0 from generate_series(1,15);
 select gp_persistent_build_db();
-psql:@abs_builddir@/sql/loadcat34.sql:108: ERROR:  Persistent database entry 'base/245608' already exists in state 'Created' (cdbpersistentdatabase.c:747)
+psql:@abs_builddir@/sql/loadcat34.sql:108: ERROR:  Persistent database entry 'base/16408' already exists in state 'Created' (cdbpersistentdatabase.c:752)
 begin;
 -- Create new 3.4 views in pg_catalog
 set search_path='pg_catalog';
