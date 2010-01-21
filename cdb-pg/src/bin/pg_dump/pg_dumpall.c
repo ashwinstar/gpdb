@@ -499,7 +499,8 @@ dumpResQueues(PGconn *conn)
 					  ( server_version >= 80214 ? 
 					  "UNION "
 					  "select rq.rsqname ,  rt.resname,  rc.ressetting, "
-					  "5 as ord from pg_resqueue rq,  pg_resourcetype rt, "
+					  "rt.restypid as ord from "
+					  "pg_resqueue rq,  pg_resourcetype rt, "
 					  "pg_resqueuecapability rc where "
 					  "rq.oid=rc.resqueueid and rc.restypid = rt.restypid "
 						: "")

@@ -233,6 +233,8 @@ DATA(insert OID = 6458  ( priority 5 f t f medium _null_ ));
  "OVERCOMMIT"       rsqovercommit       overcommit          cost_overcommit
 */
 
+/* Note: the restypid is used by pg_dumpall.c to build CREATE statements */
+
 #define PG_RESRCTYPE_ACTIVE_STATEMENTS	1	/* rsqcountlimit: count  */
 #define PG_RESRCTYPE_MAX_COST			2	/* rsqcostlimit: max_cost */
 #define PG_RESRCTYPE_MIN_COST			3	/* rsqignorecostlimit: min_cost */
