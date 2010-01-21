@@ -33,4 +33,11 @@ extern void RenameFileSpace(const char *oldname, const char *newname);
 extern Oid get_filespace_oid(Relation rel, const char *filespacename);
 extern char *get_filespace_name(Oid fsoid);
 
+/* Commands for accessing the filespace oid -> directory lookup */
+extern void SetFilespaceDirectory(Oid fsoid, const char *directory);
+extern void ClearFilespaceDirectory(Oid fsoid);
+extern char* GetFilespaceDirectory(Oid fsoid);
+
+
+
 #endif   /* FILESPACE_H */

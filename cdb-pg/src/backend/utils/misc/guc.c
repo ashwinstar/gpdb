@@ -37,11 +37,13 @@
 #include "access/xact.h"
 #include "access/transam.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_filespace.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbfilerep.h"
 #include "cdb/tupchunk.h"
 #include "commands/async.h"
+#include "commands/filespace.h"
 #include "commands/vacuum.h"
 #include "commands/variable.h"
 #include "executor/executor.h"          /* TupOutputState, TupleDesc */
@@ -5273,15 +5275,67 @@ InitializeGUCOptions(void)
  * to stderr and returns false.
  */
 bool
-SelectConfigFiles(const char *userDoption, const char *progname)
+SelectConfigFiles(List *userDoption, const char *progname)
 {
-	char	   *configdir;
+	char	   *configdir = NULL;
+	ListCell   *l;
 	char	   *fname;
 	struct stat stat_buf;
 
+	/* 
+	 * We have a list of -D options, or possibly none at all
+	 *
+	 * Traditionally -D is of the form "-D datadir" and specifies the datadir
+	 * for the backend.  
+	 *
+	 * In Greenplum 3.4 and beyond we allow multiple filespaces and we pass
+	 * the locations for these filespaces to the segment backends using
+	 * the form "-D oid:datadir -D oid:datadir ...", one of these should
+	 * be for the system filespace (SYSTEMFILESPACE_OID = 3052), or we
+	 * won't be able to load the config file.
+	 *
+	 */
+	foreach(l, userDoption)
+	{
+		int     oid;
+		char   *directory;
+		char   *option;
+		size_t  colon_pos;
+
+		/* Find the position of the ":" in the string, if any */
+		option = (char *) lfirst(l);
+		colon_pos = strcspn(option, ":");
+		if (option[colon_pos] == ':')
+		{ /* colon found */
+			char *endstr;
+
+			oid = strtol(option, &endstr, 10);
+			if (endstr[0] != ':' || option[colon_pos+1] == '\0')
+			{
+				write_stderr("%s recieved invalid directory specification "
+							 "\"-D %s\"", progname, option);
+				return false;
+			}
+			directory = &option[colon_pos+1];
+		}
+		else
+		{ /* no colon found */
+			oid = SYSTEMFILESPACE_OID;
+			directory = option;
+		}
+
+		SetFilespaceDirectory(oid, directory);
+
+		/* Use the system datadir to find the config files */
+		if (oid == SYSTEMFILESPACE_OID)
+			configdir = directory;
+	}
+	
+
+
 	/* configdir is -D option, or $PGDATA if no -D */
-	if (userDoption)
-		configdir = make_absolute_path(userDoption);
+	if (configdir)
+		configdir = make_absolute_path(configdir);
 	else
 		configdir = make_absolute_path(getenv("PGDATA"));
 

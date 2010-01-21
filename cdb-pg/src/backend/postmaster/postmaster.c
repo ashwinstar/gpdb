@@ -649,7 +649,7 @@ PostmasterMain(int argc, char *argv[])
 {
 	int			opt;
 	int			status;
-	char	   *userDoption = NULL;
+	List       *userDoption = NULL;
 	int			i;
 	PrimaryMirrorMode initialMode = PMModeMirrorlessSegment;
 
@@ -718,7 +718,7 @@ PostmasterMain(int argc, char *argv[])
                 break;
 
 			case 'D':
-				userDoption = optarg;
+				userDoption = lappend(userDoption, optarg);
 				break;
 
 			case 'd':

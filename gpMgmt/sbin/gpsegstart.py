@@ -63,10 +63,13 @@ class SegStartStatus():
 #-------------------------------------------------------------------------    
 class GpSegStart:
     ######
-    def __init__(self,dblist,gpversion,collation,mirroringMode):
-        self.dblist=dblist
+    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster):
+
+        self.dblist = map(gparray.GpDB.initFromString, dblist)
         self.mirroringMode = mirroringMode
         self.expected_gpversion=gpversion
+        self.numContentsInCluster=numContentsInCluster
+
         # There is an issue with python 2.6.2 on linux that can cause start to 
         # hang if it is multithreaded.
         if unix.curr_platform == unix.LINUX:
@@ -104,11 +107,8 @@ class GpSegStart:
         else:
             nowait = False
 
-        for itm in self.dblist:
-            (segDataDir, segPort, segDbId, segContentId, segNumContentsInCluster) = itm.split(':')
-            seg = gp.SegmentToStart(segDataDir, segPort, segDbId, segContentId, segNumContentsInCluster,
-                                    self.mirroringMode, nowait)
-            directoryToSegStartDataMap[seg.dataDir] = seg
+        for seg in self.dblist:
+            directoryToSegStartDataMap[seg.getSegmentDataDirectory()] = seg
 
         # validate that the directories all exist and run recovery startup if needed
         for dir in directoryToSegStartDataMap.keys():
@@ -122,18 +122,21 @@ class GpSegStart:
                     if res:
                         results.append(SegStartStatus(dir,False,res))
                         del directoryToSegStartDataMap[dir]
-                        failures=True                                              
+                        failures=True                    
             else:
                 logger.info("Segment data directory does not exist for: '%s'" % dir)
                 results.append(SegStartStatus(dir,False,"segment data directory does not exist"))
                 del directoryToSegStartDataMap[dir]
-                failures=True      
+                failures=True
         
         # now do the start
         logger.info("Starting segments...")       
-        for dir, segmentToStart in directoryToSegStartDataMap.iteritems():
-            cmd=gp.SegmentStart("Starting seg at dir %s" % dir, segmentToStart)
-            self.pool.addCommand(cmd)  
+        for dir, seg in directoryToSegStartDataMap.iteritems():
+            cmd=gp.SegmentStart("Starting seg at dir %s" % dir, seg, 
+                                self.numContentsInCluster,
+                                self.mirroringMode,
+                                noWait=nowait)
+            self.pool.addCommand(cmd)
               
         self.pool.join()
         
@@ -142,9 +145,12 @@ class GpSegStart:
             res=cmd.get_results()
             if res.rc != 0:
                 #TODO: read in last entries in startup.log
-                status=SegStartStatus(cmd.segmentToStart.dataDir,False,"PG_CTL failed.\nstdout:%s\nstderr:%s\n" % (res.stdout,res.stderr))
+                datadir = cmd.segment.get_datadir()
+                status=SegStartStatus(datadir, False, 
+                                      "PG_CTL failed.\nstdout:%s\nstderr:%s\n" % 
+                                      (res.stdout,res.stderr))
                 results.append(status)
-                del directoryToSegStartDataMap[cmd.segmentToStart.dataDir]
+                del directoryToSegStartDataMap[datadir]
                 failures=True
         
         self.pool.empty_completed_items()
@@ -156,10 +162,10 @@ class GpSegStart:
                 results.append(SegStartStatus(datadir,True,"Start Succeeded"))
         else:
             logger.info("Validating segments...")
-            for datadir,segmentToStart in directoryToSegStartDataMap.iteritems():
+            for datadir, seg in directoryToSegStartDataMap.iteritems():
                 cmd = gp.GpSegCheckLocaleAndConnect('check on %s' % datadir,
                                                 datadir,
-                                                segmentToStart.port,
+                                                seg.getSegmentPort(),
                                                 self.expected_lc_collate,
                                                 self.expected_lc_monetary,
                                                 self.expected_lc_numeric)
@@ -170,11 +176,12 @@ class GpSegStart:
             cmds=self.pool.getCompletedItems()
             for cmd in cmds:
                 (success,error_str)=cmd.getResults()
+                datadir = cmd.datadir
             
                 if success:
-                    results.append(SegStartStatus(cmd.datadir,True,"Start Succeeded"))
+                    results.append(SegStartStatus(datadir, True, "Start Succeeded"))
                 else:
-                    results.append(SegStartStatus(cmd.datadir,False,error_str))
+                    results.append(SegStartStatus(datadir, False, error_str))
     
         
         #Log the results!
@@ -209,6 +216,8 @@ def parseargs():
     parser.add_option("-M","--mirroringmode",dest="mirroringMode", type="string")
     parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
                         help="expected software version")      
+    parser.add_option("-n", "--numsegments", dest="numsegments", 
+                      help="number of distinct content ids in cluster")
 
     parser.set_defaults(verbose=False, filters=[], slice=(None, None))
     
@@ -242,7 +251,11 @@ def main():
         
         logger.info("options.gpversion: %s" % options.gpversion )
         
-        gpsegstart = GpSegStart(options.dblist,options.gpversion,options.collation,options.mirroringMode)
+        gpsegstart = GpSegStart(options.dblist, 
+                                options.gpversion,
+                                options.collation,
+                                options.mirroringMode,
+                                options.numsegments)
         
         failures = gpsegstart.start()
         

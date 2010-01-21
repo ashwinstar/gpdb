@@ -217,7 +217,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	char	   *progname = argv[0];
 	int			flag;
 	AuxProcType auxType = CheckerProcess;
-	char	   *userDoption = NULL;
+	List	   *userDoption = NULL;
 
 	/*
 	 * initialize globals
@@ -265,7 +265,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 				SetConfigOption("shared_buffers", optarg, PGC_POSTMASTER, PGC_S_ARGV);
 				break;
 			case 'D':
-				userDoption = optarg;
+				userDoption = lappend(userDoption, optarg);
 				break;
 			case 'd':
 				{

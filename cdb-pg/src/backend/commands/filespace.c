@@ -741,6 +741,29 @@ get_filespace_oid(Relation rel, const char *filespacename)
 }
 
 
+/* 
+ * Commands for accessing the filespace oid -> directory lookup cache.
+ *
+ * These directories are not stored in the catalog except on the master,
+ * for segments they are passed to the segment on startup, so we must 
+ * track their values through this alternative mechanism.
+ */
+void SetFilespaceDirectory(Oid fsoid, const char *directory)
+{
+	/* Can be called during bootstrap so it shouldn't raise errors */
+	/* NOOP */
+}
+
+void ClearFilespaceDirectory(Oid fsoid)
+{
+	/* NOOP */
+}
+
+char* GetFilespaceDirectory(Oid fsoid)
+{
+	return NULL;
+}
+
 
 
 /*

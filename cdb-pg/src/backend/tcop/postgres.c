@@ -3634,7 +3634,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 {
 	int			flag;
 	const char *dbname = NULL;
-	char	   *userDoption = NULL;
+	List	   *userDoption = NULL;
 	bool		secure;
 	int			errs = 0;
 	int			debug_flag = -1;	/* -1 means not given */
@@ -3751,7 +3751,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 			case 'D':
 				if (secure)
-					userDoption = optarg;
+					userDoption = lappend(userDoption, optarg);
 				break;
 
 			case 'd':
@@ -5253,7 +5253,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 {
 	int			flag;
 	const char *dbname = NULL;
-	char	   *userDoption = NULL;
+	List	   *userDoption = NULL;
 	bool		secure;
 	int			errs = 0;
 	int			debug_flag = -1;		/* -1 means not given */
@@ -5373,7 +5373,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 
 			case 'D':
 				if (secure)
-					userDoption = optarg;
+					userDoption = lappend(userDoption, optarg);
 				break;
 
 			case 'd':
