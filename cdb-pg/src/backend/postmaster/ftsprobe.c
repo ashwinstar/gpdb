@@ -1978,6 +1978,7 @@ startSegment_forDbid(int dbid)
 		char	*host;
 		char	*dir;
 		int4	port;
+		int2	content_id;
 		char	cmd[1024];
 
 		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_dbid, conf_rel->rd_att, &isNull);
@@ -1991,7 +1992,11 @@ startSegment_forDbid(int dbid)
 		/* got our dbid, get our array of mountpoints. */
 		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_address, conf_rel->rd_att, &isNull);
 		Assert(!isNull);
-		host = DatumGetCString(conf_datum);
+		host = DatumGetCString(DirectFunctionCall1(textout, conf_datum));
+
+		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_content, conf_rel->rd_att, &isNull);
+		Assert(!isNull);
+		content_id = DatumGetInt16(conf_datum);
 
 		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_port, conf_rel->rd_att, &isNull);
 		Assert(!isNull);
@@ -2024,8 +2029,8 @@ startSegment_forDbid(int dbid)
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 			elog(LOG, "Starting %s:%s:%d", host, dir, port);
 
-		sprintf(cmd, "ssh %s \"pg_ctl -w -D %s -l %s/pg_log/startup.log -o '-i -p %d --silent-mode=true -M mirrorless' start 2>&1 \" ",
-				host, dir, dir, port);
+		sprintf(cmd, "ssh %s \"pg_ctl -w -D %s -l %s/pg_log/startup.log -o '-i -p %d --silent-mode=true -M mirrorless -b %d -C %d -z %d' start 2>&1 \" ",
+				host, dir, dir, port, dbid, content_id, GpIdentity.numsegments);
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 			elog(LOG, "command is [%s]", cmd);
