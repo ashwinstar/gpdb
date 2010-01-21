@@ -1528,7 +1528,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			 * junk filter.  Note this is only possible for UPDATE/DELETE, so
 			 * we can't be fooled by some needing a filter and some not.
 			 */
-			if (stmt->resultRelations != NIL)
+			if ( list_length(stmt->resultRelations) > 1 )
 			{
 				PlanState **appendplans;
 				int			as_nplans;

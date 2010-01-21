@@ -296,8 +296,8 @@ ProcessQuery(Portal portal,
 		queryDesc->plannedstmt->planTree != NULL &&
 		queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL &&
 		queryDesc->operation == CMD_DELETE &&
-		queryDesc->plannedstmt->queryTree->resultRelation == 1 && /* Use of query tree deprecated. (PSMERGE) */
-		list_length(queryDesc->plannedstmt->queryTree->rtable) == 1 /* not partitioned */ 
+		list_length(queryDesc->plannedstmt->resultRelations) == 1 && /* not partitioned */
+		linitial_int(queryDesc->plannedstmt->resultRelations) == 1 /* target first in range table */
 		)
 	{
 		RangeTblEntry *rte;

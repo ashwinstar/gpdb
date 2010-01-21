@@ -1854,7 +1854,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	if (parse->returningList)
 	{
 		List	   *rlist;
-
+		
+		Assert(parse->resultRelation);
 		rlist = set_returning_clause_references(parse->returningList,
 												result_plan,
 												parse->resultRelation);
@@ -1862,7 +1863,13 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	}
 	else
 		root->returningLists = NIL;
-	
+
+	/* Compute result-relations list if needed */
+	if (parse->resultRelation)
+		root->resultRelations = list_make1_int(parse->resultRelation);
+	else
+		root->resultRelations = NIL;
+		
 	/*
 	 * Return the actual output ordering in query_pathkeys for possible use by
 	 * an outer query level.

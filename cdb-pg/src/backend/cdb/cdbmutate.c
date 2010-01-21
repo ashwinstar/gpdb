@@ -1438,12 +1438,13 @@ doesUpdateAffectPartitionCols(PlannerInfo  *root,
     ListCell   *plancell;
     GpPolicy  *policy;
 
-    if (root->resultRelations == NIL)
+    if (list_length(root->resultRelations) == 1)
     {
 	    RangeTblEntry  *rte;
         Relation        relation;
+		int				resultRelation = linitial_int(root->resultRelations);
 
-        rte = rt_fetch(query->resultRelation, query->rtable);
+        rte = rt_fetch(resultRelation, query->rtable);
 	    Assert(rte->rtekind == RTE_RELATION);
 
         /* Get a copy of the rel's GpPolicy from the relcache. */
@@ -1456,7 +1457,7 @@ doesUpdateAffectPartitionCols(PlannerInfo  *root,
 	     * Single target relation?
 	     */
 
-        return isAnyColChangedByUpdate(query->resultRelation,
+        return isAnyColChangedByUpdate(resultRelation,
                                        plan->targetlist,
                                        policy->nattrs,
                                        policy->attrs);
