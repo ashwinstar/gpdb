@@ -18,6 +18,12 @@ from logfilter import MatchRegex, NoMatchRegex, filterize, MatchColumns
 from gppylib.datetimeutils import str_to_datetime, str_to_duration, DatetimeValueError
 
 
+# Local global value indicating whether regular expressions handled by the 
+# option parser should be case sensitive or not.
+# 
+# Valid values are 'respect' or 'ignore'
+__gCase = 'respect'
+
 #----------------------- Command line option parser ----------------------
 
     
@@ -30,7 +36,7 @@ class OptParser(OptionParser):
     def format_help(self, *args):
         msg = OptionParser.format_help(self, *args)
         helptup = [self.formatter.format_description(' '.join(s.split()))
-                for s in self.helpStr]
+                   for s in self.helpStr]
         msg = '\n'.join([msg] + helptup)
         return msg
 
@@ -81,15 +87,29 @@ class OptChecker(Option):
     @staticmethod            
     def regexCheck(option, opt, value):
         # value is a string to be compiled as a regular expression pattern
-        global _case
+        global __gCase
         flags = re.LOCALE
-        if _case and _case.startswith('i'):
+        if __gCase and __gCase.startswith('i'):
             flags |= re.IGNORECASE
         try:
             return re.compile(value, flags)
         except Exception, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e))
-            
+
+    @staticmethod
+    def regexSetCaseSensitivity(option, opt, value, parser):
+        """
+        This is used to set the case sensitivity of optparser regex matching
+        that occur after this option is set.
+
+        Valid values are ['respect', 'r', 'ignore', 'i']
+
+        A typical usage might look like this:
+          parser.add_option('-c', action='callback', 
+                            callback=OptChecker.regexSetCaseSensitivity)
+        """
+        global __gCase
+        __gCase = value
             
     @staticmethod
     def literalCheck(option, opt, value):
@@ -147,7 +167,7 @@ class OptChecker(Option):
     STORE_ACTIONS = Option.STORE_ACTIONS + _addactionnames
     TYPED_ACTIONS = Option.TYPED_ACTIONS + _addactionnames
 
-_case = 'respect'
+
 
 
 

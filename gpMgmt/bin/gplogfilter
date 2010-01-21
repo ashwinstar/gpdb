@@ -19,7 +19,6 @@ from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRE
 # import GPDB modules
 try:
     from gppylib.gpparseopts import *
-    from gppylib.gpparseopts import _setcase
     from gppylib.datetimeutils import str_to_datetime, str_to_duration, DatetimeValueError
     from gppylib.logfilter import *
 except ImportError, e:    
@@ -139,7 +138,8 @@ def parseargs():
                          'as many times as needed.')
     optgrp.add_option('-c', '--case',     type='choice', choices=['i', 'ignore', 'r', 'respect'],
                       metavar='i[gnore]|r[espect]',
-                      action='callback', callback=_setcase,
+                      action='callback', 
+                      callback=OptChecker.regexSetCaseSensitivity,
                       help=('ignore or respect the distinction between '
                             'upper and lower case letters in pattern and '
                             'string matching options after this'))
