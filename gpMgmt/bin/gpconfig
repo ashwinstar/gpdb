@@ -3,7 +3,7 @@
 # Copyright (c) Greenplum Inc 2009. All Rights Reserved. 
 
 '''
-USAGE:   gpconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY_TOADD [--value CONFIG_ENTRY_VALUE] [--mastervalue CONFIG_ENTRY_VALUE] [--removeonly] [--skipvalidation] [--list] [--show] [--verbose] [--debug] [--help] 
+USAGE:   gpconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY [--value CONFIG_ENTRY_VALUE] [--mastervalue CONFIG_ENTRY_VALUE] [--removeonly] [--skipvalidation] [--list] [--show] [--verbose] [--debug] [--help] 
 
 # set the shared_buffers setting to 250MB
 EXAMPLE: gpconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB
@@ -24,10 +24,6 @@ EXAMPLE gpconfig -d /data/master/gp-1 --list
 
 # show values of a particular guc on all nodes
 EXAMPLE gpconfig -d /data/master/gp-1 --show max_connections
-
-where the entry will be set to the value specified by appending the entry to the end of all postgresql.conf files
-where all previous instances of the entry in postgresql.conf will be commented out
-where --removeonly will only comment out the entry and not add it to the postgresql.conf files
 '''
 
 try:
