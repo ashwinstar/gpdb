@@ -917,11 +917,12 @@ CreateQueue(CreateQueueStmt *stmt)
 		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList, true);
 
 	/* MPP-6929, MPP-7583: metadata tracking */
-	MetaTrackAddObject(ResQueueRelationId,
-					   queueid,
-					   GetUserId(), /* not ownerid */
-					   "CREATE", "RESOURCE QUEUE"
-					);
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackAddObject(ResQueueRelationId,
+						   queueid,
+						   GetUserId(), /* not ownerid */
+						   "CREATE", "RESOURCE QUEUE"
+				);
 
 	CatalogUpdateIndexes(pg_resqueue_rel, tuple);
 
@@ -1323,11 +1324,12 @@ AlterQueue(AlterQueueStmt *stmt)
 	systable_endscan(rsqscan);
 
 	/* MPP-6929, MPP-7583: metadata tracking */
-	MetaTrackUpdObject(ResQueueRelationId,
-					   queueid,
-					   GetUserId(), /* not ownerid */
-					   "ALTER", alter_subtype
-					);
+	if (Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackUpdObject(ResQueueRelationId,
+						   queueid,
+						   GetUserId(), /* not ownerid */
+						   "ALTER", alter_subtype
+				);
 
 	heap_close(pg_resqueue_rel, NoLock);
 }

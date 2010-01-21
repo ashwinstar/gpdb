@@ -386,7 +386,10 @@ AlterSequence(AlterSeqStmt *stmt)
 	FormData_pg_sequence		 new;
 	List						*owned_by;
 	int64						 save_increment;
-	bool						 bSeqIsTemp = false;
+	bool		 bSeqIsTemp	   = false;
+	int			 numopts	   = 0;
+	char		*alter_subtype = "";	/* metadata tracking: kind of
+										   redundant to say "role" */
 
 	/* open and AccessShareLock sequence */
 	relid = RangeVarGetRelid(stmt->sequence, false);
@@ -469,6 +472,51 @@ AlterSequence(AlterSeqStmt *stmt)
 
 	relation_close(seqrel, NoLock);
 
+	numopts = list_length(stmt->options);
+
+	if (numopts > 1)
+	{
+		char allopts[NAMEDATALEN];
+
+		sprintf(allopts, "%d OPTIONS", numopts);
+
+		alter_subtype = pstrdup(allopts);
+	}
+	else if (0 == numopts)
+	{
+		alter_subtype = "0 OPTIONS";
+	}
+	else if ((Gp_role == GP_ROLE_DISPATCH) && (!bSeqIsTemp))
+	{
+		ListCell		*option = list_head(stmt->options);
+		DefElem			*defel	= (DefElem *) lfirst(option);
+		char			*tempo	= NULL;
+		int				 len	= 0;
+		int				 ii		= 0;
+
+		alter_subtype = defel->defname;
+		if (0 == strcmp(alter_subtype, "owned_by"))
+			alter_subtype = "OWNED BY";
+
+		tempo = pstrdup(alter_subtype);
+		len   = strlen(tempo);
+
+		/* XXX XXX: Ugh!  there has got to be a better way! */
+		while (ii < len)
+		{
+			unsigned char ch = (unsigned char) tempo[ii];
+
+			ch = pg_toupper(ch);
+
+			tempo[ii] = ch;
+
+			ii++;
+		}
+
+		alter_subtype = tempo;
+
+	}
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *)stmt, "AlterSequence");
@@ -479,7 +527,7 @@ AlterSequence(AlterSeqStmt *stmt)
 			MetaTrackUpdObject(RelationRelationId,
 							   relid,
 							   GetUserId(),
-							   "ALTER", ""
+							   "ALTER", alter_subtype
 					);
 		}
 
