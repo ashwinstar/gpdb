@@ -3,27 +3,27 @@
 # Copyright (c) Greenplum Inc 2009. All Rights Reserved. 
 
 '''
-USAGE:   gpaddconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY_TOADD [--value CONFIG_ENTRY_VALUE] [--mastervalue CONFIG_ENTRY_VALUE] [--removeonly] [--skipvalidation] [--list] [--show] [--verbose] [--debug] [--help] 
+USAGE:   gpconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY_TOADD [--value CONFIG_ENTRY_VALUE] [--mastervalue CONFIG_ENTRY_VALUE] [--removeonly] [--skipvalidation] [--list] [--show] [--verbose] [--debug] [--help] 
 
 # set the shared_buffers setting to 250MB
-EXAMPLE: gpaddconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB
+EXAMPLE: gpconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB
 
 # set the shared_buffers setting to 250MB on segs and 100MB on master
-EXAMPLE: gpaddconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB --mastervalue 100MB
+EXAMPLE: gpconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB --mastervalue 100MB
 
 # comment out all instances of the shared_buffers setting
-EXAMPLE: gpaddconfig --directory /data/master/gp-1 --entry shared_buffers --removeonly
+EXAMPLE: gpconfig --directory /data/master/gp-1 --entry shared_buffers --removeonly
 
 # same examples using short form options
-EXAMPLE: gpaddconfig -d /data/master/gp-1 -e shared_buffers -v 250MB
-EXAMPLE: gpaddconfig -d /data/master/gp-1 -e shared_buffers -v 250MB -m 100MB
-EXAMPLE: gpaddconfig -d /data/master/gp-1 -e shared_buffers -r
+EXAMPLE: gpconfig -d /data/master/gp-1 -e shared_buffers -v 250MB
+EXAMPLE: gpconfig -d /data/master/gp-1 -e shared_buffers -v 250MB -m 100MB
+EXAMPLE: gpconfig -d /data/master/gp-1 -e shared_buffers -r
 
 # show all available gucs
-EXAMPLE gpaddconfig -d /data/master/gp-1 --list
+EXAMPLE gpconfig -d /data/master/gp-1 --list
 
 # show values of a particular guc on all nodes
-EXAMPLE gpaddconfig -d /data/master/gp-1 --show max_connections
+EXAMPLE gpconfig -d /data/master/gp-1 --show max_connections
 
 where the entry will be set to the value specified by appending the entry to the end of all postgresql.conf files
 where all previous instances of the entry in postgresql.conf will be commented out
