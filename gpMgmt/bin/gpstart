@@ -403,7 +403,7 @@ class GpStart:
         # so we don't want to start them -- SAN-start works just like a mirror-less start.
         if self.gparray.get_mirroring_enabled() and self.gparray.strategy[0] != 's':
             # bring up mirrors and primaries in quiesced mode
-            self._start_segments(True) # start mirrors
+            self._start_segments(True) # start quiesced
             self._process_segment_start_or_transition()
 
             (primaryDbs, mirrorDbs) = self._determineAvailableMirrorsAndPrimaries()
@@ -414,7 +414,6 @@ class GpStart:
             self._convert_quiesced_segments(False, mirrorDbs)
             self._process_segment_start_or_transition()
             self._convert_quiesced_segments(True, primaryDbs)
-
             self._process_segment_start_or_transition()
 
             self._print_segment_start()
@@ -462,13 +461,12 @@ class GpStart:
         keys.sort()
         for contentId in keys:
             if content_dict_primaries.get(contentId,None):
-                logger.debug("Will use specified primary for %s" % contentId)
                 primaryDbs.append(content_dict_primaries[contentId])
                 if content_dict_mirrors[contentId]:
                     mirrorDbs.append(content_dict_mirrors[contentId])
-            elif content_dict_mirrors.get(contentId,None):                
-                logger.debug("Will use specified mirror for %s" % contentId)
-                primaryDbs.append(content_dict_mirrors[contentId])
+            elif content_dict_mirrors.get(contentId,None):
+                # start only the mirror up, fault prober should update status
+                mirrorDbs.append(content_dict_mirrors[contentId])
             else:
                 # missing a primary and mirror
                 logger.error("No segment started for content: %d" % contentId)
