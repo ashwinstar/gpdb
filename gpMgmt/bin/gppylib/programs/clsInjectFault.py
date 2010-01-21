@@ -166,8 +166,16 @@ class GpInjectFaultProgram:
             logger.info("Injecting fault on %s", segment)
 
             # if there is an error then an exception is raised by command execution
-            gp.SendFilerepTransitionMessage.local("Fault Injector", inputFile.name, \
-                                        segment.getSegmentPort(), segment.getSegmentHostName())
+            cmd = gp.SendFilerepTransitionMessage("Fault Injector", inputFile.name, \
+                                        segment.getSegmentPort(), base.LOCAL, segment.getSegmentHostName())
+            cmd.run(validateAfter=False)
+
+            # now validate ourselves
+            if cmd.results.rc != 0:
+                msg = cmd.results.stderr
+                if msg.startswith("Failure:"):
+                    raise ExceptionNoStackTraceNeeded(msg[len("Failure:"):].strip())
+                raise Exception("injection failed : %s" % msg)
         inputFile.close()
 
     def waitForFaults(self, segments, statusQueryText ):
