@@ -93,3 +93,28 @@ class TestDriver:
 
         self.setSegments(configStr)
         return self
+
+    def initTwoSegmentOneFailedMirrorConfiguration(self):
+        configStr = \
+            """
+             dbid | content | role | preferred_role | mode | status |      hostname      |      address       | port  |                     datadir                     | replication_port
+            ------+---------+------+----------------+------+--------+--------------------+--------------------+-------+-------------------------------------------------+------------------
+            1 |      -1 | p    | p              | s    | u      | master-host | primary-host |  5432 |/datadirpathdbmaster/gp-1 |
+            2 |       0 | p    | p              | s    | u      | first-host | first-host | 50001 |/datadirpathdbfast1/gp0   |            55001
+            7 |       0 | m    | m              | s    | u      | second-host | second-host | 40001 |/second/datadirpathdbfast3/gp0   |            45001
+            3 |       1 | p    | p              | s    | u      | first-host | first-host | 50002 |/datadirpathdbfast2/gp1   |            55002
+            9 |       1 | m    | m              | s    | u      | second-host | second-host | 40002 |/second/datadirpathdbfast4/gp1   |            45002
+            4 |       2 | m    | m              | s    | u      | first-host | first-host | 60001 |/datadirpathdbfast3/gp0   |            65001
+            6 |       2 | p    | p              | s    | u      | second-host | second-host | 30001 |/second/datadirpathdbfast1/gp0   |            35001
+            5 |       3 | m    | m              | c    | d      | first-host | first-host | 60002 |/datadirpathdbfast4/gp1   |            65002
+            8 |       3 | p    | p              | c    | u      | second-host | second-host | 30002 |/second/datadirpathdbfast2/gp1   |            35002
+
+        """
+
+        self.setSegments(configStr)
+        return self
+
+
+
+
+

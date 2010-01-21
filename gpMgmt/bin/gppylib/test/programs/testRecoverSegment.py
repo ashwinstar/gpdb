@@ -19,10 +19,16 @@ logger = get_default_logger()
 #
 # Now the tests:
 #
-# First test: no arguments.
+####################################
+#
+# Tests involving default recovery
+#
 driver.initOneHostConfiguration()
-test_main( "noArguments", [], parserFn, commandFn, None, \
-    """Validation error: neither --host nor --seg_dbid specified.  Exactly one should be specified.""")
+test_main( "nothingToDo", [], parserFn, commandFn, None, \
+    """recovering 0 segment(s)""")
+driver.initTwoSegmentOneFailedMirrorConfiguration()
+test_main( "oneDownBasicRecovery", [], parserFn, commandFn, None, \
+    """recovering 1 segment(s)""")
 
 # All done tests
 printTestResults()

@@ -16,8 +16,8 @@ from gppylib.mainUtils import *
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 import os, sys, getopt, socket, StringIO, signal
-from lib import gpmlib
 
+from gppylib.test.testUtils import testOutput
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib.utils import toNonNoneString, checkNotNone
 from gppylib import gplog
@@ -30,6 +30,7 @@ from gppylib.db import catalog
 from gppylib.db import dbconn
 from gppylib.system import configurationInterface as configInterface
 from gppylib import pgconf
+import gppylib.test.testUtils
 
 logger = gplog.get_default_logger()
 
@@ -146,11 +147,13 @@ class GpRecoverSegmentProgram:
     def recover(self, systemConfig, actions):
         # todo MIRRORING: assert that we have paused the fault prober
 
+        testOutput("recovering %s segment(s)" % len(actions.getSegmentsToRecover()))
+
         # make sure the target directories are up-to-date
         copyDirectives = []
         for toRecover in actions.getSegmentsToRecover():
             if toRecover.getFailoverSegment() is not None:
-                copyDirectives.append(GpCopyDirective(toRecover.getLiveSegment(), toRecover.getFailoverSegment(), False))
+                copyDirectives.append(GpCopySegmentDirectoryDirective(toRecover.getLiveSegment(), toRecover.getFailoverSegment(), False))
         self.copySegmentDirectories(copyDirectives)
 
         # update and save metadata
@@ -158,8 +161,8 @@ class GpRecoverSegmentProgram:
             if toRecover.getFailoverSegment() is None:
                 # we are recovering the lost segment in place
                 seg = toRecover.getFailedSegment()
-                seg.setSegmentStatus(STATUS_UP)
-                seg.setSegmentMode(MODE_RESYNCHRONIZATION)
+                seg.setSegmentStatus(gparray.STATUS_UP)
+                seg.setSegmentMode(gparray.MODE_RESYNCHRONIZING)
 
                 # todo: MIRRORING: mark for full resync
             else:
@@ -167,13 +170,13 @@ class GpRecoverSegmentProgram:
                 # todo: mark seg for delete
 
                 seg = toRecover.getFailoverSegment()
-                seg.setSegmentStatus(STATUS_UP)
-                seg.setSegmentMode(MODE_RESYNCHRONIZATION)
+                seg.setSegmentStatus(gparray.STATUS_UP)
+                seg.setSegmentMode(gparray.MODE_RESYNCHRONIZING)
 
                 raise Exception("not implemented") # todo MIRRORING
 
             seg = toRecover.getLiveSegment()
-            seg.setSegmentMode(MODE_RESYNCHRONIZATION)
+            seg.setSegmentMode(gparray.MODE_RESYNCHRONIZING)
 
         configInterface.getConfigurationProvider().updateSystemConfig(systemConfig)
 
@@ -202,6 +205,7 @@ class GpRecoverSegmentProgram:
         raise Exception("not implemented")
 
     def findAndValidatePeersForFailedSegments(self, systemConfig, failedSegments):
+        dbIdToPeerMap = systemConfig.getDbIdToPeerMap()
         peersForFailedSegments = [ dbIdToPeerMap.get(seg.getSegmentDbId()) for seg in failedSegments]
         for i in range(len(failedSegments)):
             peer = peersForFailedSegments[i]
@@ -218,7 +222,6 @@ class GpRecoverSegmentProgram:
 
         returns a GpRecoveryActions object
         """
-        dbIdToPeerMap = systemConfig.getDbIdToPeerMap()
         segments = systemConfig.getSegDbList()
 
         failedSegments = [ seg for seg in segments if seg.isSegmentDown() ]
@@ -226,7 +229,7 @@ class GpRecoverSegmentProgram:
 
         segs = []
         for i in range(len(failedSegments)):
-            segs.append( GpSegmentToRecover(failedSegments[i], peersForFailedSegments[i], failedSegments[i].copy()))
+            segs.append( GpSegmentToRecover(failedSegments[i], peersForFailedSegments[i], None))
 
         # todo: use newRecoverHost or spareDataDirectory here to update failedSegments
         #       and pick new ports, etc.
@@ -264,8 +267,8 @@ class GpRecoverSegmentProgram:
 
         # gpmlib.get_master_port(opt['-d'])
         masterPort = 5432
-        if gpmlib.chk_on_passive_standby(masterPort): # todo: what is this doing?  Proper error message
-            raise Exception('Unable to process requested command')
+        # if gpmlib.chk_on_passive_standby(masterPort): # todo: what is this doing?  Proper error message
+         #    raise Exception('Unable to process requested command')
 
         # done basic checks, now load config
         self.pauseFaultProber()
@@ -273,7 +276,7 @@ class GpRecoverSegmentProgram:
         systemConfig = confProvider.loadSystemConfig()
 
         # check that we actually have mirrors
-        if len([seg for seg in segments if seg.getSegmentPreferredRole() == 'm']) == 0 :
+        if len([seg for seg in systemConfig.getSegDbList() if seg.getSegmentPreferredRole() == 'm']) == 0 :
             raise ExceptionNoStackTraceNeeded( \
                     'There are no mirrors configured for this Greenplum Datanase instance' \
                     'The Greenplum Database instance will need to be recovered manually')

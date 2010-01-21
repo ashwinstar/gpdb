@@ -753,18 +753,18 @@ class GpArray:
 
     def getDbIdToPeerMap(self):
         """
-        Returns a set that maps a dbid to the peer segment for that dbid
+        Returns a map that maps a dbid to the peer segment for that dbid
         """
         contentIdToSegments = {}
         for seg in self.getSegDbList():
-            arr = dbIdToSegments.get(seg.getSegmentContentId())
+            arr = contentIdToSegments.get(seg.getSegmentContentId())
             if arr is None:
                 arr = []
-                dbIdToSegments[seg.getSegmentContentId()] = arr
+                contentIdToSegments[seg.getSegmentContentId()] = arr
             arr.append(seg)
 
         result = {}
-        for contentId, arr in contentIdToSegments:
+        for contentId, arr in contentIdToSegments.iteritems():
             if len(arr) == 1:
                 pass
             elif len(arr) != 2:
