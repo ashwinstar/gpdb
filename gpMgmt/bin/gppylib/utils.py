@@ -32,22 +32,6 @@ def createFromSingleHostFile(inputFile):
     return rows
 
 #############
-def toNonNoneString(value) :
-    if value is None:
-        return ""
-    return str(value)
-
-#
-# if value is None then an exception is raised
-#
-# otherwise value is returned
-#
-def checkNotNone(label, value):
-    if value is None:
-        raise Exception( label + " is None")
-    return value
-
-#############
 def parseSingleFile(line):
     ph=None 
     if re.search(r"^#", line):
@@ -106,6 +90,7 @@ def openAnything(source):
     return StringIO.StringIO(str(source)) 
 def getOs():
     dist=None
+    fdesc = None
     RHId = "/etc/redhat-release"
     SuSEId = "/etc/SuSE-release"
     try: 
@@ -119,17 +104,19 @@ def getOs():
     except IOError:
         pass
     finally:
-        fdesc.close()
+        if fdesc :
+            fdesc.close()
     try: 
         fdesc = open(SuSEId)
         for line in fdesc: 
             line = line.rstrip()   
-            if re.match('SuSE', line):
+            if re.match('SUSE', line):
                 dist = 'SuSE' 
     except IOError:
         pass
     finally:
-        fdesc.close()
+        if fdesc : 
+            fdesc.close()
     return dist
 def factory(aClass, *args):
     return apply(aClass,args)
