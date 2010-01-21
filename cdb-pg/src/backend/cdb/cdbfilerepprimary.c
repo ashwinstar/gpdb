@@ -27,6 +27,7 @@
 #include "storage/lwlock.h"
 #include "storage/pmsignal.h"
 #include "postmaster/primary_mirror_mode.h"
+#include "utils/faultinjector.h"
 #include "utils/memutils.h"
 
 static volatile sig_atomic_t stateChangeRequested = false;
@@ -151,6 +152,31 @@ FileRepPrimary_ConstructAndInsertMessage(
 	uint32						msgLength;
 	int							status = STATUS_OK;
 	uint32						spareField;
+	
+	if (FileRep_IsOperationSynchronous(fileRepOperation) == TRUE) { 
+		
+		status = FileRepAckPrimary_NewHashEntry(
+												fileRepIdentifier,
+												fileRepOperation,
+												fileRepRelationType);
+	}
+	
+	if (status != STATUS_OK) {
+		ereport(LOG,			
+				(errmsg("ERROR(filerep): could not insert message in ACK table"),
+				 FileRep_errdetail(fileRepIdentifier,
+								   fileRepRelationType,
+								   fileRepOperation),
+				 FileRep_errdetail_Shmem(),
+				 FileRep_errcontext()));	
+		
+		if (updateConfig(SegmentStateFault)) {
+			SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
+		}					
+		
+		FileRepPrimary_IsMirroringRequired();
+		return status;
+	}	
 		
 	msgLength = sizeof(FileRepMessageHeader_s) + sizeof(pg_crc32);
 /*
@@ -266,18 +292,9 @@ FileRepPrimary_ConstructAndInsertMessage(
 	fileRepShmemMessageDescr->messageSync = 
 				FileRep_IsOperationSynchronous(fileRepOperation);		
 	
-	if (fileRepShmemMessageDescr->messageSync == TRUE) { 
-		
-		status = FileRepAckPrimary_NewHashEntry(
-									fileRepIdentifier,
-									fileRepOperation,
-									fileRepRelationType);
-	}
-
-	if (status == STATUS_OK) {
-		fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 
-	} 
+	Assert(status == STATUS_OK);
 	
+	fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 	
 	return status;
 }	
 
@@ -883,6 +900,14 @@ FileRepPrimary_RunSender(void)
 			FileRepSubProcess_GetState() != FileRepStateInitialization) {
 			break;
 		}
+		
+#ifdef FAULT_INJECTOR	
+		FaultInjector_InjectFaultIfSet(
+									   FileRepSender, 
+									   DDLNotSpecified,
+									   "",	// databaseName
+									   ""); // tableName
+#endif
 		
 		fileRepMessage = (char*) (fileRepShmem->positionConsume + 
 								  sizeof(FileRepShmemMessageDescr_s));

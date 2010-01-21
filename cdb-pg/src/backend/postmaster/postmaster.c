@@ -141,6 +141,7 @@
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
+#include "utils/faultinjector.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/resscheduler.h"
@@ -2408,31 +2409,128 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 		sendPrimaryMirrorTransitionResult(buf);
 		return;
 	}
-
+	
+	if ( strcmp("getFaultInjectStatus", targetModeStr ) == 0)
+	{
+#ifdef FAULT_INJECTOR
+        char *faultName = readNextStringFromString(buf, &offset, length);
+	    bool isDone = false;
+		
+        if ( ! faultName)
+        {
+            sendPrimaryMirrorTransitionResult(PROTOCOL_VIOLATION);
+			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+								errmsg("invalid fault injection status packet (missing some data values)")));
+			return;
+        }
+		
+		if (FaultInjector_IsFaultInjected(FaultInjectorIdentifierStringToEnum(faultName))) {
+			isDone = true;
+		}
+		
+        sendPrimaryMirrorTransitionResult(isDone ? "Success: done" : "Success: waitMore");
+#else
+		sendPrimaryMirrorTransitionResult("Failure: Fault Injector not available");
+#endif
+        return;
+	}
+	
 	if ( strcmp("faultInject", targetModeStr) == 0)
 	{
+#ifdef FAULT_INJECTOR
+	    char *faultName = readNextStringFromString(buf, &offset, length);
 	    char *type = readNextStringFromString(buf, &offset, length);
 	    char *ddlStatement = readNextStringFromString(buf, &offset, length);
 	    char *databaseName = readNextStringFromString(buf, &offset, length);
 	    char *tableName = readNextStringFromString(buf, &offset, length);
-	    int numOccurrences = readIntFromString(buf, &offset, length, &wasRead);
-
+        int numOccurrences = readIntFromString(buf, &offset, length, &wasRead);
+	    int sleepTimeSeconds = readIntFromString(buf, &offset, length, &wasRead);
+		FaultInjectorEntry_s	faultInjectorEntry;
+		char buf[1000];
+		
         if ( ! wasRead)
         {
             sendPrimaryMirrorTransitionResult(PROTOCOL_VIOLATION);
 			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
 								errmsg("invalid fault injection packet (missing some data values)")));
-			return;
+			snprintf(buf, sizeof(buf), "Failure: invalid fault injection packet (missing some data values)");
+			goto exit;
         }
+		
+        elog(DEBUG1, "FAULT INJECTED: Name %s Type %s, DDL %s, DB %s, Table %s, NumOccurrences %d  SleepTime %d",
+			 faultName, type, ddlStatement, databaseName, tableName, numOccurrences, sleepTimeSeconds );
+		
+		faultInjectorEntry.faultInjectorIdentifier = FaultInjectorIdentifierStringToEnum(faultName);
+		if (faultInjectorEntry.faultInjectorIdentifier == FaultInjectorIdNotSpecified ||
+			faultInjectorEntry.faultInjectorIdentifier == FaultInjectorIdMax) {
+			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+								errmsg("could not recognize fault name")));
+			
+			snprintf(buf, sizeof(buf), "Failure: could not recognize fault name");
+			goto exit;
+		}		
+		
+		faultInjectorEntry.faultInjectorType = FaultInjectorTypeStringToEnum(type);
+		if (faultInjectorEntry.faultInjectorType == FaultInjectorTypeNotSpecified ||
+			faultInjectorEntry.faultInjectorType == FaultInjectorTypeMax) {
+			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+								errmsg("could not recognize fault type")));
+			
+			snprintf(buf, sizeof(buf), "Failure: could not recognize fault type");
+			goto exit;
+		}
+		
+		faultInjectorEntry.sleepTime = sleepTimeSeconds;
+		if (sleepTimeSeconds < 0 || sleepTimeSeconds > 7200) {
+			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+								errmsg("invalid sleep time, allowed range [0, 7200 sec]")));
+			
+			snprintf(buf, sizeof(buf), "Failure: invalid sleep time, allowed range [0, 7200 sec]");
+			goto exit;
+		}
+		
+		faultInjectorEntry.ddlStatement = FaultInjectorDDLStringToEnum(ddlStatement);
+		if (faultInjectorEntry.ddlStatement == DDLMax) {
+			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+								errmsg("could not recognize DDL statement")));
+			
+			snprintf(buf, sizeof(buf), "Failure: could not recognize DDL statement");
+			goto exit;
+		}		
+		
+		snprintf(faultInjectorEntry.databaseName, sizeof(faultInjectorEntry.databaseName), "%s", databaseName);
+		
+		snprintf(faultInjectorEntry.tableName, sizeof(faultInjectorEntry.tableName), "%s", tableName);
+		
+		faultInjectorEntry.occurrence = numOccurrences;
+		if (numOccurrences > 1000) {
+			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+								errmsg("invalid occurrence number, allowed range [1, 1000]")));
+			
+			snprintf(buf, sizeof(buf), "Failure: invalid occurrence number, allowed range [1, 1000]");
+			goto exit;
+		}	
+		
 
-        // TODO MILENA: set the fault in shared memory.  Note that any of the values could be empty (except numOccurrences, of course)
-        elog(LOG, "FAULT INJECTED: Type %s, DDL %s, DB %s, Table %s, NumOccurrences %d",
-                type, ddlStatement, databaseName, tableName, numOccurrences );
+		if (FaultInjector_SetFaultInjection(&faultInjectorEntry) == STATUS_OK) {
+			if (faultInjectorEntry.faultInjectorType == FaultInjectorTypeStatus) {
+				snprintf(buf, sizeof(buf), "%s", faultInjectorEntry.bufOutput);
+			} else {
+				snprintf(buf, sizeof(buf), "Success:");
+			}
+		} else {
+			snprintf(buf, sizeof(buf), "Failure: %s", faultInjectorEntry.bufOutput);
+		}
 
-	    sendPrimaryMirrorTransitionResult("success");
+exit:
+		sendPrimaryMirrorTransitionResult(buf);
+		
+#else
+		sendPrimaryMirrorTransitionResult("Failure: Fault Injector not available");
+#endif
 	    return;
 	}
-
+	
 	args->mode = decipherPrimaryMirrorModeArgument(targetModeStr);
 
 	if (args->mode == PMModeUninitialized)
@@ -2507,7 +2605,7 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 	switch(result)
 	{
 		case PMTransitionSuccess:
-			sendPrimaryMirrorTransitionResult("Success");
+			sendPrimaryMirrorTransitionResult("Success: ");
 			break;
 		default:
 		{

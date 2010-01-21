@@ -267,16 +267,26 @@ class GpInjectFaultProgram:
         addTo = OptionGroup(parser, 'Fault Options: ')
         parser.add_option_group(addTo)
         addTo.add_option('-y','--type', dest="type", type='string', metavar="<type>",
-                         help='type of fault')
+                         help="fault type: sleep (insert sleep), fault (report fault to postmaster and fts prober), " \
+			      "fatal (inject FATAL error), panic (inject PANIC error), error (inject ERROR), " \
+			      "infinite_loop, data_curruption (corrupt data in memory and persistent media), " \
+			      "reset (remove fault injection), status (report fault injection status) ")
         addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,
                             metavar="<sleepTime>",
-                            help="For 'sleep' faults, the amount of time for the sleep.  Defaults to %default.")
+                            help="For 'sleep' faults, the amount of time for the sleep.  Defaults to %default." \
+				 "Min Max Range is [0, 7200 sec] ")
         addTo.add_option('-f','--fault_name', dest="faultName", type='string', metavar="<name>",
-                         help='faultName')
+                         help="fault name: " \
+			      "filerep_consumer (inject fault before data are processed, i.e. if mirror " \
+			      "then before file operation is issued to file system, if primary " \
+			      "then before mirror file operation is acknowledged to backend processes), " \
+			      "filerep_sender (inject fault before data are sent to network), " \
+			      "filerep_receiver (inject fault after data are received from network), " \
+			      "filerep_flush (inject fault before fsync is issued to file system), ")
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",
                          help="The DDL statement on which fault should be set and triggered " \
-                         "(i.e. create database, drop database, create table, drop table)")
+                         "(i.e. create_database, drop_database, create_table, drop_table)")
         addTo.add_option("-d", "--database_name", dest="databaseName", type="string",
                          metavar="databaseName",
                          help="The database name on which fault should be set and triggered.")
@@ -286,7 +296,7 @@ class GpInjectFaultProgram:
         addTo.add_option("-o", "--occurrence", dest="numOccurrences", type="int", default=1,
                          metavar="numOccurrences",
                          help="The number of occurrence of the DDL statement with the database name" \
-                         " and the table name before fault is triggered.  Defaults to %default.")
+                         " and the table name before fault is triggered.  Defaults to %default. Max is 1000. ")
 
         parser.set_defaults()
         return parser

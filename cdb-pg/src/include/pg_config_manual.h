@@ -251,7 +251,12 @@
 /*
  * Enable debugging print statements for filerep-related operations.
  */
-/* #define FILEREP_DEBUG */
+/*#define FILEREP_DEBUG */
+
+/*
+ * Enable injecting faults.
+ */
+#define FAULT_INJECTOR 1
 
 /*
  * Enable tracing of resource consumption during sort operations;

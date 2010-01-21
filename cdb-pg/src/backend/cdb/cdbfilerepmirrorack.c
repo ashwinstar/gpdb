@@ -14,6 +14,7 @@
 #include "cdb/cdbfilerepmirrorack.h"
 #include "cdb/cdbfilerepconnclient.h"
 #include "storage/lwlock.h"
+#include "utils/faultinjector.h"
 
 
 /****************************************************************
@@ -374,7 +375,15 @@ FileRepAckMirror_RunSender(void)
 							   FILEREP_UNDEFINED,
 							   FileRepAckStateNotInitialized,
 							   FILEREP_UNDEFINED,
-							   FILEREP_UNDEFINED);			
+							   FILEREP_UNDEFINED);		
+		
+#ifdef FAULT_INJECTOR
+		FaultInjector_InjectFaultIfSet(
+									   FileRepSender,
+									   DDLNotSpecified,
+									   "",	//databaseName
+									   ""); // tableName
+#endif						
 		
 		fileRepMessage = (char*) (fileRepAckShmem->positionConsume + 
 								  sizeof(FileRepShmemMessageDescr_s));

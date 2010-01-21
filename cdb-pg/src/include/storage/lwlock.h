@@ -73,12 +73,12 @@ typedef enum LWLockId
 	SeqServerControlLock,
 	AppendOnlyLock,
 	PersistentObjLock,
+	FileRepShmemLock,
+	FileRepAckShmemLock,	
+	FileRepAckHashShmemLock,
 	FirstBufMappingLock,
 	FirstLockMgrLock = FirstBufMappingLock + NUM_BUFFER_PARTITIONS,
 	ResQueueLock = FirstLockMgrLock + NUM_LOCK_PARTITIONS,
-	FileRepAckHashShmemLock,
-	FileRepShmemLock,
-	FileRepAckShmemLock,
 	
 	/* must be last except for MaxDynamicLWLock: */
 	NumFixedLWLocks = FirstLockMgrLock + NUM_LOCK_PARTITIONS,

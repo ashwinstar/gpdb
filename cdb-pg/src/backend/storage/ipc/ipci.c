@@ -48,6 +48,7 @@
 #include "storage/sinval.h"
 #include "storage/spin.h"
 #include "utils/resscheduler.h"
+#include "utils/faultinjector.h"
 
 #include "cdb/cdbfts.h"
 #include "cdb/cdbtm.h"
@@ -170,6 +171,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 			size = add_size(size, FileRep_ShmemSize());
 			size = add_size(size, FileRepAck_ShmemSize());
 			size = add_size(size, FileRepAckPrimary_ShmemSize());
+#ifdef FAULT_INJECTOR
+			size = add_size(size, FaultInjector_ShmemSize());
+#endif			
 		}
 
 #ifdef EXEC_BACKEND
@@ -326,6 +330,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		FileRep_ShmemInit();
 		FileRepAck_ShmemInit();
 		FileRepAckPrimary_ShmemInit();
+#ifdef FAULT_INJECTOR
+		FaultInjector_ShmemInit();
+#endif
 	}
 
 	/*

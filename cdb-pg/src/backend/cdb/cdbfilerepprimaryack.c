@@ -22,6 +22,7 @@
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
+#include "utils/faultinjector.h"
 #include "utils/hsearch.h"
 #include "utils/ps_status.h"
 #include "utils/memutils.h"
@@ -274,6 +275,14 @@ FileRepAckPrimary_RunReceiver(void)
 		if (status != STATUS_OK) {
 			break;
 		}		
+		
+#ifdef FAULT_INJECTOR
+		FaultInjector_InjectFaultIfSet(
+									   FileRepReceiver,
+									   DDLNotSpecified,
+									   "",	//databaseName
+									   ""); // tableName
+#endif				
 		
 		fileRepShmemMessageDescr = 
 		(FileRepShmemMessageDescr_s*) msgPositionInsert;	
@@ -780,6 +789,14 @@ FileRepAckPrimary_RunConsumer(void)
 			FileRepSubProcess_GetState() != FileRepStateInitialization) {
 			break;
 		}
+		
+#ifdef FAULT_INJECTOR
+		FaultInjector_InjectFaultIfSet(
+									   FileRepConsumer,
+									   DDLNotSpecified,
+									   "",	//databaseName
+									   ""); // tableName
+#endif				
 		
 		/* Calculate and compare FileRepMessageHeader_s Crc */
 		fileRepMessageHeader = (FileRepMessageHeader_s*) (fileRepAckShmem->positionConsume + 

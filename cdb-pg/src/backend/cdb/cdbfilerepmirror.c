@@ -34,6 +34,7 @@
 #include "cdb/cdbfilerepconnserver.h"
 #include "libpq/pqsignal.h"
 #include "storage/lwlock.h"
+#include "utils/faultinjector.h"
 #include "utils/hsearch.h"
 
 /*
@@ -308,7 +309,16 @@ FileRepMirror_RunReceiver(void)
 									   FILEREP_UNDEFINED,
 									   FileRepAckStateNotInitialized,
 									   spareField,
-									   FILEREP_UNDEFINED);			
+									   FILEREP_UNDEFINED);	
+				
+#ifdef FAULT_INJECTOR
+				FaultInjector_InjectFaultIfSet(
+											   FileRepReceiver,
+											   DDLNotSpecified,
+											   "",	//databaseName
+											   ""); // tableName
+#endif				
+				
 #ifdef FILEREP_DEBUG
 				ereport(LOG,
 						(errmsg("LOG(filerep): M_RunReceiver "
@@ -564,7 +574,14 @@ FileRepMirror_RunConsumer(void)
 		if (FileRepSubProcess_GetState() != FileRepStateReady) {
 			break;
 		}
-				
+			
+#ifdef FAULT_INJECTOR
+		FaultInjector_InjectFaultIfSet(
+									   FileRepConsumer,
+									   DDLNotSpecified,
+									   "",	//databaseName
+									   ""); // tableName
+#endif
 		/* Calculate and compare FileRepMessageHeader_s Crc */
 		fileRepMessageHeader = (FileRepMessageHeader_s*) (fileRepShmem->positionConsume + 
 								  sizeof(FileRepShmemMessageDescr_s));
@@ -795,7 +812,6 @@ FileRepMirror_RunConsumer(void)
 							fileRepMessageHeader->fileRepOperationDescription.open.fileMode);
 
 					if (fd < 0 && errno == EEXIST) {
-						write_log("could not open file \"%s\" %d", fileName, errno);
 
 						/* NOTE see md.c L242 there are exceptions, how mirror will know about it */ 
 						ereport(LOG,
@@ -1022,6 +1038,14 @@ FileRepMirror_RunConsumer(void)
 							break;
 						}
 				}
+				
+#ifdef FAULT_INJECTOR
+				FaultInjector_InjectFaultIfSet(
+											   FileRepFlush,
+											   DDLNotSpecified,
+											   "",	//databaseName
+											   ""); // tableName
+#endif								
 				
 				status = FileSync(fd);
 				
