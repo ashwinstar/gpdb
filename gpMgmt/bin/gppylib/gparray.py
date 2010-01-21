@@ -701,7 +701,6 @@ class GpArray:
 
         array = GpArray(segments)
         array.strategy = strategy
-
         return array
 
     # --------------------------------------------------------------------
@@ -1274,5 +1273,33 @@ class GpArray:
                                      False, hostname, int(row[6]), new_datadir)
             curr_dbid += 1           
 
+
+    @staticmethod
+    def getSegmentsGroupedByValue(segments, segmentMethodToGetValue):
+        result = {}
+        for segment in segments:
+            value = segmentMethodToGetValue(segment)
+            arr = result.get(value)
+            if arr is None:
+                result[value] = arr = []
+            arr.append(segment)
+        return result
+
+    @staticmethod
+    def getSegmentsByHostName(segments):
+        """
+        Returns a map from segment host name to an array of segments (GpDB objects)
+        """
+        return GpArray.getSegmentsGroupedByValue(segments, GpDB.getSegmentHostName)
+
+    @staticmethod
+    def getSegmentsByContentId(segments):
+        """
+        Returns a map from segment contentId to an array of segments (GpDB objects)
+        """
+        return GpArray.getSegmentsGroupedByValue(segments, GpDB.getSegmentContentId )
+
+    def getNumSegmentContents(self):
+         return len(GpArray.getSegmentsByContentId(self.getSegDbList()))
 
 # === EOF ====

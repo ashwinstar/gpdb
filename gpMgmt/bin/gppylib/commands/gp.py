@@ -207,17 +207,16 @@ class SegmentStop(Command):
 
 #-----------------------------------------------
 class GpSegStartCmd(Command):
-    def __init__(self, name, gphome, gphost, collatelist, gpversion,
-                 isMirrorless, numContentsInCluster, verbose=False,
+    def __init__(self, name, gphome, segments, collatelist, gpversion,
+                 mirroringMode, numContentsInCluster, verbose=False,
                  ctxt=LOCAL, remoteHost=None):
 
-        # Referenced by calling code
-        self.dblist = gphost.dbs
-
+        # Referenced by calling code, create a clone
+        self.dblist = [x for x in segments]
 
         dirlist=[]
-        for db in gphost.dbs:
-            dirlist.append("-D '%s'" % repr(db))
+        for seg in segments:
+            dirlist.append("-D '%s'" % repr(seg))
 
         dirstr=" ".join(dirlist)
         colstr=":".join(collatelist)
@@ -226,12 +225,11 @@ class GpSegStartCmd(Command):
         else:
             setverbose=""
 
-        mode = "mirrorless" if isMirrorless else "quiescent"
         cmdStr= " ".join([
                 "$GPHOME/sbin/gpsegstart.py",
                 setverbose,
                 "-C %s" % colstr,
-                "-M %s" % mode,
+                "-M %s" % mirroringMode,
                 "-V '%s'" % gpversion,
                 "-n %s" % numContentsInCluster,
                 dirstr
@@ -242,9 +240,9 @@ class GpSegStartCmd(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
 class GpSegChangeMirrorModeCmd(Command):
-    def __init__(self, name, gphome, gphost, collatelist, gpversion, dbs, targetMode, transitionMessageFilePath,verbose=False,ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, collatelist, gpversion, dbs, targetMode,
+                 transitionMessageFilePath, verbose=False, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
-        self.gphost=gphost
         self.dblist=dbs
         self.dirlist=[]
         for db in dbs:
@@ -259,16 +257,16 @@ class GpSegChangeMirrorModeCmd(Command):
         else:
             setverbose=""
 
-        cmdStr="$GPHOME/sbin/gpsegtoprimaryormirror.py %s -D %s -C %s -M %s -t %s -V '%s'" % (setverbose,dirstr,colstr,targetMode,transitionMessageFilePath,gpversion)
+        cmdStr="$GPHOME/sbin/gpsegtoprimaryormirror.py %s -D %s -C %s -M %s -t %s -V '%s'" % \
+                (setverbose,dirstr,colstr,targetMode,transitionMessageFilePath,gpversion)
 
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
 #-----------------------------------------------
 class GpSegStopCmd(Command):
-    def __init__(self, name, gphome, gphost, version,mode,dbs,verbose=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, version,mode,dbs,verbose=False, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
-        self.gphost=gphost
-        self.dblist=gphost.dbs
+        self.dblist=dbs
         self.dirportlist=[]
         self.mode=mode
         self.version=version
@@ -318,7 +316,7 @@ class GpInitSystem(Command):
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
 #-----------------------------------------------
-class GpDeleteSystem():
+class GpDeleteSystem(Command):
     def __init__(self,name,datadir, ctxt=LOCAL, remoteHost=None):
         self.datadir=datadir
         self.input="y\ny\n"

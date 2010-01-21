@@ -254,11 +254,15 @@ class GpHostCache():
 
 ######
 def ping_segment_hosts(gparray,pool):
+    segments = gparray.get_valid_segdbs()
+    return ping_segment_hosts_for_array(segments, pool)
+    
+def ping_segment_hosts_for_array(segments, pool):
     failedSegs=[]
     hosts_pinged={}
 
     pool.empty_completed_items()
-    for db in gparray.get_valid_segdbs():
+    for db in segments:
         hostname = db.getSegmentHostName()
 
         if hostname not in hosts_pinged:

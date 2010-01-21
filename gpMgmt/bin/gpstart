@@ -30,6 +30,7 @@ try:
     from gppylib.commands import base
     from gppylib.commands import pg
     from gppylib import pgconf
+    from gppylib.operations.startSegments import *
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -49,28 +50,6 @@ DEFAULT_NUM_WORKERS=64
 class GpStartError(Exception): pass
 
 #---------------------------------------------------------------
-class SegStartStatus:
-    """Tracks result of trying to start an individual segment database"""
-    def __init__(self,db,started=False,reason=None,failedCmd=None):
-        self.db=db
-        self.started=started
-        self.reason=reason
-        self.failedCmd=failedCmd
-        
-    
-    def __str__(self):
-        dbid     = self.db.getSegmentDbId()
-        hostname = self.db.getSegmentHostName()
-        datadir  = self.db.getSegmentDataDirectory()
-        reason   = self.reason
-
-        if self.started:
-            return "DBID:%d  STARTED" % dbid
-        else:
-            return "DBID:%d  FAILED  host:'%s' datadir:'%s' with reason:'%s'" % (
-                dbid, hostname, datadir, reason)
-        
-#---------------------------------------------------------------
 class GpStart:
 
     ######
@@ -88,6 +67,15 @@ class GpStart:
         self.masteronly=masteronly
         self.master_datadir=master_datadir
         self.interactive=interactive
+
+        self.gpversion=None
+        self.gparray=None
+        self.port=None
+        self.gphome=None
+        self.dburl=None
+        self.lc_collate=None
+        self.lc_monetary=None
+        self.lc_numeric=None
         logger.debug("Setting level of parallelism to: %d" % self.parallel)
         pass
 
@@ -137,69 +125,10 @@ class GpStart:
         #
         # Todo: determine the fate of this function and either remove the dead code
         # or rework to a new method.
+        #
+        # review source control from before 1/21/2010 to see the previous code
+        #
         raise Exception("gpstart --recover no longer supported")
-
-        self._basic_setup()
-
-        logger.info("connecting to database to retrieve offline segments")
-        self.dburl = dbconn.DbURL(port=self.port,dbname='template1')
-        self.conn = dbconn.connect(self.dburl, utility=True)
-        self.ftsmode = catalog.getSessionGUC(self.conn,'gp_fault_action')
-        probe_interval = catalog.getSessionGUC(self.conn,'gp_fts_probe_interval')
-
-        if self.ftsmode != 'readonly':
-            raise Exception('gpstart --recover can only be run when gp_fault_action=readonly')
-
-        array = GpArray.initFromCatalog(self.dburl, utility=True)
-        downed_segs = array.get_invalid_segdbs()
-
-        # Log information about invalid segments
-        for seg in downed_segs:
-            dbid     = seg.getSegmentDbId()
-            hostname = seg.getSegmentHostName()
-            datadir  = seg.getSegmentDataDirectory()
-            logger.info("Found offline segment with dbid=%d on host: %s datadirectory: %s" % (dbid,hostname,datadir))
-
-        # Attempt to restart downed segments
-        total_count=len(downed_segs)
-        started = 0        
-        for seg in downed_segs:
-            hostname = seg.getSegmentHostName()
-            datadir  = seg.getSegmentDataDirectory()
-
-            logger.info("Attempting to restart segment on host: %s datadir: %s " % (hostname, datadir))
-            logger.info("Trying to ping host: %s" % hostname )
-            cmd = unix.Ping('ping test', hostname)
-            cmd.run()
-
-            if cmd.get_results().rc == 0:
-                logger.info("Ping successful. Attempting to bring up the segment database...")
-                #if we can ping it, lets try and start it.
-
-                # FIXME: This is not the correct interface to start a segment.
-                # Specifically we still need vaules for numContentsInCluster and mirroringMode
-                start_cmd=gp.SegmentStart('start seg', seg, utilityMode=False, 
-                                          ctxt=base.REMOTE, remoteHost=hostname)
-                start_cmd.run()
-
-                logger.debug(start_cmd.get_results())
-
-                if start_cmd.get_results().rc == 0:
-                    logger.info("SUCCESS... was able to start segment on host: %s datadir: %s" % (hostname, datadir))
-                    started += 1
-                else:
-                    logger.warning("FAIL... unable to start segment on host: %s datadir: %s " % (hostname, datadir))
-                pass
-            else:
-                logger.warning("FAIL... Unable to ping host: %s.  Cannot start segment on host: %s " % hostname, datadir)
-
-        logger.info("----------------------------------------------------")
-        logger.info("Successfully started %d of %d downed segment instances." % (started,total_count))
-        logger.info("----------------------------------------------------")
-
-        if started > 0:
-            logger.info("The started segments will be brought back into the system by the fault_prober within %s" % probe_interval)            
-        pass
 
     ######
     def cleanup(self):
@@ -354,8 +283,8 @@ class GpStart:
     ######
     def _startMaster(self):    
         logger.info("Starting Master instance in admin mode")
-        dbid = -1;
-        numContentsInCluster = 0;
+        dbid = -1
+        numContentsInCluster = 0
         cmd=gp.MasterStart('master in utility mode',self.master_datadir,self.port,dbid, numContentsInCluster,utilityMode=True)
         cmd.run()
 
@@ -384,99 +313,51 @@ class GpStart:
         """ starts the standby master, all of the segments, and the master
             
             returns whether all segments were started successfully 
-        """   
-        self.failed_seg_status = []
-        self.success_seg_status = []
-
+        """
         workers=min(len(self.gparray.get_hostlist()),self.parallel)
         self.pool = base.WorkerPool(numWorkers=workers)
 
         if os.path.exists(self.master_datadir + "/gpexpand.status") and not self.restricted:            
             raise GpStartError("Found a System Expansion Setup in progress. Please run 'gpexpand --rollback'")
 
-        self.standby_was_started = self._start_standby()                
-        self._prepare_segment_start()           
+        self.standby_was_started = self._start_standby()
+        (segmentsToStart, invalidSegments, inactiveSegments) = self._prepare_segment_start()
 
-        logger.debug("Strategy in gparray is %s" % self.gparray.strategy[0])
+        strategy = self.gparray.strategy[0]
+        logger.debug("Strategy in gparray is %s" % strategy)
 
+        # todo: MIRRROING: push _prepare_segment_start behavior into StartSegmentsOperation???
         # The SAN ('s') failover strategy leaves the mirrors shutdown until they're needed.
         # so we don't want to start them -- SAN-start works just like a mirror-less start.
-        if self.gparray.get_mirroring_enabled() and self.gparray.strategy[0] != 's':
-            # bring up mirrors and primaries in quiesced mode
-            self._start_segments(True) # start quiesced
-            self._process_segment_start_or_transition()
+        if self.gparray.get_mirroring_enabled() and strategy != 's':
+            startMode = START_AS_PRIMARY_OR_MIRROR
+        else: startMode = START_AS_MIRRORLESS
 
-            (primaryDbs, mirrorDbs) = self._determineAvailableMirrorsAndPrimaries()
+        segmentStartResult = StartSegmentsOperation(self.pool,self.quiet,
+                [self.lc_collate,self.lc_monetary,self.lc_numeric], self.gpversion,
+                self.gphome, self.master_datadir
+                ).startSegments(self.gparray, segmentsToStart, startMode)
 
-            # convert quiesced mirrors to real mirrors and primaries to real primaries
-            self.success_seg_status = []
+        # process the result of segment startup
+        self._print_segment_start(segmentStartResult, invalidSegments, inactiveSegments )
 
-            self._convert_quiesced_segments(False, mirrorDbs)
-            self._process_segment_start_or_transition()
-            self._convert_quiesced_segments(True, primaryDbs)
-            self._process_segment_start_or_transition()
+        # make sure we have at least one segment per content
+        # todo MIRRORING: what is right check in mirror mode?  See code before 1/21/2010
+        if not self._verify_enough_segments(segmentStartResult,self.gparray):
+            # go through and remove any segments that we did start so that we keep everything
+            # shutdown cleanly
+            self._shutdown_segments(segmentStartResult)
+            raise GpStartError("Do not have enough valid segments to start the array.")
 
-            self._print_segment_start()
-        else:
-            # bring up primaries in mirrorless mode
-            self._start_segments(False) # we are in mirrorless
-            self._process_segment_start_or_transition()
-
-            self._print_segment_start()
-
-            #make sure we have at least one segment per content
-            if not self._verify_enough_segments(self.success_seg_status,self.gparray):
-                # go through and remove any segments that we did start so that we keep everything
-                # shutdown cleanly
-                self._shutdown_segments(self.success_seg_status)
-                raise GpStartError("Do not have enough valid segments to start the array.")
-
-        self._start_final_master()        
+        hadSegmentFailuresOrInactive = len(segmentStartResult.getFailureReasons()) > 0 or \
+                                       len(invalidSegments ) > 0
+        self._start_final_master(hadSegmentFailuresOrInactive)
         self.cleanup()
 
-        if len(self.failed_seg_status) == 0:
+        if len(segmentStartResult.getFailedSegments()) == 0:
             return True
         else:
             return False
-
-    def _determineAvailableMirrorsAndPrimaries(self):
-        mirrorDbs = []
-        primaryDbs = []
-
-        # content_dict_XXX will contain the services that did start up
-        content_dict_primaries={}
-        content_dict_mirrors={}
-        for seg in self.success_seg_status:                        
-            if (seg.db.getSegmentRole() == 'p'):
-                content_dict_primaries[seg.db.getSegmentContentId()]=seg.db
-            else:
-                content_dict_mirrors[seg.db.getSegmentContentId()]=seg.db
-
-        # find the list of all content 
-        required_content_dict={}
-        for db in self.gparray.getSegDbList():
-            required_content_dict[db.content] = True
-
-        keys = required_content_dict.keys()
-        keys.sort()
-        for contentId in keys:
-            if content_dict_primaries.get(contentId,None):
-                primaryDbs.append(content_dict_primaries[contentId])
-                if content_dict_mirrors[contentId]:
-                    mirrorDbs.append(content_dict_mirrors[contentId])
-            elif content_dict_mirrors.get(contentId,None):
-                # start only the mirror up, fault prober should update status
-                mirrorDbs.append(content_dict_mirrors[contentId])
-            else:
-                # missing a primary and mirror
-                logger.error("No segment started for content: %d" % contentId)
-                logger.info("dumping success segments: %s" % [s.__str__() for s in self.success_seg_status])
-                logger.info("dumping primary mapping: %s" % ['%s: %s' % (k, content_dict_primaries[k].__str__()) for k in content_dict_primaries])
-                logger.info("dumping mirror mapping: %s" % ['%s: %s' % (k, content_dict_mirrors[k].__str__()) for k in content_dict_mirrors])
-                self._shutdown_segments(self.success_seg_status)
-                raise GpStartError("Do not have enough valid segments to start the array.")
-
-        return (primaryDbs, mirrorDbs)
 
     ######
     def _prepare_segment_start(self):
@@ -486,65 +367,40 @@ class GpStart:
         for seg in segs:
             logger.debug("SegDB: %s" % seg)
 
+        # segments marked down
         invalid_segs=self.gparray.get_invalid_segdbs() 
         for seg in invalid_segs:
             hostname = seg.getSegmentHostName()
             datadir = seg.getSegmentDataDirectory()
             logger.warning("Skipping startup of segdb on %s directory %s marked invalid <<<<<" % (hostname, datadir)) 
 
+        # mirrors that should not be started
         inactive_mirrors=self.gparray.get_inactive_mirrors_segdbs()
         if len(inactive_mirrors) > 0:
             logger.debug("Found %d inactive mirrors, skipping" % len(inactive_mirrors))
 
-        #read in the hostcache file and make sure we can ping everybody
-        failed_pings=gphostcache.ping_segment_hosts(self.gparray,self.pool)
-        for db in failed_pings:
-            hostname = db.getSegmentHostName()
-            datadir = db.getSegmentDataDirectory()
-            logger.warning("Skipping startup of segdb on %s directory %s Ping Failed <<<<<<" % (hostname,datadir))
-            self.failed_seg_status.append(SegStartStatus(db,False,'Failed to Ping on host: %s' % hostname))
+        # now produce the list of segments to actually start
+        dbIdsToNotStart = {}
+        for segment in invalid_segs:
+            dbIdsToNotStart[segment.getSegmentDbId()] = True
+        for segment in inactive_mirrors:
+            dbIdsToNotStart[segment.getSegmentDbId()] = True
 
-        invalid_segs.extend(failed_pings)
-        invalid_segs.extend(inactive_mirrors)
+        logger.debug("dbIdsToNotStart has %d entries" % len(dbIdsToNotStart))
 
-        logger.debug("Invalid segs has %d entries" % len(invalid_segs))
-
-        self.hostcache = gphostcache.GpHostCache(self.gparray,self.pool,invalid_segs)                
-        self.hostcache.log_contents()
+        toStart = [seg for seg in segs if dbIdsToNotStart.get(seg.getSegmentDbId()) is None]
+        return (toStart, invalid_segs, inactive_mirrors)
 
     ####    
-    def _verify_enough_segments(self,success_seg_status,gparray):
-        content_dict={}
+    def _verify_enough_segments(self,startResult,gparray):
+        contentDict = GpArray.getSegmentsByContentId(startResult.getSuccessfulSegments())
 
-        for seg in success_seg_status:                        
-            if seg.db.content not in content_dict:
-                content_dict[seg.db.content]=seg                
-
-        keys = content_dict.keys()
-        keys.sort()        
-        prev_content=-1        
-        curr_content=-1
-
-        for key in keys:
-            curr_content=int(key)
-            if curr_content != (prev_content + 1):
-                #means we have a gap and so don't have enough segments
-                logger.error("No segment started for content: %d.  curr_content=%d" % (prev_content+1,curr_content))
-                logger.info("dumping success segments: %s" % [s.__str__() for s in success_seg_status])
-                logger.info("dumping mapping: %s" % ['%s: %s' % (k, content_dict[k].__str__()) for k in content_dict])
+        for seg in gparray.getSegDbList():
+            if contentDict.get(seg.getSegmentContentId()) is None:
+                logger.error("No segment started for content: %d." % seg.getSegmentContentId())
+                logger.info("dumping success segments: %s" % [s.__str__() for s in startResult.getSuccessfulSegments()])
                 return False
-
-            prev_content=curr_content
-
-        #content is 0-based.
-        if (curr_content+1) != gparray.get_segment_count():
-            #we must have lost one at the end... so don't have enough
-            logger.error("No segment started for content: %d.   curr_content=%d" % (gparray.get_segment_count()-1,curr_content))
-            logger.info("dumping success segments: %s" % [s.__str__() for s in success_seg_status])
-            logger.info("dumping mapping: %s" % ['%s: %s' % (k, content_dict[k].__str__()) for k in content_dict])
-            return False
-
-        return True    
+        return True
 
     ######
     def _get_invalid_segments(self):
@@ -559,141 +415,19 @@ class GpStart:
                                (db.dbid,db.content,db.hostname,db.datadir) )
         return invalid_segs        
 
-    def _convert_quiesced_segments(self,doPrimaries,dbs):
-        if doPrimaries:
-            segType = "primary segment"
-            targetMode = "primary";
-        else:
-            segType = "mirror segment"
-            targetMode = "mirror"
-
-        logger.info("Commencing parallel %s conversion, please wait..." % segType)
-
-        ###############################################
-        # for each host, create + transfer the transition arguments file
-        dispatch_count=0
-
-        for gphost in self.hostcache.get_hosts():
-
-            # this data is pickled just below and loaded in gpsegtoprimaryormirror.py (look for pickle.load)
-            hostData = {}
-            hostData["targetMode"] = targetMode
-            hostData["dbsByPort"] = {}
-            for db in gphost.dbs:
-                seg = self.gparray.getSegmentContainingDb(db)
-                peer = None
-                for potentialPeer in seg.get_dbs():
-                    if potentialPeer.dbid != db.dbid:
-                        peer = potentialPeer
-                # todo MIRRORING error handling on this peer checking
-
-                dbData = {}
-                dbData["dbid"] = db.dbid
-                dbData["mode"] = db.mode
-                dbData["hostName"] = db.hostname
-                dbData["hostPort"] = db.replicationPort
-                dbData["peerName"] = peer.hostname
-                dbData["peerPort"] = peer.replicationPort
-                hostData["dbsByPort"][db.port] = dbData
-
-            hostname=gphost.dbs[0].hostname
-            remoteConversionFile = os.path.join(gphost.dbs[0].datadir, "gpstart_mirror_args")
-            localConversionFile = os.path.join(self.master_datadir, "gpstart_mirror_args_%s" % dispatch_count)
-
-            logger.debug("Creating local conversion arguments file: %s " % (localConversionFile))
-            f = open(localConversionFile, "w")
-            pickle.dump(hostData, f)
-            f.close()
-
-            logger.debug("Distributing conversion arguments to host: %s " % (hostname))
-            cmd=unix.RemoteCopy("copy conversion arguments",localConversionFile,hostname,remoteConversionFile)
-            self.pool.addCommand(cmd)
-            dispatch_count+=1
-
-        self.pool.wait_and_printdots(dispatch_count,self.quiet)
-
-        # todo MIRRORING check to make sure all file transition copying worked
-        self.pool.empty_completed_items()
-
-        # clean up the local conversion files
-        dispatch_count = 0
-        for gphost in self.hostcache.get_hosts():
-            localConversionFile = os.path.join(self.master_datadir, "gpstart_mirror_args_%s" % dispatch_count)
-            logger.debug("Deleting local conversion arguments file: %s " % (localConversionFile))
-            os.remove(localConversionFile)
-            dispatch_count+=1
-
-        ###############
-        # now request the mirror mode change
-        dispatch_count=0
-        allDbIds = {}
-        for db in dbs:
-            allDbIds[db.dbid] = True
-
-        for gphost in self.hostcache.get_hosts():
-            dbsThisHost = []
-            for db in gphost.dbs:
-                if allDbIds.get(db.dbid):
-                    dbsThisHost.append(db)
-
-            hostname=gphost.dbs[0].hostname                
-            logger.debug("Dispatching command to convert segments on host: %s " % (hostname))
-            remoteConversionFile = os.path.join(gphost.dbs[0].datadir, "gpstart_mirror_args")
-            cmd=gp.GpSegChangeMirrorModeCmd("remote segment mirror mode conversion on host '%s'" % hostname, self.gphome, gphost, 
-                                 [self.lc_collate,self.lc_monetary,self.lc_numeric], self.gpversion,
-                                 dbsThisHost, targetMode, remoteConversionFile, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
-            self.pool.addCommand(cmd)
-            dispatch_count+=1
-
-        self.pool.wait_and_printdots(dispatch_count,self.quiet)    
-        pass
-
-    def _calculate_num_contents_in_cluster(self):
-        content_dict = {}
-        for db in self.gparray.getSegDbList():
-            content_dict[db.content] = True
-        return len(content_dict)
-
-    ######
-    def _start_segments(self, withMirrors):
-        logger.info("Commencing parallel segment instance startup, please wait...")
-        dispatch_count=0
-
-        numContentsInCluster = self._calculate_num_contents_in_cluster()
-
-        locale = [self.lc_collate, self.lc_monetary, self.lc_numeric]
-
-        for gphost in self.hostcache.get_hosts():
-            hostname=gphost.hostname
-            logger.debug("Dispatching command to start segments on host: %s, with %s contents in cluster" % (hostname, numContentsInCluster))
-            cmd=gp.GpSegStartCmd("remote segment starts on host '%s'" % 
-                                 hostname, self.gphome, gphost, locale,
-                                 self.gpversion,
-                                 not withMirrors,
-                                 numContentsInCluster,
-                                 verbose=logging_is_verbose(),
-                                 ctxt=base.REMOTE,
-                                 remoteHost=hostname)
-            self.pool.addCommand(cmd)
-            dispatch_count+=1
-
-        self.pool.wait_and_printdots(dispatch_count,self.quiet)    
-        pass
-
     ######  
-    def _shutdown_segments(self,success_seg_status):
+    def _shutdown_segments(self,segmentStartResult):
 
         # todo MIRRORING: this needs to shutdown in proper order (call fn from gpstop)
         logger.info("Commencing parallel segment instance shutdown, please wait...")
-        dispatch_count=0
-        for gphost in self.hostcache.get_hosts():
-            dblist=gphost.dbs
-            hostname=gphost.dbs[0].hostname
 
+        segmentsByHost = GpArray.getSegmentsByHostName(segmentStartResult.getSuccessfulSegments())
+        dispatch_count=0
+        for hostName, segments in segmentsByHost.iteritems():
             #TODO:  future optimization would be to only stop the segments that we actually started.
-            logger.debug("Dispatching command to shutdown segments on host: %s" % hostname)
-            cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % hostname, self.gphome, gphost,self.gpversion,
-                                mode='immediate', dbs=dblist, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
+            logger.debug("Dispatching command to shutdown segments on host: %s" % hostName)
+            cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % hostName, self.gphome,self.gpversion,
+                                mode='immediate', dbs=segments, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostName)
             self.pool.addCommand(cmd)
             dispatch_count+=1
 
@@ -701,59 +435,32 @@ class GpStart:
         pass
 
     ######
-    def _process_segment_start_or_transition(self):
-        ''' go through all of the gpsegstart or transition commands and figure out what happened
-        '''
-        logger.info("Process results...")
-        cmds=self.pool.getCompletedItems()
-        for cmd in cmds:
-            # error code 0 mean all good, 1 means it ran but at least one thing failed
-            if cmd.get_results().rc == 0 or cmd.get_results().rc == 1:
-                cmdout = cmd.get_results().stdout
-                lines=cmdout.split('\n')
+    def _print_segment_start(self, segmentStartResult, invalidSegments, inactiveSegments):
+        """
+        Print the results of segment startup
 
-                for line in lines:
-                    if line.startswith("STATUS"):
-                        fields=line.split('--')
-                        dir = fields[1].split(':')[1]
-                        started = fields[2].split(':')[1]
+        segmentStartResult is the StartSegmentsResult from the actual start
+        invalidSegments are those that we didn't even try to start because they are marked as down or should otherwise
+           not be started
+        """
+        failedSegments = segmentStartResult.getFailedSegments()
+        failureReasons = segmentStartResult.getFailureReasons()
 
-                        # remove only the first part of reason -- reason could have colons in the text itself
-                        reasonArr = fields[3].split(':')
-                        reasonArr = reasonArr[1:]
-                        reasonStr = ":".join(reasonArr)
-
-                        if started.lower() == 'false':
-                            success=False
-                        else:
-                            success=True
-
-                        for db in cmd.dblist:
-                            if db.datadir == dir:
-                                if success:
-                                    self.success_seg_status.append( SegStartStatus(db,started=True,reason=reasonStr,failedCmd=cmd) )
-                                else:
-                                    self.failed_seg_status.append( SegStartStatus(db,started=False,reason=reasonStr,failedCmd=cmd) )                        
-            else:                
-                for db in cmd.dblist:
-                    self.failed_seg_status.append( SegStartStatus(db,started=False,reason=cmd.get_results(),failedCmd=cmd))
-
-        self.pool.empty_completed_items()
-
-    ######
-    def _print_segment_start(self):
-        segs = self.gparray.get_valid_segdbs()
-        started = len(segs) - len(self.failed_seg_status)
-        failed = len(self.failed_seg_status)
-        invalid = self.gparray.get_invalid_segdbs()
+        started = len(segmentStartResult.getSuccessfulSegments())
+        failed = len(failedSegments)
+        totalTriedToStart = started + failed
 
         if failed > 0 or logging_is_verbose():             
             logger.info("----------------------------------------------------")
             if failed > 0:
-                for failure in self.failed_seg_status:
-                    logger.info(failure)
-            for stat in self.success_seg_status:
-                logger.debug(stat)            
+                for i in range(len(segmentStartResult.getFailedSegments())):
+                    segment = failedSegments[i]
+                    reason = failureReasons[i]
+                    logger.info("DBID:%d  FAILED  host:'%s' datadir:'%s' with reason:'%s'" % (
+                                segment.getSegmentDbId(), segment.getSegmentHostName(),
+                                segment.getSegmentDataDirectory(), reason))
+            for segment in segmentStartResult.getSuccessfulSegments():
+                logger.debug("DBID:%d  STARTED" % segment.getSegmentDbId())
             logger.info("----------------------------------------------------\n\n")
 
         flag=""
@@ -763,27 +470,25 @@ class GpStart:
         logger.info("Total processes marked as completed             = %d" % started)
         logger.info("Total processes marked as failed                = %d %s" % (failed,flag))
         logger.info("----------------------------------------------------")
-        if len(invalid) > 0:
-            logger.warning("Total instances marked invalid and bypassed  = %d <<<<< " % len(invalid))
+        if len(invalidSegments ) > 0:
+            logger.warning("Total instances marked invalid and bypassed  = %d <<<<< " % len(invalidSegments))
         else:
             logger.info("Total instances marked invalid and bypassed     = 0 ")
 
-        logger.info("Successfully started %d of %d segment instances %s" % (started,len(segs),flag))
+        logger.info("Successfully started %d of %d segment instances %s" % (started,totalTriedToStart,flag))
         logger.info("----------------------------------------------------")
 
-        if failed > 0 or len(invalid) > 0:
-            flag="<<<<<"
-            total_errors=failed+len(invalid)
+        if failed > 0:
             logger.warning("Segment instance startup failures reported")
-            logger.warning("Failed start %d of %d segment instances %s" % (total_errors,len(segs),flag))
-            logger.warning("A total of %d errors were encountered" % total_errors)
+            logger.warning("Failed start %d of %d segment instances %s" % (failed,totalTriedToStart,flag))
+            logger.warning("A total of %d errors were encountered" % failed)
             logger.warning("Review %s" % get_logfile())
             logger.warning("For more details on segment startup failure(s)")
             logger.warning("Run gpstate to review current segment instance status")
             logger.info("----------------------------------------------------")
-        if len(invalid) > 0:
+        if len(invalidSegments) > 0:
             logger.warning("****************************************************************************")
-            logger.warning("There are        %d segment(s) marked as invalid" % len(invalid))
+            logger.warning("There are        %d segment(s) marked as invalid" % len(invalidSegments))
             logger.warning("The GPDB gp_fault_action parameter is set to continue in the event of failure")
             logger.warning("To recover from this current invalid state, review usage of gprecoverseg")
             logger.warning("management utility, which will recover failed segment instance databases")
@@ -793,7 +498,7 @@ class GpStart:
 
 
     ######
-    def _start_final_master(self):
+    def _start_final_master(self, hadSegmentFailuresOrInactive):
         ''' Last item in the startup sequence is to start the master. 
 
             After starting the master we connect to it.  This is done both as a check that the system is 
@@ -807,7 +512,7 @@ class GpStart:
             restrict_txt = ""
         logger.info("Starting Master instance %s directory %s %s" % (self.gparray.master.hostname, self.master_datadir, restrict_txt))
 
-        numContentsInCluster = self._calculate_num_contents_in_cluster()
+        numContentsInCluster = self.gparray.getNumSegmentContents()
         gp.MasterStart.local("Starting Master instance",self.master_datadir,self.port,
                              self.gparray.master.dbid, numContentsInCluster,
                              restrictedMode=self.restricted,max_connections=self.max_connections,
@@ -826,12 +531,11 @@ class GpStart:
                 logger.debug("Encountered problem while connecting to master: %s" % str(e))
                 pass
 
-            seg_failures=len(self.failed_seg_status) + len(self.gparray.get_invalid_segdbs())
             standby_failure=not self.standby_was_started and self.attempt_standby_start
 
             if standby_failure:
                 logger.warning("Standby Master could not be started")
-            if standby_failure or seg_failures>0:            
+            if standby_failure or hadSegmentFailuresOrInactive:
                 logger.warning("Database started but warnings generated       <<<<<")
                 logger.info("Check status of database with gpstate utility")
             else:            
@@ -1004,6 +708,6 @@ def main():
             figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
 
 
-logger = get_default_logger()    
+logger = get_default_logger()
 if __name__ == '__main__':
     main()
