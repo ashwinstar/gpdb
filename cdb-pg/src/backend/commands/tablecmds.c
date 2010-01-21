@@ -20809,6 +20809,15 @@ AlterTableNamespace(RangeVar *relation, const char *newschema)
 
 	heap_close(classRel, RowExclusiveLock);
 
+	/* MPP-7825, MPP-6929, MPP-7600: metadata tracking */
+	if ((Gp_role == GP_ROLE_DISPATCH)
+		&& MetaTrackValidKindNsp(rel->rd_rel))
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "SET SCHEMA"
+				);
+
 	/* close rel, but keep lock until commit */
 	relation_close(rel, NoLock);
 }
