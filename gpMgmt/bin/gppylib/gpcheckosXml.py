@@ -12,11 +12,11 @@ from gpcheckosDa import *
 
 config = ""
 if "None" == `os.environ.get("GPCHECKOS_XML")` :
-    config = "/opt/gpcheckos/conf/gpcheckos.xml"
+    GPHOME=os.environ.get("GPHOME") 
+    config=os.path.join(GPHOME,'docs/cli_help/gpcheckos.xml')
 else:
-    config=`os.environ.get("GPCHECKOS_XML")`
+    config = "/gpcheckos/conf/gpcheckos.xml"
 
-    
 _debug = 0
 def debug(varname, o):
     if _debug == 1:
