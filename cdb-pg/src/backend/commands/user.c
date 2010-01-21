@@ -507,7 +507,7 @@ AlterRole(AlterRoleStmt *stmt)
 	ListCell	*option;
 	char		*password	   = NULL;	/* user password */
 	bool		 encrypt_password 
-							   = Password_encryption; /* encrypt password? */
+							   = Password_encryption;	/* encrypt password? */
 	char		 encrypted_password[MD5_PASSWD_LEN + 1];
 	int			 issuper	   = -1;	/* Make the user a superuser? */
 	int			 inherit	   = -1;	/* Auto inherit privileges? */
@@ -530,8 +530,24 @@ AlterRole(AlterRoleStmt *stmt)
 	DefElem		*dvalidUntil   = NULL;
 	Oid			 roleid;
 	bool		 bWas_super	   = false;	/* Was the user a superuser? */
+	int			 numopts	   = 0;
 	char		*alter_subtype = "";	/* metadata tracking: kind of
 										   redundant to say "role" */
+
+	numopts = list_length(stmt->options);
+
+	if (numopts > 1)
+	{
+		char allopts[NAMEDATALEN];
+
+		sprintf(allopts, "%d OPTIONS", numopts);
+
+		alter_subtype = pstrdup(allopts);
+	}
+	else if (0 == numopts)
+	{
+		alter_subtype = "0 OPTIONS";
+	}
 
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
@@ -552,6 +568,8 @@ AlterRole(AlterRoleStmt *stmt)
 				encrypt_password = true;
 			else if (strcmp(defel->defname, "unencryptedPassword") == 0)
 				encrypt_password = false;
+
+			if (1 == numopts) alter_subtype = "PASSWORD";
 		}
 		else if (strcmp(defel->defname, "superuser") == 0)
 		{
@@ -561,6 +579,7 @@ AlterRole(AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options"),
 								   errOmitLocation(true)));
 			dissuper = defel;
+			if (1 == numopts) alter_subtype = "SUPERUSER";
 		}
 		else if (strcmp(defel->defname, "inherit") == 0)
 		{
@@ -570,6 +589,7 @@ AlterRole(AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options"),
 								   errOmitLocation(true)));
 			dinherit = defel;
+			if (1 == numopts) alter_subtype = "INHERIT";
 		}
 		else if (strcmp(defel->defname, "createrole") == 0)
 		{
@@ -588,6 +608,7 @@ AlterRole(AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options"),
 								   errOmitLocation(true)));
 			dcreatedb = defel;
+			if (1 == numopts) alter_subtype = "CREATEDB";
 		}
 		else if (strcmp(defel->defname, "canlogin") == 0)
 		{
@@ -597,6 +618,7 @@ AlterRole(AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options"),
 								   errOmitLocation(true)));
 			dcanlogin = defel;
+			if (1 == numopts) alter_subtype = "LOGIN";
 		}
 		else if (strcmp(defel->defname, "connectionlimit") == 0)
 		{
@@ -606,6 +628,7 @@ AlterRole(AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options"),
 								   errOmitLocation(true)));
 			dconnlimit = defel;
+			if (1 == numopts) alter_subtype = "CONNECTION LIMIT";
 		}
 		else if (strcmp(defel->defname, "rolemembers") == 0 &&
 				 stmt->action != 0)
@@ -616,6 +639,7 @@ AlterRole(AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options"),
 								   errOmitLocation(true)));
 			drolemembers = defel;
+			if (1 == numopts) alter_subtype = "ROLE";
 		}
 		else if (strcmp(defel->defname, "validUntil") == 0)
 		{
@@ -625,6 +649,7 @@ AlterRole(AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options"),
 								   errOmitLocation(true)));
 			dvalidUntil = defel;
+			if (1 == numopts) alter_subtype = "VALID UNTIL";
 		}
 		else if (strcmp(defel->defname, "resourceQueue") == 0)
 		{
@@ -634,6 +659,7 @@ AlterRole(AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options"),
 								   errOmitLocation(true)));
 			dresqueue = defel;
+			if (1 == numopts) alter_subtype = "RESOURCE QUEUE";
 		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",

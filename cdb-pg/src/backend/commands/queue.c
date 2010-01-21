@@ -959,12 +959,15 @@ AlterQueue(AlterQueueStmt *stmt)
 	float4		ignorelimit = 0;
 
 	DefElem     *dactivelimit = NULL;
-	DefElem     *dcostlimit = NULL;
-	DefElem     *dovercommit = NULL;
+	DefElem     *dcostlimit	  = NULL;
+	DefElem     *dovercommit  = NULL;
 	DefElem     *dignorelimit = NULL;
 	ResAlterQueueResult		queueok;
-	bool		 bWith		  = false;
-	bool		 bWithOut	  = false;
+	bool		 bWith		   = false;
+	bool		 bWithOut	   = false;
+	int			 numopts	   = 0;
+	char		*alter_subtype = "";	/* metadata tracking: kind of
+										   redundant to say "role" */
 
 	/* Permission check - only superuser can alter queues. */
 	if (!superuser())
@@ -989,6 +992,8 @@ AlterQueue(AlterQueueStmt *stmt)
 				dactivelimit = makeDefElem("active_statements", 
 										   (Node *)
 										   makeFloat(INVALID_RES_LIMIT_STRING));
+
+			numopts++; alter_subtype = defel->defname;
 		}
 		else if (strcmp(defel->defname, "max_cost") == 0)
 		{
@@ -1002,7 +1007,7 @@ AlterQueue(AlterQueueStmt *stmt)
 				dcostlimit = makeDefElem("max_cost", 
 										 (Node *)
 										 makeInteger(INVALID_RES_LIMIT_THRESHOLD));
-
+			numopts++; alter_subtype = defel->defname;
 		}
 		else if (strcmp(defel->defname, "cost_overcommit") == 0)
 		{
@@ -1016,7 +1021,7 @@ AlterQueue(AlterQueueStmt *stmt)
 				dovercommit = makeDefElem("cost_overcommit", 
 										  (Node *)
 										  makeInteger(FALSE));
-
+			numopts++; alter_subtype = defel->defname;
 		}
 		else if (strcmp(defel->defname, "min_cost") == 0)
 		{
@@ -1030,6 +1035,7 @@ AlterQueue(AlterQueueStmt *stmt)
 				dignorelimit = makeDefElem("min_cost", 
 										   (Node *)
 										   makeFloat(INVALID_RES_LIMIT_STRING));
+			numopts++; alter_subtype = defel->defname;
 
 		}
 		else if (strcmp(defel->defname, "withliststart") == 0)
@@ -1065,7 +1071,42 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWith)
 				elog(ERROR, "option \"%s\" not recognized",
 					 defel->defname);
+
+			numopts++; alter_subtype = defel->defname;
 		}
+	}
+
+	if (numopts > 1)
+	{
+		char allopts[NAMEDATALEN];
+
+		sprintf(allopts, "%d OPTIONS", numopts);
+
+		alter_subtype = pstrdup(allopts);
+	}
+	else if (0 == numopts)
+	{
+		alter_subtype = "0 OPTIONS";
+	}
+	else
+	{
+		char	*tempo = pstrdup(alter_subtype);
+		int		 len   = strlen(tempo);
+		int		 ii	   = 0;
+
+		/* XXX XXX: Ugh!  there has got to be a better way! */
+		while (ii < len)
+		{
+			unsigned char ch = (unsigned char) tempo[ii];
+
+			ch = pg_toupper(ch);
+
+			tempo[ii] = ch;
+
+			ii++;
+		}
+
+		alter_subtype = tempo;
 	}
 
 	/* Perform range checks on the various thresholds. */
@@ -1285,7 +1326,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	MetaTrackUpdObject(ResQueueRelationId,
 					   queueid,
 					   GetUserId(), /* not ownerid */
-					   "ALTER", ""
+					   "ALTER", alter_subtype
 					);
 
 	heap_close(pg_resqueue_rel, NoLock);
