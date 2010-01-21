@@ -4664,6 +4664,7 @@ static bool
 DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 {
 	int			index = 0;
+	int			lineno = 0;
 	char		c;
 	char		quotec = '\0',
 				escapec = '\0';
@@ -4708,6 +4709,8 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 
 		if (c == '\n')
 		{
+			lineno++;
+			
 			if (!csv || (csv && !cstate->in_quote))
 			{
 				cstate->eol_type = EOL_NL;
@@ -4718,9 +4721,23 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 				cstate->last_was_esc = save_lastwas;
 				return true;
 			}
+			else if(csv && cstate->in_quote && cstate->line_buf.len + index >= gp_max_csv_line_length)
+			{	
+				/* we do a "line too long" CSV check for the first row as well (MPP-7869) */
+				cstate->in_quote = false;
+				cstate->line_done = true;
+				cstate->num_consec_csv_err++;
+				cstate->cur_lineno += lineno;
+				ereport(ERROR,
+						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+								errmsg("data line too long. likely due to invalid csv data")));
+			}
+
 		}
 		if (c == '\r')
 		{
+			lineno++;
+			
 			if (!csv || (csv && !cstate->in_quote))
 			{
 				if (cstate->raw_buf[index + 1] == '\n')		/* always safe */
@@ -4745,6 +4762,10 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 		index++;
 	}
 
+	/* since we're yet to find the EOL this buffer will never be 
+	 * re-processed so add the number of rows we found so we don't lose it */
+	cstate->cur_lineno += lineno;
+	
 	return false;
 }
 
