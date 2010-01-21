@@ -204,6 +204,27 @@ myFaultName
 
 clearCommandSimulators()
 
+# test: don't do sync, even if mode is passed, when fault type is reset or status
+driver.initOneHostConfiguration()
+test_main( "syncNoWaitTest1", ["--mode", "sync", "--host", "this-is-my-host", "--role", "mirror", \
+            "-f", "resetFaultName", "-y", "reset", "-c", "create table", "-d", "db1", \
+            "-t", "table10", "-o", "55", "-z", "11" \
+            ], parserFn, commandFn, None, \
+"""Injecting fault on 2 segment(s)
+exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60001 -i /tmp/temporaryNamedFile0
+exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60002 -i /tmp/temporaryNamedFile0"""
+)
+driver.initOneHostConfiguration()
+test_main( "syncNoWaitTest2", ["--mode", "sync", "--host", "this-is-my-host", "--role", "mirror", \
+            "-f", "resetFaultName", "-y", "status", "-c", "create table", "-d", "db1", \
+            "-t", "table10", "-o", "55", "-z", "11" \
+            ], parserFn, commandFn, None, \
+"""Injecting fault on 2 segment(s)
+exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60001 -i /tmp/temporaryNamedFile0
+exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60002 -i /tmp/temporaryNamedFile0"""
+)
+
+
 # TODO: test alternate argument forms (--xxx instead of -y)
 # TODO: test contacting single specified dbid
 

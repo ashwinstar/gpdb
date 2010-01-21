@@ -196,6 +196,10 @@ class GpInjectFaultProgram:
             sleepTimeSec = sleepTimeSec if sleepTimeSec > 7 else sleepTimeSec * sleepTimeMultipler
         inputFile.close()
 
+    def isSyncableFaultType(self):
+        type = self.options.type
+        return type != "reset" and type != "status"
+
     ######
     def run(self):
 
@@ -205,7 +209,7 @@ class GpInjectFaultProgram:
 
         # inject, maybe wait
         self.injectFaults(segments, messageText)
-        if isSync :
+        if isSync and self.isSyncableFaultType() :
             statusQueryText = self.buildGetStatusMessage()
             self.waitForFaults(segments, statusQueryText)
 
