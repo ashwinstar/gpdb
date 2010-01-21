@@ -33,6 +33,11 @@ STATUS_UP    = 'u'
 STATUS_DOWN  = 'd'
 VALID_STATUS = [STATUS_UP, STATUS_DOWN]
 
+MODE_CHANGELOGGING = 'c'
+MODE_SYNCHRONIZED = 's'
+MODE_RESYNCHRONIZING = 'r'
+VALID_MODE = [MODE_CHANGELOGGING, MODE_SYNCHRONIZED, MODE_RESYNCHRONIZING]
+
 
 # ============================================================================
 class GpDB:
@@ -231,6 +236,21 @@ class GpDB:
     def isSegmentMirror(self, current_role=False):
         role = self.role if current_role else self.preferred_role
         return self.content >= 0 and role == ROLE_MIRROR
+
+    def isSegmentUp(self):
+        return self.status == STATUS_UP
+
+    def isSegmentDown(self):
+        return self.status == STATUS_DOWN
+
+    def isSegmentModeInChangeLogging(self):
+        return self.mode == MODE_CHANGELOGGING
+
+    def isSegmentModeSynchronized(self):
+        return self.mode == MODE_SYNCHRONIZED
+
+    def isSegmentModeInResynchronization(self):
+        return self.mode == MODE_RESYNCHRONIZING
 
     # --------------------------------------------------------------------
     # getters
@@ -730,6 +750,30 @@ class GpArray:
         else:
             dbs.extend(self.getSegDbList())
         return dbs
+
+    def getDbIdToPeerMap(self):
+        """
+        Returns a set that maps a dbid to the peer segment for that dbid
+        """
+        contentIdToSegments = {}
+        for seg in self.getSegDbList():
+            arr = dbIdToSegments.get(seg.getSegmentContentId())
+            if arr is None:
+                arr = []
+                dbIdToSegments[seg.getSegmentContentId()] = arr
+            arr.append(seg)
+
+        result = {}
+        for contentId, arr in contentIdToSegments:
+            if len(arr) == 1:
+                pass
+            elif len(arr) != 2:
+                raise Exception("Content %s has more than two segments"% contentId)
+            else:
+                result[arr[0].getSegmentDbId()] = arr[1]
+                result[arr[1].getSegmentDbId()] = arr[0]
+        return result
+
 
     # --------------------------------------------------------------------    
     def getSegDbList(self, includeExpansionSegs=False):
