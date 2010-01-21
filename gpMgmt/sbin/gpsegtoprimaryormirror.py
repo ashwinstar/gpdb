@@ -141,7 +141,9 @@ class GpSegToPrimaryMirror():
             res=cmd.get_results()
             if res.rc != 0:
                 #TODO: read in last entries in startup.log
-                status=SegToPrimaryMirrorStatus(cmd.dataDir,False,"conversion failed.\nstdout:%s\nstderr:%s\n" % (res.stdout,res.stderr))
+                reason = "Conversion failed.  stdout:\"%s\"  stderr:\"%s\"" % \
+                            (res.stdout.replace("\n", " "), res.stderr.replace("\n", " "))
+                status=SegToPrimaryMirrorStatus(cmd.dataDir,False, reason)
                 results.append(status)
                 del dirportmap[cmd.dataDir]
                 failures=True

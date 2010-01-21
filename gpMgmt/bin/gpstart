@@ -682,7 +682,11 @@ class GpStart:
                         fields=line.split('--')
                         dir = fields[1].split(':')[1]
                         started = fields[2].split(':')[1]
-                        reasonStr = fields[3].split(':')[1]
+
+                        # remove only the first part of reason -- reason could have colons in the text itself
+                        reasonArr = fields[3].split(':')
+                        reasonArr = reasonArr[1:]
+                        reasonStr = ":".join(reasonArr)
 
                         if started.lower() == 'false':
                             success=False

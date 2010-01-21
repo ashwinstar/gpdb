@@ -210,14 +210,14 @@ sendMessage(struct addrinfo *addr, void *data, int dataLength)
 			
 			if ( offset < 4)
 			{
-				fprintf(stderr, "gpmirrortransition -- sendMessage() did not receive enough data");
+				fprintf(stderr, "gpmirrortransition -- server did not respond with enough data");
 				goto errReturn;
 			}
 
 			lengthFromMsg = htonl(*(int32*)buf);
 			if ( lengthFromMsg != offset )
 			{
-				fprintf(stderr, "gpmirrortransition -- sendMessage() received %d bytes but message said %d were sent", (int) offset, (int) lengthFromMsg );
+				fprintf(stderr, "gpmirrortransition -- received %d bytes but server message said %d were sent", (int) offset, (int) lengthFromMsg );
 				result = false;
 				goto errReturn;
 			}
