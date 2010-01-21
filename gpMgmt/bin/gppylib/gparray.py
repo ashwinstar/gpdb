@@ -695,9 +695,12 @@ class GpArray:
                            hostname, address, port, fslocation, replicationPort)
                 segments.append(seg)
 
+        strategy = None
         for strategy_row in strategy_rows:
             (strategy) = strategy_row
             break
+        if strategy is None:
+            raise Exception("Database does not contain gp_fault_strategy entry")
 
         array = GpArray(segments)
         array.strategy = strategy
