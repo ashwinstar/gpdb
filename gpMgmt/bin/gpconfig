@@ -147,7 +147,11 @@ class Guc:
     def validate(self, newval):
         # todo add code here...
         # be careful 128KB in postgresql.conf is translated into 32KB units
-        return True
+
+        if self.name == "port" or self.name == "listen_addresses":
+            return "This guc can not be set with this tool"
+
+        return "ok"
 
     def Print(self):
         print "[name: %s] [unit: %s] [context: %s] [vartype: %s] [min_val: %s] [max_val: %s]" % (self.name, self.unit, self.context, self.vartype, self.min_val, self.max_val)
@@ -262,8 +266,9 @@ try:
         conn.close()
     
         if options.value:
-            if not guc.validate(options.value):
-                logger.fatal("new GUC value failed validation")
+            msg = guc.validate(options.value)
+            if msg != "ok":
+                logger.fatal("new GUC value failed validation: " + msg )
                 sys.exit(1)
 
 except DatabaseError, ex:
