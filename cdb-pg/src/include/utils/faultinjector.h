@@ -165,3 +165,4 @@ extern bool FaultInjector_IsFaultInjected(
 							FaultInjectorIdentifier_e identifier);
 
 #endif	/* FAULTINJECTOR_H */
+

@@ -22,6 +22,8 @@
 
 #include "postgres.h"
 
+#include <signal.h>
+
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepservice.h"
 #include "storage/spin.h"
