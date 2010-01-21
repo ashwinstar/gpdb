@@ -893,8 +893,11 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
  *		that were left over after a failed COPY operation and needs
  *		vacuuming).
  *
- *		There are no indexes, txn ids, hint bits, free space, dead tuples,
+ *		There are txn ids, hint bits, free space, dead tuples,
  *		etc. these are all irrelevant in the append only relation context.
+ *
+ *		There may be indexes on the table, but currently nothing is done
+ *		to clean up the indexes.
  */
 void
 vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
@@ -931,7 +934,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		/* fill in remaining VRelStats values */
 		((VRelStats *)vacrelstats)->rel_pages = nblocks;
 		((VRelStats *)vacrelstats)->rel_tuples = num_tuples;
-		((VRelStats *)vacrelstats)->hasindex = false;
+		((VRelStats *)vacrelstats)->hasindex = aorel->rd_rel->relhasindex;
 		((VRelStats *)vacrelstats)->min_tlen = 0;
 		((VRelStats *)vacrelstats)->max_tlen = 0;
 		((VRelStats *)vacrelstats)->num_vtlinks = 0;
@@ -944,7 +947,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		/* fill in remaining LVRelStats values */
 		((LVRelStats *)vacrelstats)->rel_pages = nblocks;
 		((LVRelStats *)vacrelstats)->rel_tuples = num_tuples;
-		((LVRelStats *)vacrelstats)->hasindex = false;
+		((LVRelStats *)vacrelstats)->hasindex = aorel->rd_rel->relhasindex;
 		((LVRelStats *)vacrelstats)->nonempty_pages = 0;
 		((LVRelStats *)vacrelstats)->num_dead_tuples = 0;
 		((LVRelStats *)vacrelstats)->max_dead_tuples = 0;
@@ -1079,7 +1082,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		/* fill in remaining VRelStats values */
 		((VRelStats *)vacrelstats)->rel_pages = nblocks;
 		((VRelStats *)vacrelstats)->rel_tuples = num_tuples;
-		((VRelStats *)vacrelstats)->hasindex = false;
+		((VRelStats *)vacrelstats)->hasindex = aorel->rd_rel->relhasindex;
 		((VRelStats *)vacrelstats)->min_tlen = 0;
 		((VRelStats *)vacrelstats)->max_tlen = 0;
 		((VRelStats *)vacrelstats)->num_vtlinks = 0;
@@ -1092,7 +1095,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		/* fill in remaining LVRelStats values */
 		((LVRelStats *)vacrelstats)->rel_pages = nblocks;
 		((LVRelStats *)vacrelstats)->rel_tuples = num_tuples;
-		((LVRelStats *)vacrelstats)->hasindex = false;
+		((LVRelStats *)vacrelstats)->hasindex = aorel->rd_rel->relhasindex;
 		((LVRelStats *)vacrelstats)->nonempty_pages = 0;
 		((LVRelStats *)vacrelstats)->num_dead_tuples = 0;
 		((LVRelStats *)vacrelstats)->max_dead_tuples = 0;
