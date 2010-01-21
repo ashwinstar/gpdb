@@ -345,6 +345,15 @@ currtid_for_view(Relation viewrel, ItemPointer tid)
 	return (Datum) 0;
 }
 
+
+/*
+ * This function originates from PostgreSQL,
+ * is currently not supported by GPDB - MPP-7886.
+ * The problem is that calling function
+ * heapam.c::heap_get_latest_tid below fails to return
+ * the current number of blocks for the examined relation
+ */
+
 Datum
 currtid_byreloid(PG_FUNCTION_ARGS)
 {
@@ -353,6 +362,13 @@ currtid_byreloid(PG_FUNCTION_ARGS)
 	ItemPointer result;
 	Relation	rel;
 	AclResult	aclresult;
+
+	/*
+	 * Immediately inform client that the function is not supported
+	 */
+
+	elog(ERROR, "Function currtid is not supported by GPDB");
+
 
 	result = (ItemPointer) palloc(sizeof(ItemPointerData));
 	if (!reloid)
@@ -380,6 +396,15 @@ currtid_byreloid(PG_FUNCTION_ARGS)
 	PG_RETURN_ITEMPOINTER(result);
 }
 
+
+/*
+ * This function originates from PostgreSQL,
+ * is currently not supported by GPDB - MPP-7886.
+ * The problem is that calling function
+ * heapam.c::heap_get_latest_tid below fails to return
+ * the current number of blocks for the examined relation
+ */
+
 Datum
 currtid_byrelname(PG_FUNCTION_ARGS)
 {
@@ -389,6 +414,12 @@ currtid_byrelname(PG_FUNCTION_ARGS)
 	RangeVar   *relrv;
 	Relation	rel;
 	AclResult	aclresult;
+
+	/*
+	 * Immediately inform client that the function is not supported
+	 */
+
+	elog(ERROR, "Function currtid2 is not supported by GPDB");
 
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	rel = heap_openrv(relrv, AccessShareLock);
