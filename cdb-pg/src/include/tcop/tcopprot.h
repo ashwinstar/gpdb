@@ -20,6 +20,7 @@
 #define TCOPPROT_H
 
 #include "executor/execdesc.h"
+#include "nodes/parsenodes.h"
 #include "utils/guc.h"
 
 
