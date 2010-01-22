@@ -49,5 +49,8 @@ insert into @gpupgradeschemaname@.pg_filespace_entry(fsefsoid, fsedbid, fselocat
 
 delete from @gpupgradeschemaname@.gp_configuration;
 
+-- Add information for fault strategy
+insert into @gpupgradeschemaname@.gp_fault_strategy(fault_strategy) (select case when (select count(*)=0 from gp_segment_configuration where content >= 0 and preferred_role='m') then 'n' else 'f' end);
+
 commit;
 -- end

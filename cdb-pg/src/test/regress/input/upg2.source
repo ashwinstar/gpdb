@@ -1102,6 +1102,15 @@ select oid, spcname, spcowner, spcfsoid from public.pg_tablespace
 except all
 select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace;
 
+-- gp_fault_strategy
+select fault_strategy from public.gp_fault_strategy
+except all
+select fault_strategy from pg_catalog.gp_fault_strategy;
+
+select fault_strategy from pg_catalog.gp_fault_strategy
+except all
+select fault_strategy from public.gp_fault_strategy;
+
 --
 -- 9. Final sanity checks and cleanup
 --

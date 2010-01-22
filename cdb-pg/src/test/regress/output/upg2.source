@@ -1946,6 +1946,8 @@ reindex table public.pg_tablespace;
 insert into public.gp_segment_configuration(dbid, content, role, preferred_role, mode, status, port, hostname, address, replication_port, san_mounts) (select dbid, content, case when isprimary then 'p' else 'm' end as role, case when definedprimary then 'p' else 'm' end as preferred_role, 's' as mode, 'u' as status, port, hostname, hostname as address, null as replication_port, null as san_mounts from public.gp_configuration);
 insert into public.pg_filespace_entry(fsefsoid, fsedbid, fselocation) (select fs.oid, dbid, datadir from public.gp_configuration, public.pg_filespace fs where fsname = 'pg_system');
 delete from public.gp_configuration;
+-- Add information for fault strategy
+insert into public.gp_fault_strategy(fault_strategy) (select case when (select count(*)=0 from gp_segment_configuration where content >= 0 and preferred_role='m') then 'n' else 'f' end);
 commit;
 -- end
 -- 
@@ -2505,6 +2507,21 @@ except all
 select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace;
  oid | spcname | spcowner | spcfsoid 
 -----+---------+----------+----------
+(0 rows)
+
+-- gp_fault_strategy
+select fault_strategy from public.gp_fault_strategy
+except all
+select fault_strategy from pg_catalog.gp_fault_strategy;
+ fault_strategy 
+----------------
+(0 rows)
+
+select fault_strategy from pg_catalog.gp_fault_strategy
+except all
+select fault_strategy from public.gp_fault_strategy;
+ fault_strategy 
+----------------
 (0 rows)
 
 --
