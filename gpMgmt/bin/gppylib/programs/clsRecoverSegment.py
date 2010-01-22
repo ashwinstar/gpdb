@@ -49,7 +49,7 @@ class GpSegmentToRecover:
         checkNotNone("failedSegment", failedSegment)
         checkNotNone("liveSegment", liveSegment)
         assert liveSegment.isSegmentUp()
-        assert liveSegment.isSegmentPrimary()
+        assert liveSegment.isSegmentPrimary(True)
         assert liveSegment.isSegmentQE()
         assert failedSegment.getSegmentContentId() == liveSegment.getSegmentContentId()
         assert failedSegment.getSegmentDbId() != liveSegment.getSegmentDbId()

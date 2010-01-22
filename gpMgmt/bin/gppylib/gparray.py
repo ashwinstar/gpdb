@@ -613,15 +613,15 @@ class GpArray:
         for segdb in segments:
 
             # Handle QD nodes
-            if segdb.isSegmentMaster():
+            if segdb.isSegmentMaster(True):
                 if self.master != None:
                     logger.error("multiple master dbs defined")
                     raise Exception("GpArray - multiple master dbs defined")
                 self.master = segdb
 
-            elif segdb.isSegmentStandby():
+            elif segdb.isSegmentStandby(True):
                 if self.standbyMaster != None:
-                    logger.error("multiple standy master dbs defined")
+                    logger.error("multiple standby master dbs defined")
                     raise Exception("GpArray - multiple standby master dbs defined")
                 self.standbyMaster = segdb
 
@@ -635,7 +635,7 @@ class GpArray:
                     self.segments.insert(content, Segment())
                 
                 seg = self.segments[content]
-                if segdb.isSegmentPrimary():
+                if segdb.isSegmentPrimary(True):
                     seg.addPrimary(segdb)
                     self.numPrimarySegments += 1
                 else:
@@ -984,7 +984,7 @@ class GpArray:
         (seg0_hostname, inf_num) = get_host_interface(seg0_hostname)
         
         for db in self.getDbList():
-            if db.isSegmentPrimary() and db.getSegmentAddress().startswith(seg0_hostname):
+            if db.isSegmentPrimary(False) and db.getSegmentAddress().startswith(seg0_hostname):
                 primary_datadirs.append(db.datadir[:db.datadir.rfind('/')])
         
         return primary_datadirs
@@ -1001,7 +1001,7 @@ class GpArray:
         (seg0_hostname, inf_num) = get_host_interface(seg0_hostname)
 
         for db in self.getDbList():
-            if db.isSegmentMirror() and db.getSegmentAddress().startswith(seg0_hostname):
+            if db.isSegmentMirror(False) and db.getSegmentAddress().startswith(seg0_hostname):
                 mirror_datadirs.append(db.datadir[:db.datadir.rfind('/')])
         
         return mirror_datadirs

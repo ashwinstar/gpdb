@@ -709,7 +709,7 @@ class SegmentTemplate:
         self.logger.info('Configuring new segments')
         newPrimaryCount = 0;
         for seg in self.gparray.getExpansionSegDbList():
-            if seg.isSegmentPrimary():
+            if seg.isSegmentPrimary(False):
                 newPrimaryCount += 1
 
         newPrimaryCount += self.gparray.get_primary_count()
@@ -1292,7 +1292,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         # Update the gp_id of original segments
         self.newPrimaryCount = 0;
         for seg in self.gparray.getExpansionSegDbList():
-            if seg.isSegmentPrimary():
+            if seg.isSegmentPrimary(False):
                 self.newPrimaryCount += 1
 
         self.newPrimaryCount += self.gparray.get_primary_count()

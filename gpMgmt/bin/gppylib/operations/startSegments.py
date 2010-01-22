@@ -102,8 +102,8 @@ class StartSegmentsOperation:
         if startMethod == START_AS_PRIMARY_OR_MIRROR:
             self.__runStartCommand(segments, MIRROR_MODE_QUIESCENT , numContentsInCluster, result)
 
-            mirrorDbs = [seg for seg in result.getSuccessfulSegments() if seg.isSegmentMirror()]
-            primaryDbs = [seg for seg in result.getSuccessfulSegments() if seg.isSegmentPrimary()]
+            mirrorDbs = [seg for seg in result.getSuccessfulSegments() if seg.isSegmentMirror(True)]
+            primaryDbs = [seg for seg in result.getSuccessfulSegments() if seg.isSegmentPrimary(True)]
 
             result.clearSuccessfulSegments()
             self.__sendPrimaryMirrorTransition(MIRROR_MODE_MIRROR, mirrorDbs, gpArray, result)
