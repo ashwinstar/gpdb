@@ -12,7 +12,7 @@
  * to let the client suspend an update-type query partway through!	Because
  * the query rewriter does not allow arbitrary ON SELECT rewrite rules,
  * only queries that were originally update-type could produce multiple
- * parse/plan trees; so the restriction to a single query is not a problem
+ * plan trees; so the restriction to a single query is not a problem
  * in practice.
  *
  * For SQL cursors, we support three kinds of scroll behavior:
