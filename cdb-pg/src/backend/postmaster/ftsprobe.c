@@ -132,8 +132,9 @@ static void Filerep_mode_update(int dbid, char *mode, char status);
 static void Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
 
 static void getMounts_forDbid(int dbid, List **mountp);
-
+static void mountMaintenance_forMpid(int mpid);
 static void startSegment_forDbid(int dbid);
+
 
 /*
  * Main entry point for ftsprobe process.
@@ -417,14 +418,6 @@ void FtsProbeLoop(void)
 
 		segStatus = 0;
 
-#if 0
-		if (segInfo->valid)
-			segStatus |= FTS_STATUS_ALIVE;
-		if (segInfo->isprimary)
-			segStatus |= FTS_STATUS_PRIMARY;
-		if (segInfo->definedprimary)
-			segStatus |= FTS_STATUS_DEFINEDPRIMARY;
-#endif
 		if (SEGMENT_IS_ALIVE(segInfo))
 			segStatus |= FTS_STATUS_ALIVE;
 
@@ -449,6 +442,13 @@ void FtsProbeLoop(void)
 		if (!PostmasterIsAlive(true))
 			exit(1);
 
+		if (ftsProbeInfo->fts_pauseProbes)
+		{
+			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+				elog(LOG, "skipping probe, we're paused.");
+			goto prober_sleep;
+		}
+
 		if (cdb_component_dbs != NULL)
 		{
 			freeCdbComponentDatabases(cdb_component_dbs);
@@ -472,6 +472,13 @@ void FtsProbeLoop(void)
 		/* Start a sequential, slow scan of the segments */
 		updated_bitmap = probeSegments(cdb_component_dbs);
 
+		if (ftsProbeInfo->fts_pauseProbes)
+		{
+			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+				elog(LOG, "skipping probe, we're paused.");
+			goto prober_sleep;
+		}
+
 		/*
 		 * If we're not processing a full-scan, but one has been requested; we start over.
 		 */
@@ -490,7 +497,15 @@ void FtsProbeLoop(void)
 		}
 
 		/* if no full-scan has been requested, we can sleep. */
-		if (ftsProbeInfo->fts_probeScanRequested < ftsProbeInfo->fts_statusVersion)
+		if (ftsProbeInfo->fts_probeScanRequested >= ftsProbeInfo->fts_statusVersion)
+		{
+			/* we need to do a probe immediately */
+			elog(LOG, "skipping sleep -- rescanning (%d < %d)",
+				 (int)ftsProbeInfo->fts_probeScanRequested, (int)ftsProbeInfo->fts_statusVersion);
+			continue;
+		}
+
+	prober_sleep:
 		{
 			struct timeval tv;
 
@@ -499,10 +514,6 @@ void FtsProbeLoop(void)
 
 			select(0, NULL, NULL, NULL, &tv); /* don't care about return value. */
 		}
-		else
-			elog(LOG, "skipping sleep -- rescanning (%d < %d)",
-				 (int)ftsProbeInfo->fts_probeScanRequested, (int)ftsProbeInfo->fts_statusVersion);
-
 	} /* end server loop */
 
 	return;
@@ -1235,6 +1246,10 @@ probePublishUpdate(uint8 *probe_results)
 		}
 	}
 
+	/* if we've gotten a pause request, we ignore our probe results. */
+	if (ftsProbeInfo->fts_pauseProbes)
+		return false;
+
 	/* We're going to use these timestamps below. */
 	{
 		pg_time_t		curtime;
@@ -1871,6 +1886,8 @@ SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeC
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 			elog(LOG, "mpid %d", mpid);
+
+		mountMaintenance_forMpid(mpid);
 	}
 
 	/* Now we're ready to start up the failover segments */
@@ -1949,6 +1966,18 @@ getMounts_forDbid(int dbid, List **mountp)
 	heap_close(conf_rel, AccessShareLock);
 }
 
+/* convenience macro for sucking catalog info out of our table */
+#define get_heap_attr(datum, prefix, ATTR, tuple, rel)					\
+		{																\
+			bool isNull=true;											\
+																		\
+			datum = heap_getattr((tuple), prefix ## ATTR , (rel)->rd_att, &isNull); \
+			if (isNull)													\
+				elog(FATAL, "Fault reponse error: %s IS NULL", #ATTR); \
+		}
+
+#define get_config_attr(datum, ATTR, tuple, rel) get_heap_attr(datum, Anum_gp_segment_config_, ATTR, tuple, rel)
+
 static void
 startSegment_forDbid(int dbid)
 {
@@ -1956,8 +1985,6 @@ startSegment_forDbid(int dbid)
 	HeapTuple	conf_tup, fse_tup;
 	HeapScanDesc conf_scan, fse_scan;
 	ScanKeyData  fse_scankey[2];
-
-	bool	isNull=true;
 
 	ScanKeyData key[1];
 
@@ -1981,8 +2008,7 @@ startSegment_forDbid(int dbid)
 		int2	content_id;
 		char	cmd[1024];
 
-		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_dbid, conf_rel->rd_att, &isNull);
-		Assert(!isNull); /* primary key better not be null ! */
+		get_config_attr(conf_datum, dbid, conf_tup, conf_rel);
 
 		if ((int)DatumGetInt16(conf_datum) != dbid)
 		{
@@ -1990,16 +2016,13 @@ startSegment_forDbid(int dbid)
 		}
 
 		/* got our dbid, get our array of mountpoints. */
-		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_address, conf_rel->rd_att, &isNull);
-		Assert(!isNull);
+		get_config_attr(conf_datum, address, conf_tup, conf_rel);
 		host = DatumGetCString(DirectFunctionCall1(textout, conf_datum));
 
-		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_content, conf_rel->rd_att, &isNull);
-		Assert(!isNull);
+		get_config_attr(conf_datum, content, conf_tup, conf_rel);
 		content_id = DatumGetInt16(conf_datum);
 
-		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_port, conf_rel->rd_att, &isNull);
-		Assert(!isNull);
+		get_config_attr(conf_datum, port, conf_tup, conf_rel);
 		port = DatumGetInt32(conf_datum);
 
 		/* Find the set of data-directories for all filespaces */
@@ -2018,9 +2041,7 @@ startSegment_forDbid(int dbid)
 		if (!HeapTupleIsValid(fse_tup))
 			elog(ERROR, "filespace lookup failure for dbid %d", dbid);
 
-		conf_datum = heap_getattr(fse_tup, Anum_pg_filespace_entry_fselocation, fse_rel->rd_att, &isNull);
-
-		Assert(!isNull);
+		get_heap_attr(conf_datum, Anum_pg_filespace_entry_, fselocation, fse_tup, fse_rel)
 		dir = DatumGetCString(DirectFunctionCall1(textout, conf_datum));
 
 		heap_endscan(fse_scan);
@@ -2041,4 +2062,76 @@ startSegment_forDbid(int dbid)
 
 	heap_endscan(conf_scan);
 	heap_close(conf_rel, AccessShareLock);
+}
+
+static void
+mountMaintenance_forMpid(int mpid)
+{
+	Relation	mount_rel;
+	HeapTuple	mount_tup;
+	HeapScanDesc mount_scan;
+
+	ScanKeyData key[1];
+
+	ScanKeyInit(&key[0],
+				Anum_gp_san_config_mountid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum((int16)mpid));
+
+	mount_rel = heap_open(GpSanConfigRelationId, AccessShareLock);
+	mount_scan = heap_beginscan(mount_rel, SnapshotNow, 1, key);
+
+	while (HeapTupleIsValid(mount_tup = heap_getnext(mount_scan, ForwardScanDirection)))
+	{
+		Datum	mount_datum;
+
+		char	active_host;
+		char	san_type;
+
+		char	*p_host, *p_mp, *p_dev;
+		char	*m_host, *m_mp, *m_dev;
+
+#define get_mount_attr(datum, ATTR, tuple, rel) get_heap_attr(datum, Anum_gp_san_config_, ATTR, tuple, rel)
+
+		get_mount_attr(mount_datum, mountid, mount_tup, mount_rel);
+		if ((int)DatumGetInt16(mount_datum) != mpid)
+		{
+			elog(ERROR, "getMounts_forDbid: failed dbid lookup in segment configuration");
+		}
+
+		/* got our row, now pull out our columns */
+		get_mount_attr(mount_datum, active_host, mount_tup, mount_rel);
+		active_host = DatumGetChar(mount_datum);
+
+		get_mount_attr(mount_datum, san_type, mount_tup, mount_rel);
+		san_type = DatumGetChar(mount_datum);
+
+		/* get info for the primary */
+		get_mount_attr(mount_datum, primary_host, mount_tup, mount_rel);
+		p_host = DatumGetCString(DirectFunctionCall1(textout, mount_datum));
+
+		get_mount_attr(mount_datum, primary_mountpoint, mount_tup, mount_rel);
+		p_mp = DatumGetCString(DirectFunctionCall1(textout, mount_datum));
+
+		get_mount_attr(mount_datum, primary_device, mount_tup, mount_rel);
+		p_dev = DatumGetCString(DirectFunctionCall1(textout, mount_datum));
+
+		/* get info for the mirror */
+		get_mount_attr(mount_datum, mirror_host, mount_tup, mount_rel);
+		m_host = DatumGetCString(DirectFunctionCall1(textout, mount_datum));
+
+		get_mount_attr(mount_datum, mirror_mountpoint, mount_tup, mount_rel);
+		m_mp = DatumGetCString(DirectFunctionCall1(textout, mount_datum));
+
+		get_mount_attr(mount_datum, mirror_device, mount_tup, mount_rel);
+		m_dev = DatumGetCString(DirectFunctionCall1(textout, mount_datum));
+
+		elog(LOG, "active %c type %c primary %s:%s:'%s' mirror %s:%s:'%s'", active_host, san_type,
+			 p_host, p_mp, p_dev, m_host, m_mp, m_dev);
+
+		break;
+	}
+
+	heap_endscan(mount_scan);
+	heap_close(mount_rel, AccessShareLock);
 }

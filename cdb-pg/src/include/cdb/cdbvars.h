@@ -343,6 +343,13 @@ extern int gp_safefswritesize;
 extern bool Gp_write_shared_snapshot;
 
 /*
+ * Request a pause to the fault-prober.
+ */
+extern bool gp_fts_probe_pause;
+
+extern bool gpvars_assign_gp_fts_probe_pause(bool newval, bool doit, GucSource source);
+
+/*
  * Parameter gp_connections_per_thread
  *
  * The run-time parameter (GUC variables) gp_connections_per_thread

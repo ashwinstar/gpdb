@@ -1521,7 +1521,6 @@ false
 	},
 #endif
 
-
 	{
 		{"gp_hashagg_streambottom", PGC_USERSET, QUERY_TUNING_METHOD,
             gettext_noop("Stream the bottom stage of two stage hashagg"),
@@ -1610,6 +1609,16 @@ false
 		},
 		&gp_enable_slow_writer_testmode,
 		false, NULL, NULL
+	},
+
+	{
+		{"gp_fts_probe_pause", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Stop active probes."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_fts_probe_pause,
+		false, gpvars_assign_gp_fts_probe_pause, NULL
 	},
 
 	{

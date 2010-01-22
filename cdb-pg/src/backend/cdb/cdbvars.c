@@ -17,6 +17,7 @@
 #include "miscadmin.h"
 #include "utils/guc.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbfts.h"
 #include "cdb/cdbutil.h"
 #include "lib/stringinfo.h"
 #include "libpq/libpq-be.h"
@@ -288,6 +289,9 @@ bool		gp_enable_direct_dispatch=true;
 
 /* Disable logging while creating mapreduce objects */
 bool        gp_mapreduce_define=false;
+
+/* request fault-prober pause */
+bool		gp_fts_probe_pause=false;
 
 /* Force core dump on memory context error */
 bool 		coredump_on_memerror=false;
@@ -697,7 +701,6 @@ GpVars_Verbosity   gp_log_fts;
  */
 GpVars_Verbosity   gp_log_interconnect;
 
-
 /*
  * gpvars_string_to_verbosity
  */
@@ -964,4 +967,19 @@ gpvars_assign_gp_gpperfmon_send_interval(int newval, bool doit, GucSource source
 	return true;
 }
 
+/*
+ * Request the fault-prober to suspend probes -- no fault actions will
+ * be taken based on in-flight probes until the prober is unpaused.
+ */
+bool
+gpvars_assign_gp_fts_probe_pause(bool newval, bool doit, GucSource source)
+{
+	if (doit)
+	{
+		if (ftsProbeInfo)
+			ftsProbeInfo->fts_pauseProbes = newval;
+		gp_fts_probe_pause = newval;
+	}
 
+	return true;
+}
