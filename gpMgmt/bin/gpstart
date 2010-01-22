@@ -368,16 +368,16 @@ class GpStart:
             logger.debug("SegDB: %s" % seg)
 
         # segments marked down
-        invalid_segs=self.gparray.get_invalid_segdbs() 
-        for seg in invalid_segs:
-            hostname = seg.getSegmentHostName()
-            datadir = seg.getSegmentDataDirectory()
-            logger.warning("Skipping startup of segdb on %s directory %s marked invalid <<<<<" % (hostname, datadir)) 
+        invalid_segs=self.gparray.get_invalid_segdbs()
 
         # mirrors that should not be started
         inactive_mirrors=self.gparray.get_inactive_mirrors_segdbs()
         if len(inactive_mirrors) > 0:
             logger.debug("Found %d inactive mirrors, skipping" % len(inactive_mirrors))
+        inactiveDbIds = {}
+        for segment in inactive_mirrors:
+            inactiveDbIds[segment.getSegmentDbId()] = True
+        invalid_segs = [segment for segment in invalid_segs if inactiveDbIds.get(segment.getSegmentDbId()) is None]
 
         # now produce the list of segments to actually start
         dbIdsToNotStart = {}
@@ -386,7 +386,16 @@ class GpStart:
         for segment in inactive_mirrors:
             dbIdsToNotStart[segment.getSegmentDbId()] = True
 
+        for seg in invalid_segs:
+            logger.warning("Skipping startup of segdb on %s directory %s marked invalid <<<<<" % \
+                    (seg.getSegmentHostName(), seg.getSegmentDataDirectory()))
+        for seg in inactive_mirrors:
+            logger.warning("Skipping startup of segdb on %s directory %s marked INACTIVE <<<<<" % \
+                    (seg.getSegmentHostName(), seg.getSegmentDataDirectory()))
         logger.debug("dbIdsToNotStart has %d entries" % len(dbIdsToNotStart))
+
+        # we intend to dedup invalid_segs and inactive_mirrors
+        assert len(dbIdsToNotStart) == len(invalid_segs) + len(inactive_mirrors)
 
         toStart = [seg for seg in segs if dbIdsToNotStart.get(seg.getSegmentDbId()) is None]
         return (toStart, invalid_segs, inactive_mirrors)
@@ -401,19 +410,6 @@ class GpStart:
                 logger.info("dumping success segments: %s" % [s.__str__() for s in startResult.getSuccessfulSegments()])
                 return False
         return True
-
-    ######
-    def _get_invalid_segments(self):
-        invalid_segs = self.gparray.get_invalid_segdbs()
-
-        if len(invalid_segs) == 0:
-            logger.info("No segments marked as invalid")
-        else:
-            for db in invalid_segs:
-                logger.warning("Skipping segment as its marked invalid. Segment has "
-                               "dbid=%s content=%s on host=%s with datadir=%s " %\
-                               (db.dbid,db.content,db.hostname,db.datadir) )
-        return invalid_segs        
 
     ######  
     def _shutdown_segments(self,segmentStartResult):
