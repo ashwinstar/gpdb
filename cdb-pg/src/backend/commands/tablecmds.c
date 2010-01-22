@@ -20441,13 +20441,13 @@ ATPExecPartSplit(Relation rel,
 		/* determine if we are inserting into a or b */
 		if (achk)
 		{
-			targetIsA = ExecQual((List *)achk, econtext, true);
+			targetIsA = ExecQual((List *)achk, econtext, false);
 		}
 		else
 		{
 			Assert(PointerIsValid(bchk));
 
-			targetIsA = ! ExecQual((List *)bchk, econtext, true);
+			targetIsA = ! ExecQual((List *)bchk, econtext, false);
 		}
 
 		/* load variables for the specific target */
