@@ -2026,11 +2026,17 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	}
 	else if (proto == PRIMARY_MIRROR_TRANSITION_REQUEST_CODE)
 	{
+	    /* disable the authentication timeout in case it takes a long time */
+        if (!disable_sig_alarm(false))
+            elog(FATAL, "could not disable timer for authorization timeout");
 		processPrimaryMirrorTransitionRequest(port, buf);
 		return 127;
 	}
 	else if (proto == PRIMARY_MIRROR_TRANSITION_QUERY_CODE)
 	{
+	    /* disable the authentication timeout in case it takes a long time */
+        if (!disable_sig_alarm(false))
+            elog(FATAL, "could not disable timer for authorization timeout");
 		processPrimaryMirrorTransitionQuery(port, buf);
 		return 127;
 	}
