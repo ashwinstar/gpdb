@@ -2160,7 +2160,7 @@ TryProcessEqualityNodeForPossibleValues(OpExpr *expr, Node *variable, PossibleVa
 	}
 
 	/* check if it's equality operation */
-	if ( is_builtin_true_equality_between_same_type(expr->opno))
+	if ( is_builtin_greenplum_hashable_equality_between_same_type(expr->opno))
 	{
 		if ( isGreenplumDbHashable(constExpr->consttype))
 		{

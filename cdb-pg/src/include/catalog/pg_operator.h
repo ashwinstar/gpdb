@@ -406,6 +406,7 @@ DATA(insert OID =  808 (  "?-"	   PGNSP PGUID b f	600  600	 16  808  0 0 0 0 0 p
 DATA(insert OID =  809 (  "?|"	   PGNSP PGUID b f	600  600	 16  809  0 0 0 0 0 point_vert - - ));
 
 DATA(insert OID = 811 (  "="	   PGNSP PGUID b f 704 704	16 811 812	 0	 0	 0	 0 tintervaleq eqsel eqjoinsel ));
+#define TIntervalEqualOperator 811
 DATA(insert OID = 812 (  "<>"	   PGNSP PGUID b f 704 704	16 812 811	 0	 0	 0	 0 tintervalne neqsel neqjoinsel ));
 DATA(insert OID = 813 (  "<"	   PGNSP PGUID b f 704 704	16 814 816	 0	 0	 0	 0 tintervallt scalarltsel scalarltjoinsel ));
 DATA(insert OID = 814 (  ">"	   PGNSP PGUID b f 704 704	16 813 815	 0	 0	 0	 0 tintervalgt scalargtsel scalargtjoinsel ));
@@ -660,6 +661,7 @@ DATA(insert OID = 1617 (  "#"	  PGNSP PGUID b f  628	628  600 1617  0 0 0 0 0 li
 
 /* MAC type */
 DATA(insert OID = 1220 (  "="	   PGNSP PGUID b t 829 829	 16 1220 1221 1222 1222 1222 1224 macaddr_eq eqsel eqjoinsel ));
+#define MacAddrEqualOperator 1220
 DATA(insert OID = 1221 (  "<>"	   PGNSP PGUID b f 829 829	 16 1221 1220	 0	  0   0   0 macaddr_ne neqsel neqjoinsel ));
 DATA(insert OID = 1222 (  "<"	   PGNSP PGUID b f 829 829	 16 1224 1225	 0	  0   0   0 macaddr_lt scalarltsel scalarltjoinsel ));
 DATA(insert OID = 1223 (  "<="	   PGNSP PGUID b f 829 829	 16 1225 1224	 0	  0   0   0 macaddr_le scalarltsel scalarltjoinsel ));
@@ -668,6 +670,7 @@ DATA(insert OID = 1225 (  ">="	   PGNSP PGUID b f 829 829	 16 1223 1222	 0	  0  
 
 /* INET type (these also support CIDR via implicit cast) */
 DATA(insert OID = 1201 (  "="	   PGNSP PGUID b t 869 869	 16 1201 1202 1203 1203 1203 1205 network_eq eqsel eqjoinsel ));
+#define InetEqualOperator (1201)
 DATA(insert OID = 1202 (  "<>"	   PGNSP PGUID b f 869 869	 16 1202 1201	 0	  0   0   0 network_ne neqsel neqjoinsel ));
 DATA(insert OID = 1203 (  "<"	   PGNSP PGUID b f 869 869	 16 1205 1206	 0	  0   0   0 network_lt scalarltsel scalarltjoinsel ));
 DATA(insert OID = 1204 (  "<="	   PGNSP PGUID b f 869 869	 16 1206 1205	 0	  0   0   0 network_le scalarltsel scalarltjoinsel ));
@@ -740,6 +743,7 @@ DATA(insert OID = 1802 (  "+"	   PGNSP PGUID b f 1266 1186 1266	 2552 0 0 0 0 0 
 DATA(insert OID = 1803 (  "-"	   PGNSP PGUID b f 1266 1186 1266	 0	0 0 0 0 0 timetz_mi_interval - - ));
 
 DATA(insert OID = 1804 (  "="	  PGNSP PGUID b f 1562 1562 16 1804 1805 1806 1806 1806 1807 varbiteq eqsel eqjoinsel ));
+#define VarbitEqualOperator 1804
 DATA(insert OID = 1805 (  "<>"	  PGNSP PGUID b f 1562 1562 16 1805 1804	0	 0	 0	 0 varbitne neqsel neqjoinsel ));
 DATA(insert OID = 1806 (  "<"	  PGNSP PGUID b f 1562 1562 16 1807 1809	0	 0	 0	 0 varbitlt scalarltsel scalarltjoinsel ));
 DATA(insert OID = 1807 (  ">"	  PGNSP PGUID b f 1562 1562 16 1806 1808	0	 0	 0	 0 varbitgt scalargtsel scalargtjoinsel ));
@@ -797,6 +801,7 @@ DATA(insert OID = 1921 (  "+"	   PGNSP PGUID l f	 0 1700 1700	0	0	0	0	0	0 numeri
 
 /* bytea operators */
 DATA(insert OID = 1955 ( "="	   PGNSP PGUID b t 17 17	16 1955 1956 1957 1957 1957 1959 byteaeq eqsel eqjoinsel ));
+#define ByteaEqualOperator 1955
 DATA(insert OID = 1956 ( "<>"	   PGNSP PGUID b f 17 17	16 1956 1955 0	  0   0   0 byteane neqsel neqjoinsel ));
 DATA(insert OID = 1957 ( "<"	   PGNSP PGUID b f 17 17	16 1959 1960 0	  0   0   0 bytealt scalarltsel scalarltjoinsel ));
 DATA(insert OID = 1958 ( "<="	   PGNSP PGUID b f 17 17	16 1960 1959 0	  0   0   0 byteale scalarltsel scalarltjoinsel ));

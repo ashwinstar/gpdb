@@ -41,6 +41,15 @@ create table direct_test_type_int (real1 real, smallint1 smallint, boolean1 bool
 create table direct_test_type_double (real1 real, smallint1 smallint, boolean1 boolean, int1 int, double1 double precision, date1 date, numeric1 numeric) distributed by (double1);
 create table direct_test_type_date (real1 real, smallint1 smallint, boolean1 boolean, int1 int, double1 double precision, date1 date, numeric1 numeric) distributed by (date1);
 create table direct_test_type_numeric (real1 real, smallint1 smallint, boolean1 boolean, int1 int, double1 double precision, date1 date, numeric1 numeric) distributed by (numeric1);
+create table direct_test_type_abstime (x abstime) distributed by (x);
+create table direct_test_type_bit (x bit) distributed by (x);
+create table direct_test_type_bpchar (x bpchar) distributed by (x);
+create table direct_test_type_bytea (x bytea) distributed by (x);
+create table direct_test_type_cidr (x cidr) distributed by (x);
+create table direct_test_type_inet (x inet) distributed by (x);
+create table direct_test_type_macaddr (x macaddr) distributed by (x);
+create table direct_test_type_tinterval (x tinterval) distributed by (x);
+create table direct_test_type_varbit (x varbit) distributed by (x);
 
 -- enable printing of printing info
 set test_print_direct_dispatch_info=on;
@@ -204,6 +213,36 @@ delete from foo where id = (select max(id2) from bar where id1 = 5);
 delete from foo where id * id = (select max(id2) from bar where id1 = 5) AND id = 3;
 delete from foo where id * id = (select max(id2) from bar) AND id = 3;
 
+------------------------------------
+-- more type tests 
+--
+-- abstime
+insert into direct_test_type_abstime values('2008-08-08');
+select 1 from direct_test_type_abstime where x = '2008-08-08';
+
+insert into direct_test_type_bit values('1');
+select * from direct_test_type_bit where x = '1';
+
+insert into direct_test_type_bpchar values('abs');
+select * from direct_test_type_bpchar where x = 'abs';
+
+insert into direct_test_type_bytea values('greenplum');
+select * from direct_test_type_bytea where x = 'greenplum';
+
+insert into direct_test_type_cidr values('68.44.55.111');
+select * from direct_test_type_cidr where x = '68.44.55.111';
+
+insert into direct_test_type_inet values('68.44.55.111');
+select * from direct_test_type_inet where x = '68.44.55.111';
+
+insert into direct_test_type_macaddr values('12:34:56:78:90:ab');
+select * from direct_test_type_macaddr where x = '12:34:56:78:90:ab';
+
+insert into direct_test_type_tinterval values('["2008-08-08" "2010-10-10"]');
+select 1 from direct_test_type_tinterval where x = '["2008-08-08" "2010-10-10"]';
+
+insert into direct_test_type_varbit values('0101010');
+select * from direct_test_type_varbit where x = '0101010';
 
 ------------------------------------
 -- int28, int82, etc. checks
@@ -273,3 +312,16 @@ drop table bar;
 drop table direct_test_type_int2;
 drop table direct_test_type_int4;
 drop table direct_test_type_int8;
+
+drop table direct_test_type_abstime;
+drop table direct_test_type_bit;
+drop table direct_test_type_bpchar;
+drop table direct_test_type_bytea;
+drop table direct_test_type_cidr;
+drop table direct_test_type_inet;
+drop table direct_test_type_macaddr;
+drop table direct_test_type_tinterval;
+drop table direct_test_type_varbit;
+
+
+
