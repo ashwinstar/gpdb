@@ -33,11 +33,11 @@ extern LogStmtLevel GetQueryLogLevel(Node *node);
 
 extern LogStmtLevel GetPlannedStmtLogLevel(PlannedStmt * stmt);
 
-extern bool QueryReturnsTuples(Query *parsetree);
+extern bool QueryReturnsTuples(Query *parsetree); /* Obsolete? */
 
-extern bool QueryIsReadOnly(Query *parsetree);
+extern bool QueryIsReadOnly(Query *parsetree); /* Obsolete? */
 
-extern bool CommandIsReadOnly(Node *parsetree); /* Obsolete? */
+extern bool CommandIsReadOnly(Node *parsetree);
 
 extern void CheckRelationOwnership(RangeVar *rel, bool noCatalogs);
 
