@@ -1,7 +1,7 @@
 =========================
 Python Coding Conventions
 ========================= 
-   currently under development, your input apreciated
+   currently under development, your input appreciated
  
 --------------------------
 Indentation and formatting
@@ -22,7 +22,7 @@ Coding Principles
      not-completely-initialized object.
 
      This is bad:
-        o = gpObject()           # object still unitialized
+        o = gpObject()           # object still uninitialized
         o.setObjectName('hello')
         o.setObjectValue('world')
 
