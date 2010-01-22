@@ -233,12 +233,10 @@ static void PersistentFileSysObj_SetDatumValues(
 	
 	TransactionId			parentXid,
 	
-	int64					persistentSerialNum)
+	int64					persistentSerialNum,
+
+	ItemPointer				previousFreeTid)
 {
-	ItemPointerData			zeroTid;
-
-	MemSet(&zeroTid, 0, sizeof(ItemPointerData));
-
 	switch (fileSysObjData->fsObjType)
 	{
 	case PersistentFsObjType_RelationFile:
@@ -253,7 +251,7 @@ static void PersistentFileSysObj_SetDatumValues(
 												state,
 												parentXid,
 												persistentSerialNum,
-												&zeroTid);
+												previousFreeTid);
 		}
 		break;
 
@@ -268,7 +266,7 @@ static void PersistentFileSysObj_SetDatumValues(
 										state,
 										parentXid,
 										persistentSerialNum,
-										&zeroTid);
+										previousFreeTid);
 		}
 		break;
 
@@ -282,11 +280,24 @@ static void PersistentFileSysObj_SetDatumValues(
 										state,
 										parentXid,
 										persistentSerialNum,
-										&zeroTid);
+										previousFreeTid);
 		}
 		break;
-	// UNDONE
-
+			
+	case PersistentFsObjType_FilespaceDir:
+		{
+			Oid filespace = fsObjName->variant.filespace;
+	
+			GpPersistentFilespaceNode_SetDatumValues(
+										values,
+										filespace,
+										state,
+										parentXid,
+										persistentSerialNum,
+										previousFreeTid);
+		}
+		break;
+		
 	default:
 		elog(ERROR, "Unexpected persistent file-system object type: %d",
 			 fileSysObjData->fsObjType);
@@ -421,11 +432,15 @@ void PersistentFileSysObj_UpdateTuple(
 	PersistentStoreData *storeData = &fileSysObjData->storeData;
 	PersistentStoreSharedData *storeSharedData = &fileSysObjSharedData->storeSharedData;
 
+	ItemPointerData zeroTid;
+
 	Datum *values;
 	
 	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
 
 	Assert(fsObjName->type == fileSysObjData->fsObjType);
+
+	MemSet(&zeroTid, 0, sizeof(ItemPointerData));
 
 	PersistentFileSysObj_SetDatumValues(
 									fileSysObjData,
@@ -433,7 +448,8 @@ void PersistentFileSysObj_UpdateTuple(
 									fsObjName,
 									state,
 									parentXid,
-									persistentSerialNum);
+									persistentSerialNum,
+									&zeroTid);
 	PersistentStore_UpdateTuple(
 							storeData,
 							storeSharedData,
@@ -510,11 +526,15 @@ void PersistentFileSysObj_AddTuple(
 	PersistentStoreData *storeData = &fileSysObjData->storeData;
 	PersistentStoreSharedData *storeSharedData = &fileSysObjSharedData->storeSharedData;
 
+	ItemPointerData zeroTid;
+
 	Datum *values;
 	
 	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
 
 	Assert(fsObjName->type == fileSysObjData->fsObjType);
+
+	MemSet(&zeroTid, 0, sizeof(ItemPointerData));
 
 	PersistentFileSysObj_SetDatumValues(
 									fileSysObjData,
@@ -522,7 +542,8 @@ void PersistentFileSysObj_AddTuple(
 									fsObjName,
 									state,
 									parentXid,
-									0);
+									0,
+									&zeroTid);
 	PersistentStore_AddTuple(
 							storeData,
 							storeSharedData,
@@ -552,10 +573,14 @@ void PersistentFileSysObj_FreeTuple(
 	
 	PersistentFileSysObjName	freeFsObjName;
 
+	ItemPointerData zeroTid;
+
 	MemSet(&freeFsObjName, 0, sizeof(PersistentFileSysObjName));
 	freeFsObjName.type = fileSysObjData->fsObjType;
 
 	freeValues = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
+
+	MemSet(&zeroTid, 0, sizeof(ItemPointerData));
 
 	PersistentFileSysObj_SetDatumValues(
 									fileSysObjData,
@@ -563,7 +588,8 @@ void PersistentFileSysObj_FreeTuple(
 									&freeFsObjName,
 									PersistentFileSysState_Free,
 									InvalidTransactionId,
-									0);
+									0,
+									&zeroTid);
 	PersistentStore_FreeTuple(
 							storeData,
 							storeSharedData,

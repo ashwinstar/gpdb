@@ -664,21 +664,14 @@ void PersistentStore_AddTuple(
 	int64					*persistentSerialNum)
 
 {
-	ItemPointerData zeroTid;
-
-	MemSet(&zeroTid, 0, sizeof(ItemPointerData));
-
 	*persistentSerialNum = ++storeSharedData->maxInUseSerialNum;
 	GlobalSequence_Set(
 				storeData->gpGlobalSequence,
 				*persistentSerialNum);
 	
-	// UNDONE: Move somewhere else...
+	// Overwrite with the new serial number value.
 	values[storeData->attNumPersistentSerialNum - 1] = 
 										Int64GetDatum(*persistentSerialNum);
-
-	values[storeData->attNumPreviousFreeTid - 1] = 
-										PointerGetDatum(&zeroTid);
 
 	if (!Debug_filerep_skip_persistent_free_list &&
 		PersistentStore_GetFreeTuple(
