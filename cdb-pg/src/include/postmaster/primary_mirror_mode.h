@@ -173,6 +173,7 @@ extern void setInitialRequestedPrimaryMirrorMode( PrimaryMirrorMode targetMode )
 extern PrimaryMirrorMode decipherPrimaryMirrorModeArgument(const char *arg);
 /* transitioning */
 extern PrimaryMirrorModeTransitionResult requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args );
+extern bool isPrimaryMirrorModeTransitionRequested(void);
 extern void doRequestedPrimaryMirrorModeTransitions(void);
 extern PrimaryMirrorModeTransitionArguments *createNewTransitionArguments(void);
 extern void primaryMirrorGetFilerepArguments(

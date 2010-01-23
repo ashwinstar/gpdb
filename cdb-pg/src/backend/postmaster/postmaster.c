@@ -1701,6 +1701,7 @@ ServerLoop(void)
 		fd_set		rmask;
 		int			selres;
 		int			s;
+		bool        fastSelect = false;
 
 		/*
 		 * Wait for a connection request to arrive.
@@ -1716,21 +1717,36 @@ ServerLoop(void)
 
 		PG_SETMASK(&UnBlockSig);
 
-		if (pmState == PM_WAIT_DEAD_END)
-		{
-			pg_usleep(100000L); /* 100 msec seems reasonable */
-			selres = 0;
-		}
-		else
-		{
-			/* must set timeout each time; some OSes change it! */
-			struct timeval timeout;
+        /* If something that needs handling is received while we were doing other things with signals
+         * blocked then we need to skip select as quickly as possible and process it.
+         *
+         * This assumes that all signals are delivered immediately upon unblocking.
+         *
+         * I think there may still be a race in which we are signaled between the completion of unblock and the sleep.
+         */
+        if ( filerep_has_signaled_state_change ||
+             need_call_reaper ||
+             isPrimaryMirrorModeTransitionRequested())
+        {
+            fastSelect = true;
+        }
 
-			timeout.tv_sec = 60;
-			timeout.tv_usec = 0;
-			
-			selres = select(nSockets, &rmask, NULL, NULL, &timeout);
-		}
+        if (pmState == PM_WAIT_DEAD_END)
+        {
+            if ( ! fastSelect )
+                pg_usleep( 100000L); /* 100 msec seems reasonable */
+            selres = 0;
+        }
+        else
+        {
+            /* must set timeout each time; some OSes change it! */
+            struct timeval timeout;
+
+            timeout.tv_sec = fastSelect ? 0 : 60;
+            timeout.tv_usec = 0;
+
+            selres = select(nSockets, &rmask, NULL, NULL, &timeout);
+        }
 
 		/*
 		 * GPDB Change:  Reaper just sets a flag, and we call the real reaper code here.

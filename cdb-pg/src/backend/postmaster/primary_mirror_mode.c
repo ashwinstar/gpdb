@@ -602,6 +602,19 @@ updateConfig(SegmentState_e segmentState)
 }
 
 /**
+ * To be called by the postmaster.  The answer may become true immediately
+ *  after this call but shouldn't (because postmaster is the only one who resets it)
+ *  become false
+ *
+ * Does not acquire the lock as we are only peeking.
+ */
+bool
+isPrimaryMirrorModeTransitionRequested(void)
+{
+    return pmModuleState->isTransitionRequested;
+}
+
+/**
  * This will be called with signals blocked.
  */
 void
