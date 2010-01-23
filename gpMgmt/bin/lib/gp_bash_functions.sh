@@ -228,10 +228,8 @@ CONFIG_TABLE="(SELECT dbid, content, role, preferred_role, mode, status,
         JOIN pg_filespace fs ON (fs.oid = fsefsoid)
         WHERE fsname = 'pg_system')"
 
-GP_PG_VIEW="(SELECT l.dbid, l.isprimary, l.content, l.\"valid\",
-		l.definedprimary FROM gp_pgdatabase() l(dbid smallint,
-		isprimary boolean, content smallint, \"valid\" boolean,
-		definedprimary boolean))"
+GP_PG_VIEW="(SELECT dbid, role = 'p' as isprimary, content, status = 'u' as valid,
+		preferred_role = 'p' as definedprimary FROM gp_segment_configuration)"
 
 ACTIVITY_TABLE=pg_stat_activity
 GP_INITDB_VER_TABLE=gp_version_at_initdb
