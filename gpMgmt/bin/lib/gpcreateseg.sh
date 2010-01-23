@@ -186,7 +186,7 @@ STOP_QE() {
 
         LOG_MSG "[INFO]:-Start Function $FUNCNAME" 1
         LOG_MSG "[INFO]:-Stopping instance on segment ${GP_HOSTNAME}:${GP_PORT}" 1
-        $TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT}\" stop"
+        $TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT}\" stop" >> $LOG_FILE 2>&1
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
