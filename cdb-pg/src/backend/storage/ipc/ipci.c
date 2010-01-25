@@ -167,7 +167,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, PersistentTablespace_ShmemSize());
 		size = add_size(size, PersistentDatabase_ShmemSize());
 		size = add_size(size, PersistentRelation_ShmemSize());
-		if (GPIsSegmentDatabase()) {
+		if (GPAreFileReplicationStructuresRequired()) {
 			size = add_size(size, FileRep_ShmemSize());
 			size = add_size(size, FileRepAck_ShmemSize());
 			size = add_size(size, FileRepAckPrimary_ShmemSize());
@@ -325,7 +325,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	WalSendServerShmemInit();
 	WalRedoServerShmemInit();
 
-	if (GPIsSegmentDatabase()) {
+	if (GPAreFileReplicationStructuresRequired()) {
 	
 		FileRep_ShmemInit();
 		FileRepAck_ShmemInit();

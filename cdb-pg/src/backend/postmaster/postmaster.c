@@ -568,6 +568,7 @@ static void ShmemBackendArrayRemove(Backend *bn);
 
 static bool SyncMaster = false;
 static bool IsSegmentDatabase = false;
+static bool AreFileReplicationStructuresRequired = false;
 
 /* Macros to check exit status of a child process */
 #define EXIT_STATUS_0(st)  ((st) == 0)
@@ -589,6 +590,11 @@ static DistributedTransactionTimeStamp Save_DtxStartTime = 0;
 bool GPIsSegmentDatabase()
 {
 	return IsSegmentDatabase;
+}
+
+bool GPAreFileReplicationStructuresRequired(void)
+{
+    return AreFileReplicationStructuresRequired;
 }
 
 bool GPPostmaster()
@@ -902,6 +908,10 @@ PostmasterMain(int argc, char *argv[])
 		}
 	}
 	IsSegmentDatabase = initialMode != PMModeMaster;
+	AreFileReplicationStructuresRequired = initialMode == PMModeMirrorSegment  ||
+	                                 initialMode == PMModePrimarySegment ||
+	                                 /* we assume quiescent segment will probably become a mirror */
+	                                 initialMode == PMModeQuiescentSegment;
 
 	/*
 	 * Postmaster accepts no non-option switch arguments.
