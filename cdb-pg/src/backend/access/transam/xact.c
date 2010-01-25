@@ -6245,7 +6245,7 @@ xact_desc_commit(StringInfo buf, xl_xact_commit *xlrec)
 			// UNDONE: Ignore the other object types for now...
 			if (fsObj->fsObjName.type == PersistentFsObjType_RelationFile)
 			{
-				RelFileNode *relFileNode = &fsObj->fsObjName.variant.relFileNode;
+				RelFileNode *relFileNode = &fsObj->fsObjName.variant.rel.relFileNode;
 			
 				if (i > 10)
 				{
@@ -6337,7 +6337,7 @@ xact_desc_abort(StringInfo buf, xl_xact_abort *xlrec)
 			// UNDONE: Ignore the other object types for now...
 			if (fsObj->fsObjName.type == PersistentFsObjType_RelationFile)
 			{
-				RelFileNode *relFileNode = &fsObj->fsObjName.variant.relFileNode;
+				RelFileNode *relFileNode = &fsObj->fsObjName.variant.rel.relFileNode;
 			
 				if (i > 10)
 				{

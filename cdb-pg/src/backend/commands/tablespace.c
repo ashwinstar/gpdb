@@ -222,6 +222,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	Oid			tablespaceoid;
 	Oid         filespaceoid;
 	Oid			ownerId;
+	TablespaceDirNode tablespaceDirNode;
 
 	/* validate */
 
@@ -333,7 +334,9 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	heap_close(rel, NoLock);
 
 	/* Create the persistent directory for the tablespace */
-	MirroredFileSysObj_CreateTablespaceDir(tablespaceoid);
+	tablespaceDirNode.tablespace = tablespaceoid;
+	tablespaceDirNode.filespace = filespaceoid;
+	MirroredFileSysObj_CreateTablespaceDir(&tablespaceDirNode);
 
 	/*
 	 * Record dependency on owner 
@@ -385,6 +388,7 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	Oid			 tablespaceoid;
 	int32        count;
 	RelFileNode  relfilenode;
+	TablespaceDirNode tablespaceDirNode;
 
 	/* don't call this in a transaction block */
 	// PreventTransactionChain((void *) stmt, "DROP TABLESPACE");
@@ -508,7 +512,9 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	 * everything it can to assure that the delete will occur sucessfully,
 	 * e.g. check permissions etc.
 	 */
-	MirroredFileSysObj_ScheduleDropTablespaceDir(tablespaceoid);
+	tablespaceDirNode.tablespace = tablespaceoid;
+	tablespaceDirNode.filespace = 0;	// UNDONE
+	MirroredFileSysObj_ScheduleDropTablespaceDir(&tablespaceDirNode);
 
 	/*
 	 * Note: because we checked that the tablespace was empty, there should be

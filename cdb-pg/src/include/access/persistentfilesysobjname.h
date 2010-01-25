@@ -13,7 +13,7 @@
 #include "storage/fd.h"
 #include "storage/relfilenode.h"
 #include "storage/dbdirnode.h"
-#include "catalog/gp_persistent.h"
+#include "storage/tablespacedirnode.h"
 
 typedef enum PersistentFsObjType
 {
@@ -28,13 +28,19 @@ typedef enum PersistentFsObjType
 
 typedef union PersistentFileSysObjNameVariant
 {
-	RelFileNode		relFileNode;
+	struct rel
+	{
+		RelFileNode 	relFileNode;
+
+		int32 segmentFileNum;
+	} rel; 
 
 	DbDirNode		dbDirNode;
 
-	Oid				tablespace;
+	TablespaceDirNode		tablespaceDirNode;
+	
+	Oid 	filespaceOid;
 
-	Oid				filespace;
 } PersistentFileSysObjNameVariant;
 
 typedef struct PersistentFileSysObjName
@@ -50,37 +56,78 @@ inline static void PersistentFileSysObjName_SetRelationFile(
 {
 	MemSet(fsObjName, 0, sizeof(PersistentFileSysObjName));
 	fsObjName->type = PersistentFsObjType_RelationFile;
-	memcpy(&(fsObjName->variant.relFileNode), relFileNode, sizeof(RelFileNode));
+	memcpy(&(fsObjName->variant.rel.relFileNode), relFileNode, sizeof(RelFileNode));
+	fsObjName->variant.rel.segmentFileNum = 0;	// UNDONE
 }
 
 inline static void PersistentFileSysObjName_SetDatabaseDir(
 	PersistentFileSysObjName	*fsObjName,
-	Oid							tablespace,
-	Oid							database)
+	Oid							tablespaceOid,
+	Oid							databaseOid)
 {
 	MemSet(fsObjName, 0, sizeof(PersistentFileSysObjName));
 	fsObjName->type = PersistentFsObjType_DatabaseDir;
-	fsObjName->variant.dbDirNode.tablespace = tablespace;
-	fsObjName->variant.dbDirNode.database = database;
+	fsObjName->variant.dbDirNode.tablespace = tablespaceOid;
+	fsObjName->variant.dbDirNode.database = databaseOid;
 }
 
 inline static void PersistentFileSysObjName_SetTablespaceDir(
 	PersistentFileSysObjName	*fsObjName,
-	Oid							tablespace)
+	Oid							filespaceOid,
+	Oid							tablespaceOid)
 {
 	MemSet(fsObjName, 0, sizeof(PersistentFileSysObjName));
 	fsObjName->type = PersistentFsObjType_TablespaceDir;
-	fsObjName->variant.tablespace = tablespace;
+	fsObjName->variant.tablespaceDirNode.filespace = filespaceOid;
+	fsObjName->variant.tablespaceDirNode.tablespace = tablespaceOid;
 }
 
 inline static void PersistentFileSysObjName_SetFilespaceDir(
 	PersistentFileSysObjName	*fsObjName,
-	Oid							filespace)
+	Oid							filespaceOid)
 {
 	MemSet(fsObjName, 0, sizeof(PersistentFileSysObjName));
 	fsObjName->type = PersistentFsObjType_FilespaceDir;
-	fsObjName->variant.filespace = filespace;
+	fsObjName->variant.filespaceOid = filespaceOid;
 }
+
+/*
+ * The file kinds of a persistent file-system object.
+ */
+typedef enum PersistentFileSysRelStorageMgr
+{
+	PersistentFileSysRelStorageMgr_None = 0,
+	PersistentFileSysRelStorageMgr_BufferPool = 1,
+	PersistentFileSysRelStorageMgr_AppendOnly = 2,
+	MaxPersistentFileSysRelStorageMgr /* must always be last */
+} PersistentFileSysRelStorageMgr;
+
+/*
+ * The states of a persistent file-system object.
+ */
+typedef enum PersistentFileSysState
+{
+	PersistentFileSysState_Free = 0,
+	PersistentFileSysState_CreatePending = 1,
+	PersistentFileSysState_Created = 2,
+	PersistentFileSysState_DropPending = 3,
+	PersistentFileSysState_AbortingCreate = 4,
+	MaxPersistentFileSysState /* must always be last */
+} PersistentFileSysState;
+
+/*
+ * The states of a persistent file-system object.
+ */
+typedef enum MirrorFileSysState
+{
+	MirrorFileSysState_None = 0,
+	MirrorFileSysState_Synchronized = 1,
+	MirrorFileSysState_PageIncremental = 2,
+	MirrorFileSysState_FileIncremental = 3,
+	MirrorFileSysState_All = 4,
+	MaxMirrorFileSysState /* must always be last */
+} MirrorFileSysState;
+
 
 /*
  * This module is for generic relation file create and drop.

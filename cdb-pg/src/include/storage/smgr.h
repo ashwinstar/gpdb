@@ -66,15 +66,15 @@ extern void smgrsetowner(SMgrRelation *owner, SMgrRelation reln);
 extern void smgrclose(SMgrRelation reln);
 extern void smgrcloseall(void);
 extern void smgrclosenode(RelFileNode rnode);
-extern void smgrcreatetablespacedir(Oid tablespace, bool isRedo);
+extern void smgrcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo);
 extern void smgrcreatedbdir(DbDirNode *dbDirNode, bool isRedo);
 extern void smgrcreatepending(RelFileNode 	relFileNode, ItemPointer persistentTid, int64 *persistentSerialNum, bool isLocalBuf, bool flushToXLog);
 extern void smgrcreate(SMgrRelation reln, ItemPointer persistentTid, int64 *persistentSerialNum, bool isLocalBuf, bool isRedo);
 extern void smgrscheduleunlink(SMgrRelation reln, ItemPointer persistentTid, int64 persistentSerialNum, bool isLocalBuf);
 extern void smgrdounlink(SMgrRelation reln, bool isLocalBuf, bool isRedo);
-extern void smgrschedulermtablespacedir(Oid tablespace);
+extern void smgrschedulermtablespacedir(TablespaceDirNode *tablespaceDirNode);
 extern void smgrschedulermdbdir(DbDirNode *dropDbDirNode);
-extern void smgrdormtablespacedir(Oid tablespace, bool isRedo);
+extern void smgrdormtablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo);
 extern void smgrdormdbdir(DbDirNode *dropDbDirNode, bool isRedo);
 extern void smgrextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		   bool isTemp);
@@ -104,11 +104,11 @@ extern void smgr_desc(StringInfo buf, uint8 xl_info, char *rec);
 /* in md.c */
 extern bool mdinit(void);
 extern bool mdclose(SMgrRelation reln);
-extern bool mdcreatetablespacedir(Oid tablespace, bool isRedo);
+extern bool mdcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo);
 extern bool mdcreatedbdir(DbDirNode *dbDirNode, bool isRedo);
 extern bool mdcreate(SMgrRelation reln, bool isRedo);
 extern bool mdunlink(RelFileNode rnode, bool isRedo);
-extern bool mdrmtablespacedir(Oid tablespace, bool isRedo);
+extern bool mdrmtablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo);
 extern bool mdrmdbdir(DbDirNode *dbDirNode, bool isRedo);
 extern bool mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		 bool isTemp);

@@ -248,6 +248,7 @@ static bool PersistentDatabase_ScanTupleCallback(
 	DbDirNode		dbDirNode;
 	
 	PersistentFileSysState	state;
+	MirrorFileSysState		mirrorState;	// UNDONE
 	TransactionId			parentXid;
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
@@ -263,6 +264,7 @@ static bool PersistentDatabase_ScanTupleCallback(
 									&dbDirNode.tablespace,
 									&dbDirNode.database,
 									&state,
+									&mirrorState,
 									&parentXid,
 									&serialNum,
 									&previousFreeTid);
@@ -547,19 +549,29 @@ static void PersistentDatabase_AddTuple(
 	bool			flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
 {
-	Oid tablespace = databaseDirEntry->header.oid2;
-	Oid database = databaseDirEntry->header.oid1;
+	Oid tablespaceOid = databaseDirEntry->header.oid2;
+	Oid databaseOid = databaseDirEntry->header.oid1;
 
-	PersistentFileSysObjName fsObjName;
+	ItemPointerData previousFreeTid;
 
-	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,tablespace,database);
+	Datum values[Natts_gp_persistent_database_node];
+
+	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+
+	GpPersistentDatabaseNode_SetDatumValues(
+								values,
+								tablespaceOid,
+								databaseOid,
+								databaseDirEntry->state,
+								MirrorFileSysState_None,		// UNDONE
+								databaseDirEntry->parentXid,
+								/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
+								&previousFreeTid);
 
 	PersistentFileSysObj_AddTuple(
 							&persistentDatabaseData.fileSysObjData,
 							&persistentDatabaseSharedData->fileSysObjSharedData,
-							&fsObjName,
-							databaseDirEntry->state,
-							databaseDirEntry->parentXid,
+							values,
 							flushToXLog,
 							&databaseDirEntry->presistentTid,
 							&databaseDirEntry->serialNum);
@@ -571,21 +583,30 @@ static void PersistentDatabase_UpdateTuple(
 	bool			flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
 {
-	Oid tablespace = databaseDirEntry->header.oid2;
-	Oid database = databaseDirEntry->header.oid1;
+	Oid tablespaceOid = databaseDirEntry->header.oid2;
+	Oid databaseOid = databaseDirEntry->header.oid1;
 
-	PersistentFileSysObjName fsObjName;
-	
-	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,tablespace,database);
+	ItemPointerData previousFreeTid;
+
+	Datum values[Natts_gp_persistent_database_node];
+
+	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+
+	GpPersistentDatabaseNode_SetDatumValues(
+										values,
+										tablespaceOid,
+										databaseOid,
+										databaseDirEntry->state,
+										MirrorFileSysState_None,		// UNDONE
+										databaseDirEntry->parentXid,
+										databaseDirEntry->serialNum,
+										&previousFreeTid);
 
 	PersistentFileSysObj_UpdateTuple(
 							&persistentDatabaseData.fileSysObjData,
 							&persistentDatabaseSharedData->fileSysObjSharedData,
 							&databaseDirEntry->presistentTid,
-							&fsObjName,
-							databaseDirEntry->state,
-							databaseDirEntry->parentXid,
-							databaseDirEntry->serialNum,
+							values,
 							flushToXLog);
 }
 
@@ -977,6 +998,12 @@ void PersistentDatabase_Dropped(
 	DatabaseEntry databaseEntry;
 	DatabaseDirEntry databaseDirEntry;
 
+	ItemPointerData previousFreeTid;
+
+	Datum freeValues[Natts_gp_persistent_database_node];
+
+	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+
 	if (IsBootstrapProcessingMode())
 	{	
 		if (Debug_persistent_print)
@@ -1006,12 +1033,22 @@ void PersistentDatabase_Dropped(
 				  dbDirNode->tablespace),
 			 PersistentFileSysObj_StateName(databaseDirEntry->state));
 
-	databaseDirEntry->state = PersistentFileSysState_Free;
+	GpPersistentDatabaseNode_SetDatumValues(
+								freeValues,
+								/* tablespaceOid */ 0,
+								/* databaseOid */ 0,
+								PersistentFileSysState_Free,
+								MirrorFileSysState_None,
+								InvalidTransactionId,
+								/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
+								&previousFreeTid);
+
 
 	PersistentFileSysObj_FreeTuple(
 							&persistentDatabaseData.fileSysObjData,
 							&persistentDatabaseSharedData->fileSysObjSharedData,
 							&databaseDirEntry->presistentTid,
+							freeValues,
 							/* flushToXLog */ false);
 
 	SharedOidSearch_Delete(

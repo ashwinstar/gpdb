@@ -257,6 +257,7 @@ static void update_gp_relation_node(
 
 	Oid				verifyTablespace;
 	Oid				verifyRelationNode;
+	int32			verifySegmentFileNum;
 	
 	Datum			repl_val[Natts_gp_relation_node];
 	bool			repl_null[Natts_gp_relation_node];
@@ -283,6 +284,9 @@ static void update_gp_relation_node(
 	verifyRelationNode = DatumGetObjectId(values[Anum_gp_relation_node_relfilenode_oid - 1]);
 
 	Assert(verifyRelationNode == relationNode);
+
+	Assert(!nulls[Anum_gp_relation_node_segment_file_num - 1]);
+	verifySegmentFileNum = DatumGetInt32(values[Anum_gp_relation_node_segment_file_num - 1]);
 
 	memset(repl_val, 0, sizeof(repl_val));
 	memset(repl_null, false, sizeof(repl_null));

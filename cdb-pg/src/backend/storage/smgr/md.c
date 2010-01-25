@@ -199,11 +199,11 @@ mdinit(void)
  * If isRedo is true, it's okay for the tablespace directory to exist already.
  */
 bool
-mdcreatetablespacedir(Oid tablespace, bool isRedo)
+mdcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
 {
 	char	   *path;
 
-	path = GetTablespacePath(tablespace);
+	path = GetTablespacePath(tablespaceDirNode);
 
 	if (mkdir(path, 0700) != 0)
 	{
@@ -384,7 +384,7 @@ mdunlink(RelFileNode rnode, bool isRedo)
  * If isRedo is true, it's okay for the tablespace directory to exist already.
  */
 bool
-mdrmtablespacedir(Oid tablespace, bool isRedo)
+mdrmtablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
 {
 	// Don't use GetDatabasePath since it uses palloc and we don't know the
 	// memory context here...
@@ -392,7 +392,7 @@ mdrmtablespacedir(Oid tablespace, bool isRedo)
 
 	CopyTablespacePath(
 			path, MAXPGPATH,
-			tablespace);
+			tablespaceDirNode);
 
 	/*
 	 * We've removed all relations, so all that is left are PG* files and work files.

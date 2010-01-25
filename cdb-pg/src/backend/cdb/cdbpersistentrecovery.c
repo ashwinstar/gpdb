@@ -661,14 +661,16 @@ static bool PersistentRecovery_ScanTupleCallback(
 	PersistentFileSysObjName	fsObjName;
 	
 	PersistentFileSysState	state;
+	MirrorFileSysState		mirrorState;
 	TransactionId			parentXid;
 	int64					serialNum;
 
-	PersistentFileSysObj_GetValues(
-							&persistentRecoveryFileSysObjData,
+	GpPersistent_GetCommonValues(
+							persistentRecoveryFileSysObjData.fsObjType,
 							values,
 							&fsObjName,
 							&state,
+							&mirrorState,
 							&parentXid,
 							&serialNum);
 	Assert(serialNum == persistentSerialNum);

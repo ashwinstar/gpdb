@@ -284,7 +284,7 @@ ScanGpRelationNodeTuple(
 {
 	HeapTuple	tuple;
 	SysScanDesc scan;
-	ScanKeyData key[2];
+	ScanKeyData key[3];
 
 	Assert (tablespace != 0);
 	Assert (relationNode != 0);
@@ -300,6 +300,10 @@ ScanGpRelationNodeTuple(
 				Anum_gp_relation_node_relfilenode_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(relationNode));
+	ScanKeyInit(&key[2],
+				Anum_gp_relation_node_segment_file_num,
+				BTEqualStrategyNumber, F_INT4EQ,
+				Int32GetDatum(0));		// UNDONE: Set segment file num.
 
 	/*
 	 * Open pg_class and fetch a tuple.  Force heap scan if we haven't yet
@@ -310,7 +314,7 @@ ScanGpRelationNodeTuple(
 	scan = systable_beginscan(gp_relation_node, GpRelationNodeOidIndexId,
 									   /* indexOK */ true,
 									   SnapshotNow,
-									   2, key);
+									   3, key);
 
 	tuple = systable_getnext(scan);
 
@@ -342,6 +346,7 @@ FetchGpRelationNodeTuple(
 	
 	Oid actualTablespace;
 	Oid actualRelationNode;
+	int32 actualSegmentFileNum;
 	
 	Assert (relationId != 0);
 	if (tablespace == 0)
@@ -381,6 +386,9 @@ FetchGpRelationNodeTuple(
 			 relationNode,
 			 actualRelationNode);
 		
+	Assert(!nulls[Anum_gp_relation_node_segment_file_num - 1]);
+	actualSegmentFileNum = DatumGetInt32(values[Anum_gp_relation_node_segment_file_num - 1]);
+	
 	Assert(!nulls[Anum_gp_relation_node_persistent_tid - 1]);
 	*persistentTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_relation_node_persistent_tid - 1]));
 		

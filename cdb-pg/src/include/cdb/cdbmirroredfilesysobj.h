@@ -16,13 +16,13 @@
 #include "storage/smgr.h"
 
 extern void MirroredFileSysObj_CreateTablespaceDir(
-	Oid		tablespace);
+	TablespaceDirNode			*tablespaceDirNode);
 
 extern void MirroredFileSysObj_ScheduleDropTablespaceDir(
-	Oid		tablespace);
+	TablespaceDirNode			*tablespaceDirNode);
 
 extern void MirroredFileSysObj_DropTablespaceDir(
-	Oid		tablespace,
+	TablespaceDirNode			*tablespaceDirNode,
 
 	bool	isRedo);
 

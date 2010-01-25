@@ -43,17 +43,28 @@ char *PersistentFileSysObjName_ObjectName(
 	switch (name->type)
 	{
 	case PersistentFsObjType_RelationFile:	
-		return relpath(name->variant.relFileNode);
+		return relpath(name->variant.rel.relFileNode);
 	case PersistentFsObjType_DatabaseDir:	
 		return GetDatabasePath(
 						name->variant.dbDirNode.database,
 						name->variant.dbDirNode.tablespace);
 
 	case PersistentFsObjType_TablespaceDir:
-		oid = name->variant.tablespace;
-		break;
-	case PersistentFsObjType_FilespaceDir:	
-		oid = name->variant.filespace;
+		{
+			int resultLen;
+			char *result;
+
+			resultLen = 12 + 25 + 12 + 1;
+			result = (char*)palloc(resultLen);
+			
+			sprintf(result, "%u (maps to filespace %u)", 
+					name->variant.tablespaceDirNode.tablespace, 
+					name->variant.tablespaceDirNode.filespace);
+
+			return result;
+		}
+	case PersistentFsObjType_FilespaceDir:
+		oid = name->variant.filespaceOid;
 		break;
 
 	default:

@@ -31,23 +31,35 @@
 #include "utils/builtins.h"
 
 void GpPersistentRelationNode_GetValues(
-	Datum						*values,
+	Datum							*values,
 
-	Oid							*tablespace,
-	Oid							*database,
-	Oid							*relation,
-	PersistentFileSysState		*state,
-	TransactionId				*parentXid,
-	int64						*serialNum,
-	ItemPointerData				*previousFreeTid)
+	Oid 							*tablespaceOid,
+	Oid 							*databaseOid,
+	Oid 							*relfilenodeOid,
+	int32							*segmentFileNum,
+	PersistentFileSysRelStorageMgr	*relationStorageManager,
+	PersistentFileSysState			*persistentState,
+	MirrorFileSysState				*mirrorState,
+	int64							*mirrorAppendOnlyEof,
+	TransactionId					*parentXid,
+	int64							*serialNum,
+	ItemPointerData 				*previousFreeTid)
 {
-	*tablespace = DatumGetObjectId(values[Anum_gp_persistent_relation_node_tablespace_oid - 1]);
+	*tablespaceOid = DatumGetObjectId(values[Anum_gp_persistent_relation_node_tablespace_oid - 1]);
 
-	*database = DatumGetObjectId(values[Anum_gp_persistent_relation_node_database_oid - 1]);
+	*databaseOid = DatumGetObjectId(values[Anum_gp_persistent_relation_node_database_oid - 1]);
 
-	*relation = DatumGetObjectId(values[Anum_gp_persistent_relation_node_relfilenode_oid - 1]);
+	*relfilenodeOid = DatumGetObjectId(values[Anum_gp_persistent_relation_node_relfilenode_oid - 1]);
 
-	*state = (PersistentFileSysState)DatumGetInt16(values[Anum_gp_persistent_relation_node_state - 1]);
+	*segmentFileNum = DatumGetInt32(values[Anum_gp_persistent_relation_node_segment_file_num - 1]);
+
+	*relationStorageManager = (PersistentFileSysRelStorageMgr)DatumGetInt16(values[Anum_gp_persistent_relation_node_relation_storage_manager - 1]);
+
+	*persistentState = (PersistentFileSysState)DatumGetInt16(values[Anum_gp_persistent_relation_node_persistent_state - 1]);
+
+	*mirrorState = (MirrorFileSysState)DatumGetInt16(values[Anum_gp_persistent_relation_node_mirror_state - 1]);
+
+	*mirrorAppendOnlyEof = DatumGetInt64(values[Anum_gp_persistent_relation_node_mirror_append_only_eof - 1]);
 
 	*parentXid = (TransactionId)DatumGetInt32(values[Anum_gp_persistent_relation_node_parent_xid - 1]);
 
@@ -58,25 +70,41 @@ void GpPersistentRelationNode_GetValues(
 }
 
 void GpPersistentRelationNode_SetDatumValues(
-	Datum					*values,
+	Datum							*values,
 
-	Oid						tablespace,
-	Oid						database,
-	Oid						relation,
-	PersistentFileSysState 	state,
-	TransactionId			parentXid,
-	int64					serialNum,
-	ItemPointerData			*previousFreeTid)
+	Oid 							tablespaceOid,
+	Oid 							databaseOid,
+	Oid 							relfilenodeOid,
+	int32							segmentFileNum,
+	PersistentFileSysRelStorageMgr	relationStorageManager,
+	PersistentFileSysState			persistentState,
+	MirrorFileSysState				mirrorState,
+	int64							mirrorAppendOnlyEof,
+	TransactionId					parentXid,
+	int64							serialNum,
+	ItemPointerData 				*previousFreeTid)
 {
 	values[Anum_gp_persistent_relation_node_tablespace_oid - 1] = 
-									ObjectIdGetDatum(tablespace);
+									ObjectIdGetDatum(tablespaceOid);
 	values[Anum_gp_persistent_relation_node_database_oid - 1] = 
-									ObjectIdGetDatum(database);
+									ObjectIdGetDatum(databaseOid);
 	values[Anum_gp_persistent_relation_node_relfilenode_oid - 1] = 
-									ObjectIdGetDatum(relation);
+									ObjectIdGetDatum(relfilenodeOid);
 
-	values[Anum_gp_persistent_relation_node_state - 1] = 
-									Int16GetDatum(state);
+	values[Anum_gp_persistent_relation_node_segment_file_num - 1] = 
+									Int32GetDatum(segmentFileNum);
+
+	values[Anum_gp_persistent_relation_node_relation_storage_manager - 1] = 
+									Int16GetDatum(relationStorageManager);
+
+	values[Anum_gp_persistent_relation_node_persistent_state - 1] = 
+									Int16GetDatum(persistentState);
+
+	values[Anum_gp_persistent_relation_node_mirror_state - 1] = 
+									Int16GetDatum(mirrorState);
+
+	values[Anum_gp_persistent_relation_node_mirror_append_only_eof - 1] = 
+									Int64GetDatum(mirrorAppendOnlyEof);
 
 	values[Anum_gp_persistent_relation_node_parent_xid - 1] = 
 									Int32GetDatum(parentXid);
@@ -89,20 +117,23 @@ void GpPersistentRelationNode_SetDatumValues(
 }
 
 void GpPersistentDatabaseNode_GetValues(
-	Datum						*values,
+	Datum					*values,
 
-	Oid							*tablespace,
-	Oid							*database,
-	PersistentFileSysState		*state,
-	TransactionId				*parentXid,
-	int64						*serialNum,
-	ItemPointerData				*previousFreeTid)
+	Oid 					*tablespaceOid,
+	Oid 					*databaseOid,
+	PersistentFileSysState	*persistentState,
+	MirrorFileSysState		*mirrorState,
+	TransactionId			*parentXid,
+	int64					*serialNum,
+	ItemPointerData 		*previousFreeTid)
 {
-    *tablespace = DatumGetObjectId(values[Anum_gp_persistent_database_node_tablespace_oid - 1]);
+    *tablespaceOid = DatumGetObjectId(values[Anum_gp_persistent_database_node_tablespace_oid - 1]);
 
-    *database = DatumGetObjectId(values[Anum_gp_persistent_database_node_database_oid - 1]);
+    *databaseOid = DatumGetObjectId(values[Anum_gp_persistent_database_node_database_oid - 1]);
 
-    *state = DatumGetInt16(values[Anum_gp_persistent_database_node_state - 1]);
+    *persistentState = DatumGetInt16(values[Anum_gp_persistent_database_node_persistent_state - 1]);
+
+    *mirrorState = DatumGetInt16(values[Anum_gp_persistent_database_node_mirror_state - 1]);
 
 	*parentXid = (TransactionId)DatumGetInt32(values[Anum_gp_persistent_database_node_parent_xid - 1]);
 
@@ -115,20 +146,24 @@ void GpPersistentDatabaseNode_GetValues(
 void GpPersistentDatabaseNode_SetDatumValues(
 	Datum					*values,
 
-	Oid						tablespace,
-	Oid						database,
-	PersistentFileSysState 	state,
+	Oid 					tablespaceOid,
+	Oid 					databaseOid,
+	PersistentFileSysState	persistentState,
+	MirrorFileSysState		mirrorState,
 	TransactionId			parentXid,
 	int64					serialNum,
-	ItemPointerData			*previousFreeTid)
+	ItemPointerData 		*previousFreeTid)
 {
 	values[Anum_gp_persistent_database_node_tablespace_oid - 1] = 
-									ObjectIdGetDatum(tablespace);
+									ObjectIdGetDatum(tablespaceOid);
 	values[Anum_gp_persistent_database_node_database_oid - 1] = 
-									ObjectIdGetDatum(database);
+									ObjectIdGetDatum(databaseOid);
 
-	values[Anum_gp_persistent_database_node_state - 1] = 
-									Int16GetDatum(state);
+	values[Anum_gp_persistent_database_node_persistent_state - 1] = 
+									Int16GetDatum(persistentState);
+
+	values[Anum_gp_persistent_database_node_mirror_state - 1] = 
+									Int16GetDatum(mirrorState);
 
 	values[Anum_gp_persistent_database_node_parent_xid - 1] = 
 									Int32GetDatum(parentXid);
@@ -141,17 +176,23 @@ void GpPersistentDatabaseNode_SetDatumValues(
 }
 
 void GpPersistentTablespaceNode_GetValues(
-	Datum						*values,
+	Datum					*values,
 
-	Oid							*tablespace,
-	PersistentFileSysState		*state,
-	TransactionId				*parentXid,
-	int64						*serialNum,
-	ItemPointerData				*previousFreeTid)
+	Oid 					*filespaceOid,
+	Oid 					*tablespaceOid,
+	PersistentFileSysState	*persistentState,
+	MirrorFileSysState		*mirrorState,
+	TransactionId			*parentXid,
+	int64					*serialNum,
+	ItemPointerData 		*previousFreeTid)
 {
-    *tablespace = DatumGetObjectId(values[Anum_gp_persistent_tablespace_node_tablespace_oid - 1]);
+    *filespaceOid = DatumGetObjectId(values[Anum_gp_persistent_tablespace_node_filespace_oid - 1]);
 
-    *state = DatumGetInt16(values[Anum_gp_persistent_tablespace_node_state - 1]);
+    *tablespaceOid = DatumGetObjectId(values[Anum_gp_persistent_tablespace_node_tablespace_oid - 1]);
+
+    *persistentState = DatumGetInt16(values[Anum_gp_persistent_tablespace_node_persistent_state - 1]);
+
+    *mirrorState = DatumGetInt16(values[Anum_gp_persistent_tablespace_node_mirror_state - 1]);
 
 	*parentXid = (TransactionId)DatumGetInt32(values[Anum_gp_persistent_tablespace_node_parent_xid - 1]);
 
@@ -164,17 +205,25 @@ void GpPersistentTablespaceNode_GetValues(
 void GpPersistentTablespaceNode_SetDatumValues(
 	Datum					*values,
 
-	Oid						tablespace,
-	PersistentFileSysState 	state,
+	Oid 					filespaceOid,
+	Oid 					tablespaceOid,
+	PersistentFileSysState	persistentState,
+	MirrorFileSysState		mirrorState,
 	TransactionId			parentXid,
 	int64					serialNum,
-	ItemPointerData			*previousFreeTid)
+	ItemPointerData 		*previousFreeTid)
 {
-	values[Anum_gp_persistent_tablespace_node_tablespace_oid - 1] = 
-									ObjectIdGetDatum(tablespace);
+	values[Anum_gp_persistent_tablespace_node_filespace_oid - 1] = 
+									ObjectIdGetDatum(filespaceOid);
 
-	values[Anum_gp_persistent_tablespace_node_state - 1] = 
-									Int16GetDatum(state);
+	values[Anum_gp_persistent_tablespace_node_tablespace_oid - 1] = 
+									ObjectIdGetDatum(tablespaceOid);
+
+	values[Anum_gp_persistent_tablespace_node_persistent_state - 1] = 
+									Int16GetDatum(persistentState);
+
+	values[Anum_gp_persistent_tablespace_node_mirror_state - 1] = 
+									Int16GetDatum(mirrorState);
 
 	values[Anum_gp_persistent_tablespace_node_parent_xid - 1] = 
 									Int32GetDatum(parentXid);
@@ -187,17 +236,49 @@ void GpPersistentTablespaceNode_SetDatumValues(
 }
 
 void GpPersistentFilespaceNode_GetValues(
-	Datum						*values,
+	Datum					*values,
 
-	Oid							*filespace,
-	PersistentFileSysState		*state,
-	TransactionId				*parentXid,
-	int64						*serialNum,
-	ItemPointerData				*previousFreeTid)
+	Oid 					*filespaceOid,
+	int16					*dbId1,
+	char					locationBlankPadded1[FilespaceLocationBlankPaddedWithNullTermLen],
+	int16					*dbId2,
+	char					locationBlankPadded2[FilespaceLocationBlankPaddedWithNullTermLen],
+	PersistentFileSysState	*persistentState,
+	MirrorFileSysState		*mirrorState,
+	TransactionId			*parentXid,
+	int64					*serialNum,
+	ItemPointerData 		*previousFreeTid)
 {
-    *filespace = DatumGetObjectId(values[Anum_gp_persistent_filespace_node_filespace_oid - 1]);
+	char *locationPtr;
+	int locationLen;
 
-    *state = DatumGetInt16(values[Anum_gp_persistent_filespace_node_state - 1]);
+    *filespaceOid = DatumGetObjectId(values[Anum_gp_persistent_filespace_node_filespace_oid - 1]);
+
+    *dbId1 = DatumGetInt16(values[Anum_gp_persistent_filespace_node_db_id_1 - 1]);
+
+	locationPtr = DatumGetCString(DirectFunctionCall1(textout, values[Anum_gp_persistent_filespace_node_location_1 - 1]));
+	locationLen = strlen(locationPtr);
+	if (locationLen != FilespaceLocationBlankPaddedWithNullTermLen - 1)
+		elog(ERROR, "Expected filespace location 1 to be %d characters and found %d",
+			 FilespaceLocationBlankPaddedWithNullTermLen - 1,
+			 locationLen);
+			 
+	memcpy(locationBlankPadded1, locationPtr, FilespaceLocationBlankPaddedWithNullTermLen);
+
+    *dbId2 = DatumGetInt16(values[Anum_gp_persistent_filespace_node_db_id_2 - 1]);
+
+	locationPtr = DatumGetCString(DirectFunctionCall1(textout, values[Anum_gp_persistent_filespace_node_location_2 - 1]));
+	locationLen = strlen(locationPtr);
+	if (locationLen != FilespaceLocationBlankPaddedWithNullTermLen - 1)
+		elog(ERROR, "Expected filespace location 2 to be %d characters and found %d",
+			 FilespaceLocationBlankPaddedWithNullTermLen - 1,
+			 locationLen);
+			 
+	memcpy(locationBlankPadded2, locationPtr, FilespaceLocationBlankPaddedWithNullTermLen);
+
+    *persistentState = DatumGetInt16(values[Anum_gp_persistent_filespace_node_persistent_state - 1]);
+
+    *mirrorState = DatumGetInt16(values[Anum_gp_persistent_filespace_node_mirror_state - 1]);
 
 	*parentXid = (TransactionId)DatumGetInt32(values[Anum_gp_persistent_filespace_node_parent_xid - 1]);
 
@@ -210,17 +291,51 @@ void GpPersistentFilespaceNode_GetValues(
 void GpPersistentFilespaceNode_SetDatumValues(
 	Datum					*values,
 
-	Oid						filespace,
-	PersistentFileSysState 	state,
+	Oid 					filespaceOid,
+	int16					dbId1,
+	char					locationBlankPadded1[FilespaceLocationBlankPaddedWithNullTermLen],
+	int16					dbId2,
+	char					locationBlankPadded2[FilespaceLocationBlankPaddedWithNullTermLen],
+	PersistentFileSysState	persistentState,
+	MirrorFileSysState		mirrorState,
 	TransactionId			parentXid,
 	int64					serialNum,
-	ItemPointerData			*previousFreeTid)
+	ItemPointerData 		*previousFreeTid)
 {
-	values[Anum_gp_persistent_filespace_node_filespace_oid - 1] = 
-									ObjectIdGetDatum(filespace);
+	int locationLen;
 
-	values[Anum_gp_persistent_filespace_node_state - 1] = 
-									Int16GetDatum(state);
+	locationLen = strlen(locationBlankPadded1);
+	if (locationLen != FilespaceLocationBlankPaddedWithNullTermLen - 1)
+		elog(ERROR, "Expected filespace location 1 to be %d characters and found %d",
+			 FilespaceLocationBlankPaddedWithNullTermLen - 1,
+			 locationLen);
+
+	locationLen = strlen(locationBlankPadded2);
+	if (locationLen != FilespaceLocationBlankPaddedWithNullTermLen - 1)
+		elog(ERROR, "Expected filespace location 2 to be %d characters and found %d",
+			 FilespaceLocationBlankPaddedWithNullTermLen - 1,
+			 locationLen);
+
+	values[Anum_gp_persistent_filespace_node_filespace_oid - 1] = 
+									ObjectIdGetDatum(filespaceOid);
+
+	values[Anum_gp_persistent_filespace_node_db_id_1 - 1] = 
+									Int16GetDatum(dbId1);
+
+	values[Anum_gp_persistent_filespace_node_location_1 - 1] =
+									CStringGetDatum(locationBlankPadded1);
+
+	values[Anum_gp_persistent_filespace_node_db_id_2 - 1] = 
+									Int16GetDatum(dbId2);
+
+	values[Anum_gp_persistent_filespace_node_location_2 - 1] =
+									CStringGetDatum(locationBlankPadded2);
+
+	values[Anum_gp_persistent_filespace_node_persistent_state - 1] = 
+									Int16GetDatum(persistentState);
+
+	values[Anum_gp_persistent_filespace_node_mirror_state - 1] = 
+									Int16GetDatum(mirrorState);
 
 	values[Anum_gp_persistent_filespace_node_parent_xid - 1] = 
 									Int32GetDatum(parentXid);
@@ -231,3 +346,116 @@ void GpPersistentFilespaceNode_SetDatumValues(
 	values[Anum_gp_persistent_filespace_node_previous_free_tid - 1] =
 									PointerGetDatum(previousFreeTid);
 }
+
+void GpPersistent_GetCommonValues(
+	PersistentFsObjType 	fsObjType,
+	Datum					*values,
+
+	PersistentFileSysObjName	*fsObjName,
+	PersistentFileSysState		*persistentState,
+	MirrorFileSysState			*mirrorState,
+	TransactionId				*parentXid,
+	int64						*persistentSerialNum)
+{
+	ItemPointerData previousFreeTid;
+
+	MemSet(fsObjName, 0, sizeof(PersistentFileSysObjName));
+	fsObjName->type = fsObjType;
+
+	switch (fsObjType)
+	{
+	case PersistentFsObjType_RelationFile:
+		{
+			RelFileNode *relFileNode = &fsObjName->variant.rel.relFileNode;
+			int32 segmentFileNum;	// UNDONE
+			PersistentFileSysRelStorageMgr	relationStorageManager;
+			int64							mirrorAppendOnlyEof;
+
+			GpPersistentRelationNode_GetValues(
+											values,
+											&relFileNode->spcNode,
+											&relFileNode->dbNode,
+											&relFileNode->relNode,
+											&segmentFileNum,
+											&relationStorageManager,
+											persistentState,
+											mirrorState,
+											&mirrorAppendOnlyEof,
+											parentXid,
+											persistentSerialNum,
+											&previousFreeTid);
+		}
+		break;
+
+	case PersistentFsObjType_DatabaseDir:
+		{
+			DbDirNode *dbDirNode = &fsObjName->variant.dbDirNode;
+
+			GpPersistentDatabaseNode_GetValues(
+									values,
+									&dbDirNode->tablespace,
+									&dbDirNode->database,
+									persistentState,
+									mirrorState,
+									parentXid,
+									persistentSerialNum,
+									&previousFreeTid);
+		}
+		break;
+
+	case PersistentFsObjType_TablespaceDir:
+		{
+			Oid tablespaceOid;
+			Oid filespaceOid;
+
+			GpPersistentTablespaceNode_GetValues(
+											values,
+											&filespaceOid,
+											&tablespaceOid,
+											persistentState,
+											mirrorState,
+											parentXid,
+											persistentSerialNum,
+											&previousFreeTid);
+
+			PersistentFileSysObjName_SetTablespaceDir(
+												fsObjName, 
+												filespaceOid,
+												tablespaceOid);
+		}
+	break;
+	
+	case PersistentFsObjType_FilespaceDir:
+		{
+			Oid filespaceOid;
+			int16 dbId1;
+			char locationBlankPadded1[FilespaceLocationBlankPaddedWithNullTermLen];
+			int16 dbId2;
+			char locationBlankPadded2[FilespaceLocationBlankPaddedWithNullTermLen];
+
+			GpPersistentFilespaceNode_GetValues(
+											values,
+											&filespaceOid,
+											&dbId1,
+											locationBlankPadded1,
+											&dbId2,
+											locationBlankPadded2,
+											persistentState,
+											mirrorState,
+											parentXid,
+											persistentSerialNum,
+											&previousFreeTid);
+
+			PersistentFileSysObjName_SetFilespaceDir(
+												fsObjName, 
+												filespaceOid);
+		}
+	break;
+
+	default:
+		elog(ERROR, "Unexpected persistent file-system object type: %d",
+			 fsObjType);
+	}
+		
+}
+

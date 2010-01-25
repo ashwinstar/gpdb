@@ -148,6 +148,7 @@ static void DatabaseInfo_AddGpRelationNode(
 	DatabaseInfo 		*info,
 	Oid					tablespace,
 	Oid					relationNode,
+	int32				segmentFileNum,
 	ItemPointer			persistentTid,
 	int64				persistentSerialNum,
 	ItemPointer			gpRelationNodeTid)
@@ -165,6 +166,7 @@ static void DatabaseInfo_AddGpRelationNode(
 
 	info->gpRelationNodes[count].tablespaceRelFile.tablespace = tablespace;
 	info->gpRelationNodes[count].tablespaceRelFile.relation = relationNode;
+	// UNDONE: segmentFileNum
 	info->gpRelationNodes[count].persistentTid = *persistentTid;
 	info->gpRelationNodes[count].persistentSerialNum = persistentSerialNum;
 	info->gpRelationNodes[count].gpRelationNodeTid = *gpRelationNodeTid;
@@ -483,6 +485,7 @@ DatabaseInfo *DatabaseInfo_Collect(
 		
 		Oid					tablespace;
 		Oid					relationNode;
+		int32				segmentFileNum;
 		ItemPointerData		persistentTid;
 		int64				persistentSerialNum;
 		
@@ -496,6 +499,9 @@ DatabaseInfo *DatabaseInfo_Collect(
 		Assert(!nulls[Anum_gp_relation_node_relfilenode_oid - 1]);
 		relationNode = DatumGetObjectId(values[Anum_gp_relation_node_relfilenode_oid - 1]);
 		
+		Assert(!nulls[Anum_gp_relation_node_segment_file_num - 1]);
+		segmentFileNum = DatumGetInt32(values[Anum_gp_relation_node_segment_file_num - 1]);
+		
 		Assert(!nulls[Anum_gp_relation_node_persistent_tid - 1]);
 		persistentTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_relation_node_persistent_tid - 1]));
 			
@@ -506,6 +512,7 @@ DatabaseInfo *DatabaseInfo_Collect(
 									info,
 									tablespace,
 									relationNode,
+									segmentFileNum,
 									&persistentTid,
 									persistentSerialNum,
 									&tuple->t_self);

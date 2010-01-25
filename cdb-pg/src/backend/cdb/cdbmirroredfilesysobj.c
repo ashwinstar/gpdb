@@ -17,7 +17,7 @@
 #include "storage/smgr.h"
 
 void MirroredFileSysObj_CreateTablespaceDir(
-	Oid			tablespace)
+	TablespaceDirNode			*tablespaceDirNode)
 {
 
 //	if (FileRepPrimary_MirrorCreate(
@@ -26,7 +26,7 @@ void MirroredFileSysObj_CreateTablespaceDir(
 //		ereport(LOG,
 //				(errmsg("could not sent create dbdir to mirror")));
 
-	smgrcreatetablespacedir(tablespace, false);
+	smgrcreatetablespacedir(tablespaceDirNode, false);
 	
 //	if (FileRepPrimary_IsOperationCompleted(
 //				   FileRep_GetDirIdentifier(*dbDirNode),							
@@ -36,15 +36,15 @@ void MirroredFileSysObj_CreateTablespaceDir(
 }
 
 void MirroredFileSysObj_ScheduleDropTablespaceDir(
-	Oid			tablespace)
+	TablespaceDirNode			*tablespaceDirNode)
 {
 	
-	smgrschedulermtablespacedir(tablespace);
+	smgrschedulermtablespacedir(tablespaceDirNode);
 
 }
 
 void MirroredFileSysObj_DropTablespaceDir(
-	Oid			tablespace,
+	TablespaceDirNode			*tablespaceDirNode,
 
 	bool isRedo)
 {
@@ -58,7 +58,7 @@ void MirroredFileSysObj_DropTablespaceDir(
 //				(errmsg("could not sent drop dbdir to mirror")));
 	
 
-	smgrdormtablespacedir(tablespace, isRedo);
+	smgrdormtablespacedir(tablespaceDirNode, isRedo);
 
 //	if (FileRepPrimary_IsOperationCompleted(
 //					FileRep_GetDirIdentifier(*dbDirNode),							

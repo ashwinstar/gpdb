@@ -193,19 +193,21 @@ CopyDatabasePath(char *target, int targetMaxLen, Oid dbNode, Oid spcNode)
  * XXX this must agree with relpath()!
  */
 char *
-GetTablespacePath(Oid spcNode)
+GetTablespacePath(TablespaceDirNode *tablespaceDirNode)
 {
+	Oid tablespace = tablespaceDirNode->tablespace;
+	
 	int			pathlen;
 	char	   *path;
 
-	if (spcNode == GLOBALTABLESPACE_OID)
+	if (tablespace == GLOBALTABLESPACE_OID)
 	{
 		/* Shared system relations live in {datadir}/global */
 		pathlen = 6 + 1;
 		path = (char *) palloc(pathlen);
 		strcpy(path, "global");	// This one is a little strange...
 	}
-	else if (spcNode == DEFAULTTABLESPACE_OID)
+	else if (tablespace == DEFAULTTABLESPACE_OID)
 	{
 		/* The default tablespace is {datadir}/base */
 		pathlen = 5 + 1;
@@ -218,20 +220,22 @@ GetTablespacePath(Oid spcNode)
 		pathlen = 10 + OIDCHARS + 1;
 		path = (char *) palloc(pathlen);
 		snprintf(path, pathlen, "pg_tblspc/%u",
-				 spcNode);
+				 tablespace);
 	}
 	return path;
 }
 
 void
-CopyTablespacePath(char *target, int targetMaxLen, Oid spcNode)
+CopyTablespacePath(char *target, int targetMaxLen, TablespaceDirNode *tablespaceDirNode)
 {
-	if (spcNode == GLOBALTABLESPACE_OID)
+	Oid tablespace = tablespaceDirNode->tablespace;
+	
+	if (tablespace == GLOBALTABLESPACE_OID)
 	{
 		/* Shared system relations live in {datadir}/global */
 		strcpy(target, "global");
 	}
-	else if (spcNode == DEFAULTTABLESPACE_OID)
+	else if (tablespace == DEFAULTTABLESPACE_OID)
 	{
 		/* The default tablespace is {datadir}/base */
 		strcpy(target, "base");
@@ -240,7 +244,7 @@ CopyTablespacePath(char *target, int targetMaxLen, Oid spcNode)
 	{
 		/* All other tablespaces are accessed via symlinks */
 		snprintf(target, targetMaxLen, "pg_tblspc/%u",
-				 spcNode);
+				 tablespace);
 	}
 }
 

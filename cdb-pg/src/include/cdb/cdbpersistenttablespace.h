@@ -29,8 +29,8 @@ extern bool PersistentTablespace_Check(
  * note on XLOG flushing).
  */
 extern void PersistentTablespace_MarkCreatePending(
-	Oid 		tablespace,
-				/* The tablespace OID for the create. */
+	TablespaceDirNode 		*tablespaceDirNode,
+				/* The filespace and tablespace OIDs for the create. */
 
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
@@ -45,9 +45,9 @@ extern void PersistentTablespace_MarkCreatePending(
 /*
  * Indicate the transaction commited and the relation is officially created.
  */
-extern void PersistentTablespace_Created(
-	Oid 		tablespace,
-				/* The tablespace OID for the created tablespace. */
+extern void PersistentTablespace_Created(							
+	TablespaceDirNode		*tablespaceDirNode,
+				/* The filespace and tablespace OIDs for the created tablespace. */
 				
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
@@ -66,8 +66,8 @@ extern void PersistentTablespace_Created(
  * crash.
  */
 extern void PersistentTablespace_MarkDropPending(
-	Oid 		tablespace,
-				/* The tablespace OID for the drop. */
+	TablespaceDirNode		*tablespaceDirNode,
+				/* The filespace and tablespace OIDs for the drop. */
 				
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
@@ -81,8 +81,8 @@ extern void PersistentTablespace_MarkDropPending(
  * This state will make sure the relation gets dropped after a system crash.
  */
 extern void PersistentTablespace_MarkAbortingCreate(
-	Oid 		tablespace,
-				/* The tablespace OID for the aborting create. */
+	TablespaceDirNode		*tablespaceDirNode,
+				/* The filespace and tablespace OIDs for the aborting create. */
 							
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
@@ -94,9 +94,9 @@ extern void PersistentTablespace_MarkAbortingCreate(
  * Indicate we phsyicalled removed the relation file.
  */
 extern void PersistentTablespace_Dropped(
-	Oid 		tablespace,
-				/* The tablespace OID for the dropped tablespace. */
-				
+	TablespaceDirNode		*tablespaceDirNode,
+				/* The filespace and tablespace OIDs for the dropped tablespace. */
+										
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 							

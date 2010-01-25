@@ -114,36 +114,45 @@ gp_persistent_relation_node_add(PG_FUNCTION_ARGS)
 	Oid				relationNode = PG_GETARG_OID(2);
 	int16			state = PG_GETARG_INT16(3);
 
-	RelFileNode relFileNode;
-
-	PersistentFileSysObjName fsObjName;
-
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
 
-	relFileNode.spcNode = tablespace;
-	relFileNode.dbNode = database;
-	relFileNode.relNode = relationNode;
+	ItemPointerData previousFreeTid;
 
-	PersistentFileSysObjName_SetRelationFile(&fsObjName,&relFileNode);
+	Datum values[Natts_gp_persistent_relation_node];
+
+	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+
+	// UNDONE: Remove whole routine
+	GpPersistentRelationNode_SetDatumValues(
+										values,
+										tablespace,
+										database,
+										relationNode,
+										/* segmentFileNum */ 0,
+										PersistentFileSysRelStorageMgr_None,	// UNDONE
+										(PersistentFileSysState)state,
+										MirrorFileSysState_None,	// UNDONE
+										/* mirrorAppendOnlyEof */ 0,
+										InvalidTransactionId,
+										0,
+										&previousFreeTid);
 
 	PersistentFileSysObj_AddTuple(
 							&persistentRelationData.fileSysObjData,
 							&persistentRelationSharedData->fileSysObjSharedData,
-							&fsObjName,
-							(PersistentFileSysState)state,
-							InvalidTransactionId,
+							values,
 							/* flushToXLog */ false,
 							&persistentTid,
 							&persistentSerialNum);
 
-	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
-		     "Persistent relation: gp_persistent_relation_node_add '%s' in state '%s', serial number " INT64_FORMAT " at TID %s",
-			 relpath(relFileNode),
-			 PersistentFileSysObj_StateName(state),
-			 persistentSerialNum,
-			 ItemPointerToString(&persistentTid));
+//	if (Debug_persistent_print)
+//		elog(Debug_persistent_print_level, 
+//		     "Persistent relation: gp_persistent_relation_node_add '%s' in state '%s', serial number " INT64_FORMAT " at TID %s",
+//			 relpath(relFileNode),
+//			 PersistentFileSysObj_StateName(state),
+//			 persistentSerialNum,
+//			 ItemPointerToString(&persistentTid));
 
 	PG_RETURN_INT64(persistentSerialNum);
 }
@@ -161,8 +170,13 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 	Datum					*values)
 {
 	RelFileNode		relFileNode;
-	
+	int32			segmentFileNum;
+
+	PersistentFileSysRelStorageMgr relationStorageManager;
+
 	PersistentFileSysState	state;
+	MirrorFileSysState		mirrorState;
+	int64					mirrorAppendOnlyEof;
 	TransactionId			parentXid;
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
@@ -174,7 +188,11 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 									&relFileNode.spcNode,
 									&relFileNode.dbNode,
 									&relFileNode.relNode,
+									&segmentFileNum,
+									&relationStorageManager,
 									&state,
+									&mirrorState,
+									&mirrorAppendOnlyEof,
 									&parentXid,
 									&serialNum,
 									&previousFreeTid);
@@ -241,7 +259,11 @@ void PersistentRelation_AddCreatePending(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
-	PersistentFileSysObjName fsObjName;
+	ItemPointerData previousFreeTid;
+
+	Datum values[Natts_gp_persistent_relation_node];
+
+	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
 
 	if (IsBootstrapProcessingMode())
 	{	
@@ -258,16 +280,26 @@ void PersistentRelation_AddCreatePending(
 
 	PersistentRelation_InitScan();
 
-	PersistentFileSysObjName_SetRelationFile(&fsObjName,relFileNode);
-
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	GpPersistentRelationNode_SetDatumValues(
+										values,
+										relFileNode->spcNode,
+										relFileNode->dbNode,
+										relFileNode->relNode,
+										/* segmentFileNum */ 0,					// UNDONE
+										PersistentFileSysRelStorageMgr_None,	// UNDONE
+										PersistentFileSysState_CreatePending,
+										MirrorFileSysState_None,				// UNDONE
+										/* mirrorAppendOnlyEof */ 0,				// UNDONE
+										GetTopTransactionId(),
+										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
+										&previousFreeTid);
 
 	PersistentFileSysObj_AddTuple(
 							&persistentRelationData.fileSysObjData,
 							&persistentRelationSharedData->fileSysObjSharedData,
-							&fsObjName,
-							PersistentFileSysState_CreatePending,
-							GetTopTransactionId(),
+							values,
 							flushToXLog,
 							persistentTid,
 							serialNum);
@@ -296,7 +328,11 @@ void PersistentRelation_AddCreated(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
-	PersistentFileSysObjName fsObjName;
+	ItemPointerData previousFreeTid;
+
+	Datum values[Natts_gp_persistent_relation_node];
+
+	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
 
 	if (IsBootstrapProcessingMode())
 	{	
@@ -313,16 +349,26 @@ void PersistentRelation_AddCreated(
 
 	PersistentRelation_InitScan();
 
-	PersistentFileSysObjName_SetRelationFile(&fsObjName,relFileNode);
-
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	GpPersistentRelationNode_SetDatumValues(
+										values,
+										relFileNode->spcNode,
+										relFileNode->dbNode,
+										relFileNode->relNode,
+										/* segmentFileNum */ 0, 					// UNDONE
+										PersistentFileSysRelStorageMgr_None,	// UNDONE
+										PersistentFileSysState_Created,
+										MirrorFileSysState_None,				// UNDONE
+										/* mirrorAppendOnlyEof */ 0,				// UNDONE
+										InvalidTransactionId,
+										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
+										&previousFreeTid);
 
 	PersistentFileSysObj_AddTuple(
 							&persistentRelationData.fileSysObjData,
 							&persistentRelationSharedData->fileSysObjSharedData,
-							&fsObjName,
-							PersistentFileSysState_Created,
-							GetTopTransactionId(),
+							values,
 							flushToXLog,
 							persistentTid,
 							serialNum);
@@ -359,6 +405,12 @@ void PersistentRelation_Created(
 
 	PersistentFileSysState	actualState;
 
+	ItemPointerData previousFreeTid;
+
+	Datum values[Natts_gp_persistent_relation_node];
+
+	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+
 	if (IsBootstrapProcessingMode())
 	{	
 		if (Debug_persistent_print)
@@ -386,14 +438,25 @@ void PersistentRelation_Created(
 				/* nextState */ PersistentFileSysState_Created,
 				&actualState);
 
+	GpPersistentRelationNode_SetDatumValues(
+										values,
+										relFileNode->spcNode,
+										relFileNode->dbNode,
+										relFileNode->relNode,
+										/* segmentFileNum */ 0, 					// UNDONE
+										PersistentFileSysRelStorageMgr_None,	// UNDONE
+										PersistentFileSysState_Created,
+										MirrorFileSysState_None,				// UNDONE
+										/* mirrorAppendOnlyEof */ 0,				// UNDONE
+										InvalidTransactionId,
+										serialNum,
+										&previousFreeTid);
+
 	PersistentFileSysObj_UpdateTuple(
 							&persistentRelationData.fileSysObjData,
 							&persistentRelationSharedData->fileSysObjSharedData,
 							persistentTid,
-							&fsObjName,
-							PersistentFileSysState_Created,
-							InvalidTransactionId,
-							serialNum,
+							values,
 							/* flushToXLog */ false);
 
 	LWLockRelease(PersistentObjLock);
@@ -431,6 +494,12 @@ void PersistentRelation_MarkDropPending(
 
 	PersistentFileSysState	actualState;
 
+	ItemPointerData previousFreeTid;
+
+	Datum values[Natts_gp_persistent_relation_node];
+
+	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+
 	if (IsBootstrapProcessingMode())
 	{	
 		if (Debug_persistent_print)
@@ -457,15 +526,26 @@ void PersistentRelation_MarkDropPending(
 				/* expectedState2 */ PersistentFileSysState_Created,
 				/* nextState */ PersistentFileSysState_DropPending,
 				&actualState);
+
+	GpPersistentRelationNode_SetDatumValues(
+										values,
+										relFileNode->spcNode,
+										relFileNode->dbNode,
+										relFileNode->relNode,
+										/* segmentFileNum */ 0, 					// UNDONE
+										PersistentFileSysRelStorageMgr_None,	// UNDONE
+										PersistentFileSysState_DropPending,
+										MirrorFileSysState_None,				// UNDONE
+										/* mirrorAppendOnlyEof */ 0,				// UNDONE
+										InvalidTransactionId,
+										serialNum,
+										&previousFreeTid);
 		
 	PersistentFileSysObj_UpdateTuple(
 						&persistentRelationData.fileSysObjData,
 						&persistentRelationSharedData->fileSysObjSharedData,
 						persistentTid,
-						&fsObjName,
-						PersistentFileSysState_DropPending,
-						InvalidTransactionId,
-						serialNum,
+						values,
 						/* flushToXLog */ false);
 
 	LWLockRelease(PersistentObjLock);
@@ -499,6 +579,12 @@ void PersistentRelation_MarkAbortingCreate(
 
 	PersistentFileSysState	actualState;
 
+	ItemPointerData previousFreeTid;
+
+	Datum values[Natts_gp_persistent_relation_node];
+
+	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+
 	if (IsBootstrapProcessingMode())
 	{	
 		if (Debug_persistent_print)
@@ -526,14 +612,25 @@ void PersistentRelation_MarkAbortingCreate(
 				/* nextState */ PersistentFileSysState_AbortingCreate,
 				&actualState);
 
+	GpPersistentRelationNode_SetDatumValues(
+										values,
+										relFileNode->spcNode,
+										relFileNode->dbNode,
+										relFileNode->relNode,
+										/* segmentFileNum */ 0, 					// UNDONE
+										PersistentFileSysRelStorageMgr_None,	// UNDONE
+										PersistentFileSysState_AbortingCreate,
+										InvalidTransactionId,
+										MirrorFileSysState_None,				// UNDONE
+										/* mirrorAppendOnlyEof */ 0,				// UNDONE
+										serialNum,
+										&previousFreeTid);
+		
 	PersistentFileSysObj_UpdateTuple(
 						&persistentRelationData.fileSysObjData,
 						&persistentRelationSharedData->fileSysObjSharedData,
 						persistentTid,
-						&fsObjName,
-						PersistentFileSysState_AbortingCreate,
-						InvalidTransactionId,
-						serialNum,
+						values,
 						/* flushToXLog */ false);
 
 	LWLockRelease(PersistentObjLock);
@@ -564,6 +661,12 @@ void PersistentRelation_Dropped(
 
 	PersistentFileSysState actualState;
 
+	ItemPointerData previousFreeTid;
+
+	Datum freeValues[Natts_gp_persistent_relation_node];
+
+	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+
 	if (IsBootstrapProcessingMode())
 	{	
 		if (Debug_persistent_print)
@@ -591,10 +694,24 @@ void PersistentRelation_Dropped(
 				/* nextState */ PersistentFileSysState_Free,
 				&actualState);
 
+	GpPersistentRelationNode_SetDatumValues(
+										freeValues,
+										/* tablespaceOid */ 0,
+										/* databaseOid */ 0,
+										/* relFileNodeOid */ 0,
+										/* segmentFileNum */ 0,
+										PersistentFileSysRelStorageMgr_None,
+										PersistentFileSysState_Free,
+										MirrorFileSysState_None,
+										/* mirrorAppendOnlyEof */ 0,
+										InvalidTransactionId,
+										/* persistentSerialNum */ 0,
+										&previousFreeTid);
 	PersistentFileSysObj_FreeTuple(
 							&persistentRelationData.fileSysObjData,
 							&persistentRelationSharedData->fileSysObjSharedData,
 							persistentTid,
+							freeValues,
 							/* flushToXLog */ false);
 
 	LWLockRelease(PersistentObjLock);

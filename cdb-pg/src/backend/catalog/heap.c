@@ -1131,6 +1131,7 @@ InsertGpRelationNodeTuple(
 
 	values[Anum_gp_relation_node_tablespace_oid - 1] = ObjectIdGetDatum(tablespace);
 	values[Anum_gp_relation_node_relfilenode_oid - 1] = ObjectIdGetDatum(relation);
+	values[Anum_gp_relation_node_segment_file_num - 1] = Int32GetDatum(0);	// UNDONE
 	values[Anum_gp_relation_node_persistent_tid- 1] = PointerGetDatum(persistentTid);
 	values[Anum_gp_relation_node_persistent_serial_num - 1] = Int64GetDatum(persistentSerialNum);
 
@@ -1175,6 +1176,7 @@ UpdateGpRelationNodeTuple(
 
 	repl_val[Anum_gp_relation_node_tablespace_oid - 1] = ObjectIdGetDatum(tablespace);
 	repl_val[Anum_gp_relation_node_relfilenode_oid - 1] = ObjectIdGetDatum(relation);
+	repl_val[Anum_gp_relation_node_segment_file_num - 1] = Int32GetDatum(0);	// UNDONE
 	repl_val[Anum_gp_relation_node_persistent_tid- 1] = PointerGetDatum(persistentTid);
 	repl_val[Anum_gp_relation_node_persistent_serial_num - 1] = Int64GetDatum(persistentSerialNum);
 

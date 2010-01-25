@@ -63,11 +63,11 @@ typedef struct f_smgr
 	bool		(*smgr_init) (void);	/* may be NULL */
 	bool		(*smgr_shutdown) (void);		/* may be NULL */
 	bool		(*smgr_close) (SMgrRelation reln);
-	bool		(*smgr_createtablespacedir) (Oid tablespace, bool isRedo);
+	bool		(*smgr_createtablespacedir) (TablespaceDirNode *tablespaceDirNode, bool isRedo);
 	bool		(*smgr_createdbdir) (DbDirNode *dbDirNode, bool isRedo);
 	bool		(*smgr_create) (SMgrRelation reln, bool isRedo);
 	bool		(*smgr_unlink) (RelFileNode rnode, bool isRedo);
-	bool		(*smgr_rmtablespacedir) (Oid tablespace, bool isRedo);
+	bool		(*smgr_rmtablespacedir) (TablespaceDirNode *tablespaceDirNode, bool isRedo);
 	bool		(*smgr_rmdbdir) (DbDirNode *dbDirNode, bool isRedo);
 	bool		(*smgr_extend) (SMgrRelation reln, BlockNumber blocknum,
 											char *buffer, bool isTemp);
@@ -361,7 +361,7 @@ smgrclosenode(RelFileNode rnode)
  *
  */
 void
-smgrcreatetablespacedir(Oid tablespace, bool isRedo)
+smgrcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
 {
 	PendingDelete *pending; 
 	
@@ -371,7 +371,10 @@ smgrcreatetablespacedir(Oid tablespace, bool isRedo)
 		pending = (PendingDelete *)
 			MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
 		
-		PersistentFileSysObjName_SetTablespaceDir(&pending->fsObjName,tablespace);
+		PersistentFileSysObjName_SetTablespaceDir(
+									&pending->fsObjName,
+									tablespaceDirNode->filespace,
+									tablespaceDirNode->tablespace);
 
 		pending->which = 0;  // We only have 1 today.
 		pending->isLocalBuf = false;
@@ -388,18 +391,19 @@ smgrcreatetablespacedir(Oid tablespace, bool isRedo)
 		// UNDONE: We'll improve performance later by moving the XLOG Insert sooner...
 		// UNDONE: and flushing later...
 		PersistentTablespace_MarkCreatePending(
-									pending->fsObjName.variant.tablespace,
+									tablespaceDirNode,
 									&pending->persistentTid,
 									/* flushToXLog */ true);
 
 	}
 	
-	if (!(*(smgrsw[0].smgr_createtablespacedir)) (tablespace, isRedo))
+	if (!(*(smgrsw[0].smgr_createtablespacedir)) (tablespaceDirNode, isRedo))
 	{
 	    ereport(ERROR,
 			(errcode_for_file_access(),
-			 errmsg("could not create tablespace directory %u: %m",
-					tablespace)));
+			 errmsg("could not create tablespace directory %u, filespace %u: %m",
+					tablespaceDirNode->tablespace,
+					tablespaceDirNode->filespace)));
 	}
 }
 
@@ -677,7 +681,7 @@ smgr_internal_unlink(RelFileNode rnode, int which, bool isLocalBuf, bool isRedo)
  *		successfully commit the current transaction.
  */
 void
-smgrschedulermtablespacedir(Oid tablespace)
+smgrschedulermtablespacedir(TablespaceDirNode *tablespaceDirNode)
 {
 	PendingDelete *pending;
 
@@ -685,7 +689,10 @@ smgrschedulermtablespacedir(Oid tablespace)
 	pending = (PendingDelete *)
 		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
 	
-	PersistentFileSysObjName_SetTablespaceDir(&pending->fsObjName,tablespace);
+	PersistentFileSysObjName_SetTablespaceDir(
+									&pending->fsObjName,
+									tablespaceDirNode->filespace,
+									tablespaceDirNode->tablespace);
 	
 	pending->which = 0;  // We only have 1 today.
 	pending->isLocalBuf = false;
@@ -735,7 +742,7 @@ smgrschedulermdbdir(DbDirNode *dropDbDirNode)
  * Shared subroutine that actually does the rmdir of a database directory ...
  */
 static void
-smgr_internal_rmtablespacedir(Oid tablespace, int which, bool isRedo)
+smgr_internal_rmtablespacedir(TablespaceDirNode *tablespaceDirNode, int which, bool isRedo)
 {
 	/*
 	 * And remove the physical tablespace directory.
@@ -743,16 +750,17 @@ smgr_internal_rmtablespacedir(Oid tablespace, int which, bool isRedo)
 	 * Note: we treat deletion failure as a WARNING, not an error, because
 	 * we've already decided to commit or abort the current xact.
 	 */
-	if (!(*(smgrsw[which].smgr_rmtablespacedir)) (tablespace, isRedo))
+	if (!(*(smgrsw[which].smgr_rmtablespacedir)) (tablespaceDirNode, isRedo))
 		ereport(WARNING,
 				(errcode_for_file_access(),
-				 errmsg("could not remove tablespace directory %u: %m",
-						tablespace)));
+				 errmsg("could not remove tablespace directory %u, filespace %u: %m",
+						tablespaceDirNode->tablespace,
+						tablespaceDirNode->filespace)));
 }
 void
-smgrdormtablespacedir(Oid tablespace, bool isRedo)
+smgrdormtablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
 {
-	smgr_internal_rmtablespacedir(tablespace, 0, isRedo);
+	smgr_internal_rmtablespacedir(tablespaceDirNode, 0, isRedo);
 }
 
 /*

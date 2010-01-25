@@ -63,19 +63,6 @@ extern void PersistentFileSysObj_Scan(
 
 extern void PersistentFileSysObj_FlushXLog(void);
 
-extern void PersistentFileSysObj_GetValues(
-		PersistentFileSysObjData		*fileSysObjData,
-	
-		Datum					*values,
-	
-		PersistentFileSysObjName	*fsObjName,
-		
-		PersistentFileSysState	*state,
-		
-		TransactionId			*parentXid,
-		
-		int64					*persistentSerialNum);
-
 extern void PersistentFileSysObj_UpdateTuple(
 		PersistentFileSysObjData 		*fileSysObjData,
 	
@@ -84,14 +71,7 @@ extern void PersistentFileSysObj_UpdateTuple(
 		ItemPointer 			persistentTid,
 					/* TID of the stored tuple. */
 	
-		PersistentFileSysObjName	*fsObjName,
-	
-		PersistentFileSysState	state,
-		
-		TransactionId			parentXid,
-		
-		int64					persistentSerialNum,
-					/* Serial number that distinquishes the uses of the tuple. */
+		Datum 					*values,
 
 		bool					flushToXLog);
 					/* When true, the XLOG record for this change will be flushed to disk. */
@@ -103,24 +83,16 @@ extern void PersistentFileSysObj_ReadTuple(
 
 	ItemPointer					readTid,
 
-	PersistentFileSysObjName	*fsObjName,
+	Datum						*values,
 	
-	PersistentFileSysState		*state,
-	
-	TransactionId				*parentXid,
-
-	int64						*persistentSerialNum);
+	HeapTuple					*tupleCopy);
 
 extern void PersistentFileSysObj_AddTuple(
 	PersistentFileSysObjData 		*fileSysObjData,
 
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
 
-	PersistentFileSysObjName	*fsObjName,
-	
-	PersistentFileSysState		state,
-	
-	TransactionId				parentXid,
+	Datum						*values,
 
 	bool						flushToXLog,
 				/* When true, the XLOG record for this change will be flushed to disk. */
@@ -138,6 +110,8 @@ extern void PersistentFileSysObj_FreeTuple(
 	ItemPointer 				persistentTid,
 				/* TID of the stored tuple. */
 
+	Datum 						*freeValues,
+	
 	bool						flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 

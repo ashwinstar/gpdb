@@ -222,178 +222,6 @@ void PersistentFileSysObj_FlushXLog(void)
 	PersistentStore_FlushXLog();
 }
 
-static void PersistentFileSysObj_SetDatumValues(
-	PersistentFileSysObjData		*fileSysObjData,
-
-	Datum					*values,
-
-	PersistentFileSysObjName	*fsObjName,
-	
-	PersistentFileSysState	state,
-	
-	TransactionId			parentXid,
-	
-	int64					persistentSerialNum,
-
-	ItemPointer				previousFreeTid)
-{
-	switch (fileSysObjData->fsObjType)
-	{
-	case PersistentFsObjType_RelationFile:
-		{
-			RelFileNode *relFileNode = &fsObjName->variant.relFileNode;
-
-			GpPersistentRelationNode_SetDatumValues(
-												values,
-												relFileNode->spcNode,
-												relFileNode->dbNode,
-												relFileNode->relNode,
-												state,
-												parentXid,
-												persistentSerialNum,
-												previousFreeTid);
-		}
-		break;
-
-	case PersistentFsObjType_DatabaseDir:
-		{
-			DbDirNode *dbDirNode = &fsObjName->variant.dbDirNode;
-
-			GpPersistentDatabaseNode_SetDatumValues(
-										values,
-										dbDirNode->tablespace,
-										dbDirNode->database,
-										state,
-										parentXid,
-										persistentSerialNum,
-										previousFreeTid);
-		}
-		break;
-
-	case PersistentFsObjType_TablespaceDir:
-		{
-			Oid tablespace = fsObjName->variant.tablespace;
-
-			GpPersistentTablespaceNode_SetDatumValues(
-										values,
-										tablespace,
-										state,
-										parentXid,
-										persistentSerialNum,
-										previousFreeTid);
-		}
-		break;
-			
-	case PersistentFsObjType_FilespaceDir:
-		{
-			Oid filespace = fsObjName->variant.filespace;
-	
-			GpPersistentFilespaceNode_SetDatumValues(
-										values,
-										filespace,
-										state,
-										parentXid,
-										persistentSerialNum,
-										previousFreeTid);
-		}
-		break;
-		
-	default:
-		elog(ERROR, "Unexpected persistent file-system object type: %d",
-			 fileSysObjData->fsObjType);
-	}
-		
-}
-
-void PersistentFileSysObj_GetValues(
-	PersistentFileSysObjData		*fileSysObjData,
-
-	Datum					*values,
-
-	PersistentFileSysObjName	*fsObjName,
-	
-	PersistentFileSysState	*state,
-	
-	TransactionId			*parentXid,
-	
-	int64					*persistentSerialNum)
-{
-	ItemPointerData previousFreeTid;
-
-	MemSet(fsObjName, 0, sizeof(PersistentFileSysObjName));
-	fsObjName->type = fileSysObjData->fsObjType;
-
-	switch (fileSysObjData->fsObjType)
-	{
-	case PersistentFsObjType_RelationFile:
-		{
-			RelFileNode *relFileNode = &fsObjName->variant.relFileNode;
-
-			GpPersistentRelationNode_GetValues(
-											values,
-											&relFileNode->spcNode,
-											&relFileNode->dbNode,
-											&relFileNode->relNode,
-											state,
-											parentXid,
-											persistentSerialNum,
-											&previousFreeTid);
-		}
-		break;
-
-	case PersistentFsObjType_DatabaseDir:
-		{
-			DbDirNode *dbDirNode = &fsObjName->variant.dbDirNode;
-
-			GpPersistentDatabaseNode_GetValues(
-									values,
-									&dbDirNode->tablespace,
-									&dbDirNode->database,
-									state,
-									parentXid,
-									persistentSerialNum,
-									&previousFreeTid);
-		}
-		break;
-
-	case PersistentFsObjType_TablespaceDir:
-		{
-			Oid tablespace;
-
-			GpPersistentTablespaceNode_GetValues(
-											values,
-											&tablespace,
-											state,
-											parentXid,
-											persistentSerialNum,
-											&previousFreeTid);
-
-			PersistentFileSysObjName_SetTablespaceDir(fsObjName, tablespace);
-		}
-	break;
-	
-	case PersistentFsObjType_FilespaceDir:
-		{
-			Oid filespace;
-
-			GpPersistentFilespaceNode_GetValues(
-											values,
-											&filespace,
-											state,
-											parentXid,
-											persistentSerialNum,
-											&previousFreeTid);
-
-			PersistentFileSysObjName_SetFilespaceDir(fsObjName, filespace);
-		}
-	break;
-
-	default:
-		Assert(false);
-	}
-		
-}
-
 void PersistentFileSysObj_Scan(
 	PersistentFileSysObjData		*fileSysObjData,
 	
@@ -417,47 +245,17 @@ void PersistentFileSysObj_UpdateTuple(
 		ItemPointer 			persistentTid,
 					/* TID of the stored tuple. */
 	
-		PersistentFileSysObjName	*fsObjName,
-	
-		PersistentFileSysState	state,
-		
-		TransactionId			parentXid,
-		
-		int64					persistentSerialNum,
-					/* Serial number that distinquishes the uses of the tuple. */
+		Datum 					*values,
 
 		bool					flushToXLog)
 					/* When true, the XLOG record for this change will be flushed to disk. */
 {
-	PersistentStoreData *storeData = &fileSysObjData->storeData;
-	PersistentStoreSharedData *storeSharedData = &fileSysObjSharedData->storeSharedData;
-
-	ItemPointerData zeroTid;
-
-	Datum *values;
-	
-	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
-
-	Assert(fsObjName->type == fileSysObjData->fsObjType);
-
-	MemSet(&zeroTid, 0, sizeof(ItemPointerData));
-
-	PersistentFileSysObj_SetDatumValues(
-									fileSysObjData,
-									values,
-									fsObjName,
-									state,
-									parentXid,
-									persistentSerialNum,
-									&zeroTid);
 	PersistentStore_UpdateTuple(
-							storeData,
-							storeSharedData,
+							&fileSysObjData->storeData,
+							&fileSysObjSharedData->storeSharedData,
 							persistentTid,
 							values,
 							flushToXLog);
-
-	pfree(values);
 }
 
 void PersistentFileSysObj_ReadTuple(
@@ -467,41 +265,16 @@ void PersistentFileSysObj_ReadTuple(
 
 	ItemPointer					readTid,
 
-	PersistentFileSysObjName	*fsObjName,
-	
-	PersistentFileSysState		*state,
-	
-	TransactionId				*parentXid,
+	Datum						*values,
 
-	int64						*persistentSerialNum)
+	HeapTuple					*tupleCopy)
 {
-	PersistentStoreData *storeData = &fileSysObjData->storeData;
-	PersistentStoreSharedData *storeSharedData = &fileSysObjSharedData->storeSharedData;
-
-	Datum *values;
-
-	HeapTuple tupleCopy;
-	
-	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
-
 	PersistentStore_ReadTuple(
-							storeData,
-							storeSharedData,
+							&fileSysObjData->storeData,
+							&fileSysObjSharedData->storeSharedData,
 							readTid,
 							values,
-							&tupleCopy);
-	
-	PersistentFileSysObj_GetValues(
-								fileSysObjData,
-								values,
-								fsObjName,
-								state,
-								parentXid,
-								persistentSerialNum);
-
-	heap_freetuple(tupleCopy);
-
-	pfree(values);
+							tupleCopy);
 }
 
 void PersistentFileSysObj_AddTuple(
@@ -509,11 +282,7 @@ void PersistentFileSysObj_AddTuple(
 
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
 
-	PersistentFileSysObjName	*fsObjName,
-	
-	PersistentFileSysState		state,
-	
-	TransactionId				parentXid,
+	Datum						*values,
 
 	bool						flushToXLog,
 				/* When true, the XLOG record for this change will be flushed to disk. */
@@ -523,36 +292,13 @@ void PersistentFileSysObj_AddTuple(
 
 	int64					*persistentSerialNum)
 {
-	PersistentStoreData *storeData = &fileSysObjData->storeData;
-	PersistentStoreSharedData *storeSharedData = &fileSysObjSharedData->storeSharedData;
-
-	ItemPointerData zeroTid;
-
-	Datum *values;
-	
-	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
-
-	Assert(fsObjName->type == fileSysObjData->fsObjType);
-
-	MemSet(&zeroTid, 0, sizeof(ItemPointerData));
-
-	PersistentFileSysObj_SetDatumValues(
-									fileSysObjData,
-									values,
-									fsObjName,
-									state,
-									parentXid,
-									0,
-									&zeroTid);
 	PersistentStore_AddTuple(
-							storeData,
-							storeSharedData,
+							&fileSysObjData->storeData,
+							&fileSysObjSharedData->storeSharedData,
 							values,
 							flushToXLog,
 							persistentTid,
 							persistentSerialNum);
-
-	pfree(values);
 }
 
 void PersistentFileSysObj_FreeTuple(
@@ -563,41 +309,17 @@ void PersistentFileSysObj_FreeTuple(
 	ItemPointer 				persistentTid,
 				/* TID of the stored tuple. */
 
+	Datum 						*freeValues,
+	
 	bool						flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
 {
-	PersistentStoreData *storeData = &fileSysObjData->storeData;
-	PersistentStoreSharedData *storeSharedData = &fileSysObjSharedData->storeSharedData;
-
-	Datum *freeValues;
-	
-	PersistentFileSysObjName	freeFsObjName;
-
-	ItemPointerData zeroTid;
-
-	MemSet(&freeFsObjName, 0, sizeof(PersistentFileSysObjName));
-	freeFsObjName.type = fileSysObjData->fsObjType;
-
-	freeValues = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
-
-	MemSet(&zeroTid, 0, sizeof(ItemPointerData));
-
-	PersistentFileSysObj_SetDatumValues(
-									fileSysObjData,
-									freeValues,
-									&freeFsObjName,
-									PersistentFileSysState_Free,
-									InvalidTransactionId,
-									0,
-									&zeroTid);
 	PersistentStore_FreeTuple(
-							storeData,
-							storeSharedData,
+							&fileSysObjData->storeData,
+							&fileSysObjSharedData->storeSharedData,
 							persistentTid,
 							freeValues,
 							flushToXLog);
-
-	pfree(freeValues);
 }
 
 /*
@@ -664,19 +386,32 @@ void PersistentFileSysObj_VerifyExpected(
 	PersistentFileSysState	*actualState)
 	
 {
-	PersistentFileSysObjName actualFsObjName;
-
-	TransactionId			actualParentXid;
-	int64					actualSerialNum;
+	PersistentFileSysObjName 	actualFsObjName;
+	MirrorFileSysState			actualMirrorState;	// UNDONE
+	TransactionId				actualParentXid;
+	int64						actualSerialNum;
 
 	bool expectedStateMatch;
+
+	Datum *values;
+
+	HeapTuple tupleCopy;
+	
+	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 
 	PersistentFileSysObj_ReadTuple(
 							fileSysObjData,
 							fileSysObjSharedData,
 							persistentTid,
+							values,
+							&tupleCopy);
+
+	GpPersistent_GetCommonValues(
+							fileSysObjData->fsObjType,
+							values,
 							&actualFsObjName,
 							actualState,
+							&actualMirrorState,
 							&actualParentXid,
 							&actualSerialNum);
 
@@ -729,6 +464,10 @@ void PersistentFileSysObj_VerifyExpected(
 														expectedState2,
 														nextState)));
 	}
+	
+	heap_freetuple(tupleCopy);
+
+	pfree(values);
 }
 
 void PersistentFileSysObj_Created(
@@ -741,8 +480,9 @@ void PersistentFileSysObj_Created(
 	switch (fsObjName->type)
 	{
 	case PersistentFsObjType_RelationFile:
+		// UNDONE: segmentFileNum
 		PersistentRelation_Created(
-							&fsObjName->variant.relFileNode,
+							&fsObjName->variant.rel.relFileNode,
 							persistentTid,
 							persistentSerialNum);
 		break;
@@ -756,10 +496,12 @@ void PersistentFileSysObj_Created(
 
 	case PersistentFsObjType_TablespaceDir:
 		PersistentTablespace_Created(
-							fsObjName->variant.tablespace,
+							&fsObjName->variant.tablespaceDirNode,
 							persistentTid,
 							persistentSerialNum);
 		break;
+
+	// UNDONE: Filespace
 
 	default:
 		elog(ERROR, "Unexpected persistent file-system object type: %d",
@@ -777,8 +519,9 @@ void PersistentFileSysObj_MarkAbortingCreate(
 	switch (fsObjName->type)
 	{
 	case PersistentFsObjType_RelationFile:
+		// UNDONE: segmentFileNum
 		PersistentRelation_MarkAbortingCreate(
-							&fsObjName->variant.relFileNode,
+							&fsObjName->variant.rel.relFileNode,
 							persistentTid,
 							persistentSerialNum);
 		break;
@@ -792,7 +535,7 @@ void PersistentFileSysObj_MarkAbortingCreate(
 
 	case PersistentFsObjType_TablespaceDir:
 		PersistentTablespace_MarkAbortingCreate(
-							fsObjName->variant.tablespace,
+							&fsObjName->variant.tablespaceDirNode,
 							persistentTid,
 							persistentSerialNum);
 		break;
@@ -813,8 +556,9 @@ void PersistentFileSysObj_MarkDropPending(
 	switch (fsObjName->type)
 	{
 	case PersistentFsObjType_RelationFile:
+		// UNDONE: segmentFileNum
 		PersistentRelation_MarkDropPending(
-							&fsObjName->variant.relFileNode,
+							&fsObjName->variant.rel.relFileNode,
 							persistentTid,
 							persistentSerialNum);
 		break;
@@ -828,7 +572,7 @@ void PersistentFileSysObj_MarkDropPending(
 
 	case PersistentFsObjType_TablespaceDir:
 		PersistentTablespace_MarkDropPending(
-							fsObjName->variant.tablespace,
+							&fsObjName->variant.tablespaceDirNode,
 							persistentTid,
 							persistentSerialNum);
 		break;
@@ -852,7 +596,8 @@ void PersistentFileSysObj_Drop(
 	{
 	case PersistentFsObjType_RelationFile:
 		{
-			RelFileNode *relFileNode = &fsObjName->variant.relFileNode;
+			RelFileNode *relFileNode = &fsObjName->variant.rel.relFileNode;
+			// UNDONE: segmentFileNum
 			
 			MirroredFileSysObj_DropRelFile(
 								smgropen(*relFileNode), 
@@ -883,14 +628,14 @@ void PersistentFileSysObj_Drop(
 
 	case PersistentFsObjType_TablespaceDir:
 		{
-			Oid tablespace = fsObjName->variant.tablespace;
+			TablespaceDirNode *tablespaceDirNode = &fsObjName->variant.tablespaceDirNode;
 			
 			MirroredFileSysObj_DropTablespaceDir(
-								tablespace, 
+								tablespaceDirNode,
 								isRedo);
 			
 			PersistentTablespace_Dropped(
-								tablespace,
+								tablespaceDirNode,
 								persistentTid,
 								persistentSerialNum);
 		}
