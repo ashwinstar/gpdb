@@ -256,6 +256,29 @@ Jetpack external tables and functions, and must be accessed by a superuser.
                      policies evaluated.
 
    ****************************************************************************
+   
+   VIEW NAME: gp_statement_priorities
+   
+   DESCRIPTION: Lists all active statements, providing the priority, session ID, 
+                and other information.  Superusers may refer to this view to find
+                a statement's session_id and command_count, which are required for 
+                adjusting the priority of an active statement using the built-in
+                function gp_adjust_priority(session_id, statement_count, priority).
+                
+   COLUMNS: 
+     * datname - The database name for the statement.
+     * usename - The user name of the database user running the statement.
+     * session_id - The session ID for the statement.
+     * command_count - A system counter which, together with the session id,
+                      uniquely identifies the statement.
+     * priority - The priority for the statement.  This text value reflects the 
+                  resource queue syntax used to assign priority, for example,
+                  HIGH, LOW, MAX.
+     * weight - The integer value associated with the statement by the system.  
+                Each priority keyword maps to a specific integer weight.
+     * current_query - The query text for the statement.
+   
+   ****************************************************************************
 
     VIEW NAME: gp_stats_missing
 
