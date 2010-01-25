@@ -599,6 +599,7 @@ AlterRole(AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options"),
 								   errOmitLocation(true)));
 			dcreaterole = defel;
+			if (1 == numopts) alter_subtype = "CREATEROLE";
 		}
 		else if (strcmp(defel->defname, "createdb") == 0)
 		{

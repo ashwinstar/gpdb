@@ -12559,6 +12559,8 @@ add_part_to_catalog(Oid relid, PartitionBy *pby,
 			rule->paroid = parttemplid;
 			rule->parparentoid = InvalidOid;
 			rule->parchildrelid = InvalidOid;
+
+			/* XXX XXX: what about tablespace ?? */
 			if (el->storeAttr && ((AlterPartitionCmd *)el->storeAttr)->arg1)
 				rule->parreloptions =
 					(List *)((AlterPartitionCmd *)el->storeAttr)->arg1;
@@ -12816,11 +12818,15 @@ ruleMakePartitionRule(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
 		List	   *opts = NIL;
 		int i;
 
+		/* XXX XXX: why not use untransformRelOptions ? */
+
 		Assert(ARR_ELEMTYPE(array) == TEXTOID);
 
 		deconstruct_array(array, TEXTOID, -1, false, 'i',
 						  &options, NULL, &noptions);
 
+		/* XXX XXX: what about tablespace ?? */
+		/* key/value pairs for storage clause */
 		for (i = 0; i < noptions; i++)
 		{
 			char *n = DatumGetCString(DirectFunctionCall1(textout, options[i]));
@@ -15627,6 +15633,21 @@ atpxPart_validate_spec(
 										(Node*)makeString(rule_tmpl->parname);
 
 							el->isDefault = rule_tmpl->parisdefault;
+
+							/* MPP-6904: use storage options from template */
+							if (rule_tmpl->parreloptions)
+							{
+								AlterPartitionCmd *apc = 
+										makeNode(AlterPartitionCmd);
+
+								el->storeAttr = (Node *)apc;
+								/* XXX XXX: what about tablespace ?? */
+
+								apc->partid = NULL;
+								apc->arg2	= NULL;
+								apc->arg1	= (Node *)rule_tmpl->parreloptions;
+
+							}
 
 							/* LIST */
 							if (rule_tmpl->parlistvalues)
