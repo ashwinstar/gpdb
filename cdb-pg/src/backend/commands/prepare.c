@@ -56,10 +56,11 @@ static Datum build_regtype_array(List *oid_list);
 void
 PrepareQuery(PrepareStmt *stmt, const char *queryString)
 {
-	const char *commandTag;
-	Query	   *query;
-	List	   *query_list,
-			   *plan_list;
+	const char	*commandTag = NULL;
+	Query		*query = NULL;
+	List		*query_list = NIL;
+	List		*plan_list = NIL;
+	List		*query_list_copy = NIL;
 	NodeTag		srctag;
 
 	/*
@@ -118,9 +119,12 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	AcquireRewriteLocks(query);
 	query_list = QueryRewrite(query);
 
+	/* Planner overwrites the parse-tree on occasion. This should not happen! */
+	query_list_copy = copyObject(query_list);
+	
 	/* Generate plans for queries.	Snapshot is already set. */
 	plan_list = pg_plan_queries(query_list, NULL, false);
-
+	
 	/*
 	 * Save the results.  We don't have the query string for this PREPARE, but
 	 * we do have the string we got from the client, so use that.
@@ -129,8 +133,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 						   queryString, /* WAS global debug_query_string, */
 						   srctag,
 						   commandTag,
-						   query_list,
-						   plan_list,
+						   query_list_copy,
 						   stmt->argtype_oids,
 						   true);
 }
@@ -161,8 +164,7 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 	entry = FetchPreparedStatement(stmt->name, true);
 
 	query_string = entry->query_string;
-	stmt_list = entry->stmt_list;
-		
+	
 	qcontext = entry->context;
 
 	/* Evaluate parameters, if any */
@@ -181,6 +183,11 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 	portal = CreateNewPortal();
 	/* Don't display the portal in pg_cursors, it is for internal use only */
 	portal->visible = false;
+
+	{
+		List *query_list = copyObject(entry->query_list);
+		stmt_list = pg_plan_queries(query_list, paramLI, false);
+	}
 
 	/*
 	 * For CREATE TABLE / AS EXECUTE, make a copy of the stored query so that
@@ -340,7 +347,6 @@ StorePreparedStatement(const char *stmt_name,
 					   NodeTag	   sourceTag,
 					   const char *commandTag,
 					   List *query_list,
-					   List *stmt_list,
 					   List *argtype_list,
 					   bool from_sql)
 {
@@ -381,29 +387,6 @@ StorePreparedStatement(const char *stmt_name,
 	 */
 	qstring = query_string ? pstrdup(query_string) : NULL;
 	query_list = (List *)copyObject(query_list);
-	/* We don't copy the list directly, like this,
-	 *     stmt_list = (List *) copyObject(stmt_list);
-	 * because we want to propagate the memory context into the PlannedStmt node
-	 * since dispatch may modify the query tree.
-	 *
-	 * TODO Simplify this when plan modification is moved out of dispatch.
-	 */
-	{
-		ListCell *lc;
-		List* new_list = NIL;
-		foreach (lc, stmt_list)
-		{
-			Node *node = copyObject(lfirst(lc));
-			if (IsA(node, PlannedStmt))
-			{
-				PlannedStmt *ps = (PlannedStmt*) node;
-				ps->qdContext = entrycxt;
-			}
-			new_list = lappend(new_list, node);
-		}
-		stmt_list = new_list;
-	}
-	
 	argtype_list = list_copy(argtype_list);
 
 	/* Now we can add entry to hash table */
@@ -422,7 +405,6 @@ StorePreparedStatement(const char *stmt_name,
 	entry->sourceTag = sourceTag;
 	entry->commandTag = commandTag;
 	entry->query_list = query_list;
-	entry->stmt_list = stmt_list;
 	entry->argtype_list = argtype_list;
 	entry->context = entrycxt;
 	entry->prepare_time = GetCurrentStatementStartTimestamp();
@@ -659,8 +641,9 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 								 entry->argtype_list);
 	}
 	
-	query_list = entry->query_list;
-	stmt_list = entry->stmt_list;
+	
+	query_list = copyObject(entry->query_list);
+	stmt_list = pg_plan_queries(query_list, params, false);
 	
 	Assert(list_length(query_list) == list_length(stmt_list));
 

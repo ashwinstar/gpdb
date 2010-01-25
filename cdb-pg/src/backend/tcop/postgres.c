@@ -1966,7 +1966,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 							   sourceTag,
 							   commandTag,
 							   querytree_list,
-							   stmt_list,
 							   param_list,
 							   false);
 	}
@@ -1981,7 +1980,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		pstmt->commandTag = commandTag;
 		pstmt->sourceTag = sourceTag;
 		pstmt->query_list = querytree_list;
-		pstmt->stmt_list = stmt_list;
 		pstmt->argtype_list = param_list;
 		pstmt->from_sql = false;
 		pstmt->context = unnamed_stmt_context;
@@ -2343,21 +2341,10 @@ exec_bind_message(StringInfo input_message)
 	 * portal's queryContext becomes its own heap context rather than the
 	 * prepared statement's context.  FIXME someday
 	 */
-	if (pstmt->stmt_list == NIL )
+	
 	{
-		MemoryContext oldContext;
-
-		qContext = PortalGetHeapMemory(portal);
-		oldContext = MemoryContextSwitchTo(qContext);
 		query_list = copyObject(pstmt->query_list);
-		stmt_list = pg_plan_queries(query_list, params, true);
-		MemoryContextSwitchTo(oldContext);
-	}
-	else
-	{
-		query_list = pstmt->query_list;
-		stmt_list = pstmt->stmt_list;
-		qContext = pstmt->context;
+		stmt_list = pg_plan_queries(query_list, params, false);
 	}
 
 	/*

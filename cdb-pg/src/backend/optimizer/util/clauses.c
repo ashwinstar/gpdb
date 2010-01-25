@@ -54,7 +54,7 @@ typedef struct
 	PlannerGlobal *glob;
 	List	   *active_fns;
 	Node	   *case_val;
-	bool		estimate;
+	bool		transform_stable_funcs;
 } eval_const_expressions_context;
 
 typedef struct
@@ -1559,7 +1559,7 @@ eval_const_expressions(PlannerInfo *root, Node *node)
 	}
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
-	context.estimate = false;	/* safe transformations only */
+	context.transform_stable_funcs = true;	/* safe transformations only */
 	return eval_const_expressions_mutator(node, &context);
 }
 
@@ -1587,7 +1587,7 @@ estimate_expression_value(PlannerInfo *root, Node *node)
 	context.boundParams = root->glob->boundParams;		/* bound Params */
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
-	context.estimate = true;	/* unsafe transformations OK */
+	context.transform_stable_funcs = true;	/* unsafe transformations OK */
 	return eval_const_expressions_mutator(node, &context);
 }
 
@@ -1612,7 +1612,7 @@ eval_const_expressions_mutator(Node *node,
 			if (OidIsValid(prm->ptype))
 			{
 				/* OK to substitute parameter value? */
-				if (context->estimate || (prm->pflags & PARAM_FLAG_CONST))
+				if (context->transform_stable_funcs || (prm->pflags & PARAM_FLAG_CONST))
 				{
 					/*
 					 * Return a Const representing the param value.  Must copy
@@ -2780,7 +2780,7 @@ evaluate_function(Oid funcid, Oid result_type, List *args,
 	 */
 	if (funcform->provolatile == PROVOLATILE_IMMUTABLE)
 		 /* okay */ ;
-	else if (context->estimate && funcform->provolatile == PROVOLATILE_STABLE)
+	else if (context->transform_stable_funcs && funcform->provolatile == PROVOLATILE_STABLE)
 		 /* okay */ ;
 	else
 		return NULL;
