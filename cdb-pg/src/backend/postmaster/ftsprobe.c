@@ -408,7 +408,14 @@ void FtsProbeLoop(void)
 {
 	int		i;
 	bool	updated_bitmap, processing_fullscan;
+	MemoryContext probeContext, oldContext;
 
+	probeContext = AllocSetContextCreate(TopMemoryContext,
+										 "FtsProbeMemCtxt",
+										 ALLOCSET_DEFAULT_INITSIZE,	/* always have some memory */
+										 ALLOCSET_DEFAULT_INITSIZE,
+										 ALLOCSET_DEFAULT_MAXSIZE);
+	
 	cdb_component_dbs = getCdbComponentInfo(false);
 	ftsLock();
 	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
@@ -469,8 +476,19 @@ void FtsProbeLoop(void)
 			 cdb_component_dbs->total_segment_dbs,
 			 cdb_component_dbs->total_segments);
 
-		/* Start a sequential, slow scan of the segments */
+		/*
+		 * We probe in a special context, some of the heap access
+		 * stuff palloc()s internally
+		 */
+		oldContext = MemoryContextSwitchTo(probeContext);
+
+		/* Start a scan of the segments */
 		updated_bitmap = probeSegments(cdb_component_dbs);
+
+		MemoryContextSwitchTo(oldContext);
+
+		/* free any pallocs we made inside probeSegments() */
+		MemoryContextReset(probeContext);
 
 		if (ftsProbeInfo->fts_pauseProbes)
 		{
@@ -1248,7 +1266,14 @@ probePublishUpdate(uint8 *probe_results)
 
 	/* if we've gotten a pause request, we ignore our probe results. */
 	if (ftsProbeInfo->fts_pauseProbes)
+	{
+		if (changes != NULL)
+		{
+			pfree(changes);
+		}
+
 		return false;
+	}
 
 	/* We're going to use these timestamps below. */
 	{
@@ -1602,7 +1627,32 @@ getGpFailover_strategy(char *strategy)
 }
 
 /*
- *
+ * Dump out the changes to our logfile.
+ */
+static void
+dumpChanges(struct segmentStatusChange *changes, int changeCount)
+{
+	int i;
+
+	elog(LOG, "Dump our configuration change list, %d changes", changeCount);
+
+	for (i=0; i < changeCount; i++)
+	{
+		bool new_alive, old_alive;
+		bool new_pri, old_pri;
+
+		new_alive = (changes[i].newStatus & FTS_STATUS_ALIVE ? true : false);
+		old_alive = (changes[i].oldStatus & FTS_STATUS_ALIVE ? true : false);
+
+		new_pri = (changes[i].newStatus & FTS_STATUS_PRIMARY ? true : false);
+		old_pri = (changes[i].oldStatus & FTS_STATUS_PRIMARY ? true : false);
+
+		elog(LOG, "   change %d of %d dbid %d content %d alive %d/%d primary %d/%d",
+			 i+1, changeCount, changes[i].dbid, changes[i].segindex, new_alive, old_alive, new_pri, old_pri);
+	}
+}
+
+/*
  *
 primary
 c
@@ -1629,6 +1679,9 @@ Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int cha
 {
 	int i;
 
+	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		dumpChanges(changes, changeCount);
+
 	/*
 	 * For each failed primary segment:
 	 *   1) Convert the mirror into primary.
@@ -1647,11 +1700,6 @@ Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int cha
 		new_pri = (changes[i].newStatus & FTS_STATUS_PRIMARY ? true : false);
 		old_pri = (changes[i].oldStatus & FTS_STATUS_PRIMARY ? true : false);
 
-		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-		{
-			elog(LOG, "Filerep_Failover: change %d of %d dbid %d alive %d/%d primary %d/%d", i+1, changeCount, changes[i].dbid, new_alive, old_alive, new_pri, old_pri);
-		}
-
 		if (!new_alive && old_alive)
 		{
 			/*
@@ -1661,13 +1709,21 @@ Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int cha
 			 * Nothing to do here.
 			 */
 			if (new_pri)
+			{
+				dumpChanges(changes, changeCount);
+
 				elog(FATAL, "Segment with dbid %d failed *and* was marked as the new primary!", changes[i].dbid);
+			}
 		}
 		else if (new_alive && !old_alive)
 		{
 			/* this is a segment that came back up ? Nothing to do here. */
 			if (old_pri)
+			{
+				dumpChanges(changes, changeCount);
+
 				elog(FATAL, "Segment with dbid %d came back from the dead *and* was marked as the old primary!", changes[i].dbid);
+			}
 		}
 		else if (new_alive && old_alive)
 		{
@@ -1854,7 +1910,11 @@ SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeC
 	int i;
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+	{
 		elog(LOG, "SAN_Failover: got %d changes", changeCount);
+
+		dumpChanges(changes, changeCount);
+	}
 
 	/*
 	 * For each failed segment:
