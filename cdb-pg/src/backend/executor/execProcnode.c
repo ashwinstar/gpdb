@@ -148,12 +148,16 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	PlanState  *result;
 	List	   *subps;
 	ListCell   *l;
+	int current_slice_no;
 
 	/*
 	 * do nothing when we get to the end of a leaf on tree.
 	 */
 	if (node == NULL)
 		return NULL;
+
+	Assert(estate != NULL);
+	current_slice_no = estate->current_slice_no;
 
 	switch (nodeTag(node))
 	{
@@ -330,6 +334,8 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			break;
 	}
 
+	estate->current_slice_no = current_slice_no;
+
 	/*
 	 * Initialize any initPlans present in this node.  The planner put them in
 	 * a separate list for us.
@@ -340,12 +346,15 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		SubPlan    *subplan = (SubPlan *) lfirst(l);
 		SubPlanState *sstate;
 
+		Assert((estate->es_cur_slice_idx == estate->current_slice_no && result != NULL) ||
+			   (estate->es_cur_slice_idx != estate->current_slice_no && result == NULL));
 		Assert(IsA(subplan, SubPlan));
 		sstate = ExecInitExprInitPlan(subplan, result);
 		ExecInitSubPlan(sstate, estate, eflags);
 		subps = lappend(subps, sstate);
 	}
-	result->initPlan = subps;
+	if (result != NULL)
+		result->initPlan = subps;
 
 	/*
 	 * Initialize any subPlans present in this node.  These were found by
@@ -353,16 +362,19 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	 * this after initializing initPlans, in case their arguments contain
 	 * subPlans (is that actually possible? perhaps not).
 	 */
-	foreach(l, result->subPlan)
+	if (result != NULL)
 	{
-		SubPlanState *sstate = (SubPlanState *) lfirst(l);
-
-		Assert(IsA(sstate, SubPlanState));
-		ExecInitSubPlan(sstate, estate, eflags);
+		foreach(l, result->subPlan)
+		{
+			SubPlanState *sstate = (SubPlanState *) lfirst(l);
+			
+			Assert(IsA(sstate, SubPlanState));
+			ExecInitSubPlan(sstate, estate, eflags);
+		}
 	}
 
 	/* Set up instrumentation for this node if requested */
-	if (estate->es_instrument)
+	if (estate->es_instrument && result != NULL)
 		result->instrument = InstrAlloc(1);
 
 	return result;

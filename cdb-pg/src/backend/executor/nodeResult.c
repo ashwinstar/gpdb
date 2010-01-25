@@ -287,6 +287,16 @@ ExecInitResult(Result *node, EState *estate, int eflags)
 	Assert(!(eflags & (EXEC_FLAG_MARK | EXEC_FLAG_BACKWARD)) ||
 		   outerPlan(node) != NULL);
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		/* Skip through this node, and go directly to its
+		 * child node.
+		 */
+		ExecInitNode(outerPlan(node), estate, eflags);
+		
+		return NULL;
+	}
+
 	/*
 	 * create state structure
 	 */
@@ -341,15 +351,7 @@ ExecInitResult(Result *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&resstate->ps);
 	ExecAssignProjectionInfo(&resstate->ps, NULL);
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_RESULT_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT,
-			{ NULL, NULL, 0}
-		};
-
-		Assert(GPMON_RESULT_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&resstate->ps, "Result", (int64)0, m, NULL);
-	}
+	initGpmonPktForResult((Plan *)node, &resstate->ps.gpmon_pkt, estate);
 
 	return resstate;
 }
@@ -403,4 +405,20 @@ ExecReScanResult(ResultState *node, ExprContext *exprCtxt)
 	if (node->ps.lefttree &&
 		(node->ps.lefttree->chgParam == NULL || exprCtxt != NULL))
 		ExecReScan(node->ps.lefttree, exprCtxt);
+}
+
+void
+initGpmonPktForResult(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Result));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_RESULT_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT,
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_RESULT_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Result", (int64)0, m, NULL);
+	}
 }

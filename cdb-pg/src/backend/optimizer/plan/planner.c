@@ -242,6 +242,7 @@ standard_planner(Query *parse, bool isCursor, int cursorOptions,
 	if ( Gp_role == GP_ROLE_DISPATCH )
 	{
 		bool uses_correlation = has_correlation_params(glob->paramlist);
+		XsliceInAppendContext append_context;
 		
 		top_plan = cdbparallelize(root, top_plan, parse,
 									isCursor, cursorOptions,
@@ -251,6 +252,16 @@ standard_planner(Query *parse, bool isCursor, int cursorOptions,
 		 * need to mark material nodes that are split acrossed multi slices.
 		 */
 		top_plan = apply_shareinput_xslice(top_plan, &shareinput_context);
+
+		/*
+		 * Walk the plan tree to set hasXslice field in each Append node to true
+		 * if the subnodes of the Append node contain cross-slice shared node, and
+		 * one of these subnodes running in the same slice as the Append node.
+		 */
+		append_context.currentSliceNo = 0;
+		append_context.slices = NULL;
+		plan_tree_walker((Node *)top_plan, set_hasxslice_in_append_walker, &append_context);
+		bms_free(append_context.slices);
 	}
 
 	top_plan = zap_trivial_result(top_plan);

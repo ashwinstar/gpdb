@@ -149,6 +149,12 @@ ExecInitHash(Hash *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+		return NULL;
+	}
+	
 	/*
 	 * create state structure
 	 */
@@ -194,25 +200,7 @@ ExecInitHash(Hash *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&hashstate->ps);
 	hashstate->ps.ps_ProjInfo = NULL;
 
-	/* Set up gpmon */
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_HASH_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
-			/* GPMON_HASH_SPILLBATCH */
-			{ "Hash Spill Batches", "Batches", 0},
-			/* GPMON_HASH_SPILLTUPLE */
-			{ "Hash Spill Tuples", "Tuples", 0},
-			/* GPMON_HASH_SPILLBYTE */
-			{ "Hash Spill Bytes", "Bytes", 0},
-			/* GPMON_HASH_TOTAL */
-			{ NULL, NULL, 0 } 
-		};
-
-		Assert(GPMON_HASH_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&hashstate->ps, "Hash", 
-                                      (int64) hashstate->ps.plan->plan_rows,
-                                      m, NULL); 
-	}
+	initGpmonPktForHash((Plan *)node, &hashstate->ps.gpmon_pkt, estate);
 
 	return hashstate;
 }
@@ -1451,3 +1439,28 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
         }
     }
 }                               /* ExecHashTableExplainBatchEnd */
+
+void
+initGpmonPktForHash(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Hash));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_HASH_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
+			/* GPMON_HASH_SPILLBATCH */
+			{ "Hash Spill Batches", "Batches", 0},
+			/* GPMON_HASH_SPILLTUPLE */
+			{ "Hash Spill Tuples", "Tuples", 0},
+			/* GPMON_HASH_SPILLBYTE */
+			{ "Hash Spill Bytes", "Bytes", 0},
+			/* GPMON_HASH_TOTAL */
+			{ NULL, NULL, 0 } 
+		};
+
+		Assert(GPMON_HASH_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Hash", 
+							 (int64)planNode->plan_rows,
+							 m, NULL); 
+	}
+}

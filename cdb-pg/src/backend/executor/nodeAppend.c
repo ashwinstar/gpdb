@@ -57,6 +57,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/nodeAppend.h"
 
@@ -169,7 +170,7 @@ static bool append_need_prj(Append *node)
 AppendState *
 ExecInitAppend(Append *node, EState *estate, int eflags)
 {
-	AppendState *appendstate = makeNode(AppendState);
+	AppendState *appendstate;
 	PlanState **appendplanstates;
 	int			nplans;
 	int			i;
@@ -178,10 +179,37 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & EXEC_FLAG_MARK));
 
+	nplans = list_length(node->appendplans);
+
+	if (!NodeInCurrentSlice(estate))
+	{
+		int first_plan = 0;
+		int last_plan = nplans - 1;
+
+		if (node->isTarget && estate->es_evTuple != NULL)
+		{
+			first_plan = estate->es_result_relation_info - estate->es_result_relations;
+			Assert(first_plan >= 0 && first_plan < nplans);
+			last_plan = first_plan;
+		}
+		
+		for (; first_plan <= last_plan; first_plan++)
+		{
+			Plan *initNode = (Plan *)list_nth(node->appendplans, first_plan);
+			
+			ExecInitNode(initNode, estate, eflags);
+		}
+
+		return NULL;
+	}
+
+	appendstate = makeNode(AppendState);
+
+	appendstate->eflags = eflags;
+
 	/*
 	 * Set up empty vector of subplan states
 	 */
-	nplans = list_length(node->appendplans);
 
 	appendplanstates = (PlanState **) palloc0(nplans * sizeof(PlanState *));
 
@@ -230,18 +258,36 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 	ExecInitResultTupleSlot(estate, &appendstate->ps);
 
 	/*
-	 * call ExecInitNode on each of the plans to be executed and save the
-	 * results into the array "appendplans".  Note we *must* set
-	 * estate->es_result_relation_info correctly while we initialize each
-	 * sub-plan; ExecContextForcesOids depends on that!
+	 * If this is called by the dispatcher or the subplans in this Append
+	 * node have cross-slice shared nodes that prevent us from postponing 
+	 * initializing subplans, we initialize the subplans here. Otherwise,
+	 * the subplan is initialized right before being processed.
+	 *
+	 * However, to make GPMon work, we always send initGpmon packages.
 	 */
 	for (i = appendstate->as_firstplan; i <= appendstate->as_lastplan; i++)
 	{
-		appendstate->as_whichplan = i;
-		exec_append_initialize_next(appendstate);
-
 		initNode = (Plan *) list_nth(node->appendplans, i);
-		appendplanstates[i] = ExecInitNode(initNode, estate, eflags);
+		if (Gp_role == GP_ROLE_DISPATCH || node->hasXslice)
+		{
+			/*
+			 * call ExecInitNode on each of the plans to be executed and save the
+			 * results into the array "appendplans".  Note we *must* set
+			 * estate->es_result_relation_info correctly while we initialize each
+			 * sub-plan; ExecContextForcesOids depends on that!
+			 */
+			appendstate->as_whichplan = i;
+			exec_append_initialize_next(appendstate);
+			
+			appendplanstates[i] = ExecInitNode(initNode, estate, eflags);
+		}
+		else
+		{
+			Assert(nodeTag(initNode) - T_Plan_Start >= 0 &&
+				   nodeTag(initNode) < T_Plan_End);
+			
+			sendInitGpmonPkts(initNode, estate);
+		}
 	}
 
 	/*
@@ -275,20 +321,8 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 	appendstate->as_whichplan = appendstate->as_firstplan;
 	exec_append_initialize_next(appendstate);
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_APPEND_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Append Current Input Source", "Inputs", appendstate->as_lastplan},
-			{ NULL, NULL, 0}
-		};
-
-		Assert(GPMON_APPEND_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&appendstate->ps, "Append", 
-                                      (int64)appendstate->ps.plan->plan_rows,
-                                      m, NULL);
-	}
-
-		
+	initGpmonPktForAppend((Plan *)node, &appendstate->ps.gpmon_pkt, estate);
+	
 	return appendstate;
 }
 
@@ -321,6 +355,27 @@ ExecAppend(AppendState *node)
 		 * figure out which subplan we are currently processing
 		 */
 		subnode = node->appendplans[node->as_whichplan];
+
+		if (subnode == NULL)
+		{
+			Plan *initNode = NULL;
+			
+			/*
+			 * call ExecInitNode on the subplan to be executed and save the
+			 * results into the array "appendplans".  Note we *must* set
+			 * estate->es_result_relation_info correctly while we initialize each
+			 * sub-plan; ExecContextForcesOids depends on that!
+			 */
+			exec_append_initialize_next(node);
+
+			initNode = (Plan *) list_nth(((Append *)(node->ps.plan))->appendplans, node->as_whichplan);
+			node->ps.state->current_slice_no = node->ps.state->es_cur_slice_idx;
+			node->appendplans[node->as_whichplan] =
+				ExecInitNode(initNode, node->ps.state, node->eflags);
+			subnode = node->appendplans[node->as_whichplan];
+		}
+
+		Assert(subnode != NULL);
 
 		/*
 		 * get a tuple from the subplan
@@ -365,7 +420,16 @@ ExecAppend(AppendState *node)
 		 * Go on to the "next" subplan in the appropriate direction. If no
 		 * more subplans, return the empty slot set up for us by
 		 * ExecInitAppend.
+		 *
+		 * Do not terminate the first subplan since this subplan may
+		 * contain SharedScan node, which should not be terminated.
 		 */
+		if (node->as_whichplan != node->as_firstplan)
+		{
+			ExecEndNode(subnode);
+			node->appendplans[node->as_whichplan] = NULL;
+		}
+		
 		if (ScanDirectionIsForward(node->ps.state->es_direction))
 			node->as_whichplan++;
 		else
@@ -446,4 +510,32 @@ ExecReScanAppend(AppendState *node, ExprContext *exprCtxt)
 	}
 	node->as_whichplan = node->as_firstplan;
 	exec_append_initialize_next(node);
+}
+
+void
+initGpmonPktForAppend(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	int last_plan;
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Append));
+
+	last_plan = list_length(((Append*)planNode)->appendplans) - 1;
+
+	if (((Append*)planNode)->isTarget && estate->es_evTuple != NULL)
+	{
+		last_plan = estate->es_result_relation_info - estate->es_result_relations;
+		Assert(last_plan >= 0 && last_plan < list_length(((Append*)planNode)->appendplans));
+	}
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_APPEND_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ "Append Current Input Source", "Inputs", last_plan},
+			{ NULL, NULL, 0}
+		};
+		
+		Assert(GPMON_APPEND_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Append", 
+							  (int64)planNode->plan_rows,
+							  m, NULL);
+	}
 }

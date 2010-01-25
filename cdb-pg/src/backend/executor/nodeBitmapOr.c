@@ -28,6 +28,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/instrument.h"
 #include "executor/nodeBitmapOr.h"
@@ -43,7 +44,7 @@
 BitmapOrState *
 ExecInitBitmapOr(BitmapOr *node, EState *estate, int eflags)
 {
-	BitmapOrState *bitmaporstate = makeNode(BitmapOrState);
+	BitmapOrState *bitmaporstate;
 	PlanState **bitmapplanstates;
 	int			nplans;
 	int			i;
@@ -52,6 +53,19 @@ ExecInitBitmapOr(BitmapOr *node, EState *estate, int eflags)
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
+
+	if (!NodeInCurrentSlice(estate))
+	{
+		foreach (l, node->bitmapplans)
+		{
+			initNode = (Plan *) lfirst(l);
+			ExecInitNode(initNode, estate, eflags);
+		}
+
+		return NULL;
+	}
+
+	bitmaporstate = makeNode(BitmapOrState);
 
 	/*
 	 * Set up empty vector of subplan states
@@ -89,16 +103,8 @@ ExecInitBitmapOr(BitmapOr *node, EState *estate, int eflags)
 		i++;
 	}
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPOR_TOTAL +1] = {
-			GPMON_QEXEC_M_INIT,
-			{ NULL, NULL, 0}
-		};
-
-		InitPlanStateGpmonPkt(&bitmaporstate->ps, "BitmapOr", 
-                                      (int64)0,  m, NULL);
-	}
-
+	initGpmonPktForBitmapOr((Plan *)node, &bitmaporstate->ps.gpmon_pkt, estate);
+	
 	return bitmaporstate;
 }
 
@@ -259,3 +265,20 @@ ExecReScanBitmapOr(BitmapOrState *node, ExprContext *exprCtxt)
 		ExecReScan(subnode, exprCtxt);
 	}
 }
+
+void
+initGpmonPktForBitmapOr(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, BitmapOr));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPOR_TOTAL +1] = {
+			GPMON_QEXEC_M_INIT,
+			{ NULL, NULL, 0}
+		};
+		
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "BitmapOr", 
+							  (int64)0,  m, NULL);
+	}
+}
+

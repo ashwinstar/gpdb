@@ -22,6 +22,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "executor/nodeGroup.h"
 
@@ -313,6 +314,13 @@ ExecInitGroup(Group *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+
+		return NULL;
+	}
+	
 	/*
 	 * create state structure
 	 */
@@ -376,18 +384,7 @@ ExecInitGroup(Group *node, EState *estate, int eflags)
 	grpstate->grp_firstTuple = NULL;
 	grpstate->is_passthru = false;
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_GROUP_TOTAL + 1] = 
-		{
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ NULL, NULL, 0}
-		};
-
-		Assert(GPMON_GROUP_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&grpstate->ss.ps, "Group",
-                                      (int64)grpstate->ss.ps.plan->plan_rows,
-                                      m, NULL);
-	}
+	initGpmonPktForGroup((Plan *)node, &grpstate->ss.ps.gpmon_pkt, estate);
 	
 	return grpstate;
 }
@@ -449,4 +446,23 @@ ExecReScanGroup(GroupState *node, ExprContext *exprCtxt)
 	if (((PlanState *) node)->lefttree &&
 		((PlanState *) node)->lefttree->chgParam == NULL)
 		ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
+}
+
+void
+initGpmonPktForGroup(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Group));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_GROUP_TOTAL + 1] = 
+		{
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_GROUP_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Group",
+							 (int64)planNode->plan_rows,
+							 m, NULL);
+	}
 }

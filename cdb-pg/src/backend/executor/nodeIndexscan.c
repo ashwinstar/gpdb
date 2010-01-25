@@ -26,6 +26,7 @@
 
 #include "access/genam.h"
 #include "access/nbtree.h"
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/nodeIndexscan.h"
 #include "nodes/nodeFuncs.h"
@@ -474,6 +475,11 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	Relation	currentRelation;
 	bool		relistarget;
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		return NULL;
+	}
+
 	/*
 	 * create state structure
 	 */
@@ -595,28 +601,8 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&indexstate->ss.ps);
 	ExecAssignScanProjectionInfo(&indexstate->ss);
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_INDEXSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Index Scan Restore Pos", "Restores", 0 },
-			{ "Index Scan Rescan", "Rescans", 0 },
-			{ NULL, NULL, 0}
-		};
-		
-		char *relname = get_rel_name(node->indexid);
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(relname),
-			{ NULL, NULL }
-		};
-		
-		Assert(GPMON_INDEXSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&indexstate->ss.ps, "Index Scan", 
-                                      (int64)indexstate->ss.ps.plan->plan_rows, 
-                                      m, t);
-		if (relname)
-			pfree(relname);
-	}
+	initGpmonPktForIndexScan((Plan *)node, &indexstate->ss.ps.gpmon_pkt, estate);
+
 	/*
 	 * all done.
 	 */
@@ -1019,4 +1005,34 @@ ExecCountSlotsIndexScan(IndexScan *node)
 {
 	return ExecCountSlotsNode(outerPlan((Plan *) node)) +
 		ExecCountSlotsNode(innerPlan((Plan *) node)) + INDEXSCAN_NSLOTS;
+}
+
+	
+void
+initGpmonPktForIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, IndexScan));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_INDEXSCAN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ "Index Scan Restore Pos", "Restores", 0 },
+			{ "Index Scan Rescan", "Rescans", 0 },
+			{ NULL, NULL, 0}
+		};
+		
+		char *relname = get_rel_name(((IndexScan *)planNode)->indexid);
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(relname),
+			{ NULL, NULL }
+		};
+		
+		Assert(GPMON_INDEXSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Index Scan", 
+							 (int64)planNode->plan_rows, 
+							 m, t);
+		if (relname)
+			pfree(relname);
+	}
 }

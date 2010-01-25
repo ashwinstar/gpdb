@@ -7,6 +7,7 @@
 #include "postgres.h"
 #include "storage/gp_compress.h"
 #include "cdb/cdbaocsam.h"
+#include "cdb/cdbvars.h"
 #include "executor/nodeAOCSScan.h"
 #include "executor/executor.h"
 
@@ -87,6 +88,11 @@ ExecInitAOCSScan(AOCSScan *node, EState *estate, int eflags)
 	Assert(outerPlan(node) == NULL);
 	Assert(innerPlan(node) == NULL);
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		return NULL;
+	}
+
 	/*
 	 * create state structure
 	 */
@@ -133,45 +139,26 @@ ExecInitAOCSScan(AOCSScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&state->ss.ps);
 	ExecAssignScanProjectionInfo(&state->ss);
 
-        /* init aocs prj */
-        {
-                int i;
-                state->ncol = currentRelation->rd_att->natts;
-                state->proj = palloc0(sizeof(bool) * state->ncol);
-                GetNeededColumnsForScan((Node *) node->scan.plan.targetlist, state->proj, state->ncol);
-                GetNeededColumnsForScan((Node *) node->scan.plan.qual, state->proj, state->ncol);
-                
-                /* At least project one col */
-                for(i=0; i<state->ncol; ++i)
-                {
-                        if(state->proj[i])
-                                break;
-                }
-
-                if(i==state->ncol)
-                        state->proj[0] = true;
-        }
-
+	/* init aocs prj */
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_AOCSSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT, 
-			{ "Append-Only Columnar Scan Rescan", "Rescans", 0},
-			{ NULL, NULL, 0 }
-		};
+		int i;
+		state->ncol = currentRelation->rd_att->natts;
+		state->proj = palloc0(sizeof(bool) * state->ncol);
+		GetNeededColumnsForScan((Node *) node->scan.plan.targetlist, state->proj, state->ncol);
+		GetNeededColumnsForScan((Node *) node->scan.plan.qual, state->proj, state->ncol);
+        
+		/* At least project one col */
+		for(i=0; i<state->ncol; ++i)
+		{
+			if(state->proj[i])
+				break;
+		}
 		
-		RangeTblEntry *rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
-		char schema_rel_name[NAMEDATALEN * 2] = {0};
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
-			{ NULL, NULL }
-		};
-
-		Assert(GPMON_AOCSSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&state->ss.ps, "Append-Only Columnar Scan", 
-                                      (int64)state->ss.ps.plan->plan_rows,
-                                      m, t);
+		if(i==state->ncol)
+			state->proj[0] = true;
 	}
+	
+	initGpmonPktForAOCSScan((Plan *)node, &state->ss.ps.gpmon_pkt, estate);
 
 	return state;
 }
@@ -257,4 +244,32 @@ ExecAOCSReScan(AOCSScanState *node, ExprContext *exprCtxt)
 
 	Gpmon_M_Incr(GpmonPktFromAOCSScanState(node), GPMON_AOCSSCAN_RESCAN);
 	CheckSendPlanStateGpmonPkt(&node->ss.ps);
+}
+
+void
+initGpmonPktForAOCSScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, AOCSScan));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_AOCSSCAN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT, 
+			{ "Append-Only Columnar Scan Rescan", "Rescans", 0},
+			{ NULL, NULL, 0 }
+		};
+		
+		RangeTblEntry *rte = rt_fetch(((AOCSScan *)planNode)->scan.scanrelid,
+									  estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }
+		};
+		
+		Assert(GPMON_AOCSSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Append-Only Columnar Scan", 
+							 (int64)planNode->plan_rows,
+							 m, t);
+	}
 }

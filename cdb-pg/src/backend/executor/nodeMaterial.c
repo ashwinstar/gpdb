@@ -332,6 +332,13 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	MaterialState *matstate;
 	Plan	   *outerPlan;
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+
+		return NULL;
+	}
+	
 	/*
 	 * create state structure
 	 */
@@ -401,19 +408,8 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 		snEntry->shareState = (Node *) matstate;
 	}
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_MATERIAL_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT,
-                { "Materialize Rescan", "Rescans", 0 },
-			{ NULL, NULL, 0}
-		};
-
-		Assert(GPMON_MATERIAL_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&matstate->ss.ps, "Materialize", 
-                                      (int64)matstate->ss.ps.plan->plan_rows,
-                                      m, NULL);
-	}
-
+	initGpmonPktForMaterial((Plan *)node, &matstate->ss.ps.gpmon_pkt, estate);
+	
 	return matstate;
 }
 
@@ -642,4 +638,24 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
           	}
 		node->eof_underlying = false;
 	}
+}
+
+void
+initGpmonPktForMaterial(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Material));
+	
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_MATERIAL_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT,
+                { "Materialize Rescan", "Rescans", 0 },
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_MATERIAL_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Materialize", 
+							 (int64)planNode->plan_rows,
+							 m, NULL);
+	}
+	
 }

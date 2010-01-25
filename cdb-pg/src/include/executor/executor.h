@@ -67,6 +67,19 @@ struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
 #define RelinfoGetStorage(relinfo) relinfo->ri_RelationDesc->rd_rel->relstorage
 
 /*
+ * Indicate whether an executor node is running in the slice
+ * that a QE process is processing.
+ *
+ * This is currently called inside ExecInitXXX for each executor
+ * node.
+ *
+ * If this is called in QD or utility mode, this will return true.
+ */
+#define NodeInCurrentSlice(estate) \
+	((Gp_role != GP_ROLE_EXECUTE ||	 \
+	  estate->current_slice_no == estate->es_cur_slice_idx))
+
+/*
  * prototypes from functions in execAmi.c
  */
 extern void ExecReScan(PlanState *node, ExprContext *exprCtxt);

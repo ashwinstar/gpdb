@@ -21,6 +21,7 @@
 
 #include "access/fileam.h"
 #include "access/heapam.h"
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/nodeExternalscan.h"
 #include "utils/lsyscache.h"
@@ -118,6 +119,11 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 	Assert(outerPlan(node) == NULL);
 	Assert(innerPlan(node) == NULL);
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		return NULL;
+	}
+
 	/*
 	 * create state structure
 	 */
@@ -180,26 +186,7 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&externalstate->ss.ps);
 	ExecAssignScanProjectionInfo(&externalstate->ss);
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_EXTSCAN_TOTAL +1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-               	{ "External Scan Rescan", "Rescans", 0 },
-			{ NULL, NULL, 0}
-		};
-
-		RangeTblEntry *rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
-		char schema_rel_name[NAMEDATALEN * 2] = {0};
-
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
-			{ NULL, NULL }
-		};
-
-		Assert(GPMON_EXTSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&externalstate->ss.ps, "External Scan",
-                                      (int64)externalstate->ss.ps.plan->plan_rows,
-                                      m, t);
-	}
+	initGpmonPktForExternalScan((Plan *)node, &externalstate->ss.ps.gpmon_pkt, estate);
 
 	return externalstate;
 }
@@ -313,4 +300,32 @@ ExecExternalReScan(ExternalScanState *node, ExprContext *exprCtxt)
 	fileScan = node->ess_ScanDesc;
 
 	external_rescan(fileScan);
+}
+
+void
+initGpmonPktForExternalScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, ExternalScan));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_EXTSCAN_TOTAL +1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ "External Scan Rescan", "Rescans", 0 },
+			{ NULL, NULL, 0}
+		};
+		
+		RangeTblEntry *rte = rt_fetch(((ExternalScan *)planNode)->scan.scanrelid,
+									  estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }
+		};
+		
+		Assert(GPMON_EXTSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "External Scan",
+							 (int64)planNode->plan_rows,
+							 m, t);
+	}
 }

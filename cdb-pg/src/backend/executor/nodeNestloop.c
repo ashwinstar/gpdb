@@ -22,6 +22,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/nodeNestloop.h"
 #include "executor/nodeHash.h"
@@ -328,6 +329,26 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		if (node->join.prefetch_inner)
+		{
+			ExecInitNode(innerPlan(node), estate,
+						 eflags | EXEC_FLAG_REWIND);
+			if (!node->shared_outer)
+				ExecInitNode(outerPlan(node), estate, eflags);
+		}
+		else
+		{
+			if (!node->shared_outer)
+				ExecInitNode(outerPlan(node), estate, eflags);
+			ExecInitNode(innerPlan(node), estate,
+						 eflags | EXEC_FLAG_REWIND);
+		}
+		
+		return NULL;
+	}
+
 	NL1_printf("ExecInitNestLoop: %s\n",
 			   "initializing node");
 
@@ -400,7 +421,6 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	{
 		if (!node->shared_outer)
 			outerPlanState(nlstate) = ExecInitNode(outerPlan(node), estate, eflags);
-
 		innerPlanState(nlstate) = ExecInitNode(innerPlan(node), estate,
 				eflags | EXEC_FLAG_REWIND);
 	}
@@ -453,45 +473,8 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	NL1_printf("ExecInitNestLoop: %s\n",
 			   "node initialized");
 
-	{
-		char *iname = NULL;
-		Gpmon_NameUnit_MaxVal m[GPMON_NLJ_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Nested Loop Inner Tuples", "Tuples", 0},
-			{ "Nested Loop Outer Tuples", "Tuples", 0},
-			{ NULL, NULL, 0}
-		};
-
-		switch(node->join.jointype)
-		{
-			case JOIN_INNER:
-				iname = "Nested Loop";
-				break;
-			case JOIN_LEFT:
-				iname = "Nested Loop Left Join";
-				break;
-			case JOIN_LASJ:
-				iname = "Nested Loop Left Anti Semi Join";
-				break;
-			case JOIN_FULL:
-				iname = "Nested Loop Full Join";
-				break;
-			case JOIN_RIGHT:
-				iname = "Nested Loop Right Join";
-				break;
-			case JOIN_IN:
-				iname = "Nested Loop EXISTS Join";
-				break;
-			default:
-				iname = "Nested Loop ??? Join";
-		}
-
-		Assert(GPMON_NLJ_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&nlstate->js.ps, "Nested Loop", 
-                                      (int64)nlstate->js.ps.plan->plan_rows,
-                                      m, NULL);
-	}
-
+	initGpmonPktForNestLoop((Plan *)node, &nlstate->js.ps.gpmon_pkt, estate);
+	
 	return nlstate;
 }
 
@@ -567,3 +550,47 @@ ExecReScanNestLoop(NestLoopState *node, ExprContext *exprCtxt)
 	/* CDB: We intentionally leave node->nl_Untouched unchanged on ReScan. */
 }
 
+void
+initGpmonPktForNestLoop(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, NestLoop));
+	
+	{
+		char *iname = NULL;
+		Gpmon_NameUnit_MaxVal m[GPMON_NLJ_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ "Nested Loop Inner Tuples", "Tuples", 0},
+			{ "Nested Loop Outer Tuples", "Tuples", 0},
+			{ NULL, NULL, 0}
+		};
+
+		switch(((NestLoop *)planNode)->join.jointype)
+		{
+			case JOIN_INNER:
+				iname = "Nested Loop";
+				break;
+			case JOIN_LEFT:
+				iname = "Nested Loop Left Join";
+				break;
+			case JOIN_LASJ:
+				iname = "Nested Loop Left Anti Semi Join";
+				break;
+			case JOIN_FULL:
+				iname = "Nested Loop Full Join";
+				break;
+			case JOIN_RIGHT:
+				iname = "Nested Loop Right Join";
+				break;
+			case JOIN_IN:
+				iname = "Nested Loop EXISTS Join";
+				break;
+			default:
+				iname = "Nested Loop ??? Join";
+		}
+
+		Assert(GPMON_NLJ_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Nested Loop", 
+							 (int64)planNode->plan_rows,
+							 m, NULL);
+	}
+}

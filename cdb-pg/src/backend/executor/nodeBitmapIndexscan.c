@@ -23,6 +23,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/instrument.h"
 #include "executor/nodeBitmapIndexscan.h"
@@ -252,6 +253,11 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		return NULL;
+	}
+
 	/*
 	 * create state structure
 	 */
@@ -349,27 +355,7 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	 * all done.
 	 */
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPINDEXSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT,
-            { "Bitmap Index Scan Rescan", "Rescans", 0 },
-			{ NULL, NULL, 0 }
-		};
-		
-		char *relname = get_rel_name(node->indexid);
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(relname),
-			{ NULL, NULL }
-		};
-		
-		Assert(GPMON_BITMAPINDEXSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&indexstate->ss.ps, "Bitmap Index Scan", 
-                                      (int64)indexstate->ss.ps.plan->plan_rows, 
-                                      m, t);
-		if (relname)
-			pfree(relname);
-	}
+	initGpmonPktForBitmapIndexScan((Plan *)node, &indexstate->ss.ps.gpmon_pkt, estate);
 
 	return indexstate;
 }
@@ -379,4 +365,34 @@ ExecCountSlotsBitmapIndexScan(BitmapIndexScan *node)
 {
 	return ExecCountSlotsNode(outerPlan((Plan *) node)) +
 		ExecCountSlotsNode(innerPlan((Plan *) node)) + BITMAPINDEXSCAN_NSLOTS;
+}
+
+
+void
+initGpmonPktForBitmapIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, BitmapIndexScan));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPINDEXSCAN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT,
+			{ "Bitmap Index Scan Rescan", "Rescans", 0 },
+			{ NULL, NULL, 0 }
+		};
+		
+		char *relname = get_rel_name(((BitmapIndexScan *)planNode)->indexid);
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(relname),
+			{ NULL, NULL }
+		};
+		
+		Assert(GPMON_BITMAPINDEXSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Bitmap Index Scan", 
+							 (int64)planNode->plan_rows, 
+							 m, t);
+		if (relname)
+			pfree(relname);
+	}
+	
 }

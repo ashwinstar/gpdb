@@ -296,7 +296,6 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
     Assert(Gp_role == GP_ROLE_EXECUTE);
 
     if (!queryDesc ||
-        !queryDesc->planstate ||
         !queryDesc->estate ||
         !queryDesc->estate->es_slice_map)
         return;
@@ -315,6 +314,9 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
                planstate->lefttree);
         planstate = planstate->lefttree;
     }
+
+	if (planstate == NULL)
+		return;
 
     /* Start building the message header in our context area. */
     memset(&ctx, 0, sizeof(ctx));

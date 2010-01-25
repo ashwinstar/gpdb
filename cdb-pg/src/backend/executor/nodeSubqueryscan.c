@@ -28,6 +28,7 @@
  */
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/nodeSubqueryscan.h"
 #include "optimizer/var.h"              /* CDB: contain_var_reference() */
@@ -160,6 +161,14 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	Assert(innerPlan(node) == NULL);
 
 	/*
+	 * Since subquery nodes create its own executor state,
+	 * and pass it down to its child nodes, we always
+	 * initialize the subquery node. However, some
+	 * fields are not initialized if not necessary, see
+	 * below.
+	 */
+
+	/*
 	 * create state structure
 	 */
 	subquerystate = makeNode(SubqueryScanState);
@@ -193,11 +202,14 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 
 #define SUBQUERYSCAN_NSLOTS 2
 
-	/*
-	 * tuple table initialization
-	 */
-	ExecInitResultTupleSlot(estate, &subquerystate->ss.ps);
-	ExecInitScanTupleSlot(estate, &subquerystate->ss);
+	if (NodeInCurrentSlice(estate))
+	{
+		/*
+		 * tuple table initialization
+		 */
+		ExecInitResultTupleSlot(estate, &subquerystate->ss.ps);
+		ExecInitScanTupleSlot(estate, &subquerystate->ss);
+	}
 
 	/*
 	 * initialize subquery
@@ -240,6 +252,8 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
 	sp_estate->es_sliceTable = estate->es_sliceTable;
 	sp_estate->es_slice_map = estate->es_slice_map;
+	sp_estate->current_slice_no = estate->current_slice_no;
+	sp_estate->slice_estates = estate->slice_estates;
 	
 	/* 
 	 * also load shared nodes list 
@@ -261,39 +275,25 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	/* return borrowed share node list */
 	estate->es_sharenode = sp_estate->es_sharenode;
 
-	/*
-	 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo).
-	 * Because the subplan is in its own memory context, we need to copy its
-	 * result tuple type not just link to it; else the tupdesc will disappear
-	 * too soon during shutdown.
-	 */
-	ExecAssignScanType(&subquerystate->ss,
-			 CreateTupleDescCopy(ExecGetResultType(subquerystate->subplan)));
-
-	/*
-	 * Initialize result tuple type and projection info.
-	 */
-	ExecAssignResultTypeFromTL(&subquerystate->ss.ps);
-	ExecAssignScanProjectionInfo(&subquerystate->ss);
-
-	/* Set up gpmon */
+	if (NodeInCurrentSlice(estate))
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_SUBQUERYSCAN_TOTAL+1] = 
-		{
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Subquery Scan Rescan", "Rescans", 0},
-			{ NULL, NULL, 0},
-		};
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(rte->eref->aliasname),
-			{ NULL, NULL }
-		};
-
-		InitPlanStateGpmonPkt(&subquerystate->ss.ps, "Subquery Scan", 
-                                      (int64) subquerystate->ss.ps.plan->plan_rows, 
-                                      m, t); 
+		/*
+		 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo).
+		 * Because the subplan is in its own memory context, we need to copy its
+		 * result tuple type not just link to it; else the tupdesc will disappear
+		 * too soon during shutdown.
+		 */
+		ExecAssignScanType(&subquerystate->ss,
+						   CreateTupleDescCopy(ExecGetResultType(subquerystate->subplan)));
+	
+		/*
+		 * Initialize result tuple type and projection info.
+		 */
+		ExecAssignResultTypeFromTL(&subquerystate->ss.ps);
+		ExecAssignScanProjectionInfo(&subquerystate->ss);
 	}
+
+	initGpmonPktForSubqueryScan((Plan *)node, &subquerystate->ss.ps.gpmon_pkt, estate);
 
 	return subquerystate;
 }
@@ -326,8 +326,11 @@ ExecEndSubqueryScan(SubqueryScanState *node)
 	/*
 	 * clean out the upper tuple table
 	 */
-	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	node->ss.ss_ScanTupleSlot = NULL;	/* not ours to clear */
+	if (node->ss.ss_ScanTupleSlot != NULL)
+	{
+		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
+		node->ss.ss_ScanTupleSlot = NULL;	/* not ours to clear */
+	}
 
 	/* gpmon */
 	EndPlanStateGpmonPkt(&node->ss.ps);
@@ -373,4 +376,31 @@ ExecSubqueryReScan(SubqueryScanState *node, ExprContext *exprCtxt)
 
 	Gpmon_M_Incr(GpmonPktFromSubqueryScanState(node), GPMON_SUBQUERYSCAN_RESCAN);
 	CheckSendPlanStateGpmonPkt(&node->ss.ps);
+}
+	
+void
+initGpmonPktForSubqueryScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	RangeTblEntry *rte;
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, SubqueryScan));
+
+	rte = rt_fetch(((SubqueryScan *)planNode)->scan.scanrelid, estate->es_range_table);
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_SUBQUERYSCAN_TOTAL+1] = 
+		{
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ "Subquery Scan Rescan", "Rescans", 0},
+			{ NULL, NULL, 0},
+		};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(rte->eref->aliasname),
+			{ NULL, NULL }
+		};
+
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Subquery Scan", 
+							 (int64)planNode->plan_rows, 
+							 m, t); 
+	}
 }

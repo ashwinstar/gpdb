@@ -22,6 +22,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "executor/nodeLimit.h"
 
@@ -315,6 +316,12 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & EXEC_FLAG_MARK));
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+		return NULL;
+	}
+
 	/*
 	 * create state structure
 	 */
@@ -360,15 +367,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&limitstate->ps);
 	limitstate->ps.ps_ProjInfo = NULL;
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_LIMIT_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT,
-			{ NULL, NULL, 0}
-		};
-
-		Assert(GPMON_LIMIT_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&limitstate->ps, "Limit", (int64)0, m, NULL);
-	}
+	initGpmonPktForLimit((Plan *)node, &limitstate->ps.gpmon_pkt, estate);
+	
 	return limitstate;
 }
 
@@ -409,4 +409,20 @@ ExecReScanLimit(LimitState *node, ExprContext *exprCtxt)
 	 */
 	if (((PlanState *) node)->lefttree->chgParam == NULL)
 		ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
+}
+
+void
+initGpmonPktForLimit(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Limit));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_LIMIT_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT,
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_LIMIT_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Limit", (int64)0, m, NULL);
+	}
 }

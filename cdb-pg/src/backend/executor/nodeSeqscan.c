@@ -275,6 +275,11 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	Assert(outerPlan(node) == NULL);
 	Assert(innerPlan(node) == NULL);
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		return NULL;
+	}
+	
 	/*
 	 * create state structure
 	 */
@@ -318,28 +323,7 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&scanstate->ps);
 	ExecAssignScanProjectionInfo(scanstate);
 
-	/* Set up gpmon */
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_SEQSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Seq Scan Page Stats", "Pages", 0 },
-			{ "Seq Scan Restore Pos", "Restores", 0},
-			{ "Seq Scan Rescan", "Rescans", 0},
-			{ NULL, NULL, 0 }
-		};
-
-		RangeTblEntry *rte = rt_fetch(((Scan *)scanstate->ps.plan)->scanrelid, estate->es_range_table);
-		char schema_rel_name[NAMEDATALEN * 2] = {0};
-
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
-			{ NULL, NULL }
-		};
-
-		Assert(GPMON_SEQSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&scanstate->ps, "Seq Scan",
-                                      (int64) scanstate->ps.plan->plan_rows, m, t);
-	}
+	initGpmonPktForSeqScan((Plan *)node, &scanstate->ps.gpmon_pkt, estate);
 
 	return scanstate;
 }
@@ -504,100 +488,6 @@ char * GetScanRelNameGpmon(Oid relid, char schema_rel_name[NAMEDATALEN * 2])
 	return schema_rel_name;
 }
 
-void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename,
-                           int64 rowsout_est, Gpmon_NameUnit_MaxVal *m,
-                           Gpmon_NameVal_Text *t)
-{
-	int rowsout_adjustment_factor = 0;
-
-	if(!ps)
-		return;
-
-	/* The estimates are now global so we need to adjust by
-	 * the number of segments in the array.
-	 */
-	rowsout_adjustment_factor = getgpsegmentCount();
-
-	/* Make sure we don't div by zero below */
-	if (rowsout_adjustment_factor < 1)
-		rowsout_adjustment_factor = 1;
-
-	Assert(rowsout_adjustment_factor >= 1);
-
-	memset(&ps->gpmon_pkt, 0, sizeof(ps->gpmon_pkt));
-
-	ps->gpmon_plan_tick = 0;
-
-	ps->gpmon_pkt.magic = GPMON_MAGIC;
-	ps->gpmon_pkt.version = GPMON_PACKET_VERSION;
-	ps->gpmon_pkt.pkttype = GPMON_PKTTYPE_QEXEC;
-
-	gpmon_gettmid(&ps->gpmon_pkt.u.qexec.key.tmid);
-     	ps->gpmon_pkt.u.qexec.key.ssid = gp_session_id;
-	ps->gpmon_pkt.u.qexec.key.ccnt = gp_command_count;
-	ps->gpmon_pkt.u.qexec.key.segid = Gp_segment;
-	ps->gpmon_pkt.u.qexec.key.pid = MyProcPid;
-	ps->gpmon_pkt.u.qexec.key.nid = ps->plan->plan_node_id;
-
-	ps->gpmon_pkt.u.qexec.pnid = ps->plan->plan_parent_node_id;
-
-
-	snprintf(ps->gpmon_pkt.u.qexec.ntype, sizeof(ps->gpmon_pkt.u.qexec.ntype), nodename);
-
-	ps->gpmon_pkt.u.qexec.rowsout = 0;
-	ps->gpmon_pkt.u.qexec.rowsout_est = rowsout_est / rowsout_adjustment_factor;
-
-	if(m)
-	{
-		int i=0;
-		for(i=0; i<GPMON_QEXEC_M_COUNT; ++i)
-		{
-			AssertImply(m[i].name, m[i].unit);
-			if(m[i].name)
-			{
-				Assert(m[i].unit);
-				snprintf(ps->gpmon_pkt.u.qexec.m[i].name,
-						sizeof(ps->gpmon_pkt.u.qexec.m[i].name),
-						m[i].name);
-				snprintf(ps->gpmon_pkt.u.qexec.m[i].unit,
-						sizeof(ps->gpmon_pkt.u.qexec.m[i].unit),
-						m[i].unit);
-				ps->gpmon_pkt.u.qexec.m[i].valuemax = m[i].maxval;
-			}
-			else
-				break;
-		}
-	}
-
-	if (t)
-	{
-		int i=0;
-		for (i=0; i < GPMON_QEXEC_T_COUNT; ++i)
-		{
-			if (t[i].name && t[i].value)
-			{
-				Assert(t[i].value);
-				snprintf(ps->gpmon_pkt.u.qexec.t[i].name,
-						 sizeof(ps->gpmon_pkt.u.qexec.t[i].name),
-						 t[i].name);
-				snprintf(ps->gpmon_pkt.u.qexec.t[i].value,
-						 sizeof(ps->gpmon_pkt.u.qexec.t[i].value),
-						 t[i].value);
-			}
-		}
-	}
-
-	snprintf(ps->gpmon_pkt.u.qexec.nstatus, sizeof(ps->gpmon_pkt.u.qexec.nstatus), "Initialize");
-
-	if(gp_enable_gpperfmon)
-	{
-		if(ps->state && ps->state->es_cur_slice_idx == currentSliceId)
-			gpmon_send(&ps->gpmon_pkt);
-	}
-
-	snprintf(ps->gpmon_pkt.u.qexec.nstatus, sizeof(ps->gpmon_pkt.u.qexec.nstatus), "Executing");
-}
-
 void CheckSendPlanStateGpmonPkt(PlanState *ps)
 {
 	if(!ps)
@@ -630,3 +520,126 @@ void EndPlanStateGpmonPkt(PlanState *ps)
 	}
 }
 
+/*
+ * InitPlanNodeGpmonPkt -- initialize the init gpmon package, and send it off.
+ */
+void InitPlanNodeGpmonPkt(Plan *plan, gpmon_packet_t *gpmon_pkt, EState *estate,
+						  const char *nodename,
+						  int64 rowsout_est, Gpmon_NameUnit_MaxVal *m,
+						  Gpmon_NameVal_Text *t)
+{
+	int rowsout_adjustment_factor = 0;
+
+	if(!plan)
+		return;
+
+	/* The estimates are now global so we need to adjust by
+	 * the number of segments in the array.
+	 */
+	rowsout_adjustment_factor = getgpsegmentCount();
+
+	/* Make sure we don't div by zero below */
+	if (rowsout_adjustment_factor < 1)
+		rowsout_adjustment_factor = 1;
+
+	Assert(rowsout_adjustment_factor >= 1);
+
+	memset(gpmon_pkt, 0, sizeof(gpmon_packet_t));
+
+	gpmon_pkt->magic = GPMON_MAGIC;
+	gpmon_pkt->version = GPMON_PACKET_VERSION;
+	gpmon_pkt->pkttype = GPMON_PKTTYPE_QEXEC;
+
+	gpmon_gettmid(&gpmon_pkt->u.qexec.key.tmid);
+     	gpmon_pkt->u.qexec.key.ssid = gp_session_id;
+	gpmon_pkt->u.qexec.key.ccnt = gp_command_count;
+	gpmon_pkt->u.qexec.key.segid = Gp_segment;
+	gpmon_pkt->u.qexec.key.pid = MyProcPid;
+	gpmon_pkt->u.qexec.key.nid = plan->plan_node_id;
+
+	gpmon_pkt->u.qexec.pnid = plan->plan_parent_node_id;
+
+
+	snprintf(gpmon_pkt->u.qexec.ntype, sizeof(gpmon_pkt->u.qexec.ntype), nodename);
+
+	gpmon_pkt->u.qexec.rowsout = 0;
+	gpmon_pkt->u.qexec.rowsout_est = rowsout_est / rowsout_adjustment_factor;
+
+	if(m)
+	{
+		int i=0;
+		for(i=0; i<GPMON_QEXEC_M_COUNT; ++i)
+		{
+			AssertImply(m[i].name, m[i].unit);
+			if(m[i].name)
+			{
+				Assert(m[i].unit);
+				snprintf(gpmon_pkt->u.qexec.m[i].name,
+						sizeof(gpmon_pkt->u.qexec.m[i].name),
+						m[i].name);
+				snprintf(gpmon_pkt->u.qexec.m[i].unit,
+						sizeof(gpmon_pkt->u.qexec.m[i].unit),
+						m[i].unit);
+				gpmon_pkt->u.qexec.m[i].valuemax = m[i].maxval;
+			}
+			else
+				break;
+		}
+	}
+
+	if (t)
+	{
+		int i=0;
+		for (i=0; i < GPMON_QEXEC_T_COUNT; ++i)
+		{
+			if (t[i].name && t[i].value)
+			{
+				Assert(t[i].value);
+				snprintf(gpmon_pkt->u.qexec.t[i].name,
+						 sizeof(gpmon_pkt->u.qexec.t[i].name),
+						 t[i].name);
+				snprintf(gpmon_pkt->u.qexec.t[i].value,
+						 sizeof(gpmon_pkt->u.qexec.t[i].value),
+						 t[i].value);
+			}
+		}
+	}
+
+	snprintf(gpmon_pkt->u.qexec.nstatus, sizeof(gpmon_pkt->u.qexec.nstatus), "Initialize");
+
+	if(gp_enable_gpperfmon)
+	{
+		if(estate)
+			gpmon_send(gpmon_pkt);
+	}
+
+	snprintf(gpmon_pkt->u.qexec.nstatus, sizeof(gpmon_pkt->u.qexec.nstatus), "Executing");
+}
+
+void
+initGpmonPktForSeqScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, SeqScan));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_SEQSCAN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ "Seq Scan Page Stats", "Pages", 0 },
+			{ "Seq Scan Restore Pos", "Restores", 0},
+			{ "Seq Scan Rescan", "Rescans", 0},
+			{ NULL, NULL, 0 }
+		};
+		
+		RangeTblEntry *rte = rt_fetch(((Scan *)planNode)->scanrelid, estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }
+		};
+		
+		Assert(GPMON_SEQSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Seq Scan",
+							 (int64) planNode->plan_rows, m, t);
+	}
+}

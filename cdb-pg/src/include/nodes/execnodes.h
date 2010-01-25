@@ -537,6 +537,20 @@ typedef struct EState
 
 	/* CDB: partitioning state info */
 	PartitionState *es_partition_state;
+	
+	/*
+	 * The slice number for the current node that is
+	 * being processed. During the tree traversal, 
+	 * this value is set by Motion and InitPlan nodes.
+	 */
+	int current_slice_no;
+
+	/*
+	 * The EState for the root of each slice. This is used
+	 * at ExecEndPlan to shut down nodes in each slice.
+	 */
+	struct EState **slice_estates;
+
 } EState;
 
 
@@ -1136,9 +1150,11 @@ typedef struct Gpmon_NameVal_Text
         char *value;
 } Gpmon_NameVal_Text;
 
-extern void InitPlanStateGpmonPkt(PlanState *ps, const char *name, int64 rowsout_est, Gpmon_NameUnit_MaxVal *m, Gpmon_NameVal_Text *t); 
 extern void CheckSendPlanStateGpmonPkt(PlanState *ps);
 extern void EndPlanStateGpmonPkt(PlanState *ps);
+extern void InitPlanNodeGpmonPkt(Plan* plan, gpmon_packet_t *gpmon_pkt, EState *estate,
+								 const char *name, int64 rowsout_est,
+								 Gpmon_NameUnit_MaxVal *m, Gpmon_NameVal_Text *t); 
 
 static inline void Gpmon_M_Incr(gpmon_packet_t *pkt, int nth) 
 {
@@ -1222,6 +1238,7 @@ typedef struct AppendState
 {
         PlanState        ps;                                /* its first field is NodeTag */
         PlanState **appendplans;        /* array of PlanStates for my inputs */
+        int eflags; /* used to initialize each subplan */
         int                        as_nplans;
         int                        as_whichplan;
         int                        as_firstplan;
@@ -2047,5 +2064,45 @@ typedef struct MotionState
 
         int numInputSegs;           /* the number of segments on the sending slice */
 } MotionState;
+
+extern void sendInitGpmonPkts(Plan *node, EState *estate);
+extern void initGpmonPktForResult(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForAppend(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForBitmapAnd(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForBitmapOr(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForSeqScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForAppendOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForAOCSScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForExternalScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForBitmapIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForBitmapHeapScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForBitmapAppendOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForTidScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForSubqueryScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForFunctionScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForValuesScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForNestLoop(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForMergeJoin(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForHashJoin(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForMaterial(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForSort(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForGroup(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForAgg(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForUnique(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForHash(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForSetOp(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForLimit(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForMotion(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForShareInputScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForWindow(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForRepeat(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+
+/*
+ * The funcion pointers to init gpmon package for each plan node. 
+ * The order of the function pointers are the same as the one defined in
+ * NodeTag (nodes.h).
+ */
+extern void (*initGpmonPktFuncs[T_Plan_End - T_Plan_Start])(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 
 #endif   /* EXECNODES_H */

@@ -21,6 +21,7 @@
 
 #include "access/heapam.h"
 #include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/nodeAppendOnlyscan.h"
 
@@ -121,6 +122,11 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 	Assert(outerPlan(node) == NULL);
 	Assert(innerPlan(node) == NULL);
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		return NULL;
+	}
+
 	/*
 	 * create state structure
 	 */
@@ -167,26 +173,7 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&appendonlystate->ss.ps);
 	ExecAssignScanProjectionInfo(&appendonlystate->ss);
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_APPONLYSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT, 
-			{ "Append-only Scan Rescan", "Rescans", 0},
-			{ NULL, NULL, 0 }
-		};
-		
-		RangeTblEntry *rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
-		char schema_rel_name[NAMEDATALEN * 2] = {0};
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
-			{ NULL, NULL }
-		};
-
-		Assert(GPMON_APPONLYSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&appendonlystate->ss.ps, "Append-only Scan", 
-                                      (int64)appendonlystate->ss.ps.plan->plan_rows,
-                                      m, t);
-	}
+	initGpmonPktForAppendOnlyScan((Plan *)node, &appendonlystate->ss.ps.gpmon_pkt, estate);
 
 	return appendonlystate;
 }
@@ -307,4 +294,32 @@ ExecAppendOnlyReScan(AppendOnlyScanState *node, ExprContext *exprCtxt)
 
 	Gpmon_M_Incr(GpmonPktFromAppOnlyScanState(node), GPMON_APPONLYSCAN_RESCAN);
 	CheckSendPlanStateGpmonPkt(&node->ss.ps);
+}
+
+void
+initGpmonPktForAppendOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, AppendOnlyScan));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_APPONLYSCAN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT, 
+			{ "Append-only Scan Rescan", "Rescans", 0},
+			{ NULL, NULL, 0 }
+		};
+		
+		RangeTblEntry *rte = rt_fetch(((AppendOnlyScan *)planNode)->scan.scanrelid,
+									  estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }
+		};
+		
+		Assert(GPMON_APPONLYSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Append-only Scan", 
+							 (int64)planNode->plan_rows,
+							 m, t);
+	}
 }

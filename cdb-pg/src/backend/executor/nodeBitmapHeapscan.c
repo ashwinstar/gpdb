@@ -537,6 +537,12 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	 */
 	Assert(IsMVCCSnapshot(estate->es_snapshot) || gp_select_invisible);
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+		return NULL;
+	}
+
 	/*
 	 * create state structure
 	 */
@@ -622,27 +628,8 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	 */
 	outerPlanState(scanstate) = ExecInitNode(outerPlan(node), estate, eflags);
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPHEAPSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Bitmap Heap Scan Pages", "Pages", 0 },
-               	{ "Bitmap Heap Scan Rescan", "Rescans", 0 },
-			{ NULL, NULL, 0}
-		};
-		
-		RangeTblEntry *rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
-		char schema_rel_name[NAMEDATALEN * 2] = {0};
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
-			{ NULL, NULL }
-		};
+	initGpmonPktForBitmapHeapScan((Plan *)node, &scanstate->ss.ps.gpmon_pkt, estate);
 
-		Assert(GPMON_BITMAPHEAPSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&scanstate->ss.ps, "Bitmap Heap Scan", 
-                                      (int64) scanstate->ss.ps.plan->plan_rows,
-                                      m, t);
-	}
 	/*
 	 * all done.
 	 */
@@ -654,4 +641,33 @@ ExecCountSlotsBitmapHeapScan(BitmapHeapScan *node)
 {
 	return ExecCountSlotsNode(outerPlan((Plan *) node)) +
 		ExecCountSlotsNode(innerPlan((Plan *) node)) + BITMAPHEAPSCAN_NSLOTS;
+}
+
+void
+initGpmonPktForBitmapHeapScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, BitmapHeapScan));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPHEAPSCAN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ "Bitmap Heap Scan Pages", "Pages", 0 },
+			{ "Bitmap Heap Scan Rescan", "Rescans", 0 },
+			{ NULL, NULL, 0}
+		};
+		
+		RangeTblEntry *rte = rt_fetch(((BitmapHeapScan *)planNode)->scan.scanrelid,
+									  estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }
+		};
+
+		Assert(GPMON_BITMAPHEAPSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Bitmap Heap Scan", 
+							 (int64)planNode->plan_rows,
+							 m, t);
+	}
 }

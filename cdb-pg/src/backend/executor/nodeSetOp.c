@@ -34,6 +34,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "executor/nodeSetOp.h"
 #include "utils/memutils.h"
@@ -227,6 +228,13 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+
+		return NULL;
+	}
+	
 	/*
 	 * create state structure
 	 */
@@ -277,36 +285,7 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 							   node->numCols,
 							   node->dupColIdx);
 
-	{
-		char *iname = NULL;
-		Gpmon_NameUnit_MaxVal m[GPMON_SETOP_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ NULL, NULL, 0}
-		};
-
-		switch(node->cmd)
-		{
-			case SETOPCMD_INTERSECT:
-				iname = "SetOp Intersect";
-				break;
-			case SETOPCMD_INTERSECT_ALL:
-				iname = "SetOp Intersect All";
-				break;
-			case SETOPCMD_EXCEPT:
-				iname = "SetOp Except";
-				break;
-			case SETOPCMD_EXCEPT_ALL:
-				iname = "SetOp Except All";
-				break;
-			default:
-				iname = "SetOp ???";
-		}
-
-		Assert(GPMON_SETOP_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&setopstate->ps, "SetOp", 
-                                      (int64)setopstate->ps.plan->plan_rows,
-                                      m, NULL);
-	}
+	initGpmonPktForSetOp((Plan *)node, &setopstate->ps.gpmon_pkt, estate);
 
 	return setopstate;
 }
@@ -355,4 +334,41 @@ ExecReScanSetOp(SetOpState *node, ExprContext *exprCtxt)
 	 */
 	if (((PlanState *) node)->lefttree->chgParam == NULL)
 		ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
+}
+
+void
+initGpmonPktForSetOp(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, SetOp));
+
+	{
+		char *iname = NULL;
+		Gpmon_NameUnit_MaxVal m[GPMON_SETOP_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ NULL, NULL, 0}
+		};
+
+		switch(((SetOp *)planNode)->cmd)
+		{
+			case SETOPCMD_INTERSECT:
+				iname = "SetOp Intersect";
+				break;
+			case SETOPCMD_INTERSECT_ALL:
+				iname = "SetOp Intersect All";
+				break;
+			case SETOPCMD_EXCEPT:
+				iname = "SetOp Except";
+				break;
+			case SETOPCMD_EXCEPT_ALL:
+				iname = "SetOp Except All";
+				break;
+			default:
+				iname = "SetOp ???";
+		}
+
+		Assert(GPMON_SETOP_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "SetOp", 
+							 (int64)planNode->plan_rows,
+							 m, NULL);
+	}
 }

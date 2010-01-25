@@ -202,6 +202,13 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 
 	Assert(innerPlan(node) == NULL);
 	
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+
+		return NULL;
+	}
+	
 	/* create state data structure */
 	sisstate = makeNode(ShareInputScanState);
 	sisstate->ss.ps.plan = (Plan *) node;
@@ -253,20 +260,8 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 
 	sisstate->ss.ps.ps_ProjInfo = NULL;
 	
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_SHAREINPUT_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Shared Scan Restore Pos", "Restores", 0},
-			{ "Shared Scan Rescan", "Rescans", 0},
-			{ NULL, NULL, 0 }
-		};
-
-		Assert(GPMON_SHAREINPUT_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&sisstate->ss.ps, "Shared Scan",
-                                      (int64)sisstate->ss.ps.plan->plan_rows, 
-                                      m, NULL);
-	}
-
+	initGpmonPktForShareInputScan((Plan *)node, &sisstate->ss.ps.gpmon_pkt, estate);
+	
 	return sisstate;
 }
 
@@ -854,4 +849,24 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 	elog(DEBUG1, "SISC: Writer have got all reader done notification");
 	shareinput_clean_lk_ctxt(ctxt);
 	UnregisterXactCallbackOnce(XCallBack_ShareInput_FIFO, (void *) ctxt);
+}
+
+void
+initGpmonPktForShareInputScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, ShareInputScan));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_SHAREINPUT_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ "Shared Scan Restore Pos", "Restores", 0},
+			{ "Shared Scan Rescan", "Rescans", 0},
+			{ NULL, NULL, 0 }
+		};
+
+		Assert(GPMON_SHAREINPUT_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Shared Scan",
+							 (int64)planNode->plan_rows, 
+							 m, NULL);
+	}
 }

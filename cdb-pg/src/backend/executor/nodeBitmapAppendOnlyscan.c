@@ -437,6 +437,12 @@ ExecInitBitmapAppendOnlyScan(BitmapAppendOnlyScan *node, EState *estate, int efl
 	 */
 	Assert(IsMVCCSnapshot(estate->es_snapshot) || gp_select_invisible);
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+		return NULL;
+	}
+
 	/*
 	 * create state structure
 	 */
@@ -548,27 +554,8 @@ ExecInitBitmapAppendOnlyScan(BitmapAppendOnlyScan *node, EState *estate, int efl
 	 */
 	outerPlanState(scanstate) = ExecInitNode(outerPlan(node), estate, eflags);
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPAPPENDONLYSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Bitmap Append-Only Scan Pages", "Pages", 0 },
-               	{ "Bitmap Append-Only Scan Rescan", "Rescans", 0 },
-			{ NULL, NULL, 0}
-		};
-		
-		RangeTblEntry *rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
-		char schema_rel_name[NAMEDATALEN * 2] = {0};
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
-			{ NULL, NULL }
-		};
+	initGpmonPktForBitmapAppendOnlyScan((Plan *)node, &scanstate->ss.ps.gpmon_pkt, estate);
 
-		Assert(GPMON_BITMAPAPPENDONLYSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&scanstate->ss.ps, "Bitmap Append-Only Scan", 
-                                      (int64) scanstate->ss.ps.plan->plan_rows,
-                                      m, t);
-	}
 	/*
 	 * all done.
 	 */
@@ -582,3 +569,31 @@ ExecCountSlotsBitmapAppendOnlyScan(BitmapAppendOnlyScan *node)
 		ExecCountSlotsNode(innerPlan((Plan *) node)) + BITMAPAPPENDONLYSCAN_NSLOTS;
 }
 
+void
+initGpmonPktForBitmapAppendOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, BitmapAppendOnlyScan));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPAPPENDONLYSCAN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ "Bitmap Append-Only Scan Pages", "Pages", 0 },
+			{ "Bitmap Append-Only Scan Rescan", "Rescans", 0 },
+			{ NULL, NULL, 0}
+		};
+		
+		RangeTblEntry *rte = rt_fetch(((BitmapAppendOnlyScan *)planNode)->scan.scanrelid,
+									  estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }
+		};
+
+		Assert(GPMON_BITMAPAPPENDONLYSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Bitmap Append-Only Scan", 
+							 (int64)planNode->plan_rows,
+							 m, t);
+	}
+}

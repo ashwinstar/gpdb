@@ -26,6 +26,7 @@
 
 #include "access/heapam.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/nodeTidscan.h"
 #include "optimizer/clauses.h"
@@ -477,6 +478,11 @@ ExecInitTidScan(TidScan *node, EState *estate, int eflags)
 	TidScanState *tidstate;
 	Relation	currentRelation;
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		return NULL;
+	}
+
 	/*
 	 * create state structure
 	 */
@@ -541,25 +547,7 @@ ExecInitTidScan(TidScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&tidstate->ss.ps);
 	ExecAssignScanProjectionInfo(&tidstate->ss);
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_TIDSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT,
-			{ NULL, NULL, 0}
-		};
-		
-		RangeTblEntry *rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
-		char schema_rel_name[NAMEDATALEN * 2] = {0};
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
-			{ NULL, NULL }	
-		};
-
-		Assert(GPMON_TIDSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&tidstate->ss.ps, "Tid Scan", 
-                                      (int64)tidstate->ss.ps.plan->plan_rows, 
-                                      m, t);
-	}
+	initGpmonPktForTidScan((Plan *)node, &tidstate->ss.ps.gpmon_pkt, estate);
 
 	/*
 	 * all done.
@@ -572,4 +560,31 @@ ExecCountSlotsTidScan(TidScan *node)
 {
 	return ExecCountSlotsNode(outerPlan((Plan *) node)) +
 		ExecCountSlotsNode(innerPlan((Plan *) node)) + TIDSCAN_NSLOTS;
+}
+
+void
+initGpmonPktForTidScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, TidScan));
+	
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_TIDSCAN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT,
+			{ NULL, NULL, 0}
+		};
+		
+		RangeTblEntry *rte = rt_fetch(((TidScan *)planNode)->scan.scanrelid,
+									  estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }	
+		};
+		
+		Assert(GPMON_TIDSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Tid Scan", 
+							 (int64)planNode->plan_rows, 
+							 m, t);
+	}
 }

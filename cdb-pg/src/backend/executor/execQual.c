@@ -4486,15 +4486,20 @@ ExecInitExprInitPlan(SubPlan *node, PlanState *parent)
 {
 	SubPlanState *sstate = makeNode(SubPlanState);
 
-	if (!parent)
-		elog(ERROR, "SubPlan found with no parent plan");
-
 	/* The subplan's state will be initialized later */
 	sstate->sub_estate = NULL;
 	sstate->planstate = NULL;
 
-	sstate->testexpr = ExecInitExpr((Expr *) node->testexpr, parent);
-	sstate->args = (List *) ExecInitExpr((Expr *) node->args, parent);
+	if (parent != NULL)
+	{
+		sstate->testexpr = ExecInitExpr((Expr *) node->testexpr, parent);
+		sstate->args = (List *) ExecInitExpr((Expr *) node->args, parent);
+	}
+	else
+	{
+		sstate->testexpr = NULL;
+		sstate->args = NULL;
+	}
 
 	sstate->xprstate.expr = (Expr *) node;
 

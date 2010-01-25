@@ -24,6 +24,7 @@
  */
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "executor/nodeValuesscan.h"
 #include "optimizer/var.h"              /* CDB: contain_var_reference() */
@@ -206,6 +207,11 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
 	Assert(outerPlan(node) == NULL);
 	Assert(innerPlan(node) == NULL);
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		return NULL;
+	}
+
 	/*
 	 * create new ScanState for node
 	 */
@@ -282,20 +288,8 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&scanstate->ss.ps);
 	ExecAssignScanProjectionInfo(&scanstate->ss);
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_NODEVALUESCAN_TOTAL +1] = {
-			GPMON_QEXEC_M_INIT,
-			{ NULL, NULL, 0}
-		};
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(rte->eref->aliasname),
-			{ NULL, NULL }
-		};
-
-		InitPlanStateGpmonPkt(&scanstate->ss.ps, "Values Scan", (int64)0, m, t);
-	}
-
+	initGpmonPktForValuesScan((Plan *)node, &scanstate->ss.ps.gpmon_pkt, estate);
+	
 	return scanstate;
 }
 
@@ -369,4 +363,27 @@ ExecValuesReScan(ValuesScanState *node, ExprContext *exprCtxt)
 	/*node->ss.ps.ps_TupFromTlist = false;*/
 
 	node->curr_idx = -1;
+}
+
+void
+initGpmonPktForValuesScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	RangeTblEntry *rte;
+	Assert(planNode != NULL && gpmon_pkt != NULL);
+
+	rte = rt_fetch(((ValuesScan *)planNode)->scan.scanrelid, estate->es_range_table);
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_NODEVALUESCAN_TOTAL +1] = {
+			GPMON_QEXEC_M_INIT,
+			{ NULL, NULL, 0}
+		};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(rte->eref->aliasname),
+			{ NULL, NULL }
+		};
+
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Values Scan", (int64)0, m, t);
+	}
 }

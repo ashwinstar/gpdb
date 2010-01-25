@@ -25,6 +25,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "executor/nodeUnique.h"
 #include "utils/memutils.h"
@@ -117,6 +118,12 @@ ExecInitUnique(Unique *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+		return NULL;
+	}
+	
 	/*
 	 * create state structure
 	 */
@@ -165,18 +172,8 @@ ExecInitUnique(Unique *node, EState *estate, int eflags)
 							   node->numCols,
 							   node->uniqColIdx);
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_UNIQUE_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ NULL, NULL, 0}
-		};
-
-		Assert(GPMON_UNIQUE_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&uniquestate->ps, "Unique", 
-                                      (int64)uniquestate->ps.plan->plan_rows,
-                                      m, NULL);
-	}
-
+	initGpmonPktForUnique((Plan *)node, &uniquestate->ps.gpmon_pkt, estate);
+	
 	return uniquestate;
 }
 
@@ -221,4 +218,22 @@ ExecReScanUnique(UniqueState *node, ExprContext *exprCtxt)
 	 */
 	if (((PlanState *) node)->lefttree->chgParam == NULL)
 		ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
+}
+
+void
+initGpmonPktForUnique(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Unique));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_UNIQUE_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_UNIQUE_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Unique", 
+							 (int64)planNode->plan_rows,
+							 m, NULL);
+	}
 }

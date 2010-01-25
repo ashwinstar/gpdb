@@ -359,6 +359,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 * InitPlan
 		 */
 		estate->es_slice_map = (MotionState **) palloc0((1 + queryDesc->plannedstmt->nMotionNodes) * sizeof(MotionState *));
+		estate->slice_estates = (EState **) palloc0((1 + queryDesc->plannedstmt->nMotionNodes) * sizeof(EState *));
 
 		estate->es_sharenode = (List **) palloc0(sizeof(List *));
 
@@ -584,7 +585,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 			/* Run a root slice. */
 			/* TODO Can we use nMotionNodes from PlannedStmt and remove it from Plan? (PSMERGE) */
-			if (queryDesc->planstate->plan->nMotionNodes > 0 && !estate->es_interconnect_is_setup)
+			if (queryDesc->planstate != NULL &&
+				queryDesc->planstate->plan->nMotionNodes > 0 && !estate->es_interconnect_is_setup)
 			{
 				estate->es_interconnect_is_setup = true;
 
@@ -706,8 +708,9 @@ ExecutorRun(QueryDesc *queryDesc,
 	estate->es_processed = 0;
 	estate->es_lastoid = InvalidOid;
 
-	sendTuples = (operation == CMD_SELECT ||
-				  queryDesc->plannedstmt->queryTree->returningList);
+	sendTuples = (queryDesc->tupDesc != NULL &&
+				  (operation == CMD_SELECT ||
+				   queryDesc->plannedstmt->queryTree->returningList));
 
 	if (sendTuples)
 		(*dest->rStartup) (dest, operation, queryDesc->tupDesc);
@@ -1472,6 +1475,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 */
 	planstate = ExecInitNode(stmt->planTree, estate, eflags);
 
+	if (estate->es_cur_root_idx != estate->es_cur_slice_idx)
+		return;
+	
 	/*
 	 * Get the tuple descriptor describing the type of tuples to return. (this
 	 * is especially important if we are creating a relation with "SELECT
@@ -1530,29 +1536,29 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			 */
 			if ( list_length(stmt->resultRelations) > 1 )
 			{
-				PlanState **appendplans;
+				List *appendplans;
 				int			as_nplans;
 				ResultRelInfo *resultRelInfo;
-				int			i;
+				ListCell *lc;
 
 				/* Top plan had better be an Append here. */
 				Assert(IsA(stmt->planTree, Append));
 				Assert(((Append *) stmt->planTree)->isTarget);
 				Assert(IsA(planstate, AppendState));
-				appendplans = ((AppendState *) planstate)->appendplans;
-				as_nplans = ((AppendState *) planstate)->as_nplans;
+				appendplans = ((Append *) stmt->planTree)->appendplans;
+				as_nplans = list_length(appendplans);
 				Assert(as_nplans == estate->es_num_result_relations);
 				resultRelInfo = estate->es_result_relations;
-				for (i = 0; i < as_nplans; i++)
+				foreach(lc, appendplans)
 				{
-					PlanState  *subplan = appendplans[i];
+					Plan  *subplan = (Plan *)lfirst(lc);
 					JunkFilter *j;
 
 					if (operation == CMD_UPDATE)
 						ExecCheckPlanOutput(resultRelInfo->ri_RelationDesc,
-											subplan->plan->targetlist);
+											subplan->targetlist);
 
-					j = ExecInitJunkFilter(subplan->plan->targetlist,
+					j = ExecInitJunkFilter(subplan->targetlist,
 							resultRelInfo->ri_RelationDesc->rd_att->tdhasoid,
 								  ExecAllocTableSlot(estate->es_tupleTable));
 					resultRelInfo->ri_junkFilter = j;
@@ -2000,13 +2006,33 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 	/*
 	 * shut down the node-type-specific query processing
 	 */
-	ExecEndNode(planstate);
+	if (estate->es_is_subquery || estate->es_cur_slice_idx == estate->es_cur_root_idx)
+	{
+		if (planstate != NULL)
+			ExecEndNode(planstate);
 
-	/*
-	 * destroy the executor "tuple" table.
-	 */
-	ExecDropTupleTable(estate->es_tupleTable, true);
-	estate->es_tupleTable = NULL;
+		/*
+		 * destroy the executor "tuple" table.
+		 */
+		ExecDropTupleTable(estate->es_tupleTable, true);
+		estate->es_tupleTable = NULL;
+	}
+	else
+	{
+		EState *currentEState;
+		Assert(estate->es_slice_map[estate->es_cur_slice_idx] != NULL);
+		ExecEndNode((PlanState *)estate->es_slice_map[estate->es_cur_slice_idx]);
+
+		/*
+		 * destroy the executor "tuple" table.
+		 */
+		Assert(estate->slice_estates != NULL &&
+			   estate->slice_estates[estate->es_cur_slice_idx] != NULL);
+		currentEState =	estate->slice_estates[estate->es_cur_slice_idx];
+		ExecDropTupleTable(currentEState->es_tupleTable, true);
+		currentEState->es_tupleTable = NULL;
+	}
+
 
 	/* Report how many tuples we may have inserted into AO tables */
 	SendAOTupCounts(estate);

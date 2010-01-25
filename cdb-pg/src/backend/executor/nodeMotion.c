@@ -386,7 +386,7 @@ execMotionUnsortedReceiver(MotionState * node)
     node->numTuplesToParent++;
 
     /* store it in our result slot and return this. */
-    slot = outerPlanState(node)->ps_ResultTupleSlot;
+    slot = node->ps.ps_ResultTupleSlot;
     slot = ExecStoreGenericTuple(tuple, slot, true /* shouldFree */);
 
 #ifdef CDB_MOTION_DEBUG
@@ -540,7 +540,7 @@ static void create_motion_mk_heap(MotionState *node)
             motion->numSortCols, 
             tupsort_fetch_datum_motion,
             tupsort_free_datum_motion,
-            ExecGetResultType(outerPlanState(node)), false, 0, /* dummy does not matter */
+            ExecGetResultType(&node->ps), false, 0, /* dummy does not matter */
             motion->sortOperators,
             motion->sortColIdx,
             NULL
@@ -605,7 +605,7 @@ execMotionSortedReceiver_mk(MotionState * node)
     if (mke_is_empty(&e))
         return NULL;
 
-    slot = outerPlanState(node)->ps_ResultTupleSlot;
+    slot = node->ps.ps_ResultTupleSlot;
     slot = ExecStoreGenericTuple(e.ptr, slot, true);
     return slot;
 }
@@ -852,6 +852,8 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	Assert(node->motionID > 0);
 	Assert(node->motionID <= sliceTable->nMotions);
 
+	estate->current_slice_no = node->motionID;
+
 	/*
 	 * create state structure
 	 */
@@ -942,8 +944,10 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
         Insist(Gp_role == GP_ROLE_EXECUTE);
 		Assert(estate->es_slice_map != NULL);
 		Assert(estate->es_slice_map[0] == NULL);
+		Assert(estate->slice_estates != NULL);
 
 		estate->es_slice_map[node->motionID] = motionstate;
+		estate->slice_estates[node->motionID] = estate;
 		recvSlice = (Slice *)list_nth(sliceTable->slices, sendSlice->parentIndex);
 
 		if(recvSlice->sliceIndex == sliceTable->localSlice)
@@ -1009,7 +1013,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	 */
 	ExecAssignResultTypeFromTL(&motionstate->ps);
 	motionstate->ps.ps_ProjInfo = NULL;
-	tupDesc = ExecGetResultType(outerPlanState(motionstate));
+	tupDesc = ExecGetResultType(&motionstate->ps);
 
 	/* Set up motion send data structures */
 	if (motionstate->mstype == MOTIONSTATE_SEND && node->motionType == MOTIONTYPE_HASH) 
@@ -1082,19 +1086,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
     }
 #endif
 
-	/* Set up gpmon */
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_MOTION_TOTAL+1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
-			{ NULL, NULL, 0 } 
-		};
-
-		InitPlanStateGpmonPkt(&motionstate->ps, 
-                                      node->motionType == MOTIONTYPE_HASH ? "Redistribute Motion" :
-                                      (node->numOutputSegs == 0 ? "Broadcast Motion" : "Gather Motion"), 
-                                      (int64) motionstate->ps.plan->plan_rows, m, NULL); 
-	}
-
+	initGpmonPktForMotion((Plan *)node, &motionstate->ps.gpmon_pkt, estate);
 
 	return motionstate;
 }
@@ -1601,4 +1593,22 @@ ExecStopMotion(MotionState * node)
 	SendStopMessage(node->ps.state->motionlayer_context,
 					node->ps.state->interconnect_context,
 					motion->motionID);
+}
+
+void
+initGpmonPktForMotion(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Motion));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_MOTION_TOTAL+1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
+			{ NULL, NULL, 0 } 
+		};
+
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, 
+							 ((Motion *)planNode)->motionType == MOTIONTYPE_HASH ? "Redistribute Motion" :
+							 (((Motion *)planNode)->numOutputSegs == 0 ? "Broadcast Motion" : "Gather Motion"), 
+							 (int64) planNode->plan_rows, m, NULL); 
+	}
 }

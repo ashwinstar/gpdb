@@ -94,6 +94,7 @@
 
 #include "access/nbtree.h"
 #include "catalog/pg_amop.h"
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/execdefs.h"
 #include "executor/nodeMergejoin.h"
@@ -1656,6 +1657,14 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+		ExecInitNode(innerPlan(node), estate,
+					 eflags | (node->unique_outer ? 0 : EXEC_FLAG_MARK));
+		return NULL;
+	}
+
 	MJ1_printf("ExecInitMergeJoin: %s\n",
 			   "initializing node");
 
@@ -1804,45 +1813,8 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	MJ1_printf("ExecInitMergeJoin: %s\n",
 			   "node initialized");
 
-	{
-		char *iname = NULL;
-		Gpmon_NameUnit_MaxVal m[GPMON_MERGEJOIN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT,
-			{ "Merge Join Inner Tuples", "Tuples", 0},
-			{ "Merge Join Outer Tuples", "Tuples", 0},
-			{ NULL, NULL, 0}
-		};
-
-		switch(node->join.jointype)
-		{
-			case JOIN_INNER:
-				iname = "Merge Join";
-				break;
-			case JOIN_LEFT:
-				iname = "Merge Left Join";
-				break;
-			case JOIN_LASJ:
-				iname = "Merge Left Anti Semi Join";
-				break;
-			case JOIN_FULL:
-				iname = "Merge Full Join";
-				break;
-			case JOIN_RIGHT:
-				iname = "Merge Right Join";
-				break;
-			case JOIN_IN:
-				iname = "Merge EXISTS Join";
-				break;
-			default:
-				iname = "Merge ??? Join";
-		}
-
-		Assert(GPMON_MERGEJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&mergestate->js.ps, iname, 
-                                      (int64)mergestate->js.ps.plan->plan_rows,
-                                      m, NULL);
-	}
-
+	initGpmonPktForMergeJoin((Plan *)node, &mergestate->js.ps.gpmon_pkt, estate);
+	
 	return mergestate;
 }
 
@@ -1910,4 +1882,48 @@ ExecReScanMergeJoin(MergeJoinState *node, ExprContext *exprCtxt)
 	if (((PlanState *) node)->righttree->chgParam == NULL)
 		ExecReScan(((PlanState *) node)->righttree, exprCtxt);
 
+}
+void
+initGpmonPktForMergeJoin(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, MergeJoin));
+	
+	{
+		char *iname = NULL;
+		Gpmon_NameUnit_MaxVal m[GPMON_MERGEJOIN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT,
+			{ "Merge Join Inner Tuples", "Tuples", 0},
+			{ "Merge Join Outer Tuples", "Tuples", 0},
+			{ NULL, NULL, 0}
+		};
+
+		switch(((MergeJoin *)planNode)->join.jointype)
+		{
+			case JOIN_INNER:
+				iname = "Merge Join";
+				break;
+			case JOIN_LEFT:
+				iname = "Merge Left Join";
+				break;
+			case JOIN_LASJ:
+				iname = "Merge Left Anti Semi Join";
+				break;
+			case JOIN_FULL:
+				iname = "Merge Full Join";
+				break;
+			case JOIN_RIGHT:
+				iname = "Merge Right Join";
+				break;
+			case JOIN_IN:
+				iname = "Merge EXISTS Join";
+				break;
+			default:
+				iname = "Merge ??? Join";
+		}
+
+		Assert(GPMON_MERGEJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, iname, 
+							 (int64)planNode->plan_rows,
+							 m, NULL);
+	}
 }

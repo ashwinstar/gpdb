@@ -5616,6 +5616,12 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	/* Check for unsupported flags. */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+		return NULL;
+	}
+	
 	/* Create state structure. */
 	wstate = makeWindowState(node, estate);
 
@@ -5686,17 +5692,8 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	/* Frame initialisation can take place now */	
 	init_frames(wstate);
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_WINDOW_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ NULL, NULL, 0}
-		};
-
-		Assert(GPMON_WINDOW_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&wstate->ps, "Window", 
-                                      (int64)wstate->ps.plan->plan_rows, m, NULL);
-	}
-
+	initGpmonPktForWindow((Plan *)node, &wstate->ps.gpmon_pkt, estate);
+	
 	return wstate;
 }
 
@@ -6424,4 +6421,21 @@ first_value_generic(PG_FUNCTION_ARGS)
        PG_RETURN_NULL();
 
     return d;
+}
+
+void
+initGpmonPktForWindow(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Window));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_WINDOW_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_WINDOW_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Window", 
+							 (int64)planNode->plan_rows, m, NULL);
+	}
 }

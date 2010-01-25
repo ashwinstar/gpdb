@@ -2963,7 +2963,6 @@ static Node *
 pre_dispatch_function_evaluation_mutator(Node *node,
 										 pre_dispatch_function_evaluation_context * context)
 {
-	List * savetargets = NIL;
 	Node * new_node = 0;
 	
 	if (node == NULL)
@@ -3182,32 +3181,13 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		return (Node *) newexpr;
 	}
 
-
 	/*
 	 * For any node type not handled above, we recurse using
 	 * plan_tree_mutator, which will copy the node unchanged but try to
 	 * simplify its arguments (if any) using this routine.
 	 */
-	savetargets = NIL;
-
-	if (is_plan_node(node) &&
-		!is_projection_capable_plan((Plan *)node))
-	{
-		/*
-		 * don't do targetlists in nodes where the targetlist isn't used.  Hide them from the mutator
-		 */
-		savetargets = ((Plan *)node)->targetlist;
-		((Plan *)node)->targetlist = NIL;
-	}
-
 	new_node =  plan_tree_mutator(node, pre_dispatch_function_evaluation_mutator,
 								  (void *) context);
-
-	if (savetargets != NIL)
-	{
-		((Plan *)node)->targetlist = savetargets;
-		((Plan *)new_node)->targetlist = savetargets;
-	}
 
 	return new_node;
 }
@@ -3600,20 +3580,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	{
 
 		MemoryContext oldContext;
-		List * savetargets = NIL;
-		Plan * oldplan = NULL;
 		
-		if (is_plan_node((Node *)stmt->planTree) &&
-			!is_projection_capable_plan(stmt->planTree))
-		{
-			/* Don't do targetlists in nodes where the targetlist isn't used.
-			 * Hide them from the mutator
-			 */
-			savetargets = stmt->planTree->targetlist;
-			stmt->planTree->targetlist = NIL;
-			oldplan = stmt->planTree; /* in case root mutates */
-		}
-
 		oldContext = CurrentMemoryContext;
 		if ( stmt->qdContext ) /* Temporary! See comment in PlannedStmt. */
 		{
@@ -3633,17 +3600,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		}
 
 		stmt->planTree = (Plan *) make_plan_constant((Node *) stmt->planTree, is_SRI);
-
-		/* 
-		 * It's fine to use plan_tree_mutator() because it calls
-		 * expression_tree_mutator recursively
-		 */
-
-		if (savetargets != NIL)
-		{
-			stmt->planTree->targetlist = savetargets;
-			oldplan->targetlist = savetargets; /* in case root mutated */
-		}
 
 		MemoryContextSwitchTo(oldContext);
 	}

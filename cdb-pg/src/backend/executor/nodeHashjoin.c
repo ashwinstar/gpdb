@@ -389,6 +389,13 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(innerPlan(node), estate, eflags);
+		ExecInitNode(outerPlan(node), estate, eflags);
+		return NULL;
+	}
+
 	/*
 	 * create state structure
 	 */
@@ -556,51 +563,8 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	hjstate->hj_MatchedOuter = false;
 	hjstate->hj_OuterNotEmpty = false;
 
-	/* Set up gpmon */
-	{
-		char *iname = NULL;
-		Gpmon_NameUnit_MaxVal m[GPMON_HASHJOIN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
-			/* SPILLBATCH */
-			{ "Hash Join Spill Batches", "Batches", 0 }, 
-			/* SPILLTUPLE */
-			{ "Hash Join Spill Tuples", "Tuples", 0 }, 
-			/* SPILLBYTE */
-			{ "Hash Join Spill Bytes", "Bytes", 0 }, 
-			/* TOTAL */
-			{ NULL, NULL, 0},
-		};
-
-		switch(node->join.jointype)
-		{
-			case JOIN_INNER:
-				iname = "Hash Join";
-				break;
-			case JOIN_LEFT:
-				iname = "Hash Left Join";
-				break;
-			case JOIN_LASJ:
-				iname = "Hash Left Anti Semi Join";
-				break;
-			case JOIN_FULL:
-				iname = "Hash Full Join";
-				break;
-			case JOIN_RIGHT:
-				iname = "Hash Right Join";
-				break;
-			case JOIN_IN:
-				iname = "Hash EXISTS Join";
-				break;
-			default:
-				iname = "Hash ??? Join";
-		}
-
-		Assert(GPMON_HASHJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&hjstate->js.ps, iname, 
-                                      (int64) hjstate->js.ps.plan->plan_rows,
-                                      m, NULL);
-	}
-
+	initGpmonPktForHashJoin((Plan *)node, &hjstate->js.ps.gpmon_pkt, estate);
+	
 	return hjstate;
 }
 
@@ -1203,4 +1167,54 @@ bool isNotDistinctJoin(List *qualList)
 		}
 	}
 	return false;
+}
+
+void
+initGpmonPktForHashJoin(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, HashJoin));
+	
+	{
+		char *iname = NULL;
+		Gpmon_NameUnit_MaxVal m[GPMON_HASHJOIN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
+			/* SPILLBATCH */
+			{ "Hash Join Spill Batches", "Batches", 0 }, 
+			/* SPILLTUPLE */
+			{ "Hash Join Spill Tuples", "Tuples", 0 }, 
+			/* SPILLBYTE */
+			{ "Hash Join Spill Bytes", "Bytes", 0 }, 
+			/* TOTAL */
+			{ NULL, NULL, 0},
+		};
+
+		switch(((HashJoin *)planNode)->join.jointype)
+		{
+			case JOIN_INNER:
+				iname = "Hash Join";
+				break;
+			case JOIN_LEFT:
+				iname = "Hash Left Join";
+				break;
+			case JOIN_LASJ:
+				iname = "Hash Left Anti Semi Join";
+				break;
+			case JOIN_FULL:
+				iname = "Hash Full Join";
+				break;
+			case JOIN_RIGHT:
+				iname = "Hash Right Join";
+				break;
+			case JOIN_IN:
+				iname = "Hash EXISTS Join";
+				break;
+			default:
+				iname = "Hash ??? Join";
+		}
+
+		Assert(GPMON_HASHJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, iname, 
+							 (int64)planNode->plan_rows,
+							 m, NULL);
+	}
 }

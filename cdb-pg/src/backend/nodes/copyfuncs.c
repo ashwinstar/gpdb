@@ -244,6 +244,7 @@ _copyAppend(Append *from)
 	COPY_NODE_FIELD(appendplans);
 	COPY_SCALAR_FIELD(isTarget);
 	COPY_SCALAR_FIELD(isZapped);
+	COPY_SCALAR_FIELD(hasXslice);
 
 	return newnode;
 }

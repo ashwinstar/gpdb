@@ -26,6 +26,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "executor/nodeRepeat.h"
 #include "parser/parsetree.h"
@@ -141,6 +142,13 @@ ExecInitRepeat(Repeat *node, EState *estate, int eflags)
 	Assert(!(eflags & (EXEC_FLAG_MARK | EXEC_FLAG_BACKWARD)) ||
 		   outerPlan(node) != NULL);
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		ExecInitNode(outerPlan(node), estate, eflags);
+
+		return NULL;
+	}
+
 	/*
 	 * Create state structure.
 	 */
@@ -176,17 +184,8 @@ ExecInitRepeat(Repeat *node, EState *estate, int eflags)
 
 	init_RepeatState(repeatstate);
 	
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_REPEAT_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT,
-			{ NULL, NULL, 0}
-		};
-
-		Assert(GPMON_REPEAT_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&repeatstate->ps, "RepeatNode",
-							  (int64)repeatstate->ps.plan->plan_rows, m, NULL);
-	}
-
+	initGpmonPktForRepeat((Plan *)node, &repeatstate->ps.gpmon_pkt, estate);
+	
 	return repeatstate;
 }
 
@@ -236,4 +235,22 @@ init_RepeatState(RepeatState *repeatstate)
 	repeatstate->repeat_done = false;
 	repeatstate->slot = NULL;
 	repeatstate->repeat_count = 0;
+}
+
+void
+initGpmonPktForRepeat(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Repeat));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_REPEAT_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT,
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_REPEAT_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "RepeatNode",
+							 (int64) planNode->plan_rows, m, NULL);
+	}
+	
 }

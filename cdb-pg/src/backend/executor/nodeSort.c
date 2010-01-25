@@ -316,6 +316,14 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 {
 	SortState  *sortstate;
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		eflags &= ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
+		ExecInitNode(outerPlan(node), estate, eflags);
+
+		return NULL;
+	}
+	
 	SO1_printf("ExecInitSort: %s\n",
 			   "initializing sort node");
 
@@ -418,25 +426,7 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	SO1_printf("ExecInitSort: %s\n",
 			   "sort node initialized");
 
-	/* Gpmon */
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_SORT_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN((int64) sortstate->ss.ps.plan->plan_rows), 
-			{ "Sort Memory Usage", "Bytes", 0 }, 
-			{ "Sort Spill Tuples", "Tuples", 0 },
-			{ "Sort Spill Bytes", "Bytes", 0 },
-			{ "Sort Spill Pass", "Passes", 0 },
-			{ "Sort Current Spill Pass Tuples", "Tuples", 0},
-			{ "Sort Current Spill Pass Bytes", "Bytes", 0},
-			{ NULL, NULL, 0 },
-		};
-
-		Assert(GPMON_SORT_TOTAL <= GPMON_QEXEC_M_COUNT);
-
-		InitPlanStateGpmonPkt(&sortstate->ss.ps, "Sort", 
-                                      (int64) sortstate->ss.ps.plan->plan_rows, 
-                                      m, NULL); 
-	}
+	initGpmonPktForSort((Plan *)node, &sortstate->ss.ps.gpmon_pkt, estate);
 
 	return sortstate;
 }
@@ -612,3 +602,28 @@ ExecSortExplainEnd(PlanState *planstate, struct StringInfoData *buf)
      */
     ExecEndSort_internal((SortState *)planstate);
 }                               /* ExecSortExplainEnd */
+
+void
+initGpmonPktForSort(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Sort));
+	
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_SORT_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS_IN((int64) planNode->plan_rows), 
+			{ "Sort Memory Usage", "Bytes", 0 }, 
+			{ "Sort Spill Tuples", "Tuples", 0 },
+			{ "Sort Spill Bytes", "Bytes", 0 },
+			{ "Sort Spill Pass", "Passes", 0 },
+			{ "Sort Current Spill Pass Tuples", "Tuples", 0},
+			{ "Sort Current Spill Pass Bytes", "Bytes", 0},
+			{ NULL, NULL, 0 },
+		};
+
+		Assert(GPMON_SORT_TOTAL <= GPMON_QEXEC_M_COUNT);
+
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Sort", 
+							 (int64)planNode->plan_rows, 
+							 m, NULL); 
+	}
+}

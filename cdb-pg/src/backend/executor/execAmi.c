@@ -522,15 +522,11 @@ ExecMayReturnRawTuples(PlanState *node)
 
 		case T_AppendState:
 			{
-				AppendState *appendstate = (AppendState *) node;
-				int			j;
-
-				for (j = 0; j < appendstate->as_nplans; j++)
-				{
-					if (ExecMayReturnRawTuples(appendstate->appendplans[j]))
-						return true;
-				}
-				break;
+				/*
+				 * Always return true since we don't initialize the subplan
+				 * nodes, so we don't know.
+				 */
+				return true;
 			}
 
 			/* All projecting node types come here */

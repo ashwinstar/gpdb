@@ -28,6 +28,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/instrument.h"
 #include "executor/nodeBitmapAnd.h"
@@ -42,7 +43,7 @@
 BitmapAndState *
 ExecInitBitmapAnd(BitmapAnd *node, EState *estate, int eflags)
 {
-	BitmapAndState *bitmapandstate = makeNode(BitmapAndState);
+	BitmapAndState *bitmapandstate;
 	PlanState **bitmapplanstates;
 	int			nplans;
 	int			i;
@@ -52,11 +53,24 @@ ExecInitBitmapAnd(BitmapAnd *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
+	if (!NodeInCurrentSlice(estate))
+	{
+		foreach (l, node->bitmapplans)
+		{
+			initNode = (Plan *) lfirst(l);
+			ExecInitNode(initNode, estate, eflags);
+		}
+
+		return NULL;
+	}
+	
+
 	/*
 	 * Set up empty vector of subplan states
 	 */
 	nplans = list_length(node->bitmapplans);
 
+	bitmapandstate = makeNode(BitmapAndState);
 	bitmapplanstates = (PlanState **) palloc0(nplans * sizeof(PlanState *));
 
 	/*
@@ -88,16 +102,7 @@ ExecInitBitmapAnd(BitmapAnd *node, EState *estate, int eflags)
 		i++;
 	}
 
-	{
-		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPAND_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT, 
-			{ NULL, NULL, 0}
-		};
-
-		InitPlanStateGpmonPkt(&bitmapandstate->ps, "BitmapAnd", (int64)0,
-							  m, NULL);
-	}
-		
+	initGpmonPktForBitmapAnd((Plan *) node, &bitmapandstate->ps.gpmon_pkt, estate);
 
 	return bitmapandstate;
 }
@@ -348,3 +353,20 @@ tbm_reset_bitmaps(PlanState *pstate)
 		((BitmapOrState *)pstate)->bitmap = NULL;		
 	}
 }
+
+void
+initGpmonPktForBitmapAnd(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
+{
+	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, BitmapAnd));
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPAND_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT, 
+			{ NULL, NULL, 0}
+		};
+		
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "BitmapAnd", (int64)0,
+							  m, NULL);
+	}
+}
+
