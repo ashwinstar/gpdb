@@ -431,6 +431,8 @@ freeCdbComponentDatabases(CdbComponentDatabases *pDBs)
 void
 freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi)
 {
+	int i;
+
 	if (cdi == NULL)
 		return;
 
@@ -439,6 +441,15 @@ freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi)
 
 	if (cdi->address != NULL)
 		pfree(cdi->address);
+
+	for (i=0; i < COMPONENT_DBS_MAX_ADDRS; i++)
+	{
+		if (cdi->hostaddrs[i] != NULL)
+		{
+			pfree(cdi->hostaddrs[i]);
+			cdi->hostaddrs[i] = NULL;
+		}
+	}
 }
 
 /*
@@ -981,7 +992,7 @@ makeRandomSegMap(int total_primaries, int total_to_skip)
 	skip_map = (bool *) palloc(total_primaries * sizeof(bool));
 	MemSet(skip_map, false, total_primaries * sizeof(bool));
 	
-	while(total_to_skip != skipped)
+	while (total_to_skip != skipped)
 	{
 		/*
 		 * create a random int between 0 and (total_primaries - 1).
