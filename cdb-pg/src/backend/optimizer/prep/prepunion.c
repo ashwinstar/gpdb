@@ -898,11 +898,20 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 			isOtherTempNamespace(get_rel_namespace(childOID)))
 			continue;
 
+		/*
+		 * show only leaf tables when the parent table is partitioned
+		 */
+		if (rel_is_partitioned(parentOID) && !rel_is_leaf_partition(childOID))
+		{
+			continue;
+		}
+
 		/* Open rel, acquire the appropriate lock type */
 		if (childOID != parentOID)
 			newrelation = heap_open(childOID, lockmode);
 		else
 			newrelation = oldrelation;
+
 
 		/*
 		 * Build an RTE for the child, and attach to query's rangetable list.
