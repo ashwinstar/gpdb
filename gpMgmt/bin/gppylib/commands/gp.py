@@ -7,7 +7,6 @@
 TODO: docs!
 """
 import os
-import pickle
 
 from gppylib.gplog import *
 from gppylib.db import dbconn
@@ -301,7 +300,7 @@ class GpStandbyStart(Command):
         cmd.run(validateAfter=True)
         return cmd
 
-    def validate(self):
+    def validate(self, expected_rt=0):
         if self.results.rc != 0:
             raise ExecutionError("non-zero rc: %d" % self.results.rc, self)
         if len(self.results.stderr) != 0:
@@ -472,7 +471,6 @@ class GpVersion(Command):
 #-----------------------------------------------
 class GpSegCheckLocaleAndConnect(Command):
     def __init__(self,name,datadir,port,expected_lc_collate,expected_lc_monetary,expected_lc_numeric):
-        self.name=name
         self.datadir=datadir
         self.port=port
         self.expected_lc_collate=expected_lc_collate
@@ -480,7 +478,8 @@ class GpSegCheckLocaleAndConnect(Command):
         self.expected_lc_numeric=expected_lc_numeric
         self.error_str=""
         self.success=False
-        self.cmdStr="GpSegCheckLocaleAndConnect"
+
+        Command.__init__(self, name, "GpSegCheckLocaleAndConnect")
         pass
 
 
@@ -529,16 +528,16 @@ class GpSegCheckLocaleAndConnect(Command):
             self.sucess = False
 
     def set_results(self,results):
-        raise ExecutionError("TODO:  must implement")
+        raise ExecutionError("TODO:  must implement", self)
 
     def get_results(self):
-        raise ExecutionError("TODO:  must implement")
+        raise ExecutionError("TODO:  must implement", self)
 
     def was_successful(self):
-        raise ExecutionError("TODO:  must implement")
+        raise ExecutionError("TODO:  must implement", self)
 
-    def validate(self):
-        raise ExecutionError("TODO:  must implement")
+    def validate(self, expected_rc=0):
+        raise ExecutionError("TODO:  must implement", self)
 
     def getResults(self):
         return (self.success,self.error_str)
@@ -660,17 +659,17 @@ def recovery_startup(datadir):
 
     pid=read_postmaster_pidfile(datadir)
     if check_pid(pid):
-        str="found postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
-        logger.info(str)
+        info_str="found postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
+        logger.info(info_str)
 
         logger.info("attempting to shutdown db with datadir: %s" % datadir )
         cmd=SegmentStop('db shutdown' , datadir,mode='fast')
         cmd.run()
 
         if check_pid(pid):
-            str="unable to stop postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
-            logger.info(str)
-            return str
+            info_str="unable to stop postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
+            logger.info(info_str)
+            return info_str
         else:
             logger.info("shutdown of db successful with datadir: %s" % datadir)
             return None

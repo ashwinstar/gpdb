@@ -24,7 +24,7 @@ PYLIB_SRC=$(SRC)/pythonSrc
 LIB_DIR=$(SRC)/lib
 PYLIB_DIR=$(SRC)/ext
 
-all: paramiko pycrypto pygresql stream netperf
+all: paramiko pycrypto pygresql stream netperf pychecker
 
 #
 # Python Libraries
@@ -94,6 +94,19 @@ pycrypto:
 	export PATH=$(PYCRYPTO_BIN_MAPPINGS_DIR)$(PATH); \
 	  cd $(PYLIB_SRC)/$(PYCRYPTO_DIR)/ && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))" LDFLAGS="$(BLD_CFLAGS)" python setup.py build
 	cp -r $(PYLIB_SRC)/$(PYCRYPTO_DIR)/build/lib.*/Crypto $(PYLIB_DIR)
+
+#
+# PYCHECKER
+#
+PYCHECKER_VERSION=0.8.18
+PYCHECKER_DIR=pychecker-$(PYCHECKER_VERSION)
+
+pychecker:
+	@echo "--- pychecker"
+	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PYCHECKER_DIR).tar.gz
+	cd $(PYLIB_SRC)/$(PYCHECKER_DIR)/ && python setup.py build
+	cp -r $(PYLIB_SRC)/$(PYCHECKER_DIR)/build/lib/pychecker  $(PYLIB_DIR)/
+
 
 solarisTest:
 	@if [ `uname -s` = 'SunOS' ]; then \

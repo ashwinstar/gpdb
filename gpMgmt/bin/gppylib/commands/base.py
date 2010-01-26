@@ -20,16 +20,11 @@ from Queue import  Queue,Empty
 from threading import Thread
 
 
-import logging
 import os
 import signal
 import subprocess
 import sys
 import time
-import unittest
-
-
-
 
 from gppylib import gplog
 from gppylib import gpsubprocess
@@ -98,15 +93,15 @@ class WorkerPool:
             w.join()
 
     def getCompletedItems(self):
-        list=[]
+        completedList=[]
         try:
             while True:
                 item=self.completed_queue.get(False)
                 if item is not None:
-                    list.append(item)                           
+                    completedList.append(item)                           
         except Empty:
-            return list
-        return list  #just to be sure
+            return completedList
+        return completedList  #just to be sure
     
 
     def check_results(self):
@@ -260,7 +255,7 @@ class CommandResult():
             return False
         if not self.completed:
             return False
-        if self.rc is not 0:
+        if self.rc != 0:
             return False
         return True
 
@@ -333,6 +328,7 @@ class LocalExecutionContext(ExecutionContext):
     completed=False
     
     def __init__(self,stdin):
+        ExecutionContext.__init__(self)
         self.stdin = stdin
         pass
     
@@ -368,8 +364,8 @@ class LocalExecutionContext(ExecutionContext):
 class RemoteExecutionContext(LocalExecutionContext):
     
     def __init__(self,targetHost,stdin):
+        LocalExecutionContext.__init__(self, stdin)
         self.targetHost=targetHost
-        self.stdin = stdin
         pass
     
     def execute(self,cmd):
@@ -384,31 +380,10 @@ class RemoteExecutionContext(LocalExecutionContext):
 class RMIExecutionContext(ExecutionContext):
     """ Leave this as a big old TODO: for now.  see agent.py for some more details"""
     def __init__(self):
+        ExecutionContext.__init__(self)
+        raise Exception("RMIExecutionContext - Not implemented")
         pass
 
-
-
-def ping_list(pingName,host_list,queue):
-                
-        logger.debug("pingHosts start")
-        for host in host_list:
-            ping_cmd=Ping("ping",host,ctxt=LOCAL,remoteHost=None)
-            queue.addCommand(ping_cmd)
-        queue.join()  
-        queue.check_results()      
-        logger.debug("pingHosts finished")
-
-
-
-# Helper commands for running commands:
-
-def run_list(queue,host_list,cmdGenerator,shouldValidate=True):
-    for cmd in cmdGenerator(host_list):
-        queue.addCommand(cmd)
-    queue.join()
-    queue.check_results()
-
-    
 
 class Command:
     """ TODO: 
@@ -470,7 +445,7 @@ class Command:
     def validate(self,expected_rc=0):
         """Plain vanilla validation which expects a 0 return code."""        
         if self.results.rc != expected_rc:
-            raise ExecutionError("non-zero rc: %d" % self.results.rc, self)            
+            raise ExecutionError("non-zero rc: %d" % self.results.rc, self)
         
 
 class SQLCommand(Command):
@@ -479,13 +454,13 @@ class SQLCommand(Command):
     connection they wish to cancel and check self.cancel_flag."""
     
     def __init__(self,name):
-        self.name=name
+        Command.__init__(self, name, cmdStr=None)
         self.cancel_flag = False
         self.cancel_conn = None
 
     
     def run(self,validateAfter=False):
-        raise ExecutionError("programmer error.  implementors of SQLCommand must implement run()")
+        raise ExecutionError("programmer error.  implementors of SQLCommand must implement run()", self)
     
     def interrupt(self):
         # No execution context for SQLCommands

@@ -283,8 +283,11 @@ class DiskUsage(Command):
             return 0
 
         if rawIn[0] == 'd':
-            raise UnixOperationError, "du command could not find directory: cmd: %s"\
-                  "resulted in stdout: '%s' stderr: '%s'" % (self.cmdStr, self.results.stdout, self.results.stderr)
+            raise ExecutionError("du command could not find directory: cmd: %s"
+                                 "resulted in stdout: '%s' stderr: '%s'" % 
+                                 (self.cmdStr, self.results.stdout, 
+                                  self.results.stderr),
+                                 self)
         else:
             dirBytes=int(rawIn)
             return dirBytes
@@ -303,8 +306,7 @@ class DiskFree(Command):
         dfCmd=DiskFree(name,directory,ctxt=REMOTE,remoteHost=remote_host)
         dfCmd.run(validateAfter=True)
         return dfCmd.get_bytes_free()
-    
-    
+
     def get_bytes_free(self):
         '''expected output of the form:        
            Filesystem   512-blocks      Used Available Capacity  Mounted on
@@ -394,7 +396,8 @@ class RemoveFiles(Command):
 class PathIsDirectory(Command):
     def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
         self.directory=directory
-        self.cmdStr="""python -c "import os; print os.path.isdir('%s')" """ % directory
+        
+        cmdStr="""python -c "import os; print os.path.isdir('%s')" """ % directory
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
         
     @staticmethod
@@ -439,7 +442,7 @@ class CreateDirIfNecessary(Command):
 class DirectoryIsEmpty(Command):
     def __init(self,name,directory,ctxt=LOCAL,remoteHost=None):
         self.directory=directory
-        self.cmdStr="""python -c "import os; for root, dirs, files in os.walk('%s'); print (len(dirs) != 0 or len(files) != 0) """ % self.directory
+        cmdStr="""python -c "import os; for root, dirs, files in os.walk('%s'); print (len(dirs) != 0 or len(files) != 0) """ % self.directory
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -638,8 +641,8 @@ class PgPortIsActive(Command):
         return cmd.contains_port()
             
     @staticmethod
-    def remote(name,file,port):
-        cmd=PgPortIsActive(name,port,file,ctxt=REMOTE,remoteHost=remote_host)        
+    def remote(name,file,port,remoteHost):
+        cmd=PgPortIsActive(name,port,file,ctxt=REMOTE,remoteHost=remoteHost)        
         cmd.run(validateAfter=True)
         return cmd.contains_port()
         
