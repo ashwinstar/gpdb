@@ -174,12 +174,16 @@ select * from direct_test_type_numeric where numeric1 = 8.8;
 ----------------------------------------------------------------------------------
 -- Prepared statements
 --  do same as above ones but using prepared statements, verify data goes to the right spot
--- todo: FIX PREPARE prepare test_insert (int) as insert into direct_test values ($1,100);
--- execute test_insert(1);
+prepare test_insert (int) as insert into direct_test values ($1,100);
+execute test_insert(1);
+execute test_insert(2);
 
--- todo: FIX PREPARE  prepare test_update (int) as update direct_test set value = 'boo' where key = $1;
--- execute test_update(2);
+select * from direct_test;
 
+prepare test_update (int) as update direct_test set value = 'boo' where key = $1;
+execute test_update(2);
+
+select * from direct_test;
 
 ------------------------
 -- A subquery
