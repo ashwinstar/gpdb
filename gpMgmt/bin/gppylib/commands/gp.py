@@ -128,15 +128,11 @@ class SegmentStart(Command):
         content = gpdb.getSegmentContentId()
         port    = gpdb.getSegmentPort()
         datadir = gpdb.getSegmentDataDirectory()
-        filespaces = gpdb.getSegmentFilespaces()
         logfile = os.path.join(datadir, 'pg_log', 'startup.log')
 
-        filespaceFrags = []
-        for fsoid in filespaces:
-            filespaceFrags.append('-D %d:%s' % (fsoid, filespaces[fsoid]))
 
         cmdfrags=['$GPHOME/bin/pg_ctl']
-        cmdfrags.extend(filespaceFrags)
+        cmdfrags.append('-D %s' % datadir)
         cmdfrags.append('-l %s' % logfile)
 
         if not noWait:

@@ -145,7 +145,7 @@ class GpSegStart:
             res=cmd.get_results()
             if res.rc != 0:
                 #TODO: read in last entries in startup.log
-                datadir = cmd.segment.get_datadir()
+                datadir = cmd.segment.getSegmentDataDirectory()
                 status=SegStartStatus(datadir, False, 
                                       "PG_CTL failed.\nstdout:%s\nstderr:%s\n" % 
                                       (res.stdout,res.stderr))

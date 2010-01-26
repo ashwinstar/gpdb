@@ -37,6 +37,30 @@ static void checkpath2(char*);
 
 static void DeleteFilespaceEntryTuples(Oid fsoid);
 
+
+/*
+ * Calculate maximum filespace path length, Remember that we're going to append
+ * '/<tbsoid>/<dboid>/<relid>.<nnn>'  
+ *
+ *      10 digits for each oid and the extension number,
+ *       1 digit for each slash and the '.' of the extension
+ *       = 10*4 + 4 = +44 characters
+ *
+ * Note: This may be overly conservative.  Do we ever form the whole path 
+ * explicitly?
+ */
+#define MAX_FILESPACE_PATH (MAXPGPATH - 44)
+
+/*
+ * Set maximum allowed number of filespaces.
+ *
+ * Expected number of filespaces is < 10
+ *
+ * Should probably be made into a guc.
+ */
+#define MAX_FILESPACES 64
+
+
 /*
  * Create a filespace
  *
@@ -802,17 +826,9 @@ static void checkpath(char *path)
 						"must be an absolute path", path)));
 
 	/*
-	 * Check that location isn't too long. Remember that we're going to append
-	 * '/<tbsoid>/<dboid>/<relid>.<nnn>'  
-	 *
-	 *      10 digits for each oid and the extension number,
-	 *       1 digit for each slash and the '.' of the extension
-	 *       = 10*4 + 4 = +44 characters
-	 *
-	 * Note: This may be overly conservative.  Do we ever form the whole path 
-	 * explicitly?      
+	 * Check that location isn't too long. 
 	 */
-	if (strlen(path) >= (MAXPGPATH - 44))
+	if (strlen(path) >= MAX_FILESPACE_PATH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("filespace location \"%s\" is too long",

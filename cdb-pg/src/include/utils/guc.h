@@ -281,7 +281,7 @@ extern const char *GetConfigOptionResetString(const char *name);
 extern bool IsSuperuserConfigOption(const char *name);
 extern void ProcessConfigFile(GucContext context);
 extern void InitializeGUCOptions(void);
-extern bool SelectConfigFiles(List *userDoption, const char *progname);
+extern bool SelectConfigFiles(const char *userDoption, const char *progname);
 extern void ResetAllOptions(void);
 extern void AtEOXact_GUC(bool isCommit, bool isSubXact);
 extern void BeginReportingGUCOptions(void);

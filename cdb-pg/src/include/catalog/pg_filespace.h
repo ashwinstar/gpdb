@@ -20,6 +20,8 @@
 #ifndef PG_FILESPACE_H
 #define PG_FILESPACE_H
 
+#include "catalog/genbki.h"
+
 /* ----------------
  *		postgres.h contains the system type definitions and the
  *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
