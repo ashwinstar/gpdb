@@ -69,12 +69,16 @@ static void open_datumstream_segfile(char *basepath, RelFileNode node,
  *
  * Currently, there is one segment file for each column. This function
  * only opens files for those columns which are in the projection.
+ *
+ * If blockDirectory is not NULL, the first block info is written to
+ * the block directory.
  */
 static void open_all_datumstream_segfiles(Relation rel,
 										  AOCSFileSegInfo *segInfo,
 										  DatumStream **ds, 
 										  bool *proj,
-										  int nvp)
+										  int nvp,
+										  AppendOnlyBlockDirectory *blockDirectory)
 {
     char *basepath = relpath(rel->rd_node);
 
@@ -88,7 +92,16 @@ static void open_all_datumstream_segfiles(Relation rel,
 	{
 			open_datumstream_segfile(basepath, rel->rd_node, segInfo, ds[i], i);
 			datumstream_read_block(ds[i]);
-	}
+
+			if (blockDirectory != NULL)
+			{
+				AppendOnlyBlockDirectory_InsertEntry(blockDirectory,
+													 i,
+													 ds[i]->blockFirstRowNum,
+													 ds[i]->blockFileOffset,
+													 ds[i]->blockRowCount);
+			}
+		}
     }
 
     pfree(basepath);
@@ -173,12 +186,36 @@ static int open_next_scan_seg(AOCSScanDesc scan)
 
             if (!emptySeg)
             {
+				/* If the scan also builds the block directory, initialize it here. */
+				if (scan->buildBlockDirectory)
+				{
+					ItemPointerData tid;
+					
+					Assert(scan->blockDirectory != NULL);
+					Assert(scan->aoEntry != NULL);
+					
+					AppendOnlyBlockDirectory_Init_forInsert(scan->blockDirectory,
+															scan->aoEntry,
+															(FileSegInfo *)scan->seginfo[scan->cur_seg],
+															0, /* lastSequence */
+															scan->aos_rel,
+															scan->seginfo[scan->cur_seg]->segno,
+															nvp,
+															true);
+
+					InsertFastSequenceEntry(scan->aoEntry->segrelid,
+											scan->seginfo[scan->cur_seg]->segno,
+											scan->seginfo[scan->cur_seg]->tupcount,
+											&tid);
+				}
+
 				open_all_datumstream_segfiles(scan->aos_rel,
 											  scan->seginfo[scan->cur_seg],
 											  scan->ds,
 											  scan->proj,
-											  nvp);
-
+											  nvp,
+											  scan->blockDirectory);
+				
 				return scan->cur_seg;
 			}
 		}
@@ -192,6 +229,9 @@ static void close_cur_scan_seg(AOCSScanDesc scan)
     int nvp = scan->aos_rel->rd_att->natts;
     int i;
 
+	if (scan->cur_seg < 0)
+		return;
+
     for(i=0; i<nvp; ++i)
     {
         if(scan->ds[i])
@@ -199,6 +239,12 @@ static void close_cur_scan_seg(AOCSScanDesc scan)
             datumstream_close_file(scan->ds[i]);
         }
     }
+
+	if (scan->buildBlockDirectory)
+	{
+		Assert(scan->blockDirectory != NULL);
+		AppendOnlyBlockDirectory_End_forInsert(scan->blockDirectory);
+	}
 }
 
 AOCSScanDesc aocs_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey key, bool *proj)
@@ -212,6 +258,7 @@ AOCSScanDesc aocs_beginscan(Relation relation, Snapshot snapshot, int nkeys, Sca
     scan->aos_rel = relation;
 
     aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
+	scan->aoEntry = aoentry;
     Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
 
     scan->compLevel = aoentry->compresslevel;
@@ -233,6 +280,9 @@ AOCSScanDesc aocs_beginscan(Relation relation, Snapshot snapshot, int nkeys, Sca
 
     aocs_initscan(scan, key);
 
+	scan->buildBlockDirectory = false;
+	scan->blockDirectory = NULL;
+
     return scan;
 }
 
@@ -252,7 +302,7 @@ void aocs_endscan(AOCSScanDesc scan)
     if(scan->aos_key)
         pfree(scan->aos_key);
 
-    close_cur_scan_seg(scan);
+	close_cur_scan_seg(scan);
     close_ds(scan->ds, scan->aos_rel->rd_att->natts);
 
     pfree(scan->ds);
@@ -268,6 +318,7 @@ void aocs_endscan(AOCSScanDesc scan)
     if (scan->seginfo)
         pfree(scan->seginfo);
 
+	pfree(scan->aoEntry);
     pfree(scan);
 }
 
@@ -298,6 +349,7 @@ ReadNext:
             {
                 /* No more seg, we are at the end */
                 ExecClearTuple(slot);
+				scan->cur_seg = -1;
                 return;
             }
 			scan->cur_seg_row = 0;
@@ -320,8 +372,21 @@ ReadNext:
                         /* Ha, cannot read next block, 
                          * we need to go to next seg
                          */
+						close_cur_scan_seg(scan);
                         goto ReadNext;
                     }
+
+					if (scan->buildBlockDirectory)
+					{
+						Assert(scan->blockDirectory != NULL);
+
+						AppendOnlyBlockDirectory_InsertEntry(scan->blockDirectory,
+															 i,
+															 scan->ds[i]->blockFirstRowNum,
+															 scan->ds[i]->blockFileOffset,
+															 scan->ds[i]->blockRowCount);
+					}
+
                     err = datumstream_advance(scan->ds[i]);
                     Assert(err > 0);
                 }
@@ -459,9 +524,11 @@ AOCSInsertDesc aocs_insert_init(Relation rel, int segno)
 	if (desc->aoi_rel->rd_rel->relhasindex)
 	{
 		firstSequence =
-			GetFastSequencesByTid(&desc->fsInfo->sequence_tid,
-								  desc->rowCount + 1,
-								  NUM_FAST_SEQUENCES);
+			GetFastSequences(desc->aoEntry->segrelid,
+							 segno,
+							 desc->rowCount + 1,
+							 NUM_FAST_SEQUENCES,
+							 &desc->fsInfo->sequence_tid);
 		desc->numSequences = NUM_FAST_SEQUENCES;
 	}
 	/* Set last_sequence value */

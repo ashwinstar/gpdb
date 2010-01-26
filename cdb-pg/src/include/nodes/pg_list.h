@@ -137,6 +137,11 @@ extern int	list_length(List *l);
 #define lfourth_int(l)			lfirst_int(lnext(lnext(lnext(list_head(l)))))
 #define lfourth_oid(l)			lfirst_oid(lnext(lnext(lnext(list_head(l)))))
 
+#define lfifth(l)				lfirst(lnext(lnext(lnext(lnext(list_head(l))))))
+#define lfifth_int(l)			lfirst_int(lnext(lnext(lnext(lnext(list_head(l))))))
+#define lfifth_oid(l)			lfirst_oid(lnext(lnext(lnext(lnext(list_head(l))))))
+#define lcfifth(l)				lnext(lnext(lnext(lnext(list_head(l)))))
+
 #define llast(l)				lfirst(list_tail(l))
 #define llast_int(l)			lfirst_int(list_tail(l))
 #define llast_oid(l)			lfirst_oid(list_tail(l))

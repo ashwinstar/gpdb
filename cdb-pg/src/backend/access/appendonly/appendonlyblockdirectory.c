@@ -139,6 +139,15 @@ init_internal(AppendOnlyBlockDirectory *blockDirectory)
 	MemoryContextSwitchTo(oldcxt);
 }
 
+/*
+ * AppendOnlyBlockDirectory_Init_forSearch
+ *
+ * Initialize the block directory to handle the lookup.
+ *
+ * If the block directory relation for this appendonly relation
+ * does not exist before calling this function, set blkdirRel
+ * and blkdirIdx to NULL, and return.
+ */
 void
 AppendOnlyBlockDirectory_Init_forSearch(
 	AppendOnlyBlockDirectory *blockDirectory,
@@ -149,6 +158,26 @@ AppendOnlyBlockDirectory_Init_forSearch(
 	int numColumnGroups,
 	bool isAOCol)
 {	
+	Assert(aoEntry != NULL);
+
+	blockDirectory->aoRel = aoRel;
+
+	if (!OidIsValid(aoEntry->blkdirrelid))
+	{
+		Assert(!OidIsValid(aoEntry->blkdiridxid));
+		blockDirectory->blkdirRel = NULL;
+		blockDirectory->blkdirIdx = NULL;
+
+		return;
+	}
+
+	if (Debug_appendonly_print_blockdirectory)
+		ereport(LOG,
+				(errmsg("Append-only block directory init for search: "
+						"(totalSegfiles, numColumnGroups, isAOCol)="
+						"(%d, %d, %d)",
+						totalSegfiles, numColumnGroups, isAOCol)));
+
 	blockDirectory->segmentFileInfo = segmentFileInfo;
 	blockDirectory->totalSegfiles = totalSegfiles;
 	blockDirectory->aoRel = aoRel;
@@ -156,7 +185,6 @@ AppendOnlyBlockDirectory_Init_forSearch(
 	blockDirectory->isAOCol = isAOCol;
 	blockDirectory->currentSegmentFileNum = -1;
 
-	Assert(aoEntry != NULL);
 	Assert(OidIsValid(aoEntry->blkdirrelid));
 
 	blockDirectory->blkdirRel =
@@ -173,11 +201,11 @@ AppendOnlyBlockDirectory_Init_forSearch(
 /*
  * AppendOnlyBlockDirectory_Init_forInsert
  *
- * Initialize the block directory to handle the inserts. The block
- * directory relation for this appendonly relation should exist
- * before calling this function. 
+ * Initialize the block directory to handle the inserts.
  *
- * The last minipage is also loaded here.
+ * If the block directory relation for this appendonly relation
+ * does not exist before calling this function, set blkdirRel
+ * and blkdirIdx to NULL, and return.
  */
 void
 AppendOnlyBlockDirectory_Init_forInsert(
@@ -192,11 +220,23 @@ AppendOnlyBlockDirectory_Init_forInsert(
 {
 	int groupNo;
 
+	Assert(aoEntry != NULL);
+
+	blockDirectory->aoRel = aoRel;
+
+	if (!OidIsValid(aoEntry->blkdirrelid))
+	{
+		Assert(!OidIsValid(aoEntry->blkdiridxid));
+		blockDirectory->blkdirRel = NULL;
+		blockDirectory->blkdirIdx = NULL;
+
+		return;
+	}
+
 	blockDirectory->segmentFileInfo = NULL;
 	blockDirectory->totalSegfiles = -1;
 	blockDirectory->currentSegmentFileInfo = segmentFileInfo;
 	
-	blockDirectory->aoRel = aoRel;
 	blockDirectory->currentSegmentFileNum = segno;
 	blockDirectory->numColumnGroups = numColumnGroups;
 	blockDirectory->isAOCol = isAOCol;
@@ -212,6 +252,13 @@ AppendOnlyBlockDirectory_Init_forInsert(
 		index_open(aoEntry->blkdiridxid, RowExclusiveLock);
 
 	init_internal(blockDirectory);
+
+	if (Debug_appendonly_print_blockdirectory)
+		ereport(LOG,
+				(errmsg("Append-only block directory init for insert: "
+						"(segno, numColumnGroups, isAOCol, lastSequence)="
+						"(%d, %d, %d, " INT64_FORMAT ")",
+						segno, numColumnGroups, isAOCol, lastSequence)));
 
 	/*
 	 * Load the last minipages from the block directory relation.
@@ -302,6 +349,15 @@ set_directoryentry_range(
 			aocsFsInfo->vpinfo.entry[columnGroupNo].eof;
 	}
 
+	if (Debug_appendonly_print_blockdirectory)
+		ereport(LOG,
+				(errmsg("Append-only block directory find entry: "
+						"(columnGroupNo, firstRowNum, fileOffset, lastRowNum, afterFileOffset) = "
+						"(%d, " INT64_FORMAT ", " INT64_FORMAT ", " INT64_FORMAT ", " INT64_FORMAT ")",
+						columnGroupNo, directoryEntry->range.firstRowNum,
+						directoryEntry->range.fileOffset, directoryEntry->range.lastRowNum,
+						directoryEntry->range.afterFileOffset)));
+
 	return true;
 }
 
@@ -312,6 +368,9 @@ set_directoryentry_range(
  * If such an entry is found, return true. Otherwise, return false.
  *
  * The range for directoryEntry is assigned accordingly in this function.
+ *
+ * The block directory for the appendonly table should exist before calling
+ * this function.
  */
 bool
 AppendOnlyBlockDirectory_GetEntry(
@@ -328,10 +387,6 @@ AppendOnlyBlockDirectory_GetEntry(
 	int numScanKeys = blockDirectory->numScanKeys;
 	ScanKey scanKeys = blockDirectory->scanKeys;
 	
-#ifdef USE_ASSERT_CHECKING
-	StrategyNumber *strategyNumbers = blockDirectory->strategyNumbers;
-#endif /* USE_ASSERT_CHECKING */
-
 	TupleDesc heapTupleDesc;
 	TupleDesc idxTupleDesc;
 	FileSegInfo *fsInfo = NULL;
@@ -341,6 +396,24 @@ AppendOnlyBlockDirectory_GetEntry(
 		&blockDirectory->minipages[columnGroupNo];
 	int entry_no = -1;
 	int tmpGroupNo;
+	
+	if (blkdirRel == NULL || blkdirIdx == NULL)
+	{
+		Assert(RelationIsValid(blockDirectory->aoRel));
+		
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Block directory for append-only relation '%s' does not exist",
+						RelationGetRelationName(blockDirectory->aoRel))));
+		return false;
+	}
+
+	if (Debug_appendonly_print_blockdirectory)
+		ereport(LOG,
+				(errmsg("Append-only block directory get entry: "
+						"(columnGroupNo, segmentFileNum, rowNum) = "
+						"(%d, %d, " INT64_FORMAT ")",
+						columnGroupNo, segmentFileNum, rowNum)));
 
 	/*
 	 * If the segment file number is the same as
@@ -408,9 +481,6 @@ AppendOnlyBlockDirectory_GetEntry(
 	 * the rowNum. We find the minipages for all column groups, since
 	 * currently we will need to access all columns at the same time.
 	 */
-	Assert(blkdirRel != NULL);
-	Assert(blkdirIdx != NULL);
-
 	heapTupleDesc = RelationGetDescr(blkdirRel);
 	idxTupleDesc = RelationGetDescr(blkdirIdx);
 
@@ -420,7 +490,6 @@ AppendOnlyBlockDirectory_GetEntry(
 	{
 		/* Setup the scan keys for the scan. */
 		Assert(scanKeys != NULL);
-		Assert(strategyNumbers != NULL);
 		scanKeys[0].sk_argument = Int32GetDatum(segmentFileNum);
 		scanKeys[1].sk_argument = Int32GetDatum(tmpGroupNo);
 		scanKeys[2].sk_argument = Int64GetDatum(rowNum);
@@ -476,6 +545,9 @@ AppendOnlyBlockDirectory_GetEntry(
  * directory relation on disk. After that, the new entry is added to the
  * new in-memory minipage.
  *
+ * If the block directory for the appendonly relation does not exist,
+ * this function simply returns.
+ *
  * If rowCount is 0, simple return false.
  */
 bool
@@ -497,6 +569,10 @@ AppendOnlyBlockDirectory_InsertEntry(
 	if (rowCount == 0)
 		return false;
 	
+	if (blockDirectory->blkdirRel == NULL ||
+		blockDirectory->blkdirIdx == NULL)
+		return false;
+
 	Assert(minipageInfo->numMinipageEntries <= ( (int)NUM_MINIPAGE_ENTRIES ) );
 	
 	if (minipageInfo->numMinipageEntries == NUM_MINIPAGE_ENTRIES)
@@ -887,23 +963,29 @@ write_minipage(AppendOnlyBlockDirectory *blockDirectory,
 	 */
 	if (ItemPointerIsValid(&minipageInfo->tupleTid))
 	{
-		simple_heap_update(blkdirRel, &minipageInfo->tupleTid, tuple);
-
 		if (Debug_appendonly_print_blockdirectory)
 			ereport(LOG,
 					(errmsg("Append-only block directory update a minipage: "
-							"(columnGroupNo, nEntries) = (%d, %d)",
-							columnGroupNo, minipageInfo->numMinipageEntries)));
+							"(segno, columnGroupNo, nEntries, firstRowNum) = "
+							"(%d, %d, %d, " INT64_FORMAT ")",
+							blockDirectory->currentSegmentFileNum,
+							columnGroupNo, minipageInfo->numMinipageEntries,
+							minipageInfo->minipage->entry[0].firstRowNum)));
+
+		simple_heap_update(blkdirRel, &minipageInfo->tupleTid, tuple);
 	}
 	else
 	{
-		simple_heap_insert(blkdirRel, tuple);
-
 		if (Debug_appendonly_print_blockdirectory)
 			ereport(LOG,
 					(errmsg("Append-only block directory insert a minipage: "
-							"(columnGroupNo, nEntries) = (%d, %d)",
-							columnGroupNo, minipageInfo->numMinipageEntries)));
+							"(segno, columnGroupNo, nEntries, firstRowNum) = "
+							"(%d, %d, %d, " INT64_FORMAT ")",
+							blockDirectory->currentSegmentFileNum,
+							columnGroupNo, minipageInfo->numMinipageEntries,
+							minipageInfo->minipage->entry[0].firstRowNum)));
+
+		simple_heap_insert(blkdirRel, tuple);
 	}
 	
 	CatalogUpdateIndexes(blkdirRel, tuple);
@@ -920,9 +1002,10 @@ AppendOnlyBlockDirectory_End_forInsert(
 	AppendOnlyBlockDirectory *blockDirectory)
 {
 	int groupNo;
-	
-	Assert(blockDirectory->blkdirIdx);
-	Assert(blockDirectory->blkdirRel);
+
+	if (blockDirectory->blkdirRel == NULL ||
+		blockDirectory->blkdirIdx == NULL)
+		return;
 	
 	for (groupNo = 0; groupNo < blockDirectory->numColumnGroups; groupNo++)
 	{
@@ -942,6 +1025,15 @@ AppendOnlyBlockDirectory_End_forInsert(
 		pfree(minipageInfo->minipage);
 	}
 
+	if (Debug_appendonly_print_blockdirectory)
+		ereport(LOG,
+				(errmsg("Append-only block directory end for insert: "
+						"(segno, numColumnGroups, isAOCol)="
+						"(%d, %d, %d)",
+						blockDirectory->currentSegmentFileNum,
+						blockDirectory->numColumnGroups,
+						blockDirectory->isAOCol)));
+
 	pfree(blockDirectory->values);
 	pfree(blockDirectory->nulls);
 	pfree(blockDirectory->minipages);
@@ -960,13 +1052,23 @@ AppendOnlyBlockDirectory_End_forSearch(
 {
 	int groupNo;
 	
-	Assert(blockDirectory->blkdirIdx);
-	Assert(blockDirectory->blkdirRel);
-	
+	if (blockDirectory->blkdirRel == NULL ||
+		blockDirectory->blkdirIdx == NULL)
+		return;
+
 	for (groupNo = 0; groupNo < blockDirectory->numColumnGroups; groupNo++)
 	{
 		pfree(blockDirectory->minipages[groupNo].minipage);
 	}
+
+	if (Debug_appendonly_print_blockdirectory)
+		ereport(LOG,
+				(errmsg("Append-only block directory end for search: "
+						"(totalSegfiles, numColumnGroups, isAOCol)="
+						"(%d, %d, %d)",
+						blockDirectory->totalSegfiles,
+						blockDirectory->numColumnGroups,
+						blockDirectory->isAOCol)));
 
 	pfree(blockDirectory->values);
 	pfree(blockDirectory->nulls);

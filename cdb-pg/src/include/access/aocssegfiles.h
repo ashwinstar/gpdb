@@ -12,7 +12,6 @@
 #define Anum_pg_aocs_tupcount 2
 #define Anum_pg_aocs_varblockcount 3
 #define Anum_pg_aocs_vpinfo 4
-#define Anum_pg_aocs_sequence_tid 5
 
 typedef struct AOCSVPInfoEntry
 {

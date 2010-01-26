@@ -180,7 +180,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 		eof = (int64)fsinfo->eof;
 		
 		scan->aos_segfiles_processed++;
-		
+
 		/* 
 		 * special case: we are the QD reading from an AO table in utility mode
 		 * (gp_dump). We see entries in the aoseg table but no files or data
@@ -190,6 +190,26 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 		 */
 		if(eof > 0)
 		{
+			/* Initialize the block directory for inserts if needed. */
+			if (scan->buildBlockDirectory)
+			{
+				ItemPointerData tid;
+				
+				AppendOnlyBlockDirectory_Init_forInsert(scan->blockDirectory,
+														scan->aoEntry,
+														fsinfo,
+														0, /* lastSequence */
+														scan->aos_rd,
+														segno, /* segno */ 
+														1, /* columnGroupNo */
+														false);
+				
+				InsertFastSequenceEntry(scan->aoEntry->segrelid,
+										segno,
+										fsinfo->tupcount,
+										&tid);
+			}
+		
 			finished_all_files = false;
 			break;
 		}
@@ -345,19 +365,6 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	 * accurate.
 	 */
 	aoInsertDesc->bufferCount = varblockcount;
-
-	/*
-	 * XXX We assume that the fast sequence entries has been setup for
-	 * the AO segment files. This is always true for newly-created AO
-	 * tables. However, we need to make sure that the upgrader adds
-	 * such entries for AO tables created in 3.3.
-	 */
-	if (!ItemPointerIsValid(&aoInsertDesc->fsInfo->sequence_tid))
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("Fast sequence entry for AO table %d segno %d "
-						"does not exist", RelationGetRelid(aoInsertDesc->aoi_rel),
-						aoInsertDesc->cur_segno)));
 }
 
 /*
@@ -943,10 +950,26 @@ getNextBlock(
 									&scan->storageRead,
 									&scan->executorReadBlock))
 	{
+		if (scan->buildBlockDirectory)
+		{
+			Assert(scan->blockDirectory != NULL);
+			AppendOnlyBlockDirectory_End_forInsert(scan->blockDirectory);
+		}
+
 		/* done reading the file */
 		CloseScannedFileSeg(scan);
 
 		return false;			
+	}
+
+	if (scan->buildBlockDirectory)
+	{
+		Assert(scan->blockDirectory != NULL);
+		AppendOnlyBlockDirectory_InsertEntry(
+			scan->blockDirectory, 0,
+			scan->executorReadBlock.blockFirstRowNum,
+			scan->executorReadBlock.headerOffsetInFile,
+			scan->executorReadBlock.rowCount);
 	}
 
 	AppendOnlyExecutorReadBlock_GetContents(
@@ -1219,6 +1242,7 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	 * Get the pg_appendonly information for this table
 	 */
 	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
+	scan->aoEntry = aoentry;
 	complevel = aoentry->compresslevel;
 	comptype = aoentry->compresstype;
 	Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
@@ -1283,8 +1307,9 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	//pgstat_initstats(relation);
 	initscan(scan, key);
 
-	pfree(aoentry);
-	
+	scan->buildBlockDirectory = false;
+	scan->blockDirectory = NULL;
+
 	return scan;
 }
 
@@ -1348,6 +1373,8 @@ appendonly_endscan(AppendOnlyScanDesc scan)
 	}
 
 	pfree(scan->aos_filenamepath);
+
+	pfree(scan->aoEntry);
 	
 	pfree(scan);
 }
@@ -2001,10 +2028,15 @@ appendonly_insert_init(Relation rel, int segno)
 	aoInsertDesc->numSequences = 0;
 	if (aoInsertDesc->aoi_rel->rd_rel->relhasindex)
 	{
+		Assert(!ItemPointerIsValid(&aoInsertDesc->fsInfo->sequence_tid));
+		Assert(aoInsertDesc->fsInfo->segno == segno);
+		
 		firstSequence =
-			GetFastSequencesByTid(&aoInsertDesc->fsInfo->sequence_tid,
-								  aoInsertDesc->rowCount + 1,
-								  NUM_FAST_SEQUENCES);
+			GetFastSequences(aoInsertDesc->aoEntry->segrelid,
+							 segno,
+							 aoInsertDesc->rowCount + 1,
+							 NUM_FAST_SEQUENCES,
+							 &aoInsertDesc->fsInfo->sequence_tid);
 		aoInsertDesc->numSequences = NUM_FAST_SEQUENCES;
 	}
 	/* Set last_sequence value */

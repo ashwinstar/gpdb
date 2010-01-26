@@ -59,7 +59,6 @@ void InsertInitialAOCSFileSegInfo(Oid segrelid, int4 segno, int4 nvp)
 							&tid);
 
     values[Anum_pg_aocs_segno-1] = Int32GetDatum(segno);
-	values[Anum_pg_aocs_sequence_tid - 1] = PointerGetDatum(&tid);
     values[Anum_pg_aocs_vpinfo-1] = PointerGetDatum(vpinfo);
 
     segtup = heaptuple_form_to(segrel->rd_att, values, nulls, NULL, NULL);
@@ -253,10 +252,8 @@ lmark:
     Assert(!null[Anum_pg_aocs_varblockcount - 1]);
     seginfo->varblockcount = DatumGetInt64(d[Anum_pg_aocs_varblockcount - 1]);
 
-	Assert(!null[Anum_pg_aocs_sequence_tid - 1]);
-	ItemPointerCopy((ItemPointer)DatumGetPointer(d[Anum_pg_aocs_sequence_tid - 1]),
-					&seginfo->sequence_tid);
-	
+	ItemPointerSetInvalid(&seginfo->sequence_tid);
+
     Assert(!null[Anum_pg_aocs_vpinfo - 1]);
     {
         struct varlena *v = (struct varlena *) DatumGetPointer(d[Anum_pg_aocs_vpinfo - 1]);
@@ -355,11 +352,9 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel,
         Assert(!null[Anum_pg_aocs_varblockcount - 1]);
         seginfo->varblockcount = DatumGetInt64(d[Anum_pg_aocs_varblockcount - 1]);
 
-		Assert(!null[Anum_pg_aocs_sequence_tid - 1]);
-		ItemPointerCopy((ItemPointer)DatumGetPointer(d[Anum_pg_aocs_sequence_tid - 1]),
-						&seginfo->sequence_tid);
+		ItemPointerSetInvalid(&seginfo->sequence_tid);
 
-        Assert(!null[Anum_pg_aocs_vpinfo - 1]);
+       Assert(!null[Anum_pg_aocs_vpinfo - 1]);
         {
             struct varlena *v = (struct varlena *) DatumGetPointer(d[Anum_pg_aocs_vpinfo - 1]);
             struct varlena *dv = pg_detoast_datum(v);

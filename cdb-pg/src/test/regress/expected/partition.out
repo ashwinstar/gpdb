@@ -5711,12 +5711,13 @@ select * from locktest;
  g_1_prt_1                  | AccessShareLock
  g_1_prt_2                  | AccessShareLock
  g_1_prt_3                  | AccessShareLock
+ gp_fastsequence            | RowExclusiveLock
  locktest                   | AccessShareLock
  pg_class                   | AccessShareLock
  pg_class_oid_index         | AccessShareLock
  pg_class_relname_nsp_index | AccessShareLock
  pg_locks                   | AccessShareLock
-(10 rows)
+(11 rows)
 
 commit;
 -- drop

@@ -35,7 +35,6 @@
 #include "catalog/pg_index.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_namespace.h"
-#include "catalog/gp_fastsequence.h"
 #include "commands/dbcommands.h"
 #include "commands/tablecmds.h"
 #include "commands/vacuum.h"
@@ -1265,14 +1264,7 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_s
 	 * Do the actual work --- either FULL or "lazy" vacuum
 	 */
 	if (vacstmt->full)
-	{
-		/*
-		 * Do not vacuum full gp_fastsequence table.
-		 */
-		if (RelationGetRelid(onerel) != FastSequenceRelationId)
-			full_vacuum_rel(onerel, vacstmt, updated_stats);
-	}
-	
+		full_vacuum_rel(onerel, vacstmt, updated_stats);
 	else
 		lazy_vacuum_rel(onerel, vacstmt, updated_stats);
 

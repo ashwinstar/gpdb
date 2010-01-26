@@ -20,7 +20,6 @@
 #define Anum_pg_aoseg_tupcount			3
 #define Anum_pg_aoseg_varblockcount		4
 #define Anum_pg_aoseg_eofuncompressed	5
-#define Anum_pg_aoseg_sequence_tid		6
 
 #define InvalidFileSegNumber			-1
 #define InvalidUncompressedEof			-1

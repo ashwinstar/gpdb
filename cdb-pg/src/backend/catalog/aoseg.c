@@ -138,7 +138,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 				"pg_aoseg_%u_index", relOid);
 
                 /* this is pretty painful...  need a tuple descriptor */
-                tupdesc = CreateTemplateTupleDesc(6, false);
+                tupdesc = CreateTemplateTupleDesc(5, false);
                 TupleDescInitEntry(tupdesc, (AttrNumber) 1,
                                 "segno",
                                 INT4OID,
@@ -158,10 +158,6 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
                 TupleDescInitEntry(tupdesc, (AttrNumber) 5,
                                 "eofuncompressed",
                                 INT8OID,
-                                -1, 0);
-               TupleDescInitEntry(tupdesc, (AttrNumber) 6,
-                                "sequence_tid",
-                                TIDOID,
                                 -1, 0);
 	}
 	else
@@ -198,10 +194,9 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
          * tupcount bigint 		-- total tup
          * varblockcount bigint,	-- total varblock
          * vpinfo varbinary(max)        -- vertial partition info encoded in bianry.
-		 * sequence_tid,       -- the tid of the last row number
          */
 
-        tupdesc = CreateTemplateTupleDesc(5, false);
+        tupdesc = CreateTemplateTupleDesc(4, false);
 
         TupleDescInitEntry(tupdesc, (AttrNumber) 1,
 						   "segno",
@@ -218,10 +213,6 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
         TupleDescInitEntry(tupdesc, (AttrNumber) 4,
 						   "vpinfo",
 						   VARBITOID,
-						   -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
-						   "sequence_tid",
-						   TIDOID,
 						   -1, 0);
     }
 

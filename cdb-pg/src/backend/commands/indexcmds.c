@@ -480,8 +480,8 @@ DefineIndex(RangeVar *heapRelation,
 		{
 			IndexInfoOpaque *iio = (IndexInfoOpaque *)indexInfo->opaque;
 
-			/* stmt->idxOids can have 4 oids currently. */
-			Assert(list_length(stmt->idxOids) == 4);
+			/* stmt->idxOids can have 7 oids currently. */
+			Assert(list_length(stmt->idxOids) == 7);
 
  			indexRelationId = linitial_oid(stmt->idxOids);
  			Assert(OidIsValid(indexRelationId));
@@ -494,6 +494,15 @@ DefineIndex(RangeVar *heapRelation,
 
  			iio->indexOid = lfourth_oid(stmt->idxOids);
  			Assert(OidIsValid(iio->indexOid));
+
+			iio->blkdirRelOid = lfifth_oid(stmt->idxOids);
+			Assert(OidIsValid(iio->blkdirRelOid));
+			
+			iio->blkdirIdxOid = lfirst_oid(lnext(lcfifth(stmt->idxOids)));
+			Assert(OidIsValid(iio->blkdirIdxOid));
+
+			iio->blkdirComptypeOid = lfirst_oid(lnext(lnext(lcfifth(stmt->idxOids))));
+			Assert(OidIsValid(iio->blkdirComptypeOid));
 
 			quiet = true;
 		}
@@ -533,12 +542,15 @@ DefineIndex(RangeVar *heapRelation,
 			indexRelationId = GetNewRelFileNode(tablespaceId, false, pg_class);
 		    iiopaque->heapOid = GetNewRelFileNode(tablespaceId, false, pg_class);
 			iiopaque->indexOid = GetNewRelFileNode(tablespaceId, false, pg_class);
+		    iiopaque->blkdirRelOid = GetNewRelFileNode(tablespaceId, false, pg_class);
+			iiopaque->blkdirIdxOid = GetNewRelFileNode(tablespaceId, false, pg_class);
 
 			/* done with pg_class */
 			heap_close(pg_class, NoLock);
 
 			pg_type = heap_open(TypeRelationId, RowExclusiveLock);
 			iiopaque->comptypeOid = GetNewOid(pg_type);
+			iiopaque->blkdirComptypeOid = GetNewOid(pg_type);
 			heap_close(pg_type, NoLock);
 
 		}
@@ -553,6 +565,9 @@ DefineIndex(RangeVar *heapRelation,
 			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->comptypeOid);
 			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->heapOid);
 			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->indexOid);
+			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->blkdirRelOid);
+			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->blkdirIdxOid);
+			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->blkdirComptypeOid);
 		}
 
 		/*

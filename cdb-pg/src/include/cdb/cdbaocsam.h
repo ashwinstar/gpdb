@@ -85,6 +85,17 @@ typedef struct AOCSScanDescData
     ItemPointerData cdb_fake_ctid;
     int64 total_row;
     int64 cur_seg_row;
+	
+	AppendOnlyEntry *aoEntry;
+
+	/*
+	 * The block directory info.
+	 *
+	 * For CO tables that are upgraded from pre-3.4 release, the block directory 
+	 * built during the first index creation.
+	 */
+	bool buildBlockDirectory;
+	AppendOnlyBlockDirectory *blockDirectory;
 
 }	AOCSScanDescData;
 

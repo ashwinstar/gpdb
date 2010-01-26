@@ -63,7 +63,12 @@ typedef struct DatumStream
     AppendOnlyStorageAttributes ao_attr;
     AppendOnlyStorageRead *ao_read;
     AppendOnlyStorageWrite *ao_write;
-	int64       blockFirstRowNum; /* the first row number for the current block */
+
+	/* The info for the block that is currently read. */
+	int64 blockFirstRowNum;
+	int64 blockFileOffset;
+	int blockRowCount;
+   
 	
     /* current pointer and nullbit */
     int32 nth;		    /* Nth datum in the block */

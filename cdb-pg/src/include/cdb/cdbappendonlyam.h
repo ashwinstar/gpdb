@@ -171,6 +171,17 @@ typedef struct AppendOnlyScanDescData
 	AppendOnlyStorageAttributes	storageAttributes;
 	AppendOnlyStorageRead		storageRead;
 
+	AppendOnlyEntry		*aoEntry;
+	
+	/*
+	 * The block directory info.
+	 *
+	 * For AO tables that are upgraded from pre-3.4 release, the block directory 
+	 * built during the first index creation.
+	 */
+	bool buildBlockDirectory; /* Indicate whether to build block directory while scanning */
+	AppendOnlyBlockDirectory *blockDirectory;
+
 }	AppendOnlyScanDescData;
 
 typedef AppendOnlyScanDescData *AppendOnlyScanDesc;

@@ -529,6 +529,8 @@ datumstream_read_block_info(DatumStream *acc,
             );
 
 	acc->blockFirstRowNum = *firstRow;
+	acc->blockFileOffset = acc->ao_read->current.headerOffsetInFile;
+	acc->blockRowCount = *rowCnt;
 
 	return readOK;
 }
@@ -646,6 +648,8 @@ int datumstream_read_block(DatumStream *acc)
 												&isCompressed);
 
 	acc->blockFirstRowNum = firstRow;
+	acc->blockFileOffset = acc->ao_read->current.headerOffsetInFile;
+	acc->blockRowCount = rowCnt;
 
     if (!readOK)
         return -1;

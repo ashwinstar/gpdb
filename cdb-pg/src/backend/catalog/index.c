@@ -43,6 +43,7 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/aoblkdir.h"
 #include "commands/tablecmds.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -2034,6 +2035,10 @@ IndexBuildHeapScan(Relation heapRelation,
 /*
  * IndexBuildAppendOnlyRowScan - scan the Append-Only Row relation to find
  * tuples to be indexed.
+ *
+ * If the block directory of the append-only relation does not exist, it is
+ * created here. This occurs when the append-only relation is upgraded from
+ * pre-3.4 release.
  */
 static double
 IndexBuildAppendOnlyRowScan(Relation parentRelation,
@@ -2051,6 +2056,7 @@ IndexBuildAppendOnlyRowScan(Relation parentRelation,
 	double reltuples = 0;
 	Datum		values[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
+	AppendOnlyBlockDirectory *blockDirectory = NULL;
 	
 	Assert(estate->es_per_tuple_exprcontext != NULL);
 	econtext = estate->es_per_tuple_exprcontext;
@@ -2065,6 +2071,41 @@ IndexBuildAppendOnlyRowScan(Relation parentRelation,
 								  0,
 								  NULL);
 
+	if (!OidIsValid(aoscan->aoEntry->blkdirrelid) ||
+		!OidIsValid(aoscan->aoEntry->blkdiridxid))
+	{
+		IndexInfoOpaque *opaque;
+
+		if (indexInfo->ii_Concurrent)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_COMMAND_ERROR),
+					 errmsg("can not create index concurrently since the block "
+							"directory for %s does not exist. Use CREATE INDEX "
+							"to create the index and the block directory.",
+							RelationGetRelationName(parentRelation))));
+		
+		/* Obtain the oids from IndexInfo. */
+		Assert(indexInfo->opaque != NULL);
+
+		opaque = (IndexInfoOpaque *)indexInfo->opaque;
+		
+		Assert(OidIsValid(opaque->blkdirRelOid) && OidIsValid(opaque->blkdirIdxOid));
+		AlterTableCreateAoBlkdirTableWithOid(RelationGetRelid(parentRelation),
+											 opaque->blkdirRelOid,
+											 opaque->blkdirIdxOid,
+											 &opaque->blkdirComptypeOid,
+											 false);
+
+		/* Update blkdirrelid, blkdiridxid in aoEntry with new values */
+		aoscan->aoEntry->blkdirrelid = opaque->blkdirRelOid;
+		aoscan->aoEntry->blkdiridxid = opaque->blkdirIdxOid;
+		
+		aoscan->buildBlockDirectory = true;
+		aoscan->blockDirectory =
+			(AppendOnlyBlockDirectory *)palloc0(sizeof(AppendOnlyBlockDirectory));
+		blockDirectory = aoscan->blockDirectory;
+	}
+	
 	while (appendonly_getnext(aoscan, ForwardScanDirection, slot) != NULL)
 	{
 		CHECK_FOR_INTERRUPTS();
@@ -2104,12 +2145,19 @@ IndexBuildAppendOnlyRowScan(Relation parentRelation,
 	
 	appendonly_endscan(aoscan);
 	
+	if (blockDirectory != NULL)
+		pfree(blockDirectory);
+	
 	return reltuples;
 }
 
 /*
  * IndexBuildAppendOnlyColScan - scan the appendonly columnar relation to
  * find tuples to be indexed.
+ *
+ * If the block directory of the append-only relation does not exist, it is
+ * created here. This occurs when the append-only relation is upgraded from
+ * pre-3.4 release.
  */
 static double
 IndexBuildAppendOnlyColScan(Relation parentRelation,
@@ -2129,6 +2177,9 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 	int attno;
 	Datum		values[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
+	Oid blkdirrelid = InvalidOid;
+	Oid blkdiridxid = InvalidOid;
+	AppendOnlyBlockDirectory *blockDirectory = NULL;
 
 	Assert(estate->es_per_tuple_exprcontext != NULL);
 	econtext = estate->es_per_tuple_exprcontext;
@@ -2139,24 +2190,77 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 		ExecPrepareExpr((Expr *)indexInfo->ii_Predicate, estate);
 
 	/*
-	 * In Append-Only Columnar relation, only index keys need to be scanned.
-	 * We mark those columns before starting the scan.
+	 * Mark columns that need to be scanned for the index creation.
+	 * Normally, only index key columns need to be scanned. However,
+	 * If the table is upgraded from pre-3.4 release, the table does
+	 * not have the block directory created. We create the block
+	 * directory as part of the index creation process. In that case,
+	 * all columns need to be scanned.
 	 */
 	Assert(parentRelation->rd_att != NULL);
 	proj = palloc0(parentRelation->rd_att->natts * sizeof(bool));
-	for (attno = 0; attno < indexInfo->ii_NumIndexAttrs; attno++)
+
+	GetAppendOnlyEntryAuxOids(RelationGetRelid(parentRelation),
+							  NULL, NULL,
+							  &blkdirrelid, &blkdiridxid);
+
+	if (OidIsValid(blkdirrelid) && OidIsValid(blkdiridxid))
 	{
-		Assert(indexInfo->ii_KeyAttrNumbers[attno] <= parentRelation->rd_att->natts);
-		/* Skip expression */
-		if (indexInfo->ii_KeyAttrNumbers[attno] > 0)
-			proj[indexInfo->ii_KeyAttrNumbers[attno] - 1] = true;
+		for (attno = 0; attno < indexInfo->ii_NumIndexAttrs; attno++)
+		{
+			Assert(indexInfo->ii_KeyAttrNumbers[attno] <= parentRelation->rd_att->natts);
+			/* Skip expression */
+			if (indexInfo->ii_KeyAttrNumbers[attno] > 0)
+				proj[indexInfo->ii_KeyAttrNumbers[attno] - 1] = true;
+		}
+
+		GetNeededColumnsForScan((Node *)indexInfo->ii_Expressions,
+								proj,
+								parentRelation->rd_att->natts);
 	}
 	
-	GetNeededColumnsForScan((Node *)indexInfo->ii_Expressions,
-							proj,
-							parentRelation->rd_att->natts);
-
+	else
+	{
+		for (attno = 0; attno < parentRelation->rd_att->natts; attno++)
+			proj[attno] = true;
+	}
+	
 	aocsscan = aocs_beginscan(parentRelation, snapshot, 0, NULL, proj);
+
+	if (!OidIsValid(blkdirrelid) || !OidIsValid(blkdiridxid))
+	{
+		IndexInfoOpaque *opaque;
+		
+		if (indexInfo->ii_Concurrent)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_COMMAND_ERROR),
+					 errmsg("can not create index concurrently since the block "
+							"directory for %s does not exist. Use CREATE INDEX "
+							"to create the index and the block directory.",
+							RelationGetRelationName(parentRelation))));
+
+		/* Obtain the oids from IndexInfo. */
+		Assert(indexInfo->opaque != NULL);
+
+		opaque = (IndexInfoOpaque *)indexInfo->opaque;
+		
+		Assert(OidIsValid(opaque->blkdirRelOid) && OidIsValid(opaque->blkdirIdxOid));
+		AlterTableCreateAoBlkdirTableWithOid(RelationGetRelid(parentRelation),
+											 opaque->blkdirRelOid,
+											 opaque->blkdirIdxOid,
+											 &opaque->blkdirComptypeOid,
+											 false);
+
+		/* Update blkdirrelid, blkdiridxid in aoEntry with new values */
+		aocsscan->aoEntry->blkdirrelid = opaque->blkdirRelOid;
+		aocsscan->aoEntry->blkdiridxid = opaque->blkdirIdxOid;
+		
+		aocsscan->buildBlockDirectory = true;
+		aocsscan->blockDirectory =
+			(AppendOnlyBlockDirectory *)palloc0(sizeof(AppendOnlyBlockDirectory));
+		blockDirectory = aocsscan->blockDirectory;
+	}
+		
 
 	while (true)
 	{
@@ -2197,6 +2301,9 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 	pfree(proj);
 	
 	aocs_endscan(aocsscan);
+
+	if (blockDirectory != NULL)
+		pfree(blockDirectory);
 
 	return reltuples;
 }

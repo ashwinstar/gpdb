@@ -53,9 +53,13 @@ typedef struct IndexInfo
 	bool		ii_Unique;
 	bool		ii_Concurrent;
 
-	void       *opaque; /* Additional info needed by index creation.
-						   Only used for bitmap index to store oids that
-						   are needed for lov heap and lov index. */
+	/* Additional info needed by index creation.
+	 * Used for
+	 * (1) bitmap indexes to store oids that are needed for lov heap and lov index.
+	 * (2) append-only tables to store oids for their block directory relations
+	 *     and indexes
+	 */
+	void       *opaque;
 
 } IndexInfo;
 
@@ -66,6 +70,9 @@ typedef struct IndexInfoOpaque
 	Oid        indexOid; /* Oid for the lov index in the bitmap index. */
 	Oid        heapRelfilenode; /* Oid for the relfilenode of the lov heap in the bitmap index. */
 	Oid        indexRelfilenode;/* Oid for the relfilenode of the lov index in the bitmap index. */
+	Oid        blkdirRelOid; /* Oid for block directory relation */
+	Oid        blkdirIdxOid; /* Oid for block directory index */
+	Oid        blkdirComptypeOid; /* complex type Oid for block directry relation */
 } IndexInfoOpaque;
 
 /* Typedef for callback function for IndexBuildScan */

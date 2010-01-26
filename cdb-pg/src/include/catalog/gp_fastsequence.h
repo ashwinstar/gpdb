@@ -67,17 +67,18 @@ extern void InsertFastSequenceEntry(Oid objid, int64 objmod, int64 lastSequence,
  *
  * The existing entry for objid in the table is updated with a new
  * lastsequence value.
+ *
+ * The tuple id value for this entry is copied out to 'tid'.
  */
 extern int64 GetFastSequences(Oid objid, int64 objmod,
-							  int64 minSequence, int64 numSequences);
+							  int64 minSequence, int64 numSequences,
+							  ItemPointer tid);
 
 /*
  * GetFastSequencesByTid
  *
- * Same as GetFastSequences, except that the tuple tid is given.
- *
- * If an InvalidItemPointer is given, a new row will be inserted into
- * gp_fastsequence table.
+ * Same as GetFastSequences, except that the tuple tid is given, and the tuple id
+ * is not valid.
  */
 extern int64 GetFastSequencesByTid(ItemPointer tid,
 								   int64 minSequence,

@@ -95,7 +95,6 @@ InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry,
 	values[Anum_pg_aoseg_segno - 1] = ObjectIdGetDatum(segno);
 	values[Anum_pg_aoseg_tupcount - 1] = Int64GetDatum(0);
 	values[Anum_pg_aoseg_varblockcount - 1] = Int64GetDatum(0);
-	values[Anum_pg_aoseg_sequence_tid - 1] = PointerGetDatum(&tid);
 	values[Anum_pg_aoseg_eof - 1] = Int64GetDatum(0);
 	values[Anum_pg_aoseg_eofuncompressed - 1] = Int64GetDatum(0);
 
@@ -180,7 +179,7 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, int segno, SegfileL
 	HeapTupleData 	tupdata;
 	ScanKeyData		key;
 	IndexScanDesc	aoscan;
-	Datum			eof, eof_uncompressed, tupcount, varbcount, sequence_tid;
+	Datum			eof, eof_uncompressed, tupcount, varbcount;
 	bool			isNull;
 	FileSegInfo 	*fsinfo;
 	bool			forupdate = (lockstrategy != SegfileNoLock);
@@ -383,19 +382,6 @@ lmark:	;
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				errmsg("got invalid varblockcount value: NULL")));
 
-	/* get the sequence_tid */
-	sequence_tid = fastgetattr(tuple, Anum_pg_aoseg_sequence_tid, pg_aoseg_dsc, &isNull);
-
-	if(isNull)
-	{
-		/* NULL is fine. */
-		ItemPointerSetInvalid(&fsinfo->sequence_tid);
-	}
-	else
-	{
-		ItemPointerCopy((ItemPointer)DatumGetPointer(sequence_tid), &fsinfo->sequence_tid);
-	}
-
 	/* get the uncompressed eof */
 	eof_uncompressed = fastgetattr(tuple, Anum_pg_aoseg_eofuncompressed, pg_aoseg_dsc, &isNull);
 
@@ -416,6 +402,7 @@ lmark:	;
 	fsinfo->eof = DatumGetInt64(eof);
 	fsinfo->tupcount = DatumGetInt64(tupcount);
 	fsinfo->varblockcount = DatumGetInt64(varbcount);
+	ItemPointerSetInvalid(&fsinfo->sequence_tid);
 
 	if (fsinfo->eof < 0)
 		ereport(ERROR,
@@ -510,6 +497,8 @@ FileSegInfo **GetAllFileSegInfo(Relation parentrel,
 
 		varblockcount = fastgetattr(tuple, Anum_pg_aoseg_varblockcount, pg_aoseg_dsc, &isNull);
 		oneseginfo->varblockcount += DatumGetInt64(varblockcount);
+
+		ItemPointerSetInvalid(&oneseginfo->sequence_tid);
 
 		eof_uncompressed = fastgetattr(tuple, Anum_pg_aoseg_varblockcount, pg_aoseg_dsc, &isNull);
 
