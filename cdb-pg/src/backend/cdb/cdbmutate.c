@@ -30,7 +30,6 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbdisp.h"
-#include "cdb/cdbfts.h"         /* isFTSEnabled() */
 #include "cdb/cdbhash.h"        /* isGreenplumDbHashable() */
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
@@ -416,17 +415,6 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 				query->intoPolicy = targetPolicy;
 				
                 /*
-                 * If mirroring is enabled, force Redistribute Motion
-                 * even if the query result is already partitioned on the
-                 * same key as the target.  Need this to make sure that any
-                 * function calls in the SELECT targetlist are executed
-                 * on primaries only, and the result is then sent to
-                 * primaries and mirrors to be inserted.
-                 */
-                if (isFTSEnabled())
-                    plan->flow->hashExpr = NIL;
-
-                /*
 	             * Make sure the top level flow is partitioned on the
                  * partitioning key of the target relation.	Since this
                  * is a SELECT INTO (basically same as an INSERT) command, the target list will correspond
@@ -670,24 +658,6 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 							plan->flow->locustype = CdbLocusType_Hashed;
 							plan->flow->hashExpr = hashExpr;
 						}
-					}
-
-					/*
-					 * If mirroring is enabled, force Redistribute Motion
-					 * even if the query result is already partitioned on the
-					 * same key as the target.  Need this to make sure any
-					 * function calls in the SELECT targetlist are executed
-					 * on primaries only, and the result is then sent to
-					 * primaries and mirrors to be inserted.
-					 *
-					 * If we have a hashFilter in place, the
-					 * motion-node isn't required to preserve
-					 * mirroring.
-					 */
-					if (isFTSEnabled())
-					{
-						if (!IsA(plan, Result) || !((Result *)plan)->hashFilter)
-							plan->flow->hashExpr = NIL;
 					}
 
 					if (!hashExpr)
