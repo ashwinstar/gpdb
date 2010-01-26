@@ -82,7 +82,7 @@ class Gpcheckos():
         baselineFile= "/tmp/.BASELINE"
         touchFile(baselineFile)
         cmdStrs = {}
-        cmdStrs["memoryTotal"] =nixCheckMemoryTotal
+        cmdStrs["memoryTotal"] =nixCheckRefHostMemoryTotal
         cmdStrs["dataMounts"]=nixGetXfsMounts
         cmdStrs["cpuMHz"]=nixGetCpuMHz
         cmdStrs["coreCount"]=nixGetCpuCoreCount
@@ -91,10 +91,15 @@ class Gpcheckos():
                            ctxt=REMOTE, remoteHost=refHost)
             cmd.run()
             if cmdKey == "memoryTotal":
-                self.baseline.memoryTotal = cmd.get_results().stdout.split(":")[1].split()[0]
+                if cmd.get_results().rc != 0 :
+                    print cmd.get_results().stderr
+                else: 
+                    self.baseline.memoryTotal = cmd.get_results().stdout.split(":")[1].split()[0]
                 
             elif cmdKey == "dataMounts":
-                self.baseline.dataMounts = cmd.get_results().stdout.rstrip('\n').split('\n')
+                for i in cmd.get_results().stdout.rstrip('\n').split('\n'):
+                    self.baseline.dataMounts.append(i)
+            
                     
             elif cmdKey == "cpuMHz" :
                 self.baseline.cpuMHz = cmd.get_results().stdout.rstrip('\n').split('\n')
@@ -203,9 +208,14 @@ def parseargs():
         options.srcHost = "mdw" 
     elif options.database:
         options.srcHost = createMasterFromDb()
+    else:
+        options.srcHost=' '.join(options.srcHost)
+
     if not options.refHost and not options.database:
         print "default reference host to sdw1"
         options.refHost = "sdw1"
+    else:
+        options.refHost = ' '.join(options.refHost)
     if options.debug:
         enable_verbose_logging() 
 
@@ -244,6 +254,7 @@ def main():
     
     if options.database :
         options.refHost = gpc.gphosts[0]
+      
         
     gpc.pool = WorkerPool(gpc.parallel)
     gpc.create_baseline(options.refHost)
