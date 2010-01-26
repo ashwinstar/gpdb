@@ -5802,13 +5802,12 @@ select * from locktest;
 ----------------------------+-----------------
  g                          | AccessShareLock
  g_1_prt_1                  | AccessShareLock
- g_idx                      | AccessShareLock
  locktest                   | AccessShareLock
  pg_class                   | AccessShareLock
  pg_class_oid_index         | AccessShareLock
  pg_class_relname_nsp_index | AccessShareLock
  pg_locks                   | AccessShareLock
-(8 rows)
+(7 rows)
 
 commit;
 begin;
@@ -5829,20 +5828,19 @@ select * from locktest;
 commit;
 -- delete locking
 begin;
-delete from g where i = 4;
-select * from locktest;
-          coalesce          |       mode       
-----------------------------+------------------
+  delete from g where i = 4;
+  select * from locktest;
+          coalesce          |      mode       
+----------------------------+-----------------
  g                          | AccessShareLock
  g                          | ExclusiveLock
  g_1_prt_4                  | ExclusiveLock
- g_idx                      | RowExclusiveLock
  locktest                   | AccessShareLock
  pg_class                   | AccessShareLock
  pg_class_oid_index         | AccessShareLock
  pg_class_relname_nsp_index | AccessShareLock
  pg_locks                   | AccessShareLock
-(9 rows)
+(8 rows)
 
 commit;
 -- drop index
