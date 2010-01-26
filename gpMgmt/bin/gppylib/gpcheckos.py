@@ -63,7 +63,8 @@ class GpCheckOs001(Command):
     def checkSysctl(self,vos):
         fd=None
         fp=None
-        if (getOs() == "CentOS" or getOs() == "SuSe"): 
+        missing=True
+        if (getOs() == "CentOS" or getOs() == "SuSE"): 
             fp="/etc/sysctl.conf" 
             print "\nChecking %s.........."%(fp)
             for vo in vos:
@@ -72,6 +73,7 @@ class GpCheckOs001(Command):
                         fd=open(fp)
                         for line in fd:
                             if re.search(r"^%s"%(vo.param), line): 
+                                missing=False
                                 lineVal= line.split("=")[1]
                                 vl=vo.value.split()
                                 for index,item in enumerate(lineVal.split()):
@@ -79,6 +81,11 @@ class GpCheckOs001(Command):
                                          printWarning("parameter %s %s is smaller than suggested value %s"%(vo.param, item,vl[index] ))
                     finally: 
                         fd.close()
+
+                if missing :
+                    printWarning("paramter %s is not in /etc/sysctl.conf"%(vo.param))
+                else:
+                    missing = True
 
     def checkNtpdate(self):                   
         print "\nChecking Ntp ...... "
@@ -119,11 +126,13 @@ class GpCheckOs001(Command):
             else: 
                 print cmd.get_results().stdout
 
-    def print_result(self,cmd):
+    def print_result(self,cmd,whichFormat=None):
         if (cmd.get_results().rc != 0):
             return cmd.get_results().stderr
-        else: 
+        elif None == whichFormat: 
             return cmd.get_results().stdout.rstrip("\n")
+	elif whichFormat == "ProcMounts":
+	    return cmd.get_results()
    
     def checkMemory(self):
         print "Checking Memory Configuration ...... "
@@ -134,13 +143,23 @@ class GpCheckOs001(Command):
     
     def checkIoSched(self):
         print "\nChecking IO scheduler in grub file......." 
-        cmd = anyCommand("any Command", nixCheckIoSchedRH)
-        cmd.run()
-        result=self.print_result(cmd)
-        if result:
-            printWarning("IO scheduler not set in grub file, please put elevator=deadline in /boot/grub/menu.list")
-        else:
-            print "OK"
+        if (getOs() == "CentOS") :
+            cmd = anyCommand("any Command", nixCheckIoSchedRH)
+            cmd.run()
+            result=self.print_result(cmd)
+            if result:
+                print "[OK]"
+            else:
+                printWarning("IO scheduler not set in grub file, please put elevator=deadline in /boot/grub/grub.conf")
+        elif (getOs() == "SuSE") :
+            cmd = anyCommand("any Command", nixCheckIoSchedSuSE)
+            cmd.run()
+            result=self.print_result(cmd)
+            if result:
+                print "[OK]"
+            else:
+                printWarning("IO scheduler not set in grub file, please put elevator=deadline in /boot/grub/menu.list")
+
         print "\nChecking IO scheduler in sysfs......."
         cmd = anyCommand("any Command", nixGetIoScheduler)
         cmd.run()
@@ -152,10 +171,10 @@ class GpCheckOs001(Command):
             if m.group(2) != "deadline":
                 printWarning("current io scheduler for %s is %s, please set it to deadline"%(s,m.group(2)))
         
-    def runCmd(self,cmdStr):
+    def runCmd(self,cmdStr, whichFormat=None):
         cmd=anyCommand("any Command",cmdStr)    
         cmd.run()
-        return self.print_result(cmd)
+        return self.print_result(cmd,whichFormat)
 
     def runCmdStatus(self,cmdStr):
         cmd=anyCommand("any Command",cmdStr)    
@@ -250,19 +269,19 @@ class GpCheckOs001(Command):
         print "\nChecking blockdev settings.........."
         
         if (getOs() == "CentOS"): 
-            setra = self.runCmd(nixCheckBlockdevRH)
+            setra = self.runCmd(nixGetBlockdev)
             if not setra:
                 printWarning ("device read ahead not found in /etc/rc.local.  please add /sbin/blockdev --setra 16384 /dev/<device_name> to /etc/rc.local")
             else:
-                print "readahead settings rc.local is OK"
+                print "blockdev settings rc.local is OK"
 	    
 
         elif (getOs() == "SuSE"): 
-            setra = self.runCmd(nixCheckBlockdevSuSE)
+            setra = self.runCmd(nixGetBlockdev)
             if not setra:
-                printWarning ("device read ahead not found in /etc/after.local.  please add /sbin/blockdev --setra 16384 /dev/<devices_name> to /etc/after.local")
+                printWarning ("device read ahead not found in /etc/init.d/after.local.  please add /sbin/blockdev --setra 16384 /dev/<devices_name> to /etc/after.local")
             else:
-                print "readahead setting in after.local is OK"
+                print "blockdev setting in after.local is OK"
 	
         print "\nChecking read ahead in sysfs......."
 	if platform.system() == 'Linux':
@@ -278,6 +297,21 @@ class GpCheckOs001(Command):
 		                 %(s,i))
 		else:
 		    print("current readahead for %s is %sK...[OK]"%(s,i))
+		
+    def checkFsMounts(self):
+	CURRENTNODE="/tmp/.CURRENT"
+	print "\nChecking filesystem mounts.........."
+	if platform.system() == "Linux":
+	    self.currentNode = Baseline()
+	    pm = self.runCmd(nixGetXfsMounts, "ProcMounts")
+	    for i in pm.stdout.rstrip('\n').split('\n'):
+                print "xfs mounts:   %s" %(i)
+		self.currentNode.dataMounts.append(i)
+	    self.currentNode.serializeToFile("dataMounts",CURRENTNODE)
+	    #self.currentNode.serializeFileToObject(CURRENTNODE)
+	    #for i in self.currentNode.dataMounts :
+	    #	print "currentNode device is %s"%(i.device)
+ 
  
     def checkLimits(self,vos):
         fd=None
@@ -357,6 +391,7 @@ def main():
     s.checkSwap()
     s.checkCpuSpeed() 
     s.checkBlockdev()
+    s.checkFsMounts()
 
 if __name__ == "__main__":
         main()

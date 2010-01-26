@@ -51,3 +51,13 @@ class LimitsConfVo:
         return getattr(self,attr)
     def __setAttr__(self, attr, value):
         setattr(self, attr,value)
+        
+class ProcMountsVo:
+    def __init__(self):
+        self.device = ""
+        self.mountPoint= ""
+        self.fsType = ""       
+    def __getAttr__(self, attr):
+        return getattr(self,attr)
+    def __setAttr__(self, attr, value):
+        setattr(self, attr,value)
