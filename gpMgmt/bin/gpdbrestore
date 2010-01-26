@@ -843,11 +843,11 @@ SWITCH_TO_PRIMARY () {
 			M_CONTENT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select content from $CONFIG_TABLE where dbid=$DBID;"`
 			M_DIR=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select
  datadir from $CONFIG_TABLE where dbid=$DBID;"`
-			P_HOST=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE where content=$M_CONTENT and definedprimary='t';"`
+			P_HOST=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE where content=$M_CONTENT and preferred_role='p';"`
 			P_DIR=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select
- datadir from $CONFIG_TABLE where content=$M_CONTENT and definedprimary='t';"`
+ datadir from $CONFIG_TABLE where content=$M_CONTENT and preferred_role='p';"`
 			P_DBID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select
- dbid from $CONFIG_TABLE where content=$M_CONTENT and definedprimary='t';"`
+ dbid from $CONFIG_TABLE where content=$M_CONTENT and preferred_role='p';"`
 			#Check if we have remote db_dumps directory
 			CHK_DIR ${P_DIR}/${DUMP_DIR} $P_HOST
 			if [ $EXISTS -ne 0 ];then
