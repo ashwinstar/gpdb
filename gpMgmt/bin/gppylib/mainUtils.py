@@ -32,7 +32,7 @@ def getProgramName():
 #                   run and return an exit code.  "cleanup" will be called to clean up before the program exits;
 #                   this can be used to clean up, for example, to clean up a worker pool
 #
-def simple_main( createOptionParserFn, createCommandFn) :
+def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
     logger = gplog.get_default_logger()
     configurationInterface.registerConfigurationProvider( configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
     fileSystemInterface.registerFileSystemProvider( fileSystemImplOs.GpFileSystemProviderUsingOs())
@@ -44,6 +44,8 @@ def simple_main( createOptionParserFn, createCommandFn) :
     commandObject=None
     parser = None
 
+    forceQuiet = mainOptions is not None and mainOptions.get("forceQuietOutput")
+
     # NOTE: if this logic is changed then also change test_main in testUtils.py
     try:
         gplog.setup_tool_logging(gExecutableName,unix.getLocalHostname(),unix.getUserName(),nonuser=False)
@@ -51,10 +53,13 @@ def simple_main( createOptionParserFn, createCommandFn) :
         parser = createOptionParserFn()
         (options, args) = parser.parse_args()
 
-        if options.verbose:
-            gplog.enable_verbose_logging()
-        if options.quiet:
+        if forceQuiet:
             gplog.quiet_stdout_logging()
+        else:
+            if options.verbose:
+                gplog.enable_verbose_logging()
+            if options.quiet:
+                gplog.quiet_stdout_logging()
             
         logger.info("Starting %s with args: %s" % (gProgramName, ' '.join(sys.argv[1:])))
 

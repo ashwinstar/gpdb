@@ -52,20 +52,11 @@ class GpHost:
         for db in self.dbs:
             dirlist.append(db.datadir)
         return "Host %s has Datadirs: [%s]" % (self.hostname,','.join(dirlist))
-                
 
-class GpHostCache():
-    
-    def __init__(self, gparray, pool, skiplist=None):
-        self.gparray=gparray
-        self.hostcache={}         # interface -> hostname
-        self.gphost_map={}        # hostname -> GpHost
+class GpInterfaceToHostNameCache:
 
-        # these are any db's that should be skipped.
-        skipmap={}
-        for db in skiplist:
-            skipmap[db.getSegmentDbId()]=db
-        
+    def __init__(self, pool, interfacesToLookup, currentHostNameAnswersForInterfaces):
+        self.__hostCache={}         # interface -> hostname
         # Read the .gphostcache file if it exists
         #   Todo: handle failure more cleanly Should be able to deal with:
         #     - lack of permissions on file
@@ -75,46 +66,42 @@ class GpHostCache():
                 fp = open(CACHEFILE, 'r')
                 for line in fp:
                     (interface, hostname) = line.split(':')
-                    self.hostcache[interface.strip()]=hostname.strip()
+                    self.__hostCache[interface.strip()]=hostname.strip()
             except Exception, e:
                 logger.warn(str(e))
                 logger.warn("Error reading file '%s'" % CACHEFILE)
-        
-        # Go through the gparray and build the interface->hostname lookup table
-        #
-        # As Greeenplum 3.4 we have both interface and hostname information in
-        # the catalog, so the gparray should be able to supply all of the 
-        # information.  
-        #
-        # However if we have initialized from an old catalog, or from a flatfile
-        # then the interface->hostname mapping may not be available.  In this 
-        # case we still want to run this pass first so that we don't lookup 
-        # a given interface more than once.
-        inconsistent = []
-        for db in self.gparray.getSegDbList():
-            if db.getSegmentDbId() not in skipmap:
-                interface = db.getSegmentAddress()
-                hostname  = db.getSegmentHostName()
 
-                # If we don't have this mapping yet set it, otherwise we
-                # simply validate consistency.
-                if interface not in self.hostcache:
-                    self.hostcache[interface] = hostname
-                elif self.hostcache[interface] is None:
-                    self.hostcache[interface] = hostname
-                elif self.hostcache[interface] != hostname:
-                    logger.warn("inconsistent hostname '%s' for interface '%s' and expected hostname '%s'" % \
-                                (self.hostcache[interface], interface, hostname))
-                    inconsistent.append(interface)
+        #
+        # check to see which values are inconsistent with the cache and need lookup again
+        #
+        inconsistent = []
+        for i in range(len(interfacesToLookup)):
+            interface = interfacesToLookup[i]
+            hostname = currentHostNameAnswersForInterfaces[i]
+
+            # If we don't have this mapping yet set it, otherwise we simply validate consistency.
+            if hostname is None:
+                # external source did not have a tentative answer, just request lookup if we don't
+                # have an answer
+                if interface not in self.__hostCache:
+                    self.__hostCache[interface] = None
+            elif interface not in self.__hostCache:
+                self.__hostCache[interface] = hostname
+            elif self.__hostCache[interface] is None:
+                self.__hostCache[interface] = hostname
+            elif self.__hostCache[interface] != hostname:
+                logger.warn("inconsistent hostname '%s' for interface '%s' and expected hostname '%s'" % \
+                            (self.__hostCache[interface], interface, hostname))
+                inconsistent.append(interface)
 
         # Clear out any inconsistent hostnames to force a recheck.
         for i in inconsistent:
-            self.hostcache[i] = None
+            self.__hostCache[i] = None
 
         # Lookup any hostnames that we don't have answers for:
         pending_cmds={}
-        for interface in self.hostcache:
-            if self.hostcache[interface] is None:
+        for interface in self.__hostCache:
+            if self.__hostCache[interface] is None:
                 logger.debug("hostname lookup for %s" % interface)
                 cmd=unix.Hostname('host lookup', ctxt=base.REMOTE, remoteHost=interface)
                 pool.addCommand(cmd)
@@ -132,29 +119,17 @@ class GpHostCache():
                     logger.warn("Failed to resolve hostname for %s" % interface)
                     continue
 
-                self.hostcache[interface] = cmd.get_hostname()
+                self.__hostCache[interface] = cmd.get_hostname()
 
             pool.empty_completed_items()
-
-        # Build up the GpHosts using our interface->hostname lookup
-        for db in self.gparray.getSegDbList():
-            # skip this dbid ?
-            if db.getSegmentDbId() in skipmap:
-                continue
-            interface = db.getSegmentAddress()
-            hostname  = self.hostcache[interface]   # should set the db?
-            if hostname not in self.gphost_map:
-                self.gphost_map[hostname] = GpHost(hostname)
-
-            self.gphost_map[hostname].addDB(db)
 
         # Try to update the hostcache file if we executed any hostname commands
         if len(pending_cmds) > 0:
             try:
                 fp = open(CACHEFILE, 'w')
-                
-                for interface in sorted(self.hostcache.keys()):
-                    hostname = self.hostcache[interface]
+
+                for interface in sorted(self.__hostCache.keys()):
+                    hostname = self.__hostCache[interface]
 
                     # skip any dangling references we still have
                     if not hostname:
@@ -165,6 +140,59 @@ class GpHostCache():
             except Exception, e:
                 logger.warn(str(e))
                 logger.warn("Failed to write file '%s'" % CACHEFILE)
+
+    #
+    # returns the cached host name for the interface
+    #
+    # should only be called for interfaces that were passed to the constructor
+    #
+    # Will return None if lookup of the hostname was not possible
+    #
+    def getHostName(self, interface):
+        return self.__hostCache[interface]
+
+
+class GpHostCache:
+
+    def __init__(self, gparray, pool, skiplist=None):
+        self.gparray=gparray
+        self.gphost_map={}        # hostname -> GpHost
+
+        # these are any db's that should be skipped.
+        skipmap={}
+        for db in skiplist:
+            skipmap[db.getSegmentDbId()]=db
+
+        # Go through the gparray and build list of interface and hostname that
+        #  will be used to biuld the GpInterfaceToHostNameCache
+        #
+        # As Greeenplum 3.4 we have both interface and hostname information in
+        # the catalog, so the gparray should be able to supply all of the
+        # information.
+        #
+        # However if we have initialized from an old catalog, or from a flatfile
+        # then the interface->hostname mapping may not be available.  In this
+        # case we still want to do the full pass first  so that we don't lookup
+        # a given interface more than once.
+        interfaces = []
+        hostnames = []
+        for db in self.gparray.getSegDbList():
+            if db.getSegmentDbId() not in skipmap:
+                interfaces.append(db.getSegmentAddress())
+                hostnames.append(db.getSegmentHostName())
+        interfaceToHostMap = GpInterfaceToHostNameCache(pool, interfaces, hostnames)
+
+        # Build up the GpHosts using our interface->hostname lookup
+        for db in self.gparray.getSegDbList():
+            # skip this dbid ?
+            if db.getSegmentDbId() in skipmap:
+                continue
+            interface = db.getSegmentAddress()
+            hostname  = interfaceToHostMap.getHostName(interface)   # should set the db?
+            if hostname not in self.gphost_map:
+                self.gphost_map[hostname] = GpHost(hostname)
+
+            self.gphost_map[hostname].addDB(db)
                 
     ######
     def log_contents(self):
