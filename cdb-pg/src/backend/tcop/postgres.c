@@ -2053,7 +2053,7 @@ exec_bind_message(StringInfo input_message)
 	ParamListInfo params;
 	List	   *query_list;
 	List	   *stmt_list;
-	MemoryContext qContext;
+	MemoryContext qContext = NULL;
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
 
@@ -2343,10 +2343,17 @@ exec_bind_message(StringInfo input_message)
 	 */
 	
 	{
+		Assert(portal);
+		MemoryContext oldContext = NULL;
+		qContext = PortalGetHeapMemory(portal);
+		oldContext = MemoryContextSwitchTo(qContext);
 		query_list = copyObject(pstmt->query_list);
-		stmt_list = pg_plan_queries(query_list, params, false);
+		stmt_list = pg_plan_queries(query_list, params, true);
+		MemoryContextSwitchTo(oldContext);
 	}
 
+	Assert(qContext);
+	
 	/*
 	 * Define portal and start execution.
 	 */
