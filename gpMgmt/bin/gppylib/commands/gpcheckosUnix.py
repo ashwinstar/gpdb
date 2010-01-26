@@ -16,6 +16,7 @@ from gppylib.stringUtil import *
 from gppylib.gplog import *
 from gppylib.commands.base import *
 from gppylib.commands.unix import *
+from gppylib.gpcheckosVo import *
 
 logger = gplog.get_default_logger()
 nixGetEthCmd="ifconfig |grep eth |awk '{printf( \"%s:\",$1 ) }'"
@@ -26,14 +27,16 @@ nixCheckFirewallSuSESetup="chkconfig --list '/SuSEfirewall2_setup |grep on'"
 nixCheckCpuSpeedRH="chkconfig --list |awk '/cpuspeed/ {print $5\";\"$7}'"
 nixCheckCpuSpeedSuSE="chkconfig --list |awk '/powersaved/ {print $5\";\"$7}'"
 nixCheckIoSchedRH="grep deadline /boot/grub/grub.conf"
+nixCheckIoSchedSuSE="grep deadline /boot/grub/menu.lst"
 nixCheckMemoryTotal="awk '/MemTotal/ {print $2}'  /proc/meminfo"
+nixCheckRefHostMemoryTotal = 'grep MemTotal /proc/meminfo'
 nixCheckSwapTotal="free |awk '/Swap/ {print $2}'"
 nixCheckBlockdevRH="grep blockdev /etc/rc.local | cut -d' ' -f3"
 nixCheckBlockdevSuSE="grep blockdev /etc/after.local |awk '{print $3}'"
 nixGetBlockdev="checkBlockdev"
 nixGetCpuCoreCount="grep processor /proc/cpuinfo |wc -l"
 nixGetCpuMHz="grep MHz /proc/cpuinfo | cut -d: -f2"
-nixGetXfsMounts="grep xfs /proc/mounts |cut -d' ' -f2"
+nixGetXfsMounts="grep xfs /proc/mounts |cut -d' ' -f1,2,3"
 nixGetIoScheduler="checkIoScheduler"
 baselineFile="/tmp/.BASELINE"
 
@@ -67,6 +70,7 @@ class Baseline(object):
     def __init__(self):
         self.memoryTotal=None
         self.dataMounts=[]
+        self.procMountsVos = []
         self.cpuMHz=[]
         self.networkInterface={}
         self.coreCount=None
@@ -114,7 +118,16 @@ class Baseline(object):
                 if re.match("memoryTotal",line):
                     self.memoryTotal = line.split("=")[1]
                 elif re.match("mounts",line): 
-                    self.dataMounts = line.split("=")[1].rstrip('\n').split("|")
+                    for i in line.split("=")[1].rstrip('\n').split("|"):
+                        p=ProcMountsVo()
+                        for e,j in enumerate(i.split(" ")):
+                            if e ==0:
+                                p.device = j
+                            elif e==1:
+                                p.fsType=j
+                            elif e==2:
+                                p.mountPoint=j
+                        self.dataMounts.append(p)
                 elif re.match("cpuMHz",line):
                     self.cpuMHz = line.split("=")[1].rstrip('\n').split("|")
                 elif re.match("coreCount",line):
