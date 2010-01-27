@@ -17,6 +17,7 @@
 #include "postmaster/primary_mirror_mode.h"
 #include "storage/fd.h"
 #include "storage/dbdirnode.h"
+#include "signal.h"
 
 
 
