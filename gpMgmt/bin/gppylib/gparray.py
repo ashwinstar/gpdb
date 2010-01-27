@@ -89,7 +89,18 @@ class GpDB:
             self.content,
             self.dbid,
             )
-   
+
+    #
+    # Note that this is not an ideal comparison -- in particular, I don't know if filespace
+    #  information added to the representation is added in deterministic order
+    #
+    def __cmp__(self,other):
+        left = repr(self)
+        right = repr(other)
+        if left < right: return -1
+        elif left > right: return 1
+        else: return 0
+
     # --------------------------------------------------------------------
     def __repr__(self):
         """
@@ -334,13 +345,13 @@ class GpDB:
     # --------------------------------------------------------------------
     def setSegmentDbId(self, dbId):
         checkNotNone("dbId", dbId)
-        self.__dbId = dbId
+        self.dbid = dbId
 
     def setSegmentContentId(self, contentId):
         checkNotNone("contentId", contentId)
         if contentId < -1:
             raise Exception("Invalid content id %s" % contentId)
-        self.__contentId = contentId
+        self.content = contentId
 
     def setSegmentRole(self, role):
         checkNotNone("role", role)
@@ -348,7 +359,7 @@ class GpDB:
         if role not in VALID_ROLES:
             raise Exception("Invalid role '%s'" % role)
 
-        self.__role = role
+        self.role = role
 
     def setSegmentPreferredRole(self, preferredRole):
         checkNotNone("preferredRole", preferredRole)
@@ -356,7 +367,7 @@ class GpDB:
         if preferredRole not in VALID_ROLES:
             raise Exception("Invalid preferredRole '%s'" % preferredRole)
 
-        self.__preferredRole = preferredRole
+        self.preferred_role = preferredRole
 
     def setSegmentMode(self, mode):
         checkNotNone("mode", mode)
@@ -364,7 +375,7 @@ class GpDB:
         if mode != 's' and mode != 'c' and mode != 'r':
             raise Exception("Invalid mode '%s'" % mode)
 
-        self.__mode = mode
+        self.mode = mode
 
     def setSegmentStatus(self, status):
         checkNotNone("status", status)
@@ -372,27 +383,27 @@ class GpDB:
         if status not in VALID_STATUS:
             raise Exception("Invalid status '%s'" % status)
 
-        self.__status = status
+        self.status = status
 
     def setSegmentPort(self, port):
         checkNotNone("port", port)
-        self.__port = port
+        self.port = port
 
     def setSegmentReplicationPort(self, replicationPort):
         # None is allowed -- don't check
-        self.__replicationPort = replicationPort
+        self.replicationPort = replicationPort
 
     def setSegmentHostName(self, hostName):
         # None is allowed -- don't check
-        self.__hostName = hostName
+        self.hostname = hostName
 
     def setSegmentAddress(self, address):
         # None is allowed -- don't check
-        self.__address = address
+        self.address = address
 
     def setSegmentDataDirectory(self, dataDirectory):
         checkNotNone("dataDirectory", dataDirectory)
-        self.__dataDirectory = dataDirectory
+        self.datadir = dataDirectory
 
     def addSegmentFilespace(self, oid, path):
         """
@@ -599,14 +610,21 @@ class GpArray:
     """
 
     # --------------------------------------------------------------------
-    def __init__(self, segments):
-        """TODO: """
+    def __init__(self, segments, segmentsAsLoadedFromDb=None):
+        """
+        segmentsInDb is used only be the configurationImpl* providers; it is used to track the state of the
+          segments in the database
+
+        TODO:
+
+        """
 
         self.master = None
         self.standbyMaster = None
         self.segments = []
         self.expansionSegments=[]
         self.numPrimarySegments = 0
+        self.__segmentsAsLoadedFromDb = segmentsAsLoadedFromDb
 
         self.strategy = 'n'
 
@@ -1304,5 +1322,18 @@ class GpArray:
 
     def getNumSegmentContents(self):
          return len(GpArray.getSegmentsByContentId(self.getSegDbList()))
+
+    def getSegmentsAsLoadedFromDb(self):
+        """
+        To be called by the configuration providers only
+        """
+        return self.__segmentsAsLoadedFromDb
+        
+    def setSegmentsAsLoadedFromDb(self, segments):
+        """
+            To be called by the configuration providers only
+            """
+        self.__segmentsAsLoadedFromDb = segments
+
 
 # === EOF ====

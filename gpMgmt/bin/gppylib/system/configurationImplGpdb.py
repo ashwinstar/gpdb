@@ -12,12 +12,12 @@ This file defines the interface that can be used to
 """
 import os
 
+from gppylib.mainUtils import *
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
 from gppylib.system.configurationInterface import *
 from gppylib.gparray import GpArray, GpDB
 from gppylib.db import dbconn
-from gppylib.mainUtils import *
 
 logger = get_default_logger()
 
@@ -72,6 +72,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         configurationRows = dbconn.execSQL(conn, sql)
         conn.close()
 
+        origSegments = []
         segments = []
         for row in configurationRows:
             dbId = int(row[0])
@@ -99,8 +100,9 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                            replicationPort=replicationPort)
 
             segments.append(segment)
+            origSegments.append(segment.copy())
 
-        result = GpArray(segments)        
+        result = GpArray(segments, origSegments)
 
         return result
 
@@ -110,43 +112,28 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
     #
     # Also resets any dirty bits on saved/updated objects
     #
-    def updateSystemConfig( self, systemConfiguration ) :
+    def updateSystemConfig( self, gpArray ) :
         checkNotNone("masterDbUrl", self.__masterDbUrl) # ensure initialized called
-
-        toAddOrUpdate = [x for x in systemConfiguration.getDbList()] #  if x.getSegmentIsDirty()]
-
-        if len(toAddOrUpdate) == 0:
-            return
 
         conn = dbconn.connect(self.__masterDbUrl, self.__useUtilityMode)
         dbconn.execSQL(conn, "BEGIN")
+
+        dbIdToOriginal = {}
+        for seg in gpArray.getSegmentsAsLoadedFromDb():
+            dbIdToOriginal[seg.getSegmentDbId()] = seg
 
         #
         # for now, we simply update all fields.  This could be optimized later -- to avoid
         #   overwriting status if it's unchanged in-memory, for example
         # Need to figure out the interaction of scripts with fault prober
         #
-        for seg in toAddOrUpdate:
-            if seg is not None:
-                raise Exception("not implement: isCreatedInDb not tracked yet")
-            if seg.isCreatedInDb:
-                # run an update
-                sql = "UPDATE pg_catalog.gp_segment_configuration\n" + \
-                        "  SET contentid = " + self.__toSqlIntValue(seg.getSegmentContentId()) + ",\n" \
-                        "  SET role = " + self.__toSqlCharValue(seg.getSegmentRole()) + ",\n" \
-                        "  SET preferred_role = " + self.__toSqlCharValue(seg.getSegmentPreferredRole()) + ",\n" \
-                        "  SET mode = " + self.__toSqlCharValue(seg.getSegmentMode()) + ",\n" \
-                        "  SET status = " + self.__toSqlCharValue(seg.getSegmentStatus()) + ",\n" \
-                        "  SET port = " + self.__toSqlIntValue(seg.getSegmentPort()) + ",\n" \
-                        "  SET hostname = " + self.__toSqlTextValue(seg.getSegmentHostName()) + ",\n" \
-                        "  SET address = " + self.__toSqlTextValue(seg.getSegmentAddress()) + ",\n" \
-                        "  SET replication_port = " + self.__toSqlIntValue(seg.getSegmentReplicationPort()) + ",\n" \
-                        "  SET san_mounts = " + self.__toSqlIntValue(seg.getSegmentSanMounts()) + "\n" \
-                        "WHERE dbid = " + self.__toSqlIntValue(seg.getSegmentDbId())
-                dbconn.execSQL(conn, sql)
-                changeDescription = "updated by %s" % getProgramName()
+        for seg in gpArray.getDbList():
+            originalSeg = dbIdToOriginal.get(seg.getSegmentDbId())
 
-            else:
+            if originalSeg is None:
+
+                logger.info("Inserting dbid %s" % seg.getSegmentDbId())
+
                 # run an insert
                 sql = "INSERT INTO pg_catalog.gp_segment_configuration\n" + \
                       "(dbid, content, role, preferred_role, mode, status, port, hostname, address, replication_port, san_mounts)\n" + \
@@ -161,7 +148,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                         self.__toSqlTextValue(seg.getSegmentHostName()) + ",\n  " + \
                         self.__toSqlTextValue(seg.getSegmentAddress()) + ",\n  " + \
                         self.__toSqlIntValue(seg.getSegmentReplicationPort()) + ",\n  " + \
-                        self.__toSqlIntValue(seg.getSegmentSanMounts()) + "\n" + \
+                        "null\n" + \
                       ")"
                 dbconn.execSQL(conn, sql) # todo: assert that 1 was inserted
 
@@ -173,27 +160,45 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                        "FROM pg_catalog.pg_filespace fs WHERE fs.fsname = 'pg_system'"
                 dbconn.execSQL(conn, sql) # todo: assert that 1 was inserted
 
-                changeDescription = "updated by %s" % getProgramName()
+                changeDescription = "inserted by %s" % "todo:program" # getProgramName()
 
-            # now update change history
-            sql = "INSERT INTO gp_configuration_history (time, dbid, desc) VALUES(\n" \
-                        "now(),\n  " + \
-                        self.__toSqlIntValue(seg.getSegmentDbId()) + ",\n  " + \
-                        self.__toSqlCharValue(changeDescription)
+            else:
 
-            dbconn.execSQL(conn, sql) # todo: assert that 1 was inserted
+                if seg == originalSeg:
+                    logger.info("NOT updating dbid %s" % seg.getSegmentDbId())
+                    changeDescription = None
+                else:
+                    logger.info("Updating dbid %s" % seg.getSegmentDbId())
+                    # run an update
+                    sql = "UPDATE pg_catalog.gp_segment_configuration\n" + \
+                            "  SET content = " + self.__toSqlIntValue(seg.getSegmentContentId()) + ",\n" \
+                            "  role = " + self.__toSqlCharValue(seg.getSegmentRole()) + ",\n" \
+                            "  preferred_role = " + self.__toSqlCharValue(seg.getSegmentPreferredRole()) + ",\n" \
+                            "  mode = " + self.__toSqlCharValue(seg.getSegmentMode()) + ",\n" \
+                            "  status = " + self.__toSqlCharValue(seg.getSegmentStatus()) + ",\n" \
+                            "  port = " + self.__toSqlIntValue(seg.getSegmentPort()) + ",\n" \
+                            "  hostname = " + self.__toSqlTextValue(seg.getSegmentHostName()) + ",\n" \
+                            "  address = " + self.__toSqlTextValue(seg.getSegmentAddress()) + ",\n" \
+                            "  replication_port = " + self.__toSqlIntValue(seg.getSegmentReplicationPort()) + "\n" \
+                            "WHERE dbid = " + self.__toSqlIntValue(seg.getSegmentDbId())
+                    dbconn.execSQL(conn, sql)
+
+                    # todo MIRRORING: update filespace information
+
+                    changeDescription = "updated by %s" % "todo:program" # getProgramName()
+
+
+            if changeDescription is not None:
+                # now update change history
+                sql = "INSERT INTO gp_configuration_history (time, dbid, \"desc\") VALUES(\n" \
+                            "now(),\n  " + \
+                            self.__toSqlIntValue(seg.getSegmentDbId()) + ",\n  " + \
+                            self.__toSqlCharValue(changeDescription) + "\n)"
+
+                dbconn.execSQL(conn, sql) # todo: assert that 1 was inserted
 
         dbconn.execSQL(conn, "COMMIT")
         conn.close()
-
-        #
-        # clear dirty bits in memory
-        #
-        for seg in toAddOrUpdate:
-            seg.markSegmentCreatedInDb()
-            seg.resetSegmentDirtyBit()
-
-        return
 
     def __toSqlIntValue(self, val):
         if val is None:

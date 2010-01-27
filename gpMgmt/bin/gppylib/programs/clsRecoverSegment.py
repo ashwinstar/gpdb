@@ -2,9 +2,21 @@
 #
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
-
+# todo MIRRORING verify failover strategy is 'mirrored'
+# todo MIRRORING better error message when cluster is not running
+# todo MIRRORING STOP the old mirror in case they are running? (when failover to a new location)
+# todo MIRRORING checks for being able to build target directory
+# todo MIRRORING what is: multi_home = gpmlib.chk_multi_home(hosts) (from other gprecoverseg)
+# todo MIRRORING do I need gp_fault_action
+# todo MIRRORING parallel degree sanity checks + defaults from gpstart
+# todo MIRRORING is -F (force shutdown) required?
+# todo MIRRORING set it up to show gprecoverseg_help
+# todo MIRRORING implement pause/unpause of fault prober properly
+# todo MIRRORING mark for full resync (not just rsync) in some cases?
 #
-# todo MIRRORING: should we implement rollback functionality here?
+# note (MIRRORING): I removed some options from old gprecoverseg, including:
+#        --version
+#        todo: fill out full list
 #
 # todo MIRRORING: make the script do stuff on remote host (as is done with gpexpand).
 # todo MIRRORING: general way to send lots of commands to segments?
@@ -30,6 +42,8 @@ from gppylib.db import catalog
 from gppylib.db import dbconn
 from gppylib.system import configurationInterface as configInterface
 from gppylib import pgconf
+from gppylib.operations.startSegments import *
+
 import gppylib.test.testUtils
 
 logger = gplog.get_default_logger()
@@ -55,7 +69,7 @@ class GpSegmentToRecover:
         assert failedSegment.getSegmentDbId() != liveSegment.getSegmentDbId()
 
         """
-        __failedSegment is the segment that failed and should be recovered
+        __failedSegment is the segment that failed
         """
         self.__failedSegment = failedSegment
 
@@ -66,7 +80,8 @@ class GpSegmentToRecover:
 
         """
         __failoverSegment is the target segment to which we will copy the data, or None
-            if we will recover in place
+            if we will recover in place.  Note that __failoverSegment should refer to the same dbid
+            as __failedSegment, but should have updated path + file information.
         """
         self.__failoverSegment = failoverSegment
 
@@ -101,6 +116,57 @@ class GpCopySegmentDirectoryDirective:
     def getIncludeSchema(self):
         return self.__includeSchema
 
+class GpFaultProberInterface:
+
+    def __init__(self):
+        self.__isPaused = False
+
+    def pauseFaultProber(self):
+        assert not self.__isPaused
+        self.__isPaused = True
+
+    def unpauseFaultProber(self):
+        assert self.__isPaused
+        self.__isPaused = False
+
+    def isFaultProberPaused(self):
+        return self.__isPaused
+
+class GpMasterEnvironment:
+
+    def __init__(self, masterDataDir):
+
+        if masterDataDir is None:
+            self.__masterDataDir = gp.get_masterdatadir()
+        else: self.__masterDataDir = masterDataDir
+
+        logger.debug("Obtaining master's port from master data directory")
+        pgconf_dict = pgconf.readfile(self.__masterDataDir + "/postgresql.conf")
+        self.__masterPort = pgconf_dict.int('port')
+        logger.debug("Read from postgresql.conf port=%s" % self.__masterPort)
+        self.__masterMaxConnections = pgconf_dict.int('max_connections')
+        logger.debug("Read from postgresql.conf max_connections=%s" % self.__masterMaxConnections)
+
+        self.__gpHome = gp.get_gphome()
+        self.__gpVersion = gp.GpVersion.local('local GP software version check',self.__gpHome)
+        logger.info("local Greenplum Version: '%s'" % self.__gpVersion)
+
+        # read collation settings from master
+        dbUrl = dbconn.DbURL(port=self.__masterPort, dbname='template1')
+        conn = dbconn.connect(dbUrl, utility=True)
+        (self.__lcCollate, self.__lcMonetary, self.__lcNumeric) = catalog.getCollationSettings(conn)
+        conn.close()
+
+    def getGpHome(self): return self.__gpHome
+    def getGpVersion(self): return self.__gpVersion
+    def getLcCollate(self): return self.__lcCollate
+    def getLcMonetary(self): return self.__lcMonetary
+    def getLcNumeric(self): return self.__lcNumeric
+    def getLocaleArray(self): return [self.__lcCollate, self.__lcMonetary, self.__lcNumeric]
+    def getMasterDataDir(self): return self.__gpHome
+    def getMasterMaxConnections(self) : return self.__masterMaxConnections
+    def getMasterPort(self) : return self.__masterPort
+
 #-------------------------------------------------------------------------
 class GpRecoverSegmentProgram:
 
@@ -110,33 +176,44 @@ class GpRecoverSegmentProgram:
     # @param options the options as returned by the options parser
     #
     def __init__(self, options):
+        self.__faultProber = GpFaultProberInterface()
         self.__options = options
         self.__pool = None
 
-    def pauseFaultProber(self):
+    def __createStartSegmentsOp(self):
+        return StartSegmentsOperation(self.__pool, self.__options.quiet,
+                gpEnv.getLocaleArray(), gpEnv.getGpVersion(),
+                gpEnv.getGpHome(), gpEnv.getMasterDataDir()
+                )
+
+    def __startAll(self, gpEnv, gpArray, segments):
+        segmentStartResult = self.__createStartSegmentsOp.startSegments(gpArray, segments, START_AS_PRIMARY_OR_MIRROR)
+
+        for i in range(len(segmentStartResult.getFailedSegments())):
+            failedSeg = segmentStartResult.getFailedSegments()[i]
+            failureReason = segmentStartResult.getFailureReasons()[i]
+            logger.warn("Failed to start segment.  The fault prober will shortly mark it as down again. Segment: %s: REASON: %s" % (failedSeg, failureReason))
         pass
 
-    def unpauseFaultProber(self):
-        pass
-
-    def startAll(self, segments, initialMirrorMode):
-        pass
-
-    def convertAll(self, segments, mirrorMode):
-        pass
+    def __convertAllPrimaries(self, segments):
+        segmentStartResult = self.__createStartSegmentsOp.transitionSegments(gpArray, segments, MIRROR_MODE_PRIMARY)
+        for i in range(len(segmentStartResult.getFailedSegments())):
+            failedSeg = segmentStartResult.getFailedSegments()[i]
+            failureReason = segmentStartResult.getFailureReasons()[i]
+            logger.warn("Failed to inform primary segment of updated mirroring state.  Segment: %s: REASON: %s" % (failedSeg, failureReason))
 
     def outputToFile(self, actions, fileName):
-        with open(fileName, 'w') as f:
+        with open(fileName, 'w') as file:
             for segToRecover in actions.getSegmentsToRecover:
                 seg = segToRecover.getFailedSegment()
-                f.write('%s:%d:%s' % (seg.getSegmentHostName(), seg.getSegmentPort(), seg.getSegmentDataDirectory()))
+                file.write('%s:%d:%s' % (seg.getSegmentHostName(), seg.getSegmentPort(), seg.getSegmentDataDirectory()))
 
                 seg = segToRecover.getFailoverSegment()
                 if seg is not None:
-                    f.write(' ')
-                    f.write('%s:%d:%s' % (seg.getSegmentHostName(), seg.getSegmentPort(), seg.getSegmentDataDirectory()))
+                    file.write(' ')
+                    file.write('%s:%d:%s' % (seg.getSegmentHostName(), seg.getSegmentPort(), seg.getSegmentDataDirectory()))
 
-                f.write('\n')
+                file.write('\n')
 
     def copySegmentDirectories(self, directives):
         if len(directives) == 0:
@@ -144,10 +221,11 @@ class GpRecoverSegmentProgram:
             
         raise("not implemented") # todo MIRRORING (group by src or dest host, do transfers)
     
-    def recover(self, systemConfig, actions):
-        # todo MIRRORING: assert that we have paused the fault prober
-
+    def recover(self, gpArray, actions):
+        assert self.__faultProber.isFaultProberPaused()
         testOutput("recovering %s segment(s)" % len(actions.getSegmentsToRecover()))
+
+        logger.info("%s segment(s) to recover" % len(actions.getSegmentsToRecover()))
 
         # make sure the target directories are up-to-date
         copyDirectives = []
@@ -163,24 +241,22 @@ class GpRecoverSegmentProgram:
                 seg = toRecover.getFailedSegment()
                 seg.setSegmentStatus(gparray.STATUS_UP)
                 seg.setSegmentMode(gparray.MODE_RESYNCHRONIZING)
-
-                # todo: MIRRORING: mark for full resync
             else:
                 seg = toRecover.getFailedSegment()
-                # todo: mark seg for delete
+                # no need to update the failed segment's information -- it is
+                #   being overwritten in the configuration with the failover segment
+                for gpArraySegment in gpArray.getDbList():
+                    if gpArraySegment is seg:
+                        raise Exception("failed segment should not be in the new configuration if failing over to new segment")
 
                 seg = toRecover.getFailoverSegment()
                 seg.setSegmentStatus(gparray.STATUS_UP)
                 seg.setSegmentMode(gparray.MODE_RESYNCHRONIZING)
 
-                raise Exception("not implemented") # todo MIRRORING
-
             seg = toRecover.getLiveSegment()
             seg.setSegmentMode(gparray.MODE_RESYNCHRONIZING)
 
-        configInterface.getConfigurationProvider().updateSystemConfig(systemConfig)
-
-        # todo: mirroring STOP the old mirror in case they are running?
+        configInterface.getConfigurationProvider().updateSystemConfig(gpArray)
 
         # stop/start new mirrors
         mirrorsToStart = []
@@ -192,11 +268,10 @@ class GpRecoverSegmentProgram:
             mirrorsToStart.append(seg)
             primariesToConvert.append(toRecover.getLiveSegment())
 
-        self.startAll(mirrorsToStart, "quiescent")
-        self.convertAll(mirrorsToStart, "mirror")
-        self.convertAll(primariesToConvert, "primary")
+        self.__startAll(gpEnv, gpArray, mirrorsToStart)
+        self.__convertAllPrimaries(primariesToConvert)
 
-    def getRecoveryActionsFromConfigFile(self, systemConfig):
+    def getRecoveryActionsFromConfigFile(self, gpArray):
         """
         getRecoveryActionsFromConfigFile
 
@@ -204,8 +279,8 @@ class GpRecoverSegmentProgram:
         """
         raise Exception("not implemented")
 
-    def findAndValidatePeersForFailedSegments(self, systemConfig, failedSegments):
-        dbIdToPeerMap = systemConfig.getDbIdToPeerMap()
+    def findAndValidatePeersForFailedSegments(self, gpArray, failedSegments):
+        dbIdToPeerMap = gpArray.getDbIdToPeerMap()
         peersForFailedSegments = [ dbIdToPeerMap.get(seg.getSegmentDbId()) for seg in failedSegments]
         for i in range(len(failedSegments)):
             peer = peersForFailedSegments[i]
@@ -216,16 +291,16 @@ class GpRecoverSegmentProgram:
                         (peer.getSegmentContentId(), getProgramName()))
         return peersForFailedSegments
 
-    def getRecoveryActionsFromConfiguration(self, systemConfig):
+    def getRecoveryActionsFromConfiguration(self, gpArray):
         """
         getRecoveryActionsFromConfiguration
 
         returns a GpRecoveryActions object
         """
-        segments = systemConfig.getSegDbList()
+        segments = gpArray.getSegDbList()
 
         failedSegments = [ seg for seg in segments if seg.isSegmentDown() ]
-        peersForFailedSegments = self.findAndValidatePeersForFailedSegments(systemConfig, failedSegments)
+        peersForFailedSegments = self.findAndValidatePeersForFailedSegments(gpArray, failedSegments)
 
         segs = []
         for i in range(len(failedSegments)):
@@ -235,22 +310,19 @@ class GpRecoverSegmentProgram:
         #       and pick new ports, etc.
         return GpRecoveryActions(segs)
 
-    def getRecoveryActionsBasedOnOptions(self, systemConfig):
+    def getRecoveryActionsBasedOnOptions(self, gpArray):
         if self.__options.forceRecoverySegmentDataDirAndHost is not None:
-            raise Exception("Not implemented") # todo MIRORING: do we need this?
+            raise Exception("Not implemented") # todo MIRRORING: do we need to implement this?
         elif self.__options.forceRecoverySegmentDbId is not None:
-            raise Exception("Not implemented") # todo MIRORING: do we need this?
+            raise Exception("Not implemented") # todo MIRRORING: do we need to implement this?
         elif self.__options.recoveryConfigFile is not None:
-            return self.getRecoveryActionsFromConfigFile(systemConfig)
+            return self.getRecoveryActionsFromConfigFile(gpArray)
         else:
-            return self.getRecoveryActionsFromConfiguration(systemConfig)
+            return self.getRecoveryActionsFromConfiguration(gpArray)
             
-    #
-    # todo MIRRORING: what is: multi_home = gpmlib.chk_multi_home(hosts)
-    # todo MIRRORING: do I need gp_fault_action
-    # todo MIRRORING: get master port properly (from MASTER_DATA_DIRECTORY)
-    #
     def run(self):
+
+        gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory)
 
         # verify "what to recovery" options: note that specifying NONE is okay as well
         if self.__options.forceRecoverySegmentDataDirAndHost is not None and \
@@ -265,24 +337,22 @@ class GpRecoverSegmentProgram:
             raise ProgramArgumentValidationException(\
                     "Only one of -p and -s may be specified")
 
-        # gpmlib.get_master_port(opt['-d'])
-        masterPort = 5432
         # if gpmlib.chk_on_passive_standby(masterPort): # todo: what is this doing?  Proper error message
          #    raise Exception('Unable to process requested command')
 
         # done basic checks, now load config
-        self.pauseFaultProber()
-        confProvider = configInterface.getConfigurationProvider().initializeProvider(masterPort, False)
-        systemConfig = confProvider.loadSystemConfig()
+        self.__faultProber.pauseFaultProber()
+        confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
+        gpArray = confProvider.loadSystemConfig()
 
         # check that we actually have mirrors
-        if len([seg for seg in systemConfig.getSegDbList() if seg.getSegmentPreferredRole() == 'm']) == 0 :
+        if len([seg for seg in gpArray.getSegDbList() if seg.getSegmentPreferredRole() == 'm']) == 0 :
             raise ExceptionNoStackTraceNeeded( \
                     'There are no mirrors configured for this Greenplum Datanase instance' \
                     'The Greenplum Database instance will need to be recovered manually')
 
         # figure out what needs to be done
-        actions = self.getRecoveryActionsBasedOnOptions(systemConfig)
+        actions = self.getRecoveryActionsBasedOnOptions(gpArray)
 
         # prompt user, if desired
         if self.__options.interactive:
@@ -292,9 +362,9 @@ class GpRecoverSegmentProgram:
         if self.__options.outputSampleConfigFile is not None:
             self.outputToFile(actions, self.__options.outputSampleConfigFile)
         else:
-            self.recover(systemConfig, actions)
+            self.recover(gpArray, actions)
 
-        self.unpauseFaultProber()
+        self.__faultProber.unpauseFaultProber()
         return 0 # success -- exit code 0!
 
     def cleanup(self):
@@ -318,6 +388,13 @@ class GpRecoverSegmentProgram:
         parser.setHelp(help)
 
         addStandardLoggingAndHelpOptions(parser, True)
+
+        addTo = OptionGroup(parser, "Connection Options")
+        parser.add_option_group(addTo)
+        addTo.add_option('-d', '--master_data_directory', dest="masterDataDirectory",
+                         type='string', default=None, metavar="<master data directory>",
+                       help="Optional. The master host data directory. If not specified, the value set"\
+                            "for $MASTER_DATA_DIRECTORY will be used.")
 
         addTo = OptionGroup(parser, "Recovery Source Options")
         parser.add_option_group(addTo)
@@ -349,13 +426,6 @@ class GpRecoverSegmentProgram:
                          metavar="<parallelDegree>",
                       help="Max # of workers to use for recovering segments")
 
-        # todo: parallel degree sanity checks + defaults from gpstart
-        # todo MIRRORING: is -F (force shutdown) required?
-        # todo MIRRORING: set it up to show gprecoverseg_help
-
-        # note (MIRRORING): I removed some options from old gprecoverseg, including:
-        #        --version
-        #
         parser.set_defaults()
         return parser
 

@@ -119,6 +119,20 @@ class StartSegmentsOperation:
         assert totalToAttempt == len(result.getFailedSegments()) + len(result.getSuccessfulSegments())
         return result
 
+    def transitionSegments(self, gpArray, segments, mirrorMode):
+        """
+        gpArray: the system to which the segments to start belong
+        segments: the list of segments to be transitioned
+        mirrorMode: should be one of the MIRROR_MODE_* constant values
+
+        """
+
+        result = StartSegmentsResult()
+        self.__sendPrimaryMirrorTransition(mirrorMode, segments, gpArray, result)
+        
+        assert len(segments) == len(result.getFailedSegments()) + len(result.getSuccessfulSegments())
+        return result
+
     def __runStartCommand(self, segments, mirroringMode, numContentsInCluster, resultOut):
         """
         Returns a StartSegmentsResult object
