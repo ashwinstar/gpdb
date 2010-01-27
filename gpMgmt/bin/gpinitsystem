@@ -562,7 +562,7 @@ CHK_LOCALE_KNOWN () {
 
 CHK_DUPLICATES () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		if [ `$CAT $MACHINE_LIST_FILE|$GREP -v $"^$"|$WC -l` -ne `$CAT $MACHINE_LIST_FILE|$GREP -v "^$"|$SORT -u|$WC -l` ]
+		if [ `$ECHO | $CAT $MACHINE_LIST_FILE - |$GREP -v $"^$"|$WC -l` -ne `$CAT $MACHINE_LIST_FILE|$GREP -v "^$"|$SORT -u|$WC -l` ]
 		then
 			ERROR_EXIT "[FATAL]:-Duplicate segment instance hostname exists in $MACHINE_LIST_FILE" 2
 		fi
