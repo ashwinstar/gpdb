@@ -13,77 +13,36 @@
 #include <signal.h>
 
 #include "cdb/cdbmirroredfilesysobj.h"
-#include "cdb/cdbfilerepprimary.h"
 #include "storage/smgr.h"
+#include "catalog/gp_persistent.h"
+#include "cdb/cdbpersistenttablespace.h"
 
 void MirroredFileSysObj_CreateTablespaceDir(
 	TablespaceDirNode			*tablespaceDirNode)
 {
-
-//	if (FileRepPrimary_MirrorCreate(
-//				FileRep_GetDirIdentifier(*dbDirNode),
-//				FileRepRelationTypeDir) != 0) 
-//		ereport(LOG,
-//				(errmsg("could not sent create dbdir to mirror")));
-
 	smgrcreatetablespacedir(tablespaceDirNode, false);
-	
-//	if (FileRepPrimary_IsOperationCompleted(
-//				   FileRep_GetDirIdentifier(*dbDirNode),							
-//				   FileRepRelationTypeDir) == FALSE)	
-//		ereport(LOG,
-//				(errmsg("could not create dbdir on mirror ")));					  
 }
 
 void MirroredFileSysObj_ScheduleDropTablespaceDir(
-	TablespaceDirNode			*tablespaceDirNode)
+	Oid			tablespaceOid)
 {
-	
-	smgrschedulermtablespacedir(tablespaceDirNode);
-
+	smgrschedulermtablespacedir(tablespaceOid);
 }
 
 void MirroredFileSysObj_DropTablespaceDir(
-	TablespaceDirNode			*tablespaceDirNode,
+	Oid			tablespaceOid,
 
 	bool isRedo)
 {
-
-	// UNDONE: NOTE we don't mirror the drop yet in md.c:mdrmdbdir
-
-//	if (FileRepPrimary_MirrorDrop(
-//				FileRep_GetDirIdentifier(*dbDirNode),
-//				FileRepRelationTypeDir) != 0) 
-//		ereport(LOG,
-//				(errmsg("could not sent drop dbdir to mirror")));
-	
-
-	smgrdormtablespacedir(tablespaceDirNode, isRedo);
-
-//	if (FileRepPrimary_IsOperationCompleted(
-//					FileRep_GetDirIdentifier(*dbDirNode),							
-//					FileRepRelationTypeDir) == FALSE)	
-//		ereport(LOG,
-//				(errmsg("could not drop dbdir on mirror ")));	
+	smgrdormtablespacedir(tablespaceOid, isRedo);
 }
 
 void MirroredFileSysObj_CreateDbDir(
 	DbDirNode			*dbDirNode)
 {
-
-	if (FileRepPrimary_MirrorCreate(
-				FileRep_GetDirIdentifier(*dbDirNode),
-				FileRepRelationTypeDir) != 0) 
-		ereport(LOG,
-				(errmsg("could not sent create dbdir to mirror")));
-
-	smgrcreatedbdir(dbDirNode, false);
-	
-	if (FileRepPrimary_IsOperationCompleted(
-				   FileRep_GetDirIdentifier(*dbDirNode),							
-				   FileRepRelationTypeDir) == FALSE)	
-		ereport(LOG,
-				(errmsg("could not create dbdir on mirror ")));					  
+	smgrcreatedbdir(
+				dbDirNode, 
+				/* isRedo */ false);
 }
 
 void MirroredFileSysObj_ScheduleDropDbDir(
@@ -99,49 +58,46 @@ void MirroredFileSysObj_DropDbDir(
 
 	bool isRedo)
 {
-
-	// UNDONE: NOTE we don't mirror the drop yet in md.c:mdrmdbdir
-
-	if (FileRepPrimary_MirrorDrop(
-				FileRep_GetDirIdentifier(*dbDirNode),
-				FileRepRelationTypeDir) != 0) 
-		ereport(LOG,
-				(errmsg("could not sent drop dbdir to mirror")));
-	
-
 	smgrdormdbdir(dbDirNode, isRedo);
-
-	if (FileRepPrimary_IsOperationCompleted(
-					FileRep_GetDirIdentifier(*dbDirNode),							
-					FileRepRelationTypeDir) == FALSE)	
-		ereport(LOG,
-				(errmsg("could not drop dbdir on mirror ")));	
 }
 
 void MirroredFileSysObj_CreateRelFile(
 	SMgrRelation smgrOpen,
 
 	ItemPointer persistentTid,
+				/* Output: The TID of the gp_persistent_relation_node tuple. */
 
 	int64	*persistentSerialNum,
+				/* Output: The serial number of the gp_persistent_relation_node tuple. */
 
 	bool isLocalBuf)
 {
+//	DbDirNode justInTimeDbDirNode;
 
-	if (FileRepPrimary_MirrorCreate(
-				FileRep_GetRelationIdentifier(smgrOpen->smgr_rnode, 0),
-				FileRepRelationTypeFile) != 0) 
-		ereport(LOG,
-				(errmsg("could not sent create relfile to mirror")));
-	
-	smgrcreate(smgrOpen, persistentTid, persistentSerialNum, isLocalBuf, /* isRedo */ false);
+	/*
+	 * "Fault-in" the database directory in a tablespace if it doesn't exist yet.
+	 */
+//	justInTimeDbDirNode.tablespace = smgrOpen->smgr_rnode.spcNode;
+//	justInTimeDbDirNode.database = smgrOpen->smgr_rnode.dbNode;
+//	MirroredFileSysObj_JustInTimeDbDirCreate(&justInTimeDbDirNode);
 
+	/*
+	 * We write our intention or 'Create Pending' persistent information before we do
+	 * any create relation work on either the primary or mirror.
+	 */
+	smgrcreatepending(
+		&smgrOpen->smgr_rnode, 
+		persistentTid, 
+		persistentSerialNum, 
+		isLocalBuf, 
+		/* flushToXLog */ true);
 
-	if (FileRepPrimary_IsOperationCompleted(
-					FileRep_GetRelationIdentifier(smgrOpen->smgr_rnode, 0),							
-					FileRepRelationTypeFile) == FALSE)	
-		ereport(LOG,
-				(errmsg("could not create relfile on mirror ")));			
+	/*
+	 * Synchronous primary and mirror create relation.
+	 */
+	MirroredFileSysObj_CreateOnlyRelFile(
+									smgrOpen,
+									isLocalBuf);
 }
 
 void MirroredFileSysObj_CreateOnlyRelFile(
@@ -149,23 +105,10 @@ void MirroredFileSysObj_CreateOnlyRelFile(
 
 	bool isLocalBuf)
 {
-
-	if (FileRepPrimary_MirrorCreate(
-				FileRep_GetRelationIdentifier(smgrOpen->smgr_rnode, 0),
-				FileRepRelationTypeFile) != 0) 
-		ereport(LOG,
-				(errmsg("could not sent create relfile to mirror")));
-
-	// UNDONE: For now, just set the isRedo flag to indicate we've already have the 'Create Pending'
-	// UNDONE: persistent entry...
-	smgrcreate(smgrOpen, NULL, NULL, isLocalBuf, /* isRedo */ true);
-
-
-	if (FileRepPrimary_IsOperationCompleted(
-					FileRep_GetRelationIdentifier(smgrOpen->smgr_rnode, 0),							
-					FileRepRelationTypeFile) == FALSE)	
-		ereport(LOG,
-				(errmsg("could not create relfile on mirror ")));			
+	smgrcreate(
+			smgrOpen, 
+			isLocalBuf, 
+			/* isRedo */ false);
 }
 
 void MirroredFileSysObj_ScheduleDropRelFile(
