@@ -177,6 +177,9 @@ if (1)
 		"fep.fsedbid=gscp.dbid and gscp.content > -1 " .
 		"and " .
 		"fem.fsedbid=gscm.dbid and gscm.content > -1 " .
+		"and " .
+		# match the filespace ids
+		"fem.fsefsoid = fep.fsefsoid " . 
 		"and gscp.content = gscm.content " .
 		# use "dollar-quoting" to avoid dealing with nested single-quotes:
 		# $q$p$q$ is equivalent to 'p'
@@ -253,7 +256,7 @@ if (1)
 
 		system ($cmd);
 
-		my $diffi = `diff $primtmp $mirrtmp`;
+		my $diffi = `diff -b $primtmp $mirrtmp`;
 
 		if (length($diffi))
 		{
