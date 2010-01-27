@@ -61,14 +61,14 @@ typedef struct PersistentTablespaceData
 
 typedef struct TablespaceDirEntryKey
 {
-	Oid filespaceOid;
-	
 	Oid	tablespaceOid;
 } TablespaceDirEntryKey;
 
 typedef struct TablespaceDirEntryData
 {
 	TablespaceDirEntryKey	key;
+
+	Oid						filespaceOid;
 
 	PersistentFileSysState	state;
 	int64					serialNum;
@@ -94,9 +94,7 @@ static void PersistentTablespace_InitScan(void);
  */
 static TablespaceDirEntry
 PersistentTablespace_FindDirUnderLock(
-	Oid			filespaceOid,
-	
-	Oid 		tablespaceOid)
+	Oid			tablespaceOid)
 {
 	bool			found;
 
@@ -104,7 +102,6 @@ PersistentTablespace_FindDirUnderLock(
 
 	TablespaceDirEntryKey key;
 
-	key.filespaceOid = filespaceOid;
 	key.tablespaceOid = tablespaceOid;
 
 	tablespaceDirEntry = 
@@ -129,7 +126,6 @@ PersistentTablespace_CreateDirUnderLock(
 
 	TablespaceDirEntryKey key;
 
-	key.filespaceOid = filespaceOid;
 	key.tablespaceOid = tablespaceOid;
 
 	tablespaceDirEntry = 
@@ -141,6 +137,8 @@ PersistentTablespace_CreateDirUnderLock(
 
 	if (tablespaceDirEntry == NULL)
 		elog(ERROR, "Out of shared-memory for persistent tablespaces");
+
+	tablespaceDirEntry->filespaceOid = filespaceOid;
 	
 	tablespaceDirEntry->state = 0;
 	tablespaceDirEntry->serialNum = 0;
@@ -300,7 +298,7 @@ static void PersistentTablespace_AddTuple(
 	bool			flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
 {
-	Oid filespaceOid = tablespaceDirEntry->key.filespaceOid;
+	Oid filespaceOid = tablespaceDirEntry->filespaceOid;
 	Oid tablespaceOid = tablespaceDirEntry->key.tablespaceOid;
 
 	ItemPointerData previousFreeTid;
@@ -334,8 +332,8 @@ static void PersistentTablespace_UpdateTuple(
 	bool			flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
 {
+	Oid filespaceOid = tablespaceDirEntry->filespaceOid;
 	Oid tablespaceOid = tablespaceDirEntry->key.tablespaceOid;
-	Oid filespaceOid = tablespaceDirEntry->key.filespaceOid;
 
 	ItemPointerData previousFreeTid;
 
@@ -383,6 +381,22 @@ gp_persistent_tablespace_node_add(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(tablespaceDirEntry.serialNum);
 }
 
+void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the create. */
+
+	char **primaryFilespaceLocation,
+				/* The primary filespace directory path.  Return NULL for global and base. */
+	
+	char **mirrorFilespaceLocation)
+				/* The primary filespace directory path.  Return NULL for global and base. 
+				 * Or, returns NULL when mirror not configured. */
+{
+	// UNDONE
+	*primaryFilespaceLocation = NULL;
+	*mirrorFilespaceLocation = NULL;
+}
+
 // -----------------------------------------------------------------------------
 // State Change 
 // -----------------------------------------------------------------------------
@@ -398,8 +412,11 @@ gp_persistent_tablespace_node_add(PG_FUNCTION_ARGS)
  * note on XLOG flushing).
  */
 void PersistentTablespace_MarkCreatePending(
-	TablespaceDirNode 		*tablespaceDirNode,
-				/* The filespace and tablespace OIDs for the create. */
+	Oid 		filespaceOid,
+				/* The filespace where the tablespace lives. */
+
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the create. */
 
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
@@ -414,9 +431,8 @@ void PersistentTablespace_MarkCreatePending(
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent tablespace %u, filespace %u because we are in bootstrap mode",
-				 tablespaceDirNode->tablespace,
-				 tablespaceDirNode->filespace);
+				 "Skipping persistent tablespace %u because we are in bootstrap mode",
+				 tablespaceOid);
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
@@ -427,8 +443,8 @@ void PersistentTablespace_MarkCreatePending(
 
 	tablespaceDirEntry = 
 				PersistentTablespace_CreateDirUnderLock(
-												tablespaceDirNode->filespace,
-												tablespaceDirNode->tablespace);
+												filespaceOid,
+												tablespaceOid);
 	Assert(tablespaceDirEntry != NULL);
 
 	tablespaceDirEntry->state = PersistentFileSysState_CreatePending;
@@ -451,9 +467,9 @@ void PersistentTablespace_MarkCreatePending(
  * Indicate the transaction commited and the tablespace is officially created.
  */
 void PersistentTablespace_Created(
-	TablespaceDirNode		*tablespaceDirNode,
-				/* The filespace and tablespace OIDs for the created tablespace. */
-				
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the create. */
+
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 
@@ -467,9 +483,8 @@ void PersistentTablespace_Created(
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent tablespace %u, filespace %u because we are in bootstrap mode",
-				 tablespaceDirNode->tablespace,
-				 tablespaceDirNode->filespace);
+				 "Skipping persistent tablespace %u because we are in bootstrap mode",
+				 tablespaceOid);
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
@@ -480,17 +495,14 @@ void PersistentTablespace_Created(
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindDirUnderLock(
-												tablespaceDirNode->filespace,
-												tablespaceDirNode->tablespace);
+												tablespaceOid);
 	if (tablespaceDirEntry == NULL)
-		elog(ERROR, "Did not find persistent tablespace entry %u, filespace %u", 
-			 tablespaceDirNode->tablespace,
-			 tablespaceDirNode->filespace);
+		elog(ERROR, "Did not find persistent tablespace entry %u", 
+			 tablespaceOid);
 
 	if (tablespaceDirEntry->state != PersistentFileSysState_CreatePending)
-		elog(ERROR, "Persistent tablespace entry %u, filespace %u expected to be in 'Create Pending' state (actual state '%s')", 
-			 tablespaceDirNode->tablespace,
-			 tablespaceDirNode->filespace,
+		elog(ERROR, "Persistent tablespace entry %u expected to be in 'Create Pending' state (actual state '%s')", 
+			 tablespaceOid,
 			 PersistentFileSysObj_StateName(tablespaceDirEntry->state));
 
 	tablespaceDirEntry->state = PersistentFileSysState_Created;
@@ -513,9 +525,9 @@ void PersistentTablespace_Created(
  * crash.
  */
 void PersistentTablespace_MarkDropPending(
-	TablespaceDirNode		*tablespaceDirNode,
-				/* The filespace and tablespace OIDs for the drop. */
-				
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the drop. */
+
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 
@@ -529,9 +541,8 @@ void PersistentTablespace_MarkDropPending(
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent tablespace %u, filespace %u because we are in bootstrap mode",
-				 tablespaceDirNode->tablespace,
-				 tablespaceDirNode->filespace);
+				 "Skipping persistent tablespace %u because we are in bootstrap mode",
+				 tablespaceOid);
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
@@ -542,18 +553,15 @@ void PersistentTablespace_MarkDropPending(
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindDirUnderLock(
-												tablespaceDirNode->filespace,
-												tablespaceDirNode->tablespace);
+												tablespaceOid);
 	if (tablespaceDirEntry == NULL)
-		elog(ERROR, "Did not find persistent tablespace entry %u, filespace %u", 
-			 tablespaceDirNode->tablespace,
-			 tablespaceDirNode->filespace);
+		elog(ERROR, "Did not find persistent tablespace entry %u", 
+			 tablespaceOid);
 
 	if (tablespaceDirEntry->state != PersistentFileSysState_CreatePending &&
 		tablespaceDirEntry->state != PersistentFileSysState_Created)
-		elog(ERROR, "Persistent tablespace entry %u, filespace %u expected to be in 'Create Pending' or 'Created' state (actual state '%s')", 
-			 tablespaceDirNode->tablespace,
-			 tablespaceDirNode->filespace,
+		elog(ERROR, "Persistent tablespace entry %u expected to be in 'Create Pending' or 'Created' state (actual state '%s')", 
+			 tablespaceOid,
 			 PersistentFileSysObj_StateName(tablespaceDirEntry->state));
 
 	tablespaceDirEntry->state = PersistentFileSysState_DropPending;
@@ -571,8 +579,8 @@ void PersistentTablespace_MarkDropPending(
  * This state will make sure the tablespace gets dropped after a system crash.
  */
 void PersistentTablespace_MarkAbortingCreate(
-	TablespaceDirNode		*tablespaceDirNode,
-				/* The filespace and tablespace OIDs for the aborting create. */
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the aborting create. */
 							
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
@@ -587,9 +595,8 @@ void PersistentTablespace_MarkAbortingCreate(
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent tablespace %u, filespace %u because we are in bootstrap mode",
-				 tablespaceDirNode->tablespace,
-				 tablespaceDirNode->filespace);
+				 "Skipping persistent tablespace %u because we are in bootstrap mode",
+				 tablespaceOid);
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
@@ -600,17 +607,14 @@ void PersistentTablespace_MarkAbortingCreate(
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindDirUnderLock(
-												tablespaceDirNode->filespace,
-												tablespaceDirNode->tablespace);
+												tablespaceOid);
 	if (tablespaceDirEntry == NULL)
-		elog(ERROR, "Did not find persistent tablespace entry %u, filespace %u", 
-			 tablespaceDirNode->tablespace,
-			 tablespaceDirNode->filespace);
+		elog(ERROR, "Did not find persistent tablespace entry %u", 
+			 tablespaceOid);
 
 	if (tablespaceDirEntry->state != PersistentFileSysState_CreatePending)
-		elog(ERROR, "Persistent tablespace entry %u, filespace %u expected to be in 'Create Pending' (actual state '%s')", 
-			 tablespaceDirNode->tablespace,
-			 tablespaceDirNode->filespace,
+		elog(ERROR, "Persistent tablespace entry %u expected to be in 'Create Pending' (actual state '%s')", 
+			 tablespaceOid,
 			 PersistentFileSysObj_StateName(tablespaceDirEntry->state));
 
 	tablespaceDirEntry->state = PersistentFileSysState_AbortingCreate;
@@ -626,8 +630,8 @@ void PersistentTablespace_MarkAbortingCreate(
  * Indicate we physically removed the tablespace file.
  */
 void PersistentTablespace_Dropped(
-	TablespaceDirNode		*tablespaceDirNode,
-				/* The filespace and tablespace OIDs for the dropped tablespace. */
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the dropped tablespace. */
 										
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
@@ -648,9 +652,8 @@ void PersistentTablespace_Dropped(
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent tablespace %u, filespace %u because we are in bootstrap mode",
-				 tablespaceDirNode->tablespace,
-				 tablespaceDirNode->filespace);
+				 "Skipping persistent tablespace %u because we are in bootstrap mode",
+				 tablespaceOid);
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
@@ -661,18 +664,15 @@ void PersistentTablespace_Dropped(
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindDirUnderLock(
-												tablespaceDirNode->filespace,
-												tablespaceDirNode->tablespace);
+												tablespaceOid);
 	if (tablespaceDirEntry == NULL)
-		elog(ERROR, "Did not find persistent tablespace entry %u, filespace %u", 
-			 tablespaceDirNode->tablespace,
-			 tablespaceDirNode->filespace);
+		elog(ERROR, "Did not find persistent tablespace entry %u", 
+			 tablespaceOid);
 
 	if (tablespaceDirEntry->state != PersistentFileSysState_DropPending &&
 		tablespaceDirEntry->state != PersistentFileSysState_AbortingCreate)
-		elog(ERROR, "Persistent tablespace entry %u, filespace %u expected to be in 'Drop Pending' or 'Aborting Create' (actual state '%s')", 
-			 tablespaceDirNode->tablespace,
-			 tablespaceDirNode->filespace,
+		elog(ERROR, "Persistent tablespace entry %u expected to be in 'Drop Pending' or 'Aborting Create' (actual state '%s')", 
+			 tablespaceOid,
 			 PersistentFileSysObj_StateName(tablespaceDirEntry->state));
 
 	GpPersistentTablespaceNode_SetDatumValues(

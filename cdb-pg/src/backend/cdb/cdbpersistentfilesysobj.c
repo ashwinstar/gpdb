@@ -496,7 +496,7 @@ void PersistentFileSysObj_Created(
 
 	case PersistentFsObjType_TablespaceDir:
 		PersistentTablespace_Created(
-							&fsObjName->variant.tablespaceDirNode,
+							fsObjName->variant.tablespaceOid,
 							persistentTid,
 							persistentSerialNum);
 		break;
@@ -535,7 +535,7 @@ void PersistentFileSysObj_MarkAbortingCreate(
 
 	case PersistentFsObjType_TablespaceDir:
 		PersistentTablespace_MarkAbortingCreate(
-							&fsObjName->variant.tablespaceDirNode,
+							fsObjName->variant.tablespaceOid,
 							persistentTid,
 							persistentSerialNum);
 		break;
@@ -572,7 +572,7 @@ void PersistentFileSysObj_MarkDropPending(
 
 	case PersistentFsObjType_TablespaceDir:
 		PersistentTablespace_MarkDropPending(
-							&fsObjName->variant.tablespaceDirNode,
+							fsObjName->variant.tablespaceOid,
 							persistentTid,
 							persistentSerialNum);
 		break;
@@ -626,19 +626,15 @@ void PersistentFileSysObj_Drop(
 		}
 		break;
 
-	case PersistentFsObjType_TablespaceDir:
-		{
-			TablespaceDirNode *tablespaceDirNode = &fsObjName->variant.tablespaceDirNode;
-			
-			MirroredFileSysObj_DropTablespaceDir(
-								tablespaceDirNode,
-								isRedo);
-			
-			PersistentTablespace_Dropped(
-								tablespaceDirNode,
-								persistentTid,
-								persistentSerialNum);
-		}
+	case PersistentFsObjType_TablespaceDir:			
+		MirroredFileSysObj_DropTablespaceDir(
+							fsObjName->variant.tablespaceOid,
+							isRedo);
+
+		PersistentTablespace_Dropped(
+							fsObjName->variant.tablespaceOid,
+							persistentTid,
+							persistentSerialNum);
 		break;
 
 	default:

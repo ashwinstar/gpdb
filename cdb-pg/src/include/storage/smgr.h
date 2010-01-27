@@ -68,13 +68,13 @@ extern void smgrcloseall(void);
 extern void smgrclosenode(RelFileNode rnode);
 extern void smgrcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo);
 extern void smgrcreatedbdir(DbDirNode *dbDirNode, bool isRedo);
-extern void smgrcreatepending(RelFileNode 	relFileNode, ItemPointer persistentTid, int64 *persistentSerialNum, bool isLocalBuf, bool flushToXLog);
-extern void smgrcreate(SMgrRelation reln, ItemPointer persistentTid, int64 *persistentSerialNum, bool isLocalBuf, bool isRedo);
+extern void smgrcreatepending(RelFileNode 	*relFileNode, ItemPointer persistentTid, int64 *persistentSerialNum, bool isLocalBuf, bool flushToXLog);
+extern void smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo);
 extern void smgrscheduleunlink(SMgrRelation reln, ItemPointer persistentTid, int64 persistentSerialNum, bool isLocalBuf);
 extern void smgrdounlink(SMgrRelation reln, bool isLocalBuf, bool isRedo);
-extern void smgrschedulermtablespacedir(TablespaceDirNode *tablespaceDirNode);
+extern void smgrschedulermtablespacedir(Oid tablespaceOid);
 extern void smgrschedulermdbdir(DbDirNode *dropDbDirNode);
-extern void smgrdormtablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo);
+extern void smgrdormtablespacedir(Oid tablespaceOid, bool isRedo);
 extern void smgrdormdbdir(DbDirNode *dropDbDirNode, bool isRedo);
 extern void smgrextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		   bool isTemp);
@@ -108,7 +108,7 @@ extern bool mdcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isR
 extern bool mdcreatedbdir(DbDirNode *dbDirNode, bool isRedo);
 extern bool mdcreate(SMgrRelation reln, bool isRedo);
 extern bool mdunlink(RelFileNode rnode, bool isRedo);
-extern bool mdrmtablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo);
+extern bool mdrmtablespacedir(Oid tablespaceOid, bool isRedo);
 extern bool mdrmdbdir(DbDirNode *dbDirNode, bool isRedo);
 extern bool mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		 bool isTemp);

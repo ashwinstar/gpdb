@@ -19,6 +19,7 @@
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbmirroredbufferpool.h"
 #include "storage/fd.h"
+#include "cdb/cdbpersistenttablespace.h"
 
 /*
  * Open a relation for mirrored write.
@@ -38,10 +39,17 @@ bool MirroredBufferPool_Open(
 	int 			fileMode)
 
 {
-	char *subDirectory;
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	char dbPath[MAXPGPATH];
 	char path[MAXPGPATH];
-	
+
 	Assert(open != NULL);
+	
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+										relFileNode->spcNode,
+										&primaryFilespaceLocation,
+										&mirrorFilespaceLocation);
 	
 	if (FileRepPrimary_MirrorOpen(
 				  FileRep_GetRelationIdentifier(
@@ -51,7 +59,6 @@ bool MirroredBufferPool_Open(
 				  FILEREP_OFFSET_UNDEFINED,
 				  fileFlags,
 				  fileMode) != 0) 
-		
 		ereport(LOG,
 				(errmsg("could not sent open file to mirror file \"%s\", segment file %d", 
 						relpath(open->relFileNode), open->segmentFileNum)));
@@ -59,14 +66,16 @@ bool MirroredBufferPool_Open(
 	MemSet(open, 0, sizeof(MirroredBufferPoolOpen));
 	open->primaryFile = -1;
 
-	subDirectory = GetDatabasePath(
-								relFileNode->dbNode, 
-								relFileNode->spcNode);
+	FormDatabasePath(
+				dbPath,
+				primaryFilespaceLocation,
+				relFileNode->spcNode,
+				relFileNode->dbNode);
+
 	if (segmentFileNum == 0)
-		sprintf(path, "%s/%u", subDirectory, relFileNode->relNode);
+		sprintf(path, "%s/%u", dbPath, relFileNode->relNode);
 	else
-		sprintf(path, "%s/%u.%u", subDirectory, relFileNode->relNode, segmentFileNum);
-	pfree(subDirectory);
+		sprintf(path, "%s/%u.%u", dbPath, relFileNode->relNode, segmentFileNum);
 
 	open->primaryFile = PathNameOpenFile(path, fileFlags, fileMode);
 	if (open->primaryFile < 0)
@@ -78,6 +87,11 @@ bool MirroredBufferPool_Open(
 	open->segmentFileNum = segmentFileNum;
 	
 	open->isActive = true;
+
+	if (primaryFilespaceLocation != NULL)
+		pfree(primaryFilespaceLocation);
+	if (mirrorFilespaceLocation != NULL)
+		pfree(mirrorFilespaceLocation);
 
 	return true;
 }

@@ -50,19 +50,8 @@ char *PersistentFileSysObjName_ObjectName(
 						name->variant.dbDirNode.tablespace);
 
 	case PersistentFsObjType_TablespaceDir:
-		{
-			int resultLen;
-			char *result;
-
-			resultLen = 12 + 25 + 12 + 1;
-			result = (char*)palloc(resultLen);
-			
-			sprintf(result, "%u (maps to filespace %u)", 
-					name->variant.tablespaceDirNode.tablespace, 
-					name->variant.tablespaceDirNode.filespace);
-
-			return result;
-		}
+		oid = name->variant.tablespaceOid;
+		break;
 	case PersistentFsObjType_FilespaceDir:
 		oid = name->variant.filespaceOid;
 		break;

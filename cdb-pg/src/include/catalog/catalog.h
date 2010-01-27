@@ -21,9 +21,8 @@
 extern char *relpath(RelFileNode rnode);
 extern void CopyRelPath(char *target, int targetMaxLen, RelFileNode rnode);
 extern char *GetDatabasePath(Oid dbNode, Oid spcNode);
-extern void CopyDatabasePath(char *target, int targetMaxLen, Oid dbNode, Oid spcNode);
-extern char *GetTablespacePath(TablespaceDirNode *tablespaceDirNode);
-extern void CopyTablespacePath(char *target, int targetMaxLen, TablespaceDirNode *tablespaceDirNode);
+extern void FormDatabasePath(char *databasePath, char *filespaceLocation, Oid tablespaceOid, Oid databaseOid);
+extern void FormTablespacePath(char *tablespacePath, char *filespaceLocation, Oid tablespaceOid);
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);

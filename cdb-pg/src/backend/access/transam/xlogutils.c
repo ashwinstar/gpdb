@@ -410,8 +410,6 @@ XLogOpenRelation(RelFileNode rnode)
 	XLogRelDesc *res;
 	XLogRelCacheEntry *hentry;
 	bool		found;
-	ItemPointerData persistentTid;
-	int64 persistentSerialNum;
 
 	hentry = (XLogRelCacheEntry *)
 		hash_search(_xlrelcache, (void *) &rnode, HASH_FIND, NULL);
@@ -465,8 +463,6 @@ XLogOpenRelation(RelFileNode rnode)
 		// UNDONE: What about the persistent rel files table???
 		smgrcreate(
 			res->reldata.rd_smgr, 
-			&persistentTid, 
-			&persistentSerialNum,
 			res->reldata.rd_isLocalBuf, 
 			true);
 		// UNDONE: This condition should not occur anymore.

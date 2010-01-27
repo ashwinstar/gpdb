@@ -32,6 +32,8 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 #include "cdb/cdbmirroredbufferpool.h"
+#include "cdb/cdbpersistenttablespace.h"
+#include "cdb/cdbfilerepprimary.h"
 
 
 /* interval for calling AbsorbFsyncRequests in mdsync */
@@ -201,16 +203,39 @@ mdinit(void)
 bool
 mdcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
 {
-	char	   *path;
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	char tablespacePath[MAXPGPATH];
+	bool result;
 
-	path = GetTablespacePath(tablespaceDirNode);
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+										tablespaceDirNode->tablespace,
+										&primaryFilespaceLocation,
+										&mirrorFilespaceLocation);
 
-	if (mkdir(path, 0700) != 0)
-	{
-		return false;
-	}
+	// UNDONE: Need tablespace directory equivalent
+//	if (FileRepPrimary_MirrorCreate(
+//				FileRep_GetDirIdentifier(*dbDirNode),
+//				FileRepRelationTypeDir) != 0) 
+//		ereport(LOG,
+//				(errmsg("could not sent create dbdir to mirror")));
 
-	return true;
+	FormTablespacePath(
+				tablespacePath,
+				primaryFilespaceLocation,
+				tablespaceDirNode->tablespace);
+
+	// UNDONE: Do we need to preserve the errno?  Probably.
+	result = (mkdir(tablespacePath, 0700) == 0);
+	
+//	if (FileRepPrimary_IsOperationCompleted(
+//				   FileRep_GetDirIdentifier(*dbDirNode),							
+//				   FileRepRelationTypeDir) == FALSE)	
+//		ereport(LOG,
+//				(errmsg("could not create dbdir on mirror ")));	
+
+	return result;
+
 }
 
 /*
@@ -221,16 +246,38 @@ mdcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
 bool
 mdcreatedbdir(DbDirNode *dbDirNode, bool isRedo)
 {
-	char	   *path;
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	char dbPath[MAXPGPATH];
+	bool result;
 
-	path = GetDatabasePath(dbDirNode->database, dbDirNode->tablespace);
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+										dbDirNode->tablespace,
+										&primaryFilespaceLocation,
+										&mirrorFilespaceLocation);
+	
+	if (FileRepPrimary_MirrorCreate(
+				FileRep_GetDirIdentifier(*dbDirNode),
+				FileRepRelationTypeDir) != 0) 
+		ereport(LOG,
+				(errmsg("could not sent create dbdir to mirror")));
 
-	if (mkdir(path, 0700) != 0)
-	{
-		return false;
-	}
+	FormDatabasePath(
+				dbPath,
+				primaryFilespaceLocation,
+				dbDirNode->tablespace,
+				dbDirNode->database);
 
-	return true;
+	// UNDONE: Do we need to preserve the errno?  Probably.
+	result = (mkdir(dbPath, 0700) == 0);
+	
+	if (FileRepPrimary_IsOperationCompleted(
+				   FileRep_GetDirIdentifier(*dbDirNode),							
+				   FileRepRelationTypeDir) == FALSE)	
+		ereport(LOG,
+				(errmsg("could not create dbdir on mirror ")));	
+
+	return result;
 }
 
 
@@ -240,7 +287,9 @@ mdcreatedbdir(DbDirNode *dbDirNode, bool isRedo)
  * If isRedo is true, it's okay for the relation to exist already.
  */
 bool
-mdcreate(SMgrRelation reln, bool isRedo)
+mdcreate(
+	SMgrRelation reln, 
+	bool isRedo)
 {
 	MirroredBufferPoolOpen		mirroredOpen;
 
@@ -321,6 +370,8 @@ mdunlink(RelFileNode rnode, bool isRedo)
 		}
 	}
 
+	// UNDONE: This is broken for mirroring !!!
+
 #ifndef LET_OS_MANAGE_FILESIZE
 	/* 
 	 * Delete the additional segments, if any. 
@@ -384,20 +435,48 @@ mdunlink(RelFileNode rnode, bool isRedo)
  * If isRedo is true, it's okay for the tablespace directory to exist already.
  */
 bool
-mdrmtablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
+mdrmtablespacedir(Oid tablespaceOid, bool isRedo)
 {
-	// Don't use GetDatabasePath since it uses palloc and we don't know the
-	// memory context here...
-	char	   path[MAXPGPATH];
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	char tablespacePath[MAXPGPATH];
+	bool result;
+	
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+										tablespaceOid,
+										&primaryFilespaceLocation,
+										&mirrorFilespaceLocation);
 
-	CopyTablespacePath(
-			path, MAXPGPATH,
-			tablespaceDirNode);
-
+	// UNDONE: Need tablespace version
+//	if (FileRepPrimary_MirrorDrop(
+//				FileRep_GetDirIdentifier(*dbDirNode),
+//				FileRepRelationTypeDir) != 0) 
+//		ereport(LOG,
+//				(errmsg("could not sent drop dbdir to mirror")));
+	
 	/*
 	 * We've removed all relations, so all that is left are PG* files and work files.
 	 */
-	return rmtree(path, true);
+	FormTablespacePath(
+				tablespacePath,
+				primaryFilespaceLocation,
+				tablespaceOid);
+		
+	// UNDONE: Do we need to preserve the errno?  Probably.
+	result = rmtree(tablespacePath, true);
+
+//	if (FileRepPrimary_IsOperationCompleted(
+//					FileRep_GetDirIdentifier(*dbDirNode),							
+//					FileRepRelationTypeDir) == FALSE)	
+//		ereport(LOG,
+//				(errmsg("could not drop dbdir on mirror ")));	
+
+	if (primaryFilespaceLocation != NULL)
+		pfree(primaryFilespaceLocation);
+	if (mirrorFilespaceLocation != NULL)
+		pfree(mirrorFilespaceLocation);
+
+	return result;
 }
 
 
@@ -409,18 +488,46 @@ mdrmtablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
 bool
 mdrmdbdir(DbDirNode *dbDirNode, bool isRedo)
 {
-	// Don't use GetDatabasePath since it uses palloc and we don't know the
-	// memory context here...
-	char	   path[MAXPGPATH];
-
-	CopyDatabasePath(
-			path, MAXPGPATH,
-			dbDirNode->database, dbDirNode->tablespace);
-
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	char dbPath[MAXPGPATH];
+	bool result;
+	
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+										dbDirNode->tablespace,
+										&primaryFilespaceLocation,
+										&mirrorFilespaceLocation);
+	
+	if (FileRepPrimary_MirrorDrop(
+				FileRep_GetDirIdentifier(*dbDirNode),
+				FileRepRelationTypeDir) != 0) 
+		ereport(LOG,
+				(errmsg("could not sent drop dbdir to mirror")));
+	
 	/*
 	 * We've removed all relations, so all that is left are PG* files and work files.
 	 */
-	return rmtree(path, true);
+	FormDatabasePath(
+				dbPath,
+				primaryFilespaceLocation,
+				dbDirNode->tablespace,
+				dbDirNode->database);
+		
+	// UNDONE: Do we need to preserve the errno?  Probably.
+	result = rmtree(dbPath, true);
+
+	if (FileRepPrimary_IsOperationCompleted(
+					FileRep_GetDirIdentifier(*dbDirNode),							
+					FileRepRelationTypeDir) == FALSE)	
+		ereport(LOG,
+				(errmsg("could not drop dbdir on mirror ")));	
+
+	if (primaryFilespaceLocation != NULL)
+		pfree(primaryFilespaceLocation);
+	if (mirrorFilespaceLocation != NULL)
+		pfree(mirrorFilespaceLocation);
+
+	return result;
 }
 
 

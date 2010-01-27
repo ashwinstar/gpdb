@@ -162,93 +162,76 @@ GetDatabasePath(Oid dbNode, Oid spcNode)
 	return path;
 }
 
-void
-CopyDatabasePath(char *target, int targetMaxLen, Oid dbNode, Oid spcNode)
+void FormDatabasePath(
+	char *databasePath,
+
+	char *filespaceLocation,
+
+	Oid tablespaceOid,
+
+	Oid databaseOid)
 {
-	if (spcNode == GLOBALTABLESPACE_OID)
+	if (tablespaceOid == GLOBALTABLESPACE_OID)
 	{
 		/* Shared system relations live in {datadir}/global */
-		Assert(dbNode == 0);
-		snprintf(target, targetMaxLen, "global");
+		Assert(databaseOid == 0);
+		Assert(filespaceLocation == NULL);
+
+		strcpy(databasePath, "global");
 	}
-	else if (spcNode == DEFAULTTABLESPACE_OID)
+	else if (tablespaceOid == DEFAULTTABLESPACE_OID)
 	{
 		/* The default tablespace is {datadir}/base */
-		snprintf(target, targetMaxLen, "base/%u",
-				 dbNode);
+		Assert(filespaceLocation == NULL);
+
+		sprintf(databasePath, "base/%u",
+			   databaseOid);
 	}
 	else
 	{
-		/* All other tablespaces are accessed via symlinks */
-		snprintf(target, targetMaxLen, "pg_tblspc/%u/%u",
-				 spcNode, dbNode);
+		/* All other tablespaces are in filespace locations */
+		Assert(filespaceLocation != NULL);
+
+		// UNDONE: How is the tablespace part of the path formatted?
+		sprintf(databasePath, "%s/%u/%u",
+				filespaceLocation,
+				tablespaceOid,
+				databaseOid);
 	}
 }
 
-/*
- * GetTablespacePath			- construct path to a tablespace dir
- *
- * Result is a palloc'd string.
- *
- * XXX this must agree with relpath()!
- */
-char *
-GetTablespacePath(TablespaceDirNode *tablespaceDirNode)
-{
-	Oid tablespace = tablespaceDirNode->tablespace;
-	
-	int			pathlen;
-	char	   *path;
+void FormTablespacePath(
+	char *databasePath,
 
-	if (tablespace == GLOBALTABLESPACE_OID)
+	char *filespaceLocation,
+
+	Oid tablespaceOid)
+{
+	if (tablespaceOid == GLOBALTABLESPACE_OID)
 	{
 		/* Shared system relations live in {datadir}/global */
-		pathlen = 6 + 1;
-		path = (char *) palloc(pathlen);
-		strcpy(path, "global");	// This one is a little strange...
+		Assert(filespaceLocation == NULL);
+
+		strcpy(databasePath, "global");
 	}
-	else if (tablespace == DEFAULTTABLESPACE_OID)
+	else if (tablespaceOid == DEFAULTTABLESPACE_OID)
 	{
 		/* The default tablespace is {datadir}/base */
-		pathlen = 5 + 1;
-		path = (char *) palloc(pathlen);
-		strcpy(path, "base");
+		Assert(filespaceLocation == NULL);
+
+		strcpy(databasePath, "base");
 	}
 	else
 	{
-		/* All other tablespaces are accessed via symlinks */
-		pathlen = 10 + OIDCHARS + 1;
-		path = (char *) palloc(pathlen);
-		snprintf(path, pathlen, "pg_tblspc/%u",
-				 tablespace);
-	}
-	return path;
-}
+		/* All other tablespaces are in filespace locations */
+		Assert(filespaceLocation != NULL);
 
-void
-CopyTablespacePath(char *target, int targetMaxLen, TablespaceDirNode *tablespaceDirNode)
-{
-	Oid tablespace = tablespaceDirNode->tablespace;
-	
-	if (tablespace == GLOBALTABLESPACE_OID)
-	{
-		/* Shared system relations live in {datadir}/global */
-		strcpy(target, "global");
-	}
-	else if (tablespace == DEFAULTTABLESPACE_OID)
-	{
-		/* The default tablespace is {datadir}/base */
-		strcpy(target, "base");
-	}
-	else
-	{
-		/* All other tablespaces are accessed via symlinks */
-		snprintf(target, targetMaxLen, "pg_tblspc/%u",
-				 tablespace);
+		// UNDONE: How is the tablespace part of the path formatted?
+		sprintf(databasePath, "%s/%u",
+				filespaceLocation,
+				tablespaceOid);
 	}
 }
-
-
 
 
 /*

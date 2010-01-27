@@ -420,7 +420,6 @@ void GpPersistent_GetCommonValues(
 
 			PersistentFileSysObjName_SetTablespaceDir(
 												fsObjName, 
-												filespaceOid,
 												tablespaceOid);
 		}
 	break;

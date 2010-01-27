@@ -333,7 +333,7 @@ static void create_pending_relations(
 						&dstRelFileNode);
 
 		smgrcreatepending(
-					dstRelFileNode, 
+					&dstRelFileNode, 
 					&newGpRelationNodes[sr].persistentTid,
 					&newGpRelationNodes[sr].persistentSerialNum,
 					/* isLocalBuf */ false,

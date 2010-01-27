@@ -18,6 +18,17 @@
 extern bool PersistentTablespace_Check(
 	Oid 			tablespace);
 
+extern void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the create. */
+
+	char **primaryFilespaceLocation,
+				/* The primary filespace directory path.  Return NULL for global and base. */
+	
+	char **mirrorFilespaceLocation);
+				/* The primary filespace directory path.  Return NULL for global and base. 
+				 * Or, returns NULL when mirror not configured. */
+
 /*
  * Indicate we intend to create a relation file as part of the current transaction.
  *
@@ -29,8 +40,11 @@ extern bool PersistentTablespace_Check(
  * note on XLOG flushing).
  */
 extern void PersistentTablespace_MarkCreatePending(
-	TablespaceDirNode 		*tablespaceDirNode,
-				/* The filespace and tablespace OIDs for the create. */
+	Oid 		filespaceOid,
+				/* The filespace where the tablespace lives. */
+
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the create. */
 
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
@@ -46,9 +60,9 @@ extern void PersistentTablespace_MarkCreatePending(
  * Indicate the transaction commited and the relation is officially created.
  */
 extern void PersistentTablespace_Created(							
-	TablespaceDirNode		*tablespaceDirNode,
-				/* The filespace and tablespace OIDs for the created tablespace. */
-				
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the create. */
+	
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 				
@@ -66,9 +80,9 @@ extern void PersistentTablespace_Created(
  * crash.
  */
 extern void PersistentTablespace_MarkDropPending(
-	TablespaceDirNode		*tablespaceDirNode,
-				/* The filespace and tablespace OIDs for the drop. */
-				
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the drop. */
+	
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 							
@@ -81,8 +95,8 @@ extern void PersistentTablespace_MarkDropPending(
  * This state will make sure the relation gets dropped after a system crash.
  */
 extern void PersistentTablespace_MarkAbortingCreate(
-	TablespaceDirNode		*tablespaceDirNode,
-				/* The filespace and tablespace OIDs for the aborting create. */
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the aborting create. */
 							
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
@@ -94,8 +108,8 @@ extern void PersistentTablespace_MarkAbortingCreate(
  * Indicate we phsyicalled removed the relation file.
  */
 extern void PersistentTablespace_Dropped(
-	TablespaceDirNode		*tablespaceDirNode,
-				/* The filespace and tablespace OIDs for the dropped tablespace. */
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the dropped tablespace. */
 										
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */

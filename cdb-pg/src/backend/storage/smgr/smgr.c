@@ -67,7 +67,7 @@ typedef struct f_smgr
 	bool		(*smgr_createdbdir) (DbDirNode *dbDirNode, bool isRedo);
 	bool		(*smgr_create) (SMgrRelation reln, bool isRedo);
 	bool		(*smgr_unlink) (RelFileNode rnode, bool isRedo);
-	bool		(*smgr_rmtablespacedir) (TablespaceDirNode *tablespaceDirNode, bool isRedo);
+	bool		(*smgr_rmtablespacedir) (Oid tablespaceOid, bool isRedo);
 	bool		(*smgr_rmdbdir) (DbDirNode *dbDirNode, bool isRedo);
 	bool		(*smgr_extend) (SMgrRelation reln, BlockNumber blocknum,
 											char *buffer, bool isTemp);
@@ -373,7 +373,6 @@ smgrcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
 		
 		PersistentFileSysObjName_SetTablespaceDir(
 									&pending->fsObjName,
-									tablespaceDirNode->filespace,
 									tablespaceDirNode->tablespace);
 
 		pending->which = 0;  // We only have 1 today.
@@ -391,7 +390,8 @@ smgrcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
 		// UNDONE: We'll improve performance later by moving the XLOG Insert sooner...
 		// UNDONE: and flushing later...
 		PersistentTablespace_MarkCreatePending(
-									tablespaceDirNode,
+									tablespaceDirNode->filespace,
+									tablespaceDirNode->tablespace,
 									&pending->persistentTid,
 									/* flushToXLog */ true);
 
@@ -462,7 +462,7 @@ smgrcreatedbdir(DbDirNode *dbDirNode, bool isRedo)
 
 
 void smgrcreatepending(
-	RelFileNode		relFileNode, 
+	RelFileNode		*relFileNode, 
 	ItemPointer		persistentTid,
 	int64			*persistentSerialNum,
 	bool			isLocalBuf,
@@ -470,8 +470,30 @@ void smgrcreatepending(
 {
 	PendingDelete *pending;
 
+	// UNDONE: We need to switch to generating this record only for old-physical style
+	// UNDONE: master mirroring.
+	{
+		XLogRecPtr	lsn;
+		XLogRecData rdata;
+		xl_smgr_create xlrec;
+		
+		/*
+		 * Make a non-transactional XLOG entry showing the file creation. It's
+		 * non-transactional because we should replay it whether the transaction
+		 * commits or not; if not, the file will be dropped at abort time.
+		 */
+		xlrec.rnode = *relFileNode;
+		
+		rdata.data = (char *) &xlrec;
+		rdata.len = sizeof(xlrec);
+		rdata.buffer = InvalidBuffer;
+		rdata.next = NULL;
+		
+		lsn = XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE | XLOG_NO_TRAN, &rdata);
+	}
+		
 	PersistentRelation_AddCreatePending(
-								&relFileNode,
+								relFileNode,
 								persistentTid,
 								persistentSerialNum,
 								flushToXLog);
@@ -480,7 +502,7 @@ void smgrcreatepending(
 	pending = (PendingDelete *)
 		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
 	
-	PersistentFileSysObjName_SetRelationFile(&pending->fsObjName,&relFileNode);
+	PersistentFileSysObjName_SetRelationFile(&pending->fsObjName,relFileNode);
 	
 	pending->which = 0;  // We only have 1 today.
 	pending->isLocalBuf = isLocalBuf;	/*CDB*/
@@ -501,6 +523,11 @@ void smgrcreatepending(
  *		Given an already-created (but presumably unused) SMgrRelation,
  *		cause the underlying disk file or other storage to be created.
  *
+ *		We assume the persistent 'Create Pending' work has already been done.
+ *
+ *		And, we assume the Just-In-Time database directory in the tablespace has already
+ *		been created.
+ *
  *		If isRedo is true, it is okay for the underlying file to exist
  *		already because we are in a WAL replay sequence.  In this case
  *		we should make no PendingDelete entry; the WAL sequence will
@@ -509,11 +536,10 @@ void smgrcreatepending(
 void
 smgrcreate(
 	SMgrRelation reln, 
-	ItemPointer persistentTid, 
-	int64 *persistentSerialNum,
 	bool isLocalBuf, 
 	bool isRedo)
 {
+#ifdef suppress
 	/*
 	 * We may be using the target table space for the first time in this
 	 * database, so create a per-database subdirectory if needed.
@@ -527,41 +553,11 @@ smgrcreate(
 							reln->smgr_rnode.dbNode,
 							isRedo);
 
+#endif
 
-	if (!isRedo)
-	{
-		XLogRecPtr	lsn;
-		XLogRecData rdata;
-		xl_smgr_create xlrec;
-	
-		// UNDONE: When PersistentFileSysObj is fully up, we can get rid of this XLOG record.
-		/*
-		 * Make a non-transactional XLOG entry showing the file creation. It's
-		 * non-transactional because we should replay it whether the transaction
-		 * commits or not; if not, the file will be dropped at abort time.
-		 */
-		xlrec.rnode = reln->smgr_rnode;
-
-		rdata.data = (char *) &xlrec;
-		rdata.len = sizeof(xlrec);
-		rdata.buffer = InvalidBuffer;
-		rdata.next = NULL;
-
-		lsn = XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE | XLOG_NO_TRAN, &rdata);
-
-		// UNDONE: For now, ~_MarkCreatePending will do the XLOG Insert and XLOG Flush
-		// UNDONE: of the PendingCreate 
-		// UNDONE: We'll improve performance later by moving the XLOG Insert sooner...
-		// UNDONE: and flushing later...
-		smgrcreatepending(
-					reln->smgr_rnode, 
-					persistentTid,
-					persistentSerialNum,
-					isLocalBuf,
-					/* flushToXLog */ true);
-	}
-	
-	if (!(*(smgrsw[reln->smgr_which].smgr_create)) (reln, isRedo))
+	if (!(*(smgrsw[reln->smgr_which].smgr_create)) (
+												reln,
+												isRedo))
 	{
 	    ereport(ERROR,
 			(errcode_for_file_access(),
@@ -681,7 +677,7 @@ smgr_internal_unlink(RelFileNode rnode, int which, bool isLocalBuf, bool isRedo)
  *		successfully commit the current transaction.
  */
 void
-smgrschedulermtablespacedir(TablespaceDirNode *tablespaceDirNode)
+smgrschedulermtablespacedir(Oid tablespaceOid)
 {
 	PendingDelete *pending;
 
@@ -691,8 +687,7 @@ smgrschedulermtablespacedir(TablespaceDirNode *tablespaceDirNode)
 	
 	PersistentFileSysObjName_SetTablespaceDir(
 									&pending->fsObjName,
-									tablespaceDirNode->filespace,
-									tablespaceDirNode->tablespace);
+									tablespaceOid);
 	
 	pending->which = 0;  // We only have 1 today.
 	pending->isLocalBuf = false;
@@ -742,7 +737,7 @@ smgrschedulermdbdir(DbDirNode *dropDbDirNode)
  * Shared subroutine that actually does the rmdir of a database directory ...
  */
 static void
-smgr_internal_rmtablespacedir(TablespaceDirNode *tablespaceDirNode, int which, bool isRedo)
+smgr_internal_rmtablespacedir(Oid tablespaceOid, int which, bool isRedo)
 {
 	/*
 	 * And remove the physical tablespace directory.
@@ -750,17 +745,16 @@ smgr_internal_rmtablespacedir(TablespaceDirNode *tablespaceDirNode, int which, b
 	 * Note: we treat deletion failure as a WARNING, not an error, because
 	 * we've already decided to commit or abort the current xact.
 	 */
-	if (!(*(smgrsw[which].smgr_rmtablespacedir)) (tablespaceDirNode, isRedo))
+	if (!(*(smgrsw[which].smgr_rmtablespacedir)) (tablespaceOid, isRedo))
 		ereport(WARNING,
 				(errcode_for_file_access(),
-				 errmsg("could not remove tablespace directory %u, filespace %u: %m",
-						tablespaceDirNode->tablespace,
-						tablespaceDirNode->filespace)));
+				 errmsg("could not remove tablespace directory %u: %m",
+						tablespaceOid)));
 }
 void
-smgrdormtablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
+smgrdormtablespacedir(Oid tablespaceOid, bool isRedo)
 {
-	smgr_internal_rmtablespacedir(tablespaceDirNode, 0, isRedo);
+	smgr_internal_rmtablespacedir(tablespaceOid, 0, isRedo);
 }
 
 /*
@@ -1639,7 +1633,6 @@ void
 smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
-	ItemPointerData persistentTid;
 
 	if (info == XLOG_SMGR_CREATE)
 	{
@@ -1648,7 +1641,10 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 
 		reln = smgropen(xlrec->rnode);
 		// UNDONE: What about the persistent rel files table???
-		smgrcreate(reln, &persistentTid, 0, false, true);
+		smgrcreate(
+				reln, 
+				false, 
+				true);
 	}
 	else if (info == XLOG_SMGR_TRUNCATE)
 	{
@@ -1665,7 +1661,10 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 		 * log as best we can until the drop is seen.
 		 */
 		// UNDONE: What about the persistent rel files table???
-		smgrcreate(reln, &persistentTid, 0, false, true);
+		smgrcreate(
+				reln, 
+				false, 
+				true);
 
 		/* Can't use smgrtruncate because it would try to xlog */
 

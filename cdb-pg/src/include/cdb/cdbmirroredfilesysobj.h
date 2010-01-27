@@ -19,10 +19,10 @@ extern void MirroredFileSysObj_CreateTablespaceDir(
 	TablespaceDirNode			*tablespaceDirNode);
 
 extern void MirroredFileSysObj_ScheduleDropTablespaceDir(
-	TablespaceDirNode			*tablespaceDirNode);
+	Oid							tablespaceOid);
 
 extern void MirroredFileSysObj_DropTablespaceDir(
-	TablespaceDirNode			*tablespaceDirNode,
+	Oid			tablespaceOid,
 
 	bool	isRedo);
 

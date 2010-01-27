@@ -37,7 +37,7 @@ typedef union PersistentFileSysObjNameVariant
 
 	DbDirNode		dbDirNode;
 
-	TablespaceDirNode		tablespaceDirNode;
+	Oid 	tablespaceOid;
 	
 	Oid 	filespaceOid;
 
@@ -73,13 +73,11 @@ inline static void PersistentFileSysObjName_SetDatabaseDir(
 
 inline static void PersistentFileSysObjName_SetTablespaceDir(
 	PersistentFileSysObjName	*fsObjName,
-	Oid							filespaceOid,
 	Oid							tablespaceOid)
 {
 	MemSet(fsObjName, 0, sizeof(PersistentFileSysObjName));
 	fsObjName->type = PersistentFsObjType_TablespaceDir;
-	fsObjName->variant.tablespaceDirNode.filespace = filespaceOid;
-	fsObjName->variant.tablespaceDirNode.tablespace = tablespaceOid;
+	fsObjName->variant.tablespaceOid = tablespaceOid;
 }
 
 inline static void PersistentFileSysObjName_SetFilespaceDir(
