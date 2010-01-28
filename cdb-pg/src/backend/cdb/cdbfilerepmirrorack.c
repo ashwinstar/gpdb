@@ -228,7 +228,10 @@ FileRepAckMirror_StartSender(void)
 		while (FileRepSubProcess_GetState() == FileRepStateSuspend ||
 			   FileRepSubProcess_GetState() == FileRepStateInitialization ||
 			   FileRepSubProcess_GetState() == FileRepStateFault ||
-			   fileRepShmem->state == FileRepStateNotInitialized) {
+			   
+			   (fileRepShmem->state == FileRepStateNotInitialized &&
+			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
+			    FileRepSubProcess_GetState() != FileRepStateImmediateShutdown)) {
 			
 			FileRepSubProcess_ProcessSignals();
 			pg_usleep(50000L); /* 50 ms */	
