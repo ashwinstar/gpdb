@@ -110,8 +110,8 @@ FileRepConnServer_Select(void)
 	fd_set			rfds;
 	int				retval;
 		
-	timeout.tv_sec = 60;
-	timeout.tv_usec = 0;
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 100 * 1000L;
 	
 	FD_ZERO(&rfds);
 	
