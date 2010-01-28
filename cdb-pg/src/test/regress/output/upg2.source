@@ -1919,10 +1919,6 @@ copy public.pg_shdescription from '@abs_srcdir@/data//upg2_pg_shdescription_toad
 copy public.pg_resqueue from '@abs_srcdir@/data//upg2_pg_resqueue_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 -- add resourcetype and resqueuecapability here if necessary
 copy public.pg_resourcetype from '@abs_srcdir@/data//upg2_pg_resourcetype_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
--- Assign users without queues to the default queue
-update public.pg_authid u set rolresqueue=q.oid from pg_catalog.pg_resqueue q where q.rsqname='gp_default' and u.rolresqueue is null and not u.rolsuper;
--- Assign the system tablespaces to the system filespace
-update public.pg_tablespace set spcfsoid=3052, spclocation=null, spcprilocations=null, spcmirlocations=null;
 -- Reindex shared tables
 reindex table public.gp_configuration_history;
 reindex table public.gp_db_interfaces;
@@ -1940,6 +1936,10 @@ reindex table public.pg_resqueuecapability;
 reindex table public.pg_shdescription;
 reindex table public.pg_stat_last_shoperation;
 reindex table public.pg_tablespace;
+-- Assign users without queues to the default queue
+update public.pg_authid u set rolresqueue=q.oid from pg_catalog.pg_resqueue q where q.rsqname='pg_default' and u.rolresqueue is null;
+-- Assign the system tablespaces to the system filespace
+update public.pg_tablespace set spcfsoid=3052, spclocation=null, spcprilocations=null, spcmirlocations=null;
 -- Update configuration information, while this is executed on every segment
 -- it only really applies to the master since that's the only table with any
 -- rows in gp_configuration

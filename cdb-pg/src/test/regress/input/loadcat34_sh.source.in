@@ -17,12 +17,6 @@ copy @gpupgradeschemaname@.pg_resqueue from '@gpupgradedatadir@/upg2_pg_resqueue
 -- add resourcetype and resqueuecapability here if necessary
 copy @gpupgradeschemaname@.pg_resourcetype from '@gpupgradedatadir@/upg2_pg_resourcetype_toadd33.data' null as E'\\N' csv delimiter '|' header oids;
 
--- Assign users without queues to the default queue
-update @gpupgradeschemaname@.pg_authid u set rolresqueue=q.oid from pg_catalog.pg_resqueue q where q.rsqname='gp_default' and u.rolresqueue is null and not u.rolsuper;
-
--- Assign the system tablespaces to the system filespace
-update @gpupgradeschemaname@.pg_tablespace set spcfsoid=3052, spclocation=null, spcprilocations=null, spcmirlocations=null;
-
 -- Reindex shared tables
 reindex table @gpupgradeschemaname@.gp_configuration_history;
 reindex table @gpupgradeschemaname@.gp_db_interfaces;
@@ -39,6 +33,12 @@ reindex table @gpupgradeschemaname@.pg_resqueuecapability;
 reindex table @gpupgradeschemaname@.pg_shdescription;
 reindex table @gpupgradeschemaname@.pg_stat_last_shoperation;
 reindex table @gpupgradeschemaname@.pg_tablespace;
+
+-- Assign users without queues to the default queue
+update @gpupgradeschemaname@.pg_authid u set rolresqueue=q.oid from pg_catalog.pg_resqueue q where q.rsqname='pg_default' and u.rolresqueue is null;
+
+-- Assign the system tablespaces to the system filespace
+update @gpupgradeschemaname@.pg_tablespace set spcfsoid=3052, spclocation=null, spcprilocations=null, spcmirlocations=null;
 
 -- Update configuration information, while this is executed on every segment
 -- it only really applies to the master since that's the only table with any
