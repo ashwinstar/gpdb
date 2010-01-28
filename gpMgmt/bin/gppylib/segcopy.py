@@ -8,15 +8,13 @@ import socket
 import sys
 import threading
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", "bin", "lib"))
-
 from gppylib.gplog import *
 from gppylib.commands.unix import *
 from gppylib.commands.base import *
 from gppylib.commands.gp import *
 from gppylib.gparray import *
 from gppylib.db import dbconn, catalog
-import pysync
+from lib import pysync
 
 class SegcopyError(Exception):  pass
 
