@@ -23,17 +23,18 @@ try:
     from gppylib.userinput import ask_string
     from pygresql.pgdb import DatabaseError
     from gppylib.gphostcache import GpHostCache
+    from pygresql.pg import DB     #  Need this for admin sql, such as create/drop db
 
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
 EXECNAME = os.path.split(__file__)[-1]
 RESUME_MSG = None
+FTS_ON_SQL = "set gp_fts_probe_pause=off"
+FTS_OFF_SQL = "set gp_fts_probe_pause=on"
 
 def parseargs():
-
-    parser = OptParser(option_class=OptChecker)
-
+    parser = OptParser(option_class=OptChecker) 
     parser.remove_option('-h')
     parser.add_option('-h', '--help', action='store_true')
     parser.add_option('-v','--verbose', action='store_true')
@@ -44,6 +45,8 @@ def parseargs():
     parser.add_option('--pausefile', type='string')
 
     parser.add_option('--batchsize', type='int', default=16)
+
+    parser.add_option('--developertestmode', type='int', default=0)
 
     parser.add_option('--noninteractive', action='store_false', dest='interactive', default=True)
 
@@ -99,6 +102,7 @@ def parseargs():
         pausef = time.strftime("/gp_pause.%Y%m%d.%H%M.dat")
         options.pausefile = options.gphome + pausef
 
+    global RESUME_MSG
     RESUME_MSG = "To run resume run: " + EXECNAME + " --resume --pausefile " + options.pausefile
 
     return options
@@ -148,6 +152,9 @@ def connectToSegmentHosts(cache, doResume):
 def suspend_greenplum(gparray, cache):
    
     try:
+        # turn off the fts prober
+        changeFtsMode(On=False)
+
         logger.info("pausing the master postgres instance.") 
         pausePg(gparray.master)
 
@@ -182,6 +189,9 @@ def resume_greenplum(gparray, cache):
 
         logger.info("resuming the master postgres instance.") 
         resumePg(gparray.master)
+
+        # turn on the fts prober
+        changeFtsMode(On=True)
 
     except:
         logger.fatal('resume failed to resume master postgres instance.')
@@ -221,6 +231,30 @@ def getGparray(dbUp, pausefile):
             return None
 
 
+def changeFtsMode(On):
+
+    if On:
+        sql = FTS_ON_SQL
+    else:
+        sql = FTS_OFF_SQL
+
+    try:
+        dburl = dbconn.DbURL()
+        conn = dbconn.connect( dburl )
+        DB(conn).query( sql )
+
+    except DatabaseError, ex:
+            errstring = "Database error changing fts mode with sql: " + sql
+            errstring = errstring + "\n" + ex.__str__()
+            logger.error(errstring)
+            raise Exception('Fts Mode change failed')
+    except Exception, e:
+            errstring = "Failed changing fts mode with sql: " + sql
+            errstring = errstring + "\n" + e.__str__()
+            logger.error(errstring)
+            raise Exception('Fts Mode change failed')
+
+
 #------------------------------- Mainline --------------------------------
  
 logger = gppylib.gplog.get_default_logger()
@@ -237,6 +271,8 @@ gparray = getGparray(dbUp=options.pause, pausefile=options.pausefile)
 pool = WorkerPool(numWorkers=options.batchsize)
 hostCache = GpHostCache(gparray, pool, list())
 hostCache.ping_hosts(pool) # substibtute usable names
+pool.haltWork()
+pool.joinWorkers()
 
 if options.pause:
 
@@ -246,7 +282,13 @@ if options.pause:
     success = suspend_greenplum(gparray=gparray, cache=hostCache)
 
     if success:
-        if options.interactive:
+        if options.developertestmode:
+            # option for automated testing of pause and resume after a sleep time
+            print "Sleeing %d seconds before resuming db" % options.developertestmode
+            time.sleep(options.developertestmode)
+            resume_greenplum(gparray=gparray, cache=hostCache)
+
+        elif options.interactive:
             if waitForResumeCommand():
                 resume_greenplum(gparray=gparray, cache=hostCache)
             else:

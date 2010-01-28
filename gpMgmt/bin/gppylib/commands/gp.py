@@ -790,8 +790,9 @@ def pausePg(db):
     if postmasterPID == 0:
         raise Exception, 'print "could not locate postmasterPID during pause'
 
-    Kill.local(name="pausep "+str(content), pid=postmasterPID, signal=signal.SIGSTOP)
-    KillChildren.local(name="pausec "+str(content), pid=postmasterPID, signal=signal.SIGSTOP)
+    Kill.local(name="pausep "+str(content), pid=postmasterPID, signal="STOP")
+#   TODO: use PSI and kill all processes which are descendent process of postmaster
+#    KillChildren.local(name="pausec "+str(content), pid=postmasterPID, signal=signal.SIGSTOP)
 
 def resumePg(db):
     """
@@ -805,5 +806,6 @@ def resumePg(db):
     if postmasterPID == 0:
         raise Exception, 'print "could not locate postmasterPID during resume'
 
-    KillChildren.local(name="pausec "+str(content), pid=postmasterPID, signal=signal.SIGCONT)
-    Kill.local(name="pausep "+str(content), pid=postmasterPID, signal=signal.SIGCONT)
+#   TODO: use PSI and kill all processes which are descendent process of postmaster
+#    KillChildren.local(name="pausec "+str(content), pid=postmasterPID, signal=signal.SIGCONT)
+    Kill.local(name="pausep "+str(content), pid=postmasterPID, signal="CONT")
