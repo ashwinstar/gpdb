@@ -1055,8 +1055,11 @@ CreateQueueStmt:
 			CREATE RESOURCE QUEUE QueueId OptQueueList
 				{
 					CreateQueueStmt *n = makeNode(CreateQueueStmt);
+					DefElem         *def1 = /* mark start of WITH items */
+						makeDefElem("withliststart", 
+									(Node *)makeInteger(TRUE));
 					n->queue = $4;
-					n->options = $5;
+					n->options = list_concat(lappend($5, def1), NULL); 
 					$$ = (Node *)n;
 				}
 			| CREATE RESOURCE QUEUE QueueId OptQueueList WITH definition
