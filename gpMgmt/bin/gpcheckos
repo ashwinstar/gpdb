@@ -112,10 +112,12 @@ class Gpcheckos():
         
     def _start_checkos(self):
         for gphost in self.gphosts:
-            scp_cmd=RemoteCopy("copy baseline",baselineFile,gphost,baselineFile)            
-            self.pool.addCommand(scp_cmd)
-        self.pool.join()        
-        self.pool.check_results()        
+            gph=gphost.rstrip()
+            if not isNone(gph):
+                scp_cmd=RemoteCopy("copy baseline",baselineFile,gph,baselineFile)            
+                self.pool.addCommand(scp_cmd)
+                self.pool.join()        
+                self.pool.check_results()        
       
         for gphost in self.gphosts:
             cmd=GpCheckosCmd("starting gpcheckos on host %s"%(gphost),gphost, self.srcHost,ctxt=REMOTE,remoteHost=gphost )
