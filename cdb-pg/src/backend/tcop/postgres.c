@@ -1768,6 +1768,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	List	   *querytree_list,
 			   *stmt_list,
 			   *param_list;
+	List 		*querytree_list_copy = NIL;
 	bool		is_named;
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
@@ -1923,6 +1924,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 
 		querytree_list = pg_rewrite_queries(querytree_list);
 
+		querytree_list_copy = copyObject(querytree_list); /* planner scribbles on query tree :( */
+		
 		/*
 		 * If this is the unnamed statement and it has parameters, defer query
 		 * planning until Bind.  Otherwise do it now.
@@ -1930,8 +1933,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		if (!is_named && numParams > 0)
 			stmt_list = NIL;
 		else
-			stmt_list = pg_plan_queries(querytree_list, NULL, false);
-		
+			stmt_list = pg_plan_queries(querytree_list_copy, NULL, false);
+				
 		/* Done with the snapshot used for parsing/planning */
 		ActiveSnapshot = NULL;
 		if (mySnapshot)
@@ -2051,7 +2054,6 @@ exec_bind_message(StringInfo input_message)
 	PreparedStatement *pstmt;
 	Portal		portal;
 	ParamListInfo params;
-	List	   *query_list;
 	List	   *stmt_list;
 	MemoryContext qContext = NULL;
 	bool		save_log_statement_stats = log_statement_stats;
@@ -2343,12 +2345,13 @@ exec_bind_message(StringInfo input_message)
 	 */
 	
 	{
+		List	   *query_list_copy = NIL;
 		Assert(portal);
 		MemoryContext oldContext = NULL;
 		qContext = PortalGetHeapMemory(portal);
 		oldContext = MemoryContextSwitchTo(qContext);
-		query_list = copyObject(pstmt->query_list);
-		stmt_list = pg_plan_queries(query_list, params, true);
+		query_list_copy = copyObject(pstmt->query_list); /* planner scribbles on query tree */
+		stmt_list = pg_plan_queries(query_list_copy, params, true);
 		MemoryContextSwitchTo(oldContext);
 	}
 

@@ -119,8 +119,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	AcquireRewriteLocks(query);
 	query_list = QueryRewrite(query);
 
-	/* Planner overwrites the parse-tree on occasion. This should not happen! */
-	query_list_copy = copyObject(query_list);
+	query_list_copy = copyObject(query_list); /* planner scribbles on query tree */
 	
 	/* Generate plans for queries.	Snapshot is already set. */
 	plan_list = pg_plan_queries(query_list, NULL, false);
@@ -185,7 +184,7 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 	portal->visible = false;
 
 	{
-		List *query_list = copyObject(entry->query_list);
+		List *query_list = copyObject(entry->query_list); /* planner scribbles on query tree :( */
 		stmt_list = pg_plan_queries(query_list, paramLI, false);
 	}
 
@@ -642,7 +641,7 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 	}
 	
 	
-	query_list = copyObject(entry->query_list);
+	query_list = copyObject(entry->query_list); /* planner scribbles on query tree */
 	stmt_list = pg_plan_queries(query_list, params, false);
 	
 	Assert(list_length(query_list) == list_length(stmt_list));
