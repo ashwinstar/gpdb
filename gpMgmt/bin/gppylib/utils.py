@@ -48,6 +48,14 @@ def checkNotNone(label, value):
         raise Exception( label + " is None")
     return value
 
+def isNone( value):
+    isN=False
+    if value is None:
+        isN=True 
+    elif value =="":
+        isN= True
+    return isN 
+
 #############
 def parseSingleFile(line):
     ph=None 
@@ -55,7 +63,7 @@ def parseSingleFile(line):
         #skip it, it's a comment
         pass
     else:
-        ph=line.rstrip("\n")    
+        ph=line.rstrip("\n").rstrip()  
     return ph
         
         
