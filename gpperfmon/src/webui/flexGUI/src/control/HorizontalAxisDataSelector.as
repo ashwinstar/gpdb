@@ -26,6 +26,8 @@ SOFTWARE.
 package control
 {
 
+import command.SystemHistoricDetailedCommand;
+
 import flash.display.Graphics;
 import flash.events.Event;
 import flash.events.MouseEvent;
@@ -39,11 +41,11 @@ import mx.core.EventPriority;
 import mx.styles.CSSStyleDeclaration;
 import mx.styles.StyleManager;
 
-import value.SystemSample;
-import value.DatabaseSample;
-import command.SystemHistoricDetailedCommand;
-import util.MiscUtils;
 import util.Debug;
+import util.MiscUtils;
+
+import value.DatabaseSample;
+import value.SystemSample;
 
 // =================================================
 //  E V E N T S
@@ -203,19 +205,22 @@ public class HorizontalAxisDataSelector extends ChartElement
 		var values:Array = new Array();
 		var xField:String = chart.series[ 0 ].xField;
 		
-		var item:Object = chart.dataProvider.getItemAt( mdl.nav.selectedSystemIndex );
-		
-		// Save the x field value first
-		values.push( item[ xField ] );
-		
-		// Loop over all the series and get the y information from each series
-		for ( var i:int = 0; i < chart.series.length; i++ )
+		if (chart.dataProvider.length != 0)
 		{
-			var currentSeries:* = chart.series[ i ];
-			// Add the y field values for the values array
-			values.push( item[ currentSeries.yField ] );
+			var item:Object = chart.dataProvider.getItemAt( mdl.nav.selectedSystemIndex );
+			
+			// Save the x field value first
+			values.push( item[ xField ] );
+			
+			// Loop over all the series and get the y information from each series
+			for ( var i:int = 0; i < chart.series.length; i++ )
+			{
+				var currentSeries:* = chart.series[ i ];
+				// Add the y field values for the values array
+				values.push( item[ currentSeries.yField ] );
+			}
 		}
-		
+			
 		return values;
 	}
 	
@@ -310,7 +315,7 @@ public class HorizontalAxisDataSelector extends ChartElement
 		}
 		
 		// Special case, check for click before the first item
-		if ( chart.dataProvider.getItemAt( 0 )[ xField ] > targetXFieldValue )
+		if ( chart.dataProvider.length != 0 && chart.dataProvider.getItemAt( 0 )[ xField ] > targetXFieldValue )
 		{
 			mdl.nav.selectedSystemIndex = 0;
 			mdl.nav.selectedSystemItem = null;
