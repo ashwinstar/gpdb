@@ -167,15 +167,15 @@ class GpDB:
         # New format: 12 fields
         elif len(tup) == 12:
             # This describes the gp_segment_configuration catalog (3.4+)
-            dbid            = tup[0]
-            content         = tup[1]
+            dbid            = int(tup[0])
+            content         = int(tup[1])
             role            = tup[2]
             preferred_role  = tup[3]
             mode            = tup[4]
             status          = tup[5]
             hostname        = tup[6]
             address         = tup[7]
-            port            = tup[8]
+            port            = int(tup[8])
             replicationPort = tup[9]
             datadir         = tup[10]  # from the pg_filespace_entry table
             filespaces      = tup[11]
@@ -732,6 +732,7 @@ class GpArray:
         (called by gpexpand.)
 
         Note: Currently this is only used by the gpexpand rollback facility,
+        and by gpsuspend utility,
         there is currently NO expectation that this file format is saved
         on disk in any long term fashion.  
 
