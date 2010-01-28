@@ -682,7 +682,7 @@ CreateQueue(CreateQueueStmt *stmt)
 
 	/* thresholds for active and cost limiters. */
 	Cost		activelimit = INVALID_RES_LIMIT_THRESHOLD;	
-	Cost		costlimit = INVALID_RES_LIMIT_THRESHOLD;
+	Cost		costlimit	= INVALID_RES_LIMIT_THRESHOLD;
 
 	/* overcommit indicator */
 	bool		overcommit = false;
@@ -793,11 +793,10 @@ CreateQueue(CreateQueueStmt *stmt)
 	if(dignorelimit)
 	{
 		ignorelimit = (Cost) defGetNumeric(dignorelimit);
-		if (!(ignorelimit == INVALID_RES_LIMIT_THRESHOLD || (ignorelimit > 0)))
+		if (!(ignorelimit == INVALID_RES_LIMIT_THRESHOLD || (ignorelimit >= 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("ignore cost threshold cannot be less than %d or equal to 0", 
-							INVALID_RES_LIMIT_THRESHOLD)));
+					 errmsg("min_cost threshold cannot be negative")));
 	}
 
 
@@ -951,7 +950,7 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	/* thresholds for active and cost limiters. */
 	Cost		activelimit = INVALID_RES_LIMIT_THRESHOLD;
-	Cost		costlimit = INVALID_RES_LIMIT_THRESHOLD;
+	Cost		costlimit	= INVALID_RES_LIMIT_THRESHOLD;
 
 	/* overcommit indicator */
 	bool		overcommit = false;
@@ -990,9 +989,10 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dactivelimit = defel;
 			else
-				dactivelimit = makeDefElem("active_statements", 
-										   (Node *)
-										   makeFloat(INVALID_RES_LIMIT_STRING));
+				dactivelimit = 
+						makeDefElem("active_statements", 
+									(Node *)
+									makeFloat(INVALID_RES_LIMIT_STRING));
 
 			numopts++; alter_subtype = defel->defname;
 		}
@@ -1005,9 +1005,11 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dcostlimit = defel;
 			else
-				dcostlimit = makeDefElem("max_cost", 
-										 (Node *)
-										 makeInteger(INVALID_RES_LIMIT_THRESHOLD));
+				dcostlimit = 
+						makeDefElem("max_cost", 
+									(Node *)
+									makeInteger(costlimit));
+
 			numopts++; alter_subtype = defel->defname;
 		}
 		else if (strcmp(defel->defname, "cost_overcommit") == 0)
@@ -1019,9 +1021,11 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dovercommit = defel;
 			else
-				dovercommit = makeDefElem("cost_overcommit", 
-										  (Node *)
-										  makeInteger(FALSE));
+				dovercommit = 
+						makeDefElem("cost_overcommit", 
+									(Node *)
+									makeInteger(overcommit));
+
 			numopts++; alter_subtype = defel->defname;
 		}
 		else if (strcmp(defel->defname, "min_cost") == 0)
@@ -1033,9 +1037,11 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dignorelimit = defel;
 			else
-				dignorelimit = makeDefElem("min_cost", 
-										   (Node *)
-										   makeFloat(INVALID_RES_LIMIT_STRING));
+				dignorelimit = 
+						makeDefElem("min_cost", 
+									(Node *)
+									makeFloat("0")); /* MPP-7817 */
+
 			numopts++; alter_subtype = defel->defname;
 
 		}
@@ -1141,12 +1147,12 @@ AlterQueue(AlterQueueStmt *stmt)
 	if(dignorelimit)
 	{
 		ignorelimit = (Cost) defGetNumeric(dignorelimit);
-		if (!(ignorelimit == INVALID_RES_LIMIT_THRESHOLD || (ignorelimit > 0)))
+		if (!(ignorelimit == INVALID_RES_LIMIT_THRESHOLD || 
+			  (ignorelimit >= 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("ignore cost threshold cannot be less than %d or equal to 0", 
-							INVALID_RES_LIMIT_THRESHOLD),
-									   errOmitLocation(true)));
+					 errmsg("min_cost threshold cannot be negative"), 
+					 errOmitLocation(true)));
 	}
 
 	/*
