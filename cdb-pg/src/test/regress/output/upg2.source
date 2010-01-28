@@ -1947,7 +1947,9 @@ insert into public.gp_segment_configuration(dbid, content, role, preferred_role,
 insert into public.pg_filespace_entry(fsefsoid, fsedbid, fselocation) (select fs.oid, dbid, datadir from public.gp_configuration, public.pg_filespace fs where fsname = 'pg_system');
 delete from public.gp_configuration;
 -- Add information for fault strategy
-insert into public.gp_fault_strategy(fault_strategy) (select case when (select count(*)=0 from gp_segment_configuration where content >= 0 and preferred_role='m') then 'n' else 'f' end);
+insert into public.gp_fault_strategy(fault_strategy) (select case when (select count(*)=0 from public.gp_segment_configuration where content >= 0 and preferred_role='m') then 'n' else 'f' end);
+-- Add priority=medium for all existing resource queues
+insert into public.pg_resqueuecapability (select oid, 5, 'medium' from public.pg_resqueue);
 commit;
 -- end
 -- 
