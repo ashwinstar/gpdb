@@ -373,8 +373,15 @@ sub sqltype_to_ctype
 	my $coltype = shift;
 	my $ctype;
 
-	return $coltype
-		unless ($coltype =~ m/^(name|oid|boolean|real|smallint|integer)$/);
+#	print $coltype, "\n";
+
+	# "[]" for optional "array of" suffix
+
+	unless ($coltype =~ m/^(name|oid|boolean|real|smallint|integer|timestamp\_with\_time\_zone)(\[\])?$/)
+	{
+		$coltype =~ s/\[\]/\[1\]/;
+		return $coltype;
+	}
 
 	$ctype = "NameData" if ($coltype =~ m/name/);
 	$ctype = "Oid" if ($coltype =~ m/oid/);
@@ -382,6 +389,10 @@ sub sqltype_to_ctype
 	$ctype = "float4" if ($coltype =~ m/real/);
 	$ctype = "int2" if ($coltype =~ m/smallint/);
 	$ctype = "int4" if ($coltype =~ m/integer/);
+	$ctype = "timestamptz" if ($coltype =~ m/timestamp\_with\_time\_zone/);
+
+	# make an array of 1
+	$ctype .= "[1]" if ($coltype =~ m/\[\]$/);
 
 	return $ctype;
 }
@@ -474,22 +485,33 @@ sub parsecols
 {
 	my ($alltabs, $tname, $bigstr) = @_;
 
+#	print $bigstr;
+
 	$bigstr =~ s/^\s*\(//s;
 	$bigstr =~ s/\)\s*$//s;
+
+#	print $bigstr;
 
 	my @foo = split(/\n/, $bigstr);
 
 	my $collist = [];
 	my $ii = 0;
 
+	my $tzcolname;
+
 	my $precomment;
 
-	my $colh = {};
+	my $colh = {}; # column data hash
 
 	for my $lin (@foo)
 	{
+#		print $lin,"\n";
+
 		unless (length($lin))
 		{
+			$precomment = ""
+				unless (defined($precomment));
+
 			# mark the blank lines (remove this later)
 			$precomment .= "\n**TK_BLANK_LINE**";
 			next;
@@ -505,10 +527,19 @@ sub parsecols
 		}
 		else
 		{
+			# word space word
 			die "bad col: $lin"
 				unless ($lin =~ m/\s*\w+\s+\w+/);
 
-			my @baz = ($lin =~ m/\s*(\w+)\s+(\w+)\s*(\,)?\s*(\-\-.*)?/);
+			# timestamp fix - make into a single token
+			$lin =~ 
+				s/timestamp\s+with\s+time\s+zone/timestamp_with_time_zone/igm;
+
+			# in sql, have a colname space coltype (followed by
+			# optional array brackets), optionally followed by a comma
+			# and/or a sql comment
+			my @baz = 
+				($lin =~ m/\s*(\w+)\s+(\w+(?:\[\])?)\s*(\,)?\s*(\-\-.*)?/);
 
 #			print Data::Dumper->Dump(\@baz), "\n";
 
@@ -520,7 +551,7 @@ sub parsecols
 
 			shift @baz ; # comma or undef
 
-			my $postcomment;
+			my $postcomment; # the comment trailing the definition
 
 			$postcomment = $baz[0] if (scalar(@baz) && defined($baz[0]));
 			
@@ -531,6 +562,22 @@ sub parsecols
 
 			$colh->{$colname} = $ctype;
 
+			# track any timestamp columns specially
+			if ($ctype =~ m/timestamp/)
+			{
+				if (defined($tzcolname))
+				{
+					# print '"colname" et al' if more than one
+					# timestamp col
+					$colname .= "et al"
+						unless ($colname =~ m/et al$/);
+				}
+				else
+				{
+					$tzcolname = '"' . $colname . '"';
+				}
+			}
+
 			$coldef->{postcomment} = $postcomment if (defined($postcomment));
 			$coldef->{precomment} = $precomment if (defined($precomment));
 
@@ -540,7 +587,7 @@ sub parsecols
 			undef $precomment;
 		}
 
-	}
+	} # end for my lin
 	
 	# add the Oid column
 	if ($alltabs->{$tname}->{with}->{oid})
@@ -553,6 +600,10 @@ sub parsecols
 
 	$alltabs->{$tname}->{cols} = $collist;
 	$alltabs->{$tname}->{colh} = $colh;
+
+	# hack to track timestamp
+	$alltabs->{$tname}->{tzhack} = $tzcolname
+		if (defined($tzcolname));
 
 #	print Data::Dumper->Dump(\@foo), "\n";
 
@@ -687,6 +738,9 @@ sub parsetab
 
 	} # end if with
 
+
+#	print "bigstr: ", $bigstr, "\n";
+
 	parsecols($alltabs, $tname, $bigstr);
 
 #	print "bigstr: ", $bigstr, "\n";
@@ -701,6 +755,7 @@ sub parsetabdef
 	my ($alltabs, $bigstr) = @_;
 	my @keys;
 
+	# NOTE: this gets messed up by semicolons in comments!!
 	my @statements = split(';', $bigstr);
 
 #	print Data::Dumper->Dump(\@statements), "\n";
@@ -784,8 +839,6 @@ sub tabalign
 			$val1 .= $tabstr;
 		}
 
-#		unshift @{$collist->[$ii]}, $len1 + $len2 + $tabwidth;
-#		unshift @{$collist->[$ii]}, $val1 . $tabstr . $val2;		
 		unshift @{$collist->[$ii]}, $len1 + $len2 ;
 		unshift @{$collist->[$ii]}, $val1 . $val2;		
 	} # end for ii
@@ -892,12 +945,22 @@ sub formatcols
 	for my $coldef (@{$allcol})
 	{
 		my $colitem = [];
+		my $coltype = $coldef->{ctype};
+		my $colname = $coldef->{colname};
 
-		push @{$colitem}, $glob_tabstr . $coldef->{ctype};
-		push @{$colitem}, length($coldef->{ctype}) + $glob_tabwidth;
+		# fix arrays of types -- the array suffix moves from the
+		# typename to the column name
+		if ($coltype =~ m/\[1\]/)
+		{
+			$coltype =~ s/\[1\]//;
+			$colname .= "[1]";
+		}
 
-		push @{$colitem}, $coldef->{colname} . ";";
-		push @{$colitem}, length($coldef->{colname}) + 1;
+		push @{$colitem}, $glob_tabstr . $coltype;
+		push @{$colitem}, length($coltype) + $glob_tabwidth;
+
+		push @{$colitem}, $colname . ";";
+		push @{$colitem}, length($colname) + 1;
 
 		if (exists($coldef->{postcomment}))
 		{
@@ -958,6 +1021,29 @@ sub formatcols
 	return $bigstr;
 
 } # end formatcols
+
+
+sub formatTZcomment
+{
+	my $colname = shift;
+
+	my $bigstr = <<"EOF_bigstr";
+/*
+ * The CATALOG definition has to refer to the type of MYTYPENAME as
+ * "timestamptz" (lower case) so that bootstrap mode recognizes it.  But
+ * the C header files define this type as TimestampTz.	Since the field is
+ * potentially-null and therefore cannot be accessed directly from C code,
+ * there is no particular need for the C struct definition to show the
+ * field type as TimestampTz --- instead we just make it Datum.
+ */
+
+#define timestamptz Datum
+
+EOF_bigstr
+
+	$bigstr =~ s/MYTYPENAME/$colname/;
+	return $bigstr;
+}
 
 # print YEARMONTHDAY as 8 digit string
 sub yyyy_mm_dd
@@ -1249,8 +1335,13 @@ sub formattab
 			$bigstr .= "  Table does not have static type " .
 				"(only legal for pre-3.3 tables). \n"; 
 		}
+		$bigstr .= "  Table has weird hack for timestamp column.\n " 
+			if (exists($vv->{tzhack}));
+
 		$bigstr .= "\n*/\n\n";
 
+		$bigstr .= formatTZcomment($vv->{tzhack})
+			if (exists($vv->{tzhack}));
 
 		$bigstr .= getcomment1($kk);
 
@@ -1269,6 +1360,8 @@ sub formattab
 
 		$bigstr .= "} FormData_" . $kk . ";\n";
 
+		$bigstr .= "\n#undef timestamptz\n"
+			if (exists($vv->{tzhack}));
 
 		$bigstr .= "\n\n";
 

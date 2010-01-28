@@ -30,6 +30,7 @@
 #include "utils/builtins.h"
 #include "utils/flatfiles.h"
 #include "utils/fmgroids.h"
+#include "utils/formatting.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/resscheduler.h"
@@ -1097,21 +1098,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	}
 	else
 	{
-		char	*tempo = pstrdup(alter_subtype);
-		int		 len   = strlen(tempo);
-		int		 ii	   = 0;
-
-		/* XXX XXX: Ugh!  there has got to be a better way! */
-		while (ii < len)
-		{
-			unsigned char ch = (unsigned char) tempo[ii];
-
-			ch = pg_toupper(ch);
-
-			tempo[ii] = ch;
-
-			ii++;
-		}
+		char *tempo = str_toupper(alter_subtype, strlen(alter_subtype));
 
 		alter_subtype = tempo;
 	}

@@ -30,6 +30,7 @@
 #include "nodes/makefuncs.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/formatting.h"
 #include "utils/lsyscache.h"
 #include "utils/resowner.h"
 #include "utils/syscache.h"
@@ -491,27 +492,12 @@ AlterSequence(AlterSeqStmt *stmt)
 		ListCell		*option = list_head(stmt->options);
 		DefElem			*defel	= (DefElem *) lfirst(option);
 		char			*tempo	= NULL;
-		int				 len	= 0;
-		int				 ii		= 0;
 
 		alter_subtype = defel->defname;
 		if (0 == strcmp(alter_subtype, "owned_by"))
 			alter_subtype = "OWNED BY";
 
-		tempo = pstrdup(alter_subtype);
-		len   = strlen(tempo);
-
-		/* XXX XXX: Ugh!  there has got to be a better way! */
-		while (ii < len)
-		{
-			unsigned char ch = (unsigned char) tempo[ii];
-
-			ch = pg_toupper(ch);
-
-			tempo[ii] = ch;
-
-			ii++;
-		}
+		tempo = str_toupper(alter_subtype, strlen(alter_subtype));
 
 		alter_subtype = tempo;
 
