@@ -59,9 +59,10 @@ class GpRecoveryActions:
 
 class GpSegmentToRecover:
 
-    def __init__(self, failedSegment, liveSegment, failoverSegment):
+    def __init__(self, failedSegment, liveSegment, failoverSegment, forceFullSynchronization):
         checkNotNone("failedSegment", failedSegment)
         checkNotNone("liveSegment", liveSegment)
+        checkNotNone("forceFullSynchronization", forceFullSynchronization)
         assert liveSegment.isSegmentUp()
         assert liveSegment.isSegmentPrimary(True)
         assert liveSegment.isSegmentQE()
@@ -85,6 +86,11 @@ class GpSegmentToRecover:
         """
         self.__failoverSegment = failoverSegment
 
+        """
+        __forceFullSynchronization is true if full resynchronization should be FORCED
+        """
+        self.__forceFullSynchronization = forceFullSynchronization
+
     def getFailedSegment(self):
         return self.__failedSegment
 
@@ -94,27 +100,14 @@ class GpSegmentToRecover:
     def getFailoverSegment(self):
         return self.__failoverSegment
 
-class GpCopySegmentDirectoryDirective:
-    def __init__(self, source, dest, includeSchema ):
-        """
-        includeSchema should only be True if copying offline
-        """
-        checkNotNone("source", source)
-        checkNotNone("dest", dest)
-        checkNotNone("includeSchema", includeSchema)
+    def isFullSynchronization(self):
+        if self.__forceFullSynchronization:
+            return True
 
-        self.__source = source
-        self.__dest = dest
-        self.__includeSchema = includeSchema
-
-    def getSource(self):
-        return self.__source
-
-    def getDest(self):
-        return self.__dest
-
-    def getIncludeSchema(self):
-        return self.__includeSchema
+        # if we are failing over to a new segment location then we must fully resync
+        if self.__failoverSegment is not None:
+            return True
+        return False
 
 class GpFaultProberInterface:
 
@@ -167,6 +160,37 @@ class GpMasterEnvironment:
     def getMasterMaxConnections(self) : return self.__masterMaxConnections
     def getMasterPort(self) : return self.__masterPort
 
+class GpCleanupSegmentDirectoryDirective:
+    def __init__(self, segment):
+        checkNotNone("segment", segment)
+        self.__segment = segment
+
+    def getSegment(self):
+        return self.__segment
+
+class GpCopySegmentDirectoryDirective:
+    def __init__(self, source, dest, includeSchema ):
+        """
+        includeSchema should only be True if copying offline
+        """
+        checkNotNone("source", source)
+        checkNotNone("dest", dest)
+        checkNotNone("includeSchema", includeSchema)
+
+        self.__source = source
+        self.__dest = dest
+        self.__includeSchema = includeSchema
+
+    def getSource(self):
+        return self.__source
+
+    def getDest(self):
+        return self.__dest
+
+    def getIncludeSchema(self):
+        return self.__includeSchema
+
+
 #-------------------------------------------------------------------------
 class GpRecoverSegmentProgram:
 
@@ -215,11 +239,74 @@ class GpRecoverSegmentProgram:
 
                 file.write('\n')
 
+    def __waitAndCheckWorkerPoolForErrorsAndClear(self, dispatchCount, actionVerb):
+
+        self.__pool.wait_and_printdots(dispatchCount, self.__options.quiet)
+
+        cmds=self.pool.getCompletedItems()
+        for cmd in cmds:
+            if cmd.get_results().rc == 0:
+                cmdout = cmd.get_results().stdout
+                lines=cmdout.split('\n')
+            else:
+                raise Exception("error in %s" % actionVerb)
+
+        self.pool.empty_completed_items()
+
     def copySegmentDirectories(self, directives):
+        """
+        directives should be composed of GpCopySegmentDirectoryDirective values
+        """
         if len(directives) == 0:
             return
-            
-        raise("not implemented") # todo MIRRORING (group by src or dest host, do transfers)
+
+        srcSegments = [d.getSrcSegment() for d in directives]
+        srcSegmentByHost = GpArray.getSegmentsByHostName(srcSegments)
+
+        dispatchCount = 0
+        for hostName, segments in srcSegmentByHost.iteritems():
+            #
+            # todo MIRRORING call a remote script that will tar up the segment directory and transfer to the
+            #       target host (see gpexpand code)
+            #  (segcopy.py).
+            # NOTE: it's possible that we can just copy from the master itself
+            #
+            cmd = dispatchCount
+            dispatchCount += 1
+            self.__pool.addCommand(cmd)
+
+        self.__waitAndCheckWorkerPoolForErrorsAndClear(dispatchCount, "building and transferring basic segment directory")
+
+        destSegments = [d.getDestSegment() for d in directives]
+        destSegmentByHost = GpArray.getSegmentsByHostName(srcSegments)
+        dispatchCount = 0
+        for hostName, segments in destSegmentByHost.iteritems():
+            #
+            # todo MIRRORING call a remote script that will untar the transferred tar (see gpconfexpseg) and update ports
+            #
+            cmd = dispatchCount
+            dispatchCount += 1
+            self.__pool.addCommand(cmd)
+        self.__waitAndCheckWorkerPoolForErrorsAndClear(dispatchCount, "unpacking basic segment directory")
+
+
+    def cleanupSegmentDirectories(self, directives):
+        if len(directives) == 0:
+            return
+
+        segments = [d.getSegment() for d in directives]
+        segmentByHost = GpArray.getSegmentsByHostName(srcSegments)
+
+        dispatchCount = 0
+        for hostName, segments in segmentByHost.iteritems():
+            #
+            # todo MIRRORING call a remote script that will clean up the segment directories
+            #
+            cmd = dispatchCount
+            dispatchCount += 1
+            self.__pool.addCommand(cmd)
+
+        self.__waitAndCheckWorkerPoolForErrorsAndClear(dispatchCount, "cleaning existing directories")
     
     def recover(self, gpArray, actions):
         assert self.__faultProber.isFaultProberPaused()
@@ -228,10 +315,13 @@ class GpRecoverSegmentProgram:
         logger.info("%s segment(s) to recover" % len(actions.getSegmentsToRecover()))
 
         # make sure the target directories are up-to-date
+        cleanupDirectives = []
         copyDirectives = []
         for toRecover in actions.getSegmentsToRecover():
-            if toRecover.getFailoverSegment() is not None:
+            if toRecover.isFullSynchronization() is not None:
+                cleanupDirectives.append(GpCleanupSegmentDirectoryDirective(toRecover.getFailedSegment()))
                 copyDirectives.append(GpCopySegmentDirectoryDirective(toRecover.getLiveSegment(), toRecover.getFailoverSegment(), False))
+        self.cleanupSegmentDirectories(cleanupDirectives)
         self.copySegmentDirectories(copyDirectives)
 
         # update and save metadata
@@ -420,8 +510,11 @@ class GpRecoverSegmentProgram:
                          metavar="<targetDirectory>",
                       help="Spare data directories on current hosts")
 
-        addTo = OptionGroup(parser, "Recovery Destination Options")
+        addTo = OptionGroup(parser, "Recovery Options")
         parser.add_option_group(addTo)
+        addTo.add_option('-F', None, action='store_true', default=False,
+                         metavar="<forceFullResynchronization>",
+                      help="Force full segment resynchronization")
         addTo.add_option("-B", None, dest="parallelDegree", type="int", default=4,
                          metavar="<parallelDegree>",
                       help="Max # of workers to use for recovering segments")
