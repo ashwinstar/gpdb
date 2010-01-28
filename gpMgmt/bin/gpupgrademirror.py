@@ -10,6 +10,8 @@ import sys
 import socket
 import signal
 import traceback
+import pprint
+import threading
 from time import strftime, sleep
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
@@ -45,14 +47,122 @@ _help  = [""" TODO add help """]
 _usage = """ TODO add usage """
 
 
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class gpconfig_row:
 
+    def __init__(self, row):
+        self.content        = row[0]
+        self.definedprimary = row[1]
+        self.dbid           = row[2]
+        self.isprimary      = row[3]
+        self.valid          = row[4]
+        self.hostname       = row[5]
+        self.port           = row[6]
+        self.datadir        = row[7]
 
-gpconfig_Query = '''SELECT    content, definedprimary, isprimary,
+    def __str__(self):
+        
+        tempStr = '--- gpconfig_row ---' \
+        + '\n      content        = ' + str(self.content) \
+        + '\n      definedprimary = ' + str(self.definedprimary) \
+        + '\n      dbid           = ' + str(self.dbid) \
+        + '\n      isprimary      = ' + str(self.isprimary) \
+        + '\n      valid          = ' + str(self.valid) \
+        + '\n      hostname       = ' + str(self.hostname) \
+        + '\n      port           = ' + str(self.port) \
+        + '\n      datadir        = ' + str(self.datadir)
+        return tempStr
+    
+    @staticmethod
+    def query():
+        return '''SELECT    content, definedprimary, dbid, isprimary,
                               valid  , hostname      , port, datadir
                     FROM      pg_catalog.gp_configuration
                     WHERE     content > -1
                     ORDER BY content, definedprimary DESC '''
 
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class mirror_hosts_row:
+    
+    def __init__(self, row):
+        self.hostname = row[0]
+
+    @staticmethod
+    def query():
+        return '''SELECT  DISTINCT hostname 
+                        FROM             pg_catalog.gp_configuration
+                        WHERE            isprimary = 'f'
+                        ORDER BY         hostname '''
+
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class primary_mirror_hosts_row:
+
+    def __init__(self, row):
+        self.primary_host = row[0]
+        self.mirror_host  = row[1]
+        
+    @staticmethod
+    def query():
+        return '''SELECT t1.hostname as primary_host, t2.hostname as mirror_host 
+                                FROM   pg_catalog.gp_configuration as t1 
+                                        INNER JOIN  
+                                       pg_catalog.gp_configuration as t2 
+                                ON     t1.content = t2.content 
+                                   AND t1.content >= 0 
+                                   AND t1.isprimary = 't' 
+                                   AND t2.isprimary = 'f' 
+                                ORDER BY  mirror_host '''
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class mirror_host_info_row:
+    
+    def __init__(self, row):
+        self.primary_host = row[0]
+        self.primary_data_directory = row[1]
+        self.mirror_data_directory = row[2]
+        self.dbid = row[3]
+
+    def __str__(self):
+        tempStr = '--- mirror_host_info_row ---' \
+        +         '\n    primary_host           = ' + str(self.primary_host) \
+        +         '\n    primary_data_directory = ' + str(self.primary_data_directory) \
+        +         '\n    mirror_data_directory  = ' + str(self.mirror_data_directory) \
+        +         '\n    dbid                   = ' + str(self.dbid)
+        return tempStr
+
+    @staticmethod
+    def query():        
+        return '''SELECT t1.hostname as primary_host
+                                     , t1.datadir  as primary_data_directory
+                                     , t2.datadir  as mirror_data_directory
+                                     , t2.dbid     as dbid
+                                FROM   pg_catalog.gp_configuration as t1 
+                                        INNER JOIN  
+                                       pg_catalog.gp_configuration as t2 
+                                ON     t1.content = t2.content 
+                                   AND t2.hostname = '%s'
+                                   AND t1.content >= 0 
+                                   AND t1.isprimary = 't' 
+                                   AND t2.isprimary = 'f' 
+                                ORDER BY  primary_host '''
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+
+class InvalidStatusError(Exception): pass
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class ValidationError(Exception): pass
 
 #-------------------------------------------------------------------------------
                                                                 
@@ -67,6 +177,10 @@ def parseargs():
 
     parser.add_option('-r', '--rollback', action='store_true',
                       help='rollback failed expansion setup.')
+    parser.add_option('-S', '--safe-mode', action='store_true',
+                      help='safe mode for upgrade of mirrors.')
+    parser.add_option('-U', '--unsafe-mode', action='store_true',
+                      help='unsafe mode for upgrade of mirrors.')
     parser.add_option('-v','--verbose', action='store_true',
                       help='debug output.')
     parser.add_option('-h', '-?', '--help', action='help',
@@ -160,17 +274,26 @@ class GpUpgradeMirrorStatus():
     The status file is placed in the master data directory on both the master and
     the standby master.  it's used to keep track of where we are in the progression.
     """
-    def __init__(self, logger, master_data_directory, master_mirror=None):
+    def __init__(self, logger, master_data_directory, segment_dbid, master_mirror):
         self.logger=logger
 
-        self._status_values = { 'UNINITIALIZED': 1,
-                                'GPUPGRADEMIRROR_DONE': 2
-                                }
+        self._status_values = { 'UNINITIALIZED'           : 1
+                              , 'START_PRIMARY_COPY'      : 2
+                              , 'END_PRIMARY_COPY'        : 3
+                              , 'START_MOVE_OLD_MIRROR'   : 4
+                              , 'END_MOVE_OLD_MIRROR'     : 5
+                              , 'START_MOVE_NEW_MIRROR'   : 6
+                              , 'END_MOVE_NEW_MIRROR'     : 7
+                              , 'START_REMOVE_OLD_MIRROR' : 8
+                              , 'END_REMOVE_OLD_MIRROR'   : 9
+                              , 'GPUPGRADEMIRROR_DONE'    : 10
+                              }
         self._status = []
         self._status_info = []
         self._master_data_directory = master_data_directory
         self._master_mirror = master_mirror
-        self._status_filename = master_data_directory + '/gpupgrademirror.status'
+        self.segment_dbid = segment_dbid
+        self._status_filename = master_data_directory + '/gpupgrademirror' + str(segment_dbid) + '.status'
         self._status_standby_filename = master_data_directory + '/gpupgrademirror.standby.status'
         self._fp = None
         self._fp_standby = None
@@ -294,45 +417,194 @@ class GpUpgradeMirrorStatus():
         return os.path.exists(self._master_data_directory + self._status_standby_filename)
 
 
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class gpupgrademirrorSafeMode(threading.Thread):
+    '''
+     An object of this class represents a single node in a cluster. 
+     It will upgrade all mirror segments on that node.
+    '''
 
+
+    def __init__(self, dburl, logger, master_data_directory, node_name):
+        threading.Thread.__init__(self) 
+        self.dburl                 = dburl
+        self.logger                = logger
+        self.master_data_directory = master_data_directory
+        self.nodeName              = node_name
+        self.mirrorSegmentList     = []
+        self.statusList            = []
+
+    #-------------------------------------------------------------------------------
+    def  setup(self, mirrorInfoList):
+        self.mirrorSegmentList = mirrorInfoList
+
+        for seg in self.mirrorSegmentList:
+            print 'seg = ' + str(seg)
+            status = GpUpgradeMirrorStatus( logger = self.logger
+                                          , master_data_directory = self.master_data_directory
+                                          , segment_dbid = seg.dbid
+                                          , master_mirror = False)
+            self.statusList.append(status)
+            status.create_status_file()
+            
+  
+
+    #-------------------------------------------------------------------------------
+    def renameOldMirrorToTemp(self, seg):
+        print 'in renameOldMirror'
+        
+        tempDataDir = seg.mirror_data_directory + 'gpupgrademirrors.originalmirror'
+        rmCmd = MoveDirectory( name = 'gpupgrademirror move old mirror to temp location: %s:%s' % (seg.mirror_data_directory, tempDataDir)
+                             , srcDirectory = seg.mirror_data_directory
+                             , dstDirectory = tempDataDir
+                             , ctxt  = REMOTE
+                             , remoteHost = self.nodeName
+                             )
+        rmCmd.run(validateAfter = True)
+        
+    #-------------------------------------------------------------------------------
+    def renameNewMirrorToOldMirror(self, seg):
+        print 'in moveNewMirror'
+        
+        tempDataDir = seg.mirror_data_directory + 'gpupgrademirrors.copyfromprimary'
+        rmCmd = MoveDirectory( name = 'gpupgrademirror move new mirror to mirror location: %s:%s' % (tempDataDir, seg.mirror_data_directory)
+                          , srcDirectory = tempDataDir
+                          , dstDirectory = seg.mirror_data_directory
+                          , ctxt  = REMOTE
+                          , remoteHost = self.nodeName
+                          )
+        rmCmd.run(validateAfter = True)
+        
+
+    #-------------------------------------------------------------------------------                                              
+    def copyPrimaryToMirror(self, seg):
+        print 'in copyPrimaryToMirror'
+
+        tempDataDir = seg.mirror_data_directory + 'gpupgrademirrors.copyfromprimary'
+        rmCmd = RemoteCopy( name = 'gpupgrademirror copy primary to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
+                          , srcDirectory = seg.primary_data_directory
+                          , dstHost = self.nodeName
+                          , dstDirectory = tempDataDir
+                          , ctxt  = REMOTE
+                          , remoteHost = seg.primary_host
+                          )
+        rmCmd.run(validateAfter = True)
+        
+    #-------------------------------------------------------------------------------
+    def removeOldMirror(self, seg):
+        print 'in removeOldMirror'
+
+        tempDataDir = seg.mirror_data_directory + 'gpupgrademirrors.originalmirror'
+        rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror data directory: %s:%s' % (self.nodeName, tempDataDir)
+                           , directory = tempDataDir
+                           , ctxt = REMOTE
+                           , remoteHost = self.nodeName
+                           )
+        rmCmd.run(validateAfter = True)
+
+    
+    #-------------------------------------------------------------------------------
+    def startMovement(self):
+       print 'in startMovement' 
+
+
+
+    #-------------------------------------------------------------------------------
+    def findLargestPrimarySegment(self):
+
+      largestSize = 0
+
+      for primary in self.currentPrimaryList:
+          dirSize = DiskUsage.get_size( name = "primaryDir"
+                                      , remote_host = primary[1]
+                                      , directory = primary[2]
+                                      )
+          if dirSize > largestSize:
+             largestSize = dirSize
+      return largestSize
+
+
+    #-------------------------------------------------------------------------------
+    def checkAvailableSpace(self):
+        print 'in checkAvailableSpace'
+
+        minSizeNeeded = self.findLargestPrimarySegment()
+        for mirror in self.currentMirrorList:
+            mirrorSize = DiskFree.get_size( name = 'disk space available'
+                                          , remote_host = mirror[1]
+                                          , directory = mirror[2]
+                                          )
+            ###print 'mirrorSize = ' + str(mirrorSize)
+            if mirrorSize < minSizeNeeded:
+               logger.error("Size of mirror directory %s is too small." % mirror[2])          
+
+
+    #-------------------------------------------------------------------------------
+    def run(self):
+        i = 0
+        for seg in self.mirrorSegmentList:
+            status = self.statusList[i]
+            status.set_status('START_PRIMARY_COPY')
+            self.copyPrimaryToMirror(seg)
+            status.set_status('END_PRIMARY_COPY')
+            status.set_status('START_MOVE_OLD_MIRROR')
+            self.renameOldMirrorToTemp(seg)
+            status.set_status('END_MOVE_OLD_MIRROR')
+            status.set_status('START_MOVE_NEW_MIRROR')
+            self.renameNewMirrorToOldMirror(seg)
+            status.set_status('END_MOVE_NEW_MIRROR')
+            status.set_status('START_REMOVE_OLD_MIRROR')
+            self.removeOldMirror(seg)
+            status.set_status('END_REMOVE_OLD_MIRROR')
+            status.set_status('GPUPGRADEMIRROR_DONE')            
+            i = i + 1
+
+
+#
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 class gpupgrademirror:
 
-    dburl = None
+    dburl     = None
+    safe_mode = None
     currentPMList      = []
     currentPrimaryList = []
     currentMirrorList  = []
+    statusList         = []
 
 
-    def __init__(self, dburl, parallel=1):
+    def __init__(self, dburl, logger, master_data_directory, safe_mode = True):
         self.dburl = dburl
-        self.parallel = parallel
-
+        self.logger = logger
+        self.master_data_directory = master_data_directory
+        self.safe_mode = safe_mode
+        self.parallel = 1
 
     #-------------------------------------------------------------------------------
     def  setup(self):
         conn   = dbconn.connect( dburl   = self.dburl
-                               , utility = True)
-        cursor = dbconn.execSQL(conn, gpconfig_Query)
+                               , utility = True
+                               )
+        cursor = dbconn.execSQL(conn, gpconfig_row.query())
         i      = 1
 
         for row in cursor:
-            (content, definedprimary, isprimary, valid, hostname, port, datadir) = row
+            (content, definedprimary, dbid, isprimary, valid, hostname, port, datadir) = row
             if (isprimary == True):
-               ###self.currentPrimaryList.append((content, hostname, datadir))
-               self.currentPrimaryList.append((content, hostname, '/Users/ksell/temp/junkDatadir/primary' + str(i)))
-               self.currentPMList.append((content, hostname, '/Users/ksell/temp/junkDatadir/primary' + str(i)))
+               ###self.currentPrimaryList.append((content, hostname, datadir, dbid))
+               self.currentPrimaryList.append((content, hostname, '/Users/ksell/temp/junkDatadir/primary' + str(i), dbid))
+               self.currentPMList.append((content, hostname, '/Users/ksell/temp/junkDatadir/primary' + str(i), dbid))
             else:
                ###self.currentMirrorList.append((content, hostname, datadir))
-               self.currentMirrorList.append((content, hostname, '/Users/ksell/temp/junkDatadir/mirror' + str(i)))
-               self.currentPMList.append((content, hostname, '/Users/ksell/temp/junkDatadir/mirror' + str(i)))
+               self.currentMirrorList.append((content, hostname, '/Users/ksell/temp/junkDatadir/mirror' + str(i), dbid))
+               self.currentPMList.append((content, hostname, '/Users/ksell/temp/junkDatadir/mirror' + str(i), dbid))
                i = i + 1
-            ###self.currentPMList.append((content, hostname, datadir))
+            ###self.currentPMList.append((content, hostname, datadir, debid))
         cursor.close()
         conn.close()
 
-        self.numworkers=self.parallel
+        self.numworkers=len(self.currentPrimaryList)
         self.pool = WorkerPool(numWorkers = self.numworkers)
 
 
@@ -341,6 +613,14 @@ class gpupgrademirror:
         print ''
         print str(self.currentMirrorList)
         print ''
+
+        for seg in self.currentPrimaryList:
+            status = GpUpgradeMirrorStatus( logger = self.logger
+                                          , master_data_directory = self.master_data_directory
+                                          , segment_dbid = seg[3]
+                                          , master_mirror = False)
+            self.statusList.append(status)
+            status.create_status_file()
 
    
     #-------------------------------------------------------------------------------
@@ -442,10 +722,6 @@ class gpupgrademirror:
             if mirrorSize < minSizeNeeded:
                logger.error("Size of mirror directory %s is too small." % mirror[2])          
 
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-
-
 
 #
 #-------------------------------------------------------------------------------
@@ -455,9 +731,12 @@ class gpupgrademirror:
 dburl      = None
 conn       = None
 remove_pid = True
+MirrorNodeList = []
+MirrorInfoList = []
+safeModeMirrorNodeList = []
+
 
 try:
-
   logger = get_default_logger()
   setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
 
@@ -474,13 +753,51 @@ try:
   else:
      create_pid_file(options.master_data_directory)
 
-  dburl = dbconn.DbURL()
+  dbUrl = dbconn.DbURL()
 
-  testUM  = gpupgrademirror(dburl)
-  testUM.setup()
-  testUM.checkAvailableSpace()
-  testUM.removeOldMirrors()
-  testUM.copyPrimaryToMirrors()
+  if options.safe_mode == True:
+    ''' Run in safe mode '''
+    conn   = dbconn.connect( dburl   = dbUrl
+                           , utility = True
+                           )
+    
+    ''' Get a list of mirrors '''
+    mirrorNodeCursor = dbconn.execSQL(conn, mirror_hosts_row.query())
+    numMirrorHosts = 0
+    for row in mirrorNodeCursor:
+        host = mirror_hosts_row(row)
+        numMirrorHosts = numMirrorHosts + 1
+        mirrorhost = host.hostname
+        print 'mirrorhost = ' + str(mirrorhost)
+        
+        ''' Create a gpupgrademirrorSafeMode object for each mirror node'''
+        tempNode = gpupgrademirrorSafeMode(dbUrl, logger, options.master_data_directory, mirrorhost)
+
+        ''' Get info on mirror segments for this host'''
+        mirrorSegInfoCursor = dbconn.execSQL(conn, mirror_host_info_row.query() % mirrorhost)
+        mirrorInfoList = []
+        for mirrorInfoRow in mirrorSegInfoCursor:
+            mirrorInfo = mirror_host_info_row(mirrorInfoRow)
+            mirrorInfoList.append(mirrorInfo)
+        
+        ''' Setup the mirror node '''
+        tempNode.setup(mirrorInfoList)
+        safeModeMirrorNodeList.append(tempNode)
+    
+    ''' Start the threads '''
+    for node in safeModeMirrorNodeList:
+        node.start()
+    for node in safeModeMirrorNodeList:
+        node.join()    
+    
+  else:
+    ''' Run in UNsafe mode '''  
+    testUM  = gpupgrademirror(dbUrl, logger, options.master_data_directory, safe_mode = options.safe_mode)
+    testUM.setup()
+    testUM.checkAvailableSpace()
+    testUM.removeOldMirrors()
+    testUM.copyPrimaryToMirrors()
+
   sys.exit(0)
 
 except Exception, e:
@@ -495,3 +812,4 @@ finally:
             remove_pid_file(options.master_data_directory)
     except NameError:
         pass
+    logger.info("gpupgrademieeor complete")

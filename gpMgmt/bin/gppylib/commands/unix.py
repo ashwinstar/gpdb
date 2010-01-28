@@ -335,6 +335,14 @@ class MakeDirectory(Command):
     def remote(name,remote_host,directory):
         mkdirCmd=MakeDirectory(name,directory,ctxt=REMOTE,remoteHost=remote_host)
         mkdirCmd.run(validateAfter=True)
+   
+#-------------mv------------------   
+class MoveDirectory(Command):
+    def __init__(self,name,srcDirectory,dstDirectory,ctxt=LOCAL,remoteHost=None):
+        self.srcDirectory=srcDirectory
+        self.dstDirectory=dstDirectory        
+        cmdStr="%s -f %s %s" % (findCmdInPath('mv'),srcDirectory,dstDirectory)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)   
         
         
 #-------------append------------------
