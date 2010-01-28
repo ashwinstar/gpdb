@@ -237,6 +237,7 @@ if (1)
 			'| grep -v "_args)" | grep -v ".pid)" ' .
 			'| grep -v "_segargs)" | grep -v "pg_fsm.cache" ' .
 			'| grep -v pgstat | grep -v pgsql_tmp  \' ) ' .
+			'| sort ' .
 			'| perl -i -ple \'s|MYDIR||gm \' ' . 
 			' > ';
 
