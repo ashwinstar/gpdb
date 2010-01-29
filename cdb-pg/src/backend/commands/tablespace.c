@@ -88,122 +88,6 @@ static bool remove_tablespace_directories(Oid tablespaceoid, bool redo,
 										  char *location);
 static void set_short_version(const char *path);
 
-
-/*
- * Each database using a table space is isolated into its own name space
- * by a subdirectory named for the database OID.  On first creation of an
- * object in the tablespace, create the subdirectory.  If the subdirectory
- * already exists, just fall through quietly.
- *
- * isRedo indicates that we are creating an object during WAL replay.
- * In this case we will cope with the possibility of the tablespace
- * directory not being there either --- this could happen if we are
- * replaying an operation on a table in a subsequently-dropped tablespace.
- * We handle this by making a directory in the place where the tablespace
- * symlink would normally be.  This isn't an exact replay of course, but
- * it's the best we can do given the available information.
- *
- * If tablespaces are not supported, you might think this could be a no-op,
- * but you'd be wrong: we still need it in case we have to re-create a
- * database subdirectory (of $PGDATA/base) during WAL replay.
- */
-void
-TablespaceCreateDbspace(Oid spcNode, Oid dbNode, bool isRedo)
-{
-	struct stat st;
-	char	   *dir;
-
-	/*
-	 * The global tablespace doesn't have per-database subdirectories, so
-	 * nothing to do for it.
-	 */
-	if (spcNode == GLOBALTABLESPACE_OID)
-		return;
-
-	Assert(OidIsValid(spcNode));
-	Assert(OidIsValid(dbNode));
-
-	dir = GetDatabasePath(dbNode, spcNode);
-
-	if (stat(dir, &st) < 0)
-	{
-		if (errno == ENOENT)
-		{
-			/*
-			 * Acquire TablespaceCreateLock to ensure that no DROP TABLESPACE
-			 * or TablespaceCreateDbspace is running concurrently.
-			 */
-			LWLockAcquire(TablespaceCreateLock, LW_EXCLUSIVE);
-
-			/*
-			 * Recheck to see if someone created the directory while we were
-			 * waiting for lock.
-			 */
-			if (stat(dir, &st) == 0 && S_ISDIR(st.st_mode))
-			{
-				/* need not do anything */
-			}
-			else
-			{
-				DbDirNode justInTimeDbDirNode;
-				ItemPointerData persistentTid;
-				
-				/* OK, go for it */
-				justInTimeDbDirNode.tablespace = spcNode;
-				justInTimeDbDirNode.database = dbNode;
-				PersistentDatabase_JustInTimeCreate(
-										&justInTimeDbDirNode,
-										&persistentTid,
-										/* flushToXLog */ true);
-				
-				if (mkdir(dir, S_IRWXU) < 0)
-				{
-					char	   *parentdir;
-
-					if (errno != ENOENT || !isRedo)
-						ereport(ERROR,
-								(errcode_for_file_access(),
-							  errmsg("could not create directory \"%s\": %m",
-									 dir)));
-					/* Try to make parent directory too */
-					parentdir = pstrdup(dir);
-					get_parent_directory(parentdir);
-					if (mkdir(parentdir, S_IRWXU) < 0)
-						ereport(ERROR,
-								(errcode_for_file_access(),
-							  errmsg("could not create directory \"%s\": %m",
-									 parentdir)));
-					pfree(parentdir);
-					if (mkdir(dir, S_IRWXU) < 0)
-						ereport(ERROR,
-								(errcode_for_file_access(),
-							  errmsg("could not create directory \"%s\": %m",
-									 dir)));
-				}
-			}
-
-			LWLockRelease(TablespaceCreateLock);
-		}
-		else
-		{
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not stat directory \"%s\": %m", dir)));
-		}
-	}
-	else
-	{
-		/* be paranoid */
-		if (!S_ISDIR(st.st_mode))
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("\"%s\" exists but is not a directory",
-							dir)));
-	}
-
-	pfree(dir);
-}
-
 /*
  * Create a table space
  *
@@ -487,7 +371,7 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 							tablespaceoid);
 
 	/*
-	 * Acquire TablespaceCreateLock to ensure that no TablespaceCreateDbspace
+	 * Acquire TablespaceCreateLock to ensure that no MirroredFileSysObj_JustInTimeDbDirCreate
 	 * is running concurrently.
 	 */
 	LWLockAcquire(TablespaceCreateLock, LW_EXCLUSIVE);
@@ -522,7 +406,7 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	 */
 
 	/*
-	 * Allow TablespaceCreateDbspace again.
+	 * Allow MirroredFileSysObj_JustInTimeDbDirCreate again.
 	 */
 	LWLockRelease(TablespaceCreateLock);
 
@@ -572,7 +456,7 @@ remove_tablespace_directories(Oid tablespaceoid, bool redo, char *phys)
 	 * still files in that subdirectory, so give up.  (We do not have to worry
 	 * about undoing any already completed rmdirs, since the next attempt to
 	 * use the tablespace from that database will simply recreate the
-	 * subdirectory via TablespaceCreateDbspace.)
+	 * subdirectory via MirroredFileSysObj_JustInTimeDbDirCreate.)
 	 *
 	 * Since we hold TablespaceCreateLock, no one else should be creating any
 	 * fresh subdirectories in parallel. It is possible that new files are

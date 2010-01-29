@@ -127,8 +127,10 @@ select * from get_ereport order by 1;
  aaaaa GP_IGNORE: caca: cdbfilerepprimaryack - @abs_builddir@/../../backend/cdb/cdbfilerepprimaryack.c
  aaaaa GP_IGNORE: cacb: cdbmirroredappendonly - @abs_builddir@/../../backend/cdb/cdbmirroredappendonly.c
  aaaaa GP_IGNORE: cacb: cdbmirroredbufferpool - @abs_builddir@/../../backend/cdb/cdbmirroredbufferpool.c
+ aaaaa GP_IGNORE: cacb: cdbmirroredfilesysobj - @abs_builddir@/../../backend/cdb/cdbmirroredfilesysobj.c
  aaaaa GP_IGNORE: cacb: cdbpersistentdatabase - @abs_builddir@/../../backend/cdb/cdbpersistentdatabase.c
  aaaaa GP_IGNORE: cacc: cdbdistributedsnapshot - @abs_builddir@/../../backend/cdb/cdbdistributedsnapshot.c
+ aaaaa GP_IGNORE: cacc: cdbpersistentfilespace - @abs_builddir@/../../backend/cdb/cdbpersistentfilespace.c
  aaaaa GP_IGNORE: cacd: cdbmirroredbulkrelation - @abs_builddir@/../../backend/cdb/cdbmirroredbulkrelation.c
  aaaaa GP_IGNORE: cacd: cdbpersistentfilesysobj - @abs_builddir@/../../backend/cdb/cdbpersistentfilesysobj.c
  aaaaa GP_IGNORE: cacd: cdbpersistenttablespace - @abs_builddir@/../../backend/cdb/cdbpersistenttablespace.c
@@ -3993,12 +3995,20 @@ select * from get_ereport order by 1;
  cacb: cdbmirroredbufferpool:00000285:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
  cacb: cdbmirroredbufferpool:00000286:  position, 
  cacb: cdbmirroredbufferpool:00000287:  relpath(open->relFileNode), open->segmentFileNum))); 
- cacb: cdbpersistentdatabase:00001234:  ereport(FATAL, 
- cacb: cdbpersistentdatabase:00001235:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacb: cdbpersistentdatabase:00001236:  errmsg("Not enough shared memory for persistent database hash table"))); 
+ cacb: cdbmirroredfilesysobj:00000143:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000144:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000145:  errmsg("could not create database directory %u/%u: %m", 
+ cacb: cdbmirroredfilesysobj:00000146:  justInTimeDbDirNode->tablespace, 
+ cacb: cdbmirroredfilesysobj:00000147:  justInTimeDbDirNode->database))); 
+ cacb: cdbpersistentdatabase:00001397:  ereport(FATAL, 
+ cacb: cdbpersistentdatabase:00001398:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacb: cdbpersistentdatabase:00001399:  errmsg("Not enough shared memory for persistent database hash table"))); 
  cacc: cdbdistributedsnapshot:00000298:  ereport(ERROR, 
  cacc: cdbdistributedsnapshot:00000299:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacc: cdbdistributedsnapshot:00000300:  errmsg("out of memory"))); 
+ cacc: cdbpersistentfilespace:00000936:  ereport(FATAL, 
+ cacc: cdbpersistentfilespace:00000937:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacc: cdbpersistentfilespace:00000938:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
  cacd: cdbmirroredbulkrelation:00000058:  ereport(ERROR, 
  cacd: cdbmirroredbulkrelation:00000059:  (errcode_for_file_access(), 
  cacd: cdbmirroredbulkrelation:00000060:  errmsg("could not create file "%s": %m", fileName))); 
@@ -4008,43 +4018,43 @@ select * from get_ereport order by 1;
  cacd: cdbmirroredbulkrelation:00000162:  ereport(ERROR, 
  cacd: cdbmirroredbulkrelation:00000163:  (errcode_for_file_access(), 
  cacd: cdbmirroredbulkrelation:00000164:  errmsg("could not write to file "%s": %m", open->fileName))); 
- cacd: cdbpersistentfilesysobj:00000424:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000425:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000426:  errmsg("Did not expect to find a 'Free' entry"), 
- cacd: cdbpersistentfilesysobj:00000427:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000428:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000429:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000430:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000431:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000432:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000433:  nextState))); 
- cacd: cdbpersistentfilesysobj:00000438:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000439:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000440:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
- cacd: cdbpersistentfilesysobj:00000441:  actualSerialNum, 
- cacd: cdbpersistentfilesysobj:00000442:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
- cacd: cdbpersistentfilesysobj:00000443:  PersistentFileSysObj_StateName(*actualState)), 
- cacd: cdbpersistentfilesysobj:00000444:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000445:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000446:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000447:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000448:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000449:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000450:  nextState))); 
- cacd: cdbpersistentfilesysobj:00000455:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000456:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000457:  errmsg("Found persistent file-system object in unexpected state '%s'", 
- cacd: cdbpersistentfilesysobj:00000458:  PersistentFileSysObj_StateName(*actualState)), 
- cacd: cdbpersistentfilesysobj:00000459:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000460:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000461:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000462:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000463:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000464:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000465:  nextState))); 
- cacd: cdbpersistenttablespace:00000779:  ereport(FATAL, 
- cacd: cdbpersistenttablespace:00000780:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbpersistenttablespace:00000781:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
+ cacd: cdbpersistentfilesysobj:00000425:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000426:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000427:  errmsg("Did not expect to find a 'Free' entry"), 
+ cacd: cdbpersistentfilesysobj:00000428:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000429:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000430:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000431:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000432:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000433:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000434:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000439:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000440:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000441:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
+ cacd: cdbpersistentfilesysobj:00000442:  actualSerialNum, 
+ cacd: cdbpersistentfilesysobj:00000443:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
+ cacd: cdbpersistentfilesysobj:00000444:  PersistentFileSysObj_StateName(*actualState)), 
+ cacd: cdbpersistentfilesysobj:00000445:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000446:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000447:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000448:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000449:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000450:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000451:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000456:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000457:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000458:  errmsg("Found persistent file-system object in unexpected state '%s'", 
+ cacd: cdbpersistentfilesysobj:00000459:  PersistentFileSysObj_StateName(*actualState)), 
+ cacd: cdbpersistentfilesysobj:00000460:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000461:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000462:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000463:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000464:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000465:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000466:  nextState))); 
+ cacd: cdbpersistenttablespace:00000808:  ereport(FATAL, 
+ cacd: cdbpersistenttablespace:00000809:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbpersistenttablespace:00000810:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
  cace: cdbappendonlystorageread:00000304:  ereport(ERROR, 
  cace: cdbappendonlystorageread:00000305:  (errcode(ERRCODE_IO_ERROR), 
  cace: cdbappendonlystorageread:00000306:  errmsg("Append-only Storage Read error on segment file '%s' for relation '%s'. FileSeek offset = 0. Error code = %d (%s)", 
@@ -5491,6 +5501,21 @@ select * from get_ereport order by 1;
  faai: ftsprobe:00001557:  errmsg("FTS: could not invalidate invalid node in config: format command string failure dbid %d", changes[i].dbid))); 
  faai: ftsprobe:00001587:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
  faai: ftsprobe:00001588:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001918:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),  
+ faai: ftsprobe:00001919:  errmsg("FTS: out of memory")));  
+ faai: ftsprobe:00001920:   
+ faai: ftsprobe:00001921:  PQclear(rs);  
+ faai: ftsprobe:00001922:  PQfinish(entryConn);  
+ faai: ftsprobe:00001923:  entryConn = NULL;  
+ faai: ftsprobe:00001924:   
+ faai: ftsprobe:00001925:  elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);  
+ faai: ftsprobe:00001926:  }  
+ faai: ftsprobe:00001927:  } 
+ faai: ftsprobe:00001928:  
+ faai: ftsprobe:00001929: static void 
+ faai: ftsprobe:00001930: SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str) 
+ faai: ftsprobe:00001931: { 
+ faai: ftsprobe:00001932:  char cmd[256]; 
  faai: function:00000185:  ereport(ERROR, ( 
  faai: function:00000186:  errcode(ERRCODE_SYNTAX_ERROR), 
  faai: function:00000187:  errmsg("To many parameters - expected %d ", top))); 
@@ -8112,20 +8137,20 @@ select * from get_ereport order by 1;
  laba: likexmatch:00000290:  (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE), 
  laba: likexmatch:00000291:  errmsg("invalid escape string"), 
  laba: likexmatch:00000292:  errhint("Escape string must be empty or one character."))); 
- maac: md:00000652:  ereport(ERROR, 
- maac: md:00000653:  (errcode_for_file_access(), 
- maac: md:00000654:  errmsg("could not open relation %u/%u/%u: %m", 
- maac: md:00000655:  reln->smgr_rnode.spcNode, 
- maac: md:00000656:  reln->smgr_rnode.dbNode, 
- maac: md:00000657:  reln->smgr_rnode.relNode))); 
- maac: md:00001478:  ereport(ERROR, 
- maac: md:00001479:  (errcode_for_file_access(), 
- maac: md:00001480:  errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %m", 
- maac: md:00001481:  nextsegno, 
- maac: md:00001482:  reln->smgr_rnode.spcNode, 
- maac: md:00001483:  reln->smgr_rnode.dbNode, 
- maac: md:00001484:  reln->smgr_rnode.relNode, 
- maac: md:00001485:  blkno))); 
+ maac: md:00000716:  ereport(ERROR, 
+ maac: md:00000717:  (errcode_for_file_access(), 
+ maac: md:00000718:  errmsg("could not open relation %u/%u/%u: %m", 
+ maac: md:00000719:  reln->smgr_rnode.spcNode, 
+ maac: md:00000720:  reln->smgr_rnode.dbNode, 
+ maac: md:00000721:  reln->smgr_rnode.relNode))); 
+ maac: md:00001542:  ereport(ERROR, 
+ maac: md:00001543:  (errcode_for_file_access(), 
+ maac: md:00001544:  errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %m", 
+ maac: md:00001545:  nextsegno, 
+ maac: md:00001546:  reln->smgr_rnode.spcNode, 
+ maac: md:00001547:  reln->smgr_rnode.dbNode, 
+ maac: md:00001548:  reln->smgr_rnode.relNode, 
+ maac: md:00001549:  blkno))); 
  maad: mac:00000063:  ereport(ERROR, 
  maad: mac:00000064:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  maad: mac:00000065:  errmsg("invalid input syntax for type macaddr: "%s"", str))); 
@@ -9949,104 +9974,104 @@ select * from get_ereport order by 1;
  paah: plxexec:00003987:  ereport(ERROR, 
  paah: plxexec:00003988:  (errcode(ERRCODE_SYNTAX_ERROR), 
  paah: plxexec:00003989:  errmsg("query "%s" is not a SELECT", expr->query))); 
- paah: plxgram:00001933:  ereport(ERROR, 
- paah: plxgram:00001934:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paah: plxgram:00001935:  errmsg("row or record variable cannot be CONSTANT"))); 
- paah: plxgram:00001942:  ereport(ERROR, 
- paah: plxgram:00001943:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paah: plxgram:00001944:  errmsg("row or record variable cannot be NOT NULL"))); 
- paah: plxgram:00001951:  ereport(ERROR, 
- paah: plxgram:00001952:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paah: plxgram:00001953:  errmsg("default value for row or record variable is not supported"))); 
- paah: plxgram:00002114:  ereport(ERROR, 
- paah: plxgram:00002115:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
- paah: plxgram:00002116:  errmsg("function has no parameter "%s"", 
- paah: plxgram:00002117:  name))); 
- paah: plxgram:00002702:  ereport(ERROR, 
- paah: plxgram:00002703:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00002704:  errmsg("integer FOR loop must have just one target variable"))); 
- paah: plxgram:00002812:  ereport(ERROR, 
- paah: plxgram:00002813:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00002814:  errmsg(""%s" is not a scalar variable", 
- paah: plxgram:00002815:  (yyval.forvariable).name))); 
- paah: plxgram:00003063:  ereport(ERROR, 
- paah: plxgram:00003064:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003065:  errmsg("syntax error at "%s"", 
- paah: plxgram:00003066:  yytext), 
- paah: plxgram:00003067:  errdetail("Expected FOR to open a reference cursor."))); 
- paah: plxgram:00003091:  ereport(ERROR, 
- paah: plxgram:00003092:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003093:  errmsg("cursor "%s" has arguments", 
- paah: plxgram:00003094:  (yyvsp[(3) - (3)].var)->refname))); 
- paah: plxgram:00003143:  ereport(ERROR, 
- paah: plxgram:00003144:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003145:  errmsg("cursor "%s" has no arguments", 
- paah: plxgram:00003146:  (yyvsp[(3) - (3)].var)->refname))); 
- paah: plxgram:00003152:  ereport(ERROR, 
- paah: plxgram:00003153:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003154:  errmsg("syntax error at "%s"", 
- paah: plxgram:00003155:  yytext))); 
- paah: plxgram:00003202:  ereport(ERROR, 
- paah: plxgram:00003203:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxgram:00003204:  errmsg(""%s" must be of type cursor or refcursor", 
- paah: plxgram:00003205:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
- paah: plxgram:00003220:  ereport(ERROR, 
- paah: plxgram:00003221:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxgram:00003222:  errmsg(""%s" must be of type refcursor", 
- paah: plxgram:00003223:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
- paah: plxgram:00003653:  ereport(ERROR, 
- paah: plxgram:00003654:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- paah: plxgram:00003655:  errmsg("too many variables specified in SQL statement"))); 
- paah: plxgram:00003723:  ereport(ERROR, 
- paah: plxgram:00003724:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003725:  errmsg("mismatched parentheses"))); 
- paah: plxgram:00003736:  ereport(ERROR, 
- paah: plxgram:00003737:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003738:  errmsg("mismatched parentheses"))); 
- paah: plxgram:00003740:  ereport(ERROR, 
- paah: plxgram:00003741:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003742:  errmsg("missing "%s" at end of SQL expression", 
- paah: plxgram:00003743:  expected))); 
- paah: plxgram:00003745:  ereport(ERROR, 
- paah: plxgram:00003746:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003747:  errmsg("missing "%s" at end of SQL statement", 
- paah: plxgram:00003748:  expected))); 
- paah: plxgram:00003830:  ereport(ERROR, 
- paah: plxgram:00003831:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003832:  errmsg("mismatched parentheses"))); 
- paah: plxgram:00003833:  ereport(ERROR, 
- paah: plxgram:00003834:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003835:  errmsg("incomplete datatype declaration"))); 
- paah: plxgram:00003907:  ereport(ERROR, 
- paah: plxgram:00003908:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003909:  errmsg("unexpected end of function definition"))); 
- paah: plxgram:00003917:  ereport(ERROR, 
- paah: plxgram:00003918:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003919:  errmsg("INTO specified more than once"))); 
- paah: plxgram:00004126:  ereport(ERROR, 
- paah: plxgram:00004127:  (errcode(ERRCODE_ERROR_IN_ASSIGNMENT), 
- paah: plxgram:00004128:  errmsg(""%s" is declared CONSTANT", 
- paah: plxgram:00004129:  ((PLpgSQL_var *) datum)->refname))); 
- paah: plxgram:00004193:  ereport(ERROR, 
- paah: plxgram:00004194:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00004195:  errmsg("syntax error at "%s"", yytext), 
- paah: plxgram:00004196:  errdetail("Expected record variable, row variable, " 
- paah: plxgram:00004197:  "or list of scalar variables following INTO."))); 
- paah: plxgram:00004228:  ereport(ERROR, 
- paah: plxgram:00004229:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- paah: plxgram:00004230:  errmsg("too many INTO variables specified"))); 
- paah: plxgram:00004244:  ereport(ERROR, 
- paah: plxgram:00004245:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00004246:  errmsg(""%s" is not a scalar variable", 
- paah: plxgram:00004247:  yytext))); 
- paah: plxgram:00004379:  ereport(ERROR, 
- paah: plxgram:00004380:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00004381:  errmsg("end label "%s" specified for unlabelled block", 
- paah: plxgram:00004382:  end_label))); 
- paah: plxgram:00004388:  ereport(ERROR, 
- paah: plxgram:00004389:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00004390:  errmsg("end label "%s" differs from block's label "%s"", 
- paah: plxgram:00004391:  end_label, start_label))); 
+ paah: plxgram:00001625:  ereport(ERROR, 
+ paah: plxgram:00001626:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paah: plxgram:00001627:  errmsg("row or record variable cannot be CONSTANT"))); 
+ paah: plxgram:00001634:  ereport(ERROR, 
+ paah: plxgram:00001635:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paah: plxgram:00001636:  errmsg("row or record variable cannot be NOT NULL"))); 
+ paah: plxgram:00001643:  ereport(ERROR, 
+ paah: plxgram:00001644:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paah: plxgram:00001645:  errmsg("default value for row or record variable is not supported"))); 
+ paah: plxgram:00001806:  ereport(ERROR, 
+ paah: plxgram:00001807:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
+ paah: plxgram:00001808:  errmsg("function has no parameter "%s"", 
+ paah: plxgram:00001809:  name))); 
+ paah: plxgram:00002394:  ereport(ERROR, 
+ paah: plxgram:00002395:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002396:  errmsg("integer FOR loop must have just one target variable"))); 
+ paah: plxgram:00002504:  ereport(ERROR, 
+ paah: plxgram:00002505:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002506:  errmsg(""%s" is not a scalar variable", 
+ paah: plxgram:00002507:  (yyval.forvariable).name))); 
+ paah: plxgram:00002755:  ereport(ERROR, 
+ paah: plxgram:00002756:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002757:  errmsg("syntax error at "%s"", 
+ paah: plxgram:00002758:  yytext), 
+ paah: plxgram:00002759:  errdetail("Expected FOR to open a reference cursor."))); 
+ paah: plxgram:00002783:  ereport(ERROR, 
+ paah: plxgram:00002784:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002785:  errmsg("cursor "%s" has arguments", 
+ paah: plxgram:00002786:  (yyvsp[0].var)->refname))); 
+ paah: plxgram:00002835:  ereport(ERROR, 
+ paah: plxgram:00002836:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002837:  errmsg("cursor "%s" has no arguments", 
+ paah: plxgram:00002838:  (yyvsp[0].var)->refname))); 
+ paah: plxgram:00002844:  ereport(ERROR, 
+ paah: plxgram:00002845:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002846:  errmsg("syntax error at "%s"", 
+ paah: plxgram:00002847:  yytext))); 
+ paah: plxgram:00002894:  ereport(ERROR, 
+ paah: plxgram:00002895:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxgram:00002896:  errmsg(""%s" must be of type cursor or refcursor", 
+ paah: plxgram:00002897:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
+ paah: plxgram:00002912:  ereport(ERROR, 
+ paah: plxgram:00002913:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxgram:00002914:  errmsg(""%s" must be of type refcursor", 
+ paah: plxgram:00002915:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
+ paah: plxgram:00003361:  ereport(ERROR, 
+ paah: plxgram:00003362:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ paah: plxgram:00003363:  errmsg("too many variables specified in SQL statement"))); 
+ paah: plxgram:00003431:  ereport(ERROR, 
+ paah: plxgram:00003432:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003433:  errmsg("mismatched parentheses"))); 
+ paah: plxgram:00003444:  ereport(ERROR, 
+ paah: plxgram:00003445:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003446:  errmsg("mismatched parentheses"))); 
+ paah: plxgram:00003448:  ereport(ERROR, 
+ paah: plxgram:00003449:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003450:  errmsg("missing "%s" at end of SQL expression", 
+ paah: plxgram:00003451:  expected))); 
+ paah: plxgram:00003453:  ereport(ERROR, 
+ paah: plxgram:00003454:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003455:  errmsg("missing "%s" at end of SQL statement", 
+ paah: plxgram:00003456:  expected))); 
+ paah: plxgram:00003538:  ereport(ERROR, 
+ paah: plxgram:00003539:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003540:  errmsg("mismatched parentheses"))); 
+ paah: plxgram:00003541:  ereport(ERROR, 
+ paah: plxgram:00003542:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003543:  errmsg("incomplete datatype declaration"))); 
+ paah: plxgram:00003615:  ereport(ERROR, 
+ paah: plxgram:00003616:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003617:  errmsg("unexpected end of function definition"))); 
+ paah: plxgram:00003625:  ereport(ERROR, 
+ paah: plxgram:00003626:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003627:  errmsg("INTO specified more than once"))); 
+ paah: plxgram:00003834:  ereport(ERROR, 
+ paah: plxgram:00003835:  (errcode(ERRCODE_ERROR_IN_ASSIGNMENT), 
+ paah: plxgram:00003836:  errmsg(""%s" is declared CONSTANT", 
+ paah: plxgram:00003837:  ((PLpgSQL_var *) datum)->refname))); 
+ paah: plxgram:00003901:  ereport(ERROR, 
+ paah: plxgram:00003902:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003903:  errmsg("syntax error at "%s"", yytext), 
+ paah: plxgram:00003904:  errdetail("Expected record variable, row variable, " 
+ paah: plxgram:00003905:  "or list of scalar variables following INTO."))); 
+ paah: plxgram:00003936:  ereport(ERROR, 
+ paah: plxgram:00003937:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ paah: plxgram:00003938:  errmsg("too many INTO variables specified"))); 
+ paah: plxgram:00003952:  ereport(ERROR, 
+ paah: plxgram:00003953:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003954:  errmsg(""%s" is not a scalar variable", 
+ paah: plxgram:00003955:  yytext))); 
+ paah: plxgram:00004087:  ereport(ERROR, 
+ paah: plxgram:00004088:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00004089:  errmsg("end label "%s" specified for unlabelled block", 
+ paah: plxgram:00004090:  end_label))); 
+ paah: plxgram:00004096:  ereport(ERROR, 
+ paah: plxgram:00004097:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00004098:  errmsg("end label "%s" differs from block's label "%s"", 
+ paah: plxgram:00004099:  end_label, start_label))); 
  paah: plxscan:00000858: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
  paah: plxscan:00000859:  
  paah: plxscan:00000860: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
@@ -10083,34 +10108,34 @@ select * from get_ereport order by 1;
  paah: prepare:00000095:  (errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION), 
  paah: prepare:00000096:  errmsg("utility statements cannot be prepared"), 
  paah: prepare:00000097:  errOmitLocation(true))); 
- paah: prepare:00000204:  ereport(ERROR, 
- paah: prepare:00000205:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- paah: prepare:00000206:  errmsg("prepared statement is not a SELECT"))); 
- paah: prepare:00000217:  ereport(ERROR, 
- paah: prepare:00000218:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- paah: prepare:00000219:  errmsg("prepared statement is not a SELECT"), 
- paah: prepare:00000220:  errOmitLocation(true))); 
- paah: prepare:00000367:  ereport(ERROR, 
- paah: prepare:00000368:  (errcode(ERRCODE_DUPLICATE_PSTATEMENT), 
- paah: prepare:00000369:  errmsg("prepared statement "%s" already exists", 
- paah: prepare:00000370:  stmt_name), 
- paah: prepare:00000371:  errOmitLocation(true))); 
- paah: prepare:00000438:  ereport(ERROR, 
- paah: prepare:00000439:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
- paah: prepare:00000440:  errmsg("prepared statement "%s" does not exist", 
- paah: prepare:00000441:  stmt_name), 
- paah: prepare:00000442:  errOmitLocation(true))); 
- paah: prepare:00000678:  ereport(ERROR, 
- paah: prepare:00000679:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- paah: prepare:00000680:  errmsg("prepared statement is not a SELECT"), 
- paah: prepare:00000681:  errOmitLocation(true))); 
- paah: prepare:00000738:  ereport(ERROR, 
- paah: prepare:00000739:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paah: prepare:00000740:  errmsg("set-valued function called in context that cannot accept a set"))); 
- paah: prepare:00000742:  ereport(ERROR, 
- paah: prepare:00000743:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paah: prepare:00000744:  errmsg("materialize mode required, but it is not "  
- paah: prepare:00000745:  "allowed in this context"))); 
+ paah: prepare:00000203:  ereport(ERROR, 
+ paah: prepare:00000204:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ paah: prepare:00000205:  errmsg("prepared statement is not a SELECT"))); 
+ paah: prepare:00000216:  ereport(ERROR, 
+ paah: prepare:00000217:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ paah: prepare:00000218:  errmsg("prepared statement is not a SELECT"), 
+ paah: prepare:00000219:  errOmitLocation(true))); 
+ paah: prepare:00000366:  ereport(ERROR, 
+ paah: prepare:00000367:  (errcode(ERRCODE_DUPLICATE_PSTATEMENT), 
+ paah: prepare:00000368:  errmsg("prepared statement "%s" already exists", 
+ paah: prepare:00000369:  stmt_name), 
+ paah: prepare:00000370:  errOmitLocation(true))); 
+ paah: prepare:00000437:  ereport(ERROR, 
+ paah: prepare:00000438:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
+ paah: prepare:00000439:  errmsg("prepared statement "%s" does not exist", 
+ paah: prepare:00000440:  stmt_name), 
+ paah: prepare:00000441:  errOmitLocation(true))); 
+ paah: prepare:00000677:  ereport(ERROR, 
+ paah: prepare:00000678:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ paah: prepare:00000679:  errmsg("prepared statement is not a SELECT"), 
+ paah: prepare:00000680:  errOmitLocation(true))); 
+ paah: prepare:00000737:  ereport(ERROR, 
+ paah: prepare:00000738:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paah: prepare:00000739:  errmsg("set-valued function called in context that cannot accept a set"))); 
+ paah: prepare:00000741:  ereport(ERROR, 
+ paah: prepare:00000742:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paah: prepare:00000743:  errmsg("materialize mode required, but it is not "  
+ paah: prepare:00000744:  "allowed in this context"))); 
  paai: pathnode:00001594:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
  paai: pathnode:00001595:  errmsg_internal("Cannot append paths with " 
  paai: pathnode:00001596:  "incompatible distribution"))); 
@@ -10295,150 +10320,150 @@ select * from get_ereport order by 1;
  paai: postgres:00001558:  errmsg("current transaction is aborted, " 
  paai: postgres:00001559:  "commands ignored until end of transaction block"), 
  paai: postgres:00001560:  errOmitLocation(true))); 
- paai: postgres:00001852:  ereport(ERROR, 
- paai: postgres:00001853:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00001854:  errmsg("cannot insert multiple commands into a prepared statement"))); 
- paai: postgres:00001877:  ereport(ERROR, 
- paai: postgres:00001878:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00001879:  errmsg("current transaction is aborted, " 
- paai: postgres:00001880:  "commands ignored until end of transaction block"))); 
- paai: postgres:00001914:  ereport(ERROR, 
- paai: postgres:00001915:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
- paai: postgres:00001916:  errmsg("could not determine data type of parameter $%d", 
- paai: postgres:00001917:  i + 1))); 
- paai: postgres:00002079:  ereport(ERROR, 
- paai: postgres:00002080:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
- paai: postgres:00002081:  errmsg("unnamed prepared statement does not exist"))); 
- paai: postgres:00002121:  ereport(ERROR, 
- paai: postgres:00002122:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00002123:  errmsg("bind message has %d parameter formats but %d parameters", 
- paai: postgres:00002124:  numPFormats, numParams))); 
- paai: postgres:00002127:  ereport(ERROR, 
- paai: postgres:00002128:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00002129:  errmsg("bind message supplies %d parameters, but prepared statement "%s" requires %d", 
- paai: postgres:00002130:  numParams, stmt_name, list_length(pstmt->argtype_list)))); 
- paai: postgres:00002143:  ereport(ERROR, 
- paai: postgres:00002144:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00002145:  errmsg("current transaction is aborted, " 
- paai: postgres:00002146:  "commands ignored until end of transaction block"))); 
- paai: postgres:00002274:  ereport(ERROR, 
- paai: postgres:00002275:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
- paai: postgres:00002276:  errmsg("incorrect binary data format in bind parameter %d", 
- paai: postgres:00002277:  paramno + 1))); 
- paai: postgres:00002281:  ereport(ERROR, 
- paai: postgres:00002282:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- paai: postgres:00002283:  errmsg("unsupported format code: %d", 
- paai: postgres:00002284:  pformat))); 
- paai: postgres:00002441:  ereport(ERROR, 
- paai: postgres:00002442:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
- paai: postgres:00002443:  errmsg("portal "%s" does not exist", portal_name))); 
- paai: postgres:00002547:  ereport(ERROR, 
- paai: postgres:00002548:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00002549:  errmsg("current transaction is aborted, " 
- paai: postgres:00002550:  "commands ignored until end of transaction block"))); 
- paai: postgres:00002867:  ereport(ERROR, 
- paai: postgres:00002868:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
- paai: postgres:00002869:  errmsg("unnamed prepared statement does not exist"))); 
- paai: postgres:00002883:  ereport(ERROR, 
- paai: postgres:00002884:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00002885:  errmsg("current transaction is aborted, " 
- paai: postgres:00002886:  "commands ignored until end of transaction block"))); 
- paai: postgres:00002939:  ereport(ERROR, 
- paai: postgres:00002940:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
- paai: postgres:00002941:  errmsg("portal "%s" does not exist", portal_name))); 
- paai: postgres:00002953:  ereport(ERROR, 
- paai: postgres:00002954:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
- paai: postgres:00002955:  errmsg("current transaction is aborted, " 
- paai: postgres:00002956:  "commands ignored until end of transaction block"))); 
- paai: postgres:00003332:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
- paai: postgres:00003333:  errFatalReturn(gp_reraise_signal), 
- paai: postgres:00003334:  errOmitLocation(true), 
- paai: postgres:00003335:  errmsg("Unexpected internal error: %s received signal %s", 
- paai: postgres:00003336:  pts, signame) )); 
- paai: postgres:00003348:  ereport(ERROR, 
- paai: postgres:00003349:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
- paai: postgres:00003350:  errmsg("floating-point exception"), 
- paai: postgres:00003351:  errdetail("An invalid floating-point operation was signaled. " 
- paai: postgres:00003352:  "This probably means an out-of-range result or an " 
- paai: postgres:00003353:  "invalid operation, such as division by zero."))); 
- paai: postgres:00003396:  ereport(FATAL, 
- paai: postgres:00003397:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
- paai: postgres:00003398:  errmsg("terminating connection due to administrator command"))); 
- paai: postgres:00003409:  ereport(ERROR, 
- paai: postgres:00003410:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
- paai: postgres:00003411:  errmsg("canceling MPP operation"))); 
- paai: postgres:00003413:  ereport(ERROR, 
- paai: postgres:00003414:  (errcode(ERRCODE_QUERY_CANCELED), 
- paai: postgres:00003415:  errmsg("canceling statement due to statement timeout"))); 
- paai: postgres:00003417:  ereport(ERROR, 
- paai: postgres:00003418:  (errcode(ERRCODE_QUERY_CANCELED), 
- paai: postgres:00003419:  errmsg("canceling statement due to user request"))); 
- paai: postgres:00003492:  ereport(ERROR, 
- paai: postgres:00003493:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
- paai: postgres:00003494:  errmsg("stack depth limit exceeded"), 
- paai: postgres:00003495:  errhint("Increase the configuration parameter "max_stack_depth", " 
- paai: postgres:00003496:  "after ensuring the platform's stack depth limit is adequate."))); 
- paai: postgres:00003895:  ereport(ERROR, 
- paai: postgres:00003896:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00003897:  errmsg("--%s requires a value", 
- paai: postgres:00003898:  optarg))); 
- paai: postgres:00003900:  ereport(ERROR, 
- paai: postgres:00003901:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00003902:  errmsg("-c %s requires a value", 
- paai: postgres:00003903:  optarg))); 
- paai: postgres:00003935:  ereport(FATAL, 
- paai: postgres:00003936:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
- paai: postgres:00003937:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
- paai: postgres:00004055:  ereport(FATAL, 
- paai: postgres:00004056:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00004057:  errmsg("invalid command-line arguments for server process"), 
- paai: postgres:00004058:  errhint("Try "%s --help" for more information.", argv[0]))); 
- paai: postgres:00004068:  ereport(FATAL, 
- paai: postgres:00004069:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00004070:  errmsg("%s: invalid command-line arguments", 
- paai: postgres:00004071:  argv[0]), 
- paai: postgres:00004072:  errhint("Try "%s --help" for more information.", argv[0]))); 
- paai: postgres:00004078:  ereport(FATAL, 
- paai: postgres:00004079:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- paai: postgres:00004080:  errmsg("%s: no database nor user name specified", 
- paai: postgres:00004081:  argv[0]))); 
- paai: postgres:00004920:  ereport(ERROR, 
- paai: postgres:00004921:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00004922:  errmsg("invalid CLOSE message subtype %d", 
- paai: postgres:00004923:  close_type))); 
- paai: postgres:00004957:  ereport(ERROR, 
- paai: postgres:00004958:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00004959:  errmsg("invalid DESCRIBE message subtype %d", 
- paai: postgres:00004960:  describe_type))); 
- paai: postgres:00005014:  ereport(FATAL, 
- paai: postgres:00005015:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00005016:  errmsg("invalid frontend message type %d ('%c')", 
- paai: postgres:00005017:  firstchar,firstchar))); 
- paai: postgres:00005517:  ereport(ERROR, 
- paai: postgres:00005518:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00005519:  errmsg("--%s requires a value", 
- paai: postgres:00005520:  optarg))); 
- paai: postgres:00005522:  ereport(ERROR, 
- paai: postgres:00005523:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00005524:  errmsg("-c %s requires a value", 
- paai: postgres:00005525:  optarg))); 
- paai: postgres:00005638:  ereport(FATAL, 
- paai: postgres:00005639:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00005640:  errmsg("invalid command-line arguments for server process"), 
- paai: postgres:00005641:  errhint("Try "%s --help" for more information.", argv[0]))); 
- paai: postgres:00005652:  ereport(FATAL, 
- paai: postgres:00005653:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paai: postgres:00005654:  errmsg("%s: invalid command-line arguments", 
- paai: postgres:00005655:  argv[0]), 
- paai: postgres:00005656:  errhint("Try "%s --help" for more information.", argv[0]))); 
- paai: postgres:00005662:  ereport(FATAL, 
- paai: postgres:00005663:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- paai: postgres:00005664:  errmsg("%s: no database nor user name specified", 
- paai: postgres:00005665:  argv[0]))); 
- paai: postgres:00005983:  ereport(FATAL, 
- paai: postgres:00005984:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
- paai: postgres:00005985:  errmsg("invalid frontend message type %d", 
- paai: postgres:00005986:  firstchar))); 
+ paai: postgres:00001853:  ereport(ERROR, 
+ paai: postgres:00001854:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00001855:  errmsg("cannot insert multiple commands into a prepared statement"))); 
+ paai: postgres:00001878:  ereport(ERROR, 
+ paai: postgres:00001879:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00001880:  errmsg("current transaction is aborted, " 
+ paai: postgres:00001881:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00001915:  ereport(ERROR, 
+ paai: postgres:00001916:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
+ paai: postgres:00001917:  errmsg("could not determine data type of parameter $%d", 
+ paai: postgres:00001918:  i + 1))); 
+ paai: postgres:00002081:  ereport(ERROR, 
+ paai: postgres:00002082:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
+ paai: postgres:00002083:  errmsg("unnamed prepared statement does not exist"))); 
+ paai: postgres:00002123:  ereport(ERROR, 
+ paai: postgres:00002124:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00002125:  errmsg("bind message has %d parameter formats but %d parameters", 
+ paai: postgres:00002126:  numPFormats, numParams))); 
+ paai: postgres:00002129:  ereport(ERROR, 
+ paai: postgres:00002130:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00002131:  errmsg("bind message supplies %d parameters, but prepared statement "%s" requires %d", 
+ paai: postgres:00002132:  numParams, stmt_name, list_length(pstmt->argtype_list)))); 
+ paai: postgres:00002145:  ereport(ERROR, 
+ paai: postgres:00002146:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00002147:  errmsg("current transaction is aborted, " 
+ paai: postgres:00002148:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00002276:  ereport(ERROR, 
+ paai: postgres:00002277:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
+ paai: postgres:00002278:  errmsg("incorrect binary data format in bind parameter %d", 
+ paai: postgres:00002279:  paramno + 1))); 
+ paai: postgres:00002283:  ereport(ERROR, 
+ paai: postgres:00002284:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ paai: postgres:00002285:  errmsg("unsupported format code: %d", 
+ paai: postgres:00002286:  pformat))); 
+ paai: postgres:00002444:  ereport(ERROR, 
+ paai: postgres:00002445:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
+ paai: postgres:00002446:  errmsg("portal "%s" does not exist", portal_name))); 
+ paai: postgres:00002550:  ereport(ERROR, 
+ paai: postgres:00002551:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00002552:  errmsg("current transaction is aborted, " 
+ paai: postgres:00002553:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00002870:  ereport(ERROR, 
+ paai: postgres:00002871:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
+ paai: postgres:00002872:  errmsg("unnamed prepared statement does not exist"))); 
+ paai: postgres:00002886:  ereport(ERROR, 
+ paai: postgres:00002887:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00002888:  errmsg("current transaction is aborted, " 
+ paai: postgres:00002889:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00002942:  ereport(ERROR, 
+ paai: postgres:00002943:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
+ paai: postgres:00002944:  errmsg("portal "%s" does not exist", portal_name))); 
+ paai: postgres:00002956:  ereport(ERROR, 
+ paai: postgres:00002957:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+ paai: postgres:00002958:  errmsg("current transaction is aborted, " 
+ paai: postgres:00002959:  "commands ignored until end of transaction block"))); 
+ paai: postgres:00003335:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+ paai: postgres:00003336:  errFatalReturn(gp_reraise_signal), 
+ paai: postgres:00003337:  errOmitLocation(true), 
+ paai: postgres:00003338:  errmsg("Unexpected internal error: %s received signal %s", 
+ paai: postgres:00003339:  pts, signame) )); 
+ paai: postgres:00003351:  ereport(ERROR, 
+ paai: postgres:00003352:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
+ paai: postgres:00003353:  errmsg("floating-point exception"), 
+ paai: postgres:00003354:  errdetail("An invalid floating-point operation was signaled. " 
+ paai: postgres:00003355:  "This probably means an out-of-range result or an " 
+ paai: postgres:00003356:  "invalid operation, such as division by zero."))); 
+ paai: postgres:00003399:  ereport(FATAL, 
+ paai: postgres:00003400:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
+ paai: postgres:00003401:  errmsg("terminating connection due to administrator command"))); 
+ paai: postgres:00003412:  ereport(ERROR, 
+ paai: postgres:00003413:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
+ paai: postgres:00003414:  errmsg("canceling MPP operation"))); 
+ paai: postgres:00003416:  ereport(ERROR, 
+ paai: postgres:00003417:  (errcode(ERRCODE_QUERY_CANCELED), 
+ paai: postgres:00003418:  errmsg("canceling statement due to statement timeout"))); 
+ paai: postgres:00003420:  ereport(ERROR, 
+ paai: postgres:00003421:  (errcode(ERRCODE_QUERY_CANCELED), 
+ paai: postgres:00003422:  errmsg("canceling statement due to user request"))); 
+ paai: postgres:00003495:  ereport(ERROR, 
+ paai: postgres:00003496:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
+ paai: postgres:00003497:  errmsg("stack depth limit exceeded"), 
+ paai: postgres:00003498:  errhint("Increase the configuration parameter "max_stack_depth", " 
+ paai: postgres:00003499:  "after ensuring the platform's stack depth limit is adequate."))); 
+ paai: postgres:00003898:  ereport(ERROR, 
+ paai: postgres:00003899:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00003900:  errmsg("--%s requires a value", 
+ paai: postgres:00003901:  optarg))); 
+ paai: postgres:00003903:  ereport(ERROR, 
+ paai: postgres:00003904:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00003905:  errmsg("-c %s requires a value", 
+ paai: postgres:00003906:  optarg))); 
+ paai: postgres:00003938:  ereport(FATAL, 
+ paai: postgres:00003939:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+ paai: postgres:00003940:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
+ paai: postgres:00004058:  ereport(FATAL, 
+ paai: postgres:00004059:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00004060:  errmsg("invalid command-line arguments for server process"), 
+ paai: postgres:00004061:  errhint("Try "%s --help" for more information.", argv[0]))); 
+ paai: postgres:00004071:  ereport(FATAL, 
+ paai: postgres:00004072:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00004073:  errmsg("%s: invalid command-line arguments", 
+ paai: postgres:00004074:  argv[0]), 
+ paai: postgres:00004075:  errhint("Try "%s --help" for more information.", argv[0]))); 
+ paai: postgres:00004081:  ereport(FATAL, 
+ paai: postgres:00004082:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ paai: postgres:00004083:  errmsg("%s: no database nor user name specified", 
+ paai: postgres:00004084:  argv[0]))); 
+ paai: postgres:00004923:  ereport(ERROR, 
+ paai: postgres:00004924:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00004925:  errmsg("invalid CLOSE message subtype %d", 
+ paai: postgres:00004926:  close_type))); 
+ paai: postgres:00004960:  ereport(ERROR, 
+ paai: postgres:00004961:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00004962:  errmsg("invalid DESCRIBE message subtype %d", 
+ paai: postgres:00004963:  describe_type))); 
+ paai: postgres:00005017:  ereport(FATAL, 
+ paai: postgres:00005018:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00005019:  errmsg("invalid frontend message type %d ('%c')", 
+ paai: postgres:00005020:  firstchar,firstchar))); 
+ paai: postgres:00005520:  ereport(ERROR, 
+ paai: postgres:00005521:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00005522:  errmsg("--%s requires a value", 
+ paai: postgres:00005523:  optarg))); 
+ paai: postgres:00005525:  ereport(ERROR, 
+ paai: postgres:00005526:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00005527:  errmsg("-c %s requires a value", 
+ paai: postgres:00005528:  optarg))); 
+ paai: postgres:00005641:  ereport(FATAL, 
+ paai: postgres:00005642:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00005643:  errmsg("invalid command-line arguments for server process"), 
+ paai: postgres:00005644:  errhint("Try "%s --help" for more information.", argv[0]))); 
+ paai: postgres:00005655:  ereport(FATAL, 
+ paai: postgres:00005656:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paai: postgres:00005657:  errmsg("%s: invalid command-line arguments", 
+ paai: postgres:00005658:  argv[0]), 
+ paai: postgres:00005659:  errhint("Try "%s --help" for more information.", argv[0]))); 
+ paai: postgres:00005665:  ereport(FATAL, 
+ paai: postgres:00005666:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ paai: postgres:00005667:  errmsg("%s: no database nor user name specified", 
+ paai: postgres:00005668:  argv[0]))); 
+ paai: postgres:00005986:  ereport(FATAL, 
+ paai: postgres:00005987:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+ paai: postgres:00005988:  errmsg("invalid frontend message type %d", 
+ paai: postgres:00005989:  firstchar))); 
  paai: postinit:00000091:  ereport(FATAL, 
  paai: postinit:00000092:  (errcode_for_file_access(), 
  paai: postinit:00000093:  errmsg("could not open file "%s": %m", filename))); 
@@ -12280,168 +12305,168 @@ select * from get_ereport order by 1;
  pabi: pgxbackendxsupport:00000421:  ereport(ERROR, 
  pabi: pgxbackendxsupport:00000422:  (errcode(ERRCODE_INVALID_NAME), 
  pabi: pgxbackendxsupport:00000423:  errmsg("DYNAMIC_LIBRARY_PATH component is not absolute"))); 
- qaaf: queue:00000137:  ereport(ERROR, 
- qaaf: queue:00000138:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000139:  errmsg("unknown resource type "%d"", 
- qaaf: queue:00000140:  resTypeInt))); 
- qaaf: queue:00000146:  ereport(ERROR, 
- qaaf: queue:00000147:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000148:  errmsg("Invalid parameter value "%s" for " 
- qaaf: queue:00000149:  "resource type "%s"", 
- qaaf: queue:00000150:  pResSetting, restyp))); 
- qaaf: queue:00000275:  ereport(ERROR, 
- qaaf: queue:00000276:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000277:  errmsg("option "%s" is not a valid resource type", 
- qaaf: queue:00000278:  defel->defname))); 
- qaaf: queue:00000313:  ereport(ERROR, 
- qaaf: queue:00000314:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000315:  errmsg("option "%s" cannot be disabled", 
- qaaf: queue:00000316:  defel->defname))); 
- qaaf: queue:00000334:  ereport(ERROR, 
- qaaf: queue:00000335:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000336:  errmsg("required option "%s" cannot be disabled", 
- qaaf: queue:00000337:  defel->defname))); 
- qaaf: queue:00000364:  ereport(ERROR, 
- qaaf: queue:00000365:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000366:  errmsg("conflicting or redundant option for "%s"", 
- qaaf: queue:00000367:  defel->defname))); 
- qaaf: queue:00000702:  ereport(ERROR, 
- qaaf: queue:00000703:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- qaaf: queue:00000704:  errmsg("must be superuser to create resource queues"))); 
- qaaf: queue:00000714:  ereport(ERROR, 
- qaaf: queue:00000715:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000716:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00000722:  ereport(ERROR, 
- qaaf: queue:00000723:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000724:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00000730:  ereport(ERROR, 
- qaaf: queue:00000731:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000732:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00000738:  ereport(ERROR, 
- qaaf: queue:00000739:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000740:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00000747:  ereport(ERROR, 
- qaaf: queue:00000748:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000749:  errmsg("option "%s" is not a valid resource type", 
- qaaf: queue:00000750:  defel->defname))); 
- qaaf: queue:00000772:  ereport(ERROR, 
- qaaf: queue:00000773:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000774:  errmsg("active threshold cannot be less than %d or equal to 0", 
- qaaf: queue:00000775:  INVALID_RES_LIMIT_THRESHOLD))); 
- qaaf: queue:00000782:  ereport(ERROR, 
- qaaf: queue:00000783:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000784:  errmsg("cost threshold cannot be less than %d or equal to 0", 
- qaaf: queue:00000785:  INVALID_RES_LIMIT_THRESHOLD))); 
- qaaf: queue:00000797:  ereport(ERROR, 
- qaaf: queue:00000798:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000799:  errmsg("min_cost threshold cannot be negative"))); 
- qaaf: queue:00000807:  ereport(ERROR, 
- qaaf: queue:00000808:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000809:  errmsg("at least one threshold must be specified"), 
- qaaf: queue:00000810:  errOmitLocation(true))); 
- qaaf: queue:00000815:  ereport(ERROR, 
- qaaf: queue:00000816:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000817:  errmsg("at least one valid threshold must be specified"), 
- qaaf: queue:00000818:  errOmitLocation(true))); 
- qaaf: queue:00000825:  ereport(ERROR, 
- qaaf: queue:00000826:  (errcode(ERRCODE_RESERVED_NAME), 
- qaaf: queue:00000827:  errmsg("resource queue name "%s" is reserved", 
- qaaf: queue:00000828:  stmt->queue), 
- qaaf: queue:00000829:  errOmitLocation(true))); 
- qaaf: queue:00000849:  ereport(ERROR, 
- qaaf: queue:00000850:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- qaaf: queue:00000851:  errmsg("resource queue "%s" already exists", 
- qaaf: queue:00000852:  stmt->queue))); 
- qaaf: queue:00000899:  ereport(ERROR, 
- qaaf: queue:00000900:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
- qaaf: queue:00000901:  errmsg("insufficient resource queues available"), 
- qaaf: queue:00000902:  errhint("Increase max_resource_queues"))); 
- qaaf: queue:00000906:  ereport(WARNING, 
- qaaf: queue:00000907:  (errmsg("resource scheduling is disabled"), 
- qaaf: queue:00000908:  errhint("To enable set resource_scheduler=on"))); 
- qaaf: queue:00000974:  ereport(ERROR, 
- qaaf: queue:00000975:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- qaaf: queue:00000976:  errmsg("must be superuser to alter resource queues"))); 
- qaaf: queue:00000986:  ereport(ERROR, 
- qaaf: queue:00000987:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000988:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00001002:  ereport(ERROR, 
- qaaf: queue:00001003:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00001004:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00001018:  ereport(ERROR, 
- qaaf: queue:00001019:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00001020:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00001034:  ereport(ERROR, 
- qaaf: queue:00001035:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00001036:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00001052:  ereport(ERROR, 
- qaaf: queue:00001053:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001054:  errmsg("option "%s" is not a valid resource type", 
- qaaf: queue:00001055:  defel->defname))); 
- qaaf: queue:00001065:  ereport(ERROR, 
- qaaf: queue:00001066:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001067:  errmsg("option "%s" is not a valid resource type", 
- qaaf: queue:00001068:  defel->defname))); 
- qaaf: queue:00001124:  ereport(ERROR, 
- qaaf: queue:00001125:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001126:  errmsg("active threshold cannot be less than %d or equal to 0", 
- qaaf: queue:00001127:  INVALID_RES_LIMIT_THRESHOLD), 
- qaaf: queue:00001128:  errOmitLocation(true))); 
- qaaf: queue:00001135:  ereport(ERROR, 
- qaaf: queue:00001136:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001137:  errmsg("cost threshold must be equal to %d or greater than 0", 
- qaaf: queue:00001138:  INVALID_RES_LIMIT_THRESHOLD), 
- qaaf: queue:00001139:  errOmitLocation(true))); 
- qaaf: queue:00001152:  ereport(ERROR, 
- qaaf: queue:00001153:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001154:  errmsg("min_cost threshold cannot be negative"), 
- qaaf: queue:00001155:  errOmitLocation(true))); 
- qaaf: queue:00001172:  ereport(ERROR, 
- qaaf: queue:00001173:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00001174:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
- qaaf: queue:00001175:  errOmitLocation(true))); 
- qaaf: queue:00001197:  ereport(ERROR, 
- qaaf: queue:00001198:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- qaaf: queue:00001199:  errmsg("resource queue "%s" does not exist", 
- qaaf: queue:00001200:  stmt->queue), 
- qaaf: queue:00001201:  errOmitLocation(true))); 
- qaaf: queue:00001270:  ereport(ERROR, 
- qaaf: queue:00001271:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001272:  errmsg("at least one threshold must be different from %d", 
- qaaf: queue:00001273:  INVALID_RES_LIMIT_THRESHOLD))); 
- qaaf: queue:00001307:  ereport(ERROR, 
- qaaf: queue:00001308:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
- qaaf: queue:00001309:  errmsg("thresholds cannot be less than current values"))); 
- qaaf: queue:00001311:  ereport(ERROR, 
- qaaf: queue:00001312:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
- qaaf: queue:00001313:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
- qaaf: queue:00001315:  ereport(ERROR, 
- qaaf: queue:00001316:  (errcode(ERRCODE_INTERNAL_ERROR), 
- qaaf: queue:00001317:  errmsg("queue hash table corrupted"))); 
- qaaf: queue:00001324:  ereport(WARNING, 
- qaaf: queue:00001325:  (errmsg("resource scheduling is disabled"), 
- qaaf: queue:00001326:  errhint("To enable set resource_scheduler=on"))); 
- qaaf: queue:00001361:  ereport(ERROR, 
- qaaf: queue:00001362:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- qaaf: queue:00001363:  errmsg("must be superuser to drop resource queues"))); 
- qaaf: queue:00001384:  ereport(ERROR, 
- qaaf: queue:00001385:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- qaaf: queue:00001386:  errmsg("resource queue "%s" does not exist", 
- qaaf: queue:00001387:  stmt->queue))); 
- qaaf: queue:00001412:  ereport(ERROR, 
- qaaf: queue:00001413:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
- qaaf: queue:00001414:  errmsg("resource queue "%s" is used by at least one role", 
- qaaf: queue:00001415:  stmt->queue))); 
- qaaf: queue:00001423:  ereport(ERROR, 
- qaaf: queue:00001424:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- qaaf: queue:00001425:  errmsg("cannot drop default resource queue "%s"", 
- qaaf: queue:00001426:  stmt->queue))); 
- qaaf: queue:00001446:  ereport(ERROR, 
- qaaf: queue:00001447:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
- qaaf: queue:00001448:  errmsg("resource queue cannot be dropped as is in use"))); 
- qaaf: queue:00001452:  ereport(WARNING, 
- qaaf: queue:00001453:  (errmsg("resource scheduling is disabled"), 
- qaaf: queue:00001454:  errhint("To enable set resource_scheduler=on"))); 
+ qaaf: queue:00000138:  ereport(ERROR, 
+ qaaf: queue:00000139:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000140:  errmsg("unknown resource type "%d"", 
+ qaaf: queue:00000141:  resTypeInt))); 
+ qaaf: queue:00000147:  ereport(ERROR, 
+ qaaf: queue:00000148:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000149:  errmsg("Invalid parameter value "%s" for " 
+ qaaf: queue:00000150:  "resource type "%s"", 
+ qaaf: queue:00000151:  pResSetting, restyp))); 
+ qaaf: queue:00000276:  ereport(ERROR, 
+ qaaf: queue:00000277:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000278:  errmsg("option "%s" is not a valid resource type", 
+ qaaf: queue:00000279:  defel->defname))); 
+ qaaf: queue:00000314:  ereport(ERROR, 
+ qaaf: queue:00000315:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000316:  errmsg("option "%s" cannot be disabled", 
+ qaaf: queue:00000317:  defel->defname))); 
+ qaaf: queue:00000335:  ereport(ERROR, 
+ qaaf: queue:00000336:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000337:  errmsg("required option "%s" cannot be disabled", 
+ qaaf: queue:00000338:  defel->defname))); 
+ qaaf: queue:00000365:  ereport(ERROR, 
+ qaaf: queue:00000366:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000367:  errmsg("conflicting or redundant option for "%s"", 
+ qaaf: queue:00000368:  defel->defname))); 
+ qaaf: queue:00000703:  ereport(ERROR, 
+ qaaf: queue:00000704:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ qaaf: queue:00000705:  errmsg("must be superuser to create resource queues"))); 
+ qaaf: queue:00000715:  ereport(ERROR, 
+ qaaf: queue:00000716:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000717:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00000723:  ereport(ERROR, 
+ qaaf: queue:00000724:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000725:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00000731:  ereport(ERROR, 
+ qaaf: queue:00000732:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000733:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00000739:  ereport(ERROR, 
+ qaaf: queue:00000740:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000741:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00000748:  ereport(ERROR, 
+ qaaf: queue:00000749:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000750:  errmsg("option "%s" is not a valid resource type", 
+ qaaf: queue:00000751:  defel->defname))); 
+ qaaf: queue:00000773:  ereport(ERROR, 
+ qaaf: queue:00000774:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000775:  errmsg("active threshold cannot be less than %d or equal to 0", 
+ qaaf: queue:00000776:  INVALID_RES_LIMIT_THRESHOLD))); 
+ qaaf: queue:00000783:  ereport(ERROR, 
+ qaaf: queue:00000784:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000785:  errmsg("cost threshold cannot be less than %d or equal to 0", 
+ qaaf: queue:00000786:  INVALID_RES_LIMIT_THRESHOLD))); 
+ qaaf: queue:00000798:  ereport(ERROR, 
+ qaaf: queue:00000799:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000800:  errmsg("min_cost threshold cannot be negative"))); 
+ qaaf: queue:00000808:  ereport(ERROR, 
+ qaaf: queue:00000809:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000810:  errmsg("at least one threshold must be specified"), 
+ qaaf: queue:00000811:  errOmitLocation(true))); 
+ qaaf: queue:00000816:  ereport(ERROR, 
+ qaaf: queue:00000817:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000818:  errmsg("at least one valid threshold must be specified"), 
+ qaaf: queue:00000819:  errOmitLocation(true))); 
+ qaaf: queue:00000826:  ereport(ERROR, 
+ qaaf: queue:00000827:  (errcode(ERRCODE_RESERVED_NAME), 
+ qaaf: queue:00000828:  errmsg("resource queue name "%s" is reserved", 
+ qaaf: queue:00000829:  stmt->queue), 
+ qaaf: queue:00000830:  errOmitLocation(true))); 
+ qaaf: queue:00000850:  ereport(ERROR, 
+ qaaf: queue:00000851:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ qaaf: queue:00000852:  errmsg("resource queue "%s" already exists", 
+ qaaf: queue:00000853:  stmt->queue))); 
+ qaaf: queue:00000900:  ereport(ERROR, 
+ qaaf: queue:00000901:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+ qaaf: queue:00000902:  errmsg("insufficient resource queues available"), 
+ qaaf: queue:00000903:  errhint("Increase max_resource_queues"))); 
+ qaaf: queue:00000907:  ereport(WARNING, 
+ qaaf: queue:00000908:  (errmsg("resource scheduling is disabled"), 
+ qaaf: queue:00000909:  errhint("To enable set resource_scheduler=on"))); 
+ qaaf: queue:00000975:  ereport(ERROR, 
+ qaaf: queue:00000976:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ qaaf: queue:00000977:  errmsg("must be superuser to alter resource queues"))); 
+ qaaf: queue:00000987:  ereport(ERROR, 
+ qaaf: queue:00000988:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000989:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00001003:  ereport(ERROR, 
+ qaaf: queue:00001004:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00001005:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00001019:  ereport(ERROR, 
+ qaaf: queue:00001020:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00001021:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00001035:  ereport(ERROR, 
+ qaaf: queue:00001036:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00001037:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00001053:  ereport(ERROR, 
+ qaaf: queue:00001054:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001055:  errmsg("option "%s" is not a valid resource type", 
+ qaaf: queue:00001056:  defel->defname))); 
+ qaaf: queue:00001066:  ereport(ERROR, 
+ qaaf: queue:00001067:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001068:  errmsg("option "%s" is not a valid resource type", 
+ qaaf: queue:00001069:  defel->defname))); 
+ qaaf: queue:00001111:  ereport(ERROR, 
+ qaaf: queue:00001112:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001113:  errmsg("active threshold cannot be less than %d or equal to 0", 
+ qaaf: queue:00001114:  INVALID_RES_LIMIT_THRESHOLD), 
+ qaaf: queue:00001115:  errOmitLocation(true))); 
+ qaaf: queue:00001122:  ereport(ERROR, 
+ qaaf: queue:00001123:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001124:  errmsg("cost threshold must be equal to %d or greater than 0", 
+ qaaf: queue:00001125:  INVALID_RES_LIMIT_THRESHOLD), 
+ qaaf: queue:00001126:  errOmitLocation(true))); 
+ qaaf: queue:00001139:  ereport(ERROR, 
+ qaaf: queue:00001140:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001141:  errmsg("min_cost threshold cannot be negative"), 
+ qaaf: queue:00001142:  errOmitLocation(true))); 
+ qaaf: queue:00001159:  ereport(ERROR, 
+ qaaf: queue:00001160:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00001161:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
+ qaaf: queue:00001162:  errOmitLocation(true))); 
+ qaaf: queue:00001184:  ereport(ERROR, 
+ qaaf: queue:00001185:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ qaaf: queue:00001186:  errmsg("resource queue "%s" does not exist", 
+ qaaf: queue:00001187:  stmt->queue), 
+ qaaf: queue:00001188:  errOmitLocation(true))); 
+ qaaf: queue:00001257:  ereport(ERROR, 
+ qaaf: queue:00001258:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001259:  errmsg("at least one threshold must be different from %d", 
+ qaaf: queue:00001260:  INVALID_RES_LIMIT_THRESHOLD))); 
+ qaaf: queue:00001294:  ereport(ERROR, 
+ qaaf: queue:00001295:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+ qaaf: queue:00001296:  errmsg("thresholds cannot be less than current values"))); 
+ qaaf: queue:00001298:  ereport(ERROR, 
+ qaaf: queue:00001299:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+ qaaf: queue:00001300:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
+ qaaf: queue:00001302:  ereport(ERROR, 
+ qaaf: queue:00001303:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ qaaf: queue:00001304:  errmsg("queue hash table corrupted"))); 
+ qaaf: queue:00001311:  ereport(WARNING, 
+ qaaf: queue:00001312:  (errmsg("resource scheduling is disabled"), 
+ qaaf: queue:00001313:  errhint("To enable set resource_scheduler=on"))); 
+ qaaf: queue:00001348:  ereport(ERROR, 
+ qaaf: queue:00001349:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ qaaf: queue:00001350:  errmsg("must be superuser to drop resource queues"))); 
+ qaaf: queue:00001371:  ereport(ERROR, 
+ qaaf: queue:00001372:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ qaaf: queue:00001373:  errmsg("resource queue "%s" does not exist", 
+ qaaf: queue:00001374:  stmt->queue))); 
+ qaaf: queue:00001399:  ereport(ERROR, 
+ qaaf: queue:00001400:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+ qaaf: queue:00001401:  errmsg("resource queue "%s" is used by at least one role", 
+ qaaf: queue:00001402:  stmt->queue))); 
+ qaaf: queue:00001410:  ereport(ERROR, 
+ qaaf: queue:00001411:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ qaaf: queue:00001412:  errmsg("cannot drop default resource queue "%s"", 
+ qaaf: queue:00001413:  stmt->queue))); 
+ qaaf: queue:00001433:  ereport(ERROR, 
+ qaaf: queue:00001434:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+ qaaf: queue:00001435:  errmsg("resource queue cannot be dropped as is in use"))); 
+ qaaf: queue:00001439:  ereport(WARNING, 
+ qaaf: queue:00001440:  (errmsg("resource scheduling is disabled"), 
+ qaaf: queue:00001441:  errhint("To enable set resource_scheduler=on"))); 
  qaba: quicklzone:00000015:  ereport(ERROR, 
  qaba: quicklzone:00000016:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  qaba: quicklzone:00000017:  errmsg("quicklz1.c and quicklz1.h have different versions"))); 
@@ -13310,90 +13335,98 @@ select * from get_ereport order by 1;
  saae: slru:00000819:  errmsg("could not access status of transaction %u", xid), 
  saae: slru:00000820:  errdetail("Could not close file "%s": %m.", 
  saae: slru:00000821:  path))); 
- saae: smgr:00000294:  ereport(ERROR, 
- saae: smgr:00000295:  (errcode_for_file_access(), 
- saae: smgr:00000296:  errmsg("could not close relation %u/%u/%u: %m", 
- saae: smgr:00000297:  reln->smgr_rnode.spcNode, 
- saae: smgr:00000298:  reln->smgr_rnode.dbNode, 
- saae: smgr:00000299:  reln->smgr_rnode.relNode))); 
- saae: smgr:00000402:  ereport(ERROR, 
- saae: smgr:00000403:  (errcode_for_file_access(), 
- saae: smgr:00000404:  errmsg("could not create tablespace directory %u, filespace %u: %m", 
- saae: smgr:00000405:  tablespaceDirNode->tablespace, 
- saae: smgr:00000406:  tablespaceDirNode->filespace))); 
- saae: smgr:00000455:  ereport(ERROR, 
- saae: smgr:00000456:  (errcode_for_file_access(), 
- saae: smgr:00000457:  errmsg("could not create database directory %u/%u: %m", 
- saae: smgr:00000458:  tablespace, 
- saae: smgr:00000459:  database))); 
- saae: smgr:00000562:  ereport(ERROR, 
- saae: smgr:00000563:  (errcode_for_file_access(), 
- saae: smgr:00000564:  errmsg("could not create relation %u/%u/%u: %m", 
- saae: smgr:00000565:  reln->smgr_rnode.spcNode, 
- saae: smgr:00000566:  reln->smgr_rnode.dbNode, 
- saae: smgr:00000567:  reln->smgr_rnode.relNode))); 
- saae: smgr:00000665:  ereport(WARNING, 
- saae: smgr:00000666:  (errcode_for_file_access(), 
- saae: smgr:00000667:  errmsg("could not remove relation %u/%u/%u: %m", 
- saae: smgr:00000668:  rnode.spcNode, 
- saae: smgr:00000669:  rnode.dbNode, 
- saae: smgr:00000670:  rnode.relNode))); 
- saae: smgr:00000749:  ereport(WARNING, 
- saae: smgr:00000750:  (errcode_for_file_access(), 
- saae: smgr:00000751:  errmsg("could not remove tablespace directory %u: %m", 
- saae: smgr:00000752:  tablespaceOid))); 
- saae: smgr:00000773:  ereport(WARNING, 
- saae: smgr:00000774:  (errcode_for_file_access(), 
- saae: smgr:00000775:  errmsg("could not remove database directory %u/%u: %m", 
- saae: smgr:00000776:  dropDbDirNode->tablespace, 
- saae: smgr:00000777:  dropDbDirNode->database))); 
- saae: smgr:00000800:  ereport(ERROR, 
- saae: smgr:00000801:  (errcode_for_file_access(), 
- saae: smgr:00000802:  errmsg("could not extend relation %u/%u/%u: %m", 
- saae: smgr:00000803:  reln->smgr_rnode.spcNode, 
- saae: smgr:00000804:  reln->smgr_rnode.dbNode, 
- saae: smgr:00000805:  reln->smgr_rnode.relNode), 
- saae: smgr:00000806:  errhint("Check free disk space."))); 
- saae: smgr:00000821:  ereport(ERROR, 
- saae: smgr:00000822:  (errcode_for_file_access(), 
- saae: smgr:00000823:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
- saae: smgr:00000824:  blocknum, 
- saae: smgr:00000825:  reln->smgr_rnode.spcNode, 
- saae: smgr:00000826:  reln->smgr_rnode.dbNode, 
- saae: smgr:00000827:  reln->smgr_rnode.relNode))); 
- saae: smgr:00000846:  ereport(ERROR, 
- saae: smgr:00000847:  (errcode_for_file_access(), 
- saae: smgr:00000848:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
- saae: smgr:00000849:  blocknum, 
- saae: smgr:00000850:  reln->smgr_rnode.spcNode, 
- saae: smgr:00000851:  reln->smgr_rnode.dbNode, 
- saae: smgr:00000852:  reln->smgr_rnode.relNode))); 
- saae: smgr:00000876:  ereport(ERROR, 
- saae: smgr:00000877:  (errcode_for_file_access(), 
- saae: smgr:00000878:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
- saae: smgr:00000879:  reln->smgr_rnode.spcNode, 
- saae: smgr:00000880:  reln->smgr_rnode.dbNode, 
- saae: smgr:00000881:  reln->smgr_rnode.relNode))); 
- saae: smgr:00000915:  ereport(ERROR, 
- saae: smgr:00000916:  (errcode_for_file_access(), 
- saae: smgr:00000917:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
- saae: smgr:00000918:  reln->smgr_rnode.spcNode, 
- saae: smgr:00000919:  reln->smgr_rnode.dbNode, 
- saae: smgr:00000920:  reln->smgr_rnode.relNode, 
- saae: smgr:00000921:  nblocks))); 
- saae: smgr:00000977:  ereport(ERROR, 
- saae: smgr:00000978:  (errcode_for_file_access(), 
- saae: smgr:00000979:  errmsg("could not sync relation %u/%u/%u: %m", 
- saae: smgr:00000980:  reln->smgr_rnode.spcNode, 
- saae: smgr:00000981:  reln->smgr_rnode.dbNode, 
- saae: smgr:00000982:  reln->smgr_rnode.relNode))); 
- saae: smgr:00001690:  ereport(WARNING, 
- saae: smgr:00001691:  (errcode_for_file_access(), 
- saae: smgr:00001692:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
- saae: smgr:00001693:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001694:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001695:  reln->smgr_rnode.relNode, 
- saae: smgr:00001696:  xlrec->blkno))); 
+ saae: smgr:00000297:  ereport(ERROR, 
+ saae: smgr:00000298:  (errcode_for_file_access(), 
+ saae: smgr:00000299:  errmsg("could not close relation %u/%u/%u: %m", 
+ saae: smgr:00000300:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00000301:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00000302:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00000418:  ereport(ERROR, 
+ saae: smgr:00000419:  (errcode_for_file_access(), 
+ saae: smgr:00000420:  errmsg("could not create filespace directory %u: %m", 
+ saae: smgr:00000421:  filespaceOid))); 
+ saae: smgr:00000468:  ereport(ERROR, 
+ saae: smgr:00000469:  (errcode_for_file_access(), 
+ saae: smgr:00000470:  errmsg("could not create tablespace directory %u, filespace %u: %m", 
+ saae: smgr:00000471:  tablespaceDirNode->tablespace, 
+ saae: smgr:00000472:  tablespaceDirNode->filespace))); 
+ saae: smgr:00000521:  ereport(ERROR, 
+ saae: smgr:00000522:  (errcode_for_file_access(), 
+ saae: smgr:00000523:  errmsg("could not create database directory %u/%u: %m", 
+ saae: smgr:00000524:  tablespace, 
+ saae: smgr:00000525:  database))); 
+ saae: smgr:00000627:  ereport(ERROR, 
+ saae: smgr:00000628:  (errcode_for_file_access(), 
+ saae: smgr:00000629:  errmsg("could not create relation %u/%u/%u: %m", 
+ saae: smgr:00000630:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00000631:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00000632:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00000730:  ereport(WARNING, 
+ saae: smgr:00000731:  (errcode_for_file_access(), 
+ saae: smgr:00000732:  errmsg("could not remove relation %u/%u/%u: %m", 
+ saae: smgr:00000733:  rnode.spcNode, 
+ saae: smgr:00000734:  rnode.dbNode, 
+ saae: smgr:00000735:  rnode.relNode))); 
+ saae: smgr:00000782:  ereport(WARNING, 
+ saae: smgr:00000783:  (errcode_for_file_access(), 
+ saae: smgr:00000784:  errmsg("could not remove filespace directory %u: %m", 
+ saae: smgr:00000785:  filespaceOid))); 
+ saae: smgr:00000862:  ereport(WARNING, 
+ saae: smgr:00000863:  (errcode_for_file_access(), 
+ saae: smgr:00000864:  errmsg("could not remove tablespace directory %u: %m", 
+ saae: smgr:00000865:  tablespaceOid))); 
+ saae: smgr:00000881:  ereport(WARNING, 
+ saae: smgr:00000882:  (errcode_for_file_access(), 
+ saae: smgr:00000883:  errmsg("could not remove database directory %u/%u: %m", 
+ saae: smgr:00000884:  dropDbDirNode->tablespace, 
+ saae: smgr:00000885:  dropDbDirNode->database))); 
+ saae: smgr:00000908:  ereport(ERROR, 
+ saae: smgr:00000909:  (errcode_for_file_access(), 
+ saae: smgr:00000910:  errmsg("could not extend relation %u/%u/%u: %m", 
+ saae: smgr:00000911:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00000912:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00000913:  reln->smgr_rnode.relNode), 
+ saae: smgr:00000914:  errhint("Check free disk space."))); 
+ saae: smgr:00000929:  ereport(ERROR, 
+ saae: smgr:00000930:  (errcode_for_file_access(), 
+ saae: smgr:00000931:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
+ saae: smgr:00000932:  blocknum, 
+ saae: smgr:00000933:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00000934:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00000935:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00000954:  ereport(ERROR, 
+ saae: smgr:00000955:  (errcode_for_file_access(), 
+ saae: smgr:00000956:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
+ saae: smgr:00000957:  blocknum, 
+ saae: smgr:00000958:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00000959:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00000960:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00000984:  ereport(ERROR, 
+ saae: smgr:00000985:  (errcode_for_file_access(), 
+ saae: smgr:00000986:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
+ saae: smgr:00000987:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00000988:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00000989:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00001023:  ereport(ERROR, 
+ saae: smgr:00001024:  (errcode_for_file_access(), 
+ saae: smgr:00001025:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+ saae: smgr:00001026:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001027:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001028:  reln->smgr_rnode.relNode, 
+ saae: smgr:00001029:  nblocks))); 
+ saae: smgr:00001085:  ereport(ERROR, 
+ saae: smgr:00001086:  (errcode_for_file_access(), 
+ saae: smgr:00001087:  errmsg("could not sync relation %u/%u/%u: %m", 
+ saae: smgr:00001088:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001089:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001090:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00001798:  ereport(WARNING, 
+ saae: smgr:00001799:  (errcode_for_file_access(), 
+ saae: smgr:00001800:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+ saae: smgr:00001801:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001802:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001803:  reln->smgr_rnode.relNode, 
+ saae: smgr:00001804:  xlrec->blkno))); 
  saaf: shmem:00000128:  ereport(ERROR, 
  saaf: shmem:00000129:  (errcode(ERRCODE_INTERNAL_ERROR), 
  saaf: shmem:00000130:  errmsg("invalid page size %d; must be a power of two and not an error", ShmemSystemPageSize))); 
@@ -13575,119 +13608,119 @@ select * from get_ereport order by 1;
  saai: selfuncs:00004533:  ereport(ERROR, 
  saai: selfuncs:00004534:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  saai: selfuncs:00004535:  errmsg("regular-expression matching not supported on type bytea"))); 
- saai: sequence:00000582:  ereport(ERROR, 
- saai: sequence:00000583:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- saai: sequence:00000584:  errmsg("permission denied for sequence %s", 
- saai: sequence:00000585:  RelationGetRelationName(seqrel)))); 
- saai: sequence:00000694:  ereport(ERROR, 
- saai: sequence:00000695:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00000696:  errmsg("nextval: reached maximum value of sequence "%s" (%s)", 
- saai: sequence:00000697:  RelationGetRelationName(seqrel), buf))); 
- saai: sequence:00000717:  ereport(ERROR, 
- saai: sequence:00000718:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00000719:  errmsg("nextval: reached minimum value of sequence "%s" (%s)", 
- saai: sequence:00000720:  RelationGetRelationName(seqrel), buf))); 
- saai: sequence:00000815:  ereport(ERROR, 
- saai: sequence:00000816:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- saai: sequence:00000817:  errmsg("currval() not supported"))); 
- saai: sequence:00000825:  ereport(ERROR, 
- saai: sequence:00000826:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- saai: sequence:00000827:  errmsg("permission denied for sequence %s", 
- saai: sequence:00000828:  RelationGetRelationName(seqrel)))); 
- saai: sequence:00000831:  ereport(ERROR, 
- saai: sequence:00000832:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00000833:  errmsg("currval of sequence "%s" is not yet defined in this session", 
- saai: sequence:00000834:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00000568:  ereport(ERROR, 
+ saai: sequence:00000569:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ saai: sequence:00000570:  errmsg("permission denied for sequence %s", 
+ saai: sequence:00000571:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00000680:  ereport(ERROR, 
+ saai: sequence:00000681:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00000682:  errmsg("nextval: reached maximum value of sequence "%s" (%s)", 
+ saai: sequence:00000683:  RelationGetRelationName(seqrel), buf))); 
+ saai: sequence:00000703:  ereport(ERROR, 
+ saai: sequence:00000704:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00000705:  errmsg("nextval: reached minimum value of sequence "%s" (%s)", 
+ saai: sequence:00000706:  RelationGetRelationName(seqrel), buf))); 
+ saai: sequence:00000801:  ereport(ERROR, 
+ saai: sequence:00000802:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ saai: sequence:00000803:  errmsg("currval() not supported"))); 
+ saai: sequence:00000811:  ereport(ERROR, 
+ saai: sequence:00000812:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ saai: sequence:00000813:  errmsg("permission denied for sequence %s", 
+ saai: sequence:00000814:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00000817:  ereport(ERROR, 
+ saai: sequence:00000818:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00000819:  errmsg("currval of sequence "%s" is not yet defined in this session", 
+ saai: sequence:00000820:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00000838:  ereport(ERROR, 
+ saai: sequence:00000839:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ saai: sequence:00000840:  errmsg("lastval() not supported"))); 
+ saai: sequence:00000844:  ereport(ERROR, 
+ saai: sequence:00000845:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00000846:  errmsg("lastval is not yet defined in this session"))); 
  saai: sequence:00000852:  ereport(ERROR, 
- saai: sequence:00000853:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- saai: sequence:00000854:  errmsg("lastval() not supported"))); 
- saai: sequence:00000858:  ereport(ERROR, 
- saai: sequence:00000859:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00000860:  errmsg("lastval is not yet defined in this session"))); 
- saai: sequence:00000866:  ereport(ERROR, 
- saai: sequence:00000867:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00000868:  errmsg("lastval is not yet defined in this session"))); 
- saai: sequence:00000877:  ereport(ERROR, 
- saai: sequence:00000878:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- saai: sequence:00000879:  errmsg("permission denied for sequence %s", 
- saai: sequence:00000880:  RelationGetRelationName(seqrel)))); 
- saai: sequence:00000911:  ereport(ERROR, 
- saai: sequence:00000912:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- saai: sequence:00000913:  errmsg("setval() not supported in this context"))); 
- saai: sequence:00000920:  ereport(ERROR, 
- saai: sequence:00000921:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- saai: sequence:00000922:  errmsg("permission denied for sequence %s", 
- saai: sequence:00000923:  RelationGetRelationName(seqrel)))); 
- saai: sequence:00000938:  ereport(ERROR, 
- saai: sequence:00000939:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- saai: sequence:00000940:  errmsg("setval: value %s is out of bounds for sequence "%s" (%s..%s)", 
- saai: sequence:00000941:  bufv, RelationGetRelationName(seqrel), 
- saai: sequence:00000942:  bufm, bufx))); 
- saai: sequence:00001101:  ereport(ERROR, 
- saai: sequence:00001102:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- saai: sequence:00001103:  errmsg("out of memory"))); 
- saai: sequence:00001118:  ereport(ERROR, 
- saai: sequence:00001119:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- saai: sequence:00001120:  errmsg(""%s" is not a sequence", 
- saai: sequence:00001121:  RelationGetRelationName(seqrel)))); 
- saai: sequence:00001186:  ereport(ERROR, 
- saai: sequence:00001187:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001188:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001199:  ereport(ERROR, 
- saai: sequence:00001200:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001201:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001207:  ereport(ERROR, 
- saai: sequence:00001208:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001209:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001215:  ereport(ERROR, 
- saai: sequence:00001216:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001217:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001223:  ereport(ERROR, 
- saai: sequence:00001224:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001225:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001231:  ereport(ERROR, 
- saai: sequence:00001232:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001233:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001239:  ereport(ERROR, 
- saai: sequence:00001240:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001241:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001254:  ereport(ERROR, 
- saai: sequence:00001255:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- saai: sequence:00001256:  errmsg("INCREMENT must not be zero"))); 
- saai: sequence:00001300:  ereport(ERROR, 
- saai: sequence:00001301:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- saai: sequence:00001302:  errmsg("MINVALUE (%s) must be less than MAXVALUE (%s)", 
- saai: sequence:00001303:  bufm, bufx))); 
- saai: sequence:00001331:  ereport(ERROR, 
- saai: sequence:00001332:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- saai: sequence:00001333:  errmsg("START value (%s) can't be less than MINVALUE (%s)", 
- saai: sequence:00001334:  bufs, bufm))); 
- saai: sequence:00001343:  ereport(ERROR, 
- saai: sequence:00001344:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- saai: sequence:00001345:  errmsg("START value (%s) can't be greater than MAXVALUE (%s)", 
- saai: sequence:00001346:  bufs, bufm))); 
- saai: sequence:00001358:  ereport(ERROR, 
- saai: sequence:00001359:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- saai: sequence:00001360:  errmsg("CACHE (%s) must be greater than zero", 
- saai: sequence:00001361:  buf))); 
- saai: sequence:00001389:  ereport(ERROR, 
- saai: sequence:00001390:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001391:  errmsg("invalid OWNED BY option"), 
- saai: sequence:00001392:  errhint("Specify OWNED BY table.column or OWNED BY NONE."))); 
- saai: sequence:00001412:  ereport(ERROR, 
- saai: sequence:00001413:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- saai: sequence:00001414:  errmsg("referenced relation "%s" is not a table", 
- saai: sequence:00001415:  RelationGetRelationName(tablerel)))); 
- saai: sequence:00001419:  ereport(ERROR, 
- saai: sequence:00001420:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00001421:  errmsg("sequence must have same owner as table it is linked to"))); 
- saai: sequence:00001423:  ereport(ERROR, 
- saai: sequence:00001424:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00001425:  errmsg("sequence must be in same schema as table it is linked to"))); 
- saai: sequence:00001430:  ereport(ERROR, 
- saai: sequence:00001431:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- saai: sequence:00001432:  errmsg("column "%s" of relation "%s" does not exist", 
- saai: sequence:00001433:  attrname, RelationGetRelationName(tablerel)))); 
+ saai: sequence:00000853:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00000854:  errmsg("lastval is not yet defined in this session"))); 
+ saai: sequence:00000863:  ereport(ERROR, 
+ saai: sequence:00000864:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ saai: sequence:00000865:  errmsg("permission denied for sequence %s", 
+ saai: sequence:00000866:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00000897:  ereport(ERROR, 
+ saai: sequence:00000898:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ saai: sequence:00000899:  errmsg("setval() not supported in this context"))); 
+ saai: sequence:00000906:  ereport(ERROR, 
+ saai: sequence:00000907:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ saai: sequence:00000908:  errmsg("permission denied for sequence %s", 
+ saai: sequence:00000909:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00000924:  ereport(ERROR, 
+ saai: sequence:00000925:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ saai: sequence:00000926:  errmsg("setval: value %s is out of bounds for sequence "%s" (%s..%s)", 
+ saai: sequence:00000927:  bufv, RelationGetRelationName(seqrel), 
+ saai: sequence:00000928:  bufm, bufx))); 
+ saai: sequence:00001087:  ereport(ERROR, 
+ saai: sequence:00001088:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ saai: sequence:00001089:  errmsg("out of memory"))); 
+ saai: sequence:00001104:  ereport(ERROR, 
+ saai: sequence:00001105:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ saai: sequence:00001106:  errmsg(""%s" is not a sequence", 
+ saai: sequence:00001107:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00001172:  ereport(ERROR, 
+ saai: sequence:00001173:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001174:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001185:  ereport(ERROR, 
+ saai: sequence:00001186:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001187:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001193:  ereport(ERROR, 
+ saai: sequence:00001194:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001195:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001201:  ereport(ERROR, 
+ saai: sequence:00001202:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001203:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001209:  ereport(ERROR, 
+ saai: sequence:00001210:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001211:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001217:  ereport(ERROR, 
+ saai: sequence:00001218:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001219:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001225:  ereport(ERROR, 
+ saai: sequence:00001226:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001227:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001240:  ereport(ERROR, 
+ saai: sequence:00001241:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ saai: sequence:00001242:  errmsg("INCREMENT must not be zero"))); 
+ saai: sequence:00001286:  ereport(ERROR, 
+ saai: sequence:00001287:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ saai: sequence:00001288:  errmsg("MINVALUE (%s) must be less than MAXVALUE (%s)", 
+ saai: sequence:00001289:  bufm, bufx))); 
+ saai: sequence:00001317:  ereport(ERROR, 
+ saai: sequence:00001318:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ saai: sequence:00001319:  errmsg("START value (%s) can't be less than MINVALUE (%s)", 
+ saai: sequence:00001320:  bufs, bufm))); 
+ saai: sequence:00001329:  ereport(ERROR, 
+ saai: sequence:00001330:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ saai: sequence:00001331:  errmsg("START value (%s) can't be greater than MAXVALUE (%s)", 
+ saai: sequence:00001332:  bufs, bufm))); 
+ saai: sequence:00001344:  ereport(ERROR, 
+ saai: sequence:00001345:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ saai: sequence:00001346:  errmsg("CACHE (%s) must be greater than zero", 
+ saai: sequence:00001347:  buf))); 
+ saai: sequence:00001375:  ereport(ERROR, 
+ saai: sequence:00001376:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001377:  errmsg("invalid OWNED BY option"), 
+ saai: sequence:00001378:  errhint("Specify OWNED BY table.column or OWNED BY NONE."))); 
+ saai: sequence:00001398:  ereport(ERROR, 
+ saai: sequence:00001399:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ saai: sequence:00001400:  errmsg("referenced relation "%s" is not a table", 
+ saai: sequence:00001401:  RelationGetRelationName(tablerel)))); 
+ saai: sequence:00001405:  ereport(ERROR, 
+ saai: sequence:00001406:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00001407:  errmsg("sequence must have same owner as table it is linked to"))); 
+ saai: sequence:00001409:  ereport(ERROR, 
+ saai: sequence:00001410:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00001411:  errmsg("sequence must be in same schema as table it is linked to"))); 
+ saai: sequence:00001416:  ereport(ERROR, 
+ saai: sequence:00001417:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ saai: sequence:00001418:  errmsg("column "%s" of relation "%s" does not exist", 
+ saai: sequence:00001419:  attrname, RelationGetRelationName(tablerel)))); 
  saaj: seqserver:00000218:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  saaj: seqserver:00000219:  errmsg("Error: Could not write() message to seqserver: %s", 
  saaj: seqserver:00000220:  strerror(errno)), 
@@ -16393,135 +16426,116 @@ select * from get_ereport order by 1;
  taaj: tuplesort:00003073:  (errcode(ERRCODE_UNIQUE_VIOLATION), 
  taaj: tuplesort:00003074:  errmsg("could not create unique index"), 
  taaj: tuplesort:00003075:  errdetail("Table contains duplicated values."))); 
- taba: tablespace:00000164:  ereport(ERROR, 
- taba: tablespace:00000165:  (errcode_for_file_access(), 
- taba: tablespace:00000166:  errmsg("could not create directory "%s": %m", 
- taba: tablespace:00000167:  dir))); 
- taba: tablespace:00000172:  ereport(ERROR, 
- taba: tablespace:00000173:  (errcode_for_file_access(), 
- taba: tablespace:00000174:  errmsg("could not create directory "%s": %m", 
- taba: tablespace:00000175:  parentdir))); 
- taba: tablespace:00000178:  ereport(ERROR, 
- taba: tablespace:00000179:  (errcode_for_file_access(), 
- taba: tablespace:00000180:  errmsg("could not create directory "%s": %m", 
- taba: tablespace:00000181:  dir))); 
- taba: tablespace:00000189:  ereport(ERROR, 
- taba: tablespace:00000190:  (errcode_for_file_access(), 
- taba: tablespace:00000191:  errmsg("could not stat directory "%s": %m", dir))); 
- taba: tablespace:00000198:  ereport(ERROR, 
- taba: tablespace:00000199:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- taba: tablespace:00000200:  errmsg(""%s" exists but is not a directory", 
- taba: tablespace:00000201:  dir))); 
- taba: tablespace:00000234:  ereport(ERROR, 
- taba: tablespace:00000235:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- taba: tablespace:00000236:  errmsg("permission denied to create tablespace "%s"", 
- taba: tablespace:00000237:  stmt->tablespacename), 
- taba: tablespace:00000238:  errhint("Must be superuser to create a tablespace."))); 
- taba: tablespace:00000251:  ereport(ERROR, 
- taba: tablespace:00000252:  (errcode(ERRCODE_RESERVED_NAME), 
- taba: tablespace:00000253:  errmsg("unacceptable tablespace name "%s"", 
- taba: tablespace:00000254:  stmt->tablespacename), 
- taba: tablespace:00000255:  errdetail("The prefix "pg_" is reserved for system tablespaces."))); 
- taba: tablespace:00000264:  ereport(ERROR, 
- taba: tablespace:00000265:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- taba: tablespace:00000266:  errmsg("filespace "%s" does not exist", 
- taba: tablespace:00000267:  stmt->filespacename))); 
- taba: tablespace:00000284:  ereport(ERROR, 
- taba: tablespace:00000285:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- taba: tablespace:00000286:  errmsg("permission denied to create tablespace "%s"", 
- taba: tablespace:00000287:  stmt->tablespacename), 
- taba: tablespace:00000288:  errhint("filespace %s is reserve for system use", 
- taba: tablespace:00000289:  stmt->filespacename))); 
- taba: tablespace:00000297:  ereport(ERROR, 
- taba: tablespace:00000298:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- taba: tablespace:00000299:  errmsg("tablespace "%s" already exists", 
- taba: tablespace:00000300:  stmt->tablespacename))); 
- taba: tablespace:00000401:  ereport(ERROR, 
- taba: tablespace:00000402:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taba: tablespace:00000403:  errmsg("tablespace name may not be qualified"))); 
- taba: tablespace:00000408:  ereport(ERROR, 
- taba: tablespace:00000409:  (errcode(ERRCODE_SYNTAX_ERROR), 
- taba: tablespace:00000410:  errmsg("syntax at or near "cascade""))); 
- taba: tablespace:00000431:  ereport(ERROR, 
- taba: tablespace:00000432:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- taba: tablespace:00000433:  errmsg("tablespace "%s" does not exist", 
- taba: tablespace:00000434:  tablespacename))); 
- taba: tablespace:00000438:  ereport(NOTICE, 
- taba: tablespace:00000439:  (errmsg("tablespace "%s" does not exist, skipping", 
- taba: tablespace:00000440:  tablespacename))); 
- taba: tablespace:00000501:  ereport(ERROR, 
- taba: tablespace:00000502:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- taba: tablespace:00000503:  errmsg("tablespace "%s" is not empty", tablespacename))); 
- taba: tablespace:00000562:  ereport(WARNING, 
- taba: tablespace:00000563:  (errmsg("directory linked to "%s" does not exist", location) 
- taba: tablespace:00000564:  )); 
+ taba: tablespace:00000118:  ereport(ERROR, 
+ taba: tablespace:00000119:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ taba: tablespace:00000120:  errmsg("permission denied to create tablespace "%s"", 
+ taba: tablespace:00000121:  stmt->tablespacename), 
+ taba: tablespace:00000122:  errhint("Must be superuser to create a tablespace."))); 
+ taba: tablespace:00000135:  ereport(ERROR, 
+ taba: tablespace:00000136:  (errcode(ERRCODE_RESERVED_NAME), 
+ taba: tablespace:00000137:  errmsg("unacceptable tablespace name "%s"", 
+ taba: tablespace:00000138:  stmt->tablespacename), 
+ taba: tablespace:00000139:  errdetail("The prefix "pg_" is reserved for system tablespaces."))); 
+ taba: tablespace:00000148:  ereport(ERROR, 
+ taba: tablespace:00000149:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ taba: tablespace:00000150:  errmsg("filespace "%s" does not exist", 
+ taba: tablespace:00000151:  stmt->filespacename))); 
+ taba: tablespace:00000168:  ereport(ERROR, 
+ taba: tablespace:00000169:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ taba: tablespace:00000170:  errmsg("permission denied to create tablespace "%s"", 
+ taba: tablespace:00000171:  stmt->tablespacename), 
+ taba: tablespace:00000172:  errhint("filespace %s is reserve for system use", 
+ taba: tablespace:00000173:  stmt->filespacename))); 
+ taba: tablespace:00000181:  ereport(ERROR, 
+ taba: tablespace:00000182:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ taba: tablespace:00000183:  errmsg("tablespace "%s" already exists", 
+ taba: tablespace:00000184:  stmt->tablespacename))); 
+ taba: tablespace:00000285:  ereport(ERROR, 
+ taba: tablespace:00000286:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taba: tablespace:00000287:  errmsg("tablespace name may not be qualified"))); 
+ taba: tablespace:00000292:  ereport(ERROR, 
+ taba: tablespace:00000293:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ taba: tablespace:00000294:  errmsg("syntax at or near "cascade""))); 
+ taba: tablespace:00000315:  ereport(ERROR, 
+ taba: tablespace:00000316:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ taba: tablespace:00000317:  errmsg("tablespace "%s" does not exist", 
+ taba: tablespace:00000318:  tablespacename))); 
+ taba: tablespace:00000322:  ereport(NOTICE, 
+ taba: tablespace:00000323:  (errmsg("tablespace "%s" does not exist, skipping", 
+ taba: tablespace:00000324:  tablespacename))); 
+ taba: tablespace:00000385:  ereport(ERROR, 
+ taba: tablespace:00000386:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ taba: tablespace:00000387:  errmsg("tablespace "%s" is not empty", tablespacename))); 
+ taba: tablespace:00000446:  ereport(WARNING, 
+ taba: tablespace:00000447:  (errmsg("directory linked to "%s" does not exist", location) 
+ taba: tablespace:00000448:  )); 
+ taba: tablespace:00000497:  ereport(ERROR, 
+ taba: tablespace:00000498:  (errcode_for_file_access(), 
+ taba: tablespace:00000499:  errmsg("could not remove directory "%s": %m", 
+ taba: tablespace:00000500:  subfile))); 
+ taba: tablespace:00000517:  ereport(ERROR, 
+ taba: tablespace:00000518:  (errcode_for_file_access(), 
+ taba: tablespace:00000519:  errmsg("could not remove file "%s": %m", 
+ taba: tablespace:00000520:  subfile))); 
+ taba: tablespace:00000534:  ereport(ERROR, 
+ taba: tablespace:00000535:  (errcode_for_file_access(), 
+ taba: tablespace:00000536:  errmsg("could not remove directory "%s": %m", 
+ taba: tablespace:00000537:  location))); 
+ taba: tablespace:00000542:  ereport(ERROR, 
+ taba: tablespace:00000543:  (errcode_for_file_access(), 
+ taba: tablespace:00000544:  errmsg("could not remove symbolic link "%s": %m", 
+ taba: tablespace:00000545:  location))); 
+ taba: tablespace:00000558:  ereport(ERROR, 
+ taba: tablespace:00000559:  (errcode_for_file_access(), 
+ taba: tablespace:00000560:  errmsg("could not remove subdirectory "%s": %m", 
+ taba: tablespace:00000561:  tempstr))); 
+ taba: tablespace:00000607:  ereport(ERROR, 
+ taba: tablespace:00000608:  (errcode_for_file_access(), 
+ taba: tablespace:00000609:  errmsg("could not write to file "%s": %m", 
+ taba: tablespace:00000610:  fullname))); 
  taba: tablespace:00000613:  ereport(ERROR, 
  taba: tablespace:00000614:  (errcode_for_file_access(), 
- taba: tablespace:00000615:  errmsg("could not remove directory "%s": %m", 
- taba: tablespace:00000616:  subfile))); 
- taba: tablespace:00000633:  ereport(ERROR, 
- taba: tablespace:00000634:  (errcode_for_file_access(), 
- taba: tablespace:00000635:  errmsg("could not remove file "%s": %m", 
- taba: tablespace:00000636:  subfile))); 
- taba: tablespace:00000650:  ereport(ERROR, 
- taba: tablespace:00000651:  (errcode_for_file_access(), 
- taba: tablespace:00000652:  errmsg("could not remove directory "%s": %m", 
- taba: tablespace:00000653:  location))); 
- taba: tablespace:00000658:  ereport(ERROR, 
- taba: tablespace:00000659:  (errcode_for_file_access(), 
- taba: tablespace:00000660:  errmsg("could not remove symbolic link "%s": %m", 
- taba: tablespace:00000661:  location))); 
- taba: tablespace:00000674:  ereport(ERROR, 
- taba: tablespace:00000675:  (errcode_for_file_access(), 
- taba: tablespace:00000676:  errmsg("could not remove subdirectory "%s": %m", 
- taba: tablespace:00000677:  tempstr))); 
- taba: tablespace:00000723:  ereport(ERROR, 
- taba: tablespace:00000724:  (errcode_for_file_access(), 
- taba: tablespace:00000725:  errmsg("could not write to file "%s": %m", 
- taba: tablespace:00000726:  fullname))); 
- taba: tablespace:00000729:  ereport(ERROR, 
- taba: tablespace:00000730:  (errcode_for_file_access(), 
- taba: tablespace:00000731:  errmsg("could not write to file "%s": %m", 
- taba: tablespace:00000732:  fullname))); 
- taba: tablespace:00000788:  ereport(ERROR, 
- taba: tablespace:00000789:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- taba: tablespace:00000790:  errmsg("tablespace "%s" does not exist", 
- taba: tablespace:00000791:  oldname))); 
- taba: tablespace:00000805:  ereport(ERROR, 
- taba: tablespace:00000806:  (errcode(ERRCODE_RESERVED_NAME), 
- taba: tablespace:00000807:  errmsg("unacceptable tablespace name "%s"", newname), 
- taba: tablespace:00000808:  errdetail("The prefix "pg_" is reserved for system tablespaces."))); 
- taba: tablespace:00000818:  ereport(ERROR, 
- taba: tablespace:00000819:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- taba: tablespace:00000820:  errmsg("tablespace "%s" already exists", 
- taba: tablespace:00000821:  newname))); 
- taba: tablespace:00000866:  ereport(ERROR, 
- taba: tablespace:00000867:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- taba: tablespace:00000868:  errmsg("tablespace "%s" does not exist", name))); 
- taba: tablespace:00000971:  ereport(ERROR, 
- taba: tablespace:00000972:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- taba: tablespace:00000973:  errmsg("tablespace "%s" does not exist", 
- taba: tablespace:00000974:  newval))); 
- taba: tablespace:00001122:  ereport(ERROR, 
- taba: tablespace:00001123:  (errcode_for_file_access(), 
- taba: tablespace:00001124:  errmsg("could not create location directory "%s": %m", 
- taba: tablespace:00001125:  location))); 
- taba: tablespace:00001134:  ereport(ERROR, 
- taba: tablespace:00001135:  (errcode_for_file_access(), 
- taba: tablespace:00001136:  errmsg("could not set permissions on directory "%s": %m", 
- taba: tablespace:00001137:  location))); 
- taba: tablespace:00001145:  ereport(ERROR, 
- taba: tablespace:00001146:  (errcode_for_file_access(), 
- taba: tablespace:00001147:  errmsg("could not create subdirectory "%s": %m", 
- taba: tablespace:00001148:  sublocation))); 
- taba: tablespace:00001160:  ereport(ERROR, 
- taba: tablespace:00001161:  (errcode_for_file_access(), 
- taba: tablespace:00001162:  errmsg("could not create symbolic link "%s": %m", 
- taba: tablespace:00001163:  linkloc))); 
- taba: tablespace:00001174:  ereport(ERROR, 
- taba: tablespace:00001175:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- taba: tablespace:00001176:  errmsg("tablespace %u is not empty", 
- taba: tablespace:00001177:  xlrec->ts_id))); 
+ taba: tablespace:00000615:  errmsg("could not write to file "%s": %m", 
+ taba: tablespace:00000616:  fullname))); 
+ taba: tablespace:00000672:  ereport(ERROR, 
+ taba: tablespace:00000673:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ taba: tablespace:00000674:  errmsg("tablespace "%s" does not exist", 
+ taba: tablespace:00000675:  oldname))); 
+ taba: tablespace:00000689:  ereport(ERROR, 
+ taba: tablespace:00000690:  (errcode(ERRCODE_RESERVED_NAME), 
+ taba: tablespace:00000691:  errmsg("unacceptable tablespace name "%s"", newname), 
+ taba: tablespace:00000692:  errdetail("The prefix "pg_" is reserved for system tablespaces."))); 
+ taba: tablespace:00000702:  ereport(ERROR, 
+ taba: tablespace:00000703:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ taba: tablespace:00000704:  errmsg("tablespace "%s" already exists", 
+ taba: tablespace:00000705:  newname))); 
+ taba: tablespace:00000750:  ereport(ERROR, 
+ taba: tablespace:00000751:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ taba: tablespace:00000752:  errmsg("tablespace "%s" does not exist", name))); 
+ taba: tablespace:00000855:  ereport(ERROR, 
+ taba: tablespace:00000856:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ taba: tablespace:00000857:  errmsg("tablespace "%s" does not exist", 
+ taba: tablespace:00000858:  newval))); 
+ taba: tablespace:00001006:  ereport(ERROR, 
+ taba: tablespace:00001007:  (errcode_for_file_access(), 
+ taba: tablespace:00001008:  errmsg("could not create location directory "%s": %m", 
+ taba: tablespace:00001009:  location))); 
+ taba: tablespace:00001018:  ereport(ERROR, 
+ taba: tablespace:00001019:  (errcode_for_file_access(), 
+ taba: tablespace:00001020:  errmsg("could not set permissions on directory "%s": %m", 
+ taba: tablespace:00001021:  location))); 
+ taba: tablespace:00001029:  ereport(ERROR, 
+ taba: tablespace:00001030:  (errcode_for_file_access(), 
+ taba: tablespace:00001031:  errmsg("could not create subdirectory "%s": %m", 
+ taba: tablespace:00001032:  sublocation))); 
+ taba: tablespace:00001044:  ereport(ERROR, 
+ taba: tablespace:00001045:  (errcode_for_file_access(), 
+ taba: tablespace:00001046:  errmsg("could not create symbolic link "%s": %m", 
+ taba: tablespace:00001047:  linkloc))); 
+ taba: tablespace:00001058:  ereport(ERROR, 
+ taba: tablespace:00001059:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ taba: tablespace:00001060:  errmsg("tablespace %u is not empty", 
+ taba: tablespace:00001061:  xlrec->ts_id))); 
  tabd: tuplestorenew:00000357:  ereport(ERROR, 
  tabd: tuplestorenew:00000358:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  tabd: tuplestorenew:00000359:  errmsg("NTupleStore failed to malloc: out of memory"))); 
@@ -17759,6 +17773,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000073:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000074:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000075:  str))); 
-(17698 rows)
+(17712 rows)
 
 drop external table get_ereport;

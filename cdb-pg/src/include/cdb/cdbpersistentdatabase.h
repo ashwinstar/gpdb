@@ -235,15 +235,18 @@ extern void PersistentDatabase_Dropped(
 							
 	int64			serialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+
+extern bool PersistentDatabase_DirIsCreated(
+	DbDirNode		*dbDirNode);
 	
-extern void PersistentDatabase_JustInTimeCreate(
-	DbDirNode		*dbDirNode,
-				
-	ItemPointer 	persistentTid,
-				/* TID of the gp_persistent_rel_files tuple for the rel file */
-								
-	bool			flushToXLog);
-				/* When true, the XLOG record for this change will be flushed to disk. */
+extern void PersistentDatabase_MarkJustInTimeCreatePending(
+	DbDirNode		*dbDirNode);
+
+extern void PersistentDatabase_JustInTimeCreated(
+	DbDirNode		*dbDirNode);
+	
+extern void PersistentDatabase_AbandonJustInTimeCreatePending(
+	DbDirNode		*dbDirNode);
 	
 // -----------------------------------------------------------------------------
 // Shmem and Startup/Shutdown

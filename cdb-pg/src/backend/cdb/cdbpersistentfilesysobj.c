@@ -16,6 +16,7 @@
 #include "access/persistentfilesysobjname.h"
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbpersistentfilespace.h"
 #include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbmirroredfilesysobj.h"
 
@@ -501,7 +502,13 @@ void PersistentFileSysObj_Created(
 							persistentSerialNum);
 		break;
 
-	// UNDONE: Filespace
+	case PersistentFsObjType_FilespaceDir:
+		PersistentFilespace_Created(
+							fsObjName->variant.filespaceOid,
+							persistentTid,
+							persistentSerialNum);
+		break;
+
 
 	default:
 		elog(ERROR, "Unexpected persistent file-system object type: %d",
@@ -540,6 +547,13 @@ void PersistentFileSysObj_MarkAbortingCreate(
 							persistentSerialNum);
 		break;
 
+	case PersistentFsObjType_FilespaceDir:
+		PersistentFilespace_MarkAbortingCreate(
+							fsObjName->variant.filespaceOid,
+							persistentTid,
+							persistentSerialNum);
+		break;
+
 	default:
 		elog(ERROR, "Unexpected persistent file-system object type: %d",
 			 fsObjName->type);
@@ -572,6 +586,13 @@ void PersistentFileSysObj_MarkDropPending(
 
 	case PersistentFsObjType_TablespaceDir:
 		PersistentTablespace_MarkDropPending(
+							fsObjName->variant.tablespaceOid,
+							persistentTid,
+							persistentSerialNum);
+		break;
+
+	case PersistentFsObjType_FilespaceDir:
+		PersistentFilespace_MarkDropPending(
 							fsObjName->variant.tablespaceOid,
 							persistentTid,
 							persistentSerialNum);
@@ -635,6 +656,34 @@ void PersistentFileSysObj_Drop(
 							fsObjName->variant.tablespaceOid,
 							persistentTid,
 							persistentSerialNum);
+		break;
+
+	case PersistentFsObjType_FilespaceDir:	
+		{
+			char *primaryFilespaceLocation;
+			char *mirrorFilespaceLocation;
+
+			PersistentFilespace_GetPrimaryAndMirror(
+								fsObjName->variant.filespaceOid,
+								&primaryFilespaceLocation,
+								&mirrorFilespaceLocation);
+
+			MirroredFileSysObj_DropFilespaceDir(
+								fsObjName->variant.filespaceOid,
+								primaryFilespaceLocation,
+								mirrorFilespaceLocation,
+								isRedo);
+
+			PersistentFilespace_Dropped(
+								fsObjName->variant.filespaceOid,
+								persistentTid,
+								persistentSerialNum);
+
+			if (primaryFilespaceLocation != NULL)
+				pfree(primaryFilespaceLocation);
+			if (mirrorFilespaceLocation != NULL)
+				pfree(mirrorFilespaceLocation);
+		}
 		break;
 
 	default:

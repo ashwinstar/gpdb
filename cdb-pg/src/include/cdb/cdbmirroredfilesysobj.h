@@ -15,6 +15,37 @@
 #include "storage/dbdirnode.h"
 #include "storage/smgr.h"
 
+extern void MirroredFileSysObj_CreateFilespaceDir(
+	Oid			filespaceOid,
+
+	int16		primaryDbId,
+	
+	char		*primaryFilespaceLocation,
+				/* 
+				 * The primary filespace directory path.  NOT Blank padded.
+				 * Just a NULL terminated string.
+				 */
+	
+	int16		mirrorDbId,
+	
+	char		*mirrorFilespaceLocation);
+
+extern void MirroredFileSysObj_ScheduleDropFilespaceDir(
+	Oid							filespaceOid);
+
+extern void MirroredFileSysObj_DropFilespaceDir(
+	Oid			filespaceOid,
+
+	char		*primaryFilespaceLocation,
+				/* 
+				 * The primary filespace directory path.  NOT Blank padded.
+				 * Just a NULL terminated string.
+				 */
+	
+	char		*mirrorFilespaceLocation,
+
+	bool isRedo);
+
 extern void MirroredFileSysObj_CreateTablespaceDir(
 	TablespaceDirNode			*tablespaceDirNode);
 

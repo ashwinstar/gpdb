@@ -110,6 +110,7 @@ typedef enum PersistentFileSysState
 	PersistentFileSysState_Created = 2,
 	PersistentFileSysState_DropPending = 3,
 	PersistentFileSysState_AbortingCreate = 4,
+	PersistentFileSysState_JustInTimeCreatePending = 5,
 	MaxPersistentFileSysState /* must always be last */
 } PersistentFileSysState;
 

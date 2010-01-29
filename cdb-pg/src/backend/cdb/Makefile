@@ -43,7 +43,7 @@ OBJS = cdbanalyze.o \
 	   cdbmutate.o \
 	   cdboidsync.o \
 	   cdbpath.o cdbpathlocus.o cdbpathtoplan.o \
-	   cdbpersistentbuild.o \
+	   cdbpersistentbuild.o cdbpersistentfilespace.o \
 	   cdbpersistentrelation.o cdbpersistentdatabase.o cdbpersistenttablespace.o \
 	   cdbpersistentfilesysobj.o cdbpersistentrecovery.o cdbpersistentstore.o \
 	   cdbpgdatabase.o \

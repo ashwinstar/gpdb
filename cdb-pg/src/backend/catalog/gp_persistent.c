@@ -256,7 +256,7 @@ void GpPersistentFilespaceNode_GetValues(
 
     *dbId1 = DatumGetInt16(values[Anum_gp_persistent_filespace_node_db_id_1 - 1]);
 
-	locationPtr = DatumGetCString(DirectFunctionCall1(textout, values[Anum_gp_persistent_filespace_node_location_1 - 1]));
+	locationPtr = TextDatumGetCString(values[Anum_gp_persistent_filespace_node_location_1 - 1]);;
 	locationLen = strlen(locationPtr);
 	if (locationLen != FilespaceLocationBlankPaddedWithNullTermLen - 1)
 		elog(ERROR, "Expected filespace location 1 to be %d characters and found %d",
@@ -267,7 +267,7 @@ void GpPersistentFilespaceNode_GetValues(
 
     *dbId2 = DatumGetInt16(values[Anum_gp_persistent_filespace_node_db_id_2 - 1]);
 
-	locationPtr = DatumGetCString(DirectFunctionCall1(textout, values[Anum_gp_persistent_filespace_node_location_2 - 1]));
+	locationPtr = TextDatumGetCString(values[Anum_gp_persistent_filespace_node_location_2 - 1]);
 	locationLen = strlen(locationPtr);
 	if (locationLen != FilespaceLocationBlankPaddedWithNullTermLen - 1)
 		elog(ERROR, "Expected filespace location 2 to be %d characters and found %d",
@@ -323,13 +323,13 @@ void GpPersistentFilespaceNode_SetDatumValues(
 									Int16GetDatum(dbId1);
 
 	values[Anum_gp_persistent_filespace_node_location_1 - 1] =
-									CStringGetDatum(locationBlankPadded1);
+									CStringGetTextDatum(locationBlankPadded1);
 
 	values[Anum_gp_persistent_filespace_node_db_id_2 - 1] = 
 									Int16GetDatum(dbId2);
 
 	values[Anum_gp_persistent_filespace_node_location_2 - 1] =
-									CStringGetDatum(locationBlankPadded2);
+									CStringGetTextDatum(locationBlankPadded2);
 
 	values[Anum_gp_persistent_filespace_node_persistent_state - 1] = 
 									Int16GetDatum(persistentState);

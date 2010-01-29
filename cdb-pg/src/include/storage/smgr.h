@@ -66,14 +66,18 @@ extern void smgrsetowner(SMgrRelation *owner, SMgrRelation reln);
 extern void smgrclose(SMgrRelation reln);
 extern void smgrcloseall(void);
 extern void smgrclosenode(RelFileNode rnode);
+extern void smgrcreatefilespacedir(Oid filespaceOid, int16 primaryDbId, char *primaryFilespaceLocation, int16 mirrorDbId, char *mirrorFilespaceLocation, bool isRedo);
 extern void smgrcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo);
+extern bool smgrcreatedbdirjustintime(DbDirNode *justInTimeDbDirNode);
 extern void smgrcreatedbdir(DbDirNode *dbDirNode, bool isRedo);
 extern void smgrcreatepending(RelFileNode 	*relFileNode, ItemPointer persistentTid, int64 *persistentSerialNum, bool isLocalBuf, bool flushToXLog);
 extern void smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo);
 extern void smgrscheduleunlink(SMgrRelation reln, ItemPointer persistentTid, int64 persistentSerialNum, bool isLocalBuf);
 extern void smgrdounlink(SMgrRelation reln, bool isLocalBuf, bool isRedo);
+extern void smgrschedulermfilespacedir(Oid filespaceOid);
 extern void smgrschedulermtablespacedir(Oid tablespaceOid);
 extern void smgrschedulermdbdir(DbDirNode *dropDbDirNode);
+extern void smgrdormfilespacedir(Oid filespaceOid, char *primaryFilespaceLocation, char *mirrorFilespaceLocation, bool isRedo);
 extern void smgrdormtablespacedir(Oid tablespaceOid, bool isRedo);
 extern void smgrdormdbdir(DbDirNode *dropDbDirNode, bool isRedo);
 extern void smgrextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
@@ -104,10 +108,12 @@ extern void smgr_desc(StringInfo buf, uint8 xl_info, char *rec);
 /* in md.c */
 extern bool mdinit(void);
 extern bool mdclose(SMgrRelation reln);
+extern bool mdcreatefilespacedir(Oid filespaceOid, char *primaryFilespaceLocation, char *mirrorFilespaceLocation, bool isRedo);
 extern bool mdcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo);
-extern bool mdcreatedbdir(DbDirNode *dbDirNode, bool isRedo);
+extern bool mdcreatedbdir(DbDirNode *dbDirNode);
 extern bool mdcreate(SMgrRelation reln, bool isRedo);
 extern bool mdunlink(RelFileNode rnode, bool isRedo);
+extern bool mdrmfilespacedir(Oid tablespaceOid, char *primaryFilespaceLocation, char *mirrorFilespaceLocation, bool isRedo);
 extern bool mdrmtablespacedir(Oid tablespaceOid, bool isRedo);
 extern bool mdrmdbdir(DbDirNode *dbDirNode, bool isRedo);
 extern bool mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,

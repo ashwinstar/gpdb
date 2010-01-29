@@ -161,6 +161,9 @@ char *PersistentFileSysObj_StateName(
 	case PersistentFileSysState_Created: 		return "Created";
 	case PersistentFileSysState_DropPending: 	return "Drop Pending";
 	case PersistentFileSysState_AbortingCreate: return "Aborting Create";
+
+	case PersistentFileSysState_JustInTimeCreatePending: return "Just-In-Time Create Pending";
+
 	default:
 		return "Unknown";
 	}

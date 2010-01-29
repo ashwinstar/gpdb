@@ -196,6 +196,41 @@ mdinit(void)
 }
 
 /*
+ *	mdcreatefilespacedir() -- Create a new filespace directory on magnetic disk.
+ *
+ * If isRedo is true, it's okay for the filespace directory to exist already.
+ */
+bool
+mdcreatefilespacedir(
+	Oid filespaceOid, 
+	char *primaryFilespaceLocation, 
+	char *mirrorFilespaceLocation, 
+	bool isRedo)
+{
+	bool result;
+
+	// UNDONE: Need tablespace directory equivalent
+//	if (FileRepPrimary_MirrorCreate(
+//				FileRep_GetDirIdentifier(*dbDirNode),
+//				FileRepRelationTypeDir) != 0) 
+//		ereport(LOG,
+//				(errmsg("could not sent create dbdir to mirror")));
+
+	// UNDONE: Do we need to preserve the errno?  Probably.
+	result = (mkdir(primaryFilespaceLocation, 0700) == 0);
+	
+//	if (FileRepPrimary_IsOperationCompleted(
+//				   FileRep_GetDirIdentifier(*dbDirNode),							
+//				   FileRepRelationTypeDir) == FALSE)	
+//		ereport(LOG,
+//				(errmsg("could not create dbdir on mirror ")));	
+
+	return result;
+
+}
+
+
+/*
  *	mdcreatetablespacedir() -- Create a new tablespace directory on magnetic disk.
  *
  * If isRedo is true, it's okay for the tablespace directory to exist already.
@@ -244,7 +279,7 @@ mdcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
  * If isRedo is true, it's okay for the database directory to exist already.
  */
 bool
-mdcreatedbdir(DbDirNode *dbDirNode, bool isRedo)
+mdcreatedbdir(DbDirNode *dbDirNode)
 {
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
@@ -427,6 +462,35 @@ mdunlink(RelFileNode rnode, bool isRedo)
 
 	errno = save_errno;
 	return status;
+}
+
+/*
+ *	mdrmfilespacedir() -- Remove a filespace directory on magnetic disk.
+ *
+ * If isRedo is true, it's okay for the filespace directory to exist already.
+ */
+bool
+mdrmfilespacedir(Oid filespaceOid, char *primaryFilespaceLocation, char *mirrorFilespaceLocation, bool isRedo)
+{
+	bool result;
+
+	// UNDONE: Need filespace version
+//	if (FileRepPrimary_MirrorDrop(
+//				FileRep_GetDirIdentifier(*dbDirNode),
+//				FileRepRelationTypeDir) != 0) 
+//		ereport(LOG,
+//				(errmsg("could not sent drop dbdir to mirror")));
+			
+	// UNDONE: Do we need to preserve the errno?  Probably.
+	result = rmtree(primaryFilespaceLocation, true);
+
+//	if (FileRepPrimary_IsOperationCompleted(
+//					FileRep_GetDirIdentifier(*dbDirNode),							
+//					FileRepRelationTypeDir) == FALSE)	
+//		ereport(LOG,
+//				(errmsg("could not drop dbdir on mirror ")));	
+
+	return result;
 }
 
 /*

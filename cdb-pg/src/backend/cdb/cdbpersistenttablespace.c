@@ -24,6 +24,7 @@
 #include "cdb/cdbdirectopen.h"
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbpersistentfilespace.h"
 #include "cdb/cdbpersistenttablespace.h"
 #include "storage/itemptr.h"
 #include "utils/hsearch.h"
@@ -40,7 +41,7 @@
 /*
  * GUC variables
  */
-int		MaxPersistentTablespaces = 1024;		/* Max # of persistent tablespaces */
+int		MaxPersistentTablespaces = 2048;		/* Max # of persistent tablespaces */
 						// UNDONE: Create GUC have default value there....
 
 typedef struct PersistentTablespaceSharedData
@@ -392,9 +393,37 @@ void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 				/* The primary filespace directory path.  Return NULL for global and base. 
 				 * Or, returns NULL when mirror not configured. */
 {
-	// UNDONE
+	TablespaceDirEntry tablespaceDirEntry;
+
 	*primaryFilespaceLocation = NULL;
 	*mirrorFilespaceLocation = NULL;
+
+	if (tablespaceOid == GLOBALTABLESPACE_OID ||
+		tablespaceOid == DEFAULTTABLESPACE_OID)
+	{
+		/*
+		 * Optimize out the common cases.
+		 */
+		 return;
+	}
+
+	PersistentTablespace_InitScan();
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	tablespaceDirEntry =
+		PersistentTablespace_FindDirUnderLock(
+										tablespaceOid);
+	if (tablespaceDirEntry == NULL)
+		elog(ERROR, "Did not find persistent tablespace entry %u", 
+			 tablespaceOid);
+
+	PersistentFilespace_GetPrimaryAndMirrorUnderLock(
+												tablespaceDirEntry->filespaceOid,
+												primaryFilespaceLocation,
+												mirrorFilespaceLocation);
+
+	LWLockRelease(PersistentObjLock);
 }
 
 // -----------------------------------------------------------------------------

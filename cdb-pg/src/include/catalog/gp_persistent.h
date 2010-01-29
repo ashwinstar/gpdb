@@ -317,18 +317,20 @@ typedef FormData_gp_persistent_filespace_node *Form_gp_persistent_filespace_node
  *
  * [Similar examples are Schema_pg_type, Schema_pg_proc, Schema_pg_attribute, etc, in
  *  pg_attribute.h]
+ *
+ * NOTE: The use of type text triggers all columns afterward to be NOT NULL....
  */
 #define Schema_gp_persistent_filespace_node \
 { GpPersistentFilespaceNodeRelationId, {"filespace_oid"}, 			26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { GpPersistentFilespaceNodeRelationId, {"db_id_1"},					21, -1, 2, 2, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"location_1"},				25, -1, -1, 3, 0, -1, -1, false, 'x', 'i', true, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"db_id_2"}, 				21, -1, 2, 4, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"location_2"},				25, -1, -1, 5, 0, -1, -1, false, 'x', 'i', true, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"persistent_state"},		21, -1, 2, 6, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"mirror_state"},			21, -1, 2, 7, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"parent_xid"},				23, -1, 4, 8, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"persistent_serial_num"},	20, -1, 8, 9, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"previous_free_tid"},		27, -1, 6, 10, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
+{ GpPersistentFilespaceNodeRelationId, {"location_1"},				25, -1, -1, 3, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"db_id_2"}, 				21, -1, 2, 4, 0, -1, -1, true, 'p', 's', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"location_2"},				25, -1, -1, 5, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"persistent_state"},		21, -1, 2, 6, 0, -1, -1, true, 'p', 's', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"mirror_state"},			21, -1, 2, 7, 0, -1, -1, true, 'p', 's', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"parent_xid"},				23, -1, 4, 8, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"persistent_serial_num"},	20, -1, 8, 9, 0, -1, -1, true, 'p', 'd', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"previous_free_tid"},		27, -1, 6, 10, 0, -1, -1, false, 'p', 's', false, false, false, true, 0 }
 
 /*
  *

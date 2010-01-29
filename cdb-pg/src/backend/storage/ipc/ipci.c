@@ -27,6 +27,7 @@
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepprimaryack.h"
 #include "cdb/cdblocaldistribxact.h"
+#include "cdb/cdbpersistentfilespace.h"
 #include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbpersistentrelation.h"
@@ -164,6 +165,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, SeqServerShmemSize());
 		size = add_size(size, WalSendServerShmemSize());
 		size = add_size(size, WalRedoServerShmemSize());
+		size = add_size(size, PersistentFilespace_ShmemSize());
 		size = add_size(size, PersistentTablespace_ShmemSize());
 		size = add_size(size, PersistentDatabase_ShmemSize());
 		size = add_size(size, PersistentRelation_ShmemSize());
@@ -267,6 +269,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	if (Gp_role == GP_ROLE_DISPATCH)
 		InitAppendOnlyWriter();
 
+	PersistentFilespace_ShmemInit();
 	PersistentTablespace_ShmemInit();
 	PersistentDatabase_ShmemInit();
 	PersistentRelation_ShmemInit();

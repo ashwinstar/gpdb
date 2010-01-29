@@ -26,6 +26,7 @@
 #include "storage/freespace.h"
 #include "storage/ipc.h"
 #include "access/persistentfilesysobjname.h"
+#include "cdb/cdbpersistentfilespace.h"
 #include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbpersistentrelation.h"
@@ -63,10 +64,12 @@ typedef struct f_smgr
 	bool		(*smgr_init) (void);	/* may be NULL */
 	bool		(*smgr_shutdown) (void);		/* may be NULL */
 	bool		(*smgr_close) (SMgrRelation reln);
+	bool		(*smgr_createfilespacedir) (Oid filespaceOid, char *primaryFilespaceLocation, char *mirrorFilespaceLocation, bool isRedo);
 	bool		(*smgr_createtablespacedir) (TablespaceDirNode *tablespaceDirNode, bool isRedo);
-	bool		(*smgr_createdbdir) (DbDirNode *dbDirNode, bool isRedo);
+	bool		(*smgr_createdbdir) (DbDirNode *dbDirNode);
 	bool		(*smgr_create) (SMgrRelation reln, bool isRedo);
 	bool		(*smgr_unlink) (RelFileNode rnode, bool isRedo);
+	bool		(*smgr_rmfilespacedir) (Oid filespaceOid, char *primaryFilespaceLocation, char *mirrorFilespaceLocation, bool isRedo);
 	bool		(*smgr_rmtablespacedir) (Oid tablespaceOid, bool isRedo);
 	bool		(*smgr_rmdbdir) (DbDirNode *dbDirNode, bool isRedo);
 	bool		(*smgr_extend) (SMgrRelation reln, BlockNumber blocknum,
@@ -87,7 +90,7 @@ typedef struct f_smgr
 
 static const f_smgr smgrsw[] = {
 	/* magnetic disk */
-	{mdinit, NULL, mdclose, mdcreatetablespacedir, mdcreatedbdir, mdcreate, mdunlink, mdrmtablespacedir, mdrmdbdir, mdextend,
+	{mdinit, NULL, mdclose, mdcreatefilespacedir, mdcreatetablespacedir, mdcreatedbdir, mdcreate, mdunlink, mdrmfilespacedir, mdrmtablespacedir, mdrmdbdir, mdextend,
 		mdread, mdwrite, mdnblocks, mdtruncate, mdimmedsync,
 		NULL, NULL, mdsync
 	}
@@ -357,6 +360,69 @@ smgrclosenode(RelFileNode rnode)
 }
 
 /*
+ *	smgrcreatefilespacedir() -- Create a new tablespace directory.
+ *
+ */
+void
+smgrcreatefilespacedir(
+	Oid filespaceOid, 
+	int16 primaryDbId,
+	char *primaryFilespaceLocation, 
+	int16 mirrorDbId,
+	char *mirrorFilespaceLocation, 
+	bool isRedo)
+{
+	PendingDelete *pending; 
+	
+	if (!isRedo)
+	{
+		/* Add the relation to the list of stuff to delete at abort */
+		pending = (PendingDelete *)
+			MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
+		
+		PersistentFileSysObjName_SetFilespaceDir(
+									&pending->fsObjName,
+									filespaceOid);
+
+		pending->which = 0;  // We only have 1 today.
+		pending->isLocalBuf = false;
+		pending->atCommit = false;	/* delete if abort */
+		pending->sameTransCreateDrop = false;
+		pending->nestLevel = GetCurrentTransactionNestLevel();
+		pending->next = pendingDeletes;
+		pendingDeletes = pending;
+		pendingDeletesCount++;
+		pendingDeletesSorted = false;
+		
+		// UNDONE: For now, ~_MarkCreatePending will do the XLOG Insert and XLOG Flush
+		// UNDONE: of the PendingCreate 
+		// UNDONE: We'll improve performance later by moving the XLOG Insert sooner...
+		// UNDONE: and flushing later...
+		PersistentFilespace_MarkCreatePending(
+									filespaceOid,
+									primaryDbId,
+									primaryFilespaceLocation,
+									mirrorDbId,
+									mirrorFilespaceLocation,
+									&pending->persistentTid,
+									/* flushToXLog */ true);
+
+	}
+	
+	if (!(*(smgrsw[0].smgr_createfilespacedir)) (
+										filespaceOid, 
+										primaryFilespaceLocation, 
+										mirrorFilespaceLocation, 
+										isRedo))
+	{
+	    ereport(ERROR,
+			(errcode_for_file_access(),
+			 errmsg("could not create filespace directory %u: %m",
+					filespaceOid)));
+	}
+}
+
+/*
  *	smgrcreatetablespacedir() -- Create a new tablespace directory.
  *
  */
@@ -450,7 +516,7 @@ smgrcreatedbdir(DbDirNode *dbDirNode, bool isRedo)
 
 	}
 	
-	if (!(*(smgrsw[0].smgr_createdbdir)) (dbDirNode, isRedo))
+	if (!(*(smgrsw[0].smgr_createdbdir)) (dbDirNode))
 	{
 	    ereport(ERROR,
 			(errcode_for_file_access(),
@@ -458,6 +524,21 @@ smgrcreatedbdir(DbDirNode *dbDirNode, bool isRedo)
 					tablespace,
 					database)));
 	}
+}
+
+bool
+smgrcreatedbdirjustintime(DbDirNode *justInTimeDbDirNode)
+{
+	PersistentDatabase_MarkJustInTimeCreatePending(justInTimeDbDirNode);
+
+	if (!(*(smgrsw[0].smgr_createdbdir)) (justInTimeDbDirNode))
+	{
+		PersistentDatabase_AbandonJustInTimeCreatePending(justInTimeDbDirNode);
+		return false;
+	}
+
+	PersistentDatabase_JustInTimeCreated(justInTimeDbDirNode);
+	return true;
 }
 
 
@@ -539,22 +620,6 @@ smgrcreate(
 	bool isLocalBuf, 
 	bool isRedo)
 {
-#ifdef suppress
-	/*
-	 * We may be using the target table space for the first time in this
-	 * database, so create a per-database subdirectory if needed.
-	 *
-	 * XXX this is a fairly ugly violation of module layering, but this seems
-	 * to be the best place to put the check.  Maybe TablespaceCreateDbspace
-	 * should be here and not in commands/tablespace.c?  But that would imply
-	 * importing a lot of stuff that smgr.c oughtn't know, either.
-	 */
-	TablespaceCreateDbspace(reln->smgr_rnode.spcNode,
-							reln->smgr_rnode.dbNode,
-							isRedo);
-
-#endif
-
 	if (!(*(smgrsw[reln->smgr_which].smgr_create)) (
 												reln,
 												isRedo))
@@ -671,6 +736,57 @@ smgr_internal_unlink(RelFileNode rnode, int which, bool isLocalBuf, bool isRedo)
 }
 
 /*
+ *	smgrschedulermfilespacedir() -- Schedule removing a filespace directory at xact commit.
+ *
+ *		The filespace directory is marked to be removed from the store if we
+ *		successfully commit the current transaction.
+ */
+void
+smgrschedulermfilespacedir(Oid filespaceOid)
+{
+	PendingDelete *pending;
+
+	/* Add the database directory to the list of stuff to delete at commit */
+	pending = (PendingDelete *)
+		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
+	
+	PersistentFileSysObjName_SetFilespaceDir(
+									&pending->fsObjName,
+									filespaceOid);
+	
+	pending->which = 0;  // We only have 1 today.
+	pending->isLocalBuf = false;
+	pending->atCommit = true;	/* delete if commit */
+	pending->sameTransCreateDrop = false;
+	pending->nestLevel = GetCurrentTransactionNestLevel();
+	pending->next = pendingDeletes;
+	pendingDeletes = pending;
+	pendingDeletesCount++;
+	pendingDeletesSorted = false;
+}
+
+void
+smgrdormfilespacedir(Oid filespaceOid, char *primaryFilespaceLocation, char *mirrorFilespaceLocation, bool isRedo)
+{
+	/*
+	 * And remove the physical filespace directory.
+	 *
+	 * Note: we treat deletion failure as a WARNING, not an error, because
+	 * we've already decided to commit or abort the current xact.
+	 */
+	if (!(*(smgrsw[0].smgr_rmfilespacedir)) (
+									filespaceOid,
+									primaryFilespaceLocation,
+									mirrorFilespaceLocation,
+									isRedo))
+		ereport(WARNING,
+				(errcode_for_file_access(),
+				 errmsg("could not remove filespace directory %u: %m",
+						filespaceOid)));
+}
+
+
+/*
  *	smgrschedulermtablespacedir() -- Schedule removing a tablespace directory at xact commit.
  *
  *		The tablespace directory is marked to be removed from the store if we
@@ -733,11 +849,8 @@ smgrschedulermdbdir(DbDirNode *dropDbDirNode)
 	pendingDeletesSorted = false;
 }
 
-/*
- * Shared subroutine that actually does the rmdir of a database directory ...
- */
-static void
-smgr_internal_rmtablespacedir(Oid tablespaceOid, int which, bool isRedo)
+void
+smgrdormtablespacedir(Oid tablespaceOid, bool isRedo)
 {
 	/*
 	 * And remove the physical tablespace directory.
@@ -745,16 +858,11 @@ smgr_internal_rmtablespacedir(Oid tablespaceOid, int which, bool isRedo)
 	 * Note: we treat deletion failure as a WARNING, not an error, because
 	 * we've already decided to commit or abort the current xact.
 	 */
-	if (!(*(smgrsw[which].smgr_rmtablespacedir)) (tablespaceOid, isRedo))
+	if (!(*(smgrsw[0].smgr_rmtablespacedir)) (tablespaceOid, isRedo))
 		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("could not remove tablespace directory %u: %m",
 						tablespaceOid)));
-}
-void
-smgrdormtablespacedir(Oid tablespaceOid, bool isRedo)
-{
-	smgr_internal_rmtablespacedir(tablespaceOid, 0, isRedo);
 }
 
 /*

@@ -1033,6 +1033,8 @@ void PersistentDatabase_Dropped(
 				  dbDirNode->tablespace),
 			 PersistentFileSysObj_StateName(databaseDirEntry->state));
 
+	databaseDirEntry->state = PersistentFileSysState_Free;
+
 	GpPersistentDatabaseNode_SetDatumValues(
 								freeValues,
 								/* tablespaceOid */ 0,
@@ -1058,14 +1060,54 @@ void PersistentDatabase_Dropped(
 	LWLockRelease(PersistentObjLock);
 }
 
-void PersistentDatabase_JustInTimeCreate(
-	DbDirNode		*dbDirNode,
+bool PersistentDatabase_DirIsCreated(
+		DbDirNode		*dbDirNode)
+{
+	DatabaseEntry databaseEntry;
+	DatabaseDirEntry databaseDirEntry;
+	bool result;
 
-	ItemPointer		persistentTid,
-				/* TID of the gp_persistent_rel_files tuple for the rel file */
+	if (IsBootstrapProcessingMode())
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 GetDatabasePath(
+					  dbDirNode->database, 
+					  dbDirNode->tablespace));
 
-	bool			flushToXLog)
-				/* When true, the XLOG record for this change will be flushed to disk. */
+		return true;	// The initdb process will load the persistent table once we out of bootstrap mode.
+	}
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	
+	databaseEntry = PersistentDatabase_FindUnderLock(dbDirNode->database);
+	if (databaseEntry == NULL)
+		elog(ERROR, "Persistent database %u expected to exist", 
+			 dbDirNode->database);
+	
+	databaseDirEntry =
+			(DatabaseDirEntry)
+				    SharedOidSearch_Find(
+				    		databaseEntry->databaseDirSearchTable,
+				    		dbDirNode->database,
+				    		dbDirNode->tablespace);
+	result = (databaseDirEntry != NULL);
+	if (result &&
+		databaseDirEntry->state != PersistentFileSysState_Created)
+		elog(ERROR, "Persistent database entry %s expected to be in 'Created' (actual state '%s')", 
+			 GetDatabasePath(
+				  dbDirNode->database, 
+				  dbDirNode->tablespace),
+			 PersistentFileSysObj_StateName(databaseDirEntry->state));
+
+	LWLockRelease(PersistentObjLock);
+
+	return result;
+}
+		
+void PersistentDatabase_MarkJustInTimeCreatePending(
+	DbDirNode		*dbDirNode)
 
 {
 	DatabaseEntry databaseEntry;
@@ -1102,11 +1144,16 @@ void PersistentDatabase_JustInTimeCreate(
 				    		dbDirNode->database,
 				    		dbDirNode->tablespace);
 	if (databaseDirEntry != NULL)
+	{
+		/*
+		 * An existence check should have been done before calling this routine.
+		 */
 		elog(ERROR, "Persistent database entry '%s' already exists in state '%s'", 
 			 GetDatabasePath(
 				   dbDirNode->database, 
 				   dbDirNode->tablespace),
 		     PersistentFileSysObj_StateName(databaseDirEntry->state));
+	}
 
 	addResult =
 			SharedOidSearch_Add(
@@ -1125,18 +1172,134 @@ void PersistentDatabase_JustInTimeCreate(
 	else
 		Assert(addResult == SharedOidSearchAddResult_Ok);
 
-	databaseDirEntry->state = PersistentFileSysState_CreatePending;
+	databaseDirEntry->state = PersistentFileSysState_JustInTimeCreatePending;
 	databaseDirEntry->parentXid = InvalidTransactionId;
 
 	PersistentDatabase_AddTuple(
 							databaseDirEntry,
-							flushToXLog);
-
-	*persistentTid = databaseDirEntry->presistentTid;
+							/* flushToXLog */ true);
 
 	LWLockRelease(PersistentObjLock);
 
 }
+
+/*
+ * Indicate the non-transaction just-in-time database create was successful.
+ */
+void PersistentDatabase_JustInTimeCreated(
+	DbDirNode 		*dbDirNode)
+
+{
+	DatabaseEntry databaseEntry;
+	DatabaseDirEntry databaseDirEntry;
+
+	if (IsBootstrapProcessingMode())
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 GetDatabasePath(
+					  dbDirNode->database, 
+					  dbDirNode->tablespace));
+
+		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+	}
+
+	PersistentDatabase_InitScan();
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	PersistentDatabase_LookupExistingDbDir(
+								dbDirNode,
+								&databaseEntry,
+								&databaseDirEntry);
+
+	if (databaseDirEntry->state != PersistentFileSysState_JustInTimeCreatePending)
+		elog(ERROR, "Persistent database entry %s expected to be in 'Just-In-Time Create Pending' state (actual state '%s')", 
+			 GetDatabasePath(
+			 		dbDirNode->database, 
+			 		dbDirNode->tablespace),
+			 PersistentFileSysObj_StateName(databaseDirEntry->state));
+
+	databaseDirEntry->state = PersistentFileSysState_Created;
+
+	PersistentDatabase_UpdateTuple(
+								databaseDirEntry,
+								/* flushToXLog */ true);
+
+	LWLockRelease(PersistentObjLock);
+}
+
+/*
+ * Indicate the non-transaction just-in-time database create was NOT successful.
+ */
+void PersistentDatabase_AbandonJustInTimeCreatePending(
+	DbDirNode 		*dbDirNode)
+
+{
+	DatabaseEntry databaseEntry;
+	DatabaseDirEntry databaseDirEntry;
+
+	ItemPointerData previousFreeTid;
+
+	Datum freeValues[Natts_gp_persistent_database_node];
+
+	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+
+	if (IsBootstrapProcessingMode())
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 GetDatabasePath(
+					  dbDirNode->database, 
+					  dbDirNode->tablespace));
+
+		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+	}
+
+	PersistentDatabase_InitScan();
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	PersistentDatabase_LookupExistingDbDir(
+								dbDirNode,
+								&databaseEntry,
+								&databaseDirEntry);
+
+	if (databaseDirEntry->state != PersistentFileSysState_JustInTimeCreatePending)
+		elog(ERROR, "Persistent database entry %s expected to be in 'Just-In-Time Create Pending' state (actual state '%s')", 
+			 GetDatabasePath(
+			 		dbDirNode->database, 
+			 		dbDirNode->tablespace),
+			 PersistentFileSysObj_StateName(databaseDirEntry->state));
+
+	databaseDirEntry->state = PersistentFileSysState_Free;
+
+	GpPersistentDatabaseNode_SetDatumValues(
+								freeValues,
+								/* tablespaceOid */ 0,
+								/* databaseOid */ 0,
+								PersistentFileSysState_Free,
+								MirrorFileSysState_None,
+								InvalidTransactionId,
+								/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
+								&previousFreeTid);
+
+	PersistentFileSysObj_FreeTuple(
+							&persistentDatabaseData.fileSysObjData,
+							&persistentDatabaseSharedData->fileSysObjSharedData,
+							&databaseDirEntry->presistentTid,
+							freeValues,
+							/* flushToXLog */ false);
+
+	SharedOidSearch_Delete(
+				databaseEntry->databaseDirSearchTable,
+				&databaseDirEntry->header);
+
+	LWLockRelease(PersistentObjLock);
+}
+
 
 // -----------------------------------------------------------------------------
 // Shmem
