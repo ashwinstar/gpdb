@@ -266,6 +266,9 @@ class GpRecoverSegmentProgram:
         Returns the file for the tarfile that should be transferred and used
          for building the blank segment
 
+        todo: MIRRORING does this need to be built on each primary because pg_control must be copied from the primary
+              segment?  Or is it okay to start it up with a useless pg_control -- file replication code should
+              overwrite it.
         """
         masterDir = gpEnv.getMasterDataDir()
 
@@ -275,10 +278,10 @@ class GpRecoverSegmentProgram:
         schemaDir = tempDir + "/schema"
         unix.MakeDirectory("create temp schema directory for segment", schemaDir ).run(validateAfter=True)
 
-        # todo MIRRORING build hba.conf on master before we make the mirrors
+        # todo MIRRORING build proper hba.conf on master before we make the mirrors
         # note that we could transfer the final pg_hba.conf here and then
-        self.__copyFiles(masterDir, schemaDir, ["PG_VERSION", "postgresql.conf", "pg_hba.conf"])
-        self.__createEmptyDirectories( schemaDir, ["base", "pg_log"])
+        self.__createEmptyDirectories( schemaDir, ["base", "global", "pg_log"])
+        self.__copyFiles(masterDir, schemaDir, ["PG_VERSION", "postgresql.conf", "pg_hba.conf", "global/pg_control"])
 
         tarFile = tempDir + "/schema.tar"
 
@@ -330,7 +333,7 @@ class GpRecoverSegmentProgram:
                                             remoteHost=hostName))
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "unpacking basic segment directory")
 
-        # todo: update hba conf on every segment as well
+        # todo: update hba conf on every existing segment as well
 
 
     def __cleanUpSegmentDirectories(self, directives):

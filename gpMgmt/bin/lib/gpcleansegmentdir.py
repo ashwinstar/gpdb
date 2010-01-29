@@ -12,6 +12,7 @@ from gppylib.mainUtils import *
 # todo MIRRORING: make a main that can be used for remote-level scripts (that will return pickled output?)
 
 from gppylib.gplog import *
+from gppylib.commands import unix
 import pickle, base64
 from gppylib.gpparseopts import OptChecker,OptParser,OptParser
 
@@ -27,13 +28,20 @@ class GpCleanSegmentDirectoryProgram:
             raise ProgramArgumentValidationException("-a argument is missing")
         
         segments = pickle.loads(base64.urlsafe_b64decode(self.__options.pickledArguments))
-        # todo: verify that the segment does not have a running postmaster
+        # todo: verify that the segment does not have a running postmaster???
 
         results = []
         for segment in segments:
-            dir = segment.getSegmentDataDirectory
+            dir = segment.getSegmentDataDirectory()
             logger.info("Cleaning %s" % dir)
-            # todo: remove all children of the directory
+
+            #
+            # todo MIRRORING: should we just remove dir + "/*"?  Can we somehow validate that
+            #                 this is a correct mirroring directory???  Do some sanity check?
+            #
+            subDirs = ["PG_VERSION", "base", "global", "gpstart*", "pg_*", "postgres*", "postmaster*"]
+            for subDir in subDirs:
+                unix.RemoveFiles('clean segment', dir + "/" + subDir).run( validateAfter=True )
 
     def cleanup(self):
         pass
