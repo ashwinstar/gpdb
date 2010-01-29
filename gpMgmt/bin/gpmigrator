@@ -35,6 +35,7 @@ import shutil    # for copying
 try:
     from pygresql import pg              # Database interaction
     from gppylib.gplog import *          # Greenplum logging facility
+    from gppylib.commands import base    # Greenplum layer for worker pools
     from gppylib.commands import unix    # Greenplum layer for unix interaction
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
@@ -244,6 +245,36 @@ class GPVersion:
                 % (upstr, str(self), upstr))
 
 
+class GpUpgradeCmd(base.Command):
+    def __init__(self, name, oldHome, newHome, oldVersion, newVersion,
+                 command, pid, dataDirectories, option1,
+                 option2, method, isUpgrade, isRevert,
+                 ctxt=base.LOCAL, remoteHost=None):
+
+        cmd = [
+            EXECNAME,
+            oldHome, 
+            newHome,
+            '--internal-oldversion=' + urllib.quote(str(oldVersion)),
+            '--internal-newversion=' + urllib.quote(str(newVersion)),
+            '--internal-command=' + str(command),
+            '--internal-pid=' + str(pid),
+            '--internal-dirs=' + urllib.quote(str(dataDirectories)),
+            '--internal-option=' + urllib.quote(str(option1)),
+            '--internal-option2=' + urllib.quote(str(option2)),
+            ]
+        if method:
+            cmd.append('--internal-method='+ urllib.quote(str(method)))
+        if isUpgrade:
+            cmd.append('--internal-isupgrade')
+        if isRevert:
+            cmd.append('-R')
+
+        cmdStr = ' '.join(cmd)
+
+        base.Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+
+
 #============================================================
 class GPUpgrade:
     '''
@@ -286,7 +317,7 @@ class GPUpgrade:
         self.option    = None     # Argument passed to cmd
         self.option2   = None     # Argument passed to cmd
         
-        # Enviornment and system info
+        # Environment and system info
         self.masterdir = None     # Master Data Directory
         self.masterport = 5432    # Master Port
         self.datadirs  = None     # Set of all data and mirror directories
@@ -301,6 +332,7 @@ class GPUpgrade:
         self.logdir    = None
         self.logfile   = None
         self.method    = None     # transform or dumprestore ?
+        self.pool      = None     # worker pool
 
         # Alternate ports for upgrade database during --prepare
         self.new_master_port      = None
@@ -343,8 +375,11 @@ class GPUpgrade:
         self.user      = os.environ.get('USER') or os.environ.get('LOGNAME')
         self.host      = self.RunCmd('hostname')
         self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
-
+        
         self.ParseInput()
+
+        # Setup worker pool
+        self.pool = base.WorkerPool(numWorkers=PARALLELISM);
 
         # Extract path from input master directory
         if self.cmd == 'MASTER':
@@ -689,60 +724,65 @@ class GPUpgrade:
         Calls every host to execute the given command with the given option 
         value
         '''
-                    
+  
         # Check for things that should never happen
         if self.cmd != 'MASTER':
             raise UpgradeError("Recursive communication error")
         if not self.datadirs:
             raise UpgradeError("Failure initializing data directories")
-
-        # Construct a string of '-h hostname' for all hosts
-        exec_cmd = 'gpssh'
-        for h in self.hosts: 
-            exec_cmd += ' -h %s' % h
+        if not self.pool:
+            raise UpgradeError("Failure initializing worker pool")
 
         if self.upgrade or self.revert:
-            env = self.newenv
-            exec_cmd += ' %s/bin/lib/gpenv.sh %s ' % (self.newhome, EXECNAME)
+            gphome = self.newhome
         else:
-            env = self.oldenv
-            exec_cmd += ' %s/bin/lib/gpenv.sh %s ' % (self.oldhome, EXECNAME)
-
-        exec_cmd += self.oldhome + ' ' + self.newhome
-        exec_cmd += ' --internal-oldversion=' + urllib.quote(str(self.oldversion))
-        exec_cmd += ' --internal-newversion=' + urllib.quote(str(self.newversion))
-        exec_cmd += ' --internal-command=' + str(cmd)
-        exec_cmd += ' --internal-pid=' + str(self.pid)
-        exec_cmd += ' --internal-dirs=%s' % urllib.quote(str(self.datadirs))
-        exec_cmd += ' --internal-option=%s' % urllib.quote(str(option))
-        exec_cmd += ' --internal-option2=%s' % urllib.quote(str(option2))
-        if self.method:
-            exec_cmd += ' --internal-method=%s' % urllib.quote(str(self.method))
-        if self.upgrade:
-            exec_cmd += ' --internal-isupgrade'
-        if self.revert:
-            exec_cmd += ' -R'
-
-        try:
-            result = self.RunCmd(exec_cmd, env=env)
-            #sys.stdout.write(result)
-            #sys.stdout.flush()
-        except CmdError, e:
-            logger.debug(e.cmd)
-            sys.stdout.write(e.stdout)
-            sys.stdout.flush()
-            sys.stderr.write(e.stderr)
-            raise UpgradeError('Fatal Segment Error')
+            gphome = self.oldhome
         
-        # gpssh is very bad at returning useful status codes so we also need
-        # to see if there was any mention of FATAL within the message
-        logger.debug('GPSSH: ' + str(result))
+        # Construct the commands to pass to the worker pool
+        for h in self.hosts:
+            c = GpUpgradeCmd("gpmigrator remote call",
+                             oldHome=self.oldhome,
+                             newHome=self.newhome,
+                             oldVersion=self.oldversion,
+                             newVersion=self.newversion,
+                             command=cmd,
+                             pid=self.pid,
+                             dataDirectories=self.datadirs,
+                             option1=option,
+                             option2=option2,
+                             method=self.method,
+                             isUpgrade=self.upgrade,
+                             isRevert=self.revert,
+                             ctxt=base.REMOTE,
+                             remoteHost=h)
+            self.pool.addCommand(c)
 
-        if (re.search('gpmigrator.*\[FATAL\]', result) or
-            re.search('gpmigrator.*\[CRITICAL\]', result)):
-            logger.fatal(str(result))
-            raise UpgradeError('Fatal Segment Error')
-        return result
+        # Wait for the segments to finish
+        try:
+            self.pool.join()
+        except:
+            self.pool.haltWork()
+            self.pool.joinWorkers()
+            
+        failure = False
+        results = []
+        for cmd in self.pool.getCompletedItems():
+            r = cmd.get_results()
+
+            # This should go to the logfile too...
+            #   - currently 
+            sys.stderr.write(r.stderr)
+            results.append(r.stdout)
+            
+            if not cmd.was_successful():
+                failure=True
+
+        if failure:
+            raise UpgradeError("Fatal Segment Error")
+
+        # Warning this output contains everything written to stdout,
+        # which unfortunately includes some of the logging information
+        return "\n".join(results)
 
     #------------------------------------------------------------
     def CheckDirectories(self):
@@ -1117,7 +1157,6 @@ class GPUpgrade:
         if not self.dbup:
             return
         [env, utility] = self.dbup
-        self.dbup = None
 
         dir = env['MASTER_DATA_DIRECTORY']
         if not os.path.exists('%s/postmaster.pid' % dir):
@@ -1134,8 +1173,36 @@ class GPUpgrade:
                               'pg_hba.conf'+LOCKEXT)
 
         try:
-            if utility:  cmd = 'gpstop -am -s'
-            else:        cmd = 'gpstop -a -s'
+
+            # Note on arguments to gpstop:
+            #   This code has gone back and forth on -s vs -f for shutdown:
+            #
+            #   -f aborts active connections.  This is a good thing.  If 
+            #      a user or script snuck in a connection before we were able
+            #      to establish the lockdown then we want to abort that 
+            #      connection otherwise it will cause the upgrade to fail and 
+            #      that is bad.
+            #
+            #      Prior versions would sometimes issue a kill for fast 
+            #      shutdown, this is a problem since we need the database 
+            #      shutdown cleanly with no pending xlog transactions.
+            #      Because of that we switched to -s.
+            # 
+            #   -s causes problems because it is a stop that will fail if a 
+            #      session is connected and we want to abort active sessions.
+            #      Because of that we switched back to -f.
+            #
+            #   The belief is currently that the current version of gpstop
+            #   should be good with passing -f.  To help safeguard this belief
+            #   there is a check when we set the catalog version to ensure 
+            #   that the database shutdown cleanly.
+            #   
+            # If this needs to be changed again please read the above,
+            # consider what happens if you try to upgrade with an active 
+            # connection open to the database, and procede cautiously.
+
+            if utility:  cmd = 'gpstop -a -f -m'
+            else:        cmd = 'gpstop -a -f'
 
             cmd += ' -l %s' % self.logdir
 
@@ -1156,6 +1223,7 @@ class GPUpgrade:
             finally:
                 if os.path.exists(locked):
                     del env['PGUSER']
+            self.dbup = None
 
             # Ignore interrupt requests until shutdown is done
             error = None
@@ -1213,6 +1281,27 @@ class GPUpgrade:
         if not self.execute:
             raise UpgradeError('gpmigrator [-R] is not compatible with --prepare')
 
+        # We use the catalog versions we cached during versionCheck to 
+        # determine if the MASTER_DATA_DIRECTORY is actually an old 
+        # master data directory, or a partially upgraded one.
+        #
+        # Note: it would be better to adjust gpstop so that it knows how
+        # to stop old versions and always shutdown using a new environment.
+        #
+        # Note: It would also be good to avoid starting and stopping more than
+        # necessary here.
+        if env:
+            if self.datacat == self.newcat:
+                self.newenv['MASTER_DATA_DIRECTORY'] = \
+                    self.oldenv['MASTER_DATA_DIRECTORY']
+                env = self.newenv
+                
+            self.dbup = [env, False]
+        else:
+            self.dbup = None
+
+        # Now that we've determined what, if anything, is running, we must
+        # stop it.
         try:
             if u.faultinjection == -1:
                 raise UpgradeError("faultinjection=%d" % u.faultinjection)
@@ -1427,10 +1516,15 @@ class GPUpgrade:
         newcat = self.RunCmd('postgres --catalog-version', env=self.newenv)
         logger.info("Target %s" % newcat)
 
+        # May need this info later
+        self.oldcat = oldcat
+        self.newcat = newcat
+
         control = self.RunCmd('pg_controldata ' + self.masterdir, env=self.oldenv)
         for line in control.split('\n'):
             m = catalog_re.match(line)
             if m:
+                self.datacat = line
                 logger.info("Data   %s " % line)
                 if ((not self.revert and line != oldcat) or
                     (self.revert and line != oldcat and line != newcat)):
@@ -2056,6 +2150,17 @@ This issue must be resolved before upgrade can complete.
             self.RunCmd('gpstop -u -a -l %s' % self.logdir, env=env)
             logger.info('Database Locked')
 
+            # Check if there are any other sessions connected.  Since we
+            # have modified the pg_hba.conf and run gpstop -u no new sessions
+            # will be allowed, but any that were already connected still
+            # need to be booted.
+            active = self.Select("SELECT count(*) FROM pg_stat_activity")
+            if active[0] > 1:
+                [env, utility] = self.dbup
+                logger.info('Active sessions detected, restarting server')
+                self.Shutdown()
+                self.Startup(env, utility)
+
 
     def CheckClusterReady(self, databases, port):
         '''
@@ -2121,16 +2226,22 @@ This issue must be resolved before upgrade can complete.
                         self.RunCmd('mv -f %s %s' % (ident+LOCKEXT, ident))
 
 
+        # if we don't think the database is up, double check!
+        if not self.dbup:
+            env = None
+            try:
+                env = self.CheckUp()
+            except UpgradeError:
+                pass
+            if env:
+                self.dbup = [env, False]
+
         # Resource the conf files if the database is up.
         if self.dbup:
-            userset = False
-            if env == self.newenv:
-                userset = True
+            try:
                 env['PGUSER'] = MIGRATIONUSER
-
-            self.RunCmd('gpstop -u -l %s' % self.logdir, env=env)
-
-            if userset:
+                self.RunCmd('gpstop -u -l %s' % self.logdir, env=env)
+            finally:
                 del env['PGUSER']
 
         # We would love to actually delete the user, but it's not actually
@@ -3134,6 +3245,13 @@ This issue must be resolved before upgrade can complete.
             if ver != frmcatverno:
                  raise Exception("Expected version %s but found %s" % (frmcatverno, ver))
         
+            
+            # It is an error if the current state is not "shut down", that
+            # means that there may be pending xlog records which will cause 
+            # problems for the upgrade.
+            if state != "shut down":
+                raise UpgradeError("Cannot upgrade: Database did not shutdown cleanly")
+
             # gpmodcatversion is only in the 3.3 env so we must use that
             if self.upgrade:
                 e = self.newenv
@@ -3191,8 +3309,8 @@ This issue must be resolved before upgrade can complete.
             out = self.CallSlaves('GETHIGHESTOID', self.config['SEG_PREFIX'])
             for l in out.splitlines():
                 a = l.split()
-                if a[1] == "highestoid":
-                    oids.append(int(a[2]))
+                if a[0] == "highestoid":
+                    oids.append(int(a[1]))
         else:
             datadirs = self.datadirs
             seg_prefix = self.option
@@ -3215,7 +3333,7 @@ This issue must be resolved before upgrade can complete.
                 self.highestoid = o
 
         if self.cmd != 'MASTER':
-            print self.highestoid
+            print "highestoid " + str(self.highestoid)
 
         logger.debug("highest oid found: %d" % self.highestoid)
 
@@ -3242,11 +3360,14 @@ if __name__ == '__main__':
             logger.info('gpmigrator version ' + __version__)
             logger.info('Python version %d.%d.%d %s %d' % sys.version_info)
     
+            # Check that we can do the upgrade between the versions
+            u.CheckVersions()
+
             # User requested a revert to previous version
             if u.revert:
                 u.Revert()
                 sys.exit(0)
-    
+
             # Read the statefile if we are trying to restart (--execute)
             current_state = {}
             statefile = os.path.join(u.workdir, 'state')
@@ -3255,14 +3376,11 @@ if __name__ == '__main__':
                 for line in u.state:
                     current_state[line.strip()] = True
                 u.state = open(statefile, 'a')
-    
+
             # Be careful if the last upgrade died in an unstable state
             if 'BACKUP_VALID' in current_state and u.prepare:
                 u.Revert()
-    
-            # Check that we can do the upgrade between the versions
-            u.CheckVersions()
-    
+        
             # if we aren't trying to restart an upgrade or if the previous
             # run was just from --prepare then ignore the contents of the
             # statefile.
