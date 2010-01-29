@@ -28,7 +28,7 @@ EXAMPLE gpconfig -d /data/master/gp-1 --show max_connections
 
 try:
     
-    import os, sys
+    import os, sys, re
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gparray import GpArray
@@ -140,12 +140,22 @@ class Guc:
         self.min_val = row[6]
         self.max_val = row[7]
 
-    def validate(self, newval):
+    def validate(self, newval, newmasterval):
         # todo add code here...
         # be careful 128KB in postgresql.conf is translated into 32KB units
 
         if self.name == "port" or self.name == "listen_addresses":
             return "This guc can not be set with this tool"
+
+        if self.name == "max_connections":
+            try:
+                s = int(newval)
+                m = int(newmasterval)
+                if s <= m:
+                    print "%d %d" % (s , m )
+                    return "the value of max_connections must be greater on the segments than on the master"
+            except:
+                return "invalid value for max_connections"
 
         return "ok"
 
@@ -187,7 +197,7 @@ def doShow(gucname):
         mastervalue = None
         value = None
         valid = True
-
+    
         for row in rows:
             guc = JetPackGuc(row)
 
@@ -221,7 +231,15 @@ def doShow(gucname):
         conn.close()
 
     except DatabaseError, ex:
-        logger.error('Failed to retrieve GUC information, make sure that JetPack is installed and that the database is up')
+
+        if re.search("unrecognized configuration parameter", ex.__str__()):
+            logger.error('Failed to retrieve GUC information, guc does not exist: ' + gucname)
+        elif re.search("jetpack.*does not exist", ex.__str__()):
+            logger.error('Failed to retrieve GUC information, JetPack is not installed')
+        elif re.search("could not connect to server", ex.__str__()):
+            logger.error('Failed to retrieve GUC information, the database is not accesible')
+        else:
+            logger.error('Failed to retrieve GUC information: ' + ex.__str__())
 
 
 
@@ -262,7 +280,7 @@ try:
         conn.close()
     
         if options.value:
-            msg = guc.validate(options.value)
+            msg = guc.validate(options.value, options.mastervalue)
             if msg != "ok":
                 logger.fatal("new GUC value failed validation: " + msg )
                 sys.exit(1)
