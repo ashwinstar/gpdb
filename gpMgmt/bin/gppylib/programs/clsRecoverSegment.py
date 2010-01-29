@@ -7,19 +7,28 @@
 # todo MIRRORING STOP the old mirror in case they are running? (when failover to a new location)
 # todo MIRRORING checks for being able to build target directory
 # todo MIRRORING what is: multi_home = gpmlib.chk_multi_home(hosts) (from other gprecoverseg)
-# todo MIRRORING do I need gp_fault_action
+# todo MIRRORING do I need gp_fault_action?
 # todo MIRRORING parallel degree sanity checks + defaults from gpstart
 # todo MIRRORING is -F (force shutdown) required?
 # todo MIRRORING set it up to show gprecoverseg_help
 # todo MIRRORING implement pause/unpause of fault prober properly
-# todo MIRRORING mark for full resync (not just rsync) in some cases?
+# todo MIRRORING mark for full resync on the server side if needed
+# todo MIRRORING rename ConfigExpansionSeg?
+# todo MIRRORING update hba.conf on all originals if we changed any hosts: (call update_original_segments from gpexpand)
+# todo MIRRORING is it okay to leave the temporary directory sitting around (as gpexpand does?)
+# todo MIRRORING escaping of directory names in unix.LocalCopy
+# todo MIRRORING need to compress arguments sent to segments?  I think command lines can be pretty long, but should test it
+#
+# todo MIRRORING we should copy postgresql.conf from some other statement rather than the master (see what gpexpand does) since settings can be different on segments
+# todo MIRRORING: make sure created directories have the right permissions?
+#
+# todo code reorg and consolidation with gpexpand?
 #
 # note (MIRRORING): I removed some options from old gprecoverseg, including:
 #        --version
-#        todo: fill out full list
+#        todo MIRRORING fill out full list of removed options
 #
-# todo MIRRORING: make the script do stuff on remote host (as is done with gpexpand).
-# todo MIRRORING: general way to send lots of commands to segments?
+# todo MIRRORING: more general way to send lots of commands to segments? (pass a list of segments, list of args, and set of class names to run on client?)
 #
 # THIS IMPORT SHOULD COME FIRST
 #
@@ -45,6 +54,7 @@ from gppylib import pgconf
 from gppylib.operations.startSegments import *
 
 import gppylib.test.testUtils
+import gppylib.commands.gp
 
 logger = gplog.get_default_logger()
 
@@ -156,7 +166,7 @@ class GpMasterEnvironment:
     def getLcMonetary(self): return self.__lcMonetary
     def getLcNumeric(self): return self.__lcNumeric
     def getLocaleArray(self): return [self.__lcCollate, self.__lcMonetary, self.__lcNumeric]
-    def getMasterDataDir(self): return self.__gpHome
+    def getMasterDataDir(self): return self.__masterDataDir
     def getMasterMaxConnections(self) : return self.__masterMaxConnections
     def getMasterPort(self) : return self.__masterPort
 
@@ -169,27 +179,20 @@ class GpCleanupSegmentDirectoryDirective:
         return self.__segment
 
 class GpCopySegmentDirectoryDirective:
-    def __init__(self, source, dest, includeSchema ):
+    def __init__(self, source, dest ):
         """
-        includeSchema should only be True if copying offline
         """
         checkNotNone("source", source)
         checkNotNone("dest", dest)
-        checkNotNone("includeSchema", includeSchema)
 
         self.__source = source
         self.__dest = dest
-        self.__includeSchema = includeSchema
 
-    def getSource(self):
+    def getSrcSegment(self):
         return self.__source
 
-    def getDest(self):
+    def getDestSegment(self):
         return self.__dest
-
-    def getIncludeSchema(self):
-        return self.__includeSchema
-
 
 #-------------------------------------------------------------------------
 class GpRecoverSegmentProgram:
@@ -204,23 +207,23 @@ class GpRecoverSegmentProgram:
         self.__options = options
         self.__pool = None
 
-    def __createStartSegmentsOp(self):
+    def __createStartSegmentsOp(self, gpEnv):
         return StartSegmentsOperation(self.__pool, self.__options.quiet,
                 gpEnv.getLocaleArray(), gpEnv.getGpVersion(),
                 gpEnv.getGpHome(), gpEnv.getMasterDataDir()
                 )
 
     def __startAll(self, gpEnv, gpArray, segments):
-        segmentStartResult = self.__createStartSegmentsOp.startSegments(gpArray, segments, START_AS_PRIMARY_OR_MIRROR)
+        segmentStartResult = self.__createStartSegmentsOp(gpEnv).startSegments(gpArray, segments, START_AS_PRIMARY_OR_MIRROR)
 
         for i in range(len(segmentStartResult.getFailedSegments())):
             failedSeg = segmentStartResult.getFailedSegments()[i]
             failureReason = segmentStartResult.getFailureReasons()[i]
-            logger.warn("Failed to start segment.  The fault prober will shortly mark it as down again. Segment: %s: REASON: %s" % (failedSeg, failureReason))
+            logger.warn("Failed to start segment.  The fault prober will shortly mark it as down. Segment: %s: REASON: %s" % (failedSeg, failureReason))
         pass
 
-    def __convertAllPrimaries(self, segments):
-        segmentStartResult = self.__createStartSegmentsOp.transitionSegments(gpArray, segments, MIRROR_MODE_PRIMARY)
+    def __convertAllPrimaries(self, gpEnv, gpArray, segments):
+        segmentStartResult = self.__createStartSegmentsOp(gpEnv).transitionSegments(gpArray, segments, MIRROR_MODE_PRIMARY)
         for i in range(len(segmentStartResult.getFailedSegments())):
             failedSeg = segmentStartResult.getFailedSegments()[i]
             failureReason = segmentStartResult.getFailureReasons()[i]
@@ -239,21 +242,52 @@ class GpRecoverSegmentProgram:
 
                 file.write('\n')
 
-    def __waitAndCheckWorkerPoolForErrorsAndClear(self, dispatchCount, actionVerb):
-
-        self.__pool.wait_and_printdots(dispatchCount, self.__options.quiet)
-
-        cmds=self.pool.getCompletedItems()
+    def __runWaitAndCheckWorkerPoolForErrorsAndClear(self, cmds, actionVerb):
         for cmd in cmds:
-            if cmd.get_results().rc == 0:
-                cmdout = cmd.get_results().stdout
-                lines=cmdout.split('\n')
-            else:
-                raise Exception("error in %s" % actionVerb)
+            self.__pool.addCommand(cmd)
 
-        self.pool.empty_completed_items()
+        self.__pool.wait_and_printdots(len(cmds), self.__options.quiet)
+        self.__pool.check_results()
+        self.__pool.empty_completed_items()
 
-    def copySegmentDirectories(self, directives):
+    def __copyFiles(self, srcDir, destDir, fileNames):
+        for name in fileNames:
+            cmd = gp.LocalCopy("copy file for segment", srcDir + "/" + name, destDir + "/" + name)
+            cmd.run(validateAfter=True)
+
+    def __createEmptyDirectories( self, dir, newDirectoryNames ):
+        for name in newDirectoryNames:
+            cmd = unix.MakeDirectory("create blank directory for segment", dir + "/" + name)
+            cmd.run(validateAfter=True)
+
+    def __buildTarFileForTransfer(self, gpEnv):
+        """
+
+        Returns the file for the tarfile that should be transferred and used
+         for building the blank segment
+
+        """
+        masterDir = gpEnv.getMasterDataDir()
+
+        tempDir = gp.createTempDirectoryName(gpEnv.getMasterDataDir(), "gpbuildingmirrorsegment")
+        unix.MakeDirectory("create temp directory for segment", tempDir ).run(validateAfter=True)
+
+        schemaDir = tempDir + "/schema"
+        unix.MakeDirectory("create temp schema directory for segment", schemaDir ).run(validateAfter=True)
+
+        # todo MIRRORING build hba.conf on master before we make the mirrors
+        # note that we could transfer the final pg_hba.conf here and then
+        self.__copyFiles(masterDir, schemaDir, ["PG_VERSION", "postgresql.conf", "pg_hba.conf"])
+        self.__createEmptyDirectories( schemaDir, ["base", "pg_log"])
+
+        tarFile = tempDir + "/schema.tar"
+
+        cmd = gp.CreateTar('gpbuildingmirrorsegment tar segment template', schemaDir, tarFile)
+        cmd.run(validateAfter=True)
+
+        return (tempDir, tarFile)
+
+    def __copySegmentDirectories(self, gpEnv, directives):
         """
         directives should be composed of GpCopySegmentDirectoryDirective values
         """
@@ -263,66 +297,79 @@ class GpRecoverSegmentProgram:
         srcSegments = [d.getSrcSegment() for d in directives]
         srcSegmentByHost = GpArray.getSegmentsByHostName(srcSegments)
 
-        dispatchCount = 0
+        (tempDir, blankTarFile) = self.__buildTarFileForTransfer(gpEnv)
+
+        cmds = []
         for hostName, segments in srcSegmentByHost.iteritems():
             #
-            # todo MIRRORING call a remote script that will tar up the segment directory and transfer to the
-            #       target host (see gpexpand code)
-            #  (segcopy.py).
-            # NOTE: it's possible that we can just copy from the master itself
+            # NOTE: copy set of files from the master itself to each target segment
             #
-            cmd = dispatchCount
-            dispatchCount += 1
-            self.__pool.addCommand(cmd)
+            cmds.append( gp.RemoteCopy("copy segment tar", blankTarFile, hostName, '.') )
 
-        self.__waitAndCheckWorkerPoolForErrorsAndClear(dispatchCount, "building and transferring basic segment directory")
+        self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "building and transferring basic segment directory")
 
         destSegments = [d.getDestSegment() for d in directives]
         destSegmentByHost = GpArray.getSegmentsByHostName(srcSegments)
-        dispatchCount = 0
+        newSegmentInfo = gp.buildExpansionSegmentInfo(destSegments)
+        cmds = []
         for hostName, segments in destSegmentByHost.iteritems():
+
+            segmentInfo = newSegmentInfo[hostName]
+            checkNotNone("segmentInfo for %s" % hostName, segmentInfo)
+
             #
-            # todo MIRRORING call a remote script that will untar the transferred tar (see gpconfexpseg) and update ports
+            # todo MIRRORING: set batchSize according to argument?
             #
-            cmd = dispatchCount
-            dispatchCount += 1
-            self.__pool.addCommand(cmd)
-        self.__waitAndCheckWorkerPoolForErrorsAndClear(dispatchCount, "unpacking basic segment directory")
+            cmds.append(gp.ConfigExpansionSeg('gpexpand configure new segments',
+                                            segmentInfo,
+                                            tarFile=blankTarFile,
+                                            newSegments=True,
+                                            verbose=gplog.logging_is_verbose(),
+                                            batchSize=16,
+                                            ctxt=gp.REMOTE, 
+                                            remoteHost=hostName))
+        self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "unpacking basic segment directory")
+
+        # todo: update hba conf on every segment as well
 
 
-    def cleanupSegmentDirectories(self, directives):
+    def __cleanUpSegmentDirectories(self, directives):
         if len(directives) == 0:
             return
 
         segments = [d.getSegment() for d in directives]
-        segmentByHost = GpArray.getSegmentsByHostName(srcSegments)
+        segmentByHost = GpArray.getSegmentsByHostName(segments)
 
-        dispatchCount = 0
+        cmds = []
         for hostName, segments in segmentByHost.iteritems():
-            #
-            # todo MIRRORING call a remote script that will clean up the segment directories
-            #
-            cmd = dispatchCount
-            dispatchCount += 1
-            self.__pool.addCommand(cmd)
+            cmds.append( gp.GpCleanSegmentDirectories("clean segment directories on %s" % hostName, \
+                    segments, gp.REMOTE, hostName))
 
-        self.__waitAndCheckWorkerPoolForErrorsAndClear(dispatchCount, "cleaning existing directories")
+        self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "cleaning existing directories")
     
-    def recover(self, gpArray, actions):
+    def recover(self, gpEnv, gpArray, actions):
         assert self.__faultProber.isFaultProberPaused()
         testOutput("recovering %s segment(s)" % len(actions.getSegmentsToRecover()))
 
         logger.info("%s segment(s) to recover" % len(actions.getSegmentsToRecover()))
 
         # make sure the target directories are up-to-date
+        #  by cleaning them, if needed, and then copying a basic directory there
+        #  the postgresql.conf in that basic directory will need updating
         cleanupDirectives = []
         copyDirectives = []
-        for toRecover in actions.getSegmentsToRecover():
-            if toRecover.isFullSynchronization() is not None:
-                cleanupDirectives.append(GpCleanupSegmentDirectoryDirective(toRecover.getFailedSegment()))
-                copyDirectives.append(GpCopySegmentDirectoryDirective(toRecover.getLiveSegment(), toRecover.getFailoverSegment(), False))
-        self.cleanupSegmentDirectories(cleanupDirectives)
-        self.copySegmentDirectories(copyDirectives)
+        for toRec in actions.getSegmentsToRecover():
+            if toRec.isFullSynchronization():
+                cleanupDirectives.append(GpCleanupSegmentDirectoryDirective(toRec.getFailedSegment()))
+
+                if toRec.getFailoverSegment() is not None:
+                    targetSegment = toRec.getFailoverSegment()
+                else: targetSegment = toRec.getFailedSegment()
+
+                d = GpCopySegmentDirectoryDirective(toRec.getLiveSegment(), targetSegment)
+                copyDirectives.append(d)
+        self.__cleanUpSegmentDirectories(cleanupDirectives)
+        self.__copySegmentDirectories(gpEnv, copyDirectives)
 
         # update and save metadata
         for toRecover in actions.getSegmentsToRecover():
@@ -359,7 +406,7 @@ class GpRecoverSegmentProgram:
             primariesToConvert.append(toRecover.getLiveSegment())
 
         self.__startAll(gpEnv, gpArray, mirrorsToStart)
-        self.__convertAllPrimaries(primariesToConvert)
+        self.__convertAllPrimaries(gpEnv, gpArray, primariesToConvert)
 
     def getRecoveryActionsFromConfigFile(self, gpArray):
         """
@@ -394,7 +441,8 @@ class GpRecoverSegmentProgram:
 
         segs = []
         for i in range(len(failedSegments)):
-            segs.append( GpSegmentToRecover(failedSegments[i], peersForFailedSegments[i], None))
+            segs.append( GpSegmentToRecover(failedSegments[i], peersForFailedSegments[i], None, \
+                                self.__options.forceFullResynchronization))
 
         # todo: use newRecoverHost or spareDataDirectory here to update failedSegments
         #       and pick new ports, etc.
@@ -412,6 +460,7 @@ class GpRecoverSegmentProgram:
             
     def run(self):
 
+        self.__pool = base.WorkerPool(numWorkers=16) # todo MIRRORING configure number of workers
         gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory)
 
         # verify "what to recovery" options: note that specifying NONE is okay as well
@@ -452,7 +501,7 @@ class GpRecoverSegmentProgram:
         if self.__options.outputSampleConfigFile is not None:
             self.outputToFile(actions, self.__options.outputSampleConfigFile)
         else:
-            self.recover(gpArray, actions)
+            self.recover(gpEnv, gpArray, actions)
 
         self.__faultProber.unpauseFaultProber()
         return 0 # success -- exit code 0!
@@ -481,43 +530,51 @@ class GpRecoverSegmentProgram:
 
         addTo = OptionGroup(parser, "Connection Options")
         parser.add_option_group(addTo)
-        addTo.add_option('-d', '--master_data_directory', dest="masterDataDirectory",
-                         type='string', default=None, metavar="<master data directory>",
-                       help="Optional. The master host data directory. If not specified, the value set"\
-                            "for $MASTER_DATA_DIRECTORY will be used.")
+        addTo.add_option('-d', '--master_data_directory', type='string',
+                            dest="masterDataDirectory",
+                            metavar="<master data directory>",
+                            help="Optional. The master host data directory. If not specified, the value set"\
+                                "for $MASTER_DATA_DIRECTORY will be used.")
 
         addTo = OptionGroup(parser, "Recovery Source Options")
         parser.add_option_group(addTo)
-        addTo.add_option("-i", None, dest="recoveryConfigFile", type="string",
-                         metavar="<configFile>",
-                      help="Recovery configuration file")
+        addTo.add_option("-i", None, type="string",
+                            dest="recoveryConfigFile", 
+                            metavar="<configFile>",
+                            help="Recovery configuration file")
         addTo.add_option("-o", None, dest="outputSampleConfigFile",
-                         metavar="<configFile>", type="string",
-                      help="Sample configuration file name to output")
-        addTo.add_option("-S", None, dest="forceRecoverySegmentDbId",
-                         metavar="<dbid>", type="int",
-                     help="Primary segment dbid to force recovery")
-        addTo.add_option("-z", None, dest="forceRecoverySegmentDataDirAndHost",
-                         metavar="<dataDirAndHost>", type="string",
-                     help="Primary segment data dir and host to force recovery")
+                            metavar="<configFile>", type="string",
+                            help="Sample configuration file name to output")
+        addTo.add_option("-S", None, type="int",
+                            dest="forceRecoverySegmentDbId",
+                            metavar="<dbid>",
+                            help="Primary segment dbid to force recovery")
+        addTo.add_option("-z", None, type="string",
+                            dest="forceRecoverySegmentDataDirAndHost",
+                            metavar="<dataDirAndHost>",
+                            help="Primary segment data dir and host to force recovery")
 
         addTo = OptionGroup(parser, "Recovery Destination Options")
         parser.add_option_group(addTo)
-        addTo.add_option("-p", None, dest="newRecoverHost", type="string",
-                         metavar="<targetHost>",
-                      help="Spare new host to which to recover segments")
-        addTo.add_option("-s", None, dest="spareDataDirectory", type="string",
-                         metavar="<targetDirectory>",
-                      help="Spare data directories on current hosts")
+        addTo.add_option("-p", None, type="string",
+                            dest="newRecoverHost",
+                            metavar="<targetHost>",
+                            help="Spare new host to which to recover segments")
+        addTo.add_option("-s", None, type="string",
+                            dest="spareDataDirectory", 
+                            metavar="<targetDirectory>",
+                            help="Spare data directories on current hosts")
 
         addTo = OptionGroup(parser, "Recovery Options")
         parser.add_option_group(addTo)
-        addTo.add_option('-F', None, action='store_true', default=False,
-                         metavar="<forceFullResynchronization>",
-                      help="Force full segment resynchronization")
-        addTo.add_option("-B", None, dest="parallelDegree", type="int", default=4,
-                         metavar="<parallelDegree>",
-                      help="Max # of workers to use for recovering segments")
+        addTo.add_option('-F', None, default=False, action='store_true',
+                            dest="forceFullResynchronization",
+                            metavar="<forceFullResynchronization>",
+                            help="Force full segment resynchronization")
+        addTo.add_option("-B", None,  type="int", default=4,
+                            dest="parallelDegree",
+                            metavar="<parallelDegree>",
+                            help="Max # of workers to use for recovering segments")
 
         parser.set_defaults()
         return parser
@@ -528,7 +585,6 @@ class GpRecoverSegmentProgram:
             raise ProgramArgumentValidationException(\
                             "too many arguments: only options may be specified") # todo MIRRORING: print help instead (as gpstart)
         return GpRecoverSegmentProgram(options)
-
-
+    
 
 
