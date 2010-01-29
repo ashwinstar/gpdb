@@ -168,7 +168,9 @@ FileRepSubProcess_ProcessSignals()
 						break;
 						
 					case DataStateInResync:	
-						if (FileRepSubProcess_GetState() == FileRepStateSuspend) {
+						if (FileRepSubProcess_GetState() == FileRepStateSuspend ||
+						    FileRepSubProcess_GetState() == FileRepStateNotInitialized)
+                        {
 							FileRepSubProcess_SetState(FileRepStateInitialization);
 						}
 						break;
