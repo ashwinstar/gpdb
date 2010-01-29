@@ -215,7 +215,7 @@ typedef FormData_pg_resourcetype *Form_pg_resourcetype;
 /* Create entry in pg_resourcetype for PRIORITY */
 DATA(insert OID = 6454  ( active_statements 1 f t t -1  -1 ));
 DATA(insert OID = 6455  ( max_cost 2 f t t -1  -1 ));
-DATA(insert OID = 6456  ( min_cost 3 f t t -1  -1 ));
+DATA(insert OID = 6456  ( min_cost 3 f t t -1   0 ));
 DATA(insert OID = 6457  ( cost_overcommit 4 f t t -1  -1 )); 
 DATA(insert OID = 6458  ( priority 5 f t f medium _null_ ));
 
