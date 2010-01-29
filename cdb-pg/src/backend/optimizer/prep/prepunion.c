@@ -950,7 +950,7 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 	 * situation.  The duplicate RTE we added for the parent table is
 	 * harmless, so we don't bother to get rid of it.
 	 */
-	if (list_length(appinfos) < 2)
+	if (list_length(appinfos) < 1)
 	{
 		/* Clear flag before returning */
 		rte->inh = false;
