@@ -590,10 +590,27 @@ updateConfig(SegmentState_e segmentState)
 
 	acquireModuleSpinLock();
 	{
-		if (segmentState != pmModuleState->segmentState)
+	    SegmentState_e curState = pmModuleState->segmentState;
+	    if ( curState == SegmentStateImmediateShutdown )
+	    {
+	        /* never set to anything else during immediate shutdown */
+	    }
+	    else if (curState == SegmentStateShutdown )
+        {
+            /* allow promotion from shutdown to immediate shutdown */
+            if ( segmentState == SegmentStateImmediateShutdown )
+            {
+                isUpdated = TRUE;
+            }
+        }
+		else if ( curState != segmentState )
 		{
-				pmModuleState->segmentState = segmentState;
-				isUpdated = TRUE;
+		    isUpdated = TRUE;
+		}
+
+		if (isUpdated)
+		{
+            pmModuleState->segmentState = segmentState;
 		}
 	}
 	releaseModuleSpinLock();
