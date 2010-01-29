@@ -132,7 +132,7 @@ static void Filerep_mode_update(int dbid, char *mode, char status);
 static void Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
 
 static void getMounts_forDbid(int dbid, List **mountp);
-static void mountMaintenance_forMpid(int mpid);
+static char mountMaintenance_forMpid(int mpid);
 static void startSegment_forDbid(int dbid);
 
 
@@ -1902,9 +1902,34 @@ Filerep_mode_update(int dbid, char *mode, char status)
 	elog(FATAL, "Could not write to %s", tmp_filename);
 }
 
+/*
+ * Convenience macro for running some SQL on a previously established self-connection.
+ */
+#define executeEntrySQL(entryConn, query) \
+	{											\
+		PGresult   *rs=NULL;					\
+												\
+		rs = PQexec(entryConn, query);			\
+		if (PQresultStatus(rs) != PGRES_COMMAND_OK)						\
+		{																\
+			char	*error_message = strdup(PQerrorMessage(entryConn));	\
+																		\
+			if (!error_message)											\
+				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),			\
+								errmsg("FTS: out of memory")));			\
+																		\
+			PQclear(rs);												\
+			PQfinish(entryConn);										\
+			entryConn = NULL;											\
+																		\
+			elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);	\
+		}																\
+	}
+
 static void
 SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str)
 {
+	char cmd[256];
 	List *mps=NIL;
 	ListCell *cell;
 	int i;
@@ -1942,12 +1967,24 @@ SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeC
 	/* fix up the mountpoints (the list has no duplicates) */
 	foreach(cell, mps)
 	{
-		int mpid = lfirst_int(cell);
+		char	new_active_host;
+		int		mpid = lfirst_int(cell);
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 			elog(LOG, "mpid %d", mpid);
 
-		mountMaintenance_forMpid(mpid);
+		new_active_host = mountMaintenance_forMpid(mpid);
+
+		snprintf(cmd, sizeof(cmd), "update %s set active = %c where mountid=%d",
+				 GpSanConfigRelationName, new_active_host, mpid);
+
+		executeEntrySQL(entryConn, cmd);
+
+		snprintf(cmd, sizeof(cmd),
+				 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed active host for mount-id %d to %c')",
+				 time_str, -1, mpid, new_active_host);
+
+		executeEntrySQL(entryConn, cmd);
 	}
 
 	/* Now we're ready to start up the failover segments */
@@ -1961,6 +1998,11 @@ SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeC
 		if (new_status && !old_status)
 		{
 			startSegment_forDbid(changes[i].dbid);
+
+			snprintf(cmd, sizeof(cmd),
+					 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: started segment moving mountpoints.')",
+					 time_str, changes[i].dbid);
+			executeEntrySQL(entryConn, cmd);
 		}
 	}
 }
@@ -2101,7 +2143,7 @@ startSegment_forDbid(int dbid)
 		if (!HeapTupleIsValid(fse_tup))
 			elog(ERROR, "filespace lookup failure for dbid %d", dbid);
 
-		get_heap_attr(conf_datum, Anum_pg_filespace_entry_, fselocation, fse_tup, fse_rel)
+		get_heap_attr(conf_datum, Anum_pg_filespace_entry_, fselocation, fse_tup, fse_rel);
 		dir = DatumGetCString(DirectFunctionCall1(textout, conf_datum));
 
 		heap_endscan(fse_scan);
@@ -2124,9 +2166,10 @@ startSegment_forDbid(int dbid)
 	heap_close(conf_rel, AccessShareLock);
 }
 
-static void
+static char
 mountMaintenance_forMpid(int mpid)
 {
+	char		ret='p';
 	Relation	mount_rel;
 	HeapTuple	mount_tup;
 	HeapScanDesc mount_scan;
@@ -2189,9 +2232,36 @@ mountMaintenance_forMpid(int mpid)
 		elog(LOG, "active %c type %c primary %s:%s:'%s' mirror %s:%s:'%s'", active_host, san_type,
 			 p_host, p_mp, p_dev, m_host, m_mp, m_dev);
 
+		{
+			char	cmd[1024];
+			int		cmd_status;
+
+			snprintf(cmd, sizeof(cmd), "gp_mount_agent -t %c -a %c -p %s -d %s -m %s -q %s -e %s -n %s",
+					 san_type, active_host, p_host, p_mp, p_dev, m_host, m_mp, m_dev);
+
+			elog(LOG, "Mount agent command is [%s]", cmd);
+
+			cmd_status = system(cmd);
+
+			if (cmd_status == -1)
+			{
+				elog(ERROR, "Could not issue command: %m");
+				/* not reached */
+			}
+			else if (cmd_status != 0)
+			{
+				elog(ERROR, "gp_mount_agent failed!");
+				/* not reached */
+			}
+		}
+
+		ret = (active_host == 'p') ? 'm' : 'p';
+
 		break;
 	}
 
 	heap_endscan(mount_scan);
 	heap_close(mount_rel, AccessShareLock);
+
+	return ret;
 }
