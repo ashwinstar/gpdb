@@ -80,12 +80,12 @@ class GpSegmentToRecover:
         assert failedSegment.getSegmentDbId() != liveSegment.getSegmentDbId()
 
         """
-        __failedSegment is the segment that failed
+        __failedSegment is the segment that failed and will always be non-none
         """
         self.__failedSegment = failedSegment
 
         """
-        __liveSegment is the segment from which the recovery will take place
+        __liveSegment is the primary segment from which the recovery will take place
         """
         self.__liveSegment = liveSegment
 
@@ -97,7 +97,9 @@ class GpSegmentToRecover:
         self.__failoverSegment = failoverSegment
 
         """
-        __forceFullSynchronization is true if full resynchronization should be FORCED
+        __forceFullSynchronization is true if full resynchronization should be FORCED -- that is, the
+           existing segment will be cleared and all objects will be transferred by the file resynchronization
+           process on the server
         """
         self.__forceFullSynchronization = forceFullSynchronization
 
@@ -136,9 +138,23 @@ class GpFaultProberInterface:
         return self.__isPaused
 
 class GpMasterEnvironment:
+    """
 
-    def __init__(self, masterDataDir):
+    Encapsulates information about the environment in which the script is running AND about the
+       master database.
 
+    In the future we should make it possible to build this object on segments, or when the master data directory
+       has not been built.
+
+    """
+
+    def __init__(self, masterDataDir, readFromMasterCatalog):
+        """
+        masterDataDir: if None then we try to find it from the system environment
+        readFromMasterCatalog: if True then we will connect to the master in utility mode and fetch some more
+                               data from there (like collation settings)
+
+        """
         if masterDataDir is None:
             self.__masterDataDir = gp.get_masterdatadir()
         else: self.__masterDataDir = masterDataDir
@@ -155,17 +171,39 @@ class GpMasterEnvironment:
         logger.info("local Greenplum Version: '%s'" % self.__gpVersion)
 
         # read collation settings from master
-        dbUrl = dbconn.DbURL(port=self.__masterPort, dbname='template1')
-        conn = dbconn.connect(dbUrl, utility=True)
-        (self.__lcCollate, self.__lcMonetary, self.__lcNumeric) = catalog.getCollationSettings(conn)
-        conn.close()
+        if readFromMasterCatalog:
+            dbUrl = dbconn.DbURL(port=self.__masterPort, dbname='template1')
+            conn = dbconn.connect(dbUrl, utility=True)
+            (self.__lcCollate, self.__lcMonetary, self.__lcNumeric) = catalog.getCollationSettings(conn)
+            conn.close()
+
+            checkNotNone("lc_collate", self.__lcCollate)
+            checkNotNone("lc_monetary", self.__lcMonetary)
+            checkNotNone("lc_numeric", self.__lcNumeric)
+        else:
+            self.__lcCollate = None
+            self.__lcMonetary = None
+            self.__lcNumeric = None
+
 
     def getGpHome(self): return self.__gpHome
     def getGpVersion(self): return self.__gpVersion
-    def getLcCollate(self): return self.__lcCollate
-    def getLcMonetary(self): return self.__lcMonetary
-    def getLcNumeric(self): return self.__lcNumeric
-    def getLocaleArray(self): return [self.__lcCollate, self.__lcMonetary, self.__lcNumeric]
+    def getLcCollate(self):
+        checkNotNone("lc_collate", self.__lcCollate) # make sure we were initialized with "readFromMasterCatalog"
+        return self.__lcCollate
+
+    def getLcMonetary(self):
+        checkNotNone("lc_monetary", self.__lcMonetary) # make sure we were initialized with "readFromMasterCatalog"
+        return self.__lcMonetary
+
+    def getLcNumeric(self):
+        checkNotNone("lc_numeric", self.__lcNumeric) # make sure we were initialized with "readFromMasterCatalog"
+        return self.__lcNumeric
+
+    def getLocaleArray(self):
+        checkNotNone("lc_numeric", self.__lcNumeric) # make sure we were initialized with "readFromMasterCatalog"
+        return [self.__lcCollate, self.__lcMonetary, self.__lcNumeric]
+        
     def getMasterDataDir(self): return self.__masterDataDir
     def getMasterMaxConnections(self) : return self.__masterMaxConnections
     def getMasterPort(self) : return self.__masterPort
@@ -468,7 +506,7 @@ class GpRecoverSegmentProgram:
     def run(self):
 
         self.__pool = base.WorkerPool(numWorkers=16) # todo MIRRORING configure number of workers
-        gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory)
+        gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
 
         # verify "what to recovery" options: note that specifying NONE is okay as well
         if self.__options.forceRecoverySegmentDataDirAndHost is not None and \
@@ -592,6 +630,5 @@ class GpRecoverSegmentProgram:
             raise ProgramArgumentValidationException(\
                             "too many arguments: only options may be specified") # todo MIRRORING: print help instead (as gpstart)
         return GpRecoverSegmentProgram(options)
+        
     
-
-

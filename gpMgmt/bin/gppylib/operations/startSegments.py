@@ -199,7 +199,7 @@ class StartSegmentsOperation:
     def __sendPrimaryMirrorTransition(self, targetMode, segments, gpArray, resultOut):
 
         if len(segments) == 0:
-            logger.info("%s conversion of zero segments...skipping" % targetMode)
+            logger.debug("%s conversion of zero segments...skipping" % targetMode)
             return
 
         logger.info("Commencing parallel %s conversion of %s segments, please wait..." % (targetMode, len(segments)))
