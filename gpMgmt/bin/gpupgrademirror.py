@@ -21,7 +21,7 @@ try:
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
     from gppylib.commands.pg import PgControlData
-    from gppylib.gparray import GpArray
+    from gppylib.gparray import GpArray, get_host_interface
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
     from gppylib.db import dbconn
@@ -157,6 +157,56 @@ class mirror_host_info_row:
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+class database_row:
+    
+    def __init__(self, row):
+        self.databaseDirectory = row[0]
+        self.databaseName = row[1]
+
+    @staticmethod
+    def query():
+        return '''SELECT oid, datname
+                  FROM pg_database
+                  ORDER BY oid '''
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class non_catalog_toast_tables_row:
+    
+    def __init__(self, row):
+        self.filename = row[0]
+
+    @staticmethod
+    def query():
+        return '''SELECT relfilenode
+                  FROM pg_class
+                  WHERE relnamespace  =  11
+                     AND relisshared   =  'f'
+                     AND (relkind  = 'r' OR relkind = 'i')
+                     AND relstorage    =  'h'
+                     AND reltoastrelid = 0
+                  ORDER BY relfilenode '''
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class catalog_toast_tables_row:
+    
+    def __init__(self, row):
+        self.filename = row[0]
+        self.toastfilename = row[1]
+        
+    @staticmethod
+    def query():
+        return '''SELECT t1.relfilenode, t2.relfilenode as toast_filenode
+                  FROM pg_class as t1, pg_class t2
+                  WHERE t1.relnamespace  = 11
+                    AND t1.relisshared   = 'f'
+                    AND t1.reltoastrelid = t2.oid
+                  ORDER BY t1.relfilenode '''
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 
 class InvalidStatusError(Exception): pass
 
@@ -277,16 +327,18 @@ class GpUpgradeMirrorStatus():
     def __init__(self, logger, master_data_directory, segment_dbid, master_mirror):
         self.logger=logger
 
-        self._status_values = { 'UNINITIALIZED'           : 1
-                              , 'START_PRIMARY_COPY'      : 2
-                              , 'END_PRIMARY_COPY'        : 3
-                              , 'START_MOVE_OLD_MIRROR'   : 4
-                              , 'END_MOVE_OLD_MIRROR'     : 5
-                              , 'START_MOVE_NEW_MIRROR'   : 6
-                              , 'END_MOVE_NEW_MIRROR'     : 7
-                              , 'START_REMOVE_OLD_MIRROR' : 8
-                              , 'END_REMOVE_OLD_MIRROR'   : 9
-                              , 'GPUPGRADEMIRROR_DONE'    : 10
+        self._status_values = { 'UNINITIALIZED'               : 1
+                              , 'START_PRIMARY_COPY'          : 2
+                              , 'END_PRIMARY_COPY'            : 3
+                              , 'START_NEW_MIRROR_FILE_FIXUP' : 4 
+                              , 'END_NEW_MIRROR_FILE_FIXUP'   : 5
+                              , 'START_MOVE_OLD_MIRROR'       : 6
+                              , 'END_MOVE_OLD_MIRROR'         : 7
+                              , 'START_MOVE_NEW_MIRROR'       : 8
+                              , 'END_MOVE_NEW_MIRROR'         : 9
+                              , 'START_REMOVE_OLD_MIRROR'     : 10
+                              , 'END_REMOVE_OLD_MIRROR'       : 11
+                              , 'GPUPGRADEMIRROR_DONE'        : 12
                               }
         self._status = []
         self._status_info = []
@@ -427,20 +479,32 @@ class gpupgrademirrorSafeMode(threading.Thread):
 
 
     def __init__(self, dburl, logger, master_data_directory, node_name):
-        threading.Thread.__init__(self) 
-        self.dburl                 = dburl
-        self.logger                = logger
-        self.master_data_directory = master_data_directory
-        self.nodeName              = node_name
-        self.mirrorSegmentList     = []
-        self.statusList            = []
+        threading.Thread.__init__(self)
+        
+        self.tempOldMirrorDirSuffix = 'gpupgrademirrors.originalmirror'
+        self.tempNewMirrorDirSuffix = 'gpupgrademirrors.copyfromprimary'
+        self.fixupFileList          = [ 'postgresql.conf' 
+                                      , 'pg_hba.conf'
+                                      , 'pg_ident.conf'
+                                      ]
+        self.dburl                  = dburl
+        self.logger                 = logger
+        self.master_data_directory  = master_data_directory
+        self.nodeName               = node_name
+        self.mirrorSegmentList      = []
+        self.statusList             = []
 
     #-------------------------------------------------------------------------------
     def  setup(self, mirrorInfoList):
         self.mirrorSegmentList = mirrorInfoList
 
         for seg in self.mirrorSegmentList:
+            ''' Make sure their is enough space for the largest segment '''
+            self.checkAvailableSpace()            
+            
             print 'seg = ' + str(seg)
+            
+            ''' Create a status file for each mirror segment '''
             status = GpUpgradeMirrorStatus( logger = self.logger
                                           , master_data_directory = self.master_data_directory
                                           , segment_dbid = seg.dbid
@@ -448,13 +512,12 @@ class gpupgrademirrorSafeMode(threading.Thread):
             self.statusList.append(status)
             status.create_status_file()
             
-  
 
     #-------------------------------------------------------------------------------
     def renameOldMirrorToTemp(self, seg):
         print 'in renameOldMirror'
         
-        tempDataDir = seg.mirror_data_directory + 'gpupgrademirrors.originalmirror'
+        tempDataDir = seg.mirror_data_directory + self.tempOldMirrorDirSuffix
         rmCmd = MoveDirectory( name = 'gpupgrademirror move old mirror to temp location: %s:%s' % (seg.mirror_data_directory, tempDataDir)
                              , srcDirectory = seg.mirror_data_directory
                              , dstDirectory = tempDataDir
@@ -467,7 +530,7 @@ class gpupgrademirrorSafeMode(threading.Thread):
     def renameNewMirrorToOldMirror(self, seg):
         print 'in moveNewMirror'
         
-        tempDataDir = seg.mirror_data_directory + 'gpupgrademirrors.copyfromprimary'
+        tempDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix
         rmCmd = MoveDirectory( name = 'gpupgrademirror move new mirror to mirror location: %s:%s' % (tempDataDir, seg.mirror_data_directory)
                           , srcDirectory = tempDataDir
                           , dstDirectory = seg.mirror_data_directory
@@ -481,7 +544,7 @@ class gpupgrademirrorSafeMode(threading.Thread):
     def copyPrimaryToMirror(self, seg):
         print 'in copyPrimaryToMirror'
 
-        tempDataDir = seg.mirror_data_directory + 'gpupgrademirrors.copyfromprimary'
+        tempDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix
         rmCmd = RemoteCopy( name = 'gpupgrademirror copy primary to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
                           , srcDirectory = seg.primary_data_directory
                           , dstHost = self.nodeName
@@ -490,12 +553,30 @@ class gpupgrademirrorSafeMode(threading.Thread):
                           , remoteHost = seg.primary_host
                           )
         rmCmd.run(validateAfter = True)
+    
+    #------------------------------------------------------------------------------ 
+    def newMirrorFileFixup(self, seg):
+        print 'in newMirrorFileFixup'
+
+        tempTargetDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix
+        for file in self.fixupFileList:
+            fullPathFile = seg.mirror_data_directory + '/' + file
+            fullPathTarget = tempTargetDataDir + '/' + file
+            rmCmd = RemoteCopy( name = 'gpupgrademirror fixup copy : %s:%s' % (fullPathFile, fullPathTarget)
+                              , srcDirectory = fullPathFile
+                              , dstHost = self.nodeName
+                              , dstDirectory = fullPathTarget
+                              , ctxt = REMOTE
+                              , remoteHost = self.nodeName
+                              )
+            rmCmd.run(validateAfter = True)
+        
         
     #-------------------------------------------------------------------------------
     def removeOldMirror(self, seg):
         print 'in removeOldMirror'
 
-        tempDataDir = seg.mirror_data_directory + 'gpupgrademirrors.originalmirror'
+        tempDataDir = seg.mirror_data_directory + self.tempOldMirrorDirSuffix
         rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror data directory: %s:%s' % (self.nodeName, tempDataDir)
                            , directory = tempDataDir
                            , ctxt = REMOTE
@@ -509,34 +590,21 @@ class gpupgrademirrorSafeMode(threading.Thread):
        print 'in startMovement' 
 
 
-
-    #-------------------------------------------------------------------------------
-    def findLargestPrimarySegment(self):
-
-      largestSize = 0
-
-      for primary in self.currentPrimaryList:
-          dirSize = DiskUsage.get_size( name = "primaryDir"
-                                      , remote_host = primary[1]
-                                      , directory = primary[2]
-                                      )
-          if dirSize > largestSize:
-             largestSize = dirSize
-      return largestSize
-
-
     #-------------------------------------------------------------------------------
     def checkAvailableSpace(self):
         print 'in checkAvailableSpace'
 
-        minSizeNeeded = self.findLargestPrimarySegment()
-        for mirror in self.currentMirrorList:
+        for seg in self.mirrorSegmentList:
+            dirSize = DiskUsage.get_size( name = "primaryDir"
+                                        , remote_host = seg.primary_host
+                                        , directory = seg.primary_data_directory
+                                        )        
             mirrorSize = DiskFree.get_size( name = 'disk space available'
-                                          , remote_host = mirror[1]
-                                          , directory = mirror[2]
-                                          )
+                                      , remote_host = self.nodeName
+                                      , directory = seg.mirror_data_directory
+                                      )
             ###print 'mirrorSize = ' + str(mirrorSize)
-            if mirrorSize < minSizeNeeded:
+            if mirrorSize < dirSize:
                logger.error("Size of mirror directory %s is too small." % mirror[2])          
 
 
@@ -545,18 +613,32 @@ class gpupgrademirrorSafeMode(threading.Thread):
         i = 0
         for seg in self.mirrorSegmentList:
             status = self.statusList[i]
+            
+            ''' Copy the entire primary segment over to the mirror '''
             status.set_status('START_PRIMARY_COPY')
             self.copyPrimaryToMirror(seg)
             status.set_status('END_PRIMARY_COPY')
+            
+            ''' Fixup some of the new mirror files with the old mirror files '''
+            status.set_status('START_NEW_MIRROR_FILE_FIXUP')
+            self.newMirrorFileFixup(seg)
+            status.set_status('END_NEW_MIRROR_FILE_FIXUP')
+            
+            ''' Rename the old mirror to a temporary name '''
             status.set_status('START_MOVE_OLD_MIRROR')
             self.renameOldMirrorToTemp(seg)
             status.set_status('END_MOVE_OLD_MIRROR')
+            
+            ''' Rename the new mirror the the name of the old mirror '''
             status.set_status('START_MOVE_NEW_MIRROR')
             self.renameNewMirrorToOldMirror(seg)
             status.set_status('END_MOVE_NEW_MIRROR')
+            
+            ''' Remove the old mirror '''
             status.set_status('START_REMOVE_OLD_MIRROR')
             self.removeOldMirror(seg)
             status.set_status('END_REMOVE_OLD_MIRROR')
+            
             status.set_status('GPUPGRADEMIRROR_DONE')            
             i = i + 1
 
