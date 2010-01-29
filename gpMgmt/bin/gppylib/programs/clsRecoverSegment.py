@@ -351,6 +351,10 @@ class GpRecoverSegmentProgram:
         assert self.__faultProber.isFaultProberPaused()
         testOutput("recovering %s segment(s)" % len(actions.getSegmentsToRecover()))
 
+        if len(actions.getSegmentsToRecover()) == 0:
+            logger.info("No segments to recover")
+            return
+
         logger.info("%s segment(s) to recover" % len(actions.getSegmentsToRecover()))
 
         # make sure the target directories are up-to-date

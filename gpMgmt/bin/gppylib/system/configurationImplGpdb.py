@@ -165,10 +165,8 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
             else:
 
                 if seg == originalSeg:
-                    logger.info("NOT updating dbid %s" % seg.getSegmentDbId())
                     changeDescription = None
                 else:
-                    logger.info("Updating dbid %s" % seg.getSegmentDbId())
                     # run an update
                     sql = "UPDATE pg_catalog.gp_segment_configuration\n" + \
                             "  SET content = " + self.__toSqlIntValue(seg.getSegmentContentId()) + ",\n" \
