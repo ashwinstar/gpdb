@@ -578,20 +578,6 @@ def parseTrueFalse(value):
         return True
     raise Exception('Invalid true/false value')
 
-
-# TODO: Destroy this  (MPP-7686)
-#   Now that "hostname" is a distinct field in gp_segment_configuration
-#   attempting to derive hostnames from interaface names should be eliminated.
-#   
-def get_host_interface(full_hostname):
-    (host_part, inf_num) = ['-'.join(full_hostname.split('-')[:-1]), 
-                            full_hostname.split('-')[-1]]
-    if host_part == '' or not inf_num.isdigit():
-        return (full_hostname, None)
-    else:
-        return (host_part, inf_num)
-
-    
 # ============================================================================
 class GpArray:
     """ 

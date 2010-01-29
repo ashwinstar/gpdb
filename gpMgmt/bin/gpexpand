@@ -17,7 +17,7 @@ try:
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
     from gppylib.commands.pg import PgControlData
-    from gppylib.gparray import GpArray, get_host_interface
+    from gppylib.gparray import GpArray
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
     from gppylib.db import dbconn
@@ -707,26 +707,7 @@ class SegmentTemplate:
         and setting up the gp_id table"""
 
         self.logger.info('Configuring new segments')
-        newPrimaryCount = 0;
-        for seg in self.gparray.getExpansionSegDbList():
-            if seg.isSegmentPrimary(False):
-                newPrimaryCount += 1
-
-        newPrimaryCount += self.gparray.get_primary_count()
-
-        new_segment_info = {}
-        for seg in self.gparray.getExpansionSegDbList():
-            hostname = seg.getSegmentHostName()
-            datadir = seg.getSegmentDataDirectory()
-            port = seg.getSegmentPort()
-            content = seg.getSegmentContentId()
-            dbid = seg.getSegmentDbId()
-            if new_segment_info.has_key(hostname):
-                new_segment_info[hostname] += ',%s:%d:%d:%d:%d' % (datadir, port, newPrimaryCount,
-                                                                   content, dbid)
-            else:
-                new_segment_info[hostname] = '%s:%d:%d:%d:%d' %  (datadir, port, newPrimaryCount,
-                                                                  content, dbid)
+        new_segment_info = buildExpansionSegmentInfo(self.gparray.getExpansionSegDbList())
 
         for host in iter(new_segment_info):
             segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', new_segment_info[host],
@@ -885,9 +866,7 @@ class gpexpand:
 
         self.tempDir = self.statusLogger.get_temp_dir()
         if not self.tempDir:
-            self.tempDir = '%s/gpexpand_%s_%d' % (os.sep.join(os.path.normpath(options.master_data_directory).split(os.sep)[:-1]),
-                                                  datetime.datetime.now().strftime('%m%d%Y'),
-                                                  os.getpid())
+            self.tempDir = createTempDirectoryName(options.master_data_directory, "gpexpand")
         self.queue = None
         self.segTemplate = None
         pass
@@ -1299,26 +1278,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
         self.logger.info('Configuring original segments')
 
-        orig_segment_info = {}
-        for seg in self.gparray.getSegDbList():
-            hostname = seg.getSegmentHostName()
-            datadir = seg.getSegmentDataDirectory()
-            port = seg.getSegmentPort()
-            content = seg.getSegmentContentId()
-            dbid = seg.getSegmentDbId()
-            (hostname, inf) = get_host_interface(seg.getSegmentHostName())
-            if orig_segment_info.has_key(hostname):
-                orig_segment_info[hostname] += ',%s:%d:%d:%d:%d' % (datadir,
-                                                                    port,
-                                                                    self.newPrimaryCount,
-                                                                    int(content),
-                                                                    dbid)
-            else:
-                orig_segment_info[hostname] = '%s:%d:%d:%d:%d' % (datadir,
-                                                                  port,
-                                                                  self.newPrimaryCount,
-                                                                  int(content),
-                                                                  dbid)
+        orig_segment_info = buildExpansionSegmentInfo(self.gparray.getSegDbList())
 
         for host in iter(orig_segment_info):
             segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', orig_segment_info[host],
@@ -1386,28 +1346,11 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             # Setup didn't get this far so no backup to restore.
             self.pool.empty_completed_items()
 
-        # Restore gp_id table back to original number of primary segments
+        # note: this code may not be needed -- it will NOT change gp_id
+        #       However, the call to gpconfexpseg may still be doing some needed work (stopping the segment)
+        #       which could be unnecessary or could be moved here)
         self.logger.info('Restoring original segments catalog tables')
-        orig_segment_info = {}
-        for seg in originalArray.getSegDbList():
-            hostname = seg.getSegmentHostName()
-            datadir = seg.getSegmentDataDirectory()
-            port = seg.getSegmentPort()
-            content = seg.getSegmentContentId()
-            dbid = seg.getSegmentDbId()
-            if orig_segment_info.has_key(hostname):
-                orig_segment_info[hostname] += ',%s:%d:%d:%d:%d' % (datadir,
-                                                                    port,
-                                                                    originalPrimaryCount,
-                                                                    int(content),
-                                                                    dbid)
-            else:
-                orig_segment_info[hostname] = '%s:%d:%d:%d:%d' % (datadir,
-                                                                  port,
-                                                                  originalPrimaryCount,
-                                                                  int(content),
-                                                                  dbid)
-
+        orig_segment_info = buildExpansionSegmentInfo(originalArray.getSegDbList())
         for host in iter(orig_segment_info):
             segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', orig_segment_info[host],
                                            verbose=gplog.logging_is_verbose(), batchSize=options.batch_size,

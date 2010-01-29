@@ -121,6 +121,9 @@ class GenericPlatform():
     def getTarCmd(self):
         return findCmdInPath('tar')
 
+    def getCpCmd(self):
+        return findCmdInPath('cp')
+
     def getSadcCmd(self, interval, outfilename):
         return None
         
@@ -496,8 +499,16 @@ class LocalDirCopy(Command):
         # tar is much faster than cp for directories with lots of files
         self.srcDirectory=srcDirectory
         self.dstDirectory=dstDirectory
-        tarCmd = SYSTEM.getTarCmd()        
+        tarCmd = SYSTEM.getTarCmd()
         cmdStr="%s -cf - -C %s . | %s -xf - -C %s" % (tarCmd,srcDirectory,tarCmd,dstDirectory)
+        Command.__init__(self,name,cmdStr,LOCAL, None)
+
+#-------------local copy------------------
+class LocalCopy(Command):
+    def __init__(self,name,srcFile,dstFile):
+        # tar is much faster than cp for directories with lots of files
+        cpCmd = SYSTEM.getCpCmd()
+        cmdStr="%s %s %s" % (cpCmd,srcFile,dstFile)
         Command.__init__(self,name,cmdStr,LOCAL, None)
 
 #------------ ssh + tar ------------------

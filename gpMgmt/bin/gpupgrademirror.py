@@ -21,7 +21,7 @@ try:
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
     from gppylib.commands.pg import PgControlData
-    from gppylib.gparray import GpArray, get_host_interface
+    from gppylib.gparray import GpArray
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
     from gppylib.db import dbconn

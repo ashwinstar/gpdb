@@ -6,7 +6,7 @@
 """
 TODO: docs!
 """
-import os
+import os, pickle, base64
 
 from gppylib.gplog import *
 from gppylib.db import dbconn
@@ -433,6 +433,33 @@ class ModifyPostgresqlConfSetting(Command):
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
 #-----------------------------------------------
+class GpCleanSegmentDirectories(Command):
+    """
+    Clean all of the directories for a set of segments on the host
+    """
+    def __init__(self, name, segmentsToClean, ctxt, remoteHost):
+        pickledSegmentsStr = base64.urlsafe_b64encode(pickle.dumps(segmentsToClean))
+        cmdStr = "$GPHOME/bin/lib/gpcleansegmentdir.py -p %s" % pickledSegmentsStr
+        Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+
+#-----------------------------------------------
+def buildExpansionSegmentInfo(segments):
+    """
+    Build the new segment info that can be used to get the confinfo argument to pass to ConfigExpansionSeg
+
+    """
+    result = {}
+    for seg in segments:
+        hostname = seg.getSegmentHostName()
+        if result.has_key(hostname):
+            result[hostname] += ','
+        else:
+            result[hostname] = ''
+
+        result[hostname] += '%s:%d' %  (seg.getSegmentDataDirectory(), seg.getSegmentPort())
+    return result
+
+#-----------------------------------------------
 class ConfigExpansionSeg(Command):
     def __init__(self, name, confinfo, newSegments=False, tarFile=None,
                  batchSize=None, verbose=False,ctxt=LOCAL, remoteHost=None):
@@ -809,3 +836,10 @@ def resumePg(db):
 #   TODO: use PSI and kill all processes which are descendent process of postmaster
 #    KillChildren.local(name="pausec "+str(content), pid=postmasterPID, signal=signal.SIGCONT)
     Kill.local(name="pausep "+str(content), pid=postmasterPID, signal="CONT")
+
+
+def createTempDirectoryName(masterDataDirectory, tempDirPrefix):
+    return '%s/%s_%s_%d' % (os.sep.join(os.path.normpath(masterDataDirectory).split(os.sep)[:-1]),
+                                tempDirPrefix,
+                                datetime.datetime.now().strftime('%m%d%Y'),
+                                os.getpid())
