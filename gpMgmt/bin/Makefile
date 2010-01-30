@@ -24,7 +24,7 @@ PYLIB_SRC=$(SRC)/pythonSrc
 LIB_DIR=$(SRC)/lib
 PYLIB_DIR=$(SRC)/ext
 
-all: paramiko pycrypto pygresql stream netperf pychecker
+all: paramiko pycrypto pygresql stream netperf pychecker psi
 
 #
 # Python Libraries
@@ -94,6 +94,23 @@ pycrypto:
 	export PATH=$(PYCRYPTO_BIN_MAPPINGS_DIR)$(PATH); \
 	  cd $(PYLIB_SRC)/$(PYCRYPTO_DIR)/ && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))" LDFLAGS="$(BLD_CFLAGS)" python setup.py build
 	cp -r $(PYLIB_SRC)/$(PYCRYPTO_DIR)/build/lib.*/Crypto $(PYLIB_DIR)
+
+#
+# PSI
+#
+PSI_VERSION=0.3b2
+PSI_DIR=PSI-$(PSI_VERSION)
+
+osx105_x86_PSI_BIN_MAPPINGS_DIR:=$(BLD_THIRDPARTY_DIR)/bin_mappings:
+PSI_BIN_MAPPINGS_DIR=$($(BLD_ARCH)_PSI_BIN_MAPPINGS_DIR)
+
+psi:
+	@echo "--- psi"
+	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PSI_DIR).tar.gz
+	export PATH=$(PSI_BIN_MAPPINGS_DIR)$(PATH); \
+	  cd $(PYLIB_SRC)/$(PSI_DIR)/ && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))" LDFLAGS="$(BLD_CFLAGS)" python setup.py build
+	cp -r $(PYLIB_SRC)/$(PSI_DIR)/build/lib.*/psi $(PYLIB_DIR)
+
 
 #
 # PYCHECKER
