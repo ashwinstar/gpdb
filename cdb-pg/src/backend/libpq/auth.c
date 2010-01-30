@@ -366,12 +366,14 @@ ClientAuthentication(Port *port)
 						(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 						 errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\", %s",
 							  hostinfo, port->user_name, port->database_name,
-								port->ssl ? _("SSL on") : _("SSL off"))));
+								port->ssl ? _("SSL on") : _("SSL off")),
+						 errSendAlert(false)));
 #else
 				ereport(FATAL,
 						(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 						 errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\"",
-						   hostinfo, port->user_name, port->database_name)));
+						   hostinfo, port->user_name, port->database_name)
+						 errSendAlert(false)));
 #endif
 				break;
 			}
