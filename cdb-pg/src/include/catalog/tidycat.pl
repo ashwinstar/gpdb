@@ -417,6 +417,8 @@ sub parseindex
 
 	$bUnique = ($bigstr =~ m/create\s+unique\s+index/i);
 
+	my $idef = {unique => $bUnique, with => {} };
+
 	$bigstr =~ s/^\s*create\s+(unique\s+)?index\s+on//i;
 
 #	print "f:",$bigstr,":f\n";
@@ -457,12 +459,37 @@ sub parseindex
 
 	my $with = pop @foo;
 
-	# XXX XXX: FIX THIS!!!
-	my @baz = ($with =~ m/(\d+)/);
+#	print "WITH: $with \n";
+
+	my @baz = ($with =~ m/^\s*(with\s*\(.*\))/is);
 
 	die "no index oid: $bigstr" unless (scalar(@baz));
 
-	my $indoid = shift @baz;
+	my $indwithclause = shift @baz;
+
+	$indwithclause =~ s/^\s*with\s*\(//is;
+	$indwithclause =~ s/\)\s*$//s;
+
+	@baz = split(",", $indwithclause);
+
+	for my $withdef (@baz)
+	{
+		my @bzz = split("=", $withdef, 2);
+
+		die "bad with def: $withdef" unless (2 == scalar(@bzz));
+
+		my $kk = shift @bzz;
+		my $vv = shift @bzz;
+
+		$kk =~ s/^\s+//;
+		$kk =~ s/\s+$//;
+		$kk = lc($kk);
+
+		$vv =~ s/^\s+//;
+		$vv =~ s/\s+$//;
+
+		$idef->{with}->{$kk} = $vv;
+	}
 
 	$tname = lc($tname);
 	$tname =~ s/^\s+//;
@@ -473,9 +500,11 @@ sub parseindex
 	$alltabs->{$tname}->{indexes} = []
 		unless (exists(	$alltabs->{$tname}->{indexes}));
 	
-	my $idef = {unique => $bUnique};
 	$idef->{cols} = $icols;
-	$idef->{indexid} = $indoid;
+
+	die "no index oid: $bigstr" unless (exists($idef->{with}->{indexid}));
+
+	$idef->{indexid} = $idef->{with}->{indexid};
 
 	push @{$alltabs->{$tname}->{indexes}}, $idef;
 }
@@ -1292,6 +1321,12 @@ sub formatindexes
 			$bigstr .=
 				$iname . ", " . "$indexid, on " . $kk . 
 				" using btree(" . $icolist . "));\n";
+
+			# use user-supplied CamelCase name if it exists
+			if (exists($ind->{with}->{camelcase}))
+			{
+				$camelname = $ind->{with}->{camelcase};
+			}
 
 			$ind->{CamelCaseIndexId} = $camelname . "IndexId";
 

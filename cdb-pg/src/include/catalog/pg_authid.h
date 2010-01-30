@@ -45,6 +45,12 @@
    rolresqueue oid -- ID of resource queue for this role 
    );
 
+   CREATE UNIQUE INDEX on pg_authid(rolname) with (indexid=2676);
+
+   CREATE UNIQUE INDEX on pg_authid(oid) with (indexid=2677);
+
+   CREATE INDEX on pg_authid(rolresqueue) with (CamelCase=AuthIdRolResQueue,indexid=6029);
+
    TIDYCAT_ENDDEF
 */
 /* TIDYCAT_BEGIN_CODEGEN 
