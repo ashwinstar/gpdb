@@ -522,46 +522,48 @@ select * from get_ereport order by 1;
  aaae: auth:00000366:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
  aaae: auth:00000367:  errmsg("no pg_hba.conf entry for host "%s", user "%s", database "%s", %s", 
  aaae: auth:00000368:  hostinfo, port->user_name, port->database_name, 
- aaae: auth:00000369:  port->ssl ? _("SSL on") : _("SSL off")))); 
- aaae: auth:00000371:  ereport(FATAL, 
- aaae: auth:00000372:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
- aaae: auth:00000373:  errmsg("no pg_hba.conf entry for host "%s", user "%s", database "%s"", 
- aaae: auth:00000374:  hostinfo, port->user_name, port->database_name))); 
- aaae: auth:00000427:  ereport(FATAL, 
- aaae: auth:00000428:  (errcode_for_socket_access(), 
- aaae: auth:00000429:  errmsg("could not enable credential reception: %m"))); 
- aaae: auth:00000440:  ereport(FATAL, 
- aaae: auth:00000441:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
- aaae: auth:00000442:  errmsg("MD5 authentication is not supported when "db_user_namespace" is enabled"))); 
- aaae: auth:00000861:  ereport(WARNING, 
- aaae: auth:00000862:  (errmsg_internal("incomplete GSS error report"))); 
- aaae: auth:00000872:  ereport(WARNING, 
- aaae: auth:00000873:  (errmsg_internal("incomplete GSS minor error report"))); 
- aaae: auth:00000905:  ereport(FATAL, 
- aaae: auth:00000906:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaae: auth:00000907:  errmsg("GSSAPI is not supported in protocol version 2"))); 
- aaae: auth:00001166:  ereport(FATAL, 
- aaae: auth:00001167:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- aaae: auth:00001168:  errmsg("SSPI is not supported in protocol version 2"))); 
- aaae: auth:00001279:  ereport(ERROR, 
- aaae: auth:00001280:  (errmsg("out of memory"))); 
- aaae: auth:00001309:  ereport(ERROR, 
- aaae: auth:00001310:  (errmsg_internal("could not load secur32.dll: %d", 
- aaae: auth:00001311:  (int) GetLastError()))); 
- aaae: auth:00001318:  ereport(ERROR, 
- aaae: auth:00001319:  (errmsg_internal("could not locate QuerySecurityContextToken in secur32.dll: %d", 
- aaae: auth:00001320:  (int) GetLastError()))); 
- aaae: auth:00001341:  ereport(ERROR, 
- aaae: auth:00001342:  (errmsg_internal("could not get token user size: error code %d", 
- aaae: auth:00001343:  (int) GetLastError()))); 
- aaae: auth:00001347:  ereport(ERROR, 
- aaae: auth:00001348:  (errmsg("out of memory"))); 
- aaae: auth:00001351:  ereport(ERROR, 
- aaae: auth:00001352:  (errmsg_internal("could not get user token: error code %d", 
- aaae: auth:00001353:  (int) GetLastError()))); 
- aaae: auth:00001357:  ereport(ERROR, 
- aaae: auth:00001358:  (errmsg_internal("could not lookup acconut sid: error code %d", 
- aaae: auth:00001359:  (int) GetLastError()))); 
+ aaae: auth:00000369:  port->ssl ? _("SSL on") : _("SSL off")), 
+ aaae: auth:00000370:  errSendAlert(false))); 
+ aaae: auth:00000372:  ereport(FATAL, 
+ aaae: auth:00000373:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+ aaae: auth:00000374:  errmsg("no pg_hba.conf entry for host "%s", user "%s", database "%s"", 
+ aaae: auth:00000375:  hostinfo, port->user_name, port->database_name) 
+ aaae: auth:00000376:  errSendAlert(false))); 
+ aaae: auth:00000429:  ereport(FATAL, 
+ aaae: auth:00000430:  (errcode_for_socket_access(), 
+ aaae: auth:00000431:  errmsg("could not enable credential reception: %m"))); 
+ aaae: auth:00000442:  ereport(FATAL, 
+ aaae: auth:00000443:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+ aaae: auth:00000444:  errmsg("MD5 authentication is not supported when "db_user_namespace" is enabled"))); 
+ aaae: auth:00000863:  ereport(WARNING, 
+ aaae: auth:00000864:  (errmsg_internal("incomplete GSS error report"))); 
+ aaae: auth:00000874:  ereport(WARNING, 
+ aaae: auth:00000875:  (errmsg_internal("incomplete GSS minor error report"))); 
+ aaae: auth:00000907:  ereport(FATAL, 
+ aaae: auth:00000908:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaae: auth:00000909:  errmsg("GSSAPI is not supported in protocol version 2"))); 
+ aaae: auth:00001168:  ereport(FATAL, 
+ aaae: auth:00001169:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ aaae: auth:00001170:  errmsg("SSPI is not supported in protocol version 2"))); 
+ aaae: auth:00001281:  ereport(ERROR, 
+ aaae: auth:00001282:  (errmsg("out of memory"))); 
+ aaae: auth:00001311:  ereport(ERROR, 
+ aaae: auth:00001312:  (errmsg_internal("could not load secur32.dll: %d", 
+ aaae: auth:00001313:  (int) GetLastError()))); 
+ aaae: auth:00001320:  ereport(ERROR, 
+ aaae: auth:00001321:  (errmsg_internal("could not locate QuerySecurityContextToken in secur32.dll: %d", 
+ aaae: auth:00001322:  (int) GetLastError()))); 
+ aaae: auth:00001343:  ereport(ERROR, 
+ aaae: auth:00001344:  (errmsg_internal("could not get token user size: error code %d", 
+ aaae: auth:00001345:  (int) GetLastError()))); 
+ aaae: auth:00001349:  ereport(ERROR, 
+ aaae: auth:00001350:  (errmsg("out of memory"))); 
+ aaae: auth:00001353:  ereport(ERROR, 
+ aaae: auth:00001354:  (errmsg_internal("could not get user token: error code %d", 
+ aaae: auth:00001355:  (int) GetLastError()))); 
+ aaae: auth:00001359:  ereport(ERROR, 
+ aaae: auth:00001360:  (errmsg_internal("could not lookup acconut sid: error code %d", 
+ aaae: auth:00001361:  (int) GetLastError()))); 
  aaaf: aclid:00000144:  ereport(ERROR, 
  aaaf: aclid:00000145:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  aaaf: aclid:00000146:  errmsg("role "%s" does not exist", roleName))); 
@@ -6401,7 +6403,8 @@ select * from get_ereport order by 1;
  gaae: gram:00021343:  errOmitLocation(true))); 
  gaae: gram:00021436:  ereport(ERROR, 
  gaae: gram:00021437:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021438:  errmsg("CREATE TABLE AS may not specify INTO"))); 
+ gaae: gram:00021438:  errmsg("CREATE TABLE AS cannot specify INTO"),
+ gaae: gram:00021701:  scanner_errposition(exprLocation((Node *) n->intoClause)))); 
  gaae: gram:00021448:  ereport(ERROR, 
  gaae: gram:00021449:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  gaae: gram:00021450:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
