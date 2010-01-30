@@ -235,6 +235,7 @@ if (1)
 			'| grep -v pg_stat | grep -v pg_log | grep -v pg_internal ' .
 			'| grep -v ".log)" | grep -v ".opts)" | grep -v ".conf)" ' .
 			'| grep -v "_args)" | grep -v ".pid)" ' .
+			'| grep -v "core)" ' .
 			'| grep -v "_segargs)" | grep -v "pg_fsm.cache" ' .
 			'| grep -v pgstat | grep -v pgsql_tmp  \' ) ' .
 			'| sort ' .
