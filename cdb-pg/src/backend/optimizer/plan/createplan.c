@@ -163,12 +163,12 @@ static List *flatten_grouping_list(List *groupcls);
  * create_plan
  *	  Creates the access plan for a query by tracing backwards through the
  *	  desired chain of pathnodes, starting at the node 'best_path'.  For
- *	  every pathnode found:
- *	  (1) Create a corresponding plan node containing appropriate id,
- *		  target list, and qualification information.
- *	  (2) Modify qual clauses of join nodes so that subplan attributes are
- *		  referenced using relative values.
- *	  (3) Target lists are not modified, but will be in setrefs.c.
+ *	  every pathnode found, we create a corresponding plan node containing
+ *	  appropriate id, target list, and qualification information.
+ *
+ *	  The tlists and quals in the plan tree are still in planner format,
+ *	  ie, Vars still correspond to the parser's numbering.  This will be
+ *	  fixed later by setrefs.c.
  *
  *	  best_path is the best access path
  *

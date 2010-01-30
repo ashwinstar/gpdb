@@ -2614,11 +2614,7 @@ _outSelectStmt(StringInfo str, SelectStmt *node)
 	WRITE_NODE_TYPE("SELECT");
 
 	WRITE_NODE_FIELD(distinctClause);
-	WRITE_NODE_FIELD(into);
-	WRITE_NODE_FIELD(intoColNames);
-	WRITE_NODE_FIELD(intoOptions);
-	WRITE_ENUM_FIELD(intoOnCommit, OnCommitAction);
-	WRITE_STRING_FIELD(intoTableSpaceName);
+	WRITE_NODE_FIELD(intoClause);
 	WRITE_NODE_FIELD(targetList);
 	WRITE_NODE_FIELD(fromClause);
 	WRITE_NODE_FIELD(whereClause);

@@ -10654,8 +10654,9 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	}
 	else
 	{
-		s->into = tmprel;
-		s->intoOptions = wo;
+		s->intoClause = makeNode(IntoClause);
+		s->intoClause->rel = tmprel;
+		s->intoClause->options = wo;
 		s->distributedBy = dist_clause;
 		n = (Node *)s;
 	}

@@ -29,13 +29,13 @@ extern const char *CreateCommandTag(Node *parsetree);
 
 extern LogStmtLevel GetCommandLogLevel(Node *parsetree);
 
-extern LogStmtLevel GetQueryLogLevel(Node *node);
+extern LogStmtLevel GetQueryLogLevel(Node *node); /* Obsolete */
 
 extern LogStmtLevel GetPlannedStmtLogLevel(PlannedStmt * stmt);
 
 extern bool QueryReturnsTuples(Query *parsetree); /* Obsolete? */
 
-extern bool QueryIsReadOnly(Query *parsetree); /* Obsolete? */
+extern bool QueryIsReadOnly(Query *parsetree);  /* Obsolete */
 
 extern bool CommandIsReadOnly(Node *parsetree);
 

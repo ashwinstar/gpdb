@@ -160,6 +160,7 @@ static TypeName *TableFuncTypeName(List *columns);
 	IndexElem			*ielem;
 	Alias				*alias;
 	RangeVar			*range;
+	IntoClause			*into;
 	A_Indices			*aind;
 	ResTarget			*target;
 	PrivTarget			*privtarget;
@@ -226,7 +227,7 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <ival>	opt_lock lock_type cast_context
 %type <boolean>	opt_force opt_or_replace
 				opt_grant_grant_option opt_grant_admin_option
-				opt_nowait opt_if_exists
+				opt_nowait opt_if_exists opt_with_data
 
 %type <list>	OptRoleList
 %type <defelt>	OptRoleElem
@@ -294,7 +295,8 @@ static TypeName *TableFuncTypeName(List *columns);
 				execute_param_clause using_clause returning_clause
 				table_func_column_list
 
-%type <range>	into_clause OptTempTableName OptErrorTableName
+%type <range>	OptTempTableName OptErrorTableName
+%type <into>	into_clause create_as_target
 
 %type <defelt>	createfunc_opt_item common_func_opt_item
 %type <fun_param> func_arg table_func_column
@@ -550,7 +552,7 @@ static TypeName *TableFuncTypeName(List *columns);
  * list and so can never be entered directly.  The filter in parser.c
  * creates these tokens when required.
  */
-%token			NULLS_FIRST NULLS_LAST WITH_CASCADED WITH_LOCAL WITH_CHECK
+%token			NULLS_FIRST NULLS_LAST WITH_CASCADED WITH_LOCAL WITH_CHECK WITH_TIME
 
 /* Special token types, not actually keywords - see the "lex" file */
 %token <str>	IDENT FCONST SCONST BCONST XCONST Op
@@ -4270,10 +4272,9 @@ TabSubPartitionBy:
  * Note: CREATE TABLE ... AS SELECT ... is just another spelling for
  * SELECT ... INTO.
  */
-
+	
 CreateAsStmt:
-		CREATE OptTemp TABLE qualified_name OptCreateAs
-			OptWith OnCommitOption OptTableSpace AS SelectStmt OptDistributedBy OptTabPartitionBy
+		CREATE OptTemp TABLE create_as_target AS SelectStmt opt_with_data OptDistributedBy OptTabPartitionBy
 				{
 					/*
 					 * When the SelectStmt is a set-operation tree, we must
@@ -4282,27 +4283,39 @@ CreateAsStmt:
 					 * to find it.	Similarly, the output column names must
 					 * be attached to that Select's target list.
 					 */
-					SelectStmt *n = findLeftmostSelect((SelectStmt *) $10);
-					if (n->into != NULL)
+					SelectStmt *n = findLeftmostSelect((SelectStmt *) $6);
+					if (n->intoClause != NULL)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("CREATE TABLE AS may not specify INTO")));
-					$4->istemp = $2;
-					n->into = $4;
-					n->intoColNames = $5;
-					n->intoOptions = $6;
-					n->intoOnCommit = $7;
-					n->intoTableSpaceName = $8;
-					n->distributedBy = $11;
-                    /*					n->partitionBy = $12;  */
-                    if ($12)
+								 errmsg("CREATE TABLE AS cannot specify INTO"),
+								 scanner_errposition(exprLocation((Node *) n->intoClause))));
+					$4->rel->istemp = $2;
+					n->intoClause = $4;
+					/* Implement WITH NO DATA by forcing top-level LIMIT 0 */
+					if (!$7)
+						((SelectStmt *) $6)->limitCount = makeIntConst(0, -1);
+					n->distributedBy = $8;
+					
+					if ($9)
 						ereport(ERROR,
                                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"),
                                  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"),
                                  errOmitLocation(true)));
+					
+					$$ = $6;
+				}
+		;
 
-					$$ = $10;
+create_as_target:
+			qualified_name OptCreateAs OptWith OnCommitOption OptTableSpace
+				{
+					$$ = makeNode(IntoClause);
+					$$->rel = $1;
+					$$->colNames = $2;
+					$$->options = $3;
+					$$->onCommit = $4;
+					$$->tableSpaceName = $5;
 				}
 		;
 
@@ -4330,6 +4343,12 @@ CreateAsElement:
 					n->constraints = NIL;
 					$$ = (Node *)n;
 				}
+		;
+
+opt_with_data:
+			WITH DATA_P								{ $$ = TRUE; }
+			| WITH NO DATA_P						{ $$ = FALSE; }
+			| /*EMPTY*/								{ $$ = TRUE; }
 		;
 
 /*****************************************************************************
@@ -8100,21 +8119,15 @@ ExecuteStmt: EXECUTE name execute_param_clause
 					n->into = NULL;
 					$$ = (Node *) n;
 				}
-			| CREATE OptTemp TABLE qualified_name OptCreateAs
-				OptWith OnCommitOption OptTableSpace AS
+			| CREATE OptTemp TABLE create_as_target AS
 				EXECUTE name execute_param_clause
 				{
 					ExecuteStmt *n = makeNode(ExecuteStmt);
-					IntoClause *i = makeNode(IntoClause);
-					n->name = $11;
-					n->params = $12;
-					$4->istemp = $2;
-					n->into = i;
-					i->rel = $4;
-					i->options = $6;
-					i->onCommit = $7;
-					i->tableSpaceName = $8;
-					if ($5)
+					n->name = $7;
+					n->params = $8;
+					$4->rel->istemp = $2;
+					n->into = $4;
+					if ($4->colNames)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE")));
@@ -8557,8 +8570,7 @@ simple_select:
 					SelectStmt *n = makeNode(SelectStmt);
 					n->distinctClause = $2;
 					n->targetList = $3;
-					n->into = $4;
-					n->intoColNames = NIL;
+					n->intoClause = $4;
 					n->fromClause = $5;
 					n->whereClause = $6;
 					n->groupClause = $7;
@@ -8623,8 +8635,17 @@ common_table_expr:  name opt_name_list AS select_with_parens
 		;
 
 into_clause:
-			INTO OptTempTableName					{ $$ = $2; }
-			| /*EMPTY*/								{ $$ = NULL; }
+			INTO OptTempTableName
+				{
+					$$ = makeNode(IntoClause);
+					$$->rel = $2;
+					$$->colNames = NIL;
+					$$->options = NIL;
+					$$->onCommit = ONCOMMIT_NOOP;
+					$$->tableSpaceName = NULL;
+				}
+			| /*EMPTY*/
+				{ $$ = NULL; }
 		;
 
 /*
@@ -9959,7 +9980,7 @@ ConstInterval:
 		;
 
 opt_timezone:
-			WITH TIME ZONE							{ $$ = TRUE; }
+			WITH_TIME ZONE							{ $$ = TRUE; }
 			| WITHOUT TIME ZONE						{ $$ = FALSE; }
 			| /*EMPTY*/								{ $$ = FALSE; }
 		;
@@ -12091,7 +12112,6 @@ unreserved_keyword:
 			| VIEW
 			| VOLATILE
 			| WEB /* gp */
-			| WITH
 			| WITHOUT
 			| WORK
 			| WRAPPER
@@ -12581,6 +12601,7 @@ reserved_keyword:
 			| USER
 			| USING
 			| WINDOW
+			| WITH
 			| WHEN
 			| WHERE
 		;

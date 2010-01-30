@@ -893,17 +893,10 @@ typedef struct SelectStmt
 
 	/*
 	 * These fields are used only in "leaf" SelectStmts.
-	 *
-	 * into, intoColNames, intoOptions, intoOnCommit, and intoTableSpaceName
-	 * are a kluge; they belong somewhere else...
 	 */
 	List	   *distinctClause; /* NULL, list of DISTINCT ON exprs, or
 								 * lcons(NIL,NIL) for all (SELECT DISTINCT) */
-	RangeVar   *into;			/* target table (for select into table) */
-	List	   *intoColNames;	/* column names for into table */
-	List	   *intoOptions;	/* options from WITH clause */
-	OnCommitAction intoOnCommit;	/* what do we do at COMMIT? */
-	char	   *intoTableSpaceName;		/* table space to use, or NULL */
+	IntoClause *intoClause;		/* target for SELECT INTO / CREATE TABLE AS */
 	List	   *targetList;		/* the target list (of ResTarget) */
 	List	   *fromClause;		/* the FROM clause */
 	Node	   *whereClause;	/* WHERE qualification */

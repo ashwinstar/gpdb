@@ -128,7 +128,7 @@ init_execution_state(List *queryTree_list, SQLFunctionCache *fcache, bool readon
 					 errmsg("%s is not allowed in a SQL function",
 							CreateCommandTag(stmt))));
 
-		if (readonly_func && !readonly_func)
+		if (readonly_func && !CommandIsReadOnly(stmt))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			/* translator: %s is a SQL statement name */

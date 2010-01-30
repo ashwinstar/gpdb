@@ -19,8 +19,7 @@ statement: ecpgstart at stmt ';'        { connection = NULL; }
                 | '}'                   { remove_typedefs(braces_open); remove_variables(braces_open--); fputs("}", yyout); }
                 ;
 
-CreateAsStmt: CREATE OptTemp TABLE qualified_name OptCreateAs
-			OptWith OnCommitOption OptTableSpace AS { FoundInto = 0 } SelectStmt OptDistributedBy OptTabPartitionBy
+CreateAsStmt: CREATE OptTemp TABLE create_as_target AS {FoundInto = 0;} SelectStmt opt_with_data OptDistributedBy OptTabPartitionBy
 		{
 			if (FoundInto == 1)
 				mmerror(PARSE_ERROR, ET_ERROR, "CREATE TABLE AS cannot specify INTO");

@@ -2281,11 +2281,7 @@ _copySelectStmt(SelectStmt *from)
 	SelectStmt *newnode = makeNode(SelectStmt);
 
 	COPY_NODE_FIELD(distinctClause);
-	COPY_NODE_FIELD(into);
-	COPY_NODE_FIELD(intoColNames);
-	COPY_NODE_FIELD(intoOptions);
-	COPY_SCALAR_FIELD(intoOnCommit);
-	COPY_STRING_FIELD(intoTableSpaceName);
+	COPY_NODE_FIELD(intoClause);
 	COPY_NODE_FIELD(targetList);
 	COPY_NODE_FIELD(fromClause);
 	COPY_NODE_FIELD(whereClause);

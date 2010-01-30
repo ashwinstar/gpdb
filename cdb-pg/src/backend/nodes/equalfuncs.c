@@ -801,11 +801,7 @@ static bool
 _equalSelectStmt(SelectStmt *a, SelectStmt *b)
 {
 	COMPARE_NODE_FIELD(distinctClause);
-	COMPARE_NODE_FIELD(into);
-	COMPARE_NODE_FIELD(intoColNames);
-	COMPARE_NODE_FIELD(intoOptions);
-	COMPARE_SCALAR_FIELD(intoOnCommit);
-	COMPARE_STRING_FIELD(intoTableSpaceName);
+	COMPARE_NODE_FIELD(intoClause);
 	COMPARE_NODE_FIELD(targetList);
 	COMPARE_NODE_FIELD(fromClause);
 	COMPARE_NODE_FIELD(whereClause);

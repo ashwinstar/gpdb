@@ -206,8 +206,7 @@ static int	InteractiveBackend(StringInfo inBuf);
 static int	SocketBackend(StringInfo inBuf);
 static int	ReadCommand(StringInfo inBuf);
 static List *pg_rewrite_queries(List *querytree_list);
-static bool check_log_statement_raw(List *raw_parsetree_list);
-static bool check_log_statement_cooked(List *parsetree_list);
+static bool check_log_statement(List *stmt_list);
 static int	errdetail_execute(List *raw_parsetree_list);
 static int	errdetail_params(ParamListInfo params);
 static void start_xact_command(void);
@@ -797,6 +796,9 @@ pg_plan_query(Query *querytree, ParamListInfo boundParams)
  * utility statements depend on not having frozen the snapshot yet.
  * (We assume that such statements cannot appear together with plannable
  * statements in the rewriter's output.)
+ *
+ * Normal optimizable statements generate PlannedStmt entries in the result
+ * list.  Utility statements are simply represented by their statement nodes.
  */
 List *
 pg_plan_queries(List *querytrees, ParamListInfo boundParams,
@@ -1484,7 +1486,7 @@ exec_simple_query(const char *query_string)
 	if (!gp_mapreduce_define)
 	{
 		/* Log immediately if dictated by log_statement */
-		if (check_log_statement_raw(parsetree_list))
+		if (check_log_statement(parsetree_list))
 		{
 			ereport(LOG,
 				(errmsg("statement: %s", query_string),
@@ -2523,7 +2525,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	execute_is_fetch = !portal->atStart;
 
 	/* Log immediately if dictated by log_statement */
-	if (check_log_statement_cooked(portal->stmts))
+	if (check_log_statement(portal->stmts))
 	{
 		ereport(LOG,
 				(errmsg("%s %s%s%s%s%s",
@@ -2635,15 +2637,16 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 }
 
 /*
- * check_log_statement_raw
+ * check_log_statement
  *		Determine whether command should be logged because of log_statement
  *
- * raw_parsetree_list is the raw grammar output
+ * parsetree_list can be either raw grammar output or a list of planned
+ * statements
  */
 static bool
-check_log_statement_raw(List *raw_parsetree_list)
+check_log_statement(List *stmt_list)
 {
-	ListCell   *parsetree_item;
+	ListCell   *stmt_item;
 
 	if (log_statement == LOGSTMT_NONE)
 		return false;
@@ -2651,36 +2654,11 @@ check_log_statement_raw(List *raw_parsetree_list)
 		return true;
 
 	/* Else we have to inspect the statement(s) to see whether to log */
-	foreach(parsetree_item, raw_parsetree_list)
+	foreach(stmt_item, stmt_list)
 	{
-		Node	   *parsetree = (Node *) lfirst(parsetree_item);
+		Node	   *stmt = (Node *) lfirst(stmt_item);
 
-		if (GetCommandLogLevel(parsetree) <= log_statement)
-			return true;
-	}
-
-	return false;
-}
-
-/*
- * check_log_statement_cooked
- *		As above, but work from already-analyzed querytrees or
- *      PlannedStmt nodes.
- */
-static bool
-check_log_statement_cooked(List *node_list)
-{
-	ListCell   *item;
-
-	if (log_statement == LOGSTMT_NONE)
-		return false;
-	if (log_statement == LOGSTMT_ALL)
-		return true;
-
-	/* Else we have to inspect the statement(s) to see whether to log */
-	foreach(item, node_list)
-	{
-		if (GetQueryLogLevel(lfirst(item)) <= log_statement)
+		if (GetCommandLogLevel(stmt) <= log_statement)
 			return true;
 	}
 
@@ -3033,6 +3011,7 @@ finish_xact_command(void)
  * ones that we allow in transaction-aborted state.
  */
 
+/* Test a bare parsetree */
 static bool
 IsTransactionExitStmt(Node *parsetree)
 {

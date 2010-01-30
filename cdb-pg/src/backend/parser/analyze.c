@@ -8832,15 +8832,11 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 
 	/* handle any SELECT INTO/CREATE TABLE AS spec */
 	qry->intoClause = NULL;
-	if (stmt->into)
+	if (stmt->intoClause)
 	{
-		qry->intoClause = makeNode(IntoClause);
-		qry->intoClause->rel = stmt->into;
-		if (stmt->intoColNames)
-			applyColumnNames(qry->targetList, stmt->intoColNames);
-		qry->intoClause->options = copyObject(stmt->intoOptions);
-		qry->intoClause->onCommit = stmt->intoOnCommit;
-		qry->intoClause->tableSpaceName = stmt->intoTableSpaceName;
+		qry->intoClause = stmt->intoClause;
+		if (stmt->intoClause->colNames)
+			applyColumnNames(qry->targetList, stmt->intoClause->colNames);
 		/* XXX XXX:		qry->partitionBy = stmt->partitionBy; */
 	}
 
@@ -9036,15 +9032,11 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 
 	/* handle any CREATE TABLE AS spec */
 	qry->intoClause = NULL;
-	if (stmt->into)
+	if (stmt->intoClause)
 	{
-		qry->intoClause = makeNode(IntoClause);
-		qry->intoClause->rel = stmt->into;
-		if (stmt->intoColNames)
-			applyColumnNames(qry->targetList, stmt->intoColNames);
-		qry->intoClause->options = copyObject(stmt->intoOptions);
-		qry->intoClause->onCommit = stmt->intoOnCommit;
-		qry->intoClause->tableSpaceName = stmt->intoTableSpaceName;
+		qry->intoClause = stmt->intoClause;
+		if (stmt->intoClause->colNames)
+			applyColumnNames(qry->targetList, stmt->intoClause->colNames);
 	}
 
 	/*
@@ -9143,18 +9135,15 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	Assert(leftmostSelect && IsA(leftmostSelect, SelectStmt) &&
 		   leftmostSelect->larg == NULL);
 	qry->intoClause = NULL;
-	if (leftmostSelect->into)
+	if (leftmostSelect->intoClause)
 	{
-		qry->intoClause = makeNode(IntoClause);
-		qry->intoClause->rel = leftmostSelect->into;
-		intoColNames = leftmostSelect->intoColNames;
-		qry->intoClause->options = copyObject(leftmostSelect->intoOptions);
-		qry->intoClause->onCommit = leftmostSelect->intoOnCommit;
-		qry->intoClause->tableSpaceName = leftmostSelect->intoTableSpaceName;
+		qry->intoClause = leftmostSelect->intoClause;
+		if (leftmostSelect->intoClause->colNames)
+			applyColumnNames(qry->targetList, leftmostSelect->intoClause->colNames);
 	}
 
 	/* clear this to prevent complaints in transformSetOperationTree() */
-	leftmostSelect->into = NULL;
+	leftmostSelect->intoClause = NULL;
 
 	/*
 	 * These are not one-time, exactly, but we want to process them here and
@@ -9347,7 +9336,7 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt)
 	/*
 	 * Validity-check both leaf and internal SELECTs for disallowed ops.
 	 */
-	if (stmt->into)
+	if (stmt->intoClause)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("INTO is only allowed on first SELECT of UNION/INTERSECT/EXCEPT"),

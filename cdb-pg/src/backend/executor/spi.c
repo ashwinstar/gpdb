@@ -154,7 +154,7 @@ can_execute_this_locally(const char *src)
 		{
 			SelectStmt *s = (SelectStmt *) parsetree;
 
-			if (s->into != NULL)
+			if (s->intoClause != NULL)
 			{
 				can_run_local = false;
 				break;
