@@ -1975,7 +1975,7 @@ SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeC
 
 		new_active_host = mountMaintenance_forMpid(mpid);
 
-		snprintf(cmd, sizeof(cmd), "update %s set active = %c where mountid=%d",
+		snprintf(cmd, sizeof(cmd), "update %s set active_host = '%c' where mountid=%d",
 				 GpSanConfigRelationName, new_active_host, mpid);
 
 		executeEntrySQL(entryConn, cmd);
@@ -2152,6 +2152,11 @@ startSegment_forDbid(int dbid)
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 			elog(LOG, "Starting %s:%s:%d", host, dir, port);
 
+		/*
+		  GPHOME=os.environ.get('GPHOME')
+		  SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
+		*/
+
 		sprintf(cmd, "ssh %s \"pg_ctl -w -D %s -l %s/pg_log/startup.log -o '-i -p %d --silent-mode=true -M mirrorless -b %d -C %d -z %d' start 2>&1 \" ",
 				host, dir, dir, port, dbid, content_id, GpIdentity.numsegments);
 
@@ -2236,8 +2241,8 @@ mountMaintenance_forMpid(int mpid)
 			char	cmd[1024];
 			int		cmd_status;
 
-			snprintf(cmd, sizeof(cmd), "gp_mount_agent -t %c -a %c -p %s -d %s -m %s -q %s -e %s -n %s",
-					 san_type, active_host, p_host, p_mp, p_dev, m_host, m_mp, m_dev);
+			snprintf(cmd, sizeof(cmd), "gp_mount_agent --agent -t %c -a %c -p %s -d %s -m %s -q %s -e %s -n %s",
+					 san_type, active_host, p_host, p_dev, p_mp, m_host, m_dev, m_mp);
 
 			elog(LOG, "Mount agent command is [%s]", cmd);
 
