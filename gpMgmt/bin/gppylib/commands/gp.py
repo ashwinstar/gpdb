@@ -807,8 +807,13 @@ def read_postmaster_pidfile(datadir):
 
 def pausePg(db):
     """
-    first pause the postmaster, and then pause all the forked processes
-    this runs locally only to prevent to many ssh commands for performance
+    This function will pause an instance of postgres which is part of a GPDB
+
+    1) pause the postmaster (this prevents new connections from being made)
+    2) get list of processes that are descendent from postmaster process
+    3) pause all descendent processes and ignore any failures (a process may have died betwen getting pid list and doing the pauses)
+    4) again, get list of processes that are descendent from postmaster process
+    5) pause all descendent processes and ignore any failures (do not ignore errors, errors are failures, no pids can die between being paused the first time and getting the pid list)
     """
 
     datadir = db.getSegmentDataDirectory()
@@ -818,13 +823,32 @@ def pausePg(db):
         raise Exception, 'print "could not locate postmasterPID during pause'
 
     Kill.local(name="pausep "+str(content), pid=postmasterPID, signal="STOP")
+
+    decsendentProcessPids = getDescendentProcesses(postmasterPID)
+
+    for killpid in decsendentProcessPids:
+
+        try:
+            Kill.local(name="pausep "+str(killpid), pid=killpid, signal="STOP")
+        except:
+            pass
+
+    decsendentProcessPids = getDescendentProcesses(postmasterPID)
+        
+    for killpid in decsendentProcessPids:
+
+        Kill.local(name="pausep "+str(killpid), pid=killpid, signal="STOP")
+
+    
+
+
 #   TODO: use PSI and kill all processes which are descendent process of postmaster
 #    KillChildren.local(name="pausec "+str(content), pid=postmasterPID, signal=signal.SIGSTOP)
 
 def resumePg(db):
     """
-    first resume the forked processes and then resume the postmaster
-    this runs locally only to prevent to many ssh commands for performance
+    1) resume the processes descendent from the postmaster process
+    2) resume the postmaster process
     """
 
     datadir = db.getSegmentDataDirectory()
@@ -833,8 +857,13 @@ def resumePg(db):
     if postmasterPID == 0:
         raise Exception, 'print "could not locate postmasterPID during resume'
 
-#   TODO: use PSI and kill all processes which are descendent process of postmaster
-#    KillChildren.local(name="pausec "+str(content), pid=postmasterPID, signal=signal.SIGCONT)
+    decsendentProcessPids = getDescendentProcesses(postmasterPID)
+        
+    for killpid in decsendentProcessPids:
+
+        Kill.local(name="pausep "+str(killpid), pid=killpid, signal="CONT")
+
+
     Kill.local(name="pausep "+str(content), pid=postmasterPID, signal="CONT")
 
 

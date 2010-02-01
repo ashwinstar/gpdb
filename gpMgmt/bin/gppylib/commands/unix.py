@@ -12,6 +12,7 @@ import platform
 import socket
 import sys
 import signal
+import psi.process
 
 from gppylib.gplog import *
 from gppylib.commands.base import *
@@ -677,6 +678,26 @@ class Chmod(Command):
     def local(name, dir, perm):
         cmd=Chmod(name, dir, perm)
         cmd.run(validateAfter=True)
+
+#--------------get list of desecendant processes -------------------
+
+def getDescendentProcesses(pid):
+    ''' return all process which are descendant from the given processid ''' 
+
+    children = list()
+    grandchildren = list()
+
+    for p in psi.process.ProcessTable().values():
+
+        if int(p.ppid) == int(pid):
+            children.append(int(p.pid))
+
+    # recursion
+    for child in children:
+        grandchildren.extend( getDescendentProcesses(child) )
+
+    return children + grandchildren
+
         
 #--------------global variable initialization ----------------------
 
