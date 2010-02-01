@@ -17776,6 +17776,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000073:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000074:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000075:  str))); 
-(17712 rows)
+(17715 rows)
 
 drop external table get_ereport;
