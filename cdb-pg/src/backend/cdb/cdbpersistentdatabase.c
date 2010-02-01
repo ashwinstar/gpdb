@@ -1079,6 +1079,8 @@ bool PersistentDatabase_DirIsCreated(
 		return true;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
+	PersistentDatabase_InitScan();
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 	
 	databaseEntry = PersistentDatabase_FindUnderLock(dbDirNode->database);
