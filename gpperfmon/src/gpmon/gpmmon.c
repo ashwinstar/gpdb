@@ -1022,9 +1022,9 @@ int main(int argc, const char* const argv[])
 	{
         if (gpmon_recursive_mkdir(opt.log_dir))
         {
-            fprintf(stderr, "\nPerformance Monitor -- cannot create directory %s/%s", ax.master_data_directory, opt.log_dir);
+            fprintf(stderr, "\nPerformance Monitor -- cannot create directory %s", opt.log_dir);
             interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-            gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s/%s", ax.master_data_directory, opt.log_dir);
+            gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s", opt.log_dir);
         }
 
 		char log_file[MAXPATHLEN + 1];

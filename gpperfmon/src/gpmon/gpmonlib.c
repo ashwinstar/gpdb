@@ -301,11 +301,13 @@ int gpmon_recursive_mkdir(char* work_dir)
     char *pdir = work_dir;
     while (*pdir)
     {
-        if (*pdir == '/')
+        if (*pdir == '/' && (pdir != work_dir))
         {
             *pdir = 0;
             if (-1 == mkdir(work_dir, 0700) && EEXIST != errno)
             {
+				fprintf(stderr, "Performance Monitor - mkdir '%s' failed", work_dir);
+				perror("Performance Monitor -");
                 return 1;
             }
             *pdir = '/';
@@ -315,6 +317,8 @@ int gpmon_recursive_mkdir(char* work_dir)
 
     if (-1 == mkdir(work_dir, 0700) && EEXIST != errno)
     {
+		fprintf(stderr, "Performance Monitor - mkdir '%s' failed", work_dir);
+		perror("Performance Monitor -");
         return 1;
     }
 
