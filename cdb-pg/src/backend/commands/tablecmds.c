@@ -10654,9 +10654,12 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	}
 	else
 	{
+		Oid tblspc = rel->rd_rel->reltablespace;
+
 		s->intoClause = makeNode(IntoClause);
 		s->intoClause->rel = tmprel;
 		s->intoClause->options = wo;
+		s->intoClause->tableSpaceName = get_tablespace_name(tblspc);
 		s->distributedBy = dist_clause;
 		n = (Node *)s;
 	}
@@ -11158,6 +11161,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 		cs->options = opts;
 		cs->relation = tmpname;
 		cs->ownerid = rel->rd_rel->relowner;
+		cs->tablespacename = get_tablespace_name(rel->rd_rel->reltablespace);
 
 		for (attno = 0; attno < tupdesc->natts; attno++)
 		{
