@@ -201,7 +201,14 @@ static bool PersistentTablespace_ScanTupleCallback(
 									&previousFreeTid);
 
 	if (state == PersistentFileSysState_Free)
+	{
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "PersistentTablespace_ScanTupleCallback: TID %s, serial number " INT64_FORMAT " is free",
+				 ItemPointerToString2(persistentTid),
+				 persistentSerialNum);
 		return true;	// Continue.
+	}
 	
 	tablespaceDirEntry = 
 			PersistentTablespace_CreateDirUnderLock(tablespaceOid, filespaceOid);
@@ -210,6 +217,15 @@ static bool PersistentTablespace_ScanTupleCallback(
 	tablespaceDirEntry->serialNum = serialNum;
 	tablespaceDirEntry->parentXid = parentXid;
 	tablespaceDirEntry->presistentTid = *persistentTid;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "PersistentTablespace_ScanTupleCallback: tablespace %u, filespace %u, state %s, TID %s, serial number " INT64_FORMAT,
+			 tablespaceOid,
+			 filespaceOid,
+			 PersistentFileSysObj_StateName(state),
+			 ItemPointerToString2(persistentTid),
+			 persistentSerialNum);
 
 	return true;	// Continue.
 }

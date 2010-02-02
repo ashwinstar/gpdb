@@ -270,7 +270,14 @@ static bool PersistentDatabase_ScanTupleCallback(
 									&previousFreeTid);
 
 	if (state == PersistentFileSysState_Free)
+	{
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "PersistentDatabase_ScanTupleCallback: TID %s, serial number " INT64_FORMAT " is free",
+				 ItemPointerToString2(persistentTid),
+				 persistentSerialNum);
 		return true;	// Continue.
+	}
 	
 	databaseEntry = 
 			PersistentDatabase_FindOrCreateUnderLock(dbDirNode.database);
@@ -293,6 +300,15 @@ static bool PersistentDatabase_ScanTupleCallback(
 	databaseDirEntry->serialNum = serialNum;
 	databaseDirEntry->parentXid = parentXid;
 	databaseDirEntry->presistentTid = *persistentTid;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "PersistentDatabase_ScanTupleCallback: database %u, tablespace %u, state %s, TID %s, serial number " INT64_FORMAT,
+			 dbDirNode.database,
+			 dbDirNode.tablespace,
+			 PersistentFileSysObj_StateName(state),
+			 ItemPointerToString2(persistentTid),
+			 persistentSerialNum);
 
 	return true;	// Continue.
 }
