@@ -283,7 +283,7 @@ int		file_rep_ack_buffer_size = 512 * 1024;
  * may be full due to i.e. network down, mirror host down, 
  * slow processing, ...
  */
-int		file_rep_retry = 300;
+int		file_rep_retry = 1500;  // 136 seconds   300 was old value
 
 /**
  * GUC parameter

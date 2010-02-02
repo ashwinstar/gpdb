@@ -890,7 +890,7 @@ FileRepMirror_RunConsumer(void)
 						break;
 					}
 					
-					Assert(fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeBufferPool);
+					/*Assert(fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeBufferPool);*/
 					
 					errno = 0;
 					fd = PathNameOpenFile(
@@ -991,7 +991,7 @@ FileRepMirror_RunConsumer(void)
 							 break;
 						}
 						
-						Assert(fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeBufferPool);
+						/*Assert(fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeBufferPool);*/
 						
 						errno = 0;
 						fd = PathNameOpenFile(
