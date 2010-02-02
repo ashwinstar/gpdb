@@ -1748,17 +1748,21 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 			if (tle->ressortgroupref == no + 1)
 				break;
 		}
-		Assert(lc != NULL);
-		foreach (sub_lc, sub_tlist)
+		
+		if (lc)
 		{
-			TargetEntry *sub_tle = (TargetEntry *)lfirst(sub_lc);
-			if (equal(sub_tle->expr, tle->expr))
+			Assert(lc != NULL);
+			foreach (sub_lc, sub_tlist)
 			{
-				Assert(tle->ressortgroupref - 1 == no);
-				sortrefs_to_resnos[tle->ressortgroupref - 1] = sub_tle->resno;
-				break;
+				TargetEntry *sub_tle = (TargetEntry *)lfirst(sub_lc);
+				Assert(sub_tle);
+				if (equal(sub_tle->expr, tle->expr))
+				{
+					Assert(tle->ressortgroupref - 1 == no);
+					sortrefs_to_resnos[tle->ressortgroupref - 1] = sub_tle->resno;
+					break;
+				}
 			}
-			Assert(sub_tle != NULL);
 		}
 	}
 
