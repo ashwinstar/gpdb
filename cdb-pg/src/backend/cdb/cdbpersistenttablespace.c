@@ -424,6 +424,8 @@ void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 	}
 
 	PersistentTablespace_InitScan();
+	
+	PersistentFilespace_InitScan();
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 

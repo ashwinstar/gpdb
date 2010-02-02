@@ -15,6 +15,8 @@
 #include "cdb/cdbsharedoidsearch.h"
 #include "access/persistentfilesysobjname.h"
 
+extern void PersistentFilespace_InitScan(void);
+
 extern bool PersistentFilespace_Check(
 	Oid 			filespace);
 

@@ -92,8 +92,6 @@ static HTAB *persistentFilespaceSharedHashTable = NULL;
 
 PersistentFilespaceData	persistentFilespaceData = PersistentFilespaceData_StaticInit;
 
-static void PersistentFilespace_InitScan(void);
-
 /*
  * Return the hash entry for a filespace.
  */
@@ -256,7 +254,7 @@ static void PersistentFilespace_InitScanUnderLock(void)
 					&persistentFilespaceSharedData->fileSysObjSharedData);
 }
 
-static void PersistentFilespace_InitScan(void)
+void PersistentFilespace_InitScan(void)
 {
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
