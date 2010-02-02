@@ -145,19 +145,19 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
                                 -1, 0);
                 TupleDescInitEntry(tupdesc, (AttrNumber) 2,
                                 "eof",
-                                INT8OID,
+                                FLOAT8OID,
                                 -1, 0);
                 TupleDescInitEntry(tupdesc, (AttrNumber) 3,
                                 "tupcount",
-                                INT8OID,
+                                FLOAT8OID,
                                 -1, 0);
                 TupleDescInitEntry(tupdesc, (AttrNumber) 4,
                                 "varblockcount",
-                                INT8OID,
+                                FLOAT8OID,
                                 -1, 0);
                 TupleDescInitEntry(tupdesc, (AttrNumber) 5,
                                 "eofuncompressed",
-                                INT8OID,
+                                FLOAT8OID,
                                 -1, 0);
 	}
 	else

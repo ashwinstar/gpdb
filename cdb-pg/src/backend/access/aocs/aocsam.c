@@ -517,25 +517,25 @@ AOCSInsertDesc aocs_insert_init(Relation rel, int segno)
     OpenAOCSDatumStreams(desc);
 
 	/*
-	 * Obtain the next list of fast sequences if there is an index for
-	 * this relation.
+	 * Obtain the next list of fast sequences for this relation.
+	 *
+	 * Even in the case of no indexes, we need to update the fast
+	 * sequences, since the table may contain indexes at some
+	 * point of time.
 	 */
 	desc->numSequences = 0;
-	if (desc->aoi_rel->rd_rel->relhasindex)
-	{
-		firstSequence =
-			GetFastSequences(desc->aoEntry->segrelid,
-							 segno,
-							 desc->rowCount + 1,
-							 NUM_FAST_SEQUENCES,
-							 &desc->fsInfo->sequence_tid);
-		desc->numSequences = NUM_FAST_SEQUENCES;
-	}
-	/* Set last_sequence value */
-	desc->lastSequence = desc->rowCount;
 	
-	if (desc->lastSequence + 1 < firstSequence)
-		desc->lastSequence = firstSequence - 1;
+	firstSequence =
+		GetFastSequences(desc->aoEntry->segrelid,
+						 segno,
+						 desc->rowCount + 1,
+						 NUM_FAST_SEQUENCES,
+						 &desc->fsInfo->sequence_tid);
+	desc->numSequences = NUM_FAST_SEQUENCES;
+
+	/* Set last_sequence value */
+	Assert(firstSequence > desc->rowCount);
+	desc->lastSequence = firstSequence - 1;
 
 	SetBlockFirstRowNums(desc->ds, tupleDesc->natts, desc->lastSequence + 1);
 
@@ -618,11 +618,10 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
 	AOTupleIdInit_rowNum(aoTupleId, idesc->lastSequence);
 
 	/*
-	 * If this relation has indexes, and the allocated fast sequence numbers
-	 * is used up, we request for a next list of fast sequence numbers.
+	 * If the allocated fast sequence numbers are used up, we request for
+	 * a next list of fast sequence numbers.
 	 */
-	if (idesc->aoi_rel->rd_rel->relhasindex &&
-		idesc->numSequences == 0)
+	if (idesc->numSequences == 0)
 	{
 		int64 firstSequence;
 		Assert(ItemPointerIsValid(&idesc->fsInfo->sequence_tid));

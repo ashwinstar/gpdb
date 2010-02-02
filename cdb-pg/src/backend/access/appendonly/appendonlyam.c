@@ -2022,28 +2022,26 @@ appendonly_insert_init(Relation rel, int segno)
 	Assert(aoInsertDesc->tempSpaceLen > 0);
 
 	/*
-	 * Obtain the next list of fast sequences if there is an index for
-	 * this relation.
+	 * Obtain the next list of fast sequences for this relation.
+	 *
+	 * Even in the case of no indexes, we need to update the fast
+	 * sequences, since the table may contain indexes at some
+	 * point of time.
 	 */
-	aoInsertDesc->numSequences = 0;
-	if (aoInsertDesc->aoi_rel->rd_rel->relhasindex)
-	{
-		Assert(!ItemPointerIsValid(&aoInsertDesc->fsInfo->sequence_tid));
-		Assert(aoInsertDesc->fsInfo->segno == segno);
+	Assert(!ItemPointerIsValid(&aoInsertDesc->fsInfo->sequence_tid));
+	Assert(aoInsertDesc->fsInfo->segno == segno);
 		
-		firstSequence =
-			GetFastSequences(aoInsertDesc->aoEntry->segrelid,
-							 segno,
-							 aoInsertDesc->rowCount + 1,
-							 NUM_FAST_SEQUENCES,
-							 &aoInsertDesc->fsInfo->sequence_tid);
-		aoInsertDesc->numSequences = NUM_FAST_SEQUENCES;
-	}
+	firstSequence =
+		GetFastSequences(aoInsertDesc->aoEntry->segrelid,
+						 segno,
+						 aoInsertDesc->rowCount + 1,
+						 NUM_FAST_SEQUENCES,
+						 &aoInsertDesc->fsInfo->sequence_tid);
+	aoInsertDesc->numSequences = NUM_FAST_SEQUENCES;
+
 	/* Set last_sequence value */
-	aoInsertDesc->lastSequence = aoInsertDesc->rowCount;
-	
-	if (aoInsertDesc->lastSequence + 1 < firstSequence)
-		aoInsertDesc->lastSequence = firstSequence - 1;
+	Assert(firstSequence > aoInsertDesc->rowCount);
+	aoInsertDesc->lastSequence = firstSequence - 1;
 
 	setupNextWriteBlock(aoInsertDesc);
 
@@ -2279,11 +2277,10 @@ appendonly_insert_init(Relation rel, int segno)
 	AOTupleIdInit_rowNum(aoTupleId, aoInsertDesc->lastSequence);
 
 	/*
-	 * If this relation has indexes, and the allocated fast sequence numbers
-	 * is used up, we request for a next list of fast sequence numbers.
+	 * If the allocated fast sequence numbers are used up, we request for
+	 * a next list of fast sequence numbers.
 	 */
-	if (aoInsertDesc->aoi_rel->rd_rel->relhasindex &&
-		aoInsertDesc->numSequences == 0)
+	if (aoInsertDesc->numSequences == 0)
 	{
 		int64 firstSequence;
 		Assert(ItemPointerIsValid(&aoInsertDesc->fsInfo->sequence_tid));

@@ -93,10 +93,10 @@ InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry,
 	pg_aoseg_idx = index_open(aoEntry->segidxid, RowExclusiveLock);
 
 	values[Anum_pg_aoseg_segno - 1] = ObjectIdGetDatum(segno);
-	values[Anum_pg_aoseg_tupcount - 1] = Int64GetDatum(0);
-	values[Anum_pg_aoseg_varblockcount - 1] = Int64GetDatum(0);
-	values[Anum_pg_aoseg_eof - 1] = Int64GetDatum(0);
-	values[Anum_pg_aoseg_eofuncompressed - 1] = Int64GetDatum(0);
+	values[Anum_pg_aoseg_tupcount - 1] = Float8GetDatum(0);
+	values[Anum_pg_aoseg_varblockcount - 1] = Float8GetDatum(0);
+	values[Anum_pg_aoseg_eof - 1] = Float8GetDatum(0);
+	values[Anum_pg_aoseg_eofuncompressed - 1] = Float8GetDatum(0);
 
 	/*
 	 * form the tuple and insert it
@@ -395,20 +395,20 @@ lmark:	;
 	}
 	else
 	{
-		fsinfo->eof_uncompressed = DatumGetInt64(eof_uncompressed);
+		fsinfo->eof_uncompressed = (int64)DatumGetFloat8(eof_uncompressed);
 	}
 
 	fsinfo->segno = segno;
-	fsinfo->eof = DatumGetInt64(eof);
-	fsinfo->tupcount = DatumGetInt64(tupcount);
-	fsinfo->varblockcount = DatumGetInt64(varbcount);
+	fsinfo->eof = (int64)DatumGetFloat8(eof);
+	fsinfo->tupcount = (int64)DatumGetFloat8(tupcount);
+	fsinfo->varblockcount = (int64)DatumGetFloat8(varbcount);
 	ItemPointerSetInvalid(&fsinfo->sequence_tid);
 
 	if (fsinfo->eof < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				errmsg("Invalid eof " INT64_FORMAT " for relation %s",
-						fsinfo->eof, NameStr(parentrel->rd_rel->relname))));
+					   fsinfo->eof, NameStr(parentrel->rd_rel->relname))));
 
 	/* Finish up scan and close appendonly catalog. */
 	heap_close(pg_aoseg_rel, lockmode);
@@ -490,13 +490,13 @@ FileSegInfo **GetAllFileSegInfo(Relation parentrel,
 		oneseginfo->segno = DatumGetInt32(segno);
 
 		eof = fastgetattr(tuple, Anum_pg_aoseg_eof, pg_aoseg_dsc, &isNull);
-		oneseginfo->eof += DatumGetInt64(eof);
+		oneseginfo->eof += (int64)DatumGetFloat8(eof);
 
 		tupcount = fastgetattr(tuple, Anum_pg_aoseg_tupcount, pg_aoseg_dsc, &isNull);
-		oneseginfo->tupcount += DatumGetInt64(tupcount);
+		oneseginfo->tupcount += (int64)DatumGetFloat8(tupcount);
 
 		varblockcount = fastgetattr(tuple, Anum_pg_aoseg_varblockcount, pg_aoseg_dsc, &isNull);
-		oneseginfo->varblockcount += DatumGetInt64(varblockcount);
+		oneseginfo->varblockcount += (int64)DatumGetFloat8(varblockcount);
 
 		ItemPointerSetInvalid(&oneseginfo->sequence_tid);
 
@@ -505,7 +505,7 @@ FileSegInfo **GetAllFileSegInfo(Relation parentrel,
 		if(isNull)
 			oneseginfo->eof_uncompressed = InvalidUncompressedEof;
 		else
-			oneseginfo->eof_uncompressed += DatumGetInt64(eof);
+			oneseginfo->eof_uncompressed += (int64)DatumGetFloat8(eof);
 
 		if (Debug_appendonly_print_scan)
 			elog(LOG,"Append-only found existing segno %d with eof " INT64_FORMAT " for table '%s' out of total %d segs",
@@ -602,9 +602,9 @@ UpdateFileSegInfo(Relation parentrel,
 				errmsg("got invalid pg_aoseg filetupcount value: NULL")));
 
 	/* calculate the new tuple count */
-	new_tuple_count = DirectFunctionCall2(int8pl,
-										filetupcount,
-										Int64GetDatum(tuples_added));
+	new_tuple_count = DirectFunctionCall2(float8pl,
+										  filetupcount,
+										  Float8GetDatum((float8)tuples_added));
 
 	/* get the current varblock count so we can add to it */
 	filevarblockcount = fastgetattr(tuple,
@@ -618,9 +618,9 @@ UpdateFileSegInfo(Relation parentrel,
 				errmsg("got invalid pg_aoseg varblockcount value: NULL")));
 
 	/* calculate the new tuple count */
-	new_varblock_count = DirectFunctionCall2(int8pl,
-											filevarblockcount,
-											Int64GetDatum(varblocks_added));
+	new_varblock_count = DirectFunctionCall2(float8pl,
+											 filevarblockcount,
+											 Float8GetDatum((float8)varblocks_added));
 
 
 	/*
@@ -629,7 +629,7 @@ UpdateFileSegInfo(Relation parentrel,
 	MemSet(new_record_nulls, false, sizeof(char) * pg_aoseg_dsc->natts);
 	MemSet(new_record_repl, false, sizeof(char) * pg_aoseg_dsc->natts);
 
-	new_record[Anum_pg_aoseg_eof - 1] = Int64GetDatum(eof);
+	new_record[Anum_pg_aoseg_eof - 1] = Float8GetDatum((float8)eof);
 	new_record_repl[Anum_pg_aoseg_eof - 1] = true;
 
 	new_record[Anum_pg_aoseg_tupcount - 1] = new_tuple_count;
@@ -638,7 +638,7 @@ UpdateFileSegInfo(Relation parentrel,
 	new_record[Anum_pg_aoseg_varblockcount - 1] = new_varblock_count;
 	new_record_repl[Anum_pg_aoseg_varblockcount - 1] = true;
 
-	new_record[Anum_pg_aoseg_eofuncompressed - 1] = Int64GetDatum(eof_uncompressed);
+	new_record[Anum_pg_aoseg_eofuncompressed - 1] = Float8GetDatum((float8)eof_uncompressed);
 	new_record_repl[Anum_pg_aoseg_eofuncompressed - 1] = true;
 
 	/*
@@ -699,11 +699,11 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel)
 		if(isNull)
 			result->totalbytesuncompressed = InvalidUncompressedEof;
 		else
-			result->totalbytesuncompressed += DatumGetInt64(eof_uncompressed);
+			result->totalbytesuncompressed += (int64)DatumGetFloat8(eof_uncompressed);
 
-		result->totalbytes += DatumGetInt64(eof);
-		result->totaltuples += DatumGetInt64(tupcount);
-		result->totalvarblocks += DatumGetInt64(varblockcount);
+		result->totalbytes += (int64)DatumGetFloat8(eof);
+		result->totaltuples += (int64)DatumGetFloat8(tupcount);
+		result->totalvarblocks += (int64)DatumGetFloat8(varblockcount);
 		result->totalfilesegs++;
 
 		CHECK_FOR_INTERRUPTS();
@@ -749,7 +749,7 @@ int64 GetAOTotalBytes(Relation parentrel)
 		eof = fastgetattr(tuple, Anum_pg_aoseg_eof, pg_aoseg_dsc, &isNull);
 		Assert(!isNull);
 
-		result += DatumGetInt64(eof);
+		result += (int64)DatumGetFloat8(eof);
 
 		CHECK_FOR_INTERRUPTS();
 	}
@@ -844,7 +844,7 @@ gp_update_aorow_master_stats_internal(Relation parentrel)
 				 * Convert to desired data type
 				 */
 				qe_segno = pg_atoi(val_segno, sizeof(int32), 0);
-				qe_tupcount = DatumGetInt64(DirectFunctionCall1(int8in,
+				qe_tupcount = (int64)DatumGetFloat8(DirectFunctionCall1(float8in,
 																 CStringGetDatum(val_tupcount)));
 
 				total_count += qe_tupcount;
@@ -1480,11 +1480,11 @@ aorow_compression_ratio_internal(Relation parentrel)
 			 */
 			if(val_eof_uncomp != NULL && val_eof != NULL)
 			{
-				Datum eof = DirectFunctionCall1(int8in, CStringGetDatum(val_eof));
-				Datum eof_uncomp = DirectFunctionCall1(int8in, CStringGetDatum(val_eof_uncomp));
+				Datum eof = DirectFunctionCall1(float8in, CStringGetDatum(val_eof));
+				Datum eof_uncomp = DirectFunctionCall1(float8in, CStringGetDatum(val_eof_uncomp));
 
 				/* guard against division by zero */
-				if(DatumGetInt64(eof) > 0)
+				if(DatumGetFloat8(eof) > 0)
 				{
 					char  buf[8];
 
