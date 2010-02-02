@@ -597,7 +597,7 @@ AS
 SELECT 
 'pg_authid' AS classname, 
 a.rolname AS objname, 
-c.objid,
+c.objid, NULL AS schemaname,
 CASE WHEN 
 ((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
 THEN 'CURRENT'
@@ -621,7 +621,7 @@ UNION
 SELECT 
 'pg_class' AS classname, 
 a.relname AS objname, 
-c.objid, 
+c.objid,  N.nspname AS schemaname,
 CASE WHEN 
 ((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
 THEN 'CURRENT'
@@ -636,16 +636,19 @@ c.stasubtype AS subtype,
 --
 c.statime 
 FROM pg_class
-a, (pg_authid b FULL JOIN 
+a, pg_namespace n, (pg_authid b FULL JOIN 
 pg_stat_last_operation c ON ((b.oid =
-c.stasysid))) WHERE ((a.oid = c.objid) AND (c.classid = (SELECT
+c.stasysid))) WHERE 
+a.relnamespace = n.oid AND
+((a.oid = c.objid) AND (c.classid = (SELECT
 pg_class.oid FROM pg_class WHERE ((pg_class.relname =
 'pg_class'::name) AND (pg_class.relnamespace = (SELECT
 pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname =
 'pg_catalog'::name)))))))
 UNION
 SELECT
-'pg_namespace' AS classname, a.nspname AS objname, c.objid, 
+'pg_namespace' AS classname, a.nspname AS objname, 
+c.objid,  NULL AS schemaname,
 CASE WHEN 
 ((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
 THEN 'CURRENT'
@@ -667,7 +670,8 @@ pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname =
 'pg_catalog'::name)))))))
 UNION
 SELECT
-'pg_database' AS classname, a.datname AS objname, c.objid, 
+'pg_database' AS classname, a.datname AS objname, 
+c.objid,  NULL AS schemaname,
 CASE WHEN 
 ((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
 THEN 'CURRENT'
@@ -689,7 +693,8 @@ pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname =
 'pg_catalog'::name)))))))
 UNION 
 SELECT
-'pg_filespace' AS classname, a.fsname AS objname, c.objid, 
+'pg_filespace' AS classname, a.fsname AS objname, 
+c.objid,  NULL AS schemaname,
 CASE WHEN 
 ((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
 THEN 'CURRENT'
@@ -711,7 +716,8 @@ pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname =
 'pg_catalog'::name)))))))
 UNION
 SELECT
-'pg_tablespace' AS classname, a.spcname AS objname, c.objid, 
+'pg_tablespace' AS classname, a.spcname AS objname, 
+c.objid,  NULL AS schemaname,
 CASE WHEN 
 ((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
 THEN 'CURRENT'
@@ -734,7 +740,7 @@ pg_namespace.oid FROM pg_namespace WHERE (pg_namespace.nspname =
 UNION
 SELECT 'pg_resqueue' AS classname,
 a.rsqname as objname,
-c.objid,
+c.objid, NULL AS schemaname,
 CASE WHEN 
 ((b.oid = c.stasysid) AND (b.rolname = c.stausename) )
 THEN 'CURRENT'
@@ -753,7 +759,7 @@ b FULL JOIN pg_stat_last_shoperation c ON ((b.oid = c.stasysid)))
 WHERE ((a.oid = c.objid) AND (c.classid = (SELECT pg_class.oid FROM
 pg_class WHERE ((pg_class.relname = 'pg_resqueue'::name) AND
 (pg_class.relnamespace = (SELECT pg_namespace.oid FROM pg_namespace
-WHERE (pg_namespace.nspname = 'pg_catalog'::name))))))) ORDER BY 8;
+WHERE (pg_namespace.nspname = 'pg_catalog'::name))))))) ORDER BY 9;
 
 CREATE VIEW
 pg_stat_partition_operations
@@ -783,4 +789,31 @@ LEFT OUTER JOIN
 ( SELECT pc.oid, * FROM pg_class AS pc FULL JOIN pg_namespace AS ns 
 ON ns.oid = pc.relnamespace) AS pcns
 ON pcns.oid = pr.parrelid
+;
+
+-- MPP-7807: show all resqueue attributes
+CREATE VIEW pg_resqueue_attributes AS
+SELECT rsqname, 'active_statements' AS resname,
+rsqcountlimit::text AS ressetting,
+1 AS restypid FROM pg_resqueue
+UNION
+SELECT rsqname, 'max_cost' AS resname,
+rsqcostlimit::text AS ressetting,
+2 AS restypid FROM pg_resqueue
+UNION
+SELECT rsqname, 'cost_overcommit' AS resname,
+case when rsqovercommit then '1'
+else '0' end AS ressetting,
+4 AS restypid FROM pg_resqueue
+UNION
+SELECT rsqname, 'min_cost' AS resname,
+rsqignorecostlimit::text AS ressetting,
+3 AS restypid FROM pg_resqueue
+UNION
+SELECT rq.rsqname , rt.resname, rc.ressetting,
+rt.restypid AS restypid FROM
+pg_resqueue rq, pg_resourcetype rt,
+pg_resqueuecapability rc WHERE
+rq.oid=rc.resqueueid AND rc.restypid = rt.restypid
+ORDER BY rsqname, restypid
 ;

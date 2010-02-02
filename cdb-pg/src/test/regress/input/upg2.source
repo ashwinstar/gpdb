@@ -753,7 +753,8 @@ insert into public.pg_rewrite
 	 'public.user_mappings'::regclass,
 	 'public.pg_user_mappings'::regclass,
 	 'public.pg_stat_operations'::regclass,
-	 'public.pg_stat_partition_operations'::regclass
+	 'public.pg_stat_partition_operations'::regclass,
+	 'public.pg_resqueue_attributes'::regclass
   );
 -- add views created in pg_catalog to public.pg_class
 copy ( 
@@ -767,7 +768,8 @@ copy (
   where oid in (
 	 'public.pg_user_mappings'::regclass,
 	 'public.pg_stat_operations'::regclass,
-	 'public.pg_stat_partition_operations'::regclass
+	 'public.pg_stat_partition_operations'::regclass,
+	 'public.pg_resqueue_attributes'::regclass
 )) to '/tmp/pg_class';
 copy public.pg_class from '/tmp/pg_class' with oids;
 -- add views created in information_schema to public.pg_class
