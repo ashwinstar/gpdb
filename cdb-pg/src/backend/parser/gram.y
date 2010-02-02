@@ -418,7 +418,7 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <boolean> constraints_set_mode
 %type <str>		OptTableSpace OptConsTableSpace OptOwner
 %type <list>    FileSpaceSegList
-%type <defelt>  FileSpaceSeg
+%type <node>    FileSpaceSeg
 %type <list>    DistributedBy OptDistributedBy
 %type <ival>	TabPartitionByType OptTabPartitionRangeInclusive
 %type <node>	OptTabPartitionBy TabSubPartitionBy 
@@ -4862,7 +4862,11 @@ FileSpaceSegList:
 FileSpaceSeg:
             Iconst ':' Sconst
 			{
-				$$ = makeDefElem($3, (Node *) makeInteger($1));
+				FileSpaceEntry *n = makeNode(FileSpaceEntry);
+				n->dbid = $1;
+				n->contentid = -1;  /* will be filled in later */
+				n->location = $3;
+				$$ = (Node *) n;
 			}
 		;
 

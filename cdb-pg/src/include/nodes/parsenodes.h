@@ -1595,9 +1595,23 @@ typedef struct CreateFileSpaceStmt
 	NodeTag		type;
 	char	   *filespacename;
 	char	   *owner;
-	List       *locations;
+	List       *locations;  /* List of FileSpaceEntry */
 	Oid         fsoid;
 } CreateFileSpaceStmt;
+
+
+/*
+ * FileSpaceEntry:
+ *   A CreateFilespaceStatement has a list of these, one per location
+ *   specified.
+ */
+typedef struct FileSpaceEntry
+{
+	NodeTag     type;
+	int         dbid;
+	int         contentid;
+	char       *location;
+} FileSpaceEntry;
 
 /* ----------------------
  *		Create/Drop TableSpace Statements

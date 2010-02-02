@@ -473,7 +473,7 @@ static void PersistentFilespace_ConvertBlankPaddedLocation(
 
 void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 	Oid 		filespaceOid,
-				/* The filespace OID for the create. */
+				/* The filespace OID to lookup. */
 
 	char **primaryFilespaceLocation,
 				/* The primary filespace directory path.  Return NULL for global and base. */
@@ -524,7 +524,7 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 
 void PersistentFilespace_GetPrimaryAndMirror(
 	Oid 		filespaceOid,
-				/* The filespace OID for the create. */
+ 	            /* The filespace OID to lookup */
 
 	char **primaryFilespaceLocation,
 				/* The primary filespace directory path.  Return NULL for global and base. */

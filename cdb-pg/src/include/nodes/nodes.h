@@ -384,6 +384,7 @@ typedef enum NodeTag
 	T_AlterUserMappingStmt,
 	T_DropUserMappingStmt, 
 	T_CreateForeignStmt,
+	T_FileSpaceEntry,
 
 	/**/
 	

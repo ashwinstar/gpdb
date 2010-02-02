@@ -3248,6 +3248,16 @@ _outCreateFileSpaceStmt(StringInfo str, CreateFileSpaceStmt *node)
 }
 
 static void
+_outFileSpaceEntry(StringInfo str, FileSpaceEntry *node)
+{
+	WRITE_NODE_TYPE("FILESPACEENTRY");
+
+	WRITE_INT_FIELD(dbid);
+	WRITE_INT_FIELD(contentid);
+	WRITE_STRING_FIELD(location);
+}
+
+static void
 _outCreateTableSpaceStmt(StringInfo str, CreateTableSpaceStmt *node)
 {
 	WRITE_NODE_TYPE("CREATETABLESPACESTMT");
@@ -3967,6 +3977,10 @@ _outNode(StringInfo str, void *obj)
 
 			case T_CreateFileSpaceStmt:
 				_outCreateFileSpaceStmt(str, obj);
+				break;
+
+			case T_FileSpaceEntry:
+				_outFileSpaceEntry(str, obj);
 				break;
 
 			case T_CreateTableSpaceStmt:

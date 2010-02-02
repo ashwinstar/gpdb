@@ -3248,6 +3248,18 @@ _copyCreateFileSpaceStmt(CreateFileSpaceStmt *from)
 	return newnode;
 }
 
+static FileSpaceEntry *
+_copyFileSpaceEntry(FileSpaceEntry *from)
+{
+	FileSpaceEntry *newnode = makeNode(FileSpaceEntry);
+
+	COPY_SCALAR_FIELD(dbid);
+	COPY_SCALAR_FIELD(contentid);	
+	COPY_STRING_FIELD(location);
+
+	return newnode;
+}
+
 static CreateTableSpaceStmt *
 _copyCreateTableSpaceStmt(CreateTableSpaceStmt *from)
 {
@@ -4306,6 +4318,9 @@ copyObject(void *from)
 			break;
 		case T_CreateFileSpaceStmt:
 			retval = _copyCreateFileSpaceStmt(from);
+			break;
+		case T_FileSpaceEntry:
+			retval = _copyFileSpaceEntry(from);
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _copyCreateTableSpaceStmt(from);

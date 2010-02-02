@@ -1492,6 +1492,16 @@ _equalCreateFileSpaceStmt(CreateFileSpaceStmt *a, CreateFileSpaceStmt *b)
 }
 
 static bool
+_equalFileSpaceEntry(FileSpaceEntry *a, FileSpaceEntry *b)
+{
+	COMPARE_SCALAR_FIELD(dbid);
+	/* equality does not require check on "contentid" */
+	COMPARE_STRING_FIELD(location);
+
+	return true;
+}
+
+static bool
 _equalCreateTableSpaceStmt(CreateTableSpaceStmt *a, CreateTableSpaceStmt *b)
 {
 	COMPARE_STRING_FIELD(tablespacename);
@@ -2622,6 +2632,9 @@ equal(void *a, void *b)
 			break;
 		case T_CreateFileSpaceStmt:
 			retval = _equalCreateFileSpaceStmt(a, b);
+			break;
+		case T_FileSpaceEntry:
+			retval = _equalFileSpaceEntry(a, b);
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _equalCreateTableSpaceStmt(a, b);

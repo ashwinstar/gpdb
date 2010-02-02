@@ -21,6 +21,7 @@
 #include "catalog/indexing.h"
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_filespace_entry.h"
+#include "catalog/pg_tablespace.h"
 #include "commands/filespace.h"
 #include "storage/fd.h"
 #include "utils/acl.h"
@@ -29,11 +30,13 @@
 #include "utils/lsyscache.h"
 
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbutil.h"
 
 static void checkpath(char*);
 static void checkpath2(char*);
+static void filespace_check_empty(Oid fsoid);
 
 static void DeleteFilespaceEntryTuples(Oid fsoid);
 
@@ -83,12 +86,10 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	Datum        values[Natts_pg_filespace];
 	bool         enulls[Natts_pg_filespace_entry];
 	Datum        evalues[Natts_pg_filespace_entry];
-
-	/* validate */
-
-	/* don't call this in a transaction block */
-	/* May need to make this "subtransaction block" */
-	// PreventTransactionChain((void *) stmt, "CREATE FILESPACE");
+	int          primary_dbid = -2;
+	int          mirror_dbid = -2;
+	char        *primary_location = NULL;
+	char        *mirror_location = NULL;
 
 	/* Must be super user */
 	if (!superuser())
@@ -147,21 +148,29 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		/* First check that the master and standby master are accounted for */
 		for (i = 0; i < segments->total_entry_dbs; i++)
 		{
-			int  segid = segments->entry_db_info[i].dbid;
+			int  segid     = segments->entry_db_info[i].dbid;
+			int  contentid = segments->entry_db_info[i].segindex;
 			bool found = false;
 
 			foreach(cell, stmt->locations)
 			{
-				DefElem *defel = (DefElem *) lfirst(cell);
-				int      dbid  = intVal(defel->arg);
+				FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
 
-				if (dbid == segid)
+				if (fse->dbid == segid)
 				{
 					if (found)
 						ereport(ERROR,
 								(errcode(ERRCODE_GP_COMMAND_ERROR),
 								 errmsg("duplicate segment id %d", segid)));
 					found = true;
+
+					/* 
+					 * Set the contentid for in the statement node to
+					 * prepare for dispatch - this will be used by the
+					 * segments to identify which dbids correspond to
+					 * their mirrors.
+					 */
+					fse->contentid = contentid;
 				}
 			}
 			
@@ -181,10 +190,9 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 
 			foreach(cell, stmt->locations)
 			{
-				DefElem *defel = (DefElem *) lfirst(cell);
-				int      dbid  = intVal(defel->arg);
+				FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
 
-				if (dbid == segid)
+				if (fse->dbid == segid)
 				{
 					if (found)
 						ereport(ERROR,
@@ -210,10 +218,9 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		numsegs = 0;
 		foreach(cell, stmt->locations)
 		{
-			DefElem *defel = (DefElem *) lfirst(cell);
-			char    *path  = defel->defname;
+			FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
 
-			checkpath(path);  /* Simple validation of paths */
+			checkpath(fse->location);  /* Simple validation of paths */
 			numsegs++;
 		}
 
@@ -221,20 +228,19 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		{
 			foreach(cell, stmt->locations)
 			{
-				DefElem *defel = (DefElem *) lfirst(cell);
-				int      dbid  = intVal(defel->arg);
+				FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
 				bool     found = false;
 
 				for (i = 0; !found && i < segments->total_entry_dbs; i++)
 				{
 					int  segid = segments->entry_db_info[i].dbid;
-					if (segid == dbid)
+					if (fse->dbid == segid)
 						found = true;
 				}
 				for (i = 0; !found && i < segments->total_segment_dbs; i++)
 				{
 					int  segid = segments->segment_db_info[i].dbid;
-					if (segid == dbid)
+					if (fse->dbid == segid)
 						found = true;
 				}
 				
@@ -243,7 +249,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 					ereport(ERROR,
 							(errcode(ERRCODE_GP_COMMAND_ERROR),
 							 errmsg("Specified Segment id %d does not exist "
-									"in configuration", dbid)));
+									"in configuration", fse->dbid)));
 				}
 			}
 		}
@@ -255,13 +261,49 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	 */
 	foreach(cell, stmt->locations)
 	{
-		DefElem *defel = (DefElem *) lfirst(cell);
-		int      dbid  = intVal(defel->arg);	
-		char    *path  = defel->defname;
+		FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
 
-		if (dbid == GpIdentity.dbid)
-			checkpath2(path);  /* Additional path checks */
+		/* 
+		 * Find the location information for this dbid, and identify the
+		 * dbid and location for our mirror pair (matching contentid)
+		 */
+		if (fse->dbid == GpIdentity.dbid)
+		{
+			primary_dbid = fse->dbid;
+			primary_location = fse->location;
+		}
+		else if (fse->contentid == GpIdentity.segindex)
+		{
+			mirror_dbid     = fse->dbid;
+			mirror_location = fse->location;
+		}
 	}
+
+	/* 
+	 * Should have been checked before QE dispatch, something is weird if
+	 * we hit this condition here.
+	 */
+	if (!primary_location)
+		elog(ERROR, "Could not find filespace location for segment %d",
+			 GpIdentity.dbid);
+
+	/* 
+	 * Check the path for the primary.  It is better to error here before we 
+	 * ask the persistent object layer to create the directory because we aren't
+	 * supposed to ask the persistent layer to do the impossible.
+	 *
+	 * Ideally we would also like to check the path for the mirror, but that is
+	 * on a different host so is not currently possible. If the path is bad it 
+	 * may cause the mirror to fail, so we hope this came through the 
+	 * gpfilespace script and the directory location was checked correctly 
+	 * there.
+	 */
+	checkpath2(primary_location);
+
+	/* 
+	 * We've checked everything possible, go forward with actually creating 
+	 * the filespace!
+	 */
 
 	/* We opened the relation up at the top of the function */
 	Assert(rel);
@@ -309,13 +351,12 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 
 		foreach(cell, stmt->locations)
 		{
-			DefElem *defel = (DefElem *) lfirst(cell);
-			int4     dbid  = intVal(defel->arg);	
-			char    *path  = defel->defname;
+			FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
 			
-			evalues[Anum_pg_filespace_entry_fsedbid - 1] = Int32GetDatum(dbid);
+			evalues[Anum_pg_filespace_entry_fsedbid - 1] = 
+				Int32GetDatum(fse->dbid);
 			evalues[Anum_pg_filespace_entry_fselocation - 1 ] =
-				DirectFunctionCall1(textin, CStringGetDatum(path));
+				DirectFunctionCall1(textin, CStringGetDatum(fse->location));
 			
 			tuple = heap_form_tuple(tupdesc, evalues, enulls);
 			simple_heap_insert(rel, tuple);
@@ -336,6 +377,20 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 						   "CREATE", "FILESPACE"
 				);
 	}
+
+	/* 
+	 * Update the gp_persistent_filespace_node table.
+	 *
+	 * The persistent object layer is responsible for ensuring that the
+	 * directories are created and maintained in the filesystem.  Most 
+	 * importantly this layer knows how to cleanup filesystem objects in the
+	 * event that this transaction aborts and the rollback and recovery 
+	 * mechanisms know how to use this to cleanup after a hard failure or 
+	 * replay the creation for mirror resynchronisation.
+	 */
+	MirroredFileSysObj_CreateFilespaceDir(fsoid, 
+										  primary_dbid, primary_location,
+										  mirror_dbid, mirror_location);
 }
 
 /*
@@ -350,10 +405,6 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 	char         *fsname;
 	Oid			  fsoid;
 	ObjectAddress object;
-
-	/* don't call this in a transaction block */
-	/* May need to make this "subtransaction block" */
-	// PreventTransactionChain((void *) stmt, "DROP FILESPACE");
 
 	/* 
 	 * General DROP (object) syntax allows fully qualified names, but
@@ -411,6 +462,14 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 				(errmsg("cannot drop filespace %s because it is required "
 						"by the database system", fsname)));
 
+	/* 
+	 * performDeletion only drops things that have dependencies in
+	 * pg_depend/pg_shdepend which does NOT include dependencies on tablespaces
+	 * (perhaps pg_shdepend should).  So we look for these dependencies by
+	 * looking at the pg_tablespace table.
+	 */
+	filespace_check_empty(fsoid);
+
 	/* Check for dependencies and remove the filespace */
 	object.classId = FileSpaceRelationId;
 	object.objectId = fsoid;
@@ -434,6 +493,14 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 		MetaTrackDropObject(FileSpaceRelationId,
 							fsoid);
 	}
+
+	/* 
+	 * The persistent object layer is responsible for actually managing the
+	 * actual directory on disk.  Tell it that this filespace is removed by
+	 * this transaciton.  This marks the filespace as pending delete and it
+	 * will be deleted iff the transaction commits.
+	 */
+	MirroredFileSysObj_ScheduleDropFilespaceDir(fsoid);
 }
 
 /* 
@@ -765,31 +832,6 @@ get_filespace_oid(Relation rel, const char *filespacename)
 }
 
 
-/* 
- * Commands for accessing the filespace oid -> directory lookup cache.
- *
- * These directories are not stored in the catalog except on the master,
- * for segments they are passed to the segment on startup, so we must 
- * track their values through this alternative mechanism.
- */
-void SetFilespaceDirectory(Oid fsoid, const char *directory)
-{
-	/* Can be called during bootstrap so it shouldn't raise errors */
-	/* NOOP */
-}
-
-void ClearFilespaceDirectory(Oid fsoid)
-{
-	/* NOOP */
-}
-
-char* GetFilespaceDirectory(Oid fsoid)
-{
-	return NULL;
-}
-
-
-
 /*
  * checkpath(path)
  *
@@ -928,4 +970,34 @@ static void checkpath2(char *path)
 					(errcode_for_file_access(),
 					 errmsg("%s: No write permissions", parentdir)));
 	}
+}
+
+/*
+ */
+static void filespace_check_empty(Oid fsoid)
+{
+	HeapScanDesc scandesc;
+	Relation	 rel;
+	HeapTuple	 tuple;
+	ScanKeyData  entry[1];
+
+
+	rel = heap_open(TableSpaceRelationId, AccessShareLock);
+
+	/* Scan should be empty */
+	ScanKeyInit(&entry[0],
+				Anum_pg_tablespace_spcfsoid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				fsoid);
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
+	if (HeapTupleIsValid(tuple))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("filespace \"%s\" is not empty", 
+						get_filespace_name(fsoid))));
+	}
+	heap_endscan(scandesc);
+	heap_close(rel, AccessShareLock);
 }

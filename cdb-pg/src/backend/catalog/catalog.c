@@ -54,10 +54,10 @@
 #include "utils/fmgroids.h"
 #include "utils/relcache.h"
 
+#include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbvars.h"
 
 #define OIDCHARS	10			/* max chars printed by %u */
-
 
 /*
  * relpath			- construct path to a relation's file
@@ -89,14 +89,39 @@ relpath(RelFileNode rnode)
 	}
 	else
 	{
-		/* All other tablespaces are accessed via symlinks */
-		pathlen = 10 + OIDCHARS + 1 + OIDCHARS + 1 + OIDCHARS + 1;
+		/* All other tablespaces are accessed via filespace locations */
+		char *primary_path;
+		char *mirror_path;  /* unused */
+
+		/* Lookup filespace location from the persistent object layer. */
+		PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+			rnode.spcNode, &primary_path, &mirror_path);
+		
+		/*
+		 * We immediately throw out the mirror_path because it is not
+		 * relevant here.
+		 */
+		if (mirror_path)
+			pfree(mirror_path);
+		if (!primary_path)
+			elog(ERROR, "cache lookup failed for persistent tablespace %u", 
+				 rnode.spcNode);		
+
+		/* 
+		 * We should develop an interface for the above that doesn't
+		 * require reallocating to a slightly larger size...
+		 */
+		pathlen = strlen(primary_path)+1+OIDCHARS+1+OIDCHARS+1+OIDCHARS+1;
 		path = (char *) palloc(pathlen);
-		snprintf(path, pathlen, "pg_tblspc/%u/%u/%u",
-				 rnode.spcNode, rnode.dbNode, rnode.relNode);
+		snprintf(path, pathlen, "%s/%u/%u/%u",
+				 primary_path, rnode.spcNode, rnode.dbNode, rnode.relNode);
+
+		/* Throw away the allocation we got from persistent layer */
+		pfree(primary_path);
 	}
 	return path;
 }
+
 
 void
 CopyRelPath(char *target, int targetMaxLen, RelFileNode rnode)
@@ -116,9 +141,30 @@ CopyRelPath(char *target, int targetMaxLen, RelFileNode rnode)
 	}
 	else
 	{
-		/* All other tablespaces are accessed via symlinks */
-		snprintf(target, targetMaxLen, "pg_tblspc/%u/%u/%u",
-				 rnode.spcNode, rnode.dbNode, rnode.relNode);
+		/* All other tablespaces are accessed via filespace locations */
+		char *primary_path;
+		char *mirror_path;  /* unused */
+
+		/* Lookup filespace location from the persistent object layer. */
+		PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+			rnode.spcNode, &primary_path, &mirror_path);
+
+		/*
+		 * We immediately throw out the mirror_path because it is not
+		 * relevant here.
+		 */
+		if (mirror_path)
+			pfree(mirror_path);
+		if (!primary_path)
+			elog(ERROR, "cache lookup failed for persistent tablespace %u", 
+				 rnode.spcNode);
+
+		/* Copy path into the passed in target location */
+		snprintf(target, targetMaxLen, "%s/%u/%u/%u",
+				 primary_path, rnode.spcNode, rnode.dbNode, rnode.relNode);
+
+		/* Throw away the allocation we got from persistent layer */
+		pfree(primary_path);
 	}
 }
 
@@ -153,11 +199,35 @@ GetDatabasePath(Oid dbNode, Oid spcNode)
 	}
 	else
 	{
-		/* All other tablespaces are accessed via symlinks */
-		pathlen = 10 + OIDCHARS + 1 + OIDCHARS + 1;
+		/* All other tablespaces are accessed via filespace locations */
+		char *primary_path;
+		char *mirror_path;  /* unused */
+
+		/* Lookup filespace location from the persistent object layer. */
+		PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+			spcNode, &primary_path, &mirror_path);
+
+		/*
+		 * We immediately throw out the mirror_path because it is not
+		 * relevant here.
+		 */
+		if (mirror_path)
+			pfree(mirror_path);
+		if (!primary_path)
+			elog(ERROR, "cache lookup failed for persistent tablespace %u", 
+				 spcNode);
+
+		/* 
+		 * We should develop an interface for the above that doesn't
+		 * require reallocating to a slightly larger size...
+		 */
+		pathlen = strlen(primary_path)+1+OIDCHARS+1+OIDCHARS+1;
 		path = (char *) palloc(pathlen);
-		snprintf(path, pathlen, "pg_tblspc/%u/%u",
-				 spcNode, dbNode);
+		snprintf(path, pathlen, "%s/%u/%u",
+				 primary_path, spcNode, dbNode);
+
+		/* Throw away the allocation we got from persistent layer */
+		pfree(primary_path);
 	}
 	return path;
 }

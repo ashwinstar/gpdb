@@ -22,7 +22,7 @@ extern bool PersistentFilespace_Check(
 
 extern void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 	Oid 		filespaceOid,
-				/* The filespace OID for the create. */
+				/* The filespace OID to lookup. */
 
 	char **primaryFilespaceLocation,
 				/* The primary filespace directory path.  Return NULL for global and base. */
@@ -33,7 +33,7 @@ extern void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 
 extern void PersistentFilespace_GetPrimaryAndMirror(
 	Oid 		filespaceOid,
-				/* The filespace OID for the create. */
+				/* The filespace OID to lookup. */
 
 	char **primaryFilespaceLocation,
 				/* The primary filespace directory path.  Return NULL for global and base. */

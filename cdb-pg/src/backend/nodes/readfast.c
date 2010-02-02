@@ -3333,6 +3333,19 @@ _readCreateFileSpaceStmt(const char ** str)
 }
 
 
+static FileSpaceEntry *
+_readFileSpaceEntry(const char ** str)
+{
+	READ_LOCALS(FileSpaceEntry);
+
+	READ_INT_FIELD(dbid);
+	READ_INT_FIELD(contentid);
+	READ_STRING_FIELD(location);
+
+	READ_DONE();
+}
+
+
 static CreateTableSpaceStmt *
 _readCreateTableSpaceStmt(const char ** str)
 {
@@ -4147,6 +4160,10 @@ readNodeBinary(const char ** str)
 
 			case T_CreateFileSpaceStmt:
 				return_value = _readCreateFileSpaceStmt(str);
+				break;
+
+			case T_FileSpaceEntry:
+				return_value = _readFileSpaceEntry(str);
 				break;
 
 			case T_CreateTableSpaceStmt:
