@@ -22,7 +22,6 @@
 
 #include "libpq-fe.h"
 #include "libpq/libpq-fs.h"
-#include "cdb/cdbfilerepconnserver.h"
 
 #define BUFSIZE			1024
 
