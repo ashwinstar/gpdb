@@ -840,11 +840,6 @@ def pausePg(db):
         Kill.local(name="pausep "+str(killpid), pid=killpid, signal="STOP")
 
     
-
-
-#   TODO: use PSI and kill all processes which are descendent process of postmaster
-#    KillChildren.local(name="pausec "+str(content), pid=postmasterPID, signal=signal.SIGSTOP)
-
 def resumePg(db):
     """
     1) resume the processes descendent from the postmaster process
