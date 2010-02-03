@@ -291,16 +291,17 @@ agent_main(int argc, char **argv)
 			exit(1);
 		}
 
-		snprintf(cmd, sizeof(cmd), "ssh %s mount %s %s", target_host, target_dev, target_mountpoint);
+		snprintf(cmd, sizeof(cmd), "ssh %s /bin/mount %s %s", target_host, target_dev, target_mountpoint);
 
 		fprintf(stdout, "cmd [%s]\n", cmd);
 
 		status = system(cmd);
 
-		if (status == 0)
-			return 0;
-		else
-			return status;
+		if (status != 0)
+		{
+			exit(status);
+		}
+		/* don with NFS response */
 	}
 	else if (type == 'e')
 	{
@@ -321,7 +322,7 @@ agent_main(int argc, char **argv)
 		if (WWN == NULL)
 		{
 			fprintf(stderr, "failed to create inquiry-results file: %d\n", errno);
-			exit (1);
+			exit(1);
 		}
 
 		/* Get the name of the target device */
@@ -333,7 +334,7 @@ agent_main(int argc, char **argv)
 		if (fd < 0)
 		{
 			fprintf(stderr, "failed to create inq-results file: %d\n", errno);
-			exit (1);
+			exit(1);
 		}
 
 		if (fchown(fd, getuid(), -1) < 0)
@@ -341,7 +342,7 @@ agent_main(int argc, char **argv)
 			close(fd);
 			unlink(tmpfilename);
 			fprintf(stderr, "Device inquiry on host %s for WWN [%s]: inquiry command failed\n", target_host, WWN);
-			return status;
+			exit(1);
 		}
 
 		/* 2. go get the inquiry results about the device -> "/dev/xxx" mapping */
@@ -356,12 +357,13 @@ agent_main(int argc, char **argv)
 			close(fd);
 			unlink(tmpfilename);
 			fprintf(stderr, "Device inquiry on host %s for WWN [%s]: inquiry command failed\n", target_host, WWN);
-			return status;
+			exit(1);
 		}
 
 		tmpfile = fdopen(fd, "r");
 		if (tmpfile == NULL)
 		{
+			close(fd);
 			unlink(tmpfilename);
 			fprintf(stderr, "Couldn't open %s for inquiry results\n", tmpfilename);
 			exit(1);
@@ -428,7 +430,7 @@ agent_main(int argc, char **argv)
 
 		if (FSTYPE == NULL)
 		{
-			snprintf(cmd, sizeof(cmd), "ssh %s mount %s %s", target_host, dev_name, target_mountpoint);
+			snprintf(cmd, sizeof(cmd), "ssh %s /bin/mount %s %s", target_host, dev_name, target_mountpoint);
 		}
 		else
 		{
@@ -438,17 +440,15 @@ agent_main(int argc, char **argv)
 				exit(1);
 			}
 
-			snprintf(cmd, sizeof(cmd), "ssh %s mount -t %s %s %s", target_host, FSTYPE, dev_name, target_mountpoint);
+			snprintf(cmd, sizeof(cmd), "ssh %s /bin/mount -t %s %s %s", target_host, FSTYPE, dev_name, target_mountpoint);
 		}
 
 		fprintf(stdout, "cmd [%s]\n", cmd);
 
 		status = system(cmd);
 
-		if (status == 0)
-			return 0;
-		else
-			return status;
+		if (status != 0)
+			exit(status);
 	}
 
 	exit(0);

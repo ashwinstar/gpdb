@@ -2119,6 +2119,7 @@ startSegment_forDbid(int dbid)
 	while (HeapTupleIsValid(conf_tup = heap_getnext(conf_scan, ForwardScanDirection)))
 	{
 		Datum	conf_datum;
+		char	*gphome_env=NULL;
 		char	*host;
 		char	*dir;
 		int4	port;
@@ -2168,12 +2169,28 @@ startSegment_forDbid(int dbid)
 			elog(LOG, "Starting %s:%s:%d", host, dir, port);
 
 		/*
+		 * NOTE: we expect every segment to have GPHOME set to the
+		 * same directory as the master -- this is also assumed by the
+		 * management scripts.
+		 */
+		/*
 		  GPHOME=os.environ.get('GPHOME')
 		  SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
 		*/
+		gphome_env = getenv("GPHOME");
 
-		sprintf(cmd, "ssh %s \"pg_ctl -w -D %s -l %s/pg_log/startup.log -o '-i -p %d --silent-mode=true -M mirrorless -b %d -C %d -z %d' start 2>&1 \" ",
-				host, dir, dir, port, dbid, content_id, GpIdentity.numsegments);
+		if (gphome_env == NULL)
+		{
+			elog(LOG, "Failed to find GPHOME, sending our pg_ctl without path.");
+			/* we don't have "gphome" ? let's try this anyhow and hope for the best. */
+			snprintf(cmd, sizeof(cmd), "ssh %s \"pg_ctl -w -D %s -l %s/pg_log/startup.log -o '-i -p %d --silent-mode=true -M mirrorless -b %d -C %d -z %d' start 2>&1 \" ",
+					 host, dir, dir, port, dbid, content_id, GpIdentity.numsegments);
+		}
+		else
+		{
+			snprintf(cmd, sizeof(cmd), "ssh %s \"%s/bin/pg_ctl -w -D %s -l %s/pg_log/startup.log -o '-i -p %d --silent-mode=true -M mirrorless -b %d -C %d -z %d' start 2>&1 \" ",
+					 host, gphome_env, dir, dir, port, dbid, content_id, GpIdentity.numsegments);
+		}
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 			elog(LOG, "command is [%s]", cmd);
@@ -2253,11 +2270,31 @@ mountMaintenance_forMpid(int mpid)
 			 p_host, p_mp, p_dev, m_host, m_mp, m_dev);
 
 		{
+			char	*gphome_env=NULL;
 			char	cmd[1024];
 			int		cmd_status;
 
-			snprintf(cmd, sizeof(cmd), "gp_mount_agent --agent -t %c -a %c -p %s -d %s -m %s -q %s -e %s -n %s",
-					 san_type, active_host, p_host, p_dev, p_mp, m_host, m_dev, m_mp);
+			/*
+			 * NOTE: we expect every segment to have GPHOME set to the
+			 * same directory as the master -- this is also assumed by the
+			 * management scripts.
+			 */
+			/*
+			  GPHOME=os.environ.get('GPHOME')
+			  SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
+			*/
+			gphome_env = getenv("GPHOME");
+
+			if (gphome_env == NULL)
+			{
+				snprintf(cmd, sizeof(cmd), "gp_mount_agent --agent -t %c -a %c -p %s -d %s -m %s -q %s -e %s -n %s",
+						 san_type, active_host, p_host, p_dev, p_mp, m_host, m_dev, m_mp);
+			}
+			else
+			{
+				snprintf(cmd, sizeof(cmd), "%s/bin/gp_mount_agent --agent -t %c -a %c -p %s -d %s -m %s -q %s -e %s -n %s",
+						 gphome_env, san_type, active_host, p_host, p_dev, p_mp, m_host, m_dev, m_mp);
+			}
 
 			elog(LOG, "Mount agent command is [%s]", cmd);
 
