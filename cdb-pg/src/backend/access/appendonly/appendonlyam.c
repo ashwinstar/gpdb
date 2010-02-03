@@ -1801,7 +1801,12 @@ appendonly_fetch(
 					positionLimitToEndOfRange(aoFetchDesc);
 				}
 
-				return scanToFetchTuple(aoFetchDesc, rowNum, slot);
+				if (scanToFetchTuple(aoFetchDesc, rowNum, slot))
+					return true;
+				
+				if (slot != NULL)
+					ExecClearTuple(slot);
+				return false;	// Segment file not in aoseg table..
 			}
 		}
 	}
@@ -1862,8 +1867,12 @@ appendonly_fetch(
 	
 	positionLimitToEndOfRange(aoFetchDesc);
 
-	return scanToFetchTuple(aoFetchDesc, rowNum, slot);
+	if (scanToFetchTuple(aoFetchDesc, rowNum, slot))
+		return true;
 
+	if (slot != NULL)
+		ExecClearTuple(slot);
+	return false;	// Segment file not in aoseg table..
 }
 
 void
