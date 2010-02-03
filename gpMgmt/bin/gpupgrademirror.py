@@ -13,6 +13,7 @@ import traceback
 import pprint
 import threading
 from time import strftime, sleep
+from gppylib.commands.base import *
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 from subprocess import Popen, PIPE
@@ -61,6 +62,7 @@ class gpconfig_row:
         self.port           = row[6]
         self.datadir        = row[7]
 
+   #-------------------------------------------------------------------------------
     def __str__(self):
         
         tempStr = '--- gpconfig_row ---' \
@@ -74,6 +76,7 @@ class gpconfig_row:
         + '\n      datadir        = ' + str(self.datadir)
         return tempStr
     
+   #-------------------------------------------------------------------------------    
     @staticmethod
     def query():
         return '''SELECT    content, definedprimary, dbid, isprimary,
@@ -227,10 +230,14 @@ def parseargs():
 
     parser.add_option('-r', '--rollback', action='store_true',
                       help='rollback failed expansion setup.')
+    parser.add_option('-c', '--continue-upgrade', action='store_true',
+                      help='continue expansion.')
     parser.add_option('-S', '--safe-mode', action='store_true',
                       help='safe mode for upgrade of mirrors.')
     parser.add_option('-U', '--unsafe-mode', action='store_true',
                       help='unsafe mode for upgrade of mirrors.')
+    parser.add_option('-P', '--phase2', action='store_true',
+                      help='phase 2 for upgrade of mirrors.')
     parser.add_option('-v','--verbose', action='store_true',
                       help='debug output.')
     parser.add_option('-h', '-?', '--help', action='help',
@@ -317,6 +324,17 @@ def is_gpupgrademirror_running(master_data_directory):
 
 
 #-------------------------------------------------------------------------
+#-------------------------------------------------------------------------                                                       
+class MoveDirectory(Command):
+
+    def __init__(self,name,srcDirectory,dstDirectory,ctxt=LOCAL,remoteHost=None):
+        self.srcDirectory=srcDirectory
+        self.dstDirectory=dstDirectory
+        cmdStr="%s -f %s %s" % (findCmdInPath('mv'),srcDirectory,dstDirectory)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+
+#-------------------------------------------------------------------------
 #-------------------------------------------------------------------------
 class GpUpgradeMirrorStatus():
     """Class that manages gpupgrademirror status file.
@@ -324,7 +342,7 @@ class GpUpgradeMirrorStatus():
     The status file is placed in the master data directory on both the master and
     the standby master.  it's used to keep track of where we are in the progression.
     """
-    def __init__(self, logger, master_data_directory, segment_dbid, master_mirror):
+    def __init__(self, logger, master_data_directory, segment_dbid, master_mirror, phase):
         self.logger=logger
 
         self._status_values = { 'UNINITIALIZED'               : 1
@@ -338,12 +356,15 @@ class GpUpgradeMirrorStatus():
                               , 'END_MOVE_NEW_MIRROR'         : 9
                               , 'START_REMOVE_OLD_MIRROR'     : 10
                               , 'END_REMOVE_OLD_MIRROR'       : 11
-                              , 'GPUPGRADEMIRROR_DONE'        : 12
+                              , 'PHASE1_DONE'                 : 12
+                              , 'START_PHASE2'                : 13
+                              , 'PHASE2_DONE'                 : 14
                               }
         self._status = []
         self._status_info = []
         self._master_data_directory = master_data_directory
         self._master_mirror = master_mirror
+        self._phase = phase
         self.segment_dbid = segment_dbid
         self._status_filename = master_data_directory + '/gpupgrademirror' + str(segment_dbid) + '.status'
         self._status_standby_filename = master_data_directory + '/gpupgrademirror.standby.status'
@@ -357,6 +378,8 @@ class GpUpgradeMirrorStatus():
         if os.path.exists(self._status_filename):
             self._read_status_file()
 
+
+   #-------------------------------------------------------------------------------
     def _read_status_file(self):
         """Reads in an existing gpupgrademirror status file"""
         self.logger.debug("Trying to read in a pre-existing gpupgrademirror status file")
@@ -366,17 +389,6 @@ class GpUpgradeMirrorStatus():
 
             for line in self._fp:
                 (status, status_info) = line.rstrip().split(':')
-                if status == 'BUILD_SEGMENT_TEMPLATE_STARTED':
-                    self._temp_dir = status_info
-                elif status == 'BUILD_SEGMENTS_STARTED':
-                    self._tar_filename = status_info
-                elif status == 'EXPANSION_PREPARE_STARTED':
-                    self._input_filename = status_info
-                elif status == 'UPDATE_OLD_SEGMENTS_STARTED':
-                    self._original_primary_count = int(status_info)
-                elif status == 'UPDATE_MASTER_STARTED':
-                    self._gp_configuration_backup = status_info
-
                 self._status.append(status)
                 self._status_info.append(status_info)
         except IOError:
@@ -385,6 +397,8 @@ class GpUpgradeMirrorStatus():
         if not self._status_values.has_key(self._status[-1]):
             raise InvalidStatusError('Invalid status file.  Unknown status %s' % self._status)
 
+
+   #-------------------------------------------------------------------------------
     def create_status_file(self):
         """Creates a new gpupgrademirror status file"""
         try:
@@ -403,6 +417,7 @@ class GpUpgradeMirrorStatus():
         self._sync_status_file()
 
 
+   #-------------------------------------------------------------------------------
     def _sync_status_file(self):
         """Syncs the gpupgrademirror status file with the master mirror"""
         if self._master_mirror:
@@ -411,6 +426,8 @@ class GpUpgradeMirrorStatus():
                                self._status_filename)
             cpCmd.run(validateAfter=True)
 
+
+   #-------------------------------------------------------------------------------
     def set_status(self, status, status_info=None):
         """Sets the current status.  gpupgrademirror status must be set in
            proper order.  Any out of order status result in an
@@ -434,6 +451,8 @@ class GpUpgradeMirrorStatus():
         self._status.append(status)
         self._status_info.append(status_info)
 
+
+   #-------------------------------------------------------------------------------
     def get_current_status(self):
         """Gets the current status that has been written to the gpupgrademirror
            status file"""
@@ -442,10 +461,46 @@ class GpUpgradeMirrorStatus():
         else:
             return (None, None)
 
+
+   #-------------------------------------------------------------------------------        
+    def get_current_status_step_number(self):
+        currentStatus = self.get_current_status()
+        if currentStatus[0] == None:
+            return -1
+        return self._status_values[currentStatus[0]]
+        
+
+   #-------------------------------------------------------------------------------    
+    def compare_status(self, status2):
+        ''' return -1 status1 < status2
+                    0 status1 = status2
+                    1 status1 > status2
+        '''
+        status1 = self.get_current_status()[0]
+        if status1 == None:
+            if status2 == None:
+                return 0
+            return -1
+        if status2 == None:
+            return 1
+            
+        num1 = self._status_values[status1]
+        num2 = self._status_values[status2]
+        if num1 < num2:
+            return -1
+        elif num1 == num2:
+            return 0
+        else:
+            return 1
+    
+
+   #-------------------------------------------------------------------------------
     def get_status_history(self):
         """Gets the full status history"""
         return zip(self._status, self._status_info)
 
+
+   #-------------------------------------------------------------------------------
     def remove_status_file(self):
         """Closes and removes the gpupgrademirror status file"""
         if self._fp:
@@ -464,6 +519,7 @@ class GpUpgradeMirrorStatus():
                                self._status_filename)
 
 
+   #-------------------------------------------------------------------------------
     def is_standby(self):
         """Returns True if running on standby"""
         return os.path.exists(self._master_data_directory + self._status_standby_filename)
@@ -494,6 +550,7 @@ class gpupgrademirrorSafeMode(threading.Thread):
         self.mirrorSegmentList      = []
         self.statusList             = []
 
+
     #-------------------------------------------------------------------------------
     def  setup(self, mirrorInfoList):
         self.mirrorSegmentList = mirrorInfoList
@@ -504,13 +561,23 @@ class gpupgrademirrorSafeMode(threading.Thread):
             
             print 'seg = ' + str(seg)
             
-            ''' Create a status file for each mirror segment '''
+            ''' Create a status object for each mirror segment '''
             status = GpUpgradeMirrorStatus( logger = self.logger
                                           , master_data_directory = self.master_data_directory
                                           , segment_dbid = seg.dbid
-                                          , master_mirror = False)
+                                          , master_mirror = False
+                                          , phase = 1
+                                          )
             self.statusList.append(status)
-            status.create_status_file()
+            if options.rollback == True:
+                ''' setup for rollback '''
+            elif options.continue_upgrade == True:
+                ''' setup for continue upgrade '''
+            else:
+                if (status.get_current_status() != (None, None)):
+                   logging.error("Upgrade mirrors already started.") 
+                else:  
+                   status.create_status_file()
             
 
     #-------------------------------------------------------------------------------
@@ -584,12 +651,6 @@ class gpupgrademirrorSafeMode(threading.Thread):
                            )
         rmCmd.run(validateAfter = True)
 
-    
-    #-------------------------------------------------------------------------------
-    def startMovement(self):
-       print 'in startMovement' 
-
-
     #-------------------------------------------------------------------------------
     def checkAvailableSpace(self):
         print 'in checkAvailableSpace'
@@ -609,37 +670,51 @@ class gpupgrademirrorSafeMode(threading.Thread):
 
 
     #-------------------------------------------------------------------------------
+    def rollbackMode(self):
+        ''' rollback is only possible if we haven't started renaming the new mirror files '''
+        if status.compare_status('START_MOVE_NEW_MIRROR') >= 0:
+           logging.error('Rollback is not possible at this point. You must continue upgrade')
+ 
+        
+
+    #-------------------------------------------------------------------------------
     def run(self):
         i = 0
         for seg in self.mirrorSegmentList:
             status = self.statusList[i]
+                        
+            if status.compare_status('START_PRIMARY_COPY') <= 0:
+               ''' Copy the entire primary segment over to the mirror '''
+               status.set_status('START_PRIMARY_COPY')
+               self.copyPrimaryToMirror(seg)
+               status.set_status('END_PRIMARY_COPY')
             
-            ''' Copy the entire primary segment over to the mirror '''
-            status.set_status('START_PRIMARY_COPY')
-            self.copyPrimaryToMirror(seg)
-            status.set_status('END_PRIMARY_COPY')
+            if status.compare_status('START_NEW_MIRROR_FILE_FIXUP') <= 0:            
+               ''' Fixup some of the new mirror files with the old mirror files '''
+               status.set_status('START_NEW_MIRROR_FILE_FIXUP')
+               self.newMirrorFileFixup(seg)
+               status.set_status('END_NEW_MIRROR_FILE_FIXUP')
             
-            ''' Fixup some of the new mirror files with the old mirror files '''
-            status.set_status('START_NEW_MIRROR_FILE_FIXUP')
-            self.newMirrorFileFixup(seg)
-            status.set_status('END_NEW_MIRROR_FILE_FIXUP')
+            if status.compare_status('START_MOVE_OLD_MIRROR') <= 0:
+               ''' Rename the old mirror to a temporary name '''
+               status.set_status('START_MOVE_OLD_MIRROR')
+               self.renameOldMirrorToTemp(seg)
+               status.set_status('END_MOVE_OLD_MIRROR')
             
-            ''' Rename the old mirror to a temporary name '''
-            status.set_status('START_MOVE_OLD_MIRROR')
-            self.renameOldMirrorToTemp(seg)
-            status.set_status('END_MOVE_OLD_MIRROR')
+            if status.compare_status('START_MOVE_NEW_MIRROR') <= 0:
+               ''' Rename the new mirror the the name of the old mirror '''
+               status.set_status('START_MOVE_NEW_MIRROR')
+               self.renameNewMirrorToOldMirror(seg)
+               status.set_status('END_MOVE_NEW_MIRROR')
             
-            ''' Rename the new mirror the the name of the old mirror '''
-            status.set_status('START_MOVE_NEW_MIRROR')
-            self.renameNewMirrorToOldMirror(seg)
-            status.set_status('END_MOVE_NEW_MIRROR')
-            
-            ''' Remove the old mirror '''
-            status.set_status('START_REMOVE_OLD_MIRROR')
-            self.removeOldMirror(seg)
-            status.set_status('END_REMOVE_OLD_MIRROR')
-            
-            status.set_status('GPUPGRADEMIRROR_DONE')            
+            if status.compare_status('START_REMOVE_OLD_MIRROR') <= 0:
+               ''' Remove the old mirror '''
+               status.set_status('START_REMOVE_OLD_MIRROR')
+               self.removeOldMirror(seg)
+               status.set_status('END_REMOVE_OLD_MIRROR')
+           
+            if status.compare_status('PHASE1_DONE') < 0:
+               status.set_status('PHASE1_DONE')            
             i = i + 1
 
 
@@ -700,7 +775,9 @@ class gpupgrademirror:
             status = GpUpgradeMirrorStatus( logger = self.logger
                                           , master_data_directory = self.master_data_directory
                                           , segment_dbid = seg[3]
-                                          , master_mirror = False)
+                                          , master_mirror = False
+                                          , phase = 1
+                                          )
             self.statusList.append(status)
             status.create_status_file()
 
@@ -766,13 +843,6 @@ class gpupgrademirror:
         self.pool.join()
         self.pool.check_results()
 
-   
-        
-    #-------------------------------------------------------------------------------
-    def startMovement(self):
-       print 'in startMovement' 
-
-
 
     #-------------------------------------------------------------------------------
     def findLargestPrimarySegment(self):
@@ -804,6 +874,77 @@ class gpupgrademirror:
             if mirrorSize < minSizeNeeded:
                logger.error("Size of mirror directory %s is too small." % mirror[2])          
 
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class phase2(threading.Thread):
+
+    def __init__(self, dburl, logger, master_data_directory, node_name):
+        threading.Thread.__init__(self)
+        
+        self.dburl                  = dburl
+        self.logger                 = logger
+        self.master_data_directory  = master_data_directory
+        self.nodeName               = node_name
+        self.mirrorSegmentList      = []
+        self.statusList             = []
+        self.fixupFileList          = []
+
+
+    #-------------------------------------------------------------------------------
+    def  setup(self, mirrorInfoList, fileList):
+        self.mirrorSegmentList = mirrorInfoList
+
+        for seg in self.mirrorSegmentList:
+            print 'seg = ' + str(seg)
+            
+            ''' Get status file from Phase 1 for each mirror segment '''
+            status = GpUpgradeMirrorStatus( logger = self.logger
+                                          , master_data_directory = self.master_data_directory
+                                          , segment_dbid = seg.dbid
+                                          , master_mirror = False
+                                          , phase = 2
+                                          )
+            self.statusList.append(status)
+            currentStatus = status.get_current_status()
+            if currentStatus[0] != 'PHASE1_DONE':
+                logger.error('Phase 1 of gpupgrademirror did not complete successfully. \
+                              Segment DBID = %s: Status = %s' %(str(segment_dbid), currentStatus))
+                
+        self.fixupFileList = fileList
+
+
+    #------------------------------------------------------------------------------ 
+    def newMirrorFileFixup(self, seg):
+        print 'in newMirrorFileFixup'
+
+        for file in self.fixupFileList:
+            fullPathSource = seg.primary_data_directory + '/' + file
+            fullPathTarget = seg.mirror_data_directory + '/' + file
+            '''print fullPathSource'''
+
+            rmCmd = RemoteCopy( name = 'gpupgrademirror phase 2 fixup copy : %s:%s' % (fullPathSource, fullPathTarget)
+                              , srcDirectory = fullPathSource
+                              , dstHost = self.nodeName
+                              , dstDirectory = fullPathTarget
+                              , ctxt = REMOTE
+                              , remoteHost = seg.primary_host
+                              )
+            rmCmd.run(validateAfter = True)
+    
+
+    #-------------------------------------------------------------------------------
+    def run(self):
+        i = 0
+        for seg in self.mirrorSegmentList:
+            status = self.statusList[i]
+            currentStatus = status.get_current_status()
+            
+            status.set_status('START_PHASE2')
+            ''' Copy catalog tables to mirror '''
+            self.newMirrorFileFixup(seg)
+            status.set_status('PHASE2_DONE')
+            i = i + 1
 
 #
 #-------------------------------------------------------------------------------
@@ -837,7 +978,86 @@ try:
 
   dbUrl = dbconn.DbURL()
 
-  if options.safe_mode == True:
+  if options.phase2 == True:
+     ''' Phase 2 of upgrade mirrors '''
+     databaseList = []
+          
+     conn   = dbconn.connect( dburl   = dbUrl
+                            , utility = True
+                            )
+
+     ''' Get a list of databases '''
+     databaseCursor = dbconn.execSQL(conn, database_row.query())
+     for row in databaseCursor:
+         dbrow = database_row(row)
+         databaseList.append(dbrow)
+         
+     ''' Connect to each database, and make a list of files we will use '''
+     fileList = []
+     fileList.append('global')
+     for db in databaseList:
+         if db.databaseName == 'template0':
+            ''' Special case where we copy the entire database '''
+            fileList.append(str('base/' + str(db.databaseDirectory)))
+            continue
+                            
+         connectURL = dbconn.DbURL(dbname = db.databaseName)
+         connectForDB = dbconn.connect( dburl   = connectURL
+                                      , utility = True
+                                      ) 
+         ''' List of non-toast catalog tables '''
+         DBcursor = dbconn.execSQL(connectForDB, non_catalog_toast_tables_row.query())
+         for fileRow in DBcursor:
+             nonToastRow = non_catalog_toast_tables_row(fileRow)
+             fileList.append('base/' + str(db.databaseDirectory) + '/' + str(nonToastRow.filename))
+             ''' KAS need to add code to add table.* as well '''
+             
+         ''' List of toast catalog tables and their toast files '''
+         DBcursor = dbconn.execSQL(connectForDB, catalog_toast_tables_row.query())
+         for fileRow in DBcursor:
+             toastTableRow = catalog_toast_tables_row(fileRow)
+             fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.filename))
+             fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.toastfilename))
+         connectForDB.close()
+    
+     ''' Get a list of mirrors '''
+     mirrorNodeCursor = dbconn.execSQL(conn, mirror_hosts_row.query())
+     numMirrorHosts = 0
+     for row in mirrorNodeCursor:
+        host = mirror_hosts_row(row)
+        numMirrorHosts = numMirrorHosts + 1
+        mirrorhost = host.hostname
+        print 'mirrorhost = ' + str(mirrorhost)
+        
+        ''' Create a phase2 object for each mirror node'''
+        tempNode = phase2(dbUrl, logger, options.master_data_directory, mirrorhost)
+
+        ''' Get info on mirror segments for this host'''
+        mirrorSegInfoCursor = dbconn.execSQL(conn, mirror_host_info_row.query() % mirrorhost)
+        mirrorInfoList = []
+        phase2MirrorList = []
+        for mirrorInfoRow in mirrorSegInfoCursor:
+            mirrorInfo = mirror_host_info_row(mirrorInfoRow)
+            mirrorInfoList.append(mirrorInfo)
+        
+        ''' Setup the mirror node '''
+        tempNode.setup(mirrorInfoList, fileList)
+        phase2MirrorList.append(tempNode)
+     conn.close()
+    
+     GpStop.local('gpupgrademirror stop databse', fast=True)
+     ''' Start the threads '''
+     for node in phase2MirrorList:
+         node.start()
+     for node in phase2MirrorList:
+         node.join()                 
+     GpStart.local('gpupgrademirror start database')
+     
+             
+     print str(len(fileList))        
+     print str(fileList)
+
+  elif options.safe_mode == True:
     ''' Run in safe mode '''
     conn   = dbconn.connect( dburl   = dbUrl
                            , utility = True
@@ -866,11 +1086,15 @@ try:
         tempNode.setup(mirrorInfoList)
         safeModeMirrorNodeList.append(tempNode)
     
+    conn.close()
+
+    GpStop.local('gpupgrademirror stop databse', fast=True)    
     ''' Start the threads '''
     for node in safeModeMirrorNodeList:
         node.start()
     for node in safeModeMirrorNodeList:
         node.join()    
+    GpStart.local('gpupgrademirror start database')
     
   else:
     ''' Run in UNsafe mode '''  
