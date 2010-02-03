@@ -23,6 +23,10 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/guc.h"
+#include "cdb/cdbappendonlyam.h"
+
+int gp_blockdirectory_entry_min_range = 0;
+int gp_blockdirectory_minipage_size = NUM_MINIPAGE_ENTRIES;
 
 static inline int32 minipage_size(int nEntry)
 {
@@ -311,14 +315,14 @@ set_directoryentry_range(
 		if (!blockDirectory->isAOCol)
 		{
 			directoryEntry->range.afterFileOffset = fsInfo->eof;
-			directoryEntry->range.lastRowNum = entry->firstRowNum + entry->rowCount - 1;
+			directoryEntry->range.lastRowNum = (~(((int64)1) << 63)); /* set to the maximal value */
 		}
 		
 		else
 		{
 			directoryEntry->range.afterFileOffset =
 				aocsFsInfo->vpinfo.entry[columnGroupNo].eof;
-			directoryEntry->range.lastRowNum = entry->firstRowNum + entry->rowCount - 1;
+			directoryEntry->range.lastRowNum = (~(((int64)1) << 63)); /* set to the maximal value */
 		}
 	}
 
@@ -525,13 +529,23 @@ AppendOnlyBlockDirectory_GetEntry(
 		entry_no = find_minipage_entry(minipageInfo->minipage,
 									   minipageInfo->numMinipageEntries,
 									   rowNum);
-		if (entry_no != -1)
+
+		/* If there are no entries, return false. */
+		if (entry_no == -1 && minipageInfo->numMinipageEntries == 0)
+			return false;
+
+		if (entry_no == -1)
 		{
-			return set_directoryentry_range(blockDirectory,
-											columnGroupNo,
-											entry_no,
-											directoryEntry);
+			/*
+			 * Since the last few blocks may not be logged in the block
+			 * directory, we always use the last entry.
+			 */
+			entry_no = minipageInfo->numMinipageEntries - 1;
 		}
+		return set_directoryentry_range(blockDirectory,
+										columnGroupNo,
+										entry_no,
+										directoryEntry);
 	}
 	
 	return false;
@@ -544,6 +558,12 @@ AppendOnlyBlockDirectory_GetEntry(
  * in-memory minipage. If the minipage is full, it is written to the block
  * directory relation on disk. After that, the new entry is added to the
  * new in-memory minipage.
+ *
+ * To reduce the size of a block directory, this function ignores new entries
+ * when the range between the offset value of the latest existing entry and
+ * the offset of the new entry is smaller than gp_blockdirectory_entry_min_range
+ * (if it is set). Otherwise, the latest existing entry is updated with new
+ * rowCount value, and the given new entry is appended to the in-memory minipage.
  *
  * If the block directory for the appendonly relation does not exist,
  * this function simply returns.
@@ -561,10 +581,7 @@ AppendOnlyBlockDirectory_InsertEntry(
 	MinipageEntry *entry = NULL;
 	MinipagePerColumnGroup *minipageInfo =
 		&blockDirectory->minipages[columnGroupNo];
-	
-#ifdef USE_ASSERT_CHECKING
 	int lastEntryNo;
-#endif
 
 	if (rowCount == 0)
 		return false;
@@ -573,9 +590,39 @@ AppendOnlyBlockDirectory_InsertEntry(
 		blockDirectory->blkdirIdx == NULL)
 		return false;
 
-	Assert(minipageInfo->numMinipageEntries <= ( (int)NUM_MINIPAGE_ENTRIES ) );
+	Assert(minipageInfo->numMinipageEntries <= gp_blockdirectory_minipage_size);
+
+	lastEntryNo = minipageInfo->numMinipageEntries - 1;
+	if (lastEntryNo >= 0)
+	{
+		entry = &(minipageInfo->minipage->entry[lastEntryNo]);
+
+		Assert(entry->firstRowNum < firstRowNum);
+		Assert(entry->fileOffset < fileOffset);
+		
+		if (gp_blockdirectory_entry_min_range > 0 &&
+			fileOffset - entry->fileOffset < gp_blockdirectory_entry_min_range)
+			return true;
+		
+		/* Update the rowCount in the latest entry */
+		Assert(entry->rowCount <= firstRowNum - entry->firstRowNum);
+
+		if (Debug_appendonly_print_blockdirectory)
+			ereport(LOG,
+					(errmsg("Append-only block directory update entry: "
+							"(firstRowNum, columnGroupNo, fileOffset, rowCount) = (" INT64_FORMAT
+							", %d, " INT64_FORMAT ", " INT64_FORMAT ") at index %d to "
+							"(firstRowNum, columnGroupNo, fileOffset, rowCount) = (" INT64_FORMAT
+							", %d, " INT64_FORMAT ", " INT64_FORMAT ")",
+							entry->firstRowNum, columnGroupNo, entry->fileOffset, entry->rowCount,
+							minipageInfo->numMinipageEntries - 1,
+							entry->firstRowNum, columnGroupNo, entry->fileOffset,
+							firstRowNum - entry->firstRowNum)));
+		
+		entry->rowCount = firstRowNum - entry->firstRowNum;
+	}
 	
-	if (minipageInfo->numMinipageEntries == NUM_MINIPAGE_ENTRIES)
+	if (minipageInfo->numMinipageEntries == gp_blockdirectory_minipage_size)
 	{
 		write_minipage(blockDirectory, columnGroupNo);
 
@@ -590,20 +637,8 @@ AppendOnlyBlockDirectory_InsertEntry(
 		minipageInfo->numMinipageEntries = 0;
 	}
 	
-	Assert(minipageInfo->numMinipageEntries < ( (int)NUM_MINIPAGE_ENTRIES ) );
+	Assert(minipageInfo->numMinipageEntries < gp_blockdirectory_minipage_size);
 
-#ifdef USE_ASSERT_CHECKING
-	
-	lastEntryNo = minipageInfo->numMinipageEntries - 1;
-	if (lastEntryNo >= 0)
-	{
-		entry = &(minipageInfo->minipage->entry[lastEntryNo]);
-
-		Assert(entry->firstRowNum < firstRowNum);
-		Assert(entry->fileOffset < fileOffset);
-	}
-#endif
-	
 	entry = &(minipageInfo->minipage->entry[minipageInfo->numMinipageEntries]);
 	entry->firstRowNum = firstRowNum;
 	entry->fileOffset = fileOffset;

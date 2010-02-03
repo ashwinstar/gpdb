@@ -18,6 +18,9 @@
 #include "access/appendonlytid.h"
 #include "access/skey.h"
 
+extern int gp_blockdirectory_entry_min_range;
+extern int gp_blockdirectory_minipage_size;
+
 typedef struct AppendOnlyBlockDirectoryEntry
 {
 	/*
