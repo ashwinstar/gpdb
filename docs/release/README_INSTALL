@@ -1,6 +1,7 @@
 This file provides high-level installation steps for Greenplum
 Database. For detailed installation, configuration and setup 
-information see the 'Greenplum Database Administrator Guide'
+information see the 'Greenplum Database Installation Guide'
+and the 'Greenplum Database Administration Guide'
 located in $GPHOME/docs following installation.
 
 For Greenplum Database Single Node Edition (SNE) refer to the 
@@ -18,13 +19,13 @@ RUNNING THE GREENPLUM DATABASE INSTALLER
 
 2. Execute the installer using bash:
 
-   /bin/bash greenplum-db-3.3.4.0-<PLATFORM>.bin 
+   /bin/bash greenplum-db-4.0.0.0-<PLATFORM>.bin 
 
 3. When prompted, type 'yes' to accept the license agreement.
 
 4. When prompted, provide an installation path. For example:
 
-   /usr/local/greenplum-db-3.3.4.0
+   /usr/local/greenplum-db-4.0.0.0
 
 
 ***********************************************************
