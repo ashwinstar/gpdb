@@ -271,7 +271,7 @@ agent_main(int argc, char **argv)
 		 */
 		setuid(0);
 
-		fprintf(stdout, "getuid %d geteuid %d\n", getuid(), geteuid());
+		//fprintf(stdout, "getuid %d geteuid %d\n", getuid(), geteuid());
 
 		if (!arg_safe(target_host, strlen(target_host)))
 		{
@@ -311,7 +311,9 @@ agent_main(int argc, char **argv)
 
 		FILE	*tmpfile;
 		char	dev_name[256];
-		int		name_len;
+		int	name_len;
+
+		//fprintf(stdout, "getuid %d geteuid %d\n", getuid(), geteuid());
 
 		/* Parse out the names of the SP and WWN from our "device" */
 		parse_target_dev(target_dev, &WWN, &SP, &SG_NAME, &ARGS, &FSTYPE);
@@ -334,6 +336,14 @@ agent_main(int argc, char **argv)
 			exit (1);
 		}
 
+		if (fchown(fd, getuid(), -1) < 0)
+		{
+			close(fd);
+			unlink(tmpfilename);
+			fprintf(stderr, "Device inquiry on host %s for WWN [%s]: inquiry command failed\n", target_host, WWN);
+			return status;
+		}
+
 		/* 2. go get the inquiry results about the device -> "/dev/xxx" mapping */
 		snprintf(cmd, sizeof(cmd), "ssh %s inq -no_dots -clar_wwn -f_powerpath | grep %s | awk '{print $1}' >> %s", target_host, WWN, tmpfilename);
 
@@ -352,7 +362,6 @@ agent_main(int argc, char **argv)
 		tmpfile = fdopen(fd, "r");
 		if (tmpfile == NULL)
 		{
-			close(fd);
 			unlink(tmpfilename);
 			fprintf(stderr, "Couldn't open %s for inquiry results\n", tmpfilename);
 			exit(1);

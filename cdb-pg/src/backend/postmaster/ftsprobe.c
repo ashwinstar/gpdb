@@ -622,6 +622,7 @@ retrieveUserAndDb(char **probeUser)
 #define PROBE_DONE		(0x20)
 
 #define PROBE_ALIVE		(0x01)
+#define PROBE_FAULT		(0x02)
 
 enum probe_state_t { CONNECTING, CONNECTED, REQUEST_SENT, RESPONSE_READY };
 
@@ -895,6 +896,15 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 								  getSegmentStateLabel(s_state), getDataStateLabel(d_state));
 
 					ret = PROBE_ALIVE;
+
+					if (s_state == SegmentStateFault)
+					{
+						write_log("Segment with dbid %d content %d reported a fault to the prober", dbInfo->dbid, dbInfo->segindex);
+
+						/* This means that the segment needs to know something from the prober. */
+						ret |= PROBE_FAULT;
+					}
+
 					done = true;
 					break;
 				}
@@ -1186,6 +1196,11 @@ probePublishUpdate(uint8 *probe_results)
 			int primaryChange;
 			int mirrorChange;
 			uint8 segStatus;
+
+			/*
+			 * XXX: handle PROBE_FAULT here ? if we have a segment alive, but it 
+			 * is reporting a fault, then we need to do *something* to it.
+			 */
 
 			/* We're no longer responding to probes ? */
 			if ((probe_results[segInfo->dbid] & PROBE_ALIVE) == 0)
