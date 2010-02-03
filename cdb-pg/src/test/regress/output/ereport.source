@@ -510,7 +510,8 @@ select * from get_ereport order by 1;
  aaae: aomd:00000152:  errmsg("failed to create a new file segment: "%s"", filepathname))); 
  aaae: auth:00000281:  ereport(FATAL, 
  aaae: auth:00000282:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
- aaae: auth:00000283:  errmsg(errstr, port->user_name))); 
+ aaae: auth:00000283:  errmsg(errstr, port->user_name),
+ aaae: auth:00000284:  errSendAlert(false)));
  aaae: auth:00000304:  ereport(FATAL, 
  aaae: auth:00000305:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
  aaae: auth:00000306:  errmsg("missing or erroneous pg_hba.conf file"), 
@@ -17780,6 +17781,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000073:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000074:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000075:  str))); 
-(17719 rows)
+(17720 rows)
 
 drop external table get_ereport;
