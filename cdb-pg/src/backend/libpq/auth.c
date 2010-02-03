@@ -280,7 +280,8 @@ auth_failed(Port *port, int status)
 
 	ereport(FATAL,
 			(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-			 errmsg(errstr, port->user_name)));
+			 errmsg(errstr, port->user_name),
+			 errSendAlert(false)));
 	/* doesn't return */
 }
 
