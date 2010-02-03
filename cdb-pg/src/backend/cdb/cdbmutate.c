@@ -41,7 +41,6 @@
 #include "nodes/print.h"
 
 #include "executor/executor.h"
-#include "optimizer/geqo_random.h"
 
 /*
  * An ApplyMotionState holds state for the recursive apply_motion_mutator().

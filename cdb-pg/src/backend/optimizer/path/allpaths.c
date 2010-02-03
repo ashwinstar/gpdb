@@ -23,7 +23,6 @@
 #endif
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
-#include "optimizer/geqo.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/plancat.h"
@@ -53,8 +52,6 @@ bool		enable_hashjoin = true;
 bool        gp_enable_hashjoin_size_heuristic = false;  /*CDB*/
 bool		gp_enable_fallback_plan = true;
 bool        gp_enable_predicate_propagation = false;
-bool		enable_geqo = false;	/* just in case GUC doesn't set it */
-int			geqo_threshold;
 
 static void set_base_rel_pathlists(PlannerInfo *root);
 static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti);
@@ -863,12 +860,6 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
   		 */
 		RelOptInfo *rel;
 		root->initial_rels = initial_rels;
-
-#if 0 /* MPP does not support geqo */
-		if (enable_geqo && levels_needed >= geqo_threshold)
-			return geqo(root, levels_needed, initial_rels);
-		else
-#endif
 
 		rel = make_one_rel_by_joins(root, levels_needed, initial_rels, false);
 

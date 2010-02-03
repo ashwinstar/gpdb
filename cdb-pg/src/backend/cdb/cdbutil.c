@@ -20,7 +20,6 @@
 #include "funcapi.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
-#include "optimizer/geqo_random.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
@@ -997,13 +996,13 @@ makeRandomSegMap(int total_primaries, int total_to_skip)
 		/*
 		 * create a random int between 0 and (total_primaries - 1).
 		 * 
-		 * NOTE that the lower and upper limits in geqo_randint() are
+		 * NOTE that the lower and upper limits in cdb_randint() are
 		 * inclusive so we take them into account. In reality the
 		 * chance of those limits to get selected by the random
 		 * generator is extremely small, so we may want to find a
 		 * better random generator some time (not critical though).
 		 */
-		randint = geqo_randint(0, total_primaries - 1);
+		randint = cdb_randint(0, total_primaries - 1);
 		
 		/*
 		 * mark this random index 'true' in the skip map (marked to be

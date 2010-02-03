@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------
  *
  * cdbhash.c
- *	  Rrovides hashing routines to support consistant data distribution/location within Greenplum Database.
+ *	  Provides hashing routines to support consistant data distribution/location within Greenplum Database.
  *
  * Copyright (c) 2005-2008, Greenplum inc
  *
@@ -27,12 +27,11 @@
 #include "utils/varbit.h"
 #include "utils/acl.h"
 #include "fmgr.h"
-#include "optimizer/geqo_random.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "cdb/cdbhash.h"
-
+#include "cdb/cdbutil.h"
 
 /*
  * 32 bit FNV-1 and FNV-1a non-zero initial basis
@@ -132,7 +131,7 @@ makeCdbHash(int numsegs, CdbHashAlg algorithm)
 	 * commands that create a cdbhash per row (like INSERT) behave more like a 
 	 * random distribution.
 	 */
-	h->rrindex = geqo_randint(0, UPPER_VAL);
+	h->rrindex = cdb_randint(0, UPPER_VAL);
 		
 	ereport(DEBUG4,
 	  (errmsg("CDBHASH started using algorithm %d into %d segment databases",

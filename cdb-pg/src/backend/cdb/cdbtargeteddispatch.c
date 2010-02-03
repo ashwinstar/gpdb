@@ -25,9 +25,9 @@
 #include "cdb/cdbmutate.h"
 #include "cdb/cdbplan.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbutil.h"
 
 #include "executor/executor.h"
-#include "optimizer/geqo_random.h"
 
 #define PRINT_DISPATCH_DECISIONS_STRING ("print_dispatch_decisions")
 
@@ -391,7 +391,7 @@ FinalizeDirectDispatchDataForSlice(Node *node, ContentIdAssignmentData *data, bo
 				MemoryContext oldContext;
 				if ( ddcr->dd.contentIds == NULL )
 				{
-					ddcr->dd.contentIds = list_make1_int( geqo_randint(GpIdentity.numsegments - 1, 0));
+					ddcr->dd.contentIds = list_make1_int( cdb_randint(GpIdentity.numsegments - 1, 0));
 					if (  ShouldPrintTestMessages())
 						elog(INFO, "DDCR learned no content dispatch is required");
 				}

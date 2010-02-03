@@ -50,7 +50,6 @@
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "optimizer/cost.h"
-#include "optimizer/geqo.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
 #include "parser/gramparse.h"
@@ -331,6 +330,10 @@ int			WalSendClientTimeout = 30000;	// 30 seconds.
 
 char 	   *data_directory;
 
+int 		defunct_int = 0;
+bool 		defunct_bool = 0;
+double 		defunct_double = 0;
+
 #if USE_EMAIL
 char	   *email_smtp_server;
 char	   *email_smtp_userid;
@@ -487,8 +490,6 @@ const char *const config_group_names[] =
 	gettext_noop("Query Tuning / Planner Method Configuration"),
 	/* QUERY_TUNING_COST */
 	gettext_noop("Query Tuning / Planner Cost Constants"),
-	/* QUERY_TUNING_GEQO */
-	gettext_noop("Query Tuning / Genetic Query Optimizer"),
 	/* QUERY_TUNING_OTHER */
 	gettext_noop("Query Tuning / Other Planner Options"),
 
@@ -744,14 +745,15 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
-		{"geqo", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+		{"geqo", PGC_USERSET, DEFUNCT_OPTIONS,
 			gettext_noop("Unused. Syntax check only for PostgreSQL compatibility."),
             NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&enable_geqo,
+		&defunct_bool,
 		false, NULL, NULL
 	},
+
 	{
 		/* Not for general use --- used by SET SESSION AUTHORIZATION */
 		{"is_superuser", PGC_INTERNAL, UNGROUPED,
@@ -2374,42 +2376,42 @@ static struct config_int ConfigureNamesInt[] =
 		8, 1, INT_MAX, NULL, NULL
 	},
 	{
-		{"geqo_threshold", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+		{"geqo_threshold", PGC_USERSET, DEFUNCT_OPTIONS,
 			gettext_noop("Unused. Syntax check only for PostgreSQL compatibility."),
             NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&geqo_threshold,
+		&defunct_int,
 		12, 2, INT_MAX, NULL, NULL
 	},
 	{
-		{"geqo_effort", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+		{"geqo_effort", PGC_USERSET, DEFUNCT_OPTIONS,
 			gettext_noop("Unused. Syntax check only for PostgreSQL compatibility."),
             NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&Geqo_effort,
-		DEFAULT_GEQO_EFFORT, MIN_GEQO_EFFORT, MAX_GEQO_EFFORT, NULL, NULL
-	},
-	{
-		{"geqo_pool_size", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
-			gettext_noop("Unused. Syntax check only for PostgreSQL compatibility."),
-            NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&Geqo_pool_size,
+		&defunct_int,
+		//DEFAULT_GEQO_EFFORT, MIN_GEQO_EFFORT, MAX_GEQO_EFFORT, NULL, NULL
 		0, 0, INT_MAX, NULL, NULL
 	},
 	{
-		{"geqo_generations", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+		{"geqo_pool_size", PGC_USERSET, DEFUNCT_OPTIONS,
 			gettext_noop("Unused. Syntax check only for PostgreSQL compatibility."),
             NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&Geqo_generations,
+		&defunct_int,
 		0, 0, INT_MAX, NULL, NULL
 	},
-
+	{
+		{"geqo_generations", PGC_USERSET, DEFUNCT_OPTIONS,
+			gettext_noop("Unused. Syntax check only for PostgreSQL compatibility."),
+            NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&defunct_int,
+		0, 0, INT_MAX, NULL, NULL
+	},
 	{
 		{"deadlock_timeout", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("The time in milliseconds to wait on lock before checking for deadlock."),
@@ -3737,18 +3739,16 @@ static struct config_real ConfigureNamesReal[] =
 		&cursor_tuple_fraction,
 		DEFAULT_CURSOR_TUPLE_FRACTION, 0.0, 1.0, NULL, NULL
 	},
-
 	{
-		{"geqo_selection_bias", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+		{"geqo_selection_bias", PGC_USERSET, DEFUNCT_OPTIONS,
 			gettext_noop("Unused. Syntax check only for PostgreSQL compatibility."),
             NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&Geqo_selection_bias,
-		DEFAULT_GEQO_SELECTION_BIAS, MIN_GEQO_SELECTION_BIAS,
-		MAX_GEQO_SELECTION_BIAS, NULL, NULL
+		&defunct_double,
+		//DEFAULT_GEQO_SELECTION_BIAS, MIN_GEQO_SELECTION_BIAS, MAX_GEQO_SELECTION_BIAS, NULL, NULL
+		1.0, 0.0, 100.0, NULL, NULL
 	},
-
 	{
 		{"bgwriter_lru_percent", PGC_SIGHUP, RESOURCES,
 			gettext_noop("Background writer percentage of LRU buffers to flush per round"),
@@ -8205,12 +8205,6 @@ gp_guc_list_init(void)
                 explain = true;
                 no_plan = true;
                 break;
-
-#if 0                                       /* geqo not used in greenplum db */
-            case QUERY_TUNING_GEQO:
-                explain = true;
-                break;
-#endif
 
             case RESOURCES_MEM:
                 if (0 == guc_name_compare(gconf->name, "work_mem"))

@@ -34,8 +34,6 @@ extern bool enable_hashjoin;
 extern bool gp_enable_hashjoin_size_heuristic;          /*CDB*/
 extern bool gp_enable_fallback_plan;
 extern bool gp_enable_predicate_propagation;
-extern bool enable_geqo;
-extern int	geqo_threshold;
 
 extern RelOptInfo *make_one_rel(PlannerInfo *root, List *joinlist);
 

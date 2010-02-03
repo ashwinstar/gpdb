@@ -51,6 +51,21 @@ typedef struct CdbComponentDatabaseInfo
 #define SEGMENT_IS_ACTIVE_PRIMARY(p) ((p)->role == 'p' ? true : false)
 #define SEGMENT_IS_ALIVE(p) ((p)->status == 'u' ? true : false)
 
+
+/*
+ * Copied from geqo_random.h (deprecated)
+ */
+
+#include <math.h>
+
+/* cdb_rand returns a random float value between 0 and 1 inclusive */
+#define cdb_rand() ((double) random() / (double) MAX_RANDOM_VALUE)
+
+/* cdb_randint returns integer value between lower and upper inclusive */
+#define cdb_randint(upper,lower) \
+	( (int) floor( cdb_rand()*(((upper)-(lower))+0.999999) ) + (lower) )
+
+
 /* --------------------------------------------------------------------------------------------------
  * Structure for return value from getCdbSegmentDatabases()
  *
