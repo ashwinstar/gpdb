@@ -117,7 +117,8 @@ getDataStateLabel(DataState_e state)
 {
 	static const char *labels[] =
 	{
-			"NotInitialized", "InSync", "InChangeLogging", "InResync"
+			"NotInitialized", "InSync", "InChangeLogging",
+			"InIncrementalResync", "InFullResync"
 	};
 
 	return labels[state];

@@ -31,7 +31,8 @@ static int FileRepPrimary_RunRecovery(void);
  *
  * That process will be started only during recovery if
  *			*) dataState == DataStateInSync or
- *			*) dataState == DataStateInResync
+ *			*) dataState == case DataStateInIncrementalResync:
+ *			*) dataState == DataStateInFullResync
  *
  */
 void 
@@ -71,7 +72,8 @@ FileRepPrimary_StartRecovery(void)
 		Insist(fileRepRole == FileRepPrimaryRole);
 
 		Insist(dataState == DataStateInSync ||
-			   dataState == DataStateInResync);
+			   dataState == DataStateInFullResync ||
+			   dataState == DataStateInIncrementalResync);
 		
 		status = FileRepPrimary_RunRecovery();
 

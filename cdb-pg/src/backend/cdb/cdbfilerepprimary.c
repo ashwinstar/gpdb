@@ -94,7 +94,8 @@ FileRepPrimary_IsMirroringRequired(void)
 				/* Insist(0); */
 				break;
 				
-			case DataStateInResync:
+			case DataStateInIncrementalResync:
+			case DataStateInFullResync:
 			case DataStateInSync:
 				if (segmentState != SegmentStateFault) {
 					isMirroringRequired = TRUE;
@@ -801,7 +802,8 @@ FileRepPrimary_StartSender(void)
 
 		Insist(fileRepRole == FileRepPrimaryRole);
 		Insist(dataState == DataStateInSync ||
-			   dataState == DataStateInResync);
+			   dataState == DataStateInIncrementalResync ||
+			   dataState == DataStateInFullResync);
 		
 		status = FileRepConnClient_EstablishConnection(
 								mirrorHostAddress,

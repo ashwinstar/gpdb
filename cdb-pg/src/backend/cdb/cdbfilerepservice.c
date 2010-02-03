@@ -167,7 +167,8 @@ FileRepSubProcess_ProcessSignals()
 						FileRepSubProcess_SetState(FileRepStateInitialization);
 						break;
 						
-					case DataStateInResync:	
+					case DataStateInIncrementalResync:
+                    case DataStateInFullResync:
 						if (FileRepSubProcess_GetState() == FileRepStateSuspend ||
 						    FileRepSubProcess_GetState() == FileRepStateNotInitialized)
                         {
@@ -190,7 +191,8 @@ FileRepSubProcess_ProcessSignals()
 				 
 				 switch (dataState) {
 				 case DataStateInSync:
-				 case DataStateInResync:					
+				 case DataStateInIncrementalResync:
+                 case DataStateInFullResync:
 						 FileRepSubProcess_SetState(FileRepStateReady);
 						 break;
 				 
@@ -208,7 +210,8 @@ FileRepSubProcess_ProcessSignals()
 			case SegmentStateReady:
 				switch (dataState) {
 					case DataStateInSync:
-					case DataStateInResync:					
+					case DataStateInIncrementalResync:
+                    case DataStateInFullResync:
 						FileRepSubProcess_SetState(FileRepStateReady);
 						break;
 						

@@ -16,25 +16,35 @@
 #include "postgres.h"
 
 /*
- * Segment states are set only when mirroring is configured.  
- *	FileRepRole is either FileRepPrimary or FileRepMirrorRole.
+ * Segment states are set only when mirroring is configured (that is, when
+ *    the FileRepRole is either FileRepPrimary or FileRepMirrorRole)
  *
- * Note: if the order or # of values is changed then update the labels in primary_mirror_mode.c
+ * Note: if the order or # of values is changed then update the gDataStateLabels in primary_mirror_mode.c
  */
-typedef enum DataState_e {
-        DataStateNotInitialized=0,
-		/* State has not been set */
+typedef enum DataState_e
+{
+    /* State has not been set */
+    DataStateNotInitialized=0,
 
-        DataStateInSync,
-		/* Primary and mirror are in sync */
+    /* Primary and mirror are in sync */
+    DataStateInSync,
 
-        DataStateInChangeLogging,
-		/* Primary is logging changing. Mirror is down. */
+    /* Primary is logging changing. Mirror is down. */
+    DataStateInChangeLogging,
 
-        DataStateInResync,
-		/* Mirror is back. Changes are re-synchronized from primary. */
+    /**
+     * Changes are begin re-synchronized (incrementally) from primary to mirror.
+     *   The mode of incremental (block- vs file-) depends on the data
+     *   available inside the file replication code.
+     */
+    DataStateInIncrementalResync,
 
-    	/* note that these must be in sync with gDataStateLabels inside the implementation file */
+    /**
+     * Changes are being re-synchronized (using full copy) from primary to mirror
+     */
+    DataStateInFullResync
+
+    /* note that these must be in sync with gDataStateLabels inside the implementation file */
 } DataState_e;
 
 /**
@@ -171,23 +181,15 @@ extern void setInitialRequestedPrimaryMirrorMode( PrimaryMirrorMode targetMode )
 
 /* returns PMModeUninitialized if the value could not be parsed as an initialized mode! */
 extern PrimaryMirrorMode decipherPrimaryMirrorModeArgument(const char *arg);
-/* transitioning */
-extern PrimaryMirrorModeTransitionResult requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args );
-extern bool isPrimaryMirrorModeTransitionRequested(void);
-extern void doRequestedPrimaryMirrorModeTransitions(void);
-extern PrimaryMirrorModeTransitionArguments *createNewTransitionArguments(void);
-extern void primaryMirrorGetFilerepArguments(
-				FileRepRole_e	*fileRepRoleOut, 
-				SegmentState_e	*segmentStateOut, 
-				DataState_e		*dataStateOut,
-				char **primaryHostAddressOut, 
-				int *primaryPortOut,
-				char **mirrorHostAddressOut, 
-				int *mirrorPortOut);
 
 /* state */
 extern bool isPrimaryMirrorModeAFullPostmaster(bool checkTargetModeAsWell);
 extern bool doesPrimaryMirrorModeRequireFilerepProcess(bool checkTargetModeAsWell);
+
+/**
+ * Fetch the current file replication role and states.  Returns values through the pointer arguments.
+ *   Note that any of the arguments may be NULL in which case that piece of information is not returned.
+ */
 extern void getFileRepRoleAndState(FileRepRole_e *fileRepRole, SegmentState_e *segmentState, DataState_e *dataState);
 
 /* functions for the postmaster/filerep interaction */
@@ -202,5 +204,19 @@ extern void getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode, SegmentState
 extern const char *getDataStateLabel(DataState_e state);
 extern const char *getMirrorModeLabel(PrimaryMirrorMode mode);
 extern const char *getSegmentStateLabel(SegmentState_e state);
+
+/* transitioning */
+extern PrimaryMirrorModeTransitionResult requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args );
+extern bool isPrimaryMirrorModeTransitionRequested(void);
+extern void doRequestedPrimaryMirrorModeTransitions(void);
+extern PrimaryMirrorModeTransitionArguments *createNewTransitionArguments(void);
+extern void primaryMirrorGetFilerepArguments(
+				FileRepRole_e	*fileRepRoleOut,
+				SegmentState_e	*segmentStateOut,
+				DataState_e		*dataStateOut,
+				char **primaryHostAddressOut,
+				int *primaryPortOut,
+				char **mirrorHostAddressOut,
+				int *mirrorPortOut);
 
 #endif   /* _PRIMARY_MIRROR_MODE_H */

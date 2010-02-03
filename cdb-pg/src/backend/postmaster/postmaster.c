@@ -2598,7 +2598,9 @@ exit:
 		else if (strcmp(segmentState, "c") == 0)
 			args->dataState = DataStateInChangeLogging;
 		else if (strcmp(segmentState, "r") == 0)
-			args->dataState = DataStateInResync;
+			args->dataState = DataStateInIncrementalResync;
+        else if (strcmp(segmentState, "f") == 0)
+			args->dataState = DataStateInFullResync;
 		else
 		{
 			sendPrimaryMirrorTransitionResult(PROTOCOL_VIOLATION);
