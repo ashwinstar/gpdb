@@ -9,10 +9,8 @@
 # todo MIRRORING what is: multi_home = gpmlib.chk_multi_home(hosts) (from other gprecoverseg)
 # todo MIRRORING do I need gp_fault_action?
 # todo MIRRORING parallel degree sanity checks + defaults from gpstart
-# todo MIRRORING is -F (force shutdown) required?
 # todo MIRRORING set it up to show gprecoverseg_help
 # todo MIRRORING implement pause/unpause of fault prober properly
-# todo MIRRORING mark for full resync on the server side if needed
 # todo MIRRORING rename ConfigExpansionSeg?
 # todo MIRRORING update hba.conf on all originals if we changed any hosts: (call update_original_segments from gpexpand)
 # todo MIRRORING is it okay to leave the temporary directory sitting around (as gpexpand does?)
@@ -333,26 +331,31 @@ class GpRecoverSegmentProgram:
         #  the postgresql.conf in that basic directory will need updating
         cleanupDirectives = []
         copyDirectives = []
-        for toRec in actions.getSegmentsToRecover():
-            if toRec.isFullSynchronization():
-                cleanupDirectives.append(GpCleanupSegmentDirectoryDirective(toRec.getFailedSegment()))
+        for toRecover in actions.getSegmentsToRecover():
+            if toRecover.isFullSynchronization():
+                cleanupDirectives.append(GpCleanupSegmentDirectoryDirective(toRecover.getFailedSegment()))
 
-                if toRec.getFailoverSegment() is not None:
-                    targetSegment = toRec.getFailoverSegment()
-                else: targetSegment = toRec.getFailedSegment()
+                if toRecover.getFailoverSegment() is not None:
+                    targetSegment = toRecover.getFailoverSegment()
+                else: targetSegment = toRecover.getFailedSegment()
 
-                d = GpCopySegmentDirectoryDirective(toRec.getLiveSegment(), targetSegment)
+                d = GpCopySegmentDirectoryDirective(toRecover.getLiveSegment(), targetSegment)
                 copyDirectives.append(d)
         self.__cleanUpSegmentDirectories(cleanupDirectives)
         self.__copySegmentDirectories(gpEnv, copyDirectives)
 
         # update and save metadata
         for toRecover in actions.getSegmentsToRecover():
+            if toRecover.isFullSynchronization():
+                resyncMode = gparray.MODE_FULL_RESYNCHRONIZATION
+            else:
+                resyncMode = gparray.MODE_INCREMENTAL_RESYNCHRONIZATION
+
             if toRecover.getFailoverSegment() is None:
                 # we are recovering the lost segment in place
                 seg = toRecover.getFailedSegment()
                 seg.setSegmentStatus(gparray.STATUS_UP)
-                seg.setSegmentMode(gparray.MODE_RESYNCHRONIZING)
+                seg.setSegmentMode(resyncMode)
             else:
                 seg = toRecover.getFailedSegment()
                 # no need to update the failed segment's information -- it is
@@ -363,10 +366,10 @@ class GpRecoverSegmentProgram:
 
                 seg = toRecover.getFailoverSegment()
                 seg.setSegmentStatus(gparray.STATUS_UP)
-                seg.setSegmentMode(gparray.MODE_RESYNCHRONIZING)
+                seg.setSegmentMode(resyncMode)
 
             seg = toRecover.getLiveSegment()
-            seg.setSegmentMode(gparray.MODE_RESYNCHRONIZING)
+            seg.setSegmentMode(resyncMode)
 
         configInterface.getConfigurationProvider().updateSystemConfig(gpArray)
 

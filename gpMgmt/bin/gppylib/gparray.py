@@ -35,8 +35,9 @@ VALID_STATUS = [STATUS_UP, STATUS_DOWN]
 
 MODE_CHANGELOGGING = 'c'
 MODE_SYNCHRONIZED = 's'
-MODE_RESYNCHRONIZING = 'r'
-VALID_MODE = [MODE_CHANGELOGGING, MODE_SYNCHRONIZED, MODE_RESYNCHRONIZING]
+MODE_INCREMENTAL_RESYNCHRONIZATION = 'r'
+MODE_FULL_RESYNCHRONIZATION = 'f'
+VALID_MODE = [MODE_CHANGELOGGING, MODE_SYNCHRONIZED, MODE_INCREMENTAL_RESYNCHRONIZATION, MODE_FULL_RESYNCHRONIZATION]
 
 
 # ============================================================================
@@ -261,7 +262,7 @@ class GpDB:
         return self.mode == MODE_SYNCHRONIZED
 
     def isSegmentModeInResynchronization(self):
-        return self.mode == MODE_RESYNCHRONIZING
+        return self.mode == MODE_INCREMENTAL_RESYNCHRONIZATION or self.mode == MODE_FULL_RESYNCHRONIZATION
 
     # --------------------------------------------------------------------
     # getters
@@ -372,7 +373,7 @@ class GpDB:
     def setSegmentMode(self, mode):
         checkNotNone("mode", mode)
 
-        if mode != 's' and mode != 'c' and mode != 'r':
+        if not mode in VALID_MODE:
             raise Exception("Invalid mode '%s'" % mode)
 
         self.mode = mode
