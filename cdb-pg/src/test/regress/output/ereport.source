@@ -11320,11 +11320,16 @@ select * from get_ereport order by 1;
  paba: postmaster:00002303:  errSendAlert(true), 
  paba: postmaster:00002304:  errOmitLocation(true), 
  paba: postmaster:00002305:  errmsg("the database system is in recovery mode"))); 
- paba: postmaster:00002308:  ereport(FATAL, 
- paba: postmaster:00002309:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
- paba: postmaster:00002310:  errSendAlert(true), 
- paba: postmaster:00002311:  errOmitLocation(true), 
- paba: postmaster:00002312:  errmsg("sorry, too many clients already"))); 
+ paba: postmaster:00002308:  ereport(FATAL,
+ paba: postmaster:00002309:  (errcode(ERRCODE_CANNOT_CONNECT_NOW),                                                                                                                                                                 
+ paba: postmaster:00002310:  errSendAlert(true),                                                                                                                                                                                   
+ paba: postmaster:00002311:  errOmitLocation(true),                                                                                                                                                                                
+ paba: postmaster:00002312:  errmsg("the database system is in mirror or uninitialized mode")));                                                                                                                                   
+ paba: postmaster:00002315:  ereport(FATAL,                                                                                                                                                                                        
+ paba: postmaster:00002316:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS),
+ paba: postmaster:00002317:  errSendAlert(true),
+ paba: postmaster:00002318:  errOmitLocation(true),
+ paba: postmaster:00002319:  errmsg("sorry, too many clients already")));
  paba: postmaster:00002979:  ereport(WARNING, 
  paba: postmaster:00002980:  (errmsg("pg_hba.conf not reloaded"))); 
  paba: postmaster:00004808:  ereport(WARNING, 
@@ -17781,6 +17786,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000073:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000074:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000075:  str))); 
-(17720 rows)
+(17725 rows)
 
 drop external table get_ereport;
