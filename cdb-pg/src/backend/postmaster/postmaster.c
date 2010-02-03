@@ -2304,6 +2304,13 @@ retry1:
 					 errOmitLocation(true),
 					 errmsg("the database system is in recovery mode")));
 			break;
+        case CAC_MIRROR_OR_QUIESCENT:
+			ereport(FATAL,
+					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+					 errSendAlert(true),
+					 errOmitLocation(true),
+					 errmsg("the database system is in mirror or uninitialized mode")));
+			break;
 		case CAC_TOOMANY:
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
@@ -2781,6 +2788,20 @@ canAcceptConnections(void)
 			 pmState == PM_RECOVERY ||
 			 pmState == PM_RECOVERY_CONSISTENT))
 			return CAC_STARTUP; /* normal startup */
+
+        /* check to see if we are a quiescent or a mirror.
+         */
+        {
+            PrimaryMirrorMode mirrorMode;
+            getPrimaryMirrorStatusCodes(&mirrorMode, NULL, NULL);
+
+            if ( mirrorMode == PMModeQuiescentSegment ||
+                 mirrorMode == PMModeMirrorSegment)
+             {
+                return CAC_MIRROR_OR_QUIESCENT;
+             }
+        }
+
 		return CAC_RECOVERY;	/* else must be crash recovery */
 	}
 
