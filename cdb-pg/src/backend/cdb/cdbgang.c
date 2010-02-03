@@ -427,7 +427,12 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 * loop from the preceding one to make sure all error messages were
 	 * palloced before potentially calling ereport.
 	 */
-	if (successful_connections != newGangDefinition->size)
+
+	/*
+	 * we only want to "just error out" if we don't have
+	 * fts-enabled: for the fts-related response see further below.
+	 */
+	if (successful_connections != newGangDefinition->size && !isFTSEnabled())
 	{
 		for (i = 0; i < segdb_count; i++)
 		{
