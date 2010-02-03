@@ -207,8 +207,9 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel,
         /* Add index path to caller's list. */
         *pindexpathlist = lappend(*pindexpathlist, ipath);
 
-		if (ipath->indexselectivity < 1.0 &&
-			!ScanDirectionIsBackward(ipath->indexscandir))
+		if (!enable_seqscan ||
+			(ipath->indexselectivity < 1.0 &&
+			 !ScanDirectionIsBackward(ipath->indexscandir)))
 			bitindexpaths = lappend(bitindexpaths, ipath);
 	}
 
