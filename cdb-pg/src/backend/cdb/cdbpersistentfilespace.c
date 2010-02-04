@@ -556,8 +556,8 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 	}
 
 	/* These should both have been populated by one of the cases above */
-	Assert(PrimaryBlankPadded);
-	Assert(MirrorBlankPadded);
+	Assert(primaryBlankPadded);
+	Assert(mirrorBlankPadded);
 
 	PersistentFilespace_ConvertBlankPaddedLocation(
 											primaryFilespaceLocation,
