@@ -3,7 +3,11 @@
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
 # todo MIRRORING print out message about what we're about to do
+# todo MIRRORING verify that the new segments will not cause any port conflicts (check in all cases, but applies mainly to reading from file)
 # todo MIRRORING verify failover strategy is 'mirrored'
+# todo MIRRORING get address of the new host (not just hostName)
+# todo MIRRORING process the newRecoverHost and spareDataDirectory values
+#
 # todo MIRRORING better error message when cluster is not running
 # todo MIRRORING STOP the old mirror in case they are running? (when failover to a new location)
 # todo MIRRORING checks for being able to build target directory
@@ -14,13 +18,12 @@
 # todo MIRRORING rename ConfigExpansionSeg?
 # todo MIRRORING update hba.conf on all originals if we changed any hosts: (call update_original_segments from gpexpand)
 # todo MIRRORING is it okay to leave the temporary directory sitting around (as gpexpand seems to do?)
-# todo MIRRORING escaping of directory names in unix.LocalCopy
 # todo MIRRORING need to compress arguments sent to segments?  I think command lines can be pretty long, but should test it
 #
 # todo MIRRORING we should copy postgresql.conf from some other segment rather than the master (see what gpexpand does) since settings can be different on segments
 # todo MIRRORING: make sure created directories have the right permissions?
 #
-# todo MIRRORING why do we take recovery commands from a file
+# todo MIRRORING why do we take recovery commands from a file?  Is that really needed?
 # todo MIRRORING if from config file, we should NOT take -F and instead should get full/incremental commands from the file?
 #
 # todo code reorg and consolidation with gpexpand?
@@ -31,10 +34,14 @@
 #           failover, and then doing recover full
 #       -z "Primary segment data dir and host to force recovery" see removed -S option for comment
 #
+#      documentation: -i input file takes replicationPort in list of args (for failover target)
 #        todo MIRRORING fill out full list of removed options
 #
 # todo: catch string-to-int and other errors when parsing file
 # THIS IMPORT SHOULD COME FIRST
+#
+# todo MIRRORING test cases where input file says to recover a file in-place (perhaps with a change to ports)
+# todo MIRRORING (bugfix) escaping of directory names in unix.LocalCopy
 #
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
@@ -135,7 +142,7 @@ class GpSegmentToRecover:
             return True
 
         # if the segment we're copying from is marked full resync, we can't downgrade that to incremental!
-        if self.__liveSegment.getSegmentMode() == MODE_FULL_RESYNCHRONIZATION:
+        if self.__liveSegment.getSegmentMode() == gparray.MODE_FULL_RESYNCHRONIZATION:
             return True
 
         # if we are failing over to a new segment location then we must fully resync
@@ -227,7 +234,8 @@ class GpRecoverSegmentProgram:
                 seg = segToRecover.getFailoverSegment()
                 if seg is not None:
                     file.write(' ')
-                    file.write('%s:%d:%s' % (seg.getSegmentHostName(), seg.getSegmentPort(), seg.getSegmentDataDirectory()))
+                    file.write('%s:%d:%d:%s' % (seg.getSegmentHostName(),
+                        seg.getSegmentPort(), seg.getSegmentReplicationPort(), seg.getSegmentDataDirectory()))
 
                 file.write('\n')
 
@@ -301,11 +309,10 @@ class GpRecoverSegmentProgram:
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "building and transferring basic segment directory")
 
         destSegments = [d.getDestSegment() for d in directives]
-        destSegmentByHost = GpArray.getSegmentsByHostName(srcSegments)
+        destSegmentByHost = GpArray.getSegmentsByHostName(destSegments)
         newSegmentInfo = gp.buildExpansionSegmentInfo(destSegments)
         cmds = []
         for hostName, segments in destSegmentByHost.iteritems():
-
             segmentInfo = newSegmentInfo[hostName]
             checkNotNone("segmentInfo for %s" % hostName, segmentInfo)
 
@@ -446,31 +453,33 @@ class GpRecoverSegmentProgram:
 
             if failedSegment is None:
                 raise Exception("Segment not found: %s" % line )
-            failedSegments.append(failedSegment)
 
+            failoverSegment = None
             if qeArrayLen == 2:
                 """
                 When the length is two, the caller is going to tell us to where we need to failover, so
                   build a failover segment
                 """
                 arr = [s.strip() for s in qeArray[1].split(':')]
-                if len(arr) != 3:
+                if len(arr) != 4:
                     raise Exception('Config file format error. %s' % line)
 
-                failoverSegment = failedSegment.copy()
+                # these two lines are confusing, but make it so that failoverSegment points to the
+                #   object that is registered in gparray
+                failoverSegment = failedSegment
+                failedSegment = failoverSegment.copy()
+
+                # now update values in failover segment
                 failoverSegment.setSegmentHostName( arr[0] )
                 failoverSegment.setSegmentPort( int(arr[1]) )
-                failoverSegment.setSegmentDataDirectory( arr[2] )
+                failoverSegment.setSegmentReplicationPort( int(arr[2]) )
+                failoverSegment.setSegmentDataDirectory( arr[3] )
 
-                if failoverSegment == failedSegment:
-                    """
-                    User requested in-place failover...convert back to that
-                    """
-                    failoverSegment = None
+            # this must come AFTER the if check above because failedSegment can be adjusted to
+            #   point to a different object
+            failedSegments.append(failedSegment)
+            failoverSegments.append(failoverSegment)
 
-                failoverSegments.append(failoverSegment)
-            else:
-                failoverSegments.append(None)
         peersForFailedSegments = self.findAndValidatePeersForFailedSegments(gpArray, failedSegments)
 
         segs = []
@@ -523,10 +532,16 @@ class GpRecoverSegmentProgram:
         gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
 
         # verify "where to recover" options
-        if self.__options.newRecoverHost is not None and \
-            self.__options.spareDataDirectory is not None:
+        optionCnt = 0
+        if self.__options.newRecoverHost is not None:
+            optionCnt += 1
+        if self.__options.spareDataDirectory is not None:
+            optionCnt += 1
+        if self.__options.recoveryConfigFile is not None:
+            optionCnt += 1
+        if optionCnt > 1:
             raise ProgramArgumentValidationException(\
-                    "Only one of -p and -s may be specified")
+                    "Only one of -i, -p, -s may be specified")
 
         # if gpmlib.chk_on_passive_standby(masterPort): # todo: what is this doing?  Proper error message
          #    raise Exception('Unable to process requested command')

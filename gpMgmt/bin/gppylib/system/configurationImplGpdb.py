@@ -153,7 +153,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                 dbconn.execSQL(conn, sql) # todo: assert that 1 was inserted
 
                 # insert into filespaces
-                sql = "INSERT INTO pg_filespace_entry (fsefsoid, fsedbid, fselocation)\n" + \
+                sql = "INSERT INTO pg_catalog.pg_filespace_entry (fsefsoid, fsedbid, fselocation)\n" + \
                       "SELECT fs.oid, " + \
                        self.__toSqlIntValue(seg.getSegmentDbId()) + ",\n" + \
                        self.__toSqlTextValue(seg.getSegmentDataDirectory()) + ",\n" + \
@@ -179,10 +179,14 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                             "  address = " + self.__toSqlTextValue(seg.getSegmentAddress()) + ",\n" \
                             "  replication_port = " + self.__toSqlIntValue(seg.getSegmentReplicationPort()) + "\n" \
                             "WHERE dbid = " + self.__toSqlIntValue(seg.getSegmentDbId())
-                    dbconn.execSQL(conn, sql)
+                    dbconn.execSQL(conn, sql)  # todo: assert that 1 was updated
 
-                    # todo MIRRORING: update filespace information
-
+                    sql = "UPDATE pg_catalog.pg_filespace_entry\n" + \
+                            "  SET fselocation = " + self.__toSqlTextValue(seg.getSegmentDataDirectory()) + "\n" \
+                            "WHERE fsedbid = " + self.__toSqlIntValue(seg.getSegmentDbId()) + "\n" \
+                            "  AND fsefsoid = (SELECT oid FROM pg_catalog.pg_filespace WHERE fsname='pg_system')"
+                    dbconn.execSQL(conn, sql)  # todo: assert that 1 was updated
+                    
                     changeDescription = "updated by %s" % "todo:program" # getProgramName()
 
 
