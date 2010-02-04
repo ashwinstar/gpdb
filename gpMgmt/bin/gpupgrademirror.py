@@ -47,6 +47,8 @@ _help  = [""" TODO add help """]
 
 _usage = """ TODO add usage """
 
+TenMeg = 10485760
+
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -335,6 +337,29 @@ class MoveDirectory(Command):
 
 
 #-------------------------------------------------------------------------
+#-------------------------------------------------------------------------                                                       
+class FileDirectoryList(Command):
+
+    def __init__(self, name, filePattern, ctxt=LOCAL, remoteHost=None):
+        self.filePattern = filePattern
+        cmdStr="%s -1 %s" % (findCmdInPath('ls'), filePattern)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+    @staticmethod
+    def get_list(name, remote_host, file_pattern):
+        lsCmd = FileDirectoryList(name, filePattern = file_pattern, remoteHost = remote_host)
+        lsCmd.run(validateAfter=False)
+        return lsCmd.get_result_list()
+    
+    def get_result_list(self):
+        files = self.results.stdout.split('\n')
+        if files != None and len(files) > 0 and files[-1] == '':
+           ''' Remove any trailing empty string '''
+           files.pop()
+        return files
+    
+    
+#-------------------------------------------------------------------------
 #-------------------------------------------------------------------------
 class GpUpgradeMirrorStatus():
     """Class that manages gpupgrademirror status file.
@@ -342,24 +367,40 @@ class GpUpgradeMirrorStatus():
     The status file is placed in the master data directory on both the master and
     the standby master.  it's used to keep track of where we are in the progression.
     """
-    def __init__(self, logger, master_data_directory, segment_dbid, master_mirror, phase):
+    def __init__(self, logger, master_data_directory, segment_dbid, master_mirror, phase, safeMode = True):
         self.logger=logger
 
-        self._status_values = { 'UNINITIALIZED'               : 1
-                              , 'START_PRIMARY_COPY'          : 2
-                              , 'END_PRIMARY_COPY'            : 3
-                              , 'START_NEW_MIRROR_FILE_FIXUP' : 4 
-                              , 'END_NEW_MIRROR_FILE_FIXUP'   : 5
-                              , 'START_MOVE_OLD_MIRROR'       : 6
-                              , 'END_MOVE_OLD_MIRROR'         : 7
-                              , 'START_MOVE_NEW_MIRROR'       : 8
-                              , 'END_MOVE_NEW_MIRROR'         : 9
-                              , 'START_REMOVE_OLD_MIRROR'     : 10
-                              , 'END_REMOVE_OLD_MIRROR'       : 11
-                              , 'PHASE1_DONE'                 : 12
-                              , 'START_PHASE2'                : 13
-                              , 'PHASE2_DONE'                 : 14
-                              }
+        if safeMode == True:
+           self._status_values = { 'UNINITIALIZED'               : 1
+                                 , 'START_PRIMARY_COPY'          : 2
+                                 , 'END_PRIMARY_COPY'            : 3
+                                 , 'START_NEW_MIRROR_FILE_FIXUP' : 4 
+                                 , 'END_NEW_MIRROR_FILE_FIXUP'   : 5
+                                 , 'START_MOVE_OLD_MIRROR'       : 6
+                                 , 'END_MOVE_OLD_MIRROR'         : 7
+                                 , 'START_MOVE_NEW_MIRROR'       : 8
+                                 , 'END_MOVE_NEW_MIRROR'         : 9
+                                 , 'START_REMOVE_OLD_MIRROR'     : 10
+                                 , 'END_REMOVE_OLD_MIRROR'       : 11
+                                 , 'PHASE1_DONE'                 : 12
+                                 , 'START_PHASE2'                : 13
+                                 , 'PHASE2_DONE'                 : 14
+                                 }
+        else:
+            self._status_values = { 'UNINITIALIZED'                       : 1
+                                  , 'START_MOVE_OLD_MIRROR_SPECIAL_FILES' : 2
+                                  , 'END_MOVE_OLD_MIRROR_SPECIAL_FILES'   : 3
+                                  , 'START_REMOVE_OLD_MIRROR'             : 4
+                                  , 'END_REMOVE_OLD_MIRROR'               : 5
+                                  , 'START_PRIMARY_COPY'                  : 6
+                                  , 'END_PRIMARY_COPY'                    : 7
+                                  , 'START_NEW_MIRROR_FILE_FIXUP'         : 8
+                                  , 'END_NEW_MIRROR_FILE_FIXUP'           : 9
+                                  , 'START_MOVE_NEW_MIRROR'               : 10
+                                  , 'END_MOVE_NEW_MIRROR'                 : 11
+                                  , 'PHASE1_DONE'                         : 12
+                                  }
+            
         self._status = []
         self._status_info = []
         self._master_data_directory = master_data_directory
@@ -534,7 +575,7 @@ class gpupgrademirrorSafeMode(threading.Thread):
     '''
 
 
-    def __init__(self, dburl, logger, master_data_directory, node_name):
+    def __init__(self, dburl, logger, master_data_directory, node_name, safeMode = True):
         threading.Thread.__init__(self)
         
         self.tempOldMirrorDirSuffix = 'gpupgrademirrors.originalmirror'
@@ -547,6 +588,7 @@ class gpupgrademirrorSafeMode(threading.Thread):
         self.logger                 = logger
         self.master_data_directory  = master_data_directory
         self.nodeName               = node_name
+        self.safeMode               = safeMode
         self.mirrorSegmentList      = []
         self.statusList             = []
 
@@ -567,6 +609,7 @@ class gpupgrademirrorSafeMode(threading.Thread):
                                           , segment_dbid = seg.dbid
                                           , master_mirror = False
                                           , phase = 1
+                                          , safeMode = self.safeMode
                                           )
             self.statusList.append(status)
             if options.rollback == True:
@@ -585,13 +628,33 @@ class gpupgrademirrorSafeMode(threading.Thread):
         print 'in renameOldMirror'
         
         tempDataDir = seg.mirror_data_directory + self.tempOldMirrorDirSuffix
-        rmCmd = MoveDirectory( name = 'gpupgrademirror move old mirror to temp location: %s:%s' % (seg.mirror_data_directory, tempDataDir)
-                             , srcDirectory = seg.mirror_data_directory
-                             , dstDirectory = tempDataDir
-                             , ctxt  = REMOTE
-                             , remoteHost = self.nodeName
-                             )
-        rmCmd.run(validateAfter = True)
+        if safeMode == True:
+           rmCmd = MoveDirectory( name = 'gpupgrademirror move old mirror to temp location: %s:%s' % (seg.mirror_data_directory, tempDataDir)
+                                , srcDirectory = seg.mirror_data_directory
+                                , dstDirectory = tempDataDir
+                                , ctxt  = REMOTE
+                                , remoteHost = self.nodeName
+                                )
+           rmCmd.run(validateAfter = True)
+        else:
+           ''' Un-safe mode '''
+           rmCmd = MakeDirectory( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % tempDataDir
+                                , directory = tempDataDir
+                                , remoteHost = self.nodeName
+                                )
+           rmCmd.run(validateAfter = True) 
+           for file in self.fixupFileList:
+                fullPathFile = seg.mirror_data_directory + '/' + file
+                fullPathTarget = tempDataDir + '/' + file
+                rmCmd = RemoteCopy( name = 'gpupgrademirror fixup copy : %s:%s' % (fullPathFile, fullPathTarget)
+                              , srcDirectory = fullPathFile
+                              , dstHost = self.nodeName
+                              , dstDirectory = fullPathTarget
+                              , ctxt = REMOTE
+                              , remoteHost = self.nodeName
+                              )
+                rmCmd.run(validateAfter = True)
+           
         
     #-------------------------------------------------------------------------------
     def renameNewMirrorToOldMirror(self, seg):
@@ -656,18 +719,29 @@ class gpupgrademirrorSafeMode(threading.Thread):
         print 'in checkAvailableSpace'
 
         for seg in self.mirrorSegmentList:
+            ''' Get size of primary '''
             dirSize = DiskUsage.get_size( name = "primaryDir"
                                         , remote_host = seg.primary_host
                                         , directory = seg.primary_data_directory
-                                        )        
-            mirrorSize = DiskFree.get_size( name = 'disk space available'
+                                        )
+            
+            ''' Get available space on mirror '''        
+            mirrorFreeSize = DiskFree.get_size( name = 'disk space available'
                                       , remote_host = self.nodeName
                                       , directory = seg.mirror_data_directory
                                       )
-            ###print 'mirrorSize = ' + str(mirrorSize)
-            if mirrorSize < dirSize:
-               logger.error("Size of mirror directory %s is too small." % mirror[2])          
-
+            if self.safeMode == False:
+                ''' Add current mirror size to available mirror space '''
+                currentMirrorSize = DiskUsage.get_size( name = "mirrorDir"
+                                        , remote_host = self.nodeName
+                                        , directory = seg.mirror_data_directory
+                                        )
+                mirrorFreeSize = mirrorFreeSize + currentMirrorSize
+ 
+            ''' Compare available space to needed space (add 10 Meg. just to make sure) '''
+            if mirrorFreeSize + TenMeg < dirSize:
+               logger.error("Size of mirror directory %s is too small %s:%s." % (self.nodeName, seg.mirror_data_directory))          
+               
 
     #-------------------------------------------------------------------------------
     def rollbackMode(self):
@@ -682,43 +756,77 @@ class gpupgrademirrorSafeMode(threading.Thread):
         i = 0
         for seg in self.mirrorSegmentList:
             status = self.statusList[i]
-                        
-            if status.compare_status('START_PRIMARY_COPY') <= 0:
-               ''' Copy the entire primary segment over to the mirror '''
-               status.set_status('START_PRIMARY_COPY')
-               self.copyPrimaryToMirror(seg)
-               status.set_status('END_PRIMARY_COPY')
-            
-            if status.compare_status('START_NEW_MIRROR_FILE_FIXUP') <= 0:            
-               ''' Fixup some of the new mirror files with the old mirror files '''
-               status.set_status('START_NEW_MIRROR_FILE_FIXUP')
-               self.newMirrorFileFixup(seg)
-               status.set_status('END_NEW_MIRROR_FILE_FIXUP')
-            
-            if status.compare_status('START_MOVE_OLD_MIRROR') <= 0:
-               ''' Rename the old mirror to a temporary name '''
-               status.set_status('START_MOVE_OLD_MIRROR')
-               self.renameOldMirrorToTemp(seg)
-               status.set_status('END_MOVE_OLD_MIRROR')
-            
-            if status.compare_status('START_MOVE_NEW_MIRROR') <= 0:
-               ''' Rename the new mirror the the name of the old mirror '''
-               status.set_status('START_MOVE_NEW_MIRROR')
-               self.renameNewMirrorToOldMirror(seg)
-               status.set_status('END_MOVE_NEW_MIRROR')
-            
-            if status.compare_status('START_REMOVE_OLD_MIRROR') <= 0:
-               ''' Remove the old mirror '''
-               status.set_status('START_REMOVE_OLD_MIRROR')
-               self.removeOldMirror(seg)
-               status.set_status('END_REMOVE_OLD_MIRROR')
-           
-            if status.compare_status('PHASE1_DONE') < 0:
-               status.set_status('PHASE1_DONE')            
+            if safeMode == True:
+                if status.compare_status('START_PRIMARY_COPY') <= 0:
+                   ''' Copy the entire primary segment over to the mirror '''
+                   status.set_status('START_PRIMARY_COPY')
+                   self.copyPrimaryToMirror(seg)
+                   status.set_status('END_PRIMARY_COPY')
+                
+                if status.compare_status('START_NEW_MIRROR_FILE_FIXUP') <= 0:            
+                   ''' Fixup some of the new mirror files with the old mirror files '''
+                   status.set_status('START_NEW_MIRROR_FILE_FIXUP')
+                   self.newMirrorFileFixup(seg)
+                   status.set_status('END_NEW_MIRROR_FILE_FIXUP')
+                
+                if status.compare_status('START_MOVE_OLD_MIRROR') <= 0:
+                   ''' Rename the old mirror to a temporary name '''
+                   status.set_status('START_MOVE_OLD_MIRROR')
+                   self.renameOldMirrorToTemp(seg)
+                   status.set_status('END_MOVE_OLD_MIRROR')
+                
+                if status.compare_status('START_MOVE_NEW_MIRROR') <= 0:
+                   ''' Rename the new mirror the the name of the old mirror '''
+                   status.set_status('START_MOVE_NEW_MIRROR')
+                   self.renameNewMirrorToOldMirror(seg)
+                   status.set_status('END_MOVE_NEW_MIRROR')
+                
+                if status.compare_status('START_REMOVE_OLD_MIRROR') <= 0:
+                   ''' Remove the old mirror '''
+                   status.set_status('START_REMOVE_OLD_MIRROR')
+                   self.removeOldMirror(seg)
+                   status.set_status('END_REMOVE_OLD_MIRROR')
+               
+                if status.compare_status('PHASE1_DONE') < 0:
+                   status.set_status('PHASE1_DONE')
+            else:
+                ''' Un-safe mode '''
+                if status.compare_status('START_MOVE_OLD_MIRROR_SPECIAL_FILES') <= 0:
+                   ''' Rename the old mirror special files to a temporary name '''
+                   status.set_status('START_MOVE_OLD_MIRROR_SPECIAL_FILES')
+                   self.renameOldMirrorToTemp(seg)
+                   status.set_status('END_MOVE_OLD_MIRROR_SPECIAL_FILES')
+                   
+                if status.compare_status('START_REMOVE_OLD_MIRROR') <= 0:
+                   ''' Remove the old mirror '''
+                   status.set_status('START_REMOVE_OLD_MIRROR')
+                   self.removeOldMirror(seg)
+                   status.set_status('END_REMOVE_OLD_MIRROR')
+                       
+                if status.compare_status('START_PRIMARY_COPY') <= 0:
+                   ''' Copy the entire primary segment over to the mirror '''
+                   status.set_status('START_PRIMARY_COPY')
+                   self.copyPrimaryToMirror(seg)
+                   status.set_status('END_PRIMARY_COPY')
+                
+                if status.compare_status('START_NEW_MIRROR_FILE_FIXUP') <= 0:            
+                   ''' Fixup some of the new mirror files with the old mirror files '''
+                   status.set_status('START_NEW_MIRROR_FILE_FIXUP')
+                   self.newMirrorFileFixup(seg)
+                   status.set_status('END_NEW_MIRROR_FILE_FIXUP')
+               
+                if status.compare_status('START_MOVE_NEW_MIRROR') <= 0:
+                   ''' Rename the new mirror the the name of the old mirror '''
+                   status.set_status('START_MOVE_NEW_MIRROR')
+                   self.renameNewMirrorToOldMirror(seg)
+                   status.set_status('END_MOVE_NEW_MIRROR')
+               
+                if status.compare_status('PHASE1_DONE') < 0:
+                   status.set_status('PHASE1_DONE')        
             i = i + 1
 
 
-#
+
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 class gpupgrademirror:
@@ -731,11 +839,10 @@ class gpupgrademirror:
     statusList         = []
 
 
-    def __init__(self, dburl, logger, master_data_directory, safe_mode = True):
+    def __init__(self, dburl, logger, master_data_directory):
         self.dburl = dburl
         self.logger = logger
         self.master_data_directory = master_data_directory
-        self.safe_mode = safe_mode
         self.parallel = 1
 
     #-------------------------------------------------------------------------------
@@ -909,7 +1016,7 @@ class phase2(threading.Thread):
             currentStatus = status.get_current_status()
             if currentStatus[0] != 'PHASE1_DONE':
                 logger.error('Phase 1 of gpupgrademirror did not complete successfully. \
-                              Segment DBID = %s: Status = %s' %(str(segment_dbid), currentStatus))
+                              Segment DBID = %s: Status = %s' %(str(seg.dbid), currentStatus))
                 
         self.fixupFileList = fileList
 
@@ -932,6 +1039,19 @@ class phase2(threading.Thread):
                               )
             rmCmd.run(validateAfter = True)
     
+            ''' Check for files with extensions (i.e. .1, .2, ...) '''
+            fileList = FileDirectoryList.get_list('Get list file extensions', seg.primary_host, fullPathSource + '.*')
+            for fileExt in fileList:
+                suffixIndex = fileExt.rfind('.')
+                suffix = fileExt[suffixIndex:]
+                rmCmd = RemoteCopy( name = 'gpupgrademirror phase 2 fixup copy : %s:%s' % (fullPathSource, fullPathTarget)
+                              , srcDirectory = fileExt
+                              , dstHost = self.nodeName
+                              , dstDirectory = fullPathTarget + suffix
+                              , ctxt = REMOTE
+                              , remoteHost = seg.primary_host
+                              )
+                rmCmd.run(validateAfter = True)
 
     #-------------------------------------------------------------------------------
     def run(self):
@@ -963,6 +1083,20 @@ try:
   logger = get_default_logger()
   setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
 
+  '''
+  theList = FileDirectoryList.get_list( name = 'test'
+                                      , remote_host = 'lt-ksell.local'
+                                      , file_pattern = '/Users/ksell/temp/junkRelease33/database/temp/10.*'
+                                      )
+  print len(theList)
+  for element in theList:
+      print str(element)
+      suffixIndex = element.rfind('.')
+      suffix = element[suffixIndex:]
+      print str(suffix)
+  sys.exit(0)
+  '''
+  
   options, args = parseargs()
 
   if options.verbose:
@@ -1057,8 +1191,12 @@ try:
      print str(len(fileList))        
      print str(fileList)
 
-  elif options.safe_mode == True:
-    ''' Run in safe mode '''
+  elif options.safe_mode == None or options.safe_mode == True or options.safe_mode == False:
+    if options.safe_mode == True:
+        safeMode = True
+    else:
+        safeMode = False
+    ''' Run in safe mode or UN-safe mode'''
     conn   = dbconn.connect( dburl   = dbUrl
                            , utility = True
                            )
@@ -1073,7 +1211,7 @@ try:
         print 'mirrorhost = ' + str(mirrorhost)
         
         ''' Create a gpupgrademirrorSafeMode object for each mirror node'''
-        tempNode = gpupgrademirrorSafeMode(dbUrl, logger, options.master_data_directory, mirrorhost)
+        tempNode = gpupgrademirrorSafeMode(dbUrl, logger, options.master_data_directory, mirrorhost, safeMode = safeMode)
 
         ''' Get info on mirror segments for this host'''
         mirrorSegInfoCursor = dbconn.execSQL(conn, mirror_host_info_row.query() % mirrorhost)
@@ -1098,7 +1236,7 @@ try:
     
   else:
     ''' Run in UNsafe mode '''  
-    testUM  = gpupgrademirror(dbUrl, logger, options.master_data_directory, safe_mode = options.safe_mode)
+    testUM  = gpupgrademirror(dbUrl, logger, options.master_data_directory)
     testUM.setup()
     testUM.checkAvailableSpace()
     testUM.removeOldMirrors()
