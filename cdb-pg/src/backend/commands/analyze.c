@@ -360,6 +360,26 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 		CommitTransactionCommand();
 		MemoryContextSwitchTo(analyzeStatementContext);
 	}
+	else
+	{
+		/*
+		 * MPP-7632: if we're being called as part of a "vacuum
+		 * analyze ..." command, we need to make sure that our
+		 * transaction context is correct -- otherwise we will have
+		 * problems when we get to the create-temp-table portion of
+		 * analyze (writes to the database require 2PC).
+		 */
+		if (Gp_role == GP_ROLE_DISPATCH && !IsInTransactionChain((void *)stmt))
+		{
+			CommitTransactionCommand();
+
+			/* Set up the distributed transaction context. */
+			setupRegularDtxContext();
+			StartTransactionCommand();
+			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
+			MemoryContextSwitchTo(analyzeStatementContext);
+		}
+	}
 		
 	foreach (le1, lRelOids)
 	{
