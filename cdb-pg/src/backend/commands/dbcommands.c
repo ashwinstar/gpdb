@@ -360,7 +360,6 @@ static void copy_relation_segment_file(
 	char			*buffer)
 {
 	char srcFileName[MAXPGPATH];
-	char dstFileName[MAXPGPATH];
 	char extension[12];
 
 	File		srcFile;
@@ -373,12 +372,10 @@ static void copy_relation_segment_file(
 	int 		nbytes;
 
 	CopyRelPath(srcFileName, MAXPGPATH, *srcRelFileNode);
-	CopyRelPath(dstFileName, MAXPGPATH, *dstRelFileNode);
 	if (segmentFileNum > 0)
 	{
 		sprintf(extension, ".%u", segmentFileNum);
 		strcat(srcFileName, extension);
-		strcat(dstFileName, extension);
 	}
 
 	/*
@@ -403,7 +400,6 @@ static void copy_relation_segment_file(
 	{
 		MirroredBulkRelation_Open(
 								&mirroredDstOpen,
-								dstFileName,
 								O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
 								S_IRUSR | S_IWUSR,
 								dstRelFileNode,

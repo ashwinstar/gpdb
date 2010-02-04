@@ -33,7 +33,7 @@ typedef struct MirroredBulkRelationOpen
 
 	File primaryFile;
 
-	char *fileName;
+	char path[MAXPGPATH];
 
 	RelFileNode relFileNode;
 
@@ -52,9 +52,6 @@ typedef struct MirroredBulkRelationOpen
 extern void MirroredBulkRelation_Open(
 	MirroredBulkRelationOpen *open,
 				/* The resulting open struct. */
-
-	char			*fileName,
-				/* The file name path. */
 
 	int 			fileFlags, 
 

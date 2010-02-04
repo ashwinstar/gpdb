@@ -15,6 +15,8 @@
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbmirroredbulkrelation.h"
 #include "storage/fd.h"
+#include "cdb/cdbpersistenttablespace.h"
+#include "catalog/catalog.h"
 
 /*
  * Open a relation for mirrored write.
@@ -22,9 +24,6 @@
 void MirroredBulkRelation_Open(
 	MirroredBulkRelationOpen *open,
 				/* The resulting open struct. */
-
-	char			*fileName,
-				/* The file name path. */
 
 	int 			fileFlags, 
 
@@ -35,8 +34,29 @@ void MirroredBulkRelation_Open(
 
 	int32			segmentFileNum)
 {
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	char dbPath[MAXPGPATH];
+	char path[MAXPGPATH];
+
 	Assert(open != NULL);
 	
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+										relFileNode->spcNode,
+										&primaryFilespaceLocation,
+										&mirrorFilespaceLocation);
+	
+	FormDatabasePath(
+				dbPath,
+				primaryFilespaceLocation,
+				relFileNode->spcNode,
+				relFileNode->dbNode);
+
+	if (segmentFileNum == 0)
+		sprintf(path, "%s/%u", dbPath, relFileNode->relNode);
+	else
+		sprintf(path, "%s/%u.%u", dbPath, relFileNode->relNode, segmentFileNum);
+
 	if (FileRepPrimary_MirrorOpen(
 				  FileRep_GetRelationIdentifier(
 							*relFileNode, 
@@ -47,24 +67,31 @@ void MirroredBulkRelation_Open(
 				  fileMode) != 0) 
 		ereport(LOG,
 				(errmsg("could not sent open file to mirror \"%s\"", 
-						fileName)));
+						path)));
 
 	MemSet(open, 0, sizeof(MirroredBulkRelationOpen));
 
+
 	errno = 0;
 	
-	open->primaryFile = PathNameOpenFile(fileName, fileFlags, fileMode);
+	open->primaryFile = PathNameOpenFile(path, fileFlags, fileMode);
 	if (open->primaryFile < 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not create file \"%s\": %m", fileName)));
+				 errmsg("could not create file \"%s\": %m", path)));
 
-	open->fileName = fileName;	// UNDONE: Safe to keep pointer to name?
+	strcpy(open->path, path);
 
 	open->relFileNode = *relFileNode;
 	open->segmentFileNum = segmentFileNum;
 
 	open->isActive = true;
+
+	if (primaryFilespaceLocation != NULL)
+		pfree(primaryFilespaceLocation);
+	if (mirrorFilespaceLocation != NULL)
+		pfree(mirrorFilespaceLocation);
+
 }
 
 /*
@@ -91,7 +118,7 @@ void MirroredBulkRelation_FlushAndClose(
 		mirrorFlush = FALSE;
 		ereport(LOG,
 				(errmsg("could not sent fsync and close file to mirror \"%s\"", 
-						open->fileName)));
+						open->path)));
 	
 	}
 	
@@ -100,7 +127,7 @@ void MirroredBulkRelation_FlushAndClose(
 	if (FileSync(open->primaryFile) != 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not fsync file \"%s\": %m", open->fileName)));
+				 errmsg("could not fsync file \"%s\": %m", open->path)));
 
 	FileClose(open->primaryFile);
 	
@@ -113,7 +140,7 @@ void MirroredBulkRelation_FlushAndClose(
 
 			ereport(LOG,
 					(errmsg("could not fsync file on mirror \"%s\"", 
-							open->fileName)));					 
+							open->path)));					 
 	}
 
 
@@ -151,7 +178,7 @@ void MirroredBulkRelation_Append(
 				   FileRep_GetXLogRecPtrUndefined())	!= 0) 					  
 		ereport(LOG,
 				(errmsg("could not sent write to mirror \"%s\"", 
-						open->fileName)));
+						open->path)));
 
 	errno = 0;
 	if ((int) FileWrite(open->primaryFile, buffer, bufferLen) != bufferLen)
@@ -161,6 +188,6 @@ void MirroredBulkRelation_Append(
 			errno = ENOSPC;
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not write to file \"%s\": %m", open->fileName)));
+				 errmsg("could not write to file \"%s\": %m", open->path)));
 	}
 }

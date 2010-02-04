@@ -16,6 +16,7 @@
 #include "cdb/cdbmirroredappendonly.h"
 #include "storage/fd.h"
 #include "catalog/catalog.h"
+#include "cdb/cdbpersistenttablespace.h"
 
 /*
  * Open a relation for mirrored write.
@@ -36,9 +37,17 @@ void MirroredAppendOnly_Open(
 
 	int 			fileMode)
 {
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	char dbPath[MAXPGPATH];
 	char path[MAXPGPATH];
-	
+
 	Assert(open != NULL);
+	
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+										relFileNode->spcNode,
+										&primaryFilespaceLocation,
+										&mirrorFilespaceLocation);
 	
 	if (FileRepPrimary_MirrorOpen(
 				  FileRep_GetRelationIdentifier(
@@ -54,12 +63,16 @@ void MirroredAppendOnly_Open(
 
 	MemSet(open, 0, sizeof(MirroredAppendOnlyOpen));
 
+	FormDatabasePath(
+				dbPath,
+				primaryFilespaceLocation,
+				relFileNode->spcNode,
+				relFileNode->dbNode);
+
 	if (segmentFileNum == 0)
-		sprintf(path, "%s", relpath(*relFileNode));
+		sprintf(path, "%s/%u", dbPath, relFileNode->relNode);
 	else
-		sprintf(path, "%s.%u", relpath(*relFileNode), segmentFileNum);
-	
-	errno = 0;
+		sprintf(path, "%s/%u.%u", dbPath, relFileNode->relNode, segmentFileNum);
 	
 	open->primaryFile = PathNameOpenFile(path, fileFlags, fileMode);
 		
@@ -68,6 +81,12 @@ void MirroredAppendOnly_Open(
 	open->segmentFileNum = segmentFileNum;
 
 	open->isActive = true;
+
+	if (primaryFilespaceLocation != NULL)
+		pfree(primaryFilespaceLocation);
+	if (mirrorFilespaceLocation != NULL)
+		pfree(mirrorFilespaceLocation);
+
 }
 
 extern bool MirroredAppendOnly_IsActive(
