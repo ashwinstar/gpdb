@@ -3,7 +3,6 @@
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
 # todo MIRRORING get address of the new host (not just hostName) using gphostcache.py
-# todo MIRRORING verify that the new segments will not cause any port conflicts (check in all cases, but applies mainly to reading from file)
 #
 # todo MIRRORING better error message when cluster is not running
 # todo MIRRORING STOP the old mirror in case they are running? (when failover to a new location)
@@ -39,6 +38,7 @@
 #
 # todo MIRRORING test cases where input file says to recover a file in-place (perhaps with a change to ports)
 # todo MIRRORING (bugfix) escaping of directory names in unix.LocalCopy
+# todo MIRRORING it's a little quirky that caller must set up failed/failover so that failover is in gparray but failed is not (if both set)...change that, or at least protect against problems
 #
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
@@ -330,6 +330,35 @@ class GpRecoverSegmentProgram:
                     segments, gp.REMOTE, hostName))
 
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "cleaning existing directories")
+
+    def __checkForPortAndDirectoryConflicts(self, gpArray):
+        for hostName, segmentArr in gpArray.getSegmentsByHostName(gpArray.getDbList()).iteritems():
+            usedPorts = {}
+            usedDataDirectories = {}
+            for segment in segmentArr:
+
+                # check for port conflict
+                replicationPort = segment.getSegmentReplicationPort()
+                port = segment.getSegmentPort()
+                dbid = segment.getSegmentDbId()
+                if port in usedPorts:
+                    raise Exception("A port for segment with dbid %s conflicts with a port for segment dbid %s" \
+                            % (dbid, usedPorts.get(port)))
+                if replicationPort in usedPorts:
+                    raise Exception("A port for segment with dbid %s conflicts with a port for segment dbid %s" \
+                            % (dbid, usedPorts.get(replicationPort)))
+
+                if port == replicationPort:
+                    raise Exception("Segment with dbid %s has equal port and replication port" % dbid)
+                usedPorts[port] = dbid
+                usedPorts[replicationPort] = dbid
+
+                # check for directory conflict
+                if segment.getSegmentDataDirectory() in usedDataDirectories:
+                    raise Exception("The directory for segment with dbid %s conflicts with the data directory for segment dbid %s"\
+                            % (dbid, usedDataDirectories.get(port)))
+                usedDataDirectories[segment.getSegmentDataDirectory()] = dbid
+
     
     def recover(self, gpEnv, gpArray, actions):
         assert self.__faultProber.isFaultProberPaused()
@@ -338,6 +367,8 @@ class GpRecoverSegmentProgram:
         if len(actions.getSegmentsToRecover()) == 0:
             logger.info("No segments to recover")
             return
+
+        self.__checkForPortAndDirectoryConflicts(gpArray)
 
         logger.info("%s segment(s) to recover" % len(actions.getSegmentsToRecover()))
 
@@ -620,6 +651,9 @@ class GpRecoverSegmentProgram:
             self.outputToFile(actions, self.__options.outputSampleConfigFile)
             logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
         else:
+
+            self.__checkForPortAndDirectoryConflicts(gpArray)
+
             # going to do real work...so check with user
             if self.__options.interactive:
                 # display parameter setting
