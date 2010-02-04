@@ -642,7 +642,7 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 	
 	
 	query_list = copyObject(entry->query_list); /* planner scribbles on query tree */
-	stmt_list = pg_plan_queries(query_list, params, false);
+	stmt_list = pg_plan_queries(query_list, paramLI, false);
 	
 	Assert(list_length(query_list) == list_length(stmt_list));
 
