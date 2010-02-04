@@ -9,7 +9,6 @@
 # todo MIRRORING STOP the old mirror in case they are running? (when failover to a new location)
 # todo MIRRORING checks for being able to build target directory
 # todo MIRRORING what is: multi_home = gpmlib.chk_multi_home(hosts) (from other gprecoverseg)
-# todo MIRRORING parallel degree sanity checks + defaults from gpstart
 # todo MIRRORING set it up to show gprecoverseg_help
 # todo MIRRORING implement pause/unpause of fault prober properly
 # todo MIRRORING rename ConfigExpansionSeg?
@@ -307,15 +306,12 @@ class GpRecoverSegmentProgram:
             segmentInfo = newSegmentInfo[hostName]
             checkNotNone("segmentInfo for %s" % hostName, segmentInfo)
 
-            #
-            # todo MIRRORING: set batchSize according to argument?
-            #
             cmds.append(gp.ConfigExpansionSeg('gpexpand configure new segments',
                                             segmentInfo,
                                             tarFile=blankTarFile,
                                             newSegments=True,
                                             verbose=gplog.logging_is_verbose(),
-                                            batchSize=16,
+                                            batchSize=self.__options.parallelDegree,
                                             ctxt=gp.REMOTE, 
                                             remoteHost=hostName))
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "unpacking basic segment directory")
@@ -589,6 +585,9 @@ class GpRecoverSegmentProgram:
         self.__pool = base.WorkerPool(numWorkers=16) # todo MIRRORING configure number of workers
         gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
 
+        if self.__options.parallelDegree < 1 or self.__options.parallelDegree > 64:
+            raise ProgramArgumentValidationException("Invalid parallelDegree provided with -B argument: %d" % self.__options.parallelDegree)
+
         # verify "where to recover" options
         optionCnt = 0
         if self.__options.newRecoverHost is not None:
@@ -693,10 +692,10 @@ class GpRecoverSegmentProgram:
                             dest="forceFullResynchronization",
                             metavar="<forceFullResynchronization>",
                             help="Force full segment resynchronization")
-        addTo.add_option("-B", None,  type="int", default=4,
+        addTo.add_option("-B", None, type="int", default=16,
                             dest="parallelDegree",
                             metavar="<parallelDegree>",
-                            help="Max # of workers to use for recovering segments")
+                            help="Max # of workers to use for building recovery segments.  [default: %default]")
 
         parser.set_defaults()
         return parser
@@ -707,6 +706,5 @@ class GpRecoverSegmentProgram:
             raise ProgramArgumentValidationException(\
                             "too many arguments: only options may be specified") # todo MIRRORING: print help instead (as gpstart)
         return GpRecoverSegmentProgram(options)
-    
         
     
