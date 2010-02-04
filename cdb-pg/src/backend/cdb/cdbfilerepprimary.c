@@ -989,7 +989,8 @@ FileRepPrimary_RunSender(void)
 				messageType = FileRepMessageTypeWriter;
 				break;
 			default:
-				Assert(0);
+				messageType = FileRepMessageTypeWriter; /* shut up compiler */
+				elog(ERROR, "internal error in FileRepPrimary_RunSender: unknown fileRepRelationType");
 				break;
 		}
 		
