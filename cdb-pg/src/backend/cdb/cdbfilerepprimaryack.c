@@ -112,7 +112,8 @@ FileRepAckPrimary_StartReceiver(void)
 	int			mirrorPort = 0;
 	/* The communication port of the mirror. Required for listener. */
 		
-	int status = STATUS_OK;	
+	int status = STATUS_OK;
+	bool fullResync = false;
 	
 	int retval;
 	
@@ -125,7 +126,8 @@ FileRepAckPrimary_StartReceiver(void)
 									 &primaryHostAddress,
 									 &primaryPort,
 									 &mirrorHostAddress,
-									 &mirrorPort);
+									 &mirrorPort,
+								     &fullResync);
 		
 	ereport(LOG,
 			(errmsg("LOG(filerep): P_StartReceiver primary host address:'%s' and port:'%d' "

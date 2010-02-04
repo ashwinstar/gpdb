@@ -33,16 +33,9 @@ typedef enum DataState_e
     DataStateInChangeLogging,
 
     /**
-     * Changes are begin re-synchronized (incrementally) from primary to mirror.
-     *   The mode of incremental (block- vs file-) depends on the data
-     *   available inside the file replication code.
+     * Changes are begin re-synchronized from primary to mirror.
      */
-    DataStateInIncrementalResync,
-
-    /**
-     * Changes are being re-synchronized (using full copy) from primary to mirror
-     */
-    DataStateInFullResync
+    DataStateResynchronizing
 
     /* note that these must be in sync with gDataStateLabels inside the implementation file */
 } DataState_e;
@@ -171,6 +164,9 @@ typedef struct
     /* a unique identifer for logging, will be filled in by the call to requestTransition... */
 	int transitionNumber;
 
+    /* if true then a full resynchronization will be begun */
+	bool forceFullResync;
+
 	/* note that if more fields are added here, must be sure to update the no-op check in primary_mirror_mode.c */
 } PrimaryMirrorModeTransitionArguments;
 
@@ -217,6 +213,7 @@ extern void primaryMirrorGetFilerepArguments(
 				char **primaryHostAddressOut,
 				int *primaryPortOut,
 				char **mirrorHostAddressOut,
-				int *mirrorPortOut);
+				int *mirrorPortOut,
+				bool *fullSyncOut);
 
 #endif   /* _PRIMARY_MIRROR_MODE_H */

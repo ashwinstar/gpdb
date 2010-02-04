@@ -20,6 +20,7 @@
  * todo MIRRORING: error when doRequestedPrimaryMirrorModeTransitions should cause a panic?  Or at least should wake up requestXXX.
  * todo MIRRORING: proper locking around get/set of segmentState and others -- because filerep can fault the state while postmaster is updating it!
  * todo MIRRORING: do a review of locking
+ * todo MIRRORING: are the calls to primaryMirrorGetFilerepArguments guaranteed to happen during startup?  Can we get into inconsistent state?
  */
 
 /**
@@ -118,7 +119,7 @@ getDataStateLabel(DataState_e state)
 	static const char *labels[] =
 	{
 			"NotInitialized", "InSync", "InChangeLogging",
-			"InIncrementalResync", "InFullResync"
+			"Resynchronizing"
 	};
 
 	return labels[state];
@@ -217,6 +218,7 @@ clearTransitionArgs(volatile PrimaryMirrorModeTransitionArguments *args)
 	args->hostPort = 0;
 	args->peerAddress[0] = '\0';
 	args->peerPort = 0;
+	args->forceFullResync = false;
 }
 
 PrimaryMirrorModeTransitionArguments *
@@ -274,7 +276,6 @@ getPrimaryMirrorModeStatus(char *bufOut, int bufSize)
 
 /**
  * This is called in a context in which it is safe to look at data without getting the lock....
- * todo: convert from spinlock to mutex so we can lock here for safety
  */
 void
 primaryMirrorGetFilerepArguments(
@@ -284,14 +285,14 @@ primaryMirrorGetFilerepArguments(
 			char **primaryHostAddressOut,
 			int *primaryPortOut,
 			char **mirrorHostAddressOut, 
-			int *mirrorPortOut)
+			int *mirrorPortOut,
+            bool *fullSyncOut)
 {
 	PrimaryMirrorMode mode;
 	volatile PrimaryMirrorModeTransitionArguments *args;
 
 	assertModuleInitialized();
 
-	/* todo: only fetch mode from transition in some cases (or never?) */
 	args = &pmModuleState->requestedTransition;
 	mode = args->mode;
 
@@ -302,6 +303,7 @@ primaryMirrorGetFilerepArguments(
 		copyHostData(mirrorHostAddressOut, mirrorPortOut, (char*)args->peerAddress, args->peerPort);
 		*dataStateOut = args->dataState;
 		*segmentStateOut = pmModuleState->segmentState;
+        *fullSyncOut = args->forceFullResync;
 	}
 	else if (mode == PMModeMirrorSegment)
 	{
@@ -310,6 +312,7 @@ primaryMirrorGetFilerepArguments(
 		copyHostData(mirrorHostAddressOut, mirrorPortOut, (char*)args->hostAddress, args->hostPort);
 		*dataStateOut = args->dataState;
 		*segmentStateOut = pmModuleState->segmentState;
+        *fullSyncOut = false;
 	}
 	else
 	{
@@ -318,6 +321,7 @@ primaryMirrorGetFilerepArguments(
 		*primaryPortOut = *mirrorPortOut = 0;
 		*segmentStateOut = SegmentStateNotInitialized;
 		*dataStateOut = DataStateNotInitialized;
+        *fullSyncOut = false;
 	}
 }
 
@@ -465,10 +469,11 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args)
 	assertModuleInitialized();
 	targetMode = args->mode;
 
-	elog(LOG, "TransitionRequest: to primary/mirror mode %s, data state %s,  host %s, port %d, peer %s, peerPort %d",
+	elog(LOG, "TransitionRequest: to primary/mirror mode %s, data state %s,  host %s, port %d, peer %s, peerPort %d%s",
 		 getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
 		 args->hostAddress, args->hostPort,
-		 args->peerAddress, args->peerPort
+		 args->peerAddress, args->peerPort,
+		 args->forceFullResync ? ", force full resync" : ""
 		 );
 
 	/* first, request the transition */
@@ -521,7 +526,10 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args)
 			args->hostPort == pmModuleState->hostPort &&
 			args->peerPort == pmModuleState->peerPort &&
 			strcmp((char *)args->hostAddress, (char *)pmModuleState->hostAddress) == 0 &&
-			strcmp((char *)args->peerAddress, (char *)pmModuleState->peerAddress) == 0)
+			strcmp((char *)args->peerAddress, (char *)pmModuleState->peerAddress) == 0 &&
+
+			! args->forceFullResync /* a force full resync can never be a no-op */   
+			)
 		{
 			pmModuleState->isTransitionListenerFinished = true;
 			pmModuleState->isTransitionRequested = false;

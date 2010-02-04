@@ -95,8 +95,7 @@ FileRepPrimary_IsMirroringRequired(void)
 				/* Insist(0); */
 				break;
 				
-			case DataStateInIncrementalResync:
-			case DataStateInFullResync:
+			case DataStateResynchronizing:
 			case DataStateInSync:
 				if (segmentState != SegmentStateFault) {
 					isMirroringRequired = TRUE;
@@ -764,6 +763,8 @@ FileRepPrimary_StartSender(void)
 	
 	int			mirrorPort = 0;
 	/* The communication port of the mirror. Required for listener. */
+
+	bool fullResync = false;
 	
 	elog(LOG, "FileRepPrimary_StartSender() ");
 	
@@ -795,21 +796,22 @@ FileRepPrimary_StartSender(void)
 						 &primaryHostAddress,
 						 &primaryPort,
 						 &mirrorHostAddress,
-						 &mirrorPort);
+						 &mirrorPort,
+                         &fullResync);
 		
 		ereport(LOG,
 				(errmsg("LOG(filerep): P_StartSender primary host address:'%s' and port:'%d' "
-						"mirror host address:'%s' and port:'%d' ",
+						"mirror host address:'%s' and port:'%d', fullResync %s ",
 						primaryHostAddress,
 						primaryPort,
 						mirrorHostAddress,
-						mirrorPort),
+						mirrorPort,
+						fullResync ? "true" : "false"),
 				FileRep_errcontext()));	
 
 		Insist(fileRepRole == FileRepPrimaryRole);
 		Insist(dataState == DataStateInSync ||
-			   dataState == DataStateInIncrementalResync ||
-			   dataState == DataStateInFullResync);
+			   dataState == DataStateResynchronizing);
 		
 		status = FileRepConnClient_EstablishConnection(
 								mirrorHostAddress,

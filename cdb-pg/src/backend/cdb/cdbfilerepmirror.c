@@ -125,6 +125,7 @@ FileRepMirror_StartReceiver(void)
 		
 	int status = STATUS_OK;
 	int retval;
+	bool fullResync = false;
 	
 	elog(LOG, "FileRepMirror_StartReceiver() ");
 	
@@ -135,7 +136,8 @@ FileRepMirror_StartReceiver(void)
 								 &primaryHostAddress,
 								 &primaryPort,
 								 &mirrorHostAddress,
-								 &mirrorPort);
+								 &mirrorPort,
+								 &fullResync);
 	
 	elog(LOG, "FileRepMirror_StartReceiver() started with role %d\n\t\tstate %d\n\t\tPrimary %s:%d\n\t\tMirror %s:%d\n", 
 		 fileRepRole, segmentState,

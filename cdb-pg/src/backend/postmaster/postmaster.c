@@ -1396,7 +1396,7 @@ NotifyProcessesOfFilerepStateChange(void)
 }
 
 void
-StartFilerepProcesses(void)
+StartFilerepProcesses()
 {
 	elog(LOG, "Postmaster: Starting file replication processes");
 
@@ -2410,6 +2410,7 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 	int length, offset;
 	bool wasRead;
 	PrimaryMirrorModeTransitionArguments *args = createNewTransitionArguments();
+	bool beginFullResync = false;
 
 	length = (int)ntohl(transition->dataLength);
 	if (length > 10000000 || length < 1)
@@ -2593,14 +2594,24 @@ exit:
 								errmsg("invalid primary mirror transition packet (missing segmentState)")));
 			return;
 		}
+
+
+
 		if (strcmp(segmentState, "s") == 0)
 			args->dataState = DataStateInSync;
 		else if (strcmp(segmentState, "c") == 0)
 			args->dataState = DataStateInChangeLogging;
 		else if (strcmp(segmentState, "r") == 0)
-			args->dataState = DataStateInIncrementalResync;
+			args->dataState = DataStateResynchronizing;
         else if (strcmp(segmentState, "f") == 0)
-			args->dataState = DataStateInFullResync;
+        {
+            /**
+             * "f" option is not stored in the database.  However, if "f" is passed then we
+             *     clear all persistent object information and proceed with resynchronization
+             */
+            args->dataState = DataStateResynchronizing;
+            beginFullResync = true;
+        }
 		else
 		{
 			sendPrimaryMirrorTransitionResult(PROTOCOL_VIOLATION);

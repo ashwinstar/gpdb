@@ -213,7 +213,9 @@ FileRepAckMirror_StartSender(void)
 	/* The communication port of the primary. Required for listener ACK. */
 	
 	int			mirrorPort = 0;
-	/* The communication port of the mirror. Required for listener. */	
+	/* The communication port of the mirror. Required for listener. */
+
+    bool fullResync = false;
 	
 	elog(LOG, "FileRepMirror_StartSender() ");
 	
@@ -248,7 +250,8 @@ FileRepAckMirror_StartSender(void)
 							 &primaryHostAddress,
 							 &primaryPort,
 							 &mirrorHostAddress,
-							 &mirrorPort);
+							 &mirrorPort,
+                             &fullResync);
 
 		ereport(LOG,
 				(errmsg("LOG(filerep): M_StartSender primary host address:'%s' and port:'%d' "
