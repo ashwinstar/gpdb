@@ -9,7 +9,7 @@ SYNOPSIS
 gpstart [-d <master_data_directory>] [-B <parallel_processes>] [-R] [-m] 
 [-y] [-a]  [-l <logfile_directory>] [-v | -q]
         
-gpstart --recover [-d <master_data_directory>]  [-l <logfile_directory>] 
+gpstart [-d <master_data_directory>]  [-l <logfile_directory>]
 [-v | -q]
 
 gpstart -? | -h | --help
@@ -78,15 +78,6 @@ PGOPTIONS='-c gp_session_role=utility' psql
 
 Run in quiet mode. Command output is not displayed on the screen, 
 but is still written to the log file.
-
-
---recover
-
-Attempt to restart segments in nodes that have been brought 
-back online after a system failure. This option is useful when 
-restoring the full operation of a system that is in read-only 
-fault detection mode due to a failure such as a node failure 
-or segment failure.  
 
 
 -R (restricted mode)

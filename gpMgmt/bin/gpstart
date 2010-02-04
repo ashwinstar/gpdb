@@ -111,26 +111,6 @@ class GpStart:
         return True
 
     ######
-    def recover(self):
-        ''' 
-        Attempts to start any downed segments and bring them back into the GPDB 
-        array.
-        
-        This is only to be used in read-only mode.          
-        
-        '''
-
-        # Recover only worked in read-only mode, and thus is not really apropriate
-        # with 3.4 filerep, and/or it needs to be reworked for the new method.
-        #
-        # Todo: determine the fate of this function and either remove the dead code
-        # or rework to a new method.
-        #
-        # review source control from before 1/21/2010 to see the previous code
-        #
-        raise Exception("gpstart --recover no longer supported")
-
-    ######
     def cleanup(self):
         if self.pool:
             self.pool.haltWork()
@@ -596,8 +576,6 @@ def parseargs():
     optgrp4.add_option('-d', '--master_data_directory', type='string', default=None, metavar="<DATA DIRECTORY>",
                        help="Optional. The master host data directory. If not specified, the value set"\
                             "for $MASTER_DATA_DIRECTORY will be used.")
-    optgrp4.add_option('--recover', action="store_true", default=False, 
-                        help="attempt to start any downed segments if in read-only mode")
 
     optgrp3 = OptionGroup(parser, 'Database startup options: ')
     parser.add_option_group(optgrp3)
@@ -672,14 +650,10 @@ def main():
                           masteronly=options.master_only,
                           interactive=options.interactive)
 
-        if options.recover:
-            gpstart.recover()
+        if gpstart.system_start():
             sys.exit(0)
         else:
-            if gpstart.system_start():
-                sys.exit(0)
-            else:
-                sys.exit(1)
+            sys.exit(1)
 
     except base.ExecutionError, e:
         logger.fatal("Error occurred: %s\n Command was: '%s'\n"
