@@ -2,32 +2,38 @@
 #
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
+# todo MIRRORING print out message about what we're about to do
 # todo MIRRORING verify failover strategy is 'mirrored'
 # todo MIRRORING better error message when cluster is not running
 # todo MIRRORING STOP the old mirror in case they are running? (when failover to a new location)
 # todo MIRRORING checks for being able to build target directory
 # todo MIRRORING what is: multi_home = gpmlib.chk_multi_home(hosts) (from other gprecoverseg)
-# todo MIRRORING do I need gp_fault_action?
 # todo MIRRORING parallel degree sanity checks + defaults from gpstart
 # todo MIRRORING set it up to show gprecoverseg_help
 # todo MIRRORING implement pause/unpause of fault prober properly
 # todo MIRRORING rename ConfigExpansionSeg?
 # todo MIRRORING update hba.conf on all originals if we changed any hosts: (call update_original_segments from gpexpand)
-# todo MIRRORING is it okay to leave the temporary directory sitting around (as gpexpand does?)
+# todo MIRRORING is it okay to leave the temporary directory sitting around (as gpexpand seems to do?)
 # todo MIRRORING escaping of directory names in unix.LocalCopy
 # todo MIRRORING need to compress arguments sent to segments?  I think command lines can be pretty long, but should test it
 #
-# todo MIRRORING we should copy postgresql.conf from some other statement rather than the master (see what gpexpand does) since settings can be different on segments
+# todo MIRRORING we should copy postgresql.conf from some other segment rather than the master (see what gpexpand does) since settings can be different on segments
 # todo MIRRORING: make sure created directories have the right permissions?
+#
+# todo MIRRORING why do we take recovery commands from a file
+# todo MIRRORING if from config file, we should NOT take -F and instead should get full/incremental commands from the file?
 #
 # todo code reorg and consolidation with gpexpand?
 #
 # note (MIRRORING): I removed some options from old gprecoverseg, including:
 #        --version
+#       -S "Primary segment dbid to force recovery": I think this is done now by bringing the primary down, waiting for
+#           failover, and then doing recover full
+#       -z "Primary segment data dir and host to force recovery" see removed -S option for comment
+#
 #        todo MIRRORING fill out full list of removed options
 #
-# todo MIRRORING: more general way to send lots of commands to segments? (pass a list of segments, list of args, and set of class names to run on client?)
-#
+# todo: catch string-to-int and other errors when parsing file
 # THIS IMPORT SHOULD COME FIRST
 #
 # import mainUtils FIRST to get python version check
@@ -38,7 +44,7 @@ import os, sys, getopt, socket, StringIO, signal
 
 from gppylib.test.testUtils import testOutput
 from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib.utils import toNonNoneString, checkNotNone
+from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile
 from gppylib import gplog
 from gppylib import gparray
 from gppylib.commands import base
@@ -58,7 +64,6 @@ import gppylib.commands.gp
 logger = gplog.get_default_logger()
 
 class GpRecoveryActions:
-
     def __init__(self, segmentsToRecover):
         self.__segmentsToRecover = segmentsToRecover
         pass
@@ -72,27 +77,26 @@ class GpSegmentToRecover:
         checkNotNone("failedSegment", failedSegment)
         checkNotNone("liveSegment", liveSegment)
         checkNotNone("forceFullSynchronization", forceFullSynchronization)
-        assert liveSegment.isSegmentUp()
-        assert liveSegment.isSegmentPrimary(True)
-        assert liveSegment.isSegmentQE()
-        assert failedSegment.getSegmentContentId() == liveSegment.getSegmentContentId()
-        assert failedSegment.getSegmentDbId() != liveSegment.getSegmentDbId()
+        if not liveSegment.isSegmentPrimary(True):
+            raise ExceptionNoStackTraceNeeded("Segment to recover from for content %s is not a primary" % liveSegment.getSegmentContentId())
+        if not liveSegment.isSegmentQE():
+            raise ExceptionNoStackTraceNeeded("Segment to recover from for content %s is not a correct segment " \
+                    "(it is a master or standby master)" % liveSegment.getSegmentContentId())
+        if not liveSegment.isSegmentUp():
+            raise ExceptionNoStackTraceNeeded("Primary segment is not up for content %s" % liveSegment.getSegmentContentId())
+        if failedSegment.getSegmentContentId() != liveSegment.getSegmentContentId():
+            raise ExceptionNoStackTraceNeeded("The primary is not of the same content as the mirror.  Primary content %d, " \
+                    "mirror content %d" % (liveSegment.getSegmentContentId(), failedSegment.getSegmentContentId()))
+        if failedSegment.getSegmentDbId() == liveSegment.getSegmentDbId():
+            raise ExceptionNoStackTraceNeeded("For content %d, the dbid values are the same.  " \
+                                "A segment may not be recovered from itself" % liveSegment.getSegmentDbId())
+        if failedSegment is not None and failoverSegment is not None:
+            # for now, we require the code to have produced this -- even when moving the segment to another
+            #  location, we preserve the directory
+            assert failedSegment.getSegmentDbId() == failoverSegment.getSegmentDbId()
 
-        """
-        __failedSegment is the segment that failed and will always be non-none
-        """
         self.__failedSegment = failedSegment
-
-        """
-        __liveSegment is the primary segment from which the recovery will take place
-        """
         self.__liveSegment = liveSegment
-
-        """
-        __failoverSegment is the target segment to which we will copy the data, or None
-            if we will recover in place.  Note that __failoverSegment should refer to the same dbid
-            as __failedSegment, but should have updated path + file information.
-        """
         self.__failoverSegment = failoverSegment
 
         """
@@ -103,16 +107,35 @@ class GpSegmentToRecover:
         self.__forceFullSynchronization = forceFullSynchronization
 
     def getFailedSegment(self):
+        """
+        returns the segment that failed. This will always be non-None
+        """
         return self.__failedSegment
 
     def getLiveSegment(self):
+        """
+        returns the primary segment from which the recovery will take place.  Will always be non-None
+        """
         return self.__liveSegment
 
     def getFailoverSegment(self):
+        """
+        returns the target segment to which we will copy the data, or None
+            if we will recover in place.  Note that __failoverSegment should refer to the same dbid
+            as __failedSegment, but should have updated path + file information.
+        """
         return self.__failoverSegment
 
     def isFullSynchronization(self):
+        """
+        Returns whether or not this segment to recover needs to recover using full resynchronization
+        """
+
         if self.__forceFullSynchronization:
+            return True
+
+        # if the segment we're copying from is marked full resync, we can't downgrade that to incremental!
+        if self.__liveSegment.getSegmentMode() == MODE_FULL_RESYNCHRONIZATION:
             return True
 
         # if we are failing over to a new segment location then we must fully resync
@@ -197,7 +220,7 @@ class GpRecoverSegmentProgram:
 
     def outputToFile(self, actions, fileName):
         with open(fileName, 'w') as file:
-            for segToRecover in actions.getSegmentsToRecover:
+            for segToRecover in actions.getSegmentsToRecover():
                 seg = segToRecover.getFailedSegment()
                 file.write('%s:%d:%s' % (seg.getSegmentHostName(), seg.getSegmentPort(), seg.getSegmentDataDirectory()))
 
@@ -392,7 +415,69 @@ class GpRecoverSegmentProgram:
 
         returns a GpRecoveryActions object
         """
-        raise Exception("not implemented")
+
+        failedSegments = []
+        failoverSegments = []
+        for line in readAllLinesFromFile(self.__options.recoveryConfigFile):
+            line = line.strip()
+            logger.info("Checking %s " % line)
+            if line == '':
+                continue
+            qeArray = line.split()
+            qeArrayLen = len(qeArray)
+            if qeArrayLen < 1 or  qeArrayLen > 2:
+                raise Exception('config file format error. %s' % line)
+
+            arr = [s.strip() for s in qeArray[0].split(':')]
+            if len(arr) != 3:
+                raise Exception('config file format error. %s' % line)
+
+            # find the failed segment
+            (failedHostName, failedPort, failedDataDirectory) = arr
+            failedSegment = None
+            for segment in gpArray.getDbList():
+                if segment.getSegmentHostName() == failedHostName and \
+                            str(segment.getSegmentPort()) == failedPort and \
+                            segment.getSegmentDataDirectory() == failedDataDirectory:
+
+                    if failedSegment is not None:
+                        raise Exception("Segment found twice: %s" % line)
+                    failedSegment = segment
+
+            if failedSegment is None:
+                raise Exception("Segment not found: %s" % line )
+            failedSegments.append(failedSegment)
+
+            if qeArrayLen == 2:
+                """
+                When the length is two, the caller is going to tell us to where we need to failover, so
+                  build a failover segment
+                """
+                arr = [s.strip() for s in qeArray[1].split(':')]
+                if len(arr) != 3:
+                    raise Exception('Config file format error. %s' % line)
+
+                failoverSegment = failedSegment.copy()
+                failoverSegment.setSegmentHostName( arr[0] )
+                failoverSegment.setSegmentPort( int(arr[1]) )
+                failoverSegment.setSegmentDataDirectory( arr[2] )
+
+                if failoverSegment == failedSegment:
+                    """
+                    User requested in-place failover...convert back to that
+                    """
+                    failoverSegment = None
+
+                failoverSegments.append(failoverSegment)
+            else:
+                failoverSegments.append(None)
+        peersForFailedSegments = self.findAndValidatePeersForFailedSegments(gpArray, failedSegments)
+
+        segs = []
+        for i in range(len(failedSegments)):
+            segs.append( GpSegmentToRecover(failedSegments[i], peersForFailedSegments[i], failoverSegments[i], \
+                                self.__options.forceFullResynchronization))
+        return GpRecoveryActions(segs)
 
     def findAndValidatePeersForFailedSegments(self, gpArray, failedSegments):
         dbIdToPeerMap = gpArray.getDbIdToPeerMap()
@@ -427,11 +512,7 @@ class GpRecoverSegmentProgram:
         return GpRecoveryActions(segs)
 
     def getRecoveryActionsBasedOnOptions(self, gpArray):
-        if self.__options.forceRecoverySegmentDataDirAndHost is not None:
-            raise Exception("Not implemented") # todo MIRRORING: do we need to implement this?
-        elif self.__options.forceRecoverySegmentDbId is not None:
-            raise Exception("Not implemented") # todo MIRRORING: do we need to implement this?
-        elif self.__options.recoveryConfigFile is not None:
+        if self.__options.recoveryConfigFile is not None:
             return self.getRecoveryActionsFromConfigFile(gpArray)
         else:
             return self.getRecoveryActionsFromConfiguration(gpArray)
@@ -440,13 +521,6 @@ class GpRecoverSegmentProgram:
 
         self.__pool = base.WorkerPool(numWorkers=16) # todo MIRRORING configure number of workers
         gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
-
-        # verify "what to recovery" options: note that specifying NONE is okay as well
-        if self.__options.forceRecoverySegmentDataDirAndHost is not None and \
-            self.__options.forceRecoverySegmentDbId is not None and \
-            self.__options.recoveryConfigFile is not None:
-            raise ProgramArgumentValidationException(\
-                    "Only one of -i, -z, and -S may be specified")
 
         # verify "where to recover" options
         if self.__options.newRecoverHost is not None and \
@@ -478,6 +552,7 @@ class GpRecoverSegmentProgram:
 
         if self.__options.outputSampleConfigFile is not None:
             self.outputToFile(actions, self.__options.outputSampleConfigFile)
+            logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
         else:
             self.recover(gpEnv, gpArray, actions)
 
@@ -523,14 +598,6 @@ class GpRecoverSegmentProgram:
         addTo.add_option("-o", None, dest="outputSampleConfigFile",
                             metavar="<configFile>", type="string",
                             help="Sample configuration file name to output")
-        addTo.add_option("-S", None, type="int",
-                            dest="forceRecoverySegmentDbId",
-                            metavar="<dbid>",
-                            help="Primary segment dbid to force recovery")
-        addTo.add_option("-z", None, type="string",
-                            dest="forceRecoverySegmentDataDirAndHost",
-                            metavar="<dataDirAndHost>",
-                            help="Primary segment data dir and host to force recovery")
 
         addTo = OptionGroup(parser, "Recovery Destination Options")
         parser.add_option_group(addTo)

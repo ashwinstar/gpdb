@@ -17,7 +17,7 @@
 from datetime import date
 import copy
 
-from gppylib.utils import checkNotNone
+from gppylib.utils import checkNotNone, checkIsInt
 from gppylib    import gplog
 from gppylib.db import dbconn
 
@@ -388,10 +388,13 @@ class GpDB:
 
     def setSegmentPort(self, port):
         checkNotNone("port", port)
+        checkIsInt("port", port)
         self.port = port
 
     def setSegmentReplicationPort(self, replicationPort):
-        # None is allowed -- don't check
+        # None is allowed -- don't check nonNone
+        if replicationPort is not None:
+            checkIsInt("replicationPort", replicationPort)
         self.replicationPort = replicationPort
 
     def setSegmentHostName(self, hostName):

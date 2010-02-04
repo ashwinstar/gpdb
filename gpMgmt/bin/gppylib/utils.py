@@ -48,6 +48,13 @@ def checkNotNone(label, value):
         raise Exception( label + " is None")
     return value
 
+#
+# value should be non-None
+#
+def checkIsInt(label, value):
+    if type(value) != type(0):
+        raise Exception( label + " is not an integer type" )
+
 def isNone( value):
     isN=False
     if value is None:
@@ -55,6 +62,14 @@ def isNone( value):
     elif value =="":
         isN= True
     return isN 
+
+def readAllLinesFromFile(file):
+    res = []
+    with open(file) as f:
+        for line in f:
+            res.append(line)
+    return res
+
 
 #############
 def parseSingleFile(line):
@@ -65,8 +80,6 @@ def parseSingleFile(line):
     else:
         ph=line.rstrip("\n").rstrip()  
     return ph
-        
-        
 
 def openAnything(source):            
     """URI, filename, or string --> stream
