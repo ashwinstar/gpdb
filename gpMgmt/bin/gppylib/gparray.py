@@ -39,6 +39,10 @@ MODE_INCREMENTAL_RESYNCHRONIZATION = 'r'
 MODE_FULL_RESYNCHRONIZATION = 'f'
 VALID_MODE = [MODE_CHANGELOGGING, MODE_SYNCHRONIZED, MODE_INCREMENTAL_RESYNCHRONIZATION, MODE_FULL_RESYNCHRONIZATION]
 
+FAULT_STRATEGY_NONE = 'n'
+FAULT_STRATEGY_FILE_REPLICATION = 'f'
+FAULT_STRATEGY_SAN = 's'
+VALID_FAULT_STRATEGY = [FAULT_STRATEGY_NONE, FAULT_STRATEGY_FILE_REPLICATION, FAULT_STRATEGY_SAN]
 
 # ============================================================================
 class GpDB:
@@ -760,6 +764,17 @@ class GpArray:
         for gpdb in self.getDbList():
             fp.write(repr(gpdb) + '\n')
         fp.close()
+
+    def getFaultStrategy(self):
+        """
+
+         Will return a string matching one of the FAULT_STRATEGY_* constants
+
+        """
+        if self.strategy[0] not in VALID_FAULT_STRATEGY:
+            raise Exception("Fault strategy is not set correctly (it is set to %s)" % self.strategy)
+
+        return self.strategy[0]
 
     # --------------------------------------------------------------------
     def getDbList(self, includeExpansionSegs=False):

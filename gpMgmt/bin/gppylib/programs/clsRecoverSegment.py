@@ -4,7 +4,6 @@
 #
 # todo MIRRORING print out message about what we're about to do
 # todo MIRRORING verify that the new segments will not cause any port conflicts (check in all cases, but applies mainly to reading from file)
-# todo MIRRORING verify failover strategy is 'mirrored'
 # todo MIRRORING get address of the new host (not just hostName)
 #
 # todo MIRRORING better error message when cluster is not running
@@ -565,10 +564,9 @@ class GpRecoverSegmentProgram:
         gpArray = confProvider.loadSystemConfig()
 
         # check that we actually have mirrors
-        if len([seg for seg in gpArray.getSegDbList() if seg.getSegmentPreferredRole() == 'm']) == 0 :
+        if gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_FILE_REPLICATION:
             raise ExceptionNoStackTraceNeeded( \
-                    'There are no mirrors configured for this Greenplum Datanase instance' \
-                    'The Greenplum Database instance will need to be recovered manually')
+                    'GPDB Mirroring replication is not configured for this Greenplum Database instance.')
 
         # figure out what needs to be done
         actions = self.getRecoveryActionsBasedOnOptions(gpArray)

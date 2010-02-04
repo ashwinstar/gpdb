@@ -59,6 +59,8 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
         logger.info("Obtaining Segment details from master...")
 
+        conn = dbconn.connect(self.__masterDbUrl, self.__useUtilityMode)
+
         sql = '''
                 SELECT dbid, content, role, preferred_role, mode, status, hostname, address, port,
                     fselocation AS datadir, replication_port
@@ -67,9 +69,13 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                     JOIN pg_catalog.pg_filespace fs ON (fsefsoid = fs.oid AND fsname='pg_system')
                 ORDER BY content, preferred_role DESC
             '''
-
-        conn = dbconn.connect(self.__masterDbUrl, self.__useUtilityMode)
         configurationRows = dbconn.execSQL(conn, sql)
+
+        sql = '''
+                SELECT fault_strategy FROM gp_fault_strategy
+            '''
+        strategyRows = dbconn.execSQL(conn, sql)
+
         conn.close()
 
         origSegments = []
@@ -102,7 +108,15 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
             segments.append(segment)
             origSegments.append(segment.copy())
 
+        strategy = None
+        for row in strategyRows:
+            (strategy) = row
+            break
+        if strategy is None:
+            raise Exception("Database does not contain gp_fault_strategy entry")
+
         result = GpArray(segments, origSegments)
+        result.strategy = strategy
 
         return result
 
