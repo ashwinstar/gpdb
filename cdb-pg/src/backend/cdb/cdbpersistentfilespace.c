@@ -488,8 +488,8 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 
 	int16 primaryDbId;
 
-	char *primaryBlankPadded;
-	char *mirrorBlankPadded;
+	char *primaryBlankPadded = NULL;
+	char *mirrorBlankPadded = NULL;
 
 	*primaryFilespaceLocation = NULL;
 	*mirrorFilespaceLocation = NULL;
@@ -554,6 +554,10 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 					 errmsg("Unable to determine dbid for filespace lookup")));
 		}
 	}
+
+	/* These should both have been populated by one of the cases above */
+	Assert(PrimaryBlankPadded);
+	Assert(MirrorBlankPadded);
 
 	PersistentFilespace_ConvertBlankPaddedLocation(
 											primaryFilespaceLocation,
