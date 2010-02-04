@@ -6,7 +6,6 @@
 # todo MIRRORING verify that the new segments will not cause any port conflicts (check in all cases, but applies mainly to reading from file)
 # todo MIRRORING verify failover strategy is 'mirrored'
 # todo MIRRORING get address of the new host (not just hostName)
-# todo MIRRORING process the newRecoverHost and spareDataDirectory values
 #
 # todo MIRRORING better error message when cluster is not running
 # todo MIRRORING STOP the old mirror in case they are running? (when failover to a new location)
@@ -464,8 +463,7 @@ class GpRecoverSegmentProgram:
                 if len(arr) != 4:
                     raise Exception('Config file format error. %s' % line)
 
-                # these two lines are confusing, but make it so that failoverSegment points to the
-                #   object that is registered in gparray
+                # these two lines make it so that failoverSegment points to the object that is registered in gparray
                 failoverSegment = failedSegment
                 failedSegment = failoverSegment.copy()
 
@@ -511,13 +509,28 @@ class GpRecoverSegmentProgram:
         failedSegments = [ seg for seg in segments if seg.isSegmentDown() ]
         peersForFailedSegments = self.findAndValidatePeersForFailedSegments(gpArray, failedSegments)
 
+        forceFull = self.__options.forceFullResynchronization
         segs = []
         for i in range(len(failedSegments)):
-            segs.append( GpSegmentToRecover(failedSegments[i], peersForFailedSegments[i], None, \
-                                self.__options.forceFullResynchronization))
 
-        # todo: use newRecoverHost or spareDataDirectory here to update failedSegments
-        #       and pick new ports, etc.
+            failoverSegment = None
+            failedSegment = failedSegments[i]
+            liveSegment = peersForFailedSegments[i]
+
+            if self.__options.newRecoverHost is not None:
+                # these two lines make it so that failoverSegment points to the object that is registered in gparray
+                failoverSegment = failedSegment
+                failedSegment = failoverSegment.copy()
+                failoverSegment.setSegmentHostName( self.__options.newRecoverHost )
+
+            if self.__options.spareDataDirectory is not None:
+                # these two lines make it so that failoverSegment points to the object that is registered in gparray
+                failoverSegment = failedSegment
+                failedSegment = failoverSegment.copy()
+                failoverSegment.setSegmentDataDirectory( self.__options.spareDataDirectory )
+
+            segs.append( GpSegmentToRecover(failedSegment, liveSegment, failoverSegment, forceFull ))
+
         return GpRecoveryActions(segs)
 
     def getRecoveryActionsBasedOnOptions(self, gpArray):
