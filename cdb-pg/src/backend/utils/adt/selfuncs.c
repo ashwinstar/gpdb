@@ -5364,7 +5364,64 @@ bmcostestimate(PG_FUNCTION_ARGS)
 	Selectivity *indexSelectivity = (Selectivity *) PG_GETARG_POINTER(6);
 	double	   *indexCorrelation = (double *) PG_GETARG_POINTER(7);
 
-	genericcostestimate(root, index, indexQuals, outer_rel, 0.0,
+	List *selectivityQuals;
+	double numIndexTuples;
+	List *groupExprs = NIL;
+	int i;
+	double numDistinctValues;
+	
+	/*
+	 * Estimate the number of index tuples. This is basically the same
+	 * as the one in genericcostestimate(), except that
+	 * (1) We don't consider ScalarArrayOpExpr in the calculation, since
+	 *     each value has its own bit vector.
+	 * (2) since the bitmap index stores bit vectors, one for each distinct
+	 *     value, we adjust the number of index tuples by dividing the
+	 *     value with the number of distinct values.
+	 */
+	if (index->indpred != NIL)
+	{
+		List	   *strippedQuals;
+		List	   *predExtraQuals;
+
+		strippedQuals = get_actual_clauses(indexQuals);
+		predExtraQuals = list_difference(index->indpred, strippedQuals);
+		selectivityQuals = list_concat(predExtraQuals, indexQuals);
+	}
+	else
+		selectivityQuals = indexQuals;
+
+	/* Estimate the fraction of main-table tuples that will be visited */
+	*indexSelectivity = clauselist_selectivity(root, selectivityQuals,
+											   index->rel->relid,
+											   JOIN_INNER,
+											   false /* use_damping */);
+
+	/*
+	 * Construct a list of index keys, so that we can estimate the number
+	 * of distinct values for those keys.
+	 */
+	for (i = 0; i < index->ncolumns; i ++)
+	{
+		if (index->indexkeys[i] > 0)
+		{
+			Var *var = find_indexkey_var(root, index->rel, (AttrNumber) index->indexkeys[i]);
+			
+			groupExprs = lappend(groupExprs, var);
+		}
+	}
+	if (index->indexprs != NULL)
+		groupExprs = list_concat_unique(groupExprs, index->indexprs);
+
+	Assert(groupExprs != NULL);
+	numDistinctValues = estimate_num_groups(root, groupExprs, index->rel->rows);
+	if (numDistinctValues == 0)
+		numDistinctValues = 1;
+
+	numIndexTuples = *indexSelectivity * index->rel->tuples;
+	numIndexTuples = rint(numIndexTuples / numDistinctValues);
+
+	genericcostestimate(root, index, indexQuals, outer_rel, numIndexTuples,
 						indexStartupCost, indexTotalCost,
 						indexSelectivity, indexCorrelation);
 
