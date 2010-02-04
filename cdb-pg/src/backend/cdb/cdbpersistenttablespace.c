@@ -211,7 +211,7 @@ static bool PersistentTablespace_ScanTupleCallback(
 	}
 	
 	tablespaceDirEntry = 
-			PersistentTablespace_CreateDirUnderLock(tablespaceOid, filespaceOid);
+		PersistentTablespace_CreateDirUnderLock(filespaceOid, tablespaceOid);
 	
 	tablespaceDirEntry->state = state;
 	tablespaceDirEntry->serialNum = serialNum;

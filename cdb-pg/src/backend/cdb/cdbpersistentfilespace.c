@@ -13,29 +13,31 @@
 #include "storage/fd.h"
 #include "storage/relfilenode.h"
 
+#include "access/genam.h"
+#include "access/heapam.h"
+#include "access/persistentfilesysobjname.h"
+#include "access/transam.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_database.h"
 #include "catalog/gp_persistent.h"
+#include "storage/itemptr.h"
+#include "storage/shmem.h"
+#include "utils/guc.h"
+#include "utils/hsearch.h"
+#include "postmaster/primary_mirror_mode.h"
+#include "storage/smgr.h"
+#include "storage/ipc.h"
+#include "utils/builtins.h"
+
+#include "cdb/cdbvars.h"
 #include "cdb/cdbsharedoidsearch.h"
-#include "access/persistentfilesysobjname.h"
 #include "cdb/cdbdirectopen.h"
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbpersistentfilesysobj.h"
 #include "cdb/cdbpersistentfilespace.h"
-#include "storage/itemptr.h"
-#include "utils/hsearch.h"
-#include "storage/shmem.h"
-#include "access/genam.h"
-#include "access/heapam.h"
-#include "access/transam.h"
-#include "utils/guc.h"
-#include "storage/smgr.h"
-#include "storage/ipc.h"
-#include "utils/builtins.h"
-#include "cdb/cdbvars.h"
 
 
 /*
@@ -499,16 +501,58 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 		elog(ERROR, "Did not find persistent filespace entry %u", 
 			 filespaceOid);
 
+	/* 
+	 * The persistent_filespace_node_table contains the paths for both the 
+	 * primary and mirror nodes, and the table is the same on both sides of the
+	 * mirror.  When it was first created the primary put its location first, 
+	 * but we don't know if we were the primary when it was created or not.  To
+	 * determine which path corresponds to this node we compare our dbid to the
+	 * one stored in the table.
+	 */
 	primaryDbId = GpIdentity.dbid;
 	if (filespaceDirEntry->dbId1 == primaryDbId)
 	{
+		/* dbid == dbid1 */
 		primaryBlankPadded = filespaceDirEntry->locationBlankPadded1;
 		mirrorBlankPadded = filespaceDirEntry->locationBlankPadded2;
 	}
-	else
+	else if (filespaceDirEntry->dbId2 == primaryDbId)
 	{
+		/* dbid == dbid2 */
 		primaryBlankPadded = filespaceDirEntry->locationBlankPadded2;
 		mirrorBlankPadded = filespaceDirEntry->locationBlankPadded1;
+	}
+	else
+	{
+		/*
+		 * The dbid check above does not work for the Master Node during 
+		 * initial startup, because the master doesn't yet know its own dbid.  
+		 * To handle this we special case for the master node the master
+		 * always considers the first entry as the correct location.   
+		 *
+		 * Note: This design may need to  be reconsidered to handle standby
+		 * masters!
+		 */
+		PrimaryMirrorMode mode;
+
+		getPrimaryMirrorStatusCodes(&mode, NULL, NULL);
+		
+		if (mode == PMModeMaster)
+		{
+			/* Master node */
+			primaryBlankPadded = filespaceDirEntry->locationBlankPadded1;
+			mirrorBlankPadded = filespaceDirEntry->locationBlankPadded2;		
+		}
+		else
+		{
+			/* 
+			 * Current dbid matches neither dbid in table and was not started
+			 * as a master node.
+			 */
+			ereport(FATAL,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Unable to determine dbid for filespace lookup")));
+		}
 	}
 
 	PersistentFilespace_ConvertBlankPaddedLocation(

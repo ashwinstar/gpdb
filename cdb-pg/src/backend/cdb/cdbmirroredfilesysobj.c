@@ -107,7 +107,6 @@ void MirroredFileSysObj_DropDbDir(
 	smgrdormdbdir(dbDirNode, isRedo);
 }
 
-#ifdef suppress
 static void MirroredFileSysObj_JustInTimeDbDirCreate(
 	DbDirNode			*justInTimeDbDirNode)
 {
@@ -152,7 +151,6 @@ static void MirroredFileSysObj_JustInTimeDbDirCreate(
 
 	LWLockRelease(TablespaceCreateLock);
 }
-#endif
 
 void MirroredFileSysObj_CreateRelFile(
 	SMgrRelation smgrOpen,
@@ -166,7 +164,6 @@ void MirroredFileSysObj_CreateRelFile(
 	bool isLocalBuf)
 {
 	// UNDONE: This is broken -- not sure why (MPP-7949, etc).
-#ifdef suppress
 	DbDirNode justInTimeDbDirNode;
 
 	/*
@@ -175,7 +172,6 @@ void MirroredFileSysObj_CreateRelFile(
 	justInTimeDbDirNode.tablespace = smgrOpen->smgr_rnode.spcNode;
 	justInTimeDbDirNode.database = smgrOpen->smgr_rnode.dbNode;
 	MirroredFileSysObj_JustInTimeDbDirCreate(&justInTimeDbDirNode);
-#endif
 
 	/*
 	 * We write our intention or 'Create Pending' persistent information before we do

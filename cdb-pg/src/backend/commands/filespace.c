@@ -186,6 +186,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		for (i = 0; i < segments->total_segment_dbs; i++)
 		{
 			int  segid = segments->segment_db_info[i].dbid;
+			int  contentid = segments->segment_db_info[i].segindex;
 			bool found = false;
 
 			foreach(cell, stmt->locations)
@@ -199,6 +200,14 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 								(errcode(ERRCODE_GP_COMMAND_ERROR),
 								 errmsg("duplicate segment id %d", segid)));
 					found = true;
+
+					/* 
+					 * Set the contentid for in the statement node to
+					 * prepare for dispatch - this will be used by the
+					 * segments to identify which dbids correspond to
+					 * their mirrors.
+					 */
+					fse->contentid = contentid;
 				}
 			}
 			if (!found)
@@ -215,16 +224,16 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		 * result, only perform the N^2 check for the invalid entry when
 		 * we know that something is wrong.
 		 */
-		numsegs = 0;
+		numsegs = segments->total_segments + segments->total_entry_dbs;
 		foreach(cell, stmt->locations)
 		{
 			FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
 
 			checkpath(fse->location);  /* Simple validation of paths */
-			numsegs++;
+			numsegs--;
 		}
 
-		if (numsegs != segments->total_segments)
+		if (numsegs != 0)
 		{
 			foreach(cell, stmt->locations)
 			{
@@ -274,6 +283,12 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		}
 		else if (fse->contentid == GpIdentity.segindex)
 		{
+			/* 
+			 * This will require work if we start supporting multiple 
+			 * mirrors per segment. 
+			 */
+			Assert(mirror_location == NULL);
+
 			mirror_dbid     = fse->dbid;
 			mirror_location = fse->location;
 		}
