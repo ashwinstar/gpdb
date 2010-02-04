@@ -20,6 +20,12 @@ class ProgramArgumentValidationException(Exception):
 
 class ExceptionNoStackTraceNeeded(Exception):
     pass
+
+#
+# UserAbortedException should be thrown when a user decides to stop the program (at a y/n prompt, for example) 
+#
+class UserAbortedException(Exception):
+    pass
     
 def getProgramName():
     global gProgramName
@@ -75,6 +81,9 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
     except ExceptionNoStackTraceNeeded, e:
         logger.error( "%s error: %s" % (gProgramName, e))
         sys.exit(2)
+    except UserAbortedException, e:
+        logger.info("User abort requested, Exiting...")
+        sys.exit(4)
     except Exception, e:
         logger.exception("%s failed. (Reason=%s) exiting..." % (gProgramName, e))
         sys.exit(2)

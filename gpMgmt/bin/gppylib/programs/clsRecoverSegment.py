@@ -2,9 +2,8 @@
 #
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
-# todo MIRRORING print out message about what we're about to do
+# todo MIRRORING get address of the new host (not just hostName) using gphostcache.py
 # todo MIRRORING verify that the new segments will not cause any port conflicts (check in all cases, but applies mainly to reading from file)
-# todo MIRRORING get address of the new host (not just hostName)
 #
 # todo MIRRORING better error message when cluster is not running
 # todo MIRRORING STOP the old mirror in case they are running? (when failover to a new location)
@@ -23,6 +22,9 @@
 #
 # todo MIRRORING why do we take recovery commands from a file?  Is that really needed?
 # todo MIRRORING if from config file, we should NOT take -F and instead should get full/incremental commands from the file?
+# todo MIRRORING I may have changed the semantics for 'spareDataDirectory'.  review old semantics
+#
+# todo MIRRORING what about chk_pool_dir_available from gprecoverseg?  Is that needed herE?
 #
 # todo code reorg and consolidation with gpexpand?
 #
@@ -47,24 +49,15 @@ from gppylib.mainUtils import *
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 import os, sys, getopt, socket, StringIO, signal
 
-from gppylib.test.testUtils import testOutput
+from gppylib import gparray, gplog, pgconf, userinput
+from gppylib.db import catalog, dbconn
 from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile
-from gppylib import gplog
-from gppylib import gparray
-from gppylib.commands import base
-from gppylib.commands import unix
-from gppylib.commands import gp
-from gppylib.commands import pg
-from gppylib.db import catalog
-from gppylib.db import dbconn
-from gppylib.system import configurationInterface as configInterface
-from gppylib import pgconf
+from gppylib.commands import base, gp, pg, unix
 from gppylib.operations.startSegments import *
+from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
-
-import gppylib.test.testUtils
-import gppylib.commands.gp
+from gppylib.test.testUtils import *
+from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile
 
 logger = gplog.get_default_logger()
 
@@ -537,7 +530,60 @@ class GpRecoverSegmentProgram:
             return self.getRecoveryActionsFromConfigFile(gpArray)
         else:
             return self.getRecoveryActionsFromConfiguration(gpArray)
-            
+
+    def displaySegmentInfo(self, instanceType, seg):
+        paddingLen = 11 - len(instanceType)
+        padding = ""
+        for i in range(paddingLen):
+            padding = padding + " "
+
+        logger.info('%s instance host             %s= %s' % (instanceType, padding, seg.getSegmentHostName()))
+        logger.info('%s instance directory        %s= %s' % (instanceType, padding, seg.getSegmentDataDirectory()))
+        logger.info('%s instance port             %s= %d' % (instanceType, padding, seg.getSegmentPort()))
+        logger.info('%s instance replication port %s= %d' % (instanceType, padding, seg.getSegmentReplicationPort()))
+
+    def displayRecovery(self, actions):
+        logger.info('Greenplum instance recovery parameters')
+        logger.info('---------------------------------------------------------')
+
+        if self.__options.recoveryConfigFile:
+            logger.info('Recovery from configuration -i option supplied')
+        elif self.__options.newRecoverHost is not None:
+            logger.info('Recovery type             = Pool Host')
+            logger.info('Pool host for recovery    = %s' % self.__options.newRecoverHost)
+            type_text = 'Pool    '
+        elif self.__options.spareDataDirectory is not None:
+            logger.info('Recovery type             = Pool Directory')
+            logger.info('Mirror pool directory     = %s' % self.__options.spareDataDirectory)
+            type_text = 'Pool dir'
+        else:
+            logger.info('Recovery type             = Standard')
+            type_text = 'Failed  '
+
+        count = 0
+        # logger.info('Recovery parallel batch value = %d' % opt['-B'])
+        i = 0
+        total = len(actions.getSegmentsToRecover())
+        for toRecover in actions.getSegmentsToRecover():
+            logger.info('---------------------------------------------------------')
+            logger.info('Recovery %d of %d' % (i+1, total))
+            logger.info('---------------------------------------------------------')
+
+            syncMode = "Full" if toRecover.isFullSynchronization() else "Incremental"
+            logger.info("Synchronization mode                  = %s" % syncMode)
+
+            self.displaySegmentInfo("Failed", toRecover.getFailedSegment())
+            self.displaySegmentInfo("Recovery", toRecover.getLiveSegment())
+
+            if toRecover.getFailoverSegment() is not None:
+                self.displaySegmentInfo("Failover", toRecover.getFailoverSegment())
+            else:
+                logger.info("Recover the failed segment in-place")
+
+            i = i + 1
+
+        logger.info('---------------------------------------------------------')
+
     def run(self):
 
         self.__pool = base.WorkerPool(numWorkers=16) # todo MIRRORING configure number of workers
@@ -571,15 +617,20 @@ class GpRecoverSegmentProgram:
         # figure out what needs to be done
         actions = self.getRecoveryActionsBasedOnOptions(gpArray)
 
-        # prompt user, if desired
-        if self.__options.interactive:
-            # todo: prompt user
-            pass
 
         if self.__options.outputSampleConfigFile is not None:
+            # just output config file and done
             self.outputToFile(actions, self.__options.outputSampleConfigFile)
             logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
         else:
+            # going to do real work...so check with user
+            if self.__options.interactive:
+                # display parameter setting
+                self.displayRecovery(actions)
+                msg = "\nContinue with segment recovery procedure"
+                if not userinput.ask_yesno(None,msg,'N'):
+                    raise UserAbortedException()
+
             self.recover(gpEnv, gpArray, actions)
 
         self.__faultProber.unpauseFaultProber()
@@ -656,5 +707,6 @@ class GpRecoverSegmentProgram:
             raise ProgramArgumentValidationException(\
                             "too many arguments: only options may be specified") # todo MIRRORING: print help instead (as gpstart)
         return GpRecoverSegmentProgram(options)
+    
         
     
