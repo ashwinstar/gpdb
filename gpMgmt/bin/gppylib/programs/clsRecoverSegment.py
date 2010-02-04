@@ -24,23 +24,26 @@
 #
 # todo code reorg and consolidation with gpexpand?
 #
-# note (MIRRORING): I removed some options from old gprecoverseg, including:
-#        --version
-#       -S "Primary segment dbid to force recovery": I think this is done now by bringing the primary down, waiting for
-#           failover, and then doing recover full
-#       -z "Primary segment data dir and host to force recovery" see removed -S option for comment
-#
-#      documentation: -i input file takes replicationPort in list of args (for failover target)
-#        todo MIRRORING fill out full list of removed options
-#
 # todo: catch string-to-int and other errors when parsing file
-# THIS IMPORT SHOULD COME FIRST
 #
 # todo MIRRORING test cases where input file says to recover a file in-place (perhaps with a change to ports)
 # todo MIRRORING (bugfix) escaping of directory names in unix.LocalCopy
 # todo MIRRORING it's a little quirky that caller must set up failed/failover so that failover is in gparray but failed is not (if both set)...change that, or at least protect against problems
 #
+#
+#
+# Options removed when 3.4 gprecoverseg was implemented:
+#        --version
+#       -S "Primary segment dbid to force recovery": I think this is done now by bringing the primary down, waiting for
+#           failover, and then doing recover full
+#       -z "Primary segment data dir and host to force recovery" see removed -S option for comment
+#       -f        : force Greenplum Database instance shutdown and restart
+#       -F (HAS BEEN CHANGED) -- used to mean "force recovery" and now means "full recovery)
+# And a change to the -i input file: it now takes replicationPort in list of args (for failover target)
+#
+#
 # import mainUtils FIRST to get python version check
+# THIS IMPORT SHOULD COME FIRST
 from gppylib.mainUtils import *
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
