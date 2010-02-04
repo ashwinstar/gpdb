@@ -27,7 +27,7 @@
 	/* Max number of listener */
 #define FILEREP_MESSAGEBODY_LEN 32 * 1024
 	/* should we have GUC */
-#define FILEREP_MAX_OPEN_FILES 131072   // 128k 
+#define FILEREP_MAX_OPEN_FILES 128 // 131072   // 128k 
 
 #define FILEREP_MAX_PROC 64
 
