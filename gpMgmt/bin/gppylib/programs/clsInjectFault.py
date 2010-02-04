@@ -176,7 +176,10 @@ class GpInjectFaultProgram:
                 raise ExceptionNoStackTraceNeeded("Injection Failed: %s" % cmd.results.stderr)
             elif self.options.type == "status":
                 # server side prints nice success messages on status...so print it
-                logger.info("%s", cmd.results.stderr)
+                str = cmd.results.stderr
+                if str.startswith("Success: "):
+                    str = str.replace("Success: ", "", 1)
+                logger.info("%s", str)
         inputFile.close()
 
     def waitForFaults(self, segments, statusQueryText ):
