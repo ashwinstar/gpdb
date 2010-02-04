@@ -88,8 +88,6 @@ FileRepAckMirror_ConstructAndInsertMessage(
 	
 	fileRepMessageHeader->fileRepMessageHeaderVersion = FileRepMessageHeaderVersionOne;
 	
-	fileRepMessageHeader->fileRepMessageType = FileRepMessageTypeData;
-	
 	fileRepMessageHeader->fileRepRelationType = fileRepRelationType;
 	
 	fileRepMessageHeader->fileRepOperation = fileRepOperation;
@@ -228,8 +226,8 @@ FileRepAckMirror_StartSender(void)
 		while (FileRepSubProcess_GetState() == FileRepStateSuspend ||
 			   FileRepSubProcess_GetState() == FileRepStateInitialization ||
 			   FileRepSubProcess_GetState() == FileRepStateFault ||
-			   
-			   (fileRepShmem->state == FileRepStateNotInitialized &&
+
+			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
 			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
 			    FileRepSubProcess_GetState() != FileRepStateImmediateShutdown)) {
 			
@@ -392,7 +390,7 @@ FileRepAckMirror_RunSender(void)
 								  sizeof(FileRepShmemMessageDescr_s));
 
 		if (! FileRepConnClient_SendMessage(
-						FileRepMessageTypeData, 
+						FileRepMessageTypeXLog, 
 						fileRepShmemMessageDescr->messageSync,
 						fileRepMessage,
 						fileRepShmemMessageDescr->messageLength)) {

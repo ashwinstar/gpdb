@@ -58,7 +58,8 @@ bool MirroredBufferPool_Open(
 				  FileRepRelationTypeBufferPool,
 				  FILEREP_OFFSET_UNDEFINED,
 				  fileFlags,
-				  fileMode) != 0) 
+				  fileMode,
+				  TRUE /* supressError */) != 0) 
 		ereport(LOG,
 				(errmsg("could not sent open file to mirror file \"%s\", segment file %d", 
 						relpath(open->relFileNode), open->segmentFileNum)));

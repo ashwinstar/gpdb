@@ -65,7 +65,8 @@ int MirroredFlatFile_Open(
 				  FileRepRelationTypeFlatFile,
 				  FILEREP_OFFSET_UNDEFINED,
 				  fileFlags,
-				  fileMode) != 0) 
+				  fileMode,
+				  suppressError) != 0) 
 		ereport(LOG,
 				(errmsg("could not sent open file to mirror \"%s\"", open->path)));		
 
@@ -139,7 +140,8 @@ int MirroredFlatFile_OpenInDbDir(
 					  FileRepRelationTypeFlatFile,
 					  FILEREP_OFFSET_UNDEFINED,
 					  fileFlags,
-					  fileMode) != 0) 
+					  fileMode,
+					  suppressError) != 0) 
 		ereport(LOG,
 				(errmsg("could not sent open file to mirror \"%s\"", open->path)));		
 

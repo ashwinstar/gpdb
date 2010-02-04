@@ -27,8 +27,9 @@
 	/* Max number of listener */
 #define FILEREP_MESSAGEBODY_LEN 32 * 1024
 	/* should we have GUC */
-#define FILEREP_MAX_OPEN_FILES 128   // 131072   // 128k
+#define FILEREP_MAX_OPEN_FILES 131072   // 128k 
 
+#define FILEREP_MAX_PROC 64
 
 #define FILEREP_OFFSET_UNDEFINED -1  
 
@@ -40,6 +41,7 @@ extern int file_rep_buffer_size;
 extern int file_rep_ack_buffer_size;
 extern int file_rep_retry;
 extern int file_rep_min_data_before_flush;
+extern int file_rep_mirror_consumer_process_count;
 
 extern FileRepRole_e		fileRepRole;
 extern SegmentState_e		segmentState;
@@ -117,7 +119,7 @@ typedef struct FileRepShmem_s {
 	 * at startPosition in shared memory.
 	 * It is used by consumer thread in order to detect wraparound.  
 	 */
-	
+		
 	uint32	insertCount;
 	/* counter of inserted messages. It is used for testing code correctness. */
 	
@@ -199,8 +201,13 @@ extern void FileRepAck_ShmemInit(void);
  * FILEREP PROCESS
  ****************************************************************/
 
-extern FileRepShmem_s	*fileRepShmem;
+extern FileRepShmem_s	*fileRepShmemArray[FILEREP_MAX_PROC];
 
+extern	int				fileRepShmemArrayCount;
+
+/*
+extern FileRepShmem_s	*fileRepShmem;
+*/
 extern FileRepShmem_s	*fileRepAckShmem;
 
 typedef enum FileRepState_e {
@@ -257,30 +264,22 @@ typedef enum FileRepState_e {
 
 
 typedef enum FileRepMessageHeaderVersion_e {
-	FileRepMessageHeaderVersionOne=0
+	FileRepMessageHeaderVersionOne=0,
 } FileRepMessageHeaderVersion_e;
 
 
-typedef enum FileRepMessageType_e {
-	FileRepMessageTypeNotConfigured=0,
-	
-	FileRepMessageTypeData,
-	
-	FileRepMessageTypeControl,
-	
-	FileRepMessageTypeShutdown,
-		/* Primary runs gracefull shutdown. It informs mirror about it. */
-	
-	FileRepMessageTypeDataHeader,
-		/* Message contains data header and header Crc. */
-	
-	FileRepMessageTypeDataHeaderAndBody,
-		/* Message contains data header, header Crc and body (contains data). */
-	
-	FileRepMessageTypeDataHeaderAndFileSpaceBody,
-	/* Message contains data header, header CRC and body (contains filespace map). */	
+typedef enum FileRepConsumerProcIndex_e {
+	FileRepMessageTypeXLog=0,
 
-} FileRepMessageType_e;
+	FileRepMessageTypeWriter,
+		
+	FileRepMessageTypeAO01,
+	
+	FileRepMessageTypeAO02,
+	
+} FileRepConsumerProcIndex_e;
+
+extern FileRepConsumerProcIndex_e fileRepProcIndex;
 
 /* 
  * Describe relation types that are mirrored.
@@ -418,6 +417,8 @@ typedef struct FileRepOperationDescriptionOpen_s {
 	
 	int64		logicalEof;
 	
+	bool		suppressError;
+	
 } FileRepOperationDescriptionOpen_s;
 
 /*
@@ -489,9 +490,6 @@ typedef struct FileRepMessageHeader_s {
 	FileRepMessageHeaderVersion_e fileRepMessageHeaderVersion;
 		/* Message Header Version */
 	
-	FileRepMessageType_e fileRepMessageType;
-		/* Describe the message content. */
-	
 	FileRepRelationType_e fileRepRelationType;
 		/* Mirror Relation type. */
 	
@@ -560,6 +558,11 @@ typedef enum FileRepProcessType_e {
 	FileRepProcessTypePrimaryRecovery,
 	/* Recovery process that runs only during recovery time at gpstart */
 	
+	FileRepProcessTypeMirrorConsumerWriter,
+	
+	FileRepProcessTypeMirrorConsumerAppendOnly1,
+	
+	FileRepProcessTypeMirrorConsumerAppendOnly2,
 } FileRepProcessType_e;
 
 
@@ -672,8 +675,9 @@ extern bool FileRep_IsShutdownRequested(void);
  * The routine returns the insert position in FileRep shared memory.
  */
 extern char *FileRep_ReserveShmem(
-					uint32		msgLength,
-					uint32		*spareField);
+					FileRepShmem_s	*fileRepShmem,
+					uint32			msgLength,
+					uint32			*spareField);
 
 extern char *FileRepAck_ReserveShmem(
 								  uint32		msgLength,

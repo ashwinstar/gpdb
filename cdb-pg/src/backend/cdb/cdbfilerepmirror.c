@@ -43,7 +43,7 @@
  */
 typedef struct OpenFileEntry {
 	/* NOTE check it should be char fileName[MAXPGPATH] */
-	char	fileName[MAXPGPATH+1];  
+	char		fileName[MAXPGPATH+1];  
 	/* It is key. It has to be first field in the structure. */
 	
 	File		fd;
@@ -77,6 +77,7 @@ static void FileRepMirror_Cleanup(void);
 static int FileRepMirror_RunReceiver(void);
 static int FileRepMirror_RunConsumer(void);
 
+static FileRepShmem_s *fileRepShmem = NULL;
 
 /*
  * Find file descriptor in hash table of open files.
@@ -206,7 +207,7 @@ FileRepMirror_StartReceiver(void)
 			continue;
 		} 		
 
-		fileRepShmem->state = FileRepStateInitialization;
+		fileRepShmemArray[0]->state = FileRepStateInitialization;
 		
 		status = FileRepMirror_RunReceiver();
 		
@@ -233,7 +234,7 @@ static int
 FileRepMirror_RunReceiver(void)
 {
 	uint32_t				msgLength = 0;
-	FileRepMessageType_e	msgType = FileRepMessageTypeNotConfigured;
+	FileRepConsumerProcIndex_e	msgType;
 	int						status = STATUS_OK;
 	char					*msgPositionInsert = NULL;
 	FileRepShmemMessageDescr_s  *fileRepShmemMessageDescr;
@@ -273,8 +274,11 @@ FileRepMirror_RunReceiver(void)
 				{
 					break;
 				}
-		
-				msgPositionInsert = FileRep_ReserveShmem(msgLength, /* not used */ &spareField);
+								
+				msgPositionInsert = FileRep_ReserveShmem(
+														 fileRepShmemArray[msgType],
+														 msgLength, 
+														 &spareField);
 		
 				if (msgPositionInsert == NULL)
 				{
@@ -299,7 +303,7 @@ FileRepMirror_RunReceiver(void)
 				{
 					break;
 				}		
-			
+							
 				FileRep_InsertLogEntry(
 									   "M_RunReceiver",
 									   FileRep_GetFlatFileIdentifier("", ""),
@@ -322,10 +326,11 @@ FileRepMirror_RunReceiver(void)
 #ifdef FILEREP_DEBUG
 				ereport(LOG,
 						(errmsg("LOG(filerep): M_RunReceiver "
-								"local count:'%d' position insert:'%p' msg length:'%u' ",
+								"local count:'%d' position insert:'%p' msg length:'%u' consumer proc index:'%d' ",
 								spareField,
 								msgPositionInsert,
-								msgLength),
+								msgLength,
+								msgType),
 						 FileRep_errdetail_Shmem(),
 						 FileRep_errcontext()));		
 #endif				
@@ -434,6 +439,32 @@ FileRepMirror_StartConsumer(void)
 	int status = STATUS_OK;
 	
 	elog(LOG, "FileRepMirror_StartConsumer() ");
+	
+	switch (fileRepProcessType) 
+	{
+		case FileRepProcessTypeMirrorConsumer:
+			fileRepProcIndex = FileRepMessageTypeXLog;  
+			break;
+		case FileRepProcessTypeMirrorConsumerWriter:
+			fileRepProcIndex = FileRepMessageTypeWriter;
+			break;			
+		case FileRepProcessTypeMirrorConsumerAppendOnly1:
+			fileRepProcIndex = FileRepMessageTypeAO01;
+			break;
+		case FileRepProcessTypeMirrorConsumerAppendOnly2:
+			fileRepProcIndex = FileRepMessageTypeAO02;
+			break;
+		default:
+			Assert(0);
+			status = STATUS_ERROR;
+			break;
+	}
+	
+	fileRepShmem = fileRepShmemArray[fileRepProcIndex];
+	
+	elog(LOG, "FileRepMirror_StartConsumer consumer proc index:'%d' fileRepShmem:%p \n",
+		 fileRepProcIndex,
+		 fileRepShmem);
 	
 	status = FileRepMirror_Init();
 	
@@ -613,8 +644,7 @@ FileRepMirror_RunConsumer(void)
 		
   		/* if message body present then calculate and compare Data Crc */
 		
-		if (fileRepMessageHeader->fileRepMessageType == FileRepMessageTypeDataHeaderAndBody) {
-			Assert(fileRepMessageHeader->fileRepOperation == FileRepOperationWrite);
+		if (fileRepMessageHeader->fileRepOperation == FileRepOperationWrite) {
 			
 			fileRepMessageBody =
 				(char*) (fileRepShmem->positionConsume + 
@@ -657,9 +687,11 @@ FileRepMirror_RunConsumer(void)
 		
 #ifdef FILEREP_DEBUG
 		ereport(LOG,
-				(errmsg("LOG(filerep): M_RunConsumer msg header count:'%d' local count:'%d' ",
+				(errmsg("LOG(filerep): M_RunConsumer msg header count:'%d' local count:'%d' "
+						"consumer proc index:'%d'",
 						fileRepMessageHeader->messageCount,
-						spare),
+						spare,
+						fileRepProcIndex),
 				 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 								   fileRepMessageHeader->fileRepRelationType,
 								   fileRepMessageHeader->fileRepOperation),
@@ -804,53 +836,93 @@ FileRepMirror_RunConsumer(void)
  						break;
 					}
 				} else {
-				
-					errno = 0;
-					fd = PathNameOpenFile(
-							fileName,
-							fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
-							fileRepMessageHeader->fileRepOperationDescription.open.fileMode);
-
-					if (fd < 0 && errno == EEXIST) {
-
-						/* NOTE see md.c L242 there are exceptions, how mirror will know about it */ 
-						ereport(LOG,
-								(errcode_for_file_access(),
-								 errmsg("could not open file \"%s\": %m", fileName)));
-						fd = 0;
-						break;
-					}
-					
-					if (fd < 0 && errno == ENOENT) {
+			
+					if (fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeFlatFile)
+					{
 						errno = 0;
 						fd = PathNameOpenFile(
 											  fileName,
-											  O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
-											  fileMode);	
-						ereport(LOG,
-								(errcode_for_file_access(),
-								 errmsg("could not open file \"%s\" so create file: %m", fileName)));
+											  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
+											  fileRepMessageHeader->fileRepOperationDescription.open.fileMode);
+												
+						if (fd < 0 && 
+							fileRepMessageHeader->fileRepOperationDescription.open.suppressError == TRUE && 
+							errno == ENOENT) {
+							
+							ereport(LOG,
+									(errcode_for_file_access(),
+									 errmsg("could not open file \"%s\" suppressError==TRUE : %m", fileName)));
+							fd = 0;
+							break;							
+						}	
 						
-					}	
+						if (fd < 0) {
+							status = STATUS_ERROR;
+							
+							ereport(LOG,
+									(errcode_for_file_access(),
+									 errmsg("ERROR(filerep): could not open file position:" INT64_FORMAT " "
+											"file flags:'%x' file mode:'%o' : %m", 
+											fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
+											fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
+											fileRepMessageHeader->fileRepOperationDescription.open.fileMode),
+									 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+													   fileRepMessageHeader->fileRepRelationType,
+													   fileRepMessageHeader->fileRepOperation),
+									 FileRep_errcontext()));					
+							
+							break;
+						}	
+						
+					} else {
 					
-					if (fd < 0) {
-						status = STATUS_ERROR;
+						errno = 0;
+						fd = PathNameOpenFile(
+								fileName,
+								fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
+								fileRepMessageHeader->fileRepOperationDescription.open.fileMode);
 
-						ereport(LOG,
-								(errcode_for_file_access(),
-								 errmsg("ERROR(filerep): could not open file position:" INT64_FORMAT " "
-										"file flags:'%x' file mode:'%o' : %m", 
-										fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
-										fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
-										fileRepMessageHeader->fileRepOperationDescription.open.fileMode),
-								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-												   fileRepMessageHeader->fileRepRelationType,
-												   fileRepMessageHeader->fileRepOperation),
-								 FileRep_errcontext()));					
+						if (fd < 0 && errno == EEXIST) {
+
+							/* NOTE see md.c L242 there are exceptions, how mirror will know about it */ 
+							ereport(LOG,
+									(errcode_for_file_access(),
+									 errmsg("could not open file \"%s\": %m", fileName)));
+							fd = 0;
+							break;
+						}
 						
-						break;
-					}	
-					
+						if (fd < 0 && errno == ENOENT) {
+							errno = 0;
+							fd = PathNameOpenFile(
+												  fileName,
+												  O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
+												  fileMode);	
+							ereport(LOG,
+									(errcode_for_file_access(),
+									 errmsg("could not open file \"%s\" so create file: %m", fileName)));
+							
+						}	
+						
+						if (fd < 0) {
+							status = STATUS_ERROR;
+
+							ereport(LOG,
+									(errcode_for_file_access(),
+									 errmsg("ERROR(filerep): could not open file position:" INT64_FORMAT " "
+											"file flags:'%x' file mode:'%o' : %m", 
+											fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
+											fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
+											fileRepMessageHeader->fileRepOperationDescription.open.fileMode),
+									 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+													   fileRepMessageHeader->fileRepRelationType,
+													   fileRepMessageHeader->fileRepOperation),
+									 FileRep_errcontext()));					
+							
+							break;
+						}	
+						
+					}
 				}
 				status = FileRepMirror_InsertFileName(
 							fileName, 

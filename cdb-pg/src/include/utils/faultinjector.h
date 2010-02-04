@@ -19,6 +19,13 @@
 typedef enum FaultInjectorIdentifier_e {
 	FaultInjectorIdNotSpecified=0,
 	
+	FaultInjectorIdAll,
+		/* 
+		 * affects all faults injected
+		 *		*) remove all faults injected from the segment
+		 *		*) display status for all faults injected 
+		 */
+	
 	FileRepConsumer,
 	
 	FileRepSender,
@@ -102,10 +109,13 @@ typedef enum FaultInjectorState_e {
 	FaultInjectorStateWaiting,
 		/* Request is waiting to be injected */
 	
-	FaultInjectorStateCompleted,
-		/* Fault was injected successfully */
+	FaultInjectorStateTriggered,
+		/* Fault is injected */
 	
-	FautInjectorStateFailed,
+	FaultInjectorStateCompleted,
+		/* Fault was injected and completed successfully */
+	
+	FaultInjectorStateFailed,
 		/* Fault was NOT injected */
 	
 } FaultInjectorState_e;
@@ -133,7 +143,7 @@ typedef struct FaultInjectorEntry_s {
 	
 	volatile	FaultInjectorState_e	faultInjectorState;
 		/* the state of the fault injection */
-	char					bufOutput[1000];
+	char					bufOutput[2500];
 	
 } FaultInjectorEntry_s;
 

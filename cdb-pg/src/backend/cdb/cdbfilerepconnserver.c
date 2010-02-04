@@ -268,7 +268,7 @@ FileRepConnServer_AwaitMessageBegin()
  */
 int
 FileRepConnServer_ReceiveMessageType(
-			FileRepMessageType_e *fileRepMessageType)
+			FileRepConsumerProcIndex_e *fileRepMessageType)
 {
 	
 	char	messageType;
@@ -276,14 +276,26 @@ FileRepConnServer_ReceiveMessageType(
 	int		status = STATUS_OK;
 	
 	messageType = pq_getbyte();		
-	
-	*fileRepMessageType = FileRepMessageTypeNotConfigured;						 
+					 
 
 	 switch (messageType) {
 
-		 case 'M': // Data Message
-			 *fileRepMessageType = FileRepMessageTypeData;		 
-			break;
+		 case '1':
+			 *fileRepMessageType = FileRepMessageTypeXLog;
+			 break;
+			 
+		 case '2':
+			 *fileRepMessageType = FileRepMessageTypeWriter;
+			 break;
+			 
+		 case '3':
+			 *fileRepMessageType = FileRepMessageTypeAO01;
+			 break;
+			 
+		 case '4':
+			 *fileRepMessageType = FileRepMessageTypeAO02;
+			 break;
+			 
 		 case EOF:
 			 ereport(LOG,
 					 (errcode_for_socket_access(),
@@ -299,7 +311,6 @@ FileRepConnServer_ReceiveMessageType(
 					 (errcode_for_socket_access(), 
 					  errmsg("WARNING(filerep): receive close on connection: %m")));
 			 status = STATUS_ERROR;
-			 *fileRepMessageType = FileRepMessageTypeShutdown;
 			 break;
 		 default:
 			ereport(LOG,

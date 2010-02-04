@@ -51,7 +51,7 @@ FileRepPrimary_StartRecovery(void)
 		while (FileRepSubProcess_GetState() == FileRepStateSuspend ||
 			   FileRepSubProcess_GetState() == FileRepStateFault ||
 			   
-			   (fileRepShmem->state == FileRepStateNotInitialized &&
+			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
 			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
 			    FileRepSubProcess_GetState() != FileRepStateImmediateShutdown)) {
 			
@@ -179,7 +179,6 @@ FileRepPrimary_RunRecovery(void)
 	
 	return status;
 }
-
 
 /*
  * FileRepPrimary_MirrorNegotiation

@@ -298,7 +298,8 @@ class GpInjectFaultProgram:
 			      "then before mirror file operation is acknowledged to backend processes), " \
 			      "filerep_sender (inject fault before data are sent to network), " \
 			      "filerep_receiver (inject fault after data are received from network), " \
-			      "filerep_flush (inject fault before fsync is issued to file system), ")
+			      "filerep_flush (inject fault before fsync is issued to file system), " \
+			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",
                          help="The DDL statement on which fault should be set and triggered " \

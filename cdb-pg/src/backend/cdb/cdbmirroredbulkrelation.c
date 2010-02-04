@@ -64,7 +64,8 @@ void MirroredBulkRelation_Open(
 				  FileRepRelationTypeBulk,
 				  FILEREP_OFFSET_UNDEFINED,
 				  fileFlags,
-				  fileMode) != 0) 
+				  fileMode,
+				  FALSE /* supressError */) != 0) 
 		ereport(LOG,
 				(errmsg("could not sent open file to mirror \"%s\"", 
 						path)));

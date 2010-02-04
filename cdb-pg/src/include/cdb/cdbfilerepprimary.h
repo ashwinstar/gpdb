@@ -45,7 +45,9 @@ extern int FileRepPrimary_MirrorOpen(
 		/* it is used only for Append Only */							 
 	int					fileFlags,
 
-	int					fileMode);
+	int					fileMode,
+
+	bool				suppressError);
 
 /*
  * Flush

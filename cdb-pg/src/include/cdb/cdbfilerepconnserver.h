@@ -46,7 +46,7 @@ extern int FileRepConnServer_ReceiveStartupPacket(void);
  * Issued by Receiver thread of FileRep process.
  */
 extern int FileRepConnServer_ReceiveMessageType(
-				FileRepMessageType_e *fileRepMessageType);
+				FileRepConsumerProcIndex_e *fileRepMessageType);
 
 /*
  * Issued by Receiver thread of FileRep process.

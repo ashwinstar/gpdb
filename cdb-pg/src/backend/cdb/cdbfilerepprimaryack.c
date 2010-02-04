@@ -196,7 +196,7 @@ FileRepAckPrimary_StartReceiver(void)
 			continue;
 		} 
 		
-		fileRepShmem->state = FileRepStateInitialization;
+		fileRepShmemArray[0]->state = FileRepStateInitialization;
 		
 		status = FileRepAckPrimary_RunReceiver();
 		
@@ -221,7 +221,7 @@ static int
 FileRepAckPrimary_RunReceiver(void)
 {
 	uint32_t				msgLength = 0;
-	FileRepMessageType_e	msgType = FileRepMessageTypeNotConfigured;
+	FileRepConsumerProcIndex_e	msgType;
 	int						status = STATUS_OK;
 	char					*msgPositionInsert;
 	FileRepShmemMessageDescr_s  *fileRepShmemMessageDescr;

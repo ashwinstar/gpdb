@@ -56,7 +56,8 @@ void MirroredAppendOnly_Open(
 				  FileRepRelationTypeAppendOnly,
 				  logicalEof,
 				  fileFlags,
-				  fileMode) != 0) 
+				  fileMode,
+				  TRUE /* supressError */) != 0) 
 		ereport(LOG,
 				(errmsg("could not sent open file to mirror \"%s\", segment file %d",
 						relpath(*relFileNode), segmentFileNum)));

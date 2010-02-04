@@ -3642,7 +3642,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&file_rep_retry,
-		300, 1, 3000, NULL, NULL
+		1500, 1, 6000, NULL, NULL
 	},
 
 	{

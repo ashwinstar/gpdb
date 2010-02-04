@@ -20,6 +20,7 @@
 
 #include "cdb/cdbvars.h"
 
+#include "access/xlog_internal.h"
 #include "cdb/cdbfilerepservice.h"
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbfilerepprimaryack.h"
@@ -186,7 +187,10 @@ FileRepPrimary_ConstructAndInsertMessage(
  *
  * Construct FileRepShmemMessageDescr_s 
  */
-	 msgPositionInsert = FileRep_ReserveShmem(msgLength, &spareField);
+	 msgPositionInsert = FileRep_ReserveShmem(
+											  fileRepShmemArray[fileRepProcIndex], 
+											  msgLength, 
+											  &spareField);
 	
 	if (msgPositionInsert == NULL) {
 		
@@ -215,8 +219,6 @@ FileRepPrimary_ConstructAndInsertMessage(
 		sizeof(FileRepShmemMessageDescr_s));
 
 	fileRepMessageHeader->fileRepMessageHeaderVersion = FileRepMessageHeaderVersionOne;
-	
-	fileRepMessageHeader->fileRepMessageType = FileRepMessageTypeData;
 	
 	fileRepMessageHeader->fileRepRelationType = fileRepRelationType;
 	
@@ -307,7 +309,8 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 						  FileRepRelationType_e	fileRepRelationType,
 						  int64					logicalEof,
 						  int					fileFlags,
-						  int					fileMode)
+						  int					fileMode,
+						  bool					suppressError)
 {
 	int status = STATUS_OK;
 	
@@ -317,6 +320,8 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 
 	descr.open.fileMode = fileMode;
 	descr.open.logicalEof = logicalEof;
+	descr.open.suppressError = suppressError;
+	
 	
 	if (FileRepPrimary_IsMirroringRequired()) {
 		status = FileRepPrimary_ConstructAndInsertMessage(
@@ -514,7 +519,10 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 			 *
 			 * Construct FileRepShmemMessageDescr_s 
 			 */
-			msgPositionInsert = FileRep_ReserveShmem(msgLength, &spareField);
+			msgPositionInsert = FileRep_ReserveShmem(
+													 fileRepShmemArray[fileRepProcIndex],
+													 msgLength, 
+													 &spareField);
 			
 			if (msgPositionInsert == NULL) {
 				
@@ -543,8 +551,6 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 					sizeof(FileRepShmemMessageDescr_s));
 			
 			fileRepMessageHeader->fileRepMessageHeaderVersion = FileRepMessageHeaderVersionOne;
-			
-			fileRepMessageHeader->fileRepMessageType = FileRepMessageTypeDataHeaderAndBody;
 			
 			fileRepMessageHeader->fileRepRelationType = fileRepRelationType;
 			
@@ -839,6 +845,8 @@ FileRepPrimary_RunSender(void)
 	bool						movePositionConsume = FALSE;
 	uint32						spare = 0;
 	FileRepMessageHeader_s		*fileRepMessageHeader;
+	FileRepShmem_s				*fileRepShmem = fileRepShmemArray[fileRepProcIndex];
+	FileRepConsumerProcIndex_e	messageType;
 	
 	elog(LOG, "FileRepPrimary_RunSender() ");
 	
@@ -965,8 +973,28 @@ FileRepPrimary_RunSender(void)
 		
 		spare = fileRepMessageHeader->messageCount;
 	
+		switch (fileRepMessageHeader->fileRepRelationType)
+		{
+			case FileRepRelationTypeFlatFile:
+			case FileRepRelationTypeBulk:
+				messageType = FileRepMessageTypeXLog;
+				break;
+			case FileRepRelationTypeAppendOnly:
+				messageType = FileRepMessageTypeAO01;
+				/* messageType = FileRepMessageTypeAO02; */
+				break;
+			case FileRepRelationTypeBufferPool:
+			case FileRepRelationTypeFile:
+			case FileRepRelationTypeDir:
+				messageType = FileRepMessageTypeWriter;
+				break;
+			default:
+				Assert(0);
+				break;
+		}
+		
 		if (! FileRepConnClient_SendMessage(
-					FileRepMessageTypeData, 
+					messageType, 
 					fileRepShmemMessageDescr->messageSync,
 					fileRepMessage,
 					fileRepShmemMessageDescr->messageLength)) {

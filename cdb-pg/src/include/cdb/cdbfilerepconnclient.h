@@ -29,7 +29,7 @@ extern void FileRepConnClient_CloseConnection(void);
  * Issued by Sender thread of FileRep process.
  */
 extern bool FileRepConnClient_SendMessage(
-			  FileRepMessageType_e	messageType, 
+			  FileRepConsumerProcIndex_e	messageType, 
 			  bool					messageSynchronous,
 			  char					*message, 
 			  uint32				messageLength);

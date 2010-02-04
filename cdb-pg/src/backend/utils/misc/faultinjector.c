@@ -81,7 +81,10 @@ FaultInjectorTypeEnumToString[] = {
 
 const char*
 FaultInjectorIdentifierEnumToString[] = {
-	"",		/* not specified */
+	"",		
+		/* not specified */
+	"all",  
+		/* reset or display all injected faults */
 	"filerep_consumer",
 		/* 
 		 * inject fault before data are processed
@@ -124,7 +127,8 @@ FaultInjectorDDLEnumToString[] = {
 const char*
 FaultInjectorStateEnumToString[] = {
 	"not initialized",
-	"waiting",
+	"set",
+	"triggered",
 	"completed",
 	"failed",
 };
@@ -293,8 +297,9 @@ FaultInjector_InjectFaultIfSet(
 		/* fault injection is not set for the specified table name */
 		return;
 	
-	if (entryLocal->faultInjectorState == FaultInjectorStateCompleted ||
-		entryLocal->faultInjectorState == FautInjectorStateFailed) {
+	if (entryLocal->faultInjectorState == FaultInjectorStateTriggered ||
+		entryLocal->faultInjectorState == FaultInjectorStateCompleted ||
+		entryLocal->faultInjectorState == FaultInjectorStateFailed) {
 		/* fault injection was already executed */
 		return;
 	}
@@ -304,7 +309,7 @@ FaultInjector_InjectFaultIfSet(
 	if (entryLocal->occurrence > 1) {
 		entryLocal->occurrence--;
 	} else {
-		entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+		entryLocal->faultInjectorState = FaultInjectorStateTriggered;
 	}
 	
 	FaultInjector_UpdateHashEntry(entryLocal);	
@@ -366,6 +371,10 @@ FaultInjector_InjectFaultIfSet(
 			break;
 	}
 		
+	entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+
+	FaultInjector_UpdateHashEntry(entryLocal);	
+	
 	return;
 }
 
@@ -596,14 +605,35 @@ FaultInjector_SetFaultInjection(
 	
 	switch (entry->faultInjectorType) {
 		case FaultInjectorTypeReset:
-	
-			LockAcquire();
-			isRemoved = FaultInjector_RemoveHashEntry(entry->faultInjectorIdentifier);
-			if (isRemoved == TRUE) {
-				faultInjectorShmem->faultInjectorSlots--;
-			}
-			LockRelease();
+		{
+			HASH_SEQ_STATUS			hash_status;
+			FaultInjectorEntry_s	*entryLocal;
 			
+			if (entry->faultInjectorIdentifier == FaultInjectorIdAll) 
+			{
+				hash_seq_init(&hash_status, faultInjectorShmem->hash);
+				
+				LockAcquire();
+				
+				while ((entryLocal = (FaultInjectorEntry_s *) hash_seq_search(&hash_status)) != NULL) {
+					isRemoved = FaultInjector_RemoveHashEntry(entryLocal->faultInjectorIdentifier);
+					if (isRemoved == TRUE) {
+						faultInjectorShmem->faultInjectorSlots--;
+					}					
+				}
+				Assert(faultInjectorShmem->faultInjectorSlots == 0);
+				LockRelease();
+					
+			} else {
+				
+				LockAcquire();	
+				isRemoved = FaultInjector_RemoveHashEntry(entry->faultInjectorIdentifier);
+				if (isRemoved == TRUE) {
+					faultInjectorShmem->faultInjectorSlots--;
+				}
+				LockRelease();
+			}
+				
 			if (isRemoved == FALSE) {
 				ereport(DEBUG1,
 						(errmsg("LOG(fault injector): could not remove fault injection from hash"
@@ -612,6 +642,7 @@ FaultInjector_SetFaultInjection(
 			}			
 			
 			break;
+		}
 		case FaultInjectorTypeStatus:
 		{	
 			HASH_SEQ_STATUS			hash_status;
@@ -622,6 +653,7 @@ FaultInjector_SetFaultInjection(
 				status = STATUS_ERROR;
 				break;
 			} 
+			snprintf(entry->bufOutput, sizeof(entry->bufOutput), "Success: ");
 			
 			hash_seq_init(&hash_status, faultInjectorShmem->hash);
 			
@@ -645,8 +677,10 @@ FaultInjector_SetFaultInjection(
 							entryLocal->sleepTime,
 							FaultInjectorStateEnumToString[entryLocal->faultInjectorState])));
 				
-				if (entry->faultInjectorIdentifier == entryLocal->faultInjectorIdentifier) {
-						snprintf(entry->bufOutput, sizeof(entry->bufOutput), "Fault Injector(status): "
+				if (entry->faultInjectorIdentifier == entryLocal->faultInjectorIdentifier ||
+					entry->faultInjectorIdentifier == FaultInjectorIdAll) {
+						snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
+								 "%s \n"
 								 "fault name:'%s' "
 								 "type:'%s' "
 								 "ddl statement:'%s' "
@@ -655,6 +689,7 @@ FaultInjector_SetFaultInjection(
 								 "occurrence:'%d' "
 								 "sleep time:'%d' "
 								 "fault injection state:'%s' ",
+								 entry->bufOutput,
 								 FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
 								 FaultInjectorTypeEnumToString[entryLocal->faultInjectorType],
 								 FaultInjectorDDLEnumToString[entryLocal->ddlStatement],
@@ -667,7 +702,7 @@ FaultInjector_SetFaultInjection(
 				}
 			}
 			if (found == FALSE) {
-				snprintf(entry->bufOutput, sizeof(entry->bufOutput), "Fault Injector(status): "
+				snprintf(entry->bufOutput, sizeof(entry->bufOutput), "Failure: "
 						 "fault name:'%s' not set",
 						 FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier]);
 			}
@@ -707,11 +742,14 @@ FaultInjector_IsFaultInjected(
 		case FaultInjectorStateWaiting:
 			/* No operation */
 			break;
+		case FaultInjectorStateTriggered:	
+			/* No operation */
+			break;
 		case FaultInjectorStateCompleted:
 			
 			retval = TRUE;
 			/* NO break */
-		case FautInjectorStateFailed:
+		case FaultInjectorStateFailed:
 			
 			isCompleted = TRUE;
 			isRemoved = FaultInjector_RemoveHashEntry(identifier);

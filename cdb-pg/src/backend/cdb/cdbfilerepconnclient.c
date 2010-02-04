@@ -97,7 +97,7 @@ FileRepConnClient_CloseConnection(void)
  */
 bool
 FileRepConnClient_SendMessage(
-	FileRepMessageType_e	messageType, 
+	FileRepConsumerProcIndex_e	messageType, 
 	bool	messageSynchronous,
 	char*	message, 
 	uint32	messageLength)
@@ -111,11 +111,17 @@ FileRepConnClient_SendMessage(
 
 	switch(messageType)
 	{
-		case FileRepMessageTypeControl:
-			msgType = 'C';
+		case FileRepMessageTypeXLog:
+			msgType = '1';
 			break;
-		case FileRepMessageTypeData:
- 			msgType = 'M';
+		case FileRepMessageTypeWriter:
+			msgType = '2';
+			break;
+		case FileRepMessageTypeAO01:
+			msgType = '3';
+			break;
+		case FileRepMessageTypeAO02:
+			msgType = '4';
 			break;
 		default:
 			return false;

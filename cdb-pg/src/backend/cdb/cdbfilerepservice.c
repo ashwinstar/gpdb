@@ -497,6 +497,9 @@ FileRepSubProcess_Main()
 			break;	
 
 		case FileRepProcessTypeMirrorConsumer:
+		case FileRepProcessTypeMirrorConsumerWriter:
+		case FileRepProcessTypeMirrorConsumerAppendOnly1:
+		case FileRepProcessTypeMirrorConsumerAppendOnly2:
 			FileRepMirror_StartConsumer();
 			break;	
 
