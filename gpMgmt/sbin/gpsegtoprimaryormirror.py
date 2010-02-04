@@ -117,7 +117,13 @@ class GpSegToPrimaryMirror():
             transitionArgumentsArr = []
             transitionArgumentsArr.append(targetMode)
             if targetMode == 'mirror' or targetMode == 'primary':
-                transitionArgumentsArr.append( dbData["mode"])
+                mode = dbData["mode"]
+                if mode == 'r' and dbData["fullResyncFlag"]:
+                    # full resync requested, convert 'r' to 'f'
+                    transitionArgumentsArr.append( 'f' )
+                else:
+                    # otherwise, pass the mode through
+                    transitionArgumentsArr.append( dbData["mode"])
                 transitionArgumentsArr.append( dbData["hostName"])
                 transitionArgumentsArr.append( "%d" % dbData["hostPort"])
                 transitionArgumentsArr.append( dbData["peerName"])

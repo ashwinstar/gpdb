@@ -132,10 +132,6 @@ class GpSegmentToRecover:
         if self.__forceFullSynchronization:
             return True
 
-        # if the segment we're copying from is marked full resync, we can't downgrade that to incremental!
-        if self.__liveSegment.getSegmentMode() == gparray.MODE_FULL_RESYNCHRONIZATION:
-            return True
-
         # if we are failing over to a new segment location then we must fully resync
         if self.__failoverSegment is not None:
             return True
@@ -209,8 +205,8 @@ class GpRecoverSegmentProgram:
             logger.warn("Failed to start segment.  The fault prober will shortly mark it as down. Segment: %s: REASON: %s" % (failedSeg, failureReason))
         pass
 
-    def __convertAllPrimaries(self, gpEnv, gpArray, segments):
-        segmentStartResult = self.__createStartSegmentsOp(gpEnv).transitionSegments(gpArray, segments, MIRROR_MODE_PRIMARY)
+    def __convertAllPrimaries(self, gpEnv, gpArray, segments, convertUsingFullResync):
+        segmentStartResult = self.__createStartSegmentsOp(gpEnv).transitionSegments(gpArray, segments, convertUsingFullResync, MIRROR_MODE_PRIMARY)
         for i in range(len(segmentStartResult.getFailedSegments())):
             failedSeg = segmentStartResult.getFailedSegments()[i]
             failureReason = segmentStartResult.getFailureReasons()[i]
@@ -395,16 +391,12 @@ class GpRecoverSegmentProgram:
 
         # update and save metadata
         for toRecover in actions.getSegmentsToRecover():
-            if toRecover.isFullSynchronization():
-                resyncMode = gparray.MODE_FULL_RESYNCHRONIZATION
-            else:
-                resyncMode = gparray.MODE_INCREMENTAL_RESYNCHRONIZATION
 
             if toRecover.getFailoverSegment() is None:
                 # we are recovering the lost segment in place
                 seg = toRecover.getFailedSegment()
                 seg.setSegmentStatus(gparray.STATUS_UP)
-                seg.setSegmentMode(resyncMode)
+                seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
             else:
                 seg = toRecover.getFailedSegment()
                 # no need to update the failed segment's information -- it is
@@ -415,25 +407,28 @@ class GpRecoverSegmentProgram:
 
                 seg = toRecover.getFailoverSegment()
                 seg.setSegmentStatus(gparray.STATUS_UP)
-                seg.setSegmentMode(resyncMode)
+                seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
 
             seg = toRecover.getLiveSegment()
-            seg.setSegmentMode(resyncMode)
+            seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
 
         configInterface.getConfigurationProvider().updateSystemConfig(gpArray)
 
         # stop/start new mirrors
         mirrorsToStart = []
         primariesToConvert = []
+        convertPrimaryUsingFullResync = []
         for toRecover in actions.getSegmentsToRecover():
             seg = toRecover.getFailoverSegment()
             if seg is None:
                 seg = toRecover.getFailedSegment() # we are recovering in place
             mirrorsToStart.append(seg)
             primariesToConvert.append(toRecover.getLiveSegment())
+            convertPrimaryUsingFullResync.append(toRecover.isFullSynchronization())
+
 
         self.__startAll(gpEnv, gpArray, mirrorsToStart)
-        self.__convertAllPrimaries(gpEnv, gpArray, primariesToConvert)
+        self.__convertAllPrimaries(gpEnv, gpArray, primariesToConvert, convertPrimaryUsingFullResync)
 
     def getRecoveryActionsFromConfigFile(self, gpArray):
         """

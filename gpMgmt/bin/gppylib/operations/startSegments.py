@@ -106,8 +106,8 @@ class StartSegmentsOperation:
             primaryDbs = [seg for seg in result.getSuccessfulSegments() if seg.isSegmentPrimary(True)]
 
             result.clearSuccessfulSegments()
-            self.__sendPrimaryMirrorTransition(MIRROR_MODE_MIRROR, mirrorDbs, gpArray, result)
-            self.__sendPrimaryMirrorTransition(MIRROR_MODE_PRIMARY, primaryDbs, gpArray, result)
+            self.__sendPrimaryMirrorTransition(MIRROR_MODE_MIRROR, mirrorDbs, None, gpArray, result)
+            self.__sendPrimaryMirrorTransition(MIRROR_MODE_PRIMARY, primaryDbs, None, gpArray, result)
 
         elif startMethod == START_AS_MIRRORLESS:
         # bring them up in mirrorless mode
@@ -119,16 +119,17 @@ class StartSegmentsOperation:
         assert totalToAttempt == len(result.getFailedSegments()) + len(result.getSuccessfulSegments())
         return result
 
-    def transitionSegments(self, gpArray, segments, mirrorMode):
+    def transitionSegments(self, gpArray, segments, convertUsingFullResync, mirrorMode):
         """
         gpArray: the system to which the segments to start belong
         segments: the list of segments to be transitioned
+        convertUsingFullResync: in parallel with segments, gives true/false for whether fullResync flag should be passed
         mirrorMode: should be one of the MIRROR_MODE_* constant values
 
         """
 
         result = StartSegmentsResult()
-        self.__sendPrimaryMirrorTransition(mirrorMode, segments, gpArray, result)
+        self.__sendPrimaryMirrorTransition(mirrorMode, segments, convertUsingFullResync, gpArray, result)
         
         assert len(segments) == len(result.getFailedSegments()) + len(result.getSuccessfulSegments())
         return result
@@ -196,13 +197,24 @@ class StartSegmentsOperation:
                 for segment in cmd.dblist:
                     resultOut.addFailure(segment, cmd.get_results())
 
-    def __sendPrimaryMirrorTransition(self, targetMode, segments, gpArray, resultOut):
+    def __sendPrimaryMirrorTransition(self, targetMode, segments, convertUsingFullResync, gpArray, resultOut):
+        """
+            @param segments the segments to convert
+            @param convertUsingFullResync in parallel with segments, may be None, gives true/false for whether fullResync
+                                          flag should be passed to the transition
+        """
 
         if len(segments) == 0:
             logger.debug("%s conversion of zero segments...skipping" % targetMode)
             return
 
         logger.info("Commencing parallel %s conversion of %s segments, please wait..." % (targetMode, len(segments)))
+
+        dbIdToFullResync = {}
+        if convertUsingFullResync is not None:
+            for i in range(len(segments)):
+                if convertUsingFullResync[i]:
+                    dbIdToFullResync[segments[i].getSegmentDbId()] = True
 
         dbIdToPeerMap = gpArray.getDbIdToPeerMap()
 
@@ -228,6 +240,7 @@ class StartSegmentsOperation:
                 dbData["peerName"] = peer.hostname
                 dbData["peerPort"] = peer.replicationPort
                 hostData["dbsByPort"][db.port] = dbData
+                dbData["fullResyncFlag"] = db.dbid in dbIdToFullResync
 
             remoteConversionFile = os.path.join(segments[0].getSegmentDataDirectory(), "gpstart_mirror_args")
             localConversionFile = os.path.join(self.__masterDataDirectory, "gpstart_mirror_args_%s" % dispatchCount)
