@@ -9,9 +9,7 @@
 # todo MIRRORING STOP the old mirror in case they are running? (when failover to a new location)
 # todo MIRRORING checks for being able to build target directory
 # todo MIRRORING what is: multi_home = gpmlib.chk_multi_home(hosts) (from other gprecoverseg)
-# todo MIRRORING set it up to show gprecoverseg_help
 # todo MIRRORING implement pause/unpause of fault prober properly
-# todo MIRRORING rename ConfigExpansionSeg?
 # todo MIRRORING update hba.conf on all originals if we changed any hosts: (call update_original_segments from gpexpand)
 # todo MIRRORING is it okay to leave the temporary directory sitting around (as gpexpand seems to do?)
 # todo MIRRORING need to compress arguments sent to segments?  I think command lines can be pretty long, but should test it
@@ -643,12 +641,8 @@ class GpRecoverSegmentProgram:
     @staticmethod
     def createParser():
 
-        description = ("""
-        Recover a failed segment
-        """)
-
-        help = ["""
-        """]
+        description = ("Recover a failed segment")
+        help = [""]
 
         parser = OptParser(option_class=OptChecker,
                     description=' '.join(description.split()),
@@ -704,7 +698,7 @@ class GpRecoverSegmentProgram:
     def createProgram(options, args):
         if len(args) > 0 :
             raise ProgramArgumentValidationException(\
-                            "too many arguments: only options may be specified") # todo MIRRORING: print help instead (as gpstart)
+                            "too many arguments: only options may be specified", True)
         return GpRecoverSegmentProgram(options)
         
     

@@ -16,7 +16,12 @@ gExecutableName = os.path.split(__file__)[-1]
 
 # Throw this out to main to have the message printed with
 class ProgramArgumentValidationException(Exception):
-    pass
+    def __init__(self, msg, shouldPrintHelp=False):
+        self.__shouldPrintHelp = shouldPrintHelp
+        self.__msg = msg
+
+    def shouldPrintHelp(self): return self.__shouldPrintHelp
+    def getMessage(self): return self.__msg
 
 class ExceptionNoStackTraceNeeded(Exception):
     pass
@@ -51,6 +56,7 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
     parser = None
 
     forceQuiet = mainOptions is not None and mainOptions.get("forceQuietOutput")
+    options = None
 
     # NOTE: if this logic is changed then also change test_main in testUtils.py
     try:
@@ -74,9 +80,9 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
         sys.exit(exitCode)
 
     except ProgramArgumentValidationException, e:
-        print >> sys.stderr, ("Usage: " + gProgramName + " [--help] [options]")
-        print >> sys.stderr, ""
-        print >> sys.stderr, (gProgramName + ": error: " + e.args[0] )
+        if e.shouldPrintHelp():
+            parser.print_help()
+        logger.error("%s: error: %s" %(gProgramName, e.getMessage()))
         sys.exit(2)
     except ExceptionNoStackTraceNeeded, e:
         logger.error( "%s error: %s" % (gProgramName, e))
@@ -85,7 +91,13 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
         logger.info("User abort requested, Exiting...")
         sys.exit(4)
     except Exception, e:
-        logger.exception("%s failed. (Reason=%s) exiting..." % (gProgramName, e))
+        if options is None:
+            logger.exception("%s failed.  exiting...", gProgramName)
+        else:
+            if options.verbose:
+                logger.exception("%s failed.  exiting...", gProgramName)
+            else:
+                logger.fatal("%s failed. (Reason='%s') exiting..." % (gProgramName, e))
         sys.exit(2)
     except KeyboardInterrupt:
         sys.exit('\nUser Interrupted')
