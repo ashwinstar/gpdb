@@ -265,6 +265,7 @@ vacuum_combine_stats(CdbDispatchResults *primaryResults,
  */
 void vacuum(VacuumStmt *vacstmt, List *relids)
 {
+	VacuumStmt *analyzeStmt = copyObject(vacstmt);
 	bool doAnalyze = vacstmt->analyze;
 	bool doVacuum = vacstmt->vacuum;
 	
@@ -285,9 +286,9 @@ void vacuum(VacuumStmt *vacstmt, List *relids)
 		/**
 		 * Perform ANALYZE.
 		 */
-		vacstmt->analyze = true;
-		vacstmt->vacuum = false;
-		analyzeStatement(vacstmt, NIL);
+		analyzeStmt->analyze = true;
+		analyzeStmt->vacuum = false;
+		analyzeStatement(analyzeStmt, NIL);
 	}
 	
 	vacstmt->analyze = doAnalyze;
