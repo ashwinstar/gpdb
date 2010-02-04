@@ -231,7 +231,7 @@ if (1)
 		# use openssl to construct an md5 hash for every file
 		my $cmd_template = 
 			'(gpssh -h MYHOST \' ' .
-			'(find MYDIR -type f -exec openssl dgst -md5 -hex {} \; ) ' .
+			'(find MYDIR -type f | xargs openssl dgst -md5 -hex ) ' .
 			'| grep -v pg_stat | grep -v pg_log | grep -v pg_internal ' .
 			'| grep -v ".log)" | grep -v ".opts)" | grep -v ".conf)" ' .
 			'| grep -v "_args)" | grep -v ".pid)" ' .
