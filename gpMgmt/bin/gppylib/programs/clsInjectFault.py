@@ -170,9 +170,13 @@ class GpInjectFaultProgram:
                                         segment.getSegmentPort(), base.LOCAL, segment.getSegmentHostName())
             cmd.run(validateAfter=False)
 
-            # now validate ourselves
+
+            # validate ourselves
             if cmd.results.rc != 0:
                 raise ExceptionNoStackTraceNeeded("Injection Failed: %s" % cmd.results.stderr)
+            elif self.options.type == "status":
+                # server side prints nice success messages on status...so print it
+                logger.info("%s", cmd.results.stderr)
         inputFile.close()
 
     def waitForFaults(self, segments, statusQueryText ):
