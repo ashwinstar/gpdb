@@ -1,0 +1,670 @@
+#!/usr/bin/env python
+
+'''
+
+Configures mirror segments for Greenplum Database instance which has primary 
+segment instances only.  Process will stop the Greenplum Database Instance to 
+be able to generate mirror copies of primary segments.
+
+gpaddmirrors -- add mirror segment
+
+Usage: gpaddmirrors [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-p port_offset] [-o outfile] [-s] [-i mirror_config] [-m mirror_datadir_config] [-B number]
+           
+          --version : print version information
+          -?        : print this help screen
+          -D        : set logging output to debug level
+          -q        : quiet mode, do not log progress to screen [default: verbose output to screen]
+          -a        : non-interactive mode [default: interactive mode]
+          -d        : master data directory
+          -l        : <log directory> alternative log file directory [optional]
+          -o        : file to output configuration
+          -i        : mirror configuration file
+          -s        : spread mirror mode
+          -p        : mirror offset, if not supplied, script will calculate a suitable
+                      port offset for the mirror segment instances, range 7000 - 61000
+                      current offset value is 1000
+          -m        : mirror data directory config file
+          -B        : number of parallel process to spawn to process mirror creation
+
+
+          Format of the input configuration file:
+          mirror[N]=host:port:data_dir
+          where N is content in gp_configuration table
+
+          Format of the mirror data directory config file:
+          data_dir1
+          data_dir2
+          ...
+          data_dirN
+          where N is the number of segment data directory per host
+'''
+
+from __future__ import with_statement
+import os, sys, getopt, socket
+from threading import Thread
+from datetime import date, datetime, timedelta
+
+sys.path.append(sys.path[0] + '/lib')
+import pg8000
+
+import gplib
+import gpmlib
+from gpmlib import ENV
+
+
+script_name = os.path.split(__file__)[-1]
+opt = {}
+opt['-q'] = False
+opt['-d'] = None
+opt['-m'] = None
+opt['-B'] = 64
+opt['-a'] = False
+opt['-s'] = False
+opt['-i'] = None
+opt['-o'] = None
+opt['-p'] = 1000
+opt['-l'] = None
+opt['-D'] = False
+
+arg = {}
+arg['exit'] = 0
+
+################
+def usage(exitarg):
+    print gplib.cli_help() or __doc__
+    sys.exit(exitarg)
+
+################
+def print_version():
+    print '%s version $Revision$' % script_name
+    sys.exit(0)
+
+################
+def parseCommandLine():
+    global opt
+    try:
+        (options, args) = getopt.getopt(sys.argv[1:], '?vqasi:o:d:m:B:p:l:Dc:T:', ['version'])
+    except Exception, e:
+        usage(str(e))
+
+    for (switch, val) in options:
+        if (switch == '-?'):          usage(0)
+        elif (switch == '-v'):        print_version()
+        elif (switch == '--version'): print_version()
+        elif (switch == '-q'):        opt[switch] = True
+        elif (switch == '-m'):        opt[switch] = val
+        elif (switch == '-B'):        opt[switch] = int(val)
+        elif (switch == '-a'):        opt[switch] = True
+        elif (switch == '-s'):        opt[switch] = True
+        elif (switch == '-i'):        opt[switch] = val
+        elif (switch == '-o'):        opt[switch] = val
+        elif (switch == '-p'):        opt[switch] = int(val)
+        elif (switch == '-d'):        opt[switch] = val
+        elif (switch == '-l'):        opt[switch] = val
+        elif (switch == '-D'):        opt[switch] = True
+        elif (switch == '-T'):        gpmlib.log_info('Option -T is obsolete.  This option will be ignored')
+
+    gpmlib.log_set_module(script_name)
+
+    if opt['-q']:
+        gpmlib.log_set_verbose(False)
+
+    if opt['-l']:
+        if not gpmlib.directory_exists(opt['-l']):
+            gpmlib.error('Log directory %s does not exist' % opt['-l'])
+
+        opt['-l'] = os.path.join(opt['-l'], '%s_%s.log' % (script_name, date.today().strftime('%Y%m%d')))
+        gpmlib.log_set_file(opt['-l'])
+    else:
+        logdir = os.path.join(os.environ.get('HOME'), 'gpAdminLogs')
+        if not gpmlib.directory_exists(logdir):
+            try:
+                os.mkdir(logdir)
+            except OSError, e:
+                gpmlib.error('Make directory %s error' % logdir)
+
+        opt['-l'] = os.path.join(logdir, '%s_%s.log' % (script_name, date.today().strftime('%Y%m%d')))
+        gpmlib.log_set_file(opt['-l'])
+
+    if opt['-i'] and not os.path.isfile(opt['-i']):
+        usage('Input configuration file %s does not exist' % opt['-i'])
+
+    if not opt['-d']:
+        opt['-d'] = os.getenv('MASTER_DATA_DIRECTORY')
+        if not opt['-d']:
+            gpmlib.error('MASTER_DATA_DIRECTORY not set')
+    else:
+        os.environ['MASTER_DATA_DIRECTORY'] = opt['-d']
+
+    if opt['-i'] and opt['-p']:
+        gpmlib.log_warn('-p option not valid when used with -i option.  -p will be ignored')
+
+    if not os.path.isdir(opt['-d']):
+        gpmlib.error('MASTER_DATA_DIRECTORY %s does not exist or is not a directory' % opt['-d'])
+
+
+
+################
+def yesorno(msg, abortmsg):
+    print msg
+    line = sys.stdin.readline()
+    line = line.strip().lower()
+    if line == 'y':
+        return True
+    print abortmsg
+    return False
+
+
+################
+#   config file 
+#   mirrorN=host:port:data_dir
+
+def parseMirrorConfig():
+    file = None
+    lines = []
+    try:
+        file = open(opt['-i'], 'r')
+        lines = file.readlines()
+    except Exception, e:
+        gpmlib.error('Read file %s error' % opt['-i'])
+    finally:
+        if file:
+            file.close()
+
+    mirrors = []
+    for l in lines:
+        l = l.strip()
+        if l == '':
+            continue
+        param = l.split('=')
+        if len(param) != 2:
+            gpmlib.error('Mirror config format error')
+        mirror = param[1].split(':')
+        if len(mirror) != 3:
+            gpmlib.error('Mirror config format error')
+        m = {}
+        m['hostname'] = mirror[0]
+        m['port'] = int(mirror[1])
+        m['datadir'] = mirror[2]
+        mirrors.append(m)
+        
+    return mirrors
+        
+################
+def get_minmax_port(db):
+    db.execute('select max(port) from gp_configuration where content<>-1')
+    row = db.read_tuple()
+    max_port = row[0]    
+    db.execute('select min(port) from gp_configuration where content<>-1')
+    row = db.read_tuple()
+    min_port = row[0]    
+    return (min_port, max_port)
+
+################
+def calc_mirror_port_base(db):
+    global opt
+    max_mir_port = 61000
+    min_mir_port = 7000
+
+    mirror_offset = opt['-p']
+    (min_port, max_port) = get_minmax_port(db)
+    port_base = min_port + mirror_offset-1
+
+    if port_base >= max_mir_port or port_base <= min_mir_port:
+        gpmlib.log_fatal('Value of PORT_OFFSET supplied via -p option is out of valid')
+        gpmlib.error('Mirror port base range must be between %d and %d' % (min_mir_port, max_mir_port))
+
+
+################
+def chk_mirror_config(db, qes, mirrors):
+    if len(qes) != len(mirrors):
+        gpmlib.error('Number of mirror segments must be equal to number of primary segments')
+
+    db.execute('select max(dbid) from gp_configuration')
+    row = db.read_tuple()
+    max_dbid = row[0]
+    dbid = max_dbid + 1
+    gp_prefix = gpmlib.get_gp_prefix(os.environ.get('MASTER_DATA_DIRECTORY'))
+    if not gp_prefix:
+        gp_prefix = 'gp-'
+
+    config = []
+    for i in range(len(qes)):
+        mir = mirrors[i]
+        mir['dbid'] = dbid
+        mir['content'] = qes[i]['content']
+        mir['datadir'] = os.path.join(mir['datadir'], '%s%d' % (gp_prefix, mir['content']))
+        config.append(mir)
+        dbid += 1
+
+    pri_hosts = gpmlib.unique([ qe['hostname'] for qe in qes ])
+    mir_hosts = gpmlib.unique([ m['hostname'] for m in mirrors ])
+    new_hosts = []
+    for h in mir_hosts:
+        if h not in pri_hosts:
+            new_hosts.append(h)
+
+    new_addr = []
+    for h in new_hosts:
+        ips = gpmlib.get_ipaddr(h)
+        if not ips:
+            gpmlib.error('Get IP Address from %s failed' % h)
+
+        new_addr.extend(ips)
+    new_addr = gpmlib.unique(new_addr)
+
+    return (config, new_addr)
+
+################
+def chk_mirror_dir(qes, mirrors):
+    for i in range(len(qes)):
+        pri_host = qes[i]['hostname']
+        mirror_host = mirrors[i]['hostname']
+        mirror_datadir = mirrors[i]['datadir']
+
+        # check postgres version
+        if not gpmlib.chk_postgres_version(mirror_host):
+            gpmlib.error('Postgres version does not match with mirror host %s' % mirror_host)
+
+        # check datadir exist
+        if gpmlib.directory_exists(mirror_datadir, mirror_host):
+            gpmlib.error('Directory %s already exists on %s' % (mirror_datadir, mirror_host))
+
+        # check write access of the parent datadir
+        dir = os.path.dirname(mirror_datadir)
+        tmpfile = os.path.join(dir, 'gptmpfile')
+        (ok, out) = gpmlib.run_warn('%s "%s %s"' % (gplib.ssh_prefix(host=mirror_host), ENV.TOUCH, tmpfile))
+        if ok:
+            (ok, out) = gpmlib.run('%s "%s -f %s"' % (gplib.ssh_prefix(host=mirror_host), ENV.RM, tmpfile))            
+        else:
+            gpmlib.error('Cannot create file under directory %s on segment host %s' % (dir, mirror_host))
+
+        # check access from primary host to mirror host
+        (ok, out) = gpmlib.run_warn('%s \'%s %s /tmp/gpaddmirrors_check.$$ && %s -f /tmp/gpaddmirrors_check.$$\'' % (
+                                                            gplib.ssh_prefix(host=pri_host),
+                                                            gplib.ssh_prefix(host=mirror_host),
+                                                            ENV.TOUCH, ENV.RM))
+        if not ok:
+            gpmlib.error('Check inter host ssh access from %s to %s failed' % (pri_host, mirror_host))
+
+    gpmlib.log_info('Completed host and directory checks')
+        
+
+################
+# multi-thread running data sychronization
+class SyncDataThread(Thread):
+    def __init__(self, pri_host, pri_datadir, mir_cfg, logfile):
+        Thread.__init__(self)
+        self.pri_host = pri_host
+        self.pri_datadir = pri_datadir
+        self.mir_cfg = mir_cfg
+        self.status = False
+        self.logfile = logfile
+
+    def run(self):
+        # sync data directory
+        gpmlib.log_info('Start to synchronize data between primary segment (%s:%s) and mirror segment (%s:%s dbid=%s)' 
+                        % (self.pri_host, self.pri_datadir,
+                           self.mir_cfg['hostname'], self.mir_cfg['datadir'], self.mir_cfg['dbid']))
+
+        if not gpmlib.sync_segment_datadir(self.pri_host, self.pri_datadir, self.mir_cfg, self.logfile, verbose=opt['-D']):
+            gpmlib.log_error('Copy data from (%s:%s) to (%s:%s) failed' 
+                             % (self.pri_host, self.pri_datadir, self.mir_cfg['hostname'], self.mir_cfg['datadir']))    
+            return
+
+        self.status = True
+
+
+################
+def create_mirrors(qes, mirrors):
+    global opt, arg
+
+    # Start parallel segment instance
+    gpmlib.log_info('Commencing parallel segment instance startup, please wait...')
+
+    error = []
+    thlist = []
+    n = 0
+    for i in range(len(qes)):
+        pri_host = qes[i]['hostname']
+        pri_datadir = qes[i]['datadir']
+        mir_cfg = mirrors[i]
+
+        th = SyncDataThread(pri_host, pri_datadir, mir_cfg, opt['-l'])
+        thlist.append(th)
+        th.start()
+
+        if len(thlist) == opt['-B']:
+            n += 1
+            gpmlib.log_info('Spawning parallel processes Batch[%d], please wait...' % n)
+
+            while len(thlist) > 0:
+                tmplist = []
+                while len(thlist) > 0:
+                    th = thlist.pop()
+                    th.join(2)
+                    if th.isAlive():
+                        tmplist.append(th)
+                    else:
+                        if not th.status:
+                            error.append((th.mir_cfg['hostname'], th.mir_cfg['datadir']))
+
+                if len(tmplist) > 0:
+                    thlist = tmplist
+            thlist = []
+
+    if len(thlist) > 0:
+        n += 1
+        gpmlib.log_info('Spawning parallel processes Batch[%d], please wait...' % n)
+
+        while len(thlist) > 0:
+            tmplist = []
+            while len(thlist) > 0:
+                th = thlist.pop()
+                th.join(2)
+                if th.isAlive():
+                    tmplist.append(th)
+                else:
+                    if not th.status:
+                        error.append((th.mir_cfg['hostname'], th.mir_cfg['datadir']))
+
+            if len(tmplist) > 0:
+                thlist = tmplist
+
+    sys.stdout.write('\n')
+    sys.stdout.flush()
+
+    completed = len(qes) - len(error)
+    failed = len(error)
+    gpmlib.log_info('-------------------------------------------')
+    gpmlib.log_info('Parallel process exit status')
+    gpmlib.log_info('-------------------------------------------')
+    gpmlib.log_info('Total processes marked as completed  = %d' % completed)
+    gpmlib.log_info('Total processes marked as failed     = %d' % failed)
+    gpmlib.log_info('-------------------------------------------')
+
+    if failed > 0:
+        gpmlib.log_warn('Errors detected in parallel processing, review %s for more details' % opt['-l'])
+        arg['exit'] = 1
+        return False
+    else:
+        gpmlib.log_info('Completed data directory synchronization')
+
+    return True
+
+################
+def update_gp_conf(db, mirrors):
+    system_filespace = 3052
+
+    # update Greenplum database configuration
+    for m in mirrors:
+        history_message = "GPADDMIRRORS: content %d, dbid %d, hostname %s, port %s, datadir %s" % (m['content'], m['dbid'], m['hostname'], m['port'], m['datadir'])
+        db.execute("insert into gp_configuration_history values(now(), $1, $2)", m['dbid'], history_message)
+        db.execute("insert into gp_configuration values($1, $2, $3, $4, $5, $6, $7, null)",
+                   m['content'], False, m['dbid'], False, True, 
+                   m['hostname'], m['port'])
+        db.execute("insert into pg_filespace_entry values($1, $2, $3)",
+                   system_filespace, m['dbid'], m['datadir'])
+
+################
+def display_param(master_datadir, master_port, qes, mirrors, multi_home):
+    global opt
+
+    gpmlib.log_info('Greenplum Database Mirror Parameters')
+    gpmlib.log_info('------------------------------------')
+    gpmlib.log_info('Greenplum master hostname                = %s' % socket.gethostname())
+    gpmlib.log_info('Greenplum master data directory          = %s' % master_datadir)
+    gpmlib.log_info('Greenplum master port                    = %d' % master_port)
+    gpmlib.log_info('Parallel batch limit                     = %d' % opt['-B'])
+    if multi_home:
+        gpmlib.log_info('Multi-home configuration')
+    else:
+        gpmlib.log_info('Single-home configuration')
+    gpmlib.log_info('------------------------------------')
+    gpmlib.log_info('Mirror segment instance list')
+    gpmlib.log_info('------------------------------------')
+    for m in mirrors:
+        gpmlib.log_info('Host "%s" \t Datadir "%s" \t Port "%d"' % (m['hostname'], m['datadir'], m['port']))
+
+
+################                                      
+def get_datadirs(ndatadir):
+    
+    datadirs = []
+    if opt['-m']:
+        with open(opt['-m']) as f:
+            for line in f:
+                line = line.strip()
+                if line == '':
+                    continue
+                datadirs.append(line.strip())
+            if ndatadir != len(datadirs):
+                sys.exit('Number of data directory must be equal to %d' % ndatadir)
+    else:
+        for i in range(ndatadir):
+            print 'Enter mirror segment data directory location %d of %d >' % (i+1, ndatadir)
+            line = sys.stdin.readline() 
+            line = line.strip()
+            if line == '':
+                gpmlib.error('Null value entered for mirror data directory')
+            datadirs.append(line)
+
+    dirs = []
+    for d in datadirs:
+        (ok, out) = gpmlib.run('echo %s' % d)
+        dirs.append(out[0].strip())
+    return dirs
+
+
+################                                      
+def generate_mirrors(db, qes, multi_home):
+    mirrors = []
+
+    db.execute("select count(distinct port) from gp_configuration where content <> -1 and definedprimary='t'")
+    row = db.read_tuple()
+    ndatadir = row[0]
+    
+    if opt['-s']:
+        qe_hosts = [ x['hostname'] for x in qes ]
+        hosts = gpmlib.unique(qe_hosts)
+        if len(hosts) <= ndatadir:
+            gpmlib.error('Number of segment hosts must be greater than the number of segment instances per host')
+
+        datadirs = get_datadirs(ndatadir)
+        mirrors = gpmlib.spread_mirror(qes, datadirs, opt['-p'], multi_home)
+    else:
+        datadirs = get_datadirs(ndatadir)
+        mirrors = gpmlib.group_mirror(qes, datadirs, opt['-p'], multi_home)
+
+    if opt['-o']:
+        f = None
+        try:
+            f = open(opt['-o'], 'w')
+            i = 0
+            for m in mirrors:
+                f.write('mirror%d=%s:%d:%s\n' % (i, m['hostname'], m['port'], m['datadir']))
+                i += 1
+        except IOError, e:
+            gpmlib.error('Cannot write to file %s' % opt['-o'])
+        finally:
+            if f: f.close()
+        sys.exit(0)
+    
+    return mirrors
+
+################                           
+def get_standby_count(db):
+    db.execute("select 1 from gp_configuration where content=-1 and dbid<>1")
+    c = [ x for x in db.iterate_tuple() ]
+    return len(c)
+
+def get_standby_details(db):
+    qry = '''
+      SELECT hostname, fselocation as datadir, port, valid, definedprimary
+      FROM gp_configuration join pg_filespace_entry on (dbid = fsedbid)
+      WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+        AND content=-1 and dbid <> 1
+    '''
+    db.execute(qry)
+    return db.read_dict()
+
+################                           
+try:
+
+    parseCommandLine()
+
+    ENV.chk_environ()
+
+    master_port = gpmlib.get_master_port(opt['-d'])
+
+    if gpmlib.chk_on_passive_standby(master_port):
+        gpmlib.fatal('Unable to process requested command')
+    
+    db = None
+    qes = None
+    new_addr = []
+    multi_home = False
+    mirrors = []
+
+    try:
+        pghost = os.getenv('PGHOST', '127.0.0.1')
+        pgpassword = os.getenv('PGPASSWORD', None)
+        db = pg8000.Connection(host=pghost, port=master_port, 
+        user=ENV.USER, database=ENV.DBNAME, password=pgpassword,
+        options='-c gp_session_role=utility')
+    except pg8000.errors.InterfaceError, e:
+        gpmlib.log_error('Database is not started.')
+        gpmlib.error(e)
+
+
+    try:
+        if not gpmlib.chk_db_running(db, True):
+            gpmlib.error('Database is not running')
+
+        if gpmlib.chk_mirrors_configured(db):
+            gpmlib.error('gpaddmirrors can only be run without mirrors configured')
+
+        if not opt['-i']:
+            calc_mirror_port_base(db)
+
+        qes = gpmlib.get_qe_details(db, 'content')
+        qe_hosts = [ x['hostname'] for x in qes ]
+        hosts = gpmlib.unique(qe_hosts)
+        multi_home = gpmlib.chk_multi_home(hosts)
+
+        # parse mirror config or generate spread or group mirror config
+        if opt['-i']:
+            mirrors = parseMirrorConfig()
+        else:
+            mirrors = generate_mirrors(db, qes, multi_home)
+
+        (mirrors, new_addr) = chk_mirror_config(db, qes, mirrors)
+
+    except pg8000.errors.InterfaceError, e:
+        gpmlib.error(e)
+    except pg8000.errors.ProgrammingError, e:
+        gpmlib.error(e)
+
+    if db:
+        db.close()
+        db = None
+
+    # yes or no
+    if not opt['-a']:
+        # display parameter setting
+        display_param(opt['-d'], master_port, qes, mirrors, multi_home)
+
+        if not yesorno('Continue with Greenplum Database mirror creation? [yY|nN]', 'User aborted'):
+            sys.exit(1)
+
+    gpmlib.log_info('Check mirror directories')
+    chk_mirror_dir(qes, mirrors)
+
+    # stop Greenplum database
+    gpmlib.log_info('Stop Greenplum database array')
+    e = os.system('gpstop -af %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+    ok = not e
+    if not ok:
+        gpmlib.error('gpstop failed')
+
+    # update pg_hba.conf
+    gpmlib.log_info('Update pg_hba.conf for new hosts')
+    if len(new_addr) > 0:
+        for qe in qes:
+            gpmlib.append_pg_hba(qe['hostname'], qe['datadir'], new_addr)
+
+    # copy data from primary segments to mirror segments
+    gpmlib.log_info('Create mirror segments')
+    if not create_mirrors(qes, mirrors):
+        gpmlib.error('Copy data from primary segments to mirror segments failed')
+
+    # start master in admin mode
+    e = os.system('gpstart -am %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+    ok = not e
+    if not ok:
+        gpmlib.error('Start master in admin mode failed')
+
+
+    standby_qd = None
+    try:
+        pghost = os.getenv('PGHOST', '127.0.0.1')
+        pgpassword = os.getenv('PGPASSWORD', None)
+        db = pg8000.Connection(host=pghost, port=master_port, 
+        user=ENV.USER, database=ENV.DBNAME, password=pgpassword,
+        options='-c gp_session_role=utility')
+
+        # update gp_configuration
+        gpmlib.log_info('Update gp_configuration')
+        update_gp_conf(db, mirrors)
+
+        # get standby count
+        standby_count = get_standby_count(db)
+
+        if standby_count != 0:
+            # get standby details
+            standby_qd = get_standby_details(db)
+
+    except pg8000.errors.InterfaceError, e:
+        gpmlib.error(e)
+    except pg8000.errors.ProgrammingError, e:
+        gpmlib.error(e)
+
+    if db:
+        db.close()
+        db = None
+
+    # stop master
+    e = os.system('gpstop -ma %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+    ok = not e
+    if not ok:
+        gpmlib.error('Stop master in admin mode failed')
+
+    # start Greenplum Database
+    gpmlib.log_info('Start Greenplum database')
+    e = os.system('gpstart -a %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+    ok = not e
+    if not ok:
+        gpmlib.error('Start Greenplum database failed')
+
+
+    # start gpinitstandby
+    gpinitstandby = os.path.join(os.environ.get('GPHOME'), 'bin/gpinitstandby')
+    if standby_count != 0:
+        gpmlib.log_info('Standby master is configured for Greenplum Database, will sync standby master')
+        if gpmlib.file_exists(gpinitstandby):
+            (ok, out) = gpmlib.run_warn('%s -s %s -n -a' % (gpinitstandby, standby_qd['hostname']))
+        else:
+            gpmlib.fatal('Could not locate %s' % gpinitstandby)
+
+    gpmlib.log_info('-----------------------------------------------------------')
+    gpmlib.log_info('Successfully configured mirror segment instances')
+    gpmlib.log_info('Run gpstate -c to display primary/mirror configuration')
+    gpmlib.log_info('-----------------------------------------------------------')
+
+    sys.exit(arg['exit'])
+
+except KeyboardInterrupt:
+    sys.exit('\nUser Interrupted')
+
+
+
