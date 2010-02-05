@@ -130,3 +130,17 @@ def addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption):
     if includeNonInteractiveOption:
         addTo.add_option('-a', dest="interactive" , action='store_false', default=True,
                     help="quiet mode, do not require user input for confirmations")
+
+
+def addMasterDirectoryOptionForSingleClusterProgram(addTo):
+    """
+    Add the -d master directory option, intended to provide the value of the master data directory
+
+    For programs that operate on multiple clusters at once, this function is not appropriate
+    """
+    addTo.add_option('-d', '--master_data_directory', type='string',
+                        dest="masterDataDirectory",
+                        metavar="<master data directory>",
+                        help="Optional. The master host data directory. If not specified, the value set"\
+                            "for $MASTER_DATA_DIRECTORY will be used.")
+    

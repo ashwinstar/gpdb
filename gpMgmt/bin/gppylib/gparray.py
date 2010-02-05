@@ -42,6 +42,11 @@ FAULT_STRATEGY_NONE = 'n'
 FAULT_STRATEGY_FILE_REPLICATION = 'f'
 FAULT_STRATEGY_SAN = 's'
 VALID_FAULT_STRATEGY = [FAULT_STRATEGY_NONE, FAULT_STRATEGY_FILE_REPLICATION, FAULT_STRATEGY_SAN]
+FAULT_STRATEGY_LABELS = {FAULT_STRATEGY_NONE: "none", FAULT_STRATEGY_FILE_REPLICATION:"physical mirroring", \
+                                FAULT_STRATEGY_SAN:"SAN failover" }
+
+def getFaultStrategyLabel(strategy):
+    return FAULT_STRATEGY_LABELS[strategy]
 
 # ============================================================================
 class GpDB:

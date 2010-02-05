@@ -29,7 +29,7 @@
 # todo MIRRORING test cases where input file says to recover a file in-place (perhaps with a change to ports)
 # todo MIRRORING (bugfix) escaping of directory names in unix.LocalCopy
 # todo MIRRORING it's a little quirky that caller must set up failed/failover so that failover is in gparray but failed is not (if both set)...change that, or at least protect against problems
-#
+# todo MIRRORING when failing over to another host we may need to change port numbers as well!
 #
 #
 # Options removed when 3.4 gprecoverseg was implemented:
@@ -50,11 +50,12 @@ from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRE
 import os, sys, getopt, socket, StringIO, signal
 
 from gppylib import gparray, gplog, pgconf, userinput
+from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
 from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib.commands import base, gp, pg, unix
 from gppylib.operations.startSegments import *
 from gppylib.operations.buildMirrorSegments import *
+from gppylib.programs import programIoUtils
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
@@ -65,7 +66,7 @@ logger = gplog.get_default_logger()
 #-------------------------------------------------------------------------
 class GpRecoverSegmentProgram:
 
-#
+    #
     # Constructor:
     #
     # @param options the options as returned by the options parser
@@ -212,17 +213,6 @@ class GpRecoverSegmentProgram:
         else:
             return self.getRecoveryActionsFromConfiguration(gpArray)
 
-    def displaySegmentInfo(self, instanceType, seg):
-        paddingLen = 11 - len(instanceType)
-        padding = ""
-        for i in range(paddingLen):
-            padding = padding + " "
-
-        logger.info('%s instance host             %s= %s' % (instanceType, padding, seg.getSegmentHostName()))
-        logger.info('%s instance directory        %s= %s' % (instanceType, padding, seg.getSegmentDataDirectory()))
-        logger.info('%s instance port             %s= %d' % (instanceType, padding, seg.getSegmentPort()))
-        logger.info('%s instance replication port %s= %d' % (instanceType, padding, seg.getSegmentReplicationPort()))
-
     def displayRecovery(self, mirrorBuilder):
         logger.info('Greenplum instance recovery parameters')
         logger.info('---------------------------------------------------------')
@@ -253,11 +243,11 @@ class GpRecoverSegmentProgram:
             syncMode = "Full" if toRecover.isFullSynchronization() else "Incremental"
             logger.info("Synchronization mode                  = %s" % syncMode)
 
-            self.displaySegmentInfo("Failed", toRecover.getFailedSegment())
-            self.displaySegmentInfo("Recovery", toRecover.getLiveSegment())
+            programIoUtils.displaySegmentInfo("Failed", toRecover.getFailedSegment())
+            programIoUtils.displaySegmentInfo("Recovery", toRecover.getLiveSegment())
 
             if toRecover.getFailoverSegment() is not None:
-                self.displaySegmentInfo("Failover", toRecover.getFailoverSegment())
+                programIoUtils.displaySegmentInfo("Failover", toRecover.getFailoverSegment())
             else:
                 logger.info("Recover the failed segment in-place")
 
@@ -266,12 +256,11 @@ class GpRecoverSegmentProgram:
         logger.info('---------------------------------------------------------')
 
     def run(self):
-
-        self.__pool = base.WorkerPool(numWorkers=16) # todo MIRRORING configure number of workers
-        gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
-
         if self.__options.parallelDegree < 1 or self.__options.parallelDegree > 64:
             raise ProgramArgumentValidationException("Invalid parallelDegree provided with -B argument: %d" % self.__options.parallelDegree)
+
+        self.__pool = base.WorkerPool(self.__options.parallelDegree)
+        gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
 
         # verify "where to recover" options
         optionCnt = 0
@@ -307,15 +296,11 @@ class GpRecoverSegmentProgram:
             self.outputToFile(mirrorBuilder, self.__options.outputSampleConfigFile)
             logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
         else:
-
             mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
 
-            # going to do real work...so check with user
             if self.__options.interactive:
-                # display parameter setting
                 self.displayRecovery(mirrorBuilder)
-                msg = "\nContinue with segment recovery procedure"
-                if not userinput.ask_yesno(None,msg,'N'):
+                if not userinput.ask_yesno(None, "\nContinue with segment recovery procedure", 'N'):
                     raise UserAbortedException()
 
             mirrorBuilder.buildMirrors("recover", gpEnv, gpArray )
@@ -343,11 +328,7 @@ class GpRecoverSegmentProgram:
 
         addTo = OptionGroup(parser, "Connection Options")
         parser.add_option_group(addTo)
-        addTo.add_option('-d', '--master_data_directory', type='string',
-                            dest="masterDataDirectory",
-                            metavar="<master data directory>",
-                            help="Optional. The master host data directory. If not specified, the value set"\
-                                "for $MASTER_DATA_DIRECTORY will be used.")
+        addMasterDirectoryOptionForSingleClusterProgram(addTo)
 
         addTo = OptionGroup(parser, "Recovery Source Options")
         parser.add_option_group(addTo)
@@ -355,9 +336,11 @@ class GpRecoverSegmentProgram:
                             dest="recoveryConfigFile", 
                             metavar="<configFile>",
                             help="Recovery configuration file")
-        addTo.add_option("-o", None, dest="outputSampleConfigFile",
+        addTo.add_option("-o", None,
+                            dest="outputSampleConfigFile",
                             metavar="<configFile>", type="string",
-                            help="Sample configuration file name to output")
+                            help="Sample configuration file name to output; "
+                                "this file can be passed to a subsequent call using -i option")
 
         addTo = OptionGroup(parser, "Recovery Destination Options")
         parser.add_option_group(addTo)
