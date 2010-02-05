@@ -580,7 +580,8 @@ void DatabaseInfo_Check(DatabaseInfo *info)
 						&info->pgClassStoredRelations[sr].tablespaceRelFile,
 						&info->relSegFiles[rsf].tablespaceRelFile);
 		if (cmp != 0)
-			elog(ERROR, "In database %u, stored relation doesn't match relation file on disk "
+		{
+			elog(WARNING, "In database %u, stored relation doesn't match relation file on disk "
 						"(stored tablespace %u, disk file tablespace %u, "
 						"stored relation %u, disk file relation %u)",
 						info->database,
@@ -588,6 +589,8 @@ void DatabaseInfo_Check(DatabaseInfo *info)
 						info->relSegFiles[rsf].tablespaceRelFile.tablespace,
 						info->pgClassStoredRelations[sr].tablespaceRelFile.relation,
 						info->relSegFiles[rsf].tablespaceRelFile.relation);
+			return;
+		}
 
 		/*
 		 * Skip multiple relation segment files.
@@ -609,16 +612,22 @@ void DatabaseInfo_Check(DatabaseInfo *info)
 			rsf >= info->relSegFilesCount)
 		{
 			if (sr < info->pgClassStoredRelationsCount)
-				elog(ERROR, "In database %u, extra stored relation (tablespace %u, relation %u)",
+			{
+				elog(WARNING, "In database %u, extra stored relation (tablespace %u, relation %u)",
 				     info->database,
 					 info->pgClassStoredRelations[sr].tablespaceRelFile.tablespace,
 					 info->pgClassStoredRelations[sr].tablespaceRelFile.relation);
+				return;
+			}
 
 			if (rsf < info->relSegFilesCount)
-				elog(ERROR, "In database %u, extra relation file on disk (tablespace %u, relation %u)",
+			{
+				elog(WARNING, "In database %u, extra relation file on disk (tablespace %u, relation %u)",
 				     info->database,
 					 info->relSegFiles[rsf].tablespaceRelFile.tablespace,
 					 info->relSegFiles[rsf].tablespaceRelFile.relation);
+				return;
+			}
 			break;
 		}
 	}
@@ -644,9 +653,12 @@ void DatabaseInfo_Check(DatabaseInfo *info)
 									&dbDirNode,
 									&checkDatabaseEntry,
 									&checkDatabaseDirEntry))
-			elog(ERROR, "Did not find relation's database directory (tablespace %u, database %u) in persistent database lookup",
+		{
+			elog(WARNING, "Did not find relation's database directory (tablespace %u, database %u) in persistent database lookup",
 				 dbDirNode.tablespace,
 				 dbDirNode.database);
+			return;
+		}
 	}
 	
 }
