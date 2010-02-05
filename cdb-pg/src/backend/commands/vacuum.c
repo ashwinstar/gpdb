@@ -649,7 +649,16 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 	 * Finish up processing.
 	 * This matches the CommitTransaction waiting for us in
 	 * PostgresMain().
+	 *
+	 * MPP-7632 and MPP-7984: if we're in a vacuum analyze we need to
+	 * make sure that this transaction we're in has the right
+	 * properties
 	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		/* Set up the distributed transaction context. */
+		setupRegularDtxContext();
+	}
 	StartTransactionCommand();
 
 	/*
