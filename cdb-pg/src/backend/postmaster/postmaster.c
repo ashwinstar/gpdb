@@ -1711,7 +1711,7 @@ ServerLoop(void)
 		fd_set		rmask;
 		int			selres;
 		int			s;
-		bool        fastSelect = false;
+        struct timeval timeout;
 
 		/*
 		 * Wait for a connection request to arrive.
@@ -1735,26 +1735,34 @@ ServerLoop(void)
          * I think there may still be a race in which we are signaled between the completion of unblock and the sleep.
          */
         if ( filerep_has_signaled_state_change ||
-             need_call_reaper ||
-             isPrimaryMirrorModeTransitionRequested())
+             need_call_reaper )
         {
-            fastSelect = true;
+            /* must set timeout each time; some OSes change it! */
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 0;
         }
-
-        if (pmState == PM_WAIT_DEAD_END)
+        else if (isPrimaryMirrorModeTransitionRequested() ||
+                 pmState == PM_WAIT_DEAD_END)
         {
-            if ( ! fastSelect )
-                pg_usleep( 100000L); /* 100 msec seems reasonable */
-            selres = 0;
+            /* must set timeout each time; some OSes change it! */
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 100 * 1000;
         }
         else
         {
             /* must set timeout each time; some OSes change it! */
-            struct timeval timeout;
-
-            timeout.tv_sec = fastSelect ? 0 : 60;
+            timeout.tv_sec = 60;
             timeout.tv_usec = 0;
+        }
 
+        if (pmState == PM_WAIT_DEAD_END)
+        {
+            /* will be the medium wait time unless waiting for reaper */
+            pg_usleep( timeout.tv_usec + timeout.tv_sec * 1000 * 1000);
+            selres = 0;
+        }
+        else
+        {
             selres = select(nSockets, &rmask, NULL, NULL, &timeout);
         }
 
