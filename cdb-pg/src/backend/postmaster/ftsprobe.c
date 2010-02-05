@@ -1198,9 +1198,56 @@ probePublishUpdate(uint8 *probe_results)
 			uint8 segStatus;
 
 			/*
-			 * XXX: handle PROBE_FAULT here ? if we have a segment alive, but it 
-			 * is reporting a fault, then we need to do *something* to it.
+			 * Handle PROBE_FAULT here ? if we have a segment alive,
+			 * but it is reporting a fault, then we need to do
+			 * *something* to it.
+			 *
+			 * "fault" is a Filerep concept.
+			 *
+			 * See FtsTestOneSegment(), PROBE_FAULT implies PROBE_ALIVE.
 			 */
+			if (failover_strategy == 'f')
+			{
+				primary = segInfo;
+				if ((probe_results[primary->dbid] & PROBE_FAULT) == PROBE_FAULT)
+				{
+					mirror = getMirrorEntryByContent(cdb_component_dbs, primary->segindex, primary->dbid);
+
+					/*
+					 * There are 3 possibilities here:
+					 *    1) primary in fault, mirror happy:
+					 *             mirror is promoted.
+					 *    2) primary in fault, mirror dead
+					 *    3) primary in fault, mirror in fault
+					 *             primary-changelogging, mirror considered dead.
+					 *
+					 * We're going to depend on the code further down to make the actual changes,
+					 * here we just mark which segments to consider "down."
+					 */
+					if (mirror != NULL)
+					{
+						if (((probe_results[mirror->dbid] & PROBE_FAULT) == PROBE_FAULT) ||
+							((probe_results[mirror->dbid] & PROBE_ALIVE) == 0))
+						{
+							elog(LOG, "probePublishUpdate: dbid %d reported fault mirror %d considered dead (0x%x)", primary->dbid, mirror->dbid, probe_results[mirror->dbid]);
+							/* consider mirror dead */
+							probe_results[mirror->dbid] &= ~PROBE_ALIVE;
+						}
+						else
+						{
+							elog(LOG, "probePublishUpdate: dbid %d reported fault mirror %d looks good (0x%x)", primary->dbid, mirror->dbid, probe_results[mirror->dbid]);
+							/* mirror is happy */
+							probe_results[primary->dbid] &= ~PROBE_ALIVE;
+						}
+						probe_results[mirror->dbid] &= ~PROBE_FAULT;
+					}
+					else
+					{
+						elog(LOG, "probePublishUpdate: dbid %d reported fault could find no mirror", primary->dbid);
+					}
+					probe_results[primary->dbid] &= ~PROBE_FAULT;
+				}
+			}
 
 			/* We're no longer responding to probes ? */
 			if ((probe_results[segInfo->dbid] & PROBE_ALIVE) == 0)
@@ -1238,17 +1285,14 @@ probePublishUpdate(uint8 *probe_results)
 						if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 							elog(LOG, "probePublishUpdate: dbid %d has mirror %d", segInfo->dbid, mirror->dbid);
 
-						if (failover_strategy == 'f')
+						if (FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
 						{
-							if (((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE) &&
-								FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
+							if (failover_strategy == 'f' &&
+								((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE))
 							{
 								updateMirror = true;
 							}
-						}
-						else if (failover_strategy == 's')
-						{
-							if (FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
+							else if (failover_strategy == 's')
 							{
 								updateMirror = true;
 							}
@@ -1558,12 +1602,25 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 			valid   = (changes[i].newStatus & FTS_STATUS_ALIVE) ? true : false;
 			primary = (changes[i].newStatus & FTS_STATUS_PRIMARY) ? true : false;
 
-			count = snprintf(cmd, sizeof(cmd),
-							 "update %s set role='%c', status='%c' where dbid=CAST(%d AS SMALLINT)",
-							 GpSegmentConfigRelationName,
-							 primary ? 'p' : 'm',
-							 valid ? 'u' : 'd',
-							 changes[i].dbid);
+			if (failover_strategy == 'f')
+			{
+				count = snprintf(cmd, sizeof(cmd),
+								 "update %s set role='%c', status='%c'%s where dbid=CAST(%d AS SMALLINT)",
+								 GpSegmentConfigRelationName,
+								 primary ? 'p' : 'm',
+								 valid ? 'u' : 'd',
+								 (valid && primary) ? ", mode = 'c'" : "",
+								 changes[i].dbid);
+			}
+			else
+			{
+				count = snprintf(cmd, sizeof(cmd),
+								 "update %s set role='%c', status='%c' where dbid=CAST(%d AS SMALLINT)",
+								 GpSegmentConfigRelationName,
+								 primary ? 'p' : 'm',
+								 valid ? 'u' : 'd',
+								 changes[i].dbid);
+			}
 
 			if (count >= sizeof(cmd))
 			{
