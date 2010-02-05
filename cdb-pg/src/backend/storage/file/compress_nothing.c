@@ -28,7 +28,7 @@ bfz_nothing_read_ex(bfz_t * thiz, char *buffer, int size)
 		int			i = readAndRetry(thiz->fd, buffer, size);
 
 		if (i < 0)
-			elog(ERROR, "bfz_nothing_read_ex read failed");
+			elog(ERROR, "bfz_nothing_read_ex read failed with (errno %d) %m", errno);
 		if (i == 0)
 			break;
 		buffer += i;
@@ -45,7 +45,7 @@ bfz_nothing_write_ex(bfz_t * bfz, const char *buffer, int size)
 		int			i = writeAndRetry(bfz->fd, buffer, size);
 
 		if (i < 0)
-			elog(ERROR, "bfz_nothing_write_ex write failed");
+			elog(ERROR, "bfz_nothing_write_ex write failed with (errno %d) %m", errno);
 		buffer += i;
 		size -= i;
 	}

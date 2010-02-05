@@ -19,7 +19,7 @@ bfz_zlib_close_ex(bfz_t * thiz)
 	if (fs->f)
 	{
 		if ((thiz->fd = dup(thiz->fd)) == -1)
-			elog(ERROR, "dup failed");
+			elog(ERROR, "dup failed with (errno %d) %m", errno);
 		gzclose(fs->f);
 	}
 	free(fs);
@@ -34,7 +34,7 @@ gzwrite_fully(gzFile f, const char *buffer, int size)
 		int			i = gzwrite(f, (void *) buffer, size);
 
 		if (i <= 0)
-			elog(ERROR, "gzwrite write failed");
+			elog(ERROR, "gzwrite write failed with (errno %d) %m", errno);
 		buffer += i;
 		size -= i;
 	}
@@ -50,7 +50,7 @@ gzread_fully(gzFile f, char *buffer, int size)
 		int			i = gzread(f, buffer, size);
 
 		if (i < 0)
-			elog(ERROR, "gzread read failed");
+			elog(ERROR, "gzread read failed with (errno %d) %m", errno);
 		if (i == 0)
 			break;
 		buffer += i;
@@ -94,7 +94,7 @@ bfz_zlib_init(bfz_t * thiz)
 		fs->f = gzdopen(thiz->fd, "rb");
 
 	if (!fs->f)
-		elog(ERROR, "bfz: gzdopen failed");
+		elog(ERROR, "bfz: gzdopen failed with (errno %d) %m", errno);
 }
 
 static void *
@@ -107,11 +107,11 @@ bfz_threaded_zlib_compress(void *arg)
 	char		buf[BFZ_BUFFER_SIZE];
 
 	if (!f)
-		elog(ERROR, "bfz: gzdopen failed");
+		elog(ERROR, "bfz: gzdopen failed with (errno %d) %m", errno);
 	while ((size = pipe_read(&fs->pipe, buf, sizeof buf)) != 0)
 		gzwrite_fully(f, buf, size);
 	if ((thiz->fd = dup(thiz->fd)) == -1)
-		elog(ERROR, "dup failed");
+		elog(ERROR, "dup failed with (errno %d) %m", errno);
 	gzclose(f);
 
 	return NULL;
@@ -127,13 +127,13 @@ bfz_threaded_zlib_uncompress(void *arg)
 	char		buf[BFZ_BUFFER_SIZE];
 
 	if (!f)
-		elog(ERROR, "bfz: gzdopen failed");
+		elog(ERROR, "bfz: gzdopen failed with (errno %d) %m", errno);
 
 	while ((size = gzread_fully(f, buf, sizeof buf)) != 0)
 		pipe_write(&fs->pipe, buf, size);
 
 	if ((thiz->fd = dup(thiz->fd)) == -1)
-		elog(ERROR, "dup failed");
+		elog(ERROR, "dup failed with (errno %d) %m", errno);
 
 	gzclose(f);
 	pipe_done_writing(&fs->pipe);

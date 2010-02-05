@@ -89,12 +89,12 @@ bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress)
 #endif
 
 	if (thiz->fd == -1)
-		elog(ERROR, "bfz: mkstemp failed");
+		elog(ERROR, "bfz: mkstemp failed with (errno %d) %m", errno);
 
 	RegisterXactCallbackOnce(bfz_close_callback, thiz);
 
 	if (unlink(name))
-		elog(ERROR, "bfz: unlink failed");
+		elog(ERROR, "bfz: unlink failed with (errno %d) %m", errno);
 
 	thiz->mode = BFZ_MODE_APPEND;
 	thiz->compression_index = compress;
@@ -142,7 +142,7 @@ bfz_append_end(bfz_t * thiz)
 	fs->close_ex(thiz);
 
 	if ((tot_compressed = lseek(thiz->fd, 0, SEEK_END)) == -1)
-		elog(ERROR, "bfz: lseek failed");
+		elog(ERROR, "bfz: lseek failed with (errno %d) %m", errno);
 
 	elog(DEBUG5, "bfz file size uncompressed %lld, compressed %lld, savings %d%%", 
 		 (long long) tot_bytes, (long long) tot_compressed, tot_bytes == 0 ? 0 : (int) ((tot_bytes - tot_compressed) * 100 / tot_bytes));
@@ -157,7 +157,7 @@ bfz_scan_begin(bfz_t * thiz)
 
 	Assert(thiz->mode == BFZ_MODE_FREED);
 	if (lseek(thiz->fd, 0, SEEK_SET) == -1)
-		elog(ERROR, "bfz: lseek failed");
+		elog(ERROR, "bfz: lseek failed with (errno %d) %m", errno);
 	thiz->mode = BFZ_MODE_SCAN;
 	compression_algorithms[thiz->compression_index].init(thiz);
 	fs = thiz->freeable_stuff;
