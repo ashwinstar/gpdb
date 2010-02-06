@@ -12,6 +12,7 @@
 # todo MIRRORING update hba.conf on all originals if we changed any hosts: (call update_original_segments from gpexpand)
 # todo MIRRORING is it okay to leave the temporary directory sitting around (as gpexpand seems to do?)
 # todo MIRRORING need to compress arguments sent to segments?  I think command lines can be pretty long, but should test it
+# todo MIRRORING make sure we get good errors out when trying to build mirror data directories
 #
 # todo MIRRORING we should copy postgresql.conf from some other segment rather than the master (see what gpexpand does) since settings can be different on segments
 # todo MIRRORING: make sure created directories have the right permissions?

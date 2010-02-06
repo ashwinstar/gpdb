@@ -56,7 +56,7 @@ class GpAddMirrorsProgram:
         returns a GpMirrorListToBuild object
         """
 
-        if self.__options.configFile is not None:
+        if self.__options.mirrorConfigFile is not None:
             return self.__getMirrorsToBuildFromConfigFile(gpArray)
         else:
             return self.__generateMirrorsToBuild(gpArray)
@@ -129,7 +129,6 @@ class GpAddMirrorsProgram:
         # figure out what needs to be done
         mirrorBuilder = self.getMirrorsToBuildBasedOnOptions(gpArray)
         mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
-
 
         if self.__options.outputSampleConfigFile is not None:
             # just output config file and done
