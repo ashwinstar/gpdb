@@ -7680,8 +7680,36 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 	 */
 	if (OidIsValid(RangeVarGetRelid(stmt->relation, true)) && stmt->idxname)
 	{
-		Relation rel = heap_openrv(stmt->relation, AccessShareLock);
+		Relation rel;
 
+		PG_TRY();
+		{
+			rel = heap_openrv(stmt->relation, AccessShareLock);
+		}
+		PG_CATCH();
+		{
+			/* 
+			 * In the case of the table being dropped concurrently, 
+			 * throw a friendlier error than:
+			 * 
+			 * "could not open relation with relid 1234"
+			 */
+			if (stmt->relation->schemaname)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_TABLE),
+						 errmsg("relation \"%s.%s\" does not exist",
+								stmt->relation->schemaname, stmt->relation->relname),
+						 errOmitLocation(true)));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_TABLE),
+						 errmsg("relation \"%s\" does not exist",
+								stmt->relation->relname),
+						 errOmitLocation(true)));
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+		
 		if (RelationBuildPartitionDesc(rel, false))
 			stmt->do_part = true;
 

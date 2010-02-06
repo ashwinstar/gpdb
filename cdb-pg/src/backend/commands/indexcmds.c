@@ -171,7 +171,33 @@ DefineIndex(RangeVar *heapRelation,
 	 * (but not VACUUM).
 	 */
 	heap_lockmode = concurrent ? ShareUpdateExclusiveLock : ShareLock;
-	rel = heap_openrv(heapRelation, heap_lockmode);
+	PG_TRY();
+	{
+		rel = heap_openrv(heapRelation, heap_lockmode);
+	}
+	PG_CATCH();
+	{
+		/* 
+		 * In the case of the table being dropped concurrently, 
+		 * throw a friendlier error than:
+		 * 
+		 * "could not open relation with relid 1234"
+		 */
+		if (heapRelation->schemaname)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_TABLE),
+					 errmsg("relation \"%s.%s\" does not exist",
+							heapRelation->schemaname, heapRelation->relname),
+					 errOmitLocation(true)));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_TABLE),
+					 errmsg("relation \"%s\" does not exist",
+							heapRelation->relname),
+					 errOmitLocation(true)));
+		PG_RE_THROW();
+	}
+	PG_END_TRY();		
 
 	relationId = RelationGetRelid(rel);
 	namespaceId = RelationGetNamespace(rel);
