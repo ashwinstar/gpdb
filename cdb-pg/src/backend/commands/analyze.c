@@ -1186,9 +1186,10 @@ static void dropSampleTable(Oid sampleTableOid)
 void analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *relPages)
 {	
 	StringInfoData 	sqlstmt;
-	bool			localOnly = false;
+	bool			masterOnly = false;
 	Oid				schemaOid = InvalidOid;
 	float4          spiResult[2];
+	GpPolicy		*distributionPolicy = NULL;
 	
 	*relPages = 0.0;		
 	*relTuples = 0.0;			
@@ -1197,12 +1198,16 @@ void analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4
 	
 	schemaOid = get_rel_namespace(relationOid);
 	
-	localOnly = (Gp_role == GP_ROLE_UTILITY || 
-			IsSystemNamespace(schemaOid) ||
-			IsToastNamespace(schemaOid) ||
-			IsAoSegmentNamespace(schemaOid));
+	distributionPolicy = GpPolicyFetch(CurrentMemoryContext, relationOid);
 	
-	if (localOnly)
+	masterOnly = (Gp_role == GP_ROLE_UTILITY 
+			|| IsSystemNamespace(schemaOid)
+			|| IsToastNamespace(schemaOid)
+			|| IsAoSegmentNamespace(schemaOid)
+			|| (distributionPolicy == NULL)
+			|| (distributionPolicy->ptype == POLICYTYPE_ENTRY));
+	
+	if (masterOnly)
 	{
 		appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
 				"from pg_class c where c.oid=%d", relationOid);		
