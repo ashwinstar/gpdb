@@ -335,18 +335,30 @@ FaultInjector_InjectFaultIfSet(
 			
 			break;
 		case FaultInjectorTypeFatal:
+			entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+			
+			FaultInjector_UpdateHashEntry(entryLocal);	
+			
 			ereport(FATAL, 
 					(errmsg("Fault is injected identifier:'%s'  ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));	
 
 			break;
 		case FaultInjectorTypePanic:
+			entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+			
+			FaultInjector_UpdateHashEntry(entryLocal);	
+			
 			ereport(PANIC, 
 					(errmsg("Fault is injected identifier:'%s'  ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));	
 
 			break;
 		case FaultInjectorTypeError:
+			entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+			
+			FaultInjector_UpdateHashEntry(entryLocal);	
+			
 			ereport(ERROR, 
 					(errmsg("Fault is injected identifier:'%s'  ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));	
