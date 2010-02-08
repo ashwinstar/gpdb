@@ -60,7 +60,7 @@ from gppylib.programs import programIoUtils
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
-from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile
+from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile
 
 logger = gplog.get_default_logger()
 
@@ -77,18 +77,20 @@ class GpRecoverSegmentProgram:
         self.__pool = None
 
     def outputToFile(self, mirrorBuilder, fileName):
-        with open(fileName, 'w') as file:
-            for mirror in mirrorBuilder.getMirrorsToBuild():
-                seg = segToRecover.getFailedSegment()
-                file.write('%s:%d:%s' % (seg.getSegmentHostName(), seg.getSegmentPort(), seg.getSegmentDataDirectory()))
+        lines = []
+        for mirror in mirrorBuilder.getMirrorsToBuild():
+            str = ""
+            seg = segToRecover.getFailedSegment()
+            str += ('%s:%d:%s' % (seg.getSegmentHostName(), seg.getSegmentPort(), seg.getSegmentDataDirectory()))
 
-                seg = segToRecover.getFailoverSegment()
-                if seg is not None:
-                    file.write(' ')
-                    file.write('%s:%d:%d:%s' % (seg.getSegmentHostName(),
-                        seg.getSegmentPort(), seg.getSegmentReplicationPort(), seg.getSegmentDataDirectory()))
+            seg = segToRecover.getFailoverSegment()
+            if seg is not None:
+                str += ' '
+                str += ('%s:%d:%d:%s' % (seg.getSegmentHostName(),
+                    seg.getSegmentPort(), seg.getSegmentReplicationPort(), seg.getSegmentDataDirectory()))
 
-                file.write('\n')
+            lines.append(str)
+        writeLinesToFile(fileName, lines)
 
     def getRecoveryActionsFromConfigFile(self, gpArray):
         """

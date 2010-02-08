@@ -10,7 +10,7 @@ This file defines the interface that can be used to
    as well as the data object returned by the
 
 """
-import os
+import os, copy
 
 from gppylib.mainUtils import *
 from gppylib.gplog import *
@@ -20,6 +20,8 @@ from gppylib.gparray import GpArray, GpDB
 from gppylib.db import dbconn
 
 logger = get_default_logger()
+
+# todo MIRRORING: after update in db, we should update the gparray to have the now updated values in getStrategyAsLoadedFromDb and getSegmentsAsLoadedFromDb
 
 #
 # An implementation of GpConfigurationProvider will provide functionality
@@ -115,7 +117,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         if strategy is None:
             raise Exception("Database does not contain gp_fault_strategy entry")
 
-        result = GpArray(segments, origSegments)
+        result = GpArray(segments, origSegments, copy.copy(strategy))
         result.strategy = strategy
 
         return result
@@ -139,7 +141,8 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         #
         # for now, we simply update all fields.  This could be optimized later -- to avoid
         #   overwriting status if it's unchanged in-memory, for example
-        # Need to figure out the interaction of scripts with fault prober
+        #
+        # It is assumed that external code has paused the fault prober while this runs, as necessary
         #
         for seg in gpArray.getDbList():
             originalSeg = dbIdToOriginal.get(seg.getSegmentDbId())
@@ -170,7 +173,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                 sql = "INSERT INTO pg_catalog.pg_filespace_entry (fsefsoid, fsedbid, fselocation)\n" + \
                       "SELECT fs.oid, " + \
                        self.__toSqlIntValue(seg.getSegmentDbId()) + ",\n" + \
-                       self.__toSqlTextValue(seg.getSegmentDataDirectory()) + ",\n" + \
+                       self.__toSqlTextValue(seg.getSegmentDataDirectory()) + "\n" + \
                        "FROM pg_catalog.pg_filespace fs WHERE fs.fsname = 'pg_system'"
                 dbconn.execSQL(conn, sql) # todo: assert that 1 was inserted
 
@@ -212,6 +215,12 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                             self.__toSqlCharValue(changeDescription) + "\n)"
 
                 dbconn.execSQL(conn, sql) # todo: assert that 1 was inserted
+
+        if gpArray.getStrategyAsLoadedFromDb() != gpArray.getFaultStrategy():
+            logger.info("Setting fault strategy to " + gpArray.getFaultStrategy()[0])
+            sql = "UPDATE gp_fault_strategy\n" + \
+                  "SET fault_strategy = " + self.__toSqlCharValue(gpArray.getFaultStrategy()[0]) + "\n"
+            dbconn.execSQL(conn, sql) # todo: assert that 1 was inserted
 
         dbconn.execSQL(conn, "COMMIT")
         conn.close()

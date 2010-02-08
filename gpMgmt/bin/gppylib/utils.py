@@ -63,13 +63,18 @@ def isNone( value):
         isN= True
     return isN 
 
-def readAllLinesFromFile(file):
+def readAllLinesFromFile(fileName):
     res = []
-    with open(file) as f:
+    with open(fileName) as f:
         for line in f:
             res.append(line)
     return res
 
+def writeLinesToFile(fileName, lines):
+    with open(fileName, 'w') as f:
+        for line in lines:
+            f.write(line)
+            f.write('\n')
 
 #############
 def parseSingleFile(line):

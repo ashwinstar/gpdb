@@ -139,7 +139,8 @@ class GpMirrorListToBuild:
         copyDirectives = []
         for toRecover in self.__mirrorsToBuild:
             if toRecover.isFullSynchronization():
-                cleanupDirectives.append(GpCleanupSegmentDirectoryDirective(toRecover.getFailedSegment()))
+                if toRecover.getFailedSegment() is not None:
+                    cleanupDirectives.append(GpCleanupSegmentDirectoryDirective(toRecover.getFailedSegment()))
 
                 if toRecover.getFailoverSegment() is not None:
                     targetSegment = toRecover.getFailoverSegment()

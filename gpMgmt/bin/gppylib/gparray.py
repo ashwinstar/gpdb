@@ -620,7 +620,7 @@ class GpArray:
     """
 
     # --------------------------------------------------------------------
-    def __init__(self, segments, segmentsAsLoadedFromDb=None):
+    def __init__(self, segments, segmentsAsLoadedFromDb=None, strategyLoadedFromDb=None):
         """
         segmentsInDb is used only be the configurationImpl* providers; it is used to track the state of the
           segments in the database
@@ -635,6 +635,7 @@ class GpArray:
         self.expansionSegments=[]
         self.numPrimarySegments = 0
         self.__segmentsAsLoadedFromDb = segmentsAsLoadedFromDb
+        self.__strategyLoadedFromDb = strategyLoadedFromDb
 
         self.strategy = 'n'
 
@@ -655,20 +656,8 @@ class GpArray:
 
             # Handle regular segments
             elif segdb.isSegmentQE():
-                content = segdb.getSegmentContentId()
+                self.addSegmentDb(segdb)
 
-                # Todo: Relax the requirement that the segdbs must be sorted 
-                # in content order.
-                if len(self.segments) <= content:
-                    self.segments.insert(content, Segment())
-                
-                seg = self.segments[content]
-                if segdb.isSegmentPrimary(True):
-                    seg.addPrimary(segdb)
-                    self.numPrimarySegments += 1
-                else:
-                    seg.addMirror(segdb)
-                    
             else:
                 # Not a master, standbymaster, primary, or mirror?
                 # shouldn't even be possible.
@@ -679,6 +668,19 @@ class GpArray:
         if self.master is None:
             logger.error("FATAL - no master dbs defined!")
             raise Exception("Error: GpArray() - no master dbs defined")
+
+    def addSegmentDb(self, segdb):
+        content = segdb.getSegmentContentId()
+
+        while len(self.segments) <= content:
+            self.segments.insert(content, Segment())
+
+        seg = self.segments[content]
+        if segdb.isSegmentPrimary(True):
+            seg.addPrimary(segdb)
+            self.numPrimarySegments += 1
+        else:
+            seg.addMirror(segdb)
 
     # --------------------------------------------------------------------
     @staticmethod
@@ -769,6 +771,12 @@ class GpArray:
             fp.write(repr(gpdb) + '\n')
         fp.close()
 
+    def setFaultStrategy(self, strategy):
+        checkNotNone("strategy", strategy)
+        if not strategy in VALID_FAULT_STRATEGY :
+            raise Exception("Invalid strategy '%s'" % strategy)
+        self.strategy = [strategy]
+
     def getFaultStrategy(self):
         """
 
@@ -828,7 +836,7 @@ class GpArray:
                dbs.extend(seg.get_dbs()) 
         return dbs
 
-    # --------------------------------------------------------------------    
+    # --------------------------------------------------------------------
     def getExpansionSegDbList(self):
         """Returns a list of all GpDb objects that make up the new segments
         of an expansion"""
@@ -1357,5 +1365,16 @@ class GpArray:
             """
         self.__segmentsAsLoadedFromDb = segments
 
+    def getStrategyAsLoadedFromDb(self):
+        """
+        To be called by the configuration providers only
+        """
+        return self.__strategyLoadedFromDb
+
+    def setStrategyAsLoadedFromDb(self, strategy):
+        """
+            To be called by the configuration providers only
+            """
+        self.__strategyLoadedFromDb = strategy
 
 # === EOF ====
