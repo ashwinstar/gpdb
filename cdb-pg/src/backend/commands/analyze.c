@@ -114,6 +114,9 @@ static List	*buildExplicitAttributeNames(Oid relationOid, VacuumStmt *stmt);
 static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 *reltuples, float4 *relpages);
 static void gp_statistics_estimate_reltuples_relpages_ao_rows(Relation rel, float4 *reltuples, float4 *relpages);
 static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4 *reltuples, float4 *relpages);
+static void analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *relPages);
+static bool isMasterOnly(Oid relationOid);
+static void analyzeEstimateIndexpages(Oid relationOid, Oid indexOid, float4 *indexPages);
 
 /* Attribute-type related functions */
 static bool hasOrderDefined(Oid relationOid, const char *attributeName);
@@ -681,7 +684,6 @@ static List *analyzableAttributes(Relation candidateRelation)
 	return lAttNames;
 }
 
-
 /**
  * This method is called once all the transactions and snapshots have been set up.
  * At a very high-level, it performs two functions:
@@ -706,7 +708,9 @@ static void analyzeRelation(Relation relation, List *lAttributeNames)
 	float4 estimatedRelTuples = 0.0;
 	float4 estimatedRelPages = 0.0;
 	float4 sampleTableRelTuples = 0.0;
-				
+	List	*indexOidList = NIL;
+	ListCell	*lc = NULL;
+	
 	relationOid = RelationGetRelid(relation);
 	
 	/**
@@ -720,6 +724,29 @@ static void analyzeRelation(Relation relation, List *lAttributeNames)
 	 * Step 2: update the pg_class entry.
 	 */
 	updateReltuplesRelpagesInCatalog(relationOid, estimatedRelTuples, estimatedRelPages);
+	
+	/* Find relpages of each index and update these as well */
+	indexOidList = RelationGetIndexList(relation);
+	foreach (lc, indexOidList)
+	{
+		float4 estimatedIndexTuples = estimatedRelTuples;
+		float4 estimatedIndexPages = 0;
+
+		Oid	indexOid = lfirst_oid(lc);
+		Assert(indexOid != InvalidOid);
+		
+		/**
+		 * NOTE: we don't attempt to estimate the number of tuples in an index.
+		 * We will assume it to be equal to the estimated number of tuples in the relation.
+		 * This does not hold for partial indexes. The number of tuples matching will be
+		 * derived in selfuncs.c using the base table statistics.
+		 */
+		analyzeEstimateIndexpages(relationOid, indexOid, &estimatedIndexPages);
+		
+		elog(elevel, "ANALYZE estimated reltuples=%f, relpages=%f for index %s", estimatedIndexTuples, estimatedIndexPages, get_rel_name(indexOid));
+		
+		updateReltuplesRelpagesInCatalog(indexOid, estimatedIndexTuples, estimatedIndexPages);
+	}
 	
 	/* report results to the stats collector, too */
 	pgstat_report_analyze(relation, estimatedRelTuples, 0 /*totaldeadrows*/);
@@ -1172,6 +1199,64 @@ static void dropSampleTable(Oid sampleTableOid)
 	pfree((void *)sampleTableName);
 }
 
+/**
+ * Method determines if a relation is master-only or distributed among segments.
+ * Input:
+ * 	relationOid
+ * Output:
+ * 	true if masteronly
+ */
+static bool isMasterOnly(Oid relationOid)
+{
+	Assert(relationOid != InvalidOid);
+	Oid				schemaOid = get_rel_namespace(relationOid);
+	GpPolicy		*distributionPolicy = GpPolicyFetch(CurrentMemoryContext, relationOid);
+	
+	bool masterOnly = (Gp_role == GP_ROLE_UTILITY 
+			|| IsSystemNamespace(schemaOid)
+			|| IsToastNamespace(schemaOid)
+			|| IsAoSegmentNamespace(schemaOid)
+			|| (distributionPolicy == NULL)
+			|| (distributionPolicy->ptype == POLICYTYPE_ENTRY));
+	
+	return masterOnly;
+}
+
+/**
+ * This method determines the number of pages corresponding to an index.
+ * Input:
+ * 	relationOid - relation being analyzed
+ * 	indexOid - index whose size is to be determined
+ * Output:
+ * 	indexPages - number of pages in the index
+ */
+static void analyzeEstimateIndexpages(Oid relationOid, Oid indexOid, float4 *indexPages)
+{
+	StringInfoData 	sqlstmt;
+	float4          spiResult[2];
+	
+	*indexPages = 0;			
+		
+	initStringInfo(&sqlstmt);
+	
+	if (isMasterOnly(relationOid))
+	{
+		appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
+				"from pg_class c where c.oid=%d", indexOid);		
+	}
+	else
+	{
+		appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
+				"from gp_dist_random('pg_class') c where c.oid=%d", indexOid);
+	}
+
+    spiExecuteWithCallback(sqlstmt.data, false /*readonly*/, 0 /*tcount */,
+        	                        spiCallback_getSingleResultRowArrayAsTwoFloat4, spiResult);
+    *indexPages = spiResult[1];
+
+	pfree(sqlstmt.data);
+	return;
+}
 
 /**
  * This method estimates reltuples/relpages for a relation. To do this, it employs
@@ -1183,31 +1268,17 @@ static void dropSampleTable(Oid sampleTableOid)
  * 	relTuples - estimated number of tuples
  * 	relPages  - estimated number of pages
  */
-void analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *relPages)
+static void analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *relPages)
 {	
 	StringInfoData 	sqlstmt;
-	bool			masterOnly = false;
-	Oid				schemaOid = InvalidOid;
 	float4          spiResult[2];
-	GpPolicy		*distributionPolicy = NULL;
 	
 	*relPages = 0.0;		
 	*relTuples = 0.0;			
 		
 	initStringInfo(&sqlstmt);
 	
-	schemaOid = get_rel_namespace(relationOid);
-	
-	distributionPolicy = GpPolicyFetch(CurrentMemoryContext, relationOid);
-	
-	masterOnly = (Gp_role == GP_ROLE_UTILITY 
-			|| IsSystemNamespace(schemaOid)
-			|| IsToastNamespace(schemaOid)
-			|| IsAoSegmentNamespace(schemaOid)
-			|| (distributionPolicy == NULL)
-			|| (distributionPolicy->ptype == POLICYTYPE_ENTRY));
-	
-	if (masterOnly)
+	if (isMasterOnly(relationOid))
 	{
 		appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
 				"from pg_class c where c.oid=%d", relationOid);		
@@ -2543,6 +2614,11 @@ gp_statistics_estimate_reltuples_relpages_oid(PG_FUNCTION_ARGS)
 			{
 				gp_statistics_estimate_reltuples_relpages_ao_cs(rel, &reltuples, &relpages);					
 			}	
+		}
+		else if (rel->rd_rel->relkind == RELKIND_INDEX)
+		{
+			reltuples = 1.0;
+			relpages = RelationGetNumberOfBlocks(rel);
 		}
 		else
 		{
