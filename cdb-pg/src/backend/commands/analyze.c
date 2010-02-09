@@ -735,15 +735,25 @@ static void analyzeRelation(Relation relation, List *lAttributeNames)
 		Oid	indexOid = lfirst_oid(lc);
 		Assert(indexOid != InvalidOid);
 		
-		/**
-		 * NOTE: we don't attempt to estimate the number of tuples in an index.
-		 * We will assume it to be equal to the estimated number of tuples in the relation.
-		 * This does not hold for partial indexes. The number of tuples matching will be
-		 * derived in selfuncs.c using the base table statistics.
-		 */
-		analyzeEstimateIndexpages(relationOid, indexOid, &estimatedIndexPages);
-		
-		elog(elevel, "ANALYZE estimated reltuples=%f, relpages=%f for index %s", estimatedIndexTuples, estimatedIndexPages, get_rel_name(indexOid));
+		if (estimatedRelTuples < 1.0)
+		{
+			/**
+			 * If there are no rows in the relation, no point trying to estimate
+			 * number of pages in the index.
+			 */
+			elog(elevel, "ANALYZE skipping index %s since relation %s has no rows.", get_rel_name(indexOid), get_rel_name(relationOid));
+		}
+		else 
+		{
+			/**
+			 * NOTE: we don't attempt to estimate the number of tuples in an index.
+			 * We will assume it to be equal to the estimated number of tuples in the relation.
+			 * This does not hold for partial indexes. The number of tuples matching will be
+			 * derived in selfuncs.c using the base table statistics.
+			 */
+			analyzeEstimateIndexpages(relationOid, indexOid, &estimatedIndexPages);
+			elog(elevel, "ANALYZE estimated reltuples=%f, relpages=%f for index %s", estimatedIndexTuples, estimatedIndexPages, get_rel_name(indexOid));
+		}
 		
 		updateReltuplesRelpagesInCatalog(indexOid, estimatedIndexTuples, estimatedIndexPages);
 	}
