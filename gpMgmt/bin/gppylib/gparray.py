@@ -48,6 +48,8 @@ FAULT_STRATEGY_LABELS = {FAULT_STRATEGY_NONE: "none", FAULT_STRATEGY_FILE_REPLIC
 def getFaultStrategyLabel(strategy):
     return FAULT_STRATEGY_LABELS[strategy]
 
+
+# ============================================================================
 # ============================================================================
 class GpDB:
     """
@@ -500,7 +502,16 @@ class Segment:
 
 
 
-def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase,dir_prefix):
+def createSegmentRows( hostlist
+                     , primary_list
+                     , primary_portbase
+                     , mirror_type
+                     , mirror_list
+                     , mirror_portbase
+                     , dir_prefix
+                     , primary_replication_portbase
+                     , mirror_replication_portbase
+                     ):
     rows=[]
     
     dbid = 0
@@ -508,11 +519,14 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
 
     for host in hostlist:
         isprimary='t'
-        port=primary_portbase        
+        port=primary_portbase
+        prPort = primary_replication_portbase
         for pdir in primary_list:
             fulldir = "%s/%s%d" % (pdir,dir_prefix,content)
-            rows.append( (content,isprimary,dbid,isprimary,'t',host,port,fulldir) )
+            rows.append( (content,isprimary,dbid,isprimary,'t',host,port,fulldir,prPort) )
             port += 1
+            if prPort != None:
+               prPort += 1
             content += 1
             dbid += 1
     
@@ -532,6 +546,7 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
             raise Exception("Not enough hosts for spread mirroring.  You must have more hosts than primary segments per host")
         
         mirror_port = {}
+        mirror_replication_port = {}
 
         mirror_host_offset=1
         last_mirror_offset=1
@@ -547,9 +562,12 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
                     
                 if not mirror_port.has_key(mirror_host):
                     mirror_port[mirror_host] = mirror_portbase
+                if not mirror_replication_port.has_key(mirror_replication_portbase):
+                    mirror_replication_port[mirror_host] = mirror_replication_portbase
                     
-                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,mirror_port[mirror_host],fulldir) )
+                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,mirror_port[mirror_host],fulldir, mirror_replication_port[mirror_host]) )
                 mirror_port[mirror_host] += 1
+                mirror_replication_port[mirror_host] += 1
                 content += 1
                 dbid += 1
                 mirror_host_offset += 1
@@ -570,11 +588,13 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
             mirror_host = hostlist[mirror_host_offset % num_hosts]
             mirror_host_offset += 1
             port = mirror_portbase
+            mrPort = mirror_replication_portbase
             
             for mdir in mirror_list:
                 fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
-                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,port,fulldir) )
+                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,port,fulldir,mrPort) )
                 port += 1
+                mrPort +=1
                 content += 1
                 dbid += 1
         
@@ -977,6 +997,64 @@ class GpArray:
                 if db.port > max_mirror_port:
                     max_mirror_port = db.port
 
+        return max_mirror_port
+
+    # --------------------------------------------------------------------                                                                                      
+    def get_min_primary_replication_port(self):
+        """Returns the minimum primary segment db replication port"""
+        if self.get_mirroring_enabled() is False:
+            raise Exception('Mirroring is not enabled')
+
+        min_primary_replication_port = self.segments[0].primaryDB.replicationPort
+        for seg in self.segments:
+            if seg.primaryDB.replicationPort < min_primary_replication_port:
+                min_primary_replication_port = seg.primaryDB.replicationPort
+
+        return min_primary_replication_port
+
+    # --------------------------------------------------------------------                                                                                      
+    def get_max_primary_replication_port(self):
+        """Returns the maximum primary segment db replication port"""
+        if self.get_mirroring_enabled() is False:
+            raise Exception('Mirroring is not enabled')
+
+        max_primary_replication_port = self.segments[0].primaryDB.replicationPort
+        for seg in self.segments:
+            if seg.primaryDB.replicationPort > max_primary_replication_port:
+                max_primary_replication_port = seg.primaryDB.replicationPort
+
+        return max_primary_replication_port
+
+    # --------------------------------------------------------------------                                                                                      
+    def get_min_mirror_replication_port(self):
+        """Returns the minimum mirror segment db replication port"""
+        if self.get_mirroring_enabled() is False:
+            raise Exception('Mirroring is not enabled')
+
+        min_mirror_replication_port = self.segments[0].mirrorDBs[0].replicationPort
+
+        for seg in self.segments:
+            for db in seg.mirrorDBs:
+                if db.replicationPort < min_mirror_replication_port:
+                    min_mirror_replication_port = db.replicatonPort
+
+        return min_mirror_replication_port
+
+    # --------------------------------------------------------------------                                                                                      
+    def get_max_mirror_replication_port(self):
+        """Returns the maximum mirror segment db replication port"""
+        if self.get_mirroring_enabled() is False:
+            raise Exception('Mirroring is not enabled')
+
+        max_mirror_replication_port = self.segments[0].mirrorDBs[0].replicationPort
+
+        for seg in self.segments:
+            for db in seg.mirrorDBs:
+                if db.replicationPort > max_mirror_replication_port:
+                    max_mirror_replication_port = db.replicationPort
+
+        return max_mirror_replication_port
+
     # --------------------------------------------------------------------    
     def get_interface_numbers(self):
         """Returns interface numbers in the array.  Assumes that nodes are named
@@ -1067,7 +1145,7 @@ class GpArray:
 
     # --------------------------------------------------------------------    
     def addExpansionSeg(self, content, preferred_role, dbid, role, 
-                        hostname, port, datadir):
+                        hostname, port, datadir, replication_port):
         """ 
         Adds a segment to the gparray as an expansion segment.
 
@@ -1088,7 +1166,7 @@ class GpArray:
                      address = hostname,      # todo: add to parameters
                      port = port, 
                      datadir = datadir, 
-                     replicationPort = None)  # todo: add to parameters
+                     replicationPort = replication_port)  # todo: add to parameters
         
         seglen = len(self.segments)
         expseglen = len(self.expansionSegments)
@@ -1227,14 +1305,25 @@ class GpArray:
         interface_list = self.get_interface_numbers()
         base_primary_port = self.get_min_primary_port()
         base_mirror_port = 0
+        base_primary_replication_port = None
+        base_mirror_replication_port = None
         if mirror_type != 'none':
             base_mirror_port = self.get_min_mirror_port()
+            base_primary_replication_port = self.get_min_primary_replication_port()
+            base_mirror_replication_port = self.get_min_mirror_replication_port()
         
         prefix = self.get_datadir_prefix()
         
-        rows = createSegmentRows(new_hosts, primary_dirs, base_primary_port, 
-                                 mirror_type, mirror_dirs, base_mirror_port, 
-                                 prefix)
+        rows = createSegmentRows( hostlist = new_hosts
+                                , primary_list = primary_dirs
+                                , primary_portbase = base_primary_port
+                                , mirror_type = mirror_type
+                                , mirror_list = mirror_dirs
+                                , mirror_portbase = base_mirror_port
+                                , dir_prefix = prefix
+                                , primary_replication_porttbase = base_primary_replication_port
+                                , mirror_replication_portbase = base_mirror_replication_port
+                                )
         
         self._fixup_and_add_expansion_segments(rows, interface_list)
         
@@ -1244,10 +1333,13 @@ class GpArray:
         hosts and hosts that were added by addExpansionHosts.
         """
         max_primary_port = self.get_max_primary_port()
+        max_mirror_port = 0
+        max_primary_replication_port = None
+        max_mirror_replication_port = None
         if mirror_type != 'none':
             max_mirror_port = self.get_max_mirror_port()
-        else:
-            max_mirror_port = 0
+            max_primary_replication_port = self.get_max_primary_replication_port()
+            max_mirror_replication_port = self.get_max_mirror_replication_port()
 
         interface_list = self.get_interface_numbers()
         interface_count = len(interface_list)
@@ -1268,9 +1360,21 @@ class GpArray:
                 hosts.append(host)
                 
         # Create the rows
-        rows = createSegmentRows(hosts, datadirs, max_primary_port + 1, 
-                                 mirror_type, mirrordirs, max_mirror_port + 1,
-                                 prefix)
+        tempPrimaryRP = None
+        tempMirrorRP = None
+        if mirror_type != 'none':
+           tempPrimaryRP = max_primary_replication_port + 1
+           tempMirrorRP = max_mirror_replication_port + 1
+        rows = createSegmentRows( hostlist = hosts
+                                , primary_list = datadirs
+                                , primary_portbase = max_primary_port + 1
+                                , mirror_type = mirror_type
+                                , mirror_list = mirrordirs
+                                , mirror_portbase = max_mirror_port + 1
+                                , dir_prefix = prefix
+                                , primary_replication_portbase = tempPrimaryRP
+                                , mirror_replication_portbase = tempMirrorRP
+                                )
         
         self._fixup_and_add_expansion_segments(rows, interface_list)
         
@@ -1313,7 +1417,7 @@ class GpArray:
             if row[1] == 't':
                 new_datadir += ('%d' % curr_content)
                 self.addExpansionSeg(curr_content, 'p', curr_dbid, 
-                                        True, hostname, int(row[6]), new_datadir)
+                                        True, hostname, int(row[6]), new_datadir, row[8])
                 # The content id was adjusted, so we need to save it for the mirror
                 mirror_dict[row[0]] = curr_content
                 curr_content += 1
@@ -1321,7 +1425,7 @@ class GpArray:
                 new_content = mirror_dict[row[0]]
                 new_datadir += ('%d' % new_content)
                 self.addExpansionSeg(new_content, 'm', curr_dbid, 
-                                     False, hostname, int(row[6]), new_datadir)
+                                     False, hostname, int(row[6]), new_datadir, row[8])
             curr_dbid += 1           
 
 

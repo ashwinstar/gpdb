@@ -1139,14 +1139,17 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         logger.info("Generating input file...")
 
         for db in gparray.getExpansionSegDbList():
-            outfile.write("%s:%d:%s:%d:%d:%s\n" % 
-                          (db.getSegmentHostName(),
-                           db.getSegmentPort(),
-                           db.getSegmentDataDirectory(),
-                           db.getSegmentDbId(),
-                           db.getSegmentContentId(),
-                           db.getSegmentPreferredRole()))
-
+            tempStr = "%s:%d:%s:%d:%d:%s" % ( db.getSegmentHostName()
+                                            , db.getSegmentPort()
+                                            , db.getSegmentDataDirectory()
+                                            , db.getSegmentDbId()
+                                            , db.getSegmentContentId()
+                                            , db.getSegmentPreferredRole()
+                                            )
+            if db.getSegmentReplicationPort() != None:
+               tempStr = tempStr + ':' + str(db.getSegmentReplicationPort())                              
+            outfile.write(tempStr + "\n")
+            
         outfile.close()
 
         return outputfile
@@ -1169,11 +1172,20 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                     if l.strip().startswith('#') or l.strip() == '':
                         continue
 
-                    hostname,port,datadir,dbid,contentId,role = l.strip().split(':')
+                    ''' Form of file is hostname:port:dtadir:dbid:contentId:role [:replicationPort] '''
+                    replicationPort = None
+                    if len(l.strip().split(':')) == 6:
+                       hostname,port,datadir,dbid,contentId,role = l.strip().split(':')
+                    elif len(l.strip().split(':')) == 7:
+                       hostname,port,datadir,dbid,contentId,role,replicationPort = l.strip().split(':')
+                    else:
+                       raise ExpansionError('Invalid input file on line %d: %s' % (line, e))
                     # content, role, dbid, preferred_role, hostname, port, datadir
                     self.gparray.addExpansionSeg(int(contentId), role, int(dbid),
                                                  role, hostname.strip(), int(port),
-                                                 os.path.abspath(datadir.strip()))
+                                                 os.path.abspath(datadir.strip()),
+                                                 replicationPort
+                                                 )
                     line += 1
             except ValueError:
                 raise ExpansionError('Missing or invalid value on line %d.' % line)
