@@ -122,15 +122,15 @@ class GpMirrorListToBuild:
 
         """
         assert faultProberInterface.getFaultProber().isFaultProberPaused()
-        testOutput("recovering %s segment(s)" % len(self.__mirrorsToBuild))
+        testOutput("building %s segment(s)" % len(self.__mirrorsToBuild))
 
         if len(self.__mirrorsToBuild) == 0:
-            logger.info("No segments to recover")
+            logger.info("No segments to " + actionName)
             return
 
         self.checkForPortAndDirectoryConflicts(gpArray)
 
-        logger.info("%s segment(s) to recover" % len(self.__mirrorsToBuild))
+        logger.info("%s segment(s) to %s" % (len(self.__mirrorsToBuild), actionName))
 
         # make sure the target directories are up-to-date
         #  by cleaning them, if needed, and then copying a basic directory there

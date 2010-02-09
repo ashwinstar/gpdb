@@ -150,5 +150,13 @@ def execSQL(conn,sql):
     cursor.execute(sql)
     return cursor
 
+def executeUpdateOrInsert(conn, sql, expectedRowUpdatesOrInserts):
+    cursor=conn.cursor()
+    cursor.execute(sql)
+    
+    if cursor.rowcount != expectedRowUpdatesOrInserts :
+        raise Exception("SQL affected %s rows but %s were expected:\n%s" % \
+                        (cursor.rowcount, expectedRowUpdatesOrInserts, sql))
+    return cursor
 
          

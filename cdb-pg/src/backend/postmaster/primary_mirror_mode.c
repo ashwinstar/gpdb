@@ -898,6 +898,7 @@ applyTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments *args, 
 			case PMModeMirrorSegment:
 			case PMModePrimarySegment:
 			case PMModeQuiescentSegment:
+			case PMModeMirrorlessSegment:
 			case PMModeUninitialized:
 				break;
 			default:

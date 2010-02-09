@@ -34,6 +34,8 @@ logger = gplog.get_default_logger()
 
 class GpMirrorBuildCalculator:
     """
+    Create mirror segment (GpDB) objects for an existing array, using different strategies.
+
     This class should be used by constructing and then calling either getSpreadMirrors, getGroupMirrors, or call
        addMirror multiple times
 
@@ -160,6 +162,10 @@ class GpMirrorBuildCalculator:
         return result
 
 class GpAddMirrorsProgram:
+    """
+    The implementation of gpaddmirrors
+    
+    """
     def __init__(self, options):
         """
         Constructor:
@@ -333,7 +339,7 @@ class GpAddMirrorsProgram:
         # check that we actually have mirrors
         if gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_NONE:
             raise ExceptionNoStackTraceNeeded( \
-                    "GPDB mirroring cannot be added.  The cluster is configured with %s" % \
+                    "GPDB physical mirroring cannot be added.  The cluster is already configured with %s." % \
                     gparray.getFaultStrategyLabel(gpArray.getFaultStrategy()))
 
         # figure out what needs to be done
@@ -351,7 +357,7 @@ class GpAddMirrorsProgram:
                     raise UserAbortedException()
 
             gpArray.setFaultStrategy(gparray.FAULT_STRATEGY_FILE_REPLICATION)
-            mirrorBuilder.buildMirrors("addmirrors", gpEnv, gpArray )
+            mirrorBuilder.buildMirrors("add", gpEnv, gpArray )
 
         faultProberInterface.getFaultProber().unpauseFaultProber()
         return 0 # success -- exit code 0!
