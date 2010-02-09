@@ -2586,7 +2586,9 @@ estimate_num_groups(PlannerInfo *root, List *groupExprs, double input_rows)
 		/*
 		 * Sanity check --- don't divide by zero if empty relation.
 		 */
-		Assert(rel->reloptkind == RELOPT_BASEREL);
+		Assert(rel->reloptkind == RELOPT_BASEREL ||
+			   (rel->reloptkind == RELOPT_OTHER_MEMBER_REL &&
+				rel->rtekind == RTE_RELATION));
 		if (rel->tuples > 0)
 		{
 			/*
