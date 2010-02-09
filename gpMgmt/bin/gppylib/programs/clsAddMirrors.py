@@ -23,10 +23,10 @@ from lib import gpmlib
 
 logger = gplog.get_default_logger()
 
-# todo: unit testing for GpMirrorBuildCalculator and others
-# todo: understand 'multihome' check from old code
-# todo: hba update code from old addmirrors code
-# todo: remove gpmlib run use (can we replace that echo with an os.path function?)
+#
+# todo MIRRORING unit testing for GpMirrorBuildCalculator and others
+# todo MIRRORING understand 'multihome' check from old code
+# todo MIRRORING remove gpmlib run use (can we replace that echo with an os.path function?)
 # todo MIRRORING: discuss to see if grouping by hostname is okay.  Did 3.3 have host+address columns?
 # todo MIRRORING: I think the previous code would also do primary + offset to get mirror port, but this
 #                 didn't seem implemented correctly for spread mirroring so I changed it (primary+offset is

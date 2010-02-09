@@ -9,7 +9,6 @@
 # todo MIRRORING checks for being able to build target directory
 # todo MIRRORING what is: multi_home = gpmlib.chk_multi_home(hosts) (from other gprecoverseg)
 # todo MIRRORING implement pause/unpause of fault prober properly
-# todo MIRRORING update hba.conf on all originals if we changed any hosts: (call update_original_segments from gpexpand)
 # todo MIRRORING is it okay to leave the temporary directory sitting around (as gpexpand seems to do?)
 # todo MIRRORING need to compress arguments sent to segments?  I think command lines can be pretty long, but should test it
 # todo MIRRORING make sure we get good errors out when trying to build mirror data directories
@@ -17,11 +16,11 @@
 # todo MIRRORING we should copy postgresql.conf from some other segment rather than the master (see what gpexpand does) since settings can be different on segments
 # todo MIRRORING: make sure created directories have the right permissions?
 #
-# todo MIRRORING why do we take recovery commands from a file?  Is that really needed?
 # todo MIRRORING if from config file, we should NOT take -F and instead should get full/incremental commands from the file?
 # todo MIRRORING I may have changed the semantics for 'spareDataDirectory'.  review old semantics
 #
 # todo MIRRORING what about chk_pool_dir_available from gprecoverseg?  Is that needed herE?
+# todo MIRRORING include check for passive standby master
 #
 # todo code reorg and consolidation with gpexpand?
 #

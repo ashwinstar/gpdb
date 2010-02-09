@@ -15,6 +15,11 @@ from gppylib.operations import startSegments
 
 logger = get_default_logger()
 
+#
+# todo MIRRORING pg_hba.conf updates
+# todo MIRRORING search for the following and see if we apply this fix: logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % hostname)
+#
+
 class GpMirrorToBuild:
 
     def __init__(self, failedSegment, liveSegment, failoverSegment, forceFullSynchronization):
