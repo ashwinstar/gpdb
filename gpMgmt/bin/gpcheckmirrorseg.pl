@@ -26,6 +26,7 @@ Options:
     -help            brief help message
     -man             full documentation
     -connect         psql connect parameters
+    -ignore          filename pattern to ignore during comparison
 
 =head1 OPTIONS
 
@@ -44,6 +45,15 @@ Options:
     psql connect string, e.g:
 
     -connect '-p 11000 template1'
+
+=item B<-ignore>
+
+Specify a filename pattern that should be exclude when comparing data
+directories.  To specify multiple patterns, use multiple ignore
+arguments, eg:
+
+  -ignore gp_dump -ignore pg_dump
+
 
 =back
 
@@ -71,14 +81,18 @@ my $glob_id = "";
 
 my $glob_connect;
 
+my $glob_ignore;
+
 BEGIN {
     my $man  = 0;
     my $help = 0;
     my $conn;
+	my @ignore;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
-               "connect=s" => \$conn
+               "connect=s" => \$conn,
+		       'exclude|ignore:s' => \@ignore
                )
         or pod2usage(2);
 
@@ -87,12 +101,14 @@ BEGIN {
     pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
 
     $glob_connect = $conn;
-    
+    $glob_ignore = \@ignore;
+
 #    print "loading...\n" ;
 }
 
 sub perlhash
 {
+	# version of the original perl hash function
 	my $ini = shift;
 
 	my $hash = 0;
@@ -164,6 +180,51 @@ sub tablelizer
     }
 
     return \@rows;
+}
+
+# build a list of expressions to ignore
+sub ignore_list
+{
+	my $iggy = shift;
+
+	my @m1 = qw(
+		pg_stat 
+		pg_log
+		pg_internal
+		pg_fsm.cache
+		pgstat
+		pgsql_tmp
+		);
+
+	# file suffixes -- append a close paren ")"
+	my @m2 = qw(
+		.log
+		.opts
+		.conf
+		_args
+		.pid
+		core
+		_segargs
+		);
+
+	for my $ww (@m2)
+	{
+		push @m1, $ww . ")";
+	}
+
+	# add any other expressions (eg user-supplied)
+	push @m1, @{$iggy} if (defined($iggy) && scalar(@{$iggy}));
+
+	my @master;
+
+	# build of list of grep exclusion commands
+	for my $ww (@m1)
+	{
+		push @master, 'grep -v "' . $ww . '"';
+	}
+
+	return \@master;
+	
 }
 
 if (1)
@@ -244,6 +305,10 @@ if (1)
 
 #	print Data::Dumper->Dump([$gp_seg_config]);
 
+	my $ignore_arr = ignore_list($glob_ignore);
+
+	my $ignore_cmd = join (" | ", @{$ignore_arr});
+
 	for my $row (@{$gp_seg_config})
 	{
 		my $prim_dd = $row->{ploc};
@@ -275,12 +340,7 @@ if (1)
 		# use openssl to construct an md5 hash for every file
 		my $cmd_template = 
 			'find MYDIR -type f | xargs openssl dgst -md5 -hex  ' .
-			'| grep -v pg_stat | grep -v pg_log | grep -v pg_internal ' .
-			'| grep -v ".log)" | grep -v ".opts)" | grep -v ".conf)" ' .
-			'| grep -v "_args)" | grep -v ".pid)" ' .
-			'| grep -v "core)" ' .
-			'| grep -v "_segargs)" | grep -v "pg_fsm.cache" ' .
-			'| grep -v pgstat | grep -v pgsql_tmp   ' .
+			'| ' . $ignore_cmd . " " .
 			'| sort  ' .
 			'| perl -i -ple \'s|MYDIR||gm \' ' . 
 			# strip out [hostname] prefix
