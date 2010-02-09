@@ -2329,17 +2329,17 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				continue;
 			}
 
+			if (pkt.flags & UDPIC_FLAGS_NAK)
+			{
+				/* this packet needs to get retried -- the receiver isn't ready to receive it yet. */
+				elog(DEBUG2, "got NAK; srcpid %d dstpid %d srccontent %d dstcontent %d cmd %d flags 0x%x pktseq %d connseq %d",
+					 pkt.srcPid, pkt.dstPid, pkt.srcContentId, pkt.dstContentId, pkt.icId, pkt.flags, pkt.seq, ackConn->conn_info.seq);
+				continue;
+			}
+
 			/* haven't gotten a stop request, maybe this is one ? */
 			if (pkt.flags & UDPIC_FLAGS_STOP)
 			{
-				if (pkt.seq == 1 && (pkt.flags & UDPIC_FLAGS_NAK))
-				{
-					/* this packet needs to get retried -- the receiver isn't ready to receive it yet. */
-					elog(DEBUG2, "got NAK with stop; srcpid %d dstpid %d srccontent %d dstcontent %d cmd %d flags 0x%x pktseq %d connseq %d",
-						 pkt.srcPid, pkt.dstPid, pkt.srcContentId, pkt.dstContentId, pkt.icId, pkt.flags, pkt.seq, ackConn->conn_info.seq);
-					continue;
-				}
-
 				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 					elog(DEBUG2, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x pktseq %d connseq %d", pkt.srcPid, pkt.dstPid, pkt.icId, pkt.flags, pkt.seq, ackConn->conn_info.seq);
 
@@ -3184,7 +3184,13 @@ ic_rx_thread_func(void *arg)
 					 * gp_interconnect_elide_setup is enabled.
 					 */
 					if (!conn->stopRequested && (pkt->flags & UDPIC_FLAGS_STOP))
+					{
+						if (pkt->flags & UDPIC_FLAGS_EOS)
+						{
+							write_log("non-requested stop flag, EOS!");
+						}
 						continue;
+					}
 
 					if (conn->stopRequested && conn->stillActive)
 					{
@@ -3267,7 +3273,6 @@ ic_rx_thread_func(void *arg)
 					if (conn->pkt_q_size == Gp_interconnect_queue_depth)
 					{
 						/* NO RX SPACE, drop */
-						/* SEND NAK HERE */
 
 						/* we could wait for the other thread to clear
 						 * its input queue; but for now, we drop
@@ -3397,8 +3402,7 @@ ic_rx_thread_func(void *arg)
 					 *
 					 * handleAcks() on our sender will retransmit.
 					 */
-					if (gp_interconnect_elide_setup &&
-						pkt->seq == 1 && pkt->icId > ic_id_last_teardown)
+					if (pkt->seq == 1 && pkt->icId > ic_id_last_teardown)
 					{
 						dummyconn.conn_info.flags |= UDPIC_FLAGS_NAK;
 					}
