@@ -91,6 +91,18 @@ BEGIN {
 #    print "loading...\n" ;
 }
 
+sub perlhash
+{
+	my $ini = shift;
+
+	my $hash = 0;
+
+	for my $val (split (//, $ini))
+	{
+		$hash = $hash*33 + ord($val);
+	}
+	return $hash;
+}
 
 # convert a postgresql psql formatted table into an array of hashes
 sub tablelizer
@@ -165,6 +177,29 @@ if (1)
 	# constructing a single row for each primary/mirror pair
 
     $psql_str .= " -c \' ".
+		"select g.hostname||f.fselocation as fselocation " .
+		"from pg_filespace_entry f, gp_segment_configuration g " .
+		"where f.fsedbid = 1 and g.dbid = 1  \' ";
+
+    my $tabdef = `$psql_str`;
+	
+	my $fseloc = tablelizer($tabdef);
+
+	# hash the file system entry location and mod it to an acceptable size
+	my $fselochsh = perlhash($fseloc->[0]->{fselocation}) % 100000000000000;
+
+	print "Hash for \"", $fseloc->[0]->{fselocation}, 
+	"\" is  ", $fselochsh, "\n\n";
+
+	$psql_str = "psql ";
+
+    $psql_str .= $glob_connect
+        if (defined($glob_connect));
+
+	# select from gp_segment_configuration and pg_filespace_entry,
+	# constructing a single row for each primary/mirror pair
+
+    $psql_str .= " -c \' ".
 		"select gscp.content, " .
 		"gscp.hostname as phostname, gscp.address as paddress, " .
 		"fep.fselocation as ploc, " .
@@ -187,12 +222,12 @@ if (1)
 		"and gscm.role =  " .  '$q$m$q$ ' .
 		" order by content  \'";
 
-#	print $psql_str, "\n";
+	print $psql_str, "\n";
 
-    my $tabdef = `$psql_str`;
+	$tabdef = `$psql_str`;
 
-#   print $tabdef;
-
+	print $tabdef;
+	
 	my $gp_seg_config = tablelizer($tabdef);
 
 	$psql_str = "psql ";
@@ -225,40 +260,92 @@ if (1)
 		my $primhost = $row->{phostname};
 		my $mirrhost = $row->{mhostname};
 
-		my $primtmp = File::Spec->catfile("/tmp", $fil . ".prim");
-		my $mirrtmp = File::Spec->catfile("/tmp", $fil . ".mirr");
+		my $primtmp = File::Spec->catfile("/tmp", 
+										  $fselochsh . "_" . $fil . ".prim");
+		my $mirrtmp = File::Spec->catfile("/tmp", 
+										  $fselochsh . "_" . $fil . ".mirr");
+
+		my $primsh = File::Spec->catfile("/tmp", 
+										  $fselochsh . "_" . $fil . 
+										 "_prim.sh");
+		my $mirrsh = File::Spec->catfile("/tmp", 
+										  $fselochsh . "_" . $fil . 
+										 "_mirr.sh");
 
 		# use openssl to construct an md5 hash for every file
 		my $cmd_template = 
-			'(gpssh -h MYHOST \' ' .
-			'(find MYDIR -type f | xargs openssl dgst -md5 -hex ) ' .
+			'find MYDIR -type f | xargs openssl dgst -md5 -hex  ' .
 			'| grep -v pg_stat | grep -v pg_log | grep -v pg_internal ' .
 			'| grep -v ".log)" | grep -v ".opts)" | grep -v ".conf)" ' .
 			'| grep -v "_args)" | grep -v ".pid)" ' .
 			'| grep -v "core)" ' .
 			'| grep -v "_segargs)" | grep -v "pg_fsm.cache" ' .
-			'| grep -v pgstat | grep -v pgsql_tmp  \' ) ' .
-			'| sort ' .
+			'| grep -v pgstat | grep -v pgsql_tmp   ' .
+			'| sort  ' .
 			'| perl -i -ple \'s|MYDIR||gm \' ' . 
 			# strip out [hostname] prefix
-			'| perl -i -ple \'s|^\\s*\\[.*\\]\\s*||gm \' ' . 
-			' > ';
+			'| perl -i -ple \'s|^\\s*\\[.*\\]\\s*||gm \'  ' ;
 
 		my $cmd = $cmd_template;
 		$cmd =~ s/MYHOST/$primhost/g;
 		$cmd =~ s/MYDIR/$primfil/g;
-		$cmd .= $primtmp;
+		$cmd =~ s/MYOUT/$primtmp/g;
 
-#		print $cmd, "\n";
+		# build local shell scripts for the commands
 
-		system ($cmd);
+		my $fh;
+
+		open ($fh, '>', $primsh);
+
+		print $fh $cmd, "\n";
+
+		close $fh;
 
 		$cmd = $cmd_template;
 		$cmd =~ s/MYHOST/$mirrhost/g;
 		$cmd =~ s/MYDIR/$mirrfil/g;
-		$cmd .= $mirrtmp;
+		$cmd =~ s/MYOUT/$mirrtmp/g;
+
+		open ($fh, '>', $mirrsh);
+
+		print $fh $cmd, "\n";
+
+		close $fh;
+
+		# copy the shell scripts to the segments, execute them, then
+		# copy back the results. Note that we add "1" as a suffix to
+		# the script name and output file name to handle the case
+		# where the master and segment are on the same machine (useful
+		# for testing)
+
+		my $cmd_template2 = 
+			'gpscp -h MYHOST MYSHSCRIPT =:MYSHSCRIPT1 ; ' .
+			'gpssh -h MYHOST \' sh MYSHSCRIPT1 > MYOUT  \' ; ' .
+			'gpscp -h MYHOST  =:MYOUT MYOUT1 ; ' ;
+
+		$cmd = $cmd_template2;
+		$cmd =~ s/MYHOST/$primhost/g;
+		$cmd =~ s/MYDIR/$primfil/g;
+		$cmd =~ s/MYOUT/$primtmp/g;
+		$cmd =~ s/MYSHSCRIPT/$primsh/g;
+
+		print $cmd, "\n";
 
 		system ($cmd);
+
+		$cmd = $cmd_template2;
+		$cmd =~ s/MYHOST/$mirrhost/g;
+		$cmd =~ s/MYDIR/$mirrfil/g;
+		$cmd =~ s/MYOUT/$mirrtmp/g;
+		$cmd =~ s/MYSHSCRIPT/$mirrsh/g;
+
+		print $cmd, "\n";
+
+		system ($cmd);
+
+		# add "1" suffix on master
+		$primtmp .= '1';
+		$mirrtmp .= '1';
 
 		my $diffi = `diff -b $primtmp $mirrtmp`;
 
