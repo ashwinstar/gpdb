@@ -253,6 +253,8 @@ bool		Db_user_namespace = false;
 
 char	   *bonjour_name;
 
+static PrimaryMirrorMode gInitialMode = PMModeMirrorlessSegment;
+
 /* PIDs of special child processes; 0 when not running */
 static pid_t StartupPID = 0,
 			StartupPass2PID = 0,
@@ -658,7 +660,6 @@ PostmasterMain(int argc, char *argv[])
 	int			status;
 	char       *userDoption = NULL;
 	int			i;
-	PrimaryMirrorMode initialMode = PMModeMirrorlessSegment;
 
 	MyProcPid = PostmasterPid = getpid();
 
@@ -785,8 +786,8 @@ PostmasterMain(int argc, char *argv[])
 			case 'M':
 
 				/* note that M is a postmaster-only option */
-				initialMode = decipherPrimaryMirrorModeArgument(optarg);
-				if (initialMode == PMModeUninitialized)
+				gInitialMode = decipherPrimaryMirrorModeArgument(optarg);
+				if (gInitialMode == PMModeUninitialized)
 				{
 					write_stderr("%s: invalid argument for option -M: \"%s\"\n", progname, optarg);
 					ExitPostmaster(1);
@@ -907,11 +908,11 @@ PostmasterMain(int argc, char *argv[])
 				ExitPostmaster(1);
 		}
 	}
-	IsSegmentDatabase = initialMode != PMModeMaster;
-	AreFileReplicationStructuresRequired = initialMode == PMModeMirrorSegment  ||
-	                                 initialMode == PMModePrimarySegment ||
+	IsSegmentDatabase = gInitialMode != PMModeMaster;
+	AreFileReplicationStructuresRequired = gInitialMode == PMModeMirrorSegment  ||
+	                                 gInitialMode == PMModePrimarySegment ||
 	                                 /* we assume quiescent segment will probably become a mirror */
-	                                 initialMode == PMModeQuiescentSegment;
+	                                 gInitialMode == PMModeQuiescentSegment;
 
 	/*
 	 * Postmaster accepts no non-option switch arguments.
@@ -1333,8 +1334,6 @@ PostmasterMain(int argc, char *argv[])
 #endif
 	/* PostmasterRandom wants its own copy */
 	gettimeofday(&random_start_time, NULL);
-
-	setInitialRequestedPrimaryMirrorMode(initialMode);
 
 	//pmState = PM_STARTUP;
 
@@ -2971,6 +2970,7 @@ reset_shared(int port)
 	 * objects if the postmaster crashes and is restarted.
 	 */
 	CreateSharedMemoryAndSemaphores(false, port);
+	setInitialRequestedPrimaryMirrorMode(gInitialMode);
 }
 
 
@@ -3850,10 +3850,10 @@ static void do_reaper()
 		Save_DtxStartTime = getDtxStartTime();
 
 		shmem_exit(0);
+		pmState = PM_INIT;
 		reset_shared(PostPortNumber);
 
-        if (!SyncMaster)
-		  StartupPID = StartupDataBase();
+        /* continue to reaper_done, then to ServerLoop which will process startup transition */
 
 		goto reaper_done;
 	}
@@ -4492,14 +4492,10 @@ PostmasterStateMachine(void)
 		Save_DtxStartTime = getDtxStartTime();
 
 		shmem_exit(1);
+		pmState = PM_INIT;
 		reset_shared(PostPortNumber);
 
-        if (!SyncMaster)
-        {
-		    StartupPID = StartupDataBase();
-		    Assert(StartupPID != 0);
-        }
-		pmState = PM_STARTUP;
+        /* continue to ServerLoop which will process filerep transition */
 	}
 }
 
