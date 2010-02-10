@@ -130,7 +130,7 @@ static void dumpRMOnlyDtx(HTAB *htab, StringInfoData *buff);
 
 static bool doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 										 char* gid, DistributedTransactionId gxid,
-										 bool dispatchToMirrors, bool *badGangs, bool raiseError, CdbDispatchDirectDesc *direct,
+										 bool *badGangs, bool raiseError, CdbDispatchDirectDesc *direct,
 										 char *serializedArgument, int serializedArgumentLen);
 static void doPrepareTransaction(void);
 static void doInsertForgetCommitted(void);
@@ -519,7 +519,6 @@ dtmPreCommand(const char *debugCaller, const char *debugDetail, PlannedStmt *stm
 
 		succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_STAY_AT_OR_BECOME_IMPLIED_WRITER, /* flags */ 0,
 												 currentGxact->gid, currentGxact->gxid,
-												 /* dispatchToMirrors */ true,
 												 &badGangs, /* raiseError */ false, &direct,
 												 serializedDtxContextInfo, serializedDtxContextInfoLen);
 
@@ -591,7 +590,6 @@ doPrepareTransaction(void)
 
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_PREPARE, /* flags */ 0, 
 											 currentGxact->gid, currentGxact->gxid,
-											 /* dispatchToMirrors */ true,
 											 &currentGxact->badPrepareGangs, /* raiseError */ false, &direct, NULL, 0);
 
 	/* Now we've cleaned up our dispatched statement, cancels are allowed again. */
@@ -662,7 +660,7 @@ doNotifyingCommitPrepared(void)
 
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, /* flags */ 0,  
 											 currentGxact->gid, currentGxact->gxid,
-											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+											 &badGangs, /* raiseError */ false,
 											 &direct, NULL, 0);
 	if (!succeeded)
 	{
@@ -745,7 +743,7 @@ doNotifyingAbort(void)
 		{
 			succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED, /* flags */ 0,  
 													 currentGxact->gid, currentGxact->gxid,
-													 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+													 &badGangs, /* raiseError */ false,
 													 &direct, NULL, 0);
 			if (!succeeded)
 			{
@@ -799,7 +797,7 @@ doNotifyingAbort(void)
 		
 		succeeded = doDispatchDtxProtocolCommand(dtxProtocolCommand, /* flags */ 0,
 												 currentGxact->gid, currentGxact->gxid,
-												 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+												 &badGangs, /* raiseError */ false,
 												 &direct, NULL, 0);
 		if (!succeeded)
 		{
@@ -920,7 +918,7 @@ doDtxPhase2Retry(void)
 			
 				succeeded = doDispatchDtxProtocolCommand(dtxProtocolCommand, /* flags */ 0,  
 														 currentGxact->gid, currentGxact->gxid,
-														 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+														 &badGangs, /* raiseError */ false,
 														 &direct, NULL, 0);
 				if (!succeeded)
 				{
@@ -996,7 +994,7 @@ doNotifyCommittedInDoubt(char *gid)
 	/* UNDONE: Pass real gxid instead of InvalidDistributedTransactionId. */
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED, /* flags */ 0,
 											 gid, InvalidDistributedTransactionId,
-											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+											 &badGangs, /* raiseError */ false,
 											 &direct, NULL, 0);
 	if (!succeeded)
 	{
@@ -1021,7 +1019,7 @@ doAbortInDoubt(char *gid)
 	/* UNDONE: Pass real gxid instead of InvalidDistributedTransactionId. */
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED, /* flags */ 0,
 											 gid, InvalidDistributedTransactionId,
-											 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false,
+											 &badGangs, /* raiseError */ false,
 											 &direct, NULL, 0);
 	if (!succeeded)
 	{
@@ -1812,7 +1810,7 @@ descDistributedForgetCommitRecord(StringInfo buf, TMGXACT_LOG * gxact_log)
 static bool
 doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 							 char* gid, DistributedTransactionId gxid,
-							 bool dispatchToMirrors, bool *badGangs, bool raiseError,
+							 bool *badGangs, bool raiseError,
 							 CdbDispatchDirectDesc *direct,
 							 char *serializedArgument,
 							 int serializedArgumentLen)
@@ -1833,8 +1831,8 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 		else elog(INFO, "Distributed transaction command '%s' to ALL contents", dtxProtocolCommandStr);
 	}
 	elog(DTM_DEBUG5,
-		 "dispatchDtxProtocolCommand: %d ('%s') willMirror: %s, direct content #: %d",
-		 dtxProtocolCommand, dtxProtocolCommandStr, dispatchToMirrors ? "yes" : "no",
+		 "dispatchDtxProtocolCommand: %d ('%s'), direct content #: %d",
+		 dtxProtocolCommand, dtxProtocolCommandStr,
 				 direct->directed_dispatch ? direct->content[0] : -1);
 
 	initStringInfo(&errbuf);
@@ -1900,15 +1898,14 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 
 
 bool
-dispatchDtxCommand(const char *cmd, bool dispatchToMirrors, bool withSnapshot, bool raiseError)
+dispatchDtxCommand(const char *cmd, bool withSnapshot, bool raiseError)
 {
 	int		i, resultCount, numOfFailed = 0;
 
 	struct pg_result **results = NULL;
 	StringInfoData errbuf;
 
-	elog(DTM_DEBUG5,
-		 "dispatchDtxCommand: '%s' willMirror: %s", cmd, dispatchToMirrors ? "yes" : "no");
+	elog(DTM_DEBUG5, "dispatchDtxCommand: '%s'", cmd);
 
 	initStringInfo(&errbuf);
 	results = cdbdisp_dispatchRMCommand(cmd, withSnapshot,
@@ -3695,7 +3692,7 @@ sendDtxExplicitBegin(void)
 	 * dispatch a DTX command, in the event of an error, this call
 	 * will either exit via elog()/ereport() or return false
 	 */
-	if (!dispatchDtxCommand(cmdbuf, /* dispatchToMirrors */ true, false, /* raiseError */ false))
+	if (!dispatchDtxCommand(cmdbuf, false, /* raiseError */ false))
 	{
 		ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error",
 							   currentGxact->gid)));

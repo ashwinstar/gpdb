@@ -335,7 +335,7 @@ extern bool isCurrentDtxActive(void);
 extern void sendDtxExplicitBegin(void);
 extern int dtxCurrentPhase1Count(void);
 
-extern bool dispatchDtxCommand(const char *cmd, bool dispatchToMirrors, bool withSnapshot, bool raiseError);
+extern bool dispatchDtxCommand(const char *cmd, bool withSnapshot, bool raiseError);
 
 extern void tmShmemInit(void);
 extern int	tmShmemSize(void);
