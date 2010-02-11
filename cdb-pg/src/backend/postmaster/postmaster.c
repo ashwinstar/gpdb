@@ -4145,7 +4145,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		ereport(DEBUG2,
 				(errmsg_internal("sending %s to process %d",
 								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
-								 (int) StartupPID)));
+								 (int) StartupPass2PID)));
 		signal_child(StartupPass2PID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
