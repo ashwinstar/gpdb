@@ -423,8 +423,11 @@ ExecAppend(AppendState *node)
 		 *
 		 * Do not terminate the first subplan since this subplan may
 		 * contain SharedScan node, which should not be terminated.
+		 *
+		 * Do not terminate the subplans when it is in the dispatch, since
+		 * the explain needs it.
 		 */
-		if (node->as_whichplan != node->as_firstplan)
+		if (Gp_role != GP_ROLE_DISPATCH && node->as_whichplan != node->as_firstplan)
 		{
 			ExecEndNode(subnode);
 			node->appendplans[node->as_whichplan] = NULL;
