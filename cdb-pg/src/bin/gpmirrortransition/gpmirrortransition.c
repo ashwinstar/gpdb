@@ -80,7 +80,7 @@ sendFully(int socket, char *data, int dataLength)
 static bool
 sendMessage(struct addrinfo *addr, void *data, int dataLength)
 {
-#define MAX_RETRIES (1)
+#define MAX_RETRIES (12)
 #define RETRY_SLEEP_TIME_SECONDS (1)
 
 	int retry;
