@@ -1849,7 +1849,7 @@ ServerLoop(void)
 			 * state that prevents it, start one.  It doesn't matter if this
 			 * fails, we'll just try again later.
 			 */
-			if (BgWriterPID == 0 && StartupPID == 0 && !FatalError && !SyncMaster)
+			if (BgWriterPID == 0 && StartupPID == 0 && StartupPass2PID == 0 && !FatalError && !SyncMaster)
 			{
 				BgWriterPID = StartBackgroundWriter();
 				if (Debug_print_server_processes)
@@ -1894,7 +1894,7 @@ ServerLoop(void)
 			 * frequently in autovac_start.
 			 */
 			if ((AutoVacuumingActive() || force_autovac) && AutoVacPID == 0 &&
-				StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
+				StartupPID == 0 && StartupPass2PID == 0 && !FatalError && Shutdown == NoShutdown)
 			{
 				AutoVacPID = autovac_start();
 				if (Debug_print_server_processes)
@@ -1906,7 +1906,7 @@ ServerLoop(void)
 
 			/* If we have lost the stats collector, try to start a new one */
 			if (PgStatPID == 0 &&
-				StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
+				StartupPID == 0 && StartupPass2PID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
 			{
 				PgStatPID = pgstat_start();
 				if (Debug_print_server_processes)
@@ -1922,6 +1922,7 @@ ServerLoop(void)
 
 				if (subProc->pid == 0 &&
 					StartupPID == 0 &&
+					StartupPass2PID == 0 &&
 					!FatalError &&
 					Shutdown == NoShutdown &&
 					ServiceStartable(subProc))
@@ -2992,7 +2993,8 @@ SIGHUP_handler(SIGNAL_ARGS)
 		ProcessConfigFile(PGC_SIGHUP);
 		SignalChildren(SIGHUP);
 		if (StartupPID != 0)
-			signal_child(StartupPID, SIGHUP);
+			signal_child_if_up(StartupPID, SIGHUP);
+        signal_child_if_up(StartupPass2PID, SIGHUP);
 		if (BgWriterPID != 0)
 			signal_child(BgWriterPID, SIGHUP);
 		signal_child_if_up(FilerepPID, SIGHUP);
@@ -3103,7 +3105,7 @@ pmdie(SIGNAL_ARGS)
 			/*
 			 * No children left. Begin shutdown of data base system.
 			 */
-			if (StartupPID != 0 || FatalError)
+			if ((StartupPID != 0 && StartupPass2PID != 0) || FatalError)
  			{
  				if (Debug_print_server_processes)
  					elog(LOG,"Startup going or fatal error");				signal_child(BgWriterPID, SIGUSR2);
@@ -3170,6 +3172,7 @@ pmdie(SIGNAL_ARGS)
 
 			if (StartupPID != 0)
 				signal_child(StartupPID, SIGTERM);
+            signal_child_if_up(StartupPass2PID, SIGTERM);
 			if (pmState == PM_RECOVERY)
 			{
 				/* only bgwriter is active in this state */
@@ -3200,6 +3203,11 @@ pmdie(SIGNAL_ARGS)
 			if (StartupPID != 0)
 			{
 				signal_child(StartupPID, SIGTERM);
+				break;			/* let reaper() do the rest */
+			}
+			if (StartupPass2PID != 0)
+			{
+				signal_child(StartupPass2PID, SIGTERM);
 				break;			/* let reaper() do the rest */
 			}
 			if (FatalError)
@@ -3265,6 +3273,8 @@ pmdie(SIGNAL_ARGS)
 			SignalChildren(SIGQUIT);
 			if (StartupPID != 0)
 				signal_child(StartupPID, SIGQUIT);
+            if (StartupPass2PID != 0)
+				signal_child(StartupPass2PID, SIGQUIT);
  			StopServices(0, SIGQUIT);
 			if (BgWriterPID != 0)
 				signal_child(BgWriterPID, SIGQUIT);
@@ -3493,6 +3503,7 @@ static void do_reaper()
 
 			if (XLogStartupPass2Needed())
 			{
+			    Assert(StartupPass2PID == 0);
 				StartupPass2PID = StartupPass2DataBase();
 				Assert(StartupPass2PID != 0);
 
@@ -3593,7 +3604,7 @@ static void do_reaper()
 
 				if (ServiceStartable(subProc))
 				{
-					if (StartupPID == 0 &&
+					if (StartupPID == 0 && StartupPass2PID == 0 &&
 						!FatalError && Shutdown == NoShutdown)
 					{
 						/*
@@ -3718,9 +3729,10 @@ static void do_reaper()
 			}
 			else
 			{
-				/* filerep died and is required, so start it up again */
+				/* filerep died, we mark a fault */
 				updateConfig(SegmentStateFault);
 			}
+			continue;
 		}
 
 		/*
@@ -3822,10 +3834,10 @@ static void do_reaper()
 	{
 		/*
 		 * Wait for all important children to exit, then reset shmem and
-		 * StartupDataBase.  (We can ignore the archiver and stats processes
+		 * redo database startup.  (We can ignore the archiver and stats processes
 		 * here since they are not connected to shmem.)
 		 */
-		if (DLGetHead(BackendList) || StartupPID != 0 || BgWriterPID != 0 ||
+		if (DLGetHead(BackendList) || StartupPID != 0 || StartupPass2PID  != 0 || BgWriterPID != 0 ||
 			AutoVacPID != 0 || ServiceProcessesExist(0))
 			goto reaper_done;
 		ereport(LOG,
@@ -3861,7 +3873,7 @@ static void do_reaper()
 	if (Shutdown > NoShutdown)
 	{
 		bool signaledBgWriter = false;
-		if (DLGetHead(BackendList) || StartupPID != 0 || AutoVacPID != 0)
+		if (DLGetHead(BackendList) || StartupPID != 0 || StartupPass2PID != 0 || AutoVacPID != 0)
 			goto reaper_done;
 
 		anyServiceSignaled =
@@ -3981,6 +3993,8 @@ GetServerProcessTitle(int pid)
 		return "system logger process";
 	else if (pid == StartupPID)
 		return "startup process";
+    else if (pid == StartupPass2PID)
+        return "startup pass2 process";
 	else if (pid == PostmasterPid)
 		return "postmaster process";
 
@@ -4123,7 +4137,19 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		signal_child(StartupPID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
-	/* Take care of the bgwriter too */
+	/* Take care of the startup process too */
+	if (pid == StartupPass2PID)
+		StartupPass2PID = 0;
+	else if (StartupPass2PID != 0 && !FatalError)
+	{
+		ereport(DEBUG2,
+				(errmsg_internal("sending %s to process %d",
+								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
+								 (int) StartupPID)));
+		signal_child(StartupPass2PID, (SendStop ? SIGSTOP : SIGQUIT));
+	}
+
+    /* Take care of the bgwriter too */
 	if (pid == BgWriterPID)
 		BgWriterPID = 0;
 	else if (BgWriterPID != 0 && !FatalError)
@@ -4331,6 +4357,7 @@ PostmasterStateMachine(void)
 		}
 		else if (CountChildren() == 0 &&
 			StartupPID == 0 &&
+			StartupPass2PID == 0 &&
 			(BgWriterPID == 0 || !FatalError) &&
 			//WalWriterPID == 0 &&
 			AutoVacPID == 0)
@@ -4416,6 +4443,7 @@ PostmasterStateMachine(void)
 		{
 			/* These other guys should be dead already */
 			Assert(StartupPID == 0);
+			Assert(StartupPass2PID == 0);
 			Assert(BgWriterPID == 0);
 
 			Assert(AutoVacPID == 0);
@@ -5981,12 +6009,12 @@ StartChildProcess(AuxProcType type)
 	av[ac] = NULL;
 	Assert(ac < lengthof(av));
 
-	switch (type)
+    switch (type)
 	{
-	case BgWriterProcess:
-	case StartupProcess:
-	case StartupPass2Process:
-	case WalWriterProcess:
+        case BgWriterProcess:
+        case StartupProcess:
+        case StartupPass2Process:
+        case WalWriterProcess:
 		Assert(isPrimaryMirrorModeAFullPostmaster(true));
 		break;
 	case FilerepProcess:
