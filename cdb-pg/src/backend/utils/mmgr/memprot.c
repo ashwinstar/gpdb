@@ -310,7 +310,7 @@ static void *gp_malloc_internal(int64 sz1, int64 sz2, bool ismalloc)
         if (mem_avail < 0)
             return NULL;
 
-		if(mem_avail > need_chunk)
+		if(mem_avail >= need_chunk)
         {
 			err_code = gpmemprot_down_sem(&gpsema_vmem_prot, need_chunk, true);
 
@@ -409,7 +409,7 @@ void *gp_realloc(void *ptr, int64 sz, int64 newsz)
                 if (mem_avail < 0)
                     return NULL;
 
-				if(mem_avail > need_chunk)
+				if(mem_avail >= need_chunk)
                 {
 					err_code = gpmemprot_down_sem(&gpsema_vmem_prot, need_chunk, true);
 				    if(err_code != 0)

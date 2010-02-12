@@ -12,6 +12,20 @@
 #ifndef CDBUTIL_H
 #define CDBUTIL_H
 
+/*
+ * Copied from geqo_random.h (deprecated)
+ */
+
+#include <math.h>
+
+/* cdb_rand returns a random float value between 0 and 1 inclusive */
+#define cdb_rand() ((double) random() / (double) MAX_RANDOM_VALUE)
+
+/* cdb_randint returns integer value between lower and upper inclusive */
+#define cdb_randint(upper,lower) \
+	( (int) floor( cdb_rand()*(((upper)-(lower))+0.999999) ) + (lower) )
+
+
 #include "c.h"
 
 /* --------------------------------------------------------------------------------------------------
@@ -50,20 +64,6 @@ typedef struct CdbComponentDatabaseInfo
 #define SEGMENT_IS_ACTIVE_MIRROR(p) ((p)->role == 'm' ? true : false)
 #define SEGMENT_IS_ACTIVE_PRIMARY(p) ((p)->role == 'p' ? true : false)
 #define SEGMENT_IS_ALIVE(p) ((p)->status == 'u' ? true : false)
-
-
-/*
- * Copied from geqo_random.h (deprecated)
- */
-
-#include <math.h>
-
-/* cdb_rand returns a random float value between 0 and 1 inclusive */
-#define cdb_rand() ((double) random() / (double) MAX_RANDOM_VALUE)
-
-/* cdb_randint returns integer value between lower and upper inclusive */
-#define cdb_randint(upper,lower) \
-	( (int) floor( cdb_rand()*(((upper)-(lower))+0.999999) ) + (lower) )
 
 
 /* --------------------------------------------------------------------------------------------------
