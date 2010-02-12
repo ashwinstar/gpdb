@@ -209,13 +209,11 @@ ExecCountSlotsExternalScan(ExternalScan *node)
 void
 ExecEndExternalScan(ExternalScanState *node)
 {
-	Relation	relation;
 	FileScanDesc fileScanDesc;
 
 	/*
 	 * get information from node
 	 */
-	relation = node->ss.ss_currentRelation;
 	fileScanDesc = node->ess_ScanDesc;
 
 	/*
@@ -236,8 +234,17 @@ ExecEndExternalScan(ExternalScanState *node)
 
 	/*
 	 * close the external relation.
+	 *
+	 * MPP-8040: make sure we don't close it if it hasn't completed setup, or
+	 * if we've already closed it.
 	 */
-	ExecCloseScanRelation(relation);
+	if (node->ss.ss_currentRelation)
+	{
+		Relation	relation = node->ss.ss_currentRelation;
+
+		node->ss.ss_currentRelation = NULL;
+		ExecCloseScanRelation(relation);
+	}
 	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
