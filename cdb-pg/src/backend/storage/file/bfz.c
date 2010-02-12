@@ -144,7 +144,7 @@ bfz_append_end(bfz_t * thiz)
 	if ((tot_compressed = lseek(thiz->fd, 0, SEEK_END)) == -1)
 		elog(ERROR, "bfz: lseek failed with (errno %d) %m", errno);
 
-	elog(DEBUG5, "bfz file size uncompressed %lld, compressed %lld, savings %d%%", 
+	elog(DEBUG1, "bfz file size uncompressed %lld, compressed %lld, savings %d%%", 
 		 (long long) tot_bytes, (long long) tot_compressed, tot_bytes == 0 ? 0 : (int) ((tot_bytes - tot_compressed) * 100 / tot_bytes));
 
 	thiz->mode = BFZ_MODE_FREED;

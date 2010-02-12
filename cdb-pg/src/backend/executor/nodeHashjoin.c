@@ -958,6 +958,8 @@ ExecHashJoinSaveTuple(PlanState *ps, MemTuple tuple, uint32 hashvalue,
 		
 #ifdef HJ_USE_BFZ
 		batchside->bfz = bfz_create(tmpprefix, gp_hashagg_compress_spill_files);
+		elog(DEBUG1, "create batch file prefix %s with gp_hashagg_compress_spill_files=%d",
+			 tmpprefix, gp_hashagg_compress_spill_files);
 #else
 		batchside->bufFile = BufFileCreateTemp(tmpprefix, false);
 #endif

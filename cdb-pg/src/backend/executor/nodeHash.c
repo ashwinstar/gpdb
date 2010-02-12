@@ -535,14 +535,12 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 		if (batch->innerside.bfz)
 		{
 			bfz_close(batch->innerside.bfz, true); 
-			pfree(batch->innerside.bfz);
 			batch->innerside.bfz = NULL;
 		}
 
 		if (batch->outerside.bfz)
 		{
 			bfz_close(batch->outerside.bfz, true); 
-			pfree(batch->outerside.bfz);
 			batch->outerside.bfz = NULL;
 		}
 #else
