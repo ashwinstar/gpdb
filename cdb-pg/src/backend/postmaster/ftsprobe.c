@@ -131,6 +131,8 @@ static void SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes,
 static void Filerep_mode_update(int dbid, char *mode, char status);
 static void Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
 
+static void Null_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
+
 static void getMounts_forDbid(int dbid, List **mountp);
 static char mountMaintenance_forMpid(int mpid);
 static void startSegment_forDbid(int dbid);
@@ -1365,24 +1367,38 @@ probePublishUpdate(uint8 *probe_results)
 
 		/* Now we're going to apply the changelist we just generated. */
 		ftsLock();
+
+		/* if we've gotten a pause request, we ignore our probe results. */
+		if (ftsProbeInfo->fts_pauseProbes)
+		{
+			closeSelfConn(entryConn);
+			pfree(changes);
+			ftsUnlock();
+
+			return false;
+		}
 		
 		if (failover_strategy == 'n')
 		{
 			/* no fault strategy ? */
+			Null_Failover(entryConn, changes, changeEntries, timestamp_str);
 		}
 		else if (failover_strategy == 'f')
 		{
 			/* FILEREP response */
 			Filerep_Failover(entryConn, changes, changeEntries, timestamp_str);
+
+			addChangeHistory(entryConn, changes, changeEntries, timestamp_str);
+			probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
 		}
 		else if (failover_strategy == 's')
 		{
 			/* SAN response */
 			SAN_Failover(entryConn, changes, changeEntries, timestamp_str);
-		}
 
-		addChangeHistory(entryConn, changes, changeEntries, timestamp_str);
-		probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
+			addChangeHistory(entryConn, changes, changeEntries, timestamp_str);
+			probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
+		}
 
 		ftsUnlock();
 
@@ -1722,6 +1738,13 @@ dumpChanges(struct segmentStatusChange *changes, int changeCount)
 		elog(LOG, "   change %d of %d dbid %d content %d alive %d/%d primary %d/%d",
 			 i+1, changeCount, changes[i].dbid, changes[i].segindex, new_alive, old_alive, new_pri, old_pri);
 	}
+}
+
+static void
+Null_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str)
+{
+	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		dumpChanges(changes, changeCount);
 }
 
 /*
