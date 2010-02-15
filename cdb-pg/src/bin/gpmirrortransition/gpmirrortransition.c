@@ -110,7 +110,7 @@ sendMessage(struct addrinfo *addr, void *data, int dataLength)
 
 			if ( addr->ai_next == NULL )
 			{
-				fprintf(stderr, "gpmirrortransition -- socket() failed:\n" );
+				fprintf(stderr, "transition failed to create socket: " );
 				goto sockErrReturn;
 			}
 			else addr = addr->ai_next;
@@ -122,22 +122,37 @@ sendMessage(struct addrinfo *addr, void *data, int dataLength)
 			int connectVal = connect(tmpsock, addr->ai_addr, addr->ai_addrlen);
 			if ( connectVal >= 0 )
 			{
-				retry = -100; /* break out of outer loop */
+				retry = -100; /* success -- break out of outer loop */
 				break;
 			}
 			
 			if ( SOCK_ERRNO == ECONNREFUSED &&
 					retry < MAX_RETRIES )
 			{
+			    /* connection refused and we have retries left -- server may not be up yet, so try again later */ 
 				closesocket(tmpsock);
 				tmpsock = -1;
 				sleep(RETRY_SLEEP_TIME_SECONDS);
 				break;
 			}
+
 			if (SOCK_ERRNO != EINTR)
 			{
-				fprintf(stderr, "gpmirrortransition -- connect() failed %d:\n", SOCK_ERRNO);
-				goto sockErrReturn;
+			    /* a real error -- see if there is another address to try.  If so, break out
+			     *   to try it.  Otherwise, error! */
+			    addr = addr->ai_next;
+
+			    if ( addr == NULL)
+			    {
+			        /* error */
+				    fprintf(stderr, "transition failed to connect: ");
+				    goto sockErrReturn;
+                }
+                else
+                {
+                    retry--; /* don't lose a retry attempt because of trying a different address */
+                    break;
+                }
 			}
 			/* else ... interrupted system call - we'll just try again */
 		}
@@ -154,13 +169,13 @@ sendMessage(struct addrinfo *addr, void *data, int dataLength)
 
 	if ( ! sendFully(tmpsock, (char *) &trp, sizeof(trp)))
 	{
-		fprintf(stderr, "gpmirrortransition -- sendMessage() failed:\n");
+		fprintf(stderr, "transition failed sending message: ");
 		goto sockErrReturn;
 	}
 
 	if ( ! sendFully(tmpsock, (char *) data, dataLength ))
 	{
-		fprintf(stderr, "gpmirrortransition -- sendMessage() failed:\n");
+		fprintf(stderr, "transition failed sending message: ");
 		goto sockErrReturn;
 	}
 
@@ -180,7 +195,7 @@ sendMessage(struct addrinfo *addr, void *data, int dataLength)
 
 			if ( lengthLeft < 1 )
 			{
-				fprintf(stderr, "Response from server is too large\n" );
+				fprintf(stderr, "transition failed: response from server is too large\n" );
 				result = false;
 				goto allDone;
 			}
@@ -210,14 +225,14 @@ sendMessage(struct addrinfo *addr, void *data, int dataLength)
 			
 			if ( offset < 4)
 			{
-				fprintf(stderr, "gpmirrortransition -- server did not respond with enough data");
+				fprintf(stderr, "transition failed: server did not respond with enough data");
 				goto errReturn;
 			}
 
 			lengthFromMsg = htonl(*(int32*)buf);
 			if ( lengthFromMsg != offset )
 			{
-				fprintf(stderr, "gpmirrortransition -- received %d bytes but server message said %d were sent", (int) offset, (int) lengthFromMsg );
+				fprintf(stderr, "transition failed: received %d bytes but server message said %d were sent", (int) offset, (int) lengthFromMsg );
 				result = false;
 				goto errReturn;
 			}
