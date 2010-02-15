@@ -3572,8 +3572,8 @@ static void do_reaper()
 				PgStatPID = pgstat_start();
 				if (Debug_print_server_processes)
 					elog(LOG,"on startup successful: started 'statistics collector process' as pid %ld",
-							(long)PgStatPID);
-					didServiceProcessWork = true;
+						 (long)PgStatPID);
+				didServiceProcessWork = true;
 			}
 
 			/*
@@ -3618,14 +3618,22 @@ static void do_reaper()
 							CleanupBackend(pid, exitstatus);
 						}
 
-						subProc->pid =
-							(subProc->serverStart)();
-						if (Debug_print_server_processes)
-						{
-							elog(LOG,"restarted '%s' as pid %ld",
-								 subProc->procName, (long)subProc->pid);
-							didServiceProcessWork = true;
-						}
+						/*
+						 * MPP-7676, we can't restart during
+						 * do_reaper() since we may initiate a
+						 * postmaster reset (in which case we'll wind
+						 * up waiting for the restarted process to
+						 * die). Leave the startup to ServerLoop().
+						 */
+						/*
+						  subProc->pid =
+						  (subProc->serverStart)();
+						  if (Debug_print_server_processes)
+						  {
+						  elog(LOG,"restarted '%s' as pid %ld", subProc->procName, (long)subProc->pid);
+						  didServiceProcessWork = true;
+						  }
+						*/
 					}
 				}
 
@@ -3670,8 +3678,11 @@ static void do_reaper()
 				 * and the postmaster dies.  A bit of a kludge.
 				 */
 				StopServices(/* excludeFlags */ 0, SIGUSR2);
-										// Get the service processes that
-										// want to stop after bgwriter.
+
+				/*
+				 * Get the service processes that
+				 * want to stop after bgwriter.
+				 */
 				if (PgArchPID != 0)
 				{
 					/* Waken archiver for the last time */
@@ -3699,7 +3710,7 @@ static void do_reaper()
 			 * checkpoint, we may as well just stop here; any recovery
 			 * required will happen on next postmaster start.
 			 */
-			 /* TODO: Is this code needed, or will PostmasterStateMachine handle this? */
+			/* TODO: Is this code needed, or will PostmasterStateMachine handle this? */
 			if (Shutdown > NoShutdown &&
 				!DLGetHead(BackendList) && AutoVacPID == 0)
 			{
