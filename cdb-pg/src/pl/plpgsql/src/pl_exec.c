@@ -4695,8 +4695,20 @@ exec_simple_check_plan(PLpgSQL_expr *expr)
 	if (list_length(spi_plan->ptlist) != 1)
 		return;
 
-	stmt = (PlannedStmt *) linitial(spi_plan->ptlist);
-	plan = stmt ? stmt->planTree : NULL;
+	/*
+	 * MPP-8038: Utility statements get here too, so make sure this is
+	 * planned
+	 */
+	if (IsA(linitial(spi_plan->ptlist), PlannedStmt))
+	{
+		stmt = (PlannedStmt *) linitial(spi_plan->ptlist);
+		plan = stmt ? stmt->planTree : NULL;
+	}
+	else
+	{
+		/* This is a utility statement */
+		plan = NULL;
+	}
 
 	/*
 	 * 2. It must be a RESULT plan --> no scan's required
