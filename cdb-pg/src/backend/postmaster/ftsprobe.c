@@ -688,7 +688,8 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 	else
 	{
 		/* something happened ? */
-		write_log("Connect() failure. %d", errno);
+		write_log("Connect() failure. %d  (dbid %d content %d host is %s)",
+				  errno, dbInfo->dbid, dbInfo->segindex, dbInfo->hostip);
 		close(fd);
 
 		return PROBE_DONE; /* NOT alive */
