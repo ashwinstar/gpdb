@@ -554,7 +554,10 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
     Relation rel = idesc->aoi_rel;
     int i;
 
-    Assert(!rel->rd_rel->relhasoids);
+    if (rel->rd_rel->relhasoids)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+				 errmsg("append-only column-oriented tables do not support rows with OIDs")));
 
     /* As usual, at this momnet, we assume one col per vp */
     for(i=0; i<rel->rd_att->natts; ++i)
