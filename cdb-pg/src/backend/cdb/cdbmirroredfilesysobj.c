@@ -37,6 +37,8 @@ void MirroredFileSysObj_CreateFilespaceDir(
 	
 	char		*mirrorFilespaceLocation)
 {
+	Assert(primaryFilespaceLocation != NULL);
+
 	smgrcreatefilespacedir(filespaceOid, primaryDbId, primaryFilespaceLocation, mirrorDbId, mirrorFilespaceLocation, false);
 }
 
@@ -59,6 +61,8 @@ void MirroredFileSysObj_DropFilespaceDir(
 
 	bool isRedo)
 {
+	Assert(primaryFilespaceLocation != NULL);
+
 	smgrdormfilespacedir(filespaceOid, primaryFilespaceLocation, mirrorFilespaceLocation, isRedo);
 }
 
@@ -66,6 +70,8 @@ void MirroredFileSysObj_DropFilespaceDir(
 void MirroredFileSysObj_CreateTablespaceDir(
 	TablespaceDirNode			*tablespaceDirNode)
 {
+	Assert(tablespaceDirNode != NULL);
+
 	smgrcreatetablespacedir(tablespaceDirNode, false);
 }
 
@@ -86,6 +92,8 @@ void MirroredFileSysObj_DropTablespaceDir(
 void MirroredFileSysObj_CreateDbDir(
 	DbDirNode			*dbDirNode)
 {
+	Assert(dbDirNode != NULL);
+
 	smgrcreatedbdir(
 				dbDirNode, 
 				/* isRedo */ false);
@@ -94,7 +102,8 @@ void MirroredFileSysObj_CreateDbDir(
 void MirroredFileSysObj_ScheduleDropDbDir(
 	DbDirNode			*dbDirNode)
 {
-	
+	Assert(dbDirNode != NULL);
+
 	smgrschedulermdbdir(dbDirNode);
 
 }
@@ -104,12 +113,16 @@ void MirroredFileSysObj_DropDbDir(
 
 	bool isRedo)
 {
+	Assert(dbDirNode != NULL);
+
 	smgrdormdbdir(dbDirNode, isRedo);
 }
 
 static void MirroredFileSysObj_JustInTimeDbDirCreate(
 	DbDirNode			*justInTimeDbDirNode)
 {
+	Assert(justInTimeDbDirNode != NULL);
+
 	if (justInTimeDbDirNode->tablespace == GLOBALTABLESPACE_OID ||
 		(justInTimeDbDirNode->tablespace == DEFAULTTABLESPACE_OID &&
 		 justInTimeDbDirNode->database == TemplateDbOid))
@@ -166,6 +179,10 @@ void MirroredFileSysObj_CreateRelFile(
 	// UNDONE: This is broken -- not sure why (MPP-7949, etc).
 	DbDirNode justInTimeDbDirNode;
 
+	Assert(smgrOpen != NULL);
+	Assert(persistentTid != NULL);
+	Assert(persistentSerialNum != NULL);
+
 	/*
 	 * "Fault-in" the database directory in a tablespace if it doesn't exist yet.
 	 */
@@ -197,6 +214,8 @@ void MirroredFileSysObj_CreateOnlyRelFile(
 
 	bool isLocalBuf)
 {
+	Assert(smgrOpen != NULL);
+
 	smgrcreate(
 			smgrOpen, 
 			isLocalBuf, 
@@ -212,6 +231,8 @@ void MirroredFileSysObj_ScheduleDropRelFile(
 
 	bool isLocalBuf)
 {
+	Assert(smgrOpen != NULL);
+	Assert(persistentTid != NULL);
 
 	smgrscheduleunlink(smgrOpen, persistentTid, persistentSerialNum, isLocalBuf);
 }
@@ -223,6 +244,7 @@ void MirroredFileSysObj_DropRelFile(
 
 	bool isRedo)
 {
+	Assert(smgrOpen != NULL);
 
 	smgrdounlink(smgrOpen, isLocalBuf, isRedo);
 
