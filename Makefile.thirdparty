@@ -140,7 +140,7 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
 	pcre/7.8
 	psi/0.3b2
 	python/2.6.2
-	sigar/1.5.0.1
+	sigar/1.6.3
 	yaml/0.1.1
 	zlib/1.2.3
 endef
