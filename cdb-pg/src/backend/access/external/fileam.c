@@ -317,10 +317,14 @@ external_endscan(FileScanDesc scan)
 		scan->typioparams = NULL;
 	}
 
-    /*
-     * delete the row context
-     */
-    MemoryContextDelete(scan->fs_pstate->rowcontext);
+	if (scan->fs_pstate->rowcontext != NULL)
+	{
+		/*
+		 * delete the row context
+		 */
+		MemoryContextDelete(scan->fs_pstate->rowcontext);
+		scan->fs_pstate->rowcontext = NULL;
+	}
 
 	/*
 	 * if SREH was active:
