@@ -258,36 +258,22 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 	ExecInitResultTupleSlot(estate, &appendstate->ps);
 
 	/*
-	 * If this is called by the dispatcher or the subplans in this Append
-	 * node have cross-slice shared nodes that prevent us from postponing 
-	 * initializing subplans, we initialize the subplans here. Otherwise,
-	 * the subplan is initialized right before being processed.
-	 *
-	 * However, to make GPMon work, we always send initGpmon packages.
+	 * Initialize the subplan nodes.
 	 */
 	for (i = appendstate->as_firstplan; i <= appendstate->as_lastplan; i++)
 	{
 		initNode = (Plan *) list_nth(node->appendplans, i);
-		if (Gp_role == GP_ROLE_DISPATCH || node->hasXslice)
-		{
-			/*
-			 * call ExecInitNode on each of the plans to be executed and save the
-			 * results into the array "appendplans".  Note we *must* set
-			 * estate->es_result_relation_info correctly while we initialize each
-			 * sub-plan; ExecContextForcesOids depends on that!
-			 */
-			appendstate->as_whichplan = i;
-			exec_append_initialize_next(appendstate);
-			
-			appendplanstates[i] = ExecInitNode(initNode, estate, eflags);
-		}
-		else
-		{
-			Assert(nodeTag(initNode) - T_Plan_Start >= 0 &&
-				   nodeTag(initNode) < T_Plan_End);
-			
-			sendInitGpmonPkts(initNode, estate);
-		}
+
+		/*
+		 * call ExecInitNode on each of the plans to be executed and save the
+		 * results into the array "appendplans".  Note we *must* set
+		 * estate->es_result_relation_info correctly while we initialize each
+		 * sub-plan; ExecContextForcesOids depends on that!
+		 */
+		appendstate->as_whichplan = i;
+		exec_append_initialize_next(appendstate);
+		
+		appendplanstates[i] = ExecInitNode(initNode, estate, eflags);
 	}
 
 	/*
@@ -356,25 +342,6 @@ ExecAppend(AppendState *node)
 		 */
 		subnode = node->appendplans[node->as_whichplan];
 
-		if (subnode == NULL)
-		{
-			Plan *initNode = NULL;
-			
-			/*
-			 * call ExecInitNode on the subplan to be executed and save the
-			 * results into the array "appendplans".  Note we *must* set
-			 * estate->es_result_relation_info correctly while we initialize each
-			 * sub-plan; ExecContextForcesOids depends on that!
-			 */
-			exec_append_initialize_next(node);
-
-			initNode = (Plan *) list_nth(((Append *)(node->ps.plan))->appendplans, node->as_whichplan);
-			node->ps.state->current_slice_no = node->ps.state->es_cur_slice_idx;
-			node->appendplans[node->as_whichplan] =
-				ExecInitNode(initNode, node->ps.state, node->eflags);
-			subnode = node->appendplans[node->as_whichplan];
-		}
-
 		Assert(subnode != NULL);
 
 		/*
@@ -420,19 +387,7 @@ ExecAppend(AppendState *node)
 		 * Go on to the "next" subplan in the appropriate direction. If no
 		 * more subplans, return the empty slot set up for us by
 		 * ExecInitAppend.
-		 *
-		 * Do not terminate the first subplan since this subplan may
-		 * contain SharedScan node, which should not be terminated.
-		 *
-		 * Do not terminate the subplans when it is in the dispatch, since
-		 * the explain needs it.
 		 */
-		if (Gp_role != GP_ROLE_DISPATCH && node->as_whichplan != node->as_firstplan)
-		{
-			ExecEndNode(subnode);
-			node->appendplans[node->as_whichplan] = NULL;
-		}
-		
 		if (ScanDirectionIsForward(node->ps.state->es_direction))
 			node->as_whichplan++;
 		else
