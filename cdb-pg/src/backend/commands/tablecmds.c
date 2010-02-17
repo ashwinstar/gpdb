@@ -9738,6 +9738,7 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 
 	/* schedule unlinking old physical file */
 	RelationOpenSmgr(rel);
+	Assert(rel->rd_smgr != NULL);
 	RelationFetchGpRelationNode(rel);
 	Assert(rel->rd_relationnodeinfo.isPresent);
 	MirroredFileSysObj_ScheduleDropRelFile(

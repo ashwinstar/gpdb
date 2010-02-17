@@ -325,6 +325,7 @@ heap_create(const char *relname,
 	{
 		Assert(rel->rd_smgr == NULL);
 		RelationOpenSmgr(rel);
+		Assert(rel->rd_smgr != NULL);
 
 		/*
 		 * We save the persistent TID and serial number in pg_class so we
@@ -2017,6 +2018,7 @@ heap_drop_with_catalog(Oid relid)
 		!RelationIsExternal(rel))
 	{
 		RelationOpenSmgr(rel);
+		Assert(rel->rd_smgr != NULL);
 		RelationFetchGpRelationNode(rel);
 		Assert(rel->rd_relationnodeinfo.isPresent);
 		MirroredFileSysObj_ScheduleDropRelFile(

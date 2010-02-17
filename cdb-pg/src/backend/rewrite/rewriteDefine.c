@@ -446,6 +446,7 @@ DefineQueryRewrite(RuleStmt *stmt)
 	if (RelisBecomingView)
 	{
 		RelationOpenSmgr(event_relation);
+		Assert(event_relation->rd_smgr != NULL);
 		RelationFetchGpRelationNode(event_relation);
 		Assert(event_relation->rd_relationnodeinfo.isPresent);
 		MirroredFileSysObj_ScheduleDropRelFile(

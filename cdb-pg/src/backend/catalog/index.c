@@ -985,6 +985,7 @@ index_drop(Oid indexId)
 	 * Schedule physical removal of the files
 	 */
 	RelationOpenSmgr(userIndexRelation);
+	Assert(userIndexRelation->rd_smgr != NULL);
 	RelationFetchGpRelationNode(userIndexRelation);
 	DeleteGpRelationNodeTuple(userIndexRelation);
 	MirroredFileSysObj_ScheduleDropRelFile(
@@ -1443,6 +1444,7 @@ setNewRelfilenode(Relation relation)
 
 	/* schedule unlinking old relfilenode */
 	RelationOpenSmgr(relation);
+	Assert(relation->rd_smgr != NULL);
 	RelationFetchGpRelationNode(relation);
 	Assert(relation->rd_relationnodeinfo.isPresent);
 	MirroredFileSysObj_ScheduleDropRelFile(
@@ -1575,6 +1577,7 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 
 	/* schedule unlinking old relfilenode */
 	RelationOpenSmgr(relation);
+	Assert(relation->rd_smgr != NULL);
 	RelationFetchGpRelationNode(relation);
 	Assert(relation->rd_relationnodeinfo.isPresent);
 	MirroredFileSysObj_ScheduleDropRelFile(
