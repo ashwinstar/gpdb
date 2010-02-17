@@ -266,6 +266,12 @@ bool		Debug_persistent_recovery_print = false;
 int			Debug_persistent_recovery_print_level = LOG;
 bool		Debug_database_command_print = false;
 int			Debug_database_command_print_level = LOG;
+#define GP_MAX_DATABASES_DEFAULT 16
+int			gp_max_databases = GP_MAX_DATABASES_DEFAULT;
+#define GP_MAX_TABLESPACES_DEFAULT 64
+int			gp_max_tablespaces = GP_MAX_TABLESPACES_DEFAULT;
+#define GP_MAX_FILESPACES_DEFAULT 16
+int			gp_max_filespaces = GP_MAX_FILESPACES_DEFAULT;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -2480,6 +2486,33 @@ static struct config_int ConfigureNamesInt[] =
 		1024, 0, INT_MAX, NULL, NULL
 	},
 
+	{
+		{"gp_max_databases", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the maximum number of databases."),
+			NULL
+		},
+		&gp_max_databases,
+		GP_MAX_DATABASES_DEFAULT, 16, 256, NULL, NULL
+	},
+	
+	{
+		{"gp_max_tablespaces", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the maximum number of tablespaces."),
+			NULL
+		},
+		&gp_max_tablespaces,
+		GP_MAX_TABLESPACES_DEFAULT, 16, 2048, NULL, NULL
+	},
+			
+	{
+		{"gp_max_filespaces", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the maximum number of filespaces."),
+			NULL
+		},
+		&gp_max_filespaces,
+		GP_MAX_FILESPACES_DEFAULT, 16, 256, NULL, NULL
+	},
+				
 	{
 		{"debug_dtm_action_delay_ms", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the debug DTM action delay in milliseconds."),

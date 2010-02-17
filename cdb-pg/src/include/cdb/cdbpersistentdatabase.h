@@ -29,9 +29,7 @@ typedef struct DatabaseEntryData
 typedef DatabaseEntryData *DatabaseEntry;
 
 static inline int32 DatabaseEntry_Size(
-	int32			databaseHashSize,
-
-	int32			relationHashSize)
+	int32			databaseHashSize)
 {
 	return offsetof(DatabaseEntryData,data) + 
 		   SharedOidSearch_TableLen(databaseHashSize);
@@ -57,7 +55,9 @@ typedef struct DatabaseDirEntryData
 	int64					serialNum;
 	TransactionId			parentXid;
 	ItemPointerData 		presistentTid;
-	
+
+	int32	iteratorRefCount;
+
 } DatabaseDirEntryData;
 typedef DatabaseDirEntryData *DatabaseDirEntry;
 

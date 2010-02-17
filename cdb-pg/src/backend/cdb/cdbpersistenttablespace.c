@@ -37,13 +37,6 @@
 #include "storage/ipc.h"
 #include "utils/builtins.h"
 
-
-/*
- * GUC variables
- */
-int		MaxPersistentTablespaces = 2048;		/* Max # of persistent tablespaces */
-						// UNDONE: Create GUC have default value there....
-
 typedef struct PersistentTablespaceSharedData
 {
 	
@@ -756,7 +749,7 @@ Size PersistentTablespace_ShmemSize(void)
 	Size		size;
 
 	/* The hash table of persistent tablespaces */
-	size = hash_estimate_size((Size)MaxPersistentTablespaces,
+	size = hash_estimate_size((Size)gp_max_tablespaces,
 							  sizeof(TablespaceDirEntryData));
 
 	/* The shared-memory structure. */
@@ -788,8 +781,8 @@ PersistentTablespace_HashTableInit(void)
 
 	persistentTablespaceSharedHashTable = 
 						ShmemInitHash("Persistent Tablespace Hash",
-								   MaxPersistentTablespaces,
-								   MaxPersistentTablespaces,
+								   gp_max_tablespaces,
+								   gp_max_tablespaces,
 								   &info,
 								   hash_flags);
 

@@ -24,6 +24,7 @@
 #include "cdb/cdbdirectopen.h"
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbpersistentrelation.h"
 #include "storage/itemptr.h"
@@ -46,11 +47,8 @@
  * index, or append-only (row- or column-store).
  */
 
-/*
- * GUC variables
- */
-int		MaxPersistentDatabases = 64;		/* Max # of persistent relation files */
-						// UNDONE: Create GUC have default value there....
+int		MaxPersistentDatabaseDirectories = 0;
+						// This value is the gp_max_tablespaces * gp_max_databases.
 
 typedef struct PersistentDatabaseSharedData
 {
@@ -301,6 +299,8 @@ static bool PersistentDatabase_ScanTupleCallback(
 	databaseDirEntry->parentXid = parentXid;
 	databaseDirEntry->presistentTid = *persistentTid;
 
+	databaseDirEntry->iteratorRefCount = 0;
+
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
 			 "PersistentDatabase_ScanTupleCallback: database %u, tablespace %u, state %s, TID %s, serial number " INT64_FORMAT,
@@ -373,6 +373,27 @@ static HASH_SEQ_STATUS iterateStatus;
 static DatabaseEntry dirIterateDatabaseEntry = NULL;
 static DatabaseDirEntry dirIterateDatabaseDirEntry = NULL;
 
+static void PersistentDatabase_DirIterateReleaseCurrent(void)
+{
+	if (dirIterateDatabaseDirEntry == NULL)
+		return;
+
+	Assert(dirIterateDatabaseDirEntry->iteratorRefCount > 0);
+	dirIterateDatabaseDirEntry->iteratorRefCount--;
+	if (dirIterateDatabaseDirEntry->iteratorRefCount == 0 &&
+		dirIterateDatabaseDirEntry->state == PersistentFileSysState_Free)
+	{
+		/*
+		 * Our job is to actually free the entry.
+		 */
+		SharedOidSearch_Delete(
+					dirIterateDatabaseEntry->databaseDirSearchTable,
+					&dirIterateDatabaseDirEntry->header);
+	}
+
+	dirIterateDatabaseDirEntry = NULL;
+}
+
 static void PersistentDatabase_ReleaseIterator(void)
 {
 	if (iterateHashSeqValid)
@@ -385,6 +406,8 @@ static void PersistentDatabase_ReleaseIterator(void)
 
 static void PersistentDatabase_ReleaseDirIterator(void)
 {
+	PersistentDatabase_DirIterateReleaseCurrent();
+
 	if (dirIterateDatabaseDirEntry != NULL)
 	{
 		Assert(dirIterateDatabaseEntry != NULL);
@@ -502,21 +525,34 @@ bool PersistentDatabase_DirIterateNext(
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
-	SharedOidSearch_Iterate(
-					dirIterateDatabaseEntry->databaseDirSearchTable,
-					(SharedOidSearchObjHeader**)&dirIterateDatabaseDirEntry);
+	PersistentDatabase_DirIterateReleaseCurrent();
 
-	if (dirIterateDatabaseDirEntry == NULL)
+	while (true)
 	{
-		dirIterateDatabaseEntry = NULL;
-		LWLockRelease(PersistentObjLock);
-		return false;
+		SharedOidSearch_Iterate(
+						dirIterateDatabaseEntry->databaseDirSearchTable,
+						(SharedOidSearchObjHeader**)&dirIterateDatabaseDirEntry);
+
+		if (dirIterateDatabaseDirEntry == NULL)
+		{
+			dirIterateDatabaseEntry = NULL;
+			LWLockRelease(PersistentObjLock);
+			return false;
+		}
+
+		*state = dirIterateDatabaseDirEntry->state;
+		if (*state == PersistentFileSysState_Free)
+		{
+			Assert(dirIterateDatabaseDirEntry->iteratorRefCount > 0);
+			continue;
+		}
+		
+		dbDirNode->tablespace = dirIterateDatabaseDirEntry->header.oid2;
+		dbDirNode->database = dirIterateDatabaseDirEntry->header.oid1;
+
+		dirIterateDatabaseDirEntry->iteratorRefCount++;
+		break;
 	}
-
-	dbDirNode->tablespace = dirIterateDatabaseDirEntry->header.oid2;
-	dbDirNode->database = dirIterateDatabaseDirEntry->header.oid1;
-
-	*state = dirIterateDatabaseDirEntry->state;
 
 	LWLockRelease(PersistentObjLock);
 
@@ -734,6 +770,8 @@ void PersistentDatabase_MarkCreatePending(
 	databaseDirEntry->state = PersistentFileSysState_CreatePending;
 	databaseDirEntry->parentXid = GetTopTransactionId();
 
+	databaseDirEntry->iteratorRefCount = 0;
+
 	PersistentDatabase_AddTuple(
 							databaseDirEntry,
 							flushToXLog);
@@ -811,6 +849,8 @@ void PersistentDatabase_AddCreated(
 
 	databaseDirEntry->state = PersistentFileSysState_Created;
 	databaseDirEntry->parentXid = GetTopTransactionId();
+
+	databaseDirEntry->iteratorRefCount = 0;
 
 	PersistentDatabase_AddTuple(
 							databaseDirEntry,
@@ -1069,9 +1109,10 @@ void PersistentDatabase_Dropped(
 							freeValues,
 							/* flushToXLog */ false);
 
-	SharedOidSearch_Delete(
-				databaseEntry->databaseDirSearchTable,
-				&databaseDirEntry->header);
+	if (databaseDirEntry->iteratorRefCount == 0)
+		SharedOidSearch_Delete(
+					databaseEntry->databaseDirSearchTable,
+					&databaseDirEntry->header);
 
 	LWLockRelease(PersistentObjLock);
 }
@@ -1326,7 +1367,7 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 static Size PersistentDatabase_SharedDataSize(void)
 {
 	return offsetof(PersistentDatabaseSharedData,freePoolMemory)
-		 + MaxPersistentDatabases*sizeof(DatabaseDirEntryData);
+		 + gp_max_databases*sizeof(DatabaseDirEntryData);
 }
 
 /*
@@ -1337,8 +1378,8 @@ Size PersistentDatabase_ShmemSize(void)
 	Size		size;
 
 	/* The hash table of persistent databases */
-	size = hash_estimate_size((Size)MaxPersistentDatabases,
-							  DatabaseEntry_Size(127, 127));
+	size = hash_estimate_size((Size)gp_max_databases,
+							  DatabaseEntry_Size(127));
 
 	/* The shared-memory structure. */
 	size = add_size(size, PersistentDatabase_SharedDataSize());
@@ -1363,14 +1404,14 @@ PersistentDatabase_HashTableInit(void)
 	/* Set key and entry sizes. */
 	MemSet(&info, 0, sizeof(info));
 	info.keysize = sizeof(Oid);
-	info.entrysize = DatabaseEntry_Size(127, 127);
+	info.entrysize = DatabaseEntry_Size(MaxPersistentDatabaseDirectories);
 	info.hash = tag_hash;
 	hash_flags = (HASH_ELEM | HASH_FUNCTION);
 
 	persistentDatabaseSharedHashTable = 
 					ShmemInitHash("Persistent Database Hash",
-								   MaxPersistentDatabases,
-								   MaxPersistentDatabases,
+								   gp_max_databases,
+								   gp_max_databases,
 								   &info,
 								   hash_flags);
 
@@ -1388,6 +1429,8 @@ void PersistentDatabase_ShmemInit(void)
 	bool found;
 	bool ok;
 
+	MaxPersistentDatabaseDirectories = gp_max_databases * gp_max_tablespaces;
+
 	/* Create the shared-memory structure. */
 	persistentDatabaseSharedData = 
 		(PersistentDatabaseSharedData *)
@@ -1402,10 +1445,10 @@ void PersistentDatabase_ShmemInit(void)
 
 		SharedOidSearch_InitDescr(
 					&persistentDatabaseSharedData->databaseSearchDescr,
-					SharedOidSearch_TableLen(127),
+					SharedOidSearch_TableLen(MaxPersistentDatabaseDirectories),
 					127,
 					persistentDatabaseSharedData->freePoolMemory,
-					MaxPersistentDatabases*sizeof(DatabaseDirEntryData),
+					MaxPersistentDatabaseDirectories*sizeof(DatabaseDirEntryData),
 					sizeof(DatabaseDirEntryData));
 	}
 

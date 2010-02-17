@@ -153,6 +153,9 @@ extern bool	Debug_persistent_recovery_print;
 extern int	Debug_persistent_recovery_print_level;
 extern bool	Debug_database_command_print;
 extern int	Debug_database_command_print_level;
+extern int	gp_max_databases;
+extern int	gp_max_tablespaces;
+extern int	gp_max_filespaces;
 
 extern bool Debug_print_tablespace;
 extern bool	Debug_print_server_processes;

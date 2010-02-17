@@ -39,13 +39,6 @@
 #include "cdb/cdbpersistentfilesysobj.h"
 #include "cdb/cdbpersistentfilespace.h"
 
-
-/*
- * GUC variables
- */
-int		MaxPersistentFilespaces = 128;		/* Max # of persistent filespaces */
-						// UNDONE: Create GUC have default value there....
-
 typedef struct PersistentFilespaceSharedData
 {
 	
@@ -929,7 +922,7 @@ Size PersistentFilespace_ShmemSize(void)
 	Size		size;
 
 	/* The hash table of persistent filespaces */
-	size = hash_estimate_size((Size)MaxPersistentFilespaces,
+	size = hash_estimate_size((Size)gp_max_filespaces,
 							  sizeof(FilespaceDirEntryData));
 
 	/* The shared-memory structure. */
@@ -961,8 +954,8 @@ PersistentFilespace_HashTableInit(void)
 
 	persistentFilespaceSharedHashTable = 
 						ShmemInitHash("Persistent Filespace Hash",
-								   MaxPersistentFilespaces,
-								   MaxPersistentFilespaces,
+								   gp_max_filespaces,
+								   gp_max_filespaces,
 								   &info,
 								   hash_flags);
 
