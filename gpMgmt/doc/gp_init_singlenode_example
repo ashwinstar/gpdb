@@ -17,7 +17,7 @@ ARRAY_NAME="GPDB SNE"
 
 # This specifies the file that contains the list of segment host names 
 # that comprise the Greenplum system. For a single-node system, this
-# file contains only the hostname 'localhost'. If the host list 
+# file contains only the local hostname or 127.0.0.1. If the host list 
 # file does not reside in the same directory where the gpinitsystem 
 # script is executed, specify the absolute path to the file.
 
@@ -62,7 +62,7 @@ declare -a DATA_DIRECTORY=(/gpdata1 /gpdata2)
 
 # The host name of the Greenplum Database master instance.
 
-MASTER_HOSTNAME=localhost
+MASTER_HOSTNAME=127.0.0.1
 
 
 # The location where the data directory will be created on the  
