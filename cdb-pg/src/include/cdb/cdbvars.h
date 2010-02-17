@@ -851,13 +851,13 @@ extern int gp_dbg_flags;
  */
 extern int gp_sort_max_distinct;
 
-/* turn the partitioned tables syntax on */
-
-extern bool	gp_enable_partitioned_tables;
-
 /* turn the hash partitioned tables on */
 
 extern bool	gp_enable_hash_partitioned_tables;
+
+/* MPP-7770: disallow altering storage using SET WITH */
+
+extern bool	gp_setwith_alter_storage;
 
 /* turn tablespace on */
 

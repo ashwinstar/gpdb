@@ -84,10 +84,10 @@ drop table ats_test;
 create index atsdb_i_idx on atsdb(i);
 set enable_seqscan to off;
 explain select * from atsdb where i = 1;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1)  (cost=0.00..2600.32 rows=1 width=6)
-   ->  Index Scan using atsdb_i_idx on atsdb  (cost=0.00..2600.32 rows=1 width=6)
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1)  (cost=0.00..200.27 rows=1 width=6)
+   ->  Index Scan using atsdb_i_idx on atsdb  (cost=0.00..200.27 rows=1 width=6)
          Index Cond: i = 1
  Settings:  enable_seqscan=off
 (4 rows)
@@ -123,10 +123,10 @@ insert into atsdb_ao select i, (i+1)::text from generate_series(1, 100) i;
 explain select count(*) from atsdb_ao;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
- Aggregate  (cost=1.68..1.69 rows=1 width=0)
-   ->  Gather Motion 2:1  (slice1)  (cost=1.63..1.67 rows=1 width=0)
-         ->  Aggregate  (cost=1.63..1.64 rows=1 width=0)
-               ->  Seq Scan on atsdb_ao  (cost=0.00..1.50 rows=50 width=0)
+ Aggregate  (cost=3.31..3.32 rows=1 width=0)
+   ->  Gather Motion 2:1  (slice1)  (cost=3.25..3.29 rows=1 width=0)
+         ->  Aggregate  (cost=3.25..3.26 rows=0 width=0)
+               ->  Seq Scan on atsdb_ao  (cost=0.00..3.00 rows=50 width=0)
  Settings:  enable_seqscan=off
 (5 rows)
 
@@ -141,10 +141,10 @@ alter table atsdb_ao set distributed by (j);
 explain select count(*) from atsdb_ao;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
- Aggregate  (cost=1.68..1.69 rows=1 width=0)
-   ->  Gather Motion 2:1  (slice1)  (cost=1.63..1.67 rows=1 width=0)
-         ->  Aggregate  (cost=1.63..1.64 rows=1 width=0)
-               ->  Seq Scan on atsdb_ao  (cost=0.00..1.50 rows=50 width=0)
+ Aggregate  (cost=3.31..3.32 rows=1 width=0)
+   ->  Gather Motion 2:1  (slice1)  (cost=3.25..3.29 rows=1 width=0)
+         ->  Aggregate  (cost=3.25..3.26 rows=0 width=0)
+               ->  Seq Scan on atsdb_ao  (cost=0.00..3.00 rows=50 width=0)
  Settings:  enable_seqscan=off
 (5 rows)
 
@@ -163,12 +163,6 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_1" for table "atsdb"
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_2" for table "atsdb"
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_3" for table "atsdb"
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 alter table atsdb_1_prt_2 set distributed by (j);
 ERROR:  cannot SET DISTRIBUTED BY for atsdb_1_prt_2
 HINT:  Leaf distribution policy must be random or match that of the entire partitioned table.
@@ -209,6 +203,10 @@ alter table pg_class set distributed by (relname);
 ERROR:  permission denied: "pg_class" is a system catalog
 alter table pg_class set with(appendonly = true);
 ERROR:  permission denied: "pg_class" is a system catalog
+-- MPP-7770: allow testing of changing storage for now
+set gp_setwith_alter_storage = true;
+alter table pg_class set with(appendonly = true);
+ERROR:  permission denied: "pg_class" is a system catalog
 -- WITH clause
 create table atsdb (i int, j text) distributed by (j);
 insert into atsdb select i, i::text from generate_series(1, 10) i;
@@ -247,56 +245,6 @@ alter table atsdb drop column i;
 select * from atsdb;
   j  |  t  |  n  
 -----+-----+-----
-   3 | 4   |   5
-   5 | 6   |   7
-   7 | 8   |   9
-   9 | 10  |  11
-  11 | 12  |  13
-  13 | 14  |  15
-  15 | 16  |  17
-  17 | 18  |  19
-  19 | 20  |  21
-  21 | 22  |  23
-  23 | 24  |  25
-  25 | 26  |  27
-  27 | 28  |  29
-  29 | 30  |  31
-  31 | 32  |  33
-  33 | 34  |  35
-  35 | 36  |  37
-  37 | 38  |  39
-  39 | 40  |  41
-  41 | 42  |  43
-  43 | 44  |  45
-  45 | 46  |  47
-  47 | 48  |  49
-  49 | 50  |  51
-  51 | 52  |  53
-  53 | 54  |  55
-  55 | 56  |  57
-  57 | 58  |  59
-  59 | 60  |  61
-  61 | 62  |  63
-  63 | 64  |  65
-  65 | 66  |  67
-  67 | 68  |  69
-  69 | 70  |  71
-  71 | 72  |  73
-  73 | 74  |  75
-  75 | 76  |  77
-  77 | 78  |  79
-  79 | 80  |  81
-  81 | 82  |  83
-  83 | 84  |  85
-  85 | 86  |  87
-  87 | 88  |  89
-  89 | 90  |  91
-  91 | 92  |  93
-  93 | 94  |  95
-  95 | 96  |  97
-  97 | 98  |  99
-  99 | 100 | 101
- 101 | 102 | 103
    2 | 3   |   4
    4 | 5   |   6
    6 | 7   |   8
@@ -347,6 +295,56 @@ select * from atsdb;
   96 | 97  |  98
   98 | 99  | 100
  100 | 101 | 102
+   3 | 4   |   5
+   5 | 6   |   7
+   7 | 8   |   9
+   9 | 10  |  11
+  11 | 12  |  13
+  13 | 14  |  15
+  15 | 16  |  17
+  17 | 18  |  19
+  19 | 20  |  21
+  21 | 22  |  23
+  23 | 24  |  25
+  25 | 26  |  27
+  27 | 28  |  29
+  29 | 30  |  31
+  31 | 32  |  33
+  33 | 34  |  35
+  35 | 36  |  37
+  37 | 38  |  39
+  39 | 40  |  41
+  41 | 42  |  43
+  43 | 44  |  45
+  45 | 46  |  47
+  47 | 48  |  49
+  49 | 50  |  51
+  51 | 52  |  53
+  53 | 54  |  55
+  55 | 56  |  57
+  57 | 58  |  59
+  59 | 60  |  61
+  61 | 62  |  63
+  63 | 64  |  65
+  65 | 66  |  67
+  67 | 68  |  69
+  69 | 70  |  71
+  71 | 72  |  73
+  73 | 74  |  75
+  75 | 76  |  77
+  77 | 78  |  79
+  79 | 80  |  81
+  81 | 82  |  83
+  83 | 84  |  85
+  85 | 86  |  87
+  87 | 88  |  89
+  89 | 90  |  91
+  91 | 92  |  93
+  93 | 94  |  95
+  95 | 96  |  97
+  97 | 98  |  99
+  99 | 100 | 101
+ 101 | 102 | 103
 (100 rows)
 
 alter table atsdb set distributed by (t);
@@ -374,55 +372,6 @@ select * from distcheck where rel = 'atsdb';
 select * from atsdb;
   j  |  t  
 -----+-----
-   3 | 4
-   5 | 6
-   7 | 8
-  19 | 20
-  21 | 22
-  23 | 24
-  25 | 26
-  27 | 28
-  39 | 40
-  41 | 42
-  43 | 44
-  45 | 46
-  47 | 48
-  59 | 60
-  61 | 62
-  63 | 64
-  65 | 66
-  67 | 68
-  79 | 80
-  81 | 82
-  83 | 84
-  85 | 86
-  87 | 88
-  10 | 11
-  12 | 13
-  14 | 15
-  16 | 17
-  18 | 19
-  30 | 31
-  32 | 33
-  34 | 35
-  36 | 37
-  38 | 39
-  50 | 51
-  52 | 53
-  54 | 55
-  56 | 57
-  58 | 59
-  70 | 71
-  72 | 73
-  74 | 75
-  76 | 77
-  78 | 79
-  90 | 91
-  92 | 93
-  94 | 95
-  96 | 97
-  98 | 99
- 100 | 101
    9 | 10
   11 | 12
   13 | 14
@@ -474,6 +423,55 @@ select * from atsdb;
   84 | 85
   86 | 87
   88 | 89
+   3 | 4
+   5 | 6
+   7 | 8
+  19 | 20
+  21 | 22
+  23 | 24
+  25 | 26
+  27 | 28
+  39 | 40
+  41 | 42
+  43 | 44
+  45 | 46
+  47 | 48
+  59 | 60
+  61 | 62
+  63 | 64
+  65 | 66
+  67 | 68
+  79 | 80
+  81 | 82
+  83 | 84
+  85 | 86
+  87 | 88
+  10 | 11
+  12 | 13
+  14 | 15
+  16 | 17
+  18 | 19
+  30 | 31
+  32 | 33
+  34 | 35
+  36 | 37
+  38 | 39
+  50 | 51
+  52 | 53
+  54 | 55
+  56 | 57
+  58 | 59
+  70 | 71
+  72 | 73
+  74 | 75
+  76 | 77
+  78 | 79
+  90 | 91
+  92 | 93
+  94 | 95
+  96 | 97
+  98 | 99
+ 100 | 101
 (100 rows)
 
 alter table atsdb set distributed by (j);
@@ -493,56 +491,6 @@ select relname, segrelid != 0, reloptions from pg_class, pg_appendonly where pg_
 select * from atsdb;
   j  |  t  
 -----+-----
-   9 | 10
-  11 | 12
-  13 | 14
-  15 | 16
-  17 | 18
-  29 | 30
-  31 | 32
-  33 | 34
-  35 | 36
-  37 | 38
-  49 | 50
-  51 | 52
-  53 | 54
-  55 | 56
-  57 | 58
-  69 | 70
-  71 | 72
-  73 | 74
-  75 | 76
-  77 | 78
-  89 | 90
-  91 | 92
-  93 | 94
-  95 | 96
-  97 | 98
-  99 | 100
- 101 | 102
-   3 | 4
-   5 | 6
-   7 | 8
-  19 | 20
-  21 | 22
-  23 | 24
-  25 | 26
-  27 | 28
-  39 | 40
-  41 | 42
-  43 | 44
-  45 | 46
-  47 | 48
-  59 | 60
-  61 | 62
-  63 | 64
-  65 | 66
-  67 | 68
-  79 | 80
-  81 | 82
-  83 | 84
-  85 | 86
-  87 | 88
   10 | 11
   12 | 13
   14 | 15
@@ -593,6 +541,56 @@ select * from atsdb;
   84 | 85
   86 | 87
   88 | 89
+   3 | 4
+   5 | 6
+   7 | 8
+  19 | 20
+  21 | 22
+  23 | 24
+  25 | 26
+  27 | 28
+  39 | 40
+  41 | 42
+  43 | 44
+  45 | 46
+  47 | 48
+  59 | 60
+  61 | 62
+  63 | 64
+  65 | 66
+  67 | 68
+  79 | 80
+  81 | 82
+  83 | 84
+  85 | 86
+  87 | 88
+   9 | 10
+  11 | 12
+  13 | 14
+  15 | 16
+  17 | 18
+  29 | 30
+  31 | 32
+  33 | 34
+  35 | 36
+  37 | 38
+  49 | 50
+  51 | 52
+  53 | 54
+  55 | 56
+  57 | 58
+  69 | 70
+  71 | 72
+  73 | 74
+  75 | 76
+  77 | 78
+  89 | 90
+  91 | 92
+  93 | 94
+  95 | 96
+  97 | 98
+  99 | 100
+ 101 | 102
 (100 rows)
 
 -- validate parameters
@@ -619,24 +617,6 @@ NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_6" for table "atsdb"
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_7" for table "atsdb"
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_8" for table "atsdb"
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_9" for table "atsdb"
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into atsdb select i+2, i+1, i from generate_series(1, 9) i;
 select * from distcheck where rel like 'atsdb%';
       rel      | attname 
@@ -755,24 +735,6 @@ NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_6" for table "atsdb"
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_7" for table "atsdb"
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_8" for table "atsdb"
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_9" for table "atsdb"
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 alter table atsdb alter partition for(rank(5)) set distributed by (i);
 NOTICE:  altering table "atsdb_1_prt_5" (partition for rank 5 of relation "atsdb")
 WARNING:  distribution policy of relation "atsdb_1_prt_5" already set to (i)
@@ -1173,24 +1135,6 @@ NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_6" for table "mpp5738
 NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_7" for table "mpp5738"
 NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_8" for table "mpp5738"
 NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_9" for table "mpp5738"
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into mpp5738 select i, i+1, i+2, i from generate_series(1, 10) i;
 select * from mpp5738;
  a  | b  | c  | d  
@@ -1212,16 +1156,16 @@ NOTICE:  altering table "mpp5738_1_prt_1" (partition for rank 1 of relation "mpp
 select * from mpp5738;
  a  | b  | c  | d  
 ----+----+----+----
-  2 |  3 |  4 |  2
-  4 |  5 |  6 |  4
-  6 |  7 |  8 |  6
-  8 |  9 | 10 |  8
- 10 | 11 | 12 | 10
   1 |  2 |  3 |  1
   3 |  4 |  5 |  3
   5 |  6 |  7 |  5
   7 |  8 |  9 |  7
   9 | 10 | 11 |  9
+  2 |  3 |  4 |  2
+  4 |  5 |  6 |  4
+  6 |  7 |  8 |  6
+  8 |  9 | 10 |  8
+ 10 | 11 | 12 | 10
 (10 rows)
 
 drop table mpp5738;
@@ -1259,6 +1203,7 @@ select * from mpp5754 order by n_nationkey;
 drop table mpp5754;
 -- MPP-5918
 create role atsdb;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
 create table owner_test(i int, toast text) distributed randomly;
 alter table owner_test owner to atsdb;
 alter table owner_test set with (reorganize = true) distributed by (i);
@@ -1337,6 +1282,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -1374,10 +1321,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_497565_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_497565_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_497565_2_2_out(pg_atsdb_497565_2_2)
-NOTICE:  drop cascades to function pg_atsdb_497565_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_133977_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_133977_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_133977_2_3_out(pg_atsdb_133977_2_3)
+NOTICE:  drop cascades to function pg_atsdb_133977_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -1401,6 +1348,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -1438,10 +1387,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_497700_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_497700_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_497700_2_2_out(pg_atsdb_497700_2_2)
-NOTICE:  drop cascades to function pg_atsdb_497700_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_134127_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_134127_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_134127_2_3_out(pg_atsdb_134127_2_3)
+NOTICE:  drop cascades to function pg_atsdb_134127_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -1465,6 +1414,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -1502,10 +1453,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_497829_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_497829_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_497829_2_2_out(pg_atsdb_497829_2_2)
-NOTICE:  drop cascades to function pg_atsdb_497829_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_134265_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_134265_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_134265_2_3_out(pg_atsdb_134265_2_3)
+NOTICE:  drop cascades to function pg_atsdb_134265_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -1529,6 +1480,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -1566,10 +1519,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_497964_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_497964_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_497964_2_2_out(pg_atsdb_497964_2_2)
-NOTICE:  drop cascades to function pg_atsdb_497964_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_134415_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_134415_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_134415_2_3_out(pg_atsdb_134415_2_3)
+NOTICE:  drop cascades to function pg_atsdb_134415_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -1593,6 +1546,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -1630,10 +1585,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_498093_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_498093_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_498093_2_2_out(pg_atsdb_498093_2_2)
-NOTICE:  drop cascades to function pg_atsdb_498093_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_134553_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_134553_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_134553_2_3_out(pg_atsdb_134553_2_3)
+NOTICE:  drop cascades to function pg_atsdb_134553_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -1657,6 +1612,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -1694,10 +1651,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_498228_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_498228_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_498228_2_2_out(pg_atsdb_498228_2_2)
-NOTICE:  drop cascades to function pg_atsdb_498228_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_134703_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_134703_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_134703_2_3_out(pg_atsdb_134703_2_3)
+NOTICE:  drop cascades to function pg_atsdb_134703_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -1721,6 +1678,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -1758,10 +1717,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_498357_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_498357_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_498357_2_2_out(pg_atsdb_498357_2_2)
-NOTICE:  drop cascades to function pg_atsdb_498357_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_134841_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_134841_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_134841_2_3_out(pg_atsdb_134841_2_3)
+NOTICE:  drop cascades to function pg_atsdb_134841_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -1785,6 +1744,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -1822,10 +1783,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_498492_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_498492_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_498492_2_2_out(pg_atsdb_498492_2_2)
-NOTICE:  drop cascades to function pg_atsdb_498492_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_134991_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_134991_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_134991_2_3_out(pg_atsdb_134991_2_3)
+NOTICE:  drop cascades to function pg_atsdb_134991_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -1849,6 +1810,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -1886,10 +1849,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_498621_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_498621_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_498621_2_2_out(pg_atsdb_498621_2_2)
-NOTICE:  drop cascades to function pg_atsdb_498621_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_135129_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_135129_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_135129_2_3_out(pg_atsdb_135129_2_3)
+NOTICE:  drop cascades to function pg_atsdb_135129_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -1913,6 +1876,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -1950,10 +1915,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_498756_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_498756_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_498756_2_2_out(pg_atsdb_498756_2_2)
-NOTICE:  drop cascades to function pg_atsdb_498756_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_135279_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_135279_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_135279_2_3_out(pg_atsdb_135279_2_3)
+NOTICE:  drop cascades to function pg_atsdb_135279_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -1977,6 +1942,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2014,10 +1981,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_498885_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_498885_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_498885_2_2_out(pg_atsdb_498885_2_2)
-NOTICE:  drop cascades to function pg_atsdb_498885_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_135417_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_135417_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_135417_2_3_out(pg_atsdb_135417_2_3)
+NOTICE:  drop cascades to function pg_atsdb_135417_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2041,6 +2008,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2078,10 +2047,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_499020_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_499020_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_499020_2_2_out(pg_atsdb_499020_2_2)
-NOTICE:  drop cascades to function pg_atsdb_499020_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_135567_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_135567_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_135567_2_3_out(pg_atsdb_135567_2_3)
+NOTICE:  drop cascades to function pg_atsdb_135567_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2105,6 +2074,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2142,10 +2113,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_499149_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_499149_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_499149_2_2_out(pg_atsdb_499149_2_2)
-NOTICE:  drop cascades to function pg_atsdb_499149_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_135705_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_135705_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_135705_2_3_out(pg_atsdb_135705_2_3)
+NOTICE:  drop cascades to function pg_atsdb_135705_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2169,6 +2140,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2206,10 +2179,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_499284_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_499284_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_499284_2_2_out(pg_atsdb_499284_2_2)
-NOTICE:  drop cascades to function pg_atsdb_499284_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_135855_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_135855_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_135855_2_3_out(pg_atsdb_135855_2_3)
+NOTICE:  drop cascades to function pg_atsdb_135855_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2233,6 +2206,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2270,10 +2245,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_499413_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_499413_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_499413_2_2_out(pg_atsdb_499413_2_2)
-NOTICE:  drop cascades to function pg_atsdb_499413_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_135993_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_135993_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_135993_2_3_out(pg_atsdb_135993_2_3)
+NOTICE:  drop cascades to function pg_atsdb_135993_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2297,6 +2272,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2334,10 +2311,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_499548_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_499548_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_499548_2_2_out(pg_atsdb_499548_2_2)
-NOTICE:  drop cascades to function pg_atsdb_499548_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_136143_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_136143_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_136143_2_3_out(pg_atsdb_136143_2_3)
+NOTICE:  drop cascades to function pg_atsdb_136143_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2361,6 +2338,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2398,10 +2377,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_499677_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_499677_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_499677_2_2_out(pg_atsdb_499677_2_2)
-NOTICE:  drop cascades to function pg_atsdb_499677_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_136281_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_136281_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_136281_2_3_out(pg_atsdb_136281_2_3)
+NOTICE:  drop cascades to function pg_atsdb_136281_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2425,6 +2404,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2462,10 +2443,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_499812_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_499812_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_499812_2_2_out(pg_atsdb_499812_2_2)
-NOTICE:  drop cascades to function pg_atsdb_499812_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_136431_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_136431_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_136431_2_3_out(pg_atsdb_136431_2_3)
+NOTICE:  drop cascades to function pg_atsdb_136431_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2489,6 +2470,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2526,10 +2509,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_499941_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_499941_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_499941_2_2_out(pg_atsdb_499941_2_2)
-NOTICE:  drop cascades to function pg_atsdb_499941_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_136569_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_136569_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_136569_2_3_out(pg_atsdb_136569_2_3)
+NOTICE:  drop cascades to function pg_atsdb_136569_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2553,6 +2536,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2590,10 +2575,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_500076_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_500076_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_500076_2_2_out(pg_atsdb_500076_2_2)
-NOTICE:  drop cascades to function pg_atsdb_500076_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_136719_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_136719_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_136719_2_3_out(pg_atsdb_136719_2_3)
+NOTICE:  drop cascades to function pg_atsdb_136719_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2617,6 +2602,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2654,10 +2641,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_500205_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_500205_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_500205_2_2_out(pg_atsdb_500205_2_2)
-NOTICE:  drop cascades to function pg_atsdb_500205_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_136857_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_136857_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_136857_2_3_out(pg_atsdb_136857_2_3)
+NOTICE:  drop cascades to function pg_atsdb_136857_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2681,6 +2668,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2718,10 +2707,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_500340_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_500340_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_500340_2_2_out(pg_atsdb_500340_2_2)
-NOTICE:  drop cascades to function pg_atsdb_500340_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_137007_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_137007_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_137007_2_3_out(pg_atsdb_137007_2_3)
+NOTICE:  drop cascades to function pg_atsdb_137007_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2745,6 +2734,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2782,10 +2773,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_500469_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_500469_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_500469_2_2_out(pg_atsdb_500469_2_2)
-NOTICE:  drop cascades to function pg_atsdb_500469_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_137145_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_137145_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_137145_2_3_out(pg_atsdb_137145_2_3)
+NOTICE:  drop cascades to function pg_atsdb_137145_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2809,6 +2800,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2846,10 +2839,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_500604_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_500604_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_500604_2_2_out(pg_atsdb_500604_2_2)
-NOTICE:  drop cascades to function pg_atsdb_500604_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_137295_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_137295_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_137295_2_3_out(pg_atsdb_137295_2_3)
+NOTICE:  drop cascades to function pg_atsdb_137295_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2873,6 +2866,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2910,10 +2905,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_500733_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_500733_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_500733_2_2_out(pg_atsdb_500733_2_2)
-NOTICE:  drop cascades to function pg_atsdb_500733_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_137433_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_137433_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_137433_2_3_out(pg_atsdb_137433_2_3)
+NOTICE:  drop cascades to function pg_atsdb_137433_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -2937,6 +2932,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = int2);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -2974,10 +2971,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_500868_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_500868_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_500868_2_2_out(pg_atsdb_500868_2_2)
-NOTICE:  drop cascades to function pg_atsdb_500868_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_137583_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_137583_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_137583_2_3_out(pg_atsdb_137583_2_3)
+NOTICE:  drop cascades to function pg_atsdb_137583_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -3001,6 +2998,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3061,6 +3060,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3121,6 +3122,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3158,10 +3161,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_501253_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_501253_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_501253_2_2_out(pg_atsdb_501253_2_2)
-NOTICE:  drop cascades to function pg_atsdb_501253_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_138001_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_138001_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_138001_2_3_out(pg_atsdb_138001_2_3)
+NOTICE:  drop cascades to function pg_atsdb_138001_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -3185,6 +3188,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3222,10 +3227,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_501388_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_501388_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_501388_2_2_out(pg_atsdb_501388_2_2)
-NOTICE:  drop cascades to function pg_atsdb_501388_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_138151_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_138151_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_138151_2_3_out(pg_atsdb_138151_2_3)
+NOTICE:  drop cascades to function pg_atsdb_138151_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -3249,6 +3254,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3286,10 +3293,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_501517_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_501517_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_501517_2_2_out(pg_atsdb_501517_2_2)
-NOTICE:  drop cascades to function pg_atsdb_501517_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_138289_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_138289_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_138289_2_3_out(pg_atsdb_138289_2_3)
+NOTICE:  drop cascades to function pg_atsdb_138289_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -3313,6 +3320,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3350,10 +3359,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_501652_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_501652_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_501652_2_2_out(pg_atsdb_501652_2_2)
-NOTICE:  drop cascades to function pg_atsdb_501652_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_138439_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_138439_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_138439_2_3_out(pg_atsdb_138439_2_3)
+NOTICE:  drop cascades to function pg_atsdb_138439_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -3377,6 +3386,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3414,10 +3425,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_501781_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_501781_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_501781_2_2_out(pg_atsdb_501781_2_2)
-NOTICE:  drop cascades to function pg_atsdb_501781_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_138577_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_138577_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_138577_2_3_out(pg_atsdb_138577_2_3)
+NOTICE:  drop cascades to function pg_atsdb_138577_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -3441,6 +3452,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3478,10 +3491,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_501916_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_501916_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_501916_2_2_out(pg_atsdb_501916_2_2)
-NOTICE:  drop cascades to function pg_atsdb_501916_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_138727_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_138727_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_138727_2_3_out(pg_atsdb_138727_2_3)
+NOTICE:  drop cascades to function pg_atsdb_138727_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -3505,6 +3518,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3542,10 +3557,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_502045_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_502045_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_502045_2_2_out(pg_atsdb_502045_2_2)
-NOTICE:  drop cascades to function pg_atsdb_502045_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_138865_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_138865_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_138865_2_3_out(pg_atsdb_138865_2_3)
+NOTICE:  drop cascades to function pg_atsdb_138865_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -3569,6 +3584,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3606,10 +3623,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_502180_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_502180_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_502180_2_2_out(pg_atsdb_502180_2_2)
-NOTICE:  drop cascades to function pg_atsdb_502180_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_139015_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_139015_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_139015_2_3_out(pg_atsdb_139015_2_3)
+NOTICE:  drop cascades to function pg_atsdb_139015_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -3633,6 +3650,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3693,6 +3712,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3753,6 +3774,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3813,6 +3836,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3873,6 +3898,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3910,10 +3937,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_502821_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_502821_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_502821_2_2_out(pg_atsdb_502821_2_2)
-NOTICE:  drop cascades to function pg_atsdb_502821_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_139713_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_139713_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_139713_2_3_out(pg_atsdb_139713_2_3)
+NOTICE:  drop cascades to function pg_atsdb_139713_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -3937,6 +3964,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -3974,10 +4003,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_502956_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_502956_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_502956_2_2_out(pg_atsdb_502956_2_2)
-NOTICE:  drop cascades to function pg_atsdb_502956_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_139863_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_139863_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_139863_2_3_out(pg_atsdb_139863_2_3)
+NOTICE:  drop cascades to function pg_atsdb_139863_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4001,6 +4030,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4038,10 +4069,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_503085_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_503085_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_503085_2_2_out(pg_atsdb_503085_2_2)
-NOTICE:  drop cascades to function pg_atsdb_503085_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_140001_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_140001_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_140001_2_3_out(pg_atsdb_140001_2_3)
+NOTICE:  drop cascades to function pg_atsdb_140001_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4065,6 +4096,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4102,10 +4135,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_503220_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_503220_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_503220_2_2_out(pg_atsdb_503220_2_2)
-NOTICE:  drop cascades to function pg_atsdb_503220_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_140151_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_140151_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_140151_2_3_out(pg_atsdb_140151_2_3)
+NOTICE:  drop cascades to function pg_atsdb_140151_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4129,6 +4162,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4166,10 +4201,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_503349_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_503349_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_503349_2_2_out(pg_atsdb_503349_2_2)
-NOTICE:  drop cascades to function pg_atsdb_503349_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_140289_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_140289_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_140289_2_3_out(pg_atsdb_140289_2_3)
+NOTICE:  drop cascades to function pg_atsdb_140289_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4193,6 +4228,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4230,10 +4267,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_503484_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_503484_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_503484_2_2_out(pg_atsdb_503484_2_2)
-NOTICE:  drop cascades to function pg_atsdb_503484_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_140439_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_140439_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_140439_2_3_out(pg_atsdb_140439_2_3)
+NOTICE:  drop cascades to function pg_atsdb_140439_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4257,6 +4294,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4294,10 +4333,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_503613_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_503613_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_503613_2_2_out(pg_atsdb_503613_2_2)
-NOTICE:  drop cascades to function pg_atsdb_503613_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_140577_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_140577_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_140577_2_3_out(pg_atsdb_140577_2_3)
+NOTICE:  drop cascades to function pg_atsdb_140577_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4321,6 +4360,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4358,10 +4399,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_503748_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_503748_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_503748_2_2_out(pg_atsdb_503748_2_2)
-NOTICE:  drop cascades to function pg_atsdb_503748_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_140727_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_140727_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_140727_2_3_out(pg_atsdb_140727_2_3)
+NOTICE:  drop cascades to function pg_atsdb_140727_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4385,6 +4426,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4422,10 +4465,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_503877_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_503877_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_503877_2_2_out(pg_atsdb_503877_2_2)
-NOTICE:  drop cascades to function pg_atsdb_503877_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_140865_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_140865_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_140865_2_3_out(pg_atsdb_140865_2_3)
+NOTICE:  drop cascades to function pg_atsdb_140865_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4449,6 +4492,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4486,10 +4531,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_504012_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_504012_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_504012_2_2_out(pg_atsdb_504012_2_2)
-NOTICE:  drop cascades to function pg_atsdb_504012_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_141015_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_141015_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_141015_2_3_out(pg_atsdb_141015_2_3)
+NOTICE:  drop cascades to function pg_atsdb_141015_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4513,6 +4558,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4550,10 +4597,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_504141_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_504141_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_504141_2_2_out(pg_atsdb_504141_2_2)
-NOTICE:  drop cascades to function pg_atsdb_504141_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_141153_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_141153_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_141153_2_3_out(pg_atsdb_141153_2_3)
+NOTICE:  drop cascades to function pg_atsdb_141153_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4577,6 +4624,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = int4);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4614,10 +4663,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_504276_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_504276_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_504276_2_2_out(pg_atsdb_504276_2_2)
-NOTICE:  drop cascades to function pg_atsdb_504276_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_141303_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_141303_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_141303_2_3_out(pg_atsdb_141303_2_3)
+NOTICE:  drop cascades to function pg_atsdb_141303_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4641,6 +4690,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4678,10 +4729,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_504405_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_504405_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_504405_2_2_out(pg_atsdb_504405_2_2)
-NOTICE:  drop cascades to function pg_atsdb_504405_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_141441_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_141441_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_141441_2_3_out(pg_atsdb_141441_2_3)
+NOTICE:  drop cascades to function pg_atsdb_141441_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4705,6 +4756,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4742,10 +4795,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_504540_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_504540_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_504540_2_2_out(pg_atsdb_504540_2_2)
-NOTICE:  drop cascades to function pg_atsdb_504540_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_141591_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_141591_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_141591_2_3_out(pg_atsdb_141591_2_3)
+NOTICE:  drop cascades to function pg_atsdb_141591_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -4769,6 +4822,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4829,6 +4884,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4889,6 +4946,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -4949,6 +5008,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5009,6 +5070,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5046,10 +5109,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_505181_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_505181_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_505181_2_2_out(pg_atsdb_505181_2_2)
-NOTICE:  drop cascades to function pg_atsdb_505181_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_142289_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_142289_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_142289_2_3_out(pg_atsdb_142289_2_3)
+NOTICE:  drop cascades to function pg_atsdb_142289_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5073,6 +5136,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5110,10 +5175,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_505316_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_505316_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_505316_2_2_out(pg_atsdb_505316_2_2)
-NOTICE:  drop cascades to function pg_atsdb_505316_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_142439_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_142439_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_142439_2_3_out(pg_atsdb_142439_2_3)
+NOTICE:  drop cascades to function pg_atsdb_142439_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5137,6 +5202,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5174,10 +5241,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_505445_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_505445_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_505445_2_2_out(pg_atsdb_505445_2_2)
-NOTICE:  drop cascades to function pg_atsdb_505445_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_142577_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_142577_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_142577_2_3_out(pg_atsdb_142577_2_3)
+NOTICE:  drop cascades to function pg_atsdb_142577_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5201,6 +5268,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5238,10 +5307,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_505580_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_505580_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_505580_2_2_out(pg_atsdb_505580_2_2)
-NOTICE:  drop cascades to function pg_atsdb_505580_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_142727_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_142727_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_142727_2_3_out(pg_atsdb_142727_2_3)
+NOTICE:  drop cascades to function pg_atsdb_142727_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5265,6 +5334,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5302,10 +5373,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_505709_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_505709_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_505709_2_2_out(pg_atsdb_505709_2_2)
-NOTICE:  drop cascades to function pg_atsdb_505709_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_142865_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_142865_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_142865_2_3_out(pg_atsdb_142865_2_3)
+NOTICE:  drop cascades to function pg_atsdb_142865_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5329,6 +5400,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5366,10 +5439,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_505844_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_505844_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_505844_2_2_out(pg_atsdb_505844_2_2)
-NOTICE:  drop cascades to function pg_atsdb_505844_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_143015_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_143015_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_143015_2_3_out(pg_atsdb_143015_2_3)
+NOTICE:  drop cascades to function pg_atsdb_143015_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5393,6 +5466,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5430,10 +5505,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_505973_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_505973_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_505973_2_2_out(pg_atsdb_505973_2_2)
-NOTICE:  drop cascades to function pg_atsdb_505973_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_143153_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_143153_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_143153_2_3_out(pg_atsdb_143153_2_3)
+NOTICE:  drop cascades to function pg_atsdb_143153_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5457,6 +5532,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5494,10 +5571,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_506108_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_506108_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_506108_2_2_out(pg_atsdb_506108_2_2)
-NOTICE:  drop cascades to function pg_atsdb_506108_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_143303_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_143303_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_143303_2_3_out(pg_atsdb_143303_2_3)
+NOTICE:  drop cascades to function pg_atsdb_143303_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5521,6 +5598,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5558,10 +5637,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_506237_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_506237_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_506237_2_2_out(pg_atsdb_506237_2_2)
-NOTICE:  drop cascades to function pg_atsdb_506237_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_143441_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_143441_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_143441_2_3_out(pg_atsdb_143441_2_3)
+NOTICE:  drop cascades to function pg_atsdb_143441_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5585,6 +5664,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5622,10 +5703,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_506372_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_506372_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_506372_2_2_out(pg_atsdb_506372_2_2)
-NOTICE:  drop cascades to function pg_atsdb_506372_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_143591_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_143591_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_143591_2_3_out(pg_atsdb_143591_2_3)
+NOTICE:  drop cascades to function pg_atsdb_143591_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5649,6 +5730,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5686,10 +5769,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_506501_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_506501_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_506501_2_2_out(pg_atsdb_506501_2_2)
-NOTICE:  drop cascades to function pg_atsdb_506501_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_143729_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_143729_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_143729_2_3_out(pg_atsdb_143729_2_3)
+NOTICE:  drop cascades to function pg_atsdb_143729_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5713,6 +5796,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5750,10 +5835,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_506636_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_506636_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_506636_2_2_out(pg_atsdb_506636_2_2)
-NOTICE:  drop cascades to function pg_atsdb_506636_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_143879_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_143879_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_143879_2_3_out(pg_atsdb_143879_2_3)
+NOTICE:  drop cascades to function pg_atsdb_143879_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5777,6 +5862,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5814,10 +5901,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_506765_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_506765_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_506765_2_2_out(pg_atsdb_506765_2_2)
-NOTICE:  drop cascades to function pg_atsdb_506765_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_144017_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_144017_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_144017_2_3_out(pg_atsdb_144017_2_3)
+NOTICE:  drop cascades to function pg_atsdb_144017_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5841,6 +5928,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5878,10 +5967,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_506900_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_506900_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_506900_2_2_out(pg_atsdb_506900_2_2)
-NOTICE:  drop cascades to function pg_atsdb_506900_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_144167_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_144167_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_144167_2_3_out(pg_atsdb_144167_2_3)
+NOTICE:  drop cascades to function pg_atsdb_144167_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5905,6 +5994,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -5942,10 +6033,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_507029_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_507029_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_507029_2_2_out(pg_atsdb_507029_2_2)
-NOTICE:  drop cascades to function pg_atsdb_507029_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_144305_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_144305_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_144305_2_3_out(pg_atsdb_144305_2_3)
+NOTICE:  drop cascades to function pg_atsdb_144305_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -5969,6 +6060,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6006,10 +6099,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_507164_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_507164_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_507164_2_2_out(pg_atsdb_507164_2_2)
-NOTICE:  drop cascades to function pg_atsdb_507164_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_144455_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_144455_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_144455_2_3_out(pg_atsdb_144455_2_3)
+NOTICE:  drop cascades to function pg_atsdb_144455_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6033,6 +6126,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6070,10 +6165,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_507293_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_507293_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_507293_2_2_out(pg_atsdb_507293_2_2)
-NOTICE:  drop cascades to function pg_atsdb_507293_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_144593_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_144593_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_144593_2_3_out(pg_atsdb_144593_2_3)
+NOTICE:  drop cascades to function pg_atsdb_144593_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6097,6 +6192,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6134,10 +6231,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_507428_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_507428_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_507428_2_2_out(pg_atsdb_507428_2_2)
-NOTICE:  drop cascades to function pg_atsdb_507428_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_144743_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_144743_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_144743_2_3_out(pg_atsdb_144743_2_3)
+NOTICE:  drop cascades to function pg_atsdb_144743_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6161,6 +6258,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6198,10 +6297,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_507557_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_507557_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_507557_2_2_out(pg_atsdb_507557_2_2)
-NOTICE:  drop cascades to function pg_atsdb_507557_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_144881_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_144881_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_144881_2_3_out(pg_atsdb_144881_2_3)
+NOTICE:  drop cascades to function pg_atsdb_144881_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6225,6 +6324,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = char);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6262,10 +6363,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_507692_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_507692_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_507692_2_2_out(pg_atsdb_507692_2_2)
-NOTICE:  drop cascades to function pg_atsdb_507692_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_145031_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_145031_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_145031_2_3_out(pg_atsdb_145031_2_3)
+NOTICE:  drop cascades to function pg_atsdb_145031_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6289,6 +6390,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6349,6 +6452,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6409,6 +6514,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6446,10 +6553,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_508077_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_508077_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_508077_2_2_out(pg_atsdb_508077_2_2)
-NOTICE:  drop cascades to function pg_atsdb_508077_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_145449_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_145449_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_145449_2_3_out(pg_atsdb_145449_2_3)
+NOTICE:  drop cascades to function pg_atsdb_145449_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6473,6 +6580,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6510,10 +6619,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_508212_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_508212_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_508212_2_2_out(pg_atsdb_508212_2_2)
-NOTICE:  drop cascades to function pg_atsdb_508212_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_145599_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_145599_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_145599_2_3_out(pg_atsdb_145599_2_3)
+NOTICE:  drop cascades to function pg_atsdb_145599_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6537,6 +6646,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6574,10 +6685,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_508341_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_508341_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_508341_2_2_out(pg_atsdb_508341_2_2)
-NOTICE:  drop cascades to function pg_atsdb_508341_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_145737_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_145737_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_145737_2_3_out(pg_atsdb_145737_2_3)
+NOTICE:  drop cascades to function pg_atsdb_145737_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6601,6 +6712,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6638,10 +6751,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_508476_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_508476_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_508476_2_2_out(pg_atsdb_508476_2_2)
-NOTICE:  drop cascades to function pg_atsdb_508476_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_145887_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_145887_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_145887_2_3_out(pg_atsdb_145887_2_3)
+NOTICE:  drop cascades to function pg_atsdb_145887_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6665,6 +6778,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6702,10 +6817,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_508605_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_508605_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_508605_2_2_out(pg_atsdb_508605_2_2)
-NOTICE:  drop cascades to function pg_atsdb_508605_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_146025_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_146025_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_146025_2_3_out(pg_atsdb_146025_2_3)
+NOTICE:  drop cascades to function pg_atsdb_146025_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6729,6 +6844,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6766,10 +6883,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_508740_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_508740_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_508740_2_2_out(pg_atsdb_508740_2_2)
-NOTICE:  drop cascades to function pg_atsdb_508740_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_146175_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_146175_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_146175_2_3_out(pg_atsdb_146175_2_3)
+NOTICE:  drop cascades to function pg_atsdb_146175_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6793,6 +6910,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6830,10 +6949,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_508869_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_508869_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_508869_2_2_out(pg_atsdb_508869_2_2)
-NOTICE:  drop cascades to function pg_atsdb_508869_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_146313_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_146313_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_146313_2_3_out(pg_atsdb_146313_2_3)
+NOTICE:  drop cascades to function pg_atsdb_146313_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6857,6 +6976,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6894,10 +7015,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_509004_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_509004_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_509004_2_2_out(pg_atsdb_509004_2_2)
-NOTICE:  drop cascades to function pg_atsdb_509004_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_146463_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_146463_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_146463_2_3_out(pg_atsdb_146463_2_3)
+NOTICE:  drop cascades to function pg_atsdb_146463_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6921,6 +7042,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -6958,10 +7081,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_509133_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_509133_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_509133_2_2_out(pg_atsdb_509133_2_2)
-NOTICE:  drop cascades to function pg_atsdb_509133_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_146601_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_146601_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_146601_2_3_out(pg_atsdb_146601_2_3)
+NOTICE:  drop cascades to function pg_atsdb_146601_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -6985,6 +7108,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7022,10 +7147,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_509268_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_509268_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_509268_2_2_out(pg_atsdb_509268_2_2)
-NOTICE:  drop cascades to function pg_atsdb_509268_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_146751_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_146751_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_146751_2_3_out(pg_atsdb_146751_2_3)
+NOTICE:  drop cascades to function pg_atsdb_146751_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7049,6 +7174,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7086,10 +7213,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_509397_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_509397_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_509397_2_2_out(pg_atsdb_509397_2_2)
-NOTICE:  drop cascades to function pg_atsdb_509397_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_146889_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_146889_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_146889_2_3_out(pg_atsdb_146889_2_3)
+NOTICE:  drop cascades to function pg_atsdb_146889_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7113,6 +7240,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7150,10 +7279,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_509532_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_509532_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_509532_2_2_out(pg_atsdb_509532_2_2)
-NOTICE:  drop cascades to function pg_atsdb_509532_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_147039_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_147039_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_147039_2_3_out(pg_atsdb_147039_2_3)
+NOTICE:  drop cascades to function pg_atsdb_147039_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7177,6 +7306,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7214,10 +7345,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_509661_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_509661_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_509661_2_2_out(pg_atsdb_509661_2_2)
-NOTICE:  drop cascades to function pg_atsdb_509661_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_147177_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_147177_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_147177_2_3_out(pg_atsdb_147177_2_3)
+NOTICE:  drop cascades to function pg_atsdb_147177_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7241,6 +7372,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7278,10 +7411,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_509796_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_509796_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_509796_2_2_out(pg_atsdb_509796_2_2)
-NOTICE:  drop cascades to function pg_atsdb_509796_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_147327_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_147327_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_147327_2_3_out(pg_atsdb_147327_2_3)
+NOTICE:  drop cascades to function pg_atsdb_147327_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7305,6 +7438,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7342,10 +7477,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_509925_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_509925_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_509925_2_2_out(pg_atsdb_509925_2_2)
-NOTICE:  drop cascades to function pg_atsdb_509925_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_147465_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_147465_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_147465_2_3_out(pg_atsdb_147465_2_3)
+NOTICE:  drop cascades to function pg_atsdb_147465_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7369,6 +7504,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7406,10 +7543,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_510060_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_510060_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_510060_2_2_out(pg_atsdb_510060_2_2)
-NOTICE:  drop cascades to function pg_atsdb_510060_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_147615_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_147615_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_147615_2_3_out(pg_atsdb_147615_2_3)
+NOTICE:  drop cascades to function pg_atsdb_147615_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7433,6 +7570,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7470,10 +7609,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_510189_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_510189_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_510189_2_2_out(pg_atsdb_510189_2_2)
-NOTICE:  drop cascades to function pg_atsdb_510189_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_147753_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_147753_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_147753_2_3_out(pg_atsdb_147753_2_3)
+NOTICE:  drop cascades to function pg_atsdb_147753_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7497,6 +7636,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7534,10 +7675,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_510324_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_510324_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_510324_2_2_out(pg_atsdb_510324_2_2)
-NOTICE:  drop cascades to function pg_atsdb_510324_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_147903_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_147903_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_147903_2_3_out(pg_atsdb_147903_2_3)
+NOTICE:  drop cascades to function pg_atsdb_147903_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7561,6 +7702,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7598,10 +7741,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_510453_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_510453_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_510453_2_2_out(pg_atsdb_510453_2_2)
-NOTICE:  drop cascades to function pg_atsdb_510453_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_148041_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_148041_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_148041_2_3_out(pg_atsdb_148041_2_3)
+NOTICE:  drop cascades to function pg_atsdb_148041_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7625,6 +7768,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7662,10 +7807,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_510588_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_510588_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_510588_2_2_out(pg_atsdb_510588_2_2)
-NOTICE:  drop cascades to function pg_atsdb_510588_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_148191_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_148191_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_148191_2_3_out(pg_atsdb_148191_2_3)
+NOTICE:  drop cascades to function pg_atsdb_148191_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7689,6 +7834,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7749,6 +7896,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7809,6 +7958,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7846,10 +7997,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_510973_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_510973_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_510973_2_2_out(pg_atsdb_510973_2_2)
-NOTICE:  drop cascades to function pg_atsdb_510973_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_148609_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_148609_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_148609_2_3_out(pg_atsdb_148609_2_3)
+NOTICE:  drop cascades to function pg_atsdb_148609_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7873,6 +8024,8 @@ create function breakout (break) returns cstring as 'textout' language internal;
 NOTICE:  argument type break is only a shell
 create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = double);
 create table g (i int, j break, k text) with (appendonly = false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into g (i, k) select i, i from generate_series(1, 10) i;
 alter table g drop column j;
 select * from g order by 1;
@@ -7910,10 +8063,10 @@ drop type break cascade;
 NOTICE:  drop cascades to function breakout(break)
 NOTICE:  drop cascades to function breakin(cstring)
 alter table g set with(reorganize = true) distributed randomly;
-NOTICE:  return type pg_atsdb_511108_2_2 is only a shell
-NOTICE:  argument type pg_atsdb_511108_2_2 is only a shell
-NOTICE:  drop cascades to function pg_atsdb_511108_2_2_out(pg_atsdb_511108_2_2)
-NOTICE:  drop cascades to function pg_atsdb_511108_2_2_in(cstring)
+NOTICE:  return type pg_atsdb_148759_2_3 is only a shell
+NOTICE:  argument type pg_atsdb_148759_2_3 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_148759_2_3_out(pg_atsdb_148759_2_3)
+NOTICE:  drop cascades to function pg_atsdb_148759_2_3_in(cstring)
 select * from g order by 1;
  i  | k  
 ----+----
@@ -7932,8 +8085,17 @@ select * from g order by 1;
 drop table g;
 -- MPP-6332
 create table abc (a int, b int, c int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 Alter table abc set distributed randomly;
 Alter table abc set with (reorganize=false) distributed randomly;
 WARNING:  distribution policy of relation "abc" already set to DISTRIBUTED RANDOMLY
 HINT:  Use ALTER TABLE "abc" SET WITH (REORGANIZE=TRUE) DISTRIBUTED RANDOMLY to force a random redistribution
 drop table abc;
+-- MPP-7770: disable changing storage options (default, for now)
+set gp_setwith_alter_storage = false;
+-- disallow, so fails
+create table atsdb (i int, j text) distributed by (j);
+alter table atsdb set with(appendonly = true);
+ERROR:  option "appendonly" not supported
+drop table atsdb;
