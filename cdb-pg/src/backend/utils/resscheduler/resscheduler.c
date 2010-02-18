@@ -628,7 +628,7 @@ ResLockPortal(Portal portal, Plan *plan)
 		/*
 		 * Get the resource lock.
 		 */
-		if(takeLock)
+		if (takeLock)
 		{
 #ifdef RESLOCK_DEBUG
 			elog(DEBUG1, "acquire resource lock for queue %u (portal %u)", 
@@ -643,8 +643,10 @@ ResLockPortal(Portal portal, Plan *plan)
             PG_CATCH();
             {
                 ResLockRelease(&tag, portal->portalId);
+
 				portal->queueId = InvalidOid;
 				portal->portalId = INVALID_PORTALID;
+
                 PG_RE_THROW();
             }
             PG_END_TRY();
@@ -686,7 +688,6 @@ ResLockPortal(Portal portal, Plan *plan)
 void
 ResUnLockPortal(Portal portal)
 {
-
 	LOCKTAG					tag;
 	Oid						queueid;
 
@@ -699,10 +700,9 @@ ResUnLockPortal(Portal portal)
 	{
 #ifdef RESLOCK_DEBUG
 		elog(DEBUG1, "release resource lock for queue %u (portal %u)", 
-				 queueid, portal->portalId);
+			 queueid, portal->portalId);
 #endif
 		SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
-
 
 		ResLockRelease(&tag, portal->portalId);
 
@@ -826,7 +826,6 @@ GetResQueueIdForName(char	*name)
 
 	systable_endscan(rsqscan);
 
-
 	heap_close(relQueue, AccessShareLock);
 
 	return queueid;
@@ -849,14 +848,12 @@ ResCreatePortalId(const char *name)
 	ResPortalTag		portalTag;
 	bool				found = false;
 
-
 	/* Unnamed portal. */
 	if (name[0] == '\0')
 	{
 		id = 0;
 		return id;
 	}
-
 
 	/* 
 	 * Named portal.

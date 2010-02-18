@@ -178,3 +178,194 @@ DROP USER reg_u1;
 DROP USER reg_u2;
 DROP RESOURCE QUEUE reg_activeq;
 DROP RESOURCE QUEUE reg_costq;
+-- Followup additional tests.
+-- MPP-7474
+CREATE RESOURCE QUEUE rq_test_q ACTIVE THRESHOLD 1;
+ERROR:  resource queue "rq_test_q" already exists
+CREATE USER rq_test_u RESOURCE QUEUE rq_test_q;
+ERROR:  role "rq_test_u" already exists
+create table rq_product (
+	pn int not null,
+	pname text not null,
+	pcolor text,
+	primary key (pn)
+) distributed by (pn);
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "rq_product_pkey" for table "rq_product"
+-- Products
+insert into rq_product values 
+  ( 100, 'Sword', 'Black'),
+  ( 200, 'Dream', 'Black'),
+  ( 300, 'Castle', 'Grey'),
+  ( 400, 'Justice', 'Clear'),
+  ( 500, 'Donuts', 'Plain'),
+  ( 600, 'Donuts', 'Chocolate'),
+  ( 700, 'Hamburger', 'Grey'),
+  ( 800, 'Fries', 'Grey');
+GRANT SELECT ON rq_product TO rq_test_u;
+set session authorization rq_test_u;
+begin;
+declare c0 cursor for select pcolor, pname, pn from rq_product order by 1,2,3;
+fetch c0;
+ pcolor | pname | pn  
+--------+-------+-----
+ Black  | Dream | 200
+(1 row)
+
+fetch c0;
+ pcolor | pname | pn  
+--------+-------+-----
+ Black  | Sword | 100
+(1 row)
+
+fetch c0;
+  pcolor   | pname  | pn  
+-----------+--------+-----
+ Chocolate | Donuts | 600
+(1 row)
+
+select * from rq_product;
+ERROR:  deadlock detected, locking against self
+fetch c0;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+abort;
+begin;
+declare c0 cursor for select pcolor, pname, pn from rq_product order by 1,2,3;
+fetch c0;
+ pcolor | pname | pn  
+--------+-------+-----
+ Black  | Dream | 200
+(1 row)
+
+fetch c0;
+ pcolor | pname | pn  
+--------+-------+-----
+ Black  | Sword | 100
+(1 row)
+
+fetch c0;
+  pcolor   | pname  | pn  
+-----------+--------+-----
+ Chocolate | Donuts | 600
+(1 row)
+
+fetch c0;
+ pcolor |  pname  | pn  
+--------+---------+-----
+ Clear  | Justice | 400
+(1 row)
+
+select * from rq_product;
+ERROR:  deadlock detected, locking against self
+fetch c0;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+abort;
+begin;
+declare c0 cursor for
+select pcolor, pname, pn,
+    row_number() over (w) as n,
+    lag(pn+0) over (w) as l0,
+    lag(pn+1) over (w) as l1,
+    lag(pn+2) over (w) as l2,
+    lag(pn+3) over (w) as l3,
+    lag(pn+4) over (w) as l4,
+    lag(pn+5) over (w) as l5,
+    lag(pn+6) over (w) as l6,
+    lag(pn+7) over (w) as l7,
+    lag(pn+8) over (w) as l8,
+    lag(pn+9) over (w) as l9,
+    lag(pn+10) over (w) as l10,
+    lag(pn+11) over (w) as l11,
+    lag(pn+12) over (w) as l12,
+    lag(pn+13) over (w) as l13,
+    lag(pn+14) over (w) as l14,
+    lag(pn+15) over (w) as l15,
+    lag(pn+16) over (w) as l16,
+    lag(pn+17) over (w) as l17,
+    lag(pn+18) over (w) as l18,
+    lag(pn+19) over (w) as l19,
+    lag(pn+20) over (w) as l20,
+    lag(pn+21) over (w) as l21,
+    lag(pn+22) over (w) as l22,
+    lag(pn+23) over (w) as l23,
+    lag(pn+24) over (w) as l24,
+    lag(pn+25) over (w) as l25,
+    lag(pn+26) over (w) as l26,
+    lag(pn+27) over (w) as l27,
+    lag(pn+28) over (w) as l28,
+    lag(pn+29) over (w) as l29,
+    lag(pn+30) over (w) as l30,
+    lag(pn+31) over (w) as l31,
+    lag(pn+32) over (w) as l32
+from rq_product
+window w as (partition by pcolor order by pname)
+order by 1,2,3;
+fetch c0;
+ pcolor | pname | pn  | n | l0 | l1 | l2 | l3 | l4 | l5 | l6 | l7 | l8 | l9 | l10 | l11 | l12 | l13 | l14 | l15 | l16 | l17 | l18 | l19 | l20 | l21 | l22 | l23 | l24 | l25 | l26 | l27 | l28 | l29 | l30 | l31 | l32 
+--------+-------+-----+---+----+----+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----
+ Black  | Dream | 200 | 1 |    |    |    |    |    |    |    |    |    |    |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |    
+(1 row)
+
+select * from rq_product;
+ERROR:  deadlock detected, locking against self
+fetch c0;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+abort;
+begin;
+create view window_view as
+select pcolor, pname, pn,
+    row_number() over (w) as n,
+    lag(pn+0) over (w) as l0,
+    lag(pn+1) over (w) as l1,
+    lag(pn+2) over (w) as l2,
+    lag(pn+3) over (w) as l3,
+    lag(pn+4) over (w) as l4,
+    lag(pn+5) over (w) as l5,
+    lag(pn+6) over (w) as l6,
+    lag(pn+7) over (w) as l7,
+    lag(pn+8) over (w) as l8,
+    lag(pn+9) over (w) as l9,
+    lag(pn+10) over (w) as l10,
+    lag(pn+11) over (w) as l11,
+    lag(pn+12) over (w) as l12,
+    lag(pn+13) over (w) as l13,
+    lag(pn+14) over (w) as l14,
+    lag(pn+15) over (w) as l15,
+    lag(pn+16) over (w) as l16,
+    lag(pn+17) over (w) as l17,
+    lag(pn+18) over (w) as l18,
+    lag(pn+19) over (w) as l19,
+    lag(pn+20) over (w) as l20,
+    lag(pn+21) over (w) as l21,
+    lag(pn+22) over (w) as l22,
+    lag(pn+23) over (w) as l23,
+    lag(pn+24) over (w) as l24,
+    lag(pn+25) over (w) as l25,
+    lag(pn+26) over (w) as l26,
+    lag(pn+27) over (w) as l27,
+    lag(pn+28) over (w) as l28,
+    lag(pn+29) over (w) as l29,
+    lag(pn+30) over (w) as l30,
+    lag(pn+31) over (w) as l31,
+    lag(pn+32) over (w) as l32
+from rq_product
+window w as (partition by pcolor order by pname)
+order by 1,2,3;
+DECLARE c0 cursor for select * from window_view;
+fetch c0;
+ pcolor | pname  | pn  | n | l0 | l1 | l2 | l3 | l4 | l5 | l6 | l7 | l8 | l9 | l10 | l11 | l12 | l13 | l14 | l15 | l16 | l17 | l18 | l19 | l20 | l21 | l22 | l23 | l24 | l25 | l26 | l27 | l28 | l29 | l30 | l31 | l32 
+--------+--------+-----+---+----+----+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----
+ Plain  | Donuts | 500 | 1 |    |    |    |    |    |    |    |    |    |    |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |    
+(1 row)
+
+select * from rq_product;
+ERROR:  deadlock detected, locking against self
+fetch c0;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+abort;
+RESET SESSION_AUTHORIZATION;
+DROP USER rq_test_u;
+ERROR:  role "rq_test_u" cannot be dropped because some objects depend on it
+DETAIL:  access to table rq_product
+DROP RESOURCE QUEUE rq_test_q;
+ERROR:  resource queue "rq_test_q" is used by at least one role
+DROP TABLE rq_product;

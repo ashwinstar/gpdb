@@ -1134,13 +1134,13 @@ CheckDeadLock(void)
 	 * Oops.  We have a deadlock.
 	 *
 	 * Get this process out of wait state.	(Note: we could do this more
-		 * efficiently by relying on lockAwaited, but use this coding to
-		 * preserve the flexibility to kill some other transaction than the
-		 * one detecting the deadlock.)
+	 * efficiently by relying on lockAwaited, but use this coding to
+	 * preserve the flexibility to kill some other transaction than the
+	 * one detecting the deadlock.)
 	 *
 	 * RemoveFromWaitQueue sets MyProc->waitStatus to STATUS_ERROR, so
-		 * ProcSleep will report an error after we return from the signal
-		 * handler.
+	 * ProcSleep will report an error after we return from the signal
+	 * handler.
 	 */
 	Assert(MyProc->waitLock != NULL);
 	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && 
@@ -1511,7 +1511,7 @@ handle_sig_alarm(SIGNAL_ARGS)
  *	introducing new bugs or performance regressions into the lock code.
  */
 int
-ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock)
+ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 {
 	LOCK	   *lock = locallock->lock;
 	PROCLOCK   *proclock = locallock->proclock;
@@ -1544,7 +1544,7 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock)
 	lockAwaited = locallock;
 
 	/* Now check the status of the self lock footgun. */
-	selflock = ResCheckSelfDeadLock(lock);
+	selflock = ResCheckSelfDeadLock(lock, proclock, incrementSet);
 	if (selflock)
 	{
 		LWLockRelease(partitionLock);

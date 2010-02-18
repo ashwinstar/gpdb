@@ -108,7 +108,7 @@ typedef struct ResPortalTag
 	 (locktag).locktag_field2 = 0, \
 	 (locktag).locktag_field3 = 0, \
 	 (locktag).locktag_field4 = 0, \
-	(locktag).locktag_type = LOCKTAG_RESOURCE_QUEUE, \
+	 (locktag).locktag_type = LOCKTAG_RESOURCE_QUEUE,		\
 	 (locktag).locktag_lockmethodid = RESOURCE_LOCKMETHOD)
 
 #define GET_RESOURCE_QUEUEID_FOR_LOCK(lock) \
@@ -134,24 +134,19 @@ extern bool				ResLockRelease(LOCKTAG *locktag, uint32 resPortalId);
 extern int				ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock, 
 										  ResPortalIncrement *incrementSet,
 										  bool increment);
-extern void				ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, 
-										   ResPortalIncrement *incrementSet,
-										   bool increment);
 extern ResQueue			GetResQueueFromLock(LOCK *lock);
 extern void				ResGrantLock(LOCK *lock, PROCLOCK *proclock);
 extern bool				ResUnGrantLock(LOCK *lock, PROCLOCK *proclock);
-extern void				ResWaitOnLock(LOCALLOCK *locallock, 
-									  ResourceOwner owner);
+
 extern void				ResProcLockWakeup(LOCK *lock);
 extern PGPROC 			*ResProcWakeup(PGPROC *proc, int waitStatus);
 extern void				ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode);
-extern bool				ResCheckSelfDeadLock(LOCK *lock);
-extern ResPortalIncrement	*ResIncrementAdd(ResPortalIncrement *incSet,
-											PROCLOCK *proclock,
-											ResourceOwner owner);
+extern bool				ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incSet);
+
 extern ResPortalIncrement	*ResIncrementFind(ResPortalTag *portaltag);
-extern bool					ResIncrementRemove(ResPortalTag *portaltag);
+
 extern bool					ResPortalIncrementHashTableInit(void);
+
 extern bool 			ResQueueHashTableInit(void);
 extern ResQueue			ResQueueHashNew(Oid queueid);
 extern ResQueue			ResQueueHashFind(Oid queueid);
