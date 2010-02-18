@@ -3,27 +3,32 @@
 # Copyright (c) Greenplum Inc 2009. All Rights Reserved. 
 
 '''
-USAGE:   gpconfig --directory MASTER_DIRECTORY --entry CONFIG_ENTRY [--value CONFIG_ENTRY_VALUE] [--mastervalue CONFIG_ENTRY_VALUE] [--removeonly] [--skipvalidation] [--list] [--show] [--verbose] [--debug] [--help] 
+USAGE:   gpconfig --entry CONFIG_ENTRY [--value CONFIG_VALUE] [--mastervalue MASTER_CONFIG_VALUE] [--removeonly] [--skipvalidation] [--list] [--show] [--verbose] [--debug] [--help] 
 
 # set the shared_buffers setting to 250MB
-EXAMPLE: gpconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB
+EXAMPLE: gpconfig --entry shared_buffers --value 250MB
 
 # set the shared_buffers setting to 250MB on segs and 100MB on master
-EXAMPLE: gpconfig --directory /data/master/gp-1 --entry shared_buffers --value 250MB --mastervalue 100MB
+EXAMPLE: gpconfig --entry shared_buffers --value 250MB --mastervalue 100MB
 
 # comment out all instances of the shared_buffers setting
-EXAMPLE: gpconfig --directory /data/master/gp-1 --entry shared_buffers --removeonly
+EXAMPLE: gpconfig --entry shared_buffers --removeonly
 
 # same examples using short form options
-EXAMPLE: gpconfig -d /data/master/gp-1 -e shared_buffers -v 250MB
-EXAMPLE: gpconfig -d /data/master/gp-1 -e shared_buffers -v 250MB -m 100MB
-EXAMPLE: gpconfig -d /data/master/gp-1 -e shared_buffers -r
+EXAMPLE: gpconfig -e shared_buffers -v 250MB
+EXAMPLE: gpconfig -e shared_buffers -v 250MB -m 100MB
+EXAMPLE: gpconfig -e shared_buffers -r
 
 # show all available gucs
-EXAMPLE gpconfig -d /data/master/gp-1 --list
+EXAMPLE gpconfig --list
+EXAMPLE gpconfig -l
 
 # show values of a particular guc on all nodes
-EXAMPLE gpconfig -d /data/master/gp-1 --show max_connections
+EXAMPLE gpconfig --show max_connections
+EXAMPLE gpconfig -s max_connections
+
+# NOTE: env variables PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE are used to connect to the GPDB instance and obtain cluster information.
+# NOTE: install jetpack to use gpconfig --show: psql -f $GPHOME/lib/jetpack/jetpack.sql template1
 '''
 
 try:
@@ -57,7 +62,6 @@ def parseargs():
     parser.add_option('-e', '--entry', type='string')
     parser.add_option('-v', '--value', type='string')
     parser.add_option('-m', '--mastervalue', type='string')
-    parser.add_option('-d', '--directory', type='string')
     parser.add_option('-r', '--removeonly', action='store_true')
     parser.add_option('-l', '--list', action='store_true')
     parser.add_option('-s', '--show', type='string')
@@ -67,24 +71,9 @@ def parseargs():
         print __doc__
         sys.exit(1)
 
-    # sanity check 
-    if not options.directory:
-        
-        d = os.getenv('MASTER_DATA_DIRECTORY')
-        if (d):
-            options.directory = d
-        else:
-            print "--directory is a required command line.  Check the usage below:"
-            print __doc__
-            parser.exit()
-
     USER=os.getenv('USER')
     if USER is None or USER is ' ':
         logger.error('USER environment variable must be set.')
-        parser.exit()
-
-    if not os.path.exists(options.directory):
-        logger.error('Master data directory does not exist.')
         parser.exit()
 
     if options.list:
