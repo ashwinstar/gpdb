@@ -65,16 +65,22 @@ def isNone( value):
 
 def readAllLinesFromFile(fileName):
     res = []
-    with open(fileName) as f:
+    f = open(fileName)
+    try:
         for line in f:
             res.append(line)
+    finally:
+        f.close()
     return res
 
 def writeLinesToFile(fileName, lines):
-    with open(fileName, 'w') as f:
+    f = open(fileName, 'w')
+    try:
         for line in lines:
             f.write(line)
             f.write('\n')
+    finally:
+        f.close()
 
 #############
 def parseSingleFile(line):
