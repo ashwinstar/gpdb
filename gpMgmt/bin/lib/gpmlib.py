@@ -107,7 +107,7 @@ def fatal(msg):
     sys.exit(2)
 
 #############
-def findCmdInPath(cmd):
+def findCmdInPath_noerror(cmd):
     CMDPATH = ('/usr/kerberos/bin', '/usr/sfw/bin', '/opt/sfw/bin', '/usr/local/bin', '/bin', 
                '/usr/bin', '/sbin', '/usr/sbin', '/usr/ucb', '/sw/bin')
 
@@ -115,7 +115,14 @@ def findCmdInPath(cmd):
         f = os.path.join(p, cmd)
         if os.path.exists(f):
             return f
-    fatal('Command %s not found' % cmd)
+    return ''
+
+def findCmdInPath(cmd):
+    cmd = findCmdInPath_noerror(cmd)
+    if cmd == '':
+        fatal('Command %s not found' % cmd)
+
+    return cmd
 
 #############
 def makeCommand(cmd):
@@ -278,6 +285,9 @@ class Env:
         self.EGREP = findCmdInPath('egrep')
         self.HEAD = findCmdInPath('head')
         self.HOSTNAME = findCmdInPath('hostname')
+
+        self.INQ = findCmdInPath_noerror('inq') # not available on every system.
+
         self.IPCS = findCmdInPath('ipcs')
         self.IFCONFIG = findCmdInPath('ifconfig')
         self.KILL = findCmdInPath('kill')
@@ -285,6 +295,9 @@ class Env:
         self.LOCALE = findCmdInPath('locale')
         self.MV = findCmdInPath('mv')
         self.MORE = findCmdInPath('more')
+
+        self.MOUNT = findCmdInPath('mount')
+
         self.MKDIR = findCmdInPath('mkdir')
         self.MKFIFO = findCmdInPath('mkfifo')
         self.NETSTAT = findCmdInPath('netstat')
