@@ -479,7 +479,7 @@ class ConfigExpansionSeg(Command):
 class GpVersion(Command):
     def __init__(self,name,gphome,ctxt=LOCAL,remoteHost=None):
         self.gphome=gphome
-        self.cmdStr="$GPHOME/bin/postgres --gp-version"
+        self.cmdStr="%s/bin/postgres --gp-version" % gphome
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
     def get_version(self):
@@ -490,6 +490,56 @@ class GpVersion(Command):
         cmd=GpVersion(name,gphome)
         cmd.run(validateAfter=True)
         return cmd.get_version()
+
+#-----------------------------------------------
+class GpCatVersion(Command):
+    """
+    Get the catalog version of the binaries in a given GPHOME
+    """
+    def __init__(self,name,gphome,ctxt=LOCAL,remoteHost=None):
+        self.gphome=gphome
+        cmdStr="%s/bin/postgres --catalog-version" % gphome
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+    def get_version(self):
+        # Version comes out like this:
+        #   "Catalog version number:               201002021"
+        # We only want the number
+        return self.results.stdout.split(':')[1].strip()
+
+    @staticmethod
+    def local(name,gphome):
+        cmd=GpCatVersion(name,gphome)
+        cmd.run(validateAfter=True)
+        return cmd.get_version()
+
+#-----------------------------------------------
+class GpCatVersionDirectory(Command):
+    """
+    Get the catalog version of a given database directory
+    """
+    def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
+        cmdStr = "$GPHOME/bin/pg_controldata %s" % directory
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+    def get_version(self):
+        # We got the whole pg_controldata, need to sift through
+        # that looking for the catalog version number
+        data = {}
+        for line in self.results.stdout.split('\n'):
+            try:
+                (key, value) = line.split(':', 1)
+                data[key] = value.strip()
+            except:
+                pass
+        return data['Catalog version number']
+
+    @staticmethod
+    def local(name,directory):
+        cmd=GpCatVersionDirectory(name,directory)
+        cmd.run(validateAfter=True)
+        return cmd.get_version()
+
 
 #-----------------------------------------------
 class GpSegCheckLocaleAndConnect(Command):

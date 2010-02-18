@@ -84,7 +84,8 @@ class StartSegmentsOperation:
         numContentsInCluster = gpArray.getNumSegmentContents()
 
         # check on pingability
-        failedPings=gphostcache.ping_segment_hosts_for_array(segments,self.__workerPool)
+        self.hostcache = gphostcache.GpHostCache(gpArray, self.__workerPool)
+        failedPings=self.hostcache.ping_hosts(self.__workerPool)
         failedPingDbIds = {}
         for segment in failedPings:
             hostName = segment.getSegmentHostName()
@@ -93,7 +94,6 @@ class StartSegmentsOperation:
             result.addFailure(segment, 'Failed to Ping on host: %s' % hostName)
             failedPingDbIds[segment.getSegmentDbId()] = True
 
-        self.hostcache = gphostcache.GpHostCache(gpArray, self.__workerPool, failedPings)
         self.hostcache.log_contents()
 
         segments = [seg for seg in segments if failedPingDbIds.get(seg.getSegmentDbId()) is None]

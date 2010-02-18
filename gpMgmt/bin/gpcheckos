@@ -138,9 +138,8 @@ class Gpcheckos():
             hostsQueue =WorkerPool()
             dburl = dbconn.DbURL(gethostname(), username='gpadmin')
             gparray = createGPDBFromDB(dburl,utility=True)
-            failedPings = ping_segment_hosts(gparray,hostsQueue)
-            hostCache = GpHostCache(gparray, hostsQueue, failedPings)
-            hostCache.ping_hosts(logger, hostsQueue) 
+            hostCache = GpHostCache(gparray, hostsQueue)
+            failedPings = hostcache.ping_hosts(hostsQueue)
             self.gphosts = hostCache.get_hostnames()
             self.numSegmentPerHost =   gparray.numPrimarySegments / len(self.gphosts)
             hostsQueue.join

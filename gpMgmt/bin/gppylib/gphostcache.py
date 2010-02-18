@@ -79,14 +79,16 @@ class GpInterfaceToHostNameCache:
             interface = interfacesToLookup[i]
             hostname = currentHostNameAnswersForInterfaces[i]
 
-            # If we don't have this mapping yet set it, otherwise we simply validate consistency.
-            if hostname is None:
-                # external source did not have a tentative answer, just request lookup if we don't
-                # have an answer
-                if interface not in self.__hostCache:
-                    self.__hostCache[interface] = None
-            elif interface not in self.__hostCache:
+            # If we don't have this mapping yet set it, otherwise we simply
+            # validate consistency.
+            if interface not in self.__hostCache:
                 self.__hostCache[interface] = hostname
+            elif hostname is None:
+                # external source did not have a tentative answer, the first
+                # case above should have fired for the first entry on this
+                # interface and will force us to lookup the hostname.  
+                # Additional hits on the interface can be ignored.
+                pass
             elif self.__hostCache[interface] is None:
                 self.__hostCache[interface] = hostname
             elif self.__hostCache[interface] != hostname:
@@ -141,6 +143,7 @@ class GpInterfaceToHostNameCache:
                 logger.warn(str(e))
                 logger.warn("Failed to write file '%s'" % CACHEFILE)
 
+
     #
     # returns the cached host name for the interface
     #
@@ -166,7 +169,7 @@ class GpHostCache:
         # Go through the gparray and build list of interface and hostname that
         #  will be used to biuld the GpInterfaceToHostNameCache
         #
-        # As Greeenplum 3.4 we have both interface and hostname information in
+        # As Greeenplum 4.0 we have both interface and hostname information in
         # the catalog, so the gparray should be able to supply all of the
         # information.
         #
@@ -180,20 +183,30 @@ class GpHostCache:
             if db.getSegmentDbId() not in skipmap:
                 interfaces.append(db.getSegmentAddress())
                 hostnames.append(db.getSegmentHostName())
-        interfaceToHostMap = GpInterfaceToHostNameCache(pool, interfaces, hostnames)
+        interfaceToHostMap = \
+            GpInterfaceToHostNameCache(pool, interfaces, hostnames)
 
         # Build up the GpHosts using our interface->hostname lookup
         for db in self.gparray.getSegDbList():
+
             # skip this dbid ?
             if db.getSegmentDbId() in skipmap:
                 continue
             interface = db.getSegmentAddress()
-            hostname  = interfaceToHostMap.getHostName(interface)   # should set the db?
+            hostname  = interfaceToHostMap.getHostName(interface)
+            
+            # If the db didn't have hostname already set, (it was loaded from
+            # an old catalog?) set it based on the hostname from the interface
+            # lookup.
+            if db.getSegmentHostName() == None:
+                db.setSegmentHostName(hostname)
+
             if hostname not in self.gphost_map:
                 self.gphost_map[hostname] = GpHost(hostname)
 
             self.gphost_map[hostname].addDB(db)
-                
+
+        
     ######
     def log_contents(self):
         logger.debug("Construct host-->datadirs mapping:")
@@ -223,7 +236,7 @@ class GpHostCache:
         if hostname in self.gphost_map:
             return self.gphost_map[hostname]
         else:
-            raise Exception("map does not contain host: " % hostname)
+            raise Exception("map does not contain host: %s" % hostname)
    
     #####
     def ping_hosts(self, pool):
@@ -236,16 +249,15 @@ class GpHostCache:
         '''
         failed_segs=[]
         for key in self.gphost_map.keys():
-            p = unix.Ping('ping',key)
+            p = unix.Ping('ping', key)
             pool.addCommand(p)
         
         pool.join()
         cmds=pool.getCompletedItems()
-        
-        
+
         for cmd in cmds:
+            # Look for commands that failed to ping
             if cmd.get_results().rc != 0:
-                #ping failed...
                 hostname=cmd.hostToPing
                 logger.warning("Ping to host: '%s' FAILED" % hostname)
                 logger.debug("  ping details: %s" % cmd)
@@ -257,12 +269,17 @@ class GpHostCache:
                 
                 for db in dblist:
                     dbid = db.getSegmentDbId()
-                    hostname = db.getSegmentHostName()
+                    address = db.getSegmentAddress()
 
-                    pingCmd = unix.Ping("dbid: %d" % dbid, hostname)
+                    # It would be nice to handle these through a pool,
+                    # but it is both a little difficult and not the
+                    # expected case.
+                    pingCmd = unix.Ping("dbid: %d" % dbid, address)
                     pingCmd.run()
                     if pingCmd.get_results().rc == 0:
-                        alternateHost=hostname
+                        alternateHost=address
+                        logger.warning("alternate host: '%s' => '%s'" % 
+                                       (hostname, address))
                         break
                     else:
                         logger.warning("Ping to host: '%s' FAILED" % hostname)
@@ -271,38 +288,16 @@ class GpHostCache:
                 if alternateHost:
                     gphost.hostname=alternateHost                    
                 else:
-                    #no interface to reach any of the segments
-                    for db in dblist:
-                        s = (db,False,"Failed to Ping Host",cmd)                        
-                        failed_segs.append(s)
-                    pass
-                
+                    # no interface to reach any of the segments, append all
+                    # segments to the list of failed segments
+                    failed_segs.extend(dblist)
+
+                    # Removing the failed host from the cache.
+                    #
+                    # This seems a bit draconian, but that is what all callers
+                    # of this function seem to want.
+                    del self.gphost_map[hostname]
+
         pool.empty_completed_items()
         
-
-######
-def ping_segment_hosts(gparray,pool):
-    segments = gparray.get_valid_segdbs()
-    return ping_segment_hosts_for_array(segments, pool)
-    
-def ping_segment_hosts_for_array(segments, pool):
-    failedSegs=[]
-    hosts_pinged={}
-
-    pool.empty_completed_items()
-    for db in segments:
-        hostname = db.getSegmentHostName()
-
-        if hostname not in hosts_pinged:
-            pool.addCommand(unix.Ping('ping test',hostname,obj=db))
-            hosts_pinged[hostname]=db                             
-                                 
-    pool.join()        
-    cmds=pool.getCompletedItems()
-        
-    for cmd in cmds:
-        if cmd.get_results().rc != 0:
-            failedSegs.append(cmd.obj)                        
-            logger.info("Ping to host: '%s' FAILED" % cmd.obj.getSegmentHostName())
-    return failedSegs
-        
+        return failed_segs

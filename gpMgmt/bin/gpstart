@@ -20,7 +20,7 @@ try:
     
     from gppylib.db import dbconn
     from gppylib.gpparseopts import OptParser, OptChecker
-    from gppylib.gparray import GpArray
+    from gppylib.gparray import *
     from gppylib.gplog import *
     from gppylib import gphostcache
     from gppylib import userinput
@@ -156,7 +156,21 @@ class GpStart:
     ######
     def _check_version(self):    
         self.gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
-        logger.info("local Greenplum Version: '%s'" % self.gpversion)
+        logger.info("Greenplum Binary Version: '%s'" % self.gpversion)
+        
+        # It would be nice to work out the catalog version => greenplum version
+        # calculation so that we can print out nicer error messages when
+        # version doesn't match.  
+        bin_catversion = gp.GpCatVersion.local('local GP software catalag version check', self.gphome)
+        logger.info("Greenplum Catalog Version: '%s'" % bin_catversion)
+
+        dir_catversion = gp.GpCatVersionDirectory.local('local GP directory catalog version check', self.master_datadir)
+        
+        if bin_catversion != dir_catversion:
+            logger.info("MASTER_DIRECTORY Catalog Version: '%s'" % dir_catversion)
+            logger.info("Catalog Version of master directory incompatible with binaries")
+            raise GpStartError("Catalog Versions are incompatible")
+            
 
     ######
     def _check_master_running(self):
@@ -303,15 +317,16 @@ class GpStart:
         self.standby_was_started = self._start_standby()
         (segmentsToStart, invalidSegments, inactiveSegments) = self._prepare_segment_start()
 
-        strategy = self.gparray.strategy[0]
+        strategy = self.gparray.getFaultStrategy()
         logger.debug("Strategy in gparray is %s" % strategy)
 
         # todo: MIRRROING: push _prepare_segment_start behavior into StartSegmentsOperation???
-        # The SAN ('s') failover strategy leaves the mirrors shutdown until they're needed.
+        # The SAN ('s') fault strategy leaves the mirrors shutdown until they're needed.
         # so we don't want to start them -- SAN-start works just like a mirror-less start.
-        if self.gparray.get_mirroring_enabled() and strategy != 's':
+        if strategy == FAULT_STRATEGY_FILE_REPLICATION:
             startMode = START_AS_PRIMARY_OR_MIRROR
-        else: startMode = START_AS_MIRRORLESS
+        else: 
+            startMode = START_AS_MIRRORLESS
 
         segmentStartResult = StartSegmentsOperation(self.pool,self.quiet,
                 [self.lc_collate,self.lc_monetary,self.lc_numeric], self.gpversion,

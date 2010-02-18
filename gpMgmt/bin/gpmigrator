@@ -1711,7 +1711,9 @@ class GPUpgrade:
         for host in self.hostcache.get_hosts():
             for seg in host.dbs:
                 seg.setSegmentHostName(host.hostname)
-        self.hostcache.ping_hosts(self.pool)
+        failed_pings = self.hostcache.ping_hosts(self.pool)
+        if len(failed_pings) > 0:
+            raise UpgradeError("Cannot upgrade while there are unreachable hosts")
 
         master = array.master
         standbymaster = array.standbyMaster

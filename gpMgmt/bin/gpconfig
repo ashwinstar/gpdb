@@ -280,7 +280,9 @@ except DatabaseError, ex:
     sys.exit(1)
 
 pool = WorkerPool()
-failedPings = ping_segment_hosts(gparray,pool)
+
+hostCache = GpHostCache(gparray, pool)
+failedPings = hostcache.ping_hosts(pool)
 
 if len(failedPings):
     for i in failedPings:
@@ -288,10 +290,6 @@ if len(failedPings):
     userConfirm()
 
 try:
-
-    hostCache = GpHostCache(gparray, pool, failedPings)
-    hostCache.ping_hosts(pool) # substibtute usable names
-
     for h in hostCache.get_hosts():
         directory_string = None
 

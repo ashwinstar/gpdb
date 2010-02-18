@@ -2,13 +2,9 @@
 #
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
-
 """
-
-This file defines the interface that can be used to
-   fetch and update system configuration information,
-   as well as the data object returned by the
-
+This file defines the interface that can be used to fetch and update system
+configuration information.
 """
 import os, copy
 
@@ -20,24 +16,28 @@ from gppylib.db import dbconn
 
 logger = get_default_logger()
 
-#
-# An implementation of GpConfigurationProvider will provide functionality
-#   to fetch and update gpdb system configuration information (as stored in the database)
-#
-# Note that the client of this is assuming that the database data is not changed by
-#   another party between the time segment data is loaded and when it is updated
-#
 class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
+    """
+    An implementation of GpConfigurationProvider will provide functionality to
+    fetch and update gpdb system configuration information (as stored in the
+    database)
+
+    Note that the client of this is assuming that the database data is not
+    changed by another party between the time segment data is loaded and when it
+    is updated
+    """
+
     def __init__(self):
         pass
 
-    #
-    # Initialize the provider to get information from the given master db, if it chooses to
-    #   get its data from the database
-    #
-    # returns self
-    #
     def initializeProvider( self, masterPort, useUtilityMode ) :
+        """
+        Initialize the provider to get information from the given master db, if
+        it chooses to get its data from the database
+     
+        returns self
+        """
+
         checkNotNone("masterPort", masterPort)
         checkNotNone("useUtilityMode", useUtilityMode)
 
@@ -47,87 +47,33 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         self.__useUtilityMode = useUtilityMode
         return self
 
-    #
-    # Load all segment information from the configuration source.
-    #
-    # Returns a new GpArray object
-    #
     def loadSystemConfig( self ) :
-        checkNotNone("masterDbUrl", self.__masterDbUrl) # ensure initialized called
+        """
+        Load all segment information from the configuration source.
+
+        Returns a new GpArray object
+        """
+
+        # ensure initializeProvider() was called
+        checkNotNone("masterDbUrl", self.__masterDbUrl) 
 
         logger.info("Obtaining Segment details from master...")
 
-        conn = dbconn.connect(self.__masterDbUrl, self.__useUtilityMode)
+        return GpArray.initFromCatalog(self.__masterDbUrl, self.__useUtilityMode)
 
-        sql = '''
-                SELECT dbid, content, role, preferred_role, mode, status, hostname, address, port,
-                    fselocation AS datadir, replication_port
-                FROM pg_catalog.gp_segment_configuration
-                    JOIN pg_catalog.pg_filespace_entry ON (dbid = fsedbid)
-                    JOIN pg_catalog.pg_filespace fs ON (fsefsoid = fs.oid AND fsname='pg_system')
-                ORDER BY content, preferred_role DESC
-            '''
-        configurationRows = dbconn.execSQL(conn, sql)
-
-        sql = '''
-                SELECT fault_strategy FROM gp_fault_strategy
-            '''
-        strategyRows = dbconn.execSQL(conn, sql)
-
-        conn.close()
-
-        origSegments = []
-        segments = []
-        for row in configurationRows:
-            dbId = int(row[0])
-            contentId = int(row[1])
-            role = row[2]
-            preferredRole = row[3]
-            mode = row[4]
-            status = row[5]
-            hostName = row[6]
-            address = row[7]
-            port = int(row[8])
-            dataDirectory = row[9]
-            replicationPort = None if row[10] is None else int(row[10])
-
-            segment = GpDB(content=contentId,
-                           preferred_role=preferredRole,
-                           dbid=dbId,
-                           role=role,
-                           mode=mode,
-                           status=status,
-                           hostname=hostName,
-                           address=address,
-                           port=port,
-                           datadir=dataDirectory,
-                           replicationPort=replicationPort)
-
-            segments.append(segment)
-            origSegments.append(segment.copy())
-
-        strategy = None
-        for row in strategyRows:
-            (strategy) = row
-            break
-        if strategy is None:
-            raise Exception("Database does not contain gp_fault_strategy entry")
-
-        result = GpArray(segments, origSegments, copy.copy(strategy))
-        result.strategy = strategy
-
-        return result
-
-    #
-    # Update the configuration for the given segments in the underlying configuration store
-    #   to match the current values
-    #
-    # Also resets any dirty bits on saved/updated objects
-    #
     def updateSystemConfig( self, gpArray ) :
-        checkNotNone("masterDbUrl", self.__masterDbUrl) # ensure initialized called
+        """
+        Update the configuration for the given segments in the underlying
+        configuration store to match the current values
+    
+        Also resets any dirty bits on saved/updated objects
+        """
 
-        programName = os.path.split(sys.argv[0])[-1] # should use mainUtils.getProgramName but I can't make it work!
+        # ensure initializeProvider() was called
+        checkNotNone("masterDbUrl", self.__masterDbUrl) 
+
+        # should use mainUtils.getProgramName but I can't make it work!
+        programName = os.path.split(sys.argv[0])[-1] 
 
         conn = dbconn.connect(self.__masterDbUrl, self.__useUtilityMode)
         dbconn.execSQL(conn, "BEGIN")
@@ -137,10 +83,12 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
             dbIdToOriginal[seg.getSegmentDbId()] = seg
 
         #
-        # for now, we simply update all fields.  This could be optimized later -- to avoid
-        #   overwriting status if it's unchanged in-memory, for example
+        # for now, we simply update all fields.  This could be optimized later
+        #   -- to avoid overwriting status if it's unchanged in-memory, for
+        #   example
         #
-        # It is assumed that external code has paused the fault prober while this runs, as necessary
+        # It is assumed that external code has paused the fault prober while
+        # this runs, as necessary
         #
         for seg in gpArray.getDbList():
             originalSeg = dbIdToOriginal.get(seg.getSegmentDbId())

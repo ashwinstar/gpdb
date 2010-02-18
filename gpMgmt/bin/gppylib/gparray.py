@@ -35,17 +35,28 @@ STATUS_UP    = 'u'
 STATUS_DOWN  = 'd'
 VALID_STATUS = [STATUS_UP, STATUS_DOWN]
 
-MODE_CHANGELOGGING = 'c'
-MODE_SYNCHRONIZED = 's'
-MODE_RESYNCHRONIZATION = 'r'
-VALID_MODE = [MODE_CHANGELOGGING, MODE_SYNCHRONIZED, MODE_RESYNCHRONIZATION]
+MODE_CHANGELOGGING = 'c'                # filerep logging
+MODE_SYNCHRONIZED = 's'                 # filerep synchronized
+MODE_RESYNCHRONIZATION = 'r'            # 
+VALID_MODE = [
+    MODE_SYNCHRONIZED,
+    MODE_CHANGELOGGING, 
+    MODE_RESYNCHRONIZATION,
+]
 
-FAULT_STRATEGY_NONE = 'n'
-FAULT_STRATEGY_FILE_REPLICATION = 'f'
-FAULT_STRATEGY_SAN = 's'
-VALID_FAULT_STRATEGY = [FAULT_STRATEGY_NONE, FAULT_STRATEGY_FILE_REPLICATION, FAULT_STRATEGY_SAN]
-FAULT_STRATEGY_LABELS = {FAULT_STRATEGY_NONE: "none", FAULT_STRATEGY_FILE_REPLICATION:"physical mirroring", \
-                                FAULT_STRATEGY_SAN:"SAN failover" }
+FAULT_STRATEGY_NONE = 'n'               # mirrorless systems
+FAULT_STRATEGY_FILE_REPLICATION = 'f'   # valid for versions 4.0+
+FAULT_STRATEGY_SAN = 's'                # valid for versions 4.0+
+FAULT_STRATEGY_READONLY = 'r'           # valid for versions 3.x
+FAULT_STRATEGY_CONTINUE = 'c'           # valid for versions 3.x
+FAULT_STRATEGY_LABELS = {
+    FAULT_STRATEGY_NONE:               "none", 
+    FAULT_STRATEGY_FILE_REPLICATION:   "physical mirroring", 
+    FAULT_STRATEGY_SAN:                "SAN failover",
+    FAULT_STRATEGY_READONLY:           "readonly",
+    FAULT_STRATEGY_CONTINUE:           "continue",
+ }
+VALID_FAULT_STRATEGY = FAULT_STRATEGY_LABELS.keys()
 
 def getFaultStrategyLabel(strategy):
     return FAULT_STRATEGY_LABELS[strategy]
@@ -159,23 +170,27 @@ class GpDB:
         #    Todo: remove the need for this, or rework it to be cleaner
         if len(tup) == 8:
             # This describes the gp_configuration catalog (pre 3.4)
-            content         = tup[0]
+            content         = int(tup[0])
             definedprimary  = tup[1]
-            dbid            = tup[2]
+            dbid            = int(tup[2])
             isprimary       = tup[3]
             valid           = tup[4]
             address         = tup[5]
-            port            = tup[6]
+            port            = int(tup[6])
             datadir         = tup[7]
-            filespaces      = ""
 
             # Calculate new fields from old ones
+            #
+            # Note: this should be kept in sync with the code in
+            # GpArray.InitFromCatalog() code for initializing old catalog
+            # formats.
             preferred_role  = ROLE_PRIMARY if definedprimary else ROLE_MIRROR
             role            = ROLE_PRIMARY if isprimary else ROLE_MIRROR
-            hostname        = address                 # fixme
-            mode            = 's'                     # ???
+            hostname        = None
+            mode            = MODE_SYNCHRONIZED       # ???
             status          = STATUS_UP if valid else STATUS_DOWN
             replicationPort = None
+            filespaces      = ""
 
         # New format: 12 fields
         elif len(tup) == 12:
@@ -659,8 +674,7 @@ class GpArray:
         self.__version = None
         self.__segmentsAsLoadedFromDb = segmentsAsLoadedFromDb
         self.__strategyLoadedFromDb = strategyLoadedFromDb
-
-        self.strategy = 'n'
+        self.__strategy = FAULT_STRATEGY_NONE
 
         for segdb in segments:
 
@@ -712,9 +726,6 @@ class GpArray:
         Factory method, initializes a GpArray from provided database URL
         """
 
-        version  = None
-        strategy = None
-
         conn = dbconn.connect(dbURL, utility)
 
         # Get the version from the database:
@@ -741,27 +752,27 @@ class GpArray:
 
         elif version.getVersionRelease() in ("3.0", "3.1", "3.2", "3.3"):
 
-            # Note: Strategy was introduced in 4.0 so what value to initialize
-            # to for older releases is not clear.  Currently we just initialize
-            # to 'o' for 'old'.
-            strategy_rows = []
-            strategy = 'o'
+            # In older releases we get the fault strategy using the 
+            # gp_fault_action guc.
+            strategy_rows = dbconn.execSQL(conn, "show gp_fault_action")
 
             # Note: Mode may not be "right", certainly 4.0 concepts of mirroring
             # mode do not apply to 3.x, so it depends on how the scripts are
-            # making use of mode.  For now it is initialized to 'o' (for 'old')
-            # which is not a valid mode in 4.0.
+            # making use of mode.  For now it is initialized to synchronized.
             #
-            # Note: hostname is set to the address since the 3.x catalog only
-            # contains information about the address not hostnames.  A hostcache
-            # is needed to resolve the address to real hostnames.
+            # Note: hostname is initialized to null since the catalog does not
+            # contain this information.  Initializing a hostcache using the
+            # resulting gparray will automatically fill in a value for hostname.
+            #
+            # Note: this should be kept in sync with the code in 
+            # GpDB.InitFromString() code for initializing old catalog formats.
             config_rows = dbconn.execSQL(conn, '''
                 SELECT dbid, content, 
                        case when isprimary then 'p' else 'm' end as role, 
                        case when definedprimary then 'p' else 'm' end as preferred_role,
-                       'o' as mode, 
+                       's' as mode, 
                        case when valid then 'u' else 'd' end as status, 
-                       hostname as hostname,
+                       null as hostname,
                        hostname as address, 
                        port, 
                        null as replication_port, 
@@ -797,16 +808,16 @@ class GpArray:
                 seg = GpDB(content, preferred_role, dbid, role, mode, status, 
                            hostname, address, port, fslocation, replicationPort)
                 segments.append(seg)
-
-        for strategy_row in strategy_rows:
-            (strategy) = strategy_row
-            break
-        if strategy is None:
+        
+        if strategy_rows.rowcount == 0:
             raise Exception("Database does not contain gp_fault_strategy entry")
+        if strategy_rows.rowcount > 1:
+            raise Exception("Database does too many gp_fault_strategy entries")
+        strategy = strategy_rows.fetchone()[0]
 
         array = GpArray(segments)
         array.__version = version
-        array.strategy = strategy
+        array.setFaultStrategy(strategy)
         return array
 
     # --------------------------------------------------------------------
@@ -844,26 +855,57 @@ class GpArray:
             fp.write(repr(gpdb) + '\n')
         fp.close()
 
+    # --------------------------------------------------------------------
     def setFaultStrategy(self, strategy):
-        checkNotNone("strategy", strategy)
-        if not strategy in VALID_FAULT_STRATEGY :
-            raise Exception("Invalid strategy '%s'" % strategy)
-        self.strategy = [strategy]
+        """
+        Sets the fault strategy of the array.
 
+        The input strategy should either be a valid fault strategy code:
+          ['n', 'f', ...]
+
+        Or it should be a valid fault strategy label:
+          ['none', 'physical mirroring', ...]
+
+        The reason that we need to accept both forms of input is that fault
+        strategy is modeled differently in the catalog depending on the catalog
+        version.
+
+        In 3.x fault strategy is stored using the label via the gp_fault_action
+        guc.
+
+        In 4.0 fault strategy is stored using the code via the gp_fault_strategy
+        table.
+        """
+
+        checkNotNone("strategy", strategy)
+        
+        # Try to lookup the strategy as a label
+        for (key, value) in FAULT_STRATEGY_LABELS.iteritems():
+            if value == strategy:
+                strategy = key
+                break
+        if strategy not in VALID_FAULT_STRATEGY:
+            raise Exception("Invalid fault strategy '%s'" % strategy)
+        self.__strategy = strategy
+
+    # --------------------------------------------------------------------
     def getFaultStrategy(self):
         """
-
-         Will return a string matching one of the FAULT_STRATEGY_* constants
-
+        Will return a string matching one of the FAULT_STRATEGY_* constants
         """
-        if self.strategy[0] not in VALID_FAULT_STRATEGY:
-            raise Exception("Fault strategy is not set correctly (it is set to %s)" % self.strategy)
 
-        return self.strategy[0]
+        if self.__strategy not in VALID_FAULT_STRATEGY:
+            raise Exception("Fault strategy is not set correctly: '%s'" % 
+                            self.strategy)
+
+        return self.__strategy
 
     # --------------------------------------------------------------------
     def getDbList(self, includeExpansionSegs=False):
-        """Return a list of all GpDb objects that make up the array"""
+        """
+        Return a list of all GpDb objects that make up the array
+        """
+
         dbs=[]
         dbs.append(self.master)
         if self.standbyMaster:
@@ -942,7 +984,7 @@ class GpArray:
     def get_inactive_mirrors_segdbs(self):
         dbs=[]
 
-        if self.strategy[0] != 's':
+        if self.__strategy != FAULT_STRATEGY_SAN:
             return dbs
 
         for seg in self.segments:
@@ -1141,7 +1183,8 @@ class GpArray:
         
     # --------------------------------------------------------------------
     def get_mirroring_enabled(self):
-        """Returns True is mirrors are defined"""
+        """Returns True if mirrors are defined"""
+
         return len(self.segments[0].mirrorDBs) != 0
 
     # --------------------------------------------------------------------
@@ -1213,8 +1256,8 @@ class GpArray:
                      preferred_role = preferred_role, 
                      dbid = dbid, 
                      role = role,
-                     mode = 's',
-                     status = 'u',
+                     mode = MODE_SYNCHRONIZED,
+                     status = STATUS_UP,
                      hostname = hostname, 
                      address = hostname,      # todo: add to parameters
                      port = port, 
@@ -1469,7 +1512,7 @@ class GpArray:
             new_datadir = row[7][:row[7].rfind(str(row[0]))]
             if row[1] == 't':
                 new_datadir += ('%d' % curr_content)
-                self.addExpansionSeg(curr_content, 'p', curr_dbid, 
+                self.addExpansionSeg(curr_content, ROLE_PRIMARY, curr_dbid, 
                                         True, hostname, int(row[6]), new_datadir, row[8])
                 # The content id was adjusted, so we need to save it for the mirror
                 mirror_dict[row[0]] = curr_content
@@ -1477,7 +1520,7 @@ class GpArray:
             else:
                 new_content = mirror_dict[row[0]]
                 new_datadir += ('%d' % new_content)
-                self.addExpansionSeg(new_content, 'm', curr_dbid, 
+                self.addExpansionSeg(new_content, ROLE_MIRROR, curr_dbid, 
                                      False, hostname, int(row[6]), new_datadir, row[8])
             curr_dbid += 1           
 

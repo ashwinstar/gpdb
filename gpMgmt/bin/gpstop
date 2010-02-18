@@ -22,7 +22,7 @@ try:
     from gppylib.gplog import *
     from gppylib.db import dbconn
     from gppylib.db import catalog
-    from gppylib.gparray import GpArray
+    from gppylib.gparray import *
     from gppylib import gphostcache
     from gppylib import userinput
     from gppylib import pgconf
@@ -294,19 +294,20 @@ class GpStop():
         segs = self.gparray.getSegDbList()
 
         #read in the hostcache file and make sure we can ping everybody
-        failed_pings=gphostcache.ping_segment_hosts(self.gparray,self.pool)
+        self.hostcache=gphostcache.GpHostCache(self.gparray, self.pool)
+        failed_pings=self.hostcache.ping_hosts(self.pool)
         for db in failed_pings:
-            logger.warning("Skipping startup of segdb on %s directory %s Ping Failed <<<<<<" % (db.hostname,db.datadir))
+            logger.warning("Skipping startup of segdb on %s directory %s Ping Failed <<<<<<" % (db.hostname, db.datadir))
             failed_seg_status.append(SegStopStatus(db,False,'Failed to Ping on host: %s' % db.hostname))
-            
-        self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool,failed_pings)                
+        
         self.hostcache.log_contents()
                                    
         invalid_segs=self.gparray.get_invalid_segdbs() 
         for seg in invalid_segs:
             logger.warning("Not processing %s directory %s marked invalid <<<<<" % (seg.hostname,seg.datadir)) 
 
-        if self.gparray.get_mirroring_enabled() and self.gparray.strategy[0] == 'f':        
+        strategy = self.gparray.getFaultStrategy()
+        if strategy == FAULT_STRATEGY_FILE_REPLICATION:
             # stop primaries
             logger.info("Commencing parallel primary segment instance shutdown, please wait...")
             self._stopseg_cmds(True,False)
@@ -325,7 +326,7 @@ class GpStop():
         else:
             logger.info("Commencing parallel segment instance shutdown, please wait...")
 
-            stopMirrors = not (self.gparray.strategy[0] == 's')
+            stopMirrors = (strategy != FAULT_STRATEGY_SAN)
 
             self._stopseg_cmds(True, stopMirrors) # second arg shouldn't matter
             success_seg_status = self._process_segment_stop(failed_seg_status)    
