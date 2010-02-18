@@ -37,6 +37,10 @@ try:
     from gppylib.gplog import *          # Greenplum logging facility
     from gppylib.commands import base    # Greenplum layer for worker pools
     from gppylib.commands import unix    # Greenplum layer for unix interaction
+    from gppylib.db import dbconn
+    from gppylib.gpversion import GpVersion
+    from gppylib.gparray import GpArray, GpDB
+    from gppylib.gphostcache import GpHostCache
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -50,7 +54,6 @@ WORKDIR       = 'gpmigrator'
 BACKUPDIR     = 'backup'
 UPGRADEDIR    = 'upgrade'
 PARALLELISM   = 16
-MAIN          = [3,4,99,99]    # version number for main
 
 
 
@@ -100,156 +103,51 @@ class CmdError(StandardError):
         return self.stderr
 
 #============================================================
-class GPVersion:
+def is_supported_version(version, upgrade=True):
     '''
-    The gpversion class is an abstraction of a given Greenplum release 
-    version.  It exists in order to facilitate version comparisons,
-    formating, printing, etc.
-    
-      x = GPVersion([3,2,0,4]) => Greenplum 3.2.0.4
-      x = GPVersion('3.2')     => Greenplum 3.2 dev
-      x = GPVersion('main')    => Greenplum main 
-      x.major()                => Major release, eg "3.2"
-      x.isrelease('3.2')       => Major version comparison
-      x.issupported()          => Returns true for supported releases
+    Checks that a given GpVersion Object is supported for upgrade/downgrade.
+    We do not support:
+      Versions < 3.3.0.0
+      Versions > main
+      Versions with unusual "builds" (eg 3.4.0.0_EAP1)
     '''
-
-    version = None    # this is stored as a list of int, eg [3,2,1,0]
-
-    #------------------------------------------------------------
-    def __init__(self, version):
-        '''
-        The initializer for GPVersion is complicated so that it can handle
-        creation via several methods:
-           x = GPVersion('3.2 dev')  => via string
-           x = GPVersion([3,2])  => via tuple
-           y = GPVersion(x)      => copy constructor
-
-        If the input datatype is not recognised then it is first cast to
-        a string and then converted.
-        '''
-        try:
-            # Local copy that we can safely manipulate
-            v = version
-
-            # Copy constructor
-            if isinstance(v, GPVersion):
-                self.version = v.version
-                return
-
-            # if version isn't a type we recognise then convert to a string first
-            if not (isinstance(v, str) or
-                    isinstance(v, list) or
-                    isinstance(v, tuple)):
-                v = str(v)
-
-            # Convert a string into a list, split by '.'
-            #
-            # It would be possible to make the code tollerant of unusual 
-            # versions such as 3.4.0.0_EAP1, but it is generally dangerous to 
-            # support upgrade on EAP releases or other unusual versions that 
-            # have not undergone testing.  It is better to hard code any 
-            # unusual versions that we knows should work.  
-            #
-            # Currently the list of unusual versions consists of "main" and 
-            # "3.4.filerep"
-            # 
-            if isinstance(v, str):
-                if v in ['main', '3.4.filerep']:
-                    v = MAIN
-                else:
-                    v = v.replace(' dev', '')
-                    v = v.split('.')
-
-            # Convert a list into a real version
-            if isinstance(v, list) or isinstance(v, tuple):
-                v = map(int, v)
-                if len(v) < 2:
-                    raise StandardError("Version too short")
-                if len(v) < 4:
-                    v.extend([99,99,99,99])
-                self.version = v[:4]
-
-        # If part of the conversion process above failed, throw an error
-        except:
-            raise StandardError("Unrecognised Greenplum Version '%s'" % str(version))
-
-    #------------------------------------------------------------
-    def __cmp__(self, other):
-        '''
-        One of the main reasons for this class is so that we can safely compare
-        versions with each other.  This needs to be pairwise integer comparison
-        of the tuples, not a string comparison, which is why we maintain the
-        internal version as a list.       
-        '''
-        if isinstance(other, GPVersion):
-            return cmp(self.version, other.version)
-        else:
-            return cmp(self, GPVersion(other))
     
-    #------------------------------------------------------------
-    def __str__(self):
-        ''' 
-        The other main reason for this class is that the display version is
-        not the same as the internal version for main and development releases.
-        '''
-        if self.version == MAIN:       
-            return 'main'
-        elif self.version[2] == 99 and self.version[3] == 99: 
-            return '.'.join(map(str,self.version[:2])) + ' dev'
-        else:
-            return '.'.join(map(str,self.version[:4]))
+    if upgrade:
+        upstr = "upgrade"
+    else:
+        upstr = "downgrade"
 
-    #------------------------------------------------------------
-    def __repr__(self):
-        '''
-        Return the version as we store it internally.
-        '''
-        return self.version
+    # Acceptable builds are 'dev', 'filerep', and any build that consists
+    # entirely of digits
+    build = version.getVersionBuild()
+    if not re.match(r"(dev|filerep|\d+)", build):
+        raise UpgradeError(
+            "Greenplum Version '%s' is not supported for %s"
+            % (str(version), upstr))            
 
-    #------------------------------------------------------------
-    def major(self):
-        '''
-        Returns the major (first 2 values) portion of the version.
-        '''
-        return '.'.join(map(str,self.version[:2]))
+    if version >= "3.3.0.0" and version <= 'main':
+        return True
 
-    #------------------------------------------------------------
-    def isrelease(self, version):
-        '''
-        Returns true if the version matches a particular major release.
-        '''
-        return self.major() == GPVersion(version).major()
-
-    #------------------------------------------------------------
-    def issupported(self, upgrade=True):
-        '''
-        Checks that the specified version is supported for upgrade
-        '''
-        if upgrade:
-            upstr = "upgrade"
-        else:
-            upstr = "downgrade"
-
-        if self.version >= [3,3,0,0] and self.version <= MAIN:
-            return True
-
-        if self.version < [3,3,0,0]:
-            raise UpgradeError(
-                "Greenplum Version '%s' is not supported for %s"
-                % (str(self), upstr))
-        else:
-            raise UpgradeError(
-                "To %s Greenplum Version '%s' use the %s tool "
-                "shipped with that release" 
-                % (upstr, str(self), upstr))
+    if version < "3.3.0.0":
+        raise UpgradeError(
+            "Greenplum Version '%s' is not supported for %s"
+            % (str(version), upstr))
+    else:
+        raise UpgradeError(
+            "To %s Greenplum Version '%s' use the %s tool "
+            "shipped with that release" 
+            % (upstr, str(version), upstr))
 
 
+#============================================================
 class GpUpgradeCmd(base.Command):
     def __init__(self, name, oldHome, newHome, oldVersion, newVersion,
                  command, pid, dataDirectories, option1,
                  option2, method, isUpgrade, isRevert,
                  ctxt=base.LOCAL, remoteHost=None):
+
+        # space separated list of directories
+        datadirs = ' '.join(dataDirectories)
 
         cmd = [
             EXECNAME,
@@ -259,7 +157,7 @@ class GpUpgradeCmd(base.Command):
             '--internal-newversion=' + urllib.quote(str(newVersion)),
             '--internal-command=' + str(command),
             '--internal-pid=' + str(pid),
-            '--internal-dirs=' + urllib.quote(str(dataDirectories)),
+            '--internal-dirs=' + urllib.quote(datadirs),
             '--internal-option=' + urllib.quote(str(option1)),
             '--internal-option2=' + urllib.quote(str(option2)),
             ]
@@ -311,7 +209,6 @@ class GPUpgrade:
         self.noinit    = False
 
         self.pid       = os.getpid()   # Process ID of the master
-        self.threadpool = None
 
         # Non-master variables
         self.option    = None     # Argument passed to cmd
@@ -320,6 +217,7 @@ class GPUpgrade:
         # Environment and system info
         self.masterdir = None     # Master Data Directory
         self.masterport = 5432    # Master Port
+        self.array     = None
         self.datadirs  = None     # Set of all data and mirror directories
         self.oldhome   = None     # Old gphome/bin directory
         self.newhome   = None     # New gphome/bin directory
@@ -334,11 +232,6 @@ class GPUpgrade:
         self.method    = None     # transform or dumprestore ?
         self.pool      = None     # worker pool
 
-        # Alternate ports for upgrade database during --prepare
-        self.new_master_port      = None
-        self.new_port_base        = None
-        self.new_mirror_port_base = None
-
         # Upgrade information and state
         self.debug      = False
         self.quiet      = False
@@ -347,12 +240,12 @@ class GPUpgrade:
         self.warnings   = False
         self.oldversion = None
         self.newversion = None
-        self.root       = None     # directory: masterdir
         self.workdir    = None     # directory: masterdir/gpmigrator
         self.newmaster  = None     # directory: workdir/upgrade/gp-1
         self.state      = None     # file:      backup/state
         self.config     = {}       # gp_init_config for new db
-        self.hosts      = []       # list of hosts
+        self.dbs        = {}       # dict of databases in the array
+        self.hostcache  = None
         self.segments   = []       # list of segments
         self.mirrors    = []       # list of mirrors
         self.dbup       = None
@@ -418,15 +311,10 @@ class GPUpgrade:
             # reserved = getconf('superuser_reserved_connections')
 
             masterpath, masterdir = os.path.split(self.masterdir)
-            self.root      = masterpath
             self.workdir   = os.path.join(masterpath, WORKDIR)
             self.newmaster = os.path.join(self.workdir, UPGRADEDIR, masterdir)
             self.oldenv    = self.SetupEnv(self.oldhome, self.masterdir)
             self.newenv    = self.SetupEnv(self.newhome, self.newmaster)
-
-            # Find the SEG_PREFIX (everything except the trailing "-1" on
-            # the masterdir)
-            self.config['SEG_PREFIX'] = masterdir[:-2]
 
         else:
             self.oldenv = self.SetupEnv(self.oldhome, None)
@@ -456,11 +344,9 @@ class GPUpgrade:
             parser.add_option('--prepare', action='store_true',
                               help=optparse.SUPPRESS_HELP)
 
-            parser.add_option('--master_port', type="int",
+            parser.add_option('--replication_port_base', type="int",
                               help=optparse.SUPPRESS_HELP)
-            parser.add_option('--port_base',   type="int",
-                              help=optparse.SUPPRESS_HELP)
-            parser.add_option('--mirror_port_base', type="int",
+            parser.add_option('--mirror_replication_port_base', type="int",
                               help=optparse.SUPPRESS_HELP)
 
             parser.add_option('--noinit', action='store_true',
@@ -570,8 +456,8 @@ class GPUpgrade:
         if options.nocheckschema:
             self.checkschema = False
         if self.cmd != 'MASTER':
-            self.oldversion = GPVersion(urllib.unquote(options.oldversion))
-            self.newversion = GPVersion(urllib.unquote(options.newversion))
+            self.oldversion = GpVersion(urllib.unquote(options.oldversion))
+            self.newversion = GpVersion(urllib.unquote(options.newversion))
             self.method = options.method
             if options.upgrade:
                 self.upgrade = True
@@ -624,10 +510,10 @@ class GPUpgrade:
                 self.prepare = True
                 self.execute = True
 
-            self.new_master_port      = options.master_port
-            self.new_port_base        = options.port_base
-            self.new_mirror_port_base = options.mirror_port_base
-
+            self.config['REPLICATION_PORT_BASE'] = \
+                options.replication_port_base
+            self.config['MIRROR_REPLICATION_PORT_BASE'] = \
+                options.mirror_replication_port_base
 
 
     #------------------------------------------------------------
@@ -649,8 +535,8 @@ class GPUpgrade:
             except Exception, e:
                 logger.fatal('Cleanup failure: ' + str(e))
 
-            if self.threadpool:
-                del self.threadpool
+            if self.pool:
+                del self.pool
 
 
 
@@ -663,15 +549,22 @@ class GPUpgrade:
         # Set state across all hosts, if all hosts succeed then set the 
         # master state
         if self.cmd == 'MASTER':
-            self.CallSlaves('SETSTATE', newstate, self.config['SEG_PREFIX'])
+            self.CallSlaves('SETSTATE', newstate)
             try:
                 self.state.write(str(newstate) + "\n")
                 self.state.flush()
             except Exception, e:
                 raise UpgradeError('Error writing to statefile: (%s)' % str(e))
         else:
-            for d in filter(os.path.exists, self.datadirs):
-                statefile = os.path.join(d, WORKDIR, 'state')
+
+            # Build up a unique set of workdirectories on this host
+            locations = set()
+            for d in self.datadirs:
+                (location, _) = os.path.split(d)
+                locations.add(os.path.join(location, WORKDIR))
+
+            for d in locations:
+                statefile = os.path.join(d, 'state')
                 file = open(statefile, 'a')
                 file.write(str(newstate) + "\n")
                 file.close()
@@ -725,11 +618,15 @@ class GPUpgrade:
         value
         '''
   
+        logger.debug("Remote call: %s" % cmd)
+
         # Check for things that should never happen
         if self.cmd != 'MASTER':
             raise UpgradeError("Recursive communication error")
-        if not self.datadirs:
-            raise UpgradeError("Failure initializing data directories")
+        if not self.array:
+            raise UpgradeError("Failure initializing array")
+        if not self.hostcache:
+            raise UpgradeError("Failure initializing host cache")
         if not self.pool:
             raise UpgradeError("Failure initializing worker pool")
 
@@ -739,7 +636,20 @@ class GPUpgrade:
             gphome = self.oldhome
         
         # Construct the commands to pass to the worker pool
-        for h in self.hosts:
+        hosts = self.hostcache.get_hosts()
+        for host in hosts:
+            hostname = host.hostname
+
+            # Skip any hosts in the cache that contain no segments for this
+            # configuration.
+            if len(host.dbs) == 0:
+                continue
+
+            # Get the data directories for this host:
+            datadirs = []
+            for seg in host.dbs:
+                datadirs.append(seg.getSegmentDataDirectory())
+
             c = GpUpgradeCmd("gpmigrator remote call",
                              oldHome=self.oldhome,
                              newHome=self.newhome,
@@ -747,14 +657,14 @@ class GPUpgrade:
                              newVersion=self.newversion,
                              command=cmd,
                              pid=self.pid,
-                             dataDirectories=self.datadirs,
+                             dataDirectories=datadirs,
                              option1=option,
                              option2=option2,
                              method=self.method,
                              isUpgrade=self.upgrade,
                              isRevert=self.revert,
                              ctxt=base.REMOTE,
-                             remoteHost=h)
+                             remoteHost=hostname)
             self.pool.addCommand(c)
 
         # Wait for the segments to finish
@@ -775,6 +685,7 @@ class GPUpgrade:
             results.append(r.stdout)
             
             if not cmd.was_successful():
+                sys.stderr.write(r.stdout)
                 failure=True
 
         if failure:
@@ -787,15 +698,22 @@ class GPUpgrade:
     #------------------------------------------------------------
     def CheckDirectories(self):
         if self.cmd == 'MASTER':
-            datadirs = [ self.root ]
+            datadirs = [ self.masterdir ]
         else:
             datadirs = self.datadirs
 
         err = False
-        for d in filter(os.path.exists, datadirs):
-            p = os.path.join(d, WORKDIR)
-            if os.path.exists(p):
-                logger.warn('%s : File exists' % p)
+
+        # Build up a unique set of workdirectories on this host
+        locations = set()
+        for d in datadirs:
+            (location, _) = os.path.split(d)
+            locations.add(os.path.join(location, WORKDIR))
+
+        # Check that none of them exist
+        for d in locations:
+            if os.path.exists(d):
+                logger.warn('%s : File exists' % d)
                 err = True
 
         if err:
@@ -968,61 +886,49 @@ class GPUpgrade:
         was cleanly shutdown.
         '''
         if self.cmd == 'MASTER':
-            dirs   = [ self.root ]
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
+            datadirs = [ self.masterdir ]
         else:
-            dirs   = self.datadirs
-            seg_prefix = self.option
+            datadirs = self.datadirs
 
-        segdir_re = re.compile(seg_prefix+'\d+$')
         shutdown_re = re.compile('Database cluster state: *(.*)')
             
-        for d in dirs:
+        for oldseg in datadirs:
+            (d, content) = os.path.split(oldseg)
+            newseg = os.path.join(d, WORKDIR, UPGRADEDIR, content)
+ 
+            # Only check the upgrade directory if its not legacy
+            if self.datadirs:
+                dirs = [oldseg, newseg]
+            else:
+                dirs = [oldseg]
 
-            # look for segments in the directory
-            for content in os.listdir(d):
+            for dir in dirs:
+                if dir == oldseg:  env = self.oldenv
+                else:              env = self.newenv
 
-                # ignore anything not matching the segment prefix
-                if not segdir_re.match(content):
+                # upgrade directory might not actually exist
+                if not os.path.isdir(dir):
                     continue
 
-                # construct full path to segment and upgrade segment
-                oldseg = os.path.join(d, content)
-                newseg = os.path.join(d, WORKDIR, UPGRADEDIR, content)
+                pid = os.path.join(dir, 'postmaster.pid')
+                if os.path.exists(pid):
+                    raise UpgradeError("Greenplum process running: " + pid)
 
-                # Only check the upgrade directory if its not legacy
-                if self.datadirs:
-                    dirs = [oldseg, newseg]
-                else:
-                    dirs = [oldseg]
-
-                for dir in dirs:
-                    if dir == oldseg:  env = self.oldenv
-                    else:              env = self.newenv
-
-                    # upgrade directory might not actually exist
-                    if not os.path.isdir(dir):
-                        continue
-
-                    pid = os.path.join(dir, 'postmaster.pid')
-                    if os.path.exists(pid):
-                        raise UpgradeError("Greenplum process running: " + pid)
-
-                    shutdown = self.RunCmd('pg_controldata ' + dir, env=env)
-                    for line in shutdown.split('\n'):
-                        m = shutdown_re.match(line)
-                        if m:
-                            if m.group(1) == 'shut down': 
-                                break
-                            msg  = 'pg_controldata: "Database cluster state: %s"\n' % m.group(1)
-                            msg += 'Greenplum segment %s did not shutdown cleanly' % dir
-                            if self.revert:
-                                logger.warn(msg)
-                            else:
-                                raise UpgradeError(msg)
+                shutdown = self.RunCmd('pg_controldata ' + dir, env=env)
+                for line in shutdown.split('\n'):
+                    m = shutdown_re.match(line)
+                    if m:
+                        if m.group(1) == 'shut down': 
+                            break
+                        msg  = 'pg_controldata: "Database cluster state: %s"\n' % m.group(1)
+                        msg += 'Greenplum segment %s did not shutdown cleanly' % dir
+                        if self.revert:
+                            logger.warn(msg)
+                        else:
+                            raise UpgradeError(msg)
             
         if self.cmd == 'MASTER' and self.datadirs:
-            self.CallSlaves('CHKDOWN', self.config['SEG_PREFIX'])
+            self.CallSlaves('CHKDOWN')
             
         return True
 
@@ -1281,24 +1187,30 @@ class GPUpgrade:
         if not self.execute:
             raise UpgradeError('gpmigrator [-R] is not compatible with --prepare')
 
-        # We use the catalog versions we cached during versionCheck to 
-        # determine if the MASTER_DATA_DIRECTORY is actually an old 
-        # master data directory, or a partially upgraded one.
-        #
-        # Note: it would be better to adjust gpstop so that it knows how
-        # to stop old versions and always shutdown using a new environment.
-        #
-        # Note: It would also be good to avoid starting and stopping more than
-        # necessary here.
-        if env:
-            if self.datacat == self.newcat:
+        # Check for indication that something is running:
+        if not self.dbup:
+            env = None
+            try:
+                env = self.CheckUp()
+            except UpgradeError:
+                pass
+
+            # We use the catalog versions we cached during versionCheck to 
+            # determine if the MASTER_DATA_DIRECTORY is actually an old 
+            # master data directory, or a partially upgraded one.
+            #
+            # Note: it would be better to adjust gpstop so that it knows how
+            # to stop old versions and always shutdown using a new environment.
+            #
+            # Note: It would also be good to avoid starting and stopping more than
+            # necessary here.
+            if env == self.oldenv and self.datacat == self.newcat:
                 self.newenv['MASTER_DATA_DIRECTORY'] = \
                     self.oldenv['MASTER_DATA_DIRECTORY']
                 env = self.newenv
-                
-            self.dbup = [env, False]
-        else:
-            self.dbup = None
+
+            if env:
+                self.dbup = [env, False]
 
         # Now that we've determined what, if anything, is running, we must
         # stop it.
@@ -1335,8 +1247,8 @@ class GPUpgrade:
             needunlock = True
         else:
             needunlock = False
-
-        if (needrevert or needunlock) and len(self.hosts) < 1:
+        
+        if (needrevert or needunlock):
 
             # grab configuration information from generated init file
             initfile = os.path.join(self.workdir, 'gp_init_config')
@@ -1348,7 +1260,6 @@ class GPUpgrade:
             # Extract from gp_init_config
             declare_re = re.compile('^declare\s+-a\s+([^= \t]*)\s*=\s*\(\s*(.*)')
             config = self.RunCmd('cat ' + initfile)
-            datadirs = set()
             gathering = False
             for line in config.split('\n'):
                 line = line.strip()
@@ -1374,29 +1285,21 @@ class GPUpgrade:
                 if not gathering:
                     if field in ['DATA_DIRECTORY', 'MIRROR_DATA_DIRECTORY']:
                         value = value.split()
-                        datadirs = datadirs | set(value)
                     if field in ['PRIMARY_ARRAY', 'MIRROR_ARRAY']:
-                        x_re = re.compile('[^:]+:\d+:([^:]+):\d+:\d+')
                         value = value.split()
-                        dir = map(lambda x: x_re.match(x).group(1), value)
-                        datadirs = datadirs | set(dir)
 
                     self.config[field] = value
 
-            # remove final "WORKDIR/UPGRADEDIR/.*" from all the paths and convert to a 
-            # space delimited string
-            datadirs.discard('')
-            datadirs = set(map(lambda(x): x[0:x.rfind('%s/%s/' % (WORKDIR, UPGRADEDIR))], datadirs))
-            self.datadirs = ' '.join(datadirs)
-
-            # read the hosts file
-            hostfile = os.path.join(self.workdir, 'hosts')
-            if not os.path.exists(hostfile):
-                logger.fatal("  '%s' not found" % hostfile)
+            # read the gp_array_config file
+            array_file = os.path.join(self.workdir, 'gp_array_config')
+            if not os.path.exists(array_file):
+                logger.fatal("  '%s' not found" % array_file)
                 logger.info('Revert aborted')
                 sys.exit(1)
-            hosts = self.RunCmd('cat ' + hostfile)
-            self.hosts = hosts.split('\n')
+            self.array = GpArray.initFromFile(array_file)
+
+            # Initialize a hostcache from the loaded array
+            self.hostcache = GpHostCache(self.array, self.pool)
 
         # Attempt revert
         if needrevert:
@@ -1457,43 +1360,35 @@ class GPUpgrade:
                     logger.fatal(str(e))
             raise UpgradeError('Unable to determine version of %s' % home)
 
+
+        # If we got a version, but it isn't recognized by the GpVersion class
+        # then it is likely not a Greenplum database.
         oldversion = getversion(self.oldhome, self.oldenv)
         newversion = getversion(self.newhome, self.newenv)
-
-        # If we got a version, but it doesn't match our regex then it's probably
-        # not a Greenplum database.
-        version_re = re.compile('\(Greenplum Database\)? ([^\)]+) build ([^\)]+)')
-        match = version_re.search(oldversion)
-        if match: 
-            oldversion = match.group(1)
-            oldbuild = match.group(2)
-            logger.info('Source Version: (Greenplum Database) %s build %s'
-                     % (oldversion, oldbuild))
-        else:
+        try:
+            oldversion = GpVersion(oldversion)
+        except:
             raise UpgradeError('Source not a Greenplum Database: ' + oldversion)
-        match = version_re.search(newversion)
-        if match: 
-            newversion = match.group(1)
-            newbuild = match.group(2)
-            logger.info('Target Version: (Greenplum Database) %s build %s'
-                     % (newversion, newbuild))
-        else:
-            raise UpgradeError('Target not a Greenplum Database: ' + newversion)    
+        try:
+            newversion = GpVersion(newversion)
+        except:
+            raise UpgradeError('Target not a Greenplum Database: ' + newversion)
 
-        oldversion = GPVersion(oldversion)
-        newversion = GPVersion(newversion)
+        logger.info('Source Version: (Greenplum Database) %s' % str(oldversion))
+        logger.info('Target Version: (Greenplum Database) %s' % str(newversion))
+
         self.oldversion = oldversion
         self.newversion = newversion
         self.upgrade = (newversion >= oldversion)
 
-        oldversion.issupported(self.upgrade)
-        newversion.issupported(self.upgrade)
+        is_supported_version(oldversion, self.upgrade)
+        is_supported_version(newversion, self.upgrade)
 
         if newversion == oldversion:
-            raise UpgradeError("Greenplum Database is already version %s" 
+            raise UpgradeError("Greenplum Database is already version '%s'" 
                                % str(newversion))
-        elif newversion.isrelease(oldversion):
-            raise UpgradeError("Upgrade not needed to go from version %s to version %s" 
+        elif newversion.isVersionRelease(oldversion):
+            raise UpgradeError("Upgrade not needed to go from version '%s' to version '%s'" 
                                % (str(oldversion), str(newversion)))
 
         # We don't support downgrade
@@ -1501,10 +1396,11 @@ class GPUpgrade:
             raise UpgradeError("Downgrade to Greenplum Database %s not supported from gpmigrator" 
                                % str(newversion))
 
-        if self.upgrade and not newversion.isrelease(MAIN):
+        if self.upgrade and not newversion.isVersionCurrentRelease():
+            main = GpVersion('main')
             raise UpgradeError(
-                "Upgrade from %s to %s not supported. Target version should be Greenplum Database %s.%s" 
-                % (str(oldversion), str(newversion), MAIN[0], MAIN[1]))
+                "Upgrade from '%s' to '%s' not supported.  Target version should be Greenplum Database %s"
+                % (str(oldversion), str(newversion), main.getVersionRelease()))
 
         logger.debug('Using %s method for migration' % self.method)
 
@@ -1552,17 +1448,19 @@ class GPUpgrade:
         doerror = False
         if self.cmd == 'MASTER':
             logger.info('Removing temporary directories')
-            self.CallSlaves('RMDIR', force, self.config['SEG_PREFIX'])
-            datadirs = [self.root]
+            self.CallSlaves('RMDIR', force)
+            datadirs = [self.masterdir]
         else:
             datadirs = self.datadirs
 
-        for d in filter(os.path.exists, datadirs):
-            dir = os.path.join(d, WORKDIR)
-            if not os.path.exists(dir):
-                continue
+        # Build up a unique set of workdirectories on this host
+        locations = set()
+        for d in datadirs:
+            (location, _) = os.path.split(d)
+            locations.add(os.path.join(location, WORKDIR))
 
-            flag = os.path.join(dir, 'flag')
+        for d in filter(os.path.exists, locations):
+            flag = os.path.join(d, 'flag')
             if (not force) and os.path.exists(flag):
                 try:
                     dpid = self.RunCmd('cat ' + flag)
@@ -1574,19 +1472,19 @@ class GPUpgrade:
 
                 if dpid != self.pid:
                     logger.warn('Directory %s owned by pid %s' 
-                             % (dir, dpid))
+                             % (d, dpid))
                     doerror = True
                     continue
                 
             # Regardless of the setting of force, if there is an active 
             # process running, we won't remove the directory.
-            running = self.RunCmd('find %s -name postmaster.pid -print' % dir)
+            running = self.RunCmd('find %s -name postmaster.pid -print' % d)
             if (running):
                 logger.info(running)
                 logger.fatal('Active processes running')
                 doerror = True
             else:
-                self.RunCmd('rm -rf ' + dir)
+                self.RunCmd('rm -rf ' + d)
 
         # We hold off throwing the error until the end, because we want to make
         # sure we removed all of our own directories.
@@ -1603,7 +1501,7 @@ class GPUpgrade:
 
             dirs_exist = False
             try: 
-                self.CallSlaves('CHKDIR', self.config['SEG_PREFIX'])
+                self.CallSlaves('CHKDIR')
             except UpgradeError, e:
                 dirs_exist = True
             if os.path.exists(self.workdir):
@@ -1615,7 +1513,7 @@ class GPUpgrade:
             logger.info('Creating temporary directories')                
 
             # Have the slaves create their directories
-            self.CallSlaves('MKDIR', self.config['SEG_PREFIX'])
+            self.CallSlaves('MKDIR')
             
             # Additionally we need upgrade/ and backup/ under the masterdir
             # if the masterdir is located in a different location or on
@@ -1660,26 +1558,37 @@ class GPUpgrade:
             if self.cmd != 'MKDIR': 
                 raise Exception(self.cmd + ' != MKDIR]')
 
-            for d in filter(os.path.exists, self.datadirs):
+            # Given all the actual segment datadirs we need to look one 
+            # directory up for the datadir locations and create the gpmigrator
+            # subdirectory there.
+            locations = set()
+            for d in self.datadirs:
+                if not os.path.exists(d):
+                    raise UpgradeError('Missing Data Directory: %s' % d)
+                (location, _) = os.path.split(d)
+                workpath = os.path.join(location, WORKDIR)
+                locations.add(workpath)
+
+            # Actually create the directory, none of the should exist yet!
+            for d in locations:
                 # Creating directories is an atomic operation, if mkdir 
                 # succeeds then it did not exist previously making it ours
                 # This prevents mulitiple upgrades running simultaneously.
-                workpath = os.path.join(d, WORKDIR)
-                os.mkdir(workpath)
-                self.RunCmd('chmod 700 %s' % workpath)
+                os.mkdir(d)
+                self.RunCmd('chmod 700 %s' % d)
 
                 # Claim it in the name of our parent process.  We make use of
                 # this flag during tear down to confirm that we created it.
-                flag = open(os.path.join(workpath, 'flag'), 'w')
+                flag = open(os.path.join(d, 'flag'), 'w')
                 flag.write('%s\n' % str(self.pid))
                 flag.close()
 
-                upgradepath = os.path.join(workpath, UPGRADEDIR)
+                # Create subdirectories for /upgrade and /backup
+                upgradepath = os.path.join(d, UPGRADEDIR)
                 os.mkdir(upgradepath)
                 self.RunCmd('chmod 700 %s' % upgradepath)
 
-                # Repeat for the backup directory
-                backuppath = os.path.join(workpath, BACKUPDIR)
+                backuppath = os.path.join(d, BACKUPDIR)
                 os.mkdir(backuppath)
                 self.RunCmd('chmod 700 %s' % backuppath)
                         
@@ -1691,90 +1600,53 @@ class GPUpgrade:
         '''
 
         logger.info('Generating config files')        
-        resetports = None
-        try: 
-            self.CheckDown()
-            resetports = False
-        except:
-            resetports = True
 
-        if not resetports:
-            self.new_master_port      = self.config['MASTER_PORT']
-            self.new_port_base        = self.config['PORT_BASE']
-            if len(self.mirrors) > 0:
-                self.new_mirror_port_base = self.config['MIRROR_PORT_BASE']
-        else:
-
-            if not (self.new_master_port and
-                    self.new_port_base   and
-                    (self.new_mirror_port_base or len(self.mirrors) == 0)):
-                print '''
-------------------------------------------------------------------------
-To prepare the upgrade instance while the main system is running it must 
-be started on different ports.  
-
-This may be specified on the commandline with:
-     --master_port, --port_base, and --mirror_port_base
-------------------------------------------------------------------------
-'''
-                
-                # If running nohup then we can't ask for input
-                if not sys.stdin.isatty():
-                    raise UpgradeError('Unable to determine new ports')
-
-                def getint(prompt):
-                    while True:
-                        value = raw_input(prompt)
-                        try:    return int(value)
-                        except: pass
-
-                if not self.new_master_port:
-                    self.new_master_port = getint('MASTER_PORT> ')
-                if not self.new_port_base:
-                    self.new_port_base = getint('PORT_BASE> ')
-                if len(self.mirrors) > 0 and not self.new_mirror_port_base:
-                    self.new_mirror_port_base = getint('MIRROR_PORT_BASE> ')
-
-
-        # Write host list file
-        host_file = os.path.join(self.workdir, 'hosts')
-        o = open(host_file, 'w')
-        for host in self.hosts:
-            o.write(host + '\n')
-        o.close()
+        # Write a dump of the gparray object
+        array_file = os.path.join(self.workdir, 'gp_array_config')
+        self.array.dumpToFile(array_file)
 
         # Write our new gp_init_config file
         gp_init_config = os.path.join(self.workdir, 'gp_init_config')
         o = open(gp_init_config, 'w')
-        o.write('ARRAY_NAME="%s"\n'          % self.config['ARRAY_NAME'])
-        o.write('SEG_PREFIX=%s\n'            % self.config['SEG_PREFIX'])
-        o.write('TRUSTED_SHELL=%s\n'         % self.config['TRUSTED_SHELL'])
-        o.write('CHECK_POINT_SEGMENTS=%s\n'  % self.config['CHECKPOINT_SEGMENTS'])
-        o.write('ENCODING=%s\n'              % self.config['CLIENT_ENCODING'])
+        for item, value in self.config.iteritems():
+            if type(value) == int:
+                o.write('%s=%d\n' % (str(item), value))
+            else:
+                o.write('%s="%s"\n' % (str(item), str(value)))
 
         o.write('QD_PRIMARY_ARRAY=%s:%d:%s:1:-1\n' %
                 (self.config['MASTER_HOSTNAME'],
-                 self.new_master_port,
+                 self.config['MASTER_PORT'],
                  self.newmaster))
 
         o.write('declare -a PRIMARY_ARRAY=(\n')
         
         for s in self.segments:
-            (a,b) = os.path.split(s['datadir'])
+            dbid    = s.getSegmentDbId()
+            content = s.getSegmentContentId()
+            address = s.getSegmentAddress()
+            port    = s.getSegmentPort()
+            datadir = s.getSegmentDataDirectory()
+
+            (a,b) = os.path.split(datadir)
             dir = os.path.join(a, WORKDIR, UPGRADEDIR, b)
-            port = s['port'] - self.config['PORT_BASE'] + self.new_port_base
             o.write('%s:%d:%s:%d:%d\n' % 
-                    (s['hostname'], port, dir, s['dbid'], s['content']))
+                    (address, port, dir, dbid, content))
         o.write(')\n')
 
         if len(self.mirrors) > 0:
             o.write('declare -a MIRROR_ARRAY=(\n')
             for s in self.mirrors:
-                (a,b) = os.path.split(s['datadir'])
+                dbid    = s.getSegmentDbId()
+                content = s.getSegmentContentId()
+                address = s.getSegmentAddress()
+                port    = s.getSegmentPort()
+                datadir = s.getSegmentDataDirectory()
+                
+                (a,b) = os.path.split(datadir)
                 dir = os.path.join(a, WORKDIR, UPGRADEDIR, b)
-                port = s['port'] - self.config['MIRROR_PORT_BASE'] + self.new_mirror_port_base
                 o.write('%s:%d:%s:%d:%d\n' % 
-                        (s['hostname'], port, dir, s['dbid'], s['content']))
+                        (address, port, dir, dbid, content))
             o.write(')\n')
 
         o.close()
@@ -1787,33 +1659,40 @@ This may be specified on the commandline with:
         Get all the information we need from the old instance
         '''
 
-        # Determine if there are any invalid segments
+        # Can only extract with a running database
+        env = self.CheckUp()
+
+        # -- Get the array information
+        logger.info('Extracting configuration information')
+        port  = self.masterport
+        user  = env['USER']
+        url   = dbconn.DbURL(port=port, dbname='template1', username=user)
+        array = GpArray.initFromCatalog(url, utility=True)
+        self.array = array
+
+        # -- Determine if there are any invalid segments
         logger.info('Checking that all segments are valid')
-        if self.oldversion < '3.4':
-            qry = '''
-              SELECT hostname, datadir FROM gp_configuration
-              WHERE not valid
-            '''
-        else:
-            qry = '''
-              SELECT hostname, fselocation as datadir
-              FROM gp_configuration 
-              JOIN pg_filespace_entry ON (fsedbid = dbid)
-              JOIN pg_filespace fs ON (fsefsoid = fs.oid)
-              WHERE not valid and fsname = 'pg_system'
-           '''
-        invalid = self.Select(qry, forceutility=True)
+        invalid = array.get_invalid_segdbs()
+
+        # For the 4.0 upgrade we allow invalid mirrors since we are
+        # replacing them anyways.  So we filter down to only the
+        # primary nodes.
+        invalid = filter(GpDB.isSegmentPrimary, invalid)
         if len(invalid) > 0:
-            for item in invalid:
+            for db in invalid:
                 logger.fatal('INVALID SEGMENT: %s:/%s' % 
-                         (item['hostname'], item['datadir']));
+                             (db.getSegmentHostName(),
+                              db.getSegmentDataDirectory()))
             raise UpgradeError('Cannot upgrade database with invalid segments')
 
 
+        # -- Get a list of available databases, note this includes "template0"!
         logger.info('Creating list of databases')
-        databases = self.Select("SELECT datname from pg_database WHERE datname != 'template0'")
+        databases = self.Select("SELECT oid, datname from pg_database")
+        for row in databases:
+            self.dbs[str(row['oid'])] = row['datname']
 
-        # Look for an existing user named MIGRATIONUSER
+        # -- Look for an existing user named MIGRATIONUSER
         logger.info('Checking gpmigrator user')
         upgradeuser = self.Select(
             "SELECT count(*)::numeric FROM pg_user " +
@@ -1822,103 +1701,54 @@ This may be specified on the commandline with:
             logger.warn("Database user '%s' already exists" % MIGRATIONUSER)
             self.Update('DROP USER ' + MIGRATIONUSER)
 
-
         if (not self.upgrade):
             raise UpgradeError("Downgrade not supported")
 
-        # Extract the information needed to construct a gp_init_config file
-        logger.info('Extracting configuration information')
-        if self.oldversion < '3.4':
-            qry = '''
-              SELECT content::numeric, definedprimary, dbid::numeric, 
-                     hostname, port::numeric, datadir 
-              FROM gp_configuration 
-              ORDER BY content
-            '''
-        else:
-            qry = '''
-              SELECT content::numeric, definedprimary, dbid::numeric, 
-                     hostname, port::numeric, fselocation as datadir 
-              FROM gp_configuration 
-              JOIN pg_filespace_entry on (fsedbid = dbid)
-              JOIN pg_filespace fs on (fsefsoid = fs.oid)
-              WHERE fsname = 'pg_system'
-              ORDER BY content
-            '''
-        gp_config = self.Select(qry)
+        # -- Older releases didn't have hostname as part of configuration
+        # make sure we have an acurate list of address->host lookups.
+        logger.info('Validating hosts')
+        self.hostcache = GpHostCache(self.array, self.pool)
+        for host in self.hostcache.get_hosts():
+            for seg in host.dbs:
+                seg.setSegmentHostName(host.hostname)
+        self.hostcache.ping_hosts(self.pool)
 
-        # check multi-home and get the hostname
-        h = {}
-        for x in gp_config:
-            if x['content'] < 0: continue
+        master = array.master
+        standbymaster = array.standbyMaster
 
-            if x['hostname'] not in h:
-                cmd = 'ssh %s hostname' % x['hostname']
-                x['host'] = self.RunCmd(cmd)
-                h[x['hostname']] = x['host']
-            else:
-                x['host'] = h[x['hostname']]
-                
-        master = filter(lambda(x): x['content'] < 0 and 
-                                   x['definedprimary'] == 't', gp_config);
-        standbymaster = filter(lambda(x): x['content'] < 0 and 
-                                          x['definedprimary'] == 'f', gp_config);
-        segments = filter(lambda(x): x['content'] >= 0 and 
-                                     x['definedprimary'] == 't', gp_config);
-        mirrors = filter(lambda(x): x['content'] >= 0 and 
-                                    x['definedprimary'] == 'f', gp_config);
-        self.segments = segments
-        self.mirrors = mirrors
+        # Oddly gparray doesn't have methods for fetching primary segments
+        # specifically
+        dbs = array.getSegDbList()
+        self.segments = filter(GpDB.isSegmentPrimary, dbs)
+        self.mirrors  = filter(GpDB.isSegmentMirror, dbs)
         
         # Internal sanity checking
-        if len(master) != 1:
-            raise UpgradeError('Too many master segments, aborting')
-        if len(segments) == 0:
+        if len(self.segments) == 0:
             raise UpgradeError('No segments found')
-        if len(standbymaster) > 0:
+        if standbymaster > 0:
             raise UpgradeError('Cannot upgrade while standbymaster is running')
-
-        master = master[0]
 
         # ARRAY_NAME
         arrayname = self.Select('SELECT gpname FROM gp_id')
         self.config['ARRAY_NAME'] = arrayname[0]
 
-        # HOSTS can be used to build a MACHINE_LIST_FILE
-        # In 3.2 and later gpinitsystem can gracefully handle multiple
-        # hostnames per host, but in 3.1 we have to generate a config
-        # file with a single hostname per host - which means that we
-        # will lose any NIC information during downgrade.
-        if self.upgrade:
-            self.hosts = h.keys()
-        else:
-            self.hosts = list(set(h.values()))
-
         # Determine PORT_BASE, (min of segments - 1)
-        port_base = min(map(lambda(x): x['port'], segments))-1
+        port_base = array.get_min_primary_port() - 1
         self.config['PORT_BASE'] = port_base
 
-        # Determine DATA_DIRECTORY, use any host
-        # We also keep track of a SET() of data and mirror dirs without
-        # the /upgrade suffix
-        dirs = set();
-        #data_dir = ''
-        for seg in segments:
-            newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
-            dirs.add(newdir)
-            if (seg['host'] != segments[0]['host']): 
-                continue
-            # data_dir = data_dir + os.path.join(str(newdir), WORKDIR, UPGRADEDIR) + ' '
-        # self.config['DATA_DIRECTORY'] = data_dir
+        # Determine MIRROR_PORT_BASE,
+        if len(self.mirrors) > 0:
+            mirror_port_base = array.get_min_mirror_port() - 1
+            self.config['MIRROR_PORT_BASE'] = mirror_port_base
 
         # MASTER_HOSTNAME, super easy
-        self.config['MASTER_HOSTNAME'] = master['hostname']
+        self.config['MASTER_HOSTNAME'] = master.getSegmentHostName()
 
         # MASTER_DIRECTORY, also easy - we already set it up
         self.config['MASTER_DIRECTORY'] = self.newmaster
 
         # MASTER_PORT, super easy
-        self.config['MASTER_PORT'] = master['port']
+        self.config['MASTER_PORT'] = master.getSegmentPort()
 
         # TRUSTED_SHELL, set manually since there's only one supported value
         self.config['TRUSTED_SHELL'] = 'ssh'
@@ -1935,46 +1765,9 @@ This may be specified on the commandline with:
         self.config['LOCALE'] = \
             self.Select('show lc_ctype')[0]
 
-        # MAX_CONNECTIOS
+        # MAX_CONNECTIONS
         self.config['MAX_CONNECTIONS'] = \
             self.Select('show max_connections')[0]
-
-        # Handle mirrors, if present
-        mirror_dirs = set();
-        if len(self.mirrors) > 0:
-
-            # Determine PORT_BASE, (min of segments - 1)
-            port_base = min(map(lambda(x): x['port'], mirrors))-1
-            self.config['MIRROR_PORT_BASE'] = port_base
-
-            # MIRROR_DATA_DIRECTORY, use any mirror
-            # mirror_data_dir = ''
-            for seg in mirrors:
-                newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
-
-                if newdir in dirs:
-                    raise UpgradeError(
-'''
-Conflict between data directory and mirror data directory.
-     (%s)
-This issue must be resolved before upgrade can complete.
-''' % newdir)
-                mirror_dirs.add(newdir)
-
-                if (seg['host'] != mirrors[0]['host']): 
-                    continue
-                # mirror_data_dir = mirror_data_dir + os.path.join(str(newdir), 'upgrade') + ' '
-            # self.config['MIRROR_DATA_DIRECTORY'] = mirror_data_dir
-
-        # standby masters
-        #  - currently not upgraded - reinit them once upgrade is complete
-
-        # We collected a set of data and mirror directories, convert it back
-        # to a string.
-        self.datadirs = ''
-        for d in dirs | mirror_dirs:
-            self.datadirs = '%s%s ' % (self.datadirs, d)
-        self.datadirs = self.datadirs.strip()
 
         logger.info('Configuration acquired')
 
@@ -2187,8 +1980,8 @@ This issue must be resolved before upgrade can complete.
 
         if self.cmd == 'MASTER':
 
-            # If we haven't setup "config" yet then there isn't anything to do
-            if 'SEG_PREFIX' not in self.config:
+            # nothing to do if we haven't setup an array object yet.
+            if not self.array:
                 return
 
             # If we are doing "prepare" then we won't have locked anything
@@ -2198,32 +1991,25 @@ This issue must be resolved before upgrade can complete.
             logger.info('Unlocking database')
 
             # See comment about disabling lockdown on segments in SetupLockdown()
-            # self.CallSlaves('UNLOCK', self.config['SEG_PREFIX'])
+            # self.CallSlaves('UNLOCK')
 
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
-            datadirs   = [self.root]
+            datadirs = [self.masterdir]
         else:
-            seg_prefix = self.option
-            datadirs   = self.datadirs
+            datadirs = self.datadirs
 
-        seg_re = re.compile('^%s\d+$' % seg_prefix)
-        for d in datadirs:
+        for dir in datadirs:
+            hba   = os.path.join(dir, 'pg_hba.conf')
+            ident = os.path.join(dir, 'pg_ident.conf')
+            if os.path.exists(hba + LOCKEXT):
+                forward = False
+                if self.upgrade and env == self.newenv:
+                    forward = True
+                elif not self.upgrade and env == self.oldenv:
+                    forward = True
+                self.move_rewrite_hba(hba+LOCKEXT, hba, forward)
 
-            # Find the segments for this directory
-            for seg in os.listdir(d):
-                if seg_re.match(seg):
-                    hba   = os.path.join(d, seg, 'pg_hba.conf')
-                    ident = os.path.join(d, seg, 'pg_ident.conf')
-                    if os.path.exists(hba + LOCKEXT):
-                        forward = False
-                        if self.upgrade and env == self.newenv:
-                            forward = True
-                        elif not self.upgrade and env == self.oldenv:
-                            forward = True
-                        self.move_rewrite_hba(hba+LOCKEXT, hba, forward)
-
-                    if os.path.exists(ident + LOCKEXT):
-                        self.RunCmd('mv -f %s %s' % (ident+LOCKEXT, ident))
+            if os.path.exists(ident + LOCKEXT):
+                self.RunCmd('mv -f %s %s' % (ident+LOCKEXT, ident))
 
 
         # if we don't think the database is up, double check!
@@ -2257,12 +2043,6 @@ This issue must be resolved before upgrade can complete.
         logger.info('Checking Catalog')
         self.CheckUp()
         [env, utility] = self.dbup
-        databases = self.Select(
-            '''
-               SELECT datname FROM pg_database
-               WHERE datname != 'template0'
-               ORDER by datname
-            ''')
 
         locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
                               'pg_hba.conf'+LOCKEXT)
@@ -2274,7 +2054,10 @@ This issue must be resolved before upgrade can complete.
         exec_cmd = libdir + '/gpcheckcat -p %d -U %s -B %i ' % \
             (self.masterport, user, PARALLELISM)
 
-        for db in databases:
+        for (_, db) in self.dbs.iteritems():
+            if db == 'template0':
+                continue
+
             cmd = exec_cmd + db
             logger.info('...Checking ' + db)
 
@@ -2299,97 +2082,90 @@ This issue must be resolved before upgrade can complete.
         '''
         if self.cmd == 'MASTER':
             logger.info('Syncing XLogs')
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
-            datadirs = [self.root]
-            self.CallSlaves('RESETXLOG', self.config['SEG_PREFIX'])
+            datadirs = [self.masterdir]
+            self.CallSlaves('RESETXLOG')
         else:
-            seg_prefix = self.option
-            datadirs   = self.datadirs
+            datadirs = self.datadirs
 
         # We should always have at least one data directory...
         if len(self.datadirs) < 1:
             return
 
         # Check the mapping in all data directories
-        for d in datadirs:
-            # Find the segments for this directory, we base this on 
-            # directories under the upgrade directory that match
-            # the naming convention of the segments.
-            for file in os.listdir(d):
-                if re.compile('^%s\d+$' % seg_prefix).match(file):
-                    olddir  = os.path.join(d, file)
-                    newdir  = os.path.join(d, WORKDIR, UPGRADEDIR, file)
+        for olddir in datadirs:
+            (d, seg) = os.path.split(olddir)
+            newdir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
 
-                    # Links are in place, but data will not be visible until 
-                    # we sync the pg_control info
-                    oldsync = self.RunCmd('pg_resetxlog -n ' + olddir, 
-                                          env=self.oldenv)
-                    newsync = self.RunCmd('pg_resetxlog -n ' + newdir, 
-                                          env=self.newenv)
+            # Links are in place, but data will not be visible until 
+            # we sync the pg_control info
+            oldsync = self.RunCmd('pg_resetxlog -n ' + olddir, 
+                                  env=self.oldenv)
+            newsync = self.RunCmd('pg_resetxlog -n ' + newdir, 
+                                  env=self.newenv)
 
-                    logger.debug('*****************************')
-                    logger.debug(' - old xlog -')
-                    logger.debug(oldsync)
-                    logger.debug('*****************************')
-                    logger.debug(' - new xlog -')
-                    logger.debug(newsync)
-                    logger.debug('*****************************')
+            logger.debug('*****************************')
+            logger.debug(' - old xlog -')
+            logger.debug(oldsync)
+            logger.debug('*****************************')
+            logger.debug(' - new xlog -')
+            logger.debug(newsync)
+            logger.debug('*****************************')
                     
 
-                    # Nasty bit of code to turn the control data into a
-                    # nice dict object
-                    sync = {}
-                    for line in oldsync.split('\n'):
-                        if len(line) == 0: continue
-                        (field, value) = line.split(':')
-                        sync[field] = value.lstrip()
+            # Nasty bit of code to turn the control data into a
+            # nice dict object
+            sync = {}
+            for line in oldsync.split('\n'):
+                if len(line) == 0: continue
+                (field, value) = line.split(':')
+                sync[field] = value.lstrip()
 
-                    # Set the next transaction id in new control
-                    x = sync["Latest checkpoint's NextXID"].find('/')
-                    if x < 0:
-                        nextxid = sync["Latest checkpoint's NextXID"]
-                    else:
-                        nextxid = sync["Latest checkpoint's NextXID"][x+1:]
+            # Set the next transaction id in new control
+            x = sync["Latest checkpoint's NextXID"].find('/')
+            if x < 0:
+                nextxid = sync["Latest checkpoint's NextXID"]
+            else:
+                nextxid = sync["Latest checkpoint's NextXID"][x+1:]
 
-                    self.RunCmd('pg_resetxlog -f -x %s %s' % (nextxid, newdir), 
-                                env=self.newenv)
+            self.RunCmd('pg_resetxlog -f -x %s %s' % (nextxid, newdir), 
+                        env=self.newenv)
 
-                    # Set the WAL archives
-                    self.RunCmd('pg_resetxlog -l %s,%s,%s %s' % 
-                                (sync["Latest checkpoint's TimeLineID"],
-                                 sync["Current log file ID"],
-                                 sync["Next log file segment"],
-                                 newdir), env=self.newenv)
+            # Set the WAL archives
+            self.RunCmd('pg_resetxlog -l %s,%s,%s %s' % 
+                        (sync["Latest checkpoint's TimeLineID"],
+                         sync["Current log file ID"],
+                         sync["Next log file segment"],
+                         newdir), env=self.newenv)
 
-                    # Set next oid
-                    self.RunCmd('pg_resetxlog -o %s %s' % 
-                                (sync["Latest checkpoint's NextOID"],
-                                 newdir), env=self.newenv)
+            # Set next oid
+            self.RunCmd('pg_resetxlog -o %s %s' % 
+                        (sync["Latest checkpoint's NextOID"],
+                         newdir), env=self.newenv)
 
-                    # Set next multitransaction ID/offset
-                    self.RunCmd('pg_resetxlog -m %s %s' %
-                                (sync["Latest checkpoint's NextMultiXactId"],
-                                 newdir), env=self.newenv)
-                    self.RunCmd('pg_resetxlog -O %s %s' %
-                                (sync["Latest checkpoint's NextMultiOffset"],
-                                 newdir), env=self.newenv)
+            # Set next multitransaction ID/offset
+            self.RunCmd('pg_resetxlog -m %s %s' %
+                        (sync["Latest checkpoint's NextMultiXactId"],
+                         newdir), env=self.newenv)
+            self.RunCmd('pg_resetxlog -O %s %s' %
+                        (sync["Latest checkpoint's NextMultiOffset"],
+                         newdir), env=self.newenv)
 
-                    # Replace the transaction logs with the old ones
-                    # since the old logs actually correspond to the data
-                    for f in ['pg_clog', 
-                              'pg_distributedlog', 
-                              'pg_subtrans',
-                              'pg_multixact']:
-                        oldlogs = os.path.join(olddir, f)
-                        newlogs = os.path.join(newdir, f)
+            # Replace the transaction logs with the old ones
+            # since the old logs actually correspond to the data
+            for f in ['pg_clog', 
+                      'pg_distributedlog', 
+                      'pg_subtrans',
+                      'pg_multixact']:
+                oldlogs = os.path.join(olddir, f)
+                newlogs = os.path.join(newdir, f)
 
-                        # the only one that wouldn't exist is pg_distributedlog
-                        # and only if we were upgrading/downgrading to/from a 
-                        # version < 3.1.1.5
-                        if (os.path.exists(newlogs)):
-                            self.RunCmd('rm -rf %s' % newlogs)
-                            if (os.path.exists(oldlogs)):
-                                self.RunCmd('cp -rf %s %s' % (oldlogs, newlogs))
+                # the only one that wouldn't exist is pg_distributedlog
+                # and only if we were upgrading/downgrading to/from a 
+                # version < 3.1.1.5
+                if (os.path.exists(newlogs)):
+                    self.RunCmd('rm -rf %s' % newlogs)
+                    if (os.path.exists(oldlogs)):
+                        self.RunCmd('cp -rf %s %s' % (oldlogs, newlogs))
 
     #------------------------------------------------------------
     def DeepLink(self, style):
@@ -2404,8 +2180,7 @@ This issue must be resolved before upgrade can complete.
             raise UpgradeError('FATAL', ' DeepLink(%s)!?' % style)            
         
         if self.cmd == 'MASTER':
-            seg_prefix   = self.config['SEG_PREFIX'] + '-'
-            datadirs = [self.root]
+            datadirs = [self.masterdir]
             if style == 'BACKUP':
                 logger.info('Linking backup')
             elif style == 'INSTALL':
@@ -2413,96 +2188,91 @@ This issue must be resolved before upgrade can complete.
                 logger.info('...This may take a while')
 
             # Have all hosts perform the link first
-            self.CallSlaves('DEEPLINK', style, self.config['SEG_PREFIX'])
+            self.CallSlaves('DEEPLINK', style)
 
         else:
-            seg_prefix = self.option2
-            datadirs   = self.datadirs
+            datadirs = self.datadirs
 
-        # Look in each data directory, identify the segment directories,
-        # walk each segment directory.
-        segdir_re = re.compile(seg_prefix+'\d+$')
-        for dir in filter(os.path.exists, datadirs):
-            for content in os.listdir(dir):
-                if segdir_re.match(content):
+        for dir in datadirs:
+            (location, content) = os.path.split(dir)
+            
+            # For Backup datadirs is the source, for INSTALL it's the target
+            if style == 'BACKUP':
+                source      = os.path.join(location, content)
+                destination = os.path.join(location, WORKDIR, BACKUPDIR, content)
+            if style == 'INSTALL':
+                source      = os.path.join(location, WORKDIR, UPGRADEDIR, content)
+                destination = os.path.join(location, content)
+            if style == 'REVERT':
+                source      = os.path.join(location, WORKDIR, BACKUPDIR, content)
+                destination = os.path.join(location, content)
+            
+                if not os.path.exists(source):
+                    continue
 
-                    # For Backup datadirs is the source, for INSTALL it's the target
+            # Link the log file
+            if os.path.isfile(source + '.log'):
+                oldfile = source + '.log'
+                newfile = destination + '.log'
+                if os.path.exists(newfile):
                     if style == 'BACKUP':
-                        source      = os.path.join(dir, content)
-                        destination = os.path.join(dir, WORKDIR, BACKUPDIR, content)
-                    if style == 'INSTALL':
-                        source      = os.path.join(dir, WORKDIR, UPGRADEDIR, content)
-                        destination = os.path.join(dir, content)
-                    if style == 'REVERT':
-                        source      = os.path.join(dir, WORKDIR, BACKUPDIR, content)
-                        destination = os.path.join(dir, content)
+                        logger.warn('File exists ' + newfile)
+                    os.remove(newfile)
+                logger.debug('Linking file %s => %s' % (oldfile, newfile))
+                os.link(oldfile, newfile)
 
-                        if not os.path.exists(source):
-                            continue
+            # Remove any files from the destination location
+            # Not including the target directory itself
+            # Also not including the workdir and contents
+            #if os.path.exists(destination):
+            #    for file in os.listdir(destination):
+                    # If the file/directory also exists in the source 
+                    # then delete it in anticipation of receiving the 
+                    # replacement.
+            #        if os.path.exists(os.path.join(source, file)):
+            #            self.RunCmd('rm -rf ' + os.path.join(destination, file))
 
-                    # Link the log file
-                    if os.path.isfile(source + '.log'):
-                        oldfile = source + '.log'
-                        newfile = destination + '.log'
-                        if os.path.exists(newfile):
-                            if style == 'BACKUP':
-                                logger.warn('File exists ' + newfile)
-                            os.remove(newfile)
-                        logger.debug('Linking file %s => %s' % (oldfile, newfile))
-                        os.link(oldfile, newfile)
+            # if the source contains a gpperfmon/data directory we need to
+            # check that it hasn't grown to ridiculous sizes.  If it has
+            # that implies that the perfmon is in a "runaway" state where
+            # the server is creating files and nothing is consuming them.
+            # in this case we should just delete the directory.
+            #
+            # Note: This is deleted in the SOURCE, it will NOT be restored
+            # if the upgrade fails or reverts.  This is deemed acceptable
+            # because with this many files the system was almost certainly
+            # misconfigured to begin with.  Removing the directory will 
+            # prevent further acrual of files.
+            gpperfdir = os.path.join(source, 'gpperfmon', 'data')
+            if os.path.exists(gpperfdir):
+                nlink = os.stat(gpperfdir).st_nlink
 
-                    # Remove any files from the destination location
-                    # Not including the target directory itself
-                    # Also not including the workdir and contents
-                    #if os.path.exists(destination):
-                    #    for file in os.listdir(destination):
-                            # If the file/directory also exists in the source 
-                            # then delete it in anticipation of receiving the 
-                            # replacement.
-                    #        if os.path.exists(os.path.join(source, file)):
-                    #            self.RunCmd('rm -rf ' + os.path.join(destination, file))
+                # We define "too large" as >10000 files
+                if nlink > 10000:
+                    logger.info('Performance Monitor directory contains '
+                                '%s files - removing' % nlink)
+                    self.RunCmd('rm -rf ' + gpperfdir)
 
-                    # if the source contains a gpperfmon/data directory we need to
-                    # check that it hasn't grown to ridiculous sizes.  If it has
-                    # that implies that the perfmon is in a "runaway" state where
-                    # the server is creating files and nothing is consuming them.
-                    # in this case we should just delete the directory.
-                    #
-                    # Note: This is deleted in the SOURCE, it will NOT be restored
-                    # if the upgrade fails or reverts.  This is deemed acceptable
-                    # because with this many files the system was almost certainly
-                    # misconfigured to begin with.  Removing the directory will 
-                    # prevent further acrual of files.
-                    gpperfdir = os.path.join(source, 'gpperfmon', 'data')
-                    if os.path.exists(gpperfdir):
-                        nlink = os.stat(gpperfdir).st_nlink
+            # now walk the source directory and link every file back into
+            # the target directory.
+            for root, dirs, files in os.walk(source, topdown = True):
+                if WORKDIR in dirs:
+                    dirs.remove(WORKDIR)   # don't visit the work directory
 
-                        # We define "too large" as >10000 files
-                        if nlink > 10000:
-                            logger.info('Performance Monitor directory contains '
-                                        '%s files - removing' % nlink)
-                            self.RunCmd('rm -rf ' + gpperfdir)
+                newroot = root.replace(source, destination, 1)
+                if not os.path.exists(newroot):
+                    os.mkdir(newroot)
+                    self.RunCmd('chmod 700 ' + newroot)
 
-                    # now walk the source directory and link every file back into
-                    # the target directory.
-                    for root, dirs, files in os.walk(source, topdown = True):
-                        if WORKDIR in dirs:
-                            dirs.remove(WORKDIR)   # don't visit the work directory
-
-                        newroot = root.replace(source, destination, 1)
-                        if not os.path.exists(newroot):
-                            os.mkdir(newroot)
-                            self.RunCmd('chmod 700 ' + newroot)
-
-                        for name in files:
-                            oldfile = os.path.join(root, name)
-                            newfile = os.path.join(newroot, name)
-                            if os.path.exists(newfile):
-                                if style == 'BACKUP':
-                                    logger.warn('File exists ' + newfile)
-                                os.remove(newfile)
-                            logger.debug('Linking file %s => %s ' % (oldfile, newfile))
-                            os.link(oldfile, newfile)
+                for name in files:
+                    oldfile = os.path.join(root, name)
+                    newfile = os.path.join(newroot, name)
+                    if os.path.exists(newfile):
+                        if style == 'BACKUP':
+                            logger.warn('File exists ' + newfile)
+                        os.remove(newfile)
+                    logger.debug('Linking file %s => %s ' % (oldfile, newfile))
+                    os.link(oldfile, newfile)
 
     #------------------------------------------------------------
     def FixConfig(self):
@@ -2558,147 +2328,144 @@ This issue must be resolved before upgrade can complete.
         logger.info('Extracting list of catalog files')
 
         if self.cmd == 'MASTER':
-            datadirs = [ self.root ]
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
-            [env, utility] = self.dbup
-            self.CallSlaves('EXTRACTCATFILES', self.config['SEG_PREFIX'])
+            datadirs = [ self.masterdir ]
+            self.CallSlaves('EXTRACTCATFILES')
         else:
             datadirs = self.datadirs
-            seg_prefix = self.option
 
-        seg_re  = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)        
-        # do it for all dirs on this node
-        for d in datadirs:
-            for seg in os.listdir(d):
-                if seg_re.match(seg):
-                    
-                    # The directory for this segment
-                    dir = os.path.join(d, seg)
-                    logdir = os.path.join(d, WORKDIR)
+        for dir in datadirs:
+            # The directory for this segment
+            (d, seg) = os.path.split(dir)
+            logdir = os.path.join(d, WORKDIR)
                 
-                    # Open the mapping file
-                    mapfilename = os.path.join(logdir, '%s_catfiles' % seg)
-                    mapfile = open(mapfilename, 'w')
+            # Open the mapping file
+            mapfilename = os.path.join(logdir, '%s_catfiles' % seg)
+            mapfile = open(mapfilename, 'w')
 
-                    # Find the last line in the conf file that matches our expression
-                    conf = os.path.join(dir, 'postgresql.conf')
-                    def getconf(x):
-                        conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
-                        conf_str = self.RunCmd('grep %s %s' % (x, conf))
-                        value = None
-                        for line in conf_str.split('\n'):
-                            match = conf_re.search(line)
-                            if match:
-                                value = int(match.group(1))
-                        return value
+            # Find the last line in the conf file that matches our expression
+            conf = os.path.join(dir, 'postgresql.conf')
+            def getconf(x):
+                conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
+                conf_str = self.RunCmd('grep %s %s' % (x, conf))
+                value = None
+                for line in conf_str.split('\n'):
+                    match = conf_re.search(line)
+                    if match:
+                        value = int(match.group(1))
+                return value
 
-                    # Find the port for this segment:
-                    port = getconf('port')
-                    if port == None:
-                        raise UpgradeError('Could not determine port from %s/postgresql.conf' % dir)
+            # Find the port for this segment:
+            port = getconf('port')
+            if port == None:
+                raise UpgradeError('Could not determine port from %s/postgresql.conf' % dir)
 
-                    # Get a list of databases
-                    databases = self.Select(
-                    '''
-                       SELECT 
-                          datname 
-                       FROM pg_database 
-                       WHERE datname != 'template0'
-                       ORDER BY datname
-                    ''', port=port)
+            # Get a list of databases:
+            #   Ideally we would like switch to using self.dbs instead
+            #   of re-issuing this query, but that requires establishing
+            #   a method of passing the database dictionary to the slaves.
+            databases = self.Select(
+            '''
+               SELECT 
+                  datname 
+               FROM pg_database 
+               WHERE datname != 'template0'
+               ORDER BY datname
+            ''', port=port)
 
-                    # Build up the list of catalog entries
-                    files = {}
-                    for db in databases:
-                        first = True
-                        l = self.Select(
-                        '''
-                           SELECT d.oid as datoid,
-                                  c1.relname as rel1, c1.relfilenode as node1,
-                                  c2.relname as rel2, c2.relfilenode as node2,
-                                  c3.relname as rel3, c3.relfilenode as node3
-                           FROM pg_class c1 
-                              left outer join pg_namespace n
-                                on (c1.relnamespace = n.oid)
-                              left outer join pg_class c2
-                                on (c1.reltoastrelid = c2.oid)
-                              left outer join pg_class c3
-                                on (c2.reltoastidxid = c3.oid),
-                              pg_database d
-                           WHERE d.datname = '%s' and 
-                              (nspname = 'pg_catalog' or
-                               nspname = 'information_schema') and
-                              c1.relkind in ('r', 'i') and 
-                              not c1.relisshared
-                        ''' % db, port=port, db=db)
+            # Build up the list of catalog entries
+            files = {}
+            for db in databases:
+                l = self.Select(
+                '''
+                   SELECT d.oid as datoid,
+                          c1.relname as rel1, c1.relfilenode as node1,
+                          c2.relname as rel2, c2.relfilenode as node2,
+                          c3.relname as rel3, c3.relfilenode as node3
+                   FROM pg_class c1 
+                      left outer join pg_namespace n
+                        on (c1.relnamespace = n.oid)
+                      left outer join pg_class c2
+                        on (c1.reltoastrelid = c2.oid)
+                     left outer join pg_class c3
+                        on (c2.reltoastidxid = c3.oid),
+                            pg_database d
+                   WHERE d.datname = '%s' and 
+                      (nspname = 'pg_catalog' or
+                       nspname = 'information_schema') and
+                      c1.relkind in ('r', 'i') and 
+                      not c1.relisshared
+                ''' % db, port=port, db=db)
                 
-                        f = []
-                        nlist = ["1", "2", "3"]
-                        for row in l:
-                            if first:
-                                first = False
-                                file = os.path.join('base', str(row['datoid']),
-                                                    'PG_VERSION')
-                                f.append(file)
+                first = True
+                f = []
+                nlist = ["1", "2", "3"]
+                for row in l:
+                    if first:
+                        first = False
+                        file = os.path.join('base', str(row['datoid']),
+                                            'PG_VERSION')
+                        f.append(file)
 
-                            for n in nlist:
-                                if row.get("rel" + n):
-                                    file = os.path.join('base',
-                                                        str(row['datoid']),
-                                                        str(row['node' + n]))
-                                    dfile = os.path.join(dir, file)
-                                    if not os.path.exists(dfile):
-                                        raise UpgradeError(
+                    for n in nlist:
+                        if row.get("rel" + n):
+                            file = os.path.join('base',
+                                                str(row['datoid']),
+                                                str(row['node' + n]))
+                            dfile = os.path.join(dir, file)
+                            if not os.path.exists(dfile):
+                                raise UpgradeError(
 'found path "%s" for table "%s" but file does not exist' % (dfile, row['rel'+n]))
-                                    f.append(file)
-                        files[db] = f
+                            f.append(file)
+                files[db] = f
                 
-                    # add template0
-                    r = self.Select("""select oid from pg_database where 
-                                       datname = 'template0'""", port=port)
-                    if len(r) > 0:
-                        files['template0'] = [os.path.join('base', str(r[0]))]
+            # add template0
+            r = self.Select("""select oid from pg_database where 
+                               datname = 'template0'""", port=port)
+            if len(r) > 0:
+                files['template0'] = [os.path.join('base', str(r[0]))]
                 
-                    # make sure tblspc dir is empty
-                    pgtblspc = os.path.join(dir, 'pg_tblspc')
-                    if os.path.exists(pgtblspc):
-                        if os.listdir(pgtblspc):
-                            raise UpgradeError('cannot upgrade system using ' +
-                                               'tablespaces')
+            # make sure tblspc dir is empty
+            pgtblspc = os.path.join(dir, 'pg_tblspc')
+            if os.path.exists(pgtblspc):
+                if os.listdir(pgtblspc):
+                    raise UpgradeError('cannot upgrade system using ' +
+                                       'tablespaces')
 
-                    # meta data directories, like commit log
-                    meta = ['global', 'pg_clog', 'pg_distributedlog',
-                            'pg_distributedxidmap', 'pg_multixact', 'pg_subtrans',
-                            'pg_twophase', 'pg_utilitymodedtmredo', 'pg_xlog',
-                            'pg_tblspc',
-                            'postgresql.conf',
-                            'pg_hba.conf', 'pg_ident.conf',
-                            'PG_VERSION']
+            # meta data directories, like commit log
+            meta = ['global', 'pg_clog', 'pg_distributedlog',
+                    'pg_distributedxidmap', 'pg_multixact', 'pg_subtrans',
+                    'pg_twophase', 'pg_utilitymodedtmredo', 'pg_xlog',
+                    'pg_tblspc',
+                    'postgresql.conf',
+                    'pg_hba.conf', 'pg_ident.conf',
+                    'PG_VERSION']
 
-                    for name, fs in files.iteritems():
-                        for f in fs:
-                            # Prefix each name with the database it's in
-                            mapfile.write('%s:%s\n' % (name, f))
-                    for f in meta:
-                        mapfile.write('meta:%s\n' % f)
+            for name, fs in files.iteritems():
+                for f in fs:
+                    # Prefix each name with the database it's in
+                    mapfile.write('%s:%s\n' % (name, f))
+            for f in meta:
+                mapfile.write('meta:%s\n' % f)
 
-                    # files to just link, like SSL key files, backup
-                    # postgresql.conf, other stuff admins leave lying around
-                    nolink = ['pg_hba.conf',
-                              'pg_ident.conf',
-                              'pg_hba.conf'+LOCKEXT,
-                              'pg_ident.conf'+LOCKEXT,
-                              'postmaster.pid',
-                              'postmaster.opts']
-                    for f in os.listdir(dir):
-                        if (os.path.isfile(os.path.join(dir, f)) and 
-                            f not in meta and
-                            f not in nolink):
-                            logger.debug('adding link for file %s' % f)
-                            mapfile.write('link:%s\n' % f)
+            # files to just link, like SSL key files, backup
+            # postgresql.conf, other stuff admins leave lying around
+            nolink = ['pg_hba.conf',
+                      'pg_ident.conf',
+                      'pg_hba.conf'+LOCKEXT,
+                      'pg_ident.conf'+LOCKEXT,
+                      'postmaster.pid',
+                      'postmaster.opts']
+            for f in os.listdir(dir):
+                if (os.path.isfile(os.path.join(dir, f)) and 
+                    f not in meta and
+                    f not in nolink):
+                    logger.debug('adding link for file %s' % f)
+                    mapfile.write('link:%s\n' % f)
 
-                    mapfile.close()
-                    
+            mapfile.close()
+
+
+    #------------------------------------------------------------
     def ExtractAosegs(self):
         '''
         Build AO seg upgrade/downgrade files for this node
@@ -2707,95 +2474,92 @@ This issue must be resolved before upgrade can complete.
         logger.info('Building append only segment upgrader')
         
         if self.cmd == 'MASTER':
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
-            self.CallSlaves('EXTRACTAOSEGS', self.config['SEG_PREFIX'])
-            datadirs = [ self.root ]
+            self.CallSlaves('EXTRACTAOSEGS')
+            datadirs = [ self.masterdir ]
         else:
             datadirs = self.datadirs
-            seg_prefix = self.option
 
-        seg_re  = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)        
-        for d in datadirs:
-            for seg in os.listdir(d):
-                if seg_re.match(seg):
-                    
-                    # The directory for this segment
-                    dir = os.path.join(d, seg)
-                    logdir = os.path.join(d, WORKDIR)
+        for dir in datadirs:
+            (d, _) = os.path.split(dir)
+            logdir = os.path.join(d, WORKDIR)
 
-                    conf = os.path.join(dir, 'postgresql.conf')
-                    def getconf(x):
-                        conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
-                        conf_str = self.RunCmd('grep %s %s' % (x, conf))
-                        value = None
-                        for line in conf_str.split('\n'):
-                            match = conf_re.search(line)
-                            if match:
-                                value = int(match.group(1))
-                        return value
+            conf = os.path.join(dir, 'postgresql.conf')
+            def getconf(x):
+                conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
+                conf_str = self.RunCmd('grep %s %s' % (x, conf))
+                value = None
+                for line in conf_str.split('\n'):
+                    match = conf_re.search(line)
+                    if match:
+                        value = int(match.group(1))
+                return value
 
-                    # Find the port for this segment:
-                    port = getconf('port')
-                    if port == None:
-                        raise UpgradeError('Could not determine port ' +
-                                           'from %s/postgresql.conf' % dir)
+            # Find the port for this segment:
+            port = getconf('port')
+            if port == None:
+                raise UpgradeError('Could not determine port ' +
+                                   'from %s/postgresql.conf' % dir)
 
-                    dbs = self.Select('''select datname from pg_database
-                                         where datname != 'template0';''',
-                                      port=port)
+            # Get a list of databases:
+            #   Ideally we would like switch to using self.dbs instead
+            #   of re-issuing this query, but that requires establishing
+            #   a method of passing the database dictionary to the slaves.
+            databases = self.Select('''select datname from pg_database
+                                       where datname != 'template0';''',
+                                    port=port)
 
-                    # do it for every database
-                    for db in dbs:
-                        fname = os.path.join(logdir,
-                            'aoseg_%s_rewrite.sql' % db)
-                        logger.debug('creating AO rewrite: %s' % fname)
-                        f = open(fname, 'w')
 
-                        # The user might have already upgraded the database
-                        # once in which case some (but maybe not all) ao seg
-                        # relations will have been upgraded
-                        if self.upgrade:
-                            aos = self.Select(
-                                '''select 'alter table pg_aoseg.' || relname || 
-                                   ' add column ' ||
-                                   ' eofuncompressed double precision;'
-                                   from pg_class where relnamespace = 6104 and 
-                                   relkind = 'o' and relnatts = '4';''',
-                                   db=db, port=port)
-                        else:
-                            aos = self.Select(
-                                '''select 'update table pg_aoseg.' || relname
-                                   || ' set eofuncompressed = NULL;'
-                                   from pg_class
-                                   where relnamespace = 6104
-                                   and relkind = 'o' and relnatts = '5';''',
-                                   db=db, port=port)
+            # do it for every database
+            for db in databases:
+                fname = os.path.join(logdir,'aoseg_%s_rewrite.sql' % db)
+                logger.debug('creating AO rewrite: %s' % fname)
+                f = open(fname, 'w')
 
-                        if aos:
-                            # side step issue with AO: we can only work on
-                            # 1,000 odd AO tables at once otherwise we run out
-                            # of shared memory. No idea why, we just do.
+                # The user might have already upgraded the database
+                # once in which case some (but maybe not all) ao seg
+                # relations will have been upgraded
+                if self.upgrade:
+                    aos = self.Select(
+                        '''select 'alter table pg_aoseg.' || relname || 
+                           ' add column ' ||
+                           ' eofuncompressed double precision;'
+                           from pg_class where relnamespace = 6104 and 
+                           relkind = 'o' and relnatts = '4';''',
+                           db=db, port=port)
+                else:
+                    aos = self.Select(
+                        '''select 'update table pg_aoseg.' || relname
+                           || ' set eofuncompressed = NULL;'
+                           from pg_class
+                           where relnamespace = 6104
+                           and relkind = 'o' and relnatts = '5';''',
+                           db=db, port=port)
+
+                if aos:
+                    # side step issue with AO: we can only work on
+                    # 1,000 odd AO tables at once otherwise we run out
+                    # of shared memory. No idea why, we just do.
+                    i = 1
+                    f.write('begin;\n')
+                    for a in aos:
+                        logger.debug(a)
+                        # need to add newline as postgres --single
+                        # uses it as a delimiter
+                        f.write(a + '\n')
+                        i += 1
+                        if i % 1000 == 0:
                             i = 1
-                            f.write('begin;\n')
-                            for a in aos:
-                                logger.debug(a)
-                                # need to add newline as postgres --single
-                                # uses it as a delimiter
-                                f.write(a + '\n')
-                                i += 1
-                                if i % 1000 == 0:
-                                    i = 1
-                                    f.write('commit;\nbegin;\n')
-                            f.write('commit;\n')
+                            f.write('commit;\nbegin;\n')
+                    f.write('commit;\n')
 
-                        f.close()
-                    fname = os.path.join(logdir, 'aoseg_template0_rewrite.sql')
-                    f = open(fname, 'w')
-                    f.write('vacuum freeze;\n')
-                    f.close()
+                f.close()
+            fname = os.path.join(logdir, 'aoseg_template0_rewrite.sql')
+            f = open(fname, 'w')
+            f.write('vacuum freeze;\n')
+            f.close()
 
-                    # just once
-                    break
+            # just once
+            break
 
 
     #------------------------------------------------------------
@@ -2806,14 +2570,11 @@ This issue must be resolved before upgrade can complete.
 
         logger.info('Building skeleton cluster')
         if self.cmd == 'MASTER':
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
-            self.CallSlaves('BUILDSKEL', self.config['SEG_PREFIX'],
-                            self.highestoid)
-            datadirs = [ self.root ]
+            self.CallSlaves('BUILDSKEL', self.highestoid)
+            datadirs = [ self.masterdir ]
         else:
             datadirs = self.datadirs
-            seg_prefix = self.option
-            self.highestoid = int(self.option2)
+            self.highestoid = int(self.option)
 
 
         def do_copy(src, dst, f):
@@ -2838,99 +2599,94 @@ This issue must be resolved before upgrade can complete.
                         else:
                             break
 
-        seg_re  = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)        
-        # do it for all dirs on this node
-        for d in datadirs:
-            for seg in os.listdir(d):
-                if seg_re.match(seg):
-                    logdir = os.path.join(d, WORKDIR)
-                
-                    # Open the mapping file
-                    mapfilename = os.path.join(logdir, '%s_catfiles' % seg)
-                    mapfile = open(mapfilename, 'r')
+        for src in datadirs:
+            (d, seg) = os.path.split(src)
+            dst = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
+            logdir = os.path.join(d, WORKDIR)
 
-                    src = os.path.join(d, seg)
-                    dst = os.path.join(d, WORKDIR, UPGRADEDIR, seg) 
+            # Open the mapping file
+            mapfilename = os.path.join(logdir, '%s_catfiles' % seg)
+            mapfile = open(mapfilename, 'r')
     
-                    # build list for directories to create
-                    dirs = []
+            # build list for directories to create
+            dirs = []
                 
-                    for line in mapfile:
-                        line = line[:-1]
-                        (dbname, f) = line.split(':')
-                        path = os.path.join(src, f)
-                        logger.debug("testing " + path)
+            for line in mapfile:
+                line = line[:-1]
+                (dbname, f) = line.split(':')
+                path = os.path.join(src, f)
+                logger.debug("testing " + path)
             
-                        if os.path.isdir(path):
-                            # will be created in do_copy()
-                            continue
-                        else:
-                            dirname = os.path.dirname(f)
-                            path = os.path.join(src, dirname)
-                            if not os.path.isdir(path):
-                                raise UpgradeError("%s should be a directory!" % path)
+                if os.path.isdir(path):
+                    # will be created in do_copy()
+                    continue
+                else:
+                    dirname = os.path.dirname(f)
+                    path = os.path.join(src, dirname)
+                    if not os.path.isdir(path):
+                        raise UpgradeError("%s should be a directory!" % path)
                 
-                        # only add this if the path != src
-                        if not os.path.samefile(src, path):
-                            logger.debug('path = %s, src = %s, adding %s'
-                                     % (path, src, f))
-                            dirs.append(dirname)
+                # only add this if the path != src
+                if not os.path.samefile(src, path):
+                    logger.debug('path = %s, src = %s, adding %s'
+                             % (path, src, f))
+                    dirs.append(dirname)
                 
-                    dirs = list(set(dirs)) # make unique
-                    logger.debug('dirs = %s' % str(dirs))
+            dirs = list(set(dirs)) # make unique
+            logger.debug('dirs = %s' % str(dirs))
                 
-                    # make sure dst exists
-                    if not os.path.exists(dst):
-                        os.mkdir(dst, 0700)
+            # make sure dst exists
+            if not os.path.exists(dst):
+                os.mkdir(dst, 0700)
                 
-                    dirs.append('pg_log')
-                    for dir in dirs:
-                        logger.debug("making dir %s" % dir)
+            dirs.append('pg_log')
+            for dir in dirs:
+                logger.debug("making dir %s" % dir)
             
-                        # equivalent of mkdir -p dst/dir
-                        os.makedirs(os.path.join(dst, dir), 0700)
+                # equivalent of mkdir -p dst/dir
+                os.makedirs(os.path.join(dst, dir), 0700)
                 
-                    logger.debug("copying files")
+            logger.debug("copying files")
                 
-                    # rewind
-                    mapfile.seek(0)
-                    for line in mapfile:
-                        (dbname, f) = line.split(':')
-                        f = f[:-1]
-                        if dbname == 'link':
-                            left = os.path.join(src, f)
-                            right = os.path.join(dst, f)
-                            logger.debug('linking %s to %s' % (left, right))
-                            os.link(left, right)
-                        else:
-                            do_copy(src, dst, f)
+            # rewind
+            mapfile.seek(0)
+            for line in mapfile:
+                (dbname, f) = line.split(':')
+                f = f[:-1]
+                if dbname == 'link':
+                    left = os.path.join(src, f)
+                    right = os.path.join(dst, f)
+                    logger.debug('linking %s to %s' % (left, right))
+                    os.link(left, right)
+                else:
+                    do_copy(src, dst, f)
 
-                    def overwrite(frm, to):
-                        if not os.path.exists(frm): return
+            def overwrite(frm, to):
+                if not os.path.exists(frm): return
 
-                        f = open(frm, 'r')
-                        t = open(to, 'w')
-                        for line in f:
-                            t.write(line)
-                        f.close()
-                        t.close()
+                f = open(frm, 'r')
+                t = open(to, 'w')
+                for line in f:
+                    t.write(line)
+                f.close()
+                t.close()
 
-                    ext = ''
-                    # master needs locked pg_hba.conf
-                    if self.cmd == 'MASTER':
-                        ext = LOCKEXT
-                    self.copy_rewrite_hba(os.path.join(src, 'pg_hba.conf'+ext),
-                                          os.path.join(dst, 'pg_hba.conf'),
-                                          self.upgrade)
-                    overwrite(os.path.join(src, 'pg_ident.conf'+ext),
-                              os.path.join(dst, 'pg_ident.conf'))
+            ext = ''
+            # master needs locked pg_hba.conf
+            if self.cmd == 'MASTER':
+                ext = LOCKEXT
+            self.copy_rewrite_hba(os.path.join(src, 'pg_hba.conf'+ext),
+                                  os.path.join(dst, 'pg_hba.conf'),
+                                  self.upgrade)
+            overwrite(os.path.join(src, 'pg_ident.conf'+ext),
+                      os.path.join(dst, 'pg_ident.conf'))
 
-                    # set highest oid
-                    # XXX: should check that this oid is higher!
-                    self.RunCmd("pg_resetxlog -o %d %s" % \
-                                (self.highestoid, dst), env=self.newenv)
+            # set highest oid
+            # XXX: should check that this oid is higher!
+            self.RunCmd("pg_resetxlog -o %d %s" % \
+                        (self.highestoid, dst), env=self.newenv)
 
-    def TransformDbs(self, dbs):
+    def TransformDbs(self):
         '''
         Transform the local databases. The temporary copy we've made of each
         segment is transformed by passing a set of transformation scripts
@@ -3072,22 +2828,25 @@ This issue must be resolved before upgrade can complete.
             return out
         
         if self.cmd == 'MASTER':
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
-            datadirs = [ self.root ]
-            t = []
-            for a, b in dbs.iteritems():
-                t.append('%s:%s' % (a, b))
+            datadirs = [ self.masterdir ]
+            dbs = self.dbs
 
+            # convert dbs dictionary to passable parameter
+            # XXX - this will fail for database with a name that includes ':'
+            #       We need a better way of passing this information to the
+            #       segments.
+            t = []
+            for (oid, db) in self.dbs.iteritems():
+                t.append('%s:%s' % (oid, db))
             t = ':'.join(t)
             logger.debug('sending database string ' + t)
-            self.CallSlaves('TRANSFORMCAT', self.config['SEG_PREFIX'], t)
+
+            self.CallSlaves('TRANSFORMCAT', t)
         else:
-            seg_prefix = self.option
             datadirs = self.datadirs
 
-        if type(dbs) == str:
-            # convert dbs to a dict
-            a = dbs.split(':')
+            # convert passed dbs to a dict
+            a = self.option.split(':')
             dbs = {}
             a.reverse()
             while a:
@@ -3147,46 +2906,44 @@ This issue must be resolved before upgrade can complete.
                          '%s/share/postgresql/upgrade/' % h,
                          self.user)
 
-        seg_re  = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)        
         conf_re = re.compile('^(.*max_resource_queues\s*=\s*)(\d+)(.*)$')
-        for d in datadirs:
-            for seg in os.listdir(d):
-                if seg_re.match(seg):
-                    
-                    # The directory for this segment
-                    dir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
-                    for i in range(len(rfs)):
-                        logger.info('Pass %d' % i)
-                        transform(dir, dbs, rfs[i])
+        for olddir in datadirs:
+            (d, seg) = os.path.split(olddir)
+            
+            # The directory for this segment
+            dir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
+            for i in range(len(rfs)):
+                logger.info('Pass %d' % i)
+                transform(dir, dbs, rfs[i])
 
-                    # ao file too -- must be last because we
-                    # use this file to VACUUM FREEZE template databases
-                    for dboid, dbname in dbs.iteritems():
-                        # no need to rewrite AO in template0
-                        if dbname == 'template0':
-                            continue
+            # ao file too -- must be last because we
+            # use this file to VACUUM FREEZE template databases
+            for dboid, dbname in dbs.iteritems():
+                # no need to rewrite AO in template0
+                if dbname == 'template0':
+                    continue
 
-                        file = 'aoseg_%s_rewrite.sql' % dbname
-                        aofile = os.path.join(d, WORKDIR, file)
-                        f = self.RunCmd('cat ' + aofile)
-                        logger.debug("ao upgrade %s" % f)
-                        transform_db(dir, dbname, dboid, aofile)
+                file = 'aoseg_%s_rewrite.sql' % dbname
+                aofile = os.path.join(d, WORKDIR, file)
+                f = self.RunCmd('cat ' + aofile)
+                logger.debug("ao upgrade %s" % f)
+                transform_db(dir, dbname, dboid, aofile)
                         
-                    # Rewrite postgresql.conf:
-                    #  - bump the max_resource_queues by +1
-                    #
-                    conf=os.path.join(dir, 'postgresql.conf')
-                    self.RunCmd('mv %s %s.bak' % (conf, conf))
-                    input=open(conf+'.bak', 'r')
-                    output=open(conf, 'w')
-                    for line in input:
-                        m = conf_re.match(line)
-                        if m:
-                            line = m.expand(r'\g<1>%s\g<3>\n' % 
-                                            str(int(m.group(2))+1))
-                        output.write(line)
-                    input.close()
-                    output.close()
+            # Rewrite postgresql.conf:
+            #  - bump the max_resource_queues by +1
+            #
+            conf=os.path.join(dir, 'postgresql.conf')
+            self.RunCmd('mv %s %s.bak' % (conf, conf))
+            input=open(conf+'.bak', 'r')
+            output=open(conf, 'w')
+            for line in input:
+                m = conf_re.match(line)
+                if m:
+                    line = m.expand(r'\g<1>%s\g<3>\n' % 
+                                    str(int(m.group(2))+1))
+                output.write(line)
+            input.close()
+            output.close()
 
 
     def SetCatVersion(self, frm, to):
@@ -3199,7 +2956,7 @@ This issue must be resolved before upgrade can complete.
                     "3.1": "200712072",
                     "3.2": "200808253",
                     "3.3": "200905011",
-                    "3.4": "200910291"}
+                    "4.0": "201002021"}
         
         self.CheckDown()
 
@@ -3274,19 +3031,15 @@ This issue must be resolved before upgrade can complete.
 
 
         if self.cmd == 'MASTER':
-            datadirs = [ self.root ]
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
-            self.CallSlaves('SETCATVERSION', self.config['SEG_PREFIX'])
+            datadirs = [ self.masterdir ]
+            self.CallSlaves('SETCATVERSION')
         else:
             datadirs = self.datadirs
-            seg_prefix = self.option
 
-        seg_re  = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)
-        for d in datadirs:
-            for seg in os.listdir(d):
-                if seg_re.match(seg):
-                    dir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
-                    setcatversion(dir, frm, to)
+        for olddir in datadirs:
+            (d, seg) = os.path.split(olddir)
+            newdir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
+            setcatversion(newdir, frm, to)
 
     def GetHighestOid(self):
         '''
@@ -3304,27 +3057,22 @@ This issue must be resolved before upgrade can complete.
         self.highestoid = 16384 # first normal OID
         oids = []
         if self.cmd == 'MASTER':
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
-            datadirs = [ self.root ]
-            out = self.CallSlaves('GETHIGHESTOID', self.config['SEG_PREFIX'])
+            datadirs = [ self.masterdir ]
+            out = self.CallSlaves('GETHIGHESTOID')
             for l in out.splitlines():
                 a = l.split()
                 if a[0] == "highestoid":
                     oids.append(int(a[1]))
         else:
             datadirs = self.datadirs
-            seg_prefix = self.option
 
-        seg_re = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)
-        for d in datadirs:
-            for seg in os.listdir(d):
-                if seg_re.match(seg):
-                    cmd = "pg_controldata %s" % os.path.join(d, seg)
-                    out = self.RunCmd(cmd, env=self.oldenv)
-                    for l in out.splitlines():
-                        a = l.split(':')
-                        if a[0] == "Latest checkpoint's NextOID":
-                            oids.append(int(a[1]))
+        for dir in datadirs:
+            cmd = "pg_controldata %s" % dir
+            out = self.RunCmd(cmd, env=self.oldenv)
+            for l in out.splitlines():
+                a = l.split(':')
+                if a[0] == "Latest checkpoint's NextOID":
+                    oids.append(int(a[1]))
 
         logger.debug("oids: %s" % str(oids))
         for o in oids:
@@ -3456,6 +3204,7 @@ if __name__ == '__main__':
                 logger.fatal('***************************************')
                 logger.fatal('==  Upgrade interrupted by user ==        <<<<< ')
                 logger.fatal('***************************************')
+                
                 sys.exit(1)
     
             except Exception, e:
@@ -3465,7 +3214,7 @@ if __name__ == '__main__':
                 logger.fatal('***************************************')
                 logger.fatal('==  Upgrade Failed ==                    <<<<< ')
                 logger.fatal('***************************************')
-    
+                sys.stderr.write(traceback.format_exc())
                 sys.exit(1)
     
             # Prepare done, anything done after this point may allow modifying
@@ -3502,20 +3251,9 @@ if __name__ == '__main__':
             # Write configuration files 
             # + Required for Revert() to work correctly
             if 'CONFIG_FILES' not in current_state:
-                u.new_master_port = u.config['MASTER_PORT']
-                u.new_port_base   = u.config['PORT_BASE']
-                if len(u.mirrors) > 0:
-                    u.new_mirror_port_base = u.config['MIRROR_PORT_BASE']
                 u.GenerateConfigFiles()
                 u.SetState('CONFIG_FILES')
-    
-            # get the set of databases
-            db = u.Select("select oid, datname from pg_database "
-                          "order by datname")
-            dbs = {}
-            for d in db:
-                dbs[str(d['oid'])] = d['datname']
-        
+            
             if 'EXTRACTCATFILES' not in current_state:
                 u.ExtractCatFiles()
                 u.SetState('EXTRACTCATFILES')
@@ -3540,14 +3278,14 @@ if __name__ == '__main__':
                 u.BuildSkel()
                 u.SetState('BUILDSKEL')
     
-            sov = u.oldversion.major()
-            snv = u.newversion.major()
+            sov = u.oldversion.getVersionRelease()
+            snv = u.newversion.getVersionRelease()
             if 'SETCATVERSION' not in current_state:
                 u.SetCatVersion(sov, snv)
                 u.SetState('SETCATVERSION')
     
             if 'TRANSFORMCAT' not in current_state:
-                u.TransformDbs(dbs)
+                u.TransformDbs()
                 u.SetState('TRANSFORMCAT')
     
             u.TouchupConfig()
@@ -3655,9 +3393,9 @@ if __name__ == '__main__':
                     logger.warn('Objects owned by gpmigrator reassigned to dba')
                     admin = u.Select('''select rolname from pg_authid 
                                         where oid = 10''')[0];
-                    dbs = u.Select('''select datname from pg_database
-                                      where datname != 'template0' ''')
-                    for db in dbs:
+                    for (_, db) in self.dbs.iteritems():
+                        if db == 'template0':
+                            continue
                         u.Update('REASSIGN OWNED BY gpmigrator TO ' + admin, db)
                     u.Update('DROP USER ' + MIGRATIONUSER)
 
@@ -3737,9 +3475,10 @@ instructions to complete environment configuration
         elif u.cmd == 'BUILDSKEL':
             u.BuildSkel()
         elif u.cmd == 'SETCATVERSION':
-            u.SetCatVersion(u.oldversion.major(), u.newversion.major())
+            u.SetCatVersion(u.oldversion.getVersionRelease(), 
+                            u.newversion.getVersionRelease())
         elif u.cmd == 'TRANSFORMCAT':
-            u.TransformDbs(u.option2)
+            u.TransformDbs()
         elif u.cmd == 'EXTRACTAOSEGS':
             u.ExtractAosegs()
         elif u.cmd == 'GETHIGHESTOID':
@@ -3747,9 +3486,9 @@ instructions to complete environment configuration
         else:
             raise Exception('Unknown cmd: ' + str(u.cmd))
     
-        if u.threadpool:
-            t = u.threadpool
-            u.threadpool = None
+        if u.pool:
+            t = u.pool
+            u.pool = None
             del t
     
     # Any error that can happen

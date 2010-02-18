@@ -154,7 +154,7 @@ class GpInterfaceToHostNameCache:
 
 class GpHostCache:
 
-    def __init__(self, gparray, pool, skiplist=None):
+    def __init__(self, gparray, pool, skiplist=[]):
         self.gparray=gparray
         self.gphost_map={}        # hostname -> GpHost
 

@@ -20,6 +20,8 @@ import copy
 from gppylib.utils import checkNotNone, checkIsInt
 from gppylib    import gplog
 from gppylib.db import dbconn
+from gppylib.gpversion import GpVersion
+
 
 logger = gplog.get_default_logger()
 
@@ -654,6 +656,7 @@ class GpArray:
         self.segments = []
         self.expansionSegments=[]
         self.numPrimarySegments = 0
+        self.__version = None
         self.__segmentsAsLoadedFromDb = segmentsAsLoadedFromDb
         self.__strategyLoadedFromDb = strategyLoadedFromDb
 
@@ -708,20 +711,70 @@ class GpArray:
         """
         Factory method, initializes a GpArray from provided database URL
         """
+
+        version  = None
+        strategy = None
+
         conn = dbconn.connect(dbURL, utility)
 
-        strategy_rows = dbconn.execSQL(conn, '''
-           SELECT fault_strategy FROM gp_fault_strategy
-        ''')
+        # Get the version from the database:
+        version_str = None
+        for row in dbconn.execSQL(conn, "SELECT version()"):
+            version_str = row[0]
+        version = GpVersion(version_str)
 
-        config_rows = dbconn.execSQL(conn, '''
-           SELECT dbid, content, role, preferred_role, mode, status, hostname, 
-               address, port, replication_port, fs.oid, fselocation
-           FROM pg_catalog.gp_segment_configuration
-           JOIN pg_catalog.pg_filespace_entry on (dbid = fsedbid)
-           JOIN pg_catalog.pg_filespace fs on (fsefsoid = fs.oid)
-           ORDER BY content, preferred_role DESC, fs.oid
-        ''')
+        if version.isVersionCurrentRelease():
+
+            strategy_rows = dbconn.execSQL(conn, '''
+                SELECT fault_strategy FROM gp_fault_strategy
+            ''')
+
+            config_rows = dbconn.execSQL(conn, '''
+                SELECT dbid, content, role, preferred_role, mode, status, 
+                       hostname, address, port, replication_port, fs.oid, 
+                       fselocation
+                FROM pg_catalog.gp_segment_configuration
+                JOIN pg_catalog.pg_filespace_entry on (dbid = fsedbid)
+                JOIN pg_catalog.pg_filespace fs on (fsefsoid = fs.oid)
+                ORDER BY content, preferred_role DESC, fs.oid
+            ''')
+
+        elif version.getVersionRelease() in ("3.0", "3.1", "3.2", "3.3"):
+
+            # Note: Strategy was introduced in 4.0 so what value to initialize
+            # to for older releases is not clear.  Currently we just initialize
+            # to 'o' for 'old'.
+            strategy_rows = []
+            strategy = 'o'
+
+            # Note: Mode may not be "right", certainly 4.0 concepts of mirroring
+            # mode do not apply to 3.x, so it depends on how the scripts are
+            # making use of mode.  For now it is initialized to 'o' (for 'old')
+            # which is not a valid mode in 4.0.
+            #
+            # Note: hostname is set to the address since the 3.x catalog only
+            # contains information about the address not hostnames.  A hostcache
+            # is needed to resolve the address to real hostnames.
+            config_rows = dbconn.execSQL(conn, '''
+                SELECT dbid, content, 
+                       case when isprimary then 'p' else 'm' end as role, 
+                       case when definedprimary then 'p' else 'm' end as preferred_role,
+                       'o' as mode, 
+                       case when valid then 'u' else 'd' end as status, 
+                       hostname as hostname,
+                       hostname as address, 
+                       port, 
+                       null as replication_port, 
+                       %s as fsoid,
+                       datadir as fselocation
+                FROM pg_catalog.gp_configuration
+                ORDER BY content, preferred_role DESC
+            ''' % str(SYSTEM_FILESPACE))
+
+        else:
+            logger.error("Unsupported version: %s" % str(version))
+            raise Exception("GpArray() - Unsupported version: %s" % 
+                            str(version))
 
         conn.close()
 
@@ -745,7 +798,6 @@ class GpArray:
                            hostname, address, port, fslocation, replicationPort)
                 segments.append(seg)
 
-        strategy = None
         for strategy_row in strategy_rows:
             (strategy) = strategy_row
             break
@@ -753,6 +805,7 @@ class GpArray:
             raise Exception("Database does not contain gp_fault_strategy entry")
 
         array = GpArray(segments)
+        array.__version = version
         array.strategy = strategy
         return array
 
@@ -999,7 +1052,7 @@ class GpArray:
 
         return max_mirror_port
 
-    # --------------------------------------------------------------------                                                                                      
+    # --------------------------------------------------------------------
     def get_min_primary_replication_port(self):
         """Returns the minimum primary segment db replication port"""
         if self.get_mirroring_enabled() is False:
@@ -1012,7 +1065,7 @@ class GpArray:
 
         return min_primary_replication_port
 
-    # --------------------------------------------------------------------                                                                                      
+    # --------------------------------------------------------------------
     def get_max_primary_replication_port(self):
         """Returns the maximum primary segment db replication port"""
         if self.get_mirroring_enabled() is False:
@@ -1025,7 +1078,7 @@ class GpArray:
 
         return max_primary_replication_port
 
-    # --------------------------------------------------------------------                                                                                      
+    # --------------------------------------------------------------------
     def get_min_mirror_replication_port(self):
         """Returns the minimum mirror segment db replication port"""
         if self.get_mirroring_enabled() is False:
@@ -1040,7 +1093,7 @@ class GpArray:
 
         return min_mirror_replication_port
 
-    # --------------------------------------------------------------------                                                                                      
+    # --------------------------------------------------------------------
     def get_max_mirror_replication_port(self):
         """Returns the maximum mirror segment db replication port"""
         if self.get_mirroring_enabled() is False:
