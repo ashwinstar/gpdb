@@ -308,8 +308,10 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	Assert(parse->windowClause != NULL);
 	Assert(parse->hasWindFuncs);
 	
-	/* Assert no unsupported stuff */
+#if 0	/* window clauses may occur inside a "declare cursor" utility statement */
 	Assert(parse->utilityStmt == NULL);
+#endif
+	/* Assert no unsupported stuff */
 	Assert(parse->setOperations == NULL);
 	Assert(!parse->hasAggs);
 	Assert(parse->groupClause == NIL);
