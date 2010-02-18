@@ -268,9 +268,9 @@ bool		Debug_database_command_print = false;
 int			Debug_database_command_print_level = LOG;
 #define GP_MAX_DATABASES_DEFAULT 16
 int			gp_max_databases = GP_MAX_DATABASES_DEFAULT;
-#define GP_MAX_TABLESPACES_DEFAULT 64
+#define GP_MAX_TABLESPACES_DEFAULT 16
 int			gp_max_tablespaces = GP_MAX_TABLESPACES_DEFAULT;
-#define GP_MAX_FILESPACES_DEFAULT 16
+#define GP_MAX_FILESPACES_DEFAULT 8
 int			gp_max_filespaces = GP_MAX_FILESPACES_DEFAULT;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
@@ -2502,7 +2502,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&gp_max_databases,
-		GP_MAX_DATABASES_DEFAULT, 16, 256, NULL, NULL
+		GP_MAX_DATABASES_DEFAULT, 8, 256, NULL, NULL
 	},
 	
 	{
@@ -2511,7 +2511,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&gp_max_tablespaces,
-		GP_MAX_TABLESPACES_DEFAULT, 16, 2048, NULL, NULL
+		GP_MAX_TABLESPACES_DEFAULT, 8, 2048, NULL, NULL
 	},
 			
 	{
@@ -2520,7 +2520,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&gp_max_filespaces,
-		GP_MAX_FILESPACES_DEFAULT, 16, 256, NULL, NULL
+		GP_MAX_FILESPACES_DEFAULT, 8, 256, NULL, NULL
 	},
 				
 	{

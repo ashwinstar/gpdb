@@ -20,10 +20,10 @@ static void SharedOidSearch_MakeFreeObjPool(
 	SharedOidSearchFreeObjPool 	*sharedFreeObjPool,
 				/* The shared free object pool to initialize. */
 
-	void *sharedMem,
+	void *freeObjectArray,
 				/* The shared-memory to use. */
 
-	int32 sharedMemLen,
+	int32 freeObjectCount,
 				/* The byte length of the shared-memory. */
 
 	int32 objectLen)
@@ -32,23 +32,20 @@ static void SharedOidSearch_MakeFreeObjPool(
 				 * SharedOidSearchObjHeader.
 				 */
 {
-	int32 freeCount;
 	int32 i;
 
 	SharedListBase_Init(
 		&sharedFreeObjPool->listBase,
-		sharedMem,
+		freeObjectArray,
 		objectLen,
 		offsetof(SharedOidSearchObjHeader,private.links));
-
-	freeCount = sharedMemLen / objectLen;
 
 	SharedDoublyLinkedHead_Init(&sharedFreeObjPool->freeList);
 
 	/*
 	 * Initalize the free objects.
 	 */
-	for (i = 0; i < freeCount; i++)
+	for (i = 0; i < freeObjectCount; i++)
 	{
 		SharedOidSearchObjHeader *ele;
 
@@ -69,56 +66,58 @@ static void SharedOidSearch_MakeFreeObjPool(
 // Initialize
 // -----------------------------------------------------------------------------
 
-void SharedOidSearch_InitDescr(
-	SharedOidSearchDescr *descr,
-				/* The template of shared search tables to initialize. */
-
-	int32 tableLen,
-				/* The byte length of the search table. */
-
+int32 SharedOidSearch_TableLen(
 	int32 hashSize,
 				/* The hash array size */
 
-	uint8 *sharedMem,
-				/* The shared-memory to use. */
-
-	int32 sharedMemLen,
-				/* The byte length of the shared-memory. */
+	int32 freeObjectCount,
 
 	int32 objectLen)
 				/* 
 				 * The total length of the objects that includes the embedded header
 				 * SharedOidSearchObjHeader.
 				 */
-
 {
-	descr->private.tableLen = tableLen;
-	descr->private.hashSize = hashSize;
-
-	SharedOidSearch_MakeFreeObjPool(
-						&descr->private.freePool,
-						sharedMem,
-						sharedMemLen,
-						objectLen);	
+	return offsetof(SharedOidSearchTable,private.buckets) +
+		   hashSize * sizeof(SharedOidSearchHashBucket) +
+		   freeObjectCount * objectLen;
 }
 
 void SharedOidSearch_InitTable(
 	SharedOidSearchTable *table,
 				/* The shared search tables to initialize. */
 
-	SharedOidSearchDescr *descr)
-				/* The template of shared search tables. */
+	int32 hashSize,
+				/* The hash array size */
+
+	int32 freeObjectCount,
+
+	int32 objectLen)
+				/* 
+				 * The total length of the objects that includes the embedded header
+				 * SharedOidSearchObjHeader.
+				 */
 {
 	SharedOidSearchHashBucket	*bucketArray;
-	int32 hashSize;
+	void 						*freePoolObjectArray;
+
 	int32 i;
 
-	table->private.descr = descr;
+	table->private.hashSize = hashSize;
 
 	bucketArray = &table->private.buckets[0];
-	hashSize = descr->private.hashSize;
+
 	for (i = 0; i < hashSize; i++)
 		SharedDoublyLinkedHead_Init(&bucketArray[i].bucketListHead);
+
+	freePoolObjectArray = &table->private.buckets[hashSize];
+	
+	SharedOidSearch_MakeFreeObjPool(
+						&table->private.freePool,
+						freePoolObjectArray,
+						freeObjectCount,
+						objectLen);	
+
 }
 
 
@@ -128,12 +127,11 @@ void SharedOidSearch_InitTable(
 
 static SharedOidSearchHashBucket *SharedOidSearch_GetBucket(
 	SharedOidSearchTable		*table,
-	SharedOidSearchDescr 		*descr,
 	Oid 						oid1)
 {
 	int32 bucketNum;
 	
-	bucketNum = oid1 % descr->private.hashSize;
+	bucketNum = oid1 % table->private.hashSize;
 	return &table->private.buckets[bucketNum];
 }
 
@@ -143,8 +141,7 @@ static SharedOidSearchObjHeader *SharedOidSearch_FindInBucket(
 	Oid 						oid1,
 	Oid							oid2)
 {
-	SharedOidSearchDescr		*descr = table->private.descr;
-	SharedListBase				*listBase = &descr->private.freePool.listBase;
+	SharedListBase				*listBase = &table->private.freePool.listBase;
 	SharedDoublyLinkedHead		*listHead;
 	SharedOidSearchObjHeader 	*ele;
 
@@ -168,8 +165,7 @@ static SharedOidSearchObjHeader *SharedOidSearch_ProbeInBucket(
 	SharedOidSearchHashBucket	*bucket,
 	Oid 						oid1)
 {
-	SharedOidSearchDescr		*descr = table->private.descr;
-	SharedListBase				*listBase = &descr->private.freePool.listBase;
+	SharedListBase				*listBase = &table->private.freePool.listBase;
 	SharedDoublyLinkedHead		*listHead;
 	SharedOidSearchObjHeader 	*ele;
 
@@ -193,8 +189,7 @@ static void SharedOidSearch_RemoveFromBucket(
 	SharedOidSearchHashBucket	*bucket,
 	SharedOidSearchObjHeader 	*ele)
 {
-	SharedOidSearchDescr		*descr = table->private.descr;
-	SharedListBase				*listBase = &descr->private.freePool.listBase;
+	SharedListBase				*listBase = &table->private.freePool.listBase;
 	SharedDoublyLinkedHead		*listHead;
 
 	Assert(ele->private.isDeleted);
@@ -205,8 +200,8 @@ static void SharedOidSearch_RemoveFromBucket(
 	SharedDoubleLinks_Remove(listBase, listHead, ele);
 	
 	SharedDoublyLinkedHead_AddLast(
-					&descr->private.freePool.listBase,
-					&descr->private.freePool.freeList,
+					&table->private.freePool.listBase,
+					&table->private.freePool.freeList,
 					ele);
 }
 
@@ -221,11 +216,10 @@ SharedOidSearchAddResult SharedOidSearch_Add(
 	Oid 						oid2,
 	SharedOidSearchObjHeader	**header)
 {
-	SharedOidSearchDescr 		*descr = table->private.descr;
 	SharedOidSearchHashBucket	*bucket;
 	SharedOidSearchObjHeader 	*ele;
 
-	bucket = SharedOidSearch_GetBucket(table, descr, oid1);
+	bucket = SharedOidSearch_GetBucket(table, oid1);
 
 	ele = SharedOidSearch_FindInBucket(table, bucket, oid1, oid2);
 	if (ele != NULL)
@@ -234,8 +228,8 @@ SharedOidSearchAddResult SharedOidSearch_Add(
 	ele = 
 		(SharedOidSearchObjHeader*)
 				SharedDoublyLinkedHead_RemoveFirst(
-								&descr->private.freePool.listBase,
-								&descr->private.freePool.freeList);
+								&table->private.freePool.listBase,
+								&table->private.freePool.freeList);
 	if (ele == NULL)
 		return SharedOidSearchAddResult_NoMemory;
 
@@ -245,7 +239,7 @@ SharedOidSearchAddResult SharedOidSearch_Add(
 	ele->oid2 = oid2;
 
 	SharedDoublyLinkedHead_AddLast(
-							&descr->private.freePool.listBase,
+							&table->private.freePool.listBase,
 						    &bucket->bucketListHead,
 						    ele);
 
@@ -258,11 +252,10 @@ SharedOidSearchObjHeader *SharedOidSearch_Find(
 	Oid 					oid1,
 	Oid 					oid2)
 {
-	SharedOidSearchDescr 		*descr = table->private.descr;
 	SharedOidSearchHashBucket	*bucket;
 	SharedOidSearchObjHeader 	*ele;
 
-	bucket = SharedOidSearch_GetBucket(table, descr, oid1);
+	bucket = SharedOidSearch_GetBucket(table, oid1);
 
 	ele = SharedOidSearch_FindInBucket(table, bucket, oid1, oid2);
 	if (ele == NULL)
@@ -275,11 +268,10 @@ SharedOidSearchObjHeader *SharedOidSearch_Probe(
 	SharedOidSearchTable 	*table,
 	Oid 					oid1)
 {
-	SharedOidSearchDescr 		*descr = table->private.descr;
 	SharedOidSearchHashBucket	*bucket;
 	SharedOidSearchObjHeader 	*ele;
 
-	bucket = SharedOidSearch_GetBucket(table, descr, oid1);
+	bucket = SharedOidSearch_GetBucket(table, oid1);
 
 	ele = SharedOidSearch_ProbeInBucket(table, bucket, oid1);
 	if (ele == NULL)
@@ -290,10 +282,9 @@ SharedOidSearchObjHeader *SharedOidSearch_Probe(
 
 static bool SharedOidSearch_NextBucket(
 	SharedOidSearchTable		*table,
-	SharedOidSearchDescr 		*descr,
 	SharedOidSearchHashBucket	**bucket)
 {
-	int32 hashSize = descr->private.hashSize;
+	int32 hashSize = table->private.hashSize;
 
 	if (*bucket == &table->private.buckets[hashSize-1])
 		return false;
@@ -328,8 +319,7 @@ void SharedOidSearch_Iterate(
 	SharedOidSearchTable 		*table,
 	SharedOidSearchObjHeader	**header)
 {
-	SharedOidSearchDescr 		*descr = table->private.descr;
-	SharedListBase				*listBase = &descr->private.freePool.listBase;
+	SharedListBase				*listBase = &table->private.freePool.listBase;
 	SharedOidSearchHashBucket	*bucket;
 	SharedOidSearchObjHeader	*current = *header;
 
@@ -338,7 +328,7 @@ void SharedOidSearch_Iterate(
 		/*
 		 * Try to get next element in current bucket.
 		 */
-		bucket = SharedOidSearch_GetBucket(table, descr, current->oid1);
+		bucket = SharedOidSearch_GetBucket(table, current->oid1);
 
 		Assert(current->private.pinCount > 0);
 		current->private.pinCount--;
@@ -368,7 +358,6 @@ void SharedOidSearch_Iterate(
 
 		if (!SharedOidSearch_NextBucket(
 									table,
-									descr,
 									&bucket))
 			return;		// No more buckets.
 	}
@@ -399,7 +388,6 @@ void SharedOidSearch_Iterate(
 
 		if (!SharedOidSearch_NextBucket(
 									table,
-									descr,
 									&bucket))
 			return;		// No more buckets.
 	}
@@ -409,7 +397,6 @@ void SharedOidSearch_ReleaseIterator(
 	SharedOidSearchTable 		*table,
 	SharedOidSearchObjHeader	**header)
 {
-	SharedOidSearchDescr 		*descr = table->private.descr;
 	SharedOidSearchObjHeader	*current = *header;
 	SharedOidSearchHashBucket	*bucket;
 	
@@ -419,7 +406,7 @@ void SharedOidSearch_ReleaseIterator(
 	if (current->private.isDeleted &&
 		current->private.pinCount == 0)
 	{
-		bucket = SharedOidSearch_GetBucket(table, descr, current->oid1);
+		bucket = SharedOidSearch_GetBucket(table, current->oid1);
 		SharedOidSearch_RemoveFromBucket(table, bucket, current);
 	}
 	
@@ -430,7 +417,6 @@ void SharedOidSearch_Delete(
 	SharedOidSearchTable 		*table,
 	SharedOidSearchObjHeader	*header)
 {
-	SharedOidSearchDescr 		*descr = table->private.descr;
 	SharedOidSearchHashBucket	*bucket;
 
 	Assert(!header->private.isDeleted);
@@ -439,7 +425,7 @@ void SharedOidSearch_Delete(
 	if (header->private.pinCount > 0)
 		return;		// Let the last iterator turn out the light.
 
-	bucket = SharedOidSearch_GetBucket(table, descr, header->oid1);
+	bucket = SharedOidSearch_GetBucket(table, header->oid1);
 
 	SharedOidSearch_RemoveFromBucket(table, bucket, header);
 }

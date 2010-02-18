@@ -565,7 +565,6 @@ void DatabaseInfo_Check(DatabaseInfo *info)
 {
 	int sr;
 	int rsf;
-	int t;
 
 	/*
 	 * Compare Stored Relations to Relation Segment Files.
@@ -631,36 +630,6 @@ void DatabaseInfo_Check(DatabaseInfo *info)
 			break;
 		}
 	}
-
-	
-	/*
-	 * Verify all tablespaces are in persistent database directory lookup.
-	 *
-	 * NOTE: There may be more persistent database directories (i.e. a superset),
-	 * bit they are currently empty of relations.
-	 */
-	for (t = 0; t < info->tablespacesCount; t++)
-	{
-		DbDirNode dbDirNode;
-
-		DatabaseEntry		checkDatabaseEntry;
-		DatabaseDirEntry	checkDatabaseDirEntry;
-		
-		dbDirNode.tablespace = info->tablespaces[t];
-		dbDirNode.database = info->database;
-	
-		if (!PersistentDatabase_FindDir(
-									&dbDirNode,
-									&checkDatabaseEntry,
-									&checkDatabaseDirEntry))
-		{
-			elog(WARNING, "Did not find relation's database directory (tablespace %u, database %u) in persistent database lookup",
-				 dbDirNode.tablespace,
-				 dbDirNode.database);
-			return;
-		}
-	}
-	
 }
 
 void DatabaseInfo_Trace(DatabaseInfo *info)

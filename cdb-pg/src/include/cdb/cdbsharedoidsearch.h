@@ -44,23 +44,13 @@ typedef struct SharedOidSearchObjHeader
 	uint8	clientData[0];
 } SharedOidSearchObjHeader;
 
-typedef struct SharedOidSearchDescr
-{
-	struct
-	{
-		int32		tableLen;
-
-		int32		hashSize;
-
-		SharedOidSearchFreeObjPool		freePool;
-	} private;
-} SharedOidSearchDescr;
-
 typedef struct SharedOidSearchTable
 {
 	struct
 	{
-		SharedOidSearchDescr *descr;
+		int32		hashSize;
+
+		SharedOidSearchFreeObjPool		freePool;
 
 		SharedOidSearchHashBucket	buckets[1];
 	} private;
@@ -80,43 +70,31 @@ typedef enum SharedOidSearchAddResult
 // Initialize
 // -----------------------------------------------------------------------------
 
-extern void SharedOidSearch_InitDescr(
-	SharedOidSearchDescr *descr,
-				/* The template of shared search tables to initialize. */
-
-	int32 tableLen,
-				/* The byte length of the search table. */
-
+extern int32 SharedOidSearch_TableLen(
 	int32 hashSize,
 				/* The hash array size */
 
-	uint8 *sharedMem,
-				/* The shared-memory to use. */
-
-	int32 sharedMemLen,
-				/* The byte length of the shared-memory. */
+	int32 freeObjectCount,
 
 	int32 objectLen);
 				/* 
 				 * The total length of the objects that includes the embedded header
 				 * SharedOidSearchObjHeader.
 				 */
-
-static inline int32 SharedOidSearch_TableLen(
-	int32 hashSize)
-				/* The hash array size */
-{
-	return offsetof(SharedOidSearchTable,private.buckets) +
-		   hashSize*sizeof(SharedOidSearchHashBucket);
-}
-				
-
 extern void SharedOidSearch_InitTable(
 	SharedOidSearchTable *table,
 				/* The shared search tables to initialize. */
 	
-	SharedOidSearchDescr *descr);
-				/* The template of shared search tables. */
+	int32 hashSize,
+				/* The hash array size */
+	
+	int32 freeObjectCount,
+	
+	int32 objectLen);
+				/* 
+				 * The total length of the objects that includes the embedded header
+				 * SharedOidSearchObjHeader.
+				 */
 
 // -----------------------------------------------------------------------------
 // Add, Find, Probe, Iterate, and Delete

@@ -55,9 +55,8 @@ typedef struct PersistentDatabaseSharedData
 	
 	PersistentFileSysObjSharedData		fileSysObjSharedData;
 	
-	SharedOidSearchDescr	databaseSearchDescr;
-
-	uint8	freePoolMemory[0];
+	SharedOidSearchTable	databaseDirSearchTable;
+							/* Variable length -- MUST BE LAST */
 
 } PersistentDatabaseSharedData;
 
@@ -74,164 +73,10 @@ typedef struct PersistentDatabaseData
  * Global Variables
  */
 PersistentDatabaseSharedData	*persistentDatabaseSharedData = NULL;
-static HTAB *persistentDatabaseSharedHashTable = NULL;
 
 PersistentDatabaseData	persistentDatabaseData = PersistentDatabaseData_StaticInit;
 
 static void PersistentDatabase_InitScan(void);
-
-/*
- * Return the hash entry for a relation.
- */
-DatabaseEntry
-PersistentDatabase_FindUnderLock(
-	Oid 		databaseOid)
-{
-	bool			found;
-	DatabaseEntry	databaseEntry;
-
-	databaseEntry = 
-			(DatabaseEntry) 
-					hash_search(persistentDatabaseSharedHashTable,
-								(void *) &databaseOid,
-								HASH_FIND,
-								&found);
-
-	return databaseEntry;
-}
-
-/*
- * Return the hash entry for a relation.
- */
-DatabaseEntry
-PersistentDatabase_Find(
-	Oid 		databaseOid)
-{
-	DatabaseEntry	databaseEntry;
-
-	PersistentDatabase_InitScan();
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
-
-	databaseEntry = PersistentDatabase_FindUnderLock(databaseOid);
-
-	LWLockRelease(PersistentObjLock);
-
-	return databaseEntry;
-}
-
-static DatabaseEntry
-PersistentDatabase_FindOrCreateUnderLock(
-	Oid 		databaseOid)
-{
-	bool			found;
-	DatabaseEntry	databaseEntry;
-
-	databaseEntry = 
-			(DatabaseEntry) 
-					hash_search(persistentDatabaseSharedHashTable,
-								(void *) &databaseOid,
-								HASH_FIND | HASH_ENTER_NULL,
-								&found);
-
-	if (databaseEntry == NULL)
-		elog(ERROR, "Out of shared-memory for persistent databases");
-
-	if (!found)
-	{
-		DatabaseEntry_SetTablePtr(
-							databaseEntry,
-							127);
-
-		SharedOidSearch_InitTable(
-							databaseEntry->databaseDirSearchTable,
-							&persistentDatabaseSharedData->databaseSearchDescr);
-	}
-	
-	return databaseEntry;
-}
-
-bool
-PersistentDatabase_FindDirUnderLock(
-	DbDirNode				*dbDirNode,
-
-	DatabaseEntry			*databaseEntry,
-	
-	DatabaseDirEntry		*databaseDirEntry)	
-{
-	bool			found;
-
-	*databaseDirEntry = NULL;
-
-	*databaseEntry = 
-			(DatabaseEntry) 
-					hash_search(persistentDatabaseSharedHashTable,
-								(void *) &dbDirNode->database,
-								HASH_FIND,
-								&found);
-
-	if (*databaseEntry == NULL)
-		return false;
-
-	
-	*databaseDirEntry =
-			(DatabaseDirEntry)
-				SharedOidSearch_Find(
-						(*databaseEntry)->databaseDirSearchTable,
-						dbDirNode->database,
-						dbDirNode->tablespace);
-
-	return (*databaseDirEntry != NULL);
-}
-
-bool
-PersistentDatabase_FindDir(
-	DbDirNode				*dbDirNode,
-
-	DatabaseEntry			*databaseEntry,
-	
-	DatabaseDirEntry		*databaseDirEntry)	
-{
-	bool			found;
-
-	PersistentDatabase_InitScan();
-
-	*databaseDirEntry = NULL;
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
-
-	found = PersistentDatabase_FindDirUnderLock(
-										dbDirNode,
-										databaseEntry,
-										databaseDirEntry);
-
-	LWLockRelease(PersistentObjLock);
-
-	return found;
-}
-
-DatabaseDirEntry PersistentDatabase_FindDirInDb(
-	DatabaseEntry			databaseEntry,
-	
-	DbDirNode				*dbDirNode)
-{
-	DatabaseDirEntry databaseDirEntry;
-
-	PersistentDatabase_InitScan();
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
-
-	databaseDirEntry =
-			(DatabaseDirEntry)
-				SharedOidSearch_Find(
-						databaseEntry->databaseDirSearchTable,
-						dbDirNode->database,
-						dbDirNode->tablespace);
-
-	LWLockRelease(PersistentObjLock);
-
-	return databaseDirEntry;
-}
 
 // -----------------------------------------------------------------------------
 // Scan 
@@ -251,7 +96,6 @@ static bool PersistentDatabase_ScanTupleCallback(
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
 	
-	DatabaseEntry 	databaseEntry;	
 	SharedOidSearchAddResult addResult;
 	DatabaseDirEntry databaseDirEntry;
 
@@ -277,11 +121,9 @@ static bool PersistentDatabase_ScanTupleCallback(
 		return true;	// Continue.
 	}
 	
-	databaseEntry = 
-			PersistentDatabase_FindOrCreateUnderLock(dbDirNode.database);
 	addResult =
 			SharedOidSearch_Add(
-					databaseEntry->databaseDirSearchTable,
+					&persistentDatabaseSharedData->databaseDirSearchTable,
 					dbDirNode.database,
 					dbDirNode.tablespace,
 					(SharedOidSearchObjHeader**)&databaseDirEntry);
@@ -333,165 +175,53 @@ static void PersistentDatabase_InitScan(void)
 }
 
 // -----------------------------------------------------------------------------
-// Check 
-// -----------------------------------------------------------------------------
-
-/*
- * Generate a unique relation OID within a database.
- *
- * If the master is doing this in the context of the GPDB cluster, then the relation OID will be
- * unique across the segments.
- */
-bool PersistentDatabase_CheckWhetherOidInUse(
-    Oid			databaseOid)
-				/* The database OID. */
-{
-	DatabaseEntry databaseEntry;
-	bool inUse;
-	
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
-
-	databaseEntry = PersistentDatabase_FindUnderLock(databaseOid);
-
-	inUse = (databaseEntry != NULL);
-	
-	LWLockRelease(PersistentObjLock);
-
-	return inUse;
-}
-
-// -----------------------------------------------------------------------------
 // Iterate	
 // -----------------------------------------------------------------------------
 
 static bool iterateOnShmemExitArmed = false;
 
-static DatabaseEntry iterateDatabaseEntry = NULL;
-static bool iterateHashSeqValid = false;
-static HASH_SEQ_STATUS iterateStatus;
-
-static DatabaseEntry dirIterateDatabaseEntry = NULL;
 static DatabaseDirEntry dirIterateDatabaseDirEntry = NULL;
 
-static void PersistentDatabase_DirIterateReleaseCurrent(void)
+static void PersistentDatabase_DirIterateMoveAway(
+	DatabaseDirEntry prevDatabaseDirEntry)
 {
-	if (dirIterateDatabaseDirEntry == NULL)
+	if (prevDatabaseDirEntry == NULL)
 		return;
 
-	Assert(dirIterateDatabaseDirEntry->iteratorRefCount > 0);
-	dirIterateDatabaseDirEntry->iteratorRefCount--;
-	if (dirIterateDatabaseDirEntry->iteratorRefCount == 0 &&
-		dirIterateDatabaseDirEntry->state == PersistentFileSysState_Free)
+	Assert(prevDatabaseDirEntry->iteratorRefCount > 0);
+	prevDatabaseDirEntry->iteratorRefCount--;
+	if (prevDatabaseDirEntry->iteratorRefCount == 0 &&
+		prevDatabaseDirEntry->state == PersistentFileSysState_Free)
 	{
 		/*
 		 * Our job is to actually free the entry.
 		 */
 		SharedOidSearch_Delete(
-					dirIterateDatabaseEntry->databaseDirSearchTable,
-					&dirIterateDatabaseDirEntry->header);
+					&persistentDatabaseSharedData->databaseDirSearchTable,
+					&prevDatabaseDirEntry->header);
 	}
-
-	dirIterateDatabaseDirEntry = NULL;
-}
-
-static void PersistentDatabase_ReleaseIterator(void)
-{
-	if (iterateHashSeqValid)
-	{
-		hash_seq_term(&iterateStatus);
-		iterateHashSeqValid = false;
-	}
-	iterateDatabaseEntry = NULL;
 }
 
 static void PersistentDatabase_ReleaseDirIterator(void)
 {
-	PersistentDatabase_DirIterateReleaseCurrent();
 
 	if (dirIterateDatabaseDirEntry != NULL)
 	{
-		Assert(dirIterateDatabaseEntry != NULL);
 		SharedOidSearch_ReleaseIterator(
-					dirIterateDatabaseEntry->databaseDirSearchTable,
+					&persistentDatabaseSharedData->databaseDirSearchTable,
 					(SharedOidSearchObjHeader**)&dirIterateDatabaseDirEntry);
 		Assert(dirIterateDatabaseDirEntry == NULL);
 	}
-
-	dirIterateDatabaseEntry = NULL;
+	
+	PersistentDatabase_DirIterateMoveAway(dirIterateDatabaseDirEntry);
 }
 
 static void AtProcExit_PersistentDatabase(int code, Datum arg)
 {
-	PersistentDatabase_ReleaseIterator();
 	PersistentDatabase_ReleaseDirIterator();
 }
 
-void PersistentDatabase_IterateInit(void)
-{
-	Assert(persistentDatabaseSharedData != NULL);
-	
-	PersistentDatabase_InitScan();
-
-	PersistentDatabase_ReleaseIterator();
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
-
-	if (!iterateOnShmemExitArmed)
-	{
-		on_shmem_exit(AtProcExit_PersistentDatabase, 0);
-		iterateOnShmemExitArmed = true;
-	}
-
-	hash_seq_init(&iterateStatus, persistentDatabaseSharedHashTable);
-	iterateHashSeqValid = true;
-
-	LWLockRelease(PersistentObjLock);
-}
-
-bool PersistentDatabase_IterateNext(
-	DatabaseEntry			*databaseEntry)
-{
-	Assert(persistentDatabaseSharedData != NULL);
-
-	*databaseEntry = NULL;
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
-
-	/*
-	 * Get another database.
-	 */
-	if (!iterateHashSeqValid)
-	{
-		LWLockRelease(PersistentObjLock);
-		return false;
-	}
-	iterateDatabaseEntry = 
-				(DatabaseEntry)
-						hash_seq_search(&iterateStatus);
-	if (iterateDatabaseEntry == NULL)
-	{
-		iterateHashSeqValid = false;
-		LWLockRelease(PersistentObjLock);
-		return false;
-	}
-
-	*databaseEntry = iterateDatabaseEntry;
-
-	LWLockRelease(PersistentObjLock);
-
-	return true;
-}
-
-void PersistentDatabase_IterateClose(void)
-{
-	Assert(persistentDatabaseSharedData != NULL);
-	PersistentDatabase_ReleaseIterator();
-}
-
-
-
-void PersistentDatabase_DirIterateInit(
-	DatabaseEntry			databaseEntry)
+void PersistentDatabase_DirIterateInit(void)
 {
 	Assert(persistentDatabaseSharedData != NULL);
 	
@@ -507,7 +237,6 @@ void PersistentDatabase_DirIterateInit(
 		iterateOnShmemExitArmed = true;
 	}
 
-	dirIterateDatabaseEntry = databaseEntry;
 	dirIterateDatabaseDirEntry = NULL;
 	
 	LWLockRelease(PersistentObjLock);
@@ -518,24 +247,25 @@ bool PersistentDatabase_DirIterateNext(
 	DbDirNode				*dbDirNode,
 	PersistentFileSysState	*state)
 {
+	DatabaseDirEntry prevDatabaseDirEntry;
+
 	Assert(persistentDatabaseSharedData != NULL);
-	Assert(dirIterateDatabaseEntry != NULL);
 
 	MemSet(dbDirNode, 0, sizeof(DbDirNode));
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
-	PersistentDatabase_DirIterateReleaseCurrent();
-
 	while (true)
 	{
+		prevDatabaseDirEntry = dirIterateDatabaseDirEntry;
 		SharedOidSearch_Iterate(
-						dirIterateDatabaseEntry->databaseDirSearchTable,
+						&persistentDatabaseSharedData->databaseDirSearchTable,
 						(SharedOidSearchObjHeader**)&dirIterateDatabaseDirEntry);
+
+		PersistentDatabase_DirIterateMoveAway(prevDatabaseDirEntry);
 
 		if (dirIterateDatabaseDirEntry == NULL)
 		{
-			dirIterateDatabaseEntry = NULL;
 			LWLockRelease(PersistentObjLock);
 			return false;
 		}
@@ -543,6 +273,7 @@ bool PersistentDatabase_DirIterateNext(
 		*state = dirIterateDatabaseDirEntry->state;
 		if (*state == PersistentFileSysState_Free)
 		{
+			// UNDONE: Or, PinCount > 1
 			Assert(dirIterateDatabaseDirEntry->iteratorRefCount > 0);
 			continue;
 		}
@@ -574,20 +305,12 @@ void PersistentDatabase_DirIterateClose(void)
 static void PersistentDatabase_LookupExistingDbDir(
 	DbDirNode				*dbDirNode,
 
-	DatabaseEntry 			*databaseEntry,
-	
 	DatabaseDirEntry 	    *databaseDirEntry)
 {
-	*databaseEntry = 
-			PersistentDatabase_FindUnderLock(dbDirNode->database);
-	if (*databaseEntry == NULL)
-		elog(ERROR, "Persistent database %u expected to exist", 
-			 dbDirNode->database);
-
 	*databaseDirEntry =
 			(DatabaseDirEntry)
 				    SharedOidSearch_Find(
-				    		(*databaseEntry)->databaseDirSearchTable,
+				    		&persistentDatabaseSharedData->databaseDirSearchTable,
 				    		dbDirNode->database,
 				    		dbDirNode->tablespace);
 	if (*databaseDirEntry == NULL)
@@ -712,7 +435,6 @@ void PersistentDatabase_MarkCreatePending(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
-	DatabaseEntry databaseEntry;
 	DatabaseDirEntry databaseDirEntry;
 	SharedOidSearchAddResult addResult;
 
@@ -732,15 +454,10 @@ void PersistentDatabase_MarkCreatePending(
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
-	databaseEntry = 
-			PersistentDatabase_FindOrCreateUnderLock(
-											dbDirNode->database);
-	Assert(databaseEntry != NULL);
-
 	databaseDirEntry =
 			(DatabaseDirEntry)
 				    SharedOidSearch_Find(
-				    		databaseEntry->databaseDirSearchTable,
+				    		&persistentDatabaseSharedData->databaseDirSearchTable,
 				    		dbDirNode->database,
 				    		dbDirNode->tablespace);
 	if (databaseDirEntry != NULL)
@@ -752,7 +469,7 @@ void PersistentDatabase_MarkCreatePending(
 
 	addResult =
 		    SharedOidSearch_Add(
-		    		databaseEntry->databaseDirSearchTable,
+		    		&persistentDatabaseSharedData->databaseDirSearchTable,
 		    		dbDirNode->database,
 		    		dbDirNode->tablespace,
 		    		(SharedOidSearchObjHeader**)&databaseDirEntry);
@@ -792,7 +509,6 @@ void PersistentDatabase_AddCreated(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
-	DatabaseEntry databaseEntry;
 	DatabaseDirEntry databaseDirEntry;
 	SharedOidSearchAddResult addResult;
 
@@ -812,15 +528,10 @@ void PersistentDatabase_AddCreated(
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
-	databaseEntry = 
-			PersistentDatabase_FindOrCreateUnderLock(
-											dbDirNode->database);
-	Assert(databaseEntry != NULL);
-
 	databaseDirEntry =
 			(DatabaseDirEntry)
 				    SharedOidSearch_Find(
-				    		databaseEntry->databaseDirSearchTable,
+				    		&persistentDatabaseSharedData->databaseDirSearchTable,
 				    		dbDirNode->database,
 				    		dbDirNode->tablespace);
 	if (databaseDirEntry != NULL)
@@ -832,7 +543,7 @@ void PersistentDatabase_AddCreated(
 
 	addResult =
 		    SharedOidSearch_Add(
-		    		databaseEntry->databaseDirSearchTable,
+		    		&persistentDatabaseSharedData->databaseDirSearchTable,
 		    		dbDirNode->database,
 		    		dbDirNode->tablespace,
 		    		(SharedOidSearchObjHeader**)&databaseDirEntry);
@@ -879,7 +590,6 @@ void PersistentDatabase_Created(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
-	DatabaseEntry databaseEntry;
 	DatabaseDirEntry databaseDirEntry;
 
 	if (IsBootstrapProcessingMode())
@@ -899,9 +609,8 @@ void PersistentDatabase_Created(
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	PersistentDatabase_LookupExistingDbDir(
-								dbDirNode,
-								&databaseEntry,
-								&databaseDirEntry);
+									dbDirNode,
+									&databaseDirEntry);
 
 	if (databaseDirEntry->state != PersistentFileSysState_CreatePending)
 		elog(ERROR, "Persistent database entry %s expected to be in 'Create Pending' state (actual state '%s')", 
@@ -940,7 +649,6 @@ void PersistentDatabase_MarkDropPending(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
-	DatabaseEntry databaseEntry;
 	DatabaseDirEntry databaseDirEntry;
 
 	if (IsBootstrapProcessingMode())
@@ -960,9 +668,8 @@ void PersistentDatabase_MarkDropPending(
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	PersistentDatabase_LookupExistingDbDir(
-								dbDirNode,
-								&databaseEntry,
-								&databaseDirEntry);
+									dbDirNode,
+									&databaseDirEntry);
 
 	if (databaseDirEntry->state != PersistentFileSysState_CreatePending &&
 		databaseDirEntry->state != PersistentFileSysState_Created)
@@ -997,7 +704,6 @@ void PersistentDatabase_MarkAbortingCreate(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
-	DatabaseEntry databaseEntry;
 	DatabaseDirEntry databaseDirEntry;
 	
 	if (IsBootstrapProcessingMode())
@@ -1018,7 +724,6 @@ void PersistentDatabase_MarkAbortingCreate(
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
-								&databaseEntry,
 								&databaseDirEntry);
 
 	if (databaseDirEntry->state != PersistentFileSysState_CreatePending)
@@ -1051,7 +756,6 @@ void PersistentDatabase_Dropped(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
-	DatabaseEntry databaseEntry;
 	DatabaseDirEntry databaseDirEntry;
 
 	ItemPointerData previousFreeTid;
@@ -1078,7 +782,6 @@ void PersistentDatabase_Dropped(
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
-								&databaseEntry,
 								&databaseDirEntry);
 
 	if (databaseDirEntry->state != PersistentFileSysState_DropPending &&
@@ -1111,7 +814,7 @@ void PersistentDatabase_Dropped(
 
 	if (databaseDirEntry->iteratorRefCount == 0)
 		SharedOidSearch_Delete(
-					databaseEntry->databaseDirSearchTable,
+					&persistentDatabaseSharedData->databaseDirSearchTable,
 					&databaseDirEntry->header);
 
 	LWLockRelease(PersistentObjLock);
@@ -1120,7 +823,6 @@ void PersistentDatabase_Dropped(
 bool PersistentDatabase_DirIsCreated(
 		DbDirNode		*dbDirNode)
 {
-	DatabaseEntry databaseEntry;
 	DatabaseDirEntry databaseDirEntry;
 	bool result;
 
@@ -1139,16 +841,11 @@ bool PersistentDatabase_DirIsCreated(
 	PersistentDatabase_InitScan();
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
-	
-	databaseEntry = PersistentDatabase_FindUnderLock(dbDirNode->database);
-	if (databaseEntry == NULL)
-		elog(ERROR, "Persistent database %u expected to exist", 
-			 dbDirNode->database);
-	
+
 	databaseDirEntry =
 			(DatabaseDirEntry)
 				    SharedOidSearch_Find(
-				    		databaseEntry->databaseDirSearchTable,
+				    		&persistentDatabaseSharedData->databaseDirSearchTable,
 				    		dbDirNode->database,
 				    		dbDirNode->tablespace);
 	result = (databaseDirEntry != NULL);
@@ -1169,7 +866,6 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 	DbDirNode		*dbDirNode)
 
 {
-	DatabaseEntry databaseEntry;
 	DatabaseDirEntry databaseDirEntry;
 
 	SharedOidSearchAddResult addResult;
@@ -1190,16 +886,10 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
-	databaseEntry = 
-			PersistentDatabase_FindUnderLock(dbDirNode->database);
-	if (databaseEntry == NULL)
-		elog(ERROR, "Persistent database %u expected to exist", 
-			 dbDirNode->database);
-
 	databaseDirEntry =
 			(DatabaseDirEntry)
 				    SharedOidSearch_Find(
-				    		databaseEntry->databaseDirSearchTable,
+				    		&persistentDatabaseSharedData->databaseDirSearchTable,
 				    		dbDirNode->database,
 				    		dbDirNode->tablespace);
 	if (databaseDirEntry != NULL)
@@ -1216,7 +906,7 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 
 	addResult =
 			SharedOidSearch_Add(
-					databaseEntry->databaseDirSearchTable,
+					&persistentDatabaseSharedData->databaseDirSearchTable,
 					dbDirNode->database,
 					dbDirNode->tablespace,
 					(SharedOidSearchObjHeader**)&databaseDirEntry);
@@ -1249,7 +939,6 @@ void PersistentDatabase_JustInTimeCreated(
 	DbDirNode 		*dbDirNode)
 
 {
-	DatabaseEntry databaseEntry;
 	DatabaseDirEntry databaseDirEntry;
 
 	if (IsBootstrapProcessingMode())
@@ -1270,7 +959,6 @@ void PersistentDatabase_JustInTimeCreated(
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
-								&databaseEntry,
 								&databaseDirEntry);
 
 	if (databaseDirEntry->state != PersistentFileSysState_JustInTimeCreatePending)
@@ -1296,7 +984,6 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 	DbDirNode 		*dbDirNode)
 
 {
-	DatabaseEntry databaseEntry;
 	DatabaseDirEntry databaseDirEntry;
 
 	ItemPointerData previousFreeTid;
@@ -1323,7 +1010,6 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
-								&databaseEntry,
 								&databaseDirEntry);
 
 	if (databaseDirEntry->state != PersistentFileSysState_JustInTimeCreatePending)
@@ -1352,9 +1038,10 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 							freeValues,
 							/* flushToXLog */ false);
 
-	SharedOidSearch_Delete(
-				databaseEntry->databaseDirSearchTable,
-				&databaseDirEntry->header);
+	if (databaseDirEntry->iteratorRefCount == 0)
+		SharedOidSearch_Delete(
+					&persistentDatabaseSharedData->databaseDirSearchTable,
+					&databaseDirEntry->header);
 
 	LWLockRelease(PersistentObjLock);
 }
@@ -1366,8 +1053,12 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 
 static Size PersistentDatabase_SharedDataSize(void)
 {
-	return offsetof(PersistentDatabaseSharedData,freePoolMemory)
-		 + gp_max_databases*sizeof(DatabaseDirEntryData);
+	return MAXALIGN(
+				offsetof(PersistentDatabaseSharedData,databaseDirSearchTable) +
+			    SharedOidSearch_TableLen(
+					/* hashSize */ 127,
+					/* freeObjectCount */ MaxPersistentDatabaseDirectories,
+					/* objectLen */ sizeof(DatabaseDirEntryData)));
 }
 
 /*
@@ -1375,61 +1066,19 @@ static Size PersistentDatabase_SharedDataSize(void)
  */
 Size PersistentDatabase_ShmemSize(void)
 {
-	Size		size;
-
-	/* The hash table of persistent databases */
-	size = hash_estimate_size((Size)gp_max_databases,
-							  DatabaseEntry_Size(127));
+	if (MaxPersistentDatabaseDirectories == 0)
+		MaxPersistentDatabaseDirectories = gp_max_databases * gp_max_tablespaces;
 
 	/* The shared-memory structure. */
-	size = add_size(size, PersistentDatabase_SharedDataSize());
-
-	/* Add a safety margin. */
-	size = add_size(size, size / 10);
-
-	return size;
+	return PersistentDatabase_SharedDataSize();
 }
 
-/*
- * PersistentDatabase_HashTableInit
- *
- * Create or find shared-memory hash table.
- */
-static bool
-PersistentDatabase_HashTableInit(void)
-{
-	HASHCTL			info;
-	int				hash_flags;
-
-	/* Set key and entry sizes. */
-	MemSet(&info, 0, sizeof(info));
-	info.keysize = sizeof(Oid);
-	info.entrysize = DatabaseEntry_Size(MaxPersistentDatabaseDirectories);
-	info.hash = tag_hash;
-	hash_flags = (HASH_ELEM | HASH_FUNCTION);
-
-	persistentDatabaseSharedHashTable = 
-					ShmemInitHash("Persistent Database Hash",
-								   gp_max_databases,
-								   gp_max_databases,
-								   &info,
-								   hash_flags);
-
-	if (persistentDatabaseSharedHashTable == NULL)
-		return false;
-
-	return true;
-}
-						
 /*
  * Initialize the shared-memory for this module.
  */
 void PersistentDatabase_ShmemInit(void)
 {
 	bool found;
-	bool ok;
-
-	MaxPersistentDatabaseDirectories = gp_max_databases * gp_max_tablespaces;
 
 	/* Create the shared-memory structure. */
 	persistentDatabaseSharedData = 
@@ -1443,21 +1092,12 @@ void PersistentDatabase_ShmemInit(void)
 		PersistentFileSysObj_InitShared(
 						&persistentDatabaseSharedData->fileSysObjSharedData);
 
-		SharedOidSearch_InitDescr(
-					&persistentDatabaseSharedData->databaseSearchDescr,
-					SharedOidSearch_TableLen(MaxPersistentDatabaseDirectories),
-					127,
-					persistentDatabaseSharedData->freePoolMemory,
-					MaxPersistentDatabaseDirectories*sizeof(DatabaseDirEntryData),
-					sizeof(DatabaseDirEntryData));
+		SharedOidSearch_InitTable(
+						&persistentDatabaseSharedData->databaseDirSearchTable,
+						127,
+						MaxPersistentDatabaseDirectories,
+						sizeof(DatabaseDirEntryData));
 	}
-
-	/* Create or find our shared-memory hash table. */
-	ok = PersistentDatabase_HashTableInit();
-	if (!ok)
-		ereport(FATAL,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("Not enough shared memory for persistent database hash table")));
 
 	PersistentFileSysObj_Init(
 						&persistentDatabaseData.fileSysObjData,
@@ -1466,5 +1106,4 @@ void PersistentDatabase_ShmemInit(void)
 
 
 	Assert(persistentDatabaseSharedData != NULL);
-	Assert(persistentDatabaseSharedHashTable != NULL);
 }

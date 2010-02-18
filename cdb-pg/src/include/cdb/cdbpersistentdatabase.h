@@ -15,37 +15,6 @@
 #include "cdb/cdbsharedoidsearch.h"
 #include "access/persistentfilesysobjname.h"
 
-typedef struct DatabaseEntryData
-{
-	Oid	database;
-
-	SharedOidSearchTable	*databaseDirSearchTable;
-	
-	/*
-	 * Variable length data for the table.  Must be last.
-	 */
-	uint8 data[0];
-} DatabaseEntryData;
-typedef DatabaseEntryData *DatabaseEntry;
-
-static inline int32 DatabaseEntry_Size(
-	int32			databaseHashSize)
-{
-	return offsetof(DatabaseEntryData,data) + 
-		   SharedOidSearch_TableLen(databaseHashSize);
-}
-
-static inline void DatabaseEntry_SetTablePtr(
-	DatabaseEntry	databaseEntry,
-
-	int32			databaseHashSize)
-{
-	databaseEntry->databaseDirSearchTable =
-			(SharedOidSearchTable*)
-				((uint8*)databaseEntry + offsetof(DatabaseEntryData,data));
-}
-
-
 typedef struct DatabaseDirEntryData
 {
 	SharedOidSearchObjHeader	header;
@@ -72,58 +41,10 @@ typedef DatabaseDirEntryData *DatabaseDirEntry;
  */
 
 // -----------------------------------------------------------------------------
-// Create 
-// -----------------------------------------------------------------------------
-
-/*
- * Generate a unique relation OID within a database.
- *
- * If the master is doing this in the context of the GPDB cluster, then the relation OID will be
- * unique across the segments.
- */
-extern bool PersistentDatabase_CheckWhetherOidInUse(
-		Oid 		databaseOid);
-					/* The database OID. */
-
-extern DatabaseEntry PersistentDatabase_FindUnderLock(
-	Oid 		databaseOid);
-
-extern DatabaseEntry PersistentDatabase_Find(
-	Oid 		databaseOid);
-
-extern bool PersistentDatabase_FindDirUnderLock(
-	DbDirNode				*dbDirNode,
-
-	DatabaseEntry			*databaseEntry,
-	
-	DatabaseDirEntry		*databaseDirEntry);	
-
-extern bool PersistentDatabase_FindDir(
-	DbDirNode				*dbDirNode,
-
-	DatabaseEntry			*databaseEntry,
-	
-	DatabaseDirEntry		*databaseDirEntry);
-
-extern DatabaseDirEntry PersistentDatabase_FindDirInDb(
-		DatabaseEntry			databaseEntry,
-		
-		DbDirNode				*dbDirNode);
-
-// -----------------------------------------------------------------------------
 // Iterate	
 // -----------------------------------------------------------------------------
-				
-extern void PersistentDatabase_IterateInit(void);
 
-extern bool PersistentDatabase_IterateNext(
-	DatabaseEntry			*databaseEntry);
-
-extern void PersistentDatabase_IterateClose(void);
-
-
-extern void PersistentDatabase_DirIterateInit(
-	DatabaseEntry			databaseEntry);
+extern void PersistentDatabase_DirIterateInit(void);
 
 extern bool PersistentDatabase_DirIterateNext(
 	DbDirNode				*dbDirNode,

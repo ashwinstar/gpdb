@@ -1257,18 +1257,11 @@ dropdb(const char *dbname, bool missing_ok)
 	 * commit.
 	 */
 	{
-		DatabaseEntry databaseEntry;
-
 		DatabaseInfo *info;
 		int grn;
 
 		DbDirNode dbDirNode;
 		PersistentFileSysState state;
-
-		databaseEntry = PersistentDatabase_Find(db_id);
-		if (databaseEntry == NULL)
-			elog(ERROR, "Expected to find a persistent database entry for id %u",
-			     db_id);
 
 		info = DatabaseInfo_Collect(db_id, defaultTablespace);
 		
@@ -1323,11 +1316,14 @@ dropdb(const char *dbname, bool missing_ok)
 		/*
 		 * Schedule all persistent database directory removals for transaction commit.
 		 */
-		PersistentDatabase_DirIterateInit(databaseEntry);
+		PersistentDatabase_DirIterateInit();
 		while (PersistentDatabase_DirIterateNext(
 										&dbDirNode,
 										&state))
 		{
+			if (dbDirNode.database != db_id)
+				continue;
+
 			// UNDONE: Error out if not in Created state.
 			if (state != PersistentFileSysState_Created)
 				continue;
