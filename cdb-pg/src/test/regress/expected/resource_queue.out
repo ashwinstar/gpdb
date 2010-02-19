@@ -181,9 +181,7 @@ DROP RESOURCE QUEUE reg_costq;
 -- Followup additional tests.
 -- MPP-7474
 CREATE RESOURCE QUEUE rq_test_q ACTIVE THRESHOLD 1;
-ERROR:  resource queue "rq_test_q" already exists
 CREATE USER rq_test_u RESOURCE QUEUE rq_test_q;
-ERROR:  role "rq_test_u" already exists
 create table rq_product (
 	pn int not null,
 	pname text not null,
@@ -297,8 +295,7 @@ select pcolor, pname, pn,
     lag(pn+31) over (w) as l31,
     lag(pn+32) over (w) as l32
 from rq_product
-window w as (partition by pcolor order by pname)
-order by 1,2,3;
+window w as (partition by pcolor order by pname) order by 1,2,3;
 fetch c0;
  pcolor | pname | pn  | n | l0 | l1 | l2 | l3 | l4 | l5 | l6 | l7 | l8 | l9 | l10 | l11 | l12 | l13 | l14 | l15 | l16 | l17 | l18 | l19 | l20 | l21 | l22 | l23 | l24 | l25 | l26 | l27 | l28 | l29 | l30 | l31 | l32 
 --------+-------+-----+---+----+----+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----
@@ -348,13 +345,12 @@ select pcolor, pname, pn,
     lag(pn+31) over (w) as l31,
     lag(pn+32) over (w) as l32
 from rq_product
-window w as (partition by pcolor order by pname)
-order by 1,2,3;
-DECLARE c0 cursor for select * from window_view;
+window w as (partition by pcolor order by pname);
+DECLARE c0 cursor for select * from window_view order by 1,2,3;
 fetch c0;
- pcolor | pname  | pn  | n | l0 | l1 | l2 | l3 | l4 | l5 | l6 | l7 | l8 | l9 | l10 | l11 | l12 | l13 | l14 | l15 | l16 | l17 | l18 | l19 | l20 | l21 | l22 | l23 | l24 | l25 | l26 | l27 | l28 | l29 | l30 | l31 | l32 
---------+--------+-----+---+----+----+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----
- Plain  | Donuts | 500 | 1 |    |    |    |    |    |    |    |    |    |    |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |    
+ pcolor | pname | pn  | n | l0 | l1 | l2 | l3 | l4 | l5 | l6 | l7 | l8 | l9 | l10 | l11 | l12 | l13 | l14 | l15 | l16 | l17 | l18 | l19 | l20 | l21 | l22 | l23 | l24 | l25 | l26 | l27 | l28 | l29 | l30 | l31 | l32 
+--------+-------+-----+---+----+----+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----
+ Black  | Dream | 200 | 1 |    |    |    |    |    |    |    |    |    |    |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |    
 (1 row)
 
 select * from rq_product;
@@ -363,9 +359,7 @@ fetch c0;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 abort;
 RESET SESSION_AUTHORIZATION;
+DROP OWNED BY rq_test_u CASCADE;
 DROP USER rq_test_u;
-ERROR:  role "rq_test_u" cannot be dropped because some objects depend on it
-DETAIL:  access to table rq_product
 DROP RESOURCE QUEUE rq_test_q;
-ERROR:  resource queue "rq_test_q" is used by at least one role
 DROP TABLE rq_product;

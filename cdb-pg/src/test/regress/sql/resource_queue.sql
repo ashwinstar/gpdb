@@ -199,8 +199,7 @@ select pcolor, pname, pn,
     lag(pn+31) over (w) as l31,
     lag(pn+32) over (w) as l32
 from rq_product
-window w as (partition by pcolor order by pname)
-order by 1,2,3;
+window w as (partition by pcolor order by pname) order by 1,2,3;
 
 fetch c0;
 select * from rq_product;
@@ -246,10 +245,9 @@ select pcolor, pname, pn,
     lag(pn+31) over (w) as l31,
     lag(pn+32) over (w) as l32
 from rq_product
-window w as (partition by pcolor order by pname)
-order by 1,2,3;
-DECLARE c0 cursor for select * from window_view;
+window w as (partition by pcolor order by pname);
 
+DECLARE c0 cursor for select * from window_view order by 1,2,3;
 fetch c0;
 select * from rq_product;
 
@@ -258,6 +256,8 @@ abort;
 
 RESET SESSION_AUTHORIZATION;
 
+DROP OWNED BY rq_test_u CASCADE;
 DROP USER rq_test_u;
 DROP RESOURCE QUEUE rq_test_q;
 DROP TABLE rq_product;
+
