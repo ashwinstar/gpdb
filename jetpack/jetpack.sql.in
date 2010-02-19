@@ -910,7 +910,7 @@ CREATE EXTERNAL WEB TABLE %%JETPACK_PREFIX%%disk_free
 	dfsegment int,
 	dfspace bigint
 )
-EXECUTE E'python -c "from gppylib.commands import unix; print ''%s, %s'' % (''$GP_SEGMENT_ID'', unix.DiskFree.get_size(''token'',''$GP_SEG_DATADIR''))"' FORMAT 'CSV';
+EXECUTE E'python -c "from gppylib.commands import unix; print ''%s, %s'' % (''$GP_SEGMENT_ID'', unix.DiskFree.get_size_local(''token'',''$GP_SEG_DATADIR''))"' FORMAT 'CSV';
 
 
 --------------------------------------------------------------------------------

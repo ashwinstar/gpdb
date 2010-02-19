@@ -310,6 +310,12 @@ class DiskFree(Command):
         dfCmd=DiskFree(name,directory,ctxt=REMOTE,remoteHost=remote_host)
         dfCmd.run(validateAfter=True)
         return dfCmd.get_bytes_free()
+    
+    @staticmethod
+    def get_size_local(name, directory):
+        dfCmd=DiskFree(name,directory)
+        dfCmd.run(validateAfter=True)
+        return dfCmd.get_bytes_free()
 
     def get_bytes_free(self):
         '''expected output of the form:        
