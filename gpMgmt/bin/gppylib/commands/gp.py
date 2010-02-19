@@ -478,8 +478,13 @@ class ConfigExpansionSeg(Command):
 #-----------------------------------------------
 class GpVersion(Command):
     def __init__(self,name,gphome,ctxt=LOCAL,remoteHost=None):
+        # XXX this should make use of the gphome that was passed
+        # in, but this causes problems in some environments and
+        # requires further investigation.
+
         self.gphome=gphome
-        self.cmdStr="%s/bin/postgres --gp-version" % gphome
+        #self.cmdStr="%s/bin/postgres --gp-version" % gphome
+        self.cmdStr="$GPHOME/bin/postgres --gp-version"
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
     def get_version(self):
@@ -497,8 +502,12 @@ class GpCatVersion(Command):
     Get the catalog version of the binaries in a given GPHOME
     """
     def __init__(self,name,gphome,ctxt=LOCAL,remoteHost=None):
+        # XXX this should make use of the gphome that was passed
+        # in, but this causes problems in some environments and
+        # requires further investigation.
         self.gphome=gphome
-        cmdStr="%s/bin/postgres --catalog-version" % gphome
+        #cmdStr="%s/bin/postgres --catalog-version" % gphome
+        cmdStr="$GPHOME/bin/postgres --catalog-version"
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     def get_version(self):
