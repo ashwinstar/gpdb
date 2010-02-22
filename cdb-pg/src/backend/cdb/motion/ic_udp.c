@@ -3187,7 +3187,7 @@ ic_rx_thread_func(void *arg)
 					{
 						if (pkt->flags & UDPIC_FLAGS_EOS)
 						{
-							write_log("non-requested stop flag, EOS!");
+							write_log("non-requested stop flag, EOS! seq %d, flags 0x%x", pkt->seq, pkt->flags);
 						}
 						continue;
 					}
