@@ -3091,6 +3091,17 @@ quickdie(SIGNAL_ARGS)
 	 * backend.  This is necessary precisely because we don't clean up our
 	 * shared memory state.
 	 */
+
+	/*
+	 * MPP-7564: exit(2) will call proc_exit()'s on_exit/at_exit
+	 * hooks.  We want to skip them. (quickdie is equivalent to a
+	 * crash -- we're depending on crash recovery to save us on
+	 * restart). So first we reset the exit hooks.
+	 *
+	 * This is a merge from Postgres.
+	 */
+	on_exit_reset();
+
 	exit(2);
 }
 
