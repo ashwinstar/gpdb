@@ -282,7 +282,7 @@ except DatabaseError, ex:
 pool = WorkerPool()
 
 hostCache = GpHostCache(gparray, pool)
-failedPings = hostcache.ping_hosts(pool)
+failedPings = hostCache.ping_hosts(pool)
 
 if len(failedPings):
     for i in failedPings:
