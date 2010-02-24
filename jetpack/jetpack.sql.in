@@ -238,7 +238,7 @@ GRANT SELECT ON TABLE %%JETPACK_PREFIX_AUX%%masterid TO public;
 --------------------------------------------------------------------------------
 CREATE VIEW %%JETPACK_PREFIX_AUX%%number_of_segments
 AS
-  SELECT count(*)
+  SELECT count(*)::smallint as numsegments
   FROM gp_segment_configuration
   WHERE preferred_role = 'p'
     AND content >= 0;
