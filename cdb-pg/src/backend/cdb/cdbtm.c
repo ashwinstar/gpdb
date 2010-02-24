@@ -3195,6 +3195,8 @@ void verify_shared_snapshot_ready(void)
 	{
 		CdbDoCommand("set gp_write_shared_snapshot=true", true, true);
 
+		dumpSharedLocalSnapshot_forCursor();
+
 		/*
 		 * To keep our readers in sync (since they will be dispatched
 		 * separately) we need to rewind the segmate synchronizer.

@@ -592,8 +592,7 @@ dumpSharedLocalSnapshot_forCursor(void)
 	BufFile *f;
 	Size count=0;
 
-	Assert(Gp_role == GP_ROLE_EXECUTE);
-	Assert(Gp_is_writer);
+	Assert(Gp_role == GP_ROLE_DISPATCH || (Gp_role == GP_ROLE_EXECUTE && Gp_is_writer));
 	Assert(SharedLocalSnapshotSlot != NULL);
 
 	src = (SharedSnapshotSlot *)SharedLocalSnapshotSlot;
