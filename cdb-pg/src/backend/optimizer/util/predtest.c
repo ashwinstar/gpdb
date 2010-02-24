@@ -1775,7 +1775,7 @@ static void
 CalculateHashWithHashAny(void *clientData, void *buf, size_t len)
 {
 	uint32 *result = (uint32*) clientData;
-	*result = hash_any((unsigned char *)clientData, len );
+	*result = hash_any((unsigned char *)buf, len );
 }
 
 static uint32
