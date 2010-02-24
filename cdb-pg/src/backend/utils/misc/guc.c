@@ -1730,11 +1730,12 @@ false
 
     {
         {"gp_set_read_only", PGC_SUSET, GP_ARRAY_CONFIGURATION,
-            gettext_noop("Sets the system read only"),
-            NULL,
+		 gettext_noop("Sets the system read only"),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
         },
         &gp_set_read_only,
-        false, assign_gp_set_read_only, NULL
+        false, NULL, NULL
     },
 
 	{
@@ -4524,9 +4525,10 @@ static struct config_string ConfigureNamesString[] =
 	},
 
     {
-       {"gp_fault_action", PGC_POSTMASTER, GP_ARRAY_CONFIGURATION,
-           gettext_noop("Sets the fault action for fault tolerance management."),
-           gettext_noop("Valid values are CONTINUE, READONLY, and SHUTDOWN.")
+       {"gp_fault_action", PGC_POSTMASTER, DEFUNCT_OPTIONS,
+		gettext_noop("Sets the fault action for fault tolerance management."),
+		gettext_noop("Valid values are CONTINUE, READONLY, and SHUTDOWN."),
+		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
        },
        &gp_fault_action_string,
        "continue", NULL, NULL

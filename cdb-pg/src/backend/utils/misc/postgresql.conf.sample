@@ -540,24 +540,19 @@ log_autostats=off	# print additional autostats information
 # GREENPLUM ARRAY CONFIGURATION
 #---------------------------------------------------------------------------
 
-gp_fault_action = readonly         # none for disabling Fault Tolerance feature,
-                                     # other valid parameters are readonly, continue
-#gp_set_read_only = off           # sets the system read only
-
-
 #---------------------------------------------------------------------------
 # GREENPLUM ARRAY TUNING
 #---------------------------------------------------------------------------
 
 # - Interconnect -
 
-#gp_interconnect_setup_timeout = 10s
+#gp_interconnect_setup_timeout = 20s
 #gp_max_packet_size = 8192
 gp_interconnect_type=udp
 
 # - Worker Process Creation -
 
-#gp_connections_per_thread = 4
+#gp_connections_per_thread = 512
 #gp_segment_connect_timeout = 60s
 #gp_enable_delete_as_truncate = off
 

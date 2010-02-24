@@ -40,7 +40,6 @@ FtsProbeInfo *ftsProbeInfo = NULL; /* Probe process updates this structure */
 volatile bool	*ftsEnabled;
 static LWLockId	ftsControlLock;
 
-volatile int		*ftsAction;
 static volatile bool	*ftsReadOnlyFlag;
 static volatile bool	*ftsAdminRequestedRO;
 
@@ -57,7 +56,6 @@ static struct FtsQDMirrorInfo *ftsQDMirrorInfo=NULL;
  */
 static bool QDMirroringNotSynchronizedWarningGiven = false;
 
-static void CdbShutdown(void);
 static char *QDMirroringDisabledReasonToString(QDMIRRORDisabledReason disabledReason);
 
 /*
@@ -90,7 +88,6 @@ FtsShmemInit(void)
 
 	ftsEnabled = &shared->ftsEnabled;
 	ftsControlLock = shared->ControlLock;
-	ftsAction = &shared->ftsAction;
 
 	ftsReadOnlyFlag = &shared->ftsReadOnlyFlag; /* global RO state */
 
@@ -132,11 +129,7 @@ FtsShmemInit(void)
 		shared->fts_probe_info.fts_pauseProbes = false;
 		shared->fts_probe_info.fts_statusVersion = 0;
 
-		if (Gp_role == GP_ROLE_DISPATCH)
-		{
-			shared->ftsAction = convertFaultActionValue(gp_fault_action_string);
-		}
-		shared->ftsEnabled = (*ftsAction != FTS_NONE);
+		shared->ftsEnabled = true; /* ??? */
 	}
 }
 
@@ -150,19 +143,6 @@ void
 ftsUnlock(void)
 {
 	LWLockRelease(ftsControlLock);
-}
-
-/*
- * Set System Read Only
- */
-void
-CondSetMPPReadonly(void)
-{
-	/* this no longer actually *sets* things to readonly, just checks. */
-	if (*ftsAction == FTS_READONLY)
-	{
-		Assert(*ftsReadOnlyFlag == true);
-	}
 }
 
 static void
@@ -228,16 +208,6 @@ FtsReConfigureMPP(bool create_new_gangs)
 
 	/* Caller should throw an error. */
 	return;
-}
-
-/*
- * Shutdown the system
- */
-static void
-CdbShutdown(void)
-{
-	ereport(ERROR, (errmsg_internal("FTS: Greenplum system is shut down (segment failure)"),
-			errSendAlert(true)));
 }
 
 static void
@@ -1046,19 +1016,7 @@ FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
 {
 	elog(LOG, "FtsHandleNetFailure: numOfFailed %d", numOfFailed);
 
-	/* we have a real failure, if we're supposed to shutdown,
-	 * that's all we need to do. Otherwise, we need to continue
-	 * scanning and connecting as long as we have more failures */
-	if (*ftsAction == FTS_SHUTDOWN)
-	{
-		ereport(LOG, (errmsg_internal("MPP detects segment failures, system is shut down")));
-		CdbShutdown();
-		/* not reached */
-	}
-	else
-	{
-		FtsReConfigureMPP(true);
-	}
+	FtsReConfigureMPP(true);
 
 	ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed)));
 }
@@ -1108,14 +1066,6 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	if (!isFTSEnabled())
 	{
 		return false;
-	}
-
-	/* shutdown if action is set to shutdown */
-	if (*ftsAction == FTS_SHUTDOWN)
-	{
-		ereport(LOG, (errmsg_internal("MPP detects segment failures, system is shut down")));
-		CdbShutdown();
-		return true;
 	}
 
 	ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress")));
@@ -1183,106 +1133,6 @@ FtsCondSetTxnReadOnly(bool *XactFlag)
 
 	if (*ftsReadOnlyFlag && Gp_role != GP_ROLE_UTILITY)
 		*XactFlag = true;
-}
-
-/*
- * Set Read only. There are two ways we can transition to readonly: request
- * from a super-user, or the ftsProber.
- *
- * There are a bunch of possibilities here:
- * 1) asking for RO and we're already in RO
- * 2) asking for RO and we've already asked for RO.
- * 3) asking for RW and we're already RW.
- * 4) asking for RW and we're "down" so we're RO.
- * 5) asking for RW and we had asked to be RO.
- *
- * The ftsProber is the final arbiter of whether we're read-only or not.
- */
-void
-FtsUpdateROStatus(bool value)
-{
-	/* Nothing to do ? */
-	if (ftsReadOnlyFlag == NULL || value == *ftsReadOnlyFlag)
-		return;
-
-	if (*ftsAction == FTS_READONLY || *ftsAdminRequestedRO)
-	{
-		/* we are going to change the value */
-		if (value || *ftsAdminRequestedRO)
-		{
-			/* ftsProber wants to mark us RO, wins every time */
-			*ftsReadOnlyFlag = true;
-		}
-		else
-		{
-			/* ftsProber wants to mark us RW, but if a user has requested RO too then we stay RO. */
-			if (!*ftsAdminRequestedRO)
-				*ftsReadOnlyFlag = false;
-		}
-	}
-
-	return;
-}
-
-/*
- * Set Read only. This is the entry for the GUC to request we
- * transition to readonly mode.
- *
- * The ftsProber is the final arbiter of whether we're read-only or not.
- */
-bool
-assign_gp_set_read_only(bool newval, bool doit, GucSource source __attribute__((unused)) )
-{
-	if (ftsReadOnlyFlag == NULL || newval == *ftsReadOnlyFlag)
-		return true;
-
-	if (doit)
-	{
-		if (newval)
-		{
-			/* we're trying to mark things RO ? */
-			*ftsAdminRequestedRO = true;
-
-			FtsNotifyProber();
-		}
-		else
-		{
-			/* we're trying to mark things RW */
-			*ftsAdminRequestedRO = false;
-
-			FtsNotifyProber();
-
-			/* may have deferred work ? */
-			if (!*ftsReadOnlyFlag)
-				cdbtm_performDeferredRecovery();
-		}
-
-		/* set current transaction read only */
-		XactReadOnly = *ftsReadOnlyFlag;
-	}
-
-	return true;
-}
-
-int
-convertFaultActionValue(char *action)
-{
-	if (pg_strcasecmp(action, "readonly") == 0)
-		return FTS_READONLY;
-	else if (pg_strcasecmp(action, "shutdown") == 0)
-		return FTS_SHUTDOWN;
-	else if (pg_strcasecmp(action, "continue") == 0)
-		return FTS_CONTINUE;
-	else if (pg_strcasecmp(action, "none") == 0)
-		return FTS_NONE;
-	else
-	{
-		elog(FATAL, "FTS: Invalid Fault Tolerance Action: %s (valid actions: \"readonly\" or \"continue\")", gp_fault_action_string);
-
-		/* not reached */
-		gp_fault_action_string = "continue";
-		return FTS_CONTINUE;
-	}
 }
 
 bool

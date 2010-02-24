@@ -112,7 +112,6 @@ typedef struct FtsControlBlock
 
 	LWLockId	ControlLock;
 
-	int			ftsAction;
 	bool		ftsReadOnlyFlag;
 	bool		ftsAdminRequestedRO;
 
@@ -123,35 +122,22 @@ typedef struct FtsControlBlock
 	struct FtsQDMirrorInfo	ftsQDMirror;
 }	FtsControlBlock;
 
-typedef enum
-{
-	FTS_NONE,					/* disable fts */
-	FTS_RECONNECT,				/* re-connect */
-	FTS_CONTINUE,				/* updatable */
-	FTS_READONLY,				/* read only */
-	FTS_SHUTDOWN				/* shutdown */
-}	FtsAction;
-
 extern volatile bool *ftsEnabled;
-extern volatile int *ftsAction;
 
 extern FtsProbeInfo *ftsProbeInfo;
 
 #define isFTSEnabled() (ftsEnabled != NULL && *ftsEnabled)
-/* #define enableMirroring() (*ftsEnabled = (*ftsAction!=FTS_NONE)?true:false) */
+
 #define disableFTS() (*ftsEnabled = false)
 
 extern int	FtsShmemSize(void);
 extern void FtsShmemInit(void);
-extern void CondSetMPPReadonly(void);
+
 extern bool FtsTestConnection(CdbComponentDatabaseInfo *db_to_test, bool full_scan);
 extern void FtsReConfigureMPP(bool create_new_gangs);
 extern void FtsHandleNetFailure(SegmentDatabaseDescriptor **, int);
 extern bool FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor *, int);
 
-extern bool assign_gp_set_read_only(bool, bool, GucSource);
-
-extern int	convertFaultActionValue(char *);
 extern bool verifyFtsSyncCount(void);
 extern void FtsCondSetTxnReadOnly(bool *);
 extern void ftsLock(void);
@@ -170,8 +156,6 @@ extern char *QDMirroringStateString(void);
 extern char *QDMirroringDisabledReasonString(void);
 
 extern bool isFtsReadOnlySet(void);
-
-extern void FtsUpdateROStatus(bool value);
 
 /* markStandbyStatus forces persistent state change ?! */
 #define markStandbyStatus(dbid, state) (markSegDBPersistentState((dbid), (state)))
