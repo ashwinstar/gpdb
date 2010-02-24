@@ -2789,8 +2789,6 @@ select * from get_ereport order by 1;
  caag: cdbcat:00000509:  isprimary ? "PRIMARY KEY" : "UNIQUE index", 
  caag: cdbcat:00000510:  RelationGetRelationName(rel)), 
  caag: cdbcat:00000511:  errOmitLocation(true))); 
- caag: cdbfts:00000239:  ereport(ERROR, (errmsg_internal("FTS: Greenplum system is shut down (segment failure)"), 
- caag: cdbfts:00000240:  errSendAlert(true))); 
  caag: cdbfts:00000393:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
  caag: cdbfts:00000394:  errmsg("QDMirroringUpdate: out of memory"))); 
  caag: cdbfts:00000421:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -17824,6 +17822,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000073:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000074:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000075:  str))); 
-(17763 rows)
+(17761 rows)
 
 drop external table get_ereport;
