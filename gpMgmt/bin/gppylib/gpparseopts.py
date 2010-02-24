@@ -22,7 +22,7 @@ from gppylib.datetimeutils import str_to_datetime, str_to_duration, DatetimeValu
 # option parser should be case sensitive or not.
 # 
 # Valid values are 'respect' or 'ignore'
-__gCase = 'respect'
+_gCase = 'respect'
 
 #----------------------- Command line option parser ----------------------
 
@@ -70,33 +70,29 @@ class OptParser(OptionParser):
         
 class OptChecker(Option):
     # Teach optparse to accept types 'datetime', 'duration', 'regex', 'literal'
-    @staticmethod
     def datetimeCheck(option, opt, value):
         try:
             return str_to_datetime(value)
         except DatetimeValueError, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e.description))
             
-    @staticmethod            
     def durationCheck(option, opt, value):
         try:
             return str_to_duration(value, signed=False)
         except DatetimeValueError, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e.description))
             
-    @staticmethod            
     def regexCheck(option, opt, value):
         # value is a string to be compiled as a regular expression pattern
-        global __gCase
+        global _gCase
         flags = re.LOCALE
-        if __gCase and __gCase.startswith('i'):
+        if _gCase and _gCase.startswith('i'):
             flags |= re.IGNORECASE
         try:
             return re.compile(value, flags)
         except Exception, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e))
-
-    @staticmethod
+ 
     def regexSetCaseSensitivity(option, opt, value, parser):
         """
         This is used to set the case sensitivity of optparser regex matching
@@ -105,13 +101,12 @@ class OptChecker(Option):
         Valid values are ['respect', 'r', 'ignore', 'i']
 
         A typical usage might look like this:
-          parser.add_option('-c', action='callback', 
-                            callback=OptChecker.regexSetCaseSensitivity)
+            parser.add_option('-c', action='callback', 
+            callback=OptChecker.regexSetCaseSensitivity)
         """
-        global __gCase
-        __gCase = value
+        global _gCase
+        _gCase = value
             
-    @staticmethod
     def literalCheck(option, opt, value):
         # value is a string to be matched literally; return compiled regex
         return option.regexCheck(opt, re.escape(value))
@@ -166,9 +161,4 @@ class OptChecker(Option):
     ACTIONS = Option.ACTIONS + _addactionnames
     STORE_ACTIONS = Option.STORE_ACTIONS + _addactionnames
     TYPED_ACTIONS = Option.TYPED_ACTIONS + _addactionnames
-
-
-
-
-
 
