@@ -17,6 +17,8 @@ import sys
 
 #evil global
 LOGGER=None
+DEFAULT_FORMATTER=None
+LITERAL_FORMATTER=None
 SOUT_HANDLER=None
 FILE_HANDLER=None
 
@@ -62,7 +64,6 @@ def setup_tool_logging(appName,hostname,userName,logdir=None,nonuser=False):
     enable_gpadmin_logging(appName,logdir)
     return logger
 
-
 def enable_verbose_logging():
     """ increases the log level to be verbose """
     LOGGER.setLevel(logging.DEBUG)
@@ -87,6 +88,35 @@ def get_logfile():
     global FILENAME
     return FILENAME
 
+def log_literal(logger, lvl, msg):
+    """
+    Logs a message to a specified logger bypassing the normal formatter
+    and writing the message exactly as passed.
+
+    The intended purpose of this is for logging messages returned from
+    remote backends that have already been formatted.
+    """
+    
+    # We assume the logger is using the two global handlers
+    global SOUT_HANDLER
+    global FILE_HANDLER
+
+    # Switch to the literal formatter
+    f = get_literal_formatter()
+    SOUT_HANDLER.setFormatter(f)
+    FILE_HANDLER.setFormatter(f)
+
+    # Log the message
+    logger.log(lvl, msg)
+    
+    # Restore default formatter
+    f = get_default_formatter()
+    SOUT_HANDLER.setFormatter(f)
+    FILE_HANDLER.setFormatter(f)
+    
+    return
+    
+
     
 #------------------------------- Private --------------------------------    
 
@@ -99,8 +129,16 @@ def set_file_logging(filename):
 
 
 def get_default_formatter():
-    return logging.Formatter("%(asctime)s:%(filename)s:%(name)s-[%(levelname)-s]:-%(message)s","%Y%m%d:%H:%M:%S")
+    global DEFAULT_FORMATTER
+    if DEFAULT_FORMATTER == None:
+        DEFAULT_FORMATTER = logging.Formatter("%(asctime)s:%(filename)s:%(name)s-[%(levelname)-s]:-%(message)s","%Y%m%d:%H:%M:%S")
+    return DEFAULT_FORMATTER
 
+def get_literal_formatter():
+    global LITERAL_FORMATTER
+    if LITERAL_FORMATTER == None:
+        LITERAL_FORMATTER = logging.Formatter()
+    return LITERAL_FORMATTER
     
 def enable_gpadmin_logging(name,logdir=None):
     global FILE_HANDLER
