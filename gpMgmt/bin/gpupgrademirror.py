@@ -1280,6 +1280,9 @@ try:
      ''' always copy the global directory '''
      fileList.append('global')
      fileListDeleteBeforeCopy.append('global')
+     ''' always copy the pg_xlog directory '''
+     fileList.append('pg_xlog')
+     fileListDeleteBeforeCopy.append('pg_xlog')
      for db in databaseList:
          if db.databaseName == 'template0':
             ''' Special case where we copy the entire database '''
