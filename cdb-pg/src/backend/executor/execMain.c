@@ -2031,8 +2031,19 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 		currentEState =	estate->slice_estates[estate->es_cur_slice_idx];
 		ExecDropTupleTable(currentEState->es_tupleTable, true);
 		currentEState->es_tupleTable = NULL;
-	}
 
+		/*
+		 * Explicitly free the executor state if the estate is created by the
+		 * subquery node or subplan node. Currently, since each QE process
+		 * only initializes the nodes for the active slices, we do
+		 * not call ExecEndSubqueryScan() or ExecEndSubPlan() anymore.
+		 */
+		if (currentEState->es_is_subquery)
+		{
+			FreeExecutorState(currentEState);
+			estate->slice_estates[estate->es_cur_slice_idx] = NULL;
+		}
+	}
 
 	/* Report how many tuples we may have inserted into AO tables */
 	SendAOTupCounts(estate);
