@@ -216,6 +216,8 @@ int send_alert(const GpErrorData * errorData)
 	/* Set up a subject line for the e-mail.  Let's limit it to 127 bytes just to be safe. */
 	if (strcmp(errorData->error_severity,"LOG") == 0)
 		snprintf(subject, 127, "%s",errorData->error_message);
+	else if (errorData->sql_state && strcmp(errorData->sql_state,"57P03") == 0)
+		snprintf(subject, 127, "%s",errorData->error_message);
 	else
 		snprintf(subject, 127, "%s: %s",errorData->error_severity, errorData->error_message);
 	subject[127] = '\0'; /* Guarantee subject is zero terminated */
@@ -309,7 +311,13 @@ int send_alert(const GpErrorData * errorData)
 	list_free(elemlist);
 	pfree(rawstring);
 
-	smtp_8bitmime_set_body(message, E8bitmime_8BITMIME);
+	/*
+	 * Many e-mail transfer agents don't accept the 8BITMIME extension.  We'd
+	 * Like to use it if available, but I don't know how to do that yet.
+	 * For now, just don't set it.  The MTA will decide if it is 8BIT based on
+	 * the MIME header.
+	 */
+	/* smtp_8bitmime_set_body(message, E8bitmime_8BITMIME); */
 
 	/* Initiate a connection to the SMTP server and transfer the message. */
 	if (!smtp_start_session(session))
@@ -324,6 +332,12 @@ int send_alert(const GpErrorData * errorData)
 	}
 	else
 	{
+		char buf[128];
+
+		/* I would expect this to be always zero here, but just in case it's not */
+		if (smtp_errno() != 0)
+				elog(LOG, "SMTP  server problem %s", smtp_strerror(smtp_errno(),
+								buf, sizeof buf));
 		/*
 		 * Report on the success or otherwise of the mail transfer.
 		 * This really only tells the "overall" status, so if an individual e-mail fails,
@@ -619,7 +633,9 @@ messagebody_cb(void **buf, int *len, void *arg)
 
 		strcat(message, errorData->error_severity);
 		strcat(message, ": ");
-		if (errorData->sql_state != NULL && pg_strnlen(errorData->sql_state,5)>4 && strncmp(errorData->sql_state,"00000",5)!=0)
+		if (errorData->sql_state != NULL && pg_strnlen(errorData->sql_state,5)>4 &&
+				strncmp(errorData->sql_state,"XX100",5)!=0 &&
+				strncmp(errorData->sql_state,"00000",5)!=0)
 		{
 			strcat(message, "(");
 			strncat(message, errorData->sql_state, 5);
@@ -769,7 +785,7 @@ static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)
 
 	elog(LOG, "tlsinteract asking for tls password");
 
-	strcpy(buf, email_smtp_password);
+	strcpy(buf, email_smtp_password);  // This isn't right... We need the X.509 certificate's password, I think
 	return strlen(buf);
 }
 
@@ -862,7 +878,7 @@ static int handle_invalid_peer_certificate(long vfy_result)
 	}
 
 	/*
-	 * These two errors come from using self-signed certificates.  We don't care about that.
+	 * These two errors come fgpdb-2010-02-18_184837.csvrom using self-signed certificates.  We don't care about that.
 	 */
 	if (vfy_result != X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY &&
 		vfy_result != X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN)
@@ -954,13 +970,15 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	{
 			const smtp_status_t *status = NULL;
 
+			smtp_mailbox_t mbox;
+			mbox = va_arg(alist, smtp_mailbox_t);
 			smtp_recipient_t rcpt;
-				msg = va_arg(alist, smtp_recipient_t);
-				if (rcpt != NULL)
+			rcpt = va_arg(alist, smtp_recipient_t);
+			if (rcpt != NULL)
 				status = smtp_recipient_status (rcpt);
 
 			if (status && status->code != 0 && status->code != 250 && status->text != NULL)
-				elog(LOG,"SMTP server reports a RCPTSTATUS problem %d: %s", status->code, status->text);
+				elog(LOG,"SMTP server reports a  problem %d: %s", status->code, status->text);
 		}
 #endif
 		break;
@@ -977,18 +995,25 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	{
 		const smtp_status_t *status = NULL;
 
-			smtp_message_t msg;
-			msg = va_arg(alist, smtp_message_t);
-			if (msg != NULL)
+		smtp_message_t msg;
+		msg = va_arg(alist, smtp_message_t);
+		if (msg != NULL)
 			status = smtp_message_transfer_status (msg);
 
 		if (status && status->code != 0 && status->code != 250 && status->text != NULL)
 			elog(LOG,"SMTP server reports a messagesent problem %d: %s", status->code, status->text);
+		else
+			elog(DEBUG2,"EV_MESSAGESENT");
 	}
 	break;
 	case SMTP_EV_DISCONNECT:
 		elog(DEBUG2, "EV_DISCONNECT");
 		break;
+
+	case SMTP_EV_EXTNA_8BITMIME:
+		elog(LOG, "SMTP_EV_EXTNA_8BITMIME");
+		break;
+
 	default:
 		break;
 
