@@ -618,6 +618,7 @@ def parseargs():
         parser.exit()
 
     if len(args) > 0:
+        logger.error("Argument %s is invalid.  Is an option missing a parameter?" % args[-1])
         parser.print_help()
         parser.exit()
 
