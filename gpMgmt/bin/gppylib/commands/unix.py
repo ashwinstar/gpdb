@@ -684,7 +684,24 @@ class Chmod(Command):
     def local(name, dir, perm):
         cmd=Chmod(name, dir, perm)
         cmd.run(validateAfter=True)
-
+        
+#--------------get user id ----------------------
+class UserId(Command):
+    def __init__(self, name, ctxt=LOCAL, remoteHost=None):
+        idCmd = findCmdInPath('id')
+        trCmd = findCmdInPath('tr')
+        awkCmd = findCmdInPath('awk')
+        cmdStr = "%s|%s '(' ' '|%s ')' ' '|%s '{print $2}'" % (idCmd, trCmd, trCmd, awkCmd)
+        Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+    
+    @staticmethod
+    def local(name):
+        cmd=UserId(name)
+        cmd.run(validateAfter=True)
+        return cmd.results.stdout.strip()
+        
+    
+    
 #--------------get list of desecendant processes -------------------
 
 def getDescendentProcesses(pid):

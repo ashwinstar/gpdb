@@ -11,6 +11,7 @@ import stat
 
 try: 
     from pygresql import pgdb
+    from gppylib.commands.unix import UserId
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -107,9 +108,9 @@ class DbURL:
             self.pgdb = dbname
 
         if username is None:
-            self.pguser = os.environ.get('PGUSER', os.environ.get('USER'))             
-            if self.pguser is None:
-                raise Exception('$USER env variable is not set!')
+            self.pguser = os.environ.get('PGUSER', os.environ.get('USER', UserId.local('Get uid')))             
+            if self.pguser is None or self.pguser == '':
+                raise Exception('Both $PGUSER and $USER env variables are not set!')
         else:
             self.pguser = username
 
