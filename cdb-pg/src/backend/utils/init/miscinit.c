@@ -433,7 +433,7 @@ InitializeSessionUserId(const char *rolename)
 		ereport(FATAL,
 				(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 				 errmsg("role \"%s\" does not exist", rolename),
-				 errOmitLocation(true)));
+				 errOmitLocation(true), errSendAlert(false)));
 
 	rform = (Form_pg_authid) GETSTRUCT(roleTup);
 	roleid = HeapTupleGetOid(roleTup);
