@@ -82,34 +82,29 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 
 #if defined(__darwin__)
 	/*
-	 * Attempt to work around stupid OSX issue:  By default, /etc/hosts isn't looked at or is looked at after DNS,
-	 * and is ignored if DNS definitively says the hostname doesn't or can't exist.
+	 * Attempt to work around some issues on OSX.
 	 *
-	 * So, you can get a "Temporary failure in name resolution", even though the name is in your /etc/hosts.
-	 * This "temporary" error won't go away until you add the name to the DNS server, which only the network admin can do.
+	 * There are times when a process can be in a state where it can no longer call for name resolution services.
+	 * This can happen if the processes was forked into the background, and then the interactive session (or ssh session)
+	 * was logged off.  This is because the Mach kernel garbage collects the security context for the session.
 	 *
-	 * Perhaps there is some way to configure MAC OSX to look in the /etc/hosts file first, but I can't figure it out.
+	 * The real fix is to make sure we always start the postmasters with launchctl, so they get started in the
+	 * right security context.   pg_ctl has been updated to do this, which should solve the problem.
 	 *
-	 * To make life easier, let's do our own resolution if the hostname is our own machine's name.
+	 * But, there is always a chance I missed something in how that is supposed to work.
+	 * It really makes for strange errors if "localhost" can't be resolved to an IP address, and
+	 * if we can resolve "localhost" plus our own machine name, that's good enough for the
+	 * GPDB single-node-edition to run.
 	 *
-	 * Additional Note: From what I can tell (and it's a guess), the problem is really with MAC machine names
-	 * that end in ".local".  Our in-house DNS service 	 * doesn't recognize .local, and returns
-	 * a NXDOMAIN (no such domain) error.  This error means the name cannot be valid,
-	 * so OSX just gives up, and assumes that the domain name will be resolvable sometime in the future when
-	 * the DNS server next gets an update.
 	 *
-	 * Beyond what I've done here, it might be better if instead, or addition to, this hack, we look for .local
-	 * at the end of the name, and remove it before calling getaddrinfo.  This will return a "don't know the name" error
-	 * from DNS, and I suspect that OSX will then look in /etc/hosts.   This would be slower than my hack here, but
-	 * would work if you are setting up two or more OSX boxes as part of the GPDB system.  I've not tested this theory,
-	 * and since I don't really care about OSX (it's not a supported platform), I'll leave it to some MAC fan-boy
-	 * to add that code if he thinks it's worthwhile.
+	 * So to make life easier, let's do our own resolution if the hostname is our own machine's name,
+	 * or if the hostname is "localhost", and we got an error from getaddrinfo() trying to resolve them the
+	 * "normal" way.   This code really shouldn't ever get run, so in the future, when we have confidence
+	 * it isn't needed any more, we can take this hack out.
 	 *
-	 * The other possible way would be to read /etc/hosts ourselves, and resolve the hostname.  Again, not
-	 * important to me, so up to any MAC fan-boys out there to do this if desired.
 	 *
 	 */
-	if (hostname != NULL && rc == EAI_AGAIN)
+	if (hostname != NULL && (rc == EAI_AGAIN || rc == EAI_NONAME))
 	{
 		struct addrinfo *ai;
 		struct sockaddr_in *psin;
@@ -123,7 +118,7 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 			 * we know we are really localhost, and can give back the loopback address.
 			 *
 			 * "localhost" should have resolved by getaddrinfo, but if not, it too is a safe
-			 * hostname to convert to the loopback address.
+			 * host name to convert to the loopback address.
 			 */
 			if (((strlen(myhostname) > 0) && (strncmp(myhostname,hostname,255) == 0)) ||
 					(strcmp("localhost",hostname) == 0))
@@ -177,8 +172,8 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 
 	/*
 	 * If we get EAI_AGAIN, the error might be temporary.   Retry it to see.
-	 * Note:  Mac OSX seems to give this error for NXDOMAIN errors, which aren't
-	 * really temporary.  The above hack should normally handle that case.
+	 * Note:  Mac OSX Leopard seems to give this error for NXDOMAIN errors, which aren't
+	 * really temporary, but retrying doesn't cause any real issue.
 	 */
 	if (rc == EAI_AGAIN)
 	{
