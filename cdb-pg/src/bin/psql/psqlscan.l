@@ -832,6 +832,12 @@ other			.
 					yyless(0);
 					return LEXRES_OK;
 				}
+				
+	/* GPDB: This rule removes the need for a space after the "!" command */
+"!"             {
+					ECHO;
+					return LEXRES_OK;
+				}
 
 {other}			{ ECHO; }
 
