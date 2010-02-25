@@ -4800,26 +4800,40 @@ select * from get_ereport order by 1;
  daba: dependency:00000930:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
  daba: dependency:00000931:  errmsg("cannot drop %s because it is required by the database system", 
  daba: dependency:00000932:  objDescription))); 
- eaae: elog:00000165:  ereport(ERROR, (errmsg_internal("errstart was not called")));  
- eaae: elog:00000166:  }  
- eaae: elog:00000167:  } while (0) 
- eaae: elog:00000168:  
- eaae: elog:00000169: bool SuppressPanic = false; /* GP */ 
- eaae: elog:00000170:  
- eaae: elog:00000171: static void cdb_tidy_message(ErrorData *edata); 
- eaae: elog:00001769:  ereport(FATAL, 
- eaae: elog:00001770:  (errcode_for_file_access(), 
- eaae: elog:00001771:  errmsg("could not open file "%s": %m", OutputFileName))); 
- eaae: elog:00001779:  ereport(FATAL, 
- eaae: elog:00001780:  (errcode_for_file_access(), 
- eaae: elog:00001781:  errmsg("could not reopen file "%s" as stderr: %m", 
- eaae: elog:00001782:  OutputFileName))); 
- eaae: elog:00001792:  ereport(FATAL, 
- eaae: elog:00001793:  (errcode_for_file_access(), 
- eaae: elog:00001794:  errmsg("could not reopen file "%s" as stdout: %m", 
- eaae: elog:00001795:  OutputFileName))); 
- eaae: elog:00003987:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- eaae: elog:00003988:  errmsg("Failed to get backtrace symbol: out of memory"))); 
+ eaae: elog:00000166:  ereport(ERROR, (errmsg_internal("errstart was not called")));  
+ eaae: elog:00000167:  }  
+ eaae: elog:00000168:  } while (0) 
+ eaae: elog:00000169:  
+ eaae: elog:00000170: bool SuppressPanic = false; /* GP */ 
+ eaae: elog:00000171:  
+ eaae: elog:00000172: static void cdb_tidy_message(ErrorData *edata); 
+ eaae: elog:00001770:  ereport(FATAL, 
+ eaae: elog:00001771:  (errcode_for_file_access(), 
+ eaae: elog:00001772:  errmsg("could not open file "%s": %m", OutputFileName))); 
+ eaae: elog:00001780:  ereport(FATAL, 
+ eaae: elog:00001781:  (errcode_for_file_access(), 
+ eaae: elog:00001782:  errmsg("could not reopen file "%s" as stderr: %m", 
+ eaae: elog:00001783:  OutputFileName))); 
+ eaae: elog:00001793:  ereport(FATAL, 
+ eaae: elog:00001794:  (errcode_for_file_access(), 
+ eaae: elog:00001795:  errmsg("could not reopen file "%s" as stdout: %m", 
+ eaae: elog:00001796:  OutputFileName))); 
+ eaae: elog:00003921:  ereport(ERROR, 
+ eaae: elog:00003922:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ eaae: elog:00003923:  errmsg("pg_elog(): called with %hd arguments", 
+ eaae: elog:00003924:  PG_NARGS()))); 
+ eaae: elog:00003926:  ereport(ERROR, 
+ eaae: elog:00003927:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ eaae: elog:00003928:  errmsg("pg_elog(): called with null arguments"))); 
+ eaae: elog:00003931:  ereport(ERROR, 
+ eaae: elog:00003932:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ eaae: elog:00003933:  errmsg("pg_elog(): called with null arguments"))); 
+ eaae: elog:00003937:  ereport(ERROR, 
+ eaae: elog:00003938:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ eaae: elog:00003939:  errmsg("permission denied"), 
+ eaae: elog:00003940:  errhint("pg_elog(): requires superuser privileges."))); 
+ eaae: elog:00004044:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ eaae: elog:00004045:  errmsg("Failed to get backtrace symbol: out of memory"))); 
  eaag: encode:00000053:  ereport(ERROR, 
  eaag: encode:00000054:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  eaag: encode:00000055:  errmsg("unrecognized encoding: "%s"", namebuf))); 
@@ -8386,7 +8400,7 @@ select * from get_ereport order by 1;
  maai: miscinit:00000433:  ereport(FATAL, 
  maai: miscinit:00000434:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
  maai: miscinit:00000435:  errmsg("role "%s" does not exist", rolename), 
- maai: miscinit:00000436:  errOmitLocation(true))); 
+ maai: miscinit:00000436:  errOmitLocation(true), errSendAlert(false))); 
  maai: miscinit:00000464:  ereport(FATAL, 
  maai: miscinit:00000465:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
  maai: miscinit:00000466:  errmsg("role "%s" is not permitted to log in", 

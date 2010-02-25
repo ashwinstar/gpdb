@@ -4929,6 +4929,11 @@ DESCR("change weight of all the backends for a given session id");
 DATA(insert OID = 5042 (  gp_list_backend_priorities   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_list_backend_priorities - _null_ ));
 DESCR("list priorities of backends");
 
+/* elog related */
+DATA(insert OID = 5044 (  pg_elog			   PGNSP PGUID 12 f f t f i 1 2278 f "25" _null_ _null_ _null_ pg_elog - _null_ ));
+DESCR("Insert text into the error log");
+DATA(insert OID = 5045 (  pg_elog			   PGNSP PGUID 12 f f t f i 2 2278 f "25 16" _null_ _null_ _null_ pg_elog - _null_ ));
+DESCR("Insert text into the error log");
 /*
  * Symbolic values for provolatile column: these indicate whether the result
  * of a function is dependent *only* on the values of its explicit arguments,

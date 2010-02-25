@@ -100,7 +100,8 @@ WHERE p1.oid < p2.oid AND
  3212 | int2_matrix_accum | 3214 | int8_matrix_accum
  3213 | int4_matrix_accum | 3215 | float8_matrix_accum
  3212 | int2_matrix_accum | 3215 | float8_matrix_accum
-(12 rows)
+ 5044 | pg_elog           | 5045 | pg_elog
+(13 rows)
 
 -- Look for uses of different type OIDs in the argument/result type fields
 -- for different aliases of the same built-in function.

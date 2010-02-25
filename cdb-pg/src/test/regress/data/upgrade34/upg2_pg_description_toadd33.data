@@ -32,6 +32,8 @@ objoid|classoid|objsubid|description
 5040|1255|0|change weight of all the backends for a given session id
 5041|1255|0|change weight of all the backends for a given session id
 5042|1255|0|list priorities of backends
+5044|1255|0|Insert text into the error log
+5045|1255|0|Insert text into the error log
 7175|1255|0|add entry to gp_persistent_database_node
 7176|1255|0|add entry to persistent_relation_node
 7177|1255|0|add entry to gp_persistent_tablespace_node

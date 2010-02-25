@@ -1080,4 +1080,6 @@ Datum gp_persistent_tablespace_node_add(PG_FUNCTION_ARGS);
 /* cdb/cdbpersistentbuild.c */
 Datum gp_persistent_build_db(PG_FUNCTION_ARGS);
 
+/* utils/error/elog.c */
+extern Datum pg_elog(PG_FUNCTION_ARGS);
 #endif   /* BUILTINS_H */
