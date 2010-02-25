@@ -1307,7 +1307,7 @@ CREATE_STANDBY_QD () {
 		RETCODE=$?
 		case $RETCODE in
 			0) LOG_MSG "[INFO]:-Successfully completed standby master initialization" 1 ;;
-			1) LOG_MSG "[WARN]:-Non-fatal issue with standby master initialization, check gpstate.sh -f output" 1 ;;
+			1) LOG_MSG "[WARN]:-Non-fatal issue with standby master initialization, check gpstate -f output" 1 ;;
 			2) ERROR_EXIT "[FATAL]:-Initialization of standby master failed"
 		esac
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${STANDBY_HOSTNAME} \"$RM -Rf ${QD_DIR}\""
