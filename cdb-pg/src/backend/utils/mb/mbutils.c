@@ -610,9 +610,20 @@ perform_default_encoding_conversion(const char *src, int len, bool is_client_to_
 	}
 	else
 	{
-		src_encoding = DatabaseEncoding->encoding;
-		dest_encoding = ClientEncoding->encoding;
-		flinfo = ToClientConvProc;
+		if(custom_client_encoding == -1)
+		{
+			/* this is the normal path of execution */
+			src_encoding = DatabaseEncoding->encoding;
+			dest_encoding = ClientEncoding->encoding;
+			flinfo = ToClientConvProc;			
+		}
+		else
+		{
+			/* this is the custom path of execution, for external tbl encodings */
+			src_encoding = DatabaseEncoding->encoding;
+			dest_encoding = custom_client_encoding;
+			flinfo = custom_encoding_proc;
+		}
 	}
 
 	if (flinfo == NULL)
