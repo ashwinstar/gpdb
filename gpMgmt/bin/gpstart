@@ -27,6 +27,7 @@ try:
     from gppylib.db import catalog
     from gppylib.commands import unix
     from gppylib.commands import gp
+    from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
     from gppylib.commands import base
     from gppylib.commands import pg
     from gppylib import pgconf
@@ -57,7 +58,8 @@ class GpStart:
                  parallel=DEFAULT_NUM_WORKERS,
                  quiet=False,
                  masteronly=False,
-                 interactive=False):
+                 interactive=False,
+                 timeout=SEGMENT_TIMEOUT_DEFAULT):
         self.restricted=restricted
         self.start_standby=start_standby        
         self.pool = None
@@ -67,6 +69,7 @@ class GpStart:
         self.masteronly=masteronly
         self.master_datadir=master_datadir
         self.interactive=interactive
+        self.timeout=timeout
 
         self.gpversion=None
         self.gparray=None
@@ -238,6 +241,7 @@ class GpStart:
         logger.info("Database                 = %s" % self.dburl.pgdb )
         logger.info("Master Port              = %s" % self.port )
         logger.info("Master directory         = %s" % self.master_datadir )
+        logger.info("Timeout                  = %d seconds" % self.timeout)
         if self.gparray.standbyMaster:
             if self.start_standby:
                 logger.info("Master standby start     = On")
@@ -279,7 +283,8 @@ class GpStart:
         logger.info("Starting Master instance in admin mode")
         dbid = -1
         numContentsInCluster = 0
-        cmd=gp.MasterStart('master in utility mode',self.master_datadir,self.port,dbid, numContentsInCluster,utilityMode=True)
+        cmd=gp.MasterStart('master in utility mode',self.master_datadir,self.port,dbid, 
+                           numContentsInCluster,utilityMode=True, timeout=self.timeout)
         cmd.run()
 
         if cmd.get_results().rc != 0:
@@ -330,7 +335,7 @@ class GpStart:
 
         segmentStartResult = StartSegmentsOperation(self.pool,self.quiet,
                 [self.lc_collate,self.lc_monetary,self.lc_numeric], self.gpversion,
-                self.gphome, self.master_datadir
+                self.gphome, self.master_datadir, self.timeout
                 ).startSegments(self.gparray, segmentsToStart, startMode)
 
         # process the result of segment startup
@@ -510,7 +515,7 @@ class GpStart:
 
         numContentsInCluster = self.gparray.getNumSegmentContents()
         gp.MasterStart.local("Starting Master instance",self.master_datadir,self.port,
-                             self.gparray.master.dbid, numContentsInCluster,
+                             self.gparray.master.dbid, numContentsInCluster, timeout=self.timeout,
                              restrictedMode=self.restricted,max_connections=self.max_connections,
                              disableMasterMirror=(not self.start_standby) )
 
@@ -602,6 +607,8 @@ def parseargs():
                         help='number of segment hosts to run in parallel. Default is %d' % DEFAULT_NUM_WORKERS)    
     optgrp3.add_option('-R', '--restricted', action='store_true',
                         help='start in restricted mode. Only users with superuser privilege are allowed to connect.')
+    optgrp3.add_option('-t', '--timeout', dest='timeout', default=SEGMENT_TIMEOUT_DEFAULT, type='int',
+                       help='time to wait for segment startup (in seconds)')
 
     parser.set_defaults(verbose=False, filters=[], slice=(None, None))
 
@@ -664,7 +671,8 @@ def main():
                           parallel=options.parallel,
                           quiet=options.quiet,
                           masteronly=options.master_only,
-                          interactive=options.interactive)
+                          interactive=options.interactive,
+                          timeout=options.timeout)
 
         if gpstart.system_start():
             sys.exit(0)

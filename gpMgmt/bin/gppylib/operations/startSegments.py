@@ -7,6 +7,7 @@ from gppylib.commands import gp
 from gppylib.commands import base
 from gppylib.gparray import GpArray
 from gppylib import gphostcache
+from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
 
 logger = get_default_logger()
 
@@ -62,7 +63,8 @@ class StartSegmentsOperation:
 
     """
 
-    def __init__(self, workerPool, quiet, localeData, gpVersion, gpHome, masterDataDirectory):
+    def __init__(self, workerPool, quiet, localeData, gpVersion, 
+                 gpHome, masterDataDirectory, timeout=SEGMENT_TIMEOUT_DEFAULT):
         checkNotNone("workerPool", workerPool)
         self.__workerPool = workerPool
         self.__quiet = quiet
@@ -70,6 +72,7 @@ class StartSegmentsOperation:
         self.__gpVersion = gpVersion
         self.__gpHome = gpHome
         self.__masterDataDirectory = masterDataDirectory
+        self.__timeout = timeout
 
     def startSegments(self, gpArray, segments, startMethod):
         """
@@ -150,6 +153,7 @@ class StartSegmentsOperation:
                                    self.__gpVersion,
                                    mirroringMode,
                                    numContentsInCluster,
+                                   self.__timeout,
                                    verbose=logging_is_verbose(),
                                    ctxt=base.REMOTE,
                                    remoteHost=hostName)

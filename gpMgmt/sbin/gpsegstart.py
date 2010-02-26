@@ -25,6 +25,7 @@ from gppylib import gparray
 from gppylib.commands import base
 from gppylib.commands import unix
 from gppylib.commands import gp
+from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
 from gppylib.commands import pg
 from gppylib.db import catalog
 from gppylib.db import dbconn
@@ -63,12 +64,13 @@ class SegStartStatus():
 #-------------------------------------------------------------------------    
 class GpSegStart:
     ######
-    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster):
+    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster, timeout):
 
         self.dblist = map(gparray.GpDB.initFromString, dblist)
         self.mirroringMode = mirroringMode
         self.expected_gpversion=gpversion
         self.numContentsInCluster=numContentsInCluster
+        self.timeout = timeout
 
         # There is an issue with python 2.6.2 on linux that can cause start to 
         # hang if it is multithreaded.
@@ -135,7 +137,8 @@ class GpSegStart:
             cmd=gp.SegmentStart("Starting seg at dir %s" % dir, seg, 
                                 self.numContentsInCluster,
                                 self.mirroringMode,
-                                noWait=nowait)
+                                noWait=nowait,
+                                timeout=self.timeout)
             self.pool.addCommand(cmd)
               
         self.pool.join()
@@ -218,6 +221,8 @@ def parseargs():
                         help="expected software version")      
     parser.add_option("-n", "--numsegments", dest="numsegments", 
                       help="number of distinct content ids in cluster")
+    parser.add_option("-t", "--timeout", dest="timeout", type="int", default=SEGMENT_TIMEOUT_DEFAULT,
+                      help="seconds to wait")
 
     parser.set_defaults(verbose=False, filters=[], slice=(None, None))
     
@@ -255,7 +260,8 @@ def main():
                                 options.gpversion,
                                 options.collation,
                                 options.mirroringMode,
-                                options.numsegments)
+                                options.numsegments,
+                                options.timeout)
         
         failures = gpsegstart.start()
         

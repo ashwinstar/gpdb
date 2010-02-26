@@ -22,7 +22,8 @@ logger = get_default_logger()
 #TODO:  need a better way of managing environment variables.
 GPHOME=os.environ.get('GPHOME')
 
-
+#Default timeout for segment start
+SEGMENT_TIMEOUT_DEFAULT=60
 
 def check_passive_standby(name,dir):
     path = os.path.join(dir, 'postmaster.opts')
@@ -60,8 +61,8 @@ class PySync(Command):
 #-----------------------------------------------
 class MasterStart(Command):
     def __init__(self, name, dataDir, port, dbid, numContentsInCluster, 
-                 restrictedMode=False, max_connections=1,
-                 disableMasterMirror=False,
+                 restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT, 
+                 max_connections=1, disableMasterMirror=False,
                  utilityMode=False, ctxt=LOCAL, remoteHost=None):
         self.dataDir=dataDir
         self.port=port
@@ -91,9 +92,11 @@ class MasterStart(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     @staticmethod
-    def local(name,dataDir,port,dbid, numContentsInCluster, restrictedMode=False,max_connections=1,
-                 disableMasterMirror=False,utilityMode=False):
-        cmd=MasterStart(name,dataDir,port,dbid, numContentsInCluster, restrictedMode,max_connections,disableMasterMirror,utilityMode)
+    def local(name,dataDir,port,dbid, numContentsInCluster, restrictedMode=False, 
+              timeout=SEGMENT_TIMEOUT_DEFAULT, max_connections=1, disableMasterMirror=False,
+              utilityMode=False):
+        cmd=MasterStart(name,dataDir,port,dbid, numContentsInCluster, restrictedMode, timeout, 
+                        max_connections,disableMasterMirror,utilityMode)
         cmd.run(validateAfter=True)
 
 #-----------------------------------------------
@@ -118,7 +121,8 @@ class SegmentStart(Command):
     """
 
     def __init__(self, name, gpdb, numContentsInCluster, mirroringMode, 
-                 utilityMode=False, ctxt=LOCAL, remoteHost=None, noWait=False):
+                 utilityMode=False, ctxt=LOCAL, remoteHost=None, 
+                 noWait=False, timeout=SEGMENT_TIMEOUT_DEFAULT):
 
         # This is referenced from calling code
         self.segment = gpdb
@@ -137,6 +141,7 @@ class SegmentStart(Command):
 
         if not noWait:
             cmdfrags.append('-w')
+            cmdfrags.append('-t %d' % timeout)
 
         portStr = ""
         if port:
@@ -203,8 +208,8 @@ class SegmentStop(Command):
 #-----------------------------------------------
 class GpSegStartCmd(Command):
     def __init__(self, name, gphome, segments, collatelist, gpversion,
-                 mirroringMode, numContentsInCluster, verbose=False,
-                 ctxt=LOCAL, remoteHost=None):
+                 mirroringMode, numContentsInCluster, timeout=SEGMENT_TIMEOUT_DEFAULT, 
+                 verbose=False,ctxt=LOCAL, remoteHost=None):
 
         # Referenced by calling code, create a clone
         self.dblist = [x for x in segments]
@@ -227,6 +232,7 @@ class GpSegStartCmd(Command):
                 "-M %s" % mirroringMode,
                 "-V '%s'" % gpversion,
                 "-n %s" % numContentsInCluster,
+                "-t %d" % timeout,
                 dirstr
                 ])
 
