@@ -8711,7 +8711,7 @@ testGPbackend(void)
 
 	query = createPQExpBuffer();
 
-	appendPQExpBuffer(query, "SELECT current_setting('gp_is_primary');");
+	appendPQExpBuffer(query, "SELECT current_setting('gp_role');");
 	res = PQexec(g_conn, query->data);
 
 	isGPbackend = ( PQresultStatus(res) == PGRES_TUPLES_OK );
