@@ -117,7 +117,7 @@ errcode_for_file_access(void)
 
 bool
 errstart(int elevel, const char *filename, int lineno,
-	 const char *funcname)
+		 const char *funcname, const char* domain)
 {
 	return (elevel >= ERROR);
 }
@@ -179,6 +179,12 @@ errhint(const char *fmt,...)
 {
 	fprintf(stderr, "HINT: %s\n", fmt);
 	return 0;		/* return value does not matter */
+}
+
+int
+errOmitLocation(bool omitLocation)
+{
+	return 0;
 }
 
 #define	NUMERIC_LOCAL_NDIG	36	/* number of 'digits' in local
@@ -638,7 +644,8 @@ DisplayOptions(unsigned int validOptions)
 	"  -x  Force interpreted formatting of block items as index items\n"
 	 "  -y  Force interpreted formatting of block items as heap items\n"
 		 "  -p  Try and deparse heap data\n"
-		 "  -D  Data directory for the segment\n\n"
+		 "  -D  Data directory for the segment\n"
+		 "  -M  Checksum option for mirror files\n\n"
 		 "The following options are valid for control files:\n"
 		 "  -c  Interpret the file listed as a control file\n"
 	  "  -f  Display formatted content dump along with interpretation\n"
@@ -935,6 +942,9 @@ ConsumeOptions(int numOptions, char **options)
 						printf("Error: Options <p> and <x> are "
 						   "mutually exclusive.\n");
 					}
+					break;
+				case 'M':
+					SET_OPTION(itemOptions, ITEM_CHECKSUM, 'M');
 					break;
 
 				default:
@@ -1389,6 +1399,84 @@ FormatHeader(Page page)
 
 	return (rc);
 }
+
+/* fix hint bits for checksumming */
+static void
+fixupItemBlock(Page page)
+{
+	unsigned int    x;
+	unsigned int    itemSize;
+	unsigned int    itemOffset;
+	unsigned int    itemFlags;
+	ItemId          itemId;
+	int             maxOffset = PageGetMaxOffsetNumber(page);
+
+	/*
+	 * If it's a btree meta page, the meta block is where items would
+	 * normally be; don't print garbage. 
+	 */
+	if (IsBtreeMetaPage(page))
+		return;
+
+//	printf("<Data> ------ \n");
+
+	/* Loop through the items on the block.  Check if the block is */
+	/* empty and has a sensible item array listed before running  */
+	/* through each item   */
+	if (maxOffset == 0)
+		printf(" Empty block - no items listed \n\n");
+	else if ((maxOffset < 0) || (maxOffset > blockSize))
+		printf(" Error: Item index corrupt on block. Offset: <%d>.\n\n",
+		       maxOffset);
+	else
+	{
+//		int             formatAs;
+//		char            textFlags[8];
+
+		for (x = 1; x < (maxOffset + 1); x++)
+		{
+			itemId = PageGetItemId(page, x);
+			itemFlags = (unsigned int) ItemIdGetFlags(itemId);
+			itemSize = (unsigned int) ItemIdGetLength(itemId);
+			itemOffset = (unsigned int) ItemIdGetOffset(itemId);
+
+//			printf(" Item %3u -- Length: %4u  Offset: %4u (0x%04x)"
+//			"  Flags: %s\n", x, itemSize, itemOffset, itemOffset,
+//			       textFlags);
+
+			/*
+			 * Make sure the item can physically fit on this
+			 * block before
+			 */
+			/* formatting */
+			if ((itemOffset + itemSize > blockSize) ||
+			    (itemOffset + itemSize > bytesToFormat))
+				printf("  Error: Item contents extend beyond block.\n"
+				       "         BlockSize<%d> Bytes Read<%d> Item Start<%d>.\n",
+				       blockSize, bytesToFormat, itemOffset + itemSize);
+			else
+			{
+				unsigned int	numBytes	= itemSize;
+				unsigned int	startIndex	= itemOffset;
+				int             alignedSize = 
+						MAXALIGN(sizeof(HeapTupleHeaderData));
+
+				if (numBytes < alignedSize)
+				{
+					if (numBytes)
+						printf("  Error: This item does not look like a heap item.\n");
+				}
+				else
+				{
+					HeapTupleHeader htup = 
+							(HeapTupleHeader) (&buffer[startIndex]);
+
+					htup->t_infomask = 0;
+				}
+			}
+		}
+	}
+} // end fixupItemBlock
 
 /* Dump out formatted items that reside on this block  */
 static void
@@ -2007,6 +2095,15 @@ FormatSpecial()
 	}
 }
 
+/* Dump the binary image of the block */
+static void
+DumpBinaryBlock()
+{
+	unsigned int    x;
+	for (x = 0; x < bytesToFormat; x++)
+		putchar(buffer[x]);
+}
+
 /* For each block, dump out formatted header and content information */
 static void
 FormatBlock()
@@ -2014,6 +2111,23 @@ FormatBlock()
 	Page            page = (Page) buffer;
 	pageOffset = blockSize * currentBlock;
 	specialType = GetSpecialSectionType(page);
+
+	if (itemOptions & ITEM_CHECKSUM)
+	{
+		if (bytesToFormat >= offsetof(PageHeaderData, pd_linp[0]))
+		{
+			fixupItemBlock(page);
+//			FormatBinary(bytesToFormat, 0);			
+			DumpBinaryBlock();
+		}
+		else
+		{
+			int rc;
+			rc = FormatHeader(page);
+		}
+			
+		return;
+	}
 
 	printf("\nBlock %4u **%s***************************************\n",
 	       currentBlock,
@@ -2244,15 +2358,6 @@ FormatBinary(unsigned int numBytes, unsigned int startIndex)
 	}
 }
 
-/* Dump the binary image of the block */
-static void
-DumpBinaryBlock()
-{
-	unsigned int    x;
-	for (x = 0; x < bytesToFormat; x++)
-		putchar(buffer[x]);
-}
-
 /* Control the dumping of the blocks within the file */
 static void
 DumpFileContents()
@@ -2358,7 +2463,8 @@ main(int argv, char **argc)
 			build_tupdesc();
 		}
 		/* Don't dump the header if we're dumping binary pages         */
-		if (!(blockOptions & BLOCK_BINARY))
+		if ((!(blockOptions & BLOCK_BINARY))
+			&& (!(itemOptions & ITEM_CHECKSUM)))
 			CreateDumpFileHeader(argv, argc);
 
 		/*

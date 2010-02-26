@@ -51,11 +51,11 @@ static unsigned int blockOptions = 0;
 typedef enum
 {
   BLOCK_ABSOLUTE = 0x00000001,	// -a: Absolute (vs Relative) addressing
-  BLOCK_BINARY = 0x00000002,	// -b: Binary dump of block
-  BLOCK_FORMAT = 0x00000004,	// -f: Formatted dump of blocks / control file
-  BLOCK_FORCED = 0x00000008,	// -S: Block size forced
-  BLOCK_NO_INTR = 0x00000010,	// -d: Dump straight blocks
-  BLOCK_RANGE = 0x00000020	// -R: Specific block range to dump
+  BLOCK_BINARY	 = 0x00000002,	// -b: Binary dump of block
+  BLOCK_FORMAT	 = 0x00000004,	// -f: Formatted dump of blocks / control file
+  BLOCK_FORCED	 = 0x00000008,	// -S: Block size forced
+  BLOCK_NO_INTR	 = 0x00000010,	// -d: Dump straight blocks
+  BLOCK_RANGE	 = 0x00000020	// -R: Specific block range to dump
 }
 blockSwitches;
 
@@ -66,10 +66,11 @@ static int blockEnd = -1;	// -R [end]: Block range end
 static unsigned int itemOptions = 0;
 typedef enum
 {
-  ITEM_DETAIL = 0x00000001,	// -i: Display interpreted items    
-  ITEM_HEAP = 0x00000002,	// -x: Blocks contain heap items
-  ITEM_INDEX = 0x00000004,	// -y: Blocks contain heap items
-  DEPARSE_HEAP = 0x00000008 // -p: deparse block
+  ITEM_DETAIL	= 0x00000001,	// -i: Display interpreted items    
+  ITEM_HEAP		= 0x00000002,	// -x: Blocks contain heap items
+  ITEM_INDEX	= 0x00000004,	// -y: Blocks contain heap items
+  DEPARSE_HEAP	= 0x00000008,	// -p: deparse block
+  ITEM_CHECKSUM	= 0x00000010	// -M: checksum for mirror files
 }
 itemSwitches;
 
