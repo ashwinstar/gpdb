@@ -6342,10 +6342,10 @@ select * from get_ereport order by 1;
  gaad: guc:00009199:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
  gaad: guc:00009273:  ereport(ERROR, 
  gaad: guc:00009274:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009275:  errmsg("assertion checking is not supported by this @gpcurusername@"))); 
+ gaad: guc:00009275:  errmsg("assertion checking is not supported by this build"))); 
  gaad: guc:00009294:  ereport(ERROR, 
  gaad: guc:00009295:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009296:  errmsg("SSL is not supported by this @gpcurusername@"))); 
+ gaad: guc:00009296:  errmsg("SSL is not supported by this build"))); 
  gaad: guc:00009307:  ereport(ERROR, 
  gaad: guc:00009308:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  gaad: guc:00009309:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 

@@ -1078,8 +1078,14 @@ ExecCheckRTEPerms(RangeTblEntry *rte)
 	 */
 	if (pg_class_aclmask(relOid, userid, requiredPerms, ACLMASK_ALL)
 		!= requiredPerms)
-		aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_CLASS,
-					   get_rel_name(relOid));
+	{
+		/*
+		 * If the table is a partition, return an error message that includes
+		 * the name of the parent table.
+		 */
+		const char *rel_name = get_rel_name_partition(relOid);
+		aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_CLASS, rel_name);
+	}
 }
 
 /*

@@ -408,7 +408,6 @@ static List *exchange_part_constraints(List *pcols, Relation oldrel,
 									   Relation newrel, bool validate);
 static List *get_part_constraints(List *part, Relation pgcon, Relation rel);
 
-static Oid  rel_partition_get_master(Oid relid);
 static List *rel_get_part_path(Oid relid);
 static char *rel_get_part_path_pretty(Oid relid,
 									  char *separator,
@@ -13274,7 +13273,7 @@ rel_is_partitioned(Oid relid)
  *     from pg_partition_rule
  *     where parchildrelid = relid);
  */
-static Oid
+Oid
 rel_partition_get_master(Oid relid)
 {
 	Relation rel = heap_open(PartitionRuleRelationId, AccessShareLock);

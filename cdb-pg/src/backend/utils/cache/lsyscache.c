@@ -27,6 +27,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
+#include "commands/tablecmds.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_clause.h"			/* for sort_op_can_sort() */
@@ -1147,6 +1148,56 @@ get_rel_name(Oid relid)
 	else
 		return NULL;
 }
+
+
+/*
+ * get_rel_name_partition
+ *		Returns the name of a given relation plus its parent name, if it is a partition table.
+ *		If it not a partition table, it returns the relation name only.
+ *
+ *	Returns a palloc'd copy of the string, or NULL if no such relation.
+ *	The caller is responsible for releasing the palloc'd memory.
+ */
+char *
+get_rel_name_partition(Oid relid)
+{
+	char *rel_name = get_rel_name(relid);
+
+	if (rel_name == NULL) return NULL;
+
+	if (rel_is_child_partition(relid))
+	{
+		char *result;
+
+		Oid parent_oid = rel_partition_get_master(relid);
+		Assert(parent_oid != InvalidOid);
+
+		char *parent_name = get_rel_name(parent_oid);
+		Assert(parent_name);
+
+		char *partition_name = "";
+
+		StringInfo buffer = makeStringInfo();
+		Assert(buffer);
+
+		appendStringInfo(buffer, "\"%s\" (partition%s of relation \"%s\")",
+							     rel_name, partition_name, parent_name);
+
+		result = pstrdup(buffer->data);
+
+		pfree(rel_name);
+		pfree(parent_name);
+		pfree(buffer);
+
+		rel_name = NULL;
+		parent_name = NULL;
+		buffer = NULL;
+
+		return result;
+	}
+	return rel_name;
+}
+
 
 /*
  * get_rel_namespace
