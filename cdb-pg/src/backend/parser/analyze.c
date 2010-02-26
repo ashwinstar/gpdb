@@ -2126,7 +2126,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("Greenplum Database does not allow having both PRIMARY KEY and UNIQUE contraints")));
+							 errmsg("Greenplum Database does not allow having both PRIMARY KEY and UNIQUE constraints")));
 				}
 			}
 		}
@@ -2134,7 +2134,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("Greenplum Database does not allow having multiple UNIQUE contraints")));
+					 errmsg("Greenplum Database does not allow having multiple UNIQUE constraints")));
 		}
 	}
 
