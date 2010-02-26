@@ -133,7 +133,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
 	PlannedStmt *result;
 	PlannerGlobal *glob;
-	bool isCursor;
+	bool isCursor = false;
 	double		tuple_fraction;
 	PlannerInfo *root;
 	Plan	   *top_plan;
