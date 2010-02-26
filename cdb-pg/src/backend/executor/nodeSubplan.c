@@ -3,8 +3,8 @@
  * nodeSubplan.c
  *	  routines to support subselects
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2010, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -47,7 +47,7 @@ static Datum ExecHashSubPlan(SubPlanState *node,
 static Datum ExecScanSubPlan(SubPlanState *node,
 				ExprContext *econtext,
 				bool *isNull);
-static void buildSubPlanHash(SubPlanState *node);
+static void buildSubPlanHash(SubPlanState *node, ExprContext * econtext);
 static bool findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot);
 static bool slotAllNulls(TupleTableSlot *slot);
 static bool slotNoNulls(TupleTableSlot *slot);
@@ -101,7 +101,7 @@ ExecHashSubPlan(SubPlanState *node,
 	 * table.
 	 */
 	if (node->hashtable == NULL || planstate->chgParam != NULL)
-		buildSubPlanHash(node);
+		buildSubPlanHash(node, econtext);
 
 	/*
 	 * The result for an empty subplan is always FALSE; no need to evaluate
@@ -226,7 +226,7 @@ ExecScanSubPlan(SubPlanState *node,
 
 	/*
 	 * We are probably in a short-lived expression-evaluation context. Switch
-	 * to the child plan's per-query context for manipulating its chgParam,
+	 * to the per-query context for manipulating the child plan's chgParam,
 	 * calling ExecProcNode on it, etc.
 	 */
 	oldcontext = MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
@@ -250,6 +250,9 @@ ExecScanSubPlan(SubPlanState *node,
 		planstate->chgParam = bms_add_member(planstate->chgParam, paramid);
 	}
 
+	/*
+	 * Now that we've set up its parameters, we can reset the subplan.
+	 */
 	ExecReScan(planstate, NULL);
 
 	/*
@@ -264,10 +267,14 @@ ExecScanSubPlan(SubPlanState *node,
 	 * ROWCOMPARE_SUBLINK.
 	 *
 	 * For EXPR_SUBLINK we require the subplan to produce no more than one
-	 * tuple, else an error is raised. For ARRAY_SUBLINK we allow the subplan
-	 * to produce more than one tuple. In either case, if zero tuples are
-	 * produced, we return NULL. Assuming we get a tuple, we just use its
-	 * first column (there can be only one non-junk column in this case).
+	 * tuple, else an error is raised.	If zero tuples are produced, we return
+	 * NULL.  Assuming we get a tuple, we just use its first column (there can
+	 * be only one non-junk column in this case).
+	 *
+	 * For ARRAY_SUBLINK we allow the subplan to produce any number of tuples,
+	 * and form an array of the first column's values.  Note in particular
+	 * that we produce a zero-element array if no tuples are produced (this is
+	 * a change from pre-8.3 behavior of returning NULL).
 	 */
 	result = BoolGetDatum(subLinkType == ALL_SUBLINK);
 	*isNull = false;
@@ -276,7 +283,6 @@ ExecScanSubPlan(SubPlanState *node,
 		 !TupIsNull(slot);
 		 slot = ExecProcNode(planstate))
 	{
-		TupleDesc	tdesc = slot->tts_tupleDescriptor;
 		Datum		rowresult;
 		bool		rownull;
 		int			col;
@@ -326,10 +332,10 @@ ExecScanSubPlan(SubPlanState *node,
 
 			found = true;
 			/* stash away current value */
+			Assert(subplan->firstColType == slot->tts_tupleDescriptor->attrs[0]->atttypid);
 			dvalue = slot_getattr(slot, 1, &disnull);
 			astate = accumArrayResult(astate, dvalue, disnull,
-									  tdesc->attrs[0]->atttypid,
-									  oldcontext);
+									  subplan->firstColType, oldcontext);
 			/* keep scanning subplan to collect all values */
 			continue;
 		}
@@ -425,7 +431,7 @@ ExecScanSubPlan(SubPlanState *node,
  * buildSubPlanHash: load hash table by scanning subplan output.
  */
 static void
-buildSubPlanHash(SubPlanState *node)
+buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
 {
 	SubPlan    *subplan = (SubPlan *) node->xprstate.expr;
 	PlanState  *planstate = node->planstate;
@@ -653,11 +659,6 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	EState	   *sp_estate;
 
 	/*
-	 * Do access checking on the rangetable entries in the subquery.
-	 */
-	ExecCheckRTPerms(subplan->rtable);
-
-	/*
 	 * initialize my state
 	 */
 	node->needShutdown = false;
@@ -684,13 +685,12 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	sp_estate = CreateSubExecutorState(estate);
 	node->sub_estate = sp_estate;
 
-	sp_estate->es_range_table = subplan->rtable;
-
-	sp_estate->es_topPlan = estate->es_topPlan; /* needed to calculate correct paramIds. */
+	sp_estate->es_range_table = estate->es_range_table;
+	sp_estate->es_plannedstmt = estate->es_plannedstmt;
 	sp_estate->es_param_list_info = estate->es_param_list_info;
 	sp_estate->es_param_exec_vals = estate->es_param_exec_vals;
 	sp_estate->es_tupleTable =
-		ExecCreateTupleTable(ExecCountSlotsNode(subplan->plan) + 10);
+		ExecCreateTupleTable(ExecCountSlotsNode(exec_subplan_get_plan(sp_estate->es_plannedstmt, subplan)) + 10);
 	sp_estate->es_snapshot = estate->es_snapshot;
 	sp_estate->es_crosscheck_snapshot = estate->es_crosscheck_snapshot;
 	sp_estate->es_instrument = estate->es_instrument;
@@ -733,7 +733,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	if (subplan->parParam == NIL && subplan->setParam == NIL)
 		eflags |= EXEC_FLAG_REWIND;
 
-	node->planstate = ExecInitNode(subplan->plan, sp_estate, eflags);
+	node->planstate = ExecInitNode(exec_subplan_get_plan(estate->es_plannedstmt, subplan), sp_estate, eflags);
 
 	node->needShutdown = true;	/* now we need to shutdown the subplan */
 
@@ -754,6 +754,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 			int			paramid = lfirst_int(lst);
 			ParamExecData *prmExec = &(estate->es_param_exec_vals[paramid]);
 			
+			
 			/**
 			 * Has this parameter been already 
 			 * evaluated as part of preprocess_initplan()? If so,
@@ -762,7 +763,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 			 * the external parameters.
 			 */
 			if (Gp_role == GP_ROLE_EXECUTE
-					&& paramid < subplan->plan->nParamExec)
+					&& subplan->is_initplan)
 			{	
 				ParamListInfo paramInfo = estate->es_param_list_info;
 				ParamExternData *prmExt = NULL;
@@ -775,8 +776,8 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 				 * To locate the value of this pre-evaluated parameter, we need to find
 				 * its location in the external parameter list.  
 				 */
-				extParamIndex = paramInfo->numParams - subplan->plan->nParamExec + paramid;
-
+				extParamIndex = paramInfo->numParams - estate->es_plannedstmt->nCrossLevelParams + paramid;
+				
 				/* Ensure that the plan is actually an initplan */
 				Assert(subplan->is_initplan && "Subplan is not an initplan. Parameter has not been evaluated in preprocess_initplan.");
 				
@@ -988,7 +989,6 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 static QueryDesc *SubplanQueryDesc(QueryDesc * qd)
 {
 	QueryDesc *subqd = NULL;
-	Query *query = NULL;
 	PlannedStmt *substmt = NULL;
 	PlannedStmt *stmt = qd->plannedstmt;
 	
@@ -999,21 +999,12 @@ static QueryDesc *SubplanQueryDesc(QueryDesc * qd)
 	 * CTAS: we don't want to create the the table during the
 	 * initPlan execution. */
 	
-	/* Fake a Query node to hold the range table.  This is a stopgap and shouldn't
-	 * be necessary once full PlannedStmt support is in place. (PSMERGE)
-	 *
-	 * TODO Get rid of this stopgap!
-	 */
-	qd->plannedstmt->queryTree->intoClause = NULL; /* no longer of interest */
-	query = copyObject(qd->plannedstmt->queryTree);
-	
 	/* build the PlannedStmt substmt */
 	substmt = makeNode(PlannedStmt);
 	
 	substmt->commandType = stmt->commandType;
 	substmt->canSetTag = stmt->canSetTag;
 	substmt->transientPlan = stmt->transientPlan;
-	substmt->queryTree = query; /* temporary, see comment above */
 	substmt->planTree = stmt->planTree;
 	substmt->rtable = stmt->rtable;
 	substmt->resultRelations = stmt->resultRelations;
@@ -1025,7 +1016,7 @@ static QueryDesc *SubplanQueryDesc(QueryDesc * qd)
 	substmt->rowMarks = stmt->rowMarks;
 	substmt->relationOids = stmt->relationOids;
 	substmt->invalItems = stmt->invalItems;
-	substmt->nParamExec = stmt->nParamExec;
+	substmt->nCrossLevelParams = stmt->nCrossLevelParams;
 	substmt->nMotionNodes = stmt->nMotionNodes;
 	substmt->nInitPlans = stmt->nInitPlans;
 	
@@ -1170,6 +1161,10 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			subLinkType == ALL_SUBLINK)
 			elog(ERROR, "ANY/ALL subselect unsupported as initplan");
 
+	    /*
+	     * By definition, an initplan has no parameters from our query level, but
+	     * it could have some from an outer level.	Rescan it if needed.
+	     */
 		if (planstate->chgParam != NULL)
 			ExecReScan(planstate, NULL);
 
@@ -1177,7 +1172,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			 !TupIsNull(slot);
 			 slot = ExecProcNode(planstate))
 		{
-			TupleDesc	tdesc = slot->tts_tupleDescriptor;
 			int			i = 1;
 
 			if (subLinkType == EXISTS_SUBLINK)
@@ -1207,10 +1201,10 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
 				found = true;
 				/* stash away current value */
+			    Assert(subplan->firstColType == slot->tts_tupleDescriptor->attrs[0]->atttypid);
 				dvalue = slot_getattr(slot, 1, &disnull);
 				astate = accumArrayResult(astate, dvalue, disnull,
-										  tdesc->attrs[0]->atttypid,
-										  oldcontext);
+									  subplan->firstColType, oldcontext);
 				/* keep scanning subplan to collect all values */
 				continue;
 			}

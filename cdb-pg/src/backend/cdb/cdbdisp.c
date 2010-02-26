@@ -209,6 +209,7 @@ static int generateTxnOptions(bool needTwoPhase);
 
 typedef struct
 {
+	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
 	bool		single_row_insert;
 }	pre_dispatch_function_evaluation_context;
 
@@ -3449,12 +3450,25 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
  * Evaluate functions to constants.
  */
 Node *
-make_plan_constant(Node *n, bool is_SRI)
+exec_make_plan_constant(PlannedStmt *stmt, bool is_SRI)
 {
 	pre_dispatch_function_evaluation_context pcontext;
-
+	
+	Assert(stmt);
+	exec_init_plan_tree_base(&pcontext.base, stmt);
 	pcontext.single_row_insert = is_SRI;
+	
+	return plan_tree_mutator((Node *)stmt->planTree, pre_dispatch_function_evaluation_mutator, &pcontext);
+}
 
+Node *
+planner_make_plan_constant(PlannerInfo *root, Node *n, bool is_SRI)
+{
+	pre_dispatch_function_evaluation_context pcontext;
+	
+	planner_init_plan_tree_base(&pcontext.base, root);
+	pcontext.single_row_insert = is_SRI;
+	
 	return plan_tree_mutator(n, pre_dispatch_function_evaluation_mutator, &pcontext);
 }
 
@@ -3601,7 +3615,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 				oldContext = MemoryContextSwitchTo(MessageContext);
 		}
 
-		stmt->planTree = (Plan *) make_plan_constant((Node *) stmt->planTree, is_SRI);
+		stmt->planTree = (Plan *) exec_make_plan_constant(stmt, is_SRI);
 
 		MemoryContextSwitchTo(oldContext);
 	}

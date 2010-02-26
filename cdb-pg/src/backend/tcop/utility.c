@@ -327,11 +327,11 @@ CheckRelationOwnership(RangeVar *rel, bool noCatalogs)
 /*
  * QueryIsReadOnly: is an analyzed/rewritten query read-only?
  *
- * This is a much stricter test than we apply for XactReadOnly mode;
- * the query must be *in truth* read-only, because the caller wishes
- * not to do CommandCounterIncrement for it.
+ *** You should probably use CommandIsReadOnly instead.
+ *** This routine retained for use by SPI
  *
- * PSMERGE:  This routine should go away after the PlannedStmt merge is complete.
+ * This is a much stricter test than we apply for XactReadOnly mode; * the query must be *in truth* read-only, because the caller wishes
+ * not to do CommandCounterIncrement for it.
  */
 bool
 QueryIsReadOnly(Query *parsetree)
@@ -370,11 +370,11 @@ QueryIsReadOnly(Query *parsetree)
  * Note: currently no need to support Query nodes here
  */
 bool
-CommandIsReadOnly(Node *parsetree)
+CommandIsReadOnly(Node *node)
 {
-	if (IsA(parsetree, PlannedStmt))
+	if (IsA(node, PlannedStmt))
 	{
-		PlannedStmt *stmt = (PlannedStmt *) parsetree;
+		PlannedStmt *stmt = (PlannedStmt *) node;
 
 		switch (stmt->commandType)
 		{
@@ -413,7 +413,8 @@ check_xact_readonly(Node *parsetree)
 
 	/*
 	 * Note: Commands that need to do more complicated checking are handled
-	 * elsewhere.
+	 * elsewhere, in particular COPY and plannable statements do their own
+	 * checking.
 	 */
 
 	switch (nodeTag(parsetree))
@@ -650,10 +651,16 @@ ProcessDropStatement(DropStmt *stmt)
  *		general utility function invoker
  *
  *	parsetree: the parse tree for the utility statement
+ *	queryString: original source text of command
  *	params: parameters to use during execution
+ *	isTopLevel: true if executing a "top level" (interactively issued) command
  *	dest: where to send results
  *	completionTag: points to a buffer of size COMPLETION_TAG_BUFSIZE
  *		in which to store a command completion status string.
+ *
+ * Notes: as of PG 8.4, caller MUST supply a queryString; it is not
+ * allowed anymore to pass NULL.  (If you really don't have source text,
+ * you can pass a constant string, perhaps "(query not available)".)
  *
  * completionTag is only set nonempty if we want to return a nondefault status.
  *
@@ -667,6 +674,8 @@ ProcessUtility(Node *parsetree,
 		       DestReceiver *dest,
 		       char *completionTag)
 {
+	Assert(queryString != NULL);	/* required as of 8.4 */
+	
 	check_xact_readonly(parsetree);
 	
     if (Gp_role != GP_ROLE_EXECUTE)

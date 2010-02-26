@@ -1211,9 +1211,9 @@ _readSubPlan(const char ** str)
 	READ_ENUM_FIELD(subLinkType, SubLinkType);
 	READ_NODE_FIELD(testexpr);
 	READ_NODE_FIELD(paramIds);
-	READ_NODE_FIELD(plan);
 	READ_INT_FIELD(plan_id);
-	READ_NODE_FIELD(rtable);
+	READ_OID_FIELD(firstColType);
+	READ_INT_FIELD(firstColTypmod);
 	READ_BOOL_FIELD(useHashTable);
 	READ_BOOL_FIELD(unknownEqFalse);
 	READ_BOOL_FIELD(is_initplan); /*CDB*/
@@ -2476,7 +2476,6 @@ _readPlannedStmt(const char ** str)
 	READ_ENUM_FIELD(commandType, CmdType);
 	READ_BOOL_FIELD(canSetTag);
 	READ_BOOL_FIELD(transientPlan);
-	READ_NODE_FIELD(queryTree); /* TODO Remove eventually. (PSMERGE) */
 	READ_NODE_FIELD(planTree);
 	READ_NODE_FIELD(rtable);
 	READ_NODE_FIELD(resultRelations);
@@ -2490,7 +2489,7 @@ _readPlannedStmt(const char ** str)
 	READ_NODE_FIELD(rowMarks);
 	READ_NODE_FIELD(relationOids);
 	READ_NODE_FIELD(invalItems);
-	READ_INT_FIELD(nParamExec);
+	READ_INT_FIELD(nCrossLevelParams);
 	READ_INT_FIELD(nMotionNodes);
 	READ_INT_FIELD(nInitPlans);
 	/* intoPolicy not serialized in outfast.c */
@@ -2758,6 +2757,7 @@ _readSubqueryScan(const char ** str)
 	readScanInfo(str, (Scan *)local_node);
 
 	READ_NODE_FIELD(subplan);
+	/* Planner-only: subrtable -- don't serialize. */
 
 	READ_DONE();
 }

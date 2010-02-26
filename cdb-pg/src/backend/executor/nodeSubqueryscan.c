@@ -147,7 +147,6 @@ SubqueryScanState *
 ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 {
 	SubqueryScanState *subquerystate;
-	RangeTblEntry *rte;
 	EState	   *sp_estate;
     List       *tlist;
 
@@ -155,10 +154,12 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	Assert(!(eflags & EXEC_FLAG_MARK));
 
 	/*
-	 * SubqueryScan should not have any "normal" children.
+	 * SubqueryScan should not have any "normal" children.  Also, if planner
+	 * left anything in subrtable, it's fishy.
 	 */
 	Assert(outerPlan(node) == NULL);
 	Assert(innerPlan(node) == NULL);
+	Assert(node->subrtable == NIL);
 
 	/*
 	 * Since subquery nodes create its own executor state,
@@ -215,16 +216,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	 * initialize subquery
 	 *
 	 * This should agree with ExecInitSubPlan
-	 */
-	rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
-	Assert(rte->rtekind == RTE_SUBQUERY);
-
-	/*
-	 * Do access checking on the rangetable entries in the subquery.
-	 */
-	ExecCheckRTPerms(rte->subquery->rtable);
-
-	/*
+	 *
 	 * The subquery needs its own EState because it has its own rangetable. It
 	 * shares our Param ID space and es_query_cxt, however.  XXX if rangetable
 	 * access were done differently, the subquery could share our EState,
@@ -233,9 +225,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	sp_estate = CreateSubExecutorState(estate);
 	subquerystate->sss_SubEState = sp_estate;
 
-	sp_estate->es_range_table = rte->subquery->rtable;
-
-	sp_estate->es_topPlan = estate->es_topPlan; /* needed to calculate correct paramIds. */
+	sp_estate->es_range_table = estate->es_range_table;
 	sp_estate->es_param_list_info = estate->es_param_list_info;
 	sp_estate->es_param_exec_vals = estate->es_param_exec_vals;
 	sp_estate->es_tupleTable =
@@ -243,6 +233,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	sp_estate->es_snapshot = estate->es_snapshot;
 	sp_estate->es_crosscheck_snapshot = estate->es_crosscheck_snapshot;
 	sp_estate->es_instrument = estate->es_instrument;
+	sp_estate->es_plannedstmt = estate->es_plannedstmt;
 
 	/*
 	 * "Loan" the global slice table and map to the subplan EState.  The
@@ -386,6 +377,7 @@ initGpmonPktForSubqueryScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 
 	rte = rt_fetch(((SubqueryScan *)planNode)->scan.scanrelid, estate->es_range_table);
 
+	if (rte && rte->rtekind != RTE_VOID)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SUBQUERYSCAN_TOTAL+1] = 
 		{

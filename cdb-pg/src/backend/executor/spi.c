@@ -99,16 +99,6 @@ static bool can_execute_this_locally(const char *sql);
 
 bool		gp_use_snapshop_during_callback = true;
 
-/* Apparently used only in test/libcdbtest (??)  Removed for 3.4.
- * To reinstate, this must be updated for PlannedStmt. 
- */
-#if 0
-extern int SPI_execute_cdb(const char *src, 
-						   Plan * pPlan, Query * pQuery, 
-						   bool read_only, int tcount);
-#endif
-
-
 bool
 can_execute_this_locally(const char *src)
 {
@@ -271,9 +261,6 @@ SPI_connect(void)
 												  ALLOCSET_DEFAULT_MAXSIZE);
 	/* ... and switch to procedure's context */
 	_SPI_current->savedcxt = MemoryContextSwitchTo(_SPI_current->procCxt);
-
-	if (_QD_conn)
-		elog(DEBUG1, "SPI_connect found that we were already connected back to the QD");
 
 	return SPI_OK_CONNECT;
 }
@@ -2774,6 +2761,12 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
 				stmt = (PlannedStmt*)lfirst(plan_list_item);
 				plan_list_item = lnext(plan_list_item);
 
+				/*
+				 * Get copy of the queryTree and the plan since this may be modified further down.
+				 */
+				queryTree = copyObject(queryTree);
+				stmt = copyObject(stmt); 
+				
 				_SPI_current->processed = 0;
 				_SPI_current->lastoid = InvalidOid;
 				_SPI_current->tuptable = NULL;
@@ -3055,7 +3048,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
                 else if (!ActivePortal->releaseResLock)
                 {
                     PortalSetStatus(ActivePortal, PORTAL_QUEUE);
-                    ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc->plannedstmt->planTree);
+                    ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc->plannedstmt);
                     PortalSetStatus(ActivePortal, PORTAL_ACTIVE);
                 }
             }
@@ -3065,19 +3058,19 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 		 *      queryTree field will be gone.
 		 */
 		case CMD_INSERT:
-			if (queryDesc->plannedstmt->queryTree->returningList) /* Use of query tree deprecated. (PSMERGE) */
+			if (queryDesc->plannedstmt->returningLists)
 				res = SPI_OK_INSERT_RETURNING;
 			else
 				res = SPI_OK_INSERT;
 			break;
 		case CMD_DELETE:
-			if (queryDesc->plannedstmt->queryTree->returningList) /* Use of query tree deprecated. (PSMERGE) */
+			if (queryDesc->plannedstmt->returningLists)
 				res = SPI_OK_DELETE_RETURNING;
 			else
 				res = SPI_OK_DELETE;
 			break;
 		case CMD_UPDATE:
-			if (queryDesc->plannedstmt->queryTree->returningList) /* Use of query tree deprecated. (PSMERGE) */
+			if (queryDesc->plannedstmt->returningLists)
 				res = SPI_OK_UPDATE_RETURNING;
 			else
 				res = SPI_OK_UPDATE;
@@ -3123,8 +3116,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 	_SPI_current->processed = queryDesc->estate->es_processed;
 	_SPI_current->lastoid = queryDesc->estate->es_lastoid;
 	
-	/* Use of query tree deprecated. (PSMERGE) */
-	if ((res == SPI_OK_SELECT || queryDesc->plannedstmt->queryTree->returningList) && 
+	if ((res == SPI_OK_SELECT || queryDesc->plannedstmt->returningLists) &&
 		queryDesc->dest->mydest == DestSPI)
 	{
 		if (_SPI_checktuples())
@@ -3378,47 +3370,3 @@ _SPI_copy_plan(SPIPlanPtr plan, int location)
 
 	return newplan;
 }
-
-#if 0
-/*
- * This is apparently only used by libcdbtest, in cdbexecplan.c, which in turn, is only 
- * used for testing.  At the moment, libcdbtest doesn't appear to work,  so I don't think 
- * this is ever called.
- *
- * Since it cuts across API levels in a way that makes it difficult for PlannedStmt
- * support, we remove it for 3.4.  To reinstate, it must be modified.  (PSMERGE)
- */
-int
-SPI_execute_cdb(const char *src, Plan * pPlan, Query * pQuery, bool read_only, int tcount)
-{
-	_SPI_plan	plan;
-	int			res;
-	List	   *query_list = NIL;
-
-	if (src == NULL || pPlan == NULL || pQuery == NULL || tcount < 0)
-		return SPI_ERROR_ARGUMENT;
-
-	res = _SPI_begin_call(true);
-	if (res < 0)
-		return res;
-
-	plan.plancxt = NULL;		/* doesn't have own context */
-	plan.query = src;
-	plan.nargs = 0;
-	plan.argtypes = NULL;
-	plan.ptlist = NIL;
-	plan.qtlist = NIL;
-
-	plan.ptlist = lappend(plan.ptlist, pPlan);
-
-	query_list = lappend(query_list, pQuery);
-	plan.qtlist = lappend(plan.qtlist, query_list);
-
-	res = _SPI_execute_plan(&plan, NULL, NULL,
-							InvalidSnapshot, InvalidSnapshot,
-							read_only, true, tcount);
-
-	_SPI_end_call(true);
-	return res;
-}
-#endif

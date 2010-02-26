@@ -36,8 +36,8 @@
 
 /*
  * We have an execution_state record for each query in a function.	Each
- * record contains a querytree and plantree for its query.	If the query
- * is currently in F_EXEC_RUN state then there's a QueryDesc too.
+ * record contains a plantree for its query.  If the query is currently in
+ * F_EXEC_RUN state then there's a QueryDesc too.
  */
 typedef enum
 {

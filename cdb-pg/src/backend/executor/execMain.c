@@ -21,8 +21,8 @@
  *	ExecutorRun accepts direction and count arguments that specify whether
  *	the plan is to be executed forwards, backwards, and for how many tuples.
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2010, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -117,7 +117,7 @@ static TupleTableSlot *ExecutePlan(EState *estate, PlanState *planstate,
 static void ExecSelect(TupleTableSlot *slot,
 		   DestReceiver *dest,
 		   EState *estate);
-static void ExecInsert(TupleTableSlot *slot,
+static void ExecInsert(TupleTableSlot *slot, /*ItemPointer tupleid,*/
 		   TupleTableSlot *planSlot,
 		   DestReceiver *dest,EState *estate);
 static void ExecDelete(ItemPointer tupleid,
@@ -132,8 +132,9 @@ static void ExecProcessReturning(ProjectionInfo *projectReturning,
 					 DestReceiver *dest);
 static TupleTableSlot *EvalPlanQualNext(EState *estate);
 static void EndEvalPlanQual(EState *estate);
+static void ExecCheckRTPerms(List *rangeTable);
 static void ExecCheckRTEPerms(RangeTblEntry *rte);
-static void ExecCheckXactReadOnly(Query *parsetree);
+static void ExecCheckXactReadOnly(PlannedStmt *plannedstmt);
 static void EvalPlanQualStart(evalPlanQual *epq, EState *estate,
 				  evalPlanQual *priorepq);
 static void EvalPlanQualStop(evalPlanQual *epq);
@@ -143,13 +144,22 @@ static void intorel_startup(DestReceiver *self, int operation, TupleDesc typeinf
 static void intorel_receive(TupleTableSlot *slot, DestReceiver *self);
 static void intorel_shutdown(DestReceiver *self);
 static void intorel_destroy(DestReceiver *self);
-static bool CopyDirectDispatchFromPlanToSliceTableWalker( Node *node, EState *estate);
 
 /* end of local decls */
 
-static void
-CopyDirectDispatchToSlice( Plan *ddPlan, int sliceId, EState *estate)
+typedef struct CopyDirectDispatchToSliceContext
 {
+	plan_tree_base_prefix	base; /* Required prefix for plan_tree_walker/mutator */
+	EState					*estate; /* EState instance */
+} CopyDirectDispatchToSliceContext;
+
+static bool CopyDirectDispatchFromPlanToSliceTableWalker( Node *node, CopyDirectDispatchToSliceContext *context);
+
+
+static void
+CopyDirectDispatchToSlice( Plan *ddPlan, int sliceId, CopyDirectDispatchToSliceContext *context)
+{
+	EState	*estate = context->estate;
 	Slice *slice = (Slice *)list_nth(estate->es_sliceTable->slices, sliceId);
 
 	Assert( ! slice->directDispatch.isDirectDispatch );	/* should not have been set by some other process */
@@ -163,7 +173,7 @@ CopyDirectDispatchToSlice( Plan *ddPlan, int sliceId, EState *estate)
 }
 
 static bool
-CopyDirectDispatchFromPlanToSliceTableWalker( Node *node, EState *estate)
+CopyDirectDispatchFromPlanToSliceTableWalker( Node *node, CopyDirectDispatchToSliceContext *context)
 {
 	int sliceId;
 	Plan *ddPlan = NULL;
@@ -176,26 +186,22 @@ CopyDirectDispatchFromPlanToSliceTableWalker( Node *node, EState *estate)
 		ddPlan = (Plan*)node;
 		sliceId = motion->motionID;
 	}
-	else if ( IsA(node, SubPlan))
-	{
-		/* todo DIRECT_DISPATCH is manual walk required?  test ones under an initplan */
-		SubPlan *subPlan = (SubPlan*) node;
-		ddPlan = subPlan->plan;
-		sliceId = subPlan->qDispSliceId;
-	}
 
 	if ( ddPlan != NULL)
 	{
-		CopyDirectDispatchToSlice(ddPlan, sliceId, estate );
+		CopyDirectDispatchToSlice(ddPlan, sliceId, context);
 	}
-	return plan_tree_walker(node, CopyDirectDispatchFromPlanToSliceTableWalker, estate);
+	return plan_tree_walker(node, CopyDirectDispatchFromPlanToSliceTableWalker, context);
 }
 
 static void
-CopyDirectDispatchFromPlanToSliceTable( Plan *plan, EState *estate)
+CopyDirectDispatchFromPlanToSliceTable(PlannedStmt *stmt, EState *estate)
 {
-	CopyDirectDispatchToSlice( plan, 0, estate);
-	CopyDirectDispatchFromPlanToSliceTableWalker((Node *) plan, estate);
+	CopyDirectDispatchToSliceContext context;
+	exec_init_plan_tree_base(&context.base, stmt);
+	context.estate = estate;
+	CopyDirectDispatchToSlice( stmt->planTree, 0, &context);
+	CopyDirectDispatchFromPlanToSliceTableWalker((Node *) stmt->planTree, &context);
 }
 
 /* ----------------------------------------------------------------
@@ -251,7 +257,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * planned to non-temporary tables.  EXPLAIN is considered read-only.
 	 */
 	if ((XactReadOnly || Gp_role == GP_ROLE_DISPATCH) && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
-		ExecCheckXactReadOnly(queryDesc->plannedstmt->queryTree); /* TODO Use of Query tree deprecated. (PSMERGE) */
+		ExecCheckXactReadOnly(queryDesc->plannedstmt);
 
 	/*
 	 * Build EState, switch into per-query memory context for startup.
@@ -261,14 +267,19 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 
+	/**
+	 * Attached the plannedstmt from queryDesc
+	 */
+	estate->es_plannedstmt = queryDesc->plannedstmt;
+
 	/*
 	 * Fill in parameters, if any, from queryDesc
 	 */
 	estate->es_param_list_info = queryDesc->params;
 
-	if (queryDesc->plannedstmt->nParamExec > 0)
+	if (queryDesc->plannedstmt->nCrossLevelParams > 0)
 		estate->es_param_exec_vals = (ParamExecData *)
-			palloc0(queryDesc->plannedstmt->nParamExec * sizeof(ParamExecData));
+			palloc0(queryDesc->plannedstmt->nCrossLevelParams * sizeof(ParamExecData));
 
 	/*
 	 * Copy other important information into the EState
@@ -310,7 +321,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		InitSliceTable(estate, queryDesc->plannedstmt->nMotionNodes, queryDesc->plannedstmt->nInitPlans);
 
 		/* Copy direct dispatch decisions out of the plan and into the slice table.  Must be done after slice table is built */
-		CopyDirectDispatchFromPlanToSliceTable(queryDesc->plannedstmt->planTree, estate );
+		if (gp_enable_direct_dispatch)
+			CopyDirectDispatchFromPlanToSliceTable(queryDesc->plannedstmt, estate );
 
         /* Pass EXPLAIN ANALYZE flag to qExecs. */
         estate->es_sliceTable->doInstrument = queryDesc->doInstrument;
@@ -536,11 +548,9 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				 * Copy the values of the preprocessed subplans to the
 				 * external parameters.
 				 */
-				queryDesc->params = addRemoteExecParamsToParamList(queryDesc->plannedstmt->planTree,
-																   queryDesc->plannedstmt->queryTree->rtable,
+				queryDesc->params = addRemoteExecParamsToParamList(queryDesc->plannedstmt,
 																   queryDesc->params,
-																   queryDesc->estate->es_param_exec_vals,
-																   queryDesc->plannedstmt->nParamExec);
+																   queryDesc->estate->es_param_exec_vals);
 			}
 
 			/*
@@ -584,7 +594,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			SetupSequenceServer(estate->es_sliceTable);
 
 			/* Run a root slice. */
-			/* TODO Can we use nMotionNodes from PlannedStmt and remove it from Plan? (PSMERGE) */
 			if (queryDesc->planstate != NULL &&
 				queryDesc->planstate->plan->nMotionNodes > 0 && !estate->es_interconnect_is_setup)
 			{
@@ -710,7 +719,7 @@ ExecutorRun(QueryDesc *queryDesc,
 
 	sendTuples = (queryDesc->tupDesc != NULL &&
 				  (operation == CMD_SELECT ||
-				   queryDesc->plannedstmt->queryTree->returningList));
+				   queryDesc->plannedstmt->returningLists));
 
 	if (sendTuples)
 		(*dest->rStartup) (dest, operation, queryDesc->tupDesc);
@@ -1019,16 +1028,14 @@ ExecutorRewind(QueryDesc *queryDesc)
  * ExecCheckRTPerms
  *		Check access permissions for all relations listed in a range table.
  */
-void
+static void
 ExecCheckRTPerms(List *rangeTable)
 {
 	ListCell   *l;
 
 	foreach(l, rangeTable)
 	{
-		RangeTblEntry *rte = lfirst(l);
-
-		ExecCheckRTEPerms(rte);
+		ExecCheckRTEPerms((RangeTblEntry *) lfirst(l));
 	}
 }
 
@@ -1044,12 +1051,9 @@ ExecCheckRTEPerms(RangeTblEntry *rte)
 	Oid			userid;
 
 	/*
-	 * Only plain-relation RTEs need to be checked here.  Subquery RTEs are
-	 * checked by ExecInitSubqueryScan if the subquery is still a separate
-	 * subquery --- if it's been pulled up into our query level then the RTEs
-	 * are in our rangetable and will be checked here. Function RTEs are
+	 * Only plain-relation RTEs need to be checked here.  Function RTEs are
 	 * checked by init_fcache when the function is prepared for execution.
-	 * Join and special RTEs need no checks.
+	 * Join, subquery, and special RTEs need no checks.
 	 */
 	if (rte->rtekind != RTE_RELATION)
 		return;
@@ -1098,7 +1102,7 @@ ExecCheckRTEPerms(RangeTblEntry *rte)
  Check that the query does not imply any writes to non-temp tables.
  */
 static void
-ExecCheckXactReadOnly(Query *parsetree)
+ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 {
 	ListCell   *l;
     int         rti;
@@ -1106,11 +1110,13 @@ ExecCheckXactReadOnly(Query *parsetree)
 
 	/*
 	 * CREATE TABLE AS or SELECT INTO?
+	 *
+	 * XXX should we allow this if the destination is temp?
 	 */
-	if (parsetree->intoClause != NULL)
+	if (plannedstmt->intoClause != NULL)
 	{
-		Assert(parsetree->intoClause->rel);
-		if (parsetree->intoClause->rel->istemp)
+		Assert(plannedstmt->intoClause->rel);
+		if (plannedstmt->intoClause->rel->istemp)
 			changesTempTables = true;
 		else
 			goto fail;
@@ -1118,7 +1124,7 @@ ExecCheckXactReadOnly(Query *parsetree)
 
 	/* Fail if write permissions are requested on any non-temp table */
     rti = 0;
-	foreach(l, parsetree->rtable)
+	foreach(l, plannedstmt->rtable)
 	{
 		RangeTblEntry *rte = lfirst(l);
 
@@ -1126,7 +1132,6 @@ ExecCheckXactReadOnly(Query *parsetree)
 
         if (rte->rtekind == RTE_SUBQUERY)
 		{
-			ExecCheckXactReadOnly(rte->subquery);
 			continue;
 		}
 
@@ -1150,7 +1155,7 @@ ExecCheckXactReadOnly(Query *parsetree)
         	ListCell   *cell;
         	bool foundRTI = false;
 
-        	foreach(cell, parsetree->rowMarks)
+        	foreach(cell, plannedstmt->rowMarks)
 			{
 				RowMarkClause *rmc = lfirst(cell);
 				if( rmc->rti == rti )
@@ -1191,16 +1196,17 @@ static void
 InitPlan(QueryDesc *queryDesc, int eflags)
 {
 	CmdType		operation = queryDesc->operation;
-	PlannedStmt *stmt = queryDesc->plannedstmt;
+	PlannedStmt *plannedstmt = queryDesc->plannedstmt;
+	Plan	   *plan = plannedstmt->planTree;
+	List	   *rangeTable = plannedstmt->rtable;
 	EState	   *estate = queryDesc->estate;
 	PlanState  *planstate;
-	List	   *rangeTable;
 	TupleDesc	tupType;
 	ListCell   *l;
-	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && stmt->planTree->dispatch == DISPATCH_PARALLEL;
+	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && plannedstmt->planTree->dispatch == DISPATCH_PARALLEL;
 
-	Assert(stmt->intoPolicy == NULL 
-		   || stmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
+	Assert(plannedstmt->intoPolicy == NULL
+		   || plannedstmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 	/*
 	 * Do permissions checks.  It's sufficient to examine the query's top
 	 * rangetable here --- subplan RTEs will be checked during
@@ -1233,7 +1239,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 		ListCell   *l;
 
-		foreach(l, stmt->queryTree->rtable)
+		foreach(l, plannedstmt->rtable)
 		{
 			RangeTblEntry *rte = lfirst(l);
 
@@ -1255,12 +1261,12 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		}
 	}
 	else
-		ExecCheckRTPerms(stmt->queryTree->rtable);
+		ExecCheckRTPerms(plannedstmt->rtable);
 
 	/*
 	 * get information from query descriptor
 	 */
-	rangeTable = stmt->queryTree->rtable; /* TODO Use of Query tree deprecated. (PSMERGE) */
+	rangeTable = plannedstmt->rtable;
 
 	/*
 	 * initialize the node's execution state
@@ -1274,13 +1280,13 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * the actual updating, since it's where we learn things, such as if the row needs to
 	 * contain OIDs or not.
 	 */
-	if (stmt->queryTree->resultRelation) /* TODO Use of Query tree deprecated. (PSMERGE) */
+	if (plannedstmt->resultRelations)
 	{
-		List	   *resultRelations = stmt->resultRelations;
-		int			numResultRelations;
+		List	   *resultRelations = plannedstmt->resultRelations;
+		int			numResultRelations = list_length(resultRelations);
 		ResultRelInfo *resultRelInfos;
 
-		if (resultRelations != NIL)
+		if (numResultRelations > 1)
 		{
 			/*
 			 * Multiple result relations (due to inheritance)
@@ -1288,7 +1294,6 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			 */
 			ResultRelInfo *resultRelInfo;
 
-			numResultRelations = list_length(resultRelations);
 			resultRelInfos = (ResultRelInfo *)
 				palloc(numResultRelations * sizeof(ResultRelInfo));
 			resultRelInfo = resultRelInfos;
@@ -1312,7 +1317,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			numResultRelations = 1;
 			resultRelInfos = (ResultRelInfo *) palloc(sizeof(ResultRelInfo));
 			initResultRelInfo(resultRelInfos,
-							  stmt->queryTree->resultRelation,
+					          linitial_int(plannedstmt->resultRelations),
 							  rangeTable,
 							  operation,
 							  estate->es_instrument,
@@ -1333,14 +1338,18 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 		if (Gp_role == GP_ROLE_EXECUTE)
 		{
-			estate->es_result_partitions = stmt->result_partitions;
-			estate->es_result_aosegnos = stmt->result_aosegnos;
+			estate->es_result_partitions = plannedstmt->result_partitions;
+			estate->es_result_aosegnos = plannedstmt->result_aosegnos;
 		}
 		else
 		{
-			Oid 	 relid = getrelid(stmt->queryTree->resultRelation, rangeTable);
-			Relation tmp = heap_open(relid, NoLock);
 			List 	*all_relids = NIL;
+			Oid		 relid = getrelid(linitial_int(plannedstmt->resultRelations), rangeTable);
+			if (rel_is_child_partition(relid))
+			{
+				relid = rel_partition_get_master(relid);
+			}
+			Relation tmp = heap_open(relid, NoLock);
 
 			estate->es_result_partitions = RelationBuildPartitionDesc(tmp, false);
 
@@ -1353,8 +1362,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 			estate->es_result_aosegnos = assignPerRelSegno(all_relids);
 
-			stmt->result_partitions = estate->es_result_partitions;
-			stmt->result_aosegnos = estate->es_result_aosegnos;
+			plannedstmt->result_partitions = estate->es_result_partitions;
+			plannedstmt->result_aosegnos = estate->es_result_aosegnos;
 			heap_close(tmp, NoLock);
 
 			/* Set any QD resultrels segno, just in case. The QEs set their own in ExecInsert(). */
@@ -1404,17 +1413,19 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * correct tuple descriptors.  (Other SELECT INTO stuff comes later.)
 	 */
 	estate->es_select_into = false;
-	if (operation == CMD_SELECT && stmt->intoClause != NULL)
+	if (operation == CMD_SELECT && plannedstmt->intoClause != NULL)
 	{
 		estate->es_select_into = true;
-		estate->es_into_oids = interpretOidsOption(stmt->intoClause->options);
+		estate->es_into_oids = interpretOidsOption(plannedstmt->intoClause->options);
 	}
 
 	/*
-	 * Have to lock relations selected FOR UPDATE/FOR SHARE
+	 * Have to lock relations selected FOR UPDATE/FOR SHARE before we
+	 * initialize the plan tree, else we'd be doing a lock upgrade. While we
+	 * are at it, build the ExecRowMark list.
 	 */
 	estate->es_rowMarks = NIL;
-	foreach(l, stmt->rowMarks)
+	foreach(l, plannedstmt->rowMarks)
 	{
 		RowMarkClause *rc = (RowMarkClause *) lfirst(l);
 		Oid			relid = getrelid(rc->rti, rangeTable);
@@ -1442,22 +1453,36 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	}
 
 	/*
-	 * initialize the executor "tuple" table.  We need slots for all the plan
+	 * Initialize the executor "tuple" table.  We need slots for all the plan
 	 * nodes, plus possibly output slots for the junkfilter(s). At this point
 	 * we aren't sure if we need junkfilters, so just add slots for them
 	 * unconditionally.  Also, if it's not a SELECT, set up a slot for use for
-	 * trigger output tuples.
+	 * trigger output tuples.  Also, one for RETURNING-list evaluation.
 	 */
 	{
-		int			nSlots = ExecCountSlotsNode(stmt->planTree);
+	    /* Slots for the main plan tree */
+		int			nSlots = ExecCountSlotsNode(plannedstmt->planTree);
 
-		if (stmt->resultRelations != NIL)
-			nSlots += list_length(stmt->resultRelations);
+		/* 
+		 * Note that, here, PG loops over the subplans in PlannedStmt, counts 
+		 * the slots in each, and allocates the slots in the top-level state's 
+		 * tuple table.  GP operates differently.  It uses the subplan code in 
+		 * nodeSubplan.c to count slots for the subplan and to allocate them 
+		 * in the subplan's state.
+		 * 
+		 * Since every slice does this, GP may over-allocate tuple slots, 
+		 * however, the cost is small (about 80 bytes per entry) and probably
+		 * worth the simplicity of the approach.
+		 */
+
+		/* Add slots for junkfilter(s) */
+		if (plannedstmt->resultRelations != NIL)
+			nSlots += list_length(plannedstmt->resultRelations);
 		else
 			nSlots += 1;
 		if (operation != CMD_SELECT)
 			nSlots++;			/* for es_trig_tuple_slot */
-		if (stmt->returningLists)
+		if (plannedstmt->returningLists)
 			nSlots++;			/* for RETURNING projection */
 
 		estate->es_tupleTable = ExecCreateTupleTable(nSlots);
@@ -1468,18 +1493,18 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	}
 
 	/* mark EvalPlanQual not active */
-	estate->es_topPlan = stmt->planTree;
+	estate->es_plannedstmt = plannedstmt;
 	estate->es_evalPlanQual = NULL;
 	estate->es_evTupleNull = NULL;
 	estate->es_evTuple = NULL;
 	estate->es_useEvalPlan = false;
 
 	/*
-	 * initialize the private state information for all the nodes in the query
+	 * Initialize the private state information for all the nodes in the query
 	 * tree.  This opens files, allocates storage and leaves us ready to start
 	 * processing tuples.
 	 */
-	planstate = ExecInitNode(stmt->planTree, estate, eflags);
+	planstate = ExecInitNode(plannedstmt->planTree, estate, eflags);
 
 	if (estate->es_cur_root_idx != estate->es_cur_slice_idx)
 		return;
@@ -1510,7 +1535,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		{
 			case CMD_SELECT:
 			case CMD_INSERT:
-				foreach(tlist, stmt->planTree->targetlist)
+				foreach(tlist, plan->targetlist)
 				{
 					TargetEntry *tle = (TargetEntry *) lfirst(tlist);
 
@@ -1540,7 +1565,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			 * junk filter.  Note this is only possible for UPDATE/DELETE, so
 			 * we can't be fooled by some needing a filter and some not.
 			 */
-			if ( list_length(stmt->resultRelations) > 1 )
+
+			if (list_length(plannedstmt->resultRelations) > 1)
 			{
 				List *appendplans;
 				int			as_nplans;
@@ -1548,10 +1574,10 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 				ListCell *lc;
 
 				/* Top plan had better be an Append here. */
-				Assert(IsA(stmt->planTree, Append));
-				Assert(((Append *) stmt->planTree)->isTarget);
+				Assert(IsA(plannedstmt->planTree, Append));
+				Assert(((Append *) plannedstmt->planTree)->isTarget);
 				Assert(IsA(planstate, AppendState));
-				appendplans = ((Append *) stmt->planTree)->appendplans;
+				appendplans = ((Append *) plannedstmt->planTree)->appendplans;
 				as_nplans = list_length(appendplans);
 				Assert(as_nplans == estate->es_num_result_relations);
 				resultRelInfo = estate->es_result_relations;
@@ -1612,7 +1638,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	/*
 	 * Initialize RETURNING projections if needed.
 	 */
-	if (stmt->returningLists)
+	if (plannedstmt->returningLists)
 	{
 		TupleTableSlot *slot;
 		ExprContext *econtext;
@@ -1622,7 +1648,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		 * We set QueryDesc.tupDesc to be the RETURNING rowtype in this case.
 		 * We assume all the sublists will generate the same output tupdesc.
 		 */
-		tupType = ExecTypeFromTL((List *) linitial(stmt->returningLists),
+		tupType = ExecTypeFromTL((List *) linitial(plannedstmt->returningLists),
 								 false);
 
 		/* Set up a slot for the output of the RETURNING projection(s) */
@@ -1635,9 +1661,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		 * Build a projection for each result rel.	Note that any SubPlans in
 		 * the RETURNING lists get attached to the topmost plan node.
 		 */
-		Assert(list_length(stmt->returningLists) == estate->es_num_result_relations);
+		Assert(list_length(plannedstmt->returningLists) == estate->es_num_result_relations);
 		resultRelInfo = estate->es_result_relations;
-		foreach(l, stmt->returningLists)
+		foreach(l, plannedstmt->returningLists)
 		{
 			List	   *rlist = (List *) lfirst(l);
 			List	   *rliststate;
@@ -1739,9 +1765,15 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
     	else
     		LockRelation(resultRelationDesc, RowExclusiveLock);
    	}
-
+    /*
+	 * Check valid relkind ... parser and/or planner should have noticed this
+	 * already, but let's make sure.
+	 */
 	switch (resultRelationDesc->rd_rel->relkind)
 	{
+		case RELKIND_RELATION:
+			/* OK */
+			break;
 		case RELKIND_SEQUENCE:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -1774,6 +1806,7 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 			break;
 	}
 
+	/* OK, fill in the node */
 	MemSet(resultRelInfo, 0, sizeof(ResultRelInfo));
 	resultRelInfo->type = T_ResultRelInfo;
 	resultRelInfo->ri_RangeTableIndex = resultRelationIndex;
@@ -2265,14 +2298,14 @@ lnext:	;
 		slot = planSlot;
 
 		/*
-		 * if we have a junk filter, then project a new tuple with the junk
+		 * If we have a junk filter, then project a new tuple with the junk
 		 * removed.
 		 *
 		 * Store this new "clean" tuple in the junkfilter's resultSlot.
 		 * (Formerly, we stored it back over the "dirty" tuple, which is WRONG
 		 * because that tuple slot has the wrong descriptor.)
 		 *
-		 * Also, extract all the junk information we need.
+		 * But first, extract all the junk information we need.
 		 */
 		if ((junkfilter = estate->es_junkFilter) != NULL)
 		{
@@ -2416,7 +2449,7 @@ lnext:	;
 				break;
 
 			case CMD_INSERT:
-				ExecInsert(slot, planSlot, dest, estate);
+				ExecInsert(slot, /*tupleid,*/ planSlot, dest, estate);
 				result = NULL;
 				break;
 
@@ -3646,14 +3679,14 @@ EvalPlanQualStart(evalPlanQual *epq, EState *estate, evalPlanQual *priorepq)
 	epqstate->es_into_relation_descriptor = estate->es_into_relation_descriptor;
 	epqstate->es_into_relation_use_wal = estate->es_into_relation_use_wal;
 	epqstate->es_param_list_info = estate->es_param_list_info;
-	if (estate->es_topPlan->nParamExec > 0)
+	if (estate->es_plannedstmt->planTree->nParamExec > 0)
 		epqstate->es_param_exec_vals = (ParamExecData *)
-			palloc0(estate->es_topPlan->nParamExec * sizeof(ParamExecData));
+			palloc0(estate->es_plannedstmt->planTree->nParamExec * sizeof(ParamExecData));
 	epqstate->es_rowMarks = estate->es_rowMarks;
 	epqstate->es_instrument = estate->es_instrument;
 	epqstate->es_select_into = estate->es_select_into;
 	epqstate->es_into_oids = estate->es_into_oids;
-	epqstate->es_topPlan = estate->es_topPlan;
+	epqstate->es_plannedstmt = estate->es_plannedstmt;
 
 	/*
 	 * Each epqstate must have its own es_evTupleNull state, but all the stack
@@ -3669,10 +3702,18 @@ EvalPlanQualStart(evalPlanQual *epq, EState *estate, evalPlanQual *priorepq)
 		/* later stack entries share the same storage */
 		epqstate->es_evTuple = priorepq->estate->es_evTuple;
 
+	/*
+	 * Create sub-tuple-table; we needn't redo the CountSlots work though.
+	 */
 	epqstate->es_tupleTable =
 		ExecCreateTupleTable(estate->es_tupleTable->size);
 
-	epq->planstate = ExecInitNode(estate->es_topPlan, epqstate, 0);
+	/*
+	 * Initialize the private state information for all the nodes in the query
+	 * tree.  This opens files, allocates storage and leaves us ready to start
+	 * processing tuples.
+	 */
+	epq->planstate = ExecInitNode(estate->es_plannedstmt->planTree, epqstate, 0);
 
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -3682,7 +3723,8 @@ EvalPlanQualStart(evalPlanQual *epq, EState *estate, evalPlanQual *priorepq)
  *
  * This is a cut-down version of ExecutorEnd(); basically we want to do most
  * of the normal cleanup, but *not* close result relations (which we are
- * just sharing from the outer query).
+ * just sharing from the outer query).	We do, however, have to close any
+ * trigger target relations that got opened, since those are not shared.
  */
 static void
 EvalPlanQualStop(evalPlanQual *epq)

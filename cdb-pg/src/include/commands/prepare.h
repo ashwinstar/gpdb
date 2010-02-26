@@ -21,6 +21,10 @@ struct TupOutputState;                  /* #include "executor/executor.h" */
 /*
  * The data structure representing a prepared statement
  *
+ * A prepared statement might be fully planned, or only parsed-and-rewritten.
+ * If fully planned, stmt_list contains PlannedStmts and/or utility statements;
+ * if not, it contains Query nodes.
+ *
  * Note: all subsidiary storage lives in the context denoted by the context
  * field.  However, the string referenced by commandTag is not subsidiary
  * storage; it is assumed to be a compile-time-constant string.  As with
@@ -32,7 +36,7 @@ typedef struct
 	/* dynahash.c requires key to be first field */
 	char		stmt_name[NAMEDATALEN];
 	char	   *query_string;	/* text of query, or NULL */
-	NodeTag		sourceTag;		/* Original statement NodeTag */
+	NodeTag		sourceTag;		/* GPDB: Original statement NodeTag */
 	const char *commandTag;		/* command tag (a constant!), or NULL */
 	List	   *query_list;		/* list of queries, rewritten, in case of replan */
 	List	   *argtype_list;	/* list of parameter type OIDs */
@@ -48,13 +52,15 @@ extern void ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
              ParamListInfo params,
 			 DestReceiver *dest, char *completionTag);
 extern void DeallocateQuery(DeallocateStmt *stmt);
-extern void ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
+extern void ExplainExecuteQuery(ExecuteStmt *execstmt, ExplainStmt *stmt,
+					const char * queryString,
+					ParamListInfo params,
 					struct TupOutputState *tstate);
 
 /* Low-level access to stored prepared statements */
 extern void StorePreparedStatement(const char *stmt_name,
 					   const char *query_string,
-					   NodeTag	   sourceTag,
+					   NodeTag	   sourceTag, /* GPDB */
 					   const char *commandTag,
 					   List *query_list,
 					   List *argtype_list,

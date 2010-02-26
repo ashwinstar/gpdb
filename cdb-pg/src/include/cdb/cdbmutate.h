@@ -12,9 +12,7 @@
 
 #include "nodes/plannodes.h"
 #include "nodes/params.h"
-
-struct PlannerInfo;                         /* #include "nodes/relation.h" */
-struct RelOptInfo;                          /* #include "nodes/relation.h" */
+#include "nodes/relation.h"
 
 extern Plan *apply_motion(struct PlannerInfo *root, Plan *plan, Query *query);
 
@@ -36,21 +34,7 @@ extern void add_slice_to_motion(Motion *m,
 		int numOutputSegs, int *outputSegIdx 
 		);
 
-/*
- * Context for apply shareinput
- */
-typedef struct ApplyShareInputContext
-{
-	List *sharedNodes;
-	List *sliceMarks;
-	List *motStack;
-	List *qdShares;
-	List *qdSlices;
-	List *planNodes;
-	int nextPlanId;
-} ApplyShareInputContext;
-
-extern Plan *zap_trivial_result(Plan *plan); 
+extern Plan *zap_trivial_result(PlannerInfo *root, Plan *plan); 
 extern Plan *apply_shareinput_dag_to_tree(Plan *plan, ApplyShareInputContext *ctxt); 
 extern Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt);
 extern void assign_plannode_id(Plan *plan);

@@ -261,7 +261,7 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 
 	estate->es_per_tuple_exprcontext = NULL;
 
-	estate->es_topPlan = NULL;
+	estate->es_plannedstmt = NULL;
 	estate->es_evalPlanQual = NULL;
 	estate->es_evTupleNull = NULL;
 	estate->es_evTuple = NULL;
@@ -882,7 +882,6 @@ ExecRelationIsTargetRelation(EState *estate, Index scanrelid)
 Relation
 ExecOpenScanRelation(EState *estate, Index scanrelid)
 {
-	RangeTblEntry *rtentry;
 	Oid			reloid;
 	LOCKMODE	lockmode;
 	ResultRelInfo *resultRelInfos;
@@ -920,9 +919,10 @@ ExecOpenScanRelation(EState *estate, Index scanrelid)
 	}
 
 	/* OK, open the relation and acquire lock as needed */
-	rtentry = rt_fetch(scanrelid, estate->es_range_table);
-	reloid = rtentry->relid;
+	reloid = getrelid(scanrelid, estate->es_range_table);
 
+	Assert(reloid != InvalidOid);
+	
 	return heap_open(reloid, lockmode);
 }
 
@@ -2299,23 +2299,10 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 
 		case T_SubqueryScan:
 		{
-			/*
-			 * Skip SubqueryScan since it is always initialized. 
-			 * However, we need to replace the rangetable info inside estate
-			 * temporarily, since the child nodes for the SubqueryScan will
-			 * need that.
+			/**
+			 * Recurse into subqueryscan node's subplan.
 			 */
-			List *oldRtable = estate->es_range_table;
-			RangeTblEntry *rte = rt_fetch(((SubqueryScan *)node)->scan.scanrelid,
-										  estate->es_range_table);
-			Assert(rte->rtekind == RTE_SUBQUERY);
-			estate->es_range_table = rte->subquery->rtable;
-			
 			sendInitGpmonPkts(((SubqueryScan *)node)->subplan, estate);
-
-			/* Reset rangetable */
-			estate->es_range_table = oldRtable;
-			
 			break;
 		}
 

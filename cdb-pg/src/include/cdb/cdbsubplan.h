@@ -13,8 +13,9 @@
 
 #include "executor/execdesc.h"
 #include "nodes/params.h"
+#include "nodes/plannodes.h"
 
 extern void preprocess_initplans(QueryDesc *queryDesc);
-extern ParamListInfo addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo p, ParamExecData *prm, int nprm);
+extern ParamListInfo addRemoteExecParamsToParamList(PlannedStmt *stmt, ParamListInfo p, ParamExecData *prm);
 
 #endif   /* CDBSUBPLAN_H */

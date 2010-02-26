@@ -22,7 +22,6 @@
 
 /* Hook for plugins to get control in planner() */
 typedef PlannedStmt *(*planner_hook_type) (Query *parse,
-									bool isCursor,
 									int cursorOptions,
 									ParamListInfo boundParams);
 
@@ -31,12 +30,10 @@ extern PGDLLIMPORT planner_hook_type planner_hook;
 extern ParamListInfo PlannerBoundParamList;	 /* current boundParams */
 
 extern PlannedStmt *planner(Query *parse,
-							bool isCursor,
 							int cursorOptions,
 							ParamListInfo boundParams);
 
 extern PlannedStmt *standard_planner(Query *parse,
-									 bool isCursor,
 									 int cursorOptions,
 									 ParamListInfo boundParams);
 

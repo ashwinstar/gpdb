@@ -7,7 +7,7 @@
  * accessed via the extended FE/BE query protocol.
  *
  *
- * Copyright (c) 2002-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2009, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/commands/prepare.c,v 1.66 2006/10/04 00:29:51 momjian Exp $
@@ -25,6 +25,11 @@
 #include "executor/executor.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "nodes/nodeFuncs.h"
+#include "parser/analyze.h"
+#include "parser/parse_coerce.h"
+#include "parser/parse_expr.h"
+#include "parser/parse_type.h"
 #include "rewrite/rewriteHandler.h"
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
@@ -61,7 +66,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	List		*query_list = NIL;
 	List		*plan_list = NIL;
 	List		*query_list_copy = NIL;
-	NodeTag		srctag;
+	NodeTag		srctag;  /* GPDB */
 
 	/*
 	 * Disallow empty-string statement name (conflicts with protocol-level
@@ -519,6 +524,10 @@ PreparedStatementReturnsTuples(PreparedStatement *stmt)
  * targetlist.	Returns NIL if the statement doesn't have a determinable
  * targetlist.
  *
+ * Note: this is pretty ugly, but since it's only used in corner cases like
+ * Describe Statement on an EXECUTE command, we don't worry too much about
+ * efficiency.
+
  * Note: do not modify the result.
  *
  * XXX be careful to keep this in sync with FetchPortalTargetList,
@@ -609,10 +618,9 @@ DropPreparedStatement(const char *stmt_name, bool showError)
  * Implements the 'EXPLAIN EXECUTE' utility statement.
  */
 void
-ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
+ExplainExecuteQuery(ExecuteStmt *execstmt, ExplainStmt *stmt, const char * queryString, ParamListInfo params,
 					TupOutputState *tstate)
 {
-	ExecuteStmt *execstmt = (ExecuteStmt *) stmt->query->utilityStmt;
 	PreparedStatement *entry;
 	ListCell   *q,
 			   *p;
@@ -669,8 +677,6 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 		}
 		else
 		{
-			QueryDesc  *qdesc;
-
 			if (execstmt->into)
 			{
 				if (query->commandType != CMD_SELECT)
@@ -690,22 +696,8 @@ ExplainExecuteQuery(ExplainStmt *stmt, ParamListInfo params,
 				}
 			}
 
-			/*
-			 * Update snapshot command ID to ensure this query sees results of
-			 * any previously executed queries.  (It's a bit cheesy to modify
-			 * ActiveSnapshot without making a copy, but for the limited ways
-			 * in which EXPLAIN can be invoked, I think it's OK, because the
-			 * active snapshot shouldn't be shared with anything else anyway.)
-			 */
-			ActiveSnapshot->curcid = GetCurrentCommandId();
 
-			/* Create a QueryDesc requesting no output */
-			qdesc = CreateQueryDesc(plannedstmt, entry->query_string,
-									ActiveSnapshot, InvalidSnapshot,
-									None_Receiver,
-									paramLI, stmt->analyze);
-
-			ExplainOnePlan(qdesc, stmt, "EXECUTE", params, tstate);
+			ExplainOnePlan(plannedstmt, stmt, "EXECUTE", paramLI, tstate);
 		}
 
 		/* No need for CommandCounterIncrement, as ExplainOnePlan did it */
@@ -748,8 +740,8 @@ pg_prepared_statement(PG_FUNCTION_ARGS)
 	oldcontext = MemoryContextSwitchTo(per_query_ctx);
 
 	/*
-	 * build tupdesc for result tuples. This must match the definition of
-	 * the pg_prepared_statements view in system_views.sql
+	 * build tupdesc for result tuples. This must match the definition of the
+	 * pg_prepared_statements view in system_views.sql
 	 */
 	tupdesc = CreateTemplateTupleDesc(5, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",

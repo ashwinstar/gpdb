@@ -329,7 +329,6 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_BOOL_FIELD(canSetTag);
 	WRITE_BOOL_FIELD(transientPlan);
 	
-	WRITE_NODE_FIELD(queryTree); /* TODO Remove eventually. (PSMERGE) */
 	WRITE_NODE_FIELD(planTree);
 	
 	WRITE_NODE_FIELD(rtable);
@@ -346,7 +345,7 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(relationOids);
 	WRITE_NODE_FIELD(invalItems);
-	WRITE_INT_FIELD(nParamExec);
+	WRITE_INT_FIELD(nCrossLevelParams);
 	WRITE_INT_FIELD(nMotionNodes);
 	WRITE_INT_FIELD(nInitPlans);
 	
@@ -537,6 +536,7 @@ _outSubqueryScan(StringInfo str, SubqueryScan *node)
 	_outScanInfo(str, (Scan *) node);
 
 	WRITE_NODE_FIELD(subplan);
+	WRITE_NODE_FIELD(subrtable); /* debugging convenience */
 }
 
 static void
@@ -1082,9 +1082,9 @@ _outSubPlan(StringInfo str, SubPlan *node)
 	WRITE_ENUM_FIELD(subLinkType, SubLinkType);
 	WRITE_NODE_FIELD(testexpr);
 	WRITE_NODE_FIELD(paramIds);
-	WRITE_NODE_FIELD(plan);
 	WRITE_INT_FIELD(plan_id);
-	WRITE_NODE_FIELD(rtable);
+	WRITE_OID_FIELD(firstColType);
+	WRITE_INT_FIELD(firstColTypmod);
 	WRITE_BOOL_FIELD(useHashTable);
 	WRITE_BOOL_FIELD(unknownEqFalse);
 	WRITE_BOOL_FIELD(is_initplan); /*CDB*/
@@ -1617,6 +1617,13 @@ _outPlannerGlobal(StringInfo str, PlannerGlobal *node)
 	WRITE_NODE_FIELD(relationOids);
 	WRITE_NODE_FIELD(invalItems);
 	WRITE_BOOL_FIELD(transientPlan);
+	WRITE_NODE_FIELD(share.sharedNodes);
+	WRITE_NODE_FIELD(share.sliceMarks);
+	WRITE_NODE_FIELD(share.motStack);
+	WRITE_NODE_FIELD(share.qdShares);
+	WRITE_NODE_FIELD(share.qdSlices);
+	WRITE_NODE_FIELD(share.planNodes);
+	WRITE_INT_FIELD(share.nextPlanId);
 }
 
 static void

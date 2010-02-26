@@ -12,6 +12,7 @@
 #include "postgres.h"
 #include "executor/nodeSubplan.h"		/* For ExecSetParamPlan */
 #include "executor/executor.h"          /* For CreateExprContext */
+#include "cdb/cdbdisp.h"
 #include "cdb/cdbplan.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbsubplan.h"
@@ -22,6 +23,7 @@
 
 typedef struct ParamWalkerContext
 {
+	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
 	List	   *params;
 }	ParamWalkerContext;
 
@@ -71,7 +73,7 @@ preprocess_initplans(QueryDesc *queryDesc)
                 originalSlice,
 				rootIndex;
 
-	if (queryDesc->plannedstmt->nParamExec == 0)
+	if (queryDesc->plannedstmt->nCrossLevelParams == 0)
 		return;
 
 	originalPli = queryDesc->params;
@@ -87,7 +89,7 @@ preprocess_initplans(QueryDesc *queryDesc)
 	 * order, i.e. if a subplan x has a sublan y, then y will come before x in
 	 * the es_param_exec_vals array.
 	 */
-	for (i = 0; i < queryDesc->plannedstmt->nParamExec; i++)
+	for (i = 0; i < queryDesc->plannedstmt->nCrossLevelParams; i++)
 	{
 		ParamExecData *prm;
 		SubPlanState *sps;
@@ -103,16 +105,10 @@ preprocess_initplans(QueryDesc *queryDesc)
 		 *
 		 * TODO Some of the work of addRemoteExecParamsToParmList could be
 		 *		factored out of the loop.
-		 *
-		 * TODO Update range table reference when PlannedStmt support is 
-		 *      complete.  (PSMERGE)
 		 */
-		augmentedPli = addRemoteExecParamsToParamList(
-													  queryDesc->plannedstmt->planTree,
-													  queryDesc->plannedstmt->queryTree->rtable,													  originalPli,
-													  estate->es_param_exec_vals,
-													  queryDesc->plannedstmt->nParamExec
-			);
+		augmentedPli = addRemoteExecParamsToParamList(queryDesc->plannedstmt,
+													  originalPli,
+													  estate->es_param_exec_vals);
 
 		if (sps != NULL)
 		{
@@ -121,7 +117,7 @@ preprocess_initplans(QueryDesc *queryDesc)
             Assert(IsA(subplan, SubPlan) &&
                    subplan->qDispSliceId > 0);
 
-			sps->planstate->plan->nParamExec = queryDesc->plannedstmt->nParamExec;
+			sps->planstate->plan->nParamExec = queryDesc->plannedstmt->nCrossLevelParams;
 			sps->planstate->plan->nMotionNodes = queryDesc->plannedstmt->nMotionNodes;
 			sps->planstate->plan->dispatch = DISPATCH_PARALLEL;
 
@@ -182,7 +178,7 @@ preprocess_initplans(QueryDesc *queryDesc)
  * ParamListInfo (as for an external parameter).
  */
 ParamListInfo
-addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, ParamExecData *intPrm, int nIntPrm)
+addRemoteExecParamsToParamList(PlannedStmt *stmt, ParamListInfo extPrm, ParamExecData *intPrm)
 {
 	ParamListInfo augPrm;
 	ParamWalkerContext context;
@@ -190,6 +186,9 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 				j;
 	int			nParams;
 	ListCell *lc;
+	Plan	   *plan = stmt->planTree;
+	List	   *rtable = stmt->rtable;
+	int			nIntPrm = stmt->nCrossLevelParams;
 
 	if (nIntPrm == 0)
 		return extPrm;
@@ -216,7 +215,8 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 	 * the ParamExecData struct or the SubPlan struct.
 	 */
 
-	MemSet(&context, 0, sizeof(context));
+	exec_init_plan_tree_base(&context.base, stmt);
+	context.params = NIL;
 	param_walker((Node *) plan, &context);
 	
 	/* 
@@ -294,27 +294,6 @@ param_walker(Node *node, ParamWalkerContext * context)
 			return false;
 		}
 	}
-	else if (nodeTag(node) == T_SubPlan)
-	{
-		/* Sift through the range table, might be a Param in there. */
-		SubPlan *sub = (SubPlan*)node;
-		ListCell *lc;
-		
-		foreach( lc, sub->rtable )
-		{
-			RangeTblEntry *rte = lfirst(lc);
-			if ( rte->rtekind == RTE_FUNCTION )
-			{
-				FuncExpr *fexpr = (FuncExpr*)rte->funcexpr;
-				Assert(fexpr && IsA(fexpr,FuncExpr));
-				param_walker((Node*)fexpr->args, context);
-			}
-		    else if ( rte->rtekind == RTE_VALUES )
-			    param_walker((Node*)rte->values_lists, context);
-		}
-		/* Don't return, though.  Let the general walker finish the node. */
-	}
-
 	return plan_tree_walker(node, param_walker, context);
 }
 

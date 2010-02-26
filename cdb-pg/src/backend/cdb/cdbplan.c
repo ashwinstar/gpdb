@@ -344,20 +344,29 @@ plan_tree_walker(Node *node,
 
 			/*
 			 * SubPlan is handled by expression_tree_walker() , but that
-			 * walker doesn't recur into the plan itself.  Here, we do the
-			 * whole item, though users of the function will probably need to
-			 * update their context to reflect the range table.
+			 * walker doesn't recur into the plan itself.  Here, we do so
+			 * by using information in the prefix structure defined in
+			 * cdbplan.h.
+			 *
+			 * NB Callers usually don't have to take special account of
+			 *    the range table, but should be sure to understand what
+			 *    stage of processing they occur in (e.g., early planning, 
+			 *    late planning, dispatch, or execution) since this affects
+			 *    what value are available.
 			 */
 			{
 				SubPlan    *subplan = (SubPlan *) node;
+				Plan	   *subplan_plan = plan_tree_base_subplan_get_plan(context, subplan);
+				
+				Assert(subplan_plan); 
 
 				/* recurse into the exprs list */
 				if (expression_tree_walker((Node *) subplan->testexpr,
 										   walker, context))
 					return true;
 
-				/* recur into the subplan, a kind of Plan node */
-				if (walker((Node *) subplan->plan, context))
+				/* recur into the subplan's plan, a kind of Plan node */
+				if (walker((Node *) subplan_plan, context))
 					return true;
 
 				/* also examine args list */
@@ -1036,19 +1045,23 @@ plan_tree_mutator(Node *node,
 			 */
 			{
 				SubPlan    *subplan = (SubPlan *) node;
+				Plan	   *subplan_plan = plan_tree_base_subplan_get_plan(context, subplan);
 				SubPlan    *newnode;
+				Plan	   *newsubplan_plan;
 
 				FLATCOPY(newnode, subplan, SubPlan);
 
 				MUTATE(newnode->testexpr, subplan->testexpr, Node *);
-				MUTATE(newnode->plan, subplan->plan, Plan *);
-				MUTATE(newnode->rtable, subplan->rtable, List *);
+				MUTATE(newsubplan_plan, subplan_plan, Plan *);
 				MUTATE(newnode->args, subplan->args, List *);
 
                 /* An IntList isn't interesting to mutate; just copy. */
 				newnode->paramIds = (List *)copyObject(subplan->paramIds);
 				newnode->setParam = (List *)copyObject(subplan->setParam);
 				newnode->parParam = (List *)copyObject(subplan->parParam);
+				
+				if (newsubplan_plan != subplan_plan)
+					plan_tree_base_subplan_put_plan(context, newnode, newsubplan_plan);
 
 				return (Node *) newnode;
 			}

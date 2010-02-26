@@ -8040,14 +8040,10 @@ ExplainStmt: EXPLAIN opt_analyze opt_verbose opt_force ExplainableStmt
 					ExplainStmt *n = makeNode(ExplainStmt);
 					n->analyze = $2;
 					n->verbose = $3;
-#ifdef USE_FORCE_PLAN
-					n->force = $4;
-#else
 					if($4)
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
 								errmsg("cannot use force with explain statement")
 							       ));
-#endif
 					n->query = (Query*)$5;
 					$$ = (Node *)n;
 				}

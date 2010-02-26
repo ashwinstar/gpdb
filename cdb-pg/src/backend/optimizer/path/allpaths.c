@@ -694,12 +694,14 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		/* Generate the plan for the subquery */
 		rel->subplan = subquery_planner(root->glob, subquery, root, tuple_fraction,
 										&subroot);
+		rel->subrtable = subroot->parse->rtable;
 		subquery_pathkeys = subroot->query_pathkeys;
 	}
 	else
 	{
 		/* This is a preplanned sub-query RTE. */
 		rel->subplan = rte->subquery_plan;
+		rel->subrtable = rte->subquery_rtable;
 		subquery_pathkeys = rte->subquery_pathkeys;
 		/* XXX rel->onerow = ??? */
 	}

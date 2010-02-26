@@ -2334,7 +2334,8 @@ create_subqueryscan_plan(CreatePlanContext *ctx, Path *best_path,
 	scan_plan = make_subqueryscan(tlist,
 								  scan_clauses,
 								  scan_relid,
-								  best_path->parent->subplan);
+								  best_path->parent->subplan,
+								  best_path->parent->subrtable);
 
 	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
 
@@ -3406,7 +3407,8 @@ SubqueryScan *
 make_subqueryscan(List *qptlist,
 				  List *qpqual,
 				  Index scanrelid,
-				  Plan *subplan)
+				  Plan *subplan,
+				  List *subrtable)
 {
 	SubqueryScan *node = makeNode(SubqueryScan);
 	Plan	   *plan = &node->scan.plan;
@@ -3423,8 +3425,14 @@ make_subqueryscan(List *qptlist,
 	plan->qual = qpqual;
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
+	/*
+	 * Note that, in most scan nodes, scanrelid refers to an entry in the rtable of the 
+	 * containing plan; in a subqueryscan node, the containing plan is the higher
+	 * level plan!
+	 */
 	node->scan.scanrelid = scanrelid;
 	node->subplan = subplan;
+	node->subrtable = subrtable;
 
 	return node;
 }
@@ -4311,12 +4319,12 @@ Plan *add_agg_cost(PlannerInfo *root, Plan *plan,
 	 */
 	if (qual)
 	{
-		cost_qual_eval(&qual_cost, qual);
+		cost_qual_eval(&qual_cost, qual, root);
 		plan->startup_cost += qual_cost.startup;
 		plan->total_cost += qual_cost.startup;
 		plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
 	}
-	cost_qual_eval(&qual_cost, tlist);
+	cost_qual_eval(&qual_cost, tlist, root);
 	plan->startup_cost += qual_cost.startup;
 	plan->total_cost += qual_cost.startup;
 	plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
@@ -4376,12 +4384,12 @@ make_group(PlannerInfo *root,
 	 */
 	if (qual)
 	{
-		cost_qual_eval(&qual_cost, qual);
+		cost_qual_eval(&qual_cost, qual, root);
 		plan->startup_cost += qual_cost.startup;
 		plan->total_cost += qual_cost.startup;
 		plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
 	}
-	cost_qual_eval(&qual_cost, tlist);
+	cost_qual_eval(&qual_cost, tlist, root);
 	plan->startup_cost += qual_cost.startup;
 	plan->total_cost += qual_cost.startup;
 	plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
@@ -4427,7 +4435,7 @@ Window *make_window(PlannerInfo *root, List *tlist,
 	plan->startup_cost = window_path.startup_cost;
 	plan->total_cost = window_path.total_cost;
 
-	cost_qual_eval(&qual_cost, tlist);
+	cost_qual_eval(&qual_cost, tlist, root);
 	plan->startup_cost += qual_cost.startup;
 	plan->total_cost += qual_cost.startup;
 	plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
@@ -4656,7 +4664,8 @@ make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
  * cost.  In either case, tlist eval cost is not to be included here.
  */
 Result *
-make_result(List *tlist,
+make_result(/*PlannerInfo *root,*/
+			List *tlist,
 			Node *resconstantqual,
 			Plan *subplan)
 {
@@ -4675,7 +4684,7 @@ make_result(List *tlist,
 		{
 			QualCost	qual_cost;
 
-			cost_qual_eval(&qual_cost, (List *) resconstantqual);
+			cost_qual_eval(&qual_cost, (List *) resconstantqual, NULL /*root*/);
 			/* resconstantqual is evaluated once at startup */
 			plan->startup_cost += qual_cost.startup + qual_cost.per_tuple;
 			plan->total_cost += qual_cost.startup + qual_cost.per_tuple;

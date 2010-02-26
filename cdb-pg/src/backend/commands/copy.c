@@ -1284,7 +1284,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		Assert(query->commandType == CMD_SELECT);
 
 		/* plan the query */
-		plannedstmt = planner(query, false, 0, NULL);
+		plannedstmt = planner(query, 0, NULL);
 
 		/*
 		 * Update snapshot command ID to ensure this query sees results of any

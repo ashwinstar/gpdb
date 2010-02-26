@@ -21,9 +21,13 @@ extern void ExplainQuery(ExplainStmt *stmt, const char *queryString,
 
 extern TupleDesc ExplainResultDesc(ExplainStmt *stmt);
 
-extern void ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
-			   const char *queryString,
-			   ParamListInfo params,
-			   TupOutputState *tstate);
+extern void ExplainOneUtility(Node *utilityStmt, ExplainStmt *stmt,
+				  const char *queryString,
+				  ParamListInfo params,
+				  TupOutputState *tstate);
+
+extern void ExplainOnePlan(PlannedStmt *plannedstmt, ExplainStmt *stmt,
+		   const char *queryString, ParamListInfo params,
+		   TupOutputState *tstate);
 
 #endif   /* EXPLAIN_H */

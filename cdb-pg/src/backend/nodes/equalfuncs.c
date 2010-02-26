@@ -345,9 +345,9 @@ _equalSubPlan(SubPlan *a, SubPlan *b)
 	/* CDB: Ignore value of qDispSliceId. */
 	COMPARE_NODE_FIELD(testexpr);
 	COMPARE_NODE_FIELD(paramIds);
-	/* should compare plans, but have to settle for comparing plan IDs */
 	COMPARE_SCALAR_FIELD(plan_id);
-	COMPARE_NODE_FIELD(rtable);
+	COMPARE_SCALAR_FIELD(firstColType);
+	COMPARE_SCALAR_FIELD(firstColTypmod);
 	COMPARE_SCALAR_FIELD(useHashTable);
 	COMPARE_SCALAR_FIELD(unknownEqFalse);
 	/* CDB: Ignore value of is_initplan */

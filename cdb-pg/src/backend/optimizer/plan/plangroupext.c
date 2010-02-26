@@ -1451,7 +1451,8 @@ plan_append_aggs_with_rewrite(PlannerInfo *root,
 			agg_plan = (Plan *)make_subqueryscan(subquery_tlist,
 												 NIL,
 												 list_length(final_query->rtable),
-												 agg_plan);
+												 agg_plan,
+												 final_query->rtable);
 			mark_passthru_locus(agg_plan, true, true);
 			pfree(resno_map);
 		}
@@ -2097,7 +2098,8 @@ plan_list_rollup_plans(PlannerInfo *root,
 			rollup_plan = (Plan *)make_subqueryscan(subquery_tlist,
 													NIL,
 													list_length(final_query->rtable),
-													rollup_plan);
+													rollup_plan,
+													final_query->rtable);
 			mark_passthru_locus(rollup_plan, true, true);
 			pfree(resno_map);
 		}

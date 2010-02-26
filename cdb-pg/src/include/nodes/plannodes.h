@@ -19,6 +19,7 @@
 #include "access/sdir.h"
 #include "nodes/bitmapset.h"
 #include "nodes/primnodes.h"
+#include "storage/itemptr.h"
 
 typedef struct DirectDispatchInfo
 {
@@ -54,15 +55,7 @@ typedef struct PlannedStmt
 		bool		canSetTag;		/* do I set the command result tag? */
 		
 		bool		transientPlan;	/* redo plan when TransactionXmin changes? */
-		
-		/* The query tree is carried in PlannedStmt just until PlannedStmt support is
-		 * complete.  It's principle use is to carry the top level range table that,
-		 * ultimately goes in PlannedStmt.
-		 * 
-		 * TODO Remove queryTree (PSMERGE).
-		 */
-		struct Query *queryTree;
-		
+				
 		/* Field qdContext communicates memory context on the QD  from portal to 
 		 * dispatch.  
 		 *
@@ -117,7 +110,7 @@ typedef struct PlannedStmt
 		
 		List	   *invalItems;		/* other dependencies, as PlanInvalItems */
 		
-		int			nParamExec;		/* number of PARAM_EXEC Params used */
+		int			nCrossLevelParams;		/* number of PARAM_EXEC Params used */
 		
 		int			nMotionNodes;	/* number of Motion nodes in plan */
 		
@@ -141,9 +134,23 @@ typedef struct PlannedStmt
 		Node *sliceTable;
 	} PlannedStmt;
 
-/* macro for fetching the Plan associated with a SubPlan node */
-#define exec_subplan_get_plan(plannedstmt, subplan) \
-((Plan *) list_nth((plannedstmt)->subplans, (subplan)->plan_id - 1))
+
+/* 
+ * Fetch the Plan associated with a SubPlan node in a completed PlannedStmt. 
+ */
+static inline struct Plan *exec_subplan_get_plan(struct PlannedStmt *plannedstmt, SubPlan *subplan)
+{
+	return (struct Plan *) list_nth(plannedstmt->subplans, subplan->plan_id - 1);
+}
+
+/* 
+ * Rewrite the Plan associated with a SubPlan node in a completed PlannedStmt. 
+ */
+static inline void exec_subplan_put_plan(struct PlannedStmt *plannedstmt, SubPlan *subplan, struct Plan *plan) 
+{
+	ListCell *cell = list_nth_cell(plannedstmt->subplans, subplan->plan_id-1);
+	cell->data.ptr_value = plan;
+}
 
 
 /* ----------------
@@ -203,7 +210,7 @@ typedef struct Plan
 	Bitmapset  *extParam;
 	Bitmapset  *allParam;
 	
-	int			nParamExec;		/* PSMERGE: moved to PlannedStmt */
+	int			nParamExec;		/* Also in PlannedStmt */
 	
 	/*
 	 * MPP needs to keep track of the characteristics of flow of output
@@ -528,7 +535,6 @@ typedef struct SubqueryScan
 typedef struct FunctionScan
 {
 	Scan		scan;
-	/* no other fields needed at present */
 } FunctionScan;
 
 /* ----------------
@@ -1023,6 +1029,22 @@ typedef struct Motion
 	AttrNumber	*sortColIdx;		/* their indexes in target list */
 	Oid			*sortOperators;		/* OID of operators to sort them by */
 } Motion;
+
+
+/*
+ * Plan invalidation info
+ *
+ * We track the objects on which a PlannedStmt depends in two ways:
+ * relations are recorded as a simple list of OIDs, and everything else
+ * is represented as a list of PlanInvalItems.  A PlanInvalItem identifies
+ * a system catalog entry by cache ID and tuple TID.
+ */
+typedef struct PlanInvalItem
+	{
+		NodeTag		type;
+		int			cacheId;		/* a syscache ID, see utils/syscache.h */
+		ItemPointerData tupleId;	/* TID of the object's catalog tuple */
+	} PlanInvalItem;
 
 #endif   /* PLANNODES_H */
 

@@ -1830,7 +1830,7 @@ static Plan *plan_common_subquery(PlannerInfo *root, List *lower_tlist,
 	Assert(result_plan->flow);
 
 	/* Account for the cost of evaluation of the lower tlist. */
-	cost_qual_eval(&tlist_cost, lower_tlist);
+	cost_qual_eval(&tlist_cost, lower_tlist, root);
 	result_plan->startup_cost += tlist_cost.startup;
 	result_plan->total_cost +=
 		tlist_cost.startup +
@@ -2242,7 +2242,7 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 	 */
 	root->parse->targetList = targetlist;
 	result_plan = plan_pushdown_tlist(result_plan, targetlist);
-	cost_qual_eval(&tlist_cost, targetlist);
+	cost_qual_eval(&tlist_cost, targetlist, root);
 	result_plan->startup_cost += tlist_cost.startup;
 	result_plan->total_cost += tlist_cost.startup + tlist_cost.per_tuple * result_plan->plan_rows;
 
@@ -2897,7 +2897,7 @@ static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *contex
 		 * and avoid, but not yet.)
 		 */
 		result_plan = plan_pushdown_tlist(result_plan, targetlist);
-		cost_qual_eval(&tlist_cost, targetlist);
+		cost_qual_eval(&tlist_cost, targetlist, root);
 		result_plan->startup_cost += tlist_cost.startup;
 		result_plan->total_cost += tlist_cost.startup + tlist_cost.per_tuple * result_plan->plan_rows;
 
@@ -3408,6 +3408,7 @@ RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *
 	rte->subquery = subquery;
 	rte->eref = eref;
 	rte->subquery_plan = plan;
+	rte->subquery_rtable = subquery->rtable;
 	rte->subquery_pathkeys = pathkeys;
 
 	return rte;
@@ -4049,7 +4050,7 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 	
 	/* Make the plan. 
 	 */
-	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan);
+	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan, query->rtable);
 	plan->flow = pull_up_Flow(plan, ((SubqueryScan*)plan)->subplan, true);
 	
 	/* Make the corresponding Query.
@@ -4151,7 +4152,7 @@ Plan *add_join_to_wrapper(
 	
 	/* Make the plan. 
 	 */
-	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan);
+	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan, query->rtable);
 	plan->flow = pull_up_Flow(plan, ((SubqueryScan*)plan)->subplan, true);
 
 	

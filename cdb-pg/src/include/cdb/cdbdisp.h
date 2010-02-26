@@ -468,7 +468,8 @@ cdbdisp_check_estate_for_cancel(EState *estate);
  * make a plan constant, if possible. Call must say if we're doing single row
  * inserts.
  */
-extern Node *make_plan_constant(Node *n, bool is_SRI);
+extern Node *exec_make_plan_constant(PlannedStmt *stmt, bool is_SRI);
+extern Node *planner_make_plan_constant(PlannerInfo *root, Node *n, bool is_SRI);
 
 /*--------------------------------------------------------------------*/
 

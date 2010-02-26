@@ -488,8 +488,15 @@ ResDestroyQueue(Oid queueid)
 	
 }
 
+typedef
+struct inventory_plan_memory_t
+{
+	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
+	double mem_ceiling;
+} inventory_plan_memory_t;
+
 static bool
-inventory_plan_memory_ceiling(Node *plan, double *usage)
+inventory_plan_memory_ceiling_walker(Node *plan, inventory_plan_memory_t *context)
 {
 	if (plan == NULL)
 		return false;
@@ -508,14 +515,14 @@ inventory_plan_memory_ceiling(Node *plan, double *usage)
 		case T_ShareInputScan: /* I'm not sure exactly how to count
 								* these (only want to count once) */
 		case T_Window: 
-			*usage += work_mem;
+			context->mem_ceiling += work_mem;
 			break;
 
 		default:
 			break;
 	}
 			
-	return (plan_tree_walker((Node *)plan, inventory_plan_memory_ceiling, usage));
+	return (plan_tree_walker((Node *)plan, inventory_plan_memory_ceiling_walker, context));
 }
 
 /*
@@ -526,7 +533,7 @@ inventory_plan_memory_ceiling(Node *plan, double *usage)
  *	false if the lock has been skipped.
  */
 bool
-ResLockPortal(Portal portal, Plan *plan)
+ResLockPortal(Portal portal, PlannedStmt *stmt)
 {
 	bool		returnReleaseOk = false;	/* Release resource lock? */
 	bool		takeLock;					/* Take resource lock? */
@@ -534,13 +541,17 @@ ResLockPortal(Portal portal, Plan *plan)
 	Oid			queueid;
 	int32		lockResult = 0;
 	ResPortalIncrement	incData;
+	Plan *plan = stmt->planTree;
 
 	{
-		double mem_ceiling = work_mem;
+		inventory_plan_memory_t context;
+		
+		exec_init_plan_tree_base(&context.base, stmt);
+		context.mem_ceiling = work_mem;
 
-		plan_tree_walker((Node *)plan, inventory_plan_memory_ceiling, &mem_ceiling);
+		plan_tree_walker((Node *)plan, inventory_plan_memory_ceiling_walker, &context);
 
-		elog(DEBUG2, "Memory ceiling for plan: %f", 1024.0 * mem_ceiling);
+		elog(DEBUG2, "Memory ceiling for plan: %f", 1024.0 * context.mem_ceiling);
 	}
 
 	queueid = portal->queueId;

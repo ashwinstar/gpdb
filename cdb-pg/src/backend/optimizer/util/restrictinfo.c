@@ -561,7 +561,7 @@ remove_redundant_join_clauses(PlannerInfo *root, List *restrictinfo_list,
 	 * are more expensive in favor of the ones that are less so. Run
 	 * cost_qual_eval() to ensure the eval_cost fields are set up.
 	 */
-	cost_qual_eval(&cost, restrictinfo_list);
+	cost_qual_eval(&cost, restrictinfo_list, root);
 
 	/*
 	 * We don't have enough knowledge yet to be able to estimate the number of

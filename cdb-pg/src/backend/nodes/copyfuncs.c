@@ -126,13 +126,8 @@ _copyPlannedStmt(PlannedStmt *from)
 	COPY_SCALAR_FIELD(commandType);
 	COPY_SCALAR_FIELD(canSetTag);
 	COPY_SCALAR_FIELD(transientPlan);
-	
-	/* TO DO Remove the queryTree field when PlannedStmt support is
-	 *       complete. (PSMERGE)
-	 */
-	COPY_NODE_FIELD(queryTree);
+
 	COPY_NODE_FIELD(planTree);
-	
 	COPY_NODE_FIELD(rtable);
 	
 	COPY_NODE_FIELD(resultRelations);
@@ -147,7 +142,7 @@ _copyPlannedStmt(PlannedStmt *from)
 	COPY_NODE_FIELD(rowMarks);
 	COPY_NODE_FIELD(relationOids);
 	COPY_SCALAR_FIELD(invalItems);
-	COPY_SCALAR_FIELD(nParamExec);
+	COPY_SCALAR_FIELD(nCrossLevelParams);
 	COPY_SCALAR_FIELD(nMotionNodes);
 	COPY_SCALAR_FIELD(nInitPlans);
 	
@@ -532,6 +527,8 @@ _copySubqueryScan(SubqueryScan *from)
 	 */
 	COPY_NODE_FIELD(subplan);
 
+	COPY_NODE_FIELD(subrtable);
+	
 	return newnode;
 }
 
@@ -1256,9 +1253,9 @@ _copySubPlan(SubPlan *from)
     COPY_SCALAR_FIELD(qDispSliceId);    /*CDB*/
 	COPY_NODE_FIELD(testexpr);
 	COPY_NODE_FIELD(paramIds);
-	COPY_NODE_FIELD(plan);
 	COPY_SCALAR_FIELD(plan_id);
-	COPY_NODE_FIELD(rtable);
+	COPY_SCALAR_FIELD(firstColType);
+	COPY_SCALAR_FIELD(firstColTypmod);
 	COPY_SCALAR_FIELD(useHashTable);
 	COPY_SCALAR_FIELD(unknownEqFalse);
 	COPY_SCALAR_FIELD(is_initplan);	/*CDB*/

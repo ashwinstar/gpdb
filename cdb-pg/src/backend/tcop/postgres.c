@@ -751,7 +751,7 @@ pg_plan_query(Query *querytree, ParamListInfo boundParams)
 		ResetUsage();
 
 	/* call the optimizer */
-	stmt = planner(querytree, false, 0, boundParams);
+	stmt = planner(querytree, 0, boundParams);
 
 	if (log_planner_stats)
 		ShowUsage("PLANNER STATISTICS");
@@ -864,7 +864,6 @@ exec_mpp_query(const char *query_string,
 	char		msec_str[32];
 	Node		   *utilityStmt = NULL;
 	PlannedStmt	   *plan = NULL;
-	List	   *qtlist = NULL;
 	CmdType		commandType = CMD_UNKNOWN;
 	SliceTable *sliceTable = NULL;
     Slice      *slice = NULL;
@@ -1021,11 +1020,8 @@ exec_mpp_query(const char *query_string,
 			RangeTblEntry  *rte;
 			AclMode         removeperms = ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_SELECT_FOR_UPDATE;
 			
-			/* TO DO Finish PlannedStmt support and access range table in its newlocation
-			 *       instead of through the temporary queryTree field.  (PSMERGE) 
-			 */
 			/* Just reading, so don't check INS/DEL/UPD permissions. */
-			foreach(rtcell, plan->queryTree->rtable)
+			foreach(rtcell, plan->rtable)
 			{
 				rte = (RangeTblEntry *)lfirst(rtcell);
 				if (rte->rtekind == RTE_RELATION &&
@@ -1034,18 +1030,6 @@ exec_mpp_query(const char *query_string,
 			}
 		}
 	}
-	
-	/* We need (?) a query tree for a couple purposes: logging and recognizing the
-	 * need for an empty command response.  We use a utility statement directly or
-	 * extract a query tree from the PlannedStmt.
-	 *
-	 * TO DO This must change.  The query tree in PlannedStmt is temporary, just
-	 *       until support is complete.  (PSMERGE)
-	 */
-	if ( utilityStmt ) 
-		qtlist = list_make1(utilityStmt);
-	else
-		qtlist = list_make1(plan->queryTree);
 	
 	
 	if (log_statement != LOGSTMT_NONE && !gp_mapreduce_define)
@@ -1058,8 +1042,8 @@ exec_mpp_query(const char *query_string,
 			(plan && log_statement >= LOGSTMT_MOD))
 			
 		{
-			ereport(LOG, (errmsg("statement: %s", query_string),
-						  errdetail_execute(qtlist) ));
+			ereport(LOG, (errmsg("statement: %s", query_string)
+						   ));
 			was_logged = true;
 		}
 		
@@ -1286,15 +1270,7 @@ exec_mpp_query(const char *query_string,
 	 * Close down transaction statement, if one is open.
 	 */
 	finish_xact_command();
-	
-	/*
-	 * If there were no parsetrees, return EmptyQueryResponse message.
-	 *
-	 * TO DO  Find another way.  See comment about qtlist above.
-	 */
-	if (!qtlist)
-		NullCommand(dest);
-	
+		
 	QueryContext = NULL;
 	
 	/*
@@ -1313,8 +1289,7 @@ exec_mpp_query(const char *query_string,
 					(errmsg("duration: %s ms  statement: %s",
 							msec_str, query_string),
 					 errhidestmt(true),
-					 errOmitLocation(true),
-					 errdetail_execute(qtlist)));
+					 errOmitLocation(true)));
 			break;
 	}
 	

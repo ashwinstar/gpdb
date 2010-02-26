@@ -165,13 +165,14 @@ typedef struct Query
 		Node	   *setOperations;	/* set-operation tree if this is top level of
 									 * a UNION/INTERSECT/EXCEPT query */
 
-	/* TODO Consider removing these, but be careful since we need to read old formats
-	 *      for, e.g., catalog upgrade. 
+	/* TODO Eventually we should remove these 4 members because they're not used here.
+	 *      Instead they're in PlannedStmt.  However, we need to read old formats, e.g.
+	 *      for catalog upgrade. So for now, it's easier to leave them here.
 	 */		
-		List	   *resultRelations;		/* Unused. Now in PlannedStmt. (PSMERGE) */
-		PartitionNode *result_partitions;	/* Unused. Now in PlannedStmt. (PSMERGE) */
-		List	   *result_aosegnos;		/* Unused. Now in PlannedStmt. (PSMERGE) */
-		List	   *returningLists; 		/* Unused. Now in PlannedStmt. (PSMERGE) */
+		List	   *resultRelations;		/* Unused. Now in PlannedStmt. */
+		PartitionNode *result_partitions;	/* Unused. Now in PlannedStmt. */
+		List	   *result_aosegnos;		/* Unused. Now in PlannedStmt. */
+		List	   *returningLists; 		/* Unused. Now in PlannedStmt. */
 		
 		/* MPP: Used only on QD. Don't serialize.
 		 *      Holds the result distribution policy for SELECT ... INTO and
@@ -635,7 +636,8 @@ typedef struct RangeTblEntry
 	 * window planning.
 	 */
 	struct Plan *subquery_plan;
-	List	   *subquery_pathkeys;
+	List		*subquery_rtable;
+	List		*subquery_pathkeys;
 
 	/*
 	 * Fields valid for a function RTE (else NULL):
@@ -2388,9 +2390,6 @@ typedef struct ExplainStmt
 	Query	   *query;			/* the query */
 	bool		verbose;		/* print plan info */
 	bool		analyze;		/* get statistics by executing plan */
-#ifdef USE_FORCE_PLAN
-	bool 		force;			/* force a plan from a string format */
-#endif
 } ExplainStmt;
 
 /* ----------------------

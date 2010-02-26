@@ -49,6 +49,7 @@
  */
 typedef struct ApplyMotionState
 {
+	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
 	int			nextMotionID;
     int         sliceDepth;
     int         numInitPlanMotionNodes;
@@ -237,7 +238,9 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	bool needToAssignDirectDispatchContentIds = false;
 
     /* Initialize mutator context. */
-    state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
+	
+	planner_init_plan_tree_base(&state.base, root); /* error on attempt to descend into subplan plan */
+	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
     state.sliceDepth = 0;
     state.numInitPlanMotionNodes = 0;
     state.initPlans = NIL;
@@ -248,7 +251,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	/* Does query have a target relation?  (INSERT/DELETE/UPDATE) */
 	
 	/*
-	 *  NOTE: This code makes the assumption that if we are working on a heirarchy of tables,
+	 *  NOTE: This code makes the assumption that if we are working on a hierarchy of tables,
 	 *  all the tables are distributed, or all are on the entry DB.  Any mixture will fail
 	 */
     if (query->resultRelation > 0)
@@ -465,7 +468,6 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
                 else
                     Insist(focusPlan(plan, true, false, false));
 			}
-			// TODO: Is the test for the IntoCause needed here?  the PSMERGE branch didn't have it.
 			needToAssignDirectDispatchContentIds = gp_enable_direct_dispatch && ! query->intoClause;
 			break;
 
@@ -532,7 +534,8 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 							/* 3: if not, mutate plan to make constant */
 							if (!all_const)
-								plan->targetlist = (List *)make_plan_constant((Node *)plan->targetlist, true);
+								plan->targetlist = (List *)
+									planner_make_plan_constant(root, (Node *)plan->targetlist, true);
 
 							/* better be constant now */
 							if (allConstantValuesClause(plan))
@@ -759,7 +762,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	if ( needToAssignDirectDispatchContentIds )
 	{
 		/* figure out if we can run on a reduced set of nodes */
-		AssignContentIdsToPlanData(query, result);
+		AssignContentIdsToPlanData(query, result, root);
 	}
 
 	Assert(result->nMotionNodes == state.nextMotionID - 1);
@@ -834,33 +837,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 	if (node == NULL)
 		return NULL;
 	
-    /* Mutate SubPlan manually cause plan_tree_mutator won't visit its plan. */
-    if (IsA(node, SubPlan))
-	{
-		SubPlan *subplan = (SubPlan*)node;
-		SubPlan *newsub;
-		
-        /* For now, the top slice of a SubPlan always executes on the qDisp. */
-        saveSliceDepth = context->sliceDepth;
-        context->sliceDepth = 0;
-
-		newsub = makeNode(SubPlan);
-		memcpy(newsub, node, sizeof(SubPlan));
-		
-		newsub->testexpr = (Node*) apply_motion_mutator((Node*)subplan->testexpr, context);
-		newsub->plan = (Plan*) apply_motion_mutator((Node*)subplan->plan, context);
-		newsub->rtable = (List*) apply_motion_mutator((Node*)subplan->rtable, context);
-		newsub->args = (List*) apply_motion_mutator((Node*)subplan->args, context);
-
-        /* An IntList isn't interesting to mutate; just copy them. */
-		newsub->paramIds = (List *)copyObject(subplan->paramIds);
-		newsub->setParam = (List *)copyObject(subplan->setParam);
-		newsub->parParam = (List *)copyObject(subplan->parParam);
-
-        context->sliceDepth = saveSliceDepth;
-		return (Node*)newsub;
-	}
-
     /* An expression node might have subtrees containing plans to be mutated. */
     if (!is_plan_node(node))
 		return plan_tree_mutator(node, apply_motion_mutator, context);
@@ -900,9 +876,12 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
         foreach(cell, plan->initPlan)
         {
+        	PlannerInfo *root = (PlannerInfo *) context->base.node;
             subplan = (SubPlan *)lfirst(cell);
             Assert(IsA(subplan, SubPlan));
-            nMotion += subplan->plan->nMotionNodes;
+            Assert(root);
+            Assert(planner_subplan_get_plan(root, subplan));
+            nMotion += planner_subplan_get_plan(root, subplan)->nMotionNodes;
             context->initPlans = lappend(context->initPlans, subplan);
         }
 
@@ -1476,6 +1455,7 @@ doesUpdateAffectPartitionCols(PlannerInfo  *root,
  */
 typedef struct ctid_inventory_context
 {
+	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
 	bool        uses_ctid;
     bool        uses_segid;
     Index       relid;
@@ -1514,6 +1494,7 @@ cdbmutate_warn_ctid_without_segid(struct PlannerInfo *root, struct RelOptInfo *r
     AttrNumber              attno;
     int                     ndx;
 	
+	planner_init_plan_tree_base(&inv.base, root);
     inv.uses_ctid = false;
 	inv.uses_segid = false;
     inv.relid = rel->relid;
@@ -1765,13 +1746,6 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 	if(node == NULL)
 		return;
 
-	if(IsA(node, SubPlan))
-	{
-		SubPlan *subplan = (SubPlan *) node;
-		shareinput_walker(f, (Node *)subplan->plan, ctxt); 
-		return;
-	}
-
 	if(IsA(node, List))
 	{
 		List *l = (List *) node;
@@ -1859,13 +1833,6 @@ static void leftdeep_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputCon
 
 	if(node == NULL)
 		return;
-
-	if(IsA(node, SubPlan))
-	{
-		SubPlan *subplan = (SubPlan *) node;
-		leftdeep_walker(f, (Node *)subplan->plan, ctxt); 
-		return;
-	}
 
 	if(IsA(node, List))
 	{
@@ -2266,7 +2233,11 @@ void assign_plannode_id(Plan *plan)
 	
 }
 
-
+/* 
+ * We can "zap" a Result node if it has an Append node as its left tree and
+ * no other complications (initplans, etc.) and its target list is
+ * composed of nothing but Var nodes.
+ */
 static bool can_zap_result(Result *res)
 {
 	ListCell *lc;
@@ -2283,30 +2254,32 @@ static bool can_zap_result(Result *res)
 	{
 		TargetEntry *te = (TargetEntry *) lfirst(lc);
 		if(!IsA(te->expr, Var))
-		{
-			if(IsA(te->expr, FuncExpr))
-			{
-				FuncExpr *fe = (FuncExpr *) te->expr;
-				if(fe->funcretset)
-					return false;
-			}
-
 			return false;
-		}
 	}
 
 	return true;
 }
 
-Plan *zap_trivial_result(Plan *plan)
+
+/* "Zap" eligible Result nodes in the given plan by pushing their quals and
+ * targets down onto their Append argument, marking the Append node isZapped,
+ * and using it in place of the Result node.
+ *
+ * XXX Note the call to planner_subplan_put_plan which modifies the
+ *     subplan's plan.  This is unfortunate.  We should look for a 
+ *     better way.
+ */
+Plan *zap_trivial_result(PlannerInfo *root, Plan *plan)
 {
 	if(plan == NULL)
 		return NULL;
 
 	if(IsA(plan, SubPlan))
 	{
-		SubPlan *subp = (SubPlan *) plan;
-		subp->plan = zap_trivial_result(subp->plan);
+		SubPlan *subplan = (SubPlan *) plan;
+		Plan *subplan_plan = planner_subplan_get_plan(root, subplan);
+		
+		planner_subplan_put_plan(root, subplan, zap_trivial_result(root, subplan_plan));
 		return plan;
 	}
 
@@ -2317,7 +2290,7 @@ Plan *zap_trivial_result(Plan *plan)
 
 		foreach(lc, l)
 		{
-			lfirst(lc) = zap_trivial_result(lfirst(lc));
+			lfirst(lc) = zap_trivial_result(root, lfirst(lc));
 		}
 
 		return plan;
@@ -2326,14 +2299,14 @@ Plan *zap_trivial_result(Plan *plan)
 	if(IsA(plan, Append))
 	{
 		Append *app = (Append *) plan;
-		app->appendplans = (List *) zap_trivial_result((Plan *) app->appendplans);
+		app->appendplans = (List *) zap_trivial_result(root, (Plan *) app->appendplans);
 		return plan;
 	}
 
 	if(IsA(plan, SubqueryScan))
 	{
 		SubqueryScan *subq = (SubqueryScan *) plan;
-		subq->subplan = zap_trivial_result(subq->subplan);
+		subq->subplan = zap_trivial_result(root, subq->subplan);
 		return plan;
 	}
 
@@ -2341,7 +2314,7 @@ Plan *zap_trivial_result(Plan *plan)
 	{
 		Result *res = (Result *) plan;
 
-		plan->lefttree = zap_trivial_result(plan->lefttree);
+		plan->lefttree = zap_trivial_result(root, plan->lefttree);
 		if(can_zap_result(res))
 		{
 			Append *app = (Append *) plan->lefttree;
@@ -2354,9 +2327,9 @@ Plan *zap_trivial_result(Plan *plan)
 			return plan;
 	}
 
-	plan->lefttree = zap_trivial_result(plan->lefttree);
-	plan->righttree = zap_trivial_result(plan->righttree);
-	plan->initPlan = (List *) zap_trivial_result((Plan *) plan->initPlan);
+	plan->lefttree = zap_trivial_result(root, plan->lefttree);
+	plan->righttree = zap_trivial_result(root, plan->righttree);
+	plan->initPlan = (List *) zap_trivial_result(root, (Plan *) plan->initPlan);
 
 	return plan;
 }

@@ -88,6 +88,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->pages = 0;
 	rel->tuples = 0;
 	rel->subplan = NULL;
+	rel->subrtable = NIL;
 	rel->locationlist = NIL;
 	rel->execcommand = NULL;
 	rel->fmttype = '\0';
@@ -369,6 +370,7 @@ build_join_rel(PlannerInfo *root,
 	joinrel->pages = 0;
 	joinrel->tuples = 0;
 	joinrel->subplan = NULL;
+	joinrel->subrtable = NIL;
 	joinrel->baserestrictinfo = NIL;
 	joinrel->baserestrictcost.startup = 0;
 	joinrel->baserestrictcost.per_tuple = 0;

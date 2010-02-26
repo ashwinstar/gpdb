@@ -117,7 +117,7 @@ extern Plan *add_repeat_node(Plan *result_plan, int repeat_count, uint64 groupin
  */
 extern Plan *create_plan(PlannerInfo *root, Path *path);
 extern SubqueryScan *make_subqueryscan(List *qptlist, List *qpqual,
-				  Index scanrelid, Plan *subplan);
+				  Index scanrelid, Plan *subplan, List *subrtable);
 extern Append *make_append(List *appendplans, bool isTarget, List *tlist);
 extern Sort *make_sort_from_sortclauses(PlannerInfo *root, List *sortcls,
 						   Plan *lefttree);
@@ -225,14 +225,20 @@ extern void distribute_qual_to_rels(PlannerInfo *root, Node *clause,
  * prototypes for plan/setrefs.c
  */
 Plan *
-set_plan_references_qry(Plan *plan, Query *qry, List *sharedNodes);
+set_plan_references(PlannerGlobal *glob, Plan *plan, List *rtable);
 
-extern List *set_returning_clause_references(List *rlist,
+List *
+set_returning_clause_references(PlannerGlobal *glob,
+								List *rlist,
 								Plan *topplan,
-								Index resultRelation); 
+								Index resultRelation);
+
+extern void
+extract_query_dependencies(List *queries,
+						   List **relationOids,
+						   List **invalItems);
 extern void fix_opfuncids(Node *node);
 extern void set_opfuncid(OpExpr *opexpr);
-extern bool cdb_expr_requires_full_eval(Node *node);
 
 extern int num_distcols_in_grouplist(List *gc);
 

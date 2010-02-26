@@ -872,7 +872,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 		Assert(result_plan->flow); 
     
 		/* Account for the cost of evaluation of the sub_tlist. */
-		cost_qual_eval(&tlist_cost, sub_tlist);
+		cost_qual_eval(&tlist_cost, sub_tlist, root);
 		result_plan->startup_cost += tlist_cost.startup;
 		result_plan->total_cost +=
 			tlist_cost.startup +
@@ -1166,7 +1166,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		result_plan = plan_pushdown_tlist(result_plan, ctx->sub_tlist);
 
 		/* Account for the cost of evaluation of the sub_tlist. */
-		cost_qual_eval(&tlist_cost, ctx->sub_tlist);
+		cost_qual_eval(&tlist_cost, ctx->sub_tlist, root);
 		result_plan->startup_cost += tlist_cost.startup;
 		result_plan->total_cost +=
 			tlist_cost.startup +
@@ -1551,7 +1551,7 @@ make_three_stage_agg_plan(PlannerInfo *root, MppGroupContext *ctx)
 		Assert(result_plan->flow); 
 		
 		/* Account for the cost of evaluation of the sub_tlist. */
-		cost_qual_eval(&tlist_cost, ctx->sub_tlist);
+		cost_qual_eval(&tlist_cost, ctx->sub_tlist, root);
 		result_plan->startup_cost += tlist_cost.startup;
 		result_plan->total_cost +=
 			tlist_cost.startup +
@@ -2208,9 +2208,11 @@ join_dqa_coplan(PlannerInfo *root, MppGroupContext *ctx, Plan *outer, int dqa_in
 			
 			outer_var = (Var*)copyObject(tle->expr);
 			outer_var->varno = outer_varno;
+			outer_var->varnoold = outer_varno;
 			
 			inner_var = (Var*)copyObject(tle->expr);
 			inner_var->varno = inner_varno;
+			inner_var->varnoold = inner_varno;
 			
 			/* outer should always be on the left */
 			qual = make_op(NULL, list_make1(makeString("=")), 
@@ -3787,7 +3789,8 @@ Plan* add_subqueryscan(PlannerInfo* root, List **p_pathkeys,
 	subplan = (Plan*)make_subqueryscan(subplan_tlist,
 										   NIL,
 										   varno, /* scanrelid (= varno) */
-										   subplan);
+										   subplan,
+										   subquery->rtable);
 
 	mark_passthru_locus(subplan, true, true);
 
@@ -3946,7 +3949,7 @@ Cost cost_common_agg(PlannerInfo *root, MppGroupContext *ctx, AggPlanInfo *info,
 	input_width = ( input_width < n )? input_width: n;
 
 	/* Estimate cost of evaluation of the sub_tlist. */
-	cost_qual_eval(&tlist_cost, ctx->sub_tlist);
+	cost_qual_eval(&tlist_cost, ctx->sub_tlist, root);
 	startup_cost = info->input_path->startup_cost + tlist_cost.startup;
 	total_cost = info->input_path->total_cost + tlist_cost.startup +
 		tlist_cost.per_tuple * input_rows;
@@ -4465,7 +4468,7 @@ void set_cost_of_join_strategies(MppGroupContext *ctx, Cost *hashjoin_cost, Cost
 		int dqa_width = 32;
 		int inner_width = gk_width + dqa_width;
 		
-		mj_cost += incremental_mergejoin_cost(rows, mergeclauses);
+		mj_cost += incremental_mergejoin_cost(rows, mergeclauses, ctx->root);
 		if ( try_hashed )
 			hj_cost += incremental_hashjoin_cost(rows, inner_width, outer_width, hashclauses, ctx->root);
 		

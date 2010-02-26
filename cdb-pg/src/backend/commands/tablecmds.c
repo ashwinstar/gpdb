@@ -10713,7 +10713,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	Assert(q->commandType == CMD_SELECT || q->commandType == CMD_INSERT);
 
 	/* plan the query */
-	stmt = planner(q, false, 0, NULL);
+	stmt = planner(q, 0, NULL);
 
 	/*
 	 * Update snapshot command ID to ensure this query sees results of any

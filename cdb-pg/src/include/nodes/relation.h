@@ -19,6 +19,8 @@
 #include "nodes/bitmapset.h"
 #include "nodes/params.h"
 #include "nodes/parsenodes.h"
+#include "nodes/plannodes.h"
+#include "nodes/primnodes.h"
 #include "storage/block.h"
 
 #include "cdb/cdbpathlocus.h"
@@ -54,6 +56,22 @@ typedef struct QualCost
 } QualCost;
 
 
+/*
+ * Context for apply shareinput processing during planning.  We could fold
+ * this into PlannerGlobal, but this encapsulates it nicely.
+ */
+typedef struct ApplyShareInputContext
+{
+	List *sharedNodes;
+	List *sliceMarks;
+	List *motStack;
+	List *qdShares;
+	List *qdSlices;
+	List *planNodes;
+	int nextPlanId;
+} ApplyShareInputContext;
+
+
 /*----------
  * PlannerGlobal
  *		Global information for planning/optimization
@@ -84,11 +102,10 @@ typedef struct PlannerGlobal
 	List	   *invalItems;		/* other dependencies, as PlanInvalItems */
 
 	bool		transientPlan;	/* redo plan when TransactionXmin changes? */
+	
+	ApplyShareInputContext share;	/* workspace for GPDB plan sharing */
+	
 } PlannerGlobal;
-
-/* macro for fetching the Plan associated with a SubPlan node */
-#define planner_subplan_get_plan(root, subplan) \
-	((Plan *) list_nth((root)->glob->subplans, (subplan)->plan_id - 1))
 
 
 /*----------
@@ -214,6 +231,24 @@ typedef struct PlannerInfo
 #define planner_rt_fetch(rti, root) \
 	((root)->simple_rte_array ? (root)->simple_rte_array[rti] : \
 	 rt_fetch(rti, (root)->parse->rtable))
+
+
+/* 
+ * Fetch the Plan associated with a SubPlan node during planning. 
+ */
+static inline struct Plan *planner_subplan_get_plan(struct PlannerInfo *root, SubPlan *subplan) 
+{
+	return (Plan *) list_nth(root->glob->subplans, subplan->plan_id - 1);
+}
+
+/* 
+ * Rewrite the Plan associated with a SubPlan node during planning. 
+ */
+static inline void planner_subplan_put_plan(struct PlannerInfo *root, SubPlan *subplan, Plan *plan) 
+{
+	ListCell *cell = list_nth_cell(root->glob->subplans, subplan->plan_id-1);
+	cell->data.ptr_value = plan;
+}
 
 
 /*----------
@@ -1334,6 +1369,41 @@ typedef struct AppendRelInfo
 	 */
 	Oid			parent_reloid;	/* OID of parent relation */
 } AppendRelInfo;
+
+/*
+ * glob->paramlist keeps track of the PARAM_EXEC slots that we have decided
+ * we need for the query.  At runtime these slots are used to pass values
+ * either down into subqueries (for outer references in subqueries) or up out
+ * of subqueries (for the results of a subplan).  The n'th entry in the list
+ * (n counts from 0) corresponds to Param->paramid = n.
+ *
+ * Each paramlist item shows the absolute query level it is associated with,
+ * where the outermost query is level 1 and nested subqueries have higher
+ * numbers.  The item the parameter slot represents can be one of three kinds:
+ *
+ * A Var: the slot represents a variable of that level that must be passed
+ * down because subqueries have outer references to it.  The varlevelsup
+ * value in the Var will always be zero.
+ *
+ * An Aggref (with an expression tree representing its argument): the slot
+ * represents an aggregate expression that is an outer reference for some
+ * subquery.  The Aggref itself has agglevelsup = 0, and its argument tree
+ * is adjusted to match in level.
+ *
+ * A Param: the slot holds the result of a subplan (it is a setParam item
+ * for that subplan).  The absolute level shown for such items corresponds
+ * to the parent query of the subplan.
+ *
+ * Note: we detect duplicate Var parameters and coalesce them into one slot,
+ * but we do not do this for Aggref or Param slots.
+ */
+typedef struct PlannerParamItem
+	{
+		NodeTag		type;
+		
+		Node	   *item;			/* the Var, Aggref, or Param */
+		Index		abslevel;		/* its absolute query level */
+	} PlannerParamItem;
 
 /* Partitioning meta data */
 typedef struct Partition

@@ -21,7 +21,7 @@
 #include "cdb/cdbplan.h"
 
 extern Plan *cdbparallelize(struct PlannerInfo *root, Plan *plan, Query *query,
-							bool isCursor, int cursorOptions, 
+							int cursorOptions, 
 							ParamListInfo boundParams, bool uses_correlation);
 
 extern bool is_plan_node(Node *node);

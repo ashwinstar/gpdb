@@ -110,7 +110,7 @@ extern void cost_shareinputscan(Path *path, PlannerInfo *root, Cost sharecost, d
 extern void cost_nestloop(NestPath *path, PlannerInfo *root);
 extern void cost_mergejoin(MergePath *path, PlannerInfo *root);
 extern void cost_hashjoin(HashPath *path, PlannerInfo *root);
-extern void cost_qual_eval(QualCost *cost, List *quals);
+extern void cost_qual_eval(QualCost *cost, List *quals, PlannerInfo *root);
 extern void set_baserel_size_estimates(PlannerInfo *root, RelOptInfo *rel);
 extern void set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 						   RelOptInfo *outer_rel,
@@ -126,7 +126,7 @@ extern Cost incremental_hashjoin_cost(double rows,
 									  int inner_width, int outer_width, 
 									  List *hashclauses,
 									  PlannerInfo *root);
-extern Cost incremental_mergejoin_cost(double rows, List *mergeclauses);
+extern Cost incremental_mergejoin_cost(double rows, List *mergeclauses, PlannerInfo *root);
 
 /*
  * prototypes for clausesel.c

@@ -174,6 +174,7 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 		RangeTblRef *rtr = (RangeTblRef *) setOp;
 		RangeTblEntry *rte = rt_fetch(rtr->rtindex, root->parse->rtable);
 		Query	   *subquery = rte->subquery;
+		PlannerInfo *subroot = NULL;
 		Plan	   *subplan,
 				   *plan;
 
@@ -182,20 +183,21 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 		/*
 		 * Generate plan for primitive subquery
 		 */
-		subplan = subquery_planner(root->glob, subquery, root, tuple_fraction, NULL);
+		subplan = subquery_planner(root->glob, subquery, root, tuple_fraction, &subroot);
 
 		/*
 		 * Add a SubqueryScan with the caller-requested targetlist
 		 */
 		plan = (Plan *)
 			make_subqueryscan(generate_setop_tlist(colTypes, flag,
-												   rtr->rtindex,
+												   1,
 												   true,
 												   subplan->targetlist,
 												   refnames_tlist),
 							  NIL,
 							  rtr->rtindex,
-							  subplan);
+							  subplan,
+							  subroot->parse->rtable);
 		mark_passthru_locus(plan, FALSE, FALSE); /* CDB: no hash/sort keys */
 
 		/*
@@ -1151,6 +1153,7 @@ adjust_appendrel_attrs_mutator(Node *node, AppendRelInfo *context)
 						r->arg = (Expr *) var;
 						r->resulttype = context->parent_reltype;
 						r->convertformat = COERCE_IMPLICIT_CAST;
+						r->location = -1;
 						/* Make sure the Var node has the right type ID, too */
 						var->vartype = context->child_reltype;
 						return (Node *) r;
@@ -1169,6 +1172,9 @@ adjust_appendrel_attrs_mutator(Node *node, AppendRelInfo *context)
 					rowexpr->args = fields;
 					rowexpr->row_typeid = var->vartype;
 					rowexpr->row_format = COERCE_IMPLICIT_CAST;
+					rowexpr->colnames = NIL;
+					rowexpr->location = -1;
+					
 					return (Node *) rowexpr;
 				}
 			}
@@ -1270,28 +1276,6 @@ adjust_appendrel_attrs_mutator(Node *node, AppendRelInfo *context)
 	 */
 	Assert(!IsA(node, SubLink));
 	Assert(!IsA(node, Query));
-
-	/*
-	 * BUT: although we don't need to recurse into subplans, we do need to
-	 * make sure that they are copied, not just referenced as
-	 * expression_tree_mutator will do by default.	Otherwise we'll have the
-	 * same subplan node referenced from each arm of the finished APPEND plan,
-	 * which will cause trouble in the executor.  This is a kluge that should
-	 * go away when we redesign querytrees.
-	 */
-	if (is_subplan(node))
-	{
-		SubPlan    *subplan;
-
-		/* Copy the node and process subplan args */
-		node = expression_tree_mutator(node, adjust_appendrel_attrs_mutator,
-									   (void *) context);
-		/* Make sure we have separate copies of subplan and its rtable */
-		subplan = (SubPlan *) node;
-		subplan->plan = copyObject(subplan->plan);
-		subplan->rtable = copyObject(subplan->rtable);
-		return node;
-	}
 
 	return expression_tree_mutator(node, adjust_appendrel_attrs_mutator,
 								   (void *) context);

@@ -71,6 +71,8 @@ DirectDispatchCalculationInfo;
  */
 typedef struct ContentIdAssignmentData
 {
+	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
+
 	/**
 	 * the range table!  
 	 */
@@ -423,51 +425,6 @@ FinalizeDirectDispatchDataForSlice(Node *node, ContentIdAssignmentData *data, bo
 }
 
 /**
- * Recurse properly into a subquery node, handling pushing of range table at the right time.
- */
-static bool
-AssignContentIdsToPlanData_SubqueryScan(Node *node, void *context)
-{
-	SubqueryScan *subqueryScan;
-	ContentIdAssignmentData *data;
-	RangeTblEntry *rte;
-	List *oldRtable;
-	bool result;
-
-	Assert( IsA(node, SubqueryScan));
-	subqueryScan = (SubqueryScan*)node;
-	data = (ContentIdAssignmentData *) context;
-	oldRtable = data->rtable;
-
-	/* All scan types have a range table entry. */
-	rte = rt_fetch(subqueryScan->scan.scanrelid, data->rtable);
-	Assert(rte->rtekind == RTE_SUBQUERY);
-
-	/**
-	 * (from code for MPP-1980 elsewhere)
-	 */
-	result = AssignContentIdsToPlanData_Walker((Node*)(subqueryScan->scan.plan.targetlist), context);
-	Assert(!result);
-
-	result = AssignContentIdsToPlanData_Walker((Node*)(subqueryScan->scan.plan.qual), context);
-	Assert(!result);
-
-	result = AssignContentIdsToPlanData_Walker((Node*)(subqueryScan->scan.plan.initPlan), context);
-	Assert(!result);
-
-	/*
-	 * The subplan uses the range table of the Query node
-	 * attached to the subquery RTE.
-	 */
-	data->rtable = rte->subquery->rtable;
-	result = AssignContentIdsToPlanData_Walker((Node*)subqueryScan->subplan, context);
-	Assert(!result);
-	data->rtable = oldRtable;
-
-	return false;
-}
-
-/**
  * Recursively assign content ids to the motion nodes of each slice.
  */
 static bool
@@ -478,8 +435,6 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 	DirectDispatchCalculationInfo dispatchInfo;
 	bool pushNewDirectDispatchInfo = false;
 	bool result;
-	List *newRtable = NULL;
-	List *oldRtable = NULL;
 
 	if (node == NULL)
 		return false;
@@ -490,16 +445,6 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 
 		switch (nodeTag(node))
 		{
-			case T_SubPlan:
-				{
-					/* note that we could look at testexpr itself to try to learn something but I don't think
-					 *   that will yield more in the current system than looking at the underlying query itself.
-					 */
-					SubPlan *subPlan = (SubPlan *) node;
-					newRtable = subPlan->rtable;
-					pushNewDirectDispatchInfo = true;
-				}
-				break;
 			case T_Result:
 				/* no change to dispatchInfo --> just iterate children */
 				break;
@@ -545,10 +490,8 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 				}
 				break;
 			case T_SubqueryScan:
-				/**
-				 * DO NOT fall-through -- subquery scan manually recurses
-				 */
-				return AssignContentIdsToPlanData_SubqueryScan(node, context);
+				/* Regular walker goes into subplans */
+				break;
 			case T_TidScan:
 			case T_FunctionScan:
 				DisableTargetedDispatch(&dispatchInfo);
@@ -589,6 +532,9 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 			case T_Repeat:
 				/* no change to dispatchInfo --> just iterate children */
 				break;
+			case T_SubPlan:
+				pushNewDirectDispatchInfo = true;
+				break;
 			default:
 				elog(ERROR, "Invalid plan node %d", nodeTag(node));
 				break;
@@ -611,11 +557,6 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 			data->sliceStack = lappend(data->sliceStack, ddcr);
 		}
 
-		if ( newRtable != NULL)
-		{
-			oldRtable = data->rtable;
-			data->rtable = newRtable;
-		}
 	}
 
 	/* recurse -- must recurse even for non-plan nodes because of qualifications? */
@@ -628,13 +569,6 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 		FinalizeDirectDispatchDataForSlice(node, data, false);
 	}
 
-	if ( newRtable != NULL)
-	{
-		/* note that oldRTable may be NULL because not all queries have
-		 *   relations in the rtable (such as generate_series from MPP-7608) */
-		data->rtable = oldRtable;
-	}
-
 	return result;
 }
 
@@ -643,7 +577,7 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
  *
  */
 void
-AssignContentIdsToPlanData(Query *query, Plan *plan)
+AssignContentIdsToPlanData(Query *query, Plan *plan, PlannerInfo *root)
 {
 	ContentIdAssignmentData data;
 
@@ -652,9 +586,10 @@ AssignContentIdsToPlanData(Query *query, Plan *plan)
 	DirectDispatchCalculationInfo *ddcr = palloc(sizeof(DirectDispatchCalculationInfo));
 	InitDirectDispatchCalculationInfo(ddcr);
 
+	planner_init_plan_tree_base(&data.base, root);
 	data.memoryContextForOutput = mem.oldContext;
 	data.sliceStack = list_make1(ddcr);
-	data.rtable = query->rtable;
+	data.rtable = root->glob->finalrtable;
 	data.allSlices = NULL;
 
 	/* Do it! */

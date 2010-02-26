@@ -3007,24 +3007,9 @@ get_name_for_var_field(Var *var, int fieldno,
 				expr = (Node *) ste->expr;
 				if (IsA(expr, Var))
 				{
-					/*
-					 * Recurse into the sub-select to see what its Var refers
-					 * to.	We have to build an additional level of namespace
-					 * to keep in step with varlevelsup in the subselect.
-					 */
-					deparse_namespace mydpns;
-					const char *result;
-
-					mydpns.rtable = rte->subquery->rtable;
-					mydpns.outer_varno = mydpns.inner_varno = 0;
-					mydpns.outer_rte = mydpns.inner_rte = NULL;
-
-					context->namespaces = lcons(&mydpns, context->namespaces);
-
+					const char *result = NULL;
 					result = get_name_for_var_field((Var *) expr, fieldno,
 													0, context);
-
-					context->namespaces = list_delete_first(context->namespaces);
 
 					return result;
 				}

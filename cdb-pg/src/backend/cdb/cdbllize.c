@@ -46,23 +46,13 @@
 	} while (0)
 
 /*
- * Substructure for a PlanProfile to hold "stackable" information like
- * the range table.
- */
-typedef struct LocalProfile
-{
-	List	   *rtable;			/* The current range table. */
-
-	struct LocalProfile *outerFrame;	/* The next more global context or
-										 * NULL. */
-
-}	LocalProfile;
-
-/*
  * A PlanProfile holds state for recursive prescan_walker().
  */
 typedef struct PlanProfile
 {
+	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
+	
+	PlannerInfo	   *root; /* cdbparallelize argument, root of top plan. */
 	/*
 	 * The result flags refer to relation in the result of an insert, update,
 	 * or delete
@@ -70,9 +60,6 @@ typedef struct PlanProfile
 	bool	resultSegments;
 	
 	bool	dispatchParallel;
-
-	/* Context */
-	LocalProfile *local;
 
 	int sliceDepth;
 	
@@ -88,10 +75,6 @@ typedef struct PlanProfile
 static void prescan(Plan *plan, PlanProfile * context);
 static bool prescan_walker(Node *node, PlanProfile * context);
 
-static void pushLocals(PlanProfile * profile, List *rtable);
-static void popLocals(PlanProfile * profile);
-static List *localRangeTable(PlanProfile * profile);
-
 static bool
 adjustPlanFlow(Plan        *plan,
                bool         live,
@@ -100,7 +83,7 @@ adjustPlanFlow(Plan        *plan,
                Movement     req_move,
                List        *hashExpr);
 
-static void motion_sanity_check(Plan *plan);
+static void motion_sanity_check(PlannerInfo *root, Plan *plan);
 static bool loci_compatible(List *hashExpr1, List *hashExpr2);
 
 /* ------------------------------------------------------------------------- *
@@ -153,7 +136,6 @@ Plan *
 cdbparallelize(PlannerInfo *root,
 			   Plan *plan,
 			   Query *query,
-			   bool isCursor __attribute__((unused)) ,
 			   int cursorOptions __attribute__((unused)) ,
 			   ParamListInfo boundParams __attribute__((unused)) ,
 			   bool uses_correlation
@@ -196,11 +178,10 @@ cdbparallelize(PlannerInfo *root,
 	}
 
     /* Initialize the PlanProfile result ... */
+	planner_init_plan_tree_base(&context->base, root);
+	context->root = root;
 	context->resultSegments = false;
 	context->hasNonRootSubplan = false;
-
-	context->local = NULL;
-	pushLocals(context, query->rtable);
 
 	switch (query->commandType)
 	{
@@ -225,8 +206,8 @@ cdbparallelize(PlannerInfo *root,
 
                 /* Get Oid of target relation. */
                 Insist(query->resultRelation > 0 &&
-				       query->resultRelation <= list_length(localRangeTable(context)));
-				reloid = getrelid(query->resultRelation, localRangeTable(context));
+				       query->resultRelation <= list_length(root->glob->finalrtable));
+				reloid = getrelid(query->resultRelation, root->glob->finalrtable);
 
                 /* Get a copy of the rel's GpPolicy from the relcache. */
                 relation = relation_open(reloid, NoLock);
@@ -309,6 +290,7 @@ cdbparallelize(PlannerInfo *root,
 		 * Implement the parallelizing directions in the Flow nodes attached
 		 * to the root plan node of each root slice of the plan.
 		 */
+		Assert(root->parse == query);
 		plan = apply_motion(root, plan, query);
 	}
 
@@ -317,7 +299,7 @@ cdbparallelize(PlannerInfo *root,
 	plan->nParamExec = nParamExec;
 
 	if (gp_enable_motion_deadlock_sanity)
-		motion_sanity_check(plan);
+		motion_sanity_check(root, plan);
 
 	return plan;
 }
@@ -391,6 +373,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				 * notably the range table.
 				 */
 				SubPlan    *subplan = (SubPlan *) node;
+				Plan	   *subplan_plan = planner_subplan_get_plan(context->root, subplan);
 
 				/*
 				 * Note subqueries that have not been pulled off into
@@ -405,27 +388,19 @@ prescan_walker(Node *node, PlanProfile * context)
 				if (expression_tree_walker((Node *) subplan->testexpr, prescan_walker, context))
 					return true;
 
-				/*
-				 * Set local state for the subplan to the new rangetable.
-				 */
-				pushLocals(context, subplan->rtable);
-
 				/* Parallelize the subplan.  */
-				if (prescan_walker((Node *) subplan->plan, context))
+				if (prescan_walker((Node *) subplan_plan, context))
 					return true;
 
-                Assert(subplan->plan->flow &&
-						subplan->plan->flow->flotype != FLOW_UNDEFINED);
+                Assert(subplan_plan->flow &&
+						subplan_plan->flow->flotype != FLOW_UNDEFINED);
 
 				/*
                  * Subquery result needs to be brought back to the QD.
                  * Ask for motion to a single QE.  Later, apply_motion
                  * will override that to bring it to the QD instead.
                  */
-                Insist(focusPlan(subplan->plan, true, false, false));
-
-				/* Restore state for the parent plan. */
-				popLocals(context);
+                Insist(focusPlan(subplan_plan, true, false, false));
 
 				/* Recur into the args list. */
 				return expression_tree_walker((Node *) subplan->args, prescan_walker, context);
@@ -462,7 +437,7 @@ prescan_walker(Node *node, PlanProfile * context)
              * inputs are produced upstream of the function invocation.
              */
             RangeTblEntry  *rte = rt_fetch(((Scan *)node)->scanrelid,
-                                           localRangeTable(context));
+                                           context->root->glob->finalrtable);
 
             Assert(rte->rtekind == RTE_FUNCTION);
 
@@ -500,10 +475,10 @@ prescan_walker(Node *node, PlanProfile * context)
 				Plan	   *subplan;
 
 				/* Make sure we have a valid index. */
-				Assert(0 < rtindex && rtindex <= list_length(localRangeTable(context)));
+				Assert(0 < rtindex && rtindex <= list_length(context->root->glob->finalrtable));
 
 				/* All scan types have a range table entry. */
-				rte = rt_fetch(rtindex, localRangeTable(context));
+				rte = rt_fetch(rtindex, context->root->glob->finalrtable);
 
 				/* The entry type is related to the to the scan type. */
 				Assert(rte->rtekind == RTE_SUBQUERY);
@@ -528,15 +503,8 @@ prescan_walker(Node *node, PlanProfile * context)
 				if (prescan_walker((Node*)(subqueryscan->scan.plan.initPlan), context))
 				  return true;
 
-				/*
-				 * The subplan uses the range table of the Query node
-				 * attached to the subquery RTE. Also, the local context
-				 * forces reexamination of the contained query.
-				 */
-				pushLocals(context, rte->subquery->rtable);
 				if (prescan_walker((Node *) subplan, context))
 					return true;
-				popLocals(context);
 				
 				return false;
 			}
@@ -662,38 +630,6 @@ is_plan_node(Node *node)
 	if(nodeTag(node) >= T_Plan_Start && nodeTag(node) < T_Plan_End)
 		return true;
 	return false;
-}
-
-
-void
-pushLocals(PlanProfile * profile, List *rtable)
-{
-    LocalProfile *newlocal = palloc(sizeof(LocalProfile));
-
-	newlocal->rtable = rtable;
-	newlocal->outerFrame = profile->local;
-
-    profile->local = newlocal;
-}
-
-void
-popLocals(PlanProfile * profile)
-{
-	LocalProfile *oldlocal = profile->local;
-
-	if (oldlocal == NULL)
-		return;
-
-	profile->local = oldlocal->outerFrame;
-	pfree(oldlocal);
-}
-
-List *
-localRangeTable(PlanProfile * profile)
-{
-	if (profile->local == NULL)
-		return NIL;
-	return profile->local->rtable;
 }
 
 /* Functions focusPlan, broadcastPlan, and repartitionPlan annotate the top
@@ -1055,13 +991,24 @@ adjustPlanFlow(Plan        *plan,
 #define SANITY_MOTION 0x1
 #define SANITY_DEADLOCK 0x2
 
-static bool
-motion_sanity_walker(Node *node, int *result)
+typedef struct sanity_result_t
 {
-	int left_result=0;
-	int right_result=0;
+	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
+	int flags;
+} sanity_result_t;
+
+static bool
+motion_sanity_walker(Node *node, sanity_result_t *result)
+{
+	sanity_result_t left_result;
+	sanity_result_t right_result;
 	bool deadlock_safe = false;
 	char *branch_label;
+	
+	left_result.base = result->base;
+	left_result.flags = 0;
+	right_result.base = result->base;
+	right_result.flags = 0;
 
 	if (node == NULL)
 		return false;
@@ -1129,7 +1076,7 @@ motion_sanity_walker(Node *node, int *result)
 		case T_Motion:
 			if (plan_tree_walker(node, motion_sanity_walker, result))
 				return true;
-			*result |= SANITY_MOTION;
+			result->flags |= SANITY_MOTION;
 			elog(DEBUG5, "   found motion");
 			break;
 
@@ -1147,31 +1094,31 @@ motion_sanity_walker(Node *node, int *result)
 				return true;
 
 			elog(DEBUG5, "    %s branch point left 0x%x right 0x%x",
-				 branch_label, left_result, right_result);
+				 branch_label, left_result.flags, right_result.flags);
 
 			/* deadlocks get sent up immediately */
-			if ((left_result & SANITY_DEADLOCK) ||
-				(right_result & SANITY_DEADLOCK))
+			if ((left_result.flags & SANITY_DEADLOCK) ||
+				(right_result.flags & SANITY_DEADLOCK))
 			{
-				*result |= SANITY_DEADLOCK;
+				result->flags |= SANITY_DEADLOCK;
 				break;
 			}
 			/* if this node is "deadlock safe" then even if we have
 			 * motion on both sides we will not deadlock (because the
 			 * access pattern is deadlock safe: all rows are retrieved
 			 * from one side before the first row from the other). */
-			if (!deadlock_safe && ((left_result & SANITY_MOTION) &&
-								   (right_result & SANITY_MOTION)))
+			if (!deadlock_safe && ((left_result.flags & SANITY_MOTION) &&
+								   (right_result.flags & SANITY_MOTION)))
 			{
 				elog(LOG, "FOUND MOTION DEADLOCK in %s", branch_label);
-				*result |= SANITY_DEADLOCK;
+				result->flags |= SANITY_DEADLOCK;
 				break;
 			}
 
-			*result |= left_result | right_result;
+			result->flags |= left_result.flags | right_result.flags;
 
 			elog(DEBUG5, "    %s branch point left 0x%x right 0x%x res 0x%x%s",
-				 branch_label, left_result, right_result, *result, deadlock_safe ? " deadlock safe: prefetching" : "");
+				 branch_label, left_result.flags, right_result.flags, result->flags, deadlock_safe ? " deadlock safe: prefetching" : "");
 		}
 		break;
 		default:
@@ -1181,9 +1128,12 @@ motion_sanity_walker(Node *node, int *result)
 }
 
 static void
-motion_sanity_check(Plan *plan)
+motion_sanity_check(PlannerInfo *root, Plan *plan)
 {
-	int sanity_result=0;
+	sanity_result_t sanity_result;
+	
+	planner_init_plan_tree_base(&sanity_result.base, root);
+	sanity_result.flags = 0;
 
 	elog(DEBUG5, "Motion Deadlock Sanity Check");
 
@@ -1192,6 +1142,6 @@ motion_sanity_check(Plan *plan)
 		Insist(0);
 	}
 
-	if (sanity_result & SANITY_DEADLOCK)
+	if (sanity_result.flags & SANITY_DEADLOCK)
 		elog(ERROR, "Post-planning sanity check detected motion deadlock.");
 }

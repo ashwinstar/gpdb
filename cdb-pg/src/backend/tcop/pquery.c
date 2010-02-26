@@ -3,8 +3,8 @@
  * pquery.c
  *	  POSTGRES process query command code
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2010, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -43,7 +43,7 @@
  */
 Portal		ActivePortal = NULL;
 
-static void ProcessQuery(Portal portal,
+static void ProcessQuery(Portal portal, /* Resource queueing need SQL, so we pass portal. */
 			 PlannedStmt *stmt,
              ParamListInfo params,
 			 DestReceiver *dest,
@@ -168,8 +168,8 @@ FreeQueryDesc(QueryDesc *qdesc)
  *		or PORTAL_ONE_RETURNING portal
  *
  *	portal: the portal
- *	parsetree: the query tree
  *	plan: the plan tree for the query
+ *	sourceText: the source text of the query
  *	params: any parameters needed
  *	dest: where to send results
  *	completionTag: points to a buffer of size COMPLETION_TAG_BUFSIZE
@@ -237,7 +237,7 @@ ProcessQuery(Portal portal,
 		queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
 	{
 		PortalSetStatus(portal, PORTAL_QUEUE);
-		portal->releaseResLock = ResLockPortal(portal, queryDesc->plannedstmt->planTree);
+		portal->releaseResLock = ResLockPortal(portal, queryDesc->plannedstmt);
 	}
 
 	PortalSetStatus(portal, PORTAL_ACTIVE);
@@ -302,7 +302,7 @@ ProcessQuery(Portal portal,
 	{
 		RangeTblEntry *rte;
 
-		rte = linitial(queryDesc->plannedstmt->queryTree->rtable); /* Use of query tree deprecated. (PSMERGE) */
+		rte = linitial(queryDesc->plannedstmt->rtable);
 		/*
 		 * if the delete command we just ran had no qualifiers and
 		 * was against a simple table, it is nice to be able to
@@ -410,10 +410,6 @@ ProcessQuery(Portal portal,
 			}
 		}
 	
-		/* TODO Remove references to the range table in the Query tree, when we switch
-		 *      to carrying the range table in the PlannedStmt, i.e., there should be
-		 *      no references to  stmt->queryTree->resultRelation.  (PSMERGE)
-		 */
 		switch (stmt->commandType)
 		{
 			case CMD_SELECT:
@@ -425,17 +421,17 @@ ProcessQuery(Portal portal,
 				}
 				break;
 			case CMD_INSERT:
-				rte = rt_fetch(stmt->queryTree->resultRelation, stmt->queryTree->rtable);
+				rte = rt_fetch(lfirst_int(list_head(stmt->resultRelations)), stmt->rtable);
 				relationOid = rte->relid;
 				cmdType = AUTOSTATS_CMDTYPE_INSERT;
 				break;
 			case CMD_UPDATE:
-				rte = rt_fetch(stmt->queryTree->resultRelation, stmt->queryTree->rtable);
+				rte = rt_fetch(lfirst_int(list_head(stmt->resultRelations)), stmt->rtable);
 				relationOid = rte->relid;
 				cmdType = AUTOSTATS_CMDTYPE_UPDATE;
 				break;
 			case CMD_DELETE:
-				rte = rt_fetch(stmt->queryTree->resultRelation, stmt->queryTree->rtable);
+				rte = rt_fetch(lfirst_int(list_head(stmt->resultRelations)), stmt->rtable);
 				relationOid = rte->relid;
 				cmdType = AUTOSTATS_CMDTYPE_DELETE;
 				break;
@@ -792,7 +788,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 						queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
 				{
 					PortalSetStatus(portal, PORTAL_QUEUE);
-					portal->releaseResLock = ResLockPortal(portal, queryDesc->plannedstmt->planTree);
+					portal->releaseResLock = ResLockPortal(portal, queryDesc->plannedstmt);
 				}
 
 				PortalSetStatus(portal, PORTAL_ACTIVE);

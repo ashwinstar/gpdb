@@ -242,7 +242,7 @@ extern Portal GetPortalByName(const char *name);
 extern void PortalDefineQuery(Portal portal,
 				  const char *prepStmtName,
 				  const char *sourceText,
-				  NodeTag	  sourceTag,
+				  NodeTag	  sourceTag, /* GPDB */
 				  const char *commandTag,
 				  List *stmts,
 //				  List *parseTrees,

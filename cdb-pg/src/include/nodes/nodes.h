@@ -54,8 +54,8 @@ typedef enum NodeTag
 	/* Real plan node starts below.  Scan and Join are "Virtal nodes",
 	 * It will take the form of IndexScan, SeqScan, etc. 
 	 */
-	T_Plan_Start,
-	T_Result = T_Plan_Start,
+	T_Result,
+	T_Plan_Start = T_Result,
 	T_Append,
 	T_BitmapAnd,
 	T_BitmapOr,
@@ -87,6 +87,8 @@ typedef enum NodeTag
 	T_Window,
 	T_Repeat,
 	T_Plan_End,
+	/* this one isn't a subclass of Plan: */
+	T_PlanInvalItem,
 
 	/*
 	 * TAGS FOR PLAN STATE NODES (execnodes.h)
@@ -248,6 +250,7 @@ typedef enum NodeTag
 	T_PartitionNode,
 	T_PgPartRule,
 	T_SegfileMapNode,
+	T_PlannerParamItem,
 
     /* Tags for MPP planner nodes (relation.h) */
     T_CdbMotionPath = 580,

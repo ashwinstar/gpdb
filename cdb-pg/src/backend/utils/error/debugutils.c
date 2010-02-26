@@ -272,11 +272,41 @@ void dump_mt_bind(MemTupleBinding *mt_bind, const char *fname)
                );
     }
 }
-    
 
-    
+#ifdef USE_ASSERT_CHECKING
+/*
+ * Debugging - create/overwrite named file with contents of string.
+ *
+ * Use, e.g., with gdb to save debugging output.
+ */
 
-                        
+#include <stdio.h>
+#include <string.h>
+
+int debug_write(const char *filename, const char *output_string)
+{
+	FILE *file;
+	
+	file = fopen(filename, "w");
+	
+	if ( !file )
+	{
+		fprintf(stderr, "debug_write: can't open \"%s\" for output", filename);
+		return 1;
+	}
+	
+	if ( fprintf(file, "%s\n", output_string) == EOF )
+	{
+	    fprintf(stderr, "debug_write: can't write to \"%s\"", filename);
+		fclose(file);
+		return 1;
+	}
+	
+	fclose(file);
+	return 0;
+}
+#endif
+
     
     
     

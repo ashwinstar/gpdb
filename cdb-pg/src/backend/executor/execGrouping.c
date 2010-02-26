@@ -3,7 +3,7 @@
  * execGrouping.c
  *	  executor utility routines for grouping, hashing, and aggregation
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -265,7 +265,9 @@ execTuplesHashPrepare(TupleDesc tupdesc,
  *	tablecxt: memory context in which to store table and table entries
  *	tempcxt: short-lived context for evaluation hash and comparison functions
  *
- * The function arrays may be made with execTuplesHashPrepare().
+ * The function arrays may be made with execTuplesHashPrepare().  Note they
+ * are not cross-type functions, but expect to see the table datatype(s)
+ * on both sides.
  *
  * Note that keyColIdx, eqfunctions, and hashfunctions must be allocated in
  * storage that will live as long as the hashtable does.
@@ -311,7 +313,7 @@ BuildTupleHashTable(int numCols, AttrNumber *keyColIdx,
 
 /*
  * Find or create a hashtable entry for the tuple group containing the
- * given tuple.
+ * given tuple.  The tuple must be the same type as the hashtable entries.
  *
  * If isnew is NULL, we do not create new entries; we return NULL if no
  * match is found.
@@ -357,6 +359,7 @@ LookupTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 	 * invoke this code re-entrantly.
 	 */
 	hashtable->inputslot = slot;
+
 	saveCurHT = CurTupleHashTable;
 	CurTupleHashTable = hashtable;
 

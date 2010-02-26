@@ -1932,20 +1932,16 @@ exprType(Node *expr)
 					subplan->subLinkType == ARRAY_SUBLINK)
 				{
 					/* get the type of the subselect's first target column */
-					TargetEntry *tent;
-
-					tent = (TargetEntry *) linitial(subplan->plan->targetlist);
-					Assert(IsA(tent, TargetEntry));
-					Assert(!tent->resjunk);
-					type = exprType((Node *) tent->expr);
+					Oid itemtype = subplan->firstColType;
+					type = itemtype;
 					if (subplan->subLinkType == ARRAY_SUBLINK)
 					{
-						type = get_array_type(type);
+						type = get_array_type(itemtype);
 						if (!OidIsValid(type))
 							ereport(ERROR,
 									(errcode(ERRCODE_UNDEFINED_OBJECT),
 									 errmsg("could not find array type for data type %s",
-							format_type_be(exprType((Node *) tent->expr)))));
+							format_type_be(itemtype))));
 					}
 				}
 				else

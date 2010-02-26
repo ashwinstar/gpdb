@@ -97,8 +97,13 @@ Cost		disable_cost = 1.0e9;
 
 /* CDB: The enable_xxx globals have been moved to allpaths.c */
 
+typedef struct
+	{
+		PlannerInfo *root;
+		QualCost	total;
+	} cost_qual_eval_context;
 
-static bool cost_qual_eval_walker(Node *node, QualCost *total);
+static bool cost_qual_eval_walker(Node *node, cost_qual_eval_context *context);
 static Selectivity approx_selectivity(PlannerInfo *root, List *quals,
 				   JoinType jointype);
 static Selectivity join_in_selectivity(JoinPath *path, PlannerInfo *root);
@@ -447,7 +452,7 @@ cost_index(IndexPath *path, PlannerInfo *root,
 	{
 		QualCost	index_qual_cost;
 
-		cost_qual_eval(&index_qual_cost, indexQuals);
+		cost_qual_eval(&index_qual_cost, indexQuals, root);
 		/* any startup cost still has to be paid ... */
 		cpu_per_tuple -= index_qual_cost.per_tuple;
 	}
@@ -1615,7 +1620,7 @@ cost_nestloop(NestPath *path, PlannerInfo *root)
 	ntuples = outer_path_rows * inner_path_rows * joininfactor;
 
 	/* CPU costs */
-	cost_qual_eval(&restrict_qual_cost, path->jpath.joinrestrictinfo);
+	cost_qual_eval(&restrict_qual_cost, path->jpath.joinrestrictinfo, root);
 	startup_cost += restrict_qual_cost.startup;
 	cpu_per_tuple = cpu_tuple_cost + restrict_qual_cost.per_tuple;
 	run_cost += cpu_per_tuple * ntuples;
@@ -1673,8 +1678,8 @@ cost_mergejoin(MergePath *path, PlannerInfo *root)
 	 */
 	merge_selec = approx_selectivity(root, mergeclauses,
 									 path->jpath.jointype);
-	cost_qual_eval(&merge_qual_cost, mergeclauses);
-	cost_qual_eval(&qp_qual_cost, path->jpath.joinrestrictinfo);
+	cost_qual_eval(&merge_qual_cost, mergeclauses, root);
+	cost_qual_eval(&qp_qual_cost, path->jpath.joinrestrictinfo, root);
 	qp_qual_cost.startup -= merge_qual_cost.startup;
 	qp_qual_cost.per_tuple -= merge_qual_cost.per_tuple;
 
@@ -1893,8 +1898,8 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 	 */
 	hash_selec = approx_selectivity(root, hashclauses,
 									path->jpath.jointype);
-	cost_qual_eval(&hash_qual_cost, hashclauses);
-	cost_qual_eval(&qp_qual_cost, path->jpath.joinrestrictinfo);
+	cost_qual_eval(&hash_qual_cost, hashclauses, root);
+	cost_qual_eval(&qp_qual_cost, path->jpath.joinrestrictinfo, root);
 	qp_qual_cost.startup -= hash_qual_cost.startup;
 	qp_qual_cost.per_tuple -= hash_qual_cost.per_tuple;
 
@@ -2076,62 +2081,79 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
  *		and a per-evaluation component.
  */
 void
-cost_qual_eval(QualCost *cost, List *quals)
+cost_qual_eval(QualCost *cost, List *quals, PlannerInfo *root)
 {
+	cost_qual_eval_context context;
 	ListCell   *l;
 
-	cost->startup = 0;
-	cost->per_tuple = 0;
-
+	context.root = root;
+	context.total.startup = 0;
+	context.total.per_tuple = 0;
+	
 	/* We don't charge any cost for the implicit ANDing at top level ... */
-
+	
 	foreach(l, quals)
 	{
 		Node	   *qual = (Node *) lfirst(l);
-
-		/*
-		 * RestrictInfo nodes contain an eval_cost field reserved for this
-		 * routine's use, so that it's not necessary to evaluate the qual
-		 * clause's cost more than once.  If the clause's cost hasn't been
-		 * computed yet, the field's startup value will contain -1.
-		 *
-		 * If the RestrictInfo is marked pseudoconstant, it will be tested
-		 * only once, so treat its cost as all startup cost.
-		 */
-		if (qual && IsA(qual, RestrictInfo))
-		{
-			RestrictInfo *rinfo = (RestrictInfo *) qual;
-
-			if (rinfo->eval_cost.startup < 0)
-			{
-				rinfo->eval_cost.startup = 0;
-				rinfo->eval_cost.per_tuple = 0;
-				cost_qual_eval_walker((Node *) rinfo->clause,
-									  &rinfo->eval_cost);
-				if (rinfo->pseudoconstant)
-				{
-					/* count one execution during startup */
-					rinfo->eval_cost.startup += rinfo->eval_cost.per_tuple;
-					rinfo->eval_cost.per_tuple = 0;
-				}
-			}
-			cost->startup += rinfo->eval_cost.startup;
-			cost->per_tuple += rinfo->eval_cost.per_tuple;
-		}
-		else
-		{
-			/* If it's a bare expression, must always do it the hard way */
-			cost_qual_eval_walker(qual, cost);
-		}
+		
+		cost_qual_eval_walker(qual, &context);
 	}
+	
+	*cost = context.total;
 }
 
 static bool
-cost_qual_eval_walker(Node *node, QualCost *total)
+cost_qual_eval_walker(Node *node,  cost_qual_eval_context *context)
 {
 	if (node == NULL)
 		return false;
-
+	
+	/*
+	 * RestrictInfo nodes contain an eval_cost field reserved for this
+	 * routine's use, so that it's not necessary to evaluate the qual clause's
+	 * cost more than once.  If the clause's cost hasn't been computed yet,
+	 * the field's startup value will contain -1.
+	 */
+	if (IsA(node, RestrictInfo))
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) node;
+		
+		if (rinfo->eval_cost.startup < 0)
+		{
+			cost_qual_eval_context locContext;
+			
+			locContext.root = context->root;
+			locContext.total.startup = 0;
+			locContext.total.per_tuple = 0;
+			
+			/*
+			 * For an OR clause, recurse into the marked-up tree so that we
+			 * set the eval_cost for contained RestrictInfos too.
+			 */
+			if (rinfo->orclause)
+				cost_qual_eval_walker((Node *) rinfo->orclause, &locContext);
+			else
+				cost_qual_eval_walker((Node *) rinfo->clause, &locContext);
+			
+			/*
+			 * If the RestrictInfo is marked pseudoconstant, it will be tested
+			 * only once, so treat its cost as all startup cost.
+			 */
+			if (rinfo->pseudoconstant)
+			{
+				/* count one execution during startup */
+				locContext.total.startup += locContext.total.per_tuple;
+				locContext.total.per_tuple = 0;
+			}
+			rinfo->eval_cost = locContext.total;
+		}
+		context->total.startup += rinfo->eval_cost.startup;
+		context->total.per_tuple += rinfo->eval_cost.per_tuple;
+		/* do NOT recurse into children */
+		return false;
+	}
+	
+	
 	/*
 	 * Our basic strategy is to charge one cpu_operator_cost for each operator
 	 * or function node in the given tree.	Vars and Consts are charged zero,
@@ -2145,7 +2167,7 @@ cost_qual_eval_walker(Node *node, QualCost *total)
 		IsA(node, OpExpr) ||
 		IsA(node, DistinctExpr) ||
 		IsA(node, NullIfExpr))
-		total->per_tuple += cpu_operator_cost;
+		context->total.per_tuple += cpu_operator_cost;
 	else if (IsA(node, ScalarArrayOpExpr))
 	{
 		/*
@@ -2155,7 +2177,7 @@ cost_qual_eval_walker(Node *node, QualCost *total)
 		ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) node;
 		Node	   *arraynode = (Node *) lsecond(saop->args);
 
-		total->per_tuple +=
+		context->total.per_tuple +=
 			cpu_operator_cost * estimate_array_length(arraynode) * 0.5;
 	}
 	else if (IsA(node, RowCompareExpr))
@@ -2163,7 +2185,7 @@ cost_qual_eval_walker(Node *node, QualCost *total)
 		/* Conservatively assume we will check all the columns */
 		RowCompareExpr *rcexpr = (RowCompareExpr *) node;
 
-		total->per_tuple += cpu_operator_cost * list_length(rcexpr->opnos);
+		context->total.per_tuple += cpu_operator_cost * list_length(rcexpr->opnos);
 	}
 	else if (IsA(node, SubLink))
 	{
@@ -2172,6 +2194,12 @@ cost_qual_eval_walker(Node *node, QualCost *total)
 	}
 	else if (IsA(node, SubPlan))
 	{
+		if (!context->root)
+		{
+			/* Cannot cost subplans without root. */
+			return 0;
+		}
+		
 		/*
 		 * A subplan node in an expression typically indicates that the
 		 * subplan will be executed on each evaluation, so charge accordingly.
@@ -2182,7 +2210,7 @@ cost_qual_eval_walker(Node *node, QualCost *total)
 		 * subplan by hashing.
 		 */
 		SubPlan    *subplan = (SubPlan *) node;
-		Plan	   *plan = subplan->plan;
+		Plan	   *plan = planner_subplan_get_plan(context->root, subplan);
 
 		if (subplan->useHashTable)
 		{
@@ -2192,7 +2220,7 @@ cost_qual_eval_walker(Node *node, QualCost *total)
 			 * cpu_operator_cost per tuple for the work of loading the
 			 * hashtable, too.
 			 */
-			total->startup += plan->total_cost +
+			context->total.startup += plan->total_cost +
 				cpu_operator_cost * plan->plan_rows;
 
 			/*
@@ -2218,20 +2246,20 @@ cost_qual_eval_walker(Node *node, QualCost *total)
 			if (subplan->subLinkType == EXISTS_SUBLINK)
 			{
 				/* we only need to fetch 1 tuple */
-				total->per_tuple += plan_run_cost / plan->plan_rows;
+				context->total.per_tuple += plan_run_cost / plan->plan_rows;
 			}
 			else if (subplan->subLinkType == ALL_SUBLINK ||
 					 subplan->subLinkType == ANY_SUBLINK)
 			{
 				/* assume we need 50% of the tuples */
-				total->per_tuple += 0.50 * plan_run_cost;
+				context->total.per_tuple += 0.50 * plan_run_cost;
 				/* also charge a cpu_operator_cost per row examined */
-				total->per_tuple += 0.50 * plan->plan_rows * cpu_operator_cost;
+				context->total.per_tuple += 0.50 * plan->plan_rows * cpu_operator_cost;
 			}
 			else
 			{
 				/* assume we need all tuples */
-				total->per_tuple += plan_run_cost;
+				context->total.per_tuple += plan_run_cost;
 			}
 
 			/*
@@ -2244,14 +2272,14 @@ cost_qual_eval_walker(Node *node, QualCost *total)
 			if (subplan->parParam == NIL &&
 				(IsA(plan, Sort) ||
 				 IsA(plan, Material)))
-				total->startup += plan->startup_cost;
+				context->total.startup += plan->startup_cost;
 			else
-				total->per_tuple += plan->startup_cost;
+				context->total.per_tuple += plan->startup_cost;
 		}
 	}
 
 	return expression_tree_walker(node, cost_qual_eval_walker,
-								  (void *) total);
+								  (void *) context);
 }
 
 
@@ -2320,7 +2348,7 @@ set_baserel_size_estimates(PlannerInfo *root, RelOptInfo *rel)
 
 	rel->rows = clamp_row_est(nrows);
 
-	cost_qual_eval(&rel->baserestrictcost, rel->baserestrictinfo);
+	cost_qual_eval(&rel->baserestrictcost, rel->baserestrictinfo, root);
 
 	set_rel_width(root, rel);
 }
@@ -2903,7 +2931,7 @@ Cost incremental_hashjoin_cost(double rows, int inner_width, int outer_width, Li
      * fail the full qual eval.  Thus the full comparison is charged for just 
      * 'hashjointuples', i.e. those rows that pass the hashjoin quals.
 	 */
-	cost_qual_eval(&hash_qual_cost, hashclauses);
+	cost_qual_eval(&hash_qual_cost, hashclauses, root);
 	startup_cost += hash_qual_cost.startup;
 	run_cost += hash_qual_cost.per_tuple * rows * 0.5;
 
@@ -2922,14 +2950,14 @@ Cost incremental_hashjoin_cost(double rows, int inner_width, int outer_width, Li
  *
  * Globals: cpu_tuple_cost
  */
-Cost incremental_mergejoin_cost(double rows, List *mergeclauses)
+Cost incremental_mergejoin_cost(double rows, List *mergeclauses, PlannerInfo *root)
 {
 	QualCost merge_qual_cost;
 	Cost startup_cost = 0;
 	Cost per_tuple_cost = 0;
 	Cost run_cost = 0;
 
-	cost_qual_eval(&merge_qual_cost, mergeclauses);
+	cost_qual_eval(&merge_qual_cost, mergeclauses, root);
 
 	startup_cost += merge_qual_cost.startup;
 	per_tuple_cost = merge_qual_cost.per_tuple;

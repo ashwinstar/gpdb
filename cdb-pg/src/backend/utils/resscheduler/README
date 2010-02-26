@@ -79,7 +79,7 @@ Functions
 
 The basic API consists of:
 
-    ResLockPortal(Portal portal, Plan* plan);
+    ResLockPortal(Portal portal, PlannedStmt *stmt);
     ResUnLockPortal(Portal portal);
 
 which are inserted into PortalStart and PortalDrop respectively. In PortalStart

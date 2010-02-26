@@ -3,7 +3,7 @@
  * explain.c
  *	  Explain query execution plans
  *
- * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
@@ -27,6 +27,7 @@
 #include "optimizer/var.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteHandler.h"
+#include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -41,6 +42,11 @@
 
 typedef struct ExplainState
 {
+	/* options */
+	bool		printTList;		/* print plan targetlists */
+	bool		printAnalyze;	/* print actual times */
+	/* other states */
+	PlannedStmt *pstmt;			/* top of plan */
 	List	   *rtable;			/* range table */
 
     /* CDB */
@@ -59,8 +65,10 @@ static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
 							const char *queryString,
 							ParamListInfo params, TupOutputState *tstate);
 static void
-ExplainOnePlan_internal(QueryDesc      *queryDesc,
+ExplainOnePlan_internal(PlannedStmt *plannedstmt,
                         ExplainStmt    *stmt,
+                        const char *queryString, ParamListInfo params,
+                        TupOutputState *tstate,
                         ExplainState   *es);
 static double elapsed_time(instr_time *starttime);
 static ErrorData *explain_defer_error(ExplainState *es);
@@ -68,12 +76,14 @@ static void explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
 				Plan *outer_plan,
 				int indent, ExplainState *es);
+static void show_plan_tlist(Plan *plan,
+				StringInfo str, int indent, ExplainState *es);
 static void show_scan_qual(List *qual, const char *qlabel,
-			   int scanrelid, Plan *outer_plan,
+			   int scanrelid, Plan *scan_plan, Plan *outer_plan,
 			   StringInfo str, int indent, ExplainState *es);
 static void show_upper_qual(List *qual, const char *qlabel,
-				const char *outer_name, int outer_varno, Plan *outer_plan,
-				const char *inner_name, int inner_varno, Plan *inner_plan,
+				const char *outer_name, Plan *outer_plan,
+				const char *inner_name, Plan *inner_plan,
 				StringInfo str, int indent, ExplainState *es);
 static void show_sort_keys(Plan *sortplan, int nkeys, AttrNumber *keycols,
 			   const char *qlabel,
@@ -88,6 +98,7 @@ static void
 show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 			     const char *qlabel,
                  StringInfo str, int indent, ExplainState *es);
+static const char *explain_get_index_name(Oid indexId);
 
 /*
  * ExplainQuery -
@@ -121,7 +132,7 @@ ExplainQuery(ExplainStmt *stmt, const char *queryString,
 		if (query->utilityStmt && IsA(query->utilityStmt, DeclareCursorStmt))
 			ExplainOneQuery(query, stmt, queryString, params, tstate);
 		else if (query->utilityStmt && IsA(query->utilityStmt, ExecuteStmt))
-			ExplainExecuteQuery(stmt, params, tstate);
+			ExplainExecuteQuery((ExecuteStmt *) stmt->query->utilityStmt, stmt, queryString, params, tstate);
 		else
 			do_text_output_oneline(tstate, "Utility statements have no plan structure");
 	}
@@ -175,29 +186,72 @@ ExplainResultDesc(ExplainStmt *stmt)
 
 /*
  * ExplainOneQuery -
- *	  print out the execution plan for one query
+ *	  print out the execution plan for one Query
  */
 static void
 ExplainOneQuery(Query *query, ExplainStmt *stmt, const char *queryString,
 				ParamListInfo params, TupOutputState *tstate)
 {
-	PlannedStmt	*pstmt;
-	QueryDesc	*queryDesc;
-	bool		isCursor = false;
-	int			cursorOptions = 0;
+	PlannedStmt	*plan = NULL;
 
 	/* planner will not cope with utility statements */
 	if (query->commandType == CMD_UTILITY)
 	{
-		if (query->utilityStmt && IsA(query->utilityStmt, DeclareCursorStmt))
+		ExplainOneUtility(query->utilityStmt, stmt,
+						  queryString, params, tstate);
+		return;
+	}
+
+	/* plan the query */
+	//pstmt = planner(query, cursorOptions, params);
+ 	plan = pg_plan_query(query,/*0,*/ params);
+	
+	/*
+	 * Update snapshot command ID to ensure this query sees results of any
+	 * previously executed queries.  (It's a bit cheesy to modify
+	 * ActiveSnapshot without making a copy, but for the limited ways in which
+	 * EXPLAIN can be invoked, I think it's OK, because the active snapshot
+	 * shouldn't be shared with anything else anyway.)
+	 */
+	ActiveSnapshot->curcid = GetCurrentCommandId();
+
+	/* Create a QueryDesc requesting no output */
+	//queryDesc = CreateQueryDesc(pstmt, queryString,
+	//							ActiveSnapshot, InvalidSnapshot,
+	//							None_Receiver, params,
+	//							stmt->analyze);
+
+	ExplainOnePlan(plan, stmt, queryString, params, tstate);
+}
+
+/*
+ * ExplainOneUtility -
+ *	  print out the execution plan for one utility statement
+ *	  (In general, utility statements don't have plans, but there are some
+ *	  we treat as special cases)
+ *
+ * This is exported because it's called back from prepare.c in the
+ * EXPLAIN EXECUTE case
+ */
+void
+ExplainOneUtility(Node *utilityStmt, ExplainStmt *stmt,
+				  const char *queryString, ParamListInfo params,
+				  TupOutputState *tstate)
+{
+	if (utilityStmt == NULL)
+		return;
+
+#if 0
+	if (IsA(utilityStmt, DeclareCursorStmt))
 		{
 			DeclareCursorStmt *dcstmt;
 			List	   *rewritten;
+			Query *query;
 
-			dcstmt = (DeclareCursorStmt *) query->utilityStmt;
+			dcstmt = (DeclareCursorStmt *) utilityStmt;
 			query = (Query *) dcstmt->query;
-			isCursor = true;
-			cursorOptions = dcstmt->options;
+			bool isCursor = true;
+			int cursorOptions = dcstmt->options;
 			/* Still need to rewrite cursor command */
 			Assert(query->commandType == CMD_SELECT);
 			/* get locks (we assume ExplainQuery already copied tree) */
@@ -210,135 +264,16 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, const char *queryString,
 			/* do not actually execute the underlying query! */
 			stmt->analyze = false;
 		}
-		else if (query->utilityStmt && IsA(query->utilityStmt, NotifyStmt))
-		{
-			do_text_output_oneline(tstate, "NOTIFY");
-			return;
-		}
-		else
-		{
-			do_text_output_oneline(tstate, "UTILITY");
-			return;
-		}
-	}
-
-	/* plan the query */
-	pstmt = planner(query, isCursor, cursorOptions, params);
-	
-#ifdef USE_FORCE_PLAN
-	/* if we force the plan, we will do substitution here */
-	if(stmt->force)
-	{
-		/*
-		 * First, get the string from the plan.  If we force, the plan must
-		 * be SELECT 'parseTree', 'planTree'.  Sanity check 
-		 */
-		bool fErr = FALSE;
-		char *parseStr = NULL;
-		char *planStr = NULL;
-		
-		if(!IsA(plan,Result)
-		    || plan->targetlist == NULL
-		    || plan->targetlist->length != 2
-		    || plan->qual
-		    || plan->lefttree
-		    || plan->righttree
-		    || plan->initPlan
-		    || plan->extParam 
-		    || plan->allParam
-		    || plan->nParamExec != 0
-		    || plan->nMotionNodes != 0
-		    || plan->nInitPlans != 0
-		    || plan->sliceTable
-		  )
-			fErr = TRUE;
-
-		/* The entry in the targelist must be 'parseTree', 'planTree' */
-		if(fErr == FALSE)
-		{
-			ListCell *lc = NULL;
-			void *node = NULL;
-			Expr *expr = NULL;
-			int i=0;
-			foreach(lc, plan->targetlist)
-			{
-				Const *constval;
-				
-				node = lfirst(lc);
-				Assert(IsA(node, TargetEntry));
-				expr = ((TargetEntry*)node)->expr;
-				Assert(expr != NULL);
-
-				constval = (Const *)expr;
-				
-				if(!IsA(expr,Const))
-				{
-					fErr = TRUE;
-					break;
-				}
-
-				if(constval->constisnull || constval->constbyval)
-				{
-					fErr = TRUE;
-					break;
-				}
-
-				switch(i)
-				{
-					case 0:
-						parseStr = (char*) DatumGetPointer(constval->constvalue);			
-						break;
-					case 1:
-						planStr = (char*) DatumGetPointer(constval->constvalue);
-						break;
-					default:
-						fErr = TRUE;
-						break;
-				}
-				++i;
-			}
-		}
-
-		if(fErr == TRUE || parseStr == NULL || planStr == NULL)
-		{
-			ereport(ERROR, 
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("EXPLAIN FORCE expects a SELECT 'parseTree', 'planTree'.")
-				));
-		}
-		else
-		{
-			/* plan substitution */
-			query = stringToNode(parseStr);
-			plan = stringToNode(planStr);
-
-			/* Zap the slice table.  In ExplainOnePlan, we will slice the plan.
-			 * The most common case is we will try to load a plan from a previous
-			 * explain verbose.  The output has a slice table, which will cause 
-			 * trouble in ExplainOnePlan when we slice it again.
-			 */
-			pfree(plan->sliceTable);
-			plan->sliceTable = NULL;
-		}
-	}	
-#endif /* USE_FORCE_PLAN*/
-
-	/*
-	 * Update snapshot command ID to ensure this query sees results of any
-	 * previously executed queries.  (It's a bit cheesy to modify
-	 * ActiveSnapshot without making a copy, but for the limited ways in which
-	 * EXPLAIN can be invoked, I think it's OK, because the active snapshot
-	 * shouldn't be shared with anything else anyway.)
-	 */
-	ActiveSnapshot->curcid = GetCurrentCommandId();
-
-	/* Create a QueryDesc requesting no output */
-	queryDesc = CreateQueryDesc(pstmt, queryString,
-								ActiveSnapshot, InvalidSnapshot,
-								None_Receiver, params,
-								stmt->analyze);
-
-	ExplainOnePlan(queryDesc, stmt, queryString, params, tstate);
+	else
+#endif
+	if (IsA(utilityStmt, ExecuteStmt))
+		ExplainExecuteQuery((ExecuteStmt *) utilityStmt, stmt,
+							queryString, params, tstate);
+	else if (IsA(utilityStmt, NotifyStmt))
+		do_text_output_oneline(tstate, "NOTIFY");
+	else
+		do_text_output_oneline(tstate,
+							   "Utility statements have no plan structure");
 }
 
 /*
@@ -346,13 +281,17 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, const char *queryString,
  *		given a planned query, execute it if needed, and then print
  *		EXPLAIN output
  *
- * This is exported because it's called back from prepare.c in the
- * EXPLAIN EXECUTE case
+ * Since we ignore any DeclareCursorStmt that might be attached to the query,
+ * if you say EXPLAIN ANALYZE DECLARE CURSOR then we'll actually run the
+ * query.  This is different from pre-8.3 behavior but seems more useful than
+ * not running the query.  No cursor will be created, however.
  *
- * Note: the passed-in QueryDesc is freed when we're done with it
+ * This is exported because it's called back from prepare.c in the
+ * EXPLAIN EXECUTE case, and because an index advisor plugin would need
+ * to call it.
  */
 void
-ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
+ExplainOnePlan(PlannedStmt *plannedstmt, ExplainStmt *stmt,
 			   const char *queryString,
 			   ParamListInfo params,
 			   TupOutputState *tstate)
@@ -375,7 +314,8 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
     es->showstatctx = NULL;
     es->deferredError = NULL;
     es->tupOutputState = tstate;
-
+    es->pstmt = plannedstmt;
+    
     /* Allocate output buffer and a scratch buffer. */
     MemoryContextSwitchTo(explaincxt);
     initStringInfoOfSize(&es->workbuf, 1000);
@@ -385,7 +325,8 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
     /* Do the EXPLAIN. */
     PG_TRY();
     {
-        ExplainOnePlan_internal(queryDesc, stmt, es);
+        ExplainOnePlan_internal(plannedstmt, stmt,
+                                queryString, params, tstate, es);
     }
     PG_CATCH();
     {
@@ -405,17 +346,32 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 }                               /* ExplainOnePlan */
 
 void
-ExplainOnePlan_internal(QueryDesc      *queryDesc,
+ExplainOnePlan_internal(PlannedStmt *plannedstmt,
                         ExplainStmt    *stmt,
+                        const char *queryString, ParamListInfo params,
+                        TupOutputState *tstate,
                         ExplainState   *es)
 {
     MemoryContext   oldcxt = CurrentMemoryContext;
+	QueryDesc  *queryDesc;
 	instr_time	starttime;
 	double		totaltime = 0;
     StringInfo  buf = &es->outbuf;
     EState     *estate = NULL;
 	int			eflags;
     int         nb;
+
+	/*
+	 * Use a snapshot with an updated command ID to ensure this query sees
+	 * results of any previously executed queries.
+	 */
+	//PushUpdatedSnapshot(GetActiveSnapshot());
+
+	/* Create a QueryDesc requesting no output */
+	queryDesc = CreateQueryDesc(plannedstmt, queryString,
+			                    ActiveSnapshot, InvalidSnapshot,
+								None_Receiver, params,
+								stmt->analyze);
 
     /*
      * Start timing.
@@ -496,28 +452,12 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
                                      es->showstatctx);
 	}
 
-	es->rtable = queryDesc->plannedstmt->queryTree->rtable;
+	es->rtable = queryDesc->plannedstmt->rtable;
 
     if (stmt->verbose)
 	{
 		char	   *s;
 		char	   *f;
-
-#ifdef USE_FORCE_PLAN
-		// First print parse tree.
-		s = nodeToString(queryDesc->parsetree);
-		if(s)
-		{
-			if (Explain_pretty_print)
-				f = pretty_format_node_dump(s);
-			else
-				f = format_node_dump(s);
-			pfree(s);
-			do_text_output_multiline(es->tupOutputState, f);
-			pfree(f);
-			do_text_output_oneline(es->tupOutputState, ""); /* separator line */
-		}
-#endif /* USE_FORCE_PLAN */
 
         /* Switch to EXPLAIN memory context. */
         MemoryContextSwitchTo(es->explaincxt);
@@ -819,7 +759,7 @@ explain_outNode(StringInfo str,
 				Plan *outer_plan,
 				int indent, ExplainState *es)
 {
-	char	   *pname = NULL;
+	const char	   *pname = NULL;
     Slice      *currentSlice = es->currentSlice;    /* save */
 	int			i;
 	bool		skip_outer=false;
@@ -1149,7 +1089,7 @@ explain_outNode(StringInfo str,
 			break;
 		case T_BitmapIndexScan:
 			appendStringInfo(str, " on %s",
-							 quote_identifier(get_rel_name(((BitmapIndexScan *) plan)->indexid)));
+				explain_get_index_name(((BitmapIndexScan *) plan)->indexid));
 			break;
 		case T_SubqueryScan:
 			if (((Scan *) plan)->scanrelid > 0)
@@ -1227,6 +1167,9 @@ explain_outNode(StringInfo str,
 #ifdef DEBUG_EXPLAIN
 				appendStringInfo(str, "plan->targetlist=%s\n", nodeToString(plan->targetlist));
 #endif
+	/* target list */
+	if (es->printTList)
+		show_plan_tlist(plan, str, indent, es);
 
     /* quals, sort keys, etc */
 	switch (nodeTag(plan))
@@ -1235,19 +1178,19 @@ explain_outNode(StringInfo str,
 			show_scan_qual(((IndexScan *) plan)->indexqualorig,
 						   "Index Cond",
 						   ((Scan *) plan)->scanrelid,
-						   outer_plan,
+						   plan, outer_plan,
 						   str, indent, es);
 			show_scan_qual(plan->qual,
 						   "Filter",
 						   ((Scan *) plan)->scanrelid,
-						   outer_plan,
+						   plan, outer_plan,
 						   str, indent, es);
 			break;
 		case T_BitmapIndexScan:
 			show_scan_qual(((BitmapIndexScan *) plan)->indexqualorig,
 						   "Index Cond",
 						   ((Scan *) plan)->scanrelid,
-						   outer_plan,
+						   plan, outer_plan,
 						   str, indent, es);
 			break;
 		case T_BitmapHeapScan:
@@ -1257,26 +1200,32 @@ explain_outNode(StringInfo str,
 				show_scan_qual(((BitmapHeapScan *) plan)->bitmapqualorig,
 							   "Recheck Cond",
 							   ((Scan *) plan)->scanrelid,
-							   outer_plan,
+							   plan, outer_plan,
 							   str, indent, es);
 			else if (nodeTag(plan) == T_BitmapAppendOnlyScan)
 				show_scan_qual(((BitmapAppendOnlyScan *) plan)->bitmapqualorig,
 							   "Recheck Cond",
 							   ((Scan *) plan)->scanrelid,
-							   outer_plan,
+							   plan, outer_plan,
 							   str, indent, es);
 			/* FALL THRU */
 		case T_SeqScan:
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
 		case T_AOCSScan:
-		case T_SubqueryScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
 			show_scan_qual(plan->qual,
 						   "Filter",
 						   ((Scan *) plan)->scanrelid,
-						   outer_plan,
+						   plan, outer_plan,
+						   str, indent, es);
+			break;
+		case T_SubqueryScan:
+			show_scan_qual(plan->qual,
+						   "Filter",
+						   ((Scan *) plan)->scanrelid,
+						   plan, outer_plan,
 						   str, indent, es);
 			break;
 		case T_TidScan:
@@ -1292,66 +1241,66 @@ explain_outNode(StringInfo str,
 				show_scan_qual(tidquals,
 							   "TID Cond",
 							   ((Scan *) plan)->scanrelid,
-							   outer_plan,
+							   plan, outer_plan,
 							   str, indent, es);
 				show_scan_qual(plan->qual,
 							   "Filter",
 							   ((Scan *) plan)->scanrelid,
-							   outer_plan,
+							   plan, outer_plan,
 							   str, indent, es);
 			}
 			break;
 		case T_NestLoop:
 			show_upper_qual(((NestLoop *) plan)->join.joinqual,
 							"Join Filter",
-							"outer", OUTER, outerPlan(plan),
-							"inner", INNER, innerPlan(plan),
+							"outer", outerPlan(plan),
+							"inner", innerPlan(plan),
 							str, indent, es);
 			show_upper_qual(plan->qual,
 							"Filter",
-							"outer", OUTER, outerPlan(plan),
-							"inner", INNER, innerPlan(plan),
+							"outer", outerPlan(plan),
+							"inner", innerPlan(plan),
 							str, indent, es);
 			break;
 		case T_MergeJoin:
 			show_upper_qual(((MergeJoin *) plan)->mergeclauses,
 							"Merge Cond",
-							"outer", OUTER, outerPlan(plan),
-							"inner", INNER, innerPlan(plan),
+							"outer", outerPlan(plan),
+							"inner", innerPlan(plan),
 							str, indent, es);
 			show_upper_qual(((MergeJoin *) plan)->join.joinqual,
 							"Join Filter",
-							"outer", OUTER, outerPlan(plan),
-							"inner", INNER, innerPlan(plan),
+							"outer", outerPlan(plan),
+							"inner", innerPlan(plan),
 							str, indent, es);
 			show_upper_qual(plan->qual,
 							"Filter",
-							"outer", OUTER, outerPlan(plan),
-							"inner", INNER, innerPlan(plan),
+							"outer", outerPlan(plan),
+							"inner", innerPlan(plan),
 							str, indent, es);
 			break;
 		case T_HashJoin:
 			show_upper_qual(((HashJoin *) plan)->hashclauses,
 							"Hash Cond",
-							"outer", OUTER, outerPlan(plan),
-							"inner", INNER, innerPlan(plan),
+							"outer", outerPlan(plan),
+							"inner", innerPlan(plan),
 							str, indent, es);
 			show_upper_qual(((HashJoin *) plan)->join.joinqual,
 							"Join Filter",
-							"outer", OUTER, outerPlan(plan),
-							"inner", INNER, innerPlan(plan),
+							"outer", outerPlan(plan),
+							"inner", innerPlan(plan),
 							str, indent, es);
 			show_upper_qual(plan->qual,
 							"Filter",
-							"outer", OUTER, outerPlan(plan),
-							"inner", INNER, innerPlan(plan),
+							"outer", outerPlan(plan),
+							"inner", innerPlan(plan),
 							str, indent, es);
 			break;
 		case T_Agg:
 			show_upper_qual(plan->qual,
 							"Filter",
-							NULL, 0, outerPlan(plan),
-							NULL, 0, NULL,
+							NULL, outerPlan(plan),
+							NULL, NULL,
 							str, indent, es);
 			show_grouping_keys(plan,
 						       ((Agg *) plan)->numCols,
@@ -1362,8 +1311,8 @@ explain_outNode(StringInfo str,
 		case T_Group:
 			show_upper_qual(plan->qual,
 							"Filter",
-							"subplan", 0, outerPlan(plan),
-							NULL, 0, NULL,
+							"subplan", outerPlan(plan),
+							NULL, NULL,
 							str, indent, es);
 			show_grouping_keys(plan,
 						       ((Group *) plan)->numCols,
@@ -1446,20 +1395,20 @@ explain_outNode(StringInfo str,
 		case T_Result:
 			show_upper_qual((List *) ((Result *) plan)->resconstantqual,
 							"One-Time Filter",
-							NULL, OUTER, outerPlan(plan),
-							NULL, 0, NULL,
+							NULL, outerPlan(plan),
+							NULL, NULL,
 							str, indent, es);
 			show_upper_qual(plan->qual,
 							"Filter",
-							NULL, OUTER, outerPlan(plan),
-							NULL, 0, NULL,
+							NULL, outerPlan(plan),
+							NULL, NULL,
 							str, indent, es);
 			break;
 		case T_Repeat:
 			show_upper_qual(plan->qual,
 							"Filter",
-							NULL, OUTER, outerPlan(plan),
-							NULL, 0, NULL,
+							NULL, outerPlan(plan),
+							NULL, NULL,
 							str, indent, es);
 			break;
 		case T_Motion:
@@ -1496,7 +1445,7 @@ explain_outNode(StringInfo str,
 	if (plan->initPlan)
 	{
         Slice      *saved_slice = es->currentSlice;
-		List	   *saved_rtable = es->rtable;
+		//List	   *saved_rtable = es->rtable;
 		ListCell   *lst;
 
 		foreach(lst, planstate->initPlan)
@@ -1527,17 +1476,18 @@ explain_outNode(StringInfo str,
 
             appendStringInfoChar(str, '\n');
 
-            es->rtable = sp->rtable;
+            //es->rtable = sp->subplan_rtable;
 			for (i = 0; i < indent; i++)
 				appendStringInfo(str, "  ");
 			appendStringInfo(str, "    ->  ");
-			explain_outNode(str, sp->plan,
+			explain_outNode(str,
+							exec_subplan_get_plan(es->pstmt, sp),
 							sps->planstate,
 							NULL,
 							indent + 4, es);
 		}
         es->currentSlice = saved_slice;
-		es->rtable = saved_rtable;
+		//es->rtable = saved_rtable;
 	}
 
 	/* lefttree */
@@ -1662,12 +1612,6 @@ explain_outNode(StringInfo str,
 		SubqueryScan *subqueryscan = (SubqueryScan *) plan;
 		SubqueryScanState *subquerystate = (SubqueryScanState *) planstate;
 		Plan	   *subnode = subqueryscan->subplan;
-		RangeTblEntry *rte = rt_fetch(subqueryscan->scan.scanrelid,
-									  es->rtable);
-		List	   *saved_rtable = es->rtable;
-
-		Assert(rte->rtekind == RTE_SUBQUERY);
-		es->rtable = rte->subquery->rtable;
 
 		for (i = 0; i < indent; i++)
 			appendStringInfo(str, "  ");
@@ -1677,36 +1621,32 @@ explain_outNode(StringInfo str,
 						subquerystate->subplan,
 						NULL,
 						indent + 3, es);
-
-		es->rtable = saved_rtable;
 	}
 
 	/* subPlan-s */
 	if (planstate->subPlan)
 	{
-		List	   *saved_rtable = es->rtable;
 		ListCell   *lst;
 
-		for (i = 0; i < indent; i++)
-			appendStringInfo(str, "  ");
-		appendStringInfo(str, "  SubPlan\n");
 		foreach(lst, planstate->subPlan)
 		{
 			SubPlanState *sps = (SubPlanState *) lfirst(lst);
 			SubPlan    *sp = (SubPlan *) sps->xprstate.expr;
 
+			for (i = 0; i < indent; i++)
+				appendStringInfo(str, "  ");
+			appendStringInfo(str, "  %s\n", sp->plan_name);
             Assert(!sps->cdbextratextbuf);
 
-			es->rtable = sp->rtable;
 			for (i = 0; i < indent; i++)
 				appendStringInfo(str, "  ");
 			appendStringInfo(str, "    ->  ");
-			explain_outNode(str, sp->plan,
+			explain_outNode(str,
+							exec_subplan_get_plan(es->pstmt, sp),
 							sps->planstate,
 							NULL,
 							indent + 4, es);
 		}
-		es->rtable = saved_rtable;
 	}
 
     /* CDB: Empty the output buffer if it's more than half full. */
@@ -1719,17 +1659,71 @@ explain_outNode(StringInfo str,
     es->currentSlice = currentSlice;    /* restore */
 }                               /* explain_outNode */
 
+/*
+ * Show the targetlist of a plan node
+ */
+static void show_plan_tlist(Plan *plan, StringInfo str, int indent,
+		ExplainState *es)
+{
+	List *context;
+	bool useprefix;
+	ListCell *lc;
+	int i;
+
+	/* No work if empty tlist (this occurs eg in bitmap indexscans) */
+	if (plan->targetlist == NIL)
+		return;
+	/* The tlist of an Append isn't real helpful, so suppress it */
+	if (IsA(plan, Append))
+		return;
+	
+	/* TODO: Likewise for RecursiveUnion */
+	//if (IsA(plan, RecursiveUnion))
+	//        return;
+
+	/* Set up deparsing context */
+	context = deparse_context_for_plan(OUTER, (Node *) plan, INNER,
+			(Node *) plan, es->rtable);
+	//es->pstmt->subplans);
+	useprefix = list_length(es->rtable) > 1;
+
+	/* Emit line prefix */
+	for (i = 0; i < indent; i++)
+		appendStringInfo(str, "  ");
+	appendStringInfo(str, "  Output: ");
+
+	/* Deparse each non-junk result column */
+	i = 0;
+	foreach(lc, plan->targetlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(lc);
+
+		if (tle->resjunk)
+			continue;
+		if (i++ > 0)
+			appendStringInfo(str, ", ");
+		appendStringInfoString(str, deparse_expression((Node *) tle->expr,
+				context, useprefix, false));
+	}
+
+	appendStringInfoChar(str, '\n');
+}
 
 /*
  * Show a qualifier expression for a scan plan node
+ *
+ * Note: outer_plan is the referent for any OUTER vars in the scan qual;
+ * this would be the outer side of a nestloop plan.  inner_plan should be
+ * NULL except for a SubqueryScan plan node, where it should be the subplan.
  */
 static void
 show_scan_qual(List *qual, const char *qlabel,
-			   int scanrelid, Plan *outer_plan,
+			   int scanrelid, Plan *scan_plan, Plan *outer_plan,
 			   StringInfo str, int indent, ExplainState *es)
 {
 	Node	   *outercontext;
 	List	   *context;
+	//bool		useprefix;
 	Node	   *node;
 	char	   *exprstr;
 	int			i;
@@ -1741,6 +1735,7 @@ show_scan_qual(List *qual, const char *qlabel,
 	/* Convert AND list to explicit AND */
 	node = (Node *) make_ands_explicit(qual);
 
+	//useprefix = (outer_plan != NULL || inner_plan != NULL);
 	/*
 	 * If we have an outer plan that is referenced by the qual, add it to the
 	 * deparse context.  If not, don't (so that we don't force prefixes
@@ -1778,13 +1773,15 @@ show_scan_qual(List *qual, const char *qlabel,
  */
 static void
 show_upper_qual(List *qual, const char *qlabel,
-				const char *outer_name, int outer_varno, Plan *outer_plan,
-				const char *inner_name, int inner_varno, Plan *inner_plan,
+				const char *outer_name, Plan *outer_plan,
+				const char *inner_name, Plan *inner_plan,
 				StringInfo str, int indent, ExplainState *es)
 {
 	List	   *context;
 	Node	   *outercontext;
 	Node	   *innercontext;
+	int			outer_varno;
+	int			inner_varno;
 	Node	   *node;
 	char	   *exprstr;
 	int			i;
@@ -1796,15 +1793,27 @@ show_upper_qual(List *qual, const char *qlabel,
 
 	/* Generate deparse context */
 	if (outer_plan)
+	{
 		outercontext = deparse_context_for_subplan(outer_name,
 												   (Node *) outer_plan);
+		outer_varno = OUTER;
+	}
 	else
+	{
 		outercontext = NULL;
+		outer_varno = 0;
+	}
 	if (inner_plan)
+	{
 		innercontext = deparse_context_for_subplan(inner_name,
 												   (Node *) inner_plan);
+		inner_varno = INNER;
+	}
 	else
+	{
 		innercontext = NULL;
+		inner_varno = 0;
+	}
 	context = deparse_context_for_plan(outer_varno, outercontext,
 									   inner_varno, innercontext,
 									   es->rtable);
@@ -2075,4 +2084,29 @@ show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 }                               /* show_motion_keys */
 
 
+/*
+ * Fetch the name of an index in an EXPLAIN
+ *
+ * We allow plugins to get control here so that plans involving hypothetical
+ * indexes can be explained.
+ */
+static const char *
+explain_get_index_name(Oid indexId)
+{
+	const char *result = NULL;
+
+	//if (explain_get_index_name_hook)
+	//	result = (*explain_get_index_name_hook) (indexId);
+	//else
+	//	result = NULL;
+	if (result == NULL)
+	{
+		/* default behavior: look in the catalogs and quote it */
+		result = get_rel_name(indexId);
+		if (result == NULL)
+			elog(ERROR, "cache lookup failed for index %u", indexId);
+		result = quote_identifier(result);
+	}
+	return result;
+}
 

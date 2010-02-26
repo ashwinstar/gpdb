@@ -7,8 +7,8 @@
  *	  and join trees.
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/nodes/primnodes.h,v 1.117 2006/10/04 00:30:09 momjian Exp $
@@ -575,8 +575,10 @@ typedef struct SubLink
  * SubPlan - executable expression node for a subplan (sub-SELECT)
  *
  * The planner replaces SubLink nodes in expression trees with SubPlan
- * nodes after it has finished planning the subquery.  SubPlan contains
- * a sub-plantree and rtable instead of a sub-Query.
+ * nodes after it has finished planning the subquery.  SubPlan references
+ * a sub-plantree stored in the subplans list of the toplevel PlannedStmt.
+ * (We avoid a direct link to make it easier to copy expression trees
+ * without causing multiple processing of the subplan.)
  *
  * In an ordinary subplan, testexpr points to an executable expression
  * (OpExpr, an AND/OR tree of OpExprs, or RowCompareExpr) for the combining
@@ -614,12 +616,15 @@ typedef struct SubPlan
     int         qDispSliceId;   /* CDB: slice# of initplan's root slice, or 0 */
  	
 	/* The subselect, transformed to a Plan: */
-	struct Plan *plan;			/* subselect plan itself */
-	int			plan_id;		/* dummy thing because of we haven't equal
-								 * funcs for plan nodes... actually, we could
-								 * put *plan itself somewhere else (TopPlan
-								 * node ?)... */
-	List	   *rtable;			/* range table for subselect */
+
+	/* Identification of the Plan tree to use: */
+	int			plan_id;		/* Index (from 1) in PlannedStmt.subplans */
+	/* Identification of the SubPlan for EXPLAIN and debugging purposes: */
+	char	   *plan_name;		/* A name assigned during planning */
+
+	/* Extra data useful for determining subplan's output type: */
+	Oid			firstColType;	/* Type of first column of subplan result */
+	int32		firstColTypmod;	/* Typmod of first column of subplan result */
 	/* Information about execution strategy: */
 	bool		useHashTable;	/* TRUE to store subselect output in a hash
 								 * table (implies we are doing "IN") */
@@ -815,6 +820,12 @@ typedef struct ArrayExpr
  * not RECORD types, since those are built from the RowExpr itself rather
  * than vice versa.)  It is important not to assume that length(args) is
  * the same as the number of columns logically present in the rowtype.
+ *
+ * colnames is NIL in a RowExpr built from an ordinary ROW() expression.
+ * It is provided in cases where we expand a whole-row Var into a RowExpr,
+ * to retain the column alias names of the RTE that the Var referenced
+ * (which would otherwise be very difficult to extract from the parsetree).
+ * Like the args list, it is one-for-one with physical fields of the rowtype.
  */
 typedef struct RowExpr
 {

@@ -116,33 +116,36 @@ static void sort_canonical_gs_list(List *gs, int *p_nsets, Bitmapset ***p_sets);
  *****************************************************************************/
 
 PlannedStmt * 
-planner(Query *parse, bool isCursor, int cursorOptions,
+planner(Query *parse, int cursorOptions,
 		ParamListInfo boundParams)
 {
 	PlannedStmt *result;
 	
 	if (planner_hook)
-		result = (*planner_hook) (parse, isCursor, cursorOptions, boundParams);
+		result = (*planner_hook) (parse, cursorOptions, boundParams);
 	else
-		result = standard_planner(parse, isCursor, cursorOptions, boundParams);
+		result = standard_planner(parse, cursorOptions, boundParams);
 	return result;
 }
 
 PlannedStmt *
-standard_planner(Query *parse, bool isCursor, int cursorOptions,
-			ParamListInfo boundParams)
+standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
 	PlannedStmt *result;
 	PlannerGlobal *glob;
+	bool isCursor;
 	double		tuple_fraction;
 	PlannerInfo *root;
 	Plan	   *top_plan;
-	ApplyShareInputContext shareinput_context;
+	ListCell   *lp,
+			   *lr;
 
-	/* Cursor options may come from caller or from DECLARE CURSOR stmt */
-	if (parse->utilityStmt &&
-		IsA(parse->utilityStmt, DeclareCursorStmt))
+	/* Cursor options may come from caller or from DECLARE CURSOR stmt. */
+	if (parse->utilityStmt && IsA(parse->utilityStmt, DeclareCursorStmt))
+	{
+		isCursor = true;
 		cursorOptions |= ((DeclareCursorStmt *) parse->utilityStmt)->options;
+	}
 	
 	/*
 	 * The planner can be called recursively (an example is when
@@ -152,8 +155,6 @@ standard_planner(Query *parse, bool isCursor, int cursorOptions,
 	 * across all levels of sub-Query that might exist in the given command,
 	 * so we keep it in a separate struct that's linked to by each per-Query
 	 * PlannerInfo.
-	 *
-	 * TODO Some fields will be unused until PlannedStmt support is complete.
 	 */
 	glob = makeNode(PlannerGlobal);
 	
@@ -166,7 +167,15 @@ standard_planner(Query *parse, bool isCursor, int cursorOptions,
 	glob->relationOids = NIL;
 	glob->invalItems = NIL;
 	glob->transientPlan = false;
-	
+	/* ApplyShareInputContext initialization. */
+	glob->share.sharedNodes = NIL;
+	glob->share.sliceMarks = NIL;
+	glob->share.motStack = NIL;
+	glob->share.qdShares = NIL;
+	glob->share.qdSlices = NIL;
+	glob->share.planNodes = NIL;
+	glob->share.nextPlanId = 0;
+
 	/* Determine what fraction of the plan is likely to be scanned */
 	if (isCursor)
 	{
@@ -218,23 +227,22 @@ standard_planner(Query *parse, bool isCursor, int cursorOptions,
 	 *
 	 * apply_shareinput will fix shared_id, and change the DAG to a tree.
 	 */
-	shareinput_context.sharedNodes = NULL;
-	shareinput_context.sliceMarks = NULL;
-	shareinput_context.motStack = NULL;
 
-	top_plan = apply_shareinput_dag_to_tree(top_plan, &shareinput_context); 
+	top_plan = apply_shareinput_dag_to_tree(top_plan, &glob->share); 
 
-	/* final cleanup of the plan
-	 *
-	 * In PG (probably due to different handling of initplans and CTEs) this is a loop on 
-	 * glob->subplans and glob->subrtables. Here, for now, we have preserved the GPDB,
-	 * approach.
-	 *
-	 * TODO Revisit as part of completion of PlannedStmt.  (PSMERGE)
-	 */
-	top_plan = set_plan_references_qry(top_plan,
-                                          parse,
-                                          shareinput_context.sharedNodes);
+	/* final cleanup of the plan */
+	Assert(glob->finalrtable == NIL);
+	Assert(parse == root->parse);
+	top_plan = set_plan_references(glob, top_plan, root->parse->rtable);
+	/* ... and the subplans (both regular subplans and initplans) */
+	Assert(list_length(glob->subplans) == list_length(glob->subrtables));
+	forboth(lp, glob->subplans, lr, glob->subrtables)
+	{
+		Plan	   *subplan = (Plan *) lfirst(lp);
+		List	   *subrtable = (List *) lfirst(lr);
+		
+		lfirst(lp) = set_plan_references(glob, subplan, subrtable);
+	}
 
 	/* executor wants to know total number of Params used overall */
 	top_plan->nParamExec = list_length(glob->paramlist);
@@ -245,26 +253,27 @@ standard_planner(Query *parse, bool isCursor, int cursorOptions,
 		XsliceInAppendContext append_context;
 		
 		top_plan = cdbparallelize(root, top_plan, parse,
-									isCursor, cursorOptions,
+									cursorOptions,
 									boundParams, uses_correlation);
 
 		/* cdbparallelize may create additional slices that may affect share input.
 		 * need to mark material nodes that are split acrossed multi slices.
 		 */
-		top_plan = apply_shareinput_xslice(top_plan, &shareinput_context);
+		top_plan = apply_shareinput_xslice(top_plan, &glob->share);
 
 		/*
 		 * Walk the plan tree to set hasXslice field in each Append node to true
 		 * if the subnodes of the Append node contain cross-slice shared node, and
 		 * one of these subnodes running in the same slice as the Append node.
 		 */
+		planner_init_plan_tree_base(&append_context.base, root);
 		append_context.currentSliceNo = 0;
 		append_context.slices = NULL;
 		plan_tree_walker((Node *)top_plan, set_hasxslice_in_append_walker, &append_context);
 		bms_free(append_context.slices);
 	}
 
-	top_plan = zap_trivial_result(top_plan);
+	top_plan = zap_trivial_result(root, top_plan);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -282,7 +291,6 @@ standard_planner(Query *parse, bool isCursor, int cursorOptions,
 	result->commandType = parse->commandType;
 	result->canSetTag = parse->canSetTag;
 	result->transientPlan = glob->transientPlan;
-	result->queryTree = parse; /* TODO Retire eventually. (PSMERGE) */
 	result->planTree = top_plan;
 	result->rtable = glob->finalrtable;
 	result->resultRelations = root->resultRelations;
@@ -296,7 +304,7 @@ standard_planner(Query *parse, bool isCursor, int cursorOptions,
 	result->rowMarks = parse->rowMarks;
 	result->relationOids = glob->relationOids;
 	result->invalItems = glob->invalItems;
-	result->nParamExec = list_length(glob->paramlist);
+	result->nCrossLevelParams = list_length(glob->paramlist);
 	result->nMotionNodes = top_plan->nMotionNodes;
 	result->nInitPlans = top_plan->nInitPlans;
 	result->intoPolicy = GpPolicyCopy(CurrentMemoryContext, parse->intoPolicy);
@@ -340,7 +348,7 @@ subquery_planner(PlannerGlobal *glob,
 				 double tuple_fraction,
 				 PlannerInfo **subroot)
 {
-	int			saved_planid = PlannerPlanId;
+	int			num_old_subplans = list_length(glob->subplans);
 	PlannerInfo *root;
 	Plan	   *plan;
 	List	   *newHaving;
@@ -585,8 +593,13 @@ subquery_planner(PlannerGlobal *glob,
 	 * initPlan list and extParam/allParam sets for plan nodes, and attach the
 	 * initPlans to the top plan node.
 	 */
-	if (PlannerPlanId != saved_planid || root->query_level > 1)
-		SS_finalize_plan(root, plan, parse->rtable);
+	if (list_length(glob->subplans) != num_old_subplans || 
+		root->query_level > 1)
+		
+	{
+		Assert(root->parse == parse); /* GPDP isn't always careful about this. */
+		SS_finalize_plan(root, plan, true);
+	}
 
 	/* Return internal info if caller wants it */
 	if (subroot)
@@ -877,15 +890,20 @@ inheritance_planner(PlannerInfo *root)
 		}
 	}
 
-	/* PSMERGE: These fields need to be set in both the query tree and
-	 *          in PlannerInfo for now.  Later we'd like to eliminate
-	 *          the scribbling on the Query.
+	/**
+	 * If due to constraint exclusions all the result relations have been removed,
+	 * we need something upstream.
 	 */
-	parse->resultRelations = resultRelations; /* PSMERGE: Retire */
-	parse->returningLists = returningLists; /* PSMERGE: Retire */
-	root->resultRelations = resultRelations;
+	if (resultRelations)
+	{
+		root->resultRelations = resultRelations;
+	}
+	else
+	{
+		root->resultRelations = list_make1_int(parse->resultRelation);
+	}
+	
 	root->returningLists = returningLists;
-
 	/* Mark result as unordered (probably unnecessary) */
 	root->query_pathkeys = NIL;
 
@@ -936,6 +954,10 @@ inheritance_planner(PlannerInfo *root)
 	 * XXX should clean this up someday
 	 */
 	parse->rtable = rtable;
+
+	/* Suppress Append if there's only one surviving child rel */
+	if (list_length(subplans) == 1)
+		return (Plan *) linitial(subplans);
 
 	return plan;
 }
@@ -1345,7 +1367,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				 * tuples) --- so make_agg() and make_group() are responsible
 				 * for computing the added cost.
 				 */
-				cost_qual_eval(&tlist_cost, sub_tlist);
+				cost_qual_eval(&tlist_cost, sub_tlist, root);
 				result_plan->startup_cost += tlist_cost.startup;
 				result_plan->total_cost += tlist_cost.startup +
 					tlist_cost.per_tuple * result_plan->plan_rows;
@@ -1867,9 +1889,10 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		List	   *rlist;
 		
 		Assert(parse->resultRelation);
-		rlist = set_returning_clause_references(parse->returningList,
+		rlist = set_returning_clause_references(root->glob,
+												parse->returningList,
 												result_plan,
-												parse->resultRelation);
+												parse->resultRelation); 
 		root->returningLists = list_make1(rlist);
 	}
 	else
