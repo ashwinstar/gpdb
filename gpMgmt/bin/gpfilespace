@@ -39,9 +39,9 @@ Please upgrade python installed on this machine.
 # ============================================================================
 import optparse                          # Option Parsing
 import subprocess                        # Calling external processes
-import socket                            # getfqdn()
 import traceback                         # exception logging
 try:
+    from gppylib.commands import unix
     from gppylib.db import dbconn
     from gppylib.db import catalog
     from pygresql   import pg            # Database interaction
@@ -99,8 +99,8 @@ def ParseOptions():
     home   = os.environ.get("HOME")
 
     logdir = os.path.join(home, "gpAdminLogs")
-    pguser = os.environ.get("PGUSER") or os.getlogin()
-    pghost = os.environ.get("PGHOST") or socket.getfqdn()
+    pguser = os.environ.get("PGUSER") or unix.getUserName()
+    pghost = os.environ.get("PGHOST") or unix.getLocalHostname()
     pgport = os.environ.get("PGPORT") or 5432
     output = os.getcwd()
 
