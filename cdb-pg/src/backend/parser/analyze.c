@@ -5902,9 +5902,9 @@ flatten_partition_val(Node *node, Oid target_type)
 		Oid curtyp;
 		Const *c;
 		Type typ = typeidType(target_type);
-		int32 typmod = ((Form_pg_type)typ)->typtypmod;
-		int16 typlen = ((Form_pg_type)typ)->typlen;
-		bool typbyval = ((Form_pg_type)typ)->typbyval;
+		int32 typmod = ((Form_pg_type)GETSTRUCT(typ))->typtypmod;
+		int16 typlen = ((Form_pg_type)GETSTRUCT(typ))->typlen;
+		bool typbyval = ((Form_pg_type)GETSTRUCT(typ))->typbyval;
 		bool isnull;
 
 		ReleaseSysCache(typ);
@@ -6109,7 +6109,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 				ReleaseSysCache(typ);
 
 				typ = typeidType(*restypid);
-				typmod = ((Form_pg_type)typ)->typtypmod;
+				typmod = ((Form_pg_type)GETSTRUCT(typ))->typtypmod;
 				ReleaseSysCache(typ);
 
 				e = (Expr *)coerce_type(NULL, (Node *)c, opexpr->opresulttype,
