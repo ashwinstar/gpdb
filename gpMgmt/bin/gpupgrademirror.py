@@ -52,6 +52,35 @@ TenMeg = 10485760
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+class mirrorNICInfo:
+    
+    def __init__(self, host, nicList):
+        self.hostname = host
+        self.nics     = nicList
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class mirror_nic_row:
+    
+    def __init__(self, row):
+        self.nic = row[0]
+
+    #-------------------------------------------------------------------------------
+    @staticmethod
+    def query():
+        if options.phase2 == False:
+           exeStr = '''  SELECT DISTINCT  hostname as nicaddress
+                         FROM             pg_catalog.gp_configuration
+                         WHERE            isprimary = 'f'
+                         ORDER BY         hostname '''
+        else:
+           raise Exception('Internal Error. mirror_nic_row.qurey only for 4.x systems.')           
+        return exeStr
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class mirror_hosts_row:
     
     def __init__(self, row):
@@ -61,17 +90,13 @@ class mirror_hosts_row:
     @staticmethod
     def query():
         if options.phase2 == False:
-           exeStr = '''  SELECT  DISTINCT hostname as nicaddress
-                         FROM             pg_catalog.gp_configuration
-                         WHERE            isprimary = 'f'
-                         ORDER BY         hostname '''
+           raise Exception('Internal Error. mirror_hosts_row.qurey only for 3.3.x systems.')
         else:
            exeStr = ''' SELECT DISTINCT hostname 
                         FROM            pg_catalog.gp_segment_configuration
                         WHERE           role = 'm'
                         ORDER BY        hostname '''
         return exeStr
-
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -81,6 +106,11 @@ class gp_host_cache:
     def __init__(self):
         self.hostcache = {}
         self.readfile()
+        
+    #-------------------------------------------------------------------------------
+    def __str__(self):   
+       tempStr = self.hostcache =  + str(self.hostcache) + '\n'
+       return tempStr
         
     #-------------------------------------------------------------------------------
     def readfile(self):
@@ -103,10 +133,10 @@ class gp_host_cache:
     def getInterfaces(self, hostName):
         retList = []
         
-        for (interface, host) in self.hostcache:
-            if host == hostName:
-               relList.append(interface)
-        return relList
+        for interface in self.hostcache:
+            if self.hostcache[interface] == hostName:
+               retList.append(interface)
+        return retList
     
     #-------------------------------------------------------------------------------
     def getHost(self, interface):
@@ -135,7 +165,11 @@ class mirror_host_info_row:
         self.dbid = row[4]
 
     #-------------------------------------------------------------------------------
-    def __str__(self):
+    def __repr__(self):
+        return self.__str__()
+
+    #-------------------------------------------------------------------------------
+    def __str__(self):  
         tempStr = 'mirror_host='            + str(self.mirror_host)            + '\n' \
         +         'primary_host='           + str(self.primary_host)           + '\n' \
         +         'primary_data_directory=' + str(self.primary_data_directory) + '\n' \
@@ -159,7 +193,7 @@ class mirror_host_info_row:
             index = 0
             row = []
             for line in fp:
-                (name, value) = line.rstrip().rsplit('=', 1)
+                (name, value) = line.strip().rsplit('=', 1)
                 row.append(value)
                 index = index + 1
                 if index == 5:     
@@ -169,6 +203,13 @@ class mirror_host_info_row:
             return retList
         except IOError:
             raise
+        finally:
+            try:
+                if fp != None:
+                   fp.close()
+            except:
+                pass
+            
 
     #-------------------------------------------------------------------------------
     @staticmethod
@@ -241,45 +282,96 @@ class phase1MirrorInfo:
         self.gpHostCacheInfo = gp_host_cache()
     
         if (options.rollback == True or options.continue_upgrade == True) and options.phase2 == False:
+           """ We are in a rollback or continue state in Phase 1.           """
            """ Retrieve configuration information from previously saved file """
            self.allMirrorInfoList = mirror_host_info_row.readListFromFile(phase1MirrorInfo.getMirrorInfoFile())
-           
-           for seg in self.allMirrorInfoList:
-               if seg.mirror_host in self.mirrorNodeList:
-                   pass
+
+           """ for each NIC in the list of mirror NICs, make a list of distinct mirror nodes """
+           for mirrorInfo in self.allMirrorInfoList:
+               mirrorHostName = self.gpHostCacheInfo.getHost(mirrorInfo.mirror_host)
+               if mirrorHostName in self.mirrorNodeList:
+                  pass
                else:
-                   self.mirrorNodeList.append(seg.mirror_host)
+                  self.mirrorNodeList.append(mirrorHostName)
+
         else:
+           """ We are in normal Phase1 (no rollback or continue) or normarl Phase2 """
            conn   = dbconn.connect( dburl   = dbUrl
                                   , utility = True
                                   )
+           
            ''' Get a list of mirror nodes '''
-           mirrorNodeCursor = dbconn.execSQL(conn, mirror_hosts_row.query())
-           for row in mirrorNodeCursor:
-               mirror = mirror_hosts_row(row)
-               self.mirrorNodeList.append(mirror.hostname)
+           if options.phase2 == True:
+              mirrorNodeCursor = dbconn.execSQL(conn, mirror_hosts_row.query())
+              for row in mirrorNodeCursor:
+                  mirror = mirror_hosts_row(row)
+                  self.mirrorNodeList.append(mirror.hostname)
 
-               ''' Get info on mirror segments for this host'''
-               mirrorSegInfoCursor = dbconn.execSQL(conn, mirror_host_info_row.query() % mirror.hostname)
-               for mirrorInfoRow in mirrorSegInfoCursor:
-                   mirrorInfo = mirror_host_info_row(mirrorInfoRow)
-                   self.allMirrorInfoList.append(mirrorInfo)
+                  ''' Get info on mirror segments for this host'''
+                  mirrorSegInfoCursor = dbconn.execSQL(conn, mirror_host_info_row.query() % mirror.hostname)
+                  for mirrorInfoRow in mirrorSegInfoCursor:
+                      mirrorInfo = mirror_host_info_row(mirrorInfoRow)
+                      self.allMirrorInfoList.append(mirrorInfo)
+           else:
+              ''' We are in phase1              '''
+              ''' Get a list of all mirror NICs '''
+              mirrorNicCursor = dbconn.execSQL(conn, mirror_nic_row.query())
+           
+              ''' Make a list of distinct nodes associated with the mirror NICs '''
+              for row in mirrorNicCursor:
+                  nicRow = mirror_nic_row(row)
+                  host = self.gpHostCacheInfo.getHost(nicRow.nic)
+                  if host in self.mirrorNodeList:
+                     pass
+                  else:
+                     self.mirrorNodeList.append(host)
+           
+              for nodeName in self.mirrorNodeList:
+                  ''' for each node, use its NICs to find its segments '''
+                  nicList = self.gpHostCacheInfo.getInterfaces(nodeName)
+                  ''' Get info on mirror segments for this host'''
+                  for nic in nicList:
+                     mirrorSegInfoCursor = dbconn.execSQL(conn, mirror_host_info_row.query() % nic)
+                     for mirrorInfoRow in mirrorSegInfoCursor:
+                         mirrorInfo = mirror_host_info_row(mirrorInfoRow)
+                         self.allMirrorInfoList.append(mirrorInfo)
+
            conn.close()  
             
            mirror_host_info_row.writeListToFile(phase1MirrorInfo.getMirrorInfoFile(), self.allMirrorInfoList)   
+
+    #-------------------------------------------------------------------------------
+    def __str__(self):    
+        tempStr = '  dbUrl                  = ' + str(self.dbUrl)             + '\n' \
+        +         '  mirrorInfoFile         = ' + str(self.mirrorInfoFile)    + '\n' \
+        +         '  self.mirrorNodeList    = \n' + str(self.mirrorNodeList)    + '\n' \
+        +         '  self.allMirrorInfoList = ' + str(self.allMirrorInfoList) + '\n' \
+        +         '  self.gpHostCacheInfo   = ' + str(self.gpHostCacheInfo)   + '\n'
+        return tempStr 
         
+    #-------------------------------------------------------------------------------
+    def getAllMirrorInfoList(self):
+        return self.allMirrorInfoList
         
     #-------------------------------------------------------------------------------
     def getMirrorNodeList(self):
         return self.mirrorNodeList
     
+    
     #-------------------------------------------------------------------------------
     def getMirrorInfo(self, mirrorName):
         retList = []
         
-        for mirrorSeg in self.allMirrorInfoList:
-            if mirrorSeg.mirror_host == mirrorName:
-                retList.append(mirrorSeg)
+        if options.phase2 == True:
+           for mirrorSeg in self.allMirrorInfoList:
+               if mirrorSeg.mirror_host == mirrorName:
+                   retList.append(mirrorSeg)
+        else:
+           nicNameList = self.gpHostCacheInfo.getInterfaces(mirrorName)
+           for nicName in nicNameList:
+               for mirrorSeg in self.allMirrorInfoList:
+                   if nicName == mirrorSeg.mirror_host:
+                       retList.append(mirrorSeg)
         
         return retList
 
@@ -293,9 +385,10 @@ class phase1MirrorInfo:
     @staticmethod
     def removeMirrorInfoFile():
         try:
-           os.remove(self.mirrorInfoFile)
+           os.remove(phase1MirrorInfo.getMirrorInfoFile())
         except:
            pass
+           
 
 
 #-------------------------------------------------------------------------------
@@ -545,7 +638,7 @@ class GpUpgradeMirrorStatus():
                             , 'PHASE2_DONE'                 : 15
                             }
 
-    _unsafeModeStatusValues  = { 'PHASE1_UNSAFE_MODE'                  : 2
+    _unsafeModeStatusValues  = { 'PHASE1_UNSAFE_MODE'                   : 2
                                 , 'START_MOVE_OLD_MIRROR_SPECIAL_FILES' : 3
                                 , 'END_MOVE_OLD_MIRROR_SPECIAL_FILES'   : 4
                                 , 'START_REMOVE_OLD_MIRROR'             : 5
@@ -561,11 +654,25 @@ class GpUpgradeMirrorStatus():
                                 , 'PHASE2_DONE'                         : 15
                                 }
     
+    """ Note, Both safe and un-safe mode values are valid, therefore their values are the same '2' """
+    _overallStatusValues = { 'PHASE1_SAFE_MODE'       : 2
+                           , 'PHASE1_UNSAFE_MODE'     : 2
+                           , 'START_SETUP'            : 3
+                           , 'SETUP_DONE'             : 4
+                           , 'PHASE1_DONE'            : 5
+                           , 'START_PHASE2'           : 6
+                           , 'PHASE2_DONE'            : 7
+                           }
     
-    def __init__(self, logger, master_data_directory, segment_dbid, master_mirror, phase):
+    
+    
+    def __init__(self, logger, master_data_directory, segment_dbid, master_mirror, phase, overall = False):
         self.logger = logger
+        self.overall = overall
         
-        if options.mode == 'S':
+        if overall == True:
+           self._status_values = self._overallStatusValues
+        elif options.mode == 'S':
            self._status_values = self._safeModeStatusValues
         else:
            self._status_values = self._unsafeModeStatusValues
@@ -603,12 +710,14 @@ class GpUpgradeMirrorStatus():
                 ''' re-set the mode based on the result'''
                 if status == 'PHASE1_SAFE_MODE':
                     options.mode = 'S'
-                    self._status_values = self._safeModeStatusValues
+                    if self.overall == False:
+                       self._status_values = self._safeModeStatusValues
                 elif status == 'PHASE1_UNSAFE_MODE':
                     options.mode = 'U'
-                    self._status_values = self._unsafeModeStatusValues
+                    if self.overall == False:
+                       self._status_values = self._unsafeModeStatusValues
                 elif status == 'START_PHASE2':
-                    options.phase2 == True
+                    options.phase2 = True
                 self._status.append(status)
                 self._status_info.append(status_info)
         except IOErrormm, e:
@@ -624,7 +733,7 @@ class GpUpgradeMirrorStatus():
     def create_status_file(self):
         """Creates a new gpupgrademirror status file"""
         try:
-            if options.phase2:
+            if options.phase2 == True:
                 startStatus = 'PHASE1_DONE'
             elif options.mode == 'S':
                 startStatus = 'PHASE1_SAFE_MODE'
@@ -662,7 +771,7 @@ class GpUpgradeMirrorStatus():
         """Sets the current status.  gpupgrademirror status must be set in
            proper order.  Any out of order status result in an
            InvalidStatusError exception"""
-        self.logger.debug("Transitioning from %s to %s" % (self._status[-1],status))
+        self.logger.debug("Segment %s: Transitioning from %s to %s" % (str(self.segment_dbid), self._status[-1], status))
 
         if not self._fp:
             raise InvalidStatusError('The status file is invalid and cannot be written to')
@@ -805,8 +914,9 @@ class gpupgrademirror(threading.Thread):
             if options.rollback == True:
                 ''' setup for rollback '''
                 if status.get_current_status() == (None, None):
-                    logging.error('There is no upgrade mirror in progress')
-                    raise ValidationError('Unable to rollback')
+                    logging.warning('There is no upgrade mirror in progress for this segment: ' + str(seg.dbid))
+                    """ Create a status file so that other logic works correctly """
+                    status.create_status_file()
                 if     status.compare_status('START_REMOVE_OLD_MIRROR') >= 0 \
                    and status.compare_status('PHASE1_DONE') < 0:
                    ''' We are past the point of recovering. Must move forward at this point '''
@@ -1212,6 +1322,7 @@ MirrorNodeList = []
 MirrorInfoList = []
 
 
+
 try:
   logger = get_default_logger()
   setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
@@ -1250,10 +1361,43 @@ try:
       we are not rolling back or continuing. Otherwise, we will retrieve all the
       information we need from a flat file we saved on the initial run.     
   """
+  gpstartStatus = None
   if (options.rollback == True or options.continue_upgrade == True) and options.phase2 == False:
      pass
   else:
      GpStart.local('gpupgrademirror start database', masterOnly = True)
+     gpstartStatus = "MASTER"
+
+  if options.phase2 == True:
+     phase = 2
+  else:
+     phase = 1
+
+  overallStatus = GpUpgradeMirrorStatus( logger = logger
+                                       , master_data_directory = options.master_data_directory
+                                       , segment_dbid = 0
+                                       , master_mirror = False
+                                       , phase = phase
+                                       , overall = True
+                                       )
+  if options.rollback == True:
+     ''' setup for rollback '''
+     if overallStatus.get_current_status() == (None, None):
+        logging.error('There is no upgrade mirror in progress')
+        raise ValidationError('Unable to rollback')
+     elif overallStatus.compare_status("SETUP_DONE") < 0:
+         """ We have not gotten past the setup phase """
+         overallStatus.remove_status_file()
+         exit(0)
+  elif options.continue_upgrade == True:
+     ''' Setup to continue upgrade '''
+  elif options.phase2 == False:
+     if (overallStatus.get_current_status() != (None, None)):
+        logging.error("Upgrade mirrors already started.")
+        logging.error("You must either rollback or continue mirror upgrade") 
+        raise ValidationError("Unable to continue")
+     else:  
+        overallStatus.create_status_file()
 
   if options.phase2 == True:
      """
@@ -1282,7 +1426,7 @@ try:
      fileListDeleteBeforeCopy.append('global')
      ''' always copy the pg_xlog directory '''
      fileList.append('pg_xlog')
-     fileListDeleteBeforeCopy.append('pg_xlog')
+     fileListDeleteBeforeCopy.append('pg_xlog')     
      for db in databaseList:
          if db.databaseName == 'template0':
             ''' Special case where we copy the entire database '''
@@ -1318,10 +1462,10 @@ try:
 
      ''' Get a list of mirror nodes '''
      mirrorNodeCursor = p1MirrorInfo.getMirrorNodeList()     
+
+     phase2MirrorList = []
      
-     numMirrorHosts = 0
      for hostname in mirrorNodeCursor:
-        numMirrorHosts = numMirrorHosts + 1
         mirrorhost = hostname
         
         ''' Create a phase2 object for each mirror node'''
@@ -1329,15 +1473,14 @@ try:
 
         ''' Get info on mirror segments for this host'''
         mirrorInfoList = p1MirrorInfo.getMirrorInfo(mirrorhost)
-
-        phase2MirrorList = []
         
         ''' Setup the mirror node '''
         tempNode.setup(mirrorInfoList, fileList, fileListDeleteBeforeCopy)
         phase2MirrorList.append(tempNode)
      conn.close()
     
-     GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
+     if gpstartStatus != None and gpstartStatus == "MASTER":
+        GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
 
      """
        Start the threads 
@@ -1362,6 +1505,7 @@ try:
          raise ValidationError('Unable to complate upgrade')
      else:
         phase1MirrorInfo.removeMirrorInfoFile()
+        overallStatus.remove_status_file()
         for node in phase2MirrorList:
             for segStatus in node.statusList:
                 segStatus.remove_status_file()
@@ -1369,6 +1513,9 @@ try:
     """
       Phase 1 
     """
+    
+    if overallStatus.compare_status("START_SETUP") < 0:
+        overallStatus.set_status("START_SETUP")
     
     try:
        p1MirrorInfo = phase1MirrorInfo(dbUrl)
@@ -1378,28 +1525,44 @@ try:
         traceback.print_exc()
         exit(0)
 
-    ''' Get a list of mirror nodes '''
-    mirrorNodeCursor = p1MirrorInfo.getMirrorNodeList()
+    if overallStatus.compare_status("SETUP_DONE") < 0:
+       overallStatus.set_status("SETUP_DONE")
+
+    if options.mode == 'S':
+       """ In safe mode, we create a list of nodes and their segment information """
+       ''' Get a list of mirror nodes '''
+       mirrorNodeCursor = p1MirrorInfo.getMirrorNodeList()
        
-    numMirrorHosts = 0
-    for mirrorName in mirrorNodeCursor:
-        numMirrorHosts = numMirrorHosts + 1
+       for mirrorName in mirrorNodeCursor:
         
-        ''' Create a gpupgrademirror object for each mirror node'''
-        ''' KAS Note to self. In unsafe mode, we can do the copies in parallel by '''
-        '''     Creating a gpupgrademirror for each segment not just each node  '''
-        tempNode = gpupgrademirror(dbUrl, logger, options.master_data_directory, mirrorName)
+           ''' Create a gpupgrademirror object for each mirror node'''
+           tempNode = gpupgrademirror(dbUrl, logger, options.master_data_directory, mirrorName)
 
-        ''' Get info on mirror segments for this host'''
-        mirrorInfoList = p1MirrorInfo.getMirrorInfo(mirrorName)
+           ''' Get info on mirror segments for this host'''
+           mirrorInfoList = p1MirrorInfo.getMirrorInfo(mirrorName)
         
-        ''' Setup the mirror node '''
-        tempNode.setup(mirrorInfoList)
-        MirrorNodeList.append(tempNode)
-
-    if (options.rollback == True or options.continue_upgrade == True) and options.phase2 == False:
-       pass
+           ''' Setup the mirror node '''
+           tempNode.setup(mirrorInfoList)
+           MirrorNodeList.append(tempNode)
     else:
+       """ In un-safe mode, we create a list of segments with their segment information """
+       ''' Get a list of Segments '''
+       mirrorNodeCursor = p1MirrorInfo.getAllMirrorInfoList()
+       
+       for mirrorNode in mirrorNodeCursor:
+        
+           ''' Create a gpupgrademirror object for each segment'''
+           tempNode = gpupgrademirror( dburl = dbUrl
+                                     , logger = logger
+                                     , master_data_directory = options.master_data_directory
+                                     , node_name = mirrorNode.mirror_host
+                                     )
+        
+           ''' Setup the mirror segment. We pass a list here because that what the method expects. '''
+           tempNode.setup([mirrorNode])
+           MirrorNodeList.append(tempNode)
+
+    if gpstartStatus != None and gpstartStatus == "MASTER":
        GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)    
 
     """ 
@@ -1428,6 +1591,7 @@ try:
        p1RollbackCompleted = True
        for node in MirrorNodeList:
            for segStatus in node.statusList:
+               
                if    (options.mode == 'S' and segStatus.get_current_status()[0] != 'PHASE1_SAFE_MODE') \
                   or (options.mode == 'U' and segStatus.get_current_status()[0] != 'PHASE1_UNSAFE_MODE'):
                   p1RollbackCompleted = False
@@ -1440,6 +1604,7 @@ try:
           raise ValidationError('Unable to complete rollback')
        else:
           phase1MirrorInfo.removeMirrorInfoFile()
+          overallStatus.remove_status_file()
           for node in MirrorNodeList:
               for segStatus in node.statusList:
                   segStatus.remove_status_file()
@@ -1472,7 +1637,8 @@ finally:
         if remove_pid:
             remove_pid_file(options.master_data_directory)
         try:
-            GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
+            if gpstartStatus != None and gpstartStatus == "MASTER":
+               GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
         except Exception:
             pass         
     except NameError:
