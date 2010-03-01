@@ -2325,7 +2325,7 @@ false
 		true, NULL, NULL
 	},
 	{
-		{"gp_enable_resqueue_priority", PGC_POSTMASTER, RESOURCES_MGM,
+		{"gp_resqueue_priority", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("Enables priority scheduling."),
 			NULL
 		},
@@ -3624,7 +3624,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NO_SHOW_ALL
 		},
 		&gp_resqueue_priority_local_interval,
-		500000, 500, INT_MAX, NULL, NULL
+		100000, 500, INT_MAX, NULL, NULL
 	},
 	{
 		{"gp_resqueue_priority_sweeper_interval", PGC_POSTMASTER, RESOURCES_MGM,

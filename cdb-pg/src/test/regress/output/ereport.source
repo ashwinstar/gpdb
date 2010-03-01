@@ -299,7 +299,6 @@ select * from get_ereport order by 1;
  aaaaa GP_IGNORE: paba: plxhandler - @abs_builddir@/../../pl/plpgsql/src/pl_handler.c
  aaaaa GP_IGNORE: paba: portalcmds - @abs_builddir@/../../backend/commands/portalcmds.c
  aaaaa GP_IGNORE: paba: postmaster - @abs_builddir@/../../backend/postmaster/postmaster.c
- aaaaa GP_IGNORE: pabb: pgstatfuncs - @abs_builddir@/../../backend/utils/adt/pgstatfuncs.c
  aaaaa GP_IGNORE: pabb: pgxexttable - @abs_builddir@/../../backend/catalog/pg_exttable.c
  aaaaa GP_IGNORE: pabb: pgxoperator - @abs_builddir@/../../backend/catalog/pg_operator.c
  aaaaa GP_IGNORE: pabb: pgxshdepend - @abs_builddir@/../../backend/catalog/pg_shdepend.c
@@ -11385,15 +11384,6 @@ select * from get_ereport order by 1;
  paba: postmaster:00006365:  ereport(ERROR, 
  paba: postmaster:00006366:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
  paba: postmaster:00006367:  src, WSAGetLastError()))); 
- pabb: pgstatfuncs:00000748:  ereport(ERROR, 
- pabb: pgstatfuncs:00000749:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- pabb: pgstatfuncs:00000750:  (errmsg("only superuser can renice another user's session")))); 
- pabb: pgstatfuncs:00000787:  ereport(ERROR,( 
- pabb: pgstatfuncs:00000788:  errmsg("pg_renice_session error (gathered %d results from cmd '%s')", 
- pabb: pgstatfuncs:00000789:  resultCount, cmd), errdetail("%s", errbuf.data))); 
- pabb: pgstatfuncs:00000856:  ereport(WARNING,(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- pabb: pgstatfuncs:00000857:  errmsg("Could not change nice value to lower number because we don't have the privileges to do so") 
- pabb: pgstatfuncs:00000858:  )); 
  pabb: pgxexttable:00000171:  ereport(ERROR, 
  pabb: pgxexttable:00000172:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  pabb: pgxexttable:00000173:  errmsg("missing pg_exttable entry for relation "%s"", 
@@ -17822,6 +17812,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000073:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000074:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000075:  str))); 
-(17761 rows)
+(17751 rows)
 
 drop external table get_ereport;
