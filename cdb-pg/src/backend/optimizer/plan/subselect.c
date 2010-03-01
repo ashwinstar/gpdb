@@ -31,7 +31,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-
+#include "cdb/cdbvars.h"
 
 typedef struct convert_testexpr_context
 {
@@ -380,7 +380,7 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 	 * PARAM_EXEC Params instead of the PARAM_SUBLINK Params emitted by the
 	 * parser.
 	 */
-	if (splan->parParam == NIL && subLinkType == EXISTS_SUBLINK)
+	if (splan->parParam == NIL && subLinkType == EXISTS_SUBLINK && Gp_role == GP_ROLE_DISPATCH)
 	{
 		Param	   *prm;
 
@@ -390,7 +390,7 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 		splan->is_initplan = true;
 		result = (Node *) prm;
 	}
-	else if (splan->parParam == NIL && subLinkType == EXPR_SUBLINK)
+	else if (splan->parParam == NIL && subLinkType == EXPR_SUBLINK && Gp_role == GP_ROLE_DISPATCH)
 	{
 		TargetEntry *te = linitial(plan->targetlist);
 		Param	   *prm;
@@ -404,7 +404,7 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 		splan->is_initplan = true;
 		result = (Node *) prm;
 	}
-	else if (splan->parParam == NIL && subLinkType == ARRAY_SUBLINK)
+	else if (splan->parParam == NIL && subLinkType == ARRAY_SUBLINK && Gp_role == GP_ROLE_DISPATCH)
 	{		
 		TargetEntry *te = linitial(plan->targetlist);
 		Oid			arraytype;
@@ -423,7 +423,7 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 		splan->is_initplan = true;
 		result = (Node *) prm;
 	}
-	else if (splan->parParam == NIL && subLinkType == ROWCOMPARE_SUBLINK)
+	else if (splan->parParam == NIL && subLinkType == ROWCOMPARE_SUBLINK && Gp_role == GP_ROLE_DISPATCH)
 	{
 		/* Adjust the Params */
 		result = convert_testexpr(root,

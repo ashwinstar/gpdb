@@ -3612,7 +3612,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"gp_statistics_blocks_target", PGC_USERSET, STATS_ANALYZE,
 			gettext_noop("The number of blocks to be sampled to estimate reltuples/relpages for heap tables."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_statistics_blocks_target,
 		25, 1, 1000, NULL, NULL
@@ -3893,7 +3894,7 @@ static struct config_real ConfigureNamesReal[] =
 		{"gp_statistics_ndistinct_scaling_ratio_threshold", PGC_USERSET, STATS_ANALYZE,
 			gettext_noop("If the ratio of number of distinct values of an attribute to the number of rows is greater than this value, it is assumed that ndistinct will scale with table size."),
 			NULL,
-			GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
   		},
 		&gp_statistics_ndistinct_scaling_ratio_threshold,
 		0.10, 0.001, 1.0, NULL, NULL
@@ -3902,7 +3903,7 @@ static struct config_real ConfigureNamesReal[] =
 		{"gp_statistics_sampling_threshold", PGC_USERSET, STATS_ANALYZE,
 			gettext_noop("Only tables larger than this size will be sampled."),
 			NULL,
-			GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
   		},
 		&gp_statistics_sampling_threshold,
 		20000.0, 0.0, DBL_MAX, NULL, NULL
