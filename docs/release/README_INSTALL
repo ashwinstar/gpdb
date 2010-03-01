@@ -108,7 +108,7 @@ POST INSTALLATION STEPS
 
 These are the high-level steps to configure and initialize a new 
 Greenplum Database instance. For detailed instructions, please 
-see the 'Greenplum Database Administrator Guide' located in
+see the 'Greenplum Database Installation Guide' located in
 $GPHOME/docs. 
 
 For Greenplum Database Single Node Edition (SNE) 
@@ -187,11 +187,14 @@ Greenplum Database documentation is available in the $GPHOME/docs
 directory of your Greenplum installation and is also available 
 for download on http://gpn.greenplum.com.
 
+* GPInstallGuide.pdf - Greenplum Database Installation Guide
+
 * GPAdminGuide.pdf - Greenplum Database Administrator Guide
 
 * GPDB-SingleNodeEdition-QuickStart.pdf - Greenplum Database Single Node Edition (SNE) Quick Start Guide
 
 * GPDB_<version>_README - Release notes for this version of Greenplum Database.
+                          Available on Greenplum Network (http://gpn.greenplum.com)
 
 
 
