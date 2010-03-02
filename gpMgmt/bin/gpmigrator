@@ -721,10 +721,10 @@ class GPUpgrade:
             # the remote calls which performs quiet stdout logging.
 
             # sys.stderr.write(r.stderr)
-            results.append(r.stdout)
+            msg = r.stdout.strip()
+            results.append(msg)
             
             if not cmd.was_successful():
-                msg = r.stdout.strip()
                 log_literal(logger, logging.ERROR, msg)
                 failure=True
 
@@ -3185,6 +3185,7 @@ class GPUpgrade:
             datadirs = [ self.masterdir ]
             out = self.CallSlaves('GETHIGHESTOID')
             for l in out.splitlines():
+                logger.debug("GETHIGHESTOID> '%s'" % l)
                 a = l.split()
                 if a[0] == "highestoid":
                     oids.append(int(a[1]))
