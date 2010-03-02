@@ -41,420 +41,21 @@ except ImportError, e:
 
 EXECNAME = os.path.split(__file__)[-1]
 
-description = ("""Upgrades 3.3.x.x mirrors to 3.4 mirrors.""")
+DESCRIPTION = ("""Upgrades 3.3.x.x mirrors to 4.0 mirrors.""")
 
 _help  = [""" TODO add help """]
 
 _usage = """ TODO add usage """
 
-TenMeg = 10485760
+TEN_MEG = 10485760
 
 
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-class mirrorNICInfo:
-    
-    def __init__(self, host, nicList):
-        self.hostname = host
-        self.nics     = nicList
-
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-class mirror_nic_row:
-    
-    def __init__(self, row):
-        self.nic = row[0]
-
-    #-------------------------------------------------------------------------------
-    @staticmethod
-    def query():
-        if options.phase2 == False:
-           exeStr = '''  SELECT DISTINCT  hostname as nicaddress
-                         FROM             pg_catalog.gp_configuration
-                         WHERE            isprimary = 'f'
-                         ORDER BY         hostname '''
-        else:
-           raise Exception('Internal Error. mirror_nic_row.qurey only for 4.x systems.')           
-        return exeStr
-
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-class mirror_hosts_row:
-    
-    def __init__(self, row):
-        self.hostname = row[0]
-
-    #-------------------------------------------------------------------------------
-    @staticmethod
-    def query():
-        if options.phase2 == False:
-           raise Exception('Internal Error. mirror_hosts_row.qurey only for 3.3.x systems.')
-        else:
-           exeStr = ''' SELECT DISTINCT hostname 
-                        FROM            pg_catalog.gp_segment_configuration
-                        WHERE           role = 'm'
-                        ORDER BY        hostname '''
-        return exeStr
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-class gp_host_cache:
-    """ This class represents the information stored in the .gphostcache file """
-    
-    def __init__(self):
-        self.hostcache = {}
-        self.readfile()
-        
-    #-------------------------------------------------------------------------------
-    def __str__(self):   
-       tempStr = self.hostcache =  + str(self.hostcache) + '\n'
-       return tempStr
-        
-    #-------------------------------------------------------------------------------
-    def readfile(self):
-        FILEDIR   = os.path.expanduser("~")
-        FILENAME  = ".gphostcache"
-        CACHEFILE = FILEDIR + "/" + FILENAME
-
-        try:
-            file = open(CACHEFILE, 'r')
-                
-            for line in file:
-                (interface,hostname)=line.split(':')
-                self.hostcache[interface.strip()]=hostname.strip()                    
-        except IOError:
-            raise Exception(' file %s not found' % path)                    
-        finally:
-            file.close()        
-    
-    #-------------------------------------------------------------------------------
-    def getInterfaces(self, hostName):
-        retList = []
-        
-        for interface in self.hostcache:
-            if self.hostcache[interface] == hostName:
-               retList.append(interface)
-        return retList
-    
-    #-------------------------------------------------------------------------------
-    def getHost(self, interface):
-        return self.hostcache[interface]
-    
-    #-------------------------------------------------------------------------------
-    def getHostList(self):
-        retList = []
-        
-        for (interface, host) in self.hostcache:
-            if host in retList:
-                continue
-            else:
-                retList.append(host)
-
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-class mirror_host_info_row:
-    
-    def __init__(self, row):
-        self.mirror_host  = row[0]
-        self.primary_host = row[1]
-        self.primary_data_directory = row[2]
-        self.mirror_data_directory = row[3]
-        self.dbid = row[4]
-
-    #-------------------------------------------------------------------------------
-    def __repr__(self):
-        return self.__str__()
-
-    #-------------------------------------------------------------------------------
-    def __str__(self):  
-        tempStr = 'mirror_host='            + str(self.mirror_host)            + '\n' \
-        +         'primary_host='           + str(self.primary_host)           + '\n' \
-        +         'primary_data_directory=' + str(self.primary_data_directory) + '\n' \
-        +         'mirror_data_directory='  + str(self.mirror_data_directory)  + '\n' \
-        +         'dbid='                   + str(self.dbid)                   + '\n'
-        return tempStr 
-
-    #-------------------------------------------------------------------------------
-    @staticmethod
-    def readListFromFile(nvFileName):
-        """ Static method to convert file with information in the __str__ method format """
-        """ for this object into a list of tuples.                                      """
-        retList = []
-        
-        logger.debug("Trying to read in a pre-existing gpupgrademirror mirror_host_info_row file.")
-        
-        try:
-            fp = open(nvFileName,'r')
-            fp.seek(0)
-
-            index = 0
-            row = []
-            for line in fp:
-                (name, value) = line.strip().rsplit('=', 1)
-                row.append(value)
-                index = index + 1
-                if index == 5:     
-                   retList.append(mirror_host_info_row(row))
-                   row = []
-                   index = 0
-            return retList
-        except IOError:
-            raise
-        finally:
-            try:
-                if fp != None:
-                   fp.close()
-            except:
-                pass
-            
-
-    #-------------------------------------------------------------------------------
-    @staticmethod
-    def writeListToFile(nvFileName, listOfRows):
-        """ Static method to write out a list of tuples in the __str__ method format """
-
-        logger.debug("Trying to write a list of mirror_host_info_row to a file.")
-       
-        try:
-           fp = open(nvFileName, 'w')
-           fp.seek(0)
-           for row in listOfRows:
-               fp.write(str(row))
-           fp.flush()
-           fp.close()
-        except IOError:
-           raise
-
-    #-------------------------------------------------------------------------------
-    @staticmethod
-    def query():     
-        if options.phase2 == False:
-           exeStr =  '''SELECT         t2.hostname as mirror_host
-                                     , t1.hostname as primary_host
-                                     , t1.datadir  as primary_data_directory
-                                     , t2.datadir  as mirror_data_directory
-                                     , t2.dbid     as dbid
-                                FROM   pg_catalog.gp_configuration as t1 
-                                        INNER JOIN  
-                                       pg_catalog.gp_configuration as t2 
-                                ON     t1.content = t2.content 
-                                   AND t2.hostname = '%s'
-                                   AND t1.content >= 0 
-                                   AND t1.isprimary = 't' 
-                                   AND t2.isprimary = 'f' 
-                                ORDER BY  primary_host '''
-        else: 
-           exeStr = """SELECT          t2.hostname as mirror_host
-                                     , t1.hostname as primary_host
-                                     , t3.fselocation  as primary_data_directory
-                                     , t4.fselocation  as mirror_data_directory
-                                     , t2.dbid     as dbid
-                            FROM   ((pg_catalog.gp_segment_configuration as t1
-                                      INNER JOIN
-                                    pg_catalog.gp_segment_configuration as t2
-                                      ON     t1.content = t2.content
-                                         AND t2.hostname = '%s'
-                                         AND t1.content >= 0
-                                         AND t1.role = 'p'
-                                         AND t2.role = 'm'
-                                    ) INNER JOIN pg_catalog.pg_filespace_entry as t3
-                                          ON   t3.fsedbid = t1.dbid
-                                   ) INNER JOIN pg_catalog.pg_filespace_entry as t4
-                                      ON t4.fsedbid = t2.dbid
-                            ORDER BY  primary_host"""
-            
-        return exeStr
-
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-class phase1MirrorInfo:
-
-
-    def __init__(self, url = None):
-        self.dbUrl = url
-        self.mirrorInfoFile = options.master_data_directory + '/' + 'gpupgrademirror.mirrorinfo'
-        self.mirrorNodeList = []
-        self.allMirrorInfoList = []
-        self.gpHostCacheInfo = gp_host_cache()
-    
-        if (options.rollback == True or options.continue_upgrade == True) and options.phase2 == False:
-           """ We are in a rollback or continue state in Phase 1.           """
-           """ Retrieve configuration information from previously saved file """
-           self.allMirrorInfoList = mirror_host_info_row.readListFromFile(phase1MirrorInfo.getMirrorInfoFile())
-
-           """ for each NIC in the list of mirror NICs, make a list of distinct mirror nodes """
-           for mirrorInfo in self.allMirrorInfoList:
-               mirrorHostName = self.gpHostCacheInfo.getHost(mirrorInfo.mirror_host)
-               if mirrorHostName in self.mirrorNodeList:
-                  pass
-               else:
-                  self.mirrorNodeList.append(mirrorHostName)
-
-        else:
-           """ We are in normal Phase1 (no rollback or continue) or normarl Phase2 """
-           conn   = dbconn.connect( dburl   = dbUrl
-                                  , utility = True
-                                  )
-           
-           ''' Get a list of mirror nodes '''
-           if options.phase2 == True:
-              mirrorNodeCursor = dbconn.execSQL(conn, mirror_hosts_row.query())
-              for row in mirrorNodeCursor:
-                  mirror = mirror_hosts_row(row)
-                  self.mirrorNodeList.append(mirror.hostname)
-
-                  ''' Get info on mirror segments for this host'''
-                  mirrorSegInfoCursor = dbconn.execSQL(conn, mirror_host_info_row.query() % mirror.hostname)
-                  for mirrorInfoRow in mirrorSegInfoCursor:
-                      mirrorInfo = mirror_host_info_row(mirrorInfoRow)
-                      self.allMirrorInfoList.append(mirrorInfo)
-           else:
-              ''' We are in phase1              '''
-              ''' Get a list of all mirror NICs '''
-              mirrorNicCursor = dbconn.execSQL(conn, mirror_nic_row.query())
-           
-              ''' Make a list of distinct nodes associated with the mirror NICs '''
-              for row in mirrorNicCursor:
-                  nicRow = mirror_nic_row(row)
-                  host = self.gpHostCacheInfo.getHost(nicRow.nic)
-                  if host in self.mirrorNodeList:
-                     pass
-                  else:
-                     self.mirrorNodeList.append(host)
-           
-              for nodeName in self.mirrorNodeList:
-                  ''' for each node, use its NICs to find its segments '''
-                  nicList = self.gpHostCacheInfo.getInterfaces(nodeName)
-                  ''' Get info on mirror segments for this host'''
-                  for nic in nicList:
-                     mirrorSegInfoCursor = dbconn.execSQL(conn, mirror_host_info_row.query() % nic)
-                     for mirrorInfoRow in mirrorSegInfoCursor:
-                         mirrorInfo = mirror_host_info_row(mirrorInfoRow)
-                         self.allMirrorInfoList.append(mirrorInfo)
-
-           conn.close()  
-            
-           mirror_host_info_row.writeListToFile(phase1MirrorInfo.getMirrorInfoFile(), self.allMirrorInfoList)   
-
-    #-------------------------------------------------------------------------------
-    def __str__(self):    
-        tempStr = '  dbUrl                  = ' + str(self.dbUrl)             + '\n' \
-        +         '  mirrorInfoFile         = ' + str(self.mirrorInfoFile)    + '\n' \
-        +         '  self.mirrorNodeList    = \n' + str(self.mirrorNodeList)    + '\n' \
-        +         '  self.allMirrorInfoList = ' + str(self.allMirrorInfoList) + '\n' \
-        +         '  self.gpHostCacheInfo   = ' + str(self.gpHostCacheInfo)   + '\n'
-        return tempStr 
-        
-    #-------------------------------------------------------------------------------
-    def getAllMirrorInfoList(self):
-        return self.allMirrorInfoList
-        
-    #-------------------------------------------------------------------------------
-    def getMirrorNodeList(self):
-        return self.mirrorNodeList
-    
-    
-    #-------------------------------------------------------------------------------
-    def getMirrorInfo(self, mirrorName):
-        retList = []
-        
-        if options.phase2 == True:
-           for mirrorSeg in self.allMirrorInfoList:
-               if mirrorSeg.mirror_host == mirrorName:
-                   retList.append(mirrorSeg)
-        else:
-           nicNameList = self.gpHostCacheInfo.getInterfaces(mirrorName)
-           for nicName in nicNameList:
-               for mirrorSeg in self.allMirrorInfoList:
-                   if nicName == mirrorSeg.mirror_host:
-                       retList.append(mirrorSeg)
-        
-        return retList
-
-    #-------------------------------------------------------------------------------
-    @staticmethod
-    def getMirrorInfoFile():
-        return options.master_data_directory + '/' + 'gpupgrademirror.mirrorinfo'
-
-
-    #-------------------------------------------------------------------------------
-    @staticmethod
-    def removeMirrorInfoFile():
-        try:
-           os.remove(phase1MirrorInfo.getMirrorInfoFile())
-        except:
-           pass
-           
-
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-class database_row:
-    
-    def __init__(self, row):
-        self.databaseDirectory = row[0]
-        self.databaseName = row[1]
-
-    @staticmethod
-    def query():
-        return '''SELECT oid, datname
-                  FROM pg_database
-                  ORDER BY oid '''
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-class non_catalog_toast_tables_row:
-    
-    def __init__(self, row):
-        self.filename = row[0]
-
-    @staticmethod
-    def query():
-        return '''SELECT relfilenode
-                  FROM pg_class
-                  WHERE relnamespace  =  11
-                     AND relisshared   =  'f'
-                     AND (relkind  = 'r' OR relkind = 'i')
-                     AND relstorage    =  'h'
-                     AND reltoastrelid = 0
-                  ORDER BY relfilenode '''
-
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-class catalog_toast_tables_row:
-    
-    def __init__(self, row):
-        self.filename = row[0]
-        self.toastfilename = row[1]
-        
-    @staticmethod
-    def query():
-        return '''SELECT t1.relfilenode, t2.relfilenode as toast_filenode
-                  FROM pg_class as t1, pg_class t2
-                  WHERE t1.relnamespace  = 11
-                    AND t1.relisshared   = 'f'
-                    AND t1.reltoastrelid = t2.oid
-                  ORDER BY t1.relfilenode '''
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-
-class InvalidStatusError(Exception): pass
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-class ValidationError(Exception): pass
 
 #-------------------------------------------------------------------------------
                                                                 
 def parseargs():
     parser = OptParser( option_class = OptChecker
-                      , description  = ' '.join(description.split())
+                      , description  = ' '.join(DESCRIPTION.split())
                       , version      = '%prog version $Revision: #12 $'
                       )
     parser.setHelp(_help)
@@ -475,9 +76,9 @@ def parseargs():
                         help='show this help message and exit.', default=False)
     parser.add_option('--usage', action="briefhelp")
 
-    #
-    # Parse the command line arguments
-    #
+    """
+     Parse the command line arguments
+    """
     (options, args) = parser.parse_args()
 
     if len(args) > 0:
@@ -550,9 +151,415 @@ def is_gpupgrademirror_running(master_data_directory):
     return is_running
 
 
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+
+class InvalidStatusError(Exception): pass
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class ValidationError(Exception): pass
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class GPHostCache:
+    """ This class represents the information stored in the .gphostcache file """
+    
+    def __init__(self):
+        self.hostcache = {}
+        self.readfile()
+        
+    #-------------------------------------------------------------------------------
+    def __str__(self):   
+       tempStr = self.hostcache =  + str(self.hostcache) + '\n'
+       return tempStr
+        
+    #-------------------------------------------------------------------------------
+    def readfile(self):
+        FILEDIR   = os.path.expanduser("~")
+        FILENAME  = ".gphostcache"
+        CACHEFILE = FILEDIR + "/" + FILENAME
+
+        try:
+            file = open(CACHEFILE, 'r')
+                
+            for line in file:
+                (interface,hostname) = line.split(':')
+                self.hostcache[interface.strip()] = hostname.strip()                    
+        except IOError:
+            raise Exception(' file %s not found' % path)                    
+        finally:
+            file.close()        
+    
+    #-------------------------------------------------------------------------------
+    def getInterfaces(self, hostName):
+        retList = []
+        
+        for interface in self.hostcache:
+            if self.hostcache[interface] == hostName:
+               retList.append(interface)
+        return retList
+    
+    #-------------------------------------------------------------------------------
+    def getHost(self, interface):
+        return self.hostcache[interface]
+    
+    #-------------------------------------------------------------------------------
+    def getHostList(self):
+        retList = []
+        
+        for (interface, host) in self.hostcache:
+            if host in retList:
+                continue
+            else:
+                retList.append(host)
+
+
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class MirrorNICRow:
+    
+    def __init__(self, row):
+        self.nic = row[0]
+
+    #-------------------------------------------------------------------------------
+    @staticmethod
+    def query():
+        if options.phase2 == False:
+           exeStr = '''  SELECT DISTINCT  hostname as nicaddress
+                         FROM             pg_catalog.gp_configuration
+                         WHERE            isprimary = 'f'
+                         ORDER BY         hostname '''
+        else:
+           raise Exception('Internal Error. MirrorNICRow.qurey only for 3.x systems.')           
+        return exeStr
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class MirrorHostsRow:
+    
+    def __init__(self, row):
+        self.hostname = row[0]
+
+    #-------------------------------------------------------------------------------
+    @staticmethod
+    def query():
+        if options.phase2 == False:
+           raise Exception('Internal Error. MirrorHostsRow.qurey only for 3.3.x systems.')
+        else:
+           exeStr = ''' SELECT DISTINCT hostname 
+                        FROM            pg_catalog.gp_segment_configuration
+                        WHERE           role = 'm'
+                        ORDER BY        hostname '''
+        return exeStr
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class MirrorHostInfoRow:
+    
+    def __init__(self, row):
+        self.mirror_host            = row[0]
+        self.primary_host           = row[1]
+        self.primary_data_directory = row[2]
+        self.mirror_data_directory  = row[3]
+        self.dbid                   = row[4]
+        if options.phase2 == True:
+           self.nic_address = row[5]
+
+    #-------------------------------------------------------------------------------
+    def __repr__(self):
+        return self.__str__()
+
+    #-------------------------------------------------------------------------------
+    def __str__(self):  
+        tempStr = 'mirror_host='            + str(self.mirror_host)            + '\n' \
+        +         'primary_host='           + str(self.primary_host)           + '\n' \
+        +         'primary_data_directory=' + str(self.primary_data_directory) + '\n' \
+        +         'mirror_data_directory='  + str(self.mirror_data_directory)  + '\n' \
+        +         'dbid='                   + str(self.dbid)                   + '\n'
+        if options.phase2 == True:
+           tempStr = tempStr + 'nic_address='   + str(self.nic_address)        + '\n' 
+        return tempStr
+
+    #-------------------------------------------------------------------------------
+    @staticmethod
+    def readListFromFile(nvFileName):
+        """ Static method to convert file with information in the __str__ method format """
+        """ for this object into a list of tuples.                                      """
+        retList = []
+        
+        logger.debug("Trying to read in a pre-existing gpupgrademirror MirrorHostInfoRow file.")
+        
+        try:
+            fp = open(nvFileName,'r')
+            fp.seek(0)
+
+            index = 0
+            row = []
+            for line in fp:
+                (name, value) = line.strip().rsplit('=', 1)
+                row.append(value)
+                index = index + 1
+                if index == 5:     
+                   retList.append(MirrorHostInfoRow(row))
+                   row = []
+                   index = 0
+            return retList
+        except IOError:
+            raise
+        finally:
+            try:
+                if fp != None:
+                   fp.close()
+            except:
+                pass
+            
+
+    #-------------------------------------------------------------------------------
+    @staticmethod
+    def writeListToFile(nvFileName, listOfRows):
+        """ Static method to write out a list of tuples in the __str__ method format """
+
+        logger.debug("Trying to write a list of MirrorHostInfoRow to a file.")
+       
+        try:
+           fp = open(nvFileName, 'w')
+           fp.seek(0)
+           for row in listOfRows:
+               fp.write(str(row))
+           fp.flush()
+           fp.close()
+        except IOError:
+           raise
+
+    #-------------------------------------------------------------------------------
+    @staticmethod
+    def query():     
+        if options.phase2 == False:
+           exeStr =  '''SELECT         t2.hostname as mirror_host
+                                     , t1.hostname as primary_host
+                                     , t1.datadir  as primary_data_directory
+                                     , t2.datadir  as mirror_data_directory
+                                     , t2.dbid     as dbid
+                                FROM   pg_catalog.gp_configuration as t1 
+                                        INNER JOIN  
+                                       pg_catalog.gp_configuration as t2 
+                                ON     t1.content = t2.content 
+                                   AND t2.hostname = '%s'
+                                   AND t1.content >= 0 
+                                   AND t1.isprimary = 't' 
+                                   AND t2.isprimary = 'f' 
+                                ORDER BY  primary_host '''
+        else: 
+           exeStr = """SELECT          t2.hostname as mirror_host
+                                     , t1.hostname as primary_host
+                                     , t3.fselocation  as primary_data_directory
+                                     , t4.fselocation  as mirror_data_directory
+                                     , t2.dbid     as dbid
+                                     , t2.address as nic_address
+                            FROM   ((pg_catalog.gp_segment_configuration as t1
+                                      INNER JOIN
+                                    pg_catalog.gp_segment_configuration as t2
+                                      ON     t1.content = t2.content
+                                         AND t2.hostname = '%s'
+                                         AND t1.content >= 0
+                                         AND t1.role = 'p'
+                                         AND t2.role = 'm'
+                                    ) INNER JOIN pg_catalog.pg_filespace_entry as t3
+                                          ON   t3.fsedbid = t1.dbid
+                                   ) INNER JOIN pg_catalog.pg_filespace_entry as t4
+                                      ON t4.fsedbid = t2.dbid
+                            ORDER BY  primary_host"""
+            
+        return exeStr
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class DatabaseRow:
+    
+    def __init__(self, row):
+        self.databaseDirectory = row[0]
+        self.databaseName = row[1]
+
+    @staticmethod
+    def query():
+        return '''SELECT oid, datname
+                  FROM pg_database
+                  ORDER BY oid '''
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class NonCatalogToastTablesRow:
+    
+    def __init__(self, row):
+        self.filename = row[0]
+
+    @staticmethod
+    def query():
+        return '''SELECT relfilenode
+                  FROM pg_class
+                  WHERE relnamespace  =  11
+                     AND relisshared   =  'f'
+                     AND (relkind  = 'r' OR relkind = 'i')
+                     AND relstorage    =  'h'
+                     AND reltoastrelid = 0
+                  ORDER BY relfilenode '''
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class CatalogToastTablesRow:
+    
+    def __init__(self, row):
+        self.filename = row[0]
+        self.toastfilename = row[1]
+        
+    @staticmethod
+    def query():
+        return '''SELECT t1.relfilenode, t2.relfilenode as toast_filenode
+                  FROM pg_class as t1, pg_class t2
+                  WHERE t1.relnamespace  = 11
+                    AND t1.relisshared   = 'f'
+                    AND t1.reltoastrelid = t2.oid
+                  ORDER BY t1.relfilenode '''
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class Phase1MirrorInfo:
+
+
+    def __init__(self, url = None):
+        self.dbUrl = url
+        self.mirrorInfoFile = options.master_data_directory + '/' + 'gpupgrademirror.mirrorinfo'
+        self.mirrorNodeList = []
+        self.allMirrorInfoList = []
+        self.gpHostCacheInfo = GPHostCache()
+        conn = None
+    
+        if (options.rollback == True or options.continue_upgrade == True) and options.phase2 == False:
+           """ We are in a rollback or continue state in Phase 1.           """
+           """ Retrieve configuration information from previously saved file """
+           self.allMirrorInfoList = MirrorHostInfoRow.readListFromFile(Phase1MirrorInfo.getMirrorInfoFile())
+
+           """ for each NIC in the list of mirror NICs, make a list of distinct mirror nodes """
+           for mirrorInfo in self.allMirrorInfoList:
+               mirrorHostName = self.gpHostCacheInfo.getHost(mirrorInfo.mirror_host)
+               if mirrorHostName in self.mirrorNodeList:
+                  pass
+               else:
+                  self.mirrorNodeList.append(mirrorHostName)
+        else:
+           """ We are in normal Phase1 or normal Phase 2 (no rollback or continue) """
+           conn   = dbconn.connect( dburl   = dbUrl
+                                  , utility = True
+                                  )
+           
+           ''' Get a list of mirror nodes '''
+           if options.phase2 == True:
+              mirrorNodeCursor = dbconn.execSQL(conn, MirrorHostsRow.query())
+              for row in mirrorNodeCursor:
+                  mirror = MirrorHostsRow(row)
+                  self.mirrorNodeList.append(mirror.hostname)
+
+                  ''' Get info on mirror segments for this host'''
+                  mirrorSegInfoCursor = dbconn.execSQL(conn, MirrorHostInfoRow.query() % mirror.hostname)
+                  for mirrorInfoRow in mirrorSegInfoCursor:
+                      mirrorInfo = MirrorHostInfoRow(mirrorInfoRow)
+                      self.allMirrorInfoList.append(mirrorInfo)
+           else:
+              ''' We are in phase1              '''
+              ''' Get a list of all mirror NICs '''
+              mirrorNicCursor = dbconn.execSQL(conn, MirrorNICRow.query())
+           
+              ''' Make a list of distinct nodes associated with the mirror NICs '''
+              for row in mirrorNicCursor:
+                  nicRow = MirrorNICRow(row)
+                  host = self.gpHostCacheInfo.getHost(nicRow.nic)
+                  if host in self.mirrorNodeList:
+                     pass
+                  else:
+                     self.mirrorNodeList.append(host)
+           
+              for nodeName in self.mirrorNodeList:
+                  ''' for each node, use its NICs to find its segments '''
+                  nicList = self.gpHostCacheInfo.getInterfaces(nodeName)
+                  ''' Get info on mirror segments for this host'''
+                  for nic in nicList:
+                     mirrorSegInfoCursor = dbconn.execSQL(conn, MirrorHostInfoRow.query() % nic)
+                     for mirrorInfoRow in mirrorSegInfoCursor:
+                         mirrorInfo = MirrorHostInfoRow(mirrorInfoRow)
+                         self.allMirrorInfoList.append(mirrorInfo)
+
+           if conn != None:
+              conn.close()  
+            
+           MirrorHostInfoRow.writeListToFile(Phase1MirrorInfo.getMirrorInfoFile(), self.allMirrorInfoList)   
+
+    #-------------------------------------------------------------------------------
+    def __str__(self):    
+        tempStr = '  dbUrl                  = ' + str(self.dbUrl)             + '\n' \
+        +         '  mirrorInfoFile         = ' + str(self.mirrorInfoFile)    + '\n' \
+        +         '  self.mirrorNodeList    = \n' + str(self.mirrorNodeList)  + '\n' \
+        +         '  self.allMirrorInfoList = ' + str(self.allMirrorInfoList) + '\n' \
+        +         '  self.gpHostCacheInfo   = ' + str(self.gpHostCacheInfo)   + '\n'
+        return tempStr 
+        
+    #-------------------------------------------------------------------------------
+    def getAllMirrorInfoList(self):
+        return self.allMirrorInfoList
+        
+    #-------------------------------------------------------------------------------
+    def getMirrorNodeList(self):
+        return self.mirrorNodeList
+    
+    
+    #-------------------------------------------------------------------------------
+    def getMirrorInfo(self, mirrorName):
+        retList = []
+        
+        if options.phase2 == True:
+           for mirrorSeg in self.allMirrorInfoList:
+               if mirrorSeg.mirror_host == mirrorName:
+                   retList.append(mirrorSeg)
+        else:
+           nicNameList = self.gpHostCacheInfo.getInterfaces(mirrorName)
+           for nicName in nicNameList:
+               for mirrorSeg in self.allMirrorInfoList:
+                   if nicName == mirrorSeg.mirror_host:
+                       retList.append(mirrorSeg)
+        
+        return retList
+
+
+    #-------------------------------------------------------------------------------
+    @staticmethod
+    def getMirrorInfoFile():
+        return options.master_data_directory + '/' + 'gpupgrademirror.mirrorinfo'
+
+
+    #-------------------------------------------------------------------------------
+    @staticmethod
+    def removeMirrorInfoFile():
+        try:
+           os.remove(Phase1MirrorInfo.getMirrorInfoFile())
+        except:
+           pass
+           
+
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------                    
-class gpumDiskFree(Command):
+class GPumDiskFree(Command):
+    """ This method checks for available space in a directory"""
 
     def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
         self.directory=directory
@@ -582,7 +589,8 @@ class gpumDiskFree(Command):
 
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------                                                       
-class MoveDirectory(Command):
+class GPumMoveDirectory(Command):
+    """ This class moves a local directory."""
 
     def __init__(self,name,srcDirectory,dstDirectory,ctxt=LOCAL,remoteHost=None):
         self.srcDirectory=srcDirectory
@@ -594,6 +602,7 @@ class MoveDirectory(Command):
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------                                                       
 class FileDirectoryList(Command):
+    """ This method gets list of files based on a pattern used by ls. """
 
     def __init__(self, name, filePattern, ctxt=LOCAL, remoteHost=None):
         self.filePattern = filePattern
@@ -619,8 +628,11 @@ class FileDirectoryList(Command):
 class GpUpgradeMirrorStatus():
     """Class that manages gpupgrademirror status file.
 
-    The status file is placed in the master data directory on both the master and
-    the standby master.  it's used to keep track of where we are in the progression.
+    The status file is placed in the master data directory on the master 
+    It's used to keep track of where we are in the progression.
+    
+    There is one status file per mirror segment, and one overall status file.
+    Each status file has the segment dbid as part of its suffix.
     """
     _safeModeStatusValues = { 'PHASE1_SAFE_MODE'            : 2
                             , 'START_PRIMARY_COPY'          : 3
@@ -666,7 +678,7 @@ class GpUpgradeMirrorStatus():
     
     
     
-    def __init__(self, logger, master_data_directory, segment_dbid, master_mirror, phase, overall = False):
+    def __init__(self, logger, master_data_directory, segment_dbid, phase, overall = False):
         self.logger = logger
         self.overall = overall
         
@@ -680,11 +692,9 @@ class GpUpgradeMirrorStatus():
         self._status = []
         self._status_info = []
         self._master_data_directory = master_data_directory
-        self._master_mirror = master_mirror
         self._phase = phase
         self.segment_dbid = segment_dbid
         self._status_filename = master_data_directory + '/gpupgrademirror' + str(segment_dbid) + '.status'
-        self._status_standby_filename = master_data_directory + '/gpupgrademirror.standby.status'
         self._fp = None
         self._fp_standby = None
         self._temp_dir = None
@@ -723,6 +733,10 @@ class GpUpgradeMirrorStatus():
         except IOErrormm, e:
            logger.warning('Unable to read segment status file: ' + str(e))
            logger.warning('gpupgradmirror exiting')
+           """ KAS note to self. There is a reason for only putting out a warning here. Something
+               to do with how upgrade wants me to handle the situation. Need to revisit this and
+               figure out if this is still correct
+           """
            exit(0)
 
         if not self._status_values.has_key(self._status[-1]):
@@ -741,10 +755,6 @@ class GpUpgradeMirrorStatus():
                 startStatus = 'PHASE1_UNSAFE_MODE'
                 
             self._fp = open(self._status_filename, 'w')
-            if self._master_mirror:
-                self._fp_standby = open(self._status_standby_filename, 'w')
-                self._fp_standby.write(startStatus + ':None\n')
-                self._fp_standby.flush()
             self._fp.write(startStatus + ':None\n')
             self._fp.flush()
             self._status.append(startStatus)
@@ -752,19 +762,6 @@ class GpUpgradeMirrorStatus():
         except IOError, e:
             logging.error('Unable to create status file %s.' % self._status_filename)
             raise e
-
-        self._sync_status_file()
-
-
-   #-------------------------------------------------------------------------------
-    def _sync_status_file(self):
-        """Syncs the gpupgrademirror status file with the master mirror"""
-        if self._master_mirror:
-            cpCmd = RemoteCopy('gpupgrademirror copying status file to master mirror',
-                               self._status_standby_filename, self._master_mirror.getSegmentHostName(),
-                               self._status_filename)
-            cpCmd.run(validateAfter=True)
-
 
    #-------------------------------------------------------------------------------
     def set_status(self, status, status_info=None):
@@ -786,10 +783,6 @@ class GpUpgradeMirrorStatus():
               self._status_values[status] != self._status_values[self._status[-1]] and \
               self._status_values[status] != self._status_values[self._status[-1]] + 1:
               raise InvalidStatusError('Invalid status transition from %s to %s' % (self._status[-1], status))
-        if self._master_mirror:
-            self._fp_standby.write('%s:%s\n' % (status, status_info))
-            self._fp_standby.flush()
-            self._sync_status_file()
         self._fp.write('%s:%s\n' % (status, status_info))
         self._fp.flush()
         self._status.append(status)
@@ -855,23 +848,11 @@ class GpUpgradeMirrorStatus():
             self._fp_standby = None
         if os.path.exists(self._status_filename):
             os.unlink(self._status_filename)
-        if os.path.exists(self._status_standby_filename):
-            os.unlink(self._status_standby_filename)
-        if self._master_mirror:
-            RemoveFiles.remote('gpupgrademirror master mirror status file cleanup',
-                               self._master_mirror.getSegmentHostName(),
-                               self._status_filename)
-
-
-   #-------------------------------------------------------------------------------
-    def is_standby(self):
-        """Returns True if running on standby"""
-        return os.path.exists(self._master_data_directory + self._status_standby_filename)
 
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
-class gpupgrademirror(threading.Thread):
+class Phase1(threading.Thread):
     '''
      An object of this class represents a single node in a cluster. 
      It will upgrade all mirror segments on that node.
@@ -907,7 +888,6 @@ class gpupgrademirror(threading.Thread):
             status = GpUpgradeMirrorStatus( logger = self.logger
                                           , master_data_directory = self.master_data_directory
                                           , segment_dbid = seg.dbid
-                                          , master_mirror = False
                                           , phase = 1
                                           )
             self.statusList.append(status)
@@ -948,7 +928,7 @@ class gpupgrademirror(threading.Thread):
            cmd.run(validateAfter = False)
         
         if options.mode == 'S':
-           rmCmd = MoveDirectory( name = 'gpupgrademirror move old mirror to temp location: %s:%s' % (seg.mirror_data_directory, tempDataDir)
+           rmCmd = GPumMoveDirectory( name = 'gpupgrademirror move old mirror to temp location: %s:%s' % (seg.mirror_data_directory, tempDataDir)
                                 , srcDirectory = seg.mirror_data_directory
                                 , dstDirectory = tempDataDir
                                 , ctxt  = REMOTE
@@ -980,12 +960,12 @@ class gpupgrademirror(threading.Thread):
         self.logger.debug('in renameTempMirrorToOldMirror')
         
         tempDataDir = seg.mirror_data_directory + dirSuffix
-        rmCmd = MoveDirectory( name = 'gpupgrademirror move temp mirror to mirror location: %s:%s' % (tempDataDir, seg.mirror_data_directory)
-                          , srcDirectory = tempDataDir
-                          , dstDirectory = seg.mirror_data_directory
-                          , ctxt  = REMOTE
-                          , remoteHost = self.nodeName
-                          )
+        rmCmd = GPumMoveDirectory( name = 'gpupgrademirror move temp mirror to mirror location: %s:%s' % (tempDataDir, seg.mirror_data_directory)
+                                 , srcDirectory = tempDataDir
+                                 , dstDirectory = seg.mirror_data_directory
+                                 , ctxt  = REMOTE
+                                 , remoteHost = self.nodeName
+                                 )
         rmCmd.run(validateAfter = True)
 
     #-------------------------------------------------------------------------------                                              
@@ -993,6 +973,9 @@ class gpupgrademirror(threading.Thread):
         self.logger.debug('in copyPrimaryToMirror')
 
         tempDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix
+
+        """ KAS, Note to self. RemoteCopy does not use compression. Need to create my own that has -C option. """
+        
         rmCmd = RemoteCopy( name = 'gpupgrademirror copy primary to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
                           , srcDirectory = seg.primary_data_directory
                           , dstHost = self.nodeName
@@ -1083,7 +1066,7 @@ class gpupgrademirror(threading.Thread):
                                         )
             
             ''' Get available space on mirror '''        
-            mirrorFreeSize = gpumDiskFree.get_size( name = 'disk space available'
+            mirrorFreeSize = GPumDiskFree.get_size( name = 'disk space available'
                                       , remote_host = self.nodeName
                                       , directory = seg.mirror_data_directory
                                       )
@@ -1096,7 +1079,7 @@ class gpupgrademirror(threading.Thread):
                 mirrorFreeSize = mirrorFreeSize + currentMirrorSize
  
             ''' Compare available space to needed space (add 10 Meg. just to make sure) '''
-            if mirrorFreeSize + TenMeg < dirSize:
+            if mirrorFreeSize + TEN_MEG < dirSize:
                logger.error("Size of mirror directory %s is too small %s:%s." % (self.nodeName, seg.mirror_data_directory))          
                raise ValidationError('Mirror data directory is too small')
 
@@ -1201,7 +1184,7 @@ class gpupgrademirror(threading.Thread):
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
-class phase2(threading.Thread):
+class Phase2(threading.Thread):
 
     def __init__(self, dburl, logger, master_data_directory, node_name):
         threading.Thread.__init__(self)
@@ -1225,7 +1208,6 @@ class phase2(threading.Thread):
             status = GpUpgradeMirrorStatus( logger = self.logger
                                           , master_data_directory = self.master_data_directory
                                           , segment_dbid = seg.dbid
-                                          , master_mirror = False
                                           , phase = 2
                                           )
             self.statusList.append(status)
@@ -1320,27 +1302,13 @@ remove_pid   = True
 p1MirrorInfo = None
 MirrorNodeList = []
 MirrorInfoList = []
-
+phase2MirrorList = []
 
 
 try:
   logger = get_default_logger()
   setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
 
-  '''
-  theList = FileDirectoryList.get_list( name = 'test'
-                                      , remote_host = 'lt-ksell.local'
-                                      , file_pattern = '/Users/ksell/temp/junkRelease33/database/temp/10.*'
-                                      )
-  print len(theList)
-  for element in theList:
-      print str(element)
-      suffixIndex = element.rfind('.')
-      suffix = element[suffixIndex:]
-      print str(suffix)
-  sys.exit(0)
-  '''
-  
   options, args = parseargs()
 
   if options.verbose:
@@ -1357,12 +1325,13 @@ try:
   dbUrl = dbconn.DbURL()
      
   """ 
-      We will start the database in master only mode if this this phase 1 and 
-      we are not rolling back or continuing. Otherwise, we will retrieve all the
-      information we need from a flat file we saved on the initial run.     
+      We will start the database in master only mode unless we are in phase 1 and 
+      we are rolling back or continuing. If we are in phase 1 and re rolling back
+      or continuing, we will get the information we need from a flat file we
+      created on the first phase 1 attempt.   
   """
   gpstartStatus = None
-  if (options.rollback == True or options.continue_upgrade == True) and options.phase2 == False:
+  if options.phase2 == False and (options.rollback == True or options.continue_upgrade == True):
      pass
   else:
      GpStart.local('gpupgrademirror start database', masterOnly = True)
@@ -1376,7 +1345,6 @@ try:
   overallStatus = GpUpgradeMirrorStatus( logger = logger
                                        , master_data_directory = options.master_data_directory
                                        , segment_dbid = 0
-                                       , master_mirror = False
                                        , phase = phase
                                        , overall = True
                                        )
@@ -1386,22 +1354,28 @@ try:
         logging.error('There is no upgrade mirror in progress')
         raise ValidationError('Unable to rollback')
      elif overallStatus.compare_status("SETUP_DONE") < 0:
-         """ We have not gotten past the setup phase """
+         """ We have not gotten past the setup phase,    """
+         """ so remove the overall status file and exit. """
          overallStatus.remove_status_file()
          exit(0)
   elif options.continue_upgrade == True:
      ''' Setup to continue upgrade '''
+     pass
   elif options.phase2 == False:
      if (overallStatus.get_current_status() != (None, None)):
         logging.error("Upgrade mirrors already started.")
         logging.error("You must either rollback or continue mirror upgrade") 
         raise ValidationError("Unable to continue")
-     else:  
+     else:
+        """  We are in normal phase 1 or phase 2 mode """
         overallStatus.create_status_file()
 
   if options.phase2 == True:
      """
         Phase 2 of upgrade mirrors 
+        
+        There are a number of special files that we need to copy from the primary in phase 2.
+        Most of these files are catalog files.
      """
      databaseList = []
           
@@ -1413,9 +1387,9 @@ try:
                             )
 
      ''' Get a list of databases '''
-     databaseCursor = dbconn.execSQL(conn, database_row.query())
+     databaseCursor = dbconn.execSQL(conn, DatabaseRow.query())
      for row in databaseCursor:
-         dbrow = database_row(row)
+         dbrow = DatabaseRow(row)
          databaseList.append(dbrow)
          
      ''' Connect to each database, and make a list of files we will use '''
@@ -1439,45 +1413,41 @@ try:
                                       , utility = True
                                       ) 
          ''' List of non-toast catalog tables '''
-         DBcursor = dbconn.execSQL(connectForDB, non_catalog_toast_tables_row.query())
+         DBcursor = dbconn.execSQL(connectForDB, NonCatalogToastTablesRow.query())
          for fileRow in DBcursor:
-             nonToastRow = non_catalog_toast_tables_row(fileRow)
+             nonToastRow = NonCatalogToastTablesRow(fileRow)
              fileList.append('base/' + str(db.databaseDirectory) + '/' + str(nonToastRow.filename))
              
          ''' List of toast catalog tables and their toast files '''
-         DBcursor = dbconn.execSQL(connectForDB, catalog_toast_tables_row.query())
+         DBcursor = dbconn.execSQL(connectForDB, CatalogToastTablesRow.query())
          for fileRow in DBcursor:
-             toastTableRow = catalog_toast_tables_row(fileRow)
+             toastTableRow = CatalogToastTablesRow(fileRow)
              fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.filename))
              fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.toastfilename))
          connectForDB.close()
     
-
      try:
-        p1MirrorInfo = phase1MirrorInfo(dbUrl)
+        p1MirrorInfo = Phase1MirrorInfo(dbUrl)
      except Exception, e:
         logger.warning('Unable to obtain mirror information: ' + str(e))
         logger.warning('gpupgradmirror exiting')
         exit(0)
 
-     ''' Get a list of mirror nodes '''
-     mirrorNodeCursor = p1MirrorInfo.getMirrorNodeList()     
 
-     phase2MirrorList = []
+     ''' Get list of all segments '''
+     allSegMirrorInfo = p1MirrorInfo.getAllMirrorInfoList()
      
-     for hostname in mirrorNodeCursor:
-        mirrorhost = hostname
-        
-        ''' Create a phase2 object for each mirror node'''
-        tempNode = phase2(dbUrl, logger, options.master_data_directory, mirrorhost)
-
-        ''' Get info on mirror segments for this host'''
-        mirrorInfoList = p1MirrorInfo.getMirrorInfo(mirrorhost)
+     for mirrorInfo in allSegMirrorInfo:
+        ''' Create a phase2 object for each mirror segment'''
+        tempNode = Phase2(dbUrl, logger, options.master_data_directory, mirrorInfo.nic_address)
         
         ''' Setup the mirror node '''
-        tempNode.setup(mirrorInfoList, fileList, fileListDeleteBeforeCopy)
+        tempNode.setup([mirrorInfo], fileList, fileListDeleteBeforeCopy)
+        
         phase2MirrorList.append(tempNode)
-     conn.close()
+        
+     if conn != None:
+        conn.close()
     
      if gpstartStatus != None and gpstartStatus == "MASTER":
         GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
@@ -1495,6 +1465,7 @@ try:
      for node in phase2MirrorList:
          for segStatus in node.statusList:
              if segStatus.get_current_status()[0] != 'PHASE2_DONE':
+                 logging.error('A segment has reported an error. Segment dbid: %s' % segStatus.segment_dbid)
                  p2Completed = False
                  break
          if p2Completed == False:
@@ -1504,7 +1475,7 @@ try:
          logging.error('Unable to complete upgrade mirrors for phase 2')
          raise ValidationError('Unable to complate upgrade')
      else:
-        phase1MirrorInfo.removeMirrorInfoFile()
+        Phase1MirrorInfo.removeMirrorInfoFile()
         overallStatus.remove_status_file()
         for node in phase2MirrorList:
             for segStatus in node.statusList:
@@ -1518,7 +1489,7 @@ try:
         overallStatus.set_status("START_SETUP")
     
     try:
-       p1MirrorInfo = phase1MirrorInfo(dbUrl)
+       p1MirrorInfo = Phase1MirrorInfo(dbUrl)
     except Exception, e:
         logger.warning('Unable to obtain mirror information: ' + str(e))
         logger.warning('gpupgradmirror exiting')
@@ -1536,7 +1507,7 @@ try:
        for mirrorName in mirrorNodeCursor:
         
            ''' Create a gpupgrademirror object for each mirror node'''
-           tempNode = gpupgrademirror(dbUrl, logger, options.master_data_directory, mirrorName)
+           tempNode = Phase1(dbUrl, logger, options.master_data_directory, mirrorName)
 
            ''' Get info on mirror segments for this host'''
            mirrorInfoList = p1MirrorInfo.getMirrorInfo(mirrorName)
@@ -1552,11 +1523,11 @@ try:
        for mirrorNode in mirrorNodeCursor:
         
            ''' Create a gpupgrademirror object for each segment'''
-           tempNode = gpupgrademirror( dburl = dbUrl
-                                     , logger = logger
-                                     , master_data_directory = options.master_data_directory
-                                     , node_name = mirrorNode.mirror_host
-                                     )
+           tempNode = Phase1( dburl = dbUrl
+                            , logger = logger
+                            , master_data_directory = options.master_data_directory
+                            , node_name = mirrorNode.mirror_host
+                            )
         
            ''' Setup the mirror segment. We pass a list here because that what the method expects. '''
            tempNode.setup([mirrorNode])
@@ -1603,7 +1574,7 @@ try:
           logging.error('Unable to complete rollback of upgrade mirrors for phase 1')
           raise ValidationError('Unable to complete rollback')
        else:
-          phase1MirrorInfo.removeMirrorInfoFile()
+          Phase1MirrorInfo.removeMirrorInfoFile()
           overallStatus.remove_status_file()
           for node in MirrorNodeList:
               for segStatus in node.statusList:
