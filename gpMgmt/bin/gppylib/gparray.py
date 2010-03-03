@@ -1417,7 +1417,7 @@ class GpArray:
                                 , mirror_list = mirror_dirs
                                 , mirror_portbase = base_mirror_port
                                 , dir_prefix = prefix
-                                , primary_replication_porttbase = base_primary_replication_port
+                                , primary_replication_portbase = base_primary_replication_port
                                 , mirror_replication_portbase = base_mirror_replication_port
                                 )
         
@@ -1513,7 +1513,7 @@ class GpArray:
             if row[1] == 't':
                 new_datadir += ('%d' % curr_content)
                 self.addExpansionSeg(curr_content, ROLE_PRIMARY, curr_dbid, 
-                                        True, hostname, int(row[6]), new_datadir, row[8])
+                                        ROLE_PRIMARY, hostname, int(row[6]), new_datadir, row[8])
                 # The content id was adjusted, so we need to save it for the mirror
                 mirror_dict[row[0]] = curr_content
                 curr_content += 1
@@ -1521,7 +1521,7 @@ class GpArray:
                 new_content = mirror_dict[row[0]]
                 new_datadir += ('%d' % new_content)
                 self.addExpansionSeg(new_content, ROLE_MIRROR, curr_dbid, 
-                                     False, hostname, int(row[6]), new_datadir, row[8])
+                                     ROLE_MIRROR, hostname, int(row[6]), new_datadir, row[8])
             curr_dbid += 1           
 
 
