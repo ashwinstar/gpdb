@@ -2657,9 +2657,10 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
 
 
     FILE * fd;
+	bool fd_ok = false;
     bool addr2line_ok = false;
     char cmd[1024];
-    char cmdresult[SYMBOL_SIZE][100];
+    char cmdresult[100][SYMBOL_SIZE];
     char addrtxt[20];
 
 #if defined(__darwin__)
@@ -2686,21 +2687,26 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
     cmdresult[0][0] = '\0';
 	fd = popen(cmd,"r");
 	if (fd != NULL && errno == 0)
+		fd_ok = true;
+	
+	if (fd_ok)
 	{
 		for (stack_no = 0; stack_no < stacksize && stack_no < 100; stack_no++)
 		{
+			/* initialize the string */
 			cmdresult[stack_no][0] = '\0';
 			// Get one line of the result from addr2line (or atos)
 			fgets(cmdresult[stack_no],SYMBOL_SIZE,fd);
 			// Force it to be a valid string (in case it was too long)
 			cmdresult[stack_no][SYMBOL_SIZE-1] = '\0';
 			// Get rid of the newline at the end.
-			if (cmdresult[stack_no][strlen(cmdresult[stack_no])-1] == '\n')
-						cmdresult[stack_no][strlen(cmdresult[stack_no])-1] = '\0';
+			if (strlen(cmdresult[stack_no]) > 0 &&
+				cmdresult[stack_no][strlen(cmdresult[stack_no])-1] == '\n')
+				cmdresult[stack_no][strlen(cmdresult[stack_no])-1] = '\0';
 		}
 	}
 
-	if (fd != NULL && errno == 0 && strlen(cmdresult[0]) > 1)
+	if (fd_ok && strlen(cmdresult[0]) > 1)
 	{
 		addr2line_ok = true;
 	}
