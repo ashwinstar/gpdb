@@ -38,6 +38,76 @@
 
 static TupleTableSlot *IndexNext(IndexScanState *node);
 
+/*
+ * Initialize the index scan descriptor if it is not initialized.
+ */
+static inline void
+initScanDesc(IndexScanState *indexstate)
+{
+	IndexScan *node = (IndexScan *)(indexstate->ss.ps.plan);
+	Relation currentRelation = indexstate->ss.ss_currentRelation;
+	EState *estate = indexstate->ss.ps.state;
+	
+	if (indexstate->iss_ScanDesc == NULL)
+	{
+		/*
+		 * build the index scan keys from the index qualification
+		 */
+		ExecIndexBuildScanKeys((PlanState *) indexstate,
+							   indexstate->iss_RelationDesc,
+							   node->indexqual,
+							   node->indexstrategy,
+							   node->indexsubtype,
+							   &indexstate->iss_ScanKeys,
+							   &indexstate->iss_NumScanKeys,
+							   &indexstate->iss_RuntimeKeys,
+							   &indexstate->iss_NumRuntimeKeys,
+							   NULL,	/* no ArrayKeys */
+							   NULL);
+		
+		/*
+		 * If we have runtime keys, we need an ExprContext to evaluate them. The
+		 * node's standard context won't do because we want to reset that context
+		 * for every tuple.  So, build another context just like the other one...
+		 * -tgl 7/11/00
+		 */
+		if (indexstate->iss_NumRuntimeKeys != 0)
+		{
+			ExprContext *stdecontext = indexstate->ss.ps.ps_ExprContext;
+			
+			ExecAssignExprContext(estate, &indexstate->ss.ps);
+			indexstate->iss_RuntimeContext = indexstate->ss.ps.ps_ExprContext;
+			indexstate->ss.ps.ps_ExprContext = stdecontext;
+		}
+		else
+		{
+			indexstate->iss_RuntimeContext = NULL;
+		}
+		
+		/*
+		 * Initialize scan descriptor.
+		 */
+		indexstate->iss_ScanDesc = index_beginscan(currentRelation,
+												   indexstate->iss_RelationDesc,
+												   estate->es_snapshot,
+												   indexstate->iss_NumScanKeys,
+												   indexstate->iss_ScanKeys);
+	}
+}
+	
+/*
+ * Free the heap scan descriptor.
+ */
+static inline void
+freeScanDesc(IndexScanState *indexstate)
+{
+	if (indexstate->iss_ScanDesc != NULL)
+	{
+		index_endscan(indexstate->iss_ScanDesc);
+		indexstate->iss_ScanDesc = NULL;
+	}
+}
+
 
 /* ----------------------------------------------------------------
  *		IndexNext
@@ -62,6 +132,9 @@ IndexNext(IndexScanState *node)
 	 */
 	estate = node->ss.ps.state;
 	direction = estate->es_direction;
+
+	initScanDesc(node);
+
 	/* flip direction if this is an overall backward scan */
 	if (ScanDirectionIsBackward(((IndexScan *) node->ss.ps.plan)->indexorderdir))
 	{
@@ -85,7 +158,11 @@ IndexNext(IndexScanState *node)
 		estate->es_evTuple[scanrelid - 1] != NULL)
 	{
 		if (estate->es_evTupleNull[scanrelid - 1])
+		{
+			freeScanDesc(node);
+			
 			return ExecClearTuple(slot);
+		}
 
 		ExecStoreGenericTuple(estate->es_evTuple[scanrelid - 1], slot, false);
 
@@ -95,7 +172,11 @@ IndexNext(IndexScanState *node)
 		ResetExprContext(econtext);
 
 		if (!ExecQual(node->indexqualorig, econtext, false))
+		{
+			freeScanDesc(node);
+			
 			ExecClearTuple(slot);		/* would not be returned by scan */
+		}
 
 		/* Flag for the next call that no more tuples */
 		estate->es_evTupleNull[scanrelid - 1] = true;
@@ -125,6 +206,8 @@ IndexNext(IndexScanState *node)
 		return slot;
 	}
 
+	freeScanDesc(node);
+	
 	/*
 	 * if we get here it means the index scan failed so we are at the end of
 	 * the scan..
@@ -197,6 +280,8 @@ ExecIndexReScan(IndexScanState *node, ExprContext *exprCtxt)
 		 */
 		ResetExprContext(econtext);
 	}
+
+	initScanDesc(node);
 
 	/*
 	 * If we are doing runtime key calculations (ie, the index keys depend on
@@ -424,7 +509,7 @@ ExecEndIndexScan(IndexScanState *node)
 	/*
 	 * close the index relation
 	 */
-	index_endscan(indexScanDesc);
+	freeScanDesc(node);
 	index_close(indexRelationDesc, NoLock);
 
 	/*
@@ -551,49 +636,6 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	 * Initialize index-specific scan state
 	 */
 	indexstate->iss_RuntimeKeysReady = false;
-
-	/*
-	 * build the index scan keys from the index qualification
-	 */
-	ExecIndexBuildScanKeys((PlanState *) indexstate,
-						   indexstate->iss_RelationDesc,
-						   node->indexqual,
-						   node->indexstrategy,
-						   node->indexsubtype,
-						   &indexstate->iss_ScanKeys,
-						   &indexstate->iss_NumScanKeys,
-						   &indexstate->iss_RuntimeKeys,
-						   &indexstate->iss_NumRuntimeKeys,
-						   NULL,	/* no ArrayKeys */
-						   NULL);
-
-	/*
-	 * If we have runtime keys, we need an ExprContext to evaluate them. The
-	 * node's standard context won't do because we want to reset that context
-	 * for every tuple.  So, build another context just like the other one...
-	 * -tgl 7/11/00
-	 */
-	if (indexstate->iss_NumRuntimeKeys != 0)
-	{
-		ExprContext *stdecontext = indexstate->ss.ps.ps_ExprContext;
-
-		ExecAssignExprContext(estate, &indexstate->ss.ps);
-		indexstate->iss_RuntimeContext = indexstate->ss.ps.ps_ExprContext;
-		indexstate->ss.ps.ps_ExprContext = stdecontext;
-	}
-	else
-	{
-		indexstate->iss_RuntimeContext = NULL;
-	}
-
-	/*
-	 * Initialize scan descriptor.
-	 */
-	indexstate->iss_ScanDesc = index_beginscan(currentRelation,
-											   indexstate->iss_RelationDesc,
-											   estate->es_snapshot,
-											   indexstate->iss_NumScanKeys,
-											   indexstate->iss_ScanKeys);
 
 	/*
 	 * Initialize result tuple type and projection info.

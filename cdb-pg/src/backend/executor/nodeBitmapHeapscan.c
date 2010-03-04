@@ -50,6 +50,82 @@
 static TupleTableSlot *BitmapHeapNext(BitmapHeapScanState *node);
 static void bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres);
 
+/*
+ * Initialize the heap scan descriptor if it is not initialized.
+ */
+static inline void
+initScanDesc(BitmapHeapScanState *scanstate)
+{
+	Relation currentRelation = scanstate->ss.ss_currentRelation;
+	EState *estate = scanstate->ss.ps.state;
+	
+	if (scanstate->ss.ss_currentScanDesc == NULL)
+	{
+		/*
+		 * Even though we aren't going to do a conventional seqscan, it is useful
+		 * to create a HeapScanDesc --- this checks the relation size and sets up
+		 * statistical infrastructure for us.
+		 */
+		scanstate->ss.ss_currentScanDesc = heap_beginscan(currentRelation,
+														  estate->es_snapshot,
+														  0,
+														  NULL);
+		
+		/*
+		 * One problem is that heap_beginscan counts a "sequential scan" start,
+		 * when we actually aren't doing any such thing.  Reverse out the added
+		 * scan count.	(Eventually we may want to count bitmap scans separately.)
+		 */
+		pgstat_discount_heap_scan(currentRelation);
+	}
+}
+
+/*
+ * Free the heap scan descriptor.
+ */
+static inline void
+freeScanDesc(BitmapHeapScanState *scanstate)
+{
+	if (scanstate->ss.ss_currentScanDesc != NULL)
+	{
+		heap_endscan(scanstate->ss.ss_currentScanDesc);
+		scanstate->ss.ss_currentScanDesc = NULL;
+	}
+}
+
+/*
+ * Initialize the state relevant to bitmaps.
+ */
+static inline void
+initBitmapState(BitmapHeapScanState *scanstate)
+{
+	if (scanstate->tbmres == NULL)
+		scanstate->tbmres =
+			palloc0(sizeof(TBMIterateResult) +
+					MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
+}
+
+/*
+ * Free the state relevant to bitmaps
+ */
+static inline void
+freeBitmapState(BitmapHeapScanState *scanstate)
+{
+	if (scanstate->tbm != NULL)
+	{
+		if(IsA(scanstate->tbm, HashBitmap))
+			tbm_free((HashBitmap *)scanstate->tbm);
+		else
+            tbm_bitmap_free(scanstate->tbm);
+
+		scanstate->tbm = NULL;
+	}
+	if (scanstate->tbmres != NULL)
+	{
+		pfree(scanstate->tbmres);
+		scanstate->tbmres = NULL;
+	}
+}
 
 /* ----------------------------------------------------------------
  *		BitmapHeapNext
@@ -76,6 +152,10 @@ BitmapHeapNext(BitmapHeapScanState *node)
 	estate = node->ss.ps.state;
 	econtext = node->ss.ps.ps_ExprContext;
 	slot = node->ss.ss_ScanTupleSlot;
+
+	initScanDesc(node);
+	initBitmapState(node);
+
 	scan = node->ss.ss_currentScanDesc;
 	scanrelid = ((BitmapHeapScan *) node->ss.ps.plan)->scan.scanrelid;
 	tbm = node->tbm;
@@ -91,7 +171,13 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		estate->es_evTuple[scanrelid - 1] != NULL)
 	{
 		if (estate->es_evTupleNull[scanrelid - 1])
+		{
+			freeBitmapState(node);
+			freeScanDesc(node);
+			
 			return ExecClearTuple(slot);
+		}
+		
 
 		ExecStoreGenericTuple(estate->es_evTuple[scanrelid - 1],
 					   slot, false);
@@ -102,16 +188,21 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		ResetExprContext(econtext);
 
 		if (!ExecQual(node->bitmapqualorig, econtext, false))
+		{
+			freeBitmapState(node);
+			freeScanDesc(node);
+
 			ExecClearTuple(slot);		/* would not be returned by scan */
+		}
 
 		/* Flag for the next call that no more tuples */
 		estate->es_evTupleNull[scanrelid - 1] = true;
 
-         	if (!TupIsNull(slot))
-                {
-          		Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapHeapScanState(node));
-                        CheckSendPlanStateGpmonPkt(&node->ss.ps);
-                }
+		if (!TupIsNull(slot))
+		{
+			Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapHeapScanState(node));
+			CheckSendPlanStateGpmonPkt(&node->ss.ps);
+		}
 		return slot;
 	}
 
@@ -248,13 +339,16 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		}
 
 		/* OK to return this tuple */
-          	if (!TupIsNull(slot))
-                {
-                    Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapHeapScanState(node));
-                    CheckSendPlanStateGpmonPkt(&node->ss.ps);
-                }
+		if (!TupIsNull(slot))
+		{
+			Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapHeapScanState(node));
+			CheckSendPlanStateGpmonPkt(&node->ss.ps);
+		}
 		return slot;
 	}
+
+	freeBitmapState(node);
+	freeScanDesc(node);
 
 	/*
 	 * if we get here it means we are at the end of the scan..
@@ -421,33 +515,24 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 		estate->es_evTupleNull[scanrelid - 1] = false;
 	}
 
+	initScanDesc(node);
+
 	/* rescan to release any page pin */
 	heap_rescan(node->ss.ss_currentScanDesc, NULL);
 
 	/* undo bogus "seq scan" count (see notes in ExecInitBitmapHeapScan) */
 	pgstat_discount_heap_scan(node->ss.ss_currentRelation);
 
-	if (node->tbm != NULL)
-	{
-		if(IsA(node->tbm, HashBitmap))
-		{
-			tbm_free((HashBitmap *)node->tbm);
-			node->tbm = NULL;
-		}
-		else
-            tbm_bitmap_free(node->tbm);
-	}
-	node->tbm = NULL;
-	MemSet(node->tbmres, 0,
-	       sizeof(TBMIterateResult) + MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
+	freeBitmapState(node);
+
 	tbm_reset_bitmaps(outerPlanState(node));
 
 	/*
 	 * Always rescan the input immediately, to ensure we can pass down any
 	 * outer tuple that might be used in index quals.
 	 */
-     	Gpmon_M_Incr(GpmonPktFromBitmapHeapScanState(node), GPMON_BITMAPHEAPSCAN_RESCAN);
-    	CheckSendPlanStateGpmonPkt(&node->ss.ps);
+	Gpmon_M_Incr(GpmonPktFromBitmapHeapScanState(node), GPMON_BITMAPHEAPSCAN_RESCAN);
+	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 	ExecReScan(outerPlanState(node), exprCtxt);
 }
 
@@ -486,24 +571,12 @@ ExecEndBitmapHeapScan(BitmapHeapScanState *node)
 	/*
 	 * Free up bitmaps
 	 */
-	if (node->tbm != NULL)
-	{
-		if(IsA(node->tbm, HashBitmap))
-		{
-			tbm_free((HashBitmap *)node->tbm);
-			node->tbm = NULL;
-		}
-		else
-            tbm_bitmap_free(node->tbm);
-	}
-	node->tbm = NULL;
-	pfree(node->tbmres);
-	node->tbmres = NULL;
-
+	freeBitmapState(node);
+	
 	/*
 	 * close heap scan
 	 */
-	heap_endscan(scanDesc);
+	freeScanDesc(node);
 
 	/*
 	 * close the heap relation.
@@ -551,8 +624,7 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	scanstate->ss.ps.state = estate;
 
 	scanstate->tbm = NULL;
-	scanstate->tbmres = palloc0(sizeof(TBMIterateResult) +
-				    MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
+	scanstate->tbmres = NULL;
 
 	/*
 	 * Miscellaneous initialization
@@ -590,23 +662,6 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	currentRelation = ExecOpenScanRelation(estate, node->scan.scanrelid);
 
 	scanstate->ss.ss_currentRelation = currentRelation;
-
-	/*
-	 * Even though we aren't going to do a conventional seqscan, it is useful
-	 * to create a HeapScanDesc --- this checks the relation size and sets up
-	 * statistical infrastructure for us.
-	 */
-	scanstate->ss.ss_currentScanDesc = heap_beginscan(currentRelation,
-													  estate->es_snapshot,
-													  0,
-													  NULL);
-
-	/*
-	 * One problem is that heap_beginscan counts a "sequential scan" start,
-	 * when we actually aren't doing any such thing.  Reverse out the added
-	 * scan count.	(Eventually we may want to count bitmap scans separately.)
-	 */
-	pgstat_discount_heap_scan(currentRelation);
 
 	/*
 	 * get the scan type from the relation descriptor.

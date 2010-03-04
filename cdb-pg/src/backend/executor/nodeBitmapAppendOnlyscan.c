@@ -35,6 +35,122 @@
 
 static TupleTableSlot *BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node);
 
+/*
+ * Initialize the fetch descriptor for the BitmapAppendOnlyScanState if
+ * it is not initialized.
+ */
+static void
+initFetchDesc(BitmapAppendOnlyScanState *scanstate)
+{
+	BitmapAppendOnlyScan *node = (BitmapAppendOnlyScan *)(scanstate->ss.ps.plan);
+	Relation currentRelation = scanstate->ss.ss_currentRelation;
+	EState *estate = scanstate->ss.ps.state;
+
+	if (node->isAORow)
+	{
+		if (scanstate->baos_currentAOFetchDesc == NULL)
+		{
+			scanstate->baos_currentAOFetchDesc = 
+				appendonly_fetch_init(currentRelation,
+									  estate->es_snapshot);
+			scanstate->baos_currentAOCSFetchDesc = NULL;
+		}
+	}
+	
+	else
+	{
+		if (scanstate->baos_currentAOCSFetchDesc == NULL)
+		{
+			bool *proj;
+			int colno;
+		
+			scanstate->baos_currentAOFetchDesc = NULL;
+
+			/*
+			 * Obtain the projection.
+			 */
+			Assert(currentRelation->rd_att != NULL);
+		
+			proj = (bool *)palloc0(sizeof(bool) * currentRelation->rd_att->natts);
+
+			GetNeededColumnsForScan((Node *) node->scan.plan.targetlist, proj, currentRelation->rd_att->natts);
+			GetNeededColumnsForScan((Node *) node->scan.plan.qual, proj, currentRelation->rd_att->natts);
+                
+			for(colno = 0; colno < currentRelation->rd_att->natts; colno++)
+			{
+				if(proj[colno])
+					break;
+			}
+			
+			/*
+			 * At least project one column. Since the tids stored in the index may not have
+			 * a correponding tuple any more (because of previous crashes, for example), we
+			 * need to read the tuple to make sure.
+			 */
+			if(colno == currentRelation->rd_att->natts)
+				proj[0] = true;
+			
+			scanstate->baos_currentAOCSFetchDesc =
+				aocs_fetch_init(currentRelation, estate->es_snapshot, proj);
+		}
+	}
+}
+
+/*
+ * Free fetch descriptor.
+ */
+static inline void
+freeFetchDesc(BitmapAppendOnlyScanState *scanstate)
+{
+	if (scanstate->baos_currentAOFetchDesc != NULL)
+	{
+		Assert(((BitmapAppendOnlyScan *)(scanstate->ss.ps.plan))->isAORow);
+		appendonly_fetch_finish(scanstate->baos_currentAOFetchDesc);
+		scanstate->baos_currentAOFetchDesc = NULL;
+	}
+
+	if (scanstate->baos_currentAOCSFetchDesc != NULL)
+	{
+		Assert(!((BitmapAppendOnlyScan *)(scanstate->ss.ps.plan))->isAORow);
+		pfree(scanstate->baos_currentAOCSFetchDesc->proj);
+		aocs_fetch_finish(scanstate->baos_currentAOCSFetchDesc);
+		scanstate->baos_currentAOCSFetchDesc = NULL;
+	}
+}
+
+/*
+ * Initialize the state relevant to bitmaps.
+ */
+static inline void
+initBitmapState(BitmapAppendOnlyScanState *scanstate)
+{
+	if (scanstate->baos_tbmres == NULL)
+		scanstate->baos_tbmres =
+			palloc0(sizeof(TBMIterateResult) +
+					MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
+}
+
+/*
+ * Free the state relevant to bitmaps
+ */
+static inline void
+freeBitmapState(BitmapAppendOnlyScanState *scanstate)
+{
+	if (scanstate->baos_tbm != NULL)
+	{
+		if(IsA(scanstate->baos_tbm, HashBitmap))
+			tbm_free((HashBitmap *)scanstate->baos_tbm);
+		else
+            tbm_bitmap_free(scanstate->baos_tbm);
+
+		scanstate->baos_tbm = NULL;
+	}
+	if (scanstate->baos_tbmres != NULL)
+	{
+		pfree(scanstate->baos_tbmres);
+		scanstate->baos_tbmres = NULL;
+	}
+}
 
 /* ----------------------------------------------------------------
  *		BitmapAppendOnlyNext
@@ -64,6 +180,9 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 	econtext = node->ss.ps.ps_ExprContext;
 	slot = node->ss.ss_ScanTupleSlot;
 
+	initBitmapState(node);
+	initFetchDesc(node);
+
 	aoFetchDesc = node->baos_currentAOFetchDesc;
 	aocsFetchDesc = node->baos_currentAOCSFetchDesc;
 	scanrelid = ((BitmapAppendOnlyScan *) node->ss.ps.plan)->scan.scanrelid;
@@ -81,7 +200,12 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 		estate->es_evTuple[scanrelid - 1] != NULL)
 	{
 		if (estate->es_evTupleNull[scanrelid - 1])
+		{
+			freeFetchDesc(node);
+			freeBitmapState(node);
+			
 			return ExecClearTuple(slot);
+		}
 
 		ExecStoreGenericTuple(estate->es_evTuple[scanrelid - 1],
 					   slot, false);
@@ -92,16 +216,21 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 		ResetExprContext(econtext);
 
 		if (!ExecQual(node->baos_bitmapqualorig, econtext, false))
+		{
+			freeFetchDesc(node);
+			freeBitmapState(node);
+
 			ExecClearTuple(slot);		/* would not be returned by scan */
+		}
 
 		/* Flag for the next call that no more tuples */
 		estate->es_evTupleNull[scanrelid - 1] = true;
 
-         	if (!TupIsNull(slot))
-                {
-          		Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapAppendOnlyScanState(node));
-                        CheckSendPlanStateGpmonPkt(&node->ss.ps);
-                }
+		if (!TupIsNull(slot))
+		{
+			Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapAppendOnlyScanState(node));
+			CheckSendPlanStateGpmonPkt(&node->ss.ps);
+		}
 		return slot;
 	}
 
@@ -129,7 +258,12 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 	}
 
 	if (tbm == NULL)
+	{
+		freeFetchDesc(node);
+		freeBitmapState(node);
+
 		return ExecClearTuple(slot);
+	}
 
 	Assert(tbm != NULL);
 	Assert(tbmres != NULL);
@@ -244,16 +378,20 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 
 		/* OK to return this tuple */
       	if (!TupIsNull(slot))
-            {
-                Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapAppendOnlyScanState(node));
-                CheckSendPlanStateGpmonPkt(&node->ss.ps);
-            }
+		{
+			Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapAppendOnlyScanState(node));
+			CheckSendPlanStateGpmonPkt(&node->ss.ps);
+		}
+
 		return slot;
 	}
 
 	/*
 	 * if we get here it means we are at the end of the scan..
 	 */
+	freeFetchDesc(node);
+	freeBitmapState(node);
+
 	return ExecClearTuple(slot);
 }
 
@@ -308,28 +446,15 @@ ExecBitmapAppendOnlyReScan(BitmapAppendOnlyScanState *node, ExprContext *exprCtx
 	 * NOTE: The appendonly_fetch routine can fetch randomly, so no need to reset it.
 	 */
 
-
-	if (node->baos_tbm != NULL)
-	{
-		if(IsA(node->baos_tbm, HashBitmap))
-		{
-			tbm_free((HashBitmap *)node->baos_tbm);
-			node->baos_tbm = NULL;
-		}
-		else
-            tbm_bitmap_free(node->baos_tbm);
-	}
-	node->baos_tbm = NULL;
-	MemSet(node->baos_tbmres, 0,
-	       sizeof(TBMIterateResult) + MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
+	freeBitmapState(node);
 	tbm_reset_bitmaps(outerPlanState(node));
 
 	/*
 	 * Always rescan the input immediately, to ensure we can pass down any
 	 * outer tuple that might be used in index quals.
 	 */
-     	Gpmon_M_Incr(GpmonPktFromBitmapAppendOnlyScanState(node), GPMON_BITMAPAPPENDONLYSCAN_RESCAN);
-    	CheckSendPlanStateGpmonPkt(&node->ss.ps);
+	Gpmon_M_Incr(GpmonPktFromBitmapAppendOnlyScanState(node), GPMON_BITMAPAPPENDONLYSCAN_RESCAN);
+	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 
 	ExecReScan(outerPlanState(node), exprCtxt);
 }
@@ -342,16 +467,11 @@ void
 ExecEndBitmapAppendOnlyScan(BitmapAppendOnlyScanState *node)
 {
 	Relation	relation;
-	AppendOnlyFetchDesc aoFetchDesc;
-	AOCSFetchDesc aocsFetchDesc;
 
 	/*
 	 * extract information from the node
 	 */
 	relation = node->ss.ss_currentRelation;
-
-	aoFetchDesc = node->baos_currentAOFetchDesc;
-	aocsFetchDesc = node->baos_currentAOCSFetchDesc;
 
 	/*
 	 * Free the exprcontext
@@ -372,32 +492,13 @@ ExecEndBitmapAppendOnlyScan(BitmapAppendOnlyScanState *node)
 	/*
 	 * Free up bitmaps
 	 */
-	if (node->baos_tbm != NULL)
-	{
-		if(IsA(node->baos_tbm, HashBitmap))
-		{
-			tbm_free((HashBitmap *)node->baos_tbm);
-			node->baos_tbm = NULL;
-		}
-		else
-            tbm_bitmap_free(node->baos_tbm);
-	}
-	node->baos_tbm = NULL;
-	pfree(node->baos_tbmres);
-	node->baos_tbmres = NULL;
+	freeBitmapState(node);
 
 	/*
 	 * close AO fetch
 	 */
-	if (aoFetchDesc != NULL)
-		appendonly_fetch_finish(aoFetchDesc);
-	else
-	{
-		Assert(aocsFetchDesc != NULL);
-		pfree(aocsFetchDesc->proj);
-		aocs_fetch_finish(aocsFetchDesc);
-	}
-
+	freeFetchDesc(node);
+	
 	/*
 	 * close the heap relation.
 	 */
@@ -451,8 +552,7 @@ ExecInitBitmapAppendOnlyScan(BitmapAppendOnlyScan *node, EState *estate, int efl
 	scanstate->ss.ps.state = estate;
 
 	scanstate->baos_tbm = NULL;
-	scanstate->baos_tbmres = palloc0(sizeof(TBMIterateResult) +
-				    MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
+	scanstate->baos_tbmres = NULL;
 	scanstate->baos_gotpage = false;
 	scanstate->baos_lossy = false;
 	scanstate->baos_cindex = 0;
@@ -506,44 +606,8 @@ ExecInitBitmapAppendOnlyScan(BitmapAppendOnlyScan *node, EState *estate, int efl
 	ExecAssignResultTypeFromTL(&scanstate->ss.ps);
 	ExecAssignScanProjectionInfo(&scanstate->ss);
 
-	if (node->isAORow)
-	{
-		scanstate->baos_currentAOFetchDesc = 
-			appendonly_fetch_init(currentRelation,
-								  estate->es_snapshot);
-		scanstate->baos_currentAOCSFetchDesc = NULL;
-	}
-	
-	else
-	{
-		bool *proj;
-		int colno;
-		
-		scanstate->baos_currentAOFetchDesc = NULL;
-
-		/*
-		 * Obtain the projection.
-		 */
-		Assert(currentRelation->rd_att != NULL);
-		
-		proj = (bool *)palloc0(sizeof(bool) * currentRelation->rd_att->natts);
-
-		GetNeededColumnsForScan((Node *) node->scan.plan.targetlist, proj, currentRelation->rd_att->natts);
-		GetNeededColumnsForScan((Node *) node->scan.plan.qual, proj, currentRelation->rd_att->natts);
-                
-		/* At least project one column */
-		for(colno = 0; colno < currentRelation->rd_att->natts; colno++)
-		{
-			if(proj[colno])
-				break;
-		}
-		
-		if(colno == currentRelation->rd_att->natts)
-			proj[0] = true;
-		
-		scanstate->baos_currentAOCSFetchDesc =
-			aocs_fetch_init(currentRelation, estate->es_snapshot, proj);
-	}
+	scanstate->baos_currentAOFetchDesc = NULL;
+	scanstate->baos_currentAOCSFetchDesc = NULL;
 	
 	/*
 	 * initialize child nodes
@@ -577,7 +641,7 @@ initGpmonPktForBitmapAppendOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, E
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPAPPENDONLYSCAN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Bitmap Append-Only Scan Pages", "Pages", 0 },
+			{ "Bitmap Apped-Only Scan Pages", "Pages", 0 },
 			{ "Bitmap Append-Only Scan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
