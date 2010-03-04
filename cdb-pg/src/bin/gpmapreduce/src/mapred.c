@@ -544,7 +544,7 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 				name = strtok_r(argnames, ",", &nametokens);
 				mode = strtok_r(argmodes, ",", &modetokens);
 
-				while (mode && mode != "i" && mode != "b")
+				while (mode && strcmp(mode, "i") && strcmp(mode, "b"))
 				{
 					name = strtok_r(NULL, ",", &nametokens);
 					mode = strtok_r(NULL, ",", &modetokens);
@@ -601,7 +601,7 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 					type = strtok_r(NULL, ",", &typetokens);
 					name = strtok_r(NULL, ",", &nametokens);
 					mode = strtok_r(NULL, ",", &modetokens);
-					while (mode && mode != "i" && mode != "b")
+					while (mode && strcmp(mode, "i") && strcmp(mode, "b"))
 					{
 						name = strtok_r(NULL, ",", &nametokens);
 						mode = strtok_r(NULL, ",", &modetokens);
@@ -699,7 +699,8 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 				
 				while (mode)
 				{
-					while (mode && mode != "o" && mode != "b" && mode != "t")
+					while (mode && strcmp(mode, "o") && strcmp(mode, "b") && 
+						   strcmp(mode, "t"))
 					{
 						type = strtok_r(NULL, ",", &typetokens);
 						name = strtok_r(NULL, ",", &nametokens);
