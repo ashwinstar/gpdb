@@ -559,16 +559,22 @@ class Phase1MirrorInfo:
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------                    
 class GPumDiskFree(Command):
-    """ This method checks for available space in a directory"""
+    """ This method checks for available space in a directory   """
+    """ The same method, without the GPum prefix is in gppylib, """
+    """ but it doesn't work correctly in 3.3.x.                 """
 
     def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
         self.directory=directory
-        cmdStr="%s %s" % (SYSTEM.getDiskFreeCmd(),directory)
+        dfCommand = SYSTEM.getDiskFreeCmd()
+        if options.phase2 == False and isinstance(SYSTEM, SolarisPlatform):
+           """ This is a work around for a bug in 3.3.x (see MPP-6647) """
+           dfCommand = dfCommand + 'k'
+        cmdStr="%s %s" % (dfCommand,directory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     @staticmethod
     def get_size(name,remote_host,directory):
-        dfCmd=DiskFree( name = name
+        dfCmd=GPumDiskFree( name = name
                       , directory = directory
                       , ctxt = REMOTE
                       , remoteHost = remote_host
@@ -611,7 +617,7 @@ class FileDirectoryList(Command):
 
     @staticmethod
     def get_list(name, remote_host, file_pattern):
-        lsCmd = FileDirectoryList(name, filePattern = file_pattern, remoteHost = remote_host)
+        lsCmd = FileDirectoryList(name, filePattern = file_pattern, ctxt = REMOTE, remoteHost = remote_host)
         lsCmd.run(validateAfter=False)
         return lsCmd.get_result_list()
     
@@ -924,6 +930,7 @@ class Phase1(threading.Thread):
            cmd = RemoveFiles( name = 'gpupgrademirror remove any old directory'
                                 , remoteHost = self.nodeName 
                                 , directory = tempDataDir
+                                , ctxt = REMOTE
                                 )
            cmd.run(validateAfter = False)
         
@@ -939,6 +946,7 @@ class Phase1(threading.Thread):
            ''' Un-safe mode '''
            rmCmd = MakeDirectory( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % tempDataDir
                                 , directory = tempDataDir
+                                , ctxt = REMOTE
                                 , remoteHost = self.nodeName
                                 )
            rmCmd.run(validateAfter = True) 
@@ -1238,6 +1246,7 @@ class Phase2(threading.Thread):
                cmd = RemoveFiles( name = 'gpupgrademirror remove special old directory'
                                 , remoteHost = self.nodeName 
                                 , directory = fullPathTarget
+                                , ctxt = REMOTE
                                 )
                cmd.run(validateAfter = False)
 
@@ -1251,7 +1260,10 @@ class Phase2(threading.Thread):
             rmCmd.run(validateAfter = True)
     
             ''' Check for files with extensions (i.e. .1, .2, ...) '''
-            fileList = FileDirectoryList.get_list('Get list file extensions', seg.primary_host, fullPathSource + '.*')
+            fileList = FileDirectoryList.get_list( name = 'Get list file extensions'
+                                                 , remote_host = seg.primary_host
+                                                 , file_pattern = fullPathSource + '.*'
+                                                 )
             for fileExt in fileList:
                 suffixIndex = fileExt.rfind('.')
                 suffix = fileExt[suffixIndex:]
@@ -1442,6 +1454,7 @@ try:
         tempNode = Phase2(dbUrl, logger, options.master_data_directory, mirrorInfo.nic_address)
         
         ''' Setup the mirror node '''
+        """ KAS note to self. Setup could be done in parallel. """
         tempNode.setup([mirrorInfo], fileList, fileListDeleteBeforeCopy)
         
         phase2MirrorList.append(tempNode)
@@ -1513,6 +1526,7 @@ try:
            mirrorInfoList = p1MirrorInfo.getMirrorInfo(mirrorName)
         
            ''' Setup the mirror node '''
+           """ KAS note to self. Setup could be done in parallel. """
            tempNode.setup(mirrorInfoList)
            MirrorNodeList.append(tempNode)
     else:
@@ -1530,6 +1544,7 @@ try:
                             )
         
            ''' Setup the mirror segment. We pass a list here because that what the method expects. '''
+           """ KAS note to self. Setup could be done in parallel. """
            tempNode.setup([mirrorNode])
            MirrorNodeList.append(tempNode)
 
