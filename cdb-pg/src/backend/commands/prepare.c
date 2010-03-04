@@ -41,6 +41,8 @@
 #include "catalog/catalog.h"
 #include "catalog/pg_type.h"
 
+extern char *savedSeqServerHost;
+extern int savedSeqServerPort;
 
 /*
  * The hash table in which prepared queries are stored. This is
@@ -248,7 +250,8 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 	/*
 	 * Run the portal to completion.
 	 */
-	PortalStart(portal, paramLI, ActiveSnapshot);
+	PortalStart(portal, paramLI, ActiveSnapshot,
+				savedSeqServerHost, savedSeqServerPort);
 
 	(void) PortalRun(portal, 
 					FETCH_ALL, 

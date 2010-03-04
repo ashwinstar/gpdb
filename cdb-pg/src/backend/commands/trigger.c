@@ -316,7 +316,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	/*
 	 * Special for Greenplum Database: Ignore foreign keys for now
 	 */
-	if ((!gp_enable_functions) && (stmt->isconstraint) && (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE))
+	if ((stmt->isconstraint) && (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE))
 	{
 		/*
 		 * Create the tigger as disabled 

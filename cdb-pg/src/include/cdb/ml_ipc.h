@@ -113,7 +113,7 @@ extern void TeardownUDPInterconnect(ChunkTransportState *transportStates,
 								 bool forceEOS);
 
 
-extern void SetupSequenceServer(struct SliceTable *mySliceTable);
+extern void SetupSequenceServer(const char *host, int port);
 
 extern void TeardownSequenceServer(void);
 

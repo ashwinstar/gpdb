@@ -3684,8 +3684,6 @@ _copySliceTable(SliceTable *from)
 	COPY_SCALAR_FIELD(nSubplans);
 	COPY_SCALAR_FIELD(localSlice);
 	COPY_NODE_FIELD(slices);
-	COPY_STRING_FIELD(seqServerHost);
-	COPY_SCALAR_FIELD(seqServerPort);
     COPY_SCALAR_FIELD(doInstrument);
     COPY_SCALAR_FIELD(ic_instance_id);
 

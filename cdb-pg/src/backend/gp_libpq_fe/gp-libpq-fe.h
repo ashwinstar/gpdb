@@ -393,6 +393,9 @@ extern char *PQbuildGpQueryString(const char  *command,
 								   int          gp_command_count,
 								   int			localSlice,
 								   int			rootIdx,
+								   const char  *seqServerHost,
+								   int          seqServerHostlen,
+								   int          seqServerPort,
 								   int		   	primary_gang_id,
 /* Ugly, because c.h might not be included in all files that use this */
 #ifdef HAVE_INT64	

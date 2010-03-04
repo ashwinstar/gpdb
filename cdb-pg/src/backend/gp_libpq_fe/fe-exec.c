@@ -1055,29 +1055,32 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
  */
 char *
 PQbuildGpQueryString(const char  *command,
-					  int          command_len,
-					  const char  *querytree,
-					  int          querytree_len,
-					  const char  *plantree,
-					  int          plantree_len,
-					  const char  *params,
-					  int          params_len,
-					  const char  *sliceinfo,
-					  int          sliceinfo_len,
-					  const char  *snapshotInfo,
-					  int		   snapshotInfo_len,
-					  int          flags,
-					  int          gp_command_count,
-					  int		   localSlice,
-					  int		   rootIdx,
-					  int		   primary_gang_id,
-					  int64		   currentStatementStartTimestamp,
-					  Oid			sessionUserId,
-					  bool			sessionUserIsSuper,
-					  Oid			outerUserId,
-					  bool			outerUserIsSuper,
-					  Oid			currentUserId,
-					  int         *final_len)
+					 int          command_len,
+					 const char  *querytree,
+					 int          querytree_len,
+					 const char  *plantree,
+					 int          plantree_len,
+					 const char  *params,
+					 int          params_len,
+					 const char  *sliceinfo,
+					 int          sliceinfo_len,
+					 const char  *snapshotInfo,
+					 int          snapshotInfo_len,
+					 int          flags,
+					 int          gp_command_count,
+					 int          localSlice,
+					 int          rootIdx,
+					 const char  *seqServerHost,
+					 int          seqServerHostlen,
+					 int          seqServerPort,
+					 int          primary_gang_id,
+					 int64        currentStatementStartTimestamp,
+					 Oid          sessionUserId,
+					 bool         sessionUserIsSuper,
+					 Oid          outerUserId,
+					 bool         outerUserIsSuper,
+					 Oid          currentUserId,
+					 int         *final_len)
 {
 	int	tmp, len;
 	uint32		n32;
@@ -1086,9 +1089,35 @@ PQbuildGpQueryString(const char  *command,
 	char one = 1;
 	char zero = 0;
 
-	total_query_len = 5 /* overhead */ + 14 /* userids */ + 24 /* lengths */ +
-		4 /* comamnd count */ + snapshotInfo_len + 8 +
-		4 /* flags */ + command_len + querytree_len + plantree_len + params_len + sliceinfo_len + 4 + 4 + 4 + 4;
+	total_query_len =
+		1 /* 'M' */ +
+		sizeof(len) /* message length */ +
+		sizeof(gp_command_count) +
+		sizeof(sessionUserId) +
+		1 /* sessionUserIsSuper */ +
+		sizeof(outerUserId) +
+		1 /* outerUserIsSuper */ +
+		sizeof(currentUserId) +
+		sizeof(localSlice) +
+		sizeof(rootIdx) +
+		sizeof(primary_gang_id) +
+		sizeof(n32) * 2 /* currentStatementStartTimestamp */ +
+		sizeof(command_len) +
+		sizeof(querytree_len) +
+		sizeof(plantree_len) +
+		sizeof(params_len) +
+		sizeof(sliceinfo_len) +
+		sizeof(snapshotInfo_len) +
+		snapshotInfo_len +
+		sizeof(flags) +
+		sizeof(seqServerHostlen) +
+		sizeof(seqServerPort) +
+		command_len +
+		querytree_len +
+		plantree_len +
+		params_len +
+		sliceinfo_len +
+		seqServerHostlen;
 
 	shared_query = malloc(total_query_len);
 	if (shared_query == NULL)
@@ -1106,12 +1135,12 @@ PQbuildGpQueryString(const char  *command,
 	pos += 4; /* place holder for message length */
 
 	tmp = htonl(gp_command_count);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(gp_command_count));
+	pos += sizeof(gp_command_count);
 	
 	tmp = htonl(sessionUserId);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(sessionUserId));
+	pos += sizeof(sessionUserId);
 	
 	if (sessionUserIsSuper)
 		*pos++ = one;
@@ -1120,8 +1149,8 @@ PQbuildGpQueryString(const char  *command,
 	
 	
 	tmp = htonl(outerUserId);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(outerUserId));
+	pos += sizeof(outerUserId);
 	
 	if (outerUserIsSuper)
 		*pos++ = one;
@@ -1129,62 +1158,56 @@ PQbuildGpQueryString(const char  *command,
 		*pos++ = zero;
 	
 	tmp = htonl(currentUserId);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(currentUserId));
+	pos += sizeof(currentUserId);
 	
 	tmp = htonl(localSlice);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(localSlice));
+	pos += sizeof(localSlice);
 	
 	tmp = htonl(rootIdx);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(rootIdx));
+	pos += sizeof(rootIdx);
 	
 	tmp = htonl(primary_gang_id);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(primary_gang_id));
+	pos += sizeof(primary_gang_id);
 
-	/* REMOVED MIRROR GANG */
-#if 0	
-	tmp = htonl(mirror_gang_id);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-#endif
-	
 	/* High order half first, since we're doing MSB-first */
 	n32 = (uint32) (currentStatementStartTimestamp >> 32);
 	n32 = htonl(n32);
-	memcpy(pos, &n32,4);
-	pos += 4;
+	memcpy(pos, &n32, sizeof(n32));
+	pos += sizeof(n32);
+
 	/* Now the low order half */
 	n32 = (uint32) currentStatementStartTimestamp;
 	n32 = htonl(n32);
-	memcpy(pos, &n32,4);
-	pos += 4;
+	memcpy(pos, &n32, sizeof(n32));
+	pos += sizeof(n32);
 	
 	tmp = htonl(command_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(command_len));
+	pos += sizeof(command_len);
 	
 	tmp = htonl(querytree_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(querytree_len));
+	pos += sizeof(querytree_len);
 	
 	tmp = htonl(plantree_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(plantree_len));
+	pos += sizeof(plantree_len);
 	
 	tmp = htonl(params_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(params_len));
+	pos += sizeof(params_len);
 	
 	tmp = htonl(sliceinfo_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(tmp));
+	pos += sizeof(tmp);
 	
 	tmp = htonl(snapshotInfo_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(tmp));
+	pos += sizeof(tmp);
 
 	if (snapshotInfo_len > 0)
 	{
@@ -1193,8 +1216,16 @@ PQbuildGpQueryString(const char  *command,
 	}
 
 	tmp = htonl(flags);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
+	memcpy(pos, &tmp, sizeof(tmp));
+	pos += sizeof(tmp);
+
+	tmp = htonl(seqServerHostlen);
+	memcpy(pos, &tmp, sizeof(tmp));
+	pos += sizeof(tmp);
+
+	tmp = htonl(seqServerPort);
+	memcpy(pos, &tmp, sizeof(tmp));
+	pos += sizeof(tmp);
 
 	if (command_len > 0)
 	{
@@ -1226,11 +1257,19 @@ PQbuildGpQueryString(const char  *command,
 		pos += sliceinfo_len;
 	}
 
+	if (seqServerHostlen > 0)
+	{
+		memcpy(pos, seqServerHost, seqServerHostlen);
+		pos += seqServerHostlen;
+	}
+
 	len = pos - shared_query - 1;
 
 	/* fill in length placeholder */
 	tmp = htonl(len);
-	memcpy(shared_query+1, &tmp, 4);
+	memcpy(shared_query+1, &tmp, sizeof(len));
+
+	Assert(len + 1 == total_query_len);
 
 	if (final_len)
 		*final_len = len + 1;

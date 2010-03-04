@@ -3292,8 +3292,6 @@ _readSliceTable(void)
 	READ_INT_FIELD(nSubplans);
 	READ_INT_FIELD(localSlice);
 	READ_NODE_FIELD(slices); /* List of Slice* */
-	READ_STRING_FIELD(seqServerHost);
-	READ_INT_FIELD(seqServerPort);
     READ_BOOL_FIELD(doInstrument);
 	READ_INT_FIELD(ic_instance_id);
 

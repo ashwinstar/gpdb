@@ -3209,8 +3209,6 @@ _outSliceTable(StringInfo str, SliceTable *node)
 	WRITE_INT_FIELD(nSubplans);
 	WRITE_INT_FIELD(localSlice);
 	WRITE_NODE_FIELD(slices); /* List of int */
-	WRITE_STRING_FIELD(seqServerHost);
-	WRITE_INT_FIELD(seqServerPort);
     WRITE_BOOL_FIELD(doInstrument);
 	WRITE_INT_FIELD(ic_instance_id);
 }

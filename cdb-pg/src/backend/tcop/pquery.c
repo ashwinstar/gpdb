@@ -36,6 +36,7 @@
 #include "catalog/catalog.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/backoff.h"
+#include "cdb/ml_ipc.h"
 
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
@@ -693,7 +694,8 @@ FetchStatementTargetList(Node *stmt)
  * tupdesc (if any) is known.
  */
 void
-PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
+PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
+			const char *seqServerHost, int seqServerPort)
 {
 	Portal		saveActivePortal;
 	Snapshot	saveActiveSnapshot;
@@ -706,6 +708,9 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 	AssertArg(PortalIsValid(portal));
 	AssertState(portal->queryContext != NULL);	/* query defined? */
 	AssertState(PortalGetStatus(portal)  == PORTAL_NEW);	/* else extra PortalStart */
+
+	/* Set up the sequence server */
+	SetupSequenceServer(seqServerHost, seqServerPort);
 
 	portal->releaseResLock = false;
     
@@ -1145,6 +1150,8 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 			CurrentResourceOwner = saveResourceOwner;
 		PortalContext = savePortalContext;
 		QueryContext = saveQueryContext;
+
+		TeardownSequenceServer();
 
 		PG_RE_THROW();
 	}

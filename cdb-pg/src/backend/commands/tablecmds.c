@@ -8016,7 +8016,7 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 	/*
 	 * Special for Greenplum Database: Ignore foreign keys for now, with warning
 	 */
-	if ((!gp_enable_functions) && (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE))
+	if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE)
 	{
 		if (Gp_role == GP_ROLE_DISPATCH)
 			ereport(WARNING,

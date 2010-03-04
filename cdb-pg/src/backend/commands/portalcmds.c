@@ -37,6 +37,9 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 
+extern char *savedSeqServerHost;
+extern int savedSeqServerPort;
+
 static void PortalCleanupHelper(Portal portal, volatile int *cleanupstate);
 
 /*
@@ -152,7 +155,8 @@ PerformCursorOpen(PlannedStmt *stmt, ParamListInfo params,
 	/*
 	 * Start execution, inserting parameters if any.
 	 */
-	PortalStart(portal, params, ActiveSnapshot);
+	PortalStart(portal, params, ActiveSnapshot,
+				savedSeqServerHost, savedSeqServerPort);
 
 	Assert(portal->strategy == PORTAL_ONE_SELECT);
 

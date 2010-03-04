@@ -623,14 +623,6 @@ LockAcquire(const LOCKTAG *locktag,
 			}
 				
 		}
-		else if (gp_enable_functions && gp_is_callback && gp_qd_proc_offset!=-1 && Gp_role == GP_ROLE_DISPATCH)
-		{
-			lockHolderProcPtr = (PGPROC *)MAKE_PTR(gp_qd_proc_offset);
-			elog(DEBUG1,"Master callback trying to acquire a lock [%u,%u] %s %d",
-					 locktag->locktag_field1, locktag->locktag_field2,
-					 lock_mode_names[lockmode], (int)locktag->locktag_type);
-			
-		}
 	}
 	
 	
@@ -1020,18 +1012,6 @@ LockAcquire(const LOCKTAG *locktag,
 					 locktag->locktag_field1, locktag->locktag_field2,
 					 lock_mode_names[lockmode]);
 		}
-
-		if (Gp_role == GP_ROLE_EXECUTE && gp_is_callback && gp_enable_functions)
-		{
-			elog(NOTICE,"Call back wants to wait on Lock");
-			lock->nRequested--;
-			lock->requested[lockmode]--;
-			LWLockRelease(partitionLock);
-			if (locallock->nLocks == 0)
-				RemoveLocalLock(locallock);
-			return LOCKACQUIRE_ALREADY_HELD;
-		}
-		
 		
 		/*
 		 * Set bitmask of locks this process already holds on this object.

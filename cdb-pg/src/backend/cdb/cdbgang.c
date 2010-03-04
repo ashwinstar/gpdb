@@ -2906,38 +2906,6 @@ gangsExist(void)
 			availableReaderGangs1 != NIL);
 }
 
-
-/*
- * SetSeqServerInfo:  Adds sequence server information to the
- * supplied SliceTable (assumed uninitialized).
- *
- * NOTE: Though not strictly gang-related, the function lives
- * here to gain access to the interesting static variables.
- */
-void
-SetSeqServerInfo(struct QueryDesc * queryDesc)
-{
-	CdbComponentDatabaseInfo *qdinfo;
-	EState	   *estate = queryDesc->estate;
-	SliceTable *sliceTable = estate->es_sliceTable;
-
-	Assert(IsA(sliceTable, SliceTable) && sliceTable->seqServerHost == NULL);
-
-	if (Gp_role != GP_ROLE_DISPATCH)
-	{
-		elog(FATAL, "SetSeqServerInfo: unsupported request");
-	}
-
-	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
-
-	Assert(qdinfo->segindex == -1);
-	Assert(SEGMENT_IS_ACTIVE_PRIMARY(qdinfo));
-	Assert(qdinfo->hostip != NULL);
-
-	sliceTable->seqServerHost = pstrdup(qdinfo->hostip);
-	sliceTable->seqServerPort = seqServerCtl->seqServerPort;
-}
-
 /*
  * the gang is working for portal p1. we are only interested in gangs
  * from portal p2. if p1 and p2 are the same portal return true. false

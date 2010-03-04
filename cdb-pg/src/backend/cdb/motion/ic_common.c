@@ -128,9 +128,9 @@ int		TCP_listenerFd;
 int		UDP_listenerFd;
 
 /* Socket file descriptor for the sequence server. */
-int		seqserverFd = -1;
-char	*seqServerHost = NULL;
-int		seqServerPort;
+int		savedSeqServerFd = -1;
+char	*savedSeqServerHost = NULL;
+int		savedSeqServerPort;
 
 /*
  * Outgoing port assignment
@@ -303,7 +303,7 @@ InitMotionLayerIPC(void)
 	uint16 udp_listener = 0;
 
 	/*activated = false;*/
-	seqserverFd = -1;
+	savedSeqServerFd = -1;
 
 	InitMotionTCP(&TCP_listenerFd, &tcp_listener);
 	InitMotionUDP(&UDP_listenerFd, &udp_listener);
@@ -619,22 +619,35 @@ GetSeqServerFD(void)
 	 * the socket.
 	 *
 	 */
-	if (seqServerHost == NULL)
-		elog(ERROR, "Invalid Sequence Access.  Slice table did not specify a seqserver.");
+	if (savedSeqServerHost == NULL)
+		elog(ERROR, "Invalid Sequence Access. Sequence server info is invalid.");
 
-	if (seqserverFd == -1)
-		setupSeqServerConnection(seqServerHost, seqServerPort);
+	if (savedSeqServerFd == -1)
+		setupSeqServerConnection(savedSeqServerHost, savedSeqServerPort);
 
-	return seqserverFd;
+	return savedSeqServerFd;
 }
 
 void
-SetupSequenceServer(struct SliceTable *mySliceTable)
+SetupSequenceServer(const char *host, int port)
 {
-	if (mySliceTable != NULL)
+	if (host != NULL)
 	{
-		seqServerHost = mySliceTable->seqServerHost;
-		seqServerPort = mySliceTable->seqServerPort;
+		MemoryContext oldcxt;
+
+		Assert(savedSeqServerHost == NULL);
+		
+		/*
+		 * Make a copy in the MessageContext, since this needs to
+		 * live outside the per-portal context.
+		 */
+		Assert(MessageContext);
+		oldcxt = MemoryContextSwitchTo(MessageContext);
+		savedSeqServerHost = pstrdup(host);
+		MemoryContextSwitchTo(oldcxt);
+		
+		Assert(port != -1);
+		savedSeqServerPort = port;
 	}
 }
 
@@ -644,13 +657,20 @@ TeardownSequenceServer(void)
 	/*
 	 * If we setup a connection to the seqserver then we need to disconnect
 	 */
-	if (seqserverFd != -1)
+	if (savedSeqServerFd != -1)
 	{
 	    if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG3, "tearing down seqserver connection");
-		shutdown(seqserverFd, SHUT_RDWR);
-		closesocket(seqserverFd);
-		seqserverFd = -1;
+		shutdown(savedSeqServerFd, SHUT_RDWR);
+		closesocket(savedSeqServerFd);
+		savedSeqServerFd = -1;
+	}
+
+	if (savedSeqServerHost != NULL)
+	{
+		pfree(savedSeqServerHost);
+		savedSeqServerHost = NULL;
+		savedSeqServerPort = -1;
 	}
 }
 
@@ -663,7 +683,7 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort)
 	/*
 	 * open a connection to the sequence server
 	 */
-	seqserverFd = socket(AF_INET, SOCK_STREAM, 0);
+	savedSeqServerFd = socket(AF_INET, SOCK_STREAM, 0);
 	
 	addr.sin_family = AF_INET;
 
@@ -689,17 +709,17 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort)
 
 	addr.sin_port = htons(seqServerPort);
 
-	if ((n = connect(seqserverFd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
+	if ((n = connect(savedSeqServerFd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not connect to seqserver."),
 		                errdetail("%m%s", "connect")));
 	
 	/* make socket non-blocking BEFORE we connect. */
-	if (!pg_set_noblock(seqserverFd))
+	if (!pg_set_noblock(savedSeqServerFd))
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not set seqserver socket"
 						       "to non-blocking mode."),
-			            errdetail("%m%s sockfd=%d", "fcntl", seqserverFd)));
+			            errdetail("%m%s sockfd=%d", "fcntl", savedSeqServerFd)));
 }
 
 void

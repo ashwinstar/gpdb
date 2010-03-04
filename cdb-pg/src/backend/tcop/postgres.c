@@ -82,6 +82,7 @@
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbgang.h"
+#include "cdb/ml_ipc.h"
 #include "utils/guc.h"
 #include "access/twophase.h"
 #include "postmaster/backoff.h"
@@ -91,6 +92,9 @@
 
 extern int	optind;
 extern char *optarg;
+
+extern char *savedSeqServerHost;
+extern int savedSeqServerPort;
 
 /* ----------------
  *		global variables
@@ -855,6 +859,7 @@ exec_mpp_query(const char *query_string,
 			   const char * serializedPlantree, int serializedPlantreelen,
 			   const char * serializedParams, int serializedParamslen,
 			   const char * serializedSliceInfo, int serializedSliceInfolen,
+			   const char * seqServerHost, int seqServerPort,
 			   int localSlice)
 {
 	CommandDest dest = whereToSendOutput;
@@ -1207,7 +1212,8 @@ exec_mpp_query(const char *query_string,
 		/*
 		 * Start the portal.  No parameters here.
 		 */
-		PortalStart(portal, paramLI, InvalidSnapshot);
+		PortalStart(portal, paramLI, InvalidSnapshot,
+					seqServerHost, seqServerPort);
 		
 		/*
 		 * Select text output format, the default.
@@ -1397,7 +1403,7 @@ CheckDebugDtmActionSqlCommandTag(const char *sqlCommandTag)
  * Execute a "simple Query" protocol message.
  */
 static void
-exec_simple_query(const char *query_string)
+exec_simple_query(const char *query_string, const char *seqServerHost, int seqServerPort)
 {
 	CommandDest dest = whereToSendOutput;
 	MemoryContext oldcontext;
@@ -1591,7 +1597,8 @@ exec_simple_query(const char *query_string)
 		/*
 		 * Start the portal.  No parameters here.
 		 */
-		PortalStart(portal, NULL, InvalidSnapshot);
+		PortalStart(portal, NULL, InvalidSnapshot,
+					seqServerHost, seqServerPort);
 
 		/*
 		 * Select the appropriate output format: text unless we are doing a
@@ -2345,7 +2352,8 @@ exec_bind_message(StringInfo input_message)
 					  stmt_list,
 					  qContext);
 	
-	PortalStart(portal, params, InvalidSnapshot);
+	PortalStart(portal, params, InvalidSnapshot,
+				savedSeqServerHost, savedSeqServerPort);
 
 	/*
 	 * Apply the result format requests to the portal.
@@ -4470,7 +4478,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					setupRegularDtxContext();
 					
-					exec_simple_query(query_string);
+					exec_simple_query(query_string, NULL, -1);
 
 					send_ready_for_query = true;
 				}
@@ -4480,20 +4488,27 @@ PostgresMain(int argc, char *argv[], const char *username)
 					/* This is exactly like 'Q' above except we peel off and
 					 * set the snapshot information right away.
 					 */
-					const char *query_string;
+					/*
+					 * Since PortalDefineQuery() does not take NULL query string,
+					 * we initialize it with a contant empty string.
+					 */
+					const char *query_string = pstrdup("");
 					
-					const char *serializedSnapshot;
-					const char *serializedQuerytree;
-					const char *serializedPlantree;
-					const char *serializedParams;
-					const char *serializedSliceInfo;
+					const char *serializedSnapshot = NULL;
+					const char *serializedQuerytree = NULL;
+					const char *serializedPlantree = NULL;
+					const char *serializedParams = NULL;
+					const char *serializedSliceInfo = NULL;
+					const char *seqServerHost = NULL;
 					
-					int query_string_len;
-					int serializedSnapshotlen;
-					int serializedQuerytreelen;
-					int serializedPlantreelen;
-					int serializedParamslen;
-					int serializedSliceInfolen;
+					int query_string_len = 0;
+					int serializedSnapshotlen = 0;
+					int serializedQuerytreelen = 0;
+					int serializedPlantreelen = 0;
+					int serializedParamslen = 0;
+					int serializedSliceInfolen = 0;
+					int seqServerHostlen = 0;
+					int seqServerPort = -1;
 					
 					int		localSlice;
 					int		rootIdx;
@@ -4564,31 +4579,27 @@ PostgresMain(int argc, char *argv[], const char *username)
 					/* get the transaction options */
 					unusedFlags = pq_getmsgint(&input_message, 4);
 					
+					seqServerHostlen = pq_getmsgint(&input_message, 4);
+					seqServerPort = pq_getmsgint(&input_message, 4);
+
 					/* get the query string and kick off processing. */
-					if (query_string_len == 0)
-						query_string = pstrdup("");
-					else
+					if (query_string_len > 0)
 						query_string = pq_getmsgbytes(&input_message,query_string_len);
 					
-					if (serializedQuerytreelen == 0)
-						serializedQuerytree = NULL;
-					else
+					if (serializedQuerytreelen > 0)
 						serializedQuerytree = pq_getmsgbytes(&input_message,serializedQuerytreelen);
 						
-					if (serializedPlantreelen == 0)
-						serializedPlantree = NULL;
-					else
+					if (serializedPlantreelen > 0)
 						serializedPlantree = pq_getmsgbytes(&input_message,serializedPlantreelen);
 						
-					if (serializedParamslen == 0)
-						serializedParams = NULL;
-					else
+					if (serializedParamslen > 0)
 						serializedParams = pq_getmsgbytes(&input_message,serializedParamslen);
 						
-					if (serializedSliceInfolen == 0)
-						serializedSliceInfo = NULL;
-					else
+					if (serializedSliceInfolen > 0)
 						serializedSliceInfo = pq_getmsgbytes(&input_message,serializedSliceInfolen);
+
+					if (seqServerHostlen > 0)
+						seqServerHost = pq_getmsgbytes(&input_message, seqServerHostlen);
 
 					pq_getmsgend(&input_message);
 					 
@@ -4607,54 +4618,44 @@ PostgresMain(int argc, char *argv[], const char *username)
 					
 					setupQEDtxContext(&TempDtxContextInfo);
 					
-					//PG_TRY();
-					{				
-						if (cuid > 0)
-							SetUserIdAndContext(cuid, false); /* Set current userid */
+					if (cuid > 0)
+						SetUserIdAndContext(cuid, false); /* Set current userid */
+
+					if (serializedQuerytreelen==0 && serializedPlantreelen==0)
+					{
+						if (strncmp(query_string, "BEGIN", 5) == 0)
+						{
+							CommandDest dest = whereToSendOutput;
 							
-						if (serializedQuerytreelen==0 && serializedPlantreelen==0)
-							{
-								if (strncmp(query_string, "BEGIN", 5) == 0)
-								{
-									CommandDest dest = whereToSendOutput;
-
-									/*
-									 * Special explicit BEGIN for COPY, etc.
-									 * We've already begun it as part of setting up the context.
-									 */
-									elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain explicit %s", query_string);
-
-									// UNDONE: HACK
-									pgstat_report_activity("BEGIN");
-									
-									set_ps_display("BEGIN", false);
-
-									BeginCommand("BEGIN", dest);
-
-									EndCommand("BEGIN", dest);
-
-								}
-								else
-								{
-									exec_simple_query(query_string);
-								}
-							}
+							/*
+							 * Special explicit BEGIN for COPY, etc.
+							 * We've already begun it as part of setting up the context.
+							 */
+							elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain explicit %s", query_string);
+							
+							// UNDONE: HACK
+							pgstat_report_activity("BEGIN");
+							
+							set_ps_display("BEGIN", false);
+							
+							BeginCommand("BEGIN", dest);
+							
+							EndCommand("BEGIN", dest);
+							
+						}
 						else
-							exec_mpp_query(query_string, 
-											serializedQuerytree, serializedQuerytreelen,
-											serializedPlantree, serializedPlantreelen,
-											serializedParams, serializedParamslen,
-											serializedSliceInfo, serializedSliceInfolen,
-											localSlice);
-						
+						{
+							exec_simple_query(query_string, seqServerHost, seqServerPort);
+						}
 					}
-					//PG_CATCH();
-					//{
-					//	SetUserId(GetOuterUserId());
-					//	PG_RE_THROW();
-					//}
-					//PG_END_TRY();
-						
+					else
+						exec_mpp_query(query_string, 
+									   serializedQuerytree, serializedQuerytreelen,
+									   serializedPlantree, serializedPlantreelen,
+									   serializedParams, serializedParamslen,
+									   serializedSliceInfo, serializedSliceInfolen,
+									   seqServerHost, seqServerPort, localSlice);
+					
 					SetUserIdAndContext(GetOuterUserId(), false);
 
 					send_ready_for_query = true;

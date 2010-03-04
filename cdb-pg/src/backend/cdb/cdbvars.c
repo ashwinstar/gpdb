@@ -52,8 +52,6 @@ char		*qdHostname;		/*QD hostname */
 int			qdPostmasterPort;	/*Master Segment Postmaster port. */
 char       *gp_qd_callback_info;	/* info for QE to call back to QD */
 
-bool		gp_enable_functions; 	/* allow functions that call back from QE to QD */
-
 bool 		gp_is_callback;		/* are we executing a callback query? */
 
 bool		gp_use_dispatch_agent;	/* Use experimental code for Query Dispatch Agent */

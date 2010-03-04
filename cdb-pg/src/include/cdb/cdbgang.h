@@ -112,9 +112,6 @@ getSegmentDescriptorFromGang(const Gang *gp, int seg);
 bool
 reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB);
 
-extern void
-SetSeqServerInfo(struct QueryDesc *queryDesc);
-
 extern Gang * 
 findGangById(int gang_id);
 

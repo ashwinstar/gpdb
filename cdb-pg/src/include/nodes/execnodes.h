@@ -409,8 +409,6 @@ typedef struct SliceTable
 	int nSubplans;				/* The number of subplan slices allocated */
 	int localSlice;				/* Index of the slice to execute. */
 	List *slices;				/* List of slices */
-	char *seqServerHost;		/* If non-null, sequence server host name. */
-	int seqServerPort;			/* If seqServerHost non-null, sequence server port. */
     bool    doInstrument;		/* true => collect stats for EXPLAIN ANALYZE */
 	uint32 ic_instance_id;
 } SliceTable;
@@ -517,7 +515,6 @@ typedef struct EState
         
 	/* MPP used resources */
 	bool es_interconnect_is_setup;   /* is interconnect set-up?    */
-	bool es_seqserver_is_setup;      /* is sequence server set-up? */
         
 	bool es_got_eos;                                /* was end-of-stream recieved? */
 

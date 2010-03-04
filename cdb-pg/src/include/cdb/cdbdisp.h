@@ -59,6 +59,13 @@ typedef struct DispatchCommandQueryParms
 	int			serializedDtxContextInfolen;
 	
 	int			rootIdx;
+
+	/*
+	 * the sequence server info.
+	 */
+	char *seqServerHost;		/* If non-null, sequence server host name. */
+	int seqServerHostlen;
+	int seqServerPort;			/* If seqServerHost non-null, sequence server port. */
 	
 	/*
 	 * Used by dispatch agent if NOT using sliced execution

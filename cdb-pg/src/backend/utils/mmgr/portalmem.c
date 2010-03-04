@@ -35,6 +35,7 @@
 #include "cdb/cdbdisp.h"                /* CdbShutdownPortals, CdbCheckDispatchResult */
 #include "cdb/cdbvars.h"
 #include "cdb/cdbgang.h"
+#include "cdb/ml_ipc.h"
 
 /*
  * Estimate of the maximum number of open portals a user would have,
@@ -375,6 +376,8 @@ PortalDrop(Portal portal, bool isTopCommit)
 	/* Not sure if this case can validly happen or not... */
 	if (PortalGetStatus(portal) == PORTAL_ACTIVE) 
 		elog(ERROR, "cannot drop active or queued portal");
+
+	TeardownSequenceServer();
 
 	/*
 	 * Remove portal from hash table.  Because we do this first, we will not

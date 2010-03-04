@@ -222,7 +222,7 @@ CopyDirectDispatchFromPlanToSliceTable(PlannedStmt *stmt, EState *estate)
  *
  * MPP: In here we take care of setting up all the necessary items that
  * will be needed to service the query, such as setting up interconnect,
- * sequence server, and dispatching the query. Any other items in the future
+ * and dispatching the query. Any other items in the future
  * must be added here.
  * ----------------------------------------------------------------
  */
@@ -455,10 +455,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				 * been filled in in the slice table.)
 				 */
 				AssignGangs(queryDesc, gp_singleton_segindex);
-
-				/* Add sequence server info to the plan's SliceTable. */
-				SetSeqServerInfo(queryDesc);
-
 			}
 		}
 
@@ -578,9 +574,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 			Assert(IsA(motionState->ps.plan, Motion));
 
-			estate->es_seqserver_is_setup = true;
-			SetupSequenceServer(estate->es_sliceTable);
-
 			/* update the connection information, if needed */
 			if (((PlanState *) motionState)->plan->nMotionNodes > 0)
 			{
@@ -590,9 +583,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		}
 		else if (exec_identity == GP_ROOT_SLICE)
 		{
-			estate->es_seqserver_is_setup = true;
-			SetupSequenceServer(estate->es_sliceTable);
-
 			/* Run a root slice. */
 			if (queryDesc->planstate != NULL &&
 				queryDesc->planstate->plan->nMotionNodes > 0 && !estate->es_interconnect_is_setup)

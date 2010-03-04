@@ -1125,8 +1125,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			 */
 			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, &queryDesc->estate->primaryResults, &dispatchThreads);
 
-			SetupSequenceServer(queryDesc->estate->es_sliceTable);
-
 			/*
 			 * Set up the interconnect for execution of the initplan root slice.
 			 */

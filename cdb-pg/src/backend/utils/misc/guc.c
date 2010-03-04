@@ -1777,12 +1777,12 @@ false
     },
 
     {
-    	{"gp_enable_functions", PGC_USERSET, CLIENT_CONN_STATEMENT,
+    	{"gp_enable_functions", PGC_USERSET, DEFUNCT_OPTIONS,
     		gettext_noop("Enable functions that must use the callback from the QE to QD."),
     		NULL,
-				GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+				GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
     	},
-    	&gp_enable_functions,
+    	&defunct_bool,
     	false, NULL, NULL
     },
 

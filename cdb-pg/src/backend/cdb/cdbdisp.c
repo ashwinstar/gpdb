@@ -860,8 +860,23 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 					pParms->queryParms.serializedDtxContextInfo = pQueryParms->serializedDtxContextInfo;
 					pParms->queryParms.serializedDtxContextInfolen = pQueryParms->serializedDtxContextInfolen;
 				}
-				
+
 				pParms->queryParms.rootIdx = pQueryParms->rootIdx;
+
+				if (pQueryParms->seqServerHost == NULL || pQueryParms->seqServerHostlen == 0)
+				{
+					pParms->queryParms.seqServerHost = NULL;
+					pParms->queryParms.seqServerHostlen = 0;
+					pParms->queryParms.seqServerPort = -1;
+				}
+
+				else
+				{
+					pParms->queryParms.seqServerHost = pQueryParms->seqServerHost;
+					pParms->queryParms.seqServerHostlen = pQueryParms->seqServerHostlen;
+					pParms->queryParms.seqServerPort = pQueryParms->seqServerPort;
+				}
+				
 				pParms->queryParms.primary_gang_id = pQueryParms->primary_gang_id;
 			}
 			break;
@@ -1353,6 +1368,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	DispatchCommandQueryParms queryParms;
 	Gang	*primaryGang;
 	int		nsegdb = getgpsegmentCount();
+	CdbComponentDatabaseInfo *qdinfo;
 	
 	if (log_dispatch_stats)
 		ResetUsage();
@@ -1387,6 +1403,13 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	/* Serialize a version of our DTX Context Info */
 	queryParms.serializedDtxContextInfo = 
 		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, false, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommand");
+
+	/* sequence server info */
+	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
+	Assert(qdinfo != NULL && qdinfo->hostip != NULL);
+	queryParms.seqServerHost = pstrdup(qdinfo->hostip);
+	queryParms.seqServerHostlen = strlen(qdinfo->hostip) + 1;
+	queryParms.seqServerPort = seqServerCtl->seqServerPort;
 
 	/*
 	 * Dispatch the command.
@@ -1675,6 +1698,7 @@ thread_DispatchOut(DispatchCommandParms *pParms)
 				pQueryParms->serializedSliceInfo, pQueryParms->serializedSliceInfolen, 
 				pQueryParms->serializedDtxContextInfo, pQueryParms->serializedDtxContextInfolen, 
 				0 /* unused flags*/, pParms->cmdID, pParms->localSlice, pQueryParms->rootIdx,
+				pQueryParms->seqServerHost, pQueryParms->seqServerHostlen, pQueryParms->seqServerPort,
 				pQueryParms->primary_gang_id,
 				GetCurrentStatementStartTimestamp(),
 				pParms->sessUserId, pParms->sessUserId_is_super,
@@ -3533,6 +3557,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	bool		is_SRI;
 	
 	DispatchCommandQueryParms queryParms;
+	CdbComponentDatabaseInfo *qdinfo;
  
 	*pPrimaryResults = NULL;
 	
@@ -3728,6 +3753,14 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	queryParms.serializedSliceInfo = ssliceinfo;
 	queryParms.serializedSliceInfolen= ssliceinfo_len;
 	queryParms.rootIdx = rootIdx;
+
+	/* sequence server info */
+	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
+	Assert(qdinfo != NULL && qdinfo->hostip != NULL);
+	queryParms.seqServerHost = pstrdup(qdinfo->hostip);
+	queryParms.seqServerHostlen = strlen(qdinfo->hostip) + 1;
+	queryParms.seqServerPort = seqServerCtl->seqServerPort;
+
 	queryParms.primary_gang_id = 0;	/* We are relying on the slice table to provide gang ids */
 
 	/* serialized a version of our snapshot */

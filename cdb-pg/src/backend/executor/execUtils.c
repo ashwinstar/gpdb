@@ -275,7 +275,6 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->motionlayer_context = NULL;
 	estate->es_interconnect_is_setup = false;
 	estate->active_recv_id = -1;
-	estate->es_seqserver_is_setup = false;
 	estate->es_got_eos = false;
 	estate->cancelUnfinished = false;
 	estate->primaryResults = NULL;
@@ -1383,8 +1382,6 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 	table->nMotions = nMotions;
 	table->nSubplans = nSubplans;
 	table->slices = NIL;
-	table->seqServerHost = NULL;
-	table->seqServerPort = -1;
     table->doInstrument = false;
 
 	/* Each slice table has a unique-id. */
@@ -1954,8 +1951,7 @@ getGpExecIdentity(QueryDesc *queryDesc,
  * End the gp-specific part of the executor.
  *
  * In here we collect the dispatch results if there are any, tear
- * down the interconnect if it is set-up, and tear down the sequence
- * server if it is set-up.
+ * down the interconnect if it is set-up.
  */
 void mppExecutorFinishup(QueryDesc *queryDesc)
 {
@@ -2054,13 +2050,6 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		cdbdisp_finishCommand(pr, dThreads, NULL, NULL);
 	}
 
-	/* Teardown the Sequence Server */
-	if (estate->es_seqserver_is_setup)
-	{
-		TeardownSequenceServer();
-		estate->es_seqserver_is_setup = false;
-	}
-
 	/* Teardown the Interconnect */
 	if (estate->es_interconnect_is_setup)
 	{
@@ -2107,13 +2096,6 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 		cdbdisp_handleError(estate->primaryResults, estate->dispatchThreads);
 		estate->primaryResults = NULL;
 		estate->dispatchThreads = NULL;
-	}
-
-	/* Clean up the Sequence Server */
-	if (estate->es_seqserver_is_setup)
-	{
-		TeardownSequenceServer();
-		estate->es_seqserver_is_setup = false;
 	}
 
 	/* Clean up the interconnect. */
