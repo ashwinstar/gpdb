@@ -251,6 +251,8 @@ ExecIndexReScan(IndexScanState *node, ExprContext *exprCtxt)
 	ExprContext *econtext;
 	Index		scanrelid;
 
+	initScanDesc(node);
+
 	estate = node->ss.ps.state;
 	econtext = node->iss_RuntimeContext;		/* context for runtime keys */
 	scanrelid = ((IndexScan *) node->ss.ps.plan)->scan.scanrelid;
@@ -280,8 +282,6 @@ ExecIndexReScan(IndexScanState *node, ExprContext *exprCtxt)
 		 */
 		ResetExprContext(econtext);
 	}
-
-	initScanDesc(node);
 
 	/*
 	 * If we are doing runtime key calculations (ie, the index keys depend on

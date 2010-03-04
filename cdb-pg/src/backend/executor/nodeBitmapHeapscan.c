@@ -491,6 +491,8 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 	EState	   *estate;
 	Index		scanrelid;
 
+	initScanDesc(node);
+
 	estate = node->ss.ps.state;
 	scanrelid = ((BitmapHeapScan *) node->ss.ps.plan)->scan.scanrelid;
 
@@ -514,8 +516,6 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 	{
 		estate->es_evTupleNull[scanrelid - 1] = false;
 	}
-
-	initScanDesc(node);
 
 	/* rescan to release any page pin */
 	heap_rescan(node->ss.ss_currentScanDesc, NULL);
