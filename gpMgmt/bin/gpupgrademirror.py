@@ -1052,7 +1052,7 @@ class Phase1(threading.Thread):
     #-------------------------------------------------------------------------------
     def removeCopyOfPrimary(self, seg):
         ''' This method is used during recovery '''
-        print 'in removeCopyOfPrimary'
+        self.logger.debug('in removeCopyOfPrimary')
 
         tempDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix
         rmCmd = RemoveFiles( name = 'gpupgrademirror remove the copied mirror data directory: %s:%s' % (self.nodeName, tempDataDir)
@@ -1064,7 +1064,7 @@ class Phase1(threading.Thread):
 
     #-------------------------------------------------------------------------------
     def checkAvailableSpace(self):
-        print 'in checkAvailableSpace'
+        self.logger.debug('in checkAvailableSpace')
 
         for seg in self.mirrorSegmentList:
             ''' Get size of primary '''
@@ -1236,7 +1236,7 @@ class Phase2(threading.Thread):
 
     #------------------------------------------------------------------------------ 
     def newMirrorSpecialFileFixup(self, seg):
-        print 'in newMirrorSpecialFileFixup'
+        self.logger.debug('in newMirrorSpecialFileFixup')
 
         for file in self.fixupFileList:
             fullPathSource = seg.primary_data_directory + '/' + file
@@ -1363,8 +1363,8 @@ try:
   if options.rollback == True:
      ''' setup for rollback '''
      if overallStatus.get_current_status() == (None, None):
-        logging.error('There is no upgrade mirror in progress')
-        raise ValidationError('Unable to rollback')
+        logging.warning('There is no upgrade mirror in progress')
+        exit(0)
      elif overallStatus.compare_status("SETUP_DONE") < 0:
          """ We have not gotten past the setup phase,    """
          """ so remove the overall status file and exit. """
