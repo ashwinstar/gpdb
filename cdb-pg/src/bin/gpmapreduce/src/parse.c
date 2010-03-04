@@ -220,7 +220,11 @@ void parser_set_version(mapred_parser_t *parser, char *value)
 	 * We have already assured that the value matches a good regex,
 	 * but we must still validate that the version itself is supported.
 	 */
-	/* FIXME */
+	if (strcmp(value, "1.0.0.1") < 0 || strcmp(value, "1.0.0.2") > 0)
+	{
+		mapred_parse_error(parser, "Unrecognized VERSION");
+	}
+
 	parser->current_doc->u.document.version = copyscalar(value);
 }
 
@@ -970,6 +974,43 @@ void parser_set_function(mapred_parser_t *parser, char *value)
 	}
 }
 
+/*
+ * parser_set_library was added to support the "LIBRARY" option in mapreduce 
+ * yaml schema version 1.0.0.2.  This is used by C language functions to 
+ * specify which code library the C function is defined in.
+ *
+ * - MAP:
+ *     ...
+ *     LIBRARY:  $libdir/libfoo
+ *     FUNCTION: myFunc
+ */
+void parser_set_library(mapred_parser_t *parser, char *value)
+{
+	XASSERT(parser->current_doc);
+	XASSERT(parser->current_obj);
+	XASSERT(parser->current_obj->kind == MAPRED_MAPPER     ||
+			parser->current_obj->kind == MAPRED_TRANSITION ||
+			parser->current_obj->kind == MAPRED_COMBINER   ||
+			parser->current_obj->kind == MAPRED_FINALIZER);
+
+	if (!value || strlen(value) == 0)
+	{
+		value = "";
+		mapred_parse_error(parser, "Invalid LIBRARY");
+	}
+	if (parser->current_obj->u.function.library)
+	{
+		mapred_parse_error(parser, "Duplicate LIBRARY");
+		return;
+	}
+	parser->current_obj->u.function.library = copyscalar(value);
+
+	/* 
+	 * We will validate that the document version is >= 1.0.0.2
+	 * durring object verification.
+	 */
+}
+
 void parser_set_optimize(mapred_parser_t *parser, char *value)
 {
    /* FIXME */
@@ -1487,7 +1528,7 @@ void mapred_dump_yaml(mapred_object_t *obj)
 		case MAPRED_DOCUMENT:
 			printf("---\n");
 			/* Dumping the current version */
-			printf("VERSION:          1.0.0.1\n");  
+			printf("VERSION:          1.0.0.2\n");
 			if (obj->u.document.database)
 				printf("DATABASE:         %s\n", obj->u.document.database);
 			if (obj->u.document.user)
@@ -1728,29 +1769,30 @@ void mapred_dump_yaml(mapred_object_t *obj)
 	
 int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 {
-	char *name, *type;
+	char *name;
 	int error = NO_ERROR;
 
 	XASSERT(obj);
 
 	/* Verify that all required fields are present and valid */
 	name = obj->name ? obj->name : "unnamed";
-	type = NULL;
 	switch (obj->kind)
 	{
 		case MAPRED_DOCUMENT:
+			
+			/* 
+			 * If there is a version on the document then it should have
+			 * been validated by parser_set_version()
+			 */
 			if (!obj->u.document.version)
 			{
 				error = mapred_obj_error(obj, "Missing VERSION", 
 										 parser->doc_number);
 			}
 
-			/* FIXME: Check version contents */
-
 			break;
 
 		case MAPRED_INPUT:
-			type = "INPUT";
 
 			/* Validate required fields */
 			if (!obj->name)
@@ -1778,7 +1820,6 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 			break;
 
 		case MAPRED_OUTPUT:
-			type = "OUTPUT";
 
 			if (!obj->name)
 				error = mapred_obj_error(obj, "Missing NAME");
@@ -1787,155 +1828,115 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 			break;
 
 		case MAPRED_MAPPER:
-			type = "MAP";
-
-			if (!obj->name)
-				error = mapred_obj_error(obj, "Missing NAME");
-			if (!obj->u.function.language)
-				error = mapred_obj_error(obj, "Missing LANGUAGE");
-			if (!obj->u.function.body)
-				error = mapred_obj_error(obj, "Missing FUNCTION");
-
-			/*
-			 * Good idea, but perl doesn't support it (yet)
-			 */
-			/*
-			if (obj->u.function.mode == MAPRED_MODE_NONE)
-				obj->u.function.mode = MAPRED_MODE_MULTI;
-			*/
-
-			/* set default values */
-			if (error == NO_ERROR)
-			{
-				if (!obj->u.function.parameters)
-				{
-					obj->u.function.parameters = malloc(sizeof(mapred_plist_t));
-					obj->u.function.parameters->name = copyscalar("key");
-					obj->u.function.parameters->type = copyscalar("text");
-					obj->u.function.parameters->next = malloc(sizeof(mapred_plist_t));
-					obj->u.function.parameters->next->name = copyscalar("value");
-					obj->u.function.parameters->next->type = copyscalar("text");
-					obj->u.function.parameters->next->next = NULL;
-				}
-				if (!obj->u.function.returns)
-				{
-					obj->u.function.returns = malloc(sizeof(mapred_plist_t));
-					obj->u.function.returns->name = copyscalar("key");
-					obj->u.function.returns->type = copyscalar("text");
-					obj->u.function.returns->next = malloc(sizeof(mapred_plist_t));
-					obj->u.function.returns->next->name = copyscalar("value");
-					obj->u.function.returns->next->type = copyscalar("text");
-					obj->u.function.returns->next->next = NULL;
-				}
-				if (obj->u.function.mode == MAPRED_MODE_NONE)
-					obj->u.function.mode = MAPRED_MODE_MULTI;
-			}
-			break;
-
 		case MAPRED_TRANSITION:
-			type = "TRANSITION";
-
-			if (!obj->name)
-				error = mapred_obj_error(obj, "Missing NAME");
-			if (!obj->u.function.language)
-				error = mapred_obj_error(obj, "Missing LANGUAGE");
-			if (!obj->u.function.body)
-				error = mapred_obj_error(obj, "Missing FUNCTION");
-
-			/* set default values */
-			if (error == NO_ERROR)
-			{
-				if (!obj->u.function.parameters)
-				{
-					obj->u.function.parameters = malloc(sizeof(mapred_plist_t));
-					obj->u.function.parameters->name = copyscalar("state");
-					obj->u.function.parameters->type = copyscalar("text");
-					obj->u.function.parameters->next = malloc(sizeof(mapred_plist_t));
-					obj->u.function.parameters->next->name = copyscalar("value");
-					obj->u.function.parameters->next->type = copyscalar("text");
-					obj->u.function.parameters->next->next = NULL;
-				}
-				if (!obj->u.function.returns)
-				{
-					obj->u.function.returns = malloc(sizeof(mapred_plist_t));
-					obj->u.function.returns->name = copyscalar("value");
-					obj->u.function.returns->type = copyscalar("text");
-					obj->u.function.returns->next = NULL;
-				}
-			}
-			if (obj->u.function.mode == MAPRED_MODE_NONE)
-				obj->u.function.mode = MAPRED_MODE_SINGLE;
-			break;
-
 		case MAPRED_COMBINER:
-			type = "CONSOLIDATE";
-
-			if (!obj->name)
-				error = mapred_obj_error(obj, "Missing NAME");
-			if (!obj->u.function.language)
-				error = mapred_obj_error(obj, "Missing LANGUAGE");
-			if (!obj->u.function.body)
-				error = mapred_obj_error(obj, "Missing FUNCTION");
-
-			/* set default values */
-			if (error == NO_ERROR)
-			{
-				if (!obj->u.function.parameters)
-				{
-					obj->u.function.parameters = malloc(sizeof(mapred_plist_t));
-					obj->u.function.parameters->name = copyscalar("state1");
-					obj->u.function.parameters->type = copyscalar("text");
-					obj->u.function.parameters->next = malloc(sizeof(mapred_plist_t));
-					obj->u.function.parameters->next->name = copyscalar("state2");
-					obj->u.function.parameters->next->type = copyscalar("text");
-					obj->u.function.parameters->next->next = NULL;
-				}
-				if (!obj->u.function.returns)
-				{
-					obj->u.function.returns = malloc(sizeof(mapred_plist_t));
-					obj->u.function.returns->name = copyscalar("value");
-					obj->u.function.returns->type = copyscalar("text");
-					obj->u.function.returns->next = NULL;
-				}
-			}
-			if (obj->u.function.mode == MAPRED_MODE_NONE)
-				obj->u.function.mode = MAPRED_MODE_SINGLE;
-			break;
-
 		case MAPRED_FINALIZER:
-			type = "FINALIZE";
 
 			if (!obj->name)
 				error = mapred_obj_error(obj, "Missing NAME");
-			if (!obj->u.function.language)
-				error = mapred_obj_error(obj, "Missing LANGUAGE");
-			if (!obj->u.function.body)
+
+			/*
+			 * We now support "builtin" functions, which are specified by a lack
+			 * of an implementation language.  If a language is specified then
+			 * a function body is still required.  If a language is not specified
+			 * then the function body just defaults to the name of the function.
+			 */
+			if (obj->name && !obj->u.function.language && !obj->u.function.body)
+				obj->u.function.body = copyscalar(obj->name);
+
+			if (obj->u.function.language && !obj->u.function.body)
 				error = mapred_obj_error(obj, "Missing FUNCTION");
 
-			/* set default values */
-			if (error == NO_ERROR)
+			/* 
+			 * LIBRARY is required for "C" language functions.
+			 * LIBRARY is invalid for any other language.
+			 *
+			 * It would be good to verify that LIBRARY is not used in
+			 * older YAML formats, but that is difficult given the current
+			 * structure of the code.
+			 */
+			if (obj->u.function.language)
 			{
+				if (obj->u.function.library)
+				{ 
+					if (strcasecmp("C", obj->u.function.language))
+					{
+						error = mapred_obj_error(obj, "LIBRARY is invalid for "
+												 "%s LANGUAGE functions",
+												 obj->u.function.language);
+					}
+				} 
+				else if (!strcasecmp("C", obj->u.function.language))
+				{
+					error = mapred_obj_error(obj, "Missing LIBRARY");
+				}
+
+				/* 
+				 * Don't bother filling in default arguments if we already have
+				 * an error.
+				 */
+				if (error)
+					break;
+
+				/*
+				 * Set default values.
+				 *   For builtin functions we delay this so that we can lookup the
+				 *   function in the catalog to determine the defaults.
+				 */
 				if (!obj->u.function.parameters)
 				{
+					const char *name = default_parameter_names[obj->kind][0];
+					name = default_parameter_names[obj->kind][0];
 					obj->u.function.parameters = malloc(sizeof(mapred_plist_t));
-					obj->u.function.parameters->name = copyscalar("state");
 					obj->u.function.parameters->type = copyscalar("text");
+					obj->u.function.parameters->name = copyscalar(name);
 					obj->u.function.parameters->next = NULL;
+
+					name = default_parameter_names[obj->kind][1];
+					if (name)
+					{
+						obj->u.function.parameters->next = malloc(sizeof(mapred_plist_t));
+						obj->u.function.parameters->next->type = copyscalar("text");
+						obj->u.function.parameters->next->name = copyscalar(name);
+						obj->u.function.parameters->next->next = NULL;						
+					}
 				}
+
 				if (!obj->u.function.returns)
 				{
+					const char *name = default_return_names[obj->kind][0];
 					obj->u.function.returns = malloc(sizeof(mapred_plist_t));
-					obj->u.function.returns->name = copyscalar("value");
 					obj->u.function.returns->type = copyscalar("text");
+					obj->u.function.returns->name = copyscalar(name);
 					obj->u.function.returns->next = NULL;
+
+					name = default_return_names[obj->kind][1];
+					if (name)
+					{
+						obj->u.function.returns->next = malloc(sizeof(mapred_plist_t));
+						obj->u.function.returns->next->type = copyscalar("text");
+						obj->u.function.returns->next->name = copyscalar(name);
+						obj->u.function.returns->next->next = NULL;						
+					}
 				}
+
+				/* Set default mode: depends on type of function */
 				if (obj->u.function.mode == MAPRED_MODE_NONE)
-					obj->u.function.mode = MAPRED_MODE_MULTI;
+				{
+					if (obj->kind == MAPRED_TRANSITION || 
+						obj->kind == MAPRED_COMBINER)
+					{
+						obj->u.function.mode = MAPRED_MODE_SINGLE;
+					}
+					else
+					{
+						obj->u.function.mode = MAPRED_MODE_MULTI;
+					}
+				}
 			}
 			break;
 
 		case MAPRED_REDUCER:
-			type = "REDUCE";
 
 			if (!obj->name)
 				error = mapred_obj_error(obj, "Missing NAME");
@@ -1959,15 +1960,12 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 			break;
 
 		case MAPRED_TASK:
-			type = "TASK";
 			if (!obj->name)
 				error = mapred_obj_error(obj, "Missing NAME");
 
 			/* Fallthrough */
 
 		case MAPRED_EXECUTION:
-			if (!type)
-				type = "RUN";
 			
 			if (!obj->u.task.input.name)
 				error = mapred_obj_error(obj, "Missing SOURCE");

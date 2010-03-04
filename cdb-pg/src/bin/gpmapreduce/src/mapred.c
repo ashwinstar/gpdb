@@ -33,6 +33,41 @@ const char *mapred_kind_name[MAPRED_MAXKIND+1] =
 	"INTERNAL"
 };
 
+/* instantiate default parameter names from mapred.h */
+const char *default_parameter_names[MAPRED_MAXKIND+1][2] =
+{
+	{NULL, NULL},          /* MAPRED_NO_KIND */
+	{NULL, NULL},          /* MAPRED_DOCUMENT */
+	{NULL, NULL},          /* MAPRED_INPUT */
+	{NULL, NULL},          /* MAPRED_OUTPUT */
+	{"key", "value"},      /* MAPRED_MAPPER */
+	{"state", "value"},    /* MAPRED_TRANSITION */
+	{"state1", "state2"},  /* MAPRED_COMBINER */
+	{"state", NULL},       /* MAPRED_FINALIZER */
+	{NULL, NULL},          /* MAPRED_REDUCER */
+	{NULL, NULL},          /* MAPRED_TASK */
+	{NULL, NULL},          /* MAPRED_EXECUTION */
+	{NULL, NULL}           /* MAPRED_ADT */
+};
+
+/* instantiate default parameter names from mapred.h */
+const char *default_return_names[MAPRED_MAXKIND+1][2] =
+{
+	{NULL, NULL},          /* MAPRED_NO_KIND */
+	{NULL, NULL},          /* MAPRED_DOCUMENT */
+	{NULL, NULL},          /* MAPRED_INPUT */
+	{NULL, NULL},          /* MAPRED_OUTPUT */
+	{"key", "value"},      /* MAPRED_MAPPER */
+	{"value", NULL},       /* MAPRED_TRANSITION */
+	{"value", NULL},       /* MAPRED_COMBINER */
+	{"value", NULL},       /* MAPRED_FINALIZER */
+	{NULL, NULL},          /* MAPRED_REDUCER */
+	{NULL, NULL},          /* MAPRED_TASK */
+	{NULL, NULL},          /* MAPRED_EXECUTION */
+	{NULL, NULL}           /* MAPRED_ADT */
+};
+
+
 /* 
  * libpq Errors that we care about
  * (would be better to add <errcodes.h> to the include path)
@@ -65,6 +100,8 @@ void mapred_resolve_ref(mapred_olist_t *olist, mapred_reference_t *ref);
 void mapred_resolve_object(PGconn *conn, mapred_document_t *doc, 
 						   mapred_object_t *obj, int *exec_count);
 
+void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc, 
+								mapred_object_t *obj);
 
 /* Wrappers around malloc/free to handle error conditions more cleanly */
 void *mapred_malloc(int size)
@@ -88,6 +125,9 @@ void *mapred_malloc(int size)
 
 	return m;
 }
+
+#define copyscalar(s)							\
+	strcpy(mapred_malloc(strlen(s)+1), s)
 
 void mapred_free(void *ptr)
 {
@@ -125,6 +165,61 @@ int mapred_obj_error(mapred_object_t *obj, char *fmt, ...)
 	return MAPRED_PARSE_ERROR;
 }
 
+static void mapred_obj_debug(mapred_object_t *obj)
+{
+	mapred_plist_t *plist;
+
+	if (!obj)
+	{
+		fprintf(stderr, "Object is NULL");
+		return;
+	}
+	fprintf(stderr, "%s: \n", mapred_kind_name[obj->kind]);
+	fprintf(stderr, "  NAME: '%s': \n", obj->name ? obj->name : "-");
+	switch (obj->kind)
+	{
+		case MAPRED_NO_KIND:
+		case MAPRED_DOCUMENT:
+		case MAPRED_ADT:
+		case MAPRED_INPUT:
+		case MAPRED_OUTPUT:
+		case MAPRED_TASK:
+		case MAPRED_EXECUTION:
+		case MAPRED_REDUCER:
+		{
+			fprintf(stderr, "  DEBUG: 'debug output not yet implemented'\n");
+			break;
+		}
+
+		case MAPRED_MAPPER:
+		case MAPRED_TRANSITION:
+		case MAPRED_COMBINER:
+		case MAPRED_FINALIZER:
+		{
+			fprintf(stderr, "  LANGUAGE: %s\n", obj->u.function.language ? 
+					obj->u.function.language : "-");
+			fprintf(stderr, "  PARAMETERS: [");
+			for (plist = obj->u.function.parameters; plist; plist = plist->next)
+			{
+				fprintf(stderr, "%s %s%s", plist->name, plist->type, 
+						plist->next ? ", " : "");
+			}
+			fprintf(stderr,"]\n");
+			fprintf(stderr, "  RETURNS: [");
+			for (plist = obj->u.function.returns; plist; plist = plist->next)
+			{
+				fprintf(stderr, "%s %s%s", plist->name, plist->type, 
+						plist->next ? ", " : "");
+			}
+			fprintf(stderr,"]\n");
+			fprintf(stderr, "  LIBRARY: %s\n", obj->u.function.library ?
+					obj->u.function.library : "-");
+			fprintf(stderr, "  FUNCTION: %s\n", obj->u.function.body ?
+					obj->u.function.body : "-");
+			break;
+		}
+	}
+}
 
 
 /* -------------------------------------------------------------------------- */
@@ -210,9 +305,616 @@ void print_notice_handler(void *arg, const PGresult *res)
 
 	if (global_verbose_flag)
 		fprintf(stderr, "   - ");
-	fprintf(stderr, error);
+	fprintf(stderr, "%s", error);
 }
 
+/* 
+ * If a function is already defined in the database we need to be able to
+ * lookup the function information directly from the catalog.  This is 
+ * fairly similar to func_get_detail in backend/parser/parse_func.c, but
+ * the lookup from yaml is slightly different because we don't know the 
+ * context that the function is in, but we _might_ have been told some
+ * of the parameter information already.
+ */
+void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc, 
+								mapred_object_t *obj)
+{
+	PGresult        *result = NULL;
+	PGresult        *result2 = NULL;
+	mapred_plist_t  *plist, *plist2;
+	mapred_plist_t  *newitem;
+	mapred_plist_t  *returns;
+	buffer_t        *buffer = NULL;
+	char             str[50];
+	int              i, nargs;
+	
+	XASSERT(doc);
+	XASSERT(obj);
+	XASSERT(obj->kind == MAPRED_MAPPER     ||
+			obj->kind == MAPRED_TRANSITION ||
+			obj->kind == MAPRED_COMBINER   ||
+			obj->kind == MAPRED_FINALIZER);
+
+	obj->internal = true;
+	XTRY 
+	{
+		buffer = makebuffer(1024, 1024);
+
+		/* Try to lookup the specified function */
+		bufcat(&buffer, 
+			   "SELECT proretset, prorettype::regtype, pronargs,\n"
+			   "       proargnames, proargmodes, \n"
+			   "       (proargtypes::regtype[])[0:pronargs] as proargtypes,\n"
+			   "       proallargtypes::regtype[],\n");
+
+		/*
+		 * If we have return types defined in the yaml then we want to resolve
+		 * them to their authorative names for comparison purposes. 
+		 */
+		if (obj->u.function.returns)
+		{
+			bufcat(&buffer, "       ARRAY[");
+			for (plist = obj->u.function.returns; plist; plist = plist->next)
+			{
+				if (plist->type)
+				{
+					bufcat(&buffer, "'");
+					bufcat(&buffer, plist->type);
+					bufcat(&buffer, "'::regtype");
+				}
+				else
+				{
+					/* If we don't know the type, punt */
+					bufcat(&buffer, "'-'::regtype");
+				}
+				if (plist->next)
+					bufcat(&buffer, ", ");
+			}
+			bufcat(&buffer, "] as yaml_rettypes\n");
+		}
+		else
+		{
+			bufcat(&buffer, "       null::regtype[] as yaml_rettypes\n");
+		}
+
+		bufcat(&buffer,
+			   "FROM   pg_proc\n"
+			   "WHERE  not proisagg and not proiswin\n"
+			   "  AND  proname = lower('");
+		bufcat(&buffer, obj->name);
+		bufcat(&buffer, "')\n");
+
+		/* Fill in the known parameter types */
+		nargs = 0;
+		if (obj->u.function.parameters)
+		{
+			bufcat(&buffer, "  AND  (proargtypes::regtype[])[0:pronargs] = ARRAY[");
+			for (plist = obj->u.function.parameters; plist; plist = plist->next)
+			{
+				nargs++;
+				bufcat(&buffer, "'");
+				bufcat(&buffer, plist->type);
+				bufcat(&buffer, "'::regtype");
+				if (plist->next)
+					bufcat(&buffer, ", ");
+			}
+			snprintf(str, 50, "]\n  AND pronargs=%d\n", nargs);
+			bufcat(&buffer, str);
+		}
+		
+		/* Run the SQL */
+		if (global_print_flag || global_debug_flag)
+			printf("%s", buffer->buffer);
+		result = PQexec(conn, buffer->buffer);
+		bufreset(buffer);
+		
+		if (PQresultStatus(result) != PGRES_TUPLES_OK)
+		{
+			/* 
+			 * The SQL statement failed: 
+			 * Most likely scenario is a bad datatype causing the regtype cast
+			 * to fail.
+			 */
+			char *code  = PQresultErrorField(result, PG_DIAG_SQLSTATE);
+			char *error = PQresultErrorMessage(result);
+
+			printf("errcode=\"%s\"\n", code);  /* Todo: validate expected error code */
+
+			mapred_obj_error(obj, "SQL Error resolving function: \n  %s",
+							 error);
+			XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+		}
+		else if (PQntuples(result) == 0)
+		{
+			/* No such function */
+			mapred_obj_error(obj, "No such function");
+			XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+		}
+		else if (PQntuples(result) > 1)
+		{
+			XASSERT(!obj->u.function.parameters);
+			mapred_obj_error(obj, "Ambiguous function, supply a function "
+							 "prototype for disambiguation");
+			XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+		}
+		else
+		{
+			char		*value;
+			int          len;
+			boolean		 retset;
+			int          nargs;
+			char		*argtypes	 = NULL;
+			char		*argnames	 = "";
+			char		*argmodes	 = "";
+			char		*allargtypes = "";
+			char		*rettype	 = NULL;
+			char        *yaml_rettypes = "";
+			char        *type, *typetokens;
+			char        *name, *nametokens;
+			char        *mode, *modetokens;
+				
+			value = PQgetvalue(result, 0, 0);   /* Column 0: proretset */
+			retset = (value[0] == 't');
+			value = PQgetvalue(result, 0, 1);   /* Column 1: prorettype */
+			rettype = value;
+			value = PQgetvalue(result, 0, 2);   /* Column 2: pronargs */
+			nargs = (int) strtol(value, (char **) NULL, 10);
+			
+			/* 
+			 * Arrays are formated as:  "{value, value, ...}" 
+			 * of which we only want "value, value, ..." 
+			 * so find the part of the string between the braces
+			 */
+			if (!PQgetisnull(result, 0, 3))   /* Column 3: proargnames */
+			{
+				value = PQgetvalue(result, 0, 3);
+				argnames = value+1;
+				len = strlen(argnames);
+				if (len > 0)
+					argnames[len-1] = '\0';
+			}
+
+			if (!PQgetisnull(result, 0, 4))   /* Column 4: proargmodes */
+			{
+				value = PQgetvalue(result, 0, 4);
+				argmodes = value+1;
+				len = strlen(argmodes);
+				if (len > 0)
+					argmodes[len-1] = '\0';
+			}
+			if (!PQgetisnull(result, 0, 5))   /* Column 5: proargtypes */
+			{
+				value = PQgetvalue(result, 0, 5);
+				argtypes = value+1;
+				len = strlen(argtypes);
+				if (len > 0)
+					argtypes[len-1] = '\0';
+			}
+			if (!PQgetisnull(result, 0, 6))   /* Column 6: proallargtypes */
+			{
+				value = PQgetvalue(result, 0, 6);
+				allargtypes = value+1;
+				len = strlen(allargtypes);
+				if (len > 0)
+					allargtypes[len-1] = '\0';
+			}
+			if (!PQgetisnull(result, 0, 7))   /* Column 7: yaml_rettypes */
+			{
+				value = PQgetvalue(result, 0, 7);
+				yaml_rettypes = value+1;
+				len = strlen(yaml_rettypes);
+				if (len > 0)
+					yaml_rettypes[len-1] = '\0';
+			}
+
+			/*
+			 * These constraints should all be enforced in the catalog, so
+			 * if something is wrong then it's a coding error above. 
+			 */
+			XASSERT(rettype);
+			XASSERT(argtypes);
+			XASSERT(nargs >= 0);
+
+			/*
+			 * If we just derived the parameters from the catalog then we
+			 * need complete our internal metadata.
+			 */
+			plist = NULL;
+			if (!obj->u.function.parameters)
+			{
+				type = strtok_r(argtypes, ",", &typetokens);
+
+				/* 
+				 * Name and mode are used for IN/OUT parameters and may not be 
+				 * present.  In the event that they are we are looking for:
+				 *   - the "i" (in) arguments
+				 *   - the "b" (inout) arguments
+				 * we skip over:
+				 *   - the "o" (out) arguments.
+				 *   - the "t" (table out) arguments.
+				 *
+				 * Further it is possible for some of the arguments to be named
+				 * and others to be unnamed.  The unnamed arguments will show
+				 * up as "" (two quotes, not an empty string) if there is an
+				 * argnames defined.
+				 *
+				 * If argmodes is not defined then all names in proargnames 
+				 * refer to input arguments.  
+				 */
+				name = strtok_r(argnames, ",", &nametokens);
+				mode = strtok_r(argmodes, ",", &modetokens);
+
+				while (mode && mode != "i" && mode != "b")
+				{
+					name = strtok_r(NULL, ",", &nametokens);
+					mode = strtok_r(NULL, ",", &modetokens);
+				}
+
+				i = 0;
+				while (type)
+				{
+					/* Keep track of which parameter we are on */
+					i++;
+					XASSERT(i <= nargs);
+
+					/* 
+					 * If a name was not specified by the user, and was not
+					 * specified by the in/out parameters then we assign it a
+					 * default name.
+					 */
+					if (!name)
+					{
+						/* Base name on default parameter names for the first
+						 * two arguments */
+						if (i <= 2)
+							name = (char*) default_parameter_names[obj->kind][i-1];
+
+						/*
+						 * If we still didn't decide on a name, make up
+						 * something useless.
+						 */
+						if (!name)
+						{
+							snprintf(str, 50, "parameter%d", i);
+							name = str;
+						}
+					}
+					
+					if (!plist)
+					{
+						plist = mapred_malloc(sizeof(mapred_plist_t));
+						plist->name = copyscalar(name);
+						plist->type = copyscalar(type);
+						plist->next = (mapred_plist_t *) NULL;
+						obj->u.function.parameters = plist;
+					}
+					else
+					{
+						plist->next = mapred_malloc(sizeof(mapred_plist_t));
+						plist = plist->next;
+						plist->name = copyscalar(name);
+						plist->type = copyscalar(type);
+						plist->next = (mapred_plist_t *) NULL;
+					}
+					
+					/* Procede to the next parameter */
+					type = strtok_r(NULL, ",", &typetokens);
+					name = strtok_r(NULL, ",", &nametokens);
+					mode = strtok_r(NULL, ",", &modetokens);
+					while (mode && mode != "i" && mode != "b")
+					{
+						name = strtok_r(NULL, ",", &nametokens);
+						mode = strtok_r(NULL, ",", &modetokens);
+					}
+				}
+			}
+
+			/* 
+			 * Check that the number of parameters received is appropriate.
+			 * This would be better moved to a generalized validation routine.
+			 */
+			switch (obj->kind)
+			{
+
+				case MAPRED_MAPPER:
+					/*
+					 * It would probably be possible to start supporting zero
+					 * argument mappers, but:
+					 *   1) It would require more modifications
+					 *   2) Doesn't currently have a known use case
+					 *   3) Has easy workarounds
+					 */
+					if (nargs < 1)
+					{
+						mapred_obj_error(obj, "Transition functions require "
+										 "two or more parameters");
+						XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+					}
+					break;
+
+				case MAPRED_TRANSITION:
+					if (nargs < 2)
+					{
+						mapred_obj_error(obj, "Transition functions require "
+										 "two or more parameters");
+						XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+					}
+					if (retset)
+					{
+						mapred_obj_error(obj, "Transition functions cannot "
+										 "be table functions");
+						XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+					}
+					break;
+
+				case MAPRED_COMBINER:
+					if (nargs != 2)
+					{
+						mapred_obj_error(obj, "Consolidate functions require "
+										 "exactly two parameters");
+						XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+					}
+					if (retset)
+					{
+						mapred_obj_error(obj, "Consolidate functions cannot "
+										 "be table functions");
+						XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+					}
+					break;
+
+				case MAPRED_FINALIZER:
+					if (nargs != 1)
+					{
+						mapred_obj_error(obj, "Finalize functions require "
+										 "exactly one parameter");
+						XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+					}
+					break;
+
+				default:
+					XASSERT(false);
+			}
+
+			/* Fill in return type information */
+			if (retset)
+				obj->u.function.mode = MAPRED_MODE_MULTI;
+			else
+				obj->u.function.mode = MAPRED_MODE_SINGLE;
+
+			/* 
+			 * Determine the return type information, there are 3 primary 
+			 * subcases:
+			 *
+			 *  1) Function is defined with OUT/TABLE parameters.
+			 *  2) Function returns a simple type.
+			 *  3) Function returns a complex type.
+			 *  4) Return type is void [error]
+			 */
+			returns = plist = NULL;
+			if (argmodes && strlen(argmodes) > 0)
+			{
+				type = strtok_r(allargtypes, ",", &typetokens);
+				name = strtok_r(argnames, ",", &nametokens);
+				mode = strtok_r(argmodes, ",", &modetokens);
+				
+				while (mode)
+				{
+					while (mode && mode != "o" && mode != "b" && mode != "t")
+					{
+						type = strtok_r(NULL, ",", &typetokens);
+						name = strtok_r(NULL, ",", &nametokens);
+						mode = strtok_r(NULL, ",", &modetokens);
+					}
+					if (mode)
+					{
+						XASSERT(type);
+
+						newitem = mapred_malloc(sizeof(mapred_plist_t));
+
+						/* 
+						 * Note we haven't made local copies of these, we will
+						 * do this after resolution when validating against any
+						 * RETURNS defined in the yaml, if any.
+						 */
+						newitem->name = name;
+						newitem->type = type;
+						newitem->next = NULL;
+
+						if (!returns)
+							returns = newitem;
+						else
+							plist->next = newitem;
+						plist = newitem;
+					}
+				}
+			}
+
+			/* 
+			 * If the arguments were not defined in the function definition then
+			 * we check to see if this was a complex type by looking up the type
+			 * information in pg_attribute.
+			 */
+			if (!returns)
+			{
+				bufcat(&buffer,
+					   "SELECT attname, atttypid::regtype\n"
+					   "FROM   pg_attribute a\n"
+					   "JOIN   pg_class c on (a.attrelid = c.oid)\n"
+					   "WHERE  not a.attisdropped\n"
+					   "  AND  a.attnum > 0\n"
+					   "  AND  c.reltype = '");
+				bufcat(&buffer, rettype);
+				bufcat(&buffer, 
+					   "'::regtype\n"
+					   "ORDER BY -attnum");
+				result2 = PQexec(conn, buffer->buffer);
+				bufreset(buffer);
+				
+				if (PQresultStatus(result2) != PGRES_TUPLES_OK)
+				{
+					char *error = PQresultErrorMessage(result);
+
+					mapred_obj_error(obj, "Error resolving function: %s", error);
+					XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+				}
+				else if (PQntuples(result) > 1)
+				{
+					/* We have a complex type, build the return list */
+					for (i = 0; i < PQntuples(result); i++)
+					{
+						name = PQgetvalue(result, i, 0);
+						type = PQgetvalue(result, i, 1);
+
+						newitem = mapred_malloc(sizeof(mapred_plist_t));
+						newitem->name = copyscalar(name);
+						newitem->type = copyscalar(type);
+						newitem->next = returns;
+						returns = newitem->next;
+					}
+				}
+			}
+
+			/* 
+			 * If the return types were not defined in either the argument list
+			 * nor the catalog then we assume it is a simple type.
+			 */
+			if (!returns)
+			{
+				/* Check against "void" which is a special return type that
+				 * means there is no return value - which we don't support for
+				 * mapreduce.
+				 */
+				if (!strcmp(rettype, "void"))
+				{
+					mapred_obj_error(obj, "Function returns void");
+					XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+				}
+				returns = mapred_malloc(sizeof(mapred_plist_t));
+				returns->type = rettype;
+				returns->name = NULL;
+				returns->next = NULL;
+			}
+
+			/* 
+			 * We now should have a returns list, compare it against the RETURNS
+			 * list given in the yaml.  The yaml overrides return names, but can
+			 * not override return types.  If the return types are incompatible
+			 * raise an error.  
+			 */
+			if (obj->u.function.returns)
+			{
+				/* 
+				 * The first thing to do is normalize the given return types 
+				 * with their formal names.  This will, for example turn a type
+				 * like "float8" => "double precision".  The input name might
+				 * be correct (float8) but we need it represented as the formal
+				 * name so that we can compare against the formal name we got
+				 * when we looked up the function in the catalog.
+				 */
+				plist = obj->u.function.returns;
+				type = strtok_r(yaml_rettypes, ",", &typetokens);
+				while (plist)
+				{
+					XASSERT(type);  /* should be an equal number */
+					
+					/* 
+					 * If we have a type specified replace it with the one we
+					 * resolved from the select stmt, otherwise just keep it
+					 * as NULL and fill it in during the compare against what
+					 * was in the catalog.
+					 */
+					if (plist->type)
+					{
+						mapred_free(plist->type);
+						
+						/* 
+						 * When in an array the typname may get wrapped in
+						 * double quotes, if so we need to strip them back out.
+						 */
+						if (type[0] == '"')
+						{
+							plist->type = copyscalar(type+1);
+							plist->type[strlen(plist->type)-1] = '\0';
+						}
+						else
+						{
+							plist->type = copyscalar(type);
+						}
+					}
+
+					plist = plist->next;
+					type = strtok_r(NULL, ",", &typetokens);
+				}
+
+
+				/* Compare against actual function return types */
+				plist = obj->u.function.returns;
+				plist2 = returns;
+				while (plist && plist2)
+				{
+					XASSERT(plist->name);   /* always defined in YAML */
+					XASSERT(plist2->type);  /* always defined in SQL */
+					
+					/* 
+					 * In the YAML it is possible to have a name without a type,
+					 * if that is the case then simply take the SQL type.
+					 */
+					if (!plist->type)
+						plist->type = copyscalar(plist2->type);
+					else if (strcmp(plist->type, plist2->type))
+						break;
+					plist  = plist->next;
+					plist2 = plist2->next;
+				}
+				if (plist || plist2)
+				{
+					mapred_obj_error(obj, "RETURN parameter '%s' => '%s' != '%s'",
+									 plist ? plist->name : "unknown",
+									 plist ? plist->type : "-",
+									 plist2 ? plist2->type : "-");
+				}
+			}
+			else
+			{
+				obj->u.function.returns = returns;
+				i = 0;
+				for (plist = returns; plist; plist = plist->next)
+				{
+					XASSERT(plist->type);
+					i++;
+					plist->type = copyscalar(plist->type);
+					if (plist->name)
+						plist->name = copyscalar(plist->name);
+					else
+					{
+						/* 
+						 * Manufacture a name for a column based on default
+						 * naming rules. 
+						 */
+						if (i <= 2)
+							name = (char*) default_return_names[obj->kind][i-1];
+						if (!name)
+						{
+							snprintf(str, 50, "parameter%d", i);
+							name = str;
+						}
+						plist->name = copyscalar(name);
+					}
+				}
+			}
+		}
+	}
+	XFINALLY
+	{
+		if (result)
+			PQclear(result);
+		if (result2)
+			PQclear(result2);
+		if (buffer)
+			mapred_free(buffer);
+	}
+	XTRY_END;
+}
 
 void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 {
@@ -335,7 +1037,7 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 			if (!done && !progress)
 			{
 				if (doc->errors && doc->errors->position > 0)
-					fprintf(stderr, doc->errors->buffer);
+					fprintf(stderr, "%s", doc->errors->buffer);
 				XRAISE(MAPRED_PARSE_ERROR, 
 					   "Unable to make forward progress creating objects\n");
 			}
@@ -357,7 +1059,7 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 	{
 		if (global_verbose_flag)
 			fprintf(stderr, "    - ");
-		fprintf(stderr, PQerrorMessage(conn));
+		fprintf(stderr, "%s", PQerrorMessage(conn));
 		XRERAISE();
 	}
 	XFINALLY
@@ -389,7 +1091,7 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 		{
 			if (global_verbose_flag)
 				fprintf(stderr, "    - ");
-			fprintf(stderr, PQerrorMessage(conn));
+			fprintf(stderr, "%s", PQerrorMessage(conn));
 		}
 	}
 	XTRY_END;
@@ -418,9 +1120,9 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 	{
 		/* Objects with no dependencies */
 		case MAPRED_OUTPUT:
+		case MAPRED_ADT:
 			break;
 
-			
 		case MAPRED_INPUT:
 			/* 
 			 * For FILE/GPFDIST/EXEC inputs we will create a name-prefixed
@@ -470,33 +1172,51 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 		case MAPRED_TRANSITION:
 		case MAPRED_COMBINER:
 		case MAPRED_FINALIZER:
-			XASSERT(obj->u.function.returns);
+
+
+			/* 
+			 * If the function is an internal function then we try to resolve
+			 * the function by looking it up in the catalog.
+			 */
+			if (!obj->u.function.language)
+			{
+				obj->internal = true;
+				
+				lookup_function_in_catalog(conn, doc, obj);
+			}
+
+			/* ??? */
+			else if (!obj->u.function.returns)
+			{
+				XASSERT(false);
+			}
 
 			/* 
 			 * The function types may manufacture a dependency on an adt, 
 			 * but have no other dependencies.
-			 */
-			if (obj->u.function.returns->next)
+			 */		
+			else if (obj->u.function.returns->next)
 			{
-				mapred_object_t *rtype;
-
-				rtype = mapred_malloc(sizeof(mapred_object_t));
-				memset(rtype, 0, sizeof(mapred_object_t));
-				rtype->kind = MAPRED_ADT;
+				sub = mapred_malloc(sizeof(mapred_object_t));
+				memset(sub, 0, sizeof(mapred_object_t));
+				sub->kind = MAPRED_ADT;
 				len = strlen(doc->prefix) + strlen(obj->name) + 7;
-				rtype->name = mapred_malloc(len);
-				snprintf(rtype->name, len, "%s%s_rtype", 
+				sub->name = mapred_malloc(len);
+				snprintf(sub->name, len, "%s%s_rtype", 
 						 doc->prefix, obj->name);
-				rtype->u.adt.returns = obj->u.function.returns;
+				sub->u.adt.returns = obj->u.function.returns;
 				
-				obj->u.function.rtype.name = rtype->name;
-				obj->u.function.rtype.object = rtype;
+				obj->u.function.rtype.name = sub->name;
+				obj->u.function.rtype.object = sub;
 
 				/* Add the ADT to the list of document objects */
 				newlist = mapred_malloc(sizeof(mapred_olist_t));
-				newlist->object = rtype;
+				newlist->object = sub;
 				newlist->next = doc->objects;
 				doc->objects = newlist;
+
+				/* And resolve the sub-object */
+				mapred_resolve_object(conn, doc, sub, exec_count);
 			}
 			else
 			{
@@ -530,6 +1250,9 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				newlist->next = doc->objects;
 				doc->objects = newlist;
 				obj->u.reducer.transition.object = sub;
+
+				/* And resolve the sub-object */
+				mapred_resolve_object(conn, doc, sub, exec_count);
 			}
 			mapred_resolve_ref(doc->objects, &obj->u.reducer.combiner);
 			if (obj->u.reducer.combiner.name &&
@@ -548,6 +1271,9 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				newlist->next = doc->objects;
 				doc->objects = newlist;
 				obj->u.reducer.combiner.object = sub;
+
+				/* And resolve the sub-object */
+				mapred_resolve_object(conn, doc, sub, exec_count);
 			}
 			mapred_resolve_ref(doc->objects, &obj->u.reducer.finalizer);
 			if (obj->u.reducer.finalizer.name &&
@@ -566,6 +1292,9 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				newlist->next = doc->objects;
 				doc->objects = newlist;
 				obj->u.reducer.finalizer.object = sub;
+
+				/* And resolve the sub-object */
+				mapred_resolve_object(conn, doc, sub, exec_count);
 			}
 
 			break;
@@ -666,6 +1395,9 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 					newlist->next = doc->objects;
 					doc->objects = newlist;
 					obj->u.task.mapper.object = sub;
+
+					/* And resolve the sub-object */
+					mapred_resolve_object(conn, doc, sub, exec_count);
 				}
 				else
 				{
@@ -736,6 +1468,9 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 		default:
 			XASSERT(false);
 	}
+
+	if (global_debug_flag)
+		mapred_obj_debug(obj);
 }
 
 /* 
@@ -781,41 +1516,24 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 				 */
 				buffer_t *buffer = makebuffer(1024, 1024);
 				bufcat(&buffer, 
-					   "SELECT      attname, format_type \n"
-					   "FROM \n"
-					   "  (SELECT   rank() over (order by i),\n"
-				       "            a.attnum, a.attname, \n"
-				       "            pg_catalog.format_type(a.atttypid, \n"
-					   "                                   a.atttypmod)\n"
-				       "   FROM     pg_catalog.pg_attribute a, \n"
-				       "            pg_catalog.pg_class c, \n"
-				       "            pg_catalog.pg_namespace n, \n"
-				       "            generate_series( \n"
-					   "              1, array_upper(current_schemas(true), 1)"
-					   "\n            ) x(i) \n"
-				       "   WHERE    a.attrelid = c.oid \n"
-				       "     AND    a.attnum > 0 \n"
-				       "     AND    c.relkind in ('r', 'v', 'a', 'x') \n"
-				       "     AND    c.relnamespace = n.oid \n"
-				       "     AND    c.relname = lower('");
-
+					   "SELECT  attname, "
+					   "        pg_catalog.format_type(atttypid, atttypmod)\n"
+					   "FROM    pg_catalog.pg_attribute\n"
+					   "WHERE   attnum > 0 AND attrelid = lower('");
 				if (obj->u.input.type == MAPRED_INPUT_TABLE)
 					bufcat(&buffer, obj->u.input.desc);
 				else
 					bufcat(&buffer, obj->name);
-
 				bufcat(&buffer, 
-					   "') \n"
-					   "     AND    n.nspname = (current_schemas(true))[i] \n"
-					   "  ) subq \n"
-					   "WHERE rank = 1 \n"
-					   "ORDER BY -attnum;\n\n");
+					   "')::regclass\n"
+					   "ORDER BY   -attnum;\n\n");
 			
 				if (global_debug_flag)
 					printf("%s", buffer->buffer);			
 						
 				result = PQexec(conn, buffer->buffer);
 				mapred_free(buffer);
+
 				if (PQresultStatus(result) == PGRES_TUPLES_OK &&
 					PQntuples(result) > 0)
 				{
@@ -846,19 +1564,29 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 				}
 				else
 				{
+					char *error = PQresultErrorField(result, PG_DIAG_SQLSTATE);
+					char *name;
+
+					if (obj->u.input.type == MAPRED_INPUT_TABLE)
+						name = obj->u.input.desc;
+					else
+						name = obj->name;
+
 					if (PQresultStatus(result) == PGRES_TUPLES_OK)
 					{
-						char *name;
-
-						if (obj->u.input.type == MAPRED_INPUT_TABLE)
-							name = obj->u.input.desc;
-						else
-							name = obj->name;
-
+						mapred_obj_error(obj, "Table '%s' contains no rows", name);
+					}
+					else if (!strcmp(error, OBJ_DOES_NOT_EXIST))
+					{
 						mapred_obj_error(obj, "Table '%s' not found", name);
+					}
+					else 
+					{
+						mapred_obj_error(obj, "Table '%s' unknown error: %s", name, error);
 					}
 					XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
 				}
+				PQclear(result);
 			}
 			break;
 
@@ -1463,6 +2191,12 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 						exists = false;
 					}
 
+					/* Handle Explain for OUTPUT TABLE */
+					if (global_explain_flag & global_analyze)
+						bufcat(&buffer, "EXPLAIN ANALYZE ");
+					else if (global_explain_flag)
+						bufcat(&buffer, "EXPLAIN ");
+
 					if (!exists)
 					{
 						bufcat(&buffer, "CREATE TABLE ");
@@ -1483,6 +2217,16 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 						continue;
 					}
 				}
+				/* Handle Explain for non-table output */
+				else if (global_explain_flag & global_analyze)
+				{
+					bufcat(&buffer, "EXPLAIN ANALYZE ");
+				}
+				else if (global_explain_flag)
+				{
+					bufcat(&buffer, "EXPLAIN ");
+				}
+
 				bufcat(&buffer, "SELECT * FROM ");
 				bufcat(&buffer, olist->object->name);
 
@@ -1931,181 +2675,16 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 					printf("-- %s %s\n", ckind, obj->name);
 
 				/* 
-				 * If there is no function body then this is a definition of an
-				 * internal function, see if we can resolve it in the catalog
+				 * Nothing to do if we already looked up the function in the
+				 * catalog.
 				 */
-				if (!obj->u.function.body)
+				if (obj->internal)
 				{
-					obj->internal = true;
-					
-					/* Lookup the function in the catalog */
-					bufcat(&buffer, 
-						   "SELECT proname, proretset, pronargs, proargnames, \n"
-						   "       proargmodes, proargtypes::regtype[], \n"
-						   "       proallargtypes::regtype[], \n"
-						   "       prorettype::regtype \n"
-						   "FROM   pg_proc \n"
-						   "WHERE  not proisagg and not proiswin \n"
-						   "  and  proname = lower('");
-					bufcat(&buffer, obj->name);
-					bufcat(&buffer, "')\n");
-
-					if (global_print_flag || global_debug_flag)
-						printf("%s", buffer->buffer);
-					result = PQexec(conn, buffer->buffer);
-					bufreset(buffer);
-
-					if (PQresultStatus(result) == PGRES_TUPLES_OK)
-					{
-						if (PQntuples(result) == 0)
-						{
-							mapred_obj_error(obj, "No such function");
-							XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
-						}
-						else if (PQntuples(result) > 1)
-						{
-							mapred_obj_error(obj, "Ambiguous function, supply "
-											 "a function prototype for "
-											 "disambiguation");
-							XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
-						}
-						else
-						{
-							char		*value;
-							int          len;
-							boolean		 retset;
-							int          nargs;
-							char		*argnames	 = NULL;
-							char		*argmodes	 = NULL;
-							char		*argtypes	 = NULL;
-							char		*allargtypes = NULL;
-							char		*rettype	 = NULL;
-
-							/* 
-							 * One function... just right.
-							 * Now check that we can use the function prototype
-							 */
-							value  = PQgetvalue(result, 0, 1);
-							retset = (value[0] == 't');
-							value  = PQgetvalue(result, 0, 2);
-							nargs  = (int) strtol(value, (char **) NULL, 10);
-
-							/* 
-							 * Arrays are formated as:
-							 *  "[0:nargs]={...}" 
-							 * of which we only want "..." 
-							 * so find the part of the string between the braces
-							 */
-							if (!PQgetisnull(result, 0, 3))
-							{
-								value = PQgetvalue(result, 0, 3);
-								argnames = strchr(value, '{') + 1;
-								len = strlen(argnames);
-								if (len > 0)
-									argnames[len-1] = '\0';
-							}
-							if (!PQgetisnull(result, 0, 4))
-							{
-								value = PQgetvalue(result, 0, 4);
-								argmodes = strchr(value, '{') + 1;
-								len = strlen(argmodes);
-								if (len > 0)
-									argmodes[len-1] = '\0';
-							}
-							if (!PQgetisnull(result, 0, 5))
-							{
-								value = PQgetvalue(result, 0, 5);
-								argtypes = strchr(value, '{') + 1;
-								len = strlen(argtypes);
-								if (len > 0)
-									argtypes[len-1] = '\0';
-							}
-							if (!PQgetisnull(result, 0, 6))
-							{
-								value = PQgetvalue(result, 0, 6);
-								allargtypes = strchr(value, '{') + 1;
-								len = strlen(allargtypes);
-								if (len > 0)
-									allargtypes[len-1] = '\0';
-							}
-							if (!PQgetisnull(result, 0, 7))
-							{
-								rettype = PQgetvalue(result, 0, 7);
-							}
-
-							if (obj->u.function.parameters)
-							{
-								/* check that we match */
-
-							}
-							else
-							{
-								char *pname, *ptype, *toktype = NULL;
-
-								/* create the returns as specified */
-								pname = "key";
-								ptype = strtok_r(argtypes, ",", &toktype);
-								plist = mapred_malloc(sizeof(mapred_plist_t));
-
-								plist->name = mapred_malloc(strlen(pname)+1);
-								strcpy(plist->name, pname);
-								plist->type = mapred_malloc(strlen(ptype)+1);
-								strcpy(plist->type, ptype);
-								plist->next = NULL;
-
-								obj->u.function.parameters = plist;
-
-								pname = "value";
-								ptype = strtok_r(NULL, ",", &toktype);
-
-								plist = mapred_malloc(sizeof(mapred_plist_t));
-								plist->name = mapred_malloc(strlen(pname)+1);
-								strcpy(plist->name, pname);
-								plist->type = mapred_malloc(strlen(ptype)+1);
-								strcpy(plist->type, ptype);
-								plist->next = NULL;								
-
-								obj->u.function.parameters->next = plist;
-							}
-
-
-							if (obj->u.function.returns)
-							{
-								/* check that we match */
-							}
-							else
-							{
-								/* always returns a column named "value" */
-								plist = mapred_malloc(sizeof(mapred_plist_t));
-								plist->name = mapred_malloc(strlen("value")+1);
-								strcpy(plist->name, "value");
-
-								plist->type = mapred_malloc(strlen(rettype)+1);
-								strcpy(plist->type, rettype);
-								plist->next = NULL;
-								obj->u.function.returns = plist;
-							}
-
-							obj->created = true;
-						}
-					}
-					else
-					{
-						fprintf(stderr, PQresultErrorMessage(result));
-					}
-
-					if (obj->u.function.language)
-					{
-						if (global_verbose_flag)
-							fprintf(stderr, "       ");
-						fprintf(stderr, 
-								"WARNING: language specification ignored "
-								" for empty function '%s'", obj->name);
-					}
+					obj->created = true;
 					break;
 				}
-			
-				/* We should have already been verified */
+
+				/* Non-internal functions should have these defined */
 				XASSERT(obj->u.function.body);
 				XASSERT(obj->u.function.language);
 
@@ -2167,18 +2746,43 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 				if (!strcasecmp("python", obj->u.function.language))
 					bufcat(&buffer, "u");
 
-				/* Handle the body of the function */
-				bufcat(&buffer, " AS\n$$\n");
+				
+				bufcat(&buffer, " AS ");
 
-				/* Extra language specific wrappers */
-				if (!strncasecmp("plperl", obj->u.function.language, 6) ||
-					!strncasecmp("perl",   obj->u.function.language, 4))
+				/* 
+				 * Handle procedural language specific formatting for the
+				 * function definition.
+				 *
+				 * C language functions are defined using the two parameter
+				 * form:  AS "library", "function".
+				 *
+				 * Perl functions append the yaml file line number via a
+				 *  #line declaration.
+				 *
+				 * Python functions try to append the yaml file line number
+				 * by inserting a bunch of newlines.  (only works for runtime
+				 * errors, not compiletime errors).
+				 */
+				if (!strcasecmp("C", obj->u.function.language))
+				{
+					bufcat(&buffer, "$$");
+					bufcat(&buffer, obj->u.function.library);
+					bufcat(&buffer, "$$, $$");
+					bufcat(&buffer, obj->u.function.body);
+					bufcat(&buffer, "$$");
+				}
+				else if (!strncasecmp("plperl", obj->u.function.language, 6) ||
+						 !strncasecmp("perl",   obj->u.function.language, 4))
 				{
 					char lineno[10];
 					snprintf(lineno, sizeof(lineno), "%d", obj->u.function.lineno);
-					bufcat(&buffer, "\n#line ");
+					bufcat(&buffer, "$$\n#line ");
 					bufcat(&buffer, lineno);
 					bufcat(&buffer, "\n");
+					bufcat(&buffer, obj->u.function.body);
+					if (buffer->buffer[buffer->position-1] != '\n')
+						bufcat(&buffer, "\n");
+					bufcat(&buffer, "$$");
 				}
 				else if (!strncasecmp("plpython", obj->u.function.language, 8) ||
 						 !strncasecmp("python",   obj->u.function.language, 6))
@@ -2189,17 +2793,21 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 					 * and just insert N newlines. 
 					*/
 					int i;
+					bufcat(&buffer, "$$\n");
 					for (i = 1; i < obj->u.function.lineno-2; i++)
 						bufcat(&buffer, "\n");
+					bufcat(&buffer, obj->u.function.body);
+					if (buffer->buffer[buffer->position-1] != '\n')
+						bufcat(&buffer, "\n");
+					bufcat(&buffer, "$$");					
 				}
-
-
-				/* User function definition */
-				bufcat(&buffer, obj->u.function.body);
-				if (buffer->buffer[buffer->position-1] != '\n')
-					bufcat(&buffer, "\n$$");
-				else
+				else 
+				{
+					/* Some generic other language, take our best guess */
 					bufcat(&buffer, "$$");
+					bufcat(&buffer, obj->u.function.body);
+					bufcat(&buffer, "$$");
+				}
 
 				/* Handle options */
 				if (obj->u.function.flags & mapred_function_strict)
@@ -2990,7 +3598,7 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 				{
 					if (global_verbose_flag)
 						fprintf(stderr, "     - ");
-					fprintf(stderr, PQresultErrorMessage(result));
+					fprintf(stderr, "%s", PQresultErrorMessage(result));
 					XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
 				}
 				if (global_verbose_flag)
@@ -3225,7 +3833,7 @@ void mapred_remove_object(PGconn *conn, mapred_document_t *doc, mapred_object_t 
 								"[WARNING] Error dropping unnamed object\n");
 					if (global_verbose_flag)
 						fprintf(stderr, "    - ");
-					fprintf(stderr, PQerrorMessage(conn));
+					fprintf(stderr, "%s", PQerrorMessage(conn));
 				}
 			}
 			PQclear(result);

@@ -47,23 +47,15 @@ Error: OUTPUT: Missing NAME, at line 70
 Error: OUTPUT: Missing FILE or TABLE, at line 70
 Error: FUNCTION must contain a YAML MAPPING, at line 71
 Error: MAP: Missing NAME, at line 71
-Error: MAP: Missing LANGUAGE, at line 71
-Error: MAP: Missing FUNCTION, at line 71
 Error: REDUCE must contain a YAML MAPPING, at line 72
 Error: REDUCE: Missing NAME, at line 72
 Error: REDUCE: Missing TRANSITION, at line 72
 Error: FUNCTION must contain a YAML MAPPING, at line 73
 Error: TRANSITION: Missing NAME, at line 73
-Error: TRANSITION: Missing LANGUAGE, at line 73
-Error: TRANSITION: Missing FUNCTION, at line 73
 Error: FUNCTION must contain a YAML MAPPING, at line 74
 Error: CONSOLIDATE: Missing NAME, at line 74
-Error: CONSOLIDATE: Missing LANGUAGE, at line 74
-Error: CONSOLIDATE: Missing FUNCTION, at line 74
 Error: FUNCTION must contain a YAML MAPPING, at line 75
 Error: FINALIZE: Missing NAME, at line 75
-Error: FINALIZE: Missing LANGUAGE, at line 75
-Error: FINALIZE: Missing FUNCTION, at line 75
 Error: TASK must contain a YAML MAPPING, at line 76
 Error: TASK: Missing NAME, at line 76
 Error: TASK: Missing SOURCE, at line 76
@@ -77,23 +69,15 @@ Error: OUTPUT: Missing NAME, at line 86
 Error: OUTPUT: Missing FILE or TABLE, at line 86
 Error: FUNCTION must contain a YAML MAPPING, at line 87
 Error: MAP: Missing NAME, at line 87
-Error: MAP: Missing LANGUAGE, at line 87
-Error: MAP: Missing FUNCTION, at line 87
 Error: REDUCE must contain a YAML MAPPING, at line 88
 Error: REDUCE: Missing NAME, at line 88
 Error: REDUCE: Missing TRANSITION, at line 88
 Error: FUNCTION must contain a YAML MAPPING, at line 89
 Error: TRANSITION: Missing NAME, at line 89
-Error: TRANSITION: Missing LANGUAGE, at line 89
-Error: TRANSITION: Missing FUNCTION, at line 89
 Error: FUNCTION must contain a YAML MAPPING, at line 90
 Error: CONSOLIDATE: Missing NAME, at line 90
-Error: CONSOLIDATE: Missing LANGUAGE, at line 90
-Error: CONSOLIDATE: Missing FUNCTION, at line 90
 Error: FUNCTION must contain a YAML MAPPING, at line 91
 Error: FINALIZE: Missing NAME, at line 91
-Error: FINALIZE: Missing LANGUAGE, at line 91
-Error: FINALIZE: Missing FUNCTION, at line 91
 Error: TASK must contain a YAML MAPPING, at line 92
 Error: TASK: Missing NAME, at line 92
 Error: TASK: Missing SOURCE, at line 92
@@ -139,8 +123,6 @@ Error: a string is not a valid FUNCTION attribute, at line 141
 Error: YAML LIST element found in FUNCTION, at line 142
 Error: YAML MAPPING element found in FUNCTION, at line 143
 Error: MAP: Missing NAME, at line 136
-Error: MAP: Missing LANGUAGE, at line 136
-Error: MAP: Missing FUNCTION, at line 136
 Error: Invalid REDUCE Attribute, at line 145
 Error: id is not a valid REDUCER attribute, at line 146
 Error: 100 is not a valid REDUCER attribute, at line 147
@@ -158,8 +140,6 @@ Error: a string is not a valid FUNCTION attribute, at line 157
 Error: YAML LIST element found in FUNCTION, at line 158
 Error: YAML MAPPING element found in FUNCTION, at line 159
 Error: TRANSITION: Missing NAME, at line 152
-Error: TRANSITION: Missing LANGUAGE, at line 152
-Error: TRANSITION: Missing FUNCTION, at line 152
 Error: Invalid FUNCTION Attribute, at line 161
 Error: id is not a valid FUNCTION attribute, at line 162
 Error: 100 is not a valid FUNCTION attribute, at line 163
@@ -168,8 +148,6 @@ Error: a string is not a valid FUNCTION attribute, at line 165
 Error: YAML LIST element found in FUNCTION, at line 166
 Error: YAML MAPPING element found in FUNCTION, at line 167
 Error: CONSOLIDATE: Missing NAME, at line 160
-Error: CONSOLIDATE: Missing LANGUAGE, at line 160
-Error: CONSOLIDATE: Missing FUNCTION, at line 160
 Error: Invalid FUNCTION Attribute, at line 169
 Error: id is not a valid FUNCTION attribute, at line 170
 Error: 100 is not a valid FUNCTION attribute, at line 171
@@ -178,8 +156,6 @@ Error: a string is not a valid FUNCTION attribute, at line 173
 Error: YAML LIST element found in FUNCTION, at line 174
 Error: YAML MAPPING element found in FUNCTION, at line 175
 Error: FINALIZE: Missing NAME, at line 168
-Error: FINALIZE: Missing LANGUAGE, at line 168
-Error: FINALIZE: Missing FUNCTION, at line 168
 Error: Invalid TASK Attribute, at line 177
 Error: id is not a valid TASK attribute, at line 178
 Error: 100 is not a valid TASK attribute, at line 179

@@ -56,6 +56,8 @@ typedef enum {
 #define MAPRED_MAXKIND    11
 
 extern const char *mapred_kind_name[];
+extern const char *default_parameter_names[MAPRED_MAXKIND+1][2];
+extern const char *default_return_names[MAPRED_MAXKIND+1][2];
 
 typedef enum {
 	MAPRED_MODE_NONE = 0,
@@ -155,6 +157,7 @@ typedef struct {
 typedef struct {
 	char                *body;
 	char                *language;
+	char                *library;
 	mapred_plist_t      *parameters;
 	mapred_plist_t      *returns;
 	mapred_reference_t   rtype;
@@ -269,5 +272,9 @@ extern int global_debug_flag;
 extern int global_print_flag;
 extern int global_explain_flag;
 extern mapred_plist_t *global_plist;
+
+/* Flags set in global_explain_flag */
+#define global_explain 0x00000001
+#define global_analyze 0x00000002
 
 #endif

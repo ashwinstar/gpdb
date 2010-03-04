@@ -23,7 +23,7 @@ YMLOUT    = $(addprefix $(YMLDIR)/, $(YML))
 TESTS     = $(addprefix $(OUTDIR)/,$(addsuffix .suc, $(basename $(YML))))
 MAILDATA  = $(addprefix $(shell pwd)/,$(DATADIR)/email/mailfiles)
 
-all: setup $(YMLDIR) $(OUTDIR) $(YMLOUT) $(MAILDATA) $(TESTS)
+all: libs setup $(YMLDIR) $(OUTDIR) $(YMLOUT) $(MAILDATA) $(TESTS)
 	@printf "\n=======================\n"
 	@if [ -s $(OUTDIR)/FAIL ] ; then \
        export nfailed=`cat $(OUTDIR)/FAIL | wc -l`; \
@@ -35,6 +35,9 @@ all: setup $(YMLDIR) $(OUTDIR) $(YMLOUT) $(MAILDATA) $(TESTS)
      fi
 	@printf "\n=======================\n"
 
+libs:
+	$(MAKE) -C lib
+	cp -f lib/*.so $(GPHOME)/lib/postgresql/.
 
 setup:
 	@printf "============== dropping database \"$(DB)\"     ==============\n"

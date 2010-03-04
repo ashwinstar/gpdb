@@ -227,6 +227,8 @@ General options:
   -? | --help                   show this help, then exit
   -V | --version                show version information, then exit
   -v | --verbose                verbose output
+  -x | --explain                do not run jobs, but produce explain plans
+  -X | --explain-analyze        run jobs and produce explain-analyze plans
   -k | --key <name>=<value>     sets a yaml variable
 
 Connection options:

@@ -124,6 +124,7 @@ void  parser_set_finalizer(mapred_parser_t *parser, char *value);
 void parser_set_initialize(mapred_parser_t *parser, char *value);
 void   parser_set_language(mapred_parser_t *parser, char *value);
 void   parser_set_function(mapred_parser_t *parser, char *value);
+void    parser_set_library(mapred_parser_t *parser, char *value);
 void   parser_set_optimize(mapred_parser_t *parser, char *value);
 void     parser_set_source(mapred_parser_t *parser, char *value);
 void     parser_set_target(mapred_parser_t *parser, char *value);

@@ -23,6 +23,7 @@ static char *wordchars =
 int             global_print_flag   = 0;
 int             global_debug_flag   = 0;
 int             global_verbose_flag = 0;
+int             global_explain_flag = 0;
 mapred_plist_t *global_plist        = NULL;
 
 /* libPQ cancel context */
@@ -56,6 +57,8 @@ void usage(char *procname, boolean full)
 			"  -? | --help                   show this help, then exit\n"
 			"  -V | --version                show version information, then exit\n"
 			"  -v | --verbose                verbose output\n"
+			"  -x | --explain                do not run jobs, but produce explain plans\n"
+			"  -X | --explain-analyze        run jobs and produce explain-analyze plans\n"
 			"  -k | --key <name>=<value>     sets a yaml variable\n"
 			"\n"
 			"Connection options:\n"
@@ -96,6 +99,9 @@ int main (int argc, char *argv[])
 		{"version",  no_argument,       0, 'V'},
 		{"verbose",  no_argument,       0, 'v'},
 		{"password", no_argument,       0, 'W'},
+		{"explain",  no_argument,       0, 'x'},
+		{"explain-analyze", no_argument, 0, 'X'},
+
 		{"username", required_argument, 0, 'U'},
 		{"host",     required_argument, 0, 'h'},
 		{"port",     required_argument, 0, 'p'},
@@ -109,9 +115,9 @@ int main (int argc, char *argv[])
 	};
 
 #ifdef INTERNAL_BUILD
-	static char* short_options = "VvWU:h:p:f:k:?PD";
+	static char* short_options = "VvWxXU:h:p:f:k:?PD";
 #else
-	static char* short_options = "VvWU:h:p:f:k:?";
+	static char* short_options = "VvWxXU:h:p:f:k:?";
 #endif
 
 	while (1)
@@ -144,6 +150,14 @@ int main (int argc, char *argv[])
 
 			case 'v':  /* --verbose */
 				global_verbose_flag = true;
+				break;
+
+			case 'x': /* --explain */
+				global_explain_flag |= global_explain;
+				break;
+
+			case 'X': /* --explain-analyze */
+				global_explain_flag |= global_explain | global_analyze;
 				break;
 
 #ifdef INTERNAL_BUILD

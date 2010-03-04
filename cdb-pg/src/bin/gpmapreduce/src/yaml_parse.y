@@ -39,7 +39,7 @@
   _HOST_
   _INITIALIZE_  _INPUT_
   _KEYS_
-  _LANGUAGE_
+  _LANGUAGE_    _LIBRARY_
   _MAP_         _MODE_
   _NAME_        _NULL_
   _OPTIMIZE_    _OUTPUT_
@@ -106,7 +106,7 @@ exec_keywords:
     ;
 
 func_keywords:
-    _FUNCTION_|_LANGUAGE_|_OPTIMIZE_|_PARAMETERS_|_RETURNS_|_MODE_ 
+    _FUNCTION_|_LANGUAGE_|_OPTIMIZE_|_PARAMETERS_|_RETURNS_|_MODE_|_LIBRARY_
     ;
 
 io_keywords:
@@ -439,6 +439,7 @@ output_item:
 	  | doc_keywords          { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
 	  | obj_keywords          { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
 	  | _FUNCTION_            { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
+	  | _LIBRARY_             { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
 	  | _LANGUAGE_            { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
 	  | _OPTIMIZE_            { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
 	  | _PARAMETERS_          { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
@@ -490,6 +491,7 @@ function_item:
        _NAME_ obj_name
       | _LANGUAGE_ scalar     { parser_set_language(parser, $2); }
       | _FUNCTION_ scalar     { parser_set_function(parser, $2); }
+      | _LIBRARY_ scalar      { parser_set_library(parser, $2); }
       | _MODE_ scalar         { parser_set_mode(parser, $2); }
       | _OPTIMIZE_ scalar     { parser_set_optimize(parser, $2); }
       | _PARAMETERS_          { parser_begin_parameters(parser); } 
@@ -502,16 +504,18 @@ function_item:
       | _LANGUAGE_  valid_yaml_list  { parser_set_language(parser, 0); }
       | _FUNCTION_  valid_yaml_map   { parser_set_function(parser, 0); }
       | _FUNCTION_  valid_yaml_list  { parser_set_function(parser, 0); }
+      | _LIBRARY_   valid_yaml_map   { parser_set_library(parser, 0); }
+      | _LIBRARY_   valid_yaml_list  { parser_set_library(parser, 0); }
       | _MODE_      valid_yaml_map   { parser_set_mode(parser, 0); }
       | _MODE_      valid_yaml_list  { parser_set_mode(parser, 0); }
       | _OPTIMIZE_  valid_yaml_map   { parser_set_optimize(parser, 0); }
       | _OPTIMIZE_  valid_yaml_list  { parser_set_optimize(parser, 0); }
-	  | doc_keywords          { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
-	  | obj_keywords          { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
-      | io_keywords           { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
-      | misc_keywords         { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
-  	  | valid_yaml_list       { yaml_yyerror(parser, "YAML LIST element found in FUNCTION"); } valid_yaml
-  	  | valid_yaml_map        { yaml_yyerror(parser, "YAML MAPPING element found in FUNCTION"); } valid_yaml
+	  | doc_keywords   { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
+	  | obj_keywords   { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
+      | io_keywords    { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
+      | misc_keywords  { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
+  	  | valid_yaml_list  { yaml_yyerror(parser, "YAML LIST element found in FUNCTION"); } valid_yaml
+  	  | valid_yaml_map   { yaml_yyerror(parser, "YAML MAPPING element found in FUNCTION"); } valid_yaml
 	  | _STRING_            
         {
 			char buffer[128];

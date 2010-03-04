@@ -102,7 +102,7 @@ sub gethostname
     $psql_str .= $glob_connect
         if (defined($glob_connect));
 
-    $psql_str .= " -c \'select * from gp_configuration \'";
+    $psql_str .= " -c \'select content, role, status, hostname from gp_segment_configuration\'";
 
     my $tabdef = `$psql_str`;
 
@@ -124,11 +124,10 @@ sub gethostname
     for my $rowh (@{$mpp_config_table})
     {
         if (($rowh->{1} == 0) && # content (seg 0)
-            ($rowh->{2} =~ m/t/) && # defined primary
-            ($rowh->{4} =~ m/t/) && # isprimary
-            ($rowh->{5} =~ m/t/)) # valid
+            ($rowh->{2} =~ m/p/) && # role =primary
+            ($rowh->{3} =~ m/u/))    # status = up 
         {
-            $hostname = $rowh->{6};
+            $hostname = $rowh->{4};
             last;
         }
         
