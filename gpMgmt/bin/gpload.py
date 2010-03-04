@@ -1003,7 +1003,7 @@ class gpload:
                         argv = argv[1:]
                         seenq = True
                     elif argv[0]=='--version':
-                        sys.stderr.write("gpload version $Revision$\n")
+                        sys.stderr.write("gpload version main build 16190\n")
                         sys.exit(0)
                     elif argv[0]=='-v':
                         self.options.qv = self.LOG
@@ -1506,12 +1506,16 @@ class gpload:
                     self.log(self.ERROR,
                                "gpload:input:columns must be a sequence of " +
                                "mappings")
+                tempkey = d.keys()[0]
+                value = d[tempkey]
+                """ remove leading or trailing spaces """
+                d = { tempkey.strip() : value }
                 key = d.keys()[0]
                 if d[key] == None:
                     self.log(self.DEBUG, 
                              'getting source column data type from target')
                     for name, typ, mapto, hasseq in self.into_columns:
-                        if name == key:
+                        if sqlIdentifierCompare(name, key):
                             d[key] = typ
                             break
 
