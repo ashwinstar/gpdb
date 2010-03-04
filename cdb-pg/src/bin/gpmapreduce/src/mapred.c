@@ -891,7 +891,8 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 						 * Manufacture a name for a column based on default
 						 * naming rules. 
 						 */
-						if (i <= 2)
+						name = (char*) NULL;
+						if (i <= 2) 
 							name = (char*) default_return_names[obj->kind][i-1];
 						if (!name)
 						{
