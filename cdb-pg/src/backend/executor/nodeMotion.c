@@ -844,6 +844,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
     SliceTable *sliceTable = estate->es_sliceTable;
 	int			prior_es_cur_slice_idx = estate->es_cur_slice_idx;	/* save */
 	int			prior_es_cur_root_idx = estate->es_cur_root_idx;	/* save */
+	int			parentSliceIndex = estate->current_slice_no;
 
 #ifdef CDB_MOTION_DEBUG
 	int			i;
@@ -885,17 +886,17 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 		Assert(sendSlice->gangSize == 0);
 
 		/* Look up the receiving (parent) gang's slice table entry. */
-		recvSlice = (Slice *)list_nth(sliceTable->slices, estate->es_cur_slice_idx);
+		recvSlice = (Slice *)list_nth(sliceTable->slices, parentSliceIndex);
 
 		Assert(IsA(recvSlice, Slice));
-		Assert(recvSlice->sliceIndex == estate->es_cur_slice_idx);
+		Assert(recvSlice->sliceIndex == parentSliceIndex);
         Assert(recvSlice->rootIndex == 0 ||
                (recvSlice->rootIndex > sliceTable->nMotions &&
                 recvSlice->rootIndex < list_length(sliceTable->slices)));
 
 		/* Sending slice become a children of recv slice */
 		recvSlice->children = lappend_int(recvSlice->children, sendSlice->sliceIndex);
-		sendSlice->parentIndex = estate->es_cur_slice_idx;
+		sendSlice->parentIndex = parentSliceIndex;
         sendSlice->rootIndex = recvSlice->rootIndex;
 
 		/* The gang beneath a Motion will be a reader. */
@@ -934,7 +935,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 			}
 		}
 
-		estate->es_cur_slice_idx = sendSlice->sliceIndex;
 		MemoryContextSwitchTo(oldcxt);
 	}
 

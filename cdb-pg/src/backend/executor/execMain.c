@@ -389,6 +389,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			estate->es_sliceTable = sliceTable;
 			estate->es_cur_slice_idx = sliceTable->localSlice;
 			estate->es_cur_root_idx = slice->rootIndex;
+			estate->current_slice_no = slice->rootIndex;
 
 			/* set our global sliceid variable for elog. */
 			currentSliceId = estate->es_cur_slice_idx;

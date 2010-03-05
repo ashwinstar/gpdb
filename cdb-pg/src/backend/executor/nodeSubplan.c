@@ -700,10 +700,10 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	 * global state is already set up by the code that called up, e.g., if
 	 * this is an initPlan subplan, then the current slice will be a root.
 	 */
-    if (subplan->qDispSliceId > 0 && Gp_role != GP_ROLE_EXECUTE)
+    if (subplan->qDispSliceId > 0)
     {
         sp_estate->es_cur_root_idx = subplan->qDispSliceId;
-	    sp_estate->es_cur_slice_idx = subplan->qDispSliceId;
+	    sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
 
         Assert(estate->es_sliceTable != NULL &&
                subplan->qDispSliceId > estate->es_sliceTable->nMotions &&
@@ -717,7 +717,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
     }
 	sp_estate->es_sliceTable = estate->es_sliceTable;
 	sp_estate->es_slice_map = estate->es_slice_map;
-	sp_estate->current_slice_no = sp_estate->es_cur_slice_idx;
+	sp_estate->current_slice_no = sp_estate->es_cur_root_idx;
 	sp_estate->slice_estates = estate->slice_estates;
 
 	sp_estate->motionlayer_context = estate->motionlayer_context;

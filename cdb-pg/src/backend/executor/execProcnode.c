@@ -346,7 +346,8 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		SubPlan    *subplan = (SubPlan *) lfirst(l);
 		SubPlanState *sstate;
 
-		Assert((estate->es_cur_slice_idx == estate->current_slice_no && result != NULL) ||
+		Assert(Gp_role != GP_ROLE_EXECUTE ||
+			   (estate->es_cur_slice_idx == estate->current_slice_no && result != NULL) ||
 			   (estate->es_cur_slice_idx != estate->current_slice_no && result == NULL));
 		Assert(IsA(subplan, SubPlan));
 		sstate = ExecInitExprInitPlan(subplan, result);
