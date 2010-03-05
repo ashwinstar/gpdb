@@ -314,7 +314,7 @@ rdbmsDbLimitedResourceID_map(oid **mib_rdbmsDbLimitedResourceID_val_ptr_ptr, siz
 int
 rdbmsDbLimitedResourceID_get( rdbmsDbLimitedResourceTable_rowreq_ctx *rowreq_ctx, oid **rdbmsDbLimitedResourceID_val_ptr_ptr, size_t *rdbmsDbLimitedResourceID_val_ptr_len_ptr )
 {
-	/* Until PGSNMPD-MIB exists, there's nothing to see here */
+	/* Until GPDB-MIB exists, there's nothing to see here */
 	return MFD_SKIP;
    /** we should have a non-NULL pointer and enough storage */
    netsnmp_assert( (NULL != rdbmsDbLimitedResourceID_val_ptr_ptr) && (NULL != *rdbmsDbLimitedResourceID_val_ptr_ptr));

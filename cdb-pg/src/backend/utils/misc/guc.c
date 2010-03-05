@@ -348,6 +348,12 @@ char	   *email_from;
 char	   *email_to;
 #endif
 
+#if USE_SNMP
+char	   *gp_snmp_community;
+char	   *gp_snmp_peername;
+char	   *gp_snmp_use_inform_or_trap;
+#endif
+
 /*
  * These variables are all dummies that don't do anything, except in some
  * cases provide the value for SHOW to display.  The real state is elsewhere
@@ -4696,6 +4702,34 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&email_to,
 		"", NULL, NULL
+	},
+
+	{
+		{"gp_snmp_community", PGC_SUSET, LOGGING,
+			gettext_noop("Sets SNMP community name to send alerts (inform or trap messages) to."),
+			NULL,
+			GUC_SUPERUSER_ONLY| GUC_LIST_INPUT
+		},
+		&gp_snmp_community,
+		"public", NULL, NULL
+	},
+	{
+		{"gp_snmp_peername", PGC_SUSET, LOGGING,
+			gettext_noop("Sets the network address to send SNMP community name to send alerts to."),
+			NULL,
+			GUC_SUPERUSER_ONLY| GUC_LIST_INPUT
+		},
+		&gp_snmp_peername,
+		"", NULL, NULL
+	},
+	{
+		{"gp_snmp_use_inform_or_trap", PGC_SUSET, LOGGING,
+			gettext_noop("If 'inform', we send alerts as SNMP v2c inform messages, if 'trap', we use SNMP v2 trap messages.."),
+			NULL,
+			GUC_SUPERUSER_ONLY| GUC_LIST_INPUT
+		},
+		&gp_snmp_use_inform_or_trap,
+		"inform", NULL, NULL
 	},
 
 #endif

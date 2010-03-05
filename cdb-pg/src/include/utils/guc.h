@@ -234,6 +234,12 @@ extern char  *email_from;
 extern char  *email_to;
 #endif
 
+#if USE_SNMP
+extern char   *gp_snmp_community;
+extern char   *gp_snmp_peername;
+extern char   *gp_snmp_use_inform_or_trap;
+#endif
+
 extern void SetConfigOption(const char *name, const char *value,
 				GucContext context, GucSource source);
 

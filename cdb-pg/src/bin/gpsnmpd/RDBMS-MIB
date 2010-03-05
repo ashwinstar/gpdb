@@ -4,8 +4,10 @@
      MODULE-IDENTITY, OBJECT-TYPE, NOTIFICATION-TYPE,
       Counter32, Gauge32, Integer32
           FROM SNMPv2-SMI
-      DisplayString, DateAndTime, AutonomousType
+      TEXTUAL-CONVENTION, DisplayString, DateAndTime, AutonomousType
           FROM SNMPv2-TC
+      MODULE-COMPLIANCE, OBJECT-GROUP
+          FROM SNMPv2-CONF
       applIndex, applGroup
           FROM APPLICATION-MIB
       mib-2

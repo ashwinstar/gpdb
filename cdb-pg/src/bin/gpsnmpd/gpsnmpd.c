@@ -6,7 +6,7 @@
  *      Copyright (c) 2004-2005, PostgreSQL Global Development Group
  *      Author: Hiroshi Saito
  *
- *      $Id: pgsnmpd.c,v 1.29 2009/08/17 17:41:57 eggyknap Exp $
+ *      $Id: gpsnmpd.c,v 1.29 2009/08/17 17:41:57 eggyknap Exp $
  *-------------------------------------------------------------------------
  */
 
@@ -35,7 +35,7 @@
  * define strings
  */
 
-#define PGSNMP_DAEMON "PGSQL-SNMP-Ver1.0g for Greenplum 3.x"
+#define GPSNMP_DAEMON "GPDB-SNMP-Ver1.0 for Greenplum Database"
 
 #define SUB_AGENT    1
 
@@ -136,8 +136,8 @@ static void init_mibs(void) {
 static void
 usage(void)
 {
-	fprintf(stderr, "Version %s\n",PGSNMP_DAEMON);
-	fprintf(stderr, "usage: pgsnmpd [-s] [-b] [-c FILE ] [-x address ] [-g] [-C \"Connect String\"]\n");
+	fprintf(stderr, "Version %s\n",GPSNMP_DAEMON);
+	fprintf(stderr, "usage: gpsnmpd [-s] [-b] [-c FILE ] [-x address ] [-g] [-C \"Connect String\"]\n");
 	fprintf(stderr, "   -s : run as AgentX sub-agent of an existing snmpd process\n");
 	fprintf(stderr, "   -b : run in the background\n");
 	fprintf(stderr, "   -c : configuration file name\n");
@@ -145,7 +145,7 @@ usage(void)
 	fprintf(stderr, "   -C : libpq connect strings\n");
     fprintf(stderr, "   -Q : custom query configuration file\n");
 	fprintf(stderr, "   -x : address:port of a network interface\n");
-/*	fprintf(stderr, "   -n : database search_path to use for pgsnmpd-specific tables (default: $user, public)\n"); */
+/*	fprintf(stderr, "   -n : database search_path to use for gpsnmpd-specific tables (default: $user, public)\n"); */
 	fprintf(stderr, "   -V : display version strings\n");
 }
 
@@ -288,7 +288,7 @@ main(int argc, char *argv[])
 #endif
  /*   }
    else {
-        printf("Failure connecting to PostgreSQL. pgsnmpd will exit\n");
+        printf("Failure connecting to PostgreSQL. gpsnmpd will exit\n");
         exit(1);
     }*/
 
@@ -341,11 +341,11 @@ main(int argc, char *argv[])
 /* initialize tcpip */
 SOCK_STARTUP;
 
-	init_agent(PGSNMP_DAEMON);
+	init_agent(GPSNMP_DAEMON);
 
 	init_mibs();
 
-	init_snmp(PGSNMP_DAEMON);
+	init_snmp(GPSNMP_DAEMON);
 
 	if (!agentx_subagent)
 		init_master_agent();
@@ -355,7 +355,7 @@ SOCK_STARTUP;
 	signal(SIGTERM, stop_server);
 	signal(SIGINT, stop_server);
 
-	snmp_log(LOG_INFO,"%s is up and running.\n", PGSNMP_DAEMON);
+	snmp_log(LOG_INFO,"%s is up and running.\n", GPSNMP_DAEMON);
 
 	while(keep_running)
 	{
@@ -371,7 +371,7 @@ SOCK_STARTUP;
 
 	/* shutdown */
 	if (!agentx_subagent)
-		snmp_shutdown(PGSNMP_DAEMON);
+		snmp_shutdown(GPSNMP_DAEMON);
 
 SOCK_CLEANUP;
 

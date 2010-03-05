@@ -375,7 +375,24 @@
 #email_to = ''							# Comma separated list of recipients that will get e-mail alerts.
 										# empty means disable e-mail alerts.
 
+#------------------------------------------------------------------------------
+# SNMP INFORM/TRAP ALERTS
+#------------------------------------------------------------------------------
 
+# Configure the gp_snmp_peername to be the system your SNMP monitor runs on, or a proxy
+# that will relay the message to the SNMP monitor.  You can specify transport, DNS name, and port:
+# [<transport-specifier>:]<transport-address>[:port]
+#
+# where <transport-specifier> can be 'udp', 'tcp', 'udpv6', 'tcpv6', or 'unix' for unix domain sockets (optional).
+# For udp or tcp, the port is typically 162. 
+# For a SNMP monitor running locally, you might use 'localhost:162', but more typically
+# the SNMP monitor is running on some other machine.
+#
+# if gp_snmp_peername is empty, snmp alerts are disabled.
+
+#gp_snmp_peername = ''     				# name (and optionally the port) of the SNMP monitor that will receive the alerts.
+#gp_snmp_community = 'public';			# Change to whatever community string you use in your monitor
+#gp_snmp_use_inform_or_trap = 'inform'; # Set to 'inform' or 'trap', we will send SNMP v2c inform, or SNMP v2c trap.
 
 #------------------------------------------------------------------------------
 # RUNTIME STATISTICS

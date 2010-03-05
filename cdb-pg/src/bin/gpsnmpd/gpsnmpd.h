@@ -11,8 +11,8 @@
  *-------------------------------------------------------------------------
  */
 
-#ifndef PGSNMPD_H
-#define PGSNMPD_H
+#ifndef GPSNMPD_H
+#define GPSNMPD_H
 
 #include <stdlib.h>
 #include <unistd.h>

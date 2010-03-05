@@ -202,7 +202,7 @@ rdbmsDbLimitedResourceTable_cache_load(netsnmp_container *container)
         }
 	rowreq_ctx->data.rdbmsDbLimitedResourceDescription_len = 255;
 
-    /* COMMENTED OUT UNTIL WE HAVE PGSNMPD-MIB SO THIS VALUE CAN POINT TO SOMETING 
+    /* COMMENTED OUT UNTIL WE HAVE GPDB-MIB SO THIS VALUE CAN POINT TO SOMETING
       if ((NULL == rowreq_ctx->data.rdbmsDbLimitedResourceID) ||
         (rowreq_ctx->data.rdbmsDbLimitedResourceID_len < (rdbmsDbLimitedResourceID_len * sizeof(rowreq_ctx->data.rdbmsDbLimitedResourceID[0])))) {
         snmp_log(LOG_ERR,"not enough space for value\n");
