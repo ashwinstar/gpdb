@@ -4703,7 +4703,9 @@ static struct config_string ConfigureNamesString[] =
 		&email_to,
 		"", NULL, NULL
 	},
+#endif
 
+#if USE_SNMP
 	{
 		{"gp_snmp_community", PGC_SUSET, LOGGING,
 			gettext_noop("Sets SNMP community name to send alerts (inform or trap messages) to."),
