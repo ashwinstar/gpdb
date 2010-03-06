@@ -2221,7 +2221,7 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 /* 
  * assign_plannode_id - Assign an id for each plan node.  Used by gpmon. 
  */
-void assign_plannode_id(Plan *plan)
+void assign_plannode_id(PlannedStmt *stmt)
 {
 	ApplyShareInputContext ctxt;
 
@@ -2229,8 +2229,20 @@ void assign_plannode_id(Plan *plan)
 	ctxt.planNodes = NIL;
 	ctxt.nextPlanId = 0;
 	
-	leftdeep_walker(assign_plannode_id_walker, (Node *) plan, &ctxt);
+	leftdeep_walker(assign_plannode_id_walker, (Node *) stmt->planTree, &ctxt);
 	
+	ctxt.planNodes = NIL;
+	
+	ListCell *lc = NULL;
+	foreach (lc, stmt->subplans)
+	{
+		Plan *subplan = lfirst(lc);
+		Assert(subplan);
+
+		ctxt.planNodes = NIL;
+
+		leftdeep_walker(assign_plannode_id_walker, (Node *) subplan, &ctxt);
+	}
 }
 
 /* 

@@ -37,6 +37,6 @@ extern void add_slice_to_motion(Motion *m,
 extern Plan *zap_trivial_result(PlannerInfo *root, Plan *plan); 
 extern Plan *apply_shareinput_dag_to_tree(Plan *plan, ApplyShareInputContext *ctxt); 
 extern Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt);
-extern void assign_plannode_id(Plan *plan);
+extern void assign_plannode_id(PlannedStmt *stmt);
 
 #endif   /* CDBMUTATE_H */

@@ -275,15 +275,6 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 
 	top_plan = zap_trivial_result(root, top_plan);
 
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		/*
-		 * Generate a plan node id for each node. Used by gpmon.
-		 * Note that this needs to be the last step of the planning when
-		 * the structure of the plan is final.
-		 */
-		assign_plannode_id(top_plan);
-	}
 	
 	/* build the PlannedStmt result */
 	result = makeNode(PlannedStmt);
@@ -310,6 +301,17 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->intoPolicy = GpPolicyCopy(CurrentMemoryContext, parse->intoPolicy);
 	
 	Assert(result->utilityStmt == NULL || IsA(result->utilityStmt, DeclareCursorStmt));
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		/*
+		 * Generate a plan node id for each node. Used by gpmon.
+		 * Note that this needs to be the last step of the planning when
+		 * the structure of the plan is final.
+		 */
+		assign_plannode_id(result);
+	}
+
 	return result;
 }
 
