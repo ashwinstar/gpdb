@@ -236,7 +236,7 @@ extern char  *email_to;
 
 #if USE_SNMP
 extern char   *gp_snmp_community;
-extern char   *gp_snmp_peername;
+extern char   *gp_snmp_monitor_address;
 extern char   *gp_snmp_use_inform_or_trap;
 #endif
 

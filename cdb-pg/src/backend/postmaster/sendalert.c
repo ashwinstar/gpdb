@@ -203,7 +203,7 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 
 	char subject[128];
 
-	if (gp_snmp_peername == NULL || gp_snmp_peername[0] == '\0')
+	if (gp_snmp_monitor_address == NULL || gp_snmp_monitor_address[0] == '\0')
 	{
 		static bool firsttime = 1;
 
@@ -241,7 +241,7 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	session.version = SNMP_VERSION_2c;
 	session.timeout = SNMP_DEFAULT_TIMEOUT;
 	session.retries = SNMP_DEFAULT_RETRIES;
-	session.peername = gp_snmp_peername;   // SNMP_DEFAULT_PEERNAME ?
+	session.peername = gp_snmp_monitor_address;   // SNMP_DEFAULT_PEERNAME ?
 	session.community = (u_char *)gp_snmp_community;
     session.community_len = strlen((const char *)session.community);  //SNMP_DEFAULT_COMMUNITY_LEN ?
 

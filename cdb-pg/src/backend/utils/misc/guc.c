@@ -350,7 +350,7 @@ char	   *email_to;
 
 #if USE_SNMP
 char	   *gp_snmp_community;
-char	   *gp_snmp_peername;
+char	   *gp_snmp_monitor_address;
 char	   *gp_snmp_use_inform_or_trap;
 #endif
 
@@ -4716,12 +4716,12 @@ static struct config_string ConfigureNamesString[] =
 		"public", NULL, NULL
 	},
 	{
-		{"gp_snmp_peername", PGC_SUSET, LOGGING,
-			gettext_noop("Sets the network address to send SNMP community name to send alerts to."),
+		{"gp_snmp_monitor_address", PGC_SUSET, LOGGING,
+			gettext_noop("Sets the network address to send SNMP alerts (inform or trap messages) to."),
 			NULL,
 			GUC_SUPERUSER_ONLY| GUC_LIST_INPUT
 		},
-		&gp_snmp_peername,
+		&gp_snmp_monitor_address,
 		"", NULL, NULL
 	},
 	{
