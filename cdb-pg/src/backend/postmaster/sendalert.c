@@ -60,7 +60,25 @@ extern void pg_itoa(int16 i, char *a);
 
 #if USE_SNMP
 #include <net-snmp/net-snmp-config.h>
-#include <net-snmp/net-snmp-includes.h>
+#include <net-snmp/definitions.h>
+#include <net-snmp/types.h>
+
+//#include <net-snmp/utilities.h>
+#include <net-snmp/session_api.h>
+#include <net-snmp/pdu_api.h>
+#include <net-snmp/mib_api.h>
+#include <net-snmp/varbind_api.h>
+//#include <net-snmp/config_api.h>
+#include <net-snmp/output_api.h>
+
+
+oid             objid_enterprise[] = { 1, 3, 6, 1, 4, 1, 3, 1, 1 };
+oid             objid_sysdescr[] = { 1, 3, 6, 1, 2, 1, 1, 1, 0 };
+oid             objid_sysuptime[] = { 1, 3, 6, 1, 2, 1, 1, 3, 0 };
+oid             objid_snmptrap[] = { 1, 3, 6, 1, 6, 3, 1, 1, 4, 1, 0 };
+oid				objid_rdbmsrelstate[] = { 1, 3, 6, 1, 2, 1, 39, 1, 9, 1, 1 };
+// {iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprises(1) gpdbMIB(31327) gpdbObjects(1) gpdbAlertMsg(1)}
+oid				objid_gpdbAlertMsg[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 1 };
 #endif
 
 #if USE_EMAIL
@@ -77,6 +95,10 @@ static int handle_invalid_peer_certificate(long vfy_result);
 static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
 #endif
 
+#if USE_SNMP
+static int send_snmp_inform_or_trap();
+extern pg_time_t	MyStartTime;
+#endif
 
 int send_alert_from_chunks(const PipeProtoChunk *chunk,
 		const PipeProtoChunk * saved_chunks_in)
@@ -142,7 +164,7 @@ int send_alert_from_chunks(const PipeProtoChunk *chunk,
 		free(errorData.databasename ); errorData.databasename = NULL;
 		free(errorData.username ); errorData.username = NULL;
 		/* Carry on with error handling. */
-		PG_RE_THROW();
+		PG_RE_THROW();// {iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprises(1) gpdbMIB(31327) gpdbTraps(2) gpdbAlert(1)}
 	}
 	PG_END_TRY();
 
@@ -167,6 +189,179 @@ int send_alert_from_chunks(const PipeProtoChunk *chunk,
 	return ret;
 }
 
+#if USE_SNMP
+static int send_snmp_inform_or_trap(const GpErrorData * errorData)
+{
+	char           *trap = NULL;
+
+	netsnmp_session session, *ss = NULL;
+	netsnmp_pdu    *pdu, *response;
+	int				status;
+	char            csysuptime[20];
+
+	bool inform = strcmp(gp_snmp_use_inform_or_trap,"inform") == 0;
+
+	char subject[128];
+
+	if (gp_snmp_peername == NULL || gp_snmp_peername[0] == '\0')
+	{
+		static bool firsttime = 1;
+
+		ereport(firsttime ? LOG : DEBUG1,(errmsg("SNMP inform/trap alerts are disabled"),errOmitLocation(true)));
+		firsttime = false;
+
+		return -1;
+	}
+
+	/* Set up the primary alert message for the inform/trap.  Let's limit it to 127 bytes just to be safe. */
+	if (strcmp(errorData->error_severity,"LOG") == 0)
+		snprintf(subject, 127, "%s",errorData->error_message);
+	else if (errorData->sql_state && strcmp(errorData->sql_state,"57P03") == 0)
+		snprintf(subject, 127, "%s",errorData->error_message);
+	else
+		snprintf(subject, 127, "%s: %s",errorData->error_severity, errorData->error_message);
+	subject[127] = '\0'; /* Guarantee subject is zero terminated */
+
+	/*
+	 * SNMP managers are required to handle messages up to at least 484 bytes long, but I believe all existing
+	 * ones support messages up to one packet (ethernet frame) in size, 1472 bytes.
+	 */
+
+	snmp_enable_stderrlog();
+
+	elog(DEBUG2,"send_snmp_inform_or_trap");
+
+	/*
+	 * Initialize the SNMP library.  This also reads the MIB database.
+	 */
+	init_snmp("sendalert");
+
+
+	snmp_sess_init( &session );	/* Initialize session to default values */
+	session.version = SNMP_VERSION_2c;
+	session.timeout = SNMP_DEFAULT_TIMEOUT;
+	session.retries = SNMP_DEFAULT_RETRIES;
+	session.peername = gp_snmp_peername;   // SNMP_DEFAULT_PEERNAME ?
+	session.community = (u_char *)gp_snmp_community;
+    session.community_len = strlen((const char *)session.community);  //SNMP_DEFAULT_COMMUNITY_LEN ?
+
+	//session.callback = snmp_input;
+	session.callback_magic = NULL;
+	//snmp_parse_args(argc, argv, &session, "C:", optProc))
+
+	if (!snmp_open( &session ))
+	{
+		const char     *str;
+		int             xerr;
+		xerr = snmp_errno;
+		str = snmp_api_errstring(xerr);
+		elog(LOG, "snmp_open: %s", str);
+		return -1;
+	}
+
+
+    ss = snmp_add(&session,
+                  netsnmp_transport_open_client("sendalert", session.peername),
+                  NULL, NULL);
+    if (ss == NULL) {
+        /*
+         * diagnose netsnmp_transport_open_client and snmp_add errors with
+         * the input netsnmp_session pointer
+         */
+		{
+			char           *err;
+			snmp_error(&session, NULL, NULL, &err);
+			elog(LOG, "send_alert snmp_add: %s", err);
+			free(err);
+		}
+    	return -1;
+    }
+
+    elog(DEBUG2,"snmp_add done");
+	pdu = snmp_pdu_create(inform ? SNMP_MSG_INFORM : SNMP_MSG_TRAP2);
+	if (!pdu)
+	{
+		const char     *str;
+		int             xerr;
+		xerr = snmp_errno;
+		str = snmp_api_errstring(xerr);
+		elog(LOG, "Failed to create notification PDU: %s", str);
+		return -1;
+	}
+
+
+	elog(DEBUG2,"pdu created");
+	sprintf(csysuptime, "%ld", (long)(time(NULL) - MyStartTime));
+
+	trap = csysuptime;
+
+	// look for ERRCODE_DISK_FULL
+	// ERRCODE_ADMIN_SHUTDOWN
+	// ERRCODE_CRASH_SHUTDOWN
+	// ERRCODE_CANNOT_CONNECT_NOW
+	// abnormal database system shutdown
+
+
+	snmp_add_var(pdu, objid_sysuptime,
+	                    sizeof(objid_sysuptime) / sizeof(oid),
+	                    't', trap);
+
+#if 0
+	// {iso(1) identified-organization(3) dod(6) internet(1) mgmt(2) mib-2(1) rdbmsMIB(39) rdbmsTraps(2) rdbmsStateChange(1)}
+	snmp_add_var(pdu, objid_snmptrap,
+						sizeof(objid_snmptrap) / sizeof(oid),
+						'o', "1.3.6.1.2.1.39.2.1");  // rdbmsStateChange
+
+
+	snmp_add_var(pdu, objid_rdbmsrelstate,
+						sizeof(objid_rdbmsrelstate) / sizeof(oid),
+						'i', "5");  // 4 = restricted, 5 = unavailable
+#endif
+
+	// {iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprises(1) gpdbMIB(31327) gpdbTraps(2) gpdbAlert(1)}
+	snmp_add_var(pdu, objid_snmptrap,
+						sizeof(objid_snmptrap) / sizeof(oid),
+						'o', "1.3.6.1.4.1.31327.2.1");  // gpdbAlert
+
+
+	snmp_add_var(pdu, objid_gpdbAlertMsg,
+						sizeof(objid_gpdbAlertMsg) / sizeof(oid),
+						's', subject);  //DisplayString
+
+	elog(DEBUG2,"ready to send");
+	if (inform)
+	    status = snmp_synch_response(ss, pdu, &response);
+	else
+	    status = snmp_send(ss, pdu) == 0;
+
+	elog(DEBUG2,"send, status %d",status);
+	if (status)
+	{
+		if (ss)
+		{
+		    char           *err;
+		    snmp_error(ss, NULL, NULL, &err);
+		    elog(LOG, "%s: %s", inform ? "snmpinform" : "snmptrap", err);
+		    free(err);
+		}
+	    if (!inform)
+	        snmp_free_pdu(pdu);
+	}
+	else if (inform)
+	    snmp_free_pdu(response);
+
+	snmp_close(ss);
+
+	/*
+	 * don't do the shutdown, to avoid the cost of starting up snmp each time
+	 * (plus, it doesn't seem to work to run snmp_init() again after a shutdown)
+	 */
+	/*snmp_shutdown("sendalert");*/
+
+
+	return 0;
+}
+#endif
 
 int send_alert(const GpErrorData * errorData)
 {
@@ -177,7 +372,6 @@ int send_alert(const GpErrorData * errorData)
 	auth_context_t authctx;
 	const smtp_status_t *status;
 
-	char subject[128];
 	enum notify_flags notify = Notify_FAILURE;
 	char	   *rawstring;
 	List	   *elemlist;
@@ -185,6 +379,7 @@ int send_alert(const GpErrorData * errorData)
 	int			success = 0;
 
 #endif
+	char subject[128];
 
 	elog(DEBUG2,"send_alert: %s: %s",errorData->error_severity, errorData->error_message);
 
@@ -196,14 +391,29 @@ int send_alert(const GpErrorData * errorData)
 	 *
 	 */
 
+	/* Set up a subject line for the e-mail.  Let's limit it to 127 bytes just to be safe. */
+	if (strcmp(errorData->error_severity,"LOG") == 0)
+		snprintf(subject, 127, "%s",errorData->error_message);
+	else if (errorData->sql_state && strcmp(errorData->sql_state,"57P03") == 0)
+		snprintf(subject, 127, "%s",errorData->error_message);
+	else
+		snprintf(subject, 127, "%s: %s",errorData->error_severity, errorData->error_message);
+	subject[127] = '\0'; /* Guarantee subject is zero terminated */
+
+#if USE_SNMP
+	send_snmp_inform_or_trap(errorData);
+#endif
+
 #if USE_EMAIL
 
 	//host = "smtpx18.msoutlookonline.net:587";
-	//"greenplum.com.s5a2.psmtp.com:25";
 
-	if (strlen(email_to) == 0)
+	if (email_to == NULL || strlen(email_to) == 0)
 	{
-		ereport(LOG,(errmsg("e-mail alerts are disabled"),errOmitLocation(true)));
+		static bool firsttime = 1;
+
+		ereport(firsttime ? LOG : DEBUG1,(errmsg("e-mail alerts are disabled"),errOmitLocation(true)));
+		firsttime = false;
 		return -1;
 	}
 
@@ -213,14 +423,6 @@ int send_alert(const GpErrorData * errorData)
 		return -1;
 	}
 
-	/* Set up a subject line for the e-mail.  Let's limit it to 127 bytes just to be safe. */
-	if (strcmp(errorData->error_severity,"LOG") == 0)
-		snprintf(subject, 127, "%s",errorData->error_message);
-	else if (errorData->sql_state && strcmp(errorData->sql_state,"57P03") == 0)
-		snprintf(subject, 127, "%s",errorData->error_message);
-	else
-		snprintf(subject, 127, "%s: %s",errorData->error_severity, errorData->error_message);
-	subject[127] = '\0'; /* Guarantee subject is zero terminated */
 
 	// Ok, send the alert here.
 
