@@ -2119,8 +2119,7 @@ CopyTo(CopyState cstate)
 
                 if (tupDesc->tdhasoid)
                 {
-                    Assert(!"AOCS NYI");
-                    elog(ERROR, "AOCS does not support oid");
+                    elog(ERROR, "OIDS=TRUE is not allowed on tables that use column-oriented storage. Use OIDS=FALSE");
                 }
 
                 proj = palloc(sizeof(bool) * nvp);
@@ -4005,8 +4004,8 @@ CopyFrom(CopyState cstate)
 				{
 					HeapTuple	newtuple;
 
-                                        if(tuple)
-                                                elog(ERROR, "AOCS Does not do trigger yet");
+					if(tuple)
+						elog(ERROR, "triggers are not supported on tables that use column-oriented storage");
 
 					Assert(resultRelInfo->ri_TrigFunctions != NULL);
 					newtuple = ExecBRInsertTriggers(estate, resultRelInfo, tuple);
