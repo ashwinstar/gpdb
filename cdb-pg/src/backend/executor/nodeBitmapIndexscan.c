@@ -198,42 +198,11 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
 	indexScanDesc = node->biss_ScanDesc;
 
 	/*
-	 * Free the exprcontext ... now dead code, see ExecFreeExprContext
-	 */
-#ifdef NOT_USED
-	if (node->biss_RuntimeContext)
-		FreeExprContext(node->biss_RuntimeContext);
-#endif
-
-    /* 
-     * CDB: Report statistics for EXPLAIN ANALYZE 
-     */
-    if (node->ss.ps.instrument)
-        tbm_bitmap_upd_instrument(node->bitmap);
-
-	/*
 	 * close the index relation
 	 */
 	index_endscan(indexScanDesc);
 
 	index_close(indexRelationDesc, NoLock);
-
-#ifdef NOT_USED
-	if (node->bitmap != NULL)
-	{
-		if(IsA(node->bitmap, HashBitmap))
-			tbm_free((HashBitmap *)node->bitmap);
-		else if(IsA(node->bitmap, StreamBitmap))
-		{
-			StreamBitmap *s = (StreamBitmap *)node->bitmap;
-			if(s->opaque)
-			{
-				bitmap_stream_free(s->opaque);
-				s->opaque = NULL;
-			}
-		}
-	}
-#endif
 
 	EndPlanStateGpmonPkt(&node->ss.ps);
 }
