@@ -16592,16 +16592,6 @@ select * from get_ereport order by 1;
  tabd: tuplestorenew:00000519:  ereport(ERROR, 
  tabd: tuplestorenew:00000520:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  tabd: tuplestorenew:00000521:  errmsg("Can not allocate a new page in the tuplestore."))); 
- tabg: tuplesortxmkheap:00000661:  ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION), 
- tabg: tuplesortxmkheap:00000662:  errmsg("could not create unique index"), 
- tabg: tuplesortxmkheap:00000663:  errdetail("Table contains duplicated values."))); 
- tabg: tuplesortxmkheap:00000679:  ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION), 
- tabg: tuplesortxmkheap:00000680:  errmsg("could not create unique index"), 
- tabg: tuplesortxmkheap:00000681:  errdetail("Table contains duplicated values."))); 
- tabh: tuplesortxmkqsort:00000338:  ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION), 
- tabh: tuplesortxmkqsort:00000339:  errmsg("could not create unique index"), 
- tabh: tuplesortxmkqsort:00000340:  errdetail("Table contains duplicate values."), 
- tabh: tuplesortxmkqsort:00000341:  errOmitLocation(true))); 
  uaad: udt:00000113:  ereport(ERROR, ( 
  uaad: udt:00000114:  errcode(ERRCODE_CANNOT_COERCE), 
  uaad: udt:00000115:  errmsg("UDT for Oid %d produced image with incorrect size. Expected %d, was %d", 
@@ -17823,6 +17813,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000073:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000074:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000075:  str))); 
-(17762 rows)
+(17750 rows)
 
 drop external table get_ereport;

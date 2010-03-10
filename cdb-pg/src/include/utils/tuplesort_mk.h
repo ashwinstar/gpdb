@@ -377,7 +377,7 @@ extern void mkheap_destroy(MKHeap *mkheap);
  *		return value > 0 means successfully inserted into the heap.
  *
  * This means, we cannot insert anything smaller than current smallest entry, however, we will see this
- * is enough for our use in external sort or limit sort.  More general way of doing this is definately 
+ * is enough for our use in external sort or limit sort.  More general way of doing this is definitely 
  * doable, but not needed.
  *
  * On output, in cases where the value is >= the min element, *e will be filled in with a copy of the min value of the heap.
@@ -409,5 +409,16 @@ static inline int64 mkheap_cnt(MKHeap *mkheap)
 {
     return mkheap->count;
 }
+
+/**
+ * ereport an ERROR indicating that the uniqueness constraint was violated
+ */
+#define ERROR_UNIQUENESS_VIOLATED() \
+    do \
+    { \
+        ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION), \
+                    errmsg("could not create unique index"), \
+                    errdetail("Table contains duplicate values."))); \
+    } while(0)
 
 #endif

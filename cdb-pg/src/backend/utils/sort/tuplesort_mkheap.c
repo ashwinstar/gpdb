@@ -471,6 +471,8 @@ mke_has_duplicates_with_root(MKHeap *mkheap)
  *   Return < 0 if smaller than heap top; *e is unchanged
  *   Return = 0 if eq to heap top ; *e is unchanged (but will have value equal to the heap top)
  *   Return > 0 if successfully inserted; *e is populated with the removed heap top
+ *
+ * If 0 would be returned but the heap is marked as needing uniqueness enforcement, error is generated instead
  */
 static int mkheap_putAndGet_impl(MKHeap *mkheap, MKEntry *e)
 {
@@ -579,6 +581,13 @@ static int mkheap_putAndGet_impl(MKHeap *mkheap, MKEntry *e)
             	/* if new one is less than current top then we just return that negative comparison */
             	/* if new one equals the current top then we could do an insert and immediate removal -- but it
             	 *    won't matter so we simply return right away, leaving *e untouched */
+
+                /* enforce uniqueness first */
+                if(c == 0 && mkheap->mkctxt->enforceUnique)
+                {
+                    ERROR_UNIQUENESS_VIOLATED();
+                }
+
             	return c;
             }
             else
@@ -656,12 +665,6 @@ int mkheap_putAndGet_run(MKHeap *mkheap, MKEntry *e, int16 run)
     /* success! Greater than or Equal. */
     if(ins >= 0)
     {
-        if(mkheap->mkctxt->enforceUnique && ins == 0)
-        {
-            ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
-                        errmsg("could not create unique index"),
-                        errdetail("Table contains duplicated values.")));
-        }
         return ins;
     }
 
@@ -671,14 +674,6 @@ int mkheap_putAndGet_run(MKHeap *mkheap, MKEntry *e, int16 run)
 
     Assert(ins > 0);
     return ins;
-}
-
-static void
-errorUniquenessViolated()
-{
-    ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
-                errmsg("could not create unique index"),
-                errdetail("Table contains duplicated values.")));
 }
 
 int mkheap_putAndGet_reader(MKHeap *mkheap, MKEntry *out)
@@ -704,9 +699,18 @@ int mkheap_putAndGet_reader(MKHeap *mkheap, MKEntry *out)
     if ( mkheap->mkctxt->enforceUnique && mke_has_duplicates_with_root(mkheap))
     {
     	/* this checks if two different readers produce the same value
-    	 *   a single reader producing the same value is checked below
+    	 *   a single reader producing the same value is checked below.
+    	 *
+    	 *
+    	 * The problem with two different readers is because we don't actually do:
+    	 *    1) pop top value
+    	 *    2) insert new value from reader
+    	 *
+    	 * Instead, we putGet the new value from the reader -- so the values returned from
+    	 *     putAndGetImpl will ALWAYS be the result of comparison from the replaced value!
+    	 *     new values are not compared against what the root would be after the pop (step 1 above)
     	 */
-    	errorUniquenessViolated();
+    	ERROR_UNIQUENESS_VIOLATED();
     }
 
     /* Figure out the reader that provided the current top of the heap */
@@ -733,14 +737,6 @@ int mkheap_putAndGet_reader(MKHeap *mkheap, MKEntry *out)
      *      above OR the result of the .reader() call, depending)
      */
     ins = mkheap_putAndGet_impl(mkheap, out);
-
-    /*
-     * Check to see if two successive values for this reader were unique
-     */
-    if(mkheap->mkctxt->enforceUnique && ins == 0)
-    {
-    	errorUniquenessViolated();
-    }
 
     Assert(ins >= 0);
     Assert(mke_get_reader(out) == n);
@@ -772,6 +768,9 @@ int mkheap_putAndGet(MKHeap *mkheap, MKEntry *out)
         ret = mkheap_putAndGet_reader(mkheap, out);
     else
         ret = mkheap_putAndGet_impl(mkheap, out);
+
+    /* check: underlying call must have enforced uniquness */
+    AssertImply(mkheap->mkctxt->enforceUnique, ret != 0);
 
 	/* free *out */
     if(mkheap->mkctxt->cpfr)
