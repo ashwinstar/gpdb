@@ -161,7 +161,7 @@ DEBUGFLAGS="$(strip $(CFLAGS_INLINE) $(CFLAGS_OPT) -g3 $(TRACE_GCC_FLAG))"
 DEFPORT=5432
 rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email
 rhel5_x86_64_CONFIGFLAGS=--enable-email
-sol10_x86_64_CONFIGFLAGS=--enable-email
+sol10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
 sol_x86_64_CONFIGFLAGS=--enable-email
 suse10_x86_64_CONFIGFLAGS=--enable-email
 linux_x64_64_CONFIGFLAGS=--enable-email
