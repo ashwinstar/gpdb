@@ -3066,6 +3066,7 @@ pmdie(SIGNAL_ARGS)
 			Shutdown = SmartShutdown;
 			ereport(LOG,
 					(errmsg("received smart shutdown request"),
+					 errSendAlert(true),
 					 errOmitLocation(true)));
 
 			if (pmState == PM_RUN || pmState == PM_RECOVERY ||
@@ -3168,6 +3169,7 @@ pmdie(SIGNAL_ARGS)
 			Shutdown = FastShutdown;
 			ereport(LOG,
 					(errmsg("received fast shutdown request"),
+					 errSendAlert(true),
 					 errOmitLocation(true)));
 
 			if (StartupPID != 0)
@@ -3269,6 +3271,7 @@ pmdie(SIGNAL_ARGS)
 			 */
 			ereport(LOG,
 					(errmsg("received immediate shutdown request"),
+				     errSendAlert(true),
 					 errOmitLocation(true)));
 			SignalChildren(SIGQUIT);
 			if (StartupPID != 0)

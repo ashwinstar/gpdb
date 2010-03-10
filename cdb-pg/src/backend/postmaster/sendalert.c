@@ -376,6 +376,9 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	 */
 	if (strstr(subject,gettext("abnormal database system shutdown")) != NULL ||
 		strstr(subject, gettext("the database system is shutting down"))  != NULL ||
+		strstr(subject, gettext("received smart shutdown request")) != NULL ||
+		strstr(subject, gettext("received fast shutdown request")) != NULL ||
+		strstr(subject, gettext("received immediate shutdown request")) != NULL ||
 		strstr(subject, gettext("database system is shut down"))  != NULL)
 		severity[0] = '7';  //gpdbSevSystemDown
 
