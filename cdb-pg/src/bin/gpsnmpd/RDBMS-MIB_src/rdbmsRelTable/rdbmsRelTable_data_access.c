@@ -203,9 +203,9 @@ rdbmsRelTable_cache_load(netsnmp_container *container)
 
         /* Do a query to see what the state of the segments is */
 
-        config_qry = PQexec(dbconn, "SELECT content, definedprimary, isprimary, valid from pg_catalog.gp_segment_configuration where content >= 0");
+        config_qry = PQexec(dbconn, "SELECT content, definedprimary, isprimary, valid from pg_catalog.gp_pgdatabase where content >= 0");
         if (PQresultStatus(config_qry) != PGRES_TUPLES_OK) {
-	    snmp_log(LOG_ERR, "Couldn't read gp_configuration");
+	    snmp_log(LOG_ERR, "Couldn't read gp_pgdatabase");
 	    PQclear(config_qry);
         }
         else 

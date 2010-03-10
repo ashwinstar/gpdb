@@ -316,17 +316,18 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 
 	trap = csysuptime;
 
+	/*
 	// ERRCODE_DISK_FULL could be reported vi rbmsMIB rdbmsTraps rdbmsOutOfSpace trap.
 	// But it appears we never generate that error?
 
-	// ERRCODE_ADMIN_SHUTDOWN means SysAdmin aborted somebody's request.  Not interesting/
+	// ERRCODE_ADMIN_SHUTDOWN means SysAdmin aborted somebody's request.  Not interesting?
 
 	// ERRCODE_CRASH_SHUTDOWN sounds interesting, but I don't see that we ever generate it.
 
 	// ERRCODE_CANNOT_CONNECT_NOW means we are starting up, shutting down, in recovery, or Too many users are logged on.
 
 	// abnormal database system shutdown
-
+	*/
 
 	snmp_add_var(pdu, objid_sysuptime,
 	                    sizeof(objid_sysuptime) / sizeof(oid),
@@ -357,7 +358,7 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	/*
 	 * The gpdbAlertSeverity is a crude attempt to classify some of these messages based on severity,
 	 * where OK means everything is running normal, Down means everything is shut down, degraded would be
-	 * for times when some segments are down, but the system is up, and the others are maybe useful in the future
+	 * for times when some segments are down, but the system is up, The others are maybe useful in the future
 	 *
 	 *  gpdbSevUnknown(0),
 	 *	gpdbSevOk(1),
@@ -374,20 +375,21 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	 * Check for "Interesting" messages and try to classify them by severity
 	 * Use of gettext() is because the strings are already localized in the errorData structure.
 	 */
-	if (strstr(subject,gettext("abnormal database system shutdown")) != NULL ||
-		strstr(subject, gettext("the database system is shutting down"))  != NULL ||
-		strstr(subject, gettext("received smart shutdown request")) != NULL ||
-		strstr(subject, gettext("received fast shutdown request")) != NULL ||
-		strstr(subject, gettext("received immediate shutdown request")) != NULL ||
-		strstr(subject, gettext("database system is shut down"))  != NULL)
+	if (strstr(errorData->error_message, gettext("abnormal database system shutdown")) != NULL ||
+		strstr(errorData->error_message, gettext("the database system is shutting down"))  != NULL ||
+		strstr(errorData->error_message, gettext("received smart shutdown request")) != NULL ||
+		strstr(errorData->error_message, gettext("received fast shutdown request")) != NULL ||
+		strstr(errorData->error_message, gettext("received immediate shutdown request")) != NULL ||
+		strstr(errorData->error_message, gettext("database system is shut down"))  != NULL)
 		severity[0] = '7';  //gpdbSevSystemDown
 
-	else if (strstr(subject, gettext("Master mirroring synchronization lost"))  != NULL ||
-			  strstr(subject, gettext("Error from sending to standby master"))  != NULL)
+	else if (strstr(errorData->error_message, gettext("Master mirroring synchronization lost"))  != NULL ||
+			  strstr(errorData->error_message, gettext("Error from sending to standby master"))  != NULL ||
+			  strstr(errorData->error_message, "GPDB performed segment reconfiguration.") != NULL) // elog, so no gettext
 		severity[0] = '6';  // gpdbSevSystemDegraded
 
-	else if (strstr(subject,gettext("the database system is starting up")) != NULL ||
-			  strstr(subject, gettext("database system is ready to accept connections"))  != NULL)
+	else if (strstr(errorData->error_message, gettext("the database system is starting up")) != NULL ||
+			  strstr(errorData->error_message, gettext("database system is ready to accept connections"))  != NULL)
 		severity[0] = '1';  // sev Ok -- Nothing is wrong
 
 	else if (strcmp(errorData->error_severity,gettext("PANIC")) == 0)

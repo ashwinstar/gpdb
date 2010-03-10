@@ -35,7 +35,7 @@
  * define strings
  */
 
-#define GPSNMP_DAEMON "GPDB-SNMP-Ver1.0 for Greenplum Database"
+#define GPSNMP_DAEMON "GPDB-SNMP-Ver2.0 for Greenplum Database 4.x"
 
 #define SUB_AGENT    1
 
@@ -236,26 +236,30 @@ main(int argc, char *argv[])
   	if (syslog)
 		/* Some problems are contained.
     		snmp_enable_calllog(); */
-    		snmp_enable_syslog();
+    	snmp_enable_syslog();
   	else
-    		snmp_enable_stderrlog();
+    	snmp_enable_stderrlog();
 
     	if (getuid() !=0)
       		netsnmp_ds_set_boolean(NETSNMP_DS_APPLICATION_ID, 
 		     NETSNMP_DS_AGENT_NO_ROOT_ACCESS, 1);
 
-        do {
-  	  dbconn = db_connect(conninfo);
-          if (!dbconn)
-          {
-            snmp_log(LOG_INFO,"Waiting to retry DB connect -- sleeping 10 seconds\n");
-            sleep(10);
-          } 
+        do
+        {
+        	dbconn = db_connect(conninfo);
+        	if (!dbconn)
+			{
+				snmp_log(LOG_INFO,"Waiting to retry DB connect -- sleeping 10 seconds\n");
+				sleep(10);
+			}
         } while (!dbconn);
 
-     		pgsqlState = 1;
+     	pgsqlState = 1;
+
 		qryRes = PQexec(dbconn, SEARCH_PATH);
-		if (PQresultStatus(qryRes) != PGRES_COMMAND_OK) snmp_log(LOG_ERR, "Could not set search path because of some problem with the set query\n");
+
+		if (PQresultStatus(qryRes) != PGRES_COMMAND_OK)
+			snmp_log(LOG_ERR, "Could not set search path because of some problem with the set query\n");
 #if 0
 		if (strncmp(search_path, "$user, public", 13) != 0) {;
 			escaped_search_path = calloc(sizeof(*search_path) * 2 + 1, sizeof(char*));
@@ -294,19 +298,19 @@ main(int argc, char *argv[])
 
   	if (agentx_subagent)
   	{
-    		/* make us a agentx client. */
-    		netsnmp_ds_set_boolean(NETSNMP_DS_APPLICATION_ID,
-                           NETSNMP_DS_AGENT_ROLE, SUB_AGENT);
+		/* make us a agentx client. */
+		netsnmp_ds_set_boolean(NETSNMP_DS_APPLICATION_ID,
+					   NETSNMP_DS_AGENT_ROLE, SUB_AGENT);
 
 #if 0
-    		netsnmp_ds_set_boolean(NETSNMP_DS_APPLICATION_ID, 
-			   NETSNMP_DS_AGENT_AGENTX_MASTER, 0);
+		netsnmp_ds_set_boolean(NETSNMP_DS_APPLICATION_ID,
+		   NETSNMP_DS_AGENT_AGENTX_MASTER, 0);
 
 #endif
 #ifdef DEBUG
-    		if (netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID, 
-                               NETSNMP_DS_AGENT_ROLE)) 
-  			snmp_log(LOG_INFO,"SUB_AGENT running.\n");
+		if (netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID,
+						   NETSNMP_DS_AGENT_ROLE))
+			snmp_log(LOG_INFO,"SUB_AGENT running.\n");
 #endif
 
 	}
@@ -323,10 +327,10 @@ main(int argc, char *argv[])
 #ifdef DEBUG
 	if(netsnmp_ds_get_string(NETSNMP_DS_APPLICATION_ID, 
 			NETSNMP_DS_AGENT_X_SOCKET))
-
 		snmp_log(LOG_INFO,"AGENT_X_SOCKET:%s\n",
 			netsnmp_ds_get_string(NETSNMP_DS_APPLICATION_ID, 
 						NETSNMP_DS_AGENT_X_SOCKET));
+
  	if(netsnmp_ds_get_string(NETSNMP_DS_APPLICATION_ID, 
 			NETSNMP_DS_AGENT_PORTS))
     		snmp_log(LOG_INFO,"AGENT_PORTS:%s\n",
@@ -359,7 +363,7 @@ SOCK_STARTUP;
 
 	while(keep_running)
 	{
-                agent_check_and_process(1);
+        agent_check_and_process(1);
 #ifdef DEBUG
 		strv = netsnmp_ds_get_string(NETSNMP_DS_LIBRARY_ID,
 				NETSNMP_DS_LIB_COMMUNITY );
