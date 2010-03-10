@@ -44,46 +44,11 @@ static TupleTableSlot *IndexNext(IndexScanState *node);
 static inline void
 initScanDesc(IndexScanState *indexstate)
 {
-	IndexScan *node = (IndexScan *)(indexstate->ss.ps.plan);
 	Relation currentRelation = indexstate->ss.ss_currentRelation;
 	EState *estate = indexstate->ss.ps.state;
 	
 	if (indexstate->iss_ScanDesc == NULL)
 	{
-		/*
-		 * build the index scan keys from the index qualification
-		 */
-		ExecIndexBuildScanKeys((PlanState *) indexstate,
-							   indexstate->iss_RelationDesc,
-							   node->indexqual,
-							   node->indexstrategy,
-							   node->indexsubtype,
-							   &indexstate->iss_ScanKeys,
-							   &indexstate->iss_NumScanKeys,
-							   &indexstate->iss_RuntimeKeys,
-							   &indexstate->iss_NumRuntimeKeys,
-							   NULL,	/* no ArrayKeys */
-							   NULL);
-		
-		/*
-		 * If we have runtime keys, we need an ExprContext to evaluate them. The
-		 * node's standard context won't do because we want to reset that context
-		 * for every tuple.  So, build another context just like the other one...
-		 * -tgl 7/11/00
-		 */
-		if (indexstate->iss_NumRuntimeKeys != 0)
-		{
-			ExprContext *stdecontext = indexstate->ss.ps.ps_ExprContext;
-			
-			ExecAssignExprContext(estate, &indexstate->ss.ps);
-			indexstate->iss_RuntimeContext = indexstate->ss.ps.ps_ExprContext;
-			indexstate->ss.ps.ps_ExprContext = stdecontext;
-		}
-		else
-		{
-			indexstate->iss_RuntimeContext = NULL;
-		}
-		
 		/*
 		 * Initialize scan descriptor.
 		 */
@@ -632,6 +597,40 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	indexstate->iss_RelationDesc = index_open(node->indexid,
 									 relistarget ? NoLock : AccessShareLock);
 
+	/*
+	 * build the index scan keys from the index qualification
+	 */
+	ExecIndexBuildScanKeys((PlanState *) indexstate,
+						   indexstate->iss_RelationDesc,
+						   node->indexqual,
+						   node->indexstrategy,
+						   node->indexsubtype,
+						   &indexstate->iss_ScanKeys,
+						   &indexstate->iss_NumScanKeys,
+						   &indexstate->iss_RuntimeKeys,
+						   &indexstate->iss_NumRuntimeKeys,
+						   NULL,	/* no ArrayKeys */
+						   NULL);
+	
+	/*
+	 * If we have runtime keys, we need an ExprContext to evaluate them. The
+	 * node's standard context won't do because we want to reset that context
+	 * for every tuple.  So, build another context just like the other one...
+	 * -tgl 7/11/00
+	 */
+	if (indexstate->iss_NumRuntimeKeys != 0)
+	{
+		ExprContext *stdecontext = indexstate->ss.ps.ps_ExprContext;
+		
+		ExecAssignExprContext(estate, &indexstate->ss.ps);
+		indexstate->iss_RuntimeContext = indexstate->ss.ps.ps_ExprContext;
+		indexstate->ss.ps.ps_ExprContext = stdecontext;
+	}
+	else
+	{
+		indexstate->iss_RuntimeContext = NULL;
+	}
+		
 	/*
 	 * Initialize index-specific scan state
 	 */
