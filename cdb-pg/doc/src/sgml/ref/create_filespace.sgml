@@ -21,7 +21,9 @@ PostgreSQL documentation
  <refsynopsisdiv>
 <synopsis>
 
-CREATE FILESPACE filespacename [OWNER rolename] (dbid:'/file_location/seg_data_dir', ...) 
+CREATE FILESPACE filespacename [OWNER rolename] (
+        dbid:'/filespace_path/seg_data_dir_path',
+        ... )
 
 </synopsis>
  </refsynopsisdiv>
