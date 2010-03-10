@@ -20,10 +20,9 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-CREATE TABLESPACE <replaceable class="parameter">tablespacename</replaceable> [ OWNER <replaceable class="parameter">username</replaceable> ] 
-LOCATION '<replaceable class="parameter">segcontent0dir</replaceable>', '<replaceable class="parameter">segcontent1dir</replaceable>', ... 
-MIRROR LOCATION '<replaceable class="parameter">segcontent0dir</replaceable>', '<replaceable class="parameter">segcontent1dir</replaceable>', ... 
-[ MASTER LOCATION '<replaceable class="parameter">mastercontentdir</replaceable>' ]
+
+CREATE TABLESPACE tablespace_name [OWNER username] FILESPACE filespace_name
+
 </synopsis>
  </refsynopsisdiv>
 
