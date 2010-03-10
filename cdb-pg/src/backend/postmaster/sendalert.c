@@ -77,8 +77,13 @@ oid             objid_sysdescr[] = { 1, 3, 6, 1, 2, 1, 1, 1, 0 };
 oid             objid_sysuptime[] = { 1, 3, 6, 1, 2, 1, 1, 3, 0 };
 oid             objid_snmptrap[] = { 1, 3, 6, 1, 6, 3, 1, 1, 4, 1, 0 };
 oid				objid_rdbmsrelstate[] = { 1, 3, 6, 1, 2, 1, 39, 1, 9, 1, 1 };
+
 // {iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprises(1) gpdbMIB(31327) gpdbObjects(1) gpdbAlertMsg(1)}
 oid				objid_gpdbAlertMsg[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 1 };
+oid				objid_gpdbAlertSeverity[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 2 };
+oid				objid_gpdbAlertSqlstate[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 3 };
+oid				objid_gpdbAlertDetail[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 4 };
+oid				objid_gpdbAlertSqlStmt[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 5 };
 #endif
 
 #if USE_EMAIL
@@ -164,7 +169,7 @@ int send_alert_from_chunks(const PipeProtoChunk *chunk,
 		free(errorData.databasename ); errorData.databasename = NULL;
 		free(errorData.username ); errorData.username = NULL;
 		/* Carry on with error handling. */
-		PG_RE_THROW();// {iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprises(1) gpdbMIB(31327) gpdbTraps(2) gpdbAlert(1)}
+		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
@@ -199,6 +204,13 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	int				status;
 	char            csysuptime[20];
 
+	/*
+	 * "inform" messages get a positive acknowledgement response from the SNMP manager.
+	 * If it doesn't come, the message might be resent.
+	 *
+	 * "trap" messages are one-way, and we have no idea if the manager received it.
+	 * But, it's faster and cheaper, and no need to retry.  So some people might prefer it.
+	 */
 	bool inform = strcmp(gp_snmp_use_inform_or_trap,"inform") == 0;
 
 	char subject[128];
@@ -213,7 +225,11 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 		return -1;
 	}
 
-	/* Set up the primary alert message for the inform/trap.  Let's limit it to 127 bytes just to be safe. */
+	/*
+	 * Set up the primary alert message for the inform/trap.
+	 * Let's limit it to 127 bytes just to be safe, as SNMP inform/trap messages are limited in size.
+	 *
+	 */
 	if (strcmp(errorData->error_severity,"LOG") == 0)
 		snprintf(subject, 127, "%s",errorData->error_message);
 	else if (errorData->sql_state && strcmp(errorData->sql_state,"57P03") == 0)
@@ -223,8 +239,10 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	subject[127] = '\0'; /* Guarantee subject is zero terminated */
 
 	/*
-	 * SNMP managers are required to handle messages up to at least 484 bytes long, but I believe all existing
-	 * ones support messages up to one packet (ethernet frame) in size, 1472 bytes.
+	 * SNMP managers are required to handle messages up to at least 484 bytes long, but I believe most existing
+	 * managers support messages up to one packet (ethernet frame) in size, 1472 bytes.
+	 *
+	 * But, should we take that chance?  Or play it safe and limit the message to 484 bytes?
 	 */
 
 	snmp_enable_stderrlog();
@@ -241,13 +259,12 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	session.version = SNMP_VERSION_2c;
 	session.timeout = SNMP_DEFAULT_TIMEOUT;
 	session.retries = SNMP_DEFAULT_RETRIES;
-	session.peername = gp_snmp_monitor_address;   // SNMP_DEFAULT_PEERNAME ?
+	session.peername = gp_snmp_monitor_address;   						// we don't support SNMP_DEFAULT_PEERNAME... Should we?
 	session.community = (u_char *)gp_snmp_community;
-    session.community_len = strlen((const char *)session.community);  //SNMP_DEFAULT_COMMUNITY_LEN ?
+    session.community_len = strlen((const char *)session.community);  // SNMP_DEFAULT_COMMUNITY_LEN means "public"
 
 	//session.callback = snmp_input;
 	session.callback_magic = NULL;
-	//snmp_parse_args(argc, argv, &session, "C:", optProc))
 
 	if (!snmp_open( &session ))
 	{
@@ -277,7 +294,6 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
     	return -1;
     }
 
-    elog(DEBUG2,"snmp_add done");
 	pdu = snmp_pdu_create(inform ? SNMP_MSG_INFORM : SNMP_MSG_TRAP2);
 	if (!pdu)
 	{
@@ -289,16 +305,26 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 		return -1;
 	}
 
-
-	elog(DEBUG2,"pdu created");
+	/*
+	 * Trap/Inform messages always start with the system up time.
+	 *
+	 * This presumably would be the uptime of GPDB, not the machine it is running on, I think.
+	 *
+	 * Use Postmaster's "MyStartTime" as a way to get that.
+	 */
 	sprintf(csysuptime, "%ld", (long)(time(NULL) - MyStartTime));
 
 	trap = csysuptime;
 
-	// look for ERRCODE_DISK_FULL
-	// ERRCODE_ADMIN_SHUTDOWN
-	// ERRCODE_CRASH_SHUTDOWN
-	// ERRCODE_CANNOT_CONNECT_NOW
+	// ERRCODE_DISK_FULL could be reported vi rbmsMIB rdbmsTraps rdbmsOutOfSpace trap.
+	// But it appears we never generate that error?
+
+	// ERRCODE_ADMIN_SHUTDOWN means SysAdmin aborted somebody's request.  Not interesting/
+
+	// ERRCODE_CRASH_SHUTDOWN sounds interesting, but I don't see that we ever generate it.
+
+	// ERRCODE_CANNOT_CONNECT_NOW means we are starting up, shutting down, in recovery, or Too many users are logged on.
+
 	// abnormal database system shutdown
 
 
@@ -318,15 +344,92 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 						'i', "5");  // 4 = restricted, 5 = unavailable
 #endif
 
-	// {iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprises(1) gpdbMIB(31327) gpdbTraps(2) gpdbAlert(1)}
+	// {iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprises(1) gpdbMIB(31327) gpdbTraps(5) gpdbTrapsList(0) gpdbAlert(1)}
 	snmp_add_var(pdu, objid_snmptrap,
 						sizeof(objid_snmptrap) / sizeof(oid),
-						'o', "1.3.6.1.4.1.31327.2.1");  // gpdbAlert
+						'o', "1.3.6.1.4.1.31327.5.0.1");  // gpdbAlert
 
 
 	snmp_add_var(pdu, objid_gpdbAlertMsg,
 						sizeof(objid_gpdbAlertMsg) / sizeof(oid),
-						's', subject);  //DisplayString
+						's', subject);  // SnmpAdminString = UTF-8 text
+
+	/*
+	 * The gpdbAlertSeverity is a crude attempt to classify some of these messages based on severity,
+	 * where OK means everything is running normal, Down means everything is shut down, degraded would be
+	 * for times when some segments are down, but the system is up, and the others are maybe useful in the future
+	 *
+	 *  gpdbSevUnknown(0),
+	 *	gpdbSevOk(1),
+	 *	gpdbSevWarning(2),
+	 *	gpdbSevError(3),
+	 *	gpdbSevFatal(4),
+	 *	gpdbSevPanic(5),
+	 *	gpdbSevSystemDegraded(6),
+	 *	gpdbSevSystemDown(7)
+	 */
+	char severity[2] = { '0', '\0' }; // gpdbSevUnknown
+
+	/*
+	 * Check for "Interesting" messages and try to classify them by severity
+	 * Use of gettext() is because the strings are already localized in the errorData structure.
+	 */
+	if (strstr(subject,gettext("abnormal database system shutdown")) != NULL ||
+		strstr(subject, gettext("the database system is shutting down"))  != NULL ||
+		strstr(subject, gettext("database system is shut down"))  != NULL)
+		severity[0] = '7';  //gpdbSevSystemDown
+
+	else if (strstr(subject, gettext("Master mirroring synchronization lost"))  != NULL ||
+			  strstr(subject, gettext("Error from sending to standby master"))  != NULL)
+		severity[0] = '6';  // gpdbSevSystemDegraded
+
+	else if (strstr(subject,gettext("the database system is starting up")) != NULL ||
+			  strstr(subject, gettext("database system is ready to accept connections"))  != NULL)
+		severity[0] = '1';  // sev Ok -- Nothing is wrong
+
+	else if (strcmp(errorData->error_severity,gettext("PANIC")) == 0)
+		severity[0] = '5';
+
+	else if (strcmp(errorData->error_severity,gettext("FATAL")) == 0)
+		severity[0] = '4';
+
+	else if (strcmp(errorData->error_severity,gettext("ERROR")) == 0)
+		severity[0] = '3';
+
+	else if (strcmp(errorData->error_severity,gettext("WARNING")) == 0)
+		severity[0] = '2';
+
+	else
+		severity[0] = '0';  /* Informational, Log, or just plain unknown (might be serious) */
+
+	snmp_add_var(pdu, objid_gpdbAlertSeverity,
+						sizeof(objid_gpdbAlertSeverity) / sizeof(oid),
+						'i', (char *)severity);
+
+	snmp_add_var(pdu, objid_gpdbAlertSqlstate,
+						sizeof(objid_gpdbAlertSqlstate) / sizeof(oid),
+						's', errorData->sql_state);
+
+	char detail[128];
+	snprintf(detail, 127, "%s", errorData->error_detail);
+	detail[127] = '\0';
+	snmp_add_var(pdu, objid_gpdbAlertDetail,
+							sizeof(objid_gpdbAlertDetail) / sizeof(oid),
+							's', detail); // SnmpAdminString = UTF-8 text
+
+	char sqlstmt[128];
+	char * sqlstmtp = errorData->debug_query_string;
+	if (sqlstmtp == NULL || sqlstmtp[0] == '\0')
+		sqlstmtp = errorData->internal_query;
+	if (sqlstmtp == NULL)
+		sqlstmtp = "";
+
+
+	snprintf(sqlstmt, 127, "%s", sqlstmtp);
+	sqlstmt[127] = '\0';
+	snmp_add_var(pdu, objid_gpdbAlertSqlStmt,
+							sizeof(objid_gpdbAlertSqlStmt) / sizeof(oid),
+							's', sqlstmt); // SnmpAdminString = UTF-8 text
 
 	elog(DEBUG2,"ready to send");
 	if (inform)
@@ -335,8 +438,9 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	    status = snmp_send(ss, pdu) == 0;
 
 	elog(DEBUG2,"send, status %d",status);
-	if (status)
+	if (status != STAT_SUCCESS)
 	{
+		/* Something went wrong */
 		if (ss)
 		{
 		    char           *err;
@@ -385,7 +489,7 @@ int send_alert(const GpErrorData * errorData)
 
 	/*
 	 * SIGPIPE must be ignored, or we will have problems.
-	 *
+	 *errorData->sql_state
 	 * but this is already set in syslogger.c, so we are OK
 	 * //pqsignal(SIGPIPE, SIG_IGN);  // already set in syslogger.c
 	 *
