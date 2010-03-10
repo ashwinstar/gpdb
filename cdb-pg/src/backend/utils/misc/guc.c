@@ -751,7 +751,8 @@ static struct config_bool ConfigureNamesBool[] =
 		{"constraint_exclusion", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Enables the planner to use constraints to optimize queries."),
 			gettext_noop("Child table scans will be skipped if their "
-						 "constraints guarantee that no rows match the query.")
+						 "constraints guarantee that no rows match the query."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&constraint_exclusion,
 		true, NULL, NULL
@@ -790,7 +791,8 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("The server will use the fsync() system call in several places to make "
 						 "sure that updates are physically written to disk. This insures "
 						 "that a database cluster will recover to a consistent state after "
-						 "an operating system or hardware crash.")
+						 "an operating system or hardware crash."),
+		  GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&enableFsync,
 		true, NULL, NULL
@@ -839,7 +841,8 @@ false
 						 "only partially written to disk.  During recovery, the row changes "
 						 "stored in WAL are not enough to recover.  This option writes "
 						 "pages when first modified after a checkpoint to WAL so full recovery "
-						 "is possible.")
+						 "is possible."),
+			 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&fullPageWrites,
 		true, NULL, NULL
@@ -848,7 +851,8 @@ false
 		{"silent_mode", PGC_POSTMASTER, LOGGING_WHEN,
 			gettext_noop("Runs the server silently."),
 			gettext_noop("If this parameter is set, the server will automatically run in the "
-				 "background and any controlling terminals are dissociated.")
+				 "background and any controlling terminals are dissociated."),
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&SilentMode,
 		false, NULL, NULL
@@ -1053,7 +1057,8 @@ false
 	{
 		{"autovacuum", PGC_SIGHUP, AUTOVACUUM,
 			gettext_noop("Starts the autovacuum subprocess."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&dummy_autovac,
 		false, assign_autovacuum_warning, NULL
@@ -1122,7 +1127,8 @@ false
 	{
 		{"sql_inheritance", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
 			gettext_noop("Causes subtables to be included by default in various commands."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&SQL_inheritance,
 		true, NULL, NULL
@@ -2353,7 +2359,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("Forces a switch to the next xlog file if a "
 						 "new file has not been started within N seconds."),
 			NULL,
-			GUC_UNIT_S
+			GUC_UNIT_S | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&XLogArchiveTimeout,
 		0, 0, INT_MAX, NULL, NULL
@@ -2717,19 +2723,20 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"autovacuum_vacuum_cost_delay", PGC_SIGHUP, AUTOVACUUM,
+		{"autovacuum_vacuum_cost_delay", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Vacuum cost delay in milliseconds, for autovacuum."),
 			NULL,
-			GUC_UNIT_MS
+			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&autovacuum_vac_cost_delay,
 		-1, -1, 1000, NULL, NULL
 	},
 
 	{
-		{"autovacuum_vacuum_cost_limit", PGC_SIGHUP, AUTOVACUUM,
+		{"autovacuum_vacuum_cost_limit", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Vacuum cost amount available before napping, for autovacuum."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&autovacuum_vac_cost_limit,
 		-1, -1, 10000, NULL, NULL
@@ -2786,7 +2793,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"idle_session_gang_timeout", PGC_USERSET, CLIENT_CONN_OTHER,
+		{"gp_vmem_idle_resource_timeout", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Sets the time a session can be idle (in milliseconds) before we release gangs on the segment DBs to free resources."),
 			gettext_noop("A value of 0 turns off the timeout."),
 			GUC_UNIT_MS | GUC_GPDB_ADDOPT
@@ -2856,7 +2863,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"checkpoint_segments", PGC_SIGHUP, WAL_CHECKPOINTS,
 			gettext_noop("Sets the maximum distance in log segments between automatic WAL checkpoints."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&CheckPointSegments,
 		8, 1, INT_MAX, NULL, NULL
@@ -2866,7 +2874,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"checkpoint_timeout", PGC_SIGHUP, WAL_CHECKPOINTS,
 			gettext_noop("Sets the maximum time in seconds between automatic WAL checkpoints."),
 			NULL,
-			GUC_UNIT_S
+			GUC_UNIT_S | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&CheckPointTimeout,
 		300, 30, 3600, NULL, NULL
@@ -2879,7 +2887,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("Write a message to the server log if checkpoints "
 			"caused by the filling of checkpoint segment files happens more "
 						 "frequently than this number of seconds. Zero turns off the warning."),
-			GUC_UNIT_S
+			GUC_UNIT_S | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&CheckPointWarning,
 		30, 0, INT_MAX, NULL, NULL
@@ -2889,7 +2897,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"wal_buffers", PGC_POSTMASTER, WAL_SETTINGS,
 			gettext_noop("Sets the number of disk-page buffers in shared memory for WAL."),
 			NULL,
-			GUC_UNIT_XBLOCKS
+			GUC_UNIT_XBLOCKS | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&XLOGbuffers,
 		8, 4, INT_MAX, NULL, NULL
@@ -2900,7 +2908,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("Sets the delay in microseconds between transaction commit and "
 						 "flushing WAL to disk."),
 			NULL,
-			GUC_GPDB_ADDOPT
+			GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&CommitDelay,
 		0, 0, 100000, NULL, NULL
@@ -2911,7 +2919,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("Sets the minimum concurrent open transactions before performing "
 						 "commit_delay."),
 			NULL,
-			GUC_GPDB_ADDOPT
+			GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&CommitSiblings,
 		5, 1, 1000, NULL, NULL
@@ -2943,7 +2951,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"bgwriter_delay", PGC_SIGHUP, RESOURCES,
 			gettext_noop("Background writer sleep time between rounds in milliseconds"),
 			NULL,
-			GUC_UNIT_MS
+			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&BgWriterDelay,
 		200, 10, 10000, NULL, NULL
@@ -2952,7 +2960,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"bgwriter_lru_maxpages", PGC_SIGHUP, RESOURCES,
 			gettext_noop("Background writer maximum number of LRU pages to flush per round"),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&bgwriter_lru_maxpages,
 		5, 0, 1000, NULL, NULL
@@ -2961,7 +2970,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"bgwriter_all_maxpages", PGC_SIGHUP, RESOURCES,
 			gettext_noop("Background writer maximum number of all pages to flush per round"),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&bgwriter_all_maxpages,
 		5, 0, 1000, NULL, NULL
@@ -3067,35 +3077,38 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"autovacuum_naptime", PGC_SIGHUP, AUTOVACUUM,
+		{"autovacuum_naptime", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Time to sleep between autovacuum runs, in seconds."),
 			NULL,
-			GUC_UNIT_S
+			GUC_UNIT_S | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&autovacuum_naptime,
 		60, 1, INT_MAX, NULL, NULL
 	},
 	{
-		{"autovacuum_vacuum_threshold", PGC_SIGHUP, AUTOVACUUM,
+		{"autovacuum_vacuum_threshold", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Minimum number of tuple updates or deletes prior to vacuum."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&autovacuum_vac_thresh,
 		500, 0, INT_MAX, NULL, NULL
 	},
 	{
-		{"autovacuum_analyze_threshold", PGC_SIGHUP, AUTOVACUUM,
+		{"autovacuum_analyze_threshold", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Minimum number of tuple inserts, updates or deletes prior to analyze."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&autovacuum_anl_thresh,
 		250, 0, INT_MAX, NULL, NULL
 	},
 	{
 		/* see varsup.c for why this is PGC_POSTMASTER not PGC_SIGHUP */
-		{"autovacuum_freeze_max_age", PGC_POSTMASTER, AUTOVACUUM,
+		{"autovacuum_freeze_max_age", PGC_POSTMASTER, DEFUNCT_OPTIONS,
 			gettext_noop("Age at which to autovacuum a table to prevent transaction ID wraparound."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&autovacuum_freeze_max_age,
 		200000000, 1000, 2000000000, NULL, NULL
@@ -3797,13 +3810,13 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&defunct_double,
-		//DEFAULT_GEQO_SELECTION_BIAS, MIN_GEQO_SELECTION_BIAS, MAX_GEQO_SELECTION_BIAS, NULL, NULL
 		1.0, 0.0, 100.0, NULL, NULL
 	},
 	{
 		{"bgwriter_lru_percent", PGC_SIGHUP, RESOURCES,
 			gettext_noop("Background writer percentage of LRU buffers to flush per round"),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&bgwriter_lru_percent,
 		1.0, 0.0, 100.0, NULL, NULL
@@ -3812,7 +3825,8 @@ static struct config_real ConfigureNamesReal[] =
 	{
 		{"bgwriter_all_percent", PGC_SIGHUP, RESOURCES,
 			gettext_noop("Background writer percentage of all buffers to flush per round"),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&bgwriter_all_percent,
 		0.333, 0.0, 100.0, NULL, NULL
@@ -3829,17 +3843,19 @@ static struct config_real ConfigureNamesReal[] =
 	},
 
 	{
-		{"autovacuum_vacuum_scale_factor", PGC_SIGHUP, AUTOVACUUM,
+		{"autovacuum_vacuum_scale_factor", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Number of tuple updates or deletes prior to vacuum as a fraction of reltuples."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&autovacuum_vac_scale,
 		0.2, 0.0, 100.0, NULL, NULL
 	},
 	{
-		{"autovacuum_analyze_scale_factor", PGC_SIGHUP, AUTOVACUUM,
+		{"autovacuum_analyze_scale_factor", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Number of tuple inserts, updates or deletes prior to analyze as a fraction of reltuples."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&autovacuum_anl_scale,
 		0.1, 0.0, 100.0, NULL, NULL
@@ -3944,7 +3960,8 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"archive_command", PGC_SIGHUP, WAL_SETTINGS,
 			gettext_noop("WAL archiving command."),
-			gettext_noop("The shell command that will be called to archive a WAL file.")
+			gettext_noop("The shell command that will be called to archive a WAL file."),
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&XLogArchiveCommand,
 		"", NULL, NULL
@@ -4325,7 +4342,7 @@ static struct config_string ConfigureNamesString[] =
 		{"log_filename", PGC_SIGHUP, LOGGING_WHERE,
 			gettext_noop("Sets the file name pattern for log files."),
 			NULL,
-			GUC_SUPERUSER_ONLY
+			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Log_filename,
 		"gpdb-%Y-%m-%d_%H%M%S.csv", NULL, NULL
@@ -4345,7 +4362,8 @@ static struct config_string ConfigureNamesString[] =
 		{"syslog_facility", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Sets the syslog \"facility\" to be used when syslog enabled."),
 			gettext_noop("Valid values are LOCAL0, LOCAL1, LOCAL2, LOCAL3, "
-						 "LOCAL4, LOCAL5, LOCAL6, LOCAL7.")
+						 "LOCAL4, LOCAL5, LOCAL6, LOCAL7."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&syslog_facility_str,
 		"LOCAL0", assign_syslog_facility, NULL
@@ -4354,7 +4372,8 @@ static struct config_string ConfigureNamesString[] =
 		{"syslog_ident", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Sets the program name used to identify PostgreSQL "
 						 "messages in syslog."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&syslog_ident_str,
 		"postgres", assign_syslog_ident, NULL
@@ -4422,7 +4441,8 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"wal_sync_method", PGC_SIGHUP, WAL_SETTINGS,
 			gettext_noop("Selects the method used for forcing WAL updates out to disk."),
-			NULL
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&XLOG_sync_method,
 		XLOG_sync_method_default, assign_xlog_sync_method, NULL
@@ -4442,7 +4462,7 @@ static struct config_string ConfigureNamesString[] =
 		{"data_directory", PGC_POSTMASTER, FILE_LOCATIONS,
 			gettext_noop("Sets the server's data directory."),
 			NULL,
-			GUC_SUPERUSER_ONLY
+			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&data_directory,
 		NULL, NULL, NULL
@@ -4452,7 +4472,7 @@ static struct config_string ConfigureNamesString[] =
 		{"config_file", PGC_POSTMASTER, FILE_LOCATIONS,
 			gettext_noop("Sets the server's main configuration file."),
 			NULL,
-			GUC_DISALLOW_IN_FILE | GUC_SUPERUSER_ONLY
+			GUC_DISALLOW_IN_FILE | GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&ConfigFileName,
 		NULL, NULL, NULL
@@ -4462,7 +4482,7 @@ static struct config_string ConfigureNamesString[] =
 		{"hba_file", PGC_POSTMASTER, FILE_LOCATIONS,
 			gettext_noop("Sets the server's \"hba\" configuration file."),
 			NULL,
-			GUC_SUPERUSER_ONLY
+			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&HbaFileName,
 		NULL, NULL, NULL
@@ -4472,7 +4492,7 @@ static struct config_string ConfigureNamesString[] =
 		{"ident_file", PGC_POSTMASTER, FILE_LOCATIONS,
 			gettext_noop("Sets the server's \"ident\" configuration file."),
 			NULL,
-			GUC_SUPERUSER_ONLY
+			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&IdentFileName,
 		NULL, NULL, NULL
@@ -4494,7 +4514,7 @@ static struct config_string ConfigureNamesString[] =
 		{"external_pid_file", PGC_POSTMASTER, FILE_LOCATIONS,
 			gettext_noop("Writes the postmaster PID to the specified file."),
 			NULL,
-			GUC_SUPERUSER_ONLY
+			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&external_pid_file,
 		NULL, assign_canonical_path, NULL
@@ -4544,7 +4564,8 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"gp_log_gang", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Sets the verbosity of logged messages pertaining to worker process creation and management."),
-			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\".")
+			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\"."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_log_gang_str,
 		"terse", gpvars_assign_gp_log_gang, gpvars_show_gp_log_gang
@@ -4554,6 +4575,7 @@ static struct config_string ConfigureNamesString[] =
 		{"gp_log_fts", PGC_POSTMASTER, LOGGING_WHAT,
 			gettext_noop("Sets the verbosity of logged messages pertaining to fault probing."),
 			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\"."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_log_fts_str,
 		"terse", gpvars_assign_gp_log_fts, gpvars_show_gp_log_fts
@@ -4563,7 +4585,7 @@ static struct config_string ConfigureNamesString[] =
 		{"gp_log_interconnect", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Sets the verbosity of logged messages pertaining to connections between worker processes."),
 			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\"."),
-			GUC_GPDB_ADDOPT
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_log_interconnect_str,
 		"terse", gpvars_assign_gp_log_interconnect, gpvars_show_gp_log_interconnect
