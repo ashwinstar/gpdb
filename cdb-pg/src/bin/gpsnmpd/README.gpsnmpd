@@ -52,11 +52,11 @@ You need to become the superuser of PostgreSQL as connection of libpq.
 (MIB TUTORIAL SMAPLE)
 RDBMS-MIB
 
-agent running sample.
-#gpsnmpd -c `pwd`/gpsnmpd.conf -x 192.168.1.0
+agent running samp.
+#gpsnmpd -c `pwd`/gpsnmpd.conf -x 192.168.1.0 -C "host=127.0.0.1"
 
 sub agent running sample.
-#gpsnmpd -s -c `pwd`/gpsnmpd.conf -x 192.168.1.0
+#gpsnmpd -s -c `pwd`/gpsnmpd.conf -C "host=127.0.0.1"
 
 
 3.) Client Manager.
@@ -77,7 +77,7 @@ http://www.iana.org/assignments/enterprise-numbers
 --
 
 -------------------------------------------
--- gpsnmpd team(gpsnmpd-devel@pgfoundry.org)
+-- pgsnmpd team(pgsnmpd-devel@pgfoundry.org)
 -------------------------------------------
 Josh Tolley
 Hiroshi Saito
