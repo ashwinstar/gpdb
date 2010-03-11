@@ -28,7 +28,7 @@
  * rdbmsSrvTable is subid 5 of rdbmsObjects.
  * Its status is Current.
  * OID: .1.3.6.1.2.1.39.1.5, length: 9
-*/
+ */
 
 /**
  * initialization for rdbmsSrvTable data access
@@ -42,16 +42,15 @@
  * @retval MFD_SUCCESS : success.
  * @retval MFD_ERROR   : unrecoverable error.
  */
-int
-rdbmsSrvTable_init_data(rdbmsSrvTable_registration_ptr rdbmsSrvTable_reg)
+int rdbmsSrvTable_init_data(rdbmsSrvTable_registration_ptr rdbmsSrvTable_reg)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvTable:rdbmsSrvTable_init_data","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsSrvTable:rdbmsSrvTable_init_data","called\n"));
 
-    /*
-     * TODO:303:o: Initialize rdbmsSrvTable data.
-     */
+	/*
+	 * TODO:303:o: Initialize rdbmsSrvTable data.
+	 */
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsSrvTable_init_data */
 
 /**
@@ -90,32 +89,32 @@ rdbmsSrvTable_init_data(rdbmsSrvTable_registration_ptr rdbmsSrvTable_reg)
  *  for you data source. For example, opening a connection to another
  *  process that will supply the data, opening a database, etc.
  */
-void
-rdbmsSrvTable_container_init(netsnmp_container **container_ptr_ptr,
-                        netsnmp_cache *cache)
+void rdbmsSrvTable_container_init(netsnmp_container **container_ptr_ptr,
+		netsnmp_cache *cache)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvTable:rdbmsSrvTable_container_init","called\n"));
-    
-    if((NULL == cache) || (NULL == container_ptr_ptr)) {
-        snmp_log(LOG_ERR,"bad params to rdbmsSrvTable_container_init\n");
-        return;
-    }
+	DEBUGMSGTL(("verbose:rdbmsSrvTable:rdbmsSrvTable_container_init","called\n"));
 
-    /*
-     * For advanced users, you can use a custom container. If you
-     * do not create one, one will be created for you.
-     */
-    *container_ptr_ptr = NULL;
+	if ((NULL == cache) || (NULL == container_ptr_ptr))
+	{
+		snmp_log(LOG_ERR, "bad params to rdbmsSrvTable_container_init\n");
+		return;
+	}
 
-    /*
-     * TODO:345:A: Set up rdbmsSrvTable cache properties.
-     *
-     * Also for advanced users, you can set parameters for the
-     * cache. Do not change the magic pointer, as it is used
-     * by the MFD helper. To completely disable caching, set
-     * cache->enabled to 0.
-     */
-    cache->timeout = RDBMSSRVTABLE_CACHE_TIMEOUT; /* seconds */
+	/*
+	 * For advanced users, you can use a custom container. If you
+	 * do not create one, one will be created for you.
+	 */
+	*container_ptr_ptr = NULL;
+
+	/*
+	 * TODO:345:A: Set up rdbmsSrvTable cache properties.
+	 *
+	 * Also for advanced users, you can set parameters for the
+	 * cache. Do not change the magic pointer, as it is used
+	 * by the MFD helper. To completely disable caching, set
+	 * cache->enabled to 0.
+	 */
+	cache->timeout = RDBMSSRVTABLE_CACHE_TIMEOUT; /* seconds */
 } /* rdbmsSrvTable_container_init */
 
 /**
@@ -148,63 +147,68 @@ rdbmsSrvTable_container_init(netsnmp_container **container_ptr_ptr,
  *  data here.
  *
  */
-int
-rdbmsSrvTable_cache_load(netsnmp_container *container)
+int rdbmsSrvTable_cache_load(netsnmp_container *container)
 {
-    rdbmsSrvTable_rowreq_ctx *rowreq_ctx;
-    // BUGBUG TODO 
-    oid rdbmsSrvPrivateMibOID[128] = { 1,3,6,1,4,1,31327 }; //= { 1,3,6,1,4,1,27645 };
-    size_t                 count = 0;
-    
-        /*
-         * applIndex(1)/INTEGER/ASN_INTEGER/long(long)//l/a/w/e/R/d/h
-         */
+	rdbmsSrvTable_rowreq_ctx *rowreq_ctx;
+	// BUGBUG TODO
+	oid rdbmsSrvPrivateMibOID[128] =
+	{ 1, 3, 6, 1, 4, 1, 31327 }; //= { 1,3,6,1,4,1,27645 };
+	size_t count = 0;
+
+	/*
+	 * applIndex(1)/INTEGER/ASN_INTEGER/long(long)//l/a/w/e/R/d/h
+	 */
 
 	/* Eventually we'll probably want to make this actually pay attention to 
 	 * APPLICATION-MIB. For now, I'm ignoring it. When we make that change, we'll need to
 	 * modify the other files that use applIndex (the one I'm thinking of now is rdbmsRelTable */
-   long   applIndex = 1;
-   PGresult *pgsnmpd_tbl_qry;
-   int vendor_len, contact_len, product_len;
-   char *vendor_name, *contact_name, *product_name;
+	long applIndex = 1;
+	PGresult *pgsnmpd_tbl_qry;
+	int vendor_len, contact_len, product_len;
+	char *vendor_name, *contact_name, *product_name;
 
-    DEBUGMSGTL(("verbose:rdbmsSrvTable:rdbmsSrvTable_cache_load","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsSrvTable:rdbmsSrvTable_cache_load","called\n"));
 
-    /*
-     * TODO:351:M: |-> Load/update data in the rdbmsSrvTable container.
-     * loop over your rdbmsSrvTable data, allocate a rowreq context,
-     * set the index(es) [and data, optionally] and insert into
-     * the container.
-     */
-    
-    /* There's only one server, so we only need to create one row */
-        /*
-         * TODO:352:M: |   |-> set indexes in new rdbmsSrvTable rowreq context.
-         */
-        rowreq_ctx = rdbmsSrvTable_allocate_rowreq_ctx();
-        if (NULL == rowreq_ctx) {
-            snmp_log(LOG_ERR, "memory allocation failed\n");
-            return MFD_RESOURCE_UNAVAILABLE;
-        }
-        if(MFD_SUCCESS != rdbmsSrvTable_indexes_set(rowreq_ctx
-                               , applIndex
-               )) {
-            snmp_log(LOG_ERR,"error setting index while loading "
-                     "rdbmsSrvTable cache.\n");
-            rdbmsSrvTable_release_rowreq_ctx(rowreq_ctx);
-	    return MFD_ERROR;
-        }
+	/*
+	 * TODO:351:M: |-> Load/update data in the rdbmsSrvTable container.
+	 * loop over your rdbmsSrvTable data, allocate a rowreq context,
+	 * set the index(es) [and data, optionally] and insert into
+	 * the container.
+	 */
 
-	pgsnmpd_tbl_qry = PQexec(dbconn, "SELECT vendor_name, product_name, contact_name FROM gpsnmpd_rdbmsSrvTable");
-	if (PQresultStatus(pgsnmpd_tbl_qry) == PGRES_TUPLES_OK && PQntuples(pgsnmpd_tbl_qry) > 0) {
-		vendor_name  = PQgetvalue(pgsnmpd_tbl_qry, 0, 0);
+	/* There's only one server, so we only need to create one row */
+	/*
+	 * TODO:352:M: |   |-> set indexes in new rdbmsSrvTable rowreq context.
+	 */
+	rowreq_ctx = rdbmsSrvTable_allocate_rowreq_ctx();
+	if (NULL == rowreq_ctx)
+	{
+		snmp_log(LOG_ERR, "memory allocation failed\n");
+		return MFD_RESOURCE_UNAVAILABLE;
+	}
+	if (MFD_SUCCESS != rdbmsSrvTable_indexes_set(rowreq_ctx, applIndex))
+	{
+		snmp_log(LOG_ERR, "error setting index while loading "
+			"rdbmsSrvTable cache.\n");
+		rdbmsSrvTable_release_rowreq_ctx(rowreq_ctx);
+		return MFD_ERROR;
+	}
+
+	pgsnmpd_tbl_qry
+			= PQexec(dbconn,
+					"SELECT vendor_name, product_name, contact_name FROM gpsnmpd_rdbmsSrvTable");
+	if (PQresultStatus(pgsnmpd_tbl_qry) == PGRES_TUPLES_OK && PQntuples(
+			pgsnmpd_tbl_qry) > 0)
+	{
+		vendor_name = PQgetvalue(pgsnmpd_tbl_qry, 0, 0);
 		product_name = PQgetvalue(pgsnmpd_tbl_qry, 0, 1);
 		contact_name = PQgetvalue(pgsnmpd_tbl_qry, 0, 2);
 		vendor_len = strlen(vendor_name);
 		product_len = strlen(product_name);
 		contact_len = strlen(contact_name);
 	}
-	else {
+	else
+	{
 		product_name = NULL;
 		vendor_name = NULL;
 		contact_name = NULL;
@@ -217,32 +221,38 @@ rdbmsSrvTable_cache_load(netsnmp_container *container)
 	rowreq_ctx->data.rdbmsSrvContact_len = 255;
 	rowreq_ctx->data.rdbmsSrvProductName_len = 255;
 
-    rowreq_ctx->data.rdbmsSrvPrivateMibOID_len = 8 * sizeof(rowreq_ctx->data.rdbmsSrvPrivateMibOID[0]);
-    memcpy( rowreq_ctx->data.rdbmsSrvPrivateMibOID, rdbmsSrvPrivateMibOID, rowreq_ctx->data.rdbmsSrvPrivateMibOID_len );
+	rowreq_ctx->data.rdbmsSrvPrivateMibOID_len = 8
+			* sizeof(rowreq_ctx->data.rdbmsSrvPrivateMibOID[0]);
+	memcpy(rowreq_ctx->data.rdbmsSrvPrivateMibOID, rdbmsSrvPrivateMibOID,
+			rowreq_ctx->data.rdbmsSrvPrivateMibOID_len);
 
-    rowreq_ctx->data.rdbmsSrvVendorName_len = vendor_len * sizeof(rowreq_ctx->data.rdbmsSrvVendorName[0]);
-    memcpy( rowreq_ctx->data.rdbmsSrvVendorName, vendor_name, rowreq_ctx->data.rdbmsSrvVendorName_len );
-    
-    rowreq_ctx->data.rdbmsSrvProductName_len = product_len * sizeof(rowreq_ctx->data.rdbmsSrvProductName[0]);
-    memcpy( rowreq_ctx->data.rdbmsSrvProductName, product_name, rowreq_ctx->data.rdbmsSrvProductName_len );
-    
-    rowreq_ctx->data.rdbmsSrvContact_len = contact_len * sizeof(rowreq_ctx->data.rdbmsSrvContact[0]);
-    memcpy( rowreq_ctx->data.rdbmsSrvContact, contact_name, rowreq_ctx->data.rdbmsSrvContact_len );
+	rowreq_ctx->data.rdbmsSrvVendorName_len = vendor_len
+			* sizeof(rowreq_ctx->data.rdbmsSrvVendorName[0]);
+	memcpy(rowreq_ctx->data.rdbmsSrvVendorName, vendor_name,
+			rowreq_ctx->data.rdbmsSrvVendorName_len);
 
-    PQclear(pgsnmpd_tbl_qry);
-    
-        
-        /*
-         * insert into table container
-         */
-        CONTAINER_INSERT(container, rowreq_ctx);
-        ++count;
+	rowreq_ctx->data.rdbmsSrvProductName_len = product_len
+			* sizeof(rowreq_ctx->data.rdbmsSrvProductName[0]);
+	memcpy(rowreq_ctx->data.rdbmsSrvProductName, product_name,
+			rowreq_ctx->data.rdbmsSrvProductName_len);
 
+	rowreq_ctx->data.rdbmsSrvContact_len = contact_len
+			* sizeof(rowreq_ctx->data.rdbmsSrvContact[0]);
+	memcpy(rowreq_ctx->data.rdbmsSrvContact, contact_name,
+			rowreq_ctx->data.rdbmsSrvContact_len);
 
-    DEBUGMSGT(("verbose:rdbmsSrvTable:rdbmsSrvTable_cache_load",
-               "inserted %ld records\n", count));
+	PQclear(pgsnmpd_tbl_qry);
 
-    return MFD_SUCCESS;
+	/*
+	 * insert into table container
+	 */
+	CONTAINER_INSERT(container, rowreq_ctx);
+	++count;
+
+	DEBUGMSGT(("verbose:rdbmsSrvTable:rdbmsSrvTable_cache_load",
+					"inserted %ld records\n", count));
+
+	return MFD_SUCCESS;
 } /* rdbmsSrvTable_cache_load */
 
 /**
@@ -258,14 +268,13 @@ rdbmsSrvTable_cache_load(netsnmp_container *container)
  *  The MFD helper will take care of releasing all the row contexts.
  *
  */
-void
-rdbmsSrvTable_cache_free(netsnmp_container *container)
+void rdbmsSrvTable_cache_free(netsnmp_container *container)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvTable:rdbmsSrvTable_cache_free","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsSrvTable:rdbmsSrvTable_cache_free","called\n"));
 
-    /*
-     * TODO:380:M: Free rdbmsSrvTable cache.
-     */
+	/*
+	 * TODO:380:M: Free rdbmsSrvTable cache.
+	 */
 } /* rdbmsSrvTable_cache_free */
 
 /**
@@ -281,20 +290,19 @@ rdbmsSrvTable_cache_free(netsnmp_container *container)
  * @retval MFD_SUCCESS     : success.
  * @retval MFD_ERROR       : other error.
  */
-int
-rdbmsSrvTable_row_prep( rdbmsSrvTable_rowreq_ctx *rowreq_ctx)
+int rdbmsSrvTable_row_prep(rdbmsSrvTable_rowreq_ctx *rowreq_ctx)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvTable:rdbmsSrvTable_row_prep","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsSrvTable:rdbmsSrvTable_row_prep","called\n"));
 
-    netsnmp_assert(NULL != rowreq_ctx);
+	netsnmp_assert(NULL != rowreq_ctx);
 
-    /*
-     * TODO:390:o: Prepare row for request.
-     * If populating row data was delayed, this is the place to
-     * fill in the row for this request.
-     */
+	/*
+	 * TODO:390:o: Prepare row for request.
+	 * If populating row data was delayed, this is the place to
+	 * fill in the row for this request.
+	 */
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsSrvTable_row_prep */
 
 /** @} */

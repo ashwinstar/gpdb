@@ -28,7 +28,7 @@
  * rdbmsRelTable is subid 9 of rdbmsObjects.
  * Its status is Current.
  * OID: .1.3.6.1.2.1.39.1.9, length: 9
-*/
+ */
 
 /**
  * initialization for rdbmsRelTable data access
@@ -42,31 +42,30 @@
  * @retval MFD_SUCCESS : success.
  * @retval MFD_ERROR   : unrecoverable error.
  */
-int
-rdbmsRelTable_init_data(rdbmsRelTable_registration_ptr rdbmsRelTable_reg)
+int rdbmsRelTable_init_data(rdbmsRelTable_registration_ptr rdbmsRelTable_reg)
 {
-    DEBUGMSGTL(("verbose:rdbmsRelTable:rdbmsRelTable_init_data","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsRelTable:rdbmsRelTable_init_data","called\n"));
 
-    /*
-     * TODO:303:o: Initialize rdbmsRelTable data.
-     */
-    /*
-    ***************************************************
-    ***             START EXAMPLE CODE              ***
-    ***---------------------------------------------***/
-    /*
-     * if you are the sole writer for the file, you could
-     * open it here. However, as stated earlier, we are assuming
-     * the worst case, which in this case means that the file is
-     * written to by someone else, and might not even exist when
-     * we start up. So we can't do anything here.
-     */
-    /*
-    ***---------------------------------------------***
-    ***              END  EXAMPLE CODE              ***
-    ***************************************************/
+	/*
+	 * TODO:303:o: Initialize rdbmsRelTable data.
+	 */
+	/*
+	 ***************************************************
+	 ***             START EXAMPLE CODE              ***
+	 ***---------------------------------------------***/
+	/*
+	 * if you are the sole writer for the file, you could
+	 * open it here. However, as stated earlier, we are assuming
+	 * the worst case, which in this case means that the file is
+	 * written to by someone else, and might not even exist when
+	 * we start up. So we can't do anything here.
+	 */
+	/*
+	 ***---------------------------------------------***
+	 ***              END  EXAMPLE CODE              ***
+	 ***************************************************/
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsRelTable_init_data */
 
 /**
@@ -105,32 +104,32 @@ rdbmsRelTable_init_data(rdbmsRelTable_registration_ptr rdbmsRelTable_reg)
  *  for you data source. For example, opening a connection to another
  *  process that will supply the data, opening a database, etc.
  */
-void
-rdbmsRelTable_container_init(netsnmp_container **container_ptr_ptr,
-                        netsnmp_cache *cache)
+void rdbmsRelTable_container_init(netsnmp_container **container_ptr_ptr,
+		netsnmp_cache *cache)
 {
-    DEBUGMSGTL(("verbose:rdbmsRelTable:rdbmsRelTable_container_init","called\n"));
-    
-    if((NULL == cache) || (NULL == container_ptr_ptr)) {
-        snmp_log(LOG_ERR,"bad params to rdbmsRelTable_container_init\n");
-        return;
-    }
+	DEBUGMSGTL(("verbose:rdbmsRelTable:rdbmsRelTable_container_init","called\n"));
 
-    /*
-     * For advanced users, you can use a custom container. If you
-     * do not create one, one will be created for you.
-     */
-    *container_ptr_ptr = NULL;
+	if ((NULL == cache) || (NULL == container_ptr_ptr))
+	{
+		snmp_log(LOG_ERR, "bad params to rdbmsRelTable_container_init\n");
+		return;
+	}
 
-    /*
-     * TODO:345:A: Set up rdbmsRelTable cache properties.
-     *
-     * Also for advanced users, you can set parameters for the
-     * cache. Do not change the magic pointer, as it is used
-     * by the MFD helper. To completely disable caching, set
-     * cache->enabled to 0.
-     */
-    cache->timeout = RDBMSRELTABLE_CACHE_TIMEOUT; /* seconds */
+	/*
+	 * For advanced users, you can use a custom container. If you
+	 * do not create one, one will be created for you.
+	 */
+	*container_ptr_ptr = NULL;
+
+	/*
+	 * TODO:345:A: Set up rdbmsRelTable cache properties.
+	 *
+	 * Also for advanced users, you can set parameters for the
+	 * cache. Do not change the magic pointer, as it is used
+	 * by the MFD helper. To completely disable caching, set
+	 * cache->enabled to 0.
+	 */
+	cache->timeout = RDBMSRELTABLE_CACHE_TIMEOUT; /* seconds */
 } /* rdbmsRelTable_container_init */
 
 /**
@@ -163,193 +162,223 @@ rdbmsRelTable_container_init(netsnmp_container **container_ptr_ptr,
  *  data here.
  *
  */
-int
-rdbmsRelTable_cache_load(netsnmp_container *container)
+int rdbmsRelTable_cache_load(netsnmp_container *container)
 {
-   rdbmsRelTable_rowreq_ctx *rowreq_ctx;
-   long   applIndex = 1;
-   int resultCount, errorCode = MFD_SUCCESS, i, tmpInt, count = 0;
-   PGresult *pg_start_qry = 0, *dist_qry = 0, *config_qry = 0;
-   int dbStatus = INTERNAL_RDBMSRELSTATE_UNAVAILABLE;
-   int haveStartTime = 0, haveConfig = 0;
+	rdbmsRelTable_rowreq_ctx *rowreq_ctx;
+	long applIndex = 1;
+	int resultCount, errorCode = MFD_SUCCESS, i, tmpInt, count = 0;
+	PGresult *pg_start_qry = 0, *dist_qry = 0, *config_qry = 0;
+	int dbStatus = INTERNAL_RDBMSRELSTATE_UNAVAILABLE;
+	int haveStartTime = 0, haveConfig = 0;
 
-    DEBUGMSGTL(("verbose:rdbmsRelTable:rdbmsRelTable_cache_load","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsRelTable:rdbmsRelTable_cache_load","called\n"));
 
-    /*
-     * TODO:351:M: |-> Load/update data in the rdbmsRelTable container.
-     * loop over your rdbmsRelTable data, allocate a rowreq context,
-     * set the index(es) [and data, optionally] and insert into
-     * the container.
-     */
+	/*
+	 * TODO:351:M: |-> Load/update data in the rdbmsRelTable container.
+	 * loop over your rdbmsRelTable data, allocate a rowreq context,
+	 * set the index(es) [and data, optionally] and insert into
+	 * the container.
+	 */
 
-    /* We always reset the connection to catch session errors */
-    snmp_log(LOG_ERR, "Reseting connection");
-    PQreset(dbconn);
+	/* We always reset the connection to catch session errors */
+	snmp_log(LOG_ERR, "Reseting connection");
+	PQreset(dbconn);
 
-    if (PQstatus(dbconn) == CONNECTION_OK) 
-    {
-        dbStatus = INTERNAL_RDBMSRELSTATE_ACTIVE;
+	if (PQstatus(dbconn) == CONNECTION_OK)
+	{
+		dbStatus = INTERNAL_RDBMSRELSTATE_ACTIVE;
 
-        /* Read the postmaster start time */
+		/* Read the postmaster start time */
 
-        pg_start_qry = PQexec(dbconn, "SELECT EXTRACT(YEAR FROM pg_postmaster_start_time()), EXTRACT(MONTH FROM pg_postmaster_start_time()), EXTRACT(DAY FROM pg_postmaster_start_time()), EXTRACT(HOUR FROM pg_postmaster_start_time()), EXTRACT(MINUTE FROM pg_postmaster_start_time()), EXTRACT(SECOND FROM pg_postmaster_start_time()), EXTRACT(MILLISECOND FROM pg_postmaster_start_time()), EXTRACT(TIMEZONE_HOUR FROM pg_postmaster_start_time()), EXTRACT(TIMEZONE_MINUTE FROM pg_postmaster_start_time())");
+		pg_start_qry
+				= PQexec(
+						dbconn,
+						"SELECT EXTRACT(YEAR FROM pg_postmaster_start_time()), EXTRACT(MONTH FROM pg_postmaster_start_time()), EXTRACT(DAY FROM pg_postmaster_start_time()), EXTRACT(HOUR FROM pg_postmaster_start_time()), EXTRACT(MINUTE FROM pg_postmaster_start_time()), EXTRACT(SECOND FROM pg_postmaster_start_time()), EXTRACT(MILLISECOND FROM pg_postmaster_start_time()), EXTRACT(TIMEZONE_HOUR FROM pg_postmaster_start_time()), EXTRACT(TIMEZONE_MINUTE FROM pg_postmaster_start_time())");
 
-        if (PQresultStatus(pg_start_qry) != PGRES_TUPLES_OK) {
-	    snmp_log(LOG_ERR, "Couldn't read postmaster start time");
-	    PQclear(pg_start_qry);
-        }
-        else 
-          haveStartTime = 1; 
+		if (PQresultStatus(pg_start_qry) != PGRES_TUPLES_OK)
+		{
+			snmp_log(LOG_ERR, "Couldn't read postmaster start time");
+			PQclear(pg_start_qry);
+		}
+		else
+			haveStartTime = 1;
 
-        /* Do a query to see what the state of the segments is */
+		/* Do a query to see what the state of the segments is */
 
-        config_qry = PQexec(dbconn, "SELECT content, definedprimary, isprimary, valid from pg_catalog.gp_pgdatabase where content >= 0");
-        if (PQresultStatus(config_qry) != PGRES_TUPLES_OK) {
-	    snmp_log(LOG_ERR, "Couldn't read gp_pgdatabase");
-	    PQclear(config_qry);
-        }
-        else 
-          haveConfig = 1; 
+		config_qry
+				= PQexec(
+						dbconn,
+						"SELECT content, definedprimary, isprimary, valid from pg_catalog.gp_pgdatabase where content >= 0");
+		if (PQresultStatus(config_qry) != PGRES_TUPLES_OK)
+		{
+			snmp_log(LOG_ERR, "Couldn't read gp_pgdatabase");
+			PQclear(config_qry);
+		}
+		else
+			haveConfig = 1;
 
-        /* Do a distributed query to test if the system is really functioning  */
+		/* Do a distributed query to test if the system is really functioning  */
 
-        dist_qry = PQexec(dbconn, "SELECT count(*) from gp_dist_random('pg_catalog.pg_database') where oid = 1");
-        if (PQresultStatus(dist_qry) != PGRES_TUPLES_OK) {
-             snmp_log(LOG_ERR, "Error executing distributed query (%s): %s", PQresStatus(PQresultStatus(dist_qry)), PQresultErrorMessage(dist_qry));   
-             dbStatus = INTERNAL_RDBMSRELSTATE_UNAVAILABLE; 
-        }
-        PQclear(dist_qry);
+		dist_qry
+				= PQexec(dbconn,
+						"SELECT count(*) from gp_dist_random('pg_catalog.pg_database') where oid = 1");
+		if (PQresultStatus(dist_qry) != PGRES_TUPLES_OK)
+		{
+			snmp_log(LOG_ERR, "Error executing distributed query (%s): %s",
+					PQresStatus(PQresultStatus(dist_qry)),
+					PQresultErrorMessage(dist_qry));
+			dbStatus = INTERNAL_RDBMSRELSTATE_UNAVAILABLE;
+		}
+		PQclear(dist_qry);
 
-    } else {
-	    snmp_log(LOG_ERR, "No database connection");
-            dbStatus = INTERNAL_RDBMSRELSTATE_UNAVAILABLE;
-    }
+	}
+	else
+	{
+		snmp_log(LOG_ERR, "No database connection");
+		dbStatus = INTERNAL_RDBMSRELSTATE_UNAVAILABLE;
+	}
 
-   /* Start with the system-wide health entry. Then the segments follow below */
+	/* Start with the system-wide health entry. Then the segments follow below */
 
-     rowreq_ctx = rdbmsRelTable_allocate_rowreq_ctx();
-     if (NULL == rowreq_ctx) {
-         snmp_log(LOG_ERR, "memory allocation failed\n");
-          errorCode = MFD_RESOURCE_UNAVAILABLE;
-          return errorCode;
-     }
+	rowreq_ctx = rdbmsRelTable_allocate_rowreq_ctx();
+	if (NULL == rowreq_ctx)
+	{
+		snmp_log(LOG_ERR, "memory allocation failed\n");
+		errorCode = MFD_RESOURCE_UNAVAILABLE;
+		return errorCode;
+	}
 
-     if(MFD_SUCCESS != rdbmsRelTable_indexes_set(rowreq_ctx
-                             , 1 
-                             , applIndex
-               )) {
-            snmp_log(LOG_ERR,"error setting index while loading "
-                     "rdbmsRelTable cache.\n");
-            rdbmsRelTable_release_rowreq_ctx(rowreq_ctx);
-            return MFD_RESOURCE_UNAVAILABLE;
-     }
+	if (MFD_SUCCESS != rdbmsRelTable_indexes_set(rowreq_ctx, 1, applIndex))
+	{
+		snmp_log(LOG_ERR, "error setting index while loading "
+			"rdbmsRelTable cache.\n");
+		rdbmsRelTable_release_rowreq_ctx(rowreq_ctx);
+		return MFD_RESOURCE_UNAVAILABLE;
+	}
 
-     if(MFD_SUCCESS !=
-         rdbmsRelState_map(&rowreq_ctx->data.rdbmsRelState, dbStatus)) {
-         return MFD_ERROR;
-     }
+	if (MFD_SUCCESS != rdbmsRelState_map(&rowreq_ctx->data.rdbmsRelState,
+			dbStatus))
+	{
+		return MFD_ERROR;
+	}
 
-     if (haveStartTime)
-     {
-	rowreq_ctx->data.activeTimeYear = atoi(PQgetvalue(pg_start_qry, 0, 0));
-	rowreq_ctx->data.activeTimeMonth = atoi(PQgetvalue(pg_start_qry, 0, 1));
-	rowreq_ctx->data.activeTimeDay = atoi(PQgetvalue(pg_start_qry, 0, 2));
-	rowreq_ctx->data.activeTimeHour = atoi(PQgetvalue(pg_start_qry, 0, 3));
-	rowreq_ctx->data.activeTimeMinutes = atoi(PQgetvalue(pg_start_qry, 0, 4));
-	rowreq_ctx->data.activeTimeSeconds = atoi(PQgetvalue(pg_start_qry, 0, 5));
-	rowreq_ctx->data.activeTimeDeciSeconds = atoi(PQgetvalue(pg_start_qry, 0, 6));
-	rowreq_ctx->data.activeTimeUtcOffsetHours = atoi(PQgetvalue(pg_start_qry, 0, 7));
-	rowreq_ctx->data.activeTimeUtcOffsetMinutes = atoi(PQgetvalue(pg_start_qry, 0, 8));
-	tmpInt = rowreq_ctx->data.activeTimeUtcOffsetHours * 60 + rowreq_ctx->data.activeTimeUtcOffsetMinutes;
-	rowreq_ctx->data.activeTimeUtcOffsetDirection = 0;
-     }
+	if (haveStartTime)
+	{
+		rowreq_ctx->data.activeTimeYear = atoi(PQgetvalue(pg_start_qry, 0, 0));
+		rowreq_ctx->data.activeTimeMonth = atoi(PQgetvalue(pg_start_qry, 0, 1));
+		rowreq_ctx->data.activeTimeDay = atoi(PQgetvalue(pg_start_qry, 0, 2));
+		rowreq_ctx->data.activeTimeHour = atoi(PQgetvalue(pg_start_qry, 0, 3));
+		rowreq_ctx->data.activeTimeMinutes = atoi(
+				PQgetvalue(pg_start_qry, 0, 4));
+		rowreq_ctx->data.activeTimeSeconds = atoi(
+				PQgetvalue(pg_start_qry, 0, 5));
+		rowreq_ctx->data.activeTimeDeciSeconds = atoi(PQgetvalue(pg_start_qry,
+				0, 6));
+		rowreq_ctx->data.activeTimeUtcOffsetHours = atoi(PQgetvalue(
+				pg_start_qry, 0, 7));
+		rowreq_ctx->data.activeTimeUtcOffsetMinutes = atoi(PQgetvalue(
+				pg_start_qry, 0, 8));
+		tmpInt = rowreq_ctx->data.activeTimeUtcOffsetHours * 60
+				+ rowreq_ctx->data.activeTimeUtcOffsetMinutes;
+		rowreq_ctx->data.activeTimeUtcOffsetDirection = 0;
+	}
 
-     /*
-      * insert into table container
-      */
-      CONTAINER_INSERT(container, rowreq_ctx);
-      ++count;
+	/*
+	 * insert into table container
+	 */
+	CONTAINER_INSERT(container, rowreq_ctx);
+	++count;
 
+	/* Now add the segments */
 
-     /* Now add the segments */
+	if (haveConfig)
+	{
+		resultCount = PQntuples(config_qry);
 
-    if (haveConfig)
-    {
-      resultCount = PQntuples(config_qry);
+		for (i = 0; i < resultCount; i++)
+		{
 
-      for(i = 0; i < resultCount; i++) {
+			/*
+			 * TODO:352:M: |   |-> set indexes in new rdbmsRelTable rowreq context.
+			 */
+			rowreq_ctx = rdbmsRelTable_allocate_rowreq_ctx();
+			if (NULL == rowreq_ctx)
+			{
+				snmp_log(LOG_ERR, "memory allocation failed\n");
+				errorCode = MFD_RESOURCE_UNAVAILABLE;
+				break;
+			}
 
-        /*
-         * TODO:352:M: |   |-> set indexes in new rdbmsRelTable rowreq context.
-         */
-        rowreq_ctx = rdbmsRelTable_allocate_rowreq_ctx();
-        if (NULL == rowreq_ctx) {
-            snmp_log(LOG_ERR, "memory allocation failed\n");
-            errorCode = MFD_RESOURCE_UNAVAILABLE;
-	    break;
-        }
-        
-        if(MFD_SUCCESS != rdbmsRelTable_indexes_set(rowreq_ctx
-                               , 2
-                               , atoi(PQgetvalue(config_qry, i, 0))
-               )) {
-            snmp_log(LOG_ERR,"error setting index while loading "
-                     "rdbmsRelTable cache.\n");
-            rdbmsRelTable_release_rowreq_ctx(rowreq_ctx);
-            continue;
-        }
+			if (MFD_SUCCESS != rdbmsRelTable_indexes_set(rowreq_ctx, 2, atoi(
+					PQgetvalue(config_qry, i, 0))))
+			{
+				snmp_log(LOG_ERR, "error setting index while loading "
+					"rdbmsRelTable cache.\n");
+				rdbmsRelTable_release_rowreq_ctx(rowreq_ctx);
+				continue;
+			}
 
-        /*
-         * TODO:352:r: |   |-> populate rdbmsRelTable data context.
-         * Populate data context here. (optionally, delay until row prep)
-         */
+			/*
+			 * TODO:352:r: |   |-> populate rdbmsRelTable data context.
+			 * Populate data context here. (optionally, delay until row prep)
+			 */
 
-        if (*(char *)PQgetvalue(config_qry, i, 3) == 'f')
-          dbStatus = INTERNAL_RDBMSRELSTATE_UNAVAILABLE;
-        else if (*(char *)PQgetvalue(config_qry, i, 2) == 't') 
-          dbStatus = INTERNAL_RDBMSRELSTATE_ACTIVE;
-        else if (*(char *)PQgetvalue(config_qry, i, 1) == 't') 
-          dbStatus = INTERNAL_RDBMSRELSTATE_AVAILABLE;
-        else
-          dbStatus = INTERNAL_RDBMSRELSTATE_OTHER;
+			if (*(char *) PQgetvalue(config_qry, i, 3) == 'f')
+				dbStatus = INTERNAL_RDBMSRELSTATE_UNAVAILABLE;
+			else if (*(char *) PQgetvalue(config_qry, i, 2) == 't')
+				dbStatus = INTERNAL_RDBMSRELSTATE_ACTIVE;
+			else if (*(char *) PQgetvalue(config_qry, i, 1) == 't')
+				dbStatus = INTERNAL_RDBMSRELSTATE_AVAILABLE;
+			else
+				dbStatus = INTERNAL_RDBMSRELSTATE_OTHER;
 
-        if(MFD_SUCCESS !=
-           rdbmsRelState_map(&rowreq_ctx->data.rdbmsRelState, dbStatus)) {
-             return MFD_ERROR;
-        }
-    
-       if (haveStartTime)
-       {
-	rowreq_ctx->data.activeTimeYear = atoi(PQgetvalue(pg_start_qry, 0, 0));
-	rowreq_ctx->data.activeTimeMonth = atoi(PQgetvalue(pg_start_qry, 0, 1));
-	rowreq_ctx->data.activeTimeDay = atoi(PQgetvalue(pg_start_qry, 0, 2));
-	rowreq_ctx->data.activeTimeHour = atoi(PQgetvalue(pg_start_qry, 0, 3));
-	rowreq_ctx->data.activeTimeMinutes = atoi(PQgetvalue(pg_start_qry, 0, 4));
-	rowreq_ctx->data.activeTimeSeconds = atoi(PQgetvalue(pg_start_qry, 0, 5));
-	rowreq_ctx->data.activeTimeDeciSeconds = atoi(PQgetvalue(pg_start_qry, 0, 6));
-	rowreq_ctx->data.activeTimeUtcOffsetHours = atoi(PQgetvalue(pg_start_qry, 0, 7));
-	rowreq_ctx->data.activeTimeUtcOffsetMinutes = atoi(PQgetvalue(pg_start_qry, 0, 8));
-	tmpInt = rowreq_ctx->data.activeTimeUtcOffsetHours * 60 + rowreq_ctx->data.activeTimeUtcOffsetMinutes;
-	rowreq_ctx->data.activeTimeUtcOffsetDirection = 0;
-      }
+			if (MFD_SUCCESS != rdbmsRelState_map(
+					&rowreq_ctx->data.rdbmsRelState, dbStatus))
+			{
+				return MFD_ERROR;
+			}
 
-        /*
-         * insert into table container
-         */
-        CONTAINER_INSERT(container, rowreq_ctx);
-        ++count;
-      }
-      PQclear(config_qry);
-    }
-   
-   if (haveStartTime)
-      PQclear(pg_start_qry);
-        
+			if (haveStartTime)
+			{
+				rowreq_ctx->data.activeTimeYear = atoi(PQgetvalue(pg_start_qry,
+						0, 0));
+				rowreq_ctx->data.activeTimeMonth = atoi(PQgetvalue(
+						pg_start_qry, 0, 1));
+				rowreq_ctx->data.activeTimeDay = atoi(PQgetvalue(pg_start_qry,
+						0, 2));
+				rowreq_ctx->data.activeTimeHour = atoi(PQgetvalue(pg_start_qry,
+						0, 3));
+				rowreq_ctx->data.activeTimeMinutes = atoi(PQgetvalue(
+						pg_start_qry, 0, 4));
+				rowreq_ctx->data.activeTimeSeconds = atoi(PQgetvalue(
+						pg_start_qry, 0, 5));
+				rowreq_ctx->data.activeTimeDeciSeconds = atoi(PQgetvalue(
+						pg_start_qry, 0, 6));
+				rowreq_ctx->data.activeTimeUtcOffsetHours = atoi(PQgetvalue(
+						pg_start_qry, 0, 7));
+				rowreq_ctx->data.activeTimeUtcOffsetMinutes = atoi(PQgetvalue(
+						pg_start_qry, 0, 8));
+				tmpInt = rowreq_ctx->data.activeTimeUtcOffsetHours * 60
+						+ rowreq_ctx->data.activeTimeUtcOffsetMinutes;
+				rowreq_ctx->data.activeTimeUtcOffsetDirection = 0;
+			}
 
-    DEBUGMSGT(("verbose:rdbmsRelTable:rdbmsRelTable_cache_load",
-               "inserted %d records\n", count));
+			/*
+			 * insert into table container
+			 */
+			CONTAINER_INSERT(container, rowreq_ctx);
+			++count;
+		}
+		PQclear(config_qry);
+	}
 
-    return errorCode;
+	if (haveStartTime)
+		PQclear(pg_start_qry);
+
+	DEBUGMSGT(("verbose:rdbmsRelTable:rdbmsRelTable_cache_load",
+					"inserted %d records\n", count));
+
+	return errorCode;
 } /* rdbmsRelTable_cache_load */
 
 /**
@@ -365,14 +394,13 @@ rdbmsRelTable_cache_load(netsnmp_container *container)
  *  The MFD helper will take care of releasing all the row contexts.
  *
  */
-void
-rdbmsRelTable_cache_free(netsnmp_container *container)
+void rdbmsRelTable_cache_free(netsnmp_container *container)
 {
-    DEBUGMSGTL(("verbose:rdbmsRelTable:rdbmsRelTable_cache_free","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsRelTable:rdbmsRelTable_cache_free","called\n"));
 
-    /*
-     * TODO:380:M: Free rdbmsRelTable cache.
-     */
+	/*
+	 * TODO:380:M: Free rdbmsRelTable cache.
+	 */
 } /* rdbmsRelTable_cache_free */
 
 /**
@@ -388,20 +416,19 @@ rdbmsRelTable_cache_free(netsnmp_container *container)
  * @retval MFD_SUCCESS     : success.
  * @retval MFD_ERROR       : other error.
  */
-int
-rdbmsRelTable_row_prep( rdbmsRelTable_rowreq_ctx *rowreq_ctx)
+int rdbmsRelTable_row_prep(rdbmsRelTable_rowreq_ctx *rowreq_ctx)
 {
-    DEBUGMSGTL(("verbose:rdbmsRelTable:rdbmsRelTable_row_prep","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsRelTable:rdbmsRelTable_row_prep","called\n"));
 
-    netsnmp_assert(NULL != rowreq_ctx);
+	netsnmp_assert(NULL != rowreq_ctx);
 
-    /*
-     * TODO:390:o: Prepare row for request.
-     * If populating row data was delayed, this is the place to
-     * fill in the row for this request.
-     */
+	/*
+	 * TODO:390:o: Prepare row for request.
+	 * If populating row data was delayed, this is the place to
+	 * fill in the row for this request.
+	 */
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsRelTable_row_prep */
 
 /** @} */
