@@ -143,6 +143,8 @@ extern void FtsCondSetTxnReadOnly(bool *);
 extern void ftsLock(void);
 extern void ftsUnlock(void);
 
+void FtsNotifyProber(void);
+
 extern void CheckForQDMirroringWork(void);
 extern void disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disabledReason);
 extern void disableQDMirroring_WalSendServerError(char *detail);

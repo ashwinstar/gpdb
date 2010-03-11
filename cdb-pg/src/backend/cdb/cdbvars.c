@@ -976,7 +976,18 @@ gpvars_assign_gp_fts_probe_pause(bool newval, bool doit, GucSource source)
 	if (doit)
 	{
 		if (ftsProbeInfo)
+		{
 			ftsProbeInfo->fts_pauseProbes = newval;
+
+			/*
+			 * If we're unpausing, we want to force the prober to
+			 * re-read everything. (we want FtsNotifyProber()).
+			 */
+			if (!newval)
+			{
+				FtsNotifyProber();
+			}
+		}
 		gp_fts_probe_pause = newval;
 	}
 

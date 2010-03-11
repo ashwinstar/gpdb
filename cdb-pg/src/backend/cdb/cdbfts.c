@@ -145,7 +145,7 @@ ftsUnlock(void)
 	LWLockRelease(ftsControlLock);
 }
 
-static void
+void
 FtsNotifyProber(void)
 {
 	/*
