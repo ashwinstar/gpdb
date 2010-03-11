@@ -53,15 +53,15 @@ char *pgsnmp_version = PG_VERSION_STR;
  * PostgreSQL Connection
  */
 PGconn *dbconn = NULL;
-char *conninfo =
-{ "dbname=template1" };
+char *conninfo = { "dbname=template1" };
 #define     SEARCH_PATH "set search_path TO public;"
 
 static int keep_running = 0;
 struct timeval snmp_boottime;
 static int pgsqlState = 0;
 
-static PGconn *db_connect(char *constring)
+static PGconn *
+db_connect(char *constring)
 {
 	PGconn *dbconn;
 	dbconn = PQconnectdb(constring);
