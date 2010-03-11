@@ -598,110 +598,99 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
     if ((DistributedTransactionContext == DTX_CONTEXT_QE_READER ||
 		 DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON))
 	{
+		uint32	sub, limit = 0;
+		volatile TransactionId *subxids;
+
 #ifdef WATCH_VISIBILITY_IN_ACTION
 		count += sprintf(&WatchCurrentTransactionBuffer[count]," Segment Reader or Segment Entry DB singleton");
 #endif
-        /*
-		 * Naively, it seems like these should be Asserts()
-		 * (Assert(SharedLocalSnapshotSlot->xid == TopTransactionStateData.transactionId));
-		 * but they can't be: this code is run in cursors where the writer is *supposed*
-		 * to race ahead and modify SharedLocalSnapshotSlot.
-		 *
-		 * We should be able to tell the difference though, if our QEDtxContextInfo.segmateSync
-		 * still matches the SharedLocalSnapshotSlot->segmateSync, then our xid should match the
-		 * shared-xid.
-		 */
-		if (SharedLocalSnapshotSlot != NULL && 
-			SharedLocalSnapshotSlot->xid == TopTransactionStateData.transactionId)
+
+		if (TransactionIdEquals(xid, TopTransactionStateData.transactionId))
 		{
-			/*
-			 * In qExec Readers, we do not have real transaction and subtransaction
-			 * state.  The Writer copies the active subtransactions information
-			 * into the shared snapshot.
-			 */
-			if (TransactionIdEquals(xid, TopTransactionStateData.transactionId))
-			{
 #ifdef WATCH_VISIBILITY_IN_ACTION
-				count += sprintf(&WatchCurrentTransactionBuffer[count]," is parent");
+			count += sprintf(&WatchCurrentTransactionBuffer[count]," is parent");
 #endif
-				isCurrentTransactionId = true;
-				elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = true -- TOP", xid);
-			}
-			else
-			{
-				uint32 sub;
-				
-				isCurrentTransactionId = false;		// Assume.
-#ifdef WATCH_VISIBILITY_IN_ACTION
-				count += sprintf(&WatchCurrentTransactionBuffer[count]," subcnt %d", 
-				                 SharedLocalSnapshotSlot->subcnt);
-#endif
-				for(sub = 0; sub < SharedLocalSnapshotSlot->subcnt; sub++)
-				{
-					if (TransactionIdEquals(xid, SharedLocalSnapshotSlot->subxids[sub]))
-					{
-#ifdef WATCH_VISIBILITY_IN_ACTION
-						count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid matched");
-#endif
-						isCurrentTransactionId = true;
-						break;
-					}
-					else
-					{
-#ifdef WATCH_VISIBILITY_IN_ACTION
-						count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid %u did not match", SharedLocalSnapshotSlot->subxids[sub]);
-#endif
-					}
-				}
-				elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = %s -- Subtransaction",
-					 xid, (isCurrentTransactionId ? "true" : "false"));
-			}
-			return isCurrentTransactionId;
-		}
-		else
-		{
-			if (SharedLocalSnapshotSlot == NULL)
-			{
-#ifdef WATCH_VISIBILITY_IN_ACTION
-				count += sprintf(&WatchCurrentTransactionBuffer[count]," null slot");
-#endif				
-				elog(DEBUG1, "qExec Reader: snapshot slot is NULL");
-			}
-			else
-			{
-#ifdef WATCH_VISIBILITY_IN_ACTION
-				count += sprintf(&WatchCurrentTransactionBuffer[count],
-				                 " shared xid %u mismatch top xid %d (segmateSync %d)",
-				                 SharedLocalSnapshotSlot->xid, TopTransactionStateData.transactionId,
-				                 SharedLocalSnapshotSlot->segmateSync);
-#endif
-				elog(DEBUG1, "qExec Reader: snapshot slot xid is %u distXid %u/%u (toptrans is %u)",
-					 SharedLocalSnapshotSlot->xid, SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
-					 TopTransactionStateData.transactionId);
-			}
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = true -- TOP", xid);
+			return true;
 		}
 
 		/*
-		 * If we don't think we're supposed to have the writer ahead
-		 * of us, throw an error: note that cursor-based readers
-		 * should have either a ready-flag mismatch, or a segmateSync
-		 * mismatch; so will not throw this error.
+		 * Now either the xid is a subtransaction of our "top" xid, or it isn't part of the
+		 * current transaction. We've just got to check out sub-transaction list, and we're
+		 * done.
 		 */
-		if (SharedLocalSnapshotSlot != NULL && SharedLocalSnapshotSlot->ready &&
-			SharedLocalSnapshotSlot->segmateSync == QEDtxContextInfo.segmateSync &&
-			SharedLocalSnapshotSlot->xid != TopTransactionStateData.transactionId)
+
+		/*
+		 * Cursor readers cannot directly access the writer shared
+		 * snapshot -- since it may have been modified by the writer
+		 * since we were declared.
+		 */
+		if (QEDtxContextInfo.cursorContext)
 		{
-			/* We aren't in a cursor, the writer appears to have raced
-			 * ahead for some unknown reason ? */
-			elog(ERROR, "qExec Reader: writer gang raced ahead, snapshot slot xid is %u distXid %u/%u cid %u/%u sync %u (toptrans is %u)",
-				 SharedLocalSnapshotSlot->xid,
-				 SharedLocalSnapshotSlot->QDxid, QEDtxContextInfo.distributedXid,
-				 SharedLocalSnapshotSlot->QDcid, QEDtxContextInfo.curcid,
-				 SharedLocalSnapshotSlot->segmateSync,
-				 TopTransactionStateData.transactionId);
+			Snapshot snap=NULL;
+
+			if (LatestSnapshot == NULL)
+			{
+				snap = GetTransactionSnapshot();
+			}
+			else
+			{
+				snap = LatestSnapshot;
+			}
+
+			if (snap == NULL)
+			{
+				elog(ERROR, "qExec Reader: cursor reader could not resolve visibility");
+			}
+
+			limit = snap->subxcnt;
+			subxids = snap->subxip;
 		}
-			
+		else
+		{
+			Assert(SharedLocalSnapshotSlot != NULL);
+			Assert(SharedLocalSnapshotSlot->xid == TopTransactionStateData.transactionId);
+
+			limit = SharedLocalSnapshotSlot->subcnt;
+			subxids = SharedLocalSnapshotSlot->subxids;
+		}
+
+		/*
+		 * In qExec Readers, we do not have real transaction and subtransaction
+		 * state.  The Writer copies the active subtransactions information
+		 * into the shared snapshot.
+		 */		
+		isCurrentTransactionId = false;		/* Assume. */
+#ifdef WATCH_VISIBILITY_IN_ACTION
+		count += sprintf(&WatchCurrentTransactionBuffer[count]," subcnt %d", 
+						 SharedLocalSnapshotSlot->subcnt);
+#endif
+		for (sub = 0; sub < limit; sub++)
+		{
+			if (TransactionIdEquals(xid, subxids[sub]))
+			{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+				count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid matched");
+#endif
+				isCurrentTransactionId = true;
+				break;
+			}
+			else
+			{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+				count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid %u did not match", SharedLocalSnapshotSlot->subxids[sub]);
+#endif
+			}
+		}
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = %s -- Subtransaction",
+			 xid, (isCurrentTransactionId ? "true" : "false"));
+
+		return isCurrentTransactionId;
 	}
+
+	/* we aren't a reader */
+	Assert(DistributedTransactionContext != DTX_CONTEXT_QE_READER);
+	Assert(DistributedTransactionContext != DTX_CONTEXT_QE_ENTRY_DB_SINGLETON);
 
 #ifdef WATCH_VISIBILITY_IN_ACTION
 	count += sprintf(&WatchCurrentTransactionBuffer[count]," normal check");

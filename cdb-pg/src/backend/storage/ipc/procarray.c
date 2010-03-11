@@ -533,7 +533,7 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 	SharedLocalSnapshotSlot->snapshot.xmax = snapshot->xmax;
 	SharedLocalSnapshotSlot->snapshot.xcnt = snapshot->xcnt;
 
-	// UNDONE: Are xip and subxids broken in the SharedLocalSnapshotSlot?
+	/* UNDONE: Are xip and subxids broken in the SharedLocalSnapshotSlot? */
 
 	/*
 	 * Copy all active subtransctions to shared snapshot.
@@ -623,7 +623,7 @@ GetDistributedSnapshotMaxCount(void)
 		if (QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId != 0)
 			return QEDtxContextInfo.distributedSnapshot.header.maxCount;
 		else
-			return max_prepared_xacts;		// UNDONE: For now?
+			return max_prepared_xacts;		/* UNDONE: For now? */
 	
 	case DTX_CONTEXT_QE_PREPARED:
 		elog(FATAL, "Unexpected segment distribute transaction context: '%s'",
@@ -700,7 +700,7 @@ FillInDistributedSnapshot(Snapshot snapshot)
 				dslm->header.xmin = ds->header.xmin;
 				dslm->header.xmax = ds->header.xmax;
 				dslm->header.count = ds->header.count;
-				// Do not copy maxCount.
+				/* Do not copy maxCount. */
 
 				count = ds->header.count;
 				
@@ -709,7 +709,7 @@ FillInDistributedSnapshot(Snapshot snapshot)
 					dslm->inProgressEntryArray[i].distribXid =
 											ds->inProgressXidArray[i];
 
-					// UNDONE: Lookup in distributed cache.
+					/* UNDONE: Lookup in distributed cache. */
 					dslm->inProgressEntryArray[i].localXid =
 											InvalidTransactionId;
 				}
@@ -744,8 +744,6 @@ FillInDistributedSnapshot(Snapshot snapshot)
 
 /*
  * QEDtxContextInfo and SharedLocalSnapshotSlot are both global.
- *
- * NOTE: this function may change SharedLocalSnapshotSlot as a side-effect
  */
 static bool
 QEwriterSnapshotUpToDate(void)
@@ -826,19 +824,19 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		/*
 		 * First call for this snapshot
 		 */
-		snapshot->xip = (TransactionId *)
-			malloc(arrayP->maxProcs * sizeof(TransactionId));
+		snapshot->xip = (TransactionId *)malloc(arrayP->maxProcs * sizeof(TransactionId));
 		if (snapshot->xip == NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
+		{
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory")));
+		}
+
 		Assert(snapshot->subxip == NULL);
 		snapshot->subxip = (TransactionId *)
 			malloc(arrayP->maxProcs * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId));
 		if (snapshot->subxip == NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
+		{
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory")));
+		}
 	}
 
 	/*
@@ -857,12 +855,12 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		if (maxCount > 0)
 		{
 			snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray = 
-				(DistributedSnapshotMapEntry *)
-						malloc(maxCount * sizeof(DistributedSnapshotMapEntry));
+				(DistributedSnapshotMapEntry *)malloc(maxCount * sizeof(DistributedSnapshotMapEntry));
+
 			if (snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray == NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_OUT_OF_MEMORY),
-						 errmsg("out of memory")));
+			{
+				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory")));
+			}
 			snapshot->distribSnapshotWithLocalMapping.header.maxCount = maxCount;
 		}
 	}
@@ -896,6 +894,11 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		 */
 		FillInDistributedSnapshot(snapshot);
 
+		/*
+		 * If we're a cursor-reader, we get out snapshot from the
+		 * writer via a tempfile in the filesystem. Otherwise it is
+		 * too easy for the writer to race ahead of cursor readers.
+		 */
 		if (QEDtxContextInfo.cursorContext)
 		{
 			readSharedLocalSnapshot_forCursor(snapshot);
@@ -929,10 +932,6 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		 */
 		for (;;)
 		{
-			/*
-			 * NOTE: QEwriterSnapshotUpToDate() may change
-			 * SharedLocalSnapshotSlot as a side-effect.
-			 */
 			if (QEwriterSnapshotUpToDate())
 			{
 				/*
@@ -975,7 +974,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				
 				if (Debug_print_full_dtm)
 				{
-					ShowSubtransactionsForSharedSnapshot(SharedLocalSnapshotSlot->subcnt,(const TransactionId *)SharedLocalSnapshotSlot->subxids);
+					ShowSubtransactionsForSharedSnapshot(SharedLocalSnapshotSlot->subcnt, (const TransactionId *)SharedLocalSnapshotSlot->subxids);
 				}
 
 				elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
@@ -1046,8 +1045,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 					warning_sleep_time_us = 0;
 				}
 
-				// UNDONE: Back-off from checking every millisecond...
-
+				/* UNDONE: Back-off from checking every millisecond... */
 			}
 		}
 	}

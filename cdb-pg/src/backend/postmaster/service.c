@@ -499,8 +499,8 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 	bool		result = false;
 	fd_set		rset;
 	struct timeval rundownTimeout = {0,0};
-		// Use local variable since select modifies
-		// the timeout parameter with remaining time.
+	// Use local variable since select modifies
+	// the timeout parameter with remaining time.
 	DECLARE_SAVE_SUPPRESS_PANIC();
 
 	Assert(serviceClient != NULL);
@@ -527,8 +527,8 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 			if (n == 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								 errmsg("Connection to '%s' is closed",
-								        serviceConfig->title)));
+								errmsg("Connection to '%s' is closed (%d)",
+									   serviceConfig->title, serviceClient->sockfd)));
 			}
 
 			if (n < 0)
@@ -536,9 +536,9 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 				if (saved_err != EINTR && saved_err != EWOULDBLOCK)
 				{
 					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								     errmsg("Read error from '%s': %s",
-								            serviceConfig->title,
-								            strerror(saved_err))));
+									errmsg("Read error from '%s': %s (%d)",
+										   serviceConfig->title,
+										   strerror(saved_err), serviceClient->sockfd)));
 				}
 
 				if (saved_err == EWOULDBLOCK)
@@ -557,10 +557,10 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 							if (timeout != NULL)
 							{
 								ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-										          errmsg("Read from '%s' timed out after %d.%03d seconds",
-												         serviceConfig->title,
-												         (int)timeout->tv_sec,
-												         (int)timeout->tv_usec / 1000)));
+												errmsg("Read from '%s' timed out after %d.%03d seconds",
+													   serviceConfig->title,
+													   (int)timeout->tv_sec,
+													   (int)timeout->tv_usec / 1000)));
 							}
 						}
 						else if (n < 0 && errno == EINTR)
@@ -570,9 +570,9 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 							saved_err = errno;
 
 							ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-										     errmsg("Read error from '%s': %s",
-										            serviceConfig->title,
-										            strerror(saved_err))));
+											errmsg("Read error from '%s': %s (%d)",
+												   serviceConfig->title,
+												   strerror(saved_err), serviceClient->sockfd)));
 						}
 					}
 					while (n < 1);
