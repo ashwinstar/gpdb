@@ -19,7 +19,7 @@ Names in parentheses indicate the developer working on the TODO item
 	- Review cache timeout settings for each table and adjust appropriately (it's in <table_name>_data_access.h, namely #define <TABLE_NAME>_CACHE_TIMEOUT, and defaults to 60 sec)
 		- Note that even if the timeout expires, the cache only updates when the table is polled for data. Some values (perhaps rdbmsSrvInfoHighwaterInboundAssociations, for instance) maybe ought to be updated periodically whether the OID is queried or not.
 
-- PGSQL-MIB
+- GPDB-MIB
 	- Come up with a useful MIB, and implement it
 	- Extension of surveillance information.
 	- Server GUC management.

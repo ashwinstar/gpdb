@@ -219,20 +219,20 @@ rdbmsDbTable_cache_load(netsnmp_container *container)
 	vendor_name = NULL;
 	vendor_name_len = 0;
 
-	/* Note that this queries pgsnmpd_rdbmsDbTable once per database. This could
+	/* Note that this queries gpsnmpd_rdbmsDbTable once per database. This could
 	 * be more efficient by only querying once if it can't find the table (being
 	 * sure that the table didn't exist, as opposed to simply an entry for that 
 	 * database not existing in the table). It could also be rewritten so that 
-	 * only one query is issued, joining pg_database and pgsnmpd_rdbmsDbTable, but 
+	 * only one query is issued, joining pg_database and gpsnmpd_rdbmsDbTable, but
 	 * that would have to be smart enough to know of the pgsnmpd table existed
 	 * and not do the join if it didn't */
 	pgsnmpd_tbl_qry = NULL;
-	tmpInt = sizeof("SELECT vendor_name, contact_name FROM pgsnmpd_rdbmsDbTable WHERE database_oid = ") + sizeof(*db_oid);
+	tmpInt = sizeof("SELECT vendor_name, contact_name FROM gpsnmpd_rdbmsDbTable WHERE database_oid = ") + sizeof(*db_oid);
 	tmpString = calloc(tmpInt, sizeof(char*));
 	if (tmpString == NULL) snmp_log(LOG_ERR, "Couldn't allocate memory to query pgsnmpd-specific database table\n");
 	else {
-		snmp_log(LOG_INFO, "Gathering rdbmsDbTable information from pgsnmpd_rdbmsDbTable\n");
-		snprintf(tmpString, sizeof(char*) * tmpInt, "SELECT vendor_name, contact_name FROM pgsnmpd_rdbmsDbTable WHERE database_oid = %s", db_oid);
+		snmp_log(LOG_INFO, "Gathering rdbmsDbTable information from gpsnmpd_rdbmsDbTable\n");
+		snprintf(tmpString, sizeof(char*) * tmpInt, "SELECT vendor_name, contact_name FROM gpsnmpd_rdbmsDbTable WHERE database_oid = %s", db_oid);
 		pgsnmpd_tbl_qry = PQexec(dbconn, tmpString);
 		/* Ignore errors so that pgsnmpd will run without this table being available */
 		if (PQresultStatus(pgsnmpd_tbl_qry) == PGRES_TUPLES_OK && PQntuples(pgsnmpd_tbl_qry) > 0) {
@@ -242,7 +242,7 @@ rdbmsDbTable_cache_load(netsnmp_container *container)
 			contact_name_len = strlen(contact_name);
 		}
 		/* Note that this error is INFO level, instead of something higher, because we're designed to work without this table */
-		else snmp_log(LOG_INFO, "Unable to find relevant data in pgsnmpd_rdbmsDbTable\n");
+		else snmp_log(LOG_INFO, "Unable to find relevant data in gpsnmpd_rdbmsDbTable\n");
 	}
 
     /*

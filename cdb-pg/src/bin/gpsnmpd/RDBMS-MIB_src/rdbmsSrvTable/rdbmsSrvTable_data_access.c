@@ -195,7 +195,7 @@ rdbmsSrvTable_cache_load(netsnmp_container *container)
 	    return MFD_ERROR;
         }
 
-	pgsnmpd_tbl_qry = PQexec(dbconn, "SELECT vendor_name, product_name, contact_name FROM pgsnmpd_rdbmsSrvTable");
+	pgsnmpd_tbl_qry = PQexec(dbconn, "SELECT vendor_name, product_name, contact_name FROM gpsnmpd_rdbmsSrvTable");
 	if (PQresultStatus(pgsnmpd_tbl_qry) == PGRES_TUPLES_OK && PQntuples(pgsnmpd_tbl_qry) > 0) {
 		vendor_name  = PQgetvalue(pgsnmpd_tbl_qry, 0, 0);
 		product_name = PQgetvalue(pgsnmpd_tbl_qry, 0, 1);

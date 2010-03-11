@@ -215,14 +215,14 @@ rdbmsDbInfoTable_cache_load(netsnmp_container *container)
 	rowreq_ctx->data.rdbmsDbInfoVersion_len = 255;
 
 	pgsnmpd_tbl_qry = NULL;
-	tmpInt = sizeof("SELECT EXTRACT(YEAR FROM last_backup), EXTRACT(MONTH FROM last_backup), EXTRACT(DAY FROM last_backup), EXTRACT(HOUR FROM last_backup), EXTRACT(MINUTE FROM last_backup), EXTRACT(SECOND FROM last_backup), EXTRACT(MILLISECOND FROM last_backup), EXTRACT(TIMEZONE_HOUR FROM last_backup), EXTRACT(TIMEZONE_MINUTE FROM last_backup) FROM pgsnmpd_rdbmsDbTable WHERE database_oid = %s") + sizeof(*db_oid);
+	tmpInt = sizeof("SELECT EXTRACT(YEAR FROM last_backup), EXTRACT(MONTH FROM last_backup), EXTRACT(DAY FROM last_backup), EXTRACT(HOUR FROM last_backup), EXTRACT(MINUTE FROM last_backup), EXTRACT(SECOND FROM last_backup), EXTRACT(MILLISECOND FROM last_backup), EXTRACT(TIMEZONE_HOUR FROM last_backup), EXTRACT(TIMEZONE_MINUTE FROM last_backup) FROM gpsnmpd_rdbmsDbTable WHERE database_oid = %s") + sizeof(*db_oid);
 	tmpString = calloc(tmpInt, sizeof(char*));
 	if (tmpString == NULL) snmp_log(LOG_ERR, "Couldn't allocate memory to query pgsnmpd-specific database table\n");
 	else {
-		snmp_log(LOG_INFO, "Gathering rdbmsDbTable information from pgsnmpd_rdbmsDbTable\n");
-		snprintf(tmpString, sizeof(char*) * tmpInt, "SELECT EXTRACT(YEAR FROM last_backup), EXTRACT(MONTH FROM last_backup), EXTRACT(DAY FROM last_backup), EXTRACT(HOUR FROM last_backup), EXTRACT(MINUTE FROM last_backup), EXTRACT(SECOND FROM last_backup), EXTRACT(MILLISECOND FROM last_backup), EXTRACT(TIMEZONE_HOUR FROM last_backup), EXTRACT(TIMEZONE_MINUTE FROM last_backup) FROM pgsnmpd_rdbmsDbTable WHERE database_oid = %s", db_oid);
+		snmp_log(LOG_INFO, "Gathering rdbmsDbTable information from gpsnmpd_rdbmsDbTable\n");
+		snprintf(tmpString, sizeof(char*) * tmpInt, "SELECT EXTRACT(YEAR FROM last_backup), EXTRACT(MONTH FROM last_backup), EXTRACT(DAY FROM last_backup), EXTRACT(HOUR FROM last_backup), EXTRACT(MINUTE FROM last_backup), EXTRACT(SECOND FROM last_backup), EXTRACT(MILLISECOND FROM last_backup), EXTRACT(TIMEZONE_HOUR FROM last_backup), EXTRACT(TIMEZONE_MINUTE FROM last_backup) FROM gpsnmpd_rdbmsDbTable WHERE database_oid = %s", db_oid);
 		pgsnmpd_tbl_qry = PQexec(dbconn, tmpString);
-		/* Ignore errors so that pgsnmpd will run without this table being available. Note that this error is INFO level,
+		/* Ignore errors so that gpsnmpd will run without this table being available. Note that this error is INFO level,
 		 * instead of something higher, because we're designed to work without this table */
 
                 if (PQresultStatus(pgsnmpd_tbl_qry) == PGRES_TUPLES_OK && PQntuples(pgsnmpd_tbl_qry) > 0) {
@@ -240,7 +240,7 @@ rdbmsDbInfoTable_cache_load(netsnmp_container *container)
 	            else 
 	      	        rowreq_ctx->data.utc_offset_direction = (tmpInt > 0 ? 1 : -1);
 		}
-		else snmp_log(LOG_INFO, "Unable to find relevant data in pgsnmpd_rdbmsDbTable\n");
+		else snmp_log(LOG_INFO, "Unable to find relevant data in gpsnmpd_rdbmsDbTable\n");
 		free(tmpString);
 	}
 

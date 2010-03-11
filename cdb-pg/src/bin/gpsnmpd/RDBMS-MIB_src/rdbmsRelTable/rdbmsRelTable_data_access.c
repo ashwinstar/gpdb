@@ -213,7 +213,7 @@ rdbmsRelTable_cache_load(netsnmp_container *container)
 
         /* Do a distributed query to test if the system is really functioning  */
 
-        dist_qry = PQexec(dbconn, "SELECT count(*) from public.pgsnmpd_activetest");
+        dist_qry = PQexec(dbconn, "SELECT count(*) from gp_dist_random('pg_catalog.pg_database') where oid = 1");
         if (PQresultStatus(dist_qry) != PGRES_TUPLES_OK) {
              snmp_log(LOG_ERR, "Error executing distributed query (%s): %s", PQresStatus(PQresultStatus(dist_qry)), PQresultErrorMessage(dist_qry));   
              dbStatus = INTERNAL_RDBMSRELSTATE_UNAVAILABLE; 
