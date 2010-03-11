@@ -5655,7 +5655,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
             AOCSScanDesc sdesc = NULL;
             int nvp = oldrel->rd_att->natts;
             bool *proj = palloc0(sizeof(bool) * nvp);
-			TupleDesc new_desc = NULL;
+			volatile TupleDesc new_desc = NULL;
 
             if (oldTupDesc)
             {
@@ -5673,97 +5673,110 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			 * oldrel, which already contains altered column type. This is because
 			 * the CO needs the original tuple descriptor to scan the data.
 			 * See MPP-7066.
+			 *
+			 * This needs to be done in PG_TRY and PG_CATCH block, so that when
+			 * there is an error, the tuple descriptor will be set back to its old
+			 * value properly.
 			 */
-			new_desc = oldrel->rd_att;
-			oldrel->rd_att = tab->oldDesc;
+			PG_TRY();
+			{
+				new_desc = oldrel->rd_att;
+				oldrel->rd_att = tab->oldDesc;
 			
-            sdesc = aocs_beginscan(oldrel, SnapshotNow, 0, NULL, proj);
+				sdesc = aocs_beginscan(oldrel, SnapshotNow, 0, NULL, proj);
 
-            aocs_getnext(sdesc, ForwardScanDirection, oldslot);
-
-            while(!TupIsNull(oldslot))
-            {
-                oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-                econtext->ecxt_scantuple = oldslot;
-
-                if(newrel)
-                {
-                    Datum *slotvalues = slot_get_values(oldslot);
-                    bool  *slotnulls = slot_get_isnull(oldslot);
-                    Datum *newslotvalues = slot_get_values(newslot);
-                    bool *newslotnulls = slot_get_isnull(newslot);
-
-                    int nv = Min(oldslot->tts_tupleDescriptor->natts, newslot->tts_tupleDescriptor->natts);
-
-					/* aocs does not do oid yet */
-					Assert(!oldTupDesc->tdhasoid);
-					Assert(!newTupDesc->tdhasoid);
-
-					/* Dropped att should be set correctly by aocs_getnext */
-                    /* transfer values from old to new slot */
-
-                    memcpy(newslotvalues, slotvalues, sizeof(Datum) * nv);
-                    memcpy(newslotnulls, slotnulls, sizeof(bool) * nv);
-                    TupSetVirtualTupleNValid(newslot, nv);
-
-					/* Process supplied expressions */
-					foreach(l, tab->newvals)
+				aocs_getnext(sdesc, ForwardScanDirection, oldslot);
+				
+				while(!TupIsNull(oldslot))
+				{
+					oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+					econtext->ecxt_scantuple = oldslot;
+					
+					if(newrel)
 					{
-						NewColumnValue *ex = lfirst(l);
-
-						newslotvalues[ex->attnum-1] =
+						Datum *slotvalues = slot_get_values(oldslot);
+						bool  *slotnulls = slot_get_isnull(oldslot);
+						Datum *newslotvalues = slot_get_values(newslot);
+						bool *newslotnulls = slot_get_isnull(newslot);
+						
+						int nv = Min(oldslot->tts_tupleDescriptor->natts, newslot->tts_tupleDescriptor->natts);
+						
+						/* aocs does not do oid yet */
+						Assert(!oldTupDesc->tdhasoid);
+						Assert(!newTupDesc->tdhasoid);
+						
+						/* Dropped att should be set correctly by aocs_getnext */
+						/* transfer values from old to new slot */
+						
+						memcpy(newslotvalues, slotvalues, sizeof(Datum) * nv);
+						memcpy(newslotnulls, slotnulls, sizeof(bool) * nv);
+						TupSetVirtualTupleNValid(newslot, nv);
+						
+						/* Process supplied expressions */
+						foreach(l, tab->newvals)
+						{
+							NewColumnValue *ex = lfirst(l);
+							
+							newslotvalues[ex->attnum-1] =
 								ExecEvalExpr(ex->exprstate,
 											 econtext,
 											 &newslotnulls[ex->attnum-1],
 											 NULL
-										);
+									);
+							
+							if (ex->attnum > nv)
+								TupSetVirtualTupleNValid(newslot, ex->attnum);
+						}
 
-                        if (ex->attnum > nv)
-                            TupSetVirtualTupleNValid(newslot, ex->attnum);
+						/* Use the modified tuple to check constraints below */
+						econtext->ecxt_scantuple = newslot;
 					}
-
-					/* Use the modified tuple to check constraints below */
-					econtext->ecxt_scantuple = newslot;
-				}
- 
-				/* Check constraints */
-				foreach (l, tab->constraints)
-				{
-					NewConstraint *con = lfirst(l);
-					switch(con->contype)
+					
+					/* Check constraints */
+					foreach (l, tab->constraints)
 					{
-						case CONSTR_CHECK:
-							if(!ExecQual(con->qualstate, econtext, true))
+						NewConstraint *con = lfirst(l);
+						switch(con->contype)
+						{
+							case CONSTR_CHECK:
+								if(!ExecQual(con->qualstate, econtext, true))
 									ereport(ERROR,
 											(errcode(ERRCODE_CHECK_VIOLATION),
 											 errmsg("check constraint \"%s\" is violated",
 													con->name
-													 ),
+												 ),
 											 errOmitLocation(true)));
-							break;
-						case CONSTR_FOREIGN:
-							/* Nothing to do */
-							break;
-						default:
-							elog(ERROR, "Unrecognized constraint type: %d",
-								 (int) con->contype);
+								break;
+							case CONSTR_FOREIGN:
+								/* Nothing to do */
+								break;
+							default:
+								elog(ERROR, "Unrecognized constraint type: %d",
+									 (int) con->contype);
+						}
 					}
-				}
-
-				if(newrel)
-				{
+					
+					if(newrel)
+					{
+						MemoryContextSwitchTo(oldCxt);
+						aocs_insert(idesc, newslot);
+					}
+					
+					ResetExprContext(econtext);
+					CHECK_FOR_INTERRUPTS();
+					
 					MemoryContextSwitchTo(oldCxt);
-					aocs_insert(idesc, newslot);
+					aocs_getnext(sdesc, ForwardScanDirection, oldslot);
 				}
 
-				ResetExprContext(econtext);
-				CHECK_FOR_INTERRUPTS();
-
-				MemoryContextSwitchTo(oldCxt);
-				aocs_getnext(sdesc, ForwardScanDirection, oldslot);
+				aocs_endscan(sdesc);
 			}
-
-			aocs_endscan(sdesc);
+			PG_CATCH();
+			{
+				oldrel->rd_att = new_desc;
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 
 			/* Reset the tuple descriptor in oldrel */
 			oldrel->rd_att = new_desc;
