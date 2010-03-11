@@ -30,7 +30,7 @@
  * rdbmsDbParamTable is subid 3 of rdbmsObjects.
  * Its status is Current.
  * OID: .1.3.6.1.2.1.39.1.3, length: 9
-*/
+ */
 
 /**
  * initialization for rdbmsDbParamTable data access
@@ -44,16 +44,16 @@
  * @retval MFD_SUCCESS : success.
  * @retval MFD_ERROR   : unrecoverable error.
  */
-int
-rdbmsDbParamTable_init_data(rdbmsDbParamTable_registration_ptr rdbmsDbParamTable_reg)
+int rdbmsDbParamTable_init_data(
+		rdbmsDbParamTable_registration_ptr rdbmsDbParamTable_reg)
 {
-    DEBUGMSGTL(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_init_data","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_init_data","called\n"));
 
-    /*
-     * TODO:303:o: Initialize rdbmsDbParamTable data.
-     */
+	/*
+	 * TODO:303:o: Initialize rdbmsDbParamTable data.
+	 */
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsDbParamTable_init_data */
 
 /**
@@ -92,32 +92,32 @@ rdbmsDbParamTable_init_data(rdbmsDbParamTable_registration_ptr rdbmsDbParamTable
  *  for you data source. For example, opening a connection to another
  *  process that will supply the data, opening a database, etc.
  */
-void
-rdbmsDbParamTable_container_init(netsnmp_container **container_ptr_ptr,
-                        netsnmp_cache *cache)
+void rdbmsDbParamTable_container_init(netsnmp_container **container_ptr_ptr,
+		netsnmp_cache *cache)
 {
-    DEBUGMSGTL(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_container_init","called\n"));
-    
-    if((NULL == cache) || (NULL == container_ptr_ptr)) {
-        snmp_log(LOG_ERR,"bad params to rdbmsDbParamTable_container_init\n");
-        return;
-    }
+	DEBUGMSGTL(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_container_init","called\n"));
 
-    /*
-     * For advanced users, you can use a custom container. If you
-     * do not create one, one will be created for you.
-     */
-    *container_ptr_ptr = NULL;
+	if ((NULL == cache) || (NULL == container_ptr_ptr))
+	{
+		snmp_log(LOG_ERR, "bad params to rdbmsDbParamTable_container_init\n");
+		return;
+	}
 
-    /*
-     * TODO:345:A: Set up rdbmsDbParamTable cache properties.
-     *
-     * Also for advanced users, you can set parameters for the
-     * cache. Do not change the magic pointer, as it is used
-     * by the MFD helper. To completely disable caching, set
-     * cache->enabled to 0.
-     */
-    cache->timeout = RDBMSDBPARAMTABLE_CACHE_TIMEOUT; /* seconds */
+	/*
+	 * For advanced users, you can use a custom container. If you
+	 * do not create one, one will be created for you.
+	 */
+	*container_ptr_ptr = NULL;
+
+	/*
+	 * TODO:345:A: Set up rdbmsDbParamTable cache properties.
+	 *
+	 * Also for advanced users, you can set parameters for the
+	 * cache. Do not change the magic pointer, as it is used
+	 * by the MFD helper. To completely disable caching, set
+	 * cache->enabled to 0.
+	 */
+	cache->timeout = RDBMSDBPARAMTABLE_CACHE_TIMEOUT; /* seconds */
 } /* rdbmsDbParamTable_container_init */
 
 /**
@@ -150,187 +150,209 @@ rdbmsDbParamTable_container_init(netsnmp_container **container_ptr_ptr,
  *  data here.
  *
  */
-int
-rdbmsDbParamTable_cache_load(netsnmp_container *container)
+int rdbmsDbParamTable_cache_load(netsnmp_container *container)
 {
-    rdbmsDbParamTable_rowreq_ctx *rowreq_ctx;
-    size_t                 count = 0;
-    int i, j, resultCount, errorCode = MFD_SUCCESS, elements;
-    
-   long   rdbmsDbParamSubIndex = 0;
-   PGresult *qryRes;
-   char **array;
+	rdbmsDbParamTable_rowreq_ctx *rowreq_ctx;
+	size_t count = 0;
+	int i, j, resultCount, errorCode = MFD_SUCCESS, elements;
 
-   int rdbmsDbIndex;
-   int rdbmsDbParamCurrValue_len, rdbmsDbParamComment_len = 0, rdbmsDbParamName_len;
-   char rdbmsDbParamCurrValue[255], rdbmsDbParamComment[255] = { "" }, *tmp, rdbmsDbParamName[64];
+	long rdbmsDbParamSubIndex = 0;
+	PGresult *qryRes;
+	char **array;
 
-    DEBUGMSGTL(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_cache_load","called\n"));
+	int rdbmsDbIndex;
+	int rdbmsDbParamCurrValue_len, rdbmsDbParamComment_len = 0,
+			rdbmsDbParamName_len;
+	char rdbmsDbParamCurrValue[255], rdbmsDbParamComment[255] =
+	{ "" }, *tmp, rdbmsDbParamName[64];
 
-    /*
-     * TODO:351:M: |-> Load/update data in the rdbmsDbParamTable container.
-     * loop over your rdbmsDbParamTable data, allocate a rowreq context,
-     * set the index(es) [and data, optionally] and insert into
-     * the container.
-     */
+	DEBUGMSGTL(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_cache_load","called\n"));
 
-    if (PQstatus(dbconn) == CONNECTION_OK) 
-	    qryRes = PQexec(dbconn, "SELECT oid, datname, datconfig FROM pg_database");
-    else {
-	    snmp_log(LOG_ERR, "Can't get connected to the database");
-	    return MFD_RESOURCE_UNAVAILABLE;
-    }
-    if (PQresultStatus(qryRes) != PGRES_TUPLES_OK) {
-	    snmp_log(LOG_ERR, "Didn't get any results from the database");
-	    PQclear(qryRes);
-	    /*PQfinish(dbconn);*/
-	    /* It's probably an error if I didn't find *any* databases */
-	    return MFD_RESOURCE_UNAVAILABLE;
-    }
+	/*
+	 * TODO:351:M: |-> Load/update data in the rdbmsDbParamTable container.
+	 * loop over your rdbmsDbParamTable data, allocate a rowreq context,
+	 * set the index(es) [and data, optionally] and insert into
+	 * the container.
+	 */
 
-    resultCount = PQntuples(qryRes);
-    for (i = 0; i < resultCount; i++) {
-	    rdbmsDbIndex = atoi(PQgetvalue(qryRes, i, 0));
-	    array = pg_text_array_parse(PQgetvalue(qryRes, i, 2), &elements);
-	    if (!array) {
-		    snmp_log(LOG_INFO, "No rdbmsDbParamTable values found for database %s\n", PQgetvalue(qryRes, i, 1));
-		    continue;
-	    }
-	    for (j = 0; j < elements; j++)  {
-		    tmp = strchr(array[j], '=');
-		    if (!tmp) continue;
-		    memset(rdbmsDbParamName, 0, 64);
-		    strncpy(rdbmsDbParamName, array[j], ((tmp - array[j]) < 64 ? (tmp - array[j]) : 64));
-		    strncpy(rdbmsDbParamCurrValue, tmp+1, 255);
-		    rdbmsDbParamName_len = strlen(rdbmsDbParamName);
-		    rdbmsDbParamCurrValue_len = strlen(rdbmsDbParamCurrValue);
+	if (PQstatus(dbconn) == CONNECTION_OK)
+		qryRes = PQexec(dbconn,
+				"SELECT oid, datname, datconfig FROM pg_database");
+	else
+	{
+		snmp_log(LOG_ERR, "Can't get connected to the database");
+		return MFD_RESOURCE_UNAVAILABLE;
+	}
+	if (PQresultStatus(qryRes) != PGRES_TUPLES_OK)
+	{
+		snmp_log(LOG_ERR, "Didn't get any results from the database");
+		PQclear(qryRes);
+		/*PQfinish(dbconn);*/
+		/* It's probably an error if I didn't find *any* databases */
+		return MFD_RESOURCE_UNAVAILABLE;
+	}
 
-		/*
-		 * TODO:352:M: |   |-> set indexes in new rdbmsDbParamTable rowreq context.
-		 */
-		rowreq_ctx = rdbmsDbParamTable_allocate_rowreq_ctx();
-		if (NULL == rowreq_ctx) {
-		    snmp_log(LOG_ERR, "memory allocation failed\n");
-		    errorCode = MFD_RESOURCE_UNAVAILABLE;
-		    break;
+	resultCount = PQntuples(qryRes);
+	for (i = 0; i < resultCount; i++)
+	{
+		rdbmsDbIndex = atoi(PQgetvalue(qryRes, i, 0));
+		array = pg_text_array_parse(PQgetvalue(qryRes, i, 2), &elements);
+		if (!array)
+		{
+			snmp_log(LOG_INFO,
+					"No rdbmsDbParamTable values found for database %s\n",
+					PQgetvalue(qryRes, i, 1));
+			continue;
 		}
-		if(MFD_SUCCESS != rdbmsDbParamTable_indexes_set(rowreq_ctx
-				       , rdbmsDbIndex
-				       , rdbmsDbParamName, rdbmsDbParamName_len
-				       , rdbmsDbParamSubIndex
-		       )) {
-		    snmp_log(LOG_ERR,"error setting index while loading "
-			     "rdbmsDbParamTable cache.\n");
-		    rdbmsDbParamTable_release_rowreq_ctx(rowreq_ctx);
-		    continue;
+		for (j = 0; j < elements; j++)
+		{
+			tmp = strchr(array[j], '=');
+			if (!tmp)
+				continue;
+			memset(rdbmsDbParamName, 0, 64);
+			strncpy(rdbmsDbParamName, array[j], ((tmp - array[j]) < 64 ? (tmp
+					- array[j]) : 64));
+			strncpy(rdbmsDbParamCurrValue, tmp + 1, 255);
+			rdbmsDbParamName_len = strlen(rdbmsDbParamName);
+			rdbmsDbParamCurrValue_len = strlen(rdbmsDbParamCurrValue);
+
+			/*
+			 * TODO:352:M: |   |-> set indexes in new rdbmsDbParamTable rowreq context.
+			 */
+			rowreq_ctx = rdbmsDbParamTable_allocate_rowreq_ctx();
+			if (NULL == rowreq_ctx)
+			{
+				snmp_log(LOG_ERR, "memory allocation failed\n");
+				errorCode = MFD_RESOURCE_UNAVAILABLE;
+				break;
+			}
+			if (MFD_SUCCESS != rdbmsDbParamTable_indexes_set(rowreq_ctx,
+					rdbmsDbIndex, rdbmsDbParamName, rdbmsDbParamName_len,
+					rdbmsDbParamSubIndex))
+			{
+				snmp_log(LOG_ERR, "error setting index while loading "
+					"rdbmsDbParamTable cache.\n");
+				rdbmsDbParamTable_release_rowreq_ctx(rowreq_ctx);
+				continue;
+			}
+
+			/*
+			 * TODO:352:r: |   |-> populate rdbmsDbParamTable data context.
+			 * Populate data context here. (optionally, delay until row prep)
+			 */
+			rowreq_ctx->data.rdbmsDbParamID_len = 128;
+			rowreq_ctx->data.rdbmsDbParamCurrValue_len = 255;
+			rowreq_ctx->data.rdbmsDbParamComment_len = 255;
+			/*
+			 * TRANSIENT or semi-TRANSIENT data:
+			 * copy data or save any info needed to do it in row_prep.
+			 */
+			/*
+			 * setup/save data for rdbmsDbParamID
+			 * rdbmsDbParamID(3)/AutonomousType/ASN_OBJECT_ID/oid(oid)//L/A/w/e/r/d/h
+			 */
+			/*
+			 * TODO:246:r: |-> Define rdbmsDbParamID mapping.
+			 * Map values between raw/native values and MIB values
+			 *
+			 * if(MFD_SUCCESS !=
+			 *    rdbmsDbParamID_map(&rowreq_ctx->data.rdbmsDbParamID, &rowreq_ctx->data.rdbmsDbParamID_len,
+			 *                rdbmsDbParamID, rdbmsDbParamID_len, 0)) {
+			 *    return MFD_ERROR;
+			 * }
+			 */
+			/*
+			 * make sure there is enough space for rdbmsDbParamID data
+			 */
+			/* See comment in rdbmsDbParamID_get() -- we don't need this value
+			 if ((NULL == rowreq_ctx->data.rdbmsDbParamID) ||
+			 (rowreq_ctx->data.rdbmsDbParamID_len < (rdbmsDbParamID_len * sizeof(rowreq_ctx->data.rdbmsDbParamID[0])))) {
+			 snmp_log(LOG_ERR,"not enough space for value\n");
+			 errorCode = MFD_ERROR;
+			 break;
+			 }
+			 rowreq_ctx->data.rdbmsDbParamID_len = rdbmsDbParamID_len * sizeof(rowreq_ctx->data.rdbmsDbParamID[0]);
+			 memcpy( rowreq_ctx->data.rdbmsDbParamID, rdbmsDbParamID, rowreq_ctx->data.rdbmsDbParamID_len );
+			 */
+
+			/*
+			 * setup/save data for rdbmsDbParamCurrValue
+			 * rdbmsDbParamCurrValue(4)/DisplayString/ASN_OCTET_STR/char(char)//L/A/W/e/R/d/H
+			 */
+			/*
+			 * TODO:246:r: |-> Define rdbmsDbParamCurrValue mapping.
+			 * Map values between raw/native values and MIB values
+			 *
+			 * if(MFD_SUCCESS !=
+			 *    rdbmsDbParamCurrValue_map(&rowreq_ctx->data.rdbmsDbParamCurrValue, &rowreq_ctx->data.rdbmsDbParamCurrValue_len,
+			 *                rdbmsDbParamCurrValue, rdbmsDbParamCurrValue_len, 0)) {
+			 *    return MFD_ERROR;
+			 * }
+			 */
+			/*
+			 * make sure there is enough space for rdbmsDbParamCurrValue data
+			 */
+			if ((NULL == rowreq_ctx->data.rdbmsDbParamCurrValue)
+					|| (rowreq_ctx->data.rdbmsDbParamCurrValue_len
+							< (rdbmsDbParamCurrValue_len
+									* sizeof(rowreq_ctx->data.rdbmsDbParamCurrValue[0]))))
+			{
+				snmp_log(LOG_ERR, "not enough space for value\n");
+				errorCode = MFD_ERROR;
+				break;
+			}
+			rowreq_ctx->data.rdbmsDbParamCurrValue_len
+					= rdbmsDbParamCurrValue_len
+							* sizeof(rowreq_ctx->data.rdbmsDbParamCurrValue[0]);
+			memcpy(rowreq_ctx->data.rdbmsDbParamCurrValue,
+					rdbmsDbParamCurrValue,
+					rowreq_ctx->data.rdbmsDbParamCurrValue_len);
+
+			/*
+			 * setup/save data for rdbmsDbParamComment
+			 * rdbmsDbParamComment(5)/DisplayString/ASN_OCTET_STR/char(char)//L/A/W/e/R/d/H
+			 */
+			/*
+			 * TODO:246:r: |-> Define rdbmsDbParamComment mapping.
+			 * Map values between raw/native values and MIB values
+			 *
+			 * if(MFD_SUCCESS !=
+			 *    rdbmsDbParamComment_map(&rowreq_ctx->data.rdbmsDbParamComment, &rowreq_ctx->data.rdbmsDbParamComment_len,
+			 *                rdbmsDbParamComment, rdbmsDbParamComment_len, 0)) {
+			 *    return MFD_ERROR;
+			 * }
+			 */
+			/*
+			 * make sure there is enough space for rdbmsDbParamComment data
+			 */
+			if ((NULL == rowreq_ctx->data.rdbmsDbParamComment)
+					|| (rowreq_ctx->data.rdbmsDbParamComment_len
+							< (rdbmsDbParamComment_len
+									* sizeof(rowreq_ctx->data.rdbmsDbParamComment[0]))))
+			{
+				snmp_log(LOG_ERR, "not enough space for value\n");
+				errorCode = MFD_ERROR;
+				break;
+			}
+			rowreq_ctx->data.rdbmsDbParamComment_len = rdbmsDbParamComment_len
+					* sizeof(rowreq_ctx->data.rdbmsDbParamComment[0]);
+			memcpy(rowreq_ctx->data.rdbmsDbParamComment, rdbmsDbParamComment,
+					rowreq_ctx->data.rdbmsDbParamComment_len);
+
+			/*
+			 * insert into table container
+			 */
+			CONTAINER_INSERT(container, rowreq_ctx);
+			++count;
 		}
+		pg_text_array_free(array, elements);
+	}
 
-		/*
-		 * TODO:352:r: |   |-> populate rdbmsDbParamTable data context.
-		 * Populate data context here. (optionally, delay until row prep)
-		 */
-		rowreq_ctx->data.rdbmsDbParamID_len = 128;
-		rowreq_ctx->data.rdbmsDbParamCurrValue_len = 255;
-		rowreq_ctx->data.rdbmsDbParamComment_len = 255;
-	    /*
-	     * TRANSIENT or semi-TRANSIENT data:
-	     * copy data or save any info needed to do it in row_prep.
-	     */
-	    /*
-	     * setup/save data for rdbmsDbParamID
-	     * rdbmsDbParamID(3)/AutonomousType/ASN_OBJECT_ID/oid(oid)//L/A/w/e/r/d/h
-	     */
-	    /*
-	     * TODO:246:r: |-> Define rdbmsDbParamID mapping.
-	     * Map values between raw/native values and MIB values
-	     *
-	     * if(MFD_SUCCESS !=
-	     *    rdbmsDbParamID_map(&rowreq_ctx->data.rdbmsDbParamID, &rowreq_ctx->data.rdbmsDbParamID_len,
-	     *                rdbmsDbParamID, rdbmsDbParamID_len, 0)) {
-	     *    return MFD_ERROR;
-	     * }
-	     */
-	    /*
-	     * make sure there is enough space for rdbmsDbParamID data
-	     */
-	    /* See comment in rdbmsDbParamID_get() -- we don't need this value 
-	    if ((NULL == rowreq_ctx->data.rdbmsDbParamID) ||
-		(rowreq_ctx->data.rdbmsDbParamID_len < (rdbmsDbParamID_len * sizeof(rowreq_ctx->data.rdbmsDbParamID[0])))) {
-		snmp_log(LOG_ERR,"not enough space for value\n");
-		errorCode = MFD_ERROR;
-		break;
-	    }
-	    rowreq_ctx->data.rdbmsDbParamID_len = rdbmsDbParamID_len * sizeof(rowreq_ctx->data.rdbmsDbParamID[0]);
-	    memcpy( rowreq_ctx->data.rdbmsDbParamID, rdbmsDbParamID, rowreq_ctx->data.rdbmsDbParamID_len );
-	    */
-	    
-	    /*
-	     * setup/save data for rdbmsDbParamCurrValue
-	     * rdbmsDbParamCurrValue(4)/DisplayString/ASN_OCTET_STR/char(char)//L/A/W/e/R/d/H
-	     */
-	    /*
-	     * TODO:246:r: |-> Define rdbmsDbParamCurrValue mapping.
-	     * Map values between raw/native values and MIB values
-	     *
-	     * if(MFD_SUCCESS !=
-	     *    rdbmsDbParamCurrValue_map(&rowreq_ctx->data.rdbmsDbParamCurrValue, &rowreq_ctx->data.rdbmsDbParamCurrValue_len,
-	     *                rdbmsDbParamCurrValue, rdbmsDbParamCurrValue_len, 0)) {
-	     *    return MFD_ERROR;
-	     * }
-	     */
-	    /*
-	     * make sure there is enough space for rdbmsDbParamCurrValue data
-	     */
-	    if ((NULL == rowreq_ctx->data.rdbmsDbParamCurrValue) ||
-		(rowreq_ctx->data.rdbmsDbParamCurrValue_len < (rdbmsDbParamCurrValue_len * sizeof(rowreq_ctx->data.rdbmsDbParamCurrValue[0])))) {
-		snmp_log(LOG_ERR,"not enough space for value\n");
-		errorCode = MFD_ERROR;
-		break;
-	    }
-	    rowreq_ctx->data.rdbmsDbParamCurrValue_len = rdbmsDbParamCurrValue_len * sizeof(rowreq_ctx->data.rdbmsDbParamCurrValue[0]);
-	    memcpy( rowreq_ctx->data.rdbmsDbParamCurrValue, rdbmsDbParamCurrValue, rowreq_ctx->data.rdbmsDbParamCurrValue_len );
-	    
-	    /*
-	     * setup/save data for rdbmsDbParamComment
-	     * rdbmsDbParamComment(5)/DisplayString/ASN_OCTET_STR/char(char)//L/A/W/e/R/d/H
-	     */
-	    /*
-	     * TODO:246:r: |-> Define rdbmsDbParamComment mapping.
-	     * Map values between raw/native values and MIB values
-	     *
-	     * if(MFD_SUCCESS !=
-	     *    rdbmsDbParamComment_map(&rowreq_ctx->data.rdbmsDbParamComment, &rowreq_ctx->data.rdbmsDbParamComment_len,
-	     *                rdbmsDbParamComment, rdbmsDbParamComment_len, 0)) {
-	     *    return MFD_ERROR;
-	     * }
-	     */
-	    /*
-	     * make sure there is enough space for rdbmsDbParamComment data
-	     */
-	    if ((NULL == rowreq_ctx->data.rdbmsDbParamComment) ||
-		(rowreq_ctx->data.rdbmsDbParamComment_len < (rdbmsDbParamComment_len * sizeof(rowreq_ctx->data.rdbmsDbParamComment[0])))) {
-		snmp_log(LOG_ERR,"not enough space for value\n");
-		errorCode = MFD_ERROR;
-		break;
-	    }
-	    rowreq_ctx->data.rdbmsDbParamComment_len = rdbmsDbParamComment_len * sizeof(rowreq_ctx->data.rdbmsDbParamComment[0]);
-	    memcpy( rowreq_ctx->data.rdbmsDbParamComment, rdbmsDbParamComment, rowreq_ctx->data.rdbmsDbParamComment_len );
-	    
-		
-		/*
-		 * insert into table container
-		 */
-		CONTAINER_INSERT(container, rowreq_ctx);
-		++count;
-	    }
-	    pg_text_array_free(array, elements);
-    }
+	DEBUGMSGT(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_cache_load",
+					"inserted %ld records\n", count));
 
-    DEBUGMSGT(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_cache_load",
-               "inserted %ld records\n", count));
-
-    PQclear(qryRes);
-    return errorCode;
+	PQclear(qryRes);
+	return errorCode;
 } /* rdbmsDbParamTable_cache_load */
 
 /**
@@ -346,14 +368,13 @@ rdbmsDbParamTable_cache_load(netsnmp_container *container)
  *  The MFD helper will take care of releasing all the row contexts.
  *
  */
-void
-rdbmsDbParamTable_cache_free(netsnmp_container *container)
+void rdbmsDbParamTable_cache_free(netsnmp_container *container)
 {
-    DEBUGMSGTL(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_cache_free","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_cache_free","called\n"));
 
-    /*
-     * TODO:380:M: Free rdbmsDbParamTable cache.
-     */
+	/*
+	 * TODO:380:M: Free rdbmsDbParamTable cache.
+	 */
 } /* rdbmsDbParamTable_cache_free */
 
 /**
@@ -369,20 +390,19 @@ rdbmsDbParamTable_cache_free(netsnmp_container *container)
  * @retval MFD_SUCCESS     : success.
  * @retval MFD_ERROR       : other error.
  */
-int
-rdbmsDbParamTable_row_prep( rdbmsDbParamTable_rowreq_ctx *rowreq_ctx)
+int rdbmsDbParamTable_row_prep(rdbmsDbParamTable_rowreq_ctx *rowreq_ctx)
 {
-    DEBUGMSGTL(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_row_prep","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsDbParamTable:rdbmsDbParamTable_row_prep","called\n"));
 
-    netsnmp_assert(NULL != rowreq_ctx);
+	netsnmp_assert(NULL != rowreq_ctx);
 
-    /*
-     * TODO:390:o: Prepare row for request.
-     * If populating row data was delayed, this is the place to
-     * fill in the row for this request.
-     */
+	/*
+	 * TODO:390:o: Prepare row for request.
+	 * If populating row data was delayed, this is the place to
+	 * fill in the row for this request.
+	 */
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsDbParamTable_row_prep */
 
 /** @} */

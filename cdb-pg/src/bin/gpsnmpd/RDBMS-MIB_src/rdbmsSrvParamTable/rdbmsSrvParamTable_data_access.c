@@ -29,7 +29,7 @@
  * rdbmsSrvParamTable is subid 7 of rdbmsObjects.
  * Its status is Current.
  * OID: .1.3.6.1.2.1.39.1.7, length: 9
-*/
+ */
 
 /**
  * initialization for rdbmsSrvParamTable data access
@@ -43,16 +43,16 @@
  * @retval MFD_SUCCESS : success.
  * @retval MFD_ERROR   : unrecoverable error.
  */
-int
-rdbmsSrvParamTable_init_data(rdbmsSrvParamTable_registration_ptr rdbmsSrvParamTable_reg)
+int rdbmsSrvParamTable_init_data(
+		rdbmsSrvParamTable_registration_ptr rdbmsSrvParamTable_reg)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_init_data","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_init_data","called\n"));
 
-    /*
-     * TODO:303:o: Initialize rdbmsSrvParamTable data.
-     */
+	/*
+	 * TODO:303:o: Initialize rdbmsSrvParamTable data.
+	 */
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsSrvParamTable_init_data */
 
 /**
@@ -91,32 +91,32 @@ rdbmsSrvParamTable_init_data(rdbmsSrvParamTable_registration_ptr rdbmsSrvParamTa
  *  for you data source. For example, opening a connection to another
  *  process that will supply the data, opening a database, etc.
  */
-void
-rdbmsSrvParamTable_container_init(netsnmp_container **container_ptr_ptr,
-                        netsnmp_cache *cache)
+void rdbmsSrvParamTable_container_init(netsnmp_container **container_ptr_ptr,
+		netsnmp_cache *cache)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_container_init","called\n"));
-    
-    if((NULL == cache) || (NULL == container_ptr_ptr)) {
-        snmp_log(LOG_ERR,"bad params to rdbmsSrvParamTable_container_init\n");
-        return;
-    }
+	DEBUGMSGTL(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_container_init","called\n"));
 
-    /*
-     * For advanced users, you can use a custom container. If you
-     * do not create one, one will be created for you.
-     */
-    *container_ptr_ptr = NULL;
+	if ((NULL == cache) || (NULL == container_ptr_ptr))
+	{
+		snmp_log(LOG_ERR, "bad params to rdbmsSrvParamTable_container_init\n");
+		return;
+	}
 
-    /*
-     * TODO:345:A: Set up rdbmsSrvParamTable cache properties.
-     *
-     * Also for advanced users, you can set parameters for the
-     * cache. Do not change the magic pointer, as it is used
-     * by the MFD helper. To completely disable caching, set
-     * cache->enabled to 0.
-     */
-    cache->timeout = RDBMSSRVPARAMTABLE_CACHE_TIMEOUT; /* seconds */
+	/*
+	 * For advanced users, you can use a custom container. If you
+	 * do not create one, one will be created for you.
+	 */
+	*container_ptr_ptr = NULL;
+
+	/*
+	 * TODO:345:A: Set up rdbmsSrvParamTable cache properties.
+	 *
+	 * Also for advanced users, you can set parameters for the
+	 * cache. Do not change the magic pointer, as it is used
+	 * by the MFD helper. To completely disable caching, set
+	 * cache->enabled to 0.
+	 */
+	cache->timeout = RDBMSSRVPARAMTABLE_CACHE_TIMEOUT; /* seconds */
 } /* rdbmsSrvParamTable_container_init */
 
 /**
@@ -149,102 +149,115 @@ rdbmsSrvParamTable_container_init(netsnmp_container **container_ptr_ptr,
  *  data here.
  *
  */
-int
-rdbmsSrvParamTable_cache_load(netsnmp_container *container)
+int rdbmsSrvParamTable_cache_load(netsnmp_container *container)
 {
-    rdbmsSrvParamTable_rowreq_ctx *rowreq_ctx;
-    size_t                 count = 0;
-    char   rdbmsSrvParamName[64];
-    size_t      rdbmsSrvParamName_len;
-    int i, resultCount, errorCode = MFD_SUCCESS, tmpInt, rdbmsSrvParamID = 1;
-    PGresult *pg_db_qry;
-    char *tmpString;
+	rdbmsSrvParamTable_rowreq_ctx *rowreq_ctx;
+	size_t count = 0;
+	char rdbmsSrvParamName[64];
+	size_t rdbmsSrvParamName_len;
+	int i, resultCount, errorCode = MFD_SUCCESS, tmpInt, rdbmsSrvParamID = 1;
+	PGresult *pg_db_qry;
+	char *tmpString;
 
-    DEBUGMSGTL(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_cache_load","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_cache_load","called\n"));
 
-    if (PQstatus(dbconn) == CONNECTION_OK) 
-	    pg_db_qry = PQexec(dbconn, "SELECT name, setting, SUBSTRING(short_desc FROM 1 FOR 63) FROM pg_settings");
-    else {
-	    snmp_log(LOG_ERR, "Can't get connected to the database");
-	    return -1;
-    }
-    if (PQresultStatus(pg_db_qry) != PGRES_TUPLES_OK) {
-	    snmp_log(LOG_ERR, "Didn't get any results from the database");
-	    PQclear(pg_db_qry);
-	    /*PQfinish(dbconn);*/
-	    return -1;
-    }
+	if (PQstatus(dbconn) == CONNECTION_OK)
+		pg_db_qry
+				= PQexec(dbconn,
+						"SELECT name, setting, SUBSTRING(short_desc FROM 1 FOR 63) FROM pg_settings");
+	else
+	{
+		snmp_log(LOG_ERR, "Can't get connected to the database");
+		return -1;
+	}
+	if (PQresultStatus(pg_db_qry) != PGRES_TUPLES_OK)
+	{
+		snmp_log(LOG_ERR, "Didn't get any results from the database");
+		PQclear(pg_db_qry);
+		/*PQfinish(dbconn);*/
+		return -1;
+	}
 
-    resultCount = PQntuples(pg_db_qry);
-    for (i = 0; i < resultCount; i++) {
+	resultCount = PQntuples(pg_db_qry);
+	for (i = 0; i < resultCount; i++)
+	{
 
-        rowreq_ctx = rdbmsSrvParamTable_allocate_rowreq_ctx();
-        if (NULL == rowreq_ctx) {
-            snmp_log(LOG_ERR, "memory allocation failed\n");
-            return MFD_RESOURCE_UNAVAILABLE;
-        }
-	strncpy(rdbmsSrvParamName, PQgetvalue(pg_db_qry, i, 0), 64);
-	rdbmsSrvParamName[63] = '\0';
-	rdbmsSrvParamName_len = strlen(rdbmsSrvParamName);
-        if(MFD_SUCCESS != rdbmsSrvParamTable_indexes_set(rowreq_ctx
-                               , 1
-                               , rdbmsSrvParamName, rdbmsSrvParamName_len
-                               , 1
-               )) {
-            snmp_log(LOG_ERR,"error setting index while loading "
-                     "rdbmsSrvParamTable cache.\n");
-            rdbmsSrvParamTable_release_rowreq_ctx(rowreq_ctx);
-            continue;
-        }
-	rowreq_ctx->data.rdbmsSrvParamID_len = 128;
-	rowreq_ctx->data.rdbmsSrvParamCurrValue_len = 255;
-	rowreq_ctx->data.rdbmsSrvParamComment_len = 255;
+		rowreq_ctx = rdbmsSrvParamTable_allocate_rowreq_ctx();
+		if (NULL == rowreq_ctx)
+		{
+			snmp_log(LOG_ERR, "memory allocation failed\n");
+			return MFD_RESOURCE_UNAVAILABLE;
+		}
+		strncpy(rdbmsSrvParamName, PQgetvalue(pg_db_qry, i, 0), 64);
+		rdbmsSrvParamName[63] = '\0';
+		rdbmsSrvParamName_len = strlen(rdbmsSrvParamName);
+		if (MFD_SUCCESS != rdbmsSrvParamTable_indexes_set(rowreq_ctx, 1,
+				rdbmsSrvParamName, rdbmsSrvParamName_len, 1))
+		{
+			snmp_log(LOG_ERR, "error setting index while loading "
+				"rdbmsSrvParamTable cache.\n");
+			rdbmsSrvParamTable_release_rowreq_ctx(rowreq_ctx);
+			continue;
+		}
+		rowreq_ctx->data.rdbmsSrvParamID_len = 128;
+		rowreq_ctx->data.rdbmsSrvParamCurrValue_len = 255;
+		rowreq_ctx->data.rdbmsSrvParamComment_len = 255;
 
-    if ((NULL == rowreq_ctx->data.rdbmsSrvParamID) ||
-        (rowreq_ctx->data.rdbmsSrvParamID_len < sizeof(rowreq_ctx->data.rdbmsSrvParamID[0]))) {
-        snmp_log(LOG_ERR,"not enough space for value\n");
-	errorCode = MFD_ERROR;
-	break;
-    }
-    rowreq_ctx->data.rdbmsSrvParamID_len = sizeof(rowreq_ctx->data.rdbmsSrvParamID[0]);
-    memcpy( rowreq_ctx->data.rdbmsSrvParamID, &rdbmsSrvParamID, rowreq_ctx->data.rdbmsSrvParamID_len );
-    
-    tmpString = PQgetvalue(pg_db_qry, i, 1);
-    tmpInt = strlen(tmpString);
-    if ((NULL == rowreq_ctx->data.rdbmsSrvParamCurrValue) ||
-        (rowreq_ctx->data.rdbmsSrvParamCurrValue_len < (tmpInt * sizeof(rowreq_ctx->data.rdbmsSrvParamCurrValue[0])))) {
-        snmp_log(LOG_ERR,"not enough space for value\n");
-	errorCode = MFD_ERROR;
-	break;
-    }
-    rowreq_ctx->data.rdbmsSrvParamCurrValue_len = tmpInt * sizeof(rowreq_ctx->data.rdbmsSrvParamCurrValue[0]);
-    memcpy( rowreq_ctx->data.rdbmsSrvParamCurrValue, tmpString, rowreq_ctx->data.rdbmsSrvParamCurrValue_len );
-    
-    tmpString = PQgetvalue(pg_db_qry, i, 2);
-    tmpInt = strlen(tmpString);
-    if ((NULL == rowreq_ctx->data.rdbmsSrvParamComment) ||
-        (rowreq_ctx->data.rdbmsSrvParamComment_len < (tmpInt * sizeof(rowreq_ctx->data.rdbmsSrvParamComment[0])))) {
-        snmp_log(LOG_ERR,"not enough space for value\n");
-	errorCode = MFD_ERROR;
-	break;
-    }
-    rowreq_ctx->data.rdbmsSrvParamComment_len = tmpInt * sizeof(rowreq_ctx->data.rdbmsSrvParamComment[0]);
-    memcpy( rowreq_ctx->data.rdbmsSrvParamComment, tmpString, rowreq_ctx->data.rdbmsSrvParamComment_len );
-    
-        
-        /*
-         * insert into table container
-         */
-        CONTAINER_INSERT(container, rowreq_ctx);
-        ++count;
-    }
+		if ((NULL == rowreq_ctx->data.rdbmsSrvParamID)
+				|| (rowreq_ctx->data.rdbmsSrvParamID_len
+						< sizeof(rowreq_ctx->data.rdbmsSrvParamID[0])))
+		{
+			snmp_log(LOG_ERR, "not enough space for value\n");
+			errorCode = MFD_ERROR;
+			break;
+		}
+		rowreq_ctx->data.rdbmsSrvParamID_len
+				= sizeof(rowreq_ctx->data.rdbmsSrvParamID[0]);
+		memcpy(rowreq_ctx->data.rdbmsSrvParamID, &rdbmsSrvParamID,
+				rowreq_ctx->data.rdbmsSrvParamID_len);
 
+		tmpString = PQgetvalue(pg_db_qry, i, 1);
+		tmpInt = strlen(tmpString);
+		if ((NULL == rowreq_ctx->data.rdbmsSrvParamCurrValue)
+				|| (rowreq_ctx->data.rdbmsSrvParamCurrValue_len < (tmpInt
+						* sizeof(rowreq_ctx->data.rdbmsSrvParamCurrValue[0]))))
+		{
+			snmp_log(LOG_ERR, "not enough space for value\n");
+			errorCode = MFD_ERROR;
+			break;
+		}
+		rowreq_ctx->data.rdbmsSrvParamCurrValue_len = tmpInt
+				* sizeof(rowreq_ctx->data.rdbmsSrvParamCurrValue[0]);
+		memcpy(rowreq_ctx->data.rdbmsSrvParamCurrValue, tmpString,
+				rowreq_ctx->data.rdbmsSrvParamCurrValue_len);
 
-    DEBUGMSGT(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_cache_load",
-               "inserted %ld records\n", count));
-    PQclear(pg_db_qry);
+		tmpString = PQgetvalue(pg_db_qry, i, 2);
+		tmpInt = strlen(tmpString);
+		if ((NULL == rowreq_ctx->data.rdbmsSrvParamComment)
+				|| (rowreq_ctx->data.rdbmsSrvParamComment_len < (tmpInt
+						* sizeof(rowreq_ctx->data.rdbmsSrvParamComment[0]))))
+		{
+			snmp_log(LOG_ERR, "not enough space for value\n");
+			errorCode = MFD_ERROR;
+			break;
+		}
+		rowreq_ctx->data.rdbmsSrvParamComment_len = tmpInt
+				* sizeof(rowreq_ctx->data.rdbmsSrvParamComment[0]);
+		memcpy(rowreq_ctx->data.rdbmsSrvParamComment, tmpString,
+				rowreq_ctx->data.rdbmsSrvParamComment_len);
 
-    return MFD_SUCCESS;
+		/*
+		 * insert into table container
+		 */
+		CONTAINER_INSERT(container, rowreq_ctx);
+		++count;
+	}
+
+	DEBUGMSGT(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_cache_load",
+					"inserted %ld records\n", count));
+	PQclear(pg_db_qry);
+
+	return MFD_SUCCESS;
 } /* rdbmsSrvParamTable_cache_load */
 
 /**
@@ -260,14 +273,13 @@ rdbmsSrvParamTable_cache_load(netsnmp_container *container)
  *  The MFD helper will take care of releasing all the row contexts.
  *
  */
-void
-rdbmsSrvParamTable_cache_free(netsnmp_container *container)
+void rdbmsSrvParamTable_cache_free(netsnmp_container *container)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_cache_free","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_cache_free","called\n"));
 
-    /*
-     * TODO:380:M: Free rdbmsSrvParamTable cache.
-     */
+	/*
+	 * TODO:380:M: Free rdbmsSrvParamTable cache.
+	 */
 } /* rdbmsSrvParamTable_cache_free */
 
 /**
@@ -283,20 +295,19 @@ rdbmsSrvParamTable_cache_free(netsnmp_container *container)
  * @retval MFD_SUCCESS     : success.
  * @retval MFD_ERROR       : other error.
  */
-int
-rdbmsSrvParamTable_row_prep( rdbmsSrvParamTable_rowreq_ctx *rowreq_ctx)
+int rdbmsSrvParamTable_row_prep(rdbmsSrvParamTable_rowreq_ctx *rowreq_ctx)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_row_prep","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsSrvParamTable:rdbmsSrvParamTable_row_prep","called\n"));
 
-    netsnmp_assert(NULL != rowreq_ctx);
+	netsnmp_assert(NULL != rowreq_ctx);
 
-    /*
-     * TODO:390:o: Prepare row for request.
-     * If populating row data was delayed, this is the place to
-     * fill in the row for this request.
-     */
+	/*
+	 * TODO:390:o: Prepare row for request.
+	 * If populating row data was delayed, this is the place to
+	 * fill in the row for this request.
+	 */
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsSrvParamTable_row_prep */
 
 /** @} */

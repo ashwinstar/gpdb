@@ -30,7 +30,7 @@
  * rdbmsDbTable is subid 1 of rdbmsObjects.
  * Its status is Current.
  * OID: .1.3.6.1.2.1.39.1.1, length: 9
-*/
+ */
 
 /**
  * initialization for rdbmsDbTable data access
@@ -44,12 +44,11 @@
  * @retval MFD_SUCCESS : success.
  * @retval MFD_ERROR   : unrecoverable error.
  */
-int
-rdbmsDbTable_init_data(rdbmsDbTable_registration_ptr rdbmsDbTable_reg)
+int rdbmsDbTable_init_data(rdbmsDbTable_registration_ptr rdbmsDbTable_reg)
 {
-    DEBUGMSGTL(("verbose:rdbmsDbTable:rdbmsDbTable_init_data","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsDbTable:rdbmsDbTable_init_data","called\n"));
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsDbTable_init_data */
 
 /**
@@ -88,34 +87,34 @@ rdbmsDbTable_init_data(rdbmsDbTable_registration_ptr rdbmsDbTable_reg)
  *  for you data source. For example, opening a connection to another
  *  process that will supply the data, opening a database, etc.
  */
-void
-rdbmsDbTable_container_init(netsnmp_container **container_ptr_ptr,
-                        netsnmp_cache *cache)
+void rdbmsDbTable_container_init(netsnmp_container **container_ptr_ptr,
+		netsnmp_cache *cache)
 {
-    DEBUGMSGTL(("verbose:rdbmsDbTable:rdbmsDbTable_container_init","called\n"));
-    
-    if((NULL == cache) || (NULL == container_ptr_ptr)) {
-        snmp_log(LOG_ERR,"bad params to rdbmsDbTable_container_init\n");
-        return;
-    }
+	DEBUGMSGTL(("verbose:rdbmsDbTable:rdbmsDbTable_container_init","called\n"));
 
-    /*
-     * For advanced users, you can use a custom container. If you
-     * do not create one, one will be created for you.
-     */
-    *container_ptr_ptr = NULL;
+	if ((NULL == cache) || (NULL == container_ptr_ptr))
+	{
+		snmp_log(LOG_ERR, "bad params to rdbmsDbTable_container_init\n");
+		return;
+	}
 
-    /*
-     * TODO:345:A: Set up rdbmsDbTable cache properties.
-     *
-     * Also for advanced users, you can set parameters for the
-     * cache. Do not change the magic pointer, as it is used
-     * by the MFD helper. To completely disable caching, set
-     * cache->enabled to 0.
-     */
-    cache->timeout = RDBMSDBTABLE_CACHE_TIMEOUT; /* seconds */
+	/*
+	 * For advanced users, you can use a custom container. If you
+	 * do not create one, one will be created for you.
+	 */
+	*container_ptr_ptr = NULL;
 
-    /* JWT-TODO: Initialize cache with cache->flags here */
+	/*
+	 * TODO:345:A: Set up rdbmsDbTable cache properties.
+	 *
+	 * Also for advanced users, you can set parameters for the
+	 * cache. Do not change the magic pointer, as it is used
+	 * by the MFD helper. To completely disable caching, set
+	 * cache->enabled to 0.
+	 */
+	cache->timeout = RDBMSDBTABLE_CACHE_TIMEOUT; /* seconds */
+
+	/* JWT-TODO: Initialize cache with cache->flags here */
 } /* rdbmsDbTable_container_init */
 
 /**
@@ -148,174 +147,206 @@ rdbmsDbTable_container_init(netsnmp_container **container_ptr_ptr,
  *  data here.
  *
  */
-int
-rdbmsDbTable_cache_load(netsnmp_container *container)
+int rdbmsDbTable_cache_load(netsnmp_container *container)
 {
-    rdbmsDbTable_rowreq_ctx *rowreq_ctx;
-    // BUGBUG ? 
-    oid rdbmsDbPrivateMibOID[128] = { 1,3,6,1,4,1,31327 }; // = { 1,3,6,1,4,1,27645 }; ??
-    int i, resultCount, errorcode = MFD_SUCCESS, tmpInt;
-    PGresult *pg_db_qry, *pgsnmpd_tbl_qry;
-    char *tmpString, *db_oid, *vendor_name, *contact_name;
-    int vendor_name_len, contact_name_len;
+	rdbmsDbTable_rowreq_ctx *rowreq_ctx;
+	// BUGBUG ?
+	oid rdbmsDbPrivateMibOID[128] =
+	{ 1, 3, 6, 1, 4, 1, 31327 }; // = { 1,3,6,1,4,1,27645 }; ??
+	int i, resultCount, errorcode = MFD_SUCCESS, tmpInt;
+	PGresult *pg_db_qry, *pgsnmpd_tbl_qry;
+	char *tmpString, *db_oid, *vendor_name, *contact_name;
+	int vendor_name_len, contact_name_len;
 
-    DEBUGMSGTL(("verbose:rdbmsDbTable:rdbmsDbTable_cache_load","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsDbTable:rdbmsDbTable_cache_load","called\n"));
 
-    /*
-     * TODO:351:M: |-> Load/update data in the rdbmsDbTable container.
-     * loop over your rdbmsDbTable data, allocate a rowreq context,
-     * set the index(es) [and data, optionally] and insert into
-     * the container. */
+	/*
+	 * TODO:351:M: |-> Load/update data in the rdbmsDbTable container.
+	 * loop over your rdbmsDbTable data, allocate a rowreq context,
+	 * set the index(es) [and data, optionally] and insert into
+	 * the container. */
 
-    if (PQstatus(dbconn) == CONNECTION_OK) 
-	    pg_db_qry = PQexec(dbconn, "SELECT oid, datname FROM pg_database");
-    else {
-	    snmp_log(LOG_ERR, "Can't get connected to the database");
-	    return MFD_RESOURCE_UNAVAILABLE;
-    }
-    if (PQresultStatus(pg_db_qry) != PGRES_TUPLES_OK) {
-	    snmp_log(LOG_ERR, "Didn't get any results from the database");
-	    PQclear(pg_db_qry);
-	    /*PQfinish(dbconn); */
-	    /* It's probably an error if I didn't find *any* databases */
-	    return MFD_RESOURCE_UNAVAILABLE;
-    }
-
-    resultCount = PQntuples(pg_db_qry);
-
-    for (i = 0; i < resultCount; i++) {
-
-        /*
-         * TODO:352:M: |   |-> set indexes in new rdbmsDbTable rowreq context.
-         */
-        rowreq_ctx = rdbmsDbTable_allocate_rowreq_ctx();
-        if (NULL == rowreq_ctx) {
-            snmp_log(LOG_ERR, "memory allocation failed\n");
-            errorcode = MFD_RESOURCE_UNAVAILABLE;
-	    break;
-        }
-	db_oid = PQgetvalue(pg_db_qry, i, 0);
-        if(MFD_SUCCESS != rdbmsDbTable_indexes_set(rowreq_ctx
-                               ,atol(db_oid)
-               )) {
-            snmp_log(LOG_ERR,"error setting index while loading "
-                     "rdbmsDbTable cache.\n");
-            rdbmsDbTable_release_rowreq_ctx(rowreq_ctx);
-            continue;
-        }
-
-        /*
-         * TODO:352:r: |   |-> populate rdbmsDbTable data context.
-         * Populate data context here. (optionally, delay until row prep)
-         */
-
-	rowreq_ctx->data.rdbmsDbPrivateMibOID_len = 128;
-	rowreq_ctx->data.rdbmsDbVendorName_len    = 255;
-	rowreq_ctx->data.rdbmsDbName_len          = 255;
-	rowreq_ctx->data.rdbmsDbContact_len       = 255;
-
-	contact_name = NULL;
-	contact_name_len = 0;
-	vendor_name = NULL;
-	vendor_name_len = 0;
-
-	/* Note that this queries gpsnmpd_rdbmsDbTable once per database. This could
-	 * be more efficient by only querying once if it can't find the table (being
-	 * sure that the table didn't exist, as opposed to simply an entry for that 
-	 * database not existing in the table). It could also be rewritten so that 
-	 * only one query is issued, joining pg_database and gpsnmpd_rdbmsDbTable, but
-	 * that would have to be smart enough to know of the pgsnmpd table existed
-	 * and not do the join if it didn't */
-	pgsnmpd_tbl_qry = NULL;
-	tmpInt = sizeof("SELECT vendor_name, contact_name FROM gpsnmpd_rdbmsDbTable WHERE database_oid = ") + sizeof(*db_oid);
-	tmpString = calloc(tmpInt, sizeof(char*));
-	if (tmpString == NULL) snmp_log(LOG_ERR, "Couldn't allocate memory to query pgsnmpd-specific database table\n");
-	else {
-		snmp_log(LOG_INFO, "Gathering rdbmsDbTable information from gpsnmpd_rdbmsDbTable\n");
-		snprintf(tmpString, sizeof(char*) * tmpInt, "SELECT vendor_name, contact_name FROM gpsnmpd_rdbmsDbTable WHERE database_oid = %s", db_oid);
-		pgsnmpd_tbl_qry = PQexec(dbconn, tmpString);
-		/* Ignore errors so that pgsnmpd will run without this table being available */
-		if (PQresultStatus(pgsnmpd_tbl_qry) == PGRES_TUPLES_OK && PQntuples(pgsnmpd_tbl_qry) > 0) {
-			vendor_name = PQgetvalue(pgsnmpd_tbl_qry, 0, 0);
-			vendor_name_len = strlen(vendor_name);
-			contact_name = PQgetvalue(pgsnmpd_tbl_qry, 0, 1);
-			contact_name_len = strlen(contact_name);
-		}
-		/* Note that this error is INFO level, instead of something higher, because we're designed to work without this table */
-		else snmp_log(LOG_INFO, "Unable to find relevant data in gpsnmpd_rdbmsDbTable\n");
+	if (PQstatus(dbconn) == CONNECTION_OK)
+		pg_db_qry = PQexec(dbconn, "SELECT oid, datname FROM pg_database");
+	else
+	{
+		snmp_log(LOG_ERR, "Can't get connected to the database");
+		return MFD_RESOURCE_UNAVAILABLE;
+	}
+	if (PQresultStatus(pg_db_qry) != PGRES_TUPLES_OK)
+	{
+		snmp_log(LOG_ERR, "Didn't get any results from the database");
+		PQclear(pg_db_qry);
+		/*PQfinish(dbconn); */
+		/* It's probably an error if I didn't find *any* databases */
+		return MFD_RESOURCE_UNAVAILABLE;
 	}
 
-    /*
-     * TODO:246:r: |-> Define rdbmsDbPrivateMibOID mapping.
-     * Map values between raw/native values and MIB values
-     *
-     * if(MFD_SUCCESS !=
-     *    rdbmsDbPrivateMibOID_map(&rowreq_ctx->data.rdbmsDbPrivateMibOID, &rowreq_ctx->data.rdbmsDbPrivateMibOID_len,
-     *                rdbmsDbPrivateMibOID, rdbmsDbPrivateMibOID_len, 0)) {
-     *    return MFD_ERROR;
-     * }
-     */
-    if ((NULL == rowreq_ctx->data.rdbmsDbPrivateMibOID) ||
-        (rowreq_ctx->data.rdbmsDbPrivateMibOID_len < (1 * sizeof(rowreq_ctx->data.rdbmsDbPrivateMibOID[0])))) {
-        snmp_log(LOG_ERR,"not enough space for rdbmsDbTable.rdbmsDbPrivateMibOID value.\n");
-        errorcode = MFD_ERROR;
-	break;
-    }
-    rowreq_ctx->data.rdbmsDbPrivateMibOID_len = 8;
-    rdbmsDbPrivateMibOID[7] = (oid) atoi(PQgetvalue(pg_db_qry, i, 0));
-    memcpy( rowreq_ctx->data.rdbmsDbPrivateMibOID, rdbmsDbPrivateMibOID, 8 * sizeof(rdbmsDbPrivateMibOID[0]));
-    
-    /*
-     * TODO:246:r: |-> Define rdbmsDbVendorName mapping.
-     */
-    if ((NULL == rowreq_ctx->data.rdbmsDbVendorName) ||
-        (rowreq_ctx->data.rdbmsDbVendorName_len < (10 * sizeof(rowreq_ctx->data.rdbmsDbVendorName[0])))) {
-        snmp_log(LOG_ERR,"not enough space for rdbmsDbTable.rdbmsDbVendorName value\n");
-        errorcode = MFD_ERROR;
-	break;
-    }
-    rowreq_ctx->data.rdbmsDbVendorName_len = vendor_name_len;
-    memcpy( rowreq_ctx->data.rdbmsDbVendorName, vendor_name, vendor_name_len);
-    
-    /*
-     * TODO:246:r: |-> Define rdbmsDbName mapping.
-     */
-    if ((NULL == rowreq_ctx->data.rdbmsDbName) ||
-        (rowreq_ctx->data.rdbmsDbName_len < (100 * sizeof(rowreq_ctx->data.rdbmsDbName[0])))) {
-        snmp_log(LOG_ERR,"not enough space for rdbmsDbTable.rdbmsDbName value\n");
-        errorcode = MFD_ERROR;
-	break;
-    }
-    tmpString = PQgetvalue(pg_db_qry, i, 1);
-    rowreq_ctx->data.rdbmsDbName_len = strlen(tmpString) * sizeof(rowreq_ctx->data.rdbmsDbName[0]);
-    strncpy(rowreq_ctx->data.rdbmsDbName, tmpString, rowreq_ctx->data.rdbmsDbName_len);
-    
-    /*
-     * TODO:246:r: |-> Define rdbmsDbContact mapping.
-     */
-    if ((NULL == rowreq_ctx->data.rdbmsDbContact) ||
-        (rowreq_ctx->data.rdbmsDbContact_len < (100 * sizeof(rowreq_ctx->data.rdbmsDbContact[0])))) {
-        snmp_log(LOG_ERR,"not enough space for rdbmsDbTable.rdbmsDbContact value\n");
-        errorcode = MFD_ERROR;
-	break;
-    }
-    rowreq_ctx->data.rdbmsDbContact_len = contact_name_len;
-    memcpy( rowreq_ctx->data.rdbmsDbContact, contact_name, contact_name_len);
-    
-        
-        /*
-         * insert into table container
-         */
-        CONTAINER_INSERT(container, rowreq_ctx);
+	resultCount = PQntuples(pg_db_qry);
 
-	if (pgsnmpd_tbl_qry != NULL) PQclear(pgsnmpd_tbl_qry);
-    }
+	for (i = 0; i < resultCount; i++)
+	{
 
-    DEBUGMSGT(("verbose:rdbmsDbTable:rdbmsDbTable_cache_load",
-               "inserted some records\n"));
+		/*
+		 * TODO:352:M: |   |-> set indexes in new rdbmsDbTable rowreq context.
+		 */
+		rowreq_ctx = rdbmsDbTable_allocate_rowreq_ctx();
+		if (NULL == rowreq_ctx)
+		{
+			snmp_log(LOG_ERR, "memory allocation failed\n");
+			errorcode = MFD_RESOURCE_UNAVAILABLE;
+			break;
+		}
+		db_oid = PQgetvalue(pg_db_qry, i, 0);
+		if (MFD_SUCCESS != rdbmsDbTable_indexes_set(rowreq_ctx, atol(db_oid)))
+		{
+			snmp_log(LOG_ERR, "error setting index while loading "
+				"rdbmsDbTable cache.\n");
+			rdbmsDbTable_release_rowreq_ctx(rowreq_ctx);
+			continue;
+		}
 
-    PQclear(pg_db_qry);
-    return errorcode;
+		/*
+		 * TODO:352:r: |   |-> populate rdbmsDbTable data context.
+		 * Populate data context here. (optionally, delay until row prep)
+		 */
+
+		rowreq_ctx->data.rdbmsDbPrivateMibOID_len = 128;
+		rowreq_ctx->data.rdbmsDbVendorName_len = 255;
+		rowreq_ctx->data.rdbmsDbName_len = 255;
+		rowreq_ctx->data.rdbmsDbContact_len = 255;
+
+		contact_name = NULL;
+		contact_name_len = 0;
+		vendor_name = NULL;
+		vendor_name_len = 0;
+
+		/* Note that this queries gpsnmpd_rdbmsDbTable once per database. This could
+		 * be more efficient by only querying once if it can't find the table (being
+		 * sure that the table didn't exist, as opposed to simply an entry for that
+		 * database not existing in the table). It could also be rewritten so that
+		 * only one query is issued, joining pg_database and gpsnmpd_rdbmsDbTable, but
+		 * that would have to be smart enough to know of the pgsnmpd table existed
+		 * and not do the join if it didn't */
+		pgsnmpd_tbl_qry = NULL;
+		tmpInt
+				= sizeof("SELECT vendor_name, contact_name FROM gpsnmpd_rdbmsDbTable WHERE database_oid = ")
+						+ sizeof(*db_oid);
+		tmpString = calloc(tmpInt, sizeof(char*));
+		if (tmpString == NULL)
+			snmp_log(LOG_ERR,
+					"Couldn't allocate memory to query pgsnmpd-specific database table\n");
+		else
+		{
+			snmp_log(LOG_INFO,
+					"Gathering rdbmsDbTable information from gpsnmpd_rdbmsDbTable\n");
+			snprintf(
+					tmpString,
+					sizeof(char*) * tmpInt,
+					"SELECT vendor_name, contact_name FROM gpsnmpd_rdbmsDbTable WHERE database_oid = %s",
+					db_oid);
+			pgsnmpd_tbl_qry = PQexec(dbconn, tmpString);
+			/* Ignore errors so that pgsnmpd will run without this table being available */
+			if (PQresultStatus(pgsnmpd_tbl_qry) == PGRES_TUPLES_OK
+					&& PQntuples(pgsnmpd_tbl_qry) > 0)
+			{
+				vendor_name = PQgetvalue(pgsnmpd_tbl_qry, 0, 0);
+				vendor_name_len = strlen(vendor_name);
+				contact_name = PQgetvalue(pgsnmpd_tbl_qry, 0, 1);
+				contact_name_len = strlen(contact_name);
+			}
+			/* Note that this error is INFO level, instead of something higher, because we're designed to work without this table */
+			else
+				snmp_log(LOG_INFO,
+						"Unable to find relevant data in gpsnmpd_rdbmsDbTable\n");
+		}
+
+		/*
+		 * TODO:246:r: |-> Define rdbmsDbPrivateMibOID mapping.
+		 * Map values between raw/native values and MIB values
+		 *
+		 * if(MFD_SUCCESS !=
+		 *    rdbmsDbPrivateMibOID_map(&rowreq_ctx->data.rdbmsDbPrivateMibOID, &rowreq_ctx->data.rdbmsDbPrivateMibOID_len,
+		 *                rdbmsDbPrivateMibOID, rdbmsDbPrivateMibOID_len, 0)) {
+		 *    return MFD_ERROR;
+		 * }
+		 */
+		if ((NULL == rowreq_ctx->data.rdbmsDbPrivateMibOID)
+				|| (rowreq_ctx->data.rdbmsDbPrivateMibOID_len < (1
+						* sizeof(rowreq_ctx->data.rdbmsDbPrivateMibOID[0]))))
+		{
+			snmp_log(LOG_ERR,
+					"not enough space for rdbmsDbTable.rdbmsDbPrivateMibOID value.\n");
+			errorcode = MFD_ERROR;
+			break;
+		}
+		rowreq_ctx->data.rdbmsDbPrivateMibOID_len = 8;
+		rdbmsDbPrivateMibOID[7] = (oid) atoi(PQgetvalue(pg_db_qry, i, 0));
+		memcpy(rowreq_ctx->data.rdbmsDbPrivateMibOID, rdbmsDbPrivateMibOID, 8
+				* sizeof(rdbmsDbPrivateMibOID[0]));
+
+		/*
+		 * TODO:246:r: |-> Define rdbmsDbVendorName mapping.
+		 */
+		if ((NULL == rowreq_ctx->data.rdbmsDbVendorName)
+				|| (rowreq_ctx->data.rdbmsDbVendorName_len < (10
+						* sizeof(rowreq_ctx->data.rdbmsDbVendorName[0]))))
+		{
+			snmp_log(LOG_ERR,
+					"not enough space for rdbmsDbTable.rdbmsDbVendorName value\n");
+			errorcode = MFD_ERROR;
+			break;
+		}
+		rowreq_ctx->data.rdbmsDbVendorName_len = vendor_name_len;
+		memcpy(rowreq_ctx->data.rdbmsDbVendorName, vendor_name, vendor_name_len);
+
+		/*
+		 * TODO:246:r: |-> Define rdbmsDbName mapping.
+		 */
+		if ((NULL == rowreq_ctx->data.rdbmsDbName)
+				|| (rowreq_ctx->data.rdbmsDbName_len < (100
+						* sizeof(rowreq_ctx->data.rdbmsDbName[0]))))
+		{
+			snmp_log(LOG_ERR,
+					"not enough space for rdbmsDbTable.rdbmsDbName value\n");
+			errorcode = MFD_ERROR;
+			break;
+		}
+		tmpString = PQgetvalue(pg_db_qry, i, 1);
+		rowreq_ctx->data.rdbmsDbName_len = strlen(tmpString)
+				* sizeof(rowreq_ctx->data.rdbmsDbName[0]);
+		strncpy(rowreq_ctx->data.rdbmsDbName, tmpString,
+				rowreq_ctx->data.rdbmsDbName_len);
+
+		/*
+		 * TODO:246:r: |-> Define rdbmsDbContact mapping.
+		 */
+		if ((NULL == rowreq_ctx->data.rdbmsDbContact)
+				|| (rowreq_ctx->data.rdbmsDbContact_len < (100
+						* sizeof(rowreq_ctx->data.rdbmsDbContact[0]))))
+		{
+			snmp_log(LOG_ERR,
+					"not enough space for rdbmsDbTable.rdbmsDbContact value\n");
+			errorcode = MFD_ERROR;
+			break;
+		}
+		rowreq_ctx->data.rdbmsDbContact_len = contact_name_len;
+		memcpy(rowreq_ctx->data.rdbmsDbContact, contact_name, contact_name_len);
+
+		/*
+		 * insert into table container
+		 */
+		CONTAINER_INSERT(container, rowreq_ctx);
+
+		if (pgsnmpd_tbl_qry != NULL)
+			PQclear(pgsnmpd_tbl_qry);
+	}
+
+	DEBUGMSGT(("verbose:rdbmsDbTable:rdbmsDbTable_cache_load",
+					"inserted some records\n"));
+
+	PQclear(pg_db_qry);
+	return errorcode;
 } /* rdbmsDbTable_cache_load */
 
 /**
@@ -331,14 +362,13 @@ rdbmsDbTable_cache_load(netsnmp_container *container)
  *  The MFD helper will take care of releasing all the row contexts.
  *
  */
-void
-rdbmsDbTable_cache_free(netsnmp_container *container)
+void rdbmsDbTable_cache_free(netsnmp_container *container)
 {
-    DEBUGMSGTL(("verbose:rdbmsDbTable:rdbmsDbTable_cache_free","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsDbTable:rdbmsDbTable_cache_free","called\n"));
 
-    /*
-     * TODO:380:M: Free rdbmsDbTable cache.
-     */
+	/*
+	 * TODO:380:M: Free rdbmsDbTable cache.
+	 */
 } /* rdbmsDbTable_cache_free */
 
 /**
@@ -354,20 +384,19 @@ rdbmsDbTable_cache_free(netsnmp_container *container)
  * @retval MFD_SUCCESS     : success.
  * @retval MFD_ERROR       : other error.
  */
-int
-rdbmsDbTable_row_prep( rdbmsDbTable_rowreq_ctx *rowreq_ctx)
+int rdbmsDbTable_row_prep(rdbmsDbTable_rowreq_ctx *rowreq_ctx)
 {
-    DEBUGMSGTL(("verbose:rdbmsDbTable:rdbmsDbTable_row_prep","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsDbTable:rdbmsDbTable_row_prep","called\n"));
 
-    netsnmp_assert(NULL != rowreq_ctx);
+	netsnmp_assert(NULL != rowreq_ctx);
 
-    /*
-     * TODO:390:o: Prepare row for request.
-     * If populating row data was delayed, this is the place to
-     * fill in the row for this request.
-     */
+	/*
+	 * TODO:390:o: Prepare row for request.
+	 * If populating row data was delayed, this is the place to
+	 * fill in the row for this request.
+	 */
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsDbTable_row_prep */
 
 /** @} */

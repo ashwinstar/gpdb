@@ -9,7 +9,6 @@
 /* include our parent header */
 #include "rdbmsSrvInfoTable.h"
 
-
 #include "rdbmsSrvInfoTable_data_access.h"
 
 /** @defgroup data_access data_access: Routines to access data
@@ -30,7 +29,7 @@
  * rdbmsSrvInfoTable is subid 6 of rdbmsObjects.
  * Its status is Current.
  * OID: .1.3.6.1.2.1.39.1.6, length: 9
-*/
+ */
 
 /**
  * initialization for rdbmsSrvInfoTable data access
@@ -44,12 +43,12 @@
  * @retval MFD_SUCCESS : success.
  * @retval MFD_ERROR   : unrecoverable error.
  */
-int
-rdbmsSrvInfoTable_init_data(rdbmsSrvInfoTable_registration_ptr rdbmsSrvInfoTable_reg)
+int rdbmsSrvInfoTable_init_data(
+		rdbmsSrvInfoTable_registration_ptr rdbmsSrvInfoTable_reg)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_init_data","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_init_data","called\n"));
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsSrvInfoTable_init_data */
 
 /**
@@ -88,32 +87,32 @@ rdbmsSrvInfoTable_init_data(rdbmsSrvInfoTable_registration_ptr rdbmsSrvInfoTable
  *  for you data source. For example, opening a connection to another
  *  process that will supply the data, opening a database, etc.
  */
-void
-rdbmsSrvInfoTable_container_init(netsnmp_container **container_ptr_ptr,
-                        netsnmp_cache *cache)
+void rdbmsSrvInfoTable_container_init(netsnmp_container **container_ptr_ptr,
+		netsnmp_cache *cache)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_container_init","called\n"));
-    
-    if((NULL == cache) || (NULL == container_ptr_ptr)) {
-        snmp_log(LOG_ERR,"bad params to rdbmsSrvInfoTable_container_init\n");
-        return;
-    }
+	DEBUGMSGTL(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_container_init","called\n"));
 
-    /*
-     * For advanced users, you can use a custom container. If you
-     * do not create one, one will be created for you.
-     */
-    *container_ptr_ptr = NULL;
+	if ((NULL == cache) || (NULL == container_ptr_ptr))
+	{
+		snmp_log(LOG_ERR, "bad params to rdbmsSrvInfoTable_container_init\n");
+		return;
+	}
 
-    /*
-     * TODO:345:A: Set up rdbmsSrvInfoTable cache properties.
-     *
-     * Also for advanced users, you can set parameters for the
-     * cache. Do not change the magic pointer, as it is used
-     * by the MFD helper. To completely disable caching, set
-     * cache->enabled to 0.
-     */
-    cache->timeout = RDBMSSRVINFOTABLE_CACHE_TIMEOUT; /* seconds */
+	/*
+	 * For advanced users, you can use a custom container. If you
+	 * do not create one, one will be created for you.
+	 */
+	*container_ptr_ptr = NULL;
+
+	/*
+	 * TODO:345:A: Set up rdbmsSrvInfoTable cache properties.
+	 *
+	 * Also for advanced users, you can set parameters for the
+	 * cache. Do not change the magic pointer, as it is used
+	 * by the MFD helper. To completely disable caching, set
+	 * cache->enabled to 0.
+	 */
+	cache->timeout = RDBMSSRVINFOTABLE_CACHE_TIMEOUT; /* seconds */
 } /* rdbmsSrvInfoTable_container_init */
 
 /**
@@ -146,136 +145,161 @@ rdbmsSrvInfoTable_container_init(netsnmp_container **container_ptr_ptr,
  *  data here.
  *
  */
-int
-rdbmsSrvInfoTable_cache_load(netsnmp_container *container)
+int rdbmsSrvInfoTable_cache_load(netsnmp_container *container)
 {
-    rdbmsSrvInfoTable_rowreq_ctx *rowreq_ctx;
-    size_t                 count = 0;
-    PGresult *pg_db_qry;
-    static int maxAssociations = 0;
-    
-   long   applIndex;
-   int resultCount, tmpInt, rdbmsSrvInfoMaxInboundAssociations = 0, i, errorCode = MFD_SUCCESS;
+	rdbmsSrvInfoTable_rowreq_ctx *rowreq_ctx;
+	size_t count = 0;
+	PGresult *pg_db_qry;
+	static int maxAssociations = 0;
 
-    DEBUGMSGTL(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_cache_load","called\n"));
+	long applIndex;
+	int resultCount, tmpInt, rdbmsSrvInfoMaxInboundAssociations = 0, i,
+			errorCode = MFD_SUCCESS;
 
-    if (PQstatus(dbconn) == CONNECTION_OK) {
-	    pg_db_qry = PQexec(dbconn, "SELECT setting FROM pg_settings WHERE name = 'max_connections'");
-	    if (PQresultStatus(pg_db_qry) == PGRES_TUPLES_OK) 
-		    rdbmsSrvInfoMaxInboundAssociations = atoi(PQgetvalue(pg_db_qry, 0, 0));
-	    PQclear(pg_db_qry);
-	    pg_db_qry = PQexec(dbconn, "SELECT setting FROM pg_settings WHERE name = 'superuser_reserved_connections'");
-	    if (PQresultStatus(pg_db_qry) == PGRES_TUPLES_OK) 
-		    rdbmsSrvInfoMaxInboundAssociations -= atoi(PQgetvalue(pg_db_qry, 0, 0));
-	    PQclear(pg_db_qry);
-	    pg_db_qry = PQexec(dbconn, "SELECT count(1) FROM pg_stat_activity");
-	    if (PQresultStatus(pg_db_qry) == PGRES_TUPLES_OK) {
-		    tmpInt = atoi(PQgetvalue(pg_db_qry, 0, 0));
-		    maxAssociations = (tmpInt > maxAssociations) ? tmpInt : maxAssociations;
-	    }
-	    PQclear(pg_db_qry);
-	    if (PQserverVersion(dbconn) < 80100)
-		    pg_db_qry = PQexec(dbconn, "SELECT datid, EXTRACT(YEAR FROM now()), EXTRACT(MONTH FROM now()), EXTRACT(DAY FROM now()), EXTRACT(HOUR FROM now()), EXTRACT(MINUTE FROM now()), EXTRACT(SECOND FROM now()), EXTRACT(MILLISECOND FROM now()), EXTRACT(TIMEZONE_HOUR FROM now()), EXTRACT(TIMEZONE_MINUTE FROM now()), xact_commit, blks_read, blks_read + blks_hit  FROM pg_stat_database");
-            else
-		    pg_db_qry = PQexec(dbconn, "SELECT datid, EXTRACT(YEAR FROM pg_postmaster_start_time()), EXTRACT(MONTH FROM pg_postmaster_start_time()), EXTRACT(DAY FROM pg_postmaster_start_time()), EXTRACT(HOUR FROM pg_postmaster_start_time()), EXTRACT(MINUTE FROM pg_postmaster_start_time()), EXTRACT(SECOND FROM pg_postmaster_start_time()), EXTRACT(MILLISECOND FROM pg_postmaster_start_time()), EXTRACT(TIMEZONE_HOUR FROM pg_postmaster_start_time()), EXTRACT(TIMEZONE_MINUTE FROM pg_postmaster_start_time()), xact_commit, blks_read, blks_read + blks_hit  FROM pg_stat_database");
-    }
-    else {
-	    snmp_log(LOG_ERR, "Can't get connected to the database");
-	    return -1;
-    }
-    if (PQresultStatus(pg_db_qry) != PGRES_TUPLES_OK) {
-	    snmp_log(LOG_ERR, "Didn't get any results from the database");
-	    PQclear(pg_db_qry);
-	    /*PQfinish(dbconn);*/
-	    return -1;
-    }
+	DEBUGMSGTL(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_cache_load","called\n"));
 
-    resultCount = PQntuples(pg_db_qry);
+	if (PQstatus(dbconn) == CONNECTION_OK)
+	{
+		pg_db_qry
+				= PQexec(dbconn,
+						"SELECT setting FROM pg_settings WHERE name = 'max_connections'");
+		if (PQresultStatus(pg_db_qry) == PGRES_TUPLES_OK)
+			rdbmsSrvInfoMaxInboundAssociations = atoi(PQgetvalue(pg_db_qry, 0,
+					0));
+		PQclear(pg_db_qry);
+		pg_db_qry
+				= PQexec(dbconn,
+						"SELECT setting FROM pg_settings WHERE name = 'superuser_reserved_connections'");
+		if (PQresultStatus(pg_db_qry) == PGRES_TUPLES_OK)
+			rdbmsSrvInfoMaxInboundAssociations -= atoi(PQgetvalue(pg_db_qry, 0,
+					0));
+		PQclear(pg_db_qry);
+		pg_db_qry = PQexec(dbconn, "SELECT count(1) FROM pg_stat_activity");
+		if (PQresultStatus(pg_db_qry) == PGRES_TUPLES_OK)
+		{
+			tmpInt = atoi(PQgetvalue(pg_db_qry, 0, 0));
+			maxAssociations = (tmpInt > maxAssociations) ? tmpInt
+					: maxAssociations;
+		}
+		PQclear(pg_db_qry);
+		if (PQserverVersion(dbconn) < 80100)
+			pg_db_qry
+					= PQexec(
+							dbconn,
+							"SELECT datid, EXTRACT(YEAR FROM now()), EXTRACT(MONTH FROM now()), EXTRACT(DAY FROM now()), EXTRACT(HOUR FROM now()), EXTRACT(MINUTE FROM now()), EXTRACT(SECOND FROM now()), EXTRACT(MILLISECOND FROM now()), EXTRACT(TIMEZONE_HOUR FROM now()), EXTRACT(TIMEZONE_MINUTE FROM now()), xact_commit, blks_read, blks_read + blks_hit  FROM pg_stat_database");
+		else
+			pg_db_qry
+					= PQexec(
+							dbconn,
+							"SELECT datid, EXTRACT(YEAR FROM pg_postmaster_start_time()), EXTRACT(MONTH FROM pg_postmaster_start_time()), EXTRACT(DAY FROM pg_postmaster_start_time()), EXTRACT(HOUR FROM pg_postmaster_start_time()), EXTRACT(MINUTE FROM pg_postmaster_start_time()), EXTRACT(SECOND FROM pg_postmaster_start_time()), EXTRACT(MILLISECOND FROM pg_postmaster_start_time()), EXTRACT(TIMEZONE_HOUR FROM pg_postmaster_start_time()), EXTRACT(TIMEZONE_MINUTE FROM pg_postmaster_start_time()), xact_commit, blks_read, blks_read + blks_hit  FROM pg_stat_database");
+	}
+	else
+	{
+		snmp_log(LOG_ERR, "Can't get connected to the database");
+		return -1;
+	}
+	if (PQresultStatus(pg_db_qry) != PGRES_TUPLES_OK)
+	{
+		snmp_log(LOG_ERR, "Didn't get any results from the database");
+		PQclear(pg_db_qry);
+		/*PQfinish(dbconn);*/
+		return -1;
+	}
 
-    /*
-     * TODO:351:M: |-> Load/update data in the rdbmsSrvInfoTable container.
-     * loop over your rdbmsSrvInfoTable data, allocate a rowreq context,
-     * set the index(es) [and data, optionally] and insert into
-     * the container.
-     */
-    for (i = 0; i < resultCount; i++) {
+	resultCount = PQntuples(pg_db_qry);
 
-        /*
-         * TODO:352:M: |   |-> set indexes in new rdbmsSrvInfoTable rowreq context.
-         */
-        rowreq_ctx = rdbmsSrvInfoTable_allocate_rowreq_ctx();
-        if (NULL == rowreq_ctx) {
-            snmp_log(LOG_ERR, "memory allocation failed\n");
-	    errorCode = MFD_RESOURCE_UNAVAILABLE;
-	    break;
-        }
-	applIndex = atoi(PQgetvalue(pg_db_qry, i, 0));
-        if(MFD_SUCCESS != rdbmsSrvInfoTable_indexes_set(rowreq_ctx
-                               , applIndex
-               )) {
-            snmp_log(LOG_ERR,"error setting index while loading "
-                     "rdbmsSrvInfoTable cache.\n");
-            rdbmsSrvInfoTable_release_rowreq_ctx(rowreq_ctx);
-            continue;
-        }
+	/*
+	 * TODO:351:M: |-> Load/update data in the rdbmsSrvInfoTable container.
+	 * loop over your rdbmsSrvInfoTable data, allocate a rowreq context,
+	 * set the index(es) [and data, optionally] and insert into
+	 * the container.
+	 */
+	for (i = 0; i < resultCount; i++)
+	{
 
-	rowreq_ctx->data.startupYear = atoi(PQgetvalue(pg_db_qry, i, 1));
-	rowreq_ctx->data.startupMonth = atoi(PQgetvalue(pg_db_qry, i, 2));
-	rowreq_ctx->data.startupDay = atoi(PQgetvalue(pg_db_qry, i, 3));
-	rowreq_ctx->data.startupHour = atoi(PQgetvalue(pg_db_qry, i, 4));
-	rowreq_ctx->data.startupMinutes = atoi(PQgetvalue(pg_db_qry, i, 5));
-	rowreq_ctx->data.startupSeconds = atoi(PQgetvalue(pg_db_qry, i, 6));
-	rowreq_ctx->data.startupDeciSeconds = atoi(PQgetvalue(pg_db_qry, i, 7));
-	rowreq_ctx->data.startupUtcOffsetHours = atoi(PQgetvalue(pg_db_qry, i, 8));
-	rowreq_ctx->data.startupUtcOffsetMinutes = atoi(PQgetvalue(pg_db_qry, i, 9));
-	tmpInt = rowreq_ctx->data.startupUtcOffsetHours * 60 + rowreq_ctx->data.startupUtcOffsetMinutes;
-	if (tmpInt == 0)
-		rowreq_ctx->data.startupUtcOffsetDirection = 0;
-	else 
-		rowreq_ctx->data.startupUtcOffsetDirection = (tmpInt > 0 ? 1 : -1);
-    
-    rowreq_ctx->data.rdbmsSrvInfoFinishedTransactions = atoi(PQgetvalue(pg_db_qry, i, 10));
-    
-    rowreq_ctx->data.rdbmsSrvInfoDiskReads = atoi(PQgetvalue(pg_db_qry, i, 11));
-    
-    rowreq_ctx->data.rdbmsSrvInfoLogicalReads = atoi(PQgetvalue(pg_db_qry, i, 12));
-    
-    /* Skip this unless someone comes up with a way to get these data */
-    /*rowreq_ctx->data.rdbmsSrvInfoDiskWrites = rdbmsSrvInfoDiskWrites;
+		/*
+		 * TODO:352:M: |   |-> set indexes in new rdbmsSrvInfoTable rowreq context.
+		 */
+		rowreq_ctx = rdbmsSrvInfoTable_allocate_rowreq_ctx();
+		if (NULL == rowreq_ctx)
+		{
+			snmp_log(LOG_ERR, "memory allocation failed\n");
+			errorCode = MFD_RESOURCE_UNAVAILABLE;
+			break;
+		}
+		applIndex = atoi(PQgetvalue(pg_db_qry, i, 0));
+		if (MFD_SUCCESS != rdbmsSrvInfoTable_indexes_set(rowreq_ctx, applIndex))
+		{
+			snmp_log(LOG_ERR, "error setting index while loading "
+				"rdbmsSrvInfoTable cache.\n");
+			rdbmsSrvInfoTable_release_rowreq_ctx(rowreq_ctx);
+			continue;
+		}
 
-    rowreq_ctx->data.rdbmsSrvInfoLogicalWrites = rdbmsSrvInfoLogicalWrites;  */
-    
-    rowreq_ctx->data.rdbmsSrvInfoPageReads = rowreq_ctx->data.rdbmsSrvInfoDiskReads;
-    
-    /*rowreq_ctx->data.rdbmsSrvInfoPageWrites = rdbmsSrvInfoPageWrites; */
-    
-    /* pgsql will have a fatal error if this happens, so the value must be 0 if we're connected to a db server */
-    rowreq_ctx->data.rdbmsSrvInfoDiskOutOfSpaces = 0; 
-    
-    /* rowreq_ctx->data.rdbmsSrvInfoHandledRequests = rdbmsSrvInfoHandledRequests;
-    
-    rowreq_ctx->data.rdbmsSrvInfoRequestRecvs = rdbmsSrvInfoRequestRecvs;
-    
-    rowreq_ctx->data.rdbmsSrvInfoRequestSends = rdbmsSrvInfoRequestSends; */
-    
-    rowreq_ctx->data.rdbmsSrvInfoHighwaterInboundAssociations = maxAssociations; 
-    
-    rowreq_ctx->data.rdbmsSrvInfoMaxInboundAssociations = rdbmsSrvInfoMaxInboundAssociations;
-    
-        
-        /*
-         * insert into table container
-         */
-        CONTAINER_INSERT(container, rowreq_ctx);
-        ++count;
-    }
+		rowreq_ctx->data.startupYear = atoi(PQgetvalue(pg_db_qry, i, 1));
+		rowreq_ctx->data.startupMonth = atoi(PQgetvalue(pg_db_qry, i, 2));
+		rowreq_ctx->data.startupDay = atoi(PQgetvalue(pg_db_qry, i, 3));
+		rowreq_ctx->data.startupHour = atoi(PQgetvalue(pg_db_qry, i, 4));
+		rowreq_ctx->data.startupMinutes = atoi(PQgetvalue(pg_db_qry, i, 5));
+		rowreq_ctx->data.startupSeconds = atoi(PQgetvalue(pg_db_qry, i, 6));
+		rowreq_ctx->data.startupDeciSeconds = atoi(PQgetvalue(pg_db_qry, i, 7));
+		rowreq_ctx->data.startupUtcOffsetHours = atoi(PQgetvalue(pg_db_qry, i,
+				8));
+		rowreq_ctx->data.startupUtcOffsetMinutes = atoi(PQgetvalue(pg_db_qry,
+				i, 9));
+		tmpInt = rowreq_ctx->data.startupUtcOffsetHours * 60
+				+ rowreq_ctx->data.startupUtcOffsetMinutes;
+		if (tmpInt == 0)
+			rowreq_ctx->data.startupUtcOffsetDirection = 0;
+		else
+			rowreq_ctx->data.startupUtcOffsetDirection = (tmpInt > 0 ? 1 : -1);
 
+		rowreq_ctx->data.rdbmsSrvInfoFinishedTransactions = atoi(PQgetvalue(
+				pg_db_qry, i, 10));
 
-    DEBUGMSGT(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_cache_load",
-               "inserted %ld records\n", count));
+		rowreq_ctx->data.rdbmsSrvInfoDiskReads = atoi(PQgetvalue(pg_db_qry, i,
+				11));
 
-    PQclear(pg_db_qry);
-    return errorCode;
+		rowreq_ctx->data.rdbmsSrvInfoLogicalReads = atoi(PQgetvalue(pg_db_qry,
+				i, 12));
+
+		/* Skip this unless someone comes up with a way to get these data */
+		/*rowreq_ctx->data.rdbmsSrvInfoDiskWrites = rdbmsSrvInfoDiskWrites;
+
+		 rowreq_ctx->data.rdbmsSrvInfoLogicalWrites = rdbmsSrvInfoLogicalWrites;  */
+
+		rowreq_ctx->data.rdbmsSrvInfoPageReads
+				= rowreq_ctx->data.rdbmsSrvInfoDiskReads;
+
+		/*rowreq_ctx->data.rdbmsSrvInfoPageWrites = rdbmsSrvInfoPageWrites; */
+
+		/* pgsql will have a fatal error if this happens, so the value must be 0 if we're connected to a db server */
+		rowreq_ctx->data.rdbmsSrvInfoDiskOutOfSpaces = 0;
+
+		/* rowreq_ctx->data.rdbmsSrvInfoHandledRequests = rdbmsSrvInfoHandledRequests;
+
+		 rowreq_ctx->data.rdbmsSrvInfoRequestRecvs = rdbmsSrvInfoRequestRecvs;
+
+		 rowreq_ctx->data.rdbmsSrvInfoRequestSends = rdbmsSrvInfoRequestSends; */
+
+		rowreq_ctx->data.rdbmsSrvInfoHighwaterInboundAssociations
+				= maxAssociations;
+
+		rowreq_ctx->data.rdbmsSrvInfoMaxInboundAssociations
+				= rdbmsSrvInfoMaxInboundAssociations;
+
+		/*
+		 * insert into table container
+		 */
+		CONTAINER_INSERT(container, rowreq_ctx);
+		++count;
+	}
+
+	DEBUGMSGT(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_cache_load",
+					"inserted %ld records\n", count));
+
+	PQclear(pg_db_qry);
+	return errorCode;
 } /* rdbmsSrvInfoTable_cache_load */
 
 /**
@@ -291,14 +315,13 @@ rdbmsSrvInfoTable_cache_load(netsnmp_container *container)
  *  The MFD helper will take care of releasing all the row contexts.
  *
  */
-void
-rdbmsSrvInfoTable_cache_free(netsnmp_container *container)
+void rdbmsSrvInfoTable_cache_free(netsnmp_container *container)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_cache_free","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_cache_free","called\n"));
 
-    /*
-     * TODO:380:M: Free rdbmsSrvInfoTable cache.
-     */
+	/*
+	 * TODO:380:M: Free rdbmsSrvInfoTable cache.
+	 */
 } /* rdbmsSrvInfoTable_cache_free */
 
 /**
@@ -314,20 +337,19 @@ rdbmsSrvInfoTable_cache_free(netsnmp_container *container)
  * @retval MFD_SUCCESS     : success.
  * @retval MFD_ERROR       : other error.
  */
-int
-rdbmsSrvInfoTable_row_prep( rdbmsSrvInfoTable_rowreq_ctx *rowreq_ctx)
+int rdbmsSrvInfoTable_row_prep(rdbmsSrvInfoTable_rowreq_ctx *rowreq_ctx)
 {
-    DEBUGMSGTL(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_row_prep","called\n"));
+	DEBUGMSGTL(("verbose:rdbmsSrvInfoTable:rdbmsSrvInfoTable_row_prep","called\n"));
 
-    netsnmp_assert(NULL != rowreq_ctx);
+	netsnmp_assert(NULL != rowreq_ctx);
 
-    /*
-     * TODO:390:o: Prepare row for request.
-     * If populating row data was delayed, this is the place to
-     * fill in the row for this request.
-     */
+	/*
+	 * TODO:390:o: Prepare row for request.
+	 * If populating row data was delayed, this is the place to
+	 * fill in the row for this request.
+	 */
 
-    return MFD_SUCCESS;
+	return MFD_SUCCESS;
 } /* rdbmsSrvInfoTable_row_prep */
 
 /** @} */
