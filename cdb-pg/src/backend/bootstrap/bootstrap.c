@@ -1187,6 +1187,12 @@ static int
 CompHash(char *str, int len)
 {
 	int			result;
+	
+	Assert(len >=0 && "string length is negative");
+	if (len == 0) 
+	{
+		return 0;
+	}
 
 	result = (NUM * str[0] + NUMSQR * str[len - 1] + NUMCUBE * str[(len - 1) / 2]);
 
