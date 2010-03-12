@@ -2021,15 +2021,16 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
                  * We need better partition pruning strategy.  
                  */
                 if (!ActivePortal)
+				{
                     ereport(WARNING,
                             (errcode(ERRCODE_WARNING),
                              errmsg("A stable or volatile function is used as if it is immutable"),
                              errhint("The function should be declared as stable or volatile in create function statement.")));
-
+				}
                 else if (!ActivePortal->releaseResLock)
                 {
                     PortalSetStatus(ActivePortal, PORTAL_QUEUE);
-                    ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc->plannedstmt);
+                    ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc);
                     PortalSetStatus(ActivePortal, PORTAL_ACTIVE);
                 }
             }

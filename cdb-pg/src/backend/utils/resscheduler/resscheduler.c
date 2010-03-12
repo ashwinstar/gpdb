@@ -35,6 +35,7 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbllize.h"
+#include "cdb/cdbvars.h"
 #include "nodes/print.h"
 
 /*
@@ -533,7 +534,7 @@ inventory_plan_memory_ceiling_walker(Node *plan, inventory_plan_memory_t *contex
  *	false if the lock has been skipped.
  */
 bool
-ResLockPortal(Portal portal, PlannedStmt *stmt)
+ResLockPortal(Portal portal, QueryDesc *qDesc)
 {
 	bool		returnReleaseOk = false;	/* Release resource lock? */
 	bool		takeLock;					/* Take resource lock? */
@@ -541,12 +542,17 @@ ResLockPortal(Portal portal, PlannedStmt *stmt)
 	Oid			queueid;
 	int32		lockResult = 0;
 	ResPortalIncrement	incData;
-	Plan *plan = stmt->planTree;
+	Plan *plan;
+
+	Assert(qDesc);
+	Assert(qDesc->plannedstmt);
+
+	plan = qDesc->plannedstmt->planTree;
 
 	{
 		inventory_plan_memory_t context;
 		
-		exec_init_plan_tree_base(&context.base, stmt);
+		exec_init_plan_tree_base(&context.base, qDesc->plannedstmt);
 		context.mem_ceiling = work_mem;
 
 		plan_tree_walker((Node *)plan, inventory_plan_memory_ceiling_walker, &context);
@@ -654,6 +660,17 @@ ResLockPortal(Portal portal, PlannedStmt *stmt)
             PG_CATCH();
             {
                 ResLockRelease(&tag, portal->portalId);
+
+				/**
+				 * Perfmon related stuff: clean up if we got cancelled
+				 * while waiting.
+				 */
+				if (gp_enable_gpperfmon && qDesc->gpmon_pkt)
+				{			
+					gpmon_qlog_query_error(qDesc->gpmon_pkt);
+					pfree(qDesc->gpmon_pkt);
+					qDesc->gpmon_pkt = NULL;
+				}
 
 				portal->queueId = InvalidOid;
 				portal->portalId = INVALID_PORTALID;

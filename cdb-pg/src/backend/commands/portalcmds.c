@@ -340,16 +340,19 @@ PortalCleanupHelper(Portal portal, volatile int *cleanupstate)
 	 * and we can't be sure that ExecutorEnd itself wouldn't fail.
 	 */
 	portal->queryDesc = NULL;
-	if (queryDesc && queryDesc->estate)
+	if (queryDesc)
 	{
-		/*
-		 * If we still have an estate -- then we need to cancel any
-		 * unfinished work.
-		 */
-		queryDesc->estate->cancelUnfinished = true;
+		if (queryDesc->estate)
+		{
+			/*
+			 * If we still have an estate -- then we need to cancel any
+			 * unfinished work.
+			 */
+			queryDesc->estate->cancelUnfinished = true;
 
-		/* we do not need AfterTriggerEndQuery() here */
-		ExecutorEnd(queryDesc);
+			/* we do not need AfterTriggerEndQuery() here */
+			ExecutorEnd(queryDesc);
+		}
 	}
     
 	/*

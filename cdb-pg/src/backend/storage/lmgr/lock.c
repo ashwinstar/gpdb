@@ -41,6 +41,7 @@
 #include "storage/lmgr.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
+#include "executor/execdesc.h"
 #include "utils/resscheduler.h"
 #include "storage/procarray.h"
 

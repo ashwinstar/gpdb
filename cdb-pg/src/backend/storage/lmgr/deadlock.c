@@ -29,6 +29,7 @@
 #include "miscadmin.h"
 #include "storage/proc.h"
 #include "utils/memutils.h"
+#include "executor/execdesc.h"
 #include "utils/resscheduler.h"
 
 

@@ -43,6 +43,7 @@
 #include "storage/spin.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
+#include "executor/execdesc.h"
 #include "utils/resscheduler.h"
 #include "utils/timestamp.h"
 #include "utils/portal.h"

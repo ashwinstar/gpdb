@@ -2113,6 +2113,7 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 			&& queryDesc->gpmon_pkt)
 	{			
 		gpmon_qlog_query_error(queryDesc->gpmon_pkt);
+		pfree(queryDesc->gpmon_pkt);
 		queryDesc->gpmon_pkt = NULL;
 	}
 

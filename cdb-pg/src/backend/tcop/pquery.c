@@ -238,7 +238,7 @@ ProcessQuery(Portal portal,
 		queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
 	{
 		PortalSetStatus(portal, PORTAL_QUEUE);
-		portal->releaseResLock = ResLockPortal(portal, queryDesc->plannedstmt);
+		portal->releaseResLock = ResLockPortal(portal, queryDesc);
 	}
 
 	PortalSetStatus(portal, PORTAL_ACTIVE);
@@ -789,18 +789,18 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 				 * Additionally only lock parallel plan queries.
 				 */
 				if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && 
-						!superuser() &&
-						queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
+					!superuser() &&
+					queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
 				{
 					PortalSetStatus(portal, PORTAL_QUEUE);
-					portal->releaseResLock = ResLockPortal(portal, queryDesc->plannedstmt);
+					portal->releaseResLock = ResLockPortal(portal, queryDesc);
 				}
 
 				PortalSetStatus(portal, PORTAL_ACTIVE);
 				
-				if (gp_enable_resqueue_priority 
-						&& Gp_role == GP_ROLE_DISPATCH 
-						&& gp_session_id > -1)
+				if (gp_enable_resqueue_priority &&
+					Gp_role == GP_ROLE_DISPATCH  &&
+					gp_session_id > -1)
 				{
 					if (superuser())
 					{
@@ -867,17 +867,17 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 				Assert(pstmt->returningLists);
 				portal->tupDesc =
 					ExecCleanTypeFromTL((List *) linitial(pstmt->returningLists),
-									false);
+										false);
 			}
 				
-				/*
-				 * Reset cursor position data to "start of query"
-				 */
-				portal->atStart = true;
-				portal->atEnd = false;	/* allow fetches */
-				portal->portalPos = 0;
-				portal->posOverflow = false;
-				break;
+			/*
+			 * Reset cursor position data to "start of query"
+			 */
+			portal->atStart = true;
+			portal->atEnd = false;	/* allow fetches */
+			portal->portalPos = 0;
+			portal->posOverflow = false;
+			break;
 
 			case PORTAL_UTIL_SELECT:
 

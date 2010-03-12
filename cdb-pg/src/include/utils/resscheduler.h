@@ -167,8 +167,10 @@ extern ResAlterQueueResult ResAlterQueue(Oid queueid,
 						   Cost limits[NUM_RES_LIMIT_TYPES], 
 						  bool overcommit, float4 ignorelimit);
 extern bool ResDestroyQueue(Oid queueid);
-extern bool ResLockPortal(Portal portal, PlannedStmt *stmt);
+
+extern bool ResLockPortal(Portal portal, QueryDesc *qDesc);
 extern void ResUnLockPortal(Portal portal);
+
 extern void ResCheckPortalType(Portal portal);
 extern Oid	GetResQueueForRole(Oid roleid);
 extern Oid	GetResQueueId(void);

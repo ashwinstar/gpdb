@@ -305,7 +305,8 @@ void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket)
 	struct timeval tv;
 
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
-	Assert(gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_START);
+	Assert(gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_START ||
+		   gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_SUBMIT);
 
 	gettimeofday(&tv, 0);
 	

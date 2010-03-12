@@ -31,9 +31,10 @@
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+
+#include "executor/execdesc.h"
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
-
 
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbsrlz.h"
