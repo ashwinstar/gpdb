@@ -190,8 +190,19 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 	/* Don't display the portal in pg_cursors, it is for internal use only */
 	portal->visible = false;
 
+	/* Plan the query.  If this is a CTAS, copy the "into" information into
+	 * the query so that we construct the plan correctly.  Else the table
+	 * might not be created on the segments.  (MPP-8135) */
 	{
 		List *query_list = copyObject(entry->query_list); /* planner scribbles on query tree :( */
+		
+		if ( stmt->into )
+		{
+			Query *query = (Query*)linitial(query_list);
+			Assert(IsA(query, Query) && query->intoClause == NULL);
+			query->intoClause = copyObject(stmt->into);
+		}
+		
 		stmt_list = pg_plan_queries(query_list, paramLI, false);
 	}
 
