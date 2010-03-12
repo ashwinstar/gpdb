@@ -28,7 +28,7 @@
 int gp_blockdirectory_entry_min_range = 0;
 int gp_blockdirectory_minipage_size = NUM_MINIPAGE_ENTRIES;
 
-static inline int32 minipage_size(int nEntry)
+static inline uint32 minipage_size(uint32 nEntry)
 {
 	return offsetof(Minipage, entry) +
 		sizeof(MinipageEntry) * nEntry;
@@ -44,7 +44,7 @@ static void init_scankeys(
 	StrategyNumber *strategyNumbers);
 static int find_minipage_entry(
 	Minipage *minipage,
-	int numEntries,
+	uint32 numEntries,
 	int64 rowNum);
 static void extract_minipage(
 	AppendOnlyBlockDirectory *blockDirectory,
@@ -287,7 +287,7 @@ set_directoryentry_range(
 	MinipageEntry *entry;
 	MinipageEntry *next_entry = NULL;
 	
-	Assert(entry_no >= 0 && entry_no < minipageInfo->numMinipageEntries);
+	Assert(entry_no >= 0 && ((uint32)entry_no) < minipageInfo->numMinipageEntries);
 	
 	fsInfo = blockDirectory->currentSegmentFileInfo;
 	Assert(fsInfo != NULL);
@@ -298,7 +298,7 @@ set_directoryentry_range(
 	}
 
 	entry = &(minipageInfo->minipage->entry[entry_no]);
-	if (entry_no < minipageInfo->numMinipageEntries - 1)
+	if (((uint32)entry_no) < minipageInfo->numMinipageEntries - 1)
 	{
 		next_entry = &(minipageInfo->minipage->entry[entry_no + 1]);
 	}
@@ -590,7 +590,7 @@ AppendOnlyBlockDirectory_InsertEntry(
 		blockDirectory->blkdirIdx == NULL)
 		return false;
 
-	Assert(minipageInfo->numMinipageEntries <= gp_blockdirectory_minipage_size);
+	Assert(minipageInfo->numMinipageEntries <= (uint32)gp_blockdirectory_minipage_size);
 
 	lastEntryNo = minipageInfo->numMinipageEntries - 1;
 	if (lastEntryNo >= 0)
@@ -622,7 +622,7 @@ AppendOnlyBlockDirectory_InsertEntry(
 		entry->rowCount = firstRowNum - entry->firstRowNum;
 	}
 	
-	if (minipageInfo->numMinipageEntries == gp_blockdirectory_minipage_size)
+	if (minipageInfo->numMinipageEntries == (uint32)gp_blockdirectory_minipage_size)
 	{
 		write_minipage(blockDirectory, columnGroupNo);
 
@@ -637,7 +637,7 @@ AppendOnlyBlockDirectory_InsertEntry(
 		minipageInfo->numMinipageEntries = 0;
 	}
 	
-	Assert(minipageInfo->numMinipageEntries < gp_blockdirectory_minipage_size);
+	Assert(minipageInfo->numMinipageEntries < (uint32)gp_blockdirectory_minipage_size);
 
 	entry = &(minipageInfo->minipage->entry[minipageInfo->numMinipageEntries]);
 	entry->firstRowNum = firstRowNum;
@@ -733,13 +733,13 @@ copy_out_minipage(MinipagePerColumnGroup *minipageInfo,
 	value = (struct varlena *)
 		DatumGetPointer(minipage_value);
 	detoast_value = pg_detoast_datum(value);
-	Assert( ( (int)VARSIZE(detoast_value) ) <= minipage_size(NUM_MINIPAGE_ENTRIES));
+	Assert( VARSIZE(detoast_value) <= minipage_size(NUM_MINIPAGE_ENTRIES));
 
 	memcpy(minipageInfo->minipage, detoast_value, VARSIZE(detoast_value));
 	if (detoast_value != value)
 		pfree(detoast_value);
 	
-	Assert(minipageInfo->minipage->nEntry <= ( (int)NUM_MINIPAGE_ENTRIES ) );
+	Assert(minipageInfo->minipage->nEntry <= NUM_MINIPAGE_ENTRIES);
 	
 	minipageInfo->numMinipageEntries = minipageInfo->minipage->nEntry;
 }
@@ -889,7 +889,7 @@ load_last_minipage(AppendOnlyBlockDirectory *blockDirectory,
 	if (Debug_appendonly_print_blockdirectory)
 		ereport(LOG,
 				(errmsg("Append-only block directory load last minipage: "
-						"(columnGroupNo, lastSequence, nEntries) = (%d, " INT64_FORMAT ", %d)",
+						"(columnGroupNo, lastSequence, nEntries) = (%d, " INT64_FORMAT ", %u)",
 						columnGroupNo, lastSequence,
 						blockDirectory->minipages[columnGroupNo].numMinipageEntries)));
 	
@@ -904,7 +904,7 @@ load_last_minipage(AppendOnlyBlockDirectory *blockDirectory,
  */
 static int
 find_minipage_entry(Minipage *minipage,
-					int numEntries,
+					uint32 numEntries,
 					int64 rowNum)
 {
 	int start_no, end_no;
@@ -1002,7 +1002,7 @@ write_minipage(AppendOnlyBlockDirectory *blockDirectory,
 			ereport(LOG,
 					(errmsg("Append-only block directory update a minipage: "
 							"(segno, columnGroupNo, nEntries, firstRowNum) = "
-							"(%d, %d, %d, " INT64_FORMAT ")",
+							"(%d, %d, %u, " INT64_FORMAT ")",
 							blockDirectory->currentSegmentFileNum,
 							columnGroupNo, minipageInfo->numMinipageEntries,
 							minipageInfo->minipage->entry[0].firstRowNum)));
@@ -1015,7 +1015,7 @@ write_minipage(AppendOnlyBlockDirectory *blockDirectory,
 			ereport(LOG,
 					(errmsg("Append-only block directory insert a minipage: "
 							"(segno, columnGroupNo, nEntries, firstRowNum) = "
-							"(%d, %d, %d, " INT64_FORMAT ")",
+							"(%d, %d, %u, " INT64_FORMAT ")",
 							blockDirectory->currentSegmentFileNum,
 							columnGroupNo, minipageInfo->numMinipageEntries,
 							minipageInfo->minipage->entry[0].firstRowNum)));
@@ -1053,7 +1053,7 @@ AppendOnlyBlockDirectory_End_forInsert(
 			if (Debug_appendonly_print_blockdirectory)
 				ereport(LOG,
 						(errmsg("Append-only block directory end of insert write minipage: "
-								"(columnGroupNo, nEntries) = (%d, %d)",
+								"(columnGroupNo, nEntries) = (%d, %u)",
 								groupNo, minipageInfo->numMinipageEntries)));
 		}
 		

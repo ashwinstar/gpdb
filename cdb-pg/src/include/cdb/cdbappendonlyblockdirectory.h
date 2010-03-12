@@ -55,7 +55,7 @@ typedef struct Minipage
 	/* Total length. Must be the first. */
 	int32 _len;
 	int32 version;
-	int32 nEntry;
+	uint32 nEntry;
 	
 	/* Varlena array */
 	MinipageEntry entry[1];
@@ -68,7 +68,7 @@ typedef struct Minipage
 typedef struct MinipagePerColumnGroup
 {
 	Minipage *minipage;
-	int numMinipageEntries;
+	uint32 numMinipageEntries;
 	ItemPointerData tupleTid;
 } MinipagePerColumnGroup;
 
