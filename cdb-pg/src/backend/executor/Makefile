@@ -16,7 +16,7 @@ override CPPFLAGS := -I$(top_srcdir)/src/backend/gp_libpq_fe $(CPPFLAGS)
 
 OBJS = execAmi.o execGrouping.o execHHashagg.o execJunk.o execMain.o \
        execProcnode.o execQual.o execScan.o execTuples.o \
-       execUtils.o \
+       execUtils.o execWorkfile.o \
        functions.o \
        instrument.o \
        nodeAppend.o nodeAppendOnlyscan.o nodeAgg.o nodeAOCSScan.o \

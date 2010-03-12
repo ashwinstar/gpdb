@@ -14,10 +14,8 @@ static const struct{
     void(*init)(bfz_t*thiz);
 } compression_algorithms[] =
 {
-    {{"nothing", "false", "no", "off", "0", 0}, bfz_nothing_init},
+    {{"none", "false", "no", "off", "0", 0}, bfz_nothing_init},
     {{"zlib", 0}, bfz_zlib_init},
-    {{"threaded_nothing", 0}, bfz_threaded_nothing_init},
-    {{"threaded_zlib", "true", "yes", "on", "1", 0}, bfz_threaded_zlib_init},
     {{0}}
 };
 

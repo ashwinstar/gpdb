@@ -662,7 +662,6 @@ extern bool gp_adjust_selectivity_for_outerjoins;
 extern int gp_hashjoin_tuples_per_bucket;
 extern int gp_hashagg_groups_per_bucket;
 
-
 /*
  * Damping of selectivities of clauses which pertain to the same base
  * relation; compensates for undetected correlation
@@ -930,6 +929,7 @@ extern bool gp_enable_gpperfmon;
 extern int gp_gpperfmon_send_interval;
 
 extern int gp_hashagg_compress_spill_files;
+extern int gp_workfile_compress_algorithm;
 
 /* Disable logging while creating mapreduce views */
 extern bool gp_mapreduce_define;

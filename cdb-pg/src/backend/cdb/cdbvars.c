@@ -279,6 +279,7 @@ int gp_qp_relative_renice = 0;
 /* Disable setting of tuple hints while reading */
 bool		gp_disable_tuple_hints = false;
 int		gp_hashagg_compress_spill_files = 0;
+int 	gp_workfile_compress_algorithm = 0;
 
 /* Gpmon */
 bool gp_enable_gpperfmon = false;

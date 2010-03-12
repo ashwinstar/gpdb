@@ -531,24 +531,17 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 	{
 		HashJoinBatchData  *batch = hashtable->batches[i];
 
-#ifdef HJ_USE_BFZ
-		if (batch->innerside.bfz)
+		if (batch->innerside.workfile != NULL)
 		{
-			bfz_close(batch->innerside.bfz, true); 
-			batch->innerside.bfz = NULL;
+			ExecWorkFile_Close(batch->innerside.workfile); 
+			batch->innerside.workfile = NULL;
 		}
 
-		if (batch->outerside.bfz)
+		if (batch->outerside.workfile != NULL)
 		{
-			bfz_close(batch->outerside.bfz, true); 
-			batch->outerside.bfz = NULL;
+			ExecWorkFile_Close(batch->outerside.workfile); 
+			batch->outerside.workfile = NULL;
 		}
-#else
-		if(batch->innerside.bufFile)
-			BufFileClose(batch->innerside.bufFile);
-		if(batch->outerside.bufFile)
-			BufFileClose(batch->outerside.bufFile);
-#endif
 	}
 
 	/* Release working memory (batchCxt is a child, so it goes away too) */
@@ -1376,14 +1369,10 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
         batchstats->irdbytes = batchstats->innerfilesize;
 
         /* How much was read from outer workfiles for current batch? */
-#ifdef HJ_USE_BFZ
-        if (curbatch > 0 && hashtable->batches[curbatch]->outerside.bfz)
-            batchstats->ordbytes = bfz_totalbytes(hashtable->batches[curbatch]->outerside.bfz);
-#else
-	if (curbatch > 0 && 
-	    hashtable->batches[curbatch]->outerside.bufFile)
-	    batchstats->ordbytes = BufFileTell64(hashtable->batches[curbatch]->outerside.bufFile);
-#endif
+        if (curbatch > 0 &&
+			hashtable->batches[curbatch]->outerside.workfile != NULL)
+            batchstats->ordbytes =
+				ExecWorkFile_Tell64(hashtable->batches[curbatch]->outerside.workfile);
 
         /* How much was written to workfiles for the remaining batches? */
         for (i = curbatch + 1; i < hashtable->nbatch; i++)
@@ -1392,25 +1381,18 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
             HashJoinBatchStats *bs = &stats->batchstats[i];
             uint64              filebytes = 0;
 
-#ifdef HJ_USE_BFZ
-            if (batch->outerside.bfz)
-                filebytes = bfz_totalbytes(batch->outerside.bfz); 
-#else
-	    if (batch->outerside.bufFile)
-		filebytes = BufFileTell64(batch->outerside.bufFile);
-#endif
+            if (batch->outerside.workfile != NULL)
+                filebytes = ExecWorkFile_Tell64(batch->outerside.workfile); 
+
             Assert(filebytes >= bs->outerfilesize);
             owrbytes += filebytes - bs->outerfilesize;
             bs->outerfilesize = filebytes;
 
             filebytes = 0;
-#ifdef HJ_USE_BFZ
-            if (batch->innerside.bfz)
-                filebytes = bfz_totalbytes(batch->innerside.bfz);
-#else
-	    if (batch->innerside.bufFile)
-		filebytes = BufFileTell64(batch->innerside.bufFile);
-#endif
+
+            if (batch->innerside.workfile)
+                filebytes = ExecWorkFile_Tell64(batch->innerside.workfile);
+
             Assert(filebytes >= bs->innerfilesize);
             iwrbytes += filebytes - bs->innerfilesize;
             bs->innerfilesize = filebytes;

@@ -135,6 +135,7 @@ extern char *SSLCipherSuites;
  * Assign/Show hook functions defined in this module
  */
 static const char *assign_hashagg_compress_spill_files(const char *newval, bool doit, GucSource source);
+static const char *assign_gp_workfile_compress_algorithm(const char *newval, bool doit, GucSource source);
 static const char *assign_log_destination(const char *value,
 					   bool doit, GucSource source);
 
@@ -360,6 +361,7 @@ char	   *gp_snmp_use_inform_or_trap;
  * and is kept in sync by assign_hooks.
  */
 static char *gp_hashagg_compress_spill_files_str;
+static char *gp_workfile_compress_algorithm_str;
 static char *client_min_messages_str;
 static char *Debug_persistent_print_level_str;
 static char *Debug_persistent_recovery_print_level_str;
@@ -3960,14 +3962,25 @@ static struct config_real ConfigureNamesReal[] =
 static struct config_string ConfigureNamesString[] =
 {
 	{
-		{"gp_hashagg_compress_spill_files", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Specify if spill files should be compressed."),
-			gettext_noop("Valid values are NOTHING, ZLIB, LZJB, THREADED_NOTHING, THREADED_ZLIB, THREADED_LZJB."),
-			GUC_GPDB_ADDOPT
+		{"gp_hashagg_compress_spill_files", PGC_USERSET, DEPRECATED_OPTIONS,
+			gettext_noop("Specify if spill files in HashAggregate should be compressed."),
+			gettext_noop("Valid values are \"NONE\"(or \"NOTHING\"), \"ZLIB\"."),
+			GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_hashagg_compress_spill_files_str,
-		"nothing", assign_hashagg_compress_spill_files, NULL
+		"none", assign_hashagg_compress_spill_files, NULL
 	},
+
+	{
+		{"gp_workfile_compress_algorithm", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Specify the compression algorithm that work files in the query executor use."),
+			gettext_noop("Valid values are \"NONE\", \"ZLIB\"."),
+			GUC_GPDB_ADDOPT
+		},
+		&gp_workfile_compress_algorithm_str,
+		"none", assign_gp_workfile_compress_algorithm, NULL
+	},
+
 	{
 		{"archive_command", PGC_SIGHUP, WAL_SETTINGS,
 			gettext_noop("WAL archiving command."),
@@ -6607,15 +6620,19 @@ set_config_option(const char *name, const char *value,
 	/* Print out warnings for the attempt to set the GUC in DEPRECATED_OPTIONS. */
 	if (record->group == DEPRECATED_OPTIONS)
 	{
-		elog(WARNING, "\"%s\": setting is deprecated, and may be removed"
-			 " in a future release.", name);
+		/* Only print a warning in the dispatch or utility mode */
+		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+			elog(WARNING, "\"%s\": setting is deprecated, and may be removed"
+				 " in a future release.", name);
 	}
 
 	/* Ignore attempted set if the config_group is DEFUNCT_OPTIONS.*/
 	if (record->group == DEFUNCT_OPTIONS)
 	{
-		elog(WARNING, "\"%s\": setting is ignored because it is defunct",
-			 name);
+		/* Only print a warning in the dispatch or utility mode */
+		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+			elog(WARNING, "\"%s\": setting is ignored because it is defunct",
+				 name);
 		return true;
 	}
 	
@@ -9239,11 +9256,28 @@ assign_log_statement(const char *newval, bool doit, GucSource source)
 static const char *
 assign_hashagg_compress_spill_files(const char *newval, bool doit, GucSource source)
 {
-	int i=bfz_string_to_compression(newval);
+	int i;
+	const char *val = newval;
+	
+	if (pg_strcasecmp(newval, "nothing") == 0)
+		val = "none";
+	
+	i = bfz_string_to_compression(val);
 	if (i == -1)
 		return NULL;			/* fail */
 	if (doit)
 		gp_hashagg_compress_spill_files = i;
+	return newval;				/* OK */
+}
+
+static const char *
+assign_gp_workfile_compress_algorithm(const char *newval, bool doit, GucSource source)
+{
+	int i = bfz_string_to_compression(newval);
+	if (i == -1)
+		return NULL;			/* fail */
+	if (doit)
+		gp_workfile_compress_algorithm = i;
 	return newval;				/* OK */
 }
 

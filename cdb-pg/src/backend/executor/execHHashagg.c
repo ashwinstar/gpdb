@@ -23,6 +23,7 @@
 #include "executor/tuptable.h"
 #include "executor/instrument.h"            /* Instrumentation */
 #include "executor/execHHashagg.h"
+#include "executor/execWorkfile.h"
 #include "storage/bfz.h"
 #include "utils/datum.h"
 #include "utils/memutils.h"
@@ -992,10 +993,12 @@ getSpillFile(SpillSet *set, int file_no, int *p_alloc_size)
 		spill_file->file_info->total_bytes = 0;
 		spill_file->file_info->ntuples = 0;
 		spill_file->file_info->bfz =
-			bfz_create(tmpprefix, gp_hashagg_compress_spill_files);
+			bfz_create(tmpprefix, gp_hashagg_compress_spill_files > 0 ? 
+					   gp_hashagg_compress_spill_files : gp_workfile_compress_algorithm);
 
-		elog(HHA_MSG_LVL, "HashAgg: create %d level batch file %d",
-			 set->level, file_no);
+		elog(HHA_MSG_LVL, "HashAgg: create %d level batch file %d with compression %d",
+			 set->level, file_no, gp_hashagg_compress_spill_files > 0 ?
+			 gp_hashagg_compress_spill_files : gp_workfile_compress_algorithm);
 		*p_alloc_size = BATCHFILE_METADATA;
 	}
 
