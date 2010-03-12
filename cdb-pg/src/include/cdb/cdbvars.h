@@ -27,6 +27,9 @@
 #define TUPLE_CHUNK_ALIGN	1
 #endif
 
+#ifndef PRIO_MAX
+#define PRIO_MAX 20
+#endif
 /*
  * Parameters gp_session_role and gp_role
  *
@@ -867,6 +870,9 @@ extern bool	gp_enable_tablespaces;
 
 extern bool	gp_enable_tablespace_auto_mkdir;
 
+
+/* renicing for the query processors */
+extern int gp_qp_relative_renice;
 
 /* The maximum number of times on average that the hybrid hashed aggregation
  * algorithm will plan to spill an input row to disk before including it in

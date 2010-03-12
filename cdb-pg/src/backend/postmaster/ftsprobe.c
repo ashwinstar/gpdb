@@ -923,18 +923,20 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 				break;
 		}
 
-		if (done)
-			break;
-
-		/* If connection takes more than the gp_segment_connect_timeout, we fail. */
 		elapsed_ms = gettime_elapsed_ms(startTime);
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 			write_log("Probe elapsed time: %d milliseconds", elapsed_ms);
+
+		/* If connection takes more than the gp_segment_connect_timeout, we fail. */
 		if (elapsed_ms > gp_segment_connect_timeout * 1000)
 		{
 			ret = 0;
 			done = true;
+		}
+
+		if (done)
+		{
 			break;
 		}
 	}

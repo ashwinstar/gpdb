@@ -272,6 +272,10 @@ bool		gp_setwith_alter_storage = FALSE;
 bool		gp_enable_tablespaces = FALSE;
 bool		gp_enable_tablespace_auto_mkdir = FALSE;
 
+
+/* renicing for the query processors */
+int gp_qp_relative_renice = 0;
+
 /* Disable setting of tuple hints while reading */
 bool		gp_disable_tuple_hints = false;
 int		gp_hashagg_compress_spill_files = 0;

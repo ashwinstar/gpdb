@@ -3739,6 +3739,17 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 
+	{
+		{"gp_qp_relative_renice", PGC_POSTMASTER, RESOURCES_MGM,
+		gettext_noop("Relative renice level for the query processors."),
+		NULL,
+		GUC_NOT_IN_SAMPLE
+		},
+		&gp_qp_relative_renice,
+		0,
+		0, PRIO_MAX, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL

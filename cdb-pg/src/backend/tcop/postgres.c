@@ -116,7 +116,8 @@ int			max_stack_depth = 100;
 /* wait N seconds to allow attach from a debugger */
 int			PostAuthDelay = 0;
 
-
+/* Priority of the postmaster process */
+int MyProcPriority = 0;
 
 /* ----------------
  *		private variables
@@ -222,7 +223,42 @@ static void SigHupHandler(SIGNAL_ARGS);
 static void log_disconnections(int code, Datum arg);
 static bool CheckDebugDtmActionSqlCommandTag(const char *sqlCommandTag);
 static bool CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand);
+static bool renice_current_process(int nice_level);
 
+/*
+ * Change the priority of the current process to the specified level
+ * (bigger nice_level values correspond to lower priority).
+*/
+static bool renice_current_process(int nice_level)
+{
+#ifdef WIN32
+	elog(DEBUG2, "Renicing of processes on Windows currently not supported.");
+	return false;
+#else
+	int prio_out = -1;
+	elog(DEBUG2, "Current nice level of the process: %d",
+			getpriority(PRIO_PROCESS, 0));
+	prio_out = setpriority(PRIO_PROCESS, 0, nice_level);
+	if (prio_out == -1)
+	{
+		switch (errno)
+		{
+		case EACCES:
+			elog(DEBUG1, "Could not change priority of the query process, errno: %d (%m).", errno);
+			break;
+		case ESRCH:
+			/* ignore this, the backend went away when we weren't looking */
+			break;
+		default:
+			elog(DEBUG1, "Could not change priority of the query process, errno: %d (%m).", errno);
+		}
+		return false;
+	}
+
+	elog(DEBUG2, "Reniced process to level %d", getpriority(PRIO_PROCESS, 0));
+	return true;
+#endif
+}
 
 /* ----------------------------------------------------------------
  *		routines to obtain user input
@@ -1152,6 +1188,12 @@ exec_mpp_query(const char *query_string,
 		
 		BeginCommand(commandTag, dest);
 		
+        /* Downgrade process priority */
+		if (gp_qp_relative_renice != 0)
+		{
+			renice_current_process(MyProcPriority + gp_qp_relative_renice);
+		}
+
 		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
 			CheckDebugDtmActionSqlCommandTag(commandTag))
 		{
@@ -3638,6 +3680,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 * standalone; cheap enough to do over)
 	 */
 	MyProcPid = getpid();
+	MyProcPriority = getpriority(PRIO_PROCESS, 0);
 
 	/*
 	 * Fire up essential subsystems: error and memory management
