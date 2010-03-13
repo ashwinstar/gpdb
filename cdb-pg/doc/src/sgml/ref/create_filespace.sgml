@@ -22,7 +22,7 @@ PostgreSQL documentation
 <synopsis>
 
 CREATE FILESPACE filespacename [OWNER rolename] (
-        dbid:'/filespace_path/seg_data_dir_path',
+        dbid:'/filesystem_dir/seg_datadir_name',
         ... )
 
 </synopsis>
