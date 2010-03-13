@@ -197,6 +197,7 @@ int send_alert_from_chunks(const PipeProtoChunk *chunk,
 #if USE_SNMP
 static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 {
+#define MAX_SNMP_ALERT_STRING 127
 	char           *trap = NULL;
 
 	netsnmp_session session, *ss = NULL;
@@ -213,7 +214,7 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	 */
 	bool inform = strcmp(gp_snmp_use_inform_or_trap,"inform") == 0;
 
-	char subject[128];
+	char subject[MAX_SNMP_ALERT_STRING+1];
 
 	if (gp_snmp_monitor_address == NULL || gp_snmp_monitor_address[0] == '\0')
 	{
@@ -231,12 +232,12 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	 *
 	 */
 	if (strcmp(errorData->error_severity,"LOG") == 0)
-		snprintf(subject, 127, "%s",errorData->error_message);
+		snprintf(subject, MAX_SNMP_ALERT_STRING, "%s",errorData->error_message);
 	else if (errorData->sql_state && strcmp(errorData->sql_state,"57P03") == 0)
-		snprintf(subject, 127, "%s",errorData->error_message);
+		snprintf(subject, MAX_SNMP_ALERT_STRING, "%s",errorData->error_message);
 	else
-		snprintf(subject, 127, "%s: %s",errorData->error_severity, errorData->error_message);
-	subject[127] = '\0'; /* Guarantee subject is zero terminated */
+		snprintf(subject, MAX_SNMP_ALERT_STRING, "%s: %s",errorData->error_severity, errorData->error_message);
+	subject[MAX_SNMP_ALERT_STRING] = '\0'; /* Guarantee subject is zero terminated */
 
 	/*
 	 * SNMP managers are required to handle messages up to at least 484 bytes long, but I believe most existing
@@ -254,7 +255,6 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	 */
 	init_snmp("sendalert");
 
-
 	snmp_sess_init( &session );	/* Initialize session to default values */
 	session.version = SNMP_VERSION_2c;
 	session.timeout = SNMP_DEFAULT_TIMEOUT;
@@ -262,8 +262,6 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	session.peername = gp_snmp_monitor_address;   						// we don't support SNMP_DEFAULT_PEERNAME... Should we?
 	session.community = (u_char *)gp_snmp_community;
     session.community_len = strlen((const char *)session.community);  // SNMP_DEFAULT_COMMUNITY_LEN means "public"
-
-	//session.callback = snmp_input;
 	session.callback_magic = NULL;
 
 	if (!snmp_open( &session ))
@@ -334,7 +332,12 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	                    't', trap);
 
 #if 0
-	// {iso(1) identified-organization(3) dod(6) internet(1) mgmt(2) mib-2(1) rdbmsMIB(39) rdbmsTraps(2) rdbmsStateChange(1)}
+	/*
+	 * In the future, we might want to send RDBMS-MIB::rdbmsStateChange when the system becomes unavailable or
+	 * partially unavailable.  This code, which is not currently used, shows how to build the pdu for
+	 * that trap.
+	 */
+	/* {iso(1) identified-organization(3) dod(6) internet(1) mgmt(2) mib-2(1) rdbmsMIB(39) rdbmsTraps(2) rdbmsStateChange(1)} */
 	snmp_add_var(pdu, objid_snmptrap,
 						sizeof(objid_snmptrap) / sizeof(oid),
 						'o', "1.3.6.1.2.1.39.2.1");  // rdbmsStateChange
@@ -345,7 +348,7 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 						'i', "5");  // 4 = restricted, 5 = unavailable
 #endif
 
-	// {iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprises(1) gpdbMIB(31327) gpdbTraps(5) gpdbTrapsList(0) gpdbAlert(1)}
+	/* {iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprises(1) gpdbMIB(31327) gpdbTraps(5) gpdbTrapsList(0) gpdbAlert(1)} */
 	snmp_add_var(pdu, objid_snmptrap,
 						sizeof(objid_snmptrap) / sizeof(oid),
 						'o', "1.3.6.1.4.1.31327.5.0.1");  // gpdbAlert
@@ -415,14 +418,14 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 						sizeof(objid_gpdbAlertSqlstate) / sizeof(oid),
 						's', errorData->sql_state);
 
-	char detail[128];
-	snprintf(detail, 127, "%s", errorData->error_detail);
+	char detail[MAX_SNMP_ALERT_STRING+1];
+	snprintf(detail, MAX_SNMP_ALERT_STRING, "%s", errorData->error_detail);
 	detail[127] = '\0';
 	snmp_add_var(pdu, objid_gpdbAlertDetail,
 							sizeof(objid_gpdbAlertDetail) / sizeof(oid),
 							's', detail); // SnmpAdminString = UTF-8 text
 
-	char sqlstmt[128];
+	char sqlstmt[MAX_SNMP_ALERT_STRING+1];
 	char * sqlstmtp = errorData->debug_query_string;
 	if (sqlstmtp == NULL || sqlstmtp[0] == '\0')
 		sqlstmtp = errorData->internal_query;
@@ -430,8 +433,8 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 		sqlstmtp = "";
 
 
-	snprintf(sqlstmt, 127, "%s", sqlstmtp);
-	sqlstmt[127] = '\0';
+	snprintf(sqlstmt, MAX_SNMP_ALERT_STRING, "%s", sqlstmtp);
+	sqlstmt[MAX_SNMP_ALERT_STRING] = '\0';
 	snmp_add_var(pdu, objid_gpdbAlertSqlStmt,
 							sizeof(objid_gpdbAlertSqlStmt) / sizeof(oid),
 							's', sqlstmt); // SnmpAdminString = UTF-8 text
@@ -482,9 +485,9 @@ int send_alert(const GpErrorData * errorData)
 	const smtp_status_t *status;
 
 	enum notify_flags notify = Notify_FAILURE;
-	char	   *rawstring;
-	List	   *elemlist;
-	ListCell   *l;
+	char	   *rawstring = NULL;
+	List	   *elemlist = NIL;
+	ListCell   *l = NULL;
 	int			success = 0;
 
 #endif
@@ -656,8 +659,10 @@ int send_alert(const GpErrorData * errorData)
 		 */
 
 		/*
+		 * SMTP protocol status codes (see RFCs on SMTP)
 		 * status 250 == ok
-		 * > 300 is errors
+		 * 200 to 299 are warning or information.
+		 * >= 300 are errors
 		 */
 		status = smtp_message_transfer_status(message);
 		elog(status->code < 300 ? DEBUG1 : LOG, "overall transfer status: %d %s", status->code,
@@ -694,6 +699,9 @@ pg_strnlen(const char *str, size_t maxlen)
 static void move_to_next_chunk(CSVChunkStr * chunkstr,
 		const PipeProtoChunk * saved_chunks)
 {
+	Assert(chunkstr != NULL);
+	Assert(saved_chunks != NULL);
+
 	if (chunkstr->chunk != NULL)
 		if (chunkstr->p - chunkstr->chunk->data >= chunkstr->chunk->hdr.len)
 		{
@@ -718,6 +726,9 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 	int wlen = 0;
 	int len = 0;
 	char * out = NULL;
+
+	Assert(chunkstr != NULL);
+	Assert(saved_chunks != NULL);
 
 	move_to_next_chunk(chunkstr, saved_chunks);
 
@@ -848,6 +859,7 @@ static void add_to_message(char * message, const char * newstr_in)
 static const char *
 messagebody_cb(void **buf, int *len, void *arg)
 {
+#define MAX_MESSAGE_BODY 8192
 	const GpErrorData *errorData = (GpErrorData *) arg;
 	char * message = NULL;
 	static int alreadyreturned = 0;
@@ -858,7 +870,7 @@ messagebody_cb(void **buf, int *len, void *arg)
 		if (len == NULL)
 			return NULL;
 
-		*buf = malloc(8192);
+		*buf = malloc(MAX_MESSAGE_BODY);
 		message = ((char *)(*buf));
 		message[0] = '\0';
 	}
@@ -875,7 +887,7 @@ messagebody_cb(void **buf, int *len, void *arg)
 
 	if (alreadyreturned == 0)
 	{
-		char  lineno[10];
+		char  lineno[12]; /* Big enough for any int32, so safe from overflow */
 
 		pg_itoa(errorData->fix_fields.error_fileline,lineno);
 
@@ -894,7 +906,7 @@ messagebody_cb(void **buf, int *len, void *arg)
 		/* How to identify which system is sending the alert?  Perhaps our hostname and port is good enough? */
 		strcat(message,"Alert from GPDB system ");
 		{
-			char myhostname[255];
+			char myhostname[255];	/* gethostname usually is limited to 65 chars out, but make this big to be safe */
 			char portnum[7];
 			myhostname[0] = '\0';
 
@@ -1048,6 +1060,12 @@ static void print_recipient_status(smtp_recipient_t recipient,
 	const smtp_status_t *status;
 
 	status = smtp_recipient_status(recipient);
+	/*
+	 * SMTP protocol status codes (see RFCs on SMTP)
+	 * status 250 == ok
+	 * 200 to 299 are warning or information.
+	 * >= 300 are errors
+	 */
 	if (status->code != 0 && status->code != 250)
 	{
 		elog(LOG, "recipient status: %s: %d %s", mailbox, status->code, status->text);
@@ -1279,28 +1297,25 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 	case SMTP_EV_RCPTSTATUS:
 #if 0
 	{
-			const smtp_status_t *status = NULL;
 
-			smtp_mailbox_t mbox;
-			mbox = va_arg(alist, smtp_mailbox_t);
-			smtp_recipient_t rcpt;
-			rcpt = va_arg(alist, smtp_recipient_t);
-			if (rcpt != NULL)
-				status = smtp_recipient_status (rcpt);
+		/*
+		 * Debugging code... Don't need this in production use, but useful during development.
+		 */
+		const smtp_status_t *status = NULL;
 
-			if (status && status->code != 0 && status->code != 250 && status->text != NULL)
-				elog(LOG,"SMTP server reports a  problem %d: %s", status->code, status->text);
-		}
+		smtp_mailbox_t mbox;
+		mbox = va_arg(alist, smtp_mailbox_t);
+		smtp_recipient_t rcpt;
+		rcpt = va_arg(alist, smtp_recipient_t);
+		if (rcpt != NULL)
+			status = smtp_recipient_status (rcpt);
+
+		if (status && status->code != 0 && status->code != 250 && status->text != NULL)
+			elog(LOG,"SMTP server reports a  problem %d: %s", status->code, status->text);
+	}
 #endif
 		break;
 	case SMTP_EV_MESSAGEDATA:
-		/*{
-			smtp_message_t * msg;
-			int mlen;
-			msg = va_arg(alist, smtp_message_t);
-			mlen = va_arg(alist, int);
-			elog(DEBUG3, "EV_MESSAGEDATA len = %d", mlen);
-		}*/
 		break;
 	case SMTP_EV_MESSAGESENT:
 	{

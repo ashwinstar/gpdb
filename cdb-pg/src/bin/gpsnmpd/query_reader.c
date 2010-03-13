@@ -17,7 +17,9 @@ typedef enum query_reader_state_s
 	QUERY_VALUE,
 	OID_VALUE,
 	INDEXES_VALUE,
-	MINCOL_VALUE
+    MINCOL_VALUE,
+    TYPES_VALUE,
+    TYPE_MAPPING_VALUE
 } query_reader_state_t;
 
 oid *parse_oid(const char *oid_str_orig, int *oid_len);

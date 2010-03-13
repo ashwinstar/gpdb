@@ -208,7 +208,7 @@ int rdbmsRelTable_cache_load(netsnmp_container *container)
 		config_qry
 				= PQexec(
 						dbconn,
-						"SELECT content, definedprimary, isprimary, valid from pg_catalog.gp_pgdatabase where content >= 0");
+						"SELECT content, definedprimary, isprimary, valid from pg_catalog.gp_pgdatabase where content >= 0 order by definedprimary desc, content");
 		if (PQresultStatus(config_qry) != PGRES_TUPLES_OK)
 		{
 			snmp_log(LOG_ERR, "Couldn't read gp_pgdatabase");
@@ -297,7 +297,12 @@ int rdbmsRelTable_cache_load(netsnmp_container *container)
 
 		for (i = 0; i < resultCount; i++)
 		{
+			bool definedPrimary;
 
+			if (*(char *) PQgetvalue(config_qry, i, 1) == 't')
+				definedPrimary = true;
+			else
+				definedPrimary = false;
 			/*
 			 * TODO:352:M: |   |-> set indexes in new rdbmsRelTable rowreq context.
 			 */
@@ -310,7 +315,7 @@ int rdbmsRelTable_cache_load(netsnmp_container *container)
 			}
 
 			if (MFD_SUCCESS != rdbmsRelTable_indexes_set(rowreq_ctx, 2, atoi(
-					PQgetvalue(config_qry, i, 0))))
+					PQgetvalue(config_qry, i, 0)) + definedPrimary? 0: 1000))
 			{
 				snmp_log(LOG_ERR, "error setting index while loading "
 					"rdbmsRelTable cache.\n");
@@ -327,7 +332,7 @@ int rdbmsRelTable_cache_load(netsnmp_container *container)
 				dbStatus = INTERNAL_RDBMSRELSTATE_UNAVAILABLE;
 			else if (*(char *) PQgetvalue(config_qry, i, 2) == 't')
 				dbStatus = INTERNAL_RDBMSRELSTATE_ACTIVE;
-			else if (*(char *) PQgetvalue(config_qry, i, 1) == 't')
+			else if (definedPrimary)
 				dbStatus = INTERNAL_RDBMSRELSTATE_AVAILABLE;
 			else
 				dbStatus = INTERNAL_RDBMSRELSTATE_OTHER;
@@ -366,7 +371,9 @@ int rdbmsRelTable_cache_load(netsnmp_container *container)
 			/*
 			 * insert into table container
 			 */
-			CONTAINER_INSERT(container, rowreq_ctx);
+			int rc = CONTAINER_INSERT(container, rowreq_ctx);
+			if (rc != 0)
+				snmp_log(LOG_DEBUG,"error on config insert (%d) %d\n", i, rc);
 			++count;
 		}
 		PQclear(config_qry);

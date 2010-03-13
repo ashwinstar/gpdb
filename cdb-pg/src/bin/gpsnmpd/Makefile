@@ -86,6 +86,7 @@ install: all installdirs
 	$(INSTALL_DATA) $(srcdir)/RDBMS-MIB.txt '$(DESTDIR)$(datadir)/RDBMS-MIB.txt'
 	$(INSTALL_DATA) $(srcdir)/APPLICATION-MIB.txt '$(DESTDIR)$(datadir)/APPLICATION-MIB.txt'
 	$(INSTALL_DATA) $(srcdir)/GPDB-MIB.txt '$(DESTDIR)$(datadir)/GPDB-MIB.txt'
+	$(INSTALL_DATA) $(srcdir)/gpsnmpd.sql '$(DESTDIR)$(datadir)/gpsnmpd.sql'
 
 installdirs:
 	$(mkinstalldirs) '$(DESTDIR)$(bindir)'

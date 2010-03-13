@@ -579,7 +579,10 @@ cdbdisp_relayDispatchResult(CdbDispatchResult       *dispatchResult)
         		char * detail = NULL;
         		char * hint = NULL;
         		char * context = NULL;
+        		char * internal_query = NULL;
         		int linenum = 0;
+        		int position = 0;
+        		int internal_position = 0;
         		PGresult *res = pgresult;
         		
         		 
@@ -622,8 +625,13 @@ cdbdisp_relayDispatchResult(CdbDispatchResult       *dispatchResult)
         					hint = pfield->contents;
         					break;
         				case PG_DIAG_STATEMENT_POSITION:
+        					position = atol(pfield->contents);
+        					break;
         				case PG_DIAG_INTERNAL_POSITION:
+        					internal_position = atol(pfield->contents);
+        					break;
         				case PG_DIAG_INTERNAL_QUERY:
+        					internal_query = pfield->contents;
         					break;
         				case PG_DIAG_CONTEXT:
         					context = pfield->contents;
@@ -648,11 +656,8 @@ cdbdisp_relayDispatchResult(CdbDispatchResult       *dispatchResult)
         			}
         		}
         		errstart(elevel,file,linenum,func,TEXTDOMAIN);
-#if 0
-			/* XXX Fix me! what is the test for?  It is always true */
-        		if (message)
-#endif 
-        			errmsg_internal("%s",message);
+
+        		errmsg_internal("%s",message);
         		if (sqlstate)
         		{
         			errcode(MAKE_SQLSTATE(sqlstate[0],sqlstate[1],sqlstate[2],sqlstate[3],sqlstate[4]));
@@ -665,7 +670,10 @@ cdbdisp_relayDispatchResult(CdbDispatchResult       *dispatchResult)
         			errcontext("%s",context);
         		if (func)
         			errfunction(func);
-        		//errposition(position);
+        		errposition(position);
+        		internalerrposition(internal_position);
+        		if (internal_query)
+        			internalerrquery(internal_query);
         		errfinish(0);
     }                           /* for each PGresult */
     }

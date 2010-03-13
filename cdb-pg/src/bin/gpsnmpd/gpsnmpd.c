@@ -125,8 +125,6 @@ static void init_mibs(void)
 	init_rdbmsSrvInfoTable();
 	init_rdbmsRelTable();
 #if 0
-	/*    init_pgsqlPgAggregateTable();
-	 init_pgsqlPgAmopTable(); */
 	init_custom_queries();
 #endif
 }
@@ -272,6 +270,8 @@ int main(int argc, char *argv[])
 		snmp_log(LOG_ERR,
 				"Could not set search path because of some problem with the set query\n");
 
+	PQclear(qryRes);
+
 #if 0
 	if (strncmp(search_path, "$user, public", 13) != 0)
 	{
@@ -312,6 +312,13 @@ int main(int argc, char *argv[])
 	 printf("Failure connecting to PostgreSQL. gpsnmpd will exit\n");
 	 exit(1);
 	 }*/
+
+	/*
+	 * Log that we are up and monitoring the database.  Ignore any error from this command
+	 */
+	qryRes = PQexec(dbconn, "select pg_elog('gpsnmpd is running and monitoring the system')");
+	PQclear(qryRes);
+
 
 	if (agentx_subagent)
 	{
@@ -388,6 +395,15 @@ int main(int argc, char *argv[])
 		snmp_log(LOG_INFO, strv);
 #endif
 
+	}
+
+	/*
+	 * Log that we are shutting down the agent.  Ignore any error from this command
+	 */
+	if (pgsqlState == 1)
+	{
+		qryRes = PQexec(dbconn, "select pg_elog('gpsnmpd has stopped')");
+		PQclear(qryRes);
 	}
 
 	/* shutdown */

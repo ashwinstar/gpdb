@@ -194,6 +194,8 @@ int rdbmsSrvTable_cache_load(netsnmp_container *container)
 		return MFD_ERROR;
 	}
 
+
+
 	pgsnmpd_tbl_qry
 			= PQexec(dbconn,
 					"SELECT vendor_name, product_name, contact_name FROM gpsnmpd_rdbmsSrvTable");
@@ -215,6 +217,13 @@ int rdbmsSrvTable_cache_load(netsnmp_container *container)
 		product_len = 0;
 		vendor_len = 0;
 		contact_len = 0;
+		/*
+		 * Add some default values if the table doesn't exist.
+		 */
+		vendor_name = "Greenplum Corporation";
+		vendor_len = strlen(vendor_name);
+		product_name = "GPDB";
+		product_len = strlen(product_name);
 	}
 
 	rowreq_ctx->data.rdbmsSrvVendorName_len = 255;

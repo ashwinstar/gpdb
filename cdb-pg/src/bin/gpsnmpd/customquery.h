@@ -18,6 +18,7 @@ struct pgsnmpd_query {
     int      num_indexes;
     int      min_colnum;
     u_char  *types;
+    int      typeslen;
 
     /* Number of rows and columns returned by the query */
     int rowcount;
@@ -33,7 +34,6 @@ struct pgsnmpd_query {
     netsnmp_table_array_callbacks cb;
     netsnmp_handler_registration *my_handler;
 
-    
     pgsnmpd_query *next;
 };
 

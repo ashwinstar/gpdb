@@ -221,6 +221,10 @@ int rdbmsDbTable_cache_load(netsnmp_container *container)
 		vendor_name = NULL;
 		vendor_name_len = 0;
 
+		/* If the table doesn't exist, default to this */
+		vendor_name = "Greenplum Corporation";
+		vendor_name_len = strlen(vendor_name);
+
 		/* Note that this queries gpsnmpd_rdbmsDbTable once per database. This could
 		 * be more efficient by only querying once if it can't find the table (being
 		 * sure that the table didn't exist, as opposed to simply an entry for that
