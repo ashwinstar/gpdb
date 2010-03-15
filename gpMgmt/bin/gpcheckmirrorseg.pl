@@ -81,7 +81,11 @@ my $glob_id = "";
 
 my $glob_connect;
 
+my $glob_port;
+
 my $glob_ignore;
+
+my $glob_filedump;
 
 BEGIN {
     my $man  = 0;
@@ -102,6 +106,12 @@ BEGIN {
 
     $glob_connect = $conn;
     $glob_ignore = \@ignore;
+
+	my $gp_filedump = `which gp_filedump`;
+	chomp $gp_filedump;
+
+	$glob_filedump = $gp_filedump if (defined($gp_filedump) && 
+									  length($gp_filedump))
 
 #    print "loading...\n" ;
 }
@@ -227,6 +237,766 @@ sub ignore_list
 	
 }
 
+sub get_presh_txt
+{
+	my $bigstr = <<'EOF_bigstr';
+##tiny perl script to list filename, filesize, md5 hash
+#for my $filnam (@ARGV) # xargs supplies up to 5000 args
+#{
+# my $baz = `du $filnam`;
+# my @ggg = split(/\s+/, $baz);
+# my $sz = $ggg[0];
+# print $filnam, " ", $sz, " ";
+# print `openssl dgst -md5 -hex $filnam`
+#}
+EOF_bigstr
+
+	$bigstr =~ s/^\#//gm;
+
+	return $bigstr;
+}
+
+sub get_presh2_txt
+{
+	my $bigstr = <<'EOF_bigstr';
+##tiny perl script to preprocess ao or heap files
+##by truncating to length (ao) or filtering hint bits (heap)
+#if (1)
+#{
+#	my $flag = shift @ARGV;
+#	my $sz;
+#
+#	if ($flag =~ m/ao/i)
+#	{
+#		$sz = shift @ARGV;
+#	}
+#	my $filnam = shift @ARGV;
+#
+#	if (defined($sz))
+#	{
+#		my $fh;
+#
+#		open ($fh, "<", $filnam) or die ("cannot open $filnam: $!");
+#		my $bufsiz = 32768;
+#		my $bufl;
+#
+#		if ($bufsiz > $sz)
+#		{
+#			$bufl = $sz;
+#			$sz = 0;
+#		}
+#		else
+#		{
+#			$sz -= $bufsiz;
+#			$bufl = $bufsiz;
+#		}
+#		
+#		while ($bufl)
+#		{
+#			my $buf;
+#			read($fh, $buf, $bufl);
+#			print  $buf;
+#
+#			if ($bufsiz > $sz)
+#			{
+#				$bufl = $sz;
+#				$sz = 0;
+#			}
+#			else
+#			{
+#				$sz -= $bufsiz;
+#				$bufl = $bufsiz;
+#			}
+#		}
+# 	    close $fh;
+#	} # else heap
+#	else
+#	{
+#		my $filedump = "MYFILEDUMP";
+#
+#		if (length($filedump))
+#		{
+#			`$filedump -b -M $filnam`;
+#		}
+#		else
+#		{
+#			print "no filedump - use cat\n";
+#			`cat $filnam`;
+#		}
+#		
+#	}
+#}
+EOF_bigstr
+
+	$bigstr =~ s/^\#//gm;
+
+	if (defined($glob_filedump))
+	{
+		$bigstr =~ s/MYFILEDUMP/$glob_filedump/gm;
+	}
+	else
+	{
+		$bigstr =~ s/MYFILEDUMP//gm; # empty string
+	}
+
+	return $bigstr;
+}
+
+# diff primary and mirror file lists. entries are of the form:
+#  filename filesize md5hash
+#
+# build a hash listing "extra" files (no match on primary/mirror),
+# plus diffs in file sizes and hashes
+sub dandydiff
+{
+	my ($prim, $mirr) = @_;
+
+	my ($pfh, $mfh);
+
+	open ($pfh, '<', $prim) or die ("cannot open $prim: $!");
+	open ($mfh, '<', $mirr) or die ("cannot open $mirr: $!");
+		
+	my ($plin, $mlin);
+
+	my $pstat = ($plin = <$pfh>);
+	my $mstat = ($mlin = <$mfh>);
+
+	my (@extrafiles, %sizediff, %hashdiff);
+
+	while ($pstat && $mstat)
+	{
+		$plin =~ s/\s+/ /gm;
+		$mlin =~ s/\s+/ /gm;
+
+		goto L_dandy1 if ($plin eq $mlin);
+
+		# check filenames
+		my @ppp = split(/\s+/, $plin);
+		my @mmm = split(/\s+/, $mlin);
+
+		die ("bad line: $plin\nin file: $prim") unless (scalar(@ppp));
+		die ("bad line: $mlin\nin file: $mirr") unless (scalar(@mmm));
+		die ("bad something: $plin\n$mlin")
+			unless (scalar(@ppp) == scalar(@mmm));
+
+		my $pfilnam = shift @ppp;
+		my $mfilnam = shift @mmm;
+
+		# if filenames don't match, advance the lesser (and mark it as
+		# an "extra")
+		if ($pfilnam gt $mfilnam)
+		{
+			push @extrafiles, $mfilnam;
+			$mstat = ($mlin = <$mfh>);
+			next;
+		}
+		elsif ($pfilnam lt $mfilnam)
+		{
+			push @extrafiles, $pfilnam;
+			$pstat = ($plin = <$pfh>);
+			next;
+		}
+
+		# filenames match, so check file sizes
+		my $pfilsiz = shift @ppp;
+		my $mfilsiz = shift @mmm;
+		
+		if ($pfilsiz != $mfilsiz)
+		{
+			$sizediff{$pfilnam} = [$pfilsiz, $mfilsiz];
+
+			# this is ok for ao tables -- need to check eof in db.
+			# don't bother checking the hash -- they won't match, either
+
+			goto L_dandy1;
+		}
+
+		# file sizes match, so check hash
+		my $pfilhsh = pop @ppp;
+		my $mfilhsh = pop @mmm;
+
+		if ($pfilhsh eq $mfilhsh)
+		{
+			# uh oh -- why did we diff if filenames match, file sizes
+			# match, and md5 hashes match??
+
+			die ("bad hash funkiness: $plin\n$mlin");
+		}
+
+		# either a case of hint bits for heap tables, or aborted txns for ao
+		$hashdiff{$pfilnam} = [$pfilhsh, $mfilhsh];		
+
+	  L_dandy1:
+		$pstat = ($plin = <$pfh>);
+		$mstat = ($mlin = <$mfh>);
+	}
+
+	# pstat and mstat should both hit EOF at same time, otherwise have
+	# extra files
+
+	while ($pstat)
+	{
+		# check filenames
+		my @ppp = split(/\s+/, $plin);
+
+		warn ("bad line: $plin\nin file: $prim") unless (scalar(@ppp));
+
+		my $pfilnam = shift @ppp;
+
+		push @extrafiles, $pfilnam;
+
+		$pstat = ($plin = <$pfh>);
+	}
+
+	while ($mstat)
+	{
+		# check filenames
+		my @mmm = split(/\s+/, $mlin);
+
+		warn ("bad line: $mlin\nin file: $mirr") unless (scalar(@mmm));
+
+		my $mfilnam = shift @mmm;
+
+		push @extrafiles, $mfilnam;
+
+		$mstat = ($mlin = <$mfh>);
+	}
+
+	close $pfh;
+	close $mfh;
+
+	my %bigh = (extrafiles => \@extrafiles, sizediff => \%sizediff, 
+				hashdiff => \%hashdiff);
+
+	return \%bigh;
+
+} # end dandydiff
+
+sub get_relation_info_query_txt
+{
+	my $bigstr = <<'EOF_bigstr';
+select
+pt.spcname,
+prn.tablespace_oid,
+pd.datname,
+prn.database_oid,
+pc.relname,
+pc.oid as relid,
+prn.relfilenode_oid,
+pc.relfilenode,
+pc.relisshared,
+pc.relstorage,
+pc.relkind
+from gp_persistent_relation_node as prn,
+pg_class as pc,
+pg_tablespace as pt,
+pg_database as pd
+where prn.tablespace_oid = pt.oid
+and prn.database_oid = pd.oid
+and prn.relfilenode_oid = pc.relfilenode
+and pc.relfilenode in (
+EOF_bigstr
+
+	return $bigstr;
+} # end get_relation_info_query_txt
+
+
+sub get_aoseg_func
+{
+	my ($rkey, $rnod, $dbname, $diffi, $row, $fselochsh, $bigh) = @_;
+
+	my $psql_str = "psql ";
+
+	# XXX XXX: need portnumber!!
+	$psql_str .= "-p $glob_port " . $dbname;
+
+	# select from gp_persistent_relation_node, pg_class, etc
+
+	# use "dollar-quoting" to avoid dealing with nested single-quotes:
+	# $q$p$q$ is equivalent to 'p'
+	$psql_str .= " -c \' " .
+		"select gp_segment_id,* from gp_dist_random(" . '$q$' .
+		"pg_aoseg.pg_aoseg_" . $rkey . '$q$' . ") " .
+		# filter by content/segment_id (which is identical for primary
+		# and mirror, ie not the dbid)
+		"where gp_segment_id = " . $row->{content} .
+		"\' ";
+
+#	print $psql_str, "\n";
+
+	my $tabdef = `$psql_str`;
+
+#	print $tabdef;
+
+	my $ao_seg = tablelizer($tabdef);
+
+	return $ao_seg;
+}
+
+
+# helper function for resolve_sizediff, resolve_hashdiff
+sub get_relfilenode_func
+{
+	my ($h1, $diffi, $row, $fselochsh, $bigh) = @_;
+
+	my @relfnods;
+	my %dbs;
+
+	# list of filenames for hash or size diff
+	for my $spec (keys(%{$h1}))
+	{
+		# spec like: /base/10892/139321.2'
+
+		my @foo = split(/\//, $spec);
+
+		die "bad spec: $spec" unless scalar(@foo);
+
+		my $fil			= pop @foo;
+		my $db			= pop @foo; # normally a dbid, but could be "global";
+		my $relfilenode = $fil;
+
+		$relfilenode =~ s/\.\d+$//gm; # remove the trailing ".number"...
+
+		# must be a number for dbid -- will error out later
+		warn "invalid dbid: $db" unless ($db =~ m/^((\d+)|global)$/);
+
+		$dbs{$db} = {relfilenodeh=>{}} unless exists($dbs{$db});
+
+		unless (exists($dbs{$db}->{relfilenodeh}->{$relfilenode}))
+		{
+			$dbs{$db}->{relfilenodeh}->{$relfilenode} = { files => [] } ;
+			push @relfnods, $relfilenode;
+		}
+		
+		push @{$dbs{$db}->{relfilenodeh}->{$relfilenode}->{files}}, $fil;
+	}
+
+    my $psql_str = "psql ";
+
+    $psql_str .= $glob_connect
+        if (defined($glob_connect));
+
+	# only read from "connectable" db's
+    $psql_str .= " -c \' " . 
+		"select oid, datname from pg_database where datallowconn  \' ";
+
+#	print $psql_str, "\n";
+
+    my $tabdef = `$psql_str`;
+
+	print "databases that allow connect:\n", $tabdef;
+
+	my $dbidinfo = tablelizer($tabdef);
+
+	# Note: treat all global objects as belonging to template1 (dbid=1)
+	if (exists($dbs{global}))
+	{
+		$dbs{global}->{dbname} = "template1";
+	}
+
+	# find the dbnames for the dbids
+	for my $rr (@{$dbidinfo})
+	{
+		if (exists($dbs{$rr->{oid}}))
+		{
+			$dbs{$rr->{oid}}->{dbname} = $rr->{datname};
+		}
+	}
+
+#	print Data::Dumper->Dump([%dbs]);
+
+	for my $dbkey (keys(%dbs))
+	{
+		next
+			unless (exists($dbs{$dbkey}->{dbname}));
+
+		$psql_str = "psql ";
+
+		# XXX XXX: need portnumber!!
+		$psql_str .= "-p $glob_port " . $dbs{$dbkey}->{dbname};
+
+		# select from gp_persistent_relation_node, pg_class, etc
+		$psql_str .= " -c \' ". get_relation_info_query_txt()
+			. join (", ", @relfnods) . ") \'";
+
+#		print $psql_str, "\n";
+
+		$tabdef = `$psql_str`;
+
+		print $tabdef;
+
+		my $gp_prn = tablelizer($tabdef);
+
+		for my $rr2 (@{$gp_prn})
+		{
+			if (exists($dbs{$dbkey}->{relfilenodeh}->{$rr2->{relfilenode}}))
+			{
+				my $rnod = $dbs{$dbkey}->{relfilenodeh}->{$rr2->{relfilenode}};
+
+				$rnod->{relname}	 = $rr2->{relname};
+				$rnod->{relid}		 = $rr2->{relid};
+				$rnod->{relisshared} = $rr2->{relisshared};
+				$rnod->{relstorage}	 = $rr2->{relstorage};
+				$rnod->{relkind}	 = $rr2->{relkind};
+			}
+		}
+
+	}
+
+	# sanity check
+	my $bstat = 1;
+
+	# for all db's
+	while (my ($kk, $vv) = each(%dbs))	
+	{
+		my $dbname;
+		if (exists($vv->{dbname}))
+		{
+			$dbname = $vv->{dbname};
+		}
+		else
+		{
+			$bstat = 0;
+			warn "no dbname for $kk";
+			$dbname = "dbid: $kk";
+		}
+
+		# for all relfilenodes
+		while (my ($kk2, $vv2) = each(%{$vv->{relfilenodeh}}))
+		{
+			my $rnod = $vv2;
+			my $relname;
+
+			if (exists($rnod->{relname}))
+			{
+				$relname = $rnod->{relname};
+			}
+			else
+			{
+				$bstat = 0;
+				print Data::Dumper->Dump([$vv2]),"\n";
+				warn "bad relfilenode $kk2 for $dbname -- no relname";
+				$relname = "relfilenode: $kk2";
+				next;
+			}
+
+			unless (exists($rnod->{relkind})
+					&& ($rnod->{relkind} =~ m/^(r|o|t)$/))
+			{
+				$bstat = 0;
+				print Data::Dumper->Dump([$vv2]),"\n";
+				warn "$relname for $dbname not of kind relation (r), toast (t) or aoseg (o)";
+				next;
+			}
+
+			unless (exists($rnod->{relstorage})
+					&& ($rnod->{relstorage} =~ m/^(a|h)$/))
+			{
+				$bstat = 0;
+				print Data::Dumper->Dump([$vv2]),"\n";
+				warn "$relname for $dbname storage is not ao or heap";
+			}
+			if (exists($rnod->{relstorage})
+					&& ($rnod->{relstorage} eq "a"))
+			{
+				$rnod->{aoseg} = 
+					get_aoseg_func($kk2, $rnod, $dbname,
+								   $diffi, $row, $fselochsh, $bigh);
+
+				$rnod->{aoseg_eof} = {};
+
+				# build hash by segno (ie file.segno) of eof lengths
+				for my $rr2 (@{$rnod->{aoseg}})
+				{
+					$rnod->{aoseg_eof}->{$rr2->{segno}} = $rr2->{eof};
+				}
+			}
+
+		} # end for all relfilenodes
+
+	} # end for all db's
+
+	unless ($bstat)
+	{
+		print Data::Dumper->Dump([%dbs]);
+
+		print $diffi;
+
+		print Data::Dumper->Dump([$row]);
+
+		print Data::Dumper->Dump([$bigh]);	 
+
+		die "too many failures resolving relfilenodes";
+		exit(1);
+	}
+
+	return \%dbs;
+} # end get_relfilenode_func
+
+sub resolve_sizediff
+{
+	my ($diffi, $row, $fselochsh, $bigh) = @_;
+	
+	my $dbs = 
+		get_relfilenode_func($bigh->{sizediff},
+							 $diffi, $row, $fselochsh, $bigh);
+
+	my $bstat = 1;
+
+	# for all db's
+	while (my ($kk, $vv) = each(%{$dbs}))	
+	{
+		my $dbname = $vv->{dbname};
+
+		# for all relfilenodes
+		while (my ($kk2, $vv2) = each(%{$vv->{relfilenodeh}}))
+		{
+			my $rnod = $vv2;
+			my $relname = $rnod->{relname};
+
+			unless (exists($rnod->{relstorage})
+					&& ($rnod->{relstorage} =~ m/^(a)$/))
+			{
+				$bstat = 0;
+				print Data::Dumper->Dump([$vv2]),"\n";
+				warn "$relname for $dbname storage is not ao";
+			}
+		} # end for all relfilenodes
+
+	} # end for all db's
+
+	unless ($bstat)
+	{
+		print Data::Dumper->Dump([$dbs]);
+
+		print $diffi;
+
+		print Data::Dumper->Dump([$row]);
+
+		print Data::Dumper->Dump([$bigh]);	 
+
+		die "found size differences in non-ao files";
+		exit(1);
+	}
+
+	return $dbs;
+
+} # end resolve_sizediff
+
+sub resolve_hashdiff
+{
+	my ($diffi, $row, $fselochsh, $bigh) = @_;
+
+	my $dbs = 
+		get_relfilenode_func($bigh->{hashdiff},
+							 $diffi, $row, $fselochsh, $bigh);
+
+
+	return $dbs;
+
+} # end resolve_hashdiff
+
+sub diff_again
+{
+	my ($dbs1, $dbs2,
+		$diffi, $row, $fselochsh, $bigh,
+		$primfil, $mirrfil, $primhost, $mirrhost, 
+		$primtmp, $mirrtmp,
+		$ppresh2, $mpresh2,
+		$primsh, $mirrsh) = @_;
+
+	my $bstat = 1;
+	my (@aofiles, @heapfiles);
+
+	for my $dbs ($dbs1, $dbs2)
+	{
+		while (my ($kk, $vv) = each(%{$dbs}))	
+		{
+			my $dbname = $vv->{dbname};
+
+			# for all relfilenodes
+			while (my ($kk2, $vv2) = each(%{$vv->{relfilenodeh}}))
+			{
+				my $rnod = $vv2;
+				my $relname = $rnod->{relname};
+
+				if ($rnod->{relstorage} =~ m/^(h|a)$/)
+				{
+					my @filpref;
+					
+					push @filpref, "base" unless ($kk eq "global");
+					push @filpref, $kk; # dbid
+
+					# build full path to filename
+					for my $f1 (@{$rnod->{files}})
+					{
+						my $filnam = join("/", @filpref) . "/" . $f1;
+
+						if ($rnod->{relstorage} eq "h")
+						{
+							push @heapfiles, $filnam;
+						}
+						else
+						{
+							my @foo = split(/\./, $filnam);
+
+							die "bad fil no segno" unless scalar(@foo);
+
+							my $segno = pop @foo;
+							my $eof;
+
+							die "no eof for segno" 
+								unless (exists($rnod->{aoseg_eof}->{$segno}));
+
+							$eof = $rnod->{aoseg_eof}->{$segno};
+
+							push @aofiles, {file => $filnam, eof=> $eof};
+						}
+
+					}
+
+				}
+				else 
+				{
+					my $s1 = $rnod->{relstorage};
+					warn "unknown storage type: s1 for $relname in $dbname";
+					$bstat = 0;
+				}
+
+			} # end for all relfilenodes
+			
+		} # end for all db's
+	}
+
+	my (@allfiles1, @allfiles2);
+
+	for my $fil (@aofiles)
+	{
+		my $eof = $fil->{eof};
+
+		push @allfiles1, 
+		$fil->{file} ." perl MYPRESH2 -ao  $eof  MYDIR/" . $fil->{file}
+		. " | openssl dgst -md5 -hex ";
+	}
+	for my $fil (@heapfiles)
+	{
+		push @allfiles1, 
+		$fil . " perl MYPRESH2 -heap  MYDIR/" . $fil
+		. " | openssl dgst -md5 -hex ";
+###			File::Spec->catfile($primfil, $fil->{file});
+	}
+
+#	print Data::Dumper->Dump([$dbs1]);
+#	print Data::Dumper->Dump([$dbs2]);
+
+	# need filename to sort correctly
+	@allfiles2 = sort @allfiles1;
+	@allfiles1 = ();
+
+	# remove the filename sort key, leaving command string
+	for my $fff (@allfiles2)
+	{
+		my @zzz = split(/\s/, $fff, 2);
+		shift @zzz;
+		push @allfiles1, $zzz[0];
+	}
+
+
+	my $numfiles = scalar(@allfiles1);
+	my $floc = $row->{ploc};
+
+	print "recheck $numfiles files for $floc\n";
+	print Data::Dumper->Dump(\@allfiles1);
+
+	$primsh .= "_deux";
+	$mirrsh .= "_deux";
+	$primtmp .= "_deux";
+	$mirrtmp .= "_deux";
+
+	# use openssl to construct an md5 hash for every file
+	my $cmd_template = join ("\n", @allfiles1);
+	my $cmd = $cmd_template;
+	$cmd =~ s/MYHOST/$primhost/g;
+	$cmd =~ s/MYDIR/$primfil/g;
+	$cmd =~ s/MYOUT/$primtmp/g;
+	$cmd =~ s/MYPRESH2/$ppresh2/g;
+
+	my $fh;
+	open ($fh, '>', $primsh);
+
+	print $fh $cmd, "\n";
+
+	close $fh;
+
+	$cmd = $cmd_template;
+	$cmd =~ s/MYHOST/$mirrhost/g;
+	$cmd =~ s/MYDIR/$mirrfil/g;
+	$cmd =~ s/MYOUT/$mirrtmp/g;
+	$cmd =~ s/MYPRESH2/$mpresh2/g;
+
+	open ($fh, '>', $mirrsh);
+
+	print $fh $cmd, "\n";
+
+	close $fh;
+
+	# copy the shell scripts to the segments, execute them, then
+	# copy back the results. Note that we add "1" as a suffix to
+	# the script name and output file name to handle the case
+	# where the master and segment are on the same machine (useful
+	# for testing)
+
+	my $cmd_template2 = 
+			'gpscp -h MYHOST MYSHSCRIPT =:MYSHSCRIPT1 ; ' .
+			'gpssh -h MYHOST \' sh MYSHSCRIPT1 > MYOUT  \' ; ' .
+			'gpscp -h MYHOST  =:MYOUT MYOUT1 ; ' ;
+
+	$cmd = $cmd_template2;
+	$cmd =~ s/MYHOST/$primhost/g;
+	$cmd =~ s/MYDIR/$primfil/g;
+	$cmd =~ s/MYOUT/$primtmp/g;
+	$cmd =~ s/MYSHSCRIPT/$primsh/g;
+
+	print $cmd, "\n";
+
+	system ($cmd);
+
+	$cmd = $cmd_template2;
+	$cmd =~ s/MYHOST/$mirrhost/g;
+	$cmd =~ s/MYDIR/$mirrfil/g;
+	$cmd =~ s/MYOUT/$mirrtmp/g;
+	$cmd =~ s/MYSHSCRIPT/$mirrsh/g;
+
+	print $cmd, "\n";
+
+	system ($cmd);
+
+	# add "1" suffix on master
+	$primtmp .= '1';
+	$mirrtmp .= '1';
+
+	my $diffi2 = `diff -b $primtmp $mirrtmp`;
+
+	if (length($diffi2))
+	{
+		print "raw diff:\n";
+		print $diffi;
+
+		print "\nenhanced diff:\n";
+		print $diffi2;
+		
+		print Data::Dumper->Dump([$row]);
+		
+		print Data::Dumper->Dump([$bigh]);	 
+
+		die "found differences";
+		exit(1);
+	}
+
+	print "\nenhanced diff [$floc]: no differences\n\n";
+
+} # end diff_again
+
 if (1)
 {
     my $psql_str = "psql ";
@@ -238,7 +1008,8 @@ if (1)
 	# constructing a single row for each primary/mirror pair
 
     $psql_str .= " -c \' ".
-		"select g.hostname||f.fselocation as fselocation " .
+		"select g.hostname||f.fselocation as fselocation, " .
+		"g.port " .
 		"from pg_filespace_entry f, gp_segment_configuration g " .
 		"where f.fsedbid = 1 and g.dbid = 1  \' ";
 
@@ -251,6 +1022,9 @@ if (1)
 
 	print "Hash for \"", $fseloc->[0]->{fselocation}, 
 	"\" is  ", $fselochsh, "\n\n";
+
+	# XXX XXX: port number!
+	$glob_port = $fseloc->[0]->{port};
 
 	$psql_str = "psql ";
 
@@ -305,6 +1079,9 @@ if (1)
 
 #	print Data::Dumper->Dump([$gp_seg_config]);
 
+	my $presh_txt = get_presh_txt();
+	my $presh2_txt = get_presh2_txt();
+
 	my $ignore_arr = ignore_list($glob_ignore);
 
 	my $ignore_cmd = join (" | ", @{$ignore_arr});
@@ -317,7 +1094,7 @@ if (1)
 		my @foo = File::Spec->splitdir($prim_dd);
 		my $fil = pop @foo;
 
-		print $fil, "\n";
+		print "checking directory: ", $fil, "\n";
 
 		my $primfil = $prim_dd;
 		my $mirrfil = $mirr_dd;
@@ -330,6 +1107,20 @@ if (1)
 		my $mirrtmp = File::Spec->catfile("/tmp", 
 										  $fselochsh . "_" . $fil . ".mirr");
 
+		my $ppresh = File::Spec->catfile("/tmp", 
+										  $fselochsh . "_" . $fil . 
+										 "_ppre.pl");
+		my $mpresh = File::Spec->catfile("/tmp", 
+										  $fselochsh . "_" . $fil . 
+										 "_mpre.pl");
+
+		my $ppresh2 = File::Spec->catfile("/tmp", 
+										  $fselochsh . "_" . $fil . 
+										 "_ppre2.pl");
+		my $mpresh2 = File::Spec->catfile("/tmp", 
+										  $fselochsh . "_" . $fil . 
+										 "_mpre2.pl");
+
 		my $primsh = File::Spec->catfile("/tmp", 
 										  $fselochsh . "_" . $fil . 
 										 "_prim.sh");
@@ -339,7 +1130,7 @@ if (1)
 
 		# use openssl to construct an md5 hash for every file
 		my $cmd_template = 
-			'find MYDIR -type f | xargs openssl dgst -md5 -hex  ' .
+			'find MYDIR -type f | xargs perl MYPRESH  ' .
 			'| ' . $ignore_cmd . " " .
 			'| sort  ' .
 			'| perl -i -ple \'s|MYDIR||gm \' ' . 
@@ -350,10 +1141,23 @@ if (1)
 		$cmd =~ s/MYHOST/$primhost/g;
 		$cmd =~ s/MYDIR/$primfil/g;
 		$cmd =~ s/MYOUT/$primtmp/g;
+		$cmd =~ s/MYPRESH/$ppresh/g;
 
 		# build local shell scripts for the commands
 
 		my $fh;
+
+		open ($fh, '>', $ppresh);
+		
+		print $fh $presh_txt;
+
+		close $fh;
+
+		open ($fh, '>', $ppresh2);
+		
+		print $fh $presh2_txt;
+
+		close $fh;
 
 		open ($fh, '>', $primsh);
 
@@ -365,6 +1169,19 @@ if (1)
 		$cmd =~ s/MYHOST/$mirrhost/g;
 		$cmd =~ s/MYDIR/$mirrfil/g;
 		$cmd =~ s/MYOUT/$mirrtmp/g;
+		$cmd =~ s/MYPRESH/$mpresh/g;
+
+		open ($fh, '>', $mpresh);
+		
+		print $fh $presh_txt;
+
+		close $fh;
+
+		open ($fh, '>', $mpresh2);
+		
+		print $fh $presh2_txt;
+
+		close $fh;
 
 		open ($fh, '>', $mirrsh);
 
@@ -411,11 +1228,42 @@ if (1)
 
 		if (length($diffi))
 		{
-			print $diffi;
+			my $bigh = dandydiff($primtmp, $mirrtmp);
 
-			print Data::Dumper->Dump([$row]);
-			die "found differences";
-			exit(1)
+			if (exists($bigh->{extrafile})
+				&& scalar(@{($bigh->{extrafile})}))
+			{
+				print $diffi;
+
+				print Data::Dumper->Dump([$row]);
+
+				print Data::Dumper->Dump([$bigh]);	 
+
+				die "found extra files in data directory";
+				exit (1);
+			}
+
+			print "\n\nraw diff mismatch: will diff again using storage-specific techniques\n\n";
+
+			my ($dbs1, $dbs2);
+
+			if (exists($bigh->{sizediff}) 
+				&& scalar(keys(%{($bigh->{sizediff})})))
+			{
+				$dbs1 = resolve_sizediff($diffi, $row, $fselochsh, $bigh);
+			}
+			if (exists($bigh->{hashdiff})
+				&& scalar(keys(%{($bigh->{hashdiff})})))
+			{
+				$dbs2 = resolve_hashdiff($diffi, $row, $fselochsh, $bigh);
+			}
+
+			diff_again($dbs1, $dbs2,
+					   $diffi, $row, $fselochsh, $bigh,
+					   $primfil, $mirrfil, $primhost, $mirrhost, 
+					   $primtmp, $mirrtmp, 
+					   $ppresh2, $mpresh2,
+					   $primsh, $mirrsh);
 		}
 
 	}
