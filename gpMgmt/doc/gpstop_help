@@ -9,7 +9,7 @@ SYNOPSIS
 
 gpstop [-d master_data_directory] [-B parallel_processes] 
        [-M smart | fast | immediate] [-r] [-y] [-a] 
-       [-l logfile_directory] [-C] [-v | -q]
+       [-l logfile_directory] [-v | -q]
 
 gpstop -m [-d master_data_directory] [-y] [-l logfile_directory] 
        [-C] [-v | -q]
@@ -61,13 +61,6 @@ Do not prompt the user for confirmation.
 The number of segments to stop in parallel. If not specified, the 
 utility will start up to 60 parallel processes depending on how 
 many segment instances it needs to stop.
-
-
--C (cancel active connections)
-
-If the database has any active client connections, terminate 
-those sessions before shutting down. The default is to not allow 
-shutdown if users are connected to the database.
 
 
 -d master_data_directory
