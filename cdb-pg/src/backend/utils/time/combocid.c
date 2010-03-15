@@ -295,6 +295,16 @@ GetRealCmin(CommandId combocid)
 {
 	if (combocid >= usedComboCids)
 	{
+		if (QEDtxContextInfo.cursorContext)
+		{
+			/*
+			 * This cursor was created before the combocid was
+			 * available: this tuple was deleted/updated after we were
+			 * started, so we need to return a cid in the past.
+			 */
+			return (CommandId)0;
+		}
+
 		if (Debug_print_combocid_detail)
 			combocid_limit_debug("cmin");
 
@@ -309,9 +319,18 @@ GetRealCmin(CommandId combocid)
 static CommandId
 GetRealCmax(CommandId combocid)
 {
-
 	if (combocid >= usedComboCids)
 	{
+		if (QEDtxContextInfo.cursorContext)
+		{
+			/*
+			 * This cursor was created before the combocid was
+			 * available: this tuple was deleted/updated after we were
+			 * started, so we need to return a cid in the future.
+			 */
+			return (CommandId)-1; /* CommandId is unsigned, (unsigned int)-1 is "max-command-id" */
+		}
+
 		if (Debug_print_combocid_detail)
 			combocid_limit_debug("cmax");
 

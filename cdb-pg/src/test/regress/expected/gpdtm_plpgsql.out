@@ -252,6 +252,7 @@ select a.c1 from t1234 a, t3456 b where a.c1 = b.c1 order by b.c1;
 create language plpgsql;
 NOTICE:  language "plpgsql" already exists, skipping
 drop table if exists foo;
+NOTICE:  table "foo" does not exist, skipping
 drop table if exists bar;
 NOTICE:  table "bar" does not exist, skipping
 drop table if exists baz;
@@ -413,3 +414,50 @@ select * from baz order by 1;
 (2 rows)
 
 abort;
+DROP TABLE foo;
+BEGIN;
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+CREATE TABLE foo (a int) distributed randomly;
+INSERT INTO foo VALUES (1);
+DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM foo;
+UPDATE foo SET a = 2;
+FETCH ALL FROM c1;
+ a 
+---
+ 1
+(1 row)
+
+COMMIT;
+DROP TABLE foo;
+BEGIN;
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+CREATE TABLE foo (a int) distributed randomly;
+INSERT INTO foo VALUES (1);
+UPDATE foo SET a = 2;
+DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM foo;
+UPDATE foo SET a = 3;
+FETCH ALL FROM c1;
+ a 
+---
+ 2
+(1 row)
+
+COMMIT;
+DROP TABLE foo;
+BEGIN;
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+CREATE TABLE foo (a int) distributed randomly;
+INSERT INTO foo VALUES (1);
+UPDATE foo SET a = 2;
+DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM foo;
+DELETE FROM foo;
+INSERT INTO foo VALUES (1);
+UPDATE foo SET a = 3;
+INSERT INTO foo VALUES (1);
+FETCH ALL FROM c1;
+ a 
+---
+ 2
+(1 row)
+
+COMMIT;
