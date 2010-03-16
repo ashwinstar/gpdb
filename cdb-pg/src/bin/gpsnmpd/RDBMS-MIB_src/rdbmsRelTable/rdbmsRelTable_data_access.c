@@ -314,8 +314,16 @@ int rdbmsRelTable_cache_load(netsnmp_container *container)
 				break;
 			}
 
-			if (MFD_SUCCESS != rdbmsRelTable_indexes_set(rowreq_ctx, 2, atoi(
-					PQgetvalue(config_qry, i, 0)) + definedPrimary? 0: 1000))
+			//snmp_log(LOG_DEBUG,"\n content %s\n",PQgetvalue(config_qry, i , 0));
+
+			int applIndex = atoi(PQgetvalue(config_qry, i, 0));
+
+			if (!definedPrimary)
+				applIndex += 1000;
+
+			snmp_log(LOG_DEBUG,"applIndex for %d is %d\n", i, applIndex);
+
+			if (MFD_SUCCESS != rdbmsRelTable_indexes_set(rowreq_ctx, 2, applIndex))
 			{
 				snmp_log(LOG_ERR, "error setting index while loading "
 					"rdbmsRelTable cache.\n");
