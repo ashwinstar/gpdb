@@ -243,9 +243,9 @@ sub get_presh_txt
 ##tiny perl script to list filename, filesize, md5 hash
 #for my $filnam (@ARGV) # xargs supplies up to 5000 args
 #{
-# my $baz = `du $filnam`;
-# my @ggg = split(/\s+/, $baz);
-# my $sz = $ggg[0];
+#  my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,
+#      $atime,$mtime,$ctime,$blksize,$blocks) = stat($filnam);
+# my $sz = $size;
 # print $filnam, " ", $sz, " ";
 # print `openssl dgst -md5 -hex $filnam`
 #}
