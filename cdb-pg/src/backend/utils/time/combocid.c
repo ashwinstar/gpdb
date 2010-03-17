@@ -112,7 +112,11 @@ HeapTupleHeaderGetCmax(HeapTupleHeader tup)
 
 	/* We do not store cmax when locking a tuple */
 	Assert(!(tup->t_infomask & (HEAP_MOVED | HEAP_IS_LOCKED)));
-	Assert(TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(tup)));
+
+	/*
+	 * MPP-8317: cursors can't always *tell* that this is the current transaction.
+	 */
+	Assert(QEDtxContextInfo.cursorContext || TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(tup)));
 
 	if (tup->t_infomask & HEAP_COMBOCID)
 		return GetRealCmax(cid);

@@ -1929,7 +1929,10 @@ HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple, Snapshot sn
 				return true;
 			}
 
-			Assert(TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(tuple)));
+			/*
+			 * MPP-8317: cursors can't always *tell* that this is the current transaction.
+			 */
+			Assert(QEDtxContextInfo.cursorContext || TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(tuple)));
 
 			if (HeapTupleHeaderGetCmax(tuple) >= snapshot->curcid)
 			{
