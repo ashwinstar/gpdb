@@ -2306,10 +2306,12 @@ StartTransaction(void)
 			 * (microseconds), interconnect timeout is in seconds.
 			 * Start with 1 millisecond.
 			 */
+			uint64		segmate_timeout_us;
 			uint64		sleep_per_check_us = 1 * 1000;
-			uint64		segmate_timeout_us = (3 * (uint64)interconnect_setup_timeout * 1000 * 1000) / 4;
 			uint64		total_sleep_time_us = 0;
 			uint64		warning_sleep_time_us = 0;
+
+			segmate_timeout_us = (3 * (uint64)Max(interconnect_setup_timeout, 1) * 1000 * 1000) / 4;
 
 			/*
 			 * MPP: we're a QE Reader.

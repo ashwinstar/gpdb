@@ -633,18 +633,18 @@ SetupSequenceServer(const char *host, int port)
 {
 	if (host != NULL)
 	{
-		MemoryContext oldcxt;
-
 		Assert(savedSeqServerHost == NULL);
 		
 		/*
-		 * Make a copy in the MessageContext, since this needs to
-		 * live outside the per-portal context.
+		 * Don't use MemoryContexts -- they make error handling
+		 * difficult here.
 		 */
-		Assert(MessageContext);
-		oldcxt = MemoryContextSwitchTo(MessageContext);
-		savedSeqServerHost = pstrdup(host);
-		MemoryContextSwitchTo(oldcxt);
+		savedSeqServerHost = strdup(host);
+
+		if (savedSeqServerHost)
+		{
+			elog(ERROR, "SetupSequenceServer: memory allocation failed.");
+		}
 		
 		Assert(port != -1);
 		savedSeqServerPort = port;
@@ -661,6 +661,7 @@ TeardownSequenceServer(void)
 	{
 	    if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG3, "tearing down seqserver connection");
+
 		shutdown(savedSeqServerFd, SHUT_RDWR);
 		closesocket(savedSeqServerFd);
 		savedSeqServerFd = -1;
@@ -668,7 +669,7 @@ TeardownSequenceServer(void)
 
 	if (savedSeqServerHost != NULL)
 	{
-		pfree(savedSeqServerHost);
+		free(savedSeqServerHost);
 		savedSeqServerHost = NULL;
 		savedSeqServerPort = -1;
 	}
