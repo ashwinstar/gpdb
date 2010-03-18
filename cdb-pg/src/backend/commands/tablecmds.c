@@ -91,6 +91,7 @@
 #include "utils/numeric.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "utils/tqual.h"
 #include "utils/uri.h"
 #include "mb/pg_wchar.h"
 
@@ -11596,6 +11597,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
+		volatile Snapshot saveSnapshot = NULL;
 		if (change_policy)
 		{
 			policy = palloc(sizeof(GpPolicy) +
@@ -11733,11 +11735,32 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		queryDesc = build_ctas_with_dist(rel, ldistro, newopts, &tmprv,
 										 &hidden_types);
 
-		/* Step (c) - run on all nodes */
-		ExecutorStart(queryDesc, 0);
-		ExecutorRun(queryDesc, ForwardScanDirection, 0L);
-		ExecutorEnd(queryDesc);
-		FreeQueryDesc(queryDesc);
+		PG_TRY();
+		{
+			/* 
+			 * We need to update our snapshot here to make sure we see all
+			 * committed work. We have an exclusive lock on the table so no one
+			 * will be able to access the table now.
+			 */
+			saveSnapshot = ActiveSnapshot;
+			ActiveSnapshot = CopySnapshot(GetLatestSnapshot());
+
+	
+			/* Step (c) - run on all nodes */
+			ExecutorStart(queryDesc, 0);
+			ExecutorRun(queryDesc, ForwardScanDirection, 0L);
+			ExecutorEnd(queryDesc);
+			FreeQueryDesc(queryDesc);
+
+			/* Restore the old snapshot */
+			ActiveSnapshot = saveSnapshot;
+		}
+		PG_CATCH();
+		{
+			ActiveSnapshot = saveSnapshot;
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
 
 		CommandCounterIncrement(); /* see the effects of the command */
 
