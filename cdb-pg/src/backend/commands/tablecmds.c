@@ -19622,19 +19622,46 @@ partrule_walker(Node *node, void *context)
 	return expression_tree_walker(node, partrule_walker, p);
 }
 
-/* ALTER TABLE ... SPLIT PARTITION */
-static void
-ATPExecPartSplit(Relation rel,
-                 AlterPartitionCmd *pc)
+/* 
+ * Build a basic ResultRelInfo for executing split. We only need
+ * the relation descriptor and index information.
+ */
+static ResultRelInfo *
+make_split_resultrel(Relation rel)
 {
-	Relation temprel = NULL;
-	Relation intoa = NULL;
-	Relation intob = NULL;
-	EState *estate;
-	TupleTableSlot *tts;
-	Oid temprelid;
-	ExprState *achk = NULL;
-	ExprState *bchk = NULL;
+	ResultRelInfo *rri;
+
+	rri = palloc0(sizeof(ResultRelInfo));
+	rri->type = T_ResultRelInfo;
+	rri->ri_RelationDesc = rel;
+	rri->ri_NumIndices = 0;
+
+	ExecOpenIndices(rri);
+	return rri;
+}
+
+/*
+ * Close indexes and free memory
+ */
+static void
+destroy_split_resultrel(ResultRelInfo *rri)
+{
+	ExecCloseIndices(rri);
+
+	/* 
+	 * Don't do anything with the relation descriptor, that's our caller's job
+	 */
+	pfree(rri);
+
+}
+
+static void
+split_rows(Relation intoa, Relation intob, Relation temprel)
+{
+	ResultRelInfo *rria = make_split_resultrel(intoa);
+	ResultRelInfo *rrib = make_split_resultrel(intob);
+	EState *estate = CreateExecutorState();
+	TupleTableSlot *tts = MakeSingleTupleTableSlot(temprel->rd_att);
 	HeapScanDesc heapscan = NULL;
 	AppendOnlyScanDesc aoscan = NULL;
     AOCSScanDesc aocsscan = NULL;
@@ -19644,6 +19671,212 @@ ATPExecPartSplit(Relation rel,
 	AppendOnlyInsertDesc aoinsertdesc_b = NULL;
     AOCSInsertDesc aocsinsertdesc_a = NULL;
     AOCSInsertDesc aocsinsertdesc_b = NULL;
+	ExprState *achk = NULL;
+	ExprState *bchk = NULL;
+
+	/* constr might not be defined if this is a default partition */
+	if (intoa->rd_att->constr && intoa->rd_att->constr->num_check)
+	{
+		Node *bin = (Node *)make_ands_implicit(
+				(Expr *)stringToNode(intoa->rd_att->constr->check[0].ccbin));
+		achk = ExecPrepareExpr((Expr *)bin, estate);
+	}
+
+	if (intob->rd_att->constr && intob->rd_att->constr->num_check)
+	{
+		Node *bin = (Node *)make_ands_implicit(
+				(Expr *)stringToNode(intob->rd_att->constr->check[0].ccbin));
+		bchk = ExecPrepareExpr((Expr *)bin, estate);
+	}
+
+	/* be careful about AO vs. normal heap tables */
+	if (RelationIsHeap(temprel))
+		heapscan = heap_beginscan(temprel, SnapshotNow, 0, NULL);
+	else if (RelationIsAoRows(temprel))
+		aoscan = appendonly_beginscan(temprel, SnapshotNow, 0, NULL);
+	else if (RelationIsAoCols(temprel))
+	{
+		int nvp = temprel->rd_att->natts;
+		int i;
+
+		aocsproj = (bool *) palloc(sizeof(bool) * nvp);
+		for(i=0; i<nvp; ++i)
+			aocsproj[i] = true;
+
+		aocsscan = aocs_beginscan(temprel, SnapshotNow, 0, NULL, aocsproj);
+	}
+	oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+
+	while (true)
+	{
+		ExprContext *econtext = GetPerTupleExprContext(estate);
+		bool targetIsA;
+		Relation targetRelation;
+		AppendOnlyInsertDesc *targetAODescPtr;
+		AOCSInsertDesc *targetAOCSDescPtr;
+		ItemPointer tid;
+		ResultRelInfo *currri = NULL;
+
+		/* read next tuple from temprel */
+		if (RelationIsHeap(temprel))
+		{
+			HeapTuple tuple;
+
+			tuple = heap_getnext(heapscan, ForwardScanDirection);
+			if (!HeapTupleIsValid(tuple))
+				break;
+
+			tuple = heap_copytuple(tuple);
+			ExecStoreHeapTuple(tuple, tts, InvalidBuffer, false);
+		}
+		else if (RelationIsAoRows(temprel))
+		{
+			MemTuple mtuple;
+
+			mtuple = appendonly_getnext(aoscan, ForwardScanDirection, NULL);
+			if (!PointerIsValid(mtuple))
+				break;
+
+			ExecStoreMemTuple(mtuple, tts, false);
+		}
+		else if (RelationIsAoCols(temprel))
+		{
+			aocs_getnext(aocsscan, ForwardScanDirection, tts);
+			if (TupIsNull(tts))
+				break;
+		}
+
+		econtext->ecxt_scantuple = tts;
+
+		/* determine if we are inserting into a or b */
+		if (achk)
+		{
+			targetIsA = ExecQual((List *)achk, econtext, false);
+		}
+		else
+		{
+			Assert(PointerIsValid(bchk));
+
+			targetIsA = ! ExecQual((List *)bchk, econtext, false);
+		}
+
+		/* load variables for the specific target */
+		if (targetIsA)
+		{
+			targetRelation = intoa;
+			targetAODescPtr = &aoinsertdesc_a;
+			targetAOCSDescPtr = &aocsinsertdesc_a;
+			currri = rria;
+		}
+		else
+		{
+			targetRelation = intob;
+			targetAODescPtr = &aoinsertdesc_b;
+			targetAOCSDescPtr = &aocsinsertdesc_b;
+			currri = rrib;
+		}
+
+		/* insert into the target table */
+
+		if (RelationIsAoRows(targetRelation))
+		{
+			MemTuple mtuple = ExecFetchSlotMemTuple(tts, false);
+			Oid 		tupleOid;
+			AOTupleId	aoTupleId;
+
+			if (!(*targetAODescPtr))
+			{
+				MemoryContextSwitchTo(oldCxt);
+				*targetAODescPtr = appendonly_insert_init(targetRelation,
+														  RESERVED_SEGNO);
+				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+			}
+
+			appendonly_insert(*targetAODescPtr, mtuple, &tupleOid, &aoTupleId);
+
+			/* cache TID for later updating of indexes */
+			tid = (ItemPointer)&aoTupleId;
+		}
+		else if (RelationIsAoCols(targetRelation))
+		{
+			AOTupleId	aoTupleId;
+
+			if (!*targetAOCSDescPtr)
+			{
+				MemoryContextSwitchTo(oldCxt);
+				*targetAOCSDescPtr = aocs_insert_init(targetRelation,
+													  RESERVED_SEGNO);
+				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+			}
+
+			aocs_insert(*targetAOCSDescPtr, tts);
+			aoTupleId = *((AOTupleId*)slot_get_ctid(tts));
+
+			/* cache TID for later updating of indexes */
+			tid = (ItemPointer)&aoTupleId;
+		}
+		else
+		{
+			HeapTuple tuple;
+
+			/* Better be a heap table ... */
+			Assert(RelationIsHeap(targetRelation));
+
+			/* guaranteed to be a copy, see above */
+			tuple = ExecFetchSlotHeapTuple(tts);
+			simple_heap_insert(targetRelation, tuple);
+
+			/* cache TID for later updating of indexes */
+			tid = &(((HeapTuple)tuple)->t_self);
+			setLastTid(tid);
+		}
+
+		if (currri->ri_NumIndices > 0)
+		{
+			estate->es_result_relation_info = currri;
+			ExecInsertIndexTuples(tts, tid, estate, false);
+			estate->es_result_relation_info = NULL;
+		}
+
+		/* done, clean up context for this pass */
+		ResetExprContext(econtext);
+	}
+
+	if (aoinsertdesc_a)
+		appendonly_insert_finish(aoinsertdesc_a);
+	if (aoinsertdesc_b)
+		appendonly_insert_finish(aoinsertdesc_b);
+	if (aocsinsertdesc_a)
+		aocs_insert_finish(aocsinsertdesc_a);
+	if (aocsinsertdesc_b)
+		aocs_insert_finish(aocsinsertdesc_b);
+
+	MemoryContextSwitchTo(oldCxt);
+	ExecDropSingleTupleTableSlot(tts);
+
+	if (RelationIsHeap(temprel))
+		heap_endscan(heapscan);
+	else if (RelationIsAoRows(temprel))
+		appendonly_endscan(aoscan);
+	else if (RelationIsAoCols(temprel))
+	{
+		pfree(aocsproj);
+		aocs_endscan(aocsscan);
+	}
+
+	destroy_split_resultrel(rria);
+	destroy_split_resultrel(rrib);
+}
+
+/* ALTER TABLE ... SPLIT PARTITION */
+static void
+ATPExecPartSplit(Relation rel,
+                 AlterPartitionCmd *pc)
+{
+	Relation temprel = NULL;
+	Relation intoa = NULL;
+	Relation intob = NULL;
+	Oid temprelid;
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -20438,169 +20671,7 @@ ATPExecPartSplit(Relation rel,
 	 * To do this, we use the CHECK constraints we just created on the
 	 * tables via ADD PARTITION.
 	 */
-	estate = CreateExecutorState();
-	tts = MakeSingleTupleTableSlot(temprel->rd_att);
-
-	/* constr might not be defined if this is a default partition */
-	if (intoa->rd_att->constr && intoa->rd_att->constr->num_check)
-	{
-		Node *bin = (Node *)make_ands_implicit(
-				(Expr *)stringToNode(intoa->rd_att->constr->check[0].ccbin));
-		achk = ExecPrepareExpr((Expr *)bin, estate);
-	}
-
-	if (intob->rd_att->constr && intob->rd_att->constr->num_check)
-	{
-		Node *bin = (Node *)make_ands_implicit(
-				(Expr *)stringToNode(intob->rd_att->constr->check[0].ccbin));
-		bchk = ExecPrepareExpr((Expr *)bin, estate);
-	}
-
-	/* be careful about AO vs. normal heap tables */
-	if (RelationIsHeap(temprel))
-		heapscan = heap_beginscan(temprel, SnapshotNow, 0, NULL);
-	else if (RelationIsAoRows(temprel))
-		aoscan = appendonly_beginscan(temprel, SnapshotNow, 0, NULL);
-	else if (RelationIsAoCols(temprel))
-	{
-        int nvp = temprel->rd_att->natts;
-        int i;
-
-        aocsproj = (bool *) palloc(sizeof(bool) * nvp);
-        for(i=0; i<nvp; ++i)
-            aocsproj[i] = true;
-
-        aocsscan = aocs_beginscan(temprel, SnapshotNow, 0, NULL, aocsproj);
-	}
-
-	oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-
-	while (true)
-	{
-		ExprContext *econtext = GetPerTupleExprContext(estate);
-		bool targetIsA;
-		Relation targetRelation;
-		AppendOnlyInsertDesc * targetAODescPtr;
-		AOCSInsertDesc * targetAOCSDescPtr;
-
-		/* read next tuple from temprel */
-		if (RelationIsHeap(temprel))
-		{
-			HeapTuple tuple;
-
-			tuple = heap_getnext(heapscan, ForwardScanDirection);
-			if (!HeapTupleIsValid(tuple))
-				break;
-
-			ExecStoreHeapTuple(tuple, tts, InvalidBuffer, false);
-		}
-		else if (RelationIsAoRows(temprel))
-		{
-			MemTuple mtuple;
-
-			mtuple = appendonly_getnext(aoscan, ForwardScanDirection, NULL);
-			if (!PointerIsValid(mtuple))
-				break;
-
-			ExecStoreMemTuple(mtuple, tts, false);
-		}
-		else if (RelationIsAoCols(temprel))
-		{
-            aocs_getnext(aocsscan, ForwardScanDirection, tts);
-            if (TupIsNull(tts))
-				break;
-		}
-
-		econtext->ecxt_scantuple = tts;
-
-		/* determine if we are inserting into a or b */
-		if (achk)
-		{
-			targetIsA = ExecQual((List *)achk, econtext, false);
-		}
-		else
-		{
-			Assert(PointerIsValid(bchk));
-
-			targetIsA = ! ExecQual((List *)bchk, econtext, false);
-		}
-
-		/* load variables for the specific target */
-		if (targetIsA)
-		{
-			targetRelation = intoa;
-			targetAODescPtr = &aoinsertdesc_a;
-			targetAOCSDescPtr = &aocsinsertdesc_a;
-		}
-		else
-		{
-			targetRelation = intob;
-			targetAODescPtr = &aoinsertdesc_b;
-			targetAOCSDescPtr = &aocsinsertdesc_b;
-		}
-
-		/* insert into target */
-		if (RelationIsAoRows(targetRelation))
-		{
-			MemTuple mtuple = ExecFetchSlotMemTuple(tts, false);
-			Oid 		tupleOid;
-			AOTupleId	aoTupleId;
-
-			if (!(*targetAODescPtr))
-			{
-				MemoryContextSwitchTo(oldCxt);
-				*targetAODescPtr = appendonly_insert_init(targetRelation, RESERVED_SEGNO);
-				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-			}
-
-			appendonly_insert(*targetAODescPtr, mtuple, &tupleOid, &aoTupleId);
-		}
-		else if (RelationIsAoCols(targetRelation))
-		{
-			if (! *targetAOCSDescPtr)
-			{
-				MemoryContextSwitchTo(oldCxt);
-				*targetAOCSDescPtr = aocs_insert_init(targetRelation, RESERVED_SEGNO);
-				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-			}
-
-			aocs_insert(*targetAOCSDescPtr, tts);
-		}
-		else
-		{
-			HeapTuple tuple;
-			Assert(RelationIsHeap(targetRelation));
-
-			tuple = ExecFetchSlotHeapTuple(tts);
-			tuple = heap_copytuple(tuple);
-			simple_heap_insert(targetRelation, tuple);
-		}
-
-		/* done, clean up context for this pass */
-		ResetExprContext(econtext);
-	}
-
-	if (aoinsertdesc_a)
-		appendonly_insert_finish(aoinsertdesc_a);
-	if (aoinsertdesc_b)
-		appendonly_insert_finish(aoinsertdesc_b);
-	if (aocsinsertdesc_a)
-		aocs_insert_finish(aocsinsertdesc_a);
-	if (aocsinsertdesc_b)
-		aocs_insert_finish(aocsinsertdesc_b);
-
-	MemoryContextSwitchTo(oldCxt);
-	ExecDropSingleTupleTableSlot(tts);
-
-	if (RelationIsHeap(temprel))
-		heap_endscan(heapscan);
-	else if (RelationIsAoRows(temprel))
-		appendonly_endscan(aoscan);
-	else if (RelationIsAoCols(temprel))
-    {
-        pfree(aocsproj);
-        aocs_endscan(aocsscan);
-    }
+	split_rows(intoa, intob, temprel);
 
 	elog(DEBUG5, "dropping temp rel %s", RelationGetRelationName(temprel));
 	temprelid = RelationGetRelid(temprel);
