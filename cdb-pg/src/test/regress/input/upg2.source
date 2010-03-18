@@ -97,7 +97,7 @@ create table public.pg_tablespace(spcname name not null,
  								  ) with oids;
 
 -- These tables we only create so that the REINDEX statements wont error
-create table public.gp_configuration as select * from pg_catalog.gp_configuration;
+create table public.gp_configuration(like pg_catalog.gp_configuration);
 create table public.gp_configuration_history(like pg_catalog.gp_configuration_history);
 create table public.gp_db_interfaces(like pg_catalog.gp_db_interfaces);
 create table public.gp_interfaces(like pg_catalog.gp_interfaces);
@@ -259,6 +259,14 @@ COPY public.pg_cast_v33
   from '@abs_srcdir@/data/pg_cast33.data' with oids csv header;
 COPY public.pg_opclass_v33
   from '@abs_srcdir@/data/pg_opclass33.data' with oids csv header;
+
+-- create a 3.3 version of gp_configuration based on gp_segment_configuration
+insert into public.gp_configuration (
+  SELECT content, preferred_role='p' as definedprimary, dbid, role='p' as isprimary,
+         status='u' as valid, address as hostname, port, fselocation as datadir 
+  FROM pg_catalog.gp_segment_configuration join pg_filespace_entry ON (dbid = fsedbid)
+  WHERE fsefsoid = 3052 -- pg_system filespace
+);
 
 -- the 3.3 pg_partitions
 create view public.pg_partitions_v33 as
