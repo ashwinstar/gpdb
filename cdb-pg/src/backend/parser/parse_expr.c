@@ -1872,9 +1872,68 @@ exprType(Node *expr)
 			break;
 		case T_FuncExpr:
 			type = ((FuncExpr *) expr)->funcresulttype;
+
+			/*
+			 * GPDB:  Special code to look for built-in functions that return TEXT, but
+			 * really should return a type based on the argument's type if the argument
+			 * is VARCHAR(n) or CHAR(n).
+			 * For example, trim() of a CHAR or VARCHAR should return VARCHAR.
+			 */
+			Oid funcOid = ((FuncExpr *) expr)->funcid;
+
+			/* trim() of a varchar or bpchar should result in varchar */
+			if (funcOid == 401 /* bpchar to text (rtrim) */ ||
+				funcOid == 875 /* ltrim (specifying char) */ ||
+				funcOid == 876 /* rtrim (specifying char) */ ||
+				funcOid == 881 /* ltrim */ ||
+				funcOid == 882 /* rtrim */ ||
+				funcOid == 884 /* btrim (specifying char) */ ||
+				funcOid == 885 /* btrim */ ||
+				funcOid == 870 /* lower */ ||
+				funcOid == 871 /* upper */ ||
+				funcOid == 872 /* initcap */ ||
+				funcOid == 2244 /* max(bpchar) */ ||
+				funcOid == 2245 /* min(bpchar) */ ||
+				funcOid == 2129 /* max(text) */ ||
+				funcOid == 2145 /* min(text) */ ||
+				funcOid == 877 /* substr(x,a,b) */ ||
+				funcOid == 883 /* substr(x,b) */ ||
+				funcOid == 936 /* substring(x from a for b) */ ||
+				funcOid == 937 /* substring(x for b) */ ||
+				funcOid == 2088 /* split_part */ )
+			{
+				List * args = ((FuncExpr *) expr)->args;
+				Node * arg1 = linitial(args);
+
+				Oid undertype = exprType(arg1);
+				if (undertype == VARCHAROID)
+					type = VARCHAROID;
+
+				/* lower and upper don't need to change from BP CHAR to VARCHAR */
+				if ((funcOid == 870 /* lower */ ||
+					 funcOid == 871 /* upper */) &&
+					undertype == BPCHAROID)
+					type = BPCHAROID;
+			}
+
 			break;
 		case T_OpExpr:
 			type = ((OpExpr *) expr)->opresulttype;
+
+			if (((OpExpr *) expr)->opfuncid == 1258 /* textcat */)
+			{
+				/*
+				 * For concat, if both args are strings with max lengths, the result
+				 * must have a max of the sum of the two, and so we want to make it
+				 * VARCHAR and set the typemod
+				 */
+				List * args = ((OpExpr *) expr)->args;
+				Node * arg1 = linitial(args);
+				Node * arg2 = lsecond(args);
+
+				if (exprTypmod(arg1) > 0 && exprTypmod(arg2) > 0)
+					type = VARCHAROID;
+			}
 			break;
 		case T_DistinctExpr:
 			type = ((DistinctExpr *) expr)->opresulttype;
@@ -2048,7 +2107,6 @@ exprTypmod(Node *expr)
 						if (!con->constisnull)
 						{
 							int32		len = VARSIZE(DatumGetPointer(con->constvalue)) - VARHDRSZ;
-
 							/* if multi-byte, take len and find # characters */
 							if (pg_database_encoding_max_length() > 1)
 								len = pg_mbstrlen_with_len(VARDATA(DatumGetPointer(con->constvalue)), len);
@@ -2067,12 +2125,99 @@ exprTypmod(Node *expr)
 				/* Be smart about length-coercion functions... */
 				if (exprIsLengthCoercion(expr, &coercedTypmod))
 					return coercedTypmod;
+
+
+				/*
+				 * GPDB:  Special code to look for built-in functions that return TEXT, but
+				 * really should return a type based on the argument's type if the argument
+				 * is VARCHAR(n) or CHAR(n).  We want to preserve the maximum length (typmod) of
+				 * the underlying type, because it may be important to the application.
+				 *
+				 * For example, trim() of a CHAR(7) or VARCHAR(7) should return a length of 7,
+				 * since the resulting string can't be larger than that.
+				 *
+				 * I know it's really ugly to look for hard-coded OID values here, but because
+				 * these live on disk in the catalog tables at customer's sites, they are not
+				 * going to change without us knowing.
+				 */
+				Oid funcOid = ((FuncExpr *) expr)->funcid;
+
+				/* The results of trim(), upper(), lower() can't exceed the length of the input */
+				if (funcOid == 401 /* bpchar to text (rtrim) */ ||
+					funcOid == 875 /* ltrim (specifying char) */ ||
+					funcOid == 876 /* rtrim (specifying char) */ ||
+					funcOid == 881 /* ltrim */ ||
+					funcOid == 882 /* rtrim */ ||
+					funcOid == 884 /* btrim (specifying char) */ ||
+					funcOid == 885 /* btrim */ ||
+					funcOid == 870 /* lower */ ||
+					funcOid == 871 /* upper */ ||
+					funcOid == 872 /* initcap */ ||
+					funcOid == 2244 /* max(bpchar) */ ||
+					funcOid == 2245 /* min(bpchar) */ ||
+					funcOid == 2129 /* max(text) */ ||
+					funcOid == 2145 /* min(text) */ ||
+					funcOid == 877 /* substr(x,a,b) */ ||
+					funcOid == 883 /* substr(x,b) */ ||
+					funcOid == 936 /* substring(x from a for b) */ ||
+					funcOid == 937 /* substring(x for b) */ ||
+					funcOid == 2088 /* split_part */ )
+				{
+					List * args = ((FuncExpr *) expr)->args;
+					Node * arg1 = linitial(args);
+
+					if (funcOid == 877 /* substr(x,a,b) */ ||
+					    funcOid == 883 /* substr(x,b) */ ||
+					    funcOid == 936 /* substring(x from a for b) */ ||
+					    funcOid == 937 /* substring(x for b) */)
+					{
+						/*
+						 * Special for substring.. If length is a Const, we use that as the typmod.
+						 */
+						Node * lenarg; /* the argument that has the length:  The last one */
+						if (list_length(args) == 3)
+							lenarg = lthird(args);
+						else
+							lenarg = lsecond(args);
+						if (IsA(lenarg, Const))
+						{
+							Const * c = (Const *)lenarg;
+							if (c->consttype == INT4OID && !c->constisnull)
+							{
+								int32 len = DatumGetInt32(c->constvalue);
+								if (len > 0 && len <= exprTypmod(arg1))
+									return len;
+							}
+						}
+
+					}
+					return exprTypmod(arg1);
+				}
 			}
 			break;
 		case T_FieldSelect:
 			return ((FieldSelect *) expr)->resulttypmod;
 		case T_RelabelType:
 			return ((RelabelType *) expr)->resulttypmod;
+		case T_OpExpr:
+			if (((OpExpr *) expr)->opfuncid == 1258 /* textcat */)
+			{
+				/*
+				 * For concat, if both args are strings with max lengths, the result
+				 * must have a max of the sum of the two, and so we want to make it
+				 * VARCHAR and set the typemod
+				 */
+				List * args = ((OpExpr *) expr)->args;
+				Node * arg1 = linitial(args);
+				Node * arg2 = lsecond(args);
+
+				if (exprTypmod(arg1) > 0 && exprTypmod(arg2) > 0)
+					return exprTypmod(arg1) + exprTypmod(arg2);
+				else
+					return -1;
+			}
+			else
+				return -1;
 		case T_CaseExpr:
 			{
 				/*

@@ -371,6 +371,7 @@ coerce_type(ParseState *pstate, Node *node,
 			Oid			baseTypeId;
 			int32		baseTypeMod;
 
+
 			baseTypeMod = targetTypeMod;
 			baseTypeId = getBaseTypeAndTypmod(targetTypeId, &baseTypeMod);
 
@@ -402,10 +403,21 @@ coerce_type(ParseState *pstate, Node *node,
 			 * that must be accounted for.	If the destination is a domain
 			 * then we won't need a RelabelType node.
 			 */
+
 			result = coerce_to_domain(node, InvalidOid, -1, targetTypeId,
 									  cformat, location, false, false);
 			if (result == node)
 			{
+				/*
+				 * GPDB: TEXT and VARCHAR are basically the same, but we'd prefer to preserve the datatype
+				 * if it is VARCHAR so that we can preserve the max length (typmod).
+				 *
+				 * In this case, no Relabel node is necessary.
+				 *
+				 */
+				if (targetTypeId == TEXTOID && exprType(node) == VARCHAROID && exprTypmod(node) > 0)
+					return result;
+
 				/*
 				 * XXX could we label result with exprTypmod(node) instead of
 				 * default -1 typmod, to save a possible length-coercion
