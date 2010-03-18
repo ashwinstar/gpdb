@@ -401,92 +401,95 @@ CREATE VIEW pg_max_external_files AS
 
 -- partitioning
 create view pg_partitions as
-select 
-schemaname,
-tablename, 
-partitionschemaname,
-partitiontablename,
-partitionname,
-parentpartitiontablename,
-parentpartitionname,
-partitiontype, 
-partitionlevel,
--- if not a range partition, no partition rank
--- for range partitions, the parruleord of the default partition is zero,
--- so if no_default (min of parruleord) > 0 then there is no default partition
--- so return the normal rank.  However, if there is a default partition, it
--- is rank 1, so skip it, and decrement remaining ranks by 1 so the first
--- non-default partition starts at 1
---
-case when (partitiontype != 'range') then NULL
-	 when (partitionnodefault > 0) then partitionrank
-	 when (partitionrank = 1) then NULL
-	 else  partitionrank - 1
-end as partitionrank,
-partitionposition,
-partitionlistvalues,
-partitionrangestart,
-case when (partitiontype = 'range') then partitionstartinclusive
-	 else NULL
-end as partitionstartinclusive,
-partitionrangeend,
-case when (partitiontype = 'range') then partitionendinclusive
-	else NULL
-end as partitionendinclusive,
-partitioneveryclause,
-parisdefault as partitionisdefault,
-partitionboundary
-from
-(
-select
-n.nspname as schemaname,
-cl.relname as tablename, 
-n2.nspname as partitionschemaname,
-cl2.relname as partitiontablename,
-pr1.parname as partitionname,
-cl3.relname as parentpartitiontablename,
-pr2.parname as parentpartitionname,
-case when pp.parkind = 'h' then 'hash' when pp.parkind = 'r' then 'range'
-	 when pp.parkind = 'l' then 'list' else null end as partitiontype, 
-pp.parlevel as partitionlevel,
-pr1.parruleord
-as partitionposition,
-CASE WHEN pp.parkind != 'r'::"char" OR pr1.parisdefault 
-	 THEN NULL::bigint
-     ELSE 
-	 	  rank() OVER(
-          		      PARTITION BY pp.oid, cl.relname, pp.parlevel, cl3.relname
-               	      ORDER BY pr1.parisdefault, pr1.parruleord) 
-     END AS partitionrank, 
-
-pg_get_expr(pr1.parlistvalues, pr1.parchildrelid) as partitionlistvalues,
-pg_get_expr(pr1.parrangestart, pr1.parchildrelid) as partitionrangestart,
-pr1.parrangestartincl as partitionstartinclusive,
-pg_get_expr(pr1.parrangeend, pr1.parchildrelid) as partitionrangeend,
-pr1.parrangeendincl as partitionendinclusive,
-pg_get_expr(pr1.parrangeevery, pr1.parchildrelid) as partitioneveryclause,
-min(pr1.parruleord) 
-    over (partition by pp.oid, cl.relname, pp.parlevel, cl3.relname 
-	order by pr1.parruleord) as partitionnodefault,
-pr1.parisdefault,
-pg_get_partition_rule_def(pr1.oid, true) as partitionboundary
-from 
-pg_namespace n,
-pg_namespace n2,
-pg_class cl,
-pg_class cl2, 
-pg_partition pp,
-pg_partition_rule pr1 left outer join pg_partition_rule pr2 
-   on(pr1.parparentrule = pr2.oid)
-left outer join pg_class cl3 on (pr2.parchildrelid = cl3.oid)
-where 
- pp.paristemplate = 'f' and -- paristemplate = 't' handled in its on view
- pp.parrelid = cl.oid and 
- pr1.paroid = pp.oid and
- cl2.oid = pr1.parchildrelid and
- cl.relnamespace = n.oid and
- cl2.relnamespace = n2.oid
-) as p1;
+  select 
+      schemaname, 
+      tablename, 
+      partitionschemaname, 
+      partitiontablename, 
+      partitionname, 
+      parentpartitiontablename, 
+      parentpartitionname, 
+      partitiontype, 
+      partitionlevel, 
+      -- Only the non-default parts of range partitions have 
+      -- a non-null partition rank.  For these the rank is
+      -- from (1, 2, ...) in keeping with the use of RANK(n)
+      -- to identify the parts of a range partition in the 
+      -- ALTER statement.
+      case
+          when partitiontype <> 'range'::text then null::bigint
+          when partitionnodefault > 0 then partitionrank
+          when partitionrank = 0 then null::bigint
+          else partitionrank
+          end as partitionrank, 
+      partitionposition, 
+      partitionlistvalues, 
+      partitionrangestart, 
+      case
+          when partitiontype = 'range'::text then partitionstartinclusive
+          else null::boolean
+          end as partitionstartinclusive, partitionrangeend, 
+      case
+          when partitiontype = 'range'::text then partitionendinclusive
+          else null::boolean
+          end as partitionendinclusive, 
+      partitioneveryclause, 
+      parisdefault as partitionisdefault, 
+      partitionboundary
+  from 
+      ( 
+          select 
+              n.nspname as schemaname, 
+              cl.relname as tablename, 
+              n2.nspname as partitionschemaname, 
+              cl2.relname as partitiontablename, 
+              pr1.parname as partitionname, 
+              cl3.relname as parentpartitiontablename, 
+              pr2.parname as parentpartitionname, 
+              case
+                  when pp.parkind = 'h'::"char" then 'hash'::text
+                  when pp.parkind = 'r'::"char" then 'range'::text
+                  when pp.parkind = 'l'::"char" then 'list'::text
+                  else null::text
+                  end as partitiontype, 
+              pp.parlevel as partitionlevel, 
+              pr1.parruleord as partitionposition, 
+              case
+                  when pp.parkind != 'r'::"char" or pr1.parisdefault then null::bigint
+                  else
+                      rank() over(
+                      partition by pp.oid, cl.relname, pp.parlevel, cl3.relname
+                      order by pr1.parisdefault, pr1.parruleord) 
+                  end as partitionrank, 
+              pg_get_expr(pr1.parlistvalues, pr1.parchildrelid) as partitionlistvalues, 
+              pg_get_expr(pr1.parrangestart, pr1.parchildrelid) as partitionrangestart, 
+              pr1.parrangestartincl as partitionstartinclusive, 
+              pg_get_expr(pr1.parrangeend, pr1.parchildrelid) as partitionrangeend, 
+              pr1.parrangeendincl as partitionendinclusive, 
+              pg_get_expr(pr1.parrangeevery, pr1.parchildrelid) as partitioneveryclause, 
+              min(pr1.parruleord) over(
+                  partition by pp.oid, cl.relname, pp.parlevel, cl3.relname
+                  order by pr1.parruleord) as partitionnodefault, 
+              pr1.parisdefault, 
+              pg_get_partition_rule_def(pr1.oid, true) as partitionboundary
+          from 
+              pg_namespace n, 
+              pg_namespace n2, 
+              pg_class cl, 
+              pg_class cl2, 
+              pg_partition pp, 
+              pg_partition_rule pr1
+                  left join 
+              pg_partition_rule pr2 on pr1.parparentrule = pr2.oid
+                  left join 
+              pg_class cl3 on pr2.parchildrelid = cl3.oid
+      where 
+          pp.paristemplate = false and 
+          pp.parrelid = cl.oid and 
+          pr1.paroid = pp.oid and 
+          cl2.oid = pr1.parchildrelid and 
+          cl.relnamespace = n.oid and 
+          cl2.relnamespace = n2.oid) p1;
 
 create view pg_partition_columns as											 
 select																		  
