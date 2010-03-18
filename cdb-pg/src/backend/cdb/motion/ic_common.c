@@ -641,7 +641,7 @@ SetupSequenceServer(const char *host, int port)
 		 */
 		savedSeqServerHost = strdup(host);
 
-		if (savedSeqServerHost)
+		if (savedSeqServerHost == NULL)
 		{
 			elog(ERROR, "SetupSequenceServer: memory allocation failed.");
 		}
