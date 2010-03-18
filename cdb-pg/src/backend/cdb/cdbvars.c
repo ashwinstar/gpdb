@@ -980,7 +980,10 @@ gpvars_assign_gp_fts_probe_pause(bool newval, bool doit, GucSource source)
 {
 	if (doit)
 	{
-		if (ftsProbeInfo)
+		/*
+		 * We only want to do fancy stuff on the master (where we have a prober).
+		 */
+		if (ftsProbeInfo && Gp_segment == -1)
 		{
 			ftsProbeInfo->fts_pauseProbes = newval;
 
